@@ -2993,14 +2993,27 @@ const TOOL_DEFS = [
     {
         name: 'send_mail',
         core: true,
-        description: 'Send mail from your own Dovecote mailbox to another bot/job mailbox (Rook, Menma, Hoshino, Ivory, Guren, Chiyo, Frost, Sala, Tifa, Pyra, Cursor, Claude). You cannot send into Yukimi\'s mailbox. Pass replyTo to reply within an existing thread. Optional attachments, each either a VFS path or raw base64, up to 10MB per file and 25MB per message.',
+        description: 'Send mail from your own Dovecote mailbox. `to` is one mailbox or a list; optional `cc` is the same. Each recipient gets one copy and every copy shares one thread. A name in both to and cc is delivered once, on To. Recipients are Rook, Menma, Hoshino, Ivory, Guren, Chiyo, Frost, Sala, Tifa, Pyra, Cursor, Claude, and Yukimi. Pass replyTo to reply within an existing thread. Optional attachments, each either a VFS path or raw base64, up to 10MB per file and 25MB per message. Each attachment is stored once and shared by every copy. The result `to` and `cc` are arrays.',
         scope: 'sfapp_dovecote',
         inputSchema: {
             type: 'object',
             additionalProperties: false,
             required: ['to', 'subject', 'body'],
             properties: {
-                to: { type: 'string', description: 'Recipient mailbox owner (bot/job identity, lowercase)' },
+                to: {
+                    description: 'Recipient mailbox or mailboxes. A name, a comma-separated list, or an array of names. Yukimi is allowed.',
+                    oneOf: [
+                        { type: 'string' },
+                        { type: 'array', items: { type: 'string' } }
+                    ]
+                },
+                cc: {
+                    description: 'Cc mailbox or mailboxes. Same shapes as to. Optional. A name already in to is not copied again.',
+                    oneOf: [
+                        { type: 'string' },
+                        { type: 'array', items: { type: 'string' } }
+                    ]
+                },
                 subject: { type: 'string' },
                 body: { type: 'string' },
                 format: { type: 'string', enum: ['text', 'md', 'html'], description: 'Default text' },
@@ -3025,7 +3038,7 @@ const TOOL_DEFS = [
     {
         name: 'list_mail',
         core: true,
-        description: 'List mail in your own Dovecote mailbox. Returns summaries (no body, attachments as metadata only) — use read_mail for the full message. The result always includes owner, the mailbox of the calling key, even when mail is empty. read_by_recipient is true once the recipient has opened a message you sent.',
+        description: 'List mail in your own Dovecote mailbox. Returns summaries (no body, attachments as metadata only) — use read_mail for the full message. `to` and `cc` are arrays of mailbox names (older single-recipient rows still come back as a one-element `to` and an empty `cc`). The result always includes owner, the mailbox of the calling key, even when mail is empty. read_by_recipient is true once a To recipient has opened a message you sent.',
         scope: 'sfapp_dovecote',
         inputSchema: {
             type: 'object',
@@ -3040,7 +3053,7 @@ const TOOL_DEFS = [
     {
         name: 'read_mail',
         core: true,
-        description: 'Read one message by id from your own Dovecote mailbox (marks it read). Ids from other mailboxes 404 — there is no cross-mailbox access. Attachments are listed as metadata only (id/name/mimeType/size), not their bytes.',
+        description: 'Read one message by id from your own Dovecote mailbox (marks it read). Ids from other mailboxes 404 — there is no cross-mailbox access. `to` and `cc` are arrays of mailbox names. Attachments are listed as metadata only (id/name/mimeType/size), not their bytes.',
         scope: 'sfapp_dovecote',
         inputSchema: {
             type: 'object',
@@ -3072,7 +3085,7 @@ const TOOL_DEFS = [
     {
         name: 'forward_mail',
         core: true,
-        description: 'Forward a message from your own Dovecote mailbox to another bot/job mailbox as a new copy (new thread — the recipient does not gain access to the original thread or mailbox). You cannot forward into Yukimi\'s mailbox.',
+        description: 'Forward a message from your own Dovecote mailbox to another mailbox, including Yukimi, as a new copy (new thread — the recipient does not gain access to the original thread or mailbox).',
         scope: 'sfapp_dovecote',
         inputSchema: {
             type: 'object',
@@ -8890,6 +8903,7 @@ async function callTool(globalResources, req, name, args) {
                 const result = dovecoteMail.sendMail({
                     fromOwner: owner,
                     to: input.to,
+                    cc: input.cc,
                     subject: input.subject,
                     body: input.body,
                     format: input.format,

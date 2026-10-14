@@ -40,7 +40,8 @@ async function main() {
     const sendData = textOf(sendResult);
     assert.strictEqual(sendResult.isError, false);
     assert.strictEqual(sendData.success, true);
-    assert.strictEqual(sendData.to, 'rook');
+    assert.deepStrictEqual(sendData.to, ['rook']);
+    assert.deepStrictEqual(sendData.cc, []);
 
     const listResult = await callTool(gr, reqFor('Rook'), 'list_mail', { folder: 'inbox' });
     const listData = textOf(listResult);
@@ -50,7 +51,10 @@ async function main() {
     assert.strictEqual(listData.mail[0].from, 'menma');
 
     const readResult = await callTool(gr, reqFor('Rook'), 'read_mail', { id: mailId });
-    assert.strictEqual(textOf(readResult).mail.body, 'hello');
+    const readMail = textOf(readResult).mail;
+    assert.strictEqual(readMail.body, 'hello');
+    assert.deepStrictEqual(readMail.to, ['rook']);
+    assert.deepStrictEqual(readMail.cc, []);
 
     // Caller identity is resolved server-side from the application key, never
     // from a client-supplied "owner" field — there is no such input on any tool.
@@ -67,6 +71,34 @@ async function main() {
     const ivoryInbox = textOf(await callTool(gr, reqFor('Ivory'), 'list_mail', {})).mail;
     assert.strictEqual(ivoryInbox.length, 1);
     assert.strictEqual(ivoryInbox[0].subject, 'Fwd: hi');
+
+    // Bots may send to Yukimi over MCP (Yukimi 2026-10-10), including on cc.
+    // The tool text must say so. It used to claim bots cannot write to her.
+    const sendDef = fs.readFileSync(path.join(__dirname, '..', 'modules/mcpAgentFacade.js'), 'utf8');
+    const sendAt = sendDef.indexOf("name: 'send_mail'");
+    const sendChunk = sendDef.slice(sendAt, sendAt + 1800);
+    assert.ok(!sendChunk.includes('cannot send into Yukimi'), 'send_mail must not forbid Yukimi');
+    assert.ok(sendChunk.includes('Yukimi'), 'send_mail must name Yukimi as a recipient');
+
+    const multi = textOf(await callTool(gr, reqFor('Menma'), 'send_mail', {
+        to: ['rook', 'hoshino'],
+        cc: 'yukimi',
+        subject: 'multi',
+        body: 'all of you'
+    }));
+    assert.strictEqual(multi.success, true);
+    assert.deepStrictEqual(multi.to, ['rook', 'hoshino']);
+    assert.deepStrictEqual(multi.cc, ['yukimi']);
+    const yukimiMulti = textOf(await callTool(gr, reqFor('Menma'), 'list_mail', { folder: 'sent' })).mail
+        .find((m) => m.subject === 'multi');
+    assert.ok(yukimiMulti);
+    const rookMulti = textOf(await callTool(gr, reqFor('Rook'), 'list_mail', { folder: 'inbox' })).mail
+        .find((m) => m.subject === 'multi');
+    const hoshinoMulti = textOf(await callTool(gr, reqFor('Hoshino'), 'list_mail', { folder: 'inbox' })).mail
+        .find((m) => m.subject === 'multi');
+    assert.strictEqual(rookMulti.threadId, hoshinoMulti.threadId);
+    assert.strictEqual(rookMulti.threadId, yukimiMulti.threadId);
+    assert.deepStrictEqual(rookMulti.cc, ['yukimi']);
 
     // Bots may send to Yukimi over MCP (Yukimi 2026-10-10); forwarding to her is allowed too.
     const okSend = await callTool(gr, reqFor('Menma'), 'send_mail', { to: 'yukimi', subject: 'x', body: 'y' });

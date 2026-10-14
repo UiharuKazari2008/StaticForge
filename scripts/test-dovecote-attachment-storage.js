@@ -1,9 +1,9 @@
 'use strict';
 
-// Dovecote attachment storage: bytes live under
-// .cache/dovecote/attachments/<message-id>/<attachment-id>, one on-disk copy
-// per mailbox-owning message row (not a single shared blob), and get removed
-// when a message is permanently deleted (deleting an already-deleted message).
+// Dovecote attachment storage: a send writes the bytes once under
+// .cache/dovecote/attachments/shared/<attachment-id>. Every mailbox copy
+// references that id. The shared file stays until no message references it.
+// Legacy rows may still have a per-message file, removed with that message.
 
 const assert = require('assert');
 const os = require('os');
@@ -19,13 +19,15 @@ function attachmentFile(messageId, attachmentId) {
     return path.join(dovecoteDatabase.getAttachmentsRoot(), messageId, attachmentId);
 }
 
+function sharedFile(attachmentId) {
+    return path.join(dovecoteDatabase.getAttachmentsRoot(), 'shared', attachmentId);
+}
+
 function main() {
     const attachmentsRoot = dovecoteDatabase.getAttachmentsRoot();
     assert.strictEqual(attachmentsRoot, path.join(tmpDir, 'dovecote', 'attachments'));
 
-    // Sending mail writes the bytes into the sent copy's folder AND duplicates
-    // them into the paired inbox copy's folder — two on-disk copies, not a
-    // shared blob keyed only by attachment id.
+    // One send stores the bytes once. The sent copy and the inbox copy share that file.
     const sent = mail.sendMail({
         fromOwner: 'menma', to: 'rook', subject: 'file', body: 'see attached',
         attachments: [{ name: 'note.txt', mimeType: 'text/plain', data: Buffer.from('hello attachment') }]
@@ -35,32 +37,31 @@ function main() {
     const attId = sentMail.attachments[0].id;
     assert.strictEqual(attId, inboxMail.attachments[0].id);
 
-    assert.ok(fs.existsSync(attachmentFile(sent.id, attId)), 'sent copy should have its own file');
-    assert.ok(fs.existsSync(attachmentFile(inboxMail.id, attId)), 'inbox copy should have its own file');
-    assert.strictEqual(fs.readFileSync(attachmentFile(sent.id, attId)).toString(), 'hello attachment');
-    assert.strictEqual(fs.readFileSync(attachmentFile(inboxMail.id, attId)).toString(), 'hello attachment');
+    assert.ok(fs.existsSync(sharedFile(attId)), 'send should store one shared blob');
+    assert.strictEqual(fs.readFileSync(sharedFile(attId)).toString(), 'hello attachment');
+    assert.ok(!fs.existsSync(attachmentFile(sent.id, attId)), 'sent copy must not duplicate the blob');
+    assert.ok(!fs.existsSync(attachmentFile(inboxMail.id, attId)), 'inbox copy must not duplicate the blob');
 
     assert.strictEqual(mail.getAttachment('menma', attId).data.toString(), 'hello attachment');
     assert.strictEqual(mail.getAttachment('rook', attId).data.toString(), 'hello attachment');
 
-    // Forwarding copies the bytes into the forwarded message's own folder too.
+    // Forwarding shares the same blob instead of writing another copy.
     const fwd = mail.forwardMail('rook', { id: inboxMail.id, to: 'hoshino' });
-    assert.ok(fs.existsSync(attachmentFile(fwd.id, attId)), 'forwarded copy should have its own file');
+    assert.ok(!fs.existsSync(attachmentFile(fwd.id, attId)), 'forward must not duplicate a shared blob');
     assert.strictEqual(mail.getAttachment('hoshino', attId).data.toString(), 'hello attachment');
 
     // Deleting once just moves the message to the 'deleted' folder — files stay put.
     const deletedOnce = mail.markMail('menma', { id: sent.id, deleted: true });
     assert.strictEqual(deletedOnce.folder, 'deleted');
     assert.strictEqual(deletedOnce.permanentlyDeleted, undefined);
-    assert.ok(fs.existsSync(attachmentFile(sent.id, attId)), 'soft delete must not touch attachment files');
+    assert.ok(fs.existsSync(sharedFile(attId)), 'soft delete must not touch the shared blob');
 
-    // Deleting an already-deleted message permanently removes the row and its
-    // own attachment folder — but never the sibling (inbox) copy's folder.
+    // Deleting an already-deleted message permanently removes the row.
+    // The shared blob stays while another message still references it.
     const deletedTwice = mail.markMail('menma', { id: sent.id, deleted: true });
     assert.strictEqual(deletedTwice.permanentlyDeleted, true);
     assert.strictEqual(mail.readMail('menma', sent.id), null);
-    assert.ok(!fs.existsSync(path.join(attachmentsRoot, sent.id)), 'permanently deleted message folder must be gone');
-    assert.ok(fs.existsSync(attachmentFile(inboxMail.id, attId)), 'sibling copy must be unaffected');
+    assert.ok(fs.existsSync(sharedFile(attId)), 'shared blob stays while the inbox copy references it');
     assert.strictEqual(mail.getAttachment('rook', attId).data.toString(), 'hello attachment');
 
     // permanentlyDeleteMail is owner-scoped like everything else.
@@ -71,9 +72,11 @@ function main() {
     // Once every message referencing an attachment id is gone, the metadata
     // row is cleaned up too (no permanent orphan growth).
     mail.permanentlyDeleteMail('rook', inboxMail.id);
+    assert.ok(fs.existsSync(sharedFile(attId)), 'shared blob stays while the forward still references it');
     mail.permanentlyDeleteMail('hoshino', fwd.id);
     const metaRow = dovecoteDatabase.getDb().prepare('SELECT id FROM dovecote_attachment WHERE id = ?').get(attId);
     assert.strictEqual(metaRow, undefined, 'attachment metadata should be cleaned up once unreferenced');
+    assert.ok(!fs.existsSync(sharedFile(attId)), 'shared blob goes away with the last reference');
 
     console.log('dovecote attachment storage tests passed');
 }

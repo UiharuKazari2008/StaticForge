@@ -87,7 +87,8 @@ function toSummary(row) {
         archiveSubfolder: row.archive_subfolder || null,
         threadId: row.thread_id,
         from: row.from_owner,
-        to: row.to_owner,
+        to: ownerList(row.to_list, row.to_owner),
+        cc: ownerList(row.cc_list, null),
         subject: row.subject,
         snippet: snippetOf(row.body),
         format: row.format,
@@ -128,14 +129,69 @@ function insertRow(row) {
     getDb().prepare(`
         INSERT INTO dovecote_message (
             id, owner, folder, archive_subfolder, thread_id, from_owner, to_owner,
+            to_list, cc_list,
             subject, body, format, reply_to_id, fwd_from_owner, fwd_from_message_id,
             read, flagged, created_at, updated_at, deleted_at, paired_message_id, attachments
         ) VALUES (
             @id, @owner, @folder, @archive_subfolder, @thread_id, @from_owner, @to_owner,
+            @to_list, @cc_list,
             @subject, @body, @format, @reply_to_id, @fwd_from_owner, @fwd_from_message_id,
             @read, @flagged, @created_at, @updated_at, @deleted_at, @paired_message_id, @attachments
         )
-    `).run(Object.assign({ paired_message_id: null, attachments: null }, row));
+    `).run(Object.assign({ paired_message_id: null, attachments: null, to_list: null, cc_list: null }, row));
+}
+
+// to_list / cc_list are JSON arrays. Rows from before multi-recipient mail
+// leave them null and the single to_owner column is the whole To line.
+function ownerList(json, fallbackOwner) {
+    if (json == null || json === '') {
+        return fallbackOwner ? [String(fallbackOwner)] : [];
+    }
+    try {
+        const parsed = JSON.parse(json);
+        if (Array.isArray(parsed)) {
+            return parsed.map((name) => String(name || '').trim()).filter(Boolean);
+        }
+    } catch (_err) {
+        // Unreadable JSON falls back to the legacy single recipient.
+    }
+    return fallbackOwner ? [String(fallbackOwner)] : [];
+}
+
+function bareMailbox(token) {
+    let name = String(token || '').trim().toLowerCase();
+    const at = name.indexOf('@');
+    if (at !== -1) name = name.slice(0, at);
+    return name;
+}
+
+// `to` / `cc` accept a mailbox name, a comma/whitespace separated string, or an array of those.
+function parseRecipients(value) {
+    if (value == null || value === '') return [];
+    if (Array.isArray(value)) return value.flatMap(parseRecipients);
+    if (typeof value !== 'string') {
+        throw new DovecoteError('Recipient must be a mailbox name or a list of names', 'UNKNOWN_RECIPIENT');
+    }
+    return value.split(/[,;\s]+/).map(bareMailbox).filter(Boolean);
+}
+
+// To wins over Cc. A name in both is delivered once and stays on To.
+function normalizeRecipients(to, cc) {
+    const toList = [];
+    const ccList = [];
+    const seen = new Set();
+    const take = (name, into) => {
+        if (!name || seen.has(name)) return;
+        if (!isValidOwner(name)) throw new DovecoteError(`Unknown recipient mailbox: ${name}`, 'UNKNOWN_RECIPIENT');
+        seen.add(name);
+        into.push(name);
+    };
+    for (const name of parseRecipients(to)) take(name, toList);
+    for (const name of parseRecipients(cc)) take(name, ccList);
+    if (!toList.length && !ccList.length) {
+        throw new DovecoteError('At least one recipient is required', 'EMPTY_RECIPIENTS');
+    }
+    return { toList, ccList };
 }
 
 function sanitizeFormat(format) {
@@ -171,6 +227,24 @@ function readAttachmentFile(messageId, attachmentId) {
     return fs.readFileSync(filePath);
 }
 
+function sharedAttachmentFile(attachmentId) {
+    return path.join(getAttachmentsRoot(), 'shared', attachmentId);
+}
+
+function writeSharedAttachment(attachmentId, data) {
+    if (!isUuidLike(attachmentId)) return;
+    const dir = path.join(getAttachmentsRoot(), 'shared');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, attachmentId), data);
+}
+
+function readAttachmentBytes(messageId, attachmentId) {
+    if (!isUuidLike(attachmentId)) return null;
+    const shared = sharedAttachmentFile(attachmentId);
+    if (fs.existsSync(shared)) return fs.readFileSync(shared);
+    return readAttachmentFile(messageId, attachmentId);
+}
+
 function copyAttachmentFile(fromMessageId, toMessageId, attachmentId) {
     const data = readAttachmentFile(fromMessageId, attachmentId);
     if (data === null) return;
@@ -182,9 +256,10 @@ function removeMessageAttachmentDir(messageId) {
     fs.rmSync(messageAttachmentDir(messageId), { recursive: true, force: true });
 }
 
-// Copies every attachment id a message references into another message's
-// cache folder — used to give the paired sent/inbox copy (and forwards)
-// their own on-disk copy, so permanently deleting one never touches another.
+// Legacy per-message files only. A send stores bytes once under shared/,
+// and every copy of that send (and a forward of it) reads that one file.
+// Forwarding an older row that has no shared blob still copies the file
+// into the new message folder so the forward survives on its own.
 function duplicateMessageAttachments(fromMessageId, toMessageId, attachmentsJson) {
     if (!attachmentsJson) return;
     let ids;
@@ -195,6 +270,8 @@ function duplicateMessageAttachments(fromMessageId, toMessageId, attachmentsJson
     }
     if (!Array.isArray(ids)) return;
     for (const id of ids) {
+        if (!isUuidLike(id)) continue;
+        if (fs.existsSync(sharedAttachmentFile(id))) continue;
         copyAttachmentFile(fromMessageId, toMessageId, id);
     }
 }
@@ -217,17 +294,19 @@ function cleanupOrphanedAttachmentMeta(attachmentsJson) {
         ).get(`%"${id}"%`);
         if (!stillReferenced) {
             getDb().prepare('DELETE FROM dovecote_attachment WHERE id = ?').run(id);
+            if (isUuidLike(id)) fs.rmSync(sharedAttachmentFile(id), { force: true });
         }
     }
 }
 
 /**
- * Stores attachment metadata in sqlite and the raw bytes under
- * .cache/dovecote/attachments/<messageId>/<attachmentId>. Enforces per-file
- * and total-per-message size limits up front, so a send fails cleanly rather
- * than partially writing attachment files.
+ * Stores attachment metadata in sqlite and the raw bytes once under
+ * .cache/dovecote/attachments/shared/<attachmentId>. Every mailbox copy of
+ * the send references the same id. Enforces per-file and total-per-message
+ * size limits up front, so a send fails cleanly rather than partially
+ * writing attachment files.
  */
-function storeAttachments(messageId, attachments) {
+function storeAttachments(attachments) {
     if (!attachments || !attachments.length) return null;
     let total = 0;
     for (const file of attachments) {
@@ -246,7 +325,7 @@ function storeAttachments(messageId, attachments) {
         getDb().prepare(
             'INSERT INTO dovecote_attachment (id, name, mime_type, size, created_at) VALUES (?, ?, ?, ?, ?)'
         ).run(id, String(file.name || 'attachment').slice(0, 200), String(file.mimeType || 'application/octet-stream'), file.data.length, createdAt);
-        writeAttachmentFile(messageId, id, file.data);
+        writeSharedAttachment(id, file.data);
         return id;
     });
     return JSON.stringify(ids);
@@ -256,8 +335,8 @@ function storeAttachments(messageId, attachments) {
  * Returns an attachment's bytes, scoped to an owner the same way mail reads
  * are: the owner must hold a message (any folder) whose attachments[]
  * includes this id, or this behaves as a 404 (returns null) rather than
- * leaking existence of the blob. Bytes are read from that holder message's
- * own cache folder, not a global by-id store.
+ * leaking existence of the blob. Bytes are the one shared file for that id,
+ * or a legacy per-message file when no shared blob exists.
  */
 function getAttachment(owner, attachmentId) {
     if (!isValidOwner(owner)) throw new DovecoteError('Unknown mailbox', 'UNKNOWN_OWNER');
@@ -271,19 +350,21 @@ function getAttachment(owner, attachmentId) {
     }
     const meta = getDb().prepare('SELECT id, name, mime_type, size FROM dovecote_attachment WHERE id = ?').get(id);
     if (!meta) return null;
-    const data = readAttachmentFile(holder.id, id);
+    const data = readAttachmentBytes(holder.id, id);
     if (data === null) return null;
     audit(owner, 'get_attachment', id, true, null);
     return { id: meta.id, name: meta.name, mimeType: meta.mime_type, size: meta.size, data };
 }
 
-// Posts a read receipt onto a message's paired mailbox copy (sent <-> inbox), the first
-// time only (sticky, like a real read receipt) — and only when the actual recipient
-// (to_owner) is the one doing the reading. Without that check, a sender marking their own
-// already-read sent-folder copy "read" again would wrongly stamp recipient_read_at onto the
-// paired inbox copy, as if the recipient had opened it.
+// Posts a read receipt onto a message's paired sent copy, the first time only
+// (sticky, like a real read receipt) — and only when a To recipient is the one
+// reading. Cc does not stamp it. Without the To check, a sender marking their
+// own already-read sent-folder copy "read" again would wrongly stamp
+// recipient_read_at, as if a recipient had opened it.
 function markPairedReadReceipt(owner, row) {
-    if (!row || !row.paired_message_id || owner !== row.to_owner) return;
+    if (!row || !row.paired_message_id) return;
+    const toList = ownerList(row.to_list, row.to_owner);
+    if (!toList.includes(owner)) return;
     getDb().prepare(
         `UPDATE dovecote_message SET recipient_read_at = ? WHERE id = ? AND recipient_read_at IS NULL`
     ).run(nowIso(), row.paired_message_id);
@@ -292,14 +373,18 @@ function markPairedReadReceipt(owner, row) {
 /**
  * fromOwner is always server-resolved. Bots/jobs may send to any mailbox,
  * including Yukimi's (Yukimi 2026-10-10); they still can never READ hers.
+ * `to` and `cc` are a mailbox name, a separated string, or an array.
+ * Each recipient gets one inbox copy. Every copy shares one threadId.
+ * A name listed in both To and Cc is delivered once, on To.
  * attachments (optional): [{ name, mimeType, data: Buffer }], already resolved
  * to raw bytes by the caller (WS handler decodes base64, MCP facade resolves
  * VFS paths or base64) — this layer only enforces size limits and storage.
+ * Attachment bytes are stored once and shared by every copy.
  */
-function sendMail({ fromOwner, to, subject, body, format, replyToId, attachments }) {
+function sendMail({ fromOwner, to, cc, subject, body, format, replyToId, attachments }) {
     if (!isValidOwner(fromOwner)) throw new DovecoteError('Unknown sender mailbox', 'UNKNOWN_SENDER');
-    const toOwner = String(to || '').trim().toLowerCase();
-    if (!isValidOwner(toOwner)) throw new DovecoteError(`Unknown recipient mailbox: ${to}`, 'UNKNOWN_RECIPIENT');
+    const { toList, ccList } = normalizeRecipients(to, cc);
+    const delivered = toList.concat(ccList);
     const subjectText = String(subject || '').slice(0, 300);
     const bodyText = String(body || '');
     const formatValue = sanitizeFormat(format);
@@ -316,29 +401,38 @@ function sendMail({ fromOwner, to, subject, body, format, replyToId, attachments
 
     const createdAt = nowIso();
     const sentId = crypto.randomUUID();
-    const inboxId = crypto.randomUUID();
-    // Written into the sent copy's folder first, then duplicated into the inbox
-    // copy's folder below — each mailbox copy owns its own on-disk bytes.
-    const attachmentsJson = storeAttachments(sentId, attachments);
-    duplicateMessageAttachments(sentId, inboxId, attachmentsJson);
+    const inboxIds = delivered.map(() => crypto.randomUUID());
+    const attachmentsJson = storeAttachments(attachments);
+    const toJson = JSON.stringify(toList);
+    const ccJson = JSON.stringify(ccList);
+    // to_owner stays a single name for the legacy column: the copy's own
+    // recipient on inbox rows, and the first delivered name on the sent row.
+    const primary = delivered[0];
 
-    insertRow({
-        id: sentId, owner: fromOwner, folder: 'sent', archive_subfolder: null, thread_id: threadId,
-        from_owner: fromOwner, to_owner: toOwner, subject: subjectText, body: bodyText, format: formatValue,
-        reply_to_id: replyTo, fwd_from_owner: null, fwd_from_message_id: null,
-        read: 1, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,
-        paired_message_id: inboxId, attachments: attachmentsJson
+    const writeCopies = getDb().transaction(() => {
+        insertRow({
+            id: sentId, owner: fromOwner, folder: 'sent', archive_subfolder: null, thread_id: threadId,
+            from_owner: fromOwner, to_owner: primary, to_list: toJson, cc_list: ccJson,
+            subject: subjectText, body: bodyText, format: formatValue,
+            reply_to_id: replyTo, fwd_from_owner: null, fwd_from_message_id: null,
+            read: 1, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,
+            paired_message_id: inboxIds[0], attachments: attachmentsJson
+        });
+        delivered.forEach((recipient, index) => {
+            insertRow({
+                id: inboxIds[index], owner: recipient, folder: 'inbox', archive_subfolder: null, thread_id: threadId,
+                from_owner: fromOwner, to_owner: recipient, to_list: toJson, cc_list: ccJson,
+                subject: subjectText, body: bodyText, format: formatValue,
+                reply_to_id: replyTo, fwd_from_owner: null, fwd_from_message_id: null,
+                read: 0, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,
+                paired_message_id: sentId, attachments: attachmentsJson
+            });
+        });
     });
-    insertRow({
-        id: inboxId, owner: toOwner, folder: 'inbox', archive_subfolder: null, thread_id: threadId,
-        from_owner: fromOwner, to_owner: toOwner, subject: subjectText, body: bodyText, format: formatValue,
-        reply_to_id: replyTo, fwd_from_owner: null, fwd_from_message_id: null,
-        read: 0, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,
-        paired_message_id: sentId, attachments: attachmentsJson
-    });
+    writeCopies();
 
-    audit(fromOwner, 'send_mail', inboxId, true, `to=${toOwner}`);
-    return { id: sentId, threadId, to: toOwner };
+    audit(fromOwner, 'send_mail', sentId, true, `to=${toList.join(',')} cc=${ccList.join(',')}`);
+    return { id: sentId, threadId, to: toList, cc: ccList };
 }
 
 function listMail(owner, { folder, unreadOnly, limit } = {}) {

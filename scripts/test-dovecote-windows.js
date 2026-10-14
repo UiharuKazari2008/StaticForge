@@ -113,6 +113,9 @@ function main() {
     // column (doveBuildOeHeader), never overlaid on the body, and not in the main toolbar.
     assert.match(dovecoteJs, /const doveBuildBodyViewToggle = function/);
     assert.match(dovecoteJs, /const doveBuildOeHeader = function/);
+    assert.match(dovecoteJs, /\['from', 'to', 'cc', 'subject', 'date'\]/);
+    assert.match(dovecoteJs, /doveFormatAddressList\(mail\.cc\)/);
+    assert.match(fs.readFileSync(path.join(__dirname, '..', 'public/css/desktop-apps/dovecote.css'), 'utf8'), /data-dove-field="cc"/);
     assert.match(dovecoteJs, /'dovecote-oe-header-tools'/);
     assert.doesNotMatch(dovecoteJs, /dovecote-body-tools/);
     assert.match(dovecoteJs, /'button-group dovecote-body-view-toggle'/);

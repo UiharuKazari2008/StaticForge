@@ -103,6 +103,11 @@ const doveDisplayAddress = function (name) {
     if (!bare) return '';
     return bare.includes('@') ? bare : bare + DOVE_ADDRESS_DOMAIN;
 };
+// `to` / `cc` are arrays on new mail and a single name on older rows.
+const doveFormatAddressList = function (value) {
+    const list = Array.isArray(value) ? value : String(value || '').split(',');
+    return list.map((name) => doveDisplayAddress(String(name).trim())).filter(Boolean).join(', ');
+};
 const doveBareAddress = function (value) {
     return String(value || '').split(',').map((part) => {
         const t = part.trim();
@@ -937,9 +942,9 @@ const doveBuildSanitizedBadge = function () {
     return badge;
 };
 
-// Message header block shared by the inline preview and reader windows: the four compact
-// From/To/Subject/Date rows on the left, and a right-aligned tools column (Safe badge +
-// Rendered/Raw) spanning those rows, vertically centred. Nothing overlays the body.
+// Message header block shared by the inline preview and reader windows: From/To/Cc/Subject/Date
+// rows on the left, and a right-aligned tools column (Safe badge + Rendered/Raw) spanning
+// those rows, vertically centred. An empty Cc value is hidden in CSS. Nothing overlays the body.
 // options: { idPrefix, badgeId, onBodyView(view) }. Returns { header, fieldEls, safetyBar, viewToggle }.
 const doveBuildOeHeader = function (options) {
     const opts = options || {};
@@ -948,7 +953,7 @@ const doveBuildOeHeader = function (options) {
     const fields = document.createElement('div');
     fields.className = 'dovecote-oe-header-fields';
     const fieldEls = {};
-    ['from', 'to', 'subject', 'date'].forEach((field) => {
+    ['from', 'to', 'cc', 'subject', 'date'].forEach((field) => {
         const cap = field.charAt(0).toUpperCase() + field.slice(1);
         const row = document.createElement('div');
         row.className = 'dovecote-oe-header-row';
@@ -1086,6 +1091,7 @@ const doveCacheEls = function () {
         attachmentsBar: document.getElementById('desktopDovecoteAttachmentsBar'),
         oeFrom: document.getElementById('desktopDovecoteOeFrom'),
         oeTo: document.getElementById('desktopDovecoteOeTo'),
+        oeCc: document.getElementById('desktopDovecoteOeCc'),
         oeSubject: document.getElementById('desktopDovecoteOeSubject'),
         oeDate: document.getElementById('desktopDovecoteOeDate'),
         searchGroup: document.getElementById('desktopDovecoteSearchGroup'),
@@ -1356,12 +1362,13 @@ const doveRenderPreviewBody = function () {
 };
 
 // ---- Shared reading-pane rendering (main inline preview + standalone reader windows,
-// doveOpenReaderWindow below) — els is { oeFrom, oeTo, oeSubject, oeDate, safetyBar,
+// doveOpenReaderWindow below) — els is { oeFrom, oeTo, oeCc, oeSubject, oeDate, safetyBar,
 // imagesBar, attachmentsBar, bodyWrap }. ----------------------------------------------------------------
 
 const doveRenderOeHeaderInto = function (els, mail) {
     els.oeFrom.textContent = mail ? doveDisplayAddress(mail.from) : '';
-    els.oeTo.textContent = mail ? doveDisplayAddress(mail.to) : '';
+    els.oeTo.textContent = mail ? doveFormatAddressList(mail.to) : '';
+    if (els.oeCc) els.oeCc.textContent = mail ? doveFormatAddressList(mail.cc) : '';
     els.oeSubject.textContent = mail ? (mail.subject || '(no subject)') : '';
     els.oeDate.textContent = mail ? doveFormatDate(mail.createdAt) : '';
 };
@@ -1874,10 +1881,25 @@ const doveOpenCompose = function (mode, mail, presetTo) {
     let body = '';
     let replyTo = null;
     if (mode === 'reply' || mode === 'replyAll') {
-        // Only one recipient exists in this mail model, so Reply All behaves the same as Reply.
-        to = mail.from || '';
         subject = /^re:/i.test(mail.subject || '') ? mail.subject : 'Re: ' + (mail.subject || '');
         replyTo = mail.id;
+        if (mode === 'reply') {
+            to = mail.from || '';
+        } else {
+            const names = [];
+            const pushName = (value) => {
+                const list = Array.isArray(value) ? value : String(value || '').split(',');
+                list.forEach((name) => {
+                    const bare = String(name || '').trim().toLowerCase();
+                    if (!bare || names.includes(bare) || bare === DESKTOP_DOVECOTE_HUMAN_OWNER) return;
+                    names.push(bare);
+                });
+            };
+            pushName(mail.from);
+            pushName(mail.to);
+            pushName(mail.cc);
+            to = names.join(', ') || (mail.from || '');
+        }
     } else if (mode === 'forward') {
         to = presetTo || '';
         subject = /^fwd:/i.test(mail.subject || '') ? mail.subject : 'Fwd: ' + (mail.subject || '');
@@ -1971,7 +1993,7 @@ const doveBuildComposeWindow = function (key, initial) {
     const toInput = document.createElement('input');
     toInput.type = 'text';
     toInput.className = 'form-control';
-    toInput.value = doveDisplayAddress(initial.to);
+    toInput.value = doveFormatAddressList(initial.to);
     toInput.placeholder = 'name' + DOVE_ADDRESS_DOMAIN;
     toRow.appendChild(toLabel);
     toRow.appendChild(toInput);
@@ -2210,6 +2232,7 @@ const doveBuildReaderWindow = function (key) {
     state.els = {
         oeFrom: fieldEls.from,
         oeTo: fieldEls.to,
+        oeCc: fieldEls.cc,
         oeSubject: fieldEls.subject,
         oeDate: fieldEls.date,
         safetyBar: safetyBar,

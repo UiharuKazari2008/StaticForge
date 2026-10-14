@@ -4,9 +4,9 @@
  * Hoshino, Ivory, Guren, Chiyo, Frost, Sala, Tifa, Pyra, Cursor, Claude).
  *
  * One row per mailbox copy: sending mail writes a 'sent' row for the sender
- * and an 'inbox' row for the recipient, linked by thread_id. Forwarding
- * writes a fresh row (new thread_id) into the target mailbox so the copy
- * never grants access back to the original thread.
+ * and one 'inbox' row per recipient (To and Cc). Every copy of that send
+ * shares one thread_id. Forwarding writes a fresh row (new thread_id) into
+ * the target mailbox so the copy never grants access back to the original thread.
  */
 
 const Database = require('better-sqlite3');
@@ -107,6 +107,10 @@ function createDovecoteTables() {
     addColumnIfMissing('dovecote_message', 'paired_message_id', 'paired_message_id TEXT');
     addColumnIfMissing('dovecote_message', 'recipient_read_at', 'recipient_read_at TEXT');
     addColumnIfMissing('dovecote_message', 'attachments', 'attachments TEXT');
+    // to_list / cc_list: JSON arrays of mailbox names on every copy of a send.
+    // Null on rows written before multi-recipient mail; readers fall back to to_owner.
+    addColumnIfMissing('dovecote_message', 'to_list', 'to_list TEXT');
+    addColumnIfMissing('dovecote_message', 'cc_list', 'cc_list TEXT');
     db.exec(`
         CREATE INDEX IF NOT EXISTS idx_dovecote_message_owner_folder ON dovecote_message (owner, folder, created_at);
         CREATE INDEX IF NOT EXISTS idx_dovecote_message_thread ON dovecote_message (thread_id);
@@ -133,13 +137,13 @@ function createDovecoteTables() {
             PRIMARY KEY (owner, sender)
         )
     `);
-    // Only metadata lives in sqlite — the bytes live on disk under
-    // .cache/dovecote/attachments/<message-id>/<attachment-id> (one copy per
-    // mailbox-owning message row, so permanently deleting one message's row
-    // never touches another message's copy of the same attachment id).
-    // Access is enforced by checking the requesting owner holds a
-    // dovecote_message row whose attachments[] includes the id
-    // (modules/dovecoteMail.js getAttachment).
+    // Only metadata lives in sqlite. A send stores the bytes once under
+    // .cache/dovecote/attachments/shared/<attachment-id>; every mailbox copy
+    // references that id. Legacy rows may still have a per-message file at
+    // .cache/dovecote/attachments/<message-id>/<attachment-id>. The shared
+    // file is removed only when no message references the id. Access is
+    // enforced by checking the requesting owner holds a dovecote_message row
+    // whose attachments[] includes the id (modules/dovecoteMail.js getAttachment).
     db.exec(`
         CREATE TABLE IF NOT EXISTS dovecote_attachment (
             id TEXT PRIMARY KEY,

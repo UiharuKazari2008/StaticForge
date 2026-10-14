@@ -260,6 +260,11 @@
     min-width: 0;
 }
 
+/* Cc is a real header line. Hide it when the value is empty (single-recipient mail). */
+.dovecote-oe-header-row[data-dove-field="cc"]:has(.dovecote-oe-header-value:empty) {
+    display: none;
+}
+
 .dovecote-oe-header-label {
     flex: none;
 }
@@ -1088,6 +1093,10 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
     flex: 1 1 0;
 }
 
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-preview-pane .dovecote-oe-header-row[data-dove-field="cc"] {
+    flex: 1 0 100%;
+}
+
 body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-preview-pane .dovecote-oe-header-row[data-dove-field="subject"] {
     flex: 1 0 100%;
 }
@@ -1096,7 +1105,7 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
     display: none;
 }
 
-/* the message window (reader): Windows Mail's From / Date / To / Subject block, labels in a column */
+/* the message window (reader): Windows Mail's From / To / Cc / Subject / Date block, labels in a column */
 body:not(.windows-classic-theme) .dovecote-reader-window[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-oe-header-label {
     min-width: 56px;
 }

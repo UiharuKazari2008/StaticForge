@@ -161,13 +161,14 @@ function decodeAttachments(list) {
 
 async function handleSendMail(handlersCtx, ws, message) {
     try {
-        if (!message.to || !message.body) {
-            handlersCtx.sendError(ws, 'Recipient and body are required', 'dovecote_send_mail', message.requestId);
+        if (message.body == null || message.body === '') {
+            handlersCtx.sendError(ws, 'Body is required', 'dovecote_send_mail', message.requestId);
             return;
         }
         const result = dovecoteMail.sendMail({
             fromOwner: dovecoteMail.HUMAN_OWNER,
             to: message.to,
+            cc: message.cc,
             subject: message.subject,
             body: message.body,
             format: message.format,

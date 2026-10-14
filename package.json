@@ -123,6 +123,8 @@
     "test:dovecote-mcp-tools": "node scripts/test-dovecote-mcp-tools.js",
     "test:dovecote-windows": "node scripts/test-dovecote-windows.js",
     "test:dovecote-reader-window": "node scripts/test-dovecote-reader-window.js",
+    "test:dovecote-multi": "node scripts/test-dovecote-multi.js",
+    "test:mail-report": "node scripts/test-mail-report.js",
     "test:cpl-mail": "node scripts/test-cpl-mail.js",
     "test:apocrypha-local-grim": "node --test scripts/test-apocrypha-local-grim.js",
     "test:grimoire-browser": "node scripts/test-grimoire-browser.js",
