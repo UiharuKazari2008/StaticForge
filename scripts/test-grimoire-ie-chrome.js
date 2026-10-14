@@ -107,7 +107,11 @@ assert.ok(/#tagWikiSearchModal \.grimoire-ie-tabrow \{\s*height: 31px;\s*margin-
 for (const sel of ['.grimoire-ie-split', '.grimoire-ie-split-drop', '.grimoire-ie-search-drop', '.grimoire-ie-status-zoom', '#grimoireIePrintHost', '--grimoire-ie-zoom']) {
     assert.ok(css.includes(sel), sel + ' is styled');
 }
-for (const f of ['feeds.png', 'print.png', 'zoom.png']) {
+// IE7's Recent Pages ▾ (ieframe TRAVEL_BACKGROUND), not Explorer's; and IE7's zones
+assert.ok(/\.grimoire-recent-pages-btn \{[^}]*width: 20px;[^}]*height: 29px;[^}]*background: url\('\/static_images\/vista-ie\/recent-pages\.png'\)/.test(css), 'Recent Pages ▾ is IE7\'s art');
+const chromeSrc = read('public/scripts/comp/grimoireIeChrome.js');
+assert.ok(chromeSrc.includes("'Internet | Protected Mode: On' : 'Local intranet | Protected Mode: Off'"), 'Alchemy is the Internet, the Grimoire the local intranet');
+for (const f of ['feeds.png', 'print.png', 'zoom.png', 'recent-pages.png', 'zone-intranet.png']) {
     assert.ok(fs.existsSync(path.join(ROOT, 'public/static_images/vista-ie', f)), f);
 }
 

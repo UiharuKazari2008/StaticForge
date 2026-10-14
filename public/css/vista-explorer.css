@@ -1023,30 +1023,35 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-
     opacity: 1;
 }
 
+/* Recent Pages ▾ is IE7's own, not Explorer's: ieframe.dll TRAVEL_BACKGROUND (76x29 per state:
+   disabled, normal, hot, pressed) cut at x=56 into a 20x29 button (public/static_images/vista-ie/
+   recent-pages.png: normal, hot, pressed, disabled). VM: the frame sits at (9,30), so the ▾ is a
+   solid 7px triangle centred on x=74 with its top on y=43 (grey #99a4ad with no history, blue
+   with it), 3px right of Explorer's; the address box keeps its place */
 body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-recent-pages-btn {
     flex: none;
-    width: 13px;
-    min-width: 13px;
-    height: 27px;
+    width: 20px;
+    min-width: 20px;
+    height: 29px;
     min-height: 0;
     padding: 0;
-    margin: 0 4px 0 -1px;
-    background: url('/static_images/vista-explorer/recent-pages.png') no-repeat 0 0;
+    margin: -1px -3px 0 -1px;
+    background: url('/static_images/vista-ie/recent-pages.png') no-repeat 0 0;
     border: 0;
     border-radius: 0;
     box-shadow: none;
 }
 
 body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-recent-pages-btn:hover {
-    background-position: 0 -27px;
+    background-position: 0 -29px;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-recent-pages-btn:active {
-    background-position: 0 -54px;
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-recent-pages-btn:is(:active, [data-state="open"], .is-open) {
+    background-position: 0 -58px;
 }
 
 body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-recent-pages-btn.is-disabled {
-    background-position: 0 -81px;
+    background-position: 0 -87px;
 }
 
 /* the address box: 24px, Explorer's translucent box, then ▾ | refresh | stop inside the same frame */
@@ -2292,16 +2297,25 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-
 body:not(.windows-classic-theme) #explorerModal .explorer-item-type-icon.explorer-live-folder:is(.fa-folder, .fa-folder-open, [data-kind="folder"]:not(.fa-bin-recycle, .fa-trash-can)) {
     position: relative;
     isolation: isolate; /* the papers (z 1) under the front flap (z 2) */
-    overflow: hidden;
+    overflow: visible; /* the papers' shadows fall past the folder, as on the VM */
     --ex-icon-lg: image-set(url('/static_images/vista-icons/explorer/folder-back-256.png') 1x);
     --ex-icon-md: image-set(url('/static_images/vista-icons/explorer/folder-back-96.png') 1x, url('/static_images/vista-icons/explorer/folder-back-256.png') 2x);
 }
+/* the icon box clips its contents (explorer.css); a live folder's papers and shadows may pass it
+   (explorerApplet.js _populateDefaultIconBox sets the class) */
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box.explorer-live-folder-box {
+    overflow: visible;
+}
+/* the papers stand inside the folder: nothing of them shows left of the front flap's outer edge
+   (imageres.dll 5 at 96px: x=6 from the top down to y=72, then slanting in to x=20 at y=90), while
+   on the right and below they and their shadows pass the folder's back like Vista's (VM Duo / Pattern) */
 body:not(.windows-classic-theme) #explorerModal .explorer-live-folder .explorer-live-folder-papers {
     position: absolute;
     inset: 0;
     z-index: 1;
     display: block;
     pointer-events: none;
+    clip-path: polygon(6.25% -20%, 6.25% 75%, 12.5% 81.25%, 16.67% 87.5%, 20.83% 93.75%, 24% 100%, 27% 115%, 140% 115%, 140% -20%);
 }
 body:not(.windows-classic-theme) #explorerModal .explorer-live-folder .explorer-live-folder-paper {
     position: absolute;

@@ -4094,6 +4094,8 @@ class ExplorerApplet {
         const live = Array.isArray(item.previews) && item.previews.length
             && icon.dataset.kind === 'folder' && !/\b(fa-bin-recycle|fa-trash-can)\b/.test(icon.className)
             && !box.classList.contains('explorer-item-icon-box-sm') && !box.classList.contains('explorer-item-icon-box-row');
+        // the box clips its icon; a live folder's papers and their shadows may pass it (vista-explorer.css)
+        box.classList.toggle('explorer-live-folder-box', !!live);
         if (live) this._mountLiveFolder(box, icon, item.previews);
     }
 
@@ -4109,12 +4111,13 @@ class ExplorerApplet {
             const square = `/previews/${encodeURIComponent(preview)}`;
             // the @lq preview keeps the picture's shape (the plain one is a square crop)
             img.addEventListener('error', () => { if (img.src !== location.origin + square) img.src = square; }, { once: true });
-            // a portrait stands taller than a landscape in Vista's folder
-            img.addEventListener('load', () => {
-                const r = img.naturalWidth / (img.naturalHeight || 1);
-                img.classList.toggle('is-portrait', r < 0.9);
-                img.classList.toggle('is-landscape', r > 1.1);
-            });
+            if (i === 0) {
+                // the first picture's height follows its shape a little (VM: sqrt of the aspect, within 0.86..1.15)
+                img.addEventListener('load', () => {
+                    const r = Math.sqrt(img.naturalHeight / (img.naturalWidth || 1));
+                    img.style.setProperty('--paper-aspect', String(Math.max(0.86, Math.min(1.15, r)).toFixed(3)));
+                });
+            }
             img.src = `/previews/${encodeURIComponent(preview.replace(/\.webp$/i, '@lq.webp'))}`;
             papers.appendChild(img);
         });

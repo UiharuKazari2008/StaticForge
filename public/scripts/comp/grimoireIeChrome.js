@@ -12,8 +12,9 @@
  *                page: Add or Change / Remove), Feeds ▾ (the feeds a web page advertises), Print ▾
  *                (Print / Print Preview), Page ▾ (New Window, Copy Address, Split View) and
  *                Tools ▾ (the site menu)
- *   status bar   Done / Waiting, the zone (Internet for web pages, Dreamscape for the Grimoire's
- *                own) with Protected Mode: On, and the zoom (click: 100 / 125 / 150 %, ▾: levels)
+ *   status bar   Done / Waiting, the zone (Alchemy's web pages: Internet | Protected Mode: On; the
+ *                Grimoire's own pages: Local intranet | Protected Mode: Off, as IE7 shows them),
+ *                and the zoom (click: 100 / 125 / 150 %, ▾: levels)
  *
  * The home page and the search provider are user settings (userGlobalSettings.alchemy.homePage /
  * searchProvider, modules/grimoireBrowserBridge.js). Zoom is per pane: CSS zoom on Grimoire pages,
@@ -159,6 +160,7 @@
                 + '<span class="grimoire-ie-status-grip" aria-hidden="true"></span>';
             this.statusText = this.status.querySelector('.grimoire-ie-status-text');
             this.zoneText = this.status.querySelector('.grimoire-ie-zone-text');
+            this.zoneIcon = this.status.querySelector('.grimoire-ie-status-zone img');
             this.zoomBtn = this.status.querySelector('.grimoire-ie-zoom-btn');
             this.zoomDrop = this.status.querySelector('.grimoire-ie-zoom-drop');
             this.zoomText = this.status.querySelector('.grimoire-ie-zoom-text');
@@ -743,7 +745,11 @@
             this.feedsBtn.title = feeds.length ? `View Feeds on this Page (${feeds.length})` : 'No Feeds Detected on this page';
             this.printBtn.disabled = !!this.printing;
             this.zoomText.textContent = `${this.zoomOf(shell)}%`;
-            this.zoneText.textContent = `${web ? 'Internet' : 'Dreamscape'} | Protected Mode: On`;
+            // IE7's zones (the VM registry's Internet Settings Zones 1 and 3): the Grimoire is the local intranet, Alchemy the Internet
+            const zone = web ? 'Internet | Protected Mode: On' : 'Local intranet | Protected Mode: Off';
+            if (this.zoneText.textContent !== zone) this.zoneText.textContent = zone;
+            const zoneArt = `${ART}/${web ? 'zone-internet' : 'zone-intranet'}.png`;
+            if (this.zoneIcon && this.zoneIcon.getAttribute('src') !== zoneArt) this.zoneIcon.setAttribute('src', zoneArt);
 
             const url = web ? this.currentWebUrl() : '';
             this.addFavBtn.disabled = !url;
