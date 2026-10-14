@@ -41,7 +41,7 @@ function main() {
     assert.strictEqual(cpl.dialogOn(fresh), true);
     assert.strictEqual(cpl.soundOn(memoryStore({ [cpl.SOUND_KEY]: 'on' })), true);
 
-    assert.match(appHtml, /scripts\/comp\/cplMail\.js/);
+    assert.match(fs.readFileSync(path.join(root, 'public/scripts/comp/featureLoader.js'), 'utf8'), /scripts\/comp\/cplMail\.js/);
     assert.match(dovecoteJs, /doveMenuItem\('Options\.\.\.', 'options'\)/);
     assert.match(dovecoteJs, /cplMail\.open\(\)/);
     assert.match(dovecoteJs, /Play sound when new messages arrive|mailSettings\.soundOn\(\)/);

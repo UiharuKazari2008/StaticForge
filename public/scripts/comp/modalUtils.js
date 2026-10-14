@@ -6218,7 +6218,7 @@ const startMenuLaunchables = [
     { launchId: 'notebook', icon: 'fas fa-notebook', imageIcon: 'vista-journal.png', text: 'Notion', appMenu: true, action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('notepad'); } window.notepadManager.openNotebook(); }, rightAction: { icon: 'fas fa-sticky-note', tooltip: 'New Note', action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('notepad'); } window.notepadManager.handleNewNote(); } } },
     { launchId: 'chat', icon: 'fas fa-messages', imageIcon: 'vista-messenger.png', text: 'Chat', appMenu: true, action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('chat'); } window.chatSystem.showAllChats(); } },
     { launchId: 'explorer', icon: 'fas fa-folder-open', imageIcon: 'vista-explorer.png', text: 'Cartograph', appMenu: true, action: () => { openExplorerApplet(); } },
-    { launchId: 'remote-desktop', icon: 'fas fa-satellite-dish', imageIcon: 'vista-remote-desktop.png', text: 'Remote Desktop', appMenu: true, action: () => { /* public/scripts/comp/desktop-apps/guacRemote.js */ openDesktopGuac(); } },
+    { launchId: 'remote-desktop', icon: 'fas fa-satellite-dish', imageIcon: 'vista-remote-desktop.png', text: 'Remote Desktop', appMenu: true, action: async () => { await featureLoader.loadFeature('remote_desktop'); /* public/scripts/comp/desktop-apps/guacRemote.js */ openDesktopGuac(); } },
     { launchId: 'dovecote', icon: 'fas fa-envelope', imageIcon: 'vista-mail.png', text: 'Dovecote', appMenu: true, action: () => { /* public/scripts/comp/desktop-apps/dovecote.js */ openDesktopDovecote(); } },
     // Teleport (Yukimi, 2026-10-12): the planet switcher. All Programs, the places column under
     // Workspaces, and the power menu where Vista has Switch User; the start menu lists no planets.
@@ -6290,12 +6290,12 @@ function buildToolsSubmenuItems() {
         { launchId: 'config-editor', icon: 'fas fa-binary', imageIcon: 'vista-regedit.png', text: 'Runes', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('config_editor'); configEditorApplet.open(); } },
         { launchId: 'character-db', icon: 'fas fa-users', imageIcon: 'characters.png', text: 'Characters', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('character_db'); characterDbApplet.open(); } },
         { launchId: 'event-viewer', icon: 'fas fa-wave-square', imageIcon: 'vista-performance.png', text: 'Periscope', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('log_viewer'); logViewerApplet.open(); } },
-        { launchId: 'calculator', icon: 'fas fa-calculator', imageIcon: 'vista-calculator.png', text: 'Calculator', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/calculator.js */ openDesktopCalculator(); } },
+        { launchId: 'calculator', icon: 'fas fa-calculator', imageIcon: 'vista-calculator.png', text: 'Calculator', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('calculator'); /* public/scripts/comp/desktop-apps/calculator.js */ openDesktopCalculator(); } },
         { launchId: 'vista-sidebar', icon: 'fas fa-sidebar-flip', imageIcon: 'vista-sidebar.png', text: 'Windows Sidebar', appMenuLocation: 'tools', desktopOnly: true, appMenu: false, startMenu: localStorage.getItem('userType') === 'admin', action: () => { /* public/scripts/comp/vistaSidebar.js */ openVistaSidebar(); } },
-        { launchId: 'alarm', icon: 'fas fa-alarm-clock', imageIcon: 'vista-date-time.png', text: 'Alarm Clock', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/alarmPomodoro.js */ openDesktopAlarm(); } },
-        { launchId: 'pomodoro', icon: 'fas fa-timer', imageIcon: 'vista-date-time.png', text: 'Pomodoro', appMenuLocation: 'tools', startMenu: false, appMenu: false, /* the Pomodoro tab of Alarm Clock; kept for old shortcuts */ action: () => { /* public/scripts/comp/desktop-apps/alarmPomodoro.js */ openDesktopPomodoro(); } },
-        { launchId: 'media-player', icon: 'fas fa-play', imageIcon: 'media_player.png', text: 'Media Player', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/mediaPlayer.js */ openDesktopMediaPlayer(); } },
-        { launchId: 'emotion', icon: 'fas fa-photo-film', imageIcon: 'emotion.png', text: 'eMotion LIVE', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/desktop-apps/emotion.js */ openDesktopEmotion(); } },
+        { launchId: 'alarm', icon: 'fas fa-alarm-clock', imageIcon: 'vista-date-time.png', text: 'Alarm Clock', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('alarm'); /* public/scripts/comp/desktop-apps/alarmPomodoro.js */ openDesktopAlarm(); } },
+        { launchId: 'pomodoro', icon: 'fas fa-timer', imageIcon: 'vista-date-time.png', text: 'Pomodoro', appMenuLocation: 'tools', startMenu: false, appMenu: false, /* the Pomodoro tab of Alarm Clock; kept for old shortcuts */ action: async () => { await featureLoader.loadFeature('alarm'); /* public/scripts/comp/desktop-apps/alarmPomodoro.js */ openDesktopPomodoro(); } },
+        { launchId: 'media-player', icon: 'fas fa-play', imageIcon: 'media_player.png', text: 'Media Player', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('media_player'); /* public/scripts/comp/desktop-apps/mediaPlayer.js */ openDesktopMediaPlayer(); } },
+        { launchId: 'emotion', icon: 'fas fa-photo-film', imageIcon: 'emotion.png', text: 'eMotion LIVE', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('emotion'); /* public/scripts/comp/desktop-apps/emotion.js */ openDesktopEmotion(); } },
     ].filter(isStartMenuEntryEnabled);
     // getDsapStartMenuEntriesAtLocation: public/scripts/comp/dsapRegistry.js
     const dsapAtTools = typeof getDsapStartMenuEntriesAtLocation === 'function'
@@ -6449,14 +6449,17 @@ function getOrganizedAllAppsMenuItems() {
 /** All-Apps flyout content: organized items + a trailing row that opens the editor. */
 function buildAllAppsSubmenuWithOrganizeRow() {
     const items = getOrganizedAllAppsMenuItems();
-    if (typeof openStartMenuOrganizer !== 'function') return items;
     return items.concat([
         { separator: true },
         {
             text: 'Organize Start Menu…',
             icon: 'fas fa-arrows-up-down-left-right',
             appMenu: false,
-            action: () => openStartMenuOrganizer()
+            action: async () => {
+                await featureLoader.loadFeature('start_menu_organizer');
+                // openStartMenuOrganizer: public/scripts/comp/desktop-apps/startMenuOrganizer.js
+                openStartMenuOrganizer();
+            }
         }
     ]);
 }
@@ -7677,7 +7680,9 @@ function getStartMenuPlaces() {
         const item = findStartMenuLaunchableById(launchId);
         if (item) launchStartMenuItem(item);
     };
-    const controlPanel = (page) => () => {
+    const controlPanel = (page) => async () => {
+        await featureLoader.loadFeature('control_panel');
+        // melatonControlPanel.open: public/scripts/comp/melatonControlPanel.js
         if (window.melatonControlPanel) window.melatonControlPanel.open(page);
     };
     return [
@@ -7802,12 +7807,15 @@ function ensureStartMenuElements() {
         setStartMenuView(startMenuView === 'home' ? 'programs' : 'home');
         if (startMenuHasFinePointer()) startMenuEls.search.focus();
     });
-    if (typeof openStartMenuOrganizer === 'function' && typeof contextMenu !== 'undefined' && contextMenu) {
+    if (typeof contextMenu !== 'undefined' && contextMenu) {
         contextMenu.attachToElement(startMenuEls.allPrograms, {
             sections: [{ type: 'list', items: [{ icon: 'fas fa-arrows-up-down-left-right', text: 'Organize Start Menu…', action: 'organize' }] }],
             onAction: () => {
                 closeStartMenu();
-                openStartMenuOrganizer();
+                void featureLoader.loadFeature('start_menu_organizer').then(() => {
+                    // openStartMenuOrganizer: public/scripts/comp/desktop-apps/startMenuOrganizer.js
+                    openStartMenuOrganizer();
+                });
             }
         });
     }
@@ -9093,6 +9101,7 @@ function setupDesktopSettingsScopeToggle() {
 let desktopSettingsPendingWallpaper = null;
 
 async function openDesktopSettingsModal(wallpaperPath = null, scope = 'workspace') {
+    await featureLoader.loadFeature('control_panel');
     registerDesktopSettingsControlPanelPages();
     const cpl = window.melatonControlPanel;
     if (cpl && cpl.registerPage && document.getElementById('desktopSettingsLayout')) {
@@ -10054,6 +10063,7 @@ function wireRemoteAccessSettingsModal() {
 
 /** Remote Access lives in Control Panel; the old window stays as the fallback without it. */
 async function openRemoteAccessSettingsModal() {
+    await featureLoader.loadFeature('control_panel');
     const cpl = window.melatonControlPanel;
     if (cpl && typeof cpl.open === 'function' && registerRemoteAccessControlPanelPage()) {
         cpl.open('remote-access');

@@ -17,7 +17,7 @@ const dialogs = require(path.join(ROOT, 'public/scripts/comp/vistaDialogs.js'));
 const G = 'body.desktop-mode:not(.windows-classic-theme)';
 
 // wiring
-assert.ok(html.includes('<link rel="stylesheet" href="/css/vista-calculator.css">\n    <link rel="stylesheet" href="/css/vista-import-wizard.css">'), 'sheet linked after vista-calculator.css');
+assert.ok(html.includes('<link rel="stylesheet" href="/css/vista-visual-index.css">\n    <link rel="stylesheet" href="/css/vista-import-wizard.css">'), 'sheet linked after vista-visual-index.css');
 assert.ok(html.includes('<script src="scripts/comp/vistaDialogs.js"></script>\n    <script src="scripts/comp/vistaImportWizard.js"></script>'), 'script loads after vistaDialogs.js');
 assert.ok(JSON.parse(read('package.json')).scripts['test:import-aero-wizard'] === 'node scripts/test-import-aero-wizard.js', 'npm run test:import-aero-wizard');
 

@@ -1326,9 +1326,10 @@ class WebSocketClient {
      * Yozora #428): the narrow-mode latency toast's View Connection; the tray icon's flyout links here.
      */
     openConnectionDialStatus() {
-        if (window.melatonControlPanel) {
-            window.melatonControlPanel.open('network');
-        }
+        void featureLoader.loadFeature('control_panel').then(() => {
+            // melatonControlPanel.open: public/scripts/comp/melatonControlPanel.js
+            if (window.melatonControlPanel) window.melatonControlPanel.open('network');
+        });
     }
 
     /**
@@ -1614,11 +1615,22 @@ class WebSocketClient {
         // (public/scripts/comp/melatonControlPanel.js)
         const modemTray = document.getElementById('modemTrayIcon');
         if (modemTray) {
+            modemTray.addEventListener('pointerdown', () => {
+                void featureLoader.loadFeature('control_panel').then(() => {
+                    // attachTrayMenu: public/scripts/comp/melatonControlPanel.js
+                    if (window.melatonControlPanel && !modemTray.dataset.cpMenu) {
+                        modemTray.dataset.cpMenu = '1';
+                        window.melatonControlPanel.attachTrayMenu(modemTray);
+                    }
+                });
+            }, { once: true });
             modemTray.addEventListener('click', () => {
-                if (window.melatonControlPanel) window.melatonControlPanel.toggleTrayFlyout(modemTray);
-                else this.openConnectionDialStatus();
+                void featureLoader.loadFeature('control_panel').then(() => {
+                    // toggleTrayFlyout: public/scripts/comp/melatonControlPanel.js
+                    if (window.melatonControlPanel) window.melatonControlPanel.toggleTrayFlyout(modemTray);
+                    else this.openConnectionDialStatus();
+                });
             });
-            if (window.melatonControlPanel) window.melatonControlPanel.attachTrayMenu(modemTray);
         }
     }
 

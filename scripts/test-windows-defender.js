@@ -26,11 +26,11 @@ assert.ok(tools.includes('Tools and Settings') && tools.includes('Quarantined it
 
 // Security Center's launchers land in Defender on the Vista desktop
 const sec = read('public/scripts/comp/securityCenterDsapApplet.js');
-assert.ok(sec.includes('if (securityDsapOpenDefender(securityDsapNormalizeView(view))) return;'));
+assert.ok(sec.includes('if (securityDsapOpenDefender(normalized)) return;'));
 const man = read('public/scripts/comp/dsapManifests.js');
 assert.ok(man.includes("text: 'Windows Defender'") && man.includes("window.windowsDefender.open('home')"));
-const html = read('public/app.html');
-assert.ok(html.includes('<script src="scripts/comp/windowsDefender.js"></script>') && html.includes('/css/vista-defender.css'));
+const loader = read('public/scripts/comp/featureLoader.js');
+assert.ok(loader.includes("'scripts/comp/windowsDefender.js'") && loader.includes("'css/vista-defender.css'"), 'Defender loads with Control Panel');
 const css = read('public/css/vista-defender.css');
 assert.ok(css.includes('background: linear-gradient(to right, #4372a4, #68b472);'), "Defender's blue-to-green");
 assert.ok(css.includes('.defender-list--allowed #secAuthView > :not(#secApprovedView)'), 'Allowed items shows the approved IPs only');

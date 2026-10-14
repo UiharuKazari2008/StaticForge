@@ -30,6 +30,6 @@ assert.strictEqual(search._test.readState().line, 'Indexing complete.');
 const js = read('public/scripts/comp/cplSearch.js');
 assert.ok(js.includes("new CustomEvent('contextMenuAction'"), "the tray's own actions run (mainMenuManager.js)");
 for (const a of ['search-index-trigger', 'search-index-toggle-pause', 'search-index-rebuild-all', 'prompt-index-reconcile']) assert.ok(js.includes(`'${a}'`) || js.includes(`"${a}"`), a);
-assert.ok(read('public/app.html').includes('<script src="scripts/comp/cplSearch.js"></script>'));
+assert.ok(read('public/scripts/comp/featureLoader.js').includes("'scripts/comp/cplSearch.js'"));
 assert.ok(fs.existsSync(path.join(ROOT, 'public/static_images/vista-cpl/indexing-48.png')));
 console.log('test-melaton-search: ok');

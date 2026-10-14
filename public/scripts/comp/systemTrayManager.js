@@ -513,7 +513,7 @@ function setupServiceWorkerTrayContextMenu() {
                         icon: 'fas fa-shield-halved',
                         text: 'Open MeletonFX Update',
                         action: 'sw-open-update',
-                        hidden: () => typeof window.cplUpdate === 'undefined'
+                        hidden: () => false
                     },
                     {
                         icon: 'fas fa-cloud-arrow-down',

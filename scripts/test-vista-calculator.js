@@ -15,8 +15,9 @@ const html = read('public/app.html');
 const G = 'body.desktop-mode:not(.windows-classic-theme)';
 
 // wiring
-assert.ok(html.includes('<link rel="stylesheet" href="/css/vista-visual-index.css">\n    <link rel="stylesheet" href="/css/vista-calculator.css">'), 'sheet linked after vista-visual-index.css');
-assert.ok(html.includes('scripts/comp/desktop-apps/calculator.js'), 'calculator.js loads');
+const loader = read('public/scripts/comp/featureLoader.js');
+assert.ok(loader.includes("'css/vista-calculator.css'") && loader.includes("'scripts/comp/desktop-apps/calculator.js'"), 'calculator loads on open');
+assert.ok(!html.includes('vista-calculator.css') && !html.includes('desktop-apps/calculator.js'), 'calculator is not on the boot page');
 assert.ok(fs.existsSync(path.join(ROOT, 'public/static_images/app_icons/vista-calculator.png')), 'calc.exe icon exists');
 assert.ok(js.includes("titleImage.src = '/static_images/app_icons/vista-calculator.webp'") && js.includes("titleIcon.className = 'fas fa-calculator icon-fa'"), 'caption: Font Awesome glyph plus the program icon');
 

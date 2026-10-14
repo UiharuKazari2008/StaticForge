@@ -48,7 +48,7 @@ assert.ok(picView.includes('Browse for more pictures...') && picView.includes('d
 
 const ws = read('public/scripts/websocket.js');
 assert.ok(ws.includes("this.sendMessage('get_account_pictures'") && ws.includes("this.sendMessage('set_account_picture'"));
-assert.ok(read('public/app.html').includes('<script src="scripts/comp/cplUserAccounts.js"></script>'));
+assert.ok(read('public/scripts/comp/featureLoader.js').includes("'scripts/comp/cplUserAccounts.js'"));
 assert.ok(read('public/css/melaton-network.css').includes('#melatonControlPanelModal .cpl-ua-tile {'));
 
 console.log('test-user-accounts: ok');

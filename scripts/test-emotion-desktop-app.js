@@ -162,7 +162,7 @@ function main() {
     // either), and the launcher calls openDesktopEmotion().
     assert.match(
         modalUtilsJs,
-        /\{ launchId: 'emotion', icon: 'fas fa-photo-film', imageIcon: 'emotion\.png', text: 'eMotion LIVE', appMenuLocation: 'tools', action: \(\) => \{ \/\* public\/scripts\/comp\/desktop-apps\/emotion\.js \*\/ openDesktopEmotion\(\); \} \},/
+        /\{ launchId: 'emotion', icon: 'fas fa-photo-film', imageIcon: 'emotion\.png', text: 'eMotion LIVE', appMenuLocation: 'tools', action: async \(\) => \{ await featureLoader\.loadFeature\('emotion'\); \/\* public\/scripts\/comp\/desktop-apps\/emotion\.js \*\/ openDesktopEmotion\(\); \} \},/
     );
     const toolsSubmenuSection = modalUtilsJs.slice(
         modalUtilsJs.indexOf('function buildToolsSubmenuItems'),
@@ -170,9 +170,11 @@ function main() {
     );
     assert.match(toolsSubmenuSection, /launchId: 'emotion'/);
 
-    // 12. Wired into app.html: stylesheet + script tag, both after the other desktop-apps assets.
-    assert.match(appHtml, /<link rel="stylesheet" href="\/css\/desktop-apps\/emotion\.css">/);
-    assert.match(appHtml, /<script src="scripts\/comp\/desktop-apps\/emotion\.js"><\/script>/);
+    // 12. Loads with the emotion feature, not on the boot page.
+    const loader = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/featureLoader.js'), 'utf8');
+    assert.match(loader, /css\/desktop-apps\/emotion\.css/);
+    assert.match(loader, /scripts\/comp\/desktop-apps\/emotion\.js/);
+    assert.doesNotMatch(appHtml, /desktop-apps\/emotion\.(css|js)/);
 
     // 13. Create Animation opens eMotion LIVE (no popup): openEmotion() API reuses the Load
     // Image path; the gallery/viewer/Studio/Enhance context-menu action calls it.

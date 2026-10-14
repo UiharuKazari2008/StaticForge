@@ -4054,9 +4054,14 @@ function securityDsapOpenDefender(view) {
     return defender.open(pages[view] || 'home') !== false;
 }
 
-function openSecurityCenterDsap(view) {
-    if (securityDsapNormalizeView(view) === 'auth' && securityDsapOpenAuthInControlPanel()) return;
-    if (securityDsapOpenDefender(securityDsapNormalizeView(view))) return;
+async function openSecurityCenterDsap(view) {
+    const normalized = securityDsapNormalizeView(view);
+    const body = document.body;
+    if (normalized === 'auth' || (body.classList.contains('desktop-mode') && !body.classList.contains('windows-classic-theme'))) {
+        await featureLoader.loadFeature('control_panel');
+    }
+    if (normalized === 'auth' && securityDsapOpenAuthInControlPanel()) return;
+    if (securityDsapOpenDefender(normalized)) return;
     const target = securityDsapBuildUrl(view || 'home');
     // openDsapInGrimoire: public/scripts/comp/dsapRegistry.js
     if (typeof openDsapInGrimoire === 'function') {

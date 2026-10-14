@@ -2294,17 +2294,14 @@ class NaxtApplet {
                 openOnHover: true,
                 optionsfn: (target) => {
                     const tagText = target && target.dataset && target.dataset.tag;
-                    // buildPhasewalkerContextSubmenuItems: public/scripts/comp/runCommandIndex.js
-                    if (typeof buildPhasewalkerContextSubmenuItems === 'function' && tagText) {
-                        return buildPhasewalkerContextSubmenuItems(tagText);
-                    }
-                    return [{ text: 'Unavailable', disabled: true }];
+                    if (!tagText) return [{ text: 'Unavailable', disabled: true }];
+                    return phasewalkerSubmenuItems(() => buildPhasewalkerContextSubmenuItems(tagText));
                 },
                 handlerfn: (subItem) => {
-                    // handlePhasewalkerContextSubmenuAction: public/scripts/comp/runCommandIndex.js
-                    if (handlePhasewalkerContextSubmenuAction) {
+                    void ensureRunCommandIndex().then(() => {
+                        // handlePhasewalkerContextSubmenuAction: public/scripts/comp/runCommandIndex.js
                         handlePhasewalkerContextSubmenuAction(subItem);
-                    }
+                    });
                 }
             },
             {

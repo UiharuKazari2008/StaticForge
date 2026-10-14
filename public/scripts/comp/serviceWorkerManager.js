@@ -32,6 +32,25 @@ function buildShaBustUrl(pathname, hash) {
     return `${base}?sha=${hash}`;
 }
 
+// After first paint, then idle. setTimeout if the browser has no requestIdleCallback.
+function scheduleAfterFirstPaint(fn) {
+    const idle = () => {
+        if (typeof requestIdleCallback === 'function') {
+            requestIdleCallback(() => fn(), { timeout: 2000 });
+        } else {
+            setTimeout(fn, 50);
+        }
+    };
+    const afterPaint = () => {
+        requestAnimationFrame(() => requestAnimationFrame(idle));
+    };
+    if (document.readyState === 'complete') {
+        afterPaint();
+        return;
+    }
+    window.addEventListener('load', afterPaint, { once: true });
+}
+
 function pathnameMatchesAssetUrl(assetPath, rawUrl) {
     try {
         const linkPath = new URL(rawUrl, window.location.origin).pathname;
@@ -393,7 +412,8 @@ class ServiceWorkerManager {
         document.body.classList.remove('initializing');
         this._hideInstallWizardUi();
         // The logon is still up. A queued download paints progress on it if flushed here.
-        if (!this._isBeforeDesktop()) {
+        // _skipBootFlush: the hash re-fetch is deferred to idle (scheduleAfterFirstPaint).
+        if (!this._isBeforeDesktop() && !this._skipBootFlush) {
             this._flushPendingCacheUpdates();
         }
         const resolvers = this._bootCompleteResolvers.splice(0);
@@ -587,6 +607,23 @@ class ServiceWorkerManager {
         }
 
         throw new Error('Server did not become ready in time');
+    }
+
+    async hashForStaticPath(pathname) {
+        const path = normalizeStaticFilePath(pathname);
+        if (!this._staticHashByPath) {
+            const manifest = await this._fetchManifest();
+            const map = new Map();
+            if (Array.isArray(manifest)) {
+                for (let i = 0; i < manifest.length; i++) {
+                    const file = manifest[i];
+                    if (!file || !file.url || !file.hash) continue;
+                    map.set(normalizeStaticFilePath(file.url), file.hash);
+                }
+            }
+            this._staticHashByPath = map;
+        }
+        return this._staticHashByPath.get(path) || null;
     }
 
     async _fetchManifest() {
@@ -790,7 +827,10 @@ class ServiceWorkerManager {
         popover.onclick = (e) => {
             if (e.target.closest('.vista-update-balloon-close')) return;
             this._hideServiceWorkerTrayPopup();
-            if (window.cplUpdate) window.cplUpdate.open();
+            void featureLoader.loadFeature('control_panel').then(() => {
+                // cplUpdate.open: public/scripts/comp/cplUpdate.js
+                if (window.cplUpdate) window.cplUpdate.open();
+            });
         };
     }
 
@@ -1258,11 +1298,14 @@ class ServiceWorkerManager {
         this._swWarmScheduled = true;
         ready.then(() => {
             this.ensurePlanetSwitcherBgmCache();
-            if (!this.bootComplete) {
-                this.queueCacheUpdateUntilBoot(null, true);
-                return;
-            }
-            this.checkStaticFileUpdates(true);
+            // Hash re-fetch waits until after first paint so it does not compete with boot.
+            scheduleAfterFirstPaint(() => {
+                if (!this.bootComplete) {
+                    this.queueCacheUpdateUntilBoot(null, true);
+                    return;
+                }
+                this.checkStaticFileUpdates(true);
+            });
         }).catch(() => {});
     }
 
@@ -3494,8 +3537,11 @@ class ServiceWorkerManager {
         console.log('Refreshing server cache and checking for updates...');
         this._refreshAndCheckRunning = (async () => {
             try {
-                if (!this.agentSession && window.cplUpdate && typeof window.cplUpdate.beginPrepare === 'function') {
-                    window.cplUpdate.beginPrepare();
+                if (!this.agentSession) {
+                    await featureLoader.loadFeature('control_panel');
+                    if (window.cplUpdate && typeof window.cplUpdate.beginPrepare === 'function') {
+                        window.cplUpdate.beginPrepare();
+                    }
                 }
                 if (typeof this.foregroundUpdateView === 'function') {
                     this.foregroundUpdateView('preparing', { message: 'Preparing system to update...', progress: 0, filesTotal: 0 });
@@ -4421,11 +4467,38 @@ class ServiceWorkerManager {
                 this._warmAfterSwActive();
                 return;
             }
-            this.bootPhase = 'checking';
-            // bootUiDebug.gate: public/scripts/comp/bootUiDebug.js
-            if (window.bootUiDebug) {
-                await window.bootUiDebug.gate('system-update', { detail: 'Checking for updates…' });
+            // A resumed install wizard still blocks. Every other boot defers the manifest
+            // hash scan and the file re-fetch until after first paint.
+            if (!installWizardUsed) {
+                this._skipBootFlush = true;
+                this._resolveBootComplete();
+                this._skipBootFlush = false;
+                scheduleAfterFirstPaint(() => {
+                    this._bootOrchestrating = true;
+                    this._runDeferredHashRefetch().catch((err) => {
+                        console.error('Idle service worker hash re-fetch failed:', err);
+                    }).finally(() => {
+                        this._bootOrchestrating = false;
+                    });
+                });
+                return;
             }
+            await this._runDeferredHashRefetch();
+        } catch (error) {
+            this._showBootFatalError(error);
+            throw error;
+        } finally {
+            this._bootOrchestrating = false;
+        }
+    }
+
+    async _runDeferredHashRefetch() {
+        let installWizardUsed = this.installWizardUsed === true;
+        this.bootPhase = 'checking';
+        // bootUiDebug.gate: public/scripts/comp/bootUiDebug.js
+        if (window.bootUiDebug) {
+            await window.bootUiDebug.gate('system-update', { detail: 'Checking for updates…' });
+        }
 
             let verifyPass = 0;
             const MAX_VERIFY_PASSES = 5;
@@ -4503,12 +4576,6 @@ class ServiceWorkerManager {
             this._hideInstallWizardUi();
             document.body.classList.remove('initializing');
             this._resolveBootComplete();
-        } catch (error) {
-            this._showBootFatalError(error);
-            throw error;
-        } finally {
-            this._bootOrchestrating = false;
-        }
     }
 
     async runLoginBootSequence() {
