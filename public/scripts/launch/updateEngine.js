@@ -9,7 +9,13 @@
  *   ensureWorker(env)     registers /sw.js if needed and waits until it controls this page (it
  *                         claims clients on activate); progress messages only reach controlled pages
  *   download(env, files)  CACHE_STATIC_FILES to the worker, progress by bytes (files go in manifest
- *                         order, so bytes done = the first n files), no progress for stallMs = stalled
+ *                         order, so bytes done = the first n files), no progress for stallMs = stalled.
+ *                         Used for a small silent update. The installer does not use this.
+ *   copyPack(env)         one GET /install/meletonfx.zip (the pack built when assets were recreated)
+ *   expandPack(env)       compare the server manifest to the service worker cache, extract and store
+ *                         only the files whose hash does not match
+ *   installGroup(env, g)  post-process one group ('features' or 'updates') and confirm the bytes
+ *                         written to the cache hash to the manifest
  *   verify(env, files)    which of them are still not in the cache with the right hash
  *
  * Install state survives a reload (localStorage melatonInstall: { active, startedAt, total }), so
@@ -22,9 +28,28 @@
     const STATIC_CACHE = 'static-cache-v1';
     const STATE_KEY = 'melatonInstall';
     const RECORD_KEY = 'melatonInstallRecord';
+    const PACK_URL = '/install/meletonfx.zip';
+    const SAVED_CACHE_CONTROL = 'public, max-age=604800';
+
+    // Held between Copying and Expanding. Dropped once the mismatches are in the cache.
+    let installPack = null;
+
+    const FEATURE_EXT = new Set(['js', 'mjs', 'css', 'html', 'htm', 'json', 'map', 'svg', 'xml', 'txt', 'webmanifest']);
+
+    const CONTENT_TYPES = {
+        html: 'text/html', htm: 'text/html', css: 'text/css', js: 'application/javascript',
+        mjs: 'application/javascript', json: 'application/json', map: 'application/json',
+        svg: 'image/svg+xml', xml: 'application/xml', txt: 'text/plain', webmanifest: 'application/manifest+json',
+        png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp',
+        avif: 'image/avif', ico: 'image/x-icon', woff: 'font/woff', woff2: 'font/woff2',
+        ttf: 'font/ttf', otf: 'font/otf', wasm: 'application/wasm'
+    };
 
     const config = {
         silentMax: 20,
+        // A POST body listing fewer files than this gets a zip of just those files.
+        // More than this uses the full pack built at asset recreation.
+        subsetMax: 120,
         stallMs: 60000,
         manifestTimeoutMs: 8000,
         readyTimeoutMs: 20000,
@@ -107,12 +132,163 @@
         return files.reduce((n, f) => n + (Number(f.size) || 0), 0);
     }
 
+    /** Application code and markup, or everything else (images, fonts, media). */
+    function fileGroup(file) {
+        if (file && file.type === 'route') return 'features';
+        const clean = String((file && file.url) || '').split('?')[0];
+        const dot = clean.lastIndexOf('.');
+        const ext = dot >= 0 ? clean.slice(dot + 1).toLowerCase() : '';
+        return FEATURE_EXT.has(ext) ? 'features' : 'updates';
+    }
+
+    function extensionOf(url) {
+        const clean = String(url || '').split('?')[0];
+        const dot = clean.lastIndexOf('.');
+        return dot >= 0 ? clean.slice(dot + 1).toLowerCase() : '';
+    }
+
+    function contentType(url) {
+        // Shell routes have no suffix. octet-stream makes the browser download the navigation.
+        const path = normalizePath(url);
+        if (path === '/' || path === '/index.html' || path === '/app' || path === '/launch') return 'text/html; charset=utf-8';
+        return CONTENT_TYPES[extensionOf(url)] || 'application/octet-stream';
+    }
+
+    /** Zip entry for a manifest url. Routes keep the html names the server writes. */
+    function zipEntryName(url) {
+        const path = normalizePath(url);
+        if (path === '/' || path === '/index.html') return 'index.html';
+        if (path === '/app') return 'app.html';
+        if (path === '/launch') return 'launch.html';
+        return path.replace(/^\/+/, '');
+    }
+
+    /** Stable bytes hashed into X-Pack-Hash. Sorted, so manifest order does not matter. */
+    function manifestHashMaterial(files) {
+        const list = (files || []).slice().sort((a, b) => String(a.url).localeCompare(String(b.url)));
+        let out = '';
+        for (const file of list) {
+            out += `${file.url || ''}\0${file.hash || ''}\0`;
+        }
+        return out;
+    }
+
+    function hexBytes(buffer) {
+        const bytes = new Uint8Array(buffer);
+        let out = '';
+        for (let i = 0; i < bytes.length; i++) out += bytes[i].toString(16).padStart(2, '0');
+        return out;
+    }
+
+    async function sha256Hex(bytes) {
+        const subtle = (typeof crypto !== 'undefined' && crypto.subtle) || null;
+        if (!subtle) throw new Error('no-subtle-crypto');
+        const view = bytes instanceof ArrayBuffer ? new Uint8Array(bytes) : bytes;
+        const copy = view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength);
+        const digest = await subtle.digest('SHA-256', copy);
+        return hexBytes(digest);
+    }
+
+    async function hashManifest(files) {
+        return sha256Hex(new TextEncoder().encode(manifestHashMaterial(files)));
+    }
+
+    function concatChunks(chunks) {
+        let size = 0;
+        for (const chunk of chunks) size += chunk.byteLength;
+        const out = new Uint8Array(size);
+        let offset = 0;
+        for (const chunk of chunks) {
+            out.set(chunk, offset);
+            offset += chunk.byteLength;
+        }
+        return out;
+    }
+
+    async function purgeCachePath(cache, url, origin) {
+        const path = normalizePath(url, origin);
+        const keys = await cache.keys();
+        await Promise.all(keys.map((request) => {
+            if (normalizePath(request.url, origin) === path) return cache.delete(request);
+            return undefined;
+        }));
+    }
+
+    async function putHashed(cache, file, bytes, origin) {
+        await purgeCachePath(cache, file.url, origin);
+        const headers = new Headers();
+        headers.set('content-type', contentType(file.url));
+        headers.set('content-length', String(bytes.byteLength));
+        headers.set('x-file-hash', file.hash);
+        headers.set('etag', `"${file.hash}"`);
+        headers.set('cache-control', SAVED_CACHE_CONTROL);
+        await cache.put(file.url, new Response(bytes, { status: 200, headers }));
+    }
+
+    /** Body hash matches, and the stored headers name that hash and the right type. Rewrites headers when the body is already right. */
+    async function confirmWritten(cache, file, origin) {
+        const stored = await cache.match(file.url);
+        if (!stored) return false;
+        const body = new Uint8Array(await stored.arrayBuffer());
+        const hash = await sha256Hex(body);
+        if (hash !== file.hash) return false;
+        const type = stored.headers.get('content-type');
+        const headerHash = stored.headers.get('x-file-hash');
+        if (headerHash === file.hash && type === contentType(file.url)) return true;
+        await putHashed(cache, file, body, origin);
+        const again = await cache.match(file.url);
+        return !!(again && again.headers.get('x-file-hash') === file.hash);
+    }
+
+    // The manifest digest the cache was last found in sync with; shared with /app's
+    // serviceWorkerManager. OPTIONS / answers 304 for it (Yozora #516).
+    const SYNCED_MANIFEST_KEY = 'melatonManifestHash';
+
+    function readSyncedManifestHash(env) {
+        try {
+            return (env.localStorage && env.localStorage.getItem(SYNCED_MANIFEST_KEY)) || '';
+        } catch (_) {
+            return '';
+        }
+    }
+
+    function writeSyncedManifestHash(env, hash) {
+        try {
+            if (hash && env.localStorage) env.localStorage.setItem(SYNCED_MANIFEST_KEY, hash);
+        } catch (_) { /* storage off */ }
+    }
+
+    /** OPTIONS / with the synced digest: { unchanged } on 304, else { manifest, hash } (manifest null on failure). */
+    async function fetchManifestConditional(env) {
+        const known = readSyncedManifestHash(env);
+        try {
+            const headers = { 'X-Service-Worker-Version': '2.0', 'X-Requested-With': 'ServiceWorker' };
+            if (known) headers['X-Manifest-Hash'] = known;
+            const res = await env.fetch('/', {
+                method: 'OPTIONS',
+                headers,
+                cache: 'no-store',
+                signal: timeoutSignal(config.manifestTimeoutMs)
+            });
+            if (res.status === 304) return { unchanged: true, hash: known };
+            if (!res.ok) return { manifest: null };
+            const data = await res.json();
+            const hash = (res.headers && res.headers.get && res.headers.get('X-Manifest-Hash')) || '';
+            return { manifest: Array.isArray(data) ? data.filter((f) => f && f.url && f.hash) : null, hash };
+        } catch (_) {
+            return { manifest: null };
+        }
+    }
+
     /** { files, bytes } to install, or { skipped } when this page cannot check. */
     async function check(env) {
         if (!env.caches) return { skipped: 'no-cache-storage' };
-        const manifest = await fetchManifest(env);
+        const fetched = await fetchManifestConditional(env);
+        if (fetched.unchanged) return { files: [], bytes: 0, unchanged: true };
+        const manifest = fetched.manifest;
         if (!manifest || !manifest.length) return { skipped: 'no-manifest' };
         const files = await filesNeedingUpdate(env, manifest);
+        if (!files.length) writeSyncedManifestHash(env, fetched.hash);
         return { files, bytes: totalBytes(files), manifest };
     }
 
@@ -211,6 +387,212 @@
         return filesNeedingUpdate(env, files);
     }
 
+    function fflateApi(env) {
+        if (env && env.fflate) return env.fflate;
+        return root && root.fflate ? root.fflate : null;
+    }
+
+    // Loaded only when Expanding runs (the boot page does not fetch it on every start).
+    // public/scripts/launch/updateEngine.js calls /protected/fflate.js, served from node_modules/fflate.
+    function loadFflate(env) {
+        const ready = fflateApi(env);
+        if (ready) return Promise.resolve(ready);
+        const doc = env.window && env.window.document;
+        if (!doc || !doc.head) return Promise.resolve(null);
+        return new Promise((resolve) => {
+            const script = doc.createElement('script');
+            script.src = '/protected/fflate.js';
+            script.onload = () => resolve(fflateApi(env));
+            script.onerror = () => resolve(null);
+            doc.head.appendChild(script);
+        });
+    }
+
+    async function readStream(env, res, onProgress) {
+        const total = Number(res.headers.get('content-length')) || 0;
+        if (!res.body || typeof res.body.getReader !== 'function') {
+            const buf = new Uint8Array(await res.arrayBuffer());
+            if (onProgress) onProgress({ fraction: 1, received: buf.byteLength, total: total || buf.byteLength });
+            return buf;
+        }
+        const reader = res.body.getReader();
+        const chunks = [];
+        let received = 0;
+        while (true) {
+            const next = reader.read();
+            const raced = await Promise.race([
+                next.then((value) => ({ value })),
+                env.sleep(config.stallMs).then(() => ({ stalled: true }))
+            ]);
+            if (raced.stalled) {
+                try { reader.cancel(); } catch (_) { /* already closed */ }
+                const error = new Error('stalled');
+                error.stalled = true;
+                throw error;
+            }
+            if (raced.value.done) break;
+            chunks.push(raced.value.value);
+            received += raced.value.value.byteLength;
+            if (onProgress) onProgress({ fraction: total > 0 ? received / total : 0, received, total });
+        }
+        return concatChunks(chunks);
+    }
+
+    /**
+     * Copying: one zip stream. A short file list is POSTed and the server packs only those
+     * files. A longer list, or a 413, downloads the full pack from asset recreation.
+     * The pack hash must match the manifest rows this boot already fetched.
+     */
+    async function copyPack(env, manifest, { onProgress = null, subset = null } = {}) {
+        installPack = null;
+        const wanted = Array.isArray(subset) ? subset.filter((file) => file && file.url && file.hash) : [];
+        const useSubset = wanted.length > 0 && wanted.length <= config.subsetMax;
+        try {
+            let res = null;
+            let expectedSource = manifest || [];
+            if (useSubset) {
+                res = await env.fetch(PACK_URL, {
+                    method: 'POST',
+                    cache: 'no-store',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ files: wanted.map((file) => ({ url: file.url, hash: file.hash })) })
+                });
+                if (res && res.status === 413) {
+                    res = null;
+                } else {
+                    expectedSource = wanted;
+                }
+            }
+            if (!res) res = await env.fetch(PACK_URL, { cache: 'no-store' });
+            if (!res || !res.ok) {
+                const status = res && res.status;
+                return { ok: false, stalled: false, error: status === 503 ? 'pack-not-ready' : `HTTP ${status || 0}` };
+            }
+            const bytes = await readStream(env, res, (progress) => {
+                if (onProgress) onProgress({ fraction: progress.fraction, received: progress.received, total: progress.total });
+            });
+            const expected = await hashManifest(expectedSource);
+            const got = (res.headers.get('x-pack-hash') || '').toLowerCase();
+            if (!got || got !== expected) {
+                return { ok: false, stalled: false, error: 'pack-hash' };
+            }
+            installPack = { bytes, hash: got, stored: [] };
+            return { ok: true, stalled: false, bytes: bytes.byteLength };
+        } catch (err) {
+            if (err && err.stalled) return { ok: false, stalled: true, error: 'stalled' };
+            return { ok: false, stalled: false, error: (err && err.message) || 'download' };
+        }
+    }
+
+    function unzipEntries(fflateLib, bytes, onEntry) {
+        return new Promise((resolve, reject) => {
+            const unzip = new fflateLib.Unzip();
+            unzip.register(fflateLib.UnzipInflate);
+            let chain = Promise.resolve();
+            unzip.onfile = (file) => {
+                const chunks = [];
+                file.ondata = (err, data, final) => {
+                    if (err) {
+                        reject(err);
+                        return;
+                    }
+                    if (data && data.length) chunks.push(data);
+                    if (final) {
+                        const name = file.name;
+                        const payload = concatChunks(chunks);
+                        chain = chain.then(() => onEntry(name, payload));
+                    }
+                };
+                file.start();
+            };
+            try {
+                unzip.push(bytes, true);
+            } catch (err) {
+                reject(err);
+                return;
+            }
+            chain.then(resolve, reject);
+        });
+    }
+
+    /**
+     * Expanding: manifest vs the local cache. Extract and store only mismatches.
+     * Returns { ok, missing } (urls that were needed and did not land).
+     */
+    async function expandPack(env, manifest, { onProgress = null } = {}) {
+        const lib = await loadFflate(env);
+        if (!lib || typeof lib.Unzip !== 'function') return { ok: false, missing: [], error: 'no-unzip' };
+        if (!installPack || !installPack.bytes) return { ok: false, missing: [], error: 'no-pack' };
+        const files = Array.isArray(manifest) ? manifest : [];
+        const needed = await filesNeedingUpdate(env, files);
+        if (!needed.length) {
+            installPack.stored = [];
+            installPack.bytes = null;
+            if (onProgress) onProgress({ fraction: 1 });
+            return { ok: true, missing: [], stored: 0 };
+        }
+        if (!env.caches) return { ok: false, missing: needed.map((file) => file.url), error: 'no-cache-storage' };
+        const cache = await env.caches.open(STATIC_CACHE);
+        const origin = env.location && env.location.origin;
+        const neededByUrl = new Map(needed.map((file) => [file.url, file]));
+        const listing = new Map();
+        let packMeta = null;
+        const stored = [];
+        const seen = new Set();
+        try {
+            await unzipEntries(lib, installPack.bytes, async (name, payload) => {
+                if (name === 'pack.json') {
+                    packMeta = JSON.parse(new TextDecoder().decode(payload));
+                    (packMeta.files || []).forEach((row) => listing.set(row.entry, row));
+                    return;
+                }
+                const row = listing.get(name);
+                const file = row && neededByUrl.get(row.url);
+                if (!file || row.hash !== file.hash) return;
+                await putHashed(cache, file, payload, origin);
+                stored.push(file);
+                seen.add(file.url);
+                if (onProgress) onProgress({ fraction: seen.size / needed.length });
+            });
+        } catch (err) {
+            return { ok: false, missing: needed.map((file) => file.url), error: (err && err.message) || 'unzip' };
+        }
+        installPack.stored = stored;
+        installPack.bytes = null;
+        const missing = needed.filter((file) => !seen.has(file.url)).map((file) => file.url);
+        if (onProgress) onProgress({ fraction: 1 });
+        return { ok: true, missing, stored: stored.length };
+    }
+
+    /**
+     * Installing features / Installing updates: one group. Confirm each file this install
+     * wrote still matches the manifest hash, and rewrite headers when the body is right
+     * but the stored type or hash header is not.
+     */
+    async function installGroup(env, group, { onProgress = null } = {}) {
+        const stored = (installPack && installPack.stored) || [];
+        const files = stored.filter((file) => fileGroup(file) === group);
+        if (!files.length) {
+            if (onProgress) onProgress({ fraction: 1 });
+            return { ok: true, mismatched: [] };
+        }
+        if (!env.caches) return { ok: false, mismatched: files.map((file) => file.url), error: 'no-cache-storage' };
+        const cache = await env.caches.open(STATIC_CACHE);
+        const origin = env.location && env.location.origin;
+        const mismatched = [];
+        for (let i = 0; i < files.length; i++) {
+            let ok = false;
+            try {
+                ok = await confirmWritten(cache, files[i], origin);
+            } catch (_) {
+                ok = false;
+            }
+            if (!ok) mismatched.push(files[i].url);
+            if (onProgress) onProgress({ fraction: (i + 1) / files.length });
+        }
+        return { ok: true, mismatched };
+    }
+
     // ---- install state (survives a reload) ----
 
     function readState(env) {
@@ -266,9 +648,17 @@
         fetchManifest,
         filesNeedingUpdate,
         totalBytes,
+        fileGroup,
+        zipEntryName,
+        manifestHashMaterial,
+        hashManifest,
+        contentType,
         check,
         ensureWorker,
         download,
+        copyPack,
+        expandPack,
+        installGroup,
         verify,
         readState,
         writeState,

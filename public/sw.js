@@ -5,8 +5,10 @@ const CSS_ONLY_AUTO_APPLY = true;
 const SW_SCRIPT_EPOCH = 13; // bump on breaking SW changes
 
 // Enable Workbox logging in development
+// Modules from this server (public/dist/workbox, the 7.0.0 builds workbox-sw loads), not
+// storage.googleapis.com: a new worker no longer waits on Google's CDN (Yozora #516)
 if (workbox) {
-  workbox.setConfig({ debug: false });
+  workbox.setConfig({ debug: false, modulePathPrefix: '/dist/workbox/' });
 }
 
 const { strategies, expiration, cacheableResponse } = workbox;

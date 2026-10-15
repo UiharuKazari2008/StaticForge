@@ -19,7 +19,17 @@ class WebSocketServer {
         const server = globalResources.getHttpServer();
         this.sessionStore = globalResources.getSessionStore();
         
-        this.wss = new WebSocket.Server({ server });
+        // permessage-deflate for messages over 1 KB: get_app_options is ~190 KB of JSON and
+        // deflates to ~42 KB; on a slow VPN link the uncompressed copy outran its logon
+        // timeout (Yozora #516). Small messages (pings, status) go out as they are.
+        this.wss = new WebSocket.Server({
+            server,
+            perMessageDeflate: {
+                threshold: 1024,
+                zlibDeflateOptions: { level: 6 },
+                concurrencyLimit: 10
+            }
+        });
         this.clients = new Map(); // Map to store client connections with user info
         this.heartbeatInterval = null;
         this.queueStatusInterval = null;

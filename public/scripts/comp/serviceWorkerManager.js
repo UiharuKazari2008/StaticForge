@@ -659,19 +659,48 @@ class ServiceWorkerManager {
         throw new Error('Server did not become ready in time');
     }
 
-    async _fetchManifest() {
+    /**
+     * The manifest digest this cache was last found in sync with (localStorage, shared with
+     * /launch's updateEngine). Sent as X-Manifest-Hash: an unchanged manifest answers 304 with
+     * no body, so a boot does not download ~130 KB twice before the logon (Yozora #516).
+     */
+    _readSyncedManifestHash() {
         try {
+            return localStorage.getItem('melatonManifestHash') || '';
+        } catch (_) {
+            return '';
+        }
+    }
+
+    _writeSyncedManifestHash(hash) {
+        try {
+            if (hash) localStorage.setItem('melatonManifestHash', hash);
+        } catch (_) { /* storage off: every boot fetches the full manifest */ }
+    }
+
+    async _fetchManifest() {
+        this._fetchedManifestHash = '';
+        try {
+            const known = this._readSyncedManifestHash();
+            const headers = {
+                'X-Service-Worker-Version': '2.0',
+                'X-Requested-With': 'ServiceWorker'
+            };
+            if (known) headers['X-Manifest-Hash'] = known;
             const response = await fetch('/', {
                 method: 'OPTIONS',
-                headers: {
-                    'X-Service-Worker-Version': '2.0',
-                    'X-Requested-With': 'ServiceWorker'
-                },
+                headers,
                 signal: AbortSignal.timeout(8000)
             });
+            if (response.status === 304) {
+                // Same manifest the cache was in sync with: nothing to diff
+                this._fetchedManifestHash = known;
+                return [];
+            }
             if (!response.ok) {
                 return [];
             }
+            this._fetchedManifestHash = response.headers.get('X-Manifest-Hash') || '';
             return await response.json();
         } catch (error) {
             console.warn('Manifest fetch failed or timed out — skipping update check');
@@ -4469,6 +4498,8 @@ class ServiceWorkerManager {
 
                 // Stragglers are fetched at runtime. They must not open update progress or Setup.
                 if (fresh.length === 0 && !installInProgress) {
+                    // In sync: the next boot asks with this digest and gets a 304
+                    this._writeSyncedManifestHash(this._fetchedManifestHash);
                     break;
                 }
 

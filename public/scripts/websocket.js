@@ -747,6 +747,7 @@ class WebSocketClient {
     static TIMEOUT_HOST_AVAILABILITY = 3000; // Host availability check timeout
     static TIMEOUT_VERSION_CHECK = 2000; // Version compatibility check timeout
     static TIMEOUT_GET_APP_OPTIONS = 3000; // Critical app options timeout (3 seconds)
+    static TIMEOUT_GET_APP_OPTIONS_MIN = 10000; // ...never less than this (slow links, Yozora #516)
     static TIMEOUT_INACTIVITY = 2 * 60 * 60 * 1000; // Inactivity timeout before disconnect (2 hours)
 
     static DELAY_RECONNECT_INITIAL = 1000; // Initial reconnect delay (1 second)
@@ -3046,9 +3047,12 @@ class WebSocketClient {
     resolveRequestTimeoutMs(type, data = {}) {
         const kind = this.classifyRequestTimeoutKind(type);
         if (kind === 'critical') {
-            return this.calculateDynamicTimeout(WebSocketClient.TIMEOUT_GET_APP_OPTIONS, 1, 2, {
-                minTimeout: WebSocketClient.TIMEOUT_GET_APP_OPTIONS,
-                maxTimeout: 8000,
+            // App data is ~40 KB on the wire (190 KB deflated by the server). The server answers in
+            // ~100 ms; the rest is transfer, so a slow VPN link needs room, and a retry only
+            // starts the download over (Yozora #516). A dead socket is caught by ping liveness.
+            return this.calculateDynamicTimeout(WebSocketClient.TIMEOUT_GET_APP_OPTIONS, 1, 10, {
+                minTimeout: WebSocketClient.TIMEOUT_GET_APP_OPTIONS_MIN,
+                maxTimeout: 30000,
                 noRttMultiplier: 1
             });
         }

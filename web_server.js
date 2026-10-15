@@ -2195,11 +2195,28 @@ app.options('/', (req, res) => {
         });
     }
     try {
-        res.json(buildServiceWorkerCacheManifest());
+        const manifest = buildServiceWorkerCacheManifest();
+        // Digest of the url + hash rows. A client whose cache was in sync with this manifest
+        // sends it back (X-Manifest-Hash) and gets a bodyless 304 instead of ~130 KB, twice per
+        // boot (/launch and /app) on links where that held up the logon (Yozora #516).
+        const digest = serviceWorkerManifestDigest(manifest);
+        res.setHeader('X-Manifest-Hash', digest);
+        res.setHeader('Access-Control-Expose-Headers', 'X-Manifest-Hash');
+        if (req.get('X-Manifest-Hash') === digest) {
+            return res.status(304).end();
+        }
+        res.json(manifest);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
+
+function serviceWorkerManifestDigest(manifest) {
+    const rows = (Array.isArray(manifest) ? manifest : [])
+        .map((file) => `${file.url || ''}\t${file.hash || ''}`)
+        .sort();
+    return crypto.createHash('sha256').update(rows.join('\n')).digest('hex');
+}
 // Server status endpoint - available once HTTP server is listening (bound at process start,
 // modules/earlyHttpServer.js)
 function publicStatusExtras(req) {
