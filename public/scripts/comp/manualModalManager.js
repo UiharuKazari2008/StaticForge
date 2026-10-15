@@ -3160,6 +3160,10 @@ async function openManualModalWithContent(content = null, event = null) {
     // wireStudioVfsDrop: public/scripts/comp/explorerApplet.js (deferred; desktop loads explorer at init 18)
     if (typeof wireStudioVfsDrop === 'function') wireStudioVfsDrop();
 
+    // Studio's wildcards and their token counts (autocomplete, token bars) load on demand, not at
+    // the logon; usually the idle prefetch already has them. ensureAppOptionsChunk: public/scripts/comp/appBootstrap.js
+    if (typeof ensureAppOptionsChunk === 'function') await ensureAppOptionsChunk('text_replacements');
+
     // readLastStudioPreviewFilename: public/scripts/comp/imageGenerationSettings.js
     const skipPreviewRestore = !!(content && content.skipPreviewRestore);
     if ((!content || content.type === 'none') && !skipPreviewRestore && !studioPreviewRestoreInFlight) {

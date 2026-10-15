@@ -7863,8 +7863,10 @@ class WebSocketClient {
         return this.sendMessage('check_vibe_encoding', { vibeId, workspaceId });
     }
 
+    // lean: wildcards, expander counts and the workspace's files load on demand
+    // (get_app_options_chunk, public/scripts/comp/appBootstrap.js; Yozora #517)
     async getAppOptions() {
-        return this.sendMessage('get_app_options');
+        return this.sendMessage('get_app_options', { lean: true });
     }
 
     async retryAccountData() {

@@ -3296,6 +3296,8 @@ function openModal(modal) {
     if (!modal) return;
     // State-flag classes (e.g. .window-has-caption = the Vista frame inset) before anything measures it
     window.syncRootStateFlags?.(modal);
+    // Start decoding this window's art if no launcher warmed it yet (assetPreload.js, Yozora #518)
+    if (modal.id && window.assetPreload && assetPreload.warmWindow) assetPreload.warmWindow(modal.id);
 
     // Check if modal is already open (not hidden and not hidden-alt)
     const isAlreadyOpen = !modal.classList.contains('hidden') && !modal.classList.contains('hidden-alt');
@@ -7379,6 +7381,8 @@ function getStartMenuRecentItems() {
 function launchStartMenuItem(item) {
     if (!item || typeof item.action !== 'function') return;
     if (item.launchId) recordStartMenuLaunch(item.launchId);
+    // assetPreload.warmLaunch: public/scripts/comp/assetPreload.js (keyboard / Run launches had no hover)
+    if (item.launchId && window.assetPreload) assetPreload.warmLaunch(item.launchId);
     closeStartMenu();
     Promise.resolve()
         .then(() => item.action())
@@ -7554,6 +7558,13 @@ function createStartMenuListRow(item, kind, options = {}) {
             e.stopPropagation();
             launchStartMenuItem(item);
         });
+        // Decode the application's art while the pointer or focus is on its row (Yozora #518)
+        // assetPreload.warmLaunch: public/scripts/comp/assetPreload.js
+        if (item.launchId) {
+            const warm = () => assetPreload.warmLaunch(item.launchId);
+            row.addEventListener('pointerenter', warm);
+            row.addEventListener('focus', warm);
+        }
         if (item.launchId && kind !== 'result') attachStartMenuItemContextMenu(row, item);
     }
     return row;

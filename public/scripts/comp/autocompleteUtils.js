@@ -6351,7 +6351,11 @@ function getTextReplacementExpandTextFromItem(item) {
     if (/^NAX_(FAV|TRY)_/i.test(ph)) return '';
     if (!ph) return '';
     const map = window.optionsData && window.optionsData.textReplacements;
-    if (!map) return '';
+    if (!map) {
+        // On demand (Yozora #517): ask for it; the next lookup has it. ensureAppOptionsChunk: appBootstrap.js
+        if (typeof ensureAppOptionsChunk === 'function') ensureAppOptionsChunk('text_replacements');
+        return '';
+    }
     const val = map[ph];
     if (val === undefined || val === null) return '';
     return Array.isArray(val) ? val.join(', ') : String(val);
@@ -9307,7 +9311,13 @@ function selectTextReplacementFullText(placeholder) {
     newPrompt = textBefore;
 
     // Add the full text replacement description
-    const fullText = window.optionsData?.textReplacements[placeholder];
+    // The wildcard map is an on-demand chunk (Studio's open loads it first). Not here yet: ask for
+    // it and leave the prompt as it is. ensureAppOptionsChunk: public/scripts/comp/appBootstrap.js
+    const fullText = window.optionsData?.textReplacements?.[placeholder];
+    if (fullText === undefined) {
+        if (typeof ensureAppOptionsChunk === 'function') ensureAppOptionsChunk('text_replacements');
+        return;
+    }
     if (newPrompt) {
         // Check if we should add a comma before the text
         if (shouldAddCommaBefore(currentValue, cursorPosition)) {

@@ -7,6 +7,95 @@ function isAppDataReady() {
     return appDataLoaded && window.optionsData && window.optionsData.ok;
 }
 
+// ---- App options chunks (Yozora #517) ----
+// The logon loads a lean get_app_options. Parts only some windows use come with
+// get_app_options_chunk and are merged into window.optionsData in place; nothing replaces or
+// reloads the whole object after the boot:
+//   text_replacements → optionsData.textReplacements + optionsData.preset_token_counts.expanders
+//                       (Studio, autocomplete, Run, the token counter)
+//   presets           → optionsData.presets (after a preset save, rename or delete)
+const appOptionsChunkLoads = new Map(); // chunk → Promise while loading or once loaded
+
+function appOptionsChunkIsLazy(name) {
+    const lazy = window.optionsData && window.optionsData.lazyChunks;
+    return Array.isArray(lazy) && lazy.indexOf(name) !== -1;
+}
+
+function appOptionsChunkPresent(name) {
+    const data = window.optionsData;
+    if (!data) return false;
+    if (name === 'text_replacements') {
+        return !!(data.textReplacements && data.preset_token_counts && data.preset_token_counts.expanders);
+    }
+    if (name === 'presets') return Array.isArray(data.presets);
+    return false;
+}
+
+function applyAppOptionsChunk(name, chunk) {
+    const data = window.optionsData;
+    if (!data || !chunk) return;
+    if (name === 'text_replacements') {
+        data.textReplacements = chunk.textReplacements || {};
+        data.preset_token_counts = Object.assign({}, data.preset_token_counts || {}, { expanders: chunk.expanders || {} });
+    } else if (name === 'presets') {
+        data.presets = Array.isArray(chunk.presets) ? chunk.presets : [];
+    }
+    // Caches keyed on the options version (presetTokenCount.js) rebuild
+    data._cacheVersion = (Number(data._cacheVersion) || 0) + 1;
+    document.dispatchEvent(new CustomEvent('appOptionsChunkLoaded', { detail: { chunk: name } }));
+}
+
+function fetchAppOptionsChunk(name) {
+    const job = window.wsClient.sendMessage('get_app_options_chunk', { chunk: name }, false).then((result) => {
+        const chunk = result && (result.data || result);
+        if (!chunk || chunk.ok === false) throw new Error((chunk && chunk.error) || `chunk ${name} failed`);
+        applyAppOptionsChunk(name, chunk);
+        return true;
+    }).catch((error) => {
+        appOptionsChunkLoads.delete(name); // the next caller tries again
+        console.warn(`App options chunk ${name} not loaded:`, error && error.message ? error.message : error);
+        return false;
+    });
+    appOptionsChunkLoads.set(name, job);
+    return job;
+}
+
+/** Load a chunk once (cached); resolves true when its data is in optionsData. */
+function ensureAppOptionsChunk(name) {
+    if (!appOptionsChunkIsLazy(name) || appOptionsChunkPresent(name) && !appOptionsChunkLoads.has(name)) {
+        return Promise.resolve(appOptionsChunkPresent(name));
+    }
+    if (appOptionsChunkLoads.has(name)) return appOptionsChunkLoads.get(name);
+    if (!window.wsClient || !window.wsClient.isConnected()) return Promise.resolve(false);
+    return fetchAppOptionsChunk(name);
+}
+
+/** After a change: fetch the chunk again if it was loaded (or is the eager presets list). */
+function refreshAppOptionsChunk(name) {
+    if (!window.wsClient || !window.wsClient.isConnected()) return Promise.resolve(false);
+    if (name !== 'presets' && !appOptionsChunkLoads.has(name) && !appOptionsChunkPresent(name)) {
+        return Promise.resolve(false); // never loaded: the first ensure gets fresh data
+    }
+    return fetchAppOptionsChunk(name);
+}
+
+function carryAppOptionsChunks(previous, next) {
+    if (!previous || !next || !Array.isArray(next.lazyChunks)) return;
+    if (next.lazyChunks.indexOf('text_replacements') !== -1 && previous.textReplacements && !next.textReplacements) {
+        next.textReplacements = previous.textReplacements;
+        const expanders = previous.preset_token_counts && previous.preset_token_counts.expanders;
+        if (expanders) next.preset_token_counts = Object.assign({}, next.preset_token_counts || {}, { expanders });
+    }
+}
+
+// Idle prefetch once the desktop is up (or after the boot elsewhere), so Studio rarely waits
+function prefetchAppOptionsChunksWhenIdle() {
+    const run = () => { ensureAppOptionsChunk('text_replacements'); };
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 5000 });
+    else setTimeout(run, 1000);
+}
+document.addEventListener('desktopBootDone', prefetchAppOptionsChunksWhenIdle, { once: true });
+
 // Load options from server with retry logic
 async function loadOptions(maxRetries = 5, retryDelay = 500) {
     let lastError = null;
@@ -39,7 +128,10 @@ async function loadOptions(maxRetries = 5, retryDelay = 500) {
                 throw new Error("Failed to load application configuration: " + errorMsg);
             }
 
+            // Chunks loaded on demand since the last load stay (a retry must not drop them)
+            const previousOptions = window.optionsData;
             window.optionsData = options;
+            carryAppOptionsChunks(previousOptions, options);
 
             // resolveAccountDataStartupGate: public/scripts/comp/accountDataBootstrap.js
             const accountGate = await resolveAccountDataStartupGate(options);
@@ -99,6 +191,8 @@ async function loadOptions(maxRetries = 5, retryDelay = 500) {
 
             // Mark app data as loaded
             appDataLoaded = true;
+            // The desktop prefetches on desktopBootDone; the phone / narrow app has no staged boot
+            if (!window.isDesktop) prefetchAppOptionsChunksWhenIdle();
 
             // initMasterWsBridge: public/scripts/comp/masterWsBridge.js
             if (window.wsClient) {

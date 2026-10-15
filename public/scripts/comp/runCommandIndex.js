@@ -1781,6 +1781,11 @@ function getRunEntryContextMenu(entry) {
     };
 }
 
+// The wildcard chunk (appBootstrap.js) arriving after Run opened: rebuild with it
+document.addEventListener('appOptionsChunkLoaded', (event) => {
+    if (event.detail && event.detail.chunk === 'text_replacements') invalidateRunStaticCache();
+});
+
 function invalidateRunStaticCache() {
     runStaticCache = null;
     runNoteCache = null;

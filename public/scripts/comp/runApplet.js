@@ -65,6 +65,9 @@ class RunApplet {
         if (!this.modal) return;
 
         if (typeof invalidateRunStaticCache === 'function') invalidateRunStaticCache();
+        // Wildcard results need the on-demand chunk; runCommandIndex.js rebuilds when it lands
+        // ensureAppOptionsChunk: public/scripts/comp/appBootstrap.js
+        if (typeof ensureAppOptionsChunk === 'function') ensureAppOptionsChunk('text_replacements');
 
         this.closeActionPanel();
 

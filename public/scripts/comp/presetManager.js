@@ -1921,7 +1921,9 @@ function updatePresetAutocompleteSelection() {
 // ============================================================================
 
 async function handlePresetUpdate(data) {
-    await loadOptions();
+    // Only the preset list changed: refresh that chunk, never the whole options object (Yozora #517)
+    // refreshAppOptionsChunk: public/scripts/comp/appBootstrap.js
+    await refreshAppOptionsChunk('presets');
 
 
     // Show notification
@@ -2083,8 +2085,8 @@ async function saveManualPreset(presetName, config) {
             showGlassToast('success', null, `Preset "${presetName}" saved successfully`, false, undefined, '<i class="fas fa-book-sparkles"></i>');
         }
 
-        // Refresh the preset list
-        await loadOptions();
+        // Refresh the preset list (that chunk only; refreshAppOptionsChunk: public/scripts/comp/appBootstrap.js)
+        await refreshAppOptionsChunk('presets');
     } catch (error) {
         console.error('Error saving preset:', error);
         showError('Failed to save preset: ' + error.message);

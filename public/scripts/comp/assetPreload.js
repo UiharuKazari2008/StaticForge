@@ -90,9 +90,10 @@ var assetPreload = (function () {
         '/static_images/vista-start/shutdown.png',
         '/static_images/vista-start/lock.png'
     ];
-    // Tray glyphs (vista-glass-controls.css) and sidebar chrome (vistaSidebar.js
-    // starts when the taskbar is shown).
-    var DESKTOP_STYLES = ['vista-glass-controls.css', 'vista-sidebar.css'];
+    // Tray glyphs (vista-glass-controls.css). The sidebar's chrome and gadgets are not walked
+    // from vista-sidebar.css (every gadget theme, ~150 images): step 18.6 decodes what the
+    // gadgets in use actually draw (preloadGadgetsStage).
+    var DESKTOP_STYLES = ['vista-glass-controls.css'];
     // Start menu art. desktop-shell.css also names the default wallpaper, which is
     // not chrome. Folder icons are chosen in script, not in that sheet
     // (modalUtils.js START_MENU_ART). The start button's orb / logo is whatever its
@@ -715,11 +716,12 @@ var assetPreload = (function () {
             loadFonts(shellFonts)
         ]), IMAGE_TIMEOUT_MS).then(function (ok) {
             if (ok) shellPrepared = true;
-            armLateWatch();
+            // With a sidebar the gadget step (18.6) still loads art; it arms the watch after
+            if (!window.vistaSidebarBoot) armLateWatch();
             return ok;
         }).catch(function (error) {
             console.warn('Desktop asset preload failed:', error);
-            armLateWatch();
+            if (!window.vistaSidebarBoot) armLateWatch();
             return false;
         });
     }
@@ -767,6 +769,168 @@ var assetPreload = (function () {
         }
         // The shortcut list is step 18's job (Loading Desktop Shortcuts), in the startup window.
         return lookup;
+    }
+
+    // Background images an element (and its ::before / ::after) paints, as page paths
+    function paintedBackgroundUrls(root) {
+        var out = [];
+        if (!root || !window.getComputedStyle) return out;
+        var nodes = [root].concat(Array.prototype.slice.call(root.querySelectorAll('*')));
+        var pseudo = [null, '::before', '::after'];
+        for (var i = 0; i < nodes.length; i++) {
+            for (var p = 0; p < pseudo.length; p++) {
+                var bg = '';
+                try { bg = getComputedStyle(nodes[i], pseudo[p]).backgroundImage || ''; } catch (e) { bg = ''; }
+                if (bg.indexOf('url(') === -1) continue;
+                URL_RE.lastIndex = 0;
+                var match;
+                while ((match = URL_RE.exec(bg))) {
+                    var abs = normalizeAssetUrl(match[2], location.href);
+                    if (abs && isBitmapUrl(abs)) out.push(abs);
+                }
+            }
+        }
+        return out;
+    }
+
+    // Step 18.6 (Yozora #521): start the Vista Sidebar while it is hidden, then decode the
+    // pictures and backgrounds its gadgets drew; the gadgets stage reveals it.
+    // vistaSidebarBoot.start: public/scripts/comp/vistaSidebar.js
+    function preloadGadgetsStage() {
+        if (!isDesktop || !window.vistaSidebarBoot) return Promise.resolve(true);
+        var started = whenSettled(window.vistaSidebarBoot.start().then(function (root) {
+            api.gadgetRoot = root;
+            return true;
+        }), STAGE_TIMEOUT_MS);
+        return started.then(function () {
+            var root = api.gadgetRoot;
+            if (!root) return true;
+            var imgs = root.querySelectorAll('img');
+            // The gadgets' own <img>s load as they render: count them as boot art for the late watch
+            for (var i = 0; i < imgs.length; i++) {
+                var src = normalizeAssetUrl(imgs[i].currentSrc || imgs[i].getAttribute('src'), location.href).split('?')[0];
+                if (src && !kept.has(src)) kept.set(src, Promise.resolve());
+            }
+            return whenSettled(Promise.all([
+                decodeImages(imgs),
+                preloadUrls(paintedBackgroundUrls(root), { concurrency: 6 })
+            ]), IMAGE_TIMEOUT_MS);
+        }).then(function (ok) {
+            armLateWatch();
+            return ok;
+        }, function (error) {
+            console.warn('Gadget preload failed:', error);
+            armLateWatch();
+            return false;
+        });
+    }
+
+    // ---- Applications (Yozora #518): decode an application's art before it opens ----
+    // public/data/app-assets.json (modules/appAssetManifest.js): groups of pictures and font
+    // specs per application, indexed by launchId and window id. Held like the boot art, so
+    // the first paint of a window has its bitmaps decoded.
+    var appManifestPromise = null;
+    var warmedGroups = new Set();
+
+    function loadAppAssetManifest() {
+        if (!appManifestPromise) {
+            appManifestPromise = fetch('/data/app-assets.json', { credentials: 'same-origin' })
+                .then(function (res) { return res && res.ok ? res.json() : null; })
+                .catch(function () { return null; })
+                .then(function (data) {
+                    if (!data || !data.groups) appManifestPromise = null; // try again next time
+                    return data;
+                });
+        }
+        return appManifestPromise;
+    }
+
+    // image-set() entries are [[path, density], ...]: the one this screen will pick
+    function pickForDensity(entry) {
+        if (!Array.isArray(entry)) return entry;
+        var dpr = window.devicePixelRatio || 1;
+        var sorted = entry.slice().sort(function (a, b) { return a[1] - b[1]; });
+        for (var i = 0; i < sorted.length; i++) {
+            if (sorted[i][1] >= dpr) return sorted[i][0];
+        }
+        return sorted[sorted.length - 1][0];
+    }
+
+    function warmGroups(manifest, ids) {
+        if (!manifest || !ids || !ids.length) return Promise.resolve();
+        var urls = [];
+        var fonts = [];
+        ids.forEach(function (id) {
+            if (warmedGroups.has(id)) return;
+            var group = manifest.groups[id];
+            if (!group) return;
+            warmedGroups.add(id);
+            (group.images || []).forEach(function (entry) { urls.push(pickForDensity(entry)); });
+            (group.fonts || []).forEach(function (spec) { fonts.push(spec); });
+        });
+        if (!urls.length && !fonts.length) return Promise.resolve();
+        return Promise.all([preloadUrls(urls, { concurrency: 4 }), loadFonts(fonts)]);
+    }
+
+    // Not at the logon or mid boot: those screens load their own art, and the manifest must not
+    // compete with the logon's requests. getClientDesktopState: public/scripts/comp/desktopBoot.js
+    function desktopIsUp() {
+        if (typeof window.getClientDesktopState !== 'function') return true;
+        var state = window.getClientDesktopState();
+        return state === 'desktop' || state === 'ready';
+    }
+
+    /** Hover / focus / press on a launcher (start menu, desktop shortcut) or the launch itself. */
+    function warmLaunch(launchId) {
+        if (!isDesktop || !launchId || !desktopIsUp()) return Promise.resolve();
+        return loadAppAssetManifest().then(function (manifest) {
+            return warmGroups(manifest, manifest && manifest.launch && manifest.launch[launchId]);
+        }).catch(function () {});
+    }
+
+    /** A window about to open (modalUtils.js openModal). */
+    function warmWindow(windowId) {
+        if (!isDesktop || !windowId || !desktopIsUp()) return Promise.resolve();
+        return loadAppAssetManifest().then(function (manifest) {
+            return warmGroups(manifest, manifest && manifest.windows && manifest.windows[windowId]);
+        }).catch(function () {});
+    }
+
+    // After the desktop: warm the start menu's pinned and frequent applications in idle time,
+    // one at a time. getStartMenuPinnedItems / getStartMenuFrequentItems: modalUtils.js
+    function warmFrequentApps() {
+        var ids = [];
+        try {
+            getStartMenuPinnedItems().concat(getStartMenuFrequentItems()).forEach(function (item) {
+                if (item && item.launchId && ids.indexOf(item.launchId) === -1) ids.push(item.launchId);
+            });
+        } catch (e) { return; }
+        var next = function () {
+            var id = ids.shift();
+            if (!id) return;
+            var idle = window.requestIdleCallback || function (fn) { return setTimeout(fn, 200); };
+            idle(function () { warmLaunch(id).then(next); }, { timeout: 3000 });
+        };
+        next();
+    }
+
+    function wireLaunchIntent() {
+        // Desktop shortcuts carry their launchId on shortcut.data (desktopShortcuts.js)
+        var onIntent = function (event) {
+            var el = event.target && event.target.closest ? event.target.closest('.desktop-shortcut[data-shortcut-id]') : null;
+            if (!el || typeof desktopShortcuts === 'undefined' || !desktopShortcuts || !desktopShortcuts.shortcuts) return;
+            var id = el.getAttribute('data-shortcut-id');
+            for (var i = 0; i < desktopShortcuts.shortcuts.length; i++) {
+                var s = desktopShortcuts.shortcuts[i];
+                if (s && s.id === id && s.data && s.data.launchId) {
+                    warmLaunch(s.data.launchId);
+                    return;
+                }
+            }
+        };
+        document.addEventListener('pointerover', onIntent, { passive: true });
+        document.addEventListener('focusin', onIntent);
+        document.addEventListener('desktopBootDone', warmFrequentApps, { once: true });
     }
 
     // After Connected, before desktopBoot.begin. The logon keeps its marquee and the
@@ -828,6 +992,9 @@ var assetPreload = (function () {
         wsClient.registerInitStep(18.4, 'Loading desktop assets', function () {
             return api.preloadDesktopAssetsStage();
         });
+        wsClient.registerInitStep(18.6, 'Loading gadgets', function () {
+            return api.preloadGadgetsStage();
+        });
     }
 
     var api = {
@@ -837,6 +1004,11 @@ var assetPreload = (function () {
         preloadWallpaperStage: preloadWallpaperStage,
         preloadDesktopIconsStage: preloadDesktopIconsStage,
         preloadDesktopAssetsStage: preloadDesktopAssetsStage,
+        preloadGadgetsStage: preloadGadgetsStage,
+        warmLaunch: warmLaunch,
+        warmWindow: warmWindow,
+        loadAppAssetManifest: loadAppAssetManifest,
+        gadgetRoot: null,
         holdAppIcon: holdAppIcon,
         holdImage: holdImage,
         holdMarkupImages: holdMarkupImages,
@@ -846,6 +1018,7 @@ var assetPreload = (function () {
     };
 
     startLateWatch();
+    if (typeof isDesktop !== 'undefined' && isDesktop) wireLaunchIntent();
 
     if (typeof isDesktop !== 'undefined' && isDesktop) startLoginStage();
     if (document.readyState === 'loading') {

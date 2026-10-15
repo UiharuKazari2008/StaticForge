@@ -1045,6 +1045,7 @@ body.dreamscape-install-wizard .modal:not(#dreamscapeOsInstallWizardModal):not(#
 body.desktop-mode.boot-staged .desktop-wallpaper,
 body.desktop-mode.boot-staged .desktop-icons,
 body.desktop-mode.boot-staged .desktop-taskbar,
+body.desktop-mode.boot-staged #vistaSidebar,
 body.desktop-mode.boot-staged .gallery-window,
 body.desktop-mode.boot-staged .modal:not(.boot-dialog):not(#confirmationDialog) {
     transition: none;
@@ -1053,6 +1054,7 @@ body.desktop-mode.boot-staged .modal:not(.boot-dialog):not(#confirmationDialog) 
 body.desktop-mode.boot-staged:not(.boot-reveal-wallpaper) .desktop-wallpaper,
 body.desktop-mode.boot-staged:not(.boot-reveal-icons) .desktop-icons,
 body.desktop-mode.boot-staged:not(.boot-reveal-taskbar) .desktop-taskbar,
+body.desktop-mode.boot-staged:not(.boot-reveal-gadgets) #vistaSidebar,
 body.desktop-mode.boot-staged:not(.boot-reveal-windows) .gallery-window,
 body.desktop-mode.boot-staged:not(.boot-reveal-windows) .modal:not(.boot-dialog):not(#confirmationDialog) {
     visibility: hidden;
