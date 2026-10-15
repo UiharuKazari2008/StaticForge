@@ -107,7 +107,7 @@ html[data-glass="frosted"] :where(
 }
 
 /* Context focus already uses opacity. Do not blur every visible gallery tile. */
-html[data-glass="frosted"] .gallery:has(.gallery-item.context-open) .gallery-item:not(.context-open) {
+html[data-glass="frosted"] .gallery.has-context-open-item .gallery-item:not(.context-open) {
     -webkit-filter: none;
     filter: none;
 }

@@ -1,6 +1,8 @@
 /* Gallery move / encoding modals — scripts/comp/workspaceUtils.js */
 /* Gallery Move Modal Styles */
-.modal:not(#manualModal):has(.gallery-move-modal-content) {
+/* Child-only :has(> …): a descendant :has() here made every window a :has() anchor (~25 ms per DOM
+   change inside any open window). The content is a direct child in every window that uses it. */
+.modal:not(#manualModal):has(> .gallery-move-modal-content) {
     max-width: 900px;
     width: 95vw;
     max-height: 85vh;
@@ -8,7 +10,9 @@
     overflow: visible;
 }
 
-.modal:not(#manualModal):has(.gallery-move-modal-content) .gallery-move-modal-content {
+/* Same match as `.modal:not(#manualModal):has(.gallery-move-modal-content) .gallery-move-modal-content`
+   (the content is its own witness) without making every window a :has() anchor. */
+.modal:not(#manualModal) .gallery-move-modal-content {
     flex-direction: row;
     display: flex;
 }
@@ -1263,7 +1267,7 @@ html:not(.disable-blur) .websocket-ticker {
     #manualPanelSection.initial,
     #manualPanelSection.zoomed div#manualPreviewContainer,
     #manualPanelSection.initial div#manualPreviewContainer,
-    .gallery:has(.gallery-item.context-open) .gallery-item,
+    .gallery.has-context-open-item .gallery-item,
     .gallery-item.context-open,
     .gallery.highlighting .gallery-item,
     .taskbar-window-item.entering,

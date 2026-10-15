@@ -84,6 +84,17 @@ for (const f of ['public/css/gallery-move.css', 'public/css/manual-modal-generat
 }
 assert.ok(aeroCss.includes('body.desktop-mode.has-active-maximized-window .desktop-taskbar::after'), 'the taskbar follows the active maximized window');
 
+const glass = read('public/css/vista-glass-controls.css');
+const globe = ['.net-limited #modemTrayIconGlyph', '.net-send #modemTrayIconGlyph', '.net-recv #modemTrayIconGlyph'].map((s) => glass.indexOf(s));
+assert.ok(globe.every((i) => i > 0) && globe[0] < globe[1] && globe[1] < globe[2], 'globe: limited, then send, then receive (receive wins, limited loses, as with the old specificities)');
+for (const f of ['public/css/app.css', 'public/css/gallery-core.css', 'public/css/gallery-move.css', 'public/css/manual-modal-generate.css', 'public/css/aero-glass.css', 'public/css/vista-glass-controls.css']) {
+    const css = read(f).replace(/\/\*[\s\S]*?\*\//g, '');
+    assert.ok(!css.includes(':has(.gallery-item.context-open)'), `${f}: gallery context-open reads .has-context-open-item`);
+    assert.ok(!/\.desktop-taskbar:has\(/.test(css), `${f}: no .desktop-taskbar:has()`);
+}
+assert.ok(read('public/css/gallery-move.css').includes('.modal:not(#manualModal):has(> .gallery-move-modal-content) {'), 'gallery-move window rule is child-only');
+assert.ok(!read('public/css/gallery-move.css').includes('.modal:not(#manualModal):has(.gallery-move-modal-content) .gallery-move-modal-content {'), 'gallery-move content rule has no :has()');
+
 const html = read('public/app.html');
 const flagsTag = html.indexOf('<script src="scripts/comp/rootStateFlags.js"></script>');
 assert.ok(flagsTag > 0 && flagsTag < html.indexOf('<script src="scripts/comp/modalUtils.js"></script>'), 'rootStateFlags.js loads before modalUtils.js');
@@ -106,12 +117,26 @@ let observerCallback = null;
 let observeOptions = null;
 let queries = 0;
 
+// container hosts: each answers querySelector from its own set
+function hostEl(className) {
+    const inside = new Set();
+    return { nodeType: 1, inside, classList: classList(className), querySelector: (sel) => { queries++; return inside.has(sel) ? {} : null; } };
+}
+const galleryEl = hostEl('gallery');
+const wrapperEl = hostEl('gallery-container-wrapper');
+const taskbarEl = hostEl('desktop-taskbar');
+const hosts = {
+    '.gallery, .gallery-container-wrapper': [galleryEl, wrapperEl],
+    '.desktop-taskbar': [taskbarEl]
+};
+
 const sandbox = {
     window: {},
     document: {
         documentElement: htmlEl,
         body: bodyEl,
         querySelector: (sel) => { queries++; return matches.has(sel) ? {} : null; },
+        querySelectorAll: (sel) => hosts[sel] || [],
         addEventListener: () => {}
     },
     MutationObserver: class {
@@ -170,6 +195,29 @@ assert.ok(htmlEl.classList.contains('has-desktop-mode'), 'html.has-desktop-mode 
 matches.delete('body.desktop-mode');
 observerCallback([{ type: 'attributes', target: bodyEl, oldValue: 'desktop-mode' }]);
 assert.ok(!htmlEl.classList.contains('has-desktop-mode'), 'and clears when desktop mode ends');
+
+// gallery: a context menu open on an item flags its gallery and wrapper only
+const CTX = '.gallery-item.context-open';
+galleryEl.inside.add(CTX); wrapperEl.inside.add(CTX);
+observerCallback([{ type: 'attributes', target: { nodeType: 1, getAttribute: () => 'gallery-item context-open' }, oldValue: 'gallery-item' }]);
+assert.ok(galleryEl.classList.contains('has-context-open-item') && wrapperEl.classList.contains('has-context-open-item'), 'context-open item flags .gallery and its wrapper');
+assert.ok(!taskbarEl.classList.contains('has-context-open-item'), 'other hosts untouched');
+galleryEl.inside.clear(); wrapperEl.inside.clear();
+observerCallback([{ type: 'attributes', target: { nodeType: 1, getAttribute: () => 'gallery-item' }, oldValue: 'gallery-item context-open' }]);
+assert.ok(!galleryEl.classList.contains('has-context-open-item'), 'closing the menu clears it');
+
+// taskbar globe: traffic arrows and the ping wait
+const SEND = '#taskbarWebsocketIndicator .websocket-arrow-up:is(.active, .active-http, .streaming-up:not(.streaming-stalled-up))';
+const LIMITED = '#taskbarWsStatus.ping-response-wait';
+taskbarEl.inside.add(SEND);
+observerCallback([{ type: 'attributes', target: { nodeType: 1, getAttribute: () => 'websocket-arrow-up active' }, oldValue: 'websocket-arrow-up' }]);
+assert.ok(taskbarEl.classList.contains('net-send') && !taskbarEl.classList.contains('net-recv'), 'up arrow flash sets .net-send');
+taskbarEl.inside.add(LIMITED);
+observerCallback([{ type: 'attributes', target: { nodeType: 1, getAttribute: () => 'ping-response-wait' }, oldValue: '' }]);
+assert.ok(taskbarEl.classList.contains('net-limited'), 'ping wait sets .net-limited');
+taskbarEl.inside.clear();
+observerCallback([{ type: 'attributes', target: { nodeType: 1, getAttribute: () => 'websocket-arrow-up' }, oldValue: 'websocket-arrow-up active ping-response-wait' }]);
+assert.ok(!taskbarEl.classList.contains('net-send') && !taskbarEl.classList.contains('net-limited'), 'flags clear when the arrows rest');
 
 // direct sync (maximize / restore call it so same-task layout reads see the flag)
 matches.add(MAX);

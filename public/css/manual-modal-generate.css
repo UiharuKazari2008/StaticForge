@@ -322,7 +322,7 @@ html:not(.disable-blur) .websocket-ticker {
     #manualPanelSection.initial,
     #manualPanelSection.zoomed div#manualPreviewContainer,
     #manualPanelSection.initial div#manualPreviewContainer,
-    .gallery:has(.gallery-item.context-open) .gallery-item,
+    .gallery.has-context-open-item .gallery-item,
     .gallery-item.context-open,
     .gallery.highlighting .gallery-item,
     .taskbar-window-item.entering,

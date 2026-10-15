@@ -1,89 +1,119 @@
 /**
- * Root state flags: classes on <html> / <body> that stand in for document-wide :has() checks.
+ * State flags: classes that stand in for :has() checks Chrome would otherwise re-run on every
+ * DOM change.
  *
- * A non-subject `html:has(X) .y` or `body:has(X) .y` rule makes Chrome flag the root as a :has()
- * anchor, and from then on every element insertion, removal or textContent write anywhere in the
- * page re-evaluates it and recomputes style for the whole document (~45-50 ms per DOM change on
- * the desktop, measured 2026-10-15). The CSS reads these classes instead; this file keeps each
- * one equal to its old :has() argument, synchronously before the next render (MutationObserver
- * callbacks run as microtasks), so nothing paints differently.
+ * A :has() whose anchor sits above busy DOM (`html:has(X) .y`, `.gallery:has(X) .item`) makes
+ * Chrome re-evaluate it, and recompute style under the anchor, for every element insertion,
+ * removal or textContent write below it: ~45-50 ms per DOM change for html/body anchors, ~25 ms
+ * for anything inside the gallery window, ~4 ms in the taskbar (measured 2026-10-15). The CSS
+ * reads these classes instead; this file keeps each one equal to its old :has() argument,
+ * synchronously before the next render (MutationObserver callbacks run as microtasks), so
+ * nothing paints differently.
  *
- * Flag                                   | old selector
+ * Flag (on)                              | old selector
  * html.has-maximized-window              | html:has(.modal.modal-maximized:not(.hidden):not(.hidden-alt))
  * html.has-maximized-gallery-window      | html:has(.gallery-window.modal-maximized.windowed)
  * html.has-maximized-photo-window        | html:has(body.desktop-mode #photoSwipeWindow.photo-swipe-window.modal-maximized.windowed)
+ * html.has-desktop-mode                  | html:has(body.desktop-mode)
  * body.has-active-maximized-window       | body:has(.modal.modal-maximized.active-window:not(.hidden):not(.hidden-alt):not(.minimised))
  * body.taskbar-orb                       | body:has(#desktopTaskbar .taskbar-start-button.orb)
  * body.taskbar-luna                      | body:has(#desktopTaskbar .taskbar-start-button.luna)
- * html.has-desktop-mode                  | html:has(body.desktop-mode)
+ * .gallery.has-context-open-item,
+ * .gallery-container-wrapper.has-context-open-item | :has(.gallery-item.context-open)
+ * .desktop-taskbar.net-send              | .desktop-taskbar:has(#taskbarWebsocketIndicator .websocket-arrow-up:is(.active, .active-http, .streaming-up:not(.streaming-stalled-up)))
+ * .desktop-taskbar.net-recv              | .desktop-taskbar:has(#taskbarWebsocketIndicator .websocket-arrow-down:is(.active, .active-http, .streaming-down:not(.streaming-stalled-down)))
+ * .desktop-taskbar.net-limited           | .desktop-taskbar:has(#taskbarWsStatus.ping-response-wait)
  *
- * Subject-position html/body :has() (`body:has(x) { --var }`) costs ~4 ms per DOM change too.
- * Do not add new html/body-anchored :has() rules; add a flag here instead.
+ * Do not add new :has() rules anchored on html/body or on a big container with a descendant
+ * part after them; add a flag here instead (scripts/test-root-state-flags.js checks html/body).
  */
 (function () {
     'use strict';
 
+    // host: 'html' | 'body' (document-wide check) or a selector (each match checks its own subtree).
+    // watch: class names whose appearance or removal anywhere can change the flag.
     const FLAGS = [
-        { root: 'html', className: 'has-maximized-window', selector: '.modal.modal-maximized:not(.hidden):not(.hidden-alt)' },
-        { root: 'html', className: 'has-maximized-gallery-window', selector: '.gallery-window.modal-maximized.windowed' },
-        { root: 'html', className: 'has-maximized-photo-window', selector: 'body.desktop-mode #photoSwipeWindow.photo-swipe-window.modal-maximized.windowed' },
-        { root: 'body', className: 'has-active-maximized-window', selector: '.modal.modal-maximized.active-window:not(.hidden):not(.hidden-alt):not(.minimised)' },
-        { root: 'body', className: 'taskbar-orb', selector: '#desktopTaskbar .taskbar-start-button.orb' },
-        { root: 'body', className: 'taskbar-luna', selector: '#desktopTaskbar .taskbar-start-button.luna' },
-        { root: 'html', className: 'has-desktop-mode', selector: 'body.desktop-mode' }
+        { host: 'html', className: 'has-maximized-window', selector: '.modal.modal-maximized:not(.hidden):not(.hidden-alt)', watch: ['modal'] },
+        { host: 'html', className: 'has-maximized-gallery-window', selector: '.gallery-window.modal-maximized.windowed', watch: ['modal', 'gallery-window'] },
+        { host: 'html', className: 'has-maximized-photo-window', selector: 'body.desktop-mode #photoSwipeWindow.photo-swipe-window.modal-maximized.windowed', watch: ['modal', 'photo-swipe-window'] },
+        { host: 'html', className: 'has-desktop-mode', selector: 'body.desktop-mode', watch: [] },
+        { host: 'body', className: 'has-active-maximized-window', selector: '.modal.modal-maximized.active-window:not(.hidden):not(.hidden-alt):not(.minimised)', watch: ['modal'] },
+        { host: 'body', className: 'taskbar-orb', selector: '#desktopTaskbar .taskbar-start-button.orb', watch: ['taskbar-start-button'] },
+        { host: 'body', className: 'taskbar-luna', selector: '#desktopTaskbar .taskbar-start-button.luna', watch: ['taskbar-start-button'] },
+        { host: '.gallery, .gallery-container-wrapper', className: 'has-context-open-item', selector: '.gallery-item.context-open', watch: ['context-open', 'gallery', 'gallery-container-wrapper'] },
+        { host: '.desktop-taskbar', className: 'net-send', selector: '#taskbarWebsocketIndicator .websocket-arrow-up:is(.active, .active-http, .streaming-up:not(.streaming-stalled-up))', watch: ['websocket-arrow-up', 'websocket-indicator', 'desktop-taskbar'] },
+        { host: '.desktop-taskbar', className: 'net-recv', selector: '#taskbarWebsocketIndicator .websocket-arrow-down:is(.active, .active-http, .streaming-down:not(.streaming-stalled-down))', watch: ['websocket-arrow-down', 'websocket-indicator', 'desktop-taskbar'] },
+        { host: '.desktop-taskbar', className: 'net-limited', selector: '#taskbarWsStatus.ping-response-wait', watch: ['ping-response-wait', 'desktop-taskbar'] }
     ];
 
-    // Classes whose presence on an element can change a flag above
-    const RELEVANT_CLASS = /(^|\s)(modal|gallery-window|photo-swipe-window|taskbar-start-button)(\s|$)/;
-    const RELEVANT_SELECTOR = '.modal, .gallery-window, .photo-swipe-window, .taskbar-start-button';
+    FLAGS.forEach((flag) => {
+        flag.watchClass = flag.watch.length
+            ? new RegExp('(^|\\s)(' + flag.watch.join('|') + ')(\\s|$)')
+            : null;
+        flag.watchSelector = flag.watch.map((name) => '.' + name).join(', ');
+    });
 
-    function syncRootStateFlags() {
-        const body = document.body;
-        if (!body) return;
-        for (let i = 0; i < FLAGS.length; i++) {
-            const flag = FLAGS[i];
-            const target = flag.root === 'html' ? document.documentElement : body;
-            const on = document.querySelector(flag.selector) !== null;
-            if (target.classList.contains(flag.className) !== on) {
-                target.classList.toggle(flag.className, on);
-            }
+    function setClass(el, className, on) {
+        if (el.classList.contains(className) !== on) {
+            el.classList.toggle(className, on);
         }
     }
 
-    function isRelevantNode(node) {
-        if (!node || node.nodeType !== 1) return false;
-        return node.matches(RELEVANT_SELECTOR) || node.querySelector(RELEVANT_SELECTOR) !== null;
+    function syncFlag(flag) {
+        if (flag.host === 'html' || flag.host === 'body') {
+            const target = flag.host === 'html' ? document.documentElement : document.body;
+            setClass(target, flag.className, document.querySelector(flag.selector) !== null);
+            return;
+        }
+        const hosts = document.querySelectorAll(flag.host);
+        for (let i = 0; i < hosts.length; i++) {
+            setClass(hosts[i], flag.className, hosts[i].querySelector(flag.selector) !== null);
+        }
     }
 
-    function isRelevantMutation(mutation) {
+    function syncRootStateFlags() {
+        if (!document.body) return;
+        for (let i = 0; i < FLAGS.length; i++) syncFlag(FLAGS[i]);
+    }
+
+    function nodeTouchesFlag(node, flag) {
+        if (!node || node.nodeType !== 1 || !flag.watchSelector) return false;
+        return node.matches(flag.watchSelector) || node.querySelector(flag.watchSelector) !== null;
+    }
+
+    function mutationTouchesFlag(mutation, flag) {
         if (mutation.type === 'attributes') {
-            const target = mutation.target;
-            if (target === document.body) return true;
-            return RELEVANT_CLASS.test(target.getAttribute('class') || '')
-                || RELEVANT_CLASS.test(mutation.oldValue || '');
+            if (mutation.target === document.body) return true;
+            if (!flag.watchClass) return false;
+            return flag.watchClass.test(mutation.target.getAttribute('class') || '')
+                || flag.watchClass.test(mutation.oldValue || '');
         }
         const added = mutation.addedNodes;
         for (let i = 0; i < added.length; i++) {
-            if (isRelevantNode(added[i])) return true;
+            if (nodeTouchesFlag(added[i], flag)) return true;
         }
         const removed = mutation.removedNodes;
         for (let i = 0; i < removed.length; i++) {
-            if (isRelevantNode(removed[i])) return true;
+            if (nodeTouchesFlag(removed[i], flag)) return true;
         }
         return false;
     }
 
-    function start() {
-        syncRootStateFlags();
-        const observer = new MutationObserver((mutations) => {
+    function onMutations(mutations) {
+        for (let f = 0; f < FLAGS.length; f++) {
+            const flag = FLAGS[f];
             for (let i = 0; i < mutations.length; i++) {
-                if (isRelevantMutation(mutations[i])) {
-                    syncRootStateFlags();
-                    return;
+                if (mutationTouchesFlag(mutations[i], flag)) {
+                    syncFlag(flag);
+                    break;
                 }
             }
-        });
-        observer.observe(document.body, {
+        }
+    }
+
+    function start() {
+        syncRootStateFlags();
+        new MutationObserver(onMutations).observe(document.body, {
             subtree: true,
             childList: true,
             attributes: true,

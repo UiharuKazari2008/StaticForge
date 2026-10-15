@@ -783,15 +783,15 @@
 }
 
 
-.gallery:has(.gallery-item.context-open) {
+.gallery.has-context-open-item {
     opacity: 0.85;
 }
 
-.gallery:has(.gallery-item.context-open) .gallery-item:not(.context-open) {
+.gallery.has-context-open-item .gallery-item:not(.context-open) {
     opacity: 0.25;
 }
 
-html:not(.disable-blur) .gallery:has(.gallery-item.context-open) .gallery-item:not(.context-open) {
+html:not(.disable-blur) .gallery.has-context-open-item .gallery-item:not(.context-open) {
     -webkit-filter: blur(4px) saturate(0);
     filter: blur(4px) saturate(0);
 }

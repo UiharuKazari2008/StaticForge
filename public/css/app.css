@@ -3415,11 +3415,11 @@ body.desktop-mode .modal-backdrop {
     display: none !important;
 }
 
-.gallery-container-wrapper:has(.gallery-item.context-open) #main-menu-bar::after {
+.gallery-container-wrapper.has-context-open-item #main-menu-bar::after {
     opacity: 0;
 }
 
-.gallery-container-wrapper:has(.gallery-item.context-open) #main-menu-bar {
+.gallery-container-wrapper.has-context-open-item #main-menu-bar {
     opacity: 1;
 }
 
@@ -3973,8 +3973,8 @@ body.desktop-mode .modal:not(.active-window):not(.opening):not(.closing):not(.mi
     will-change: transform, opacity, scale;
 }
 
-.gallery-container-wrapper:has(.gallery-item.context-open) #main-menu-bar,
-.gallery-container-wrapper:has(.gallery-item.context-open) #main-menu-bar::after {
+.gallery-container-wrapper.has-context-open-item #main-menu-bar,
+.gallery-container-wrapper.has-context-open-item #main-menu-bar::after {
     will-change: opacity;
 }
 
