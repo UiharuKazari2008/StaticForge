@@ -80,7 +80,8 @@ try {
 
     const seeds = fs.readFileSync(path.join(__dirname, 'fetch-seeds.sh'), 'utf8');
     assert.ok(seeds.includes('https://yozora.bluesteel.737.jp.net/seeds/dreamscape/'));
-    assert.ok(seeds.includes('PLACEHOLDER'));
+    assert.ok(seeds.includes("SHA256SUMS"), "seeds are verified against the hosted SHA256SUMS");
+    assert.ok(!seeds.includes("PLACEHOLDER"), "seed URL is no longer a placeholder");
     assert.ok(seeds.includes('${SEED_BASE_URL:-https://yozora.bluesteel.737.jp.net/seeds/dreamscape/}'));
 
     const sw = fs.readFileSync(path.join(__dirname, '..', 'public', 'sw.js'), 'utf8');
