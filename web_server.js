@@ -64,6 +64,7 @@ const accountPictures = require('./modules/accountPictures');
 const { handleStatusStream } = require('./modules/statusStream');
 const desktopSoundsStatic = require('./modules/desktopSoundsStatic');
 const desktopCursorsStatic = require('./modules/desktopCursorsStatic');
+const installManifestFilter = require('./modules/installManifestFilter');
 const { browserRequest } = require('./modules/browserHttp');
 const { mountGrimoireBrowserBridge } = require('./modules/grimoireBrowserBridge');
 const { mountGuacRemoteBridge, attachGuacWebUpgrade } = require('./modules/guacRemoteBridge');
@@ -872,6 +873,19 @@ async function initializeCacheData(force = false) {
     }
 }
 
+// Live sheet is .cache/login_array.jpg. A fresh install has public/images/login_array.jpg.
+function resolveLoginSpritePath() {
+    const generated = path.join(__dirname, '.cache', 'login_array.jpg');
+    if (fs.existsSync(generated)) {
+        return generated;
+    }
+    const seed = path.join(__dirname, 'public', 'images', 'login_array.jpg');
+    if (fs.existsSync(seed)) {
+        return seed;
+    }
+    return null;
+}
+
 // Build service worker cache manifest (same payload as OPTIONS /)
 function buildServiceWorkerCacheManifest() {
     const routeFiles = [
@@ -925,7 +939,19 @@ function buildServiceWorkerCacheManifest() {
             modified: file.modified
         }));
 
-    return [...routeEntries, ...protectedRuntimeFiles, ...staticFiles];
+    const entries = [...routeEntries, ...protectedRuntimeFiles, ...staticFiles];
+    const loginSpritePath = resolveLoginSpritePath();
+    if (loginSpritePath) {
+        const loginStats = fs.statSync(loginSpritePath);
+        entries.push({
+            url: '/.login.jpg',
+            hash: runtimeAssetService.hashServedFile(loginSpritePath),
+            size: loginStats.size,
+            modified: loginStats.mtime.getTime()
+        });
+    }
+
+    return installManifestFilter.filterExistingManifestEntries(__dirname, entries);
 }
 
 agentAssetBundle.init({
@@ -2204,7 +2230,12 @@ agentClientBridge.registerRoutes(app, { devAuthMiddleware, globalResources });
 mcpAgentFacade.registerRoutes(app, { globalResources });
 apocryphaSite.registerRoutes(app, { globalResources });
 app.get('/.login.jpg', (req, res) => {
-    res.sendFile(path.join(cacheDir, 'login_array.jpg'));
+    const sprite = resolveLoginSpritePath();
+    if (!sprite) {
+        res.status(404).end();
+        return;
+    }
+    res.sendFile(sprite);
 });
 app.post('/', serverReadinessMiddleware, express.json(), (req, res) => {
     const { action, data } = req.body;
@@ -3865,7 +3896,7 @@ async function handleAdminUnixSocketMessage(message, socket) {
             desktopSoundsStatic.sendSound(req, res, __dirname);
         });
 
-        // Vista / Posy cursor packs from media/cursors (not in git, not in the SW precache)
+        // Cursor packs from media/cursors (Vista is committed; Posy is host-local). Not in the SW precache.
         app.get('/cursors/:scheme/:file', (req, res) => {
             desktopCursorsStatic.sendCursor(req, res, __dirname);
         });

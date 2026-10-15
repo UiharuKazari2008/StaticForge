@@ -465,11 +465,15 @@
             started = env.now();
             setStep('expand', 'active', 0);
             let missing = await engine.verify(env, found.files);
+            const absent = new Set(copied.absent || []);
+            missing = missing.filter((file) => !absent.has(file.url));
             if (missing.length) {
-                await engine.download(env, missing, {
+                const retried = await engine.download(env, missing, {
                     onProgress: (p) => { if (run === ctl.runId) setStep('expand', 'active', 0.5 * p.fraction); }
                 });
+                (retried.absent || []).forEach((url) => absent.add(url));
                 missing = await engine.verify(env, missing);
+                missing = missing.filter((file) => !absent.has(file.url));
             }
             if (run !== ctl.runId) return 'cancelled';
             // A few files the worker will not keep (like /app's old wizard tolerated) do not stop
@@ -477,7 +481,7 @@
             if (missing.length > Math.max(config.installTolerance, Math.ceil(found.files.length * 0.1))) {
                 return installFailed('verify', `${missing.length} file(s): ${missing.slice(0, 3).map((f) => f.url).join(', ')}`);
             }
-            ctl.install.stragglers = missing.map((f) => f.url);
+            ctl.install.stragglers = missing.map((f) => f.url).concat(Array.from(absent));
             await stepAtLeast(started);
             setStep('expand', 'done');
 

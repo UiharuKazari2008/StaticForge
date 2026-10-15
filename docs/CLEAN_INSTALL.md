@@ -17,6 +17,59 @@ never overwrites `config.json` / `secure.config.json` (it only adds a missing `s
 A new `config.json` gets a random `loginKey` and PINs — change them, then add a NovelAI key in
 `secure.config.json` (`novelai.keys[].apiKey`).
 
+After dependencies, the installer runs `node scripts/precompile-runtime-assets.js`. A fresh tree
+must print `compiled=` greater than 0. That warms `.cache/runtime-assets` so the MeletonFX
+installer is not waiting on first-request CSS/JS minification. `scripts/setup.sh` does the same
+at the end of the baremetal path, the docker host path (when `node_modules` is already there),
+the image-build path, and the container `--runtime` entry. The Dockerfile also runs it after
+`COPY` so an image without a cache volume is warm. A bind-mounted `.cache` (see
+`docker-compose.yml`) is empty on a fresh host; the container entry runs precompile again
+before `web_server.js`.
+
+Shipped assets a fresh clone must already contain (these used to live only on the host):
+
+| Path | Role |
+|------|------|
+| `media/cursors/vista/*.cur` and `*.ani` | Vista pointer scheme (`/cursors/vista/...`) |
+| `public/images/login_array.jpg` | Neutral 1024x1024 login tile. `/.login.jpg` serves `.cache/login_array.jpg` once the gallery rebuilds a sheet |
+| `public/data/nai-quickstart-v5.json` | Quick Start catalog |
+| `public/sounds/planet/innerlight.opus` | Planet switcher bed |
+| `public/scripts/comp/blockContainer.js` | Login blocks. The preload URL is this path |
+
+The install manifest (`OPTIONS /`, `buildServiceWorkerCacheManifest`) omits any row whose file
+is not on disk. The service worker gives each install fetch 20s and treats HTTP 404 as absent:
+that file is not retried, and the installer remembers it so the next boot does not open Setup
+for it again.
+
+Vista sound WAVs stay host-local in `media/Windows Vista Sounds` (Microsoft recordings, not in
+git, not in the install manifest). Posy cursors stay host-local in `media/cursors/posy`.
+
+### Wiki and tag seeds
+
+These are referenced by tag import / lookup and are too large (or are the inputs to a database
+that is too large) to commit. `scripts/fetch-seeds.sh` downloads them. `SEED_BASE_URL` defaults
+to `TODO` until a bundle is published:
+
+```bash
+SEED_BASE_URL=https://example.invalid/dreamscape-seeds bash scripts/fetch-seeds.sh
+```
+
+Sizes and sha256 below are from the production host on 2026-10-14. Check them after download.
+
+| File | Bytes | sha256 |
+|------|------:|--------|
+| `.cache/tag_wiki.db` | 849838080 | `9495dd4c5c70323d5ac516d4ab6513e68605e8ba649af5041f623739918817f0` |
+| `.cache/tag_search.db` | 39579648 | `717c9fa583b136c5187cb8e0a4cb347c31dff11e2684ec46434d09a512fcb5e7` |
+| `.cache/nax_tags.db` | 19353600 | `17511f6b15a3eac64b822df90e2b74654af830ba6d5f0ccbc710d700e0a47fb8` |
+| `danbooru_tagwiki.json` | 143835679 | `094121c42a0555d7221403c3ca806851360a1c01358c4752e03cf3f4f45371d2` |
+| `e621_wiki_fixed.json` | 55725469 | `d75f2598788c1a1031c14bdbc47c658f62f5d71f51a1442364ac2aa1a83e69e7` |
+| `danbooru_tag_groups_hierarchy.json` | 3006656 | `71a35647bcb41d3aba9640f485abc341ffcc8c084af33ea5ff9b398e305276dc` |
+| `nax_tags.json` | 8583492 | `14489b315bc1c6f28543de231c100f851111a136bca7c495f433448021781980` |
+
+`scripts/import-nax-tags.js` builds `.cache/nax_tags.db` from `nax_tags.json`.
+`scripts/create-tag-database.js` builds `.cache/tag_wiki.db` from the wiki JSON. Tag search
+still works without these files; suggestions and wiki pages stay empty until the seeds exist.
+
 What it installs that the README never mentioned:
 
 | Need | Why |

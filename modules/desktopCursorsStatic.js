@@ -1,6 +1,6 @@
 /**
- * Serve host-local cursor packs. Files stay in media/cursors/{vista,posy}
- * (gitignored; Microsoft / Posy binaries are not committed).
+ * Serve cursor packs from media/cursors/{vista,posy}.
+ * Vista is committed. Posy stays host-local. Missing files are the keyword only.
  */
 const fs = require('fs');
 const path = require('path');
@@ -150,8 +150,9 @@ function schemeVarsBlock(scheme) {
 function buildCss() {
     return [
         '/* Pointer scheme tokens. Classic = native keywords. Vista / Posy = url() from',
-        '   /cursors/{scheme}/ when the file is on disk (media/cursors, not in git). Missing',
-        '   files use the keyword only — never a 404 url(). desktopCursors.js sets the attr. */',
+        '   /cursors/{scheme}/ when the file is on disk (media/cursors/vista is committed;',
+        '   Posy stays host-local). Missing files use the keyword only - never a 404 url().',
+        '   desktopCursors.js sets the attr. */',
         'html {',
         classicVarsBlock(),
         '}',

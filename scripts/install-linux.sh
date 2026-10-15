@@ -134,6 +134,9 @@ for pair in characters.json:bootstrap-characters.json .cache/workspace.json:boot
 done
 grep -q '"apiKey": ""' secure.config.json && warn "secure.config.json has no NovelAI key — add one before generating"
 
+log "precompiling runtime assets"
+node scripts/precompile-runtime-assets.js
+
 if [[ $(id -u) -eq 0 && "$SERVICE_USER" != root ]] && id "$SERVICE_USER" >/dev/null 2>&1; then
   chown -R "$SERVICE_USER:" "$ROOT"
 fi

@@ -153,6 +153,7 @@
         const sizes = files.map((f) => Number(f.size) || 0);
         const bytes = sizes.reduce((a, b) => a + b, 0);
         const errors = [];
+        const absent = [];
         return new Promise((resolve) => {
             let lastProgress = env.now();
             let completed = 0;
@@ -184,11 +185,19 @@
                         break;
                     case 'STATIC_CACHE_ERROR':
                         lastProgress = env.now();
+                        if (data.file && String(data.error || '').indexOf('404') !== -1 && absent.indexOf(data.file) === -1) {
+                            absent.push(data.file);
+                        }
                         errors.push(`${data.file || '?'}: ${data.error || 'failed'}`);
                         break;
                     case 'STATIC_CACHE_COMPLETE':
+                        if (Array.isArray(data.absent)) {
+                            data.absent.forEach((url) => {
+                                if (url && absent.indexOf(url) === -1) absent.push(url);
+                            });
+                        }
                         report(files.length, null);
-                        finish({ ok: true, stalled: false });
+                        finish({ ok: true, stalled: false, absent: absent.slice() });
                         break;
                     case 'STATIC_CACHE_CANCELLED':
                         finish({ ok: false, stalled: false, cancelled: true });

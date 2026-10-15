@@ -20,7 +20,7 @@ A reusable JavaScript module for creating animated block grid effects with opaci
 
 2. Include the JavaScript file:
 ```html
-<script src="/scripts/blockContainer.js"></script>
+<script src="/scripts/comp/blockContainer.js"></script>
 ```
 
 3. Add a container element to your HTML:

@@ -140,19 +140,27 @@ function scheduleImageCachePolicyEnforcement() {
   }, IMAGE_POLICY_ENFORCE_DEBOUNCE_MS);
 }
 
+// One file must not hold the installer. A 404 is absent and is not fetched again.
+const STATIC_FILE_FETCH_TIMEOUT_MS = 20000;
+
+function freshDownloadState() {
+    return {
+        isDownloading: false,
+        completed: 0,
+        total: 0,
+        currentFile: null,
+        startTime: null,
+        lastProgressTime: null,
+        files: [],
+        abortController: null,
+        silent: false,
+        updatedFiles: [],
+        absentFiles: []
+    };
+}
+
 // Download state tracking
-let downloadState = {
-    isDownloading: false,
-    completed: 0,
-    total: 0,
-    currentFile: null,
-    startTime: null,
-    lastProgressTime: null,
-    files: [],
-    abortController: null,
-    silent: false,
-    updatedFiles: []
-};
+let downloadState = freshDownloadState();
 
 function headersForSavedAsset(response) {
   const headers = new Headers(response.headers);
@@ -1292,16 +1300,7 @@ function cancelDownload() {
         });
         
         // Reset state
-        downloadState = {
-            isDownloading: false,
-            completed: 0,
-            total: 0,
-            currentFile: null,
-            startTime: null,
-            lastProgressTime: null,
-            files: [],
-            abortController: null
-        };
+        downloadState = freshDownloadState();
     }
 }
 
@@ -1417,6 +1416,26 @@ function staticCacheResponseWithHash(bodyBuffer, response, hash) {
 }
 
 // Cache static files from server
+function noteInstallFileDone(fileUrl, absentReason) {
+    if (absentReason) {
+        downloadState.absentFiles.push({ url: fileUrl, reason: absentReason });
+    }
+    downloadState.completed++;
+    downloadState.lastProgressTime = Date.now();
+    const completedNow = downloadState.completed;
+    const totalNow = downloadState.total;
+    self.clients.matchAll().then(clients => {
+        clients.forEach(client => {
+            client.postMessage({
+                type: 'STATIC_CACHE_PROGRESS',
+                completed: completedNow,
+                total: totalNow,
+                currentFile: fileUrl
+            });
+        });
+    });
+}
+
 async function cacheStaticFiles(files, silent = false) {
     // Check if already downloading
     if (downloadState.isDownloading) {
@@ -1461,6 +1480,7 @@ async function cacheStaticFiles(files, silent = false) {
         downloadState.abortController = new AbortController();
         downloadState.silent = silent === true;
         downloadState.updatedFiles = [];
+        downloadState.absentFiles = [];
         
         // Start stall detection
         startStallDetection();
@@ -1506,17 +1526,57 @@ async function cacheStaticFiles(files, silent = false) {
                 if (isRouteEntry) {
                     fetchHeaders['X-SW-Bypass-Cache'] = '1';
                 }
-                // Fetch with cache-busting headers to prevent browser caching
-                const fetchStartTime = Date.now();
-                const response = await fetch(file.url, {
-                  cache: 'no-store',
-                  signal: signal,
-                  headers: fetchHeaders
-                });
+                // Per-file timeout so a missing or slow file cannot stall the install.
+                const fileAbort = new AbortController();
+                const timeoutId = setTimeout(() => fileAbort.abort(), STATIC_FILE_FETCH_TIMEOUT_MS);
+                const onParentAbort = () => fileAbort.abort();
+                if (signal) {
+                    if (signal.aborted) fileAbort.abort();
+                    else signal.addEventListener('abort', onParentAbort);
+                }
+                let response;
+                try {
+                    response = await fetch(file.url, {
+                      cache: 'no-store',
+                      signal: fileAbort.signal,
+                      headers: fetchHeaders
+                    });
+                } catch (error) {
+                    if (signal && signal.aborted) {
+                        console.log('Download aborted');
+                        return;
+                    }
+                    if (error && error.name === 'AbortError') {
+                        console.warn(`Timed out fetching ${file.url} after ${STATIC_FILE_FETCH_TIMEOUT_MS}ms`);
+                        noteInstallFileDone(file.url, null);
+                    } else {
+                        console.error(`Failed to cache ${file.url}:`, error);
+                        noteInstallFileDone(file.url, null);
+                    }
+                    continue;
+                } finally {
+                    clearTimeout(timeoutId);
+                    if (signal) signal.removeEventListener('abort', onParentAbort);
+                }
                 
                 // Update progress time after fetch completes (even if it fails)
                 downloadState.lastProgressTime = Date.now();
                 
+                if (response.status === 404) {
+                    console.warn(`Missing ${file.url}: HTTP 404 (not retried)`);
+                    self.clients.matchAll().then(clients => {
+                        clients.forEach(client => {
+                            client.postMessage({
+                                type: 'STATIC_CACHE_ERROR',
+                                file: file.url,
+                                error: 'HTTP 404: Not Found'
+                            });
+                        });
+                    });
+                    noteInstallFileDone(file.url, '404');
+                    continue;
+                }
+
                 if (response.ok && response.status >= 200 && response.status < 300 && shouldCacheResponse(response)) {
                     try {
                         const body = await response.arrayBuffer();
@@ -1598,6 +1658,9 @@ async function cacheStaticFiles(files, silent = false) {
         const totalCount = downloadState.total > 0 ? downloadState.total : files.length;
         const updatedFiles = downloadState.updatedFiles.slice();
         const wasSilent = downloadState.silent === true;
+        const absent = (downloadState.absentFiles || [])
+            .filter((entry) => entry.reason === '404')
+            .map((entry) => entry.url);
 
         // Notify client of completion
         self.clients.matchAll().then(clients => {
@@ -1608,24 +1671,14 @@ async function cacheStaticFiles(files, silent = false) {
                     completed: completedCount,
                     total: totalCount,
                     updatedFiles: updatedFiles,
-                    silent: wasSilent
+                    silent: wasSilent,
+                    absent: absent
                 });
             });
         });
 
         // Reset download state
-        downloadState = {
-            isDownloading: false,
-            completed: 0,
-            total: 0,
-            currentFile: null,
-            startTime: null,
-            lastProgressTime: null,
-            files: [],
-            abortController: null,
-            silent: false,
-            updatedFiles: []
-        };
+        downloadState = freshDownloadState();
     } catch (error) {
         // Check if error is due to abort
         if (error.name === 'AbortError') {
@@ -1650,18 +1703,7 @@ async function cacheStaticFiles(files, silent = false) {
         });
         
         // Reset download state
-        downloadState = {
-            isDownloading: false,
-            completed: 0,
-            total: 0,
-            currentFile: null,
-            startTime: null,
-            lastProgressTime: null,
-            files: [],
-            abortController: null,
-            silent: false,
-            updatedFiles: []
-        };
+        downloadState = freshDownloadState();
     }
 }
 

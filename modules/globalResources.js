@@ -4498,6 +4498,8 @@ class GlobalResources {
     async generateLoginSpriteSheet() {
         const fs = require('fs');
         const cacheDir = this.getPath('cache');
+        // Regenerated gallery sheet. The committed seed is public/images/login_array.jpg
+        // (web_server.js resolveLoginSpritePath serves that until this file exists).
         const spritePath = path.join(cacheDir, 'login_array.jpg');
 
         try {

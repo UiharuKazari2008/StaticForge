@@ -452,6 +452,26 @@ verify_geo2city() {
     fi
 }
 
+precompile_runtime_assets() {
+    if [[ ! -f "$ROOT/scripts/precompile-runtime-assets.js" ]]; then
+        return
+    fi
+    if [[ ! -d "$ROOT/public/css" ]]; then
+        log "Skipping runtime asset precompile (public/css not present yet)"
+        return
+    fi
+    if [[ ! -d "$ROOT/node_modules" ]]; then
+        log "Skipping runtime asset precompile (node_modules not installed yet)"
+        return
+    fi
+    if ! command -v node >/dev/null 2>&1; then
+        warn "node not on PATH - skipping runtime asset precompile"
+        return
+    fi
+    log "Precompiling runtime assets so the first request does not compile ..."
+    node "$ROOT/scripts/precompile-runtime-assets.js"
+}
+
 fix_ownership() {
     if [[ -z "$OWNER_USER" || "$OWNER_USER" == root ]]; then
         log "No non-root owner recorded — skipping ownership fix"
@@ -502,6 +522,7 @@ run_baremetal_path() {
     create_directories
     bootstrap_configs
     install_node_deps
+    precompile_runtime_assets
     fix_ownership
     print_done_baremetal
 }
@@ -514,6 +535,7 @@ run_docker_host_path() {
     finalize_apt
     create_directories
     bootstrap_configs
+    precompile_runtime_assets
     fix_ownership
 
     if [[ "$NO_RUN" -eq 1 ]]; then
@@ -531,6 +553,7 @@ run_runtime_path() {
     log "=== Runtime path: dirs + missing configs only ==="
     create_directories
     bootstrap_configs
+    precompile_runtime_assets
     log "Runtime bootstrap complete"
 }
 
@@ -539,6 +562,7 @@ run_image_build_path() {
     install_apt_packages full
     setup_pnpm
     install_node_deps
+    precompile_runtime_assets
 }
 
 print_done_baremetal() {
