@@ -377,8 +377,9 @@ function buildWsLinks(serverHandlers, clientInbound, clientOutbound, serverOutbo
             return o.file === implRel || o.file === handler.file;
         });
 
-        const responseTypes = [...new Set(responses.map((r) => r.type))];
-        const inbounds = clientInbound.filter((c) => responseTypes.includes(c.type));
+        const responseTypesSet = new Set(responses.map((r) => r.type));
+        const responseTypes = [...responseTypesSet];
+        const inbounds = clientInbound.filter((c) => responseTypesSet.has(c.type));
 
         const callers = clientOutbound.filter((c) => c.type === handler.type);
 
@@ -399,13 +400,26 @@ function buildWsLinks(serverHandlers, clientInbound, clientOutbound, serverOutbo
     }
 
     // Orphan inbound (server push / no registered handler in scan)
+    const linkedResponseTypes = new Set();
+    for (const link of links) {
+        for (const type of link.responseTypes) {
+            linkedResponseTypes.add(type);
+        }
+    }
+    const serverOutboundByType = Object.create(null);
+    for (const o of serverOutbound) {
+        if (!serverOutboundByType[o.type]) serverOutboundByType[o.type] = [];
+        serverOutboundByType[o.type].push(o);
+    }
+
     for (const inbound of clientInbound) {
-        if (links.some((l) => l.responseTypes.includes(inbound.type))) continue;
+        if (linkedResponseTypes.has(inbound.type)) continue;
+        linkedResponseTypes.add(inbound.type);
         links.push({
             requestType: null,
             responseType: inbound.type,
             owner: 'orphan-inbound',
-            server: { responses: serverOutbound.filter((o) => o.type === inbound.type) },
+            server: { responses: serverOutboundByType[inbound.type] || [] },
             client: { inbounds: [inbound], callers: [] },
             responseTypes: [inbound.type]
         });
