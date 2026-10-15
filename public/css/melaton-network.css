@@ -530,11 +530,20 @@
 #melatonControlPanelModal .cpl-link {
     background: none;
     border: none;
+    border-radius: 0;
+    box-shadow: none;
+    min-width: 0;
+    min-height: 0;
     padding: 0;
     color: var(--cpl-link);
     font: inherit;
     text-align: left;
     cursor: var(--c-pointer);
+}
+
+#melatonControlPanelModal .cpl-link::before,
+#melatonControlPanelModal .cpl-link::after {
+    content: none;
 }
 
 #melatonControlPanelModal .cpl-link:hover {
@@ -620,21 +629,28 @@
     margin: 4px 0 0;
 }
 
-#melatonControlPanelModal .cpl-mail-options label {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+/* 7.css draws the box on input + label. The input stays in the tree for the label. */
+#melatonControlPanelModal .desktop-settings-check,
+#melatonControlPanelModal .cpl-mail-options > div {
+    position: relative;
 }
 
-#melatonControlPanelModal .cpl-mail-options input[type="checkbox"] {
-    appearance: auto;
-    -webkit-appearance: checkbox;
-    width: 16px;
-    height: 16px;
+#melatonControlPanelModal .cpl-content.win7 input[type="checkbox"] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
     margin: 0;
-    flex: none;
-    accent-color: #3c7fb1;
-    background: #fff;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+}
+
+#melatonControlPanelModal .win7 button.gallery-toggle-btn {
+    min-width: 45px;
+    min-height: 35px;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background: transparent;
+    border: none;
+    box-shadow: none;
 }
 
 #melatonControlPanelModal .cpl-map {
@@ -1478,12 +1494,20 @@ body.windows-classic-theme #melatonControlPanelModal .cpl-tasks {
 }
 
 #melatonControlPanelModal .cpl-wu-facts {
+    border: 0;
+    background: transparent;
+    table-layout: auto;
+    box-shadow: none;
     border-collapse: collapse;
 }
 
 #melatonControlPanelModal .cpl-wu-facts td {
+    border: 0;
+    height: auto;
+    overflow: visible;
     padding: 1px 12px 1px 0;
     vertical-align: top;
+    white-space: normal;
 }
 
 #melatonControlPanelModal .cpl-wu-facts td:first-child {
@@ -1829,7 +1853,9 @@ body.windows-classic-theme #melatonControlPanelModal .cpl-tasks {
 
 #melatonControlPanelModal .cpl-ua-choice {
     width: 58px;
+    min-width: 0;
     height: 58px;
+    min-height: 0;
     padding: 4px;
     background: none;
     border: 1px solid transparent;
@@ -2182,7 +2208,9 @@ body.windows-classic-theme #melatonControlPanelModal .cpl-tasks {
     align-items: center;
     gap: 6px;
     width: 100%;
+    min-width: 0;
     height: 22px;
+    min-height: 0;
     margin-top: 4px;
     padding: 0;
     background: none;
@@ -2190,6 +2218,11 @@ body.windows-classic-theme #melatonControlPanelModal .cpl-tasks {
     color: #1e3287;
     font: 12px var(--cpl-font);
     cursor: var(--c-default);
+}
+
+#melatonControlPanelModal .cpl-db-group-head::before,
+#melatonControlPanelModal .cpl-db-group-head::after {
+    content: none;
 }
 
 #melatonControlPanelModal .cpl-db-group-rule {
@@ -2229,6 +2262,9 @@ body.windows-classic-theme #melatonControlPanelModal .cpl-tasks {
     padding: 5px;
     border: 1px solid transparent;
     border-radius: 3px;
+    /* 7.css paints [role=option][aria-selected] blue, and aria-selected="false" still matches */
+    background: transparent;
+    color: inherit;
 }
 
 #melatonControlPanelModal .cpl-db-pic:hover {
@@ -2265,7 +2301,9 @@ body.windows-classic-theme #melatonControlPanelModal .cpl-tasks {
     top: 1px;
     right: 1px;
     width: 17px;
+    min-width: 0;
     height: 17px;
+    min-height: 0;
     padding: 0;
     background: linear-gradient(#f2f2f2 45%, #ebebeb 45%, #cfcfcf);
     border: 1px solid #707070;

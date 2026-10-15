@@ -210,11 +210,24 @@ async function applyWorkspaceCssFromServer(hash, webPath, options) {
     }
 }
 
+// Uploaded wallpapers overwrite /cache/wallpapers/<id>.png. A new token forces the
+// desktop to fetch the new bytes; the path in the workspace record does not change.
+const wallpaperReloadTokens = new Map();
+
+function noteWallpaperFileReload(wallpaperPath) {
+    if (!wallpaperPath || String(wallpaperPath).indexOf('wallpaper:') !== 0) return;
+    wallpaperReloadTokens.set(wallpaperPath, Date.now());
+}
+
 function applyDesktopWallpaperInline(wallpaperPath, wallpaperPosition) {
     // resolveWorkspaceWallpaperUrl: public/scripts/comp/modalUtils.js
-    const wallpaperUrl = resolveWorkspaceWallpaperUrl(wallpaperPath);
+    let wallpaperUrl = resolveWorkspaceWallpaperUrl(wallpaperPath);
     if (!wallpaperUrl) {
         return false;
+    }
+    const reloadToken = wallpaperReloadTokens.get(wallpaperPath);
+    if (reloadToken && wallpaperUrl.indexOf('/cache/wallpapers/') === 0) {
+        wallpaperUrl += '?v=' + reloadToken;
     }
     const position = wallpaperPosition || 'center';
     const wallpaperCss = formatCssUrl(wallpaperUrl);
@@ -229,6 +242,23 @@ function applyDesktopWallpaperInline(wallpaperPath, wallpaperPosition) {
         window.aeroGlass.refreshWallpaper();
     }
     return true;
+}
+
+// Paint the active workspace wallpaper now. Compiled workspaces.css can lag
+// (and a stale served copy used to win over the saved setting).
+function syncDesktopWallpaperInline(workspaceId) {
+    const workspace = workspaces && workspaces[workspaceId];
+    if (!workspace || !workspace.wallpaper) {
+        document.documentElement.style.removeProperty('--desktop-wallpaper');
+        document.documentElement.style.removeProperty('--desktop-wallpaper-position');
+        document.body.style.removeProperty('--desktop-wallpaper');
+        document.body.style.removeProperty('--desktop-wallpaper-position');
+        if (window.aeroGlass && window.aeroGlass.refreshWallpaper) {
+            window.aeroGlass.refreshWallpaper();
+        }
+        return;
+    }
+    applyDesktopWallpaperInline(workspace.wallpaper, workspace.wallpaperPosition);
 }
 
 const wallpaperMemoryImages = new Map();
@@ -891,17 +921,9 @@ async function switchWorkspaceTheme(workspaceId, skipAnimation = false) {
     }
     document.body.setAttribute('data-workspace', workspaceId);
 
-    // Inline boot wallpaper wins over [data-workspace] CSS. Keep it aligned
-    // with the workspace we just switched to if it is still present.
-    if (bodyHasInlineWallpaper() && workspaces[workspaceId]) {
-        applyEarlyWorkspaceThemeInline({
-            workspaceId: workspaceId,
-            wallpaper: workspaces[workspaceId].wallpaper,
-            wallpaperPosition: workspaces[workspaceId].wallpaperPosition,
-            color: workspaces[workspaceId].color,
-            backgroundColor: workspaces[workspaceId].backgroundColor
-        });
-    }
+    // Inline wallpaper wins over [data-workspace] CSS. Keep it on the workspace
+    // record so a stale compiled stylesheet cannot leave the previous picture up.
+    syncDesktopWallpaperInline(workspaceId);
     
     // Notify desktop shortcuts of workspace change and wait for it to complete
     if (desktopShortcuts && desktopShortcuts.handleWorkspaceChange) {
@@ -1142,6 +1164,10 @@ async function loadWorkspaces() {
                 backgroundColor: active.backgroundColor
             });
         }
+        // Re-apply after the compiled sheet is allowed to take over. The sheet's
+        // wallpaper variable loses to this inline value, including when the served
+        // CSS is still the previous picture.
+        syncDesktopWallpaperInline(activeWorkspace);
         // Re-enable wallpaper transitions now that the correct theme is painted
         document.body.classList.remove('wallpaper-boot');
 
@@ -1243,12 +1269,12 @@ async function startAutomaticBackgroundSystem() {
         await updateAutomaticBackground();
     }, 10000); // 10 seconds
     
-    // Initial background update - but only if gallery is ready
+    // Initial background update - but only if gallery is ready.
+    // Desktop gallery load is non-blocking (appInitSteps.js step 31), so this often runs first.
     if (isGalleryReady()) {
         updateAutomaticBackground();
     } else {
         console.log('🔄 Gallery not ready yet, will retry background setup when available');
-        // Set up a retry mechanism to wait for gallery
         setupBackgroundRetry();
     }
 }
@@ -1260,20 +1286,24 @@ function isGalleryReady() {
 
 // Set up retry mechanism for when gallery isn't ready
 function setupBackgroundRetry() {
-    // Check every 500ms if gallery is ready
+    const started = Date.now();
     const retryInterval = setInterval(() => {
         if (isGalleryReady()) {
             clearInterval(retryInterval);
-            // Now start the background system
             updateAutomaticBackground();
+            return;
+        }
+        // galleryImagesLoadTask: public/scripts/comp/galleryView.js
+        const loadStillRunning = typeof galleryImagesLoadTask !== 'undefined' && !!galleryImagesLoadTask;
+        if (!loadStillRunning) {
+            clearInterval(retryInterval);
+            return;
+        }
+        if (Date.now() - started >= 30000) {
+            clearInterval(retryInterval);
+            console.warn('⚠️ Gallery still loading after 30 seconds, background will catch up on the next cycle');
         }
     }, 500);
-    
-    // Give up after 30 seconds to prevent infinite retries
-    setTimeout(() => {
-        clearInterval(retryInterval);
-        console.warn('⚠️ Gallery not ready after 30 seconds, background system may not work properly');
-    }, 30000);
 }
 
 let lastBackgroundUrl = null;
@@ -2942,11 +2972,9 @@ function wireWorkspaceModalKeyboard() {
 // Register initialization steps with WebSocket client
 if (window.wsClient) {
     document.addEventListener('galleryUpdated', () => {
+        if (!isGalleryReady() || currentBackgroundImage) return;
         console.log('🔄 Gallery updated, ensuring background system is active');
-        if (isGalleryReady() && !currentBackgroundImage) {
-            // If we don't have a background image yet, set one now
-            ensureInitialBackgroundImage();
-        }
+        ensureInitialBackgroundImage();
     });
     
     window.wsClient.registerInitStep(11, 'Initializing workspace system', async () => {
@@ -3230,6 +3258,7 @@ function initializeWebSocketWorkspaceEvents() {
                             ? normalizeWallpaperPath(data.settings.wallpaper)
                             : data.settings.wallpaper;
                         styleUpdateNeeded = true;
+                        noteWallpaperFileReload(workspace.wallpaper);
                         const refreshUrl = resolveWorkspaceWallpaperUrl(workspace.wallpaper);
                         await syncWorkspaceWallpaperCache(refreshUrl ? [refreshUrl] : []);
                     }

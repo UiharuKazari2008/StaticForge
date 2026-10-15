@@ -241,9 +241,15 @@
             return this.app._fallbackTypeLabel ? this.app._fallbackTypeLabel(item) : 'File';
         }
 
-        /** Vista's row pitch: 19px in Details and List (the grid scrolls by it) */
+        /** Vista's own icon pitch. Extra Large 256, Large 96, Medium 48, Small 16,
+            plus the label. Details and List stay the 19px row. */
         modeMetrics(viewMode) {
-            return viewMode === 'details' || viewMode === 'list' ? { rowHeight: 19 } : null;
+            if (viewMode === 'details' || viewMode === 'list') return { rowHeight: 19 };
+            if (viewMode === 'icons-xl') return { rowHeight: 312, cellWidth: 272 };
+            if (viewMode === 'icons-lg') return { rowHeight: 152, cellWidth: 112 };
+            if (viewMode === 'icons-md') return { rowHeight: 104, cellWidth: 96 };
+            if (viewMode === 'icons-sm') return { rowHeight: 72, cellWidth: 88 };
+            return null;
         }
 
         /** 11/2/2006 8:24 AM */

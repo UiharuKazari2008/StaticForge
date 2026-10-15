@@ -63,7 +63,23 @@ class FakeNode {
         if (sel.startsWith('[')) { const k = sel.slice(1, -1).split('=')[0]; return (n) => k in n.attributes; }
         return (n) => n.tagName === sel.toUpperCase();
     }
-    querySelectorAll(sel) { const fns = sel.split(',').map((s) => this._match(s)); return this._all().filter((n) => fns.some((f) => f(n))); }
+    _matchesSelector(node, sel) {
+        const parts = sel.trim().split(/\s+/);
+        const last = parts.pop();
+        if (!this._match(last)(node)) return false;
+        let parent = node.parentNode;
+        for (let i = parts.length - 1; i >= 0; i--) {
+            const fn = this._match(parts[i]);
+            while (parent && !fn(parent)) parent = parent.parentNode;
+            if (!parent) return false;
+            parent = parent.parentNode;
+        }
+        return true;
+    }
+    querySelectorAll(sel) {
+        const groups = sel.split(',').map((s) => s.trim()).filter(Boolean);
+        return this._all().filter((n) => groups.some((group) => this._matchesSelector(n, group)));
+    }
     querySelector(sel) { return this.querySelectorAll(sel)[0] || null; }
     closest() { return null; }
     contains(n) { return n === this || this._all().includes(n); }
@@ -108,7 +124,51 @@ const context = vm.createContext(new Proxy(sandbox, {
 
 const { doveOpenReaderWindow, doveReaderWindows, ensureDesktopDovecoteModal, doveDisplayAddress, doveBareAddress, doveFormatAddressList } = vm.runInContext(src + '\n;({ doveOpenReaderWindow, doveReaderWindows, ensureDesktopDovecoteModal, doveDisplayAddress, doveBareAddress, doveFormatAddressList });', context, { filename: 'dovecote.js' });
 
-function main() {
+async function openReaderFromSidebarWithoutMainWindow() {
+    // The Mail gadget calls doveOpenReaderWindow before Dovecote itself has been opened,
+    // so desktopDovecoteEls is still null. The reader must show the message, not
+    // "Cannot read properties of null (reading 'rows')".
+    assert.strictEqual(document.getElementById('desktopDovecoteModal'), null);
+    sandbox.wsClient = {
+        sendMessage(type, message) {
+            if (type === 'dovecote_get_mail') {
+                return Promise.resolve({
+                    mail: {
+                        id: message.id,
+                        from: 'menma',
+                        to: ['yukimi'],
+                        cc: [],
+                        subject: 'Hello from Menma',
+                        body: 'plain',
+                        format: 'text',
+                        read: true,
+                        attachments: [],
+                        createdAt: '2026-10-14T18:00:00.000Z'
+                    }
+                });
+            }
+            if (type === 'dovecote_render_body') {
+                return Promise.resolve({ html: '<p>plain</p>', strippedCounts: {}, remoteImages: [] });
+            }
+            if (type === 'dovecote_list_mailboxes') {
+                return Promise.resolve({ mailboxes: [{ owner: 'yukimi', unread: 1 }] });
+            }
+            return Promise.resolve({ mail: [], mailboxes: [] });
+        }
+    };
+    doveOpenReaderWindow('mail-42');
+    for (let i = 0; i < 4; i++) await new Promise((resolve) => setImmediate(resolve));
+    delete sandbox.wsClient;
+    const state = doveReaderWindows.get('mail-42');
+    assert.strictEqual(state.els.oeSubject.textContent, 'Hello from Menma');
+    assert.strictEqual(state.els.oeFrom.textContent, 'menma@dream.co.jp');
+    assert.strictEqual(state.els.loadingHint.textContent.includes('rows'), false);
+    assert.strictEqual(document.getElementById('desktopDovecoteModal'), null);
+}
+
+async function main() {
+    await openReaderFromSidebarWithoutMainWindow();
+
     // Opening from the mail-row menu must not throw and must mount one reader window.
     assert.doesNotThrow(() => doveOpenReaderWindow('mail-42'));
     const readers = body.querySelectorAll('.dovecote-reader-window');
@@ -161,4 +221,7 @@ function main() {
     console.log('dovecote reader window open tests passed');
 }
 
-main();
+main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+});

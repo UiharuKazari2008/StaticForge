@@ -113,7 +113,7 @@
     function thumb(item, opts = {}) {
         const selected = (state.selected === undefined ? null : state.selected) === (item.url || null);
         return `
-            <div class="cpl-db-pic${selected ? ' is-selected' : ''}" role="option" tabindex="0" aria-selected="${selected}"
+            <div class="cpl-db-pic${selected ? ' is-selected' : ''}" tabindex="0"
                 data-cpl-db="pick" data-cpl-db-url="${esc(item.url || '')}" title="${esc(item.name || '')}">
                 <span class="cpl-db-frame"><img src="${esc(item.thumb)}" alt="" loading="lazy" draggable="false"></span>
                 ${opts.remove ? `<button type="button" class="cpl-db-remove" data-cpl-db="remove" data-cpl-db-id="${esc(item.id)}" title="Remove from Your Uploads" aria-label="Remove from Your Uploads"></button>` : ''}
@@ -155,7 +155,7 @@
                 <button type="button" class="cpl-wu-button" data-cpl-db="browse">Browse...</button>
                 <input type="file" accept="image/*" class="hidden" data-cpl-db-file>
             </div>
-            <div class="cpl-db-grid" role="listbox">${gridHtml()}</div>
+            <div class="cpl-db-grid">${gridHtml()}</div>
             <div class="cpl-db-footer">
                 <button type="button" class="cpl-wu-button" data-cpl-db="ok">OK</button>
                 <button type="button" class="cpl-wu-button" data-cpl-db="cancel">Cancel</button>
@@ -165,7 +165,22 @@
     function paint() {
         if (!main || !main.isConnected) return;
         const host = main.querySelector('.cpl-db-page');
-        if (host) host.innerHTML = html();
+        if (!host) return;
+        host.innerHTML = html();
+        // contextMenu.attachPickerMenu: public/scripts/comp/contextMenu.js
+        // Wire before the click. Attaching inside the click misses the mousedown that opens the menu.
+        const cm = root.contextMenu;
+        const locationBtn = host.querySelector('[data-cpl-db="location"]');
+        if (!cm || !locationBtn) return;
+        cm.attachPickerMenu(locationBtn, {
+            items: () => LOCATIONS.map(([id, text]) => ({ value: id, text })),
+            value: () => state.location,
+            onSelect: (id) => {
+                state.location = id;
+                const ready = id === 'uploads' ? loadUploads() : Promise.resolve();
+                ready.then(() => paint());
+            }
+        });
     }
 
     // ---- actions ----
@@ -203,9 +218,7 @@
         if (action === 'pick') {
             state.selected = el.dataset.cplDbUrl || null;
             main.querySelectorAll('.cpl-db-pic').forEach((p) => {
-                const on = p === el;
-                p.classList.toggle('is-selected', on);
-                p.setAttribute('aria-selected', on ? 'true' : 'false');
+                p.classList.toggle('is-selected', p === el);
             });
             return;
         }
@@ -213,22 +226,6 @@
             const key = el.dataset.cplDbGroup;
             if (state.collapsed.has(key)) state.collapsed.delete(key); else state.collapsed.add(key);
             el.closest('.cpl-db-group').classList.toggle('is-collapsed');
-            return;
-        }
-        if (action === 'location') {
-            const cm = root.contextMenu;
-            if (!cm) return;
-            cm.attachClickMenuToElement(el, {
-                position: 'anchor',
-                anchorAlign: 'start',
-                sections: [{ type: 'list', items: LOCATIONS.map(([id, text]) => ({ text, action: id, highlighted: id === state.location })) }],
-                onAction: async (id) => {
-                    state.location = id;
-                    if (id === 'uploads') await loadUploads();
-                    paint();
-                }
-            });
-            if (typeof cm.showMenu === 'function') cm.showMenu(ev, el);
             return;
         }
         if (action === 'browse') {

@@ -1342,7 +1342,10 @@ class VfsManager {
 
         items = await this._enrichListItemsMetadata(items, parsed);
 
-        items = this.filterItems(items, search);
+        // Pictures/Scraps already applied omegasearch plus filename match.
+        if (!parsed.skipNameFilter) {
+            items = this.filterItems(items, search);
+        }
         let listSortField = sortField;
         let listSortDirection = sortDirection;
         if (parsed.type === 'workspaces-list' && sortField === 'name') {
@@ -1362,6 +1365,46 @@ class VfsManager {
             hasMore: page.hasMore,
             emptyMessage
         };
+    }
+
+    /**
+     * Pictures and Scraps: OmegaSearch (search_tags and the other prompt indexes)
+     * plus a filename substring match. Trash stays excluded by the caller list.
+     */
+    async _filterWorkspaceGalleryFilenames(workspaceId, bucket, filenames, search) {
+        const list = Array.isArray(filenames) ? filenames : [];
+        const q = String(search || '').trim();
+        if (q.length < 2) return list;
+
+        const lower = q.toLowerCase();
+        const allowed = new Set(list);
+        const nameHit = new Set();
+        for (const filename of list) {
+            if (String(filename).toLowerCase().includes(lower)) nameHit.add(filename);
+        }
+
+        let tagHit = new Set();
+        const metadataDb = this.globalResources.getMetadataDatabase();
+        if (metadataDb) {
+            const viewType = bucket === 'scraps' ? 'scraps' : 'images';
+            try {
+                // searchFilesWithBlocks: modules/metadataDatabase.js
+                const rows = await metadataDb.searchFilesWithBlocks(q, null, viewType, {
+                    workspaceScope: {
+                        workspaceIds: [workspaceId],
+                        bucket
+                    }
+                });
+                tagHit = new Set((rows || []).map((row) => row && row.filename).filter((filename) => allowed.has(filename)));
+            } catch (error) {
+                console.warn('Workspace omegasearch failed, using filename match:', error.message);
+            }
+        }
+
+        if (tagHit.size === 0) {
+            return list.filter((filename) => nameHit.has(filename));
+        }
+        return list.filter((filename) => nameHit.has(filename) || tagHit.has(filename));
     }
 
     async _listSystemFolder(parsed, search) {
@@ -1399,8 +1442,8 @@ class VfsManager {
                 const imagesPath = this.globalResources.getPath('images');
                 let filenames = [...files].filter(f => !trashedTargets.has(`image:${f}`));
                 if (search && search.length >= 2) {
-                    const q = search.toLowerCase();
-                    filenames = filenames.filter(f => f.toLowerCase().includes(q));
+                    filenames = await this._filterWorkspaceGalleryFilenames(workspaceId, 'files', filenames, search);
+                    parsed.skipNameFilter = true;
                 }
                 return filenames.map(filename => {
                     let size = 0;
@@ -1509,8 +1552,12 @@ class VfsManager {
                 }));
             }
             case 'Scraps': {
-                const scraps = (await this._readWorkspaceGalleryFilenames(workspaceId, 'scraps'))
+                let scraps = (await this._readWorkspaceGalleryFilenames(workspaceId, 'scraps'))
                     .filter(f => !trashedTargets.has(`scrap:${f}`));
+                if (search && search.length >= 2) {
+                    scraps = await this._filterWorkspaceGalleryFilenames(workspaceId, 'scraps', scraps, search);
+                    parsed.skipNameFilter = true;
+                }
                 const pinnedSet = await this._listPinnedFilenameSet(workspaceId);
                 const imagesPath = this.globalResources.getPath('images');
                 return scraps.map(filename => {
@@ -1667,6 +1714,14 @@ class VfsManager {
                     targetKind: 'desktop-shortcut',
                     targetId: shortcut.id,
                     icon: 'fas fa-layer-group'
+                };
+            case 'remote-desktop':
+                return {
+                    ...base,
+                    kind: 'file',
+                    targetKind: 'desktop-shortcut',
+                    targetId: shortcut.id,
+                    icon: data.icon || 'fas fa-satellite-dish'
                 };
             default:
                 return {

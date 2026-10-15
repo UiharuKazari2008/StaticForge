@@ -359,14 +359,8 @@
             sw.forceRestart();
             return;
         }
-        if (typeof bypassConfirmation !== 'undefined') {
-            bypassConfirmation = true;
-        }
-        try {
-            window.location.reload();
-        } catch (_err) {
-            window.location.href = window.location.href;
-        }
+        // runWinlogonPower: public/scripts/comp/winlogonPower.js
+        runWinlogonPower('restart');
     }
 
     function startApplying() {

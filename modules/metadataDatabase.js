@@ -7059,6 +7059,8 @@ async function getBlockPromptUsages(blocks, filenamesFilter = null, options = {}
 const SUGGESTION_OVERUSE_MIN_CORPUS_FILES = 12;
 /** Tags/presets appearing on this fraction of corpus files (workspace or index) are treated as boilerplate. */
 const SUGGESTION_OVERUSE_FILE_COVERAGE = 0.7;
+/** Pull a wide occurrence pool, then drop noise and rank, so a rare workspace tag can outrank boilerplate. */
+const SUGGESTION_CANDIDATE_POOL = 400;
 
 function isDynamicallyOverusedTag(suggestion, corpusFileCount) {
     if (!corpusFileCount || corpusFileCount < SUGGESTION_OVERUSE_MIN_CORPUS_FILES) return false;
@@ -7130,10 +7132,32 @@ async function getTagSuggestionsFromDatabase(query, filenamesFilter = null, limi
         }
 
         const suggestions = [];
+        // isSearchSuggestionNoise: modules/generationQuipsManager.js
+        const { isSearchSuggestionNoise, MAX_UBIQUITY_RATIO } = require('./generationQuipsManager');
+        const candidatePool = Math.max(limit, SUGGESTION_CANDIDATE_POOL);
+        const dropUbiquitous = searchTerm.length === 0
+            && rankingCorpusFileCount >= SUGGESTION_OVERUSE_MIN_CORPUS_FILES;
+        const ubiquityHavingSql = dropUbiquitous
+            ? 'HAVING COUNT(DISTINCT filename) * 100 < ?'
+            : '';
+        const ubiquityHavingParams = dropUbiquitous
+            ? [Math.floor(rankingCorpusFileCount * MAX_UBIQUITY_RATIO * 100)]
+            : [];
+
+        const pushTagRow = (row) => {
+            suggestions.push({
+                type: 'tag',
+                tag: row.tag,
+                originalTag: row.original_tag,
+                totalWeight: row.totalWeight || 0,
+                occurrenceCount: row.occurrenceCount || 0,
+                files: []
+            });
+        };
 
         // Get tag suggestions
         if (searchTerm.length === 0) {
-            // Empty query - get most popular tags
+            // Empty query - wide pool, ubiquitous tags removed in SQL so they cannot fill the window
             const tagResults = await readHandle.all(`
                 SELECT 
                     tag,
@@ -7143,34 +7167,13 @@ async function getTagSuggestionsFromDatabase(query, filenamesFilter = null, limi
                 FROM search_tags
                 WHERE 1=1 ${filenameFilterClause}
                 GROUP BY tag, original_tag
+                ${ubiquityHavingSql}
                 ORDER BY occurrenceCount DESC, totalWeight DESC
                 LIMIT ?
-            `, [...filenameParams, limit]);
-            
+            `, [...filenameParams, ...ubiquityHavingParams, candidatePool]);
+
             for (const row of tagResults) {
-                // Get sample files for this tag (for preview images)
-                const fileSamples = await readHandle.all(`
-                    SELECT DISTINCT filename, weight
-                    FROM search_tags
-                    WHERE tag = ? AND original_tag = ? ${filenameFilterClause}
-                    ORDER BY ABS(weight) DESC
-                    LIMIT 5
-                `, [row.tag, row.original_tag, ...filenameParams]);
-                
-                const files = fileSamples.map(f => ({
-                    filename: f.filename,
-                    weight: f.weight,
-                    metadata: null
-                }));
-                
-                suggestions.push({
-                    type: 'tag',
-                    tag: row.tag,
-                    originalTag: row.original_tag,
-                    totalWeight: row.totalWeight || 0,
-                    occurrenceCount: row.occurrenceCount || 0,
-                    files: files
-                });
+                pushTagRow(row);
             }
         } else {
             // Search for matching tags
@@ -7185,32 +7188,10 @@ async function getTagSuggestionsFromDatabase(query, filenamesFilter = null, limi
                 GROUP BY tag, original_tag
                 ORDER BY occurrenceCount DESC, totalWeight DESC
                 LIMIT ?
-            `, [`%${searchTerm}%`, ...filenameParams, limit]);
-            
+            `, [`%${searchTerm}%`, ...filenameParams, candidatePool]);
+
             for (const row of tagResults) {
-                // Get sample files for this tag (for preview images)
-                const fileSamples = await readHandle.all(`
-                    SELECT DISTINCT filename, weight
-                    FROM search_tags
-                    WHERE tag = ? AND original_tag = ? ${filenameFilterClause}
-                    ORDER BY ABS(weight) DESC
-                    LIMIT 5
-                `, [row.tag, row.original_tag, ...filenameParams]);
-                
-                const files = fileSamples.map(f => ({
-                    filename: f.filename,
-                    weight: f.weight,
-                    metadata: null
-                }));
-                
-                suggestions.push({
-                    type: 'tag',
-                    tag: row.tag,
-                    originalTag: row.original_tag,
-                    totalWeight: row.totalWeight || 0,
-                    occurrenceCount: row.occurrenceCount || 0,
-                    files: files
-                });
+                pushTagRow(row);
             }
 
             // Also search full text
@@ -7284,7 +7265,18 @@ async function getTagSuggestionsFromDatabase(query, filenamesFilter = null, limi
             }
         }
 
-        suggestions.sort((a, b) => {
+        const ranked = suggestions.filter((suggestion) => {
+            const type = suggestion.type || 'tag';
+            if (type !== 'tag' && type !== 'preset') return true;
+            return !isSearchSuggestionNoise(
+                suggestion.originalTag || suggestion.tag,
+                rankingCorpusFileCount,
+                suggestion.occurrenceCount || 0,
+                searchTerm
+            );
+        });
+
+        ranked.sort((a, b) => {
             const scoreA = computeTagSuggestionRankScore(a, rankingCorpusFileCount);
             const scoreB = computeTagSuggestionRankScore(b, rankingCorpusFileCount);
             if (scoreB !== scoreA) return scoreB - scoreA;
@@ -7296,7 +7288,24 @@ async function getTagSuggestionsFromDatabase(query, filenamesFilter = null, limi
             return (a.originalTag || a.tag || '').localeCompare(b.originalTag || b.tag || '');
         });
 
-        return suggestions.slice(0, limit);
+        const kept = ranked.slice(0, limit);
+        for (const suggestion of kept) {
+            if (suggestion.type !== 'tag') continue;
+            const fileSamples = await readHandle.all(`
+                SELECT DISTINCT filename, weight
+                FROM search_tags
+                WHERE tag = ? AND original_tag = ? ${filenameFilterClause}
+                ORDER BY ABS(weight) DESC
+                LIMIT 5
+            `, [suggestion.tag, suggestion.originalTag, ...filenameParams]);
+            suggestion.files = fileSamples.map((file) => ({
+                filename: file.filename,
+                weight: file.weight,
+                metadata: null
+            }));
+        }
+
+        return kept;
 
     } catch (error) {
         logger.error('Error getting tag suggestions from database:', error);

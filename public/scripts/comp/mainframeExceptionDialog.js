@@ -226,8 +226,9 @@
 
     function quit() {
         close();
-        // restartClientNavigate: public/scripts/comp/modalUtils.js (shutdown fade → /launch)
-        if (typeof root.restartClientNavigate === 'function') root.restartClientNavigate();
+        // runWinlogonPower: public/scripts/comp/winlogonPower.js
+        if (typeof root.runWinlogonPower === 'function') root.runWinlogonPower('restart');
+        else if (typeof root.restartClientNavigate === 'function') root.restartClientNavigate();
         else if (root.location) root.location.reload();
     }
 

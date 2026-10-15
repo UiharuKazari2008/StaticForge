@@ -803,24 +803,10 @@ function toggleDevWarningsTrayPopup() {
 }
 
 function updateDevWarningsTrayIcon() {
-    const icon = ensureDevWarningsTrayIcon();
-    if (!icon) return;
-
-    const total = keyboardDevWarnings.length + keyboardDirectListenerWarnings.length;
-    if (total > 0) {
-        icon.classList.remove('hidden');
-        icon.classList.add('has-warnings');
-        icon.title = `${total} developer warning${total === 1 ? '' : 's'} — click to open in Periscope`;
-    } else {
-        icon.classList.add('hidden');
-        icon.classList.remove('has-warnings');
-        icon.title = 'Developer warnings';
-    }
+    // Periscope keeps the warnings (devWarningsLogApi, logViewerApplet). No tray icon.
 }
 
 function wireDevWarningsTrayIcon() {
-    ensureDevWarningsTrayIcon();
-    updateDevWarningsTrayIcon();
 }
 
 function onModalKeyboardModalOpened(modal) {

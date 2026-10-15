@@ -88,6 +88,18 @@
     min-width: 0;
 }
 
+/* Wallpaper position menus use the Vista combo (cpl-db-combo in melaton-network.css). */
+#melatonControlPanelModal .wallpaper-controls .cpl-db-combo {
+    width: 100%;
+    min-width: 0;
+}
+
+#melatonControlPanelModal .wallpaper-controls .cpl-db-combo::before,
+#melatonControlPanelModal .cpl-db-page .cpl-db-combo::before,
+#melatonControlPanelModal .desktop-settings-actions .cpl-wu-button::before {
+    content: none;
+}
+
 .form-section-separator {
     height: 1px;
     background: linear-gradient(90deg,
@@ -165,12 +177,14 @@
 }
 
 :is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-start-menu-style-toggle[data-active="workspace"] .gallery-toggle-slider,
+:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-start-menu-style-toggle[data-active="vista"] .gallery-toggle-slider,
 :is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-glass-mode-toggle[data-active="live"] .gallery-toggle-slider,
 #remoteAccessSettingsModal .desktop-settings-start-menu-style-toggle[data-active="lumen"] .gallery-toggle-slider {
     transform: translateX(calc(100% + 1px));
 }
 
 :is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-start-menu-style-toggle[data-active="orb"] .gallery-toggle-slider,
+:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-start-menu-style-toggle[data-active="dreamscape"] .gallery-toggle-slider,
 :is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-glass-mode-toggle[data-active="basic"] .gallery-toggle-slider {
     transform: translateX(calc(200% + 2px));
 }
@@ -378,6 +392,10 @@
     height: 31px;
 }
 
+.start-btn-text-preview-taskbar:has(.taskbar-start-button.luna) {
+    height: 33px;
+}
+
 .start-btn-text-preview-taskbar {
     overflow: visible;
 }
@@ -388,6 +406,18 @@
 
 .start-btn-text-preview-taskbar .taskbar-start-button {
     pointer-events: none;
+}
+
+/* 7.css button chrome must not restyle the preview (the real button rules live in desktop-shell.css) */
+#melatonControlPanelModal .taskbar-start-button {
+    min-height: 0;
+    font: inherit;
+    text-align: start;
+}
+
+#melatonControlPanelModal .taskbar-start-button:not(.luna)::before,
+#melatonControlPanelModal .taskbar-start-button::after {
+    content: none;
 }
 
 .start-menu-text-setting {

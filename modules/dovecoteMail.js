@@ -48,6 +48,28 @@ function isBotOwner(owner) {
     return typeof owner === 'string' && BOT_OWNER_SET.has(owner);
 }
 
+// One listener, set by the WS handler (modules/ws/handlers/250-dovecoteHandler.js).
+// MCP and browser writes both land here, so a mailbox change pushes once.
+let mailboxChangedListener = null;
+
+function setMailboxChangedListener(listener) {
+    mailboxChangedListener = typeof listener === 'function' ? listener : null;
+}
+
+function emitMailboxChanged(owners) {
+    if (!mailboxChangedListener) return;
+    const unique = [];
+    (owners || []).forEach((owner) => {
+        if (isValidOwner(owner) && !unique.includes(owner)) unique.push(owner);
+    });
+    if (!unique.length) return;
+    try {
+        mailboxChangedListener(unique);
+    } catch (err) {
+        console.error('Dovecote mailbox listener failed:', err.message);
+    }
+}
+
 // Maps a resolved caller identity (bot name / Xi active runtime) to a mailbox
 // owner. Never maps anything to the human mailbox — only send_mail/mark_mail/
 // forward_mail reaching Yukimi's own mailbox go through the WS path, which
@@ -362,12 +384,13 @@ function getAttachment(owner, attachmentId) {
 // own already-read sent-folder copy "read" again would wrongly stamp
 // recipient_read_at, as if a recipient had opened it.
 function markPairedReadReceipt(owner, row) {
-    if (!row || !row.paired_message_id) return;
+    if (!row || !row.paired_message_id) return null;
     const toList = ownerList(row.to_list, row.to_owner);
-    if (!toList.includes(owner)) return;
-    getDb().prepare(
-        `UPDATE dovecote_message SET recipient_read_at = ? WHERE id = ? AND recipient_read_at IS NULL`
-    ).run(nowIso(), row.paired_message_id);
+    if (!toList.includes(owner)) return null;
+    const updated = getDb().prepare(
+        `UPDATE dovecote_message SET recipient_read_at = ? WHERE id = ? AND recipient_read_at IS NULL RETURNING owner`
+    ).get(nowIso(), row.paired_message_id);
+    return updated ? updated.owner : null;
 }
 
 /**
@@ -432,6 +455,7 @@ function sendMail({ fromOwner, to, cc, subject, body, format, replyToId, attachm
     writeCopies();
 
     audit(fromOwner, 'send_mail', sentId, true, `to=${toList.join(',')} cc=${ccList.join(',')}`);
+    emitMailboxChanged([fromOwner, ...delivered]);
     return { id: sentId, threadId, to: toList, cc: ccList };
 }
 
@@ -467,7 +491,8 @@ function readMail(owner, id) {
     if (!row.read) {
         getDb().prepare('UPDATE dovecote_message SET read = 1, updated_at = ? WHERE id = ?').run(nowIso(), row.id);
         row.read = 1;
-        markPairedReadReceipt(owner, row);
+        const receiptOwner = markPairedReadReceipt(owner, row);
+        emitMailboxChanged([owner, receiptOwner]);
     }
     audit(owner, 'read_mail', id, true, null);
     return toFull(row);
@@ -488,7 +513,7 @@ function markMail(owner, { id, read, archived, deleted, archiveSubfolder }) {
     }
     const updates = { updated_at: nowIso() };
     if (typeof read === 'boolean') updates.read = read ? 1 : 0;
-    if (read === true) markPairedReadReceipt(owner, row);
+    const receiptOwner = read === true ? markPairedReadReceipt(owner, row) : null;
     if (deleted === true) {
         updates.folder = 'deleted';
         updates.deleted_at = nowIso();
@@ -504,6 +529,7 @@ function markMail(owner, { id, read, archived, deleted, archiveSubfolder }) {
     const values = Object.values(updates);
     getDb().prepare(`UPDATE dovecote_message SET ${sets} WHERE id = ?`).run(...values, row.id);
     audit(owner, 'mark_mail', id, true, JSON.stringify(updates));
+    emitMailboxChanged([owner, receiptOwner]);
     const updated = getDb().prepare('SELECT * FROM dovecote_message WHERE id = ?').get(row.id);
     return toSummary(updated);
 }
@@ -536,6 +562,7 @@ function forwardMail(owner, { id, to }) {
     // never takes the other's attachments with it.
     duplicateMessageAttachments(source.id, newId, source.attachments);
     audit(owner, 'forward_mail', newId, true, `to=${toOwner} source=${id}`);
+    emitMailboxChanged([toOwner]);
     return { id: newId, to: toOwner };
 }
 
@@ -557,6 +584,7 @@ function permanentlyDeleteMail(owner, id) {
     removeMessageAttachmentDir(row.id);
     cleanupOrphanedAttachmentMeta(row.attachments);
     audit(owner, 'permanently_delete_mail', id, true, null);
+    emitMailboxChanged([owner]);
     return { id: row.id, permanentlyDeleted: true };
 }
 
@@ -597,6 +625,7 @@ module.exports = {
     isValidOwner,
     isBotOwner,
     resolveOwnerFromActor,
+    setMailboxChangedListener,
     sendMail,
     listMail,
     readMail,

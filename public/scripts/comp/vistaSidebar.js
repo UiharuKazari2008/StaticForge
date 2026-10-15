@@ -7,11 +7,17 @@
  *   sidebar_random_image              Slide Show and Picture Puzzle (workspace images or favorites)
  *   sidebar_weather                   Weather from the client IP, like dynamic generation
  *   sidebar_host_metrics              CPU Meter, the same host figures as Periscope
- * Mail reads Dovecote (dovecote_list_mail / dovecote_list_mailboxes).
+ *   sidebar_fx                        Currency (ECB rates)
+ *   sidebar_quotes                    Stocks
+ *   sidebar_feed                      Feed Headlines (https feeds only)
+ * Mail and Sidebar Outlook read Dovecote (dovecote_list_mail / dovecote_list_mailboxes).
+ * Calculator, Desktop Calculator, Timer, HTC Hero Clock, Clipboard, and Contacts are client-only.
  *
  * Layers: #vistaSidebar holds the pane and every desktop gadget; each is position: fixed with
  * its own z-index (public/css/vista-sidebar.css), so the pane and "Always on Top" gadgets can
- * sit above windows while the rest stay under them.
+ * sit above windows while the rest stay under them. The planet switcher
+ * (public/scripts/comp/planetSwitcher.js) drops them under windows, scales them with the
+ * desktop, and slides them right as they fade out.
  */
 
 const VSB_ASSETS = '/static_images/vista-sidebar/';
@@ -109,12 +115,22 @@ const vsbLoadImage = function (url) {
 
 const VSB_GADGETS = {
     calendar: { title: 'Calendar', icon: 'calendar/icon.png', desc: 'Browse the days of the calendar.', author: 'Microsoft Corporation' },
+    calculator: { title: 'Calculator', icon: 'calculator/icon.png', desc: 'Perform basic arithmetic tasks with this calculator.', author: 'Microsoft Corporation', options: true },
+    clipboard: { title: 'Clipboard', icon: 'clipboard/icon.png', desc: 'Keep the text you copy in Dreamscape and paste it back with one click.', author: 'Jan Zeman' },
     clock: { title: 'Clock', icon: 'clock/icon.png', desc: 'Watch the clock in your own time zone or any city in the world.', author: 'Microsoft Corporation', options: true },
+    contacts: { title: 'Contacts', icon: 'contacts/icon.png', desc: 'Keep names, e-mail addresses, and phone numbers on the Sidebar.', author: 'Microsoft Corporation', options: true },
     cpu: { title: 'CPU Meter', icon: 'cpu/icon.png', desc: 'See the server\'s current CPU and system memory (RAM), the same figures as Periscope.', author: 'Microsoft Corporation' },
+    currency: { title: 'Currency', icon: 'currency/icon.png', desc: 'Convert an amount from one currency to another.', author: 'Microsoft Corporation' },
+    deskcalc: { title: 'Desktop Calculator', icon: 'deskcalc/icon.png', desc: 'A calculator for the Sidebar. Undock it for scientific keys.', author: 'Home Cooked Gadgets', options: true },
+    feed: { title: 'Feed Headlines', icon: 'feed/icon.png', desc: 'See headlines from a web feed. Click a headline to open it.', author: 'Microsoft Corporation', options: true },
+    hero: { title: 'HTC Hero Clock', icon: 'hero/icon.png', desc: 'Nine clock faces based on the HTC Hero.', author: 'Marc22', options: true },
     mail: { title: 'Mail', iconUrl: '/static_images/app_icons/vista-mail.webp', desc: 'See your latest Dovecote Inbox messages and how many are unread. Click a message to read it.', author: 'Dreamscape', options: true },
+    outlook: { title: 'Sidebar Outlook', icon: 'outlook/icon.png', desc: 'Watch your Dovecote Inbox from the desktop. Click a message to read it.', author: 'Edward J. Boelzner', options: true },
     notes: { title: 'Notes', icon: 'notes/icon.png', desc: 'Capture ideas, notes, and reminders in a quick and easy way.', author: 'Microsoft Corporation', options: true },
     puzzle: { title: 'Picture Puzzle', icon: 'puzzle/icon.png', desc: 'Move the pieces of the puzzle and try to put them in order. The picture comes from this workspace.', author: 'Microsoft Corporation', options: true },
     slideshow: { title: 'Slide Show', icon: 'slideshow/icon.png', desc: 'Show a continuous slide show of the pictures in this workspace.', author: 'Microsoft Corporation', options: true },
+    stocks: { title: 'Stocks', icon: 'stocks/icon.png', desc: 'Watch the latest price of the symbols you choose.', author: 'Microsoft Corporation', options: true },
+    timer: { title: 'Timer', icon: 'timer/icon.png', desc: 'Use this countdown timer to time almost anything.', author: 'Microsoft Corporation' },
     weather: { title: 'Weather', icon: 'weather/icon.png', desc: 'See what the weather looks like where you are.', author: 'Microsoft Corporation', options: true }
 };
 
@@ -133,6 +149,14 @@ const VSB_CLOCK_THEMES = [
     ['square', 'square', 'Calibri, "Segoe UI", sans-serif', '#000000', 9, 0, 0, 70, 13, 129, -1, 57],
     ['novelty', null, 'Calibri, "Segoe UI", sans-serif', '#6dadff', 10, 18, 0, 60, 7, 81, 46, 59]
 ];
+
+const VSB_HERO_THEMES = ['blue1', 'blue2', 'blue3', 'newv1', 'newv2', 'wmc', 'live', 'wmp', 'cd'].map((name) => (
+    [name, null, '"Segoe UI", sans-serif', '#ffffff', 9, -8, 0, 100, 13, 129, 0, 58]
+));
+
+const vsbClockPack = (inst) => (inst.g.type === 'hero'
+    ? { themes: VSB_HERO_THEMES, asset: 'hero/' }
+    : { themes: VSB_CLOCK_THEMES, asset: 'clock/' });
 
 let vsbTimeZoneList = null;
 
@@ -176,13 +200,14 @@ const vsbClockMount = function (inst) {
 
 const vsbClockApply = function (inst) {
     const set = inst.g.settings;
-    const t = VSB_CLOCK_THEMES[set.theme] || VSB_CLOCK_THEMES[0];
+    const pack = vsbClockPack(inst);
+    const t = pack.themes[set.theme] || pack.themes[0];
     const p = inst.parts;
-    p.face.style.backgroundImage = `url(${VSB_ASSETS}clock/${t[0]}.png)`;
-    p.highlights.src = VSB_ASSETS + 'clock/' + (t[1] || 'spacer') + '_highlights.png';
+    p.face.style.backgroundImage = `url(${VSB_ASSETS}${pack.asset}${t[0]}.png)`;
+    p.highlights.src = t[1] ? `${VSB_ASSETS}${pack.asset}${t[1]}_highlights.png` : `${VSB_ASSETS}clock/spacer_highlights.png`;
     p.highlights.classList.toggle('hidden', !t[1]);
     ['h', 'm', 's', 'dot'].forEach((k) => {
-        p[k].src = `${VSB_ASSETS}clock/${t[0]}_${k}.png`;
+        p[k].src = `${VSB_ASSETS}${pack.asset}${t[0]}_${k}.png`;
         Object.assign(p[k].style, { width: t[8] + 'px', height: t[9] + 'px', top: t[10] + 'px', left: t[11] + 'px' });
     });
     p.s.classList.toggle('hidden', !set.seconds);
@@ -224,9 +249,11 @@ const vsbClockOptions = {
             <div><input type="checkbox" id="vsbClockSeconds"${set.seconds ? ' checked' : ''}><label for="vsbClockSeconds">Show the second hand</label></div>
         </div>`;
     },
-    ready(dialog, set) {
-        vsbStepperReady(dialog, set.theme, VSB_CLOCK_THEMES.length, '#vsbClockPreview', '#vsbClockThemeCount',
-            (i) => `url(${VSB_ASSETS}clock/${VSB_CLOCK_THEMES[i][0]}_settings.png)`);
+    ready(dialog, set, inst) {
+        const pack = vsbClockPack(inst);
+        const theme = Math.max(0, Math.min(set.theme, pack.themes.length - 1));
+        vsbStepperReady(dialog, theme, pack.themes.length, '#vsbClockPreview', '#vsbClockThemeCount',
+            (i) => `url(${VSB_ASSETS}${pack.asset}${pack.themes[i][0]}_settings.png)`);
     },
     read(dialog, set) {
         return {
@@ -420,8 +447,17 @@ const vsbCpuPoll = async function (inst) {
 // ---------------------------------------------------------------- notes
 
 const VSB_NOTE_COLORS = ['yellow', 'blue', 'green', 'pink', 'purple', 'white'];
-const VSB_NOTE_FONTS = ['Segoe Print', 'Segoe Script', 'Segoe UI', 'Calibri', 'Cambria', 'Consolas', 'Constantia', 'Corbel', 'Arial', 'Times New Roman'];
-const VSB_NOTE_SIZES = [[12, '9'], [13, '10'], [15, '11'], [16, '12'], [18, '14'], [20, '15'], [22, '16']];
+const VSB_NOTE_FONTS = [
+    'Segoe Print', 'Segoe Script', 'Segoe UI', 'Calibri', 'Cambria', 'Candara', 'Consolas', 'Constantia', 'Corbel',
+    'Arial', 'Tahoma', 'Verdana', 'Georgia', 'Times New Roman', 'Courier New', 'Comic Sans MS',
+    'Noto Sans', 'Atkinson Hyperlegible Next', 'Trebuchet MS',
+    'Zen Kurenaido', 'Kaisei Decol', 'Zen Antique', 'Solway', 'Eczar', 'Bodoni Moda', 'Texturina',
+    'Share Tech Mono', 'DotGothic16'
+];
+/* value is px, label is the point size. Large sizes are only offered while the note is undocked. */
+const VSB_NOTE_SIZES = [[8, '6'], [9, '7'], [11, '8'], [12, '9'], [13, '10'], [15, '11'], [16, '12'], [18, '14'], [20, '15'], [22, '16']];
+const VSB_NOTE_SIZES_LARGE = [[24, '18'], [27, '20'], [32, '24'], [37, '28'], [48, '36']];
+const VSB_NOTE_SIZE_MAX_DOCKED = 22;
 
 const vsbNotesMount = function (inst) {
     const note = vsbEl('div', 'vsb-notes', inst.body);
@@ -439,6 +475,7 @@ const vsbNotesMount = function (inst) {
 
     const set = () => inst.g.settings;
     area.addEventListener('input', () => {
+        if (set().readOnly) return;
         if (set().noteId) {
             inst.notionDirty = true;
             clearTimeout(inst.notionTimer);
@@ -486,12 +523,21 @@ const vsbNotesMount = function (inst) {
     vsbNotesApply(inst);
 };
 
+const vsbNotesPx = function (inst) {
+    const listed = VSB_NOTE_SIZES.concat(VSB_NOTE_SIZES_LARGE);
+    const size = Number(inst.g.settings.size);
+    const px = listed.some(([n]) => n === size) ? size : 12;
+    if (inst.g.docked) return Math.min(px, VSB_NOTE_SIZE_MAX_DOCKED);
+    return px <= VSB_NOTE_SIZE_MAX_DOCKED ? Math.round(px * 1.3) : px;
+};
+
 const vsbNotesApply = function (inst) {
     const s = inst.g.settings;
     const p = inst.parts;
     p.note.style.backgroundImage = `url(${VSB_ASSETS}notes/sticky_${s.color}${inst.g.docked ? '_docked' : ''}.png)`;
     p.area.style.fontFamily = `"${s.font}", "Segoe UI", sans-serif`;
-    p.area.style.fontSize = (inst.g.docked ? s.size : Math.round(s.size * 1.3)) + 'px';
+    p.area.style.fontSize = vsbNotesPx(inst) + 'px';
+    p.area.readOnly = !!s.readOnly;
     p.note.classList.toggle('is-linked', !!s.noteId);
     if (s.noteId) {
         p.area.removeAttribute('maxlength');
@@ -503,8 +549,7 @@ const vsbNotesApply = function (inst) {
         return;
     }
     inst.linkedId = null;
-    p.area.readOnly = false;
-    p.area.title = '';
+    p.area.title = s.readOnly ? 'Read only' : '';
     p.area.maxLength = 1000;
     vsbNotesPaint(inst);
 };
@@ -521,7 +566,7 @@ const vsbNotesLoadLinked = async function (inst) {
     }
     if (inst.destroyed || inst.g.settings.noteId !== id || inst.notionDirty) return;
     const area = inst.parts.area;
-    area.readOnly = !note;
+    area.readOnly = !note || !!inst.g.settings.readOnly;
     area.title = note ? `Notion: ${note.name || 'Untitled'}` : '';
     const content = note ? (note.content || '') : 'This Notion note is no longer available.';
     if (area.value !== content) area.value = content;
@@ -560,18 +605,26 @@ const vsbNotesPaint = function (inst) {
 };
 
 const vsbNotesOptions = {
-    html(set) {
+    html(set, inst) {
+        const docked = !inst || inst.g.docked;
+        const sizes = docked ? VSB_NOTE_SIZES.slice() : VSB_NOTE_SIZES.concat(VSB_NOTE_SIZES_LARGE);
+        const known = VSB_NOTE_SIZES.concat(VSB_NOTE_SIZES_LARGE);
+        if (!sizes.some(([px]) => px === Number(set.size))) {
+            const hit = known.find(([px]) => px === Number(set.size));
+            if (hit) sizes.push(hit);
+        }
         return `<div class="vsb-options vsb-notes-options">
             <div class="vsb-options-preview">
                 <span class="vsb-options-arrow" data-vsb-step="-1" title="Previous"></span>
-                <div class="vsb-options-preview-image vsb-notes-preview" id="vsbNotesPreview"></div>
+                <div class="vsb-options-preview-image vsb-notes-preview" id="vsbNotesPreview"><span class="vsb-notes-font-preview" id="vsbNotesFontPreview">The quick brown fox</span></div>
                 <span class="vsb-options-arrow vsb-options-arrow-next" data-vsb-step="1" title="Next"></span>
             </div>
             <div class="vsb-options-count" id="vsbNotesColorCount"></div>
             <div class="group"><label for="vsbNotesFont">Font:</label>
                 <select id="vsbNotesFont">${vsbOptions(VSB_NOTE_FONTS.map((f) => [f, f]), set.font)}</select></div>
             <div class="group"><label for="vsbNotesSize">Size:</label>
-                <select id="vsbNotesSize">${vsbOptions(VSB_NOTE_SIZES, set.size)}</select></div>
+                <select id="vsbNotesSize">${vsbOptions(sizes, set.size)}</select></div>
+            <div><input type="checkbox" id="vsbNotesReadOnly"${set.readOnly ? ' checked' : ''}><label for="vsbNotesReadOnly">Read only</label></div>
             <div class="group"><label for="vsbNotesLink">Show a Notion note:</label>
                 <select id="vsbNotesLink"><option value="">None (notes kept in this gadget)</option>${set.noteId ? `<option value="${escapeHtmlAttribute(set.noteId)}" selected>Loading...</option>` : ''}</select></div>
         </div>`;
@@ -579,6 +632,16 @@ const vsbNotesOptions = {
     ready(dialog, set) {
         vsbStepperReady(dialog, Math.max(0, VSB_NOTE_COLORS.indexOf(set.color)), VSB_NOTE_COLORS.length, '#vsbNotesPreview', '#vsbNotesColorCount',
             (i) => `url(${VSB_ASSETS}notes/sticky_${VSB_NOTE_COLORS[i]}_docked.png)`);
+        const preview = dialog.querySelector('#vsbNotesFontPreview');
+        const fontSelect = dialog.querySelector('#vsbNotesFont');
+        const sizeSelect = dialog.querySelector('#vsbNotesSize');
+        const paintFont = () => {
+            preview.style.fontFamily = `"${fontSelect.value}", "Segoe UI", sans-serif`;
+            preview.style.fontSize = (Number(sizeSelect.value) || 12) + 'px';
+        };
+        fontSelect.addEventListener('change', paintFont);
+        sizeSelect.addEventListener('change', paintFont);
+        paintFont();
         const select = dialog.querySelector('#vsbNotesLink');
         // getNotesByWorkspace: public/scripts/websocket.js; novels keep a session, not plain text
         wsClient.getNotesByWorkspace(activeWorkspace).then((res) => {
@@ -592,6 +655,7 @@ const vsbNotesOptions = {
             color: VSB_NOTE_COLORS[Number(dialog.querySelector('#vsbNotesPreview').dataset.index)],
             font: dialog.querySelector('#vsbNotesFont').value,
             size: Number(dialog.querySelector('#vsbNotesSize').value),
+            readOnly: dialog.querySelector('#vsbNotesReadOnly').checked,
             noteId: dialog.querySelector('#vsbNotesLink').value
         };
     }
@@ -804,11 +868,7 @@ const vsbSlideMount = function (inst) {
         play.title = inst.paused ? 'Play' : 'Pause';
         vsbSlideSchedule(inst);
     });
-    reveal.addEventListener('click', () => {
-        const item = inst.history[inst.cursor];
-        // showLightbox: public/scripts/comp/lightbox.js
-        if (item) showLightbox({ url: resolveGalleryFullImageUrl(item), width: item.width, height: item.height });
-    });
+    reveal.addEventListener('click', () => { vsbSlideOpenGlancewell(inst); });
     view.addEventListener('click', () => vsbSlideFlyout(inst));
     vsbSlideApply(inst);
 };
@@ -859,6 +919,41 @@ const vsbSlideResizeStart = function (e, inst) {
     grip.addEventListener('pointermove', move);
     grip.addEventListener('pointerup', end);
     grip.addEventListener('pointercancel', end);
+};
+
+/** Match a frame picture against the gallery rows already in memory. */
+const vsbGalleryHit = function (names) {
+    const lists = [];
+    if (Array.isArray(allImages)) lists.push(allImages);
+    if (typeof originalAllImages !== 'undefined' && Array.isArray(originalAllImages)) lists.push(originalAllImages);
+    for (let i = 0; i < lists.length; i++) {
+        const hit = lists[i].find((img) => img && names.some((name) => img.filename === name || img.original === name || img.upscaled === name));
+        if (hit) return hit;
+    }
+    return null;
+};
+
+const vsbSlideOpenGlancewell = function (inst) {
+    const image = vsbSlideImage(inst);
+    if (!image) return;
+    const names = [image.upscaled, image.original, image.filename].filter(Boolean);
+    const hit = vsbGalleryHit(names);
+    // showLightbox: public/scripts/comp/lightbox.js
+    if (hit) {
+        showLightbox({ filename: hit.filename || hit.upscaled || hit.original });
+        return;
+    }
+    // Workspaces defers its catalog until the window opens (galleryImagesLoad.js),
+    // so the frame's picture is often not in allImages yet. Open that file directly.
+    // resolveGalleryFullImageUrl: public/scripts/comp/assetUrlResolver.js
+    const item = inst.history[inst.cursor];
+    const url = resolveGalleryFullImageUrl(item || image);
+    if (!url) return;
+    showLightbox({
+        url,
+        width: (item && item.width) || image.width,
+        height: (item && item.height) || image.height
+    });
 };
 
 /** The picture on screen as the gallery's own image object when it is loaded, otherwise built from the frame's item. */
@@ -1234,6 +1329,7 @@ const vsbWeatherOptions = {
 
 const vsbMailMount = function (inst) {
     const box = vsbEl('div', 'vsb-mail', inst.body);
+    vsbEl('div', 'vsb-mail-glass', box);
     const head = vsbButton('vsb-mail-head', 'Open Dovecote', box);
     head.innerHTML = '<span>Inbox</span><span class="vsb-mail-unread"></span>';
     const list = vsbEl('div', 'vsb-mail-list', box);
@@ -1242,29 +1338,33 @@ const vsbMailMount = function (inst) {
     const up = vsbButton('vsb-mail-btn vsb-mail-up', 'Previous', nav);
     const pos = vsbEl('span', 'vsb-mail-pos', nav);
     const down = vsbButton('vsb-mail-btn vsb-mail-down', 'Next', nav);
-    inst.parts = { box, head, list, message, nav, up, down, pos, unread: head.querySelector('.vsb-mail-unread') };
+    const icon = vsbButton('vsb-mail-icon', 'Open Dovecote', box);
+    inst.parts = { box, head, list, message, nav, up, down, pos, icon, unread: head.querySelector('.vsb-mail-unread') };
     inst.mail = [];
     inst.offset = 0;
+    inst.paint = vsbMailPaint;
+    box.style.setProperty('--vsb-mail-n', String(vsbMailPageSize(inst)));
 
     // openDesktopDovecote: public/scripts/comp/desktop-apps/dovecote.js
     head.addEventListener('click', () => openDesktopDovecote());
+    icon.addEventListener('click', () => openDesktopDovecote());
     up.addEventListener('click', () => { inst.offset = Math.max(0, inst.offset - vsbMailPageSize(inst)); vsbMailPaint(inst); });
     down.addEventListener('click', () => { inst.offset += vsbMailPageSize(inst); vsbMailPaint(inst); });
     list.addEventListener('click', (e) => {
         const row = e.target.closest('[data-mail-id]');
         if (!row) return;
-        // doveOpenReaderWindow: public/scripts/comp/desktop-apps/dovecote.js (reading marks it read)
+        // doveOpenReaderWindow: public/scripts/comp/desktop-apps/dovecote.js (reading marks it read; the mailbox push refreshes this list)
         doveOpenReaderWindow(row.dataset.mailId);
-        setTimeout(() => {
-            vsbMailPoll(inst);
-            // doveRefreshTrayUnread: public/scripts/comp/desktop-apps/dovecote.js
-            doveRefreshTrayUnread();
-        }, 1500);
     });
-    vsbMailPoll(inst);
+    vsbMailRefresh(inst);
 };
 
-const vsbMailPageSize = (inst) => (inst.g.docked ? 3 : 4);
+const vsbMailCount = function (settings) {
+    const n = Number(settings && settings.count);
+    return n >= 3 && n <= 6 ? n : 3;
+};
+
+const vsbMailPageSize = (inst) => vsbMailCount(inst.g.settings);
 
 const vsbMailSender = function (from) {
     const raw = String(from || '').trim();
@@ -1283,6 +1383,7 @@ const vsbMailDate = function (iso) {
 const vsbMailPaint = function (inst) {
     const p = inst.parts;
     const size = vsbMailPageSize(inst);
+    p.box.style.setProperty('--vsb-mail-n', String(size));
     const total = inst.mail.length;
     inst.offset = Math.max(0, Math.min(inst.offset, Math.max(0, total - 1) - (Math.max(0, total - 1) % size)));
     p.unread.textContent = inst.unread ? `${inst.unread} unread` : '';
@@ -1292,45 +1393,82 @@ const vsbMailPaint = function (inst) {
         p.message.classList.remove('hidden');
     } else {
         p.message.classList.add('hidden');
-        p.list.innerHTML = inst.mail.slice(inst.offset, inst.offset + size).map((m) => `
-            <button type="button" class="vsb-mail-item${m.read ? '' : ' is-unread'}" data-mail-id="${escapeHtmlAttribute(String(m.id))}" title="${escapeHtmlAttribute(m.subject || '(no subject)')}">
+        p.list.innerHTML = inst.mail.slice(inst.offset, inst.offset + size).map((m) => {
+            const unread = m.read ? '' : ' is-unread';
+            const attached = m.attachments && m.attachments.length ? ' has-attachment' : '';
+            return `
+            <button type="button" class="vsb-mail-item${unread}${attached}" data-mail-id="${escapeHtmlAttribute(String(m.id))}" title="${escapeHtmlAttribute(m.subject || '(no subject)')}">
                 <span class="vsb-mail-subject">${escapeHtml(m.subject || '(no subject)')}</span>
                 <span class="vsb-mail-meta"><span class="vsb-mail-from">${escapeHtml(vsbMailSender(m.from))}</span><span class="vsb-mail-date">${escapeHtml(vsbMailDate(m.createdAt))}</span></span>
-            </button>`).join('');
+            </button>`;
+        }).join('');
     }
     p.pos.textContent = total ? `${inst.offset + 1}-${Math.min(total, inst.offset + size)}/${total}` : '0';
     p.pos.title = total ? `${inst.offset + 1}-${Math.min(total, inst.offset + size)} of ${total}` : '';
     p.up.disabled = inst.offset === 0;
     p.down.disabled = inst.offset + size >= total;
+    inst.painted = true;
 };
 
-const vsbMailPoll = async function (inst) {
-    clearTimeout(inst.timer);
-    if (inst.destroyed) return;
-    if (!document.hidden && vsbIsShown(inst)) {
-        try {
-            // dovecote_list_mail / dovecote_list_mailboxes: modules/ws/handlers/250-dovecoteHandler.js
-            const [list, boxes] = await Promise.all([
-                wsClient.sendMessage('dovecote_list_mail', { folder: 'inbox', limit: 24, unreadOnly: inst.g.settings.unreadOnly === true }, false),
-                wsClient.sendMessage('dovecote_list_mailboxes', {}, false)
-            ]);
-            inst.mail = (list && list.mail) || [];
-            const owner = list && list.owner;
-            const mine = ((boxes && boxes.mailboxes) || []).find((b) => b.owner === owner);
-            inst.unread = mine ? mine.unread || 0 : inst.mail.filter((m) => !m.read).length;
-            inst.error = false;
-        } catch (_) {
-            inst.error = true;
-        }
-        if (inst.destroyed) return;
-        vsbMailPaint(inst);
+// A pushed update already carries the human inbox. Returns false when the gadget still has to ask.
+const vsbMailApplyPush = function (inst, data) {
+    if (!data || !Array.isArray(data.mailboxes)) return false;
+    // DESKTOP_DOVECOTE_HUMAN_OWNER: public/scripts/comp/desktop-apps/dovecote.js
+    const owner = DESKTOP_DOVECOTE_HUMAN_OWNER;
+    const mine = data.mailboxes.find((box) => box.owner === owner);
+    const unreadOnly = inst.g.settings.unreadOnly === true;
+    const rows = unreadOnly ? (data.unreadInbox && data.unreadInbox[owner]) : (data.inbox && data.inbox[owner]);
+    if (!mine || !Array.isArray(rows)) return false;
+    inst.mailToken = (inst.mailToken || 0) + 1;
+    inst.mail = rows.slice(0, 24);
+    inst.unread = mine.unread || 0;
+    inst.error = false;
+    (inst.paint || vsbMailPaint)(inst);
+    return true;
+};
+
+const vsbMailRefresh = async function (inst, pushed) {
+    if (!inst || inst.destroyed) return;
+    if (pushed && vsbMailApplyPush(inst, pushed)) return;
+    const token = (inst.mailToken = (inst.mailToken || 0) + 1);
+    const paint = inst.paint || vsbMailPaint;
+    // height follows the count before the fetch, so the sidebar pages the new size immediately
+    if (inst.painted) paint(inst);
+    try {
+        // dovecote_list_mail / dovecote_list_mailboxes: modules/ws/handlers/250-dovecoteHandler.js
+        const [list, boxes] = await Promise.all([
+            wsClient.sendMessage('dovecote_list_mail', { folder: 'inbox', limit: 24, unreadOnly: inst.g.settings.unreadOnly === true }, false),
+            wsClient.sendMessage('dovecote_list_mailboxes', {}, false)
+        ]);
+        if (inst.destroyed || inst.mailToken !== token) return;
+        inst.mail = (list && list.mail) || [];
+        const owner = list && list.owner;
+        const mine = ((boxes && boxes.mailboxes) || []).find((b) => b.owner === owner);
+        inst.unread = mine ? mine.unread || 0 : inst.mail.filter((m) => !m.read).length;
+        inst.error = false;
+    } catch (_) {
+        if (inst.destroyed || inst.mailToken !== token) return;
+        inst.error = true;
     }
-    inst.timer = setTimeout(() => vsbMailPoll(inst), 60000);
+    if (inst.destroyed || inst.mailToken !== token) return;
+    paint(inst);
+};
+
+const vsbRefreshMailGadgets = function (pushed) {
+    if (!vsb.instances) return;
+    vsb.instances.forEach((inst) => {
+        if (inst.destroyed) return;
+        if (inst.g.type !== 'mail' && inst.g.type !== 'outlook') return;
+        vsbMailRefresh(inst, pushed);
+    });
 };
 
 const vsbMailOptions = {
     html(set) {
+        const count = vsbMailCount(set);
         return `<div class="vsb-options">
+            <div class="group"><label for="vsbMailCount">Messages to show:</label>
+                <select id="vsbMailCount">${vsbOptions([3, 4, 5, 6].map((n) => [n, String(n)]), count)}</select></div>
             <div class="group"><div>Show:</div>
                 <div><input type="radio" id="vsbMailShowAll" name="vsbMailShow" value="all"${set.unreadOnly ? '' : ' checked'}><label for="vsbMailShowAll">All Inbox messages</label></div>
                 <div><input type="radio" id="vsbMailShowUnread" name="vsbMailShow" value="unread"${set.unreadOnly ? ' checked' : ''}><label for="vsbMailShowUnread">Unread messages only</label></div></div>
@@ -1338,27 +1476,969 @@ const vsbMailOptions = {
     },
     read(dialog, set) {
         const picked = dialog.querySelector('input[name="vsbMailShow"]:checked');
+        const count = Number(dialog.querySelector('#vsbMailCount').value);
+        return { ...set, unreadOnly: !!picked && picked.value === 'unread', count: count >= 3 && count <= 6 ? count : 3 };
+    }
+};
+
+// ---------------------------------------------------------------- calculator (Microsoft + Desktop Calculator)
+
+const VSB_CALC_COLORS = [['grey', 'Grey'], ['pink', 'Pink'], ['yellow', 'Yellow']];
+const VSB_DESK_COLORS = [['plain', 'Classic'], ['aqua', 'Aqua'], ['black', 'Black'], ['blue', 'Blue'], ['green', 'Green'], ['pink', 'Pink'], ['red', 'Red'], ['white', 'White'], ['yellow', 'Yellow']];
+const VSB_DESK_INK = { plain: 'gray', aqua: 'blue', black: 'black', blue: 'blue', green: 'green', pink: 'red', red: 'red', white: 'gray', yellow: 'beige' };
+
+const vsbCalcDefaults = () => ({ entry: '0', acc: null, op: '', fresh: true, memory: null, history: [] });
+
+const vsbCalcNum = (s) => {
+    const n = Number(s.entry);
+    return Number.isFinite(n) ? n : 0;
+};
+
+const vsbCalcShow = (s, n) => {
+    if (!Number.isFinite(n)) {
+        s.entry = 'Error';
+        s.fresh = true;
+        s.acc = null;
+        s.op = '';
+        return;
+    }
+    let t = String(Math.round(n * 1e10) / 1e10);
+    if (t.length > 12) t = n.toExponential(5);
+    s.entry = t;
+    s.fresh = true;
+};
+
+const vsbCalcCompute = (s) => {
+    const b = vsbCalcNum(s);
+    if (s.acc == null || !s.op) return b;
+    switch (s.op) {
+        case '+': return s.acc + b;
+        case '-': return s.acc - b;
+        case '*': return s.acc * b;
+        case '/': return b === 0 ? NaN : s.acc / b;
+        case 'pow': return Math.pow(s.acc, b);
+        default: return b;
+    }
+};
+
+const vsbCalcAct = (inst, op) => {
+    const s = inst.g.settings;
+    if (s.entry === 'Error' && op !== 'c') {
+        s.entry = '0';
+        s.fresh = true;
+    }
+    if (/^[0-9]$/.test(op)) {
+        if (s.fresh || s.entry === '0') s.entry = op;
+        else if (s.entry.replace('-', '').replace('.', '').length < 12) s.entry += op;
+        s.fresh = false;
+    } else if (op === 'dot') {
+        if (s.fresh) s.entry = '0.';
+        else if (!s.entry.includes('.')) s.entry += '.';
+        s.fresh = false;
+    } else if (op === 'sign') {
+        if (s.entry.startsWith('-')) s.entry = s.entry.slice(1) || '0';
+        else if (s.entry !== '0') s.entry = '-' + s.entry;
+    } else if (op === 'bk') {
+        if (!s.fresh) s.entry = s.entry.length > 1 ? s.entry.slice(0, -1) : '0';
+    } else if (op === 'c') {
+        s.entry = '0';
+        s.acc = null;
+        s.op = '';
+        s.fresh = true;
+    } else if (op === 'sqrt' || op === 'sq' || op === 'inv' || op === 'pct' || op === 'sin' || op === 'cos' || op === 'tan' || op === 'ln' || op === 'log') {
+        const n = vsbCalcNum(s);
+        const rad = n * Math.PI / 180;
+        const fns = {
+            sqrt: () => Math.sqrt(n),
+            sq: () => n * n,
+            inv: () => 1 / n,
+            pct: () => (s.acc == null ? n / 100 : s.acc * n / 100),
+            sin: () => Math.sin(rad),
+            cos: () => Math.cos(rad),
+            tan: () => Math.tan(rad),
+            ln: () => Math.log(n),
+            log: () => Math.log10(n)
+        };
+        vsbCalcShow(s, fns[op]());
+    } else if (op === 'pi') {
+        s.entry = String(Math.PI).slice(0, 12);
+        s.fresh = true;
+    } else if (op === 'ms') {
+        s.memory = vsbCalcNum(s);
+    } else if (op === 'mp') {
+        s.memory = (s.memory || 0) + vsbCalcNum(s);
+    } else if (op === 'mr') {
+        if (s.memory != null) {
+            vsbCalcShow(s, s.memory);
+        }
+    } else if (op === 'mc') {
+        s.memory = null;
+    } else if (op === 'eq') {
+        if (s.op) {
+            const r = vsbCalcCompute(s);
+            s.history = [`${s.acc} ${s.op} ${s.entry}`.slice(0, 40), ...(s.history || [])].slice(0, 8);
+            vsbCalcShow(s, r);
+            s.acc = null;
+            s.op = '';
+        }
+    } else if (op === '+' || op === '-' || op === '*' || op === '/' || op === 'pow') {
+        if (s.acc != null && s.op && !s.fresh) vsbCalcShow(s, vsbCalcCompute(s));
+        if (s.entry !== 'Error') s.acc = vsbCalcNum(s);
+        s.op = op;
+        s.fresh = true;
+    }
+    if (inst.g.type === 'deskcalc') vsbDeskPaint(inst);
+    else vsbCalcPaint(inst);
+    vsbQueueSave();
+};
+
+const vsbCalcBind = (root, inst) => {
+    root.tabIndex = 0;
+    root.addEventListener('pointerdown', () => root.focus());
+    root.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-calc]');
+        if (btn) vsbCalcAct(inst, btn.dataset.calc);
+    });
+    root.addEventListener('keydown', (e) => {
+        if (e.target.closest('input, textarea')) return;
+        let op = null;
+        if (/^[0-9]$/.test(e.key)) op = e.key;
+        else if (e.key === '.') op = 'dot';
+        else if (e.key === 'Enter' || e.key === '=') op = 'eq';
+        else if (e.key === 'Escape') op = 'c';
+        else if (e.key === 'Backspace') op = 'bk';
+        else if (e.key === '%') op = 'pct';
+        else if ('+-*/'.includes(e.key)) op = e.key;
+        if (!op) return;
+        e.preventDefault();
+        vsbCalcAct(inst, op);
+    });
+};
+
+const vsbCalcKey = (label, op, parent, className) => {
+    const btn = vsbButton(className || 'vsb-calc-key', label, parent);
+    btn.dataset.calc = op;
+    btn.textContent = label;
+    return btn;
+};
+
+const vsbCalcMount = function (inst) {
+    const root = vsbEl('div', 'vsb-calc', inst.body);
+    const history = vsbEl('div', 'vsb-calc-history', root);
+    const screen = vsbEl('div', 'vsb-calc-screen', root);
+    const memflag = vsbEl('span', 'vsb-calc-memflag', screen);
+    memflag.textContent = 'M';
+    const readout = vsbEl('div', 'vsb-calc-readout', screen);
+    const mem = vsbEl('div', 'vsb-calc-memrow', screen);
+    [['C', 'c'], ['M', 'ms'], ['M+', 'mp'], ['MR', 'mr'], ['MC', 'mc']].forEach(([label, op]) => {
+        vsbCalcKey(label, op, mem, 'vsb-calc-memkey');
+    });
+    const dock = vsbEl('div', 'vsb-calc-pad vsb-calc-pad-dock', root);
+    [['7', '7'], ['8', '8'], ['9', '9'], ['/', '/'], ['<', 'bk'],
+        ['4', '4'], ['5', '5'], ['6', '6'], ['*', '*'], ['sqrt', 'sqrt'],
+        ['1', '1'], ['2', '2'], ['3', '3'], ['-', '-'], ['%', 'pct'],
+        ['0', '0'], ['.', 'dot'], ['+/-', 'sign'], ['+', '+'], ['=', 'eq']
+    ].forEach(([label, op]) => vsbCalcKey(label, op, dock));
+    const wide = vsbEl('div', 'vsb-calc-pad vsb-calc-pad-wide', root);
+    [['7', '7'], ['8', '8'], ['9', '9'], ['sqrt', 'sqrt'], ['<', 'bk'], ['+', '+', 'vsb-calc-key vsb-calc-plus'],
+        ['4', '4'], ['5', '5'], ['6', '6'], ['x2', 'sq'], ['/', '/'],
+        ['1', '1'], ['2', '2'], ['3', '3'], ['1/x', 'inv'], ['*', '*'], ['=', 'eq', 'vsb-calc-key vsb-calc-eq'],
+        ['0', '0'], ['+/-', 'sign'], ['.', 'dot'], ['%', 'pct'], ['-', '-']
+    ].forEach(([label, op, className]) => vsbCalcKey(label, op, wide, className));
+    inst.parts = { root, history, readout, memflag };
+    vsbCalcBind(root, inst);
+    vsbCalcPaint(inst);
+};
+
+const vsbCalcPaint = function (inst) {
+    const s = inst.g.settings;
+    const p = inst.parts;
+    p.root.dataset.color = s.color || 'grey';
+    p.root.classList.toggle('is-history', s.historyOn !== false);
+    p.readout.textContent = s.entry || '0';
+    p.memflag.classList.toggle('hidden', s.memory == null);
+    p.history.innerHTML = (s.history || []).slice().reverse().map((line) => `<div>${escapeHtml(line)}</div>`).join('');
+};
+
+const vsbCalcOptions = {
+    html(set) {
+        return `<div class="vsb-options">
+            <div class="group"><label for="vsbCalcColor">Color:</label>
+                <select id="vsbCalcColor">${vsbOptions(VSB_CALC_COLORS, set.color || 'grey')}</select></div>
+            <div><input type="checkbox" id="vsbCalcHistory"${set.historyOn !== false ? ' checked' : ''}><label for="vsbCalcHistory">Show history when undocked</label></div>
+        </div>`;
+    },
+    read(dialog, set) {
+        return { ...set, color: dialog.querySelector('#vsbCalcColor').value, historyOn: dialog.querySelector('#vsbCalcHistory').checked };
+    }
+};
+
+const vsbDeskMount = function (inst) {
+    const root = vsbEl('div', 'vsb-desk', inst.body);
+    const readout = vsbEl('div', 'vsb-desk-readout', root);
+    const memflag = vsbEl('span', 'vsb-desk-mem', root);
+    memflag.textContent = 'M';
+    const mem = vsbEl('div', 'vsb-desk-memrow', root);
+    [['M', 'ms'], ['M+', 'mp'], ['MR', 'mr'], ['MC', 'mc']].forEach(([label, op]) => vsbCalcKey(label, op, mem, 'vsb-desk-key'));
+    const keys = vsbEl('div', 'vsb-desk-keys', root);
+    const sci = vsbEl('div', 'vsb-desk-sci', keys);
+    [['sin', 'sin'], ['cos', 'cos'], ['tan', 'tan'], ['ln', 'ln'], ['log', 'log'],
+        ['pi', 'pi'], ['x2', 'sq'], ['1/x', 'inv'], ['x^y', 'pow'], ['sqrt', 'sqrt']
+    ].forEach(([label, op]) => vsbCalcKey(label, op, sci, 'vsb-desk-key'));
+    [['7', '7'], ['8', '8'], ['9', '9'], ['/', '/'], ['<', 'bk'],
+        ['4', '4'], ['5', '5'], ['6', '6'], ['*', '*'], ['C', 'c'],
+        ['1', '1'], ['2', '2'], ['3', '3'], ['-', '-'], ['+/-', 'sign'],
+        ['0', '0'], ['.', 'dot'], ['=', 'eq'], ['+', '+'], ['%', 'pct']
+    ].forEach(([label, op]) => vsbCalcKey(label, op, keys, 'vsb-desk-key'));
+    inst.parts = { root, readout, memflag };
+    vsbCalcBind(root, inst);
+    vsbDeskPaint(inst);
+};
+
+const vsbDeskPaint = function (inst) {
+    const s = inst.g.settings;
+    const p = inst.parts;
+    const color = VSB_DESK_COLORS.some(([id]) => id === s.color) ? s.color : 'plain';
+    p.root.dataset.color = color;
+    p.root.dataset.ink = VSB_DESK_INK[color] || 'gray';
+    p.readout.textContent = s.entry || '0';
+    p.memflag.classList.toggle('hidden', s.memory == null);
+};
+
+const vsbDeskOptions = {
+    html(set) {
+        return `<div class="vsb-options">
+            <div class="group"><label for="vsbDeskColor">Color:</label>
+                <select id="vsbDeskColor">${vsbOptions(VSB_DESK_COLORS, set.color || 'plain')}</select></div>
+            <p>Undock the calculator for scientific keys. Trigonometry uses degrees.</p>
+        </div>`;
+    },
+    read(dialog, set) {
+        return { ...set, color: dialog.querySelector('#vsbDeskColor').value };
+    }
+};
+
+// ---------------------------------------------------------------- timer
+
+const vsbTimerSound = (inst, name) => {
+    const now = Date.now();
+    if (name.indexOf('wind') === 0 && now - (inst.soundAt || 0) < 90) return;
+    inst.soundAt = now;
+    if (!inst.sounds) inst.sounds = {};
+    const audio = inst.sounds[name] || (inst.sounds[name] = new Audio(`${VSB_ASSETS}timer/${name}.wav`));
+    audio.currentTime = 0;
+    audio.play().catch(() => {});
+};
+
+const vsbTimerStop = (inst) => {
+    if (!inst.sounds) return;
+    Object.values(inst.sounds).forEach((audio) => audio.pause());
+};
+
+const vsbTimerPlace = (ring, value) => {
+    ring.querySelectorAll('.vsb-timer-num').forEach((n) => {
+        const base = Number(n.dataset.deg);
+        const radius = n.dataset.radius;
+        const angle = base - value * 6;
+        n.style.transform = `rotate(${angle}deg) translateY(-${radius}) rotate(${-angle}deg)`;
+    });
+};
+
+const vsbTimerPaint = function (inst) {
+    const s = inst.g.settings;
+    const running = s.endAt > Date.now();
+    const left = running ? Math.max(0, (s.endAt - Date.now()) / 1000) : (s.mins * 60 + s.secs);
+    const mins = Math.min(60, left / 60);
+    const secs = left % 60;
+    const radius = inst.g.docked ? ['22px', '34px'] : ['32px', '48px'];
+    inst.parts.secs.querySelectorAll('.vsb-timer-num').forEach((n) => { n.dataset.radius = radius[0]; });
+    inst.parts.mins.querySelectorAll('.vsb-timer-num').forEach((n) => { n.dataset.radius = radius[1]; });
+    vsbTimerPlace(inst.parts.secs, secs);
+    vsbTimerPlace(inst.parts.mins, mins);
+    const show = `${vsbPad2(Math.floor(left / 60))}:${vsbPad2(Math.floor(left % 60))}`;
+    inst.parts.readout.textContent = show;
+    inst.parts.root.title = show;
+    inst.parts.root.classList.toggle('is-ringing', !!s.ringing && !running);
+};
+
+const vsbTimerArm = function (inst) {
+    clearTimeout(inst.timer);
+    if (inst.destroyed || inst.g.settings.ringing) return;
+    if (!(inst.g.settings.endAt > Date.now())) return;
+    inst.timer = setTimeout(() => vsbTimerTick(inst), 100);
+};
+
+const vsbTimerTick = function (inst) {
+    const s = inst.g.settings;
+    const left = (s.endAt - Date.now()) / 1000;
+    if (!(left > 0)) {
+        s.endAt = 0;
+        s.mins = 0;
+        s.secs = 0;
+        s.ringing = true;
+        vsbTimerPaint(inst);
+        vsbTimerSound(inst, 'done');
+        vsbQueueSave();
+        return;
+    }
+    const sec = Math.ceil(left);
+    if (inst.lastSec != null && sec !== inst.lastSec && left > 1 && sec % 5 === 0) vsbTimerSound(inst, 'tick');
+    inst.lastSec = sec;
+    s.mins = Math.floor(left / 60);
+    s.secs = Math.floor(left % 60);
+    vsbTimerPaint(inst);
+    vsbTimerArm(inst);
+};
+
+const vsbTimerWind = function (inst, band, event) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const s = inst.g.settings;
+    s.endAt = 0;
+    s.ringing = false;
+    vsbTimerStop(inst);
+    const startX = event.clientX;
+    const start = band === 'mins' ? s.mins : s.secs;
+    const move = (ev) => {
+        const max = band === 'mins' ? 60 : 59;
+        const next = Math.max(0, Math.min(max, Math.round(start + (ev.clientX - startX) * 0.35)));
+        s[band] = next;
+        vsbTimerPaint(inst);
+        vsbTimerSound(inst, band === 'mins' ? 'windMins' : 'windSecs');
+    };
+    const up = () => {
+        document.removeEventListener('pointermove', move);
+        document.removeEventListener('pointerup', up);
+        const total = s.mins * 60 + s.secs;
+        s.endAt = total > 0 ? Date.now() + total * 1000 : 0;
+        inst.lastSec = null;
+        vsbTimerPaint(inst);
+        vsbTimerArm(inst);
+        vsbQueueSave();
+    };
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', up);
+};
+
+const vsbTimerMount = function (inst) {
+    const root = vsbEl('div', 'vsb-timer', inst.body);
+    const makeRing = (band, radius) => {
+        const ring = vsbEl('div', 'vsb-timer-ring', root);
+        for (let i = 0; i < 12; i++) {
+            const n = vsbEl('span', 'vsb-timer-num', ring);
+            const number = i * 5;
+            n.textContent = vsbPad2(number);
+            n.dataset.deg = String(180 + number * 6);
+            n.dataset.radius = radius;
+        }
+        return ring;
+    };
+    const secs = makeRing('secs', '22px');
+    const mins = makeRing('mins', '34px');
+    const readout = vsbEl('div', 'vsb-timer-readout', root);
+    const hitSecs = vsbEl('div', 'vsb-timer-hit vsb-timer-hit-secs', root);
+    const hitMins = vsbEl('div', 'vsb-timer-hit vsb-timer-hit-mins', root);
+    const reset = vsbButton('vsb-timer-reset', 'Reset', root);
+    inst.parts = { root, secs, mins, readout };
+    hitSecs.addEventListener('pointerdown', (e) => vsbTimerWind(inst, 'secs', e));
+    hitMins.addEventListener('pointerdown', (e) => vsbTimerWind(inst, 'mins', e));
+    reset.addEventListener('click', () => {
+        const s = inst.g.settings;
+        s.endAt = 0;
+        s.mins = 0;
+        s.secs = 0;
+        s.ringing = false;
+        vsbTimerStop(inst);
+        clearTimeout(inst.timer);
+        vsbTimerPaint(inst);
+        vsbQueueSave();
+    });
+    vsbTimerPaint(inst);
+    vsbTimerArm(inst);
+};
+
+const vsbTimerApply = function (inst) {
+    vsbTimerPaint(inst);
+    vsbTimerArm(inst);
+};
+
+// ---------------------------------------------------------------- clipboard
+
+const vsbClipPaint = function (inst) {
+    const items = inst.g.settings.items || [];
+    const q = (inst.filter || '').trim().toLowerCase();
+    const shown = items.map((text, index) => ({ text, index })).filter((row) => !q || row.text.toLowerCase().includes(q));
+    inst.parts.list.innerHTML = shown.length
+        ? shown.map((row) => `<button type="button" class="vsb-clip-item" data-clip="${row.index}" title="${escapeHtmlAttribute(row.text)}">${escapeHtml(row.text)}</button>`).join('')
+        : '<div class="vsb-clip-empty">Nothing copied yet</div>';
+};
+
+const vsbClipPush = function (raw) {
+    const text = String(raw || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+    if (!text || !vsb.state) return;
+    let changed = false;
+    vsb.state.gadgets.forEach((g) => {
+        if (g.type !== 'clipboard') return;
+        const items = g.settings.items || [];
+        if (items[0] === text) return;
+        g.settings.items = [text, ...items.filter((item) => item !== text)].slice(0, 16);
+        changed = true;
+        const live = vsb.instances.get(g.id);
+        if (live) vsbClipPaint(live);
+    });
+    if (changed) vsbQueueSave();
+};
+
+const vsbClipOnCopy = function (e) {
+    if (e.target && e.target.closest && e.target.closest('input[type="password"]')) return;
+    let text = e.clipboardData ? e.clipboardData.getData('text/plain') : '';
+    if (!text) {
+        const sel = getSelection();
+        text = sel ? String(sel) : '';
+    }
+    vsbClipPush(text);
+};
+
+const vsbClipMount = function (inst) {
+    const box = vsbEl('div', 'vsb-clip', inst.body);
+    const bar = vsbEl('div', 'vsb-clip-bar', box);
+    const clear = vsbButton('vsb-clip-clear', 'Clear history', bar);
+    clear.textContent = 'Clear';
+    const grab = vsbButton('vsb-clip-grab', 'Read the clipboard', bar);
+    grab.textContent = 'Paste in';
+    const list = vsbEl('div', 'vsb-clip-list', box);
+    const filter = vsbEl('input', 'vsb-clip-filter', box);
+    filter.type = 'search';
+    filter.placeholder = 'Filter';
+    filter.setAttribute('aria-label', 'Filter clips');
+    inst.parts = { list, filter };
+    inst.filter = '';
+    clear.addEventListener('click', () => {
+        inst.g.settings.items = [];
+        vsbClipPaint(inst);
+        vsbQueueSave();
+    });
+    grab.addEventListener('click', () => {
+        navigator.clipboard.readText().then(vsbClipPush).catch(() => {
+            showGlassToast('warning', 'Clipboard', 'The browser did not allow reading the clipboard.', false, 4000);
+        });
+    });
+    filter.addEventListener('input', () => {
+        inst.filter = filter.value;
+        vsbClipPaint(inst);
+    });
+    list.addEventListener('click', (e) => {
+        const row = e.target.closest('[data-clip]');
+        if (!row) return;
+        const text = (inst.g.settings.items || [])[Number(row.dataset.clip)];
+        if (!text) return;
+        navigator.clipboard.writeText(text).then(() => vsbClipPush(text)).catch(() => {
+            showGlassToast('warning', 'Clipboard', 'Could not write to the clipboard.', false, 4000);
+        });
+    });
+    vsbClipPaint(inst);
+};
+
+const vsbClipApply = function (inst) {
+    vsbClipPaint(inst);
+};
+
+// ---------------------------------------------------------------- sidebar outlook (Dovecote)
+
+const vsbOutlookPage = (inst) => (inst.g.docked ? 4 : 7);
+
+const vsbOutlookPaint = function (inst) {
+    const p = inst.parts;
+    const size = vsbOutlookPage(inst);
+    const total = inst.mail.length;
+    inst.offset = Math.max(0, Math.min(inst.offset, Math.max(0, total - size)));
+    p.unread.textContent = inst.unread ? String(inst.unread) : '';
+    if (inst.error || !total) {
+        p.list.innerHTML = '';
+        p.message.textContent = inst.error ? 'Dovecote is not available' : (inst.g.settings.unreadOnly ? 'No unread messages' : 'No messages');
+        p.message.classList.remove('hidden');
+    } else {
+        p.message.classList.add('hidden');
+        p.list.innerHTML = inst.mail.slice(inst.offset, inst.offset + size).map((m) => `
+            <button type="button" class="vsb-out-item${m.read ? '' : ' is-unread'}" data-mail-id="${escapeHtmlAttribute(String(m.id))}">
+                <span class="vsb-out-from">${escapeHtml(vsbMailSender(m.from))}</span>
+                <span class="vsb-out-date">${escapeHtml(vsbMailDate(m.createdAt))}</span>
+                <span class="vsb-out-subject">${escapeHtml(m.subject || '(no subject)')}</span>
+            </button>`).join('');
+    }
+    p.up.disabled = inst.offset === 0;
+    p.down.disabled = inst.offset + size >= total;
+    inst.painted = true;
+};
+
+const vsbOutlookMount = function (inst) {
+    const box = vsbEl('div', 'vsb-out', inst.body);
+    const unread = vsbEl('div', 'vsb-out-unread', box);
+    const tools = vsbEl('div', 'vsb-out-tools', box);
+    const neu = vsbButton('vsb-out-tool', 'New message', tools);
+    const sync = vsbButton('vsb-out-tool', 'Send and receive', tools);
+    const open = vsbButton('vsb-out-tool', 'Open Inbox', tools);
+    const up = vsbButton('vsb-out-scroll vsb-out-up', 'Previous', box);
+    const list = vsbEl('div', 'vsb-out-list', box);
+    const message = vsbEl('div', 'vsb-out-message hidden', box);
+    const down = vsbButton('vsb-out-scroll vsb-out-down', 'Next', box);
+    inst.parts = { unread, list, message, up, down };
+    inst.mail = [];
+    inst.offset = 0;
+    inst.paint = vsbOutlookPaint;
+    // doveOpenCompose / openDesktopDovecote: public/scripts/comp/desktop-apps/dovecote.js
+    neu.addEventListener('click', () => doveOpenCompose('create', null));
+    sync.addEventListener('click', () => vsbMailRefresh(inst));
+    open.addEventListener('click', () => openDesktopDovecote());
+    up.addEventListener('click', () => { inst.offset = Math.max(0, inst.offset - vsbOutlookPage(inst)); vsbOutlookPaint(inst); });
+    down.addEventListener('click', () => { inst.offset += vsbOutlookPage(inst); vsbOutlookPaint(inst); });
+    list.addEventListener('click', (e) => {
+        const row = e.target.closest('[data-mail-id]');
+        if (!row) return;
+        // doveOpenReaderWindow: public/scripts/comp/desktop-apps/dovecote.js
+        doveOpenReaderWindow(row.dataset.mailId);
+    });
+    vsbMailRefresh(inst);
+};
+
+const vsbOutlookOptions = {
+    html(set) {
+        return `<div class="vsb-options">
+            <div class="group"><div>Show:</div>
+                <div><input type="radio" id="vsbOutAll" name="vsbOutShow" value="all"${set.unreadOnly ? '' : ' checked'}><label for="vsbOutAll">All Inbox messages</label></div>
+                <div><input type="radio" id="vsbOutUnread" name="vsbOutShow" value="unread"${set.unreadOnly ? ' checked' : ''}><label for="vsbOutUnread">Unread messages only</label></div></div>
+        </div>`;
+    },
+    read(dialog, set) {
+        const picked = dialog.querySelector('input[name="vsbOutShow"]:checked');
         return { ...set, unreadOnly: !!picked && picked.value === 'unread' };
+    }
+};
+
+// ---------------------------------------------------------------- currency, stocks, feed, contacts
+
+const VSB_FX = [
+    ['USD', 'US Dollar'], ['EUR', 'Euro'], ['GBP', 'British Pound'], ['JPY', 'Japanese Yen'],
+    ['AUD', 'Australian Dollar'], ['BRL', 'Brazilian Real'], ['CAD', 'Canadian Dollar'], ['CHF', 'Swiss Franc'],
+    ['CNY', 'Chinese Yuan'], ['CZK', 'Czech Koruna'], ['DKK', 'Danish Krone'], ['HKD', 'Hong Kong Dollar'],
+    ['HUF', 'Hungarian Forint'], ['IDR', 'Indonesian Rupiah'], ['ILS', 'Israeli New Shekel'], ['INR', 'Indian Rupee'],
+    ['ISK', 'Icelandic Krona'], ['KRW', 'South Korean Won'], ['MXN', 'Mexican Peso'], ['MYR', 'Malaysian Ringgit'],
+    ['NOK', 'Norwegian Krone'], ['NZD', 'New Zealand Dollar'], ['PHP', 'Philippine Peso'], ['PLN', 'Polish Zloty'],
+    ['RON', 'Romanian Leu'], ['SEK', 'Swedish Krona'], ['SGD', 'Singapore Dollar'], ['THB', 'Thai Baht'],
+    ['TRY', 'Turkish Lira'], ['ZAR', 'South African Rand']
+];
+const VSB_FEED_DEFAULT = 'https://feeds.bbci.co.uk/news/rss.xml';
+
+const vsbFxText = function (n) {
+    if (!Number.isFinite(n)) return '--';
+    const digits = Math.abs(n) >= 100 ? 2 : 4;
+    return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: digits });
+};
+
+const vsbFxMount = function (inst) {
+    const box = vsbEl('div', 'vsb-fx', inst.body);
+    const amount = vsbEl('input', 'vsb-fx-amount', box);
+    amount.type = 'text';
+    amount.inputMode = 'decimal';
+    amount.maxLength = 16;
+    const from = vsbEl('select', 'vsb-fx-code', box);
+    const eq = vsbEl('div', 'vsb-fx-eq', box);
+    eq.textContent = 'equals';
+    const result = vsbEl('div', 'vsb-fx-result', box);
+    const to = vsbEl('select', 'vsb-fx-code', box);
+    const meta = vsbEl('div', 'vsb-fx-meta', box);
+    VSB_FX.forEach(([code, label]) => {
+        from.add(new Option(code + '  ' + label, code));
+        to.add(new Option(code + '  ' + label, code));
+    });
+    const savePair = () => {
+        inst.g.settings.from = from.value;
+        inst.g.settings.to = to.value;
+        vsbQueueSave();
+        vsbFxPoll(inst);
+    };
+    from.addEventListener('change', savePair);
+    to.addEventListener('change', savePair);
+    amount.addEventListener('change', () => {
+        const n = Number(String(amount.value).replace(/,/g, ''));
+        inst.g.settings.amount = Number.isFinite(n) && n >= 0 && n <= 1e12 ? Math.round(n * 10000) / 10000 : 1;
+        amount.value = String(inst.g.settings.amount);
+        vsbQueueSave();
+        vsbFxPaint(inst);
+    });
+    inst.parts = { amount, from, to, result, meta };
+    inst.refresh = () => vsbFxPoll(inst);
+    vsbFxPaint(inst);
+    vsbFxPoll(inst);
+};
+
+const vsbFxPaint = function (inst) {
+    const s = inst.g.settings;
+    const p = inst.parts;
+    if (document.activeElement !== p.amount) p.amount.value = String(s.amount);
+    if (document.activeElement !== p.from) p.from.value = s.from;
+    if (document.activeElement !== p.to) p.to.value = s.to;
+    const rate = inst.rate && inst.rate.from === s.from && inst.rate.to === s.to ? inst.rate.rate : null;
+    p.result.textContent = rate == null ? (inst.rate === false ? 'Not available' : '...') : vsbFxText(s.amount * rate);
+    p.meta.textContent = rate == null ? '' : (inst.rate.date || '');
+};
+
+const vsbFxPoll = async function (inst) {
+    clearTimeout(inst.timer);
+    if (inst.destroyed) return;
+    const from = inst.g.settings.from;
+    const to = inst.g.settings.to;
+    try {
+        // sidebar_fx: modules/ws/handlers/290-sidebarHandler.js
+        const data = await wsClient.sendMessage('sidebar_fx', { from, to }, false);
+        if (inst.destroyed || inst.g.settings.from !== from || inst.g.settings.to !== to) return;
+        inst.rate = data && data.available ? data : false;
+    } catch (_) {
+        if (inst.destroyed) return;
+        inst.rate = false;
+    }
+    vsbFxPaint(inst);
+    inst.timer = setTimeout(() => vsbFxPoll(inst), 6 * 60 * 60 * 1000);
+};
+
+const vsbStockList = function (raw) {
+    const symbols = [];
+    String(raw || '').split(/[\s,]+/).forEach((part) => {
+        const sym = part.trim().toUpperCase();
+        if (/^[A-Z0-9.^]{1,12}$/.test(sym) && !symbols.includes(sym) && symbols.length < 4) symbols.push(sym);
+    });
+    return symbols;
+};
+
+const vsbQuotesMount = function (inst) {
+    inst.parts = { box: vsbEl('div', 'vsb-quotes', inst.body) };
+    inst.quotes = [];
+    inst.refresh = () => vsbQuotesPoll(inst);
+    vsbQuotesPaint(inst);
+    vsbQuotesPoll(inst);
+};
+
+const vsbQuotesPaint = function (inst) {
+    const symbols = inst.g.settings.symbols || [];
+    if (!symbols.length) {
+        inst.parts.box.innerHTML = '<div class="vsb-quotes-empty">Add a symbol in Options</div>';
+        return;
+    }
+    const by = new Map((inst.quotes || []).map((q) => [q.symbol, q]));
+    inst.parts.box.innerHTML = symbols.map((sym) => {
+        const q = by.get(sym);
+        if (!q || !q.available) {
+            return `<div class="vsb-quote"><span class="vsb-quote-sym">${escapeHtml(sym)}</span><span class="vsb-quote-px">--</span></div>`;
+        }
+        const chg = q.prev ? (q.price - q.prev) / q.prev * 100 : null;
+        const cls = chg == null || Math.abs(chg) < 0.005 ? '' : (chg > 0 ? ' is-up' : ' is-down');
+        const chgText = chg == null ? '' : (chg > 0 ? '+' : '') + chg.toFixed(2) + '%';
+        return `<div class="vsb-quote" title="${escapeHtmlAttribute(q.name || sym)}">
+            <span class="vsb-quote-sym">${escapeHtml(sym)}</span>
+            <span class="vsb-quote-px">${escapeHtml(vsbFxText(q.price))}</span>
+            <span class="vsb-quote-chg${cls}">${escapeHtml(chgText)}</span></div>`;
+    }).join('');
+};
+
+const vsbQuotesPoll = async function (inst) {
+    clearTimeout(inst.timer);
+    if (inst.destroyed) return;
+    const symbols = (inst.g.settings.symbols || []).slice();
+    if (!symbols.length) {
+        inst.quotes = [];
+        vsbQuotesPaint(inst);
+        return;
+    }
+    try {
+        // sidebar_quotes: modules/ws/handlers/290-sidebarHandler.js
+        const data = await wsClient.sendMessage('sidebar_quotes', { symbols }, false);
+        if (inst.destroyed) return;
+        inst.quotes = (data && data.quotes) || [];
+    } catch (_) {
+        if (inst.destroyed) return;
+        inst.quotes = symbols.map((symbol) => ({ symbol, available: false }));
+    }
+    vsbQuotesPaint(inst);
+    inst.timer = setTimeout(() => vsbQuotesPoll(inst), 3 * 60 * 1000);
+};
+
+const vsbQuotesOptions = {
+    html(set) {
+        return `<div class="vsb-options">
+            <div class="group"><label for="vsbStockSymbols">Symbols, separated by commas (up to 4):</label>
+                <input type="text" id="vsbStockSymbols" maxlength="60" value="${escapeHtmlAttribute((set.symbols || []).join(', '))}"></div>
+        </div>`;
+    },
+    read(dialog, set) {
+        return { ...set, symbols: vsbStockList(dialog.querySelector('#vsbStockSymbols').value) };
+    }
+};
+
+const vsbFeedMount = function (inst) {
+    const box = vsbEl('div', 'vsb-mail', inst.body);
+    vsbEl('div', 'vsb-mail-glass', box);
+    const head = vsbButton('vsb-mail-head', 'Open this feed', box);
+    head.innerHTML = '<span>Feed Headlines</span><span class="vsb-mail-unread"></span>';
+    const list = vsbEl('div', 'vsb-mail-list', box);
+    const message = vsbEl('div', 'vsb-mail-message hidden', box);
+    const nav = vsbEl('div', 'vsb-mail-nav', box);
+    const up = vsbButton('vsb-mail-btn vsb-mail-up', 'Previous', nav);
+    const pos = vsbEl('span', 'vsb-mail-pos', nav);
+    const down = vsbButton('vsb-mail-btn vsb-mail-down', 'Next', nav);
+    inst.parts = { box, head, list, message, up, down, pos, title: head.querySelector('span'), host: head.querySelector('.vsb-mail-unread') };
+    inst.items = [];
+    inst.offset = 0;
+    inst.feedTitle = 'Feed Headlines';
+    box.style.setProperty('--vsb-mail-n', String(vsbMailCount(inst.g.settings)));
+    // openGrimoireUrl: public/scripts/comp/featureLoader.js
+    head.addEventListener('click', () => { if (inst.g.settings.url) openGrimoireUrl(inst.g.settings.url); });
+    up.addEventListener('click', () => { inst.offset = Math.max(0, inst.offset - vsbMailCount(inst.g.settings)); vsbFeedPaint(inst); });
+    down.addEventListener('click', () => { inst.offset += vsbMailCount(inst.g.settings); vsbFeedPaint(inst); });
+    list.addEventListener('click', (e) => {
+        const row = e.target.closest('[data-feed-link]');
+        if (row && row.dataset.feedLink) openGrimoireUrl(row.dataset.feedLink);
+    });
+    inst.refresh = () => vsbFeedPoll(inst);
+    vsbFeedPoll(inst);
+};
+
+const vsbFeedPaint = function (inst) {
+    const p = inst.parts;
+    const size = vsbMailCount(inst.g.settings);
+    p.box.style.setProperty('--vsb-mail-n', String(size));
+    p.title.textContent = inst.feedTitle || 'Feed Headlines';
+    let host = '';
+    try { host = inst.g.settings.url ? new URL(inst.g.settings.url).hostname.replace(/^www\./, '') : ''; } catch (_) { host = ''; }
+    p.host.textContent = host;
+    const total = inst.items.length;
+    inst.offset = Math.max(0, Math.min(inst.offset, Math.max(0, total - 1) - (Math.max(0, total - 1) % size)));
+    if (!inst.g.settings.url || inst.error || !total) {
+        p.list.innerHTML = '';
+        p.message.textContent = !inst.g.settings.url ? 'Set a feed address in Options' : (inst.error ? 'Feed is not available' : 'No headlines');
+        p.message.classList.remove('hidden');
+    } else {
+        p.message.classList.add('hidden');
+        p.list.innerHTML = inst.items.slice(inst.offset, inst.offset + size).map((item) => `
+            <button type="button" class="vsb-mail-item" data-feed-link="${escapeHtmlAttribute(item.link || '')}" title="${escapeHtmlAttribute(item.title)}">
+                <span class="vsb-mail-subject">${escapeHtml(item.title)}</span>
+                <span class="vsb-mail-meta"><span class="vsb-mail-date">${escapeHtml(item.date ? vsbMailDate(item.date) : '')}</span></span>
+            </button>`).join('');
+    }
+    p.pos.textContent = total ? `${inst.offset + 1}-${Math.min(total, inst.offset + size)}/${total}` : '0';
+    p.up.disabled = inst.offset === 0;
+    p.down.disabled = inst.offset + size >= total;
+};
+
+const vsbFeedApply = function (inst) {
+    if (inst.loadedUrl !== inst.g.settings.url) vsbFeedPoll(inst);
+    else vsbFeedPaint(inst);
+};
+
+const vsbFeedPoll = async function (inst) {
+    clearTimeout(inst.timer);
+    if (inst.destroyed) return;
+    const url = inst.g.settings.url;
+    inst.loadedUrl = url;
+    if (!url) {
+        inst.items = [];
+        inst.error = false;
+        inst.feedTitle = 'Feed Headlines';
+        vsbFeedPaint(inst);
+        return;
+    }
+    try {
+        // sidebar_feed: modules/ws/handlers/290-sidebarHandler.js
+        const data = await wsClient.sendMessage('sidebar_feed', { url }, false);
+        if (inst.destroyed || inst.g.settings.url !== url) return;
+        inst.error = !data || !data.available;
+        inst.items = (data && data.items) || [];
+        inst.feedTitle = (data && data.title) || 'Feed Headlines';
+    } catch (_) {
+        if (inst.destroyed || inst.g.settings.url !== url) return;
+        inst.error = true;
+    }
+    vsbFeedPaint(inst);
+    inst.timer = setTimeout(() => vsbFeedPoll(inst), 10 * 60 * 1000);
+};
+
+const vsbFeedOptions = {
+    html(set) {
+        const count = vsbMailCount(set);
+        return `<div class="vsb-options">
+            <div class="group"><label for="vsbFeedUrl">Feed address:</label>
+                <input type="url" id="vsbFeedUrl" maxlength="300" value="${escapeHtmlAttribute(set.url || '')}"></div>
+            <div class="group"><label for="vsbFeedCount">Headlines to show:</label>
+                <select id="vsbFeedCount">${vsbOptions([3, 4, 5, 6].map((n) => [n, String(n)]), count)}</select></div>
+        </div>`;
+    },
+    read(dialog, set) {
+        const count = Number(dialog.querySelector('#vsbFeedCount').value);
+        return { ...set, url: dialog.querySelector('#vsbFeedUrl').value.trim(), count: count >= 3 && count <= 6 ? count : 3 };
+    }
+};
+
+const vsbPeopleMount = function (inst) {
+    const box = vsbEl('div', 'vsb-people', inst.body);
+    const name = vsbEl('div', 'vsb-people-name', box);
+    const email = vsbButton('vsb-people-mail', 'Send mail', box);
+    const phone = vsbEl('div', 'vsb-people-phone', box);
+    const nav = vsbEl('div', 'vsb-people-nav', box);
+    const prev = vsbButton('vsb-options-arrow', 'Previous', nav);
+    const pos = vsbEl('span', 'vsb-people-pos', nav);
+    const next = vsbButton('vsb-options-arrow vsb-options-arrow-next', 'Next', nav);
+    inst.parts = { name, email, phone, prev, next, pos };
+    const go = (delta) => {
+        const s = inst.g.settings;
+        s.current = Math.max(0, Math.min(s.cards.length - 1, (s.current || 0) + delta));
+        vsbPeoplePaint(inst);
+        vsbQueueSave();
+    };
+    prev.addEventListener('click', () => go(-1));
+    next.addEventListener('click', () => go(1));
+    // doveOpenCompose: public/scripts/comp/desktop-apps/dovecote.js
+    email.addEventListener('click', () => {
+        const card = inst.g.settings.cards[inst.g.settings.current];
+        if (card && card.email) doveOpenCompose('create', null, card.email);
+    });
+    vsbPeoplePaint(inst);
+};
+
+const vsbPeoplePaint = function (inst) {
+    const s = inst.g.settings;
+    const cards = s.cards && s.cards.length ? s.cards : [{ name: '', email: '', phone: '' }];
+    s.current = Math.max(0, Math.min(cards.length - 1, s.current || 0));
+    const card = cards[s.current];
+    const p = inst.parts;
+    p.name.textContent = card.name || 'No name';
+    p.name.classList.toggle('is-empty', !card.name);
+    p.email.textContent = card.email || 'No e-mail';
+    p.email.disabled = !card.email;
+    p.phone.textContent = card.phone || '';
+    p.phone.classList.toggle('hidden', !card.phone);
+    p.pos.textContent = (s.current + 1) + ' / ' + cards.length;
+    p.prev.disabled = s.current === 0;
+    p.next.disabled = s.current >= cards.length - 1;
+    p.prev.classList.toggle('is-disabled', p.prev.disabled);
+    p.next.classList.toggle('is-disabled', p.next.disabled);
+};
+
+let vsbPeopleDraft = null;
+
+const vsbPeopleFields = function () {
+    const d = vsbPeopleDraft;
+    const card = d.cards[d.current] || { name: '', email: '', phone: '' };
+    return `<div class="group"><label for="vsbPeopleName">Name:</label>
+            <input type="text" id="vsbPeopleName" maxlength="40" value="${escapeHtmlAttribute(card.name)}"></div>
+        <div class="group"><label for="vsbPeopleEmail">E-mail:</label>
+            <input type="text" id="vsbPeopleEmail" maxlength="80" value="${escapeHtmlAttribute(card.email)}"></div>
+        <div class="group"><label for="vsbPeoplePhone">Phone:</label>
+            <input type="text" id="vsbPeoplePhone" maxlength="24" value="${escapeHtmlAttribute(card.phone)}"></div>
+        <div class="vsb-options-preview">
+            <span class="vsb-options-arrow${d.current === 0 ? ' is-disabled' : ''}" id="vsbPeoplePrev" title="Previous"></span>
+            <span id="vsbPeopleCount">${d.current + 1} of ${d.cards.length}</span>
+            <span class="vsb-options-arrow vsb-options-arrow-next${d.current >= d.cards.length - 1 ? ' is-disabled' : ''}" id="vsbPeopleNext" title="Next"></span>
+        </div>
+        <div>
+            <button type="button" class="btn-standard" id="vsbPeopleAdd"${d.cards.length >= 8 ? ' disabled' : ''}>Add</button>
+            <button type="button" class="btn-standard" id="vsbPeopleRemove">Remove</button>
+        </div>`;
+};
+
+const vsbPeopleReadFields = function (dialog) {
+    const card = vsbPeopleDraft && vsbPeopleDraft.cards[vsbPeopleDraft.current];
+    const name = dialog.querySelector('#vsbPeopleName');
+    if (!card || !name) return;
+    card.name = name.value.slice(0, 40);
+    card.email = dialog.querySelector('#vsbPeopleEmail').value.slice(0, 80);
+    card.phone = dialog.querySelector('#vsbPeoplePhone').value.slice(0, 24);
+};
+
+const vsbPeopleOptions = {
+    html(set) {
+        const cards = (set.cards || []).map((c) => ({ name: c.name || '', email: c.email || '', phone: c.phone || '' }));
+        if (!cards.length) cards.push({ name: '', email: '', phone: '' });
+        vsbPeopleDraft = { cards, current: Math.max(0, Math.min(cards.length - 1, set.current || 0)) };
+        return `<div class="vsb-options" id="vsbPeopleForm">${vsbPeopleFields()}</div>`;
+    },
+    ready(dialog) {
+        const root = () => dialog.querySelector('#vsbPeopleForm');
+        const paint = () => { root().innerHTML = vsbPeopleFields(); wire(); };
+        const wire = () => {
+            const form = root();
+            form.querySelector('#vsbPeoplePrev').addEventListener('click', () => {
+                if (vsbPeopleDraft.current === 0) return;
+                vsbPeopleReadFields(dialog);
+                vsbPeopleDraft.current -= 1;
+                paint();
+            });
+            form.querySelector('#vsbPeopleNext').addEventListener('click', () => {
+                if (vsbPeopleDraft.current >= vsbPeopleDraft.cards.length - 1) return;
+                vsbPeopleReadFields(dialog);
+                vsbPeopleDraft.current += 1;
+                paint();
+            });
+            form.querySelector('#vsbPeopleAdd').addEventListener('click', () => {
+                if (vsbPeopleDraft.cards.length >= 8) return;
+                vsbPeopleReadFields(dialog);
+                vsbPeopleDraft.cards.push({ name: '', email: '', phone: '' });
+                vsbPeopleDraft.current = vsbPeopleDraft.cards.length - 1;
+                paint();
+            });
+            form.querySelector('#vsbPeopleRemove').addEventListener('click', () => {
+                vsbPeopleDraft.cards.splice(vsbPeopleDraft.current, 1);
+                if (!vsbPeopleDraft.cards.length) vsbPeopleDraft.cards.push({ name: '', email: '', phone: '' });
+                vsbPeopleDraft.current = Math.min(vsbPeopleDraft.current, vsbPeopleDraft.cards.length - 1);
+                paint();
+            });
+        };
+        wire();
+    },
+    read(dialog, set) {
+        vsbPeopleReadFields(dialog);
+        const cards = vsbPeopleDraft.cards
+            .filter((c) => c.name.trim() || c.email.trim() || c.phone.trim())
+            .map((c) => ({ name: c.name.trim(), email: c.email.trim(), phone: c.phone.trim() }));
+        if (!cards.length) cards.push({ name: '', email: '', phone: '' });
+        return { ...set, cards, current: Math.max(0, Math.min(cards.length - 1, vsbPeopleDraft.current)) };
     }
 };
 
 // ---------------------------------------------------------------- gadget hooks
 
 Object.assign(VSB_GADGETS.calendar, { mount: vsbCalendarMount, apply: vsbCalendarApply });
+Object.assign(VSB_GADGETS.calculator, { mount: vsbCalcMount, apply: vsbCalcPaint, form: vsbCalcOptions });
+Object.assign(VSB_GADGETS.clipboard, { mount: vsbClipMount, apply: vsbClipApply });
 Object.assign(VSB_GADGETS.clock, { mount: vsbClockMount, apply: vsbClockApply, form: vsbClockOptions });
+Object.assign(VSB_GADGETS.contacts, { mount: vsbPeopleMount, apply: vsbPeoplePaint, form: vsbPeopleOptions });
 Object.assign(VSB_GADGETS.cpu, { mount: vsbCpuMount, apply: vsbCpuApply });
+Object.assign(VSB_GADGETS.currency, { mount: vsbFxMount, apply: vsbFxPaint, menu: [{ text: 'Refresh', action: 'vsb-refresh' }] });
+Object.assign(VSB_GADGETS.deskcalc, { mount: vsbDeskMount, apply: vsbDeskPaint, form: vsbDeskOptions });
+Object.assign(VSB_GADGETS.feed, {
+    mount: vsbFeedMount,
+    apply: vsbFeedApply,
+    form: vsbFeedOptions,
+    menu: [{ text: 'Refresh', action: 'vsb-refresh' }]
+});
+Object.assign(VSB_GADGETS.hero, { mount: vsbClockMount, apply: vsbClockApply, form: vsbClockOptions });
 Object.assign(VSB_GADGETS.mail, {
     mount: vsbMailMount,
-    apply: (inst) => vsbMailPoll(inst),
+    apply: (inst) => vsbMailRefresh(inst),
     form: vsbMailOptions,
     menu: [{ text: 'Open Dovecote', action: 'vsb-mail-open' }, { text: 'Refresh', action: 'vsb-mail-refresh' }]
 });
 Object.assign(VSB_GADGETS.notes, { mount: vsbNotesMount, apply: vsbNotesApply, form: vsbNotesOptions });
+Object.assign(VSB_GADGETS.outlook, { mount: vsbOutlookMount, apply: (inst) => vsbMailRefresh(inst), form: vsbOutlookOptions });
 Object.assign(VSB_GADGETS.puzzle, {
     mount: vsbPuzzleMount,
     apply: vsbPuzzleApply,
     form: vsbSourceOptions,
     menu: [{ text: 'New Picture', action: 'vsb-puzzle-new' }]
+});
+Object.assign(VSB_GADGETS.stocks, {
+    mount: vsbQuotesMount,
+    apply: (inst) => { vsbQuotesPaint(inst); vsbQuotesPoll(inst); },
+    form: vsbQuotesOptions,
+    menu: [{ text: 'Refresh', action: 'vsb-refresh' }]
 });
 Object.assign(VSB_GADGETS.slideshow, {
     mount: vsbSlideMount,
@@ -1367,6 +2447,7 @@ Object.assign(VSB_GADGETS.slideshow, {
     menu: vsbSlideMenu
 });
 Object.assign(VSB_GADGETS.weather, { mount: vsbWeatherMount, apply: vsbWeatherApply, form: vsbWeatherOptions });
+Object.assign(VSB_GADGETS.timer, { mount: vsbTimerMount, apply: vsbTimerApply });
 
 // ---------------------------------------------------------------- instances
 
@@ -1406,6 +2487,7 @@ const vsbDestroyInstance = function (inst) {
     inst.destroyed = true;
     clearTimeout(inst.timer);
     clearInterval(inst.timer);
+    if (inst.sounds) Object.values(inst.sounds).forEach((audio) => audio.pause());
     if (vsb.flyout && vsb.flyout.inst === inst) vsbCloseFlyout();
     contextMenu.detachFromElement(inst.el);
     inst.el.remove();
@@ -1423,7 +2505,7 @@ const vsbOpenOptions = async function (inst, event) {
     if (!form) return;
     const settings = inst.g.settings;
     // showConfirmationDialog: public/scripts/comp/confirmationDialog.js
-    const next = await showConfirmationDialog(form.html(settings), [
+    const next = await showConfirmationDialog(form.html(settings, inst), [
         { text: 'OK', value: true, className: 'btn-standard primary' },
         { text: 'Cancel', value: false, className: 'btn-standard' }
     ], event, {
@@ -1461,6 +2543,7 @@ const vsbBuildRoot = function () {
     Object.assign(vsb, { root, pane, dock, prevBtn: prev, nextBtn: next });
     new ResizeObserver(() => vsbPaginate()).observe(pane);
     window.addEventListener('resize', () => vsbClampDesktopGadgets());
+    document.addEventListener('copy', vsbClipOnCopy);
     document.addEventListener('pointerdown', (e) => {
         if (vsb.flyout && !e.target.closest('.vsb-flyout, .vsb-slide-view')) vsbCloseFlyout();
         if (root.classList.contains('vsb-raised') && !e.target.closest('#vistaSidebar, #vistaSidebarTrayIcon')) root.classList.remove('vsb-raised');
@@ -1560,9 +2643,24 @@ const vsbClampDesktopGadgets = function () {
 
 // ---------------------------------------------------------------- state
 
+const vsbMarkDesktopSync = function (state) {
+    // desktopShortcuts: public/scripts/comp/desktopShortcuts.js
+    if (!desktopShortcuts) return;
+    if (state === 'pending') {
+        desktopShortcuts.updateSaveTrayIndicator('pending');
+        return;
+    }
+    if (desktopShortcuts.hasPendingDesktopChanges()) {
+        desktopShortcuts.refreshSaveTrayIndicator();
+        return;
+    }
+    desktopShortcuts.updateSaveTrayIndicator(state);
+};
+
 const vsbQueueSave = function () {
     clearTimeout(vsb.saveTimer);
     vsb.saveWorkspaceId = vsb.workspaceId;
+    vsbMarkDesktopSync('pending');
     vsb.saveTimer = setTimeout(vsbFlushSave, VSB_SAVE_DELAY_MS);
 };
 
@@ -1576,8 +2674,18 @@ const vsbFlushSave = async function () {
         // sidebar_save: modules/ws/handlers/290-sidebarHandler.js
         await wsClient.sendMessage('sidebar_save', { workspaceId, sidebar: vsb.state }, false);
         vsb.saved = true;
+        if (!vsb.saveTimer) vsbMarkDesktopSync('saved');
     } catch (error) {
         console.warn('[sidebar] save failed:', error);
+        vsb.saveWorkspaceId = workspaceId;
+        vsbMarkDesktopSync('pending');
+        if (!vsb.saveRetry) {
+            vsb.saveRetry = true;
+            vsb.saveTimer = setTimeout(() => {
+                vsb.saveRetry = false;
+                vsbFlushSave();
+            }, 2000);
+        }
     }
 };
 
@@ -1612,13 +2720,23 @@ const vsbNewGadget = function (type, docked, x, y) {
 
 const vsbDefaultSettings = function (type) {
     switch (type) {
-        case 'clock': return { theme: 0, name: '', timeZone: '', seconds: false };
+        case 'clock':
+        case 'hero': return { theme: 0, name: '', timeZone: '', seconds: false };
+        case 'calculator': return { ...vsbCalcDefaults(), color: 'grey', historyOn: true };
+        case 'deskcalc': return { ...vsbCalcDefaults(), color: 'plain' };
+        case 'timer': return { endAt: 0, mins: 0, secs: 0, ringing: false };
+        case 'clipboard': return { items: [] };
+        case 'outlook': return { unreadOnly: false };
+        case 'contacts': return { cards: [{ name: '', email: '', phone: '' }], current: 0 };
+        case 'currency': return { amount: 1, from: 'USD', to: 'EUR' };
+        case 'feed': return { url: VSB_FEED_DEFAULT, count: 3 };
+        case 'stocks': return { symbols: ['MSFT'] };
         case 'calendar': return { view: 'day' };
-        case 'notes': return { color: 'yellow', font: 'Segoe Print', size: 12, notes: [''], current: 0 };
+        case 'notes': return { color: 'yellow', font: 'Segoe Print', size: 12, readOnly: false, notes: [''], current: 0 };
         case 'puzzle': return { source: 'images', base: '', tiles: null, seconds: 0 };
         case 'slideshow': return { source: 'images', seconds: 15, transition: 'none', shuffle: true, scale: 1, search: null, shape: 'landscape' };
         case 'weather': return { unit: 'F', feelsLike: false, hidePlace: false, placeAlt: 'none' };
-        case 'mail': return { unreadOnly: false };
+        case 'mail': return { unreadOnly: false, count: 3 };
         default: return {};
     }
 };
@@ -1674,7 +2792,7 @@ function openVistaSidebar() {
 const vsbDragStart = function (e, inst) {
     if (e.button !== 0 || vsb.drag) return;
     const onGrip = !!e.target.closest('.vsb-tool-grip');
-    if (!onGrip && e.target.closest('button, input, textarea, select, a, .vsb-puzzle-pad')) return;
+    if (!onGrip && e.target.closest('button, input, textarea, select, a, .vsb-puzzle-pad, .vsb-timer-hit')) return;
     vsb.drag = { inst, startX: e.clientX, startY: e.clientY, pointerId: e.pointerId, moving: false };
     const move = (ev) => vsbDragMove(ev);
     const up = (ev) => {
@@ -1846,7 +2964,8 @@ const vsbHandleMenuAction = function (action, inst, event, item) {
         case 'vsb-options': vsbOpenOptions(inst, event); break;
         case 'vsb-remove': vsbRemoveGadget(g.id); break;
         case 'vsb-mail-open': openDesktopDovecote(); break;
-        case 'vsb-mail-refresh': vsbMailPoll(inst); break;
+        case 'vsb-mail-refresh': vsbMailRefresh(inst); break;
+        case 'vsb-refresh': if (inst.refresh) inst.refresh(); break;
         case 'vsb-puzzle-new': vsbPuzzleNewPicture(inst); break;
         case 'vsb-slide-next': vsbSlideStep(inst, 1); break;
         case 'vsb-slide-prev': vsbSlideStep(inst, -1); break;
@@ -2074,6 +3193,7 @@ const vsbStart = function () {
     vsb.started = true;
     // wsClient.on: public/scripts/websocket.js
     ['note_content_updated', 'note_updated', 'note_deleted'].forEach((type) => wsClient.on(type, vsbNotesOnNoteChange));
+    document.addEventListener('dovecoteMailboxUpdated', (ev) => vsbRefreshMailGadgets(ev.detail));
     wsClient.on('sidebar_updated', (msg) => {
         const data = msg && (msg.data || msg);
         if (!data || data.workspaceId !== vsb.workspaceId || vsb.saveTimer || vsb.drag) return;

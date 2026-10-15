@@ -26,6 +26,51 @@ html.melaton-boot .launch-container {
 
 html.melaton-boot #melatonBoot {
     display: block;
+    overflow: hidden;
+}
+
+/* 1024x768 VGA framebuffer for the menu and installer. fitMelatonVga() in launch.html
+   stretches it to the window until the panel is past 2:1 or 1:2 (well past 16:9);
+   outside that the 4:3 frame keeps its ratio. The scale is plain numbers: Chrome drops
+   scale(calc(100vw / 1024px)). The boot screen itself is the canvas above this frame:
+   a 640x480 bitmap, nearest-neighbor stretched to the window. */
+.melaton-boot-pixels {
+    display: none;
+    position: fixed;
+    z-index: 1;
+    background: #000;
+    image-rendering: crisp-edges;
+    image-rendering: pixelated;
+    pointer-events: none;
+}
+
+#melatonBoot[data-screen="boot"] .melaton-boot-pixels {
+    display: block;
+}
+
+.melaton-vga {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1024px;
+    height: 768px;
+    overflow: hidden;
+    background: #000;
+    transform-origin: 0 0;
+    image-rendering: crisp-edges;
+    image-rendering: pixelated;
+    -webkit-font-smoothing: none;
+    text-rendering: optimizeSpeed;
+}
+
+.melaton-vga,
+.melaton-vga * {
+    image-rendering: crisp-edges;
+    image-rendering: pixelated;
+}
+
+#melatonBoot[data-screen="teal"] .melaton-vga {
+    background: teal;
 }
 
 #melatonBoot[data-screen="teal"] {
@@ -33,9 +78,9 @@ html.melaton-boot #melatonBoot {
 }
 
 /* ---------- Vista boot screen, with the Enso the later versions added ----------
-   Vista draws its boot screen at 640x480 in 16 colours. .melaton-boot-stage is that screen,
-   scaled uniformly to fit (the letterbox is black like the rest) and every size below is in
-   its pixels (--vpx). Measured from the stock Vista boot screen (640x480 capture):
+   Vista draws its boot screen at 640x480 in 16 colours. --vpx scales that drawing up to the
+   1024x768 VGA frame (1024/640), and the frame is what stretches to the window.
+   Measured from the stock Vista boot screen (640x480 capture):
      frame      x 257-378, y 353-363 (122 x 11), 1 px, two-tone: #737373 on the top edge
                 and the upper five rows of the sides, #424242 below
      interior   120 x 9, black
@@ -48,7 +93,7 @@ html.melaton-boot #melatonBoot {
    --melaton-sweep is one pass of the cluster (not measurable from a still; tune here). */
 
 .melaton-boot-screen {
-    --vpx: min(calc(100vw / 640), calc(100vh / 480));
+    --vpx: 1.6px;
     --melaton-sweep: 2s;
     display: none;
     position: absolute;
@@ -84,16 +129,26 @@ html.melaton-boot #melatonBoot {
     top: calc(353 * var(--vpx));
     width: calc(122 * var(--vpx));
     height: calc(11 * var(--vpx));
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    overflow: hidden;
     background: linear-gradient(to bottom, #737373 0 calc(5 * var(--vpx)), #424242 calc(5 * var(--vpx)) 100%);
 }
 
-.melaton-boot-bar-track {
+.melaton-boot-bar > .melaton-boot-bar-track {
     position: absolute;
     left: var(--vpx);
     top: var(--vpx);
     width: calc(120 * var(--vpx));
     height: calc(9 * var(--vpx));
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
     background: #000;
+    background-image: none;
     overflow: hidden;
 }
 
@@ -150,7 +205,7 @@ html.melaton-boot #melatonBoot {
     inset: 0;
     flex-direction: column;
     font-family: 'Lucida Console', Consolas, 'Courier New', monospace;
-    font-size: clamp(12px, min(1.85vw, 3.1vh), 26px);
+    font-size: 16px;
     line-height: 1.3;
     color: #c0c0c0;
 }

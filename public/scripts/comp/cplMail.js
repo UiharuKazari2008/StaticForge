@@ -2,9 +2,9 @@
  * Control Panel Mail (Windows Mail's Tools > Options, General, "Send / Receive Messages"
  * on the Vista VM). Two checkboxes, saved on this computer:
  *   Play sound when new messages arrive
- *   Show a dialog when new messages arrive
+ *   Show a notification when new messages arrive
  * Both default on. localStorage dovecote-mail-sound / dovecote-mail-dialog (`off` mutes).
- * The new-mail tool window itself lives in desktop-apps/dovecote.js.
+ * The notification is a tray balloon (desktop-apps/dovecote.js).
  */
 (function (root) {
     'use strict';
@@ -87,7 +87,7 @@
             id: 'mail',
             name: 'Mail',
             image: '/static_images/app_icons/vista-mail.webp',
-            description: 'Play a sound or show a dialog when a new message arrives.',
+            description: 'Play a sound or show a tray notification when a new message arrives.',
             open: () => cpl.open('mail')
         });
         cpl.registerPage('mail', {
@@ -111,8 +111,8 @@
                     <p>Choose what happens when a new message arrives.</p>
                     <h2 class="cpl-section-title">Send / Receive Messages</h2>
                     <div class="cpl-mail-options">
-                        <label><input type="checkbox" data-dove-mail="sound"> Play sound when new messages arrive</label>
-                        <label><input type="checkbox" data-dove-mail="dialog"> Show a dialog when new messages arrive</label>
+                        <div><input type="checkbox" id="cplMailSound" data-dove-mail="sound"><label for="cplMailSound">Play sound when new messages arrive</label></div>
+                        <div><input type="checkbox" id="cplMailDialog" data-dove-mail="dialog"><label for="cplMailDialog">Show a notification when new messages arrive</label></div>
                     </div>
                 </div>`,
             mount

@@ -232,10 +232,25 @@
             if (reviewScreen || (window.melatonDesktopStart && window.melatonDesktopStart.isDesktopStart(window))) {
                 document.documentElement.classList.add('melaton-boot');
                 window.melatonBootActive = true;
+                // Capture-phase, before the boot script loads, so F8 can interrupt a start in progress.
+                globalThis.melatonBootInterrupt = false;
+                addEventListener('keydown', function (ev) {
+                    if (ev.repeat) return;
+                    if (ev.key !== 'F8' && ev.code !== 'F8') return;
+                    ev.preventDefault();
+                    ev.stopImmediatePropagation();
+                    var boot = globalThis.melatonBoot;
+                    if (boot && boot.controller && boot.controller.handleKey) {
+                        boot.controller.handleKey('F8');
+                        return;
+                    }
+                    globalThis.melatonBootInterrupt = true;
+                }, true);
             }
         })();
     </script>
     <link rel="stylesheet" href="/css/desktop-cursors.css">
+    <link rel="stylesheet" href="/css/cache-browser.css">
     <link rel="stylesheet" href="/css/launch-boot.css">
     <link rel="stylesheet" href="/css/launch-install.css">
 
@@ -760,6 +775,10 @@
 
     <!-- Melaton boot (html.melaton-boot only): boot screen, then teal or the boot menu -->
     <div id="melatonBoot" data-screen="boot" aria-live="polite">
+        <!-- Boot drawing is a 640x480 bitmap, nearest-neighbor stretched to the window.
+             Menu and installer stay in .melaton-vga. -->
+        <canvas class="melaton-boot-pixels" width="640" height="480" aria-hidden="true"></canvas>
+        <div class="melaton-vga">
         <!-- 640x480 stage scaled to fit: Vista's boot screen geometry (launch-boot.css) -->
         <div class="melaton-boot-screen">
             <div class="melaton-boot-stage">
@@ -773,7 +792,7 @@
             </div>
         </div>
         <div id="melatonBootText"></div>
-        <!-- Windows Setup in Classic on the aurora (melatonBoot.js installer, launch-install.css, #419) -->
+        <!-- Windows Setup in Vista Basic on the aurora (melatonBoot.js installer, launch-install.css) -->
         <div id="melatonInstall" data-phase="installing">
             <div class="mi-window" role="dialog" aria-labelledby="miTitle">
                 <div class="mi-title"><span id="miTitle">Install MeletonFX</span><span class="mi-title-close" aria-hidden="true">&times;</span></div>
@@ -788,8 +807,8 @@
                         <div class="mi-phase mi-phase--active"><span class="mi-phase-num">2</span>Installing MeletonFX</div>
                     </div>
                     <div class="mi-bars">
-                        <div class="mi-bar mi-bar-collect"><i style="width: 100%"></i></div>
-                        <div class="mi-bar mi-bar-install" role="progressbar" aria-label="Installing MeletonFX"><i></i></div>
+                        <div class="mi-bar mi-bar-collect animate" role="progressbar" aria-label="Collecting information" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><div style="width: 100%"></div></div>
+                        <div class="mi-bar mi-bar-install animate" role="progressbar" aria-label="Installing MeletonFX" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div></div></div>
                     </div>
                 </div>
             </div>
@@ -808,7 +827,122 @@
                 </div>
             </div>
         </div>
+        </div>
     </div>
+    <script>
+        // Chrome drops scale(calc(100vw / 1024px)), so the 1024x768 frame is fitted with numbers.
+        // The same fit is in app.html for Safe Mode. Past 2:1 or 1:2 the frame keeps 4:3.
+        function fitMelatonVga(el) {
+            var w = innerWidth;
+            var h = innerHeight;
+            if (!el || !w || !h) return;
+            var ratio = w / h;
+            var sx;
+            var sy;
+            var tx = 0;
+            var ty = 0;
+            if (ratio >= 2) {
+                sx = h / 768;
+                sy = sx;
+                tx = (w - 1024 * sx) / 2;
+            } else if (ratio <= 0.5) {
+                sx = w / 1024;
+                sy = sx;
+                ty = (h - 768 * sy) / 2;
+            } else {
+                sx = w / 1024;
+                sy = h / 768;
+            }
+            el.style.transformOrigin = '0 0';
+            el.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + sx + ',' + sy + ')';
+        }
+        function fitMelatonVgaFrame() {
+            var el = document.querySelector('.melaton-vga');
+            if (el) fitMelatonVga(el);
+            var canvas = document.querySelector('.melaton-boot-pixels');
+            if (!canvas) return;
+            var w = innerWidth;
+            var h = innerHeight;
+            var ratio = w / h;
+            var dw = w;
+            var dh = h;
+            var x = 0;
+            var y = 0;
+            if (ratio >= 2) {
+                dh = h;
+                dw = 1024 * (h / 768);
+                x = (w - dw) / 2;
+            } else if (ratio <= 0.5) {
+                dw = w;
+                dh = 768 * (w / 1024);
+                y = (h - dh) / 2;
+            }
+            canvas.style.left = x + 'px';
+            canvas.style.top = y + 'px';
+            canvas.style.width = dw + 'px';
+            canvas.style.height = dh + 'px';
+        }
+        fitMelatonVgaFrame();
+        addEventListener('resize', fitMelatonVgaFrame);
+
+        // Vista boot geometry, painted at 640x480. The canvas element is what stretches
+        // to the window (launch-boot.css), so these pixels stay whole.
+        (function () {
+            var screen = document.getElementById('melatonBoot');
+            var out = document.querySelector('.melaton-boot-pixels');
+            if (!screen || !out) return;
+            var sx = out.getContext('2d');
+            var logo = document.querySelector('.melaton-boot-enso');
+            var paintId = 0;
+            function paint(now) {
+                paintId = 0;
+                if (screen.getAttribute('data-screen') !== 'boot') return;
+                sx.imageSmoothingEnabled = false;
+                sx.fillStyle = '#000';
+                sx.fillRect(0, 0, 640, 480);
+                if (logo && logo.complete && logo.naturalWidth) {
+                    sx.drawImage(logo, 276, 161, 88, 88);
+                }
+                sx.fillStyle = '#737373';
+                sx.fillRect(257, 353, 122, 5);
+                sx.fillStyle = '#424242';
+                sx.fillRect(257, 358, 122, 6);
+                sx.fillStyle = '#000';
+                sx.fillRect(258, 354, 120, 9);
+                var step = Math.floor(((now || 0) % 2000) / 2000 * 72);
+                var x0 = 258 - 22 + step * (142 / 72);
+                sx.save();
+                sx.beginPath();
+                sx.rect(258, 354, 120, 9);
+                sx.clip();
+                var stripe;
+                for (stripe = 0; stripe < 6; stripe++) {
+                    var bx = Math.round(x0 + stripe * 4);
+                    sx.fillStyle = '#F1F5E1';
+                    sx.fillRect(bx, 354, 2, 2);
+                    sx.fillStyle = '#A3B16E';
+                    sx.fillRect(bx, 356, 2, 2);
+                    sx.fillStyle = '#4D5622';
+                    sx.fillRect(bx, 358, 2, 5);
+                }
+                sx.restore();
+                sx.fillStyle = '#fff';
+                sx.font = '12px "Segoe UI", Tahoma, Arial, sans-serif';
+                sx.textAlign = 'center';
+                sx.textBaseline = 'top';
+                sx.fillText('\u00A9 Dreamscape', 320, 389);
+                paintId = requestAnimationFrame(paint);
+            }
+            function arm() {
+                if (!paintId && screen.getAttribute('data-screen') === 'boot') {
+                    paintId = requestAnimationFrame(paint);
+                }
+            }
+            if (logo) logo.addEventListener('load', arm);
+            new MutationObserver(arm).observe(screen, { attributes: true, attributeFilter: ['data-screen'] });
+            arm();
+        })();
+    </script>
     <script src="/scripts/launch/updateEngine.js"></script>
     <script src="/scripts/launch/melatonBoot.js"></script>
 

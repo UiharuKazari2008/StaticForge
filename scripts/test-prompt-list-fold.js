@@ -114,7 +114,7 @@ const compiledLeak = {
     compiledPrompt: '1girl, ' + invF + '\n2::' + canonM + '::',
     uc: '2::' + canonF + '::',
     dynamic_generation: {
-        compiled_prompt: { prompt: '1girl, ' + invF, uc: '4::' + canonM + '::, extra' },
+        compiled_prompt: { prompt: '1girl, ' + invF, uc: '4::' + canonM + '::, extra', context: { hours: invF } },
         context: { note: invF }
     },
     expanders: [{ prefix: 'dg_scene', value: '1girl, ' + invF }],
@@ -131,7 +131,10 @@ assert(hiddenCompiled.uc.indexOf('2::') === 0, 'editor uc stays');
 assert(hiddenCompiled.dynamic_generation.compiled_prompt.prompt === '1girl, ' + canonF, 'nested compiled prompt hides the edit');
 assert(hiddenCompiled.dynamic_generation.compiled_prompt.uc.indexOf(canonM) < 0, 'nested compiled uc hides the injected clause');
 assert(hiddenCompiled.dynamic_generation.compiled_prompt.uc.indexOf('extra') >= 0, 'nested compiled uc keeps the rest');
-assert(hiddenCompiled.dynamic_generation.context.note === invF, 'dynagen context stays');
+assert(hiddenCompiled.dynamic_generation.context === undefined, 'dynagen context is omitted');
+assert(hiddenCompiled.dynamic_generation.compiled_prompt.context === undefined, 'compiled scene blob is omitted');
+assert(compiledLeak.dynamic_generation.context.note === invF, 'stored dynagen context stays');
+assert(compiledLeak.dynamic_generation.compiled_prompt.context.hours === invF, 'stored compiled context stays');
 assert(hiddenCompiled.expanders[0].value === '1girl, ' + canonF, 'expander value hides the edit');
 assert(compiledLeak.dynamic_generation.compiled_prompt.prompt.indexOf(invF) >= 0, 'stored compiled stays');
 assert(hiddenCompiled.director.prompt === invF, 'director text stays after compiled mask');
@@ -143,7 +146,7 @@ const forged = coverComment({
     forge_data: {
         input_prompt: '1girl, ' + invF,
         forge_signed_hash: 'def',
-        dynamic_generation: { compiled_prompt: { prompt: '1girl, ' + invF, uc: '4::' + canonM + '::' } },
+        dynamic_generation: { compiled_prompt: { prompt: '1girl, ' + invF, uc: '4::' + canonM + '::', context: { hours: invF } }, context: { note: invF } },
         stage_seeds: [{ prompt: '1girl, ' + invF, uc: '2::' + canonF + '::' }]
     },
     director: { prompt: invF }
@@ -155,6 +158,8 @@ assert(forged.forge_data.forge_signed_hash == null, 'png comment drops the forge
 assert(forged.forge_data.input_prompt === '1girl, ' + canonF, 'forge input hides the edit');
 assert(forged.forge_data.dynamic_generation.compiled_prompt.prompt === '1girl, ' + canonF, 'forge compiled prompt hides the edit');
 assert(forged.forge_data.dynamic_generation.compiled_prompt.uc.indexOf(canonM) < 0, 'forge compiled uc hides the injected clause');
+assert(forged.forge_data.dynamic_generation.context === undefined, 'png comment omits dynagen context');
+assert(forged.forge_data.dynamic_generation.compiled_prompt.context === undefined, 'png comment omits the compiled scene blob');
 assert(forged.forge_data.stage_seeds[0].prompt === '1girl, ' + canonF, 'stage seed hides the edit');
 assert(forged.director.prompt === invF, 'director text stays inside a comment');
 const held = { prompt: '1girl, ' + canonF + ', smile' };

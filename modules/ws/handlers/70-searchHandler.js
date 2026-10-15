@@ -771,14 +771,11 @@ async function handleRebuildAllIndexes(handlers, ws, message, clientInfo, wsServ
 
 async function getTagSuggestions(handlers, query, viewType, sessionId, limit = 20, contextTags = []) {
         try {
-            // Get cached data for this session
-            const cacheData = searchCache.get(sessionId);
-            if (!cacheData) {
-                throw new Error('Search cache not initialized. Call search_files with action="start" first.');
-            }
-
-            const workspaceFiles = cacheData.files || null;
-            const workspaceScope = cacheData.workspaceScope || null;
+            const { files: workspaceFiles, workspaceScope } = await resolveActiveSearchScope(
+                handlers,
+                sessionId,
+                viewType
+            );
             const metadataDb = handlers.globalResources.getMetadataDatabase();
             
             // Get suggestions from database (workspaceScope avoids giant filename IN lists)
@@ -1108,24 +1105,32 @@ async function handleOmegasearchQuery(handlers, ws, message, clientInfo, wsServe
     }
 }
 
+async function resolveActiveSearchScope(handlers, sessionId, viewType) {
+    const cacheData = searchCache.get(sessionId);
+    if (cacheData && cacheData.viewType === viewType) {
+        return {
+            files: cacheData.files || null,
+            workspaceScope: cacheData.workspaceScope || null
+        };
+    }
+    const activeWorkspaceId = handlers.globalResources.getWorkspaceManager().getActiveWorkspace(sessionId);
+    const resolved = await resolveWorkspaceFilesForSearch(handlers, sessionId, activeWorkspaceId, viewType);
+    return {
+        files: resolved.files || null,
+        workspaceScope: resolved.workspaceScope || null
+    };
+}
+
 async function searchFilesByTags(handlers, query, viewType, sessionId) {
         const searchTerms = query.toLowerCase().trim().split(',').map(term => term.trim()).filter(term => term.length > 0);
         console.log('🔍 Search: Processing search terms:', searchTerms);
 
         try {
-            // Get cached data for this session
-            const cacheData = searchCache.get(sessionId);
-            if (!cacheData) {
-                throw new Error('Search cache not initialized. Call search_files with action="start" first.');
-            }
-
-            if (cacheData.viewType !== viewType) {
-                throw new Error(`View type mismatch. Cache initialized for ${cacheData.viewType}, but searching in ${viewType}`);
-            }
-
-            // Get workspace files / ownership scope for filtering
-            const workspaceFiles = cacheData.files || null;
-            const workspaceScope = cacheData.workspaceScope || null;
+            const { files: workspaceFiles, workspaceScope } = await resolveActiveSearchScope(
+                handlers,
+                sessionId,
+                viewType
+            );
             
             // For upscaled view, we need to filter by upscaled status
             // We'll do this after getting search results from database

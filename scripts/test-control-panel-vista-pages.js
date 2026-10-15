@@ -34,6 +34,10 @@ assert.strictEqual(balloonFor('downloading'), null);
 assert.strictEqual(balloonFor('uptodate'), null);
 assert.strictEqual(balloonFor('restart').title, 'Restart MeletonFX to finish installing updates');
 assert.strictEqual(balloonFor('ready').title, 'Updates are ready to install');
+assert.strictEqual(classify('upgrade', 'Upgrade to Service Pack 26Q4 abcd1234'), 'upgrade');
+assert.strictEqual(balloonFor('upgrade', 'Upgrade to Service Pack 26Q4 abcd1234').title, 'Upgrade to Service Pack 26Q4 abcd1234');
+assert.ok(upd._test.box({ state: 'upgrade', message: 'Upgrade to Service Pack 26Q4 abcd1234' }).includes('Upgrade to Service Pack 26Q4 abcd1234'));
+assert.ok(upd._test.box({ state: 'upgrade', message: 'Upgrade to Service Pack 26Q4 abcd1234' }).includes('data-cpl-wu="restart"'));
 assert.strictEqual(upd._test.tooltipFor('downloading', 40), 'Downloading updates (40%)');
 const updJs = read('public/scripts/comp/cplUpdate.js');
 assert.ok(updJs.includes("button: ['Check for updates', 'check']"), 'up to date offers Check for updates');
@@ -42,7 +46,7 @@ assert.ok(updJs.includes('function beginPrepare'), 'beginPrepare opens the page 
 assert.ok(updJs.includes("installing: { band: 'blue', title: 'Installing updates…'"), 'installing has its own look');
 assert.ok(updJs.includes('role="progressbar"'), "7.css bars (classic draws its own)");
 const swmJs = read('public/scripts/comp/serviceWorkerManager.js');
-assert.ok(swmJs.includes('const balloon = window.cplUpdate.balloonFor(pageState);') && swmJs.includes('_renderVistaUpdateBalloon'), 'the tray balloon is Vista\'s');
+assert.ok(swmJs.includes('window.cplUpdate.balloonFor(pageState') && swmJs.includes('_renderVistaUpdateBalloon'), 'the tray balloon is Vista\'s');
 assert.ok(swmJs.includes('window.cplUpdate.beginPrepare()'), 'every check opens the page on prepare');
 assert.ok(swmJs.includes('await window.wsClient.refreshServerCache()'), 'prepare compiles static assets');
 assert.ok(read('public/scripts/comp/mainMenuManager.js').includes('serviceWorkerManager.refreshServerCacheAndCheck()'), 'context-menu Update uses the same path');
@@ -51,7 +55,7 @@ assert.ok(read('public/scripts/comp/mainMenuManager.js').includes('window.servic
 // the foreground hook in the service worker manager
 const swm = read('public/scripts/comp/serviceWorkerManager.js');
 assert.ok(/if \(typeof this\.foregroundUpdateView === 'function'\) \{\s*this\._hideServiceWorkerTrayPopup\(\);/.test(swm), 'the open page takes the states and the balloon stays down');
-assert.ok(swm.includes("popupKind === 'runtime-compile'") && swm.includes("'preparing'"), 'compile progress is the prepare stage');
+assert.ok(swm.includes("foregroundUpdateView('preparing'") && !swm.includes("kind: 'runtime-compile'") && !swm.includes('Compiling runtime assets'), 'compile progress is the prepare stage, not a tray balloon');
 assert.ok(swm.includes("localStorage.setItem('meletonUpdateCheckedAt'") && swm.includes("localStorage.setItem('meletonUpdateInstalledAt'"), 'check and install times for the facts');
 
 // Remote Access hosted in Control Panel

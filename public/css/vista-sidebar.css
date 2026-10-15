@@ -444,30 +444,73 @@ body:not(.desktop-mode) #vistaSidebar {
     height: 177px;
 }
 
+/* the sheet, not a form field. Global textarea rules (padding, orange/white border, active
+   wash) must not land here, including while the pointer is down. */
 .vsb-notes-text {
     position: absolute;
-    top: 12px;
-    left: 11px;
+    top: 3px;
+    right: 7px;
+    bottom: 12px;
+    left: 4px;
     box-sizing: border-box;
-    width: 102px;
-    height: 65px;
-    margin: 0;
-    padding: 0;
-    overflow: auto;
-    border: 0;
-    outline: none;
-    background: transparent;
+    width: auto;
+    height: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
     color: #000;
-    line-height: 1.2;
+    line-height: 1.15;
     resize: none;
     scrollbar-width: none;
 }
 
+body.desktop-mode .vsb .vsb-notes-text,
+body.desktop-mode .vsb .vsb-notes-text:is(:hover, :focus, :focus-visible, :active) {
+    margin: 0;
+    padding: 8px 8px 12px 10px;
+    border: 0;
+    border-radius: 0;
+    outline: none;
+    background: transparent;
+    box-shadow: none;
+    z-index: auto;
+    appearance: none;
+}
+
 .vsb-gadget[data-docked="0"] .vsb-notes-text {
-    top: 10px;
-    left: 16px;
-    width: 160px;
-    height: 125px;
+    top: 3px;
+    right: 14px;
+    bottom: 16px;
+    left: 4px;
+}
+
+body.desktop-mode .vsb-gadget[data-docked="0"] .vsb-notes-text,
+body.desktop-mode .vsb-gadget[data-docked="0"] .vsb-notes-text:is(:hover, :focus, :focus-visible, :active) {
+    padding: 10px 14px 18px 14px;
+}
+
+.vsb-notes-text[readonly] {
+    cursor: default;
+}
+
+.vsb-notes:is(:hover, :focus-within) .vsb-notes-text {
+    scrollbar-width: auto;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .vsb-notes-text:not(.has-custom-scrollbar):not(.scrollable-content):not(.form-section-scroll):not(.modal-window-title-toolbar)::-webkit-scrollbar,
+body.desktop-mode:not(.windows-classic-theme) .vsb-notes-text:not(.has-custom-scrollbar):not(.scrollable-content):not(.form-section-scroll):not(.modal-window-title-toolbar)::-webkit-scrollbar-button {
+    width: 0;
+    height: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .vsb-notes:is(:hover, :focus-within) .vsb-notes-text:not(.has-custom-scrollbar):not(.scrollable-content):not(.form-section-scroll):not(.modal-window-title-toolbar)::-webkit-scrollbar {
+    width: 11px;
+    height: 11px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .vsb-notes:is(:hover, :focus-within) .vsb-notes-text:not(.has-custom-scrollbar):not(.scrollable-content):not(.form-section-scroll):not(.modal-window-title-toolbar)::-webkit-scrollbar-button {
+    width: 11px;
+    height: 11px;
+    background-size: 8px 8px, 11px 11px;
 }
 
 .vsb-notes-bar {
@@ -944,18 +987,48 @@ body:not(.desktop-mode) #vistaSidebar {
 
 /* ---------- Mail (Dovecote Inbox, drawn like Feed Headlines) ---------- */
 
+/* --vsb-mail-n is the message count (3-6). Head and foot stay fixed; the list area is the stretch. */
 .vsb-mail {
+    --vsb-mail-n: 3;
+    --vsb-mail-item: 35px;
+    --vsb-mail-head: 23px;
+    --vsb-mail-foot: 34px;
     position: relative;
     width: 130px;
-    height: 173px;
-    background: url('/static_images/vista-sidebar/mail/rssBackBlue_docked.png') no-repeat;
+    height: calc(var(--vsb-mail-head) + var(--vsb-mail-n) * var(--vsb-mail-item) + var(--vsb-mail-foot));
     color: #fff;
 }
 
 .vsb-gadget[data-docked="0"] .vsb-mail {
+    --vsb-mail-item: 43px;
+    --vsb-mail-head: 32px;
+    --vsb-mail-foot: 28px;
     width: 296px;
-    height: 232px;
-    background-image: url('/static_images/vista-sidebar/mail/rssBackBlue_Undocked.png');
+}
+
+/* nine-slice of the Feed Headlines frame, same as the Slide Show glass, so 3 messages sit on the
+   footer and 4-6 grow the middle */
+.vsb-mail-glass {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 0;
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    border-style: solid;
+    border-width: 22px 4px 34px 4px;
+    border-image: url('/static_images/vista-sidebar/mail/rssBackBlue_docked.png') 22 4 34 4 fill stretch;
+    pointer-events: none;
+}
+
+.vsb-gadget[data-docked="0"] .vsb-mail-glass {
+    border-width: 32px 16px 47px 16px;
+    border-image: url('/static_images/vista-sidebar/mail/rssBackBlue_Undocked.png') 32 16 47 16 fill stretch;
+}
+
+.vsb-mail > :not(.vsb-mail-glass) {
+    z-index: 1;
 }
 
 .vsb .vsb-mail-head {
@@ -992,35 +1065,29 @@ body:not(.desktop-mode) #vistaSidebar {
 .vsb-mail-list,
 .vsb-mail-message {
     position: absolute;
-    top: 23px;
+    top: var(--vsb-mail-head);
     left: 3px;
     width: 123px;
 }
 
 .vsb-gadget[data-docked="0"] :is(.vsb-mail-list, .vsb-mail-message) {
-    top: 32px;
     left: 16px;
     width: 264px;
 }
 
 .vsb-mail-message {
-    height: 105px;
+    height: calc(var(--vsb-mail-n) * var(--vsb-mail-item));
     color: #c8d4e0;
     font-size: 12px;
-    line-height: 105px;
+    line-height: calc(var(--vsb-mail-n) * var(--vsb-mail-item));
     text-align: center;
-}
-
-.vsb-gadget[data-docked="0"] .vsb-mail-message {
-    height: 172px;
-    line-height: 172px;
 }
 
 .vsb .vsb-mail-item {
     display: block;
     box-sizing: border-box;
     width: 123px;
-    height: 35px;
+    height: var(--vsb-mail-item);
     padding: 5px 1px 4px 6px;
     text-align: left;
 }
@@ -1031,7 +1098,6 @@ body:not(.desktop-mode) #vistaSidebar {
 
 .vsb-gadget[data-docked="0"] .vsb-mail-item {
     width: 264px;
-    height: 43px;
     padding: 7px 6px;
 }
 
@@ -1042,14 +1108,29 @@ body:not(.desktop-mode) #vistaSidebar {
 .vsb-mail-subject {
     display: block;
     overflow: hidden;
-    font-size: 12px;
-    line-height: 14px;
+    color: #fff;
+    font-size: 11px;
+    line-height: 13px;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
+.vsb-gadget[data-docked="0"] .vsb-mail-subject {
+    font-size: 12px;
+    line-height: 14px;
+}
+
 .vsb-mail-item.is-unread .vsb-mail-subject {
+    color: #fff1a8;
     font-weight: 600;
+}
+
+.vsb-mail-item.has-attachment .vsb-mail-subject {
+    color: #b7e6ff;
+}
+
+.vsb-mail-item.is-unread.has-attachment .vsb-mail-subject {
+    color: #ffe0b0;
 }
 
 .vsb-mail-meta {
@@ -1071,7 +1152,7 @@ body:not(.desktop-mode) #vistaSidebar {
 
 .vsb-mail-nav {
     position: absolute;
-    top: 147px;
+    bottom: 6px;
     left: 26px;
     display: flex;
     align-items: center;
@@ -1084,8 +1165,29 @@ body:not(.desktop-mode) #vistaSidebar {
 }
 
 .vsb-gadget[data-docked="0"] .vsb-mail-nav {
-    top: 204px;
+    bottom: 8px;
     left: 109px;
+}
+
+/* closed envelope, list-16.png icon 9 (dovecote.css unread column) */
+.vsb .vsb-mail-icon {
+    position: absolute;
+    right: 6px;
+    bottom: 8px;
+    width: 16px;
+    height: 16px;
+    background-image: url('/static_images/vista-mail/list-16.png');
+    background-position: -144px 0;
+    background-size: 960px 16px;
+}
+
+.vsb .vsb-mail-icon:hover {
+    filter: brightness(1.25);
+}
+
+.vsb-gadget[data-docked="0"] .vsb-mail-icon {
+    right: 16px;
+    bottom: 10px;
 }
 
 .vsb-mail-pos {
@@ -1129,8 +1231,21 @@ body:not(.desktop-mode) #vistaSidebar {
 }
 
 .vsb-options-preview-image.vsb-notes-preview {
+    position: relative;
     width: 130px;
     height: 121px;
+}
+
+.vsb-notes-font-preview {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    bottom: 14px;
+    left: 10px;
+    overflow: hidden;
+    color: #000;
+    line-height: 1.15;
+    pointer-events: none;
 }
 
 .vsb-options-arrow {
@@ -1345,3 +1460,651 @@ body:not(.desktop-mode) #vistaSidebar {
     opacity: 0.8;
     pointer-events: none;
 }
+
+/* ---------- Calculator (tmp/gadget/Calculator.gadget) ---------- */
+
+.vsb-calc:focus,
+.vsb-desk:focus { outline: none; }
+
+.vsb-calc {
+    position: relative;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 130px;
+    height: 153px;
+    padding: 6px 7px 8px;
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+}
+
+.vsb-calc[data-color="grey"] { background-image: url('/static_images/vista-sidebar/calculator/BackgroundDockedGrey.png'); }
+.vsb-calc[data-color="pink"] { background-image: url('/static_images/vista-sidebar/calculator/BackgroundDockedPink.png'); }
+.vsb-calc[data-color="yellow"] { background-image: url('/static_images/vista-sidebar/calculator/BackgroundDockedYellow.png'); }
+
+.vsb-gadget[data-docked="0"] .vsb-calc {
+    width: 242px;
+    height: 271px;
+    padding: 16px 21px 14px;
+}
+
+.vsb-gadget[data-docked="0"] .vsb-calc[data-color="grey"] { background-image: url('/static_images/vista-sidebar/calculator/BackgroundGrey.png'); }
+.vsb-gadget[data-docked="0"] .vsb-calc[data-color="pink"] { background-image: url('/static_images/vista-sidebar/calculator/BackgroundPink.png'); }
+.vsb-gadget[data-docked="0"] .vsb-calc[data-color="yellow"] { background-image: url('/static_images/vista-sidebar/calculator/BackgroundYellow.png'); }
+
+.vsb-gadget[data-docked="0"] .vsb-calc.is-history { height: 351px; }
+.vsb-gadget[data-docked="0"] .vsb-calc.is-history[data-color="grey"] { background-image: url('/static_images/vista-sidebar/calculator/BackgroundHistoryGrey.png'); }
+.vsb-gadget[data-docked="0"] .vsb-calc.is-history[data-color="pink"] { background-image: url('/static_images/vista-sidebar/calculator/BackgroundHistoryPink.png'); }
+.vsb-gadget[data-docked="0"] .vsb-calc.is-history[data-color="yellow"] { background-image: url('/static_images/vista-sidebar/calculator/BackgroundHistoryYellow.png'); }
+
+.vsb-calc-history { display: none; }
+
+.vsb-gadget[data-docked="0"] .vsb-calc.is-history .vsb-calc-history {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    width: 200px;
+    height: 72px;
+    margin-bottom: 4px;
+    overflow: hidden;
+    color: #333;
+    font: 9px/12px "Segoe UI", Tahoma, sans-serif;
+    text-align: right;
+}
+
+.vsb-calc-screen {
+    position: relative;
+    width: 116px;
+    height: 57px;
+    background: url('/static_images/vista-sidebar/calculator/ScreenDocked.png') 0 0 / 100% 100% no-repeat;
+}
+
+.vsb-gadget[data-docked="0"] .vsb-calc-screen {
+    width: 200px;
+    height: 93px;
+    background-image: url('/static_images/vista-sidebar/calculator/ScreenMin.png');
+}
+
+.vsb .vsb-calc-readout {
+    position: absolute;
+    top: 3px;
+    right: 6px;
+    left: 16px;
+    height: 20px;
+    overflow: hidden;
+    color: #102033;
+    font: bold 13px/20px Tahoma, sans-serif;
+    text-align: right;
+}
+
+.vsb-gadget[data-docked="0"] .vsb-calc-readout {
+    top: 10px;
+    height: 28px;
+    font-size: 18px;
+    line-height: 28px;
+}
+
+.vsb .vsb-calc-memflag {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    color: #102033;
+    font: bold 10px Tahoma, sans-serif;
+}
+
+.vsb-calc-memrow {
+    position: absolute;
+    right: 3px;
+    bottom: 3px;
+    left: 3px;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 1px;
+    height: 14px;
+}
+
+.vsb-gadget[data-docked="0"] .vsb-calc-memrow {
+    bottom: 8px;
+    height: 20px;
+}
+
+.vsb .vsb-calc-memkey {
+    color: #1a1a1a;
+    font: 7px/13px "Segoe UI", sans-serif;
+    background: url('/static_images/vista-sidebar/calculator/BtnDockedRound.png') center / 100% 100% no-repeat;
+}
+
+.vsb .vsb-calc-memkey:hover { background-image: url('/static_images/vista-sidebar/calculator/BtnDockedHoverRound.png'); }
+.vsb .vsb-calc-memkey:active { background-image: url('/static_images/vista-sidebar/calculator/BtnDockedPressedRound.png'); }
+
+.vsb-gadget[data-docked="0"] .vsb-calc-memkey {
+    font-size: 9px;
+    line-height: 19px;
+    background-image: url('/static_images/vista-sidebar/calculator/BtnRound.png');
+}
+
+.vsb-gadget[data-docked="0"] .vsb-calc-memkey:hover { background-image: url('/static_images/vista-sidebar/calculator/BtnRoundHover.png'); }
+.vsb-gadget[data-docked="0"] .vsb-calc-memkey:active { background-image: url('/static_images/vista-sidebar/calculator/BtnRoundPressed.png'); }
+
+.vsb-calc-pad-dock {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    grid-template-rows: repeat(4, 1fr);
+    width: 116px;
+    height: 70px;
+    margin-top: 2px;
+    background: url('/static_images/vista-sidebar/calculator/BtnDockedDefault.png') 0 0 / 100% 100% no-repeat;
+}
+
+.vsb-calc-pad-wide { display: none; }
+
+.vsb-gadget[data-docked="0"] .vsb-calc-pad-dock { display: none; }
+
+.vsb-gadget[data-docked="0"] .vsb-calc-pad-wide {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    grid-template-rows: repeat(4, 1fr);
+    width: 200px;
+    height: 118px;
+    margin-top: 4px;
+    background: url('/static_images/vista-sidebar/calculator/BtnDefault.png') 0 0 / 100% 100% no-repeat;
+}
+
+.vsb .vsb-calc-key {
+    color: #1a1a1a;
+    font: 9px "Segoe UI", Tahoma, sans-serif;
+    text-align: center;
+}
+
+.vsb .vsb-calc-key:active { background: rgba(0, 0, 0, 0.12); }
+
+.vsb-calc-plus { grid-column: 6; grid-row: 1 / span 2; }
+.vsb-calc-eq { grid-column: 6; grid-row: 3 / span 2; }
+
+/* ---------- Desktop Calculator ---------- */
+
+.vsb-desk {
+    position: relative;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    width: 130px;
+    height: 186px;
+    padding: 22px 8px 8px;
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+}
+
+.vsb-gadget[data-docked="0"] .vsb-desk {
+    width: 320px;
+    height: 320px;
+    padding: 28px 14px 12px;
+}
+
+.vsb-desk[data-color="plain"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_small.png'); }
+.vsb-desk[data-color="aqua"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_small_aqua.png'); }
+.vsb-desk[data-color="black"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_small_black.png'); }
+.vsb-desk[data-color="blue"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_small_blue.png'); }
+.vsb-desk[data-color="green"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_small_green.png'); }
+.vsb-desk[data-color="pink"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_small_pink.png'); }
+.vsb-desk[data-color="red"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_small_red.png'); }
+.vsb-desk[data-color="white"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_small_white.png'); }
+.vsb-desk[data-color="yellow"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_small_yellow.png'); }
+
+.vsb-gadget[data-docked="0"] .vsb-desk[data-color="plain"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_big.png'); }
+.vsb-gadget[data-docked="0"] .vsb-desk[data-color="aqua"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_big_aqua.png'); }
+.vsb-gadget[data-docked="0"] .vsb-desk[data-color="black"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_big_black.png'); }
+.vsb-gadget[data-docked="0"] .vsb-desk[data-color="blue"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_big_blue.png'); }
+.vsb-gadget[data-docked="0"] .vsb-desk[data-color="green"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_big_green.png'); }
+.vsb-gadget[data-docked="0"] .vsb-desk[data-color="pink"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_big_pink.png'); }
+.vsb-gadget[data-docked="0"] .vsb-desk[data-color="red"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_big_red.png'); }
+.vsb-gadget[data-docked="0"] .vsb-desk[data-color="white"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_big_white.png'); }
+.vsb-gadget[data-docked="0"] .vsb-desk[data-color="yellow"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_big_yellow.png'); }
+
+.vsb .vsb-desk-readout {
+    height: 22px;
+    overflow: hidden;
+    color: #d7ffe8;
+    font: bold 14px/22px Tahoma, sans-serif;
+    text-align: right;
+}
+
+.vsb .vsb-desk-mem {
+    position: absolute;
+    top: 24px;
+    left: 10px;
+    color: #d7ffe8;
+    font: bold 10px Tahoma, sans-serif;
+}
+
+.vsb-desk[data-color="white"] .vsb-desk-readout,
+.vsb-desk[data-color="yellow"] .vsb-desk-readout,
+.vsb-desk[data-color="white"] .vsb-desk-mem,
+.vsb-desk[data-color="yellow"] .vsb-desk-mem { color: #143; }
+
+.vsb-desk-memrow,
+.vsb-desk-keys {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 2px;
+}
+
+.vsb-desk-memrow { grid-template-columns: repeat(4, 1fr); }
+
+.vsb-desk-sci { display: contents; }
+
+.vsb-gadget[data-docked="1"] .vsb-desk-sci { display: none; }
+
+.vsb .vsb-desk-key {
+    height: 18px;
+    color: #fff;
+    font: 8px/18px "Segoe UI", Tahoma, sans-serif;
+    text-align: center;
+    background-repeat: no-repeat;
+    background-position: center 0;
+    background-size: 20px 120px;
+}
+
+.vsb .vsb-desk-key:hover { background-position: center -20px; }
+.vsb .vsb-desk-key:active { background-position: center -40px; }
+
+.vsb-gadget[data-docked="0"] .vsb-desk-key {
+    height: 28px;
+    font-size: 11px;
+    line-height: 28px;
+    background-size: 36px 216px;
+}
+
+.vsb-gadget[data-docked="0"] .vsb-desk-key:hover { background-position: center -36px; }
+.vsb-gadget[data-docked="0"] .vsb-desk-key:active { background-position: center -72px; }
+
+.vsb-desk[data-color="white"] .vsb-desk-key,
+.vsb-desk[data-color="yellow"] .vsb-desk-key { color: #222; }
+
+.vsb-desk[data-ink="gray"] .vsb-desk-key { background-image: url('/static_images/vista-sidebar/deskcalc/bs_gray.png'); }
+.vsb-desk[data-ink="blue"] .vsb-desk-key { background-image: url('/static_images/vista-sidebar/deskcalc/bs_blue.png'); }
+.vsb-desk[data-ink="black"] .vsb-desk-key { background-image: url('/static_images/vista-sidebar/deskcalc/bs_black.png'); }
+.vsb-desk[data-ink="green"] .vsb-desk-key { background-image: url('/static_images/vista-sidebar/deskcalc/bs_green.png'); }
+.vsb-desk[data-ink="red"] .vsb-desk-key { background-image: url('/static_images/vista-sidebar/deskcalc/bs_red.png'); }
+.vsb-desk[data-ink="beige"] .vsb-desk-key { background-image: url('/static_images/vista-sidebar/deskcalc/bs_beige.png'); }
+
+.vsb-gadget[data-docked="0"] .vsb-desk[data-ink="gray"] .vsb-desk-key { background-image: url('/static_images/vista-sidebar/deskcalc/bb_gray.png'); }
+.vsb-gadget[data-docked="0"] .vsb-desk[data-ink="blue"] .vsb-desk-key { background-image: url('/static_images/vista-sidebar/deskcalc/bb_blue.png'); }
+.vsb-gadget[data-docked="0"] .vsb-desk[data-ink="black"] .vsb-desk-key { background-image: url('/static_images/vista-sidebar/deskcalc/bb_black.png'); }
+.vsb-gadget[data-docked="0"] .vsb-desk[data-ink="green"] .vsb-desk-key { background-image: url('/static_images/vista-sidebar/deskcalc/bb_green.png'); }
+.vsb-gadget[data-docked="0"] .vsb-desk[data-ink="red"] .vsb-desk-key { background-image: url('/static_images/vista-sidebar/deskcalc/bb_red.png'); }
+.vsb-gadget[data-docked="0"] .vsb-desk[data-ink="beige"] .vsb-desk-key { background-image: url('/static_images/vista-sidebar/deskcalc/bb_beige.png'); }
+
+/* ---------- Timer ---------- */
+
+.vsb-timer {
+    position: relative;
+    width: 90px;
+    height: 111px;
+    overflow: hidden;
+    background: url('/static_images/vista-sidebar/timer/timer_small_bg.png') 0 0 / 100% 100% no-repeat;
+}
+
+.vsb-gadget[data-docked="0"] .vsb-timer {
+    width: 130px;
+    height: 165px;
+    background-image: url('/static_images/vista-sidebar/timer/timer_large_bg.png');
+}
+
+.vsb-timer.is-ringing { animation: vsb-timer-flash 0.2s steps(2) infinite; }
+
+@keyframes vsb-timer-flash { to { opacity: 0.35; } }
+
+.vsb-timer-ring {
+    position: absolute;
+    top: 44%;
+    left: 50%;
+    width: 0;
+    height: 0;
+}
+
+.vsb .vsb-timer-num {
+    position: absolute;
+    width: 18px;
+    margin-left: -9px;
+    color: #2c2c2c;
+    font: 7px "Segoe UI", Tahoma, sans-serif;
+    text-align: center;
+    pointer-events: none;
+}
+
+.vsb-gadget[data-docked="0"] .vsb-timer-num { font-size: 9px; }
+
+.vsb .vsb-timer-readout {
+    position: absolute;
+    top: 46%;
+    right: 0;
+    left: 0;
+    color: #1c1c1c;
+    font: bold 11px "Segoe UI", Tahoma, sans-serif;
+    text-align: center;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.45);
+    pointer-events: none;
+}
+
+.vsb-timer-hit {
+    position: absolute;
+    right: 14%;
+    left: 14%;
+    height: 16%;
+}
+
+.vsb-timer-hit-secs { top: 22%; }
+.vsb-timer-hit-mins { top: 40%; }
+
+.vsb .vsb-timer-reset {
+    position: absolute;
+    right: 28%;
+    bottom: 8%;
+    left: 28%;
+    height: 14%;
+}
+
+/* ---------- Clipboard ---------- */
+
+.vsb-clip {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    width: 130px;
+    height: 168px;
+    padding: 4px;
+    background: linear-gradient(#f4f7fb, #d5deea);
+    border: 1px solid #8ea4c1;
+    border-radius: 6px;
+}
+
+.vsb-gadget[data-docked="0"] .vsb-clip {
+    width: 180px;
+    height: 220px;
+}
+
+.vsb-clip-bar { display: flex; gap: 4px; }
+
+.vsb .vsb-clip-bar button {
+    flex: 1;
+    height: 18px;
+    color: #123;
+    font: 10px "Segoe UI", Tahoma, sans-serif;
+    background: linear-gradient(#fff, #d7e2f0);
+    border: 1px solid #8ea4c1;
+    border-radius: 2px;
+}
+
+.vsb-clip-list {
+    flex: 1;
+    margin: 4px 0;
+    overflow: auto;
+}
+
+.vsb .vsb-clip-item {
+    display: block;
+    width: 100%;
+    padding: 2px 4px;
+    overflow: hidden;
+    color: #123;
+    font: 10px/14px "Segoe UI", Tahoma, sans-serif;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.vsb .vsb-clip-item:hover { background: #fff6d8; }
+
+.vsb-clip-empty {
+    padding: 8px 4px;
+    color: #667;
+    font: 10px "Segoe UI", Tahoma, sans-serif;
+}
+
+.vsb .vsb-clip-filter {
+    height: 18px;
+    padding: 0 4px;
+    color: #123;
+    font: 10px "Segoe UI", Tahoma, sans-serif;
+    background: #fff;
+    border: 1px solid #8ea4c1;
+    border-radius: 2px;
+}
+
+/* ---------- HTC Hero Clock ---------- */
+
+.vsb-gadget[data-type="hero"] .vsb-clock-name {
+    text-shadow: 0 1px 2px #000, 0 0 2px #000;
+}
+
+/* ---------- Sidebar Outlook (Dovecote Inbox on the Outlook skin) ---------- */
+
+.vsb-out {
+    position: relative;
+    width: 130px;
+    height: 186px;
+    background: url('/static_images/vista-sidebar/outlook/sboDocked.png') 0 0 / 100% 100% no-repeat;
+}
+
+.vsb-gadget[data-docked="0"] .vsb-out {
+    width: 292px;
+    height: 302px;
+    background-image: url('/static_images/vista-sidebar/outlook/sboUndocked.png');
+}
+
+.vsb .vsb-out-unread {
+    position: absolute;
+    top: 7%;
+    right: 6%;
+    width: 22px;
+    color: #9b6f07;
+    font: bold 8.5pt Calibri, Tahoma, sans-serif;
+    text-align: center;
+}
+
+.vsb-out-tools {
+    position: absolute;
+    top: 10%;
+    left: 8px;
+    display: flex;
+    gap: 6px;
+}
+
+.vsb .vsb-out-tool {
+    width: 16px;
+    height: 16px;
+    background: center / 16px 16px no-repeat;
+    opacity: 0.7;
+}
+
+.vsb .vsb-out-tool:hover { opacity: 1; }
+
+.vsb-out-tools .vsb-out-tool:nth-child(1) { background-image: url('/static_images/vista-sidebar/outlook/newEmail.png'); }
+.vsb-out-tools .vsb-out-tool:nth-child(2) { background-image: url('/static_images/vista-sidebar/outlook/sendRecv.png'); }
+.vsb-out-tools .vsb-out-tool:nth-child(3) { background-image: url('/static_images/vista-sidebar/outlook/openSelectedFolder.png'); }
+
+.vsb .vsb-out-scroll {
+    position: absolute;
+    left: 4%;
+    width: 91%;
+    height: 9px;
+    background: #eee;
+    border: 1px solid #ddd;
+}
+
+.vsb-out-up { top: 19%; }
+.vsb-out-down { bottom: 4%; }
+
+.vsb-out-up::before,
+.vsb-out-down::before {
+    content: "";
+    display: block;
+    width: 0;
+    height: 0;
+    margin: 1px auto 0;
+    border-right: 4px solid transparent;
+    border-left: 4px solid transparent;
+}
+
+.vsb-out-up::before { border-bottom: 5px solid #666; }
+.vsb-out-down::before { border-top: 5px solid #666; }
+
+.vsb-out-list {
+    position: absolute;
+    top: 24%;
+    left: 4%;
+    width: 91%;
+    height: 68%;
+    overflow: hidden;
+}
+
+.vsb .vsb-out-item {
+    display: block;
+    width: 100%;
+    padding: 1px 2px 2px;
+    color: #000;
+    font: 8pt Calibri, Tahoma, sans-serif;
+    text-align: left;
+    background: #fff;
+    border-bottom: 1px dotted #000;
+}
+
+.vsb .vsb-out-item.is-unread .vsb-out-from,
+.vsb .vsb-out-item.is-unread .vsb-out-date { font-weight: bold; }
+
+.vsb .vsb-out-from,
+.vsb .vsb-out-date,
+.vsb .vsb-out-subject {
+    display: inline-block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.vsb .vsb-out-from { width: 58%; }
+.vsb .vsb-out-date { width: 38%; text-align: right; }
+.vsb .vsb-out-subject { display: block; width: 100%; color: #808080; }
+
+.vsb-out-message {
+    position: absolute;
+    top: 40%;
+    right: 8%;
+    left: 8%;
+    color: #666;
+    font: 8pt Calibri, Tahoma, sans-serif;
+    text-align: center;
+}
+
+/* ---------- Currency, Stocks, Contacts ---------- */
+
+.vsb-fx,
+.vsb-quotes,
+.vsb-people {
+    box-sizing: border-box;
+    width: 130px;
+    padding: 6px 8px 7px;
+    color: #fff;
+    background: linear-gradient(180deg, rgba(90, 140, 190, 0.55), rgba(18, 40, 72, 0.62));
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    border-radius: 8px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.vsb-gadget[data-docked="0"] .vsb-fx,
+.vsb-gadget[data-docked="0"] .vsb-quotes,
+.vsb-gadget[data-docked="0"] .vsb-people {
+    width: 220px;
+}
+
+.vsb .vsb-fx-amount,
+.vsb .vsb-fx-code {
+    box-sizing: border-box;
+    width: 100%;
+    height: 18px;
+    margin: 0 0 3px;
+    padding: 0 3px;
+    color: #123;
+    font: 11px "Segoe UI", Tahoma, sans-serif;
+    background: #fff;
+    border: 1px solid #8ea4c1;
+    border-radius: 2px;
+}
+
+.vsb-fx-eq,
+.vsb-fx-meta,
+.vsb-quotes-empty {
+    color: #d5e4f2;
+    font-size: 10px;
+    text-align: center;
+}
+
+.vsb-fx-result {
+    margin: 1px 0 3px;
+    font-size: 14px;
+    font-weight: 600;
+    text-align: right;
+}
+
+.vsb-quote {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    column-gap: 6px;
+    font-size: 11px;
+    line-height: 14px;
+}
+
+.vsb-quote + .vsb-quote { margin-top: 3px; }
+
+.vsb-quote-sym { font-weight: 600; }
+
+.vsb-quote-px {
+    grid-row: 1 / span 2;
+    grid-column: 2;
+    align-self: center;
+}
+
+.vsb-quote-chg.is-up { color: #b6ffb0; }
+.vsb-quote-chg.is-down { color: #ffb4b4; }
+
+.vsb-people-name,
+.vsb-people-phone,
+.vsb .vsb-people-mail {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.vsb-people-name { font-size: 12px; font-weight: 600; }
+.vsb-people-name.is-empty { font-weight: 400; opacity: 0.75; }
+
+.vsb-people-phone,
+.vsb .vsb-people-mail {
+    font-size: 11px;
+    line-height: 15px;
+}
+
+.vsb .vsb-people-mail {
+    display: block;
+    width: 100%;
+    color: #d6ecff;
+    text-align: left;
+    text-decoration: underline;
+}
+
+.vsb .vsb-people-mail:disabled {
+    color: #b7c6d4;
+    text-decoration: none;
+}
+
+.vsb-people-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 4px;
+}
+
+.vsb-people-pos { font-size: 11px; }

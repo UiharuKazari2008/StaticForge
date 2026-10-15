@@ -355,22 +355,9 @@
     }
 
     function restartClientFromCommand() {
-        const sw = window.serviceWorkerManager;
-        if (sw && typeof sw.forceRestart === 'function') {
-            // Test restart: reload in place (no shutdown fade / Melaton boot) so reattach stays quick
-            sw.forceRestart({ direct: true });
-            return { ok: true, restarting: true };
-        }
-        if (typeof bypassConfirmation !== 'undefined') {
-            bypassConfirmation = true;
-        }
-        setTimeout(() => {
-            try {
-                window.location.reload();
-            } catch (_err) {
-                window.location.href = window.location.href;
-            }
-        }, 100);
+        // Ack before the Welcome screen; the tab reloads from there (runWinlogonPower).
+        // runWinlogonPower: public/scripts/comp/winlogonPower.js
+        runWinlogonPower('restart');
         return { ok: true, restarting: true };
     }
 

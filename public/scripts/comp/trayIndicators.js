@@ -35,6 +35,8 @@ function deferAccountTrayNotifications() {
 function revealTrayIconElement(el, animate = true) {
     if (!el) return;
     el.classList.remove('hidden');
+    // traySyncOverflow: public/scripts/comp/trayRegistry.js
+    traySyncOverflow();
     if (animate) {
         el.classList.remove('tray-boot-in');
         void el.offsetWidth;
@@ -204,7 +206,8 @@ function testCreditsIndicatorPopover() {
     const popoverMessage1 = `<i class="nai-anla"></i> -5 fixed<br>Free: ${fixedCredits}<br>Total: ${totalCredits}`;
     showPopover(indicator, 'success', 'Generation Complete', popoverMessage1, false, false, '<i class="fas fa-sparkles"></i>', null, {
         position: 'top',
-        arrowPosition: 'bottom-right'
+        arrowPosition: 'bottom-right',
+        popupId: 'generation-complete'
     });
     startPopoverAutoHideTimer(indicator);
 
@@ -215,7 +218,8 @@ function testCreditsIndicatorPopover() {
         const popoverMessage2 = `<i class="nai-anla"></i> -5 free<br>Free: 250<br>Paid: 100<br>Total: 350`;
         showPopover(indicator, 'info', 'Balance Updated', popoverMessage2, false, false, '<i class="fas fa-sync-alt"></i>', null, {
             position: 'top',
-            arrowPosition: 'bottom-right'
+            arrowPosition: 'bottom-right',
+            popupId: 'balance-updated'
         });
         startPopoverAutoHideTimer(indicator);
     }, 4000);

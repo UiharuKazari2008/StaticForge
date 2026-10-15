@@ -180,8 +180,8 @@
     });
     registerItem({
         id: 'dreamscape-services',
-        name: 'Dreamscape Services',
-        image: '/static_images/app_icons/controlpanel.webp',
+        name: 'Management Tools',
+        image: '/static_images/vista-cpl/management-tools-32.png',
         description: 'Data management, security and the other Dreamscape service pages.',
         open: () => callGlobal('openDsapInGrimoire', 'dsap://dreamscape.jp/')
     });
@@ -233,7 +233,7 @@
                 <button type="button" class="btn-secondary btn-small modal-work-area-maximize" title="Maximize"><i class="fa-regular fa-window-maximize"></i></button>
                 <button type="button" class="btn-danger close-btn btn-small cpl-close" title="Close"><i class="fa-regular fa-xmark-large"></i></button>
             </div>
-            <div class="modal-content dark cpl-content">
+            <div class="modal-content dark cpl-content win7">
                 <aside class="cpl-tasks"></aside>
                 <section class="cpl-main"></section>
             </div>`;
@@ -1134,6 +1134,7 @@
         hideTrayFlyout: hideFlyout,
         attachTrayMenu,
         isOpen: () => !!(modal && !modal.classList.contains('hidden')),
+        goBack,
         currentPage: () => current,
         _test: { pages, items, linkState, accessText, serverRows, formatDuration, setStatus: (s, e = false) => { lastStatus = s; statusError = e; } }
     };

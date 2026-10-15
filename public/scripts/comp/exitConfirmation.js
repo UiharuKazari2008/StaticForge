@@ -21,13 +21,15 @@ async function showExitConfirmation(event, action = 'leave') {
         ], event);
 
         if (confirmed) {
-            isExiting = true;
-            window.bypassConfirmation = true;
-
             if (action === 'refresh') {
-                window.location.reload();
+                // runWinlogonPower: public/scripts/comp/winlogonPower.js
+                const went = await runWinlogonPower('restart');
+                if (went) isExiting = true;
                 return;
             }
+
+            isExiting = true;
+            window.bypassConfirmation = true;
 
             if (action === 'close') {
                 try {
@@ -119,8 +121,8 @@ function wireExitConfirmationListeners() {
     });
 
     window.forceRefresh = () => {
-        window.bypassConfirmation = true;
-        window.location.reload();
+        // runWinlogonPower: public/scripts/comp/winlogonPower.js
+        runWinlogonPower('restart');
     };
 
     window.forceClose = () => {

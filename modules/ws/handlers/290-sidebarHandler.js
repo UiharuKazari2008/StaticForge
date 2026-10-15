@@ -107,6 +107,33 @@ async function handleHostMetrics(handlersCtx, ws, message, clientInfo) {
     }
 }
 
+async function handleFx(handlersCtx, ws, message, clientInfo) {
+    if (!requireAdmin(handlersCtx, ws, message, clientInfo)) return;
+    try {
+        reply(handlersCtx, ws, message, await sidebarGadgets.getFxRate(message.from, message.to));
+    } catch (error) {
+        handlersCtx.sendError(ws, 'Failed to load the exchange rate', error.message, message.requestId);
+    }
+}
+
+async function handleQuotes(handlersCtx, ws, message, clientInfo) {
+    if (!requireAdmin(handlersCtx, ws, message, clientInfo)) return;
+    try {
+        reply(handlersCtx, ws, message, await sidebarGadgets.getQuotes(message.symbols));
+    } catch (error) {
+        handlersCtx.sendError(ws, 'Failed to load quotes', error.message, message.requestId);
+    }
+}
+
+async function handleFeed(handlersCtx, ws, message, clientInfo) {
+    if (!requireAdmin(handlersCtx, ws, message, clientInfo)) return;
+    try {
+        reply(handlersCtx, ws, message, await sidebarGadgets.getFeed(message.url));
+    } catch (error) {
+        handlersCtx.sendError(ws, 'Failed to load the feed', error.message, message.requestId);
+    }
+}
+
 function registerPackets(handlersCtx) {
     if (!handlersCtx) {
         console.warn('[290-sidebarHandler] registerPackets: missing handlersCtx');
@@ -122,6 +149,9 @@ function registerPackets(handlersCtx) {
     reg('sidebar_random_image', handleRandomImage);
     reg('sidebar_weather', handleWeather);
     reg('sidebar_host_metrics', handleHostMetrics);
+    reg('sidebar_fx', handleFx);
+    reg('sidebar_quotes', handleQuotes);
+    reg('sidebar_feed', handleFeed);
 }
 
 module.exports = {

@@ -15,6 +15,7 @@ const dovecoteJs = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/co
 const appHtml = fs.readFileSync(path.join(__dirname, '..', 'public/app.html'), 'utf8');
 const modalUtilsJs = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/modalUtils.js'), 'utf8');
 const systemTrayJs = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/systemTrayManager.js'), 'utf8');
+const vistaSidebarJs = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/vistaSidebar.js'), 'utf8');
 
 function main() {
     // 1. Compose is a standalone top-level window, not an overlay inside the main modal:
@@ -58,6 +59,14 @@ function main() {
     assert.match(systemTrayJs, /'dovecoteTrayIcon',/);
     assert.match(systemTrayJs, /initializeDovecoteTray\(\);/);
     assert.match(systemTrayJs, /doveRefreshTrayUnread/);
+    // Unread changes arrive as dovecote_mailbox_updated. The tray and the sidebar
+    // gadgets do not poll for mail.
+    assert.match(dovecoteJs, /dovecote_mailbox_updated/);
+    assert.match(dovecoteJs, /dovecoteMailboxUpdated/);
+    assert.doesNotMatch(systemTrayJs, /setInterval\(doveRefreshTrayUnread/);
+    assert.match(vistaSidebarJs, /dovecoteMailboxUpdated/);
+    assert.doesNotMatch(vistaSidebarJs, /vsbMailPoll/);
+    assert.doesNotMatch(vistaSidebarJs, /setTimeout\(\(\) => vsbMailRefresh\(inst\), 60000\)/);
 
     // 4. Dovecote launches from the main app menu (startMenuLaunchables, appMenu: true) with an
     // image icon (Windows Mail's, WinMail.exe on the Vista VM), and is no longer under the Tools submenu.

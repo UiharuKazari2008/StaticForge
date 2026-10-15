@@ -209,13 +209,18 @@ function respondWithSavedAsset(request, response) {
 }
 
 // Helper function to add cache-busting headers to responses
-function addCacheBustingHeaders(response) {
+function addCacheBustingHeaders(response, contentType) {
   // Opaque/opaqueredirect responses use status 0 and cannot be reconstructed.
   if (!response || response.status < 200 || response.status > 599) {
     return response;
   }
 
   const headers = new Headers(response.headers);
+  // Zip extract used to store /app as octet-stream. A navigation then downloads it.
+  if (contentType) {
+    headers.set('Content-Type', contentType);
+    headers.delete('Content-Disposition');
+  }
   headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
   headers.set('Pragma', 'no-cache');
   headers.set('Expires', '0');
@@ -884,6 +889,10 @@ workbox.routing.registerRoute(
     if (url.pathname.startsWith('/preset') || url.pathname.startsWith('/pending') || url.pathname.startsWith('/traces')) {
       return false;
     }
+    // Installer pack is one download stream. Do not store it in the static cache.
+    if (url.pathname === '/install/meletonfx.zip') {
+      return false;
+    }
     if (isLogViewerApiRequest(url) || isGrimoireBrowserRequest(url) || isDesktopGuacRequest(url)) {
       return false;
     }
@@ -914,7 +923,7 @@ workbox.routing.registerRoute(
         // Try to serve from cache first (skip when CACHE_STATIC_FILES needs a fresh network fetch)
         const cachedResponse = bypassRouteCache ? null : await cache.match(routePath);
         if (cachedResponse) {
-          response = addCacheBustingHeaders(cachedResponse);
+          response = addCacheBustingHeaders(cachedResponse, 'text/html; charset=utf-8');
         } else {
           // If not cached, fetch from server endpoint and cache
           try {
@@ -937,7 +946,7 @@ workbox.routing.registerRoute(
               
               // Cache at route path
               await cache.put(routePath, responseWithHeaders);
-              response = addCacheBustingHeaders(responseWithHeaders);
+              response = addCacheBustingHeaders(responseWithHeaders, 'text/html; charset=utf-8');
             } else {
               response = fetchResponse;
             }
@@ -1018,6 +1027,10 @@ workbox.routing.registerRoute(
   ({ url, request }) => {
     // Never handle /preset or /pending routes
     if (url.pathname.startsWith('/preset') || url.pathname.startsWith('/pending') || url.pathname.startsWith('/traces')) {
+      return false;
+    }
+    // Installer pack is one download stream. Do not store it in the static cache.
+    if (url.pathname === '/install/meletonfx.zip') {
       return false;
     }
     if (isLogViewerApiRequest(url) || isGrimoireBrowserRequest(url) || isDesktopGuacRequest(url)) {

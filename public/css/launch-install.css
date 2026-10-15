@@ -1,8 +1,8 @@
-/* Melaton installer on /launch (melatonBoot.js install, Yozora #419): Windows Setup ("Install
-   Windows", Vista) drawn in Windows Classic on the aurora backdrop. A Classic window with the
-   "Installing MeletonFX..." checklist and Vista's two-step strip (1 Collecting information,
-   2 Installing MeletonFX) with segmented Classic bars; a Classic message box on failure.
-   data-phase on #melatonInstall: installing | error | linger (the window has closed). */
+/* Melaton installer on /launch (melatonBoot.js install): Windows Setup in Vista Basic on the
+   aurora backdrop. Measured with the boot windows (desktop-boot.css): 1 px frame, Basic caption
+   gradient, black Segoe UI caption, the 28 x 15 close button. Checklist and Vista's two-step
+   strip (1 Collecting information, 2 Installing MeletonFX). data-phase on #melatonInstall:
+   arrive (aurora only) | installing | error | linger (the window has closed). */
 
 #melatonInstall {
     display: none;
@@ -13,7 +13,7 @@
 }
 
 #melatonBoot[data-screen="install"] #melatonInstall {
-    position: fixed;
+    position: absolute;
     inset: 0;
     display: flex;
     align-items: center;
@@ -21,30 +21,30 @@
     padding: 16px;
     box-sizing: border-box;
     background: #06202c url('/static_images/wallpapers/aurora-plain.webp') center / cover no-repeat;
-    font-family: Tahoma, 'MS Sans Serif', 'Noto Sans', sans-serif;
-    font-size: 11px;
+    font-family: 'Segoe UI', Tahoma, 'Noto Sans', sans-serif;
+    font-size: 12px;
     color: #000;
     cursor: var(--c-default);
 }
 
 /* The window closes; the aurora stays for the last few seconds */
 #melatonInstall[data-phase="linger"] .mi-window,
-#melatonInstall[data-phase="linger"] .mi-msgbox {
+#melatonInstall[data-phase="linger"] .mi-msgbox,
+#melatonInstall[data-phase="arrive"] .mi-window,
+#melatonInstall[data-phase="arrive"] .mi-msgbox {
     display: none;
 }
 
-/* ---- Classic window ---- */
+/* ---- Vista Basic window ---- */
 
 .mi-window,
 .mi-msgbox {
-    background: #d4d0c8;
-    padding: 3px;
-    box-shadow:
-        inset -1px -1px #404040,
-        inset 1px 1px #d4d0c8,
-        inset -2px -2px #808080,
-        inset 2px 2px #ffffff,
-        4px 4px 0 rgba(0, 0, 0, 0.25);
+    background: #f0f0f0;
+    border: 1px solid #343434;
+    border-color: #343434 #000 #000;
+    border-radius: 5px 5px 0 0;
+    box-shadow: inset 1px 1px #fff, inset -1px 0 #3fcef2, inset 0 -1px #28cfe4;
+    overflow: hidden;
 }
 
 .mi-window {
@@ -57,24 +57,24 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    height: 18px;
-    padding: 0 3px 0 4px;
-    background: linear-gradient(90deg, #0a246a, #a6caf0);
-    color: #fff;
-    font-weight: bold;
+    height: 22px;
+    padding: 0 4px 0 6px;
+    background: linear-gradient(#99b4d1, #b9d1ea);
+    color: #000;
+    font: 12px 'Segoe UI', Tahoma, 'Noto Sans', sans-serif;
+    font-weight: 400;
     white-space: nowrap;
 }
 
 .mi-title-close {
-    width: 16px;
-    height: 14px;
-    line-height: 12px;
-    text-align: center;
-    font-size: 13px;
-    font-weight: bold;
-    color: #808080;
-    background: #d4d0c8;
-    box-shadow: inset -1px -1px #404040, inset 1px 1px #ffffff, inset -2px -2px #808080;
+    width: 28px;
+    height: 15px;
+    flex: 0 0 28px;
+    background: url('/static_images/vista-logon/basic-close.png') 0 0 / 28px 15px no-repeat;
+    color: transparent;
+    font-size: 0;
+    line-height: 0;
+    box-shadow: none;
 }
 
 .mi-body {
@@ -86,14 +86,14 @@
 .mi-heading {
     margin: 0 0 10px;
     font-size: 15px;
-    font-weight: normal;
+    font-weight: 400;
     color: #003399;
 }
 
 .mi-lead {
     margin: 0 0 16px;
     max-width: 470px;
-    line-height: 1.4;
+    line-height: 1.35;
 }
 
 .mi-steps {
@@ -113,7 +113,7 @@
 .mi-step-mark {
     flex: 0 0 14px;
     text-align: center;
-    font-weight: bold;
+    font-weight: 700;
 }
 
 .mi-step--done .mi-step-mark::before {
@@ -123,24 +123,24 @@
 
 .mi-step--active .mi-step-mark::before {
     content: '\25BA';
-    color: #000080;
+    color: #1a5fb4;
     font-size: 9px;
 }
 
 .mi-step--active .mi-step-label {
-    font-weight: bold;
+    font-weight: 600;
 }
 
 .mi-step--pending .mi-step-label {
-    color: #404040;
+    color: #666;
 }
 
 /* ---- Vista's two-step strip ---- */
 
 .mi-strip {
     padding: 8px 12px 10px;
-    border-top: 1px solid #808080;
-    box-shadow: inset 0 1px #ffffff;
+    border-top: 1px solid #d0d0d0;
+    background: #f0f0f0;
 }
 
 .mi-phases,
@@ -154,13 +154,17 @@
     display: flex;
     align-items: center;
     gap: 5px;
-    color: #404040;
+    color: #666;
     white-space: nowrap;
 }
 
-.mi-phase--active {
-    font-weight: bold;
+.mi-phase--active,
+.mi-phase--done {
     color: #000;
+}
+
+.mi-phase--active {
+    font-weight: 600;
 }
 
 .mi-phase-num {
@@ -170,39 +174,29 @@
     width: 14px;
     height: 14px;
     font-size: 10px;
-    font-weight: bold;
+    font-weight: 700;
     color: #fff;
-    background: #808080;
+    background: #8d8d8d;
+}
+
+.mi-phase--done .mi-phase-num {
+    background: #5a8fbf;
 }
 
 .mi-phase--active .mi-phase-num {
-    background: #000080;
+    background: #1a5fb4;
 }
 
 .mi-bars {
     margin-top: 5px;
 }
 
-.mi-bar {
-    height: 14px;
-    padding: 2px;
-    box-sizing: border-box;
-    background: #fff;
-    box-shadow: inset 1px 1px #808080, inset -1px -1px #ffffff, inset 2px 2px #404040, inset -2px -2px #d4d0c8;
-}
+/* Fill is the Aero bar in cache-browser.css ([role=progressbar] > div). */
 
-.mi-bar > i {
-    display: block;
-    height: 100%;
-    width: 0;
-    background: repeating-linear-gradient(90deg, #000080 0 7px, transparent 7px 9px);
-    transition: width 0.3s linear;
-}
-
-/* ---- Classic message box (failure) ---- */
+/* ---- Vista Basic message box (failure) ---- */
 
 .mi-msgbox {
-    position: fixed;
+    position: absolute;
     left: 50%;
     top: 50%;
     transform: translate(-50%, -50%);
@@ -228,14 +222,14 @@
     box-shadow: 0 0 0 1px #6e0a05;
     color: #fff;
     font-size: 26px;
-    font-weight: bold;
+    font-weight: 700;
     line-height: 30px;
     text-align: center;
 }
 
 .mi-msgbox-text p {
     margin: 0 0 8px;
-    line-height: 1.4;
+    line-height: 1.35;
 }
 
 .mi-msgbox-detail:empty {
@@ -246,26 +240,28 @@
     display: flex;
     justify-content: center;
     gap: 8px;
-    padding: 4px 0 10px;
+    padding: 4px 0 12px;
 }
 
 .mi-msgbox-buttons button {
     min-width: 75px;
     height: 23px;
-    padding: 0 8px;
-    border: none;
-    background: #d4d0c8;
-    font: inherit;
+    padding: 0 12px;
+    border: 1px solid #707070;
+    border-radius: 3px;
+    background: linear-gradient(#f6f6f6, #e3e3e3);
+    box-shadow: inset 0 0 0 1px #fff;
+    font: 12px 'Segoe UI', Tahoma, 'Noto Sans', sans-serif;
     color: #000;
-    box-shadow: inset -1px -1px #404040, inset 1px 1px #ffffff, inset -2px -2px #808080, inset 2px 2px #d4d0c8;
-}
-
-.mi-msgbox-buttons button:active {
-    box-shadow: inset 1px 1px #404040, inset -1px -1px #ffffff, inset 2px 2px #808080;
 }
 
 .mi-msgbox-buttons button:focus-visible,
 .mi-msgbox-buttons button:focus {
+    border-color: #3c7fb1;
     outline: 1px dotted #000;
     outline-offset: -4px;
+}
+
+.mi-msgbox-buttons button:active {
+    background: linear-gradient(#e3e3e3, #f6f6f6);
 }

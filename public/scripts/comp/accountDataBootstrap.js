@@ -127,32 +127,14 @@ async function promptRestartClientDialog() {
         { title: 'Restart Client', icon: 'fas fa-rotate-right' }
     );
     if (confirmed === 'restart') {
-        // runClientRestartDirect: public/scripts/comp/modalUtils.js
-        if (typeof runClientRestartDirect === 'function') {
-            await runClientRestartDirect();
-        } else {
-            window.location.reload();
-        }
+        // runWinlogonPower: public/scripts/comp/winlogonPower.js
+        await runWinlogonPower('restart');
     }
 }
 
 async function cancelClientStartup() {
-    window.bypassConfirmation = true;
-    // runClientShutdownSequence: public/scripts/comp/modalUtils.js
-    if (typeof runClientShutdownSequence === 'function') {
-        await runClientShutdownSequence(() => {
-            window.close();
-        });
-        return;
-    }
-    try {
-        window.close();
-    } catch (_) { /* ignore */ }
-    setTimeout(() => {
-        try {
-            location.href = 'about:blank';
-        } catch (_) { /* ignore */ }
-    }, 400);
+    // runWinlogonPower: public/scripts/comp/winlogonPower.js
+    await runWinlogonPower('shutdown');
 }
 
 async function promptAccountDataUnavailableDialog(options, clientAlreadyActive) {

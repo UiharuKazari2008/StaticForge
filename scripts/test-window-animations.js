@@ -38,8 +38,8 @@ fs.readdirSync(cssDir).filter((f) => f.endsWith('.css')).forEach((f) => {
 
 // 2. Vista timings from tokens; open grows from 90 %.
 const root_ = extractBlock(appCss, ':root {\n    --window-open-duration');
-assert.ok(/--window-open-duration:\s*0\.25s/.test(root_), 'open 250 ms');
-assert.ok(/--window-close-duration:\s*0\.15s/.test(root_), 'close 150 ms');
+assert.ok(/--window-open-duration:\s*0\.35s/.test(root_), 'open 350 ms');
+assert.ok(/--window-close-duration:\s*0\.25s/.test(root_), 'close 250 ms');
 assert.ok(/--window-minimize-duration:\s*0\.25s/.test(root_), 'minimize 250 ms');
 assert.ok(/--window-morph-duration:\s*180ms/.test(root_), 'maximize morph 180 ms');
 ['.modal.opening {', '.modal.closing {', '.modal.minimising {', '.modal.unminimising {',

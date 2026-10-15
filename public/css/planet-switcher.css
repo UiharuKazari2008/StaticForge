@@ -1,8 +1,9 @@
 /* Planet switcher - scripts/comp/planetSwitcher.js (lazy feature planet_switcher)
    Three layers while open:
    - Layer 3 (.planet-switcher-backdrop, z -2): black backdrop + star field canvas, under the wallpaper
-   - desktop layers (#desktopWallpaper, #desktopIcons, #desktopTaskbar) and open windows are shrunk/faded
-     by the Web Animations API (scale + opacity only, never width/height)
+   - desktop (#desktopWallpaper, #desktopIcons, #desktopTaskbar) and Vista sidebar gadgets
+     scale together (gadgets also fade and slide right); open windows shrink less.
+     Web Animations API only: scale + opacity, tilt, and a gadget translate. Never width/height.
    - Layer 2 (.planet-switcher, high z): tilted ring of workspace bubbles around a plasma sun,
      brand mark, cancel button, black fade cover */
 
@@ -27,9 +28,25 @@ body.planet-switcher-active::after {
 body.planet-switcher-active .desktop-wallpaper,
 body.planet-switcher-active .desktop-icons,
 body.planet-switcher-active .desktop-taskbar,
+body.planet-switcher-active .vsb-pane,
+body.planet-switcher-active .vsb-gadget,
+body.planet-switcher-active .vsb-flyout,
 body.planet-switcher-active .modal,
 body.planet-switcher-active #galleryWindow {
     pointer-events: none !important;
+}
+
+/* On-top gadgets sit at 2600, above windows. Pull them under windows for the view
+   so they recede with the sidebar (icons are 100, windows start at --z-modal). */
+body.planet-switcher-active .vsb-pane,
+body.planet-switcher-active .vsb-pane.is-on-top,
+body.planet-switcher-active .vsb.vsb-raised .vsb-pane,
+body.planet-switcher-active .vsb-gadget[data-docked="0"],
+body.planet-switcher-active .vsb-gadget[data-docked="0"].is-on-top,
+body.planet-switcher-active .vsb.vsb-raised .vsb-gadget[data-docked="0"],
+body.planet-switcher-active .vsb-gadget.is-dragging,
+body.planet-switcher-active .vsb-flyout {
+    z-index: 150;
 }
 
 /* Glass blur under a scaling layer is re-filtered every frame; the content behind it is fading to black anyway.
@@ -48,6 +65,9 @@ body.planet-switcher-flat .desktop-icons * {
 body.planet-switcher-active .desktop-wallpaper *,
 body.planet-switcher-active .desktop-icons *,
 body.planet-switcher-active .desktop-taskbar *,
+body.planet-switcher-active .vsb-pane *,
+body.planet-switcher-active .vsb-gadget *,
+body.planet-switcher-active .vsb-flyout *,
 body.planet-switcher-active .modal *,
 body.planet-switcher-active #galleryWindow * {
     animation-play-state: paused !important;

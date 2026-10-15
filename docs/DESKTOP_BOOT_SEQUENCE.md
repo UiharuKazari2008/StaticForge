@@ -40,9 +40,9 @@ straight on to `/app`.
 
 | Screen | What it is |
 |--------|------------|
-| boot | Vista's boot screen on a 640×480 stage scaled to fit (letterbox black), sizes in stage pixels as measured from the stock Vista boot screen: two-tone bar frame at x 257–378, y 353–363 (#737373 / #424242), 120×9 interior, a cluster of six 2 px stripes with 2 px gaps (rows #F1F5E1 ×2, #A3B16E ×2, #4D5622 ×5) sliding across in 2 px steps (`--melaton-sweep` 2 s per pass, the one estimated value), "© Dreamscape" centred at y 389–400. The Enso takes the Windows 7 logo's place: 84 px, centred at y 205. Shown at least `minBootMs` (2.5 s). F8 opens the menu (no countdown). |
+| boot | Vista's boot screen drawn at 640×480 inside a 1024×768 VGA frame (`.melaton-vga`). `fitMelatonVga()` stretches that frame to the window with plain scale numbers (Chrome drops `scale(calc(100vw / 1024px))`) until the panel is past 2:1 or 1:2; outside that it keeps 4:3 and the rest stays black. The boot drawing is a 640x480 bitmap, nearest-neighbor stretched to the window, so the logo, bar, and copyright stay chunky and still readable. Sizes in stage pixels as measured from the stock Vista boot screen: two-tone bar frame at x 257–378, y 353–363 (#737373 / #424242), 120×9 interior, a cluster of six 2 px stripes with 2 px gaps (rows #F1F5E1 ×2, #A3B16E ×2, #4D5622 ×5) sliding across in 2 px steps (`--melaton-sweep` 2 s per pass, the one estimated value), "© Dreamscape" centred at y 389–400. The Enso takes the Windows 7 logo's place: 84 px, centred at y 205. Shown at least `minBootMs` (2.5 s). F8 is listened for in the document head (capture phase) so it can interrupt before the boot script finishes loading, and opens the menu immediately (no black hold, no countdown). |
 | teal | Success: cut to black for `modeSwitchMs` (1.5 s, Windows switching graphics modes), then `sessionStorage` `dreamscapeLaunchHandoff=teal` + `dreamscapeBootTealHoldUntil` (now + 2 s) and `location.replace('/app')`, which opens on teal. `app.html` puts up a teal `#launchHandoff` (removed without a fade) and sets `window.dreamscapeTealHoldUntil`; `websocket.js` holds the logon dialog (and "Preparing MeletonFX…") until then while startup runs underneath. |
-| menu | Failure: cut to black, then the Boot Manager text screen ("Melaton Boot Manager"): **Dreamscape Melaton** (retry: black → boot screen → checks) and **Melaton Recovery (Reinstall)**, a 10 s countdown to the highlighted entry, an `Info:` line with the reason, `ENTER=Choose`. ↑/↓/Enter; any key or press stops the countdown; a tap chooses. |
+| menu | Failure: cut to black, then the Boot Manager text screen ("Melaton Boot Manager"): **Dreamscape Melaton** (retry: black → boot screen → checks), **Dreamscape Melaton (via System Restore)** (same boot, updates skipped, including a resumed install), **Dreamscape Melaton (Safe Mode with Networking)** (updates still run; `sessionStorage.melatonSafeMode=1` so `/app` stays in the same 1024×768 VGA frame), and **Melaton Recovery (Reinstall)**. A 10 s countdown to the highlighted entry, an `Info:` line with the reason, `ENTER=Choose`. ↑/↓/Enter; any key or press stops the countdown; a tap chooses. F8 on the boot screen opens this menu with no countdown. |
 | confirm | Recovery confirm: ENTER continue / ESC back to the menu. Chosen by touch or pen (no keyboard to assume): a two-item menu, **Continue** / **Return to Boot Menu** (tap, or arrows + Enter). |
 | recover | "Formatting startup disk..." and a progress bar while the clean install runs: Cache Storage (45 %), SW registrations (10 %), localStorage + sessionStorage (10 %), IndexedDB (35 %; `indexedDB.databases()`, 2 s per database), moving per cache / database inside a step. A failed step does not stop the rest. Then black and `/launch` again. |
 
@@ -76,19 +76,26 @@ against `static-cache-v1` with the same rule as `serviceWorkerManager.getFilesNe
 - **Up to 20 files**: downloaded silently through the worker (`CACHE_STATIC_FILES`) while the
   marquee keeps running, then the handoff.
 - **More than 20, or an install a reload interrupted** (`localStorage.melatonInstall`): cut to
-  black and **Install MeletonFX**, Windows Setup in Classic on the plain aurora
-  (`#melatonInstall`, `css/launch-install.css`). "Installing MeletonFX...", Vista's checklist and
-  two-step strip (1 Collecting information ✓, 2 Installing MeletonFX), each line doing real work:
-  - Copying MeletonFX files: the worker download, byte-weighted progress, 60 s without progress
-    = stalled.
-  - Expanding MeletonFX files: every file checked in the cache, one more pass for stragglers. A
-    few the worker will not keep (≤ max(10, 10 %)) do not fail the install; they are remembered in
-    `melatonInstallRecord.stragglers` so later boots never reopen Setup for them.
-  - Installing features: `registration.update()` for the offline service.
-  - Installing updates: the manifest again, downloading whatever changed meanwhile.
+  black and **Install MeletonFX**, Windows Setup in Vista Basic on the plain aurora
+  (`#melatonInstall`, `css/launch-install.css`). "Installing MeletonFX...", the checklist and
+  two-step strip (1 Collecting information, 2 Installing MeletonFX), each line doing real work:
+  - Copying MeletonFX files: one zip. Up to 120 files, the client `POST`s that list and the server
+    packs only those (`413` falls back to the full pack). More than that is `GET /install/meletonfx.zip`.
+    The server writes the full zip when it recreates the service-worker manifest (deflate level 9 for
+    text, stored for images and fonts). Progress is bytes received. 60 s without a chunk = stalled.
+    The pack hash must match the files that were packed. The aurora shows alone for `installArriveMs`
+    (1 s) before the setup window opens.
+  - Expanding MeletonFX files: the manifest compared to `static-cache-v1`. Only files whose hash
+    does not match are extracted and stored. A few that do not land (≤ max(10, 10 %)) do not fail
+    the install; they are remembered in `melatonInstallRecord.stragglers` so later boots never
+    reopen Setup for them.
+  - Installing features: the code and markup group that this install wrote. Headers are corrected,
+    then each file is read back and its bytes must hash to the manifest.
+  - Installing updates: images, fonts, and the rest of what was written. Same post-write check.
   - Completing installation: the install record, `navigator.storage.persist()`, the old wizard's
     session key cleared.
-  Failure: a Classic message box (Retry stays in Setup and resumes; Cancel → the boot menu with
+  Up to 20 files still download one by one behind the boot screen (`CACHE_STATIC_FILES`).
+  Failure: a Vista Basic message box (Retry stays in Setup and resumes; Cancel → the boot menu with
   "The installation of MeletonFX was cancelled."). Done: the window closes, 3 s on the aurora,
   black, `/launch` again, which then hands off normally.
 - **`/app`**: its boot gate (the safety net for starts that skipped `/launch`) reboots into
@@ -96,7 +103,11 @@ against `static-cache-v1` with the same rule as `serviceWorkerManager.getFilesNe
   `localStorage.melatonInstall` says an install is already in progress. Remembered stragglers
   (`melatonInstallRecord.stragglers`) do not count and do not open a progress dialog. A cache
   push that arrives before the desktop uses the same rule. Up to 20 fresh files download with
-  no System Update dialog. A second reboot within 3 minutes
+  no System Update dialog. Once the desktop is up, a large update is not downloaded in the
+  session: MeletonFX Update asks for a restart titled `Upgrade to Service Pack <YY>Q<1-4> <patchid>`
+  (`servicePackFromFiles` in `serviceWorkerManager.js`). `YY` and the quarter come from the newest
+  `modified` time in that file set (UTC), and the patch id is a hash of the urls and hashes, so the
+  name is built when the update is seen. Restart then boots `/launch`, which installs it. A second reboot within 3 minutes
   (`sessionStorage.melatonInstallRebootAt`, also set by the installer) finishes in place with
   the old wizard, so the pages never bounce. A leftover `dreamscapeOsInstallWizard` session
   does not skip the reboot. Narrow mode keeps the wizard.
@@ -133,20 +144,29 @@ preview shows the default when the workspace has none.
 
 ## Restart (Yozora #420)
 
-A restart is a Windows restart: the shutdown sequence (`modalUtils.runClientShutdownSequence`:
-windows close one by one, then a fade to black), then the full Melaton boot on `/launch`
-(`restartClientNavigate`; narrow / non-desktop mode reloads in place instead).
-`desktopSounds.js` plays Windows Shutdown at the start and holds the black fade until the wav
-ends (cap 4 s). Lock / unlock use the logoff / logon files; Personalize → Sounds mutes the scheme.
+A restart goes through the Welcome screen first (`winlogonPower.js`): if Studio is open or a
+Notepad has unsaved changes, Vista's "still running" list gates it. Accept fades the desktop
+to black (900 ms), holds, then fades that cover off to reveal the Welcome screen with
+**Shutting down...** (the line captured on Vista; there is no "Restarting..." string). The
+browser is released only after that line has been on screen
+(`/launch` on the desktop, reload otherwise). Shutdown uses the same screen. Log Off uses
+**Logging off...** and then the logout. Restart Server posts PM2 only once that line is up.
+
+The still-running list is the winsrv copy: "The following programs are still running:", the
+gold reason line, and Restart now / Shut down now / Log off now plus Cancel.
 
 | Path | Behaviour |
 |------|-----------|
-| Start menu **Restart** (`runClientRestartDirect`), restart prompts that call it (`accountDataBootstrap`) | shutdown fade → `/launch` |
-| Update **Restart** / **Restart Now**, the agent System Update dialog (`serviceWorkerManager.forceRestart()`) | desktop up: shutdown fade → `/launch`; during boot: straight to `/launch` |
-| Spectator error window **Restart** (`fatalErrorBootstrap.restartApplication`) and the reload after a DSS server restart (`serverManagement`) | shutdown fade → `/launch` (the boot screen then covers the server start) |
-| Agent `restart_client` (`agentClientBridge.restartClientFromCommand`) | `forceRestart({ direct: true })`: in-place reload, so test reattach stays quick |
+| Start menu **Restart**, **Shut Down**, **Log Off** | still-running list if needed, then the Welcome screen, then the action |
+| Start menu **Restart Server** | confirm, then the same screen, then `POST /pm2/restart`, then `/launch` |
+| Update **Restart**, service-worker activate, agent `restart_client`, refresh confirm | the same Welcome screen. No in-place reload |
+| Spectator error window **Restart** / **Exit** | the same path |
 
-Browser refresh (F5 confirm) stays a plain reload.
+`desktopSounds.js` plays Windows Shutdown as the screen appears (Log Off plays the logoff wav).
+The sound does not hold the screen. Lock and unlock fade the black cover over 900 ms
+(`desktopBoot` `sessionFadeMs`) instead of cutting.
+
+Browser refresh (F5 confirm) uses this path.
 Test: `npm run test:melaton-restart`.
 
 ## Workstation lock (Yozora #423)
@@ -154,7 +174,7 @@ Test: `npm run test:melaton-restart`.
 The start menu's **Lock** (power options, desktop only) and **Ctrl+Alt+L** (Win+L never
 reaches a page) lock the desktop like Windows XP Classic:
 
-- `desktopBoot.lockWorkstation()`: black session-switch cut, `body.workstation-locked`
+- `desktopBoot.lockWorkstation()`: 900 ms fade to black, `body.workstation-locked`
   hides every window, icon, the taskbar, menus and toasts under a cover that repeats the
   wallpaper (the wallpaper stays, like Windows), Classic theme, animations and render loops
   paused (the same pause hooks as the restart lock; pauses nest when both locks are up).
@@ -165,7 +185,7 @@ reaches a page) lock the desktop like Windows XP Classic:
   Ctrl+Alt+End (the Remote Desktop stand-in), Enter or a click / tap opens **Unlock
   Computer** (user name, password, OK / Cancel; Escape goes back). The password is checked
   with the server's login (same call as the logon dialog); a wrong one gets XP's "The system
-  could not log you on…" Logon Message box. Success: `unlockWorkstation()` (black cut, the
+  could not log you on…" Logon Message box. Success: `unlockWorkstation()` (fade, the
   desktop back).
 - While locked a critical priority-100 keyboard listener swallows every app shortcut
   (typing in the form still works).

@@ -536,3 +536,409 @@
 .modal[data-window-identifier^="desktopGuac"] .form-hint[hidden] {
     display: none;
 }
+
+/* Remote Desktop list sits on the iOS 4 open-folder interior (public/static_images/ios4-folder-inside.png). */
+#desktopGuacModal .modal-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 0;
+    padding: var(--spacing-md);
+    background-color: #3a3c40;
+    background-image: url('/static_images/ios4-folder-inside.png');
+    background-repeat: repeat;
+}
+
+#desktopGuacModal .desktop-guac-toolbar,
+.desktop-guac-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    position: relative;
+    z-index: 4;
+    flex: 0 0 auto;
+    min-height: 36px;
+    padding: 5px 8px;
+    background: linear-gradient(hsl(0 0% 28% / 96%), hsl(0 0% 20% / 96%) calc(50% - 1px), hsl(0 0% 5% / 98%) 50%, hsl(0 0% 4% / 98%));
+    border-bottom: 1px solid hsl(0 0% 0% / 75%);
+    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 16%);
+    color: #fff;
+    font: 12px "Segoe UI", "Noto Sans", sans-serif;
+}
+
+#desktopGuacModal .desktop-guac-search {
+    position: relative;
+    flex: 0 0 220px;
+    width: 220px;
+    margin-left: auto;
+}
+
+#desktopGuacModal #desktopGuacSearch {
+    width: 100%;
+}
+
+.desktop-guac-search-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 5;
+    max-height: 280px;
+    overflow: auto;
+    padding: 4px;
+    border: 1px solid hsl(200 40% 70% / 35%);
+    border-radius: var(--border-radius-md);
+    background: hsl(220 28% 8% / 94%);
+    box-shadow: 0 12px 28px hsl(210 60% 2% / 45%), inset 0 1px 0 hsl(0 0% 100% / 16%);
+}
+
+.desktop-guac-search-menu[hidden] {
+    display: none;
+}
+
+.desktop-guac-search-row,
+.desktop-guac-search-empty {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: 3px;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    font: 12px "Segoe UI", "Noto Sans", sans-serif;
+}
+
+.desktop-guac-search-row span:last-child,
+.desktop-guac-search-empty {
+    color: var(--text-muted);
+}
+
+.desktop-guac-search-row:hover,
+.desktop-guac-search-row.active {
+    background: linear-gradient(hsl(199 80% 62% / 28%), hsl(199 70% 40% / 18%));
+}
+
+.desktop-guac-add {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    flex: 0 0 auto;
+    padding: 8px;
+    border: 1px solid hsl(0 0% 100% / 14%);
+    border-radius: var(--border-radius-md);
+    background: linear-gradient(hsl(200 40% 40% / 12%), hsl(0 0% 100% / 4%));
+}
+
+.desktop-guac-add[hidden] {
+    display: none;
+}
+
+.desktop-guac-field {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 12px;
+}
+
+.desktop-guac-field span {
+    color: var(--text-muted);
+}
+
+.desktop-guac-add-actions {
+    display: flex;
+    gap: 8px;
+    grid-column: 1 / -1;
+}
+
+.desktop-guac-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.desktop-guac-group {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
+    gap: 10px;
+    align-items: start;
+}
+
+.desktop-guac-group h3 {
+    grid-column: 1 / -1;
+    margin: 0;
+    font: 600 11px "Segoe UI", "Noto Sans", sans-serif;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: hsl(196 90% 78%);
+}
+
+.desktop-guac-card {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    position: relative;
+    width: 100%;
+    margin: 0;
+    padding: 8px;
+    border: 1px solid hsl(0 0% 100% / 16%);
+    border-radius: 6px;
+    background:
+        linear-gradient(hsl(0 0% 100% / 10%), hsl(0 0% 100% / 3%) 46%, hsl(200 40% 20% / 8%));
+    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 22%), 0 10px 24px hsl(210 70% 2% / 28%);
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+body:not(.windows-classic-theme) #desktopGuacModal .modal-content {
+    background:
+        radial-gradient(120% 70% at 0% 0%, hsl(198 90% 48% / 18%), transparent 52%),
+        radial-gradient(80% 50% at 100% 100%, hsl(262 70% 46% / 12%), transparent 46%),
+        var(--window-body-bg, var(--glass-layer-dark-bg));
+}
+
+.desktop-guac-card:hover {
+    border-color: hsl(196 90% 70% / 55%);
+    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 28%), 0 0 0 1px hsl(196 90% 62% / 25%), 0 10px 24px hsl(210 70% 2% / 28%);
+}
+
+.desktop-guac-thumb {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    overflow: hidden;
+    border-radius: 3px;
+    background: #05070c;
+    color: hsl(196 40% 72%);
+    font-size: 22px;
+}
+
+.desktop-guac-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.desktop-guac-card-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.desktop-guac-card-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font: 600 13px "Segoe UI", "Noto Sans", sans-serif;
+}
+
+.desktop-guac-card-proto {
+    font: 11px "Segoe UI", "Noto Sans", sans-serif;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+}
+
+/* Session toolbar shares the list's black glass menu bar. Full screen hides it and the caption. */
+.desktop-guac-bar-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 24px;
+    padding: 0 8px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    white-space: nowrap;
+}
+
+.desktop-guac-bar-btn:hover {
+    background-image: var(--vista-glass-button-hover);
+    border-color: var(--vista-glass-edge);
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 30%);
+}
+
+.desktop-guac-status {
+    margin-left: auto;
+    padding-left: 8px;
+    color: hsl(196 70% 78%);
+    white-space: nowrap;
+}
+
+.desktop-guac-status[data-state="CONNECTED"] {
+    color: hsl(140 45% 72%);
+}
+
+.desktop-guac-status[data-state="CLIENT_ERROR"],
+.desktop-guac-status[data-state="TUNNEL_ERROR"],
+.desktop-guac-status[data-state="DISCONNECTED"] {
+    color: hsl(6 70% 72%);
+}
+
+.desktop-guac-downloads {
+    position: relative;
+}
+
+.desktop-guac-downloads-menu {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    min-width: 168px;
+    padding: 4px;
+    border: 1px solid #3a3a3a;
+    border-radius: 3px;
+    background: #111;
+    box-shadow: 0 8px 18px hsl(0 0% 0% / 45%);
+}
+
+.desktop-guac-downloads.open .desktop-guac-downloads-menu {
+    display: block;
+}
+
+.desktop-guac-downloads-item {
+    display: block;
+    width: 100%;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: 2px;
+    background: transparent;
+    color: #f3f3f3;
+    text-align: left;
+    font: inherit;
+}
+
+.desktop-guac-downloads-item.active,
+.desktop-guac-downloads-item:hover {
+    background: hsl(0 0% 100% / 10%);
+}
+
+.desktop-guac-pin-hit,
+.desktop-guac-pinbar {
+    display: none;
+}
+
+.modal.desktop-guac-cover {
+    position: fixed !important;
+    inset: 0 !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    transform: none !important;
+    border-radius: 0 !important;
+    z-index: 2750 !important;
+}
+
+.modal.desktop-guac-cover > .modal-window-title,
+.modal.desktop-guac-cover > .modal-window-controls,
+.modal.desktop-guac-cover > .resize-handle,
+.modal.desktop-guac-cover > .modal-focus-overlay,
+.modal.desktop-guac-cover .desktop-guac-bar {
+    display: none !important;
+}
+
+.modal.desktop-guac-cover .desktop-guac-pin-hit {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 10px;
+    z-index: 10001;
+}
+
+.modal.desktop-guac-cover .desktop-guac-pinbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    position: absolute;
+    top: 0;
+    left: 50%;
+    z-index: 10002;
+    max-width: min(520px, 80vw);
+    height: 30px;
+    padding: 0 8px 0 14px;
+    border: 1px solid #000;
+    border-top: 0;
+    border-radius: 0 0 8px 8px;
+    background:
+        linear-gradient(hsl(0 0% 100% / 18%), hsl(0 0% 100% / 4%) 46%, #101010 54%, #000);
+    color: #f3f3f3;
+    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 30%), 0 8px 16px hsl(0 0% 0% / 45%);
+    font: 12px "Segoe UI", "Noto Sans", sans-serif;
+    transform: translate(-50%, calc(-100% + 4px));
+    transition: transform 160ms ease;
+}
+
+.modal.desktop-guac-cover .desktop-guac-pin-hit:hover + .desktop-guac-pinbar,
+.modal.desktop-guac-cover .desktop-guac-pinbar:hover,
+.modal.desktop-guac-cover .desktop-guac-pinbar:focus-within {
+    transform: translate(-50%, 0);
+}
+
+.desktop-guac-pin-name {
+    overflow: hidden;
+    min-width: 0;
+    flex: 1 1 auto;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.desktop-guac-pinbar > button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 22px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    background: transparent;
+    color: inherit;
+}
+
+.desktop-guac-pinbar > button:hover {
+    border-color: hsl(0 0% 100% / 20%);
+    background: hsl(0 0% 100% / 8%);
+}
+
+.desktop-guac-pinbar > button > i.fa-window-minimize,
+.desktop-guac-pinbar > button > i.fa-window-restore,
+.desktop-guac-pinbar > button > i.fa-xmark-large {
+    display: inline-block;
+    font-size: 0;
+    background: no-repeat center / 100% 100%;
+}
+
+.desktop-guac-pinbar > button > i.fa-window-minimize {
+    width: 15px;
+    height: 6px;
+    background-image: url("/static_images/window-controls/vista-minimize.svg");
+}
+
+.desktop-guac-pinbar > button > i.fa-window-restore {
+    width: 15px;
+    height: 15px;
+    background-image: url("/static_images/window-controls/vista-restore.svg");
+}
+
+.desktop-guac-pinbar > button > i.fa-xmark-large {
+    width: 14px;
+    height: 12px;
+    background-image: url("/static_images/window-controls/vista-close.svg");
+}

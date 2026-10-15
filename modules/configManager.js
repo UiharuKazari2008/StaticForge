@@ -569,6 +569,7 @@ class ConfigManager {
                             exitDesktopOnWorkspaceMaximise: false,
                             notificationBridgeEnabled: true,
                             bypassNotificationBridgeInDesktopMode: false,
+                            useApplicationImageIcon: false,
                             startMenuButton: {
                                 preset: 'start-ja',
                                 customText: '',

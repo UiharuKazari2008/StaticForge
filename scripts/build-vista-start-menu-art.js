@@ -13,10 +13,12 @@
  *                                              (Vista ships it at 96 DPI only and scales it: 64 -> 80 px here)
  *
  * Each button becomes one sprite with its three states stacked (rest, hover, pressed), so CSS
- * moves background-position only. The arrow button Vista draws next to Lock is not in the strip;
- * it is the lock cell's own edges around its glyph-free middle, with the arrow glyph centred.
- * The strip is one continuous group (each cell opens with a light line and a black divider, only
- * the last cell closes), so the sprites abut with no gap.
+ * moves background-position only. The arrow button Vista draws next to Lock is not in the strip.
+ * The lock sprite already ends on the group's divider, so the arrow does not repeat that line.
+ * Its right edge is the rounded end cap: a mirror of the leading cell's left cap (cells 0-4;
+ * the lock cell itself closes square, which is why the arrow looked cut off). The cap's frame
+ * (black stroke, highlight, transparent outside) is copied; its face stays the lock cell's.
+ * The strip is one continuous group, so the sprites abut with no gap.
  *
  *   node scripts/build-vista-start-menu-art.js     # writes public/static_images/vista-start/
  */
@@ -33,7 +35,7 @@ const CELL_H = 30;
 const CELLS = { shutdown: 1, lock: 5 };
 const STATES = ['rest', 'hover', 'pressed'];
 const ARROW_W = 28; // Vista's 22 px arrow button at 120 DPI
-const ARROW_EDGE = 3; // lock cell columns kept on each side of the arrow button
+const CAP_W = 6; // leading-cell columns that form the rounded end cap (mirrored onto the arrow)
 
 async function raw(file) {
     const { data, info } = await sharp(file).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
@@ -91,18 +93,28 @@ async function main() {
     }
 
     // arrow button: Vista lights it with the dark blue glow on hover (the lock's pressed cell)
-    // and the bright blue when pressed
+    // and the bright blue when pressed. The rounded end cap is the leading cell's left cap,
+    // mirrored; only its frame is kept, so a gold cell does not tint the silver arrow.
     const arrowFrom = { rest: 'rest', hover: 'pressed', pressed: 'hover' };
     const arrow = blank(ARROW_W, CELL_H * STATES.length);
     const lock = CELLS.lock * CELL_W;
     const middle = lock + 6; // a glyph-free column of the lock cell
+    const capFrame = (src, i) => {
+        const r = src[i], g = src[i + 1], b = src[i + 2], a = src[i + 3];
+        if (a < 100) return true;
+        return Math.max(r, g, b) - Math.min(r, g, b) <= 18;
+    };
     STATES.forEach((state, row) => {
         const strip = strips[arrowFrom[state]];
-        for (let x = 0; x < ARROW_W; x++) {
-            let sx = middle;
-            if (x < ARROW_EDGE) sx = lock + x;
-            else if (x >= ARROW_W - ARROW_EDGE) sx = lock + CELL_W - (ARROW_W - x);
-            copyColumn(arrow, x, row * CELL_H, strip, sx, 0, CELL_H);
+        for (let y = 0; y < CELL_H; y++) {
+            for (let x = 0; x < ARROW_W; x++) {
+                let sx = middle;
+                if (x >= ARROW_W - CAP_W) {
+                    const capX = ARROW_W - 1 - x; // outer edge is column 0 of the leading cell
+                    if (capFrame(strip.data, (y * strip.width + capX) * 4)) sx = capX;
+                }
+                copyColumn(arrow, x, row * CELL_H + y, strip, sx, y, 1);
+            }
         }
         const gh = glyph.height / 3;
         over(arrow, Math.round((ARROW_W - glyph.width) / 2), row * CELL_H + Math.round((CELL_H - gh) / 2), glyph, 0, row * gh, glyph.width, gh);

@@ -6,14 +6,22 @@
  * chrome, the one logon background this screen uses, and the fonts the logon actually
  * paints (Noto Sans, Tahoma, icon fonts).
  * A detached Image() does not install a font, and it does not match an icon that
- * later uses srcset. Those files live in #assetPreloadHold, off to the side, so the
- * browser decodes them before the dialog is allowed up.
+ * later uses srcset. Those files live in #assetPreloadHold for the whole session.
+ * The hold is a 1px strip: off the page visually, still painted, so the browser
+ * keeps the decode. opacity:0 or a box parked off the screen is treated as lazy
+ * and comes back as a placeholder the next time the bitmap is shown.
  *
  * Desktop assets: after the connection's Connected beat, and before the logon hands off
  * to the desktop (websocket.js _startAfterLogon → desktopBoot.begin), the logon dialog
- * says "Preparing your desktop..." and keeps its marquee. That wait decodes only what
- * the first desktop paint shows: the active wallpaper, the desktop icons (drawn into
- * the hidden desktop so the same elements stay decoded), and the taskbar pictures.
+ * says "Preparing your desktop..." and keeps its marquee. That wait decodes what
+ * the first desktop paint shows and the chrome that stays on screen after it:
+ * the active wallpaper, the desktop icons (drawn into the hidden desktop so the
+ * same elements stay decoded), the taskbar pictures, the tray icons, the sidebar
+ * chrome (it starts with the taskbar), the start menu art, the
+ * taskbar clock face, and the active workspace fonts.
+ * Scrollbar bitmaps are not fetched here. They are inlined in vista-scrollbars.css:
+ * ::-webkit-scrollbar paints a flat placeholder until a file url arrives, and it
+ * does not use this hold.
  * The startup window does not load them again. It only reveals them.
  * assetPreload.lateAssets() lists anything that still had to fetch after that.
  */
@@ -32,7 +40,8 @@ var assetPreload = (function () {
         '/static_images/explorer-banner.png',
         '/static_images/melaton/net-laptop.png',
         '/static_images/melaton/net-server.png',
-        '/static_images/melaton/net-globe.png'
+        '/static_images/melaton/net-globe.png',
+        '/static_images/apple-touch-icon.png'
     ];
     var LOGIN_STYLES = ['desktop-boot.css', 'connection-dial.css', 'modal-window-title-toolbar.css'];
     // Faces the logon paints. Body text is Noto Sans; classic boot copy is Tahoma.
@@ -66,7 +75,7 @@ var assetPreload = (function () {
         'fa-sharp fa-solid fa-house'
     ];
 
-    // Pictures on the taskbar when it is revealed. Not the start menu, not every stylesheet.
+    // Pictures on the taskbar when it is revealed. Not every stylesheet.
     var TASKBAR_URLS = [
         '/static_images/account-pictures/kitten.png',
         '/static_images/account-pictures/guest.png',
@@ -74,6 +83,30 @@ var assetPreload = (function () {
         '/static_images/vista-start/user-frame.png',
         '/static_images/vista-start/shutdown.png',
         '/static_images/vista-start/lock.png'
+    ];
+    // Tray glyphs (vista-glass-controls.css) and sidebar chrome (vistaSidebar.js
+    // starts when the taskbar is shown).
+    var DESKTOP_STYLES = ['vista-glass-controls.css', 'vista-sidebar.css'];
+    // Start menu art. desktop-shell.css also names the default wallpaper, which is
+    // not chrome. Folder icons and the orb are chosen in script, not in that sheet
+    // (modalUtils.js START_MENU_ART, app.html .taskbar-start-button-orb).
+    var START_MENU_URLS = [
+        '/static_images/vista_orb.png',
+        '/static_images/windows-logo-vista.png',
+        '/static_images/windows-logo-royal.png',
+        '/static_images/xp-mce-start.png',
+        '/static_images/xp-mce-start-hot.png',
+        '/static_images/xp-mce-start-pressed.png',
+        '/static_images/vista-start/folder-20.png',
+        '/static_images/vista-start/folder-40.png',
+        '/static_images/vista-start/programs-arrow.png',
+        '/static_images/vista-start/back-arrow.png',
+        '/static_images/vista-start/search-glyph.png',
+        '/static_images/vista-start/arrow.png'
+    ];
+    // Taskbar clock: public/css/desktop-shell.css .taskbar-clock
+    var SHELL_FONT_SPECS = [
+        '300 18px "Red Hat Display"'
     ];
 
     var URL_RE = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
@@ -86,6 +119,8 @@ var assetPreload = (function () {
     var lateList = [];
     var lateSeen = new Set();
     var primedWallpaperUrl = '';
+    var primedFontFamilies = [];
+    var pinLayoutBound = false;
     var beforeTransitionPromise = null;
     var desktopAssetsPrepared = false;
     var bootIconsDrawn = false;
@@ -131,10 +166,24 @@ var assetPreload = (function () {
         el = document.createElement('div');
         el.id = 'assetPreloadHold';
         el.setAttribute('aria-hidden', 'true');
-        // Off the screen, still rendered. display:none would skip the font and the decode.
-        el.style.cssText = 'position:fixed;left:-10000px;top:0;opacity:0;pointer-events:none;white-space:nowrap;';
+        // 1px tall, barely opaque, above every window. display:none, opacity:0, and a
+        // box left of the screen are not painted, so the browser drops the decode and
+        // the next paint of that bitmap shows a placeholder first.
+        el.style.cssText = 'position:fixed;left:0;top:0;width:100%;height:1px;overflow:hidden;opacity:0.02;pointer-events:none;z-index:2147483646;';
         (document.body || document.documentElement).appendChild(el);
+        if (!pinLayoutBound) {
+            pinLayoutBound = true;
+            window.addEventListener('resize', layoutPinned);
+        }
         return el;
+    }
+
+    function layoutPinned() {
+        var width = window.innerWidth || document.documentElement.clientWidth || 2;
+        var slots = width > 1 ? width - 1 : 1;
+        for (var i = 0; i < pinned.length; i++) {
+            pinned[i].style.left = (i % slots) + 'px';
+        }
     }
 
     function holdImage(url, srcset) {
@@ -146,12 +195,17 @@ var assetPreload = (function () {
             var img = document.createElement('img');
             img.alt = '';
             img.decoding = 'sync';
+            // Eager: an off-screen img is otherwise swapped for a placeholder and never decoded.
+            img.loading = 'eager';
+            img.style.position = 'absolute';
+            img.style.top = '0';
             if (srcset) {
                 img.setAttribute('srcset', srcset);
                 img.setAttribute('sizes', '192px');
             }
             ensureHold().appendChild(img);
             pinned.push(img);
+            layoutPinned();
             var settled = false;
             function finish() {
                 if (settled) return;
@@ -184,6 +238,51 @@ var assetPreload = (function () {
         return holdImage(src, srcset);
     }
 
+    function parseFontSpec(spec) {
+        var named = /^(?:(\d+)\s+)?[\d.]+px\s+"([^"]+)"/.exec(spec || '');
+        if (!named) return null;
+        return { weight: named[1] ? Number(named[1]) : 0, family: named[2] };
+    }
+
+    function fontWeightMatches(declared, weight) {
+        if (!weight) return true;
+        var parts = String(declared || '400').trim().split(/\s+/).map(Number).filter(function (n) { return n > 0; });
+        if (parts.length >= 2) return weight >= parts[0] && weight <= parts[1];
+        if (parts.length === 1) return parts[0] === weight;
+        return true;
+    }
+
+    // Mark the @font-face files before document.fonts.load fetches them, so the
+    // late watch does not report the same file when CSS uses the face.
+    function markFontFaceFiles(family, weight) {
+        if (!family || !document.styleSheets) return;
+        var sheets = document.styleSheets;
+        for (var i = 0; i < sheets.length; i++) {
+            var href = '';
+            try { href = sheets[i].href || ''; } catch (e) { continue; }
+            if (href.indexOf('fonts.css') === -1) continue;
+            var rules;
+            try { rules = sheets[i].cssRules; } catch (e) { continue; }
+            for (var r = 0; r < rules.length; r++) {
+                var rule = rules[r];
+                if (!rule.style || !rule.style.getPropertyValue) continue;
+                var fam = (rule.style.getPropertyValue('font-family') || '').replace(/["']/g, '').trim();
+                if (fam !== family) continue;
+                var declared = rule.style.getPropertyValue('font-weight') || '400';
+                if (!fontWeightMatches(declared, weight)) continue;
+                var src = rule.style.getPropertyValue('src') || rule.cssText || '';
+                URL_RE.lastIndex = 0;
+                var match;
+                while ((match = URL_RE.exec(src))) {
+                    var abs = normalizeAssetUrl(match[2], href);
+                    if (!abs) continue;
+                    abs = abs.split('?')[0];
+                    if (!kept.has(abs)) kept.set(abs, Promise.resolve());
+                }
+            }
+        }
+    }
+
     function loadFonts(specs) {
         var hold = ensureHold();
         var loads = [];
@@ -192,6 +291,8 @@ var assetPreload = (function () {
             var spec = list[i];
             if (!spec || fontSpecsStarted.has(spec)) continue;
             fontSpecsStarted.add(spec);
+            var parsed = parseFontSpec(spec);
+            if (parsed) markFontFaceFiles(parsed.family, parsed.weight);
             var span = document.createElement('span');
             span.style.font = spec;
             span.textContent = 'Dreamscape';
@@ -520,8 +621,25 @@ var assetPreload = (function () {
 
     function preloadDesktopAssetsStage() {
         if (!isDesktop || desktopAssetsPrepared) return Promise.resolve(true);
-        // Taskbar pictures only. Windows, start menu, and other wallpapers load when opened.
-        return whenSettled(preloadUrls(TASKBAR_URLS, { concurrency: 6 }), IMAGE_TIMEOUT_MS).then(function (ok) {
+        // Start menu, then taskbar, tray, and sidebar.
+        // Each bitmap stays in #assetPreloadHold after this stage.
+        var shellFonts = SHELL_FONT_SPECS.slice();
+        for (var f = 0; f < primedFontFamilies.length; f++) {
+            var family = primedFontFamilies[f];
+            shellFonts.push('300 16px "' + family + '"');
+            shellFonts.push('400 16px "' + family + '"');
+            shellFonts.push('500 16px "' + family + '"');
+            shellFonts.push('600 16px "' + family + '"');
+            shellFonts.push('700 16px "' + family + '"');
+        }
+        var shellUrls = START_MENU_URLS.concat(
+            TASKBAR_URLS,
+            collectStylesheetUrls(DESKTOP_STYLES)
+        );
+        return whenSettled(Promise.all([
+            preloadUrls(shellUrls, { concurrency: 6 }),
+            loadFonts(shellFonts)
+        ]), IMAGE_TIMEOUT_MS).then(function (ok) {
             armLateWatch();
             return ok;
         }).catch(function (error) {
@@ -539,8 +657,21 @@ var assetPreload = (function () {
         } catch (error) {
             console.warn('Wallpaper target lookup failed:', error);
         }
+        try {
+            var liveWorkspace = (typeof workspaces !== 'undefined' && workspaces && typeof activeWorkspace !== 'undefined')
+                ? workspaces[activeWorkspace]
+                : null;
+            if (liveWorkspace) {
+                if (liveWorkspace.primaryFont) primedFontFamilies.push(liveWorkspace.primaryFont);
+                if (liveWorkspace.textareaFont && liveWorkspace.textareaFont !== liveWorkspace.primaryFont) {
+                    primedFontFamilies.push(liveWorkspace.textareaFont);
+                }
+            }
+        } catch (error) {
+            console.warn('Workspace font lookup failed:', error);
+        }
         var lookup = Promise.resolve();
-        if (!primedWallpaperUrl && typeof wsClient !== 'undefined' && wsClient
+        if ((!primedWallpaperUrl || !primedFontFamilies.length) && typeof wsClient !== 'undefined' && wsClient
             && wsClient.getWorkspaces && wsClient.isConnected && wsClient.isConnected()) {
             lookup = wsClient.getWorkspaces().then(function (data) {
                 if (!data) return;
@@ -548,7 +679,10 @@ var assetPreload = (function () {
                 var list = data.workspaces || [];
                 for (var i = 0; i < list.length; i++) {
                     var row = list[i];
-                    if (!row || row.id !== workspaceId || !row.wallpaper) continue;
+                    if (!row || row.id !== workspaceId) continue;
+                    if (row.primaryFont) primedFontFamilies.push(row.primaryFont);
+                    if (row.textareaFont && row.textareaFont !== row.primaryFont) primedFontFamilies.push(row.textareaFont);
+                    if (!row.wallpaper) continue;
                     // resolveWorkspaceWallpaperUrl: public/scripts/comp/modalUtils.js
                     primedWallpaperUrl = resolveWorkspaceWallpaperUrl(row.wallpaper) || '';
                 }

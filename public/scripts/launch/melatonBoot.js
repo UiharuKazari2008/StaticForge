@@ -19,13 +19,14 @@
  *            cache diffed against the server manifest. Up to 20 files download silently behind
  *            the marquee, then the handoff. More (or an install a reload interrupted) cut to
  *            black and open the installer.
- *   install  Windows Setup in Classic on the aurora: "Install MeletonFX", Installing
- *            MeletonFX..., the automatic checklist (Copying files = the download, Expanding
- *            files = hash check + one retry, Installing features = the offline service update,
- *            Installing updates = what changed on the server meanwhile, Completing installation
- *            = install record + persistent storage), Vista's two-step strip. Failure: a Classic
- *            message box, Retry / Cancel (→ boot menu). Done: the window closes, it lingers,
- *            cuts to black and reboots /launch, which then boots normally.
+ *   install  Windows Setup in Vista Basic on the aurora: "Install MeletonFX", Installing
+ *            MeletonFX..., the automatic checklist (Copying files = one compressed pack from the
+ *            server, Expanding files = manifest vs the service worker, store only mismatches,
+ *            Installing features = the code group, post-write hash check, Installing updates =
+ *            the other group, same check, Completing installation = install record + persistent
+ *            storage), Vista's two-step strip. Failure: a Vista Basic message box, Retry / Cancel
+ *            (→ boot menu). Done: the window closes, it lingers, cuts to black and reboots
+ *            /launch, which then boots normally.
  *
  * Design mode (/launch?design=1) previews every screen: no checks, no wipe, no navigation.
  * Yozora #411 (plan), #416 (S2), #417 (S3), #419 (S4). Test: scripts/test-melaton-boot.js.
@@ -47,6 +48,7 @@
         recoverStepMs: 350,     // each recovery line stays at least this long
         installStepMs: 900,     // each installer checklist line stays at least this long
         installTolerance: 10,   // files still missing after Expanding that do not fail the install
+        installArriveMs: 1000,  // aurora alone before the setup window opens
         installLingerMs: 3000   // after the installer window closes, before the black + reboot
     };
 
@@ -68,6 +70,8 @@
 
     const ENTRIES = [
         { id: 'melaton', label: 'Dreamscape Melaton' },
+        { id: 'restore', label: 'Dreamscape Melaton (via System Restore)' },
+        { id: 'safe', label: 'Dreamscape Melaton (Safe Mode with Networking)' },
         { id: 'recovery', label: 'Melaton Recovery (Reinstall)' }
     ];
 
@@ -247,7 +251,8 @@
             recoverProgress: 0,
             lastProbe: null,
             serverStatus: null,
-            install: null
+            install: null,
+            bootMode: 'normal'
         };
 
         function show(screen, data) {
@@ -307,12 +312,19 @@
             try {
                 env.sessionStorage.setItem('dreamscapeLaunchHandoff', 'teal');
                 env.sessionStorage.setItem('dreamscapeBootTealHoldUntil', String(env.now() + config.tealHoldMs));
+                if (ctl.bootMode === 'safe') env.sessionStorage.setItem('melatonSafeMode', '1');
+                else env.sessionStorage.removeItem('melatonSafeMode');
             } catch (_) { /* the logon dialog just shows without the hold */ }
             env.location.replace('/app');
         }
 
         async function runChecks() {
             const run = ++ctl.runId;
+            if (!env.designMode && globalThis.melatonBootInterrupt) {
+                globalThis.melatonBootInterrupt = false;
+                await openMenu(null, { cut: false, countdown: false });
+                return 'menu';
+            }
             const startedAt = env.now();
             let failures = 0;
             let busySince = null;
@@ -360,6 +372,11 @@
             if (session === 'login') {
                 env.location.replace('/');
                 return 'login';
+            }
+            if (ctl.bootMode === 'restore') {
+                if (env.engine && env.engine.writeState) env.engine.writeState(env, null);
+                await handOff();
+                return run === ctl.runId ? 'teal' : 'cancelled';
             }
             const updated = await runUpdates(run);
             if (updated !== 'handoff') return updated;
@@ -444,67 +461,74 @@
             ctl.install = {
                 steps: INSTALL_STEPS.map((s) => ({ id: s.id, label: s.label, state: 'pending', fraction: null })),
                 overall: 0,
-                phase: 'installing',
+                phase: 'arrive',
                 error: null,
                 resumed
             };
             show('install', installData());
+            await env.sleep(config.installArriveMs);
+            if (run !== ctl.runId) return 'cancelled';
+            ctl.install.phase = 'installing';
+            show('install', installData());
 
-            // 1 Copying: the download, by bytes
+            const manifest = found.manifest || found.files;
+
+            // 1 Copying: one compressed pack, by bytes received. A short list is its own zip.
             let started = env.now();
             setStep('copy', 'active', 0);
-            const copied = await engine.download(env, found.files, {
+            const copied = await engine.copyPack(env, manifest, {
+                subset: found.files,
                 onProgress: (p) => { if (run === ctl.runId) setStep('copy', 'active', p.fraction); }
             });
             if (run !== ctl.runId) return 'cancelled';
-            if (!copied.ok) return installFailed(copied.stalled ? 'stalled' : 'download', copied.errors && copied.errors[0]);
+            if (!copied.ok) return installFailed(copied.stalled ? 'stalled' : 'download', copied.error || null);
             await stepAtLeast(started);
             setStep('copy', 'done');
 
-            // 2 Expanding: every file in the cache with the right hash; one more pass for stragglers
+            // 2 Expanding: manifest vs the cache, store only the files that differ
             started = env.now();
             setStep('expand', 'active', 0);
-            let missing = await engine.verify(env, found.files);
-            if (missing.length) {
-                await engine.download(env, missing, {
-                    onProgress: (p) => { if (run === ctl.runId) setStep('expand', 'active', 0.5 * p.fraction); }
-                });
-                missing = await engine.verify(env, missing);
-            }
+            const expanded = await engine.expandPack(env, manifest, {
+                onProgress: (p) => { if (run === ctl.runId) setStep('expand', 'active', p.fraction); }
+            });
             if (run !== ctl.runId) return 'cancelled';
-            // A few files the worker will not keep (like /app's old wizard tolerated) do not stop
-            // the install; they are fetched at runtime and remembered so later boots stay silent
-            if (missing.length > Math.max(config.installTolerance, Math.ceil(found.files.length * 0.1))) {
-                return installFailed('verify', `${missing.length} file(s): ${missing.slice(0, 3).map((f) => f.url).join(', ')}`);
-            }
-            ctl.install.stragglers = missing.map((f) => f.url);
+            if (!expanded.ok) return installFailed(expanded.stalled ? 'stalled' : 'verify', expanded.error || null);
+            const tolerance = Math.max(config.installTolerance, Math.ceil(found.files.length * 0.1));
+            const tooMany = (urls) => urls.length > tolerance;
+            const detailFor = (urls) => `${urls.length} file(s): ${urls.slice(0, 3).join(', ')}`;
+            // A few files the cache will not keep do not stop the install; they are fetched at
+            // runtime and remembered so later boots stay silent
+            let missing = (expanded.missing || []).slice();
+            if (tooMany(missing)) return installFailed('verify', detailFor(missing));
             await stepAtLeast(started);
             setStep('expand', 'done');
 
-            // 3 Installing features: the offline service picks up its own update
+            // 3 Installing features: code and markup that were written, then a post-write hash check
             started = env.now();
-            setStep('features', 'active');
-            try {
-                const reg = env.navigator && env.navigator.serviceWorker
-                    ? await env.navigator.serviceWorker.getRegistration()
-                    : null;
-                if (reg && typeof reg.update === 'function') await reg.update();
-            } catch (_) { /* the next start picks it up */ }
+            setStep('features', 'active', 0);
+            const features = await engine.installGroup(env, 'features', {
+                onProgress: (p) => { if (run === ctl.runId) setStep('features', 'active', p.fraction); }
+            });
+            if (run !== ctl.runId) return 'cancelled';
+            if (!features.ok) return installFailed('verify', features.error || null);
+            missing = missing.concat(features.mismatched || []);
+            if (tooMany(missing)) return installFailed('verify', detailFor(missing));
             await stepAtLeast(started);
             setStep('features', 'done');
 
-            // 4 Installing updates: whatever changed on the server while this ran
+            // 4 Installing updates: the other group, same post-write check
             started = env.now();
             setStep('updates', 'active', 0);
-            const again = await engine.check(env);
-            if (again.files && again.files.length) {
-                await engine.download(env, again.files, {
-                    onProgress: (p) => { if (run === ctl.runId) setStep('updates', 'active', p.fraction); }
-                });
-            }
+            const updates = await engine.installGroup(env, 'updates', {
+                onProgress: (p) => { if (run === ctl.runId) setStep('updates', 'active', p.fraction); }
+            });
             if (run !== ctl.runId) return 'cancelled';
+            if (!updates.ok) return installFailed('verify', updates.error || null);
+            missing = missing.concat(updates.mismatched || []);
+            if (tooMany(missing)) return installFailed('verify', detailFor(missing));
             await stepAtLeast(started);
             setStep('updates', 'done');
+            ctl.install.stragglers = missing;
 
             // 5 Completing installation: the install record, storage the browser keeps
             started = env.now();
@@ -614,7 +638,10 @@
             if (!entry || ctl.screen !== 'menu') return null;
             ctl.selected = index;
             stopCountdown();
-            if (entry.id === 'melaton') return retry();
+            if (entry.id === 'melaton' || entry.id === 'restore' || entry.id === 'safe') {
+                ctl.bootMode = entry.id === 'melaton' ? 'normal' : entry.id;
+                return retry();
+            }
             showConfirm(mode);
             return null;
         }
@@ -636,8 +663,8 @@
             }
             if (ctl.screen === 'boot') {
                 if (key === 'F8') {
-                    // Asked for: no countdown, nothing starts until a choice is made
-                    openMenu(null, { cut: true, countdown: false });
+                    // No countdown, and no black hold: the menu has to replace the boot screen now.
+                    openMenu(null, { cut: false, countdown: false });
                     return true;
                 }
                 return false;
@@ -789,7 +816,7 @@
         return `${Math.max(0, Math.min(100, Math.floor((fraction || 0) * 100)))}%`;
     }
 
-    /** Windows Setup in Classic on the aurora (#melatonInstall in launch.html). */
+    /** Windows Setup in Vista Basic on the aurora (#melatonInstall in launch.html). */
     function renderInstall(doc, data) {
         const host = doc.getElementById('melatonInstall');
         if (!host) return;
@@ -808,8 +835,12 @@
                 return li;
             }));
         }
-        const bar = host.querySelector('.mi-bar-install > i');
-        if (bar) bar.style.width = `${Math.round((data.overall || 0) * 1000) / 10}%`;
+        const bar = host.querySelector('.mi-bar-install > div');
+        if (bar) {
+            const pct = Math.round((data.overall || 0) * 1000) / 10;
+            bar.style.width = pct + '%';
+            if (bar.parentNode) bar.parentNode.setAttribute('aria-valuenow', String(Math.round(pct)));
+        }
         const box = host.querySelector('.mi-msgbox');
         if (box) {
             const err = data.phase === 'error' ? data.error : null;

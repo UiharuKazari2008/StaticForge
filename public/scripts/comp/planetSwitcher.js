@@ -2,10 +2,12 @@
 // Planet switcher: a tilted ring of glass "planet" bubbles (one per workspace) around a plasma sun,
 // over a star field.
 //
-// Opening shrinks and fades the desktop layers (#desktopWallpaper, #desktopIcons, #desktopTaskbar)
-// and every open window with the Web Animations API. Only `scale` + `opacity` are animated, around
-// a transform-origin computed at the viewport centre, so window sizes, positions and their own
-// `transform` are never touched. Tapping a planet centres it; tapping the centred planet travels:
+// Opening shrinks and fades the desktop (#desktopWallpaper, #desktopIcons, #desktopTaskbar)
+// and every open window with the Web Animations API. Vista sidebar gadgets sit between those
+// two: they scale and tilt with the desktop, fade out, and slide to the right as they hide.
+// Only `scale` + `opacity` are animated (desktop and gadgets also tilt; gadgets also translate),
+// around a transform-origin computed at the viewport centre, so sizes, positions and a window's
+// own `transform` are never touched. Tapping a planet centres it; tapping the centred planet travels:
 // the ring settles first (selection tween), then the workspace loads (setActiveWorkspace + the
 // workspaceSwitchComplete / workspaceChanged events from workspaceUtils.js) while the bubble pulses,
 // then the view zooms into the bubble, fades to black and zooms the desktop back in. Esc / Cancel
@@ -20,8 +22,8 @@ const PLANET_SWITCHER_TIMING = Object.freeze({
     holderIn: 4500,      // Layer 2 fade + scale in
     windowsScale: 2500,  // open windows 100% -> 75%
     windowsFade: 2000,   // open windows 100% -> 0%
-    desktopScale: 3000,  // wallpaper / icons / taskbar 100% -> 50%
-    desktopFade: 2950,   // wallpaper / icons / taskbar 100% -> 0%
+    desktopScale: 3000,  // wallpaper / icons / taskbar / gadgets 100% -> 50%
+    desktopFade: 2950,   // wallpaper / icons / taskbar / gadgets 100% -> 0%
     starsIn: 2000,       // star field fade in (black backdrop is instant)
     cancel: 520,         // quick undo of the opening animation
     navigate: 480,       // ring rotation per step
@@ -40,6 +42,7 @@ const PLANET_SWITCHER_LOAD_IDLE_MS = 60000;
 const PLANET_SWITCHER_SELECT_GROW = 1.9;     // focused bubble scale while loading
 const PLANET_SWITCHER_ZOOM_OVERSHOOT = 1.3;  // final zoom: bubble diameter vs viewport diagonal
 const PLANET_SWITCHER_TILT_DEG = 12;        // desktop zoom-out: bottom edge recedes faster than the top
+const PLANET_SWITCHER_GADGET_SLIDE = '42vw'; // gadgets slide right while they scale with the desktop
 const PLANET_SWITCHER_REFLECT = 0.45;        // reflection height as a fraction of the bubble
 const PLANET_SWITCHER_WOBBLE = 0.03;         // idle ring rotation amplitude (rad), compositor driven
 const PLANET_SWITCHER_WOBBLE_MS = 16000;     // half period of the idle wobble
@@ -522,6 +525,7 @@ class PlanetSwitcher {
         this.layerAnims = [];
         this.overlayAnims = [];
         this.desktopLayer = [];
+        this.gadgetLayer = [];
         this.windowLayer = [];
         this.stars = null;
         this.raf = 0;
@@ -837,7 +841,7 @@ class PlanetSwitcher {
         return `${n.toLocaleString()} images`;
     }
 
-    // ---------- layers (desktop + windows) ----------
+    // ---------- layers (desktop, gadgets, windows) ----------
 
     captureLayers() {
         const cx = window.innerWidth / 2;
@@ -845,8 +849,35 @@ class PlanetSwitcher {
         const desktopEls = ['desktopWallpaper', 'desktopIcons', 'desktopTaskbar']
             .map((id) => document.getElementById(id))
             .filter(Boolean);
-        this.desktopLayer = desktopEls.map((el) => this.prepareLayerEl(el, cx, cy));
-        this.windowLayer = this.collectWindowElements().map((el) => this.prepareLayerEl(el, cx, cy));
+        this.desktopLayer = desktopEls.map((el) => this.prepareLayerEl(el, cx, cy, PLANET_SWITCHER_TILT_DEG));
+        this.gadgetLayer = this.collectGadgetElements().map((el) => this.prepareLayerEl(el, cx, cy, PLANET_SWITCHER_TILT_DEG, PLANET_SWITCHER_GADGET_SLIDE));
+        this.windowLayer = this.collectWindowElements().map((el) => this.prepareLayerEl(el, cx, cy, 0));
+    }
+
+    /**
+     * Sidebar pane plus each undocked gadget and an open flyout.
+     * Docked gadgets are in the pane, so they recede with it. #vistaSidebar itself has no box
+     * (public/scripts/comp/vistaSidebar.js); transforming it would reparent the fixed gadgets.
+     */
+    collectGadgetElements() {
+        const root = document.getElementById('vistaSidebar');
+        if (!root || root.classList.contains('hidden')) return [];
+        const out = [];
+        const children = root.children;
+        for (let i = 0; i < children.length; i++) {
+            const el = children[i];
+            if (el.classList.contains('hidden') || el.classList.contains('hidden-alt')) continue;
+            const pane = el.classList.contains('vsb-pane');
+            const loose = el.classList.contains('vsb-gadget') && el.dataset.docked === '0';
+            const flyout = el.classList.contains('vsb-flyout');
+            if (!pane && !loose && !flyout) continue;
+            out.push(el);
+        }
+        return out.filter((el) => getComputedStyle(el).display !== 'none');
+    }
+
+    layerRecords() {
+        return [...this.desktopLayer, ...this.gadgetLayer, ...this.windowLayer];
     }
 
     collectWindowElements() {
@@ -859,12 +890,14 @@ class PlanetSwitcher {
         return candidates.filter((el) => getComputedStyle(el).display !== 'none');
     }
 
-    prepareLayerEl(el, cx, cy) {
+    prepareLayerEl(el, cx, cy, tilt, slide) {
         const computed = getComputedStyle(el);
         const rec = {
             el,
             prevOrigin: el.style.transformOrigin,
-            opacity: Math.min(1, Math.max(0, parseFloat(computed.opacity) || 1))
+            opacity: Math.min(1, Math.max(0, parseFloat(computed.opacity) || 1)),
+            tilt: tilt || 0,
+            slide: slide || ''
         };
         this.setViewportOrigin(el, computed, cx, cy);
         return rec;
@@ -896,7 +929,7 @@ class PlanetSwitcher {
     }
 
     restoreLayerOrigins() {
-        [...this.desktopLayer, ...this.windowLayer].forEach((rec) => {
+        this.layerRecords().forEach((rec) => {
             rec.el.style.transformOrigin = rec.prevOrigin || '';
         });
     }
@@ -905,19 +938,28 @@ class PlanetSwitcher {
         const T = PLANET_SWITCHER_TIMING;
         const ease = 'cubic-bezier(0.4, 0, 0.2, 1)';
         this.layerAnims = [];
-        this.windowLayer.forEach(({ el, opacity }) => {
-            this.layerAnims.push(el.animate([{ scale: '1' }, { scale: '0.75' }], { duration: T.windowsScale, easing: ease, fill: 'forwards' }));
-            this.layerAnims.push(el.animate([{ opacity }, { opacity: 0 }], { duration: T.windowsFade, easing: 'ease-out', fill: 'forwards' }));
-        });
-        this.desktopLayer.forEach(({ el, opacity }) => {
-            this.layerAnims.push(el.animate([{ scale: '1' }, { scale: '0.5' }], { duration: T.desktopScale, easing: ease, fill: 'forwards' }));
-            // Flip-3D style tilt: the bottom edge recedes faster than the top
+        this.windowLayer.forEach((rec) => this.animateRecede(rec, '0.75', T.windowsScale, T.windowsFade, ease));
+        this.gadgetLayer.forEach((rec) => this.animateRecede(rec, '0.5', T.desktopScale, T.desktopFade, ease));
+        this.desktopLayer.forEach((rec) => this.animateRecede(rec, '0.5', T.desktopScale, T.desktopFade, ease));
+    }
+
+    /** Scale toward the viewport centre. Desktop and gadgets tilt; gadgets also slide right. */
+    animateRecede(rec, scaleTo, scaleMs, fadeMs, ease) {
+        const { el, opacity, tilt, slide } = rec;
+        this.layerAnims.push(el.animate([{ scale: '1' }, { scale: scaleTo }], { duration: scaleMs, easing: ease, fill: 'forwards' }));
+        if (tilt) {
             this.layerAnims.push(el.animate(
-                [{ transform: 'perspective(1400px) rotateX(0deg)' }, { transform: `perspective(1400px) rotateX(${-PLANET_SWITCHER_TILT_DEG}deg)` }],
-                { duration: T.desktopScale, easing: ease, fill: 'forwards' }
+                [{ transform: 'perspective(1400px) rotateX(0deg)' }, { transform: `perspective(1400px) rotateX(${-tilt}deg)` }],
+                { duration: scaleMs, easing: ease, fill: 'forwards' }
             ));
-            this.layerAnims.push(el.animate([{ opacity }, { opacity: 0 }], { duration: T.desktopFade, easing: 'ease-out', fill: 'forwards' }));
-        });
+        }
+        if (slide) {
+            this.layerAnims.push(el.animate(
+                [{ translate: '0px' }, { translate: slide }],
+                { duration: scaleMs, easing: ease, fill: 'forwards' }
+            ));
+        }
+        this.layerAnims.push(el.animate([{ opacity }, { opacity: 0 }], { duration: fadeMs, easing: 'ease-out', fill: 'forwards' }));
     }
 
     animateOverlayIn() {
@@ -1133,7 +1175,7 @@ class PlanetSwitcher {
         this.applyRing();
         const cx = window.innerWidth / 2;
         const cy = window.innerHeight / 2;
-        [...this.desktopLayer, ...this.windowLayer].forEach((rec) => {
+        this.layerRecords().forEach((rec) => {
             this.setViewportOrigin(rec.el, getComputedStyle(rec.el), cx, cy);
         });
     }
@@ -1848,17 +1890,29 @@ class PlanetSwitcher {
         const cy = window.innerHeight / 2;
         const known = new Set(this.windowLayer.map((rec) => rec.el));
         this.collectWindowElements().forEach((el) => {
-            if (!known.has(el)) this.windowLayer.push(this.prepareLayerEl(el, cx, cy));
+            if (!known.has(el)) this.windowLayer.push(this.prepareLayerEl(el, cx, cy, 0));
+        });
+        // Sidebar state is per workspace: keep gadgets that are still on screen and pick up new ones.
+        const freshGadgets = new Set(this.collectGadgetElements());
+        this.gadgetLayer = this.gadgetLayer.filter((rec) => freshGadgets.has(rec.el));
+        const knownGadgets = new Set(this.gadgetLayer.map((rec) => rec.el));
+        freshGadgets.forEach((el) => {
+            if (!knownGadgets.has(el)) this.gadgetLayer.push(this.prepareLayerEl(el, cx, cy, PLANET_SWITCHER_TILT_DEG, PLANET_SWITCHER_GADGET_SLIDE));
         });
         const ease = 'cubic-bezier(0.22, 1, 0.36, 1)';
         const inAnims = [];
-        const desktopEls = new Set(this.desktopLayer.map((rec) => rec.el));
-        [...this.desktopLayer, ...this.windowLayer].forEach(({ el, opacity }) => {
+        this.layerRecords().forEach(({ el, opacity, tilt, slide }) => {
             if (el.classList.contains('hidden') || el.classList.contains('hidden-alt')) return;
             inAnims.push(el.animate([{ scale: '0.8' }, { scale: '1' }], { duration: T.reveal, easing: ease, fill: 'forwards' }));
-            if (desktopEls.has(el)) {
+            if (tilt) {
                 inAnims.push(el.animate(
-                    [{ transform: `perspective(1400px) rotateX(${-PLANET_SWITCHER_TILT_DEG / 2}deg)` }, { transform: 'perspective(1400px) rotateX(0deg)' }],
+                    [{ transform: `perspective(1400px) rotateX(${-tilt / 2}deg)` }, { transform: 'perspective(1400px) rotateX(0deg)' }],
+                    { duration: T.reveal, easing: ease, fill: 'forwards' }
+                ));
+            }
+            if (slide) {
+                inAnims.push(el.animate(
+                    [{ translate: slide }, { translate: '0px' }],
                     { duration: T.reveal, easing: ease, fill: 'forwards' }
                 ));
             }
@@ -1901,14 +1955,17 @@ class PlanetSwitcher {
 
         // Undo from wherever the opening animation got to: read the animated values, run them home fast
         const undo = [];
-        const desktopEls = new Set(this.desktopLayer.map((rec) => rec.el));
-        [...this.windowLayer, ...this.desktopLayer].forEach(({ el, opacity }) => {
+        this.layerRecords().forEach(({ el, opacity, tilt, slide }) => {
             const cs = getComputedStyle(el);
             const curScale = cs.scale && cs.scale !== 'none' ? cs.scale : '1';
             const curOpacity = parseFloat(cs.opacity);
             undo.push(el.animate([{ scale: curScale }, { scale: '1' }], { duration: T.cancel, easing: 'ease-out', fill: 'forwards' }));
-            if (desktopEls.has(el) && cs.transform && cs.transform !== 'none') {
+            if (tilt && cs.transform && cs.transform !== 'none') {
                 undo.push(el.animate([{ transform: cs.transform }, { transform: 'perspective(1400px) rotateX(0deg)' }], { duration: T.cancel, easing: 'ease-out', fill: 'forwards' }));
+            }
+            if (slide) {
+                const curSlide = cs.translate && cs.translate !== 'none' ? cs.translate : '0px';
+                undo.push(el.animate([{ translate: curSlide }, { translate: '0px' }], { duration: T.cancel, easing: 'ease-out', fill: 'forwards' }));
             }
             undo.push(el.animate(
                 [{ opacity: Number.isFinite(curOpacity) ? curOpacity : 0 }, { opacity }],
@@ -1973,6 +2030,7 @@ class PlanetSwitcher {
         this.layerAnims = [];
         this.overlayAnims = [];
         this.desktopLayer = [];
+        this.gadgetLayer = [];
         this.windowLayer = [];
         this.planets = [];
         this.count = 0;

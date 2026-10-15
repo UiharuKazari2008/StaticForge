@@ -635,6 +635,11 @@ function handleWindowMaximizeAction(modal) {
     if (!modal) {
         return;
     }
+    if (modal.dataset.windowIdentifier === 'desktopGuacSession') {
+        // toggleDesktopGuacCover: public/scripts/comp/desktop-apps/guacRemote.js
+        toggleDesktopGuacCover(modal);
+        return;
+    }
     if (modal.querySelector('.modal-window-controls .modal-work-area-maximize')) {
         toggleModalMaximize(modal);
         return;
@@ -661,7 +666,10 @@ function getModalCaptionBandTitleBar(e) {
 
     const toolbar = titleBar.querySelector('.modal-window-title-toolbar');
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    const bandBottom = toolbar
+    // A hidden toolbar (Calculator's mode bar on the Vista desktop) has a 0 rect.
+    // Using that top rejects every caption click.
+    const toolbarShown = toolbar && getComputedStyle(toolbar).display !== 'none';
+    const bandBottom = toolbarShown
         ? toolbar.getBoundingClientRect().top
         : titleBar.getBoundingClientRect().bottom;
     return clientY < bandBottom ? titleBar : null;
@@ -687,6 +695,12 @@ function handleModalCaptionDoubleClick(e) {
 
     const controls = modal.querySelector('.modal-window-controls');
     if (!controls) return;
+    if (modal.dataset.windowIdentifier === 'desktopGuacSession') {
+        e.preventDefault();
+        // toggleDesktopGuacCover: public/scripts/comp/desktop-apps/guacRemote.js
+        toggleDesktopGuacCover(modal);
+        return;
+    }
     const maxBtn = controls.querySelector('.modal-work-area-maximize');
     const customMaxBtn = controls.querySelector(MODAL_CUSTOM_MAXIMIZE_SELECTOR);
     if (isModalCaptionControlUsable(maxBtn)) {
@@ -7056,15 +7070,17 @@ function restartClientNavigate() {
 }
 window.restartClientNavigate = restartClientNavigate;
 
-/** Restart like Windows: windows close, fade to black (the shutdown), then the full boot. */
+/** Restart through the Welcome screen ("Shutting down..."), then the full boot. */
 async function runClientRestartSequence() {
-    await runClientShutdownSequence(() => restartClientNavigate());
+    // runWinlogonPower: public/scripts/comp/winlogonPower.js
+    await runWinlogonPower('restart');
 }
 window.runClientRestartSequence = runClientRestartSequence;
 
 async function runClientRestartDirect() {
     closeStartMenuAfterPowerAction();
-    await runClientRestartSequence();
+    // runWinlogonPower: public/scripts/comp/winlogonPower.js
+    await runWinlogonPower('restart');
 }
 
 async function runRestartDssDirect() {
@@ -7084,7 +7100,8 @@ async function runRestartDssDirect() {
 
 async function runClientShutdownDirect() {
     closeStartMenuAfterPowerAction();
-    await runClientShutdownSequence(() => window.close());
+    // runWinlogonPower: public/scripts/comp/winlogonPower.js
+    await runWinlogonPower('shutdown');
 }
 
 /** Lock the workstation (workstationLock.js: Computer Locked over the wallpaper, Ctrl+Alt+L too). */
@@ -7102,10 +7119,8 @@ function runLeaveDesktopModeDirect() {
 
 function runLogoutDirect() {
     closeStartMenuAfterPowerAction();
-    // handleLogout — public/scripts/app.js
-    if (typeof handleLogout === 'function') {
-        handleLogout();
-    }
+    // runWinlogonPower: public/scripts/comp/winlogonPower.js
+    runWinlogonPower('logoff');
 }
 
 /** Vista's power arrow menu (Yozora #443): the power button shuts down, the arrow has the rest. */
@@ -8076,8 +8091,12 @@ async function setDesktopWallpaper(wallpaperPath, wallpaperPosition = 'center ce
         delete workspaces[currentWorkspace].wallpaperPosition;
     }
 
-    // Regenerate styles for immediate visual update
+    // Regenerate styles for immediate visual update (dev mode). Production paints
+    // from the workspace record; compiled CSS arrives later.
     generateWorkspaceStyles(currentWorkspace);
+    // noteWallpaperFileReload, syncDesktopWallpaperInline: public/scripts/comp/workspaceUtils.js
+    noteWallpaperFileReload(workspaces[currentWorkspace].wallpaper);
+    syncDesktopWallpaperInline(currentWorkspace);
 
     // Save via WebSocket (server will broadcast to other clients)
     if (wsClient && wsClient.isConnected()) {
@@ -8231,7 +8250,15 @@ let desktopSettingsGlobalState = {
     })(),
     startMenuButtonPreset: 'start-ja',
     startMenuButtonCustomText: '',
-    startMenuButtonStyle: 'workspace'
+    startMenuButtonStyle: 'workspace',
+    startMenuButtonLogo: 'dreamscape',
+    useApplicationImageIcon: (() => {
+        try {
+            return localStorage.getItem('useApplicationImageIcon') === 'true';
+        } catch (e) {
+            return false;
+        }
+    })()
 };
 
 // Authentic Windows XP Luna start-button strings per locale (explorer.exe string 578).
@@ -8308,13 +8335,25 @@ function normalizeStartMenuButtonStyleClient(style) {
     return ['luna', 'workspace', 'orb'].includes(style) ? style : 'workspace';
 }
 
+function normalizeStartMenuButtonLogoClient(logo) {
+    return logo === 'royal' || logo === 'vista' || logo === 'dreamscape' ? logo : 'dreamscape';
+}
+
+function startMenuButtonLogoUrl(logo) {
+    const id = normalizeStartMenuButtonLogoClient(logo);
+    if (id === 'royal') return '/static_images/windows-logo-royal.png';
+    if (id === 'vista') return '/static_images/windows-logo-vista.png';
+    return '/static_images/logo_icon.png';
+}
+
 function readDesktopSettingsStartMenuButtonPreference() {
     return {
         preset: normalizeStartMenuButtonPresetClient(desktopSettingsGlobalState.startMenuButtonPreset),
         customText: typeof desktopSettingsGlobalState.startMenuButtonCustomText === 'string'
             ? desktopSettingsGlobalState.startMenuButtonCustomText.trim().slice(0, 24)
             : '',
-        style: normalizeStartMenuButtonStyleClient(desktopSettingsGlobalState.startMenuButtonStyle)
+        style: normalizeStartMenuButtonStyleClient(desktopSettingsGlobalState.startMenuButtonStyle),
+        logo: normalizeStartMenuButtonLogoClient(desktopSettingsGlobalState.startMenuButtonLogo)
     };
 }
 
@@ -8338,6 +8377,17 @@ function applyStartMenuButtonStyleToElement(btn, style) {
     }
 }
 
+function applyStartMenuButtonLogoToElement(btn, logo) {
+    if (!btn) return;
+    const img = btn.querySelector('.taskbar-start-button-logo');
+    if (!img) return;
+    const id = normalizeStartMenuButtonLogoClient(logo);
+    img.src = startMenuButtonLogoUrl(id);
+    img.classList.toggle('is-royal', id === 'royal');
+    img.classList.toggle('is-vista', id === 'vista');
+    img.alt = id === 'dreamscape' ? 'Dreamscape' : '';
+}
+
 function syncStartMenuButtonTextElement(textEl, preset, customText) {
     if (!textEl) return;
     const displayText = resolveStartMenuButtonDisplayText(preset, customText);
@@ -8345,7 +8395,7 @@ function syncStartMenuButtonTextElement(textEl, preset, customText) {
     return displayText;
 }
 
-function applyStartMenuButtonAppearanceToTaskbar(preset, customText, style) {
+function applyStartMenuButtonAppearanceToTaskbar(preset, customText, style, logo) {
     const btn = document.getElementById('taskbarStartBtn');
     const textEl = btn ? btn.querySelector('.taskbar-start-button-text') : null;
     if (textEl) {
@@ -8355,6 +8405,37 @@ function applyStartMenuButtonAppearanceToTaskbar(preset, customText, style) {
         }
     }
     applyStartMenuButtonStyleToElement(btn, style);
+    applyStartMenuButtonLogoToElement(btn, logo);
+}
+
+function applyUseApplicationImageIcon(enabled) {
+    const on = enabled === true;
+    try {
+        localStorage.setItem('useApplicationImageIcon', on ? 'true' : 'false');
+    } catch (e) {
+        /* */
+    }
+    if (!document.body) return;
+    document.body.classList.toggle('use-app-image-icons', on);
+}
+applyUseApplicationImageIcon(desktopSettingsGlobalState.useApplicationImageIcon);
+
+function syncDesktopSettingsUseApplicationImageIconUI() {
+    const input = document.getElementById('desktopSettingsUseAppImageIcon');
+    if (!input) return;
+    input.checked = desktopSettingsGlobalState.useApplicationImageIcon === true;
+}
+
+let desktopSettingsUseAppImageIconWired = false;
+
+function setupDesktopSettingsUseApplicationImageIcon() {
+    if (desktopSettingsUseAppImageIconWired) return;
+    const input = document.getElementById('desktopSettingsUseAppImageIcon');
+    if (!input) return;
+    input.addEventListener('change', () => {
+        desktopSettingsGlobalState.useApplicationImageIcon = input.checked === true;
+    });
+    desktopSettingsUseAppImageIconWired = true;
 }
 
 function resolveWorkspaceWallpaperUrl(wallpaperPath) {
@@ -8441,6 +8522,7 @@ function updateDesktopSettingsStartMenuTextPreview() {
         syncStartMenuButtonTextElement(previewText, pref.preset, pref.customText);
     }
     applyStartMenuButtonStyleToElement(previewBtn, pref.style);
+    applyStartMenuButtonLogoToElement(previewBtn, pref.logo);
 }
 
 function syncDesktopSettingsStartMenuCustomTextVisibility() {
@@ -8468,6 +8550,7 @@ function syncDesktopSettingsStartMenuTextUI() {
     }
     syncDesktopSettingsStartMenuCustomTextVisibility();
     syncDesktopSettingsStartMenuStyleUI();
+    syncDesktopSettingsStartMenuLogoUI();
     updateDesktopSettingsStartMenuTextPreview();
 }
 
@@ -8501,6 +8584,33 @@ function setupDesktopSettingsStartMenuStyleToggle() {
     });
 
     desktopSettingsStartMenuStyleWired = true;
+}
+
+function syncDesktopSettingsStartMenuLogoUI() {
+    const toggle = document.getElementById('desktopSettingsStartMenuLogoToggle');
+    const pref = readDesktopSettingsStartMenuButtonPreference();
+    if (!toggle) return;
+    toggle.setAttribute('data-active', pref.logo);
+    toggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.logo === pref.logo);
+    });
+}
+
+function setupDesktopSettingsStartMenuLogoToggle() {
+    if (desktopSettingsStartMenuLogoWired) return;
+    const toggle = document.getElementById('desktopSettingsStartMenuLogoToggle');
+    if (!toggle) return;
+    toggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const logo = btn.dataset.logo;
+            if (!logo) return;
+            desktopSettingsGlobalState.startMenuButtonLogo = normalizeStartMenuButtonLogoClient(logo);
+            syncDesktopSettingsStartMenuLogoUI();
+            updateDesktopSettingsStartMenuTextPreview();
+        });
+    });
+    desktopSettingsStartMenuLogoWired = true;
 }
 
 // Personalize → Window Glass. Client-only preference applied at once (public/scripts/comp/aeroGlass.js)
@@ -8572,6 +8682,90 @@ function setupDesktopSettingsGlassModeToggle() {
     desktopSettingsGlassModeWired = true;
 }
 
+function trayCustomizeRow(id, label, checked, onChange) {
+    const row = document.createElement('div');
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.id = id;
+    box.checked = checked;
+    const lab = document.createElement('label');
+    lab.htmlFor = id;
+    lab.textContent = label;
+    box.addEventListener('change', () => onChange(box.checked));
+    row.appendChild(box);
+    row.appendChild(lab);
+    return row;
+}
+
+function renderTrayCustomizeLists() {
+    const popups = document.getElementById('desktopSettingsTrayPopupList');
+    const icons = document.getElementById('desktopSettingsTrayIconList');
+    if (popups) {
+        popups.textContent = '';
+        trayPopupCatalog().forEach((row) => {
+            popups.appendChild(trayCustomizeRow(
+                'trayPopupHide-' + row.id,
+                row.label,
+                trayPopupHidden(row.id),
+                (on) => traySetPopupHidden(row.id, on)
+            ));
+        });
+    }
+    if (icons) {
+        icons.textContent = '';
+        trayIconCatalog().forEach((row) => {
+            icons.appendChild(trayCustomizeRow(
+                'trayIconOverflow-' + row.id,
+                row.label,
+                trayIconOverflow(row.id),
+                (on) => traySetIconOverflow(row.id, on)
+            ));
+        });
+    }
+}
+
+function showTrayCustomizePage(which) {
+    const home = document.querySelector('#melatonControlPanelModal .start-menu-text-setting, .start-menu-text-setting');
+    const popups = document.getElementById('desktopSettingsTrayPopupsPage');
+    const icons = document.getElementById('desktopSettingsTrayIconsPage');
+    if (home) home.classList.toggle('hidden', which !== 'home');
+    if (popups) popups.classList.toggle('hidden', which !== 'popups');
+    if (icons) icons.classList.toggle('hidden', which !== 'icons');
+    if (which !== 'home') renderTrayCustomizeLists();
+}
+
+let desktopSettingsTrayCustomizeWired = false;
+
+function setupDesktopSettingsTrayCustomize() {
+    if (desktopSettingsTrayCustomizeWired) return;
+    const timeBtn = document.getElementById('desktopSettingsTrayPopupTimeBtn');
+    const timeLabel = document.getElementById('desktopSettingsTrayPopupTimeSelected');
+    const popupsLink = document.getElementById('desktopSettingsTrayPopupsLink');
+    const iconsLink = document.getElementById('desktopSettingsTrayIconsLink');
+    if (!timeBtn || !popupsLink || !iconsLink) return;
+    desktopSettingsTrayCustomizeWired = true;
+
+    const syncTime = () => {
+        if (timeLabel) timeLabel.textContent = trayPopupTimeLabel(trayMinPopupMs());
+    };
+    syncTime();
+    // contextMenu.attachPickerMenu: public/scripts/comp/contextMenu.js
+    contextMenu.attachPickerMenu(timeBtn, {
+        items: () => trayPopupTimeChoices(),
+        value: () => String(trayMinPopupMs()),
+        onSelect: (value) => {
+            traySetMinPopupMs(value);
+            syncTime();
+        }
+    });
+    popupsLink.addEventListener('click', () => showTrayCustomizePage('popups'));
+    iconsLink.addEventListener('click', () => showTrayCustomizePage('icons'));
+    const popupsBack = document.getElementById('desktopSettingsTrayPopupsBack');
+    const iconsBack = document.getElementById('desktopSettingsTrayIconsBack');
+    if (popupsBack) popupsBack.addEventListener('click', () => showTrayCustomizePage('home'));
+    if (iconsBack) iconsBack.addEventListener('click', () => showTrayCustomizePage('home'));
+}
+
 function setupDesktopSettingsStartMenuTextDropdown() {
     if (desktopSettingsStartMenuTextWired) {
         return;
@@ -8602,37 +8796,32 @@ function setupDesktopSettingsStartMenuTextDropdown() {
         updateDesktopSettingsStartMenuTextPreview();
     };
 
-    const renderMenu = (selectedVal) => {
-        // renderGroupedDropdown, closeDropdown: public/scripts/comp/dropdown.js
-        renderGroupedDropdown(
-            menu,
-            groups,
-            (value) => {
-                if (value === 'custom') {
-                    applyPresetSelection('custom', desktopSettingsGlobalState.startMenuButtonCustomText || '');
-                    if (customInput) {
-                        customInput.focus();
-                        customInput.select();
-                    }
-                    return;
-                }
-                applyPresetSelection(value, '');
-            },
-            () => closeDropdown(menu, btn),
-            selectedVal,
-            (opt) => opt.label
-        );
+    const pickerItems = () => {
+        const items = [];
+        groups.forEach((group) => {
+            items.push({ separator: true, text: group.group });
+            group.options.forEach((opt) => items.push({ value: opt.value, text: opt.label }));
+        });
+        return items;
     };
 
-    // setupDropdown: public/scripts/comp/dropdown.js
-    setupDropdown(
-        container,
-        btn,
-        menu,
-        renderMenu,
-        () => readDesktopSettingsStartMenuButtonPreference().preset,
-        { preventFocusTransfer: true }
-    );
+    // contextMenu.attachPickerMenu: public/scripts/comp/contextMenu.js
+    contextMenu.attachPickerMenu(btn, {
+        maxHeight: true,
+        items: pickerItems,
+        value: () => readDesktopSettingsStartMenuButtonPreference().preset,
+        onSelect: (value) => {
+            if (value === 'custom') {
+                applyPresetSelection('custom', desktopSettingsGlobalState.startMenuButtonCustomText || '');
+                if (customInput) {
+                    customInput.focus();
+                    customInput.select();
+                }
+                return;
+            }
+            applyPresetSelection(value, '');
+        }
+    });
 
     if (customInput) {
         customInput.addEventListener('input', () => {
@@ -8655,8 +8844,10 @@ let desktopSettingsScopeHandlersWired = false;
 let desktopSettingsDropdownsWired = false;
 let desktopSettingsStartMenuTextWired = false;
 let desktopSettingsStartMenuStyleWired = false;
+let desktopSettingsStartMenuLogoWired = false;
 let desktopSettingsModalScopeWired = false;
-let desktopSettingsPersistedStartMenuButton = { preset: 'start-ja', customText: '', style: 'workspace' };
+let desktopSettingsPersistedStartMenuButton = { preset: 'start-ja', customText: '', style: 'workspace', logo: 'dreamscape' };
+let desktopSettingsPersistedUseApplicationImageIcon = false;
 
 // Alignment options for dropdowns
 const ALIGNMENT_OPTIONS = {
@@ -9233,11 +9424,15 @@ async function prepareDesktopSettingsForm(wallpaperPath = null) {
     desktopSettingsPersistedStartMenuButton = {
         preset: startMenuPref.preset,
         customText: startMenuPref.customText,
-        style: startMenuPref.style
+        style: startMenuPref.style,
+        logo: startMenuPref.logo
     };
     desktopSettingsGlobalState.startMenuButtonPreset = startMenuPref.preset;
     desktopSettingsGlobalState.startMenuButtonCustomText = startMenuPref.customText;
     desktopSettingsGlobalState.startMenuButtonStyle = startMenuPref.style;
+    desktopSettingsGlobalState.startMenuButtonLogo = startMenuPref.logo;
+    desktopSettingsPersistedUseApplicationImageIcon = desktopSettingsGlobalState.useApplicationImageIcon === true;
+    syncDesktopSettingsUseApplicationImageIconUI();
     syncDesktopSettingsStartMenuTextUI();
     setDesktopSettingsScope('workspace');
 
@@ -9252,10 +9447,20 @@ async function prepareDesktopSettingsForm(wallpaperPath = null) {
 
 let desktopSettingsCplRegistered = false;
 
-/** Close the settings window if it is the one showing; in Control Panel the page stays (Vista's Apply). */
+/** Close the settings window if it is the one showing. In Control Panel, Save returns to the previous page. */
 function finishDesktopSettingsDialog() {
     const modal = document.getElementById('desktopSettingsModal');
-    if (modal && !modal.classList.contains('hidden')) closeModal(modal);
+    if (modal && !modal.classList.contains('hidden')) {
+        closeModal(modal);
+        return;
+    }
+    const cpl = window.melatonControlPanel;
+    const host = document.querySelector('#melatonControlPanelModal .cpl-settings-host');
+    const layout = document.getElementById('desktopSettingsLayout');
+    // goBack: public/scripts/comp/melatonControlPanel.js
+    if (cpl && cpl.isOpen() && host && layout && host.contains(layout)) {
+        cpl.goBack();
+    }
 }
 
 function mountDesktopSettingsInControlPanel(main, scope, group = null) {
@@ -9264,6 +9469,7 @@ function mountDesktopSettingsInControlPanel(main, scope, group = null) {
     if (!layout || !host) return;
     desktopSettingsActiveGroup = group;
     host.appendChild(layout);
+    showTrayCustomizePage('home');
     const wallpaper = desktopSettingsPendingWallpaper;
     desktopSettingsPendingWallpaper = null;
     prepareDesktopSettingsForm(wallpaper).then(() => setDesktopSettingsScope(scope));
@@ -9324,7 +9530,7 @@ function registerDesktopSettingsControlPanelPages() {
         ['sound', 'Sound', 'Program sounds',
             'Windows Vista sounds for dialogs, errors, lock, logon, shutdown, navigation and the planet switcher.'],
         ['taskbar', 'Taskbar and Start Menu', 'Taskbar and Start Menu',
-            'The start button, what opens at startup, and where notifications go.'],
+            'The start button, taskbar icons, what opens at startup, and where notifications go.'],
         ['keyboard', 'Keyboard', 'Input',
             'The virtual keyboard on touch devices.']
     ];
@@ -9511,7 +9717,10 @@ function initializeDesktopSettingsModal() {
     // Setup dropdowns
     setupDesktopSettingsDropdowns();
     setupDesktopSettingsStartMenuTextDropdown();
+    setupDesktopSettingsTrayCustomize();
     setupDesktopSettingsStartMenuStyleToggle();
+    setupDesktopSettingsStartMenuLogoToggle();
+    setupDesktopSettingsUseApplicationImageIcon();
     setupDesktopSettingsGlassModeToggle();
     setupDesktopSettingsCursorSchemeToggle();
 
@@ -9526,37 +9735,39 @@ function setupDesktopSettingsDropdowns() {
     }
 
     // Horizontal dropdown
-    const horizDropdown = document.getElementById('desktopSettingsHorizontalDropdown');
     const horizBtn = document.getElementById('desktopSettingsHorizontalBtn');
-    const horizMenu = document.getElementById('desktopSettingsHorizontalMenu');
     const horizSlider = document.getElementById('desktopSettingsHorizontalSlider');
     const horizValue = document.getElementById('desktopSettingsHorizontalValue');
 
-    if (horizDropdown && horizBtn && horizMenu) {
-        setupDropdown(
-            horizDropdown,
-            horizBtn,
-            horizMenu,
-            (selectedValue) => renderAlignmentDropdown(horizMenu, 'horizontal', selectedValue),
-            () => desktopSettingsState.horizontalAlign
-        );
+    if (horizBtn) {
+        // contextMenu.attachPickerMenu: public/scripts/comp/contextMenu.js
+        contextMenu.attachPickerMenu(horizBtn, {
+            items: () => ALIGNMENT_OPTIONS.horizontal.map((opt) => ({ value: opt.value, text: opt.label })),
+            value: () => desktopSettingsState.horizontalAlign,
+            onSelect: (value) => {
+                desktopSettingsState.horizontalAlign = value;
+                updateAlignmentUI('horizontal');
+                updateDesktopSettingsPreview();
+            }
+        });
     }
 
     // Vertical dropdown
-    const vertDropdown = document.getElementById('desktopSettingsVerticalDropdown');
     const vertBtn = document.getElementById('desktopSettingsVerticalBtn');
-    const vertMenu = document.getElementById('desktopSettingsVerticalMenu');
     const vertSlider = document.getElementById('desktopSettingsVerticalSlider');
     const vertValue = document.getElementById('desktopSettingsVerticalValue');
 
-    if (vertDropdown && vertBtn && vertMenu) {
-        setupDropdown(
-            vertDropdown,
-            vertBtn,
-            vertMenu,
-            (selectedValue) => renderAlignmentDropdown(vertMenu, 'vertical', selectedValue),
-            () => desktopSettingsState.verticalAlign
-        );
+    if (vertBtn) {
+        // contextMenu.attachPickerMenu: public/scripts/comp/contextMenu.js
+        contextMenu.attachPickerMenu(vertBtn, {
+            items: () => ALIGNMENT_OPTIONS.vertical.map((opt) => ({ value: opt.value, text: opt.label })),
+            value: () => desktopSettingsState.verticalAlign,
+            onSelect: (value) => {
+                desktopSettingsState.verticalAlign = value;
+                updateAlignmentUI('vertical');
+                updateDesktopSettingsPreview();
+            }
+        });
     }
 
     // Horizontal slider events
@@ -9710,33 +9921,6 @@ function setupDesktopSettingsDropdowns() {
     }
 
     desktopSettingsDropdownsWired = true;
-}
-
-// Render alignment dropdown options
-function renderAlignmentDropdown(menu, axis, selectedValue) {
-    menu.innerHTML = '';
-    const options = ALIGNMENT_OPTIONS[axis];
-
-    options.forEach(opt => {
-        const option = document.createElement('div');
-        option.className = 'custom-dropdown-option' + (selectedValue === opt.value ? ' selected' : '');
-        option.dataset.value = opt.value;
-        option.textContent = opt.label;
-
-        option.addEventListener('click', () => {
-            if (axis === 'horizontal') {
-                desktopSettingsState.horizontalAlign = opt.value;
-            } else {
-                desktopSettingsState.verticalAlign = opt.value;
-            }
-
-            updateAlignmentUI(axis);
-            updateDesktopSettingsPreview();
-            closeDropdown(menu, menu.previousElementSibling);
-        });
-
-        menu.appendChild(option);
-    });
 }
 
 // Update alignment UI (selected text and slider visibility)
@@ -10141,6 +10325,7 @@ function buildUserGlobalSettingsSnapshotFromClient() {
             exitDesktopOnWorkspaceMaximise: readDesktopSettingsExitDesktopOnWorkspaceMaximisePreference(),
             notificationBridgeEnabled: readDesktopSettingsNotificationBridgeEnabledPreference(),
             bypassNotificationBridgeInDesktopMode: readDesktopSettingsBypassNotificationBridgeDesktopPreference(),
+            useApplicationImageIcon: desktopSettingsGlobalState.useApplicationImageIcon === true,
             startMenuButton,
             domainName: melatonDomainName(),
             connectionName: melatonConnectionName(),
@@ -10234,10 +10419,18 @@ function applyUserGlobalSettingsToClient(settings) {
                 ? desktop.startMenuButton.customText.trim().slice(0, 24)
                 : '';
             const style = normalizeStartMenuButtonStyleClient(desktop.startMenuButton.style);
+            const logo = normalizeStartMenuButtonLogoClient(desktop.startMenuButton.logo);
             desktopSettingsGlobalState.startMenuButtonPreset = preset;
             desktopSettingsGlobalState.startMenuButtonCustomText = customText;
             desktopSettingsGlobalState.startMenuButtonStyle = style;
-            applyStartMenuButtonAppearanceToTaskbar(preset, customText, style);
+            desktopSettingsGlobalState.startMenuButtonLogo = logo;
+            applyStartMenuButtonAppearanceToTaskbar(preset, customText, style, logo);
+        }
+        if (typeof desktop.useApplicationImageIcon === 'boolean') {
+            desktopSettingsGlobalState.useApplicationImageIcon = desktop.useApplicationImageIcon;
+            desktopSettingsPersistedUseApplicationImageIcon = desktop.useApplicationImageIcon;
+            applyUseApplicationImageIcon(desktop.useApplicationImageIcon);
+            syncDesktopSettingsUseApplicationImageIconUI();
         }
         if (Array.isArray(desktop.startMenuPinned)) {
             applyStartMenuPinnedLaunchIds(desktop.startMenuPinned);
@@ -10342,6 +10535,7 @@ async function saveDesktopGlobalSettings() {
         readDesktopSettingsBypassNotificationBridgeDesktopPreference();
     const startMenuButton = readDesktopSettingsStartMenuButtonPreference();
     const previousStartMenuButton = desktopSettingsPersistedStartMenuButton;
+    const useApplicationImageIcon = desktopSettingsGlobalState.useApplicationImageIcon === true;
     const bridgeDetected = typeof isAndroidNotificationBridgeDetected === 'function'
         && isAndroidNotificationBridgeDetected();
 
@@ -10360,6 +10554,8 @@ async function saveDesktopGlobalSettings() {
         && startMenuButton.preset === previousStartMenuButton.preset
         && startMenuButton.customText === previousStartMenuButton.customText
         && startMenuButton.style === previousStartMenuButton.style
+        && startMenuButton.logo === normalizeStartMenuButtonLogoClient(previousStartMenuButton.logo)
+        && useApplicationImageIcon === desktopSettingsPersistedUseApplicationImageIcon
         && (!bridgeDetected
             || (notificationBridgeEnabled === previousNotificationBridgeEnabled
                 && bypassNotificationBridgeInDesktopMode === previousBypassNotificationBridgeInDesktopMode))) {
@@ -10372,6 +10568,7 @@ async function saveDesktopGlobalSettings() {
         autoLaunchWorkspace: autoLaunch,
         liveWindowRepositioning,
         exitDesktopOnWorkspaceMaximise,
+        useApplicationImageIcon,
         startMenuButton
     };
     if (bridgeDetected) {
@@ -10384,12 +10581,15 @@ async function saveDesktopGlobalSettings() {
         desktopSettingsPersistedStartMenuButton = {
             preset: startMenuButton.preset,
             customText: startMenuButton.customText,
-            style: startMenuButton.style
+            style: startMenuButton.style,
+            logo: startMenuButton.logo
         };
+        desktopSettingsPersistedUseApplicationImageIcon = useApplicationImageIcon;
         applyStartMenuButtonAppearanceToTaskbar(
             startMenuButton.preset,
             startMenuButton.customText,
-            startMenuButton.style
+            startMenuButton.style,
+            startMenuButton.logo
         );
         if (bridgeDetected && typeof applyNotificationBridgePreferences === 'function') {
             applyNotificationBridgePreferences(notificationBridgeEnabled, bypassNotificationBridgeInDesktopMode);
@@ -10548,8 +10748,10 @@ async function updateWallpaperPosition(position) {
     // Update local workspace object first
     workspaces[currentWorkspace].wallpaperPosition = position;
 
-    // Regenerate styles for immediate visual update
+    // Regenerate styles for immediate visual update (dev mode)
     generateWorkspaceStyles(currentWorkspace);
+    // syncDesktopWallpaperInline: public/scripts/comp/workspaceUtils.js
+    syncDesktopWallpaperInline(currentWorkspace);
 
     // Save via WebSocket (server will broadcast to other clients)
     if (wsClient && wsClient.isConnected()) {

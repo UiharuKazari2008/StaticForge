@@ -265,11 +265,46 @@ async function handleGetAttachment(handlersCtx, ws, message) {
     }
 }
 
+// Inbox rows pushed with the change notice. 50 matches listMail's default cap;
+// 24 matches the sidebar gadgets' unread page.
+const PUSH_INBOX_LIMIT = 50;
+const PUSH_UNREAD_LIMIT = 24;
+
+function bindMailboxPush(handlersCtx) {
+    // setMailboxChangedListener: modules/dovecoteMail.js — WS and MCP writes share this
+    dovecoteMail.setMailboxChangedListener((owners) => {
+        const gr = handlersCtx && handlersCtx.globalResources;
+        const wsServer = gr && gr.getWebSocketServer ? gr.getWebSocketServer() : null;
+        if (!wsServer || typeof wsServer.broadcast !== 'function') return;
+        try {
+            const mailboxes = dovecoteMail.listMailboxes().map((entry) => ({
+                owner: entry.owner,
+                label: MAILBOX_LABELS[entry.owner] || entry.owner,
+                unread: entry.unread
+            }));
+            const inbox = {};
+            const unreadInbox = {};
+            owners.forEach((owner) => {
+                inbox[owner] = dovecoteMail.listMail(owner, { folder: 'inbox', limit: PUSH_INBOX_LIMIT });
+                unreadInbox[owner] = dovecoteMail.listMail(owner, { folder: 'inbox', unreadOnly: true, limit: PUSH_UNREAD_LIMIT });
+            });
+            wsServer.broadcast({
+                type: 'dovecote_mailbox_updated',
+                data: { owners, mailboxes, inbox, unreadInbox },
+                timestamp: new Date().toISOString()
+            }, (clientInfo) => !!(clientInfo && clientInfo.authenticated));
+        } catch (err) {
+            console.error('Dovecote mailbox push failed:', err.message);
+        }
+    });
+}
+
 function registerPackets(handlersCtx) {
     if (!handlersCtx) {
         console.warn('[250-dovecoteHandler] registerPackets: missing handlersCtx');
         return;
     }
+    bindMailboxPush(handlersCtx);
 
     const reg = (type, fn, meta = {}) => {
         wsPacketRegistry.registerWsPacket(type, async (ctx) => {

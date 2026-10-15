@@ -24,6 +24,10 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const https = require('https');
+const express = require('express');
+
+const expressRawJpeg = express.raw({ type: 'image/jpeg', limit: '2mb' });
+const expressRawDownload = express.raw({ type: 'application/octet-stream', limit: '80mb' });
 
 const ROOT = path.join(__dirname, '..');
 const KOMAKI_CONFIG = '/home/kanmi/othinus/config.json';
@@ -183,42 +187,186 @@ function publicConnection(row) {
     };
 }
 
-async function listGuacConnections() {
-    const auth = await ensureAuth(false);
-    const url = auth.origin + '/api/session/data/' + encodeURIComponent(auth.dataSource) + '/connections';
-    let response;
+const GUAC_PROTOCOLS = new Set(['rdp', 'vnc', 'ssh', 'telnet', 'kubernetes']);
+const GUAC_PREVIEW_DIR = path.join(ROOT, '.cache', 'guac-previews');
+const GUAC_PREVIEW_MAX_BYTES = 2 * 1024 * 1024;
+const GUAC_DOWNLOAD_MAX_BYTES = 80 * 1024 * 1024;
+const GUAC_DOWNLOADS_FOLDER = 'Downloads';
+
+function guacIdOk(id) {
+    return /^[A-Za-z0-9_-]{1,64}$/.test(String(id || ''));
+}
+
+function previewFile(id) {
+    return path.join(GUAC_PREVIEW_DIR, String(id) + '.jpg');
+}
+
+function previewStamp(id) {
+    if (!guacIdOk(id)) return 0;
     try {
-        response = await fetch(url, {
+        return fs.statSync(previewFile(id)).mtimeMs;
+    } catch (_) {
+        return 0;
+    }
+}
+
+// Connection groups are what Guacamole shows the logged-in user (the home tree).
+// User-group records are a separate empty list on this server; they do not hold connections.
+function flattenGuacTree(root) {
+    const connections = [];
+    const groups = [];
+    const groupOptions = [];
+    function takeConnections(node, groupName) {
+        const rows = [];
+        (node && node.childConnections || []).forEach((child) => {
+            const row = publicConnection(child);
+            if (!row) return;
+            row.parentId = String(child.parentIdentifier || (node && node.identifier) || 'ROOT');
+            row.groupName = groupName;
+            rows.push(row);
+            connections.push(row);
+        });
+        rows.sort((a, b) => a.name.localeCompare(b.name));
+        return rows;
+    }
+    const rootRows = takeConnections(root, '');
+    if (rootRows.length) groups.push({ id: 'ROOT', name: 'Connections', connections: rootRows });
+    function walk(node, prefix) {
+        (node && node.childConnectionGroups || []).forEach((child) => {
+            const name = prefix ? prefix + ' / ' + String(child.name || '') : String(child.name || '');
+            groupOptions.push({ id: String(child.identifier), name: name });
+            const rows = takeConnections(child, name);
+            if (rows.length) groups.push({ id: String(child.identifier), name: name, connections: rows });
+            walk(child, name);
+        });
+    }
+    walk(root || {}, '');
+    return { connections: connections, groups: groups, groupOptions: groupOptions };
+}
+
+async function guacFetch(auth, suffix) {
+    const url = auth.origin + '/api/session/data/' + encodeURIComponent(auth.dataSource) + suffix;
+    try {
+        return await fetch(url, {
             headers: { 'Guacamole-Token': auth.token },
             signal: AbortSignal.timeout(12000)
         });
     } catch (_) {
         throw fail(502, 'Guacamole at ' + hostOf(auth.origin) + ' is unreachable');
     }
+}
+
+async function listGuacConnections() {
+    let auth = await ensureAuth(false);
+    let response = await guacFetch(auth, '/connectionGroups/ROOT/tree');
     if (response.status === 403) {
         authCache = null;
-        const retry = await ensureAuth(true);
-        response = await fetch(
-            retry.origin + '/api/session/data/' + encodeURIComponent(retry.dataSource) + '/connections',
-            {
-                headers: { 'Guacamole-Token': retry.token },
-                signal: AbortSignal.timeout(12000)
-            }
-        );
+        auth = await ensureAuth(true);
+        response = await guacFetch(auth, '/connectionGroups/ROOT/tree');
     }
     if (!response.ok) {
         throw fail(502, 'Guacamole connection list failed (HTTP ' + response.status + ')');
     }
     const data = await response.json().catch(() => null);
-    const rows = Array.isArray(data) ? data : (data && typeof data === 'object' ? Object.values(data) : []);
-    const connections = rows.map(publicConnection).filter(Boolean);
-    connections.sort((a, b) => a.name.localeCompare(b.name));
+    if (!data || data.identifier !== 'ROOT' && data.name !== 'ROOT') {
+        throw fail(502, 'Guacamole connection list returned no groups');
+    }
+    const flat = flattenGuacTree(data);
+    flat.connections.forEach((row) => {
+        row.previewAt = previewStamp(row.id);
+    });
     const current = authCache || auth;
-    current.catalog = new Map(connections.map((row) => [row.id, row]));
+    current.catalog = new Map(flat.connections.map((row) => [row.id, row]));
     return {
         ok: true,
-        connections: connections
+        connections: flat.connections,
+        groups: flat.groups,
+        groupOptions: flat.groupOptions
     };
+}
+
+async function createGuacConnection(body) {
+    const name = String(body && body.name || '').trim();
+    const protocol = String(body && body.protocol || '').trim();
+    const parentIdentifier = String(body && body.parentIdentifier || 'ROOT').trim() || 'ROOT';
+    const parameters = body && body.parameters && typeof body.parameters === 'object' ? body.parameters : {};
+    if (!name || !GUAC_PROTOCOLS.has(protocol)) {
+        throw fail(400, 'Name and protocol are required');
+    }
+    if (!guacIdOk(parentIdentifier) && parentIdentifier !== 'ROOT') {
+        throw fail(400, 'That group is not valid');
+    }
+    const hostname = String(parameters.hostname || '').trim();
+    if (!hostname) throw fail(400, 'Host is required');
+    const auth = await ensureAuth(false);
+    const payload = {
+        parentIdentifier: parentIdentifier,
+        name: name,
+        protocol: protocol,
+        parameters: {
+            hostname: hostname,
+            port: String(parameters.port || '').trim(),
+            username: String(parameters.username || ''),
+            password: String(parameters.password || '')
+        },
+        attributes: {}
+    };
+    let response;
+    try {
+        response = await fetch(
+            auth.origin + '/api/session/data/' + encodeURIComponent(auth.dataSource) + '/connections',
+            {
+                method: 'POST',
+                headers: {
+                    'Guacamole-Token': auth.token,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload),
+                signal: AbortSignal.timeout(12000)
+            }
+        );
+    } catch (_) {
+        throw fail(502, 'Guacamole at ' + hostOf(auth.origin) + ' is unreachable');
+    }
+    const text = await response.text();
+    if (!response.ok) {
+        let message = 'Guacamole refused the new connection';
+        try {
+            const data = JSON.parse(text);
+            if (data && data.message) message = String(data.message);
+        } catch (_) {}
+        throw fail(response.status === 403 ? 403 : 502, message);
+    }
+    if (authCache) authCache.catalog = new Map();
+    return { ok: true, id: text.replace(/"/g, '').trim() };
+}
+
+async function saveGuacDownload(workspaceId, filename, buffer) {
+    if (!buffer || !buffer.length || buffer.length > GUAC_DOWNLOAD_MAX_BYTES) {
+        throw fail(413, 'File is empty or too large');
+    }
+    const globalResources = require('./globalResources');
+    const id = String(workspaceId || '');
+    if (!globalResources.getWorkspaceManager().getWorkspaces()[id]) {
+        throw fail(400, 'Unknown workspace');
+    }
+    let name = path.basename(String(filename || 'download')).replace(/[\\/:*?"<>|\x00-\x1f]+/g, '_').slice(0, 200) || 'download';
+    const vfs = globalResources.getVfsManager();
+    const folder = await vfs._findWorkspaceFolderByName(id, null, GUAC_DOWNLOADS_FOLDER, { excludeDesktop: true })
+        || await vfs.createFolderAtPath('/Workspaces/' + id, GUAC_DOWNLOADS_FOLDER);
+    const file = await vfs.saveUserFileBuffer(buffer, {
+        originalName: name,
+        mimeType: 'application/octet-stream',
+        scope: 'workspace',
+        workspaceId: id,
+        folderId: folder.id
+    });
+    const folderPath = '/Workspaces/' + id + '/' + folder.id;
+    const wsServer = globalResources.getWebSocketServer();
+    if (wsServer && wsServer.broadcast) {
+        wsServer.broadcast({ type: 'vfs_updated', data: { path: folderPath }, timestamp: new Date().toISOString() });
+    }
+    return { ok: true, name: name, path: folderPath, fileId: file && file.id };
 }
 
 const GUAC_WEB_PATH = '/api/desktop-guac/web';
@@ -399,6 +547,64 @@ function mountGuacRemoteBridge(app, authMiddleware) {
         }
     });
 
+    app.post('/api/desktop-guac/connections', authMiddleware, async (req, res) => {
+        try {
+            res.json(await createGuacConnection(req.body || {}));
+        } catch (err) {
+            res.status(err.status || 502).json({ ok: false, error: err.message || 'Guacamole connection create failed' });
+        }
+    });
+
+    app.get('/api/desktop-guac/preview/:id', authMiddleware, (req, res) => {
+        const id = String(req.params.id || '');
+        if (!guacIdOk(id)) {
+            res.status(400).json({ ok: false, error: 'Unknown connection' });
+            return;
+        }
+        const file = previewFile(id);
+        if (!fs.existsSync(file)) {
+            res.status(404).end();
+            return;
+        }
+        res.set('Cache-Control', 'private, max-age=30');
+        res.type('jpeg').sendFile(file);
+    });
+
+    app.post('/api/desktop-guac/preview/:id', authMiddleware, expressRawJpeg, async (req, res) => {
+        const id = String(req.params.id || '');
+        const body = req.body;
+        if (!guacIdOk(id) || !Buffer.isBuffer(body) || !body.length || body.length > GUAC_PREVIEW_MAX_BYTES) {
+            res.status(400).json({ ok: false, error: 'Preview was empty' });
+            return;
+        }
+        try {
+            let auth = await ensureAuth(false);
+            if (!auth.catalog.has(id)) {
+                await listGuacConnections();
+                auth = authCache;
+            }
+            if (!auth || !auth.catalog.has(id)) {
+                res.status(404).json({ ok: false, error: 'That connection is not in the Komaki list' });
+                return;
+            }
+            fs.mkdirSync(GUAC_PREVIEW_DIR, { recursive: true });
+            fs.writeFileSync(previewFile(id), body);
+            res.json({ ok: true, previewAt: previewStamp(id) });
+        } catch (err) {
+            res.status(err.status || 502).json({ ok: false, error: err.message || 'Preview save failed' });
+        }
+    });
+
+    app.post('/api/desktop-guac/download', authMiddleware, expressRawDownload, async (req, res) => {
+        try {
+            const filename = decodeURIComponent(String(req.get('x-filename') || 'download'));
+            const workspaceId = String(req.get('x-workspace-id') || '');
+            res.json(await saveGuacDownload(workspaceId, filename, req.body));
+        } catch (err) {
+            res.status(err.status || 502).json({ ok: false, error: err.message || 'Download save failed' });
+        }
+    });
+
     app.get('/api/desktop-guac/session/:id', authMiddleware, async (req, res) => {
         try {
             res.json({ ok: true, url: await guacSessionUrl(String(req.params.id || '')) });
@@ -427,5 +633,7 @@ module.exports = {
     mountGuacRemoteBridge,
     attachGuacWebUpgrade,
     listGuacConnections,
-    readGuacConfig
+    readGuacConfig,
+    flattenGuacTree,
+    guacIdOk
 };

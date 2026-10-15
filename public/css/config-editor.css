@@ -20,14 +20,29 @@ body.desktop-mode #configEditorModal.modal:not(.minimised):not(.maximised) {
 }
 
 #configEditorModal .config-editor-tree-panel {
-    flex: 0 0 260px;
-    border-right: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+    flex: 0 0 220px;
+    width: 220px;
+    border-right: 0;
     padding: 0;
     min-height: 0;
+    min-width: 140px;
+    max-width: 520px;
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-xs);
+    gap: 0;
+}
+
+#configEditorModal .config-editor-splitter {
+    flex: 0 0 4px;
+    cursor: var(--c-col-resize, col-resize);
+    background: var(--border-color, rgba(255, 255, 255, 0.12));
+    touch-action: none;
+}
+
+#configEditorModal .config-editor-splitter:focus {
+    outline: 1px dotted currentColor;
+    outline-offset: -1px;
 }
 
 #configEditorModal .config-editor-tree-scroll-shell {
@@ -441,11 +456,15 @@ body.desktop-mode #configEditorModal.modal:not(.minimised):not(.maximised) {
 }
 
 #configEditorModal .config-editor-values-table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
     text-align: left;
-    padding: 6px 8px;
+    padding: 3px 6px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.15);
     color: var(--text-accent-tinted, #aac);
     font-weight: var(--wght-semibold);
+    background: inherit;
 }
 
 #configEditorModal .config-editor-row td {
@@ -460,20 +479,6 @@ body.desktop-mode #configEditorModal.modal:not(.minimised):not(.maximised) {
 
 #configEditorModal .config-editor-row.dirty.pending-new td {
     background: rgba(100, 210, 140, 0.1);
-}
-
-#configEditorModal .config-editor-col-edit {
-    width: 28px;
-    text-align: center;
-    opacity: 0.7;
-    font-size: 0.85em;
-}
-
-#configEditorModal .config-editor-col-edit i {
-    font-size: 0.85em;
-    width: 14px;
-    text-align: center;
-    opacity: 0.75;
 }
 
 #configEditorModal .config-editor-col-name {
@@ -604,10 +609,41 @@ body.desktop-mode #configEditorModal.modal:not(.minimised):not(.maximised) {
 
 #configEditorModal .config-editor-status-bar {
     flex: 0 0 auto;
-    padding: 6px var(--spacing-md);
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 3px 6px;
     font-size: 0.8em;
     opacity: 0.8;
     border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#configEditorModal .config-editor-status-bar [data-status="path"] {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#configEditorModal .config-editor-status-bar [data-status="note"] {
+    flex: 0 0 auto;
+}
+
+#configEditorModal[data-status-bar="off"] .config-editor-status-bar {
+    display: none;
+}
+
+#configEditorModal .config-editor-tree-icon {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+}
+
+#configEditorModal .config-editor-row.selected td {
+    background: #3399ff;
+    color: #fff;
 }
 
 #configEditorModal .config-editor-loading,
@@ -725,5 +761,136 @@ body.desktop-mode #configEditorModal.modal:not(.minimised):not(.maximised) {
     padding: var(--spacing-md);
     text-align: center;
     opacity: 0.7;
+}
+
+/* Vista desktop: Registry Editor's white client. Classic keeps the dark rules above. */
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal > .modal-content {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-search-row {
+    padding: 2px 4px;
+    background: #f0f0f0;
+    border-bottom: 1px solid #d0d0d0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-search-input,
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-inline-input {
+    background: #fff;
+    color: #000;
+    border: 1px solid #7a7a7a;
+    box-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-search-icon {
+    color: #000;
+    opacity: 0.55;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal :is(.config-editor-tree-expand, .config-editor-search-clear) {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    color: #000;
+    min-height: 0;
+    width: 16px;
+    height: 16px;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal :is(.config-editor-tree-expand, .config-editor-search-clear)::before,
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal :is(.config-editor-tree-expand, .config-editor-search-clear)::after {
+    content: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-panel,
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-values-panel {
+    background: #fff;
+    color: #000;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-splitter {
+    background: #f0f0f0;
+    border-left: 1px solid #828790;
+    border-right: 1px solid #fff;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-label {
+    color: #000;
+    border-radius: 0;
+    padding: 0 3px;
+    font-size: 9pt;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-label:hover {
+    background: rgba(0, 0, 0, 0.06);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-item.selected .config-editor-tree-label,
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-item.active-trail .config-editor-tree-label {
+    background: transparent;
+    border: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-item.selected .config-editor-tree-label {
+    background: #3399ff;
+    color: #fff;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-values-scrollable {
+    padding: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-values-table {
+    font-size: 9pt;
+    font-family: "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-values-table th {
+    background: linear-gradient(#fff, #f7f7f7 45%, #ececec);
+    color: #000;
+    font-weight: 400;
+    border-bottom: 1px solid #d5d5d5;
+    border-right: 1px solid #e5e5e5;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-row td {
+    padding: 1px 6px;
+    border-bottom: 0;
+    color: #000;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-col-name,
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-value-display {
+    font-family: "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-bool-toggle,
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-inline-enum-btn,
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-edit-btn,
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-open-btn {
+    background: #fff;
+    color: #000;
+    border: 1px solid #7a7a7a;
+    box-shadow: none;
+    font-weight: 400;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal :is(.config-editor-edit-btn, .config-editor-open-btn)::before,
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal :is(.config-editor-edit-btn, .config-editor-open-btn)::after {
+    content: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-status-bar {
+    background: #f0f0f0;
+    color: #000;
+    opacity: 1;
+    border-top: 1px solid #fff;
+    box-shadow: inset 0 1px 0 #d0d0d0;
+    font-size: 9pt;
 }
 

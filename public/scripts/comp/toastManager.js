@@ -288,6 +288,22 @@ function _shouldUseInAppToast(type, title, _message, buttons) {
     return false;
 }
 
+/** Titles wired to desktop taskbar/tray popovers (showPopover call sites). popupId is the tray registry key. */
+const TRAY_POPUP_ID_BY_TITLE = {
+    'Balance Updated': 'balance-updated',
+    'Generation Complete': 'generation-complete',
+    'High Latency Detected': 'high-latency',
+    'Operation Receipt': 'operation-receipt',
+    'Generation Receipt': 'generation-receipt',
+    'Upscaling Receipt': 'upscale-receipt',
+    'Vibe Encoding Receipt': 'vibe-receipt',
+    'Deposit Receipt': 'deposit-receipt'
+};
+
+function _trayPopupIdForTitle(title) {
+    return TRAY_POPUP_ID_BY_TITLE[title] || title;
+}
+
 /** Titles wired to desktop taskbar/tray popovers (showPopover call sites). */
 const DESKTOP_POPUP_TOAST_TITLES = new Set([
     'Balance Updated',
@@ -369,6 +385,7 @@ function _showDesktopPopupForToast(toastId, type, title, message, timeout, custo
         {
             position: 'top',
             arrowPosition: 'bottom-right',
+            popupId: _trayPopupIdForTitle(title),
             onHide: () => {
                 if (activeToasts.has(toastId)) {
                     activeToasts.delete(toastId);

@@ -17,6 +17,7 @@
  *   installing    blue, "Installing updates…", a marquee bar (styles and assets applying live)
  *   ready         yellow, "Install updates for your computer" (they install without a restart), Install updates
  *   restart       yellow, "Restart MeletonFX to finish installing updates", Restart now
+ *   upgrade       yellow, "Upgrade to Service Pack <YY>Q<1-4> <patchid>" (built from the file set), Restart now
  *   uptodate      green, "MeletonFX is up to date", Check for updates
  *   failed        red, "MeletonFX could not search for new updates", Try again
  *
@@ -59,6 +60,7 @@
         if (state === 'preparing') return 'preparing';
         if (state === 'downloading') return 'downloading';
         if (state === 'available') return 'available';
+        if (state === 'upgrade') return 'upgrade';
         if (state === 'complete') {
             if (/apply without restart/i.test(m)) return 'ready';
             return manager && manager.hasPendingUpdates && manager.hasPendingUpdates() ? 'restart' : 'uptodate';
@@ -72,11 +74,17 @@
     }
 
     /** Vista's Windows Update balloons: only for something that needs you; null = no balloon. */
-    function balloonFor(state) {
+    function balloonFor(state, message) {
         switch (state) {
             case 'available': return { title: 'Updates are available for MeletonFX', body: 'Click here to download and install them.' };
             case 'ready': return { title: 'Updates are ready to install', body: 'Click here to install them.' };
             case 'restart': return { title: 'Restart MeletonFX to finish installing updates', body: 'Click here to restart now or later.' };
+            case 'upgrade': {
+                const title = typeof message === 'string' && message.indexOf('Upgrade to Service Pack ') === 0
+                    ? message
+                    : 'Upgrade to Service Pack';
+                return { title, body: 'Restart MeletonFX to install it.' };
+            }
             default: return null;
         }
     }
@@ -91,6 +99,7 @@
             case 'available': return 'Updates are available';
             case 'ready': return 'Updates are ready to install';
             case 'restart': return 'Restart MeletonFX to finish installing updates';
+            case 'upgrade': return 'Upgrade to Service Pack';
             default: return 'MeletonFX Update';
         }
     }
@@ -101,6 +110,7 @@
         if (!manager) return { state: 'failed', message: 'The update service is not running.' };
         if (manager.agentSession) return { state: 'failed', message: 'This is an agent session: its files are updated by the agent that runs it.' };
         if (manager.isUpdating) return { state: 'downloading', progress: manager.updateProgress || 0, filesTotal: (manager.trayPopup && manager.trayPopup.filesTotal) || 0 };
+        if (manager.servicePack && manager.servicePack.label) return { state: 'upgrade', message: manager.servicePack.label };
         if (manager.pendingApplyFiles && manager.pendingApplyFiles.length) return { state: 'ready' };
         if (manager.hasPendingUpdates && manager.hasPendingUpdates()) return { state: 'restart' };
         return { state: 'checking' };
@@ -140,6 +150,12 @@
             restart: {
                 band: 'yellow', shield: 'shield-warning', title: 'Restart MeletonFX to finish installing updates',
                 body: `<p>${esc(fileText.charAt(0).toUpperCase() + fileText.slice(1))} downloaded and ready.</p><p>Please save your work and close your windows before restarting.</p>`,
+                button: ['Restart now', 'restart']
+            },
+            upgrade: {
+                band: 'yellow', shield: 'shield-warning',
+                title: view.message || 'Upgrade to Service Pack',
+                body: '<p>This update is too large to install while MeletonFX is running. Restart to install it.</p><p>Please save your work and close your windows before restarting.</p>',
                 button: ['Restart now', 'restart']
             },
             uptodate: { band: 'green', shield: 'shield-ok', title: 'MeletonFX is up to date', body: '<p>There are no updates available for your computer.</p>', button: ['Check for updates', 'check'] },

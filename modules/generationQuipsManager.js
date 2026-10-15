@@ -341,6 +341,41 @@ function isExcludedTerm(tag, qualityFilters, corpusFileCount, occurrenceCount) {
     return false;
 }
 
+/** Framing and count tags in STATIC_QUALITY_TERMS. Dropped only when they cover the workspace, not as quality. */
+const SEARCH_FRAMING_TERMS = new Set([
+    'location', 'indoors', 'outdoors',
+    'three quarter view', 'cowboy shot', 'full body', 'from side', 'side view',
+    'solo', 'girl', '1girl', '1boy'
+]);
+
+function isQualitySuggestionTag(tag) {
+    const normalized = normalizeFilterTerm(tag);
+    if (!normalized || isArtistTag(normalized)) return false;
+    if (SEARCH_FRAMING_TERMS.has(normalized)) return false;
+    if (QUALITY_ONLY_TAG_PATTERN.test(normalized)) return true;
+    if (GENERIC_DETAIL_PATTERN.test(normalized)) return true;
+    if (UC_ARTIFACT_PATTERN.test(normalized)) return true;
+    return STATIC_QUALITY_TERMS.has(normalized);
+}
+
+/**
+ * Workspace search suggestions: drop quality boilerplate always, and drop tags
+ * that cover too much of the workspace (1girl and the rest of the framing set).
+ * keepPrefix keeps a tag the user is already typing.
+ */
+function isSearchSuggestionNoise(tag, corpusFileCount, occurrenceCount, keepPrefix) {
+    const normalized = normalizeFilterTerm(tag);
+    if (!normalized) return true;
+    const prefix = normalizeFilterTerm(keepPrefix || '');
+    if (prefix && normalized.startsWith(prefix)) return false;
+    if (isQualitySuggestionTag(normalized)) return true;
+    if (!isArtistTag(normalized) && corpusFileCount >= 12 && occurrenceCount > 0
+        && occurrenceCount / corpusFileCount >= MAX_UBIQUITY_RATIO) {
+        return true;
+    }
+    return false;
+}
+
 const CATEGORY_SCORE_BOOST = {
     character: 1.85,
     artist: 1.0,
@@ -1691,5 +1726,7 @@ module.exports = {
     parseArtistDisplayName,
     buildTagLookupCandidates,
     mapDbCategoryToQuipCategory,
-    STATIC_QUALITY_TERMS
+    STATIC_QUALITY_TERMS,
+    isSearchSuggestionNoise,
+    MAX_UBIQUITY_RATIO
 };

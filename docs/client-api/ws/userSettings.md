@@ -100,6 +100,14 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 
 
+### `userGlobalSettings.desktop.useApplicationImageIcon`
+
+Taskbar and Start Menu checkbox. Persisted under `config.userGlobalSettings.desktop`. Normalized by `normalizeUserGlobalSettings` (`false` when missing).
+
+| Field | Type | Default | Notes |
+|-------|------|---------|-------|
+| `useApplicationImageIcon` | boolean | `false` | Taskbar buttons use the application picture when the program has one. The Orb start button does this on its own; the checkbox does the same for Luna and Workspace. |
+
 ### `userGlobalSettings.imageGeneration`
 
 NAI Image Generation prefs parity (Desktop Settings + Studio). Persisted under `config.userGlobalSettings.imageGeneration`. Normalized by `modules/imageGenerationSettings.js` on `get_user_global_settings` / `update_user_global_settings` (and any path that goes through `normalizeUserGlobalSettings`).

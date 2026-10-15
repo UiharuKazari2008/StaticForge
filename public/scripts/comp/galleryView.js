@@ -425,6 +425,43 @@ function findImageByFilename(filename) {
     });
 };
 
+/**
+ * Pin the first cell at the top of the view before rows are added or removed above it.
+ * Pair with restoreGalleryScrollAnchor after the DOM change. Works for the desktop
+ * .gallery-container scroller and the window scroller alike.
+ */
+function captureGalleryScrollAnchor() {
+    if (!gallery || !gallery.firstElementChild) return null;
+    const roots = getGalleryScrollRoots();
+    const { galleryContainer, isContainerScroll } = roots;
+    const viewTop = isContainerScroll && galleryContainer
+        ? galleryContainer.getBoundingClientRect().top
+        : 0;
+    for (let el = gallery.firstElementChild; el; el = el.nextElementSibling) {
+        const rect = el.getBoundingClientRect();
+        if (rect.height > 0 && rect.bottom > viewTop) {
+            return { el, top: rect.top, roots };
+        }
+    }
+    return null;
+}
+
+/** Scroll by however far the anchor cell moved, so the view stays on the same pictures. */
+function restoreGalleryScrollAnchor(anchor) {
+    if (!anchor || !anchor.el.isConnected) return;
+    const delta = anchor.el.getBoundingClientRect().top - anchor.top;
+    if (Math.abs(delta) < 0.5) return;
+    const { galleryContainer, isContainerScroll } = anchor.roots;
+    if (isContainerScroll && galleryContainer) {
+        galleryContainer.scrollTop += delta;
+        // Keep velocity tracking from reading the correction as a user scroll
+        lastScrollTop = galleryContainer.scrollTop;
+    } else {
+        window.scrollBy({ top: delta, behavior: 'instant' });
+        lastScrollTop = window.pageYOffset;
+    }
+}
+
 // Preserve scroll position when adding placeholders above
 function preserveScrollPosition() {
     if (!scrollPositionPreservationEnabled) return;
@@ -4375,7 +4412,9 @@ function batchCreatePlaceholders(indices, position = 'append') {
 
     // Single DOM operation to add all elements
     if (position === 'prepend') {
+        const anchor = captureGalleryScrollAnchor();
         gallery.insertBefore(fragment, gallery.firstChild);
+        restoreGalleryScrollAnchor(anchor);
     } else {
         gallery.appendChild(fragment);
     }
@@ -4405,15 +4444,6 @@ function addPlaceholdersAbove() {
 
     // If firstRealIndex is 0 or -1, there are no images above to load
     if (!(firstRealIndex > 0)) return;
-
-    // Only enable scroll position preservation if user is near the top of the gallery
-    const scrollTop = window.pageYOffset;
-    const isNearTop = scrollTop < 200; // Only preserve position if within 200px of top
-
-    if (isNearTop && !scrollPositionPreservationEnabled) {
-        scrollPositionPreservationEnabled = true;
-        preserveScrollPosition();
-    }
 
     // Use unified buffer size calculation
     const adjustedBufferSize = calculatePlaceholderBufferSize(scrollVelocity);
@@ -4465,17 +4495,9 @@ function addPlaceholdersAbove() {
         firstRealIndex = Math.max(0, firstRealIndex - needed);
     }
 
-    // Batch create all placeholders at once
+    // Batch create all placeholders at once (batchCreatePlaceholders keeps the view anchored)
     if (indicesToAdd.length > 0) {
         batchCreatePlaceholders(indicesToAdd, 'prepend');
-    }
-
-    // If we added placeholders and position preservation was enabled, restore it
-    if (placeholdersAbove > 0 && scrollPositionPreservationEnabled) {
-        // Use a small delay to ensure DOM updates are complete
-        setTimeout(() => {
-            restoreScrollPosition();
-        }, 10);
     }
 }
 
@@ -4779,6 +4801,7 @@ async function loadMoreImagesBefore() {
         }
 
         // Add placeholders for new items at the top with responsive height
+        const anchor = captureGalleryScrollAnchor();
         for (let i = endIndex - 1; i >= startIndex; i--) {
             // i is filtered index (position), get file index from filteredImageIndices
             const fileIndex = window.filteredImageIndices && window.filteredImageIndices[i] !== undefined
@@ -4792,28 +4815,11 @@ async function loadMoreImagesBefore() {
                 gallery.insertBefore(item, gallery.firstChild);
             }
         }
+        restoreGalleryScrollAnchor(anchor);
 
         // Update displayed range
         displayedStartIndex = startIndex;
         hasMoreImagesBefore = startIndex > 0;
-
-        // Only restore scroll position if there are actually images above and user is near the top
-        if (startIndex > 0) {
-            const scrollTop = window.pageYOffset;
-            const isNearTop = scrollTop < 200;
-
-            if (isNearTop) {
-                // Enable scroll position preservation and restore position
-                if (!scrollPositionPreservationEnabled) {
-                    scrollPositionPreservationEnabled = true;
-                    preserveScrollPosition();
-                }
-                // Use a small delay to ensure DOM updates are complete
-                setTimeout(() => {
-                    restoreScrollPosition();
-                }, 10);
-            }
-        }
 
     } catch (error) {
         console.error('Error loading more images before:', error);
@@ -5288,12 +5294,6 @@ function processPlaceholderCleanup() {
         return;
     }
 
-    // Calculate removed height in a single pass (before DOM manipulation)
-    let removedHeight = 0;
-    for (const placeholder of placeholdersToRemove) {
-        removedHeight += placeholder.offsetHeight;
-    }
-
     // Add CSS properties to prevent screen flashing on iOS (only if needed)
     let needsIOSCleanup = false;
     if (isIOS) {
@@ -5304,26 +5304,18 @@ function processPlaceholderCleanup() {
         gallery.style.overscrollBehavior = 'contain';
     }
 
-    // Remove all placeholders in a single batch operation
+    // Remove all placeholders in a single batch operation; rows removed above the view
+    // would pull the content up, so keep the anchor cell where it was
+    const anchor = captureGalleryScrollAnchor();
     for (const placeholder of placeholdersToRemove) {
         disposeGalleryItemElement(placeholder);
         if (placeholder.parentNode) {
             placeholder.parentNode.removeChild(placeholder);
         }
     }
+    restoreGalleryScrollAnchor(anchor);
 
-    // iOS scroll compensation (only if needed)
     if (isIOS && needsIOSCleanup) {
-        const currentScrollTop = window.pageYOffset;
-        const compensation = Math.min(removedHeight, currentScrollTop);
-
-        if (compensation > 0 && compensation < currentScrollTop * 0.3) {
-            window.scrollTo({
-                top: currentScrollTop - compensation,
-                behavior: 'instant'
-            });
-        }
-
         // Clean up CSS properties
         requestAnimationFrame(() => {
             gallery.style.webkitBackfaceVisibility = '';
@@ -5683,6 +5675,9 @@ function updateVirtualScrollInternal() {
         return !isNaN(idx) && idx >= stripMin && idx <= stripMax;
     };
 
+    // Rows added or removed above the view below must not move the pictures on screen
+    const scrollAnchor = captureGalleryScrollAnchor();
+
     // Far from keep strip: convert to placeholders (skip cells already placeholders)
     const demoteFarToPlaceholder = (el) => {
         if (el.classList.contains('gallery-generating')) return;
@@ -5991,15 +5986,6 @@ function updateVirtualScrollInternal() {
         // If firstIndex is 0 or less, there are no images above to load
         if (firstIndex <= 0) break;
 
-        // Only enable scroll position preservation if user is near the top of the gallery
-        const scrollTop = window.pageYOffset;
-        const isNearTop = scrollTop < 200; // Only preserve position if within 200px of top
-
-        if (isNearTop && !scrollPositionPreservationEnabled) {
-            scrollPositionPreservationEnabled = true;
-            preserveScrollPosition();
-        }
-
         // Scale batch size based on scroll velocity and direction - faster scrolling in direction = larger batches
         const absScrollVelocity = Math.abs(scrollVelocity);
         const isScrollingUp = scrollVelocity < 0;
@@ -6172,6 +6158,8 @@ function updateVirtualScrollInternal() {
         // Only break if we couldn't add a complete row
         if (actuallyAdded < realGalleryColumns) break;
     }
+    restoreGalleryScrollAnchor(scrollAnchor);
+
     // After all changes, update displayedStartIndex and displayedEndIndex to match the DOM
     let newFirst = gallery.firstChild && gallery.firstChild.dataset && gallery.firstChild.dataset.index !== undefined ? parseInt(gallery.firstChild.dataset.index) : 0;
     let newLast = gallery.lastChild && gallery.lastChild.dataset && gallery.lastChild.dataset.index !== undefined ? parseInt(gallery.lastChild.dataset.index) : 0;
@@ -9727,8 +9715,19 @@ async function jumpToGalleryImage(filename, imageWorkspaceId) {
     }
 
     if (imageIndex === -1 && loadGallery) {
-        await loadGallery(true);
-        imageIndex = findImageIndex();
+        // loadGallery(true) only prepends the newest row once allImages is non-empty.
+        // A closed Workspaces window also never fetches the catalog (galleryImagesLoad.js),
+        // so a real picture from the Slide Show is missing until a full load.
+        const sync = galleryImagesSyncState;
+        const catalogIncomplete = !sync || !allImages || sync.total !== allImages.length || isGalleryWindowHidden();
+        if (catalogIncomplete) {
+            // showGalleryWindow, isGalleryWindowHidden: public/scripts/comp/modalUtils.js
+            if (isGalleryWindowHidden()) {
+                showGalleryWindow();
+            }
+            await loadGallery(false);
+            imageIndex = findImageIndex();
+        }
     }
 
     if (imageIndex === -1) {

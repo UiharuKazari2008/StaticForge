@@ -120,6 +120,7 @@ globalThis.wsClient = {
 };
 const soundPlays = [];
 globalThis.desktopSounds = {
+    isEnabled() { return false; },
     play(event) {
         soundPlays.push(event);
         return Promise.resolve(false);
@@ -139,6 +140,20 @@ const studio = mount('manualModal', 'modal');
 studio.rect = { left: 400, top: 150, width: 700, height: 500 };
 const hiddenModal = mount('hiddenModal', 'modal'); hiddenModal.classList.add('hidden');
 const minimised = mount('minModal', 'modal'); minimised.classList.add('minimised');
+const sidebar = mount('vistaSidebar', 'vsb');
+const pane = new Element('div');
+pane.classList.add('vsb-pane');
+pane.rect = { left: 1450, top: 0, width: 150, height: 860 };
+sidebar.appendChild(pane);
+const looseGadget = new Element('div');
+looseGadget.classList.add('vsb-gadget');
+looseGadget.dataset.docked = '0';
+looseGadget.rect = { left: 100, top: 80, width: 160, height: 140 };
+sidebar.appendChild(looseGadget);
+const dockedGadget = new Element('div');
+dockedGadget.classList.add('vsb-gadget');
+dockedGadget.dataset.docked = '1';
+pane.appendChild(dockedGadget);
 
 const { PLANET_SWITCHER_TIMING, planetSwitcherImageCache, planetSwitcherTileCache } = require('../public/scripts/comp/planetSwitcher.js');
 const PLANET_SWITCHER_SLIDE_FADE_FOR_TEST = 1600;
@@ -163,6 +178,9 @@ async function test(name, fn) { await fn(); passed += 1; console.log(`ok - ${nam
         assert.ok(soundPlays.includes('planet-enter'), 'enter plays the logoff event');
         assert.ok(document.body.classList.contains('planet-switcher-active'));
         assert.strictEqual(sw.desktopLayer.length, 3);
+        assert.deepStrictEqual(sw.gadgetLayer.map((r) => r.el), [pane, looseGadget], 'pane and undocked gadgets, not gadgets docked inside the pane');
+        assert.strictEqual(sw.gadgetLayer[0].tilt, 12, 'gadgets tilt with the desktop');
+        assert.strictEqual(sw.gadgetLayer[1].slide, '42vw');
         assert.deepStrictEqual(sw.windowLayer.map((r) => r.el.id).sort(), ['galleryWindow', 'manualModal']);
         // transform-origin at the viewport centre expressed in the element's box: studio at (400,150) -> (400, 300)
         assert.strictEqual(studio.style.transformOrigin, '400.00px 300.00px');
@@ -179,6 +197,12 @@ async function test(name, fn) { await fn(); passed += 1; console.log(`ok - ${nam
         assert.deepStrictEqual(winAnims.map((a) => a.opts.duration).sort((x, y) => x - y), [PLANET_SWITCHER_TIMING.windowsFade, PLANET_SWITCHER_TIMING.windowsScale]);
         assert.strictEqual(winAnims.find((a) => a.opts.duration === 2500).keyframes[1].scale, '0.75');
         assert.strictEqual(wallAnims.find((a) => a.opts.duration === 3000).keyframes[1].scale, '0.5');
+        const gadgetAnims = animations.filter((a) => a.el === looseGadget);
+        assert.deepStrictEqual(gadgetAnims.map((a) => a.opts.duration).sort((x, y) => x - y), [PLANET_SWITCHER_TIMING.desktopFade, PLANET_SWITCHER_TIMING.desktopScale, PLANET_SWITCHER_TIMING.desktopScale, PLANET_SWITCHER_TIMING.desktopScale], 'gadgets fade, scale and tilt with the desktop, and slide right');
+        assert.strictEqual(gadgetAnims.find((a) => 'scale' in a.keyframes[1]).keyframes[1].scale, '0.5');
+        assert.strictEqual(gadgetAnims.find((a) => 'translate' in a.keyframes[1]).keyframes[1].translate, '42vw');
+        assert.ok(gadgetAnims.some((a) => a.keyframes[1].transform && a.keyframes[1].transform.includes('rotateX(-12deg)')), 'gadgets tilt with the desktop');
+        assert.strictEqual(looseGadget.style.transformOrigin, '700.00px 370.00px');
         assert.strictEqual(sw.count, 3);
         assert.strictEqual(sw.index, 0, 'current workspace starts centred');
         assert.strictEqual(sw.planets[0].el.style.transform, `translate3d(0.0px, ${sw.radiusY.toFixed(1)}px, 0)`, 'planet layer only translates');
@@ -293,6 +317,7 @@ async function test(name, fn) { await fn(); passed += 1; console.log(`ok - ${nam
         assert.strictEqual(document.body.children.find((c) => c.className === 'planet-switcher'), undefined);
         assert.strictEqual(document.body.children.find((c) => c.className === 'planet-switcher-backdrop'), undefined);
         assert.strictEqual(studio.style.transformOrigin, '');
+        assert.strictEqual(looseGadget.style.transformOrigin, '');
         assert.ok(!(windowListeners.keydown || []).length, 'key listeners removed');
     });
 
@@ -347,6 +372,12 @@ async function test(name, fn) { await fn(); passed += 1; console.log(`ok - ${nam
         assert.strictEqual(sw.state, 'idle');
         const reveal = animations.filter((a) => a.el === wallpaper && a.opts.duration === PLANET_SWITCHER_TIMING.reveal);
         assert.strictEqual(reveal.length, 3, 'scale, tilt and fade');
+        const gadgetReveal = animations.filter((a) => a.el === looseGadget && a.opts.duration === PLANET_SWITCHER_TIMING.reveal);
+        assert.strictEqual(gadgetReveal.length, 4, 'gadgets return with the desktop: scale, tilt, slide and fade');
+        assert.ok(gadgetReveal.find((a) => 'transform' in a.keyframes[0]).keyframes[0].transform.includes('rotateX(-6deg)'), 'gadget reveal starts from half of the desktop tilt');
+        const gadgetSlide = gadgetReveal.find((a) => 'translate' in a.keyframes[0]);
+        assert.strictEqual(gadgetSlide.keyframes[0].translate, '42vw');
+        assert.strictEqual(gadgetSlide.keyframes[1].translate, '0px');
         assert.strictEqual(reveal.find((a) => 'scale' in a.keyframes[0]).keyframes[0].scale, '0.8');
         assert.ok(reveal.find((a) => 'transform' in a.keyframes[0]).keyframes[1].transform.includes('rotateX(0deg)'), 'tilt returns to flat');
         assert.strictEqual(reveal.find((a) => 'opacity' in a.keyframes[0]).keyframes[1].opacity, 1);

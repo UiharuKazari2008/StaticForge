@@ -106,32 +106,6 @@ function configEditorValueModalLayoutMode({ rawJsonMode, effectiveType, editorTy
     return 'compact';
 }
 
-function configEditorEditModeIndicator(stub, effectiveVal) {
-    const mode = configEditorResolveEditMode(stub, effectiveVal);
-    if (stub?.expandable) {
-        return { icon: 'fas fa-folder-open', title: 'Open node' };
-    }
-    if (mode === 'inline') {
-        if (stub?.enum?.length) {
-            return { icon: 'fas fa-list', title: 'Inline enum picker' };
-        }
-        if (stub?.type === 'number') {
-            return { icon: 'fas fa-hashtag', title: 'Inline number edit' };
-        }
-        if (stub?.type === 'boolean') {
-            return { icon: 'fas fa-toggle-on', title: 'Inline toggle edit' };
-        }
-        return { icon: 'fas fa-i-cursor', title: 'Inline text edit' };
-    }
-    if (mode === 'secret') {
-        return { icon: 'fas fa-key', title: 'Secret value — modal edit' };
-    }
-    if (mode === 'readonly') {
-        return { icon: 'fas fa-lock', title: 'Read-only entry' };
-    }
-    return { icon: 'fas fa-pen-to-square', title: 'Modal editor' };
-}
-
 function configEditorParsePathKey(pathKey) {
     const parts = pathKey.split('\0');
     const configId = parts[0];
@@ -270,6 +244,8 @@ class ConfigEditorApplet {
         this.configList = [];
         this.selectedConfigId = null;
         this.selectedPath = [];
+        this.selectedValuePath = null;
+        this._statusNote = '';
         this.nodeCache = new Map();
         this.pendingEdits = new Map();
         this.expandedKeys = new Set();
@@ -321,7 +297,7 @@ class ConfigEditorApplet {
     }
 
     valuesPanelStateRow(className, text) {
-        return `<tr class="config-editor-values-state-row"><td colspan="4" class="${className}">${configEditorEscapeHtml(text)}</td></tr>`;
+        return `<tr class="config-editor-values-state-row"><td colspan="3" class="${className}">${configEditorEscapeHtml(text)}</td></tr>`;
     }
 
     init() {
@@ -356,11 +332,6 @@ class ConfigEditorApplet {
         const closeBtn = document.getElementById('closeConfigEditorBtn');
         if (closeBtn) {
             closeBtn.addEventListener('click', () => this.requestClose());
-        }
-
-        const saveBtn = document.getElementById('configEditorSaveBtn');
-        if (saveBtn) {
-            saveBtn.addEventListener('click', () => this.requestSave());
         }
 
         this.checkpointsModal = document.getElementById('configEditorCheckpointsModal');
@@ -411,6 +382,8 @@ class ConfigEditorApplet {
         }
 
         this.setupContextMenus();
+        this.wireMenus();
+        this.wireSplitter();
         this.setupClickMenus();
         this.wireKeyboardOverlayEntries();
     }
@@ -486,8 +459,49 @@ class ConfigEditorApplet {
         });
         registerModalOverlayEntries('configEditorModal', 'Runes', [
             { id: 'overlay.configEditor.save', label: 'Save', keys: 'Ctrl+S', icon: 'fas fa-save' },
+            { id: 'overlay.configEditor.find', label: 'Find', keys: 'Ctrl+F', icon: 'fas fa-magnifying-glass' },
+            { id: 'overlay.configEditor.findNext', label: 'Find Next', keys: 'F3', icon: 'fas fa-magnifying-glass' },
+            { id: 'overlay.configEditor.refresh', label: 'Refresh', keys: 'F5', icon: 'fas fa-rotate' },
+            { id: 'overlay.configEditor.delete', label: 'Delete', keys: 'Del', icon: 'fas fa-trash' },
             { id: 'overlay.configEditor.close', label: 'Close', keys: 'Alt+Q', icon: 'fas fa-times' }
         ]);
+        if (!this._regeditKeyHandler) {
+            this._regeditKeyHandler = (e) => {
+                if (!this.modal || this.modal.classList.contains('hidden')) return;
+                if (this.valueModal && !this.valueModal.classList.contains('hidden')) return;
+                const typing = e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable);
+                if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.focusSearch();
+                    return true;
+                }
+                if (e.key === 'F3') {
+                    e.preventDefault();
+                    this.findNext();
+                    return true;
+                }
+                if (e.key === 'F5') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    void this.refreshSelected();
+                    return true;
+                }
+                if (e.key === 'Delete' && !e.ctrlKey && !e.altKey && !e.metaKey && !typing) {
+                    e.preventDefault();
+                    this.deleteSelected();
+                    return true;
+                }
+            };
+        }
+        registerKeyboardListener({
+            id: 'configEditorModal.regedit',
+            handler: this._regeditKeyHandler,
+            type: 'whenFocused',
+            modalId: 'configEditorModal',
+            priority: 78,
+            showInOverlay: false
+        });
         registerKeyboardListener({
             id: 'configEditorValueModal.keydown',
             handler: (e) => {
@@ -1526,6 +1540,8 @@ class ConfigEditorApplet {
         this.clearSearch(false);
         this.selectedConfigId = null;
         this.selectedPath = [];
+        this.selectedValuePath = null;
+        this._statusNote = '';
         this.nodeCache.clear();
         this.pendingEdits.clear();
         this.expandedKeys.clear();
@@ -1673,18 +1689,27 @@ class ConfigEditorApplet {
         }
     }
 
-    async navigateFromSearchResult(hit) {
+    async navigateFromSearchResult(hit, keepList) {
         if (!hit?.configId) return;
         const query = this.searchQuery;
         const fullPath = hit.path || [];
         const isContainer = hit.type === 'object' || hit.type === 'array';
         const selectPath = (!isContainer && fullPath.length) ? fullPath.slice(0, -1) : fullPath;
-        this.clearSearch(false);
-        if (this.searchInput && query) this.searchInput.value = query;
-        if (this.searchClearBtn) this.searchClearBtn.classList.remove('hidden');
+        if (!keepList) {
+            this.clearSearch(false);
+            if (this.searchInput && query) this.searchInput.value = query;
+            if (this.searchClearBtn) this.searchClearBtn.classList.remove('hidden');
+        }
         await this.navigateToPath(hit.configId, selectPath);
         if (!isContainer && fullPath.length) {
-            setTimeout(() => this.highlightValueRow(hit.configId, fullPath), 80);
+            this.selectedValuePath = fullPath.slice();
+            setTimeout(() => {
+                this.highlightValueRow(hit.configId, fullPath);
+                this.valuesEl?.querySelectorAll('tr.config-editor-row').forEach((row) => {
+                    const ctx = row._configEditorCtx;
+                    row.classList.toggle('selected', !!(ctx && configEditorPathsEqual(ctx.path, fullPath)));
+                });
+            }, 80);
         }
     }
 
@@ -1788,6 +1813,19 @@ class ConfigEditorApplet {
         </div>`;
     }
 
+    buildTreeIconHtml(iconClass) {
+        if (!iconClass || iconClass === 'fas fa-folder') {
+            return '<img class="config-editor-tree-icon" src="/static_images/vista-explorer/crumb-folder.png" alt="">';
+        }
+        return `<i class="${configEditorEscapeHtml(iconClass)}" aria-hidden="true"></i>`;
+    }
+
+    buildValueIconHtml(child, effectiveType) {
+        if (child?.expandable && !child.icon) return this.buildTreeIconHtml('fas fa-folder');
+        const cls = child?.icon || configEditorSearchTypeIcon(effectiveType);
+        return `<i class="${configEditorEscapeHtml(cls)}" aria-hidden="true"></i>`;
+    }
+
     buildTreeExpandHtml(hasExpandableChildren) {
         if (hasExpandableChildren) {
             return `<button type="button" class="config-editor-tree-expand btn-secondary btn-small" title="Expand" aria-label="Expand">
@@ -1798,7 +1836,25 @@ class ConfigEditorApplet {
     }
 
     setStatus(text) {
-        if (this.statusEl) this.statusEl.textContent = text;
+        this._statusNote = text || '';
+        this.renderStatusBar();
+    }
+
+    formatKeyPath() {
+        if (!this.selectedConfigId) return '';
+        return [this.getConfigLabel(this.selectedConfigId), ...(this.selectedPath || [])].join('\\');
+    }
+
+    renderStatusBar() {
+        if (!this.statusEl) return;
+        const pathEl = this.statusEl.querySelector('[data-status="path"]');
+        const noteEl = this.statusEl.querySelector('[data-status="note"]');
+        if (!pathEl || !noteEl) {
+            this.statusEl.textContent = this._statusNote || this.formatKeyPath();
+            return;
+        }
+        pathEl.textContent = this.formatKeyPath();
+        noteEl.textContent = this._statusNote || '';
     }
 
     getPendingCount() {
@@ -1819,11 +1875,10 @@ class ConfigEditorApplet {
             row.className = 'config-editor-tree-item config-editor-tree-root';
             row.dataset.configId = cfg.id;
             row.dataset.path = '';
-            const rootIcon = configEditorEscapeHtml(cfg.icon || 'fas fa-database');
             row.innerHTML = `
                 ${this.buildTreeExpandHtml(true)}
                 <button type="button" class="config-editor-tree-label">
-                    <i class="${rootIcon}"></i>
+                    ${this.buildTreeIconHtml(cfg.icon || 'fas fa-database')}
                     <span>${configEditorEscapeHtml(cfg.label)}</span>
                 </button>
             `;
@@ -1854,9 +1909,11 @@ class ConfigEditorApplet {
         return this.runEditorAction(async () => {
             this.selectedConfigId = configId;
             this.selectedPath = path.slice();
+            this.selectedValuePath = null;
             this.highlightTreeSelection();
             this.scrollTreeSelectionIntoView();
-            this.setStatus(`${configId} → ${configEditorPathLabel(path)}`);
+            if (this.getPendingCount() > 0) this.updatePendingStatus();
+            else this.setStatus('');
             await this.loadAndRenderValues(configId, path);
         });
     }
@@ -1966,8 +2023,10 @@ class ConfigEditorApplet {
     updatePendingStatus() {
         const n = this.getPendingCount();
         if (n > 0) {
-            this.setStatus(`${n} unsaved change${n === 1 ? '' : 's'}`);
+            this.setStatus(`${n} unsaved`);
+            return;
         }
+        if (/^\d+ unsaved$/.test(this._statusNote || '')) this.setStatus('');
     }
 
     getEffectiveValue(configId, path, serverValue) {
@@ -1999,20 +2058,17 @@ class ConfigEditorApplet {
             const effectiveType = this.getEffectiveChildType(child, effectiveVal);
             const typeStr = configEditorFormatTypeDisplay(child, effectiveType);
             const typeTitle = configEditorTypeColumnTitle(child, effectiveType);
-            const editHint = configEditorEditModeIndicator(child, effectiveVal);
             const unmappedBadge = child.mapped === false
                 ? '<span class="config-editor-unmapped-badge" title="Not documented in config map">?</span>'
                 : '';
-            const nameCell = child.icon
-                ? `<span class="config-editor-name-with-icon"><i class="${configEditorEscapeHtml(child.icon)}"></i> ${configEditorEscapeHtml(name)}${unmappedBadge}</span>`
-                : `${configEditorEscapeHtml(name)}${unmappedBadge}`;
+            const nameCell = `<span class="config-editor-name-with-icon">${this.buildValueIconHtml(child, effectiveType)}<span>${configEditorEscapeHtml(name)}</span>${unmappedBadge}</span>`;
 
             const valueCell = this.buildValueCellHtml(configId, child, effectiveVal, effectiveType);
+            if (this.selectedValuePath && configEditorPathsEqual(this.selectedValuePath, child.path)) {
+                row.classList.add('selected');
+            }
 
             row.innerHTML = `
-                <td class="config-editor-col-edit" title="${configEditorEscapeHtml(editHint.title)}">
-                    <i class="${configEditorEscapeHtml(editHint.icon)}" aria-hidden="true"></i>
-                </td>
                 <td class="config-editor-col-name">${nameCell}</td>
                 <td class="config-editor-col-type"${typeTitle ? ` title="${configEditorEscapeHtml(typeTitle)}"` : ''}>${configEditorEscapeHtml(typeStr)}</td>
                 <td class="config-editor-col-value">${valueCell}</td>
@@ -2178,6 +2234,7 @@ class ConfigEditorApplet {
         });
 
         this.valuesEl.querySelectorAll('tr.config-editor-row').forEach((row) => {
+            row.addEventListener('click', () => this.selectValueRow(row));
             const editBtn = row.querySelector('.config-editor-edit-btn');
             if (!editBtn) return;
             row.addEventListener('dblclick', () => editBtn.click());
@@ -2853,11 +2910,10 @@ class ConfigEditorApplet {
                 item.dataset.path = childPath.join('\0');
                 item.dataset.depth = String(childPath.length);
                 const hasExpandableChildren = !!child.hasExpandableChildren;
-                const treeIcon = child.icon ? configEditorEscapeHtml(child.icon) : 'fas fa-folder';
                 item.innerHTML = `
                     ${this.buildTreeExpandHtml(hasExpandableChildren)}
                     <button type="button" class="config-editor-tree-label">
-                        <i class="${treeIcon}"></i>
+                        ${this.buildTreeIconHtml(child.icon || 'fas fa-folder')}
                         <span>${configEditorEscapeHtml(child.label || child.key)}</span>
                     </button>
                 `;
@@ -3003,6 +3059,232 @@ class ConfigEditorApplet {
             createCheckpoint[configId] = btn.dataset.state === 'on';
         });
         return createCheckpoint;
+    }
+
+    selectValueRow(row) {
+        const ctx = row?._configEditorCtx;
+        if (!ctx?.path) return;
+        this.selectedValuePath = ctx.path.slice();
+        this.valuesEl?.querySelectorAll('tr.config-editor-row').forEach((el) => {
+            el.classList.toggle('selected', el === row);
+        });
+    }
+
+    focusSearch() {
+        if (!this.searchInput) return;
+        this.searchInput.focus();
+        this.searchInput.select();
+    }
+
+    findNext() {
+        if (!this.searchActive || !this.searchResults.length) {
+            this.focusSearch();
+            return;
+        }
+        if (this.searchSelectedIndex < 0) this.searchSelectedIndex = 0;
+        else this.searchSelectedIndex = (this.searchSelectedIndex + 1) % this.searchResults.length;
+        this.updateSearchSelectionHighlight();
+        this.scrollSearchSelectionIntoView();
+        const hit = this.searchResults[this.searchSelectedIndex];
+        if (hit) void this.navigateFromSearchResult(hit, true);
+    }
+
+    async refreshSelected() {
+        if (!window.wsClient?.isConnected()) {
+            this.setStatus('WebSocket not connected');
+            return;
+        }
+        if (!this.selectedConfigId) {
+            this.setStatus('Refreshing…');
+            try {
+                const data = await window.wsClient.sendMessage('config_editor_list', {}, false);
+                this.configList = data?.configs || [];
+                this.renderConfigRoots();
+                this.setStatus('');
+            } catch (err) {
+                console.error('config_editor_list:', err);
+                this.setStatus('Failed to load config list');
+            }
+            return;
+        }
+        const configId = this.selectedConfigId;
+        const path = this.selectedPath.slice();
+        this.setStatus('Refreshing…');
+        this.invalidateCacheFrom(configId, path);
+        const row = this.findTreeRow(configId, path);
+        const expandKey = configEditorPathKey(configId, path) + ':expanded';
+        if (row && this.expandedKeys.has(expandKey)) {
+            await this.loadTreeChildren(configId, path, row);
+        }
+        await this.loadAndRenderValues(configId, path);
+        this.setStatus('');
+        this.updatePendingStatus();
+    }
+
+    deleteSelected() {
+        const configId = this.selectedConfigId;
+        if (!configId) return;
+        const fromValue = !!(this.selectedValuePath && this.selectedValuePath.length);
+        const path = fromValue ? this.selectedValuePath.slice() : this.selectedPath.slice();
+        const child = fromValue ? this.findChildAtPath(configId, path) : null;
+        if (!this.canDeletePath(configId, path, child)) {
+            this.setStatus(this.getDeleteDeniedReason(configId, path, child));
+            return;
+        }
+        this.markDeleted(configId, path);
+        if (fromValue && configEditorPathsEqual(this.selectedValuePath, path)) {
+            this.selectedValuePath = null;
+        }
+        if (!fromValue) void this.selectNode(configId, path.slice(0, -1));
+    }
+
+    copyKeyName() {
+        if (!this.selectedConfigId) return;
+        const text = this.formatKeyPath();
+        // copyTextToClipboard: public/scripts/utils/dreamscapeClipboard.js
+        copyTextToClipboard(text).then(() => {
+            this.setStatus('Copied key name');
+        }).catch(() => {
+            this.setStatus('Could not copy key name');
+        });
+    }
+
+    async modifySelected() {
+        if (!this.selectedConfigId || !this.selectedValuePath?.length) return;
+        const child = await this.ensureChildAtPath(this.selectedConfigId, this.selectedValuePath);
+        if (!child || child.expandable) return;
+        this.openValueEditor(this.selectedConfigId, child);
+    }
+
+    menuItems(menu) {
+        if (menu === 'file') {
+            return [
+                { text: 'Save', icon: 'fas fa-save', action: 'save', badge: 'Ctrl+S',
+                    disabled: () => this.getPendingCount() < 1 },
+                { text: 'Checkpoints', icon: 'fas fa-clock-rotate-left', action: 'checkpoints',
+                    disabled: () => !this.selectedConfigId || !this.canShowCheckpointsMenu(this.selectedPath) },
+                { separator: true },
+                { text: 'Exit', action: 'exit' }
+            ];
+        }
+        if (menu === 'edit') {
+            const addItem = this.makeAddEntryMenuItem(() => ({
+                configId: this.selectedConfigId,
+                containerPath: this.selectedPath.slice()
+            }), { panelMode: true });
+            addItem.text = 'New';
+            return [
+                { text: 'Modify', icon: 'fas fa-pen', action: 'modify',
+                    disabled: () => {
+                        if (!this.selectedValuePath?.length) return true;
+                        const child = this.findChildAtPath(this.selectedConfigId, this.selectedValuePath);
+                        return !child || !!child.expandable;
+                    } },
+                addItem,
+                { separator: true },
+                { text: 'Delete', icon: 'fas fa-trash', action: 'delete', badge: 'Del',
+                    disabled: () => {
+                        const fromValue = !!(this.selectedValuePath && this.selectedValuePath.length);
+                        const path = fromValue ? this.selectedValuePath : this.selectedPath;
+                        if (!this.selectedConfigId || !path?.length) return true;
+                        const child = fromValue ? this.findChildAtPath(this.selectedConfigId, path) : null;
+                        return !this.canDeletePath(this.selectedConfigId, path, child);
+                    } },
+                { text: 'Copy Key Name', icon: 'fas fa-copy', action: 'copy-key',
+                    disabled: () => !this.selectedConfigId },
+                { separator: true },
+                { text: 'Find', icon: 'fas fa-magnifying-glass', action: 'find', badge: 'Ctrl+F' },
+                { text: 'Find Next', action: 'find-next', badge: 'F3' }
+            ];
+        }
+        return [
+            { text: 'Status Bar', action: 'status-bar', showIndicator: true,
+                checked: this.modal?.getAttribute('data-status-bar') !== 'off' },
+            { text: 'Split', action: 'split' },
+            { text: 'Refresh', icon: 'fas fa-rotate', action: 'refresh', badge: 'F5' }
+        ];
+    }
+
+    handleMenuAction(action, item) {
+        if (action === 'save') return this.requestSave();
+        if (action === 'exit') return this.requestClose();
+        if (action === 'modify') return this.modifySelected();
+        if (action === 'delete') return this.deleteSelected();
+        if (action === 'copy-key') return this.copyKeyName();
+        if (action === 'find') return this.focusSearch();
+        if (action === 'find-next') return this.findNext();
+        if (action === 'refresh') return this.refreshSelected();
+        if (action === 'split') {
+            this.modal?.querySelector('.config-editor-splitter')?.focus();
+            return;
+        }
+        if (action === 'status-bar') {
+            if (this.modal?.getAttribute('data-status-bar') === 'off') this.modal.removeAttribute('data-status-bar');
+            else this.modal?.setAttribute('data-status-bar', 'off');
+            return;
+        }
+        const ctx = {
+            configId: this.selectedConfigId,
+            path: this.selectedPath.slice(),
+            containerPath: this.selectedPath.slice(),
+            expandable: this.isContainerPath(this.selectedConfigId, this.selectedPath)
+        };
+        return this.handleContextAction(action, ctx, item);
+    }
+
+    wireMenus() {
+        if (!contextMenu || this._menusWired) return;
+        this._menusWired = true;
+        const applet = this;
+        ['file', 'edit', 'view'].forEach((menu) => {
+            const button = document.getElementById(
+                menu === 'file' ? 'configEditorMenuFile' : menu === 'edit' ? 'configEditorMenuEdit' : 'configEditorMenuView'
+            );
+            if (!button) return;
+            // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
+            contextMenu.attachClickMenuToElement(button, {
+                onAction: (action, target, item) => applet.handleMenuAction(action, item),
+                sections: [{
+                    type: 'list',
+                    initfn: (section) => { section.items = applet.menuItems(menu); }
+                }]
+            });
+        });
+    }
+
+    wireSplitter() {
+        const split = this.modal?.querySelector('.config-editor-splitter');
+        const tree = this.treePanel;
+        if (!split || !tree || split.dataset.wired) return;
+        split.dataset.wired = '1';
+        split.addEventListener('pointerdown', (e) => {
+            if (e.button !== 0) return;
+            e.preventDefault();
+            split.setPointerCapture(e.pointerId);
+            const startX = e.clientX;
+            const startW = tree.getBoundingClientRect().width;
+            const move = (ev) => {
+                const width = Math.max(140, Math.min(520, startW + ev.clientX - startX));
+                tree.style.flexBasis = width + 'px';
+                tree.style.width = width + 'px';
+            };
+            const up = () => {
+                split.removeEventListener('pointermove', move);
+                split.removeEventListener('pointerup', up);
+            };
+            split.addEventListener('pointermove', move);
+            split.addEventListener('pointerup', up);
+        });
+        split.addEventListener('keydown', (e) => {
+            const current = tree.getBoundingClientRect().width;
+            let width = current;
+            if (e.key === 'ArrowLeft') width = Math.max(140, current - 8);
+            else if (e.key === 'ArrowRight') width = Math.min(520, current + 8);
+            else return;
+            e.preventDefault();
+            tree.style.flexBasis = width + 'px';
+            tree.style.width = width + 'px';
+        });
     }
 
     async requestSave() {

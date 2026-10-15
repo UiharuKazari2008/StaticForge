@@ -126,10 +126,9 @@ function buildDelegationStatusPatch() {
 function reportDelegationStatus() {
     if (!localWsClient || !localWsClient.isConnected || !localWsClient.isConnected()) return;
     const patch = buildDelegationStatusPatch();
-    localWsClient.send({
-        type: 'replication_delegation_status',
-        data: patch
-    });
+    // sendMessage: public/scripts/websocket.js — requestId so the status response can resolve
+    const sent = localWsClient.sendMessage('replication_delegation_status', { data: patch }, false);
+    if (sent && sent.catch) sent.catch(function () {});
 }
 
 async function probeMasterReachable(config) {

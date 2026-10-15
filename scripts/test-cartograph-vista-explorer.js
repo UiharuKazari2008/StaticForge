@@ -62,7 +62,10 @@ assert.ok(/2006/.test(c.formatDate(1162455840)) && /\d:\d{2}/.test(c.formatDate(
 assert.ok(!/:\d{2}:\d{2}/.test(c.formatDate(1162455840)), 'no seconds');
 assert.strictEqual(c.formatDate(0), '');
 assert.deepStrictEqual(c.modeMetrics('details'), { rowHeight: 19 });
-assert.strictEqual(c.modeMetrics('icons-lg'), null);
+assert.deepStrictEqual(c.modeMetrics('icons-xl'), { rowHeight: 312, cellWidth: 272 });
+assert.deepStrictEqual(c.modeMetrics('icons-lg'), { rowHeight: 152, cellWidth: 112 });
+assert.deepStrictEqual(c.modeMetrics('icons-md'), { rowHeight: 104, cellWidth: 96 });
+assert.deepStrictEqual(c.modeMetrics('icons-sm'), { rowHeight: 72, cellWidth: 88 });
 
 // the grid takes the host's wording and row pitch
 const grid = read('public/scripts/comp/vfsVirtualGrid.js');
@@ -142,6 +145,7 @@ assert.ok(fs.readFileSync(path.join(__dirname, '..', 'modules/metadataDatabase.j
 const ex = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/explorerApplet.js'), 'utf8');
 assert.ok(ex.includes('_mountLiveFolder(box, icon, previews)') && ex.includes("explorer-item-icon-box-sm") && ex.includes("@lq.webp"), 'client live folder');
 const liveCss = fs.readFileSync(path.join(__dirname, '..', 'public/css/vista-explorer.css'), 'utf8');
-assert.ok(liveCss.includes('.explorer-item-type-icon.explorer-live-folder:is(') && liveCss.includes('folder-back-256.png') && liveCss.includes('folder-front-96.png'), 'live folder art');
-for (const n of ['folder-back-256', 'folder-back-96', 'folder-front-256', 'folder-front-96']) assert.ok(fs.existsSync(path.join(__dirname, '..', `public/static_images/vista-icons/explorer/${n}.png`)), n);
+assert.ok(liveCss.includes('.explorer-item-type-icon.explorer-live-folder:is(') && liveCss.includes("url('/static_images/vista-icons/explorer/folder-back-96.png')") && liveCss.includes("url('/static_images/vista-icons/explorer/folder-front-96.png')") && liveCss.includes('folder-front-48.png') && liveCss.includes('folder-front-256.png'), 'live folder uses the extract that matches the box');
+assert.ok(liveCss.includes("--ex-icon-lg: url('/static_images/vista-icons/explorer/folder-96.png')") && !liveCss.includes("256.png') 2x"), 'large is the 96 extract and hidpi does not swap in the 256');
+for (const n of ['folder-back-256', 'folder-back-96', 'folder-back-48', 'folder-front-256', 'folder-front-96', 'folder-front-48', 'folder-96', 'folder-48', 'folder-16']) assert.ok(fs.existsSync(path.join(__dirname, '..', `public/static_images/vista-icons/explorer/${n}.png`)), n);
 console.log('test-cartograph-vista-explorer: ok');

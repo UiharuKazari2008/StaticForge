@@ -157,6 +157,36 @@ function main() {
     assert.deepStrictEqual(legacySummary.to, ['rook']);
     assert.deepStrictEqual(legacySummary.cc, []);
 
+    // Mailbox changes push once (send, first read, not a second read of the same row).
+    const handler = require('../modules/ws/handlers/250-dovecoteHandler');
+    const broadcasts = [];
+    handler.registerPackets({
+        globalResources: {
+            getWebSocketServer: () => ({ broadcast: (msg) => broadcasts.push(msg) })
+        }
+    });
+    broadcasts.length = 0;
+    const pushed = mail.sendMail({ fromOwner: 'yukimi', to: 'sala', subject: 'push', body: 'live' });
+    assert.strictEqual(broadcasts.length, 1);
+    assert.strictEqual(broadcasts[0].type, 'dovecote_mailbox_updated');
+    assert.ok(broadcasts[0].data.owners.includes('yukimi'));
+    assert.ok(broadcasts[0].data.owners.includes('sala'));
+    assert.ok(broadcasts[0].data.mailboxes.some((box) => box.owner === 'sala' && box.unread >= 1));
+    assert.ok(Array.isArray(broadcasts[0].data.inbox.sala));
+    assert.ok(broadcasts[0].data.inbox.sala.some((row) => row.subject === 'push'));
+    assert.ok(Array.isArray(broadcasts[0].data.unreadInbox.sala));
+    assert.ok(pushed.id);
+    const salaId = mail.listMail('sala', { folder: 'inbox' }).find((row) => row.subject === 'push').id;
+    broadcasts.length = 0;
+    mail.readMail('sala', salaId);
+    assert.strictEqual(broadcasts.length, 1);
+    assert.ok(broadcasts[0].data.owners.includes('sala'));
+    assert.ok(broadcasts[0].data.owners.includes('yukimi'), 'read receipt pushes the sender mailbox too');
+    broadcasts.length = 0;
+    mail.readMail('sala', salaId);
+    assert.strictEqual(broadcasts.length, 0, 'opening an already-read message does not push');
+    mail.setMailboxChangedListener(null);
+
     console.log('dovecote multi-recipient tests passed');
 }
 

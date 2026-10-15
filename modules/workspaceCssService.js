@@ -9,6 +9,7 @@ const path = require('path');
 const crypto = require('crypto');
 const workspaceCssGenerator = require('./workspaceCssGenerator');
 const runtimeAssetCompiler = require('./runtimeAssetCompiler');
+const runtimeAssetMemory = require('./runtimeAssetMemory');
 
 const WEB_PATH = '/css/workspaces.css';
 const SOURCE_REL = 'virtual/public/css/workspaces.css';
@@ -74,6 +75,38 @@ function buildSkippedCompileResult(compiledPath, sourceHash) {
         servedHash: crypto.createHash('sha256').update(output).digest('hex'),
         compiledPath
     };
+}
+
+function rememberWorkspaceCss(output) {
+    runtimeAssetMemory.remember(WEB_PATH, output, { optimized: true });
+}
+
+// Disk can be current while the served copy is still the previous compile.
+// A wallpaper change then broadcasts a new hash and the client stores the old bytes under it.
+async function healWorkspaceCssMemory(compiledPath, sourceHash, options) {
+    if (runtimeAssetMemory.headerSourceHash(WEB_PATH) === sourceHash) {
+        return;
+    }
+    let output;
+    try {
+        output = fs.readFileSync(compiledPath);
+    } catch (_) {
+        return;
+    }
+    rememberWorkspaceCss(output);
+    if (options && options.broadcast === false) {
+        return;
+    }
+    if (typeof onCompiledCallback !== 'function') {
+        return;
+    }
+    await onCompiledCallback({
+        status: 'compiled',
+        webPath: WEB_PATH,
+        sourceHash,
+        servedHash: crypto.createHash('sha256').update(output).digest('hex'),
+        compiledPath
+    }, options);
 }
 
 function getClientCssHash(root) {
@@ -149,9 +182,11 @@ async function compileWorkspaceCss(options = {}) {
                 : null;
             if (existingSourceHash === sourceHash) {
                 lastSourceHash = sourceHash;
+                await healWorkspaceCssMemory(compiledPath, sourceHash, options);
                 return buildSkippedCompileResult(compiledPath, sourceHash);
             }
             if (lastSourceHash === sourceHash && fs.existsSync(compiledPath)) {
+                await healWorkspaceCssMemory(compiledPath, sourceHash, options);
                 return buildSkippedCompileResult(compiledPath, sourceHash);
             }
         }
@@ -176,6 +211,7 @@ async function compileWorkspaceCss(options = {}) {
         }
 
         lastSourceHash = sourceHash;
+        rememberWorkspaceCss(output);
 
         const result = {
             status: 'compiled',

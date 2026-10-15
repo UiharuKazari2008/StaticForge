@@ -429,5 +429,7 @@ module.exports = {
     buildZipBuffer,
     getBootstrapPageHtml,
     getBootUrls,
+    resolveFilePath,
+    webPathToZipEntry,
     AGENT_STATIC_CACHE_CONTROL
 };

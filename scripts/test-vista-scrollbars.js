@@ -17,13 +17,19 @@ execFileSync(process.execPath, [path.join(__dirname, 'build-vista-scrollbars.js'
 const css = fs.readFileSync(OUT, 'utf8');
 const SCOPE = 'body.desktop-mode:not(.windows-classic-theme) :not(html):not(.has-custom-scrollbar):not(.scrollable-content):not(.form-section-scroll):not(.modal-window-title-toolbar)';
 
+function pngDataUrl(name) {
+    return `url("data:image/png;base64,${fs.readFileSync(path.join(ART, name)).toString('base64')}")`;
+}
+
+assert.ok(!/url\(\s*['"]\/static_images\/vista-scrollbar\//.test(css), 'scrollbar art is inlined, not a file the bar fetches after first paint');
 assert.ok(!css.includes('--w7-') && !css.includes('7.css'), 'no 7.css gradients or variables are left');
 assert.ok(css.includes(`${SCOPE}::-webkit-scrollbar {\n    width: 17px;`), '17 px bar, desktop-only gate with the custom-scrollbar exclusions');
 assert.ok(css.includes(`${SCOPE}::-webkit-scrollbar:horizontal {\n    height: 17px;`), '17 px horizontal bar');
+assert.ok(css.includes(`${SCOPE}::-webkit-scrollbar {\n    width: 17px;\n    background: ${pngDataUrl('track-v.png')} repeat-y;`), 'the bar itself is the track bitmap, not a flat stand-in');
 assert.ok(css.includes('::-webkit-scrollbar-corner {\n    background: #f0f0f0;'), "Vista's flat corner");
 for (const dir of ['up', 'down', 'left', 'right']) {
     for (const state of ['normal', 'hot', 'pressed', 'disabled']) {
-        assert.ok(css.includes(`glyph-${dir}-${state}.png"), url("/static_images/vista-scrollbar/arrow-${dir}-${state}.png")`), `${dir} ${state} button: glyph over face`);
+        assert.ok(css.includes(`${pngDataUrl(`glyph-${dir}-${state}.png`)}, ${pngDataUrl(`arrow-${dir}-${state}.png`)}`), `${dir} ${state} button: glyph over face`);
     }
 }
 assert.ok(css.includes(':vertical:start:hover {') && css.includes(':vertical:start:active {') && css.includes(':vertical:start:disabled {'), 'state pseudo-classes after the position ones (Chrome matched :disabled only that way)');
@@ -31,7 +37,7 @@ assert.ok(css.includes("background-position: center top 1px, center"), "the up g
 assert.ok(css.includes('::-webkit-scrollbar-button:vertical:start:increment,') && css.includes('display: none'), 'one button at each end');
 for (const o of ['v', 'h']) {
     for (const state of ['normal', 'hot', 'pressed']) {
-        assert.ok(css.includes(`thumb-${o}-${state}.png")`) && css.includes(`gripper-${o}-${state}.png"), url("/static_images/vista-scrollbar/thumb-${o}-${state}-mid.png")`), `${o} thumb ${state}: caps, gripper and middle strip`);
+        assert.ok(css.includes(pngDataUrl(`thumb-${o}-${state}.png`)) && css.includes(`${pngDataUrl(`gripper-${o}-${state}.png`)}, ${pngDataUrl(`thumb-${o}-${state}-mid.png`)}`), `${o} thumb ${state}: caps, gripper and middle strip`);
     }
 }
 assert.ok(css.includes('::-webkit-scrollbar-thumb:vertical {\n    border-width: 4px 0;\n    border-image-slice: 4 0;'), 'vertical thumb caps are 4 px');
@@ -64,8 +70,5 @@ for (const [file, size] of Object.entries(sizes)) {
     assert.ok(fs.existsSync(p), `${file} exists`);
     const buf = fs.readFileSync(p);
     assert.strictEqual(`${buf.readUInt32BE(16)}x${buf.readUInt32BE(20)}`, size, `${file} is ${size}`);
-}
-for (const m of css.matchAll(/url\("\/static_images\/vista-scrollbar\/([^"]+)"\)/g)) {
-    assert.ok(fs.existsSync(path.join(ART, m[1])), `referenced art exists: ${m[1]}`);
 }
 console.log('test-vista-scrollbars: ok');

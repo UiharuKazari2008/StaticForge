@@ -862,9 +862,15 @@ class FileSearch {
 
             originalImages.forEach((img, index) => {
                 if (typeof img === 'object' && img !== null) {
-                    const imgFilename = normalizeFilename(img.filename || img.original || img.upscaled);
-                    const searchData = searchResultMap.get(imgFilename);
-                    if (imgFilename && searchData) {
+                    const candidates = [img.filename, img.original, img.upscaled, img.base];
+                    let searchData = null;
+                    for (let i = 0; i < candidates.length; i++) {
+                        const imgFilename = normalizeFilename(candidates[i]);
+                        if (!imgFilename) continue;
+                        searchData = searchResultMap.get(imgFilename);
+                        if (searchData) break;
+                    }
+                    if (searchData) {
                         matchesWithOrder.push({
                             image: img,
                             originalIndex: index,

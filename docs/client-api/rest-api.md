@@ -535,6 +535,27 @@ single `done` line and closes. The HTTP port is bound at process start
 (`modules/earlyHttpServer.js`), so a restarting server answers `/status` and this stream within
 its first seconds; the boot steps yield to the event loop between steps and per compiled file.
 
+### `GET /install/meletonfx.zip`
+
+**No auth.** The MeletonFX installer pack: one zip of the service-worker manifest, built when cache
+data is recreated (`modules/meletonInstallPack.js`). Text is deflated at level 9. Images, fonts,
+and other already-compressed files are stored. `pack.json` inside the zip lists `{ entry, url, hash, size, group }`.
+
+**200** `application/zip`. Headers: `X-Pack-Hash` (sha256 of the sorted `url\\0hash\\0` manifest
+material), `Content-Length`, `Cache-Control: no-store`.
+
+**503** while the pack is building or not ready yet (`Retry-After: 5`).
+
+### `POST /install/meletonfx.zip`
+
+**No auth.** Body `{ "files": [{ "url", "hash" }] }`. When the list is at most `subsetMax` (120),
+the server packs only the matching manifest rows and answers the same zip shape, plus
+`X-Pack-Subset: 1`. `X-Pack-Hash` is the sha256 of those rows (the server's hashes).
+
+**413** `{ "useFullPack": true, "max": 120 }` when the list is longer. The client then `GET`s the full pack.
+
+**404** when none of the urls are in the manifest. **400** when `files` is missing.
+
 ### `OPTIONS /`
 
 **No auth.** Returns service worker static file manifest via `buildServiceWorkerCacheManifest()`.

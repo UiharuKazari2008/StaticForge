@@ -608,7 +608,9 @@ class WebSocketMessageHandlers {
             : '';
         const validStyles = new Set(['luna', 'workspace', 'orb']);
         const style = validStyles.has(raw.style) ? raw.style : 'workspace';
-        return { preset, customText, style };
+        const validLogos = new Set(['royal', 'vista', 'dreamscape']);
+        const logo = validLogos.has(raw.logo) ? raw.logo : 'dreamscape';
+        return { preset, customText, style, logo };
     }
 
     normalizeUserGlobalSettings(raw) {
@@ -622,6 +624,7 @@ class WebSocketMessageHandlers {
             exitDesktopOnWorkspaceMaximise: desktop.exitDesktopOnWorkspaceMaximise === true,
             notificationBridgeEnabled: desktop.notificationBridgeEnabled !== false,
             bypassNotificationBridgeInDesktopMode: desktop.bypassNotificationBridgeInDesktopMode === true,
+            useApplicationImageIcon: desktop.useApplicationImageIcon === true,
             startMenuButton: this.normalizeStartMenuButtonSetting(desktop),
             // Melaton's domain name and connection (interface) name, modules/melatonNetwork.js
             domainName: melatonNetwork.domainName({ userGlobalSettings: { desktop } }),
@@ -662,6 +665,9 @@ class WebSocketMessageHandlers {
             }
             if (typeof patch.desktop.bypassNotificationBridgeInDesktopMode === 'boolean') {
                 out.desktop.bypassNotificationBridgeInDesktopMode = patch.desktop.bypassNotificationBridgeInDesktopMode;
+            }
+            if (typeof patch.desktop.useApplicationImageIcon === 'boolean') {
+                out.desktop.useApplicationImageIcon = patch.desktop.useApplicationImageIcon;
             }
             if (typeof patch.desktop.domainName === 'string') {
                 out.desktop.domainName = melatonNetwork.domainName({ userGlobalSettings: { desktop: { domainName: patch.desktop.domainName } } });

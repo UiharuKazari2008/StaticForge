@@ -114,7 +114,11 @@ assert.ok(css.includes('.desktop-shortcut-icon[data-vista-icon="note"] > i') && 
 assert.ok(css.includes('> i.fa-image.desktop-shortcut-image-icon {\n    display: none;'), 'pictures lose the type badge (Vista frames them)');
 assert.ok(shortcuts.includes('function desktopShortcutPhotoFrame(preview)') && (shortcuts.match(/desktopShortcutPhotoFrame\(imagePreview\)/g) || []).length === 3, 'pictures, references and nax tags get the <img> for the aspect frame');
 assert.ok(css.includes('.desktop-shortcut-image-preview > .desktop-shortcut-photo') && css.includes('max-width: var(--photo-box)'), 'the frame hugs the picture');
-assert.ok(css.includes('[data-shortcut-type="dsap"]) .desktop-shortcut-icon::after') && css.includes('shortcut-arrow-24.png'), 'app shortcuts carry the arrow');
+assert.ok(css.includes('[data-shortcut-type="dsap"]) .desktop-shortcut-icon::after') && css.includes('shortcut-arrow-16.png'), 'app shortcuts carry the 16px arrow on the 48px desktop');
+assert.ok(css.includes('folder-48.png') && css.includes('background: no-repeat center / 48px 48px'), 'desktop folders are the 48px frame');
+assert.ok(shortcuts.includes("resolveAppIconPath('vista-phasewalker-file.png')") && !shortcuts.includes("resolveAppIconPath('stack.png')"), 'phasewalker states use the file icon');
+assert.ok(shortcuts.includes("resolveAppIconPath('vista-code-file.png')"), 'change json uses the code file icon');
+assert.ok(fs.existsSync(path.join(ROOT, 'public/static_images/app_icons/vista-phasewalker-file.png')) && fs.existsSync(path.join(ROOT, 'public/static_images/app_icons/vista-code-file.png')), 'the two document icons exist');
 for (const size of [16, 24, 32, 48]) assert.ok(fs.existsSync(path.join(ROOT, `public/static_images/vista-icons/explorer/shortcut-arrow-${size}.png`)), `arrow ${size}`);
 for (const kind of ['folder', 'recycle', 'file', 'internet-shortcut', 'document']) {
     assert.ok(css.includes(`.desktop-shortcut-icon[data-vista-icon="${kind}"]`), `CSS draws ${kind}`);

@@ -460,7 +460,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#textReplacementManagerModal, 
    Awesome glyph element stays
    (scripts still switch its classes for state); its glyph is hidden and the icon is painted
    on it. */
-body.desktop-mode:not(.windows-classic-theme) :is(#searchIndexingIndicator > i.fa-magnifying-glass, #serviceWorkerTrayIconGlyph, #modemTrayIconGlyph, #devWarningsTrayIcon > i.fa-triangle-exclamation, #workspaceTrayIcon > i.fa-clone, #walletTrayIcon > i.fa-wallet, #dovecoteTrayIcon > i.fa-envelope, #mcpActivityIndicator > i.fa-screencast, #vistaSidebarTrayIcon > i.fa-sidebar-flip) {
+body.desktop-mode:not(.windows-classic-theme) :is(#searchIndexingIndicator > i.fa-magnifying-glass, #serviceWorkerTrayIconGlyph, #modemTrayIconGlyph, #volumeTrayIconGlyph, #devWarningsTrayIcon > i.fa-triangle-exclamation, #workspaceTrayIcon > i.fa-clone, #walletTrayIcon > i.fa-wallet, #dovecoteTrayIcon > i.fa-envelope, #mcpActivityIndicator > i.fa-screencast, #vistaSidebarTrayIcon > i.fa-sidebar-flip) {
     display: inline-block;
     width: 16px;
     height: 16px;
@@ -502,6 +502,10 @@ body.desktop-mode:not(.windows-classic-theme) #workspaceTrayIcon > i.fa-clone { 
 body.desktop-mode:not(.windows-classic-theme) #walletTrayIcon > i.fa-wallet { background-image: image-set(url("/static_images/vista-icons/cardspace-16.png") 1x, url("/static_images/vista-icons/cardspace-32.png") 2x); }
 body.desktop-mode:not(.windows-classic-theme) #dovecoteTrayIcon > i.fa-envelope { background-image: image-set(url("/static_images/vista-icons/dovecote-16.png") 1x, url("/static_images/vista-icons/dovecote-32.png") 2x); }
 body.desktop-mode:not(.windows-classic-theme) #mcpActivityIndicator > i.fa-screencast { background-image: image-set(url("/static_images/vista-icons/remote-access-16.png") 1x, url("/static_images/vista-icons/remote-access-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) #volumeTrayIconGlyph { background-image: image-set(url("/static_images/vista-icons/volume-high-16.png") 1x, url("/static_images/vista-icons/volume-high-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) #volumeTrayIcon[data-level="mid"] #volumeTrayIconGlyph { background-image: image-set(url("/static_images/vista-icons/volume-mid-16.png") 1x, url("/static_images/vista-icons/volume-mid-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) #volumeTrayIcon[data-level="low"] #volumeTrayIconGlyph { background-image: image-set(url("/static_images/vista-icons/volume-low-16.png") 1x, url("/static_images/vista-icons/volume-low-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) #volumeTrayIcon[data-level="mute"] #volumeTrayIconGlyph { background-image: image-set(url("/static_images/vista-icons/volume-mute-16.png") 1x, url("/static_images/vista-icons/volume-mute-32.png") 2x); }
 body.desktop-mode:not(.windows-classic-theme) #vistaSidebarTrayIcon > i.fa-sidebar-flip { background-image: image-set(url("/static_images/vista-icons/windows-sidebar-16.png") 1x, url("/static_images/vista-icons/windows-sidebar-32.png") 2x); }
 
 /* the wallet alert mark is Vista's small warning, over the lower right of the CardSpace icon */
@@ -1020,4 +1024,150 @@ body.desktop-mode:not(.windows-classic-theme) select[multiple]:not(.hover-show):
 body.desktop-mode:not(.windows-classic-theme) .modal:not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow):not(#virtualKeyboardModal) {
     border-color: hsl(210 24% 14% / 82%);
     --aero-frame-highlight: inset 0 0 0 1px hsl(0 0% 100% / 82%);
+}
+
+/* Volume tray flyout (tabVolume.js). Measured on the Vista VM: a narrow white
+   popup, a vertical slider, the speaker button, and the Mixer footer. */
+.volume-flyout {
+    position: fixed;
+    z-index: var(--z-taskbar-popover, 2710);
+    box-sizing: border-box;
+    width: 74px;
+    background: #fff;
+    color: #000;
+    border: 1px solid #7eb4d8;
+    border-radius: 3px;
+    box-shadow: 0 0 0 1px rgba(90, 170, 220, 0.55), 0 8px 16px rgba(0, 0, 0, 0.35);
+    font-family: "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    user-select: none;
+}
+
+.volume-flyout.hidden {
+    display: none;
+}
+
+/* 7.css vertical slider. Rotate a horizontal range around its own center so
+   the track sits in the middle of the flyout. The arrow is still --w7-sdt-icon. */
+.volume-flyout-slider {
+    position: relative;
+    height: 120px;
+    margin: 8px 0 2px;
+}
+
+.volume-flyout-slider.win7 .is-vertical {
+    position: absolute;
+    inset: 0;
+    width: auto;
+    height: auto;
+    margin: 0;
+    transform: none;
+}
+
+.volume-flyout-slider.win7 .is-vertical > input[type="range"] {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 112px;
+    height: 4px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    transform: translate(-50%, -50%) rotate(270deg);
+    transform-origin: center center;
+    outline: none;
+}
+
+.volume-flyout-slider.win7 .is-vertical > input[type="range"]:focus,
+.volume-flyout-slider.win7 .is-vertical > input[type="range"]:focus-visible {
+    outline: none;
+}
+
+.volume-flyout-mute {
+    display: block;
+    width: 28px;
+    height: 26px;
+    margin: 2px auto 8px;
+    padding: 0;
+    border: 1px solid #8e8f8f;
+    border-radius: 2px;
+    background: #f3f3f3 url("/static_images/vista-icons/volume-high-16.png") center / 16px 16px no-repeat;
+    cursor: pointer;
+    outline: none;
+}
+
+.volume-flyout-mute:focus,
+.volume-flyout-mute:focus-visible {
+    outline: none;
+}
+
+.volume-flyout.is-muted .volume-flyout-mute {
+    background-image: url("/static_images/vista-icons/volume-mute-16.png");
+}
+
+.volume-flyout-mute:hover {
+    border-color: #3c7fb1;
+    background-color: #eaf6fd;
+}
+
+.volume-flyout-mixer {
+    border-top: 1px solid #e3e3e3;
+    background: #f4f4f4;
+    color: #1a5fb4;
+    font-size: 12px;
+    line-height: 16px;
+    text-align: center;
+    padding: 7px 0 8px;
+}
+
+/* Overflow chevron: the Vista notification-area arrow (shell tray, 16x15). */
+.tray-overflow-btn {
+    flex: none;
+    width: 16px;
+    height: 15px;
+    margin: 0 2px;
+    padding: 0;
+    border: 0;
+    background: url("/static_images/vista-icons/tray-overflow.png") center / 16px 15px no-repeat;
+    cursor: var(--c-pointer);
+}
+
+.tray-overflow-btn.is-open {
+    background-image: url("/static_images/vista-icons/tray-overflow-open.png");
+}
+
+.taskbar-tray-icons > .taskbar-tray-icon.tray-overflow {
+    display: none;
+}
+
+.tray-overflow-flyout {
+    display: none;
+    position: fixed;
+    z-index: 80;
+    gap: 2px;
+    padding: 4px 6px;
+    background: linear-gradient(#fff, #eaebf4);
+    border: 1px solid #000;
+    border-radius: 5px;
+}
+
+.tray-overflow-flyout.is-open {
+    display: flex;
+    align-items: center;
+}
+
+.tray-overflow-flyout .taskbar-tray-icon {
+    display: flex;
+    position: static;
+}
+
+#melatonControlPanelModal .tray-customize-list {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+#melatonControlPanelModal .tray-customize-page .cpl-link {
+    margin-bottom: 8px;
 }

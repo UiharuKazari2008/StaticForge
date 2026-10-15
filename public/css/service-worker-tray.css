@@ -87,58 +87,155 @@
     width: 100%;
 }
 
-/* ---- Vista's Windows Update balloon (serviceWorkerManager._renderVistaUpdateBalloon): the
-   7.css balloon, the Windows Update icon and a bold title, one line under it, a small close ×;
-   the whole balloon opens MeletonFX Update ---- */
-.service-worker-tray-popup.vista-update-balloon {
-    width: min(330px, calc(100vw - 24px));
-    min-width: 0;
-    padding: 9px 10px 10px 12px;
-    cursor: var(--c-pointer);
+/* Vista NotifyIcon balloon, measured on the Vista VM at 96 dpi.
+   Fill #fff to #eaebf4, 1px #000, 5px corners, 16px stem at the right,
+   title #003399, body #000, 16px icon, 9px #969696 close.
+   Tray balloons (arrow-bottom-right) share this chrome. Classic keeps the 7.css tooltip. */
+body.desktop-mode:not(.windows-classic-theme) .popover.arrow-bottom-right {
+    background: linear-gradient(to bottom, #ffffff, #eaebf4);
+    border: 1px solid #000;
+    border-radius: 5px;
+    box-shadow: 2px 2px 3px rgba(0, 0, 0, 0.4);
+    padding: 11px 8px 11px 11px;
+    font-size: 9pt;
+    line-height: 12px;
+    color: #000;
 }
 
-.service-worker-tray-popup.vista-update-balloon .popover-content {
+body.desktop-mode:not(.windows-classic-theme) .popover.arrow-bottom-right::before {
+    width: 16px;
+    height: 16px;
+    right: 15px;
+    left: auto;
+    top: auto;
+    bottom: -15px;
+    transform: none;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16'%3E%3Cpath d='M0 0H16V16Z' fill='%23eaebf4'/%3E%3Cpath d='M.5.5L15.5 15.5M15.5 0V15.5' fill='none' stroke='%23000' stroke-width='1'/%3E%3C/svg%3E") center / 16px 16px no-repeat;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .popover.arrow-bottom-right .popover-header {
+    color: #003399;
+    font-weight: 700;
+    font-size: 9pt;
+    line-height: 16px;
+    gap: 7px;
+    margin-bottom: 0;
+    justify-content: flex-start;
+    white-space: nowrap;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .popover.arrow-bottom-right:not(.dev-warnings-tray-popup):not(.generation-quips-tray-popup) .popover-header img {
+    width: 32px;
+    height: 32px;
+    flex: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .popover.arrow-bottom-right:not(.dev-warnings-tray-popup):not(.generation-quips-tray-popup) .popover-header i {
+    width: 32px;
+    height: 32px;
+    font-size: 32px;
+    line-height: 32px;
+    flex-shrink: 0;
+    text-align: center;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .popover.arrow-bottom-right .popover-header button {
+    color: #969696;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .popover.arrow-bottom-right .popover-content {
     gap: 4px;
 }
 
+body.desktop-mode:not(.windows-classic-theme) .popover.is-top.arrow-bottom-right:not(.service-worker-tray-popup):not(.dev-warnings-tray-popup):not(.generation-quips-tray-popup) {
+    width: max-content;
+    min-width: 0;
+    max-width: min(520px, calc(100vw - 24px));
+    white-space: normal;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .popover.arrow-bottom-right:not(.dev-warnings-tray-popup):not(.generation-quips-tray-popup) .popover-content > .popover-body {
+    padding-left: 39px;
+    color: #000;
+    font-weight: 400;
+    font-size: 9pt;
+    line-height: 12px;
+}
+
+/* Windows Update balloon (serviceWorkerManager._renderVistaUpdateBalloon).
+   Width follows the title so it stays one line, the way Vista's balloon does. */
+.service-worker-tray-popup.vista-update-balloon {
+    width: max-content;
+    min-width: 0;
+    max-width: min(520px, calc(100vw - 24px));
+    padding: 11px 8px 11px 11px;
+    cursor: var(--c-pointer);
+    white-space: nowrap;
+}
+
+.service-worker-tray-popup.vista-update-balloon .popover-content {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.service-worker-tray-popup.vista-update-balloon .vista-update-balloon-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
 .service-worker-tray-popup.vista-update-balloon .popover-header {
-    gap: 7px;
+    flex: none;
+    gap: 0;
     font-weight: 700;
+    font-size: 9pt;
+    line-height: 16px;
+    color: #003399;
+}
+
+.service-worker-tray-popup.vista-update-balloon .popover-header span {
+    white-space: nowrap;
 }
 
 .service-worker-tray-popup.vista-update-balloon .vista-update-balloon-icon {
     flex: none;
-    width: 16px;
-    height: 16px;
+    width: 32px;
+    height: 32px;
 }
 
 .service-worker-tray-popup.vista-update-balloon .popover-body {
-    padding-left: 23px;
+    padding-left: 0;
     font-size: 9pt;
+    font-weight: 400;
+    line-height: 12px;
+    color: #000;
+    white-space: nowrap;
 }
 
 .service-worker-tray-popup.vista-update-balloon .vista-update-balloon-close {
-    position: relative;
     flex: none;
     width: 15px;
     height: 15px;
+    margin-top: -2px;
     padding: 0;
-    background: none;
     border: 1px solid transparent;
     border-radius: 2px;
+    background-color: transparent;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='8'%3E%3Cpath d='M1 1L8 7M8 1L1 7' stroke='%23969696' stroke-width='1.15'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 9px 8px;
     cursor: var(--c-default);
 }
 
 .service-worker-tray-popup.vista-update-balloon .vista-update-balloon-close::before {
-    content: '\00d7';
-    position: absolute;
-    inset: -2px 0 0;
-    color: #6d6d6d;
-    font: 13px/15px 'Segoe UI', 'Noto Sans', sans-serif;
-    text-align: center;
+    content: none;
 }
 
 .service-worker-tray-popup.vista-update-balloon .vista-update-balloon-close:hover {
-    background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
+    background-color: #bee6fd;
     border-color: #3c7fb1;
 }

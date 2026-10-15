@@ -130,6 +130,7 @@ vm.runInContext([
     extractBlock('function handleModalCaptionDoubleClick('),
     extractBlock('function restoreMaximizedModalUnderPointer('),
     'this.ensureModalMaximizeButton = ensureModalMaximizeButton;',
+    'this.getModalCaptionBandTitleBar = getModalCaptionBandTitleBar;',
     'this.handleModalCaptionDoubleClick = handleModalCaptionDoubleClick;',
     'this.restoreMaximizedModalUnderPointer = restoreMaximizedModalUnderPointer;',
     'this.THRESHOLD = MAXIMIZED_DRAG_RESTORE_THRESHOLD_PX;'
@@ -176,6 +177,14 @@ const dbl = (target, y = 10) => {
     dbl(w.toolbarBtn, 40);
     dbl(w.title, 40);
     assert.deepStrictEqual(calls, [], 'title toolbar and its buttons are not the caption band');
+
+    w.toolbar.style.display = 'none';
+    w.toolbar._rect = { left: 0, top: 0, width: 0, height: 0, bottom: 0 };
+    calls.length = 0;
+    assert.ok(dbl(w.titleMain, 10), 'a hidden toolbar does not eat the caption');
+    assert.deepStrictEqual(calls, [['toggle', 'notes']], 'hidden toolbar: caption still maximizes');
+    w.toolbar.style.display = '';
+    w.toolbar._rect = { left: 0, top: 30, width: 800, height: 30, bottom: 60 };
 
     const noMax = buildWindow({ id: 'tool', data: { windowFixedSize: 'true' } });
     ctx.ensureModalMaximizeButton(noMax.modal);

@@ -24,6 +24,7 @@ function prepareSystemTrayBackground() {
         'workspaceTrayIcon',
         'serviceWorkerTrayIcon',
         'pingWarningIndicator',
+        'volumeTrayIcon',
         'modemTrayIcon'
     ];
 
@@ -33,9 +34,7 @@ function prepareSystemTrayBackground() {
     });
 
     // The wallet tray icon repaints and polls on its own (walletTray.init: public/scripts/comp/walletTray.js).
-    // doveRefreshTrayUnread: public/scripts/comp/desktop-apps/dovecote.js — no server push for new
-    // mail, so the unread badge polls.
-    setInterval(doveRefreshTrayUnread, 60000);
+    // Mail is pushed (dovecote_mailbox_updated -> doveOnMailboxUpdated in desktop-apps/dovecote.js).
 }
 
 async function startBackgroundTrayServices() {
@@ -94,6 +93,10 @@ async function startBackgroundTrayServices() {
         () => {
             revealTrayIconById('serviceWorkerTrayIcon');
             return 'serviceWorkerTrayIcon';
+        },
+        () => {
+            revealTrayIconById('volumeTrayIcon');
+            return 'volumeTrayIcon';
         },
         () => {
             revealTrayIconById('modemTrayIcon');

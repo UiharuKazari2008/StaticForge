@@ -47,14 +47,16 @@ function handleWorkspaceCssUpdatedMessage(message) {
     if (!hash) {
         return;
     }
+    // applyWorkspaceCssFromServer: public/scripts/comp/workspaceUtils.js
     if (window.serviceWorkerManager) {
         window.serviceWorkerManager.cacheStaticFilesSilent([{ url: webPath, hash }]).then(() => {
-            // applyWorkspaceCssFromServer: public/scripts/comp/workspaceUtils.js
             applyWorkspaceCssFromServer(hash, webPath);
         }).catch(() => {
             applyWorkspaceCssFromServer(hash, webPath);
         });
+        return;
     }
+    applyWorkspaceCssFromServer(hash, webPath);
 }
 
 function handleGalleryScrollStateData(data) {

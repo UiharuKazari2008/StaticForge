@@ -52,6 +52,16 @@ const PopoverManager = {
     showPopover(element, type, title, message, showProgress = false, timeout = 5000, customIcon = null, buttons = null, options = {}) {
         if (!element) return null;
 
+        // trayPopupHidden, trayClampPopupTimeout, trayNotePopup: public/scripts/comp/trayRegistry.js
+        if (options.popupId && trayPopupHidden(options.popupId)) {
+            if (typeof options.onHide === 'function') {
+                try { options.onHide(); } catch (_) { /* best effort */ }
+            }
+            return null;
+        }
+        if (options.popupId) trayNotePopup(options.popupId, title);
+        timeout = trayClampPopupTimeout(timeout);
+
         // No tray balloon while the taskbar is hidden (desktopBoot.isTaskbarVisible, #435)
         const boot = window.desktopBoot;
         if (!options.hoverOnly && boot && typeof boot.isTaskbarVisible === 'function'
@@ -394,7 +404,11 @@ const PopoverManager = {
      */
     _positionPopover(popoverData) {
         const { element, popover } = popoverData;
-        const rect = element.getBoundingClientRect();
+        let rect = element.getBoundingClientRect();
+        if (rect.width < 1 || rect.height < 1) {
+            const chev = document.getElementById('trayOverflowBtn');
+            if (chev && !chev.classList.contains('hidden')) rect = chev.getBoundingClientRect();
+        }
         
         // Force layout calculation if popover is hidden
         const wasHidden = !popover.classList.contains('show');
@@ -417,9 +431,9 @@ const PopoverManager = {
         if (hasBottomRightArrow) {
             // For bottom-right arrow, position popover above element
             // Arrow should point from bottom-right of popover to the element
-            // Calculate arrow position (1em from right, 18px from bottom)
-            const arrowOffset = 18; // Arrow height
-            const arrowRightOffset = parseFloat(getComputedStyle(popover).fontSize) || 16; // 1em in pixels
+            // Stem is 16px, inset 15px from the balloon's right edge (Vista NotifyIcon)
+            const arrowOffset = 16;
+            const arrowRightOffset = 15;
             
             top = rect.top - popoverRect.height - arrowOffset;
             // Align arrow to point to right side of element, offset by -10px to line up

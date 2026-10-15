@@ -873,7 +873,11 @@ function maskAgentStudioRead(node, compiledSide) {
         if (typeof out[key] === 'string') out[key] = maskCompiledReadText(out[key]);
     });
     if (out.compiled_prompt && typeof out.compiled_prompt === 'object' && !Array.isArray(out.compiled_prompt)) {
-        out.compiled_prompt = maskAgentStudioRead(out.compiled_prompt, true);
+        // compiled_prompt.context is the raw scene blob (weather history, hourly rows).
+        // The agent already gets the short scene line. Returning the blob overflows the tool.
+        const compiled = { ...out.compiled_prompt };
+        delete compiled.context;
+        out.compiled_prompt = maskAgentStudioRead(compiled, true);
     }
     if (Array.isArray(out.fields)) out.fields = out.fields.map(maskReadField);
     if (Array.isArray(out.characters)) out.characters = out.characters.map((row) => maskReadCharacter(row, compiledSide));
@@ -883,7 +887,11 @@ function maskAgentStudioRead(node, compiledSide) {
         out.compiled = maskAgentStudioRead(out.compiled, true);
     }
     ['dynamic_generation', 'dynamicGeneration'].forEach((key) => {
-        if (out[key] && typeof out[key] === 'object') out[key] = maskAgentStudioRead(out[key], false);
+        if (out[key] && typeof out[key] === 'object' && !Array.isArray(out[key])) {
+            const dg = { ...out[key] };
+            delete dg.context;
+            out[key] = maskAgentStudioRead(dg, false);
+        }
     });
     if (out.forge_data && typeof out.forge_data === 'object' && !Array.isArray(out.forge_data)) {
         out.forge_data = maskAgentStudioRead(out.forge_data, compiledSide);

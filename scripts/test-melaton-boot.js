@@ -33,7 +33,10 @@ function harness(statusAnswers, opts = {}) {
         setInterval: (fn) => { const id = t.nextId++; t.intervals.set(id, fn); return id; },
         clearInterval: (id) => { t.intervals.delete(id); },
         navigator: { onLine: opts.offline ? false : true },
-        sessionStorage: { setItem: (k, v) => { t.storage[k] = v; } },
+        sessionStorage: {
+            setItem: (k, v) => { t.storage[k] = v; },
+            removeItem: (k) => { delete t.storage[k]; }
+        },
         location: { replace: (url) => t.replaced.push(url) },
         designMode: !!opts.designMode,
         window: opts.window || {},
@@ -95,7 +98,12 @@ const flush = () => new Promise((r) => setImmediate(r));
     assert.strictEqual(h.t.fetches.length, boot.config.maxFailures, `menu after ${boot.config.maxFailures} errors in a row`);
     assert.strictEqual(h.t.last().data.info, boot.INFO.unreachable);
     assert.strictEqual(h.t.last().data.countdown, boot.config.countdownSec);
-    assert.deepStrictEqual(h.t.last().data.entries.map((e) => e.label), ['Dreamscape Melaton', 'Melaton Recovery (Reinstall)']);
+    assert.deepStrictEqual(h.t.last().data.entries.map((e) => e.label), [
+        'Dreamscape Melaton',
+        'Dreamscape Melaton (via System Restore)',
+        'Dreamscape Melaton (Safe Mode with Networking)',
+        'Melaton Recovery (Reinstall)'
+    ]);
 
     h = harness([timeoutErr()]);
     assert.strictEqual(await h.ctl.runChecks(), 'menu');
@@ -136,12 +144,16 @@ const flush = () => new Promise((r) => setImmediate(r));
     assert.strictEqual(h.t.last().data.countdown, null, 'countdown line gone after a key');
     assert.strictEqual(h.t.intervals.size, 0);
     h.ctl.handleKey('ArrowDown');
-    assert.strictEqual(h.t.last().data.selected, 1, 'no wrap past the last entry');
+    h.ctl.handleKey('ArrowDown');
+    h.ctl.handleKey('ArrowDown');
+    assert.strictEqual(h.t.last().data.selected, 3, 'no wrap past the last entry');
     h.ctl.handleKey('Enter');
     assert.strictEqual(h.ctl.screen, 'confirm', 'Recovery asks first');
     h.ctl.handleKey('Escape');
     assert.strictEqual(h.ctl.screen, 'menu');
-    assert.strictEqual(h.t.last().data.selected, 1, 'back on Recovery');
+    assert.strictEqual(h.t.last().data.selected, 3, 'back on Recovery');
+    h.ctl.handleKey('ArrowUp');
+    h.ctl.handleKey('ArrowUp');
     h.ctl.handleKey('ArrowUp');
     h.ctl.handleKey('Enter');
     await flush();
@@ -151,18 +163,19 @@ const flush = () => new Promise((r) => setImmediate(r));
     // ---------- touch: tap = choose; Recovery by touch gets a two-item menu ----------
     h = harness([networkErr()]);
     await h.ctl.runChecks();
-    h.ctl.handlePointer('choose', 1, 'mouse');
+    const recoveryIndex = boot.ENTRIES.findIndex((entry) => entry.id === 'recovery');
+    h.ctl.handlePointer('choose', recoveryIndex, 'mouse');
     assert.strictEqual(h.ctl.screen, 'confirm');
     assert.strictEqual(h.t.last().data.mode, 'keyboard', 'a mouse implies a keyboard: ENTER / ESC prompt');
     h.ctl.handlePointer('cancel', undefined, 'mouse');
     assert.strictEqual(h.ctl.screen, 'menu');
-    h.ctl.handlePointer('choose', 1, 'touch');
+    h.ctl.handlePointer('choose', recoveryIndex, 'touch');
     assert.strictEqual(h.t.last().data.mode, 'touch', 'touch: no keyboard to assume');
     assert.deepStrictEqual(h.t.last().data.options.map((o) => o.label), ['Continue', 'Return to Boot Menu']);
     assert.strictEqual(h.t.last().data.selected, 0);
     h.ctl.handlePointer('option', 1, 'touch');
     assert.strictEqual(h.ctl.screen, 'menu', 'Return to Boot Menu');
-    h.ctl.handlePointer('choose', 1, 'pen');
+    h.ctl.handlePointer('choose', recoveryIndex, 'pen');
     assert.strictEqual(h.t.last().data.mode, 'touch', 'a pen counts as touch');
     h.ctl.handleKey('ArrowDown');
     assert.strictEqual(h.t.last().data.selected, 1, 'the touch menu also takes arrows');
@@ -184,6 +197,14 @@ const flush = () => new Promise((r) => setImmediate(r));
     assert.deepStrictEqual(h.t.replaced, [], 'the dropped check never hands off');
     assert.strictEqual(h.ctl.handleKey('F8'), true, 'F8 on the menu just stops the countdown');
 
+    // F8 before the controller exists: the head listener's flag opens the menu with no status poll
+    globalThis.melatonBootInterrupt = true;
+    h = harness([json(true)]);
+    assert.strictEqual(await h.ctl.runChecks(), 'menu');
+    assert.strictEqual(h.t.fetches.length, 0, 'the interrupt wins before the first status poll');
+    assert.strictEqual(h.t.last().data.countdown, null);
+    assert.strictEqual(globalThis.melatonBootInterrupt, false);
+
     // ---------- Melaton Recovery: clean install, every step reported, reboot /launch ----------
     const wiped = [];
     const fakeWindow = {
@@ -202,6 +223,8 @@ const flush = () => new Promise((r) => setImmediate(r));
     };
     h = harness([networkErr()], { window: fakeWindow });
     await h.ctl.runChecks();
+    h.ctl.handleKey('ArrowDown');
+    h.ctl.handleKey('ArrowDown');
     h.ctl.handleKey('ArrowDown');
     h.ctl.handleKey('Enter');
     h.ctl.handleKey('Enter');
@@ -271,6 +294,33 @@ const flush = () => new Promise((r) => setImmediate(r));
                 }
                 return plan.download ? plan.download(list) : { ok: true, errors: [] };
             },
+            copyPack: async (_env, manifest, opts = {}) => {
+                calls.push('copyPack');
+                if (Array.isArray(opts.subset)) calls.push(`subset:${opts.subset.length}`);
+                if (opts.onProgress) opts.onProgress({ fraction: 0.5 });
+                if (opts.onProgress) opts.onProgress({ fraction: 1 });
+                if (plan.copyPack) return plan.copyPack(manifest);
+                if (plan.download) {
+                    const result = plan.download(manifest);
+                    return { ok: result.ok, stalled: !!result.stalled, error: result.errors && result.errors[0] };
+                }
+                return { ok: true };
+            },
+            expandPack: async (_env, manifest, opts = {}) => {
+                calls.push('expandPack');
+                if (opts.onProgress) opts.onProgress({ fraction: 1 });
+                if (plan.expand) return plan.expand(manifest);
+                if (plan.verify) {
+                    const missing = plan.verify(manifest);
+                    return { ok: true, missing: missing.map((file) => file.url || file) };
+                }
+                return { ok: true, missing: [] };
+            },
+            installGroup: async (_env, group, opts = {}) => {
+                calls.push(`group:${group}`);
+                if (opts.onProgress) opts.onProgress({ fraction: 1 });
+                return plan.group ? plan.group(group) : { ok: true, mismatched: [] };
+            },
             verify: async (_env, list) => (plan.verify ? plan.verify(list) : [])
         };
         return { engine, store, calls };
@@ -281,6 +331,26 @@ const flush = () => new Promise((r) => setImmediate(r));
         const result = await hh.ctl.runChecks();
         return { ...hh, ...fe, result };
     };
+
+    // System Restore skips updates. Safe Mode keeps the VGA flag for /app.
+    {
+        const fe = fakeEngine({ checks: [{ files: files(50), bytes: 5000 }], resume: true });
+        h = harness([json(true)], { engine: fe.engine });
+        h.ctl.bootMode = 'restore';
+        assert.strictEqual(await h.ctl.runChecks(), 'teal');
+        assert.deepStrictEqual(fe.calls, [], 'restore does not check or copy');
+        assert.strictEqual(fe.store.state, null, 'a resumed install is dropped');
+        assert.deepStrictEqual(h.t.replaced, ['/app']);
+        assert.ok(!('melatonSafeMode' in h.t.storage));
+    }
+    {
+        const fe = fakeEngine({ checks: [{ files: [], bytes: 0 }] });
+        h = harness([json(true)], { engine: fe.engine });
+        h.ctl.bootMode = 'safe';
+        assert.strictEqual(await h.ctl.runChecks(), 'teal');
+        assert.deepStrictEqual(fe.calls, ['check'], 'safe mode still applies updates');
+        assert.strictEqual(h.t.storage.melatonSafeMode, '1');
+    }
 
     // nothing to update: straight to teal
     let u = await runWith({ checks: [{ files: [], bytes: 0 }] });
@@ -311,10 +381,11 @@ const flush = () => new Promise((r) => setImmediate(r));
     assert.ok(Math.abs(lastInstall.overall - 1) < 1e-9, 'second bar full');
     assert.strictEqual(u.store.state, null, 'install state cleared');
     assert.strictEqual(u.store.record.files, 50);
-    assert.deepStrictEqual(u.calls, ['check', 'download:50', 'check'], 'Installing updates checks the server again');
-    assert.ok(u.t.now >= boot.config.installLingerMs + 5 * boot.config.installStepMs, 'each line readable, then the linger');
+    assert.deepStrictEqual(u.calls, ['check', 'copyPack', 'subset:50', 'expandPack', 'group:features', 'group:updates'], 'the installer copies one pack, then expands and checks each group');
+    assert.ok(installs.some((r) => r.data.phase === 'arrive'), 'aurora alone before the setup window');
+    assert.ok(u.t.now >= boot.config.installLingerMs + boot.config.installArriveMs + 5 * boot.config.installStepMs, 'arrive, each line readable, then the linger');
 
-    // the download stalls: a Classic message box; Retry stays in Setup and finishes
+    // the pack stalls: a Vista Basic message box; Retry stays in Setup and finishes
     let fails = 1;
     u = await runWith({
         checks: [{ files: files(50), bytes: 5000 }],
@@ -343,7 +414,7 @@ const flush = () => new Promise((r) => setImmediate(r));
     u = await runWith({ checks: [{ files: files(50), bytes: 5000 }, { files: [], bytes: 0 }], verify: (list) => list.slice(0, 3) });
     assert.strictEqual(u.result, 'reboot');
     assert.deepStrictEqual(u.store.record.stragglers, ['/f0.js', '/f1.js', '/f2.js']);
-    assert.ok(u.calls.includes('download:3'), 'one more pass for the stragglers');
+    assert.ok(!u.calls.includes('download:3'), 'stragglers stay in the pack result; they are not fetched again one by one');
     // but many missing files fail
     u = await runWith({ checks: [{ files: files(50), bytes: 5000 }], verify: (list) => list.slice(0, 30) });
     assert.strictEqual(u.result, 'error');

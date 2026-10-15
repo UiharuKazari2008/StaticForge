@@ -74,8 +74,9 @@
         connectionWaitText: 'Please wait...',
         connectionFailedText: 'The server is not responding…',
         suspendText: 'Restoring your session…',
-        lockSwitchMs: 500,   // black cut before the lock screen shows
-        unlockSwitchMs: 1500 // black while the desktop comes back under it
+        lockSwitchMs: 500,   // black hold after the fade, before the lock screen shows
+        unlockSwitchMs: 1500, // black hold while the desktop comes back under it
+        sessionFadeMs: 900   // fade to black, same pace as the winlogon power cover
     };
 
     const doc = typeof document !== 'undefined' ? document : null;
@@ -104,6 +105,7 @@
         workstationLocked: false,   // manual lock (start menu Lock / Ctrl+Alt+L, workstationLock.js)
         pauseDepth: 0,              // both locks can be up; the pauses nest
         switchTimer: null,
+        switchCoverTimer: null,
         pausedBy: [],         // resume functions from the pause hooks, run on unlock
         lastStepMessage: '',
         lastProgress: 0
@@ -417,7 +419,7 @@
         if (state.active) advance();
     }
 
-    // ---------- session switch: one black cut over everything ----------
+    // ---------- session switch: fade to black, change the lock under it, fade back ----------
 
     function switchOverlay() {
         let el = byId('sessionSwitchOverlay');
@@ -430,22 +432,44 @@
         return el;
     }
 
-    /** Black at once, lifted (no fade) after ms; a newer cut replaces the pending lift. */
-    function cutToBlack(ms) {
+    /**
+     * Fade the black cover in, run onCovered once it is opaque, hold, then fade it out.
+     * coverLogon keeps the Welcome screen hidden until the fade out, so it does not pop
+     * over the desktop while the cover is still rising.
+     */
+    function beginSessionFade(holdMs, onCovered, coverLogon) {
         const el = switchOverlay();
+        const b = body();
         clearTimeout(state.switchTimer);
+        clearTimeout(state.switchCoverTimer);
         state.switchTimer = null;
-        if (!el) return;
+        state.switchCoverTimer = null;
+        if (!el) {
+            if (onCovered) onCovered();
+            return;
+        }
+        if (b) b.classList.toggle('session-switch-cover', !!coverLogon);
+        void el.offsetWidth;
         el.classList.add('active');
-        state.switchTimer = setTimeout(() => {
-            state.switchTimer = null;
-            el.classList.remove('active');
-            dispatch('desktopSessionSwitchDone', { locked: state.suspended });
-        }, Math.max(0, ms));
+        const armHold = () => {
+            state.switchCoverTimer = null;
+            if (onCovered) onCovered();
+            const lift = () => {
+                state.switchTimer = null;
+                if (b) b.classList.remove('session-switch-cover');
+                el.classList.remove('active');
+                dispatch('desktopSessionSwitchDone', { locked: state.suspended || state.workstationLocked });
+            };
+            if (holdMs <= 0) lift();
+            else state.switchTimer = setTimeout(lift, holdMs);
+        };
+        const fade = Math.max(0, config.sessionFadeMs);
+        if (fade <= 0) armHold();
+        else state.switchCoverTimer = setTimeout(armHold, fade);
     }
 
     function isSwitching() {
-        return !!state.switchTimer;
+        return !!(state.switchTimer || state.switchCoverTimer);
     }
 
     // ---------- pause while locked ----------
@@ -664,15 +688,15 @@
         if (state.suspended) return true;
         state.suspended = true;
         state.suspendReason = reason || 'server-restart';
-        // Session switch: black first, the lock screen is built under it
-        cutToBlack(config.lockSwitchMs);
-        const b = body();
-        if (b) b.classList.add('session-suspended');
-        applyLockTheme();
-        // Close transient surfaces so nothing pops back over the lock screen
         closeTransientSurfaces();
         pauseSession();
-        dispatch('desktopSessionSuspended', { reason: state.suspendReason });
+        // Desktop stays up under the rising cover; the lock screen is built once it is opaque
+        beginSessionFade(config.lockSwitchMs, () => {
+            const b = body();
+            if (b) b.classList.add('session-suspended');
+            applyLockTheme();
+            dispatch('desktopSessionSuspended', { reason: state.suspendReason });
+        }, true);
         return true;
     }
 
@@ -681,14 +705,13 @@
         state.suspended = false;
         const reason = state.suspendReason;
         state.suspendReason = null;
-        // Session switch back: black for unlockSwitchMs; the cover, Classic → Aero and the
-        // resumed loops all settle under it, then the desktop cuts in
-        cutToBlack(config.unlockSwitchMs);
-        const b = body();
-        if (b) b.classList.remove('session-suspended');
-        applyLockTheme();
         resumeSession();
-        dispatch('desktopSessionResumed', { reason });
+        beginSessionFade(config.unlockSwitchMs, () => {
+            const b = body();
+            if (b) b.classList.remove('session-suspended');
+            applyLockTheme();
+            dispatch('desktopSessionResumed', { reason });
+        }, false);
         return true;
     }
 
@@ -704,25 +727,27 @@
     function lockWorkstation() {
         if (!doc || !isDesktop() || state.active || state.workstationLocked) return false;
         state.workstationLocked = true;
-        cutToBlack(config.lockSwitchMs);
-        const b = body();
-        if (b) b.classList.add('workstation-locked');
-        applyLockTheme();
         closeTransientSurfaces();
         pauseSession();
-        dispatch('desktopWorkstationLocked', {});
+        beginSessionFade(config.lockSwitchMs, () => {
+            const b = body();
+            if (b) b.classList.add('workstation-locked');
+            applyLockTheme();
+            dispatch('desktopWorkstationLocked', {});
+        }, true);
         return true;
     }
 
     function unlockWorkstation() {
         if (!state.workstationLocked) return false;
         state.workstationLocked = false;
-        cutToBlack(config.unlockSwitchMs);
-        const b = body();
-        if (b) b.classList.remove('workstation-locked');
-        applyLockTheme();
         resumeSession();
-        dispatch('desktopWorkstationUnlocked', {});
+        beginSessionFade(config.unlockSwitchMs, () => {
+            const b = body();
+            if (b) b.classList.remove('workstation-locked');
+            applyLockTheme();
+            dispatch('desktopWorkstationUnlocked', {});
+        }, false);
         return true;
     }
 

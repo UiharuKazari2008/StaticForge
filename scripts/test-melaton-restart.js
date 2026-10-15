@@ -1,8 +1,6 @@
 #!/usr/bin/env node
-// Restart paths (Yozora #420): modalUtils restartClientNavigate / runClientRestartSequence and
-// serviceWorkerManager.forceRestart, lifted from the sources into a vm sandbox.
-// Desktop restarts fade out through the shutdown sequence and reboot via /launch (Melaton
-// boot); narrow mode reloads; agent test restarts ({ direct: true }) reload in place.
+// Restart paths (Yozora #420): the Welcome screen (winlogonPower.js) then /launch.
+// Agents, updates, and refresh all use that path. Narrow mode reloads from the same path.
 // Run: node scripts/test-melaton-restart.js
 const assert = require('assert');
 const fs = require('fs');
@@ -39,6 +37,7 @@ function lift(src, name, { method = false } = {}) {
 
 const modalSrc = fs.readFileSync(path.join(__dirname, '../public/scripts/comp/modalUtils.js'), 'utf8');
 const swSrc = fs.readFileSync(path.join(__dirname, '../public/scripts/comp/serviceWorkerManager.js'), 'utf8');
+const powerSrc = fs.readFileSync(path.join(__dirname, '../public/scripts/comp/winlogonPower.js'), 'utf8');
 
 function sandbox({ isDesktop = true, initialized = true } = {}) {
     const log = [];
@@ -47,7 +46,7 @@ function sandbox({ isDesktop = true, initialized = true } = {}) {
         setTimeout: (fn) => { log.push('timer'); fn(); },
         bypassConfirmation: false,
         suppressWebSocketReconnectForReload: () => log.push('suppress'),
-        runClientShutdownSequence: async (finalAction) => { log.push('shutdown-fade'); finalAction(); },
+        runWinlogonPower: async (kind) => { log.push(`power:${kind}`); return true; },
         location: { replace: (url) => log.push(`replace:${url}`), reload: () => log.push('reload') },
         alert: () => log.push('alert')
     };
@@ -76,37 +75,47 @@ function sandbox({ isDesktop = true, initialized = true } = {}) {
     s.ctx.restartClientNavigate();
     assert.deepStrictEqual(s.log, ['suppress', 'reload']);
 
-    // Restart button: shutdown fade first, then the Melaton boot
+    // Restart button: the Welcome screen, which releases the browser
     s = sandbox();
     await s.ctx.runClientRestartSequence();
-    assert.deepStrictEqual(s.log, ['shutdown-fade', 'suppress', 'replace:/launch']);
+    assert.deepStrictEqual(s.log, ['power:restart']);
 
-    // forceRestart with the desktop up: the same Windows restart
+    // forceRestart, during boot, narrow, and a former direct reload: all the same path
     s = sandbox();
     s.forceRestart();
     await new Promise((r) => setImmediate(r));
-    assert.deepStrictEqual(s.log, ['fuse-reset', 'suppress', 'shutdown-fade', 'suppress', 'replace:/launch']);
+    assert.deepStrictEqual(s.log, ['fuse-reset', 'power:restart']);
 
-    // during boot (nothing to close): straight to /launch
     s = sandbox({ initialized: false });
     s.forceRestart();
-    assert.deepStrictEqual(s.log, ['fuse-reset', 'suppress', 'timer', 'suppress', 'replace:/launch']);
+    await new Promise((r) => setImmediate(r));
+    assert.deepStrictEqual(s.log, ['fuse-reset', 'power:restart']);
 
-    // narrow mode: reload in place
     s = sandbox({ isDesktop: false });
     s.forceRestart();
-    assert.deepStrictEqual(s.log, ['fuse-reset', 'suppress', 'timer', 'suppress', 'reload']);
+    await new Promise((r) => setImmediate(r));
+    assert.deepStrictEqual(s.log, ['fuse-reset', 'power:restart']);
 
-    // agent test restart: direct reload, no fade, no /launch
     s = sandbox();
     s.forceRestart({ direct: true });
-    assert.deepStrictEqual(s.log, ['fuse-reset', 'suppress', 'timer', 'reload']);
+    await new Promise((r) => setImmediate(r));
+    assert.deepStrictEqual(s.log, ['fuse-reset', 'power:restart']);
 
-    // the agent bridge asks for the direct path; the System Update dialog does not
+    assert.ok(powerSrc.includes("screen: 'Shutting down...'"), 'restart screen text');
+    assert.ok(powerSrc.includes("screen: 'Logging off...'"), 'logoff screen text');
+    assert.ok(powerSrc.includes('The following programs are still running:'), 'still-running title');
+    assert.ok(!powerSrc.includes('Restarting...'), 'Vista has no Restarting line');
+
     const bridge = fs.readFileSync(path.join(__dirname, '../public/scripts/comp/agentClientBridge.js'), 'utf8');
-    assert.ok(/restartClientFromCommand[\s\S]{0,400}forceRestart\(\{ direct: true \}\)/.test(bridge), 'agent restart_client stays a direct reload');
+    assert.ok(/function restartClientFromCommand\(\) \{[\s\S]{0,400}runWinlogonPower\('restart'\)/.test(bridge), 'agent restart_client uses the Welcome screen');
+    assert.ok(!bridge.includes('direct: true'), 'agent restart_client does not reload in place');
     const dialog = fs.readFileSync(path.join(__dirname, '../public/scripts/comp/agentClientUpdateDialog.js'), 'utf8');
     assert.ok(/sw\.forceRestart\(\);/.test(dialog), 'System Update dialog restarts like Windows');
+    assert.ok(!/window\.location\.reload\(\)/.test(dialog.slice(dialog.indexOf('forceRestart'))), 'update dialog does not reload in place');
+
+    const waiting = swSrc.slice(swSrc.indexOf('async checkForWaiting'), swSrc.indexOf('async checkForUpdates'));
+    assert.ok(waiting.includes('this.forceRestart()'), 'a waiting service worker uses the restart path');
+    assert.ok(!waiting.includes('location.reload'), 'a waiting service worker does not reload in place');
 
     console.log('✅ test-melaton-restart: all assertions passed');
 })().catch((err) => {

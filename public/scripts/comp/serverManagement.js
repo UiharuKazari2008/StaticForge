@@ -150,41 +150,39 @@ const serverManagement = {
         const broom = typeof confirmed === 'object' ? confirmed.broom !== false : true;
         this.restartBroomDefault = broom;
 
+        if (options.onPrepare) {
+            options.onPrepare();
+        }
+
         try {
-            if (options.onPrepare) {
-                options.onPrepare();
-            }
-            // suppressWebSocketReconnectForReload, waitForServerDisconnect, runClientShutdownSequence — modalUtils.js
-            suppressWebSocketReconnectForReload();
-            if (options.onStatus) {
-                options.onStatus('Preparing DSS restart…');
-            }
-            await this.postPm2Action('/pm2/restart', { broom });
-            if (options.onStatus) {
-                options.onStatus('DSS restarting — waiting for disconnect…');
-            }
-
-            const disconnected = await waitForServerDisconnect({ timeoutMs: 120000 });
-
-            if (!disconnected) {
-                showGlassToast('error', 'DreamScape Server', 'Server did not disconnect in time — reload manually when ready', false, 10000, '<i class="fas fa-exclamation-triangle"></i>');
-                if (options.onStatus) {
-                    options.onStatus('DSS restart timed out — server may still be shutting down');
+            // The Welcome screen shows "Shutting down..." before PM2 is posted.
+            // runWinlogonPower: public/scripts/comp/winlogonPower.js
+            const went = await runWinlogonPower('server', {
+                onCommit: async () => {
+                    if (options.onStatus) {
+                        options.onStatus('Preparing DSS restart...');
+                    }
+                    await this.postPm2Action('/pm2/restart', { broom });
+                    if (options.onStatus) {
+                        options.onStatus('DSS restarting - waiting for disconnect...');
+                    }
+                    // waitForServerDisconnect: public/scripts/comp/modalUtils.js
+                    const disconnected = await waitForServerDisconnect({ timeoutMs: 120000 });
+                    if (!disconnected) {
+                        const err = new Error('Server did not disconnect in time');
+                        if (options.onStatus) {
+                            options.onStatus('DSS restart timed out - server may still be shutting down');
+                        }
+                        throw err;
+                    }
+                    if (options.onStatus) {
+                        options.onStatus('Server disconnected - restarting application...');
+                    }
                 }
-                if (options.onError) {
-                    options.onError(new Error('Server did not disconnect in time'));
-                }
-                return false;
-            }
-
-            if (options.onStatus) {
-                options.onStatus('Server disconnected — restarting application…');
-            }
-            // Full restart through the Melaton boot (modalUtils.restartClientNavigate)
-            await runClientShutdownSequence(() => restartClientNavigate());
-            return true;
+            });
+            return !!went;
         } catch (error) {
-            showGlassToast('error', 'System', error.message, false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+            showGlassToast('error', 'DreamScape Server', error.message || 'Server did not disconnect in time', false, 10000, '<i class="fas fa-exclamation-triangle"></i>');
             if (options.onError) {
                 options.onError(error);
             }

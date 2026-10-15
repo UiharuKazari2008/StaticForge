@@ -51,6 +51,8 @@ const { streamLogFile } = require('./modules/logStreamService');
 const pm2Service = require('./modules/pm2Service');
 const runtimeAssetService = require('./modules/runtimeAssetService');
 const agentAssetBundle = require('./modules/agentAssetBundle');
+const meletonInstallPack = require('./modules/meletonInstallPack');
+const melatonUpdateEngine = require('./public/scripts/launch/updateEngine');
 const agentClientBridge = require('./modules/agentClientBridge');
 const cursorDirector = require('./modules/cursorDirector');
 const mcpAgentFacade = require('./modules/mcpAgentFacade');
@@ -864,9 +866,19 @@ async function initializeCacheData(force = false) {
         const cacheData = globalResources.getGlobalCacheData();
         globalResources.logger.bootSubStep(`Cached ${cacheData.length} assets`);
         agentAssetBundle.invalidate();
-        // The complete agent bundle contains every cached asset. Build it only when
-        // /agent/assets.zip is requested instead of pinning a multi-GB zip after each
-        // service-worker refresh.
+        // The agent zip stays lazy. The installer pack is a separate on-disk zip of this
+        // manifest, built here so Copying can download one stream.
+        try {
+            const pack = await meletonInstallPack.rebuild({
+                manifest: buildServiceWorkerCacheManifest(),
+                resolveFile: resolveInstallPackFile,
+                log: (done, total) => globalResources.logger.bootSubStep(`Install pack ${done}/${total}`)
+            });
+            const verb = pack.rebuilt ? 'Built' : 'Reused';
+            globalResources.logger.bootSubStep(`${verb} install pack (${pack.count} files, ${pack.bytes} bytes)`);
+        } catch (packError) {
+            globalResources.logger.error(`Install pack build failed: ${packError.message}`);
+        }
     } catch (error) {
         globalResources.logger.error('Error initializing cache data:', error.message);
     }
@@ -932,6 +944,18 @@ agentAssetBundle.init({
     projectRoot: __dirname,
     getManifest: buildServiceWorkerCacheManifest
 });
+
+meletonInstallPack.init({
+    outputDir: path.join(__dirname, '.cache', 'meleton-install')
+});
+
+function resolveInstallPackFile(file) {
+    if (file && file.url === '/protected/fflate.js') {
+        const fflatePath = path.resolve(__dirname, 'node_modules', 'fflate', 'umd', 'index.js');
+        return fs.existsSync(fflatePath) ? fflatePath : null;
+    }
+    return agentAssetBundle.resolveFilePath(file);
+}
 
 // Recompile runtime assets, refresh server hash cache, and broadcast manifest to clients
 async function refreshAndBroadcastServiceWorkerCache(options = {}) {
@@ -2076,6 +2100,68 @@ app.use('/image/opti/:filename', authMiddleware, async (req, res) => {
     } catch (error) {
         console.error('Error processing optimized image:', error);
         res.status(500).json({ success: false, error: 'Failed to process image' });
+    }
+});
+
+function sendInstallPack(res, pack, cleanup) {
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Length', String(pack.bytes));
+    res.setHeader('X-Pack-Hash', pack.hash);
+    res.setHeader('Cache-Control', 'no-store');
+    res.sendFile(pack.path, () => {
+        if (cleanup) cleanup();
+    });
+}
+
+// MeletonFX installer pack: one zip built when the service-worker manifest is recreated.
+app.get('/install/meletonfx.zip', (req, res) => {
+    const pack = meletonInstallPack.status();
+    if (!pack.ready || !pack.path) {
+        res.set('Retry-After', '5');
+        return res.status(503).json({
+            success: false,
+            error: pack.building ? 'Install pack is building' : 'Install pack is not ready',
+            retryAfter: 5
+        });
+    }
+    sendInstallPack(res, pack);
+});
+
+// A short manifest body packs only those files. Longer than subsetMax: 413, client uses GET.
+app.post('/install/meletonfx.zip', async (req, res) => {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const requested = Array.isArray(body.files) ? body.files : null;
+    if (!requested) {
+        return res.status(400).json({ success: false, error: 'files required' });
+    }
+    const max = melatonUpdateEngine.config.subsetMax;
+    if (requested.length > max) {
+        return res.status(413).json({ success: false, error: 'list too large', useFullPack: true, max });
+    }
+    const byUrl = new Map(buildServiceWorkerCacheManifest().map((file) => [file.url, file]));
+    const manifest = [];
+    const seen = new Set();
+    for (const item of requested) {
+        const url = item && item.url;
+        if (!url || seen.has(url)) continue;
+        seen.add(url);
+        const row = byUrl.get(url);
+        if (row) manifest.push(row);
+    }
+    if (!manifest.length) {
+        return res.status(404).json({ success: false, error: 'no matching files' });
+    }
+    let built = null;
+    try {
+        built = await meletonInstallPack.buildSubset({
+            manifest,
+            resolveFile: resolveInstallPackFile
+        });
+        res.setHeader('X-Pack-Subset', '1');
+        sendInstallPack(res, built, built.cleanup);
+    } catch (error) {
+        if (built && built.cleanup) built.cleanup();
+        if (!res.headersSent) res.status(500).json({ success: false, error: error.message });
     }
 });
 

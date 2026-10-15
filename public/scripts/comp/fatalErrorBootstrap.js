@@ -612,18 +612,11 @@
 
     function restartApplication() {
         __dreamscapeFatalNavBypass = true;
-        if (typeof bypassConfirmation !== 'undefined') {
-            bypassConfirmation = true;
-        }
-        // Full restart: shutdown fade, then the Melaton boot on the desktop (modalUtils.js)
-        var navigate = typeof restartClientNavigate === 'function'
-            ? function () { restartClientNavigate(); }
-            : function () { location.reload(); };
-        if (typeof runClientShutdownSequence === 'function') {
-            runClientShutdownSequence(navigate);
-            return;
-        }
-        navigate();
+        // runWinlogonPower: public/scripts/comp/winlogonPower.js
+        runWinlogonPower('restart').catch(function () {
+            // restartClientNavigate: public/scripts/comp/modalUtils.js
+            restartClientNavigate();
+        });
     }
 
     function retryConnectivityRecovery() {
@@ -639,24 +632,8 @@
 
     function exitApplication() {
         __dreamscapeFatalNavBypass = true;
-        if (typeof bypassConfirmation !== 'undefined') {
-            bypassConfirmation = true;
-        }
-        // runClientShutdownSequence / runClientShutdownDirect: public/scripts/comp/modalUtils.js
-        if (typeof runClientShutdownSequence === 'function') {
-            runClientShutdownSequence(function () { window.close(); });
-            return;
-        }
-        if (typeof runClientShutdownDirect === 'function') {
-            runClientShutdownDirect();
-            return;
-        }
-        window.close();
-        setTimeout(function () {
-            try {
-                location.href = 'about:blank';
-            } catch (e) { /* ignore */ }
-        }, 400);
+        // runWinlogonPower: public/scripts/comp/winlogonPower.js
+        runWinlogonPower('shutdown');
     }
 
     function dismissConnectivityError() {
@@ -954,7 +931,8 @@
             }
         } catch (e5) { /* ignore */ }
 
-        location.reload();
+        // runWinlogonPower: public/scripts/comp/winlogonPower.js
+        await runWinlogonPower('restart');
     }
 
     function clearAllErrors() {
@@ -986,10 +964,20 @@
         overlayEl = null;
     }
 
+    // Browser notice, not an app exception. Fired when a ResizeObserver callback
+    // changes layout and leftover notifications wait for the next frame.
+    // Reported against the page URL at line 0 (no script stack).
+    // Chrome: "ResizeObserver loop completed with undelivered notifications."
+    // Older Chrome: "ResizeObserver loop limit exceeded"
+    function isResizeObserverLoopNotice(message) {
+        return String(message || '').indexOf('ResizeObserver loop') === 0;
+    }
+
     function handleWindowError(msg, url, line, col, err) {
         try {
             var stack = err && err.stack ? err.stack : '';
             var message = err && err.message ? err.message : String(msg);
+            if (isResizeObserverLoopNotice(message) || isResizeObserverLoopNotice(msg)) return;
             var reason = err && err.message ? err.message : String(msg);
             var errorUrl = url || parseScriptUrlFromStack(stack);
             presentFatal(normalizeDetail(message, reason, url || '', line, col, stack, errorUrl));
@@ -998,6 +986,13 @@
 
     function onWindowErrorEvent(ev) {
         if (!ev || ev.defaultPrevented || ev.__dreamscapeFatalHandled) return;
+        var notice = ev.message || (ev.error && ev.error.message) || '';
+        if (isResizeObserverLoopNotice(notice)) {
+            ev.__dreamscapeFatalHandled = true;
+            ev.preventDefault();
+            ev.stopImmediatePropagation();
+            return;
+        }
         if (ev.error) {
             ev.__dreamscapeFatalHandled = true;
             handleWindowError(ev.message, ev.filename, ev.lineno, ev.colno, ev.error);
@@ -1022,6 +1017,10 @@
             } else if (r != null) {
                 reason = String(r);
                 message = reason;
+            }
+            if (isResizeObserverLoopNotice(message) || isResizeObserverLoopNotice(reason)) {
+                ev.preventDefault();
+                return;
             }
             var errorUrl = parseScriptUrlFromStack(stack);
             presentFatal(normalizeDetail(message, reason, '', '', '', stack, errorUrl));

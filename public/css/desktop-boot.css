@@ -321,6 +321,33 @@ body.vista-logon #desktopPreStartupStatus::before {
     }
 }
 
+/* Restart / shutdown / log off: the Welcome screen sits under the black cover, so fading
+   that cover out is the logon appearing. Status centred, chrome hidden. */
+body.winlogon-power #desktopPreStartupModal {
+    opacity: 1;
+    z-index: 2147483100 !important;
+    pointer-events: none;
+    animation: none;
+}
+
+body.winlogon-power #desktopPreStartupStatus {
+    top: 50%;
+    height: auto;
+    transform: translateY(-50%);
+    display: block !important;
+}
+
+body.winlogon-power #desktopPreStartupModal :is(
+    .desktop-prestartup-vista-tile,
+    .desktop-prestartup-auth-row,
+    .desktop-prestartup-auth-actions,
+    .desktop-prestartup-vista-options,
+    .desktop-prestartup-progress,
+    .desktop-prestartup-hero
+) {
+    display: none !important;
+}
+
 /* User tile: the 190 px glass frame over the 126 px account picture */
 body.vista-logon #desktopPreStartupModal .desktop-prestartup-vista-tile {
     position: absolute;
@@ -1156,19 +1183,27 @@ body.desktop-mode.workstation-locked *:not(.boot-dialog, .boot-dialog *)::after 
     animation-play-state: paused !important;
 }
 
-/* Session switch (desktopBoot.js cutToBlack): one black cut over everything, lock dialogs
-   included, both ways; no fade in or out. Below the fatal error page (2147483000). */
+/* Session switch (desktopBoot.js beginSessionFade): black fades in over the desktop,
+   the lock is applied once it is opaque, then it fades out. Below the fatal error page
+   (2147483000). session-switch-cover hides the Welcome screen until that fade out. */
 #sessionSwitchOverlay {
-    display: none;
+    display: block;
     position: fixed;
     inset: 0;
     background: #000;
+    opacity: 0;
     z-index: 2147482500;
-    pointer-events: auto;
+    pointer-events: none;
+    transition: opacity 900ms ease;
 }
 
 #sessionSwitchOverlay.active {
-    display: block;
+    opacity: 1;
+    pointer-events: auto;
+}
+
+body.session-switch-cover #desktopPreStartupModal {
+    visibility: hidden !important;
 }
 
 /* Boot message box (public/scripts/comp/bootMessageBox.js): a Windows message box for boot
@@ -1347,4 +1382,22 @@ body.desktop-mode.workstation-locked *:not(.boot-dialog, .boot-dialog *)::after 
     min-width: 75px;
     height: 23px;
     padding: 0 10px;
+}
+
+/* Safe Mode with Networking (launch boot menu): the desktop stays in the 1024x768 VGA frame.
+   fitMelatonVga() in app.html stretches it the same way as /launch. */
+html.melaton-vga-safe {
+    background: #000;
+    overflow: hidden;
+}
+
+html.melaton-vga-safe body {
+    width: 1024px;
+    height: 768px;
+    margin: 0;
+    overflow: hidden;
+    transform-origin: 0 0;
+    image-rendering: crisp-edges;
+    image-rendering: pixelated;
+    -webkit-font-smoothing: none;
 }

@@ -3,6 +3,8 @@
  * workspace record under `sidebar`; the client is public/scripts/comp/vistaSidebar.js and the
  * packets are modules/ws/handlers/290-sidebarHandler.js (administrators only).
  */
+const dns = require('dns').promises;
+const net = require('net');
 const {
     isPrivateOrLocalIP,
     getConfiguredLocation,
@@ -12,12 +14,28 @@ const {
 } = require('./dynamicGenerationHandlers');
 const { getHostMetrics } = require('./pm2Service');
 
-const GADGET_TYPES = ['calendar', 'clock', 'cpu', 'mail', 'notes', 'puzzle', 'slideshow', 'weather'];
+const GADGET_TYPES = ['calendar', 'calculator', 'clipboard', 'clock', 'contacts', 'cpu', 'currency', 'deskcalc', 'feed', 'hero', 'mail', 'notes', 'outlook', 'puzzle', 'slideshow', 'stocks', 'timer', 'weather'];
+const FX_CODES = ['USD', 'EUR', 'GBP', 'JPY', 'AUD', 'BRL', 'CAD', 'CHF', 'CNY', 'CZK', 'DKK', 'HKD', 'HUF', 'IDR', 'ILS', 'INR', 'ISK', 'KRW', 'MXN', 'MYR', 'NOK', 'NZD', 'PHP', 'PLN', 'RON', 'SEK', 'SGD', 'THB', 'TRY', 'ZAR'];
+const FX_TTL_MS = 6 * 60 * 60 * 1000;
+const QUOTE_TTL_MS = 3 * 60 * 1000;
+const FEED_TTL_MS = 10 * 60 * 1000;
+const FEED_MAX_BYTES = 256 * 1024;
+const MAX_QUOTE_CACHE = 48;
+const MAX_FEED_CACHE = 16;
+const CALC_COLORS = ['grey', 'pink', 'yellow'];
+const DESK_COLORS = ['plain', 'aqua', 'black', 'blue', 'green', 'pink', 'red', 'white', 'yellow'];
+const CALC_OPS = ['', '+', '-', '*', '/', 'pow'];
 const MAX_GADGETS = 24;
 const MAX_STATE_BYTES = 64 * 1024;
 const NOTE_COLORS = ['yellow', 'purple', 'blue', 'green', 'pink', 'white'];
-const NOTE_SIZES = [12, 13, 15, 16, 18, 20, 22];
-const NOTE_FONTS = ['Segoe Print', 'Segoe Script', 'Segoe UI', 'Calibri', 'Cambria', 'Consolas', 'Constantia', 'Corbel', 'Arial', 'Times New Roman'];
+const NOTE_SIZES = [8, 9, 11, 12, 13, 15, 16, 18, 20, 22, 24, 27, 32, 37, 48];
+const NOTE_FONTS = [
+    'Segoe Print', 'Segoe Script', 'Segoe UI', 'Calibri', 'Cambria', 'Candara', 'Consolas', 'Constantia', 'Corbel',
+    'Arial', 'Tahoma', 'Verdana', 'Georgia', 'Times New Roman', 'Courier New', 'Comic Sans MS',
+    'Noto Sans', 'Atkinson Hyperlegible Next', 'Trebuchet MS',
+    'Zen Kurenaido', 'Kaisei Decol', 'Zen Antique', 'Solway', 'Eczar', 'Bodoni Moda', 'Texturina',
+    'Share Tech Mono', 'DotGothic16'
+];
 const MAX_NOTES = 10;
 const MAX_NOTE_LENGTH = 1000;
 const SLIDE_SECONDS = [5, 10, 15, 30, 60, 120, 300];
@@ -66,6 +84,24 @@ const clampInt = (value, min, max, fallback) => {
     return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
 };
 const text = (value, max) => (typeof value === 'string' ? value.slice(0, max) : '');
+const numOrNull = (value) => {
+    if (value == null || value === '') return null;
+    const n = Number(value);
+    return Number.isFinite(n) && Math.abs(n) < 1e15 ? n : null;
+};
+
+/** Shared arithmetic state for Calculator and Desktop Calculator. */
+function sanitizeCalcCore(s) {
+    const history = (Array.isArray(s.history) ? s.history : []).slice(0, 8).map((line) => text(line, 40)).filter(Boolean);
+    return {
+        entry: text(s.entry, 16) || '0',
+        acc: numOrNull(s.acc),
+        op: pick(s.op, CALC_OPS, ''),
+        fresh: bool(s.fresh, true),
+        memory: numOrNull(s.memory),
+        history
+    };
+}
 
 function isTimeZone(zone) {
     if (!zone) return false;
@@ -81,12 +117,60 @@ function sanitizeGadgetSettings(type, raw) {
     const s = raw && typeof raw === 'object' ? raw : {};
     switch (type) {
         case 'clock':
+        case 'hero':
             return {
-                theme: clampInt(s.theme, 0, 7, 0),
+                theme: clampInt(s.theme, 0, type === 'hero' ? 8 : 7, 0),
                 name: text(s.name, 30),
                 timeZone: isTimeZone(s.timeZone) ? s.timeZone : '',
                 seconds: bool(s.seconds, false)
             };
+        case 'calculator':
+            return {
+                ...sanitizeCalcCore(s),
+                color: pick(s.color, CALC_COLORS, 'grey'),
+                historyOn: bool(s.historyOn, true)
+            };
+        case 'deskcalc':
+            return { ...sanitizeCalcCore(s), color: pick(s.color, DESK_COLORS, 'plain') };
+        case 'timer':
+            return {
+                endAt: clampInt(s.endAt, 0, Date.now() + 100 * 60 * 1000, 0),
+                mins: clampInt(s.mins, 0, 60, 0),
+                secs: clampInt(s.secs, 0, 59, 0),
+                ringing: bool(s.ringing, false)
+            };
+        case 'clipboard':
+            return {
+                items: (Array.isArray(s.items) ? s.items : []).slice(0, 16).map((item) => text(item, 160)).filter(Boolean)
+            };
+        case 'outlook':
+            return { unreadOnly: bool(s.unreadOnly, false) };
+        case 'contacts': {
+            const cards = (Array.isArray(s.cards) ? s.cards : []).slice(0, 8).map((c) => ({
+                name: text(c && c.name, 40),
+                email: text(c && c.email, 80),
+                phone: text(c && c.phone, 24)
+            })).filter((c) => c.name || c.email || c.phone);
+            if (!cards.length) cards.push({ name: '', email: '', phone: '' });
+            return { cards, current: clampInt(s.current, 0, cards.length - 1, 0) };
+        }
+        case 'currency':
+            return {
+                amount: moneyAmount(s.amount, 1),
+                from: pick(String(s.from || '').toUpperCase(), FX_CODES, 'USD'),
+                to: pick(String(s.to || '').toUpperCase(), FX_CODES, 'EUR')
+            };
+        case 'feed':
+            return { url: httpsFeedUrl(s.url), count: pick(Number(s.count), [3, 4, 5, 6], 3) };
+        case 'stocks': {
+            const symbols = [];
+            for (const raw of Array.isArray(s.symbols) ? s.symbols : []) {
+                const sym = stockSymbol(raw);
+                if (sym && !symbols.includes(sym)) symbols.push(sym);
+                if (symbols.length >= 4) break;
+            }
+            return { symbols };
+        }
         case 'calendar':
             return { view: pick(s.view, ['day', 'month'], 'day') };
         case 'notes': {
@@ -96,6 +180,7 @@ function sanitizeGadgetSettings(type, raw) {
                 color: pick(s.color, NOTE_COLORS, 'yellow'),
                 font: pick(s.font, NOTE_FONTS, 'Segoe Print'),
                 size: pick(Number(s.size), NOTE_SIZES, 12),
+                readOnly: bool(s.readOnly, false),
                 notes,
                 current: clampInt(s.current, 0, notes.length - 1, 0),
                 noteId: text(s.noteId, 100)
@@ -129,7 +214,10 @@ function sanitizeGadgetSettings(type, raw) {
                 placeAlt: pick(s.placeAlt, WEATHER_PLACE_ALTS, 'none')
             };
         case 'mail':
-            return { unreadOnly: bool(s.unreadOnly, false) };
+            return {
+                unreadOnly: bool(s.unreadOnly, false),
+                count: pick(Number(s.count), [3, 4, 5, 6], 3)
+            };
         default:
             return {};
     }
@@ -319,6 +407,221 @@ function getHostLoad() {
     return { cpu: m.hostCpuPercent, ram: m.hostRamPercent };
 }
 
+function moneyAmount(value, fallback) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 0 || n > 1e12) return fallback;
+    return Math.round(n * 10000) / 10000;
+}
+
+function stockSymbol(value) {
+    const sym = String(value || '').trim().toUpperCase();
+    return /^[A-Z0-9.^]{1,12}$/.test(sym) ? sym : '';
+}
+
+/** https only, no credentials, no single-label or private hosts. DNS is checked at fetch time. */
+function httpsFeedUrl(value) {
+    let url;
+    try { url = new URL(text(value, 300).trim()); } catch (_e) { return ''; }
+    if (url.protocol !== 'https:' || url.username || url.password) return '';
+    const host = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+    if (!host || host === 'localhost' || host.endsWith('.local') || host.endsWith('.internal')) return '';
+    if (net.isIP(host)) {
+        if (isBlockedAddress(host)) return '';
+    } else if (!host.includes('.')) {
+        return '';
+    }
+    return url.href;
+}
+
+function isBlockedAddress(ip) {
+    const v = String(ip || '').trim().replace(/^::ffff:/i, '');
+    if (!v || v === '::') return true;
+    return isPrivateOrLocalIP(v);
+}
+
+async function assertPublicHttps(raw) {
+    const href = httpsFeedUrl(raw);
+    if (!href) return null;
+    const url = new URL(href);
+    const host = url.hostname.replace(/^\[|\]$/g, '');
+    if (!net.isIP(host)) {
+        let addrs;
+        try { addrs = await dns.lookup(host, { all: true }); } catch (_e) { return null; }
+        if (!addrs.length || addrs.some((a) => isBlockedAddress(a.address))) return null;
+    }
+    return url;
+}
+
+async function fetchPublicHttps(raw) {
+    let current = raw;
+    for (let hop = 0; hop < 4; hop++) {
+        const url = await assertPublicHttps(current);
+        if (!url) return null;
+        let response;
+        try {
+            response = await fetch(url.href, {
+                redirect: 'manual',
+                signal: AbortSignal.timeout(8000),
+                headers: { 'User-Agent': 'Dreamscape', Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*' }
+            });
+        } catch (_e) {
+            return null;
+        }
+        if (response.status >= 300 && response.status < 400) {
+            const loc = response.headers.get('location');
+            if (!loc) return null;
+            current = new URL(loc, url).href;
+            continue;
+        }
+        if (!response.ok) return null;
+        const advertised = Number(response.headers.get('content-length') || 0);
+        if (advertised > FEED_MAX_BYTES) return null;
+        const buf = await response.arrayBuffer();
+        if (buf.byteLength > FEED_MAX_BYTES) return null;
+        return new TextDecoder('utf-8', { fatal: false }).decode(buf);
+    }
+    return null;
+}
+
+function xmlChar(n) {
+    if (!Number.isFinite(n) || n < 32 || n > 0x10ffff || (n >= 0xd800 && n <= 0xdfff)) return '';
+    return String.fromCodePoint(n);
+}
+
+function decodeXml(value) {
+    return String(value || '')
+        .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+        .replace(/&#x([0-9a-f]+);/gi, (_, h) => xmlChar(parseInt(h, 16)))
+        .replace(/&#(\d+);/g, (_, d) => xmlChar(Number(d)))
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&apos;/g, "'")
+        .replace(/&amp;/g, '&')
+        .replace(/<[^>]+>/g, '')
+        .trim();
+}
+
+function xmlBlock(block, name) {
+    const m = new RegExp(`<(?:[\\w.-]+:)?${name}(?:\\s[^>]*)?>([\\s\\S]*?)</(?:[\\w.-]+:)?${name}>`, 'i').exec(block);
+    return m ? decodeXml(m[1]) : '';
+}
+
+function atomHref(block) {
+    const tags = block.match(/<(?:[\w.-]+:)?link\b[^>]*>/gi) || [];
+    let href = '';
+    for (const tag of tags) {
+        const rel = /rel\s*=\s*["']([^"']+)["']/i.exec(tag);
+        const found = /href\s*=\s*["']([^"']+)["']/i.exec(tag);
+        if (!found) continue;
+        if (!rel || rel[1] === 'alternate') return decodeXml(found[1]);
+        if (!href) href = decodeXml(found[1]);
+    }
+    return href;
+}
+
+function parseFeedXml(xml) {
+    const items = [];
+    const chunks = String(xml || '').match(/<(?:[\w.-]+:)?(?:item|entry)\b[\s\S]*?<\/(?:[\w.-]+:)?(?:item|entry)>/gi) || [];
+    for (const chunk of chunks) {
+        const title = xmlBlock(chunk, 'title').replace(/\s+/g, ' ');
+        if (!title) continue;
+        const link = httpsFeedUrl(xmlBlock(chunk, 'link') || atomHref(chunk));
+        const date = xmlBlock(chunk, 'pubDate') || xmlBlock(chunk, 'updated') || xmlBlock(chunk, 'published');
+        items.push({ title: title.slice(0, 180), link, date: date.slice(0, 40) });
+        if (items.length >= 12) break;
+    }
+    const head = String(xml || '').split(/<(?:[\w.-]+:)?(?:item|entry)\b/i)[0] || '';
+    const title = (xmlBlock(head, 'title') || 'Feed Headlines').replace(/\s+/g, ' ').slice(0, 60);
+    return items.length ? { title, items } : null;
+}
+
+const fxCache = { at: 0, date: '', rates: null };
+const quoteCache = new Map();
+const feedCache = new Map();
+
+function cacheSet(map, key, value, max) {
+    map.delete(key);
+    map.set(key, value);
+    while (map.size > max) map.delete(map.keys().next().value);
+}
+
+/** ECB rates via Frankfurter, cached for a few hours. `rate` converts 1 `from` into `to`. */
+async function getFxRate(from, to) {
+    const base = pick(String(from || '').toUpperCase(), FX_CODES, '');
+    const quote = pick(String(to || '').toUpperCase(), FX_CODES, '');
+    if (!base || !quote) return { available: false };
+    if (!fxCache.rates || Date.now() - fxCache.at > FX_TTL_MS) {
+        try {
+            const response = await fetch('https://api.frankfurter.dev/v1/latest?from=USD', { signal: AbortSignal.timeout(8000) });
+            const body = response.ok ? await response.json() : null;
+            if (!body || !body.rates) return { available: false };
+            fxCache.at = Date.now();
+            fxCache.date = text(body.date, 16);
+            fxCache.rates = { USD: 1, ...body.rates };
+        } catch (_e) {
+            return { available: false };
+        }
+    }
+    const fromUsd = Number(fxCache.rates[base]);
+    const toUsd = Number(fxCache.rates[quote]);
+    if (!fromUsd || !toUsd) return { available: false };
+    return { available: true, from: base, to: quote, date: fxCache.date, rate: toUsd / fromUsd };
+}
+
+async function fetchYahooQuote(symbol) {
+    const cached = quoteCache.get(symbol);
+    if (cached && cached.expiresAt > Date.now()) return cached.quote;
+    let quote = { symbol, available: false };
+    try {
+        const response = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5d`, {
+            signal: AbortSignal.timeout(8000),
+            headers: { 'User-Agent': 'Dreamscape' }
+        });
+        const body = response.ok ? await response.json() : null;
+        const meta = body && body.chart && body.chart.result && body.chart.result[0] && body.chart.result[0].meta;
+        const price = meta ? Number(meta.regularMarketPrice) : NaN;
+        const prev = meta ? Number(meta.chartPreviousClose) : NaN;
+        if (meta && Number.isFinite(price) && Math.abs(price) < 1e12) {
+            quote = {
+                symbol: stockSymbol(meta.symbol) || symbol,
+                name: text(meta.shortName || meta.longName || symbol, 40),
+                price,
+                prev: Number.isFinite(prev) ? prev : null,
+                currency: text(meta.currency, 8),
+                available: true
+            };
+        }
+    } catch (_e) { /* unavailable quote */ }
+    cacheSet(quoteCache, symbol, { quote, expiresAt: Date.now() + QUOTE_TTL_MS }, MAX_QUOTE_CACHE);
+    return quote;
+}
+
+/** Last price for up to four symbols (Yahoo chart). */
+async function getQuotes(symbols) {
+    const list = [];
+    for (const raw of Array.isArray(symbols) ? symbols : []) {
+        const sym = stockSymbol(raw);
+        if (sym && !list.includes(sym)) list.push(sym);
+        if (list.length >= 4) break;
+    }
+    const quotes = await Promise.all(list.map(fetchYahooQuote));
+    return { quotes };
+}
+
+/** RSS or Atom headlines. The address is https-only and must resolve to a public host. */
+async function getFeed(url) {
+    const href = httpsFeedUrl(url);
+    if (!href) return { available: false };
+    const cached = feedCache.get(href);
+    if (cached && cached.expiresAt > Date.now()) return cached.feed;
+    const xml = await fetchPublicHttps(href);
+    const parsed = xml ? parseFeedXml(xml) : null;
+    const feed = parsed ? { available: true, title: parsed.title, items: parsed.items } : { available: false };
+    cacheSet(feedCache, href, { feed, expiresAt: Date.now() + FEED_TTL_MS }, MAX_FEED_CACHE);
+    return feed;
+}
+
 module.exports = {
     GADGET_TYPES,
     SidebarStateError,
@@ -327,5 +630,8 @@ module.exports = {
     pickSearchImage,
     sanitizeFrameSearch,
     getClientWeather,
-    getHostLoad
+    getHostLoad,
+    getFxRate,
+    getQuotes,
+    getFeed
 };

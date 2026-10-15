@@ -1,11 +1,13 @@
 // MeletonFX remote desktop.
-// List window reads Komaki's Guacamole catalog through /api/desktop-guac/connections.
+// List window reads Komaki's Guacamole catalog through /api/desktop-guac/connections
+// (connection groups, last-frame previews from .cache/guac-previews).
 // Choosing a row opens a separate modal with Komaki's native Guacamole client in an
-// iframe; Maximize on the list opens Guacamole's home. Both frames are served
-// same-origin at /api/desktop-guac/web/ (modules/guacRemoteBridge.js), so the window
-// title and taskbar follow the frame's document title and #/client route.
+// iframe. Full view on the list toolbar opens Guacamole's home. Maximize on a session
+// covers the desktop (caption and taskbar) and leaves the floating connection bar.
+// Both frames are served same-origin at /api/desktop-guac/web/ (modules/guacRemoteBridge.js),
+// so the window title and taskbar follow the frame's document title and #/client route.
 // Guacamole's status boxes come out through mirrorDesktopGuacFrame
-// (sent by guacFrameMirror.js inside the frame).
+// (sent by guacFrameMirror.js inside the frame). The session toolbar calls dreamscapeGuac.
 // Not the Grimoire browser.
 // openModal / bringModalToFront / restoreMinimizedModal / closeModal: public/scripts/comp/modalUtils.js
 
@@ -13,6 +15,7 @@ const DESKTOP_GUAC_LIST_ID = 'desktopGuacModal';
 
 const DESKTOP_GUAC_HOME_KEY = 'home';
 const DESKTOP_GUAC_APP_FA_ICON = 'fas fa-satellite-dish';
+const DESKTOP_GUAC_APP_IMAGE = 'vista-remote-desktop.png';
 
 const guacSessionModals = new Map();
 // Connection id -> { id, name, protocol } from the last list load
@@ -24,6 +27,11 @@ const GUAC_PROTOCOL_ICONS = {
     rdp: 'fab fa-windows',
     kubernetes: 'fas fa-dharmachakra'
 };
+const GUAC_DEFAULT_PORTS = { rdp: '3389', vnc: '5900', ssh: '22', telnet: '23', kubernetes: '443' };
+const GUAC_DOWNLOAD_TARGET_KEY = 'desktopGuacDownloadTarget';
+let guacGroups = [];
+let guacGroupOptions = [];
+let guacSearchIndex = -1;
 const DESKTOP_GUAC_CONNECTING_STATES = new Set(['IDLE', 'CONNECTING', 'WAITING']);
 // { frame, kind, id, payload, open, answered, labels } for the mirrored status in the confirmation dialog
 let desktopGuacDialog = null;
@@ -54,11 +62,22 @@ function desktopGuacTitle(text, iconClass) {
     const titleMain = document.createElement('div');
     titleMain.className = 'modal-window-title-main';
     const titleIcon = document.createElement('i');
-    titleIcon.className = iconClass;
+    titleIcon.className = iconClass + ' icon-fa';
     titleIcon.setAttribute('aria-hidden', 'true');
+    const titleImage = document.createElement('img');
+    titleImage.className = 'icon-image';
+    titleImage.alt = '';
+    // resolveAppIconPath / buildAppIconSrcset: public/scripts/comp/modalUtils.js
+    titleImage.src = resolveAppIconPath(DESKTOP_GUAC_APP_IMAGE);
+    const srcset = buildAppIconSrcset(DESKTOP_GUAC_APP_IMAGE);
+    if (srcset) {
+        titleImage.setAttribute('srcset', srcset);
+        titleImage.setAttribute('sizes', '32px');
+    }
     const titleText = document.createElement('span');
     titleText.textContent = text;
     titleMain.appendChild(titleIcon);
+    titleMain.appendChild(titleImage);
     titleMain.appendChild(titleText);
     title.appendChild(titleMain);
     return title;
@@ -68,11 +87,36 @@ function desktopGuacTitle(text, iconClass) {
 function setDesktopGuacTitle(modal, text, iconClass) {
     const titleText = modal.querySelector('.modal-window-title-main span');
     const titleIcon = modal.querySelector('.modal-window-title-main i');
-    if (titleText.textContent === text && titleIcon.className === iconClass) return;
+    const nextIcon = iconClass + ' icon-fa';
+    if (titleText.textContent === text && titleIcon.className === nextIcon) return;
     titleText.textContent = text;
-    titleIcon.className = iconClass;
+    titleIcon.className = nextIcon;
+    const pinName = modal.querySelector('.desktop-guac-pin-name');
+    if (pinName) pinName.textContent = text;
     // debouncedUpdateTaskbarWindows: public/scripts/comp/modalUtils.js
     debouncedUpdateTaskbarWindows();
+}
+
+function toggleDesktopGuacCover(modal) {
+    if (!modal) return;
+    const covered = modal.classList.contains('desktop-guac-cover');
+    if (covered) {
+        modal.classList.remove('desktop-guac-cover');
+        const layout = modal._guacCoverLayout;
+        delete modal._guacCoverLayout;
+        // setModalPositionFromViewportRect: public/scripts/comp/modalUtils.js
+        if (layout) setModalPositionFromViewportRect(modal, layout);
+    } else {
+        // finishModalRectMorph / captureModalLayoutState: public/scripts/comp/modalUtils.js
+        finishModalRectMorph(modal);
+        modal._guacCoverLayout = captureModalLayoutState(modal);
+        modal.classList.add('desktop-guac-cover');
+    }
+    const icon = modal.querySelector('.modal-window-controls .modal-work-area-maximize i');
+    const btn = modal.querySelector('.modal-window-controls .modal-work-area-maximize');
+    const now = modal.classList.contains('desktop-guac-cover');
+    if (icon) icon.className = now ? 'fa-regular fa-window-restore' : 'fa-regular fa-window-maximize';
+    if (btn) btn.title = now ? 'Restore' : 'Maximize';
 }
 
 function desktopGuacControls(modal, onClose, onMaximize) {
@@ -90,9 +134,21 @@ function desktopGuacControls(modal, onClose, onMaximize) {
     maximizeBtn.type = 'button';
     // modal-work-area-maximize is the shared maximize handler; the list window
     // opens Guacamole's home instead.
-    maximizeBtn.className = onMaximize ? 'btn-secondary btn-small' : 'btn-secondary btn-small modal-work-area-maximize';
-    maximizeBtn.title = onMaximize ? 'Open Guacamole home' : 'Maximize';
-    if (onMaximize) maximizeBtn.addEventListener('click', onMaximize);
+    const cover = onMaximize === 'cover';
+    maximizeBtn.className = (cover || !onMaximize)
+        ? 'btn-secondary btn-small modal-work-area-maximize'
+        : 'btn-secondary btn-small';
+    maximizeBtn.title = 'Maximize';
+    if (cover) {
+        maximizeBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            event.stopImmediatePropagation();
+            toggleDesktopGuacCover(modal);
+        }, true);
+    } else if (onMaximize) {
+        maximizeBtn.addEventListener('click', onMaximize);
+    }
     const maximizeIcon = document.createElement('i');
     maximizeIcon.className = 'fa-regular fa-window-maximize';
     maximizeIcon.setAttribute('aria-hidden', 'true');
@@ -124,16 +180,16 @@ function ensureDesktopGuacListModal() {
     modal.id = DESKTOP_GUAC_LIST_ID;
     modal.className = 'modal resizeable-window hidden';
     modal.dataset.windowIdentifier = 'desktopGuac';
-    modal.dataset.windowDefaultWidth = '420';
-    modal.dataset.windowDefaultHeight = '520';
-    modal.dataset.windowMinWidth = '320';
-    modal.dataset.windowMinHeight = '280';
-    modal.dataset.windowMaxWidth = '640';
+    modal.dataset.windowDefaultWidth = '760';
+    modal.dataset.windowDefaultHeight = '640';
+    modal.dataset.windowMinWidth = '420';
+    modal.dataset.windowMinHeight = '360';
+    modal.dataset.windowMaxWidth = '1800';
     modal.dataset.windowMaxHeight = '900';
     modal.style.flexDirection = 'column';
 
     const content = document.createElement('div');
-    content.className = 'modal-content modal-padding dark';
+    content.className = 'modal-content dark';
     content.style.flex = '1 1 auto';
     content.style.height = 'auto';
     content.style.minHeight = '0';
@@ -144,32 +200,419 @@ function ensureDesktopGuacListModal() {
     body.style.display = 'flex';
     body.style.flexDirection = 'column';
 
+    const toolbar = document.createElement('div');
+    toolbar.className = 'desktop-guac-toolbar';
+    const searchWrap = document.createElement('div');
+    searchWrap.className = 'desktop-guac-search';
+    const search = document.createElement('input');
+    search.type = 'text';
+    search.id = 'desktopGuacSearch';
+    search.className = 'explorer-search-bar';
+    search.placeholder = 'Search';
+    search.autocomplete = 'off';
+    search.setAttribute('aria-label', 'Search connections');
+    const searchMenu = document.createElement('div');
+    searchMenu.id = 'desktopGuacSearchMenu';
+    searchMenu.className = 'desktop-guac-search-menu';
+    searchMenu.hidden = true;
+    searchWrap.appendChild(search);
+    searchWrap.appendChild(searchMenu);
+    search.addEventListener('input', () => renderDesktopGuacSearch(search.value));
+    search.addEventListener('keydown', desktopGuacSearchKey);
+    search.addEventListener('focus', () => renderDesktopGuacSearch(search.value));
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'desktop-guac-bar-btn';
+    addBtn.textContent = 'Add connection';
+    addBtn.addEventListener('click', () => toggleDesktopGuacAddForm());
+    const fullBtn = document.createElement('button');
+    fullBtn.type = 'button';
+    fullBtn.className = 'desktop-guac-bar-btn';
+    fullBtn.textContent = 'Full view';
+    fullBtn.title = 'Open Guacamole home';
+    fullBtn.addEventListener('click', () => openDesktopGuacHome());
+    toolbar.appendChild(addBtn);
+    toolbar.appendChild(fullBtn);
+    toolbar.appendChild(searchWrap);
+
+    const addForm = document.createElement('form');
+    addForm.id = 'desktopGuacAdd';
+    addForm.className = 'desktop-guac-add';
+    addForm.hidden = true;
+    addForm.appendChild(desktopGuacAddField('Name', 'desktopGuacAddName', 'text'));
+    addForm.appendChild(desktopGuacProtocolField());
+    addForm.appendChild(desktopGuacGroupField());
+    addForm.appendChild(desktopGuacAddField('Host', 'desktopGuacAddHost', 'text'));
+    addForm.appendChild(desktopGuacAddField('Port', 'desktopGuacAddPort', 'text'));
+    addForm.appendChild(desktopGuacAddField('Username', 'desktopGuacAddUser', 'text'));
+    addForm.appendChild(desktopGuacAddField('Password', 'desktopGuacAddPass', 'password'));
+    const addActions = document.createElement('div');
+    addActions.className = 'desktop-guac-add-actions';
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'submit';
+    saveBtn.className = 'btn-primary btn-small';
+    saveBtn.textContent = 'Save';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'btn-secondary btn-small';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', () => { addForm.hidden = true; });
+    addActions.appendChild(saveBtn);
+    addActions.appendChild(cancelBtn);
+    addForm.appendChild(addActions);
+    const addStatus = document.createElement('p');
+    addStatus.id = 'desktopGuacAddStatus';
+    addStatus.className = 'form-hint';
+    addStatus.hidden = true;
+    addForm.appendChild(addStatus);
+    addForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        submitDesktopGuacConnection();
+    });
+
     const status = document.createElement('p');
     status.id = 'desktopGuacStatus';
     status.className = 'form-hint';
     status.style.flex = '0 0 auto';
-    status.textContent = 'Loading connections…';
+    status.textContent = 'Loading connections...';
 
     const list = document.createElement('div');
     list.id = 'desktopGuacList';
-    list.className = 'scrollable-content form-col';
-    list.style.flex = '1 1 auto';
-    list.style.minHeight = '0';
-    list.style.overflow = 'auto';
+    list.className = 'desktop-guac-list scrollable-content';
 
+    content.appendChild(toolbar);
+    body.appendChild(addForm);
     body.appendChild(status);
     body.appendChild(list);
     content.appendChild(body);
     modal.appendChild(desktopGuacTitle('Remote Desktop', DESKTOP_GUAC_APP_FA_ICON));
     modal.appendChild(document.createElement('div')).className = 'modal-focus-overlay';
-    modal.appendChild(desktopGuacControls(modal, null, () => {
-        openDesktopGuacHome();
-        // closeModal: public/scripts/comp/modalUtils.js
-        closeModal(modal);
-    }));
+    modal.appendChild(desktopGuacControls(modal, null, null));
     modal.appendChild(content);
     document.body.appendChild(modal);
     return modal;
+}
+
+function desktopGuacAddField(labelText, id, type) {
+    const wrap = document.createElement('label');
+    wrap.className = 'desktop-guac-field';
+    const label = document.createElement('span');
+    label.textContent = labelText;
+    const input = document.createElement('input');
+    input.id = id;
+    input.className = 'form-control';
+    input.type = type;
+    input.autocomplete = 'off';
+    wrap.appendChild(label);
+    wrap.appendChild(input);
+    return wrap;
+}
+
+function desktopGuacProtocolField() {
+    const wrap = document.createElement('label');
+    wrap.className = 'desktop-guac-field';
+    const label = document.createElement('span');
+    label.textContent = 'Protocol';
+    const select = document.createElement('select');
+    select.id = 'desktopGuacAddProtocol';
+    select.className = 'form-control';
+    ['rdp', 'vnc', 'ssh', 'telnet', 'kubernetes'].forEach((protocol) => {
+        const option = document.createElement('option');
+        option.value = protocol;
+        option.textContent = protocol.toUpperCase();
+        select.appendChild(option);
+    });
+    select.addEventListener('change', () => {
+        const port = document.getElementById('desktopGuacAddPort');
+        if (!port) return;
+        const next = GUAC_DEFAULT_PORTS[select.value] || '';
+        const currentIsDefault = Object.values(GUAC_DEFAULT_PORTS).indexOf(port.value) !== -1;
+        if (!port.value || currentIsDefault) port.value = next;
+    });
+    wrap.appendChild(label);
+    wrap.appendChild(select);
+    return wrap;
+}
+
+function desktopGuacGroupField() {
+    const wrap = document.createElement('label');
+    wrap.className = 'desktop-guac-field';
+    const label = document.createElement('span');
+    label.textContent = 'Group';
+    const select = document.createElement('select');
+    select.id = 'desktopGuacAddGroup';
+    select.className = 'form-control';
+    wrap.appendChild(label);
+    wrap.appendChild(select);
+    return wrap;
+}
+
+function fillDesktopGuacGroupOptions() {
+    const select = document.getElementById('desktopGuacAddGroup');
+    if (!select) return;
+    const current = select.value;
+    select.replaceChildren();
+    const root = document.createElement('option');
+    root.value = 'ROOT';
+    root.textContent = 'Top level';
+    select.appendChild(root);
+    guacGroupOptions.forEach((group) => {
+        const option = document.createElement('option');
+        option.value = group.id;
+        option.textContent = group.name;
+        select.appendChild(option);
+    });
+    if (current) select.value = current;
+}
+
+function toggleDesktopGuacAddForm() {
+    const form = document.getElementById('desktopGuacAdd');
+    if (!form) return;
+    form.hidden = !form.hidden;
+    if (!form.hidden) {
+        fillDesktopGuacGroupOptions();
+        const port = document.getElementById('desktopGuacAddPort');
+        const protocol = document.getElementById('desktopGuacAddProtocol');
+        if (port && protocol && !port.value) port.value = GUAC_DEFAULT_PORTS[protocol.value] || '';
+        const name = document.getElementById('desktopGuacAddName');
+        if (name) name.focus();
+    }
+}
+
+async function submitDesktopGuacConnection() {
+    const status = document.getElementById('desktopGuacAddStatus');
+    const name = document.getElementById('desktopGuacAddName').value.trim();
+    const protocol = document.getElementById('desktopGuacAddProtocol').value;
+    const parentIdentifier = document.getElementById('desktopGuacAddGroup').value || 'ROOT';
+    const hostname = document.getElementById('desktopGuacAddHost').value.trim();
+    const port = document.getElementById('desktopGuacAddPort').value.trim();
+    const username = document.getElementById('desktopGuacAddUser').value;
+    const password = document.getElementById('desktopGuacAddPass').value;
+    status.hidden = false;
+    status.textContent = 'Saving...';
+    let response;
+    try {
+        response = await fetch('/api/desktop-guac/connections', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: name,
+                protocol: protocol,
+                parentIdentifier: parentIdentifier,
+                parameters: { hostname: hostname, port: port, username: username, password: password }
+            })
+        });
+    } catch (_) {
+        status.textContent = 'Could not reach Dreamscape.';
+        return;
+    }
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload || payload.ok !== true) {
+        status.textContent = (payload && payload.error) || 'Guacamole refused the new connection.';
+        return;
+    }
+    document.getElementById('desktopGuacAddPass').value = '';
+    document.getElementById('desktopGuacAdd').hidden = true;
+    status.hidden = true;
+    refreshDesktopGuacList();
+}
+
+function desktopGuacPreviewSrc(conn) {
+    if (!conn || !conn.previewAt) return '';
+    return '/api/desktop-guac/preview/' + encodeURIComponent(conn.id) + '?t=' + encodeURIComponent(conn.previewAt);
+}
+
+function noteDesktopGuacPreview(id) {
+    const conn = guacCatalog.get(String(id));
+    if (conn) conn.previewAt = Date.now();
+    const card = document.querySelector('.desktop-guac-card[data-connection-id="' + CSS.escape(String(id)) + '"] .desktop-guac-thumb');
+    if (!card || !conn) return;
+    card.replaceChildren();
+    const img = document.createElement('img');
+    img.alt = '';
+    img.src = desktopGuacPreviewSrc(conn);
+    card.appendChild(img);
+}
+
+function noteDesktopGuacDownload(payload, name) {
+    // showGlassToast: public/scripts/comp/glassToast.js
+    if (payload && payload.ok) {
+        showGlassToast('success', null, (payload.name || name) + ' saved to Downloads', false, 4000, '<i class="fas fa-download"></i>');
+        return;
+    }
+    showGlassToast('error', null, 'Could not save ' + name + ' to Downloads', false, 4000, '<i class="fas fa-download"></i>');
+}
+
+function pinDesktopGuacConnection(conn, event) {
+    if (event) event.stopPropagation();
+    // desktopShortcuts.addShortcut: public/scripts/comp/desktopShortcuts.js
+    const workspaceId = currentWorkspace || (desktopShortcuts && desktopShortcuts.currentWorkspace);
+    if (!workspaceId || !desktopShortcuts) {
+        showGlassToast('error', null, 'Open a workspace before adding a shortcut', false, 4000, '<i class="fas fa-satellite-dish"></i>');
+        return;
+    }
+    const id = String(conn.id);
+    const exists = desktopShortcuts.shortcuts.some((shortcut) => (
+        shortcut.type === 'remote-desktop' && shortcut.data && String(shortcut.data.connectionId) === id && !shortcut._isDeleted
+    ));
+    if (exists) {
+        showGlassToast('info', null, (conn.name || id) + ' is already on the desktop', false, 3000, '<i class="fas fa-satellite-dish"></i>');
+        return;
+    }
+    desktopShortcuts.addShortcut({
+        name: conn.name || id,
+        type: 'remote-desktop',
+        data: { connectionId: id, protocol: conn.protocol || '', icon: 'fas fa-satellite-dish' }
+    });
+    showGlassToast('success', null, 'Shortcut added to the desktop', false, 3000, '<i class="fas fa-satellite-dish"></i>');
+}
+
+function desktopGuacThumb(conn) {
+    const thumb = document.createElement('div');
+    thumb.className = 'desktop-guac-thumb';
+    const src = desktopGuacPreviewSrc(conn);
+    if (src) {
+        const img = document.createElement('img');
+        img.alt = '';
+        img.src = src;
+        thumb.appendChild(img);
+    } else {
+        const icon = document.createElement('i');
+        icon.className = GUAC_PROTOCOL_ICONS[conn.protocol] || 'fas fa-desktop';
+        icon.setAttribute('aria-hidden', 'true');
+        thumb.appendChild(icon);
+    }
+    return thumb;
+}
+
+const desktopGuacCardMenu = {
+    sections: [{
+        type: 'list',
+        items: [
+            { text: 'Add to desktop', icon: 'fas fa-desktop', action: 'guac-add-desktop' }
+        ]
+    }],
+    onAction: (action, target) => {
+        if (action !== 'guac-add-desktop' || !target) return;
+        const conn = guacCatalog.get(String(target.dataset.connectionId || ''));
+        if (conn) pinDesktopGuacConnection(conn);
+    }
+};
+
+function clearDesktopGuacList(list) {
+    if (!list) return;
+    list.querySelectorAll('.desktop-guac-card').forEach((card) => {
+        // contextMenu.detachFromElement: public/scripts/comp/contextMenu.js
+        contextMenu.detachFromElement(card);
+    });
+    list.replaceChildren();
+}
+
+function desktopGuacCard(conn) {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'desktop-guac-card';
+    card.dataset.connectionId = String(conn.id);
+    card.appendChild(desktopGuacThumb(conn));
+    const meta = document.createElement('span');
+    meta.className = 'desktop-guac-card-meta';
+    const name = document.createElement('span');
+    name.className = 'desktop-guac-card-name';
+    name.textContent = conn.name || conn.id;
+    const proto = document.createElement('span');
+    proto.className = 'desktop-guac-card-proto';
+    proto.textContent = (conn.protocol || 'session').toUpperCase();
+    meta.appendChild(name);
+    meta.appendChild(proto);
+    card.appendChild(meta);
+    card.addEventListener('click', () => openDesktopGuacSession(conn));
+    // contextMenu.attachToElement: public/scripts/comp/contextMenu.js
+    contextMenu.attachToElement(card, desktopGuacCardMenu);
+    return card;
+}
+
+function renderDesktopGuacGroups() {
+    const list = document.getElementById('desktopGuacList');
+    if (!list) return;
+    clearDesktopGuacList(list);
+    guacGroups.forEach((group) => {
+        const block = document.createElement('section');
+        block.className = 'desktop-guac-group';
+        const heading = document.createElement('h3');
+        heading.textContent = group.name;
+        block.appendChild(heading);
+        group.connections.forEach((conn) => block.appendChild(desktopGuacCard(conn)));
+        list.appendChild(block);
+    });
+}
+
+function renderDesktopGuacSearch(query) {
+    const menu = document.getElementById('desktopGuacSearchMenu');
+    if (!menu) return;
+    const needle = String(query || '').trim().toLowerCase();
+    menu.replaceChildren();
+    guacSearchIndex = -1;
+    if (!needle) {
+        menu.hidden = true;
+        return;
+    }
+    const matches = [];
+    guacCatalog.forEach((conn) => {
+        const hay = (conn.name + ' ' + (conn.protocol || '') + ' ' + (conn.groupName || '')).toLowerCase();
+        if (hay.indexOf(needle) !== -1) matches.push(conn);
+    });
+    matches.sort((a, b) => a.name.localeCompare(b.name));
+    if (!matches.length) {
+        const empty = document.createElement('div');
+        empty.className = 'desktop-guac-search-empty';
+        empty.textContent = 'No matches';
+        menu.appendChild(empty);
+        menu.hidden = false;
+        return;
+    }
+    matches.slice(0, 12).forEach((conn, index) => {
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'desktop-guac-search-row';
+        row.dataset.searchIndex = String(index);
+        const label = document.createElement('span');
+        label.textContent = conn.name || conn.id;
+        const extra = document.createElement('span');
+        extra.textContent = conn.groupName || (conn.protocol || '').toUpperCase();
+        row.appendChild(label);
+        row.appendChild(extra);
+        row.addEventListener('mousedown', (event) => event.preventDefault());
+        row.addEventListener('click', () => {
+            menu.hidden = true;
+            const input = document.getElementById('desktopGuacSearch');
+            if (input) input.value = '';
+            openDesktopGuacSession(conn);
+        });
+        menu.appendChild(row);
+    });
+    menu.hidden = false;
+}
+
+function desktopGuacSearchKey(event) {
+    const menu = document.getElementById('desktopGuacSearchMenu');
+    if (!menu || menu.hidden) return;
+    const rows = menu.querySelectorAll('.desktop-guac-search-row');
+    if (!rows.length) return;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        guacSearchIndex += event.key === 'ArrowDown' ? 1 : -1;
+        if (guacSearchIndex < 0) guacSearchIndex = rows.length - 1;
+        if (guacSearchIndex >= rows.length) guacSearchIndex = 0;
+        rows.forEach((row, index) => row.classList.toggle('active', index === guacSearchIndex));
+        return;
+    }
+    if (event.key === 'Enter' && guacSearchIndex >= 0 && rows[guacSearchIndex]) {
+        event.preventDefault();
+        rows[guacSearchIndex].click();
+        return;
+    }
+    if (event.key === 'Escape') menu.hidden = true;
 }
 
 async function refreshDesktopGuacList() {
@@ -177,8 +620,8 @@ async function refreshDesktopGuacList() {
     const list = document.getElementById('desktopGuacList');
     if (!status || !list) return;
     status.hidden = false;
-    status.textContent = 'Loading connections…';
-    list.replaceChildren();
+    status.textContent = 'Loading connections...';
+    clearDesktopGuacList(list);
     let response;
     try {
         response = await fetch('/api/desktop-guac/connections', { credentials: 'same-origin' });
@@ -194,6 +637,11 @@ async function refreshDesktopGuacList() {
         return;
     }
     const connections = Array.isArray(payload.connections) ? payload.connections : [];
+    guacGroups = Array.isArray(payload.groups) ? payload.groups : [];
+    guacGroupOptions = Array.isArray(payload.groupOptions) ? payload.groupOptions : [];
+    if (!guacGroups.length && connections.length) {
+        guacGroups = [{ id: 'ROOT', name: 'Connections', connections: connections }];
+    }
     if (!connections.length) {
         status.textContent = 'Komaki returned no connections.';
         return;
@@ -201,25 +649,12 @@ async function refreshDesktopGuacList() {
     status.hidden = true;
     guacCatalog.clear();
     connections.forEach((conn) => {
-        if (!conn || !conn.id) return;
-        guacCatalog.set(String(conn.id), conn);
-        const row = document.createElement('div');
-        row.className = 'form-row';
-        const group = document.createElement('div');
-        group.className = 'form-group';
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'btn-secondary';
-        button.style.width = '100%';
-        button.textContent = conn.name || conn.id;
-        if (conn.protocol) button.title = conn.protocol;
-        button.addEventListener('click', () => {
-            openDesktopGuacSession(conn);
-        });
-        group.appendChild(button);
-        row.appendChild(group);
-        list.appendChild(row);
+        if (conn && conn.id) guacCatalog.set(String(conn.id), conn);
     });
+    fillDesktopGuacGroupOptions();
+    renderDesktopGuacGroups();
+    const search = document.getElementById('desktopGuacSearch');
+    if (search && search.value) renderDesktopGuacSearch(search.value);
 }
 
 function openDesktopGuacSession(conn) {
@@ -232,6 +667,7 @@ function openDesktopGuacSession(conn) {
         windowIdentifier: 'desktopGuacSession',
         title: conn.name || id,
         iconClass: GUAC_PROTOCOL_ICONS[conn.protocol] || 'fas fa-desktop',
+        protocol: conn.protocol || '',
         endpoint: '/api/desktop-guac/session/' + encodeURIComponent(id)
     });
 }
@@ -287,10 +723,18 @@ function mirrorDesktopGuacFrame(frame, kind, payload) {
     const modal = frame.closest('.modal');
     if (!modal) return;
     if (kind === 'client') {
-        const hint = modal.querySelector('.modal-body > .form-hint');
-        const connecting = DESKTOP_GUAC_CONNECTING_STATES.has(payload.state);
-        hint.hidden = !connecting;
-        hint.textContent = (connecting && payload.className === 'connecting' && payload.text) || 'Connecting…';
+        const barStatus = modal.querySelector('.desktop-guac-status');
+        if (barStatus) {
+            barStatus.textContent = desktopGuacStatusLabel(payload);
+            barStatus.dataset.state = payload.state || '';
+        } else {
+            const hint = modal.querySelector('.modal-body > .form-hint');
+            const connecting = DESKTOP_GUAC_CONNECTING_STATES.has(payload.state);
+            if (hint) {
+                hint.hidden = !connecting;
+                hint.textContent = (connecting && payload.className === 'connecting' && payload.text) || 'Connecting...';
+            }
+        }
     }
     const entry = desktopGuacDialog && desktopGuacDialog.frame === frame && desktopGuacDialog.kind === kind ? desktopGuacDialog : null;
     if (!payload.id || payload.className === 'connecting') {
@@ -355,6 +799,166 @@ function openDesktopGuacDialog(modal, entry) {
     });
 }
 
+function desktopGuacStatusLabel(payload) {
+    const state = payload && payload.state;
+    if (!state || DESKTOP_GUAC_CONNECTING_STATES.has(state)) {
+        return (payload && payload.className === 'connecting' && payload.text) || 'Connecting...';
+    }
+    if (state === 'CONNECTED') return 'Connected';
+    if (state === 'DISCONNECTING') return 'Disconnecting...';
+    if (payload && payload.text && payload.className && payload.className !== 'connecting') return payload.text;
+    if (state === 'DISCONNECTED' || state === 'CLIENT_ERROR' || state === 'TUNNEL_ERROR') return 'Disconnected';
+    return payload && payload.text || state;
+}
+
+function desktopGuacFrameApi(modal) {
+    const frame = modal.querySelector('iframe');
+    return frame && frame.contentWindow && frame.contentWindow.dreamscapeGuac;
+}
+
+function desktopGuacSetStatus(modal, text) {
+    const status = modal.querySelector('.desktop-guac-status');
+    if (status) status.textContent = text;
+}
+
+function desktopGuacBarButton(label, title, iconClass) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'desktop-guac-bar-btn';
+    button.title = title || label;
+    if (iconClass) {
+        const icon = document.createElement('i');
+        icon.className = iconClass;
+        icon.setAttribute('aria-hidden', 'true');
+        button.appendChild(icon);
+    }
+    if (label) {
+        const text = document.createElement('span');
+        text.textContent = label;
+        button.appendChild(text);
+    }
+    return button;
+}
+
+function buildDesktopGuacSessionBar(modal) {
+    const bar = document.createElement('div');
+    bar.className = 'desktop-guac-bar';
+    const menuBtn = desktopGuacBarButton('', 'Guacamole menu', 'fas fa-bars');
+    menuBtn.setAttribute('aria-label', 'Guacamole menu');
+    menuBtn.addEventListener('click', () => {
+        const api = desktopGuacFrameApi(modal);
+        if (!api || !api.toggleMenu()) desktopGuacSetStatus(modal, 'Session is not ready');
+    });
+    const disconnectBtn = desktopGuacBarButton('Disconnect', 'Disconnect');
+    disconnectBtn.addEventListener('click', () => {
+        const api = desktopGuacFrameApi(modal);
+        if (!api || !api.disconnect()) desktopGuacSetStatus(modal, 'Session is not ready');
+    });
+    const refreshBtn = desktopGuacBarButton('Refresh Screen', 'Refresh Screen');
+    refreshBtn.addEventListener('click', () => {
+        const api = desktopGuacFrameApi(modal);
+        if (!api || !api.refresh()) desktopGuacSetStatus(modal, 'Session is not ready');
+    });
+    const pasteBtn = desktopGuacBarButton('Paste', 'Paste clipboard into the session');
+    pasteBtn.addEventListener('click', () => {
+        navigator.clipboard.readText().then((text) => {
+            const api = desktopGuacFrameApi(modal);
+            if (!api || !api.paste(text)) desktopGuacSetStatus(modal, 'Session is not ready');
+        }).catch(() => desktopGuacSetStatus(modal, 'Clipboard is not available'));
+    });
+    const uploadBtn = desktopGuacBarButton('Upload File', 'Upload a file into the session');
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.multiple = true;
+    fileInput.hidden = true;
+    fileInput.addEventListener('change', () => {
+        const files = Array.from(fileInput.files || []);
+        fileInput.value = '';
+        const api = desktopGuacFrameApi(modal);
+        if (!files.length) return;
+        if (!api || !api.upload(files)) desktopGuacSetStatus(modal, 'This session has no shared folder');
+    });
+    uploadBtn.addEventListener('click', () => fileInput.click());
+    const downloads = document.createElement('div');
+    downloads.className = 'desktop-guac-downloads';
+    const downloadsBtn = desktopGuacBarButton('Downloads', 'Where session downloads go');
+    downloadsBtn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const open = downloads.classList.contains('open');
+        document.querySelectorAll('.desktop-guac-downloads.open').forEach((el) => el.classList.remove('open'));
+        downloads.classList.toggle('open', !open);
+    });
+    const menu = document.createElement('div');
+    menu.className = 'desktop-guac-downloads-menu';
+    ['client', 'vfs'].forEach((value) => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'desktop-guac-downloads-item';
+        item.dataset.value = value;
+        item.textContent = value === 'vfs' ? 'Downloads Folder' : 'Client';
+        item.addEventListener('click', (event) => {
+            event.stopPropagation();
+            localStorage.setItem(GUAC_DOWNLOAD_TARGET_KEY, value);
+            markDesktopGuacDownloadTarget(downloads);
+            downloads.classList.remove('open');
+        });
+        menu.appendChild(item);
+    });
+    markDesktopGuacDownloadTarget(downloads);
+    downloads.appendChild(downloadsBtn);
+    downloads.appendChild(menu);
+    const status = document.createElement('span');
+    status.className = 'desktop-guac-status';
+    status.dataset.state = 'CONNECTING';
+    status.textContent = 'Connecting...';
+    bar.appendChild(menuBtn);
+    bar.appendChild(disconnectBtn);
+    bar.appendChild(refreshBtn);
+    bar.appendChild(pasteBtn);
+    bar.appendChild(uploadBtn);
+    bar.appendChild(fileInput);
+    bar.appendChild(downloads);
+    bar.appendChild(status);
+    return bar;
+}
+
+function markDesktopGuacDownloadTarget(downloads) {
+    const current = localStorage.getItem(GUAC_DOWNLOAD_TARGET_KEY) === 'vfs' ? 'vfs' : 'client';
+    downloads.querySelectorAll('.desktop-guac-downloads-item').forEach((item) => {
+        item.classList.toggle('active', item.dataset.value === current);
+    });
+}
+
+function buildDesktopGuacPinBar(modal) {
+    const hit = document.createElement('div');
+    hit.className = 'desktop-guac-pin-hit';
+    const bar = document.createElement('div');
+    bar.className = 'desktop-guac-pinbar';
+    const name = document.createElement('span');
+    name.className = 'desktop-guac-pin-name';
+    name.textContent = modal.querySelector('.modal-window-title-main span').textContent;
+    const restoreBtn = document.createElement('button');
+    restoreBtn.type = 'button';
+    restoreBtn.title = 'Exit full screen';
+    restoreBtn.appendChild(Object.assign(document.createElement('i'), { className: 'fa-regular fa-window-restore' }));
+    restoreBtn.addEventListener('click', () => toggleDesktopGuacCover(modal));
+    const minimizeBtn = document.createElement('button');
+    minimizeBtn.type = 'button';
+    minimizeBtn.title = 'Minimize';
+    minimizeBtn.appendChild(Object.assign(document.createElement('i'), { className: 'fa-regular fa-window-minimize' }));
+    minimizeBtn.addEventListener('click', () => modal.querySelector('.modal-window-controls .minimize-btn').click());
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.title = 'Close';
+    closeBtn.appendChild(Object.assign(document.createElement('i'), { className: 'fa-regular fa-xmark-large' }));
+    closeBtn.addEventListener('click', () => modal.querySelector('.modal-window-controls .close-btn').click());
+    bar.appendChild(name);
+    bar.appendChild(restoreBtn);
+    bar.appendChild(minimizeBtn);
+    bar.appendChild(closeBtn);
+    return { hit: hit, bar: bar };
+}
+
 function openDesktopGuacFrame(opts) {
     const existing = guacSessionModals.get(opts.key);
     if (existing) {
@@ -379,7 +983,7 @@ function openDesktopGuacFrame(opts) {
     content.style.height = 'auto';
     content.style.minHeight = '0';
     content.style.padding = '0';
-    content.style.overflow = 'hidden';
+    content.style.overflow = 'visible';
     const body = document.createElement('div');
     body.className = 'modal-body';
     body.style.flex = '1 1 auto';
@@ -387,16 +991,24 @@ function openDesktopGuacFrame(opts) {
     body.style.display = 'flex';
     body.style.flexDirection = 'column';
     body.style.padding = '0';
+    body.style.overflow = 'hidden';
 
+    const isSession = opts.windowIdentifier === 'desktopGuacSession';
     // Placement and [hidden]: public/css/desktop-apps/desktopAppWindows.css
     const status = document.createElement('p');
     status.className = 'form-hint';
-    status.textContent = 'Connecting…';
-    body.appendChild(status);
+    status.textContent = 'Connecting...';
+    if (isSession) content.appendChild(buildDesktopGuacSessionBar(modal));
+    else body.appendChild(status);
     content.appendChild(body);
 
     guacSessionModals.set(opts.key, modal);
     modal.appendChild(desktopGuacTitle(opts.title, opts.iconClass));
+    if (isSession) {
+        const pin = buildDesktopGuacPinBar(modal);
+        body.appendChild(pin.hit);
+        body.appendChild(pin.bar);
+    }
     modal.appendChild(document.createElement('div')).className = 'modal-focus-overlay';
     modal.appendChild(desktopGuacControls(modal, () => {
         guacSessionModals.delete(opts.key);
@@ -404,7 +1016,7 @@ function openDesktopGuacFrame(opts) {
         if (frame && desktopGuacDialogOwned(frame)) hideDesktopGuacDialog();
         if (desktopGuacDialog && desktopGuacDialog.frame === frame) desktopGuacDialog = null;
         modal.remove();
-    }));
+    }, isSession ? 'cover' : null));
     modal.appendChild(content);
     document.body.appendChild(modal);
     showDesktopGuacModal(modal);
@@ -413,11 +1025,14 @@ function openDesktopGuacFrame(opts) {
         .then((response) => response.json().catch(() => null).then((payload) => {
             if (guacSessionModals.get(opts.key) !== modal) return;
             if (!response.ok || !payload || !payload.url) {
-                status.textContent = (payload && payload.error) || 'Komaki session is unavailable.';
+                const message = (payload && payload.error) || 'Komaki session is unavailable.';
+                if (isSession) desktopGuacSetStatus(modal, message);
+                else status.textContent = message;
                 return;
             }
             const frame = document.createElement('iframe');
             frame.title = opts.title;
+            if (opts.protocol) frame.dataset.protocol = opts.protocol;
             frame.setAttribute('allow', 'clipboard-read; clipboard-write; fullscreen');
             frame.style.flex = '1 1 auto';
             frame.style.minHeight = '0';
@@ -430,13 +1045,13 @@ function openDesktopGuacFrame(opts) {
             };
             // Stays up on a client route until mirrorDesktopGuacFrame reports the session connected
             frame.addEventListener('load', () => {
-                status.hidden = !desktopGuacRouteConnection(frame.contentWindow.location.hash);
+                if (!isSession) status.hidden = !desktopGuacRouteConnection(frame.contentWindow.location.hash);
                 trackDesktopGuacFrame(modal, frame, opts.title);
                 focusFrame();
             });
             new MutationObserver(focusFrame).observe(modal, { attributes: true, attributeFilter: ['class'] });
             modal.addEventListener('pointerup', (event) => {
-                if (!event.target.closest('.modal-window-controls')) focusFrame();
+                if (!event.target.closest('.modal-window-controls, .desktop-guac-bar, .desktop-guac-pinbar')) focusFrame();
             });
             // Visibility: public/css/desktop-apps/desktopAppWindows.css (:focus-within)
             const badge = document.createElement('span');
@@ -447,6 +1062,12 @@ function openDesktopGuacFrame(opts) {
             body.appendChild(badge);
         }))
         .catch(() => {
-            status.textContent = 'Could not reach Dreamscape for the Komaki session.';
+            const message = 'Could not reach Dreamscape for the Komaki session.';
+            if (isSession) desktopGuacSetStatus(modal, message);
+            else status.textContent = message;
         });
 }
+
+document.addEventListener('click', () => {
+    document.querySelectorAll('.desktop-guac-downloads.open').forEach((el) => el.classList.remove('open'));
+});

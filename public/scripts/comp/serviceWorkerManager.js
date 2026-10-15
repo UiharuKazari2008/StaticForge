@@ -88,12 +88,49 @@ function needsLaunchInstaller(files, options) {
     return filesCountingTowardInstaller(files, opts.stragglers).length > WIZARD_FILE_THRESHOLD;
 }
 
+/** Short id of this exact file set. Same urls and hashes always produce the same id. */
+function servicePackPatchId(files) {
+    const rows = (Array.isArray(files) ? files : [])
+        .filter((file) => file && file.url)
+        .map((file) => `${file.url}\0${file.hash || ''}`)
+        .sort();
+    let hash = 0x811c9dc5;
+    const material = rows.join('\0');
+    for (let i = 0; i < material.length; i++) {
+        hash ^= material.charCodeAt(i);
+        hash = Math.imul(hash, 0x01000193);
+    }
+    return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+/**
+ * "Upgrade to Service Pack <YY>Q<1-4> <patchid>" from the files themselves.
+ * Year and quarter come from the newest modified time in the set (UTC).
+ * With no timestamp, `now` is used. The patch id is the file set, not a stored release name.
+ */
+function servicePackFromFiles(files, now) {
+    const list = (Array.isArray(files) ? files : []).filter((file) => file && file.url);
+    let newest = 0;
+    for (let i = 0; i < list.length; i++) {
+        const t = Number(list[i].modified);
+        if (Number.isFinite(t) && t > newest) newest = t;
+    }
+    const when = new Date(newest > 0 ? newest : (Number(now) || Date.now()));
+    const yy = String(when.getUTCFullYear() % 100).padStart(2, '0');
+    const quarter = Math.floor(when.getUTCMonth() / 3) + 1;
+    const patchId = servicePackPatchId(list);
+    const name = `Service Pack ${yy}Q${quarter} ${patchId}`;
+    return { yy, quarter, patchId, name, label: `Upgrade to ${name}` };
+}
+
 class ServiceWorkerManager {
     constructor() {
         this.swRegistration = null;
         this.updateAvailable = false;
         // Blown when updates are downloaded but not yet applied via restart.
         this.pendingUpdateFuse = false;
+        // Large update held for a restart. { label, name, yy, quarter, patchId } or null.
+        this.servicePack = null;
         // Files actually downloaded for the current pending apply/restart (not manifest size).
         this.pendingUpdateFilesTotal = 0;
         this.updateProgress = 0;
@@ -104,7 +141,7 @@ class ServiceWorkerManager {
             el: null,
             anchorEl: null,
             state: 'hidden', // hidden | checking | downloading | available | complete
-            kind: 'sw-update', // sw-update | runtime-compile
+            kind: 'sw-update',
             dismissedUntilComplete: false,
             progress: 0,
             message: '',
@@ -317,6 +354,39 @@ class ServiceWorkerManager {
         const fresh = this._filesCountingTowardInstaller(files);
         if (fresh.length) return fresh.length;
         return Array.isArray(files) ? files.length : 0;
+    }
+
+    /**
+     * The desktop is up: a large update is not downloaded here. The name is built from the
+     * file set, and the restart (forceRestart) is what installs it on /launch.
+     */
+    _offerServicePackUpgrade(files) {
+        const fresh = this._filesCountingTowardInstaller(files);
+        const pack = servicePackFromFiles(fresh.length ? fresh : files, Date.now());
+        this.servicePack = pack;
+        this.isUpdating = false;
+        this.updateAvailable = true;
+        this._clearScheduledUpdateCompleteToast();
+        if (this.checkingToastId && this.checkingToastId !== 'service-worker-tray-popup' && typeof removeGlassToast === 'function') {
+            removeGlassToast(this.checkingToastId);
+            this.checkingToastId = null;
+        }
+        const count = fresh.length || (Array.isArray(files) ? files.length : 0);
+        this._showServiceWorkerTrayPopup('upgrade', {
+            kind: 'sw-update',
+            message: pack.label,
+            filesTotal: count,
+            progress: 0
+        });
+        this.updateToastId = 'service-worker-tray-popup';
+        if (this.swRegistration && this.swRegistration.active) {
+            this.swRegistration.active.postMessage({ type: 'CANCEL_DOWNLOAD' });
+        }
+        console.log(`[update] ${count} files held: ${pack.label}`);
+    }
+
+    _runtimeHoldsLargeUpdate(files) {
+        return !window.isLoginPage && this.bootComplete && this._needsLaunchInstaller(files);
     }
 
     /**
@@ -732,8 +802,8 @@ class ServiceWorkerManager {
         }
 
         const popoverRect = popover.getBoundingClientRect();
-        const arrowOffset = 18;
-        const arrowRightOffset = parseFloat(getComputedStyle(popover).fontSize) || 16;
+        const arrowOffset = 16;
+        const arrowRightOffset = 15;
 
         let top = rect.top - popoverRect.height - arrowOffset;
         let left = rect.right - popoverRect.width + arrowRightOffset;
@@ -764,9 +834,6 @@ class ServiceWorkerManager {
         if (!this.trayPopup.el) return;
         this.trayPopup.el.classList.remove('show');
         this.trayPopup.state = 'hidden';
-        if (this.trayPopup.kind === 'runtime-compile') {
-            this.trayPopup.kind = 'sw-update';
-        }
     }
 
     /** Vista's Windows Update balloon: the icon, a bold title, one line; a click opens the page. */
@@ -774,11 +841,12 @@ class ServiceWorkerManager {
         popover.classList.add('vista-update-balloon');
         popover.innerHTML = `
             <div class="popover-content">
-                <div class="service-worker-tray-popup-header-row">
-                    <div class="popover-header"><img class="vista-update-balloon-icon" src="/static_images/vista-cpl/windows-update-16.png" alt=""><span></span></div>
-                    <button type="button" class="vista-update-balloon-close" title="Close" aria-label="Close"></button>
+                <img class="vista-update-balloon-icon" src="/static_images/vista-cpl/windows-update-32.png" alt="">
+                <div class="vista-update-balloon-copy">
+                    <div class="popover-header"><span></span></div>
+                    <div class="popover-body"></div>
                 </div>
-                <div class="popover-body"></div>
+                <button type="button" class="vista-update-balloon-close" title="Close" aria-label="Close"></button>
             </div>`;
         popover.querySelector('.popover-header span').textContent = balloon.title;
         popover.querySelector('.popover-body').textContent = balloon.body;
@@ -800,32 +868,26 @@ class ServiceWorkerManager {
         const state = this.trayPopup.state;
         popover.classList.remove('vista-update-balloon');
         popover.onclick = null;
-        if (this.trayPopup.vistaBalloon && this.trayPopup.kind !== 'runtime-compile') {
+        if (this.trayPopup.vistaBalloon) {
             this._renderVistaUpdateBalloon(popover, this.trayPopup.vistaBalloon);
             return;
         }
-        const isRuntimeCompile = this.trayPopup.kind === 'runtime-compile';
 
-        const titleByState = isRuntimeCompile
-            ? {
-                downloading: 'Compiling runtime assets',
-                complete: 'Compile complete',
-                checking: 'Compile issue'
-            }
-            : {
-                checking: 'Checking for updates',
-                available: 'Updates available',
-                downloading: 'Downloading updates',
-                complete: 'Updates complete'
-            };
+        const titleByState = {
+            checking: 'Checking for updates',
+            available: 'Updates available',
+            downloading: 'Downloading updates',
+            upgrade: 'Service pack',
+            complete: 'Updates complete'
+        };
 
         const showProgress = state === 'downloading';
         const progressVal = Math.max(0, Math.min(100, Math.round(this.trayPopup.progress || 0)));
 
         const message = this.trayPopup.message || '';
         const filesTotal = Number.isFinite(this.trayPopup.filesTotal) ? this.trayPopup.filesTotal : 0;
-        const headerTitle = titleByState[state] || (isRuntimeCompile ? 'Runtime assets' : 'Service Worker');
-        const headerIcon = isRuntimeCompile ? 'fa-compress' : 'fa-laptop-arrow-down';
+        const headerTitle = titleByState[state] || 'Service Worker';
+        const headerIcon = 'fa-laptop-arrow-down';
 
         const wrap = document.createElement('div');
         wrap.className = 'popover-content';
@@ -842,14 +904,10 @@ class ServiceWorkerManager {
         closeBtn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            if (isRuntimeCompile) {
-                this._hideRuntimeCompileNotify();
-            } else {
-                if (this.trayPopup.state === 'downloading') {
-                    this.trayPopup.dismissedUntilComplete = true;
-                }
-                this._hideServiceWorkerTrayPopup();
+            if (this.trayPopup.state === 'downloading') {
+                this.trayPopup.dismissedUntilComplete = true;
             }
+            this._hideServiceWorkerTrayPopup();
         });
 
         const headerRow = document.createElement('div');
@@ -861,14 +919,8 @@ class ServiceWorkerManager {
         const body = document.createElement('div');
         body.className = 'popover-body';
 
-        if (isRuntimeCompile) {
-            if (state === 'downloading') {
-                body.textContent = message || 'Optimising CSS and JavaScript…';
-            } else if (state === 'complete') {
-                body.textContent = message || 'Runtime assets compiled successfully.';
-            } else {
-                body.textContent = message || 'Runtime compile finished with errors.';
-            }
+        if (state === 'upgrade') {
+            body.textContent = message || 'Restart to install the service pack.';
         } else if (state === 'available') {
             body.innerHTML = message || 'Resource updates are available.';
         } else if (state === 'downloading') {
@@ -909,7 +961,36 @@ class ServiceWorkerManager {
             wrap.appendChild(progressWrap);
         }
 
-        if (!isRuntimeCompile && state === 'available') {
+        if (state === 'upgrade') {
+            const actions = document.createElement('div');
+            actions.className = 'service-worker-tray-popup-actions';
+
+            const laterBtn = document.createElement('button');
+            laterBtn.type = 'button';
+            laterBtn.className = 'btn-standard';
+            laterBtn.textContent = 'Later';
+            laterBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this._hideServiceWorkerTrayPopup();
+            });
+
+            const restartBtn = document.createElement('button');
+            restartBtn.type = 'button';
+            restartBtn.className = 'btn-standard';
+            restartBtn.textContent = 'Restart';
+            restartBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.forceRestart();
+            });
+
+            actions.appendChild(restartBtn);
+            actions.appendChild(laterBtn);
+            wrap.appendChild(actions);
+        }
+
+        if (state === 'available') {
             const actions = document.createElement('div');
             actions.className = 'service-worker-tray-popup-actions';
 
@@ -939,7 +1020,7 @@ class ServiceWorkerManager {
             wrap.appendChild(actions);
         }
 
-        if (!isRuntimeCompile && state === 'complete') {
+        if (state === 'complete') {
             const actions = document.createElement('div');
             actions.className = 'service-worker-tray-popup-actions';
 
@@ -974,7 +1055,7 @@ class ServiceWorkerManager {
 
     _showServiceWorkerTrayPopup(nextState, { message = '', progress = null, filesTotal = null, kind = null } = {}) {
         // Control Panel's update page (cplUpdate.js) is open: updates run in the foreground there,
-        // every state goes to the page and the tray balloon stays down (runtime compiles keep it)
+        // every state goes to the page and the tray balloon stays down.
         const popupKind = kind !== null ? kind : this.trayPopup.kind;
         if (typeof this.foregroundUpdateView === 'function') {
             this._hideServiceWorkerTrayPopup();
@@ -983,11 +1064,8 @@ class ServiceWorkerManager {
             if (typeof message === 'string') this.trayPopup.message = message;
             if (progress !== null) this.trayPopup.progress = progress;
             if (filesTotal !== null) this.trayPopup.filesTotal = filesTotal;
-            const pageState = popupKind === 'runtime-compile'
-                ? (/failed|error/i.test(this.trayPopup.message) ? 'failed' : 'preparing')
-                : nextState;
             try {
-                this.foregroundUpdateView(pageState, { message: this.trayPopup.message, progress: this.trayPopup.progress, filesTotal: this.trayPopup.filesTotal });
+                this.foregroundUpdateView(nextState, { message: this.trayPopup.message, progress: this.trayPopup.progress, filesTotal: this.trayPopup.filesTotal });
             } catch (err) {
                 console.error('Update page', err);
             }
@@ -1001,11 +1079,13 @@ class ServiceWorkerManager {
         // says it); a balloon only when something needs you, worded as Vista's, and one click
         // opens MeletonFX Update (cplUpdate.js balloonFor). Classic keeps the old popup.
         this.trayPopup.vistaBalloon = null;
-        const vista = popupKind !== 'runtime-compile' && window.cplUpdate
+        const vista = window.cplUpdate
             && document.body.classList.contains('desktop-mode') && !document.body.classList.contains('windows-classic-theme');
         if (vista) {
             const pageState = window.cplUpdate.classify(nextState, typeof message === 'string' && message ? message : this.trayPopup.message);
-            const balloon = window.cplUpdate.balloonFor(pageState);
+            let balloon = window.cplUpdate.balloonFor(pageState, typeof message === 'string' && message ? message : this.trayPopup.message);
+            // trayPopupHidden: public/scripts/comp/trayRegistry.js
+            if (balloon && trayPopupHidden('windows-update')) balloon = null;
             if (!balloon) {
                 if (this.trayPopup.el && this.trayPopup.el.classList.contains('show')) this._hideServiceWorkerTrayPopup();
                 this.trayPopup.kind = popupKind;
@@ -1015,13 +1095,12 @@ class ServiceWorkerManager {
         }
 
         // No tray balloon while the taskbar is hidden (boot, logon, locks; Yozora #435).
-        // Progress / checking is noise then; the restart prompt, "updates available" and a
-        // compile failure wait for the taskbar (latest per kind)
+        // Progress / checking is noise then; the restart prompt and "updates available"
+        // wait for the taskbar (latest per kind)
         const boot = window.desktopBoot;
         if (boot && typeof boot.isTaskbarVisible === 'function' && !boot.isTaskbarVisible()) {
             const popupKind = kind !== null ? kind : this.trayPopup.kind;
-            const keep = (popupKind === 'sw-update' && (nextState === 'complete' || nextState === 'available'))
-                || (popupKind === 'runtime-compile' && nextState === 'checking');
+            const keep = popupKind === 'sw-update' && (nextState === 'complete' || nextState === 'available' || nextState === 'upgrade');
             if (keep) {
                 const args = [nextState, { message, progress, filesTotal, kind }];
                 boot.whenTaskbarVisible(`sw-tray:${popupKind}`, () => this._showServiceWorkerTrayPopup(...args));
@@ -1033,7 +1112,7 @@ class ServiceWorkerManager {
             this.trayPopup.kind = kind;
         }
 
-        if (nextState === 'downloading' && this.trayPopup.kind !== 'runtime-compile' && this.trayPopup.dismissedUntilComplete) {
+        if (nextState === 'downloading' && this.trayPopup.dismissedUntilComplete) {
             // Stay hidden until completion.
             this.trayPopup.state = 'hidden';
             return false;
@@ -1462,9 +1541,10 @@ class ServiceWorkerManager {
             return;
         }
         try {
-            // First check if there's already a download in progress
+            // First check if there's already a download in progress.
+            // Once the desktop is up, keep going: a large set is halted instead of joined.
             const swState = await this.checkDownloadState();
-            if (swState && swState.isDownloading) {
+            if (swState && swState.isDownloading && !(this.bootComplete && !window.isLoginPage)) {
                 console.log('Download already in progress, syncing with existing download');
                 // Sync with existing download
                 this.isUpdating = true;
@@ -1566,6 +1646,11 @@ class ServiceWorkerManager {
             // Check if service worker is already downloading
             const swState = await this.checkDownloadState();
             if (swState && swState.isDownloading) {
+                const already = await this.getFilesNeedingUpdate(files);
+                if (this._runtimeHoldsLargeUpdate(already)) {
+                    this._offerServicePackUpgrade(already);
+                    return;
+                }
                 console.warn('Service worker is already downloading, syncing with current status');
                 // Immediately sync with current status
                 this.isUpdating = true;
@@ -1634,6 +1719,12 @@ class ServiceWorkerManager {
             if (filesToUpdate.length > 0) {
                 console.log(`Found ${filesToUpdate.length} files that need updating`);
 
+                if (this._runtimeHoldsLargeUpdate(filesToUpdate)) {
+                    this._offerServicePackUpgrade(filesToUpdate);
+                    return;
+                }
+                this.servicePack = null;
+
                 if (!noToast) {
                     this._clearScheduledUpdateCompleteToast();
                     this.showCheckingForUpdatesToast();
@@ -1649,6 +1740,7 @@ class ServiceWorkerManager {
                     files: filesToUpdate
                 });
             } else if (!noToast) {
+                this.servicePack = null;
                 this._clearScheduledUpdateCompleteToast();
                 if (this.hasPendingUpdates()) {
                     this.showPendingUpdatesFromChecking();
@@ -1661,6 +1753,7 @@ class ServiceWorkerManager {
                     }
                 }
             } else {
+                this.servicePack = null;
                 // Silently remove checking toast when noToast is true
                 if (this.checkingToastId && typeof removeGlassToast === 'function') {
                     removeGlassToast(this.checkingToastId);
@@ -2035,6 +2128,10 @@ class ServiceWorkerManager {
         if (filesToUpdate.length === 0) {
             return { cached: 0, skipped: false };
         }
+        if (this._runtimeHoldsLargeUpdate(filesToUpdate)) {
+            this._offerServicePackUpgrade(filesToUpdate);
+            return { cached: 0, skipped: true, servicePack: this.servicePack && this.servicePack.label };
+        }
 
         return new Promise((resolve) => {
             let settled = false;
@@ -2379,39 +2476,26 @@ class ServiceWorkerManager {
 
         const percent = this._resolveRuntimeCompilePercent(data);
         const label = data.total > 0
-            ? `Compiling ${data.current}/${data.total} (${Math.round(percent)}%)`
-            : 'Compiling runtime assets…';
+            ? `Preparing system to update... (${Math.round(percent)}%)`
+            : 'Preparing system to update...';
 
+        // The prepare stage is MeletonFX Update (cplUpdate.js). No tray balloon and no toast.
+        this._hideRuntimeCompileNotify();
         if (this._isPreStartupUpdatePhase()) {
             this._setPreStartupUpdateStageMessage(label);
-            // The logon line reports it; no tray balloon over the logon screen (#435)
-            if (this._isDesktopTrayMode()) return;
-        }
-
-        if (this._isDesktopTrayMode()) {
-            this._showServiceWorkerTrayPopup('downloading', {
-                kind: 'runtime-compile',
-                message: 'Optimising CSS and JavaScript…',
-                progress: percent,
-                filesTotal: data.total || 0
-            });
-            this.runtimeCompileNotifyId = 'service-worker-tray-popup';
             return;
         }
-
-        if (!this.runtimeCompileNotifyId) {
-            // showGlassToast in toastManager.js
-            this.runtimeCompileNotifyId = showGlassToast(
-                'info',
-                'Runtime Compile',
-                'Compiling runtime assets…',
-                true,
-                false,
-                '<i class="fas fa-compress"></i>'
-            );
+        if (typeof this.foregroundUpdateView === 'function') {
+            try {
+                this.foregroundUpdateView('preparing', {
+                    message: 'Getting the server ready to compile static assets.',
+                    progress: percent,
+                    filesTotal: data.total || 0
+                });
+            } catch (err) {
+                console.error('Update page', err);
+            }
         }
-        // updateGlassToastProgress in toastManager.js
-        updateGlassToastProgress(this.runtimeCompileNotifyId, percent);
     }
 
     handleRuntimeCompileComplete(data) {
@@ -2424,42 +2508,15 @@ class ServiceWorkerManager {
             );
         }
 
-        if (this._isDesktopTrayMode()) {
-            if (success) {
-                this._showServiceWorkerTrayPopup('complete', {
-                    kind: 'runtime-compile',
-                    message: 'Runtime assets compiled successfully.',
-                    progress: 100
-                });
-                this.runtimeCompileNotifyId = 'service-worker-tray-popup';
-                setTimeout(() => {
-                    if (this.runtimeCompileNotifyId === 'service-worker-tray-popup' && this.trayPopup.kind === 'runtime-compile') {
-                        this._hideRuntimeCompileNotify();
-                    }
-                }, 2200);
-            } else if (this.runtimeCompileNotifyId === 'service-worker-tray-popup') {
-                this._showServiceWorkerTrayPopup('checking', {
-                    kind: 'runtime-compile',
-                    message: `${failedCount} file(s) failed to compile.`,
-                    progress: 100
-                });
-            } else {
-                this.runtimeCompileNotifyId = null;
-            }
-            return;
-        }
-
         this._hideRuntimeCompileNotify();
-
-        if (success && typeof showGlassToast === 'function') {
-            showGlassToast(
-                'success',
-                'Runtime Compile',
-                'Runtime assets compiled successfully.',
-                false,
-                3000,
-                '<i class="fas fa-check-circle"></i>'
-            );
+        if (!success && typeof this.foregroundUpdateView === 'function') {
+            try {
+                this.foregroundUpdateView('failed', {
+                    message: `${failedCount} file(s) failed to compile.`
+                });
+            } catch (err) {
+                console.error('Update page', err);
+            }
         }
     }
     
@@ -3296,10 +3353,10 @@ class ServiceWorkerManager {
             // Send skip waiting message
             this.swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
 
-            // Wait a moment for the new service worker to activate
+            // Wait a moment for the new service worker to activate, then the winlogon restart
             setTimeout(() => {
-                console.log('Reloading page to activate new service worker');
-                window.location.reload();
+                console.log('Restarting through the Welcome screen to activate the new service worker');
+                this.forceRestart();
             }, 1000);
         }
     }
@@ -3870,17 +3927,15 @@ class ServiceWorkerManager {
     }
     
     /**
-     * Restart to apply updates. With the desktop up it is a Windows restart: windows close,
-     * fade to black, then the Melaton boot on /launch (modalUtils runClientRestartSequence,
-     * Yozora #420); during boot it goes straight there. options.direct = in-place reload
-     * (agent test restarts, agentClientBridge.js).
+     * Restart to apply updates. Always the winlogon path (Welcome screen, "Shutting down...",
+     * then /launch). A direct tab reload is not available from here.
      */
     /** When this client last asked the server for updates (the update page's "Most recent check"). */
     _recordUpdateCheck() {
         try { localStorage.setItem('meletonUpdateCheckedAt', String(Date.now())); } catch (_) { /* private mode */ }
     }
 
-    forceRestart(options = {}) {
+    forceRestart() {
         console.log('🔄 Force restarting application...');
         if (this.pendingUpdateFuse) {
             // the downloaded updates install with this restart (the update page's "Updates were installed")
@@ -3888,40 +3943,11 @@ class ServiceWorkerManager {
         }
         this.resetPendingUpdateFuse();
 
-        try {
-            // suppressWebSocketReconnectForReload: public/scripts/comp/modalUtils.js
-            suppressWebSocketReconnectForReload();
-            // Set bypass confirmation to true to avoid confirmation dialogs
-            bypassConfirmation = true;
-
-            const desktopUp = !options.direct
-                && window.isDesktop
-                && window.wsClient && window.wsClient.initializationCompleted
-                && typeof window.runClientRestartSequence === 'function';
-            if (desktopUp) {
-                window.runClientRestartSequence().catch((err) => {
-                    console.error('❌ Restart sequence failed, reloading:', err);
-                    window.location.reload();
-                });
-                return;
-            }
-
-            // Small delay to ensure bypass confirmation is set
-            setTimeout(() => {
-                try {
-                    if (!options.direct && typeof window.restartClientNavigate === 'function') {
-                        window.restartClientNavigate();
-                    } else {
-                        window.location.reload();
-                    }
-                } catch (e1) {
-                    window.location.href = window.location.href;
-                }
-            }, 100);
-        } catch (error) {
-            console.error('❌ Error during force restart:', error);
+        // runWinlogonPower: public/scripts/comp/winlogonPower.js
+        runWinlogonPower('restart').catch((err) => {
+            console.error('❌ Restart sequence failed:', err);
             alert('Restart failed. Please refresh the page manually to apply updates.');
-        }
+        });
     }
 
     // Shared stall-based download progress attach — boot gate, wizard, init, login
