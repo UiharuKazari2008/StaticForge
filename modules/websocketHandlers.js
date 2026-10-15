@@ -559,6 +559,7 @@ class WebSocketMessageHandlers {
             'dovecote_set_image_pref',
             'start_menu_save_layout',
             'start_menu_reset_layout',
+            'sidebar_save', // JULES: Fix missing destructive gate for sidebar_save
             'capture_cursor_account',
             'delete_cursor_account',
             'login_cursor_account',

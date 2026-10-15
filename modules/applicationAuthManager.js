@@ -34,7 +34,8 @@ const SCOPE_WS_PACKETS = {
         'workspace_get_groups', 'workspace_get_group', 'workspace_get_image_groups',
         'workspace_update_window_positions',
         'desktop_add_shortcut', 'desktop_update_shortcut',
-        'desktop_remove_shortcut', 'desktop_update_positions'
+        'desktop_remove_shortcut', 'desktop_update_positions',
+        'sidebar_get', 'sidebar_save', 'sidebar_random_image', 'sidebar_weather', 'sidebar_host_metrics'
     ],
     search: [
         'search_tags', 'search_dataset_tags', 'search_files', 'search_characters',
