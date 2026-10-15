@@ -87,9 +87,11 @@ class FastTagSearch {
      * Search curated tag groups using index (PRIORITY 1)
      * Fast O(1) lookup using pre-built index
      * @param {string} query - Text to search
+     * @param {Object} [options] - Search options
+     * @param {boolean} [options.exactOnly] - JULES: perf optimization — skip O(N) substring scan when only exact match needed
      * @returns {Object|null} Group info if found
      */
-    searchTagGroups(query) {
+    searchTagGroups(query, options = {}) {
         if (!this.tagToPathIndex) return null;
 
         const normalized = query.toLowerCase().trim();
@@ -110,6 +112,11 @@ class FastTagSearch {
                     source: 'curated_group'
                 });
             }
+        }
+
+        // JULES: perf optimization — skip O(N) substring search when exact matches only are needed or requested
+        if (options.exactOnly) {
+            return found.exactMatches.length > 0 ? found : null;
         }
 
         // CONTAINS SEARCH: Check all tags in index
@@ -152,7 +159,8 @@ class FastTagSearch {
         const normalized = query.trim().toLowerCase();
         
         // PRIORITY 1: Check curated tag groups (more organized)
-        const groupMatch = this.searchTagGroups(normalized);
+        // JULES: perf optimization — pass exactOnly: true to bypass O(N) tagToPathIndex scan
+        const groupMatch = this.searchTagGroups(normalized, { exactOnly: true });
         if (groupMatch && groupMatch.exactMatches.length > 0) {
             const curatedTag = groupMatch.exactMatches[0];
             // Still need to get n_count from main database
