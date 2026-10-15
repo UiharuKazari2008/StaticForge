@@ -55,28 +55,30 @@ git, not in the install manifest).
 ### Wiki and tag seeds
 
 These are referenced by tag import / lookup and are too large (or are the inputs to a database
-that is too large) to commit. `scripts/fetch-seeds.sh` downloads them. `SEED_BASE_URL`
-defaults to the Yozora folder below (**PLACEHOLDER until Sala confirms**). Override it
-with the environment variable when the files live somewhere else:
+that is too large) to commit. They are hosted at
+<https://yozora.bluesteel.737.jp.net/seeds/dreamscape/>, and `scripts/fetch-seeds.sh` downloads
+them from there. Override `SEED_BASE_URL` when the files live somewhere else:
 
 ```bash
 bash scripts/fetch-seeds.sh
-# PLACEHOLDER until Sala confirms:
-#   https://yozora.bluesteel.737.jp.net/seeds/dreamscape/
 SEED_BASE_URL=https://example.invalid/dreamscape-seeds bash scripts/fetch-seeds.sh
 ```
 
-Sizes and sha256 below are from the production host on 2026-10-14. Check them after download.
+The script first downloads
+[`SHA256SUMS`](https://yozora.bluesteel.737.jp.net/seeds/dreamscape/SHA256SUMS) from the same
+folder and checks every file against it. A mismatch stops the script and leaves the old file in
+place. The hosted databases are refreshed from production, so the checksums are not repeated
+here; `SHA256SUMS` is the source of truth.
 
-| File | Bytes | sha256 |
-|------|------:|--------|
-| `.cache/tag_wiki.db` | 849838080 | `9495dd4c5c70323d5ac516d4ab6513e68605e8ba649af5041f623739918817f0` |
-| `.cache/tag_search.db` | 39579648 | `717c9fa583b136c5187cb8e0a4cb347c31dff11e2684ec46434d09a512fcb5e7` |
-| `.cache/nax_tags.db` | 19353600 | `17511f6b15a3eac64b822df90e2b74654af830ba6d5f0ccbc710d700e0a47fb8` |
-| `danbooru_tagwiki.json` | 143835679 | `094121c42a0555d7221403c3ca806851360a1c01358c4752e03cf3f4f45371d2` |
-| `e621_wiki_fixed.json` | 55725469 | `d75f2598788c1a1031c14bdbc47c658f62f5d71f51a1442364ac2aa1a83e69e7` |
-| `danbooru_tag_groups_hierarchy.json` | 3006656 | `71a35647bcb41d3aba9640f485abc341ffcc8c084af33ea5ff9b398e305276dc` |
-| `nax_tags.json` | 8583492 | `14489b315bc1c6f28543de231c100f851111a136bca7c495f433448021781980` |
+| File | Saved to |
+|------|----------|
+| `tag_wiki.db` | `.cache/tag_wiki.db` |
+| `tag_search.db` | `.cache/tag_search.db` |
+| `nax_tags.db` | `.cache/nax_tags.db` |
+| `danbooru_tagwiki.json` | `danbooru_tagwiki.json` |
+| `e621_wiki_fixed.json` | `e621_wiki_fixed.json` |
+| `danbooru_tag_groups_hierarchy.json` | `danbooru_tag_groups_hierarchy.json` |
+| `nax_tags.json` | `nax_tags.json` |
 
 `scripts/import-nax-tags.js` builds `.cache/nax_tags.db` from `nax_tags.json`.
 `scripts/create-tag-database.js` builds `.cache/tag_wiki.db` from the wiki JSON. Tag search

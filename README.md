@@ -159,8 +159,8 @@ node web_server.js
 The installer precompiles CSS and JS (`node scripts/precompile-runtime-assets.js`) before the
 server starts. A fresh tree prints `compiled=` greater than 0. Asset list, the manifest rule
 for files that are not on disk, and the wiki/tag seed download (`scripts/fetch-seeds.sh`,
-`SEED_BASE_URL`, placeholder `https://yozora.bluesteel.737.jp.net/seeds/dreamscape/` until Sala
-confirms) are in **[docs/CLEAN_INSTALL.md](./docs/CLEAN_INSTALL.md)**.
+`SEED_BASE_URL`, default `https://yozora.bluesteel.737.jp.net/seeds/dreamscape/`, verified against its
+`SHA256SUMS`) are in **[docs/CLEAN_INSTALL.md](./docs/CLEAN_INSTALL.md)**.
 
 Access at `http://localhost:9220`
 
