@@ -12,7 +12,7 @@
 
 const fs = require('fs');
 const { spawn } = require('child_process');
-const { checkLocalWorkerHealth, readLocalWorkerConfig } = require('./localUpscaleWorker');
+const { checkLocalWorkerHealth, readLocalWorkerConfig, readLocalWorkers } = require('./localUpscaleWorker');
 const { grimoireBrowserConfig } = require('./grimoireBrowserBridge');
 const { canGalleryUseRemoteMaster } = require('./replication/replicationContracts');
 const { httpRequestBuffer } = require('./replicationRemoteFetch');
@@ -162,7 +162,7 @@ async function checkRuiko(globalResources, opts, secrets) {
     let health;
     try {
         health = await withTimeout(
-            checkLocalWorkerHealth(globalResources, { force: true, timeoutMs: slice }),
+            checkLocalWorkerHealth(globalResources, { force: true, timeoutMs: slice, workerId: 'ruiko' }),
             opts.timeoutMs
         );
     } catch (err) {
@@ -537,7 +537,7 @@ async function checkClaudeXi(opts, secrets) {
 function gatherSecrets(globalResources, grimoire, replication) {
     const secrets = [];
     try {
-        pushSecret(secrets, readLocalWorkerConfig(globalResources).key);
+        readLocalWorkers(globalResources).forEach((worker) => pushSecret(secrets, worker.key));
     } catch (_) { /* config read failed */ }
     pushSecret(secrets, grimoire && grimoire.token);
     pushSecret(secrets, replication && replication.replicationToken);

@@ -557,18 +557,14 @@ class WikiDisplayBase {
 
     buildWikiPhasewalkerSubmenuItems(tagText) {
         const text = String(tagText || this.getCurrentTagName() || '').trim();
-        // buildPhasewalkerContextSubmenuItems: public/scripts/comp/runCommandIndex.js
-        if (typeof buildPhasewalkerContextSubmenuItems === 'function') {
-            return buildPhasewalkerContextSubmenuItems(text);
-        }
-        return [{ text: 'Unavailable', disabled: true }];
+        return phasewalkerSubmenuItems(() => buildPhasewalkerContextSubmenuItems(text));
     }
 
     handleWikiPhasewalkerSubmenuAction(subItem) {
-        // handlePhasewalkerContextSubmenuAction: public/scripts/comp/runCommandIndex.js
-        if (handlePhasewalkerContextSubmenuAction) {
+        void ensureRunCommandIndex().then(() => {
+            // handlePhasewalkerContextSubmenuAction: public/scripts/comp/runCommandIndex.js
             handlePhasewalkerContextSubmenuAction(subItem);
-        }
+        });
     }
 
     handleWikiDisplayContextMenuAction(action, target, item) {

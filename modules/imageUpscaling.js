@@ -71,11 +71,13 @@ const upscaleWithLocalWorker = async (imageBuffer, scale, localOptions, ws, hand
     const result = await upscaleBufferWithLocalWorker(__runtimeGr, imageBuffer, {
         model,
         scale,
-        onProgress: (progress, status, jobId) => {
+        speed: localOptions.speed || localOptions.upscaleSpeed,
+        onProgress: (progress, status, jobId, detail) => {
             if (!ws || !handler || !requestId) return;
+            const where = detail && detail.workerName ? detail.workerName : 'Ruiko';
             const message = status === 'queued'
-                ? 'Waiting for Ruiko (job ' + jobId + ')...'
-                : 'Upscaling on Ruiko (job ' + jobId + ')...';
+                ? 'Waiting for ' + where + ' (job ' + jobId + ')...'
+                : 'Upscaling on ' + where + ' (job ' + jobId + ')...';
             try {
                 handler.sendKeepAlive(ws, requestId, 'progress', progress, message);
             } catch (err) {

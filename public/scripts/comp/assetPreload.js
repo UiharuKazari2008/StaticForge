@@ -763,6 +763,9 @@ var assetPreload = (function () {
         if (stepsRegistered || typeof wsClient === 'undefined' || !wsClient || !isDesktop) return;
         stepsRegistered = true;
         installBeforeTransition();
+        // Steps 12.2 / 18.2 / 18.4: featureLoader.js registerAssetPreloadStepStub, or here if this file won the race.
+        if (wsClient._assetPreloadStepsStubbed) return;
+        wsClient._assetPreloadStepsStubbed = true;
         wsClient.registerInitStep(12.2, 'Loading wallpaper', function () {
             return api.preloadWallpaperStage();
         });

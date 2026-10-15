@@ -837,10 +837,11 @@ const ensureDesktopEmotionModal = function () {
     resultBadge.title = 'Open in Media Player';
     resultBadge.innerHTML = '<i class="fas fa-film"></i> Media Player';
     resultBadge.addEventListener('click', () => {
-        // openDesktopVideoPlayerUrl (= openDesktopMediaPlayerUrl): public/scripts/comp/desktop-apps/mediaPlayer.js
-        if (resultBadge.dataset.video && typeof openDesktopVideoPlayerUrl === 'function') {
+        if (!resultBadge.dataset.video) return;
+        void featureLoader.loadFeature('media_player').then(() => {
+            // openDesktopVideoPlayerUrl (= openDesktopMediaPlayerUrl): public/scripts/comp/desktop-apps/mediaPlayer.js
             openDesktopVideoPlayerUrl(localGalleryImageUrl(resultBadge.dataset.video), resultBadge.dataset.video);
-        }
+        });
     });
 
     const resultVideo = document.createElement('video');

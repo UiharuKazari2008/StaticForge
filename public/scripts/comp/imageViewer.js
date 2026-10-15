@@ -781,18 +781,12 @@ class ImageViewer {
                         icon: 'fas fa-layer-group',
                         text: 'PhaseWalker',
                         openOnHover: true,
-                        optionsfn: () => {
-                            // buildPhasewalkerContextSubmenuItems: public/scripts/comp/runCommandIndex.js
-                            if (typeof buildPhasewalkerContextSubmenuItems === 'function') {
-                                return buildPhasewalkerContextSubmenuItems(this.title);
-                            }
-                            return [{ text: 'Unavailable', disabled: true }];
-                        },
+                        optionsfn: () => phasewalkerSubmenuItems(() => buildPhasewalkerContextSubmenuItems(this.title)),
                         handlerfn: (subItem) => {
-                            // handlePhasewalkerContextSubmenuAction: public/scripts/comp/runCommandIndex.js
-                            if (handlePhasewalkerContextSubmenuAction) {
+                            void ensureRunCommandIndex().then(() => {
+                                // handlePhasewalkerContextSubmenuAction: public/scripts/comp/runCommandIndex.js
                                 handlePhasewalkerContextSubmenuAction(subItem);
-                            }
+                            });
                         }
                     }
                 ]

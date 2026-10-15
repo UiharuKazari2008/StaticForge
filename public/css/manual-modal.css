@@ -3588,6 +3588,13 @@ i#carouselCacheIcon {
     align-items: center;
 }
 
+.resolution-group .director-expandable-content {
+    display: flex;
+    gap: var(--spacing-xs);
+    align-items: center;
+    flex: 0 1 auto;
+}
+
 .resolution-group .form-control {
     flex: 1;
 }

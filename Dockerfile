@@ -30,6 +30,10 @@ RUN chmod +x scripts/setup.sh scripts/docker-entrypoint.sh \
 
 COPY . .
 
+# Warm .cache/runtime-assets in the image. A bind-mounted .cache is warmed again
+# by scripts/setup.sh --runtime before the server listens.
+RUN node scripts/precompile-runtime-assets.js
+
 EXPOSE 9220
 
 ENTRYPOINT ["/app/scripts/docker-entrypoint.sh"]

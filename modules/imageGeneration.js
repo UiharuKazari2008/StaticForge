@@ -4384,6 +4384,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             baseOptions.upscaler = 'local';
             baseOptions.localUpscaleModel = body.localUpscaleModel || null;
             baseOptions.localUpscaleScale = body.localUpscaleScale || body.upscale || 4;
+            baseOptions.upscaleSpeed = body.upscaleSpeed || body.localUpscaleSpeed || null;
             if (body.upscale) baseOptions.upscale = baseOptions.localUpscaleScale;
         }
 
@@ -4424,6 +4425,8 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
     delete apiOpts.backend;
     delete apiOpts.localUpscaleModel;
     delete apiOpts.localUpscaleScale;
+    delete apiOpts.upscaleSpeed;
+    delete apiOpts.localUpscaleSpeed;
     delete apiOpts.no_save;
     delete apiOpts.layer1Seed;
     delete apiOpts.allCharacterPrompts;
@@ -5221,7 +5224,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                 ws,
                 handler,
                 opts.requestId || null,
-                { model: opts.localUpscaleModel, localUpscaleModel: opts.localUpscaleModel }
+                { model: opts.localUpscaleModel, localUpscaleModel: opts.localUpscaleModel, speed: opts.upscaleSpeed }
             );
 
             // Get new balance and calculate credit usage for upscaling.

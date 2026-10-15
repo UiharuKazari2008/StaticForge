@@ -919,30 +919,46 @@ class SearchService {
     }
 
     /**
+     * JULES: Helper to check if token list contains search word or prefix without re-tokenizing string.
+     */
+    _tokensHaveSearchWord(tokens, word) {
+        if (!tokens || !tokens.length || !word) return false;
+        for (let i = 0; i < tokens.length; i++) {
+            const token = tokens[i];
+            if (token === word || (word.length >= 3 && token.startsWith(word))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * True when `word` is a whole token in `text`, or a prefix of a token (len >= 3).
      * Avoids short false positives like "art" matching inside "hearts".
      */
     characterTextHasSearchWord(textLower, word) {
         if (!textLower || !word) return false;
         const tokens = textLower.split(/[^a-z0-9]+/).filter(Boolean);
-        if (tokens.some(token => token === word)) return true;
-        if (word.length >= 3 && tokens.some(token => token.startsWith(word))) return true;
-        return false;
+        return this._tokensHaveSearchWord(tokens, word);
     }
 
     /**
      * Score a character against a search query.
+     * JULES: Optimized character search match scoring with pre-tokenized inputs to avoid redundant regex splits.
      * Supports: full word AND on name/copyright (any order — "sayo minakami" ↔ "minakami sayo"),
      * phrase contains, copyright prefix (series browse), single-token hits anywhere in the name
      * ("sayo" → "minakami sayo"), and partial multi-word name hits ("asuna yuuki" → "asuna (sao)").
      * @returns {{ similarity: number } | null}
      */
-    scoreCharacterSearchMatch(characterNameLower, characterCopyrightLower, searchTerm, searchWords) {
+    scoreCharacterSearchMatch(characterNameLower, characterCopyrightLower, searchTerm, searchWords, nameTokens = null, copyrightTokens = null) {
+        const nTokens = nameTokens || (characterNameLower ? characterNameLower.split(/[^a-z0-9]+/).filter(Boolean) : []);
+        const cTokens = copyrightTokens || (characterCopyrightLower ? characterCopyrightLower.split(/[^a-z0-9]+/).filter(Boolean) : []);
+
         const nameWordHits = searchWords.filter(word =>
-            this.characterTextHasSearchWord(characterNameLower, word)
+            this._tokensHaveSearchWord(nTokens, word)
         ).length;
-        const copyrightWordHits = characterCopyrightLower
-            ? searchWords.filter(word => this.characterTextHasSearchWord(characterCopyrightLower, word)).length
+        const copyrightWordHits = cTokens.length
+            ? searchWords.filter(word => this._tokensHaveSearchWord(cTokens, word)).length
             : 0;
 
         const nameMatches = nameWordHits === searchWords.length;
@@ -955,16 +971,16 @@ class SearchService {
         // ("asuna yuuki" still finds "asuna (sao)" even though "yuuki" is absent)
         const partialNameMatch = !nameMatches
             && searchWords.length > 1
-            && this.characterTextHasSearchWord(characterNameLower, searchWords[0]);
+            && this._tokensHaveSearchWord(nTokens, searchWords[0]);
 
         if (!nameMatches && !copyrightMatches && !nameContains && !copyrightContains
             && !copyrightPrefix && !partialNameMatch) {
             return null;
         }
 
-        const nameSimilarity = this.calculateSimilarity(searchTerm, characterNameLower);
+        const nameSimilarity = this.calculateSimilarity(searchTerm, characterNameLower, nTokens);
         const copyrightSimilarity = characterCopyrightLower
-            ? this.calculateSimilarity(searchTerm, characterCopyrightLower)
+            ? this.calculateSimilarity(searchTerm, characterCopyrightLower, cTokens)
             : 0;
 
         let similarity;
@@ -978,8 +994,7 @@ class SearchService {
                 similarity += 15;
             } else if (nameMatches && searchWords.length === 1) {
                 // Given-name / mid-name exact token (e.g. "sayo" → "minakami sayo")
-                const tokens = characterNameLower.split(/[^a-z0-9]+/).filter(Boolean);
-                const tokenIndex = tokens.findIndex(t => t === searchWords[0]
+                const tokenIndex = nTokens.findIndex(t => t === searchWords[0]
                     || (searchWords[0].length >= 3 && t.startsWith(searchWords[0])));
                 if (tokenIndex > 0) {
                     similarity = Math.max(similarity, 88 - Math.min(tokenIndex, 6) * 2);
@@ -989,8 +1004,8 @@ class SearchService {
             const coverage = Math.max(nameWordHits, 1) / searchWords.length;
             const bestWordSim = Math.max(
                 ...searchWords
-                    .filter(word => this.characterTextHasSearchWord(characterNameLower, word))
-                    .map(word => this.calculateSimilarity(word, characterNameLower))
+                    .filter(word => this._tokensHaveSearchWord(nTokens, word))
+                    .map(word => this.calculateSimilarity(word, characterNameLower, nTokens))
             );
             similarity = (bestWordSim * coverage) + 12;
         } else {
@@ -1022,16 +1037,21 @@ class SearchService {
             const searchWords = searchTerm.split(/\s+/).filter(word => word.length > 0);
             
             const characterResults = [];
+            // JULES: Pre-tokenize name and copyright once per character to eliminate O(N*k) re-splits
             characterDataArray.forEach((character, index) => {
                 if (!character.name) return;
                 
                 const characterNameLower = character.name.toLowerCase();
                 const characterCopyrightLower = character.copyright ? character.copyright.toLowerCase() : '';
+                const nameTokens = characterNameLower.split(/[^a-z0-9]+/).filter(Boolean);
+                const copyrightTokens = characterCopyrightLower ? characterCopyrightLower.split(/[^a-z0-9]+/).filter(Boolean) : [];
                 const match = this.scoreCharacterSearchMatch(
                     characterNameLower,
                     characterCopyrightLower,
                     searchTerm,
-                    searchWords
+                    searchWords,
+                    nameTokens,
+                    copyrightTokens
                 );
                 if (!match) return;
 
@@ -1765,10 +1785,11 @@ class SearchService {
 
     /**
      * Similarity for character search.
+     * JULES: Accept preSplitTokens to avoid re-splitting text when already tokenized.
      * Prefer start matches, then exact/prefix token matches in any order/position
      * (so "sayo" ranks "minakami sayo", and "sayo minakami" matches the same name).
      */
-    calculateSimilarity(searchTerm, text) {
+    calculateSimilarity(searchTerm, text, preSplitTokens = null) {
         if (!searchTerm || !text) return 0;
 
         if (text === searchTerm) return 100;
@@ -1777,7 +1798,7 @@ class SearchService {
             return 100 - Math.min(40, text.length - searchTerm.length);
         }
 
-        const textTokens = text.split(/[^a-z0-9]+/).filter(Boolean);
+        const textTokens = preSplitTokens || text.split(/[^a-z0-9]+/).filter(Boolean);
         const searchWords = searchTerm.split(/\s+/).filter(Boolean);
 
         if (searchWords.length > 0 && textTokens.length > 0) {

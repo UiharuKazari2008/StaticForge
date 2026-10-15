@@ -149,8 +149,10 @@ function registerDsapManifests() {
             launch() {
                 // Security Center is Windows Defender on the Vista desktop: public/scripts/comp/windowsDefender.js
                 const body = document.body;
-                if (window.windowsDefender && body.classList.contains('desktop-mode') && !body.classList.contains('windows-classic-theme')) {
-                    window.windowsDefender.open('home');
+                if (body.classList.contains('desktop-mode') && !body.classList.contains('windows-classic-theme')) {
+                    void featureLoader.loadFeature('control_panel').then(() => {
+                        if (window.windowsDefender) window.windowsDefender.open('home');
+                    });
                     return;
                 }
                 // openSecurityCenterDsap: public/scripts/comp/securityCenterDsapApplet.js

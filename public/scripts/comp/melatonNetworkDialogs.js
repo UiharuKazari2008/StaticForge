@@ -303,7 +303,10 @@
         el('.domain-connect-cancel').addEventListener('click', () => closeConnect());
         el('.domain-connect-close').addEventListener('click', () => closeConnect());
         el('.domain-connect-properties').addEventListener('click', () => {
-            if (root.melatonControlPanel) root.melatonControlPanel.open('network');
+            void featureLoader.loadFeature('control_panel').then(() => {
+                // melatonControlPanel.open: public/scripts/comp/melatonControlPanel.js
+                if (root.melatonControlPanel) root.melatonControlPanel.open('network');
+            });
         });
         connectModal.addEventListener('keydown', (ev) => {
             if (ev.key === 'Escape' && !busy) {

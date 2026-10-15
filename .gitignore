@@ -1,6 +1,11 @@
-data/
-!data/apocrypha/
-images/
+# Root gallery and databases only. public/data and public/images are not user data.
+/data/*
+!/data/apocrypha/
+/images/
+public/data/*
+!public/data/nai-quickstart-v5.json
+public/images/*
+!public/images/login_array.jpg
 .previews/
 node_modules/
 .git-audit.log
@@ -21,11 +26,18 @@ logs/
 log.txt
 securePrompts/*
 tmp/
-# Host-local media (Vista sound pack; Microsoft WAVs are not committed)
-media/
-# Mapped Vista WAVs for express.static until /sounds/vista is live. Not committed.
-public/sounds/
-# Cursor packs (Vista / Posy binaries). Served from media/cursors via /cursors/.
+# Host-local media. Microsoft Vista WAVs stay out of git. Vista cursors are committed.
+/media/*
+!/media/cursors/
+/media/cursors/*
+!/media/cursors/vista/
+!/media/cursors/vista/**
+# Vista WAVs copied under public/sounds stay host-local. Planet bed is committed.
+public/sounds/*
+!public/sounds/planet/
+public/sounds/planet/*
+!public/sounds/planet/innerlight.opus
+# Optional cursor copies served from public/. The committed pack is media/cursors/vista.
 public/cursors/
 .agents/skills/*
 .cursor/debug-*

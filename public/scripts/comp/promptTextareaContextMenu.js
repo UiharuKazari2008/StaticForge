@@ -123,8 +123,10 @@ function promptCtxHasTagContext(state) {
 }
 
 function promptCtxOpenPhasewalkerEditor() {
-    // openPhasewalkerEditor: public/scripts/comp/runCommandIndex.js
-    if (openPhasewalkerEditor) openPhasewalkerEditor();
+    void ensureRunCommandIndex().then(() => {
+        // openPhasewalkerEditor: public/scripts/comp/runCommandIndex.js
+        openPhasewalkerEditor();
+    });
 }
 
 function promptCtxHasMeaningfulSelection(textarea) {
@@ -1192,17 +1194,13 @@ function buildAddToStepSubmenuItems(textarea) {
     const field = promptCtxGetFieldKind(textarea) === 'uc' ? 'uc' : 'prompt';
     const text = getPromptTextareaMenuState(textarea);
     const tagText = String(text.selectedText || '').trim();
-    // buildPhasewalkerContextSubmenuItems: public/scripts/comp/runCommandIndex.js
-    if (typeof buildPhasewalkerContextSubmenuItems === 'function') {
-        return buildPhasewalkerContextSubmenuItems(tagText, {
-            field,
-            stepAction: 'prompt-ctx-add-to-step',
-            newStepAction: 'prompt-ctx-add-to-new-step',
-            openEditorAction: 'prompt-ctx-open-phasewalker',
-            newPrefixAction: 'prompt-ctx-new-prefix-step'
-        });
-    }
-    return [{ text: 'Unavailable', disabled: true }];
+    return phasewalkerSubmenuItems(() => buildPhasewalkerContextSubmenuItems(tagText, {
+        field,
+        stepAction: 'prompt-ctx-add-to-step',
+        newStepAction: 'prompt-ctx-add-to-new-step',
+        openEditorAction: 'prompt-ctx-open-phasewalker',
+        newPrefixAction: 'prompt-ctx-new-prefix-step'
+    }));
 }
 
 function buildThesaurusSubmenuItems(textarea) {
@@ -1545,15 +1543,15 @@ function handlePromptTextareaContextMenuAction(action, textarea, item) {
         case 'prompt-ctx-add-to-new-step':
         case 'prompt-ctx-open-phasewalker':
         case 'prompt-ctx-new-prefix-step':
-            // handlePhasewalkerContextSubmenuAction: public/scripts/comp/runCommandIndex.js
-            if (handlePhasewalkerContextSubmenuAction) {
+            void ensureRunCommandIndex().then(() => {
+                // handlePhasewalkerContextSubmenuAction: public/scripts/comp/runCommandIndex.js
                 handlePhasewalkerContextSubmenuAction(item || { action, data: item && item.data }, {
                     stepAction: 'prompt-ctx-add-to-step',
                     newStepAction: 'prompt-ctx-add-to-new-step',
                     openEditorAction: 'prompt-ctx-open-phasewalker',
                     newPrefixAction: 'prompt-ctx-new-prefix-step'
                 });
-            }
+            });
             break;
         case 'prompt-ctx-open-vslider':
             // openStudioVSliderTool: public/scripts/comp/studioVSlider.js

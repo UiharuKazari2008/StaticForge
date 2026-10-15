@@ -618,6 +618,19 @@ async function resolveRuntimeAsset(root, webPath, options = {}) {
     }
     const abs = runtimeAssetCompiler.webPathToSourcePath(targetRoot, normalized);
     const rel = `public${normalized}`;
+    // A missing script or stylesheet is a 404, not a compile. readFile would
+    // reject ENOENT (public/scripts/blockContainer.js is not the real path).
+    try {
+        const sourceStat = await fs.promises.stat(abs);
+        if (!sourceStat.isFile()) {
+            return null;
+        }
+    } catch (err) {
+        if (err && (err.code === 'ENOENT' || err.code === 'ENOTDIR')) {
+            return null;
+        }
+        throw err;
+    }
     try {
         await runtimeAssetCompiler.compileOneFile(targetRoot, abs, rel, { force: false });
     } catch (err) {

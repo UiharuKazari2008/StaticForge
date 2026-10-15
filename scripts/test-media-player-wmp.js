@@ -76,7 +76,9 @@ assert.ok(js.includes("window.openDesktopVideoPlayerUrl = openDesktopVideoPlayer
 assert.ok(js.includes('function openDesktopMusicPlayer()') && js.includes('function openDesktopVideoPlayer()'), 'the old launchers land on the one player');
 assert.ok(/map = \{ p: 'play-pause', s: 'stop', b: 'previous', f: 'next', h: 'shuffle', t: 'repeat', o: 'open-file', u: 'open-url' \}/.test(js), "WMP's shortcuts");
 const app = read('public/app.html');
-assert.ok(app.includes('<link rel="stylesheet" href="/css/desktop-apps/mediaPlayer.css">') && app.includes('<script src="scripts/comp/desktop-apps/mediaPlayer.js"></script>'));
+const loader = read('public/scripts/comp/featureLoader.js');
+assert.ok(loader.includes("'css/desktop-apps/mediaPlayer.css'") && loader.includes("'scripts/comp/desktop-apps/mediaPlayer.js'"), 'Media Player loads on open');
+assert.ok(!app.includes('mediaPlayer.css') && !app.includes('desktop-apps/mediaPlayer.js'), 'Media Player is not on the boot page');
 assert.ok(!app.includes('mediaPlayers.'), 'the old files are gone from app.html');
 const mu = read('public/scripts/comp/modalUtils.js');
 assert.ok(mu.includes("launchId: 'media-player'") && mu.includes("text: 'Media Player'") && mu.includes("imageIcon: 'media_player.png'"), 'one launcher');

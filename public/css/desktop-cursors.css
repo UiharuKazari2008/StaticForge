@@ -1,6 +1,7 @@
 /* Pointer scheme tokens. Classic = native keywords. Vista / Posy = url() from
-   /cursors/{scheme}/ when the file is on disk (media/cursors, not in git). Missing
-   files use the keyword only — never a 404 url(). desktopCursors.js sets the attr. */
+   /cursors/{scheme}/ when the file is on disk (media/cursors/vista is committed;
+   Posy stays host-local). Missing files use the keyword only - never a 404 url().
+   desktopCursors.js sets the attr. */
 html {
     --c-auto: auto;
     --c-default: default;

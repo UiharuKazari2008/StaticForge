@@ -1049,6 +1049,7 @@ function setupMainMenuContextMenus() {
                 break;
 
             case 'sw-open-update':
+                await featureLoader.loadFeature('control_panel');
                 // cplUpdate.open: public/scripts/comp/cplUpdate.js (MeletonFX Update in Control Panel)
                 if (window.cplUpdate) window.cplUpdate.open();
                 break;

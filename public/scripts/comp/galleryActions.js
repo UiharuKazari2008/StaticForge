@@ -270,6 +270,8 @@ async function upscaleImage(image, event = null) {
             upscaler: upscaler,
             backend: upscaler === 'local' ? 'local' : upscaler,
             scale: scale,
+            speed: confirmed.speed || (upscaler === 'local' ? 'fast' : 'instant'),
+            upscaleSpeed: confirmed.speed || (upscaler === 'local' ? 'fast' : 'instant'),
             model: localModel,
             localUpscaleModel: localModel,
             localUpscaleScale: scale
@@ -394,12 +396,14 @@ async function upscaleImage(image, event = null) {
 // Create Animation entry point (gallery, image viewer, Studio preview menu, Enhance):
 // opens the eMotion LIVE desktop app with the image preloaded instead of a popup.
 // openEmotion: public/scripts/comp/desktop-apps/emotion.js
-function animateImage(image, event = null) {
+async function animateImage(image, event = null) {
     const filename = image && (image.original || image.filename || image.upscaled);
     if (!filename) {
         showError('No valid filename found in image object');
         return;
     }
+    await featureLoader.loadFeature('emotion');
+    // openEmotion: public/scripts/comp/desktop-apps/emotion.js
     openEmotion({ filename, source: image });
 }
 
@@ -451,8 +455,9 @@ function animatedResultSource(image) {
     return m ? m[1] + '.png' : null;
 }
 
-function openAnimatedResultInEmotion(image) {
+async function openAnimatedResultInEmotion(image) {
     const source = animatedResultSource(image);
+    await featureLoader.loadFeature('emotion');
     // openEmotion: public/scripts/comp/desktop-apps/emotion.js
     openEmotion(source ? { filename: source } : {});
 }
@@ -468,6 +473,7 @@ async function openAnimatedResultInVideoPlayer(image) {
         } catch (_err) {
             continue;
         }
+        await featureLoader.loadFeature('media_player');
         // openDesktopVideoPlayerUrl (= openDesktopMediaPlayerUrl): public/scripts/comp/desktop-apps/mediaPlayer.js
         openDesktopVideoPlayerUrl(url, name);
         return;

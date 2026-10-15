@@ -34,25 +34,36 @@ function attachManualGenerationParamsListeners(signal) {
         }, { signal });
     }
 
-    const manualUpscaleModel = document.getElementById('manualUpscaleModel');
-    const manualUpscaleScale = document.getElementById('manualUpscaleScale');
-    if (typeof fillLocalUpscaleSelect === 'function') {
-        fillLocalUpscaleSelect(manualUpscaleModel, true);
+    const scaleBtn = document.getElementById('manualUpscaleScaleBtn');
+    const speedBtn = document.getElementById('manualUpscaleSpeedBtn');
+    const scaleInput = document.getElementById('manualUpscaleScale');
+    const speedInput = document.getElementById('manualUpscaleSpeed');
+    const modelInput = document.getElementById('manualUpscaleModel');
+    if (scaleBtn && speedBtn && !scaleBtn.dataset.clickMenu) {
+        const choiceState = {
+            scale: Number(scaleInput && scaleInput.value) || 4,
+            speed: (speedInput && speedInput.value) || 'instant'
+        };
+        // wireUpscaleChoiceMenus: public/scripts/comp/creditCostDialog.js
+        wireUpscaleChoiceMenus(scaleBtn, speedBtn, choiceState, {
+            novelaiAvailable: () => {
+                const width = Number(document.getElementById('manualWidth') && document.getElementById('manualWidth').value);
+                const height = Number(document.getElementById('manualHeight') && document.getElementById('manualHeight').value);
+                if (!width || !height) return true;
+                // calculateUpscaleInfo: public/scripts/comp/utilities.js
+                return !!calculateUpscaleInfo(width, height).available;
+            },
+            getStatus: () => knownLocalUpscaleStatus(),
+            onChange: () => {
+                if (scaleInput) scaleInput.value = String(choiceState.scale);
+                if (speedInput) speedInput.value = choiceState.speed;
+                if (modelInput) modelInput.value = choiceState.speed === 'instant' ? 'novelai' : 'local';
+                updateManualPriceDisplay();
+            }
+        });
     }
-    if (manualUpscaleModel) {
-        manualUpscaleModel.addEventListener('change', () => {
-            if (typeof syncManualUpscaleModelVisibility === 'function') syncManualUpscaleModelVisibility();
-            updateManualPriceDisplay();
-        }, { signal });
-    }
-    if (manualUpscaleScale) {
-        manualUpscaleScale.addEventListener('change', () => {
-            updateManualPriceDisplay();
-        }, { signal });
-    }
-    if (typeof refreshLocalUpscaleSelects === 'function') {
-        refreshLocalUpscaleSelects();
-    }
+    // refreshLocalUpscaleSelects: public/scripts/comp/creditCostDialog.js
+    refreshLocalUpscaleSelects();
 
     if (manualSteps) {
         manualSteps.addEventListener('input', () => {

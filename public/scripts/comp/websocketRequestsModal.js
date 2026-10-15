@@ -658,17 +658,6 @@ function initWebSocketRequestsModal() {
     websocketRequestsModal.registerModalListenerScope();
 }
 
-// Initialize when DOM is ready
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        initWebSocketRequestsModal();
-    });
-} else {
-    initWebSocketRequestsModal();
-}
-
-if (typeof wsClient !== 'undefined' && wsClient) {
-    wsClient.registerInitStep(480, 'WebSocket requests modal listener scope', async () => {
-        initWebSocketRequestsModal();
-    });
-}
+// Former boot step 480 (WebSocket requests modal listener scope). Runs once, on first load
+// of this file (Periscope / log_viewer), including when the document is already ready.
+initWebSocketRequestsModal();

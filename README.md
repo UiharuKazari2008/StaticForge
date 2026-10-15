@@ -121,17 +121,19 @@ Process management: `ecosystem.config.js` (PM2 app `Dreamscape`, port **9220** d
 ### Installation
 
 #### 1. Clone and Setup
-```bash
-curl -fsSL https://get.pnpm.io/install.sh | sh -
-source ~/.bashrc
+On Debian/Ubuntu use the installer (system packages, Node 20, pnpm 10.33 via corepack, native
+modules, starter config). Full details and the list of required packages:
+**[docs/CLEAN_INSTALL.md](./docs/CLEAN_INSTALL.md)**.
 
-git clone https://yozora.bluesteel.737.jp.net/UiharuKazari2008/StaticForge dreamscape
+```bash
+git clone https://yozora.bluesteel.737.jp.net/DreamScape/StaticForge.git dreamscape
 cd dreamscape
-pnpm install
+sudo bash scripts/install-linux.sh            # add --with-service for pm2 + boot startup
 ```
 
 #### 2. Configuration
-Create `config.json` in the root directory:
+The installer creates `config.json` (random login key/PINs) and `secure.config.json` (with a
+`sessionSecret`, which the server requires) if missing. Edit them, e.g.:
 
 ```json
 {
@@ -153,6 +155,12 @@ Create `config.json` in the root directory:
 ```bash
 node web_server.js
 ```
+
+The installer precompiles CSS and JS (`node scripts/precompile-runtime-assets.js`) before the
+server starts. A fresh tree prints `compiled=` greater than 0. Asset list, the manifest rule
+for files that are not on disk, and the wiki/tag seed download (`scripts/fetch-seeds.sh`,
+`SEED_BASE_URL`, default `https://yozora.bluesteel.737.jp.net/seeds/dreamscape/`, verified against its
+`SHA256SUMS`) are in **[docs/CLEAN_INSTALL.md](./docs/CLEAN_INSTALL.md)**.
 
 Access at `http://localhost:9220`
 

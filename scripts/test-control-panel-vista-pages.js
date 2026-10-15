@@ -78,7 +78,7 @@ assert.ok(read('public/css/vista-glass-controls.css').includes('vista-icons/card
 for (const f of ['vista-cpl/cardspace-32.png', 'vista-cpl/cardspace-48.png', 'vista-icons/cardspace-16.png', 'vista-icons/cardspace-32.png']) {
     assert.ok(fs.existsSync(path.join(ROOT, 'public/static_images', f)), f);
 }
-const html = read('public/app.html');
+const html = read('public/scripts/comp/featureLoader.js');
 assert.ok(html.indexOf('scripts/comp/melatonControlPanel.js') < html.indexOf('scripts/comp/cplAuthentication.js')
     && html.indexOf('scripts/comp/cplAuthentication.js') < html.indexOf('scripts/comp/cplUpdate.js'), 'pages load after Control Panel');
 

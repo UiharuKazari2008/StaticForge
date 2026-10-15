@@ -555,6 +555,9 @@
         let item = findStartMenuLaunchableById(launchId);
         if (!item) item = startMenuLaunchables.find((entry) => entry.launchId === launchId) || null;
         if (!item) item = flattenToolsSubmenuItems(buildToolsSubmenuItems()).find((entry) => entry.launchId === launchId) || null;
+        if (!item && typeof startMenuShellConfig !== 'undefined') {
+            item = startMenuShellConfig.find((entry) => entry && entry.launchId === launchId) || null;
+        }
         if (!item || typeof item.action !== 'function') {
             return { ok: false, error: `Unknown launchId: ${launchId}` };
         }
@@ -1188,6 +1191,7 @@
             if (command === 'get_calculator' || command === 'set_calculator') {
                 // showAgentSessionTrayNotice: public/scripts/comp/mcpActivityClient.js
                 showAgentSessionTrayNotice('windows', data);
+                await featureLoader.loadFeature('calculator');
                 // readDesktopCalculatorForAgent / applyDesktopCalculatorAgentAction: public/scripts/comp/desktop-apps/calculator.js
                 replyAgentSessionResult(requestId, command === 'get_calculator'
                     ? readDesktopCalculatorForAgent(data)

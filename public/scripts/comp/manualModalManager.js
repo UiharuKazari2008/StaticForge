@@ -2435,17 +2435,19 @@ function collectManualFormValues() {
     values.vibe_transfer = collectVibeTransferData();
     values.normalize_vibes = vibeNormalizeToggle.getAttribute('data-state') === 'on';
 
-    const upscaleModelSelect = document.getElementById('manualUpscaleModel');
+    const upscaleSpeedInput = document.getElementById('manualUpscaleSpeed');
     const upscaleScaleSelect = document.getElementById('manualUpscaleScale');
-    const upscaleModelValue = upscaleModelSelect ? upscaleModelSelect.value : 'novelai';
-    if (manualUpscale.getAttribute('data-state') === 'on' && upscaleModelValue && upscaleModelValue !== 'novelai') {
+    const upscaleSpeed = upscaleSpeedInput ? upscaleSpeedInput.value : 'instant';
+    if (manualUpscale.getAttribute('data-state') === 'on' && (upscaleSpeed === 'fast' || upscaleSpeed === 'slow')) {
         values.upscaler = 'local';
-        values.localUpscaleModel = upscaleModelValue;
-        values.localUpscaleScale = Number(upscaleScaleSelect && upscaleScaleSelect.value) || 4;
+        values.upscaleSpeed = upscaleSpeed;
+        values.localUpscaleModel = undefined;
+        values.localUpscaleScale = Number(upscaleScaleSelect && upscaleScaleSelect.value) === 2 ? 2 : (Number(upscaleScaleSelect && upscaleScaleSelect.value) || 4);
         values.upscale = values.localUpscaleScale;
     } else {
         values.upscale = manualUpscale.getAttribute('data-state') === 'on' ? 2 : undefined;
         values.upscaler = undefined;
+        values.upscaleSpeed = manualUpscale.getAttribute('data-state') === 'on' ? 'instant' : undefined;
         values.localUpscaleModel = undefined;
         values.localUpscaleScale = undefined;
     }
@@ -2623,6 +2625,7 @@ function addSharedFieldsToRequestBody(requestBody, values) {
         requestBody.backend = 'local';
         requestBody.localUpscaleModel = values.localUpscaleModel;
         requestBody.localUpscaleScale = Number(values.localUpscaleScale) || 4;
+        requestBody.upscaleSpeed = values.upscaleSpeed || 'fast';
     } else if (values.upscale) {
         requestBody.upscale = true;
     }
@@ -4961,12 +4964,20 @@ async function handleManualGeneration(e, options = {}) {
                 return;
             }
             values.upscaler = undefined;
+            values.upscaleSpeed = 'instant';
             values.localUpscaleModel = undefined;
             values.localUpscaleScale = undefined;
             values.upscale = 2;
-            const modelSelect = document.getElementById('manualUpscaleModel');
-            if (modelSelect) modelSelect.value = 'novelai';
-            if (typeof syncManualUpscaleModelVisibility === 'function') syncManualUpscaleModelVisibility();
+            const speedInput = document.getElementById('manualUpscaleSpeed');
+            const speedLabel = document.getElementById('manualUpscaleSpeedLabel');
+            const modelInput = document.getElementById('manualUpscaleModel');
+            if (speedInput) speedInput.value = 'instant';
+            if (speedLabel) speedLabel.textContent = 'Instant';
+            if (modelInput) modelInput.value = 'novelai';
+            const speedBtn = document.getElementById('manualUpscaleSpeedBtn');
+            if (speedBtn) speedBtn.setAttribute('data-state', 'on');
+            // syncManualUpscaleModelVisibility: public/scripts/comp/manualFormHelpers.js
+            syncManualUpscaleModelVisibility();
         }
     }
 

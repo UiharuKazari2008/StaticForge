@@ -116,11 +116,14 @@ function singleFlight(key, fn) {
     }
     const promise = Promise.resolve().then(fn);
     inflight.set(key, promise);
+    // finally() returns a second promise. A rejection (missing source file) is
+    // already handled by the caller; the derived promise must be caught or Node
+    // reports it as an unhandled rejection.
     promise.finally(() => {
         if (inflight.get(key) === promise) {
             inflight.delete(key);
         }
-    });
+    }).catch(() => {});
     return promise;
 }
 

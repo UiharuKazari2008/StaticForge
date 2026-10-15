@@ -17,9 +17,9 @@ const appHtml = fs.readFileSync(path.join(__dirname, '..', 'public/app.html'), '
 function main() {
     // 1. Entry point: the "All Apps" flyout's trailing "Organize Start Menu…" row opens the
     // editor, and the editor is wired into app.html as its own script.
-    assert.match(modalUtilsJs, /text: 'Organize Start Menu…',[\s\S]{0,200}action: \(\) => openStartMenuOrganizer\(\)/);
+    assert.match(modalUtilsJs, /text: 'Organize Start Menu…',[\s\S]{0,400}loadFeature\('start_menu_organizer'\)[\s\S]{0,200}openStartMenuOrganizer\(\)/);
     assert.match(modalUtilsJs, /'all-apps': \(\) => buildAllAppsSubmenuWithOrganizeRow\(\)/);
-    assert.match(appHtml, /<script src="scripts\/comp\/desktop-apps\/startMenuOrganizer\.js"><\/script>/);
+    assert.match(fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/featureLoader.js'), 'utf8'), /scripts\/comp\/desktop-apps\/startMenuOrganizer\.js/);
 
     // 2. The editor renders the saved layout merged with the catalog (missing apps appended),
     // matching the server's node shape (type: item/folder, folders one level deep).

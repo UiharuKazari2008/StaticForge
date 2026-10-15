@@ -41,10 +41,14 @@ const FEATURE_MANIFEST = {
     },
     log_viewer: {
         depends: ['server_management'],
-        styles: ['css/log-viewer.css'],
-        scripts: ['scripts/comp/logViewerApplet.js']
+        styles: ['css/log-viewer.css', 'css/websocket-requests.css'],
+        scripts: ['scripts/comp/websocketRequestsModal.js', 'scripts/comp/logViewerApplet.js']
+    },
+    run_index: {
+        scripts: ['scripts/comp/runCommandIndex.js']
     },
     run: {
+        depends: ['run_index'],
         styles: ['css/run-applet.css'],
         scripts: ['scripts/comp/runApplet.js']
     },
@@ -90,6 +94,40 @@ const FEATURE_MANIFEST = {
     planet_switcher: {
         styles: ['css/planet-switcher.css'],
         scripts: ['scripts/comp/planetSwitcher.js']
+    },
+    calculator: {
+        styles: ['css/vista-calculator.css'],
+        scripts: ['scripts/comp/desktop-apps/calculator.js']
+    },
+    media_player: {
+        styles: ['css/desktop-apps/mediaPlayer.css'],
+        scripts: ['scripts/comp/desktop-apps/mediaPlayer.js']
+    },
+    alarm: {
+        scripts: ['scripts/comp/desktop-apps/alarmPomodoro.js']
+    },
+    remote_desktop: {
+        scripts: ['scripts/comp/desktop-apps/guacRemote.js']
+    },
+    emotion: {
+        styles: ['css/desktop-apps/emotion.css'],
+        scripts: ['scripts/comp/desktop-apps/emotion.js']
+    },
+    start_menu_organizer: {
+        scripts: ['scripts/comp/desktop-apps/startMenuOrganizer.js']
+    },
+    control_panel: {
+        styles: ['css/desktop-settings.css', 'css/vista-defender.css'],
+        scripts: [
+            'scripts/comp/melatonControlPanel.js',
+            'scripts/comp/cplAuthentication.js',
+            'scripts/comp/cplUpdate.js',
+            'scripts/comp/cplUserAccounts.js',
+            'scripts/comp/windowsDefender.js',
+            'scripts/comp/cplSearch.js',
+            'scripts/comp/cplMail.js',
+            'scripts/comp/cplDesktopBackground.js'
+        ]
     }
 };
 
@@ -126,7 +164,7 @@ class FeatureLoader {
             // 1. Inject Stylesheets
             if (Array.isArray(feature.styles)) {
                 for (const style of feature.styles) {
-                    this._injectStylesheet(style);
+                    await this._injectStylesheet(style);
                 }
             }
 
@@ -165,33 +203,52 @@ class FeatureLoader {
         return this.loadedFeatures.has(name);
     }
 
-    _injectStylesheet(href) {
-        const cleanHref = href.startsWith('/') ? href : `/${href}`;
-        // Prevent duplicate link elements
-        if (document.querySelector(`link[href^="${cleanHref}"]`)) return;
+    async _versionedAssetUrl(src) {
+        const clean = src.startsWith('/') ? src : `/${src}`;
+        const pathOnly = clean.split('?')[0];
+        let hash = null;
+        // hashForStaticPath: public/scripts/comp/serviceWorkerManager.js
+        if (typeof serviceWorkerManager !== 'undefined' && serviceWorkerManager
+            && typeof serviceWorkerManager.hashForStaticPath === 'function') {
+            try {
+                hash = await serviceWorkerManager.hashForStaticPath(pathOnly);
+            } catch (_) {
+                hash = null;
+            }
+        }
+        if (!hash) return pathOnly;
+        // buildShaBustUrl: public/scripts/comp/serviceWorkerManager.js
+        // Same ?sha= the service worker's manifest hash uses. sw.js matches the
+        // pathname (ignoreSearch), so this hits the precached row instead of a second fetch.
+        return buildShaBustUrl(pathOnly, hash);
+    }
+
+    async _injectStylesheet(href) {
+        const url = await this._versionedAssetUrl(href);
+        const pathOnly = url.split('?')[0];
+        if (document.querySelector(`link[href^="${pathOnly}"]`)) return;
 
         const el = document.createElement('link');
         el.rel = 'stylesheet';
-        // Add cache buster or dynamic sha if query string is omitted
-        el.href = cleanHref;
+        el.href = url;
         document.head.appendChild(el);
     }
 
     _loadScript(src) {
-        return new Promise((resolve, reject) => {
-            const cleanSrc = src.startsWith('/') ? src : `/${src}`;
-            if (document.querySelector(`script[src^="${cleanSrc}"]`)) {
+        return this._versionedAssetUrl(src).then((url) => new Promise((resolve, reject) => {
+            const pathOnly = url.split('?')[0];
+            if (document.querySelector(`script[src^="${pathOnly}"]`)) {
                 resolve();
                 return;
             }
 
             const el = document.createElement('script');
-            el.src = cleanSrc;
-            el.async = false; // Execute sequentially
+            el.src = url;
+            el.async = false;
             el.onload = () => resolve();
             el.onerror = () => reject(new Error(`Failed to load script: ${src}`));
             document.body.appendChild(el);
-        });
+        }));
     }
 }
 
@@ -241,4 +298,58 @@ async function openBracketGenerationApplet(options) {
     // initializePhasewalkerTray: public/scripts/comp/bracketGenerationApplet.js
     initializePhasewalkerTray();
     return bracketGenerationApplet.open(options);
+}
+
+function phasewalkerSubmenuItems(build) {
+    // buildPhasewalkerContextSubmenuItems: public/scripts/comp/runCommandIndex.js
+    if (typeof buildPhasewalkerContextSubmenuItems === 'function') return build();
+    void featureLoader.loadFeature('run_index').then(() => {
+        // refreshSubmenu: public/scripts/comp/contextMenu.js
+        if (typeof contextMenu !== 'undefined' && contextMenu && typeof contextMenu.refreshSubmenu === 'function') {
+            contextMenu.refreshSubmenu();
+        }
+    });
+    return [{ text: 'Loading...', disabled: true }];
+}
+
+async function ensureRunCommandIndex() {
+    await featureLoader.loadFeature('run_index');
+}
+
+// Weather styles are not on the first paint. Idle, after first paint.
+const WEATHER_IDLE_STYLES = [
+    'css/weather-location.css',
+    'css/weather-cards.css',
+    'css/weather-lcd.css',
+    'dist/fonts/weather-icons.min.css'
+];
+
+function registerAssetPreloadStepStub() {
+    if (typeof isDesktop === 'undefined' || !isDesktop) return;
+    if (typeof wsClient === 'undefined' || !wsClient || wsClient._assetPreloadStepsStubbed) return;
+    wsClient._assetPreloadStepsStubbed = true;
+    wsClient.registerInitStep(12.2, 'Loading wallpaper', function () {
+        return assetPreload.preloadWallpaperStage();
+    });
+    wsClient.registerInitStep(18.2, 'Loading desktop icons', function () {
+        return assetPreload.preloadDesktopIconsStage();
+    });
+    wsClient.registerInitStep(18.4, 'Loading desktop assets', function () {
+        return assetPreload.preloadDesktopAssetsStage();
+    });
+}
+
+registerAssetPreloadStepStub();
+
+// scheduleAfterFirstPaint: public/scripts/comp/serviceWorkerManager.js
+if (typeof scheduleAfterFirstPaint === 'function') {
+    scheduleAfterFirstPaint(() => {
+        // loadAssetPreloadScript: public/app.html (head stand-in)
+        loadAssetPreloadScript().catch((err) => {
+            console.warn('Asset preload idle load failed:', err);
+        });
+        WEATHER_IDLE_STYLES.forEach((href) => {
+            void featureLoader._injectStylesheet(href);
+        });
+    });
 }

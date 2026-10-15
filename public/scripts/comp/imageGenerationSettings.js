@@ -2451,8 +2451,10 @@ function handleImageGenerationSettingsMenuAction(action, target, item) {
         return true;
     }
     if (action === 'studio-phasewalker') {
-        // openPhasewalkerEditor: public/scripts/comp/runCommandIndex.js
-        openPhasewalkerEditor();
+        void ensureRunCommandIndex().then(() => {
+            // openPhasewalkerEditor: public/scripts/comp/runCommandIndex.js
+            openPhasewalkerEditor();
+        });
         return true;
     }
     if (action === 'studio-weight-rack') {

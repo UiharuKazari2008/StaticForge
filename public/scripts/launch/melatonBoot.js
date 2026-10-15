@@ -498,7 +498,10 @@
             const detailFor = (urls) => `${urls.length} file(s): ${urls.slice(0, 3).join(', ')}`;
             // A few files the cache will not keep do not stop the install; they are fetched at
             // runtime and remembered so later boots stay silent
-            let missing = (expanded.missing || []).slice();
+            // Files the server answered 404 for (#507) are not counted as missing; they are
+            // recorded as stragglers so later boots stay silent
+            const absent = new Set(copied.absent || []);
+            let missing = (expanded.missing || []).filter((url) => !absent.has(url));
             if (tooMany(missing)) return installFailed('verify', detailFor(missing));
             await stepAtLeast(started);
             setStep('expand', 'done');
@@ -528,7 +531,7 @@
             if (tooMany(missing)) return installFailed('verify', detailFor(missing));
             await stepAtLeast(started);
             setStep('updates', 'done');
-            ctl.install.stragglers = missing;
+            ctl.install.stragglers = missing.concat(Array.from(absent).filter((url) => missing.indexOf(url) === -1));
 
             // 5 Completing installation: the install record, storage the browser keeps
             started = env.now();
