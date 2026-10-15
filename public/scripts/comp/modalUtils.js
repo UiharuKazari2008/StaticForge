@@ -3294,6 +3294,8 @@ function handleModalResizeEnd(e, resizedModal) {
 
 function openModal(modal) {
     if (!modal) return;
+    // State-flag classes (e.g. .window-has-caption = the Vista frame inset) before anything measures it
+    window.syncRootStateFlags?.(modal);
 
     // Check if modal is already open (not hidden and not hidden-alt)
     const isAlreadyOpen = !modal.classList.contains('hidden') && !modal.classList.contains('hidden-alt');

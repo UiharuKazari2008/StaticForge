@@ -23,6 +23,10 @@
  * .desktop-taskbar.net-send              | .desktop-taskbar:has(#taskbarWebsocketIndicator .websocket-arrow-up:is(.active, .active-http, .streaming-up:not(.streaming-stalled-up)))
  * .desktop-taskbar.net-recv              | .desktop-taskbar:has(#taskbarWebsocketIndicator .websocket-arrow-down:is(.active, .active-http, .streaming-down:not(.streaming-stalled-down)))
  * .desktop-taskbar.net-limited           | .desktop-taskbar:has(#taskbarWsStatus.ping-response-wait)
+ * .modal.window-has-caption              | .modal:has(> .modal-window-title)   (CSS uses it inside :where(), same specificity)
+ * .manual-preview-container.has-workspace-overlay | :has(.manual-preview-workspace-overlay:not(.hidden))
+ * .manual-preview-content.has-quickstart-placeholder | :has(#manualPreviewPlaceholder.has-quickstart:not(.hidden))
+ * .manual-preview-content.has-reasoning-items | :has(.progress-reasoning-container .progress-reasoning-item)
  *
  * Do not add new :has() rules anchored on html/body or on a big container with a descendant
  * part after them; add a flag here instead (scripts/test-root-state-flags.js checks html/body).
@@ -43,7 +47,11 @@
         { host: '.gallery, .gallery-container-wrapper', className: 'has-context-open-item', selector: '.gallery-item.context-open', watch: ['context-open', 'gallery', 'gallery-container-wrapper'] },
         { host: '.desktop-taskbar', className: 'net-send', selector: '#taskbarWebsocketIndicator .websocket-arrow-up:is(.active, .active-http, .streaming-up:not(.streaming-stalled-up))', watch: ['websocket-arrow-up', 'websocket-indicator', 'desktop-taskbar'] },
         { host: '.desktop-taskbar', className: 'net-recv', selector: '#taskbarWebsocketIndicator .websocket-arrow-down:is(.active, .active-http, .streaming-down:not(.streaming-stalled-down))', watch: ['websocket-arrow-down', 'websocket-indicator', 'desktop-taskbar'] },
-        { host: '.desktop-taskbar', className: 'net-limited', selector: '#taskbarWsStatus.ping-response-wait', watch: ['ping-response-wait', 'desktop-taskbar'] }
+        { host: '.desktop-taskbar', className: 'net-limited', selector: '#taskbarWsStatus.ping-response-wait', watch: ['ping-response-wait', 'desktop-taskbar'] },
+        { host: '.modal', className: 'window-has-caption', selector: ':scope > .modal-window-title', watch: ['modal-window-title', 'modal'] },
+        { host: '.manual-preview-container', className: 'has-workspace-overlay', selector: '.manual-preview-workspace-overlay:not(.hidden)', watch: ['manual-preview-workspace-overlay', 'manual-preview-container'] },
+        { host: '.manual-preview-content', className: 'has-quickstart-placeholder', selector: '#manualPreviewPlaceholder.has-quickstart:not(.hidden)', watch: ['has-quickstart', 'manual-preview-content'] },
+        { host: '.manual-preview-content', className: 'has-reasoning-items', selector: '.progress-reasoning-container .progress-reasoning-item', watch: ['progress-reasoning-item', 'progress-reasoning-container', 'manual-preview-content'] }
     ];
 
     FLAGS.forEach((flag) => {
@@ -52,6 +60,28 @@
             : null;
         flag.watchSelector = flag.watch.map((name) => '.' + name).join(', ');
     });
+
+    // Union of every flag's watch list: most mutations (text, unrelated classes) stop at this check
+    const ALL_WATCH = [...new Set(FLAGS.flatMap((flag) => flag.watch))];
+    const ALL_WATCH_CLASS = new RegExp('(^|\\s)(' + ALL_WATCH.join('|') + ')(\\s|$)');
+    const ALL_WATCH_SELECTOR = ALL_WATCH.map((name) => '.' + name).join(', ');
+
+    function mutationMayMatter(mutation) {
+        if (mutation.type === 'attributes') {
+            return mutation.target === document.body
+                || ALL_WATCH_CLASS.test(mutation.target.getAttribute('class') || '')
+                || ALL_WATCH_CLASS.test(mutation.oldValue || '');
+        }
+        const lists = [mutation.addedNodes, mutation.removedNodes];
+        for (let l = 0; l < 2; l++) {
+            const nodes = lists[l] || [];
+            for (let i = 0; i < nodes.length; i++) {
+                const node = nodes[i];
+                if (node.nodeType === 1 && (node.matches(ALL_WATCH_SELECTOR) || node.querySelector(ALL_WATCH_SELECTOR) !== null)) return true;
+            }
+        }
+        return false;
+    }
 
     function setClass(el, className, on) {
         if (el.classList.contains(className) !== on) {
@@ -71,9 +101,38 @@
         }
     }
 
-    function syncRootStateFlags() {
+    // Container flags: re-check only the hosts a mutation can affect (the target's host ancestors and
+    // hosts inside inserted nodes), not every host in the page (there are ~90 .modal hosts).
+    function syncHost(flag, host) {
+        setClass(host, flag.className, host.querySelector(flag.selector) !== null);
+    }
+
+    function syncHostsAround(flag, node) {
+        for (let el = node; el && el.nodeType === 1; el = el.parentElement) {
+            if (el.matches(flag.host)) syncHost(flag, el);
+        }
+    }
+
+    function syncHostsWithin(flag, node) {
+        if (!node || node.nodeType !== 1) return;
+        if (node.matches(flag.host)) syncHost(flag, node);
+        const hosts = node.querySelectorAll(flag.host);
+        for (let i = 0; i < hosts.length; i++) syncHost(flag, hosts[i]);
+    }
+
+    // No argument: every flag, every host. With an element: page flags plus the container flags in
+    // and around it (openModal calls this so a window built and measured in one task has its flags).
+    function syncRootStateFlags(root) {
         if (!document.body) return;
-        for (let i = 0; i < FLAGS.length; i++) syncFlag(FLAGS[i]);
+        for (let i = 0; i < FLAGS.length; i++) {
+            const flag = FLAGS[i];
+            if (!root || flag.host === 'html' || flag.host === 'body') {
+                syncFlag(flag);
+            } else {
+                syncHostsAround(flag, root);
+                syncHostsWithin(flag, root);
+            }
+        }
     }
 
     function nodeTouchesFlag(node, flag) {
@@ -99,14 +158,22 @@
         return false;
     }
 
-    function onMutations(mutations) {
+    function onMutations(allMutations) {
+        const mutations = allMutations.filter(mutationMayMatter);
+        if (!mutations.length) return;
         for (let f = 0; f < FLAGS.length; f++) {
             const flag = FLAGS[f];
+            const scoped = flag.host !== 'html' && flag.host !== 'body';
             for (let i = 0; i < mutations.length; i++) {
-                if (mutationTouchesFlag(mutations[i], flag)) {
+                const mutation = mutations[i];
+                if (!mutationTouchesFlag(mutation, flag)) continue;
+                if (!scoped || mutation.target === document.body) {
                     syncFlag(flag);
                     break;
                 }
+                syncHostsAround(flag, mutation.target);
+                const added = mutation.addedNodes || [];
+                for (let n = 0; n < added.length; n++) syncHostsWithin(flag, added[n]);
             }
         }
     }

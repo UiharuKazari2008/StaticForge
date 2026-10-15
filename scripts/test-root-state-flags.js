@@ -101,131 +101,174 @@ assert.ok(flagsTag > 0 && flagsTag < html.indexOf('<script src="scripts/comp/mod
 
 // ---- 2. Flag script behaviour (DOM stub) ----------------------------------------------------
 
-function classList(initial = '') {
-    const set = new Set(initial.split(/\s+/).filter(Boolean));
-    return {
-        set,
-        contains: (c) => set.has(c),
-        toggle: (c, on) => { if (on) set.add(c); else set.delete(c); return on; }
+// A tiny element tree: classes, parent links, simple `.a, .b` matching. querySelector answers
+// from an explicit per-element set of "selectors that have a match inside me".
+let queries = 0;
+const registry = [];
+function el(className, parent = null) {
+    const set = new Set(className.split(/\s+/).filter(Boolean));
+    const node = {
+        nodeType: 1,
+        parentElement: parent,
+        inside: new Set(),
+        classList: {
+            contains: (c) => set.has(c),
+            toggle: (c, on) => { if (on) set.add(c); else set.delete(c); return on; }
+        },
+        getAttribute: (name) => (name === 'class' ? [...set].join(' ') : null),
+        matches: (sel) => sel.split(',').some((part) => /^\.[\w-]+$/.test(part.trim()) && set.has(part.trim().slice(1))),
+        // relevance checks use plain class lists; count only the flag queries
+        querySelector: (sel) => { if (!/^\.[\w-]+(, \.[\w-]+)*$/.test(sel)) queries++; return node.inside.has(sel) ? {} : null; },
+        querySelectorAll: (sel) => registry.filter((n) => n !== node && n.matches(sel) && isInside(n, node))
     };
+    registry.push(node);
+    return node;
+}
+function isInside(n, ancestor) {
+    for (let p = n.parentElement; p; p = p.parentElement) if (p === ancestor) return true;
+    return false;
 }
 
 const matches = new Set();
-const htmlEl = { classList: classList() };
-const bodyEl = { nodeType: 1, classList: classList('desktop-mode') };
+const htmlEl = el('');
+const bodyEl = el('desktop-mode', htmlEl);
+const wrapperEl = el('gallery-container-wrapper', bodyEl);
+const galleryEl = el('gallery', wrapperEl);
+const itemEl = el('gallery-item', galleryEl);
+const taskbarEl = el('desktop-taskbar', bodyEl);
+const arrowUp = el('websocket-arrow-up', taskbarEl);
+const wsStatus = el('', taskbarEl);
+const modalEl = el('modal', bodyEl);
+const otherModal = el('modal', bodyEl);
+const previewContent = el('manual-preview-content', modalEl);
 let observerCallback = null;
 let observeOptions = null;
-let queries = 0;
 
-// container hosts: each answers querySelector from its own set
-function hostEl(className) {
-    const inside = new Set();
-    return { nodeType: 1, inside, classList: classList(className), querySelector: (sel) => { queries++; return inside.has(sel) ? {} : null; } };
+const doc = {
+    documentElement: htmlEl,
+    body: bodyEl,
+    querySelector: (sel) => { queries++; return matches.has(sel) ? {} : null; },
+    querySelectorAll: (sel) => registry.filter((n) => n.matches(sel)),
+    addEventListener: () => {}
+};
+const win = {};
+class MO {
+    constructor(cb) { observerCallback = cb; }
+    observe(target, opts) { assert.strictEqual(target, bodyEl); observeOptions = opts; }
 }
-const galleryEl = hostEl('gallery');
-const wrapperEl = hostEl('gallery-container-wrapper');
-const taskbarEl = hostEl('desktop-taskbar');
-const hosts = {
-    '.gallery, .gallery-container-wrapper': [galleryEl, wrapperEl],
-    '.desktop-taskbar': [taskbarEl]
-};
+new Function('window', 'document', 'MutationObserver', read('public/scripts/comp/rootStateFlags.js'))(win, doc, MO);
 
-const sandbox = {
-    window: {},
-    document: {
-        documentElement: htmlEl,
-        body: bodyEl,
-        querySelector: (sel) => { queries++; return matches.has(sel) ? {} : null; },
-        querySelectorAll: (sel) => hosts[sel] || [],
-        addEventListener: () => {}
-    },
-    MutationObserver: class {
-        constructor(cb) { observerCallback = cb; }
-        observe(target, opts) { assert.strictEqual(target, bodyEl); observeOptions = opts; }
-    }
-};
-new Function('window', 'document', 'MutationObserver', read('public/scripts/comp/rootStateFlags.js'))(
-    sandbox.window, sandbox.document, sandbox.MutationObserver);
+const attr = (target, oldValue) => [{ type: 'attributes', target, oldValue }];
+const setCls = (node, className) => { const old = node.getAttribute('class'); className.split(' ').forEach((c) => node.classList.toggle(c, true)); return old; };
+const clearCls = (node, className) => { const old = node.getAttribute('class'); node.classList.toggle(className, false); return old; };
 
-assert.strictEqual(typeof sandbox.window.syncRootStateFlags, 'function', 'syncRootStateFlags is exposed');
+assert.strictEqual(typeof win.syncRootStateFlags, 'function', 'syncRootStateFlags is exposed');
 assert.ok(observerCallback && observeOptions.subtree && observeOptions.childList && observeOptions.attributeOldValue, 'observes the body subtree');
 assert.deepStrictEqual(observeOptions.attributeFilter, ['class'], 'only class attributes');
 assert.ok(!htmlEl.classList.contains('has-maximized-window') && !bodyEl.classList.contains('taskbar-orb'), 'flags start off');
 
+// page flags (html / body)
 const MAX = '.modal.modal-maximized:not(.hidden):not(.hidden-alt)';
 const ACTIVE_MAX = '.modal.modal-maximized.active-window:not(.hidden):not(.hidden-alt):not(.minimised)';
 const ORB = '#desktopTaskbar .taskbar-start-button.orb';
-
-const modalEl = { nodeType: 1, getAttribute: () => 'modal modal-maximized active-window' };
 matches.add(MAX); matches.add(ACTIVE_MAX);
-observerCallback([{ type: 'attributes', target: modalEl, oldValue: 'modal' }]);
+observerCallback(attr(modalEl, setCls(modalEl, 'modal-maximized active-window')));
 assert.ok(htmlEl.classList.contains('has-maximized-window'), 'maximizing a window sets html.has-maximized-window');
 assert.ok(bodyEl.classList.contains('has-active-maximized-window'), 'and body.has-active-maximized-window');
-
-// a modal losing its .modal class still re-checks (oldValue)
-const formerModal = { nodeType: 1, getAttribute: () => 'something-else' };
 matches.clear();
-observerCallback([{ type: 'attributes', target: formerModal, oldValue: 'modal modal-maximized' }]);
+const formerModal = el('something-else', bodyEl);
+observerCallback(attr(formerModal, 'modal modal-maximized'));
 assert.ok(!htmlEl.classList.contains('has-maximized-window'), 'a class change that drops .modal clears the flag');
 
-// unrelated mutations (Director text, arrow flashes) do not query
+// unrelated mutations (Director text, arrow flashes elsewhere) do not query
 const before = queries;
-const span = { nodeType: 1, matches: () => false, querySelector: () => null };
+const span = el('', bodyEl);
 observerCallback([
-    { type: 'childList', addedNodes: [{ nodeType: 3 }], removedNodes: [{ nodeType: 3 }] },
-    { type: 'childList', addedNodes: [span], removedNodes: [] },
-    { type: 'attributes', target: { nodeType: 1, getAttribute: () => 'ws-arrow active' }, oldValue: 'ws-arrow' }
+    { type: 'childList', target: bodyEl, addedNodes: [{ nodeType: 3 }], removedNodes: [{ nodeType: 3 }] },
+    { type: 'childList', target: span, addedNodes: [el('', span)], removedNodes: [] },
+    ...attr(el('ws-arrow active', bodyEl), 'ws-arrow')
 ]);
 assert.strictEqual(queries, before, 'irrelevant mutations skip the re-check');
 
-// a taskbar subtree arriving with the Orb button sets the flag
-const taskbar = { nodeType: 1, matches: () => false, querySelector: (s) => (s.includes('.taskbar-start-button') ? {} : null) };
 matches.add(ORB);
-observerCallback([{ type: 'childList', addedNodes: [taskbar], removedNodes: [] }]);
+observerCallback([{ type: 'childList', target: taskbarEl, addedNodes: [el('taskbar-start-button orb', taskbarEl)], removedNodes: [] }]);
 assert.ok(bodyEl.classList.contains('taskbar-orb'), 'Orb start button sets body.taskbar-orb');
-
-// body class changes re-check (photo flag depends on body.desktop-mode)
 matches.clear();
-observerCallback([{ type: 'attributes', target: bodyEl, oldValue: 'desktop-mode' }]);
+observerCallback(attr(bodyEl, 'desktop-mode'));
 assert.ok(!bodyEl.classList.contains('taskbar-orb'), 'body class change re-checks every flag');
-
 matches.add('body.desktop-mode');
-observerCallback([{ type: 'attributes', target: bodyEl, oldValue: '' }]);
+observerCallback(attr(bodyEl, ''));
 assert.ok(htmlEl.classList.contains('has-desktop-mode'), 'html.has-desktop-mode follows body.desktop-mode');
 matches.delete('body.desktop-mode');
-observerCallback([{ type: 'attributes', target: bodyEl, oldValue: 'desktop-mode' }]);
+observerCallback(attr(bodyEl, 'desktop-mode'));
 assert.ok(!htmlEl.classList.contains('has-desktop-mode'), 'and clears when desktop mode ends');
 
-// gallery: a context menu open on an item flags its gallery and wrapper only
+// gallery: a context menu open on an item flags its gallery and wrapper (both ancestors)
 const CTX = '.gallery-item.context-open';
 galleryEl.inside.add(CTX); wrapperEl.inside.add(CTX);
-observerCallback([{ type: 'attributes', target: { nodeType: 1, getAttribute: () => 'gallery-item context-open' }, oldValue: 'gallery-item' }]);
+observerCallback(attr(itemEl, setCls(itemEl, 'context-open')));
 assert.ok(galleryEl.classList.contains('has-context-open-item') && wrapperEl.classList.contains('has-context-open-item'), 'context-open item flags .gallery and its wrapper');
 assert.ok(!taskbarEl.classList.contains('has-context-open-item'), 'other hosts untouched');
 galleryEl.inside.clear(); wrapperEl.inside.clear();
-observerCallback([{ type: 'attributes', target: { nodeType: 1, getAttribute: () => 'gallery-item' }, oldValue: 'gallery-item context-open' }]);
+observerCallback(attr(itemEl, clearCls(itemEl, 'context-open')));
 assert.ok(!galleryEl.classList.contains('has-context-open-item'), 'closing the menu clears it');
 
 // taskbar globe: traffic arrows and the ping wait
 const SEND = '#taskbarWebsocketIndicator .websocket-arrow-up:is(.active, .active-http, .streaming-up:not(.streaming-stalled-up))';
 const LIMITED = '#taskbarWsStatus.ping-response-wait';
 taskbarEl.inside.add(SEND);
-observerCallback([{ type: 'attributes', target: { nodeType: 1, getAttribute: () => 'websocket-arrow-up active' }, oldValue: 'websocket-arrow-up' }]);
+observerCallback(attr(arrowUp, setCls(arrowUp, 'active')));
 assert.ok(taskbarEl.classList.contains('net-send') && !taskbarEl.classList.contains('net-recv'), 'up arrow flash sets .net-send');
 taskbarEl.inside.add(LIMITED);
-observerCallback([{ type: 'attributes', target: { nodeType: 1, getAttribute: () => 'ping-response-wait' }, oldValue: '' }]);
+observerCallback(attr(wsStatus, setCls(wsStatus, 'ping-response-wait')));
 assert.ok(taskbarEl.classList.contains('net-limited'), 'ping wait sets .net-limited');
 taskbarEl.inside.clear();
-observerCallback([{ type: 'attributes', target: { nodeType: 1, getAttribute: () => 'websocket-arrow-up' }, oldValue: 'websocket-arrow-up active ping-response-wait' }]);
+observerCallback([...attr(arrowUp, clearCls(arrowUp, 'active')), ...attr(wsStatus, clearCls(wsStatus, 'ping-response-wait'))]);
 assert.ok(!taskbarEl.classList.contains('net-send') && !taskbarEl.classList.contains('net-limited'), 'flags clear when the arrows rest');
 
-// direct sync (maximize / restore call it so same-task layout reads see the flag)
+// window caption: only the window that changed is re-checked
+const CAPTION = ':scope > .modal-window-title';
+modalEl.inside.add(CAPTION);
+const title = el('modal-window-title', modalEl);
+const q0 = queries;
+observerCallback([{ type: 'childList', target: modalEl, addedNodes: [title], removedNodes: [] }]);
+assert.ok(modalEl.classList.contains('window-has-caption') && !otherModal.classList.contains('window-has-caption'), 'a caption child flags its own window only');
+assert.ok(queries - q0 <= 3, `targeted: ${queries - q0} scoped queries, not one per window`);
+modalEl.inside.delete(CAPTION);
+observerCallback([{ type: 'childList', target: modalEl, addedNodes: [], removedNodes: [title] }]);
+assert.ok(!modalEl.classList.contains('window-has-caption'), 'removing the caption clears it');
+
+// a window inserted with its caption is flagged in the same microtask
+const newModal = el('modal');
+newModal.inside.add(CAPTION);
+observerCallback([{ type: 'childList', target: bodyEl, addedNodes: [newModal], removedNodes: [] }]);
+assert.ok(newModal.classList.contains('window-has-caption'), 'inserted window gets its caption flag');
+
+// Studio preview: reasoning items arriving during a generation
+const REASONING = '.progress-reasoning-container .progress-reasoning-item';
+previewContent.inside.add(REASONING);
+const reasoning = el('progress-reasoning-item', previewContent);
+observerCallback([{ type: 'childList', target: previewContent, addedNodes: [reasoning], removedNodes: [] }]);
+assert.ok(previewContent.classList.contains('has-reasoning-items'), 'reasoning items flag the preview');
+
+// syncRootStateFlags(el) syncs the container flags in and around one element (openModal)
+otherModal.inside.add(CAPTION);
+win.syncRootStateFlags(otherModal);
+assert.ok(otherModal.classList.contains('window-has-caption'), 'syncRootStateFlags(modal) applies immediately');
 matches.add(MAX);
-sandbox.window.syncRootStateFlags();
-assert.ok(htmlEl.classList.contains('has-maximized-window'), 'syncRootStateFlags() applies immediately');
+win.syncRootStateFlags();
+assert.ok(htmlEl.classList.contains('has-maximized-window'), 'syncRootStateFlags() applies page flags immediately');
 
 const modalUtils = read('public/scripts/comp/modalUtils.js');
 assert.ok(/classList\.add\('modal-maximized'\);\s*window\.syncRootStateFlags\?\.\(\);/.test(modalUtils), 'maximize syncs the flags in the same task');
 assert.ok(/classList\.remove\('modal-maximized'\);\s*window\.syncRootStateFlags\?\.\(\);/.test(modalUtils), 'restore syncs the flags in the same task');
+assert.ok(/function openModal\(modal\) \{\s*if \(!modal\) return;\s*\/\/[^\n]*\n\s*window\.syncRootStateFlags\?\.\(modal\);/.test(modalUtils), 'openModal syncs the window flags before measuring');
+
+// CSS reads the window / Studio flags
+const toolbarCss = read('public/css/modal-window-title-toolbar.css').replace(/\/\*[\s\S]*?\*\//g, '');
+assert.ok(!toolbarCss.includes(':has(> .modal-window-title)') && (toolbarCss.match(/:where\(\.window-has-caption\)/g) || []).length === 9, 'Vista frame rules read .window-has-caption inside :where() (same specificity)');
+const manualCss = read('public/css/manual-modal.css');
+assert.ok(!manualCss.includes('.manual-preview-content:has(') && !manualCss.includes('.manual-preview-container:has('), 'Studio preview rules read flags');
+assert.ok(read('public/css/generation-quips.css').includes('.generating .manual-preview-content.has-reasoning-items .generation-preview-quip'), 'quips hide behind reasoning items via the flag');
 
 console.log('test-root-state-flags: ok');
