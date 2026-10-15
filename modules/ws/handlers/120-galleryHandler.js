@@ -373,9 +373,9 @@ async function tryServeGalleryFastPaginatedPage(handlers, ws, requestId, {
     );
     let paginatedItems = page.items || [];
     const totalItems = page.totalItems || 0;
-    if (totalItems <= 0 && paginatedItems.length <= 0) {
-        return false;
-    }
+    // An empty workspace (0 rows) is a valid page. Returning false makes both
+    // callers sendError ("Fast gallery path failed" / "Fast gallery block path failed").
+    // Query failures throw and stay errors in handleGalleryRequest.
 
     let pageOwnershipMap = null;
     if (!isGalleryBlockFetch && shouldFilterReplicationIndex && assetRegistry && paginatedItems.length > 0) {
