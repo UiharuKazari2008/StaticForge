@@ -83,7 +83,8 @@
         buttons.forEach((spec) => {
             const btn = doc.createElement('button');
             btn.type = 'button';
-            btn.className = 'btn-secondary';
+            // Vista push buttons, as in the VPN dialogs (melaton-network.css); Classic restyles them
+            btn.className = 'btn-standard';
             btn.textContent = spec.label;
             btn.addEventListener('click', () => finish(spec.value));
             row.appendChild(btn);
@@ -104,7 +105,12 @@
         return !!current;
     }
 
-    const api = { show, isOpen, ICONS };
+    /** Close the box without a choice (show() resolves null), e.g. a newer error replaces it. */
+    function dismiss() {
+        finish(null);
+    }
+
+    const api = { show, isOpen, dismiss, ICONS };
     if (root) root.bootMessageBox = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : null);

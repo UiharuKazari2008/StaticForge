@@ -320,6 +320,14 @@ window.
   `loadOptions`' own account-data prompt (account data unavailable) stays reachable.
 - A non-critical step that throws is reported as before (application error) and the boot
   goes on.
+- One error at a time (Yozora #515): when the connection fails while that message box is up,
+  the box closes without a choice and the connection error takes over; the logon steps run
+  again once the socket is back. A failure while `/status` says the server is still starting
+  (`isReady: false`) shows no Error 800: the logon dialog keeps the Dreamscape Mainframe
+  Server window and the connect is retried (`_scheduleBootWaitReconnect`). A ready server's
+  leftover `stageMessage` ("Starting Dreamscape…") is never shown as a waiting line.
+- The message box is Vista's light face with `.btn-standard` push buttons on Vista Basic and
+  Aero, ButtonFace and Tahoma under Windows Classic.
 - `executeInitSteps` then runs only the steps without `_logonPhase`; the small startup
   window's progress is 0–100 % over those (`_initProgressRange`; the non-desktop toast keeps
   its 25 % connection base). `updateCurrentInitStepProgress` reads the list being run.

@@ -165,6 +165,7 @@ boot.config.stepWatchdogMs = 30;
     // ---- session lock after boot: Classic theme on the lock layer, off again on resume ----
     boot.config.lockSwitchMs = 20;
     boot.config.unlockSwitchMs = 40;
+    boot.config.sessionFadeMs = 0;
     assert.ok(!body.classList.contains('windows-classic-theme'));
     assert.strictEqual(boot.suspend('server-booting'), true);
     const overlay = els.sessionSwitchOverlay;
@@ -177,6 +178,7 @@ boot.config.stepWatchdogMs = 30;
     assert.strictEqual(boot.isSuspended(), true);
     assert.strictEqual(boot.suspend('again'), true, 'second suspend is a no-op that stays suspended');
     assert.strictEqual(boot.resume(), true);
+    await sleep(1);
     assert.ok(!body.classList.contains('session-suspended'));
     assert.ok(!body.classList.contains('windows-classic-theme'), 'resume drops the Classic the lock added');
     assert.strictEqual(boot.resume(), false);
@@ -192,6 +194,7 @@ boot.config.stepWatchdogMs = 30;
     await sleep(30);
     boot.resume();
     assert.ok(overlay.classList.contains('active'), 'unlock cuts to black');
+    await sleep(1);
     assert.ok(!body.classList.contains('session-suspended') && !body.classList.contains('windows-classic-theme'),
         'cover and Classic come off under the black');
     await sleep(20);
@@ -204,6 +207,7 @@ boot.config.stepWatchdogMs = 30;
     const wsLog = [];
     boot.registerPauseHook({ pause: () => wsLog.push('pause'), resume: () => wsLog.push('resume') });
     assert.strictEqual(boot.lockWorkstation(), true);
+    await sleep(1);
     assert.ok(body.classList.contains('workstation-locked') && body.classList.contains('windows-classic-theme'));
     assert.ok(overlay.classList.contains('active'), 'manual lock cuts to black first');
     assert.strictEqual(boot.lockWorkstation(), false, 'already locked');
@@ -216,6 +220,7 @@ boot.config.stepWatchdogMs = 30;
         'after the server is back the workstation is still locked, still Classic');
     assert.deepStrictEqual(wsLog, ['pause'], 'still paused while the workstation lock is up');
     assert.strictEqual(boot.unlockWorkstation(), true);
+    await sleep(1);
     assert.ok(!body.classList.contains('workstation-locked') && !body.classList.contains('windows-classic-theme'));
     assert.deepStrictEqual(wsLog, ['pause', 'resume']);
     assert.strictEqual(boot.unlockWorkstation(), false);
@@ -225,16 +230,19 @@ boot.config.stepWatchdogMs = 30;
     assert.ok(boot.isVistaLogon() && body.classList.contains('vista-logon'));
     assert.ok(!body.classList.contains('vista-basic-theme'), 'no boot theme on the running desktop');
     boot.lockWorkstation();
+    await sleep(1);
     assert.ok(body.classList.contains('vista-basic-theme') && !body.classList.contains('windows-classic-theme'),
         'the workstation lock is the Vista Welcome screen, Vista Basic');
     boot.suspend('server-restarted');
     assert.ok(body.classList.contains('vista-basic-theme'), 'a restart under it is the Vista logon');
     boot.resume();
     boot.unlockWorkstation();
+    await sleep(1);
     assert.ok(!body.classList.contains('vista-basic-theme'), 'Vista Basic comes off with the last lock');
     boot.setLogonTheme(false);
     assert.ok(!body.classList.contains('vista-logon'));
     boot.lockWorkstation();
+    await sleep(1);
     assert.ok(body.classList.contains('windows-classic-theme'), 'off again: Classic lock');
     boot.unlockWorkstation();
     await sleep(50);
@@ -325,7 +333,9 @@ function testTaskbarGate(body) {
 function testRevealCss() {
     const css = fs.readFileSync(path.join(__dirname, '../public/css/desktop-boot.css'), 'utf8');
     const boot = css.slice(css.indexOf('Staged desktop reveal'));
-    assert.ok(!/transition:\s*(?!none)[^;]*\d+(\.\d+)?m?s/.test(boot), 'no timed transition in the staged reveal or the lock');
+    const reveal = boot.replace(/#sessionSwitchOverlay\s*\{[^}]*\}/, '');
+    assert.ok(!/transition:\s*(?!none)[^;]*\d+(\.\d+)?m?s/.test(reveal), 'no timed transition in the staged reveal');
+    assert.ok(/#sessionSwitchOverlay\s*\{[^}]*transition:\s*opacity 900ms ease/.test(boot), 'session switch fades');
     assert.ok(!/translateY/.test(boot), 'taskbar does not slide');
     assert.ok(/session-suspended::before\s*\{[^}]*position:\s*fixed[^}]*inset:\s*0/.test(boot), 'lock cover spans the viewport');
     assert.ok(/session-suspended[^{]*\.gallery,/.test(boot), 'gallery grids (visibility: visible) are hidden under the lock');
@@ -372,7 +382,7 @@ async function testLockTriggers(body) {
     };
     const proto = {};
     ['pingHost', '_applyServerStartupStatus', '_noteServerInstance', '_noteServerUnreachable',
-        '_suspendSession', '_shouldUsePreStartupDialog'].forEach((name) => {
+        '_suspendSession', '_shouldUsePreStartupDialog', '_serverReportsBooting'].forEach((name) => {
         proto[name] = liftMethod(src, name)(WebSocketClient);
     });
     global.fetch = async () => ({ ok: false }); // /app version check after a ready /status

@@ -519,6 +519,7 @@ class BannerManager {
             'dovecote_send_mail': 'Send Mail',
             'dovecote_forward_mail': 'Forward Mail',
             'dovecote_set_image_pref': 'Mail Image Preference',
+            'dovecote_mailbox_updated': 'Mailbox Updated',
 
             // Windows Sidebar
             'sidebar_get': 'Load Sidebar',
@@ -861,6 +862,7 @@ class WebSocketClient {
         'runpod_pod_start',
         'runpod_pod_stop',
         'report_client_perf',
+        'replication_delegation_status',
     ]);
 
     static GENERATION_QUIPS_MESSAGE_TYPES = new Set([
@@ -1273,6 +1275,9 @@ class WebSocketClient {
             return true;
         }
         if (type === 'report_client_perf' || type === 'report_client_perf_response') {
+            return true;
+        }
+        if (type === 'replication_delegation_status' || type === 'replication_delegation_status_response') {
             return true;
         }
         return false;
@@ -1895,18 +1900,28 @@ class WebSocketClient {
      * failures keep their own text; the real stage stays in the stage bar's tooltip.
      */
     _preStartupDisplayText(phase, statusMessage) {
+        if (this.winlogonPowerText) return this.winlogonPowerText;
         // A connection failure is the "Error Connecting to domain controller" dialog on top
         if (phase === 'failed' && window.isDesktop && window.melatonNetworkDialogs) return 'Please wait...';
         // Use Vista Logon: Vista's Welcome screen says "Welcome" from the password check to the desktop
         if (this.vistaLogon && (this.preStartupAuthBusy || this.preStartupCredentialsAccepted)) return 'Welcome';
         if (phase === 'auth' || phase === 'failed') return statusMessage;
-        if (statusMessage === 'Preparing MeletonFX...') return 'Welcome';
+        if (statusMessage === 'Preparing MeletonFX...' || statusMessage === 'Welcome') return 'Welcome';
+        // winlogon string 1009, kept when a stage already set it
+        if (statusMessage === 'Preparing your desktop...' || statusMessage === 'Preparing your desktop......') {
+            return 'Preparing your desktop...';
+        }
         return 'Please wait...';
     }
 
     _renderPreStartupDialog() {
         // serviceWorkerManager._isInstallWizardActive: public/scripts/comp/serviceWorkerManager.js
         if (window.serviceWorkerManager && window.serviceWorkerManager._isInstallWizardActive()) {
+            return;
+        }
+        if (this.winlogonPowerText) {
+            const held = document.getElementById('desktopPreStartupStatus');
+            if (held) held.textContent = this.winlogonPowerText;
             return;
         }
         if (this._deferPreStartupForTealHold()) {
@@ -2032,6 +2047,7 @@ class WebSocketClient {
     }
 
     async _hidePreStartupDialog() {
+        if (this.winlogonPowerText) return;
         const modal = document.getElementById('desktopPreStartupModal');
         if (!modal || modal.classList.contains('hidden')) return;
         delete modal.dataset.prestartupOpened;
@@ -2257,6 +2273,7 @@ class WebSocketClient {
         const message = step.failureText || `MeletonFX could not finish "${step.message}".`;
         this._logonInitError = { message, detail };
         if (this._shouldUsePreStartupDialog()) this._renderPreStartupDialog();
+        this._logonInitBoxOpen = !!window.bootMessageBox;
         const choose = window.bootMessageBox
             ? window.bootMessageBox.show({
                 title: 'MeletonFX',
@@ -2270,6 +2287,9 @@ class WebSocketClient {
                 { text: 'Restart', value: 'restart', className: 'btn-secondary' }
             ], null, { title: 'MeletonFX', icon: 'fas fa-circle-xmark' });
         Promise.resolve(choose).then((value) => {
+            this._logonInitBoxOpen = false;
+            // null: dismissed because the connection failed (_dismissLogonInitError)
+            if (value == null) return;
             if (value === 'restart') {
                 // restartClientNavigate: public/scripts/comp/modalUtils.js (/launch on the desktop)
                 if (typeof restartClientNavigate === 'function') restartClientNavigate();
@@ -2488,10 +2508,22 @@ class WebSocketClient {
                 }
                 return;
             }
+            // One error at a time (Yozora #515): a lost connection replaces the app-data box;
+            // the logon steps run again once the socket is back
+            if (phase === 'failed') this._dismissLogonInitError();
             if (phase === 'failed' && this._shouldUseConnectivityErrorInsteadOfConnectionDial()) {
                 this._hideConnectionDialModal();
                 this._presentConnectivityFailure();
                 this._applyFailedConnectionSideEffects();
+                return;
+            }
+            // The server says it is starting: no Error 800. The logon dialog keeps the
+            // Dreamscape Mainframe Server window and the connect is tried again
+            if (phase === 'failed' && window.isDesktop && this._serverReportsBooting()) {
+                if (this._deferPreStartupForTealHold()) return;
+                this._hideConnectionDialModal();
+                this._renderPreStartupDialog();
+                this._scheduleBootWaitReconnect();
                 return;
             }
             if (window.isDesktop && this._shouldShowLogonConnectingDialog()) {
@@ -2528,6 +2560,35 @@ class WebSocketClient {
         this._renderVpnConnectionDialog({ logon: false });
     }
 
+    /** The last /status answer says the server is still starting (isReady: false). */
+    _serverReportsBooting() {
+        const status = this.lastServerStartupStatus;
+        return !!(status && status.isReady === false);
+    }
+
+    /**
+     * A connect that failed while the server boots is tried again after the poll interval
+     * (pingHost then follows the boot to ready); one pending retry at a time.
+     */
+    _scheduleBootWaitReconnect() {
+        if (this._bootWaitReconnectTimer || this._userCancelledConnect || this._isStartupHaltedForInstall()) return;
+        this._bootWaitReconnectTimer = setTimeout(() => {
+            this._bootWaitReconnectTimer = null;
+            if (this.connectionPhase !== 'failed' || this._userCancelledConnect) return;
+            this.manualReconnect();
+        }, WebSocketClient.DELAY_PING_HOST);
+    }
+
+    /** Close the logon app-data message box without a choice and drop that error. */
+    _dismissLogonInitError() {
+        if (!this._logonInitError) return;
+        this._logonInitError = null;
+        if (this._logonInitBoxOpen && window.bootMessageBox && window.bootMessageBox.dismiss) {
+            window.bootMessageBox.dismiss();
+        }
+        this._logonInitBoxOpen = false;
+    }
+
     /**
      * Logon screen (Yozora #429): while the connection test (/status) and the WebSocket connect
      * run, the small "Connecting to <connection>..." dialog shows instead of the logon dialog,
@@ -2537,6 +2598,9 @@ class WebSocketClient {
     _shouldShowLogonConnectingDialog() {
         const phase = this.connectionPhase;
         if (phase === 'failed') return true;
+        // Vista Welcome screen stays on "Please wait...". LogonUI has no
+        // "getting network connection ready" line, so the VPN dialog stays hidden.
+        if (this.vistaLogon) return false;
         if (phase !== 'dialing') return false;
         if (this.lastServerStartupStatus && !this.serverStartupReady) return false;
         if (this._logonInitStatus || this._logonInitError || this._logonInitRunning) return false;
@@ -3343,8 +3407,9 @@ class WebSocketClient {
                     unreachableAttempts += 1;
                 }
 
-                const bootStatus = this.lastServerStartupStatus;
-                const waitingMessage = bootStatus?.stageMessage
+                // The stage only while the server says it boots; a ready server keeps
+                // "Starting Dreamscape…" as its stageMessage (Yozora #515)
+                const waitingMessage = (this._serverReportsBooting() && this.lastServerStartupStatus.stageMessage)
                     || `Waiting for server… (${unreachableAttempts})`;
                 this._setConnectionBeat('dialing', { message: waitingMessage });
 
@@ -5276,8 +5341,10 @@ class WebSocketClient {
 
         // Handle all Director-related messages
         if (message.type.startsWith('director_') || message.type === 'dynamic_generation_response' || message.type === 'dynamic_generation_error') {
-            // For response messages, also resolve the pending request
-            if (message.type.endsWith('_response') && message.requestId) {
+            // Event-style director sends (director.js, dynamicGenerationManager.js) carry a
+            // requestId but are not in pendingRequests. Only resolve a real sendMessage.
+            if (message.type.endsWith('_response') && message.requestId
+                && this.pendingRequests && this.pendingRequests.has(message.requestId)) {
                 this.resolveRequest(message.requestId, message, null);
             }
 
@@ -5290,15 +5357,15 @@ class WebSocketClient {
         if (message.type.endsWith('_response')) {
             if (message.requestId) {
                 const hasPendingRequest = this.pendingRequests && this.pendingRequests.has(message.requestId);
-                if (!hasPendingRequest) {
+                if (hasPendingRequest) {
+                    this.resolveRequest(message.requestId, message.data, message.error);
+                } else {
                     this.logWarning('Response for unknown request', `Received response for unknown request ID: ${message.requestId}`, {
                         messageType: message.type,
                         hasPendingRequests: !!this.pendingRequests,
                         pendingRequestsCount: this.pendingRequests?.size || 0
                     });
-                    // Still attempt to resolve in case of timing issues
                 }
-                this.resolveRequest(message.requestId, message.data, message.error);
             } else {
                 console.warn(`⚠️ Received response without requestId:`, {
                     messageType: message.type,
