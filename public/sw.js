@@ -90,8 +90,27 @@ async function matchStrategyCache(cacheName, request) {
 // font ?t= / ?v= requests must use that row. cache.match on the opened cache
 // honors ignoreSearch; Workbox's caches.match() does not, so those GETs were
 // leaving the worker and hitting the server.
+// /protected and /private stay on the network so a logged-out client cannot
+// read a copy stored while someone was signed in. web_server.js isProtectedResource
+function isAuthGatedStaticPath(pathname) {
+  if (!pathname || typeof pathname !== 'string') return false;
+  return pathname.startsWith('/protected/') || pathname.startsWith('/private/');
+}
+
+function isAuthGatedManifestFile(file) {
+  if (file && file.auth === true) return true;
+  const raw = file && file.url ? String(file.url) : '';
+  let path = raw.split('?')[0];
+  try {
+    path = new URL(raw, self.location.origin).pathname;
+  } catch (_err) {
+    path = raw.split('?')[0];
+  }
+  return isAuthGatedStaticPath(path);
+}
+
 async function matchStaticShell(pathname) {
-  if (!pathname || pathname === '/sw.js' || pathname.startsWith('/dist/workbox/')) {
+  if (!pathname || pathname === '/sw.js' || pathname.startsWith('/dist/workbox/') || isAuthGatedStaticPath(pathname)) {
     return null;
   }
   const cache = await caches.open(STATIC_CACHE);
@@ -892,6 +911,10 @@ workbox.routing.registerRoute(
     if (url.pathname.startsWith('/preset') || url.pathname.startsWith('/pending') || url.pathname.startsWith('/traces')) {
       return false;
     }
+    // Auth-gated static files are fetched by the page so the session check runs.
+    if (isAuthGatedStaticPath(url.pathname)) {
+      return false;
+    }
     if (isLogViewerApiRequest(url) || isGrimoireBrowserRequest(url) || isDesktopGuacRequest(url)) {
       return false;
     }
@@ -1026,6 +1049,9 @@ workbox.routing.registerRoute(
   ({ url, request }) => {
     // Never handle /preset or /pending routes
     if (url.pathname.startsWith('/preset') || url.pathname.startsWith('/pending') || url.pathname.startsWith('/traces')) {
+      return false;
+    }
+    if (isAuthGatedStaticPath(url.pathname)) {
       return false;
     }
     if (isLogViewerApiRequest(url) || isGrimoireBrowserRequest(url) || isDesktopGuacRequest(url)) {
@@ -1507,6 +1533,12 @@ async function cacheStaticFiles(files, silent = false) {
             }
             
             downloadState.currentFile = file.url;
+
+            // Do not store auth-gated files. A 200 cached here would be served after logout.
+            if (isAuthGatedManifestFile(file)) {
+                noteInstallFileDone(file.url, 'auth');
+                continue;
+            }
             
             // Update lastProgressTime when starting a new file (even if fetch hasn't completed yet)
             // This helps detect if we're stuck on a single file

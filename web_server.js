@@ -951,7 +951,9 @@ function buildServiceWorkerCacheManifest() {
         });
     }
 
-    return installManifestFilter.filterExistingManifestEntries(__dirname, entries);
+    return installManifestFilter.markAuthGatedEntries(
+        installManifestFilter.filterExistingManifestEntries(__dirname, entries)
+    );
 }
 
 agentAssetBundle.init({
@@ -1081,6 +1083,28 @@ async function generateCacheData(directory) {
                 }
             }
         }
+
+        // Cursor packs live in media/cursors (Vista committed, Posy host-local), not under public/.
+        // desktopCursorsStatic.listCursorPackFiles: modules/desktopCursorsStatic.js
+        const cursorPack = desktopCursorsStatic.listCursorPackFiles(__dirname);
+        for (const cursor of cursorPack) {
+            if (assets.some((entry) => entry.path === cursor.webPath)) {
+                continue;
+            }
+            const cursorStats = await statOrNull(cursor.abs);
+            if (!cursorStats || !cursorStats.isFile()) continue;
+            const hash = await runtimeAssetService.hashServedFileIfChangedAsync(
+                cursor.abs,
+                cursorStats,
+                previousByPath.get(cursor.webPath)
+            );
+            assets.push({
+                path: cursor.webPath,
+                hash,
+                size: cursorStats.size,
+                modified: cursorStats.mtime.getTime()
+            });
+        }
         
         // Sort by path for consistent ordering
         assets.sort((a, b) => a.path.localeCompare(b.path));
@@ -1117,11 +1141,13 @@ async function scanDirectory(dir, relFromPublic = '') {
             && runtimeAssetService.isAppIconsMasterRelPath(itemRel)) {
             continue;
         }
-        // Vista WAVs stay out of the SW precache (played on demand).
+        // Vista WAVs stay out of the SW precache (played on demand, host-local).
         // Planet switcher BGM under sounds/planet is hashed and cached.
         if (itemRel === 'sounds/vista' || itemRel.startsWith('sounds/vista/')) {
             continue;
         }
+        // Packs are hashed from media/cursors via listCursorPackFiles. Skip a public/ copy
+        // so the manifest hash matches the file the /cursors route actually serves.
         if (itemRel === 'cursors' || itemRel.startsWith('cursors/')) {
             continue;
         }
@@ -2466,9 +2492,14 @@ function mountRuntimeAssetMiddleware(app) {
                 runtimeAssetService.isDebugRequest(req)
             );
             if (!sent) {
+                // Missing css/scripts (for example /scripts/blockContainer.js) fall through
+                // to express.static and the 404 handler. Compile must not reject ENOENT.
                 return next();
             }
         } catch (err) {
+            if (err && (err.code === 'ENOENT' || err.code === 'ENOTDIR')) {
+                return next();
+            }
             next(err);
         }
     });
@@ -3896,16 +3927,19 @@ async function handleAdminUnixSocketMessage(message, socket) {
             desktopSoundsStatic.sendSound(req, res, __dirname);
         });
 
-        // Cursor packs from media/cursors (Vista is committed; Posy is host-local). Not in the SW precache.
+        // Cursor packs from media/cursors (Vista is committed; Posy is host-local).
+        // Both are rows in the install manifest when the files are on disk.
         app.get('/cursors/:scheme/:file', (req, res) => {
             desktopCursorsStatic.sendCursor(req, res, __dirname);
         });
 
-        // Serve static files from public directory (after routes to avoid conflicts)
+        // Serve static files from public directory (after routes to avoid conflicts).
+        // A missing file must fall through to the 404 handler, not surface as ENOENT.
         app.use(express.static('public', {
             maxAge: '10s', // Cache static assets for 10 seconds
             etag: true, // Enable ETags for cache validation
             lastModified: true, // Enable Last-Modified headers
+            fallthrough: true,
             setHeaders: (res, _filePath) => {
                 agentAssetBundle.applyServedAssetCacheHeaders(res.req, res);
             }
@@ -3913,6 +3947,24 @@ async function handleAdminUnixSocketMessage(message, socket) {
 
         // 404 handler for invalid URL tracking (after routes and static files)
         app.use('*', invalidURLHandler, (req, res) => {
+            res.status(404).json({
+                success: false,
+                error: 'Not found',
+                code: 'NOT_FOUND',
+                path: req.originalUrl
+            });
+        });
+
+        // send / sendFile report a missing file as ENOENT. Answer 404 instead of
+        // leaving that rejection for the process handler.
+        app.use((err, req, res, next) => {
+            if (!err || res.headersSent) {
+                return next(err);
+            }
+            const missing = err.code === 'ENOENT' || err.code === 'ENOTDIR' || err.status === 404 || err.statusCode === 404;
+            if (!missing) {
+                return next(err);
+            }
             res.status(404).json({
                 success: false,
                 error: 'Not found',

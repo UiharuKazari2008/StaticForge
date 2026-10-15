@@ -55,6 +55,12 @@ function memoryStorage() {
     assert.deepStrictEqual(needed.map((f) => f.url), ['/scripts/b.js'], 'only the stale file; aliases and siblings count');
     assert.strictEqual(engine.totalBytes(needed), 40);
     assert.deepStrictEqual((await engine.filesNeedingUpdate({ ...env, caches: null }, manifest)).length, 5, 'no Cache Storage: everything');
+    const withAuth = manifest.concat([
+        { url: '/protected/fflate.js', hash: 'ff', size: 9, auth: true },
+        { url: '/protected/t5_tokenizer.json', hash: 't5', size: 9 }
+    ]);
+    const authNeeded = await engine.filesNeedingUpdate({ ...env, caches: null }, withAuth);
+    assert.ok(!authNeeded.some((file) => String(file.url).startsWith('/protected/')), 'auth-gated files are not precached');
 
     // check(): manifest from OPTIONS /
     env.fetch = async (url, opts) => {

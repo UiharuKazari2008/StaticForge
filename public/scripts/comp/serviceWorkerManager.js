@@ -1,3 +1,10 @@
+// web_server.js isProtectedResource — do not precache these in the service worker
+function isAuthGatedManifestFile(file) {
+    if (file && file.auth === true) return true;
+    const path = normalizeStaticFilePath(file && file.url);
+    return path.startsWith('/protected/') || path.startsWith('/private/');
+}
+
 function normalizeStaticFilePath(url) {
     try {
         return new URL(url, window.location.origin).pathname;
@@ -1775,6 +1782,9 @@ class ServiceWorkerManager {
         this._staticCacheKeyIndex = null;
 
         for (const file of files) {
+            if (isAuthGatedManifestFile(file)) {
+                continue;
+            }
             try {
                 const cachedResponse = await this._matchCachedFile(cache, file);
                 let cachedHash = cachedResponse && cachedResponse.headers.get('x-file-hash');

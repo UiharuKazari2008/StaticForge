@@ -61,9 +61,27 @@ try {
     assert.ok(!urls.includes('/sounds/vista/Windows%20Ding.wav'));
     assert.strictEqual(filter.manifestEntryExists(root, { url: '/css/../../.env' }), false);
 
+    const marked = filter.markAuthGatedEntries([
+        { url: '/protected/fflate.js', hash: 'e' },
+        { url: '/protected/t5_tokenizer.json', hash: 't' },
+        { url: '/css/app.css', hash: 'a' },
+        { url: '/cursors/vista/aero_arrow.cur', hash: 'f' }
+    ]);
+    assert.strictEqual(marked[0].auth, true);
+    assert.strictEqual(marked[1].auth, true);
+    assert.strictEqual(marked[2].auth, undefined);
+    assert.strictEqual(marked[3].auth, undefined, 'cursor packs are public static files');
+
     const server = fs.readFileSync(path.join(__dirname, '..', 'web_server.js'), 'utf8');
     assert.ok(server.includes('filterExistingManifestEntries'), 'manifest builder filters on disk');
+    assert.ok(server.includes('markAuthGatedEntries'), 'protected rows are marked auth');
+    assert.ok(server.includes('listCursorPackFiles'), 'cursor packs are added to the cache manifest');
     assert.ok(server.includes('resolveLoginSpritePath'), 'login sprite falls back to the committed seed');
+
+    const seeds = fs.readFileSync(path.join(__dirname, 'fetch-seeds.sh'), 'utf8');
+    assert.ok(seeds.includes('https://yozora.bluesteel.737.jp.net/seeds/dreamscape/'));
+    assert.ok(seeds.includes('PLACEHOLDER'));
+    assert.ok(seeds.includes('${SEED_BASE_URL:-https://yozora.bluesteel.737.jp.net/seeds/dreamscape/}'));
 
     const sw = fs.readFileSync(path.join(__dirname, '..', 'public', 'sw.js'), 'utf8');
     assert.ok(sw.includes('STATIC_FILE_FETCH_TIMEOUT_MS'), 'install fetch has a per-file timeout');

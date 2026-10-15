@@ -105,9 +105,28 @@ function filterExistingManifestEntries(projectRoot, entries) {
     return list.filter((entry) => manifestEntryExists(projectRoot, entry));
 }
 
+function isAuthGatedWebPath(webPath) {
+    const pathOnly = String(webPath || '').split('?')[0].split('#')[0];
+    return pathOnly.startsWith('/protected/') || pathOnly.startsWith('/private/');
+}
+
+// Logged-out clients must not treat these as ordinary precache rows.
+function markAuthGatedEntries(entries) {
+    const list = Array.isArray(entries) ? entries : [];
+    for (const entry of list) {
+        const url = entry && (entry.url || entry.path);
+        if (isAuthGatedWebPath(url)) {
+            entry.auth = true;
+        }
+    }
+    return list;
+}
+
 module.exports = {
     decodeWebPath,
     candidatePaths,
     manifestEntryExists,
-    filterExistingManifestEntries
+    filterExistingManifestEntries,
+    isAuthGatedWebPath,
+    markAuthGatedEntries
 };

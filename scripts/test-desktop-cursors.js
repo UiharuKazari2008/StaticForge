@@ -73,6 +73,14 @@ assert.ok(/if \(event\.defaultPrevented\) \{[\s\S]*return true;/.test(shortcuts)
 const server = read('web_server.js');
 assert.ok(server.includes("app.get('/cursors/:scheme/:file'"));
 assert.ok(server.includes("itemRel === 'cursors'"));
+assert.ok(server.includes('listCursorPackFiles'));
+const pack = staticServe.listCursorPackFiles(ROOT).map((entry) => entry.webPath);
+assert.ok(pack.includes('/cursors/vista/aero_arrow.cur'));
+assert.ok(pack.includes('/cursors/vista/aero_link.cur'));
+assert.ok(pack.includes('/cursors/vista/beam_r.cur'));
+assert.ok(pack.includes('/cursors/vista/aero_busy.ani'));
+assert.ok(pack.every((url) => url.startsWith('/cursors/vista/') || url.startsWith('/cursors/posy/')));
+assert.ok(!pack.some((url) => url.includes('..')));
 
 const monitor = require('../public/scripts/comp/desktopTaskMonitor.js');
 assert.strictEqual(monitor.WINDOW_FOR_TYPE.generate_image, 'manualModal');

@@ -85,9 +85,16 @@
         return false;
     }
 
+    function isAuthGatedManifestFile(file) {
+        if (file && file.auth === true) return true;
+        const path = normalizePath(file && file.url, '');
+        return path.startsWith('/protected/') || path.startsWith('/private/');
+    }
+
     /** The manifest files whose cached copy is missing or has another hash. */
     async function filesNeedingUpdate(env, files) {
-        if (!env.caches) return files.slice();
+        const list = (files || []).filter((file) => !isAuthGatedManifestFile(file));
+        if (!env.caches) return list.slice();
         const cache = await env.caches.open(STATIC_CACHE);
         const origin = env.location && env.location.origin;
         const siblings = new Map();
@@ -97,7 +104,7 @@
             siblings.get(path).push(request);
         });
         const out = [];
-        for (const file of files) {
+        for (const file of list) {
             if (!(await cachedHashMatches(cache, file, origin, siblings))) out.push(file);
         }
         return out;

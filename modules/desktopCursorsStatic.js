@@ -1,6 +1,7 @@
 /**
  * Serve cursor packs from media/cursors/{vista,posy}.
- * Vista is committed. Posy stays host-local. Missing files are the keyword only.
+ * Vista is committed and listed in the install manifest. Posy stays host-local
+ * and is listed only when those files are on disk. Missing files are the keyword only.
  */
 const fs = require('fs');
 const path = require('path');
@@ -254,6 +255,47 @@ function resolveCursorPath(projectRoot, scheme, filename) {
     return safePackFile(roots[0], name);
 }
 
+// Files the /cursors/{scheme}/{file} route can serve. media/cursors wins over public/cursors.
+function listCursorPackFiles(projectRoot) {
+    const root = projectRoot || PROJECT_ROOT;
+    const out = [];
+    const seen = new Set();
+    for (let s = 0; s < SCHEME_IDS.length; s++) {
+        const scheme = SCHEME_IDS[s];
+        const dirs = [
+            path.resolve(root, PACK_DIR, scheme),
+            path.resolve(root, 'public', 'cursors', scheme)
+        ];
+        for (let d = 0; d < dirs.length; d++) {
+            let names;
+            try {
+                names = fs.readdirSync(dirs[d]);
+            } catch (_err) {
+                continue;
+            }
+            for (let i = 0; i < names.length; i++) {
+                const decoded = decodeCursorName(names[i]);
+                if (!decoded) continue;
+                const abs = safePackFile(dirs[d], decoded);
+                if (!abs) continue;
+                let st;
+                try {
+                    st = fs.statSync(abs);
+                } catch (_err) {
+                    continue;
+                }
+                if (!st.isFile()) continue;
+                const webPath = `/cursors/${scheme}/${decoded}`;
+                if (seen.has(webPath)) continue;
+                seen.add(webPath);
+                out.push({ webPath, abs });
+            }
+        }
+    }
+    out.sort((a, b) => a.webPath.localeCompare(b.webPath));
+    return out;
+}
+
 function contentTypeFor(name) {
     const ext = path.extname(name).toLowerCase();
     if (ext === '.png') return 'image/png';
@@ -290,5 +332,6 @@ module.exports = {
     decodeCursorName,
     FILE_ALIASES,
     resolveCursorPath,
+    listCursorPackFiles,
     sendCursor
 };

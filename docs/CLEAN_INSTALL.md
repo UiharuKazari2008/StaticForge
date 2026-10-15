@@ -34,23 +34,35 @@ Shipped assets a fresh clone must already contain (these used to live only on th
 | `public/images/login_array.jpg` | Neutral 1024x1024 login tile. `/.login.jpg` serves `.cache/login_array.jpg` once the gallery rebuilds a sheet |
 | `public/data/nai-quickstart-v5.json` | Quick Start catalog |
 | `public/sounds/planet/innerlight.opus` | Planet switcher bed |
-| `public/scripts/comp/blockContainer.js` | Login blocks. The preload URL is this path |
+| `public/scripts/comp/blockContainer.js` | Login blocks. The preload URL is `/scripts/comp/blockContainer.js` |
 
-The install manifest (`OPTIONS /`, `buildServiceWorkerCacheManifest`) omits any row whose file
-is not on disk. The service worker gives each install fetch 20s and treats HTTP 404 as absent:
-that file is not retried, and the installer remembers it so the next boot does not open Setup
-for it again.
+The install manifest (`OPTIONS /`, `buildServiceWorkerCacheManifest`) lists static files the
+service worker precaches. That includes the committed Vista cursor pack (`/cursors/vista/...`,
+from `media/cursors/vista`) and a Posy pack when those files are on disk in `media/cursors/posy`.
+Device splash and screenshot images under `public/static_images/` stay out: each client only
+needs one size. Any row whose file is not on disk is omitted. The service worker gives each
+install fetch 20s and treats HTTP 404 as absent: that file is not retried, and the installer
+remembers it so the next boot does not open Setup for it again.
+
+`/protected/` and `/private/` rows are marked `auth: true`. They stay in the manifest so the
+list is complete, and the service worker does not precache or serve them. A logged-out request
+still hits the server and gets 403. A request for a missing static file (for example
+`/scripts/blockContainer.js`) is HTTP 404.
 
 Vista sound WAVs stay host-local in `media/Windows Vista Sounds` (Microsoft recordings, not in
-git, not in the install manifest). Posy cursors stay host-local in `media/cursors/posy`.
+git, not in the install manifest).
 
 ### Wiki and tag seeds
 
 These are referenced by tag import / lookup and are too large (or are the inputs to a database
-that is too large) to commit. `scripts/fetch-seeds.sh` downloads them. `SEED_BASE_URL` defaults
-to `TODO` until a bundle is published:
+that is too large) to commit. `scripts/fetch-seeds.sh` downloads them. `SEED_BASE_URL`
+defaults to the Yozora folder below (**PLACEHOLDER until Sala confirms**). Override it
+with the environment variable when the files live somewhere else:
 
 ```bash
+bash scripts/fetch-seeds.sh
+# PLACEHOLDER until Sala confirms:
+#   https://yozora.bluesteel.737.jp.net/seeds/dreamscape/
 SEED_BASE_URL=https://example.invalid/dreamscape-seeds bash scripts/fetch-seeds.sh
 ```
 
