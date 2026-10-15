@@ -2756,13 +2756,17 @@
                                     data-state="off" title="Enable upscaling">
                                     <i class="nai-upscale"></i>
                                 </button>
-                                <select id="manualUpscaleModel" class="form-control hover-show colored local-upscale-model hidden"
-                                    title="Upscale model"></select>
-                                <select id="manualUpscaleScale" class="form-control hover-show colored local-upscale-scale hidden"
-                                    title="Local upscale scale">
-                                    <option value="4">4x</option>
-                                    <option value="2">2x</option>
-                                </select>
+                                <div id="manualUpscaleChoices" class="director-expandable-content hidden">
+                                    <button type="button" id="manualUpscaleScaleBtn" class="custom-dropdown-btn hover-show colored indicator" data-state="on" title="Upscale scale">
+                                        <span id="manualUpscaleScaleLabel">4x</span>
+                                    </button>
+                                    <input type="hidden" id="manualUpscaleScale" value="4">
+                                    <button type="button" id="manualUpscaleSpeedBtn" class="custom-dropdown-btn hover-show colored indicator" data-state="on" title="Upscale delivery">
+                                        <span id="manualUpscaleSpeedLabel">Instant</span>
+                                    </button>
+                                    <input type="hidden" id="manualUpscaleSpeed" value="instant">
+                                    <input type="hidden" id="manualUpscaleModel" value="novelai">
+                                </div>
                             </div>
                         </div>
                     </div>

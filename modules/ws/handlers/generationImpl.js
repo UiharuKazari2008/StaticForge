@@ -431,7 +431,10 @@ async function handleImageUpscaling(handlers, ws, message, clientInfo, wsServer)
             ws,
             handlers,
             requestId,
-            localUpscale ? { model: data.localUpscaleModel || data.model } : null
+            localUpscale ? {
+                model: data.localUpscaleModel || data.model,
+                speed: data.upscaleSpeed || data.localUpscaleSpeed
+            } : null
         );
 
         handlers.stopKeepAliveInterval(requestId);
@@ -790,6 +793,7 @@ async function handleEnhanceImage(handlers, ws, message, clientInfo, wsServer) {
 
         if (isLocalUpscaler(message.backend || message.upscaler)) {
             const requestedScale = Number(message.localUpscaleScale);
+            const localScale = (requestedScale === 2 || requestedScale === 3 || requestedScale === 8) ? requestedScale : 4;
             const result = await upscaleImageWebSocket(
                 handlers.globalResources,
                 message.filename,
@@ -797,11 +801,14 @@ async function handleEnhanceImage(handlers, ws, message, clientInfo, wsServer) {
                 clientInfo.userType,
                 clientInfo.sessionId,
                 'local',
-                requestedScale === 2 ? 2 : 4,
+                localScale,
                 ws,
                 handlers,
                 requestId,
-                { model: message.localUpscaleModel }
+                {
+                    model: message.localUpscaleModel,
+                    speed: message.upscaleSpeed || message.localUpscaleSpeed
+                }
             );
             handlers.stopKeepAliveInterval(requestId);
             const contentLength = handlers.resolveGeneratedImageContentLength(result);
@@ -1133,7 +1140,8 @@ async function handleLocalUpscaleStatus(handlers, ws, message) {
                 gpu: health.gpu || null,
                 version: health.version || null,
                 queueLength: health.queueLength != null ? health.queueLength : null,
-                models: (health.models && health.models.length) ? health.models : LOCAL_UPSCALE_MODELS
+                models: (health.models && health.models.length) ? health.models : LOCAL_UPSCALE_MODELS,
+                workers: Array.isArray(health.workers) ? health.workers : []
             },
             timestamp: new Date().toISOString()
         });

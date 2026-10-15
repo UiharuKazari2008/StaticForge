@@ -76,6 +76,7 @@ function showCreditCostDialog(cost, event = null, outputResolution = null, isUps
         const dialog = document.createElement('div');
         dialog.id = 'creditCostDialog';
         dialog.className = 'modal hidden transient tool-window on-top credit-cost-dialog';
+        if (isUpscaling) dialog.style.width = '420px';
 
         // Build content programmatically
         const content = document.createElement('div');
@@ -99,152 +100,80 @@ function showCreditCostDialog(cost, event = null, outputResolution = null, isUps
         let selectedUpscaler = 'novelai';
         let selectedScale = 4;
         let selectedLocalModel = null;
+        let selectedSpeed = 'instant';
+        let applyUpscaleChoice = null;
 
         if (isUpscaling) {
-            // Calculate upscale info to determine NovelAI availability
-            let upscaleInfo = null;
             let novelaiAvailable = false;
             if (imageWidth && imageHeight) {
-                upscaleInfo = calculateUpscaleInfo(imageWidth, imageHeight);
-                novelaiAvailable = upscaleInfo.available;
+                novelaiAvailable = !!calculateUpscaleInfo(imageWidth, imageHeight).available;
             }
-
-            // If NovelAI is not available, default to ESRGAN
             if (!novelaiAvailable) {
-                selectedUpscaler = 'esrgan';
-                selectedScale = 4;
+                selectedUpscaler = 'local';
+                selectedSpeed = 'fast';
             }
+            message.textContent = 'Choose scale and delivery:';
+            message.style.flexDirection = 'column';
+            message.style.alignItems = 'stretch';
 
-            // For upscaling, show method selection dropdown
-            message.textContent = 'Choose upscaling method:';
+            const panel = document.createElement('div');
+            panel.className = 'director-expandable-content';
+            const choiceState = { scale: selectedScale, speed: selectedSpeed };
+            const scaleBtn = document.createElement('button');
+            scaleBtn.type = 'button';
+            scaleBtn.className = 'custom-dropdown-btn hover-show colored indicator';
+            scaleBtn.setAttribute('data-state', 'on');
+            const scaleLabel = document.createElement('span');
+            scaleLabel.textContent = '4x';
+            scaleBtn.appendChild(scaleLabel);
+            const speedBtn = document.createElement('button');
+            speedBtn.type = 'button';
+            speedBtn.className = 'custom-dropdown-btn hover-show colored indicator';
+            speedBtn.setAttribute('data-state', novelaiAvailable ? 'on' : 'off');
+            const speedLabel = document.createElement('span');
+            speedLabel.textContent = upscaleSpeedLabel(selectedSpeed);
+            speedBtn.appendChild(speedLabel);
 
-            // Create upscale method dropdown
-            const methodContainer = document.createElement('div');
-            methodContainer.className = 'upscale-method-container';
-
-            const methodDropdown = document.createElement('div');
-            methodDropdown.id = 'upscaleMethodDropdown';
-            methodDropdown.className = 'custom-dropdown dropup dark';
-
-            const methodDropdownBtn = document.createElement('button');
-            methodDropdownBtn.type = 'button';
-            methodDropdownBtn.id = 'upscaleMethodDropdownBtn';
-            methodDropdownBtn.className = 'custom-dropdown-btn hover-show colored';
-            methodDropdownBtn.style.width = '100%';
-            methodDropdownBtn.style.maxWidth = '300px';
-            methodDropdownBtn.textContent = novelaiAvailable ? 'NovelAI (4x)' : 'ESRGAN (4x)';
-            
-            methodDropdown.appendChild(methodDropdownBtn);
-
-            const methodMenu = document.createElement('div');
-            methodMenu.id = 'upscaleMethodDropdownMenu';
-            methodMenu.className = 'custom-dropdown-menu hidden';
-            methodMenu.style.maxHeight = '300px';
-            methodMenu.style.overflowY = 'auto';
-
-            // Add NovelAI option only if available
-            if (novelaiAvailable) {
-                const novelaiOption = document.createElement('div');
-                novelaiOption.className = 'custom-dropdown-option selected';
-                novelaiOption.dataset.method = 'novelai';
-                novelaiOption.dataset.scale = '4';
-                const costText = isFreeUpscaling ? 'Free' : `${cost} credits`;
-                novelaiOption.textContent = `NovelAI - ${costText} → ${outputResolution ? outputResolution.width + '×' + outputResolution.height : '4x'}`;
-                novelaiOption.addEventListener('click', () => {
-                    selectUpscaleMethod('novelai', 4);
-                    closeUpscaleMethodDropdown();
-                });
-                methodMenu.appendChild(novelaiOption);
+            function choiceRow(caption, button) {
+                const row = document.createElement('div');
+                row.className = 'form-group';
+                const label = document.createElement('label');
+                label.textContent = caption;
+                row.appendChild(label);
+                row.appendChild(button);
+                return row;
             }
+            panel.appendChild(choiceRow('Scale', scaleBtn));
+            panel.appendChild(choiceRow('Delivery', speedBtn));
+            message.appendChild(panel);
 
-            const localModels = (typeof knownLocalUpscaleModels === 'function')
-                ? knownLocalUpscaleModels()
-                : [];
-            localModels.forEach((model) => {
-                [4, 2].forEach((scale) => {
-                    const localOption = document.createElement('div');
-                    localOption.className = 'custom-dropdown-option';
-                    localOption.dataset.method = 'local';
-                    localOption.dataset.model = model.id;
-                    localOption.dataset.scale = String(scale);
-                    const outputRes = imageWidth && imageHeight ? `${imageWidth * scale}×${imageHeight * scale}` : `${scale}x`;
-                    localOption.textContent = `Local ${model.name} ${scale}x - Free - ${outputRes}`;
-                    localOption.addEventListener('click', () => {
-                        selectUpscaleMethod('local', scale, model.id);
-                        closeUpscaleMethodDropdown();
-                    });
-                    methodMenu.appendChild(localOption);
-                });
-            });
-
-            // Add ESRGAN options
-            const scaleOptions = [2, 3, 4, 8];
-            scaleOptions.forEach(scale => {
-                const esrganOption = document.createElement('div');
-                // Select first ESRGAN 4x option if NovelAI is not available
-                const isSelected = !novelaiAvailable && scale === 4;
-                esrganOption.className = 'custom-dropdown-option' + (isSelected ? ' selected' : '');
-                esrganOption.dataset.method = 'esrgan';
-                esrganOption.dataset.scale = scale.toString();
-                const outputRes = imageWidth && imageHeight ? `${imageWidth * scale}×${imageHeight * scale}` : `${scale}x`;
-                esrganOption.textContent = `ESRGAN ${scale}x - ${outputRes}`;
-                esrganOption.addEventListener('click', () => {
-                    selectUpscaleMethod('esrgan', scale);
-                    closeUpscaleMethodDropdown();
-                });
-                methodMenu.appendChild(esrganOption);
-            });
-
-            methodDropdown.appendChild(methodMenu);
-            methodContainer.appendChild(methodDropdown);
-            message.appendChild(methodContainer);
-
-            // Setup dropdown functionality
-            setupDropdown(methodDropdown, methodDropdownBtn, methodMenu, () => {
-                // Render function - already populated above
-            }, () => ({
-                method: selectedUpscaler,
-                scale: selectedScale
-            }), { preventFocusTransfer: true });
-
-            // Method selection function
-            function selectUpscaleMethod(method, scale, modelId) {
-                selectedUpscaler = method;
-                selectedScale = scale;
-                selectedLocalModel = method === 'local' ? modelId : null;
-
-                const displayText = method === 'novelai'
-                    ? 'NovelAI (4x)'
-                    : method === 'local'
-                        ? `Local ${scale}x`
-                        : `ESRGAN (${scale}x)`;
-                methodDropdownBtn.textContent = displayText;
-
-                // Update button text. Local Ruiko upscale does not spend Anlas.
-                if (method === 'esrgan' || method === 'local') {
-                    confirmBtn.textContent = 'Upscale ';
+            applyUpscaleChoice = () => {
+                selectedScale = choiceState.scale;
+                selectedSpeed = choiceState.speed;
+                selectedUpscaler = selectedSpeed === 'instant' ? 'novelai' : 'local';
+                selectedLocalModel = null;
+                scaleLabel.textContent = selectedScale + 'x';
+                speedLabel.textContent = upscaleSpeedLabel(selectedSpeed);
+                speedBtn.setAttribute('data-state', upscaleDeliveryIndicator(selectedSpeed, () => novelaiAvailable, knownLocalUpscaleStatus()));
+                if (!confirmBtn) return;
+                confirmBtn.textContent = '';
+                if (selectedSpeed === 'instant' && !isFreeUpscaling) {
+                    confirmBtn.appendChild(document.createTextNode('Upscale (' + cost + ' credits) '));
                 } else {
-                    const buttonText = isFreeUpscaling ? 'Upscale ' : `Upscale (${cost} credits) `;
-                    confirmBtn.textContent = buttonText;
+                    confirmBtn.appendChild(document.createTextNode('Upscale '));
                 }
                 const arrowIcon = document.createElement('i');
                 arrowIcon.className = 'fas fa-arrow-right';
                 confirmBtn.appendChild(arrowIcon);
+            };
 
-                // Update selected state in dropdown
-                methodMenu.querySelectorAll('.custom-dropdown-option').forEach(opt => {
-                    opt.classList.remove('selected');
-                    const sameMethod = opt.dataset.method === method && opt.dataset.scale === scale.toString();
-                    const sameModel = method !== 'local' || opt.dataset.model === modelId;
-                    if (sameMethod && sameModel) {
-                        opt.classList.add('selected');
-                    }
-                });
-            }
-
-            function closeUpscaleMethodDropdown() {
-                closeDropdown(methodMenu, methodDropdownBtn);
-            }
+            // wireUpscaleChoiceMenus: public/scripts/comp/creditCostDialog.js
+            wireUpscaleChoiceMenus(scaleBtn, speedBtn, choiceState, {
+                novelaiAvailable: () => novelaiAvailable,
+                getStatus: () => knownLocalUpscaleStatus(),
+                labels: { scale: scaleLabel, speed: speedLabel },
+                onChange: () => applyUpscaleChoice()
+            });
         } else {
             // Normal cost dialog for non-upscaling requests
             message.textContent = 'This will cost ';
@@ -296,15 +225,20 @@ function showCreditCostDialog(cost, event = null, outputResolution = null, isUps
                 novelaiAvailableForButton = upscaleInfoForButton.available;
             }
 
-            if (novelaiAvailableForButton) {
+            if (applyUpscaleChoice) {
+                applyUpscaleChoice();
+            } else if (novelaiAvailableForButton) {
                 const buttonText = isFreeUpscaling ? 'Upscale ' : `Upscale (${cost} credits) `;
                 confirmBtn.textContent = buttonText;
+                const arrowIcon = document.createElement('i');
+                arrowIcon.className = 'fas fa-arrow-right';
+                confirmBtn.appendChild(arrowIcon);
             } else {
                 confirmBtn.textContent = 'Upscale ';
+                const arrowIcon = document.createElement('i');
+                arrowIcon.className = 'fas fa-arrow-right';
+                confirmBtn.appendChild(arrowIcon);
             }
-            const arrowIcon = document.createElement('i');
-            arrowIcon.className = 'fas fa-arrow-right';
-            confirmBtn.appendChild(arrowIcon);
         } else {
             confirmBtn.textContent = 'Generate ';
             const arrowIcon = document.createElement('i');
@@ -331,6 +265,7 @@ function showCreditCostDialog(cost, event = null, outputResolution = null, isUps
                     confirmed: true,
                     upscaler: selectedUpscaler,
                     scale: selectedScale,
+                    speed: selectedSpeed,
                     model: selectedLocalModel
                 });
             } else {
@@ -370,6 +305,10 @@ function cleanupCreditCostDialog(dialog) {
         // teardownDropdown: public/scripts/comp/dropdown.js
         dialog.querySelectorAll('.custom-dropdown').forEach((dropdown) => {
             teardownDropdown(dropdown);
+        });
+        // contextMenu.detachClickMenuFromElement: public/scripts/comp/contextMenu.js
+        dialog.querySelectorAll('[data-click-menu]').forEach((el) => {
+            contextMenu.detachClickMenuFromElement(el);
         });
         // closeModal — public/scripts/comp/modalUtils.js
         closeModal(dialog).then(() => {
@@ -483,6 +422,110 @@ function requiresPaidCredits(requestBody) {
     return false;
 }
 
+function upscaleSpeedLabel(speed) {
+    if (speed === 'instant') return 'Instant';
+    if (speed === 'slow') return 'Slow';
+    return 'Fast';
+}
+
+function upscaleScaleChoices(status) {
+    const scales = [2, 4];
+    const workers = status && Array.isArray(status.workers) ? status.workers : [];
+    workers.forEach((worker) => {
+        const max = Number(worker.maxScale);
+        if (max === 8 && scales.indexOf(8) === -1) scales.push(8);
+    });
+    return scales;
+}
+
+function slowDeliveryHint(status) {
+    const workers = status && Array.isArray(status.workers) ? status.workers : [];
+    const g10 = workers.find((worker) => worker.role === 'g10' || worker.id === 'g10');
+    const max = g10 && Number(g10.maxScale) > 0 ? Number(g10.maxScale) : 4;
+    return 'G10 up to ' + max + 'x, Ruiko beyond';
+}
+
+function novelaiAvailableNow(flag) {
+    // Callers pass a function. Studio: public/scripts/comp/manualGenerationParams.js
+    return !!flag();
+}
+
+function upscaleDeliveryIndicator(speed, novelaiFlag, status) {
+    const novelaiOk = novelaiAvailableNow(novelaiFlag);
+    const workers = status && Array.isArray(status.workers) ? status.workers : [];
+    if (speed === 'instant') return novelaiOk ? 'on' : 'off';
+    if (speed === 'slow') {
+        const g10 = workers.find((worker) => (worker.role === 'g10' || worker.id === 'g10') && worker.online);
+        if (g10) return 'on';
+        const ruiko = workers.find((worker) => (worker.role === 'ruiko' || worker.id === 'ruiko') && worker.online);
+        if (ruiko) return 'partial';
+        return status && status.online ? 'partial' : 'off';
+    }
+    if (workers.some((worker) => worker.online) || (status && status.online)) return 'on';
+    return 'off';
+}
+
+function knownLocalUpscaleStatus() {
+    return localUpscaleModelCache;
+}
+
+function wireUpscaleChoiceMenus(scaleBtn, speedBtn, state, options) {
+    if (!scaleBtn || !speedBtn || !state) return;
+    const opts = options || {};
+    function status() {
+        return opts.getStatus ? opts.getStatus() : knownLocalUpscaleStatus();
+    }
+    function novelaiOk() {
+        return novelaiAvailableNow(opts.novelaiAvailable);
+    }
+    function paint() {
+        const scaleText = state.scale + 'x';
+        const speedText = upscaleSpeedLabel(state.speed);
+        if (opts.labels && opts.labels.scale) opts.labels.scale.textContent = scaleText;
+        else {
+            const scaleSpan = scaleBtn.querySelector('span');
+            if (scaleSpan) scaleSpan.textContent = scaleText;
+        }
+        if (opts.labels && opts.labels.speed) opts.labels.speed.textContent = speedText;
+        else {
+            const speedSpan = speedBtn.querySelector('span');
+            if (speedSpan) speedSpan.textContent = speedText;
+        }
+        speedBtn.setAttribute('data-state', upscaleDeliveryIndicator(state.speed, novelaiOk(), status()));
+        scaleBtn.setAttribute('data-state', 'on');
+    }
+    // contextMenu.attachPickerMenu: public/scripts/comp/contextMenu.js
+    contextMenu.attachPickerMenu(scaleBtn, {
+        items: () => upscaleScaleChoices(status()).map((scale) => ({
+            value: scale,
+            text: scale + 'x'
+        })),
+        value: () => state.scale,
+        onSelect: (value) => {
+            const n = Number(value);
+            state.scale = (n === 2 || n === 3 || n === 8) ? n : 4;
+            paint();
+            if (opts.onChange) opts.onChange(state);
+        }
+    });
+    contextMenu.attachPickerMenu(speedBtn, {
+        items: () => ([
+            { value: 'instant', text: 'Instant', subtext: 'NovelAI', disabled: !novelaiOk() },
+            { value: 'fast', text: 'Fast', subtext: 'Ruiko or G10, whichever handles this scale' },
+            { value: 'slow', text: 'Slow', subtext: slowDeliveryHint(status()) }
+        ]),
+        value: () => state.speed,
+        onSelect: (value) => {
+            if (value === 'instant' && novelaiOk()) state.speed = 'instant';
+            else if (value === 'slow') state.speed = 'slow';
+            else state.speed = 'fast';
+            paint();
+            if (opts.onChange) opts.onChange(state);
+        }
+    });
+    paint();
+}
+
 const LOCAL_UPSCALE_MODELS = [
     { id: 'RealESRGAN_x4plus', name: 'RealESRGAN x4plus' },
     { id: 'RealESRGAN_x4plus_anime_6B', name: 'RealESRGAN anime 6B' },
@@ -527,7 +570,8 @@ async function fetchLocalUpscaleModels() {
             configured: !!data.configured,
             models: data.models,
             reason: data.reason || null,
-            gpu: data.gpu || null
+            gpu: data.gpu || null,
+            workers: Array.isArray(data.workers) ? data.workers : []
         };
         return localUpscaleModelCache;
     } catch (err) {
@@ -551,7 +595,7 @@ async function confirmNaiUpscaleFallback(error) {
 }
 
 function fillLocalUpscaleSelect(select, includeNovelAi) {
-    if (!select) return;
+    if (!select || String(select.tagName || '').toLowerCase() !== 'select') return;
     const previous = select.value || (includeNovelAi ? 'novelai' : '');
     select.textContent = '';
     if (includeNovelAi) {

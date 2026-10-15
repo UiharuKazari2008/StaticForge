@@ -1036,12 +1036,13 @@ function collectEnhanceDialogValues(dialog) {
     if (noiseScheduler) extra.noiseScheduler = noiseScheduler;
     const model = dialog.querySelector('#enhanceModelHidden')?.value;
     if (model) extra.model = model;
-    const upscalerModel = dialog.querySelector('#enhanceUpscaleModel')?.value || '';
-    if (upscalerModel && upscalerModel !== 'novelai') {
+    const upscaleSpeed = dialog.querySelector('#enhanceUpscaleSpeed')?.value || 'instant';
+    const upscaleScale = Number(dialog.querySelector('#enhanceLocalScale')?.value) || 4;
+    if (upscaleSpeed === 'fast' || upscaleSpeed === 'slow') {
         extra.upscaler = 'local';
         extra.backend = 'local';
-        extra.localUpscaleModel = upscalerModel;
-        extra.localUpscaleScale = Number(dialog.querySelector('#enhanceLocalScale')?.value) || 4;
+        extra.upscaleSpeed = upscaleSpeed;
+        extra.localUpscaleScale = upscaleScale === 2 ? 2 : upscaleScale;
     }
     return buildEnhanceRequestValues({
         scale,
@@ -1310,27 +1311,31 @@ function wireEnhanceDialog(dialog, scaleOptions) {
     }
 
     applyEnhanceMagnitudeOverlays(document.getElementById('enhanceMagnitudeInput')?.value || '3.0');
-    wireEnhanceLocalUpscalePicker('enhanceUpscaleModel', 'enhanceLocalScaleGroup');
+    wireEnhanceUpscaleChoices('enhance');
 }
 
-function wireEnhanceLocalUpscalePicker(selectId, scaleGroupId) {
-    const select = document.getElementById(selectId);
-    const scaleGroup = scaleGroupId ? document.getElementById(scaleGroupId) : null;
-    if (!select || select.dataset.localUpscaleWired === '1') return;
-    select.dataset.localUpscaleWired = '1';
-    if (typeof fillLocalUpscaleSelect === 'function') fillLocalUpscaleSelect(select, true);
-    const sync = () => {
-        const local = select.value && select.value !== 'novelai';
-        if (scaleGroup) scaleGroup.classList.toggle('hidden', !local);
+function wireEnhanceUpscaleChoices(prefix) {
+    const scaleBtn = document.getElementById(prefix === 'mini' ? 'enhanceMiniUpscaleScaleBtn' : 'enhanceUpscaleScaleBtn');
+    const speedBtn = document.getElementById(prefix === 'mini' ? 'enhanceMiniUpscaleSpeedBtn' : 'enhanceUpscaleSpeedBtn');
+    const scaleInput = document.getElementById(prefix === 'mini' ? 'enhanceMiniLocalScale' : 'enhanceLocalScale');
+    const speedInput = document.getElementById(prefix === 'mini' ? 'enhanceMiniUpscaleSpeed' : 'enhanceUpscaleSpeed');
+    if (!scaleBtn || !speedBtn || scaleBtn.dataset.upscaleChoiceWired === '1') return;
+    scaleBtn.dataset.upscaleChoiceWired = '1';
+    const choiceState = {
+        scale: Number(scaleInput && scaleInput.value) || 4,
+        speed: (speedInput && speedInput.value) || 'instant'
     };
-    select.addEventListener('change', sync);
-    sync();
-    if (typeof refreshLocalUpscaleSelects === 'function') {
-        refreshLocalUpscaleSelects().then(() => {
-            if (typeof fillLocalUpscaleSelect === 'function') fillLocalUpscaleSelect(select, true);
-            sync();
-        });
-    }
+    // wireUpscaleChoiceMenus: public/scripts/comp/creditCostDialog.js
+    wireUpscaleChoiceMenus(scaleBtn, speedBtn, choiceState, {
+        novelaiAvailable: () => true,
+        getStatus: () => knownLocalUpscaleStatus(),
+        onChange: () => {
+            if (scaleInput) scaleInput.value = String(choiceState.scale);
+            if (speedInput) speedInput.value = choiceState.speed;
+        }
+    });
+    // fetchLocalUpscaleModels: public/scripts/comp/creditCostDialog.js
+    fetchLocalUpscaleModels();
 }
 
 function buildEnhanceRequestValues({ scale, magnitude, strengthRaw = '', noiseRaw = '', extra = null } = {}) {
@@ -1557,39 +1562,54 @@ function openEnhanceMiniWindow(image, event) {
     scaleGroup.appendChild(scaleLabel);
     scaleGroup.appendChild(scaleBtn);
 
-    const upscalerGroup = document.createElement('div');
-    upscalerGroup.className = 'form-group';
-    const upscalerLabel = document.createElement('label');
-    upscalerLabel.textContent = 'Upscaler';
-    upscalerLabel.htmlFor = 'enhanceMiniUpscaleModel';
-    const upscalerSelect = document.createElement('select');
-    upscalerSelect.id = 'enhanceMiniUpscaleModel';
-    upscalerSelect.className = 'form-control hover-show colored local-upscale-model';
-    upscalerGroup.appendChild(upscalerLabel);
-    upscalerGroup.appendChild(upscalerSelect);
+    const choicePanel = document.createElement('div');
+    choicePanel.className = 'director-expandable-content';
     const localScaleGroup = document.createElement('div');
-    localScaleGroup.id = 'enhanceMiniLocalScaleGroup';
-    localScaleGroup.className = 'form-group hidden';
+    localScaleGroup.className = 'form-group';
     const localScaleLabel = document.createElement('label');
-    localScaleLabel.textContent = 'Local scale';
-    const localScaleSelect = document.createElement('select');
-    localScaleSelect.id = 'enhanceMiniLocalScale';
-    localScaleSelect.className = 'form-control hover-show colored local-upscale-scale';
-    const scale4 = document.createElement('option');
-    scale4.value = '4';
-    scale4.textContent = '4x';
-    const scale2 = document.createElement('option');
-    scale2.value = '2';
-    scale2.textContent = '2x';
-    localScaleSelect.appendChild(scale4);
-    localScaleSelect.appendChild(scale2);
+    localScaleLabel.textContent = 'Scale';
+    const localScaleBtn = document.createElement('button');
+    localScaleBtn.type = 'button';
+    localScaleBtn.id = 'enhanceMiniUpscaleScaleBtn';
+    localScaleBtn.className = 'custom-dropdown-btn hover-show colored indicator';
+    localScaleBtn.setAttribute('data-state', 'on');
+    const localScaleText = document.createElement('span');
+    localScaleText.id = 'enhanceMiniUpscaleScaleLabel';
+    localScaleText.textContent = '4x';
+    localScaleBtn.appendChild(localScaleText);
+    const localScaleInput = document.createElement('input');
+    localScaleInput.type = 'hidden';
+    localScaleInput.id = 'enhanceMiniLocalScale';
+    localScaleInput.value = '4';
     localScaleGroup.appendChild(localScaleLabel);
-    localScaleGroup.appendChild(localScaleSelect);
+    localScaleGroup.appendChild(localScaleBtn);
+    localScaleGroup.appendChild(localScaleInput);
+    const speedGroup = document.createElement('div');
+    speedGroup.className = 'form-group';
+    const speedLabel = document.createElement('label');
+    speedLabel.textContent = 'Delivery';
+    const speedBtn = document.createElement('button');
+    speedBtn.type = 'button';
+    speedBtn.id = 'enhanceMiniUpscaleSpeedBtn';
+    speedBtn.className = 'custom-dropdown-btn hover-show colored indicator';
+    speedBtn.setAttribute('data-state', 'on');
+    const speedText = document.createElement('span');
+    speedText.id = 'enhanceMiniUpscaleSpeedLabel';
+    speedText.textContent = 'Instant';
+    speedBtn.appendChild(speedText);
+    const speedInput = document.createElement('input');
+    speedInput.type = 'hidden';
+    speedInput.id = 'enhanceMiniUpscaleSpeed';
+    speedInput.value = 'instant';
+    speedGroup.appendChild(speedLabel);
+    speedGroup.appendChild(speedBtn);
+    speedGroup.appendChild(speedInput);
+    choicePanel.appendChild(localScaleGroup);
+    choicePanel.appendChild(speedGroup);
 
     row.appendChild(magnitudeGroup);
     row.appendChild(scaleGroup);
-    row.appendChild(upscalerGroup);
-    row.appendChild(localScaleGroup);
+    row.appendChild(choicePanel);
 
     const buttons = document.createElement('div');
     buttons.className = 'credit-cost-buttons';
@@ -1634,7 +1654,7 @@ function openEnhanceMiniWindow(image, event) {
         selectScale,
         () => selectedScale
     );
-    wireEnhanceLocalUpscalePicker('enhanceMiniUpscaleModel', 'enhanceMiniLocalScaleGroup');
+    wireEnhanceUpscaleChoices('mini');
 
     cancelBtn.addEventListener('click', (e) => {
         e.preventDefault();
@@ -1649,11 +1669,12 @@ function openEnhanceMiniWindow(image, event) {
     confirmBtn.addEventListener('click', (e) => {
         e.preventDefault();
         const extra = {};
-        if (upscalerSelect.value && upscalerSelect.value !== 'novelai') {
+        const miniSpeed = speedInput.value;
+        if (miniSpeed === 'fast' || miniSpeed === 'slow') {
             extra.upscaler = 'local';
             extra.backend = 'local';
-            extra.localUpscaleModel = upscalerSelect.value;
-            extra.localUpscaleScale = Number(localScaleSelect.value) || 4;
+            extra.upscaleSpeed = miniSpeed;
+            extra.localUpscaleScale = Number(localScaleInput.value) === 2 ? 2 : (Number(localScaleInput.value) || 4);
         }
         const enhanceValues = buildEnhanceRequestValues({
             scale: selectedScale,
@@ -1761,16 +1782,21 @@ async function openEnhanceModal(imageFilename, imageDimensions = null, image = n
                 </button>
                 <input type="hidden" id="enhanceScaleHidden" value="${initialScale}">
             </div>
-            <div class="form-group">
-                <label for="enhanceUpscaleModel">Upscaler</label>
-                <select id="enhanceUpscaleModel" class="form-control hover-show colored local-upscale-model" title="Upscale model"></select>
-            </div>
-            <div class="form-group hidden" id="enhanceLocalScaleGroup">
-                <label for="enhanceLocalScale">Local scale</label>
-                <select id="enhanceLocalScale" class="form-control hover-show colored local-upscale-scale" title="Local upscale scale">
-                    <option value="4">4x</option>
-                    <option value="2">2x</option>
-                </select>
+            <div class="director-expandable-content">
+                <div class="form-group">
+                    <label>Scale</label>
+                    <button type="button" id="enhanceUpscaleScaleBtn" class="custom-dropdown-btn hover-show colored indicator" data-state="on" title="Upscale scale">
+                        <span id="enhanceUpscaleScaleLabel">4x</span>
+                    </button>
+                    <input type="hidden" id="enhanceLocalScale" value="4">
+                </div>
+                <div class="form-group">
+                    <label>Delivery</label>
+                    <button type="button" id="enhanceUpscaleSpeedBtn" class="custom-dropdown-btn hover-show colored indicator" data-state="on" title="Upscale delivery">
+                        <span id="enhanceUpscaleSpeedLabel">Instant</span>
+                    </button>
+                    <input type="hidden" id="enhanceUpscaleSpeed" value="instant">
+                </div>
             </div>
             <div class="form-group enhance-advanced-toggle-group">
                 <label>&nbsp;</label>

@@ -382,6 +382,17 @@
     gap: 5px;
 }
 
+.credit-cost-dialog .director-expandable-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    width: 100%;
+}
+
+.credit-cost-dialog .director-expandable-content .custom-dropdown-btn {
+    width: 100%;
+}
+
 .credit-cost-message .credit-cost-cost {
     color: var(--text-accent);
     font-weight: 600;

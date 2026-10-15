@@ -74,7 +74,7 @@ On the Dreamscape host, in gitignored `secure.config.json` (never commit this fi
 }
 ```
 
-`localWorker.url` and `localWorker.key` are read only from the secure config. There is no public `config.json` switch.
+`localWorker.url` and `localWorker.key` are read only from the secure config. There is no public `config.json` switch. A `localWorkers` list (Ruiko plus the G10 RealESRGAN worker) overrides this single entry when it is non-empty. See `docs/g10-upscaler.md`. The single `localWorker` object remains valid.
 
 ## Run without NSSM
 

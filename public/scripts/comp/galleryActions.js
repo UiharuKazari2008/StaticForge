@@ -270,6 +270,8 @@ async function upscaleImage(image, event = null) {
             upscaler: upscaler,
             backend: upscaler === 'local' ? 'local' : upscaler,
             scale: scale,
+            speed: confirmed.speed || (upscaler === 'local' ? 'fast' : 'instant'),
+            upscaleSpeed: confirmed.speed || (upscaler === 'local' ? 'fast' : 'instant'),
             model: localModel,
             localUpscaleModel: localModel,
             localUpscaleScale: scale
