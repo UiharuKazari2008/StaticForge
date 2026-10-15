@@ -110,9 +110,11 @@ var assetPreload = (function () {
         '/static_images/vista-start/search-glyph.png',
         '/static_images/vista-start/arrow.png'
     ];
-    // Taskbar clock: public/css/desktop-shell.css .taskbar-clock
+    // Taskbar clock: public/css/desktop-shell.css .taskbar-clock. Share Tech Mono is the app-wide
+    // --font-mono (app.css), not a workspace font, so the workspace font list never named it.
     var SHELL_FONT_SPECS = [
-        '300 18px "Red Hat Display"'
+        '300 18px "Red Hat Display"',
+        '400 16px "Share Tech Mono"'
     ];
 
     var URL_RE = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
