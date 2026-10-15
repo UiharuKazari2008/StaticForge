@@ -73,7 +73,7 @@
             <div class="modal-window-controls"></div>
             <div class="modal-content workstation-lock-content">
                 <div class="workstation-lock-hero">
-                    <img src="/static_images/logo_icon.png" alt="" draggable="false">
+                    <img src="/static_images/app_icons/48/dreamscape-logo.webp" srcset="/static_images/app_icons/48/dreamscape-logo.webp 1x, /static_images/app_icons/96/dreamscape-logo.webp 2x" alt="" draggable="false">
                     <span class="workstation-lock-brand">Dreamscape</span>
                 </div>
                 <div class="workstation-lock-strip"></div>

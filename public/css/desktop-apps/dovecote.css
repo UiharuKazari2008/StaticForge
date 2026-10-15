@@ -1405,6 +1405,18 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
     position: relative;
 }
 
+.dovecote-tray-glyph {
+    width: 16px;
+    height: 16px;
+    /* 16 / 32 px compiles (modules/appIconRuntimeAssets.js), not the 384 px default */
+    background: url('/static_images/app_icons/32/vista-mail.webp') center / contain no-repeat;
+    background-image: image-set(url('/static_images/app_icons/16/vista-mail.webp') 1x, url('/static_images/app_icons/32/vista-mail.webp') 2x);
+}
+
+.dovecote-tray-icon.has-unread .dovecote-tray-glyph {
+    background: url('/static_images/vista-mail/list-16.png') no-repeat -144px 0 / 960px 16px;
+}
+
 .dovecote-tray-badge {
     position: absolute;
     top: 1px;
@@ -1418,6 +1430,132 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
     font-weight: 700;
     line-height: 1.4;
     text-align: center;
+}
+
+/* Tray click: Vista flyout, same shell as the network and volume popouts. */
+.dove-inbox-flyout {
+    position: fixed;
+    z-index: var(--z-taskbar-popover, 2710);
+    width: 300px;
+    box-sizing: border-box;
+    background: #fff;
+    color: #000;
+    border: 1px solid rgba(0, 0, 0, 0.55);
+    border-radius: 4px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+    font-family: "Segoe UI", Tahoma, "Noto Sans", sans-serif;
+    font-size: 12px;
+    line-height: 1.4;
+    overflow: hidden;
+    user-select: none;
+}
+
+.dove-inbox-flyout.hidden {
+    display: none;
+}
+
+.dove-inbox-flyout-body {
+    padding: 10px 12px 6px;
+}
+
+.dove-inbox-flyout-heading {
+    margin-bottom: 6px;
+    color: #333;
+}
+
+.dove-inbox-flyout-list {
+    max-height: 240px;
+    overflow: auto;
+}
+
+.dove-inbox-flyout-empty {
+    margin: 0;
+    padding: 8px 0;
+    color: #555;
+}
+
+.dove-inbox-flyout-row {
+    display: grid;
+    grid-template-columns: 16px 16px minmax(0, 1fr);
+    column-gap: 6px;
+    align-items: center;
+    width: 100%;
+    min-height: 32px;
+    margin: 0;
+    padding: 3px 2px;
+    border: 0;
+    border-radius: 2px;
+    background: transparent;
+    color: #000;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.dove-inbox-flyout-row:hover {
+    background: linear-gradient(#fafbfd, #ebf3fd);
+}
+
+.dove-inbox-flyout-row.unread .dove-inbox-flyout-subject {
+    font-weight: 700;
+}
+
+.dove-inbox-flyout-mark,
+.dove-inbox-flyout-clip {
+    grid-row: span 2;
+    width: 16px;
+    height: 16px;
+    background: url('/static_images/vista-mail/list-16.png') no-repeat -160px 0 / 960px 16px;
+}
+
+.dove-inbox-flyout-row.unread .dove-inbox-flyout-mark {
+    background-position: -144px 0;
+}
+
+.dove-inbox-flyout-clip {
+    background: none;
+}
+
+.dove-inbox-flyout-row.has-attachment .dove-inbox-flyout-clip {
+    background: url('/static_images/vista-mail/list-16.png') no-repeat -128px 0 / 960px 16px;
+}
+
+.dove-inbox-flyout-subject,
+.dove-inbox-flyout-from {
+    grid-column: 3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dove-inbox-flyout-from {
+    color: #555;
+    font-size: 11px;
+}
+
+.dove-inbox-flyout-links {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 7px 12px 9px;
+    background: linear-gradient(180deg, #f3f7fc, #e4ecf6);
+    border-top: 1px solid #d5dfe5;
+}
+
+.dove-inbox-flyout-link {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #0066cc;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.dove-inbox-flyout-link:hover {
+    color: #3399ff;
+    text-decoration: underline;
 }
 
 /* New mail tool window. Vista message box measurements (vista-dialogs.css, from the VM):

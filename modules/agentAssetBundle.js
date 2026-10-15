@@ -13,7 +13,9 @@ const { zip } = require('fflate');
 const runtimeAssetService = require('./runtimeAssetService');
 
 const AGENT_STATIC_CACHE_CONTROL = 'private, max-age=120';
-const NO_STORE = 'no-cache, no-store, must-revalidate, max-age=0';
+// Unversioned public files: the browser keeps them but asks every time (ETag → 304), so a
+// stale copy is never used and an unchanged one is not downloaded again.
+const REVALIDATE_CACHE_CONTROL = 'no-cache';
 const HASHED_ASSET_CACHE_CONTROL = 'public, max-age=31536000, immutable';
 const PRELOAD_TIMEOUT_MS = 45000;
 const ZIP_LEVEL = 1;
@@ -26,6 +28,7 @@ const ROUTE_HTML = {
 
 let projectRoot = null;
 let getManifest = null;
+let getFileHash = null;
 let zipCache = null;
 let zipBuild = null;
 
@@ -34,6 +37,25 @@ function init(options = {}) {
     if (options.getManifest) {
         getManifest = options.getManifest;
     }
+    if (options.getFileHash) {
+        getFileHash = options.getFileHash;
+    }
+}
+
+/**
+ * X-File-Hash: the manifest hash of this path. public/sw.js only stores a network answer
+ * that carries it (staticStrategy cacheWillUpdate), so without it a file the precache has
+ * not written yet went to the network on every load.
+ */
+function applyFileHashHeader(req, res) {
+    if (!getFileHash || !req) return;
+    let hash = null;
+    try {
+        hash = getFileHash(req.path || '');
+    } catch (_err) {
+        hash = null;
+    }
+    if (hash) res.setHeader('X-File-Hash', hash);
 }
 
 function invalidate() {
@@ -60,6 +82,7 @@ function requestHasShaQuery(req) {
 }
 
 function applyServedAssetCacheHeaders(req, res) {
+    applyFileHashHeader(req, res);
     // ?sha= names an immutable compiled asset. Unversioned URLs keep the branch below.
     if (requestHasShaQuery(req)) {
         res.setHeader('Cache-Control', HASHED_ASSET_CACHE_CONTROL);
@@ -71,9 +94,7 @@ function applyServedAssetCacheHeaders(req, res) {
         res.setHeader('Cache-Control', AGENT_STATIC_CACHE_CONTROL);
         return true;
     }
-    res.setHeader('Cache-Control', NO_STORE);
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
+    res.setHeader('Cache-Control', REVALIDATE_CACHE_CONTROL);
     return false;
 }
 
@@ -429,5 +450,7 @@ module.exports = {
     buildZipBuffer,
     getBootstrapPageHtml,
     getBootUrls,
+    resolveFilePath,
+    webPathToZipEntry,
     AGENT_STATIC_CACHE_CONTROL
 };

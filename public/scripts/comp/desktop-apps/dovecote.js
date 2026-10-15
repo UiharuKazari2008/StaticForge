@@ -194,7 +194,7 @@ const ensureDesktopDovecoteModal = function () {
     const titleImage = document.createElement('img');
     titleImage.className = 'icon-image';
     titleImage.alt = '';
-    titleImage.src = '/static_images/app_icons/vista-mail.webp';
+    titleImage.src = '/static_images/app_icons/48/vista-mail.webp';
     const titleText = document.createElement('span');
     titleText.textContent = 'Inbox - Dovecote';
     titleMain.appendChild(titleIcon);
@@ -1146,7 +1146,10 @@ const doveRefreshMailboxes = async function () {
     }
 };
 
-const doveLoadFolder = async function (folder) {
+let doveFolderToken = 0;
+
+const doveLoadFolder = async function (folder, options) {
+    const token = ++doveFolderToken;
     desktopDovecote.folder = folder;
     doveRenderFolderButton();
     doveShowError(null);
@@ -1155,14 +1158,18 @@ const doveLoadFolder = async function (folder) {
     try {
         // dovecote_list_mail: modules/ws/handlers/250-dovecoteHandler.js
         const result = await wsClient.sendMessage('dovecote_list_mail', request, false);
+        if (token !== doveFolderToken) return;
         desktopDovecote.mail = (result && result.mail) || [];
         doveRenderMessageList();
         if (folder === 'inbox') {
             doveRenderInboxBadge(desktopDovecote.mail.filter((m) => !m.read).length);
         } else if (!desktopDovecote.viewAsOwner) {
-            doveRefreshInboxBadgeOnly();
+            const known = options && options.inboxUnread;
+            if (known != null) doveRenderInboxBadge(known);
+            else doveRefreshInboxBadgeOnly();
         }
     } catch (err) {
+        if (token !== doveFolderToken) return;
         desktopDovecote.mail = [];
         doveRenderMessageList();
         doveShowError((err && err.message) || 'Could not load mail');
@@ -1170,9 +1177,12 @@ const doveLoadFolder = async function (folder) {
 };
 
 // Keeps the Inbox unread badge current even while another folder is open.
+let doveBadgeToken = 0;
 const doveRefreshInboxBadgeOnly = async function () {
+    const token = ++doveBadgeToken;
     try {
         const result = await wsClient.sendMessage('dovecote_list_mail', { folder: 'inbox' }, false);
+        if (token !== doveBadgeToken) return;
         const mail = (result && result.mail) || [];
         doveRenderInboxBadge(mail.filter((m) => !m.read).length);
     } catch (_) {
@@ -1235,6 +1245,8 @@ const doveFormatDate = function (iso) {
 };
 
 const doveRenderMessageList = function () {
+    // vistaSidebar.js opens a reader before the main window exists (desktopDovecoteEls is null)
+    if (!desktopDovecoteEls) return;
     const rows = desktopDovecoteEls.rows;
     if (!rows) return;
     rows.replaceChildren();
@@ -1813,6 +1825,8 @@ const doveRenderMailboxBanner = function () {
 };
 
 const doveRenderToolbarState = function () {
+    // Same as doveRenderMessageList: a sidebar reader has no main toolbar yet
+    if (!desktopDovecoteEls || !desktopDovecoteEls.toolbar) return;
     const readOnly = !!desktopDovecote.viewAsOwner;
     const noMail = !desktopDovecote.selectedMail;
     desktopDovecoteEls.toolbar.querySelectorAll('[data-dove-mutating="true"]').forEach((btn) => {
@@ -2392,7 +2406,7 @@ const doveEnsureNewMailModal = function () {
     const titleImage = document.createElement('img');
     titleImage.className = 'icon-image';
     titleImage.alt = '';
-    titleImage.src = '/static_images/app_icons/vista-mail.webp';
+    titleImage.src = '/static_images/app_icons/48/vista-mail.webp';
     const titleText = document.createElement('span');
     titleText.textContent = 'New Mail';
     titleMain.appendChild(titleIcon);
@@ -2493,6 +2507,28 @@ function dovePresentNewMail(mail, count) {
     requestAnimationFrame(() => dovePlaceNewMail(modal));
 };
 
+// showPopover: public/scripts/comp/popoverManager.js
+function doveMailBalloon(title, body) {
+    const icon = document.getElementById('dovecoteTrayIcon');
+    if (!icon || icon.classList.contains('hidden')) return;
+    showPopover(
+        icon,
+        'info',
+        title,
+        body,
+        false,
+        8000,
+        '<img src="/static_images/vista-icons/dovecote-32.png" alt="" width="32" height="32">',
+        null,
+        { position: 'top', arrowPosition: 'bottom-right', popupId: 'mail' }
+    );
+}
+
+function doveShowUnreadBalloon(unread) {
+    const n = unread === 1 ? '1 unread message' : unread + ' unread messages';
+    doveMailBalloon('You have mail', 'You have ' + n + ' in your Inbox.');
+}
+
 const doveShowNewMail = async function (count) {
     const token = ++doveNewMailToken;
     try {
@@ -2506,21 +2542,29 @@ const doveShowNewMail = async function (count) {
         const mail = result && result.mail && result.mail[0];
         if (!mail) return;
         if (window.cplMail && !window.cplMail.dialogOn()) return;
-        dovePresentNewMail(mail, count);
+        const from = doveDisplayAddress(mail.from) || '';
+        const subject = mail.subject || '(no subject)';
+        const body = count > 1
+            ? 'You have ' + count + ' new messages.'
+            : (from ? 'From: ' + from + '. ' : '') + subject;
+        doveMailBalloon('New mail', body);
     } catch (_err) {
-        // The tray badge already updated; the toast is optional.
+        // The tray badge already updated; the balloon is optional.
     }
 };
 
 // ---- Tray icon (#dovecoteTrayIcon, public/app.html) ------------------------------
 // Same pattern as #directorTrayIcon (public/scripts/comp/director.js): hidden by
 // default, revealed by systemTrayManager.js's staggered boot sequence, shows/hides
-// live from here afterward. Unlike Director's state icon, this one carries a plain
-// unread-count badge, hidden entirely at zero.
+// live from here afterward. The glyph is the mail program icon, and a closed
+// envelope once the Inbox has unread mail. The icon stays in the tray at zero.
 
 let doveTrayInitialized = false;
 let doveLastUnread = null;
 let doveHasAnnouncedMail = false;
+let doveTrayRegistered = false;
+// Login fills the tray with balloons. The mail icon waits, then the unread balloon can be seen.
+const DOVE_TRAY_REGISTER_DELAY_MS = 60000;
 
 // options: { reveal } — same two-phase boot convention as updateFixedCreditsIndicator
 // (public/scripts/comp/trayIndicators.js): reveal:false sets state without showing,
@@ -2531,14 +2575,15 @@ const doveApplyTrayBadge = function (unread, options) {
     if (!icon || !badge) return;
     const opts = options || {};
     // isDesktopTrayBootPending: public/scripts/comp/trayIndicators.js
-    const reveal = opts.reveal !== false && !isDesktopTrayBootPending();
+    const reveal = opts.reveal !== false && !isDesktopTrayBootPending() && doveTrayRegistered;
     const prev = doveLastUnread;
     doveLastUnread = unread;
+    icon.classList.toggle('hidden', !reveal);
+    icon.classList.toggle('has-unread', unread > 0);
     if (unread > 0) {
         badge.textContent = unread > 99 ? '99+' : String(unread);
         badge.classList.remove('hidden');
         icon.title = 'Dovecote — ' + unread + ' unread';
-        icon.classList.toggle('hidden', !reveal);
         if (reveal && (!doveHasAnnouncedMail || (prev != null && unread > prev))) {
             const fresh = prev != null && unread > prev;
             // cplMail: public/scripts/comp/cplMail.js — Windows Mail's "Play sound when new messages arrive"
@@ -2547,13 +2592,13 @@ const doveApplyTrayBadge = function (unread, options) {
                 // desktopSounds.play: public/scripts/comp/desktopSounds.js
                 desktopSounds.play('notify');
             }
+            if (!doveHasAnnouncedMail && (!mailSettings || mailSettings.dialogOn())) doveShowUnreadBalloon(unread);
             if (fresh && (!mailSettings || mailSettings.dialogOn())) doveShowNewMail(unread - prev);
             doveHasAnnouncedMail = true;
         }
     } else {
         badge.classList.add('hidden');
         icon.title = 'Dovecote';
-        icon.classList.add('hidden');
         doveHasAnnouncedMail = false;
     }
 };
@@ -2575,7 +2620,9 @@ const doveRefreshTrayUnread = async function (options) {
 // doveRefreshInboxBadgeOnly both land here, same as doveRenderInboxBadge.
 const doveRenderInboxBadgeFromState = function () {
     if (desktopDovecote.viewAsOwner) return;
-    const mail = desktopDovecote.folder === 'inbox' ? desktopDovecote.mail : null;
+    // An empty list is not the inbox until the main window has loaded a folder.
+    // Sidebar reads would otherwise paint the tray badge as zero.
+    const mail = desktopDovecote.loaded && desktopDovecote.folder === 'inbox' ? desktopDovecote.mail : null;
     if (mail) {
         doveApplyTrayBadge(mail.filter((m) => !m.read).length);
     } else {
@@ -2590,7 +2637,191 @@ function initializeDovecoteTray() {
     doveTrayInitialized = true;
     icon.addEventListener('click', (e) => {
         e.preventDefault();
-        openDesktopDovecote();
+        doveToggleTrayInbox();
+        // PopoverManager.hide: public/scripts/comp/popoverManager.js
+        PopoverManager.hide(icon);
     });
     doveRefreshTrayUnread({ reveal: false });
+    setTimeout(() => {
+        doveTrayRegistered = true;
+        doveRefreshTrayUnread({ reveal: true });
+    }, DOVE_TRAY_REGISTER_DELAY_MS);
 }
+
+let doveInboxFlyout = null;
+let doveInboxAnchor = null;
+
+const doveHideInboxFlyout = function () {
+    if (doveInboxFlyout) doveInboxFlyout.classList.add('hidden');
+};
+
+const dovePlaceInboxFlyout = function () {
+    if (!doveInboxFlyout) return;
+    const width = doveInboxFlyout.offsetWidth || 300;
+    const margin = 8;
+    let rect = doveInboxAnchor ? doveInboxAnchor.getBoundingClientRect() : null;
+    if (!rect || !rect.width) {
+        const taskbar = document.getElementById('desktopTaskbar');
+        const top = taskbar ? taskbar.getBoundingClientRect().top : innerHeight - 40;
+        rect = { right: innerWidth - margin, top };
+    }
+    const right = Math.max(margin, innerWidth - rect.right - 12);
+    const left = Math.min(innerWidth - width - margin, innerWidth - right - width);
+    doveInboxFlyout.style.left = Math.max(margin, left) + 'px';
+    doveInboxFlyout.style.bottom = Math.max(margin, innerHeight - rect.top + 6) + 'px';
+};
+
+const doveFillInboxFlyout = async function (preloaded) {
+    const list = doveInboxFlyout.querySelector('.dove-inbox-flyout-list');
+    list.replaceChildren();
+    const waiting = document.createElement('p');
+    waiting.className = 'dove-inbox-flyout-empty';
+    waiting.textContent = 'Loading...';
+    list.appendChild(waiting);
+    let mail = Array.isArray(preloaded) ? preloaded : null;
+    if (!mail) {
+        try {
+            // dovecote_list_mail: modules/ws/handlers/250-dovecoteHandler.js
+            const result = await wsClient.sendMessage('dovecote_list_mail', { folder: 'inbox', limit: 8 }, false);
+            mail = (result && result.mail) || [];
+        } catch (_) {
+            waiting.textContent = 'Dovecote is not available';
+            return;
+        }
+    }
+    if (!doveInboxFlyout || doveInboxFlyout.classList.contains('hidden')) return;
+    list.replaceChildren();
+    if (!mail.length) {
+        const empty = document.createElement('p');
+        empty.className = 'dove-inbox-flyout-empty';
+        empty.textContent = 'No messages';
+        list.appendChild(empty);
+        dovePlaceInboxFlyout();
+        return;
+    }
+    mail.forEach((item) => {
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'dove-inbox-flyout-row';
+        if (!item.read) row.classList.add('unread');
+        if (item.attachments && item.attachments.length) row.classList.add('has-attachment');
+        row.dataset.doveMailId = item.id;
+        const mark = document.createElement('span');
+        mark.className = 'dove-inbox-flyout-mark';
+        const clip = document.createElement('span');
+        clip.className = 'dove-inbox-flyout-clip';
+        const subject = document.createElement('span');
+        subject.className = 'dove-inbox-flyout-subject';
+        subject.textContent = item.subject || '(no subject)';
+        const from = document.createElement('span');
+        from.className = 'dove-inbox-flyout-from';
+        from.textContent = doveDisplayAddress(item.from) || '';
+        row.appendChild(mark);
+        row.appendChild(clip);
+        row.appendChild(subject);
+        row.appendChild(from);
+        list.appendChild(row);
+    });
+    dovePlaceInboxFlyout();
+};
+
+const doveEnsureInboxFlyout = function () {
+    if (doveInboxFlyout) return doveInboxFlyout;
+    const flyout = document.createElement('div');
+    flyout.id = 'doveInboxFlyout';
+    flyout.className = 'dove-inbox-flyout hidden';
+    flyout.setAttribute('role', 'dialog');
+    flyout.setAttribute('aria-label', 'Inbox');
+    flyout.innerHTML = '<div class="dove-inbox-flyout-body"><div class="dove-inbox-flyout-heading">Inbox</div><div class="dove-inbox-flyout-list"></div></div><div class="dove-inbox-flyout-links"><button type="button" class="dove-inbox-flyout-link" data-dove-flyout="open">Open Dovecote</button></div>';
+    flyout.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        const link = ev.target.closest('[data-dove-flyout]');
+        if (link) {
+            doveHideInboxFlyout();
+            openDesktopDovecote();
+            return;
+        }
+        const row = ev.target.closest('.dove-inbox-flyout-row');
+        if (!row) return;
+        doveHideInboxFlyout();
+        doveOpenReaderWindow(row.dataset.doveMailId, { ownMailbox: true });
+    });
+    document.body.appendChild(flyout);
+    document.addEventListener('pointerdown', (ev) => {
+        if (!doveInboxFlyout || doveInboxFlyout.classList.contains('hidden')) return;
+        if (doveInboxFlyout.contains(ev.target)) return;
+        if (doveInboxAnchor && doveInboxAnchor.contains(ev.target)) return;
+        doveHideInboxFlyout();
+    }, true);
+    document.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Escape' && doveInboxFlyout && !doveInboxFlyout.classList.contains('hidden')) doveHideInboxFlyout();
+    }, true);
+    doveInboxFlyout = flyout;
+    return flyout;
+};
+
+const doveToggleTrayInbox = function () {
+    const flyout = doveEnsureInboxFlyout();
+    if (!flyout.classList.contains('hidden')) {
+        doveHideInboxFlyout();
+        return;
+    }
+    doveInboxAnchor = document.getElementById('dovecoteTrayIcon');
+    flyout.classList.remove('hidden');
+    doveFillInboxFlyout();
+    dovePlaceInboxFlyout();
+};
+
+// dovecote_mailbox_updated: modules/ws/handlers/250-dovecoteHandler.js
+// Pushed when a mailbox changes (send, read, mark, forward, delete), including MCP.
+const doveOnMailboxUpdated = function (message) {
+    const data = message && (message.data || message);
+    if (!data || !Array.isArray(data.mailboxes)) return;
+    doveBadgeToken++;
+    desktopDovecote.mailboxes = data.mailboxes;
+    const human = data.mailboxes.find((box) => box.owner === DESKTOP_DOVECOTE_HUMAN_OWNER);
+    doveApplyTrayBadge(human ? (human.unread || 0) : 0);
+    document.dispatchEvent(new CustomEvent('dovecoteMailboxUpdated', { detail: data }));
+
+    const owners = Array.isArray(data.owners) ? data.owners : [];
+    const humanInbox = data.inbox && data.inbox[DESKTOP_DOVECOTE_HUMAN_OWNER];
+    if (doveInboxFlyout && !doveInboxFlyout.classList.contains('hidden') && Array.isArray(humanInbox) && owners.indexOf(DESKTOP_DOVECOTE_HUMAN_OWNER) !== -1) {
+        doveFillInboxFlyout(humanInbox.slice(0, 8));
+    }
+    if (!desktopDovecote.loaded || !desktopDovecoteEls) return;
+    doveRenderMailboxBanner();
+    doveRenderWindowTitle();
+    doveRenderFolderTree();
+
+    const viewing = desktopDovecote.viewAsOwner || DESKTOP_DOVECOTE_HUMAN_OWNER;
+    if (owners.indexOf(viewing) === -1) return;
+    const pushedInbox = data.inbox && data.inbox[viewing];
+    if (desktopDovecote.folder === 'inbox' && Array.isArray(pushedInbox)) {
+        doveFolderToken++;
+        desktopDovecote.mail = pushedInbox;
+        doveRenderMessageList();
+        const box = data.mailboxes.find((entry) => entry.owner === viewing);
+        doveRenderInboxBadge(box ? (box.unread || 0) : pushedInbox.filter((m) => !m.read).length);
+        return;
+    }
+    doveLoadFolder(desktopDovecote.folder, human ? { inboxUnread: human.unread || 0 } : null);
+};
+
+let doveMailboxPushBound = false;
+
+const doveBindMailboxPush = function () {
+    if (doveMailboxPushBound || typeof wsClient === 'undefined' || !wsClient || !wsClient.on) return;
+    doveMailboxPushBound = true;
+    // wsClient.on / registerRefreshCallback: public/scripts/websocket.js
+    wsClient.on('dovecote_mailbox_updated', doveOnMailboxUpdated);
+    if (wsClient.registerRefreshCallback) {
+        wsClient.registerRefreshCallback('dovecote-mailbox', 45, () => {
+            doveRefreshTrayUnread();
+            if (desktopDovecote.loaded) doveLoadFolder(desktopDovecote.folder);
+            document.dispatchEvent(new CustomEvent('dovecoteMailboxUpdated'));
+        });
+    }
+};
+
+doveBindMailboxPush();
+

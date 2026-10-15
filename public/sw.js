@@ -209,13 +209,18 @@ function respondWithSavedAsset(request, response) {
 }
 
 // Helper function to add cache-busting headers to responses
-function addCacheBustingHeaders(response) {
+function addCacheBustingHeaders(response, contentType) {
   // Opaque/opaqueredirect responses use status 0 and cannot be reconstructed.
   if (!response || response.status < 200 || response.status > 599) {
     return response;
   }
 
   const headers = new Headers(response.headers);
+  // Zip extract used to store /app as octet-stream. A navigation then downloads it.
+  if (contentType) {
+    headers.set('Content-Type', contentType);
+    headers.delete('Content-Disposition');
+  }
   headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
   headers.set('Pragma', 'no-cache');
   headers.set('Expires', '0');
@@ -353,6 +358,25 @@ function absoluteAssetUrl(input) {
   }
 }
 
+// The set lives in memory only, and the browser stops an idle worker. Rebuilt once per
+// worker start from what WALLPAPER_CACHE already holds, so a /images/ or stock wallpaper
+// is not sent down the no-store full-image path after a restart.
+let wallpaperUrlSetRestore = null;
+function restoreWallpaperUrlSet() {
+  if (!wallpaperUrlSetRestore) {
+    wallpaperUrlSetRestore = caches.open(WALLPAPER_CACHE)
+      .then((cache) => cache.keys())
+      .then((keys) => {
+        keys.forEach((key) => {
+          const url = absoluteAssetUrl(key.url);
+          if (url) wallpaperUrlSet.add(url);
+        });
+      })
+      .catch(() => {});
+  }
+  return wallpaperUrlSetRestore;
+}
+
 function isWallpaperRequest(url) {
   if (!url) return false;
   if (url.pathname.startsWith('/cache/wallpapers/')) return true;
@@ -413,9 +437,15 @@ async function handleWallpaperRequest(event) {
   return response;
 }
 
-async function syncWallpaperUrls(urls, refreshUrls, requestId) {
+// urls: every workspace wallpaper (the cache keeps these). fetchUrls, when given, limits the
+// downloads to that subset (boot fetches the active one; the rest come after the desktop).
+async function syncWallpaperUrls(urls, refreshUrls, requestId, fetchUrls) {
   const next = new Set((Array.isArray(urls) ? urls : []).map(absoluteAssetUrl).filter(Boolean));
   const refresh = new Set((Array.isArray(refreshUrls) ? refreshUrls : []).map(absoluteAssetUrl).filter(Boolean));
+  const fetchOnly = Array.isArray(fetchUrls)
+    ? new Set(fetchUrls.map(absoluteAssetUrl).filter(Boolean))
+    : null;
+  await restoreWallpaperUrlSet();
   wallpaperUrlSet = next;
   const cache = await caches.open(WALLPAPER_CACHE);
   const keys = await cache.keys();
@@ -432,6 +462,7 @@ async function syncWallpaperUrls(urls, refreshUrls, requestId) {
   }
   for (const url of next) {
     if (refresh.has(url)) continue;
+    if (fetchOnly && !fetchOnly.has(url)) continue;
     const hit = await cache.match(url);
     if (!hit) {
       await fetchAndStoreWallpaper(url);
@@ -884,6 +915,10 @@ workbox.routing.registerRoute(
     if (url.pathname.startsWith('/preset') || url.pathname.startsWith('/pending') || url.pathname.startsWith('/traces')) {
       return false;
     }
+    // Installer pack is one download stream. Do not store it in the static cache.
+    if (url.pathname === '/install/meletonfx.zip') {
+      return false;
+    }
     if (isLogViewerApiRequest(url) || isGrimoireBrowserRequest(url) || isDesktopGuacRequest(url)) {
       return false;
     }
@@ -897,6 +932,7 @@ workbox.routing.registerRoute(
     
     try {
       let response;
+      await restoreWallpaperUrlSet();
       
       // Handle internal routes (client-side only)
       if (url.pathname.startsWith('/internal/')) {
@@ -914,7 +950,7 @@ workbox.routing.registerRoute(
         // Try to serve from cache first (skip when CACHE_STATIC_FILES needs a fresh network fetch)
         const cachedResponse = bypassRouteCache ? null : await cache.match(routePath);
         if (cachedResponse) {
-          response = addCacheBustingHeaders(cachedResponse);
+          response = addCacheBustingHeaders(cachedResponse, 'text/html; charset=utf-8');
         } else {
           // If not cached, fetch from server endpoint and cache
           try {
@@ -937,7 +973,7 @@ workbox.routing.registerRoute(
               
               // Cache at route path
               await cache.put(routePath, responseWithHeaders);
-              response = addCacheBustingHeaders(responseWithHeaders);
+              response = addCacheBustingHeaders(responseWithHeaders, 'text/html; charset=utf-8');
             } else {
               response = fetchResponse;
             }
@@ -1018,6 +1054,10 @@ workbox.routing.registerRoute(
   ({ url, request }) => {
     // Never handle /preset or /pending routes
     if (url.pathname.startsWith('/preset') || url.pathname.startsWith('/pending') || url.pathname.startsWith('/traces')) {
+      return false;
+    }
+    // Installer pack is one download stream. Do not store it in the static cache.
+    if (url.pathname === '/install/meletonfx.zip') {
       return false;
     }
     if (isLogViewerApiRequest(url) || isGrimoireBrowserRequest(url) || isDesktopGuacRequest(url)) {
@@ -1106,7 +1146,7 @@ self.addEventListener('message', (event) => {
     } else if (event.data && event.data.type === 'DELETE_AND_PRECACHE') {
         deleteAndPrecache(event.data.url, event.data.requestId);
     } else if (event.data && event.data.type === 'SYNC_WALLPAPER_URLS') {
-        event.waitUntil(syncWallpaperUrls(event.data.urls, event.data.refresh, event.data.requestId).catch((error) => {
+        event.waitUntil(syncWallpaperUrls(event.data.urls, event.data.refresh, event.data.requestId, event.data.fetchUrls).catch((error) => {
             console.error('Wallpaper sync failed:', error);
             if (!event.data.requestId) return;
             self.clients.matchAll().then((clients) => {
@@ -1877,9 +1917,9 @@ async function deleteAndPrecache(url, requestId) {
 
     await deleteUrlFromCaches(url);
     
-    // Fetch the file to precache it (with timestamp to force fresh fetch)
-    const fetchUrl = `${url}?t=${Date.now()}`;
-    const response = await fetch(fetchUrl, {
+    // cache: 'no-store' already skips the browser cache. A ?t= stamp broke URLs that
+    // carry a query of their own.
+    const response = await fetch(url, {
       cache: 'no-store',
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
@@ -1977,10 +2017,12 @@ self.addEventListener('activate', (event) => {
     caches.keys().then(cacheNames => {
       return Promise.all(
         cacheNames.map(cacheName => {
+          // WALLPAPER_CACHE stays: every sw.js update used to drop it and re-download each wallpaper
           if (cacheName !== STATIC_CACHE && 
               cacheName !== DYNAMIC_CACHE && 
               cacheName !== IMAGE_CACHE &&
-              cacheName !== INTERNAL_CACHE) {
+              cacheName !== INTERNAL_CACHE &&
+              cacheName !== WALLPAPER_CACHE) {
             return caches.delete(cacheName);
           }
         })

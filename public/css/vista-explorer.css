@@ -121,7 +121,8 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title
    #eaf1f8 with a #4a5157 edge, #9facb8 at the bottom; the search box #f2f8fe with #53585e / #aab5c0),
    a near-white line inside the edge and a 1px light halo outside it. The earlier translucent fill went
    grey over the teal glass and made that inner line read as an extra frame. */
-body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(.explorer-address-group, .button-group:has(> #explorerSearchBar)) {
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(.explorer-address-group, .button-group:has(> #explorerSearchBar)),
+body.desktop-mode:not(.windows-classic-theme) #desktopGuacModal .desktop-guac-search {
     position: relative;
     height: 22px;
     min-height: 0;
@@ -244,7 +245,8 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title
     border-color: #3c7fb1;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(#explorerAddressBar, #explorerSearchBar) {
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(#explorerAddressBar, #explorerSearchBar),
+body.desktop-mode:not(.windows-classic-theme) #desktopGuacModal #desktopGuacSearch {
     height: 20px;
     min-height: 0;
     padding: 0 6px;
@@ -256,14 +258,18 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title
     text-shadow: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(#explorerAddressBar, #explorerSearchBar)::placeholder {
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(#explorerAddressBar, #explorerSearchBar)::placeholder,
+body.desktop-mode:not(.windows-classic-theme) #desktopGuacModal #desktopGuacSearch::placeholder {
     color: #5f5f5f;
     font-style: italic;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar #explorerSearchBar {
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar #explorerSearchBar,
+body.desktop-mode:not(.windows-classic-theme) #desktopGuacModal #desktopGuacSearch {
     padding-right: 24px;
     background: url('/static_images/vista-start/search-glyph.png') no-repeat right 5px center;
+    font-family: "Segoe UI", "Noto Sans", sans-serif;
+    font-size: 12px;
 }
 
 /* the refresh cell at the box's right end (IE's glyph, transparent: the ripped 23x18 cell carried its own
@@ -880,8 +886,9 @@ body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-w
     width: 16px;
     height: 16px;
     margin-right: 2px;
-    background: url('/static_images/app_icons/vista-control-panel.png') no-repeat center / 16px 16px;
-    background-image: image-set(url('/static_images/app_icons/vista-control-panel.webp') type('image/webp'));
+    /* 16 / 32 px compiles; the bare .png was the 384 px default and is not in the SW precache */
+    background: url('/static_images/app_icons/32/vista-control-panel.webp') no-repeat center / 16px 16px;
+    background-image: image-set(url('/static_images/app_icons/16/vista-control-panel.webp') 1x, url('/static_images/app_icons/32/vista-control-panel.webp') 2x);
     opacity: 1;
 }
 
@@ -1243,8 +1250,8 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddre
 }
 
 body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-mode-icon:is(.fa-book, .fa-puzzle-piece) {
-    background-image: url('/static_images/app_icons/books.png');
-    background-image: image-set(url('/static_images/app_icons/books.webp') type('image/webp'));
+    background-image: url('/static_images/app_icons/32/books.webp');
+    background-image: image-set(url('/static_images/app_icons/16/books.webp') 1x, url('/static_images/app_icons/32/books.webp') 2x);
 }
 
 body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-mode-icon.fa-file-alt {
@@ -1716,39 +1723,60 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-s
 }
 
 /* ---------- Vista's own folder and file icons (imageres.dll 3 folder, 1 file, 125 picture,
-   13 text, 49 Recycle Bin; extracted from the VM at 256 / 96 / 64 / 48 / 32 / 16 px) in place
-   of the Font Awesome glyphs. App shortcuts keep their app icons. ---------- */
+   13 text, 49 Recycle Bin) in place of the Font Awesome glyphs. App shortcuts keep their app icons.
+   Each view uses the extract whose pixels match the box: Extra Large the 256, Large the 96,
+   Medium the 48, Small / List / Details the 16. A 2x screen uses the official double (96 for a
+   48 box, 32 for a 16 box), never the 256. ---------- */
 
 body:not(.windows-classic-theme) #explorerModal .explorer-item-type-icon:is(.fa-file) {
-    --ex-icon-lg: image-set(url('/static_images/vista-icons/explorer/file-256.png') 1x);
-    --ex-icon-md: image-set(url('/static_images/vista-icons/explorer/file-96.png') 1x, url('/static_images/vista-icons/explorer/file-256.png') 2x);
-    --ex-icon-sm: image-set(url('/static_images/vista-icons/explorer/file-32.png') 1x, url('/static_images/vista-icons/explorer/file-64.png') 2x);
+    --ex-icon-lg: url('/static_images/vista-icons/explorer/file-96.png');
+    --ex-icon-xl: url('/static_images/vista-icons/explorer/file-256.png');
+    --ex-icon-md: image-set(url('/static_images/vista-icons/explorer/file-48.png') 1x, url('/static_images/vista-icons/explorer/file-96.png') 2x);
+    --ex-icon-sm: image-set(url('/static_images/vista-icons/explorer/file-16.png') 1x, url('/static_images/vista-icons/explorer/file-32.png') 2x);
     --ex-icon-row: image-set(url('/static_images/vista-icons/explorer/file-16.png') 1x, url('/static_images/vista-icons/explorer/file-32.png') 2x);
 }
 body:not(.windows-classic-theme) #explorerModal .explorer-item-type-icon:is(.fa-file-image, .fa-image) {
-    --ex-icon-lg: image-set(url('/static_images/vista-icons/explorer/image-256.png') 1x);
-    --ex-icon-md: image-set(url('/static_images/vista-icons/explorer/image-96.png') 1x, url('/static_images/vista-icons/explorer/image-256.png') 2x);
-    --ex-icon-sm: image-set(url('/static_images/vista-icons/explorer/image-32.png') 1x, url('/static_images/vista-icons/explorer/image-64.png') 2x);
+    --ex-icon-lg: url('/static_images/vista-icons/explorer/image-96.png');
+    --ex-icon-xl: url('/static_images/vista-icons/explorer/image-256.png');
+    --ex-icon-md: image-set(url('/static_images/vista-icons/explorer/image-48.png') 1x, url('/static_images/vista-icons/explorer/image-96.png') 2x);
+    --ex-icon-sm: image-set(url('/static_images/vista-icons/explorer/image-16.png') 1x, url('/static_images/vista-icons/explorer/image-32.png') 2x);
     --ex-icon-row: image-set(url('/static_images/vista-icons/explorer/image-16.png') 1x, url('/static_images/vista-icons/explorer/image-32.png') 2x);
 }
 body:not(.windows-classic-theme) #explorerModal .explorer-item-type-icon:is(.fa-file-lines, .fa-file-code) {
-    --ex-icon-lg: image-set(url('/static_images/vista-icons/explorer/text-256.png') 1x);
-    --ex-icon-md: image-set(url('/static_images/vista-icons/explorer/text-96.png') 1x, url('/static_images/vista-icons/explorer/text-256.png') 2x);
-    --ex-icon-sm: image-set(url('/static_images/vista-icons/explorer/text-32.png') 1x, url('/static_images/vista-icons/explorer/text-64.png') 2x);
+    --ex-icon-lg: url('/static_images/vista-icons/explorer/text-96.png');
+    --ex-icon-xl: url('/static_images/vista-icons/explorer/text-256.png');
+    --ex-icon-md: image-set(url('/static_images/vista-icons/explorer/text-48.png') 1x, url('/static_images/vista-icons/explorer/text-96.png') 2x);
+    --ex-icon-sm: image-set(url('/static_images/vista-icons/explorer/text-16.png') 1x, url('/static_images/vista-icons/explorer/text-32.png') 2x);
     --ex-icon-row: image-set(url('/static_images/vista-icons/explorer/text-16.png') 1x, url('/static_images/vista-icons/explorer/text-32.png') 2x);
 }
 body:not(.windows-classic-theme) #explorerModal .explorer-item-type-icon:is(.fa-folder, .fa-folder-open, [data-kind="folder"]:not(.fa-bin-recycle, .fa-trash-can)) {
-    --ex-icon-lg: image-set(url('/static_images/vista-icons/explorer/folder-256.png') 1x);
-    --ex-icon-md: image-set(url('/static_images/vista-icons/explorer/folder-96.png') 1x, url('/static_images/vista-icons/explorer/folder-256.png') 2x);
-    --ex-icon-sm: image-set(url('/static_images/vista-icons/explorer/folder-32.png') 1x, url('/static_images/vista-icons/explorer/folder-64.png') 2x);
+    --ex-icon-lg: url('/static_images/vista-icons/explorer/folder-96.png');
+    --ex-icon-xl: url('/static_images/vista-icons/explorer/folder-256.png');
+    --ex-icon-md: image-set(url('/static_images/vista-icons/explorer/folder-48.png') 1x, url('/static_images/vista-icons/explorer/folder-96.png') 2x);
+    --ex-icon-sm: image-set(url('/static_images/vista-icons/explorer/folder-16.png') 1x, url('/static_images/vista-icons/explorer/folder-32.png') 2x);
     --ex-icon-row: image-set(url('/static_images/vista-icons/explorer/folder-16.png') 1x, url('/static_images/vista-icons/explorer/folder-32.png') 2x);
 }
 
 body:not(.windows-classic-theme) #explorerModal .explorer-item-type-icon:is(.fa-bin-recycle, .fa-trash-can) {
-    --ex-icon-lg: image-set(url('/static_images/vista-icons/explorer/recycle-256.png') 1x);
-    --ex-icon-md: image-set(url('/static_images/vista-icons/explorer/recycle-96.png') 1x, url('/static_images/vista-icons/explorer/recycle-256.png') 2x);
-    --ex-icon-sm: image-set(url('/static_images/vista-icons/explorer/recycle-32.png') 1x, url('/static_images/vista-icons/explorer/recycle-64.png') 2x);
+    --ex-icon-lg: url('/static_images/vista-icons/explorer/recycle-96.png');
+    --ex-icon-xl: url('/static_images/vista-icons/explorer/recycle-256.png');
+    --ex-icon-md: image-set(url('/static_images/vista-icons/explorer/recycle-48.png') 1x, url('/static_images/vista-icons/explorer/recycle-96.png') 2x);
+    --ex-icon-sm: image-set(url('/static_images/vista-icons/explorer/recycle-16.png') 1x, url('/static_images/vista-icons/explorer/recycle-32.png') 2x);
     --ex-icon-row: image-set(url('/static_images/vista-icons/explorer/recycle-16.png') 1x, url('/static_images/vista-icons/explorer/recycle-32.png') 2x);
+}
+
+/* Large Icons is the 96 extract, 1:1 in the 96px box */
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-xl { width: 256px; height: 256px; }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-lg { width: 96px; height: 96px; }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-md { width: 48px; height: 48px; }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-sm,
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-row {
+    width: 16px;
+    height: 16px;
+    min-width: 16px;
+    max-width: 16px;
+    min-height: 16px;
+    max-height: 16px;
 }
 
 body:not(.windows-classic-theme) #explorerModal .explorer-item-type-icon:is(.fa-folder, .fa-folder-open, .fa-file, .fa-file-image, .fa-image, .fa-file-lines, .fa-file-code, .fa-bin-recycle, .fa-trash-can, [data-kind="folder"]) {
@@ -1765,19 +1793,20 @@ body:not(.windows-classic-theme) #explorerModal .explorer-item-type-icon:is(.fa-
 }
 
 body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-xl .explorer-item-type-icon:is(.fa-folder, .fa-folder-open, .fa-file, .fa-file-image, .fa-image, .fa-file-lines, .fa-file-code, .fa-bin-recycle, .fa-trash-can, [data-kind="folder"]) {
-    width: 160px;
-    height: 160px;
+    width: 256px;
+    height: 256px;
+    background-image: var(--ex-icon-xl);
 }
 
 body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-md .explorer-item-type-icon:is(.fa-folder, .fa-folder-open, .fa-file, .fa-file-image, .fa-image, .fa-file-lines, .fa-file-code, .fa-bin-recycle, .fa-trash-can, [data-kind="folder"]) {
-    width: 72px;
-    height: 72px;
+    width: 48px;
+    height: 48px;
     background-image: var(--ex-icon-md);
 }
 
 body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-sm .explorer-item-type-icon:is(.fa-folder, .fa-folder-open, .fa-file, .fa-file-image, .fa-image, .fa-file-lines, .fa-file-code, .fa-bin-recycle, .fa-trash-can, [data-kind="folder"]) {
-    width: 32px;
-    height: 32px;
+    width: 16px;
+    height: 16px;
     background-image: var(--ex-icon-sm);
 }
 
@@ -1792,12 +1821,25 @@ body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box:not(.has
     background: none;
 }
 
-/* ---------- desktop shortcuts (desktopShortcuts.js data-vista-icon): the same Vista folder,
-   Recycle Bin and file icons, and url.dll's Internet shortcut for Grimoire / Alchemy pages.
-   Vista's icons carry their own shading, so the glyph's drop shadow goes. ---------- */
+/* ---------- desktop shortcuts (desktopShortcuts.js data-vista-icon): Vista's desktop is the
+   48px medium frame. The 48 extract is the picture; a 2x screen uses the official 96, not the 256.
+   Document and Internet shortcut have no 48 or 96 extract (document is 64 and 256, the shortcut
+   is 16, 32, 64, 256), so the desktop uses their 64 extract. App pictures follow the same 48px box. ---------- */
 
+body:not(.windows-classic-theme) .desktop-shortcut {
+    height: 96px;
+}
+body:not(.windows-classic-theme) .desktop-shortcut-icon {
+    width: 48px;
+    height: 48px;
+}
+body:not(.windows-classic-theme) .desktop-shortcut-icon .icon-image,
+body:not(.windows-classic-theme) .desktop-shortcut-icon .desktop-shortcut-wiki-site-icon {
+    width: 48px;
+    height: 48px;
+}
 body:not(.windows-classic-theme) .desktop-shortcut-icon[data-vista-icon] {
-    background: no-repeat center / 64px 64px;
+    background: no-repeat center / 48px 48px;
     filter: none;
     -webkit-filter: none;
 }
@@ -1805,30 +1847,47 @@ body:not(.windows-classic-theme) .desktop-shortcut-icon[data-vista-icon] > i {
     display: none;
 }
 body:not(.windows-classic-theme) .desktop-shortcut-icon[data-vista-icon="folder"] {
-    background-image: image-set(url('/static_images/vista-icons/explorer/folder-64.png') 1x, url('/static_images/vista-icons/explorer/folder-256.png') 2x);
+    background-image: image-set(url('/static_images/vista-icons/explorer/folder-48.png') 1x, url('/static_images/vista-icons/explorer/folder-96.png') 2x);
 }
 body:not(.windows-classic-theme) .desktop-shortcut-icon[data-vista-icon="recycle"] {
-    background-image: image-set(url('/static_images/vista-icons/explorer/recycle-64.png') 1x, url('/static_images/vista-icons/explorer/recycle-256.png') 2x);
+    background-image: image-set(url('/static_images/vista-icons/explorer/recycle-48.png') 1x, url('/static_images/vista-icons/explorer/recycle-96.png') 2x);
 }
 body:not(.windows-classic-theme) .desktop-shortcut-icon[data-vista-icon="file"] {
-    background-image: image-set(url('/static_images/vista-icons/explorer/file-64.png') 1x, url('/static_images/vista-icons/explorer/file-256.png') 2x);
+    background-image: image-set(url('/static_images/vista-icons/explorer/file-48.png') 1x, url('/static_images/vista-icons/explorer/file-96.png') 2x);
 }
 body:not(.windows-classic-theme) .desktop-shortcut-icon[data-vista-icon="internet-shortcut"] {
-    background-image: image-set(url('/static_images/vista-icons/explorer/internet-shortcut-64.png') 1x, url('/static_images/vista-icons/explorer/internet-shortcut-256.png') 2x);
+    background-image: url('/static_images/vista-icons/explorer/internet-shortcut-64.png');
 }
 body:not(.windows-classic-theme) .desktop-shortcut-icon[data-vista-icon="document"] {
-    background-image: image-set(url('/static_images/vista-icons/explorer/document-64.png') 1x, url('/static_images/vista-icons/explorer/document-256.png') 2x);
+    background-image: url('/static_images/vista-icons/explorer/document-64.png');
 }
-/* Cartograph shows desktop shortcuts with the same nodes, at its own view's size */
+/* Cartograph shows the same shortcut nodes. Each view swaps in the extract that matches the box. */
 body:not(.windows-classic-theme) #explorerModal .desktop-shortcut-icon[data-vista-icon] {
     background-size: contain;
 }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-lg .desktop-shortcut-icon[data-vista-icon="folder"] { background-image: url('/static_images/vista-icons/explorer/folder-96.png'); }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-lg .desktop-shortcut-icon[data-vista-icon="recycle"] { background-image: url('/static_images/vista-icons/explorer/recycle-96.png'); }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-lg .desktop-shortcut-icon[data-vista-icon="file"] { background-image: url('/static_images/vista-icons/explorer/file-96.png'); }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-lg .desktop-shortcut-icon[data-vista-icon="note"] { background-image: url('/static_images/vista-icons/explorer/text-96.png'); }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-lg .desktop-shortcut-icon[data-vista-icon="internet-shortcut"],
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-lg .desktop-shortcut-icon[data-vista-icon="document"] { background-size: 64px 64px; }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-xl .desktop-shortcut-icon[data-vista-icon="folder"] { background-image: url('/static_images/vista-icons/explorer/folder-256.png'); }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-xl .desktop-shortcut-icon[data-vista-icon="recycle"] { background-image: url('/static_images/vista-icons/explorer/recycle-256.png'); }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-xl .desktop-shortcut-icon[data-vista-icon="file"] { background-image: url('/static_images/vista-icons/explorer/file-256.png'); }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-xl .desktop-shortcut-icon[data-vista-icon="note"] { background-image: url('/static_images/vista-icons/explorer/text-256.png'); }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-xl .desktop-shortcut-icon[data-vista-icon="internet-shortcut"] { background-image: url('/static_images/vista-icons/explorer/internet-shortcut-256.png'); background-size: contain; }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-xl .desktop-shortcut-icon[data-vista-icon="document"] { background-image: url('/static_images/vista-icons/explorer/document-256.png'); background-size: contain; }
+body:not(.windows-classic-theme) #explorerModal :is(.explorer-item-icon-box-sm, .explorer-item-icon-box-row) .desktop-shortcut-icon[data-vista-icon="folder"] { background-image: url('/static_images/vista-icons/explorer/folder-16.png'); }
+body:not(.windows-classic-theme) #explorerModal :is(.explorer-item-icon-box-sm, .explorer-item-icon-box-row) .desktop-shortcut-icon[data-vista-icon="recycle"] { background-image: url('/static_images/vista-icons/explorer/recycle-16.png'); }
+body:not(.windows-classic-theme) #explorerModal :is(.explorer-item-icon-box-sm, .explorer-item-icon-box-row) .desktop-shortcut-icon[data-vista-icon="file"] { background-image: url('/static_images/vista-icons/explorer/file-16.png'); }
+body:not(.windows-classic-theme) #explorerModal :is(.explorer-item-icon-box-sm, .explorer-item-icon-box-row) .desktop-shortcut-icon[data-vista-icon="note"] { background-image: url('/static_images/vista-icons/explorer/text-16.png'); }
+body:not(.windows-classic-theme) #explorerModal :is(.explorer-item-icon-box-sm, .explorer-item-icon-box-row) .desktop-shortcut-icon[data-vista-icon="internet-shortcut"] { background-image: url('/static_images/vista-icons/explorer/internet-shortcut-16.png'); }
 
 /* Notes (Yukimi 2026-10-13): Vista's text document with the note's own glyph in the middle of
    the page and its colour as a chip in the corner, instead of a coloured glyph alone. */
 body:not(.windows-classic-theme) .desktop-shortcut-icon[data-vista-icon="note"] {
     position: relative;
-    background-image: image-set(url('/static_images/vista-icons/explorer/text-64.png') 1x, url('/static_images/vista-icons/explorer/text-256.png') 2x);
+    background-image: image-set(url('/static_images/vista-icons/explorer/text-48.png') 1x, url('/static_images/vista-icons/explorer/text-96.png') 2x);
     color: var(--note-color, #ffc107);
 }
 body:not(.windows-classic-theme) .desktop-shortcut-icon[data-vista-icon="note"] > i {
@@ -1852,12 +1911,12 @@ body:not(.windows-classic-theme) .desktop-shortcut-icon[data-vista-icon="note"] 
     box-shadow: 0 0 0 1px #0006;
     background: var(--note-color, #ffc107);
 }
-/* the glyph is a fraction of the icon (desktop 64px; Cartograph's icon boxes) */
-body:not(.windows-classic-theme) .desktop-shortcut .desktop-shortcut-icon[data-vista-icon="note"] { font-size: 64px; }
-body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-xl .desktop-shortcut-icon[data-vista-icon="note"] { font-size: 160px; }
+/* the glyph is a fraction of the icon (desktop 48px; Cartograph's icon boxes) */
+body:not(.windows-classic-theme) .desktop-shortcut .desktop-shortcut-icon[data-vista-icon="note"] { font-size: 48px; }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-xl .desktop-shortcut-icon[data-vista-icon="note"] { font-size: 256px; }
 body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-lg .desktop-shortcut-icon[data-vista-icon="note"] { font-size: 96px; }
-body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-md .desktop-shortcut-icon[data-vista-icon="note"] { font-size: 72px; }
-body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-sm .desktop-shortcut-icon[data-vista-icon="note"] { font-size: 32px; }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-md .desktop-shortcut-icon[data-vista-icon="note"] { font-size: 48px; }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-sm .desktop-shortcut-icon[data-vista-icon="note"] { font-size: 16px; }
 body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-row .desktop-shortcut-icon[data-vista-icon="note"] { font-size: 16px; }
 body:not(.windows-classic-theme) #explorerModal :is(.explorer-item-icon-box-sm, .explorer-item-icon-box-row) .desktop-shortcut-icon[data-vista-icon="note"] > .desktop-note-color-chip {
     display: none;
@@ -1881,7 +1940,7 @@ body:not(.windows-classic-theme) #explorerModal .desktop-shortcut-icon-image {
     border-radius: 0;
     background: none;
     box-shadow: none;
-    --photo-box: 58px;
+    --photo-box: 42px;
 }
 body:not(.windows-classic-theme) .desktop-shortcut:not([data-shortcut-type="request"]) .desktop-shortcut-icon-image .desktop-shortcut-image-preview,
 body:not(.windows-classic-theme) #explorerModal .desktop-shortcut-icon-image .desktop-shortcut-image-preview {
@@ -1934,10 +1993,10 @@ body:not(.windows-classic-theme) #explorerModal .desktop-shortcut-image-preview 
     text-shadow: none;
 }
 /* Cartograph's icon boxes */
-body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-xl .desktop-shortcut-icon-image { --photo-box: 152px; }
-body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-lg .desktop-shortcut-icon-image { --photo-box: 90px; }
-body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-md .desktop-shortcut-icon-image { --photo-box: 66px; }
-body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-sm .desktop-shortcut-icon-image { --photo-box: 30px; }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-xl .desktop-shortcut-icon-image { --photo-box: 240px; }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-lg .desktop-shortcut-icon-image { --photo-box: 84px; }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-md .desktop-shortcut-icon-image { --photo-box: 40px; }
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-sm .desktop-shortcut-icon-image { --photo-box: 14px; }
 body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-row .desktop-shortcut-icon-image { --photo-box: 14px; }
 body:not(.windows-classic-theme) #explorerModal :is(.explorer-item-icon-box-sm, .explorer-item-icon-box-row) .desktop-shortcut-icon-image .desktop-shortcut-image-preview {
     border-width: 1px;
@@ -1947,8 +2006,8 @@ body:not(.windows-classic-theme) #explorerModal :is(.explorer-item-icon-box-sm, 
     display: none;
 }
 
-/* App shortcuts (applet, dsap) carry Vista's shortcut arrow (shell32.dll 29) bottom left, the 24px
-   frame (16px was too small to see, Yukimi 2026-10-13). VFS files have none. */
+/* App shortcuts (applet, dsap) carry Vista's shortcut arrow (shell32.dll 29) bottom left.
+   16px on the 48px desktop and Medium, 32px on Large, 48px on Extra Large. VFS files have none. */
 body:not(.windows-classic-theme) .desktop-shortcut:is([data-shortcut-type="applet"], [data-shortcut-type="dsap"]) .desktop-shortcut-icon {
     position: relative;
 }
@@ -1957,16 +2016,22 @@ body:not(.windows-classic-theme) .desktop-shortcut:is([data-shortcut-type="apple
     position: absolute;
     left: 0;
     bottom: 0;
-    width: 24px;
-    height: 24px;
-    background: image-set(url('/static_images/vista-icons/explorer/shortcut-arrow-24.png') 1x, url('/static_images/vista-icons/explorer/shortcut-arrow-48.png') 2x) no-repeat center / 24px 24px;
-    pointer-events: none;
-}
-body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-md .desktop-shortcut:is([data-shortcut-type="applet"], [data-shortcut-type="dsap"]) .desktop-shortcut-icon::after {
     width: 16px;
     height: 16px;
-    background-image: image-set(url('/static_images/vista-icons/explorer/shortcut-arrow-16.png') 1x, url('/static_images/vista-icons/explorer/shortcut-arrow-32.png') 2x);
-    background-size: 16px 16px;
+    background: image-set(url('/static_images/vista-icons/explorer/shortcut-arrow-16.png') 1x, url('/static_images/vista-icons/explorer/shortcut-arrow-32.png') 2x) no-repeat center / 16px 16px;
+    pointer-events: none;
+}
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-lg .desktop-shortcut:is([data-shortcut-type="applet"], [data-shortcut-type="dsap"]) .desktop-shortcut-icon::after {
+    width: 32px;
+    height: 32px;
+    background-image: image-set(url('/static_images/vista-icons/explorer/shortcut-arrow-32.png') 1x, url('/static_images/vista-icons/explorer/shortcut-arrow-48.png') 2x);
+    background-size: 32px 32px;
+}
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-xl .desktop-shortcut:is([data-shortcut-type="applet"], [data-shortcut-type="dsap"]) .desktop-shortcut-icon::after {
+    width: 48px;
+    height: 48px;
+    background-image: url('/static_images/vista-icons/explorer/shortcut-arrow-48.png');
+    background-size: 48px 48px;
 }
 body:not(.windows-classic-theme) #explorerModal :is(.explorer-item-icon-box-sm, .explorer-item-icon-box-row) .desktop-shortcut:is([data-shortcut-type="applet"], [data-shortcut-type="dsap"]) .desktop-shortcut-icon::after {
     display: none;
@@ -1974,6 +2039,7 @@ body:not(.windows-classic-theme) #explorerModal :is(.explorer-item-icon-box-sm, 
 
 /* Vista's search boxes and IE7's address box are the lighter fill (VM pixels) */
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .button-group:has(> #explorerSearchBar),
+body.desktop-mode:not(.windows-classic-theme) #desktopGuacModal .desktop-guac-search,
 body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-toolbar .button-group:has(> .cpl-search),
 body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar :is(.grimoire-ie-search, #grimoireAddressBar.wiki-address-bar, .grimoire-ie-seg) {
     --vista-box-fill: linear-gradient(#ebf2f9, #f2f8fe 25%, #f3f8fd 75%, #eef5fb);
@@ -2336,24 +2402,29 @@ body:not(.windows-classic-theme) #explorerModal .explorer-item-type-icon.explore
     position: relative;
     isolation: isolate; /* the papers (z 1) under the front flap (z 2) */
     overflow: visible; /* the papers' shadows fall past the folder, as on the VM */
-    --ex-icon-lg: image-set(url('/static_images/vista-icons/explorer/folder-back-256.png') 1x);
-    --ex-icon-md: image-set(url('/static_images/vista-icons/explorer/folder-back-96.png') 1x, url('/static_images/vista-icons/explorer/folder-back-256.png') 2x);
+    --ex-icon-lg: url('/static_images/vista-icons/explorer/folder-back-96.png');
+    --ex-icon-xl: url('/static_images/vista-icons/explorer/folder-back-256.png');
+    --ex-icon-md: image-set(url('/static_images/vista-icons/explorer/folder-back-48.png') 1x, url('/static_images/vista-icons/explorer/folder-back-96.png') 2x);
 }
 /* the icon box clips its contents (explorer.css); a live folder's papers and shadows may pass it
    (explorerApplet.js _populateDefaultIconBox sets the class) */
 body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box.explorer-live-folder-box {
     overflow: visible;
 }
-/* the papers stand inside the folder: nothing of them shows left of the front flap's outer edge
-   (imageres.dll 5 at 96px: x=6 from the top down to y=72, then slanting in to x=20 at y=90), while
-   on the right and below they and their shadows pass the folder's back like Vista's (VM Duo / Pattern) */
+/* the papers stand inside the folder: nothing of them shows left of the front flap's outer edge.
+   96 and 48 share one edge (6.25% until 79.17%, then the measured steps). The 256 flap starts
+   further in (8.98%), so Extra Large has its own clip. On the right and below, the papers and
+   their shadows pass the folder's back like Vista's (VM Duo / Pattern). */
 body:not(.windows-classic-theme) #explorerModal .explorer-live-folder .explorer-live-folder-papers {
     position: absolute;
     inset: 0;
     z-index: 1;
     display: block;
     pointer-events: none;
-    clip-path: polygon(6.25% -20%, 6.25% 75%, 12.5% 81.25%, 16.67% 87.5%, 20.83% 93.75%, 24% 100%, 27% 115%, 140% 115%, 140% -20%);
+    clip-path: polygon(6.25% -20%, 6.25% 79.17%, 8.33% 79.17%, 10.42% 81.25%, 12.5% 83.33%, 14.58% 85.42%, 16.67% 89.58%, 18.75% 91.67%, 20.83% 93.75%, 22.92% 95.83%, 22.92% 115%, 140% 115%, 140% -20%);
+}
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-xl .explorer-live-folder .explorer-live-folder-papers {
+    clip-path: polygon(8.98% -20%, 8.98% 77.34%, 10.16% 78.52%, 12.11% 81.25%, 14.45% 84.38%, 16.41% 87.5%, 18.75% 90.63%, 20.7% 93.75%, 22.66% 96.48%, 24.61% 99.22%, 26% 115%, 140% 115%, 140% -20%);
 }
 body:not(.windows-classic-theme) #explorerModal .explorer-live-folder .explorer-live-folder-paper {
     position: absolute;
@@ -2380,9 +2451,12 @@ body:not(.windows-classic-theme) #explorerModal .explorer-live-folder .explorer-
     inset: 0;
     z-index: 2;
     display: block;
-    background: image-set(url('/static_images/vista-icons/explorer/folder-front-96.png') 1x, url('/static_images/vista-icons/explorer/folder-front-256.png') 2x) no-repeat center / contain;
+    background: url('/static_images/vista-icons/explorer/folder-front-96.png') no-repeat center / contain;
     pointer-events: none;
 }
 body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-xl .explorer-live-folder .explorer-live-folder-front {
     background-image: url('/static_images/vista-icons/explorer/folder-front-256.png');
+}
+body:not(.windows-classic-theme) #explorerModal .explorer-item-icon-box-md .explorer-live-folder .explorer-live-folder-front {
+    background-image: image-set(url('/static_images/vista-icons/explorer/folder-front-48.png') 1x, url('/static_images/vista-icons/explorer/folder-front-96.png') 2x);
 }

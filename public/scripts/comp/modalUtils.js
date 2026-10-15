@@ -4769,7 +4769,7 @@ function updateTaskbarActiveStates() {
                     const srcset = buildAppIconSrcset(imageIcon);
                     if (srcset && imageIconEl.getAttribute('srcset') !== srcset) {
                         imageIconEl.setAttribute('srcset', srcset);
-                        imageIconEl.setAttribute('sizes', '192px');
+                        imageIconEl.setAttribute('sizes', appIconSizesAttr(APP_ICON_DISPLAY_PX.taskbar));
                     }
                 }
 
@@ -4926,7 +4926,7 @@ function updateTaskbarWindows() {
 
                 groupItem.innerHTML = `
                     <div class="taskbar-window-item-content">
-                        ${getIconHTML(icon, imageIcon)}
+                        ${getIconHTML(icon, imageIcon, '', APP_ICON_DISPLAY_PX.taskbar)}
                         <span>${typeName}</span>
                         <span class="taskbar-group-count">${modals.length}</span>
                     </div>
@@ -5040,7 +5040,7 @@ function updateTaskbarWindows() {
                 if (currentTitle !== title || iconChanged || imageIconChanged) {
                     existingItem.innerHTML = `
                         <div class="taskbar-window-item-content">
-                            ${getIconHTML(icon, imageIcon)}
+                            ${getIconHTML(icon, imageIcon, '', APP_ICON_DISPLAY_PX.taskbar)}
                             <span>${title}</span>
                         </div>
                     `;
@@ -5060,7 +5060,7 @@ function updateTaskbarWindows() {
 
                 item.innerHTML = `
                     <div class="taskbar-window-item-content">
-                        ${getIconHTML(icon, imageIcon)}
+                        ${getIconHTML(icon, imageIcon, '', APP_ICON_DISPLAY_PX.taskbar)}
                         <span>${title}</span>
                     </div>
                 `;
@@ -5138,12 +5138,12 @@ function isImageIcon(icon) {
 }
 
 // Helper function to render an icon (Font Awesome class or image)
-function renderIcon(icon, className = '') {
+function renderIcon(icon, className = '', displayPx) {
     if (!icon) return '';
 
     // If it's an image icon, render as img tag
     if (isImageIcon(icon)) {
-        return renderAppIconImg(icon, className);
+        return renderAppIconImg(icon, className, displayPx);
     }
 
     // Otherwise, it's a Font Awesome icon class
@@ -5152,8 +5152,34 @@ function renderIcon(icon, className = '') {
 }
 
 // Helper function to render both icon and imageIcon (for CSS-based switching)
-// Size variants are generated server-side into .cache/runtime-assets (modules/appIconRuntimeAssets.js)
-const APP_ICON_SRCSET_SIZES = [32, 64, 128, 192, 384];
+// Size variants are generated server-side into .cache/runtime-assets (modules/appIconRuntimeAssets.js).
+// Keep in step with ICON_SIZES there.
+const APP_ICON_SRCSET_SIZES = [16, 24, 32, 48, 64, 96, 128, 192, 384];
+
+// The size each surface draws an app icon at, for the srcset `sizes` attribute: the browser
+// then fetches the smallest compiled size that covers it at the screen's pixel ratio.
+// Without it every icon asked for the 192 / 384 px file.
+const APP_ICON_DISPLAY_PX = {
+    desktop: 64,      // desktop-shell.css .desktop-shortcut-icon (Classic 64, Aero 48)
+    taskbar: 17,      // desktop-shell.css --taskbar-window-icon-size
+    switcher: 32,     // window-switcher.css 2rem
+    fallback: 192     // surfaces that never said; the old fixed value
+};
+const START_MENU_ROW_ICON_PX = { large: 40, small: 20 }; // desktop-shell.css .start-menu-row-icon
+
+function appIconSizesAttr(displayPx) {
+    const px = Number(displayPx) > 0 ? Math.round(Number(displayPx)) : APP_ICON_DISPLAY_PX.fallback;
+    return `${px}px`;
+}
+
+/** Smallest compiled size that is at least px (for a fixed 1x / 2x url). */
+function appIconTierFor(px) {
+    const want = Number(px) || 0;
+    for (let i = 0; i < APP_ICON_SRCSET_SIZES.length; i++) {
+        if (APP_ICON_SRCSET_SIZES[i] >= want) return APP_ICON_SRCSET_SIZES[i];
+    }
+    return APP_ICON_SRCSET_SIZES[APP_ICON_SRCSET_SIZES.length - 1];
+}
 
 function appIconBasename(imageIcon) {
     const val = String(imageIcon || '').trim();
@@ -5197,15 +5223,16 @@ function buildAppIconSrcset(imageIcon) {
         .join(', ');
 }
 
-function renderAppIconImg(imageIcon, className = '') {
+// displayPx: the size this surface draws the icon at (APP_ICON_DISPLAY_PX).
+function renderAppIconImg(imageIcon, className = '', displayPx) {
     const imagePath = resolveAppIconPath(imageIcon);
     const srcset = buildAppIconSrcset(imageIcon);
     const classAttr = className ? ` class="icon-image ${className}"` : ' class="icon-image"';
-    const srcsetAttr = srcset ? ` srcset="${srcset}" sizes="192px"` : '';
+    const srcsetAttr = srcset ? ` srcset="${srcset}" sizes="${appIconSizesAttr(displayPx)}"` : '';
     return `<img src="${imagePath}" alt=""${srcsetAttr}${classAttr} />`;
 }
 
-function renderDualIcon(icon, imageIcon, className = '') {
+function renderDualIcon(icon, imageIcon, className = '', displayPx) {
     let html = '';
 
     // Render Font Awesome icon
@@ -5225,9 +5252,9 @@ function renderDualIcon(icon, imageIcon, className = '') {
 
     // Render image icon (shown in desktop mode) — srcset picks optimised runtime size
     if (imageIcon) {
-        html += renderAppIconImg(imageIcon, className);
+        html += renderAppIconImg(imageIcon, className, displayPx);
     } else if (icon && isImageIcon(icon)) {
-        html += renderAppIconImg(icon, className);
+        html += renderAppIconImg(icon, className, displayPx);
     }
 
     return html;
@@ -5235,14 +5262,14 @@ function renderDualIcon(icon, imageIcon, className = '') {
 
 // Helper function to get icon HTML string for use in innerHTML
 // Supports both single icon and dual icon (icon + imageIcon) modes
-function getIconHTML(icon, imageIcon = null, className = '') {
+function getIconHTML(icon, imageIcon = null, className = '', displayPx) {
     // If imageIcon is provided, render both (for CSS switching)
     if (imageIcon !== null) {
-        return renderDualIcon(icon, imageIcon, className);
+        return renderDualIcon(icon, imageIcon, className, displayPx);
     }
 
     // Otherwise, use single icon mode (backward compatible)
-    return renderIcon(icon, className);
+    return renderIcon(icon, className, displayPx);
 }
 
 function getModalIcon(modal) {
@@ -5483,7 +5510,7 @@ function getOrCreateTaskbarItem(modal) {
 
         taskbarItem.innerHTML = `
             <div class="taskbar-window-item-content">
-                ${getIconHTML(iconToUse, imageIcon)}
+                ${getIconHTML(iconToUse, imageIcon, '', APP_ICON_DISPLAY_PX.taskbar)}
                 <span>${title}</span>
             </div>
         `;
@@ -7494,7 +7521,8 @@ function createStartMenuListRow(item, kind, options = {}) {
         dot.style.backgroundColor = item.color;
         icon.appendChild(dot);
     } else {
-        icon.innerHTML = getIconHTML(item.icon, item.imageIcon || null);
+        const iconPx = (kind === 'pinned' || kind === 'frequent') ? START_MENU_ROW_ICON_PX.large : START_MENU_ROW_ICON_PX.small;
+        icon.innerHTML = getIconHTML(item.icon, item.imageIcon || null, '', iconPx);
     }
     row.appendChild(icon);
 
@@ -8347,7 +8375,8 @@ function startMenuButtonLogoUrl(logo) {
     const id = normalizeStartMenuButtonLogoClient(logo);
     if (id === 'royal') return '/static_images/windows-logo-royal.png';
     if (id === 'vista') return '/static_images/windows-logo-vista.png';
-    return '/static_images/logo_icon.png';
+    // 731 px master compiled to display sizes (modules/appIconRuntimeAssets.js EXTRA_MASTERS)
+    return '/static_images/app_icons/48/dreamscape-logo.webp';
 }
 
 function readDesktopSettingsStartMenuButtonPreference() {

@@ -146,6 +146,11 @@ class DesktopShortcutsManager {
                 icon: this.createSystemFolderIcon,
                 contextMenu: this.getSystemFolderContextMenu,
                 onClick: this.handleSystemFolderClick
+            },
+            'remote-desktop': {
+                icon: this.createRemoteDesktopIcon,
+                contextMenu: this.getAppletContextMenu,
+                onClick: this.handleRemoteDesktopClick
             }
         };
     }
@@ -1829,7 +1834,7 @@ class DesktopShortcutsManager {
             const srcset = buildAppIconSrcset(applet.imageIcon);
             if (srcset) {
                 imageIcon.setAttribute('srcset', srcset);
-                imageIcon.setAttribute('sizes', '192px');
+                imageIcon.setAttribute('sizes', appIconSizesAttr(APP_ICON_DISPLAY_PX.desktop));
             }
             imageIcon.className = 'icon-image';
             imageIcon.alt = '';
@@ -1837,6 +1842,34 @@ class DesktopShortcutsManager {
         }
         
         return icon;
+    }
+
+    createRemoteDesktopIcon() {
+        const icon = document.createElement('div');
+        icon.className = 'desktop-shortcut-icon';
+        const imageIcon = document.createElement('img');
+        // resolveAppIconPath: public/scripts/comp/modalUtils.js
+        imageIcon.src = resolveAppIconPath('vista-remote-desktop.png');
+        const srcset = buildAppIconSrcset('vista-remote-desktop.png');
+        if (srcset) {
+            imageIcon.setAttribute('srcset', srcset);
+            imageIcon.setAttribute('sizes', appIconSizesAttr(APP_ICON_DISPLAY_PX.desktop));
+        }
+        imageIcon.className = 'icon-image';
+        imageIcon.alt = '';
+        icon.appendChild(imageIcon);
+        return icon;
+    }
+
+    handleRemoteDesktopClick(shortcut) {
+        const id = shortcut.data && shortcut.data.connectionId;
+        if (!id) return;
+        // openDesktopGuacSession: public/scripts/comp/desktop-apps/guacRemote.js
+        openDesktopGuacSession({
+            id: id,
+            name: shortcut.name,
+            protocol: shortcut.data.protocol || ''
+        });
     }
 
     // Handle applet shortcut click
@@ -1879,7 +1912,7 @@ class DesktopShortcutsManager {
             const srcset = buildAppIconSrcset(data.imageIcon);
             if (srcset) {
                 imageIcon.setAttribute('srcset', srcset);
-                imageIcon.setAttribute('sizes', '192px');
+                imageIcon.setAttribute('sizes', appIconSizesAttr(APP_ICON_DISPLAY_PX.desktop));
             }
             imageIcon.className = 'icon-image';
             imageIcon.alt = '';
@@ -1928,11 +1961,11 @@ class DesktopShortcutsManager {
         icon.appendChild(faIcon);
 
         const imageIcon = document.createElement('img');
-        imageIcon.src = resolveAppIconPath('stack.png');
-        const stackSrcset = buildAppIconSrcset('stack.png');
-        if (stackSrcset) {
-            imageIcon.setAttribute('srcset', stackSrcset);
-            imageIcon.setAttribute('sizes', '192px');
+        imageIcon.src = resolveAppIconPath('vista-phasewalker-file.png');
+        const phaseSrcset = buildAppIconSrcset('vista-phasewalker-file.png');
+        if (phaseSrcset) {
+            imageIcon.setAttribute('srcset', phaseSrcset);
+            imageIcon.setAttribute('sizes', appIconSizesAttr(APP_ICON_DISPLAY_PX.desktop));
         }
         imageIcon.className = 'icon-image';
         imageIcon.alt = '';
@@ -2418,8 +2451,19 @@ class DesktopShortcutsManager {
         const icon = document.createElement('div');
         icon.className = 'desktop-shortcut-icon desktop-shortcut-icon-studio-change';
         const mark = document.createElement('i');
-        mark.className = 'fas fa-brackets-curly';
+        mark.className = 'fas fa-brackets-curly icon-fa';
         icon.appendChild(mark);
+        const imageIcon = document.createElement('img');
+        // resolveAppIconPath / buildAppIconSrcset: public/scripts/comp/modalUtils.js
+        imageIcon.src = resolveAppIconPath('vista-code-file.png');
+        const codeSrcset = buildAppIconSrcset('vista-code-file.png');
+        if (codeSrcset) {
+            imageIcon.setAttribute('srcset', codeSrcset);
+            imageIcon.setAttribute('sizes', appIconSizesAttr(APP_ICON_DISPLAY_PX.desktop));
+        }
+        imageIcon.className = 'icon-image';
+        imageIcon.alt = '';
+        icon.appendChild(imageIcon);
         return icon;
     }
 
