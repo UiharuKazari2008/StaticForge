@@ -23,14 +23,15 @@ const OUTPUT_REL = 'public/data/app-assets.json';
 const VERSION = 1;
 
 // Start menu launchables (public/scripts/comp/modalUtils.js startMenuLaunchables) → groups.
-// windows ending in * match every window id with that prefix.
+// windows ending in * match every window id with that prefix. sheets: whole stylesheets in
+// public/css (name prefixes) for applications whose art is scoped by class, not by window id.
 const LAUNCH_GROUPS = {
     workspace: { windows: ['workspaceManageModal', 'workspaceEditModal'] },
-    studio: { windows: ['manualModal'] },
+    studio: { windows: ['manualModal'], sheets: ['manual-modal', 'studio-'] },
     spellbook: { features: ['spellbook'], windows: ['spellbook*'] },
     reference: { windows: ['cacheManagerModal'] },
     'bracket-generation': { features: ['bracket_gen'], windows: ['bracketGenerationModal'] },
-    director: { windows: ['director*'] },
+    director: { windows: ['director*'], sheets: ['director'] },
     encyclopedia: { features: ['grimoire'], windows: ['tagWikiSearchModal'] },
     alchemy: { features: ['grimoire'], windows: ['tagWikiSearchModal'] },
     naxt: { features: ['naxt'], windows: ['naxtModal'] },
@@ -320,6 +321,15 @@ function buildAppAssetManifest(projectRoot) {
         });
     });
 
+    // whole stylesheets named by a launcher (sheets)
+    const sheetPrefixes = new Set();
+    Object.values(LAUNCH_GROUPS).forEach((def) => (def.sheets || []).forEach((p) => sheetPrefixes.add(p)));
+    sheets.forEach((rel) => {
+        const name = path.basename(rel);
+        if (SKIP_STYLESHEETS.has(name) || ![...sheetPrefixes].some((p) => name.startsWith(p))) return;
+        addStylesheet(group(`sheet:${name.replace(/\.css$/, '')}`), publicDir, rel, families);
+    });
+
     // drop empty groups
     Object.keys(groups).forEach((id) => {
         if (!groups[id].images.length && !groups[id].fonts.length) delete groups[id];
@@ -335,6 +345,11 @@ function buildAppAssetManifest(projectRoot) {
         const ids = [];
         (def.features || []).forEach((n) => { if (groups[`feature:${n}`]) ids.push(`feature:${n}`); });
         (def.apps || []).forEach((n) => { if (groups[`app:${n}`]) ids.push(`app:${n}`); });
+        (def.sheets || []).forEach((prefix) => {
+            Object.keys(groups).forEach((id) => {
+                if (id.startsWith('sheet:') && id.slice(6).startsWith(prefix)) addUnique(ids, id);
+            });
+        });
         (def.windows || []).forEach((pattern) => {
             const prefix = pattern.endsWith('*') ? pattern.slice(0, -1) : null;
             windowIds.forEach((id) => {

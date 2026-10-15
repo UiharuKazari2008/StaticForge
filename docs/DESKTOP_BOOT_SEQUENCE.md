@@ -342,7 +342,8 @@ window.
 | `settings` | any init step with priority < 12 (from 5 on the desktop; ≤ 1 ran in the logon dialog) | — |
 | `wallpaper` | step 12.2 `Loading wallpaper` finished (`onStepDone`) | `boot-reveal-wallpaper` |
 | `icons` | step 18.2 `Loading desktop icons` finished (after 18 fetched the shortcut list) | `boot-reveal-icons` |
-| `taskbar` | step 18.4 `Loading desktop assets` finished (taskbar, tray, sidebar, start menu art and its first view's icons, clock and workspace fonts) | `boot-reveal-taskbar` |
+| `taskbar` | step 18.4 `Loading desktop assets` finished (taskbar, tray, start menu art and its first view's icons, clock, Share Tech Mono and workspace fonts) | `boot-reveal-taskbar` |
+| `gadgets` | step 18.6 `Loading gadgets` finished: the Vista Sidebar started hidden and the pictures and backgrounds its gadgets drew are decoded (Yozora #521) | `boot-reveal-gadgets` |
 | `windows` | step 31 `Loading Gallery` starts | `boot-reveal-windows`; `no-animation` removed |
 | `done` | `finish()` | all boot classes removed when the dwell ends |
 
@@ -359,7 +360,9 @@ open animation's opacity keyframes cannot flash a window before its stage).
 |------|------------|-------|
 | `/app` start, under teal, before the logon dialog | Logon art: `desktop-boot.css`, `connection-dial.css` and caption chrome `url()`s for the logon this screen uses (the Vista Welcome screen's art only with `body.vista-logon`, and only its one aspect background via `_whenVistaLogonArtReady`), the `.boot-dialog` pictures as the elements ask for them (srcset included), the logon fonts and icon fonts | `assetPreload.startLoginStage` |
 | After Connected, on the logon | The active workspace's wallpaper | `preloadBeforeDesktopTransition` |
-| Startup window | One stage per layer, see the table above | `assetPreload.js` steps 12.2 / 18.2 / 18.4 |
+| Startup window | One stage per layer, see the table above | `assetPreload.js` steps 12.2 / 18.2 / 18.4 / 18.6 |
+| Startup window, step 18.8 | The DreamStudio and Workspaces splash screens (`#manualModalSplash`, `#workspaceSplash`): their shards / bands, the `manual-modal-splash.css` backgrounds and the title and status faces, so neither splash loads when its window opens. The late watch arms after this step | `assetPreload.preloadSplashStage` |
+| After `desktopBootDone` | The wildcard chunk of the app data (Yozora #517), and the art of the start menu's pinned and frequent applications (`app-assets.json`, Yozora #518); others on hover / focus / launch / open | `appBootstrap.js`, `assetPreload.warmLaunch` |
 | After `desktopBootDone` | The other workspaces' wallpapers, one at a time in idle time (service worker cache, then decode) | `workspaceUtils.preloadOtherWorkspaceWallpapers` |
 
 `loadWorkspaces` at boot asks the service worker for the active wallpaper only

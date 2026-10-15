@@ -716,12 +716,10 @@ var assetPreload = (function () {
             loadFonts(shellFonts)
         ]), IMAGE_TIMEOUT_MS).then(function (ok) {
             if (ok) shellPrepared = true;
-            // With a sidebar the gadget step (18.6) still loads art; it arms the watch after
-            if (!window.vistaSidebarBoot) armLateWatch();
+            // The gadget (18.6) and splash (18.8) steps still load art; 18.8 arms the watch
             return ok;
         }).catch(function (error) {
             console.warn('Desktop asset preload failed:', error);
-            if (!window.vistaSidebarBoot) armLateWatch();
             return false;
         });
     }
@@ -815,11 +813,47 @@ var assetPreload = (function () {
                 decodeImages(imgs),
                 preloadUrls(paintedBackgroundUrls(root), { concurrency: 6 })
             ]), IMAGE_TIMEOUT_MS);
-        }).then(function (ok) {
+        }).catch(function (error) {
+            console.warn('Gadget preload failed:', error);
+            return false;
+        });
+    }
+
+    // Step 18.8: the DreamStudio and Workspaces splash screens (appSplash.js) show the moment
+    // those windows open, so their art and faces are decoded during the boot, not on first open.
+    // The splashes sit in app.html under display:none: their <img>s download but are not decoded,
+    // and their CSS backgrounds are not fetched until shown.
+    var SPLASH_SELECTORS = ['#manualModalSplash', '#workspaceSplash'];
+
+    function splashFontSpecs() {
+        var specs = [];
+        SPLASH_SELECTORS.forEach(function (sel) {
+            var root = document.querySelector(sel);
+            if (!root || !window.getComputedStyle) return;
+            var nodes = root.querySelectorAll('[class*="splash-title"], .splash-status-text');
+            for (var i = 0; i < nodes.length; i++) {
+                var cs = getComputedStyle(nodes[i]);
+                var family = String(cs.fontFamily || '').split(',')[0].replace(/["']/g, '').trim();
+                if (!family) continue;
+                var spec = (cs.fontWeight || '400') + ' 16px "' + family + '"';
+                if (specs.indexOf(spec) === -1) specs.push(spec);
+            }
+        });
+        return specs;
+    }
+
+    function preloadSplashStage() {
+        if (!isDesktop) return Promise.resolve(true);
+        return whenSettled(Promise.all([
+            holdDomImages(SPLASH_SELECTORS.map(function (sel) { return sel + ' img[src]'; }).join(', ')),
+            preloadUrls(collectStylesheetUrls(['manual-modal-splash.css']), { concurrency: 4 }),
+            loadFonts(splashFontSpecs())
+        ]), IMAGE_TIMEOUT_MS).then(function (ok) {
+            // The last boot preload step: anything fetched from here on is reported as late
             armLateWatch();
             return ok;
         }, function (error) {
-            console.warn('Gadget preload failed:', error);
+            console.warn('Splash preload failed:', error);
             armLateWatch();
             return false;
         });
@@ -995,6 +1029,9 @@ var assetPreload = (function () {
         wsClient.registerInitStep(18.6, 'Loading gadgets', function () {
             return api.preloadGadgetsStage();
         });
+        wsClient.registerInitStep(18.8, 'Loading splash screens', function () {
+            return api.preloadSplashStage();
+        });
     }
 
     var api = {
@@ -1005,6 +1042,7 @@ var assetPreload = (function () {
         preloadDesktopIconsStage: preloadDesktopIconsStage,
         preloadDesktopAssetsStage: preloadDesktopAssetsStage,
         preloadGadgetsStage: preloadGadgetsStage,
+        preloadSplashStage: preloadSplashStage,
         warmLaunch: warmLaunch,
         warmWindow: warmWindow,
         loadAppAssetManifest: loadAppAssetManifest,
