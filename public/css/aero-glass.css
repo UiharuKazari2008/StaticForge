@@ -381,8 +381,8 @@ html[data-glass="live"] body:not(.windows-classic-theme) .modal.modal-maximized:
     background-color: var(--aero-tint-maximized);
 }
 
-/* The taskbar follows the foreground maximized window, as Vista did */
-body.desktop-mode:has(.modal.modal-maximized.active-window:not(.hidden):not(.hidden-alt):not(.minimised)) .desktop-taskbar::after {
+/* The taskbar follows the foreground maximized window, as Vista did (flag: scripts/comp/rootStateFlags.js) */
+body.desktop-mode.has-active-maximized-window .desktop-taskbar::after {
     background:
         linear-gradient(to bottom, hsl(0 0% 100% / 6%) 0%, hsl(0 0% 100% / 2%) 40%, hsl(0 0% 0% / 25%) 50%, hsl(0 0% 0% / 40%) 100%),
         linear-gradient(hsl(0 0% 3% / 96%), hsl(0 0% 3% / 96%));

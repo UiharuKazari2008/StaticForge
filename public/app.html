@@ -31,6 +31,44 @@
             } catch (e) { /* ignore */ }
         }
         globalThis.isDesktop = isWideScreen && (galleryWindowPreference === 'windowed');
+        try {
+            if (sessionStorage.getItem('melatonSafeMode') === '1') {
+                document.documentElement.classList.add('melaton-vga-safe');
+            }
+        } catch (e) { /* a blocked session store just boots at the panel size */ }
+
+        // Same fit as fitMelatonVga() in launch.html. Chrome drops scale(calc(100vw / 1024px)).
+        function fitMelatonVga(el) {
+            var w = innerWidth;
+            var h = innerHeight;
+            if (!el || !w || !h) return;
+            var ratio = w / h;
+            var sx;
+            var sy;
+            var tx = 0;
+            var ty = 0;
+            if (ratio >= 2) {
+                sx = h / 768;
+                sy = sx;
+                tx = (w - 1024 * sx) / 2;
+            } else if (ratio <= 0.5) {
+                sx = w / 1024;
+                sy = sx;
+                ty = (h - 768 * sy) / 2;
+            } else {
+                sx = w / 1024;
+                sy = h / 768;
+            }
+            el.style.transformOrigin = '0 0';
+            el.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + sx + ',' + sy + ')';
+        }
+        function fitMelatonSafeFrame() {
+            if (!document.documentElement.classList.contains('melaton-vga-safe')) return;
+            fitMelatonVga(document.body);
+        }
+        if (document.readyState === 'loading') addEventListener('DOMContentLoaded', fitMelatonSafeFrame);
+        else fitMelatonSafeFrame();
+        addEventListener('resize', fitMelatonSafeFrame);
 
         // Hover capability (html.can-hover / html.no-hover): applied in
         // fatalErrorBootstrap.js so service-worker updates deliver it even when
@@ -7809,14 +7847,10 @@ Examples:
                                     <!-- Horizontal Alignment -->
                                     <div class="form-group">
                                         <label>Horizontal</label>
-                                        <div id="desktopSettingsHorizontalDropdown" class="custom-dropdown">
-                                            <button type="button" id="desktopSettingsHorizontalBtn"
-                                                class="btn-secondary custom-dropdown-btn hover-show colored">
+                                        <div id="desktopSettingsHorizontalDropdown">
+                                            <button type="button" id="desktopSettingsHorizontalBtn" class="cpl-db-combo">
                                                 <span id="desktopSettingsHorizontalSelected">Center</span>
                                             </button>
-                                            <div id="desktopSettingsHorizontalMenu" class="custom-dropdown-menu hidden">
-                                                <!-- Options will be populated by JavaScript -->
-                                            </div>
                                         </div>
 
                                         <!-- Custom Horizontal Slider -->
@@ -7831,14 +7865,10 @@ Examples:
                                     <!-- Vertical Alignment -->
                                     <div class="form-group">
                                         <label>Vertical</label>
-                                        <div id="desktopSettingsVerticalDropdown" class="custom-dropdown">
-                                            <button type="button" id="desktopSettingsVerticalBtn"
-                                                class="btn-secondary custom-dropdown-btn hover-show colored">
+                                        <div id="desktopSettingsVerticalDropdown">
+                                            <button type="button" id="desktopSettingsVerticalBtn" class="cpl-db-combo">
                                                 <span id="desktopSettingsVerticalSelected">Center</span>
                                             </button>
-                                            <div id="desktopSettingsVerticalMenu" class="custom-dropdown-menu hidden">
-                                                <!-- Options will be populated by JavaScript -->
-                                            </div>
                                         </div>
 
                                         <!-- Custom Vertical Slider -->
@@ -7854,16 +7884,14 @@ Examples:
                                 <div class="desktop-settings-actions">
                                     <input type="file" id="desktopSettingsWallpaperUpload" accept="image/*"
                                         class="form-control" style="display: none;">
-                                    <button type="button" id="desktopSettingsWallpaperUploadBtn"
-                                        class="btn-secondary btn-small">
-                                        <i class="fas fa-image"></i>
+                                    <button type="button" id="desktopSettingsWallpaperUploadBtn" class="cpl-wu-button">
                                         Select
                                     </button>
-                                    <button type="button" id="desktopSettingsResetBtn" class="btn-secondary btn-small">
-                                        <i class="fas fa-rotate-left"></i>
+                                    <button type="button" id="desktopSettingsResetBtn" class="cpl-wu-button">
+                                        Reset
                                     </button>
-                                    <button type="button" id="desktopSettingsRemoveBtn" class="btn-danger btn-small">
-                                        <i class="fas fa-trash"></i>
+                                    <button type="button" id="desktopSettingsRemoveBtn" class="cpl-wu-button">
+                                        Remove
                                     </button>
                                 </div>
                             </div>
@@ -8017,7 +8045,7 @@ Examples:
                                         class="gallery-toggle-group desktop-settings-start-menu-style-toggle three-tabs"
                                         data-active="workspace">
                                         <button type="button" class="gallery-toggle-btn" data-style="luna">
-                                            <span class="tab-text">Luna</span>
+                                            <span class="tab-text">Media Center</span>
                                         </button>
                                         <button type="button" class="gallery-toggle-btn active" data-style="workspace">
                                             <span class="tab-text">Workspace</span>
@@ -8028,9 +8056,54 @@ Examples:
                                         <div class="gallery-toggle-slider"></div>
                                     </div>
                                 </div>
+                                <div class="form-group">
+                                    <label>Windows logo</label>
+                                    <div id="desktopSettingsStartMenuLogoToggle"
+                                        class="gallery-toggle-group desktop-settings-start-menu-style-toggle three-tabs"
+                                        data-active="dreamscape">
+                                        <button type="button" class="gallery-toggle-btn" data-logo="royal">
+                                            <span class="tab-text">Royal</span>
+                                        </button>
+                                        <button type="button" class="gallery-toggle-btn" data-logo="vista">
+                                            <span class="tab-text">Vista</span>
+                                        </button>
+                                        <button type="button" class="gallery-toggle-btn active" data-logo="dreamscape">
+                                            <span class="tab-text">Dreamscape</span>
+                                        </button>
+                                        <div class="gallery-toggle-slider"></div>
+                                    </div>
+                                    <p class="desktop-settings-hint">Shown beside the start text. The Orb button already includes its flag.</p>
+                                </div>
+                                <div class="form-group desktop-settings-check">
+                                    <input type="checkbox" id="desktopSettingsUseAppImageIcon">
+                                    <label for="desktopSettingsUseAppImageIcon">Use Application Image Icon when available</label>
+                                    <p class="desktop-settings-hint">Taskbar buttons show the application picture when
+                                        the program has one, the same way the Orb start button does. Save to apply.</p>
+                                </div>
+                                <div class="form-group">
+                                    <label for="desktopSettingsTrayPopupTimeBtn">Minimum tray popup time</label>
+                                    <button type="button" id="desktopSettingsTrayPopupTimeBtn" class="custom-dropdown-btn">
+                                        <span id="desktopSettingsTrayPopupTimeSelected">8 seconds</span>
+                                    </button>
+                                    <p class="desktop-settings-hint">A tray popup stays up at least this long.</p>
+                                </div>
+                                <p class="desktop-settings-hint"><button type="button" class="cpl-link" id="desktopSettingsTrayPopupsLink">Choose which notifications to hide</button></p>
+                                <p class="desktop-settings-hint"><button type="button" class="cpl-link" id="desktopSettingsTrayIconsLink">Choose which icons are not always shown</button></p>
                                 <p class="desktop-settings-hint">Uses authentic Windows XP Luna start-button wording per
                                     locale.</p>
                             </div>
+                        </div>
+                        <div id="desktopSettingsTrayPopupsPage" class="tray-customize-page hidden">
+                            <button type="button" class="cpl-link" id="desktopSettingsTrayPopupsBack">Back</button>
+                            <h3 class="section-header">Hide tray popups</h3>
+                            <p class="desktop-settings-hint">Checked notifications are not shown. The icon can still appear.</p>
+                            <div id="desktopSettingsTrayPopupList" class="tray-customize-list"></div>
+                        </div>
+                        <div id="desktopSettingsTrayIconsPage" class="tray-customize-page hidden">
+                            <button type="button" class="cpl-link" id="desktopSettingsTrayIconsBack">Back</button>
+                            <h3 class="section-header">Icons that are not always shown</h3>
+                            <p class="desktop-settings-hint">Checked icons stay behind the arrow until you open it.</p>
+                            <div id="desktopSettingsTrayIconList" class="tray-customize-list"></div>
                         </div>
                     </div>
 
@@ -8337,9 +8410,10 @@ Examples:
         </div>
     </div>
 
-    <!-- Runes Applet (registry-style config editor) -->
-    <div id="configEditorModal" class="modal hidden resizeable-window" data-window-max-width="1600"
-        data-window-max-height="1000" data-window-min-width="800" data-window-min-height="500">
+    <!-- Runes Applet (Vista Registry Editor chrome: menu bar, split tree, Name/Type/Data) -->
+    <div id="configEditorModal" class="modal hidden resizeable-window" data-window-client="light"
+        data-window-max-width="1600" data-window-max-height="1000" data-window-min-width="800"
+        data-window-min-height="500">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-binary icon-fa"></i>
@@ -8349,9 +8423,6 @@ Examples:
         </div>
         <div class="modal-focus-overlay"></div>
         <div class="modal-window-controls">
-            <button type="button" id="configEditorSaveBtn" class="btn-secondary btn-small" title="Save">
-                <i class="fas fa-save"></i>
-            </button>
             <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
                 <i class="fa-regular fa-window-minimize"></i>
             </button>
@@ -8360,18 +8431,23 @@ Examples:
             </button>
         </div>
         <div class="modal-content config-editor-modal-content dark">
+            <div class="naxt-menubar" role="menubar">
+                <button type="button" class="naxt-menu-title" id="configEditorMenuFile" role="menuitem">File</button>
+                <button type="button" class="naxt-menu-title" id="configEditorMenuEdit" role="menuitem">Edit</button>
+                <button type="button" class="naxt-menu-title" id="configEditorMenuView" role="menuitem">View</button>
+            </div>
+            <div class="config-editor-search-row">
+                <i class="fas fa-magnifying-glass config-editor-search-icon" aria-hidden="true"></i>
+                <input type="text" id="configEditorSearchInput" class="form-control config-editor-search-input"
+                    placeholder="Find" autocomplete="off" spellcheck="false" aria-label="Find" />
+                <button type="button" id="configEditorSearchClearBtn"
+                    class="btn-secondary btn-small config-editor-search-clear hidden" title="Clear search"
+                    aria-label="Clear search">
+                    <i class="fas fa-xmark"></i>
+                </button>
+            </div>
             <div class="config-editor-layout">
                 <div class="config-editor-tree-panel">
-                    <div class="config-editor-search-row">
-                        <i class="fas fa-magnifying-glass config-editor-search-icon" aria-hidden="true"></i>
-                        <input type="text" id="configEditorSearchInput" class="form-control config-editor-search-input"
-                            placeholder="Search settings…" autocomplete="off" spellcheck="false" />
-                        <button type="button" id="configEditorSearchClearBtn"
-                            class="btn-secondary btn-small config-editor-search-clear hidden" title="Clear search"
-                            aria-label="Clear search">
-                            <i class="fas fa-xmark"></i>
-                        </button>
-                    </div>
                     <div class="config-editor-tree-scroll-shell scrollbar-padding" data-custom-scrollbar
                         data-scrollable-wrapper-class="config-editor-tree-scrollable">
                         <div class="config-editor-tree-scroll-inner">
@@ -8380,16 +8456,17 @@ Examples:
                         </div>
                     </div>
                 </div>
+                <div class="config-editor-splitter" role="separator" aria-orientation="vertical" aria-label="Split"
+                    tabindex="0"></div>
                 <div class="config-editor-values-panel">
                     <div class="config-editor-values-scroll-shell scrollbar-padding" data-custom-scrollbar
                         data-scrollable-wrapper-class="config-editor-values-scrollable">
                         <table class="config-editor-values-table">
                             <thead>
                                 <tr>
-                                    <th class="config-editor-col-edit" aria-label="Edit mode"></th>
                                     <th class="config-editor-col-name">Name</th>
                                     <th class="config-editor-col-type">Type</th>
-                                    <th class="config-editor-col-value">Value</th>
+                                    <th class="config-editor-col-value">Data</th>
                                 </tr>
                             </thead>
                             <tbody id="configEditorValuesBody"></tbody>
@@ -8397,7 +8474,10 @@ Examples:
                     </div>
                 </div>
             </div>
-            <div id="configEditorStatus" class="config-editor-status-bar"></div>
+            <div id="configEditorStatus" class="config-editor-status-bar">
+                <span data-status="path"></span>
+                <span data-status="note"></span>
+            </div>
         </div>
     </div>
 
@@ -8652,6 +8732,8 @@ Examples:
         </div>
         <div class="taskbar-tray">
             <div class="taskbar-tray-icons">
+                <button type="button" class="tray-overflow-btn hidden" id="trayOverflowBtn" title="Show hidden icons" aria-label="Show hidden icons"></button>
+                <div class="tray-overflow-flyout" id="trayOverflowFlyout"></div>
                 <!-- Image Generation Active Indicator -->
                 <div class="image-generation-indicator taskbar-tray-icon hidden" id="imageGenerationIndicator"
                     title="Image generation in progress">
@@ -8684,7 +8766,7 @@ Examples:
                 </div>
                 <!-- Dovecote unread mail (dovecote.js initializeDovecoteTray / doveApplyTrayBadge) -->
                 <div class="dovecote-tray-icon taskbar-tray-icon hidden" id="dovecoteTrayIcon" title="Dovecote">
-                    <i class="fas fa-envelope"></i>
+                    <span class="dovecote-tray-glyph" aria-hidden="true"></span>
                     <span class="dovecote-tray-badge hidden" id="dovecoteTrayBadge">0</span>
                 </div>
                 <!-- Windows Sidebar, while it runs (vistaSidebar.js vsbSyncTray) -->
@@ -8721,6 +8803,10 @@ Examples:
                 <!-- Ping Warning Indicator -->
                 <div class="ping-warning-indicator taskbar-tray-icon hidden" id="pingWarningIndicator">
                     <i class="fas fa-satellite"></i>
+                </div>
+                <!-- Tab volume (tabVolume.js). Left of the network icon. Click opens the Vista slider. -->
+                <div class="taskbar-tray-icon hidden" id="volumeTrayIcon" title="Volume">
+                    <i class="fas fa-volume-high" id="volumeTrayIconGlyph"></i>
                 </div>
                 <!-- Network (VPN connection): click = status flyout, right-click = menu (melatonControlPanel.js) -->
                 <div class="modem-tray-icon taskbar-tray-icon hidden" id="modemTrayIcon"
@@ -8759,11 +8845,14 @@ Examples:
 
     <div class="modal-backdrop"></div>
 
+    <script src="scripts/comp/rootStateFlags.js"></script>
     <script src="scripts/comp/toastManager.js"></script>
+    <script src="scripts/comp/trayRegistry.js"></script>
     <script src="scripts/comp/popoverManager.js"></script>
     <script src="scripts/comp/contextMenu.js"></script>
     <script src="scripts/comp/windowGeometry.js"></script>
     <script src="scripts/comp/modalUtils.js"></script>
+    <script src="scripts/comp/winlogonPower.js"></script>
     <script src="scripts/comp/modalListenerScope.js"></script>
     <script src="scripts/comp/modalKeyboardRegistry.js"></script>
     <script src="scripts/comp/bootUiDebug.js"></script>
@@ -8771,6 +8860,7 @@ Examples:
     <script src="scripts/ws/inboundHandlerManifest.js"></script>
     <script src="scripts/comp/generationProgress.js"></script>
     <script src="scripts/comp/desktopBoot.js"></script>
+    <script src="scripts/comp/tabVolume.js"></script>
     <script src="scripts/comp/desktopSounds.js"></script>
     <script src="scripts/comp/desktopCursors.js"></script>
     <script src="scripts/comp/desktopTaskMonitor.js"></script>

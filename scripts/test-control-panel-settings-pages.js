@@ -52,6 +52,14 @@ assert.ok(/unmountPage\(\);\s*const main = el\('\.cpl-main'\);/.test(mcp), 'page
 assert.ok(/function close\(\) \{\s*stopTimers\(\);\s*unmountPage\(\);/.test(mcp), 'and when the window closes');
 
 assert.ok(js.includes("document.addEventListener('DOMContentLoaded', () => registerDesktopSettingsControlPanelPages());"), 'the pages exist before the old opener ever runs (Control Panel opened first)');
+
+assert.ok(html.includes('id="desktopSettingsUseAppImageIcon"') && html.includes('Use Application Image Icon when available'), 'Taskbar and Start Menu has the application image icon checkbox');
+assert.ok(js.includes('useApplicationImageIcon') && js.includes("classList.toggle('use-app-image-icons'"), 'the checkbox is saved and applied on the taskbar');
+const shell = read('public/css/desktop-shell.css');
+assert.ok(shell.includes('body.desktop-mode:is(.use-app-image-icons, .taskbar-orb) .taskbar-window-item .icon-image'), 'the checkbox uses the same taskbar picture as the Orb');
+assert.ok(shell.includes('body.desktop-mode.use-app-image-icons .modal-window-title-main .icon-image'), 'the same checkbox uses that picture in the window caption');
+assert.ok(read('modules/websocketHandlers.js').includes('useApplicationImageIcon: desktop.useApplicationImageIcon === true'), 'the setting is kept in user global settings');
+assert.ok(read('modules/configManager.js').includes('useApplicationImageIcon: false'), 'new configs default the checkbox off');
 assert.ok(mcp.includes('data-cpl-action="open"') && !mcp.includes("modal.addEventListener('dblclick'"), 'one click opens an item, no double open');
 
 console.log('test-control-panel-settings-pages: ok');

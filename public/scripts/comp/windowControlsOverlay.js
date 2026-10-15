@@ -92,7 +92,7 @@ function updateAndroidCaptionDragRegion() {
 }
 
 // Native Android caption button chrome (not in-app .modal-window-controls).
-// Maximized caption/gutter blackout: public/css/app.css (:has(.modal-maximized) on #titlebar-grab-area-container).
+// Maximized caption/gutter blackout: public/css/app.css (html.has-maximized-* flags from rootStateFlags.js on #titlebar-grab-area-container).
 // Rules:
 //   - Desktop mode: always both transparent
 //   - manualModal open + width > 1101: both transparent

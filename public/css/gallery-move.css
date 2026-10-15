@@ -1301,7 +1301,8 @@ html:not(.disable-blur) .websocket-ticker {
     }
 }
 
-html:has(body.desktop-mode) {
+/* html.has-desktop-mode mirrors body.desktop-mode (scripts/comp/rootStateFlags.js) */
+html.has-desktop-mode {
     --modal-desktop-top-bias: 18px;
     --true-window-inset-top: 0px;
     --true-window-inset-bottom: 0px;
