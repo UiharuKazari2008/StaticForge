@@ -2321,10 +2321,9 @@ function updateManualGenCountDisplay() {
     } else if (typeof window.imageCount === 'number') {
         count = window.imageCount;
     }
-    genCountEl.textContent = count;
-    if (container) {
-        container.classList.remove('hidden');
-    }
+    // setTextIfChanged / setClassIfChanged: public/scripts/utils/domWrite.js (runs on every server ping)
+    setTextIfChanged(genCountEl, count);
+    setClassIfChanged(container, 'hidden', false);
     // usageToolManager: public/scripts/comp/usageToolManager.js
     if (typeof usageToolManager !== 'undefined') {
         usageToolManager.sync();
@@ -3259,20 +3258,20 @@ function updateManualGenerateBtnState() {
 
         if (window.isGenerating) {
             // Generating state - show sparkles icon and rainbow animation
-            icon.className = 'nai-sparkles fa-bounce';
-            button.classList.add('generating-effect');
+            setClassNameIfChanged(icon, 'nai-sparkles fa-bounce');
+            setClassIfChanged(button, 'generating-effect', true);
         } else if (window.isQueueStopped) {
             // Queue stopped state - show pause icon and remove rainbow animation
-            icon.className = 'fas fa-pause';
-            button.classList.remove('generating-effect');
+            setClassNameIfChanged(icon, 'fas fa-pause');
+            setClassIfChanged(button, 'generating-effect', false);
         } else if (window.isQueueProcessing) {
             // Queue processing state - show warning icon and remove rainbow animation
-            icon.className = 'fas fa-exclamation-triangle';
-            button.classList.remove('generating-effect');
+            setClassNameIfChanged(icon, 'fas fa-exclamation-triangle');
+            setClassIfChanged(button, 'generating-effect', false);
         } else {
             // Normal state - show sparkles icon and remove rainbow animation
-            icon.className = 'nai-sparkles';
-            button.classList.remove('generating-effect');
+            setClassNameIfChanged(icon, 'nai-sparkles');
+            setClassIfChanged(button, 'generating-effect', false);
         }
     });
 }

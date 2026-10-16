@@ -44,28 +44,29 @@ function updateBalanceDisplay(balance) {
     if (!balanceDisplay || !balanceAmount) return;
 
     const balanceIcon = balanceDisplay[0].querySelector('i');
+    // set*IfChanged: public/scripts/utils/domWrite.js (this runs on every server ping; most pings change nothing)
 
     // isAccountDataDeferred: public/scripts/comp/accountDataBootstrap.js
     if (balance?.deferred === true || (typeof isAccountDataDeferred === 'function' && isAccountDataDeferred())) {
         balanceAmount.forEach((amount) => {
-            amount.textContent = '---';
+            setTextIfChanged(amount, '---');
         });
         if (balanceFixed) {
             balanceFixed.forEach((fixed) => {
-                fixed.textContent = '---';
+                setTextIfChanged(fixed, '---');
             });
         }
         if (balancePaid) {
             balancePaid.forEach((paid) => {
-                paid.textContent = '---';
+                setTextIfChanged(paid, '---');
             });
         }
         balanceDisplay.forEach((display) => {
-            display.title = 'Account data unavailable';
-            display.classList.remove('low-credits');
+            setAttrIfChanged(display, 'title', 'Account data unavailable');
+            setClassIfChanged(display, 'low-credits', false);
         });
         if (balanceIcon) {
-            balanceIcon.className = 'fas fa-user-slash';
+            setClassNameIfChanged(balanceIcon, 'fas fa-user-slash');
         }
         return;
     }
@@ -121,25 +122,25 @@ function updateBalanceDisplay(balance) {
 
     // Update amount
     balanceAmount.forEach(amount => {
-        amount.textContent = totalCredits;
+        setTextIfChanged(amount, totalCredits);
     });
 
     if (balanceFixed) {
         balanceFixed.forEach(fixed => {
-            fixed.textContent = fixedCredits;
+            setTextIfChanged(fixed, fixedCredits);
         });
     }
     if (balancePaid) {
         balancePaid.forEach(paid => {
-            paid.textContent = purchasedCredits;
+            setTextIfChanged(paid, purchasedCredits);
         });
     }
 
     // Update tooltip with detailed breakdown
     const tooltip = `Free Credits: ${fixedCredits}\nPaid Credits: ${purchasedCredits}`;
     balanceDisplay.forEach(display => {
-        display.title = tooltip;
-        display.classList.remove('low-credits');
+        setAttrIfChanged(display, 'title', tooltip);
+        setClassIfChanged(display, 'low-credits', false);
     });
 
     if (totalCredits !== -1) {
@@ -147,31 +148,31 @@ function updateBalanceDisplay(balance) {
     }
 
     if (totalCredits === -1) {
-        balanceIcon.className = 'nai-anla';
+        setClassNameIfChanged(balanceIcon, 'nai-anla');
         balanceAmount.forEach(amount => {
-            amount.textContent = 'Error';
+            setTextIfChanged(amount, 'Error');
         });
         balanceDisplay.forEach(display => {
-            display.classList.add('low-credits');
+            setClassIfChanged(display, 'low-credits', true);
         });
     } else if (totalCredits === 0) {
         // No credits - show dollar sign and warning styling
-        balanceIcon.className = 'nai-anla';
+        setClassNameIfChanged(balanceIcon, 'nai-anla');
         balanceDisplay.forEach(display => {
-            display.classList.add('low-credits');
+            setClassIfChanged(display, 'low-credits', true);
         });
     } else if (fixedCredits === 0) {
         // No free credits - show dollar sign
-        balanceIcon.className = 'nai-anla';
+        setClassNameIfChanged(balanceIcon, 'nai-anla');
     } else if (totalCredits < 5000) {
         // Low credits - show warning triangle and orange styling
-        balanceIcon.className = 'fas fa-exclamation-triangle';
+        setClassNameIfChanged(balanceIcon, 'fas fa-exclamation-triangle');
         balanceDisplay.forEach(display => {
-            display.classList.add('low-credits');
+            setClassIfChanged(display, 'low-credits', true);
         });
     } else {
         // Normal credits - show coin icon
-        balanceIcon.className = 'nai-anla';
+        setClassNameIfChanged(balanceIcon, 'nai-anla');
     }
 
     // Update fixed credits indicator

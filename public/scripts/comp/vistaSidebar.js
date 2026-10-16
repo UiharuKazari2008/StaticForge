@@ -176,10 +176,17 @@ const vsbTimeZones = function () {
     return zones;
 };
 
+// One formatter per zone: building an Intl.DateTimeFormat on every clock tick cost up to ~56 ms
+const vsbZoneFormats = new Map();
 const vsbZoneTime = function (zone) {
     const now = new Date();
     if (!zone) return { h: now.getHours(), m: now.getMinutes(), s: now.getSeconds() };
-    const parts = new Intl.DateTimeFormat('en-US', { timeZone: zone, hour: 'numeric', minute: 'numeric', second: 'numeric', hourCycle: 'h23' }).formatToParts(now);
+    let format = vsbZoneFormats.get(zone);
+    if (!format) {
+        format = new Intl.DateTimeFormat('en-US', { timeZone: zone, hour: 'numeric', minute: 'numeric', second: 'numeric', hourCycle: 'h23' });
+        vsbZoneFormats.set(zone, format);
+    }
+    const parts = format.formatToParts(now);
     const get = (type) => Number((parts.find((p) => p.type === type) || {}).value || 0);
     return { h: get('hour'), m: get('minute'), s: get('second') };
 };
@@ -227,7 +234,9 @@ const vsbClockTick = function (inst) {
     p.h.style.transform = `rotate(${(h % 12) * 30 + m / 2}deg)`;
     p.m.style.transform = `rotate(${m * 6 + s / 10}deg)`;
     p.s.style.transform = `rotate(${s * 6}deg)`;
-    p.face.title = `${set.name ? set.name + ' - ' : ''}${vsbPad2(h % 12 || 12)}:${vsbPad2(m)} ${h < 12 ? 'AM' : 'PM'}`;
+    // Changes once a minute; an identical write every second still wakes every MutationObserver
+    const title = `${set.name ? set.name + ' - ' : ''}${vsbPad2(h % 12 || 12)}:${vsbPad2(m)} ${h < 12 ? 'AM' : 'PM'}`;
+    if (p.face.title !== title) p.face.title = title;
     const wait = set.seconds ? 1000 - (Date.now() % 1000) : (60 - s) * 1000;
     inst.timer = setTimeout(() => vsbClockTick(inst), wait);
 };
