@@ -557,6 +557,7 @@ class WebSocketMessageHandlers {
             'dovecote_forward_mail',
             'dovecote_mark_mail',
             'dovecote_set_image_pref',
+            'sidebar_save',
             'start_menu_save_layout',
             'start_menu_reset_layout',
             'capture_cursor_account',
