@@ -73,6 +73,18 @@ async function testWorkerBackup() {
         assert.strictEqual(created, true);
         assert.strictEqual(wrapper.isDirtyState(), false);
 
+        // #523: the checkpoint must not unlink the live sidecars under the open
+        // node-sqlite3 handle (better-sqlite3 in the worker did, causing SQLITE_IOERR).
+        assert.ok(fs.existsSync(livePath + '-wal'), 'checkpoint deleted live -wal');
+        assert.ok(fs.existsSync(livePath + '-shm'), 'checkpoint deleted live -shm');
+        if (fs.existsSync('/proc/self/fd')) {
+            const deletedSidecars = fs.readdirSync('/proc/self/fd')
+                .map((fd) => { try { return fs.readlinkSync(path.join('/proc/self/fd', fd)); } catch (_) { return ''; } })
+                .filter((target) => target.startsWith(livePath) && target.endsWith('(deleted)'));
+            assert.deepStrictEqual(deletedSidecars, [], 'live sidecars unlinked under an open handle');
+        }
+        await wrapper.run('INSERT INTO t (v) VALUES (?)', ['after-checkpoint']);
+
         const checkpointRoot = path.join(dir, 'checkpoints', 'live');
         const found = [];
         const walk = (folder) => {
