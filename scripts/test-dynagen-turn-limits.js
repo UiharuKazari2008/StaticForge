@@ -1,6 +1,7 @@
 'use strict';
 
-// #352: a Rentan turn cannot hold the generation FIFO for the Director's 30 minutes.
+// #352: a Rentan turn cannot hold the generation FIFO for a long Director turn.
+// #526: a Director turn has no total cap; 10 minutes without output stops it.
 // #367: an idle Director and Wren computer stop, and the next turn starts them again.
 
 const assert = require('assert');
@@ -11,10 +12,10 @@ const t = director._test;
 assert.strictEqual(t.DYNAGEN_IDLE_MS, 2 * 60 * 1000);
 assert.strictEqual(t.DYNAGEN_HARD_MS, 3 * 60 * 1000);
 assert.strictEqual(t.RENTAN_REVIEW_HARD_MS, 8 * 60 * 1000);
-assert.ok(t.DYNAGEN_HARD_MS < t.RUN_HARD_MS);
-assert.ok(t.RENTAN_REVIEW_HARD_MS < t.RUN_HARD_MS);
-assert.strictEqual(t.RUN_IDLE_MS, 12 * 60 * 1000);
-assert.strictEqual(t.RUN_HARD_MS, 30 * 60 * 1000);
+assert.ok(t.DYNAGEN_HARD_MS < t.RUN_IDLE_MS);
+assert.ok(t.RENTAN_REVIEW_HARD_MS < t.RUN_IDLE_MS);
+assert.strictEqual(t.RUN_IDLE_MS, 10 * 60 * 1000);
+assert.strictEqual(t.RUN_HARD_MS, 0);
 
 const limits = t.dynagenTurnLimits(false);
 assert.strictEqual(limits.idleMs, t.DYNAGEN_IDLE_MS);
@@ -27,7 +28,8 @@ assert.strictEqual(t.turnDeadline(limits.hardMs - 1, 0, limits.hardMs - limits.i
 const reviewLimits = t.dynagenTurnLimits(true);
 assert.strictEqual(reviewLimits.idleMs, t.DYNAGEN_IDLE_MS);
 assert.strictEqual(reviewLimits.hardMs, t.RENTAN_REVIEW_HARD_MS);
-assert.strictEqual(t.turnDeadline(t.RUN_HARD_MS, 0, t.RUN_HARD_MS, null).reason, 'hard');
+assert.strictEqual(t.turnDeadline(6 * 60 * 60 * 1000, 0, 6 * 60 * 60 * 1000 - 1, null), null, 'a Director turn that keeps talking is never cut off');
+assert.strictEqual(t.turnDeadline(t.RUN_IDLE_MS - 1, 0, 0, null), null);
 assert.strictEqual(t.turnDeadline(t.RUN_IDLE_MS, 0, 0, null).reason, 'idle');
 
 const prompt = t.dynagenTurnPrompt(true, { review: { chatId: 'abc' }, chatId: 'abc', reason: 'stale' });
