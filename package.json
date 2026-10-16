@@ -165,6 +165,7 @@
     "test:vista-calculator": "node scripts/test-vista-calculator.js",
     "test:import-aero-wizard": "node scripts/test-import-aero-wizard.js",
     "test:vista-logon-branding": "node scripts/test-vista-logon-branding.js",
+    "test:vfs-descendants": "node scripts/test-vfs-descendants.js",
     "backfill:tag-search": "node scripts/backfill-tag-search-index.js",
     "flow-map": "node scripts/tools/flow-map.js",
     "icon:app": "node scripts/generate-app-icon.js",
