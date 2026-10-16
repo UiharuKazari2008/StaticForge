@@ -8,8 +8,10 @@ const { spawn, spawnSync } = require('child_process');
 
 const PROJECT_NAME = 'Dreamscape Director';
 const DIRECTOR_UA = 'DreamscapeDirector/1.0';
-const RUN_IDLE_MS = 12 * 60 * 1000;
-const RUN_HARD_MS = 30 * 60 * 1000;
+// A Director turn runs as long as it keeps sending output; 10 minutes of silence stops it.
+// No total cap (0). Rentan and quips turns still pass their own hardMs.
+const RUN_IDLE_MS = 10 * 60 * 1000;
+const RUN_HARD_MS = 0;
 // Rentan turns sit inside the global generation FIFO (#352). A silent turn dies
 // in 2 minutes; a turn that keeps talking dies at 3, or 8 when it is reviewing
 // attempts (#351). Both are well under the Director chat caps above.
@@ -3518,11 +3520,11 @@ function consumeClaudeStreamLine(line, state) {
 function turnDeadline(now, startedAt, lastActivity, limits) {
     const idleMs = limits && limits.idleMs > 0 ? limits.idleMs : RUN_IDLE_MS;
     const hardMs = limits && limits.hardMs > 0 ? limits.hardMs : RUN_HARD_MS;
-    if (now - startedAt >= hardMs) {
-        return { reason: 'hard', message: (limits && limits.hardMessage) || 'Director stopped after 30 minutes' };
+    if (hardMs > 0 && now - startedAt >= hardMs) {
+        return { reason: 'hard', message: (limits && limits.hardMessage) || `Director stopped after ${Math.round(hardMs / 60000)} minutes` };
     }
     if (now - lastActivity >= idleMs) {
-        return { reason: 'idle', message: (limits && limits.idleMessage) || 'Director stopped because it made no progress for several minutes' };
+        return { reason: 'idle', message: (limits && limits.idleMessage) || `Director stopped because it sent nothing for ${Math.round(idleMs / 60000)} minutes` };
     }
     return null;
 }

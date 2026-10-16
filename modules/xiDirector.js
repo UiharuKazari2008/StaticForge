@@ -16,8 +16,8 @@ const { spawn, execFileSync } = require('child_process');
 const director = require('./cursorDirector');
 const xiLaunch = require('./xiLaunch');
 
-const RUN_IDLE_MS = 12 * 60 * 1000;
-const RUN_HARD_MS = 30 * 60 * 1000;
+// Xi runs as long as its log keeps growing; 10 minutes of silence stops it. No total cap.
+const RUN_IDLE_MS = 10 * 60 * 1000;
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'StrReplace', 'Delete', 'ApplyPatch']);
 const YOZORA_ISSUE = 'https://yozora.bluesteel.737.jp.net/DreamScape/StaticForge/issues/';
 
@@ -595,7 +595,7 @@ function finishRun(run, why) {
     const failed = !steered && !!(run.cancelled || (run.stream && run.stream.error) || why === 'timeout');
     const errorText = run.cancelled
         ? 'Stopped'
-        : (why === 'timeout' ? 'Xi stopped because it made no progress' : ((run.stream && run.stream.error) || 'Xi stopped'));
+        : (why === 'timeout' ? 'Xi stopped because it sent nothing for 10 minutes' : ((run.stream && run.stream.error) || 'Xi stopped'));
     saveTrace(run)
         .then(() => clearInflight(run.sessionId))
         .then(async () => {
@@ -842,7 +842,7 @@ function startTail(meta) {
             return;
         }
         const now = Date.now();
-        if (now - run.startedAt >= RUN_HARD_MS || now - run.lastActivity >= RUN_IDLE_MS) {
+        if (now - run.lastActivity >= RUN_IDLE_MS) {
             run.cancelled = true;
             killPid(run.pid);
             finishRun(run, 'timeout');
