@@ -13,12 +13,26 @@ const APP_ICONS_WEB_ROOT = '/static_images/app_icons';
 const APP_ICONS_PUBLIC_REL = 'static_images/app_icons';
 const SOURCES_META_NAME = '_sources.json';
 
-/** Display sizes used across desktop shell / explorer / chrome (incl. 2x for largest). */
-const ICON_SIZES = [32, 64, 128, 192, 384];
+/**
+ * Display sizes used across desktop shell / explorer / chrome, with a 2x for each:
+ * 16 / 24 / 32 / 48 px icons (tray, captions, taskbar, start menu, desktop) get 1x and 2x
+ * files, so srcset never has to fall back to the 192 / 384 px versions.
+ * Keep in step with APP_ICON_SRCSET_SIZES in public/scripts/comp/modalUtils.js.
+ */
+const ICON_SIZES = [16, 24, 32, 48, 64, 96, 128, 192, 384];
 /** Canonical URL (no size segment) serves this size. */
 const DEFAULT_SIZE = 384;
 
 const SOURCE_HASH_ALGO = 'sha256';
+
+/**
+ * Other large bitmaps shown small, compiled into the same sizes and URL scheme:
+ * served name → source under public/. logo_icon.png is 731 px and is drawn at 18-80 px
+ * (start button, logon, title bars).
+ */
+const EXTRA_MASTERS = {
+    'dreamscape-logo.png': 'static_images/logo_icon.png'
+};
 
 function getPublicIconsDir(projectRoot) {
     return path.join(projectRoot, 'public', APP_ICONS_PUBLIC_REL);
@@ -107,14 +121,25 @@ function masterPngName(filename) {
     return `${iconStem(filename)}.png`;
 }
 
+function masterSourcePath(projectRoot, filename) {
+    const name = masterPngName(filename);
+    if (Object.prototype.hasOwnProperty.call(EXTRA_MASTERS, name)) {
+        return path.join(projectRoot, 'public', EXTRA_MASTERS[name]);
+    }
+    return path.join(getPublicIconsDir(projectRoot), name);
+}
+
 function listMasterIcons(projectRoot) {
     const dir = getPublicIconsDir(projectRoot);
-    if (!fs.existsSync(dir)) {
-        return [];
-    }
-    return fs.readdirSync(dir)
-        .filter((name) => /\.png$/i.test(name) && !name.startsWith('.'))
-        .sort();
+    const names = fs.existsSync(dir)
+        ? fs.readdirSync(dir).filter((name) => /\.png$/i.test(name) && !name.startsWith('.'))
+        : [];
+    Object.keys(EXTRA_MASTERS).forEach((name) => {
+        if (!names.includes(name) && fs.existsSync(masterSourcePath(projectRoot, name))) {
+            names.push(name);
+        }
+    });
+    return names.sort();
 }
 
 function outputPathFor(projectRoot, filename, size, isDefault) {
@@ -214,7 +239,7 @@ async function compileAppIcons(projectRoot, options = {}) {
 
     for (const filename of masters) {
         try {
-            const abs = path.join(getPublicIconsDir(projectRoot), filename);
+            const abs = masterSourcePath(projectRoot, filename);
             const sourceBuf = fs.readFileSync(abs);
             const sourceHash = hashBuffer(sourceBuf);
             nextMeta[filename] = {
@@ -235,7 +260,7 @@ async function compileAppIcons(projectRoot, options = {}) {
             stats.sourceBytes += result.sourceBytes;
             stats.outputBytes += result.outputBytes;
         } catch (err) {
-            errors.push({ file: `public/${APP_ICONS_PUBLIC_REL}/${filename}`, error: err.message });
+            errors.push({ file: path.relative(projectRoot, masterSourcePath(projectRoot, filename)), error: err.message });
             if (meta[filename]) {
                 nextMeta[filename] = meta[filename];
             }
@@ -288,7 +313,7 @@ function resolveServedAppIconPath(projectRoot, webPath, debugMode) {
         return null;
     }
     if (debugMode && parsed.isDefault && /\.png$/i.test(parsed.filename)) {
-        const master = path.join(getPublicIconsDir(projectRoot), masterPngName(parsed.filename));
+        const master = masterSourcePath(projectRoot, parsed.filename);
         if (fs.existsSync(master)) {
             return master;
         }
@@ -298,7 +323,7 @@ function resolveServedAppIconPath(projectRoot, webPath, debugMode) {
         return compiled;
     }
     if (parsed.isDefault && /\.png$/i.test(parsed.filename)) {
-        const master = path.join(getPublicIconsDir(projectRoot), masterPngName(parsed.filename));
+        const master = masterSourcePath(projectRoot, parsed.filename);
         if (fs.existsSync(master)) {
             return master;
         }
@@ -361,7 +386,7 @@ async function ensureCompiledForRequest(projectRoot, webPath) {
         return { changed: false };
     }
     const masterName = masterPngName(parsed.filename);
-    const abs = path.join(getPublicIconsDir(projectRoot), masterName);
+    const abs = masterSourcePath(projectRoot, masterName);
     if (!fs.existsSync(abs)) {
         return { changed: false };
     }
@@ -379,7 +404,7 @@ async function ensureCompiledForRequest(projectRoot, webPath) {
         defaultSize: DEFAULT_SIZE
     };
     writeSourcesMeta(projectRoot, meta);
-    return { changed: true, rel: `public/${APP_ICONS_PUBLIC_REL}/${masterName}` };
+    return { changed: true, rel: path.relative(projectRoot, abs) };
 }
 
 module.exports = {
@@ -387,6 +412,7 @@ module.exports = {
     APP_ICONS_PUBLIC_REL,
     ICON_SIZES,
     DEFAULT_SIZE,
+    EXTRA_MASTERS,
     isAppIconWebPath,
     isAppIconsMasterRelPath,
     parseAppIconWebPath,

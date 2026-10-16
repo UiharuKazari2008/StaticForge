@@ -7,6 +7,23 @@ window.directorDryrun = false;
 const DIRECTOR_MAX_SESSION_MESSAGES = 200;
 const DIRECTOR_ROW_PAGE = 40;
 const DIRECTOR_TRAY_SESSIONS = 3;
+// director_streaming_update arrives every ~160 ms; the live turn paints at most this often
+// (#511). Every inserted or removed node costs a whole-page style pass (#510).
+const DIRECTOR_LIVE_PAINT_MS = 500;
+const DIRECTOR_LIVE_HIDDEN_RETRY_MS = 1000;
+
+// textContent swaps the text node even for the same string, and that costs the same
+// whole-page style pass (#510). Editing the one text node in place costs nothing.
+function setDirectorText(el, text) {
+    if (!el) return;
+    const value = String(text == null ? '' : text);
+    const node = el.firstChild;
+    if (node && node.nodeType === Node.TEXT_NODE && !node.nextSibling) {
+        if (node.data !== value) node.data = value;
+        return;
+    }
+    if (el.textContent !== value) el.textContent = value;
+}
 // director_computer_status state -> the words in the tray title and tray menu.
 // The keys double as the classes on #directorTrayIcon (public/css/director.css).
 const DIRECTOR_TRAY_STATES = {
@@ -1782,6 +1799,7 @@ class Director {
     finishTurn(sessionId) {
         if (sessionId && this._runningSessionId && sessionId !== this._runningSessionId) return;
         this._settledSessionId = sessionId || this._runningSessionId;
+        this.dropLivePaint();
         this._turnPrints = 0;
         this._running = false;
         this._runningSessionId = null;
@@ -5476,7 +5494,7 @@ class Director {
             const text = row.text || '';
             const line = el.querySelector('.director-thinking-line');
             const full = el.querySelector('.director-thinking-full');
-            if (line && line.textContent !== text) line.textContent = text;
+            setDirectorText(line, text);
             if (full && full.dataset.raw !== text) {
                 full.dataset.raw = text;
                 full.innerHTML = this.processMarkdown(text);
@@ -5494,11 +5512,8 @@ class Director {
         }
         if (kind === 'tool') {
             const badge = el.querySelector('.director-request-type-badge');
-            const labelText = this.prettyToolLabel(row);
-            if (badge && badge.textContent !== labelText) badge.textContent = labelText;
-            const detail = el.querySelector('.director-tool-detail');
-            const text = row.detail || '';
-            if (detail && detail.textContent !== text) detail.textContent = text;
+            setDirectorText(badge, this.prettyToolLabel(row));
+            setDirectorText(el.querySelector('.director-tool-detail'), row.detail || '');
             return true;
         }
         return false;
@@ -5555,6 +5570,50 @@ class Director {
         this.applyMessageFilter();
         this.notePendingPrint(payload.rows, payload.live);
         this.showTypingIndicator();
+    }
+
+    // director_streaming_update: the latest payload wins and the live turn paints at most
+    // every DIRECTOR_LIVE_PAINT_MS, never while the chat is out of sight (#511).
+    queueLivePaint(payload) {
+        this._livePayload = payload;
+        if (this._livePaintTimer) return;
+        const since = Date.now() - (this._livePaintedAt || 0);
+        this._livePaintTimer = setTimeout(() => this.flushLivePaint(), Math.max(0, DIRECTOR_LIVE_PAINT_MS - since));
+    }
+
+    flushLivePaint() {
+        this._livePaintTimer = null;
+        const payload = this._livePayload;
+        if (!payload) return;
+        // The turn settled, or another chat opened, while the paint waited
+        if (!this._running || payload.sessionId !== this._runningSessionId || payload.sessionId !== window.currentSession?.id) {
+            this._livePayload = null;
+            return;
+        }
+        if (!this.directorChatVisible()) {
+            this._livePaintTimer = setTimeout(() => this.flushLivePaint(), DIRECTOR_LIVE_HIDDEN_RETRY_MS);
+            return;
+        }
+        this._livePayload = null;
+        this._livePaintedAt = Date.now();
+        if (payload.rows || payload.live) {
+            this.renderLiveTrace(payload);
+        } else {
+            this.updateTypingIndicator(payload.fullContent);
+        }
+    }
+
+    dropLivePaint() {
+        if (this._livePaintTimer) clearTimeout(this._livePaintTimer);
+        this._livePaintTimer = null;
+        this._livePayload = null;
+    }
+
+    directorChatVisible() {
+        const chat = this.directorChatMessages;
+        if (!chat || !chat.isConnected || document.hidden) return false;
+        if (chat.closest('.hidden, .minimised')) return false;
+        return chat.getClientRects().length > 0;
     }
 
     // A generation tool in the live trace means a print is on the way, until that many prints have landed this turn.
@@ -5621,7 +5680,7 @@ class Director {
         if ((percent == null || (percent === 0 && (tokens == null || tokens < 1000))) && this.currentSession) {
             tokens = this.estimateContextTokens(this.currentSession);
             if (!tokens) {
-                valueEl.textContent = '—';
+                setDirectorText(valueEl, '—');
                 host.title = 'Context window';
                 return;
             }
@@ -5629,11 +5688,11 @@ class Director {
             approx = true;
         }
         if (percent == null) {
-            valueEl.textContent = '—';
+            setDirectorText(valueEl, '—');
             host.title = 'Context window';
             return;
         }
-        valueEl.textContent = `${Math.min(100, percent)}%`;
+        setDirectorText(valueEl, `${Math.min(100, percent)}%`);
         const tokenLabel = tokens != null ? `${tokens.toLocaleString()} tokens of 256k` : '256k window';
         host.title = approx ? `About ${tokenLabel}, estimated from this chat` : tokenLabel;
     }
@@ -6083,7 +6142,7 @@ class Director {
                 // Show only the last 200 characters of the content
                 const displayContent = content.length > 200 ? content.slice(-200) : content;
                 if (textDiv) {
-                    textDiv.textContent = this.formatStreamingContent(displayContent);
+                    setDirectorText(textDiv, this.formatStreamingContent(displayContent));
                 } else {
                     // Create text div if it doesn't exist
                     const textDiv = document.createElement('div');
@@ -6494,11 +6553,7 @@ class Director {
                     window.currentSession.contextPercent = payload.context.percent;
                     window.directorInstance.paintContext(payload.context, false);
                 }
-                if (payload.rows || payload.live) {
-                    window.directorInstance.renderLiveTrace(payload);
-                } else {
-                    window.directorInstance.updateTypingIndicator(payload.fullContent);
-                }
+                window.directorInstance.queueLivePaint(payload);
             }
         });
         

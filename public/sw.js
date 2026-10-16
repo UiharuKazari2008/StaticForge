@@ -5,8 +5,10 @@ const CSS_ONLY_AUTO_APPLY = true;
 const SW_SCRIPT_EPOCH = 13; // bump on breaking SW changes
 
 // Enable Workbox logging in development
+// Modules from this server (public/dist/workbox, the 7.0.0 builds workbox-sw loads), not
+// storage.googleapis.com: a new worker no longer waits on Google's CDN (Yozora #516)
 if (workbox) {
-  workbox.setConfig({ debug: false });
+  workbox.setConfig({ debug: false, modulePathPrefix: '/dist/workbox/' });
 }
 
 const { strategies, expiration, cacheableResponse } = workbox;
@@ -385,6 +387,25 @@ function absoluteAssetUrl(input) {
   }
 }
 
+// The set lives in memory only, and the browser stops an idle worker. Rebuilt once per
+// worker start from what WALLPAPER_CACHE already holds, so a /images/ or stock wallpaper
+// is not sent down the no-store full-image path after a restart.
+let wallpaperUrlSetRestore = null;
+function restoreWallpaperUrlSet() {
+  if (!wallpaperUrlSetRestore) {
+    wallpaperUrlSetRestore = caches.open(WALLPAPER_CACHE)
+      .then((cache) => cache.keys())
+      .then((keys) => {
+        keys.forEach((key) => {
+          const url = absoluteAssetUrl(key.url);
+          if (url) wallpaperUrlSet.add(url);
+        });
+      })
+      .catch(() => {});
+  }
+  return wallpaperUrlSetRestore;
+}
+
 function isWallpaperRequest(url) {
   if (!url) return false;
   if (url.pathname.startsWith('/cache/wallpapers/')) return true;
@@ -445,9 +466,15 @@ async function handleWallpaperRequest(event) {
   return response;
 }
 
-async function syncWallpaperUrls(urls, refreshUrls, requestId) {
+// urls: every workspace wallpaper (the cache keeps these). fetchUrls, when given, limits the
+// downloads to that subset (boot fetches the active one; the rest come after the desktop).
+async function syncWallpaperUrls(urls, refreshUrls, requestId, fetchUrls) {
   const next = new Set((Array.isArray(urls) ? urls : []).map(absoluteAssetUrl).filter(Boolean));
   const refresh = new Set((Array.isArray(refreshUrls) ? refreshUrls : []).map(absoluteAssetUrl).filter(Boolean));
+  const fetchOnly = Array.isArray(fetchUrls)
+    ? new Set(fetchUrls.map(absoluteAssetUrl).filter(Boolean))
+    : null;
+  await restoreWallpaperUrlSet();
   wallpaperUrlSet = next;
   const cache = await caches.open(WALLPAPER_CACHE);
   const keys = await cache.keys();
@@ -464,6 +491,7 @@ async function syncWallpaperUrls(urls, refreshUrls, requestId) {
   }
   for (const url of next) {
     if (refresh.has(url)) continue;
+    if (fetchOnly && !fetchOnly.has(url)) continue;
     const hit = await cache.match(url);
     if (!hit) {
       await fetchAndStoreWallpaper(url);
@@ -933,6 +961,7 @@ workbox.routing.registerRoute(
     
     try {
       let response;
+      await restoreWallpaperUrlSet();
       
       // Handle internal routes (client-side only)
       if (url.pathname.startsWith('/internal/')) {
@@ -1146,7 +1175,7 @@ self.addEventListener('message', (event) => {
     } else if (event.data && event.data.type === 'DELETE_AND_PRECACHE') {
         event.waitUntil(deleteAndPrecache(event.data.url, event.data.requestId));
     } else if (event.data && event.data.type === 'SYNC_WALLPAPER_URLS') {
-        event.waitUntil(syncWallpaperUrls(event.data.urls, event.data.refresh, event.data.requestId).catch((error) => {
+        event.waitUntil(syncWallpaperUrls(event.data.urls, event.data.refresh, event.data.requestId, event.data.fetchUrls).catch((error) => {
             console.error('Wallpaper sync failed:', error);
             if (!event.data.requestId) return;
             self.clients.matchAll().then((clients) => {
@@ -1957,9 +1986,9 @@ async function deleteAndPrecache(url, requestId) {
 
     await deleteUrlFromCaches(url);
     
-    // Fetch the file to precache it (with timestamp to force fresh fetch)
-    const fetchUrl = `${url}?t=${Date.now()}`;
-    const response = await fetch(fetchUrl, {
+    // cache: 'no-store' already skips the browser cache. A ?t= stamp broke URLs that
+    // carry a query of their own.
+    const response = await fetch(url, {
       cache: 'no-store',
       headers: {
         'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
@@ -2057,10 +2086,12 @@ self.addEventListener('activate', (event) => {
     caches.keys().then(cacheNames => {
       return Promise.all(
         cacheNames.map(cacheName => {
+          // WALLPAPER_CACHE stays: every sw.js update used to drop it and re-download each wallpaper
           if (cacheName !== STATIC_CACHE && 
               cacheName !== DYNAMIC_CACHE && 
               cacheName !== IMAGE_CACHE &&
-              cacheName !== INTERNAL_CACHE) {
+              cacheName !== INTERNAL_CACHE &&
+              cacheName !== WALLPAPER_CACHE) {
             return caches.delete(cacheName);
           }
         })

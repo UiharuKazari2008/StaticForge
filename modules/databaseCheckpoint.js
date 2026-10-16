@@ -339,8 +339,17 @@ class DatabaseCheckpointManager {
             const checkpointFilename = this.generateCheckpointFilename();
             const { relative, filePath: checkpointPath } = this._newCheckpointWritePath(checkpointFilename);
             // modules/sqliteMaintenanceLane.js — one backup at a time, jitter between databases
-            const { backupDatabaseOffThread } = require('./sqliteMaintenanceLane');
-            await backupDatabaseOffThread(this.dbPath, checkpointPath, { walCheckpoint: 'TRUNCATE' });
+            const { backupDatabaseOffThread, enqueueSqliteMaintenance } = require('./sqliteMaintenanceLane');
+            const owner = this.dbWrapper;
+            if (owner && typeof owner.backupToFile === 'function') {
+                // node-sqlite3 database: back up through its own library. The worker's
+                // better-sqlite3 is a second SQLite copy and deletes the live -wal/-shm (#523).
+                await enqueueSqliteMaintenance(path.basename(this.dbPath), () => {
+                    return owner.backupToFile(checkpointPath, { walCheckpoint: 'TRUNCATE' });
+                });
+            } else {
+                await backupDatabaseOffThread(this.dbPath, checkpointPath, { walCheckpoint: 'TRUNCATE' });
+            }
 
             console.log(`✅ Created database checkpoint with backup API: ${relative}`);
 

@@ -1600,10 +1600,10 @@ function updateWindowSwitcherDisplay() {
             // Use getModalIcons to get both icon and imageIcon for dual icon rendering
             if (typeof getModalIcons === 'function' && typeof getIconHTML === 'function') {
                 const icons = getModalIcons(modal);
-                iconEl.innerHTML = getIconHTML(icons.icon || 'fas fa-window', icons.imageIcon || null);
+                iconEl.innerHTML = getIconHTML(icons.icon || 'fas fa-window', icons.imageIcon || null, '', APP_ICON_DISPLAY_PX.switcher);
             } else if (typeof getModalIcon === 'function' && typeof getIconHTML === 'function') {
                 const modalIcon = getModalIcon(modal);
-                iconEl.innerHTML = getIconHTML(modalIcon);
+                iconEl.innerHTML = getIconHTML(modalIcon, null, '', APP_ICON_DISPLAY_PX.switcher);
             } else {
                 iconEl.innerHTML = `<i class="fas fa-window"></i>`;
             }

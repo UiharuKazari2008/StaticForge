@@ -148,6 +148,7 @@ async function collectListing(manifest, resolveFile) {
     const files = [];
     const seen = new Set();
     let skipped = 0;
+    const unresolved = [];
     for (const file of manifest) {
         if (!file || !file.url || !file.hash) {
             skipped += 1;
@@ -156,6 +157,7 @@ async function collectListing(manifest, resolveFile) {
         const diskPath = resolveFile ? resolveFile(file) : null;
         if (!diskPath) {
             skipped += 1;
+            unresolved.push(file.url);
             continue;
         }
         const entry = updateEngine.zipEntryName(file.url);
@@ -174,7 +176,22 @@ async function collectListing(manifest, resolveFile) {
         });
         if (files.length % 200 === 0) await yieldTick();
     }
-    return { files, skipped };
+    return { files, skipped, unresolved };
+}
+
+// A pack whose rows did not resolve to a file is reused only while they still do not.
+// Otherwise the same manifest kept serving a pack without them (#512: a server that
+// could not map the new icon sizes yet built it, and every later boot reused it).
+function unresolvedNowResolve(current, manifest, resolveFile) {
+    // Meta written before this list existed: a pack that skipped rows is rebuilt once
+    if (current && Number(current.skipped) > 0 && !Array.isArray(current.unresolved)) return true;
+    const urls = current && Array.isArray(current.unresolved) ? current.unresolved : [];
+    if (!urls.length || !resolveFile) return false;
+    const wanted = new Set(urls);
+    for (const file of manifest) {
+        if (file && wanted.has(file.url) && resolveFile(file)) return true;
+    }
+    return false;
 }
 
 /**
@@ -210,7 +227,7 @@ async function rebuild(options = {}) {
     const manifest = Array.isArray(options.manifest) ? options.manifest : [];
     const hash = hashManifest(manifest);
     const current = !options.force && readMeta();
-    if (current && current.hash === hash) {
+    if (current && current.hash === hash && !unresolvedNowResolve(current, manifest, options.resolveFile)) {
         ready = current;
         return { rebuilt: false, hash, bytes: current.bytes, count: current.count, skipped: 0 };
     }
@@ -218,7 +235,7 @@ async function rebuild(options = {}) {
     building = true;
     ready = null;
     fs.mkdirSync(dir, { recursive: true });
-    const { files, skipped } = await collectListing(manifest, options.resolveFile);
+    const { files, skipped, unresolved } = await collectListing(manifest, options.resolveFile);
 
     const tmpZip = path.join(dir, `${PACK_NAME}.tmp`);
     try {
@@ -229,6 +246,7 @@ async function rebuild(options = {}) {
             bytes,
             count: files.length,
             skipped,
+            unresolved,
             builtAt: Date.now()
         };
         fs.writeFileSync(metaPath(), JSON.stringify(meta));

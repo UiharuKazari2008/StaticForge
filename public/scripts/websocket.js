@@ -747,6 +747,7 @@ class WebSocketClient {
     static TIMEOUT_HOST_AVAILABILITY = 3000; // Host availability check timeout
     static TIMEOUT_VERSION_CHECK = 2000; // Version compatibility check timeout
     static TIMEOUT_GET_APP_OPTIONS = 3000; // Critical app options timeout (3 seconds)
+    static TIMEOUT_GET_APP_OPTIONS_MIN = 10000; // ...never less than this (slow links, Yozora #516)
     static TIMEOUT_INACTIVITY = 2 * 60 * 60 * 1000; // Inactivity timeout before disconnect (2 hours)
 
     static DELAY_RECONNECT_INITIAL = 1000; // Initial reconnect delay (1 second)
@@ -2285,6 +2286,7 @@ class WebSocketClient {
         const message = step.failureText || `MeletonFX could not finish "${step.message}".`;
         this._logonInitError = { message, detail };
         if (this._shouldUsePreStartupDialog()) this._renderPreStartupDialog();
+        this._logonInitBoxOpen = !!window.bootMessageBox;
         const choose = window.bootMessageBox
             ? window.bootMessageBox.show({
                 title: 'MeletonFX',
@@ -2298,6 +2300,9 @@ class WebSocketClient {
                 { text: 'Restart', value: 'restart', className: 'btn-secondary' }
             ], null, { title: 'MeletonFX', icon: 'fas fa-circle-xmark' });
         Promise.resolve(choose).then((value) => {
+            this._logonInitBoxOpen = false;
+            // null: dismissed because the connection failed (_dismissLogonInitError)
+            if (value == null) return;
             if (value === 'restart') {
                 // restartClientNavigate: public/scripts/comp/modalUtils.js (/launch on the desktop)
                 if (typeof restartClientNavigate === 'function') restartClientNavigate();
@@ -2516,10 +2521,22 @@ class WebSocketClient {
                 }
                 return;
             }
+            // One error at a time (Yozora #515): a lost connection replaces the app-data box;
+            // the logon steps run again once the socket is back
+            if (phase === 'failed') this._dismissLogonInitError();
             if (phase === 'failed' && this._shouldUseConnectivityErrorInsteadOfConnectionDial()) {
                 this._hideConnectionDialModal();
                 this._presentConnectivityFailure();
                 this._applyFailedConnectionSideEffects();
+                return;
+            }
+            // The server says it is starting: no Error 800. The logon dialog keeps the
+            // Dreamscape Mainframe Server window and the connect is tried again
+            if (phase === 'failed' && window.isDesktop && this._serverReportsBooting()) {
+                if (this._deferPreStartupForTealHold()) return;
+                this._hideConnectionDialModal();
+                this._renderPreStartupDialog();
+                this._scheduleBootWaitReconnect();
                 return;
             }
             if (window.isDesktop && this._shouldShowLogonConnectingDialog()) {
@@ -2554,6 +2571,35 @@ class WebSocketClient {
         }
 
         this._renderVpnConnectionDialog({ logon: false });
+    }
+
+    /** The last /status answer says the server is still starting (isReady: false). */
+    _serverReportsBooting() {
+        const status = this.lastServerStartupStatus;
+        return !!(status && status.isReady === false);
+    }
+
+    /**
+     * A connect that failed while the server boots is tried again after the poll interval
+     * (pingHost then follows the boot to ready); one pending retry at a time.
+     */
+    _scheduleBootWaitReconnect() {
+        if (this._bootWaitReconnectTimer || this._userCancelledConnect || this._isStartupHaltedForInstall()) return;
+        this._bootWaitReconnectTimer = setTimeout(() => {
+            this._bootWaitReconnectTimer = null;
+            if (this.connectionPhase !== 'failed' || this._userCancelledConnect) return;
+            this.manualReconnect();
+        }, WebSocketClient.DELAY_PING_HOST);
+    }
+
+    /** Close the logon app-data message box without a choice and drop that error. */
+    _dismissLogonInitError() {
+        if (!this._logonInitError) return;
+        this._logonInitError = null;
+        if (this._logonInitBoxOpen && window.bootMessageBox && window.bootMessageBox.dismiss) {
+            window.bootMessageBox.dismiss();
+        }
+        this._logonInitBoxOpen = false;
     }
 
     /**
@@ -3013,9 +3059,12 @@ class WebSocketClient {
     resolveRequestTimeoutMs(type, data = {}) {
         const kind = this.classifyRequestTimeoutKind(type);
         if (kind === 'critical') {
-            return this.calculateDynamicTimeout(WebSocketClient.TIMEOUT_GET_APP_OPTIONS, 1, 2, {
-                minTimeout: WebSocketClient.TIMEOUT_GET_APP_OPTIONS,
-                maxTimeout: 8000,
+            // App data is ~40 KB on the wire (190 KB deflated by the server). The server answers in
+            // ~100 ms; the rest is transfer, so a slow VPN link needs room, and a retry only
+            // starts the download over (Yozora #516). A dead socket is caught by ping liveness.
+            return this.calculateDynamicTimeout(WebSocketClient.TIMEOUT_GET_APP_OPTIONS, 1, 10, {
+                minTimeout: WebSocketClient.TIMEOUT_GET_APP_OPTIONS_MIN,
+                maxTimeout: 30000,
                 noRttMultiplier: 1
             });
         }
@@ -3374,8 +3423,9 @@ class WebSocketClient {
                     unreachableAttempts += 1;
                 }
 
-                const bootStatus = this.lastServerStartupStatus;
-                const waitingMessage = bootStatus?.stageMessage
+                // The stage only while the server says it boots; a ready server keeps
+                // "Starting Dreamscape…" as its stageMessage (Yozora #515)
+                const waitingMessage = (this._serverReportsBooting() && this.lastServerStartupStatus.stageMessage)
                     || `Waiting for server… (${unreachableAttempts})`;
                 this._setConnectionBeat('dialing', { message: waitingMessage });
 
@@ -7825,8 +7875,10 @@ class WebSocketClient {
         return this.sendMessage('check_vibe_encoding', { vibeId, workspaceId });
     }
 
+    // lean: wildcards, expander counts and the workspace's files load on demand
+    // (get_app_options_chunk, public/scripts/comp/appBootstrap.js; Yozora #517)
     async getAppOptions() {
-        return this.sendMessage('get_app_options');
+        return this.sendMessage('get_app_options', { lean: true });
     }
 
     async retryAccountData() {

@@ -686,10 +686,11 @@ class ServiceWorkerManager {
         throw new Error('Server did not become ready in time');
     }
 
+    // REVIEW (#533): full fetch; the conditional (X-Manifest-Hash) path answers [] on 304.
     async hashForStaticPath(pathname) {
         const path = normalizeStaticFilePath(pathname);
         if (!this._staticHashByPath) {
-            const manifest = await this._fetchManifest();
+            const manifest = await this._fetchManifest({ full: true });
             const map = new Map();
             if (Array.isArray(manifest)) {
                 for (let i = 0; i < manifest.length; i++) {
@@ -703,19 +704,49 @@ class ServiceWorkerManager {
         return this._staticHashByPath.get(path) || null;
     }
 
-    async _fetchManifest() {
+    /**
+     * The manifest digest this cache was last found in sync with (localStorage, shared with
+     * /launch's updateEngine). Sent as X-Manifest-Hash: an unchanged manifest answers 304 with
+     * no body, so a boot does not download ~130 KB twice before the logon (Yozora #516).
+     */
+    _readSyncedManifestHash() {
         try {
+            return localStorage.getItem('melatonManifestHash') || '';
+        } catch (_) {
+            return '';
+        }
+    }
+
+    _writeSyncedManifestHash(hash) {
+        try {
+            if (hash) localStorage.setItem('melatonManifestHash', hash);
+        } catch (_) { /* storage off: every boot fetches the full manifest */ }
+    }
+
+    async _fetchManifest(options = {}) {
+        const full = options.full === true;
+        if (!full) this._fetchedManifestHash = '';
+        try {
+            const known = full ? '' : this._readSyncedManifestHash();
+            const headers = {
+                'X-Service-Worker-Version': '2.0',
+                'X-Requested-With': 'ServiceWorker'
+            };
+            if (known) headers['X-Manifest-Hash'] = known;
             const response = await fetch('/', {
                 method: 'OPTIONS',
-                headers: {
-                    'X-Service-Worker-Version': '2.0',
-                    'X-Requested-With': 'ServiceWorker'
-                },
+                headers,
                 signal: AbortSignal.timeout(8000)
             });
+            if (response.status === 304) {
+                // Same manifest the cache was in sync with: nothing to diff
+                this._fetchedManifestHash = known;
+                return [];
+            }
             if (!response.ok) {
                 return [];
             }
+            if (!full) this._fetchedManifestHash = response.headers.get('X-Manifest-Hash') || '';
             return await response.json();
         } catch (error) {
             console.warn('Manifest fetch failed or timed out — skipping update check');
@@ -3322,7 +3353,8 @@ class ServiceWorkerManager {
         }
     }
 
-    async syncWallpaperUrls(urls, refreshUrls) {
+    /** fetchUrls (optional): download only these now; the rest of urls stay cached, not fetched. */
+    async syncWallpaperUrls(urls, refreshUrls, fetchUrls) {
         const worker = this.swRegistration?.active || navigator.serviceWorker?.controller;
         if (!worker) {
             return false;
@@ -3343,6 +3375,7 @@ class ServiceWorkerManager {
                 type: 'SYNC_WALLPAPER_URLS',
                 urls: Array.isArray(urls) ? urls : [],
                 refresh: Array.isArray(refreshUrls) ? refreshUrls : [],
+                fetchUrls: Array.isArray(fetchUrls) ? fetchUrls : undefined,
                 requestId: requestId
             });
             setTimeout(() => {
@@ -4550,6 +4583,8 @@ class ServiceWorkerManager {
 
                 // Stragglers are fetched at runtime. They must not open update progress or Setup.
                 if (fresh.length === 0 && !installInProgress) {
+                    // In sync: the next boot asks with this digest and gets a 304
+                    this._writeSyncedManifestHash(this._fetchedManifestHash);
                     break;
                 }
 

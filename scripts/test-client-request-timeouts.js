@@ -186,6 +186,10 @@ function testClientTimeoutPolicy() {
         'cold gallery queries must not stay on the 8-20s light floor'
     );
     assert.ok(src.includes('isSilentTickerRequest(request.type)'), 'stuckHidden must honor silent ticker types');
+    // App data on a slow link (Yozora #516): at least 10 s, up to 30 s by RTT
+    assert.ok(/TIMEOUT_GET_APP_OPTIONS_MIN = 10000/.test(src), 'critical app data floor is 10 s');
+    assert.ok(/TIMEOUT_GET_APP_OPTIONS, 1, 10, \{\s*minTimeout: WebSocketClient\.TIMEOUT_GET_APP_OPTIONS_MIN,\s*maxTimeout: 30000/.test(src),
+        'critical app data scales with RTT up to 30 s');
 }
 
 function fakeHttps(onRequest) {

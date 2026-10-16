@@ -905,9 +905,9 @@ html.can-hover .manual-quickstart-switch:hover .manual-quickstart-switch-underli
     font-size: 0.75rem;
 }
 
-.manual-preview-content:has(#manualPreviewPlaceholder.has-quickstart:not(.hidden)) #manualPreviewPrevBtn,
-.manual-preview-content:has(#manualPreviewPlaceholder.has-quickstart:not(.hidden)) #manualPreviewNextBtn,
-.manual-preview-content:has(#manualPreviewPlaceholder.has-quickstart:not(.hidden)) #manualPreviewUseAsSourceBtn {
+.manual-preview-content.has-quickstart-placeholder #manualPreviewPrevBtn,
+.manual-preview-content.has-quickstart-placeholder #manualPreviewNextBtn,
+.manual-preview-content.has-quickstart-placeholder #manualPreviewUseAsSourceBtn {
     display: none;
 }
 
@@ -1606,10 +1606,10 @@ html.no-hover .manual-preview-content:hover:not(:disabled) .manual-preview-image
     font-size: 0.9rem;
 }
 
-.manual-preview-container:has(.manual-preview-workspace-overlay:not(.hidden)) .manual-preview-content .manual-preview-controls,
-.manual-preview-container:has(.manual-preview-workspace-overlay:not(.hidden)) .manual-preview-content .manual-preview-controls-top-left,
-.manual-preview-container:has(.manual-preview-workspace-overlay:not(.hidden)) .manual-preview-content .manual-preview-controls-top-right,
-.manual-preview-container:has(.manual-preview-workspace-overlay:not(.hidden)) .manual-preview-content .manual-preview-image-container {
+.manual-preview-container.has-workspace-overlay .manual-preview-content .manual-preview-controls,
+.manual-preview-container.has-workspace-overlay .manual-preview-content .manual-preview-controls-top-left,
+.manual-preview-container.has-workspace-overlay .manual-preview-content .manual-preview-controls-top-right,
+.manual-preview-container.has-workspace-overlay .manual-preview-content .manual-preview-image-container {
     opacity: 0;
 }
 

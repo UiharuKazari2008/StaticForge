@@ -86,7 +86,7 @@
         cpl.registerItem({
             id: 'mail',
             name: 'Mail',
-            image: '/static_images/app_icons/vista-mail.webp',
+            image: '/static_images/app_icons/64/vista-mail.webp',
             description: 'Play a sound or show a tray notification when a new message arrives.',
             open: () => cpl.open('mail')
         });

@@ -12,8 +12,8 @@ sees it, and which code owns each step. Yozora #401, #410, #412, #416, #417, #42
 | 3 | No update progress on the logon. More than 20 fresh files, or an install `/launch` already started, reboots to `/launch` before any update dialog. Up to 20 files download with no dialog. The old install wizard only if that reboot is refused | `serviceWorkerManager.js` (`runBootSequence`, `_rebootIntoInstaller`) |
 | 3b | Logon-phase init steps in the logon dialog (desktop first boot): user global settings and **Loading Application Data** (`{ logon: true }`), one status line, no progress bar. A critical failure keeps the dialog on its line and opens a Windows message box (Retry / Restart); the desktop never starts | `websocket.js` `_runLogonInitSteps`, `bootMessageBox.js` (see below) |
 | 4 | Connection complete ("Connected"), still on the logon dialog | `websocket.js` `_runConnectionBeat('connected')`, wrapped from `assetPreload.js` before `_startAfterLogon` |
-| 5 | Logon dialog says "Preparing your desktop..." and keeps the marquee (not a progress bar) while the active wallpaper, the desktop icons, and the taskbar pictures are decoded and kept. The desktop stays hidden | `assetPreload.js` `preloadBeforeDesktopTransition` |
-| 6 | "Preparing MeletonFX…", logon dialog closes, then the staged reveal. Those assets are not loaded again | `websocket.js` `_completePreStartupHandoff` → `desktopBoot.begin()`, `desktopBoot.js` |
+| 5 | Logon dialog says "Preparing your desktop..." and keeps the marquee (not a progress bar) while the active workspace's wallpaper is decoded and kept. Nothing else loads here (Yozora #512). The desktop stays hidden | `assetPreload.js` `preloadBeforeDesktopTransition` |
+| 6 | "Preparing MeletonFX…", logon dialog closes, then the staged reveal. Each layer loads its own assets in the startup window and shows when they are ready: wallpaper (12.2), shortcut list (18) → desktop icons (18.2), then the taskbar, tray, sidebar and start menu art and icons (18.4) | `websocket.js` `_completePreStartupHandoff` → `desktopBoot.begin()`, `desktopBoot.js`, `assetPreload.js` |
 | 7 | "Welcome", startup window closes last; Vista logon sound | `desktopBoot.finish()` awaited by `hideProgressNotification`; `desktopSounds.js` plays on stage `done` |
 
 Each stage holds for at least `desktopBoot.config.dwellMs[stage]` so the sequence reads
@@ -320,6 +320,14 @@ window.
   `loadOptions`' own account-data prompt (account data unavailable) stays reachable.
 - A non-critical step that throws is reported as before (application error) and the boot
   goes on.
+- One error at a time (Yozora #515): when the connection fails while that message box is up,
+  the box closes without a choice and the connection error takes over; the logon steps run
+  again once the socket is back. A failure while `/status` says the server is still starting
+  (`isReady: false`) shows no Error 800: the logon dialog keeps the Dreamscape Mainframe
+  Server window and the connect is retried (`_scheduleBootWaitReconnect`). A ready server's
+  leftover `stageMessage` ("Starting Dreamscape…") is never shown as a waiting line.
+- The message box is Vista's light face with `.btn-standard` push buttons on Vista Basic and
+  Aero, ButtonFace and Tahoma under Windows Classic.
 - `executeInitSteps` then runs only the steps without `_logonPhase`; the small startup
   window's progress is 0–100 % over those (`_initProgressRange`; the non-desktop toast keeps
   its 25 % connection base). `updateCurrentInitStepProgress` reads the list being run.
@@ -332,9 +340,10 @@ window.
 |-------|--------------|--------------|
 | `session` | `begin()` after the logon handoff | `boot-staged`, `data-boot-stage="session"`; `boot-from-launch` removed |
 | `settings` | any init step with priority < 12 (from 5 on the desktop; ≤ 1 ran in the logon dialog) | — |
-| `wallpaper` | step 12 `Loading Workspaces` finished (`onStepDone`) | `boot-reveal-wallpaper` |
-| `icons` | queued right after wallpaper | `boot-reveal-icons` |
-| `taskbar` | step 16 `Starting Taskbar` finished | `boot-reveal-taskbar` |
+| `wallpaper` | step 12.2 `Loading wallpaper` finished (`onStepDone`) | `boot-reveal-wallpaper` |
+| `icons` | step 18.2 `Loading desktop icons` finished (after 18 fetched the shortcut list) | `boot-reveal-icons` |
+| `taskbar` | step 18.4 `Loading desktop assets` finished (taskbar, tray, start menu art and its first view's icons, clock, Share Tech Mono and workspace fonts) | `boot-reveal-taskbar` |
+| `gadgets` | step 18.6 `Loading gadgets` finished: the Vista Sidebar started hidden and the pictures and backgrounds its gadgets drew are decoded (Yozora #521) | `boot-reveal-gadgets` |
 | `windows` | step 31 `Loading Gallery` starts | `boot-reveal-windows`; `no-animation` removed |
 | `done` | `finish()` | all boot classes removed when the dwell ends |
 
@@ -344,6 +353,33 @@ rule when its `boot-reveal-*` class lands. Transitions are off on those layers f
 staged boot, so every reveal is instant. Hidden layers use opacity (a child with its own
 `visibility: visible`, such as `.gallery`, stays hidden) plus `visibility` (no hits, and an
 open animation's opacity keyframes cannot flash a window before its stage).
+
+## Asset loading (Yozora #512)
+
+| When | What loads | Owner |
+|------|------------|-------|
+| `/app` start, under teal, before the logon dialog | Logon art: `desktop-boot.css`, `connection-dial.css` and caption chrome `url()`s for the logon this screen uses (the Vista Welcome screen's art only with `body.vista-logon`, and only its one aspect background via `_whenVistaLogonArtReady`), the `.boot-dialog` pictures as the elements ask for them (srcset included), the logon fonts and icon fonts | `assetPreload.startLoginStage` |
+| After Connected, on the logon | The active workspace's wallpaper | `preloadBeforeDesktopTransition` |
+| Startup window | One stage per layer, see the table above | `assetPreload.js` steps 12.2 / 18.2 / 18.4 / 18.6 |
+| Startup window, step 18.8 | The DreamStudio and Workspaces splash screens (`#manualModalSplash`, `#workspaceSplash`): their shards / bands, the `manual-modal-splash.css` backgrounds and the title and status faces, so neither splash loads when its window opens. The late watch arms after this step | `assetPreload.preloadSplashStage` |
+| After `desktopBootDone` | The wildcard chunk of the app data (Yozora #517), and the art of the start menu's pinned and frequent applications (`app-assets.json`, Yozora #518); others on hover / focus / launch / open | `appBootstrap.js`, `assetPreload.warmLaunch` |
+| After `desktopBootDone` | The other workspaces' wallpapers, one at a time in idle time (service worker cache, then decode) | `workspaceUtils.preloadOtherWorkspaceWallpapers` |
+
+`loadWorkspaces` at boot asks the service worker for the active wallpaper only
+(`SYNC_WALLPAPER_URLS` with `fetchUrls`); the others stay cached as they are. The wallpaper
+cache survives a `sw.js` update, and its URL list is rebuilt from the cache when the worker
+restarts.
+
+Caching: unversioned files under `public/` are sent `Cache-Control: no-cache` (kept,
+revalidated with the ETag) instead of `no-store`, and carry `X-File-Hash` from the manifest,
+so the service worker's miss path stores them instead of fetching them on every load
+(`agentAssetBundle.applyServedAssetCacheHeaders`). `?sha=` stays immutable.
+
+App icons are compiled at 16, 24, 32, 48, 64, 96, 128, 192 and 384 px
+(`modules/appIconRuntimeAssets.js`; `EXTRA_MASTERS` adds `logo_icon.png` as
+`app_icons/<size>/dreamscape-logo.webp`). Each surface passes the size it draws at
+(`APP_ICON_DISPLAY_PX`, `START_MENU_ROW_ICON_PX` in `modalUtils.js`) so srcset picks the 1x / 2x
+file; window captions use `24/` with a `48/` 2x candidate.
 
 ## Hardening
 

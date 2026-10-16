@@ -111,7 +111,7 @@
     registerItem({
         id: 'personalization',
         name: 'Personalization',
-        image: '/static_images/app_icons/vista-personalization.webp',
+        image: '/static_images/app_icons/64/vista-personalization.webp',
         description: "Change this workspace's name, colours, fonts and desktop background.",
         open: () => navigate('personalization')
     });
@@ -120,56 +120,56 @@
     registerItem({
         id: 'appearance',
         name: 'Window Color and Appearance',
-        image: '/static_images/app_icons/vista-appearance.webp',
+        image: '/static_images/app_icons/64/vista-appearance.webp',
         description: 'How windows move and resize, and the frame glass for every workspace.',
         open: () => navigate('appearance')
     });
     registerItem({
         id: 'mouse',
         name: 'Mouse',
-        image: '/static_images/app_icons/vista-mouse.webp',
+        image: '/static_images/app_icons/64/vista-mouse.webp',
         description: 'Choose the pointer scheme: Vista, Classic, or Posy.',
         open: () => navigate('mouse')
     });
     registerItem({
         id: 'sound',
         name: 'Sound',
-        image: '/static_images/app_icons/vista-sound.webp',
+        image: '/static_images/app_icons/64/vista-sound.webp',
         description: 'Turn the Windows Vista program sounds on or off.',
         open: () => navigate('sound')
     });
     registerItem({
         id: 'taskbar',
         name: 'Taskbar and Start Menu',
-        image: '/static_images/app_icons/vista-taskbar.webp',
+        image: '/static_images/app_icons/64/vista-taskbar.webp',
         description: 'The start button, what opens at startup, and where notifications go.',
         open: () => navigate('taskbar')
     });
     registerItem({
         id: 'keyboard',
         name: 'Keyboard',
-        image: '/static_images/app_icons/vista-keyboard.webp',
+        image: '/static_images/app_icons/64/vista-keyboard.webp',
         description: 'The virtual keyboard on touch devices.',
         open: () => navigate('keyboard')
     });
     registerItem({
         id: 'remote-access',
         name: 'Remote Access',
-        image: '/static_images/app_icons/vista-remote-desktop.webp',
+        image: '/static_images/app_icons/64/vista-remote-desktop.webp',
         description: 'Choose how agents deliver and open images on this computer.',
         open: () => navigate('remote-access')
     });
     registerItem({
         id: 'system',
         name: 'System',
-        image: '/static_images/app_icons/vista-system.webp',
+        image: '/static_images/app_icons/64/vista-system.webp',
         description: 'See the version and details of MeletonFX.',
         open: () => callGlobal('openAboutMelatoninModal')
     });
     registerItem({
         id: 'runes',
         name: 'Runes',
-        image: '/static_images/app_icons/vista-regedit.webp',
+        image: '/static_images/app_icons/64/vista-regedit.webp',
         description: 'Edit the server configuration directly.',
         open: async () => {
             /* global featureLoader, configEditorApplet */
@@ -208,7 +208,7 @@
             <div class="modal-window-title">
                 <div class="modal-window-title-main">
                     <i class="fas fa-sliders icon-fa"></i>
-                    <img src="/static_images/app_icons/vista-control-panel.webp" alt="" class="icon-image">
+                    <img src="/static_images/app_icons/24/vista-control-panel.webp" srcset="/static_images/app_icons/24/vista-control-panel.webp 1x, /static_images/app_icons/48/vista-control-panel.webp 2x" alt="" class="icon-image">
                     <span class="cpl-window-title">Control Panel</span>
                 </div>
                 <div class="modal-window-title-toolbar">

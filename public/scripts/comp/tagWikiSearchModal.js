@@ -1609,7 +1609,7 @@ class WikiDisplayBase {
 <div class="dreamwiki-home">
     <div class="dreamwiki-home-hero form-row center-align">
         <div class="about-logo-container">
-            <img src="/static_images/logo_icon.png" alt="Dreamscape Logo" class="about-logo">
+            <img src="/static_images/app_icons/64/dreamscape-logo.webp" srcset="/static_images/app_icons/64/dreamscape-logo.webp 1x, /static_images/app_icons/128/dreamscape-logo.webp 2x" alt="Dreamscape Logo" class="about-logo">
             <h2 class="logo-text">Dreamscape</h2>
         </div>
     </div>

@@ -247,12 +247,55 @@
         return !!(again && again.headers.get('x-file-hash') === file.hash);
     }
 
+    // The manifest digest the cache was last found in sync with; shared with /app's
+    // serviceWorkerManager. OPTIONS / answers 304 for it (Yozora #516).
+    const SYNCED_MANIFEST_KEY = 'melatonManifestHash';
+
+    function readSyncedManifestHash(env) {
+        try {
+            return (env.localStorage && env.localStorage.getItem(SYNCED_MANIFEST_KEY)) || '';
+        } catch (_) {
+            return '';
+        }
+    }
+
+    function writeSyncedManifestHash(env, hash) {
+        try {
+            if (hash && env.localStorage) env.localStorage.setItem(SYNCED_MANIFEST_KEY, hash);
+        } catch (_) { /* storage off */ }
+    }
+
+    /** OPTIONS / with the synced digest: { unchanged } on 304, else { manifest, hash } (manifest null on failure). */
+    async function fetchManifestConditional(env) {
+        const known = readSyncedManifestHash(env);
+        try {
+            const headers = { 'X-Service-Worker-Version': '2.0', 'X-Requested-With': 'ServiceWorker' };
+            if (known) headers['X-Manifest-Hash'] = known;
+            const res = await env.fetch('/', {
+                method: 'OPTIONS',
+                headers,
+                cache: 'no-store',
+                signal: timeoutSignal(config.manifestTimeoutMs)
+            });
+            if (res.status === 304) return { unchanged: true, hash: known };
+            if (!res.ok) return { manifest: null };
+            const data = await res.json();
+            const hash = (res.headers && res.headers.get && res.headers.get('X-Manifest-Hash')) || '';
+            return { manifest: Array.isArray(data) ? data.filter((f) => f && f.url && f.hash) : null, hash };
+        } catch (_) {
+            return { manifest: null };
+        }
+    }
+
     /** { files, bytes } to install, or { skipped } when this page cannot check. */
     async function check(env) {
         if (!env.caches) return { skipped: 'no-cache-storage' };
-        const manifest = await fetchManifest(env);
+        const fetched = await fetchManifestConditional(env);
+        if (fetched.unchanged) return { files: [], bytes: 0, unchanged: true };
+        const manifest = fetched.manifest;
         if (!manifest || !manifest.length) return { skipped: 'no-manifest' };
         const files = await filesNeedingUpdate(env, manifest);
+        if (!files.length) writeSyncedManifestHash(env, fetched.hash);
         return { files, bytes: totalBytes(files), manifest };
     }
 

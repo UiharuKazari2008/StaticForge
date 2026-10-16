@@ -43,11 +43,13 @@
 (function () {
     'use strict';
 
-    const STAGES = ['logon', 'session', 'settings', 'wallpaper', 'icons', 'taskbar', 'windows', 'done'];
+    // gadgets: the Vista Sidebar, drawn hidden and decoded at step 18.6 (Yozora #521)
+    const STAGES = ['logon', 'session', 'settings', 'wallpaper', 'icons', 'taskbar', 'gadgets', 'windows', 'done'];
     const REVEAL_CLASS = {
         wallpaper: 'boot-reveal-wallpaper',
         icons: 'boot-reveal-icons',
         taskbar: 'boot-reveal-taskbar',
+        gadgets: 'boot-reveal-gadgets',
         windows: 'boot-reveal-windows'
     };
     // Vista wording (Yukimi, 2026-10-12): one line, "Preparing your desktop..." for every
@@ -58,6 +60,7 @@
         wallpaper: 'Preparing your desktop...',
         icons: 'Preparing your desktop...',
         taskbar: 'Preparing your desktop...',
+        gadgets: 'Preparing your desktop...',
         windows: 'Preparing your desktop...',
         done: 'Welcome'
     };
@@ -69,7 +72,7 @@
     const VISTA_BASIC_THEME_CLASS = 'vista-basic-theme';
 
     const config = {
-        dwellMs: { session: 600, settings: 0, wallpaper: 700, icons: 450, taskbar: 450, windows: 500, done: 350 },
+        dwellMs: { session: 600, settings: 0, wallpaper: 700, icons: 450, taskbar: 450, gadgets: 300, windows: 500, done: 350 },
         stepWatchdogMs: 25000,
         connectionWaitText: 'Please wait...',
         connectionFailedText: 'The server is not responding…',
@@ -333,6 +336,7 @@
         if (step.message === 'Loading wallpaper') requestStage('wallpaper');
         else if (step.message === 'Loading desktop icons') requestStage('icons');
         else if (step.message === 'Loading desktop assets') requestStage('taskbar');
+        else if (step.message === 'Loading gadgets') requestStage('gadgets');
     }
 
     // ---------- watchdog ----------
