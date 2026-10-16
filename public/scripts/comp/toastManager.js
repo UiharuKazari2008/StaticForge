@@ -1567,7 +1567,8 @@ function failVibeEncodingProgress(toastId, errorMessage = 'Vibe encoding failed'
  */
 function handleToastButtonClick(buttonId) {
     // JULES: Cast buttonId to Number so Map lookups succeed when passed as string from inline DOM onclick handlers
-    const handler = buttonHandlers.get(Number(buttonId));
+    const numericButtonId = Number(buttonId);
+    const handler = buttonHandlers.get(numericButtonId);
     if (handler) {
         try {
             handler.onClick(handler.toastId);
@@ -1575,7 +1576,7 @@ function handleToastButtonClick(buttonId) {
                 removeGlassToast(handler.toastId);
             }
             // Clean up the handler after use
-            buttonHandlers.delete(buttonId);
+            buttonHandlers.delete(numericButtonId);
         } catch (error) {
             console.error('Error in button click handler:', error);
         }
