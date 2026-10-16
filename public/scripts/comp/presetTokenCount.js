@@ -114,7 +114,16 @@ function withRequestExpanderCounts(counts) {
     });
 }
 
+// Expander counts and wildcards are an on-demand chunk (appBootstrap.js, Yozora #517): ask for it
+// when a count needs it, and recount the bars once it lands
+document.addEventListener('appOptionsChunkLoaded', (event) => {
+    if (event.detail && event.detail.chunk === 'text_replacements') refreshTokenBarCounts();
+});
+
 function getPresetTokenCountMap() {
+    if (typeof ensureAppOptionsChunk === 'function' && !window.optionsData?.preset_token_counts?.expanders) {
+        ensureAppOptionsChunk('text_replacements');
+    }
     const tokenizer = getPromptTokenizer();
     if (getForgeModelFeatures()?.tokenizer !== 'qwen' || !tokenizer) {
         return withRequestExpanderCounts(window.optionsData?.preset_token_counts || null);

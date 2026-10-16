@@ -7,6 +7,12 @@
     animation-play-state: paused !important;
 }
 
+/* A looping animation outside the viewport (scripts/utils/offscreenAnimationPause.js): Chrome runs
+   those on the main thread every frame because nothing on screen changes. */
+.offscreen-paused {
+    animation-play-state: paused !important;
+}
+
 @media (min-width: 769px) {
     html.scrolled:not(.desktop-mode) body:not(.editor-open) #title-bar {
         animation-play-state: running;

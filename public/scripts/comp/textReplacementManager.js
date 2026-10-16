@@ -862,6 +862,8 @@ async function saveTextReplacementItem(key) {
                 // Re-render to remove modified indicator
                 renderTextReplacementList();
                 
+                // refreshAppOptionsChunk: public/scripts/comp/appBootstrap.js (autocomplete, Run, token counts)
+                refreshAppOptionsChunk('text_replacements');
                 showGlassToast('success', null, `Text replacement "!${key}" saved successfully`, false, 3000, '<i class="fas fa-save"></i>');
             } else {
                 const errorMsg = result?.error || 'Unknown error occurred';
@@ -992,6 +994,7 @@ async function deleteTextReplacement(key) {
                     delete textReplacementData[key];
                     renderTextReplacementList();
                     
+                    refreshAppOptionsChunk('text_replacements');
                     showGlassToast('success', null, `Deleted text replacement "!${key}"`, false, 3000, '<i class="fas fa-trash"></i>');
                 } else {
                     const errorMsg = result?.error || 'Unknown error occurred';
@@ -1274,6 +1277,7 @@ async function handleCreateTextReplacementSubmit() {
                 // Refresh the list to show the new item
                 await loadTextReplacements();
                 
+                refreshAppOptionsChunk('text_replacements');
                 showGlassToast('success', null, `Created text replacement "!${key}"`, false, 3000, '<i class="fas fa-plus"></i>');
             } else {
                 const errorMsg = result?.error || 'Unknown error occurred';

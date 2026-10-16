@@ -347,6 +347,7 @@
     margin: 0;
     overflow: auto;
     white-space: pre-wrap;
+    overflow-wrap: anywhere;
     word-break: break-word;
     font-family: inherit;
 }
@@ -1408,7 +1409,9 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
 .dovecote-tray-glyph {
     width: 16px;
     height: 16px;
-    background: url('/static_images/app_icons/vista-mail.webp') center / contain no-repeat;
+    /* 16 / 32 px compiles (modules/appIconRuntimeAssets.js), not the 384 px default */
+    background: url('/static_images/app_icons/32/vista-mail.webp') center / contain no-repeat;
+    background-image: image-set(url('/static_images/app_icons/16/vista-mail.webp') 1x, url('/static_images/app_icons/32/vista-mail.webp') 2x);
 }
 
 .dovecote-tray-icon.has-unread .dovecote-tray-glyph {

@@ -86,6 +86,6 @@ assert.ok(facade.includes('deliverQuips'));
 
 const limits = t.quipsTurnLimits();
 assert.ok(limits.idleMs < limits.hardMs);
-assert.ok(limits.hardMs < t.RUN_HARD_MS);
+assert.ok(limits.hardMs < t.RUN_IDLE_MS);
 
 console.log('quips director ok');

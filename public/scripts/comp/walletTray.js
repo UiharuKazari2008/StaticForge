@@ -625,11 +625,12 @@
         if (mark) mark.classList.toggle('hidden', !alerts.length);
         icon.classList.toggle('has-alerts', alerts.length > 0);
         const title = iconTitle(rows, alerts);
-        icon.title = title;
-        icon.setAttribute('aria-label', title);
+        // Runs on every server ping; identical writes still wake every MutationObserver
+        if (icon.title !== title) icon.title = title;
+        if (icon.getAttribute('aria-label') !== title) icon.setAttribute('aria-label', title);
         // Tray boot reveals it (systemTrayManager.js revealPlan); later repaints never hide it
-        if (options.reveal === false) icon.classList.add('hidden');
-        else if (options.reveal === true || !bootPending()) icon.classList.remove('hidden');
+        if (options.reveal === false) { if (!icon.classList.contains('hidden')) icon.classList.add('hidden'); }
+        else if ((options.reveal === true || !bootPending()) && icon.classList.contains('hidden')) icon.classList.remove('hidden');
         renderFlyout();
     }
 

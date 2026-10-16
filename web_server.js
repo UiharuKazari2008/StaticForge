@@ -968,8 +968,24 @@ function buildServiceWorkerCacheManifest() {
     );
 }
 
+// path → manifest hash, rebuilt when the cache data is replaced (X-File-Hash on served files)
+let servedFileHashIndex = { source: null, length: -1, map: new Map() };
+function getServedFileHash(webPath) {
+    const data = globalResources.getGlobalCacheData();
+    if (!Array.isArray(data) || !webPath) return null;
+    if (servedFileHashIndex.source !== data || servedFileHashIndex.length !== data.length) {
+        const map = new Map();
+        data.forEach((file) => {
+            if (file && file.path && (file.hash || file.md5)) map.set(file.path, file.hash || file.md5);
+        });
+        servedFileHashIndex = { source: data, length: data.length, map };
+    }
+    return servedFileHashIndex.map.get(webPath) || null;
+}
+
 agentAssetBundle.init({
     projectRoot: __dirname,
+    getFileHash: getServedFileHash,
     getManifest: buildServiceWorkerCacheManifest
 });
 
@@ -2231,11 +2247,28 @@ app.options('/', (req, res) => {
         });
     }
     try {
-        res.json(buildServiceWorkerCacheManifest());
+        const manifest = buildServiceWorkerCacheManifest();
+        // Digest of the url + hash rows. A client whose cache was in sync with this manifest
+        // sends it back (X-Manifest-Hash) and gets a bodyless 304 instead of ~130 KB, twice per
+        // boot (/launch and /app) on links where that held up the logon (Yozora #516).
+        const digest = serviceWorkerManifestDigest(manifest);
+        res.setHeader('X-Manifest-Hash', digest);
+        res.setHeader('Access-Control-Expose-Headers', 'X-Manifest-Hash');
+        if (req.get('X-Manifest-Hash') === digest) {
+            return res.status(304).end();
+        }
+        res.json(manifest);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
+
+function serviceWorkerManifestDigest(manifest) {
+    const rows = (Array.isArray(manifest) ? manifest : [])
+        .map((file) => `${file.url || ''}\t${file.hash || ''}`)
+        .sort();
+    return crypto.createHash('sha256').update(rows.join('\n')).digest('hex');
+}
 // Server status endpoint - available once HTTP server is listening (bound at process start,
 // modules/earlyHttpServer.js)
 function publicStatusExtras(req) {
@@ -4022,7 +4055,7 @@ async function handleAdminUnixSocketMessage(message, socket) {
         // Serve static files from public directory (after routes to avoid conflicts).
         // A missing file must fall through to the 404 handler, not surface as ENOENT.
         app.use(express.static('public', {
-            maxAge: '10s', // Cache static assets for 10 seconds
+            maxAge: '10s', // unused: setHeaders sets Cache-Control first (agentAssetBundle.applyServedAssetCacheHeaders)
             etag: true, // Enable ETags for cache validation
             lastModified: true, // Enable Last-Modified headers
             fallthrough: true,

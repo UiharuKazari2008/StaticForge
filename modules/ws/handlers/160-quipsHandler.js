@@ -5,6 +5,80 @@ const QUIPS_DESTRUCTIVE = { destructive: true };
 // Longest get_app_options waits on a live balance refresh before answering with what it has
 const APP_OPTIONS_BALANCE_BUDGET_MS = 1500;
 
+/** The preset list as get_app_options sends it (summary per preset, not the full settings). */
+function buildDetailedPresets(currentPromptConfig) {
+    const extractPresetInfo = (name, preset) => ({
+        name,
+        model: preset.model || 'V4_5',
+        upscale: preset.upscale || preset.request_upscale || false,
+        allow_paid: preset.allow_paid || false,
+        variety: preset.variety || false,
+        character_prompts: preset.characterPrompts ? preset.characterPrompts.length : 0,
+        base_image: preset.base_image || false,
+        resolution: preset.resolution || null,
+        steps: preset.steps || 25,
+        guidance: preset.guidance || 5.0,
+        rescale: preset.rescale || 0.0,
+        sampler: preset.sampler || null,
+        noiseScheduler: preset.noiseScheduler || null,
+        image: !!(preset.image || preset.image_source || null),
+        strength: preset.strength || 0.0,
+        noise: preset.noise || 0.0,
+        image_bias: preset.image_bias || null,
+        mask_compressed: !!(preset.mask_compressed || null),
+        dataset_config: preset.dataset_config || null,
+        append_quality: preset.append_quality || false,
+        append_uc: preset.append_uc !== undefined && preset.append_uc !== null ? preset.append_uc : null,
+        vibe_transfer: preset.vibe_transfer ? preset.vibe_transfer.length : 0,
+        request_upscale: preset.request_upscale || false,
+        target_workspace: preset.target_workspace || null,
+    });
+
+    return Object.entries(withBuiltinPresets(currentPromptConfig.presets || {})).map(
+        ([name, preset]) => extractPresetInfo(name, preset)
+    );
+}
+
+/**
+ * Parts of get_app_options a lean client (the web desktop, Yozora #517) loads on demand with
+ * get_app_options_chunk instead of at the logon. Other clients keep the full payload.
+ */
+const APP_OPTIONS_CHUNKS = {
+    // Wildcards and their token counts: autocomplete, Run, the Studio token counter
+    text_replacements: (handlersCtx) => {
+        const currentPromptConfig = handlersCtx.globalResources.getPromptConfig();
+        const counts = handlersCtx.globalResources.getPresetTokenCounts() || {};
+        return {
+            textReplacements: currentPromptConfig.text_replacements || {},
+            expanders: counts.expanders || {}
+        };
+    },
+    // Refreshed after a preset save, rename or delete instead of the whole payload
+    presets: (handlersCtx) => ({
+        presets: buildDetailedPresets(handlersCtx.globalResources.getPromptConfig())
+    })
+};
+
+async function handleGetAppOptionsChunk(handlersCtx, ws, message) {
+    const name = String((message && message.chunk) || '');
+    const build = Object.prototype.hasOwnProperty.call(APP_OPTIONS_CHUNKS, name) ? APP_OPTIONS_CHUNKS[name] : null;
+    if (!build) {
+        handlersCtx.sendError(ws, 'Unknown app options chunk', `chunk must be one of: ${Object.keys(APP_OPTIONS_CHUNKS).join(', ')}`, message.requestId);
+        return;
+    }
+    try {
+        handlersCtx.sendToClient(ws, {
+            type: 'get_app_options_chunk_response',
+            requestId: message.requestId,
+            data: { ok: true, chunk: name, ...build(handlersCtx) },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error(`❌ App options chunk ${name} failed:`, error);
+        handlersCtx.sendError(ws, 'Failed to load app options chunk', error.message, message.requestId);
+    }
+}
+
 async function handleGetAppOptions(handlersCtx, ws, message, clientInfo, wsServer) {
     const startTime = Date.now();
 
@@ -32,36 +106,7 @@ async function handleGetAppOptions(handlersCtx, ws, message, clientInfo, wsServe
             .map(key => [key, handlersCtx.globalResources.getPngMetadata().getModelDisplayName(key, true)]);
         const imageCount = handlersCtx.globalResources.getImageCounter().getCount();
 
-        const extractPresetInfo = (name, preset) => ({
-            name,
-            model: preset.model || 'V4_5',
-            upscale: preset.upscale || preset.request_upscale || false,
-            allow_paid: preset.allow_paid || false,
-            variety: preset.variety || false,
-            character_prompts: preset.characterPrompts ? preset.characterPrompts.length : 0,
-            base_image: preset.base_image || false,
-            resolution: preset.resolution || null,
-            steps: preset.steps || 25,
-            guidance: preset.guidance || 5.0,
-            rescale: preset.rescale || 0.0,
-            sampler: preset.sampler || null,
-            noiseScheduler: preset.noiseScheduler || null,
-            image: !!(preset.image || preset.image_source || null),
-            strength: preset.strength || 0.0,
-            noise: preset.noise || 0.0,
-            image_bias: preset.image_bias || null,
-            mask_compressed: !!(preset.mask_compressed || null),
-            dataset_config: preset.dataset_config || null,
-            append_quality: preset.append_quality || false,
-            append_uc: preset.append_uc !== undefined && preset.append_uc !== null ? preset.append_uc : null,
-            vibe_transfer: preset.vibe_transfer ? preset.vibe_transfer.length : 0,
-            request_upscale: preset.request_upscale || false,
-            target_workspace: preset.target_workspace || null,
-        });
-
-        const detailedPresets = Object.entries(withBuiltinPresets(currentPromptConfig.presets || {})).map(
-            ([name, preset]) => extractPresetInfo(name, preset)
-        );
+        const detailedPresets = buildDetailedPresets(currentPromptConfig);
 
         const accountData = handlersCtx.globalResources.getAccountData();
         const accountBalance = handlersCtx.globalResources.getAccountBalance();
@@ -103,6 +148,22 @@ async function handleGetAppOptions(handlersCtx, ws, message, clientInfo, wsServe
             } : null
         };
         options.defaultGrokModel = handlersCtx.globalResources.getGrokService().getDefaultGrokModel();
+
+        // lean (web desktop): the logon gets what it uses; wildcards and expander counts come
+        // with get_app_options_chunk, and the workspace is id + name (its files load with the
+        // workspace itself). ~42 KB → ~9 KB on the wire (Yozora #517)
+        if (message && message.lean === true) {
+            delete options.textReplacements;
+            const counts = options.preset_token_counts || {};
+            options.preset_token_counts = Object.fromEntries(Object.entries(counts).filter(([key]) => key !== 'expanders'));
+            if (options.activeWorkspace) {
+                options.activeWorkspace = {
+                    id: options.activeWorkspace.id,
+                    data: { name: (options.activeWorkspace.data && options.activeWorkspace.data.name) || '' }
+                };
+            }
+            options.lazyChunks = Object.keys(APP_OPTIONS_CHUNKS);
+        }
 
         handlersCtx.sendToClient(ws, {
             type: 'get_app_options_response',
@@ -268,6 +329,7 @@ function registerPackets(handlersCtx) {
     };
 
     reg('get_app_options', 'app', handleGetAppOptions);
+    reg('get_app_options_chunk', 'app', handleGetAppOptionsChunk);
     reg('retry_account_data', 'app', handleRetryAccountData);
 
     reg('get_generation_quips', 'quips', handleGetGenerationQuips);

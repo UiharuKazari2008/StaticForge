@@ -11,6 +11,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `generation_quips_clear` | `generation_quips_clear_response` | admin/destructive | Handler: quips |
 | `generation_quips_run` | `generation_quips_run_response` | admin/destructive | Handler: quips |
 | `get_app_options` | `get_app_options_response` | session | Handler: app |
+| `get_app_options_chunk` | `get_app_options_chunk_response` | session | Handler: app (on-demand parts, see [account.md](account.md#get_app_options_chunk)) |
 | `get_generation_quips` | `get_generation_quips_response` | session | Handler: quips |
 | `get_generation_quips_status` | `get_generation_quips_status_response` | session | Handler: quips |
 | `get_generation_quips_wiki` | `get_generation_quips_wiki_response` | session | Handler: quips |
@@ -114,6 +115,7 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 | Field | Notes |
 |-------|-------|
 | `requestId` | Optional |
+| `lean` | Optional. `true`: leave out the on-demand chunks ([account.md](account.md#get_app_options)) |
 
 **Success response:** `get_app_options_response`
 

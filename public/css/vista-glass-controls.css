@@ -545,9 +545,11 @@ body.desktop-mode:not(.windows-classic-theme) #taskbarWebsocketIndicator {
     display: none !important;
 }
 
-body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar:has(#taskbarWebsocketIndicator .websocket-arrow-up:is(.active, .active-http, .streaming-up:not(.streaming-stalled-up))) #modemTrayIconGlyph.fa-globe { background-image: image-set(url("/static_images/vista-icons/net-internet-send-16.png") 1x, url("/static_images/vista-icons/net-internet-send-32.png") 2x); }
-body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar:has(#taskbarWebsocketIndicator .websocket-arrow-down:is(.active, .active-http, .streaming-down:not(.streaming-stalled-down))) #modemTrayIconGlyph.fa-globe { background-image: image-set(url("/static_images/vista-icons/net-internet-recv-16.png") 1x, url("/static_images/vista-icons/net-internet-recv-32.png") 2x); }
-body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar:has(#taskbarWsStatus.ping-response-wait) #modemTrayIconGlyph.fa-globe { background-image: image-set(url("/static_images/vista-icons/net-limited-16.png") 1x, url("/static_images/vista-icons/net-limited-32.png") 2x); }
+/* Traffic / limited globe. Flags from scripts/comp/rootStateFlags.js (a .desktop-taskbar:has() cost
+   ~4 ms per taskbar DOM change). Limited first: sending / receiving won over it by specificity before. */
+body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar.net-limited #modemTrayIconGlyph.fa-globe { background-image: image-set(url("/static_images/vista-icons/net-limited-16.png") 1x, url("/static_images/vista-icons/net-limited-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar.net-send #modemTrayIconGlyph.fa-globe { background-image: image-set(url("/static_images/vista-icons/net-internet-send-16.png") 1x, url("/static_images/vista-icons/net-internet-send-32.png") 2x); }
+body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar.net-recv #modemTrayIconGlyph.fa-globe { background-image: image-set(url("/static_images/vista-icons/net-internet-recv-16.png") 1x, url("/static_images/vista-icons/net-internet-recv-32.png") 2x); }
 
 /* ---------- Studio: Vista text fields, status insets, badges, prompt glass (#445) ----------
    Hover inputs (steps, guidance, seed, size, prints, … .hover-show) stay bare text at rest;

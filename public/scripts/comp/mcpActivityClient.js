@@ -260,29 +260,68 @@ function openLumenForFilenames(filenames) {
     return { ok: true, target: 'lumen', filename: name };
 }
 
-function glancewellSlides(filenames) {
-    return filenames.map((name) => {
+// Natural size by src for prints the gallery page has not loaded (Director prints).
+const glancewellSizeCache = new Map();
+
+function probeGlancewellSize(src) {
+    if (glancewellSizeCache.has(src)) return Promise.resolve(glancewellSizeCache.get(src));
+    return new Promise((resolve) => {
+        const img = new Image();
+        let done = false;
+        const finish = (size) => {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            if (size) glancewellSizeCache.set(src, size);
+            resolve(size);
+        };
+        const timer = setTimeout(() => finish(null), 4000);
+        img.onload = () => finish(img.naturalWidth > 0 && img.naturalHeight > 0
+            ? { width: img.naturalWidth, height: img.naturalHeight }
+            : null);
+        img.onerror = () => finish(null);
+        img.src = src;
+    });
+}
+
+/**
+ * Slides with real dimensions. PhotoSwipe lays out the box from width/height, and a
+ * print missing from the loaded gallery page has none, so read it from the file
+ * instead of falling back to a 1024 square (squashed portrait/landscape prints).
+ */
+async function glancewellSlides(filenames) {
+    const slides = filenames.map((name) => {
         const image = resolveViewerImage(name);
         // resolveGalleryFullImageUrl / localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
         const src = resolveGalleryFullImageUrl(image)
             || localGalleryImageUrl(image.upscaled || image.original || name)
             || ('/images/' + encodeURIComponent(name));
+        const cached = glancewellSizeCache.get(src);
         return {
             src: src,
-            width: image.width || 1024,
-            height: image.height || 1024,
+            width: Number(image.width) || (cached && cached.width) || 0,
+            height: Number(image.height) || (cached && cached.height) || 0,
             filename: name
         };
     });
+    await Promise.all(slides.map(async (slide) => {
+        if (slide.width > 0 && slide.height > 0) return;
+        const size = await probeGlancewellSize(slide.src);
+        slide.width = (size && size.width) || 1024;
+        slide.height = (size && size.height) || 1024;
+    }));
+    return slides;
 }
 
-function syncDirectorGlancewell(filenames) {
-    const pswp = window.pswp;
-    if (!pswp || !pswp._directorPrints || pswp.isDestroying) return;
+async function syncDirectorGlancewell(filenames) {
+    const open = window.pswp;
+    if (!open || !open._directorPrints || open.isDestroying) return;
     const names = Array.isArray(filenames) ? filenames.filter(Boolean) : [];
     if (!names.length) return;
+    const dataSource = await glancewellSlides(names);
+    const pswp = window.pswp;
+    if (pswp !== open || pswp.isDestroying) return;
     const current = pswp.currSlide && pswp.currSlide.data && pswp.currSlide.data.filename;
-    const dataSource = glancewellSlides(names);
     pswp.options.dataSource = dataSource;
     let index = current ? dataSource.findIndex((slide) => slide.filename === current) : pswp.currIndex;
     if (index < 0) index = Math.min(pswp.currIndex || 0, dataSource.length - 1);
@@ -292,14 +331,15 @@ function syncDirectorGlancewell(filenames) {
 async function openGlancewellForFilenames(filenames, startIndex) {
     if (!filenames.length) return { ok: false, error: 'filename is required' };
     const index = Math.max(0, Math.min(Number(startIndex) || 0, filenames.length - 1));
-    const dataSource = glancewellSlides(filenames);
+    const dataSource = await glancewellSlides(filenames);
     const open = window.pswp;
     if (open && open._directorPrints && !open.isDestroying) {
         open.options.dataSource = dataSource;
         open.goTo(index);
         return { ok: true, target: 'glancewell', filenames: filenames, index: index };
     }
-    if (filenames.length === 1 && !(open && open._directorPrints)) {
+    // showLightbox only finds prints on the loaded gallery page; others open standalone.
+    if (filenames.length === 1 && !(open && open._directorPrints) && findImageByFilename(filenames[0])) {
         // showLightbox: public/scripts/comp/lightbox.js
         await showLightbox({ filename: filenames[0] });
         return { ok: true, target: 'glancewell', filenames: filenames, index: 0 };

@@ -396,8 +396,8 @@ async function studioRenameSessionPreset(newName) {
         }
         try {
             await wsClient.updatePreset(oldName, { name: newName });
-            // loadOptions: public/scripts/comp/presetManager.js
-            await loadOptions();
+            // The preset list only (refreshAppOptionsChunk: public/scripts/comp/appBootstrap.js)
+            await refreshAppOptionsChunk('presets');
         } catch (err) {
             showError(err.message || 'Failed to rename preset');
             return false;

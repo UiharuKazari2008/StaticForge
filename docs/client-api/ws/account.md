@@ -19,7 +19,8 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 
 | Request type | Typical response | Auth | Notes |
 |---|---|---|---|
-| `get_app_options` | `get_app_options_response` | session | Full app config + account health |
+| `get_app_options` | `get_app_options_response` | session | Full app config + account health; `lean: true` leaves out the on-demand chunks |
+| `get_app_options_chunk` | `get_app_options_chunk_response` | session | One on-demand part of the app config (`text_replacements`, `presets`) |
 | `retry_account_data` | `retry_account_data_response` | session | Force upstream account refresh |
 | `wallet_status` | `wallet_status_response` | admin (session: `restricted`) | Wallet tray: usage and balance of the other accounts and API keys. Handler `modules/ws/handlers/176-walletHandler.js` (owner `wallet`) |
 | `get_account_pictures` | `get_account_pictures_response` | session | Administrator and Guest account pictures (Control Panel User Accounts, start menu). Handler `modules/ws/handlers/270-accountPicturesHandler.js` (owner `accountPictures`) |
@@ -208,11 +209,33 @@ Errors use `type: "error"` via `sendError()` — see [websocket.md](../websocket
 
 **Handler:** `handleGetAppOptions`
 
-**Request fields:** `requestId` (optional)
+**Request fields:** `requestId` (optional), `lean` (optional boolean, Yozora #517)
+
+With `lean: true` (the web client) the response leaves out `textReplacements` and
+`preset_token_counts.expanders`, sends `activeWorkspace` as `{ id, data: { name } }`, and adds
+`lazyChunks: ["text_replacements", "presets"]`. Without it (other clients) the payload is unchanged.
+On the live config that is ~9 KB on the wire instead of ~42 KB (190 KB of JSON).
 
 **Success response:** `get_app_options_response` with `data` per schema above.
 
-**Client state after:** Stored as `window.optionsData`. Invalid health triggers blocking dialog in `accountDataBootstrap.js` before `appDataLoaded`.
+**Client state after:** Stored as `window.optionsData`. Invalid health triggers blocking dialog in `accountDataBootstrap.js` before `appDataLoaded`. After the logon nothing replaces or reloads the object: chunks are merged into it (`ensureAppOptionsChunk` / `refreshAppOptionsChunk` in `public/scripts/comp/appBootstrap.js`, event `appOptionsChunkLoaded`, `optionsData._cacheVersion` bumped).
+
+### `get_app_options_chunk`
+
+**Auth:** Session required
+
+**Handler:** `handleGetAppOptionsChunk` (`modules/ws/handlers/160-quipsHandler.js`)
+
+**Request fields:** `chunk`: `text_replacements` or `presets`; `requestId` (optional)
+
+**Success response:** `get_app_options_chunk_response`, `data`:
+
+| `chunk` | `data` fields | Client merge |
+|---|---|---|
+| `text_replacements` | `textReplacements` (wildcard map), `expanders` (token count per wildcard) | `optionsData.textReplacements`, `optionsData.preset_token_counts.expanders`. Loaded when Studio opens, when Run, autocomplete or the token counter needs it, and in idle time after the desktop; refreshed after a wildcard save / create / delete |
+| `presets` | `presets` (same rows as `get_app_options`) | `optionsData.presets`; refreshed after a preset save, rename, delete or `preset_update` |
+
+An unknown `chunk` is an error (`Unknown app options chunk`).
 
 ### `retry_account_data`
 

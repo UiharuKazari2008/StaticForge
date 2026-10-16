@@ -53,7 +53,7 @@ global.window = { isDesktop: true };
 const boot = require('../public/scripts/comp/desktopBoot.js');
 const S = boot._test.state;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-Object.assign(boot.config.dwellMs, { session: 20, settings: 0, wallpaper: 20, icons: 20, taskbar: 20, windows: 20, done: 20 });
+Object.assign(boot.config.dwellMs, { session: 20, settings: 0, wallpaper: 20, icons: 20, taskbar: 20, gadgets: 20, windows: 20, done: 20 });
 boot.config.stepWatchdogMs = 30;
 
 (async () => {
@@ -102,6 +102,11 @@ boot.config.stepWatchdogMs = 30;
     await sleep(30);
     assert.strictEqual(body.dataset.bootStage, 'taskbar');
     assert.ok(body.classList.contains('boot-reveal-taskbar'));
+    assert.ok(!body.classList.contains('boot-reveal-gadgets'), 'the sidebar waits for its gadgets (#521)');
+    boot.onStepDone({ priority: 18.6, message: 'Loading gadgets' });
+    await sleep(30);
+    assert.strictEqual(body.dataset.bootStage, 'gadgets');
+    assert.ok(body.classList.contains('boot-reveal-gadgets'));
 
     // ---- connection drop while booting holds the queue and owns the headline ----
     body.classList.add('no-animation');
@@ -109,7 +114,7 @@ boot.config.stepWatchdogMs = 30;
     boot.onInitStep({ priority: 31, message: 'Loading Gallery' });
     assert.strictEqual(status.textContent, 'Please wait...', 'a dial beat is just a wait (Vista wording)');
     await sleep(40);
-    assert.strictEqual(body.dataset.bootStage, 'taskbar', 'queue held while disconnected');
+    assert.strictEqual(body.dataset.bootStage, 'gadgets', 'queue held while disconnected');
     boot.setConnectionState('failed');
     assert.strictEqual(status.textContent, boot.config.connectionFailedText);
     boot.setConnectionState('idle');
@@ -382,7 +387,7 @@ async function testLockTriggers(body) {
     };
     const proto = {};
     ['pingHost', '_applyServerStartupStatus', '_noteServerInstance', '_noteServerUnreachable',
-        '_suspendSession', '_shouldUsePreStartupDialog'].forEach((name) => {
+        '_suspendSession', '_shouldUsePreStartupDialog', '_serverReportsBooting'].forEach((name) => {
         proto[name] = liftMethod(src, name)(WebSocketClient);
     });
     global.fetch = async () => ({ ok: false }); // /app version check after a ready /status

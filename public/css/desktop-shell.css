@@ -239,7 +239,8 @@ body:not(.desktop-mode) #titlebar-grab-area-container .window-handle-icon {
     contain: layout;
 }
 
-body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) .desktop-taskbar {
+/* body.taskbar-orb = the Start button is the Orb (scripts/comp/rootStateFlags.js; a body:has() here cost a full-page style pass per DOM change) */
+body.desktop-mode.taskbar-orb .desktop-taskbar {
     overflow: visible;
 }
 
@@ -703,16 +704,16 @@ body:not(.desktop-mode) .desktop-taskbar {
 }
 
 /* Luna / workspace: <i> only (beats body.user-icons), unless the Taskbar setting or the Orb asks for the picture */
-body.desktop-mode:not(.use-app-image-icons):not(:has(#desktopTaskbar .taskbar-start-button.orb)) .taskbar-window-item i {
+body.desktop-mode:not(.use-app-image-icons):not(.taskbar-orb) .taskbar-window-item i {
     display: inline-block !important;
 }
 
 /* Orb, or Taskbar and Start Menu "Use Application Image Icon when available" */
-body.desktop-mode:is(.use-app-image-icons, :has(#desktopTaskbar .taskbar-start-button.orb)) .taskbar-window-item .icon-image {
+body.desktop-mode:is(.use-app-image-icons, .taskbar-orb) .taskbar-window-item .icon-image {
     display: inline-block !important;
 }
 
-body.desktop-mode:is(.use-app-image-icons, :has(#desktopTaskbar .taskbar-start-button.orb)) .taskbar-window-item:has(.icon-image) i {
+body.desktop-mode:is(.use-app-image-icons, .taskbar-orb) .taskbar-window-item:has(.icon-image) i {
     display: none !important;
 }
 
@@ -2275,14 +2276,14 @@ body.desktop-mode {
 }
 
 /* Orb keeps its own bar. The pearl is 38px and hangs above it. Royal (Media Center) is the 33px art, on its own bar. */
-body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.orb) {
+body.desktop-mode.taskbar-orb {
     --taskbar-height: 31px;
     --taskbar-window-height: 24px;
     --taskbar-tray-icon-size: 20px;
     --taskbar-window-icon-size: 15px;
 }
 
-body.desktop-mode:has(#desktopTaskbar .taskbar-start-button.luna) {
+body.desktop-mode.taskbar-luna {
     --taskbar-height: 33px;
 }
 

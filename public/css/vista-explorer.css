@@ -886,8 +886,9 @@ body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-w
     width: 16px;
     height: 16px;
     margin-right: 2px;
-    background: url('/static_images/app_icons/vista-control-panel.png') no-repeat center / 16px 16px;
-    background-image: image-set(url('/static_images/app_icons/vista-control-panel.webp') type('image/webp'));
+    /* 16 / 32 px compiles; the bare .png was the 384 px default and is not in the SW precache */
+    background: url('/static_images/app_icons/32/vista-control-panel.webp') no-repeat center / 16px 16px;
+    background-image: image-set(url('/static_images/app_icons/16/vista-control-panel.webp') 1x, url('/static_images/app_icons/32/vista-control-panel.webp') 2x);
     opacity: 1;
 }
 
@@ -1249,8 +1250,8 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddre
 }
 
 body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-mode-icon:is(.fa-book, .fa-puzzle-piece) {
-    background-image: url('/static_images/app_icons/books.png');
-    background-image: image-set(url('/static_images/app_icons/books.webp') type('image/webp'));
+    background-image: url('/static_images/app_icons/32/books.webp');
+    background-image: image-set(url('/static_images/app_icons/16/books.webp') 1x, url('/static_images/app_icons/32/books.webp') 2x);
 }
 
 body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-mode-icon.fa-file-alt {

@@ -54,6 +54,38 @@ function memoryStorage() {
     const needed = await engine.filesNeedingUpdate(env, manifest);
     assert.deepStrictEqual(needed.map((f) => f.url), ['/scripts/b.js'], 'only the stale file; aliases and siblings count');
     assert.strictEqual(engine.totalBytes(needed), 40);
+
+    // ---- conditional manifest (Yozora #516): digest stored once in sync, then 304 ----
+    {
+        const DIGEST = 'digest-1';
+        const synced = [{ url: '/app', hash: 'app1', size: 20 }];
+        const seen = [];
+        const storage = memoryStorage();
+        const condEnv = {
+            location: { origin: ORIGIN },
+            localStorage: storage,
+            caches: fakeCaches([{ url: '/app', hash: 'app1' }]),
+            fetch: async (url, opts) => {
+                const sent = opts.headers['X-Manifest-Hash'] || '';
+                seen.push(sent);
+                if (sent === DIGEST) return { ok: false, status: 304, headers: { get: () => DIGEST } };
+                return { ok: true, status: 200, headers: { get: (h) => (h === 'X-Manifest-Hash' ? DIGEST : null) }, json: async () => synced };
+            }
+        };
+        const first = await engine.check(condEnv);
+        assert.strictEqual(first.files.length, 0, 'in sync');
+        assert.strictEqual(seen[0], '', 'first check sends no digest');
+        assert.strictEqual(storage.getItem('melatonManifestHash'), DIGEST, 'digest stored once the cache matched');
+        const second = await engine.check(condEnv);
+        assert.strictEqual(seen[1], DIGEST, 'next check sends the digest');
+        assert.ok(second.unchanged && second.files.length === 0, '304: nothing to install, no diff');
+
+        // A cache that is behind does not store the digest
+        const behindStorage = memoryStorage();
+        const behind = await engine.check({ ...condEnv, localStorage: behindStorage, caches: fakeCaches([]) });
+        assert.strictEqual(behind.files.length, 1);
+        assert.strictEqual(behindStorage.getItem('melatonManifestHash'), null, 'out of sync: no digest');
+    }
     assert.deepStrictEqual((await engine.filesNeedingUpdate({ ...env, caches: null }, manifest)).length, 5, 'no Cache Storage: everything');
     const withAuth = manifest.concat([
         { url: '/protected/fflate.js', hash: 'ff', size: 9, auth: true },

@@ -137,8 +137,11 @@ function refreshWorkspaceStylesheet(hash) {
         workspaceStyleElement.remove();
         workspaceStyleElement = null;
     }
-    const bust = hash || Date.now();
-    const nextHref = `/css/workspaces.css?sha=${encodeURIComponent(bust)}`;
+    // ?sha= is served immutable for a year, so it only ever carries a real hash. Without
+    // one, ?v= forces this fetch and the server still answers no-cache (revalidated).
+    const nextHref = hash
+        ? `/css/workspaces.css?sha=${encodeURIComponent(hash)}`
+        : `/css/workspaces.css?v=${Date.now()}`;
     const targetHref = new URL(nextHref, document.baseURI).href;
     if (link.href === targetHref) {
         return Promise.resolve();
@@ -309,9 +312,24 @@ function preloadWallpaperIntoMemory(url) {
     return promise;
 }
 
+function activeWorkspaceWallpaperUrl() {
+    const ws = workspaces && activeWorkspace ? workspaces[activeWorkspace] : null;
+    // resolveWorkspaceWallpaperUrl: public/scripts/comp/modalUtils.js
+    return (ws && resolveWorkspaceWallpaperUrl(ws.wallpaper)) || '';
+}
+
+/**
+ * Keep the service worker's wallpaper cache in step with the workspaces.
+ * options.activeOnly (boot): download and decode only the active workspace's wallpaper;
+ * the others stay cached as they are and come in with preloadOtherWorkspaceWallpapers()
+ * once the desktop is up. Later calls decode the active and the refreshed ones; the rest
+ * were decoded by that background pass.
+ */
 async function syncWorkspaceWallpaperCache(refreshUrls, options) {
+    const opts = options || {};
     const urls = collectWorkspaceWallpaperUrls();
     const refresh = Array.isArray(refreshUrls) ? refreshUrls.filter(Boolean) : [];
+    const active = activeWorkspaceWallpaperUrl();
     const keep = new Set(urls);
     wallpaperMemoryImages.forEach((_img, url) => {
         if (!keep.has(url) || refresh.indexOf(url) !== -1) {
@@ -321,14 +339,45 @@ async function syncWorkspaceWallpaperCache(refreshUrls, options) {
     const swm = window.serviceWorkerManager;
     if (swm && swm.syncWallpaperUrls) {
         try {
-            await swm.syncWallpaperUrls(urls, refresh);
+            const fetchUrls = opts.activeOnly ? (active ? [active] : []) : undefined;
+            await swm.syncWallpaperUrls(urls, refresh, fetchUrls);
         } catch (error) {
             console.warn('Wallpaper cache sync failed:', error);
         }
     }
     // Boot defers decode to the "Loading wallpaper" bar step (assetPreload.js).
-    if (options && options.skipDecode) return;
-    await Promise.all(urls.map((url) => preloadWallpaperIntoMemory(url)));
+    if (opts.skipDecode) return;
+    const decode = new Set(refresh.filter((url) => keep.has(url)));
+    if (active) decode.add(active);
+    await Promise.all([...decode].map((url) => preloadWallpaperIntoMemory(url)));
+}
+
+let otherWallpapersPreloaded = false;
+
+/**
+ * Background pass after the desktop is up: download (service worker cache) and decode the
+ * wallpapers of the workspaces that are not active, one at a time in idle time, so a
+ * planet switch paints at once without holding up the boot.
+ */
+function preloadOtherWorkspaceWallpapers() {
+    if (otherWallpapersPreloaded) return Promise.resolve();
+    otherWallpapersPreloaded = true;
+    const idle = () => new Promise((resolve) => {
+        if (typeof requestIdleCallback === 'function') requestIdleCallback(() => resolve(), { timeout: 2000 });
+        else setTimeout(resolve, 200);
+    });
+    const swm = window.serviceWorkerManager;
+    const urls = collectWorkspaceWallpaperUrls();
+    let chain = idle();
+    if (swm && swm.syncWallpaperUrls) {
+        chain = chain.then(() => swm.syncWallpaperUrls(urls, [])).catch((error) => {
+            console.warn('Background wallpaper cache sync failed:', error);
+        });
+    }
+    urls.forEach((url) => {
+        chain = chain.then(idle).then(() => preloadWallpaperIntoMemory(url));
+    });
+    return chain;
 }
 
 function applyEarlyWorkspaceThemeInline(settings) {
@@ -1110,8 +1159,13 @@ async function loadWorkspaces() {
 
             // During desktop startup, bitmap decode waits for the bar's wallpaper
             // step (assetPreload.js). Later reloads still decode here.
+            // Only the active wallpaper is fetched now; the other workspaces' wallpapers are
+            // a background pass after the desktop (preloadOtherWorkspaceWallpapers).
             const deferWallpaperDecode = document.body.classList.contains('windows-startup');
-            await syncWorkspaceWallpaperCache(undefined, { skipDecode: deferWallpaperDecode });
+            await syncWorkspaceWallpaperCache(undefined, {
+                skipDecode: deferWallpaperDecode,
+                activeOnly: !otherWallpapersPreloaded
+            });
 
             // Point the stylesheet at the live compiled hash before dropping inline boot
             // wallpaper. app.html's baked ?sha= is from the last full compile and can
@@ -3002,6 +3056,13 @@ if (window.wsClient) {
     }, true);
     window.wsClient.registerInitStep(87, 'Initializing background layers', async () => {
         initializeBackgrounds();
+    });
+    // The other workspaces' wallpapers: a background pass once the desktop is up
+    // (desktopBootDone, public/scripts/comp/desktopBoot.js), or after the last step elsewhere.
+    document.addEventListener('desktopBootDone', () => preloadOtherWorkspaceWallpapers());
+    window.wsClient.registerInitStep(101, 'Queueing background wallpapers', async () => {
+        if (window.isDesktop && window.desktopBoot && window.desktopBoot.isBooting()) return;
+        preloadOtherWorkspaceWallpapers();
     });
 } else {
     throw new Error('WebSocket client not initialized');

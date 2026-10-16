@@ -1834,7 +1834,7 @@ class DesktopShortcutsManager {
             const srcset = buildAppIconSrcset(applet.imageIcon);
             if (srcset) {
                 imageIcon.setAttribute('srcset', srcset);
-                imageIcon.setAttribute('sizes', '192px');
+                imageIcon.setAttribute('sizes', appIconSizesAttr(APP_ICON_DISPLAY_PX.desktop));
             }
             imageIcon.className = 'icon-image';
             imageIcon.alt = '';
@@ -1853,7 +1853,7 @@ class DesktopShortcutsManager {
         const srcset = buildAppIconSrcset('vista-remote-desktop.png');
         if (srcset) {
             imageIcon.setAttribute('srcset', srcset);
-            imageIcon.setAttribute('sizes', '192px');
+            imageIcon.setAttribute('sizes', appIconSizesAttr(APP_ICON_DISPLAY_PX.desktop));
         }
         imageIcon.className = 'icon-image';
         imageIcon.alt = '';
@@ -1912,7 +1912,7 @@ class DesktopShortcutsManager {
             const srcset = buildAppIconSrcset(data.imageIcon);
             if (srcset) {
                 imageIcon.setAttribute('srcset', srcset);
-                imageIcon.setAttribute('sizes', '192px');
+                imageIcon.setAttribute('sizes', appIconSizesAttr(APP_ICON_DISPLAY_PX.desktop));
             }
             imageIcon.className = 'icon-image';
             imageIcon.alt = '';
@@ -1965,7 +1965,7 @@ class DesktopShortcutsManager {
         const phaseSrcset = buildAppIconSrcset('vista-phasewalker-file.png');
         if (phaseSrcset) {
             imageIcon.setAttribute('srcset', phaseSrcset);
-            imageIcon.setAttribute('sizes', '192px');
+            imageIcon.setAttribute('sizes', appIconSizesAttr(APP_ICON_DISPLAY_PX.desktop));
         }
         imageIcon.className = 'icon-image';
         imageIcon.alt = '';
@@ -2459,7 +2459,7 @@ class DesktopShortcutsManager {
         const codeSrcset = buildAppIconSrcset('vista-code-file.png');
         if (codeSrcset) {
             imageIcon.setAttribute('srcset', codeSrcset);
-            imageIcon.setAttribute('sizes', '192px');
+            imageIcon.setAttribute('sizes', appIconSizesAttr(APP_ICON_DISPLAY_PX.desktop));
         }
         imageIcon.className = 'icon-image';
         imageIcon.alt = '';

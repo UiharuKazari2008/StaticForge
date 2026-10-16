@@ -349,7 +349,7 @@
 }
 
 /* Hide quips while Enshutsuka reasoning popups are on screen */
-.generating .manual-preview-content:has(.progress-reasoning-container .progress-reasoning-item) .generation-preview-quip {
+.generating .manual-preview-content.has-reasoning-items .generation-preview-quip {
     opacity: 0 !important;
     visibility: hidden !important;
     transition: opacity 0.3s ease-out, visibility 0.3s ease-out;

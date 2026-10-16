@@ -599,8 +599,8 @@ class CustomScrollbar {
                 thumb.style.bottom = 'auto';
             }
 
-            // Show scrollbar
-            scrollbar.classList.remove('hidden');
+            // Show scrollbar (no-op writes still queue mutation records)
+            if (scrollbar.classList.contains('hidden')) scrollbar.classList.remove('hidden');
         } else {
             if (!skipScrollStateClasses && scrollState.needsScrollbar) {
                 element.classList.remove('scroll-ready', 'scroll-top', 'scroll-end');
@@ -610,7 +610,7 @@ class CustomScrollbar {
             }
 
             // Hide scrollbar when not needed
-            scrollbar.classList.add('hidden');
+            if (!scrollbar.classList.contains('hidden')) scrollbar.classList.add('hidden');
         }
 
         data.scrollState = scrollState;

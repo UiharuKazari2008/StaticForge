@@ -1045,6 +1045,7 @@ body.dreamscape-install-wizard .modal:not(#dreamscapeOsInstallWizardModal):not(#
 body.desktop-mode.boot-staged .desktop-wallpaper,
 body.desktop-mode.boot-staged .desktop-icons,
 body.desktop-mode.boot-staged .desktop-taskbar,
+body.desktop-mode.boot-staged #vistaSidebar,
 body.desktop-mode.boot-staged .gallery-window,
 body.desktop-mode.boot-staged .modal:not(.boot-dialog):not(#confirmationDialog) {
     transition: none;
@@ -1053,6 +1054,7 @@ body.desktop-mode.boot-staged .modal:not(.boot-dialog):not(#confirmationDialog) 
 body.desktop-mode.boot-staged:not(.boot-reveal-wallpaper) .desktop-wallpaper,
 body.desktop-mode.boot-staged:not(.boot-reveal-icons) .desktop-icons,
 body.desktop-mode.boot-staged:not(.boot-reveal-taskbar) .desktop-taskbar,
+body.desktop-mode.boot-staged:not(.boot-reveal-gadgets) #vistaSidebar,
 body.desktop-mode.boot-staged:not(.boot-reveal-windows) .gallery-window,
 body.desktop-mode.boot-staged:not(.boot-reveal-windows) .modal:not(.boot-dialog):not(#confirmationDialog) {
     visibility: hidden;
@@ -1208,7 +1210,9 @@ body.session-switch-cover #desktopPreStartupModal {
 
 /* Boot message box (public/scripts/comp/bootMessageBox.js): a Windows message box for boot
    and lock errors. Icon left, message + "DETAIL - ..." line, centred 75x23 buttons; the
-   frame is whatever theme the boot is in (Classic until the workspaces load). */
+   frame is whatever theme the boot is in. Vista Basic / Aero: Vista's light face, Segoe UI 9pt
+   and .btn-standard push buttons (the VPN dialogs' look, Yozora #515); Windows Classic keeps
+   ButtonFace and Tahoma 8pt. */
 #bootMessageBox {
     width: auto;
     min-width: 300px;
@@ -1217,10 +1221,23 @@ body.session-switch-cover #desktopPreStartupModal {
 
 #bootMessageBox .boot-message-box-content {
     padding: 14px 12px 12px;
+    background: #f0f0f0;
+    color: #000;
+    font-family: 'Segoe UI', Tahoma, 'Noto Sans', sans-serif;
+    font-size: 12px;
+}
+
+body.windows-classic-theme #bootMessageBox .boot-message-box-content {
     background: var(--ButtonFace, #d4d0c8);
     color: var(--WindowText, #000);
     font-family: Tahoma, 'MS Sans Serif', 'Segoe UI', sans-serif;
     font-size: 11px;
+}
+
+/* emphasis-manager.css greys and centres every .modal-content p */
+#bootMessageBox .boot-message-box-content :where(p) {
+    color: inherit;
+    text-align: left;
 }
 
 #bootMessageBox .boot-message-box-body {
@@ -1267,6 +1284,8 @@ body.session-switch-cover #desktopPreStartupModal {
     min-width: 75px;
     height: 23px;
     padding: 0 10px;
+    font-family: inherit;
+    font-size: inherit;
 }
 
 /* Computer Locked / Unlock Computer (workstationLock.js): XP Classic logon-family dialog with

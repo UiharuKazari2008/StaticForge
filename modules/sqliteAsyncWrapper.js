@@ -713,6 +713,74 @@ class AsyncSQLiteDatabase {
     }
 
     /**
+     * WAL checkpoint + online backup to destPath through this wrapper's own
+     * node-sqlite3 library. Never open this file with better-sqlite3 in the same
+     * process: that is a second SQLite copy, its close drops our POSIX locks and
+     * unlinks the live -wal/-shm, and every later query fails with SQLITE_IOERR (#523).
+     * @param {string} destPath
+     * @param {{ walCheckpoint?: string|null, pagesPerStep?: number }} [options]
+     * @returns {Promise<void>}
+     */
+    async backupToFile(destPath, options = {}) {
+        const mode = options.walCheckpoint == null ? null : String(options.walCheckpoint).toUpperCase();
+        if (mode && !['PASSIVE', 'FULL', 'RESTART', 'TRUNCATE'].includes(mode)) {
+            throw new Error(`Unsupported wal checkpoint mode: ${mode}`);
+        }
+        const pagesPerStep = Math.max(1, Number(options.pagesPerStep) || 4096);
+
+        await fs.promises.mkdir(path.dirname(destPath), { recursive: true });
+        const unlinkDest = async () => {
+            for (const suffix of ['', '-wal', '-shm', '-journal']) {
+                await fs.promises.unlink(destPath + suffix).catch((err) => {
+                    if (err && err.code !== 'ENOENT') throw err;
+                });
+            }
+        };
+        await unlinkDest();
+
+        // open() waits on isCheckpointing, which our callers hold, so use the live
+        // handle or a short-lived one from the same library.
+        await this.waitForCloseToFinish();
+        const owned = this.isOpen && this.db ? this.db : null;
+        const handle = owned || await open({ filename: this.dbPath, driver: sqlite3.Database });
+        if (owned) this.activeOperations++;
+        try {
+            if (mode) {
+                try {
+                    await handle.exec(`PRAGMA wal_checkpoint(${mode})`);
+                } catch (walError) {
+                    // The backup still copies a consistent snapshot when TRUNCATE cannot run.
+                }
+            }
+            const raw = handle.getDatabaseInstance();
+            const backup = await new Promise((resolve, reject) => {
+                const b = raw.backup(destPath, (err) => (err ? reject(err) : resolve(b)));
+            });
+            try {
+                while (!backup.completed && !backup.failed) {
+                    await new Promise((resolve, reject) => {
+                        backup.step(pagesPerStep, (err) => (err ? reject(err) : resolve()));
+                    });
+                }
+                if (!backup.completed) {
+                    throw new Error(`Backup of ${path.basename(this.dbPath)} did not complete`);
+                }
+            } finally {
+                await new Promise((resolve) => backup.finish(() => resolve()));
+            }
+        } catch (error) {
+            await unlinkDest().catch(() => {});
+            throw error;
+        } finally {
+            if (owned) {
+                this.activeOperations--;
+            } else {
+                await handle.close().catch(() => {});
+            }
+        }
+    }
+
+    /**
      * Get database statistics
      * @returns {Promise<Object>}
      */

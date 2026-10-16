@@ -154,7 +154,7 @@ function trayCloseOverflow() {
     }
     if (btn) {
         trayClassRemove(btn, 'is-open');
-        btn.title = 'Show hidden icons';
+        if (btn.title !== 'Show hidden icons') btn.title = 'Show hidden icons';
     }
 }
 

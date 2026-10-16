@@ -194,7 +194,7 @@ const ensureDesktopDovecoteModal = function () {
     const titleImage = document.createElement('img');
     titleImage.className = 'icon-image';
     titleImage.alt = '';
-    titleImage.src = '/static_images/app_icons/vista-mail.webp';
+    titleImage.src = '/static_images/app_icons/48/vista-mail.webp';
     const titleText = document.createElement('span');
     titleText.textContent = 'Inbox - Dovecote';
     titleMain.appendChild(titleIcon);
@@ -1650,6 +1650,36 @@ const doveFrameScrollbarStyle = async function () {
     return '<style>html { overflow-y: scroll; }\n' + css.replace(/<\/style/gi, '') + '</style>';
 };
 
+// Word wrap inside the message frame (#520): long lines, URLs and unbroken strings wrap instead of
+// widening the frame; preformatted text keeps its spacing but wraps; images shrink to the frame.
+// Placed first in <head> so the mail's own styles still win for everything but pre wrapping.
+const DOVE_FRAME_WRAP_STYLE = '<style>'
+    + 'body { overflow-wrap: anywhere; word-break: break-word; }\n'
+    + 'pre, xmp, listing, plaintext { white-space: pre-wrap !important; overflow-wrap: anywhere; }\n'
+    + 'img, video { max-width: 100%; height: auto; }\n'
+    + 'table { max-width: 100%; }\n'
+    + '.dovecote-wide-table { max-width: 100%; overflow-x: auto; }\n'
+    + '</style>';
+
+// A table that still cannot shrink to the frame (fixed widths, nowrap cells) scrolls sideways in
+// its own box rather than pushing the whole message wider. Outermost overflowing tables only.
+const doveWrapWideFrameTables = function (iframe) {
+    const wrap = () => {
+        const doc = iframe.contentDocument;
+        if (!doc || !doc.body) return;
+        const limit = doc.documentElement.clientWidth;
+        doc.body.querySelectorAll('table').forEach((table) => {
+            if (table.parentElement && table.parentElement.closest('table, .dovecote-wide-table')) return;
+            if (table.getBoundingClientRect().right <= limit + 1) return;
+            const box = doc.createElement('div');
+            box.className = 'dovecote-wide-table';
+            table.parentNode.insertBefore(box, table);
+            box.appendChild(table);
+        });
+    };
+    iframe.addEventListener('load', wrap);
+};
+
 // options: { viewAsOwner, allowRemoteImages, isStale(), onLoadImages() }
 // Inline images in rendered mail (Yukimi, Oct 14). The sanitizer (modules/dovecoteSanitize.js)
 // marks cid: images as data-dove-cid and same-origin relative images as data-dove-local; here they
@@ -1747,8 +1777,9 @@ const doveRenderRenderedBodyInto = async function (els, mail, options) {
     // script would defeat that sanitization entirely. allow-popups only lets surviving <a target="_blank"> links open.
     iframe.setAttribute('sandbox', 'allow-popups allow-popups-to-escape-sandbox allow-same-origin');
     iframe.className = 'dovecote-body-frame';
-    iframe.srcdoc = '<!DOCTYPE html><html><head><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src \'self\' data: blob: https: http:; style-src \'unsafe-inline\'">' + scrollbarStyle + '</head><body>' + bodyHtml + '</body></html>';
+    iframe.srcdoc = '<!DOCTYPE html><html><head><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src \'self\' data: blob: https: http:; style-src \'unsafe-inline\'">' + DOVE_FRAME_WRAP_STYLE + scrollbarStyle + '</head><body>' + bodyHtml + '</body></html>';
     doveWireFrameLinks(iframe);
+    doveWrapWideFrameTables(iframe);
     els.bodyWrap.appendChild(iframe);
 };
 
@@ -2406,7 +2437,7 @@ const doveEnsureNewMailModal = function () {
     const titleImage = document.createElement('img');
     titleImage.className = 'icon-image';
     titleImage.alt = '';
-    titleImage.src = '/static_images/app_icons/vista-mail.webp';
+    titleImage.src = '/static_images/app_icons/48/vista-mail.webp';
     const titleText = document.createElement('span');
     titleText.textContent = 'New Mail';
     titleMain.appendChild(titleIcon);

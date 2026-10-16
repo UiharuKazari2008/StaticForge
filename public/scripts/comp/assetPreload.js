@@ -11,14 +11,21 @@
  * keeps the decode. opacity:0 or a box parked off the screen is treated as lazy
  * and comes back as a placeholder the next time the bitmap is shown.
  *
- * Desktop assets: after the connection's Connected beat, and before the logon hands off
- * to the desktop (websocket.js _startAfterLogon → desktopBoot.begin), the logon dialog
- * says "Preparing your desktop..." and keeps its marquee. That wait decodes what
- * the first desktop paint shows and the chrome that stays on screen after it:
- * the active wallpaper, the desktop icons (drawn into the hidden desktop so the
- * same elements stay decoded), the taskbar pictures, the tray icons, the sidebar
- * chrome (it starts with the taskbar), the start menu art, the
- * taskbar clock face, and the active workspace fonts.
+ * After the connection's Connected beat, and before the logon hands off to the desktop
+ * (websocket.js _startAfterLogon → desktopBoot.begin), the logon dialog says "Preparing
+ * your desktop..." and keeps its marquee while the active workspace's wallpaper decodes.
+ * Nothing else is fetched there.
+ *
+ * The startup window then loads the desktop in stages, each revealed when its own
+ * assets are ready (desktopBoot.onStepDone):
+ *   12.2 Loading wallpaper      → wallpaper shows
+ *   18   Loading Desktop Shortcuts (desktopShortcuts.js) fetches the list
+ *   18.2 Loading desktop icons  → icons drawn into the hidden desktop, decoded, shown
+ *   18.4 Loading desktop assets → taskbar pictures, tray glyphs, sidebar chrome, start
+ *        menu art and the start menu's own icons, the clock face and the workspace
+ *        fonts; then the taskbar shows
+ * The other workspaces' wallpapers are a background pass after the desktop
+ * (workspaceUtils.js preloadOtherWorkspaceWallpapers).
  * Scrollbar bitmaps are not fetched here. They are inlined in vista-scrollbars.css:
  * ::-webkit-scrollbar paints a flat placeholder until a file url arrives, and it
  * does not use this hold.
@@ -36,7 +43,6 @@ var assetPreload = (function () {
     // and the install wizard. desktop-boot.css also contributes header.png.
     var LOGIN_URLS = [
         '/static_images/header.png',
-        '/static_images/logo_icon.png',
         '/static_images/explorer-banner.png',
         '/static_images/melaton/net-laptop.png',
         '/static_images/melaton/net-server.png',
@@ -84,19 +90,20 @@ var assetPreload = (function () {
         '/static_images/vista-start/shutdown.png',
         '/static_images/vista-start/lock.png'
     ];
-    // Tray glyphs (vista-glass-controls.css) and sidebar chrome (vistaSidebar.js
-    // starts when the taskbar is shown).
-    var DESKTOP_STYLES = ['vista-glass-controls.css', 'vista-sidebar.css'];
+    // Tray glyphs (vista-glass-controls.css). The sidebar's chrome and gadgets are not walked
+    // from vista-sidebar.css (every gadget theme, ~150 images): step 18.6 decodes what the
+    // gadgets in use actually draw (preloadGadgetsStage).
+    var DESKTOP_STYLES = ['vista-glass-controls.css'];
     // Start menu art. desktop-shell.css also names the default wallpaper, which is
-    // not chrome. Folder icons and the orb are chosen in script, not in that sheet
-    // (modalUtils.js START_MENU_ART, app.html .taskbar-start-button-orb).
-    var START_MENU_URLS = [
-        '/static_images/vista_orb.png',
-        '/static_images/windows-logo-vista.png',
-        '/static_images/windows-logo-royal.png',
+    // not chrome. Folder icons are chosen in script, not in that sheet
+    // (modalUtils.js START_MENU_ART). The start button's orb / logo is whatever its
+    // <img> shows (held from the taskbar's DOM); the other styles' art is not loaded.
+    var LUNA_START_URLS = [
         '/static_images/xp-mce-start.png',
         '/static_images/xp-mce-start-hot.png',
-        '/static_images/xp-mce-start-pressed.png',
+        '/static_images/xp-mce-start-pressed.png'
+    ];
+    var START_MENU_URLS = [
         '/static_images/vista-start/folder-20.png',
         '/static_images/vista-start/folder-40.png',
         '/static_images/vista-start/programs-arrow.png',
@@ -104,9 +111,11 @@ var assetPreload = (function () {
         '/static_images/vista-start/search-glyph.png',
         '/static_images/vista-start/arrow.png'
     ];
-    // Taskbar clock: public/css/desktop-shell.css .taskbar-clock
+    // Taskbar clock: public/css/desktop-shell.css .taskbar-clock. Share Tech Mono is the app-wide
+    // --font-mono (app.css), not a workspace font, so the workspace font list never named it.
     var SHELL_FONT_SPECS = [
-        '300 18px "Red Hat Display"'
+        '300 18px "Red Hat Display"',
+        '400 16px "Share Tech Mono"'
     ];
 
     var URL_RE = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g;
@@ -122,7 +131,8 @@ var assetPreload = (function () {
     var primedFontFamilies = [];
     var pinLayoutBound = false;
     var beforeTransitionPromise = null;
-    var desktopAssetsPrepared = false;
+    var wallpaperPrepared = false;
+    var shellPrepared = false;
     var bootIconsDrawn = false;
 
     function uniqueUrls(urls) {
@@ -186,9 +196,10 @@ var assetPreload = (function () {
         }
     }
 
-    function holdImage(url, srcset) {
+    // srcset / sizes must be the live element's own, or the browser picks another file.
+    function holdImage(url, srcset, sizes) {
         if (!url) return Promise.resolve();
-        var key = srcset ? (url + '\n' + srcset) : url;
+        var key = srcset ? (url + '\n' + srcset + '\n' + (sizes || '')) : url;
         var existing = kept.get(key);
         if (existing) return existing;
         var job = new Promise(function (resolve) {
@@ -201,7 +212,7 @@ var assetPreload = (function () {
             img.style.top = '0';
             if (srcset) {
                 img.setAttribute('srcset', srcset);
-                img.setAttribute('sizes', '192px');
+                if (sizes) img.setAttribute('sizes', sizes);
             }
             ensureHold().appendChild(img);
             pinned.push(img);
@@ -215,6 +226,8 @@ var assetPreload = (function () {
             var timer = setTimeout(finish, IMAGE_TIMEOUT_MS);
             img.onload = function () {
                 clearTimeout(timer);
+                var chosen = normalizeAssetUrl(img.currentSrc || '', location.href).split('?')[0];
+                if (chosen && !kept.has(chosen)) kept.set(chosen, Promise.resolve());
                 if (img.decode) img.decode().then(finish).catch(finish);
                 else finish();
             };
@@ -229,13 +242,75 @@ var assetPreload = (function () {
         return job;
     }
 
-    function holdAppIcon(imageIcon) {
+    // displayPx: the size the icon is drawn at (renderAppIconImg's displayPx).
+    function holdAppIcon(imageIcon, displayPx) {
         if (!imageIcon) return Promise.resolve();
-        // resolveAppIconPath / buildAppIconSrcset: public/scripts/comp/modalUtils.js
+        // resolveAppIconPath / buildAppIconSrcset / appIconSizesAttr: public/scripts/comp/modalUtils.js
         var src = resolveAppIconPath(imageIcon);
         var srcset = buildAppIconSrcset(imageIcon);
         if (!src) return Promise.resolve();
-        return holdImage(src, srcset);
+        return holdImage(src, srcset, appIconSizesAttr(displayPx));
+    }
+
+    // Every <img> in markup built by the live renderer (getIconHTML and friends), held
+    // as is, so src, srcset and sizes are exactly what the real element will ask for.
+    function holdMarkupImages(html) {
+        if (!html) return Promise.resolve();
+        var tpl = document.createElement('template');
+        tpl.innerHTML = html;
+        var imgs = tpl.content.querySelectorAll('img');
+        var jobs = [];
+        for (var i = 0; i < imgs.length; i++) {
+            var src = imgs[i].getAttribute('src');
+            if (!src) continue;
+            jobs.push(holdImage(src, imgs[i].getAttribute('srcset') || '', imgs[i].getAttribute('sizes') || ''));
+        }
+        return Promise.all(jobs);
+    }
+
+    function parseFontSpec(spec) {
+        var named = /^(?:(\d+)\s+)?[\d.]+px\s+"([^"]+)"/.exec(spec || '');
+        if (!named) return null;
+        return { weight: named[1] ? Number(named[1]) : 0, family: named[2] };
+    }
+
+    function fontWeightMatches(declared, weight) {
+        if (!weight) return true;
+        var parts = String(declared || '400').trim().split(/\s+/).map(Number).filter(function (n) { return n > 0; });
+        if (parts.length >= 2) return weight >= parts[0] && weight <= parts[1];
+        if (parts.length === 1) return parts[0] === weight;
+        return true;
+    }
+
+    // Mark the @font-face files before document.fonts.load fetches them, so the
+    // late watch does not report the same file when CSS uses the face.
+    function markFontFaceFiles(family, weight) {
+        if (!family || !document.styleSheets) return;
+        var sheets = document.styleSheets;
+        for (var i = 0; i < sheets.length; i++) {
+            var href = '';
+            try { href = sheets[i].href || ''; } catch (e) { continue; }
+            if (href.indexOf('fonts.css') === -1) continue;
+            var rules;
+            try { rules = sheets[i].cssRules; } catch (e) { continue; }
+            for (var r = 0; r < rules.length; r++) {
+                var rule = rules[r];
+                if (!rule.style || !rule.style.getPropertyValue) continue;
+                var fam = (rule.style.getPropertyValue('font-family') || '').replace(/["']/g, '').trim();
+                if (fam !== family) continue;
+                var declared = rule.style.getPropertyValue('font-weight') || '400';
+                if (!fontWeightMatches(declared, weight)) continue;
+                var src = rule.style.getPropertyValue('src') || rule.cssText || '';
+                URL_RE.lastIndex = 0;
+                var match;
+                while ((match = URL_RE.exec(src))) {
+                    var abs = normalizeAssetUrl(match[2], href);
+                    if (!abs) continue;
+                    abs = abs.split('?')[0];
+                    if (!kept.has(abs)) kept.set(abs, Promise.resolve());
+                }
+            }
+        }
     }
 
     function parseFontSpec(spec) {
@@ -411,6 +486,7 @@ var assetPreload = (function () {
             }
             var text = rule.cssText || '';
             if (text.indexOf('url(') === -1) continue;
+            if (skipLogonRule(rule)) continue;
             URL_RE.lastIndex = 0;
             var match;
             while ((match = URL_RE.exec(text))) {
@@ -418,6 +494,17 @@ var assetPreload = (function () {
                 if (abs && (isBitmapUrl(abs) || isCursorUrl(abs))) out.push(abs);
             }
         }
+    }
+
+    // The Vista Welcome screen's art only when that screen is on, and never its
+    // per-aspect backgrounds: websocket.js _whenVistaLogonArtReady holds the one the
+    // aspect queries picked (the default rule would add a second, unused one).
+    function skipLogonRule(rule) {
+        var selector = rule.selectorText || '';
+        if (selector.indexOf('.vista-logon') === -1) return false;
+        if (rule.style && rule.style.getPropertyValue && rule.style.getPropertyValue('--vista-logon-bg')) return true;
+        var b = document.body;
+        return !(b && b.classList.contains('vista-logon'));
     }
 
     function collectStylesheetUrls(nameParts) {
@@ -481,16 +568,20 @@ var assetPreload = (function () {
         api.lateWatch = true;
     }
 
-    function collectImageSrcs(selector) {
-        var out = [];
-        if (!document.querySelectorAll) return out;
+    // Hold each <img> as it is in the document, srcset and sizes included, so the
+    // file the element will pick is the one that is decoded.
+    // skipHidden: leave out pictures under a .hidden box (the start button styles not in use).
+    function holdDomImages(selector, skipHidden) {
+        if (!document.querySelectorAll) return Promise.resolve();
         var nodes = document.querySelectorAll(selector);
+        var jobs = [];
         for (var i = 0; i < nodes.length; i++) {
-            var src = nodes[i].getAttribute('src');
-            var abs = normalizeAssetUrl(src, location.href);
-            if (abs) out.push(abs);
+            if (skipHidden && nodes[i].closest && nodes[i].closest('.hidden')) continue;
+            var src = normalizeAssetUrl(nodes[i].getAttribute('src'), location.href);
+            if (!src) continue;
+            jobs.push(holdImage(src, nodes[i].getAttribute('srcset') || '', nodes[i].getAttribute('sizes') || ''));
         }
-        return out;
+        return Promise.all(jobs);
     }
 
     function activeWallpaperUrl() {
@@ -514,7 +605,7 @@ var assetPreload = (function () {
         var fonts = loadFonts(LOGIN_FONT_SPECS.concat(ICON_FONT_SPECS));
         var dom = new Promise(function (resolve) {
             function scan() {
-                resolve(preloadUrls(collectImageSrcs('.boot-dialog img[src]'), { concurrency: 6 }));
+                resolve(holdDomImages('.boot-dialog img[src]'));
             }
             if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', scan, { once: true });
@@ -586,8 +677,10 @@ var assetPreload = (function () {
         });
     }
 
+    // Logon (after Connected) and step 12.2. holdImage is per url, so the second call only
+    // waits when Loading Workspaces moved the active wallpaper.
     function preloadWallpaperStage() {
-        if (!isDesktop || desktopAssetsPrepared) return Promise.resolve(true);
+        if (!isDesktop) return Promise.resolve(true);
         var url = '';
         try {
             url = activeWallpaperUrl() || primedWallpaperUrl;
@@ -600,15 +693,19 @@ var assetPreload = (function () {
         return whenSettled(Promise.all([
             holdImage(url),
             preloadWallpaperIntoMemory(url)
-        ]), IMAGE_TIMEOUT_MS).catch(function (error) {
+        ]), IMAGE_TIMEOUT_MS).then(function (ok) {
+            if (ok) wallpaperPrepared = true;
+            return ok;
+        }).catch(function (error) {
             console.warn('Wallpaper preload failed:', error);
             return false;
         });
     }
 
+    // Step 18.2, after step 18 fetched the shortcut list: draw the icons into the hidden
+    // desktop and wait for their bitmaps; the icons stage reveals them.
     function preloadDesktopIconsStage() {
         if (!isDesktop) return Promise.resolve(true);
-        if (desktopAssetsPrepared) return drawBootShortcuts().then(function () { return true; });
         return drawBootShortcuts().then(function () {
             var root = document.getElementById('desktopIcons');
             var imgs = root ? root.querySelectorAll('img') : [];
@@ -619,8 +716,27 @@ var assetPreload = (function () {
         });
     }
 
+    // The start menu's first view (pinned and frequent rows, drawn when it opens) with the
+    // renderer's own markup. getStartMenuPinnedItems / getStartMenuFrequentItems /
+    // isStartMenuListedItem / getIconHTML / START_MENU_ROW_ICON_PX: public/scripts/comp/modalUtils.js
+    function holdStartMenuIcons() {
+        var jobs = [];
+        try {
+            var items = getStartMenuPinnedItems().filter(isStartMenuListedItem).concat(getStartMenuFrequentItems());
+            for (var i = 0; i < items.length; i++) {
+                var item = items[i];
+                if (!item || item.folder || item.color || !item.imageIcon) continue;
+                jobs.push(holdMarkupImages(getIconHTML(item.icon, item.imageIcon, '', START_MENU_ROW_ICON_PX.large)));
+            }
+        } catch (error) {
+            console.warn('Start menu icon preload skipped:', error);
+        }
+        return Promise.all(jobs);
+    }
+
+    // Step 18.4: taskbar, tray, sidebar and start menu; the taskbar stage reveals them.
     function preloadDesktopAssetsStage() {
-        if (!isDesktop || desktopAssetsPrepared) return Promise.resolve(true);
+        if (!isDesktop || shellPrepared) return Promise.resolve(true);
         // Start menu, then taskbar, tray, and sidebar.
         // Each bitmap stays in #assetPreloadHold after this stage.
         var shellFonts = SHELL_FONT_SPECS.slice();
@@ -632,19 +748,23 @@ var assetPreload = (function () {
             shellFonts.push('600 16px "' + family + '"');
             shellFonts.push('700 16px "' + family + '"');
         }
+        var startBtn = document.getElementById('taskbarStartBtn');
         var shellUrls = START_MENU_URLS.concat(
+            startBtn && startBtn.classList.contains('luna') ? LUNA_START_URLS : [],
             TASKBAR_URLS,
             collectStylesheetUrls(DESKTOP_STYLES)
         );
         return whenSettled(Promise.all([
             preloadUrls(shellUrls, { concurrency: 6 }),
+            holdDomImages('#desktopTaskbar img[src]', true),
+            holdStartMenuIcons(),
             loadFonts(shellFonts)
         ]), IMAGE_TIMEOUT_MS).then(function (ok) {
-            armLateWatch();
+            if (ok) shellPrepared = true;
+            // The gadget (18.6) and splash (18.8) steps still load art; 18.8 arms the watch
             return ok;
         }).catch(function (error) {
             console.warn('Desktop asset preload failed:', error);
-            armLateWatch();
             return false;
         });
     }
@@ -690,39 +810,218 @@ var assetPreload = (function () {
                 console.warn('Wallpaper target lookup failed:', error);
             });
         }
-        return lookup.then(function () {
-            if (!workspaceId || typeof desktopShortcuts === 'undefined' || !desktopShortcuts) return;
-            if (desktopShortcuts.shortcuts && desktopShortcuts.shortcuts.length) return;
-            desktopShortcuts.init();
-            desktopShortcuts.currentWorkspace = desktopShortcuts.currentWorkspace || workspaceId;
-            return desktopShortcuts.loadShortcuts(workspaceId);
+        // The shortcut list is step 18's job (Loading Desktop Shortcuts), in the startup window.
+        return lookup;
+    }
+
+    // Background images an element (and its ::before / ::after) paints, as page paths
+    function paintedBackgroundUrls(root) {
+        var out = [];
+        if (!root || !window.getComputedStyle) return out;
+        var nodes = [root].concat(Array.prototype.slice.call(root.querySelectorAll('*')));
+        var pseudo = [null, '::before', '::after'];
+        for (var i = 0; i < nodes.length; i++) {
+            for (var p = 0; p < pseudo.length; p++) {
+                var bg = '';
+                try { bg = getComputedStyle(nodes[i], pseudo[p]).backgroundImage || ''; } catch (e) { bg = ''; }
+                if (bg.indexOf('url(') === -1) continue;
+                URL_RE.lastIndex = 0;
+                var match;
+                while ((match = URL_RE.exec(bg))) {
+                    var abs = normalizeAssetUrl(match[2], location.href);
+                    if (abs && isBitmapUrl(abs)) out.push(abs);
+                }
+            }
+        }
+        return out;
+    }
+
+    // Step 18.6 (Yozora #521): start the Vista Sidebar while it is hidden, then decode the
+    // pictures and backgrounds its gadgets drew; the gadgets stage reveals it.
+    // vistaSidebarBoot.start: public/scripts/comp/vistaSidebar.js
+    function preloadGadgetsStage() {
+        if (!isDesktop || !window.vistaSidebarBoot) return Promise.resolve(true);
+        var started = whenSettled(window.vistaSidebarBoot.start().then(function (root) {
+            api.gadgetRoot = root;
+            return true;
+        }), STAGE_TIMEOUT_MS);
+        return started.then(function () {
+            var root = api.gadgetRoot;
+            if (!root) return true;
+            var imgs = root.querySelectorAll('img');
+            // The gadgets' own <img>s load as they render: count them as boot art for the late watch
+            for (var i = 0; i < imgs.length; i++) {
+                var src = normalizeAssetUrl(imgs[i].currentSrc || imgs[i].getAttribute('src'), location.href).split('?')[0];
+                if (src && !kept.has(src)) kept.set(src, Promise.resolve());
+            }
+            return whenSettled(Promise.all([
+                decodeImages(imgs),
+                preloadUrls(paintedBackgroundUrls(root), { concurrency: 6 })
+            ]), IMAGE_TIMEOUT_MS);
+        }).catch(function (error) {
+            console.warn('Gadget preload failed:', error);
+            return false;
         });
     }
 
+    // Step 18.8: the DreamStudio and Workspaces splash screens (appSplash.js) show the moment
+    // those windows open, so their art and faces are decoded during the boot, not on first open.
+    // The splashes sit in app.html under display:none: their <img>s download but are not decoded,
+    // and their CSS backgrounds are not fetched until shown.
+    var SPLASH_SELECTORS = ['#manualModalSplash', '#workspaceSplash'];
+
+    function splashFontSpecs() {
+        var specs = [];
+        SPLASH_SELECTORS.forEach(function (sel) {
+            var root = document.querySelector(sel);
+            if (!root || !window.getComputedStyle) return;
+            var nodes = root.querySelectorAll('[class*="splash-title"], .splash-status-text');
+            for (var i = 0; i < nodes.length; i++) {
+                var cs = getComputedStyle(nodes[i]);
+                var family = String(cs.fontFamily || '').split(',')[0].replace(/["']/g, '').trim();
+                if (!family) continue;
+                var spec = (cs.fontWeight || '400') + ' 16px "' + family + '"';
+                if (specs.indexOf(spec) === -1) specs.push(spec);
+            }
+        });
+        return specs;
+    }
+
+    function preloadSplashStage() {
+        if (!isDesktop) return Promise.resolve(true);
+        return whenSettled(Promise.all([
+            holdDomImages(SPLASH_SELECTORS.map(function (sel) { return sel + ' img[src]'; }).join(', ')),
+            preloadUrls(collectStylesheetUrls(['manual-modal-splash.css']), { concurrency: 4 }),
+            loadFonts(splashFontSpecs())
+        ]), IMAGE_TIMEOUT_MS).then(function (ok) {
+            // The last boot preload step: anything fetched from here on is reported as late
+            armLateWatch();
+            return ok;
+        }, function (error) {
+            console.warn('Splash preload failed:', error);
+            armLateWatch();
+            return false;
+        });
+    }
+
+    // ---- Applications (Yozora #518): decode an application's art before it opens ----
+    // public/data/app-assets.json (modules/appAssetManifest.js): groups of pictures and font
+    // specs per application, indexed by launchId and window id. Held like the boot art, so
+    // the first paint of a window has its bitmaps decoded.
+    var appManifestPromise = null;
+    var warmedGroups = new Set();
+
+    function loadAppAssetManifest() {
+        if (!appManifestPromise) {
+            appManifestPromise = fetch('/data/app-assets.json', { credentials: 'same-origin' })
+                .then(function (res) { return res && res.ok ? res.json() : null; })
+                .catch(function () { return null; })
+                .then(function (data) {
+                    if (!data || !data.groups) appManifestPromise = null; // try again next time
+                    return data;
+                });
+        }
+        return appManifestPromise;
+    }
+
+    // image-set() entries are [[path, density], ...]: the one this screen will pick
+    function pickForDensity(entry) {
+        if (!Array.isArray(entry)) return entry;
+        var dpr = window.devicePixelRatio || 1;
+        var sorted = entry.slice().sort(function (a, b) { return a[1] - b[1]; });
+        for (var i = 0; i < sorted.length; i++) {
+            if (sorted[i][1] >= dpr) return sorted[i][0];
+        }
+        return sorted[sorted.length - 1][0];
+    }
+
+    function warmGroups(manifest, ids) {
+        if (!manifest || !ids || !ids.length) return Promise.resolve();
+        var urls = [];
+        var fonts = [];
+        ids.forEach(function (id) {
+            if (warmedGroups.has(id)) return;
+            var group = manifest.groups[id];
+            if (!group) return;
+            warmedGroups.add(id);
+            (group.images || []).forEach(function (entry) { urls.push(pickForDensity(entry)); });
+            (group.fonts || []).forEach(function (spec) { fonts.push(spec); });
+        });
+        if (!urls.length && !fonts.length) return Promise.resolve();
+        return Promise.all([preloadUrls(urls, { concurrency: 4 }), loadFonts(fonts)]);
+    }
+
+    // Not at the logon or mid boot: those screens load their own art, and the manifest must not
+    // compete with the logon's requests. getClientDesktopState: public/scripts/comp/desktopBoot.js
+    function desktopIsUp() {
+        if (typeof window.getClientDesktopState !== 'function') return true;
+        var state = window.getClientDesktopState();
+        return state === 'desktop' || state === 'ready';
+    }
+
+    /** Hover / focus / press on a launcher (start menu, desktop shortcut) or the launch itself. */
+    function warmLaunch(launchId) {
+        if (!isDesktop || !launchId || !desktopIsUp()) return Promise.resolve();
+        return loadAppAssetManifest().then(function (manifest) {
+            return warmGroups(manifest, manifest && manifest.launch && manifest.launch[launchId]);
+        }).catch(function () {});
+    }
+
+    /** A window about to open (modalUtils.js openModal). */
+    function warmWindow(windowId) {
+        if (!isDesktop || !windowId || !desktopIsUp()) return Promise.resolve();
+        return loadAppAssetManifest().then(function (manifest) {
+            return warmGroups(manifest, manifest && manifest.windows && manifest.windows[windowId]);
+        }).catch(function () {});
+    }
+
+    // After the desktop: warm the start menu's pinned and frequent applications in idle time,
+    // one at a time. getStartMenuPinnedItems / getStartMenuFrequentItems: modalUtils.js
+    function warmFrequentApps() {
+        var ids = [];
+        try {
+            getStartMenuPinnedItems().concat(getStartMenuFrequentItems()).forEach(function (item) {
+                if (item && item.launchId && ids.indexOf(item.launchId) === -1) ids.push(item.launchId);
+            });
+        } catch (e) { return; }
+        var next = function () {
+            var id = ids.shift();
+            if (!id) return;
+            var idle = window.requestIdleCallback || function (fn) { return setTimeout(fn, 200); };
+            idle(function () { warmLaunch(id).then(next); }, { timeout: 3000 });
+        };
+        next();
+    }
+
+    function wireLaunchIntent() {
+        // Desktop shortcuts carry their launchId on shortcut.data (desktopShortcuts.js)
+        var onIntent = function (event) {
+            var el = event.target && event.target.closest ? event.target.closest('.desktop-shortcut[data-shortcut-id]') : null;
+            if (!el || typeof desktopShortcuts === 'undefined' || !desktopShortcuts || !desktopShortcuts.shortcuts) return;
+            var id = el.getAttribute('data-shortcut-id');
+            for (var i = 0; i < desktopShortcuts.shortcuts.length; i++) {
+                var s = desktopShortcuts.shortcuts[i];
+                if (s && s.id === id && s.data && s.data.launchId) {
+                    warmLaunch(s.data.launchId);
+                    return;
+                }
+            }
+        };
+        document.addEventListener('pointerover', onIntent, { passive: true });
+        document.addEventListener('focusin', onIntent);
+        document.addEventListener('desktopBootDone', warmFrequentApps, { once: true });
+    }
+
     // After Connected, before desktopBoot.begin. The logon keeps its marquee and the
-    // Vista line. Icons are drawn now, while boot-staged still hides the desktop.
+    // Vista line while the active workspace's wallpaper decodes; nothing else loads here.
     function preloadBeforeDesktopTransition() {
         if (!isDesktop) return Promise.resolve();
         if (beforeTransitionPromise) return beforeTransitionPromise;
-        var stages = [
-            function () { return preloadWallpaperStage(); },
-            function () { return preloadDesktopIconsStage(); },
-            function () { return preloadDesktopAssetsStage(); }
-        ];
         setLogonPrepareLine(true);
         beforeTransitionPromise = primeDesktopAssetSources().catch(function (error) {
             console.warn('Desktop asset sources failed:', error);
         }).then(function () {
-            var ready = true;
-            var chain = Promise.resolve();
-            stages.forEach(function (run) {
-                chain = chain.then(run).then(function (ok) {
-                    if (ok === false) ready = false;
-                });
-            });
-            return chain.then(function () {
-                if (ready) desktopAssetsPrepared = true;
-            });
+            return preloadWallpaperStage();
         }).then(function () {
             setLogonPrepareLine(false);
         }, function (error) {
@@ -775,6 +1074,12 @@ var assetPreload = (function () {
         wsClient.registerInitStep(18.4, 'Loading desktop assets', function () {
             return api.preloadDesktopAssetsStage();
         });
+        wsClient.registerInitStep(18.6, 'Loading gadgets', function () {
+            return api.preloadGadgetsStage();
+        });
+        wsClient.registerInitStep(18.8, 'Loading splash screens', function () {
+            return api.preloadSplashStage();
+        });
     }
 
     var api = {
@@ -784,13 +1089,22 @@ var assetPreload = (function () {
         preloadWallpaperStage: preloadWallpaperStage,
         preloadDesktopIconsStage: preloadDesktopIconsStage,
         preloadDesktopAssetsStage: preloadDesktopAssetsStage,
+        preloadGadgetsStage: preloadGadgetsStage,
+        preloadSplashStage: preloadSplashStage,
+        warmLaunch: warmLaunch,
+        warmWindow: warmWindow,
+        loadAppAssetManifest: loadAppAssetManifest,
+        gadgetRoot: null,
         holdAppIcon: holdAppIcon,
         holdImage: holdImage,
+        holdMarkupImages: holdMarkupImages,
+        isWallpaperPrepared: function () { return wallpaperPrepared; },
         lateWatch: false,
         lateAssets: function () { return lateList.slice(); }
     };
 
     startLateWatch();
+    if (typeof isDesktop !== 'undefined' && isDesktop) wireLaunchIntent();
 
     if (typeof isDesktop !== 'undefined' && isDesktop) startLoginStage();
     if (document.readyState === 'loading') {

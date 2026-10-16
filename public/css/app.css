@@ -3415,11 +3415,11 @@ body.desktop-mode .modal-backdrop {
     display: none !important;
 }
 
-.gallery-container-wrapper:has(.gallery-item.context-open) #main-menu-bar::after {
+.gallery-container-wrapper.has-context-open-item #main-menu-bar::after {
     opacity: 0;
 }
 
-.gallery-container-wrapper:has(.gallery-item.context-open) #main-menu-bar {
+.gallery-container-wrapper.has-context-open-item #main-menu-bar {
     opacity: 1;
 }
 
@@ -3518,35 +3518,36 @@ body.desktop-mode #photoSwipeWindow.photo-swipe-window.modal-maximized.windowed 
 
 /*
  * Work-area maximized: black native WCO / Android caption band + side gutters.
- * Driven by :has(.modal-maximized) only — no JS class on html.
+ * Driven by html.has-maximized-* flags (scripts/comp/rootStateFlags.js), not html:has(): a
+ * root-anchored :has() recomputes style for the whole page on every DOM change.
  */
-html:has(.modal.modal-maximized:not(.hidden):not(.hidden-alt)).window-controls-overlay #titlebar-grab-area-container,
-html:has(.gallery-window.modal-maximized.windowed).window-controls-overlay #titlebar-grab-area-container,
-html:has(body.desktop-mode #photoSwipeWindow.photo-swipe-window.modal-maximized.windowed).window-controls-overlay #titlebar-grab-area-container {
+html.has-maximized-window.window-controls-overlay #titlebar-grab-area-container,
+html.has-maximized-gallery-window.window-controls-overlay #titlebar-grab-area-container,
+html.has-maximized-photo-window.window-controls-overlay #titlebar-grab-area-container {
     left: 0;
     width: 100vw;
     max-width: 100vw;
     background-color: #000000;
 }
 
-html:has(.modal.modal-maximized:not(.hidden):not(.hidden-alt)).titlebar-android #titlebar-grab-area-container .menu-bar-left-gutter,
-html:has(.modal.modal-maximized:not(.hidden):not(.hidden-alt)).titlebar-android #titlebar-grab-area-container .menu-bar-right-gutter,
-html:has(.modal.modal-maximized:not(.hidden):not(.hidden-alt)).titlebar-android #titlebar-grab-area-container #menu-bar-controls-right-gutter,
-html:has(.gallery-window.modal-maximized.windowed).titlebar-android #titlebar-grab-area-container .menu-bar-left-gutter,
-html:has(.gallery-window.modal-maximized.windowed).titlebar-android #titlebar-grab-area-container .menu-bar-right-gutter,
-html:has(.gallery-window.modal-maximized.windowed).titlebar-android #titlebar-grab-area-container #menu-bar-controls-right-gutter,
-html:has(body.desktop-mode #photoSwipeWindow.photo-swipe-window.modal-maximized.windowed).titlebar-android #titlebar-grab-area-container .menu-bar-left-gutter,
-html:has(body.desktop-mode #photoSwipeWindow.photo-swipe-window.modal-maximized.windowed).titlebar-android #titlebar-grab-area-container .menu-bar-right-gutter,
-html:has(body.desktop-mode #photoSwipeWindow.photo-swipe-window.modal-maximized.windowed).titlebar-android #titlebar-grab-area-container #menu-bar-controls-right-gutter {
+html.has-maximized-window.titlebar-android #titlebar-grab-area-container .menu-bar-left-gutter,
+html.has-maximized-window.titlebar-android #titlebar-grab-area-container .menu-bar-right-gutter,
+html.has-maximized-window.titlebar-android #titlebar-grab-area-container #menu-bar-controls-right-gutter,
+html.has-maximized-gallery-window.titlebar-android #titlebar-grab-area-container .menu-bar-left-gutter,
+html.has-maximized-gallery-window.titlebar-android #titlebar-grab-area-container .menu-bar-right-gutter,
+html.has-maximized-gallery-window.titlebar-android #titlebar-grab-area-container #menu-bar-controls-right-gutter,
+html.has-maximized-photo-window.titlebar-android #titlebar-grab-area-container .menu-bar-left-gutter,
+html.has-maximized-photo-window.titlebar-android #titlebar-grab-area-container .menu-bar-right-gutter,
+html.has-maximized-photo-window.titlebar-android #titlebar-grab-area-container #menu-bar-controls-right-gutter {
     background-color: #000000;
 }
 
-html:has(.modal.modal-maximized:not(.hidden):not(.hidden-alt)).titlebar-windows #titlebar-grab-area-container .menu-bar-left-gutter,
-html:has(.modal.modal-maximized:not(.hidden):not(.hidden-alt)).titlebar-windows #titlebar-grab-area-container .menu-bar-right-gutter,
-html:has(.modal.modal-maximized:not(.hidden):not(.hidden-alt)).titlebar-windows #titlebar-grab-area-container #menu-bar-controls-right-gutter,
-html:has(.gallery-window.modal-maximized.windowed).titlebar-windows #titlebar-grab-area-container .menu-bar-left-gutter,
-html:has(.gallery-window.modal-maximized.windowed).titlebar-windows #titlebar-grab-area-container .menu-bar-right-gutter,
-html:has(.gallery-window.modal-maximized.windowed).titlebar-windows #titlebar-grab-area-container #menu-bar-controls-right-gutter {
+html.has-maximized-window.titlebar-windows #titlebar-grab-area-container .menu-bar-left-gutter,
+html.has-maximized-window.titlebar-windows #titlebar-grab-area-container .menu-bar-right-gutter,
+html.has-maximized-window.titlebar-windows #titlebar-grab-area-container #menu-bar-controls-right-gutter,
+html.has-maximized-gallery-window.titlebar-windows #titlebar-grab-area-container .menu-bar-left-gutter,
+html.has-maximized-gallery-window.titlebar-windows #titlebar-grab-area-container .menu-bar-right-gutter,
+html.has-maximized-gallery-window.titlebar-windows #titlebar-grab-area-container #menu-bar-controls-right-gutter {
     background-color: #000000;
 }
 
@@ -3972,8 +3973,8 @@ body.desktop-mode .modal:not(.active-window):not(.opening):not(.closing):not(.mi
     will-change: transform, opacity, scale;
 }
 
-.gallery-container-wrapper:has(.gallery-item.context-open) #main-menu-bar,
-.gallery-container-wrapper:has(.gallery-item.context-open) #main-menu-bar::after {
+.gallery-container-wrapper.has-context-open-item #main-menu-bar,
+.gallery-container-wrapper.has-context-open-item #main-menu-bar::after {
     will-change: opacity;
 }
 

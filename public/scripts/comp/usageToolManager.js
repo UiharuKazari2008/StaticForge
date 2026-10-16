@@ -222,11 +222,12 @@ class GenerationUsageToolManager {
     sync() {
         const snap = this.getSnapshot();
         const genCount = document.getElementById('manualGenCountDisplay');
-        if (genCount) genCount.title = snap.title;
+        // set*IfChanged: public/scripts/utils/domWrite.js (sync runs on every server ping)
+        setAttrIfChanged(genCount, 'title', snap.title);
         const usageSplit = document.getElementById('manualGenUsageSplit');
         const usageEl = document.getElementById('manualGenUsagePercent');
         if (usageSplit) usageSplit.classList.toggle('hidden', !snap.isOpus);
-        if (usageEl) usageEl.textContent = snap.isOpus ? snap.compactLabel : '';
+        setTextIfChanged(usageEl, snap.isOpus ? snap.compactLabel : '');
         this.render();
         this.updateExternalSurfaces();
         this.notifyExtendedUsage();
@@ -283,7 +284,7 @@ class GenerationUsageToolManager {
             : snap.compactLabel;
         row.title = snap.title;
         row.classList.toggle('low-credits', snap.high);
-        if (iconEl) iconEl.className = snap.iconClass;
+        setClassNameIfChanged(iconEl, snap.iconClass);
     }
 
     updateExternalSurfaces() {
@@ -300,19 +301,19 @@ class GenerationUsageToolManager {
         const valueEl = document.getElementById('dataMgmtOpusUsageValue');
         const fillEl = document.getElementById('dataMgmtOpusUsageFill');
 
-        host.classList.toggle('hidden', !snap.isOpus);
+        setClassIfChanged(host, 'hidden', !snap.isOpus);
         if (!snap.isOpus) return;
 
         if (valueEl) {
-            valueEl.textContent = snap.remaining != null
+            setTextIfChanged(valueEl, snap.remaining != null
                 ? (snap.extended
                     ? `Extended free +${snap.extraPercent}% (${snap.remaining === 'Free' ? 'Free' : '~' + snap.remaining} left)`
                     : `${snap.compactLabel} (${snap.remaining === 'Free' ? 'Free' : '~' + snap.remaining} left)`)
-                : snap.compactLabel;
+                : snap.compactLabel);
         }
         if (fillEl) {
-            fillEl.style.width = snap.showBar ? `${Math.min(100, snap.barPercent)}%` : '0%';
-            fillEl.classList.toggle('low', snap.high);
+            setStyleIfChanged(fillEl, 'width', snap.showBar ? `${Math.min(100, snap.barPercent)}%` : '0%');
+            setClassIfChanged(fillEl, 'low', snap.high);
         }
     }
 
@@ -329,43 +330,43 @@ class GenerationUsageToolManager {
         const comparisonEl = document.getElementById('generationUsageDayComparison');
         if (!valueEl || !fillEl) return;
 
-        if (dayCountEl) dayCountEl.textContent = String(recentCount);
+        setTextIfChanged(dayCountEl, String(recentCount));
 
         if (!snap.isOpus || !snap.usage) {
-            if (statusLabel) statusLabel.textContent = 'Usage';
-            if (remainingEl) remainingEl.textContent = '—';
-            if (refillEl) refillEl.textContent = '—';
-            valueEl.textContent = '—';
-            fillEl.style.width = '0';
-            fillEl.classList.remove('low');
-            if (comparisonEl) comparisonEl.textContent = `${recentCount} generated`;
+            setTextIfChanged(statusLabel, 'Usage');
+            setTextIfChanged(remainingEl, '—');
+            setTextIfChanged(refillEl, '—');
+            setTextIfChanged(valueEl, '—');
+            setStyleIfChanged(fillEl, 'width', '0px');
+            setClassIfChanged(fillEl, 'low', false);
+            setTextIfChanged(comparisonEl, `${recentCount} generated`);
             return;
         }
 
-        if (statusLabel) statusLabel.textContent = snap.extended ? 'Extended' : 'Usage';
+        setTextIfChanged(statusLabel, snap.extended ? 'Extended' : 'Usage');
         if (remainingEl) {
-            remainingEl.textContent = snap.extended
+            setTextIfChanged(remainingEl, snap.extended
                 ? `${snap.remaining === 'Free' ? 'Free' : '~' + snap.remaining} (${snap.remainingPercent}%)`
-                : `${snap.remaining === 'Free' ? 'Free' : '~' + snap.remaining}`;
+                : `${snap.remaining === 'Free' ? 'Free' : '~' + snap.remaining}`);
         }
         if (refillEl) {
-            refillEl.textContent = snap.extended
+            setTextIfChanged(refillEl, snap.extended
                 ? 'Paused (full)'
                 : (snap.refillPaused
                     ? 'Paused'
-                    : `${snap.refillPercent}% / day (${snap.refillGenerations === 'Free' ? 'Free' : '~' + snap.refillGenerations})`);
+                    : `${snap.refillPercent}% / day (${snap.refillGenerations === 'Free' ? 'Free' : '~' + snap.refillGenerations})`));
         }
-        valueEl.textContent = snap.extended
+        setTextIfChanged(valueEl, snap.extended
             ? `Free +${snap.extraPercent}%`
-            : snap.compactLabel;
-        fillEl.style.width = `${Math.min(100, snap.barPercent)}%`;
-        fillEl.classList.toggle('low', snap.high);
+            : snap.compactLabel);
+        setStyleIfChanged(fillEl, 'width', `${Math.min(100, snap.barPercent)}%`);
+        setClassIfChanged(fillEl, 'low', snap.high);
         if (comparisonEl) {
-            comparisonEl.textContent = snap.extended
+            setTextIfChanged(comparisonEl, snap.extended
                 ? `${recentCount} generated / extended free`
                 : (snap.refillPaused
                     ? `${recentCount} generated / refill paused`
-                    : `${recentCount} generated / ${snap.refillGenerations === 'Free' ? 'Free' : '~' + snap.refillGenerations} refilled`);
+                    : `${recentCount} generated / ${snap.refillGenerations === 'Free' ? 'Free' : '~' + snap.refillGenerations} refilled`));
         }
     }
 

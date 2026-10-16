@@ -685,6 +685,18 @@ async function compileRuntimeAssets(projectRoot, options = {}) {
             errors.push({ file: 'public/static_images/app_icons', error: err.message });
         }
 
+        // Application asset manifest (modules/appAssetManifest.js, Yozora #518): rewritten only
+        // when the application stylesheets / scripts changed what they paint
+        try {
+            const appAssets = require('./appAssetManifest').writeAppAssetManifest(projectRoot);
+            if (appAssets.changed && showConsoleProgress) {
+                process.stdout.write(`[Runtime Compile] app-assets.json (${appAssets.groups} groups)\n`);
+            }
+        } catch (err) {
+            console.error(`[Runtime Compile] app-assets.json: ${err.message}`);
+            errors.push({ file: 'public/data/app-assets.json', error: err.message });
+        }
+
         compileState.complete = true;
         compileState.inProgress = false;
         compileState.lastRunAt = Date.now();
