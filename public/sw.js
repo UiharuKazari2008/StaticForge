@@ -1138,7 +1138,7 @@ self.addEventListener('message', (event) => {
     } else if (event.data && event.data.type === 'GET_CACHED_FILES') {
         getCachedFiles(event.data.requestId);
     } else if (event.data && event.data.type === 'DELETE_AND_PRECACHE') {
-        deleteAndPrecache(event.data.url, event.data.requestId);
+        event.waitUntil(deleteAndPrecache(event.data.url, event.data.requestId));
     } else if (event.data && event.data.type === 'SYNC_WALLPAPER_URLS') {
         event.waitUntil(syncWallpaperUrls(event.data.urls, event.data.refresh, event.data.requestId).catch((error) => {
             console.error('Wallpaper sync failed:', error);
