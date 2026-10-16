@@ -170,14 +170,18 @@ async function getChildFolderIds(parentId) {
 }
 
 async function collectDescendantFolderIds(rootId) {
-    const result = [];
-    const queue = await getChildFolderIds(rootId);
-    while (queue.length) {
-        const id = queue.shift();
-        result.push(id);
-        queue.push(...await getChildFolderIds(id));
-    }
-    return result;
+    const query = `
+        WITH RECURSIVE d(id, depth) AS (
+            SELECT id, 1 FROM vfs_folders WHERE parent_id = ?
+            UNION
+            SELECT f.id, d.depth + 1 FROM vfs_folders f
+            INNER JOIN d ON f.parent_id = d.id
+            WHERE d.depth < 100
+        )
+        SELECT id FROM d ORDER BY depth ASC
+    `;
+    const rows = await db.all(query, [rootId]);
+    return rows.map(r => r.id);
 }
 
 async function updateFolder(id, updates) {
