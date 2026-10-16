@@ -170,14 +170,19 @@ async function getChildFolderIds(parentId) {
 }
 
 async function collectDescendantFolderIds(rootId) {
-    const result = [];
-    const queue = await getChildFolderIds(rootId);
-    while (queue.length) {
-        const id = queue.shift();
-        result.push(id);
-        queue.push(...await getChildFolderIds(id));
-    }
-    return result;
+    // REVIEW: single recursive CTE replaces the per-level N+1 (GH #326).
+    // Depth cap + GROUP BY guard against corrupt parent_id cycles; root is excluded.
+    const rows = await db.all(`
+        WITH RECURSIVE d(id, depth) AS (
+            SELECT id, 1 FROM vfs_folders WHERE parent_id = ?
+            UNION
+            SELECT f.id, d.depth + 1 FROM vfs_folders f
+            INNER JOIN d ON f.parent_id = d.id
+            WHERE d.depth < 100
+        )
+        SELECT id FROM d WHERE id <> ? GROUP BY id ORDER BY MIN(depth) ASC
+    `, [rootId, rootId]);
+    return rows.map(r => r.id);
 }
 
 async function updateFolder(id, updates) {
