@@ -492,9 +492,8 @@ async function fetchRunNaxtTagEntries(query, categoryHint, generation) {
     if (!galleries.length) return [];
 
     let galleriesToSearch = galleries;
-    if (isArtistHint) {
-        galleriesToSearch = galleries.filter((g) => String(g.slug || '').toLowerCase().includes('artist'));
-    } else if (!isNaxtHint) {
+    // JULES: perf sweep - deduplicate identical NAX gallery filtering branches
+    if (isArtistHint || !isNaxtHint) {
         galleriesToSearch = galleries.filter((g) => String(g.slug || '').toLowerCase().includes('artist'));
     }
     const maxGalleries = isNaxtHint ? 6 : 3;
