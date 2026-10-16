@@ -19,12 +19,6 @@ let _mainPromptAutocompleteScrollWired = false;
 
 const TEXT_COLON_LEN = 5;
 
-function findTextColonIndex(text) {
-    if (typeof text !== 'string' || !text) return -1;
-    const m = /\btext:/i.exec(text);
-    return m ? m.index : -1;
-}
-
 function findLastTextColonIndex(text) {
     if (typeof text !== 'string' || !text) return -1;
     const re = /\btext:/ig;
@@ -42,22 +36,6 @@ function isTextColonPrefix(query) {
 
 function stripTextColonPrefix(query) {
     return String(query || '').replace(/^\s*text:/i, '').trim();
-}
-
-function splitPromptAtTextColon(text) {
-    const p = text == null ? '' : String(text);
-    const idx = findTextColonIndex(p);
-    if (idx === -1) {
-        return { tagsPart: p, textSuffix: '', index: -1 };
-    }
-    let splitAt = idx;
-    while (splitAt > 0 && /[ \t]/.test(p.charAt(splitAt - 1))) splitAt--;
-    if (splitAt > 0 && p.charAt(splitAt - 1) === ',') splitAt--;
-    return {
-        tagsPart: p.slice(0, splitAt),
-        textSuffix: p.slice(splitAt),
-        index: idx
-    };
 }
 
 
