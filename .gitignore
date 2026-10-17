@@ -1,6 +1,6 @@
 # Root gallery and databases only. public/data and public/images are not user data.
 /data/*
-!/data/apocrypha/
+# Apocrypha moved to ~/dreamscape-data/apocrypha (APOCRYPHA_DATA_DIR); legacy copy stays untracked
 /images/
 public/data/*
 !public/data/nai-quickstart-v5.json

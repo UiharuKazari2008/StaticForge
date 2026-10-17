@@ -52,6 +52,28 @@ still hits the server and gets 403. A request for a missing static file (for exa
 Vista sound WAVs stay host-local in `media/Windows Vista Sounds` (Microsoft recordings, not in
 git, not in the install manifest).
 
+### Runtime data outside the repo
+
+Data the app writes at runtime is kept out of the git tree, so merges, checkouts and cleans
+cannot overwrite it (`modules/runtimeDataPaths.js`):
+
+| Data | Default | Override |
+| --- | --- | --- |
+| Data root | `~/dreamscape-data` | `DREAMSCAPE_DATA_DIR` env, or `"dataDir"` in config.json |
+| Apocrypha issue + archive | `<data root>/apocrypha` (`current.json`, `archive/`) | `APOCRYPHA_DATA_DIR` env, or `"apocrypha": { "dataDir": ... }` |
+
+A fresh install needs no seed: with no `current.json` the Apocrypha page renders empty until the
+first publish. On boot, if the legacy `data/apocrypha` exists and the new dir does not, it is
+copied once; the legacy copy is never deleted.
+
+**Upgrading an existing tree:** `data/apocrypha/current.json` is no longer tracked, so pulling
+this change deletes it from the working tree. Copy it first:
+`mkdir -p ~/dreamscape-data && cp -a data/apocrypha ~/dreamscape-data/apocrypha` (skip if that
+dir already exists), then pull.
+
+Everything else written at runtime (`/data/*`, `/images/`, `.cache/` including the SQLite
+databases, `logs/`, `tmp/`) is already gitignored.
+
 ### Wiki and tag seeds
 
 These are referenced by tag import / lookup and are too large (or are the inputs to a database

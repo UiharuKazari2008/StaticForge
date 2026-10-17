@@ -111,6 +111,10 @@ log "native modules OK"
 
 # ---- 5. config (create only if missing; never overwrite) ----
 mkdir -p .cache data logs
+# Runtime data the app writes (Apocrypha issues) lives outside the git tree (modules/runtimeDataPaths.js)
+DATA_DIR="${DREAMSCAPE_DATA_DIR:-$HOME/dreamscape-data}"
+mkdir -p "$DATA_DIR/apocrypha/archive"
+log "runtime data dir: $DATA_DIR"
 rand() { node -e "process.stdout.write(require('crypto').randomBytes($1).toString('hex'))"; }
 if [[ ! -f config.json ]]; then
   log "creating config.json (random loginKey / PINs — change them)"
