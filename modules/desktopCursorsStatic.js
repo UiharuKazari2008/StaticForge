@@ -1,5 +1,5 @@
 /**
- * Serve cursor packs from media/cursors/{vista,posy}.
+ * Serve cursor packs from public/cursors/{vista,posy}.
  * Vista is committed and listed in the install manifest. Posy stays host-local
  * and is listed only when those files are on disk. Missing files are the keyword only.
  */
@@ -7,7 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const PROJECT_ROOT = path.join(__dirname, '..');
 
-const PACK_DIR = path.join('media', 'cursors');
+const PACK_DIR = path.join('public', 'cursors');
 const SCHEME_IDS = ['vista', 'posy'];
 const ALLOWED_EXT = new Set(['.cur', '.ani', '.png', '.svg', '.ico']);
 
@@ -151,7 +151,7 @@ function schemeVarsBlock(scheme) {
 function buildCss() {
     return [
         '/* Pointer scheme tokens. Classic = native keywords. Vista / Posy = url() from',
-        '   /cursors/{scheme}/ when the file is on disk (media/cursors/vista is committed;',
+        '   /cursors/{scheme}/ when the file is on disk (public/cursors/vista is committed;',
         '   Posy stays host-local). Missing files use the keyword only - never a 404 url().',
         '   desktopCursors.js sets the attr. */',
         'html {',
@@ -238,10 +238,7 @@ function resolveCursorPath(projectRoot, scheme, filename) {
     const sid = decodeScheme(scheme);
     const name = decodeCursorName(filename);
     if (!sid || !name) return null;
-    const roots = [
-        path.resolve(projectRoot, PACK_DIR, sid),
-        path.resolve(projectRoot, 'public', 'cursors', sid)
-    ];
+    const roots = [path.resolve(projectRoot, PACK_DIR, sid)];
     const aliases = FILE_ALIASES[sid] && FILE_ALIASES[sid][name] ? FILE_ALIASES[sid][name] : [];
     const stem = name.replace(/\.(cur|ani|png|svg|ico)$/i, '');
     const extra = [stem + '.png', stem + '.cur'];
@@ -255,17 +252,14 @@ function resolveCursorPath(projectRoot, scheme, filename) {
     return safePackFile(roots[0], name);
 }
 
-// Files the /cursors/{scheme}/{file} route can serve. media/cursors wins over public/cursors.
+// Files the /cursors/{scheme}/{file} route can serve (public/cursors).
 function listCursorPackFiles(projectRoot) {
     const root = projectRoot || PROJECT_ROOT;
     const out = [];
     const seen = new Set();
     for (let s = 0; s < SCHEME_IDS.length; s++) {
         const scheme = SCHEME_IDS[s];
-        const dirs = [
-            path.resolve(root, PACK_DIR, scheme),
-            path.resolve(root, 'public', 'cursors', scheme)
-        ];
+        const dirs = [path.resolve(root, PACK_DIR, scheme)];
         for (let d = 0; d < dirs.length; d++) {
             let names;
             try {
