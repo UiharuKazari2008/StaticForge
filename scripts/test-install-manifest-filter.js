@@ -24,8 +24,9 @@ try {
     write(root, 'public/css/app.css', 'body{}');
     write(root, 'public/images/login_array.jpg', 'jpeg');
     write(root, '.cache/runtime-assets/static_images/app_icons/icon-32.webp', 'webp');
-    write(root, 'node_modules/fflate/umd/index.js', 'exports');
+    write(root, 'public/scripts/vendor/fflate.js', 'exports');
     write(root, 'public/cursors/vista/aero_arrow.cur', 'cur');
+    write(root, 'public/sounds/vista/Windows Notify.wav', 'wav');
 
     const entries = [
         { url: '/', name: '/index.html', type: 'route' },
@@ -39,6 +40,7 @@ try {
         { url: '/cursors/vista/aero_arrow.cur', hash: 'f' },
         { url: '/cursors/vista/aero_link.cur', hash: 'g' },
         { url: '/sounds/vista/Windows%20Ding.wav', hash: 'h' },
+        { url: '/sounds/vista/Windows%20Notify.wav', hash: 'i' },
         { url: '/css/../../.env', hash: 'i' },
         { url: 'not-a-path', hash: 'j' }
     ];
@@ -53,12 +55,13 @@ try {
         '/.login.jpg',
         '/static_images/app_icons/icon-32.webp',
         '/protected/fflate.js',
-        '/cursors/vista/aero_arrow.cur'
+        '/cursors/vista/aero_arrow.cur',
+        '/sounds/vista/Windows%20Notify.wav'
     ]);
     assert.ok(!urls.includes('/launch'), 'missing launch.html is omitted');
     assert.ok(!urls.includes('/css/missing.css'));
     assert.ok(!urls.includes('/cursors/vista/aero_link.cur'));
-    assert.ok(!urls.includes('/sounds/vista/Windows%20Ding.wav'));
+    assert.ok(!urls.includes('/sounds/vista/Windows%20Ding.wav'), 'a sound not on disk is omitted');
     assert.strictEqual(filter.manifestEntryExists(root, { url: '/css/../../.env' }), false);
 
     const marked = filter.markAuthGatedEntries([

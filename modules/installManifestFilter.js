@@ -69,7 +69,7 @@ function candidatePaths(projectRoot, webPath) {
         return out;
     }
     if (webPath === '/protected/fflate.js') {
-        push(path.join('node_modules', 'fflate', 'umd', 'index.js'));
+        push(path.join('public', 'scripts', 'vendor', 'fflate.js'));
     }
 
     const rel = webPath.replace(/^\/+/, '');
@@ -82,8 +82,9 @@ function candidatePaths(projectRoot, webPath) {
         return out;
     }
     if (webPath.startsWith('/sounds/vista/')) {
-        push(path.join('media', 'Windows Vista Sounds', path.basename(webPath)));
-        push(path.join('public', 'sounds', 'vista', path.basename(webPath)));
+        let name = path.basename(webPath);
+        try { name = decodeURIComponent(name); } catch (_) { /* keep raw */ }
+        push(path.join('public', 'sounds', 'vista', name));
         return out;
     }
     push(path.join('public', rel));

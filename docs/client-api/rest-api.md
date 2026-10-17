@@ -1040,7 +1040,7 @@ Returns NovelAI's raw-deflate Qwen BPE definition. The server downloads it from 
 
 ### `GET /protected/fflate.js`
 
-**Auth:** Required. Serves the installed `fflate` browser build used to decode tokenizer definitions.
+**Auth:** Required. Serves the vendored `fflate` browser build (`public/scripts/vendor/fflate.js`, fflate 0.8.3, MIT) used to decode tokenizer definitions.
 
 ---
 

@@ -921,7 +921,8 @@ function buildServiceWorkerCacheManifest() {
     const protectedRuntimeFiles = [
         {
             url: '/protected/fflate.js',
-            filePath: path.resolve(__dirname, 'node_modules', 'fflate', 'umd', 'index.js')
+            // Vendored copy of node_modules/fflate/umd/index.js (MIT header kept)
+            filePath: path.resolve(__dirname, 'public', 'scripts', 'vendor', 'fflate.js')
         }
     ].filter(file => fs.existsSync(file.filePath))
         .map(file => {
@@ -995,8 +996,16 @@ meletonInstallPack.init({
 
 function resolveInstallPackFile(file) {
     if (file && file.url === '/protected/fflate.js') {
-        const fflatePath = path.resolve(__dirname, 'node_modules', 'fflate', 'umd', 'index.js');
+        const fflatePath = path.resolve(__dirname, 'public', 'scripts', 'vendor', 'fflate.js');
         return fs.existsSync(fflatePath) ? fflatePath : null;
+    }
+    // Vista WAVs: manifest URLs are encoded (Windows%20Ding.wav); resolve the decoded name the
+    // /sounds/vista route serves (public/sounds/vista, whitelist only).
+    if (file && typeof file.url === 'string' && file.url.startsWith('/sounds/vista/')) {
+        let name = '';
+        try { name = decodeURIComponent(file.url.split('?')[0].slice('/sounds/vista/'.length)); } catch (_) { return null; }
+        const full = desktopSoundsStatic.resolveSoundPath(__dirname, name);
+        return full && fs.existsSync(full) ? full : null;
     }
     // /.login.jpg is served from outside public/; the pack must carry the file the manifest hashed.
     // /.login.jpg route: .cache/login_array.jpg, or the public/images seed on a fresh install
@@ -1150,6 +1159,23 @@ async function generateCacheData(directory) {
                 modified: cursorStats.mtime.getTime()
             });
         }
+
+        // Vista sound scheme (public/sounds/vista, whitelist). URLs match desktopSounds.js soundUrl
+        // (encodeURIComponent), so the precache and install pack hold what the page asks for.
+        // desktopSoundsStatic.ALLOWED_FILES: modules/desktopSoundsStatic.js
+        for (const name of desktopSoundsStatic.ALLOWED_FILES) {
+            const soundAbs = desktopSoundsStatic.resolveSoundPath(__dirname, name);
+            const soundStats = soundAbs ? await statOrNull(soundAbs) : null;
+            if (!soundStats || !soundStats.isFile()) continue;
+            const soundUrl = '/sounds/vista/' + encodeURIComponent(name);
+            if (assets.some((entry) => entry.path === soundUrl)) continue;
+            const hash = await runtimeAssetService.hashServedFileIfChangedAsync(
+                soundAbs,
+                soundStats,
+                previousByPath.get(soundUrl)
+            );
+            assets.push({ path: soundUrl, hash, size: soundStats.size, modified: soundStats.mtime.getTime() });
+        }
         
         // Sort by path for consistent ordering
         assets.sort((a, b) => a.path.localeCompare(b.path));
@@ -1186,7 +1212,7 @@ async function scanDirectory(dir, relFromPublic = '') {
             && runtimeAssetService.isAppIconsMasterRelPath(itemRel)) {
             continue;
         }
-        // Vista WAVs stay out of the SW precache (played on demand, host-local).
+        // Vista WAVs are listed above from the /sounds/vista whitelist with encoded URLs; skip the raw scan.
         // Planet switcher BGM under sounds/planet is hashed and cached.
         if (itemRel === 'sounds/vista' || itemRel.startsWith('sounds/vista/')) {
             continue;
@@ -1194,6 +1220,10 @@ async function scanDirectory(dir, relFromPublic = '') {
         // public/cursors is hashed above via listCursorPackFiles (same files the /cursors route serves);
         // skip it here so it is not listed twice.
         if (itemRel === 'cursors' || itemRel.startsWith('cursors/')) {
+            continue;
+        }
+        // Vendored fflate is listed once, as /protected/fflate.js
+        if (itemRel === 'scripts/vendor/fflate.js') {
             continue;
         }
         const stats = await statOrNull(itemPath);
@@ -1383,7 +1413,7 @@ const wallpapersDir = path.join(cacheDir, 'wallpapers');
 const tempDownloadDir = path.join(cacheDir, 'tempDownload');
 const imagesDir = path.resolve(__dirname, 'images');
 const previewsDir = path.resolve(__dirname, '.previews');
-const fflateBrowserPath = path.resolve(__dirname, 'node_modules/fflate/umd/index.js');
+const fflateBrowserPath = path.resolve(__dirname, 'public', 'scripts', 'vendor', 'fflate.js');
 
 // Ensure cache directories exist
 [uploadCacheDir, previewCacheDir, vibeCacheDir, wallpapersDir, tempDownloadDir, imagesDir, previewsDir].forEach(dir => {
@@ -4046,7 +4076,7 @@ async function handleAdminUnixSocketMessage(message, socket) {
 
         serverStartupStatus.setCapability('staticAssets', true);
 
-        // Vista scheme WAVs from media/Windows Vista Sounds (not in git, not in the SW precache)
+        // Vista scheme WAVs from public/sounds/vista (host-local, gitignored; whitelisted files are in the manifest)
         app.get('/sounds/vista/:file', (req, res) => {
             desktopSoundsStatic.sendSound(req, res, __dirname);
         });

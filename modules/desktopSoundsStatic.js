@@ -1,11 +1,12 @@
 /**
- * Serve the host-local Vista sound pack. Files stay in media/Windows Vista Sounds
- * (gitignored; Microsoft WAVs are not committed). Only the whitelist is reachable.
+ * Serve the Vista sound pack from public/sounds/vista (gitignored: Microsoft WAVs are not
+ * committed to this public repo). Only the whitelist is reachable; whitelisted files on disk
+ * are in the install manifest (web_server.js generateCacheData).
  */
 const fs = require('fs');
 const path = require('path');
 
-const PACK_DIR = path.join('media', 'Windows Vista Sounds');
+const PACK_DIR = path.join('public', 'sounds', 'vista');
 
 const ALLOWED_FILES = [
     'Windows Balloon.wav',
