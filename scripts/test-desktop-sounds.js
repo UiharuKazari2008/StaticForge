@@ -77,9 +77,9 @@ const staticServe = require('../modules/desktopSoundsStatic.js');
 
     const root = path.join(__dirname, '..');
     const ding = staticServe.resolveSoundPath(root, 'Windows Ding.wav');
-    assert.ok(ding.endsWith(path.join('media', 'Windows Vista Sounds', 'Windows Ding.wav')));
+    assert.ok(ding.endsWith(path.join('public', 'sounds', 'vista', 'Windows Ding.wav')));
     assert.strictEqual(staticServe.resolveSoundPath(root, '../etc/passwd'), null);
-    assert.ok(staticServe.resolveSoundPath(root, 'Windows Notify.wav').endsWith(path.join('media', 'Windows Vista Sounds', 'Windows Notify.wav')));
+    assert.ok(staticServe.resolveSoundPath(root, 'Windows Notify.wav').endsWith(path.join('public', 'sounds', 'vista', 'Windows Notify.wav')));
     assert.strictEqual(staticServe.resolveSoundPath(root, 'Windows Startup.wav'), null);
 
     sounds._test.state.enabled = false;

@@ -102,7 +102,7 @@ function normalizePageAssetPath(raw) {
 }
 
 const PAGE_ASSET_FILES = {
-    '/protected/fflate.js': ['node_modules', 'fflate', 'umd', 'index.js']
+    '/protected/fflate.js': ['public', 'scripts', 'vendor', 'fflate.js']
 };
 
 function hashForPageAsset(targetRoot, webPath) {
