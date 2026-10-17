@@ -998,6 +998,18 @@ function resolveInstallPackFile(file) {
         const fflatePath = path.resolve(__dirname, 'node_modules', 'fflate', 'umd', 'index.js');
         return fs.existsSync(fflatePath) ? fflatePath : null;
     }
+    // Routes served from outside public/: the pack must carry the same file the manifest hashed,
+    // or Expanding reports the rows as "did not arrive intact".
+    // desktopCursorsStatic.listCursorPackFiles: modules/desktopCursorsStatic.js (media/cursors)
+    if (file && typeof file.url === 'string' && file.url.startsWith('/cursors/')) {
+        const webPath = file.url.split('?')[0];
+        const hit = desktopCursorsStatic.listCursorPackFiles(__dirname).find((c) => c.webPath === webPath);
+        return hit && fs.existsSync(hit.abs) ? hit.abs : null;
+    }
+    // /.login.jpg route: .cache/login_array.jpg, or the public/images seed on a fresh install
+    if (file && file.url === '/.login.jpg') {
+        return resolveLoginSpritePath();
+    }
     return agentAssetBundle.resolveFilePath(file);
 }
 
