@@ -285,7 +285,9 @@ body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-cha
     color: #2b5797;
 }
 
-/* Send: white glyph and a "Send" label on the accent button (Yukimi 2026-10-14) */
+/* Send: glyph and a "Send" label on the accent button (Yukimi 2026-10-14). White, or black on a light
+   workspace colour: --primary-color-contrast comes from the workspace compiler
+   (modules/workspaceCssGenerator.js primaryContrastText). */
 .director-send-label {
     display: none;
 }
@@ -300,9 +302,9 @@ body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-cha
     background: linear-gradient(hsl(0 0% 100% / 38%), hsl(0 0% 100% / 14%) 45%, transparent 45%, hsl(0 0% 0% / 14%)), var(--primary-color, #3a7bd5);
     border: 1px solid color-mix(in srgb, var(--primary-color, #3a7bd5), #000 40%);
     box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 30%);
-    color: #fff;
+    color: var(--primary-color-contrast, #fff);
     font: 600 12px 'Segoe UI', 'Noto Sans', sans-serif;
-    text-shadow: 0 1px 1px hsl(0 0% 0% / 45%);
+    text-shadow: var(--primary-color-contrast-shadow, 0 1px 1px hsl(0 0% 0% / 45%));
     opacity: 1;
 }
 
@@ -319,7 +321,7 @@ body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-cha
 }
 
 body.desktop-mode:not(.windows-classic-theme) #directorSessionChat .director-chat-input #directorSendBtn :is(i, .director-send-label) {
-    color: #fff;
+    color: var(--primary-color-contrast, #fff);
 }
 
 /* nothing to send: Vista's disabled button */

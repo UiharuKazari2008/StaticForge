@@ -1,6 +1,13 @@
 // Notes inbound WebSocket handlers — note push types and workspace_deleted cache clear.
 // registerWsInboundHandler: public/scripts/ws/wsInboundRegistry.js
 
+// notepadManager.js is the lazily loaded "notepad" feature (public/scripts/comp/featureLoader.js):
+// until something opens it there is no global, no cache and no open notepad to update, so each
+// handler reads it off window and skips its part instead of throwing a ReferenceError.
+function loadedNotepadManager() {
+    return window.notepadManager || null;
+}
+
 function dispatchWsMessageBridge(message) {
     document.dispatchEvent(new CustomEvent('wsMessage', {
         detail: { type: message.type, data: message.data }
@@ -8,6 +15,7 @@ function dispatchWsMessageBridge(message) {
 }
 
 function handleNoteCreatedMessage(message) {
+    const notepadManager = loadedNotepadManager();
     if (notepadManager && message.data && message.data.note) {
         notepadManager.addNoteToCache(message.data.note);
     }
@@ -19,6 +27,7 @@ function handleNoteCreatedMessage(message) {
 }
 
 function handleNoteUpdatedMessage(message) {
+    const notepadManager = loadedNotepadManager();
     if (notepadManager && message.data && message.data.noteId && message.data.note) {
         notepadManager.updateNoteInCache(message.data.note);
     }
@@ -48,6 +57,7 @@ function handleNoteUpdatedMessage(message) {
 }
 
 function handleNoteDeletedMessage(message) {
+    const notepadManager = loadedNotepadManager();
     if (notepadManager && message.data && message.data.noteId) {
         notepadManager.removeNoteFromCache(message.data.noteId);
     }
@@ -77,6 +87,7 @@ function handleNoteDeletedMessage(message) {
 }
 
 function handleNoteContentUpdatedMessage(message) {
+    const notepadManager = loadedNotepadManager();
     if (notepadManager && message.data && message.data.noteId) {
         const notepad = notepadManager.getNotepadByNoteId(message.data.noteId);
         if (notepad) {
@@ -90,6 +101,7 @@ function handleNoteContentUpdatedMessage(message) {
 }
 
 function handleWorkspaceDeletedNotesMessage(message) {
+    const notepadManager = loadedNotepadManager();
     if (notepadManager && message.data && message.data.workspaceId) {
         notepadManager.clearWorkspaceNotesCache(message.data.workspaceId);
     }

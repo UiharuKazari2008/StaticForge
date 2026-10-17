@@ -1852,7 +1852,10 @@ class ExplorerApplet {
     }
 
     async _handleNoteContextAction(action, item) {
-        if (!notepadManager || !item?.targetId) return false;
+        if (!item?.targetId) return false;
+        // loadNotepadManager: public/scripts/comp/featureLoader.js
+        const notepadManager = await loadNotepadManager();
+        if (!notepadManager) return false;
         const noteData = this._getNoteContextData(item);
 
         switch (action) {
@@ -3188,7 +3191,8 @@ class ExplorerApplet {
                 if (typeof showCacheManagerModal === 'function') showCacheManagerModal();
                 break;
             case 'Notes':
-                if (typeof notepadManager !== 'undefined') notepadManager.openNotebook();
+                // loadNotepadManager: public/scripts/comp/featureLoader.js
+                loadNotepadManager().then((manager) => { if (manager) manager.openNotebook(); });
                 break;
         }
     }
@@ -4265,6 +4269,7 @@ class ExplorerApplet {
                 return;
             }
             if (item.targetKind === 'note') {
+                const notepadManager = await loadNotepadManager();
                 if (notepadManager) notepadManager.openExistingNote(item.targetId);
                 return;
             }

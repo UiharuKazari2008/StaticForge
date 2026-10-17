@@ -95,6 +95,8 @@ const vfsImportRouter = {
         if (choice === 'note') {
             const text = await file.text();
             const noteName = (file.name || 'Note').replace(/\.[^.]+$/, '');
+            // loadNotepadManager: public/scripts/comp/featureLoader.js
+            const notepadManager = await loadNotepadManager();
             if (notepadManager) {
                 await notepadManager.createNote(noteName, text);
                 showGlassToast('success', null, 'Created note from file', false, 3000);

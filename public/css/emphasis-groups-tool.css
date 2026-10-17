@@ -490,23 +490,24 @@
     min-height: 1.6rem;
 }
 
+/* Lit at the low colours; the pulse brightens the lamp toward #c5e0ff with a filter, which runs on
+   the compositor (animating background / border / box-shadow ticked the main thread every frame). */
 @keyframes emphasis-compensate-flash {
 
     0%,
     100% {
-        background: #7eb8ff;
-        border-color: #4a90e2;
-        box-shadow: 0 0 10px 2px rgba(126, 184, 255, 0.35);
+        filter: none;
     }
 
     50% {
-        background: #c5e0ff;
-        border-color: #9ec9ff;
-        box-shadow: 0 0 16px 3px rgba(126, 184, 255, 0.8);
+        filter: saturate(0.52) brightness(1.32);
     }
 }
 
 .emphasis-groups-tool .indicator.emphasis-groups-compensate-hint:not([data-state="on"])::after {
+    background: #7eb8ff;
+    border-color: #4a90e2;
+    box-shadow: 0 0 10px 2px rgba(126, 184, 255, 0.35);
     animation: emphasis-compensate-flash 1.2s ease-in-out infinite;
 }
 

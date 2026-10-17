@@ -1188,6 +1188,11 @@ function updateGalleryItemElementFromData(el, imageData) {
  */
 function prependToActiveGalleryList(item) {
     if (!item) return false;
+    // A closed gallery that never fetched its catalog must stay empty. One prepended print
+    // reads as a loaded list (isGalleryReady, prepareGalleryWindowContent) and opening the
+    // window then shows that one picture instead of running the full load.
+    // isGalleryWindowHidden: public/scripts/comp/modalUtils.js
+    if (allImages.length === 0 && isGalleryWindowHidden()) return false;
     const slimIncoming = slimGalleryListItem(item);
     const idx = findActiveGalleryListIndexForItem(slimIncoming);
 
@@ -4579,9 +4584,8 @@ function addPlaceholdersBelow() {
 function handleInfiniteScroll() {
     if (isLoadingMore || isScrolling) return;
 
-    // Don't handle infinite scroll if gallery is not the foreground window
-    // isGalleryForeground: public/scripts/comp/modalUtils.js
-    if (!isGalleryForeground()) return;
+    // Don't handle infinite scroll if gallery is not the foreground window or being scrolled
+    if (!isGalleryScrollLive()) return;
 
     // Post-restore stabilization: virtual scroll / load-more must not mutate the DOM window
     // until explicit user input lifts suppression (otherwise saved position hints drift).
@@ -5157,6 +5161,22 @@ let scrollVelocity = 0;
 let isScrolling = false;
 let scrollEndTimeout = null;
 let cleanupTimeout = null; // Track cleanup timeout to prevent duplicates
+let lastGalleryUserScrollAt = 0;
+const GALLERY_SCROLL_LIVE_MS = 1500;
+
+/**
+ * isGalleryForeground, or the gallery is being scrolled right now. A wheel scrolls the
+ * window under the pointer without activating it, and a background gallery that never
+ * resolves its placeholders leaves the view blank.
+ */
+function isGalleryScrollLive() {
+    // isGalleryForeground, isGalleryWindowHidden: public/scripts/comp/modalUtils.js
+    if (isGalleryForeground()) return true;
+    if (isGalleryWindowHidden()) return false;
+    if (document.body.classList.contains('is-window-dragging')) return false;
+    if (!manualModal.classList.contains('hidden') && !manualModal.classList.contains('windowed')) return false;
+    return Date.now() - lastGalleryUserScrollAt < GALLERY_SCROLL_LIVE_MS;
+}
 
 // Fast scrolling pause for placeholder resolution
 let isFastScrolling = false;
@@ -5509,8 +5529,7 @@ function initIntersectionObserver() {
     }
 
     intersectionObserver = new IntersectionObserver((entries) => {
-        // isGalleryForeground: public/scripts/comp/modalUtils.js
-        if (!isGalleryForeground()) return;
+        if (!isGalleryScrollLive()) return;
         // Only trigger virtual scroll updates when items become visible/hidden
         let needsUpdate = false;
         entries.forEach(entry => {
@@ -5549,9 +5568,9 @@ function updateVirtualScroll() {
     // Same as post-restore hint suppression: keep virtual DOM stable until user input.
     if (suppressGalleryPositionHintUntilInteraction) return;
 
-    // isGalleryForeground: public/scripts/comp/modalUtils.js
-    // Skip while another window is in front (windowed Studio used to keep this running).
-    if (!isGalleryForeground()) return;
+    // Skip while another window is in front (windowed Studio used to keep this running),
+    // unless the gallery itself is being scrolled from behind it.
+    if (!isGalleryScrollLive()) return;
 
     // Coalesce to one rAF (same pattern as vfsVirtualGrid._scheduleScrollUpdate)
     if (virtualScrollThrottle) return;
@@ -6673,6 +6692,7 @@ window.wsClient.registerInitStep(30, 'Initializing Gallery System', async () => 
     function onGalleryScrollEvent(scrollTarget) {
         // Collapse from content-visibility:hidden must not look like a scroll-to-top.
         if (document.body.classList.contains('is-window-dragging')) return;
+        lastGalleryUserScrollAt = Date.now();
         updateScrollVelocity(scrollTarget || null);
         if (galleryScrollRaf) return;
         galleryScrollRaf = requestAnimationFrame(() => {
@@ -6691,6 +6711,20 @@ window.wsClient.registerInitStep(30, 'Initializing Gallery System', async () => 
         galleryContainer.addEventListener('scroll', () => {
             onGalleryScrollEvent(galleryContainer);
         }, { passive: true });
+    }
+
+    // Catch up placeholders left while the gallery was behind another window
+    const { galleryWindow } = getGalleryScrollRoots();
+    if (galleryWindow) {
+        let wasActive = galleryWindow.classList.contains('active-window');
+        new MutationObserver(() => {
+            const active = galleryWindow.classList.contains('active-window');
+            if (active && !wasActive) {
+                updateVirtualScroll();
+                resolveVisiblePlaceholders();
+            }
+            wasActive = active;
+        }).observe(galleryWindow, { attributes: true, attributeFilter: ['class'] });
     }
 
     wireGalleryToolbarListeners();
