@@ -1015,12 +1015,15 @@ class VfsManager {
         const ws = ctx.ws || (workspaceId
             ? this.globalResources.getWorkspaceManager().getWorkspaces()[workspaceId]
             : null);
+        // JULES: perf optimization — Set lookup O(1) instead of Array.includes O(N) inside loop
+        const isFileInWs = ctx?.wsFilesSet ? ctx.wsFilesSet.has(targetId) : ws?.files?.includes(targetId);
+        const isScrapInWs = ctx?.wsScrapsSet ? ctx.wsScrapsSet.has(targetId) : ws?.scraps?.includes(targetId);
         switch (targetKind) {
             case 'image':
-                if (ws?.files?.includes(targetId)) return 'Pictures';
+                if (isFileInWs) return 'Pictures';
                 return ws?.name || null;
             case 'scrap':
-                if (ws?.scraps?.includes(targetId)) return 'Scraps';
+                if (isScrapInWs) return 'Scraps';
                 return ws?.name || null;
             case 'reference':
             case 'vibe':
@@ -1147,6 +1150,11 @@ class VfsManager {
 
         if (ctx.workspaceId) {
             ctx.ws = this.globalResources.getWorkspaceManager().getWorkspaces()[ctx.workspaceId] || null;
+            // JULES: perf optimization — pre-compute Sets for O(1) lookups during list metadata enrichment
+            if (ctx.ws) {
+                ctx.wsFilesSet = new Set(ctx.ws.files || []);
+                ctx.wsScrapsSet = new Set(ctx.ws.scraps || []);
+            }
         }
 
         const imageFilenames = new Set();
