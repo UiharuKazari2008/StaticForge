@@ -4076,7 +4076,7 @@ async function handleAdminUnixSocketMessage(message, socket) {
 
         serverStartupStatus.setCapability('staticAssets', true);
 
-        // Vista scheme WAVs from public/sounds/vista (host-local, gitignored; whitelisted files are in the manifest)
+        // Vista scheme WAVs from public/sounds/vista (allowlisted files are committed and in the manifest)
         app.get('/sounds/vista/:file', (req, res) => {
             desktopSoundsStatic.sendSound(req, res, __dirname);
         });
