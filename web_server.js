@@ -998,14 +998,7 @@ function resolveInstallPackFile(file) {
         const fflatePath = path.resolve(__dirname, 'node_modules', 'fflate', 'umd', 'index.js');
         return fs.existsSync(fflatePath) ? fflatePath : null;
     }
-    // Routes served from outside public/: the pack must carry the same file the manifest hashed,
-    // or Expanding reports the rows as "did not arrive intact".
-    // desktopCursorsStatic.listCursorPackFiles: modules/desktopCursorsStatic.js (media/cursors)
-    if (file && typeof file.url === 'string' && file.url.startsWith('/cursors/')) {
-        const webPath = file.url.split('?')[0];
-        const hit = desktopCursorsStatic.listCursorPackFiles(__dirname).find((c) => c.webPath === webPath);
-        return hit && fs.existsSync(hit.abs) ? hit.abs : null;
-    }
+    // /.login.jpg is served from outside public/; the pack must carry the file the manifest hashed.
     // /.login.jpg route: .cache/login_array.jpg, or the public/images seed on a fresh install
     if (file && file.url === '/.login.jpg') {
         return resolveLoginSpritePath();
@@ -1136,7 +1129,7 @@ async function generateCacheData(directory) {
             }
         }
 
-        // Cursor packs live in media/cursors (Vista committed, Posy host-local), not under public/.
+        // Cursor packs in public/cursors (Vista committed, Posy host-local), hashed via the /cursors route's resolver.
         // desktopCursorsStatic.listCursorPackFiles: modules/desktopCursorsStatic.js
         const cursorPack = desktopCursorsStatic.listCursorPackFiles(__dirname);
         for (const cursor of cursorPack) {
@@ -1198,8 +1191,8 @@ async function scanDirectory(dir, relFromPublic = '') {
         if (itemRel === 'sounds/vista' || itemRel.startsWith('sounds/vista/')) {
             continue;
         }
-        // Packs are hashed from media/cursors via listCursorPackFiles. Skip a public/ copy
-        // so the manifest hash matches the file the /cursors route actually serves.
+        // public/cursors is hashed above via listCursorPackFiles (same files the /cursors route serves);
+        // skip it here so it is not listed twice.
         if (itemRel === 'cursors' || itemRel.startsWith('cursors/')) {
             continue;
         }
@@ -4058,7 +4051,7 @@ async function handleAdminUnixSocketMessage(message, socket) {
             desktopSoundsStatic.sendSound(req, res, __dirname);
         });
 
-        // Cursor packs from media/cursors (Vista is committed; Posy is host-local).
+        // Cursor packs from public/cursors (Vista is committed; Posy is host-local).
         // Both are rows in the install manifest when the files are on disk.
         app.get('/cursors/:scheme/:file', (req, res) => {
             desktopCursorsStatic.sendCursor(req, res, __dirname);

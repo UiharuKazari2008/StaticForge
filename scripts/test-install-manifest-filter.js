@@ -25,7 +25,7 @@ try {
     write(root, 'public/images/login_array.jpg', 'jpeg');
     write(root, '.cache/runtime-assets/static_images/app_icons/icon-32.webp', 'webp');
     write(root, 'node_modules/fflate/umd/index.js', 'exports');
-    write(root, 'media/cursors/vista/aero_arrow.cur', 'cur');
+    write(root, 'public/cursors/vista/aero_arrow.cur', 'cur');
 
     const entries = [
         { url: '/', name: '/index.html', type: 'route' },

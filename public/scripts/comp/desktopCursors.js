@@ -1,6 +1,6 @@
 /**
  * Pointer scheme. Classic = native CSS keywords. Vista / Posy = url() tokens
- * from /cursors/{scheme}/ (media/cursors, not in git). Default Vista.
+ * from /cursors/{scheme}/ (public/cursors; Vista committed, Posy host-local). Default Vista.
  * Personalize / Control Panel → Cursors writes localStorage `desktop-cursors`.
  *
  * Tokens live on html as --c-pointer and friends (public/css/desktop-cursors.css).

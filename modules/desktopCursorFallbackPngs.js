@@ -1,5 +1,5 @@
 /**
- * Tiny PNG pointers so Vista / Posy still look different when media/cursors
+ * Tiny PNG pointers so Vista / Posy still look different when public/cursors
  * is empty (url() 404 → native keyword). Not the Microsoft / Posy binaries.
  */
 const zlib = require('zlib');

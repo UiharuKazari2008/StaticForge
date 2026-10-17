@@ -78,7 +78,6 @@ function candidatePaths(projectRoot, webPath) {
     }
     if (webPath.startsWith('/cursors/')) {
         const rest = webPath.slice('/cursors/'.length);
-        push(path.join('media', 'cursors', rest));
         push(path.join('public', 'cursors', rest));
         return out;
     }

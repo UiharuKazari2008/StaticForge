@@ -26,19 +26,16 @@ logs/
 log.txt
 securePrompts/*
 tmp/
-# Host-local media. Microsoft Vista WAVs stay out of git. Vista cursors are committed.
+# Host-local media (Microsoft Vista WAVs) stays out of git. Cursors live in public/cursors.
 /media/*
-!/media/cursors/
-/media/cursors/*
-!/media/cursors/vista/
-!/media/cursors/vista/**
 # Vista WAVs copied under public/sounds stay host-local. Planet bed is committed.
 public/sounds/*
 !public/sounds/planet/
 public/sounds/planet/*
 !public/sounds/planet/innerlight.opus
-# Optional cursor copies served from public/. The committed pack is media/cursors/vista.
-public/cursors/
+# Cursor packs served at /cursors/*. Vista is committed; Posy and others stay host-local.
+public/cursors/*
+!public/cursors/vista/
 .agents/skills/*
 .cursor/debug-*
 # Nested clone of DreamScape/cursor-rules (cron-pulled on host)
