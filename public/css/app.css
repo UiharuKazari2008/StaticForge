@@ -982,6 +982,11 @@ body.editor-open #titlebar-grab-area-container {
     backdrop-filter: none;
 }
 
+/* A collapsed ticker keeps its last icon; an invisible spinner runs on the main thread every frame */
+.websocket-ticker:not(.expanded) .fa-spin {
+    animation-play-state: paused;
+}
+
 .websocket-ticker-content {
     display: flex;
     align-items: center;
@@ -1245,34 +1250,6 @@ body.desktop-mode #photoSwipeWindow.photo-swipe-window:not(.windowed) #photoSwip
     height: unset;
     line-height: unset;
 } */
-
-/* Full-screen PhotoSwipe: hide app titlebar chrome so it does not stack over the viewer */
-body:not(.desktop-mode) .window-controls-overlay:has(.pswp.pswp--open) #titlebar-grab-area-container #menu-bar-left-gutter,
-body:not(.desktop-mode) .window-controls-overlay:has(.pswp.pswp--ui-visible) #titlebar-grab-area-container #menu-bar-left-gutter {
-    background: #00000000;
-    width: 0;
-}
-
-body:not(.desktop-mode) .window-controls-overlay:has(.pswp.pswp--open) #titlebar-grab-area-container #menu-bar-handle,
-body:not(.desktop-mode) .window-controls-overlay:has(.pswp.pswp--ui-visible) #titlebar-grab-area-container #menu-bar-handle {
-    background: linear-gradient(90deg, transparent 2em, transparent 7em, transparent 100%);
-}
-
-body:not(.desktop-mode) .window-controls-overlay:has(.pswp.pswp--open) #titlebar-grab-area-container .title-bar-text,
-body:not(.desktop-mode) .window-controls-overlay:has(.pswp.pswp--ui-visible) #titlebar-grab-area-container .title-bar-text {
-    background: #00000000;
-    opacity: 1;
-}
-
-body:not(.desktop-mode) .window-controls-overlay:has(.pswp.pswp--open) #titlebar-grab-area-container #menu-bar-controls-right-gutter,
-body:not(.desktop-mode) .window-controls-overlay:has(.pswp.pswp--ui-visible) #titlebar-grab-area-container #menu-bar-controls-right-gutter {
-    background: linear-gradient(270deg, transparent 2em, transparent 7em, transparent 100%);
-}
-
-body:not(.desktop-mode) .window-controls-overlay:has(.pswp.pswp--open) #titlebar-grab-area-container #menu-bar-controls-right,
-body:not(.desktop-mode) .window-controls-overlay:has(.pswp.pswp--ui-visible) #titlebar-grab-area-container #menu-bar-controls-right {
-    background: linear-gradient(270deg, black, transparent 100%);
-}
 
 .pswp .pswp__button--arrow--prev {
     left: var(--inset-left, 0px);
@@ -2393,57 +2370,23 @@ span.menu-logo,
 }
 
 .indicator.flashing.active:not([data-state="on"]):not([data-state="onhigh"])::after {
-    animation: flash 1s infinite;
+    animation: indicator-blink 1s infinite;
 }
 
-@keyframes flash {
+/* Blinking lamps: the lit colours come from each state rule; the blink only dims the lamp. Filter
+   runs on the compositor. The old flash / flashGreen / flashRed keyframes animated background,
+   border and box-shadow, which Chrome ticks on the main thread every frame (a style pass, paint
+   and commit at ~50 fps for a 4 px dot, ~20% of a core in Yukimi's Director-turn trace). */
+@keyframes indicator-blink {
 
     0%,
     49% {
-        background: #ffe97e;
-        border: 1px solid #cd9300;
-        box-shadow: 0 0 15px 2px hsl(39 100% 71% / 100%);
+        filter: none;
     }
 
     50%,
     100% {
-        background: #211c00;
-        border: 1px solid #201200;
-        box-shadow: 0 0 15px 2px hsl(39 100% 71% / 11.2%);
-    }
-}
-
-@keyframes flashGreen {
-
-    0%,
-    49% {
-        background: #7eff7e;
-        border: 1px solid #00cd00;
-        box-shadow: 0 0 15px 2px #00ff22;
-    }
-
-    50%,
-    100% {
-        background: #001a0a;
-        border: 1px solid #00331a;
-        box-shadow: 0 0 15px 2px rgb(0 255 34 / 12%);
-    }
-}
-
-@keyframes flashRed {
-
-    0%,
-    49% {
-        background: #ff7e7e;
-        border: 1px solid #cd0000;
-        box-shadow: 0 0 15px 2px rgb(255, 112, 112);
-    }
-
-    50%,
-    100% {
-        background: #211c00;
-        border: 1px solid #201200;
-        box-shadow: 0 0 15px 2px hsl(39 100% 71% / 11.2%);
+        filter: brightness(0.14);
     }
 }
 
@@ -2595,7 +2538,7 @@ span.menu-logo,
     background: #ff7e7e;
     border: 1px solid #cd0000;
     box-shadow: 0 0 15px 2px rgb(255, 112, 112);
-    animation: flashRed 1s infinite;
+    animation: indicator-blink 1s infinite;
 }
 
 #varietyBtn.indicator[data-state="on"]::after {
@@ -2610,7 +2553,7 @@ span.menu-logo,
     background: #7eff7e;
     border: 1px solid #00cd00;
     box-shadow: 0 0 15px 2px #00ff22;
-    animation: flashGreen 1s infinite;
+    animation: indicator-blink 1s infinite;
 }
 
 /* Creative Directive Dropdown Indicator Colors */
@@ -2632,7 +2575,7 @@ span.menu-logo,
     background: #ffe97e;
     border: 1px solid #cd9300;
     box-shadow: 0 0 15px 2px rgb(255, 219, 112);
-    animation: flash 1s infinite;
+    animation: indicator-blink 1s infinite;
 }
 
 #creativeDirectiveStrategyBtn.indicator[data-value="C"]::after {

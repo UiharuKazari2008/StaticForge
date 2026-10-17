@@ -659,6 +659,37 @@ function formatCssUrl(url) {
 }
 
 // Generate CSS variables for a specific workspace
+// Label colour for text on the workspace colour: #000 or #fff by APCA lightness contrast (WCAG 3 draft;
+// WCAG 2's ratio picks black on mid blues and pinks that read better in white). Judged on the Vista
+// button face, not the flat colour: its gloss puts ~26% white over the top half and ~7% black over the
+// bottom, and the label straddles the fold, so the worse half counts. White stays unless black wins by
+// more than 5 Lc, so in-between colours keep the white label they had.
+function primaryContrastText(hex) {
+    const clean = String(hex || '').replace('#', '');
+    const rgb = [0, 2, 4].map((i) => parseInt(clean.substr(i, 2), 16) / 255);
+    if (rgb.some((v) => Number.isNaN(v))) return '#ffffff';
+    const screenY = (c) => {
+        const y = 0.2126729 * Math.pow(c[0], 2.4) + 0.7151522 * Math.pow(c[1], 2.4) + 0.0721750 * Math.pow(c[2], 2.4);
+        return y < 0.022 ? y + Math.pow(0.022 - y, 1.414) : y;
+    };
+    // APCA-W3 0.0.98G Lc magnitude, text luminance over background luminance
+    const lc = (text, bg) => {
+        if (bg > text) {
+            const s = (Math.pow(bg, 0.56) - Math.pow(text, 0.57)) * 1.14;
+            return s < 0.1 ? 0 : (s - 0.027) * 100;
+        }
+        const s = (Math.pow(bg, 0.65) - Math.pow(text, 0.62)) * 1.14;
+        return s > -0.1 ? 0 : -(s + 0.027) * 100;
+    };
+    const faces = [
+        rgb.map((v) => v * 0.74 + 0.26),
+        rgb.map((v) => v * 0.93)
+    ].map(screenY);
+    const whiteWorst = Math.min(...faces.map((y) => lc(1, y)));
+    const blackWorst = Math.min(...faces.map((y) => lc(0, y)));
+    return blackWorst > whiteWorst + 5 ? '#000000' : '#ffffff';
+}
+
 function generateWorkspaceCSSVariables(workspaceColor, workspaceBackgroundColor, workspaceWallpaper = null, workspaceWallpaperPosition = 'center', primaryFont = '', textareaFont = '', isBlurDisabled = false, gradientBrightnessRatio = 1.0, gradientTintRatio = 0.35) {
     // Color adjustment variables for consistent theming
     const BADGE_LIGHTNESS_1 = 30; // Much darker first badge color
@@ -683,6 +714,7 @@ function generateWorkspaceCSSVariables(workspaceColor, workspaceBackgroundColor,
     const ROUND_SECONDARY_SATURATION = 85; // Round secondary button saturation   
     
     const workspaceHsl = hexToHsl(workspaceColor);
+    const primaryText = primaryContrastText(workspaceColor);
     const workspaceBackgroundHsl = hexToHsl(workspaceBackgroundColor);
     
     const originalSaturation = 86; // Original orange saturation
@@ -745,6 +777,8 @@ function generateWorkspaceCSSVariables(workspaceColor, workspaceBackgroundColor,
         `--toggle-shadow-color-58: hsl(${workspaceHsl.h} ${TOGGLE_SHADOW_SATURATION}% ${TOGGLE_SHADOW_LIGHTNESS}% / 58%);`,
         `--toggle-shadow-color-19: hsl(${workspaceHsl.h} ${Math.max(0, TOGGLE_SHADOW_SATURATION - 20)}% ${Math.min(100, TOGGLE_SHADOW_LIGHTNESS + 15)}% / 19%);`,
         `--round-secondary-bg: hsl(${workspaceHsl.h} ${ROUND_SECONDARY_SATURATION}% ${ROUND_SECONDARY_LIGHTNESS}%);`,
+        `--primary-color-contrast: ${primaryText};`,
+        `--primary-color-contrast-shadow: ${primaryText === '#000000' ? '0 1px 0 hsl(0 0% 100% / 35%)' : '0 1px 1px hsl(0 0% 0% / 45%)'};`,
     ];
 
     // Fonts: if provided, set per-workspace font variables used by styles.css

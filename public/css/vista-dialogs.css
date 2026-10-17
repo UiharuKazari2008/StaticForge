@@ -97,10 +97,53 @@ body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal
     opacity: 1;
 }
 
-/* the default button: Vista's pulsing blue glow (7.css pulse-anim, keyframes in 7.scoped.css) */
+/* the default button: Vista's pulsing blue glow (7.css pulse-anim: inset 0 0 3px 1px <-> 0 0 1px 1px
+   #34deffdd). Each end of the pulse is its own layer and the two cross-fade by opacity, which runs
+   on the compositor; animating box-shadow ticked the main thread every frame while a dialog was up.
+   The glow replaces the button's own inner shadow in every state, as the animation did. */
 body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content button:is([data-dialog-primary="1"], .primary, .btn-primary):not(.close-btn):not(.custom-dropdown-btn):not(.round-button):not(.hover-show):not(.toolbar-btn):not(:disabled) {
-    animation: pulse-anim 1s ease infinite alternate;
     border-color: #5586a3;
+    box-shadow: none !important;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content button:is([data-dialog-primary="1"], .primary, .btn-primary):not(.close-btn):not(.custom-dropdown-btn):not(.round-button):not(.hover-show):not(.toolbar-btn):not(:disabled)::before,
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content button:is([data-dialog-primary="1"], .primary, .btn-primary):not(.close-btn):not(.custom-dropdown-btn):not(.round-button):not(.hover-show):not(.toolbar-btn):not(:disabled)::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: 2px;
+    pointer-events: none;
+    animation: vista-default-pulse 1s ease infinite alternate;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content button:is([data-dialog-primary="1"], .primary, .btn-primary):not(.close-btn):not(.custom-dropdown-btn):not(.round-button):not(.hover-show):not(.toolbar-btn):not(:disabled)::before {
+    box-shadow: inset 0 0 3px 1px #34deffdd;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content button:is([data-dialog-primary="1"], .primary, .btn-primary):not(.close-btn):not(.custom-dropdown-btn):not(.round-button):not(.hover-show):not(.toolbar-btn):not(:disabled)::after {
+    box-shadow: inset 0 0 1px 1px #34deffdd;
+    animation-name: vista-default-pulse-in;
+}
+
+@keyframes vista-default-pulse {
+    from {
+        opacity: 1;
+    }
+
+    to {
+        opacity: 0;
+    }
+}
+
+@keyframes vista-default-pulse-in {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
 }
 
 body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content button:is(.btn, .btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard):not(.close-btn):focus-visible {

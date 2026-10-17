@@ -181,6 +181,9 @@ function wirePrintsCountInputs() {
 }
 
 /** Celebration after a successful image generation: `'sakura'` (default) or classic `'confetti'`. Persists via localStorage key `generationCelebrationEffect`. */
+// On again with the worker canvas (launchCelebration), on trial (Yukimi, 2026-10-16): the DOM petals kept
+// the page drawing ~40 frames/s for ~15 s, a fifth of a core per print. Director turns stay quiet either way.
+const GENERATION_CELEBRATION_ENABLED = true;
 var generationCelebrationEffect = 'sakura';
 try {
     const _storedCelebration = localStorage.getItem('generationCelebrationEffect');
@@ -1199,139 +1202,234 @@ function deregisterManualPreviewEventListeners() {
     manualPreviewEventListenersRegistered = false;
 }
 
-function createConfettiClassic() {
-    if (!confettiContainer) return;
+// Celebration effects draw in a worker onto one OffscreenCanvas over the page. The worker runs its own
+// animation frames, so the page renders nothing for it: no DOM pieces, no style or layout, no main-thread
+// frames. (The DOM petals were 160 composited layers, each starting its own animation, which kept the page
+// drawing ~40 frames/s at ~5 ms of layerization each for ~15 s per print; Yukimi's trace, 2026-10-16.)
+// Motion copies the old keyframes: sakuraPetalFall / confettiFall in public/css/autocomplete.css.
+let celebrationWorker = null;
+let celebrationCanvas = null;
 
-    // Multi-colored confetti palette with vibrant colors
-    const colors = [
-        '#ff4500', '#ff6347', '#ff8c00', '#ffa500', '#ff6b35', '#ff7f50', // Orange/Red variants
-        '#ff1493', '#ff69b4', '#ffb6c1', '#ffc0cb', '#db7093', '#c71585', // Pink variants
-        '#00ff00', '#32cd32', '#90ee90', '#98fb98', '#00fa9a', '#00ff7f', // Green variants
-        '#4169e1', '#1e90ff', '#00bfff', '#87ceeb', '#87cefa', '#b0e0e6', // Blue variants
-        '#9370db', '#8a2be2', '#9932cc', '#ba55d3', '#da70d6', '#ee82ee', // Purple variants
-        '#ffff00', '#ffd700', '#ffeb3b', '#f0e68c', '#bdb76b', '#f4a460', // Yellow/Gold variants
-        '#ff4500', '#ff6347', '#ff8c00', '#ffa500', '#ff6b35', '#ff7f50'  // Additional orange/red
-    ];
-    const shapes = ['rect', 'circle', 'triangle'];
+// Runs inside the worker (serialised into a blob URL), so it may use only its own scope
+function celebrationWorkerMain() {
+    let canvas = null;
+    let ctx = null;
+    let pieces = [];
+    let running = false;
+    let scale = 1;
+    const nextFrame = typeof self.requestAnimationFrame === 'function'
+        ? (fn) => self.requestAnimationFrame(fn)
+        : (fn) => setTimeout(() => fn(performance.now()), 16);
+    // CSS ease-in-out, close enough for a falling petal
+    const easeInOut = (t) => t * t * (3 - 2 * t);
+    const rand = (min, max) => min + Math.random() * (max - min);
+    const pick = (list) => list[Math.floor(Math.random() * list.length)];
 
-    // Increase the number of confetti pieces for more intensity
-    const totalPieces = 175; // Added 25 more pieces
-
-    for (let i = 0; i < totalPieces; i++) {
-        setTimeout(() => {
-            const confetti = document.createElement('div');
-            confetti.className = 'confetti';
-
-            // Random position across the entire screen width
-            confetti.style.left = Math.random() * 100 + 'vw';
-
-            // Random color from expanded palette
-            const color = colors[Math.floor(Math.random() * colors.length)];
-            confetti.style.backgroundColor = color;
-
-            // Random size between 4px and 12px
-            const size = Math.random() * 8 + 4;
-            confetti.style.width = size + 'px';
-            confetti.style.height = size + 'px';
-
-            // Random shape
-            const shape = shapes[Math.floor(Math.random() * shapes.length)];
-            if (shape === 'circle') {
-                confetti.style.borderRadius = '50%';
-            } else if (shape === 'triangle') {
-                confetti.style.width = '0';
-                confetti.style.height = '0';
-                confetti.style.backgroundColor = 'transparent';
-                confetti.style.borderLeft = (size / 2) + 'px solid transparent';
-                confetti.style.borderRight = (size / 2) + 'px solid transparent';
-                confetti.style.borderBottom = size + 'px solid ' + color;
+    // keyframes: [[offset, value], ...]; the timing function applies per segment, as in CSS
+    function sample(track, p, ease) {
+        for (let i = 1; i < track.length; i++) {
+            if (p <= track[i][0]) {
+                const a = track[i - 1];
+                const b = track[i];
+                const t = (p - a[0]) / (b[0] - a[0]);
+                return a[1] + (b[1] - a[1]) * (ease ? ease(t) : t);
             }
-
-            // Random rotation
-            confetti.style.transform = `rotate(${Math.random() * 360}deg)`;
-
-            // Slower animation duration and longer delay for more screen time
-            const duration = 4.5 + Math.random() * 3; // 4.5 to 7.5 seconds (slower)
-            const delay = Math.random() * 1.5; // 0 to 1.5 seconds delay (longer)
-            confetti.style.animationDuration = duration + 's';
-            confetti.style.animationDelay = delay + 's';
-
-            // Add some confetti with different starting positions for more spread
-            if (i % 3 === 0) {
-                confetti.style.left = (Math.random() * 20 - 10) + 'vw'; // Start from left edge
-            } else if (i % 3 === 1) {
-                confetti.style.left = (80 + Math.random() * 20) + 'vw'; // Start from right edge
-            }
-
-            confettiContainer.appendChild(confetti);
-
-            // Remove confetti after animation
-            setTimeout(() => {
-                if (confetti.parentNode) {
-                    confetti.parentNode.removeChild(confetti);
-                }
-            }, (duration + delay) * 1000 + 1000); // Extra 1 second buffer
-        }, i * 25); // Slightly increased delay between pieces for better distribution
+        }
+        return track[track.length - 1][1];
     }
+
+    function sprite(w, h, paint) {
+        const pad = 4;
+        const c = new OffscreenCanvas(Math.ceil((w + pad * 2) * scale), Math.ceil((h + pad * 2) * scale));
+        const g = c.getContext('2d');
+        g.scale(scale, scale);
+        g.translate(pad, pad);
+        paint(g);
+        return { image: c, w: w + pad * 2, h: h + pad * 2 };
+    }
+
+    // CSS linear-gradient(<angle>deg, c1, c2) over a w x h box
+    function cssAngleGradient(g, angleDeg, w, h, c1, c2) {
+        const a = angleDeg * Math.PI / 180;
+        const dx = Math.sin(a);
+        const dy = -Math.cos(a);
+        const half = (Math.abs(w * dx) + Math.abs(h * dy)) / 2;
+        const grad = g.createLinearGradient(w / 2 - dx * half, h / 2 - dy * half, w / 2 + dx * half, h / 2 + dy * half);
+        grad.addColorStop(0, c1);
+        grad.addColorStop(1, c2);
+        return grad;
+    }
+
+    function sakuraPiece(i, now, vw, vh) {
+        const colors = [['#fff5f7', '#ffe4ec'], ['#ffe4ec', '#ffb7c5'], ['#ffd6e0', '#ff9ebb'], ['#fff0f5', '#ffc0cb'], ['#fce4ec', '#f8bbd9'], ['#ffffff', '#ffe4ec']];
+        const w = rand(8, 16);
+        const h = rand(12, 22);
+        const [c1, c2] = pick(colors);
+        const angle = Math.floor(rand(100, 140));
+        let left = rand(0, 100);
+        if (i % 3 === 0) left = rand(-12, 13);
+        else if (i % 3 === 1) left = rand(78, 100);
+        const drift = rand(-40, 40);
+        const startRot = rand(0, 360);
+        // border-radius: 50% 50% 50% 0, box-shadow 0 1px 2px rgba(255, 182, 193, 0.35)
+        const art = sprite(w, h, (g) => {
+            g.shadowColor = 'rgba(255, 182, 193, 0.35)';
+            g.shadowOffsetY = 1;
+            g.shadowBlur = 2;
+            g.beginPath();
+            g.roundRect(0, 0, w, h, [{ x: w / 2, y: h / 2 }, { x: w / 2, y: h / 2 }, { x: w / 2, y: h / 2 }, 0]);
+            g.fillStyle = cssAngleGradient(g, angle, w, h, c1, c2);
+            g.fill();
+        });
+        return {
+            art,
+            x0: left * vw + w / 2,
+            y0: h / 2,
+            start: now + (i * 28 + rand(0, 2000)),
+            duration: rand(6000, 10000),
+            ease: easeInOut,
+            y: [[0, -14], [0.22, 22 * vh], [0.48, 48 * vh], [0.72, 74 * vh], [1, 106 * vh]],
+            x: [[0, 0], [0.22, drift * 0.45], [0.48, drift * -0.55], [0.72, drift * 0.38], [1, drift * 0.12]],
+            rot: [[0, startRot], [0.22, startRot + 110], [0.48, startRot + 260], [0.72, startRot + 420], [1, startRot + 640]],
+            alpha: [[0, 0.94], [0.22, 0.88], [0.48, 0.78], [0.72, 0.52], [1, 0]]
+        };
+    }
+
+    function confettiPiece(i, now, vw, vh) {
+        const colors = ['#ff4500', '#ff6347', '#ff8c00', '#ffa500', '#ff6b35', '#ff7f50', '#ff1493', '#ff69b4', '#ffb6c1', '#ffc0cb', '#db7093', '#c71585',
+            '#00ff00', '#32cd32', '#90ee90', '#98fb98', '#00fa9a', '#00ff7f', '#4169e1', '#1e90ff', '#00bfff', '#87ceeb', '#87cefa', '#b0e0e6',
+            '#9370db', '#8a2be2', '#9932cc', '#ba55d3', '#da70d6', '#ee82ee', '#ffff00', '#ffd700', '#ffeb3b', '#f0e68c', '#bdb76b', '#f4a460'];
+        const color = pick(colors);
+        const size = rand(4, 12);
+        const shape = pick(['rect', 'circle', 'triangle']);
+        let left = rand(0, 100);
+        if (i % 3 === 0) left = rand(-10, 10);
+        else if (i % 3 === 1) left = rand(80, 100);
+        const art = sprite(size, size, (g) => {
+            g.fillStyle = color;
+            g.beginPath();
+            if (shape === 'circle') g.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+            else if (shape === 'triangle') { g.moveTo(size / 2, 0); g.lineTo(size, size); g.lineTo(0, size); g.closePath(); }
+            else g.roundRect(0, 0, size, size, 2);
+            g.fill();
+        });
+        return {
+            art,
+            x0: left * vw + size / 2,
+            y0: size / 2,
+            start: now + (i * 25 + rand(0, 1500)),
+            duration: rand(4500, 7500),
+            ease: null,
+            y: [[0, -10], [0.5, 50 * vh], [1, 100 * vh]],
+            x: [[0, 0], [1, 0]],
+            rot: [[0, 0], [0.5, 360], [1, 720]],
+            alpha: [[0, 1], [0.5, 0.8], [1, 0]]
+        };
+    }
+
+    function frame(now) {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        let alive = 0;
+        for (let i = 0; i < pieces.length; i++) {
+            const piece = pieces[i];
+            const t = now - piece.start;
+            if (t > piece.duration) continue;
+            alive++;
+            if (t < 0) continue;
+            const p = t / piece.duration;
+            const rot = sample(piece.rot, p, piece.ease) * Math.PI / 180;
+            const cos = Math.cos(rot) * scale;
+            const sin = Math.sin(rot) * scale;
+            ctx.globalAlpha = sample(piece.alpha, p, piece.ease);
+            ctx.setTransform(cos, sin, -sin, cos, (piece.x0 + sample(piece.x, p, piece.ease)) * scale, (piece.y0 + sample(piece.y, p, piece.ease)) * scale);
+            ctx.drawImage(piece.art.image, -piece.art.w / 2, -piece.art.h / 2, piece.art.w, piece.art.h);
+        }
+        if (alive) {
+            if (alive < pieces.length) pieces = pieces.filter((piece) => now - piece.start <= piece.duration);
+            nextFrame(frame);
+        } else {
+            pieces = [];
+            running = false;
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            self.postMessage('idle');
+        }
+    }
+
+    self.onmessage = (event) => {
+        const msg = event.data || {};
+        if (msg.type === 'init') {
+            canvas = msg.canvas;
+            ctx = canvas.getContext('2d');
+            return;
+        }
+        if (msg.type !== 'burst' || !ctx) return;
+        scale = msg.scale;
+        const width = Math.round(msg.width * scale);
+        const height = Math.round(msg.height * scale);
+        if (canvas.width !== width || canvas.height !== height) {
+            canvas.width = width;
+            canvas.height = height;
+        }
+        const now = performance.now();
+        const make = msg.effect === 'confetti' ? confettiPiece : sakuraPiece;
+        const count = msg.effect === 'confetti' ? 175 : 160;
+        for (let i = 0; i < count; i++) pieces.push(make(i, now, msg.width / 100, msg.height / 100));
+        if (!running) {
+            running = true;
+            nextFrame(frame);
+        }
+    };
+}
+
+function ensureCelebrationCanvas() {
+    if (celebrationWorker) return true;
+    if (!confettiContainer || typeof OffscreenCanvas !== 'function' || typeof Worker !== 'function'
+        || typeof HTMLCanvasElement.prototype.transferControlToOffscreen !== 'function') {
+        return false;
+    }
+    const canvas = document.createElement('canvas');
+    canvas.className = 'celebration-canvas';
+    canvas.hidden = true;
+    confettiContainer.appendChild(canvas);
+    const offscreen = canvas.transferControlToOffscreen();
+    const url = URL.createObjectURL(new Blob(['(' + celebrationWorkerMain.toString() + ')();'], { type: 'text/javascript' }));
+    celebrationWorker = new Worker(url);
+    celebrationWorker.postMessage({ type: 'init', canvas: offscreen }, [offscreen]);
+    celebrationWorker.onmessage = (event) => {
+        if (event.data === 'idle') canvas.hidden = true;
+    };
+    celebrationCanvas = canvas;
+    return true;
+}
+
+// effect: 'sakura' | 'confetti'. The canvas fills #confettiContainer (the viewport plus 25 px above it).
+function launchCelebration(effect) {
+    if (!ensureCelebrationCanvas()) return;
+    celebrationCanvas.hidden = false;
+    celebrationWorker.postMessage({
+        type: 'burst',
+        effect,
+        width: window.innerWidth,
+        height: window.innerHeight + 25,
+        scale: Math.min(window.devicePixelRatio || 1, 1.5)
+    });
+}
+
+function createConfettiClassic() {
+    launchCelebration('confetti');
 }
 
 function createSakuraPetals() {
-    if (!confettiContainer) return;
-
-    const petalColors = [
-        ['#fff5f7', '#ffe4ec'],
-        ['#ffe4ec', '#ffb7c5'],
-        ['#ffd6e0', '#ff9ebb'],
-        ['#fff0f5', '#ffc0cb'],
-        ['#fce4ec', '#f8bbd9'],
-        ['#ffffff', '#ffe4ec']
-    ];
-
-    const totalPieces = 160;
-
-    for (let i = 0; i < totalPieces; i++) {
-        setTimeout(() => {
-            const petal = document.createElement('div');
-            petal.className = 'sakura-petal';
-
-            const w = Math.random() * 8 + 8;
-            const h = Math.random() * 10 + 12;
-            petal.style.width = w + 'px';
-            petal.style.height = h + 'px';
-            petal.style.left = Math.random() * 100 + 'vw';
-
-            const [c1, c2] = petalColors[Math.floor(Math.random() * petalColors.length)];
-            const angle = Math.floor(Math.random() * 40) + 100;
-            petal.style.background = `linear-gradient(${angle}deg, ${c1}, ${c2})`;
-            petal.style.borderRadius = '50% 50% 50% 0';
-
-            const startRot = Math.random() * 360;
-            petal.style.setProperty('--sakura-start-rot', startRot + 'deg');
-            petal.style.setProperty('--sakura-drift', (Math.random() * 80 - 40) + 'px');
-
-            if (i % 3 === 0) {
-                petal.style.left = (Math.random() * 25 - 12) + 'vw';
-            } else if (i % 3 === 1) {
-                petal.style.left = (78 + Math.random() * 22) + 'vw';
-            }
-
-            const duration = 6 + Math.random() * 4;
-            const delay = Math.random() * 2;
-            petal.style.animationDuration = duration + 's';
-            petal.style.animationDelay = delay + 's';
-
-            confettiContainer.appendChild(petal);
-
-            setTimeout(() => {
-                if (petal.parentNode) {
-                    petal.parentNode.removeChild(petal);
-                }
-            }, (duration + delay) * 1000 + 1000);
-        }, i * 28);
-    }
+    launchCelebration('sakura');
 }
 
 function createConfetti() {
+    if (!GENERATION_CELEBRATION_ENABLED) return;
+    // Prints the Director makes during its turn arrive back to back; celebrate only the user's own
+    // directorInstance: public/scripts/comp/director.js
+    if (window.directorInstance && window.directorInstance._running) return;
     // isStudioReducedPreview: public/scripts/comp/imageGenerationSettings.js
     if (isStudioReducedPreview()) return;
     if (generationCelebrationEffect === 'sakura') {

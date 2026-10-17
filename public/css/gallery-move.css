@@ -149,6 +149,13 @@
     color: var(--primary-color);
 }
 
+/* Hidden covers keep their markup, and a spinner that cannot be seen is one Chrome will not
+   composite ("no visible change"): it spun on the main thread every frame, re-layerizing the
+   whole page each time (Yukimi's trace, 2026-10-16, Image Prompt Inspector's cover). */
+.gallery-move-right-panel-cover:not(.show) .fa-spin {
+    animation-play-state: paused;
+}
+
 .gallery-move-right-panel-cover .cover-text {
     color: white;
     font-size: 1.1rem;
@@ -1018,6 +1025,24 @@ body:not(.windows-classic-theme) #cacheManagerModal .cache-manager-gallery-item 
 
 .generating-effect {
     cursor: var(--c-progress);
+    background: transparent;
+    overflow: clip;
+    isolation: isolate;
+}
+
+/* The rainbow slides on a layer under the glass and the label, by transform so it runs on the
+   compositor (sliding background-position ticked the main thread every frame of every print).
+   Same geometry as the old background: one gradient tile is ten button widths, and the layer
+   travels 18 widths in 25 s. */
+.generating-effect::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 2000%;
+    z-index: -2;
+    pointer-events: none;
     background: linear-gradient(90deg,
             rgb(255 40 40 / 66%),
             rgb(255 181 60 / 66%),
@@ -1026,23 +1051,29 @@ body:not(.windows-classic-theme) #cacheManagerModal .cache-manager-gallery-item 
             rgb(126 137 255 / 72%),
             rgb(165 90 255 / 72%),
             rgb(255 64 185 / 66%),
-            rgb(255 40 40 / 66%)) 0% 0% / 1000% 100%;
+            rgb(255 40 40 / 66%)) 0% 0% / 50% 100%;
     animation: rainbowShift 25s linear infinite;
+}
+
+/* The button's inner ring was drawn over the old background; the layer covers it, so the glass
+   layer above repeats it (its outer drop shadow falls outside the clip) */
+.generating-effect::before {
+    box-shadow: inherit;
+}
+
+/* Vista Studio buttons keep their glass image over the rainbow (it never showed there) */
+body:not(.windows-classic-theme) #manualModal :where(.btn-secondary, .btn-primary, .btn-danger, .btn-warning):not(.round-button):not(.hover-show):not(.gallery-toggle-btn):not(.mode-slider-btn):not(.modal-window-controls > button).generating-effect {
+    overflow: visible;
+}
+
+body:not(.windows-classic-theme) #manualModal :where(.btn-secondary, .btn-primary, .btn-danger, .btn-warning):not(.round-button):not(.hover-show):not(.gallery-toggle-btn):not(.mode-slider-btn):not(.modal-window-controls > button).generating-effect::after {
+    content: none;
 }
 
 /* Ensure generating effect overrides all disabled button styles */
 .generating-effect:disabled.btn-primary,
 .generating-effect:hover.btn-primary {
-    background: linear-gradient(90deg,
-            rgb(255 40 40 / 66%),
-            rgb(255 181 60 / 66%),
-            rgb(165 255 116 / 68%),
-            rgb(91 236 255 / 69%),
-            rgb(126 137 255 / 72%),
-            rgb(165 90 255 / 72%),
-            rgb(255 64 185 / 66%),
-            rgb(255 40 40 / 66%)) 0% 0% / 1000% 100%;
-    animation: rainbowShift 25s linear infinite;
+    background: transparent;
     opacity: 1 !important;
     cursor: var(--c-not-allowed);
     transform: none;
@@ -1053,11 +1084,11 @@ body:not(.windows-classic-theme) #cacheManagerModal .cache-manager-gallery-item 
 /* Rainbow animation for manualGenerateBtn when generating */
 @keyframes rainbowShift {
     0% {
-        background-position: 0% 50%;
+        transform: translateX(0);
     }
 
     100% {
-        background-position: 200% 50%;
+        transform: translateX(-90%);
     }
 }
 

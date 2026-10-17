@@ -41,7 +41,8 @@ assert.ok(js.includes("attributeFilter: ['class']"), 'dialogs are re-read when t
 assert.ok(css.includes(`${G} .modal[data-vista-dialog] > .modal-content {`) && css.includes('background: #f0f0f0;') && css.includes('font: 9pt "Segoe UI"'), 'light client, Segoe UI 9pt');
 assert.ok(css.includes(`${G} .modal[data-vista-dialog] .modal-window-title-main > :is(i:first-child, .icon-fa, .icon-image) {\n    display: none;`), 'no caption icon');
 assert.ok(css.includes('background: linear-gradient(#f2f2f2 45%, #ebebeb 45%, #cfcfcf);\n    border: 1px solid #8e8f8f;'), "7.css's standard button face");
-assert.ok(css.includes('animation: pulse-anim 1s ease infinite alternate;'), "the default button's glow");
+assert.ok(css.includes('animation: vista-default-pulse 1s ease infinite alternate;'), "the default button's glow");
+assert.ok(css.includes('animation-name: vista-default-pulse-in;') && !/animation:\s*pulse-anim/.test(css), "the glow cross-fades two layers by opacity (box-shadow animations run on the main thread)");
 assert.ok(css.includes('.vista-dialog-footer {\n    display: flex;\n    flex-wrap: wrap;\n    justify-content: flex-end;\n    align-items: center;\n    gap: 8px;\n    margin: 0;\n    padding: 12px 8px 11px 11px;\n    background: #f0f0f0;'), 'footer: buttons right-aligned, 8 px apart, 8 px from the edge, 12 px above and 11 below');
 assert.ok(css.includes('min-width: 88px;\n    min-height: 26px;'), 'message box buttons are 88x26');
 assert.ok(css.includes('grid-template-columns: 32px minmax(0, 1fr);\n    column-gap: 9px;') && css.includes('padding: 27px 25px 25px;'), 'icon 32 px, 25 px in, 27 px down, text 9 px to its right');

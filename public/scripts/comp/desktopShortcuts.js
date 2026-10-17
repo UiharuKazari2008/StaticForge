@@ -1022,8 +1022,9 @@ class DesktopShortcutsManager {
             case 'note': {
                 const noteId = item.targetId;
                 if (!noteId) throw new Error('No note id');
-                if (notepadManager?.notebookDeleteNote) {
-                    await notepadManager.notebookDeleteNote(noteId);
+                // window.: notepadManager.js is lazy; until it loads the bare name throws, ?. or not
+                if (window.notepadManager?.notebookDeleteNote) {
+                    await window.notepadManager.notebookDeleteNote(noteId);
                 } else {
                     const response = await wsClient.deleteNote(noteId);
                     if (!response?.success) throw new Error('Failed to delete note');
@@ -1173,8 +1174,9 @@ class DesktopShortcutsManager {
             case 'note': {
                 const noteId = shortcut.data?.noteId;
                 if (!noteId) throw new Error('No note id for note shortcut');
-                if (notepadManager?.notebookDeleteNote) {
-                    await notepadManager.notebookDeleteNote(noteId);
+                // window.: notepadManager.js is lazy; until it loads the bare name throws, ?. or not
+                if (window.notepadManager?.notebookDeleteNote) {
+                    await window.notepadManager.notebookDeleteNote(noteId);
                 } else {
                     const response = await wsClient.deleteNote(noteId);
                     if (!response?.success) throw new Error('Failed to delete note');

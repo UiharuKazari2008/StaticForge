@@ -37,10 +37,34 @@ function splitTop(s, chars) {
     return out;
 }
 
+// Classes that live on html or body (any `html.x` / `body.x` in the stylesheets). A compound made of
+// only these, like `.window-controls-overlay:has(.pswp)`, anchors on html/body just the same.
+const rootClasses = new Set();
+
+// The compound with :has(...) / :not(...) / :is(...) arguments cut out
+function compoundOutsideParens(compound) {
+    let out = '';
+    let depth = 0;
+    for (const c of compound) {
+        if (c === '(') depth++;
+        else if (c === ')') depth--;
+        else if (!depth) out += c;
+    }
+    return out;
+}
+
+function rootClassOnly(compound) {
+    const bare = compoundOutsideParens(compound);
+    if (/^[a-zA-Z*]/.test(bare) || /[#[]/.test(bare)) return false;
+    const classes = (bare.match(/\.[\w-]+/g) || []).map((c) => c.slice(1));
+    return classes.length > 0 && classes.every((c) => rootClasses.has(c));
+}
+
 function rootAnchoredHas(selector) {
     const norm = selector.trim().replace(/\s*([>+~])\s*/g, ' ').replace(/\s+/g, ' ');
     const compounds = splitTop(norm, ' ').filter(Boolean);
-    return compounds.some((compound) => /^(html|body|:root)\b/.test(compound) && compound.includes(':has('));
+    return compounds.some((compound) => compound.includes(':has(')
+        && (/^(html|body|:root)\b/.test(compound) || rootClassOnly(compound)));
 }
 
 function cssFiles(dir) {
@@ -53,9 +77,16 @@ function cssFiles(dir) {
     return out;
 }
 
+const sheets = cssFiles(path.join(root, 'public/css'))
+    .map((file) => [file, fs.readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')]);
+for (const [, css] of sheets) {
+    for (const m of css.matchAll(/\b(?:html|body)((?:\.[\w-]+)+)/g)) {
+        m[1].split('.').filter(Boolean).forEach((c) => rootClasses.add(c));
+    }
+}
+
 const offenders = [];
-for (const file of cssFiles(path.join(root, 'public/css'))) {
-    const css = fs.readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+for (const [file, css] of sheets) {
     const preludes = css.match(/[^{}]+(?=\{)/g) || [];
     for (const prelude of preludes) {
         if (!prelude.includes(':has(') || prelude.trim().startsWith('@')) continue;
@@ -67,6 +98,8 @@ for (const file of cssFiles(path.join(root, 'public/css'))) {
 assert.deepStrictEqual(offenders, [], `html/body-anchored :has() (use a rootStateFlags.js class):\n${offenders.join('\n')}`);
 assert.ok(rootAnchoredHas('html:has(.modal.modal-maximized).titlebar-windows #x .y'), 'guard catches html:has(...) .x');
 assert.ok(rootAnchoredHas('body.desktop-mode:is(.a, :has(#b .c)) .d'), 'guard catches body:is(:has()) .x');
+assert.ok(rootAnchoredHas('body:not(.desktop-mode) .window-controls-overlay:has(.pswp.pswp--open) #x'), 'guard catches a :has() on a class that lives on html (installed-app titlebar: every DOM change restyled the page)');
+assert.ok(!rootAnchoredHas('.gallery-item:has(.x) .y'), 'a :has() on an ordinary class is not this guard');
 assert.ok(rootAnchoredHas('html:has(body.desktop-mode)'), 'guard catches subject :has() on html too (~4 ms per DOM change)');
 assert.ok(!rootAnchoredHas('body.desktop-mode .modal:has(.x) .y'), 'a :has() anchored below body is not this guard');
 

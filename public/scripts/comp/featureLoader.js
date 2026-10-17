@@ -263,6 +263,12 @@ async function openExplorerApplet(path) {
     if (app) app.open(path);
 }
 
+/** The Notepad manager, loading notepadManager.js first if nothing has opened Notepad yet. */
+async function loadNotepadManager() {
+    await featureLoader.loadFeature('notepad');
+    return window.notepadManager || null;
+}
+
 async function openGrimoireApplet(initialQuery) {
     await featureLoader.loadFeature('grimoire');
     tagWikiSearchModal.open(initialQuery || '');
