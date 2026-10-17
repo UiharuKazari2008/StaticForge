@@ -491,7 +491,10 @@ function wireUpscaleChoiceMenus(scaleBtn, speedBtn, state, options) {
             const speedSpan = speedBtn.querySelector('span');
             if (speedSpan) speedSpan.textContent = speedText;
         }
-        speedBtn.setAttribute('data-state', upscaleDeliveryIndicator(state.speed, novelaiOk(), status()));
+        // upscaleDeliveryIndicator calls novelaiAvailableNow, which calls the flag.
+        // novelaiOk() is already a boolean. Passing that boolean throws and aborts
+        // attachManualGenerationParamsListeners before any value wheel is wired.
+        speedBtn.setAttribute('data-state', upscaleDeliveryIndicator(state.speed, opts.novelaiAvailable, status()));
         scaleBtn.setAttribute('data-state', 'on');
     }
     // contextMenu.attachPickerMenu: public/scripts/comp/contextMenu.js
