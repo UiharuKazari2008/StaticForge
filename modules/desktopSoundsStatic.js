@@ -1,6 +1,6 @@
 /**
- * Serve the Vista sound pack from public/sounds/vista (gitignored: Microsoft WAVs are not
- * committed to this public repo). Only the whitelist is reachable; whitelisted files on disk
+ * Serve the Vista sound pack from public/sounds/vista. The ALLOWED_FILES WAVs are committed
+ * (.gitignore un-ignores exactly these); other WAVs there stay host-local. Only the whitelist is reachable; whitelisted files on disk
  * are in the install manifest (web_server.js generateCacheData).
  */
 const fs = require('fs');

@@ -28,8 +28,26 @@ securePrompts/*
 tmp/
 # Host-local media (Microsoft Vista WAVs) stays out of git. Cursors live in public/cursors.
 /media/*
-# Vista WAVs copied under public/sounds stay host-local. Planet bed is committed.
+# Planet bed and the Vista WAVs the /sounds/vista route serves (desktopSoundsStatic ALLOWED_FILES)
+# are committed; other WAVs copied into public/sounds/vista stay host-local.
 public/sounds/*
+!public/sounds/vista/
+public/sounds/vista/*
+!public/sounds/vista/Windows Balloon.wav
+!public/sounds/vista/Windows Critical Stop.wav
+!public/sounds/vista/Windows Default.wav
+!public/sounds/vista/Windows Ding.wav
+!public/sounds/vista/Windows Error.wav
+!public/sounds/vista/Windows Exclamation.wav
+!public/sounds/vista/Windows Hardware Fail.wav
+!public/sounds/vista/Windows Logoff Sound.wav
+!public/sounds/vista/Windows Logon Sound.wav
+!public/sounds/vista/Windows Navigation Start.wav
+!public/sounds/vista/Windows Notify.wav
+!public/sounds/vista/Windows Print complete.wav
+!public/sounds/vista/Windows Recycle.wav
+!public/sounds/vista/Windows Shutdown.wav
+!public/sounds/vista/Windows User Account Control.wav
 !public/sounds/planet/
 public/sounds/planet/*
 !public/sounds/planet/innerlight.opus

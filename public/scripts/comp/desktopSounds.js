@@ -1,6 +1,6 @@
 /**
- * Vista desktop sound scheme. Plays host-local WAVs from /sounds/vista/
- * (public/sounds/vista, host-local, not in git). On by default; Personalize → Sounds
+ * Vista desktop sound scheme. Plays WAVs from /sounds/vista/
+ * (public/sounds/vista, the allowlisted WAVs are committed). On by default; Personalize → Sounds
  * stores localStorage `desktop-sounds` (`off` to mute). Desktop only.
  *
  * Events: error, warning, dialog, logon, lock, unlock, shutdown, navigate,

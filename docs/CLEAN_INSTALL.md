@@ -49,8 +49,8 @@ list is complete, and the service worker does not precache or serve them. A logg
 still hits the server and gets 403. A request for a missing static file (for example
 `/scripts/blockContainer.js`) is HTTP 404.
 
-Vista sound WAVs live in `public/sounds/vista` (served at `/sounds/vista/<name>.wav`). They are
-Microsoft recordings and are **not committed** (this repo is public); copy them onto each host.
+Vista sound WAVs live in `public/sounds/vista` (served at `/sounds/vista/<name>.wav`). The 15
+allowlisted WAVs are committed, so a fresh clone has them; other WAVs copied there stay ignored.
 The whitelisted files (`modules/desktopSoundsStatic.js` ALLOWED_FILES) that are on disk are in the
 install manifest and the install pack. `/protected/fflate.js` is served from the vendored
 `public/scripts/vendor/fflate.js` (fflate 0.8.3, MIT), not from node_modules.
