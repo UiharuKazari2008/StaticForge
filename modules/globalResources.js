@@ -299,6 +299,8 @@ class GlobalResources {
             previews: path.resolve(rootDir, '.previews'),
             logs: path.resolve(rootDir, 'logs'),
             securePrompts: path.resolve(rootDir, 'securePrompts'),
+            // Runtime data outside the git tree (modules/runtimeDataPaths.js)
+            apocryphaData: require('./runtimeDataPaths').getApocryphaDir(),
 
             // Cache subdirectories
             uploadCache: path.join(rootDir, '.cache', 'upload'),

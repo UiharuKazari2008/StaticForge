@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const runtimeDataPaths = require('./runtimeDataPaths');
 const {
     resolveApocryphaAccess,
     shouldShowGrim,
@@ -13,7 +14,7 @@ const {
  * Public hostname apocrypha.737.jp.net proxies here (UUID stays unlisted).
  * Underground hacker zine interior only — no window chrome.
  * Anonymous: public teaser only. Authenticated or local (config.apocrypha): Grim visible.
- * Reads data/apocrypha/current.json for issueLabel, webapp, kicker, counts, etc.
+ * Reads <APOCRYPHA_DATA_DIR>/current.json (default ~/dreamscape-data/apocrypha) for issueLabel, webapp, kicker, counts, etc.
  * grimImages are http(s) srcs only — this router does not serve image files.
  */
 
@@ -39,12 +40,13 @@ function formatBodyText(text) {
     }).join('');
 }
 
+// Outside the git tree (modules/runtimeDataPaths.js); legacy data/apocrypha is migrated once.
 function getApocryphaFilePath() {
-    return path.join(process.cwd(), 'data/apocrypha/current.json');
+    return path.join(runtimeDataPaths.getApocryphaDir(), 'current.json');
 }
 
 function getApocryphaArchiveDir() {
-    return path.join(process.cwd(), 'data/apocrypha/archive');
+    return path.join(runtimeDataPaths.getApocryphaDir(), 'archive');
 }
 
 function safeIssueSlug(value) {

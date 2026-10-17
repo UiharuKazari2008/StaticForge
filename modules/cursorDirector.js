@@ -472,7 +472,7 @@ function jailMounts(gr, paths) {
     bind(paths.chats, 'chats');
     bind(paths.promptGuideWork, 'knowledge/prompt-guide');
     if (fs.existsSync(paths.vfs)) bind(paths.vfs, 'vfs');
-    roBind(path.join(gr.getPath('root'), 'data', 'apocrypha'), 'knowledge/apocrypha');
+    roBind(require('./runtimeDataPaths').getApocryphaDir(), 'knowledge/apocrypha');
     roBind(gr.getPath('images'), 'images');
     roBind(gr.getPath('previews'), 'previews');
     roBind(gr.getPath('uploadCache'), 'references');
