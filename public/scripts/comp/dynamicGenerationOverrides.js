@@ -612,6 +612,8 @@ function clearWeatherLocation() {
         }
     }
 }
+// JULES: Expose togglePeriodDetails globally for inline onclick handlers
+window.togglePeriodDetails = togglePeriodDetails;
 
 // Set current location using browser geolocation, fallback to server-side IP lookup
 function setCurrentLocation() {
