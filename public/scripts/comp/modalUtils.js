@@ -10259,6 +10259,8 @@ function wireRemoteAccessSettingsModal() {
         };
         input.addEventListener('change', commit);
         input.addEventListener('wheel', (event) => {
+            // Only a real wheel over the open Remote Access window saves; agent run_client_js probes dispatch synthetic wheels.
+            if (!event.isTrusted || modal.classList.contains('hidden') || modal.classList.contains('hidden-alt')) return;
             event.preventDefault();
             const dir = event.deltaY < 0 ? 1 : -1;
             const next = normalizeRemoteAccessPrintsClient((Number(input.value) || 1) + dir, remoteAccessSettingsState[key]);
