@@ -92,6 +92,12 @@ const DIRECTOR_QUICK_STARTS = [
         needsSubject: true,
         title: 'Grill the prompt for everything this picture still leaves out',
         prompt: 'Grill this prompt against the picture. Use the open Studio, and if a picture is open or this chat already has one, use that generation too. Read the image and the current prompt. List every part of the picture the prompt does not cover: who is there, body, clothes, pose, expression, props, place, light, time, text, and what the scene is doing. Research what you can settle (character, series, look, tags) and write those into Studio. Do not spend a generation to discover a design. Then ask them the gaps that need their input: context, intent, and anything you cannot tell from the picture or the research. Ask those as direct questions. Do not generate until they answer.'
+    },
+    {
+        id: 'memory',
+        label: 'Memory',
+        title: 'Clean memories and check which claims are still true',
+        prompt: 'Clean up knowledge memories. This is several steps: set_session_tasks once, then mark each as it finishes. Page list_memories with limit 200 and raise offset until every name is listed. get_memory each name before you change it. user_vibe, user_interests, and the memory named V5 Medium effort testing stay. Drop only a duplicated or empty line on those three, write the kept lines back with save_memory, and do not delete them. For every other memory, decide what is still true. Settle names, tags, and character facts with search_wiki, get_wiki_page, search_autofill, search_nax, and get_character_card before you generate. A claim about how something looks is true only after you see it in a print. Every print is generate_image with workspace Laboratory. Read that file with get_generated_image on the same workspace. Call get_workspaces if you need the Laboratory id. If Laboratory is not listed, stop and say so. Do not print in any other workspace. Do not use the open Studio, apply_studio_changes, print_studio, open_in_studio, offer_workspace_switch, or request_workspace_switch. Merge memories that teach the same thing into one snake_case name. save_memory the keeper. Pass confidence 0 when you are only rewriting, so confidence does not rise. Pass a small bump only for a line a source or a Laboratory print confirmed. Observations you send replace the whole list, so only the lines you still believe go back. After the keeper is saved, delete_memory the memory that is wholly false or the duplicate you merged away. Do not create a memory you did not check. When you finish, say what you rewrote, what you merged, what you deleted, and what the Laboratory prints showed.'
     }
 ];
 
@@ -5839,6 +5845,7 @@ class Director {
             search_autofill: 'Tags',
             search_wiki: 'Wiki search',
             search_nax: 'NAX',
+            delete_memory: 'Delete memory',
             omegasearch: 'Search',
             ensure_artifact: 'Artifact',
             resolve_lookback: 'Lookback'

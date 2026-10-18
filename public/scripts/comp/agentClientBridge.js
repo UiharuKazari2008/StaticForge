@@ -920,6 +920,7 @@
         }
         const modal = document.getElementById('manualModal');
         const studioWasClosed = !modal || modal.classList.contains('hidden');
+        const beforePrompt = readStudioChangeSnapshot();
         let applied = false;
         try {
             applied = !!await window.applyStudioChangePayloadSilent(payload, { source: 'mcp', actorName: data.actorName || '' });
@@ -943,6 +944,38 @@
                 error: hydration.vSliderRejected
                     ? 'Studio change was not applied (vSlider catalog did not hydrate — check kind, axes, and 2+ stops per axis)'
                     : 'Studio change was not applied'
+            };
+        }
+        // promptTextareaToolbar.getTokenUsageSnapshot: public/scripts/comp/promptTextareaToolbar.js
+        // studioChangeOverTokenLimit: public/scripts/comp/studioChangeJson.js
+        // promptTextareaToolbar is null until the toolbar initialises; recount so the check reads the applied text.
+        const tokenToolbar = typeof promptTextareaToolbar !== 'undefined' ? promptTextareaToolbar : null;
+        if (tokenToolbar && typeof tokenToolbar.updateAllTokenCounts === 'function') tokenToolbar.updateAllTokenCounts();
+        const tokens = tokenToolbar && typeof tokenToolbar.getTokenUsageSnapshot === 'function'
+            ? tokenToolbar.getTokenUsageSnapshot()
+            : null;
+        const limitFailure = studioChangeOverTokenLimit(payload, tokens);
+        if (limitFailure) {
+            let reverted = false;
+            // studioChangeTokenLimitRestore: public/scripts/comp/studioChangeJson.js
+            const restore = studioChangeTokenLimitRestore(beforePrompt, limitFailure.written);
+            if (restore) {
+                try {
+                    reverted = !!await window.applyStudioChangePayloadSilent(restore, { source: 'mcp', actorName: data.actorName || '' });
+                } catch (_err) {
+                    reverted = false;
+                }
+            }
+            return {
+                ok: false,
+                applied: false,
+                reverted,
+                autoApply: true,
+                autoGenerate: false,
+                code: 'TOKEN_LIMIT',
+                error: limitFailure.error,
+                tokens,
+                workspaceId: readWorkspaceId()
             };
         }
         const partialVSlider = hydration.vSliderRejected > 0;

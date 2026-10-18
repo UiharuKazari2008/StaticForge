@@ -1059,7 +1059,7 @@ const TOOL_DEFS = [
     {
         name: 'apply_studio_changes',
         core: true,
-        description: 'Write Change-JSON into the bound Studio tab. Auto-binds if one tab is connected. Accepts full Change-JSON or top-level prompt/uc/params/characters/expanders/vibes/vSlider/dynamicGeneration/director (same keys as Studio). text_overlays type is a display-style id; the enum lists every style, including custom (empty customText injects no display tag). prompt and uc work top-level or inside change (change.prompt / change.uc or change.fields {prompt, uc}) — one apply is enough. A params-only change is enough: model, steps, guidance, sampler, and the other param keys may sit in params or on the change object. Do not resend the prompt just to change those. Characters are the `characters` array (action replace + index). `characterPrompts` is accepted and treated as that full list. `overwrite: true` removes Studio character slots that are not in the list, then writes the list. text_overlays, expanders, vibes, and vSlider replace their lists when present, including empty arrays. To roll a new seed set params.seedLock false; do not ask the user to unlock it. vSlider installs interactive intensity widgets (slider/xypad/star/dropdown) — prefer this over static expanders when they ask for sliders. autoGenerate omitted uses Remote Access Settings (default off). To print without changing anything, call print_studio. After apply the tab stores a checkpoint — later get_session_state / get_studio_state return only the delta. Refused when the bound client has in_workspace false: call request_workspace_switch first.',
+        description: 'Write Change-JSON into the bound Studio tab. Auto-binds if one tab is connected. Accepts full Change-JSON or top-level prompt/uc/params/characters/expanders/vibes/vSlider/dynamicGeneration/director (same keys as Studio). text_overlays type is a display-style id; the enum lists every style, including custom (empty customText injects no display tag). prompt and uc work top-level or inside change (change.prompt / change.uc or change.fields {prompt, uc}) — one apply is enough. A params-only change is enough: model, steps, guidance, sampler, and the other param keys may sit in params or on the change object. Do not resend the prompt just to change those. Characters are the `characters` array (action replace + index). `characterPrompts` is accepted and treated as that full list. `overwrite: true` removes Studio character slots that are not in the list, then writes the list. text_overlays, expanders, vibes, and vSlider replace their lists when present, including empty arrays. To roll a new seed set params.seedLock false; do not ask the user to unlock it. vSlider installs interactive intensity widgets (slider/xypad/star/dropdown) — prefer this over static expanders when they ask for sliders. autoGenerate omitted uses Remote Access Settings (default off). To print without changing anything, call print_studio. After apply the tab stores a checkpoint — later get_session_state / get_studio_state return only the delta. Refused when the bound client has in_workspace false: call request_workspace_switch first. If the prompt or UC goes over the model token limit, the apply fails, the previous text is restored, and nothing is generated.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -1694,6 +1694,20 @@ const TOOL_DEFS = [
                 image: { type: 'string', description: 'Gallery filename or image id' },
                 note: { type: 'string', description: 'Why this image belongs on the memory' },
                 revision: { type: 'number', description: 'Revision to attach. Omit for the current revision.' }
+            }
+        }
+    },
+    {
+        name: 'delete_memory',
+        core: true,
+        description: 'Delete one knowledge memory by name. Use it when the memory is wholly false, or it is the duplicate left after you merged the kept lines into another name. get_memory first. save_memory the keeper before you delete the duplicate. Refuses user_vibe, user_interests, and the memory named V5 Medium effort testing.',
+        scope: 'generation',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['name'],
+            properties: {
+                name: { type: 'string', description: 'Exact memory name to delete' }
             }
         }
     },
@@ -5850,7 +5864,7 @@ async function collectSessionState(globalResources, req, input) {
             next: 'Call search_nax only for this job, not on every chat start. Default limit 20.'
         };
         out.memories = {
-            tools: ['search_memories', 'list_memories', 'get_memory', 'save_memory'],
+            tools: ['search_memories', 'list_memories', 'get_memory', 'save_memory', 'delete_memory'],
             aliases: ['searchKnowledgeMemories', 'listKnowledgeMemories', 'retrieveKnowledgeMemory', 'saveKnowledgeMemory'],
             mustCallTools: true,
             notGrokMemory: 'Grok Memory / chat recall / "I will remember" does not persist and does not upsert',
@@ -6029,6 +6043,12 @@ function autoLinkSessionImages(db, sessionId, memoryName, revision, nowMs) {
     return imageIds;
 }
 
+const PROTECTED_MEMORY_NAMES = new Set([
+    'user_vibe',
+    'user_interests',
+    'V5 Medium effort testing'
+]);
+
 function runMemoryTool(globalResources, name, input, ctx) {
     name = canonMemoryTool(name);
     const db = resolveKnowledgeMemoryDb(globalResources);
@@ -6102,6 +6122,18 @@ function runMemoryTool(globalResources, name, input, ctx) {
                 ? 'Confidence is below 60%. You MUST call save_memory or saveKnowledgeMemory on the same name (omit unchanged fields; confidence is a +0–0.25 bump). Grok Memory is not a write.'
                 : undefined
         };
+    }
+    if (name === 'delete_memory') {
+        const memoryName = String(input.name || '').trim();
+        if (!memoryName) return { success: false, error: 'name is required' };
+        if (PROTECTED_MEMORY_NAMES.has(memoryName)) {
+            return { success: false, error: `${memoryName} is kept. Rewrite it with save_memory. Do not delete it.` };
+        }
+        // modules/knowledgeMemoryDatabase.js — getKnowledgeMemory, deleteKnowledgeMemory
+        const existing = db.getKnowledgeMemory(memoryName, false);
+        if (!existing) return { success: false, error: `Memory "${memoryName}" not found` };
+        const deleted = db.deleteKnowledgeMemory(memoryName) === true;
+        return { success: deleted, name: memoryName, deleted };
     }
     const memoryName = String(input.name || '').trim();
     if (!memoryName) {
@@ -6409,7 +6441,7 @@ function listAdvancedToolDefs(scopes, query, globalResources, options) {
 const ADVANCED_CORE_HINTS = [
     {
         test: (q) => /memor/i.test(q) || /saveknowledgememory|searchknowledgememor|retrieveknowledgememory|listknowledgememor/i.test(q.replace(/[\s_]+/g, '')),
-        names: ['list_memories', 'search_memories', 'get_memory', 'save_memory', 'link_memory_image', 'listKnowledgeMemories', 'searchKnowledgeMemories', 'retrieveKnowledgeMemory', 'saveKnowledgeMemory']
+        names: ['list_memories', 'search_memories', 'get_memory', 'save_memory', 'delete_memory', 'link_memory_image', 'listKnowledgeMemories', 'searchKnowledgeMemories', 'retrieveKnowledgeMemory', 'saveKnowledgeMemory']
     },
     { test: (q) => /agora|explore|novelai explore|explore gallery/i.test(q), names: ['search_explore', 'count_explore', 'get_explore_post', 'get_explore_image'] },
     { test: (q) => /\bnax\b|top votes|artist tag/i.test(q), names: ['search_nax', 'list_nax_galleries', 'generate_nax_tag', 'delete_nax_tag'] },
@@ -7318,7 +7350,7 @@ async function callTool(globalResources, req, name, args) {
     }
 
     if (name === 'list_memories' || name === 'search_memories' || name === 'get_memory' || name === 'save_memory'
-        || name === 'link_memory_image' || MEMORY_TOOL_ALIASES[name]) {
+        || name === 'delete_memory' || name === 'link_memory_image' || MEMORY_TOOL_ALIASES[name]) {
         const result = runMemoryTool(globalResources, name, input, {
             sessionId: resolveBindKey(req)
         });
@@ -8389,8 +8421,12 @@ async function callTool(globalResources, req, name, args) {
         }
         const { filenameExpected: _openBefore, ...applied } = data || {};
         const decompileBlock = !!(data && data.needsDecompile);
+        const tokenLimitBlock = !!(data && data.code === 'TOKEN_LIMIT');
+        if (tokenLimitBlock) {
+            responseNext = data.error || 'Prompt is over the token limit. The previous text was restored. Shorten it and apply again.';
+        }
         return mcpTextResult({
-            success: !decompileBlock,
+            success: !decompileBlock && !tokenLimitBlock,
             autoBound: !!bind.auto,
             ...applied,
             ...(applyJob ? {
@@ -8398,7 +8434,7 @@ async function callTool(globalResources, req, name, args) {
                 filenameBefore: applyJob.filenameBefore
             } : {}),
             ...(responseNext ? { next: responseNext } : {})
-        }, decompileBlock);
+        }, decompileBlock || tokenLimitBlock);
     }
 
     if (name === 'print_studio') {
