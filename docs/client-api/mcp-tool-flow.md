@@ -21,7 +21,7 @@ If a tool 429s, read `error.data.group` and `error.data.retryAfter` (seconds). W
 | `free` | none | lists, bind, note/preset/wiki index reads, `get_linkxi_persona`, `vfs_list`, `vfs_stat`, `offer_director_window`, `get_session_tasks` |
 | `search` | 240 | autofill, NAX (`search_nax`), wiki pages, OmegaSearch, `evaluate_workspace_themes` |
 | `gallery` | 90 | `get_generated_image`, `read_image_metadata`, `compare_images`, `vfs_read` (and hidden `get_images` / `get_latest_image`) |
-| `write` | 60 | save note/preset, `save_memory`, upload reference, `delete_images`, `scrap_images`, `toggle_favorite`, `save_linkxi_persona`, `set_session_title`, `set_session_type`, `set_session_tasks` / `set_session_task` / `close_session_tasks`, `vfs_mkdir` / `vfs_rename` / `vfs_move` / `vfs_copy` / `vfs_write` / `vfs_delete` |
+| `write` | 60 | save note/preset, `save_memory`, `delete_memory`, upload reference, `delete_images`, `scrap_images`, `toggle_favorite`, `save_linkxi_persona`, `set_session_title`, `set_session_type`, `set_session_tasks` / `set_session_task` / `close_session_tasks`, `vfs_mkdir` / `vfs_rename` / `vfs_move` / `vfs_copy` / `vfs_write` / `vfs_delete` |
 | `studio` | 60 | `get_studio_state`, `get_open_windows`, `set_window`, `open_application`, `get_client_physics`, `apply_studio_changes`, `apply_preset_to_studio`, `run_client_js`, `inspect_elements`, `update_client`, `restart_client` (and hidden `get_calculator` / `set_calculator`) |
 | `generate` | 20 | `generate_image`, `generate_preset`, `upscale_image`, `expand_image` |
 

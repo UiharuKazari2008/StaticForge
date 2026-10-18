@@ -2638,6 +2638,94 @@ async function handleStudioChangeShortcutClick(shortcut) {
 document.addEventListener('paste', handleStudioChangePaste, true);
 
 
+// Agent apply only. A params-only change is not a prompt update.
+function studioChangePromptWrite(payload) {
+    const written = { prompt: false, uc: false, characters: false, expanders: false, overlays: false };
+    if (!payload || typeof payload !== 'object') return written;
+    const ids = new Set();
+    if (Array.isArray(payload.fields)) {
+        payload.fields.forEach((field) => {
+            if (field && field.id) ids.add(String(field.id));
+        });
+    }
+    const characters = Array.isArray(payload.characters)
+        ? payload.characters
+        : (Array.isArray(payload.characterPrompts) ? payload.characterPrompts : null);
+    if (characters) {
+        written.characters = true;
+        characters.forEach((entry) => {
+            if (!entry || typeof entry !== 'object') return;
+            if (entry.prompt != null) written.prompt = true;
+            if (entry.uc != null || entry.promptNegative != null || entry.input_prompt_negative != null) written.uc = true;
+        });
+    }
+    if (payload.prompt != null || ids.has('prompt')) written.prompt = true;
+    if (payload.uc != null || ids.has('uc') || payload.promptNegative != null || ids.has('promptNegative')) written.uc = true;
+    ids.forEach((id) => {
+        if (id.indexOf('character:') !== 0) return;
+        written.characters = true;
+        if (id.endsWith(':prompt')) written.prompt = true;
+        if (id.endsWith(':uc') || id.endsWith(':promptNegative')) written.uc = true;
+    });
+    if (Object.prototype.hasOwnProperty.call(payload, 'expanders') || Object.prototype.hasOwnProperty.call(payload, 'text_replacements')) {
+        written.expanders = true;
+        written.prompt = true;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'text_overlays')) {
+        written.overlays = true;
+        written.prompt = true;
+    }
+    return written;
+}
+
+function studioChangeOverTokenLimit(payload, tokens) {
+    const written = studioChangePromptWrite(payload);
+    if (!tokens || (!written.prompt && !written.uc)) return null;
+    const sides = [];
+    if (written.prompt && tokens.prompt && tokens.prompt.overLimit) sides.push('prompt');
+    if (written.uc && tokens.uc && tokens.uc.overLimit) sides.push('uc');
+    if (!sides.length) return null;
+    const limit = tokens.limit;
+    const detail = sides.map((side) => {
+        const row = tokens[side] || {};
+        return limit ? `${side} ${row.total}/${limit}` : side;
+    }).join(', ');
+    const label = sides.length === 1 && sides[0] === 'uc' ? 'UC' : 'Prompt';
+    return {
+        code: 'TOKEN_LIMIT',
+        written,
+        sides,
+        error: `${label} is over the token limit (${detail}). The previous text was restored. Shorten it and apply again.`
+    };
+}
+
+function studioChangeTokenLimitRestore(before, written) {
+    const restore = {};
+    const source = before && typeof before === 'object' ? before : {};
+    const wantPrompt = !!(written && written.prompt);
+    const wantUc = !!(written && written.uc);
+    if (wantPrompt || wantUc) {
+        const fields = Array.isArray(source.fields) ? source.fields.filter((field) => {
+            if (!field || !field.id) return false;
+            if (wantPrompt && field.id === 'prompt') return true;
+            if (wantUc && (field.id === 'uc' || field.id === 'promptNegative')) return true;
+            return false;
+        }) : [];
+        if (fields.length) restore.fields = fields;
+    }
+    if (written && written.characters) {
+        restore.characters = Array.isArray(source.characters) ? source.characters : [];
+        restore.overwrite = true;
+    }
+    if (written && written.expanders) {
+        restore.expanders = Array.isArray(source.expanders) ? source.expanders : [];
+    }
+    if (written && written.overlays) {
+        restore.text_overlays = Array.isArray(source.text_overlays) ? source.text_overlays : [];
+    }
+    return Object.keys(restore).length ? restore : null;
+}
+
 function emptyStudioChangePayload() {
     return {
         dreamscape: STUDIO_CHANGE_KIND,

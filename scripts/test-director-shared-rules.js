@@ -22,6 +22,8 @@ assert.strictEqual(claudeProjectPrompt(), p, 'Claude engines get the same rule f
 assert.ok(p.length < wrenRules().length + MCP_INSTRUCTIONS.length, 'smaller than both in full');
 assert.ok(p.includes('V5 Medium is brand new and needs testing'), 'V5 Medium line');
 assert.ok(p.includes('"V5 Medium effort testing"'), 'memory name');
+assert.ok(p.includes('delete_memory {name}'), 'delete_memory is a known tool');
+assert.ok(p.includes('list_memories {limit, offset}'), 'list_memories is a known tool');
 assert.ok(typeof ENSHUTSUKA_MODES === 'string' && p.includes(ENSHUTSUKA_MODES), 'modes');
 assert.ok(/analyse/.test(p) && /create —/.test(p) && /efficiency —/.test(p), 'modes words');
 assert.ok(!p.includes('You are Enshutsuka'), 'no identity line');

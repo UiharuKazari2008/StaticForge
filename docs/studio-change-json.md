@@ -286,6 +286,8 @@ Studio adds this when it snapshots the editor. Do not send it on apply.
 
 `count_prompt_tokens` counts text that is not in the editor yet. `change.tokens` is the live Studio total.
 
+An agent apply (`apply_studio_changes`) that writes prompt text, UC, characters, expanders, or text overlays and leaves that side over `limit` (`overLimit`) fails. The previous text is restored, `code` is `TOKEN_LIMIT`, and generate does not start. A params-only apply is not a prompt update. The soft `recommended` budget does not fail the apply.
+
 ---
 
 ## Example

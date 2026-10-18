@@ -109,6 +109,7 @@ const TOOL_RATE_GROUPS = {
     retrieveKnowledgeMemory: 'free',
     save_memory: 'write',
     saveKnowledgeMemory: 'write',
+    delete_memory: 'write',
     link_memory_image: 'write',
     get_client_physics: 'studio',
     apply_studio_changes: 'studio',

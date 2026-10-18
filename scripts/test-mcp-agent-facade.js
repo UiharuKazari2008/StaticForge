@@ -666,6 +666,52 @@ const aliasGot = _test.runMemoryTool({
 assert.strictEqual(aliasGot.success, true);
 assert.strictEqual(aliasGot.memories.length, 1);
 
+let deletedName = null;
+const removedMemory = _test.runMemoryTool({
+    getKnowledgeMemoryDb: () => ({
+        getKnowledgeMemory: (n) => (n === 'old_tip' ? { name: 'old_tip' } : null),
+        deleteKnowledgeMemory: (n) => {
+            deletedName = n;
+            return true;
+        }
+    })
+}, 'delete_memory', { name: 'old_tip' });
+assert.strictEqual(removedMemory.success, true);
+assert.strictEqual(removedMemory.deleted, true);
+assert.strictEqual(deletedName, 'old_tip');
+
+const keptTaste = _test.runMemoryTool({
+    getKnowledgeMemoryDb: () => ({
+        getKnowledgeMemory: () => ({ name: 'user_vibe' }),
+        deleteKnowledgeMemory: () => { throw new Error('protected memory was deleted'); }
+    })
+}, 'delete_memory', { name: 'user_vibe' });
+assert.strictEqual(keptTaste.success, false);
+
+const keptLog = _test.runMemoryTool({
+    getKnowledgeMemoryDb: () => ({
+        getKnowledgeMemory: () => null,
+        deleteKnowledgeMemory: () => { throw new Error('protected memory was deleted'); }
+    })
+}, 'delete_memory', { name: 'V5 Medium effort testing' });
+assert.strictEqual(keptLog.success, false);
+
+const missingMemory = _test.runMemoryTool({
+    getKnowledgeMemoryDb: () => ({
+        getKnowledgeMemory: () => null,
+        deleteKnowledgeMemory: () => { throw new Error('missing memory was deleted'); }
+    })
+}, 'delete_memory', { name: 'nope' });
+assert.strictEqual(missingMemory.success, false);
+
+const blankMemory = _test.runMemoryTool({
+    getKnowledgeMemoryDb: () => ({
+        getKnowledgeMemory: () => null,
+        deleteKnowledgeMemory: () => { throw new Error('blank name was deleted'); }
+    })
+}, 'delete_memory', {});
+assert.strictEqual(blankMemory.success, false);
+
 const { resolveRefinementConfidence, normalizeMemoryModel } = require('../modules/knowledgeMemoryDatabase');
 assert.strictEqual(resolveRefinementConfidence(0.1, undefined), 0.35);
 assert.strictEqual(resolveRefinementConfidence(0.9, 0.25), 1);
@@ -773,6 +819,10 @@ assert.ok(coreNames.includes('list_memories'));
 assert.ok(coreNames.includes('search_memories'));
 assert.ok(coreNames.includes('get_memory'));
 assert.ok(coreNames.includes('save_memory'));
+assert.ok(coreNames.includes('delete_memory'));
+assert.strictEqual(_test.rateGroupForTool('delete_memory'), 'write');
+assert.ok(require('../modules/mcpModuleRegistry').toolInModule('delete_memory', 'core_generation'));
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'delete_memory').description.includes('user_vibe'));
 assert.ok(coreNames.includes('link_memory_image'));
 assert.strictEqual(_test.rateGroupForTool('link_memory_image'), 'write');
 assert.ok(coreNames.includes('saveKnowledgeMemory'));
@@ -859,7 +909,7 @@ assert.ok(coreNames.includes('list_mail'));
 assert.ok(coreNames.includes('read_mail'));
 assert.ok(coreNames.includes('mark_mail'));
 assert.ok(coreNames.includes('forward_mail'));
-assert.strictEqual(coreNames.length, 117);
+assert.strictEqual(coreNames.length, 118);
 assert.ok(coreNames.includes('ledge'));
 assert.ok(coreNames.includes('generate_nax_tag'));
 assert.ok(coreNames.includes('delete_nax_tag'));
