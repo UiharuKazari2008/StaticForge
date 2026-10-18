@@ -870,9 +870,9 @@ class SearchService {
             const results = [];
 
             // Search through presets
-            Object.keys(currentPromptConfig.presets).forEach(presetName => {
+            Object.keys(presets).forEach(presetName => {
                 if (presetName.toLowerCase().includes(searchTerm)) {
-                    const preset = currentPromptConfig.presets[presetName];
+                    const preset = presets[presetName];
                     results.push({
                         name: presetName,
                         model: preset.model || DEFAULT_FORGE_MODEL,
