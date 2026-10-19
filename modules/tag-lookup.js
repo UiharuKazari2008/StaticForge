@@ -4189,29 +4189,31 @@ class TagLookup {
                 const bodyMatches = await this.searchTagsByBody(tagName, searchOptions);
                 const bodyResults = await Promise.all(bodyMatches.map(async tag => await this.projectTagResult(tag, returnFields, tagSpec.resolveLinks, tagName)));
                 
-                // Merge results, avoiding duplicates by tag ID
+                // JULES: perf sweep - O(N^2 log N) to O(N log N) Set optimization for wiki body tag search deduplication and match sorting
+                // Merge results, avoiding duplicates by tag ID or title
                 const seenIds = new Set(nameResults.map(r => r.id).filter(Boolean));
+                const seenTitles = new Set(nameResults.map(r => (r.title || r.displayTitle || '').toLowerCase()));
                 for (const bodyResult of bodyResults) {
+                    const titleKey = (bodyResult.title || bodyResult.displayTitle || '').toLowerCase();
                     if (bodyResult.id && !seenIds.has(bodyResult.id)) {
                         combinedResults.push(bodyResult);
                         seenIds.add(bodyResult.id);
+                        seenTitles.add(titleKey);
                     } else if (!bodyResult.id) {
-                        // If no ID, check by title to avoid duplicates
-                        const titleKey = (bodyResult.title || bodyResult.displayTitle || '').toLowerCase();
-                        const alreadyExists = combinedResults.some(r => 
-                            (r.title || r.displayTitle || '').toLowerCase() === titleKey
-                        );
-                        if (!alreadyExists) {
+                        // If no ID, check by title to avoid duplicates using O(1) Set lookup
+                        if (!seenTitles.has(titleKey)) {
                             combinedResults.push(bodyResult);
+                            seenTitles.add(titleKey);
                         }
                     }
                 }
                 
-                // Re-sort combined results by relevance (you may want to adjust sorting logic)
+                // Re-sort combined results by relevance (prioritize name matches over body matches)
+                const nameResultIds = new Set(nameResults.map(r => r.id));
                 combinedResults.sort((a, b) => {
-                    // Prioritize name matches over body matches if both exist
-                    const aIsNameMatch = nameResults.some(r => r.id === a.id);
-                    const bIsNameMatch = nameResults.some(r => r.id === b.id);
+                    // Prioritize name matches over body matches if both exist using O(1) Set lookup
+                    const aIsNameMatch = nameResultIds.has(a.id);
+                    const bIsNameMatch = nameResultIds.has(b.id);
                     if (aIsNameMatch && !bIsNameMatch) return -1;
                     if (!aIsNameMatch && bIsNameMatch) return 1;
                     // Then sort by usage count
