@@ -122,6 +122,7 @@ function createDovecoteTables() {
     // Display-only original envelope recipient from the relay's X-Original-To.
     // Never used for routing.
     addColumnIfMissing('dovecote_message', 'original_to', 'original_to TEXT');
+    addColumnIfMissing('dovecote_message', 'own_domain_from', 'own_domain_from INTEGER NOT NULL DEFAULT 0');
     db.exec(`
         CREATE INDEX IF NOT EXISTS idx_dovecote_message_owner_folder ON dovecote_message (owner, folder, created_at);
         CREATE INDEX IF NOT EXISTS idx_dovecote_message_thread ON dovecote_message (thread_id);

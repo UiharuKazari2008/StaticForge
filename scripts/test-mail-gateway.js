@@ -263,6 +263,9 @@ function testMapping() {
     assert.strictEqual(addresses.toMailbox('tsubame.ops@dream.737.jp.net', map), 'tsubame');
     assert.strictEqual(addresses.toMailbox('mailroom.ops@dream.737.jp.net', map), 'tsubame');
     assert.strictEqual(addresses.toMailbox('Mailroom.Ops@Dream.737.jp.net', map), 'tsubame');
+    assert.strictEqual(addresses.toMailbox('postmaster@dream.737.jp.net', map), 'tsubame');
+    assert.strictEqual(addresses.toMailbox('Postmaster@Dream.737.jp.net.', map), 'tsubame');
+    assert.strictEqual(addresses.toMailbox('postmaster@mx.dream.737.jp.net', map), null);
     assert.strictEqual(addresses.toMailbox('tifa.ops@dream.737.jp.net', map), null);
     assert.strictEqual(addresses.toMailbox('pyra.dev@dream.737.jp.net', map), null);
     assert.strictEqual(addresses.toMailbox('unknown@dream.737.jp.net', map), null);
@@ -324,6 +327,23 @@ function testMapping() {
         }),
         (err) => err.code === 'UNKNOWN_RECIPIENT'
     );
+    assert.throws(
+        () => addresses.classifyRecipients('nobody@dream.737.jp.net', [], {
+            mapping: map, enabled: true, isValidOwner: mail.isValidOwner
+        }),
+        (err) => err.code === 'UNKNOWN_RECIPIENT'
+    );
+    assert.throws(
+        () => addresses.classifyRecipients('cron@mx.dream.737.jp.net', [], {
+            mapping: map, enabled: true, isValidOwner: mail.isValidOwner
+        }),
+        (err) => err.code === 'UNKNOWN_RECIPIENT'
+    );
+    const postmaster = addresses.classifyRecipient('postmaster@dream.737.jp.net', {
+        mapping: map, enabled: true, isValidOwner: mail.isValidOwner
+    });
+    assert.strictEqual(postmaster.kind, 'internal');
+    assert.strictEqual(postmaster.owner, 'tsubame');
 }
 
 async function testAllowlistReject() {
@@ -1039,13 +1059,19 @@ function testCrlfBufferAndSenderRules() {
         assert.strictEqual(addresses.validateEnvelopeSender(ok, map).ok, true, ok);
     }
     assert.strictEqual(addresses.validateFromHeader('a@dream.co.jp.', map).ok, false);
-    assert.strictEqual(addresses.validateFromHeader('x <a@dream.737.jp.net.>', map).ok, false);
+    const ownFrom = addresses.validateFromHeader('x <a@dream.737.jp.net.>', map);
+    assert.strictEqual(ownFrom.ok, true);
+    assert.strictEqual(ownFrom.ownDomain, true);
     assert.strictEqual(addresses.validateEnvelopeSender('menma@dream.co.jp', map).code, 550);
     assert.strictEqual(addresses.validateEnvelopeSender('alice@example.com', map).ok, true);
     assert.strictEqual(addresses.validateFromHeader('menma', map).ok, true);
     assert.strictEqual(addresses.validateFromHeader('Alice <alice@example.com>', map).ok, true);
-    assert.strictEqual(addresses.validateFromHeader('menma@dream.737.jp.net', map).ok, false);
-    assert.strictEqual(addresses.validateFromHeader('Menma <menma@lists.dream.737.jp.net>', map).ok, false);
+    const publicFrom = addresses.validateFromHeader('menma@dream.737.jp.net', map);
+    assert.strictEqual(publicFrom.ok, true);
+    assert.strictEqual(publicFrom.ownDomain, true);
+    const subFrom = addresses.validateFromHeader('Menma <menma@lists.dream.737.jp.net>', map);
+    assert.strictEqual(subFrom.ok, true);
+    assert.strictEqual(subFrom.ownDomain, true);
     assert.strictEqual(addresses.validateFromHeader('menma@dream.co.jp', map).ok, false);
 
     const owners = mail.BOT_OWNERS.concat([mail.HUMAN_OWNER]);
@@ -1256,8 +1282,7 @@ async function testSpoofCases() {
         socket.write('DATA\r\n');
         await expectCode(reader, 354);
         socket.write('From: menma@dream.737.jp.net\r\nSubject: reserved-from\r\n\r\nx\r\n.\r\n');
-        const reservedFrom = await expectCode(reader, 550);
-        assert.match(reservedFrom.text, /From domain is not allowed/);
+        await expectCode(reader, 250);
 
         socket.write('MAIL FROM:<>\r\n');
         await expectCode(reader, 250);
@@ -1274,12 +1299,14 @@ async function testSpoofCases() {
     } finally {
         await inbound.close();
     }
-    assert.strictEqual(delivered.length, 2);
+    assert.strictEqual(delivered.length, 3);
     assert.strictEqual(delivered[0].fromAddress, 'alice@example.com');
     assert.strictEqual(delivered[0].fromLabel, 'menma');
     assert.notStrictEqual(delivered[0].fromAddress, 'menma');
-    assert.strictEqual(delivered[1].fromAddress, addresses.NULL_SENDER);
-    assert.match(delivered[1].fromLabel, /Mailer-Daemon@mx\.example\.com/);
+    assert.strictEqual(delivered[1].toOwner, 'tsubame');
+    assert.strictEqual(delivered[1].ownDomainFrom, true);
+    assert.strictEqual(delivered[2].fromAddress, addresses.NULL_SENDER);
+    assert.match(delivered[2].fromLabel, /Mailer-Daemon@mx\.example\.com/);
 
     const storedList = mail.deliverInboundMail({
         fromAddress: 'alice@example.com',
@@ -2137,6 +2164,172 @@ async function testMixedSendRoutes() {
     }
 }
 
+async function testOwnDomainFromToPostmaster() {
+    const { inbound, delivered } = await startOpenInbound();
+    try {
+        const socket = await connectSmtp(inbound.port);
+        const reader = createLineReader(socket);
+        await expectCode(reader, 220);
+        socket.write('EHLO lantis\r\n');
+        await expectCode(reader, 250);
+
+        socket.write('MAIL FROM:<alice@example.com>\r\n');
+        await expectCode(reader, 250);
+        socket.write('RCPT TO:<ivory.studio@dream.737.jp.net>\r\n');
+        await expectCode(reader, 250);
+        socket.write('DATA\r\n');
+        await expectCode(reader, 354);
+        socket.write('From: DMARC Aggregate <dmarc-rua@dream.737.jp.net>\r\n');
+        socket.write('Subject: dmarc report\r\n\r\nxml\r\n.\r\n');
+        await expectCode(reader, 250);
+
+        socket.write('MAIL FROM:<>\r\n');
+        await expectCode(reader, 250);
+        socket.write('RCPT TO:<menma.dev@dream.737.jp.net>\r\n');
+        await expectCode(reader, 250);
+        socket.write('DATA\r\n');
+        await expectCode(reader, 354);
+        socket.write('From: Cron <double-bounce@mx.dream.737.jp.net>\r\n');
+        socket.write('Subject: cron bounce\r\n\r\nprobe\r\n.\r\n');
+        await expectCode(reader, 250);
+
+        socket.write('MAIL FROM:<alice@example.com>\r\n');
+        await expectCode(reader, 250);
+        socket.write('RCPT TO:<ivory.studio@dream.737.jp.net>\r\n');
+        await expectCode(reader, 250);
+        socket.write('DATA\r\n');
+        await expectCode(reader, 354);
+        socket.write('From: menma@dream.co.jp\r\nSubject: display-domain\r\n\r\nx\r\n.\r\n');
+        const rejected = await expectCode(reader, 550);
+        assert.match(rejected.text, /From domain is not allowed/);
+
+        socket.write('QUIT\r\n');
+        await readReply(reader);
+        socket.end();
+    } finally {
+        await inbound.close();
+    }
+    assert.strictEqual(delivered.length, 2);
+    assert.ok(delivered.every((msg) => msg.toOwner === 'tsubame'));
+    assert.ok(delivered.every((msg) => msg.ownDomainFrom === true));
+    const stored = delivered.map((msg) => mail.deliverInboundMail(msg));
+    stored.forEach((row) => {
+        assert.strictEqual(row.owner, 'tsubame');
+        assert.strictEqual(row.route, 'inbound');
+        assert.strictEqual(row.external, true);
+        assert.strictEqual(row.ownDomainFrom, true);
+        assert.notStrictEqual(row.route, 'internal');
+        const read = mail.readMail('tsubame', row.id);
+        assert.strictEqual(read.route, 'inbound');
+        assert.strictEqual(read.external, true);
+        assert.strictEqual(read.ownDomainFrom, true);
+    });
+    assert.strictEqual(
+        mail.listMail('ivory', { folder: 'inbox' }).filter((row) => row.subject === 'dmarc report').length,
+        0
+    );
+    assert.strictEqual(
+        mail.listMail('menma', { folder: 'inbox' }).filter((row) => row.subject === 'cron bounce').length,
+        0
+    );
+}
+
+async function testOutboundKeepsOurDomainInternal() {
+    const certs = writeCert(path.join(tmpDir, 'local-split'), 'mx.dream.737.jp.net');
+    const mock = await startMockSmtp({
+        key: certs.key,
+        cert: certs.cert,
+        password: 'split-pass'
+    });
+    gateway.setTestOverrides({
+        config: {
+            enabled: true,
+            domain: 'dream.737.jp.net',
+            mailboxes: addresses.DEFAULT_MAILBOXES,
+            outbound: {
+                host: '127.0.0.1',
+                port: mock.port,
+                mode: 'starttls',
+                tlsServername: 'mx.dream.737.jp.net',
+                caPath: certs.certPath,
+                authUser: 'dreamscape@dream.737.jp.net'
+            }
+        },
+        smtpPassword: 'split-pass'
+    });
+    try {
+        const mixed = mail.sendMail({
+            fromOwner: 'cursor',
+            to: ['menma.dev@dream.737.jp.net', 'friend@example.net'],
+            subject: 'split-local',
+            body: 'x'
+        });
+        await mixed.outbound;
+        const menmaCopy = mail.listMail('menma', { folder: 'inbox' }).find((row) => row.subject === 'split-local');
+        assert.ok(menmaCopy);
+        assert.strictEqual(menmaCopy.route, 'internal');
+        assert.strictEqual(menmaCopy.external, false);
+        assert.deepStrictEqual(mock.recorded.rcpt, ['friend@example.net']);
+        assert.ok(!JSON.stringify(mock.recorded.rcpt).includes('dream.737.jp.net'));
+
+        assert.throws(
+            () => mail.sendMail({ fromOwner: 'cursor', to: 'nobody@dream.737.jp.net', subject: 'nope', body: 'x' }),
+            (err) => err.code === 'UNKNOWN_RECIPIENT'
+        );
+        assert.throws(
+            () => mail.sendMail({ fromOwner: 'cursor', to: 'cron@mx.dream.737.jp.net', subject: 'sub-nope', body: 'x' }),
+            (err) => err.code === 'UNKNOWN_RECIPIENT'
+        );
+
+        await assert.rejects(
+            () => gateway.submitOutbound({
+                fromOwner: 'cursor',
+                to: ['menma.dev@dream.737.jp.net'],
+                subject: 'leak',
+                body: 'x',
+                smtpPassword: 'split-pass',
+                mapping: mapping(),
+                outbound: {
+                    host: '127.0.0.1',
+                    port: mock.port,
+                    mode: 'starttls',
+                    tlsServername: 'mx.dream.737.jp.net',
+                    caPath: certs.certPath
+                }
+            }),
+            (err) => err.code === 'LOCAL_RECIPIENT'
+        );
+
+        const localOnly = mail.sendMail({
+            fromOwner: 'cursor',
+            to: 'postmaster@dream.737.jp.net',
+            subject: 'to-postmaster',
+            body: 'x'
+        });
+        assert.ok(!localOnly.outbound);
+        const post = mail.listMail('tsubame', { folder: 'inbox' }).find((row) => row.subject === 'to-postmaster');
+        assert.ok(post);
+        assert.strictEqual(post.route, 'internal');
+
+        const src = mail.sendMail({ fromOwner: 'menma', to: 'ivory', subject: 'fwd-src', body: 'in' });
+        assert.ok(src.id);
+        const ivoryIn = mail.listMail('ivory', { folder: 'inbox' }).find((row) => row.subject === 'fwd-src');
+        const fwdLocal = mail.forwardMail('ivory', { id: ivoryIn.id, to: 'rook.dev@dream.737.jp.net' });
+        assert.strictEqual(mail.readMail('rook', fwdLocal.id).route, 'internal');
+        assert.throws(
+            () => mail.forwardMail('ivory', { id: ivoryIn.id, to: 'friend@example.net' }),
+            (err) => err.code === 'LOCAL_ONLY'
+        );
+        assert.throws(
+            () => mail.forwardMail('ivory', { id: ivoryIn.id, to: 'nobody@dream.737.jp.net' }),
+            (err) => err.code === 'UNKNOWN_RECIPIENT'
+        );
+    } finally {
+        gateway.setTestOverrides({ config: { enabled: false } });
+        await mock.close();
+    }
+}
+
 async function main() {
     testMapping();
     await testAllowlistReject();
@@ -2175,6 +2368,8 @@ async function main() {
     await testInboundSpamDelivery();
     await testMailroomRcptAndOriginalTo();
     await testMixedSendRoutes();
+    await testOwnDomainFromToPostmaster();
+    await testOutboundKeepsOurDomainInternal();
     await gateway.resetForTests();
     console.log('mail gateway tests passed');
 }

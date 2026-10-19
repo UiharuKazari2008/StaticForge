@@ -311,7 +311,11 @@ function handleInboundConnection(plainSocket, options) {
         const subject = parsed.headers.subject || '';
         const body = parsed.body;
         const format = parsed.format;
-        const jobs = recipients.map((owner) => Promise.resolve().then(() => {
+        const ownDomainFrom = fromCheck.ownDomain === true;
+        const deliverTo = ownDomainFrom
+            ? [addresses.resolvePostmasterMailbox(mapping)]
+            : recipients;
+        const jobs = deliverTo.map((owner) => Promise.resolve().then(() => {
             if (!deliver) return { owner, ok: true };
             return Promise.resolve(deliver({
                 fromAddress: mailFrom,
@@ -324,7 +328,8 @@ function handleInboundConnection(plainSocket, options) {
                 format,
                 spam: spamMark.spam,
                 spamMeta: spam.displayMeta(spamMark),
-                originalTo
+                originalTo,
+                ownDomainFrom
             })).then(() => ({ owner, ok: true }));
         }).catch((err) => ({ owner, ok: false, error: err })));
 

@@ -451,6 +451,16 @@ async function submitOutbound(input) {
     if (!recipients.length) {
         throw new MailGatewayError('At least one external recipient is required', 'EMPTY_RECIPIENTS');
     }
+    for (const addr of recipients) {
+        const parts = addresses.splitLocalDomain(addr);
+        if (!parts) continue;
+        if (addresses.isOurPublicDomain(parts.domain, mapping) || addresses.isInternalDisplayDomain(parts.domain)) {
+            throw new MailGatewayError(
+                `Recipient ${addr} is a local address and cannot be relayed`,
+                'LOCAL_RECIPIENT'
+            );
+        }
+    }
     assertOutboundAllowed({ fromOwner, to, cc, config: cfg });
     const password = input.smtpPassword != null ? String(input.smtpPassword) : getSecurePassword();
     if (!password) {
