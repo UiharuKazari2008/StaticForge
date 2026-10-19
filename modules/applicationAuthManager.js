@@ -134,6 +134,9 @@ const AVAILABLE_SCOPES = [
     { id: 'sfapp_dovecote', label: 'Dovecote Mail', description: 'Own-mailbox-only internal mail (send, list, read, mark, forward)' }
 ];
 
+// JULES: perf sweep - O(N^2) to O(1) deduplication / set
+const AVAILABLE_SCOPES_ID_SET = new Set(AVAILABLE_SCOPES.map(a => a.id));
+
 const APPLICATION_AUTH_WS_PACKETS = new Set([
     'authenticate_application',
     'refresh_application_key',
@@ -316,7 +319,7 @@ function normalizeScopes(scopes) {
     if (normalized.includes('universal')) {
         return ['universal'];
     }
-    return normalized.filter((s) => AVAILABLE_SCOPES.some((a) => a.id === s));
+    return normalized.filter((s) => AVAILABLE_SCOPES_ID_SET.has(s));
 }
 
 /** Replace a key's scope list. Empty is an error. Universal collapses the rest. */
