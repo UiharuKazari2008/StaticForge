@@ -2708,12 +2708,20 @@ app.get('/android/background-notification', serverReadinessMiddleware, authMiddl
 });
 
 
+// JULES: Admin-only access guard for sensitive diagnostic endpoints
+function adminOnlyMiddleware(req, res, next) {
+    if (!isAdminUser(req)) {
+        return res.status(403).json({ success: false, error: 'Admin access required' });
+    }
+    next();
+}
+
 // Traces viewer page
-app.get('/traces', authMiddleware, (req, res) => {
+app.get('/traces', authMiddleware, adminOnlyMiddleware, (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'traces.html'));
 });
 // Traces API
-app.get('/traces/list', authMiddleware, (req, res) => {
+app.get('/traces/list', authMiddleware, adminOnlyMiddleware, (req, res) => {
     try {
         const list = globalResources.getTracing().listTraces();
         console.log(`📋 listTraces() returned ${list.length} traces`);
@@ -2724,7 +2732,7 @@ app.get('/traces/list', authMiddleware, (req, res) => {
     }
 });
 
-app.get('/traces/:id', authMiddleware, (req, res) => {
+app.get('/traces/:id', authMiddleware, adminOnlyMiddleware, (req, res) => {
     try {
         const trace = globalResources.getTracing().loadTrace(req.params.id);
         if (!trace) return res.status(404).json({ success: false, error: 'Trace not found' });
@@ -2737,13 +2745,6 @@ app.get('/traces/:id', authMiddleware, (req, res) => {
 // Admin log viewer (UUID-prefixed paths — not guessable)
 (function registerLogViewerRoutes() {
     const logPath = `/${globalResources.getLogViewerPathUuid()}`;
-
-    function adminOnlyMiddleware(req, res, next) {
-        if (!isAdminUser(req)) {
-            return res.status(403).json({ success: false, error: 'Admin access required' });
-        }
-        next();
-    }
 
     app.get(`${logPath}/sources`, authMiddleware, adminOnlyMiddleware, (req, res) => {
         try {
@@ -3035,7 +3036,7 @@ app.get('/director/image/:chatId/:filename', authMiddleware, async (req, res, ne
 });
 
 // Serve trace attachments
-app.use('/traces/files', authMiddleware, (req, res, next) => {
+app.use('/traces/files', authMiddleware, adminOnlyMiddleware, (req, res, next) => {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
     next();
 }, express.static(globalResources.getTracing().tracesDir));
