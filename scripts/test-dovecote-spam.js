@@ -27,7 +27,8 @@ function main() {
         subject: 'gw-spam',
         body: 'buy',
         spam: true,
-        spamMeta: { score: 8.1, required: 5.0, report: '* 8.1 BAYES_99', forgedOurs: true, dkim: 'fail', dmarc: 'fail', dmarcP: 'none' }
+        spamMeta: { score: 8.1, required: 5.0, report: '* 8.1 BAYES_99', forgedOurs: true, dkim: 'fail', dmarc: 'fail', dmarcP: 'none' },
+        originalTo: 'lost@dream.737.jp.net'
     });
     assert.strictEqual(inbound.folder, 'spam');
     assert.strictEqual(inbound.route, 'inbound');
@@ -43,6 +44,7 @@ function main() {
     assert.strictEqual(listed[0].spamForgedOurs, true);
     assert.strictEqual(listed[0].spamDkim, 'fail');
     assert.strictEqual(listed[0].spamDmarcPolicy, 'none');
+    assert.strictEqual(listed[0].originalTo, 'lost@dream.737.jp.net');
     assert.strictEqual(mail.listMail('ivory', { folder: 'inbox' }).length, 0);
     assert.strictEqual(mail.listMail('rook', { folder: 'spam' }).length, 0);
     assert.strictEqual(mail.listMailboxes().find((box) => box.owner === 'ivory').spamUnread, 1);
@@ -75,6 +77,7 @@ function main() {
     assert.strictEqual(fwdRow.folder, 'inbox');
     assert.strictEqual(fwdRow.route, 'inbound');
     assert.strictEqual(fwdRow.external, true);
+    assert.strictEqual(fwdRow.originalTo, 'lost@dream.737.jp.net');
     assert.strictEqual(mail.listMail('rook', { folder: 'spam' }).length, 0);
 
     const boxes = mail.listMailboxes();

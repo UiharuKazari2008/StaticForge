@@ -135,12 +135,13 @@ const MODULE_DEFS = {
         id: 'dovecote',
         scope: 'sfapp_dovecote',
         label: 'Dovecote Mail',
-        description: 'Own-mailbox-only internal mail (send, list, read, mark, forward)',
-        tools: ['send_mail', 'list_mail', 'read_mail', 'mark_mail', 'forward_mail'],
+        description: 'Own-mailbox-only internal mail (send, list, read, mark, forward). Mailroom-role tools move/forward across bot mailboxes and are gated on the mailroom key.',
+        tools: ['send_mail', 'list_mail', 'read_mail', 'mark_mail', 'forward_mail', 'mailroom_forward_mail', 'mailroom_move_mail'],
         submodules: {
             send: ['send_mail', 'forward_mail'],
             read: ['list_mail', 'read_mail'],
-            mark: ['mark_mail']
+            mark: ['mark_mail'],
+            mailroom: ['mailroom_forward_mail', 'mailroom_move_mail']
         }
     },
     report_issue: {

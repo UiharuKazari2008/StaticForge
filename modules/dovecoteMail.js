@@ -21,8 +21,10 @@ function storedRoute(value) {
 }
 
 const HUMAN_OWNER = 'yukimi';
+const MAILROOM_OWNER = 'mailroom';
 const BOT_OWNERS = Object.freeze([
-    'rook', 'menma', 'hoshino', 'ivory', 'guren', 'chiyo', 'frost', 'sala', 'tifa', 'pyra', 'cursor', 'claude', 'wren'
+    'rook', 'menma', 'hoshino', 'ivory', 'guren', 'chiyo', 'frost', 'sala', 'tifa', 'pyra', 'cursor', 'claude', 'wren',
+    MAILROOM_OWNER
 ]);
 // Caller app names that are not bot names themselves but belong to a bot
 // mailbox. Director chat (modules/cursorDirector.js app key "Dreamscape
@@ -141,7 +143,8 @@ function toSummary(row) {
         spamDkim: spamMeta.dkim,
         spamDmarc: spamMeta.dmarc,
         spamDmarcPolicy: spamMeta.dmarcP,
-        spamForgedOurs: !!spamMeta.forgedOurs
+        spamForgedOurs: !!spamMeta.forgedOurs,
+        originalTo: row.original_to || null
     };
 }
 
@@ -216,18 +219,19 @@ function insertRow(row) {
     getDb().prepare(`
         INSERT INTO dovecote_message (
             id, owner, folder, archive_subfolder, thread_id, from_owner, to_owner,
-            to_list, cc_list, from_label, route, label_suspicious, spam_meta,
+            to_list, cc_list, from_label, route, label_suspicious, spam_meta, original_to,
             subject, body, format, reply_to_id, fwd_from_owner, fwd_from_message_id,
             read, flagged, created_at, updated_at, deleted_at, paired_message_id, attachments
         ) VALUES (
             @id, @owner, @folder, @archive_subfolder, @thread_id, @from_owner, @to_owner,
-            @to_list, @cc_list, @from_label, @route, @label_suspicious, @spam_meta,
+            @to_list, @cc_list, @from_label, @route, @label_suspicious, @spam_meta, @original_to,
             @subject, @body, @format, @reply_to_id, @fwd_from_owner, @fwd_from_message_id,
             @read, @flagged, @created_at, @updated_at, @deleted_at, @paired_message_id, @attachments
         )
     `).run(Object.assign({
         paired_message_id: null, attachments: null, to_list: null, cc_list: null,
-        from_label: null, route: 'internal', label_suspicious: 0, spam_meta: null
+        from_label: null, route: 'internal', label_suspicious: 0, spam_meta: null,
+        original_to: null
     }, row));
 }
 
@@ -595,7 +599,12 @@ function sendMail({ fromOwner, to, cc, subject, body, format, replyToId, attachm
  * owner. Writes inbox, or spam when the inbound path classified the
  * message as spam. Internal sendMail never calls this.
  */
-function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, body, format, threadId, spam, spamMeta }) {
+function sanitizeOriginalTo(value) {
+    const text = String(value || '').trim().replace(/[\r\n]+/g, ' ').slice(0, 320);
+    return text || null;
+}
+
+function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, body, format, threadId, spam, spamMeta, originalTo }) {
     if (!isValidOwner(toOwner)) throw new DovecoteError('Unknown mailbox', 'UNKNOWN_OWNER');
     const from = String(fromAddress || '').trim();
     if (!from || (from !== NULL_SENDER && !from.includes('@'))) {
@@ -618,6 +627,7 @@ function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, 
     const folder = spam === true ? 'spam' : 'inbox';
     const storedSpamMeta = encodeSpamMeta(spamMeta);
     const displaySpam = spamMetaOf(storedSpamMeta);
+    const storedOriginalTo = sanitizeOriginalTo(originalTo);
     insertRow({
         id, owner: toOwner, folder, archive_subfolder: null,
         thread_id: threadId || crypto.randomUUID(),
@@ -627,6 +637,7 @@ function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, 
         route: 'inbound',
         label_suspicious: inspected.suspicious ? 1 : 0,
         spam_meta: storedSpamMeta,
+        original_to: storedOriginalTo,
         subject: subjectText, body: bodyText, format: sanitizeFormat(format),
         reply_to_id: null, fwd_from_owner: null, fwd_from_message_id: null,
         read: 0, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,
@@ -648,7 +659,8 @@ function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, 
         spamDkim: displaySpam.dkim,
         spamDmarc: displaySpam.dmarc,
         spamDmarcPolicy: displaySpam.dmarcP,
-        spamForgedOurs: !!displaySpam.forgedOurs
+        spamForgedOurs: !!displaySpam.forgedOurs,
+        originalTo: storedOriginalTo
     };
 }
 
@@ -756,6 +768,7 @@ function forwardMail(owner, { id, to }) {
         from_label: source.from_label || null,
         label_suspicious: source.label_suspicious ? 1 : 0,
         spam_meta: source.spam_meta || null,
+        original_to: source.original_to || null,
         read: 0, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,
         attachments: source.attachments || null
     });
@@ -766,6 +779,65 @@ function forwardMail(owner, { id, to }) {
     audit(owner, 'forward_mail', newId, true, `to=${toOwner} source=${id}`);
     emitMailboxChanged([toOwner]);
     return { id: newId, to: toOwner };
+}
+
+function requireMailroomRole(actor, action, targetId) {
+    if (actor === MAILROOM_OWNER) return;
+    audit(actor || 'unknown', action, targetId, false, 'mailroom role required');
+    throw new DovecoteError('Mailroom role required', 'FORBIDDEN');
+}
+
+/**
+ * Mailroom-only: forward a message from the mailroom mailbox to another
+ * internal mailbox. Reuses forwardMail so route / fromLabel / flags copy.
+ */
+function mailroomForwardMail(actor, { id, to }) {
+    requireMailroomRole(actor, 'mailroom_forward_mail', id);
+    const result = forwardMail(MAILROOM_OWNER, { id, to });
+    if (!result) {
+        audit(actor, 'mailroom_forward_mail', id, false, 'not found or not owned');
+        return null;
+    }
+    audit(actor, 'mailroom_forward_mail', result.id, true, `to=${result.to} source=${id}`);
+    return result;
+}
+
+/**
+ * Mailroom-only: move a message between Inbox and Spam in another bot's
+ * mailbox. Never Yukimi. Selects only id/owner/folder — no body.
+ */
+function mailroomMoveMail(actor, { mailbox, id, spam }) {
+    requireMailroomRole(actor, 'mailroom_move_mail', id);
+    const target = String(mailbox || '').trim().toLowerCase();
+    if (target === HUMAN_OWNER) {
+        audit(actor, 'mailroom_move_mail', id, false, `mailbox=${target} refused: yukimi`);
+        throw new DovecoteError("Cannot move mail in Yukimi's mailbox", 'FORBIDDEN');
+    }
+    if (!isBotOwner(target)) {
+        audit(actor, 'mailroom_move_mail', id, false, `mailbox=${target} unknown`);
+        throw new DovecoteError('Unknown mailbox', 'UNKNOWN_OWNER');
+    }
+    if (typeof spam !== 'boolean') {
+        throw new DovecoteError('spam true or false is required', 'INVALID_FOLDER');
+    }
+    const row = getDb().prepare(
+        'SELECT id, owner, folder FROM dovecote_message WHERE id = ? AND owner = ?'
+    ).get(id, target);
+    if (!row) {
+        audit(actor, 'mailroom_move_mail', id, false, `mailbox=${target} not found`);
+        return null;
+    }
+    if (row.folder !== 'inbox' && row.folder !== 'spam') {
+        audit(actor, 'mailroom_move_mail', id, false, `mailbox=${target} folder=${row.folder}`);
+        throw new DovecoteError('Can only move Inbox or Spam', 'INVALID_FOLDER');
+    }
+    const folder = spam ? 'spam' : 'inbox';
+    getDb().prepare(
+        'UPDATE dovecote_message SET folder = ?, archive_subfolder = NULL, deleted_at = NULL, updated_at = ? WHERE id = ? AND owner = ?'
+    ).run(folder, nowIso(), row.id, target);
+    audit(actor, 'mailroom_move_mail', id, true, `mailbox=${target} spam=${spam} from=${row.folder}`);
+    emitMailboxChanged([target]);
+    return { id: row.id, mailbox: target, folder };
 }
 
 /**
@@ -824,6 +896,7 @@ function listMailboxes() {
 
 module.exports = {
     HUMAN_OWNER,
+    MAILROOM_OWNER,
     BOT_OWNERS,
     FOLDERS,
     FORMATS,
@@ -841,6 +914,8 @@ module.exports = {
     readMail,
     markMail,
     forwardMail,
+    mailroomForwardMail,
+    mailroomMoveMail,
     permanentlyDeleteMail,
     listMailboxes,
     getAlwaysLoadSenders,

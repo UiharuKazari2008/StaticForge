@@ -75,9 +75,12 @@ function main() {
     assert.throws(() => mail.listMail('not-a-real-bot'), /Unknown mailbox/);
     assert.strictEqual(mail.isValidOwner('yukimi'), true);
     assert.strictEqual(mail.isValidOwner('claude'), true);
+    assert.strictEqual(mail.isValidOwner('mailroom'), true);
     assert.strictEqual(mail.isValidOwner('grok'), false);
     assert.strictEqual(mail.isBotOwner('yukimi'), false);
     assert.strictEqual(mail.isBotOwner('cursor'), true);
+    assert.strictEqual(mail.isBotOwner('mailroom'), true);
+    assert.strictEqual(mail.resolveOwnerFromActor('Mailroom'), 'mailroom');
 
     // resolveOwnerFromActor never maps to the human mailbox, whatever the actor name looks like.
     assert.strictEqual(mail.resolveOwnerFromActor('Menma'), 'menma');

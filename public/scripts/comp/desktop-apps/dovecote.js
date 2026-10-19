@@ -1009,14 +1009,24 @@ const doveBuildOeHeader = function (options) {
     const fields = document.createElement('div');
     fields.className = 'dovecote-oe-header-fields';
     const fieldEls = {};
-    ['from', 'to', 'cc', 'subject', 'date', 'spam', 'auth'].forEach((field) => {
+    const fieldLabels = {
+        from: 'From:',
+        to: 'To:',
+        originalTo: 'Originally to:',
+        cc: 'Cc:',
+        subject: 'Subject:',
+        date: 'Date:',
+        spam: 'Spam:',
+        auth: 'Auth:'
+    };
+    ['from', 'to', 'originalTo', 'cc', 'subject', 'date', 'spam', 'auth'].forEach((field) => {
         const cap = field.charAt(0).toUpperCase() + field.slice(1);
         const row = document.createElement('div');
         row.className = 'dovecote-oe-header-row';
         row.dataset.doveField = field;
         const labelEl = document.createElement('span');
         labelEl.className = 'dovecote-oe-header-label';
-        labelEl.textContent = cap + ':';
+        labelEl.textContent = fieldLabels[field] || (cap + ':');
         const valueEl = document.createElement('span');
         valueEl.className = 'dovecote-oe-header-value';
         if (opts.idPrefix) valueEl.id = opts.idPrefix + cap;
@@ -1166,6 +1176,7 @@ const doveCacheEls = function () {
         oeFrom: document.getElementById('desktopDovecoteOeFrom'),
         oeRoute: document.getElementById('desktopDovecoteOeRoute'),
         oeTo: document.getElementById('desktopDovecoteOeTo'),
+        oeOriginalTo: document.getElementById('desktopDovecoteOeOriginalTo'),
         oeCc: document.getElementById('desktopDovecoteOeCc'),
         oeSubject: document.getElementById('desktopDovecoteOeSubject'),
         oeDate: document.getElementById('desktopDovecoteOeDate'),
@@ -1469,6 +1480,7 @@ const doveRenderOeHeaderInto = function (els, mail) {
         ? (showLabel ? mail.fromLabel : doveDisplayAddress(mail.from))
         : '';
     els.oeTo.textContent = mail ? doveFormatAddressList(mail.to) : '';
+    if (els.oeOriginalTo) els.oeOriginalTo.textContent = mail && mail.originalTo ? mail.originalTo : '';
     if (els.oeCc) els.oeCc.textContent = mail ? doveFormatAddressList(mail.cc) : '';
     els.oeSubject.textContent = mail ? (mail.subject || '(no subject)') : '';
     els.oeDate.textContent = mail ? doveFormatDate(mail.createdAt) : '';
@@ -2424,6 +2436,7 @@ const doveBuildReaderWindow = function (key) {
         oeFrom: fieldEls.from,
         oeRoute: fieldEls.route,
         oeTo: fieldEls.to,
+        oeOriginalTo: fieldEls.originalTo,
         oeCc: fieldEls.cc,
         oeSubject: fieldEls.subject,
         oeDate: fieldEls.date,

@@ -17,7 +17,8 @@ const MAILBOX_LABELS = {
     tifa: 'Tifa',
     pyra: 'Pyra',
     cursor: 'Cursor',
-    claude: 'Claude'
+    claude: 'Claude',
+    mailroom: 'Mailroom'
 };
 
 // Only read operations (list/get/render) may view another mailbox, and only

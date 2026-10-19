@@ -3007,7 +3007,7 @@ const TOOL_DEFS = [
     {
         name: 'send_mail',
         core: true,
-        description: 'Send mail from your own Dovecote mailbox. `to` is one mailbox or a list; optional `cc` is the same. Each recipient gets one copy and every copy shares one thread. A name in both to and cc is delivered once, on To. Recipients are Rook, Menma, Hoshino, Ivory, Guren, Chiyo, Frost, Sala, Tifa, Pyra, Cursor, Claude, and Yukimi. Pass replyTo to reply within an existing thread. Optional attachments, each either a VFS path or raw base64, up to 10MB per file and 25MB per message. Each attachment is stored once and shared by every copy. The result `to` and `cc` are arrays.',
+        description: 'Send mail from your own Dovecote mailbox. `to` is one mailbox or a list; optional `cc` is the same. Each recipient gets one copy and every copy shares one thread. A name in both to and cc is delivered once, on To. Recipients are Rook, Menma, Hoshino, Ivory, Guren, Chiyo, Frost, Sala, Tifa, Pyra, Cursor, Claude, Mailroom, and Yukimi. Pass replyTo to reply within an existing thread. Optional attachments, each either a VFS path or raw base64, up to 10MB per file and 25MB per message. Each attachment is stored once and shared by every copy. The result `to` and `cc` are arrays.',
         scope: 'sfapp_dovecote',
         inputSchema: {
             type: 'object',
@@ -3052,7 +3052,7 @@ const TOOL_DEFS = [
     {
         name: 'list_mail',
         core: true,
-        description: 'List mail in your own Dovecote mailbox. Returns summaries (no body, attachments as metadata only) — use read_mail for the full message. `to` and `cc` are arrays of mailbox names (older single-recipient rows still come back as a one-element `to` and an empty `cc`). Each message has `route` (internal | inbound | outbound) set by the path it took, never from headers; `external` is true for gateway inbound/outbound mail. fromLabel is display-only. Inbound copies may include spamScore / spamRequired / spamReport plus spamReceivedSpf / spamDkim / spamDmarc / spamDmarcPolicy (auth info) and spamForgedOurs (LANTIS_FORGED_OURS warning). Pass folder to list one folder (inbox, spam, sent, outbox, deleted, archive). read_mail works on Spam. The result always includes owner, the mailbox of the calling key, even when mail is empty. read_by_recipient is true once a To recipient has opened a message you sent.',
+        description: 'List mail in your own Dovecote mailbox. Returns summaries (no body, attachments as metadata only) — use read_mail for the full message. `to` and `cc` are arrays of mailbox names (older single-recipient rows still come back as a one-element `to` and an empty `cc`). Each message has `route` (internal | inbound | outbound) set by the path it took, never from headers; `external` is true for gateway inbound/outbound mail. fromLabel is display-only. Inbound copies may include originalTo (trusted X-Original-To, display only), spamScore / spamRequired / spamReport plus spamReceivedSpf / spamDkim / spamDmarc / spamDmarcPolicy (auth info) and spamForgedOurs (LANTIS_FORGED_OURS warning). Pass folder to list one folder (inbox, spam, sent, outbox, deleted, archive). read_mail works on Spam. The result always includes owner, the mailbox of the calling key, even when mail is empty. read_by_recipient is true once a To recipient has opened a message you sent.',
         scope: 'sfapp_dovecote',
         inputSchema: {
             type: 'object',
@@ -3067,7 +3067,7 @@ const TOOL_DEFS = [
     {
         name: 'read_mail',
         core: true,
-        description: 'Read one message by id from your own Dovecote mailbox (marks it read). Ids from other mailboxes 404 — there is no cross-mailbox access. `to` and `cc` are arrays of mailbox names. `route` is internal | inbound | outbound (path only); `external` is true for gateway mail. Inbound copies may include spamScore / spamRequired / spamReport and spamReceivedSpf / spamDkim / spamDmarc / spamForgedOurs from the relay stamp (display only; not used to re-file). Attachments are listed as metadata only (id/name/mimeType/size), not their bytes.',
+        description: 'Read one message by id from your own Dovecote mailbox (marks it read). Ids from other mailboxes 404 — there is no cross-mailbox access. `to` and `cc` are arrays of mailbox names. `route` is internal | inbound | outbound (path only); `external` is true for gateway mail. Inbound copies may include originalTo (trusted X-Original-To, display only; never routing) plus spamScore / spamRequired / spamReport and spamReceivedSpf / spamDkim / spamDmarc / spamForgedOurs from the relay stamp (display only; not used to re-file). Attachments are listed as metadata only (id/name/mimeType/size), not their bytes.',
         scope: 'sfapp_dovecote',
         inputSchema: {
             type: 'object',
@@ -3109,6 +3109,39 @@ const TOOL_DEFS = [
             properties: {
                 id: { type: 'string', description: 'Message id in your own mailbox' },
                 to: { type: 'string', description: 'Recipient mailbox owner' }
+            }
+        }
+    },
+    {
+        name: 'mailroom_forward_mail',
+        core: true,
+        role: 'mailroom',
+        description: 'Mailroom role only. Forward a message from the mailroom mailbox to another internal mailbox. Reuses forward_mail so route, fromLabel, labelSuspicious, and originalTo copy. Ordinary bot keys are denied. Cross-mailbox forwards are audit-logged.',
+        scope: 'sfapp_dovecote',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['id', 'to'],
+            properties: {
+                id: { type: 'string', description: 'Message id in the mailroom mailbox' },
+                to: { type: 'string', description: 'Recipient mailbox owner' }
+            }
+        }
+    },
+    {
+        name: 'mailroom_move_mail',
+        core: true,
+        role: 'mailroom',
+        description: 'Mailroom role only. Move a message between Inbox and Spam in another bot mailbox. Pass mailbox + id + spam true/false. Never Yukimi. Does not return the body. Ordinary bot keys are denied and still only touch their own mailbox. Cross-mailbox moves are audit-logged.',
+        scope: 'sfapp_dovecote',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['mailbox', 'id', 'spam'],
+            properties: {
+                mailbox: { type: 'string', description: 'Target bot mailbox owner. Yukimi is refused.' },
+                id: { type: 'string', description: 'Message id in that mailbox' },
+                spam: { type: 'boolean', description: 'true: move to Spam. false: move to Inbox.' }
             }
         }
     }
@@ -6481,10 +6514,12 @@ function slimToolList(tools) {
     });
 }
 
-function listToolsForScopes(scopes, globalResources) {
+function listToolsForScopes(scopes, globalResources, options) {
     const catalog = buildStudioSettingsCatalog(globalResources);
+    const owner = options && options.owner;
     const core = TOOL_DEFS
         .filter((tool) => tool.core && !tool.alias && toolAllowedForScopes(scopes, tool))
+        .filter((tool) => !tool.role || tool.role === owner)
         .map((tool) => serializeListedTool(tool, catalog));
     core.push(serializeListedTool(ADVANCED_TOOL_DEF, catalog));
     return core;
@@ -9009,6 +9044,42 @@ async function callTool(globalResources, req, name, args) {
         }
     }
 
+    if (name === 'mailroom_forward_mail' || name === 'mailroom_move_mail') {
+        const { resolveDovecoteOwnerFromReq } = require('./dovecoteIdentity');
+        const dovecoteMail = require('./dovecoteMail');
+        const owner = resolveDovecoteOwnerFromReq(req);
+        if (owner !== dovecoteMail.MAILROOM_OWNER) {
+            return mcpTextResult({ success: false, error: 'Mailroom role required', code: 'FORBIDDEN' }, true);
+        }
+        try {
+            if (name === 'mailroom_forward_mail') {
+                const result = dovecoteMail.mailroomForwardMail(owner, { id: input.id, to: input.to });
+                if (!result) {
+                    const err = new Error('Mail not found');
+                    err.status = 404;
+                    throw err;
+                }
+                return mcpTextResult({ success: true, ...result });
+            }
+            const moved = dovecoteMail.mailroomMoveMail(owner, {
+                mailbox: input.mailbox,
+                id: input.id,
+                spam: input.spam
+            });
+            if (!moved) {
+                const err = new Error('Mail not found');
+                err.status = 404;
+                throw err;
+            }
+            return mcpTextResult({ success: true, ...moved });
+        } catch (mailError) {
+            if (mailError instanceof dovecoteMail.DovecoteError) {
+                return mcpTextResult({ success: false, error: mailError.message, code: mailError.code }, true);
+            }
+            throw mailError;
+        }
+    }
+
     const err = new Error(`Unknown tool: ${name}`);
     err.status = 404;
     throw err;
@@ -9312,12 +9383,19 @@ async function handleJsonRpc(globalResources, req, message) {
 
     if (method === 'tools/list') {
         const scopes = resolveAgentAuthScopes(req);
+        let owner = null;
+        try {
+            const { resolveDovecoteOwnerFromReq } = require('./dovecoteIdentity');
+            owner = resolveDovecoteOwnerFromReq(req);
+        } catch (_err) {
+            owner = null;
+        }
         return {
             status: 200,
             body: {
                 jsonrpc: '2.0',
                 id,
-                result: { tools: listToolsForScopes(scopes, globalResources) }
+                result: { tools: listToolsForScopes(scopes, globalResources, { owner }) }
             }
         };
     }

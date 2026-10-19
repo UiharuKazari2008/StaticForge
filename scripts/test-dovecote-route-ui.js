@@ -32,6 +32,10 @@ assert.match(dovecoteJs, /Delivered inside the Dreamscape network and never left
 assert.match(dovecoteJs, /dataset\.doveRoute/);
 assert.match(dovecoteJs, /key: 'route'/);
 assert.match(dovecoteJs, /mail\.fromLabel && !mail\.labelSuspicious/);
+assert.match(dovecoteJs, /Originally to:/);
+assert.match(dovecoteJs, /mail\.originalTo/);
+assert.match(dovecoteCss, /data-dove-field="originalTo"/);
+assert.match(mcpFacade, /originalTo \(trusted X-Original-To/);
 assert.match(dovecoteCss, /dovecote-col-route/);
 assert.match(dovecoteCss, /data-dove-route="inbound"/);
 assert.match(dovecoteCss, /net-limited-16\.png/);

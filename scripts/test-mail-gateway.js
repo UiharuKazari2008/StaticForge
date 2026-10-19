@@ -246,6 +246,8 @@ function testMapping() {
     assert.strictEqual(addresses.toMailbox('ivory.studio@dream.737.jp.net', map), 'ivory');
     assert.strictEqual(addresses.toMailbox('guren.lab@dream.737.jp.net', map), 'guren');
     assert.strictEqual(addresses.toMailbox('chiyo.web@dream.737.jp.net', map), 'chiyo');
+    assert.strictEqual(addresses.toMailbox('mailroom.ops@dream.737.jp.net', map), 'mailroom');
+    assert.strictEqual(addresses.toMailbox('Mailroom.Ops@Dream.737.jp.net', map), 'mailroom');
     assert.strictEqual(addresses.toMailbox('tifa.ops@dream.737.jp.net', map), null);
     assert.strictEqual(addresses.toMailbox('pyra.dev@dream.737.jp.net', map), null);
     assert.strictEqual(addresses.toMailbox('unknown@dream.737.jp.net', map), null);
@@ -258,6 +260,7 @@ function testMapping() {
     assert.strictEqual(addresses.toExternal('menma', map), 'menma.dev@dream.737.jp.net');
     assert.strictEqual(addresses.toExternal('rook', map), 'rook.dev@dream.737.jp.net');
     assert.strictEqual(addresses.toExternal('yukimi', map), 'yukimi@dream.737.jp.net');
+    assert.strictEqual(addresses.toExternal('mailroom', map), 'mailroom.ops@dream.737.jp.net');
     assert.strictEqual(addresses.toExternal('tifa', map), null);
     assert.strictEqual(addresses.toExternal('pyra', map), null);
 
@@ -327,7 +330,8 @@ async function testUnknownRecipientReject() {
             'RCPT TO:<tifa.ops@dream.737.jp.net>',
             'RCPT TO:<pyra.dev@dream.737.jp.net>',
             'RCPT TO:<ykazari@icloud.com>',
-            'RCPT TO:<yukimi@dream.737.jp.net>'
+            'RCPT TO:<yukimi@dream.737.jp.net>',
+            'RCPT TO:<mailroom.ops@dream.737.jp.net>'
         ]);
         assert.strictEqual(replies[0].code, 220);
         assert.strictEqual(replies[1].code, 250);
@@ -337,6 +341,7 @@ async function testUnknownRecipientReject() {
         assert.strictEqual(replies[5].code, 550);
         assert.strictEqual(replies[6].code, 550);
         assert.strictEqual(replies[7].code, 250);
+        assert.strictEqual(replies[8].code, 250);
         assert.match(replies[3].text, /User unknown/);
         assert.match(replies[6].text, /User unknown/);
     } finally {
@@ -694,6 +699,7 @@ function testResolveConfigDefaults() {
     assert.strictEqual(cfg.inbound.maxConnections, gateway.DEFAULT_MAX_CONNECTIONS);
     assert.strictEqual(cfg.spam.flagHeader, 'X-Spam-Flag');
     assert.strictEqual(cfg.spam.reportHeader, 'X-Spam-Report');
+    assert.strictEqual(cfg.spam.originalToHeader, 'X-Original-To');
     assert.strictEqual(cfg.spam.authservId, 'mx.dream.737.jp.net');
     assert.ok(!Object.prototype.hasOwnProperty.call(cfg.outbound, 'rejectUnauthorized'));
     const tlsOpts = gateway.tlsVerifyOptions(Object.assign({}, cfg.outbound, { rejectUnauthorized: false }));
@@ -1530,6 +1536,26 @@ function testSpamHeaderTrust() {
     const forgedMark = spam.isInboundSpam(forgedOurs);
     assert.strictEqual(forgedMark.spam, false, 'LANTIS_FORGED_OURS is a warning, not a folder rule');
     assert.strictEqual(forgedMark.forgedOurs, true);
+
+    const trustedOrig = [
+        'X-Original-To: <lost@dream.737.jp.net>',
+        'X-Original-To: <forged@evil.example>',
+        'Received: from sender by mx.dream.737.jp.net',
+        'X-Original-To: <below@dream.737.jp.net>',
+        'From: alice@example.com'
+    ].join('\r\n');
+    assert.strictEqual(spam.trustedOriginalTo(trustedOrig), 'lost@dream.737.jp.net');
+    const lowerOnly = [
+        'Received: from sender by mx.dream.737.jp.net',
+        'X-Original-To: <below@dream.737.jp.net>',
+        'From: alice@example.com'
+    ].join('\r\n');
+    assert.strictEqual(spam.trustedOriginalTo(lowerOnly), null);
+    const belowFrom = [
+        'From: alice@example.com',
+        'X-Original-To: <below-from@dream.737.jp.net>'
+    ].join('\r\n');
+    assert.strictEqual(spam.trustedOriginalTo(belowFrom), null);
 }
 
 function testInternalNeverSpam() {
@@ -1591,6 +1617,51 @@ async function testInboundSpamDelivery() {
     const ham = mail.readMail('ivory', stored[1].id);
     assert.strictEqual(ham.folder, 'inbox');
     assert.strictEqual(ham.route, 'inbound');
+}
+
+async function testMailroomRcptAndOriginalTo() {
+    const stored = [];
+    const inbound = await gateway.startInbound({
+        port: 0,
+        bind: '127.0.0.1',
+        allowFrom: ['127.0.0.1'],
+        mapping: mapping(),
+        deliver: async (msg) => stored.push(mail.deliverInboundMail(msg))
+    });
+    try {
+        const socket = await connectSmtp(inbound.port);
+        const reader = createLineReader(socket);
+        await expectCode(reader, 220);
+        socket.write('EHLO test\r\n');
+        await expectCode(reader, 250);
+        socket.write('MAIL FROM:<alice@example.com>\r\n');
+        await expectCode(reader, 250);
+        socket.write('RCPT TO:<mailroom.ops@dream.737.jp.net>\r\n');
+        await expectCode(reader, 250);
+        socket.write('DATA\r\n');
+        await expectCode(reader, 354);
+        socket.write('X-Original-To: <lost.dept@dream.737.jp.net>\r\n');
+        socket.write('X-Original-To: <forged@evil.example>\r\n');
+        socket.write('Received: from sender by mx.dream.737.jp.net\r\n');
+        socket.write('X-Original-To: <below@dream.737.jp.net>\r\n');
+        socket.write('From: alice@example.com\r\n');
+        socket.write('To: mailroom.ops@dream.737.jp.net\r\n');
+        socket.write('Subject: catch-all\r\n\r\nbody\r\n.\r\n');
+        await expectCode(reader, 250);
+        socket.write('QUIT\r\n');
+        await readReply(reader);
+        socket.end();
+    } finally {
+        await inbound.close();
+    }
+    assert.strictEqual(stored.length, 1);
+    assert.strictEqual(stored[0].owner, 'mailroom');
+    assert.strictEqual(stored[0].originalTo, 'lost.dept@dream.737.jp.net');
+    const row = mail.readMail('mailroom', stored[0].id);
+    assert.strictEqual(row.originalTo, 'lost.dept@dream.737.jp.net');
+    assert.strictEqual(row.folder, 'inbox');
+    assert.strictEqual(row.route, 'inbound');
+    assert.strictEqual(mail.listMail('ivory', { folder: 'inbox' }).some((m) => m.id === row.id), false);
 }
 
 function testForwardKeepsInboundRoute() {
@@ -1687,6 +1758,7 @@ async function main() {
     testSpamHeaderTrust();
     testInternalNeverSpam();
     await testInboundSpamDelivery();
+    await testMailroomRcptAndOriginalTo();
     await testMixedSendRoutes();
     await gateway.resetForTests();
     console.log('mail gateway tests passed');

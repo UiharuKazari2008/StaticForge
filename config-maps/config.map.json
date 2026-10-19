@@ -1549,7 +1549,7 @@
       ],
       "type": "object",
       "label": "Mailbox Map",
-      "description": "local-part on dream.737.jp.net → Dovecote mailbox. Shipped: yukimi; sala.ops; menma/rook/cursor/claude/frost .dev; hoshino.apocrypha; ivory.studio; guren.lab; chiyo.web. Yukimi is yukimi@dream.737.jp.net only — never ykazari@icloud.com or any external domain. tifa and pyra stay unmapped."
+      "description": "local-part on dream.737.jp.net → Dovecote mailbox. Shipped: yukimi; sala.ops; menma/rook/cursor/claude/frost .dev; hoshino.apocrypha; ivory.studio; guren.lab; chiyo.web; mailroom.ops. Yukimi is yukimi@dream.737.jp.net only — never ykazari@icloud.com or any external domain. tifa and pyra stay unmapped. Unknown local-parts are rewritten upstream to mailroom.ops (X-Original-To is display only)."
     },
     {
       "path": [
@@ -1615,6 +1615,17 @@
       "label": "Spam Report Header",
       "editorType": "input",
       "description": "Default X-Spam-Report. Stored and shown on the message. Never used to file to Spam."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "spam",
+        "originalToHeader"
+      ],
+      "type": "string",
+      "label": "Original-To Header",
+      "editorType": "input",
+      "description": "Default X-Original-To. Only the topmost instance above the relay Received is stored and shown (Originally to). Display only — never used for routing."
     },
     {
       "path": [

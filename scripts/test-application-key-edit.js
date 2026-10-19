@@ -49,7 +49,7 @@ async function main() {
     assert.ok(AVAILABLE_SCOPES.some((s) => s.id === 'sfapp_dovecote'), 'AVAILABLE_SCOPES must list sfapp_dovecote');
     const { DOVECOTE_BOT_KEY_TARGETS, DOVECOTE_SCOPE } = require('../modules/directorAppKeyScopes');
     assert.strictEqual(DOVECOTE_SCOPE, 'sfapp_dovecote');
-    assert.deepStrictEqual(DOVECOTE_BOT_KEY_TARGETS.map((t) => t.label), ['Menma', 'Guren', 'Chiyo', 'Ivory', 'Hoshino']);
+    assert.deepStrictEqual(DOVECOTE_BOT_KEY_TARGETS.map((t) => t.label), ['Menma', 'Guren', 'Chiyo', 'Ivory', 'Hoshino', 'Mailroom']);
 
     const tools = toolScopesFromFacade();
     const scopeOf = (name) => {

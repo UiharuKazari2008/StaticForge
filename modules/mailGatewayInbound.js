@@ -231,6 +231,7 @@ function handleInboundConnection(socket, options) {
         const headerEnd = raw.indexOf('\r\n\r\n');
         const headerBlock = headerEnd === -1 ? raw : raw.slice(0, headerEnd);
         const spamMark = spam.isInboundSpam(headerBlock, spamConfig);
+        const originalTo = spam.trustedOriginalTo(headerBlock, spamConfig);
         const fromCheck = addresses.validateFromHeader(parsed.headers.from, mapping);
         if (!fromCheck.ok) {
             reply(`${fromCheck.code} ${fromCheck.message}`);
@@ -254,7 +255,8 @@ function handleInboundConnection(socket, options) {
                 body,
                 format,
                 spam: spamMark.spam,
-                spamMeta: spam.displayMeta(spamMark)
+                spamMeta: spam.displayMeta(spamMark),
+                originalTo
             })).then(() => ({ owner, ok: true }));
         }).catch((err) => ({ owner, ok: false, error: err })));
 

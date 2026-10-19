@@ -119,6 +119,9 @@ function createDovecoteTables() {
     // Inbound relay stamp: JSON { score, required, report, status, flag, receivedSpf }.
     // Display only — folder/spam decisions are not re-parsed from this.
     addColumnIfMissing('dovecote_message', 'spam_meta', 'spam_meta TEXT');
+    // Display-only original envelope recipient from the relay's X-Original-To.
+    // Never used for routing.
+    addColumnIfMissing('dovecote_message', 'original_to', 'original_to TEXT');
     db.exec(`
         CREATE INDEX IF NOT EXISTS idx_dovecote_message_owner_folder ON dovecote_message (owner, folder, created_at);
         CREATE INDEX IF NOT EXISTS idx_dovecote_message_thread ON dovecote_message (thread_id);

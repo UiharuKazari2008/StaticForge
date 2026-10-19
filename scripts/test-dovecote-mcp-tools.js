@@ -211,6 +211,57 @@ async function main() {
         (err) => err.status === 404
     );
 
+    const catchAll = dovecoteMail.deliverInboundMail({
+        fromAddress: 'alice@example.com',
+        fromLabel: 'Alice <alice@example.com>',
+        toOwner: 'mailroom',
+        subject: 'lost-addr',
+        body: 'please file',
+        originalTo: 'lost.dept@dream.737.jp.net'
+    });
+    const mailroomRead = textOf(await callTool(gr, reqFor('Mailroom'), 'read_mail', { id: catchAll.id })).mail;
+    assert.strictEqual(mailroomRead.originalTo, 'lost.dept@dream.737.jp.net');
+    assert.strictEqual(mailroomRead.route, 'inbound');
+
+    const deniedFwd = textOf(await callTool(gr, reqFor('Rook'), 'mailroom_forward_mail', { id: catchAll.id, to: 'ivory' }));
+    assert.strictEqual(deniedFwd.success, false);
+    assert.strictEqual(deniedFwd.code, 'FORBIDDEN');
+    const deniedMove = textOf(await callTool(gr, reqFor('Ivory'), 'mailroom_move_mail', {
+        mailbox: 'ivory', id: spamIn.id, spam: false
+    }));
+    assert.strictEqual(deniedMove.success, false);
+    assert.strictEqual(deniedMove.code, 'FORBIDDEN');
+    assert.strictEqual(textOf(await callTool(gr, reqFor('Ivory'), 'list_mail', { folder: 'spam' })).mail.some((m) => m.id === spamIn.id), true);
+
+    const roomFwd = textOf(await callTool(gr, reqFor('Mailroom'), 'mailroom_forward_mail', { id: catchAll.id, to: 'guren' }));
+    assert.strictEqual(roomFwd.success, true);
+    const gurenCopy = textOf(await callTool(gr, reqFor('Guren'), 'read_mail', { id: roomFwd.id })).mail;
+    assert.strictEqual(gurenCopy.route, 'inbound');
+    assert.strictEqual(gurenCopy.originalTo, 'lost.dept@dream.737.jp.net');
+    assert.strictEqual(gurenCopy.external, true);
+
+    const roomMove = textOf(await callTool(gr, reqFor('Mailroom'), 'mailroom_move_mail', {
+        mailbox: 'ivory', id: spamIn.id, spam: false
+    }));
+    assert.strictEqual(roomMove.success, true);
+    assert.strictEqual(roomMove.folder, 'inbox');
+    assert.strictEqual(roomMove.body, undefined);
+    assert.strictEqual(roomMove.snippet, undefined);
+    assert.strictEqual(textOf(await callTool(gr, reqFor('Ivory'), 'list_mail', { folder: 'inbox' })).mail.some((m) => m.id === spamIn.id), true);
+
+    const yukimiIn = dovecoteMail.deliverInboundMail({
+        fromAddress: 'alice@example.com',
+        toOwner: 'yukimi',
+        subject: 'for-yukimi',
+        body: 'private'
+    });
+    const yukimiMove = textOf(await callTool(gr, reqFor('Mailroom'), 'mailroom_move_mail', {
+        mailbox: 'yukimi', id: yukimiIn.id, spam: true
+    }));
+    assert.strictEqual(yukimiMove.success, false);
+    assert.strictEqual(yukimiMove.code, 'FORBIDDEN');
+    assert.strictEqual(dovecoteMail.readMail('yukimi', yukimiIn.id).folder, 'inbox');
+
     // Oversized attachments are rejected with a clear error, not a partial send.
     const tooBig = await callTool(gr, reqFor('Menma'), 'send_mail', {
         to: 'rook', subject: 'too big', body: 'x',

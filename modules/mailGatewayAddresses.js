@@ -24,7 +24,8 @@ const DEFAULT_MAILBOXES = Object.freeze({
     'hoshino.apocrypha': 'hoshino',
     'ivory.studio': 'ivory',
     'guren.lab': 'guren',
-    'chiyo.web': 'chiyo'
+    'chiyo.web': 'chiyo',
+    'mailroom.ops': 'mailroom'
 });
 
 function extractAddress(raw) {

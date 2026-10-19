@@ -671,7 +671,8 @@ class ConfigManager {
                             'hoshino.apocrypha': 'hoshino',
                             'ivory.studio': 'ivory',
                             'guren.lab': 'guren',
-                            'chiyo.web': 'chiyo'
+                            'chiyo.web': 'chiyo',
+                            'mailroom.ops': 'mailroom'
                             // tifa and pyra are still to be decided — leave unmapped
                             // until a department is confirmed. Do not add keys here.
                             // 'tifa.<dept>': 'tifa',
@@ -684,6 +685,7 @@ class ConfigManager {
                             authenticationResultsHeader: 'Authentication-Results',
                             receivedSpfHeader: 'Received-SPF',
                             reportHeader: 'X-Spam-Report',
+                            originalToHeader: 'X-Original-To',
                             authservId: 'mx.dream.737.jp.net'
                         },
                         pendingMailboxes: {

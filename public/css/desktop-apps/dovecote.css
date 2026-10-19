@@ -280,6 +280,7 @@
 
 /* Cc is a real header line. Hide it when the value is empty (single-recipient mail). */
 .dovecote-oe-header-row[data-dove-field="cc"]:has(.dovecote-oe-header-value:empty),
+.dovecote-oe-header-row[data-dove-field="originalTo"]:has(.dovecote-oe-header-value:empty),
 .dovecote-oe-header-row[data-dove-field="spam"]:has(.dovecote-oe-header-value:empty),
 .dovecote-oe-header-row[data-dove-field="auth"]:has(.dovecote-oe-header-value:empty) {
     display: none;
@@ -1180,6 +1181,10 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
 /* the message window (reader): Windows Mail's From / To / Cc / Subject / Date block, labels in a column */
 body:not(.windows-classic-theme) .dovecote-reader-window[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-oe-header-label {
     min-width: 56px;
+}
+
+body:not(.windows-classic-theme) .dovecote-reader-window[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-oe-header-row[data-dove-field="originalTo"] .dovecote-oe-header-label {
+    min-width: 92px;
 }
 
 body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-oe-header-label {

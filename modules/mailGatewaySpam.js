@@ -37,6 +37,7 @@ const DEFAULT_SPAM_CONFIG = Object.freeze({
     authenticationResultsHeader: 'Authentication-Results',
     receivedSpfHeader: 'Received-SPF',
     reportHeader: 'X-Spam-Report',
+    originalToHeader: 'X-Original-To',
     authservId: 'mx.dream.737.jp.net'
 });
 
@@ -60,6 +61,7 @@ function resolveSpamConfig(raw) {
             ? String(src.receivedSpfHeader)
             : DEFAULT_SPAM_CONFIG.receivedSpfHeader,
         reportHeader: src.reportHeader ? String(src.reportHeader) : DEFAULT_SPAM_CONFIG.reportHeader,
+        originalToHeader: src.originalToHeader ? String(src.originalToHeader) : DEFAULT_SPAM_CONFIG.originalToHeader,
         authservId: src.authservId != null ? String(src.authservId).trim() : DEFAULT_SPAM_CONFIG.authservId
     };
 }
@@ -225,6 +227,23 @@ function isInboundSpam(headerBlock, config) {
     };
 }
 
+/**
+ * Relay-stamped X-Original-To from the trusted top block only (above the
+ * first Received / origination header). Lower and duplicate copies are
+ * ignored. Display only — never used to pick a mailbox.
+ */
+function trustedOriginalTo(headerBlock, rawConfig) {
+    const cfg = resolveSpamConfig(rawConfig);
+    const collected = collectHeaderValues(headerBlock);
+    const raw = topmostValue(collected, cfg.originalToHeader);
+    if (!raw) return null;
+    const angled = raw.match(/<([^<>]+)>/);
+    let value = (angled ? angled[1] : raw).trim().replace(/[\r\n]+/g, ' ');
+    if (value.includes('@')) value = value.toLowerCase();
+    value = value.slice(0, 320);
+    return value || null;
+}
+
 function displayMeta(mark) {
     if (!mark || typeof mark !== 'object') return null;
     const meta = {};
@@ -252,5 +271,6 @@ module.exports = {
     parseSpamStatus,
     parseDmarcComment,
     displayMeta,
-    isInboundSpam
+    isInboundSpam,
+    trustedOriginalTo
 };
