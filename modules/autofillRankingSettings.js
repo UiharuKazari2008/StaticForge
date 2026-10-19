@@ -229,18 +229,24 @@ function normalizeGroup(groupName, rawGroup, defaultGroup) {
     return out;
 }
 
+// JULES: perf sweep - O(N^2) to O(N) deduplication using Set
 function normalizeTypeOrder(rawOrder) {
     const known = new Set(AUTOFILL_TYPE_KEYS);
     const out = [];
+    const seen = new Set();
     if (Array.isArray(rawOrder)) {
         for (const key of rawOrder) {
-            if (known.has(key) && !out.includes(key)) {
+            if (known.has(key) && !seen.has(key)) {
+                seen.add(key);
                 out.push(key);
             }
         }
     }
     for (const key of AUTOFILL_TYPE_KEYS) {
-        if (!out.includes(key)) out.push(key);
+        if (!seen.has(key)) {
+            seen.add(key);
+            out.push(key);
+        }
     }
     return out;
 }
