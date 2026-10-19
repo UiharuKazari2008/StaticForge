@@ -1500,8 +1500,13 @@ class WebSocketClient {
             title = 'Restart MeletonFX to finish installing updates';
         }
 
-        glyph.className = iconClass;
-        trayIcon.setAttribute('title', title);
+        if (typeof setClassNameIfChanged === 'function') {
+            setClassNameIfChanged(glyph, iconClass);
+            setAttrIfChanged(trayIcon, 'title', title);
+        } else {
+            glyph.className = iconClass;
+            trayIcon.setAttribute('title', title);
+        }
     }
 
     /** The network interface name (desktop.connectionName, default VPN Connection). */
@@ -1523,9 +1528,10 @@ class WebSocketClient {
         // Vista network tray tooltips: the connection and its access (melatonNetworkDialogs.js)
         const name = this._vpnConnectionName();
         let title;
+        let iconClass;
 
         if (this.isConnected()) {
-            glyph.className = 'fa-regular fa-globe';
+            iconClass = 'fa-regular fa-globe';
             const uptimeMs = this.connectionStats.connectedAt
                 ? Date.now() - this.connectionStats.connectedAt
                 : 0;
@@ -1534,20 +1540,26 @@ class WebSocketClient {
             // the network icon carries what the WebSocket status dot showed (hidden on the desktop)
             if (this.currentRtt !== null && this.currentRtt !== undefined) title += `\nPing: ${Math.round(this.currentRtt)} ms`;
         } else if (this.connectionPhase === 'failed') {
-            glyph.className = 'fas fa-link-slash';
+            iconClass = 'fas fa-link-slash';
             title = 'Not connected\nError connecting to domain controller';
         } else if (this.connectionPhase === 'auth') {
-            glyph.className = 'fas fa-link-slash';
+            iconClass = 'fas fa-link-slash';
             title = `${name}\nLogon required`;
         } else if (this.connectionPhase === 'dialing' || this.isConnecting) {
-            glyph.className = 'fas fa-sync-alt fa-spin';
+            iconClass = 'fas fa-sync-alt fa-spin';
             title = `Connecting to ${name}...`;
         } else {
-            glyph.className = 'fas fa-link-slash';
+            iconClass = 'fas fa-link-slash';
             title = 'Not connected';
         }
 
-        icon.setAttribute('title', title);
+        if (typeof setClassNameIfChanged === 'function') {
+            setClassNameIfChanged(glyph, iconClass);
+            setAttrIfChanged(icon, 'title', title);
+        } else {
+            glyph.className = iconClass;
+            icon.setAttribute('title', title);
+        }
     }
 
     _showLatencyTrayPopup(reason) {
@@ -2865,7 +2877,11 @@ class WebSocketClient {
         // Update all websocket status tooltips
         this.websocketIndicators.forEach(indicator => {
             if (indicator.status) {
-                indicator.status.setAttribute('title', pingText);
+                if (typeof setAttrIfChanged === 'function') {
+                    setAttrIfChanged(indicator.status, 'title', pingText);
+                } else {
+                    indicator.status.setAttribute('title', pingText);
+                }
             }
         });
 
@@ -2919,23 +2935,38 @@ class WebSocketClient {
             const isVariablePing = this.rttVariability !== null && this.currentRtt > 0 && this.currentRtt >= 250 &&
                 (this.rttVariability / this.currentRtt) > this.pingVariabilityThreshold;
 
-            // Remove existing state classes
-            warningIcon.classList.remove('high-ping', 'variable-ping');
+            if (typeof setClassIfChanged === 'function') {
+                setClassIfChanged(warningIcon, 'high-ping', isHighPing);
+                setClassIfChanged(warningIcon, 'variable-ping', !isHighPing && isVariablePing);
+            } else {
+                // Remove existing state classes
+                warningIcon.classList.remove('high-ping', 'variable-ping');
 
-            // Add appropriate class
-            if (isHighPing && isVariablePing) {
-                warningIcon.classList.add('high-ping'); // High ping takes priority
-            } else if (isHighPing) {
-                warningIcon.classList.add('high-ping');
-            } else if (isVariablePing) {
-                warningIcon.classList.add('variable-ping');
+                // Add appropriate class
+                if (isHighPing && isVariablePing) {
+                    warningIcon.classList.add('high-ping'); // High ping takes priority
+                } else if (isHighPing) {
+                    warningIcon.classList.add('high-ping');
+                } else if (isVariablePing) {
+                    warningIcon.classList.add('variable-ping');
+                }
             }
 
             const reason = this.getPingWarningReason();
-            warningIcon.setAttribute('title', reason);
+            if (typeof setAttrIfChanged === 'function') {
+                setAttrIfChanged(warningIcon, 'title', reason);
+            } else {
+                warningIcon.setAttribute('title', reason);
+            }
         } else {
-            warningIcon.classList.add('hidden');
-            warningIcon.classList.remove('high-ping', 'variable-ping');
+            if (typeof setClassIfChanged === 'function') {
+                setClassIfChanged(warningIcon, 'hidden', true);
+                setClassIfChanged(warningIcon, 'high-ping', false);
+                setClassIfChanged(warningIcon, 'variable-ping', false);
+            } else {
+                warningIcon.classList.add('hidden');
+                warningIcon.classList.remove('high-ping', 'variable-ping');
+            }
             warningIcon.removeAttribute('title');
         }
 
@@ -9293,9 +9324,17 @@ class WebSocketClient {
         // Update all indicators
         this.websocketIndicators.forEach(indicator => {
             if (indicator.status) {
-                indicator.status.className = `websocket-status ${statusClass}`;
-                if (status === 'connected' && this._pingResponseWaitingFlash) {
-                    indicator.status.classList.add('ping-response-wait');
+                const targetClass = `websocket-status ${statusClass}`;
+                if (typeof setClassNameIfChanged === 'function') {
+                    setClassNameIfChanged(indicator.status, targetClass);
+                    setClassIfChanged(indicator.status, 'ping-response-wait', status === 'connected' && this._pingResponseWaitingFlash);
+                } else {
+                    indicator.status.className = targetClass;
+                    if (status === 'connected' && this._pingResponseWaitingFlash) {
+                        indicator.status.classList.add('ping-response-wait');
+                    } else {
+                        indicator.status.classList.remove('ping-response-wait');
+                    }
                 }
             }
         });
@@ -9309,13 +9348,21 @@ class WebSocketClient {
             this.websocketIndicators.forEach(indicator => {
                 if (indicator.status) {
                     const statusText = status === 'connecting' ? 'Connecting...' : 'Disconnected';
-                    indicator.status.setAttribute('title', `WebSocket Status\n${statusText}`);
+                    if (typeof setAttrIfChanged === 'function') {
+                        setAttrIfChanged(indicator.status, 'title', `WebSocket Status\n${statusText}`);
+                    } else {
+                        indicator.status.setAttribute('title', `WebSocket Status\n${statusText}`);
+                    }
                 }
             });
             // Hide ping warning when not connected
             const warningIcon = document.getElementById('pingWarningIndicator');
             if (warningIcon) {
-                warningIcon.classList.add('hidden');
+                if (typeof setClassIfChanged === 'function') {
+                    setClassIfChanged(warningIcon, 'hidden', true);
+                } else {
+                    warningIcon.classList.add('hidden');
+                }
             }
         }
     }
