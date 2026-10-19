@@ -944,13 +944,12 @@ async function testDeniedPeersDoNotConsumeCap() {
         }
         const allowed = await connectSmtp(inbound.port);
         const allowedReader = createLineReader(allowed);
-        try {
-            await expectCode(allowedReader, 220);
+        await expectCode(allowedReader, 220);
+        await new Promise((resolve) => {
+            allowed.once('close', resolve);
             allowed.write('QUIT\r\n');
-            await readReply(allowedReader);
-        } finally {
             allowed.end();
-        }
+        });
 
         const held = await connectSmtp(inbound.port);
         const heldReader = createLineReader(held);
