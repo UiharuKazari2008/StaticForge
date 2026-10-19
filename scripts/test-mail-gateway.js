@@ -253,6 +253,10 @@ function testMapping() {
     assert.strictEqual(addresses.toMailbox('pyra.dev@dream.737.jp.net', map), null);
     assert.strictEqual(addresses.toMailbox('unknown@dream.737.jp.net', map), null);
     assert.strictEqual(addresses.toMailbox('menma@gmail.com', map), null);
+    assert.strictEqual(addresses.toMailbox('kazari.ops@dream.737.jp.net', map), 'yukimi');
+    assert.strictEqual(addresses.toMailbox('Kazari.Ops@Dream.737.jp.net', map), 'yukimi');
+    assert.strictEqual(addresses.toMailbox('kazari@dream.737.jp.net', map), 'yukimi');
+    assert.strictEqual(addresses.toMailbox('yukimi.kazari@dream.737.jp.net', map), 'yukimi');
     assert.strictEqual(addresses.toMailbox('yukimi@dream.737.jp.net', map), 'yukimi');
     assert.strictEqual(addresses.toMailbox('ykazari@icloud.com', map), null);
     assert.strictEqual(addresses.toMailbox('yukimi@icloud.com', map), null);
@@ -260,8 +264,16 @@ function testMapping() {
     assert.strictEqual(addresses.toExternal('sala', map), 'sala.ops@dream.737.jp.net');
     assert.strictEqual(addresses.toExternal('menma', map), 'menma.dev@dream.737.jp.net');
     assert.strictEqual(addresses.toExternal('rook', map), 'rook.dev@dream.737.jp.net');
-    assert.strictEqual(addresses.toExternal('yukimi', map), 'yukimi@dream.737.jp.net');
+    assert.strictEqual(addresses.toExternal('yukimi', map), 'kazari.ops@dream.737.jp.net');
+    assert.strictEqual(map.ownerToLocal.yukimi, 'kazari.ops');
     assert.strictEqual(addresses.toExternal('tsubame', map), 'tsubame.ops@dream.737.jp.net');
+    for (const local of ['kazari.ops', 'kazari', 'yukimi.kazari', 'yukimi']) {
+        const classified = addresses.classifyRecipient(`${local}@dream.737.jp.net`, {
+            mapping: map, enabled: true, isValidOwner: mail.isValidOwner
+        });
+        assert.strictEqual(classified.kind, 'internal', local);
+        assert.strictEqual(classified.owner, 'yukimi', local);
+    }
     assert.strictEqual(addresses.toExternal('tifa', map), null);
     assert.strictEqual(addresses.toExternal('pyra', map), null);
 
@@ -331,6 +343,9 @@ async function testUnknownRecipientReject() {
             'RCPT TO:<tifa.ops@dream.737.jp.net>',
             'RCPT TO:<pyra.dev@dream.737.jp.net>',
             'RCPT TO:<ykazari@icloud.com>',
+            'RCPT TO:<kazari.ops@dream.737.jp.net>',
+            'RCPT TO:<kazari@dream.737.jp.net>',
+            'RCPT TO:<yukimi.kazari@dream.737.jp.net>',
             'RCPT TO:<yukimi@dream.737.jp.net>',
             'RCPT TO:<mailroom.ops@dream.737.jp.net>',
             'RCPT TO:<tsubame.ops@dream.737.jp.net>'
@@ -345,6 +360,9 @@ async function testUnknownRecipientReject() {
         assert.strictEqual(replies[7].code, 250);
         assert.strictEqual(replies[8].code, 250);
         assert.strictEqual(replies[9].code, 250);
+        assert.strictEqual(replies[10].code, 250);
+        assert.strictEqual(replies[11].code, 250);
+        assert.strictEqual(replies[12].code, 250);
         assert.match(replies[3].text, /User unknown/);
         assert.match(replies[6].text, /User unknown/);
     } finally {
@@ -407,6 +425,56 @@ async function testInboundDelivery() {
     assert.strictEqual(inbox[0].id, stored.id);
 }
 
+async function testYukimiAliasDelivery() {
+    const delivered = [];
+    const inbound = await gateway.startInbound({
+        port: 0,
+        bind: '127.0.0.1',
+        allowFrom: ['127.0.0.1'],
+        mapping: mapping(),
+        deliver: async (msg) => { delivered.push(msg); }
+    });
+    const aliases = ['kazari.ops', 'kazari', 'yukimi.kazari', 'yukimi'];
+    try {
+        const socket = await new Promise((resolve, reject) => {
+            const s = net.connect({ host: '127.0.0.1', port: inbound.port }, () => resolve(s));
+            s.on('error', reject);
+        });
+        const reader = createLineReader(socket);
+        assert.strictEqual((await readReply(reader)).code, 220);
+        socket.write('EHLO test\r\n');
+        assert.strictEqual((await readReply(reader)).code, 250);
+        for (const local of aliases) {
+            socket.write('MAIL FROM:<alice@example.com>\r\n');
+            assert.strictEqual((await readReply(reader)).code, 250);
+            socket.write(`RCPT TO:<${local}@dream.737.jp.net>\r\n`);
+            assert.strictEqual((await readReply(reader)).code, 250);
+            socket.write('DATA\r\n');
+            assert.strictEqual((await readReply(reader)).code, 354);
+            socket.write('From: Alice <alice@example.com>\r\n');
+            socket.write(`To: ${local}@dream.737.jp.net\r\n`);
+            socket.write(`Subject: for ${local}\r\n`);
+            socket.write('\r\n');
+            socket.write(`body for ${local}\r\n`);
+            socket.write('.\r\n');
+            assert.strictEqual((await readReply(reader)).code, 250);
+            socket.write('RSET\r\n');
+            assert.strictEqual((await readReply(reader)).code, 250);
+        }
+        socket.write('QUIT\r\n');
+        await readReply(reader);
+        socket.end();
+    } finally {
+        await inbound.close();
+    }
+    assert.strictEqual(delivered.length, aliases.length);
+    aliases.forEach((local, i) => {
+        assert.strictEqual(delivered[i].toOwner, 'yukimi', local);
+        assert.deepStrictEqual(delivered[i].to, [`${local}@dream.737.jp.net`]);
+        assert.strictEqual(delivered[i].subject, `for ${local}`);
+    });
+}
+
 async function testOutboundRewrite() {
     const certs = writeCert(tmpDir, 'mx.dream.737.jp.net');
     const mock = await startMockSmtp({
@@ -442,6 +510,29 @@ async function testOutboundRewrite() {
         assert.match(mock.recorded.data, /^Message-ID: <[^>]+@dream\.737\.jp\.net>$/m);
         assert.match(mock.recorded.data, /hello alice/);
         assert.ok(mock.recorded.authed);
+
+        const yukimiOut = await gateway.submitOutbound({
+            fromOwner: 'yukimi',
+            to: ['alice@example.com'],
+            subject: 'yukimi rewrite',
+            body: 'from kazari.ops',
+            smtpPassword: 'test-pass',
+            mapping: mapping(),
+            outbound: {
+                host: '127.0.0.1',
+                port: mock.port,
+                mode: 'starttls',
+                tlsServername: 'mx.dream.737.jp.net',
+                caPath: certs.certPath,
+                authUser: 'dreamscape@dream.737.jp.net'
+            }
+        });
+        assert.strictEqual(yukimiOut.envelopeFrom, 'kazari.ops@dream.737.jp.net');
+        assert.strictEqual(yukimiOut.from, 'kazari.ops@dream.737.jp.net');
+        assert.strictEqual(mock.recorded.mailFrom, 'kazari.ops@dream.737.jp.net');
+        assert.match(mock.recorded.data, /^From: kazari\.ops@dream\.737\.jp\.net/m);
+        assert.match(mock.recorded.data, /^Reply-To: kazari\.ops@dream\.737\.jp\.net/m);
+        assert.doesNotMatch(mock.recorded.data, /^From: yukimi@dream\.737\.jp\.net/m);
     } finally {
         await mock.close();
     }
@@ -715,6 +806,7 @@ function testResolveConfigDefaults() {
     assert.strictEqual(cfg.spam.reportHeader, 'X-Spam-Report');
     assert.strictEqual(cfg.spam.originalToHeader, 'X-Original-To');
     assert.strictEqual(cfg.spam.authservId, 'mx.dream.737.jp.net');
+    assert.strictEqual(gateway.toExternal('yukimi'), 'kazari.ops@dream.737.jp.net');
     assert.ok(!Object.prototype.hasOwnProperty.call(cfg.outbound, 'rejectUnauthorized'));
     const tlsOpts = gateway.tlsVerifyOptions(Object.assign({}, cfg.outbound, { rejectUnauthorized: false }));
     assert.strictEqual(tlsOpts.rejectUnauthorized, true);
@@ -1758,6 +1850,7 @@ async function main() {
     await testAllowlistReject();
     await testUnknownRecipientReject();
     await testInboundDelivery();
+    await testYukimiAliasDelivery();
     await testOutboundRewrite();
     await testMissingStarttls();
     await testCertVerificationFailure();

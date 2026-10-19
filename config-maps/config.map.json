@@ -1549,7 +1549,7 @@
       ],
       "type": "object",
       "label": "Mailbox Map",
-      "description": "local-part on dream.737.jp.net → Dovecote mailbox. Shipped: yukimi; sala.ops; menma/rook/cursor/claude/frost .dev; hoshino.apocrypha; ivory.studio; guren.lab; chiyo.web; tsubame.ops (Tsubame). mailroom.ops is an alias that delivers to tsubame (LANTIS catch-all). Yukimi is yukimi@dream.737.jp.net only — never ykazari@icloud.com or any external domain. tifa and pyra stay unmapped. X-Original-To is display only."
+      "description": "local-part on dream.737.jp.net → Dovecote mailbox. First key per owner is the outbound address. Shipped: kazari.ops (Yukimi outbound) plus inbound aliases yukimi, kazari, yukimi.kazari; sala.ops; menma/rook/cursor/claude/frost .dev; hoshino.apocrypha; ivory.studio; guren.lab; chiyo.web; tsubame.ops (Tsubame). mailroom.ops is an alias that delivers to tsubame (LANTIS catch-all). Never ykazari@icloud.com or any external domain. tifa and pyra stay unmapped. X-Original-To is display only."
     },
     {
       "path": [

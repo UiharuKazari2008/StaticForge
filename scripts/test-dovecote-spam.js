@@ -109,6 +109,7 @@ function main() {
     );
     const addressSrc = fs.readFileSync(path.join(__dirname, '..', 'modules/mailGatewayAddresses.js'), 'utf8');
     assert.doesNotMatch(addressSrc, /icloud\.com['"]\s*:/);
+    assert.match(addressSrc, /kazari\.ops@dream\.737\.jp\.net/);
     assert.match(addressSrc, /yukimi@dream\.737\.jp\.net/);
 
     console.log('dovecote spam folder tests passed');

@@ -11,10 +11,16 @@ const DEFAULT_DOMAIN = 'dream.737.jp.net';
 const INTERNAL_DISPLAY_DOMAIN = 'dream.co.jp';
 
 // Shipped defaults (pending confirmation of tifa / pyra — those stay unmapped).
-// Yukimi's public address is yukimi@dream.737.jp.net. Never map an external
-// domain (ykazari@icloud.com or any other) as a local recipient.
+// Yukimi's outbound / public address is kazari.ops@dream.737.jp.net (first
+// key for that owner is what toExternal uses). Inbound aliases:
+// yukimi@dream.737.jp.net, kazari@dream.737.jp.net, and
+// yukimi.kazari@dream.737.jp.net. Never map an external domain
+// (ykazari@icloud.com or any other) as a local recipient.
 const DEFAULT_MAILBOXES = Object.freeze({
+    'kazari.ops': 'yukimi',
     yukimi: 'yukimi',
+    kazari: 'yukimi',
+    'yukimi.kazari': 'yukimi',
     'sala.ops': 'sala',
     'menma.dev': 'menma',
     'rook.dev': 'rook',

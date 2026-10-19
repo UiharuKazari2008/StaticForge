@@ -661,7 +661,10 @@ class ConfigManager {
                             recipientAllowlist: []
                         },
                         mailboxes: {
+                            'kazari.ops': 'yukimi',
                             yukimi: 'yukimi',
+                            kazari: 'yukimi',
+                            'yukimi.kazari': 'yukimi',
                             'sala.ops': 'sala',
                             'menma.dev': 'menma',
                             'rook.dev': 'rook',
