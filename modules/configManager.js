@@ -648,7 +648,12 @@ class ConfigManager {
                             maxConnections: 16,
                             sessionTimeoutMs: 120000,
                             idleTimeoutMs: 30000,
-                            maxDataBytes: 10485760
+                            maxDataBytes: 10485760,
+                            tls: {
+                                certPath: '',
+                                keyPath: '',
+                                requireTls: false
+                            }
                         },
                         outbound: {
                             host: '192.168.255.1',

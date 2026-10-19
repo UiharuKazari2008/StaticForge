@@ -110,7 +110,8 @@ function resolveConfig(extra) {
                 : inbound.DEFAULT_IDLE_TIMEOUT_MS,
             maxDataBytes: Number.isFinite(Number(inboundCfg.maxDataBytes))
                 ? Number(inboundCfg.maxDataBytes)
-                : inbound.DEFAULT_MAX_DATA_BYTES
+                : inbound.DEFAULT_MAX_DATA_BYTES,
+            tls: resolveInboundTlsConfig(inboundCfg.tls)
         },
         spam: spam.resolveSpamConfig(raw.spam),
         outbound: {
@@ -130,6 +131,56 @@ function resolveConfig(extra) {
                 : []
         }
     };
+}
+
+function resolveInboundTlsConfig(raw) {
+    const tlsCfg = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+    return {
+        certPath: tlsCfg.certPath ? String(tlsCfg.certPath) : '',
+        keyPath: tlsCfg.keyPath ? String(tlsCfg.keyPath) : '',
+        requireTls: tlsCfg.requireTls === true
+    };
+}
+
+/**
+ * Load inbound STARTTLS material. Empty paths → TLS off (today's plaintext).
+ * requireTls only applies when a cert is actually loaded.
+ */
+function loadInboundTls(tlsCfg) {
+    const cfg = resolveInboundTlsConfig(tlsCfg);
+    if (!cfg.certPath && !cfg.keyPath) {
+        return { enabled: false, requireTls: false };
+    }
+    if (!cfg.certPath || !cfg.keyPath) {
+        throw new MailGatewayError(
+            'inbound.tls needs both certPath and keyPath',
+            'TLS_INBOUND_INCOMPLETE'
+        );
+    }
+    let cert;
+    let key;
+    try {
+        cert = fs.readFileSync(cfg.certPath);
+        key = fs.readFileSync(cfg.keyPath);
+    } catch (err) {
+        throw new MailGatewayError(
+            `inbound TLS cert/key could not be read: ${err.message}`,
+            'TLS_INBOUND_UNREADABLE'
+        );
+    }
+    // Parse once at load: a bad PEM or a key that doesn't match the cert
+    // fails here, not as a handshake error on every LANTIS connection after
+    // STARTTLS has already been advertised.
+    let secureContext;
+    try {
+        secureContext = tls.createSecureContext({ cert, key, minVersion: 'TLSv1.2' });
+    } catch (err) {
+        throw new MailGatewayError(
+            `inbound TLS cert/key invalid: ${err.message}`,
+            'TLS_INBOUND_INVALID'
+        );
+    }
+    return { enabled: true, requireTls: cfg.requireTls, secureContext };
 }
 
 function isEnabled() {
@@ -487,6 +538,12 @@ function startInbound(options) {
     const maxConnections = options && options.maxConnections != null
         ? options.maxConnections
         : cfg.inbound.maxConnections;
+    let tlsContext;
+    try {
+        tlsContext = loadInboundTls((options && options.tls) || cfg.inbound.tls);
+    } catch (err) {
+        return Promise.reject(err);
+    }
     const sessionOpts = {
         allowFrom,
         mapping,
@@ -496,7 +553,8 @@ function startInbound(options) {
         idleTimeoutMs: (options && options.idleTimeoutMs) || cfg.inbound.idleTimeoutMs,
         maxCommandLine: options && options.maxCommandLine,
         maxDataLine: options && options.maxDataLine,
-        spam: (options && options.spam) || cfg.spam
+        spam: (options && options.spam) || cfg.spam,
+        tls: tlsContext
     };
 
     return new Promise((resolve, reject) => {
@@ -599,6 +657,7 @@ module.exports = {
     submitOutbound,
     assertOutboundAllowed,
     startInbound,
+    loadInboundTls,
     start,
     stop,
     setTestOverrides,
