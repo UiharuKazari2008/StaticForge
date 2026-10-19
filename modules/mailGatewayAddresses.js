@@ -27,10 +27,15 @@ const DEFAULT_MAILBOXES = Object.freeze({
 function extractAddress(raw) {
     const text = String(raw || '').trim();
     if (!text) return '';
-    const angled = text.match(/<([^>]+)>/);
-    let addr = (angled ? angled[1] : text).trim();
+    const angled = [...text.matchAll(/<([^<>]+)>/g)].map((m) => m[1].trim());
+    for (let i = angled.length - 1; i >= 0; i--) {
+        const inner = angled[i].replace(/^mailto:/i, '').trim();
+        if (inner.includes('@')) return inner;
+    }
+    let addr = text;
     if (/^mailto:/i.test(addr)) addr = addr.slice(7);
-    return addr.replace(/^[<\s]+|[>\s]+$/g, '');
+    addr = addr.replace(/^[<\s]+/, '').replace(/[>\s]+$/g, '');
+    return addr.split(/\s+/)[0] || '';
 }
 
 function normalizeEmail(raw) {
@@ -176,6 +181,65 @@ function isAllowedPeer(addr, allowFrom) {
     return list.some((allowed) => normalizePeerAddress(allowed) === ip);
 }
 
+function reservedSenderDomains(mapping) {
+    const domains = [INTERNAL_DISPLAY_DOMAIN];
+    if (mapping && mapping.domain) domains.push(mapping.domain);
+    else domains.push(DEFAULT_DOMAIN);
+    return domains;
+}
+
+function isReservedSenderDomain(domain, mapping) {
+    const host = String(domain || '').toLowerCase();
+    return reservedSenderDomains(mapping).includes(host);
+}
+
+/**
+ * External MAIL FROM must be a full addr-spec and must not use our domains,
+ * so inbound mail cannot look like it came from a Dovecote mailbox.
+ */
+function validateEnvelopeSender(raw, mapping) {
+    const email = normalizeEmail(raw);
+    if (!email || !email.includes('@')) {
+        return { ok: false, code: 501, message: '5.1.7 MAIL FROM must be a full address' };
+    }
+    const parts = splitLocalDomain(email);
+    if (!parts) {
+        return { ok: false, code: 501, message: '5.1.7 MAIL FROM must be a full address' };
+    }
+    if (isReservedSenderDomain(parts.domain, mapping)) {
+        return { ok: false, code: 550, message: '5.7.1 Sender domain is not allowed' };
+    }
+    return { ok: true, address: `${parts.local}@${parts.domain}` };
+}
+
+function fromHeaderMatchesEnvelope(fromHeader, envelope) {
+    if (!fromHeader || !String(fromHeader).trim()) return true;
+    const from = normalizeEmail(fromHeader);
+    if (!from.includes('@')) return false;
+    return from === normalizeEmail(envelope);
+}
+
+function parseAddressList(value) {
+    if (!value) return [];
+    return String(value)
+        .split(',')
+        .map((part) => normalizeEmail(part))
+        .filter((addr) => addr && addr.includes('@'));
+}
+
+function recipientAllowed(address, allowlist) {
+    if (!Array.isArray(allowlist) || !allowlist.length) return true;
+    const email = normalizeEmail(address);
+    if (!email) return false;
+    return allowlist.some((rule) => {
+        const token = String(rule || '').trim().toLowerCase();
+        if (!token) return false;
+        if (token.startsWith('@')) return email.endsWith(token);
+        if (token.includes('@')) return email === token;
+        return email.endsWith(`@${token}`);
+    });
+}
+
 module.exports = {
     DEFAULT_DOMAIN,
     INTERNAL_DISPLAY_DOMAIN,
@@ -191,5 +255,11 @@ module.exports = {
     classifyRecipient,
     classifyRecipients,
     normalizePeerAddress,
-    isAllowedPeer
+    isAllowedPeer,
+    reservedSenderDomains,
+    isReservedSenderDomain,
+    validateEnvelopeSender,
+    fromHeaderMatchesEnvelope,
+    parseAddressList,
+    recipientAllowed
 };

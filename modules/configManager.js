@@ -643,8 +643,12 @@ class ConfigManager {
                         domain: 'dream.737.jp.net',
                         inbound: {
                             port: 2525,
-                            bind: '0.0.0.0',
-                            allowFrom: ['192.168.255.1']
+                            bind: '192.168.255.2',
+                            allowFrom: ['192.168.255.1'],
+                            maxConnections: 16,
+                            sessionTimeoutMs: 120000,
+                            idleTimeoutMs: 30000,
+                            maxDataBytes: 10485760
                         },
                         outbound: {
                             host: '192.168.255.1',
@@ -653,7 +657,8 @@ class ConfigManager {
                             authUser: 'dreamscape@dream.737.jp.net',
                             tlsServername: 'mx.dream.737.jp.net',
                             caPath: '',
-                            rejectUnauthorized: true
+                            rateLimitPerMinute: 30,
+                            recipientAllowlist: []
                         },
                         mailboxes: {
                             'sala.ops': 'sala',

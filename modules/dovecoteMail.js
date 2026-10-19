@@ -441,58 +441,78 @@ function sendMail({ fromOwner, to, cc, subject, body, format, replyToId, attachm
     const createdAt = nowIso();
     const sentId = crypto.randomUUID();
     const inboxIds = delivered.map(() => crypto.randomUUID());
-    const attachmentsJson = storeAttachments(attachments);
     const toJson = JSON.stringify(storedTo);
     const ccJson = JSON.stringify(storedCc);
     // to_owner stays a single name for the legacy column: the copy's own
     // recipient on inbox rows, and the first delivered name on the sent row.
     const primary = delivered[0] || (externalTo && externalTo[0]) || (externalCc && externalCc[0]);
+    const hasExternal = (externalTo && externalTo.length) || (externalCc && externalCc.length);
+    let attachmentsJson = null;
+    const storedAttachments = () => {
+        if (attachmentsJson === null) attachmentsJson = storeAttachments(attachments);
+        return attachmentsJson;
+    };
 
-    const writeCopies = getDb().transaction(() => {
-        insertRow({
-            id: sentId, owner: fromOwner, folder: 'sent', archive_subfolder: null, thread_id: threadId,
-            from_owner: fromOwner, to_owner: primary, to_list: toJson, cc_list: ccJson,
-            subject: subjectText, body: bodyText, format: formatValue,
-            reply_to_id: replyTo, fwd_from_owner: null, fwd_from_message_id: null,
-            read: 1, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,
-            paired_message_id: inboxIds[0] || null, attachments: attachmentsJson
-        });
-        delivered.forEach((recipient, index) => {
+    const writeCopies = (folder) => {
+        const sentFolder = folder === 'outbox' ? 'outbox' : 'sent';
+        const write = getDb().transaction(() => {
             insertRow({
-                id: inboxIds[index], owner: recipient, folder: 'inbox', archive_subfolder: null, thread_id: threadId,
-                from_owner: fromOwner, to_owner: recipient, to_list: toJson, cc_list: ccJson,
+                id: sentId, owner: fromOwner, folder: sentFolder, archive_subfolder: null, thread_id: threadId,
+                from_owner: fromOwner, to_owner: primary, to_list: toJson, cc_list: ccJson,
                 subject: subjectText, body: bodyText, format: formatValue,
                 reply_to_id: replyTo, fwd_from_owner: null, fwd_from_message_id: null,
-                read: 0, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,
-                paired_message_id: sentId, attachments: attachmentsJson
+                read: 1, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,
+                paired_message_id: sentFolder === 'sent' ? (inboxIds[0] || null) : null,
+                attachments: storedAttachments()
+            });
+            if (sentFolder !== 'sent') return;
+            delivered.forEach((recipient, index) => {
+                insertRow({
+                    id: inboxIds[index], owner: recipient, folder: 'inbox', archive_subfolder: null, thread_id: threadId,
+                    from_owner: fromOwner, to_owner: recipient, to_list: toJson, cc_list: ccJson,
+                    subject: subjectText, body: bodyText, format: formatValue,
+                    reply_to_id: replyTo, fwd_from_owner: null, fwd_from_message_id: null,
+                    read: 0, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,
+                    paired_message_id: sentId, attachments: attachmentsJson
+                });
             });
         });
-    });
-    writeCopies();
+        write();
+    };
 
-    let outbound = null;
-    if ((externalTo && externalTo.length) || (externalCc && externalCc.length)) {
-        const mailGateway = require('./mailGateway');
-        outbound = mailGateway.submitOutbound({
-            fromOwner,
-            to: externalTo,
-            cc: externalCc,
-            subject: subjectText,
-            body: bodyText,
-            format: formatValue
-        }).catch((err) => {
-            const wrapped = err && err.code
-                ? new DovecoteError(err.message, err.code)
-                : new DovecoteError(err.message || 'Outbound send failed', 'MAIL_GATEWAY_ERROR');
-            throw wrapped;
-        });
+    const wrapOutboundError = (err) => {
+        if (err instanceof DovecoteError) return err;
+        return err && err.code
+            ? new DovecoteError(err.message, err.code)
+            : new DovecoteError(err.message || 'Outbound send failed', 'MAIL_GATEWAY_ERROR');
+    };
+
+    if (!hasExternal) {
+        writeCopies('sent');
+        audit(fromOwner, 'send_mail', sentId, true, `to=${storedTo.join(',')} cc=${storedCc.join(',')}`);
+        emitMailboxChanged([fromOwner, ...delivered]);
+        return { id: sentId, threadId, to: storedTo, cc: storedCc };
     }
 
-    audit(fromOwner, 'send_mail', sentId, true, `to=${storedTo.join(',')} cc=${storedCc.join(',')}`);
-    emitMailboxChanged([fromOwner, ...delivered]);
-    const result = { id: sentId, threadId, to: storedTo, cc: storedCc };
-    if (outbound) result.outbound = outbound;
-    return result;
+    const mailGateway = require('./mailGateway');
+    const outbound = mailGateway.submitOutbound({
+        fromOwner,
+        to: externalTo,
+        cc: externalCc,
+        subject: subjectText,
+        body: bodyText,
+        format: formatValue
+    }).then(() => {
+        writeCopies('sent');
+        audit(fromOwner, 'send_mail', sentId, true, `to=${storedTo.join(',')} cc=${storedCc.join(',')}`);
+        emitMailboxChanged([fromOwner, ...delivered]);
+    }).catch((err) => {
+        writeCopies('outbox');
+        audit(fromOwner, 'send_mail', sentId, false, err.message);
+        emitMailboxChanged([fromOwner]);
+        throw wrapOutboundError(err);
+    });
+    return { id: sentId, threadId, to: storedTo, cc: storedCc, outbound };
 }
 
 /**
@@ -500,18 +520,21 @@ function sendMail({ fromOwner, to, cc, subject, body, format, replyToId, attachm
  * is stored as-is on from_owner. Only writes inbox copies — the sender is
  * not a Dovecote mailbox.
  */
-function deliverInboundMail({ fromAddress, toOwner, subject, body, format, threadId }) {
+function deliverInboundMail({ fromAddress, toOwner, to, cc, subject, body, format, threadId }) {
     if (!isValidOwner(toOwner)) throw new DovecoteError('Unknown mailbox', 'UNKNOWN_OWNER');
     const from = String(fromAddress || '').trim();
-    if (!from) throw new DovecoteError('Sender address is required', 'UNKNOWN_SENDER');
+    if (!from || !from.includes('@')) throw new DovecoteError('Sender address is required', 'UNKNOWN_SENDER');
     const createdAt = nowIso();
     const id = crypto.randomUUID();
     const subjectText = String(subject || '').slice(0, 300);
     const bodyText = String(body || '');
+    const toList = Array.isArray(to) && to.length ? to : [toOwner];
+    const ccList = Array.isArray(cc) ? cc : [];
     insertRow({
         id, owner: toOwner, folder: 'inbox', archive_subfolder: null,
         thread_id: threadId || crypto.randomUUID(),
-        from_owner: from, to_owner: toOwner, to_list: JSON.stringify([toOwner]), cc_list: JSON.stringify([]),
+        from_owner: from, to_owner: toOwner,
+        to_list: JSON.stringify(toList), cc_list: JSON.stringify(ccList),
         subject: subjectText, body: bodyText, format: sanitizeFormat(format),
         reply_to_id: null, fwd_from_owner: null, fwd_from_message_id: null,
         read: 0, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,

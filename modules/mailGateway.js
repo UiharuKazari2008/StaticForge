@@ -13,16 +13,20 @@ const tls = require('tls');
 const fs = require('fs');
 const crypto = require('crypto');
 const addresses = require('./mailGatewayAddresses');
+const inbound = require('./mailGatewayInbound');
 
 const DEFAULT_INBOUND_PORT = 2525;
+// LANTIS-facing address. Do not listen on 0.0.0.0; override inbound.bind if this host uses another NIC.
+const DEFAULT_INBOUND_BIND = '192.168.255.2';
 const DEFAULT_ALLOW_FROM = Object.freeze(['192.168.255.1']);
+const DEFAULT_MAX_CONNECTIONS = 16;
 const DEFAULT_OUTBOUND_HOST = '192.168.255.1';
 const DEFAULT_STARTTLS_PORT = 587;
 const DEFAULT_IMPLICIT_PORT = 465;
 const DEFAULT_AUTH_USER = 'dreamscape@dream.737.jp.net';
 const DEFAULT_TLS_SERVERNAME = 'mx.dream.737.jp.net';
+const DEFAULT_RATE_LIMIT_PER_MINUTE = 30;
 const SMTP_TIMEOUT_MS = 30 * 1000;
-const MAX_DATA_BYTES = 10 * 1024 * 1024;
 const PASSWORD_ENV = 'MAIL_GATEWAY_SMTP_PASSWORD';
 
 class MailGatewayError extends Error {
@@ -36,6 +40,7 @@ class MailGatewayError extends Error {
 let globalResourcesRef = null;
 let inboundServer = null;
 let testOverrides = null;
+const outboundHits = new Map();
 
 function setTestOverrides(overrides) {
     testOverrides = overrides || null;
@@ -43,6 +48,7 @@ function setTestOverrides(overrides) {
 
 function resetForTests() {
     testOverrides = null;
+    outboundHits.clear();
     return stop();
 }
 
@@ -73,7 +79,7 @@ function getSecurePassword() {
 
 function resolveConfig(extra) {
     const raw = Object.assign({}, getConfigSource(), extra || {});
-    const inbound = raw.inbound && typeof raw.inbound === 'object' ? raw.inbound : {};
+    const inboundCfg = raw.inbound && typeof raw.inbound === 'object' ? raw.inbound : {};
     const outbound = raw.outbound && typeof raw.outbound === 'object' ? raw.outbound : {};
     const mode = String(outbound.mode || 'starttls').trim().toLowerCase() === 'implicit'
         ? 'implicit'
@@ -87,11 +93,23 @@ function resolveConfig(extra) {
         domain: mapping.domain,
         mapping,
         inbound: {
-            port: Number.isFinite(Number(inbound.port)) ? Number(inbound.port) : DEFAULT_INBOUND_PORT,
-            bind: inbound.bind ? String(inbound.bind) : '0.0.0.0',
-            allowFrom: Array.isArray(inbound.allowFrom) && inbound.allowFrom.length
-                ? inbound.allowFrom.map(String)
-                : DEFAULT_ALLOW_FROM.slice()
+            port: Number.isFinite(Number(inboundCfg.port)) ? Number(inboundCfg.port) : DEFAULT_INBOUND_PORT,
+            bind: inboundCfg.bind ? String(inboundCfg.bind) : DEFAULT_INBOUND_BIND,
+            allowFrom: Array.isArray(inboundCfg.allowFrom) && inboundCfg.allowFrom.length
+                ? inboundCfg.allowFrom.map(String)
+                : DEFAULT_ALLOW_FROM.slice(),
+            maxConnections: Number.isFinite(Number(inboundCfg.maxConnections))
+                ? Number(inboundCfg.maxConnections)
+                : DEFAULT_MAX_CONNECTIONS,
+            sessionTimeoutMs: Number.isFinite(Number(inboundCfg.sessionTimeoutMs))
+                ? Number(inboundCfg.sessionTimeoutMs)
+                : inbound.DEFAULT_SESSION_TIMEOUT_MS,
+            idleTimeoutMs: Number.isFinite(Number(inboundCfg.idleTimeoutMs))
+                ? Number(inboundCfg.idleTimeoutMs)
+                : inbound.DEFAULT_IDLE_TIMEOUT_MS,
+            maxDataBytes: Number.isFinite(Number(inboundCfg.maxDataBytes))
+                ? Number(inboundCfg.maxDataBytes)
+                : inbound.DEFAULT_MAX_DATA_BYTES
         },
         outbound: {
             host: outbound.host ? String(outbound.host) : DEFAULT_OUTBOUND_HOST,
@@ -102,7 +120,12 @@ function resolveConfig(extra) {
             authUser: outbound.authUser ? String(outbound.authUser) : DEFAULT_AUTH_USER,
             tlsServername: outbound.tlsServername ? String(outbound.tlsServername) : DEFAULT_TLS_SERVERNAME,
             caPath: outbound.caPath ? String(outbound.caPath) : '',
-            rejectUnauthorized: outbound.rejectUnauthorized !== false
+            rateLimitPerMinute: Number.isFinite(Number(outbound.rateLimitPerMinute))
+                ? Number(outbound.rateLimitPerMinute)
+                : DEFAULT_RATE_LIMIT_PER_MINUTE,
+            recipientAllowlist: Array.isArray(outbound.recipientAllowlist)
+                ? outbound.recipientAllowlist.map(String)
+                : []
         }
     };
 }
@@ -238,9 +261,10 @@ function capabilitiesOf(reply) {
     return caps;
 }
 
-function buildOutboundMessage({ fromAddress, to, cc, subject, body, format }) {
+function buildOutboundMessage({ fromAddress, to, cc, subject, body, format, domain }) {
     const date = new Date().toUTCString();
-    const messageId = `<${crypto.randomUUID()}@${addresses.DEFAULT_DOMAIN}>`;
+    const host = domain || addresses.DEFAULT_DOMAIN;
+    const messageId = `<${crypto.randomUUID()}@${host}>`;
     const contentType = format === 'html' ? 'text/html; charset=utf-8' : 'text/plain; charset=utf-8';
     const headers = [
         `From: ${fromAddress}`,
@@ -265,7 +289,7 @@ function stuffDots(message) {
 function upgradeSocket(socket, tlsOpts) {
     return new Promise((resolve, reject) => {
         const secure = tls.connect(Object.assign({ socket }, tlsOpts), () => {
-            if (!secure.authorized && tlsOpts.rejectUnauthorized !== false) {
+            if (!secure.authorized) {
                 const err = secure.authorizationError || new Error('TLS certificate was not authorized');
                 secure.destroy();
                 reject(wrapTlsError(err));
@@ -301,7 +325,7 @@ function connectPlain(host, port) {
 function connectImplicitTls(host, port, tlsOpts) {
     return new Promise((resolve, reject) => {
         const socket = tls.connect(Object.assign({ host, port }, tlsOpts), () => {
-            if (!socket.authorized && tlsOpts.rejectUnauthorized !== false) {
+            if (!socket.authorized) {
                 const err = socket.authorizationError || new Error('TLS certificate was not authorized');
                 socket.destroy();
                 reject(wrapTlsError(err));
@@ -315,6 +339,34 @@ function connectImplicitTls(host, port, tlsOpts) {
         });
         socket.on('error', (err) => reject(wrapTlsError(err)));
     });
+}
+
+function assertOutboundAllowed({ fromOwner, to, cc, config }) {
+    const cfg = config || resolveConfig();
+    const allowlist = cfg.outbound.recipientAllowlist || [];
+    const recipients = [...new Set((to || []).concat(cc || []))];
+    for (const addr of recipients) {
+        if (!addresses.recipientAllowed(addr, allowlist)) {
+            throw new MailGatewayError(
+                `Recipient is not on the outbound allowlist: ${addr}`,
+                'RECIPIENT_NOT_ALLOWED'
+            );
+        }
+    }
+    const limit = cfg.outbound.rateLimitPerMinute;
+    if (limit > 0 && fromOwner) {
+        const now = Date.now();
+        const key = String(fromOwner).toLowerCase();
+        const hits = (outboundHits.get(key) || []).filter((ts) => now - ts < 60000);
+        if (hits.length >= limit) {
+            throw new MailGatewayError(
+                `Outbound rate limit exceeded for ${key}`,
+                'RATE_LIMITED'
+            );
+        }
+        hits.push(now);
+        outboundHits.set(key, hits);
+    }
 }
 
 async function expectCode(reader, socket, allowed, context) {
@@ -346,6 +398,7 @@ async function submitOutbound(input) {
     if (!recipients.length) {
         throw new MailGatewayError('At least one external recipient is required', 'EMPTY_RECIPIENTS');
     }
+    assertOutboundAllowed({ fromOwner, to, cc, config: cfg });
     const password = input.smtpPassword != null ? String(input.smtpPassword) : getSecurePassword();
     if (!password) {
         throw new MailGatewayError(
@@ -405,7 +458,8 @@ async function submitOutbound(input) {
             cc,
             subject: input.subject,
             body: input.body,
-            format: input.format
+            format: input.format,
+            domain: cfg.domain
         });
         socket.write(`${stuffDots(message)}\r\n.\r\n`);
         await expectCode(reader, socket, [250], 'DATA end');
@@ -421,207 +475,6 @@ async function submitOutbound(input) {
     }
 }
 
-function parseDataMessage(raw) {
-    const text = String(raw || '').replace(/\r\n/g, '\n');
-    const split = text.indexOf('\n\n');
-    const headerBlock = split === -1 ? text : text.slice(0, split);
-    const body = split === -1 ? '' : text.slice(split + 2);
-    const headers = Object.create(null);
-    let current = '';
-    for (const line of headerBlock.split('\n')) {
-        if (/^[ \t]/.test(line) && current) {
-            headers[current] += ` ${line.trim()}`;
-            continue;
-        }
-        const colon = line.indexOf(':');
-        if (colon === -1) continue;
-        current = line.slice(0, colon).trim().toLowerCase();
-        headers[current] = line.slice(colon + 1).trim();
-    }
-    const contentType = String(headers['content-type'] || '').toLowerCase();
-    const format = contentType.includes('text/html') ? 'html' : 'text';
-    return {
-        from: addresses.extractAddress(headers.from || ''),
-        to: headers.to || '',
-        cc: headers.cc || '',
-        subject: headers.subject || '',
-        body: body.replace(/\n$/, ''),
-        format
-    };
-}
-
-function handleInboundConnection(socket, options) {
-    const allowFrom = options.allowFrom;
-    const mapping = options.mapping;
-    const deliver = options.deliver;
-    const peer = addresses.normalizePeerAddress(socket.remoteAddress);
-    socket.setEncoding('utf8');
-    socket.setTimeout(SMTP_TIMEOUT_MS, () => socket.end());
-
-    if (!addresses.isAllowedPeer(peer, allowFrom)) {
-        smtpWrite(socket, '554 5.7.1 Connection refused');
-        socket.end();
-        return;
-    }
-
-    let mode = 'smtp';
-    let mailFrom = '';
-    let recipients = [];
-    let inData = false;
-    let dataBuf = '';
-    let dataBytes = 0;
-
-    smtpWrite(socket, '220 dreamscape ESMTP/LMTP');
-
-    function resetTransaction() {
-        mailFrom = '';
-        recipients = [];
-        inData = false;
-        dataBuf = '';
-        dataBytes = 0;
-    }
-
-    function reply(line) {
-        if (!socket.destroyed) smtpWrite(socket, line);
-    }
-
-    async function acceptData() {
-        const unstuffed = dataBuf.replace(/^\.\./gm, '.').replace(/\n$/, '');
-        const parsed = parseDataMessage(unstuffed);
-        const fromAddress = addresses.normalizeEmail(parsed.from || mailFrom);
-        const subject = parsed.subject;
-        const body = parsed.body;
-        const format = parsed.format;
-        const results = [];
-        for (const owner of recipients) {
-            try {
-                if (deliver) {
-                    await deliver({
-                        fromAddress: fromAddress || mailFrom || 'unknown@unknown',
-                        toOwner: owner,
-                        subject,
-                        body,
-                        format
-                    });
-                }
-                results.push({ owner, ok: true });
-            } catch (err) {
-                results.push({ owner, ok: false, error: err });
-            }
-        }
-        if (mode === 'lmtp') {
-            results.forEach((item) => {
-                if (item.ok) reply(`250 2.1.5 ${item.owner} OK`);
-                else reply(`451 4.3.0 ${item.owner} ${redact(item.error.message)}`);
-            });
-        } else if (results.every((item) => item.ok)) {
-            reply('250 2.0.0 Message accepted');
-        } else {
-            reply(`451 4.3.0 ${redact((results.find((item) => !item.ok) || {}).error && results.find((item) => !item.ok).error.message)}`);
-        }
-        resetTransaction();
-    }
-
-    socket.on('data', (chunk) => {
-        if (inData) {
-            dataBytes += Buffer.byteLength(chunk);
-            if (dataBytes > MAX_DATA_BYTES) {
-                reply('552 5.3.4 Message too large');
-                resetTransaction();
-                return;
-            }
-            dataBuf += chunk;
-            const ended = dataBuf.includes('\r\n.\r\n') || dataBuf.endsWith('\n.\n') || dataBuf === '.\n' || dataBuf === '.\r\n';
-            if (!ended) return;
-            const cut = dataBuf.lastIndexOf('\n.');
-            dataBuf = dataBuf.slice(0, cut).replace(/\r$/, '');
-            inData = false;
-            Promise.resolve(acceptData()).catch((err) => {
-                reply(`451 4.3.0 ${redact(err.message)}`);
-                resetTransaction();
-            });
-            return;
-        }
-
-        const lines = chunk.split(/\r?\n/);
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            if (inData) {
-                dataBuf += lines.slice(i).join('\n');
-                if (chunk.endsWith('\n') && !dataBuf.endsWith('\n')) dataBuf += '\n';
-                const ended = dataBuf.includes('\r\n.\r\n') || /(^|\n)\.\r?\n/.test(dataBuf);
-                if (ended) {
-                    const cut = dataBuf.lastIndexOf('\n.');
-                    dataBuf = cut >= 0 ? dataBuf.slice(0, cut).replace(/\r$/, '') : dataBuf;
-                    inData = false;
-                    Promise.resolve(acceptData()).catch((err) => {
-                        reply(`451 4.3.0 ${redact(err.message)}`);
-                        resetTransaction();
-                    });
-                }
-                break;
-            }
-            if (!line) continue;
-            const command = line.trim();
-            const upper = command.toUpperCase();
-            const verb = upper.split(/\s+/)[0];
-
-            if (verb === 'LHLO') {
-                mode = 'lmtp';
-                reply('250-dreamscape');
-                reply('250-8BITMIME');
-                reply('250 OK');
-            } else if (verb === 'EHLO') {
-                mode = 'smtp';
-                reply('250-dreamscape');
-                reply('250-8BITMIME');
-                reply('250 OK');
-            } else if (verb === 'HELO') {
-                mode = 'smtp';
-                reply('250 dreamscape');
-            } else if (verb === 'MAIL') {
-                const match = command.match(/FROM:\s*<([^>]*)>/i);
-                mailFrom = match ? addresses.normalizeEmail(match[1]) || match[1] : '';
-                recipients = [];
-                reply('250 2.1.0 OK');
-            } else if (verb === 'RCPT') {
-                const match = command.match(/TO:\s*<([^>]+)>/i);
-                const addr = match ? match[1] : '';
-                const owner = addresses.toMailbox(addr, mapping);
-                if (!owner) {
-                    reply(`550 5.1.1 <${addr}>: Recipient address rejected: User unknown`);
-                } else {
-                    if (!recipients.includes(owner)) recipients.push(owner);
-                    reply('250 2.1.5 OK');
-                }
-            } else if (verb === 'DATA') {
-                if (!recipients.length) {
-                    reply('503 5.5.1 No valid recipients');
-                } else {
-                    inData = true;
-                    dataBuf = '';
-                    dataBytes = 0;
-                    reply('354 End data with <CR><LF>.<CR><LF>');
-                }
-            } else if (verb === 'RSET') {
-                resetTransaction();
-                reply('250 2.0.0 OK');
-            } else if (verb === 'NOOP') {
-                reply('250 2.0.0 OK');
-            } else if (verb === 'QUIT') {
-                reply('221 2.0.0 Bye');
-                socket.end();
-            } else if (verb === 'VRFY') {
-                reply('252 2.5.2 Cannot VRFY');
-            } else {
-                reply('502 5.5.1 Command not implemented');
-            }
-        }
-    });
-
-    socket.on('error', () => {});
-}
-
 function startInbound(options) {
     const cfg = resolveConfig(options && options.config);
     const mapping = (options && options.mapping) || cfg.mapping;
@@ -629,10 +482,31 @@ function startInbound(options) {
     const port = options && options.port != null ? options.port : cfg.inbound.port;
     const bind = (options && options.bind) || cfg.inbound.bind;
     const deliver = options && options.deliver;
+    const maxConnections = options && options.maxConnections != null
+        ? options.maxConnections
+        : cfg.inbound.maxConnections;
+    const sessionOpts = {
+        allowFrom,
+        mapping,
+        deliver,
+        maxDataBytes: (options && options.maxDataBytes) || cfg.inbound.maxDataBytes,
+        sessionTimeoutMs: (options && options.sessionTimeoutMs) || cfg.inbound.sessionTimeoutMs,
+        idleTimeoutMs: (options && options.idleTimeoutMs) || cfg.inbound.idleTimeoutMs,
+        maxCommandLine: options && options.maxCommandLine,
+        maxDataLine: options && options.maxDataLine
+    };
 
     return new Promise((resolve, reject) => {
+        let active = 0;
         const server = net.createServer((socket) => {
-            handleInboundConnection(socket, { allowFrom, mapping, deliver });
+            if (active >= maxConnections) {
+                smtpWrite(socket, '421 4.7.0 Too many connections');
+                socket.end();
+                return;
+            }
+            active += 1;
+            socket.on('close', () => { active = Math.max(0, active - 1); });
+            inbound.handleInboundConnection(socket, sessionOpts);
         });
         server.on('error', reject);
         server.listen(port, bind, () => {
@@ -703,7 +577,9 @@ module.exports = {
     MailGatewayError,
     PASSWORD_ENV,
     DEFAULT_INBOUND_PORT,
+    DEFAULT_INBOUND_BIND,
     DEFAULT_ALLOW_FROM,
+    DEFAULT_MAX_CONNECTIONS,
     DEFAULT_TLS_SERVERNAME,
     DEFAULT_AUTH_USER,
     resolveConfig,
@@ -712,6 +588,7 @@ module.exports = {
     toMailbox: (address, mapping) => addresses.toMailbox(address, mapping || resolveConfig().mapping),
     toExternal: (owner, mapping) => addresses.toExternal(owner, mapping || resolveConfig().mapping),
     submitOutbound,
+    assertOutboundAllowed,
     startInbound,
     start,
     stop,

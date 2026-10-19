@@ -14,6 +14,8 @@ assert.strictEqual(initializeDovecoteDatabase(tmpDir), true);
 const mail = require('../modules/dovecoteMail');
 const gateway = require('../modules/mailGateway');
 const addresses = require('../modules/mailGatewayAddresses');
+const inboundMod = require('../modules/mailGatewayInbound');
+const mime = require('../modules/mailGatewayMime');
 
 function mapping() {
     return addresses.createMapping({
@@ -61,11 +63,41 @@ function createLineReader(socket) {
     });
     socket.on('end', () => waiters.splice(0).forEach((fn) => fn(null)));
     return {
+        queuedCount() { return queue.length; },
         readLine() {
             if (queue.length) return Promise.resolve(queue.shift());
             return new Promise((resolve) => waiters.push(resolve));
         }
     };
+}
+
+function delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function connectSmtp(port) {
+    return new Promise((resolve, reject) => {
+        const s = net.connect({ host: '127.0.0.1', port }, () => resolve(s));
+        s.on('error', reject);
+    });
+}
+
+async function expectCode(reader, code) {
+    const reply = await readReply(reader);
+    assert.strictEqual(reply.code, code, reply.text);
+    return reply;
+}
+
+async function startOpenInbound(extra) {
+    const delivered = [];
+    const inbound = await gateway.startInbound(Object.assign({
+        port: 0,
+        bind: '127.0.0.1',
+        allowFrom: ['127.0.0.1'],
+        mapping: mapping(),
+        deliver: async (msg) => { delivered.push(msg); }
+    }, extra || {}));
+    return { inbound, delivered };
 }
 
 async function readReply(reader) {
@@ -303,7 +335,7 @@ async function testInboundDelivery() {
         assert.strictEqual((await readReply(reader)).code, 220);
         socket.write('EHLO test\r\n');
         assert.strictEqual((await readReply(reader)).code, 250);
-        socket.write('MAIL FROM:<Alice <alice@example.com>>\r\n');
+        socket.write('MAIL FROM:<alice@example.com>\r\n');
         assert.strictEqual((await readReply(reader)).code, 250);
         socket.write('RCPT TO:<menma.dev@dream.737.jp.net>\r\n');
         assert.strictEqual((await readReply(reader)).code, 250);
@@ -325,6 +357,7 @@ async function testInboundDelivery() {
     assert.strictEqual(delivered.length, 1);
     assert.strictEqual(delivered[0].fromAddress, 'alice@example.com');
     assert.strictEqual(delivered[0].toOwner, 'menma');
+    assert.deepStrictEqual(delivered[0].to, ['menma.dev@dream.737.jp.net']);
     assert.strictEqual(delivered[0].subject, 'hello menma');
     assert.match(delivered[0].body, /body from the outside/);
 
@@ -362,8 +395,7 @@ async function testOutboundRewrite() {
                 mode: 'starttls',
                 tlsServername: 'mx.dream.737.jp.net',
                 caPath: certs.certPath,
-                authUser: 'dreamscape@dream.737.jp.net',
-                rejectUnauthorized: true
+                authUser: 'dreamscape@dream.737.jp.net'
             }
         });
         assert.strictEqual(result.envelopeFrom, 'menma.dev@dream.737.jp.net');
@@ -372,6 +404,7 @@ async function testOutboundRewrite() {
         assert.match(mock.recorded.data, /^From: menma\.dev@dream\.737\.jp\.net/m);
         assert.match(mock.recorded.data, /^Reply-To: menma\.dev@dream\.737\.jp\.net/m);
         assert.match(mock.recorded.data, /^To: alice@example\.com/m);
+        assert.match(mock.recorded.data, /^Message-ID: <[^>]+@dream\.737\.jp\.net>$/m);
         assert.match(mock.recorded.data, /hello alice/);
         assert.ok(mock.recorded.authed);
     } finally {
@@ -560,6 +593,379 @@ async function testSendMailOutboundHook() {
     }
 }
 
+function testCrlfBufferAndSenderRules() {
+    const buf = new inboundMod.CrlfBuffer();
+    buf.push('EHLO a\nMAIL FROM:<evil@evil.com>\n');
+    assert.strictEqual(buf.nextLine(512), null, 'bare LF is not a line delimiter');
+    buf.push('RCPT TO:<menma.dev@dream.737.jp.net>\r\nDATA\r\n');
+    const first = buf.nextLine(512);
+    assert.ok(first && first.line.includes('EHLO a\nMAIL FROM:'));
+    assert.strictEqual(buf.nextLine(512).line, 'DATA');
+
+    const split = new inboundMod.CrlfBuffer();
+    split.push('NOOP\r');
+    assert.strictEqual(split.nextLine(512), null);
+    split.push('\nQUIT\r\n');
+    assert.strictEqual(split.nextLine(512).line, 'NOOP');
+    assert.strictEqual(split.nextLine(512).line, 'QUIT');
+
+    const map = mapping();
+    assert.strictEqual(addresses.validateEnvelopeSender('menma', map).ok, false);
+    assert.strictEqual(addresses.validateEnvelopeSender('<menma>', map).ok, false);
+    assert.strictEqual(addresses.validateEnvelopeSender('<>', map).ok, false);
+    assert.strictEqual(addresses.validateEnvelopeSender('menma@dream.737.jp.net', map).code, 550);
+    assert.strictEqual(addresses.validateEnvelopeSender('menma@dream.co.jp', map).code, 550);
+    assert.strictEqual(addresses.validateEnvelopeSender('alice@example.com', map).ok, true);
+    assert.strictEqual(addresses.fromHeaderMatchesEnvelope('menma', 'alice@example.com'), false);
+    assert.strictEqual(addresses.fromHeaderMatchesEnvelope('Alice <alice@example.com>', 'alice@example.com'), true);
+    assert.strictEqual(addresses.fromHeaderMatchesEnvelope('', 'alice@example.com'), true);
+}
+
+function testResolveConfigDefaults() {
+    gateway.setTestOverrides({ config: {} });
+    const cfg = gateway.resolveConfig();
+    assert.strictEqual(cfg.enabled, false);
+    assert.strictEqual(cfg.inbound.bind, gateway.DEFAULT_INBOUND_BIND);
+    assert.strictEqual(cfg.inbound.bind, '192.168.255.2');
+    assert.strictEqual(cfg.inbound.maxConnections, gateway.DEFAULT_MAX_CONNECTIONS);
+    assert.ok(!Object.prototype.hasOwnProperty.call(cfg.outbound, 'rejectUnauthorized'));
+    const tlsOpts = gateway.tlsVerifyOptions(Object.assign({}, cfg.outbound, { rejectUnauthorized: false }));
+    assert.strictEqual(tlsOpts.rejectUnauthorized, true);
+    const built = gateway.buildOutboundMessage({
+        fromAddress: 'menma.dev@dream.737.jp.net',
+        to: ['a@b.com'],
+        subject: 'id',
+        body: 'x',
+        domain: 'custom.example'
+    });
+    assert.match(built, /^Message-ID: <[^>]+@custom\.example>$/m);
+    gateway.setTestOverrides({ config: { enabled: false } });
+}
+
+function testMimeDecode() {
+    const qp = mime.extractTextBody([
+        'Subject: qp',
+        'Content-Type: text/plain; charset=utf-8',
+        'Content-Transfer-Encoding: quoted-printable',
+        '',
+        'hello=20there='
+    ].join('\r\n'));
+    assert.strictEqual(qp.headers.subject, 'qp');
+    assert.match(qp.body, /hello there/);
+
+    const b64 = mime.extractTextBody([
+        'From: a@b.com',
+        'Content-Type: text/plain',
+        'Content-Transfer-Encoding: base64',
+        '',
+        Buffer.from('decoded body', 'utf8').toString('base64')
+    ].join('\r\n'));
+    assert.strictEqual(b64.body, 'decoded body');
+
+    const multi = mime.extractTextBody([
+        'To: menma.dev@dream.737.jp.net',
+        'Cc: sala.ops@dream.737.jp.net',
+        'Content-Type: multipart/alternative; boundary="bnd"',
+        '',
+        '--bnd',
+        'Content-Type: text/plain',
+        '',
+        'plain part',
+        '--bnd',
+        'Content-Type: text/html',
+        '',
+        '<p>html part</p>',
+        '--bnd--'
+    ].join('\r\n'));
+    assert.strictEqual(multi.body.trim(), 'plain part');
+    assert.strictEqual(multi.format, 'text');
+    assert.deepStrictEqual(addresses.parseAddressList(multi.headers.cc), ['sala.ops@dream.737.jp.net']);
+}
+
+async function testOutboundRateAndAllowlist() {
+    await gateway.resetForTests();
+    const limited = gateway.resolveConfig({ outbound: { rateLimitPerMinute: 1 } });
+    gateway.assertOutboundAllowed({ fromOwner: 'sala', to: ['ok@example.com'], config: limited });
+    assert.throws(
+        () => gateway.assertOutboundAllowed({ fromOwner: 'sala', to: ['ok@example.com'], config: limited }),
+        (err) => err.code === 'RATE_LIMITED'
+    );
+    gateway.assertOutboundAllowed({ fromOwner: 'rook', to: ['ok@example.com'], config: limited });
+
+    const allow = gateway.resolveConfig({ outbound: { recipientAllowlist: ['@good.example', 'exact@list.test'] } });
+    gateway.assertOutboundAllowed({ fromOwner: 'ivory', to: ['user@good.example'], config: allow });
+    gateway.assertOutboundAllowed({ fromOwner: 'ivory', to: ['exact@list.test'], config: allow });
+    assert.throws(
+        () => gateway.assertOutboundAllowed({ fromOwner: 'ivory', to: ['nope@evil.example'], config: allow }),
+        (err) => err.code === 'RECIPIENT_NOT_ALLOWED'
+    );
+}
+
+async function testSpoofCases() {
+    const { inbound, delivered } = await startOpenInbound();
+    try {
+        const replies = await smtpTalk(inbound.port, [
+            'EHLO test',
+            'MAIL FROM:<menma>',
+            'MAIL FROM:menma',
+            'MAIL FROM:<menma@dream.737.jp.net>',
+            'MAIL FROM:<menma@dream.co.jp>',
+            'MAIL FROM:<alice@example.com>',
+            'RCPT TO:<menma.dev@dream.737.jp.net>',
+            'DATA'
+        ]);
+        assert.strictEqual(replies[1].code, 250);
+        assert.strictEqual(replies[2].code, 501);
+        assert.strictEqual(replies[3].code, 501);
+        assert.strictEqual(replies[4].code, 550);
+        assert.strictEqual(replies[5].code, 550);
+        assert.strictEqual(replies[6].code, 250);
+        assert.strictEqual(replies[7].code, 250);
+        assert.strictEqual(replies[8].code, 354);
+
+        const socket = await connectSmtp(inbound.port);
+        const reader = createLineReader(socket);
+        await expectCode(reader, 220);
+        socket.write('EHLO test\r\n');
+        await expectCode(reader, 250);
+        socket.write('MAIL FROM:<alice@example.com>\r\n');
+        await expectCode(reader, 250);
+        socket.write('RCPT TO:<ivory.studio@dream.737.jp.net>\r\n');
+        await expectCode(reader, 250);
+        socket.write('DATA\r\n');
+        await expectCode(reader, 354);
+        socket.write('From: menma\r\nSubject: spoof\r\n\r\nlooks like bot mail\r\n.\r\n');
+        const rejected = await expectCode(reader, 550);
+        assert.match(rejected.text, /From header does not match/);
+        socket.write('QUIT\r\n');
+        await readReply(reader);
+        socket.end();
+    } finally {
+        await inbound.close();
+    }
+    assert.strictEqual(delivered.length, 0);
+}
+
+async function testBareLfSmuggling() {
+    const { inbound, delivered } = await startOpenInbound();
+    try {
+        const socket = await connectSmtp(inbound.port);
+        const reader = createLineReader(socket);
+        await expectCode(reader, 220);
+        socket.write('EHLO test\r\n');
+        await expectCode(reader, 250);
+        socket.write('MAIL FROM:<alice@example.com>\r\n');
+        await expectCode(reader, 250);
+        socket.write('RCPT TO:<guren.lab@dream.737.jp.net>\r\n');
+        await expectCode(reader, 250);
+        socket.write('DATA\r\n');
+        await expectCode(reader, 354);
+        socket.write('From: alice@example.com\r\nSubject: smuggle\r\n\r\n');
+        socket.write('hello\n.\nMAIL FROM:<evil@evil.com>\r\nRCPT TO:<sala.ops@dream.737.jp.net>\r\nDATA\r\nowned\r\n');
+        await delay(40);
+        assert.strictEqual(reader.queuedCount(), 0, 'bare-LF dot must not end DATA');
+        socket.write('visible tail\r\n.\r\n');
+        await expectCode(reader, 250);
+        socket.write('QUIT\r\n');
+        await readReply(reader);
+        socket.end();
+    } finally {
+        await inbound.close();
+    }
+    assert.strictEqual(delivered.length, 1);
+    assert.strictEqual(delivered[0].toOwner, 'guren');
+    assert.match(delivered[0].body, /MAIL FROM:<evil@evil.com>/);
+    assert.match(delivered[0].body, /visible tail/);
+}
+
+async function testOversizeDiscard() {
+    const { inbound, delivered } = await startOpenInbound({ maxDataBytes: 64 });
+    try {
+        const socket = await connectSmtp(inbound.port);
+        const reader = createLineReader(socket);
+        await expectCode(reader, 220);
+        socket.write('EHLO test\r\n');
+        await expectCode(reader, 250);
+        socket.write('MAIL FROM:<alice@example.com>\r\n');
+        await expectCode(reader, 250);
+        socket.write('RCPT TO:<chiyo.web@dream.737.jp.net>\r\n');
+        await expectCode(reader, 250);
+        socket.write('DATA\r\n');
+        await expectCode(reader, 354);
+        socket.write('From: alice@example.com\r\nSubject: huge\r\n\r\n');
+        socket.write(`${'x'.repeat(80)}\r\n`);
+        socket.write('MAIL FROM:<evil@evil.com>\r\nRCPT TO:<sala.ops@dream.737.jp.net>\r\nDATA\r\nsmuggled\r\n');
+        await delay(40);
+        assert.strictEqual(reader.queuedCount(), 0, 'oversize must stay in DATA until CRLF.CRLF');
+        socket.write('.\r\n');
+        const oversize = await expectCode(reader, 552);
+        assert.match(oversize.text, /too large/);
+        socket.write('MAIL FROM:<bob@outside.example>\r\n');
+        await expectCode(reader, 250);
+        socket.write('RCPT TO:<chiyo.web@dream.737.jp.net>\r\n');
+        await expectCode(reader, 250);
+        socket.write('DATA\r\n');
+        await expectCode(reader, 354);
+        socket.write('From: bob@outside.example\r\nSubject: after oversize\r\n\r\nok\r\n.\r\n');
+        await expectCode(reader, 250);
+        socket.write('QUIT\r\n');
+        await readReply(reader);
+        socket.end();
+    } finally {
+        await inbound.close();
+    }
+    assert.strictEqual(delivered.length, 1);
+    assert.strictEqual(delivered[0].fromAddress, 'bob@outside.example');
+    assert.strictEqual(delivered[0].subject, 'after oversize');
+}
+
+async function testCommandSplitAcrossChunks() {
+    const { inbound, delivered } = await startOpenInbound();
+    try {
+        const socket = await connectSmtp(inbound.port);
+        const reader = createLineReader(socket);
+        await expectCode(reader, 220);
+        socket.write('EHLO te');
+        await delay(20);
+        socket.write('st\r\n');
+        await expectCode(reader, 250);
+        socket.write('MAIL FROM:<ali');
+        await delay(20);
+        socket.write('ce@example.com>\r\n');
+        await expectCode(reader, 250);
+        socket.write('RCPT TO:<frost.dev@dream.737.jp.net>\r');
+        await delay(20);
+        socket.write('\n');
+        await expectCode(reader, 250);
+        socket.write('DATA\r\n');
+        await expectCode(reader, 354);
+        socket.write('From: alice@example.com\r\nSubject: split\r\n\r\n');
+        socket.write('..dotstuffed\r\n.\r\n');
+        await expectCode(reader, 250);
+        socket.write('QUIT\r\n');
+        await readReply(reader);
+        socket.end();
+    } finally {
+        await inbound.close();
+    }
+    assert.strictEqual(delivered.length, 1);
+    assert.strictEqual(delivered[0].toOwner, 'frost');
+    assert.match(delivered[0].body, /^\.dotstuffed/m);
+}
+
+async function testConnectionCap() {
+    const { inbound } = await startOpenInbound({ maxConnections: 1 });
+    const first = await connectSmtp(inbound.port);
+    const firstReader = createLineReader(first);
+    try {
+        await expectCode(firstReader, 220);
+        const second = await connectSmtp(inbound.port);
+        const secondReader = createLineReader(second);
+        try {
+            await expectCode(secondReader, 421);
+        } finally {
+            second.end();
+        }
+        first.end();
+        await delay(30);
+        const third = await connectSmtp(inbound.port);
+        const thirdReader = createLineReader(third);
+        try {
+            await expectCode(thirdReader, 220);
+            third.write('QUIT\r\n');
+            await readReply(thirdReader);
+        } finally {
+            third.end();
+        }
+    } finally {
+        first.end();
+        await inbound.close();
+    }
+}
+
+async function testOutboundFailureOutbox() {
+    gateway.setTestOverrides({
+        config: {
+            enabled: true,
+            domain: 'dream.737.jp.net',
+            mailboxes: addresses.DEFAULT_MAILBOXES,
+            outbound: {
+                host: '127.0.0.1',
+                port: 1,
+                mode: 'starttls',
+                tlsServername: 'mx.dream.737.jp.net'
+            }
+        },
+        smtpPassword: 'unused'
+    });
+    try {
+        const result = mail.sendMail({
+            fromOwner: 'menma',
+            to: 'nobody@example.com',
+            subject: 'relay-down',
+            body: 'should stay in outbox'
+        });
+        await assert.rejects(() => result.outbound, (err) => !!err.code);
+        const outbox = mail.listMail('menma', { folder: 'outbox' }).find((row) => row.subject === 'relay-down');
+        assert.ok(outbox);
+        assert.strictEqual(
+            mail.listMail('menma', { folder: 'sent' }).some((row) => row.subject === 'relay-down'),
+            false
+        );
+    } finally {
+        gateway.setTestOverrides({ config: { enabled: false } });
+    }
+}
+
+async function testInboundMimeAndCc() {
+    const { inbound, delivered } = await startOpenInbound();
+    try {
+        const socket = await connectSmtp(inbound.port);
+        const reader = createLineReader(socket);
+        await expectCode(reader, 220);
+        socket.write('EHLO test\r\n');
+        await expectCode(reader, 250);
+        socket.write('MAIL FROM:<Carol <carol@example.com>>\r\n');
+        await expectCode(reader, 250);
+        socket.write('RCPT TO:<ivory.studio@dream.737.jp.net>\r\n');
+        await expectCode(reader, 250);
+        socket.write('DATA\r\n');
+        await expectCode(reader, 354);
+        socket.write('From: Carol <carol@example.com>\r\n');
+        socket.write('To: ivory.studio@dream.737.jp.net\r\n');
+        socket.write('Cc: sala.ops@dream.737.jp.net, friend@example.net\r\n');
+        socket.write('Subject: mime cc\r\n');
+        socket.write('Content-Type: multipart/mixed; boundary="x"\r\n\r\n');
+        socket.write('--x\r\nContent-Type: text/plain\r\nContent-Transfer-Encoding: base64\r\n\r\n');
+        socket.write(`${Buffer.from('plain from mime', 'utf8').toString('base64')}\r\n`);
+        socket.write('--x\r\nContent-Type: text/html\r\n\r\n<p>html</p>\r\n--x--\r\n.\r\n');
+        await expectCode(reader, 250);
+        socket.write('QUIT\r\n');
+        await readReply(reader);
+        socket.end();
+    } finally {
+        await inbound.close();
+    }
+    assert.strictEqual(delivered.length, 1);
+    assert.strictEqual(delivered[0].fromAddress, 'carol@example.com');
+    assert.deepStrictEqual(delivered[0].to, ['ivory.studio@dream.737.jp.net']);
+    assert.deepStrictEqual(delivered[0].cc, ['sala.ops@dream.737.jp.net', 'friend@example.net']);
+    assert.match(delivered[0].body, /plain from mime/);
+
+    const stored = mail.deliverInboundMail({
+        fromAddress: delivered[0].fromAddress,
+        toOwner: 'ivory',
+        to: delivered[0].to,
+        cc: delivered[0].cc,
+        subject: delivered[0].subject,
+        body: delivered[0].body
+    });
+    const row = mail.readMail('ivory', stored.id);
+    assert.deepStrictEqual(row.to, ['ivory.studio@dream.737.jp.net']);
+    assert.deepStrictEqual(row.cc, ['sala.ops@dream.737.jp.net', 'friend@example.net']);
+    assert.strictEqual(row.from, 'carol@example.com');
+}
+
 async function main() {
     testMapping();
     await testAllowlistReject();
@@ -571,6 +977,17 @@ async function main() {
     await testImplicitTls();
     testInternalUnchangedAndDisabled();
     await testSendMailOutboundHook();
+    testCrlfBufferAndSenderRules();
+    testResolveConfigDefaults();
+    testMimeDecode();
+    await testOutboundRateAndAllowlist();
+    await testSpoofCases();
+    await testBareLfSmuggling();
+    await testOversizeDiscard();
+    await testCommandSplitAcrossChunks();
+    await testConnectionCap();
+    await testOutboundFailureOutbox();
+    await testInboundMimeAndCc();
     await gateway.resetForTests();
     console.log('mail gateway tests passed');
 }

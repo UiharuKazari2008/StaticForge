@@ -1387,12 +1387,65 @@
       "path": [
         "mailGateway",
         "inbound",
+        "bind"
+      ],
+      "type": "string",
+      "label": "Inbound Bind Address",
+      "editorType": "input",
+      "restartRequired": true,
+      "description": "Listen address. Default 192.168.255.2 (LANTIS-facing). Not 0.0.0.0."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "inbound",
         "allowFrom"
       ],
       "type": "array",
       "itemsType": "string",
       "label": "Inbound Allowlist",
       "description": "Peer IPs allowed to connect. Default 192.168.255.1 (LANTIS Postfix)."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "inbound",
+        "maxConnections"
+      ],
+      "type": "number",
+      "label": "Max Concurrent Connections",
+      "restartRequired": true,
+      "description": "Inbound connection cap. Extra peers get 421. Default 16."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "inbound",
+        "sessionTimeoutMs"
+      ],
+      "type": "number",
+      "label": "Session Timeout (ms)",
+      "description": "Absolute session lifetime, independent of idle. Default 120000."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "inbound",
+        "idleTimeoutMs"
+      ],
+      "type": "number",
+      "label": "Idle Timeout (ms)",
+      "description": "Close a quiet socket. Default 30000."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "inbound",
+        "maxDataBytes"
+      ],
+      "type": "number",
+      "label": "Max DATA Bytes",
+      "description": "Oversize DATA is discarded until <CRLF>.<CRLF>, then 552. Default 10 MiB."
     },
     {
       "path": [
@@ -1467,6 +1520,27 @@
       "type": "string",
       "label": "SMTP Auth User",
       "editorType": "input"
+    },
+    {
+      "path": [
+        "mailGateway",
+        "outbound",
+        "rateLimitPerMinute"
+      ],
+      "type": "number",
+      "label": "Outbound Rate Limit",
+      "description": "Per-bot outbound messages per minute. Default 30. 0 disables."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "outbound",
+        "recipientAllowlist"
+      ],
+      "type": "array",
+      "itemsType": "string",
+      "label": "Outbound Recipient Allowlist",
+      "description": "Optional. Empty allows any external recipient. Entries are an address, a domain, or @domain."
     },
     {
       "path": [
