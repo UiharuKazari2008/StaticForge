@@ -470,38 +470,31 @@ class FastTagSearch {
         const categories = semantic.categories || [];
         
         // Priority-based categorization
-        if (categories.some(c => c.includes('/composition/framing'))) {
-            return 'composition_framing';
-        }
-        if (categories.some(c => c.includes('/composition/camera'))) {
-            return 'composition_camera';
-        }
-        if (categories.some(c => c.includes('/composition/perspective'))) {
-            return 'composition_perspective';
-        }
-        if (categories.some(c => c.includes('/composition/styles'))) {
-            return 'art_style';
-        }
-        if (categories.some(c => c.includes('/bygender'))) {
-            return 'character_gender';
-        }
-        if (categories.some(c => c.includes('/posture/'))) {
-            return 'character_posture';
-        }
-        if (categories.some(c => c.includes('/bodyparts/'))) {
-            return 'anatomical_focus';
-        }
-        if (categories.some(c => c.includes('/attire/'))) {
-            return 'clothing';
-        }
-        if (categories.some(c => c.includes('/locations/'))) {
-            return 'location_setting';
-        }
-        if (categories.some(c => c.includes('verbs'))) {
-            return 'action';
+        // JULES: perf sweep - Avoid O(C*K) repeated scans over categories array and string includes.
+        // Instead, iterate over categories once and use early returns or flags.
+        // Even better, string.includes inside a loop over categories 10 times is 10 * C string matches.
+        // We MUST preserve the exact priority order of the old logic:
+        // composition_framing > composition_camera > composition_perspective > ...
+        let foundCategory = 'general';
+        // The highest priority is index 0 in the prioritized string list
+        let bestPriority = 999;
+
+        for (let i = 0; i < categories.length; i++) {
+            const c = categories[i];
+
+            if (bestPriority > 0 && c.includes('/composition/framing')) { foundCategory = 'composition_framing'; bestPriority = 0; continue; }
+            if (bestPriority > 1 && c.includes('/composition/camera')) { foundCategory = 'composition_camera'; bestPriority = 1; continue; }
+            if (bestPriority > 2 && c.includes('/composition/perspective')) { foundCategory = 'composition_perspective'; bestPriority = 2; continue; }
+            if (bestPriority > 3 && c.includes('/composition/styles')) { foundCategory = 'art_style'; bestPriority = 3; continue; }
+            if (bestPriority > 4 && c.includes('/bygender')) { foundCategory = 'character_gender'; bestPriority = 4; continue; }
+            if (bestPriority > 5 && c.includes('/posture/')) { foundCategory = 'character_posture'; bestPriority = 5; continue; }
+            if (bestPriority > 6 && c.includes('/bodyparts/')) { foundCategory = 'anatomical_focus'; bestPriority = 6; continue; }
+            if (bestPriority > 7 && c.includes('/attire/')) { foundCategory = 'clothing'; bestPriority = 7; continue; }
+            if (bestPriority > 8 && c.includes('/locations/')) { foundCategory = 'location_setting'; bestPriority = 8; continue; }
+            if (bestPriority > 9 && c.includes('verbs')) { foundCategory = 'action'; bestPriority = 9; continue; }
         }
         
-        return 'general';
+        return foundCategory;
     }
 
 
