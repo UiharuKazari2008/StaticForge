@@ -221,7 +221,10 @@ function stripMailFromParams(raw) {
 
 /**
  * External MAIL FROM must be a full addr-spec (or the null sender <> for
- * bounces) and must not use our domains or their subdomains.
+ * bounces). The public gateway domain and its subdomains are accepted —
+ * intake is only from the allowlisted relay, which already refuses
+ * internet forgeries of dream/737. The internal display domain
+ * (dream.co.jp) stays rejected so it cannot look like a Dovecote mailbox.
  */
 function validateEnvelopeSender(raw, mapping) {
     const addrPart = stripMailFromParams(raw);
@@ -236,7 +239,7 @@ function validateEnvelopeSender(raw, mapping) {
     if (!parts) {
         return { ok: false, code: 501, message: '5.1.7 MAIL FROM must be a full address' };
     }
-    if (isReservedSenderDomain(parts.domain, mapping)) {
+    if (parts.domain === INTERNAL_DISPLAY_DOMAIN || parts.domain.endsWith(`.${INTERNAL_DISPLAY_DOMAIN}`)) {
         return { ok: false, code: 550, message: '5.7.1 Sender domain is not allowed' };
     }
     return { ok: true, address: `${parts.local}@${parts.domain}` };
