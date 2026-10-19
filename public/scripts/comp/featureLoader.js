@@ -113,6 +113,10 @@ const FEATURE_MANIFEST = {
         styles: ['css/desktop-apps/emotion.css'],
         scripts: ['scripts/comp/desktop-apps/emotion.js']
     },
+    exchange: {
+        styles: ['css/desktop-apps/exchange.css'],
+        scripts: ['scripts/comp/desktop-apps/exchange.js']
+    },
     start_menu_organizer: {
         scripts: ['scripts/comp/desktop-apps/startMenuOrganizer.js']
     },

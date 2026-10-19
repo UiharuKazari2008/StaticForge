@@ -185,13 +185,40 @@ function handleInboundConnection(socket, options) {
             }
             const match = command.match(/TO:\s*<([^>]+)>/i);
             const addr = match ? match[1] : '';
-            const owner = addresses.toMailbox(addr, mapping);
-            if (!owner) {
-                reply(`550 5.1.1 <${addr}>: Recipient address rejected: User unknown`);
-            } else {
-                if (!recipients.includes(owner)) recipients.push(owner);
-                reply('250 2.1.5 OK');
+            let owners = [];
+            try {
+                owners = addresses.expandRecipients(addr, mapping);
+            } catch (err) {
+                if (err && err.code === 'ALIAS_LOOP') {
+                    reply(`550 5.1.1 <${addr}>: Recipient address rejected: Alias loop`);
+                    return;
+                }
+                throw err;
             }
+            if (!owners.length) {
+                reply(`550 5.1.1 <${addr}>: Recipient address rejected: User unknown`);
+                return;
+            }
+            const accepted = [];
+            let denied = null;
+            try {
+                const exchange = require('./mailExchange');
+                owners.forEach((owner) => {
+                    const reason = exchange.inboundRejectReason(owner);
+                    if (reason) denied = reason;
+                    else accepted.push(owner);
+                });
+            } catch (_err) {
+                owners.forEach((owner) => accepted.push(owner));
+            }
+            if (!accepted.length) {
+                reply(`550 5.7.1 <${addr}>: Recipient address rejected: ${denied || 'Inbound disabled'}`);
+                return;
+            }
+            accepted.forEach((owner) => {
+                if (!recipients.includes(owner)) recipients.push(owner);
+            });
+            reply('250 2.1.5 OK');
         } else if (verb === 'DATA') {
             if (!mailFrom) {
                 reply('503 5.5.1 Need MAIL FROM first');

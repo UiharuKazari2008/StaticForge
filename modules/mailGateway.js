@@ -85,8 +85,17 @@ function resolveConfig(extra) {
     const mode = String(outbound.mode || 'starttls').trim().toLowerCase() === 'implicit'
         ? 'implicit'
         : 'starttls';
+    let overlay = null;
+    try {
+        const exchange = require('./mailExchange');
+        if (exchange.isEnabled()) overlay = exchange.getAddressOverlay();
+    } catch (_err) {
+        overlay = null;
+    }
     const mapping = addresses.createMapping({
-        mailboxes: raw.mailboxes || addresses.DEFAULT_MAILBOXES,
+        mailboxes: (overlay && overlay.mailboxes) || raw.mailboxes || addresses.DEFAULT_MAILBOXES,
+        aliases: overlay && overlay.aliases,
+        lists: overlay && overlay.lists,
         domain: raw.domain || addresses.DEFAULT_DOMAIN
     });
     return {
@@ -343,7 +352,16 @@ function connectImplicitTls(host, port, tlsOpts) {
     });
 }
 
-function assertOutboundAllowed({ fromOwner, to, cc, config }) {
+function assertOutboundAllowed({ fromOwner, to, cc, config, service }) {
+    try {
+        const exchange = require('./mailExchange');
+        const reason = exchange.outboundRejectReason(fromOwner, service);
+        if (reason) {
+            throw new MailGatewayError(reason, 'OUTBOUND_DISABLED');
+        }
+    } catch (err) {
+        if (err instanceof MailGatewayError) throw err;
+    }
     const cfg = config || resolveConfig();
     const allowlist = cfg.outbound.recipientAllowlist || [];
     const recipients = [...new Set((to || []).concat(cc || []))];
@@ -400,7 +418,7 @@ async function submitOutbound(input) {
     if (!recipients.length) {
         throw new MailGatewayError('At least one external recipient is required', 'EMPTY_RECIPIENTS');
     }
-    assertOutboundAllowed({ fromOwner, to, cc, config: cfg });
+    assertOutboundAllowed({ fromOwner, to, cc, config: cfg, service: input.service });
     const password = input.smtpPassword != null ? String(input.smtpPassword) : getSecurePassword();
     if (!password) {
         throw new MailGatewayError(
@@ -454,12 +472,18 @@ async function submitOutbound(input) {
         }
         smtpWrite(socket, 'DATA');
         await expectCode(reader, socket, [354], 'DATA');
+        let outboundBody = input.body;
+        try {
+            outboundBody = require('./mailExchange').appendSignature(input.body, input.format, fromOwner);
+        } catch (_err) {
+            outboundBody = input.body;
+        }
         const message = buildOutboundMessage({
             fromAddress,
             to,
             cc,
             subject: input.subject,
-            body: input.body,
+            body: outboundBody,
             format: input.format,
             domain: cfg.domain
         });
@@ -528,6 +552,10 @@ function startInbound(options) {
             });
         });
     });
+}
+
+function isListening() {
+    return !!(inboundServer && inboundServer.server && inboundServer.port);
 }
 
 function start(globalResources) {
@@ -599,6 +627,7 @@ module.exports = {
     submitOutbound,
     assertOutboundAllowed,
     startInbound,
+    isListening,
     start,
     stop,
     setTestOverrides,

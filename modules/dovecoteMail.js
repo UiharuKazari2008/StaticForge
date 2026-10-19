@@ -53,12 +53,27 @@ class DovecoteError extends Error {
     }
 }
 
+function extraOwners() {
+    try {
+        const exchange = require('./mailExchange');
+        if (!exchange.isEnabled()) return [];
+        return exchange.listActiveOwners();
+    } catch (_err) {
+        return [];
+    }
+}
+
 function isValidOwner(owner) {
-    return typeof owner === 'string' && ALL_OWNERS.has(owner);
+    if (typeof owner !== 'string') return false;
+    if (ALL_OWNERS.has(owner)) return true;
+    return extraOwners().includes(owner);
 }
 
 function isBotOwner(owner) {
-    return typeof owner === 'string' && BOT_OWNER_SET.has(owner);
+    if (typeof owner !== 'string') return false;
+    if (BOT_OWNER_SET.has(owner)) return true;
+    if (owner === HUMAN_OWNER) return false;
+    return extraOwners().includes(owner);
 }
 
 // One listener, set by the WS handler (modules/ws/handlers/250-dovecoteHandler.js).
@@ -1016,7 +1031,11 @@ function listMailboxes() {
         if (row.folder === 'spam') spamByOwner.set(row.owner, row.unread);
         else inboxByOwner.set(row.owner, row.unread);
     });
-    return [HUMAN_OWNER, ...BOT_OWNERS].map((owner) => ({
+    const owners = [HUMAN_OWNER, ...BOT_OWNERS];
+    extraOwners().forEach((owner) => {
+        if (!owners.includes(owner)) owners.push(owner);
+    });
+    return owners.map((owner) => ({
         owner,
         unread: inboxByOwner.get(owner) || 0,
         spamUnread: spamByOwner.get(owner) || 0

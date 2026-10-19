@@ -556,6 +556,10 @@ class ConfigManager {
                     replication: JSON.parse(JSON.stringify(DEFAULT_REPLICATION_CONFIG)),
                     mailGateway: {
                         smtpPassword: ''
+                    },
+                    mailExchange: {
+                        relayReadToken: '',
+                        relayAdminToken: ''
                     }
                 };
             case 'config':
@@ -638,6 +642,13 @@ class ConfigManager {
                     director: {
                         idleShutdownMinutes: 15
                     },
+                    mailExchange: {
+                        enabled: false,
+                        relay: {
+                            baseUrl: 'http://192.168.255.1:8787',
+                            timeoutMs: 5000
+                        }
+                    },
                     mailGateway: {
                         enabled: false,
                         domain: 'dream.737.jp.net',
@@ -682,6 +693,7 @@ class ConfigManager {
                             // 'tifa.<dept>': 'tifa',
                             // 'pyra.<dept>': 'pyra',
                             // Never map ykazari@icloud.com or any external domain.
+                            // Yukimi's public address is kazari.ops@dream.737.jp.net.
                         },
                         spam: {
                             flagHeader: 'X-Spam-Flag',

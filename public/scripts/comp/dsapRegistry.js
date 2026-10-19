@@ -155,6 +155,7 @@ function getDsapMenuEntries() {
             appMenu: me.appMenu !== false,
             appRootOnly: !!me.appRootOnly,
             desktopOnly: !!me.desktopOnly,
+            adminOnly: !!me.adminOnly,
             action
         });
     }

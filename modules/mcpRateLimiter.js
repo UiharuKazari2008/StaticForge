@@ -182,7 +182,17 @@ const TOOL_RATE_GROUPS = {
     mailroom_purge_mail: 'write',
     mark_mail: 'mail',
     list_mail: 'mail',
-    read_mail: 'mail'
+    read_mail: 'mail',
+    exchange_list_mailboxes: 'mail',
+    exchange_create_mailbox: 'write',
+    exchange_disable_mailbox: 'write',
+    exchange_delete_mailbox: 'write',
+    exchange_mailbox_key: 'write',
+    exchange_aliases: 'write',
+    exchange_signatures: 'write',
+    exchange_toggles: 'write',
+    exchange_status: 'free',
+    exchange_spam: 'mail'
 };
 
 const rateGroupHits = new Map();

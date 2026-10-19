@@ -45,7 +45,8 @@ const RESERVED_DSAP_HOSTS = new Set([
     'wiki.dyna.dreamscape.jp', 'mcp.dreamscape.jp',
     'zanzou.dyna.dreamscape.jp', 'similar.dyna.dreamscape.jp',
     'review.dyna.dreamscape.jp', 'vibes.novelai.net',
-    'en.grimoire.jp'
+    'en.grimoire.jp',
+    'exchange.dreamscape.jp'
 ]);
 
 class MelatonPackageError extends Error {
