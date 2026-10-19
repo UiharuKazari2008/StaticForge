@@ -157,6 +157,11 @@ function main() {
     assert.ok(fs.existsSync(path.join(__dirname, '..', 'public/static_images/vista-icons/net-limited-16.png')));
     assert.ok(fs.existsSync(path.join(__dirname, '..', 'public/static_images/vista-icons/net-internet-recv-16.png')));
     assert.ok(fs.existsSync(path.join(__dirname, '..', 'public/static_images/vista-icons/net-internet-send-16.png')));
+    const mcpFacade = fs.readFileSync(path.join(__dirname, '..', 'modules/mcpAgentFacade.js'), 'utf8');
+    assert.match(mcpFacade, /`external` is true for gateway inbound\/outbound mail/);
+    assert.match(mcpFacade, /`external` is true for gateway mail/);
+    assert.match(mcpFacade, /external: route !== 'internal'/);
+    assert.match(mcpFacade, /route === 'inbound' \|\| mail\.route === 'outbound' \? mail\.route : 'internal'/);
 
     // 9. Read receipts (#2): sent rows show a check once readByRecipient is true.
     assert.match(dovecoteJs, /mail\.readByRecipient/);

@@ -1234,6 +1234,21 @@ function testRouteTagging() {
     const legacy = mail.readMail('rook', legacyId);
     assert.strictEqual(legacy.route, 'internal');
     assert.strictEqual(legacy.external, false);
+
+    // MCP list_mail/read_mail re-assert route + external from the stored path only.
+    const facade = fs.readFileSync(path.join(__dirname, '..', 'modules/mcpAgentFacade.js'), 'utf8');
+    assert.match(facade, /external: route !== 'internal'/);
+    assert.match(facade, /`external` is true for gateway inbound\/outbound mail/);
+    const asMcp = (row) => {
+        const route = row.route === 'inbound' || row.route === 'outbound' ? row.route : 'internal';
+        return Object.assign({}, row, { route, external: route !== 'internal' });
+    };
+    const mcpInbound = asMcp(mail.readMail('guren', inbound.id));
+    assert.strictEqual(mcpInbound.route, 'inbound');
+    assert.strictEqual(mcpInbound.external, true);
+    const mcpInternal = asMcp(inbox);
+    assert.strictEqual(mcpInternal.route, 'internal');
+    assert.strictEqual(mcpInternal.external, false);
 }
 
 async function testSpoofedFromLabels() {
