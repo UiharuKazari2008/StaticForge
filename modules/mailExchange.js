@@ -730,18 +730,30 @@ function defaultToggles() {
     };
 }
 
+function cloneToggleMap(map) {
+    const out = {};
+    Object.entries(map && typeof map === 'object' && !Array.isArray(map) ? map : {}).forEach(([key, value]) => {
+        if (value && typeof value === 'object' && !Array.isArray(value)) out[key] = Object.assign({}, value);
+    });
+    return out;
+}
+
 function readToggles() {
     if (!isReady()) return defaultToggles();
     const row = getDb().prepare('SELECT value FROM exchange_setting WHERE key = ?').get('toggles');
     if (!row) return defaultToggles();
     try {
         const parsed = JSON.parse(row.value);
-        return Object.assign(defaultToggles(), parsed, {
-            mailboxes: parsed.mailboxes && typeof parsed.mailboxes === 'object' ? parsed.mailboxes : {},
-            services: parsed.services && typeof parsed.services === 'object'
-                ? Object.assign({ yozora: { outbound: true } }, parsed.services)
-                : { yozora: { outbound: true } }
-        });
+        const next = defaultToggles();
+        if (typeof parsed.inbound === 'boolean') next.inbound = parsed.inbound;
+        if (typeof parsed.outbound === 'boolean') next.outbound = parsed.outbound;
+        if (parsed.mailboxes && typeof parsed.mailboxes === 'object' && !Array.isArray(parsed.mailboxes)) {
+            next.mailboxes = cloneToggleMap(parsed.mailboxes);
+        }
+        if (parsed.services && typeof parsed.services === 'object' && !Array.isArray(parsed.services)) {
+            next.services = cloneToggleMap(parsed.services);
+        }
+        return next;
     } catch (_err) {
         return defaultToggles();
     }
@@ -759,25 +771,72 @@ function getToggles() {
     return readToggles();
 }
 
-async function setToggles(actor, { inbound, outbound, mailboxes, services, confirm, relay } = {}) {
+function requireBoolField(value, field) {
+    if (value === true || value === false) return value;
+    throw new MailExchangeError(`${field} must be a boolean`, 'BAD_BODY');
+}
+
+function mergeNamedToggles(current, patch, kind) {
+    if (patch == null || typeof patch !== 'object' || Array.isArray(patch)) {
+        throw new MailExchangeError(`${kind} must be an object`, 'BAD_BODY');
+    }
+    const next = cloneToggleMap(current);
+    Object.entries(patch).forEach(([rawKey, value]) => {
+        const key = String(rawKey || '').trim().toLowerCase();
+        if (!key) throw new MailExchangeError(`${kind} name is required`, 'BAD_BODY');
+        if (value === null) {
+            delete next[key];
+            return;
+        }
+        if (typeof value !== 'object' || Array.isArray(value)) {
+            throw new MailExchangeError(`${kind} entry must be an object or null`, 'BAD_BODY');
+        }
+        const prev = next[key] ? Object.assign({}, next[key]) : {};
+        if (Object.prototype.hasOwnProperty.call(value, 'inbound')) {
+            prev.inbound = requireBoolField(value.inbound, 'inbound');
+        }
+        if (Object.prototype.hasOwnProperty.call(value, 'outbound')) {
+            prev.outbound = requireBoolField(value.outbound, 'outbound');
+        }
+        next[key] = prev;
+    });
+    return next;
+}
+
+function pickRelayTogglePatch(patch) {
+    const body = {};
+    if (patch.inbound !== undefined) body.inbound = patch.inbound;
+    if (patch.outbound !== undefined) body.outbound = patch.outbound;
+    if (patch.mailboxes !== undefined) body.mailboxes = patch.mailboxes;
+    if (patch.services !== undefined) body.services = patch.services;
+    return body;
+}
+
+async function setToggles(actor, patch = {}) {
     const admin = requireExchangeAdmin(actor, 'set_toggles', 'global');
     requireEnabled(admin, 'set_toggles', 'global');
-    requireConfirm(confirm, 'set_toggles');
+    requireConfirm(patch.confirm, 'set_toggles');
     const current = readToggles();
     const next = {
-        inbound: inbound == null ? current.inbound : inbound !== false,
-        outbound: outbound == null ? current.outbound : outbound !== false,
-        mailboxes: mailboxes && typeof mailboxes === 'object' ? mailboxes : current.mailboxes,
-        services: services && typeof services === 'object' ? services : current.services
+        inbound: current.inbound,
+        outbound: current.outbound,
+        mailboxes: cloneToggleMap(current.mailboxes),
+        services: cloneToggleMap(current.services)
     };
+    if (patch.inbound !== undefined) next.inbound = requireBoolField(patch.inbound, 'inbound');
+    if (patch.outbound !== undefined) next.outbound = requireBoolField(patch.outbound, 'outbound');
+    if (patch.mailboxes !== undefined) next.mailboxes = mergeNamedToggles(next.mailboxes, patch.mailboxes, 'mailboxes');
+    if (patch.services !== undefined) next.services = mergeNamedToggles(next.services, patch.services, 'services');
     writeToggles(next);
     audit(admin, 'set_toggles', 'global', true, `inbound=${next.inbound} outbound=${next.outbound}`);
     let relayResult = { ok: false, skipped: true };
-    if (relay !== false) {
+    if (patch.relay !== false) {
         const client = require('./lantisRelayClient');
-        relayResult = await client.putToggles(next, { actor: admin, confirm: true });
+        relayResult = await client.putToggles(pickRelayTogglePatch(patch), { actor: admin, confirm: true });
         if (!relayResult.ok) {
             audit(admin, 'set_toggles_relay', 'global', false, relayResult.code || 'degraded');
+        } else if (relayResult.data && typeof relayResult.data === 'object') {
+            return { toggles: next, relay: relayResult, relayToggles: relayResult.data };
         }
     }
     return { toggles: next, relay: relayResult };

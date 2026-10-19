@@ -31,7 +31,7 @@ Destructive packets need `confirm: true`. Soft-delete also needs `confirmText: "
 | `exchange_get_signature` | `exchange_get_signature_response` | exchange admin | `{ owner }` → `{ owner, html, address }` |
 | `exchange_set_signature` | `exchange_set_signature_response` | exchange admin / destructive | HTML sanitized; appended to outbound |
 | `exchange_get_toggles` | `exchange_get_toggles_response` | exchange admin | `{ toggles: { inbound, outbound, mailboxes, services } }` |
-| `exchange_set_toggles` | `exchange_set_toggles_response` | exchange admin / destructive | Local store + `PUT /v1/toggles` on LANTIS with admin token and `actor` |
+| `exchange_set_toggles` | `exchange_set_toggles_response` | exchange admin / destructive | PATCH-like local store + `PUT /v1/toggles` with admin token and `actor` (no `confirm` on the relay). Relay `400` codes `UNKNOWN_MAILBOX` / `UNKNOWN_SERVICE` / `BAD_BODY` / `ACTOR_REQUIRED` come back on `relay` with a friendly message |
 | `exchange_dashboard` | `exchange_dashboard_response` | exchange admin | Intake listener, Postfix, queue, filters, OCI senders+DKIM, WireGuard, blocklists, rejects. `degraded` when the relay is down |
 | `exchange_list_spam` | `exchange_list_spam_response` | exchange admin | Tsubame: all mailboxes. Yukimi/Sala: Yukimi Spam-only |
 | `exchange_spam_move` | `exchange_spam_move_response` | exchange admin / destructive | Rescue/purge via mailroom tools; never Yukimi |

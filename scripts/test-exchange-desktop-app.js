@@ -34,6 +34,17 @@ function main() {
     assert.doesNotMatch(exchangeJs, /custom-dropdown/);
     assert.match(exchangeJs, /contextMenu\.attachClickMenuToElement/);
     assert.match(exchangeJs, /kazari\.ops@dream\.737\.jp\.net/);
+    assert.match(exchangeJs, /function exchangeRelayFriendly/);
+    assert.match(exchangeJs, /UNKNOWN_MAILBOX/);
+    assert.match(exchangeJs, /UNKNOWN_SERVICE/);
+    assert.match(exchangeJs, /BAD_BODY/);
+    assert.match(exchangeJs, /ACTOR_REQUIRED/);
+    assert.match(exchangeJs, /exchange-from-list/);
+    assert.match(exchangeJs, /Lookup answered correctly/);
+    assert.match(exchangeJs, /Our IP listed/);
+    assert.match(exchangeJs, /refreshed_at/);
+    assert.match(exchangeJs, /function exchangeFormatAge/);
+    assert.match(exchangeCss, /exchange-from-list/);
     assert.match(exchangeJs, /confirmText: 'DELETE'/);
     assert.match(exchangeJs, /showInputDialog/);
     assert.doesNotMatch(exchangeJs, /relayReadToken|relayAdminToken/);

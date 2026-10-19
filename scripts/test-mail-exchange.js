@@ -98,12 +98,22 @@ async function testRelayMockAndClient() {
         adminToken: mock.adminToken
     });
     try {
+        assert.strictEqual(relayClient.DEFAULT_BASE_URL, 'http://192.168.255.1:8787');
+        const status = await relayClient.getStatus();
+        assert.strictEqual(status.data.oci.sender, 'kazari.ops@dream.737.jp.net');
+
         const senders = await relayClient.getSenders();
         assert.strictEqual(senders.ok, true);
-        assert.ok(senders.data.oci.approved.some((row) => row.email === 'dreamscape@dream.737.jp.net'));
+        assert.strictEqual(senders.data.refreshed_at, '2026-10-19T21:00:00Z');
+        assert.match(senders.data.refreshed_at, /Z$/);
+        assert.ok(senders.data.oci.approved.some((row) => row.email === 'kazari.ops@dream.737.jp.net'));
+        assert.ok(!senders.data.oci.approved.some((row) => row.email === 'dreamscape@dream.737.jp.net'));
+        assert.strictEqual(senders.data.submission[0].login, 'dreamscape@dream.737.jp.net');
+        assert.ok(senders.data.submission[0].from.includes('*@dream.737.jp.net'));
         assert.ok(senders.data.submission[0].from.includes('kazari.ops@dream.737.jp.net'));
         assert.ok(senders.data.submission[0].from.includes('kazari@dream.737.jp.net'));
         assert.ok(senders.data.submission[0].from.includes('yukimi.kazari@dream.737.jp.net'));
+        assert.ok(senders.data.submission[0].from.length > 6);
 
         const toggles = await relayClient.getToggles();
         assert.strictEqual(toggles.ok, true);
@@ -116,24 +126,97 @@ async function testRelayMockAndClient() {
                 Authorization: `Bearer ${mock.readToken}`,
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ actor: 'yukimi', inbound: false, confirm: true })
+            body: JSON.stringify({ actor: 'yukimi', inbound: false })
         });
         assert.strictEqual(denied.status, 403);
 
-        const put = await relayClient.putToggles(
-            { inbound: true, outbound: false, mailboxes: { yukimi: { inbound: true, outbound: false } }, services: { yozora: { outbound: false } } },
+        const outboundOnly = await relayClient.putToggles(
+            { outbound: false },
             { actor: 'yukimi', confirm: true }
         );
-        assert.strictEqual(put.ok, true);
-        assert.strictEqual(put.data.outbound, false);
-        assert.strictEqual(put.data.services.yozora.outbound, false);
+        assert.strictEqual(outboundOnly.ok, true);
+        assert.strictEqual(outboundOnly.data.outbound, false);
+        assert.strictEqual(outboundOnly.data.inbound, true);
+        assert.strictEqual(outboundOnly.data.mailboxes.sala.outbound, true);
+        assert.ok(!Object.prototype.hasOwnProperty.call(mock.state.lastPutBody, 'confirm'));
+        assert.ok(!Object.prototype.hasOwnProperty.call(mock.state.lastPutBody, 'inbound'));
+        assert.strictEqual(mock.state.lastPutBody.actor, 'yukimi');
+        assert.strictEqual(mock.state.lastPutBody.outbound, false);
+
+        const mailboxPatch = await relayClient.putToggles(
+            { mailboxes: { yukimi: { inbound: false } } },
+            { actor: 'sala', confirm: true }
+        );
+        assert.strictEqual(mailboxPatch.ok, true);
+        assert.strictEqual(mailboxPatch.data.mailboxes.yukimi.inbound, false);
+        assert.strictEqual(mailboxPatch.data.mailboxes.yukimi.outbound, true);
+        assert.strictEqual(mailboxPatch.data.mailboxes.sala.inbound, true);
+        assert.strictEqual(mailboxPatch.data.inbound, true);
+
+        const deleted = await relayClient.putToggles(
+            { mailboxes: { sala: null } },
+            { actor: 'yukimi', confirm: true }
+        );
+        assert.strictEqual(deleted.ok, true);
+        assert.strictEqual(deleted.data.mailboxes.sala, undefined);
+
+        const unknownBox = await relayClient.putToggles(
+            { mailboxes: { nova: { inbound: false } } },
+            { actor: 'yukimi', confirm: true }
+        );
+        assert.strictEqual(unknownBox.ok, false);
+        assert.strictEqual(unknownBox.degraded, false);
+        assert.strictEqual(unknownBox.code, 'UNKNOWN_MAILBOX');
+        assert.strictEqual(unknownBox.friendly, relayClient.friendlyRelayError('UNKNOWN_MAILBOX'));
+
+        const unknownSvc = await relayClient.putToggles(
+            { services: { smtp: { outbound: false } } },
+            { actor: 'yukimi', confirm: true }
+        );
+        assert.strictEqual(unknownSvc.code, 'UNKNOWN_SERVICE');
+        assert.strictEqual(unknownSvc.friendly, relayClient.friendlyRelayError('UNKNOWN_SERVICE'));
+
+        const badBody = await relayClient.putToggles(
+            { inbound: 'no' },
+            { actor: 'yukimi', confirm: true }
+        );
+        assert.strictEqual(badBody.code, 'BAD_BODY');
+        assert.strictEqual(badBody.friendly, relayClient.friendlyRelayError('BAD_BODY'));
+
+        const emptyActor = await fetch(`${mock.baseUrl}/v1/toggles`, {
+            method: 'PUT',
+            headers: {
+                Authorization: `Bearer ${mock.adminToken}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ actor: '  ', outbound: true })
+        });
+        assert.strictEqual(emptyActor.status, 400);
+        const emptyJson = await emptyActor.json();
+        assert.strictEqual(emptyJson.code, 'ACTOR_REQUIRED');
+
+        const missingActor = await relayClient.putToggles({ outbound: true }, { confirm: true });
+        assert.strictEqual(missingActor.code, 'ACTOR_REQUIRED');
+        assert.strictEqual(missingActor.degraded, false);
+
+        const noConfirm = await relayClient.putToggles({ outbound: true }, { actor: 'yukimi' });
+        assert.strictEqual(noConfirm.code, 'CONFIRM_REQUIRED');
+
         assert.strictEqual(mock.state.audit[0].actor, 'yukimi');
         assert.strictEqual(mock.state.audit[0].action, 'toggles');
         assert.ok(!JSON.stringify(mock.state.audit).includes(mock.readToken));
         assert.ok(!JSON.stringify(mock.state.audit).includes(mock.adminToken));
 
-        const missingActor = await relayClient.putToggles({ outbound: true }, { confirm: true });
-        assert.strictEqual(missingActor.code, 'ACTOR_REQUIRED');
+        const localPatch = await exchange.setToggles('yukimi', {
+            outbound: false,
+            mailboxes: { ivory: { inbound: false } },
+            confirm: true,
+            relay: false
+        });
+        assert.strictEqual(localPatch.toggles.inbound, true);
+        assert.strictEqual(localPatch.toggles.outbound, false);
+        assert.strictEqual(localPatch.toggles.mailboxes.ivory.inbound, false);
+        assert.strictEqual(localPatch.relay.skipped, true);
     } finally {
         relayClient.resetForTests();
         await mock.close();
@@ -304,8 +387,15 @@ function testTokensStayServerSide() {
     assert.match(clientSrc, /relayReadToken/);
     assert.match(clientSrc, /relayAdminToken/);
     assert.match(docSrc, /GET \/v1\/senders/);
+    assert.match(docSrc, /refreshed_at/);
+    assert.match(docSrc, /UNKNOWN_MAILBOX/);
+    assert.match(docSrc, /UNKNOWN_SERVICE/);
+    assert.match(docSrc, /BAD_BODY/);
+    assert.match(docSrc, /ACTOR_REQUIRED/);
     assert.match(docSrc, /mailboxes/);
     assert.match(docSrc, /actor/);
+    assert.match(clientSrc, /pickTogglePatch/);
+    assert.doesNotMatch(clientSrc, /confirm: true \}/);
     assert.match(secureMap, /relayReadToken/);
     assert.match(secureMap, /relayAdminToken/);
     assert.match(scopesSrc, /persona: 'sala'/);

@@ -6,8 +6,10 @@ this service on LANTIS. Dreamscape only consumes it.
 
 ## Reachability
 
-- Bound on the LANTIS WireGuard address (suggested `192.168.255.1`).
-- Reachable **only** from `192.168.255.0/24`. Do not publish on the WAN.
+- Bound on the LANTIS WireGuard address `192.168.255.1`.
+- Base URL `http://192.168.255.1:8787` (Dreamscape `DEFAULT_BASE_URL`); paths
+  are under `/v1`. Reachable **only** from `192.168.255.0/24`. Do not publish
+  on the WAN.
 - TLS optional on the WG mesh; Dreamscape still sends `Authorization`.
 - JSON request and response bodies only. No HTML.
 
@@ -28,8 +30,10 @@ Send `Authorization: Bearer <token>`. A GET with the admin token may be
 accepted; a mutation with the read token must be `403`.
 
 Dreamscape includes an `actor` field on every mutating body (mailbox owner:
-`yukimi`, `sala`, or `tsubame` / Tsubame; `mailroom` is the role alias). The relay **must audit-log**
-every mutation: actor, action, target, time. No secrets in that log.
+`yukimi`, `sala`, or `tsubame` / Tsubame; `mailroom` is the role alias). The
+relay **must audit-log** every mutation: actor, action, target, time. No
+secrets in that log. `confirm` is Dreamscape-client-only and is **not** part
+of the relay body.
 
 ## Timeouts and errors
 
@@ -40,7 +44,7 @@ every mutation: actor, action, target, time. No secrets in that log.
 
 ## Endpoints
 
-Base path `/v1`. Suggested listen `:8787` on the WG address.
+Base path `/v1`. Listen `:8787` on `192.168.255.1`.
 
 ### `GET /v1/status`
 
@@ -57,14 +61,16 @@ Intake-adjacent health for the Exchange dashboard.
   },
   "wireguard": { "up": true, "interface": "wg0", "peer": "192.168.255.2" },
   "oci": {
-    "sender": "dreamscape@dream.737.jp.net",
+    "sender": "kazari.ops@dream.737.jp.net",
     "dkim": "ok"
   }
 }
 ```
 
 `filters.*` values: `up` | `down` | `unknown`. `oci.dkim`: `ok` | `missing` |
-`fail` | `unknown`.
+`fail` | `unknown`. `oci.sender` is the OCI Email Delivery approved sender
+(`kazari.ops@dream.737.jp.net`). `dreamscape@dream.737.jp.net` is a Postfix
+submission login only, not an OCI sender.
 
 ### `GET /v1/queue`
 
@@ -96,7 +102,15 @@ Per-list test-point lookup plus SpamAssassin rules freshness.
 ```
 
 Test points are the list operator's documented never/always-listed probes,
-not a scan of live mail. `ok: false` means the lookup itself failed.
+not a scan of live mail.
+
+- `ok: true` — the test-point **answered correctly** (the lookup itself
+  succeeded). `ok: false` means the lookup failed; `listed` is then
+  untrusted.
+- `listed: true` — **our IP is listed** on that blocklist. `listed: false`
+  means the test-point said we are not listed.
+
+Label both fields separately in any UI. Do not treat `ok` as “not listed”.
 
 ### `GET /v1/rejects?since=&limit=`
 
@@ -121,16 +135,23 @@ Do not include message bodies or AUTH secrets.
 
 ### `GET /v1/senders`
 
-OCI Email Delivery approved senders, plus Postfix submission logins and the
-From addresses each login may use. Yukimi's public From is
-`kazari.ops@dream.737.jp.net` (aliases `kazari@`, `yukimi.kazari@`).
+OCI Email Delivery approved senders (a snapshot with `refreshed_at`) plus
+Postfix submission logins and the From addresses each login may use.
+Yukimi's public From is `kazari.ops@dream.737.jp.net` (aliases `kazari@`,
+`yukimi.kazari@`). `dreamscape@dream.737.jp.net` is the submission login,
+not an OCI sender.
+
+`submission.from` may be long: Postfix can expand a wildcard
+(`*@dream.737.jp.net`) into many addresses. Clients must render a compact,
+collapsible list rather than dumping the array.
 
 ```json
 {
+  "refreshed_at": "2026-10-19T21:00:00Z",
   "oci": {
     "approved": [
       {
-        "email": "dreamscape@dream.737.jp.net",
+        "email": "kazari.ops@dream.737.jp.net",
         "dkim": "ok",
         "state": "approved"
       }
@@ -140,6 +161,7 @@ From addresses each login may use. Yukimi's public From is
     {
       "login": "dreamscape@dream.737.jp.net",
       "from": [
+        "*@dream.737.jp.net",
         "kazari.ops@dream.737.jp.net",
         "kazari@dream.737.jp.net",
         "yukimi.kazari@dream.737.jp.net",
@@ -151,6 +173,9 @@ From addresses each login may use. Yukimi's public From is
   ]
 }
 ```
+
+`refreshed_at` is ISO-8601 UTC for the whole senders snapshot. Show its age
+in the UI.
 
 ### `GET /v1/toggles`
 
@@ -177,17 +202,31 @@ unreachable.
 
 ### `PUT /v1/toggles`
 
-Admin token required. Body is the GET shape plus `actor` (required) and
-optional `confirm: true` (Dreamscape always sends confirm on mutations).
+Admin token required. Semantics are **PATCH-like**, not replace:
+
+- A missing `inbound` or `outbound` field is left **unchanged**. The server
+  does not default a missing field to `true`.
+- `mailboxes` and `services` merge **per key**. Omitted keys stay.
+- JSON `null` for a mailbox or service key **deletes** that entry.
+- Unknown mailbox name → `400`
+  `{ "error": "Unknown mailbox nova", "code": "UNKNOWN_MAILBOX" }`.
+- Unknown service name → `400`
+  `{ "error": "Unknown service smtp", "code": "UNKNOWN_SERVICE" }`.
+- A present `inbound`/`outbound` that is not a boolean → `400`
+  `{ "error": "inbound must be a boolean", "code": "BAD_BODY" }`.
+- Missing or empty `actor` → `400`
+  `{ "error": "actor is required", "code": "ACTOR_REQUIRED" }`.
+- Response is the **full** toggle document after the change (GET shape, no
+  `actor`).
+- `confirm` is not a relay field (Dreamscape prompts before calling).
 
 ```json
 {
   "actor": "yukimi",
-  "confirm": true,
-  "inbound": true,
   "outbound": false,
   "mailboxes": {
-    "yukimi": { "inbound": true, "outbound": false }
+    "yukimi": { "inbound": false },
+    "sala": null
   },
   "services": {
     "yozora": { "outbound": false }
@@ -195,8 +234,15 @@ optional `confirm: true` (Dreamscape always sends confirm on mutations).
 }
 ```
 
-Response is the resulting toggle document (same as GET, without `actor`).
-Audit on the relay: `{ actor, action: "toggles", target: "global"|mailbox|service, time }`.
+In that example global inbound is untouched, global outbound becomes false,
+`yukimi.inbound` is set and `yukimi.outbound` is untouched, the `sala`
+override is removed, and Yozora outbound is set false.
+
+Mailbox/service objects merge the same way: a missing `inbound`/`outbound`
+on that key is left unchanged.
+
+Audit on the relay:
+`{ actor, action: "toggles", target: "global"|mailbox|service, time }`.
 
 ## Dreamscape client
 
