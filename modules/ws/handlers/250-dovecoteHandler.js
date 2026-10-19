@@ -34,7 +34,8 @@ async function handleListMailboxes(handlersCtx, ws, message) {
         const mailboxes = dovecoteMail.listMailboxes().map((entry) => ({
             owner: entry.owner,
             label: MAILBOX_LABELS[entry.owner] || entry.owner,
-            unread: entry.unread
+            unread: entry.unread,
+            spamUnread: entry.spamUnread || 0
         }));
         handlersCtx.sendToClient(ws, {
             type: 'dovecote_list_mailboxes_response',
@@ -131,7 +132,8 @@ async function handleMarkMail(handlersCtx, ws, message) {
             read: typeof message.read === 'boolean' ? message.read : undefined,
             archived: typeof message.archived === 'boolean' ? message.archived : undefined,
             deleted: typeof message.deleted === 'boolean' ? message.deleted : undefined,
-            archiveSubfolder: message.archiveSubfolder
+            archiveSubfolder: message.archiveSubfolder,
+            spam: typeof message.spam === 'boolean' ? message.spam : undefined
         });
         if (!mail) {
             handlersCtx.sendError(ws, 'Message not found', 'MESSAGE_NOT_FOUND', message.requestId);
@@ -282,7 +284,8 @@ function bindMailboxPush(handlersCtx) {
             const mailboxes = dovecoteMail.listMailboxes().map((entry) => ({
                 owner: entry.owner,
                 label: MAILBOX_LABELS[entry.owner] || entry.owner,
-                unread: entry.unread
+                unread: entry.unread,
+                spamUnread: entry.spamUnread || 0
             }));
             const inbox = {};
             const unreadInbox = {};

@@ -676,6 +676,13 @@ class ConfigManager {
                             // 'tifa.<dept>': 'tifa',
                             // 'pyra.<dept>': 'pyra',
                         },
+                        spam: {
+                            flagHeader: 'X-Spam-Flag',
+                            statusHeader: 'X-Spam-Status',
+                            authenticationResultsHeader: 'Authentication-Results',
+                            receivedSpfHeader: 'Received-SPF',
+                            authservId: ''
+                        },
                         pendingMailboxes: {
                             tifa: null,
                             pyra: null

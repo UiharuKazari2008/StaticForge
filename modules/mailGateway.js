@@ -14,6 +14,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const addresses = require('./mailGatewayAddresses');
 const inbound = require('./mailGatewayInbound');
+const spam = require('./mailGatewaySpam');
 
 const DEFAULT_INBOUND_PORT = 2525;
 // vlan10 source toward 192.168.255.1. Do not listen on 0.0.0.0; override inbound.bind if this host uses another NIC.
@@ -111,6 +112,7 @@ function resolveConfig(extra) {
                 ? Number(inboundCfg.maxDataBytes)
                 : inbound.DEFAULT_MAX_DATA_BYTES
         },
+        spam: spam.resolveSpamConfig(raw.spam),
         outbound: {
             host: outbound.host ? String(outbound.host) : DEFAULT_OUTBOUND_HOST,
             port: Number.isFinite(Number(outbound.port))
@@ -493,7 +495,8 @@ function startInbound(options) {
         sessionTimeoutMs: (options && options.sessionTimeoutMs) || cfg.inbound.sessionTimeoutMs,
         idleTimeoutMs: (options && options.idleTimeoutMs) || cfg.inbound.idleTimeoutMs,
         maxCommandLine: options && options.maxCommandLine,
-        maxDataLine: options && options.maxDataLine
+        maxDataLine: options && options.maxDataLine,
+        spam: (options && options.spam) || cfg.spam
     };
 
     return new Promise((resolve, reject) => {

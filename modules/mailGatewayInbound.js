@@ -9,6 +9,7 @@
 
 const addresses = require('./mailGatewayAddresses');
 const mime = require('./mailGatewayMime');
+const spam = require('./mailGatewaySpam');
 
 const CRLF = Buffer.from('\r\n');
 const DEFAULT_MAX_COMMAND_LINE = 512;
@@ -92,6 +93,7 @@ function handleInboundConnection(socket, options) {
     const allowFrom = options.allowFrom;
     const mapping = options.mapping;
     const deliver = options.deliver;
+    const spamConfig = options.spam;
     const maxCommandLine = options.maxCommandLine || DEFAULT_MAX_COMMAND_LINE;
     const maxDataLine = options.maxDataLine || DEFAULT_MAX_DATA_LINE;
     const maxDataBytes = options.maxDataBytes || DEFAULT_MAX_DATA_BYTES;
@@ -226,6 +228,9 @@ function handleInboundConnection(socket, options) {
         }
         const raw = dataLines.join('\r\n');
         const parsed = mime.extractTextBody(raw);
+        const headerEnd = raw.indexOf('\r\n\r\n');
+        const headerBlock = headerEnd === -1 ? raw : raw.slice(0, headerEnd);
+        const spamMark = spam.isInboundSpam(headerBlock, spamConfig);
         const fromCheck = addresses.validateFromHeader(parsed.headers.from, mapping);
         if (!fromCheck.ok) {
             reply(`${fromCheck.code} ${fromCheck.message}`);
@@ -247,7 +252,8 @@ function handleInboundConnection(socket, options) {
                 cc,
                 subject,
                 body,
-                format
+                format,
+                spam: spamMark.spam
             })).then(() => ({ owner, ok: true }));
         }).catch((err) => ({ owner, ok: false, error: err })));
 

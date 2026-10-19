@@ -785,6 +785,7 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
 :is(.dovecote-folder-btn[data-dove-folder="sent"] > i, .dovecote-tree-icon[data-dove-tree-icon="sent"]) { --dove-folder-icon: 9; }
 :is(.dovecote-folder-btn[data-dove-folder="deleted"] > i, .dovecote-tree-icon[data-dove-tree-icon="deleted"]) { --dove-folder-icon: 10; }
 :is(.dovecote-folder-btn[data-dove-folder="archive"] > i, .dovecote-tree-icon[data-dove-tree-icon="archive"]) { --dove-folder-icon: 6; }
+:is(.dovecote-folder-btn[data-dove-folder="spam"] > i, .dovecote-tree-icon[data-dove-tree-icon="spam"]) { --dove-folder-icon: 11; }
 .dovecote-tree-icon[data-dove-tree-icon="local"] { --dove-folder-icon: 20; }
 .dovecote-tree-icon[data-dove-tree-icon="communities"] { --dove-folder-icon: 16; }
 .dovecote-tree-icon[data-dove-tree-icon="mailbox"] { --dove-folder-icon: 21; }

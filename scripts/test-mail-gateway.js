@@ -16,6 +16,7 @@ const gateway = require('../modules/mailGateway');
 const addresses = require('../modules/mailGatewayAddresses');
 const inboundMod = require('../modules/mailGatewayInbound');
 const mime = require('../modules/mailGatewayMime');
+const spam = require('../modules/mailGatewaySpam');
 
 function mapping() {
     return addresses.createMapping({
@@ -665,6 +666,8 @@ function testResolveConfigDefaults() {
     assert.strictEqual(cfg.inbound.bind, gateway.DEFAULT_INBOUND_BIND);
     assert.strictEqual(cfg.inbound.bind, '192.168.200.101');
     assert.strictEqual(cfg.inbound.maxConnections, gateway.DEFAULT_MAX_CONNECTIONS);
+    assert.strictEqual(cfg.spam.flagHeader, 'X-Spam-Flag');
+    assert.strictEqual(cfg.spam.authservId, '');
     assert.ok(!Object.prototype.hasOwnProperty.call(cfg.outbound, 'rejectUnauthorized'));
     const tlsOpts = gateway.tlsVerifyOptions(Object.assign({}, cfg.outbound, { rejectUnauthorized: false }));
     assert.strictEqual(tlsOpts.rejectUnauthorized, true);
@@ -1340,6 +1343,143 @@ async function testSpoofedFromLabels() {
     assert.strictEqual(bounce.from, addresses.NULL_SENDER);
 }
 
+function testSpamHeaderTrust() {
+    const ham = [
+        'From: alice@example.com',
+        'Subject: clean'
+    ].join('\r\n');
+    assert.strictEqual(spam.isInboundSpam(ham).spam, false);
+
+    const topYes = [
+        'X-Spam-Flag: YES',
+        'From: alice@example.com',
+        'X-Spam-Flag: NO'
+    ].join('\r\n');
+    assert.strictEqual(spam.isInboundSpam(topYes).spam, true);
+
+    const forgedLower = [
+        'X-Spam-Flag: NO',
+        'From: alice@example.com',
+        'X-Spam-Flag: YES',
+        'X-Spam-Status: Yes, score=99'
+    ].join('\r\n');
+    // Topmost flag is NO (does not rescue) but also does not count; the lower
+    // YES / Yes copies sit at or below From and must be ignored.
+    assert.strictEqual(spam.isInboundSpam(forgedLower).spam, false);
+
+    const statusYes = [
+        'X-Spam-Status: Yes, score=8.1 required=5.0',
+        'X-Spam-Flag: NO',
+        'From: alice@example.com'
+    ].join('\r\n');
+    assert.strictEqual(spam.isInboundSpam(statusYes).spam, true, 'NO must not rescue a Yes status');
+
+    const flagThenStatus = [
+        'X-Spam-Flag: NO',
+        'X-Spam-Status: Yes, score=8.1',
+        'From: alice@example.com'
+    ].join('\r\n');
+    assert.strictEqual(spam.isInboundSpam(flagThenStatus).spam, true, 'NO must not rescue a trusted Yes status');
+
+    const lateSpf = [
+        'From: alice@example.com',
+        'Received-SPF: fail (sender)'
+    ].join('\r\n');
+    assert.strictEqual(spam.isInboundSpam(lateSpf).spam, false);
+
+    const spfFail = [
+        'Received-SPF: fail (mx: sender is not permitted)',
+        'Received-SPF: pass (forged)',
+        'From: alice@example.com'
+    ].join('\r\n');
+    assert.strictEqual(spam.isInboundSpam(spfFail).spam, true);
+    const forgedSpf = [
+        'Received-SPF: pass (relay)',
+        'Received-SPF: fail (sender)',
+        'From: alice@example.com'
+    ].join('\r\n');
+    assert.strictEqual(spam.isInboundSpam(forgedSpf).spam, false);
+
+    const arFail = [
+        'Authentication-Results: mx.dream.737.jp.net; dkim=pass; dmarc=fail header.from=ext.com',
+        'Authentication-Results: evil.example; dkim=pass; dmarc=pass',
+        'From: alice@example.com'
+    ].join('\r\n');
+    assert.strictEqual(spam.isInboundSpam(arFail).spam, true);
+    const arForgedOnly = [
+        'Authentication-Results: evil.example; dmarc=fail',
+        'From: alice@example.com'
+    ].join('\r\n');
+    assert.strictEqual(spam.isInboundSpam(arForgedOnly, { authservId: 'mx.dream.737.jp.net' }).spam, false);
+    assert.strictEqual(spam.isInboundSpam(arFail, { authservId: 'mx.dream.737.jp.net' }).spam, true);
+    assert.strictEqual(spam.isInboundSpam(arFail, { authservId: 'other.relay' }).spam, false);
+
+    const custom = [
+        'X-Lantis-Spam: YES',
+        'X-Spam-Flag: NO',
+        'From: alice@example.com'
+    ].join('\r\n');
+    assert.strictEqual(spam.isInboundSpam(custom, { flagHeader: 'X-Lantis-Spam' }).spam, true);
+}
+
+function testInternalNeverSpam() {
+    const sent = mail.sendMail({ fromOwner: 'sala', to: 'chiyo', subject: 'not-spam-internal', body: 'hi' });
+    const inbox = mail.listMail('chiyo', { folder: 'inbox' }).find((row) => row.subject === 'not-spam-internal');
+    const spamList = mail.listMail('chiyo', { folder: 'spam' });
+    assert.ok(inbox);
+    assert.strictEqual(inbox.folder, 'inbox');
+    assert.strictEqual(inbox.route, 'internal');
+    assert.ok(!spamList.some((row) => row.subject === 'not-spam-internal'));
+    assert.strictEqual(mail.listMail('sala', { folder: 'sent' }).find((row) => row.id === sent.id).folder, 'sent');
+}
+
+async function testInboundSpamDelivery() {
+    const stored = [];
+    const inbound = await gateway.startInbound({
+        port: 0,
+        bind: '127.0.0.1',
+        allowFrom: ['127.0.0.1'],
+        mapping: mapping(),
+        deliver: async (msg) => stored.push(mail.deliverInboundMail(msg))
+    });
+    try {
+        const socket = await connectSmtp(inbound.port);
+        const reader = createLineReader(socket);
+        await expectCode(reader, 220);
+        socket.write('EHLO test\r\n');
+        await expectCode(reader, 250);
+        socket.write('MAIL FROM:<evil@ext.com>\r\n');
+        await expectCode(reader, 250);
+        socket.write('RCPT TO:<ivory.studio@dream.737.jp.net>\r\n');
+        await expectCode(reader, 250);
+        socket.write('DATA\r\n');
+        await expectCode(reader, 354);
+        socket.write('X-Spam-Flag: YES\r\nX-Spam-Flag: NO\r\nFrom: alice@example.com\r\nSubject: gw-spam\r\n\r\nbody\r\n.\r\n');
+        await expectCode(reader, 250);
+        socket.write('MAIL FROM:<friend@ext.com>\r\n');
+        await expectCode(reader, 250);
+        socket.write('RCPT TO:<ivory.studio@dream.737.jp.net>\r\n');
+        await expectCode(reader, 250);
+        socket.write('DATA\r\n');
+        await expectCode(reader, 354);
+        socket.write('X-Spam-Flag: NO\r\nX-Spam-Flag: YES\r\nFrom: friend@ext.com\r\nSubject: gw-ham\r\n\r\nbody\r\n.\r\n');
+        await expectCode(reader, 250);
+        socket.write('QUIT\r\n');
+        await readReply(reader);
+        socket.end();
+    } finally {
+        await inbound.close();
+    }
+    assert.strictEqual(stored.length, 2);
+    const flagged = mail.readMail('ivory', stored[0].id);
+    assert.strictEqual(flagged.folder, 'spam');
+    assert.strictEqual(flagged.route, 'inbound');
+    assert.strictEqual(flagged.external, true);
+    const ham = mail.readMail('ivory', stored[1].id);
+    assert.strictEqual(ham.folder, 'inbox');
+    assert.strictEqual(ham.route, 'inbound');
+}
+
 function testForwardKeepsInboundRoute() {
     const inbound = mail.deliverInboundMail({
         fromAddress: 'evil@ext.com',
@@ -1431,6 +1571,9 @@ async function main() {
     testRouteTagging();
     await testSpoofedFromLabels();
     testForwardKeepsInboundRoute();
+    testSpamHeaderTrust();
+    testInternalNeverSpam();
+    await testInboundSpamDelivery();
     await testMixedSendRoutes();
     await gateway.resetForTests();
     console.log('mail gateway tests passed');

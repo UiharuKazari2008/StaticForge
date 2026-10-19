@@ -3052,13 +3052,13 @@ const TOOL_DEFS = [
     {
         name: 'list_mail',
         core: true,
-        description: 'List mail in your own Dovecote mailbox. Returns summaries (no body, attachments as metadata only) — use read_mail for the full message. `to` and `cc` are arrays of mailbox names (older single-recipient rows still come back as a one-element `to` and an empty `cc`). Each message has `route` (internal | inbound | outbound) set by the path it took, never from headers; `external` is true for gateway inbound/outbound mail. fromLabel is display-only. The result always includes owner, the mailbox of the calling key, even when mail is empty. read_by_recipient is true once a To recipient has opened a message you sent.',
+        description: 'List mail in your own Dovecote mailbox. Returns summaries (no body, attachments as metadata only) — use read_mail for the full message. `to` and `cc` are arrays of mailbox names (older single-recipient rows still come back as a one-element `to` and an empty `cc`). Each message has `route` (internal | inbound | outbound) set by the path it took, never from headers; `external` is true for gateway inbound/outbound mail. fromLabel is display-only. Pass folder to list one folder (inbox, spam, sent, outbox, deleted, archive). read_mail works on Spam. The result always includes owner, the mailbox of the calling key, even when mail is empty. read_by_recipient is true once a To recipient has opened a message you sent.',
         scope: 'sfapp_dovecote',
         inputSchema: {
             type: 'object',
             additionalProperties: false,
             properties: {
-                folder: { type: 'string', enum: ['inbox', 'outbox', 'sent', 'deleted', 'archive'], description: 'Default: all folders' },
+                folder: { type: 'string', enum: ['inbox', 'spam', 'outbox', 'sent', 'deleted', 'archive'], description: 'Default: all folders. spam is inbound gateway mail the relay marked.' },
                 unreadOnly: { type: 'boolean' },
                 limit: { type: 'number', description: 'Default 50, max 200' }
             }
@@ -3081,7 +3081,7 @@ const TOOL_DEFS = [
     {
         name: 'mark_mail',
         core: true,
-        description: 'Mark a message in your own Dovecote mailbox read/unread, archived, or deleted.',
+        description: 'Mark a message in your own Dovecote mailbox read/unread, archived, deleted, moved to Spam (`spam: true`), or marked not-spam (`spam: false`, moves to inbox). Owner-scoped — ids from other mailboxes 404. Moving folders does not change route, external, or labelSuspicious.',
         scope: 'sfapp_dovecote',
         inputSchema: {
             type: 'object',
@@ -3092,7 +3092,8 @@ const TOOL_DEFS = [
                 read: { type: 'boolean' },
                 archived: { type: 'boolean' },
                 archiveSubfolder: { type: 'string' },
-                deleted: { type: 'boolean' }
+                deleted: { type: 'boolean' },
+                spam: { type: 'boolean', description: 'true: move to Spam. false: not spam, move to inbox.' }
             }
         }
     },
@@ -8982,7 +8983,8 @@ async function callTool(globalResources, req, name, args) {
                     read: typeof input.read === 'boolean' ? input.read : undefined,
                     archived: typeof input.archived === 'boolean' ? input.archived : undefined,
                     deleted: typeof input.deleted === 'boolean' ? input.deleted : undefined,
-                    archiveSubfolder: input.archiveSubfolder
+                    archiveSubfolder: input.archiveSubfolder,
+                    spam: typeof input.spam === 'boolean' ? input.spam : undefined
                 });
                 if (!mail) {
                     const err = new Error('Mail not found');

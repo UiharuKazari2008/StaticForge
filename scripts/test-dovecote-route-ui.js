@@ -12,6 +12,11 @@ const dovecoteJs = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/co
 const dovecoteCss = fs.readFileSync(path.join(__dirname, '..', 'public/css/desktop-apps/dovecote.css'), 'utf8');
 const mcpFacade = fs.readFileSync(path.join(__dirname, '..', 'modules/mcpAgentFacade.js'), 'utf8');
 
+assert.match(dovecoteJs, /id: 'spam', label: 'Spam'/);
+assert.match(dovecoteJs, /Move to Spam/);
+assert.match(dovecoteJs, /Not spam/);
+assert.match(dovecoteJs, /spam: true/);
+assert.match(dovecoteCss, /data-dove-folder="spam"/);
 assert.match(dovecoteJs, /const doveBuildRouteIcon = function/);
 assert.match(dovecoteJs, /dovecote-col-route/);
 assert.match(dovecoteJs, /dovecote-oe-route/);

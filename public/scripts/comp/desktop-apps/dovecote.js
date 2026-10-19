@@ -13,6 +13,7 @@ const DESKTOP_DOVECOTE_HUMAN_OWNER = 'yukimi';
 
 const DESKTOP_DOVECOTE_FOLDERS = [
     { id: 'inbox', label: 'Inbox', icon: 'fas fa-inbox' },
+    { id: 'spam', label: 'Spam', icon: 'fas fa-ban' },
     { id: 'outbox', label: 'Outbox', icon: 'fas fa-paper-plane' },
     { id: 'sent', label: 'Sent Items', icon: 'fas fa-check-double' },
     { id: 'deleted', label: 'Deleted Items', icon: 'fas fa-trash' },
@@ -339,7 +340,11 @@ const doveBuildToolbar = function () {
     deleteBtn.dataset.doveAction = 'delete';
     const archiveBtn = doveCreateCommand('archive', 'Move to Archive', 'fas fa-box-archive');
     archiveBtn.dataset.doveAction = 'archive';
-    [toggleReadBtn, deleteBtn, archiveBtn].forEach((btn) => {
+    const spamBtn = doveCreateCommand('spam', 'Move to Spam', 'fas fa-ban');
+    spamBtn.dataset.doveAction = 'spam';
+    const notSpamBtn = doveCreateCommand('notSpam', 'Not spam', 'fas fa-inbox');
+    notSpamBtn.dataset.doveAction = 'notSpam';
+    [toggleReadBtn, deleteBtn, archiveBtn, spamBtn, notSpamBtn].forEach((btn) => {
         btn.dataset.doveMutating = 'true';
         btn.dataset.doveNeedsMail = 'true';
         toolbar.appendChild(btn);
@@ -384,6 +389,8 @@ const DOVE_MENUS = {
             doveMenuItem('Delete', 'delete', { disabled: off }),
             doveMenuItem(mail && !mail.read ? 'Mark as Read' : 'Mark as Unread', 'toggleRead', { disabled: off }),
             doveMenuItem('Move to Archive', 'archive', { disabled: off }),
+            doveMenuItem('Move to Spam', 'spam', { disabled: off || !mail || mail.folder === 'spam' }),
+            doveMenuItem('Not spam', 'notSpam', { disabled: off || !mail || mail.folder !== 'spam' }),
             { separator: true },
             doveMenuItem('Find', 'find')
         ];
@@ -614,13 +621,17 @@ const doveRenderFolderTree = function () {
         const box = desktopDovecote.mailboxes.find((b) => b.owner === owner);
         return box ? (box.unread || 0) : 0;
     };
+    const spamUnreadOf = (owner) => {
+        const box = desktopDovecote.mailboxes.find((b) => b.owner === owner);
+        return box ? (box.spamUnread || 0) : 0;
+    };
     const folderRows = (owner, level) => DESKTOP_DOVECOTE_FOLDERS.map((folder) => doveBuildTreeRow({
         level: level,
         label: folder.label,
         icon: folder.id,
         owner: owner,
         folder: folder.id,
-        count: folder.id === 'inbox' ? unreadOf(owner) : 0,
+        count: folder.id === 'inbox' ? unreadOf(owner) : (folder.id === 'spam' ? spamUnreadOf(owner) : 0),
         current: current === owner && desktopDovecote.folder === folder.id
     }));
     const bots = desktopDovecote.mailboxes.filter((box) => doveIsBotOwner(box.owner));
@@ -760,6 +771,8 @@ const doveBuildMailRowMenuSections = function (mailId) {
             { separator: true },
             { text: mail.read ? 'Mark Unread' : 'Mark Read', icon: 'fas fa-envelope', action: 'dove-row-toggle-read', doveMailId: mailId, disabled: readOnly },
             { text: 'Archive', icon: 'fas fa-box-archive', action: 'dove-row-archive', doveMailId: mailId, disabled: readOnly },
+            { text: 'Move to Spam', icon: 'fas fa-ban', action: 'dove-row-spam', doveMailId: mailId, disabled: readOnly || mail.folder === 'spam' },
+            { text: 'Not spam', icon: 'fas fa-inbox', action: 'dove-row-not-spam', doveMailId: mailId, disabled: readOnly || mail.folder !== 'spam' },
             { text: 'Delete', icon: 'fas fa-trash', action: 'dove-row-delete', doveMailId: mailId, disabled: readOnly, className: 'context-menu-item-danger' }
         ]
     }];
@@ -775,6 +788,8 @@ const doveHandleMailRowMenuAction = function (item) {
         case 'dove-row-forward': doveForwardMailId(mailId, item.doveOwner); return;
         case 'dove-row-toggle-read': doveToggleReadForId(mailId); return;
         case 'dove-row-archive': doveMarkMailId(mailId, { archived: true }); return;
+        case 'dove-row-spam': doveMarkMailId(mailId, { spam: true }); return;
+        case 'dove-row-not-spam': doveMarkMailId(mailId, { spam: false }); return;
         case 'dove-row-delete': doveMarkMailId(mailId, { deleted: true }); return;
         default: return;
     }
@@ -1038,9 +1053,9 @@ const doveBuildPreviewPane = function () {
     mobileBackBar.appendChild(backBtn);
     const mobileActions = document.createElement('div');
     mobileActions.className = 'button-group';
-    ['reply', 'replyAll', 'forward', 'archive', 'delete'].forEach((action) => {
-        const icons = { reply: 'fas fa-reply', replyAll: 'fas fa-reply-all', forward: 'fas fa-share', archive: 'fas fa-box-archive', delete: 'fas fa-trash' };
-        const titles = { reply: 'Reply', replyAll: 'Reply All', forward: 'Forward', archive: 'Archive', delete: 'Delete' };
+    ['reply', 'replyAll', 'forward', 'archive', 'spam', 'notSpam', 'delete'].forEach((action) => {
+        const icons = { reply: 'fas fa-reply', replyAll: 'fas fa-reply-all', forward: 'fas fa-share', archive: 'fas fa-box-archive', spam: 'fas fa-ban', notSpam: 'fas fa-inbox', delete: 'fas fa-trash' };
+        const titles = { reply: 'Reply', replyAll: 'Reply All', forward: 'Forward', archive: 'Archive', spam: 'Move to Spam', notSpam: 'Not spam', delete: 'Delete' };
         const btn = doveCreateButton('btn-secondary btn-small', titles[action], icons[action]);
         if (action === 'forward') {
             // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
@@ -1154,6 +1169,8 @@ const doveDispatchAction = function (action) {
         case 'toggleRead': doveToggleRead(); return;
         case 'delete': doveDeleteSelected(); return;
         case 'archive': doveArchiveSelected(); return;
+        case 'spam': doveSpamSelected(true); return;
+        case 'notSpam': doveSpamSelected(false); return;
         case 'refresh': doveLoadFolder(desktopDovecote.folder); return;
         case 'mobileBack': doveSetMobileMessageOpen(false); return;
         default: return;
@@ -1906,8 +1923,12 @@ const doveRenderToolbarState = function () {
     if (!desktopDovecoteEls || !desktopDovecoteEls.toolbar) return;
     const readOnly = !!desktopDovecote.viewAsOwner;
     const noMail = !desktopDovecote.selectedMail;
+    const inSpam = !!(desktopDovecote.selectedMail && desktopDovecote.selectedMail.folder === 'spam');
     desktopDovecoteEls.toolbar.querySelectorAll('[data-dove-mutating="true"]').forEach((btn) => {
-        btn.disabled = readOnly || (noMail && btn.dataset.doveNeedsMail === 'true');
+        let off = readOnly || (noMail && btn.dataset.doveNeedsMail === 'true');
+        if (btn.dataset.doveAction === 'spam') off = off || inSpam;
+        if (btn.dataset.doveAction === 'notSpam') off = off || !desktopDovecote.selectedMail || !inSpam;
+        btn.disabled = off;
     });
 };
 
@@ -1954,6 +1975,20 @@ const doveArchiveSelected = async function () {
         doveLoadFolder(desktopDovecote.folder);
     } catch (err) {
         doveShowError((err && err.message) || 'Could not archive message');
+    }
+};
+
+const doveSpamSelected = async function (toSpam) {
+    const mail = desktopDovecote.selectedMail;
+    if (!mail || desktopDovecote.viewAsOwner) return;
+    try {
+        await wsClient.sendMessage('dovecote_mark_mail', { id: mail.id, spam: toSpam === true });
+        desktopDovecote.selectedId = null;
+        desktopDovecote.selectedMail = null;
+        doveRenderPreview();
+        doveLoadFolder(desktopDovecote.folder);
+    } catch (err) {
+        doveShowError((err && err.message) || (toSpam ? 'Could not move to Spam' : 'Could not mark not spam'));
     }
 };
 
@@ -2229,8 +2264,12 @@ const doveBuildReaderToolbar = function (getMail) {
     deleteBtn.dataset.doveReaderAction = 'delete';
     const archiveBtn = doveCreateCommand('archive', 'Move to Archive', 'fas fa-box-archive');
     archiveBtn.dataset.doveReaderAction = 'archive';
+    const spamBtn = doveCreateCommand('spam', 'Move to Spam', 'fas fa-ban');
+    spamBtn.dataset.doveReaderAction = 'spam';
+    const notSpamBtn = doveCreateCommand('notSpam', 'Not spam', 'fas fa-inbox');
+    notSpamBtn.dataset.doveReaderAction = 'notSpam';
 
-    [replyBtn, replyAllBtn, forwardBtn, null, toggleReadBtn, deleteBtn, archiveBtn].forEach((btn) => {
+    [replyBtn, replyAllBtn, forwardBtn, null, toggleReadBtn, deleteBtn, archiveBtn, spamBtn, notSpamBtn].forEach((btn) => {
         if (!btn) {
             toolbar.appendChild(doveCreateCommandSeparator());
             return;
@@ -2409,6 +2448,8 @@ const doveDispatchReaderAction = function (state, action) {
         case 'toggleRead': doveReaderToggleRead(state); return;
         case 'delete': doveReaderMarkSelected(state, { deleted: true }); return;
         case 'archive': doveReaderMarkSelected(state, { archived: true }); return;
+        case 'spam': doveReaderMarkSelected(state, { spam: true }); return;
+        case 'notSpam': doveReaderMarkSelected(state, { spam: false }); return;
         default: return;
     }
 };

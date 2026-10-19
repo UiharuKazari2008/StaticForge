@@ -183,6 +183,34 @@ async function main() {
     assert.strictEqual(gwRead.fromLabel, 'evil@ext.com');
     assert.strictEqual(gwRead.labelSuspicious, true);
 
+    const spamIn = dovecoteMail.deliverInboundMail({
+        fromAddress: 'spam@ext.com',
+        fromLabel: 'list',
+        toOwner: 'ivory',
+        subject: 'gw-spam-folder',
+        body: 'viagra',
+        spam: true
+    });
+    const ivorySpam = textOf(await callTool(gr, reqFor('Ivory'), 'list_mail', { folder: 'spam' })).mail;
+    assert.ok(ivorySpam.some((m) => m.id === spamIn.id));
+    assert.ok(ivorySpam.every((m) => m.folder === 'spam'));
+    const rookSpam = textOf(await callTool(gr, reqFor('Rook'), 'list_mail', { folder: 'spam' })).mail;
+    assert.ok(!rookSpam.some((m) => m.id === spamIn.id));
+    await assert.rejects(
+        () => callTool(gr, reqFor('Rook'), 'read_mail', { id: spamIn.id }),
+        (err) => err.status === 404
+    );
+    const moved = textOf(await callTool(gr, reqFor('Ivory'), 'mark_mail', { id: spamIn.id, spam: false }));
+    assert.strictEqual(moved.mail.folder, 'inbox');
+    assert.strictEqual(moved.mail.route, 'inbound');
+    assert.strictEqual(moved.mail.external, true);
+    const back = textOf(await callTool(gr, reqFor('Ivory'), 'mark_mail', { id: spamIn.id, spam: true }));
+    assert.strictEqual(back.mail.folder, 'spam');
+    await assert.rejects(
+        () => callTool(gr, reqFor('Rook'), 'mark_mail', { id: spamIn.id, spam: false }),
+        (err) => err.status === 404
+    );
+
     // Oversized attachments are rejected with a clear error, not a partial send.
     const tooBig = await callTool(gr, reqFor('Menma'), 'send_mail', {
         to: 'rook', subject: 'too big', body: 'x',

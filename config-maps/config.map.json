@@ -1554,6 +1554,71 @@
     {
       "path": [
         "mailGateway",
+        "spam"
+      ],
+      "type": "object",
+      "label": "Inbound Spam Headers",
+      "closed": true,
+      "description": "Header names and authserv-id the inbound path trusts when filing to Spam. Only the topmost instance above the original From/Subject/Date (or Authentication-Results matching authserv-id) is used. Sala will confirm the LANTIS names."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "spam",
+        "flagHeader"
+      ],
+      "type": "string",
+      "label": "Spam Flag Header",
+      "editorType": "input",
+      "description": "Default X-Spam-Flag. Only the topmost instance is trusted. YES files to Spam; NO never rescues."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "spam",
+        "statusHeader"
+      ],
+      "type": "string",
+      "label": "Spam Status Header",
+      "editorType": "input",
+      "description": "Default X-Spam-Status. Topmost instance only. A leading Yes files to Spam."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "spam",
+        "authenticationResultsHeader"
+      ],
+      "type": "string",
+      "label": "Authentication-Results Header",
+      "editorType": "input",
+      "description": "Default Authentication-Results. Trusted when it is the topmost instance, or when its authserv-id matches the configured relay id."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "spam",
+        "receivedSpfHeader"
+      ],
+      "type": "string",
+      "label": "Received-SPF Header",
+      "editorType": "input",
+      "description": "Default Received-SPF. Topmost instance only. fail / softfail / permerror files to Spam."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "spam",
+        "authservId"
+      ],
+      "type": "string",
+      "label": "Relay authserv-id",
+      "editorType": "input",
+      "description": "When set, only Authentication-Results whose first token matches this id are trusted. Empty uses the topmost Authentication-Results only. Leave empty until Sala confirms the LANTIS id."
+    },
+    {
+      "path": [
+        "mailGateway",
         "pendingMailboxes"
       ],
       "type": "object",

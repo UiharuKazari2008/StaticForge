@@ -35,7 +35,7 @@ const ACTOR_ALIASES = Object.freeze({
 const BOT_OWNER_SET = new Set(BOT_OWNERS);
 const ALL_OWNERS = new Set([HUMAN_OWNER, ...BOT_OWNERS]);
 
-const FOLDERS = Object.freeze(['inbox', 'outbox', 'sent', 'deleted', 'archive']);
+const FOLDERS = Object.freeze(['inbox', 'spam', 'outbox', 'sent', 'deleted', 'archive']);
 const FORMATS = Object.freeze(['text', 'md', 'html']);
 
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // per file
@@ -539,9 +539,10 @@ function sendMail({ fromOwner, to, cc, subject, body, format, replyToId, attachm
  * Inbound from the mail gateway. fromAddress is the envelope sender (a full
  * external email, or mailer-daemon for MAIL FROM:<> ) and is stored on
  * from_owner. fromLabel is the From header, display only — never a mailbox
- * owner. Only writes inbox copies.
+ * owner. Writes inbox, or spam when the inbound path classified the
+ * message as spam. Internal sendMail never calls this.
  */
-function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, body, format, threadId }) {
+function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, body, format, threadId, spam }) {
     if (!isValidOwner(toOwner)) throw new DovecoteError('Unknown mailbox', 'UNKNOWN_OWNER');
     const from = String(fromAddress || '').trim();
     if (!from || (from !== NULL_SENDER && !from.includes('@'))) {
@@ -561,8 +562,9 @@ function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, 
         owners: [HUMAN_OWNER, ...BOT_OWNERS]
     });
     const storedLabel = inspected.suspicious ? from : (inspected.label || '').slice(0, 300);
+    const folder = spam === true ? 'spam' : 'inbox';
     insertRow({
-        id, owner: toOwner, folder: 'inbox', archive_subfolder: null,
+        id, owner: toOwner, folder, archive_subfolder: null,
         thread_id: threadId || crypto.randomUUID(),
         from_owner: from, to_owner: toOwner,
         to_list: JSON.stringify(toList), cc_list: JSON.stringify(ccList),
@@ -581,7 +583,8 @@ function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, 
         fromLabel: storedLabel || null,
         labelSuspicious: inspected.suspicious,
         route: 'inbound',
-        external: true
+        external: true,
+        folder
     };
 }
 
@@ -624,7 +627,7 @@ function readMail(owner, id) {
     return toFull(row);
 }
 
-function markMail(owner, { id, read, archived, deleted, archiveSubfolder }) {
+function markMail(owner, { id, read, archived, deleted, archiveSubfolder, spam }) {
     if (!isValidOwner(owner)) throw new DovecoteError('Unknown mailbox', 'UNKNOWN_OWNER');
     const row = getDb().prepare('SELECT * FROM dovecote_message WHERE id = ? AND owner = ?').get(id, owner);
     if (!row) {
@@ -646,7 +649,11 @@ function markMail(owner, { id, read, archived, deleted, archiveSubfolder }) {
     } else if (archived === true) {
         updates.folder = 'archive';
         updates.archive_subfolder = archiveSubfolder ? String(archiveSubfolder).slice(0, 80) : null;
-    } else if (archived === false || deleted === false) {
+    } else if (spam === true) {
+        updates.folder = 'spam';
+        updates.archive_subfolder = null;
+        updates.deleted_at = null;
+    } else if (archived === false || deleted === false || spam === false) {
         updates.folder = 'inbox';
         updates.archive_subfolder = null;
         updates.deleted_at = null;
@@ -734,13 +741,19 @@ function setImagePref(owner, sender, alwaysLoad) {
 
 function listMailboxes() {
     const counts = getDb().prepare(
-        `SELECT owner, SUM(CASE WHEN read = 0 THEN 1 ELSE 0 END) AS unread
-         FROM dovecote_message WHERE folder = 'inbox' GROUP BY owner`
+        `SELECT owner, folder, SUM(CASE WHEN read = 0 THEN 1 ELSE 0 END) AS unread
+         FROM dovecote_message WHERE folder IN ('inbox', 'spam') GROUP BY owner, folder`
     ).all();
-    const byOwner = new Map(counts.map((row) => [row.owner, row.unread]));
+    const inboxByOwner = new Map();
+    const spamByOwner = new Map();
+    counts.forEach((row) => {
+        if (row.folder === 'spam') spamByOwner.set(row.owner, row.unread);
+        else inboxByOwner.set(row.owner, row.unread);
+    });
     return [HUMAN_OWNER, ...BOT_OWNERS].map((owner) => ({
         owner,
-        unread: byOwner.get(owner) || 0
+        unread: inboxByOwner.get(owner) || 0,
+        spamUnread: spamByOwner.get(owner) || 0
     }));
 }
 
