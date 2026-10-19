@@ -111,6 +111,17 @@ function createDovecoteTables() {
     // Null on rows written before multi-recipient mail; readers fall back to to_owner.
     addColumnIfMissing('dovecote_message', 'to_list', 'to_list TEXT');
     addColumnIfMissing('dovecote_message', 'cc_list', 'cc_list TEXT');
+    // Display From header on inbound gateway mail. from_owner stays the envelope.
+    addColumnIfMissing('dovecote_message', 'from_label', 'from_label TEXT');
+    // Path the copy actually took. Null on rows from before this column = internal.
+    addColumnIfMissing('dovecote_message', 'route', 'route TEXT');
+    addColumnIfMissing('dovecote_message', 'label_suspicious', 'label_suspicious INTEGER NOT NULL DEFAULT 0');
+    // Inbound relay stamp: JSON { score, required, report, status, flag, receivedSpf }.
+    // Display only — folder/spam decisions are not re-parsed from this.
+    addColumnIfMissing('dovecote_message', 'spam_meta', 'spam_meta TEXT');
+    // Display-only original envelope recipient from the relay's X-Original-To.
+    // Never used for routing.
+    addColumnIfMissing('dovecote_message', 'original_to', 'original_to TEXT');
     db.exec(`
         CREATE INDEX IF NOT EXISTS idx_dovecote_message_owner_folder ON dovecote_message (owner, folder, created_at);
         CREATE INDEX IF NOT EXISTS idx_dovecote_message_thread ON dovecote_message (thread_id);

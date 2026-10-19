@@ -22,6 +22,9 @@ function main() {
     const menmaInbox = mail.listMail('menma', { folder: 'inbox' });
     assert.strictEqual(menmaInbox.length, 1);
     assert.strictEqual(menmaInbox[0].read, false);
+    assert.strictEqual(menmaInbox[0].route, 'internal');
+    assert.strictEqual(menmaInbox[0].external, false);
+    assert.strictEqual(mail.listMail('yukimi', { folder: 'sent' }).find((row) => row.id === sent.id).route, 'internal');
 
     // Reading marks read, and is scoped to the owner that was passed in.
     const read = mail.readMail('menma', menmaInbox[0].id);
@@ -72,9 +75,16 @@ function main() {
     assert.throws(() => mail.listMail('not-a-real-bot'), /Unknown mailbox/);
     assert.strictEqual(mail.isValidOwner('yukimi'), true);
     assert.strictEqual(mail.isValidOwner('claude'), true);
+    assert.strictEqual(mail.isValidOwner('tsubame'), true);
+    assert.strictEqual(mail.isValidOwner('mailroom'), false);
     assert.strictEqual(mail.isValidOwner('grok'), false);
     assert.strictEqual(mail.isBotOwner('yukimi'), false);
     assert.strictEqual(mail.isBotOwner('cursor'), true);
+    assert.strictEqual(mail.isBotOwner('tsubame'), true);
+    assert.strictEqual(mail.resolveOwnerFromActor('Tsubame'), 'tsubame');
+    assert.strictEqual(mail.resolveOwnerFromActor('Mailroom'), null);
+    assert.strictEqual(mail.resolveOwnerFromActor('mailroom'), null);
+    assert.strictEqual(mail.isMailroomActor('mailroom'), false);
 
     // resolveOwnerFromActor never maps to the human mailbox, whatever the actor name looks like.
     assert.strictEqual(mail.resolveOwnerFromActor('Menma'), 'menma');

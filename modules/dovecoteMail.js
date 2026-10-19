@@ -11,14 +11,27 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { getDb, getAttachmentsRoot } = require('./dovecoteDatabase');
+const addresses = require('./mailGatewayAddresses');
+const { NULL_SENDER } = addresses;
+
+const ROUTES = Object.freeze(['internal', 'inbound', 'outbound']);
+
+function storedRoute(value) {
+    return value === 'inbound' || value === 'outbound' ? value : 'internal';
+}
 
 const HUMAN_OWNER = 'yukimi';
+const MAILROOM_OWNER = 'tsubame';
+const MAILROOM_ROLE = 'mailroom';
 const BOT_OWNERS = Object.freeze([
-    'rook', 'menma', 'hoshino', 'ivory', 'guren', 'chiyo', 'frost', 'sala', 'tifa', 'pyra', 'cursor', 'claude', 'wren'
+    'rook', 'menma', 'hoshino', 'ivory', 'guren', 'chiyo', 'frost', 'sala', 'tifa', 'pyra', 'cursor', 'claude', 'wren',
+    MAILROOM_OWNER
 ]);
 // Caller app names that are not bot names themselves but belong to a bot
 // mailbox. Director chat (modules/cursorDirector.js app key "Dreamscape
 // Director") runs as Wren, so it reads/sends as the 'wren' bot mailbox.
+// Mailroom is the role name only. Only the Tsubame key carries it
+// (and may read Yukimi's Spam). A key named Mailroom maps to nothing.
 const ACTOR_ALIASES = Object.freeze({
     'dreamscape director': 'wren',
     dreamscapedirector: 'wren',
@@ -27,7 +40,7 @@ const ACTOR_ALIASES = Object.freeze({
 const BOT_OWNER_SET = new Set(BOT_OWNERS);
 const ALL_OWNERS = new Set([HUMAN_OWNER, ...BOT_OWNERS]);
 
-const FOLDERS = Object.freeze(['inbox', 'outbox', 'sent', 'deleted', 'archive']);
+const FOLDERS = Object.freeze(['inbox', 'spam', 'outbox', 'sent', 'deleted', 'archive']);
 const FORMATS = Object.freeze(['text', 'md', 'html']);
 
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // per file
@@ -102,6 +115,7 @@ function snippetOf(body) {
 }
 
 function toSummary(row) {
+    const spamMeta = spamMetaOf(row.spam_meta);
     return {
         id: row.id,
         owner: row.owner,
@@ -109,6 +123,10 @@ function toSummary(row) {
         archiveSubfolder: row.archive_subfolder || null,
         threadId: row.thread_id,
         from: row.from_owner,
+        fromLabel: row.from_label || null,
+        labelSuspicious: !!row.label_suspicious,
+        route: storedRoute(row.route),
+        external: storedRoute(row.route) !== 'internal',
         to: ownerList(row.to_list, row.to_owner),
         cc: ownerList(row.cc_list, null),
         subject: row.subject,
@@ -120,12 +138,65 @@ function toSummary(row) {
         readByRecipient: !!row.recipient_read_at,
         attachments: attachmentsMetaOf(row.attachments),
         createdAt: row.created_at,
-        updatedAt: row.updated_at
+        updatedAt: row.updated_at,
+        spamScore: spamMeta.score,
+        spamRequired: spamMeta.required,
+        spamReport: spamMeta.report,
+        spamReceivedSpf: spamMeta.receivedSpf,
+        spamDkim: spamMeta.dkim,
+        spamDmarc: spamMeta.dmarc,
+        spamDmarcPolicy: spamMeta.dmarcP,
+        spamForgedOurs: !!spamMeta.forgedOurs,
+        originalTo: row.original_to || null
     };
 }
 
 function toFull(row) {
     return Object.assign(toSummary(row), { body: row.body, replyToId: row.reply_to_id || null });
+}
+
+function emptySpamMeta() {
+    return {
+        score: null, required: null, report: null,
+        receivedSpf: null, dkim: null, dmarc: null, dmarcP: null, forgedOurs: false
+    };
+}
+
+function spamMetaOf(json) {
+    if (!json) return emptySpamMeta();
+    try {
+        const parsed = JSON.parse(json);
+        if (!parsed || typeof parsed !== 'object') return emptySpamMeta();
+        return {
+            score: Number.isFinite(parsed.score) ? parsed.score : null,
+            required: Number.isFinite(parsed.required) ? parsed.required : null,
+            report: parsed.report ? String(parsed.report) : null,
+            receivedSpf: parsed.receivedSpf ? String(parsed.receivedSpf) : null,
+            dkim: parsed.dkim ? String(parsed.dkim) : null,
+            dmarc: parsed.dmarc ? String(parsed.dmarc) : null,
+            dmarcP: parsed.dmarcP ? String(parsed.dmarcP) : null,
+            forgedOurs: !!parsed.forgedOurs
+        };
+    } catch (_err) {
+        return emptySpamMeta();
+    }
+}
+
+function encodeSpamMeta(meta) {
+    if (!meta || typeof meta !== 'object') return null;
+    const out = {};
+    if (Number.isFinite(meta.score)) out.score = meta.score;
+    if (Number.isFinite(meta.required)) out.required = meta.required;
+    if (meta.report) out.report = String(meta.report).slice(0, 16384);
+    if (meta.status) out.status = String(meta.status);
+    if (meta.flag) out.flag = String(meta.flag);
+    if (meta.receivedSpf) out.receivedSpf = String(meta.receivedSpf);
+    if (meta.dkim) out.dkim = String(meta.dkim);
+    if (meta.dmarc) out.dmarc = String(meta.dmarc);
+    if (meta.dmarcP) out.dmarcP = String(meta.dmarcP);
+    if (meta.dmarcDis) out.dmarcDis = String(meta.dmarcDis);
+    if (meta.forgedOurs) out.forgedOurs = true;
+    return Object.keys(out).length ? JSON.stringify(out) : null;
 }
 
 function attachmentsMetaOf(json) {
@@ -151,16 +222,20 @@ function insertRow(row) {
     getDb().prepare(`
         INSERT INTO dovecote_message (
             id, owner, folder, archive_subfolder, thread_id, from_owner, to_owner,
-            to_list, cc_list,
+            to_list, cc_list, from_label, route, label_suspicious, spam_meta, original_to,
             subject, body, format, reply_to_id, fwd_from_owner, fwd_from_message_id,
             read, flagged, created_at, updated_at, deleted_at, paired_message_id, attachments
         ) VALUES (
             @id, @owner, @folder, @archive_subfolder, @thread_id, @from_owner, @to_owner,
-            @to_list, @cc_list,
+            @to_list, @cc_list, @from_label, @route, @label_suspicious, @spam_meta, @original_to,
             @subject, @body, @format, @reply_to_id, @fwd_from_owner, @fwd_from_message_id,
             @read, @flagged, @created_at, @updated_at, @deleted_at, @paired_message_id, @attachments
         )
-    `).run(Object.assign({ paired_message_id: null, attachments: null, to_list: null, cc_list: null }, row));
+    `).run(Object.assign({
+        paired_message_id: null, attachments: null, to_list: null, cc_list: null,
+        from_label: null, route: 'internal', label_suspicious: 0, spam_meta: null,
+        original_to: null
+    }, row));
 }
 
 // to_list / cc_list are JSON arrays. Rows from before multi-recipient mail
@@ -214,6 +289,20 @@ function normalizeRecipients(to, cc) {
         throw new DovecoteError('At least one recipient is required', 'EMPTY_RECIPIENTS');
     }
     return { toList, ccList };
+}
+
+function classifySendRecipients(to, cc) {
+    // modules/mailGateway.js — only when the gateway is enabled; otherwise
+    // the existing mailbox-name path (normalizeRecipients) is unchanged.
+    const mailGateway = require('./mailGateway');
+    if (!mailGateway.isEnabled()) {
+        return Object.assign({ externalTo: [], externalCc: [] }, normalizeRecipients(to, cc));
+    }
+    try {
+        return mailGateway.classifyRecipients(to, cc);
+    } catch (err) {
+        throw new DovecoteError(err.message, err.code || 'UNKNOWN_RECIPIENT');
+    }
 }
 
 function sanitizeFormat(format) {
@@ -406,11 +495,13 @@ function markPairedReadReceipt(owner, row) {
  */
 function sendMail({ fromOwner, to, cc, subject, body, format, replyToId, attachments }) {
     if (!isValidOwner(fromOwner)) throw new DovecoteError('Unknown sender mailbox', 'UNKNOWN_SENDER');
-    const { toList, ccList } = normalizeRecipients(to, cc);
+    const { toList, ccList, externalTo, externalCc } = classifySendRecipients(to, cc);
     const delivered = toList.concat(ccList);
     const subjectText = String(subject || '').slice(0, 300);
     const bodyText = String(body || '');
     const formatValue = sanitizeFormat(format);
+    const storedTo = toList.concat(externalTo || []);
+    const storedCc = ccList.concat(externalCc || []);
 
     let threadId = crypto.randomUUID();
     let replyTo = null;
@@ -425,38 +516,155 @@ function sendMail({ fromOwner, to, cc, subject, body, format, replyToId, attachm
     const createdAt = nowIso();
     const sentId = crypto.randomUUID();
     const inboxIds = delivered.map(() => crypto.randomUUID());
-    const attachmentsJson = storeAttachments(attachments);
-    const toJson = JSON.stringify(toList);
-    const ccJson = JSON.stringify(ccList);
+    const toJson = JSON.stringify(storedTo);
+    const ccJson = JSON.stringify(storedCc);
     // to_owner stays a single name for the legacy column: the copy's own
     // recipient on inbox rows, and the first delivered name on the sent row.
-    const primary = delivered[0];
+    const primary = delivered[0] || (externalTo && externalTo[0]) || (externalCc && externalCc[0]);
+    const hasExternal = (externalTo && externalTo.length) || (externalCc && externalCc.length);
+    let attachmentsJson = null;
+    const storedAttachments = () => {
+        if (attachmentsJson === null) attachmentsJson = storeAttachments(attachments);
+        return attachmentsJson;
+    };
 
-    const writeCopies = getDb().transaction(() => {
-        insertRow({
-            id: sentId, owner: fromOwner, folder: 'sent', archive_subfolder: null, thread_id: threadId,
-            from_owner: fromOwner, to_owner: primary, to_list: toJson, cc_list: ccJson,
-            subject: subjectText, body: bodyText, format: formatValue,
-            reply_to_id: replyTo, fwd_from_owner: null, fwd_from_message_id: null,
-            read: 1, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,
-            paired_message_id: inboxIds[0], attachments: attachmentsJson
-        });
-        delivered.forEach((recipient, index) => {
+    const writeCopies = (folder) => {
+        const sentFolder = folder === 'outbox' ? 'outbox' : 'sent';
+        // Route is the path this write took, not anything in the headers.
+        // Internal inbox copies never touched the relay even on a mixed send.
+        const sentRoute = hasExternal ? 'outbound' : 'internal';
+        const write = getDb().transaction(() => {
             insertRow({
-                id: inboxIds[index], owner: recipient, folder: 'inbox', archive_subfolder: null, thread_id: threadId,
-                from_owner: fromOwner, to_owner: recipient, to_list: toJson, cc_list: ccJson,
+                id: sentId, owner: fromOwner, folder: sentFolder, archive_subfolder: null, thread_id: threadId,
+                from_owner: fromOwner, to_owner: primary, to_list: toJson, cc_list: ccJson,
+                route: sentRoute, label_suspicious: 0,
                 subject: subjectText, body: bodyText, format: formatValue,
                 reply_to_id: replyTo, fwd_from_owner: null, fwd_from_message_id: null,
-                read: 0, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,
-                paired_message_id: sentId, attachments: attachmentsJson
+                read: 1, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,
+                paired_message_id: sentFolder === 'sent' ? (inboxIds[0] || null) : null,
+                attachments: storedAttachments()
+            });
+            if (sentFolder !== 'sent') return;
+            delivered.forEach((recipient, index) => {
+                insertRow({
+                    id: inboxIds[index], owner: recipient, folder: 'inbox', archive_subfolder: null, thread_id: threadId,
+                    from_owner: fromOwner, to_owner: recipient, to_list: toJson, cc_list: ccJson,
+                    route: 'internal', label_suspicious: 0,
+                    subject: subjectText, body: bodyText, format: formatValue,
+                    reply_to_id: replyTo, fwd_from_owner: null, fwd_from_message_id: null,
+                    read: 0, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,
+                    paired_message_id: sentId, attachments: attachmentsJson
+                });
             });
         });
-    });
-    writeCopies();
+        write();
+    };
 
-    audit(fromOwner, 'send_mail', sentId, true, `to=${toList.join(',')} cc=${ccList.join(',')}`);
-    emitMailboxChanged([fromOwner, ...delivered]);
-    return { id: sentId, threadId, to: toList, cc: ccList };
+    const wrapOutboundError = (err) => {
+        if (err instanceof DovecoteError) return err;
+        return err && err.code
+            ? new DovecoteError(err.message, err.code)
+            : new DovecoteError(err.message || 'Outbound send failed', 'MAIL_GATEWAY_ERROR');
+    };
+
+    if (!hasExternal) {
+        writeCopies('sent');
+        audit(fromOwner, 'send_mail', sentId, true, `to=${storedTo.join(',')} cc=${storedCc.join(',')}`);
+        emitMailboxChanged([fromOwner, ...delivered]);
+        return { id: sentId, threadId, to: storedTo, cc: storedCc };
+    }
+
+    const mailGateway = require('./mailGateway');
+    const outbound = mailGateway.submitOutbound({
+        fromOwner,
+        to: externalTo,
+        cc: externalCc,
+        subject: subjectText,
+        body: bodyText,
+        format: formatValue
+    }).then(() => {
+        writeCopies('sent');
+        audit(fromOwner, 'send_mail', sentId, true, `to=${storedTo.join(',')} cc=${storedCc.join(',')}`);
+        emitMailboxChanged([fromOwner, ...delivered]);
+    }).catch((err) => {
+        writeCopies('outbox');
+        audit(fromOwner, 'send_mail', sentId, false, err.message);
+        emitMailboxChanged([fromOwner]);
+        throw wrapOutboundError(err);
+    });
+    return { id: sentId, threadId, to: storedTo, cc: storedCc, outbound };
+}
+
+/**
+ * Inbound from the mail gateway. fromAddress is the envelope sender (a full
+ * external email, or mailer-daemon for MAIL FROM:<> ) and is stored on
+ * from_owner. fromLabel is the From header, display only — never a mailbox
+ * owner. Writes inbox, or spam when the inbound path classified the
+ * message as spam. Internal sendMail never calls this.
+ */
+function sanitizeOriginalTo(value) {
+    const text = String(value || '').trim().replace(/[\r\n]+/g, ' ').slice(0, 320);
+    return text || null;
+}
+
+function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, body, format, threadId, spam, spamMeta, originalTo }) {
+    if (!isValidOwner(toOwner)) throw new DovecoteError('Unknown mailbox', 'UNKNOWN_OWNER');
+    const from = String(fromAddress || '').trim();
+    if (!from || (from !== NULL_SENDER && !from.includes('@'))) {
+        throw new DovecoteError('Sender address is required', 'UNKNOWN_SENDER');
+    }
+    if (isValidOwner(from)) {
+        throw new DovecoteError('Inbound sender cannot be a Dovecote mailbox', 'UNKNOWN_SENDER');
+    }
+    const createdAt = nowIso();
+    const id = crypto.randomUUID();
+    const subjectText = String(subject || '').slice(0, 300);
+    const bodyText = String(body || '');
+    const toList = Array.isArray(to) && to.length ? to : [toOwner];
+    const ccList = Array.isArray(cc) ? cc : [];
+    const inspected = addresses.inspectFromLabel(fromLabel, {
+        mapping: addresses.createMapping(),
+        owners: [HUMAN_OWNER, ...BOT_OWNERS]
+    });
+    const storedLabel = inspected.suspicious ? from : (inspected.label || '').slice(0, 300);
+    const folder = spam === true ? 'spam' : 'inbox';
+    const storedSpamMeta = encodeSpamMeta(spamMeta);
+    const displaySpam = spamMetaOf(storedSpamMeta);
+    const storedOriginalTo = sanitizeOriginalTo(originalTo);
+    insertRow({
+        id, owner: toOwner, folder, archive_subfolder: null,
+        thread_id: threadId || crypto.randomUUID(),
+        from_owner: from, to_owner: toOwner,
+        to_list: JSON.stringify(toList), cc_list: JSON.stringify(ccList),
+        from_label: storedLabel || null,
+        route: 'inbound',
+        label_suspicious: inspected.suspicious ? 1 : 0,
+        spam_meta: storedSpamMeta,
+        original_to: storedOriginalTo,
+        subject: subjectText, body: bodyText, format: sanitizeFormat(format),
+        reply_to_id: null, fwd_from_owner: null, fwd_from_message_id: null,
+        read: 0, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,
+        paired_message_id: null, attachments: null
+    });
+    audit(toOwner, 'receive_external_mail', id, true, `from=${from}`);
+    emitMailboxChanged([toOwner]);
+    return {
+        id, owner: toOwner, from,
+        fromLabel: storedLabel || null,
+        labelSuspicious: inspected.suspicious,
+        route: 'inbound',
+        external: true,
+        folder,
+        spamScore: displaySpam.score,
+        spamRequired: displaySpam.required,
+        spamReport: displaySpam.report,
+        spamReceivedSpf: displaySpam.receivedSpf,
+        spamDkim: displaySpam.dkim,
+        spamDmarc: displaySpam.dmarc,
+        spamDmarcPolicy: displaySpam.dmarcP,
+        spamForgedOurs: !!displaySpam.forgedOurs,
+        originalTo: storedOriginalTo
+    };
 }
 
 function listMail(owner, { folder, unreadOnly, limit } = {}) {
@@ -498,7 +706,7 @@ function readMail(owner, id) {
     return toFull(row);
 }
 
-function markMail(owner, { id, read, archived, deleted, archiveSubfolder }) {
+function markMail(owner, { id, read, archived, deleted, archiveSubfolder, spam }) {
     if (!isValidOwner(owner)) throw new DovecoteError('Unknown mailbox', 'UNKNOWN_OWNER');
     const row = getDb().prepare('SELECT * FROM dovecote_message WHERE id = ? AND owner = ?').get(id, owner);
     if (!row) {
@@ -520,7 +728,11 @@ function markMail(owner, { id, read, archived, deleted, archiveSubfolder }) {
     } else if (archived === true) {
         updates.folder = 'archive';
         updates.archive_subfolder = archiveSubfolder ? String(archiveSubfolder).slice(0, 80) : null;
-    } else if (archived === false || deleted === false) {
+    } else if (spam === true) {
+        updates.folder = 'spam';
+        updates.archive_subfolder = null;
+        updates.deleted_at = null;
+    } else if (archived === false || deleted === false || spam === false) {
         updates.folder = 'inbox';
         updates.archive_subfolder = null;
         updates.deleted_at = null;
@@ -554,6 +766,12 @@ function forwardMail(owner, { id, to }) {
         id: newId, owner: toOwner, folder: 'inbox', archive_subfolder: null, thread_id: crypto.randomUUID(),
         from_owner: source.from_owner, to_owner: toOwner, subject: `Fwd: ${source.subject}`, body: source.body,
         format: source.format, reply_to_id: null, fwd_from_owner: owner, fwd_from_message_id: source.id,
+        // A forwarded gateway message still came from outside; never show it as internal.
+        route: storedRoute(source.route) === 'internal' ? 'internal' : 'inbound',
+        from_label: source.from_label || null,
+        label_suspicious: source.label_suspicious ? 1 : 0,
+        spam_meta: source.spam_meta || null,
+        original_to: source.original_to || null,
         read: 0, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,
         attachments: source.attachments || null
     });
@@ -564,6 +782,191 @@ function forwardMail(owner, { id, to }) {
     audit(owner, 'forward_mail', newId, true, `to=${toOwner} source=${id}`);
     emitMailboxChanged([toOwner]);
     return { id: newId, to: toOwner };
+}
+
+function isMailroomActor(actor) {
+    return actor === MAILROOM_OWNER;
+}
+
+function mailroomAudit(actor, action, { mailbox, id, success, extra } = {}) {
+    const parts = [];
+    if (mailbox) parts.push(`mailbox=${mailbox}`);
+    if (extra) parts.push(String(extra));
+    audit(actor || 'unknown', action, id || null, success, parts.join(' ') || null);
+}
+
+function requireMailroomRole(actor, action, { mailbox, id } = {}) {
+    if (isMailroomActor(actor)) return;
+    mailroomAudit(actor, action, { mailbox, id, success: false, extra: 'mailroom role required' });
+    throw new DovecoteError('Mailroom role required', 'FORBIDDEN');
+}
+
+function resolveMailroomTarget(mailbox, actor, action, id) {
+    const target = String(mailbox || '').trim().toLowerCase();
+    if (!isValidOwner(target)) {
+        if (action) {
+            mailroomAudit(actor, action, {
+                mailbox: target.slice(0, 64) || '(none)', id, success: false, extra: 'unknown mailbox'
+            });
+        }
+        throw new DovecoteError('Unknown mailbox', 'UNKNOWN_OWNER');
+    }
+    return target;
+}
+
+/** Facade-level denial (caller is not Tsubame): audit it like every other mailroom op. */
+function auditMailroomDenied(actor, action, { mailbox, id } = {}) {
+    mailroomAudit(actor || 'unknown', action, {
+        mailbox: mailbox ? String(mailbox).slice(0, 64) : null, id, success: false, extra: 'mailroom role required'
+    });
+}
+
+/**
+ * Mailroom-only: forward a message from Tsubame's mailbox to another
+ * internal mailbox. Reuses forwardMail so route / fromLabel / flags copy.
+ */
+function mailroomForwardMail(actor, { id, to }) {
+    requireMailroomRole(actor, 'mailroom_forward_mail', { mailbox: MAILROOM_OWNER, id });
+    const result = forwardMail(MAILROOM_OWNER, { id, to });
+    if (!result) {
+        mailroomAudit(actor, 'mailroom_forward_mail', {
+            mailbox: MAILROOM_OWNER, id, success: false, extra: 'not found or not owned'
+        });
+        return null;
+    }
+    mailroomAudit(actor, 'mailroom_forward_mail', {
+        mailbox: MAILROOM_OWNER, id: result.id, success: true, extra: `to=${result.to} source=${id}`
+    });
+    return result;
+}
+
+/**
+ * Mailroom-only: move Inbox ↔ Spam on another bot mailbox, or rescue
+ * Spam → Inbox on any mailbox including Yukimi. Yukimi is Spam-only:
+ * no Inbox read and no Inbox → Spam.
+ */
+function mailroomMoveMail(actor, { mailbox, id, spam }) {
+    const action = spam === false ? 'mailroom_rescue_mail' : 'mailroom_move_mail';
+    requireMailroomRole(actor, action, { mailbox, id });
+    const target = resolveMailroomTarget(mailbox, actor, action, id);
+    if (typeof spam !== 'boolean') {
+        throw new DovecoteError('spam true or false is required', 'INVALID_FOLDER');
+    }
+    if (target === HUMAN_OWNER && spam === true) {
+        mailroomAudit(actor, action, { mailbox: target, id, success: false, extra: 'refused: yukimi inbox-to-spam' });
+        throw new DovecoteError("Cannot move mail into Yukimi's Spam", 'FORBIDDEN');
+    }
+    const row = getDb().prepare(
+        'SELECT id, owner, folder FROM dovecote_message WHERE id = ? AND owner = ?'
+    ).get(id, target);
+    if (!row) {
+        mailroomAudit(actor, action, { mailbox: target, id, success: false, extra: 'not found' });
+        return null;
+    }
+    if (target === HUMAN_OWNER && row.folder !== 'spam') {
+        mailroomAudit(actor, action, {
+            mailbox: target, id, success: false, extra: `folder=${row.folder} refused: yukimi spam-only`
+        });
+        throw new DovecoteError("Yukimi access is Spam-folder only", 'FORBIDDEN');
+    }
+    if (row.folder !== 'inbox' && row.folder !== 'spam') {
+        mailroomAudit(actor, action, { mailbox: target, id, success: false, extra: `folder=${row.folder}` });
+        throw new DovecoteError('Can only move Inbox or Spam', 'INVALID_FOLDER');
+    }
+    const folder = spam ? 'spam' : 'inbox';
+    getDb().prepare(
+        'UPDATE dovecote_message SET folder = ?, archive_subfolder = NULL, deleted_at = NULL, updated_at = ? WHERE id = ? AND owner = ?'
+    ).run(folder, nowIso(), row.id, target);
+    mailroomAudit(actor, action, {
+        mailbox: target, id, success: true, extra: `from=${row.folder} to=${folder}`
+    });
+    emitMailboxChanged([target]);
+    return { id: row.id, mailbox: target, folder };
+}
+
+/**
+ * Mailroom-only: list another mailbox's Spam folder. Every mailbox including
+ * Yukimi. Other folders are refused.
+ */
+function mailroomListMail(actor, { mailbox, folder, unreadOnly, limit } = {}) {
+    requireMailroomRole(actor, 'mailroom_list_mail', { mailbox });
+    const target = resolveMailroomTarget(mailbox, actor, 'mailroom_list_mail', undefined);
+    const wantFolder = String(folder || 'spam').toLowerCase();
+    if (wantFolder !== 'spam') {
+        mailroomAudit(actor, 'mailroom_list_mail', {
+            mailbox: target, success: false, extra: `folder=${wantFolder} refused`
+        });
+        throw new DovecoteError('Cross-mailbox list is Spam-folder only', 'FORBIDDEN');
+    }
+    const cap = Math.max(1, Math.min(200, Number(limit) || 50));
+    let sql = 'SELECT * FROM dovecote_message WHERE owner = ? AND folder = ?';
+    const params = [target, 'spam'];
+    if (unreadOnly) sql += ' AND read = 0';
+    sql += ' ORDER BY created_at DESC LIMIT ?';
+    params.push(cap);
+    const rows = getDb().prepare(sql).all(...params);
+    mailroomAudit(actor, 'mailroom_list_mail', {
+        mailbox: target, success: true, extra: `folder=spam count=${rows.length}`
+    });
+    const listed = rows.map(toSummary);
+    Object.defineProperty(listed, 'owner', { value: target, enumerable: false });
+    return listed;
+}
+
+/**
+ * Mailroom-only: read one Spam message in another mailbox (including Yukimi).
+ * Does not flip the owner's read flag. Inbox and every other folder 403.
+ */
+function mailroomReadMail(actor, { mailbox, id }) {
+    requireMailroomRole(actor, 'mailroom_read_mail', { mailbox, id });
+    const target = resolveMailroomTarget(mailbox, actor, 'mailroom_read_mail', id);
+    const row = getDb().prepare('SELECT * FROM dovecote_message WHERE id = ? AND owner = ?').get(id, target);
+    if (!row) {
+        mailroomAudit(actor, 'mailroom_read_mail', { mailbox: target, id, success: false, extra: 'not found' });
+        return null;
+    }
+    if (row.folder !== 'spam') {
+        mailroomAudit(actor, 'mailroom_read_mail', {
+            mailbox: target, id, success: false, extra: `folder=${row.folder} refused`
+        });
+        throw new DovecoteError(
+            target === HUMAN_OWNER ? "Yukimi access is Spam-folder only" : 'Cross-mailbox read is Spam-folder only',
+            'FORBIDDEN'
+        );
+    }
+    mailroomAudit(actor, 'mailroom_read_mail', { mailbox: target, id, success: true, extra: 'folder=spam' });
+    return toFull(row);
+}
+
+/**
+ * Mailroom-only: soft-purge a Spam message in any mailbox (including Yukimi)
+ * into the deleted/trash folder. Not a hard delete.
+ */
+function mailroomPurgeMail(actor, { mailbox, id }) {
+    requireMailroomRole(actor, 'mailroom_purge_mail', { mailbox, id });
+    const target = resolveMailroomTarget(mailbox, actor, 'mailroom_purge_mail', id);
+    const row = getDb().prepare(
+        'SELECT id, owner, folder FROM dovecote_message WHERE id = ? AND owner = ?'
+    ).get(id, target);
+    if (!row) {
+        mailroomAudit(actor, 'mailroom_purge_mail', { mailbox: target, id, success: false, extra: 'not found' });
+        return null;
+    }
+    if (row.folder !== 'spam') {
+        mailroomAudit(actor, 'mailroom_purge_mail', {
+            mailbox: target, id, success: false, extra: `folder=${row.folder} refused`
+        });
+        throw new DovecoteError('Can only purge Spam', 'FORBIDDEN');
+    }
+    const deletedAt = nowIso();
+    getDb().prepare(
+        'UPDATE dovecote_message SET folder = ?, archive_subfolder = NULL, deleted_at = ?, updated_at = ? WHERE id = ? AND owner = ?'
+    ).run('deleted', deletedAt, deletedAt, row.id, target);
+    mailroomAudit(actor, 'mailroom_purge_mail', {
+        mailbox: target, id, success: true, extra: 'folder=spam purge=soft'
+    });
+    emitMailboxChanged([target]);
+    return { id: row.id, mailbox: target, folder: 'deleted', purged: true };
 }
 
 /**
@@ -604,33 +1007,50 @@ function setImagePref(owner, sender, alwaysLoad) {
 
 function listMailboxes() {
     const counts = getDb().prepare(
-        `SELECT owner, SUM(CASE WHEN read = 0 THEN 1 ELSE 0 END) AS unread
-         FROM dovecote_message WHERE folder = 'inbox' GROUP BY owner`
+        `SELECT owner, folder, SUM(CASE WHEN read = 0 THEN 1 ELSE 0 END) AS unread
+         FROM dovecote_message WHERE folder IN ('inbox', 'spam') GROUP BY owner, folder`
     ).all();
-    const byOwner = new Map(counts.map((row) => [row.owner, row.unread]));
+    const inboxByOwner = new Map();
+    const spamByOwner = new Map();
+    counts.forEach((row) => {
+        if (row.folder === 'spam') spamByOwner.set(row.owner, row.unread);
+        else inboxByOwner.set(row.owner, row.unread);
+    });
     return [HUMAN_OWNER, ...BOT_OWNERS].map((owner) => ({
         owner,
-        unread: byOwner.get(owner) || 0
+        unread: inboxByOwner.get(owner) || 0,
+        spamUnread: spamByOwner.get(owner) || 0
     }));
 }
 
 module.exports = {
     HUMAN_OWNER,
+    MAILROOM_OWNER,
+    MAILROOM_ROLE,
     BOT_OWNERS,
     FOLDERS,
     FORMATS,
+    ROUTES,
     MAX_ATTACHMENT_BYTES,
     MAX_TOTAL_ATTACHMENT_BYTES,
     DovecoteError,
     isValidOwner,
     isBotOwner,
+    isMailroomActor,
     resolveOwnerFromActor,
     setMailboxChangedListener,
     sendMail,
+    deliverInboundMail,
     listMail,
     readMail,
     markMail,
     forwardMail,
+    mailroomForwardMail,
+    auditMailroomDenied,
+    mailroomMoveMail,
+    mailroomListMail,
+    mailroomReadMail,
+    mailroomPurgeMail,
     permanentlyDeleteMail,
     listMailboxes,
     getAlwaysLoadSenders,

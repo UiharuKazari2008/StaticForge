@@ -113,6 +113,17 @@ const INIT_STEPS = [
         run: (gr) => databases.initializeDovecoteDb(gr),
     },
     {
+        id: 'gr_mail_gateway',
+        label: 'Starting mail gateway',
+        afterReady: true,
+        sync: true,
+        when: (gr) => !!(gr.getConfig() || {}).mailGateway?.enabled,
+        skipMessage: 'Mail gateway disabled',
+        run: (gr) => {
+            require('../mailGateway').start(gr);
+        },
+    },
+    {
         id: 'gr_start_menu_layout_db',
         label: 'Initializing Start menu layout database',
         sync: true,
