@@ -26,7 +26,8 @@ function main() {
         toOwner: 'ivory',
         subject: 'gw-spam',
         body: 'buy',
-        spam: true
+        spam: true,
+        spamMeta: { score: 8.1, required: 5.0, report: '* 8.1 BAYES_99' }
     });
     assert.strictEqual(inbound.folder, 'spam');
     assert.strictEqual(inbound.route, 'inbound');
@@ -36,6 +37,9 @@ function main() {
     assert.strictEqual(listed[0].external, true);
     assert.strictEqual(listed[0].labelSuspicious, true);
     assert.strictEqual(listed[0].route, 'inbound');
+    assert.strictEqual(listed[0].spamScore, 8.1);
+    assert.strictEqual(listed[0].spamRequired, 5.0);
+    assert.strictEqual(listed[0].spamReport, '* 8.1 BAYES_99');
     assert.strictEqual(mail.listMail('ivory', { folder: 'inbox' }).length, 0);
     assert.strictEqual(mail.listMail('rook', { folder: 'spam' }).length, 0);
     assert.strictEqual(mail.listMailboxes().find((box) => box.owner === 'ivory').spamUnread, 1);
@@ -52,6 +56,8 @@ function main() {
     assert.strictEqual(notSpam.route, 'inbound');
     assert.strictEqual(notSpam.external, true);
     assert.strictEqual(notSpam.labelSuspicious, true);
+    assert.strictEqual(notSpam.spamScore, 8.1);
+    assert.strictEqual(notSpam.spamReport, '* 8.1 BAYES_99');
     assert.strictEqual(mail.listMail('ivory', { folder: 'spam' }).length, 0);
     assert.strictEqual(mail.listMail('ivory', { folder: 'inbox' })[0].id, inbound.id);
 
@@ -80,6 +86,9 @@ function main() {
     assert.match(handlerSrc, /spam: typeof message\.spam === 'boolean' \? message\.spam : undefined/);
     const spamMod = require('../modules/mailGatewaySpam');
     assert.strictEqual(spamMod.DEFAULT_SPAM_CONFIG.authservId, 'mx.dream.737.jp.net');
+    assert.strictEqual(spamMod.DEFAULT_SPAM_CONFIG.reportHeader, 'X-Spam-Report');
+    assert.strictEqual(spamMod.parseSpamStatus('Yes, score=8.1 required=5.0 tests=BAYES_99').yes, true);
+    assert.strictEqual(spamMod.parseSpamStatus('No, score=-1.2 required=5.0').no, true);
     const addressSrc = fs.readFileSync(path.join(__dirname, '..', 'modules/mailGatewayAddresses.js'), 'utf8');
     assert.doesNotMatch(addressSrc, /icloud\.com['"]\s*:/);
     assert.match(addressSrc, /yukimi@dream\.737\.jp\.net/);

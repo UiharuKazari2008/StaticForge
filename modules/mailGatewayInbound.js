@@ -253,7 +253,8 @@ function handleInboundConnection(socket, options) {
                 subject,
                 body,
                 format,
-                spam: spamMark.spam
+                spam: spamMark.spam,
+                spamMeta: spam.displayMeta(spamMark)
             })).then(() => ({ owner, ok: true }));
         }).catch((err) => ({ owner, ok: false, error: err })));
 

@@ -693,6 +693,7 @@ function testResolveConfigDefaults() {
     assert.strictEqual(cfg.inbound.bind, '192.168.200.101');
     assert.strictEqual(cfg.inbound.maxConnections, gateway.DEFAULT_MAX_CONNECTIONS);
     assert.strictEqual(cfg.spam.flagHeader, 'X-Spam-Flag');
+    assert.strictEqual(cfg.spam.reportHeader, 'X-Spam-Report');
     assert.strictEqual(cfg.spam.authservId, 'mx.dream.737.jp.net');
     assert.ok(!Object.prototype.hasOwnProperty.call(cfg.outbound, 'rejectUnauthorized'));
     const tlsOpts = gateway.tlsVerifyOptions(Object.assign({}, cfg.outbound, { rejectUnauthorized: false }));
@@ -1394,11 +1395,23 @@ function testSpamHeaderTrust() {
     assert.strictEqual(spam.isInboundSpam(forgedLower).spam, false);
 
     const statusYes = [
-        'X-Spam-Status: Yes, score=8.1 required=5.0',
+        'X-Spam-Status: Yes, score=8.1 required=5.0 tests=BAYES_99',
         'X-Spam-Flag: NO',
         'From: alice@example.com'
     ].join('\r\n');
-    assert.strictEqual(spam.isInboundSpam(statusYes).spam, true, 'NO must not rescue a Yes status');
+    const statusYesMark = spam.isInboundSpam(statusYes);
+    assert.strictEqual(statusYesMark.spam, true, 'NO must not rescue a Yes status');
+    assert.strictEqual(statusYesMark.score, 8.1);
+    assert.strictEqual(statusYesMark.required, 5.0);
+
+    const statusNo = [
+        'X-Spam-Status: No, score=-1.2 required=5.0 tests=NONE',
+        'From: alice@example.com'
+    ].join('\r\n');
+    const statusNoMark = spam.isInboundSpam(statusNo);
+    assert.strictEqual(statusNoMark.spam, false);
+    assert.strictEqual(statusNoMark.score, -1.2);
+    assert.strictEqual(statusNoMark.required, 5.0);
 
     const flagThenStatus = [
         'X-Spam-Flag: NO',
@@ -1456,6 +1469,27 @@ function testSpamHeaderTrust() {
         'From: alice@example.com'
     ].join('\r\n');
     assert.strictEqual(spam.isInboundSpam(custom, { flagHeader: 'X-Lantis-Spam' }).spam, true);
+
+    const reportOnly = [
+        'X-Spam-Flag: NO',
+        'X-Spam-Status: No, score=0.1 required=5.0',
+        'X-Spam-Report: * 0.1 BAYES_00',
+        'From: alice@example.com'
+    ].join('\r\n');
+    const reportMark = spam.isInboundSpam(reportOnly);
+    assert.strictEqual(reportMark.spam, false, 'X-Spam-Report is display-only');
+    assert.match(reportMark.report, /BAYES_00/);
+
+    const arSpfFailReceivedPass = [
+        'Authentication-Results: mx.dream.737.jp.net; spf=fail smtp.mailfrom=ext.com; dkim=pass; dmarc=pass',
+        'Received-SPF: pass (relay: sender is permitted)',
+        'From: alice@example.com'
+    ].join('\r\n');
+    assert.strictEqual(
+        spam.isInboundSpam(arSpfFailReceivedPass).spam,
+        false,
+        'OpenDMARC A-R spf=fail is not the exact SPF result'
+    );
 }
 
 function testInternalNeverSpam() {
@@ -1490,7 +1524,7 @@ async function testInboundSpamDelivery() {
         await expectCode(reader, 250);
         socket.write('DATA\r\n');
         await expectCode(reader, 354);
-        socket.write('X-Spam-Flag: YES\r\nX-Spam-Flag: NO\r\nFrom: alice@example.com\r\nSubject: gw-spam\r\n\r\nbody\r\n.\r\n');
+        socket.write('X-Spam-Flag: YES\r\nX-Spam-Status: Yes, score=8.1 required=5.0 tests=BAYES_99\r\nX-Spam-Report: * 8.1 BAYES_99\r\nX-Spam-Flag: NO\r\nFrom: alice@example.com\r\nSubject: gw-spam\r\n\r\nbody\r\n.\r\n');
         await expectCode(reader, 250);
         socket.write('MAIL FROM:<friend@ext.com>\r\n');
         await expectCode(reader, 250);
@@ -1511,6 +1545,9 @@ async function testInboundSpamDelivery() {
     assert.strictEqual(flagged.folder, 'spam');
     assert.strictEqual(flagged.route, 'inbound');
     assert.strictEqual(flagged.external, true);
+    assert.strictEqual(flagged.spamScore, 8.1);
+    assert.strictEqual(flagged.spamRequired, 5.0);
+    assert.match(flagged.spamReport, /BAYES_99/);
     const ham = mail.readMail('ivory', stored[1].id);
     assert.strictEqual(ham.folder, 'inbox');
     assert.strictEqual(ham.route, 'inbound');

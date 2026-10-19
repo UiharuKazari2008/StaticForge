@@ -996,7 +996,7 @@ const doveBuildOeHeader = function (options) {
     const fields = document.createElement('div');
     fields.className = 'dovecote-oe-header-fields';
     const fieldEls = {};
-    ['from', 'to', 'cc', 'subject', 'date'].forEach((field) => {
+    ['from', 'to', 'cc', 'subject', 'date', 'spam'].forEach((field) => {
         const cap = field.charAt(0).toUpperCase() + field.slice(1);
         const row = document.createElement('div');
         row.className = 'dovecote-oe-header-row';
@@ -1072,6 +1072,10 @@ const doveBuildPreviewPane = function () {
     const header = built.header;
     header.id = 'desktopDovecoteOeHeader';
     preview.appendChild(header);
+    const spamReport = document.createElement('pre');
+    spamReport.className = 'dovecote-spam-report hidden';
+    spamReport.id = 'desktopDovecoteSpamReport';
+    preview.appendChild(spamReport);
 
     const imagesBar = document.createElement('div');
     imagesBar.className = 'dovecote-images-bar hidden';
@@ -1145,6 +1149,8 @@ const doveCacheEls = function () {
         oeCc: document.getElementById('desktopDovecoteOeCc'),
         oeSubject: document.getElementById('desktopDovecoteOeSubject'),
         oeDate: document.getElementById('desktopDovecoteOeDate'),
+        oeSpam: document.getElementById('desktopDovecoteOeSpam'),
+        spamReport: document.getElementById('desktopDovecoteSpamReport'),
         searchGroup: document.getElementById('desktopDovecoteSearchGroup'),
         searchInput: document.getElementById('desktopDovecoteSearchInput'),
         mainPane: document.getElementById('desktopDovecoteMainPane')
@@ -1446,6 +1452,21 @@ const doveRenderOeHeaderInto = function (els, mail) {
     els.oeDate.textContent = mail ? doveFormatDate(mail.createdAt) : '';
     doveFillRouteSlot(els.oeRoute, mail ? mail.route : 'internal');
     if (els.oeRoute) els.oeRoute.classList.toggle('hidden', !mail);
+    if (els.oeSpam) els.oeSpam.textContent = doveFormatSpamScore(mail);
+    if (els.spamReport) {
+        const report = mail && mail.spamReport ? String(mail.spamReport) : '';
+        els.spamReport.textContent = report;
+        els.spamReport.classList.toggle('hidden', !report);
+    }
+};
+
+const doveFormatSpamScore = function (mail) {
+    if (!mail) return '';
+    if (mail.spamScore == null && mail.spamRequired == null) return '';
+    if (mail.spamScore != null && mail.spamRequired != null) {
+        return mail.spamScore + ' / ' + mail.spamRequired;
+    }
+    return mail.spamScore != null ? String(mail.spamScore) : String(mail.spamRequired);
 };
 
 const doveFormatBytes = function (bytes) {
@@ -2338,6 +2359,9 @@ const doveBuildReaderWindow = function (key) {
     const header = built.header;
     const fieldEls = built.fieldEls;
     body.appendChild(header);
+    const spamReport = document.createElement('pre');
+    spamReport.className = 'dovecote-spam-report hidden';
+    body.appendChild(spamReport);
 
     const imagesBar = document.createElement('div');
     imagesBar.className = 'dovecote-images-bar hidden';
@@ -2366,6 +2390,8 @@ const doveBuildReaderWindow = function (key) {
         oeCc: fieldEls.cc,
         oeSubject: fieldEls.subject,
         oeDate: fieldEls.date,
+        oeSpam: fieldEls.spam,
+        spamReport: spamReport,
         safetyBar: safetyBar,
         imagesBar: imagesBar,
         attachmentsBar: attachmentsBar,

@@ -1559,7 +1559,7 @@
       "type": "object",
       "label": "Inbound Spam Headers",
       "closed": true,
-      "description": "Header names the inbound path trusts when filing to Spam. Only the topmost instance above the relay's Received (or From/Subject/Date if Received is missing). Authentication-Results must match authserv-id. Header names stay configurable; exact LANTIS names may still change."
+      "description": "Header names the inbound path trusts when filing to Spam. Only the topmost instance above the relay's Received. File on X-Spam-Flag YES or X-Spam-Status Yes (score/required are display-only). SPF uses Received-SPF (OpenDMARC writes softfail as A-R spf=fail). A-R must match authserv-id mx.dream.737.jp.net; X-Spam-Report is stored, not used to decide."
     },
     {
       "path": [
@@ -1581,7 +1581,7 @@
       "type": "string",
       "label": "Spam Status Header",
       "editorType": "input",
-      "description": "Default X-Spam-Status. Topmost instance only. A leading Yes files to Spam."
+      "description": "Default X-Spam-Status. Format Yes|No, score=N required=5.0 tests=…. A leading Yes files to Spam. score and required are parsed for display only."
     },
     {
       "path": [
@@ -1603,7 +1603,18 @@
       "type": "string",
       "label": "Received-SPF Header",
       "editorType": "input",
-      "description": "Default Received-SPF. Topmost instance only. fail / softfail / permerror files to Spam."
+      "description": "Default Received-SPF. Topmost instance only. fail / softfail / permerror files to Spam. Use this for the exact SPF result — OpenDMARC reports softfail as Authentication-Results spf=fail."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "spam",
+        "reportHeader"
+      ],
+      "type": "string",
+      "label": "Spam Report Header",
+      "editorType": "input",
+      "description": "Default X-Spam-Report. Stored and shown on the message. Never used to file to Spam."
     },
     {
       "path": [

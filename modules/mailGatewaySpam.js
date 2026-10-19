@@ -34,8 +34,11 @@ const DEFAULT_SPAM_CONFIG = Object.freeze({
     statusHeader: 'X-Spam-Status',
     authenticationResultsHeader: 'Authentication-Results',
     receivedSpfHeader: 'Received-SPF',
+    reportHeader: 'X-Spam-Report',
     authservId: 'mx.dream.737.jp.net'
 });
+
+const MAX_REPORT_CHARS = 16384;
 
 function headerNameList(value, fallback) {
     const raw = value == null || value === '' ? fallback : value;
@@ -54,6 +57,7 @@ function resolveSpamConfig(raw) {
         receivedSpfHeader: src.receivedSpfHeader
             ? String(src.receivedSpfHeader)
             : DEFAULT_SPAM_CONFIG.receivedSpfHeader,
+        reportHeader: src.reportHeader ? String(src.reportHeader) : DEFAULT_SPAM_CONFIG.reportHeader,
         authservId: src.authservId != null ? String(src.authservId).trim() : DEFAULT_SPAM_CONFIG.authservId
     };
 }
@@ -111,18 +115,45 @@ function isYesToken(value) {
     return /^\s*yes\b/i.test(String(value || ''));
 }
 
+function parseSpamStatus(value) {
+    const raw = String(value || '').trim();
+    const match = raw.match(
+        /^(yes|no)\b(?:\s*,\s*)?(?:score\s*=\s*([+-]?\d+(?:\.\d+)?))?(?:\s+required\s*=\s*([+-]?\d+(?:\.\d+)?))?/i
+    );
+    if (!match) {
+        return { yes: false, no: false, score: null, required: null, raw };
+    }
+    return {
+        yes: /^yes$/i.test(match[1]),
+        no: /^no$/i.test(match[1]),
+        score: match[2] != null ? Number(match[2]) : null,
+        required: match[3] != null ? Number(match[3]) : null,
+        raw
+    };
+}
+
 function isFailResult(value) {
     const token = String(value || '').trim().split(/[\s;]/)[0].toLowerCase();
     return FAIL_RESULTS.has(token);
 }
 
+// DKIM / DMARC only. OpenDMARC writes softfail as A-R spf=fail, so SPF
+// decisions use Received-SPF (pass / fail / softfail / permerror).
 function authMethodFailed(value) {
-    return /\b(?:spf|dkim|dmarc)\s*=\s*(?:fail|softfail|permerror)\b/i.test(String(value || ''));
+    return /\b(?:dkim|dmarc)\s*=\s*(?:fail|softfail|permerror)\b/i.test(String(value || ''));
+}
+
+function clipReport(value) {
+    const text = String(value || '').trim();
+    if (!text) return '';
+    return text.length > MAX_REPORT_CHARS ? text.slice(0, MAX_REPORT_CHARS) : text;
 }
 
 /**
  * Classify a raw RFC5322 header block. Does not look at the body.
- * Returns { spam, reasons } — spam is true only from trusted relay marks.
+ * Returns { spam, reasons, score, required, report, status, flag, receivedSpf }.
+ * score / required / report are for display; only Flag YES, Status Yes,
+ * Received-SPF fail, or trusted A-R dkim/dmarc fail file to Spam.
  */
 function isInboundSpam(headerBlock, config) {
     const cfg = resolveSpamConfig(config);
@@ -132,8 +163,8 @@ function isInboundSpam(headerBlock, config) {
     const flag = topmostValue(collected, cfg.flagHeader);
     if (isYesToken(flag)) reasons.push('spam-flag');
 
-    const status = topmostValue(collected, cfg.statusHeader);
-    if (isYesToken(status)) reasons.push('spam-status');
+    const status = parseSpamStatus(topmostValue(collected, cfg.statusHeader));
+    if (status.yes) reasons.push('spam-status');
 
     const receivedSpf = topmostValue(collected, cfg.receivedSpfHeader);
     if (isFailResult(receivedSpf)) reasons.push('received-spf');
@@ -145,7 +176,30 @@ function isInboundSpam(headerBlock, config) {
     );
     if (authResults.some(authMethodFailed)) reasons.push('authentication-results');
 
-    return { spam: reasons.length > 0, reasons };
+    const report = clipReport(topmostValue(collected, cfg.reportHeader));
+
+    return {
+        spam: reasons.length > 0,
+        reasons,
+        flag: flag || '',
+        status: status.raw,
+        score: status.score,
+        required: status.required,
+        report,
+        receivedSpf
+    };
+}
+
+function displayMeta(mark) {
+    if (!mark || typeof mark !== 'object') return null;
+    const meta = {};
+    if (mark.score != null && Number.isFinite(mark.score)) meta.score = mark.score;
+    if (mark.required != null && Number.isFinite(mark.required)) meta.required = mark.required;
+    if (mark.report) meta.report = String(mark.report);
+    if (mark.status) meta.status = String(mark.status);
+    if (mark.flag) meta.flag = String(mark.flag);
+    if (mark.receivedSpf) meta.receivedSpf = String(mark.receivedSpf);
+    return Object.keys(meta).length ? meta : null;
 }
 
 module.exports = {
@@ -155,5 +209,7 @@ module.exports = {
     TRUST_CUTOFF_HEADERS,
     resolveSpamConfig,
     collectHeaderValues,
+    parseSpamStatus,
+    displayMeta,
     isInboundSpam
 };

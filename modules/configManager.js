@@ -683,6 +683,7 @@ class ConfigManager {
                             statusHeader: 'X-Spam-Status',
                             authenticationResultsHeader: 'Authentication-Results',
                             receivedSpfHeader: 'Received-SPF',
+                            reportHeader: 'X-Spam-Report',
                             authservId: 'mx.dream.737.jp.net'
                         },
                         pendingMailboxes: {

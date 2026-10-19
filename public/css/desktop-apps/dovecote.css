@@ -279,8 +279,19 @@
 }
 
 /* Cc is a real header line. Hide it when the value is empty (single-recipient mail). */
-.dovecote-oe-header-row[data-dove-field="cc"]:has(.dovecote-oe-header-value:empty) {
+.dovecote-oe-header-row[data-dove-field="cc"]:has(.dovecote-oe-header-value:empty),
+.dovecote-oe-header-row[data-dove-field="spam"]:has(.dovecote-oe-header-value:empty) {
     display: none;
+}
+
+.dovecote-spam-report {
+    margin: 0;
+    padding: 4px 8px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 11px;
+    max-height: 8em;
+    overflow: auto;
 }
 
 .dovecote-oe-header-label {

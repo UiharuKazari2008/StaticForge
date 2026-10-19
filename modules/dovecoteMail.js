@@ -132,12 +132,42 @@ function toSummary(row) {
         readByRecipient: !!row.recipient_read_at,
         attachments: attachmentsMetaOf(row.attachments),
         createdAt: row.created_at,
-        updatedAt: row.updated_at
+        updatedAt: row.updated_at,
+        spamScore: spamMetaOf(row.spam_meta).score,
+        spamRequired: spamMetaOf(row.spam_meta).required,
+        spamReport: spamMetaOf(row.spam_meta).report
     };
 }
 
 function toFull(row) {
     return Object.assign(toSummary(row), { body: row.body, replyToId: row.reply_to_id || null });
+}
+
+function spamMetaOf(json) {
+    if (!json) return { score: null, required: null, report: null };
+    try {
+        const parsed = JSON.parse(json);
+        if (!parsed || typeof parsed !== 'object') return { score: null, required: null, report: null };
+        return {
+            score: Number.isFinite(parsed.score) ? parsed.score : null,
+            required: Number.isFinite(parsed.required) ? parsed.required : null,
+            report: parsed.report ? String(parsed.report) : null
+        };
+    } catch (_err) {
+        return { score: null, required: null, report: null };
+    }
+}
+
+function encodeSpamMeta(meta) {
+    if (!meta || typeof meta !== 'object') return null;
+    const out = {};
+    if (Number.isFinite(meta.score)) out.score = meta.score;
+    if (Number.isFinite(meta.required)) out.required = meta.required;
+    if (meta.report) out.report = String(meta.report).slice(0, 16384);
+    if (meta.status) out.status = String(meta.status);
+    if (meta.flag) out.flag = String(meta.flag);
+    if (meta.receivedSpf) out.receivedSpf = String(meta.receivedSpf);
+    return Object.keys(out).length ? JSON.stringify(out) : null;
 }
 
 function attachmentsMetaOf(json) {
@@ -163,18 +193,18 @@ function insertRow(row) {
     getDb().prepare(`
         INSERT INTO dovecote_message (
             id, owner, folder, archive_subfolder, thread_id, from_owner, to_owner,
-            to_list, cc_list, from_label, route, label_suspicious,
+            to_list, cc_list, from_label, route, label_suspicious, spam_meta,
             subject, body, format, reply_to_id, fwd_from_owner, fwd_from_message_id,
             read, flagged, created_at, updated_at, deleted_at, paired_message_id, attachments
         ) VALUES (
             @id, @owner, @folder, @archive_subfolder, @thread_id, @from_owner, @to_owner,
-            @to_list, @cc_list, @from_label, @route, @label_suspicious,
+            @to_list, @cc_list, @from_label, @route, @label_suspicious, @spam_meta,
             @subject, @body, @format, @reply_to_id, @fwd_from_owner, @fwd_from_message_id,
             @read, @flagged, @created_at, @updated_at, @deleted_at, @paired_message_id, @attachments
         )
     `).run(Object.assign({
         paired_message_id: null, attachments: null, to_list: null, cc_list: null,
-        from_label: null, route: 'internal', label_suspicious: 0
+        from_label: null, route: 'internal', label_suspicious: 0, spam_meta: null
     }, row));
 }
 
@@ -542,7 +572,7 @@ function sendMail({ fromOwner, to, cc, subject, body, format, replyToId, attachm
  * owner. Writes inbox, or spam when the inbound path classified the
  * message as spam. Internal sendMail never calls this.
  */
-function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, body, format, threadId, spam }) {
+function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, body, format, threadId, spam, spamMeta }) {
     if (!isValidOwner(toOwner)) throw new DovecoteError('Unknown mailbox', 'UNKNOWN_OWNER');
     const from = String(fromAddress || '').trim();
     if (!from || (from !== NULL_SENDER && !from.includes('@'))) {
@@ -563,6 +593,8 @@ function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, 
     });
     const storedLabel = inspected.suspicious ? from : (inspected.label || '').slice(0, 300);
     const folder = spam === true ? 'spam' : 'inbox';
+    const storedSpamMeta = encodeSpamMeta(spamMeta);
+    const displaySpam = spamMetaOf(storedSpamMeta);
     insertRow({
         id, owner: toOwner, folder, archive_subfolder: null,
         thread_id: threadId || crypto.randomUUID(),
@@ -571,6 +603,7 @@ function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, 
         from_label: storedLabel || null,
         route: 'inbound',
         label_suspicious: inspected.suspicious ? 1 : 0,
+        spam_meta: storedSpamMeta,
         subject: subjectText, body: bodyText, format: sanitizeFormat(format),
         reply_to_id: null, fwd_from_owner: null, fwd_from_message_id: null,
         read: 0, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,
@@ -584,7 +617,10 @@ function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, 
         labelSuspicious: inspected.suspicious,
         route: 'inbound',
         external: true,
-        folder
+        folder,
+        spamScore: displaySpam.score,
+        spamRequired: displaySpam.required,
+        spamReport: displaySpam.report
     };
 }
 
@@ -691,6 +727,7 @@ function forwardMail(owner, { id, to }) {
         route: storedRoute(source.route) === 'internal' ? 'internal' : 'inbound',
         from_label: source.from_label || null,
         label_suspicious: source.label_suspicious ? 1 : 0,
+        spam_meta: source.spam_meta || null,
         read: 0, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,
         attachments: source.attachments || null
     });
