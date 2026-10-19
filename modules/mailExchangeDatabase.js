@@ -95,12 +95,16 @@ function isReady() {
     return db !== null;
 }
 
-function resetForTests(databasesPath) {
-    if (db) {
-        try { db.close(); } catch (_err) { /* ignore */ }
-    }
+function close() {
+    if (!db) return false;
+    try { db.close(); } catch (_err) { /* already closed */ }
     db = null;
     dbPath = null;
+    return true;
+}
+
+function resetForTests(databasesPath) {
+    close();
     return initializeMailExchangeDatabase(databasesPath);
 }
 
@@ -108,5 +112,6 @@ module.exports = {
     initializeMailExchangeDatabase,
     getDb,
     isReady,
+    close,
     resetForTests
 };

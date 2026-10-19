@@ -31,4 +31,6 @@ assert.deepStrictEqual(addresses.expandRecipients('postmaster@dream.737.jp.net',
 
 const sig = exchange.sanitizeSignature('<math><mtext><table><mglyph><style><img src=x onerror=alert(1)>').html;
 assert.ok(!/onerror|<img/i.test(sig), sig);
+try { require('../modules/mailExchangeDatabase').close(); } catch (_err) { /* ignore */ }
 console.log('mail exchange r1 tests passed');
+process.exit(0);

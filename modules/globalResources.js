@@ -1529,7 +1529,7 @@ class GlobalResources {
             this.locationCache = new LRUCache(lruConfig.locationSize || 50);
 
             // Set up periodic cache cleanup
-            setInterval(() => {
+            this.lruCleanupInterval = setInterval(() => {
                 try {
                     this.weatherCache.cleanupExpired(lruConfig.weatherFailureDuration || 15 * 60 * 1000);
                     this.locationCache.cleanupExpired(lruConfig.locationDuration || 24 * 60 * 60 * 1000);
@@ -1538,6 +1538,9 @@ class GlobalResources {
                     console.warn('⚠️ Cache cleanup error:', error.message);
                 }
             }, 30 * 60 * 1000); // Run every 30 minutes
+            if (this.lruCleanupInterval && typeof this.lruCleanupInterval.unref === 'function') {
+                this.lruCleanupInterval.unref();
+            }
 
             if (this.logger?.bootSubStep) {
                 this.logger.bootSubStep('LRU caches initialized');
@@ -1603,6 +1606,9 @@ class GlobalResources {
                 console.warn('⚠️ System info cache refresh failed:', error.message);
             });
         }, 60 * 60 * 1000); // 1 hour
+        if (this.systemInfoRefreshInterval && typeof this.systemInfoRefreshInterval.unref === 'function') {
+            this.systemInfoRefreshInterval.unref();
+        }
 
         console.log('✓ System info cache initialized (refreshes hourly)');
     }
@@ -5055,6 +5061,32 @@ class GlobalResources {
         console.log('🔄 Shutting down global resources...');
         await this.prepareForRestart();
         console.log('✓ Global resources shutdown complete');
+    }
+
+    /**
+     * Tests that require() this module and call initialize() leave SQLite
+     * handles and intervals open. Close them so the process can exit.
+     */
+    async closeHandlesForTests() {
+        if (this.lruCleanupInterval) {
+            clearInterval(this.lruCleanupInterval);
+            this.lruCleanupInterval = null;
+        }
+        if (this.systemInfoRefreshInterval) {
+            clearInterval(this.systemInfoRefreshInterval);
+            this.systemInfoRefreshInterval = null;
+        }
+        if (this.timers && typeof this.timers.forEach === 'function') {
+            this.timers.forEach((timer) => {
+                if (timer && timer.id) {
+                    if (timer.type === 'timeout') clearTimeout(timer.id);
+                    else clearInterval(timer.id);
+                }
+            });
+            this.timers.clear();
+        }
+        await this._closeAllDatabasesForShutdown();
+        this.initialized = false;
     }
 
     /**

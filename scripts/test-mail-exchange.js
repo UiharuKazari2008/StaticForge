@@ -468,7 +468,24 @@ async function main() {
     console.log('test-mail-exchange: ok');
 }
 
-main().catch((err) => {
+async function closeHandles() {
+    try { require('../modules/mailExchangeDatabase').close(); } catch (_err) { /* ignore */ }
+    try { await gateway.resetForTests(); } catch (_err) { /* ignore */ }
+    try { relayClient.resetForTests(); } catch (_err) { /* ignore */ }
+    try { exchange.resetTestConfig(); } catch (_err) { /* ignore */ }
+    try {
+        const gr = require('../modules/globalResources');
+        if (gr && typeof gr.closeHandlesForTests === 'function' && gr.initialized) {
+            await gr.closeHandlesForTests();
+        }
+    } catch (_err) { /* globalResources was never loaded */ }
+}
+
+main().then(async () => {
+    await closeHandles();
+    process.exit(0);
+}).catch(async (err) => {
     console.error(err);
+    await closeHandles();
     process.exit(1);
 });
