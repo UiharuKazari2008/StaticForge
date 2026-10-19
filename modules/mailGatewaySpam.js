@@ -2,11 +2,14 @@
  * Inbound spam classification from LANTIS relay headers.
  *
  * MTAs prepend. Only the hop that just delivered the message is trusted:
- * headers above the original From / Subject / Date / To / … block. For each
- * name, the topmost instance in that prefix wins. Authentication-Results may
- * instead be selected by a configured authserv-id (first matching id in the
- * prefix). Sender-supplied copies further down are ignored. X-Spam-Flag: NO
- * never rescues a trusted Yes / fail mark.
+ * headers above the topmost Received (the relay stamp) or, if that is
+ * missing, above the original From / Subject / Date / To / … block. For
+ * each name, the topmost instance in that prefix wins. Authentication-Results
+ * is trusted only when its authserv-id matches the configured relay id
+ * (default mx.dream.737.jp.net). The relay strips inbound X-Spam-* and
+ * forged A-R with that id before stamping; sender copies further down are
+ * still ignored. X-Spam-Flag: NO never rescues a trusted Yes / fail mark.
+ * Header names stay configurable.
  */
 
 'use strict';
@@ -22,12 +25,16 @@ const ORIGINATION_HEADERS = new Set([
     'mime-version', 'content-type', 'content-transfer-encoding'
 ]);
 
+// First Received is the relay's own stamp. Everything at or below it is
+// a previous hop or the original message.
+const TRUST_CUTOFF_HEADERS = new Set(['received', ...ORIGINATION_HEADERS]);
+
 const DEFAULT_SPAM_CONFIG = Object.freeze({
     flagHeader: 'X-Spam-Flag',
     statusHeader: 'X-Spam-Status',
     authenticationResultsHeader: 'Authentication-Results',
     receivedSpfHeader: 'Received-SPF',
-    authservId: ''
+    authservId: 'mx.dream.737.jp.net'
 });
 
 function headerNameList(value, fallback) {
@@ -66,7 +73,7 @@ function collectHeaderValues(headerBlock) {
         if (!current) continue;
         // Original-message headers start the sender-controlled block. Relay
         // marks are prepended above them; anything at or below is untrusted.
-        if (ORIGINATION_HEADERS.has(current)) break;
+        if (TRUST_CUTOFF_HEADERS.has(current)) break;
         if (!headers[current]) headers[current] = [];
         headers[current].push(line.slice(colon + 1).trim());
     }
@@ -95,7 +102,7 @@ function trustedAuthResults(collected, names, authservId) {
     const values = valuesFor(collected, names);
     if (!values.length) return [];
     const wanted = String(authservId || '').trim().toLowerCase();
-    if (!wanted) return [values[0]];
+    if (!wanted) return [];
     const match = values.find((value) => authservIdOf(value) === wanted);
     return match ? [match] : [];
 }
@@ -145,6 +152,7 @@ module.exports = {
     DEFAULT_SPAM_CONFIG,
     FAIL_RESULTS,
     ORIGINATION_HEADERS,
+    TRUST_CUTOFF_HEADERS,
     resolveSpamConfig,
     collectHeaderValues,
     isInboundSpam

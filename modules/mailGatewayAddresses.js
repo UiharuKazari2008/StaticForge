@@ -11,7 +11,10 @@ const DEFAULT_DOMAIN = 'dream.737.jp.net';
 const INTERNAL_DISPLAY_DOMAIN = 'dream.co.jp';
 
 // Shipped defaults (pending confirmation of tifa / pyra — those stay unmapped).
+// Yukimi's public address is yukimi@dream.737.jp.net. Never map an external
+// domain (ykazari@icloud.com or any other) as a local recipient.
 const DEFAULT_MAILBOXES = Object.freeze({
+    yukimi: 'yukimi',
     'sala.ops': 'sala',
     'menma.dev': 'menma',
     'rook.dev': 'rook',
@@ -59,6 +62,9 @@ function cleanMailboxes(mailboxes) {
         const localPart = String(local || '').trim().toLowerCase();
         const mailbox = String(owner || '').trim().toLowerCase();
         if (!localPart || !mailbox) continue;
+        // Keys are local-parts on the gateway domain only. A full address
+        // (ykazari@icloud.com, anyone@elsewhere) is never a local recipient.
+        if (localPart.includes('@')) continue;
         map[localPart] = mailbox;
     }
     return map;
@@ -81,6 +87,9 @@ function createMapping({ mailboxes, domain } = {}) {
 function toMailbox(address, mapping) {
     const parts = splitLocalDomain(address);
     if (!parts || !mapping) return null;
+    // Inbound RCPT is the public domain only. External domains (icloud.com,
+    // gmail.com, …) are never local mailboxes, even when the local-part
+    // matches yukimi / ykazari / a mapped bot.
     if (parts.domain !== mapping.domain) return null;
     return mapping.mailboxes[parts.local] || null;
 }
@@ -118,15 +127,17 @@ function classifyRecipient(token, { mapping, enabled, isValidOwner }) {
     if (!raw) return null;
     const email = looksLikeEmail(raw) ? normalizeEmail(raw) : '';
     if (email) {
+        const parts = splitLocalDomain(email);
         const mapped = toMailbox(email, mapping);
         if (mapped) return { kind: 'internal', owner: mapped, address: email };
-        const parts = splitLocalDomain(email);
         if (parts && mapping && parts.domain === mapping.domain) {
             return { kind: 'unknown', token: email };
         }
         if (parts && parts.domain === INTERNAL_DISPLAY_DOMAIN && isValidOwner(parts.local)) {
             return { kind: 'internal', owner: parts.local, address: email };
         }
+        // Foreign domains are outbound targets when the gateway is on, never
+        // a Dovecote mailbox. ykazari@icloud.com is external, not Yukimi.
         if (enabled && parts) {
             return { kind: 'external', address: email };
         }

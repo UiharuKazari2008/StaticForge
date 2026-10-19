@@ -1549,7 +1549,7 @@
       ],
       "type": "object",
       "label": "Mailbox Map",
-      "description": "local-part → Dovecote mailbox. Shipped: sala.ops; menma/rook/cursor/claude/frost .dev; hoshino.apocrypha; ivory.studio; guren.lab; chiyo.web. tifa and pyra stay unmapped."
+      "description": "local-part on dream.737.jp.net → Dovecote mailbox. Shipped: yukimi; sala.ops; menma/rook/cursor/claude/frost .dev; hoshino.apocrypha; ivory.studio; guren.lab; chiyo.web. Yukimi is yukimi@dream.737.jp.net only — never ykazari@icloud.com or any external domain. tifa and pyra stay unmapped."
     },
     {
       "path": [
@@ -1559,7 +1559,7 @@
       "type": "object",
       "label": "Inbound Spam Headers",
       "closed": true,
-      "description": "Header names and authserv-id the inbound path trusts when filing to Spam. Only the topmost instance above the original From/Subject/Date (or Authentication-Results matching authserv-id) is used. Sala will confirm the LANTIS names."
+      "description": "Header names the inbound path trusts when filing to Spam. Only the topmost instance above the relay's Received (or From/Subject/Date if Received is missing). Authentication-Results must match authserv-id. Header names stay configurable; exact LANTIS names may still change."
     },
     {
       "path": [
@@ -1592,7 +1592,7 @@
       "type": "string",
       "label": "Authentication-Results Header",
       "editorType": "input",
-      "description": "Default Authentication-Results. Trusted when it is the topmost instance, or when its authserv-id matches the configured relay id."
+      "description": "Default Authentication-Results. Only the topmost instance whose authserv-id matches the configured relay id is trusted. Other authserv-ids are ignored."
     },
     {
       "path": [
@@ -1614,7 +1614,7 @@
       "type": "string",
       "label": "Relay authserv-id",
       "editorType": "input",
-      "description": "When set, only Authentication-Results whose first token matches this id are trusted. Empty uses the topmost Authentication-Results only. Leave empty until Sala confirms the LANTIS id."
+      "description": "Relay authserv-id. Default mx.dream.737.jp.net. Only the topmost Authentication-Results with this id is trusted. Empty trusts no Authentication-Results (X-Spam-* / Received-SPF still apply)."
     },
     {
       "path": [

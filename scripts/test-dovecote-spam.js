@@ -78,6 +78,11 @@ function main() {
     const handlerSrc = fs.readFileSync(path.join(__dirname, '..', 'modules/ws/handlers/250-dovecoteHandler.js'), 'utf8');
     assert.match(handlerSrc, /spamUnread: entry\.spamUnread \|\| 0/);
     assert.match(handlerSrc, /spam: typeof message\.spam === 'boolean' \? message\.spam : undefined/);
+    const spamMod = require('../modules/mailGatewaySpam');
+    assert.strictEqual(spamMod.DEFAULT_SPAM_CONFIG.authservId, 'mx.dream.737.jp.net');
+    const addressSrc = fs.readFileSync(path.join(__dirname, '..', 'modules/mailGatewayAddresses.js'), 'utf8');
+    assert.doesNotMatch(addressSrc, /icloud\.com['"]\s*:/);
+    assert.match(addressSrc, /yukimi@dream\.737\.jp\.net/);
 
     console.log('dovecote spam folder tests passed');
 }

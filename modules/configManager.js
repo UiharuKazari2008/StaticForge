@@ -661,6 +661,7 @@ class ConfigManager {
                             recipientAllowlist: []
                         },
                         mailboxes: {
+                            yukimi: 'yukimi',
                             'sala.ops': 'sala',
                             'menma.dev': 'menma',
                             'rook.dev': 'rook',
@@ -675,13 +676,14 @@ class ConfigManager {
                             // until a department is confirmed. Do not add keys here.
                             // 'tifa.<dept>': 'tifa',
                             // 'pyra.<dept>': 'pyra',
+                            // Never map ykazari@icloud.com or any external domain.
                         },
                         spam: {
                             flagHeader: 'X-Spam-Flag',
                             statusHeader: 'X-Spam-Status',
                             authenticationResultsHeader: 'Authentication-Results',
                             receivedSpfHeader: 'Received-SPF',
-                            authservId: ''
+                            authservId: 'mx.dream.737.jp.net'
                         },
                         pendingMailboxes: {
                             tifa: null,

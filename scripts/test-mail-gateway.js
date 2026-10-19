@@ -250,13 +250,34 @@ function testMapping() {
     assert.strictEqual(addresses.toMailbox('pyra.dev@dream.737.jp.net', map), null);
     assert.strictEqual(addresses.toMailbox('unknown@dream.737.jp.net', map), null);
     assert.strictEqual(addresses.toMailbox('menma@gmail.com', map), null);
+    assert.strictEqual(addresses.toMailbox('yukimi@dream.737.jp.net', map), 'yukimi');
+    assert.strictEqual(addresses.toMailbox('ykazari@icloud.com', map), null);
+    assert.strictEqual(addresses.toMailbox('yukimi@icloud.com', map), null);
 
     assert.strictEqual(addresses.toExternal('sala', map), 'sala.ops@dream.737.jp.net');
     assert.strictEqual(addresses.toExternal('menma', map), 'menma.dev@dream.737.jp.net');
     assert.strictEqual(addresses.toExternal('rook', map), 'rook.dev@dream.737.jp.net');
+    assert.strictEqual(addresses.toExternal('yukimi', map), 'yukimi@dream.737.jp.net');
     assert.strictEqual(addresses.toExternal('tifa', map), null);
     assert.strictEqual(addresses.toExternal('pyra', map), null);
-    assert.strictEqual(addresses.toExternal('yukimi', map), null);
+
+    const poisoned = addresses.createMapping({
+        mailboxes: Object.assign({}, addresses.DEFAULT_MAILBOXES, {
+            'ykazari@icloud.com': 'yukimi',
+            'yukimi@icloud.com': 'yukimi'
+        })
+    });
+    assert.strictEqual(poisoned.mailboxes['ykazari@icloud.com'], undefined);
+    assert.strictEqual(poisoned.mailboxes['yukimi@icloud.com'], undefined);
+    assert.strictEqual(addresses.toMailbox('ykazari@icloud.com', poisoned), null);
+    assert.strictEqual(addresses.toMailbox('yukimi@dream.737.jp.net', poisoned), 'yukimi');
+
+    const icloud = addresses.classifyRecipient('ykazari@icloud.com', {
+        mapping: map, enabled: true, isValidOwner: mail.isValidOwner
+    });
+    assert.strictEqual(icloud.kind, 'external');
+    assert.strictEqual(icloud.address, 'ykazari@icloud.com');
+    assert.ok(!icloud.owner);
 
     const classified = addresses.classifyRecipients(
         ['rook', 'alice@example.com', 'menma.dev@dream.737.jp.net'],
@@ -304,7 +325,9 @@ async function testUnknownRecipientReject() {
             'MAIL FROM:<alice@example.com>',
             'RCPT TO:<nobody@dream.737.jp.net>',
             'RCPT TO:<tifa.ops@dream.737.jp.net>',
-            'RCPT TO:<pyra.dev@dream.737.jp.net>'
+            'RCPT TO:<pyra.dev@dream.737.jp.net>',
+            'RCPT TO:<ykazari@icloud.com>',
+            'RCPT TO:<yukimi@dream.737.jp.net>'
         ]);
         assert.strictEqual(replies[0].code, 220);
         assert.strictEqual(replies[1].code, 250);
@@ -312,7 +335,10 @@ async function testUnknownRecipientReject() {
         assert.strictEqual(replies[3].code, 550);
         assert.strictEqual(replies[4].code, 550);
         assert.strictEqual(replies[5].code, 550);
+        assert.strictEqual(replies[6].code, 550);
+        assert.strictEqual(replies[7].code, 250);
         assert.match(replies[3].text, /User unknown/);
+        assert.match(replies[6].text, /User unknown/);
     } finally {
         await inbound.close();
     }
@@ -667,7 +693,7 @@ function testResolveConfigDefaults() {
     assert.strictEqual(cfg.inbound.bind, '192.168.200.101');
     assert.strictEqual(cfg.inbound.maxConnections, gateway.DEFAULT_MAX_CONNECTIONS);
     assert.strictEqual(cfg.spam.flagHeader, 'X-Spam-Flag');
-    assert.strictEqual(cfg.spam.authservId, '');
+    assert.strictEqual(cfg.spam.authservId, 'mx.dream.737.jp.net');
     assert.ok(!Object.prototype.hasOwnProperty.call(cfg.outbound, 'rejectUnauthorized'));
     const tlsOpts = gateway.tlsVerifyOptions(Object.assign({}, cfg.outbound, { rejectUnauthorized: false }));
     assert.strictEqual(tlsOpts.rejectUnauthorized, true);
@@ -1410,9 +1436,19 @@ function testSpamHeaderTrust() {
         'Authentication-Results: evil.example; dmarc=fail',
         'From: alice@example.com'
     ].join('\r\n');
+    assert.strictEqual(spam.isInboundSpam(arForgedOnly).spam, false);
     assert.strictEqual(spam.isInboundSpam(arForgedOnly, { authservId: 'mx.dream.737.jp.net' }).spam, false);
     assert.strictEqual(spam.isInboundSpam(arFail, { authservId: 'mx.dream.737.jp.net' }).spam, true);
     assert.strictEqual(spam.isInboundSpam(arFail, { authservId: 'other.relay' }).spam, false);
+    assert.strictEqual(spam.isInboundSpam(arFail, { authservId: '' }).spam, false);
+
+    const arBelowReceived = [
+        'Received: from sender by mx.dream.737.jp.net',
+        'Authentication-Results: mx.dream.737.jp.net; dmarc=fail',
+        'X-Spam-Flag: YES',
+        'From: alice@example.com'
+    ].join('\r\n');
+    assert.strictEqual(spam.isInboundSpam(arBelowReceived).spam, false);
 
     const custom = [
         'X-Lantis-Spam: YES',
