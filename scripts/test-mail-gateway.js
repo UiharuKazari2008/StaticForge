@@ -425,6 +425,130 @@ async function testInboundDelivery() {
     assert.strictEqual(inbox[0].id, stored.id);
 }
 
+async function testInboundRelaySenders() {
+    const { inbound, delivered } = await startOpenInbound();
+    try {
+        const socket = await connectSmtp(inbound.port);
+        const reader = createLineReader(socket);
+        await expectCode(reader, 220);
+        socket.write('EHLO lantis\r\n');
+        await expectCode(reader, 250);
+
+        socket.write('MAIL FROM:<kazari.ops@dream.737.jp.net>\r\n');
+        await expectCode(reader, 250);
+        socket.write('RCPT TO:<menma.dev@dream.737.jp.net>\r\n');
+        await expectCode(reader, 250);
+        socket.write('DATA\r\n');
+        await expectCode(reader, 354);
+        socket.write('From: Alice <alice@example.com>\r\nSubject: our-domain\r\n\r\nvia relay\r\n.\r\n');
+        await expectCode(reader, 250);
+
+        socket.write('MAIL FROM:<double-bounce@mx.dream.737.jp.net>\r\n');
+        await expectCode(reader, 250);
+        socket.write('RCPT TO:<ivory.studio@dream.737.jp.net>\r\n');
+        await expectCode(reader, 250);
+        socket.write('DATA\r\n');
+        await expectCode(reader, 354);
+        socket.write('From: Mailer-Daemon@mx.example.com\r\nSubject: subdomain-env\r\n\r\nprobe bounce\r\n.\r\n');
+        await expectCode(reader, 250);
+
+        socket.write('MAIL FROM:<>\r\n');
+        await expectCode(reader, 250);
+        socket.write('RCPT TO:<ivory.studio@dream.737.jp.net>\r\n');
+        await expectCode(reader, 250);
+        socket.write('DATA\r\n');
+        await expectCode(reader, 354);
+        socket.write('From: Mailer-Daemon@mx.example.com\r\nSubject: null-sender\r\n\r\nbounce\r\n.\r\n');
+        await expectCode(reader, 250);
+
+        socket.write('MAIL FROM:<alice@example.com>\r\n');
+        await expectCode(reader, 250);
+        socket.write('RCPT TO:<guren.lab@dream.737.jp.net>\r\n');
+        await expectCode(reader, 250);
+        socket.write('DATA\r\n');
+        await expectCode(reader, 354);
+        socket.write('From: Alice <alice@example.com>\r\nSubject: foreign\r\n\r\nstill ok\r\n.\r\n');
+        await expectCode(reader, 250);
+
+        socket.write('MAIL FROM:<kazari.ops@dream.737.jp.net>\r\n');
+        await expectCode(reader, 250);
+        socket.write('RCPT TO:<ivory.studio@dream.737.jp.net>\r\n');
+        await expectCode(reader, 250);
+        socket.write('DATA\r\n');
+        await expectCode(reader, 354);
+        socket.write('From: menma\r\nSubject: spoof-label\r\n\r\nlabel check\r\n.\r\n');
+        await expectCode(reader, 250);
+
+        socket.write('QUIT\r\n');
+        await readReply(reader);
+        socket.end();
+
+        const probe = await smtpTalk(inbound.port, [
+            'EHLO verify',
+            'MAIL FROM:<double-bounce@mx.dream.737.jp.net>',
+            'RCPT TO:<menma.dev@dream.737.jp.net>',
+            'RCPT TO:<nobody@dream.737.jp.net>',
+            'RSET',
+            'MAIL FROM:<>',
+            'RCPT TO:<kazari.ops@dream.737.jp.net>',
+            'RCPT TO:<unknown@dream.737.jp.net>',
+            'QUIT'
+        ]);
+        assert.strictEqual(probe[1].code, 250);
+        assert.strictEqual(probe[2].code, 250);
+        assert.strictEqual(probe[3].code, 250);
+        assert.strictEqual(probe[4].code, 550);
+        assert.match(probe[4].text, /5\.1\.1/);
+        assert.strictEqual(probe[5].code, 250);
+        assert.strictEqual(probe[6].code, 250);
+        assert.strictEqual(probe[7].code, 250);
+        assert.strictEqual(probe[8].code, 550);
+        assert.match(probe[8].text, /5\.1\.1/);
+        assert.strictEqual(probe[9].code, 221);
+    } finally {
+        await inbound.close();
+    }
+
+    assert.strictEqual(delivered.length, 5);
+
+    const ourDomain = delivered.find((msg) => msg.subject === 'our-domain');
+    assert.ok(ourDomain);
+    assert.strictEqual(ourDomain.fromAddress, 'kazari.ops@dream.737.jp.net');
+    const ourStored = mail.deliverInboundMail(ourDomain);
+    assert.strictEqual(ourStored.route, 'inbound');
+    assert.strictEqual(ourStored.external, true);
+    assert.notStrictEqual(ourStored.route, 'internal');
+    const ourRow = mail.readMail('menma', ourStored.id);
+    assert.strictEqual(ourRow.from, 'kazari.ops@dream.737.jp.net');
+    assert.strictEqual(ourRow.route, 'inbound');
+    assert.strictEqual(ourRow.external, true);
+    assert.notStrictEqual(ourRow.route, 'internal');
+
+    const sub = delivered.find((msg) => msg.subject === 'subdomain-env');
+    assert.strictEqual(sub.fromAddress, 'double-bounce@mx.dream.737.jp.net');
+    const subStored = mail.deliverInboundMail(sub);
+    assert.strictEqual(subStored.route, 'inbound');
+    assert.strictEqual(subStored.external, true);
+
+    const nullMsg = delivered.find((msg) => msg.subject === 'null-sender');
+    assert.strictEqual(nullMsg.fromAddress, addresses.NULL_SENDER);
+    const nullStored = mail.deliverInboundMail(nullMsg);
+    assert.strictEqual(nullStored.from, 'mailer-daemon');
+    assert.strictEqual(nullStored.route, 'inbound');
+
+    const foreign = delivered.find((msg) => msg.subject === 'foreign');
+    assert.strictEqual(foreign.fromAddress, 'alice@example.com');
+    const foreignStored = mail.deliverInboundMail(foreign);
+    assert.strictEqual(foreignStored.route, 'inbound');
+
+    const spoof = delivered.find((msg) => msg.subject === 'spoof-label');
+    assert.strictEqual(spoof.fromAddress, 'kazari.ops@dream.737.jp.net');
+    const spoofStored = mail.deliverInboundMail(spoof);
+    assert.strictEqual(spoofStored.labelSuspicious, true);
+    assert.strictEqual(spoofStored.route, 'inbound');
+    assert.strictEqual(spoofStored.external, true);
+}
+
 async function testYukimiAliasDelivery() {
     const delivered = [];
     const inbound = await gateway.startInbound({
@@ -749,8 +873,17 @@ function testCrlfBufferAndSenderRules() {
     const bounce = addresses.validateEnvelopeSender('<>', map);
     assert.strictEqual(bounce.ok, true);
     assert.strictEqual(bounce.address, addresses.NULL_SENDER);
-    assert.strictEqual(addresses.validateEnvelopeSender('menma@dream.737.jp.net', map).code, 550);
-    assert.strictEqual(addresses.validateEnvelopeSender('menma@mx.dream.737.jp.net', map).code, 550);
+    assert.strictEqual(addresses.validateEnvelopeSender('menma@dream.737.jp.net', map).ok, true);
+    assert.strictEqual(addresses.validateEnvelopeSender('double-bounce@mx.dream.737.jp.net', map).ok, true);
+    // r1: anchored, case/trailing-dot/IDNA-dot folded; look-alikes stay external.
+    for (const bad of ['<a@dream.co.jp.>', '<a@DREAM.CO.JP>', '<a@x.dream.co.jp..>', '<a@dream\u3002co\u3002jp>', '<a@dream\uff0eco\uff0ejp>']) {
+        assert.strictEqual(addresses.validateEnvelopeSender(bad, map).code, 550, bad);
+    }
+    for (const ok of ['<a@evil-dream.co.jp>', '<a@dream.co.jp.evil.com>', '<a@evil-dream.737.jp.net>', '<a@dream.737.jp.net.evil.com>']) {
+        assert.strictEqual(addresses.validateEnvelopeSender(ok, map).ok, true, ok);
+    }
+    assert.strictEqual(addresses.validateFromHeader('a@dream.co.jp.', map).ok, false);
+    assert.strictEqual(addresses.validateFromHeader('x <a@dream.737.jp.net.>', map).ok, false);
     assert.strictEqual(addresses.validateEnvelopeSender('menma@dream.co.jp', map).code, 550);
     assert.strictEqual(addresses.validateEnvelopeSender('alice@example.com', map).ok, true);
     assert.strictEqual(addresses.validateFromHeader('menma', map).ok, true);
@@ -936,8 +1069,8 @@ async function testSpoofCases() {
         assert.strictEqual(replies[1].code, 250);
         assert.strictEqual(replies[2].code, 501);
         assert.strictEqual(replies[3].code, 501);
-        assert.strictEqual(replies[4].code, 550);
-        assert.strictEqual(replies[5].code, 550);
+        assert.strictEqual(replies[4].code, 250);
+        assert.strictEqual(replies[5].code, 250);
         assert.strictEqual(replies[6].code, 550);
         assert.strictEqual(replies[7].code, 250);
         assert.strictEqual(replies[8].code, 250);
@@ -1850,6 +1983,7 @@ async function main() {
     await testAllowlistReject();
     await testUnknownRecipientReject();
     await testInboundDelivery();
+    await testInboundRelaySenders();
     await testYukimiAliasDelivery();
     await testOutboundRewrite();
     await testMissingStarttls();

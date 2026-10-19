@@ -207,8 +207,23 @@ function reservedSenderDomains(mapping) {
     return domains;
 }
 
+// Compare form for domain checks: lowercase, IDNA dot variants (U+3002,
+// U+FF0E, U+FF61) folded to '.', trailing root dots dropped. Without this,
+// "dream.co.jp." or "dream\u3002co\u3002jp" slips past an endsWith check.
+function domainForCompare(domain) {
+    return String(domain || '')
+        .toLowerCase()
+        .replace(/[\u3002\uff0e\uff61]/g, '.')
+        .replace(/\.+$/, '');
+}
+
+function isInternalDisplayDomain(domain) {
+    const host = domainForCompare(domain);
+    return host === INTERNAL_DISPLAY_DOMAIN || host.endsWith(`.${INTERNAL_DISPLAY_DOMAIN}`);
+}
+
 function isReservedSenderDomain(domain, mapping) {
-    const host = String(domain || '').toLowerCase();
+    const host = domainForCompare(domain);
     if (!host) return false;
     return reservedSenderDomains(mapping).some((base) => host === base || host.endsWith(`.${base}`));
 }
@@ -221,7 +236,10 @@ function stripMailFromParams(raw) {
 
 /**
  * External MAIL FROM must be a full addr-spec (or the null sender <> for
- * bounces) and must not use our domains or their subdomains.
+ * bounces). The public gateway domain and its subdomains are accepted —
+ * intake is only from the allowlisted relay, which already refuses
+ * internet forgeries of dream/737. The internal display domain
+ * (dream.co.jp) stays rejected so it cannot look like a Dovecote mailbox.
  */
 function validateEnvelopeSender(raw, mapping) {
     const addrPart = stripMailFromParams(raw);
@@ -236,7 +254,7 @@ function validateEnvelopeSender(raw, mapping) {
     if (!parts) {
         return { ok: false, code: 501, message: '5.1.7 MAIL FROM must be a full address' };
     }
-    if (isReservedSenderDomain(parts.domain, mapping)) {
+    if (isInternalDisplayDomain(parts.domain)) {
         return { ok: false, code: 550, message: '5.7.1 Sender domain is not allowed' };
     }
     return { ok: true, address: `${parts.local}@${parts.domain}` };
@@ -455,6 +473,8 @@ module.exports = {
     NULL_SENDER,
     reservedSenderDomains,
     isReservedSenderDomain,
+    isInternalDisplayDomain,
+    domainForCompare,
     validateEnvelopeSender,
     validateFromHeader,
     extractDisplayName,
