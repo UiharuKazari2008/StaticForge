@@ -2,7 +2,7 @@
 
 Operator path for a Dreamscape host behind the LANTIS (Oracle) mail relay. This is not a NovelAI hosting guide. Personal, private use only — see the [README preface](../README.md#preface).
 
-Secrets never belong in git. Use placeholders (`<RELAY_TOKEN>`, `<OCI_SMTP_USER>`, `<DKIM_SELECTOR>`, `example.invalid`) until you write real values on the host.
+Secrets never belong in git. Use placeholders (`<RELAY_TOKEN>`, `<OCI_SMTP_USER>`, `<OCI_SMTP_CRED_FILE>`, `<LE_FULLCHAIN_PATH>`) on the host. DNS records below are public and live-verified.
 
 Mail intake, Spam folders, and the Exchange Server DSAP are **not on `main`**. They live on [PR #344](https://github.com/UiharuKazari2008/StaticForge/pull/344) (`cursor/dovecote-mail-gateway-a4cc`) and the sibling Exchange Server work. Treat them as **mail gateway (PR #344, off by default: `config.mailGateway.enabled`)**. Do not invent endpoints that are not in this tree.
 
@@ -36,23 +36,25 @@ Dreamscape HTTP stays on **9220** (`web_server.js`, PM2 app `Dreamscape`). Intak
 
 ## 2. External: LANTIS (Oracle) relay
 
-**Not in this repo.** The following is the operator contract the gateway code on PR #344 expects. Confirm against the live LANTIS Postfix tree before treating a line as fact.
+**Not in this repo.** Live-verified on the LANTIS Postfix host. Mail ops run as **`tsubame`** (limited sudo, own OCI user). Postfix/milter config files are **`root:root`**.
 
 Postfix is the MX for `dream.737.jp.net` (`mx.dream.737.jp.net`).
 
-| Piece | Contract |
-|-------|----------|
-| postscreen | DNSBLs: zen, spamcop, barracuda, psbl |
-| Auth | SPF verify, DKIM verify, DMARC (OpenDMARC) |
-| SpamAssassin milter | Inserts `X-Spam-*` **above** the relay `Received` |
+| Piece | Live value |
+|-------|------------|
+| Queue | `maximal_queue_lifetime=14d`, `bounce_queue_lifetime=1d` |
+| postscreen DNSBLs | `zen.spamhaus.org=127.0.0.[2..11]*3`, `bl.spamcop.net*2`, `b.barracudacentral.org*2`, `psbl.surriel.com*1`, `list.dnswl.org*-2` (allowlist) |
+| Milters | On the `smtpd`/`pass` service in `master.cf`: `127.0.0.1:8891` OpenDKIM (**verify only**), `:8893` OpenDMARC, `:8894` **lantis-spam-milter** |
+| lantis-spam-milter | Writes `X-Spam-*` **above** the top `Received`. Rejects `score >= 10` with `550 5.7.1`. Replaced `spamass-milter` |
+| SPF | `pypolicyd-spf` |
+| Resolver | unbound on `127.0.0.1` |
 | `Authentication-Results` | `authserv-id` `mx.dream.737.jp.net` (one A-R per method: dmarc / spf / dkim). Intake on PR #344 keeps **every** trusted A-R with that id |
 | Strip inbound | Inbound `X-Spam-*` and forged A-R (foreign authserv-id) are stripped at the relay so only LANTIS stamps are trusted |
-| Resolver | Local unbound |
-| Policy | MTA-STS + TLS-RPT |
-| Certs | Let's Encrypt for `mx.dream.737.jp.net` and `mta-sts.dream.737.jp.net` |
-| Catch-all | Unknown local-parts rewrite to `mailroom.ops@dream.737.jp.net` and stamp `X-Original-To` (display only on intake) |
-| Queue | 14-day queue lifetime (`maximal_queue_lifetime` 14d — **TODO:** confirm the live Postfix main.cf) |
-| LAN submission | `192.168.255.1` ports **587** (STARTTLS) and **465** (implicit TLS). Dreamscape outbound defaults to this host (`modules/mailGateway.js` on PR #344) |
+| Inbound certs | Let's Encrypt at `<LE_FULLCHAIN_PATH>` (`mx.` and `mta-sts.`) |
+| Outbound TLS | `smtp_tls_security_level=encrypt` |
+| Catch-all | `virtual_alias_maps = hash:virtual_known` + `pcre:virtual_catchall.pcre` — unmatched local-parts → `mailroom.ops@dream.737.jp.net` with `X-Original-To` (display only on intake) |
+| LAN submission | **Only** on `192.168.255.1`: **587** (`encrypt` + `tls_auth_only`), **465** (`wrappermode`). Dreamscape outbound defaults to this host (`modules/mailGateway.js` on PR #344) |
+| Policy | MTA-STS + TLS-RPT (see §3) |
 
 AUTH user the gateway defaults to: `dreamscape@dream.737.jp.net`. Password is `secure.config.json` `mailGateway.smtpPassword` or env `MAIL_GATEWAY_SMTP_PASSWORD`. Write it on the host as `<RELAY_TOKEN>`; never commit it.
 
@@ -62,7 +64,7 @@ TLS servername checked by the gateway: `mx.dream.737.jp.net`. Optional extra CA:
 
 ## 3. DNS (Vultr)
 
-**Not in this repo.** Publish at the DNS host (Vultr). Placeholders only.
+Live public records (Vultr). `rua` for DMARC and TLS-RPT is **`postmaster@dream.737.jp.net`**, not `mailroom.ops@`.
 
 ```
 ; MX
@@ -71,37 +73,45 @@ dream.737.jp.net.                    IN  MX   10 mx.dream.737.jp.net.
 ; SPF — include OCI Email Delivery
 dream.737.jp.net.                    IN  TXT  "v=spf1 include:rp.oracleemaildelivery.com -all"
 
-; DKIM (CNAME to the OCI selector)
-<DKIM_SELECTOR>._domainkey.dream.737.jp.net.  IN  CNAME  <DKIM_SELECTOR>.<OCI_DKIM_CNAME>.example.invalid.
+; DKIM (OCI CNAME)
+dream-20261019._domainkey.dream.737.jp.net.  IN  CNAME  dream-20261019.dream.737.jp.net.dkim.iad1.oracleemaildelivery.com.
 
 ; DMARC
-_dmarc.dream.737.jp.net.             IN  TXT  "v=DMARC1; p=quarantine; rua=mailto:mailroom.ops@dream.737.jp.net"
+_dmarc.dream.737.jp.net.             IN  TXT  "v=DMARC1; p=quarantine; adkim=r; aspf=r; rua=mailto:postmaster@dream.737.jp.net"
 
 ; MTA-STS
-_mta-sts.dream.737.jp.net.           IN  TXT  "v=STSv1; id=<MTA_STS_ID>"
+_mta-sts.dream.737.jp.net.           IN  TXT  "v=STSv1; id=202610191622"
 mta-sts.dream.737.jp.net.            IN  A    <LANTIS_PUBLIC_IPV4>
-; HTTPS serves https://mta-sts.dream.737.jp.net/.well-known/mta-sts.txt (LE cert)
+; HTTPS: https://mta-sts.dream.737.jp.net/.well-known/mta-sts.txt (LE cert)
 
 ; TLS-RPT
-_smtp._tls.dream.737.jp.net.         IN  TXT  "v=TLSRPTv1; rua=mailto:mailroom.ops@dream.737.jp.net"
+_smtp._tls.dream.737.jp.net.         IN  TXT  "v=TLSRPTv1; rua=mailto:postmaster@dream.737.jp.net"
 ```
 
-**TODO:** confirm the live Vultr zone, the real OCI DKIM CNAME target, DMARC `p=` / rua, and the MTA-STS policy file. Do not copy production values into git.
+MTA-STS policy (`mode enforce`, `max_age` 604800):
+
+```
+version: STSv1
+mode: enforce
+mx: mx.dream.737.jp.net
+max_age: 604800
+```
 
 ---
 
 ## 4. OCI Email Delivery (outbound)
 
-**Not in this repo.** LANTIS submits approved senders to OCI Email Delivery on port **587**.
+**Not in this repo.** LANTIS `relayhost` submits approved senders to OCI Email Delivery. Creds stay in `<OCI_SMTP_CRED_FILE>` (tsubame’s OCI user; never commit).
 
-| Item | Placeholder |
-|------|-------------|
-| SMTP host | `smtp.email.<OCI_REGION>.oraclecloud.com` (or the approved regional endpoint) |
-| Port | 587 (STARTTLS) |
+| Item | Live value |
+|------|------------|
+| `relayhost` | `[smtp.email.us-ashburn-1.oci.oraclecloud.com]:587` |
+| Auth | SASL + STARTTLS |
 | User | `<OCI_SMTP_USER>` |
+| Creds file | `<OCI_SMTP_CRED_FILE>` |
 | Approved From | mapped `<name>.<dept>@dream.737.jp.net` addresses only (see §7) |
 
-**TODO:** confirm the regional SMTP hostname and the approved-sender list in the OCI console. Envelope From for Yukimi is `kazari.ops@dream.737.jp.net` (PR #344 `toExternal('yukimi')`).
+Envelope From for Yukimi is `kazari.ops@dream.737.jp.net` (PR #344 `toExternal('yukimi')`).
 
 ---
 
@@ -110,10 +120,23 @@ _smtp._tls.dream.737.jp.net.         IN  TXT  "v=TLSRPTv1; rua=mailto:mailroom.o
 | Host | Address | Role |
 |------|---------|------|
 | LANTIS (WG) | `192.168.255.1` | Postfix; only peer Dreamscape intake accepts |
-| Konori (WG) | `192.168.255.2` | Forwards `192.168.255.2:2062` → `192.168.200.101:2525` |
+| Konori (WG) | `192.168.255.2` | `pf_dreammail` / `r_dreamsubmit` (verify in the Konori WebGUI) |
 | Dreamscape intake | `192.168.200.101:2525` | PR #344 default bind (vlan10, not `0.0.0.0`) |
 
-On the Dreamscape host, a **static route** for `192.168.255.1` via `192.168.200.126` is required so intake can talk back to LANTIS. **TODO:** confirm the live `ip route` and the Konori DNAT rule; those live on the boxes, not in this repo.
+On the Dreamscape host (vlan10), the live static route is the **whole WG /24**, not a /32:
+
+```
+192.168.255.0/24 via 192.168.200.126 dev vlan10 onlink mtu 1280
+```
+
+**MTU 1280** is required (WireGuard). A 1500-byte path will black-hole large SMTP DATA.
+
+Konori rules (as designed — **verify both in the Konori WebGUI**):
+
+| Rule | Intent |
+|------|--------|
+| `pf_dreammail` | `192.168.255.2:2062` → `192.168.200.101:2525` |
+| `r_dreamsubmit` | as designed (WebGUI) |
 
 PR #344 allowlist is `config.mailGateway.inbound.allowFrom` default `["192.168.255.1"]`. Other peers get rejected before they consume a connection slot.
 
@@ -310,8 +333,8 @@ Client-reload broadcast (15s dialog) is the same route with `"restart": true`. T
 - [ ] `GET http://127.0.0.1:9220/status` (OPTIONS/GET) eventually has `isReady` and `runtimeCompileComplete`
 - [ ] Seeds present (or tag/wiki empty by design): `bash scripts/fetch-seeds.sh`
 - [ ] `~/dreamscape-data` exists and is outside the checkout
-- [ ] **TODO (LANTIS):** MX, SPF, DKIM, DMARC, MTA-STS, TLS-RPT resolve as intended
-- [ ] **TODO (network):** `ip route` shows `192.168.255.1` via `192.168.200.126`; Konori `2062` → `2525`
+- [x] DNS (Vultr): MX 10 `mx.dream.737.jp.net`, SPF `include:rp.oracleemaildelivery.com`, DKIM `dream-20261019`, DMARC/TLS-RPT `rua=postmaster@`, MTA-STS `id=202610191622` enforce
+- [ ] Route: `ip route` shows `192.168.255.0/24 via 192.168.200.126` onlink **mtu 1280**; Konori `pf_dreammail` / `r_dreamsubmit` (verify in the WebGUI)
 - [ ] Mail gateway stays **off** until PR #344 is merged and cutover is approved: `config.mailGateway.enabled` is not `true`
 - [ ] After enable (PR #344 only): intake bound to `192.168.200.101:2525`; a connect from a non-allowlisted IP is refused
 - [ ] After enable: a probe from `192.168.255.1` is accepted; unknown RCPT is rejected; catch-all lands in Tsubame with `X-Original-To`
