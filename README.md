@@ -125,7 +125,7 @@ bash scripts/fetch-seeds.sh
 
 The installer creates `config.json` and `secure.config.json` if missing (never overwrites). Put the NovelAI key in `secure.config.json` (`novelai.keys[].apiKey`). `sessionSecret` is required. Login PIN / `loginKey` used at runtime are read from **`secure.config.json`** — see SETUP §6.
 
-Process: `ecosystem.config.js` app **`Dreamscape`**, port **9220**. Production unit: **`pm2-kanmi`**. Restart only after a client broadcast and `node scripts/director-idle-check.js` is idle ([SETUP §8](./docs/SETUP.md#8-restart-procedure)).
+Process: `ecosystem.config.js` app **`Dreamscape`**, port **9220**. Production unit: **`pm2-kanmi`**. Restart is `sudo -n systemctl restart pm2-kanmi` after a loopback broadcast and `node scripts/director-idle-check.js` is idle ([SETUP §8](./docs/SETUP.md#8-restart-procedure)). Status by name `Dreamscape`, never a numeric id.
 
 Need Opus. Do not expose the UI without a PIN. Mail gateway stays off until PR #344 is cut over (`config.mailGateway.enabled`).
 

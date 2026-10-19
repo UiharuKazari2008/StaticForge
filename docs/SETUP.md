@@ -266,32 +266,37 @@ Sibling agent **Dreamscape Exchange Server (mail admin DSAP)** — no branch or 
 
 ## 8. Restart procedure
 
-Broadcast first. Then wait until Director / Xi / Wren are idle. Then restart **by process name**. Never `pm2 restart ecosystem.config.js` on the live host (that forces `updateEnv` and merges the caller’s env into Dreamscape). See `scripts/host-deploy.sh` and `scripts/director-idle-check.js`.
+Broadcast on loopback first. Wait about 60s. Confirm Director / Xi / Wren are idle. Then restart the **systemd unit**, not a bare `pm2 restart`. After it is up, notify the service worker. Status checks use the PM2 process **name `Dreamscape`**, never a numeric id (`0`, `1`, …). Never `pm2 restart ecosystem.config.js` (that forces `updateEnv` and merges the caller’s env). See `scripts/director-idle-check.js`.
 
 ```bash
-# 1. Tell connected clients (loopback). Needs STATICFORGE_APP_KEY or DEPLOY_DEV_LOGIN_KEY.
+# 1. Loopback notice. JSON only — text/plain (or a missing message) is 400.
+#    Both headers: Bearer is secure.config.json devLoginKey;
+#    X-Dreamscape-Login-Key is secure.config.json loginKey.
 curl -sS -X POST "http://127.0.0.1:9220/agent/broadcast" \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <APP_KEY>" \
-  -d '{"message":"Dreamscape restart shortly","title":"Ops","level":"info","display":"toast"}'
+  -H "Authorization: Bearer <devLoginKey>" \
+  -H "X-Dreamscape-Login-Key: <loginKey>" \
+  -d '{"message":"Dreamscape restart shortly"}'
+sleep 60
 
 # 2. Idle: Xi run records, Wren bwrap children of the Dreamscape pid, images/ mtime < 120s
 node scripts/director-idle-check.js --json
 # exit 0 idle, 1 busy, 2 unknown (Dreamscape pid missing)
 
-# 3. Restart by name (systemd unit pm2-kanmi must already be the daemon)
-systemctl is-active pm2-kanmi
-pm2 flush Dreamscape
-pm2 restart Dreamscape
-pm2 reset Dreamscape
+# 3. Restart the unit that owns the daemon (not `pm2 restart`)
+sudo -n systemctl restart pm2-kanmi
 
-# Optional: SW cache notify (does not restart the server)
-bash scripts/notify-service-worker-update.sh
+# Status by name only — never `pm2 show 0` / `pm2 restart 0`
+systemctl is-active pm2-kanmi
+pm2 describe Dreamscape
+
+# 4. SW cache notify (does not restart the server)
+bash scripts/notify-service-worker-update.sh --silent
 ```
 
-Only restart when `director-idle-check` prints `IDLE`. Other agents ask Yukimi or Sala and stop. Host-deploy also refuses if `pm2-kanmi.service` is down (`scripts/host-deploy.sh --check-pm2`).
+Only restart when `director-idle-check` prints `IDLE`. Other agents ask Yukimi or Sala and stop. `enable_dev` must be on for `/agent/broadcast` (`modules/auth.js` `createDevAuthMiddleware`). A body that is not JSON (`Content-Type: text/plain`, or no `message`) returns **400**.
 
-Client-reload broadcast (15s dialog) is `POST /agent/broadcast` with `"restart": true` (`deploy:restart-clients`). That is not a server restart.
+Client-reload broadcast (15s dialog) is the same route with `"restart": true`. That reloads tabs; it is not a server restart.
 
 ---
 
@@ -311,7 +316,7 @@ Client-reload broadcast (15s dialog) is `POST /agent/broadcast` with `"restart":
 - [ ] After enable (PR #344 only): intake bound to `192.168.200.101:2525`; a connect from a non-allowlisted IP is refused
 - [ ] After enable: a probe from `192.168.255.1` is accepted; unknown RCPT is rejected; catch-all lands in Tsubame with `X-Original-To`
 - [ ] After enable: outbound From for Yukimi is `kazari.ops@dream.737.jp.net`; foreign domains are not local
-- [ ] `node scripts/director-idle-check.js` exits 0 before any restart
+- [ ] Broadcast JSON on loopback, wait ~60s, `node scripts/director-idle-check.js` exits 0, then `sudo -n systemctl restart pm2-kanmi`
 
 ### Troubleshooting
 
@@ -320,7 +325,8 @@ Client-reload broadcast (15s dialog) is `POST /agent/broadcast` with `"restart":
 | Boot throw on session secret | `secure.config.json` `sessionSecret` missing (`web_server.js`) |
 | `SQLITE_ERROR: no such table: worldcities` | `geo2city` postinstall — [README troubleshooting](../README.md#troubleshooting) |
 | PINs / loginKey ignored | Values are in `config.json` but auth reads `secure.config.json` |
-| `pm2` spawned a second daemon | Caller is not inside `pm2-kanmi`; do not run `pm2` from a runner/agent unit |
+| `pm2` spawned a second daemon | Caller is not inside `pm2-kanmi`; restart with `sudo -n systemctl restart pm2-kanmi`, not bare `pm2 restart` |
+| Broadcast `400` | Body must be JSON `{"message":"..."}` (`Content-Type: application/json`). `text/plain` is 400 |
 | Intake not listening | Gateway off, or PR #344 not in the tree; `enabled` must be `true` and the process must have restarted after that change |
 | Intake accepts the world | `inbound.bind` must not be `0.0.0.0`; `allowFrom` must stay `192.168.255.1` |
 | Spam folder empty / everything Spam | Only trust headers **above** Received with authserv-id `mx.dream.737.jp.net`. Confirm LANTIS strips forged `X-Spam-*` |
