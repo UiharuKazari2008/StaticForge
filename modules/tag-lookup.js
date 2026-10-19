@@ -1574,38 +1574,39 @@ class TagLookup {
     // This catches cases where wiki_page_links were created but tag_wiki_links might not exist
     // Uses idx_wiki_page_links_tag index - fast!
     const wikiPagesReferencingTag = await this.db.all(getWikiPagesReferencingTag, [tagId, limit]);
-    for (const wikiPage of wikiPagesReferencingTag) {
-        // Get wiki IDs from the wiki page
-        const pageRow = await this.db.get(getWikiPageById, [wikiPage.id]);
-        if (!pageRow) continue;
+
+    // JULES: Eliminate O(n^2) scaling from N+1 nested queries
+    if (wikiPagesReferencingTag.length > 0) {
+        const pageIds = wikiPagesReferencingTag.map(p => p.id);
+        const placeholders = pageIds.map(() => '?').join(',');
         
-        // Process each wiki (danbooru and/or e621) linked to this page
-        const wikiIds = [];
-        if (pageRow.danbooru_wiki_id) wikiIds.push(pageRow.danbooru_wiki_id);
-        if (pageRow.e621_wiki_id) wikiIds.push(pageRow.e621_wiki_id);
+        // Single batched query to get wikis, their tags, and direct tag_wikis links
+        const batchedQuery = `
+            SELECT
+                wp.id as page_id, wp.danbooru_wiki_id, wp.e621_wiki_id,
+                t.id as tag_id, t.title as tag_title, twl.relationship,
+                tw.tag_id as linked_tag_id, lt.title as linked_tag_title
+            FROM wiki_pages wp
+            LEFT JOIN wikis w ON w.id = wp.danbooru_wiki_id OR w.id = wp.e621_wiki_id
+            LEFT JOIN tag_wiki_links twl ON twl.wiki_id = w.id
+            LEFT JOIN tags t ON t.id = twl.tag_id
+            LEFT JOIN tag_wikis tw ON tw.wiki_id = w.id
+            LEFT JOIN tags lt ON lt.id = tw.tag_id
+            WHERE wp.id IN (${placeholders})
+        `;
         
-        for (const wikiId of wikiIds) {
-            if (processedWikiIds.has(wikiId)) continue;
-            processedWikiIds.add(wikiId);
-            
-            // Get all tags that appear in this untagged wiki (using indexed tag_wiki_links)
-            // This uses idx_tag_wiki_links_wiki index - fast!
-            const tagsInWiki = await this.db.all(getTagsInWiki, [wikiId]);
-            for (const tagInWiki of tagsInWiki) {
-                if (tagInWiki.id === tagId || seenTagIds.has(tagInWiki.id)) continue;
-                const relationship = tagInWiki.relationship !== undefined ? tagInWiki.relationship : 0;
-                results.set(tagInWiki.id, { title: tagInWiki.title, relationship, tagId: tagInWiki.id });
-                seenTagIds.add(tagInWiki.id);
+        const batchedRows = await this.db.all(batchedQuery, pageIds);
+
+        for (const row of batchedRows) {
+            if (row.tag_id && row.tag_id !== tagId && !seenTagIds.has(row.tag_id)) {
+                const relationship = row.relationship !== null ? row.relationship : 0;
+                results.set(row.tag_id, { title: row.tag_title, relationship, tagId: row.tag_id });
+                seenTagIds.add(row.tag_id);
             }
             
-            // Also check if this wiki is linked to a tag (in case it's both tagged and in wiki_pages)
-            const tagWikiRow = await this.db.get(getTagIdForWiki, [wikiId]);
-            if (tagWikiRow && tagWikiRow.tag_id && tagWikiRow.tag_id !== tagId && !seenTagIds.has(tagWikiRow.tag_id)) {
-                const linkedTag = await this.db.get(getTagById, [tagWikiRow.tag_id]);
-                if (linkedTag && linkedTag.title) {
-                    results.set(tagWikiRow.tag_id, { title: linkedTag.title, relationship: 0, tagId: tagWikiRow.tag_id });
-                    seenTagIds.add(tagWikiRow.tag_id);
-                }
+            if (row.linked_tag_id && row.linked_tag_id !== tagId && !seenTagIds.has(row.linked_tag_id)) {
+                results.set(row.linked_tag_id, { title: row.linked_tag_title, relationship: 0, tagId: row.linked_tag_id });
+                seenTagIds.add(row.linked_tag_id);
             }
         }
     }
