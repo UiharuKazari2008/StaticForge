@@ -111,6 +111,8 @@ function createDovecoteTables() {
     // Null on rows written before multi-recipient mail; readers fall back to to_owner.
     addColumnIfMissing('dovecote_message', 'to_list', 'to_list TEXT');
     addColumnIfMissing('dovecote_message', 'cc_list', 'cc_list TEXT');
+    // Display From header on inbound gateway mail. from_owner stays the envelope.
+    addColumnIfMissing('dovecote_message', 'from_label', 'from_label TEXT');
     db.exec(`
         CREATE INDEX IF NOT EXISTS idx_dovecote_message_owner_folder ON dovecote_message (owner, folder, created_at);
         CREATE INDEX IF NOT EXISTS idx_dovecote_message_thread ON dovecote_message (thread_id);

@@ -612,13 +612,18 @@ function testCrlfBufferAndSenderRules() {
     const map = mapping();
     assert.strictEqual(addresses.validateEnvelopeSender('menma', map).ok, false);
     assert.strictEqual(addresses.validateEnvelopeSender('<menma>', map).ok, false);
-    assert.strictEqual(addresses.validateEnvelopeSender('<>', map).ok, false);
+    const bounce = addresses.validateEnvelopeSender('<>', map);
+    assert.strictEqual(bounce.ok, true);
+    assert.strictEqual(bounce.address, addresses.NULL_SENDER);
     assert.strictEqual(addresses.validateEnvelopeSender('menma@dream.737.jp.net', map).code, 550);
+    assert.strictEqual(addresses.validateEnvelopeSender('menma@mx.dream.737.jp.net', map).code, 550);
     assert.strictEqual(addresses.validateEnvelopeSender('menma@dream.co.jp', map).code, 550);
     assert.strictEqual(addresses.validateEnvelopeSender('alice@example.com', map).ok, true);
-    assert.strictEqual(addresses.fromHeaderMatchesEnvelope('menma', 'alice@example.com'), false);
-    assert.strictEqual(addresses.fromHeaderMatchesEnvelope('Alice <alice@example.com>', 'alice@example.com'), true);
-    assert.strictEqual(addresses.fromHeaderMatchesEnvelope('', 'alice@example.com'), true);
+    assert.strictEqual(addresses.validateFromHeader('menma', map).ok, true);
+    assert.strictEqual(addresses.validateFromHeader('Alice <alice@example.com>', map).ok, true);
+    assert.strictEqual(addresses.validateFromHeader('menma@dream.737.jp.net', map).ok, false);
+    assert.strictEqual(addresses.validateFromHeader('Menma <menma@lists.dream.737.jp.net>', map).ok, false);
+    assert.strictEqual(addresses.validateFromHeader('menma@dream.co.jp', map).ok, false);
 }
 
 function testResolveConfigDefaults() {
@@ -626,7 +631,7 @@ function testResolveConfigDefaults() {
     const cfg = gateway.resolveConfig();
     assert.strictEqual(cfg.enabled, false);
     assert.strictEqual(cfg.inbound.bind, gateway.DEFAULT_INBOUND_BIND);
-    assert.strictEqual(cfg.inbound.bind, '192.168.255.2');
+    assert.strictEqual(cfg.inbound.bind, '192.168.200.101');
     assert.strictEqual(cfg.inbound.maxConnections, gateway.DEFAULT_MAX_CONNECTIONS);
     assert.ok(!Object.prototype.hasOwnProperty.call(cfg.outbound, 'rejectUnauthorized'));
     const tlsOpts = gateway.tlsVerifyOptions(Object.assign({}, cfg.outbound, { rejectUnauthorized: false }));
@@ -680,6 +685,45 @@ function testMimeDecode() {
     assert.strictEqual(multi.body.trim(), 'plain part');
     assert.strictEqual(multi.format, 'text');
     assert.deepStrictEqual(addresses.parseAddressList(multi.headers.cc), ['sala.ops@dream.737.jp.net']);
+
+    const nested = mime.extractTextBody([
+        'Content-Type: multipart/mixed; boundary="outer"',
+        '',
+        '--outer',
+        'Content-Type: multipart/alternative; boundary="inner"',
+        '',
+        '--inner',
+        'Content-Type: text/plain; charset=utf-8',
+        '',
+        'nested plain',
+        '--inner',
+        'Content-Type: text/html',
+        '',
+        '<p>nested html</p>',
+        '--inner--',
+        '--outer',
+        'Content-Type: application/octet-stream',
+        '',
+        'blob',
+        '--outer--'
+    ].join('\r\n'));
+    assert.strictEqual(nested.body.trim(), 'nested plain');
+
+    const latin = mime.extractTextBody([
+        'Content-Type: text/plain; charset=iso-8859-1',
+        'Content-Transfer-Encoding: quoted-printable',
+        '',
+        'caf=E9'
+    ].join('\r\n'));
+    assert.strictEqual(latin.body, 'café');
+
+    const b64latin = mime.extractTextBody([
+        'Content-Type: text/plain; charset=iso-8859-1',
+        'Content-Transfer-Encoding: base64',
+        '',
+        Buffer.from([0x63, 0x61, 0x66, 0xe9]).toString('base64')
+    ].join('\r\n'));
+    assert.strictEqual(b64latin.body, 'café');
 }
 
 async function testOutboundRateAndAllowlist() {
@@ -709,6 +753,7 @@ async function testSpoofCases() {
             'MAIL FROM:<menma>',
             'MAIL FROM:menma',
             'MAIL FROM:<menma@dream.737.jp.net>',
+            'MAIL FROM:<menma@mx.dream.737.jp.net>',
             'MAIL FROM:<menma@dream.co.jp>',
             'MAIL FROM:<alice@example.com>',
             'RCPT TO:<menma.dev@dream.737.jp.net>',
@@ -719,9 +764,10 @@ async function testSpoofCases() {
         assert.strictEqual(replies[3].code, 501);
         assert.strictEqual(replies[4].code, 550);
         assert.strictEqual(replies[5].code, 550);
-        assert.strictEqual(replies[6].code, 250);
+        assert.strictEqual(replies[6].code, 550);
         assert.strictEqual(replies[7].code, 250);
-        assert.strictEqual(replies[8].code, 354);
+        assert.strictEqual(replies[8].code, 250);
+        assert.strictEqual(replies[9].code, 354);
 
         const socket = await connectSmtp(inbound.port);
         const reader = createLineReader(socket);
@@ -734,16 +780,64 @@ async function testSpoofCases() {
         await expectCode(reader, 250);
         socket.write('DATA\r\n');
         await expectCode(reader, 354);
-        socket.write('From: menma\r\nSubject: spoof\r\n\r\nlooks like bot mail\r\n.\r\n');
-        const rejected = await expectCode(reader, 550);
-        assert.match(rejected.text, /From header does not match/);
+        socket.write('From: menma\r\nSubject: list-like\r\n\r\nlooks like bot mail\r\n.\r\n');
+        await expectCode(reader, 250);
+
+        socket.write('MAIL FROM:<alice@example.com>\r\n');
+        await expectCode(reader, 250);
+        socket.write('RCPT TO:<ivory.studio@dream.737.jp.net>\r\n');
+        await expectCode(reader, 250);
+        socket.write('DATA\r\n');
+        await expectCode(reader, 354);
+        socket.write('From: menma@dream.737.jp.net\r\nSubject: reserved-from\r\n\r\nx\r\n.\r\n');
+        const reservedFrom = await expectCode(reader, 550);
+        assert.match(reservedFrom.text, /From domain is not allowed/);
+
+        socket.write('MAIL FROM:<>\r\n');
+        await expectCode(reader, 250);
+        socket.write('RCPT TO:<ivory.studio@dream.737.jp.net>\r\n');
+        await expectCode(reader, 250);
+        socket.write('DATA\r\n');
+        await expectCode(reader, 354);
+        socket.write('From: Mailer-Daemon@mx.example.com\r\nSubject: bounce\r\n\r\nundelivered\r\n.\r\n');
+        await expectCode(reader, 250);
+
         socket.write('QUIT\r\n');
         await readReply(reader);
         socket.end();
     } finally {
         await inbound.close();
     }
-    assert.strictEqual(delivered.length, 0);
+    assert.strictEqual(delivered.length, 2);
+    assert.strictEqual(delivered[0].fromAddress, 'alice@example.com');
+    assert.strictEqual(delivered[0].fromLabel, 'menma');
+    assert.notStrictEqual(delivered[0].fromAddress, 'menma');
+    assert.strictEqual(delivered[1].fromAddress, addresses.NULL_SENDER);
+    assert.match(delivered[1].fromLabel, /Mailer-Daemon@mx\.example\.com/);
+
+    const storedList = mail.deliverInboundMail({
+        fromAddress: 'alice@example.com',
+        fromLabel: 'menma',
+        toOwner: 'ivory',
+        subject: 'stored label',
+        body: 'x'
+    });
+    const row = mail.readMail('ivory', storedList.id);
+    assert.strictEqual(row.from, 'alice@example.com');
+    assert.strictEqual(row.fromLabel, 'menma');
+    assert.throws(
+        () => mail.deliverInboundMail({ fromAddress: 'menma', toOwner: 'ivory', subject: 'nope', body: 'x' }),
+        (err) => err.code === 'UNKNOWN_SENDER'
+    );
+
+    const bounce = mail.deliverInboundMail({
+        fromAddress: addresses.NULL_SENDER,
+        fromLabel: 'Mailer-Daemon@mx.example.com',
+        toOwner: 'ivory',
+        subject: 'stored bounce',
+        body: 'x'
+    });
+    assert.strictEqual(mail.readMail('ivory', bounce.id).from, 'mailer-daemon');
 }
 
 async function testBareLfSmuggling() {
@@ -776,6 +870,108 @@ async function testBareLfSmuggling() {
     assert.strictEqual(delivered[0].toOwner, 'guren');
     assert.match(delivered[0].body, /MAIL FROM:<evil@evil.com>/);
     assert.match(delivered[0].body, /visible tail/);
+}
+
+async function testOverlongLineTailDoesNotEndData() {
+    const { inbound, delivered } = await startOpenInbound({
+        maxDataLine: 64,
+        maxDataBytes: 1024 * 1024
+    });
+    try {
+        const socket = await connectSmtp(inbound.port);
+        const reader = createLineReader(socket);
+        await expectCode(reader, 220);
+        socket.write('EHLO test\r\n');
+        await expectCode(reader, 250);
+        socket.write('MAIL FROM:<alice@example.com>\r\n');
+        await expectCode(reader, 250);
+        socket.write('RCPT TO:<guren.lab@dream.737.jp.net>\r\n');
+        await expectCode(reader, 250);
+        socket.write('DATA\r\n');
+        await expectCode(reader, 354);
+        socket.write('From: alice@example.com\r\nSubject: overlong\r\n\r\n');
+        socket.write('A'.repeat(80));
+        await delay(20);
+        socket.write('.\r\n');
+        socket.write('MAIL FROM:<evil@evil.com>\r\n');
+        socket.write('RCPT TO:<sala.ops@dream.737.jp.net>\r\n');
+        socket.write('DATA\r\n');
+        socket.write('From: evil@evil.com\r\nSubject: hidden\r\n\r\npwned\r\n.\r\n');
+        await delay(40);
+        socket.write('QUIT\r\n');
+        const codes = [];
+        for (let i = 0; i < 6; i++) {
+            const reply = await Promise.race([
+                readReply(reader),
+                delay(250).then(() => null)
+            ]);
+            if (!reply || !reply.code) break;
+            codes.push(reply.code);
+            if (reply.code === 221) break;
+        }
+        socket.end();
+        assert.ok(codes.includes(552), `expected 552 after overlong line, got ${codes.join(',')}`);
+        assert.strictEqual(
+            delivered.filter((msg) => msg.subject === 'hidden').length,
+            0,
+            'overlong-line tail "." must not end DATA'
+        );
+        assert.strictEqual(delivered.length, 0);
+    } finally {
+        await inbound.close();
+    }
+}
+
+async function connectSmtpFrom(port, localAddress) {
+    return new Promise((resolve, reject) => {
+        const s = net.connect({ host: '127.0.0.1', port, localAddress }, () => resolve(s));
+        s.on('error', reject);
+    });
+}
+
+async function testDeniedPeersDoNotConsumeCap() {
+    const { inbound } = await startOpenInbound({
+        maxConnections: 1,
+        allowFrom: ['127.0.0.1']
+    });
+    const denied = [];
+    try {
+        for (let i = 0; i < 4; i++) {
+            const socket = await connectSmtpFrom(inbound.port, '127.0.0.2');
+            denied.push(socket);
+            const reader = createLineReader(socket);
+            await expectCode(reader, 554);
+        }
+        const allowed = await connectSmtp(inbound.port);
+        const allowedReader = createLineReader(allowed);
+        try {
+            await expectCode(allowedReader, 220);
+            allowed.write('QUIT\r\n');
+            await readReply(allowedReader);
+        } finally {
+            allowed.end();
+        }
+
+        const held = await connectSmtp(inbound.port);
+        const heldReader = createLineReader(held);
+        try {
+            await expectCode(heldReader, 220);
+            const extraDenied = await connectSmtpFrom(inbound.port, '127.0.0.2');
+            denied.push(extraDenied);
+            await expectCode(createLineReader(extraDenied), 554);
+            const secondAllowed = await connectSmtp(inbound.port);
+            try {
+                await expectCode(createLineReader(secondAllowed), 421);
+            } finally {
+                secondAllowed.end();
+            }
+        } finally {
+            held.end();
+        }
+    } finally {
+        denied.forEach((socket) => socket.destroy());
+        await inbound.close();
+    }
 }
 
 async function testOversizeDiscard() {
@@ -984,6 +1180,8 @@ async function main() {
     await testSpoofCases();
     await testBareLfSmuggling();
     await testOversizeDiscard();
+    await testOverlongLineTailDoesNotEndData();
+    await testDeniedPeersDoNotConsumeCap();
     await testCommandSplitAcrossChunks();
     await testConnectionCap();
     await testOutboundFailureOutbox();

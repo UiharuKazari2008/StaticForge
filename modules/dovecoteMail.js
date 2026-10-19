@@ -11,6 +11,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { getDb, getAttachmentsRoot } = require('./dovecoteDatabase');
+const { NULL_SENDER } = require('./mailGatewayAddresses');
 
 const HUMAN_OWNER = 'yukimi';
 const BOT_OWNERS = Object.freeze([
@@ -109,6 +110,7 @@ function toSummary(row) {
         archiveSubfolder: row.archive_subfolder || null,
         threadId: row.thread_id,
         from: row.from_owner,
+        fromLabel: row.from_label || null,
         to: ownerList(row.to_list, row.to_owner),
         cc: ownerList(row.cc_list, null),
         subject: row.subject,
@@ -151,16 +153,18 @@ function insertRow(row) {
     getDb().prepare(`
         INSERT INTO dovecote_message (
             id, owner, folder, archive_subfolder, thread_id, from_owner, to_owner,
-            to_list, cc_list,
+            to_list, cc_list, from_label,
             subject, body, format, reply_to_id, fwd_from_owner, fwd_from_message_id,
             read, flagged, created_at, updated_at, deleted_at, paired_message_id, attachments
         ) VALUES (
             @id, @owner, @folder, @archive_subfolder, @thread_id, @from_owner, @to_owner,
-            @to_list, @cc_list,
+            @to_list, @cc_list, @from_label,
             @subject, @body, @format, @reply_to_id, @fwd_from_owner, @fwd_from_message_id,
             @read, @flagged, @created_at, @updated_at, @deleted_at, @paired_message_id, @attachments
         )
-    `).run(Object.assign({ paired_message_id: null, attachments: null, to_list: null, cc_list: null }, row));
+    `).run(Object.assign({
+        paired_message_id: null, attachments: null, to_list: null, cc_list: null, from_label: null
+    }, row));
 }
 
 // to_list / cc_list are JSON arrays. Rows from before multi-recipient mail
@@ -516,25 +520,33 @@ function sendMail({ fromOwner, to, cc, subject, body, format, replyToId, attachm
 }
 
 /**
- * Inbound from the mail gateway. fromAddress is a full external email and
- * is stored as-is on from_owner. Only writes inbox copies — the sender is
- * not a Dovecote mailbox.
+ * Inbound from the mail gateway. fromAddress is the envelope sender (a full
+ * external email, or mailer-daemon for MAIL FROM:<> ) and is stored on
+ * from_owner. fromLabel is the From header, display only — never a mailbox
+ * owner. Only writes inbox copies.
  */
-function deliverInboundMail({ fromAddress, toOwner, to, cc, subject, body, format, threadId }) {
+function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, body, format, threadId }) {
     if (!isValidOwner(toOwner)) throw new DovecoteError('Unknown mailbox', 'UNKNOWN_OWNER');
     const from = String(fromAddress || '').trim();
-    if (!from || !from.includes('@')) throw new DovecoteError('Sender address is required', 'UNKNOWN_SENDER');
+    if (!from || (from !== NULL_SENDER && !from.includes('@'))) {
+        throw new DovecoteError('Sender address is required', 'UNKNOWN_SENDER');
+    }
+    if (isValidOwner(from)) {
+        throw new DovecoteError('Inbound sender cannot be a Dovecote mailbox', 'UNKNOWN_SENDER');
+    }
     const createdAt = nowIso();
     const id = crypto.randomUUID();
     const subjectText = String(subject || '').slice(0, 300);
     const bodyText = String(body || '');
     const toList = Array.isArray(to) && to.length ? to : [toOwner];
     const ccList = Array.isArray(cc) ? cc : [];
+    const label = fromLabel ? String(fromLabel).replace(/[\r\n]+/g, ' ').trim().slice(0, 300) : '';
     insertRow({
         id, owner: toOwner, folder: 'inbox', archive_subfolder: null,
         thread_id: threadId || crypto.randomUUID(),
         from_owner: from, to_owner: toOwner,
         to_list: JSON.stringify(toList), cc_list: JSON.stringify(ccList),
+        from_label: label || null,
         subject: subjectText, body: bodyText, format: sanitizeFormat(format),
         reply_to_id: null, fwd_from_owner: null, fwd_from_message_id: null,
         read: 0, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,
@@ -542,7 +554,7 @@ function deliverInboundMail({ fromAddress, toOwner, to, cc, subject, body, forma
     });
     audit(toOwner, 'receive_external_mail', id, true, `from=${from}`);
     emitMailboxChanged([toOwner]);
-    return { id, owner: toOwner, from };
+    return { id, owner: toOwner, from, fromLabel: label || null };
 }
 
 function listMail(owner, { folder, unreadOnly, limit } = {}) {

@@ -1393,7 +1393,7 @@
       "label": "Inbound Bind Address",
       "editorType": "input",
       "restartRequired": true,
-      "description": "Listen address. Default 192.168.255.2 (LANTIS-facing). Not 0.0.0.0."
+      "description": "Listen address. Default 192.168.200.101 (dreamscape vlan10 toward 192.168.255.1). Not 0.0.0.0."
     },
     {
       "path": [

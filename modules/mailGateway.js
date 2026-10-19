@@ -16,8 +16,8 @@ const addresses = require('./mailGatewayAddresses');
 const inbound = require('./mailGatewayInbound');
 
 const DEFAULT_INBOUND_PORT = 2525;
-// LANTIS-facing address. Do not listen on 0.0.0.0; override inbound.bind if this host uses another NIC.
-const DEFAULT_INBOUND_BIND = '192.168.255.2';
+// vlan10 source toward 192.168.255.1. Do not listen on 0.0.0.0; override inbound.bind if this host uses another NIC.
+const DEFAULT_INBOUND_BIND = '192.168.200.101';
 const DEFAULT_ALLOW_FROM = Object.freeze(['192.168.255.1']);
 const DEFAULT_MAX_CONNECTIONS = 16;
 const DEFAULT_OUTBOUND_HOST = '192.168.255.1';
@@ -499,9 +499,15 @@ function startInbound(options) {
     return new Promise((resolve, reject) => {
         let active = 0;
         const server = net.createServer((socket) => {
+            if (!addresses.isAllowedPeer(socket.remoteAddress, allowFrom)) {
+                // Denied peers never take a slot and are not left half-open.
+                socket.end('554 5.7.1 Connection refused\r\n');
+                setTimeout(() => socket.destroy(), 1000).unref();
+                return;
+            }
             if (active >= maxConnections) {
                 smtpWrite(socket, '421 4.7.0 Too many connections');
-                socket.end();
+                socket.destroy();
                 return;
             }
             active += 1;

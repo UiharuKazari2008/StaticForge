@@ -115,6 +115,7 @@ function handleInboundConnection(socket, options) {
     let discarding = false;
     let closed = false;
     let busy = false;
+    let skipLineTail = false;
 
     socket.setTimeout(idleTimeoutMs, () => closeSession());
     const sessionTimer = setTimeout(() => {
@@ -137,6 +138,7 @@ function handleInboundConnection(socket, options) {
         dataLines = [];
         dataBytes = 0;
         discarding = false;
+        skipLineTail = false;
         state = 'command';
     }
 
@@ -198,6 +200,7 @@ function handleInboundConnection(socket, options) {
                 dataLines = [];
                 dataBytes = 0;
                 discarding = false;
+                skipLineTail = false;
                 reply('354 End data with <CR><LF>.<CR><LF>');
             }
         } else if (verb === 'RSET') {
@@ -223,8 +226,9 @@ function handleInboundConnection(socket, options) {
         }
         const raw = dataLines.join('\r\n');
         const parsed = mime.extractTextBody(raw);
-        if (!addresses.fromHeaderMatchesEnvelope(parsed.headers.from, mailFrom)) {
-            reply('550 5.7.1 From header does not match MAIL FROM');
+        const fromCheck = addresses.validateFromHeader(parsed.headers.from, mapping);
+        if (!fromCheck.ok) {
+            reply(`${fromCheck.code} ${fromCheck.message}`);
             resetTransaction();
             return;
         }
@@ -237,6 +241,7 @@ function handleInboundConnection(socket, options) {
             if (!deliver) return { owner, ok: true };
             return Promise.resolve(deliver({
                 fromAddress: mailFrom,
+                fromLabel: fromCheck.label,
                 toOwner: owner,
                 to,
                 cc,
@@ -310,9 +315,17 @@ function handleInboundConnection(socket, options) {
                 if (item.overflow) {
                     discarding = true;
                     if (item.waiting) {
+                        // The rest of this overlong line is still to come; its
+                        // tail must never be read as a line (e.g. a lone ".").
+                        skipLineTail = true;
                         crlf.trimWaitingOverflow();
                         return;
                     }
+                    skipLineTail = false;
+                    continue;
+                }
+                if (skipLineTail) {
+                    skipLineTail = false;
                     continue;
                 }
                 handleDataLine(item.line);

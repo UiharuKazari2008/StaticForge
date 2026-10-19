@@ -190,15 +190,26 @@ function reservedSenderDomains(mapping) {
 
 function isReservedSenderDomain(domain, mapping) {
     const host = String(domain || '').toLowerCase();
-    return reservedSenderDomains(mapping).includes(host);
+    if (!host) return false;
+    return reservedSenderDomains(mapping).some((base) => host === base || host.endsWith(`.${base}`));
+}
+
+const NULL_SENDER = 'mailer-daemon';
+
+function stripMailFromParams(raw) {
+    return String(raw || '').trim().replace(/\s+[A-Za-z0-9-]+=\S+/g, '').trim();
 }
 
 /**
- * External MAIL FROM must be a full addr-spec and must not use our domains,
- * so inbound mail cannot look like it came from a Dovecote mailbox.
+ * External MAIL FROM must be a full addr-spec (or the null sender <> for
+ * bounces) and must not use our domains or their subdomains.
  */
 function validateEnvelopeSender(raw, mapping) {
-    const email = normalizeEmail(raw);
+    const addrPart = stripMailFromParams(raw);
+    if (addrPart === '<>') {
+        return { ok: true, address: NULL_SENDER, nullSender: true };
+    }
+    const email = normalizeEmail(addrPart);
     if (!email || !email.includes('@')) {
         return { ok: false, code: 501, message: '5.1.7 MAIL FROM must be a full address' };
     }
@@ -210,6 +221,23 @@ function validateEnvelopeSender(raw, mapping) {
         return { ok: false, code: 550, message: '5.7.1 Sender domain is not allowed' };
     }
     return { ok: true, address: `${parts.local}@${parts.domain}` };
+}
+
+/**
+ * From is a display label only. Reject our domains so it cannot look like
+ * bot mail; a bare name or a foreign address is kept as the label.
+ */
+function validateFromHeader(fromHeader, mapping) {
+    if (!fromHeader || !String(fromHeader).trim()) return { ok: true, label: '' };
+    const label = String(fromHeader).trim().replace(/[\r\n]+/g, ' ');
+    const email = normalizeEmail(fromHeader);
+    if (email && email.includes('@')) {
+        const parts = splitLocalDomain(email);
+        if (parts && isReservedSenderDomain(parts.domain, mapping)) {
+            return { ok: false, code: 550, message: '5.7.1 From domain is not allowed' };
+        }
+    }
+    return { ok: true, label };
 }
 
 function fromHeaderMatchesEnvelope(fromHeader, envelope) {
@@ -256,9 +284,11 @@ module.exports = {
     classifyRecipients,
     normalizePeerAddress,
     isAllowedPeer,
+    NULL_SENDER,
     reservedSenderDomains,
     isReservedSenderDomain,
     validateEnvelopeSender,
+    validateFromHeader,
     fromHeaderMatchesEnvelope,
     parseAddressList,
     recipientAllowed

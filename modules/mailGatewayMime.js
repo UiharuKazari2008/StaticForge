@@ -1,21 +1,63 @@
 /**
- * Minimal inbound MIME: headers, text/plain from multipart, base64 and
- * quoted-printable. Not a general MIME library.
+ * Minimal inbound MIME: headers, text/plain from multipart (one nested
+ * level), base64 and quoted-printable using the declared charset.
+ * Not a general MIME library.
  */
 
 'use strict';
 
-function decodeQuotedPrintable(text) {
-    const raw = String(text || '').replace(/=\r?\n/g, '');
-    return raw.replace(/=([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+function headerParam(value, name) {
+    const match = String(value || '').match(new RegExp(`${name}\\s*=\\s*"?([^";\\s]+)"?`, 'i'));
+    return match ? match[1] : '';
 }
 
-function decodeTransferEncoding(body, encoding) {
+function charsetOf(contentType, fallback) {
+    return headerParam(contentType, 'charset') || fallback || 'utf-8';
+}
+
+function decodeCharset(buf, charset) {
+    const raw = Buffer.isBuffer(buf) ? buf : Buffer.from(buf);
+    const cs = String(charset || 'utf-8').trim().toLowerCase();
+    const alias = {
+        utf8: 'utf-8',
+        'us-ascii': 'utf-8',
+        ascii: 'utf-8',
+        latin1: 'windows-1252',
+        'iso-8859-1': 'windows-1252',
+        cp1252: 'windows-1252'
+    };
+    const enc = alias[cs] || cs;
+    try {
+        return new TextDecoder(enc).decode(raw);
+    } catch (_err) {
+        return raw.toString('utf8');
+    }
+}
+
+function decodeQuotedPrintableBytes(text) {
+    const raw = String(text || '').replace(/=\r?\n/g, '');
+    const bytes = [];
+    for (let i = 0; i < raw.length; i++) {
+        if (raw[i] === '=' && /^[0-9A-Fa-f]{2}/.test(raw.slice(i + 1, i + 3))) {
+            bytes.push(parseInt(raw.slice(i + 1, i + 3), 16));
+            i += 2;
+        } else {
+            bytes.push(raw.charCodeAt(i) & 0xff);
+        }
+    }
+    return Buffer.from(bytes);
+}
+
+function decodeQuotedPrintable(text, charset) {
+    return decodeCharset(decodeQuotedPrintableBytes(text), charset || 'utf-8');
+}
+
+function decodeTransferEncoding(body, encoding, charset) {
     const cte = String(encoding || '7bit').trim().toLowerCase();
     if (cte === 'base64') {
-        return Buffer.from(String(body || '').replace(/\s+/g, ''), 'base64').toString('utf8');
+        return decodeCharset(Buffer.from(String(body || '').replace(/\s+/g, ''), 'base64'), charset);
     }
-    if (cte === 'quoted-printable') return decodeQuotedPrintable(body);
+    if (cte === 'quoted-printable') return decodeQuotedPrintable(body, charset);
     return String(body || '');
 }
 
@@ -33,11 +75,6 @@ function parseHeaderBlock(headerBlock) {
         headers[current] = line.slice(colon + 1).trim();
     }
     return headers;
-}
-
-function headerParam(value, name) {
-    const match = String(value || '').match(new RegExp(`${name}\\s*=\\s*"?([^";\\s]+)"?`, 'i'));
-    return match ? match[1] : '';
 }
 
 function splitMultipart(body, boundary) {
@@ -62,13 +99,37 @@ function decodePart(raw) {
     const headerBlock = split === -1 ? raw : raw.slice(0, split);
     const body = split === -1 ? '' : raw.slice(split + 2);
     const headers = parseHeaderBlock(headerBlock.replace(/\r\n/g, '\n'));
-    const contentType = String(headers['content-type'] || 'text/plain').toLowerCase();
+    const contentType = String(headers['content-type'] || 'text/plain');
     const encoding = headers['content-transfer-encoding'] || '';
+    const charset = charsetOf(contentType);
+    const multipart = /multipart\//i.test(contentType);
     return {
-        contentType,
+        contentType: contentType.toLowerCase(),
         headers,
-        body: decodeTransferEncoding(body, encoding)
+        body: multipart ? body : decodeTransferEncoding(body, encoding, charset)
     };
+}
+
+function collectTextParts(parts, nestLeft) {
+    const found = [];
+    for (const part of parts) {
+        if (part.contentType.startsWith('text/plain') || part.contentType.startsWith('text/html')) {
+            found.push(part);
+        } else if (nestLeft > 0 && /multipart\//i.test(part.contentType)) {
+            const boundary = headerParam(part.headers['content-type'] || '', 'boundary');
+            const nested = splitMultipart(part.body, boundary).map(decodePart);
+            found.push(...collectTextParts(nested, nestLeft - 1));
+        }
+    }
+    return found;
+}
+
+function pickText(parts) {
+    const plain = parts.find((part) => part.contentType.startsWith('text/plain'));
+    const html = parts.find((part) => part.contentType.startsWith('text/html'));
+    if (plain) return { body: plain.body, format: 'text' };
+    if (html) return { body: html.body, format: 'html' };
+    return null;
 }
 
 function extractTextBody(rawMessage) {
@@ -85,17 +146,13 @@ function extractTextBody(rawMessage) {
     if (/multipart\//i.test(contentType)) {
         const boundary = headerParam(contentType, 'boundary');
         const parts = splitMultipart(body, boundary).map(decodePart);
-        const plain = parts.find((part) => part.contentType.startsWith('text/plain'));
-        const html = parts.find((part) => part.contentType.startsWith('text/html'));
-        if (plain) {
-            body = plain.body;
-            format = 'text';
-        } else if (html) {
-            body = html.body;
-            format = 'html';
+        const picked = pickText(collectTextParts(parts, 1));
+        if (picked) {
+            body = picked.body;
+            format = picked.format;
         }
     } else {
-        body = decodeTransferEncoding(body, encoding);
+        body = decodeTransferEncoding(body, encoding, charsetOf(contentType));
     }
 
     return { headers, body, format, contentType };

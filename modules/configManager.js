@@ -643,7 +643,7 @@ class ConfigManager {
                         domain: 'dream.737.jp.net',
                         inbound: {
                             port: 2525,
-                            bind: '192.168.255.2',
+                            bind: '192.168.200.101',
                             allowFrom: ['192.168.255.1'],
                             maxConnections: 16,
                             sessionTimeoutMs: 120000,
