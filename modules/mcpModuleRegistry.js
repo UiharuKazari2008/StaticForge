@@ -150,6 +150,17 @@ const MODULE_DEFS = {
             ]
         }
     },
+    mail_exchange: {
+        id: 'mail_exchange',
+        scope: 'sfapp_mail_exchange',
+        label: 'Dreamscape Exchange Server',
+        description: 'Admin console for the mail system. Yukimi, Sala, and Tsubame (mailroom) only. Everyone else is denied.',
+        tools: [
+            'exchange_list_mailboxes', 'exchange_create_mailbox', 'exchange_disable_mailbox',
+            'exchange_delete_mailbox', 'exchange_mailbox_key', 'exchange_aliases',
+            'exchange_signatures', 'exchange_toggles', 'exchange_status', 'exchange_spam'
+        ]
+    },
     report_issue: {
         id: 'report_issue',
         scope: 'sfapp_report_issue',

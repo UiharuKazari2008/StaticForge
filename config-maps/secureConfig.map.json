@@ -338,6 +338,34 @@
       "label": "Outbound SMTP Password",
       "secret": true,
       "description": "AUTH password for dreamscape@dream.737.jp.net. Env MAIL_GATEWAY_SMTP_PASSWORD also accepted. Never commit or log this value."
+    },
+    {
+      "path": [
+        "mailExchange"
+      ],
+      "type": "object",
+      "label": "Dreamscape Exchange Server",
+      "closed": true
+    },
+    {
+      "path": [
+        "mailExchange",
+        "relayReadToken"
+      ],
+      "type": "string",
+      "label": "LANTIS Relay Read Token",
+      "secret": true,
+      "description": "Bearer token for GET /v1/* on the LANTIS relay. Env MAIL_EXCHANGE_RELAY_READ_TOKEN. Never send to the browser or log."
+    },
+    {
+      "path": [
+        "mailExchange",
+        "relayAdminToken"
+      ],
+      "type": "string",
+      "label": "LANTIS Relay Admin Token",
+      "secret": true,
+      "description": "Bearer token for PUT /v1/toggles and future relay mutations. Env MAIL_EXCHANGE_RELAY_ADMIN_TOKEN. Never send to the browser or log."
     }
   ]
 }

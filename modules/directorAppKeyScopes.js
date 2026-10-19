@@ -52,6 +52,11 @@ const DOVECOTE_BOT_KEY_TARGETS = Object.freeze([
 ]);
 
 const DOVECOTE_SCOPE = 'sfapp_dovecote';
+const EXCHANGE_SCOPE = 'sfapp_mail_exchange';
+const EXCHANGE_ADMIN_KEY_TARGETS = Object.freeze([
+    { persona: 'sala', label: 'Sala' },
+    { persona: 'tsubame', label: 'Tsubame' }
+]);
 
 function parseStoredScopes(raw) {
     try {
@@ -176,14 +181,21 @@ async function widenDirectorApplicationKeys(manager) {
         [DOVECOTE_SCOPE],
         'dovecote_scope_migration'
     );
+    const exchange = await widenLabeledApplicationKeys(
+        manager,
+        EXCHANGE_ADMIN_KEY_TARGETS,
+        [EXCHANGE_SCOPE],
+        'mail_exchange_scope_migration'
+    );
     const tokens = await widenDovecoteOAuthAccessTokens(manager);
     return {
-        updated: director.updated + bots.updated,
-        keys: director.keys.concat(bots.keys),
+        updated: director.updated + bots.updated + exchange.updated,
+        keys: director.keys.concat(bots.keys).concat(exchange.keys),
         beforeScopes: LEGACY_DIRECTOR_SCOPES.slice(),
         afterScopes: DIRECTOR_MCP_SCOPES.slice(),
         directorUpdated: director.updated,
         dovecoteBotUpdated: bots.updated,
+        exchangeAdminUpdated: exchange.updated,
         oauthTokensUpdated: tokens.updated,
         oauthTokenKeys: tokens.keys
     };
@@ -262,6 +274,8 @@ module.exports = {
     DIRECTOR_KEY_TARGETS,
     DOVECOTE_BOT_KEY_TARGETS,
     DOVECOTE_SCOPE,
+    EXCHANGE_SCOPE,
+    EXCHANGE_ADMIN_KEY_TARGETS,
     directorScopeReport,
     widenLabeledApplicationKeys,
     widenDirectorApplicationKeys,

@@ -10,6 +10,7 @@ const FurryTagSearch = require('../furryTagSearch');
 const FastTagSearch = require('../fastTagSearch');
 const knowledgeMemoryDb = require('../knowledgeMemoryDatabase');
 const dovecoteDatabase = require('../dovecoteDatabase');
+const mailExchangeDatabase = require('../mailExchangeDatabase');
 const startMenuLayoutDatabase = require('../startMenuLayoutDatabase');
 const tagSearchDatabase = require('../tagSearchDatabase');
 const naxTagsDatabase = require('../naxTagsDatabase');
@@ -195,6 +196,21 @@ function initializeDovecoteDb(gr) {
     }
 }
 
+function initializeMailExchangeDb(gr) {
+    try {
+        const initialized = mailExchangeDatabase.initializeMailExchangeDatabase(gr.getPath('databases'));
+        if (!initialized) {
+            throw new Error('Failed to initialize mail exchange database');
+        }
+        gr.mailExchangeDatabase = mailExchangeDatabase;
+        gr.initializationProgress.mailExchangeDatabase = true;
+        console.log('✓ Mail exchange database ready');
+    } catch (error) {
+        console.error('  ❌ Failed to load mail exchange database:', error);
+        throw error;
+    }
+}
+
 function initializeStartMenuLayoutDb(gr) {
     try {
         const initialized = startMenuLayoutDatabase.initializeStartMenuLayoutDatabase(gr.getPath('databases'));
@@ -354,6 +370,7 @@ module.exports = {
     initializeDatabases,
     initializeKnowledgeMemoryDb,
     initializeDovecoteDb,
+    initializeMailExchangeDb,
     initializeStartMenuLayoutDb,
     initializeTagSearchDatabase,
     initializeNaxVibesGallery,
