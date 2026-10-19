@@ -553,7 +553,10 @@ class ConfigManager {
                         latitude: 0,
                         longitude: 0
                     },
-                    replication: JSON.parse(JSON.stringify(DEFAULT_REPLICATION_CONFIG))
+                    replication: JSON.parse(JSON.stringify(DEFAULT_REPLICATION_CONFIG)),
+                    mailGateway: {
+                        smtpPassword: ''
+                    }
                 };
             case 'config':
                 return {
@@ -634,6 +637,65 @@ class ConfigManager {
                     },
                     director: {
                         idleShutdownMinutes: 15
+                    },
+                    mailGateway: {
+                        enabled: false,
+                        domain: 'dream.737.jp.net',
+                        inbound: {
+                            port: 2525,
+                            bind: '192.168.200.101',
+                            allowFrom: ['192.168.255.1'],
+                            maxConnections: 16,
+                            sessionTimeoutMs: 120000,
+                            idleTimeoutMs: 30000,
+                            maxDataBytes: 10485760
+                        },
+                        outbound: {
+                            host: '192.168.255.1',
+                            port: 587,
+                            mode: 'starttls',
+                            authUser: 'dreamscape@dream.737.jp.net',
+                            tlsServername: 'mx.dream.737.jp.net',
+                            caPath: '',
+                            rateLimitPerMinute: 30,
+                            recipientAllowlist: []
+                        },
+                        mailboxes: {
+                            'kazari.ops': 'yukimi',
+                            yukimi: 'yukimi',
+                            kazari: 'yukimi',
+                            'yukimi.kazari': 'yukimi',
+                            'sala.ops': 'sala',
+                            'menma.dev': 'menma',
+                            'rook.dev': 'rook',
+                            'cursor.dev': 'cursor',
+                            'claude.dev': 'claude',
+                            'frost.dev': 'frost',
+                            'hoshino.apocrypha': 'hoshino',
+                            'ivory.studio': 'ivory',
+                            'guren.lab': 'guren',
+                            'chiyo.web': 'chiyo',
+                            'tsubame.ops': 'tsubame',
+                            'mailroom.ops': 'tsubame'
+                            // tifa and pyra are still to be decided — leave unmapped
+                            // until a department is confirmed. Do not add keys here.
+                            // 'tifa.<dept>': 'tifa',
+                            // 'pyra.<dept>': 'pyra',
+                            // Never map ykazari@icloud.com or any external domain.
+                        },
+                        spam: {
+                            flagHeader: 'X-Spam-Flag',
+                            statusHeader: 'X-Spam-Status',
+                            authenticationResultsHeader: 'Authentication-Results',
+                            receivedSpfHeader: 'Received-SPF',
+                            reportHeader: 'X-Spam-Report',
+                            originalToHeader: 'X-Original-To',
+                            authservId: 'mx.dream.737.jp.net'
+                        },
+                        pendingMailboxes: {
+                            tifa: null,
+                            pyra: null
+                        }
                     }
                 };
             case 'favorites':

@@ -143,6 +143,26 @@ function main() {
     assert.match(dovecoteJs, /action: 'dove-row-archive'/);
     assert.match(dovecoteJs, /action: 'dove-row-delete'/);
 
+    // 8b. Route indicator: list row + reader header, path-only, Vista 16px icons.
+    assert.match(dovecoteJs, /const doveBuildRouteIcon = function/);
+    assert.match(dovecoteJs, /dovecote-col-route/);
+    assert.match(dovecoteJs, /dovecote-oe-route/);
+    assert.match(dovecoteJs, /Delivered inside the Dreamscape network and never left it/);
+    assert.match(dovecoteJs, /dataset\.doveRoute/);
+    assert.match(dovecoteJs, /key: 'route'/);
+    assert.match(
+        fs.readFileSync(path.join(__dirname, '..', 'public/css/desktop-apps/dovecote.css'), 'utf8'),
+        /dovecote-col-route/
+    );
+    assert.ok(fs.existsSync(path.join(__dirname, '..', 'public/static_images/vista-icons/net-limited-16.png')));
+    assert.ok(fs.existsSync(path.join(__dirname, '..', 'public/static_images/vista-icons/net-internet-recv-16.png')));
+    assert.ok(fs.existsSync(path.join(__dirname, '..', 'public/static_images/vista-icons/net-internet-send-16.png')));
+    const mcpFacade = fs.readFileSync(path.join(__dirname, '..', 'modules/mcpAgentFacade.js'), 'utf8');
+    assert.match(mcpFacade, /`external` is true for gateway inbound\/outbound mail/);
+    assert.match(mcpFacade, /`external` is true for gateway mail/);
+    assert.match(mcpFacade, /external: route !== 'internal'/);
+    assert.match(mcpFacade, /route === 'inbound' \|\| mail\.route === 'outbound' \? mail\.route : 'internal'/);
+
     // 9. Read receipts (#2): sent rows show a check once readByRecipient is true.
     assert.match(dovecoteJs, /mail\.readByRecipient/);
     assert.match(dovecoteJs, /fa-check-double dovecote-read-receipt/);

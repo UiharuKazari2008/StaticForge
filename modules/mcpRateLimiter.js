@@ -175,6 +175,11 @@ const TOOL_RATE_GROUPS = {
     lookup_character_age: 'search',
     send_mail: 'write',
     forward_mail: 'write',
+    mailroom_forward_mail: 'write',
+    mailroom_move_mail: 'write',
+    mailroom_list_mail: 'mail',
+    mailroom_read_mail: 'mail',
+    mailroom_purge_mail: 'write',
     mark_mail: 'mail',
     list_mail: 'mail',
     read_mail: 'mail'

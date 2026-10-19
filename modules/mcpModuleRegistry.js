@@ -135,12 +135,19 @@ const MODULE_DEFS = {
         id: 'dovecote',
         scope: 'sfapp_dovecote',
         label: 'Dovecote Mail',
-        description: 'Own-mailbox-only internal mail (send, list, read, mark, forward)',
-        tools: ['send_mail', 'list_mail', 'read_mail', 'mark_mail', 'forward_mail'],
+        description: 'Own-mailbox-only internal mail (send, list, read, mark, forward). Tsubame (mailroom role) may list/read/purge/rescue Spam in every mailbox, including Yukimi (Spam-only), and move Inbox↔Spam in other bots.',
+        tools: [
+            'send_mail', 'list_mail', 'read_mail', 'mark_mail', 'forward_mail',
+            'mailroom_forward_mail', 'mailroom_move_mail', 'mailroom_list_mail', 'mailroom_read_mail', 'mailroom_purge_mail'
+        ],
         submodules: {
             send: ['send_mail', 'forward_mail'],
             read: ['list_mail', 'read_mail'],
-            mark: ['mark_mail']
+            mark: ['mark_mail'],
+            mailroom: [
+                'mailroom_forward_mail', 'mailroom_move_mail',
+                'mailroom_list_mail', 'mailroom_read_mail', 'mailroom_purge_mail'
+            ]
         }
     },
     report_issue: {

@@ -1335,6 +1335,320 @@
     },
     {
       "path": [
+        "mailGateway"
+      ],
+      "type": "object",
+      "label": "Mail Gateway",
+      "closed": true,
+      "description": "Inbound SMTP/LMTP and outbound submission for <bot>.<dept>@dream.737.jp.net. Off until enabled. tifa and pyra stay unmapped until a department is confirmed."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "enabled"
+      ],
+      "type": "boolean",
+      "label": "Enable Mail Gateway",
+      "editMode": "inline",
+      "restartRequired": true,
+      "description": "Start the inbound SMTP/LMTP listener and allow outbound rewrite. Default off."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "domain"
+      ],
+      "type": "string",
+      "label": "Public Mail Domain",
+      "editorType": "input",
+      "description": "Domain for mapped addresses. Default dream.737.jp.net."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "inbound"
+      ],
+      "type": "object",
+      "label": "Inbound SMTP/LMTP",
+      "closed": true
+    },
+    {
+      "path": [
+        "mailGateway",
+        "inbound",
+        "port"
+      ],
+      "type": "number",
+      "label": "Inbound Port",
+      "restartRequired": true,
+      "description": "SMTP/LMTP listen port. Default 2525. Only 192.168.255.1 is accepted."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "inbound",
+        "bind"
+      ],
+      "type": "string",
+      "label": "Inbound Bind Address",
+      "editorType": "input",
+      "restartRequired": true,
+      "description": "Listen address. Default 192.168.200.101 (dreamscape vlan10 toward 192.168.255.1). Not 0.0.0.0."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "inbound",
+        "allowFrom"
+      ],
+      "type": "array",
+      "itemsType": "string",
+      "label": "Inbound Allowlist",
+      "description": "Peer IPs allowed to connect. Default 192.168.255.1 (LANTIS Postfix)."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "inbound",
+        "maxConnections"
+      ],
+      "type": "number",
+      "label": "Max Concurrent Connections",
+      "restartRequired": true,
+      "description": "Inbound connection cap. Extra peers get 421. Default 16."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "inbound",
+        "sessionTimeoutMs"
+      ],
+      "type": "number",
+      "label": "Session Timeout (ms)",
+      "description": "Absolute session lifetime, independent of idle. Default 120000."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "inbound",
+        "idleTimeoutMs"
+      ],
+      "type": "number",
+      "label": "Idle Timeout (ms)",
+      "description": "Close a quiet socket. Default 30000."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "inbound",
+        "maxDataBytes"
+      ],
+      "type": "number",
+      "label": "Max DATA Bytes",
+      "description": "Oversize DATA is discarded until <CRLF>.<CRLF>, then 552. Default 10 MiB."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "outbound"
+      ],
+      "type": "object",
+      "label": "Outbound SMTP",
+      "closed": true
+    },
+    {
+      "path": [
+        "mailGateway",
+        "outbound",
+        "host"
+      ],
+      "type": "string",
+      "label": "Outbound Host",
+      "editorType": "input"
+    },
+    {
+      "path": [
+        "mailGateway",
+        "outbound",
+        "port"
+      ],
+      "type": "number",
+      "label": "Outbound Port"
+    },
+    {
+      "path": [
+        "mailGateway",
+        "outbound",
+        "mode"
+      ],
+      "type": "string",
+      "label": "TLS Mode",
+      "enum": [
+        "starttls",
+        "implicit"
+      ],
+      "description": "starttls on 587 (default) or implicit TLS on 465. STARTTLS must be offered; there is no plaintext fallback."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "outbound",
+        "tlsServername"
+      ],
+      "type": "string",
+      "label": "TLS Server Name",
+      "editorType": "input",
+      "description": "Hostname checked on the certificate. Default mx.dream.737.jp.net."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "outbound",
+        "caPath"
+      ],
+      "type": "string",
+      "label": "TLS CA Path",
+      "editorType": "input",
+      "description": "Optional extra CA file. Empty uses the system store. A Let's Encrypt cert is expected for mx.dream.737.jp.net."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "outbound",
+        "authUser"
+      ],
+      "type": "string",
+      "label": "SMTP Auth User",
+      "editorType": "input"
+    },
+    {
+      "path": [
+        "mailGateway",
+        "outbound",
+        "rateLimitPerMinute"
+      ],
+      "type": "number",
+      "label": "Outbound Rate Limit",
+      "description": "Per-bot outbound messages per minute. Default 30. 0 disables."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "outbound",
+        "recipientAllowlist"
+      ],
+      "type": "array",
+      "itemsType": "string",
+      "label": "Outbound Recipient Allowlist",
+      "description": "Optional. Empty allows any external recipient. Entries are an address, a domain, or @domain."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "mailboxes"
+      ],
+      "type": "object",
+      "label": "Mailbox Map",
+      "description": "local-part on dream.737.jp.net → Dovecote mailbox. First key per owner is the outbound address. Shipped: kazari.ops (Yukimi outbound) plus inbound aliases yukimi, kazari, yukimi.kazari; sala.ops; menma/rook/cursor/claude/frost .dev; hoshino.apocrypha; ivory.studio; guren.lab; chiyo.web; tsubame.ops (Tsubame). mailroom.ops is an alias that delivers to tsubame (LANTIS catch-all). Never ykazari@icloud.com or any external domain. tifa and pyra stay unmapped. X-Original-To is display only."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "spam"
+      ],
+      "type": "object",
+      "label": "Inbound Spam Headers",
+      "closed": true,
+      "description": "Header names the inbound path trusts when filing to Spam. Only the topmost instance above the relay's Received. File on X-Spam-Flag YES, X-Spam-Status Yes, or trusted A-R dmarc=fail with p=quarantine / dis=QUARANTINE. DKIM fail, dmarc p=none, and Received-SPF are stored as auth info only."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "spam",
+        "flagHeader"
+      ],
+      "type": "string",
+      "label": "Spam Flag Header",
+      "editorType": "input",
+      "description": "Default X-Spam-Flag. Only the topmost instance is trusted. YES files to Spam; NO never rescues."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "spam",
+        "statusHeader"
+      ],
+      "type": "string",
+      "label": "Spam Status Header",
+      "editorType": "input",
+      "description": "Default X-Spam-Status. Format Yes|No, score=N required=5.0 tests=…. A leading Yes files to Spam. score and required are parsed for display only."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "spam",
+        "authenticationResultsHeader"
+      ],
+      "type": "string",
+      "label": "Authentication-Results Header",
+      "editorType": "input",
+      "description": "Default Authentication-Results. Only the topmost instance whose authserv-id matches the configured relay id is trusted. dmarc=fail with p=quarantine or dis=QUARANTINE files to Spam. dkim=fail and dmarc p=none are display-only."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "spam",
+        "receivedSpfHeader"
+      ],
+      "type": "string",
+      "label": "Received-SPF Header",
+      "editorType": "input",
+      "description": "Default Received-SPF. Topmost instance only. Stored and shown as auth info. fail / permerror / softfail / neutral / none never file to Spam (hard fails are rejected upstream)."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "spam",
+        "reportHeader"
+      ],
+      "type": "string",
+      "label": "Spam Report Header",
+      "editorType": "input",
+      "description": "Default X-Spam-Report. Stored and shown on the message. Never used to file to Spam."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "spam",
+        "originalToHeader"
+      ],
+      "type": "string",
+      "label": "Original-To Header",
+      "editorType": "input",
+      "description": "Default X-Original-To. Only the topmost instance above the relay Received is stored and shown (Originally to). Display only — never used for routing."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "spam",
+        "authservId"
+      ],
+      "type": "string",
+      "label": "Relay authserv-id",
+      "editorType": "input",
+      "description": "Relay authserv-id. Default mx.dream.737.jp.net. Only the topmost Authentication-Results with this id is trusted. Empty trusts no Authentication-Results (X-Spam-* / Received-SPF still apply)."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "pendingMailboxes"
+      ],
+      "type": "object",
+      "label": "Pending Mailboxes",
+      "description": "tifa and pyra: department still to be decided. Leave unmapped. Do not add them to mailboxes until confirmed."
+    },
+    {
+      "path": [
         "apiKey"
       ],
       "type": "string",

@@ -13,6 +13,7 @@ const DESKTOP_DOVECOTE_HUMAN_OWNER = 'yukimi';
 
 const DESKTOP_DOVECOTE_FOLDERS = [
     { id: 'inbox', label: 'Inbox', icon: 'fas fa-inbox' },
+    { id: 'spam', label: 'Spam', icon: 'fas fa-ban' },
     { id: 'outbox', label: 'Outbox', icon: 'fas fa-paper-plane' },
     { id: 'sent', label: 'Sent Items', icon: 'fas fa-check-double' },
     { id: 'deleted', label: 'Deleted Items', icon: 'fas fa-trash' },
@@ -108,6 +109,33 @@ const doveFormatAddressList = function (value) {
     const list = Array.isArray(value) ? value : String(value || '').split(',');
     return list.map((name) => doveDisplayAddress(String(name).trim())).filter(Boolean).join(', ');
 };
+const DOVE_ROUTE_TOOLTIP = {
+    internal: 'Delivered inside the Dreamscape network and never left it.',
+    inbound: 'Arrived from the internet through the mail gateway.',
+    outbound: 'Sent to the internet through the mail gateway.'
+};
+const doveNormalizeRoute = function (route) {
+    return route === 'inbound' || route === 'outbound' ? route : 'internal';
+};
+const doveRouteIconClass = function (route) {
+    if (route === 'inbound') return 'fas fa-globe dovecote-route-icon';
+    if (route === 'outbound') return 'fas fa-arrow-up-right-from-square dovecote-route-icon';
+    return 'fas fa-house dovecote-route-icon';
+};
+const doveBuildRouteIcon = function (route) {
+    const kind = doveNormalizeRoute(route);
+    const icon = document.createElement('i');
+    icon.className = doveRouteIconClass(kind);
+    icon.dataset.doveRoute = kind;
+    icon.title = DOVE_ROUTE_TOOLTIP[kind];
+    icon.setAttribute('aria-label', DOVE_ROUTE_TOOLTIP[kind]);
+    return icon;
+};
+const doveFillRouteSlot = function (slot, route) {
+    if (!slot) return;
+    slot.replaceChildren(doveBuildRouteIcon(route));
+};
+
 const doveBareAddress = function (value) {
     return String(value || '').split(',').map((part) => {
         const t = part.trim();
@@ -312,7 +340,11 @@ const doveBuildToolbar = function () {
     deleteBtn.dataset.doveAction = 'delete';
     const archiveBtn = doveCreateCommand('archive', 'Move to Archive', 'fas fa-box-archive');
     archiveBtn.dataset.doveAction = 'archive';
-    [toggleReadBtn, deleteBtn, archiveBtn].forEach((btn) => {
+    const spamBtn = doveCreateCommand('spam', 'Move to Spam', 'fas fa-ban');
+    spamBtn.dataset.doveAction = 'spam';
+    const notSpamBtn = doveCreateCommand('notSpam', 'Not spam', 'fas fa-inbox');
+    notSpamBtn.dataset.doveAction = 'notSpam';
+    [toggleReadBtn, deleteBtn, archiveBtn, spamBtn, notSpamBtn].forEach((btn) => {
         btn.dataset.doveMutating = 'true';
         btn.dataset.doveNeedsMail = 'true';
         toolbar.appendChild(btn);
@@ -357,6 +389,8 @@ const DOVE_MENUS = {
             doveMenuItem('Delete', 'delete', { disabled: off }),
             doveMenuItem(mail && !mail.read ? 'Mark as Read' : 'Mark as Unread', 'toggleRead', { disabled: off }),
             doveMenuItem('Move to Archive', 'archive', { disabled: off }),
+            doveMenuItem('Move to Spam', 'spam', { disabled: off || !mail || mail.folder === 'spam' }),
+            doveMenuItem('Not spam', 'notSpam', { disabled: off || !mail || mail.folder !== 'spam' }),
             { separator: true },
             doveMenuItem('Find', 'find')
         ];
@@ -587,13 +621,17 @@ const doveRenderFolderTree = function () {
         const box = desktopDovecote.mailboxes.find((b) => b.owner === owner);
         return box ? (box.unread || 0) : 0;
     };
+    const spamUnreadOf = (owner) => {
+        const box = desktopDovecote.mailboxes.find((b) => b.owner === owner);
+        return box ? (box.spamUnread || 0) : 0;
+    };
     const folderRows = (owner, level) => DESKTOP_DOVECOTE_FOLDERS.map((folder) => doveBuildTreeRow({
         level: level,
         label: folder.label,
         icon: folder.id,
         owner: owner,
         folder: folder.id,
-        count: folder.id === 'inbox' ? unreadOf(owner) : 0,
+        count: folder.id === 'inbox' ? unreadOf(owner) : (folder.id === 'spam' ? spamUnreadOf(owner) : 0),
         current: current === owner && desktopDovecote.folder === folder.id
     }));
     const bots = desktopDovecote.mailboxes.filter((box) => doveIsBotOwner(box.owner));
@@ -733,6 +771,8 @@ const doveBuildMailRowMenuSections = function (mailId) {
             { separator: true },
             { text: mail.read ? 'Mark Unread' : 'Mark Read', icon: 'fas fa-envelope', action: 'dove-row-toggle-read', doveMailId: mailId, disabled: readOnly },
             { text: 'Archive', icon: 'fas fa-box-archive', action: 'dove-row-archive', doveMailId: mailId, disabled: readOnly },
+            { text: 'Move to Spam', icon: 'fas fa-ban', action: 'dove-row-spam', doveMailId: mailId, disabled: readOnly || mail.folder === 'spam' },
+            { text: 'Not spam', icon: 'fas fa-inbox', action: 'dove-row-not-spam', doveMailId: mailId, disabled: readOnly || mail.folder !== 'spam' },
             { text: 'Delete', icon: 'fas fa-trash', action: 'dove-row-delete', doveMailId: mailId, disabled: readOnly, className: 'context-menu-item-danger' }
         ]
     }];
@@ -748,6 +788,8 @@ const doveHandleMailRowMenuAction = function (item) {
         case 'dove-row-forward': doveForwardMailId(mailId, item.doveOwner); return;
         case 'dove-row-toggle-read': doveToggleReadForId(mailId); return;
         case 'dove-row-archive': doveMarkMailId(mailId, { archived: true }); return;
+        case 'dove-row-spam': doveMarkMailId(mailId, { spam: true }); return;
+        case 'dove-row-not-spam': doveMarkMailId(mailId, { spam: false }); return;
         case 'dove-row-delete': doveMarkMailId(mailId, { deleted: true }); return;
         default: return;
     }
@@ -844,6 +886,7 @@ const doveRenderInboxBadge = function (unreadCount) {
 const DESKTOP_DOVECOTE_LIST_COLUMNS = [
     { key: 'unread', label: '', sortable: false },
     { key: 'attachment', label: '📎', sortable: false },
+    { key: 'route', label: '', sortable: false },
     { key: 'from', label: 'From', sortable: true },
     { key: 'subject', label: 'Subject', sortable: true },
     { key: 'createdAt', label: 'Received', sortable: true }
@@ -942,6 +985,19 @@ const doveBuildSanitizedBadge = function () {
     return badge;
 };
 
+const doveBuildForgedBadge = function () {
+    const badge = document.createElement('span');
+    badge.className = 'dovecote-forged-badge hidden';
+    badge.title = 'The relay tagged this as looking like a Dreamscape sender (LANTIS_FORGED_OURS).';
+    const icon = document.createElement('i');
+    icon.className = 'fas fa-triangle-exclamation';
+    const label = document.createElement('span');
+    label.textContent = 'Forged';
+    badge.appendChild(icon);
+    badge.appendChild(label);
+    return badge;
+};
+
 // Message header block shared by the inline preview and reader windows: From/To/Cc/Subject/Date
 // rows on the left, and a right-aligned tools column (Safe badge + Rendered/Raw) spanning
 // those rows, vertically centred. An empty Cc value is hidden in CSS. Nothing overlays the body.
@@ -953,18 +1009,35 @@ const doveBuildOeHeader = function (options) {
     const fields = document.createElement('div');
     fields.className = 'dovecote-oe-header-fields';
     const fieldEls = {};
-    ['from', 'to', 'cc', 'subject', 'date'].forEach((field) => {
+    const fieldLabels = {
+        from: 'From:',
+        to: 'To:',
+        originalTo: 'Originally to:',
+        cc: 'Cc:',
+        subject: 'Subject:',
+        date: 'Date:',
+        spam: 'Spam:',
+        auth: 'Auth:'
+    };
+    ['from', 'to', 'originalTo', 'cc', 'subject', 'date', 'spam', 'auth'].forEach((field) => {
         const cap = field.charAt(0).toUpperCase() + field.slice(1);
         const row = document.createElement('div');
         row.className = 'dovecote-oe-header-row';
         row.dataset.doveField = field;
         const labelEl = document.createElement('span');
         labelEl.className = 'dovecote-oe-header-label';
-        labelEl.textContent = cap + ':';
+        labelEl.textContent = fieldLabels[field] || (cap + ':');
         const valueEl = document.createElement('span');
         valueEl.className = 'dovecote-oe-header-value';
         if (opts.idPrefix) valueEl.id = opts.idPrefix + cap;
         row.appendChild(labelEl);
+        if (field === 'from') {
+            const routeEl = document.createElement('span');
+            routeEl.className = 'dovecote-oe-route';
+            if (opts.idPrefix) routeEl.id = opts.idPrefix + 'Route';
+            row.appendChild(routeEl);
+            fieldEls.route = routeEl;
+        }
         row.appendChild(valueEl);
         fields.appendChild(row);
         fieldEls[field] = valueEl;
@@ -976,10 +1049,13 @@ const doveBuildOeHeader = function (options) {
     const badge = doveBuildSanitizedBadge();
     if (opts.badgeId) badge.id = opts.badgeId;
     tools.appendChild(badge);
+    const forgedBadge = doveBuildForgedBadge();
+    if (opts.forgedBadgeId) forgedBadge.id = opts.forgedBadgeId;
+    tools.appendChild(forgedBadge);
     const viewToggle = doveBuildBodyViewToggle(opts.onBodyView);
     tools.appendChild(viewToggle);
     header.appendChild(tools);
-    return { header: header, fieldEls: fieldEls, safetyBar: badge, viewToggle: viewToggle };
+    return { header: header, fieldEls: fieldEls, safetyBar: badge, forgedBadge: forgedBadge, viewToggle: viewToggle };
 };
 
 const doveSetViewToggleState = function (root, view) {
@@ -1003,9 +1079,9 @@ const doveBuildPreviewPane = function () {
     mobileBackBar.appendChild(backBtn);
     const mobileActions = document.createElement('div');
     mobileActions.className = 'button-group';
-    ['reply', 'replyAll', 'forward', 'archive', 'delete'].forEach((action) => {
-        const icons = { reply: 'fas fa-reply', replyAll: 'fas fa-reply-all', forward: 'fas fa-share', archive: 'fas fa-box-archive', delete: 'fas fa-trash' };
-        const titles = { reply: 'Reply', replyAll: 'Reply All', forward: 'Forward', archive: 'Archive', delete: 'Delete' };
+    ['reply', 'replyAll', 'forward', 'archive', 'spam', 'notSpam', 'delete'].forEach((action) => {
+        const icons = { reply: 'fas fa-reply', replyAll: 'fas fa-reply-all', forward: 'fas fa-share', archive: 'fas fa-box-archive', spam: 'fas fa-ban', notSpam: 'fas fa-inbox', delete: 'fas fa-trash' };
+        const titles = { reply: 'Reply', replyAll: 'Reply All', forward: 'Forward', archive: 'Archive', spam: 'Move to Spam', notSpam: 'Not spam', delete: 'Delete' };
         const btn = doveCreateButton('btn-secondary btn-small', titles[action], icons[action]);
         if (action === 'forward') {
             // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
@@ -1018,10 +1094,18 @@ const doveBuildPreviewPane = function () {
     mobileBackBar.appendChild(mobileActions);
     preview.appendChild(mobileBackBar);
 
-    const built = doveBuildOeHeader({ idPrefix: 'desktopDovecoteOe', badgeId: 'desktopDovecoteSafetyBar' });
+    const built = doveBuildOeHeader({
+        idPrefix: 'desktopDovecoteOe',
+        badgeId: 'desktopDovecoteSafetyBar',
+        forgedBadgeId: 'desktopDovecoteForgedBadge'
+    });
     const header = built.header;
     header.id = 'desktopDovecoteOeHeader';
     preview.appendChild(header);
+    const spamReport = document.createElement('pre');
+    spamReport.className = 'dovecote-spam-report hidden';
+    spamReport.id = 'desktopDovecoteSpamReport';
+    preview.appendChild(spamReport);
 
     const imagesBar = document.createElement('div');
     imagesBar.className = 'dovecote-images-bar hidden';
@@ -1090,10 +1174,16 @@ const doveCacheEls = function () {
         imagesBar: document.getElementById('desktopDovecoteImagesBar'),
         attachmentsBar: document.getElementById('desktopDovecoteAttachmentsBar'),
         oeFrom: document.getElementById('desktopDovecoteOeFrom'),
+        oeRoute: document.getElementById('desktopDovecoteOeRoute'),
         oeTo: document.getElementById('desktopDovecoteOeTo'),
+        oeOriginalTo: document.getElementById('desktopDovecoteOeOriginalTo'),
         oeCc: document.getElementById('desktopDovecoteOeCc'),
         oeSubject: document.getElementById('desktopDovecoteOeSubject'),
         oeDate: document.getElementById('desktopDovecoteOeDate'),
+        oeSpam: document.getElementById('desktopDovecoteOeSpam'),
+        oeAuth: document.getElementById('desktopDovecoteOeAuth'),
+        spamReport: document.getElementById('desktopDovecoteSpamReport'),
+        forgedBadge: document.getElementById('desktopDovecoteForgedBadge'),
         searchGroup: document.getElementById('desktopDovecoteSearchGroup'),
         searchInput: document.getElementById('desktopDovecoteSearchInput'),
         mainPane: document.getElementById('desktopDovecoteMainPane')
@@ -1118,6 +1208,8 @@ const doveDispatchAction = function (action) {
         case 'toggleRead': doveToggleRead(); return;
         case 'delete': doveDeleteSelected(); return;
         case 'archive': doveArchiveSelected(); return;
+        case 'spam': doveSpamSelected(true); return;
+        case 'notSpam': doveSpamSelected(false); return;
         case 'refresh': doveLoadFolder(desktopDovecote.folder); return;
         case 'mobileBack': doveSetMobileMessageOpen(false); return;
         default: return;
@@ -1289,6 +1381,10 @@ const doveRenderMessageList = function () {
             attachCell.appendChild(clip);
         }
 
+        const routeCell = document.createElement('span');
+        routeCell.className = 'dovecote-col-route';
+        routeCell.appendChild(doveBuildRouteIcon(mail.route));
+
         const fromCell = document.createElement('span');
         fromCell.className = 'dovecote-col-from';
         fromCell.textContent = doveDisplayAddress(mail.from);
@@ -1303,6 +1399,7 @@ const doveRenderMessageList = function () {
 
         row.appendChild(unreadCell);
         row.appendChild(attachCell);
+        row.appendChild(routeCell);
         row.appendChild(fromCell);
         row.appendChild(subjectCell);
         row.appendChild(dateCell);
@@ -1378,11 +1475,47 @@ const doveRenderPreviewBody = function () {
 // imagesBar, attachmentsBar, bodyWrap }. ----------------------------------------------------------------
 
 const doveRenderOeHeaderInto = function (els, mail) {
-    els.oeFrom.textContent = mail ? doveDisplayAddress(mail.from) : '';
+    const showLabel = mail && mail.fromLabel && !mail.labelSuspicious;
+    els.oeFrom.textContent = mail
+        ? (showLabel ? mail.fromLabel : doveDisplayAddress(mail.from))
+        : '';
     els.oeTo.textContent = mail ? doveFormatAddressList(mail.to) : '';
+    if (els.oeOriginalTo) els.oeOriginalTo.textContent = mail && mail.originalTo ? mail.originalTo : '';
     if (els.oeCc) els.oeCc.textContent = mail ? doveFormatAddressList(mail.cc) : '';
     els.oeSubject.textContent = mail ? (mail.subject || '(no subject)') : '';
     els.oeDate.textContent = mail ? doveFormatDate(mail.createdAt) : '';
+    doveFillRouteSlot(els.oeRoute, mail ? mail.route : 'internal');
+    if (els.oeRoute) els.oeRoute.classList.toggle('hidden', !mail);
+    if (els.oeSpam) els.oeSpam.textContent = doveFormatSpamScore(mail);
+    if (els.oeAuth) els.oeAuth.textContent = doveFormatSpamAuth(mail);
+    if (els.forgedBadge) els.forgedBadge.classList.toggle('hidden', !(mail && mail.spamForgedOurs));
+    if (els.spamReport) {
+        const report = mail && mail.spamReport ? String(mail.spamReport) : '';
+        els.spamReport.textContent = report;
+        els.spamReport.classList.toggle('hidden', !report);
+    }
+};
+
+const doveFormatSpamScore = function (mail) {
+    if (!mail) return '';
+    if (mail.spamScore == null && mail.spamRequired == null) return '';
+    if (mail.spamScore != null && mail.spamRequired != null) {
+        return mail.spamScore + ' / ' + mail.spamRequired;
+    }
+    return mail.spamScore != null ? String(mail.spamScore) : String(mail.spamRequired);
+};
+
+const doveFormatSpamAuth = function (mail) {
+    if (!mail) return '';
+    const parts = [];
+    if (mail.spamReceivedSpf) parts.push('SPF ' + mail.spamReceivedSpf);
+    if (mail.spamDkim) parts.push('DKIM ' + mail.spamDkim);
+    if (mail.spamDmarc) {
+        let dmarc = 'DMARC ' + mail.spamDmarc;
+        if (mail.spamDmarcPolicy) dmarc += ' (p=' + mail.spamDmarcPolicy + ')';
+        parts.push(dmarc);
+    }
+    return parts.join(' · ');
 };
 
 const doveFormatBytes = function (bytes) {
@@ -1860,8 +1993,12 @@ const doveRenderToolbarState = function () {
     if (!desktopDovecoteEls || !desktopDovecoteEls.toolbar) return;
     const readOnly = !!desktopDovecote.viewAsOwner;
     const noMail = !desktopDovecote.selectedMail;
+    const inSpam = !!(desktopDovecote.selectedMail && desktopDovecote.selectedMail.folder === 'spam');
     desktopDovecoteEls.toolbar.querySelectorAll('[data-dove-mutating="true"]').forEach((btn) => {
-        btn.disabled = readOnly || (noMail && btn.dataset.doveNeedsMail === 'true');
+        let off = readOnly || (noMail && btn.dataset.doveNeedsMail === 'true');
+        if (btn.dataset.doveAction === 'spam') off = off || inSpam;
+        if (btn.dataset.doveAction === 'notSpam') off = off || !desktopDovecote.selectedMail || !inSpam;
+        btn.disabled = off;
     });
 };
 
@@ -1908,6 +2045,20 @@ const doveArchiveSelected = async function () {
         doveLoadFolder(desktopDovecote.folder);
     } catch (err) {
         doveShowError((err && err.message) || 'Could not archive message');
+    }
+};
+
+const doveSpamSelected = async function (toSpam) {
+    const mail = desktopDovecote.selectedMail;
+    if (!mail || desktopDovecote.viewAsOwner) return;
+    try {
+        await wsClient.sendMessage('dovecote_mark_mail', { id: mail.id, spam: toSpam === true });
+        desktopDovecote.selectedId = null;
+        desktopDovecote.selectedMail = null;
+        doveRenderPreview();
+        doveLoadFolder(desktopDovecote.folder);
+    } catch (err) {
+        doveShowError((err && err.message) || (toSpam ? 'Could not move to Spam' : 'Could not mark not spam'));
     }
 };
 
@@ -2183,8 +2334,12 @@ const doveBuildReaderToolbar = function (getMail) {
     deleteBtn.dataset.doveReaderAction = 'delete';
     const archiveBtn = doveCreateCommand('archive', 'Move to Archive', 'fas fa-box-archive');
     archiveBtn.dataset.doveReaderAction = 'archive';
+    const spamBtn = doveCreateCommand('spam', 'Move to Spam', 'fas fa-ban');
+    spamBtn.dataset.doveReaderAction = 'spam';
+    const notSpamBtn = doveCreateCommand('notSpam', 'Not spam', 'fas fa-inbox');
+    notSpamBtn.dataset.doveReaderAction = 'notSpam';
 
-    [replyBtn, replyAllBtn, forwardBtn, null, toggleReadBtn, deleteBtn, archiveBtn].forEach((btn) => {
+    [replyBtn, replyAllBtn, forwardBtn, null, toggleReadBtn, deleteBtn, archiveBtn, spamBtn, notSpamBtn].forEach((btn) => {
         if (!btn) {
             toolbar.appendChild(doveCreateCommandSeparator());
             return;
@@ -2253,6 +2408,9 @@ const doveBuildReaderWindow = function (key) {
     const header = built.header;
     const fieldEls = built.fieldEls;
     body.appendChild(header);
+    const spamReport = document.createElement('pre');
+    spamReport.className = 'dovecote-spam-report hidden';
+    body.appendChild(spamReport);
 
     const imagesBar = document.createElement('div');
     imagesBar.className = 'dovecote-images-bar hidden';
@@ -2276,10 +2434,16 @@ const doveBuildReaderWindow = function (key) {
 
     state.els = {
         oeFrom: fieldEls.from,
+        oeRoute: fieldEls.route,
         oeTo: fieldEls.to,
+        oeOriginalTo: fieldEls.originalTo,
         oeCc: fieldEls.cc,
         oeSubject: fieldEls.subject,
         oeDate: fieldEls.date,
+        oeSpam: fieldEls.spam,
+        oeAuth: fieldEls.auth,
+        spamReport: spamReport,
+        forgedBadge: built.forgedBadge,
         safetyBar: safetyBar,
         imagesBar: imagesBar,
         attachmentsBar: attachmentsBar,
@@ -2362,6 +2526,8 @@ const doveDispatchReaderAction = function (state, action) {
         case 'toggleRead': doveReaderToggleRead(state); return;
         case 'delete': doveReaderMarkSelected(state, { deleted: true }); return;
         case 'archive': doveReaderMarkSelected(state, { archived: true }); return;
+        case 'spam': doveReaderMarkSelected(state, { spam: true }); return;
+        case 'notSpam': doveReaderMarkSelected(state, { spam: false }); return;
         default: return;
     }
 };

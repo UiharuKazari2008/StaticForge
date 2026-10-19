@@ -4919,6 +4919,11 @@ class GlobalResources {
 
         log('Preparing server for restart…');
 
+        try {
+            const mailGateway = require('./mailGateway');
+            await mailGateway.stop();
+        } catch (_) { /* mail gateway optional */ }
+
         if (this.globalCheckpointManager) {
             this.globalCheckpointManager.stopPeriodicCheckpoints();
         }

@@ -193,7 +193,7 @@
 
 #desktopDovecoteModal .dovecote-message-row {
     display: grid;
-    grid-template-columns: 20px 20px minmax(0, 1.3fr) minmax(0, 2fr) 128px;
+    grid-template-columns: 20px 20px 20px minmax(0, 1.3fr) minmax(0, 2fr) 128px;
     align-items: center;
 }
 
@@ -212,8 +212,26 @@
 }
 
 #desktopDovecoteModal .dovecote-col-unread,
-#desktopDovecoteModal .dovecote-col-attachment {
+#desktopDovecoteModal .dovecote-col-attachment,
+#desktopDovecoteModal .dovecote-col-route {
     text-align: center;
+}
+
+.dovecote-route-icon,
+.dovecote-oe-route {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    font-size: 11px;
+    line-height: 16px;
+    cursor: var(--c-help);
+}
+
+.dovecote-oe-route.hidden {
+    display: none;
 }
 
 #desktopDovecoteModal .dovecote-col-from,
@@ -261,8 +279,21 @@
 }
 
 /* Cc is a real header line. Hide it when the value is empty (single-recipient mail). */
-.dovecote-oe-header-row[data-dove-field="cc"]:has(.dovecote-oe-header-value:empty) {
+.dovecote-oe-header-row[data-dove-field="cc"]:has(.dovecote-oe-header-value:empty),
+.dovecote-oe-header-row[data-dove-field="originalTo"]:has(.dovecote-oe-header-value:empty),
+.dovecote-oe-header-row[data-dove-field="spam"]:has(.dovecote-oe-header-value:empty),
+.dovecote-oe-header-row[data-dove-field="auth"]:has(.dovecote-oe-header-value:empty) {
     display: none;
+}
+
+.dovecote-spam-report {
+    margin: 0;
+    padding: 4px 8px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 11px;
+    max-height: 8em;
+    overflow: auto;
 }
 
 .dovecote-oe-header-label {
@@ -290,8 +321,16 @@
     cursor: var(--c-help);
 }
 
-.dovecote-sanitized-badge.hidden {
+.dovecote-sanitized-badge.hidden,
+.dovecote-forged-badge.hidden {
     display: none;
+}
+
+.dovecote-forged-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    cursor: var(--c-help);
 }
 
 .dovecote-images-bar,
@@ -450,7 +489,7 @@
     }
 
     #desktopDovecoteModal .dovecote-message-row {
-        grid-template-columns: 20px 20px minmax(0, 1fr) minmax(0, 1.4fr) 92px;
+        grid-template-columns: 20px 20px 20px minmax(0, 1fr) minmax(0, 1.4fr) 92px;
     }
 
     #desktopDovecoteModal .dovecote-message-list-wrap,
@@ -767,6 +806,7 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
 :is(.dovecote-folder-btn[data-dove-folder="sent"] > i, .dovecote-tree-icon[data-dove-tree-icon="sent"]) { --dove-folder-icon: 9; }
 :is(.dovecote-folder-btn[data-dove-folder="deleted"] > i, .dovecote-tree-icon[data-dove-tree-icon="deleted"]) { --dove-folder-icon: 10; }
 :is(.dovecote-folder-btn[data-dove-folder="archive"] > i, .dovecote-tree-icon[data-dove-tree-icon="archive"]) { --dove-folder-icon: 6; }
+:is(.dovecote-folder-btn[data-dove-folder="spam"] > i, .dovecote-tree-icon[data-dove-tree-icon="spam"]) { --dove-folder-icon: 11; }
 .dovecote-tree-icon[data-dove-tree-icon="local"] { --dove-folder-icon: 20; }
 .dovecote-tree-icon[data-dove-tree-icon="communities"] { --dove-folder-icon: 16; }
 .dovecote-tree-icon[data-dove-tree-icon="mailbox"] { --dove-folder-icon: 21; }
@@ -988,7 +1028,7 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
     line-height: 17px;
 }
 
-body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-message-row > :is(.dovecote-col-unread, .dovecote-col-attachment) {
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-message-row > :is(.dovecote-col-unread, .dovecote-col-attachment, .dovecote-col-route) {
     justify-content: center;
     padding: 0;
 }
@@ -1058,6 +1098,38 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
     background: url('/static_images/vista-mail/list-16.png') no-repeat -128px 0 / 960px 16px;
 }
 
+/* route: 16px shared vista-icons, same cell size as unread / paperclip */
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-header > .dovecote-col-route {
+    justify-content: center;
+    padding: 0;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-col-route {
+    justify-content: center;
+    padding: 0;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-route-icon {
+    width: 16px;
+    height: 16px;
+    font-size: 0;
+    color: #1e395b;
+    background: image-set(url('/static_images/vista-icons/net-limited-16.png') 1x, url('/static_images/vista-icons/net-limited-32.png') 2x) center / 16px 16px no-repeat;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-route-icon[data-dove-route="inbound"] {
+    background-image: image-set(url('/static_images/vista-icons/net-internet-recv-16.png') 1x, url('/static_images/vista-icons/net-internet-recv-32.png') 2x);
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-route-icon[data-dove-route="outbound"] {
+    background-image: image-set(url('/static_images/vista-icons/net-internet-send-16.png') 1x, url('/static_images/vista-icons/net-internet-send-32.png') 2x);
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-oe-route {
+    width: 16px;
+    height: 16px;
+}
+
 /* ---- the preview pane: the #f0f0f0 header (From and To on one line, Subject under them, the
    labels bold), then the message on white ---- */
 
@@ -1111,6 +1183,10 @@ body:not(.windows-classic-theme) .dovecote-reader-window[data-window-client="lig
     min-width: 56px;
 }
 
+body:not(.windows-classic-theme) .dovecote-reader-window[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-oe-header-row[data-dove-field="originalTo"] .dovecote-oe-header-label {
+    min-width: 92px;
+}
+
 body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-oe-header-label {
     color: #000;
     font-weight: 700;
@@ -1122,7 +1198,8 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
 }
 
 /* Safe badge and Rendered / Raw: small and plain on the header's window face */
-body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-sanitized-badge {
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-sanitized-badge,
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-forged-badge {
     height: 21px;
     padding: 0 2px;
     background: none;
@@ -1130,6 +1207,10 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
     color: #1e395b;
     font-size: 11px;
     font-weight: 400;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-forged-badge {
+    color: #8a5a00;
 }
 
 body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-body-view-toggle {
