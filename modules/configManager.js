@@ -672,7 +672,8 @@ class ConfigManager {
                             'ivory.studio': 'ivory',
                             'guren.lab': 'guren',
                             'chiyo.web': 'chiyo',
-                            'mailroom.ops': 'mailroom'
+                            'tsubame.ops': 'tsubame',
+                            'mailroom.ops': 'tsubame'
                             // tifa and pyra are still to be decided — leave unmapped
                             // until a department is confirmed. Do not add keys here.
                             // 'tifa.<dept>': 'tifa',

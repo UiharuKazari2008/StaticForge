@@ -48,7 +48,7 @@ const DOVECOTE_BOT_KEY_TARGETS = Object.freeze([
     { persona: 'chiyo', label: 'Chiyo' },
     { persona: 'ivory', label: 'Ivory' },
     { persona: 'hoshino', label: 'Hoshino' },
-    { persona: 'mailroom', label: 'Mailroom' }
+    { persona: 'tsubame', label: 'Tsubame' }
 ]);
 
 const DOVECOTE_SCOPE = 'sfapp_dovecote';

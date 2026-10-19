@@ -21,7 +21,8 @@ function storedRoute(value) {
 }
 
 const HUMAN_OWNER = 'yukimi';
-const MAILROOM_OWNER = 'mailroom';
+const MAILROOM_OWNER = 'tsubame';
+const MAILROOM_ROLE = 'mailroom';
 const BOT_OWNERS = Object.freeze([
     'rook', 'menma', 'hoshino', 'ivory', 'guren', 'chiyo', 'frost', 'sala', 'tifa', 'pyra', 'cursor', 'claude', 'wren',
     MAILROOM_OWNER
@@ -29,10 +30,13 @@ const BOT_OWNERS = Object.freeze([
 // Caller app names that are not bot names themselves but belong to a bot
 // mailbox. Director chat (modules/cursorDirector.js app key "Dreamscape
 // Director") runs as Wren, so it reads/sends as the 'wren' bot mailbox.
+// Mailroom is the role; Tsubame is the mailbox. A key named Mailroom still
+// resolves to tsubame.
 const ACTOR_ALIASES = Object.freeze({
     'dreamscape director': 'wren',
     dreamscapedirector: 'wren',
-    director: 'wren'
+    director: 'wren',
+    mailroom: 'tsubame'
 });
 const BOT_OWNER_SET = new Set(BOT_OWNERS);
 const ALL_OWNERS = new Set([HUMAN_OWNER, ...BOT_OWNERS]);
@@ -781,63 +785,177 @@ function forwardMail(owner, { id, to }) {
     return { id: newId, to: toOwner };
 }
 
-function requireMailroomRole(actor, action, targetId) {
-    if (actor === MAILROOM_OWNER) return;
-    audit(actor || 'unknown', action, targetId, false, 'mailroom role required');
+function isMailroomActor(actor) {
+    return actor === MAILROOM_OWNER;
+}
+
+function mailroomAudit(actor, action, { mailbox, id, success, extra } = {}) {
+    const parts = [];
+    if (mailbox) parts.push(`mailbox=${mailbox}`);
+    if (extra) parts.push(String(extra));
+    audit(actor || 'unknown', action, id || null, success, parts.join(' ') || null);
+}
+
+function requireMailroomRole(actor, action, { mailbox, id } = {}) {
+    if (isMailroomActor(actor)) return;
+    mailroomAudit(actor, action, { mailbox, id, success: false, extra: 'mailroom role required' });
     throw new DovecoteError('Mailroom role required', 'FORBIDDEN');
 }
 
+function resolveMailroomTarget(mailbox) {
+    const target = String(mailbox || '').trim().toLowerCase();
+    if (!isValidOwner(target)) {
+        throw new DovecoteError('Unknown mailbox', 'UNKNOWN_OWNER');
+    }
+    return target;
+}
+
 /**
- * Mailroom-only: forward a message from the mailroom mailbox to another
+ * Mailroom-only: forward a message from Tsubame's mailbox to another
  * internal mailbox. Reuses forwardMail so route / fromLabel / flags copy.
  */
 function mailroomForwardMail(actor, { id, to }) {
-    requireMailroomRole(actor, 'mailroom_forward_mail', id);
+    requireMailroomRole(actor, 'mailroom_forward_mail', { mailbox: MAILROOM_OWNER, id });
     const result = forwardMail(MAILROOM_OWNER, { id, to });
     if (!result) {
-        audit(actor, 'mailroom_forward_mail', id, false, 'not found or not owned');
+        mailroomAudit(actor, 'mailroom_forward_mail', {
+            mailbox: MAILROOM_OWNER, id, success: false, extra: 'not found or not owned'
+        });
         return null;
     }
-    audit(actor, 'mailroom_forward_mail', result.id, true, `to=${result.to} source=${id}`);
+    mailroomAudit(actor, 'mailroom_forward_mail', {
+        mailbox: MAILROOM_OWNER, id: result.id, success: true, extra: `to=${result.to} source=${id}`
+    });
     return result;
 }
 
 /**
- * Mailroom-only: move a message between Inbox and Spam in another bot's
- * mailbox. Never Yukimi. Selects only id/owner/folder — no body.
+ * Mailroom-only: move Inbox ↔ Spam on another bot mailbox, or rescue
+ * Spam → Inbox on any mailbox including Yukimi. Yukimi is Spam-only:
+ * no Inbox read and no Inbox → Spam.
  */
 function mailroomMoveMail(actor, { mailbox, id, spam }) {
-    requireMailroomRole(actor, 'mailroom_move_mail', id);
-    const target = String(mailbox || '').trim().toLowerCase();
-    if (target === HUMAN_OWNER) {
-        audit(actor, 'mailroom_move_mail', id, false, `mailbox=${target} refused: yukimi`);
-        throw new DovecoteError("Cannot move mail in Yukimi's mailbox", 'FORBIDDEN');
-    }
-    if (!isBotOwner(target)) {
-        audit(actor, 'mailroom_move_mail', id, false, `mailbox=${target} unknown`);
-        throw new DovecoteError('Unknown mailbox', 'UNKNOWN_OWNER');
-    }
+    const action = spam === false ? 'mailroom_rescue_mail' : 'mailroom_move_mail';
+    requireMailroomRole(actor, action, { mailbox, id });
+    const target = resolveMailroomTarget(mailbox);
     if (typeof spam !== 'boolean') {
         throw new DovecoteError('spam true or false is required', 'INVALID_FOLDER');
+    }
+    if (target === HUMAN_OWNER && spam === true) {
+        mailroomAudit(actor, action, { mailbox: target, id, success: false, extra: 'refused: yukimi inbox-to-spam' });
+        throw new DovecoteError("Cannot move mail into Yukimi's Spam", 'FORBIDDEN');
     }
     const row = getDb().prepare(
         'SELECT id, owner, folder FROM dovecote_message WHERE id = ? AND owner = ?'
     ).get(id, target);
     if (!row) {
-        audit(actor, 'mailroom_move_mail', id, false, `mailbox=${target} not found`);
+        mailroomAudit(actor, action, { mailbox: target, id, success: false, extra: 'not found' });
         return null;
     }
+    if (target === HUMAN_OWNER && row.folder !== 'spam') {
+        mailroomAudit(actor, action, {
+            mailbox: target, id, success: false, extra: `folder=${row.folder} refused: yukimi spam-only`
+        });
+        throw new DovecoteError("Yukimi access is Spam-folder only", 'FORBIDDEN');
+    }
     if (row.folder !== 'inbox' && row.folder !== 'spam') {
-        audit(actor, 'mailroom_move_mail', id, false, `mailbox=${target} folder=${row.folder}`);
+        mailroomAudit(actor, action, { mailbox: target, id, success: false, extra: `folder=${row.folder}` });
         throw new DovecoteError('Can only move Inbox or Spam', 'INVALID_FOLDER');
     }
     const folder = spam ? 'spam' : 'inbox';
     getDb().prepare(
         'UPDATE dovecote_message SET folder = ?, archive_subfolder = NULL, deleted_at = NULL, updated_at = ? WHERE id = ? AND owner = ?'
     ).run(folder, nowIso(), row.id, target);
-    audit(actor, 'mailroom_move_mail', id, true, `mailbox=${target} spam=${spam} from=${row.folder}`);
+    mailroomAudit(actor, action, {
+        mailbox: target, id, success: true, extra: `from=${row.folder} to=${folder}`
+    });
     emitMailboxChanged([target]);
     return { id: row.id, mailbox: target, folder };
+}
+
+/**
+ * Mailroom-only: list another mailbox's Spam folder. Every mailbox including
+ * Yukimi. Other folders are refused.
+ */
+function mailroomListMail(actor, { mailbox, folder, unreadOnly, limit } = {}) {
+    requireMailroomRole(actor, 'mailroom_list_mail', { mailbox });
+    const target = resolveMailroomTarget(mailbox);
+    const wantFolder = String(folder || 'spam').toLowerCase();
+    if (wantFolder !== 'spam') {
+        mailroomAudit(actor, 'mailroom_list_mail', {
+            mailbox: target, success: false, extra: `folder=${wantFolder} refused`
+        });
+        throw new DovecoteError('Cross-mailbox list is Spam-folder only', 'FORBIDDEN');
+    }
+    const cap = Math.max(1, Math.min(200, Number(limit) || 50));
+    let sql = 'SELECT * FROM dovecote_message WHERE owner = ? AND folder = ?';
+    const params = [target, 'spam'];
+    if (unreadOnly) sql += ' AND read = 0';
+    sql += ' ORDER BY created_at DESC LIMIT ?';
+    params.push(cap);
+    const rows = getDb().prepare(sql).all(...params);
+    mailroomAudit(actor, 'mailroom_list_mail', {
+        mailbox: target, success: true, extra: `folder=spam count=${rows.length}`
+    });
+    const listed = rows.map(toSummary);
+    Object.defineProperty(listed, 'owner', { value: target, enumerable: false });
+    return listed;
+}
+
+/**
+ * Mailroom-only: read one Spam message in another mailbox (including Yukimi).
+ * Does not flip the owner's read flag. Inbox and every other folder 403.
+ */
+function mailroomReadMail(actor, { mailbox, id }) {
+    requireMailroomRole(actor, 'mailroom_read_mail', { mailbox, id });
+    const target = resolveMailroomTarget(mailbox);
+    const row = getDb().prepare('SELECT * FROM dovecote_message WHERE id = ? AND owner = ?').get(id, target);
+    if (!row) {
+        mailroomAudit(actor, 'mailroom_read_mail', { mailbox: target, id, success: false, extra: 'not found' });
+        return null;
+    }
+    if (row.folder !== 'spam') {
+        mailroomAudit(actor, 'mailroom_read_mail', {
+            mailbox: target, id, success: false, extra: `folder=${row.folder} refused`
+        });
+        throw new DovecoteError(
+            target === HUMAN_OWNER ? "Yukimi access is Spam-folder only" : 'Cross-mailbox read is Spam-folder only',
+            'FORBIDDEN'
+        );
+    }
+    mailroomAudit(actor, 'mailroom_read_mail', { mailbox: target, id, success: true, extra: 'folder=spam' });
+    return toFull(row);
+}
+
+/**
+ * Mailroom-only: soft-purge a Spam message in any mailbox (including Yukimi)
+ * into the deleted/trash folder. Not a hard delete.
+ */
+function mailroomPurgeMail(actor, { mailbox, id }) {
+    requireMailroomRole(actor, 'mailroom_purge_mail', { mailbox, id });
+    const target = resolveMailroomTarget(mailbox);
+    const row = getDb().prepare(
+        'SELECT id, owner, folder FROM dovecote_message WHERE id = ? AND owner = ?'
+    ).get(id, target);
+    if (!row) {
+        mailroomAudit(actor, 'mailroom_purge_mail', { mailbox: target, id, success: false, extra: 'not found' });
+        return null;
+    }
+    if (row.folder !== 'spam') {
+        mailroomAudit(actor, 'mailroom_purge_mail', {
+            mailbox: target, id, success: false, extra: `folder=${row.folder} refused`
+        });
+        throw new DovecoteError('Can only purge Spam', 'FORBIDDEN');
+    }
+    const deletedAt = nowIso();
+    getDb().prepare(
+        'UPDATE dovecote_message SET folder = ?, archive_subfolder = NULL, deleted_at = ?, updated_at = ? WHERE id = ? AND owner = ?'
+    ).run('deleted', deletedAt, deletedAt, row.id, target);
+    mailroomAudit(actor, 'mailroom_purge_mail', {
+        mailbox: target, id, success: true, extra: 'folder=spam purge=soft'
+    });
+    emitMailboxChanged([target]);
+    return { id: row.id, mailbox: target, folder: 'deleted', purged: true };
 }
 
 /**
@@ -897,6 +1015,7 @@ function listMailboxes() {
 module.exports = {
     HUMAN_OWNER,
     MAILROOM_OWNER,
+    MAILROOM_ROLE,
     BOT_OWNERS,
     FOLDERS,
     FORMATS,
@@ -906,6 +1025,7 @@ module.exports = {
     DovecoteError,
     isValidOwner,
     isBotOwner,
+    isMailroomActor,
     resolveOwnerFromActor,
     setMailboxChangedListener,
     sendMail,
@@ -916,6 +1036,9 @@ module.exports = {
     forwardMail,
     mailroomForwardMail,
     mailroomMoveMail,
+    mailroomListMail,
+    mailroomReadMail,
+    mailroomPurgeMail,
     permanentlyDeleteMail,
     listMailboxes,
     getAlwaysLoadSenders,

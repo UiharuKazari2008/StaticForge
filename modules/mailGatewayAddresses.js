@@ -25,7 +25,8 @@ const DEFAULT_MAILBOXES = Object.freeze({
     'ivory.studio': 'ivory',
     'guren.lab': 'guren',
     'chiyo.web': 'chiyo',
-    'mailroom.ops': 'mailroom'
+    'tsubame.ops': 'tsubame',
+    'mailroom.ops': 'tsubame'
 });
 
 function extractAddress(raw) {

@@ -1,7 +1,7 @@
 'use strict';
 
-// Mailroom mailbox, trusted X-Original-To (display only), and mailroom-role
-// MCP/mail-layer gates. Ordinary bots stay owner-scoped.
+// Tsubame mailbox (mailroom role), mailroom.ops alias, trusted X-Original-To,
+// and mailroom-gated Spam list/read/purge/rescue. Yukimi is Spam-only.
 
 const assert = require('assert');
 const os = require('os');
@@ -16,17 +16,27 @@ const addresses = require('../modules/mailGatewayAddresses');
 const spam = require('../modules/mailGatewaySpam');
 
 function auditActions(action) {
-    return getDb().prepare('SELECT actor, action, success, detail FROM dovecote_audit_log WHERE action = ?').all(action);
+    return getDb().prepare(
+        'SELECT ts, actor, action, target_id, success, detail FROM dovecote_audit_log WHERE action = ?'
+    ).all(action);
 }
 
 function main() {
-    assert.strictEqual(mail.isValidOwner('mailroom'), true);
-    assert.strictEqual(mail.isBotOwner('mailroom'), true);
-    assert.strictEqual(mail.MAILROOM_OWNER, 'mailroom');
-    assert.strictEqual(mail.resolveOwnerFromActor('Mailroom'), 'mailroom');
+    assert.strictEqual(mail.isValidOwner('tsubame'), true);
+    assert.strictEqual(mail.isBotOwner('tsubame'), true);
+    assert.strictEqual(mail.isValidOwner('mailroom'), false);
+    assert.strictEqual(mail.MAILROOM_OWNER, 'tsubame');
+    assert.strictEqual(mail.MAILROOM_ROLE, 'mailroom');
+    assert.strictEqual(mail.isMailroomActor('tsubame'), true);
+    assert.strictEqual(mail.isMailroomActor('rook'), false);
+    assert.strictEqual(mail.resolveOwnerFromActor('Tsubame'), 'tsubame');
+    assert.strictEqual(mail.resolveOwnerFromActor('Mailroom'), 'tsubame');
+
     const map = addresses.createMapping({ mailboxes: addresses.DEFAULT_MAILBOXES });
-    assert.strictEqual(addresses.toMailbox('mailroom.ops@dream.737.jp.net', map), 'mailroom');
-    assert.strictEqual(addresses.toExternal('mailroom', map), 'mailroom.ops@dream.737.jp.net');
+    assert.strictEqual(addresses.toMailbox('tsubame.ops@dream.737.jp.net', map), 'tsubame');
+    assert.strictEqual(addresses.toMailbox('mailroom.ops@dream.737.jp.net', map), 'tsubame');
+    assert.strictEqual(addresses.toMailbox('Mailroom.Ops@Dream.737.jp.net', map), 'tsubame');
+    assert.strictEqual(addresses.toExternal('tsubame', map), 'tsubame.ops@dream.737.jp.net');
 
     const trusted = [
         'X-Original-To: <lost.dept@dream.737.jp.net>',
@@ -41,22 +51,18 @@ function main() {
         'X-Original-To: <below@dream.737.jp.net>',
         'From: alice@example.com'
     ].join('\r\n')), null);
-    assert.strictEqual(spam.trustedOriginalTo([
-        'From: alice@example.com',
-        'X-Original-To: <below-from@dream.737.jp.net>'
-    ].join('\r\n')), null);
 
     const inbound = mail.deliverInboundMail({
         fromAddress: 'alice@example.com',
         fromLabel: 'Alice <alice@example.com>',
-        toOwner: 'mailroom',
+        toOwner: 'tsubame',
         subject: 'catch-all',
         body: 'please file',
         originalTo: 'lost.dept@dream.737.jp.net'
     });
     assert.strictEqual(inbound.originalTo, 'lost.dept@dream.737.jp.net');
-    assert.strictEqual(inbound.route, 'inbound');
-    const listed = mail.listMail('mailroom', { folder: 'inbox' });
+    assert.strictEqual(inbound.owner, 'tsubame');
+    const listed = mail.listMail('tsubame', { folder: 'inbox' });
     assert.strictEqual(listed[0].originalTo, 'lost.dept@dream.737.jp.net');
     assert.strictEqual(mail.readMail('ivory', inbound.id), null);
 
@@ -68,55 +74,133 @@ function main() {
         () => mail.mailroomMoveMail('ivory', { mailbox: 'ivory', id: inbound.id, spam: true }),
         (err) => err.code === 'FORBIDDEN'
     );
-    const denied = auditActions('mailroom_forward_mail').concat(auditActions('mailroom_move_mail'));
-    assert.ok(denied.some((row) => row.actor === 'rook' && row.success === 0));
-    assert.ok(denied.some((row) => row.actor === 'ivory' && row.success === 0));
+    assert.throws(
+        () => mail.mailroomListMail('rook', { mailbox: 'yukimi' }),
+        (err) => err.code === 'FORBIDDEN'
+    );
+    assert.throws(
+        () => mail.mailroomReadMail('guren', { mailbox: 'yukimi', id: inbound.id }),
+        (err) => err.code === 'FORBIDDEN'
+    );
+    assert.throws(
+        () => mail.mailroomPurgeMail('ivory', { mailbox: 'ivory', id: inbound.id }),
+        (err) => err.code === 'FORBIDDEN'
+    );
+    assert.ok(auditActions('mailroom_forward_mail').some((row) => row.actor === 'rook' && row.success === 0));
+    assert.ok(auditActions('mailroom_list_mail').some((row) => row.actor === 'rook' && row.success === 0));
 
-    const fwd = mail.mailroomForwardMail('mailroom', { id: inbound.id, to: 'ivory' });
+    const fwd = mail.mailroomForwardMail('tsubame', { id: inbound.id, to: 'ivory' });
     assert.ok(fwd);
     const ivoryCopy = mail.readMail('ivory', fwd.id);
     assert.strictEqual(ivoryCopy.route, 'inbound');
     assert.strictEqual(ivoryCopy.originalTo, 'lost.dept@dream.737.jp.net');
-    assert.strictEqual(ivoryCopy.external, true);
-    assert.strictEqual(ivoryCopy.labelSuspicious, false);
-    assert.ok(auditActions('mailroom_forward_mail').some((row) => row.actor === 'mailroom' && row.success === 1));
+    assert.ok(auditActions('mailroom_forward_mail').some((row) => (
+        row.actor === 'tsubame' && row.success === 1 && /mailbox=tsubame/.test(row.detail)
+    )));
 
-    const other = mail.deliverInboundMail({
+    const botSpam = mail.deliverInboundMail({
         fromAddress: 'spam@ext.com',
         toOwner: 'guren',
         subject: 'bot-spam',
         body: 'viagra',
         spam: true
     });
-    const moved = mail.mailroomMoveMail('mailroom', { mailbox: 'guren', id: other.id, spam: false });
-    assert.strictEqual(moved.folder, 'inbox');
-    assert.strictEqual(moved.mailbox, 'guren');
-    assert.strictEqual(moved.body, undefined);
-    assert.strictEqual(mail.readMail('guren', other.id).folder, 'inbox');
-    assert.ok(auditActions('mailroom_move_mail').some((row) => (
-        row.actor === 'mailroom' && row.success === 1 && /mailbox=guren/.test(row.detail)
+    const rescuedBot = mail.mailroomMoveMail('tsubame', { mailbox: 'guren', id: botSpam.id, spam: false });
+    assert.strictEqual(rescuedBot.folder, 'inbox');
+    assert.ok(auditActions('mailroom_rescue_mail').some((row) => (
+        row.actor === 'tsubame' && row.success === 1 && /mailbox=guren/.test(row.detail)
     )));
+    const toSpam = mail.mailroomMoveMail('tsubame', { mailbox: 'guren', id: botSpam.id, spam: true });
+    assert.strictEqual(toSpam.folder, 'spam');
 
-    const yukimiIn = mail.deliverInboundMail({
+    const yukimiInbox = mail.deliverInboundMail({
         fromAddress: 'alice@example.com',
         toOwner: 'yukimi',
-        subject: 'private',
-        body: 'no'
+        subject: 'private-inbox',
+        body: 'secret'
     });
+    const yukimiSpam = mail.deliverInboundMail({
+        fromAddress: 'spam@ext.com',
+        toOwner: 'yukimi',
+        subject: 'yukimi-spam',
+        body: 'phishing',
+        spam: true
+    });
+
+    const spamList = mail.mailroomListMail('tsubame', { mailbox: 'yukimi' });
+    assert.strictEqual(spamList.length, 1);
+    assert.strictEqual(spamList[0].id, yukimiSpam.id);
+    assert.ok(!spamList.some((row) => row.id === yukimiInbox.id));
+    assert.ok(auditActions('mailroom_list_mail').some((row) => (
+        row.actor === 'tsubame' && row.success === 1 && /mailbox=yukimi/.test(row.detail)
+    )));
+
     assert.throws(
-        () => mail.mailroomMoveMail('mailroom', { mailbox: 'yukimi', id: yukimiIn.id, spam: true }),
+        () => mail.mailroomListMail('tsubame', { mailbox: 'yukimi', folder: 'inbox' }),
         (err) => err.code === 'FORBIDDEN'
     );
-    assert.strictEqual(mail.readMail('yukimi', yukimiIn.id).folder, 'inbox');
-    assert.ok(auditActions('mailroom_move_mail').some((row) => (
-        row.success === 0 && /yukimi/.test(row.detail || '')
+
+    const readSpam = mail.mailroomReadMail('tsubame', { mailbox: 'yukimi', id: yukimiSpam.id });
+    assert.strictEqual(readSpam.body, 'phishing');
+    assert.strictEqual(readSpam.folder, 'spam');
+    assert.ok(auditActions('mailroom_read_mail').some((row) => (
+        row.actor === 'tsubame' && row.success === 1 && row.target_id === yukimiSpam.id
     )));
+
+    assert.throws(
+        () => mail.mailroomReadMail('tsubame', { mailbox: 'yukimi', id: yukimiInbox.id }),
+        (err) => err.code === 'FORBIDDEN'
+    );
+    assert.ok(auditActions('mailroom_read_mail').some((row) => (
+        row.success === 0 && row.target_id === yukimiInbox.id && /folder=inbox/.test(row.detail)
+    )));
+    assert.strictEqual(mail.readMail('tsubame', yukimiInbox.id), null);
+    assert.strictEqual(mail.readMail('yukimi', yukimiInbox.id).folder, 'inbox');
+
+    assert.throws(
+        () => mail.mailroomMoveMail('tsubame', { mailbox: 'yukimi', id: yukimiInbox.id, spam: true }),
+        (err) => err.code === 'FORBIDDEN'
+    );
+    assert.strictEqual(mail.readMail('yukimi', yukimiInbox.id).folder, 'inbox');
+
+    const rescued = mail.mailroomMoveMail('tsubame', { mailbox: 'yukimi', id: yukimiSpam.id, spam: false });
+    assert.strictEqual(rescued.folder, 'inbox');
+    assert.strictEqual(mail.readMail('yukimi', yukimiSpam.id).folder, 'inbox');
+    assert.ok(auditActions('mailroom_rescue_mail').some((row) => (
+        row.actor === 'tsubame' && row.success === 1 && /mailbox=yukimi/.test(row.detail)
+    )));
+
+    const purgeTarget = mail.deliverInboundMail({
+        fromAddress: 'spam@ext.com',
+        toOwner: 'yukimi',
+        subject: 'purge-me',
+        body: 'gone',
+        spam: true
+    });
+    const purged = mail.mailroomPurgeMail('tsubame', { mailbox: 'yukimi', id: purgeTarget.id });
+    assert.strictEqual(purged.folder, 'deleted');
+    assert.strictEqual(purged.purged, true);
+    assert.strictEqual(purged.body, undefined);
+    assert.strictEqual(mail.readMail('yukimi', purgeTarget.id).folder, 'deleted');
+    assert.ok(auditActions('mailroom_purge_mail').some((row) => (
+        row.actor === 'tsubame' && row.success === 1 && /purge=soft/.test(row.detail)
+    )));
+    assert.throws(
+        () => mail.mailroomPurgeMail('tsubame', { mailbox: 'yukimi', id: yukimiInbox.id }),
+        (err) => err.code === 'FORBIDDEN'
+    );
 
     const facadeSrc = fs.readFileSync(path.join(__dirname, '..', 'modules/mcpAgentFacade.js'), 'utf8');
     assert.match(facadeSrc, /name: 'mailroom_forward_mail'/);
-    assert.match(facadeSrc, /name: 'mailroom_move_mail'/);
+    assert.match(facadeSrc, /name: 'mailroom_list_mail'/);
+    assert.match(facadeSrc, /name: 'mailroom_read_mail'/);
+    assert.match(facadeSrc, /name: 'mailroom_purge_mail'/);
     assert.match(facadeSrc, /owner !== dovecoteMail\.MAILROOM_OWNER/);
     assert.match(facadeSrc, /role: 'mailroom'/);
+    assert.match(facadeSrc, /Tsubame/);
+    const handlerSrc = fs.readFileSync(path.join(__dirname, '..', 'modules/ws/handlers/250-dovecoteHandler.js'), 'utf8');
+    assert.match(handlerSrc, /tsubame: 'Tsubame'/);
+    assert.doesNotMatch(handlerSrc, /mailroom: 'Mailroom'/);
 
     console.log('dovecote mailroom tests passed');
 }

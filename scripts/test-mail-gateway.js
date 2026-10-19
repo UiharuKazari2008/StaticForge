@@ -246,8 +246,9 @@ function testMapping() {
     assert.strictEqual(addresses.toMailbox('ivory.studio@dream.737.jp.net', map), 'ivory');
     assert.strictEqual(addresses.toMailbox('guren.lab@dream.737.jp.net', map), 'guren');
     assert.strictEqual(addresses.toMailbox('chiyo.web@dream.737.jp.net', map), 'chiyo');
-    assert.strictEqual(addresses.toMailbox('mailroom.ops@dream.737.jp.net', map), 'mailroom');
-    assert.strictEqual(addresses.toMailbox('Mailroom.Ops@Dream.737.jp.net', map), 'mailroom');
+    assert.strictEqual(addresses.toMailbox('tsubame.ops@dream.737.jp.net', map), 'tsubame');
+    assert.strictEqual(addresses.toMailbox('mailroom.ops@dream.737.jp.net', map), 'tsubame');
+    assert.strictEqual(addresses.toMailbox('Mailroom.Ops@Dream.737.jp.net', map), 'tsubame');
     assert.strictEqual(addresses.toMailbox('tifa.ops@dream.737.jp.net', map), null);
     assert.strictEqual(addresses.toMailbox('pyra.dev@dream.737.jp.net', map), null);
     assert.strictEqual(addresses.toMailbox('unknown@dream.737.jp.net', map), null);
@@ -260,7 +261,7 @@ function testMapping() {
     assert.strictEqual(addresses.toExternal('menma', map), 'menma.dev@dream.737.jp.net');
     assert.strictEqual(addresses.toExternal('rook', map), 'rook.dev@dream.737.jp.net');
     assert.strictEqual(addresses.toExternal('yukimi', map), 'yukimi@dream.737.jp.net');
-    assert.strictEqual(addresses.toExternal('mailroom', map), 'mailroom.ops@dream.737.jp.net');
+    assert.strictEqual(addresses.toExternal('tsubame', map), 'tsubame.ops@dream.737.jp.net');
     assert.strictEqual(addresses.toExternal('tifa', map), null);
     assert.strictEqual(addresses.toExternal('pyra', map), null);
 
@@ -331,7 +332,8 @@ async function testUnknownRecipientReject() {
             'RCPT TO:<pyra.dev@dream.737.jp.net>',
             'RCPT TO:<ykazari@icloud.com>',
             'RCPT TO:<yukimi@dream.737.jp.net>',
-            'RCPT TO:<mailroom.ops@dream.737.jp.net>'
+            'RCPT TO:<mailroom.ops@dream.737.jp.net>',
+            'RCPT TO:<tsubame.ops@dream.737.jp.net>'
         ]);
         assert.strictEqual(replies[0].code, 220);
         assert.strictEqual(replies[1].code, 250);
@@ -342,6 +344,7 @@ async function testUnknownRecipientReject() {
         assert.strictEqual(replies[6].code, 550);
         assert.strictEqual(replies[7].code, 250);
         assert.strictEqual(replies[8].code, 250);
+        assert.strictEqual(replies[9].code, 250);
         assert.match(replies[3].text, /User unknown/);
         assert.match(replies[6].text, /User unknown/);
     } finally {
@@ -1655,9 +1658,9 @@ async function testMailroomRcptAndOriginalTo() {
         await inbound.close();
     }
     assert.strictEqual(stored.length, 1);
-    assert.strictEqual(stored[0].owner, 'mailroom');
+    assert.strictEqual(stored[0].owner, 'tsubame');
     assert.strictEqual(stored[0].originalTo, 'lost.dept@dream.737.jp.net');
-    const row = mail.readMail('mailroom', stored[0].id);
+    const row = mail.readMail('tsubame', stored[0].id);
     assert.strictEqual(row.originalTo, 'lost.dept@dream.737.jp.net');
     assert.strictEqual(row.folder, 'inbox');
     assert.strictEqual(row.route, 'inbound');
