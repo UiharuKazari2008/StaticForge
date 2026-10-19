@@ -175,10 +175,12 @@ async function handleSendMail(handlersCtx, ws, message) {
             replyToId: message.replyTo,
             attachments: decodeAttachments(message.attachments)
         });
+        if (result.outbound) await result.outbound;
+        const { outbound: _outbound, ...data } = result;
         handlersCtx.sendToClient(ws, {
             type: 'dovecote_send_mail_response',
             requestId: message.requestId,
-            data: { success: true, ...result },
+            data: { success: true, ...data },
             timestamp: new Date().toISOString()
         });
     } catch (error) {

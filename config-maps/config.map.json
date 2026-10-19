@@ -1335,6 +1335,159 @@
     },
     {
       "path": [
+        "mailGateway"
+      ],
+      "type": "object",
+      "label": "Mail Gateway",
+      "closed": true,
+      "description": "Inbound SMTP/LMTP and outbound submission for <bot>.<dept>@dream.737.jp.net. Off until enabled. tifa and pyra stay unmapped until a department is confirmed."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "enabled"
+      ],
+      "type": "boolean",
+      "label": "Enable Mail Gateway",
+      "editMode": "inline",
+      "restartRequired": true,
+      "description": "Start the inbound SMTP/LMTP listener and allow outbound rewrite. Default off."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "domain"
+      ],
+      "type": "string",
+      "label": "Public Mail Domain",
+      "editorType": "input",
+      "description": "Domain for mapped addresses. Default dream.737.jp.net."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "inbound"
+      ],
+      "type": "object",
+      "label": "Inbound SMTP/LMTP",
+      "closed": true
+    },
+    {
+      "path": [
+        "mailGateway",
+        "inbound",
+        "port"
+      ],
+      "type": "number",
+      "label": "Inbound Port",
+      "restartRequired": true,
+      "description": "SMTP/LMTP listen port. Default 2525. Only 192.168.255.1 is accepted."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "inbound",
+        "allowFrom"
+      ],
+      "type": "array",
+      "itemsType": "string",
+      "label": "Inbound Allowlist",
+      "description": "Peer IPs allowed to connect. Default 192.168.255.1 (LANTIS Postfix)."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "outbound"
+      ],
+      "type": "object",
+      "label": "Outbound SMTP",
+      "closed": true
+    },
+    {
+      "path": [
+        "mailGateway",
+        "outbound",
+        "host"
+      ],
+      "type": "string",
+      "label": "Outbound Host",
+      "editorType": "input"
+    },
+    {
+      "path": [
+        "mailGateway",
+        "outbound",
+        "port"
+      ],
+      "type": "number",
+      "label": "Outbound Port"
+    },
+    {
+      "path": [
+        "mailGateway",
+        "outbound",
+        "mode"
+      ],
+      "type": "string",
+      "label": "TLS Mode",
+      "enum": [
+        "starttls",
+        "implicit"
+      ],
+      "description": "starttls on 587 (default) or implicit TLS on 465. STARTTLS must be offered; there is no plaintext fallback."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "outbound",
+        "tlsServername"
+      ],
+      "type": "string",
+      "label": "TLS Server Name",
+      "editorType": "input",
+      "description": "Hostname checked on the certificate. Default mx.dream.737.jp.net."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "outbound",
+        "caPath"
+      ],
+      "type": "string",
+      "label": "TLS CA Path",
+      "editorType": "input",
+      "description": "Optional extra CA file. Empty uses the system store. A Let's Encrypt cert is expected for mx.dream.737.jp.net."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "outbound",
+        "authUser"
+      ],
+      "type": "string",
+      "label": "SMTP Auth User",
+      "editorType": "input"
+    },
+    {
+      "path": [
+        "mailGateway",
+        "mailboxes"
+      ],
+      "type": "object",
+      "label": "Mailbox Map",
+      "description": "local-part → Dovecote mailbox. Shipped: sala.ops; menma/rook/cursor/claude/frost .dev; hoshino.apocrypha; ivory.studio; guren.lab; chiyo.web. tifa and pyra stay unmapped."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "pendingMailboxes"
+      ],
+      "type": "object",
+      "label": "Pending Mailboxes",
+      "description": "tifa and pyra: department still to be decided. Leave unmapped. Do not add them to mailboxes until confirmed."
+    },
+    {
+      "path": [
         "apiKey"
       ],
       "type": "string",

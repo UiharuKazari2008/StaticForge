@@ -320,6 +320,24 @@
       "type": "string",
       "label": "Replication Read Token",
       "secret": true
+    },
+    {
+      "path": [
+        "mailGateway"
+      ],
+      "type": "object",
+      "label": "Mail Gateway",
+      "closed": true
+    },
+    {
+      "path": [
+        "mailGateway",
+        "smtpPassword"
+      ],
+      "type": "string",
+      "label": "Outbound SMTP Password",
+      "secret": true,
+      "description": "AUTH password for dreamscape@dream.737.jp.net. Env MAIL_GATEWAY_SMTP_PASSWORD also accepted. Never commit or log this value."
     }
   ]
 }

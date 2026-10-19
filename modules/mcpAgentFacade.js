@@ -8946,7 +8946,9 @@ async function callTool(globalResources, req, name, args) {
                     replyToId: input.replyTo,
                     attachments: resolvedAttachments.attachments
                 });
-                return mcpTextResult({ success: true, ...result });
+                if (result.outbound) await result.outbound;
+                const { outbound: _outbound, ...data } = result;
+                return mcpTextResult({ success: true, ...data });
             }
             if (name === 'list_mail') {
                 const listed = dovecoteMail.listMail(owner, {

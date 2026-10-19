@@ -126,6 +126,7 @@
     "test:dovecote-windows": "node scripts/test-dovecote-windows.js",
     "test:dovecote-reader-window": "node scripts/test-dovecote-reader-window.js",
     "test:dovecote-multi": "node scripts/test-dovecote-multi.js",
+    "test:mail-gateway": "node scripts/test-mail-gateway.js",
     "test:mail-report": "node scripts/test-mail-report.js",
     "test:cpl-mail": "node scripts/test-cpl-mail.js",
     "test:apocrypha-local-grim": "node --test scripts/test-apocrypha-local-grim.js",
