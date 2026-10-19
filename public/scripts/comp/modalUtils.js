@@ -6343,7 +6343,8 @@ function buildToolsSubmenuItems() {
         { launchId: 'pomodoro', icon: 'fas fa-timer', imageIcon: 'vista-date-time.png', text: 'Pomodoro', appMenuLocation: 'tools', startMenu: false, appMenu: false, /* the Pomodoro tab of Alarm Clock; kept for old shortcuts */ action: async () => { await featureLoader.loadFeature('alarm'); /* public/scripts/comp/desktop-apps/alarmPomodoro.js */ openDesktopPomodoro(); } },
         { launchId: 'media-player', icon: 'fas fa-play', imageIcon: 'media_player.png', text: 'Media Player', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('media_player'); /* public/scripts/comp/desktop-apps/mediaPlayer.js */ openDesktopMediaPlayer(); } },
         { launchId: 'emotion', icon: 'fas fa-photo-film', imageIcon: 'emotion.png', text: 'eMotion LIVE', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('emotion'); /* public/scripts/comp/desktop-apps/emotion.js */ openDesktopEmotion(); } },
-    ].filter(isStartMenuEntryEnabled);
+        { launchId: 'exchange', icon: 'fas fa-building-columns', text: 'Exchange Server', adminOnly: true, desktopOnly: true, appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('exchange'); /* public/scripts/comp/desktop-apps/exchange.js */ openDesktopExchange(); } },
+    ].filter(isStartMenuEntryEnabled).filter((item) => !item.adminOnly || localStorage.getItem('userType') === 'admin');
     // getDsapStartMenuEntriesAtLocation: public/scripts/comp/dsapRegistry.js
     const dsapAtTools = typeof getDsapStartMenuEntriesAtLocation === 'function'
         ? getDsapStartMenuEntriesAtLocation('tools')
@@ -6358,7 +6359,8 @@ function buildToolsSubmenuItems() {
             index: typeof item.startMenuIndex === 'number' ? item.startMenuIndex : staticCount + seq
         })));
 
-    return sortMenuItemsByIndex(merged, 'startMenuIndex');
+    return sortMenuItemsByIndex(merged, 'startMenuIndex')
+        .filter((item) => !item.adminOnly || localStorage.getItem('userType') === 'admin');
 }
 
 function getAppMenuToolsItems() {
@@ -6388,6 +6390,7 @@ function getAllAppsMenuItems() {
         if (!item || item.separator || item.hasSubmenu) return;
         if (!isAppMenuEntryEnabled(item)) return;
         if (item.desktopOnly && !desktop) return;
+        if (item.adminOnly && localStorage.getItem('userType') !== 'admin') return;
         if (typeof item.action !== 'function') return;
         const launchId = item.launchId || item.text;
         if (seen.has(launchId)) return;

@@ -47,9 +47,12 @@ async function main() {
     });
     const { AVAILABLE_SCOPES } = require('../modules/applicationAuthManager');
     assert.ok(AVAILABLE_SCOPES.some((s) => s.id === 'sfapp_dovecote'), 'AVAILABLE_SCOPES must list sfapp_dovecote');
-    const { DOVECOTE_BOT_KEY_TARGETS, DOVECOTE_SCOPE } = require('../modules/directorAppKeyScopes');
+    const { DOVECOTE_BOT_KEY_TARGETS, DOVECOTE_SCOPE, EXCHANGE_ADMIN_KEY_TARGETS, EXCHANGE_SCOPE } = require('../modules/directorAppKeyScopes');
     assert.strictEqual(DOVECOTE_SCOPE, 'sfapp_dovecote');
+    assert.strictEqual(EXCHANGE_SCOPE, 'sfapp_mail_exchange');
     assert.deepStrictEqual(DOVECOTE_BOT_KEY_TARGETS.map((t) => t.label), ['Menma', 'Guren', 'Chiyo', 'Ivory', 'Hoshino', 'Tsubame']);
+    assert.deepStrictEqual(EXCHANGE_ADMIN_KEY_TARGETS.map((t) => t.label), ['Sala', 'Tsubame']);
+    assert.ok(AVAILABLE_SCOPES.some((s) => s.id === 'sfapp_mail_exchange'), 'AVAILABLE_SCOPES must list sfapp_mail_exchange');
 
     const tools = toolScopesFromFacade();
     const scopeOf = (name) => {
@@ -329,6 +332,18 @@ async function main() {
     );
     assert.strictEqual(menmaAudits.length, 1);
     assert.ok(menmaAudits[0].changes.includes('sfapp_dovecote'));
+
+    const sala = await manager.createApplicationKey({
+        appName: 'Sala',
+        userAgent: 'Sala/1.0 (StaticForge; mcp)',
+        scopes: ['gallery'],
+        userType: 'admin'
+    });
+    const salaWiden = await widenDirectorApplicationKeys(manager);
+    assert.ok(salaWiden.exchangeAdminUpdated >= 1);
+    const salaRow = salaWiden.keys.find((key) => key.id === sala.summary.id);
+    assert.ok(salaRow.after.includes('sfapp_mail_exchange'));
+    assert.strictEqual(salaRow.changed, true);
 
     const second = await widenDirectorApplicationKeys(manager);
     assert.strictEqual(second.updated, 0);

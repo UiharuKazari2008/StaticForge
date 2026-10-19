@@ -18,13 +18,14 @@ HTTP routes defined in `web_server.js` and static middleware. Default base: `htt
 6. [Preset & generation (HTTP)](#preset--generation-http)
 7. [Admin: pending queue](#admin-pending-queue)
 8. [Traces](#traces)
-9. [Admin log viewer (UUID path)](#admin-log-viewer-uuid-path)
-10. [Public MCP / Grok connector (UUID path)](#public-mcp--grok-connector-uuid-path)
-11. [VFS (UUID path)](#vfs-uuid-path)
-12. [Android background notification](#android-background-notification)
-13. [Miscellaneous](#miscellaneous)
-14. [Replication](#replication)
-15. [Static files (public/)](#static-files-public)
+9. [Dreamscape Exchange Server](#dreamscape-exchange-server)
+10. [Admin log viewer (UUID path)](#admin-log-viewer-uuid-path)
+11. [Public MCP / Grok connector (UUID path)](#public-mcp--grok-connector-uuid-path)
+12. [VFS (UUID path)](#vfs-uuid-path)
+13. [Android background notification](#android-background-notification)
+14. [Miscellaneous](#miscellaneous)
+15. [Replication](#replication)
+16. [Static files (public/)](#static-files-public)
 
 ---
 
@@ -868,6 +869,43 @@ Lists scheduled/pending preset generation requests.
 ### `GET /traces/files/*`
 
 **Auth required.** Static attachments from traces directory.
+
+---
+
+## Dreamscape Exchange Server
+
+Base path `/mail-exchange/*`. Handler: `modules/mailExchangeHttp.js`. Off until `config.mailExchange.enabled` is true (mutations return `DISABLED` / 503).
+
+Every route: **authMiddleware** plus an identity gate. Allowed actors: Yukimi, Sala, Tsubame (mailroom). Anyone else is `403` `{ "error": "Exchange admin required", "code": "FORBIDDEN" }`. Relay tokens (`secureConfig.mailExchange.relayReadToken` / `relayAdminToken`) are never returned.
+
+Yukimi's public From is `kazari.ops@dream.737.jp.net` (aliases `kazari@`, `yukimi.kazari@`, `yukimi@`).
+
+Writes require `confirm: true`. Soft-delete also requires `confirmText: "DELETE"`. Mailbox keys are shown once; only a SHA-256 hash is stored.
+
+| Method | Path | Notes |
+|--------|------|-------|
+| GET | `/mail-exchange/mailboxes` | List mailboxes |
+| POST | `/mail-exchange/mailboxes` | Create `{ owner, dept, displayName?, confirm }` |
+| POST | `/mail-exchange/mailboxes/:owner/disable` | `{ enabled, confirm }` |
+| DELETE | `/mail-exchange/mailboxes/:owner` | `{ confirm, confirmText }` |
+| POST | `/mail-exchange/mailboxes/:owner/keys` | Issue |
+| POST | `/mail-exchange/mailboxes/:owner/keys/rotate` | Rotate |
+| POST | `/mail-exchange/mailboxes/:owner/keys/revoke` | Revoke |
+| GET | `/mail-exchange/aliases` | Aliases + lists |
+| PUT | `/mail-exchange/aliases` | Upsert alias |
+| DELETE | `/mail-exchange/aliases/:localPart` | |
+| PUT | `/mail-exchange/lists` | Distribution list |
+| DELETE | `/mail-exchange/lists/:localPart` | |
+| GET | `/mail-exchange/signatures/:owner` | |
+| PUT | `/mail-exchange/signatures/:owner` | Sanitized HTML |
+| GET | `/mail-exchange/toggles` | Global + per-mailbox + per-service |
+| PUT | `/mail-exchange/toggles` | PATCH-like. PUTs LANTIS first (admin token + `actor`, not `confirm`); local store writes only on relay success. Relay `400`: `UNKNOWN_MAILBOX` / `UNKNOWN_SERVICE` / `BAD_BODY` / `ACTOR_REQUIRED` |
+| GET | `/mail-exchange/status` | Intake + relay dashboard (degrades if LANTIS is down) |
+| GET | `/mail-exchange/spam` | Tsubame: all mailboxes. Yukimi: her Spam only |
+| POST | `/mail-exchange/spam/move` | Rescue/purge via mailroom tools |
+| GET | `/mail-exchange/audit` | Mutation log (no secrets) |
+
+LANTIS relay API: [docs/lantis-relay-api.md](../lantis-relay-api.md). WebSocket: [ws/mailExchange.md](./ws/mailExchange.md).
 
 ---
 

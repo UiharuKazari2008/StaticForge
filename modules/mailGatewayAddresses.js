@@ -16,6 +16,7 @@ const INTERNAL_DISPLAY_DOMAIN = 'dream.co.jp';
 // yukimi@dream.737.jp.net, kazari@dream.737.jp.net, and
 // yukimi.kazari@dream.737.jp.net. Never map an external domain
 // (ykazari@icloud.com or any other) as a local recipient.
+const YUKIMI_LOCAL = 'kazari.ops';
 const DEFAULT_MAILBOXES = Object.freeze({
     'kazari.ops': 'yukimi',
     yukimi: 'yukimi',
@@ -79,31 +80,99 @@ function cleanMailboxes(mailboxes) {
     return map;
 }
 
-function createMapping({ mailboxes, domain } = {}) {
+function cleanAliasMap(aliases) {
+    const map = Object.create(null);
+    if (!aliases || typeof aliases !== 'object' || Array.isArray(aliases)) return map;
+    for (const [local, target] of Object.entries(aliases)) {
+        const localPart = String(local || '').trim().toLowerCase();
+        const dest = String(target || '').trim().toLowerCase();
+        if (!localPart || !dest || localPart.includes('@') || dest.includes('@')) continue;
+        map[localPart] = dest;
+    }
+    return map;
+}
+
+function cleanLists(lists) {
+    const map = Object.create(null);
+    if (!lists || typeof lists !== 'object' || Array.isArray(lists)) return map;
+    for (const [local, members] of Object.entries(lists)) {
+        const localPart = String(local || '').trim().toLowerCase();
+        if (!localPart || localPart.includes('@')) continue;
+        const list = (Array.isArray(members) ? members : String(members || '').split(/[,\s]+/))
+            .map((item) => String(item || '').trim().toLowerCase())
+            .filter((item) => item && !item.includes('@'));
+        if (!list.length) continue;
+        map[localPart] = list;
+    }
+    return map;
+}
+
+function createMapping({ mailboxes, aliases, lists, domain } = {}) {
     const table = cleanMailboxes(mailboxes);
+    const aliasTable = cleanAliasMap(aliases);
+    const listTable = cleanLists(lists);
     const host = String(domain || DEFAULT_DOMAIN).trim().toLowerCase() || DEFAULT_DOMAIN;
     const ownerToLocal = Object.create(null);
-    for (const [local, owner] of Object.entries(table)) {
+    // Prefer kazari.ops for Yukimi when both kazari.ops and yukimi exist.
+    const preferred = Object.keys(table).sort((a, b) => {
+        if (table[a] === 'yukimi' && a === YUKIMI_LOCAL) return -1;
+        if (table[b] === 'yukimi' && b === YUKIMI_LOCAL) return 1;
+        return 0;
+    });
+    for (const local of preferred) {
+        const owner = table[local];
         if (!ownerToLocal[owner]) ownerToLocal[owner] = local;
     }
     return {
         domain: host,
         mailboxes: table,
+        aliases: aliasTable,
+        lists: listTable,
         ownerToLocal
     };
 }
 
-function toMailbox(address, mapping) {
+function expandLocal(local, mapping, seen) {
+    const key = String(local || '').trim().toLowerCase();
+    if (!key || !mapping) return [];
+    const walk = seen || new Set();
+    if (walk.has(key)) {
+        const err = new Error('Alias loop detected');
+        err.code = 'ALIAS_LOOP';
+        throw err;
+    }
+    walk.add(key);
+    if (mapping.mailboxes && mapping.mailboxes[key]) return [mapping.mailboxes[key]];
+    // A bare owner name ("menma") is a valid alias/list *target*, but not a
+    // public address by itself: only mapped local-parts accept RCPT.
+    if (walk.size > 1 && mapping.mailboxes && Object.values(mapping.mailboxes).includes(key)) return [key];
+    if (mapping.lists && mapping.lists[key]) {
+        const owners = [];
+        mapping.lists[key].forEach((member) => {
+            expandLocal(member, mapping, new Set(walk)).forEach((owner) => {
+                if (!owners.includes(owner)) owners.push(owner);
+            });
+        });
+        return owners;
+    }
+    if (mapping.aliases && mapping.aliases[key]) {
+        return expandLocal(mapping.aliases[key], mapping, walk);
+    }
+    return [];
+}
+
+function expandRecipients(address, mapping) {
     const parts = splitLocalDomain(address);
-    if (!parts || !mapping) return null;
+    if (!parts || !mapping) return [];
     // Inbound RCPT is the public domain only (normalized). External domains
     // (icloud.com, gmail.com, …) are never local mailboxes, even when the
     // local-part matches yukimi / ykazari / a mapped bot. Subdomains such as
     // mx.dream.737.jp.net are not mailbox hosts.
-    if (domainForCompare(parts.domain) !== publicGatewayDomain(mapping)) return null;
-    if (mapping.mailboxes[parts.local]) return mapping.mailboxes[parts.local];
-    if (parts.local === 'postmaster') return 'tsubame';
-    return null;
+    if (domainForCompare(parts.domain) !== publicGatewayDomain(mapping)) return [];
+    const owners = expandLocal(parts.local, mapping);
+    if (owners.length) return owners;
+    if (parts.local === 'postmaster') return [resolvePostmasterMailbox(mapping)];
+    return [];
 }
 
 function resolvePostmasterMailbox(mapping) {
@@ -111,6 +180,11 @@ function resolvePostmasterMailbox(mapping) {
         return mapping.mailboxes.postmaster;
     }
     return 'tsubame';
+}
+
+function toMailbox(address, mapping) {
+    const owners = expandRecipients(address, mapping);
+    return owners.length ? owners[0] : null;
 }
 
 function toExternal(owner, mapping) {
@@ -487,11 +561,17 @@ function recipientAllowed(address, allowlist) {
 module.exports = {
     DEFAULT_DOMAIN,
     INTERNAL_DISPLAY_DOMAIN,
+    YUKIMI_LOCAL,
     DEFAULT_MAILBOXES,
     extractAddress,
     normalizeEmail,
     splitLocalDomain,
+    cleanMailboxes,
+    cleanAliasMap,
+    cleanLists,
     createMapping,
+    expandLocal,
+    expandRecipients,
     toMailbox,
     resolvePostmasterMailbox,
     toExternal,

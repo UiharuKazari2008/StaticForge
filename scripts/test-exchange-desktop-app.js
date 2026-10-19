@@ -1,0 +1,84 @@
+'use strict';
+
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+
+const exchangeJs = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/desktop-apps/exchange.js'), 'utf8');
+const exchangeCss = fs.readFileSync(path.join(__dirname, '..', 'public/css/desktop-apps/exchange.css'), 'utf8');
+const appHtml = fs.readFileSync(path.join(__dirname, '..', 'public/app.html'), 'utf8');
+const modalUtilsJs = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/modalUtils.js'), 'utf8');
+const loader = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/featureLoader.js'), 'utf8');
+const manifests = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/dsapManifests.js'), 'utf8');
+const registry = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/dsapRegistry.js'), 'utf8');
+const reserved = fs.readFileSync(path.join(__dirname, '..', 'modules/melatonPackageStore.js'), 'utf8');
+
+function main() {
+    assert.match(exchangeJs, /function openDesktopExchange\(\)/);
+    assert.match(exchangeJs, /const ensureDesktopExchangeModal = function/);
+    assert.match(exchangeJs, /modal\.dataset\.windowIdentifier = 'desktopExchange'/);
+    assert.match(exchangeJs, /modal\.className = 'modal resizeable-window toolbar-visible hidden'/);
+    assert.match(exchangeJs, /titleMain\.className = 'modal-window-title-main'/);
+    assert.match(exchangeJs, /'btn-secondary minimize-btn btn-small'/);
+    assert.match(exchangeJs, /'btn-secondary btn-small modal-work-area-maximize'/);
+    assert.match(exchangeJs, /'btn-danger close-btn btn-small'/);
+    assert.match(exchangeJs, /titleText\.textContent = 'Dreamscape Exchange Server'/);
+    assert.match(exchangeJs, /explorer-actions-header/);
+    assert.match(exchangeJs, /explorer-command-btn/);
+    assert.match(exchangeJs, /'btn-secondary btn-small explorer-command-btn indicator'/);
+    assert.match(exchangeJs, /dataset\.state/);
+    assert.match(exchangeJs, /modal-content modal-padding dark/);
+    assert.match(exchangeJs, /exchange-inset-panel/);
+    assert.match(exchangeCss, /background: var\(--glass-layer-dark-4\);\s*border: 1px solid var\(--glass-border-4\);/);
+    assert.doesNotMatch(exchangeJs, /createElement\(['"]select['"]\)/);
+    assert.doesNotMatch(exchangeJs, /custom-dropdown/);
+    assert.match(exchangeJs, /contextMenu\.attachClickMenuToElement/);
+    assert.match(exchangeJs, /kazari\.ops@dream\.737\.jp\.net/);
+    assert.match(exchangeJs, /function exchangeRelayFriendly/);
+    assert.match(exchangeJs, /UNKNOWN_MAILBOX/);
+    assert.match(exchangeJs, /UNKNOWN_SERVICE/);
+    assert.match(exchangeJs, /BAD_BODY/);
+    assert.match(exchangeJs, /ACTOR_REQUIRED/);
+    assert.match(exchangeJs, /exchange-from-list/);
+    assert.match(exchangeJs, /Lookup answered correctly/);
+    assert.match(exchangeJs, /Our IP listed/);
+    assert.match(exchangeJs, /refreshed_at/);
+    assert.match(exchangeJs, /function exchangeFormatAge/);
+    assert.match(exchangeCss, /exchange-from-list/);
+    assert.match(exchangeJs, /confirmText: 'DELETE'/);
+    assert.match(exchangeJs, /showInputDialog/);
+    assert.doesNotMatch(exchangeJs, /relayReadToken|relayAdminToken/);
+    assert.doesNotMatch(exchangeJs, /\bwindow\./);
+
+    assert.match(loader, /css\/desktop-apps\/exchange\.css/);
+    assert.match(loader, /scripts\/comp\/desktop-apps\/exchange\.js/);
+    assert.doesNotMatch(appHtml, /desktop-apps\/exchange\.(css|js)/);
+
+    assert.match(modalUtilsJs, /launchId: 'exchange'/);
+    assert.match(modalUtilsJs, /openDesktopExchange\(\)/);
+    assert.match(modalUtilsJs, /adminOnly: true/);
+    const toolsSubmenuSection = modalUtilsJs.slice(
+        modalUtilsJs.indexOf('function buildToolsSubmenuItems'),
+        modalUtilsJs.indexOf('function buildToolsSubmenuItems') + 5000
+    );
+    assert.match(toolsSubmenuSection, /launchId: 'exchange'/);
+
+    assert.match(manifests, /exchange\.dreamscape\.jp/);
+    assert.match(manifests, /adminOnly: true/);
+    const exchangeManifest = manifests.slice(
+        manifests.indexOf('EXCHANGE_DSAP_MANIFEST_URL'),
+        manifests.indexOf('MCP_DSAP_MANIFEST_URL')
+    );
+    assert.match(exchangeManifest, /appMenu: true/);
+    assert.doesNotMatch(exchangeManifest, /appMenu: false/);
+    assert.match(registry, /adminOnly: !!me\.adminOnly/);
+    const smf = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/dsapSmfMarkup.js'), 'utf8');
+    assert.match(smf, /dsap:\/\/exchange\.dreamscape\.jp\//);
+    assert.match(smf, /Exchange Server/);
+    assert.match(modalUtilsJs, /item\.adminOnly && localStorage\.getItem\('userType'\) !== 'admin'/);
+    assert.match(reserved, /exchange\.dreamscape\.jp/);
+
+    console.log('test-exchange-desktop-app: ok');
+}
+
+main();

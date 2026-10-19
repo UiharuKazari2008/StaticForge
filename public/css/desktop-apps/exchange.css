@@ -1,0 +1,122 @@
+/* Dreamscape Exchange Server — desktop-apps/exchange.js.
+   Title-bar toolbar + inset panels (same recipe as eMotion / Dovecote). */
+
+#desktopExchangeModal {
+    width: 960px;
+}
+
+#desktopExchangeModal > .modal-content {
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 0;
+}
+
+#desktopExchangeModal .exchange-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-md);
+}
+
+#desktopExchangeModal .exchange-inset-panel {
+    background: var(--glass-layer-dark-4);
+    border: 1px solid var(--glass-border-4);
+    border-radius: var(--border-radius-md);
+    box-shadow: var(--glass-shadow-3);
+}
+
+#desktopExchangeModal .exchange-main {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: var(--spacing-md);
+}
+
+#desktopExchangeModal .exchange-status {
+    flex: none;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    font-size: 12px;
+}
+
+#desktopExchangeModal .exchange-toolbar-divider {
+    width: 1px;
+    align-self: stretch;
+    background: var(--glass-border-4);
+    margin: 0 4px;
+}
+
+#desktopExchangeModal .exchange-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: var(--spacing-sm);
+}
+
+#desktopExchangeModal .exchange-card {
+    padding: var(--spacing-sm);
+    border: 1px solid var(--glass-border-4);
+    border-radius: var(--border-radius-md);
+}
+
+#desktopExchangeModal .exchange-card h3 {
+    margin: 0 0 var(--spacing-xs);
+    font-size: 13px;
+}
+
+#desktopExchangeModal .exchange-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-xs);
+    align-items: center;
+    margin-bottom: var(--spacing-sm);
+}
+
+#desktopExchangeModal .exchange-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+#desktopExchangeModal .exchange-table th,
+#desktopExchangeModal .exchange-table td {
+    text-align: left;
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--glass-border-4);
+}
+
+#desktopExchangeModal .exchange-key-once {
+    font-family: Consolas, "Courier New", monospace;
+    word-break: break-all;
+}
+
+#desktopExchangeModal .exchange-degraded {
+    color: var(--text-warning, #c9a227);
+}
+
+#desktopExchangeModal .exchange-note {
+    margin: 0 0 var(--spacing-sm);
+    font-size: 12px;
+    opacity: 0.85;
+}
+
+#desktopExchangeModal .exchange-from-list {
+    margin-top: var(--spacing-xs);
+}
+
+#desktopExchangeModal .exchange-from-list summary {
+    cursor: pointer;
+    font-size: 12px;
+}
+
+#desktopExchangeModal .exchange-from-addresses {
+    margin: var(--spacing-xs) 0 0;
+    padding-left: 1.2em;
+    font-size: 12px;
+}
+
+@media (max-width: 760px) {
+    #desktopExchangeModal .exchange-body {
+        flex-direction: column;
+    }
+}
