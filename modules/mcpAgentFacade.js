@@ -3197,6 +3197,9 @@ const TOOL_DEFS = [
     }
 ];
 
+const { TOOLS: EXCHANGE_MCP_TOOLS } = require('./mailExchangeMcp');
+EXCHANGE_MCP_TOOLS.forEach((tool) => TOOL_DEFS.push(tool));
+
 const MEMORY_TOOL_ALIASES = {
     saveKnowledgeMemory: 'save_memory',
     retrieveKnowledgeMemory: 'get_memory',
@@ -6576,6 +6579,10 @@ function listToolsForScopes(scopes, globalResources, options) {
                 const { MAILROOM_OWNER } = require('./dovecoteMail');
                 return owner === MAILROOM_OWNER;
             }
+            if (tool.role === 'exchange') {
+                const exchange = require('./mailExchange');
+                return exchange.isExchangeAdmin(owner) || exchange.isExchangeAdmin(options && options.actor);
+            }
             return false;
         })
         .map((tool) => serializeListedTool(tool, catalog));
@@ -9180,6 +9187,10 @@ async function callTool(globalResources, req, name, args) {
         }
     }
 
+    if (require('./mailExchangeMcp').isExchangeTool(name)) {
+        return require('./mailExchangeMcp').handleExchangeTool(req, name, input);
+    }
+
     const err = new Error(`Unknown tool: ${name}`);
     err.status = 404;
     throw err;
@@ -9490,12 +9501,13 @@ async function handleJsonRpc(globalResources, req, message) {
         } catch (_err) {
             owner = null;
         }
+        const actor = require('./mailExchangeAuth').resolveMcpActor(req);
         return {
             status: 200,
             body: {
                 jsonrpc: '2.0',
                 id,
-                result: { tools: listToolsForScopes(scopes, globalResources, { owner }) }
+                result: { tools: listToolsForScopes(scopes, globalResources, { owner, actor }) }
             }
         };
     }

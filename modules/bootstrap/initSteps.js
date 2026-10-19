@@ -113,6 +113,12 @@ const INIT_STEPS = [
         run: (gr) => databases.initializeDovecoteDb(gr),
     },
     {
+        id: 'gr_mail_exchange_db',
+        label: 'Initializing mail exchange database',
+        sync: true,
+        run: (gr) => databases.initializeMailExchangeDb(gr),
+    },
+    {
         id: 'gr_mail_gateway',
         label: 'Starting mail gateway',
         afterReady: true,

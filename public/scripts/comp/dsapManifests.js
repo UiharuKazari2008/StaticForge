@@ -348,6 +348,45 @@ function registerDsapManifests() {
         }
     });
 
+    const EXCHANGE_DSAP_MANIFEST_URL = 'exchange.dreamscape.jp';
+    registerDsap({
+        url: EXCHANGE_DSAP_MANIFEST_URL,
+        aliases: [
+            `dsap://${EXCHANGE_DSAP_MANIFEST_URL}`,
+            'en.grimoire.jp/applets/exchange',
+            'applet.grimoire.jp/exchange'
+        ],
+        type: 'dsap',
+        title: 'Dreamscape Exchange Server',
+        assets: {
+            scripts: ['scripts/comp/desktop-apps/exchange.js'],
+            styles: ['css/desktop-apps/exchange.css']
+        },
+        menuEntry: {
+            launchId: 'exchange',
+            icon: 'fas fa-building-columns',
+            text: 'Exchange Server',
+            appMenu: true,
+            startMenu: false,
+            desktopOnly: true,
+            adminOnly: true,
+            launch() {
+                // featureLoader.loadFeature: public/scripts/comp/featureLoader.js
+                void featureLoader.loadFeature('exchange').then(() => {
+                    // openDesktopExchange: public/scripts/comp/desktop-apps/exchange.js
+                    openDesktopExchange();
+                });
+            }
+        },
+        activate() {
+            // featureLoader.loadFeature: public/scripts/comp/featureLoader.js
+            void featureLoader.loadFeature('exchange').then(() => {
+                // openDesktopExchange: public/scripts/comp/desktop-apps/exchange.js
+                openDesktopExchange();
+            });
+        }
+    });
+
     const MCP_DSAP_MANIFEST_URL = 'mcp.dreamscape.jp';
     registerDsap({
         url: MCP_DSAP_MANIFEST_URL,

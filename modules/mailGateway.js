@@ -85,8 +85,17 @@ function resolveConfig(extra) {
     const mode = String(outbound.mode || 'starttls').trim().toLowerCase() === 'implicit'
         ? 'implicit'
         : 'starttls';
+    let overlay = null;
+    try {
+        const exchange = require('./mailExchange');
+        if (exchange.isEnabled()) overlay = exchange.getAddressOverlay();
+    } catch (_err) {
+        overlay = null;
+    }
     const mapping = addresses.createMapping({
-        mailboxes: raw.mailboxes || addresses.DEFAULT_MAILBOXES,
+        mailboxes: (overlay && overlay.mailboxes) || raw.mailboxes || addresses.DEFAULT_MAILBOXES,
+        aliases: overlay && overlay.aliases,
+        lists: overlay && overlay.lists,
         domain: raw.domain || addresses.DEFAULT_DOMAIN
     });
     return {
@@ -394,7 +403,16 @@ function connectImplicitTls(host, port, tlsOpts) {
     });
 }
 
-function assertOutboundAllowed({ fromOwner, to, cc, config }) {
+function assertOutboundAllowed({ fromOwner, to, cc, config, service }) {
+    try {
+        const exchange = require('./mailExchange');
+        const reason = exchange.outboundRejectReason(fromOwner, service);
+        if (reason) {
+            throw new MailGatewayError(reason, 'OUTBOUND_DISABLED');
+        }
+    } catch (err) {
+        if (err instanceof MailGatewayError) throw err;
+    }
     const cfg = config || resolveConfig();
     const allowlist = cfg.outbound.recipientAllowlist || [];
     const recipients = [...new Set((to || []).concat(cc || []))];
@@ -461,7 +479,7 @@ async function submitOutbound(input) {
             );
         }
     }
-    assertOutboundAllowed({ fromOwner, to, cc, config: cfg });
+    assertOutboundAllowed({ fromOwner, to, cc, config: cfg, service: input.service });
     const password = input.smtpPassword != null ? String(input.smtpPassword) : getSecurePassword();
     if (!password) {
         throw new MailGatewayError(
@@ -515,12 +533,18 @@ async function submitOutbound(input) {
         }
         smtpWrite(socket, 'DATA');
         await expectCode(reader, socket, [354], 'DATA');
+        let outboundBody = input.body;
+        try {
+            outboundBody = require('./mailExchange').appendSignature(input.body, input.format, fromOwner);
+        } catch (_err) {
+            outboundBody = input.body;
+        }
         const message = buildOutboundMessage({
             fromAddress,
             to,
             cc,
             subject: input.subject,
-            body: input.body,
+            body: outboundBody,
             format: input.format,
             domain: cfg.domain
         });
@@ -540,7 +564,7 @@ async function submitOutbound(input) {
 
 function startInbound(options) {
     const cfg = resolveConfig(options && options.config);
-    const mapping = (options && options.mapping) || cfg.mapping;
+    const frozenMapping = options && options.mapping;
     const allowFrom = (options && options.allowFrom) || cfg.inbound.allowFrom;
     const port = options && options.port != null ? options.port : cfg.inbound.port;
     const bind = (options && options.bind) || cfg.inbound.bind;
@@ -556,7 +580,9 @@ function startInbound(options) {
     }
     const sessionOpts = {
         allowFrom,
-        mapping,
+        get mapping() {
+            return frozenMapping || resolveConfig(options && options.config).mapping;
+        },
         deliver,
         maxDataBytes: (options && options.maxDataBytes) || cfg.inbound.maxDataBytes,
         sessionTimeoutMs: (options && options.sessionTimeoutMs) || cfg.inbound.sessionTimeoutMs,
@@ -598,6 +624,10 @@ function startInbound(options) {
     });
 }
 
+function isListening() {
+    return !!(inboundServer && inboundServer.server && inboundServer.port);
+}
+
 function start(globalResources) {
     globalResourcesRef = globalResources || globalResourcesRef;
     const cfg = resolveConfig();
@@ -609,7 +639,6 @@ function start(globalResources) {
     };
     const pending = startInbound({
         config: cfg,
-        mapping: cfg.mapping,
         allowFrom: cfg.inbound.allowFrom,
         port: cfg.inbound.port,
         bind: cfg.inbound.bind,
@@ -668,6 +697,7 @@ module.exports = {
     assertOutboundAllowed,
     startInbound,
     loadInboundTls,
+    isListening,
     start,
     stop,
     setTestOverrides,

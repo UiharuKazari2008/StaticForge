@@ -1698,6 +1698,56 @@
     },
     {
       "path": [
+        "mailExchange"
+      ],
+      "type": "object",
+      "label": "Dreamscape Exchange Server",
+      "closed": true,
+      "description": "Admin console for the mail system. Off until enabled. Does not restart the process."
+    },
+    {
+      "path": [
+        "mailExchange",
+        "enabled"
+      ],
+      "type": "boolean",
+      "label": "Enable Exchange Server",
+      "editMode": "inline",
+      "description": "Allow Exchange admin mutations (mailboxes, aliases, keys, toggles). Default off. Dashboard still reads."
+    },
+    {
+      "path": [
+        "mailExchange",
+        "relay"
+      ],
+      "type": "object",
+      "label": "LANTIS Relay API",
+      "closed": true,
+      "description": "WireGuard-only JSON API on LANTIS. See docs/lantis-relay-api.md. Tokens live in secureConfig.mailExchange."
+    },
+    {
+      "path": [
+        "mailExchange",
+        "relay",
+        "baseUrl"
+      ],
+      "type": "string",
+      "label": "Relay Base URL",
+      "editorType": "input",
+      "description": "Default http://192.168.255.1:8787. Reachable only from 192.168.255.0/24."
+    },
+    {
+      "path": [
+        "mailExchange",
+        "relay",
+        "timeoutMs"
+      ],
+      "type": "number",
+      "label": "Relay Timeout (ms)",
+      "description": "HTTP timeout for relay GETs and PUTs. Default 5000."
+    },
+    {
+      "path": [
         "apiKey"
       ],
       "type": "string",

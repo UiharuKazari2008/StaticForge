@@ -284,6 +284,7 @@ function testMapping() {
     assert.strictEqual(addresses.toExternal('yukimi', map), 'kazari.ops@dream.737.jp.net');
     assert.strictEqual(map.ownerToLocal.yukimi, 'kazari.ops');
     assert.strictEqual(addresses.toExternal('tsubame', map), 'tsubame.ops@dream.737.jp.net');
+    assert.strictEqual(addresses.toExternal('mailroom', map), null);
     for (const local of ['kazari.ops', 'kazari', 'yukimi.kazari', 'yukimi']) {
         const classified = addresses.classifyRecipient(`${local}@dream.737.jp.net`, {
             mapping: map, enabled: true, isValidOwner: mail.isValidOwner

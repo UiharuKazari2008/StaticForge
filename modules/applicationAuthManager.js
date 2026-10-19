@@ -104,7 +104,18 @@ const SCOPE_WS_PACKETS = {
         'list_novelai_explore_blocked_creators', 'clear_novelai_explore_gallery_cache',
         'ensure_novelai_explore_image', 'check_novelai_explore_upload', 'upload_novelai_explore_image'
     ],
-    infrastructure: ['ping', 'pong', 'server_status', 'check_updates', 'version_check', 'runpod_pods_status', 'remote_workers_status']
+    infrastructure: ['ping', 'pong', 'server_status', 'check_updates', 'version_check', 'runpod_pods_status', 'remote_workers_status'],
+    sfapp_mail_exchange: [
+        'exchange_list_mailboxes', 'exchange_create_mailbox', 'exchange_disable_mailbox',
+        'exchange_delete_mailbox', 'exchange_issue_key', 'exchange_rotate_key', 'exchange_revoke_key',
+        'exchange_list_aliases', 'exchange_upsert_alias', 'exchange_delete_alias',
+        'exchange_upsert_list', 'exchange_delete_list',
+        'exchange_get_signature', 'exchange_set_signature',
+        'exchange_get_toggles', 'exchange_set_toggles',
+        'exchange_dashboard', 'exchange_list_spam', 'exchange_spam_move', 'exchange_audit',
+        'exchange_mailbox_key', 'exchange_aliases', 'exchange_signatures',
+        'exchange_toggles', 'exchange_status', 'exchange_spam'
+    ]
 };
 
 const AVAILABLE_SCOPES = [
@@ -133,7 +144,8 @@ const AVAILABLE_SCOPES = [
     { id: 'sfapp_report_issue', label: 'Report Issue', description: 'Development QA reporting (tool failures, errors, reviews)' },
     { id: 'sfapp_usage', label: 'Usage', description: 'NovelAI account usage data (Anlas, Opus meter, generation count)' },
     { id: 'sfapp_apocrypha', label: 'Apocrypha Publish', description: 'Publish Apocrypha zine content directly' },
-    { id: 'sfapp_dovecote', label: 'Dovecote Mail', description: 'Own-mailbox-only internal mail (send, list, read, mark, forward). Tsubame (mailroom role) cross-mailbox Spam tools stay gated on the Tsubame key.' }
+    { id: 'sfapp_dovecote', label: 'Dovecote Mail', description: 'Own-mailbox-only internal mail (send, list, read, mark, forward). Tsubame (mailroom role) cross-mailbox Spam tools stay gated on the Tsubame key.' },
+    { id: 'sfapp_mail_exchange', label: 'Dreamscape Exchange Server', description: 'Mail system admin console. Yukimi, Sala, and Tsubame (mailroom) only; everyone else is denied server-side.' }
 ];
 
 // Scope ids for O(1) membership in normalizeScopes (Jules GH #341)
