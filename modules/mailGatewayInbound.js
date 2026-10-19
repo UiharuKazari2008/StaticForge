@@ -3,10 +3,15 @@
  * Commands and DATA lines are assembled across TCP chunks. DATA ends only
  * on <CRLF>.<CRLF> (a lone LF-dot does not terminate). Oversize DATA stays
  * in discard until that marker, then 552 — leftover bytes are not commands.
+ *
+ * Optional STARTTLS (RFC 3207): advertised on EHLO/LHLO when inbound.tls
+ * has cert+key. After 220, leftover plaintext is discarded (injection
+ * probe) and SMTP state is reset. requireTls refuses MAIL until upgraded.
  */
 
 'use strict';
 
+const tls = require('tls');
 const addresses = require('./mailGatewayAddresses');
 const mime = require('./mailGatewayMime');
 const spam = require('./mailGatewaySpam');
@@ -89,25 +94,27 @@ function redact(text) {
     return String(text || '').replace(/AUTH\s+\S+\s+\S+/gi, 'AUTH [redacted]');
 }
 
-function handleInboundConnection(socket, options) {
+function handleInboundConnection(plainSocket, options) {
     const allowFrom = options.allowFrom;
     const mapping = options.mapping;
     const deliver = options.deliver;
     const spamConfig = options.spam;
+    const tlsContext = options.tls && options.tls.enabled ? options.tls : { enabled: false, requireTls: false };
     const maxCommandLine = options.maxCommandLine || DEFAULT_MAX_COMMAND_LINE;
     const maxDataLine = options.maxDataLine || DEFAULT_MAX_DATA_LINE;
     const maxDataBytes = options.maxDataBytes || DEFAULT_MAX_DATA_BYTES;
     const idleTimeoutMs = options.idleTimeoutMs || DEFAULT_IDLE_TIMEOUT_MS;
     const sessionTimeoutMs = options.sessionTimeoutMs || DEFAULT_SESSION_TIMEOUT_MS;
-    const peer = addresses.normalizePeerAddress(socket.remoteAddress);
+    const peer = addresses.normalizePeerAddress(plainSocket.remoteAddress);
 
     if (!addresses.isAllowedPeer(peer, allowFrom)) {
-        smtpWrite(socket, '554 5.7.1 Connection refused');
-        socket.end();
+        smtpWrite(plainSocket, '554 5.7.1 Connection refused');
+        plainSocket.end();
         return;
     }
 
-    const crlf = new CrlfBuffer();
+    let socket = plainSocket;
+    let crlf = new CrlfBuffer();
     let state = 'command';
     let mode = 'smtp';
     let mailFrom = '';
@@ -118,6 +125,8 @@ function handleInboundConnection(socket, options) {
     let closed = false;
     let busy = false;
     let skipLineTail = false;
+    let secured = false;
+    let upgrading = false;
 
     socket.setTimeout(idleTimeoutMs, () => closeSession());
     const sessionTimer = setTimeout(() => {
@@ -148,24 +157,80 @@ function handleInboundConnection(socket, options) {
         smtpWrite(socket, line);
     }
 
+    function advertiseHello(kind) {
+        if (kind === 'helo') {
+            reply('250 dreamscape');
+            return;
+        }
+        reply('250-dreamscape');
+        if (tlsContext.enabled && !secured) reply('250-STARTTLS');
+        reply('250-8BITMIME');
+        reply('250 OK');
+    }
+
+    // RFC 3207: leftover plaintext after STARTTLS is discarded (not commands,
+    // not handshake). Pre-TLS EHLO / MAIL / RCPT are forgotten.
+    function resetAfterStarttls() {
+        crlf = new CrlfBuffer();
+        resetTransaction();
+        mode = 'smtp';
+    }
+
+    function upgradeToTls() {
+        upgrading = true;
+        socket.removeListener('data', onData);
+        resetAfterStarttls();
+        const secure = new tls.TLSSocket(socket, {
+            isServer: true,
+            key: tlsContext.key,
+            cert: tlsContext.cert,
+            rejectUnauthorized: false,
+            requestCert: false,
+            minVersion: 'TLSv1.2'
+        });
+        socket = secure;
+        secure.setTimeout(idleTimeoutMs, () => closeSession());
+        secure.on('data', onData);
+        secure.on('error', () => closeSession());
+        secure.on('end', () => closeSession());
+        secure.once('secure', () => {
+            if (closed) return;
+            secured = true;
+            upgrading = false;
+            state = 'command';
+            pump();
+        });
+    }
+
     function handleCommand(command) {
         const upper = command.toUpperCase();
         const verb = upper.split(/\s+/)[0];
 
         if (verb === 'LHLO') {
             mode = 'lmtp';
-            reply('250-dreamscape');
-            reply('250-8BITMIME');
-            reply('250 OK');
+            advertiseHello('lhlo');
         } else if (verb === 'EHLO') {
             mode = 'smtp';
-            reply('250-dreamscape');
-            reply('250-8BITMIME');
-            reply('250 OK');
+            advertiseHello('ehlo');
         } else if (verb === 'HELO') {
             mode = 'smtp';
-            reply('250 dreamscape');
+            advertiseHello('helo');
+        } else if (verb === 'STARTTLS') {
+            if (!tlsContext.enabled) {
+                reply('502 5.5.1 Command not implemented');
+                return;
+            }
+            if (secured) {
+                reply('503 5.5.1 Already using TLS');
+                return;
+            }
+            reply('220 2.0.0 Ready to start TLS');
+            upgradeToTls();
         } else if (verb === 'MAIL') {
+            if (tlsContext.enabled && tlsContext.requireTls && !secured) {
+                reply('530 5.7.0 Must issue a STARTTLS command first');
+                return;
+            }
             const match = command.match(/^MAIL\s+FROM:\s*(.*)$/i);
             const raw = match ? match[1] : '';
             const checked = addresses.validateEnvelopeSender(raw, mapping);
@@ -304,7 +369,7 @@ function handleInboundConnection(socket, options) {
     }
 
     function pump() {
-        while (!closed && !busy) {
+        while (!closed && !busy && !upgrading) {
             if (state === 'command') {
                 const item = crlf.nextLine(maxCommandLine);
                 if (!item) return;
@@ -344,11 +409,13 @@ function handleInboundConnection(socket, options) {
         }
     }
 
-    socket.on('data', (chunk) => {
+    function onData(chunk) {
         if (closed) return;
         crlf.push(chunk);
-        pump();
-    });
+        if (!upgrading) pump();
+    }
+
+    socket.on('data', onData);
     socket.on('error', () => closeSession());
     socket.on('end', () => closeSession());
 }

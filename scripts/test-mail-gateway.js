@@ -89,6 +89,20 @@ async function expectCode(reader, code) {
     return reply;
 }
 
+async function clientStartTls(socket) {
+    socket.removeAllListeners('data');
+    const secure = tls.connect({
+        socket,
+        rejectUnauthorized: false,
+        minVersion: 'TLSv1.2'
+    });
+    await new Promise((resolve, reject) => {
+        secure.once('secureConnect', resolve);
+        secure.once('error', reject);
+    });
+    return { socket: secure, reader: createLineReader(secure) };
+}
+
 async function startOpenInbound(extra) {
     const delivered = [];
     const inbound = await gateway.startInbound(Object.assign({
@@ -423,6 +437,148 @@ async function testInboundDelivery() {
     const inbox = mail.listMail('ivory', { folder: 'inbox' });
     assert.strictEqual(inbox[0].from, 'bob@outside.example');
     assert.strictEqual(inbox[0].id, stored.id);
+}
+
+async function testInboundPlaintextUnchanged() {
+    const { inbound } = await startOpenInbound();
+    try {
+        const replies = await smtpTalk(inbound.port, [
+            'EHLO lantis',
+            'STARTTLS',
+            'MAIL FROM:<alice@example.com>',
+            'RCPT TO:<menma.dev@dream.737.jp.net>'
+        ]);
+        assert.strictEqual(replies[0].code, 220);
+        assert.strictEqual(replies[1].code, 250);
+        assert.doesNotMatch(replies[1].text, /STARTTLS/);
+        assert.strictEqual(replies[2].code, 502);
+        assert.strictEqual(replies[3].code, 250);
+        assert.strictEqual(replies[4].code, 250);
+    } finally {
+        await inbound.close();
+    }
+}
+
+async function testInboundStarttlsHandshake() {
+    const certs = writeCert(path.join(tmpDir, 'inbound-starttls'), 'intake.dream.737.jp.net');
+    const { inbound, delivered } = await startOpenInbound({
+        tls: { certPath: certs.certPath, keyPath: certs.keyPath }
+    });
+    try {
+        const socket = await connectSmtp(inbound.port);
+        const reader = createLineReader(socket);
+        assert.strictEqual((await readReply(reader)).code, 220);
+        socket.write('EHLO lantis\r\n');
+        const ehlo = await readReply(reader);
+        assert.strictEqual(ehlo.code, 250);
+        assert.match(ehlo.text, /STARTTLS/);
+        socket.write('STARTTLS\r\n');
+        assert.strictEqual((await readReply(reader)).code, 220);
+        const tlsClient = await clientStartTls(socket);
+        tlsClient.socket.write('EHLO lantis\r\n');
+        const ehlo2 = await readReply(tlsClient.reader);
+        assert.strictEqual(ehlo2.code, 250);
+        assert.doesNotMatch(ehlo2.text, /STARTTLS/);
+        tlsClient.socket.write('MAIL FROM:<alice@example.com>\r\n');
+        assert.strictEqual((await readReply(tlsClient.reader)).code, 250);
+        tlsClient.socket.write('RCPT TO:<menma.dev@dream.737.jp.net>\r\n');
+        assert.strictEqual((await readReply(tlsClient.reader)).code, 250);
+        tlsClient.socket.write('DATA\r\n');
+        assert.strictEqual((await readReply(tlsClient.reader)).code, 354);
+        tlsClient.socket.write('From: Alice <alice@example.com>\r\n');
+        tlsClient.socket.write('To: menma.dev@dream.737.jp.net\r\n');
+        tlsClient.socket.write('Subject: via starttls\r\n');
+        tlsClient.socket.write('\r\n');
+        tlsClient.socket.write('tls body\r\n');
+        tlsClient.socket.write('.\r\n');
+        assert.strictEqual((await readReply(tlsClient.reader)).code, 250);
+        tlsClient.socket.write('QUIT\r\n');
+        await readReply(tlsClient.reader);
+        tlsClient.socket.end();
+    } finally {
+        await inbound.close();
+    }
+    assert.strictEqual(delivered.length, 1);
+    assert.strictEqual(delivered[0].toOwner, 'menma');
+    assert.match(delivered[0].body, /tls body/);
+}
+
+async function testInboundStarttlsInjection() {
+    const certs = writeCert(path.join(tmpDir, 'inbound-inject'), 'intake.dream.737.jp.net');
+    const { inbound, delivered } = await startOpenInbound({
+        tls: { certPath: certs.certPath, keyPath: certs.keyPath }
+    });
+    try {
+        const socket = await connectSmtp(inbound.port);
+        const reader = createLineReader(socket);
+        assert.strictEqual((await readReply(reader)).code, 220);
+        socket.write('EHLO lantis\r\n');
+        assert.strictEqual((await readReply(reader)).code, 250);
+        socket.write('STARTTLS\r\nMAIL FROM:<evil@example.com>\r\nRCPT TO:<menma.dev@dream.737.jp.net>\r\n');
+        assert.strictEqual((await readReply(reader)).code, 220);
+        assert.strictEqual(reader.queuedCount(), 0, 'pipelined commands before TLS must not be answered');
+        const tlsClient = await clientStartTls(socket);
+        tlsClient.socket.write('RCPT TO:<menma.dev@dream.737.jp.net>\r\n');
+        const rcpt = await readReply(tlsClient.reader);
+        assert.strictEqual(rcpt.code, 503, 'pre-TLS MAIL/RCPT must be discarded (RFC 3207 reset)');
+        tlsClient.socket.write('EHLO lantis\r\n');
+        assert.strictEqual((await readReply(tlsClient.reader)).code, 250);
+        tlsClient.socket.write('MAIL FROM:<alice@example.com>\r\n');
+        assert.strictEqual((await readReply(tlsClient.reader)).code, 250);
+        tlsClient.socket.write('RCPT TO:<menma.dev@dream.737.jp.net>\r\n');
+        assert.strictEqual((await readReply(tlsClient.reader)).code, 250);
+        tlsClient.socket.write('DATA\r\n');
+        assert.strictEqual((await readReply(tlsClient.reader)).code, 354);
+        tlsClient.socket.write('Subject: after inject\r\n\r\nclean\r\n.\r\n');
+        assert.strictEqual((await readReply(tlsClient.reader)).code, 250);
+        tlsClient.socket.end();
+    } finally {
+        await inbound.close();
+    }
+    assert.strictEqual(delivered.length, 1);
+    assert.strictEqual(delivered[0].fromAddress, 'alice@example.com');
+}
+
+async function testInboundRequireTls() {
+    const certs = writeCert(path.join(tmpDir, 'inbound-require'), 'intake.dream.737.jp.net');
+    const { inbound } = await startOpenInbound({
+        tls: { certPath: certs.certPath, keyPath: certs.keyPath, requireTls: true }
+    });
+    try {
+        const socket = await connectSmtp(inbound.port);
+        const reader = createLineReader(socket);
+        assert.strictEqual((await readReply(reader)).code, 220);
+        socket.write('EHLO lantis\r\n');
+        assert.strictEqual((await readReply(reader)).code, 250);
+        socket.write('MAIL FROM:<alice@example.com>\r\n');
+        const refused = await readReply(reader);
+        assert.strictEqual(refused.code, 530);
+        assert.match(refused.text, /STARTTLS/);
+        socket.write('STARTTLS\r\n');
+        assert.strictEqual((await readReply(reader)).code, 220);
+        const tlsClient = await clientStartTls(socket);
+        tlsClient.socket.write('EHLO lantis\r\n');
+        assert.strictEqual((await readReply(tlsClient.reader)).code, 250);
+        tlsClient.socket.write('MAIL FROM:<alice@example.com>\r\n');
+        assert.strictEqual((await readReply(tlsClient.reader)).code, 250);
+        tlsClient.socket.end();
+    } finally {
+        await inbound.close();
+    }
+
+    const { inbound: plain } = await startOpenInbound({
+        tls: { requireTls: true }
+    });
+    try {
+        const replies = await smtpTalk(plain.port, [
+            'EHLO lantis',
+            'MAIL FROM:<alice@example.com>'
+        ]);
+        assert.doesNotMatch(replies[1].text, /STARTTLS/);
+        assert.strictEqual(replies[2].code, 250, 'requireTls without a cert must not change plaintext MAIL');
+    } finally {
+        await plain.close();
+    }
 }
 
 async function testYukimiAliasDelivery() {
@@ -806,6 +962,9 @@ function testResolveConfigDefaults() {
     assert.strictEqual(cfg.spam.reportHeader, 'X-Spam-Report');
     assert.strictEqual(cfg.spam.originalToHeader, 'X-Original-To');
     assert.strictEqual(cfg.spam.authservId, 'mx.dream.737.jp.net');
+    assert.strictEqual(cfg.inbound.tls.certPath, '');
+    assert.strictEqual(cfg.inbound.tls.keyPath, '');
+    assert.strictEqual(cfg.inbound.tls.requireTls, false);
     assert.strictEqual(gateway.toExternal('yukimi'), 'kazari.ops@dream.737.jp.net');
     assert.ok(!Object.prototype.hasOwnProperty.call(cfg.outbound, 'rejectUnauthorized'));
     const tlsOpts = gateway.tlsVerifyOptions(Object.assign({}, cfg.outbound, { rejectUnauthorized: false }));
@@ -1850,6 +2009,10 @@ async function main() {
     await testAllowlistReject();
     await testUnknownRecipientReject();
     await testInboundDelivery();
+    await testInboundPlaintextUnchanged();
+    await testInboundStarttlsHandshake();
+    await testInboundStarttlsInjection();
+    await testInboundRequireTls();
     await testYukimiAliasDelivery();
     await testOutboundRewrite();
     await testMissingStarttls();

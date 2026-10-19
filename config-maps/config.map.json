@@ -1450,6 +1450,55 @@
     {
       "path": [
         "mailGateway",
+        "inbound",
+        "tls"
+      ],
+      "type": "object",
+      "label": "Inbound STARTTLS",
+      "closed": true,
+      "description": "Optional TLS for :2525. LANTIS requires STARTTLS to the nexthop. Empty certPath/keyPath leaves intake plaintext (today's behavior). Self-signed is fine on this WG-only hop."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "inbound",
+        "tls",
+        "certPath"
+      ],
+      "type": "string",
+      "label": "Inbound TLS Cert Path",
+      "editorType": "input",
+      "restartRequired": true,
+      "description": "PEM certificate for inbound STARTTLS. Empty = do not advertise STARTTLS."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "inbound",
+        "tls",
+        "keyPath"
+      ],
+      "type": "string",
+      "label": "Inbound TLS Key Path",
+      "editorType": "input",
+      "restartRequired": true,
+      "description": "PEM private key for inbound STARTTLS. Must be set together with certPath."
+    },
+    {
+      "path": [
+        "mailGateway",
+        "inbound",
+        "tls",
+        "requireTls"
+      ],
+      "type": "boolean",
+      "label": "Require STARTTLS Before MAIL",
+      "restartRequired": true,
+      "description": "When a cert is loaded, refuse MAIL FROM until STARTTLS completes (530 5.7.0). Ignored when TLS is not configured."
+    },
+    {
+      "path": [
+        "mailGateway",
         "outbound"
       ],
       "type": "object",
