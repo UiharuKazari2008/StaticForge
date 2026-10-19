@@ -29,20 +29,90 @@ function lookupRunningSessionWorkspace() {
         const id = workspaceLookup();
         return typeof id === 'string' ? id.trim() : '';
     }
+    const running = listRunningSessions();
+    return running.length ? running[0].workspaceId : '';
+}
+
+function listRunningSessions() {
+    const out = [];
     try {
         const wren = require('./cursorDirector');
         const wrenId = wren.activeDirectorSessionId && wren.activeDirectorSessionId();
-        if (wrenId) return (wren.readChatWorkspace && wren.readChatWorkspace(wrenId)) || '';
+        if (wrenId) {
+            out.push({
+                kind: 'wren',
+                sessionId: wrenId,
+                workspaceId: (wren.readChatWorkspace && wren.readChatWorkspace(wrenId)) || ''
+            });
+        }
     } catch (_err) { /* director index may be unavailable */ }
     try {
         const xi = require('./xiDirector');
         const xiId = xi.activeSessionId && xi.activeSessionId();
-        if (xiId) return (xi.readChatWorkspace && xi.readChatWorkspace(xiId)) || '';
+        if (xiId) {
+            out.push({
+                kind: 'xi',
+                sessionId: xiId,
+                workspaceId: (xi.readChatWorkspace && xi.readChatWorkspace(xiId)) || ''
+            });
+        }
     } catch (_err) { /* xi is optional */ }
+    return out;
+}
+
+// Wren's jail mints "Dreamscape Director"; Xi mints "Xi". Claude Code / TokenRouter
+// turns use those same keys. Guren, Ivory, and the other bot keys are not the
+// running session — pairing them stole Laboratory onto the Director workspace (#568).
+const WREN_ACTORS = new Set(['wren', 'director', 'dreamscape director', 'claude', 'claude code', 'grok.cursor']);
+const XI_ACTORS = new Set(['xi']);
+
+function actorKind(actorName) {
+    const name = String(actorName || '').trim().toLowerCase();
+    if (!name) return '';
+    if (XI_ACTORS.has(name)) return 'xi';
+    if (WREN_ACTORS.has(name)) return 'wren';
     return '';
 }
 
+function requestActorName(req) {
+    if (!req) return '';
+    if (req.actorName) return String(req.actorName).trim();
+    const auth = req.applicationAuth;
+    if (auth && (auth.appName != null || auth.applicationAppName != null)) {
+        return String(auth.appName != null ? auth.appName : auth.applicationAppName).trim();
+    }
+    return '';
+}
+
+function requestSessionId(req, input) {
+    return String(
+        (input && (input.chatId || input.sessionId))
+        || (req && (req.directorSessionId || req.chatId || req.sessionId))
+        || ''
+    ).trim();
+}
+
+// Pairing is per turn: only the session that is running may force its workspace.
+// A missing req (unit tests / internal helpers) keeps the old global lookup.
+function requestIsFromRunningSession(req, input) {
+    if (!req && !input) return true;
+    const asked = requestSessionId(req, input);
+    const running = listRunningSessions();
+    if (asked && running.some((row) => row.sessionId === asked)) return true;
+    const kind = actorKind(requestActorName(req));
+    if (!kind) return false;
+    if (workspaceLookup) return true;
+    return running.some((row) => row.kind === kind);
+}
+
 function scopeWriteWorkspaceForTurn(requestedWorkspaceId) {
+    return scopeWriteWorkspace(lookupRunningSessionWorkspace(), requestedWorkspaceId);
+}
+
+function scopeWriteWorkspaceForRequest(requestedWorkspaceId, req, input) {
+    if (!requestIsFromRunningSession(req, input)) {
+        return typeof requestedWorkspaceId === 'string' ? requestedWorkspaceId.trim() : '';
+    }
     return scopeWriteWorkspace(lookupRunningSessionWorkspace(), requestedWorkspaceId);
 }
 
@@ -70,7 +140,11 @@ module.exports = {
     keepSessionWorkspace,
     scopeWriteWorkspace,
     lookupRunningSessionWorkspace,
+    listRunningSessions,
+    actorKind,
+    requestIsFromRunningSession,
     scopeWriteWorkspaceForTurn,
+    scopeWriteWorkspaceForRequest,
     clientInWorkspace,
     annotateClients,
     studioWriteAllowed
