@@ -1,12 +1,19 @@
 # StaticForge docs
 
+## Start here (deploy)
+
+| Doc | Purpose |
+|-----|---------|
+| [SETUP.md](./SETUP.md) | Production host: LANTIS, DNS, network, PM2, intake, restart |
+| [CLEAN_INSTALL.md](./CLEAN_INSTALL.md) | Linux packages, Node 20, seeds, clean-install CI |
+| [local-host.md](./local-host.md) | Workstation pack / rsync / Docker (not the live PM2 cutover) |
+
 ## Start here (API / clients)
 
 | Doc | Purpose |
 |-----|---------|
 | [client-api/README.md](./client-api/README.md) | Client API index (REST + WebSocket + agent + MCP) |
 | [studio-change-json.md](./studio-change-json.md) | Studio Change JSON (agent / MCP / clipboard) |
-| [local-host.md](./local-host.md) | Localhost / host wiring notes |
 | [dreamscape-app-names.md](./dreamscape-app-names.md) | Dreamscape app / DSAP naming |
 | [client-api/melaton-packages.md](./client-api/melaton-packages.md) | Melaton `.mapz` / `.msaz` store + manifest |
 | [ANDROID_BRIDGE.md](./ANDROID_BRIDGE.md) | WebView native bridges (not server API) |

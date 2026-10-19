@@ -1,6 +1,10 @@
 # Dreamscape
 
-A powerful, feature-rich NovelAI API proxy and workspace built with modern web technologies. Dreamscape serves as an intelligent server-based proxy that enhances NovelAI's image generation capabilities with advanced prompt engineering tools, workspace management, and comprehensive image organization features. Built for power users who want more control, better organization, and enhanced workflow capabilities than the standard NovelAI interface.
+Personal NovelAI workspace and API proxy: Studio, galleries, Director/MCP, and (when enabled) Dovecote mail. One Node process (`web_server.js`) on port **9220**, run as PM2 app **Dreamscape**.
+
+**Deploying a host** (LANTIS relay, WireGuard, intake, PM2, keys): start at **[docs/SETUP.md](./docs/SETUP.md)**. Linux packages and seeds: **[docs/CLEAN_INSTALL.md](./docs/CLEAN_INSTALL.md)**. Workstation pack/sync/Docker: **[docs/local-host.md](./docs/local-host.md)**.
+
+Mail SMTP intake and Spam folders are **mail gateway (PR #344, off by default: `config.mailGateway.enabled`)**. Do not enable them from this tree until that PR is merged and cutover is approved.
 
 ## Preface
 > **⚠️ Important Notice:**  
@@ -103,45 +107,35 @@ A powerful, feature-rich NovelAI API proxy and workspace built with modern web t
 - **WebSocket Communication**: Real-time updates and notifications
 - **Rate Limiting**: Protection against abuse with configurable limits
 
-## 🚀 Getting Started
-
-### Deployment
+## Setup
 
 | Scenario | Guide |
 |----------|-------|
-| Single server (default) | Steps below |
-| **Child / ephemeral replica** paired to a master | **[Child Node Guide (README-CHILD.md)](./README-CHILD.md)** — separation bundle, bootstrap, sync, upsert, shared gallery |
-
-Process management: `ecosystem.config.js` (PM2 app `Dreamscape`, port **9220** default).
-
-### Prerequisites
-- NovelAI Account with active **Opus** paid subscription
-- Server hosting environment for the proxy
-
-### Installation
-
-#### 1. Clone and Setup
-On Debian/Ubuntu use the installer (system packages, Node 20, pnpm 10.33 via corepack, native
-modules, starter config). Full details and the list of required packages:
-**[docs/CLEAN_INSTALL.md](./docs/CLEAN_INSTALL.md)**.
+| **Production host** (PM2, LANTIS, DNS, intake) | **[docs/SETUP.md](./docs/SETUP.md)** |
+| Single Linux box / clean install | **[docs/CLEAN_INSTALL.md](./docs/CLEAN_INSTALL.md)** — `scripts/install-linux.sh` |
+| Child / ephemeral replica | **[README-CHILD.md](./README-CHILD.md)** |
+| Workstation pack / rsync / Docker | **[docs/local-host.md](./docs/local-host.md)** |
 
 ```bash
 git clone https://yozora.bluesteel.737.jp.net/DreamScape/StaticForge.git dreamscape
 cd dreamscape
-sudo bash scripts/install-linux.sh            # add --with-service for pm2 + boot startup
+sudo bash scripts/install-linux.sh --with-service   # Node 20, pnpm 10.33, pm2 + systemd
+bash scripts/fetch-seeds.sh
 ```
 
-#### 2. Configuration
-The installer creates `config.json` (random login key/PINs) and `secure.config.json` (with a
-`sessionSecret`, which the server requires) if missing. Edit them, e.g.:
+The installer creates `config.json` and `secure.config.json` if missing (never overwrites). Put the NovelAI key in `secure.config.json` (`novelai.keys[].apiKey`). `sessionSecret` is required. Login PIN / `loginKey` used at runtime are read from **`secure.config.json`** — see SETUP §6.
+
+Process: `ecosystem.config.js` app **`Dreamscape`**, port **9220**. Production unit: **`pm2-kanmi`**. Restart only after a client broadcast and `node scripts/director-idle-check.js` is idle ([SETUP §8](./docs/SETUP.md#8-restart-procedure)).
+
+Need Opus. Do not expose the UI without a PIN. Mail gateway stays off until PR #344 is cut over (`config.mailGateway.enabled`).
+
+### Configuration (local)
+
+`apocrypha` defaults are loopback-only. Full key list and the mail-gateway block: [docs/SETUP.md](./docs/SETUP.md). Maps: `config-maps/`.
 
 ```json
 {
-  "apiKey": "your_novelai_api_key_here",
   "port": 9220,
-  "loginKey": "your_login_key",
-  "loginPin": "your_admin_pin",
-  "readOnlyPin": "your_readonly_pin",
   "sequenziaFolder": "/path/to/sequenzia/upload/folder",
   "apocrypha": {
     "trustedProxies": ["127.0.0.0/8", "::1"],
@@ -151,28 +145,7 @@ The installer creates `config.json` (random login key/PINs) and `secure.config.j
 }
 ```
 
-#### 3. Start Server
-```bash
-node web_server.js
-```
-
-The installer precompiles CSS and JS (`node scripts/precompile-runtime-assets.js`) before the
-server starts. A fresh tree prints `compiled=` greater than 0. Asset list, the manifest rule
-for files that are not on disk, and the wiki/tag seed download (`scripts/fetch-seeds.sh`,
-`SEED_BASE_URL`, default `https://yozora.bluesteel.737.jp.net/seeds/dreamscape/`, verified against its
-`SHA256SUMS`) are in **[docs/CLEAN_INSTALL.md](./docs/CLEAN_INSTALL.md)**.
-
-Access at `http://localhost:9220`
-
-### Configuration Options
-
-- **apiKey**: Your NovelAI API key (required)
-- **port**: Server port (default: 9220)
-- **loginKey**: Admin login key for web interface
-- **loginPin**: Admin PIN for full access
-- **readOnlyPin**: Read-only user PIN
-- **sequenziaFolder**: Path for external integrations
-- **apocrypha**: Public zine Grim access (see below). Defaults are loopback-only.
+Foreground (no PM2): `node web_server.js` → `http://localhost:9220`. Precompile and seed details stay in **[docs/CLEAN_INSTALL.md](./docs/CLEAN_INSTALL.md)**.
 
 ### Apocrypha local Grim
 
