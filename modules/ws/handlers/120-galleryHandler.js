@@ -710,9 +710,9 @@ async function handleImageMetadataRequest(handlers, ws, message, clientInfo, wsS
 
         if (!cachedMetadata) {
             const filePath = path.join(imagesDir, filename);
-            const fileExists = await fileExists(filePath);
+            const exists = await fileExists(filePath);
 
-            if (!fileExists && canGalleryUseRemoteMaster(
+            if (!exists && canGalleryUseRemoteMaster(
                 handlers.globalResources.getReplicationService().getReplicationConfig()
             )) {
                 try {
@@ -741,7 +741,7 @@ async function handleImageMetadataRequest(handlers, ws, message, clientInfo, wsS
                 }
             }
 
-            if (!cachedMetadata && fileExists) {
+            if (!cachedMetadata && exists) {
                 console.log(`🔄 Metadata not found in cache for ${filename}, extracting...`);
                 cachedMetadata = await metadataDb.getImageMetadata(filename, imagesDir);
                 if (!cachedMetadata) {
