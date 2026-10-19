@@ -38,6 +38,8 @@ const SCOPE_WS_PACKETS = {
     ],
     search: [
         'search_tags', 'search_dataset_tags', 'search_files', 'search_characters',
+        'get_character_db', 'character_db_upsert', 'character_db_delete',
+        'character_db_rename_copyright', 'character_db_delete_copyright',
         // omegasearch_query — see OMEGASEARCH_QUERY_PACKET_SCHEMA in omegasearchFilters.js
         'omegasearch_query',
         'search_index_status', 'search_index_pause', 'search_index_resume',
