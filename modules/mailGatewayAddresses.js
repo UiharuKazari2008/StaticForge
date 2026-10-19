@@ -32,7 +32,8 @@ const DEFAULT_MAILBOXES = Object.freeze({
     'guren.lab': 'guren',
     'chiyo.web': 'chiyo',
     'tsubame.ops': 'tsubame',
-    'mailroom.ops': 'tsubame'
+    'mailroom.ops': 'tsubame',
+    postmaster: 'tsubame'
 });
 
 function extractAddress(raw) {
@@ -95,11 +96,21 @@ function createMapping({ mailboxes, domain } = {}) {
 function toMailbox(address, mapping) {
     const parts = splitLocalDomain(address);
     if (!parts || !mapping) return null;
-    // Inbound RCPT is the public domain only. External domains (icloud.com,
-    // gmail.com, …) are never local mailboxes, even when the local-part
-    // matches yukimi / ykazari / a mapped bot.
-    if (parts.domain !== mapping.domain) return null;
-    return mapping.mailboxes[parts.local] || null;
+    // Inbound RCPT is the public domain only (normalized). External domains
+    // (icloud.com, gmail.com, …) are never local mailboxes, even when the
+    // local-part matches yukimi / ykazari / a mapped bot. Subdomains such as
+    // mx.dream.737.jp.net are not mailbox hosts.
+    if (domainForCompare(parts.domain) !== publicGatewayDomain(mapping)) return null;
+    if (mapping.mailboxes[parts.local]) return mapping.mailboxes[parts.local];
+    if (parts.local === 'postmaster') return 'tsubame';
+    return null;
+}
+
+function resolvePostmasterMailbox(mapping) {
+    if (mapping && mapping.mailboxes && mapping.mailboxes.postmaster) {
+        return mapping.mailboxes.postmaster;
+    }
+    return 'tsubame';
 }
 
 function toExternal(owner, mapping) {
@@ -138,10 +149,10 @@ function classifyRecipient(token, { mapping, enabled, isValidOwner }) {
         const parts = splitLocalDomain(email);
         const mapped = toMailbox(email, mapping);
         if (mapped) return { kind: 'internal', owner: mapped, address: email };
-        if (parts && mapping && parts.domain === mapping.domain) {
+        if (parts && isOurPublicDomain(parts.domain, mapping)) {
             return { kind: 'unknown', token: email };
         }
-        if (parts && parts.domain === INTERNAL_DISPLAY_DOMAIN && isValidOwner(parts.local)) {
+        if (parts && isInternalDisplayDomain(parts.domain) && isValidOwner(parts.local)) {
             return { kind: 'internal', owner: parts.local, address: email };
         }
         // Foreign domains are outbound targets when the gateway is on, never
@@ -222,6 +233,16 @@ function isInternalDisplayDomain(domain) {
     return host === INTERNAL_DISPLAY_DOMAIN || host.endsWith(`.${INTERNAL_DISPLAY_DOMAIN}`);
 }
 
+function publicGatewayDomain(mapping) {
+    return domainForCompare((mapping && mapping.domain) || DEFAULT_DOMAIN);
+}
+
+function isOurPublicDomain(domain, mapping) {
+    const host = domainForCompare(domain);
+    const base = publicGatewayDomain(mapping);
+    return !!host && (host === base || host.endsWith(`.${base}`));
+}
+
 function isReservedSenderDomain(domain, mapping) {
     const host = domainForCompare(domain);
     if (!host) return false;
@@ -261,20 +282,29 @@ function validateEnvelopeSender(raw, mapping) {
 }
 
 /**
- * From is a display label only. Reject our domains so it cannot look like
- * bot mail; a bare name or a foreign address is kept as the label.
+ * From is a display label. The internal display domain (dream.co.jp) is
+ * still rejected. A From on the public gateway domain or its subdomains
+ * is accepted and flagged ownDomain so intake can divert to postmaster.
  */
 function validateFromHeader(fromHeader, mapping) {
-    if (!fromHeader || !String(fromHeader).trim()) return { ok: true, label: '' };
+    if (!fromHeader || !String(fromHeader).trim()) return { ok: true, label: '', ownDomain: false };
     const label = String(fromHeader).trim().replace(/[\r\n]+/g, ' ');
-    const email = normalizeEmail(fromHeader);
-    if (email && email.includes('@')) {
+    // Check every mailbox in the From list, not just the first:
+    // "a@evil.com, kazari.ops@dream.737.jp.net" must not skip the
+    // postmaster divert (or the dream.co.jp 550).
+    const listed = typeof parseAddressList === 'function' ? parseAddressList(fromHeader) : [];
+    const first = normalizeEmail(fromHeader);
+    const emails = listed.concat(first ? [first] : []).filter((e) => e && e.includes('@'));
+    let ownDomain = false;
+    for (const email of emails) {
         const parts = splitLocalDomain(email);
-        if (parts && isReservedSenderDomain(parts.domain, mapping)) {
+        if (!parts) continue;
+        if (isInternalDisplayDomain(parts.domain)) {
             return { ok: false, code: 550, message: '5.7.1 From domain is not allowed' };
         }
+        if (isOurPublicDomain(parts.domain, mapping)) ownDomain = true;
     }
-    return { ok: true, label };
+    return { ok: true, label, ownDomain };
 }
 
 function extractDisplayName(raw) {
@@ -463,6 +493,7 @@ module.exports = {
     splitLocalDomain,
     createMapping,
     toMailbox,
+    resolvePostmasterMailbox,
     toExternal,
     looksLikeEmail,
     parseRecipientTokens,
@@ -474,6 +505,8 @@ module.exports = {
     reservedSenderDomains,
     isReservedSenderDomain,
     isInternalDisplayDomain,
+    isOurPublicDomain,
+    publicGatewayDomain,
     domainForCompare,
     validateEnvelopeSender,
     validateFromHeader,

@@ -147,7 +147,8 @@ function toSummary(row) {
         spamDmarc: spamMeta.dmarc,
         spamDmarcPolicy: spamMeta.dmarcP,
         spamForgedOurs: !!spamMeta.forgedOurs,
-        originalTo: row.original_to || null
+        originalTo: row.original_to || null,
+        ownDomainFrom: !!row.own_domain_from
     };
 }
 
@@ -223,18 +224,20 @@ function insertRow(row) {
         INSERT INTO dovecote_message (
             id, owner, folder, archive_subfolder, thread_id, from_owner, to_owner,
             to_list, cc_list, from_label, route, label_suspicious, spam_meta, original_to,
+            own_domain_from,
             subject, body, format, reply_to_id, fwd_from_owner, fwd_from_message_id,
             read, flagged, created_at, updated_at, deleted_at, paired_message_id, attachments
         ) VALUES (
             @id, @owner, @folder, @archive_subfolder, @thread_id, @from_owner, @to_owner,
             @to_list, @cc_list, @from_label, @route, @label_suspicious, @spam_meta, @original_to,
+            @own_domain_from,
             @subject, @body, @format, @reply_to_id, @fwd_from_owner, @fwd_from_message_id,
             @read, @flagged, @created_at, @updated_at, @deleted_at, @paired_message_id, @attachments
         )
     `).run(Object.assign({
         paired_message_id: null, attachments: null, to_list: null, cc_list: null,
         from_label: null, route: 'internal', label_suspicious: 0, spam_meta: null,
-        original_to: null
+        original_to: null, own_domain_from: 0
     }, row));
 }
 
@@ -607,7 +610,7 @@ function sanitizeOriginalTo(value) {
     return text || null;
 }
 
-function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, body, format, threadId, spam, spamMeta, originalTo }) {
+function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, body, format, threadId, spam, spamMeta, originalTo, ownDomainFrom }) {
     if (!isValidOwner(toOwner)) throw new DovecoteError('Unknown mailbox', 'UNKNOWN_OWNER');
     const from = String(fromAddress || '').trim();
     if (!from || (from !== NULL_SENDER && !from.includes('@'))) {
@@ -641,6 +644,7 @@ function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, 
         label_suspicious: inspected.suspicious ? 1 : 0,
         spam_meta: storedSpamMeta,
         original_to: storedOriginalTo,
+        own_domain_from: ownDomainFrom ? 1 : 0,
         subject: subjectText, body: bodyText, format: sanitizeFormat(format),
         reply_to_id: null, fwd_from_owner: null, fwd_from_message_id: null,
         read: 0, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,
@@ -663,7 +667,8 @@ function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, 
         spamDmarc: displaySpam.dmarc,
         spamDmarcPolicy: displaySpam.dmarcP,
         spamForgedOurs: !!displaySpam.forgedOurs,
-        originalTo: storedOriginalTo
+        originalTo: storedOriginalTo,
+        ownDomainFrom: !!ownDomainFrom
     };
 }
 
@@ -751,10 +756,31 @@ function markMail(owner, { id, read, archived, deleted, archiveSubfolder, spam }
  * It is a copy, not a share — the recipient never gains access to the
  * source thread or mailbox.
  */
+function resolveForwardTarget(to) {
+    const raw = String(to || '').trim();
+    if (!raw) throw new DovecoteError('Unknown recipient mailbox: (empty)', 'UNKNOWN_RECIPIENT');
+    const bare = raw.toLowerCase();
+    if (isValidOwner(bare)) return bare;
+    const mailGateway = require('./mailGateway');
+    const mapping = mailGateway.resolveConfig().mapping;
+    const classified = addresses.classifyRecipient(raw, {
+        mapping,
+        enabled: mailGateway.isEnabled(),
+        isValidOwner
+    });
+    if (classified && classified.kind === 'internal') return classified.owner;
+    if (classified && classified.kind === 'external') {
+        throw new DovecoteError(
+            'Cannot forward to an external address (would leave the local mailbox)',
+            'LOCAL_ONLY'
+        );
+    }
+    throw new DovecoteError(`Unknown recipient mailbox: ${to}`, 'UNKNOWN_RECIPIENT');
+}
+
 function forwardMail(owner, { id, to }) {
     if (!isValidOwner(owner)) throw new DovecoteError('Unknown mailbox', 'UNKNOWN_OWNER');
-    const toOwner = String(to || '').trim().toLowerCase();
-    if (!isValidOwner(toOwner)) throw new DovecoteError(`Unknown recipient mailbox: ${to}`, 'UNKNOWN_RECIPIENT');
+    const toOwner = resolveForwardTarget(to);
     const source = getDb().prepare('SELECT * FROM dovecote_message WHERE id = ? AND owner = ?').get(id, owner);
     if (!source) {
         audit(owner, 'forward_mail', id, false, 'not found or not owned');
@@ -772,6 +798,7 @@ function forwardMail(owner, { id, to }) {
         label_suspicious: source.label_suspicious ? 1 : 0,
         spam_meta: source.spam_meta || null,
         original_to: source.original_to || null,
+        own_domain_from: source.own_domain_from ? 1 : 0,
         read: 0, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,
         attachments: source.attachments || null
     });

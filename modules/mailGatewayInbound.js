@@ -311,7 +311,11 @@ function handleInboundConnection(plainSocket, options) {
         const subject = parsed.headers.subject || '';
         const body = parsed.body;
         const format = parsed.format;
-        const jobs = recipients.map((owner) => Promise.resolve().then(() => {
+        const ownDomainFrom = fromCheck.ownDomain === true;
+        const deliverTo = ownDomainFrom
+            ? [addresses.resolvePostmasterMailbox(mapping)]
+            : recipients;
+        const jobs = deliverTo.map((owner) => Promise.resolve().then(() => {
             if (!deliver) return { owner, ok: true };
             return Promise.resolve(deliver({
                 fromAddress: mailFrom,
@@ -324,14 +328,21 @@ function handleInboundConnection(plainSocket, options) {
                 format,
                 spam: spamMark.spam,
                 spamMeta: spam.displayMeta(spamMark),
-                originalTo
+                originalTo,
+                ownDomainFrom
             })).then(() => ({ owner, ok: true }));
         }).catch((err) => ({ owner, ok: false, error: err })));
 
         busy = true;
         Promise.all(jobs).then((results) => {
             if (mode === 'lmtp') {
-                results.forEach((item) => {
+                // RFC 2033: one reply per accepted RCPT. An own-domain From is
+                // diverted to a single postmaster copy, so every original RCPT
+                // gets that copy's status (never fewer replies than RCPTs).
+                const perRcpt = ownDomainFrom
+                    ? recipients.map(() => Object.assign({}, results[0], { owner: results[0].owner }))
+                    : results;
+                perRcpt.forEach((item) => {
                     if (item.ok) reply(`250 2.1.5 ${item.owner} OK`);
                     else reply(`451 4.3.0 ${item.owner} ${redact(item.error.message)}`);
                 });
