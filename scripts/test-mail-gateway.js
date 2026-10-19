@@ -668,7 +668,7 @@ function testCrlfBufferAndSenderRules() {
     assert.strictEqual(addresses.validateFromHeader('Menma <menma@lists.dream.737.jp.net>', map).ok, false);
     assert.strictEqual(addresses.validateFromHeader('menma@dream.co.jp', map).ok, false);
 
-    const owners = ['yukimi', 'menma', 'rook'];
+    const owners = mail.BOT_OWNERS.concat([mail.HUMAN_OWNER]);
     const spoofOpts = { mapping: map, owners };
     assert.strictEqual(addresses.inspectFromLabel('menma', spoofOpts).suspicious, true);
     assert.strictEqual(addresses.inspectFromLabel('Yukimi Kazari <x@ext.com>', spoofOpts).suspicious, true);
@@ -686,11 +686,22 @@ function testCrlfBufferAndSenderRules() {
         'MenmaBot',
         'menma-bot',
         'r o o k',
-        'ykazari'
+        'ykazari',
+        'menm\u00e1',
+        'menma\u0301',
+        'Y Kazari',
+        'yuki mi'
     ];
     lookalikes.forEach((fromLabel) => {
         assert.strictEqual(addresses.inspectFromLabel(fromLabel, spoofOpts).suspicious, true, fromLabel);
     });
+
+    ['Ivory', 'Sala', 'Frost Bank', 'Guren Lab', 'Claude', 'Cursor'].forEach((fromLabel) => {
+        assert.strictEqual(addresses.inspectFromLabel(fromLabel, spoofOpts).suspicious, true, fromLabel);
+    });
+    assert.strictEqual(addresses.inspectFromLabel('Claude Monet', spoofOpts).suspicious, false);
+    assert.strictEqual(addresses.inspectFromLabel('Cursor Inc', spoofOpts).suspicious, false);
+    assert.strictEqual(addresses.inspectFromLabel('Claude Monet <claude@example.com>', spoofOpts).suspicious, false);
 }
 
 function testResolveConfigDefaults() {
@@ -1539,6 +1550,17 @@ function testSpamHeaderTrust() {
     const forgedMark = spam.isInboundSpam(forgedOurs);
     assert.strictEqual(forgedMark.spam, false, 'LANTIS_FORGED_OURS is a warning, not a folder rule');
     assert.strictEqual(forgedMark.forgedOurs, true);
+
+    const dmarcInOtherComment = [
+        'Authentication-Results: mx.dream.737.jp.net; spf=fail (dmarc=fail p=quarantine dis=QUARANTINE); dkim=pass; dmarc=pass (p=none dis=NONE)',
+        'From: alice@example.com'
+    ].join('\r\n');
+    const nestedDmarc = spam.isInboundSpam(dmarcInOtherComment);
+    assert.strictEqual(nestedDmarc.spam, false, 'dmarc= inside another method comment is not the method');
+    assert.strictEqual(nestedDmarc.dmarc, 'pass');
+    assert.strictEqual(nestedDmarc.dmarcP, 'none');
+    assert.strictEqual(spam.parseDmarcComment('spf=fail (dmarc=fail p=quarantine); dkim=pass').quarantine, false);
+    assert.strictEqual(spam.parseDmarcComment('spf=fail (dmarc=fail p=quarantine); dmarc=fail (p=quarantine)').quarantine, true);
 
     const trustedOrig = [
         'X-Original-To: <lost@dream.737.jp.net>',

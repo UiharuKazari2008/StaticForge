@@ -158,7 +158,9 @@ function authMethodValue(value, method) {
 
 function parseDmarcComment(value) {
     const text = String(value || '');
-    const dmarc = text.match(/\bdmarc\s*=\s*(\w+)([^;]*)/i);
+    // Method clause only: after start or semicolon, not `dmarc=` inside
+    // another method's comment (spf=fail (dmarc=fail p=quarantine); …).
+    const dmarc = text.match(/(?:^|[;])\s*dmarc\s*=\s*(\w+)([^;]*)/i);
     if (!dmarc) return { result: '', p: '', dis: '', quarantine: false };
     const result = dmarc[1].toLowerCase();
     const rest = dmarc[2] || '';

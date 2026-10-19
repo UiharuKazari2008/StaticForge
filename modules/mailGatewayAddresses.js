@@ -305,8 +305,23 @@ function foldConfusables(text) {
 }
 
 function normalizeSpoofText(text) {
-    return foldConfusables(String(text || '').normalize('NFKC').replace(/\p{Cf}/gu, ''));
+    return foldConfusables(
+        String(text || '')
+            .normalize('NFKC')
+            .replace(/\p{Cf}/gu, '')
+            .normalize('NFD')
+            .replace(/\p{M}/gu, '')
+    );
 }
+
+function collapseSpoofText(text) {
+    return normalizeSpoofText(text).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+}
+
+// Common given / product words that are also bot mailboxes. Token match
+// would flag "Claude Monet" / "Cursor Inc"; only an exact collapsed label
+// (or a reserved-domain address) counts for these.
+const GENERIC_PROTECTED = new Set(['claude', 'cursor']);
 
 function splitCamelWords(word) {
     return String(word || '')
@@ -340,33 +355,39 @@ function inspectFromLabel(raw, opts) {
     const mapping = (opts && opts.mapping) || createMapping();
     const locals = Object.assign(Object.create(null), mapping.mailboxes || {});
 
-    const isProtected = (token) => {
+    const isProtected = (token, { allowGeneric } = {}) => {
         const lower = String(token || '').toLowerCase();
-        return !!(lower && (owners.has(lower) || locals[lower]));
+        if (!lower) return false;
+        if (!owners.has(lower) && !locals[lower]) return false;
+        if (!allowGeneric && GENERIC_PROTECTED.has(lower)) return false;
+        return true;
     };
 
     const looksInternalToken = (text) => {
         const folded = normalizeSpoofText(text);
         const lower = folded.toLowerCase().replace(/^["']+|["']+$/g, '').trim();
         if (!lower) return false;
-        if (isProtected(lower)) return true;
-        if (lower.includes('yukimi') || lower.includes('ykazari')) return true;
-        const words = tokenizeSpoofWords(folded).map((word) => word.toLowerCase());
-        if (words.some((word) => isProtected(word))) return true;
-        let run = '';
-        for (const word of words) {
-            if (word.length === 1) {
-                run += word;
-                if (isProtected(run)) return true;
-            } else {
-                run = '';
-            }
+        const collapsed = collapseSpoofText(lower);
+        // Whole label (or punctuation-stripped form) equals a protected name,
+        // including generic claude/cursor when that is the entire label.
+        if (isProtected(lower, { allowGeneric: true }) || isProtected(collapsed, { allowGeneric: true })) {
+            return true;
         }
+        const words = tokenizeSpoofWords(folded).map((word) => word.toLowerCase());
+        // A token equals a distinctive protected name (Ivory, Sala, Frost, …).
+        // Generic claude/cursor tokens in a longer label do not count.
+        if (words.some((word) => isProtected(word))) return true;
+        // Collapsed label starts with a distinctive name after a real token
+        // boundary ("Frost Bank", "Guren Lab"), not "salamander" / "Claude Monet".
+        if (words[0] && isProtected(words[0]) && collapsed.startsWith(words[0])) return true;
         const emails = lower.match(/[^\s<>"]+@[^\s<>"]+/g) || [];
         for (const email of emails) {
             const parts = splitLocalDomain(email);
             if (!parts) continue;
             if (isReservedSenderDomain(parts.domain, mapping)) return true;
+            if (isProtected(parts.local, { allowGeneric: true }) && collapseSpoofText(lower) === collapseSpoofText(parts.local)) {
+                return true;
+            }
             if (isProtected(parts.local)) return true;
             const localBits = parts.local.split(/[._-]+/).filter(Boolean);
             if (localBits.some((bit) => isProtected(bit))) return true;
@@ -377,7 +398,7 @@ function inspectFromLabel(raw, opts) {
     if (looksInternalToken(extractDisplayName(label))) return { label, suspicious: true };
     if (looksInternalToken(label)) return { label, suspicious: true };
     const addr = normalizeEmail(label);
-    if (addr && looksInternalToken(addr)) return { label, suspicious: true };
+    if (addr && addr.includes('@') && looksInternalToken(addr)) return { label, suspicious: true };
     return { label, suspicious: false };
 }
 

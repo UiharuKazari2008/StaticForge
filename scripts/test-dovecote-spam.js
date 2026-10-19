@@ -98,6 +98,15 @@ function main() {
     assert.strictEqual(spamMod.parseSpamStatus('No, score=2.0 required=5.0 tests=LANTIS_FORGED_OURS').forgedOurs, true);
     assert.strictEqual(spamMod.parseDmarcComment('dmarc=fail (p=quarantine dis=NONE)').quarantine, true);
     assert.strictEqual(spamMod.parseDmarcComment('dmarc=fail (p=none dis=NONE)').quarantine, false);
+    assert.strictEqual(
+        spamMod.parseDmarcComment('spf=fail (dmarc=fail p=quarantine dis=QUARANTINE); dkim=pass').quarantine,
+        false,
+        'dmarc= inside another method comment must not count'
+    );
+    assert.strictEqual(
+        spamMod.parseDmarcComment('spf=fail (dmarc=fail p=quarantine); dmarc=fail (p=quarantine dis=NONE)').quarantine,
+        true
+    );
     const addressSrc = fs.readFileSync(path.join(__dirname, '..', 'modules/mailGatewayAddresses.js'), 'utf8');
     assert.doesNotMatch(addressSrc, /icloud\.com['"]\s*:/);
     assert.match(addressSrc, /yukimi@dream\.737\.jp\.net/);
