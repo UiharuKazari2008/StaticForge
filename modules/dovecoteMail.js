@@ -110,6 +110,7 @@ function snippetOf(body) {
 }
 
 function toSummary(row) {
+    const spamMeta = spamMetaOf(row.spam_meta);
     return {
         id: row.id,
         owner: row.owner,
@@ -133,9 +134,14 @@ function toSummary(row) {
         attachments: attachmentsMetaOf(row.attachments),
         createdAt: row.created_at,
         updatedAt: row.updated_at,
-        spamScore: spamMetaOf(row.spam_meta).score,
-        spamRequired: spamMetaOf(row.spam_meta).required,
-        spamReport: spamMetaOf(row.spam_meta).report
+        spamScore: spamMeta.score,
+        spamRequired: spamMeta.required,
+        spamReport: spamMeta.report,
+        spamReceivedSpf: spamMeta.receivedSpf,
+        spamDkim: spamMeta.dkim,
+        spamDmarc: spamMeta.dmarc,
+        spamDmarcPolicy: spamMeta.dmarcP,
+        spamForgedOurs: !!spamMeta.forgedOurs
     };
 }
 
@@ -143,18 +149,30 @@ function toFull(row) {
     return Object.assign(toSummary(row), { body: row.body, replyToId: row.reply_to_id || null });
 }
 
+function emptySpamMeta() {
+    return {
+        score: null, required: null, report: null,
+        receivedSpf: null, dkim: null, dmarc: null, dmarcP: null, forgedOurs: false
+    };
+}
+
 function spamMetaOf(json) {
-    if (!json) return { score: null, required: null, report: null };
+    if (!json) return emptySpamMeta();
     try {
         const parsed = JSON.parse(json);
-        if (!parsed || typeof parsed !== 'object') return { score: null, required: null, report: null };
+        if (!parsed || typeof parsed !== 'object') return emptySpamMeta();
         return {
             score: Number.isFinite(parsed.score) ? parsed.score : null,
             required: Number.isFinite(parsed.required) ? parsed.required : null,
-            report: parsed.report ? String(parsed.report) : null
+            report: parsed.report ? String(parsed.report) : null,
+            receivedSpf: parsed.receivedSpf ? String(parsed.receivedSpf) : null,
+            dkim: parsed.dkim ? String(parsed.dkim) : null,
+            dmarc: parsed.dmarc ? String(parsed.dmarc) : null,
+            dmarcP: parsed.dmarcP ? String(parsed.dmarcP) : null,
+            forgedOurs: !!parsed.forgedOurs
         };
     } catch (_err) {
-        return { score: null, required: null, report: null };
+        return emptySpamMeta();
     }
 }
 
@@ -167,6 +185,11 @@ function encodeSpamMeta(meta) {
     if (meta.status) out.status = String(meta.status);
     if (meta.flag) out.flag = String(meta.flag);
     if (meta.receivedSpf) out.receivedSpf = String(meta.receivedSpf);
+    if (meta.dkim) out.dkim = String(meta.dkim);
+    if (meta.dmarc) out.dmarc = String(meta.dmarc);
+    if (meta.dmarcP) out.dmarcP = String(meta.dmarcP);
+    if (meta.dmarcDis) out.dmarcDis = String(meta.dmarcDis);
+    if (meta.forgedOurs) out.forgedOurs = true;
     return Object.keys(out).length ? JSON.stringify(out) : null;
 }
 
@@ -620,7 +643,12 @@ function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, 
         folder,
         spamScore: displaySpam.score,
         spamRequired: displaySpam.required,
-        spamReport: displaySpam.report
+        spamReport: displaySpam.report,
+        spamReceivedSpf: displaySpam.receivedSpf,
+        spamDkim: displaySpam.dkim,
+        spamDmarc: displaySpam.dmarc,
+        spamDmarcPolicy: displaySpam.dmarcP,
+        spamForgedOurs: !!displaySpam.forgedOurs
     };
 }
 

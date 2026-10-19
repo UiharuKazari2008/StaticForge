@@ -1559,7 +1559,7 @@
       "type": "object",
       "label": "Inbound Spam Headers",
       "closed": true,
-      "description": "Header names the inbound path trusts when filing to Spam. Only the topmost instance above the relay's Received. File on X-Spam-Flag YES or X-Spam-Status Yes (score/required are display-only). SPF uses Received-SPF (OpenDMARC writes softfail as A-R spf=fail). A-R must match authserv-id mx.dream.737.jp.net; X-Spam-Report is stored, not used to decide."
+      "description": "Header names the inbound path trusts when filing to Spam. Only the topmost instance above the relay's Received. File on X-Spam-Flag YES, X-Spam-Status Yes, or trusted A-R dmarc=fail with p=quarantine / dis=QUARANTINE. DKIM fail, dmarc p=none, and Received-SPF are stored as auth info only."
     },
     {
       "path": [
@@ -1592,7 +1592,7 @@
       "type": "string",
       "label": "Authentication-Results Header",
       "editorType": "input",
-      "description": "Default Authentication-Results. Only the topmost instance whose authserv-id matches the configured relay id is trusted. Other authserv-ids are ignored."
+      "description": "Default Authentication-Results. Only the topmost instance whose authserv-id matches the configured relay id is trusted. dmarc=fail with p=quarantine or dis=QUARANTINE files to Spam. dkim=fail and dmarc p=none are display-only."
     },
     {
       "path": [
@@ -1603,7 +1603,7 @@
       "type": "string",
       "label": "Received-SPF Header",
       "editorType": "input",
-      "description": "Default Received-SPF. Topmost instance only. fail / softfail / permerror files to Spam. Use this for the exact SPF result — OpenDMARC reports softfail as Authentication-Results spf=fail."
+      "description": "Default Received-SPF. Topmost instance only. Stored and shown as auth info. fail / permerror / softfail / neutral / none never file to Spam (hard fails are rejected upstream)."
     },
     {
       "path": [

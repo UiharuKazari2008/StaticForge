@@ -27,7 +27,7 @@ function main() {
         subject: 'gw-spam',
         body: 'buy',
         spam: true,
-        spamMeta: { score: 8.1, required: 5.0, report: '* 8.1 BAYES_99' }
+        spamMeta: { score: 8.1, required: 5.0, report: '* 8.1 BAYES_99', forgedOurs: true, dkim: 'fail', dmarc: 'fail', dmarcP: 'none' }
     });
     assert.strictEqual(inbound.folder, 'spam');
     assert.strictEqual(inbound.route, 'inbound');
@@ -40,6 +40,9 @@ function main() {
     assert.strictEqual(listed[0].spamScore, 8.1);
     assert.strictEqual(listed[0].spamRequired, 5.0);
     assert.strictEqual(listed[0].spamReport, '* 8.1 BAYES_99');
+    assert.strictEqual(listed[0].spamForgedOurs, true);
+    assert.strictEqual(listed[0].spamDkim, 'fail');
+    assert.strictEqual(listed[0].spamDmarcPolicy, 'none');
     assert.strictEqual(mail.listMail('ivory', { folder: 'inbox' }).length, 0);
     assert.strictEqual(mail.listMail('rook', { folder: 'spam' }).length, 0);
     assert.strictEqual(mail.listMailboxes().find((box) => box.owner === 'ivory').spamUnread, 1);
@@ -89,6 +92,9 @@ function main() {
     assert.strictEqual(spamMod.DEFAULT_SPAM_CONFIG.reportHeader, 'X-Spam-Report');
     assert.strictEqual(spamMod.parseSpamStatus('Yes, score=8.1 required=5.0 tests=BAYES_99').yes, true);
     assert.strictEqual(spamMod.parseSpamStatus('No, score=-1.2 required=5.0').no, true);
+    assert.strictEqual(spamMod.parseSpamStatus('No, score=2.0 required=5.0 tests=LANTIS_FORGED_OURS').forgedOurs, true);
+    assert.strictEqual(spamMod.parseDmarcComment('dmarc=fail (p=quarantine dis=NONE)').quarantine, true);
+    assert.strictEqual(spamMod.parseDmarcComment('dmarc=fail (p=none dis=NONE)').quarantine, false);
     const addressSrc = fs.readFileSync(path.join(__dirname, '..', 'modules/mailGatewayAddresses.js'), 'utf8');
     assert.doesNotMatch(addressSrc, /icloud\.com['"]\s*:/);
     assert.match(addressSrc, /yukimi@dream\.737\.jp\.net/);

@@ -1431,29 +1431,61 @@ function testSpamHeaderTrust() {
         'Received-SPF: pass (forged)',
         'From: alice@example.com'
     ].join('\r\n');
-    assert.strictEqual(spam.isInboundSpam(spfFail).spam, true);
+    const spfFailMark = spam.isInboundSpam(spfFail);
+    assert.strictEqual(spfFailMark.spam, false, 'Received-SPF fail is display-only');
+    assert.strictEqual(spfFailMark.receivedSpf, 'fail');
     const forgedSpf = [
         'Received-SPF: pass (relay)',
         'Received-SPF: fail (sender)',
         'From: alice@example.com'
     ].join('\r\n');
     assert.strictEqual(spam.isInboundSpam(forgedSpf).spam, false);
+    assert.strictEqual(spam.isInboundSpam(forgedSpf).receivedSpf, 'pass');
+
+    const dkimFail = [
+        'Authentication-Results: mx.dream.737.jp.net; dkim=fail; dmarc=pass',
+        'From: alice@example.com'
+    ].join('\r\n');
+    const dkimFailMark = spam.isInboundSpam(dkimFail);
+    assert.strictEqual(dkimFailMark.spam, false, 'dkim=fail stays in Inbox');
+    assert.strictEqual(dkimFailMark.dkim, 'fail');
+
+    const dmarcNone = [
+        'Authentication-Results: mx.dream.737.jp.net; dkim=pass; dmarc=fail (p=none dis=NONE) header.from=ext.com',
+        'From: alice@example.com'
+    ].join('\r\n');
+    const dmarcNoneMark = spam.isInboundSpam(dmarcNone);
+    assert.strictEqual(dmarcNoneMark.spam, false, 'dmarc=fail p=none stays in Inbox');
+    assert.strictEqual(dmarcNoneMark.dmarc, 'fail');
+    assert.strictEqual(dmarcNoneMark.dmarcP, 'none');
+
+    const dmarcQuarantine = [
+        'Authentication-Results: mx.dream.737.jp.net; dkim=pass; dmarc=fail (p=quarantine dis=NONE) header.from=ext.com',
+        'From: alice@example.com'
+    ].join('\r\n');
+    assert.strictEqual(spam.isInboundSpam(dmarcQuarantine).spam, true);
+
+    const dmarcDis = [
+        'Authentication-Results: mx.dream.737.jp.net; dmarc=fail (p=none dis=QUARANTINE) header.from=ext.com',
+        'From: alice@example.com'
+    ].join('\r\n');
+    assert.strictEqual(spam.isInboundSpam(dmarcDis).spam, true, 'dis=QUARANTINE files to Spam');
 
     const arFail = [
         'Authentication-Results: mx.dream.737.jp.net; dkim=pass; dmarc=fail header.from=ext.com',
         'Authentication-Results: evil.example; dkim=pass; dmarc=pass',
         'From: alice@example.com'
     ].join('\r\n');
-    assert.strictEqual(spam.isInboundSpam(arFail).spam, true);
+    assert.strictEqual(spam.isInboundSpam(arFail).spam, false, 'dmarc=fail without p=quarantine stays in Inbox');
     const arForgedOnly = [
-        'Authentication-Results: evil.example; dmarc=fail',
+        'Authentication-Results: evil.example; dmarc=fail (p=quarantine dis=QUARANTINE)',
         'From: alice@example.com'
     ].join('\r\n');
     assert.strictEqual(spam.isInboundSpam(arForgedOnly).spam, false);
     assert.strictEqual(spam.isInboundSpam(arForgedOnly, { authservId: 'mx.dream.737.jp.net' }).spam, false);
-    assert.strictEqual(spam.isInboundSpam(arFail, { authservId: 'mx.dream.737.jp.net' }).spam, true);
-    assert.strictEqual(spam.isInboundSpam(arFail, { authservId: 'other.relay' }).spam, false);
-    assert.strictEqual(spam.isInboundSpam(arFail, { authservId: '' }).spam, false);
+    assert.strictEqual(spam.isInboundSpam(dmarcQuarantine, { authservId: 'mx.dream.737.jp.net' }).spam, true);
+    assert.strictEqual(spam.isInboundSpam(dmarcQuarantine, { authservId: 'other.relay' }).spam, false);
+    assert.strictEqual(spam.isInboundSpam(dmarcQuarantine, { authservId: '' }).spam, false);
 
     const arBelowReceived = [
         'Received: from sender by mx.dream.737.jp.net',
@@ -1490,6 +1522,14 @@ function testSpamHeaderTrust() {
         false,
         'OpenDMARC A-R spf=fail is not the exact SPF result'
     );
+
+    const forgedOurs = [
+        'X-Spam-Status: No, score=2.0 required=5.0 tests=BAYES_00,LANTIS_FORGED_OURS',
+        'From: alice@example.com'
+    ].join('\r\n');
+    const forgedMark = spam.isInboundSpam(forgedOurs);
+    assert.strictEqual(forgedMark.spam, false, 'LANTIS_FORGED_OURS is a warning, not a folder rule');
+    assert.strictEqual(forgedMark.forgedOurs, true);
 }
 
 function testInternalNeverSpam() {

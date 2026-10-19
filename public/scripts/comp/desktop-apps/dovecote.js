@@ -985,6 +985,19 @@ const doveBuildSanitizedBadge = function () {
     return badge;
 };
 
+const doveBuildForgedBadge = function () {
+    const badge = document.createElement('span');
+    badge.className = 'dovecote-forged-badge hidden';
+    badge.title = 'The relay tagged this as looking like a Dreamscape sender (LANTIS_FORGED_OURS).';
+    const icon = document.createElement('i');
+    icon.className = 'fas fa-triangle-exclamation';
+    const label = document.createElement('span');
+    label.textContent = 'Forged';
+    badge.appendChild(icon);
+    badge.appendChild(label);
+    return badge;
+};
+
 // Message header block shared by the inline preview and reader windows: From/To/Cc/Subject/Date
 // rows on the left, and a right-aligned tools column (Safe badge + Rendered/Raw) spanning
 // those rows, vertically centred. An empty Cc value is hidden in CSS. Nothing overlays the body.
@@ -996,7 +1009,7 @@ const doveBuildOeHeader = function (options) {
     const fields = document.createElement('div');
     fields.className = 'dovecote-oe-header-fields';
     const fieldEls = {};
-    ['from', 'to', 'cc', 'subject', 'date', 'spam'].forEach((field) => {
+    ['from', 'to', 'cc', 'subject', 'date', 'spam', 'auth'].forEach((field) => {
         const cap = field.charAt(0).toUpperCase() + field.slice(1);
         const row = document.createElement('div');
         row.className = 'dovecote-oe-header-row';
@@ -1026,10 +1039,13 @@ const doveBuildOeHeader = function (options) {
     const badge = doveBuildSanitizedBadge();
     if (opts.badgeId) badge.id = opts.badgeId;
     tools.appendChild(badge);
+    const forgedBadge = doveBuildForgedBadge();
+    if (opts.forgedBadgeId) forgedBadge.id = opts.forgedBadgeId;
+    tools.appendChild(forgedBadge);
     const viewToggle = doveBuildBodyViewToggle(opts.onBodyView);
     tools.appendChild(viewToggle);
     header.appendChild(tools);
-    return { header: header, fieldEls: fieldEls, safetyBar: badge, viewToggle: viewToggle };
+    return { header: header, fieldEls: fieldEls, safetyBar: badge, forgedBadge: forgedBadge, viewToggle: viewToggle };
 };
 
 const doveSetViewToggleState = function (root, view) {
@@ -1068,7 +1084,11 @@ const doveBuildPreviewPane = function () {
     mobileBackBar.appendChild(mobileActions);
     preview.appendChild(mobileBackBar);
 
-    const built = doveBuildOeHeader({ idPrefix: 'desktopDovecoteOe', badgeId: 'desktopDovecoteSafetyBar' });
+    const built = doveBuildOeHeader({
+        idPrefix: 'desktopDovecoteOe',
+        badgeId: 'desktopDovecoteSafetyBar',
+        forgedBadgeId: 'desktopDovecoteForgedBadge'
+    });
     const header = built.header;
     header.id = 'desktopDovecoteOeHeader';
     preview.appendChild(header);
@@ -1150,7 +1170,9 @@ const doveCacheEls = function () {
         oeSubject: document.getElementById('desktopDovecoteOeSubject'),
         oeDate: document.getElementById('desktopDovecoteOeDate'),
         oeSpam: document.getElementById('desktopDovecoteOeSpam'),
+        oeAuth: document.getElementById('desktopDovecoteOeAuth'),
         spamReport: document.getElementById('desktopDovecoteSpamReport'),
+        forgedBadge: document.getElementById('desktopDovecoteForgedBadge'),
         searchGroup: document.getElementById('desktopDovecoteSearchGroup'),
         searchInput: document.getElementById('desktopDovecoteSearchInput'),
         mainPane: document.getElementById('desktopDovecoteMainPane')
@@ -1453,6 +1475,8 @@ const doveRenderOeHeaderInto = function (els, mail) {
     doveFillRouteSlot(els.oeRoute, mail ? mail.route : 'internal');
     if (els.oeRoute) els.oeRoute.classList.toggle('hidden', !mail);
     if (els.oeSpam) els.oeSpam.textContent = doveFormatSpamScore(mail);
+    if (els.oeAuth) els.oeAuth.textContent = doveFormatSpamAuth(mail);
+    if (els.forgedBadge) els.forgedBadge.classList.toggle('hidden', !(mail && mail.spamForgedOurs));
     if (els.spamReport) {
         const report = mail && mail.spamReport ? String(mail.spamReport) : '';
         els.spamReport.textContent = report;
@@ -1467,6 +1491,19 @@ const doveFormatSpamScore = function (mail) {
         return mail.spamScore + ' / ' + mail.spamRequired;
     }
     return mail.spamScore != null ? String(mail.spamScore) : String(mail.spamRequired);
+};
+
+const doveFormatSpamAuth = function (mail) {
+    if (!mail) return '';
+    const parts = [];
+    if (mail.spamReceivedSpf) parts.push('SPF ' + mail.spamReceivedSpf);
+    if (mail.spamDkim) parts.push('DKIM ' + mail.spamDkim);
+    if (mail.spamDmarc) {
+        let dmarc = 'DMARC ' + mail.spamDmarc;
+        if (mail.spamDmarcPolicy) dmarc += ' (p=' + mail.spamDmarcPolicy + ')';
+        parts.push(dmarc);
+    }
+    return parts.join(' · ');
 };
 
 const doveFormatBytes = function (bytes) {
@@ -2391,7 +2428,9 @@ const doveBuildReaderWindow = function (key) {
         oeSubject: fieldEls.subject,
         oeDate: fieldEls.date,
         oeSpam: fieldEls.spam,
+        oeAuth: fieldEls.auth,
         spamReport: spamReport,
+        forgedBadge: built.forgedBadge,
         safetyBar: safetyBar,
         imagesBar: imagesBar,
         attachmentsBar: attachmentsBar,

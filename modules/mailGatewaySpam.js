@@ -8,8 +8,10 @@
  * is trusted only when its authserv-id matches the configured relay id
  * (default mx.dream.737.jp.net). The relay strips inbound X-Spam-* and
  * forged A-R with that id before stamping; sender copies further down are
- * still ignored. X-Spam-Flag: NO never rescues a trusted Yes / fail mark.
- * Header names stay configurable.
+ * still ignored. X-Spam-Flag: NO never rescues a trusted Yes. Folder
+ * decision is Flag YES, Status Yes, or trusted A-R dmarc=fail with
+ * p=quarantine / dis=QUARANTINE. DKIM fail, dmarc p=none, and Received-SPF
+ * are display-only. Header names stay configurable.
  */
 
 'use strict';
@@ -120,27 +122,52 @@ function parseSpamStatus(value) {
     const match = raw.match(
         /^(yes|no)\b(?:\s*,\s*)?(?:score\s*=\s*([+-]?\d+(?:\.\d+)?))?(?:\s+required\s*=\s*([+-]?\d+(?:\.\d+)?))?/i
     );
+    const testsMatch = raw.match(/\btests\s*=\s*(\S+)/i);
+    const tests = testsMatch
+        ? testsMatch[1].split(',').map((token) => token.trim()).filter(Boolean)
+        : [];
     if (!match) {
-        return { yes: false, no: false, score: null, required: null, raw };
+        return { yes: false, no: false, score: null, required: null, tests, forgedOurs: hasForgedOurs(tests, raw), raw };
     }
     return {
         yes: /^yes$/i.test(match[1]),
         no: /^no$/i.test(match[1]),
         score: match[2] != null ? Number(match[2]) : null,
         required: match[3] != null ? Number(match[3]) : null,
+        tests,
+        forgedOurs: hasForgedOurs(tests, raw),
         raw
     };
 }
 
-function isFailResult(value) {
-    const token = String(value || '').trim().split(/[\s;]/)[0].toLowerCase();
-    return FAIL_RESULTS.has(token);
+function hasForgedOurs(tests, raw) {
+    if ((tests || []).some((token) => /^LANTIS_FORGED_OURS$/i.test(token))) return true;
+    return /\bLANTIS_FORGED_OURS\b/i.test(String(raw || ''));
 }
 
-// DKIM / DMARC only. OpenDMARC writes softfail as A-R spf=fail, so SPF
-// decisions use Received-SPF (pass / fail / softfail / permerror).
-function authMethodFailed(value) {
-    return /\b(?:dkim|dmarc)\s*=\s*(?:fail|softfail|permerror)\b/i.test(String(value || ''));
+function spfResultOf(value) {
+    return String(value || '').trim().split(/[\s;]/)[0].toLowerCase();
+}
+
+function authMethodValue(value, method) {
+    const match = String(value || '').match(new RegExp(`\\b${method}\\s*=\\s*(\\w+)`, 'i'));
+    return match ? match[1].toLowerCase() : '';
+}
+
+function parseDmarcComment(value) {
+    const text = String(value || '');
+    const dmarc = text.match(/\bdmarc\s*=\s*(\w+)([^;]*)/i);
+    if (!dmarc) return { result: '', p: '', dis: '', quarantine: false };
+    const result = dmarc[1].toLowerCase();
+    const rest = dmarc[2] || '';
+    const p = ((rest.match(/\bp\s*=\s*(\w+)/i) || [])[1] || '').toLowerCase();
+    const dis = ((rest.match(/\bdis\s*=\s*(\w+)/i) || [])[1] || '').toLowerCase();
+    return {
+        result,
+        p,
+        dis,
+        quarantine: result === 'fail' && (p === 'quarantine' || dis === 'quarantine')
+    };
 }
 
 function clipReport(value) {
@@ -151,9 +178,8 @@ function clipReport(value) {
 
 /**
  * Classify a raw RFC5322 header block. Does not look at the body.
- * Returns { spam, reasons, score, required, report, status, flag, receivedSpf }.
- * score / required / report are for display; only Flag YES, Status Yes,
- * Received-SPF fail, or trusted A-R dkim/dmarc fail file to Spam.
+ * Folder decision: Flag YES, Status Yes, or trusted A-R dmarc=fail
+ * with p=quarantine / dis=QUARANTINE. Everything else is display-only.
  */
 function isInboundSpam(headerBlock, config) {
     const cfg = resolveSpamConfig(config);
@@ -166,17 +192,20 @@ function isInboundSpam(headerBlock, config) {
     const status = parseSpamStatus(topmostValue(collected, cfg.statusHeader));
     if (status.yes) reasons.push('spam-status');
 
-    const receivedSpf = topmostValue(collected, cfg.receivedSpfHeader);
-    if (isFailResult(receivedSpf)) reasons.push('received-spf');
+    const receivedSpfRaw = topmostValue(collected, cfg.receivedSpfHeader);
+    const receivedSpf = spfResultOf(receivedSpfRaw);
 
     const authResults = trustedAuthResults(
         collected,
         cfg.authenticationResultsHeader,
         cfg.authservId
     );
-    if (authResults.some(authMethodFailed)) reasons.push('authentication-results');
+    const trustedAr = authResults[0] || '';
+    const dmarc = parseDmarcComment(trustedAr);
+    if (dmarc.quarantine) reasons.push('dmarc-quarantine');
 
     const report = clipReport(topmostValue(collected, cfg.reportHeader));
+    const forgedOurs = status.forgedOurs || hasForgedOurs([], report);
 
     return {
         spam: reasons.length > 0,
@@ -185,8 +214,14 @@ function isInboundSpam(headerBlock, config) {
         status: status.raw,
         score: status.score,
         required: status.required,
+        tests: status.tests,
+        forgedOurs,
         report,
-        receivedSpf
+        receivedSpf,
+        dkim: authMethodValue(trustedAr, 'dkim'),
+        dmarc: dmarc.result,
+        dmarcP: dmarc.p,
+        dmarcDis: dmarc.dis
     };
 }
 
@@ -199,6 +234,11 @@ function displayMeta(mark) {
     if (mark.status) meta.status = String(mark.status);
     if (mark.flag) meta.flag = String(mark.flag);
     if (mark.receivedSpf) meta.receivedSpf = String(mark.receivedSpf);
+    if (mark.dkim) meta.dkim = String(mark.dkim);
+    if (mark.dmarc) meta.dmarc = String(mark.dmarc);
+    if (mark.dmarcP) meta.dmarcP = String(mark.dmarcP);
+    if (mark.dmarcDis) meta.dmarcDis = String(mark.dmarcDis);
+    if (mark.forgedOurs) meta.forgedOurs = true;
     return Object.keys(meta).length ? meta : null;
 }
 
@@ -210,6 +250,7 @@ module.exports = {
     resolveSpamConfig,
     collectHeaderValues,
     parseSpamStatus,
+    parseDmarcComment,
     displayMeta,
     isInboundSpam
 };
