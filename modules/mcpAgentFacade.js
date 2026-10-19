@@ -2833,7 +2833,10 @@ const TOOL_DEFS = [
                 after_image: { type: 'string', description: 'After image filename (if already generated via generate_image). Not auto-generated.' },
                 qa: { type: 'object', description: 'Visual QA notes' },
                 chair: { type: 'string', description: 'Chair type (gaming, heavy_duty, etc.)' },
-                landscape: { type: 'boolean' },
+                landscape: {
+                    type: 'boolean',
+                    description: 'True when the meal image is wider than it is tall. Omit to derive from before_image/after_image pixel size (after, then before). Pass only to override.'
+                },
                 named_for: { type: 'array', items: { type: 'string' }, description: 'What this consume is named for' },
                 commits: { type: 'array', items: { type: 'string' } },
                 loop: { type: 'string', description: 'Loop name (7am-breakfast, etc.)' },
@@ -2865,7 +2868,7 @@ const TOOL_DEFS = [
     {
         name: 'update_meal_images',
         core: true,
-        description: 'Re-point before/after image ids on an existing pantry meal (cake_log entry). Use when a consume recorded the wrong keeper pair. Requires meal_id from inspect_pantry and at least one of before_image/after_image. Validates each new id with the same gallery lookup generate_image / consume_cake image ids resolve against. Rejects unknown meal_id or unknown image ids. Appends image_history { old_before, old_after, new_before, new_after, at, client }. Never changes kg, slice amounts, timestamps, or totals. Never deletes images, files, gallery entries, or scraps.',
+        description: 'Re-point before/after image ids on an existing pantry meal (cake_log entry). Use when a consume recorded the wrong keeper pair. Requires meal_id from inspect_pantry and at least one of before_image/after_image. Validates each new id with the same gallery lookup generate_image / consume_cake image ids resolve against. Rejects unknown meal_id or unknown image ids. Appends image_history { old_before, old_after, new_before, new_after, at, client }. Updates landscape from the new image dimensions (or an explicit landscape bool). Never changes kg, slice amounts, timestamps, or totals. Never deletes images, files, gallery entries, or scraps.',
         scope: 'sfapp_cake_pantry',
         inputSchema: {
             type: 'object',
@@ -2875,7 +2878,8 @@ const TOOL_DEFS = [
                 accountId: { type: 'string', enum: ['menma', 'hoshino', 'ivory', 'pyra', 'chiyo', 'guren', 'rook', 'sala'], description: 'Account that owns the meal' },
                 meal_id: { type: 'string', description: 'Stable meal_id from inspect_pantry.past_consumes' },
                 before_image: { type: 'string', description: 'Replacement before image filename (must already exist via generate_image). Omit to leave the current before id.' },
-                after_image: { type: 'string', description: 'Replacement after image filename (must already exist via generate_image). Omit to leave the current after id.' }
+                after_image: { type: 'string', description: 'Replacement after image filename (must already exist via generate_image). Omit to leave the current after id.' },
+                landscape: { type: 'boolean', description: 'Correct the meal landscape flag. Omit to derive from the new (or current) meal image dimensions.' }
             }
         }
     },

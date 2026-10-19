@@ -675,12 +675,114 @@ async function getAccountImportStatus(accountId) {
 /**
  * Ensure migration runs before write operations.
  */
+let landscapeBackfillPromise = null;
+
+async function backfillLandscapeForMealIds(db, mealIds, options) {
+    const ids = (Array.isArray(mealIds) && mealIds.length ? mealIds : LANDSCAPE_BACKFILL_MEAL_IDS)
+        .map((id) => String(id));
+    const results = [];
+    for (const mealId of ids) {
+        if (!db || typeof db.get !== 'function') {
+            results.push({ meal_id: mealId, ok: false, error: 'SQLite unavailable' });
+            continue;
+        }
+        let row = null;
+        try {
+            row = /^\d+$/.test(mealId)
+                ? await db.get('SELECT * FROM cake_pantry_log WHERE id = ?', [Number(mealId)])
+                : null;
+            if (!row && typeof findCakeLogRowByMealId === 'function') {
+                /* account unknown: scan is per-account; skip */
+            }
+        } catch (e) {
+            results.push({ meal_id: mealId, ok: false, error: e.message || 'lookup failed' });
+            continue;
+        }
+        if (!row) {
+            results.push({ meal_id: mealId, ok: false, error: 'not found' });
+            continue;
+        }
+        const meal = composeCakeLogEntry(row);
+        const landscape = inferLandscapeFromImages(meal && meal.before, meal && meal.after, options);
+        if (landscape == null) {
+            results.push({
+                meal_id: mealId,
+                ok: false,
+                error: 'no image dimensions',
+                accountId: row.account_id || null
+            });
+            continue;
+        }
+        if (meal && meal.landscape === landscape) {
+            results.push({
+                meal_id: mealId,
+                ok: true,
+                unchanged: true,
+                landscape,
+                accountId: row.account_id || null
+            });
+            continue;
+        }
+        const saved = await updateCakeLogImagesToDb(db, row.account_id, row, {
+            before: meal && meal.before,
+            after: meal && meal.after,
+            landscape
+        });
+        results.push({
+            meal_id: mealId,
+            ok: !!saved,
+            landscape,
+            accountId: row.account_id || null,
+            error: saved ? undefined : 'Failed to update meal images'
+        });
+    }
+    return results;
+}
+
+async function runLandscapeBackfillOnce(options) {
+    const opts = options || {};
+    const db = opts.db || (_globalResources ? getCakePantryDb(_globalResources) : null);
+    if (!db) return { skipped: true, reason: 'no db' };
+    try {
+        const done = await db.get(
+            'SELECT value FROM cake_pantry_meta WHERE account_id = ? AND key = ?',
+            ['_system', LANDSCAPE_BACKFILL_KEY]
+        );
+        if (done && !opts.force) return { skipped: true, reason: 'already' };
+        const results = await backfillLandscapeForMealIds(db, opts.mealIds || LANDSCAPE_BACKFILL_MEAL_IDS, opts);
+        if (typeof db.run === 'function') {
+            await db.run(
+                'INSERT OR REPLACE INTO cake_pantry_meta (account_id, key, value, updated_at) VALUES (?, ?, ?, ?)',
+                ['_system', LANDSCAPE_BACKFILL_KEY, JSON.stringify({ at: new Date().toISOString(), results }), new Date().toISOString()]
+            );
+        }
+        return { skipped: false, results };
+    } catch (e) {
+        return { skipped: true, error: e.message || String(e) };
+    }
+}
+
+function ensureLandscapeBackfill(options) {
+    if (landscapeBackfillPromise) return landscapeBackfillPromise;
+    landscapeBackfillPromise = runLandscapeBackfillOnce(options).catch((err) => {
+        console.error('[cakePantry] landscape backfill 146-148 failed:', err);
+        landscapeBackfillPromise = null;
+        return { skipped: true, error: err.message };
+    });
+    return landscapeBackfillPromise;
+}
+
+function resetLandscapeBackfillForTests() {
+    landscapeBackfillPromise = null;
+}
+
 async function ensurePantryMigration(accountId) {
     if (!_globalResources) return false;
     const db = getCakePantryDb(_globalResources);
     if (!db) return false;
     try {
         await ensureAccountMigration(db, accountId);
+        ensureLandscapeBackfill();
         return true;
     } catch (e) {
         console.error(`[cakePantry] Migration error for ${accountId}:`, e);
@@ -1243,12 +1345,14 @@ async function inspectPantry(accountId, params = {}, options = {}) {
  */
 const MEAL_FROZEN_KEYS = [
     'at', 'loop', 'date_local', 'slices', 'stacks', 'cake_type', 'cake_rating',
-    'kg_before', 'kg_after', 'gained_kg', 'chair', 'landscape', 'named_for',
+    'kg_before', 'kg_after', 'gained_kg', 'chair', 'named_for',
     'qa', 'commits', 'deliveries_consumed', 'feeds_consumed', 'slices_requested',
     'max_slices_per_sitting', 'sitting_ceiling', 'soft_cap_override',
     'skipped_do_not_eat', 'pending_slices_after',
     'landed', 'left_open'
 ];
+const LANDSCAPE_BACKFILL_MEAL_IDS = Object.freeze(['146', '147', '148']);
+const LANDSCAPE_BACKFILL_KEY = 'landscape_backfill_146_148';
 
 /**
  * Deterministic meal_id when the record has none (file-era / pre-#277).
@@ -1329,6 +1433,77 @@ function defaultResolvePantryImage(imageId) {
     return null;
 }
 
+function landscapeFromDimensions(width, height) {
+    const w = Number(width);
+    const h = Number(height);
+    if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
+    return w > h;
+}
+
+function readPngSize(filePath) {
+    try {
+        const fd = fs.openSync(filePath, 'r');
+        try {
+            const buf = Buffer.alloc(24);
+            if (fs.readSync(fd, buf, 0, 24, 0) < 24) return null;
+            if (buf[0] !== 0x89 || buf.toString('ascii', 1, 4) !== 'PNG') return null;
+            return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+        } finally {
+            fs.closeSync(fd);
+        }
+    } catch (_) {
+        return null;
+    }
+}
+
+function resolveImageFilePath(imageId, options) {
+    if (options && typeof options.resolveImagePath === 'function') {
+        const mapped = options.resolveImagePath(imageId);
+        return mapped ? String(mapped) : null;
+    }
+    const safe = sanitizePantryImageName(imageId);
+    if (!safe) return null;
+    const gr = getGlobalResources();
+    if (!gr || typeof gr.getPath !== 'function') return null;
+    try {
+        const imagesDir = path.resolve(gr.getPath('images'));
+        const filePath = path.resolve(imagesDir, safe);
+        if (!filePath.startsWith(imagesDir + path.sep) && filePath !== imagesDir) return null;
+        return fs.existsSync(filePath) ? filePath : null;
+    } catch (_) {
+        return null;
+    }
+}
+
+function imageSize(imageId, options) {
+    if (!imageId) return null;
+    if (options && typeof options.resolveImageSize === 'function') {
+        const size = options.resolveImageSize(imageId);
+        if (size && Number(size.width) > 0 && Number(size.height) > 0) {
+            return { width: Number(size.width), height: Number(size.height) };
+        }
+    }
+    const filePath = resolveImageFilePath(imageId, options);
+    return filePath ? readPngSize(filePath) : null;
+}
+
+function inferLandscapeFromImages(beforeId, afterId, options) {
+    const after = imageSize(afterId, options);
+    const fromAfter = after ? landscapeFromDimensions(after.width, after.height) : null;
+    if (fromAfter != null) return fromAfter;
+    const before = imageSize(beforeId, options);
+    return before ? landscapeFromDimensions(before.width, before.height) : null;
+}
+
+function resolveMealLandscape(params, beforeId, afterId, options, fallback) {
+    if (params && Object.prototype.hasOwnProperty.call(params, 'landscape') && params.landscape != null) {
+        return params.landscape === true;
+    }
+    const inferred = inferLandscapeFromImages(beforeId, afterId, options);
+    if (inferred != null) return inferred;
+    return fallback === true;
+}
+
 function resolvePantryImageId(imageId, resolveImage) {
     const raw = imageId == null ? '' : String(imageId).trim();
     if (!raw) return { ok: false, error: 'Unknown image id' };
@@ -1363,6 +1538,9 @@ function applyMealImageUpdate(meal, patch = {}) {
     if ('after_img' in meal) next.after_img = nextAfter;
     if (nextBefore && nextAfter && meal.visual_gen_status !== 'provided') {
         next.visual_gen_status = 'provided';
+    }
+    if (patch.landscape === true || patch.landscape === false) {
+        next.landscape = patch.landscape;
     }
     const history = Array.isArray(meal.image_history) ? meal.image_history.slice() : [];
     history.push({
@@ -1504,7 +1682,13 @@ async function updateMealImages(accountId, params = {}, options = {}) {
     if (hasBefore) patch.before = nextBefore;
     if (hasAfter) patch.after = nextAfter;
 
-    const applyFound = (meal) => applyMealImageUpdate(meal, patch);
+    const applyFound = (meal) => {
+        const current = currentMealImages(meal);
+        const beforeId = patch.before !== undefined ? patch.before : current.before;
+        const afterId = patch.after !== undefined ? patch.after : current.after;
+        patch.landscape = resolveMealLandscape(params, beforeId, afterId, options, meal.landscape);
+        return applyMealImageUpdate(meal, patch);
+    };
 
     if (status.imported === true) {
         if (!status.db) {
@@ -1524,7 +1708,8 @@ async function updateMealImages(accountId, params = {}, options = {}) {
             after: applied.meal.after,
             image_history: applied.meal.image_history,
             meal_id: applied.meal.meal_id,
-            visual_gen_status: applied.meal.visual_gen_status
+            visual_gen_status: applied.meal.visual_gen_status,
+            landscape: applied.meal.landscape
         });
         if (!saved) {
             return { success: false, error: 'Failed to update meal images', accountId, meal_id: mealId };
@@ -1981,7 +2166,7 @@ async function consumeCake(accountId, params = {}, options = {}) {
         kg_after: kgAfter,
         gained_kg: gainedKg,
         chair: params.chair || (state.milestones && state.milestones.chair) || null,
-        landscape: params.landscape || false,
+        landscape: resolveMealLandscape(params, beforeImage, afterImage, options, false),
         named_for: namedFor.slice(0, 24),
         before: beforeImage,
         after: afterImage,
@@ -2617,6 +2802,8 @@ module.exports = {
     consumeCake,
     voidCakeDelivery,
     updateMealImages,
+    backfillLandscapeForMealIds,
+    runLandscapeBackfillOnce,
     deriveMealId,
     attachMealId,
     listAccounts,
@@ -2640,6 +2827,14 @@ module.exports = {
         ensureCurrentKgSeeded,
         explicitApprovalNote,
         MEAL_FROZEN_KEYS,
+        LANDSCAPE_BACKFILL_MEAL_IDS,
+        landscapeFromDimensions,
+        readPngSize,
+        inferLandscapeFromImages,
+        resolveMealLandscape,
+        backfillLandscapeForMealIds,
+        runLandscapeBackfillOnce,
+        resetLandscapeBackfillForTests,
         deriveMealId,
         attachMealId,
         frozenMealLedger,
