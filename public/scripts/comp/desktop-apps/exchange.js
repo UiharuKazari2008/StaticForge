@@ -164,6 +164,32 @@ function exchangeSetStatus(text, degraded) {
     desktopExchangeEls.status.classList.toggle('exchange-degraded', !!degraded);
 }
 
+function exchangeRelayFriendly(result) {
+    if (!result || result.ok || result.skipped) return null;
+    const code = result.code;
+    if (code === 'UNKNOWN_MAILBOX') return 'The LANTIS relay does not know that mailbox.';
+    if (code === 'UNKNOWN_SERVICE') return 'The LANTIS relay does not know that service.';
+    if (code === 'BAD_BODY') return 'Toggle values must be true or false.';
+    if (code === 'ACTOR_REQUIRED') return 'An admin name is required to change relay toggles.';
+    if (code === 'RELAY_ADMIN_REQUIRED' || code === 'RELAY_ADMIN_TOKEN_MISSING') {
+        return 'The relay rejected this change because the admin token was missing or wrong.';
+    }
+    if (result.friendly) return result.friendly;
+    return result.error || 'The relay rejected that change.';
+}
+
+function exchangeFormatAge(iso) {
+    const ms = Date.parse(iso);
+    if (!Number.isFinite(ms)) return 'unknown age';
+    const sec = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+    if (sec < 60) return sec + 's ago';
+    const min = Math.floor(sec / 60);
+    if (min < 60) return min + 'm ago';
+    const hr = Math.floor(min / 60);
+    if (hr < 48) return hr + 'h ago';
+    return Math.floor(hr / 24) + 'd ago';
+}
+
 async function exchangeSend(type, payload, confirm) {
     const body = Object.assign({}, payload || {});
     if (confirm) body.confirm = true;
@@ -241,17 +267,52 @@ async function exchangeRenderStatus() {
     const filters = status && status.filters;
     grid.appendChild(exchangeStat('Filters', filters ? Object.entries(filters).map(([k, v]) => `${k}:${v}`).join(' ') : '—'));
     const dkim = relay.dkim || (status && status.oci);
+    const ociSender = (dkim && dkim.sender) || 'kazari.ops@dream.737.jp.net';
+    grid.appendChild(exchangeStat('OCI sender', ociSender));
     grid.appendChild(exchangeStat('OCI DKIM', dkim && dkim.dkim ? dkim.dkim : '—'));
     const senders = relay.senders && relay.senders.data;
-    const yukimiFrom = senders && senders.submission && senders.submission[0] && senders.submission[0].from
-        ? senders.submission[0].from.find((addr) => addr.indexOf('kazari.ops@') === 0)
-        : 'kazari.ops@dream.737.jp.net';
+    const snapshotAt = senders && senders.refreshed_at;
+    grid.appendChild(exchangeStat(
+        'OCI snapshot',
+        snapshotAt ? exchangeFormatAge(snapshotAt) + ' (' + snapshotAt + ')' : '—'
+    ));
+    const yukimiFrom = (status && status.oci && status.oci.sender)
+        || (senders && senders.oci && senders.oci.approved && senders.oci.approved[0] && senders.oci.approved[0].email)
+        || 'kazari.ops@dream.737.jp.net';
     grid.appendChild(exchangeStat('Yukimi From', yukimiFrom));
     const wg = status && status.wireguard;
     grid.appendChild(exchangeStat('WireGuard', wg && wg.up ? 'up' : (relay.status && relay.status.degraded ? 'unknown' : 'down')));
     const bl = relay.blocklists && relay.blocklists.data;
     grid.appendChild(exchangeStat('SA rules', bl && bl.sa_rules_updated ? bl.sa_rules_updated : '—'));
     desktopExchangeEls.main.appendChild(grid);
+    desktopExchangeEls.main.appendChild(exchangeHeading('Blocklists'));
+    const blNote = document.createElement('p');
+    blNote.className = 'exchange-note';
+    blNote.textContent = 'Lookup answered correctly is whether the test-point replied. Our IP listed is whether this host is on that list.';
+    desktopExchangeEls.main.appendChild(blNote);
+    const listMap = (bl && bl.lists) || {};
+    desktopExchangeEls.main.appendChild(exchangeTable(
+        ['List', 'Lookup answered correctly', 'Our IP listed', 'Checked'],
+        Object.keys(listMap).map((name) => {
+            const row = listMap[name] || {};
+            return [
+                name,
+                row.ok ? 'yes' : 'no (lookup failed)',
+                row.listed ? 'yes — listed' : 'no — not listed',
+                row.checked_at || '—'
+            ];
+        })
+    ));
+    desktopExchangeEls.main.appendChild(exchangeHeading('Submission From addresses'));
+    const submissions = (senders && senders.submission) || [];
+    if (!submissions.length) {
+        const empty = document.createElement('p');
+        empty.textContent = 'No submission logins reported.';
+        desktopExchangeEls.main.appendChild(empty);
+    }
+    submissions.forEach((row) => {
+        desktopExchangeEls.main.appendChild(exchangeFromList(row.login, row.from));
+    });
     const rejects = (relay.rejects && relay.rejects.data && relay.rejects.data.rejects) || [];
     desktopExchangeEls.main.appendChild(exchangeHeading('Recent rejects'));
     desktopExchangeEls.main.appendChild(exchangeTable(
@@ -261,6 +322,36 @@ async function exchangeRenderStatus() {
     if (relay.status && relay.status.degraded) {
         exchangeSetStatus('Relay unreachable — showing local state', true);
     }
+}
+
+function exchangeFromList(login, from) {
+    const addrs = Array.isArray(from) ? from : [];
+    const card = document.createElement('div');
+    card.className = 'exchange-card';
+    const h = document.createElement('h3');
+    h.textContent = 'Login ' + (login || '—');
+    card.appendChild(h);
+    const compact = addrs.length > 6 || addrs.some((addr) => String(addr).indexOf('*') !== -1);
+    const list = document.createElement('ul');
+    list.className = 'exchange-from-addresses';
+    addrs.forEach((addr) => {
+        const li = document.createElement('li');
+        li.textContent = addr;
+        list.appendChild(li);
+    });
+    if (!compact) {
+        card.appendChild(list);
+        return card;
+    }
+    const details = document.createElement('details');
+    details.className = 'exchange-from-list';
+    const summary = document.createElement('summary');
+    const wild = addrs.filter((addr) => String(addr).indexOf('*') !== -1)[0];
+    summary.textContent = (wild || addrs[0] || 'From') + ' · ' + addrs.length + ' addresses';
+    details.appendChild(summary);
+    details.appendChild(list);
+    card.appendChild(details);
+    return card;
 }
 
 function exchangeTable(headers, rows) {
@@ -497,14 +588,16 @@ async function exchangeRenderToggles() {
     const save = async (patch) => {
         const ok = await exchangeConfirm('Apply toggle change? This also PUTs the LANTIS relay.');
         if (!ok) return;
-        await exchangeSend('exchange_set_toggles', Object.assign({ confirm: true }, patch), true);
-        exchangeLoadSection();
+        const result = await exchangeSend('exchange_set_toggles', Object.assign({ confirm: true }, patch), true);
+        await exchangeLoadSection();
+        const friendly = exchangeRelayFriendly(result && result.relay);
+        if (friendly) exchangeSetStatus(friendly, true);
     };
     row.appendChild(exchangeToggleButton('Global inbound', toggles.inbound !== false, () => save({ inbound: toggles.inbound === false })));
     row.appendChild(exchangeToggleButton('Global outbound', toggles.outbound !== false, () => save({ outbound: toggles.outbound === false })));
     const yozora = !(toggles.services && toggles.services.yozora && toggles.services.yozora.outbound === false);
     row.appendChild(exchangeToggleButton('Yozora outbound', yozora, () => save({
-        services: Object.assign({}, toggles.services, { yozora: { outbound: !yozora } })
+        services: { yozora: { outbound: !yozora } }
     })));
     desktopExchangeEls.main.appendChild(row);
     const boxes = (await exchangeSend('exchange_list_mailboxes', {})).mailboxes || [];
@@ -515,14 +608,14 @@ async function exchangeRenderToggles() {
             const inOn = mb.inbound !== false;
             const outOn = mb.outbound !== false;
             const inBtn = exchangeToggleButton('In', inOn, () => {
-                const next = Object.assign({}, toggles.mailboxes);
-                next[box.owner] = { inbound: !inOn, outbound: outOn };
-                save({ mailboxes: next });
+                const one = {};
+                one[box.owner] = { inbound: !inOn };
+                save({ mailboxes: one });
             });
             const outBtn = exchangeToggleButton('Out', outOn, () => {
-                const next = Object.assign({}, toggles.mailboxes);
-                next[box.owner] = { inbound: inOn, outbound: !outOn };
-                save({ mailboxes: next });
+                const one = {};
+                one[box.owner] = { outbound: !outOn };
+                save({ mailboxes: one });
             });
             return [box.address, inBtn, outBtn];
         })

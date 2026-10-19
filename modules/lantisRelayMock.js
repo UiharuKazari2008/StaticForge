@@ -1,6 +1,6 @@
 /**
  * In-process mock of the LANTIS relay API for tests.
- * Dual tokens, GET /v1/senders, per-mailbox/service toggles, mutation audit.
+ * Dual tokens, GET /v1/senders, PATCH-like PUT /v1/toggles, mutation audit.
  */
 
 'use strict';
@@ -9,6 +9,9 @@ const http = require('http');
 
 const READ_TOKEN = 'relay-read-test-token';
 const ADMIN_TOKEN = 'relay-admin-test-token';
+
+const KNOWN_MAILBOXES = Object.freeze(['yukimi', 'sala', 'tsubame']);
+const KNOWN_SERVICES = Object.freeze(['yozora']);
 
 function json(res, status, body) {
     const payload = JSON.stringify(body);
@@ -45,6 +48,108 @@ function bearer(req) {
     return match ? match[1] : '';
 }
 
+function cloneToggles(toggles) {
+    const mailboxes = {};
+    Object.entries((toggles && toggles.mailboxes) || {}).forEach(([key, value]) => {
+        mailboxes[key] = Object.assign({}, value);
+    });
+    const services = {};
+    Object.entries((toggles && toggles.services) || {}).forEach(([key, value]) => {
+        services[key] = Object.assign({}, value);
+    });
+    return {
+        inbound: !!(toggles && toggles.inbound),
+        outbound: !!(toggles && toggles.outbound),
+        mailboxes,
+        services
+    };
+}
+
+function isBool(value) {
+    return value === true || value === false;
+}
+
+function mergeFlags(prev, patch) {
+    if (typeof patch !== 'object' || Array.isArray(patch)) {
+        return { error: { error: 'Toggle entry must be an object or null', code: 'BAD_BODY' } };
+    }
+    const next = Object.assign({}, prev || {});
+    if (Object.prototype.hasOwnProperty.call(patch, 'inbound')) {
+        if (!isBool(patch.inbound)) {
+            return { error: { error: 'inbound must be a boolean', code: 'BAD_BODY' } };
+        }
+        next.inbound = patch.inbound;
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, 'outbound')) {
+        if (!isBool(patch.outbound)) {
+            return { error: { error: 'outbound must be a boolean', code: 'BAD_BODY' } };
+        }
+        next.outbound = patch.outbound;
+    }
+    return { value: next };
+}
+
+function applyTogglePatch(current, body) {
+    const actor = body && body.actor != null ? String(body.actor).trim() : '';
+    if (!actor) {
+        return { error: { error: 'actor is required', code: 'ACTOR_REQUIRED' } };
+    }
+    const next = cloneToggles(current);
+    if (Object.prototype.hasOwnProperty.call(body, 'inbound')) {
+        if (!isBool(body.inbound)) {
+            return { error: { error: 'inbound must be a boolean', code: 'BAD_BODY' } };
+        }
+        next.inbound = body.inbound;
+    }
+    if (Object.prototype.hasOwnProperty.call(body, 'outbound')) {
+        if (!isBool(body.outbound)) {
+            return { error: { error: 'outbound must be a boolean', code: 'BAD_BODY' } };
+        }
+        next.outbound = body.outbound;
+    }
+    if (Object.prototype.hasOwnProperty.call(body, 'mailboxes')) {
+        if (body.mailboxes == null || typeof body.mailboxes !== 'object' || Array.isArray(body.mailboxes)) {
+            return { error: { error: 'mailboxes must be an object', code: 'BAD_BODY' } };
+        }
+        const keys = Object.keys(body.mailboxes);
+        for (let i = 0; i < keys.length; i++) {
+            const key = keys[i];
+            if (KNOWN_MAILBOXES.indexOf(key) === -1) {
+                return { error: { error: `Unknown mailbox ${key}`, code: 'UNKNOWN_MAILBOX' } };
+            }
+            const value = body.mailboxes[key];
+            if (value === null) {
+                delete next.mailboxes[key];
+                continue;
+            }
+            const merged = mergeFlags(next.mailboxes[key], value);
+            if (merged.error) return merged;
+            next.mailboxes[key] = merged.value;
+        }
+    }
+    if (Object.prototype.hasOwnProperty.call(body, 'services')) {
+        if (body.services == null || typeof body.services !== 'object' || Array.isArray(body.services)) {
+            return { error: { error: 'services must be an object', code: 'BAD_BODY' } };
+        }
+        const keys = Object.keys(body.services);
+        for (let i = 0; i < keys.length; i++) {
+            const key = keys[i];
+            if (KNOWN_SERVICES.indexOf(key) === -1) {
+                return { error: { error: `Unknown service ${key}`, code: 'UNKNOWN_SERVICE' } };
+            }
+            const value = body.services[key];
+            if (value === null) {
+                delete next.services[key];
+                continue;
+            }
+            const merged = mergeFlags(next.services[key], value);
+            if (merged.error) return merged;
+            next.services[key] = merged.value;
+        }
+    }
+    return { actor, value: next };
+}
+
 function defaultState() {
     return {
         postfix: { up: true, pid: 4242 },
@@ -55,7 +160,7 @@ function defaultState() {
             unbound: 'up'
         },
         wireguard: { up: true, interface: 'wg0', peer: '192.168.255.2' },
-        oci: { sender: 'dreamscape@dream.737.jp.net', dkim: 'ok' },
+        oci: { sender: 'kazari.ops@dream.737.jp.net', dkim: 'ok' },
         queue: { active: 0, deferred: 1, hold: 0, oldest_age: 12 },
         blocklists: {
             lists: {
@@ -76,21 +181,27 @@ function defaultState() {
             }
         ],
         senders: {
+            refreshed_at: '2026-10-19T21:00:00Z',
             oci: {
                 approved: [
-                    { email: 'dreamscape@dream.737.jp.net', dkim: 'ok', state: 'approved' }
+                    { email: 'kazari.ops@dream.737.jp.net', dkim: 'ok', state: 'approved' }
                 ]
             },
             submission: [
                 {
                     login: 'dreamscape@dream.737.jp.net',
                     from: [
+                        '*@dream.737.jp.net',
                         'kazari.ops@dream.737.jp.net',
                         'kazari@dream.737.jp.net',
                         'yukimi.kazari@dream.737.jp.net',
+                        'yukimi@dream.737.jp.net',
                         'sala.ops@dream.737.jp.net',
                         'tsubame.ops@dream.737.jp.net',
-                        'mailroom.ops@dream.737.jp.net'
+                        'mailroom.ops@dream.737.jp.net',
+                        'menma.dev@dream.737.jp.net',
+                        'rook.dev@dream.737.jp.net',
+                        'ivory.studio@dream.737.jp.net'
                     ]
                 }
             ]
@@ -107,7 +218,8 @@ function defaultState() {
                 yozora: { outbound: true }
             }
         },
-        audit: []
+        audit: [],
+        lastPutBody: null
     };
 }
 
@@ -168,34 +280,30 @@ function startMockRelay(options) {
                 return;
             }
             if (isGet && url.pathname === '/v1/toggles') {
-                json(res, 200, state.toggles);
+                json(res, 200, cloneToggles(state.toggles));
                 return;
             }
             if (isPut && url.pathname === '/v1/toggles') {
                 const body = await readBody(req);
-                if (!body.actor) {
-                    json(res, 400, { error: 'actor is required', code: 'ACTOR_REQUIRED' });
+                state.lastPutBody = body;
+                const applied = applyTogglePatch(state.toggles, body);
+                if (applied.error) {
+                    json(res, 400, applied.error);
                     return;
                 }
-                const next = {
-                    inbound: body.inbound !== false,
-                    outbound: body.outbound !== false,
-                    mailboxes: body.mailboxes && typeof body.mailboxes === 'object' ? body.mailboxes : state.toggles.mailboxes,
-                    services: body.services && typeof body.services === 'object' ? body.services : state.toggles.services
-                };
-                state.toggles = next;
+                state.toggles = applied.value;
                 state.audit.push({
-                    actor: String(body.actor),
+                    actor: applied.actor,
                     action: 'toggles',
                     target: 'global',
                     time: new Date().toISOString()
                 });
-                json(res, 200, next);
+                json(res, 200, cloneToggles(state.toggles));
                 return;
             }
             json(res, 404, { error: 'Not found', code: 'NOT_FOUND' });
         } catch (_err) {
-            json(res, 400, { error: 'Bad request', code: 'BAD_REQUEST' });
+            json(res, 400, { error: 'Bad request', code: 'BAD_BODY' });
         }
     });
 
@@ -219,5 +327,8 @@ function startMockRelay(options) {
 module.exports = {
     READ_TOKEN,
     ADMIN_TOKEN,
-    startMockRelay
+    KNOWN_MAILBOXES,
+    KNOWN_SERVICES,
+    startMockRelay,
+    applyTogglePatch
 };

@@ -134,7 +134,7 @@ const TOOLS = [
         core: true,
         role: 'exchange',
         scope: SCOPE,
-        description: 'Exchange admin only. Get or set external inbound/outbound toggles (global, per mailbox, per service e.g. Yozora). Writes require confirm:true and also PUT the LANTIS relay with the admin token (actor included).',
+        description: 'Exchange admin only. Get or set external inbound/outbound toggles (global, per mailbox, per service e.g. Yozora). Writes require confirm:true (Dreamscape-side). The LANTIS PUT is PATCH-like (omit = unchanged, null deletes a mailbox/service key) and includes actor only — not confirm. Relay 400s: UNKNOWN_MAILBOX, UNKNOWN_SERVICE, BAD_BODY, ACTOR_REQUIRED.',
         inputSchema: {
             type: 'object',
             additionalProperties: false,

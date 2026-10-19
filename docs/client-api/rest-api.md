@@ -899,7 +899,7 @@ Writes require `confirm: true`. Soft-delete also requires `confirmText: "DELETE"
 | GET | `/mail-exchange/signatures/:owner` | |
 | PUT | `/mail-exchange/signatures/:owner` | Sanitized HTML |
 | GET | `/mail-exchange/toggles` | Global + per-mailbox + per-service |
-| PUT | `/mail-exchange/toggles` | Also PUTs LANTIS with the admin token + `actor` |
+| PUT | `/mail-exchange/toggles` | PATCH-like. Also PUTs LANTIS with admin token + `actor` (not `confirm`). Relay `400`: `UNKNOWN_MAILBOX` / `UNKNOWN_SERVICE` / `BAD_BODY` / `ACTOR_REQUIRED` |
 | GET | `/mail-exchange/status` | Intake + relay dashboard (degrades if LANTIS is down) |
 | GET | `/mail-exchange/spam` | Tsubame: all mailboxes. Yukimi: her Spam only |
 | POST | `/mail-exchange/spam/move` | Rescue/purge via mailroom tools |

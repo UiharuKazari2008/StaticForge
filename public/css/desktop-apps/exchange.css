@@ -94,6 +94,27 @@
     color: var(--text-warning, #c9a227);
 }
 
+#desktopExchangeModal .exchange-note {
+    margin: 0 0 var(--spacing-sm);
+    font-size: 12px;
+    opacity: 0.85;
+}
+
+#desktopExchangeModal .exchange-from-list {
+    margin-top: var(--spacing-xs);
+}
+
+#desktopExchangeModal .exchange-from-list summary {
+    cursor: pointer;
+    font-size: 12px;
+}
+
+#desktopExchangeModal .exchange-from-addresses {
+    margin: var(--spacing-xs) 0 0;
+    padding-left: 1.2em;
+    font-size: 12px;
+}
+
 @media (max-width: 760px) {
     #desktopExchangeModal .exchange-body {
         flex-direction: column;

@@ -178,31 +178,70 @@ async function getJson(pathname, query) {
     }
 }
 
+const TOGGLE_PATCH_KEYS = Object.freeze(['inbound', 'outbound', 'mailboxes', 'services']);
+
+function pickTogglePatch(toggles) {
+    const body = {};
+    if (!toggles || typeof toggles !== 'object') return body;
+    TOGGLE_PATCH_KEYS.forEach((key) => {
+        if (Object.prototype.hasOwnProperty.call(toggles, key)) body[key] = toggles[key];
+    });
+    return body;
+}
+
+function friendlyRelayError(code, fallback) {
+    switch (String(code || '')) {
+        case 'UNKNOWN_MAILBOX':
+            return 'The LANTIS relay does not know that mailbox.';
+        case 'UNKNOWN_SERVICE':
+            return 'The LANTIS relay does not know that service.';
+        case 'BAD_BODY':
+            return 'Toggle values must be true or false.';
+        case 'ACTOR_REQUIRED':
+            return 'An admin name is required to change relay toggles.';
+        case 'RELAY_ADMIN_REQUIRED':
+            return 'The relay rejected this change because the admin token was missing or wrong.';
+        case 'RELAY_ADMIN_TOKEN_MISSING':
+            return 'The relay admin token is not set on this server.';
+        case 'CONFIRM_REQUIRED':
+            return 'Confirm this change before it is sent to the relay.';
+        case 'RELAY_TOKEN_MISSING':
+            return 'The relay read token is not set on this server.';
+        default:
+            return fallback || 'The relay rejected that change.';
+    }
+}
+
+function clientError(code, message) {
+    return {
+        ok: false,
+        degraded: false,
+        code,
+        error: redact(message),
+        friendly: friendlyRelayError(code, message)
+    };
+}
+
 async function putToggles(toggles, { actor, confirm } = {}) {
     const token = resolveAdminToken();
-    if (!token) return degraded('RELAY_ADMIN_TOKEN_MISSING', 'Relay admin token is not set');
-    if (!actor) {
-        return {
-            ok: false,
-            degraded: false,
-            code: 'ACTOR_REQUIRED',
-            error: 'actor is required for relay mutations'
-        };
-    }
+    if (!token) return clientError('RELAY_ADMIN_TOKEN_MISSING', 'Relay admin token is not set');
+    const name = String(actor || '').trim();
+    if (!name) return clientError('ACTOR_REQUIRED', 'actor is required');
     if (confirm !== true) {
-        return {
-            ok: false,
-            degraded: false,
-            code: 'CONFIRM_REQUIRED',
-            error: 'confirm:true is required for relay mutations'
-        };
+        return clientError('CONFIRM_REQUIRED', 'confirm:true is required for relay mutations');
     }
-    const body = Object.assign({}, toggles || {}, { actor: String(actor), confirm: true });
+    const body = pickTogglePatch(toggles);
+    body.actor = name;
     try {
         const data = await relayFetch('/v1/toggles', { method: 'PUT', token, body });
         return { ok: true, degraded: false, data };
     } catch (err) {
-        return degraded(err.code, err.message);
+        if (err instanceof LantisRelayError && err.status >= 400 && err.status < 500) {
+            return clientError(err.code, err.message);
+        }
+        const fail = degraded(err.code, err.message);
+        fail.friendly = friendlyRelayError(err.code, fail.error);
+        return fail;
     }
 }
 
@@ -247,5 +286,7 @@ module.exports = {
     getRejects,
     getSenders,
     getToggles,
-    putToggles
+    putToggles,
+    pickTogglePatch,
+    friendlyRelayError
 };
