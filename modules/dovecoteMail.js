@@ -680,7 +680,10 @@ function forwardMail(owner, { id, to }) {
         id: newId, owner: toOwner, folder: 'inbox', archive_subfolder: null, thread_id: crypto.randomUUID(),
         from_owner: source.from_owner, to_owner: toOwner, subject: `Fwd: ${source.subject}`, body: source.body,
         format: source.format, reply_to_id: null, fwd_from_owner: owner, fwd_from_message_id: source.id,
-        route: 'internal', label_suspicious: 0,
+        // A forwarded gateway message still came from outside; never show it as internal.
+        route: storedRoute(source.route) === 'internal' ? 'internal' : 'inbound',
+        from_label: source.from_label || null,
+        label_suspicious: source.label_suspicious ? 1 : 0,
         read: 0, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,
         attachments: source.attachments || null
     });

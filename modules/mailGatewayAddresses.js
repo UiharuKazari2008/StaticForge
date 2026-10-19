@@ -251,6 +251,69 @@ function extractDisplayName(raw) {
     return text.replace(/["']/g, '').trim();
 }
 
+// Cherokee / Cyrillic (and a few related) letters that look like Latin.
+const CONFUSABLE_TO_LATIN = (() => {
+    const map = Object.create(null);
+    const pairs = [
+        ['\u0410\u0430\u13AA', 'a'],
+        ['\u0412\u0432', 'b'],
+        ['\u0421\u0441\u13DF', 'c'],
+        ['\u0415\u0435\u0401\u0451\u13AC', 'e'],
+        ['\u050C\u050D', 'g'],
+        ['\u041D\u043D\u13BB\u04BB', 'h'],
+        ['\u0406\u0456\u0407\u0457\u04C0\u04CF', 'i'],
+        ['\u0408\u0458', 'j'],
+        ['\u041A\u043A', 'k'],
+        ['\u13DE', 'l'],
+        ['\u041C\u043C\u13B7', 'm'],
+        ['\u041E\u043E\u13BE', 'o'],
+        ['\u0420\u0440\u13E2', 'p'],
+        ['\u051A\u051B', 'q'],
+        ['\u13D2', 'r'],
+        ['\u0405\u0455\u13D5', 's'],
+        ['\u0422\u0442', 't'],
+        ['\u13D9\u0475\u0474', 'v'],
+        ['\u051C\u051D\u13B3', 'w'],
+        ['\u0425\u0445', 'x'],
+        ['\u0423\u0443\u04AE\u04AF', 'y']
+    ];
+    pairs.forEach(([from, to]) => {
+        for (const ch of from) map[ch] = to;
+    });
+    return map;
+})();
+
+function foldConfusables(text) {
+    let out = '';
+    for (const ch of text) {
+        out += CONFUSABLE_TO_LATIN[ch] || ch;
+    }
+    return out;
+}
+
+function normalizeSpoofText(text) {
+    return foldConfusables(String(text || '').normalize('NFKC').replace(/\p{Cf}/gu, ''));
+}
+
+function splitCamelWords(word) {
+    return String(word || '')
+        .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+        .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+        .split(/\s+/)
+        .filter(Boolean);
+}
+
+function tokenizeSpoofWords(folded) {
+    const trimmed = String(folded || '').replace(/^["']+|["']+$/g, '').trim();
+    if (!trimmed) return [];
+    const parts = trimmed.split(/[\s,;:|/\\._-]+/).map((part) => part.replace(/[<>]/g, '')).filter(Boolean);
+    const words = [];
+    parts.forEach((part) => {
+        splitCamelWords(part).forEach((piece) => words.push(piece));
+    });
+    return words;
+}
+
 /**
  * Display-name / address spoof check. Does not decide route — callers that
  * took the inbound path still store route=inbound even when this flags.
@@ -260,23 +323,40 @@ function inspectFromLabel(raw, opts) {
     if (!label) return { label: '', suspicious: false };
     const owners = new Set((opts && opts.owners ? opts.owners : []).map((n) => String(n).toLowerCase()));
     owners.add('yukimi');
+    owners.add('ykazari');
     const mapping = (opts && opts.mapping) || createMapping();
     const locals = Object.assign(Object.create(null), mapping.mailboxes || {});
 
+    const isProtected = (token) => {
+        const lower = String(token || '').toLowerCase();
+        return !!(lower && (owners.has(lower) || locals[lower]));
+    };
+
     const looksInternalToken = (text) => {
-        const lower = String(text || '').toLowerCase().replace(/^["']+|["']+$/g, '').trim();
+        const folded = normalizeSpoofText(text);
+        const lower = folded.toLowerCase().replace(/^["']+|["']+$/g, '').trim();
         if (!lower) return false;
-        if (owners.has(lower)) return true;
-        if (lower.includes('yukimi')) return true;
-        if (locals[lower]) return true;
-        const words = lower.split(/[\s,;:|/\\]+/).map((w) => w.replace(/[<>]/g, '')).filter(Boolean);
-        if (words.some((word) => owners.has(word) || locals[word])) return true;
+        if (isProtected(lower)) return true;
+        if (lower.includes('yukimi') || lower.includes('ykazari')) return true;
+        const words = tokenizeSpoofWords(folded).map((word) => word.toLowerCase());
+        if (words.some((word) => isProtected(word))) return true;
+        let run = '';
+        for (const word of words) {
+            if (word.length === 1) {
+                run += word;
+                if (isProtected(run)) return true;
+            } else {
+                run = '';
+            }
+        }
         const emails = lower.match(/[^\s<>"]+@[^\s<>"]+/g) || [];
         for (const email of emails) {
             const parts = splitLocalDomain(email);
             if (!parts) continue;
             if (isReservedSenderDomain(parts.domain, mapping)) return true;
-            if (owners.has(parts.local) || locals[parts.local]) return true;
+            if (isProtected(parts.local)) return true;
+            const localBits = parts.local.split(/[._-]+/).filter(Boolean);
+            if (localBits.some((bit) => isProtected(bit))) return true;
         }
         return false;
     };

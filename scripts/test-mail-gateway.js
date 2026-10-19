@@ -643,6 +643,19 @@ function testCrlfBufferAndSenderRules() {
     assert.strictEqual(addresses.inspectFromLabel('chiyo.web@dream.737.jp.net', spoofOpts).suspicious, true);
     assert.strictEqual(addresses.inspectFromLabel('Alice <alice@example.com>', spoofOpts).suspicious, false);
     assert.strictEqual(addresses.inspectFromLabel('Mailer-Daemon@mx.example.com', spoofOpts).suspicious, false);
+
+    const lookalikes = [
+        'Ｍｅｎｍａ',
+        'Ꮇenma',
+        'me\u200bnma',
+        'MenmaBot',
+        'menma-bot',
+        'r o o k',
+        'ykazari'
+    ];
+    lookalikes.forEach((fromLabel) => {
+        assert.strictEqual(addresses.inspectFromLabel(fromLabel, spoofOpts).suspicious, true, fromLabel);
+    });
 }
 
 function testResolveConfigDefaults() {
@@ -1327,6 +1340,27 @@ async function testSpoofedFromLabels() {
     assert.strictEqual(bounce.from, addresses.NULL_SENDER);
 }
 
+function testForwardKeepsInboundRoute() {
+    const inbound = mail.deliverInboundMail({
+        fromAddress: 'evil@ext.com',
+        fromLabel: 'menma',
+        toOwner: 'ivory',
+        subject: 'fwd-inbound',
+        body: 'outside'
+    });
+    const source = mail.readMail('ivory', inbound.id);
+    assert.strictEqual(source.route, 'inbound');
+    assert.strictEqual(source.labelSuspicious, true);
+    const fwd = mail.forwardMail('ivory', { id: inbound.id, to: 'rook' });
+    const row = mail.readMail('rook', fwd.id);
+    assert.strictEqual(row.route, 'inbound');
+    assert.strictEqual(row.external, true);
+    assert.strictEqual(row.labelSuspicious, true);
+    assert.strictEqual(row.from, 'evil@ext.com');
+    assert.strictEqual(row.fromLabel, 'evil@ext.com');
+    assert.strictEqual(row.subject, 'Fwd: fwd-inbound');
+}
+
 async function testMixedSendRoutes() {
     const certs = writeCert(path.join(tmpDir, 'mixed-route'), 'mx.dream.737.jp.net');
     const mock = await startMockSmtp({
@@ -1396,6 +1430,7 @@ async function main() {
     await testInboundMimeAndCc();
     testRouteTagging();
     await testSpoofedFromLabels();
+    testForwardKeepsInboundRoute();
     await testMixedSendRoutes();
     await gateway.resetForTests();
     console.log('mail gateway tests passed');
