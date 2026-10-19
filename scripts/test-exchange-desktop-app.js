@@ -65,7 +65,17 @@ function main() {
 
     assert.match(manifests, /exchange\.dreamscape\.jp/);
     assert.match(manifests, /adminOnly: true/);
+    const exchangeManifest = manifests.slice(
+        manifests.indexOf('EXCHANGE_DSAP_MANIFEST_URL'),
+        manifests.indexOf('MCP_DSAP_MANIFEST_URL')
+    );
+    assert.match(exchangeManifest, /appMenu: true/);
+    assert.doesNotMatch(exchangeManifest, /appMenu: false/);
     assert.match(registry, /adminOnly: !!me\.adminOnly/);
+    const smf = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/dsapSmfMarkup.js'), 'utf8');
+    assert.match(smf, /dsap:\/\/exchange\.dreamscape\.jp\//);
+    assert.match(smf, /Exchange Server/);
+    assert.match(modalUtilsJs, /item\.adminOnly && localStorage\.getItem\('userType'\) !== 'admin'/);
     assert.match(reserved, /exchange\.dreamscape\.jp/);
 
     console.log('test-exchange-desktop-app: ok');

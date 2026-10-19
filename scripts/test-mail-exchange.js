@@ -4,7 +4,6 @@ const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const crypto = require('crypto');
 const net = require('net');
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mail-exchange-'));
@@ -207,6 +206,26 @@ async function testRelayMockAndClient() {
         assert.ok(!JSON.stringify(mock.state.audit).includes(mock.readToken));
         assert.ok(!JSON.stringify(mock.state.audit).includes(mock.adminToken));
 
+        const beforeRelayFirst = exchange.getToggles();
+        assert.strictEqual(beforeRelayFirst.outbound, true);
+        const relayRejected = await exchange.setToggles('yukimi', {
+            outbound: false,
+            mailboxes: { nova: { inbound: false } },
+            confirm: true
+        });
+        assert.strictEqual(relayRejected.relay.ok, false);
+        assert.strictEqual(relayRejected.relay.code, 'UNKNOWN_MAILBOX');
+        assert.strictEqual(relayRejected.toggles.outbound, true);
+        assert.strictEqual(exchange.getToggles().outbound, true);
+
+        const relayAccepted = await exchange.setToggles('yukimi', {
+            outbound: false,
+            confirm: true
+        });
+        assert.strictEqual(relayAccepted.relay.ok, true);
+        assert.strictEqual(relayAccepted.toggles.outbound, false);
+        assert.strictEqual(exchange.getToggles().outbound, false);
+
         const localPatch = await exchange.setToggles('yukimi', {
             outbound: false,
             mailboxes: { ivory: { inbound: false } },
@@ -245,7 +264,7 @@ async function testMailboxesKeysAliasesSignatures() {
     const issued = exchange.issueMailboxKey('yukimi', { owner: 'nova', confirm: true });
     assert.ok(issued.key.startsWith('dsmbox_'));
     assert.strictEqual(issued.shownOnce, true);
-    assert.strictEqual(issued.keyHash, crypto.createHash('sha256').update(issued.key).digest('hex'));
+    assert.strictEqual(issued.keyHash, undefined);
     assert.strictEqual(exchange.verifyMailboxKey('nova', issued.key), true);
     const audit = exchange.listAudit({ limit: 50 });
     assert.ok(audit.every((row) => !String(row.detail || '').includes(issued.key)));
@@ -258,6 +277,13 @@ async function testMailboxesKeysAliasesSignatures() {
 
     exchange.revokeMailboxKey('tsubame', { owner: 'nova', confirm: true });
     assert.strictEqual(exchange.verifyMailboxKey('nova', rotated.key), false);
+
+    const doomed = exchange.createMailbox('sala', { owner: 'kiri', dept: 'ops', confirm: true });
+    assert.strictEqual(doomed.owner, 'kiri');
+    const doomedKey = exchange.issueMailboxKey('yukimi', { owner: 'kiri', confirm: true });
+    assert.strictEqual(exchange.verifyMailboxKey('kiri', doomedKey.key), true);
+    exchange.deleteMailbox('yukimi', { owner: 'kiri', confirm: true, confirmText: 'DELETE' });
+    assert.strictEqual(exchange.verifyMailboxKey('kiri', doomedKey.key), false);
 
     const alias = exchange.upsertAlias('yukimi', { localPart: 'helpdesk', target: 'tsubame', confirm: true });
     assert.strictEqual(alias.address, 'helpdesk@dream.737.jp.net');
@@ -349,6 +375,34 @@ async function testTogglesAtGateway() {
     });
 }
 
+async function testLiveAliasIntake() {
+    const inbound = await gateway.startInbound({
+        port: 0,
+        bind: '127.0.0.1',
+        allowFrom: ['127.0.0.1']
+    });
+    try {
+        const before = await smtpTalk(inbound.port, [
+            'LHLO postfix',
+            'MAIL FROM:<alice@example.com>',
+            'RCPT TO:<live-alias@dream.737.jp.net>',
+            'QUIT'
+        ]);
+        assert.strictEqual(before[3].code, 550);
+        exchange.upsertAlias('yukimi', { localPart: 'live-alias', target: 'tsubame', confirm: true });
+        const after = await smtpTalk(inbound.port, [
+            'LHLO postfix',
+            'MAIL FROM:<alice@example.com>',
+            'RCPT TO:<live-alias@dream.737.jp.net>',
+            'QUIT'
+        ]);
+        assert.strictEqual(after[3].code, 250);
+    } finally {
+        await inbound.close();
+        try { exchange.deleteAlias('yukimi', { localPart: 'live-alias', confirm: true }); } catch (_err) { /* ignore */ }
+    }
+}
+
 async function testRoleGating() {
     ['yukimi', 'sala', 'mailroom', 'tsubame'].forEach((actor) => {
         assert.strictEqual(exchange.isExchangeAdmin(actor), true);
@@ -409,6 +463,7 @@ async function main() {
     await testRelayMockAndClient();
     await testMailboxesKeysAliasesSignatures();
     await testTogglesAtGateway();
+    await testLiveAliasIntake();
     await testRoleGating();
     console.log('test-mail-exchange: ok');
 }

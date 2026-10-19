@@ -26,13 +26,22 @@ function actorFromApplicationAuth(applicationAuth) {
     return canonicalizeAdmin(resolveOwnerFromActor(name));
 }
 
+// An application-key caller is identified by its key only. Application keys
+// carry userType 'admin' by default, so the human-session fallback below
+// must never apply to them (a Menma/"Mailroom"/"Admin" key would become
+// Yukimi).
+function hasApplicationKey(auth) {
+    return !!(auth && (auth.appName || auth.applicationName || auth.applicationKeyId || auth.keyId));
+}
+
 function resolveWsActor(clientInfo) {
     if (!clientInfo) return null;
+    const keyed = hasApplicationKey(clientInfo.applicationAuth) || !!(clientInfo.appName || clientInfo.applicationKeyId);
     const fromKey = actorFromApplicationAuth(clientInfo.applicationAuth || {
         appName: clientInfo.appName,
         applicationKeyId: clientInfo.applicationKeyId
     });
-    if (fromKey && isExchangeAdmin(fromKey)) return fromKey;
+    if (keyed) return fromKey;
     if (clientInfo.userType === 'admin') return HUMAN_OWNER;
     return fromKey;
 }
@@ -40,7 +49,7 @@ function resolveWsActor(clientInfo) {
 function resolveHttpActor(req) {
     if (!req) return null;
     const fromKey = actorFromApplicationAuth(req.applicationAuth);
-    if (fromKey && isExchangeAdmin(fromKey)) return fromKey;
+    if (hasApplicationKey(req.applicationAuth)) return fromKey;
     if (req.userType === 'admin') return HUMAN_OWNER;
     return fromKey;
 }
@@ -54,7 +63,7 @@ function resolveMcpActor(req) {
         /* fall through */
     }
     const fromKey = actorFromApplicationAuth(req && req.applicationAuth);
-    if (fromKey) return fromKey;
+    if (req && hasApplicationKey(req.applicationAuth)) return fromKey;
     if (req && req.userType === 'admin') return HUMAN_OWNER;
     return null;
 }

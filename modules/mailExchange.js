@@ -392,7 +392,9 @@ function deleteMailbox(actor, { owner, confirm, confirmText } = {}) {
         throw new MailExchangeError('Unknown mailbox', 'UNKNOWN_MAILBOX');
     }
     ensureMailboxRow(name, { enabled: 0, deleted_at: nowIso() });
-    audit(admin, 'delete_mailbox', name, true, 'soft-deleted');
+    // A soft-deleted mailbox must not keep a working key.
+    getDb().prepare('UPDATE exchange_key SET revoked_at = ? WHERE mailbox = ? AND revoked_at IS NULL').run(nowIso(), name);
+    audit(admin, 'delete_mailbox', name, true, 'soft-deleted; key revoked');
     return getMailboxRecord(name);
 }
 
@@ -422,7 +424,7 @@ function issueMailboxKey(actor, { owner, confirm, rotate } = {}) {
         ON CONFLICT(mailbox) DO UPDATE SET key_hash = excluded.key_hash, created_at = excluded.created_at, revoked_at = NULL
     `).run(name, hashed, now);
     audit(admin, action, name, true, rotate ? 'rotated' : 'issued');
-    return { owner: name, key: secret, keyHash: hashed, shownOnce: true };
+    return { owner: name, key: secret, shownOnce: true };
 }
 
 function rotateMailboxKey(actor, opts) {
@@ -448,6 +450,8 @@ function revokeMailboxKey(actor, { owner, confirm } = {}) {
 function verifyMailboxKey(owner, secret) {
     if (!isReady() || !secret) return false;
     const name = normalizeOwner(owner);
+    const rec = getMailboxRecord(name);
+    if (!rec || rec.deleted || !rec.enabled) return false;
     const row = getDb().prepare(
         'SELECT key_hash FROM exchange_key WHERE mailbox = ? AND revoked_at IS NULL'
     ).get(name);
@@ -669,7 +673,16 @@ function listDistributionLists() {
 }
 
 function sanitizeSignature(html) {
-    const result = sanitizeHtml(String(html || ''), { allowRemoteImages: false });
+    // dovecoteSanitize is not idempotent on mXSS shapes
+    // (<math><mtext><table><mglyph><style><img onerror>): pass one can emit
+    // live markup. Re-run while anything dangerous survives, then drop.
+    const DANGER = /<[a-z][^>]*\son[a-z]+\s*=|<\s*\/?\s*(?:script|style|iframe|svg|math|object|embed|form|base|meta|link)\b|javascript:/i;
+    let result = sanitizeHtml(String(html || ''), { allowRemoteImages: false });
+    for (let i = 0; i < 4 && DANGER.test(result.html); i++) {
+        const again = sanitizeHtml(result.html, { allowRemoteImages: false });
+        result = { html: again.html, counts: result.counts };
+    }
+    if (DANGER.test(result.html)) result = { html: '', counts: result.counts };
     return { html: result.html, counts: result.counts };
 }
 
@@ -827,17 +840,19 @@ async function setToggles(actor, patch = {}) {
     if (patch.outbound !== undefined) next.outbound = requireBoolField(patch.outbound, 'outbound');
     if (patch.mailboxes !== undefined) next.mailboxes = mergeNamedToggles(next.mailboxes, patch.mailboxes, 'mailboxes');
     if (patch.services !== undefined) next.services = mergeNamedToggles(next.services, patch.services, 'services');
-    writeToggles(next);
-    audit(admin, 'set_toggles', 'global', true, `inbound=${next.inbound} outbound=${next.outbound}`);
     let relayResult = { ok: false, skipped: true };
     if (patch.relay !== false) {
         const client = require('./lantisRelayClient');
         relayResult = await client.putToggles(pickRelayTogglePatch(patch), { actor: admin, confirm: true });
         if (!relayResult.ok) {
             audit(admin, 'set_toggles_relay', 'global', false, relayResult.code || 'degraded');
-        } else if (relayResult.data && typeof relayResult.data === 'object') {
-            return { toggles: next, relay: relayResult, relayToggles: relayResult.data };
+            return { toggles: current, relay: relayResult };
         }
+    }
+    writeToggles(next);
+    audit(admin, 'set_toggles', 'global', true, `inbound=${next.inbound} outbound=${next.outbound}`);
+    if (relayResult.ok && relayResult.data && typeof relayResult.data === 'object') {
+        return { toggles: next, relay: relayResult, relayToggles: relayResult.data };
     }
     return { toggles: next, relay: relayResult };
 }

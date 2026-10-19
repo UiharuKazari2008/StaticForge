@@ -366,7 +366,7 @@ function registerDsapManifests() {
             launchId: 'exchange',
             icon: 'fas fa-building-columns',
             text: 'Exchange Server',
-            appMenu: false,
+            appMenu: true,
             startMenu: false,
             desktopOnly: true,
             adminOnly: true,

@@ -564,7 +564,7 @@ async function submitOutbound(input) {
 
 function startInbound(options) {
     const cfg = resolveConfig(options && options.config);
-    const mapping = (options && options.mapping) || cfg.mapping;
+    const frozenMapping = options && options.mapping;
     const allowFrom = (options && options.allowFrom) || cfg.inbound.allowFrom;
     const port = options && options.port != null ? options.port : cfg.inbound.port;
     const bind = (options && options.bind) || cfg.inbound.bind;
@@ -580,7 +580,9 @@ function startInbound(options) {
     }
     const sessionOpts = {
         allowFrom,
-        mapping,
+        get mapping() {
+            return frozenMapping || resolveConfig(options && options.config).mapping;
+        },
         deliver,
         maxDataBytes: (options && options.maxDataBytes) || cfg.inbound.maxDataBytes,
         sessionTimeoutMs: (options && options.sessionTimeoutMs) || cfg.inbound.sessionTimeoutMs,
@@ -637,7 +639,6 @@ function start(globalResources) {
     };
     const pending = startInbound({
         config: cfg,
-        mapping: cfg.mapping,
         allowFrom: cfg.inbound.allowFrom,
         port: cfg.inbound.port,
         bind: cfg.inbound.bind,

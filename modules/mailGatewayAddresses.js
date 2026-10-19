@@ -143,7 +143,9 @@ function expandLocal(local, mapping, seen) {
     }
     walk.add(key);
     if (mapping.mailboxes && mapping.mailboxes[key]) return [mapping.mailboxes[key]];
-    if (mapping.mailboxes && Object.values(mapping.mailboxes).includes(key)) return [key];
+    // A bare owner name ("menma") is a valid alias/list *target*, but not a
+    // public address by itself: only mapped local-parts accept RCPT.
+    if (walk.size > 1 && mapping.mailboxes && Object.values(mapping.mailboxes).includes(key)) return [key];
     if (mapping.lists && mapping.lists[key]) {
         const owners = [];
         mapping.lists[key].forEach((member) => {

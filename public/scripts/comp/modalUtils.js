@@ -6390,6 +6390,7 @@ function getAllAppsMenuItems() {
         if (!item || item.separator || item.hasSubmenu) return;
         if (!isAppMenuEntryEnabled(item)) return;
         if (item.desktopOnly && !desktop) return;
+        if (item.adminOnly && localStorage.getItem('userType') !== 'admin') return;
         if (typeof item.action !== 'function') return;
         const launchId = item.launchId || item.text;
         if (seen.has(launchId)) return;
