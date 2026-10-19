@@ -63,6 +63,8 @@ try {
     assert.ok(!urls.includes('/cursors/vista/aero_link.cur'));
     assert.ok(!urls.includes('/sounds/vista/Windows%20Ding.wav'), 'a sound not on disk is omitted');
     assert.strictEqual(filter.manifestEntryExists(root, { url: '/css/../../.env' }), false);
+    // /protected/fflate.js resolves only to the vendored copy (GH #336)
+    assert.deepStrictEqual(filter.candidatePaths(root, '/protected/fflate.js'), [path.join(root, 'public', 'scripts', 'vendor', 'fflate.js')]);
 
     const marked = filter.markAuthGatedEntries([
         { url: '/protected/fflate.js', hash: 'e' },

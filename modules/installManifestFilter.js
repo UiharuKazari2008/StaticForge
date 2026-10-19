@@ -70,6 +70,7 @@ function candidatePaths(projectRoot, webPath) {
     }
     if (webPath === '/protected/fflate.js') {
         push(path.join('public', 'scripts', 'vendor', 'fflate.js'));
+        return out;
     }
 
     const rel = webPath.replace(/^\/+/, '');
