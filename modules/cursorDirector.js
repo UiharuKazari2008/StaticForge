@@ -4252,6 +4252,16 @@ function activeDirectorSessionId() {
     return runs.size === 1 ? Array.from(runs.keys())[0] : null;
 }
 
+// In-process Director turns, including the window before bwrap starts and
+// after the child exits while the turn is still in `runs` (Yozora #565).
+function listActiveRuns() {
+    return Array.from(runs.keys()).map((sessionId) => ({
+        sessionId,
+        state: lastTurn && lastTurn.sessionId === sessionId ? lastTurn.state : 'working',
+        at: lastTurn && lastTurn.sessionId === sessionId ? lastTurn.at : null
+    }));
+}
+
 function readChatWorkspace(sessionId) {
     const id = String(sessionId || '').trim();
     if (!id) return '';
@@ -6406,6 +6416,7 @@ module.exports = {
     directorStatus,
     sampleDirectorResources,
     activeDirectorSessionId,
+    listActiveRuns,
     readChatWorkspace,
     readSessionTasks,
     setSessionTasks,

@@ -4743,6 +4743,10 @@ class GlobalResources {
         this.initializationProgress.expressApp = true;
         this.initializationProgress.httpServer = true;
 
+        try {
+            require('./busyStatus').attachExpress(app);
+        } catch (_err) { /* idle snapshot is optional */ }
+
         // Call setup callbacks if provided
         if (setupMiddleware && typeof setupMiddleware === 'function') {
             setupMiddleware(app);
@@ -4880,6 +4884,9 @@ class GlobalResources {
             if (Number(boundPort) !== Number(listenPort)) {
                 console.warn(`⚠️ Configured port ${listenPort} differs from the early-bound port ${boundPort}`);
             }
+            try {
+                await require('./busyStatus').startLoopback();
+            } catch (_err) { /* idle snapshot is optional */ }
             return;
         }
 
@@ -4889,7 +4896,7 @@ class GlobalResources {
                     reject(error);
                 } else {
                     console.log(`✓ HTTP server listening on port ${listenPort}`);
-                    resolve();
+                    require('./busyStatus').startLoopback().then(() => resolve()).catch(() => resolve());
                 }
             });
         });
