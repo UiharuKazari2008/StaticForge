@@ -115,3 +115,36 @@ function main() {
 }
 
 main();
+
+// Real LANTIS-stamped samples (milter headers above the topmost Received).
+(function lantisSamples() {
+    const fsS = require('fs');
+    const pathS = require('path');
+    const spamS = require('../modules/mailGatewaySpam');
+    const load = (name) => {
+        const text = fsS.readFileSync(pathS.join(__dirname, 'fixtures', 'mail-samples', name), 'utf8').replace(/\r\n/g, '\n');
+        const cut = text.indexOf('\n\n');
+        return cut === -1 ? text : text.slice(0, cut);
+    };
+    const spamMark = spamS.isInboundSpam(load('spam.txt'), {});
+    assert.strictEqual(spamMark.spam, true);
+    assert.deepStrictEqual(spamMark.reasons, ['spam-flag', 'spam-status']);
+    assert.strictEqual(spamMark.score, 6.7);
+    assert.strictEqual(spamMark.required, 5);
+    assert.ok(spamMark.tests.includes('TO_NO_BRKTS_PCNT'));
+    assert.strictEqual(spamMark.dkim, 'none');
+    assert.strictEqual(spamMark.dmarc, 'none');
+    assert.strictEqual(spamMark.receivedSpf, 'pass');
+    const clean = spamS.isInboundSpam(load('clean.txt'), {});
+    assert.strictEqual(clean.spam, false);
+    assert.strictEqual(clean.score, -0.7);
+    assert.strictEqual(clean.tests.length, 4);
+    assert.strictEqual(clean.dkim, 'none');
+    // dmarc must still be read when its A-R is not the first one.
+    const reordered = load('spam.txt').replace(/(Authentication-Results: [^\n]*dmarc[^\n]*\n)((?:Authentication-Results:[^\n]*\n)+)/, '$2$1')
+        .replace('dmarc=none (p=none dis=none)', 'dmarc=fail (p=quarantine dis=QUARANTINE)')
+        .replace(/X-Spam-Flag: YES\n/, '').replace('X-Spam-Status: Yes', 'X-Spam-Status: No');
+    const q = spamS.isInboundSpam(reordered, {});
+    assert.deepStrictEqual(q.reasons, ['dmarc-quarantine']);
+    console.log('lantis sample tests passed');
+})();

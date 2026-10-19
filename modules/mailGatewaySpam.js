@@ -111,8 +111,9 @@ function trustedAuthResults(collected, names, authservId) {
     if (!values.length) return [];
     const wanted = String(authservId || '').trim().toLowerCase();
     if (!wanted) return [];
-    const match = values.find((value) => authservIdOf(value) === wanted);
-    return match ? [match] : [];
+    // The relay writes one A-R per method (dmarc / spf / dkim), in any order.
+    // Keep every trusted one; a foreign authserv-id is still ignored.
+    return values.filter((value) => authservIdOf(value) === wanted);
 }
 
 function isYesToken(value) {
@@ -124,9 +125,10 @@ function parseSpamStatus(value) {
     const match = raw.match(
         /^(yes|no)\b(?:\s*,\s*)?(?:score\s*=\s*([+-]?\d+(?:\.\d+)?))?(?:\s+required\s*=\s*([+-]?\d+(?:\.\d+)?))?/i
     );
-    const testsMatch = raw.match(/\btests\s*=\s*(\S+)/i);
+    // Folded headers put a space after each comma; read up to the next key=.
+    const testsMatch = raw.match(/\btests\s*=\s*([^=]*?)(?=\s+[a-z_]+\s*=|$)/i);
     const tests = testsMatch
-        ? testsMatch[1].split(',').map((token) => token.trim()).filter(Boolean)
+        ? testsMatch[1].split(/[\s,]+/).map((token) => token.trim()).filter(Boolean)
         : [];
     if (!match) {
         return { yes: false, no: false, score: null, required: null, tests, forgedOurs: hasForgedOurs(tests, raw), raw };
@@ -204,7 +206,7 @@ function isInboundSpam(headerBlock, config) {
         cfg.authenticationResultsHeader,
         cfg.authservId
     );
-    const trustedAr = authResults[0] || '';
+    const trustedAr = authResults.join('; ');
     const dmarc = parseDmarcComment(trustedAr);
     if (dmarc.quarantine) reasons.push('dmarc-quarantine');
 

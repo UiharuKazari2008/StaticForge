@@ -1,0 +1,30 @@
+X-Spam-Flag: YES
+X-Spam-Status: Yes, score=6.7 required=5.0 tests=DRUGS_ERECTILE,
+	GUARANTEED_100_PERCENT,RCVD_IN_DNSWL_LOW,RCVD_IN_MSPIKE_H3,
+	RCVD_IN_MSPIKE_WL,SPF_HELO_PASS,TO_NO_BRKTS_PCNT autolearn=disabled
+X-Spam-Level: ******
+X-Spam-Report: 
+	*  0.0 RCVD_IN_MSPIKE_H3 RBL: Good reputation (+3)
+	*      [64.57.102.36 listed in wl.mailspike.net]
+	* -0.7 RCVD_IN_DNSWL_LOW RBL: Sender listed at https://www.dnswl.org/,
+	*       low trust
+	*      [64.57.102.36 listed in list.dnswl.org]
+	* -0.0 SPF_HELO_PASS SPF: HELO matches SPF record
+	*  2.7 GUARANTEED_100_PERCENT BODY: One hundred percent guaranteed
+	*  0.0 RCVD_IN_MSPIKE_WL Mailspike good senders
+	*  2.2 DRUGS_ERECTILE Refers to an erectile drug
+	*  2.5 TO_NO_BRKTS_PCNT To: lacks brackets + percentage
+X-Spam-Checker-Version: SpamAssassin 3.4.6 (2021-04-09) on
+	pnic.subnet08061705.vcn08061705.oraclevcn.com
+Received-SPF: Pass (mailfrom) identity=mailfrom; client-ip=64.57.102.36; helo=mail.slackware.com; envelope-from=pat@slackware.com; receiver=<UNKNOWN> 
+Authentication-Results: mx.dream.737.jp.net; dmarc=none (p=none dis=none) header.from=slackware.com
+Authentication-Results: mx.dream.737.jp.net; spf=pass smtp.mailfrom=slackware.com
+Authentication-Results: mx.dream.737.jp.net; dkim=none
+Received: from mail.slackware.com (mail.slackware.com [64.57.102.36])
+	by mx.dream.737.jp.net (Postfix) with ESMTP id BD839211D689
+	for <menma.dev@dream.737.jp.net>; Mon, 19 Oct 2026 21:17:57 +0000 (GMT)
+From: Pat <pat@slackware.com>
+To: menma.dev@dream.737.jp.net
+Subject: FREE money, act now!!!
+Date: Mon, 19 Oct 2026 21:20:00 +0000
+Message-ID: <spam-1@slackware.com>
