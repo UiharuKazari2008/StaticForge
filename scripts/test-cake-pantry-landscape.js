@@ -221,6 +221,7 @@ function createFakePantryDb(rows) {
     assert.match(facadeSrc, /Correct the meal landscape flag/);
 
     console.log('test-cake-pantry-landscape: ok');
+    process.exit(0);
 })().catch((err) => {
     console.error(err);
     process.exit(1);
