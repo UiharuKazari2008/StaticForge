@@ -22,6 +22,9 @@ function main() {
     const menmaInbox = mail.listMail('menma', { folder: 'inbox' });
     assert.strictEqual(menmaInbox.length, 1);
     assert.strictEqual(menmaInbox[0].read, false);
+    assert.strictEqual(menmaInbox[0].route, 'internal');
+    assert.strictEqual(menmaInbox[0].external, false);
+    assert.strictEqual(mail.listMail('yukimi', { folder: 'sent' }).find((row) => row.id === sent.id).route, 'internal');
 
     // Reading marks read, and is scoped to the owner that was passed in.
     const read = mail.readMail('menma', menmaInbox[0].id);

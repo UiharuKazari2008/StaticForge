@@ -240,6 +240,54 @@ function validateFromHeader(fromHeader, mapping) {
     return { ok: true, label };
 }
 
+function extractDisplayName(raw) {
+    const text = String(raw || '').trim();
+    if (!text) return '';
+    const quoted = text.match(/^"([^"]*)"/);
+    if (quoted) return quoted[1].trim();
+    const angle = text.indexOf('<');
+    if (angle > 0) return text.slice(0, angle).replace(/["']/g, '').trim();
+    if (angle === 0) return '';
+    return text.replace(/["']/g, '').trim();
+}
+
+/**
+ * Display-name / address spoof check. Does not decide route — callers that
+ * took the inbound path still store route=inbound even when this flags.
+ */
+function inspectFromLabel(raw, opts) {
+    const label = String(raw || '').replace(/[\r\n]+/g, ' ').trim();
+    if (!label) return { label: '', suspicious: false };
+    const owners = new Set((opts && opts.owners ? opts.owners : []).map((n) => String(n).toLowerCase()));
+    owners.add('yukimi');
+    const mapping = (opts && opts.mapping) || createMapping();
+    const locals = Object.assign(Object.create(null), mapping.mailboxes || {});
+
+    const looksInternalToken = (text) => {
+        const lower = String(text || '').toLowerCase().replace(/^["']+|["']+$/g, '').trim();
+        if (!lower) return false;
+        if (owners.has(lower)) return true;
+        if (lower.includes('yukimi')) return true;
+        if (locals[lower]) return true;
+        const words = lower.split(/[\s,;:|/\\]+/).map((w) => w.replace(/[<>]/g, '')).filter(Boolean);
+        if (words.some((word) => owners.has(word) || locals[word])) return true;
+        const emails = lower.match(/[^\s<>"]+@[^\s<>"]+/g) || [];
+        for (const email of emails) {
+            const parts = splitLocalDomain(email);
+            if (!parts) continue;
+            if (isReservedSenderDomain(parts.domain, mapping)) return true;
+            if (owners.has(parts.local) || locals[parts.local]) return true;
+        }
+        return false;
+    };
+
+    if (looksInternalToken(extractDisplayName(label))) return { label, suspicious: true };
+    if (looksInternalToken(label)) return { label, suspicious: true };
+    const addr = normalizeEmail(label);
+    if (addr && looksInternalToken(addr)) return { label, suspicious: true };
+    return { label, suspicious: false };
+}
+
 function fromHeaderMatchesEnvelope(fromHeader, envelope) {
     if (!fromHeader || !String(fromHeader).trim()) return true;
     const from = normalizeEmail(fromHeader);
@@ -289,6 +337,8 @@ module.exports = {
     isReservedSenderDomain,
     validateEnvelopeSender,
     validateFromHeader,
+    extractDisplayName,
+    inspectFromLabel,
     fromHeaderMatchesEnvelope,
     parseAddressList,
     recipientAllowed

@@ -108,6 +108,33 @@ const doveFormatAddressList = function (value) {
     const list = Array.isArray(value) ? value : String(value || '').split(',');
     return list.map((name) => doveDisplayAddress(String(name).trim())).filter(Boolean).join(', ');
 };
+const DOVE_ROUTE_TOOLTIP = {
+    internal: 'Delivered inside the Dreamscape network and never left it.',
+    inbound: 'Arrived from the internet through the mail gateway.',
+    outbound: 'Sent to the internet through the mail gateway.'
+};
+const doveNormalizeRoute = function (route) {
+    return route === 'inbound' || route === 'outbound' ? route : 'internal';
+};
+const doveRouteIconClass = function (route) {
+    if (route === 'inbound') return 'fas fa-globe dovecote-route-icon';
+    if (route === 'outbound') return 'fas fa-arrow-up-right-from-square dovecote-route-icon';
+    return 'fas fa-house dovecote-route-icon';
+};
+const doveBuildRouteIcon = function (route) {
+    const kind = doveNormalizeRoute(route);
+    const icon = document.createElement('i');
+    icon.className = doveRouteIconClass(kind);
+    icon.dataset.doveRoute = kind;
+    icon.title = DOVE_ROUTE_TOOLTIP[kind];
+    icon.setAttribute('aria-label', DOVE_ROUTE_TOOLTIP[kind]);
+    return icon;
+};
+const doveFillRouteSlot = function (slot, route) {
+    if (!slot) return;
+    slot.replaceChildren(doveBuildRouteIcon(route));
+};
+
 const doveBareAddress = function (value) {
     return String(value || '').split(',').map((part) => {
         const t = part.trim();
@@ -844,6 +871,7 @@ const doveRenderInboxBadge = function (unreadCount) {
 const DESKTOP_DOVECOTE_LIST_COLUMNS = [
     { key: 'unread', label: '', sortable: false },
     { key: 'attachment', label: '📎', sortable: false },
+    { key: 'route', label: '', sortable: false },
     { key: 'from', label: 'From', sortable: true },
     { key: 'subject', label: 'Subject', sortable: true },
     { key: 'createdAt', label: 'Received', sortable: true }
@@ -965,6 +993,13 @@ const doveBuildOeHeader = function (options) {
         valueEl.className = 'dovecote-oe-header-value';
         if (opts.idPrefix) valueEl.id = opts.idPrefix + cap;
         row.appendChild(labelEl);
+        if (field === 'from') {
+            const routeEl = document.createElement('span');
+            routeEl.className = 'dovecote-oe-route';
+            if (opts.idPrefix) routeEl.id = opts.idPrefix + 'Route';
+            row.appendChild(routeEl);
+            fieldEls.route = routeEl;
+        }
         row.appendChild(valueEl);
         fields.appendChild(row);
         fieldEls[field] = valueEl;
@@ -1090,6 +1125,7 @@ const doveCacheEls = function () {
         imagesBar: document.getElementById('desktopDovecoteImagesBar'),
         attachmentsBar: document.getElementById('desktopDovecoteAttachmentsBar'),
         oeFrom: document.getElementById('desktopDovecoteOeFrom'),
+        oeRoute: document.getElementById('desktopDovecoteOeRoute'),
         oeTo: document.getElementById('desktopDovecoteOeTo'),
         oeCc: document.getElementById('desktopDovecoteOeCc'),
         oeSubject: document.getElementById('desktopDovecoteOeSubject'),
@@ -1289,6 +1325,10 @@ const doveRenderMessageList = function () {
             attachCell.appendChild(clip);
         }
 
+        const routeCell = document.createElement('span');
+        routeCell.className = 'dovecote-col-route';
+        routeCell.appendChild(doveBuildRouteIcon(mail.route));
+
         const fromCell = document.createElement('span');
         fromCell.className = 'dovecote-col-from';
         fromCell.textContent = doveDisplayAddress(mail.from);
@@ -1303,6 +1343,7 @@ const doveRenderMessageList = function () {
 
         row.appendChild(unreadCell);
         row.appendChild(attachCell);
+        row.appendChild(routeCell);
         row.appendChild(fromCell);
         row.appendChild(subjectCell);
         row.appendChild(dateCell);
@@ -1378,11 +1419,16 @@ const doveRenderPreviewBody = function () {
 // imagesBar, attachmentsBar, bodyWrap }. ----------------------------------------------------------------
 
 const doveRenderOeHeaderInto = function (els, mail) {
-    els.oeFrom.textContent = mail ? doveDisplayAddress(mail.from) : '';
+    const showLabel = mail && mail.fromLabel && !mail.labelSuspicious;
+    els.oeFrom.textContent = mail
+        ? (showLabel ? mail.fromLabel : doveDisplayAddress(mail.from))
+        : '';
     els.oeTo.textContent = mail ? doveFormatAddressList(mail.to) : '';
     if (els.oeCc) els.oeCc.textContent = mail ? doveFormatAddressList(mail.cc) : '';
     els.oeSubject.textContent = mail ? (mail.subject || '(no subject)') : '';
     els.oeDate.textContent = mail ? doveFormatDate(mail.createdAt) : '';
+    doveFillRouteSlot(els.oeRoute, mail ? mail.route : 'internal');
+    if (els.oeRoute) els.oeRoute.classList.toggle('hidden', !mail);
 };
 
 const doveFormatBytes = function (bytes) {
@@ -2276,6 +2322,7 @@ const doveBuildReaderWindow = function (key) {
 
     state.els = {
         oeFrom: fieldEls.from,
+        oeRoute: fieldEls.route,
         oeTo: fieldEls.to,
         oeCc: fieldEls.cc,
         oeSubject: fieldEls.subject,

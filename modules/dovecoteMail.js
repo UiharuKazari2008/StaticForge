@@ -11,7 +11,14 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { getDb, getAttachmentsRoot } = require('./dovecoteDatabase');
-const { NULL_SENDER } = require('./mailGatewayAddresses');
+const addresses = require('./mailGatewayAddresses');
+const { NULL_SENDER } = addresses;
+
+const ROUTES = Object.freeze(['internal', 'inbound', 'outbound']);
+
+function storedRoute(value) {
+    return value === 'inbound' || value === 'outbound' ? value : 'internal';
+}
 
 const HUMAN_OWNER = 'yukimi';
 const BOT_OWNERS = Object.freeze([
@@ -111,6 +118,9 @@ function toSummary(row) {
         threadId: row.thread_id,
         from: row.from_owner,
         fromLabel: row.from_label || null,
+        labelSuspicious: !!row.label_suspicious,
+        route: storedRoute(row.route),
+        external: storedRoute(row.route) !== 'internal',
         to: ownerList(row.to_list, row.to_owner),
         cc: ownerList(row.cc_list, null),
         subject: row.subject,
@@ -153,17 +163,18 @@ function insertRow(row) {
     getDb().prepare(`
         INSERT INTO dovecote_message (
             id, owner, folder, archive_subfolder, thread_id, from_owner, to_owner,
-            to_list, cc_list, from_label,
+            to_list, cc_list, from_label, route, label_suspicious,
             subject, body, format, reply_to_id, fwd_from_owner, fwd_from_message_id,
             read, flagged, created_at, updated_at, deleted_at, paired_message_id, attachments
         ) VALUES (
             @id, @owner, @folder, @archive_subfolder, @thread_id, @from_owner, @to_owner,
-            @to_list, @cc_list, @from_label,
+            @to_list, @cc_list, @from_label, @route, @label_suspicious,
             @subject, @body, @format, @reply_to_id, @fwd_from_owner, @fwd_from_message_id,
             @read, @flagged, @created_at, @updated_at, @deleted_at, @paired_message_id, @attachments
         )
     `).run(Object.assign({
-        paired_message_id: null, attachments: null, to_list: null, cc_list: null, from_label: null
+        paired_message_id: null, attachments: null, to_list: null, cc_list: null,
+        from_label: null, route: 'internal', label_suspicious: 0
     }, row));
 }
 
@@ -459,10 +470,14 @@ function sendMail({ fromOwner, to, cc, subject, body, format, replyToId, attachm
 
     const writeCopies = (folder) => {
         const sentFolder = folder === 'outbox' ? 'outbox' : 'sent';
+        // Route is the path this write took, not anything in the headers.
+        // Internal inbox copies never touched the relay even on a mixed send.
+        const sentRoute = hasExternal ? 'outbound' : 'internal';
         const write = getDb().transaction(() => {
             insertRow({
                 id: sentId, owner: fromOwner, folder: sentFolder, archive_subfolder: null, thread_id: threadId,
                 from_owner: fromOwner, to_owner: primary, to_list: toJson, cc_list: ccJson,
+                route: sentRoute, label_suspicious: 0,
                 subject: subjectText, body: bodyText, format: formatValue,
                 reply_to_id: replyTo, fwd_from_owner: null, fwd_from_message_id: null,
                 read: 1, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,
@@ -474,6 +489,7 @@ function sendMail({ fromOwner, to, cc, subject, body, format, replyToId, attachm
                 insertRow({
                     id: inboxIds[index], owner: recipient, folder: 'inbox', archive_subfolder: null, thread_id: threadId,
                     from_owner: fromOwner, to_owner: recipient, to_list: toJson, cc_list: ccJson,
+                    route: 'internal', label_suspicious: 0,
                     subject: subjectText, body: bodyText, format: formatValue,
                     reply_to_id: replyTo, fwd_from_owner: null, fwd_from_message_id: null,
                     read: 0, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,
@@ -540,13 +556,19 @@ function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, 
     const bodyText = String(body || '');
     const toList = Array.isArray(to) && to.length ? to : [toOwner];
     const ccList = Array.isArray(cc) ? cc : [];
-    const label = fromLabel ? String(fromLabel).replace(/[\r\n]+/g, ' ').trim().slice(0, 300) : '';
+    const inspected = addresses.inspectFromLabel(fromLabel, {
+        mapping: addresses.createMapping(),
+        owners: [HUMAN_OWNER, ...BOT_OWNERS]
+    });
+    const storedLabel = inspected.suspicious ? from : (inspected.label || '').slice(0, 300);
     insertRow({
         id, owner: toOwner, folder: 'inbox', archive_subfolder: null,
         thread_id: threadId || crypto.randomUUID(),
         from_owner: from, to_owner: toOwner,
         to_list: JSON.stringify(toList), cc_list: JSON.stringify(ccList),
-        from_label: label || null,
+        from_label: storedLabel || null,
+        route: 'inbound',
+        label_suspicious: inspected.suspicious ? 1 : 0,
         subject: subjectText, body: bodyText, format: sanitizeFormat(format),
         reply_to_id: null, fwd_from_owner: null, fwd_from_message_id: null,
         read: 0, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,
@@ -554,7 +576,13 @@ function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, 
     });
     audit(toOwner, 'receive_external_mail', id, true, `from=${from}`);
     emitMailboxChanged([toOwner]);
-    return { id, owner: toOwner, from, fromLabel: label || null };
+    return {
+        id, owner: toOwner, from,
+        fromLabel: storedLabel || null,
+        labelSuspicious: inspected.suspicious,
+        route: 'inbound',
+        external: true
+    };
 }
 
 function listMail(owner, { folder, unreadOnly, limit } = {}) {
@@ -652,6 +680,7 @@ function forwardMail(owner, { id, to }) {
         id: newId, owner: toOwner, folder: 'inbox', archive_subfolder: null, thread_id: crypto.randomUUID(),
         from_owner: source.from_owner, to_owner: toOwner, subject: `Fwd: ${source.subject}`, body: source.body,
         format: source.format, reply_to_id: null, fwd_from_owner: owner, fwd_from_message_id: source.id,
+        route: 'internal', label_suspicious: 0,
         read: 0, flagged: 0, created_at: createdAt, updated_at: createdAt, deleted_at: null,
         attachments: source.attachments || null
     });
@@ -717,6 +746,7 @@ module.exports = {
     BOT_OWNERS,
     FOLDERS,
     FORMATS,
+    ROUTES,
     MAX_ATTACHMENT_BYTES,
     MAX_TOTAL_ATTACHMENT_BYTES,
     DovecoteError,

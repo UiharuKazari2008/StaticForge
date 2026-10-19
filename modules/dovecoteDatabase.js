@@ -113,6 +113,9 @@ function createDovecoteTables() {
     addColumnIfMissing('dovecote_message', 'cc_list', 'cc_list TEXT');
     // Display From header on inbound gateway mail. from_owner stays the envelope.
     addColumnIfMissing('dovecote_message', 'from_label', 'from_label TEXT');
+    // Path the copy actually took. Null on rows from before this column = internal.
+    addColumnIfMissing('dovecote_message', 'route', 'route TEXT');
+    addColumnIfMissing('dovecote_message', 'label_suspicious', 'label_suspicious INTEGER NOT NULL DEFAULT 0');
     db.exec(`
         CREATE INDEX IF NOT EXISTS idx_dovecote_message_owner_folder ON dovecote_message (owner, folder, created_at);
         CREATE INDEX IF NOT EXISTS idx_dovecote_message_thread ON dovecote_message (thread_id);

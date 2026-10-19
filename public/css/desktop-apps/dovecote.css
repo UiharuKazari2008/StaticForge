@@ -193,7 +193,7 @@
 
 #desktopDovecoteModal .dovecote-message-row {
     display: grid;
-    grid-template-columns: 20px 20px minmax(0, 1.3fr) minmax(0, 2fr) 128px;
+    grid-template-columns: 20px 20px 20px minmax(0, 1.3fr) minmax(0, 2fr) 128px;
     align-items: center;
 }
 
@@ -212,8 +212,26 @@
 }
 
 #desktopDovecoteModal .dovecote-col-unread,
-#desktopDovecoteModal .dovecote-col-attachment {
+#desktopDovecoteModal .dovecote-col-attachment,
+#desktopDovecoteModal .dovecote-col-route {
     text-align: center;
+}
+
+.dovecote-route-icon,
+.dovecote-oe-route {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    font-size: 11px;
+    line-height: 16px;
+    cursor: var(--c-help);
+}
+
+.dovecote-oe-route.hidden {
+    display: none;
 }
 
 #desktopDovecoteModal .dovecote-col-from,
@@ -450,7 +468,7 @@
     }
 
     #desktopDovecoteModal .dovecote-message-row {
-        grid-template-columns: 20px 20px minmax(0, 1fr) minmax(0, 1.4fr) 92px;
+        grid-template-columns: 20px 20px 20px minmax(0, 1fr) minmax(0, 1.4fr) 92px;
     }
 
     #desktopDovecoteModal .dovecote-message-list-wrap,
@@ -988,7 +1006,7 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
     line-height: 17px;
 }
 
-body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-message-row > :is(.dovecote-col-unread, .dovecote-col-attachment) {
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-message-row > :is(.dovecote-col-unread, .dovecote-col-attachment, .dovecote-col-route) {
     justify-content: center;
     padding: 0;
 }
@@ -1056,6 +1074,38 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
     width: 16px;
     height: 16px;
     background: url('/static_images/vista-mail/list-16.png') no-repeat -128px 0 / 960px 16px;
+}
+
+/* route: 16px shared vista-icons, same cell size as unread / paperclip */
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-header > .dovecote-col-route {
+    justify-content: center;
+    padding: 0;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-col-route {
+    justify-content: center;
+    padding: 0;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-route-icon {
+    width: 16px;
+    height: 16px;
+    font-size: 0;
+    color: #1e395b;
+    background: image-set(url('/static_images/vista-icons/net-limited-16.png') 1x, url('/static_images/vista-icons/net-limited-32.png') 2x) center / 16px 16px no-repeat;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-route-icon[data-dove-route="inbound"] {
+    background-image: image-set(url('/static_images/vista-icons/net-internet-recv-16.png') 1x, url('/static_images/vista-icons/net-internet-recv-32.png') 2x);
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-route-icon[data-dove-route="outbound"] {
+    background-image: image-set(url('/static_images/vista-icons/net-internet-send-16.png') 1x, url('/static_images/vista-icons/net-internet-send-32.png') 2x);
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-oe-route {
+    width: 16px;
+    height: 16px;
 }
 
 /* ---- the preview pane: the #f0f0f0 header (From and To on one line, Subject under them, the

@@ -516,6 +516,12 @@ function testInternalUnchangedAndDisabled() {
     const before = mail.sendMail({ fromOwner: 'menma', to: 'rook', subject: 'internal-off', body: 'same' });
     assert.deepStrictEqual(before.to, ['rook']);
     assert.strictEqual(before.outbound, undefined);
+    const offInbox = mail.listMail('rook', { folder: 'inbox' }).find((row) => row.subject === 'internal-off');
+    const offSent = mail.listMail('menma', { folder: 'sent' }).find((row) => row.subject === 'internal-off');
+    assert.strictEqual(offInbox.route, 'internal');
+    assert.strictEqual(offInbox.external, false);
+    assert.strictEqual(offSent.route, 'internal');
+    assert.strictEqual(offSent.external, false);
     assert.strictEqual(mail.listMail('rook', { folder: 'inbox' }).filter((row) => row.subject === 'internal-off').length, 1);
     assert.throws(
         () => mail.sendMail({ fromOwner: 'menma', to: 'alice@example.com', subject: 'ext-off', body: 'nope' }),
@@ -587,6 +593,8 @@ async function testSendMailOutboundHook() {
         const sent = mail.listMail('frost', { folder: 'sent' }).find((row) => row.subject === 'from sendMail');
         assert.ok(sent);
         assert.deepStrictEqual(sent.to, ['friend@example.net']);
+        assert.strictEqual(sent.route, 'outbound');
+        assert.strictEqual(sent.external, true);
     } finally {
         gateway.setTestOverrides({ config: { enabled: false } });
         await mock.close();
@@ -624,6 +632,17 @@ function testCrlfBufferAndSenderRules() {
     assert.strictEqual(addresses.validateFromHeader('menma@dream.737.jp.net', map).ok, false);
     assert.strictEqual(addresses.validateFromHeader('Menma <menma@lists.dream.737.jp.net>', map).ok, false);
     assert.strictEqual(addresses.validateFromHeader('menma@dream.co.jp', map).ok, false);
+
+    const owners = ['yukimi', 'menma', 'rook'];
+    const spoofOpts = { mapping: map, owners };
+    assert.strictEqual(addresses.inspectFromLabel('menma', spoofOpts).suspicious, true);
+    assert.strictEqual(addresses.inspectFromLabel('Yukimi Kazari <x@ext.com>', spoofOpts).suspicious, true);
+    assert.strictEqual(addresses.inspectFromLabel('"menma.dev@dream.737.jp.net" <evil@ext.com>', spoofOpts).suspicious, true);
+    assert.strictEqual(addresses.inspectFromLabel('yukimi', spoofOpts).suspicious, true);
+    assert.strictEqual(addresses.inspectFromLabel('Rook', spoofOpts).suspicious, true);
+    assert.strictEqual(addresses.inspectFromLabel('chiyo.web@dream.737.jp.net', spoofOpts).suspicious, true);
+    assert.strictEqual(addresses.inspectFromLabel('Alice <alice@example.com>', spoofOpts).suspicious, false);
+    assert.strictEqual(addresses.inspectFromLabel('Mailer-Daemon@mx.example.com', spoofOpts).suspicious, false);
 }
 
 function testResolveConfigDefaults() {
@@ -820,11 +839,15 @@ async function testSpoofCases() {
         fromLabel: 'menma',
         toOwner: 'ivory',
         subject: 'stored label',
-        body: 'x'
+        body: 'x',
+        route: 'internal'
     });
     const row = mail.readMail('ivory', storedList.id);
     assert.strictEqual(row.from, 'alice@example.com');
-    assert.strictEqual(row.fromLabel, 'menma');
+    assert.strictEqual(row.fromLabel, 'alice@example.com');
+    assert.strictEqual(row.labelSuspicious, true);
+    assert.strictEqual(row.route, 'inbound');
+    assert.strictEqual(row.external, true);
     assert.throws(
         () => mail.deliverInboundMail({ fromAddress: 'menma', toOwner: 'ivory', subject: 'nope', body: 'x' }),
         (err) => err.code === 'UNKNOWN_SENDER'
@@ -837,7 +860,10 @@ async function testSpoofCases() {
         subject: 'stored bounce',
         body: 'x'
     });
-    assert.strictEqual(mail.readMail('ivory', bounce.id).from, 'mailer-daemon');
+    const bounceRow = mail.readMail('ivory', bounce.id);
+    assert.strictEqual(bounceRow.from, 'mailer-daemon');
+    assert.strictEqual(bounceRow.route, 'inbound');
+    assert.strictEqual(bounceRow.external, true);
 }
 
 async function testBareLfSmuggling() {
@@ -1161,6 +1187,174 @@ async function testInboundMimeAndCc() {
     assert.strictEqual(row.from, 'carol@example.com');
 }
 
+function testRouteTagging() {
+    gateway.setTestOverrides({ config: { enabled: false } });
+    const internal = mail.sendMail({ fromOwner: 'sala', to: 'chiyo', subject: 'route-internal', body: 'in' });
+    const inbox = mail.listMail('chiyo', { folder: 'inbox' }).find((row) => row.id !== internal.id && row.subject === 'route-internal');
+    const sent = mail.listMail('sala', { folder: 'sent' }).find((row) => row.id === internal.id);
+    assert.strictEqual(inbox.route, 'internal');
+    assert.strictEqual(inbox.external, false);
+    assert.strictEqual(sent.route, 'internal');
+    assert.strictEqual(sent.external, false);
+
+    const inbound = mail.deliverInboundMail({
+        fromAddress: 'list@lists.example.com',
+        fromLabel: 'Alice <alice@example.com>',
+        toOwner: 'guren',
+        subject: 'route-inbound',
+        body: 'from outside',
+        route: 'internal'
+    });
+    const inboundRow = mail.readMail('guren', inbound.id);
+    assert.strictEqual(inbound.route, 'inbound');
+    assert.strictEqual(inbound.external, true);
+    assert.strictEqual(inboundRow.route, 'inbound');
+    assert.strictEqual(inboundRow.external, true);
+    assert.strictEqual(inboundRow.fromLabel, 'Alice <alice@example.com>');
+    assert.strictEqual(inboundRow.labelSuspicious, false);
+
+    const daemon = mail.deliverInboundMail({
+        fromAddress: addresses.NULL_SENDER,
+        toOwner: 'guren',
+        subject: 'route-bounce',
+        body: 'bounce'
+    });
+    assert.strictEqual(mail.readMail('guren', daemon.id).route, 'inbound');
+    assert.strictEqual(mail.readMail('guren', daemon.id).external, true);
+
+    const legacyId = require('crypto').randomUUID();
+    const now = new Date().toISOString();
+    require('../modules/dovecoteDatabase').getDb().prepare(`
+        INSERT INTO dovecote_message (
+            id, owner, folder, archive_subfolder, thread_id, from_owner, to_owner,
+            subject, body, format, reply_to_id, fwd_from_owner, fwd_from_message_id,
+            read, flagged, created_at, updated_at, deleted_at, paired_message_id, attachments
+        ) VALUES (?, 'rook', 'inbox', NULL, ?, 'menma', 'rook', 'legacy-route', 'old', 'text', NULL, NULL, NULL, 0, 0, ?, ?, NULL, NULL, NULL)
+    `).run(legacyId, require('crypto').randomUUID(), now, now);
+    const legacy = mail.readMail('rook', legacyId);
+    assert.strictEqual(legacy.route, 'internal');
+    assert.strictEqual(legacy.external, false);
+}
+
+async function testSpoofedFromLabels() {
+    const cases = [
+        { fromLabel: 'menma', subject: 'spoof-menma' },
+        { fromLabel: 'Yukimi Kazari <x@ext.com>', subject: 'spoof-yukimi' },
+        { fromLabel: '"menma.dev@dream.737.jp.net" <evil@ext.com>', subject: 'spoof-quoted' }
+    ];
+    for (const item of cases) {
+        const stored = mail.deliverInboundMail({
+            fromAddress: 'evil@ext.com',
+            fromLabel: item.fromLabel,
+            toOwner: 'ivory',
+            subject: item.subject,
+            body: 'spoof',
+            route: 'internal'
+        });
+        const row = mail.readMail('ivory', stored.id);
+        assert.strictEqual(row.route, 'inbound', item.subject);
+        assert.strictEqual(row.external, true, item.subject);
+        assert.strictEqual(row.from, 'evil@ext.com', item.subject);
+        assert.strictEqual(row.fromLabel, 'evil@ext.com', item.subject);
+        assert.strictEqual(row.labelSuspicious, true, item.subject);
+        assert.notStrictEqual(row.from, 'menma');
+        assert.notStrictEqual(row.from, 'yukimi');
+    }
+
+    // Same spoof through the SMTP gateway path: route stays inbound even
+    // when the From header names a mailbox or Yukimi.
+    const stored = [];
+    const inbound = await gateway.startInbound({
+        port: 0,
+        bind: '127.0.0.1',
+        allowFrom: ['127.0.0.1'],
+        mapping: mapping(),
+        deliver: async (msg) => stored.push(mail.deliverInboundMail(msg))
+    });
+    try {
+        const socket = await connectSmtp(inbound.port);
+        const reader = createLineReader(socket);
+        await expectCode(reader, 220);
+        socket.write('EHLO test\r\n');
+        await expectCode(reader, 250);
+        socket.write('MAIL FROM:<evil@ext.com>\r\n');
+        await expectCode(reader, 250);
+        socket.write('RCPT TO:<ivory.studio@dream.737.jp.net>\r\n');
+        await expectCode(reader, 250);
+        socket.write('DATA\r\n');
+        await expectCode(reader, 354);
+        socket.write('From: menma\r\nSubject: smtp-spoof-menma\r\n\r\nnope\r\n.\r\n');
+        await expectCode(reader, 250);
+        socket.write('MAIL FROM:<>\r\n');
+        await expectCode(reader, 250);
+        socket.write('RCPT TO:<guren.lab@dream.737.jp.net>\r\n');
+        await expectCode(reader, 250);
+        socket.write('DATA\r\n');
+        await expectCode(reader, 354);
+        socket.write('From: Mailer-Daemon@mx.example.com\r\nSubject: smtp-bounce\r\n\r\nbounce\r\n.\r\n');
+        await expectCode(reader, 250);
+        socket.write('QUIT\r\n');
+        await readReply(reader);
+        socket.end();
+    } finally {
+        await inbound.close();
+    }
+    assert.strictEqual(stored.length, 2);
+    const spoof = mail.readMail('ivory', stored[0].id);
+    assert.strictEqual(spoof.route, 'inbound');
+    assert.strictEqual(spoof.external, true);
+    assert.strictEqual(spoof.from, 'evil@ext.com');
+    assert.strictEqual(spoof.fromLabel, 'evil@ext.com');
+    assert.strictEqual(spoof.labelSuspicious, true);
+    const bounce = mail.readMail('guren', stored[1].id);
+    assert.strictEqual(bounce.route, 'inbound');
+    assert.strictEqual(bounce.external, true);
+    assert.strictEqual(bounce.from, addresses.NULL_SENDER);
+}
+
+async function testMixedSendRoutes() {
+    const certs = writeCert(path.join(tmpDir, 'mixed-route'), 'mx.dream.737.jp.net');
+    const mock = await startMockSmtp({
+        key: certs.key,
+        cert: certs.cert,
+        password: 'mixed-pass'
+    });
+    gateway.setTestOverrides({
+        config: {
+            enabled: true,
+            domain: 'dream.737.jp.net',
+            mailboxes: addresses.DEFAULT_MAILBOXES,
+            outbound: {
+                host: '127.0.0.1',
+                port: mock.port,
+                mode: 'starttls',
+                tlsServername: 'mx.dream.737.jp.net',
+                caPath: certs.certPath,
+                authUser: 'dreamscape@dream.737.jp.net'
+            }
+        },
+        smtpPassword: 'mixed-pass'
+    });
+    try {
+        const result = mail.sendMail({
+            fromOwner: 'cursor',
+            to: ['rook', 'friend@example.net'],
+            subject: 'mixed-route',
+            body: 'both'
+        });
+        await result.outbound;
+        const sent = mail.listMail('cursor', { folder: 'sent' }).find((row) => row.subject === 'mixed-route');
+        const inbox = mail.listMail('rook', { folder: 'inbox' }).find((row) => row.subject === 'mixed-route');
+        assert.strictEqual(sent.route, 'outbound');
+        assert.strictEqual(sent.external, true);
+        assert.strictEqual(inbox.route, 'internal');
+        assert.strictEqual(inbox.external, false);
+    } finally {
+        gateway.setTestOverrides({ config: { enabled: false } });
+        await mock.close();
+    }
+}
+
 async function main() {
     testMapping();
     await testAllowlistReject();
@@ -1185,6 +1379,9 @@ async function main() {
     await testConnectionCap();
     await testOutboundFailureOutbox();
     await testInboundMimeAndCc();
+    testRouteTagging();
+    await testSpoofedFromLabels();
+    await testMixedSendRoutes();
     await gateway.resetForTests();
     console.log('mail gateway tests passed');
 }

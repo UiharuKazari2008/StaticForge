@@ -49,12 +49,16 @@ async function main() {
     assert.strictEqual(listData.mail.length, 1);
     const mailId = listData.mail[0].id;
     assert.strictEqual(listData.mail[0].from, 'menma');
+    assert.strictEqual(listData.mail[0].route, 'internal');
+    assert.strictEqual(listData.mail[0].external, false);
 
     const readResult = await callTool(gr, reqFor('Rook'), 'read_mail', { id: mailId });
     const readMail = textOf(readResult).mail;
     assert.strictEqual(readMail.body, 'hello');
     assert.deepStrictEqual(readMail.to, ['rook']);
     assert.deepStrictEqual(readMail.cc, []);
+    assert.strictEqual(readMail.route, 'internal');
+    assert.strictEqual(readMail.external, false);
 
     // Caller identity is resolved server-side from the application key, never
     // from a client-supplied "owner" field — there is no such input on any tool.
@@ -151,6 +155,33 @@ async function main() {
     assert.strictEqual(attMail.attachments[0].data, undefined, 'list_mail must not inline attachment bytes');
     const attRead = textOf(await callTool(gr, reqFor('Rook'), 'read_mail', { id: attMail.id }));
     assert.strictEqual(attRead.mail.attachments[0].mimeType, 'text/plain');
+
+    // Gateway inbound (including a spoofed display label) always comes back as
+    // route=inbound plus an explicit external marker. Agents must not treat it
+    // as mailbox-to-mailbox mail just because fromLabel said "menma".
+    const dovecoteMail = require('../modules/dovecoteMail');
+    const inbound = dovecoteMail.deliverInboundMail({
+        fromAddress: 'evil@ext.com',
+        fromLabel: 'menma',
+        toOwner: 'ivory',
+        subject: 'gw-inbound',
+        body: 'from outside',
+        route: 'internal'
+    });
+    const ivoryGwList = textOf(await callTool(gr, reqFor('Ivory'), 'list_mail', { folder: 'inbox' })).mail;
+    const gwRow = ivoryGwList.find((m) => m.subject === 'gw-inbound');
+    assert.ok(gwRow, 'inbound copy is listed');
+    assert.strictEqual(gwRow.id, inbound.id);
+    assert.strictEqual(gwRow.route, 'inbound');
+    assert.strictEqual(gwRow.external, true);
+    assert.strictEqual(gwRow.from, 'evil@ext.com');
+    assert.strictEqual(gwRow.fromLabel, 'evil@ext.com');
+    assert.strictEqual(gwRow.labelSuspicious, true);
+    const gwRead = textOf(await callTool(gr, reqFor('Ivory'), 'read_mail', { id: gwRow.id })).mail;
+    assert.strictEqual(gwRead.route, 'inbound');
+    assert.strictEqual(gwRead.external, true);
+    assert.strictEqual(gwRead.fromLabel, 'evil@ext.com');
+    assert.strictEqual(gwRead.labelSuspicious, true);
 
     // Oversized attachments are rejected with a clear error, not a partial send.
     const tooBig = await callTool(gr, reqFor('Menma'), 'send_mail', {

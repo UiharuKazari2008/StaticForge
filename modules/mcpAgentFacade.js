@@ -3052,7 +3052,7 @@ const TOOL_DEFS = [
     {
         name: 'list_mail',
         core: true,
-        description: 'List mail in your own Dovecote mailbox. Returns summaries (no body, attachments as metadata only) — use read_mail for the full message. `to` and `cc` are arrays of mailbox names (older single-recipient rows still come back as a one-element `to` and an empty `cc`). The result always includes owner, the mailbox of the calling key, even when mail is empty. read_by_recipient is true once a To recipient has opened a message you sent.',
+        description: 'List mail in your own Dovecote mailbox. Returns summaries (no body, attachments as metadata only) — use read_mail for the full message. `to` and `cc` are arrays of mailbox names (older single-recipient rows still come back as a one-element `to` and an empty `cc`). Each message has `route` (internal | inbound | outbound) set by the path it took, never from headers; `external` is true for gateway inbound/outbound mail. fromLabel is display-only. The result always includes owner, the mailbox of the calling key, even when mail is empty. read_by_recipient is true once a To recipient has opened a message you sent.',
         scope: 'sfapp_dovecote',
         inputSchema: {
             type: 'object',
@@ -3067,7 +3067,7 @@ const TOOL_DEFS = [
     {
         name: 'read_mail',
         core: true,
-        description: 'Read one message by id from your own Dovecote mailbox (marks it read). Ids from other mailboxes 404 — there is no cross-mailbox access. `to` and `cc` are arrays of mailbox names. Attachments are listed as metadata only (id/name/mimeType/size), not their bytes.',
+        description: 'Read one message by id from your own Dovecote mailbox (marks it read). Ids from other mailboxes 404 — there is no cross-mailbox access. `to` and `cc` are arrays of mailbox names. `route` is internal | inbound | outbound (path only); `external` is true for gateway mail. Attachments are listed as metadata only (id/name/mimeType/size), not their bytes.',
         scope: 'sfapp_dovecote',
         inputSchema: {
             type: 'object',
@@ -8925,7 +8925,15 @@ async function callTool(globalResources, req, name, args) {
         const dovecoteMail = require('./dovecoteMail');
         // read_by_recipient: the snake_case name callers look for, alongside the
         // internal camelCase readByRecipient every other Dovecote surface uses.
-        const withMailReadByRecipientAlias = (mail) => ({ ...mail, read_by_recipient: mail.readByRecipient });
+        const withMailReadByRecipientAlias = (mail) => {
+            const route = mail.route === 'inbound' || mail.route === 'outbound' ? mail.route : 'internal';
+            return {
+                ...mail,
+                read_by_recipient: mail.readByRecipient,
+                route,
+                external: route !== 'internal'
+            };
+        };
         const owner = resolveDovecoteOwnerFromReq(req);
         if (!owner) {
             return mcpTextResult({ success: false, error: 'Caller identity does not map to a Dovecote mailbox' }, true);
