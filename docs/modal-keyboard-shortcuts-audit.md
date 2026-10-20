@@ -80,7 +80,6 @@
 | `desktopPreStartupModal` | `websocket.js` | None | Continue / dismiss | `Enter` continue if button focused | Low |
 | `windowsStartupModal` | `websocket.js` | None | Boot wait UI | None needed | Low |
 | `windowsUpdateModal` | `websocket.js` | None | Restart/skip if buttons | `Enter` primary | Low |
-| `dreamscapeOsInstallWizardModal` | `websocket.js` | None | Next/back steps | `Enter` next, `Esc` cancel | Medium |
 | `connectionDialModal` | `websocket.js` | None | Cancel connect | `Esc` cancel | Low |
 
 ### Gallery Cluster

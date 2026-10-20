@@ -133,7 +133,6 @@ function makeManager(proto, overrides) {
         warmed: 0,
         wired: 0,
         documentBodyClasses: classList,
-        _hideInstallWizardUi() {},
         _isBeforeDesktop() { return true; },
         _readSyncedManifestHash() { return ''; },
         _flushPendingCacheUpdates() {
@@ -316,6 +315,8 @@ function testNoFatalRegisterDiscard(src) {
     assert.ok(src.includes('_enterUpdater'), 'an unproven cache must be sent to the installer');
     assert.ok(src.includes('_cacheMatchesStoredManifest'), 'boot must prove the cache before finishing');
     assert.ok(!src.includes('continuing startup'), 'a failed cache verify must not boot');
+    assert.ok(!src.includes('_runInstallWizard') && !src.includes('_showInstallWizardUi'), 'the /app install wizard is gone');
+    assert.ok(src.includes('location.replace(\'/launch\')'), 'large /app updates reboot to /launch');
 }
 
 function main() {

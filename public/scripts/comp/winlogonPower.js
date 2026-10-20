@@ -48,7 +48,6 @@ const LOGOFF_SKIP_IDS = {
     bootMessageBox: 1,
     mainframeServerModal: 1,
     windowsStartupModal: 1,
-    dreamscapeOsInstallWizardModal: 1,
     workstationLockModal: 1,
     agentClientUpdateDialog: 1,
     galleryWindow: 1,

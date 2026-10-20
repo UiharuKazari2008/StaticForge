@@ -9,7 +9,7 @@ sees it, and which code owns each step. Yozora #401, #410, #412, #416, #417, #42
 |---|--------------------|-------|
 | 1 | Melaton boot on `/launch` (every desktop start, PWA and tabs): Vista boot screen with the Enso while the server and session are checked; on failure the boot menu; on success a cut to teal and `/app` | `public/launch.html`, `public/scripts/launch/melatonBoot.js` (see below) |
 | 2 | Teal (`body.windows-startup`); after max(2 s from the cut, `/app`'s own startup) the logon dialog `#desktopPreStartupModal`: dial beats (Initializing → Dialing → Negotiation → Establishing), password form when the socket is not authenticated | `app.html` teal handoff, `websocket.js` (`_deferPreStartupForTealHold`, `connect`, `pingHost`, `_renderPreStartupDialog`), `serviceWorkerManager.js` (`_waitForServerReady`, `_showBootUiEarly`) |
-| 3 | No update progress on the logon. More than 20 fresh files, or an install `/launch` already started, reboots to `/launch` before any update dialog. Up to 20 files download with no dialog. The old install wizard only if that reboot is refused | `serviceWorkerManager.js` (`runBootSequence`, `_rebootIntoInstaller`) |
+| 3 | No update progress on the logon. More than 20 fresh files, or an install `/launch` already started, reboots to `/launch` before any update dialog so Install MeletonFX handles it. Up to 20 files download with no dialog | `serviceWorkerManager.js` (`runBootSequence`, `_rebootIntoInstaller`) |
 | 3b | Logon-phase init steps in the logon dialog (desktop first boot): user global settings and **Loading Application Data** (`{ logon: true }`), one status line, no progress bar. A critical failure keeps the dialog on its line and opens a Windows message box (Retry / Restart); the desktop never starts | `websocket.js` `_runLogonInitSteps`, `bootMessageBox.js` (see below) |
 | 4 | Connection complete ("Connected"), still on the logon dialog | `websocket.js` `_runConnectionBeat('connected')`, wrapped from `assetPreload.js` before `_startAfterLogon` |
 | 5 | Logon dialog says "Preparing your desktop..." and keeps the marquee (not a progress bar) while the active workspace's wallpaper is decoded and kept. Nothing else loads here (Yozora #512). The desktop stays hidden | `assetPreload.js` `preloadBeforeDesktopTransition` |
@@ -92,25 +92,27 @@ against `static-cache-v1` with the same rule as `serviceWorkerManager.getFilesNe
   - Installing features: the code and markup group that this install wrote. Headers are corrected,
     then each file is read back and its bytes must hash to the manifest.
   - Installing updates: images, fonts, and the rest of what was written. Same post-write check.
-  - Completing installation: the install record, `navigator.storage.persist()`, the old wizard's
-    session key cleared.
+  - Completing installation: the install record, `navigator.storage.persist()`, leftover
+    `/app` wizard session key cleared.
   Up to 20 files still download one by one behind the boot screen (`CACHE_STATIC_FILES`).
   Failure: a Vista Basic message box (Retry stays in Setup and resumes; Cancel → the boot menu with
   "The installation of MeletonFX was cancelled."). Done: the window closes, 3 s on the aurora,
   black, `/launch` again, which then hands off normally.
 - **`/app`**: its boot gate (the safety net for starts that skipped `/launch`) reboots into
   `/launch` before any update dialog when more than 20 fresh files need installing, or when
-  `localStorage.melatonInstall` says an install is already in progress. Remembered stragglers
-  (`melatonInstallRecord.stragglers`) do not count and do not open a progress dialog. A cache
-  push that arrives before the desktop uses the same rule. Up to 20 fresh files download with
-  no System Update dialog. Once the desktop is up, a large update is not downloaded in the
-  session: MeletonFX Update asks for a restart titled `Upgrade to Service Pack <YY>Q<1-4> <patchid>`
-  (`servicePackFromFiles` in `serviceWorkerManager.js`). `YY` and the quarter come from the newest
-  `modified` time in that file set (UTC), and the patch id is a hash of the urls and hashes, so the
-  name is built when the update is seen. Restart then boots `/launch`, which installs it. A second reboot within 3 minutes
-  (`sessionStorage.melatonInstallRebootAt`, also set by the installer) finishes in place with
-  the old wizard, so the pages never bounce. A leftover `dreamscapeOsInstallWizard` session
-  does not skip the reboot. Narrow mode keeps the wizard.
+  `localStorage.melatonInstall` says an install is already in progress. There is no in-app
+  install wizard. Remembered stragglers (`melatonInstallRecord.stragglers`) do not count and
+  do not open a progress dialog. A cache push that arrives before the desktop uses the same
+  rule. Up to 20 fresh files download with no System Update dialog. Once the desktop is up, a
+  large update is not downloaded in the session: MeletonFX Update asks for a restart titled
+  `Upgrade to Service Pack <YY>Q<1-4> <patchid>` (`servicePackFromFiles` in
+  `serviceWorkerManager.js`). `YY` and the quarter come from the newest `modified` time in
+  that file set (UTC), and the patch id is a hash of the urls and hashes, so the name is built
+  when the update is seen. Restart then boots `/launch`, which installs it. A second reboot
+  within 3 minutes (`sessionStorage.melatonInstallRebootAt`, also set by the installer) is
+  refused so the pages never bounce; the boot gate then asks Retry / Restart (Restart goes to
+  `/launch`). A leftover `dreamscapeOsInstallWizard` session is discarded and does not skip
+  the reboot.
 
 Design previews: `/launch?design=1&screen=install` (also `install-expand`, `install-updates`,
 `install-error`, `install-linger`). Tests: `npm run test:melaton-boot` (flows),
@@ -358,7 +360,7 @@ open animation's opacity keyframes cannot flash a window before its stage).
 
 | When | What loads | Owner |
 |------|------------|-------|
-| `/app` start, under teal, before the logon dialog | Logon art: `desktop-boot.css`, `connection-dial.css` and caption chrome `url()`s for the logon this screen uses (the Vista Welcome screen's art only with `body.vista-logon`, and only its one aspect background via `_whenVistaLogonArtReady`), the `.boot-dialog` pictures as the elements ask for them (srcset included), the logon fonts and icon fonts | `assetPreload.startLoginStage` |
+| `/app` start, under teal, before the logon dialog | Logon art: `desktop-boot.css` and caption chrome `url()`s for the logon this screen uses (the Vista Welcome screen's art only with `body.vista-logon`, and only its one aspect background via `_whenVistaLogonArtReady`), the `.boot-dialog` pictures as the elements ask for them (srcset included), the logon fonts and icon fonts | `assetPreload.startLoginStage` |
 | After Connected, on the logon | The active workspace's wallpaper | `preloadBeforeDesktopTransition` |
 | Startup window | One stage per layer, see the table above | `assetPreload.js` steps 12.2 / 18.2 / 18.4 / 18.6 |
 | Startup window, step 18.8 | The DreamStudio and Workspaces splash screens (`#manualModalSplash`, `#workspaceSplash`): their shards / bands, the `manual-modal-splash.css` backgrounds and the title and status faces, so neither splash loads when its window opens. The late watch arms after this step | `assetPreload.preloadSplashStage` |

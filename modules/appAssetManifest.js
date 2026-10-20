@@ -46,7 +46,7 @@ const LAUNCH_GROUPS = {
 
 // Shell and logon sheets: preloaded by the boot stages, not by an application
 const SKIP_STYLESHEETS = new Set([
-    'fonts.css', 'desktop-boot.css', 'connection-dial.css', 'launch-boot.css', 'launch-install.css',
+    'fonts.css', 'desktop-boot.css', 'launch-boot.css', 'launch-install.css',
     'vista-sidebar.css', 'desktop-shell.css', 'vista-glass-controls.css', 'vista-scrollbars.css',
     'vista-scrollbars-frame.css', 'desktopAppWindows.css'
 ]);
