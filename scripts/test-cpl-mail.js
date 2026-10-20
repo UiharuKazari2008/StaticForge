@@ -48,7 +48,7 @@ function main() {
     assert.match(dovecoteJs, /if \(!mailSettings \|\| mailSettings\.soundOn\(\)\)/);
     assert.match(dovecoteJs, /doveNoteMailIds/);
     assert.match(dovecoteJs, /doveCollectFreshMailIds/);
-    assert.match(dovecoteJs, /if \(announce && fresh\.length\) dovePlayNewMailAlert/);
+    assert.match(dovecoteJs, /if \(newer\.length\) dovePlayNewMailAlert/);
     assert.doesNotMatch(dovecoteJs, /const fresh = prev != null && unread > prev/);
     assert.match(dovecoteJs, /className = 'modal hidden transient tool-window on-top'/);
     assert.match(dovecoteJs, /readBtn\.textContent = 'Read'/);

@@ -36,8 +36,10 @@ function main() {
 
     // First snapshot in a session seeds the set. Announce is gated on size>0
     // so that seed never plays the sound.
-    has("const announce = !!(options && options.announce) && doveNotifiedMailIds.size > 0;");
-    has('if (announce && fresh.length) dovePlayNewMailAlert(fresh.length);');
+    has("const announce = !!(options && options.announce) && doveNotifyPrimed;");
+    has("String(item.createdAt) > watermark", "old ids reappearing (not-spam/restore) do not ding");
+    has("doveConfirmPermanentDelete", "Trash delete asks first");
+    has('if (newer.length) dovePlayNewMailAlert(newer.length);');
     has('doveNoteMailIds(desktopDovecote.mail, { announce: false });');
     has('doveNoteMailIds((result && result.mail) || [], { announce: false });');
     has('doveNoteMailIds(Array.isArray(humanUnread) ? humanUnread : [], { announce: true });');

@@ -880,7 +880,7 @@ function readMail(owner, id, { markRead } = {}) {
     return toFull(row);
 }
 
-function markMail(owner, { id, read, archived, deleted, archiveSubfolder, spam, silent }) {
+function markMail(owner, { id, read, archived, deleted, archiveSubfolder, spam, silent, changedOwners }) {
     if (!isValidOwner(owner)) throw new DovecoteError('Unknown mailbox', 'UNKNOWN_OWNER');
     const row = getDb().prepare('SELECT * FROM dovecote_message WHERE id = ? AND owner = ?').get(id, owner);
     if (!row) {
@@ -916,6 +916,7 @@ function markMail(owner, { id, read, archived, deleted, archiveSubfolder, spam, 
     getDb().prepare(`UPDATE dovecote_message SET ${sets} WHERE id = ?`).run(...values, row.id);
     audit(owner, 'mark_mail', id, true, JSON.stringify(updates));
     if (!silent) emitMailboxChanged([owner, receiptOwner]);
+    else if (receiptOwner && changedOwners instanceof Set) changedOwners.add(receiptOwner);
     const updated = getDb().prepare('SELECT * FROM dovecote_message WHERE id = ?').get(row.id);
     return toSummary(updated);
 }
@@ -925,17 +926,19 @@ function markMailBatch(owner, { id, ids, read, archived, deleted, archiveSubfold
     if (!list.length) throw new DovecoteError('Message id is required', 'MESSAGE_ID_REQUIRED');
     const mail = [];
     const missing = [];
+    // Paired read-receipt senders must refresh too (single markMail emits them).
+    const changedOwners = new Set([owner]);
     const apply = getDb().transaction(() => {
         list.forEach((one) => {
             const row = markMail(owner, {
-                id: one, read, archived, deleted, archiveSubfolder, spam, silent: true
+                id: one, read, archived, deleted, archiveSubfolder, spam, silent: true, changedOwners
             });
             if (row) mail.push(row);
             else missing.push(one);
         });
     });
     apply();
-    emitMailboxChanged([owner]);
+    emitMailboxChanged(Array.from(changedOwners));
     return { mail, missing, updated: mail.length };
 }
 

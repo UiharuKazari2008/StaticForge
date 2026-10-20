@@ -904,7 +904,9 @@ const doveHandleMailRowMenuAction = function (item) {
         case 'dove-row-spam': doveMarkMailIds(ids, { spam: true }); return;
         case 'dove-row-not-spam': doveMarkMailIds(ids, { spam: false }); return;
         case 'dove-row-restore': doveMarkMailIds(ids, { deleted: false }); return;
-        case 'dove-row-delete': doveMarkMailIds(ids, { deleted: true }); return;
+        case 'dove-row-delete':
+            doveConfirmPermanentDelete(ids.length).then((ok) => { if (ok) doveMarkMailIds(ids, { deleted: true }); });
+            return;
         default: return;
     }
 };
@@ -2420,10 +2422,28 @@ const doveToggleRead = async function () {
     await doveMarkMailIds(rows.map((mail) => mail.id), { read: markRead }, { stay: true });
 };
 
+// Deleting from Trash is permanent: ask first (Vista message box).
+const doveConfirmPermanentDelete = async function (count) {
+    if (desktopDovecote.folder !== 'deleted') return true;
+    // showConfirmationDialog: public/scripts/comp/confirmationDialog.js
+    if (typeof showConfirmationDialog !== 'function') return window.confirm('Permanently delete ' + count + ' message(s)?');
+    const answer = await showConfirmationDialog(
+        'Permanently delete ' + (count === 1 ? 'this message' : count + ' messages') + '? This cannot be undone.',
+        [
+            { text: 'Delete', value: 'delete', className: 'btn-danger' },
+            { text: 'Cancel', value: false, className: 'btn-secondary' }
+        ],
+        null,
+        { title: 'Delete Permanently', icon: 'fas fa-trash' }
+    );
+    return answer === 'delete';
+};
+
 const doveDeleteSelected = async function () {
     const ids = desktopDovecote.selectedIds.slice();
     if (!ids.length && desktopDovecote.selectedMail) ids.push(desktopDovecote.selectedMail.id);
     if (!ids.length) return;
+    if (!(await doveConfirmPermanentDelete(ids.length))) return;
     await doveMarkMailIds(ids, { deleted: true });
 };
 
@@ -2937,6 +2957,13 @@ const doveReaderToggleRead = async function (state) {
 const doveReaderMarkSelected = async function (state, patch) {
     const mail = state.mail;
     if (!mail || desktopDovecote.viewAsOwner) return;
+    if (patch && patch.deleted === true && mail.folder === 'deleted') {
+        const prev = desktopDovecote.folder;
+        desktopDovecote.folder = 'deleted';
+        const ok = await doveConfirmPermanentDelete(1);
+        desktopDovecote.folder = prev;
+        if (!ok) return;
+    }
     try {
         await wsClient.sendMessage('dovecote_mark_mail', Object.assign({ id: mail.id }, patch));
         if (doveSelectedIdSet().has(String(mail.id)) || String(desktopDovecote.selectedId) === String(mail.id)) {
@@ -3148,6 +3175,11 @@ let doveTrayRegistered = false;
 // Inbox ids already seen this session. A delete/mark/move/refresh/page must not
 // re-play the new-mail sound just because the unread count moved.
 const doveNotifiedMailIds = new Set();
+// Primed after the first note (even an empty inbox), so the first mail into an
+// empty inbox still dings. Newest createdAt seen: an old id that reappears
+// (not-spam, restore, mark unread on an unpaged row) is not "new mail".
+let doveNotifyPrimed = false;
+let doveNotifyNewestAt = '';
 // Login fills the tray with balloons. The mail icon waits, then the unread balloon can be seen.
 const DOVE_TRAY_REGISTER_DELAY_MS = 60000;
 
@@ -3163,9 +3195,20 @@ const doveCollectFreshMailIds = function (seen, mail) {
 };
 
 const doveNoteMailIds = function (mail, options) {
-    const announce = !!(options && options.announce) && doveNotifiedMailIds.size > 0;
+    const announce = !!(options && options.announce) && doveNotifyPrimed;
+    const watermark = doveNotifyNewestAt;
     const fresh = doveCollectFreshMailIds(doveNotifiedMailIds, mail);
-    if (announce && fresh.length) dovePlayNewMailAlert(fresh.length);
+    (Array.isArray(mail) ? mail : []).forEach((item) => {
+        const at = item && item.createdAt ? String(item.createdAt) : '';
+        if (at > doveNotifyNewestAt) doveNotifyNewestAt = at;
+    });
+    doveNotifyPrimed = true;
+    if (announce && fresh.length) {
+        const freshSet = new Set(fresh);
+        const newer = (Array.isArray(mail) ? mail : []).filter((item) => item && freshSet.has(String(item.id))
+            && (!item.createdAt || String(item.createdAt) > watermark));
+        if (newer.length) dovePlayNewMailAlert(newer.length);
+    }
     return fresh;
 };
 
