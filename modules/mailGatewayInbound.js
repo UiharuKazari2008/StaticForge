@@ -113,6 +113,11 @@ function handleInboundConnection(plainSocket, options) {
         return;
     }
 
+    let smtpBusyId = null;
+    try {
+        smtpBusyId = require('./busyStatus').beginSmtp({ peer });
+    } catch (_err) { /* idle snapshot is optional */ }
+
     let socket = plainSocket;
     let crlf = new CrlfBuffer();
     let state = 'command';
@@ -140,6 +145,10 @@ function handleInboundConnection(plainSocket, options) {
         if (closed) return;
         closed = true;
         clearTimeout(sessionTimer);
+        if (smtpBusyId != null) {
+            try { require('./busyStatus').endSmtp(smtpBusyId); } catch (_err) { /* */ }
+            smtpBusyId = null;
+        }
         socket.end();
     }
 

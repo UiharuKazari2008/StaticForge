@@ -101,6 +101,18 @@ function activeSessionId() {
     return runs.size === 1 ? Array.from(runs.keys())[0] : null;
 }
 
+// In-process Xi tails, including after the agent pid exits while finishRun
+// is still settling the session (Yozora #565).
+function listActiveRuns() {
+    return Array.from(runs.values()).map((run) => ({
+        sessionId: run.sessionId,
+        pid: run.pid || null,
+        name: run.name || 'Xi',
+        startedAt: run.startedAt || null,
+        settled: run.settled === true
+    }));
+}
+
 // Runtime of whatever Xi session is currently driving a call through the
 // shared "Xi" MCP key (modules/dovecoteMail.js uses this to tell a Cursor
 // job's mail apart from a Claude job's — they share one application key).
@@ -1526,6 +1538,7 @@ module.exports = {
     runtimeStatus,
     hasChat,
     activeSessionId,
+    listActiveRuns,
     activeRuntime,
     sanitizeRuntime,
     readChatWorkspace,

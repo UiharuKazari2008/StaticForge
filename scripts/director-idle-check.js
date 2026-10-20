@@ -3,15 +3,21 @@
  * Director idle check for a server restart (see .cursor/rules/director-idle-before-restart.mdc).
  *
  * Busy when any of these is true:
- *   - Xi: a run record in ~/.cache/dreamscape-xi/runs/*.json whose pid is alive
- *     and is a cursor-agent/node process (guards against pid reuse).
- *   - Wren: a bwrap sandbox whose parent is the Dreamscape PM2 process
- *     (cursorDirector spawns every agent turn through bwrap).
- *   - Generation: a file under images/ written in the last N seconds (default 120).
+ *   - In-process snapshot (~/.cache/dreamscape/busy-status.json from the
+ *     127.0.0.1 /busy loopback): Director or Xi runs (including before
+ *     sandbox start and after exit), the generation queue, upscale/animate
+ *     jobs, MCP calls per key, open mail SMTP sessions, in-flight HTTP.
+ *   - Xi: a run record in ~/.cache/dreamscape-xi/runs/*.json whose pid is
+ *     alive and is a cursor-agent/node/agent/claude process.
+ *   - Wren: a bwrap sandbox anywhere under the Dreamscape process tree
+ *     (not only direct children).
  *
- * It reads /proc and the run records only. It never matches command-line text,
- * and it skips its own pid and every ancestor, so the checker (or the ssh/bash
- * that runs it) can never count as a live turn.
+ * Recent files under images/ are a warning only — they do not block idle.
+ *
+ * It reads /proc, the run records, and the snapshot file. It never matches
+ * command-line text, and it skips its own pid and every ancestor, so the
+ * checker (or the ssh/bash that runs it) can never count as a live turn.
+ * checkIdle() stays synchronous (cursorDirector.updateAgentClis reads it).
  *
  * Usage: node scripts/director-idle-check.js [--json] [--gen-window=120]
  * Exit: 0 idle, 1 busy, 2 could not decide (e.g. Dreamscape pid unknown).
@@ -51,7 +57,49 @@ function selfAndAncestors(procRoot, pid) {
     return out;
 }
 
-const AGENT_COMMS = new Set(['cursor-agent', 'node', 'agent']);
+function descendantsOf(procs, rootPid) {
+    const kids = new Map();
+    procs.forEach((p) => {
+        if (!kids.has(p.ppid)) kids.set(p.ppid, []);
+        kids.get(p.ppid).push(p);
+    });
+    const out = [];
+    const stack = (kids.get(rootPid) || []).slice();
+    while (stack.length) {
+        const p = stack.pop();
+        out.push(p);
+        const next = kids.get(p.pid);
+        if (next) stack.push(...next);
+    }
+    return out;
+}
+
+const AGENT_COMMS = new Set(['cursor-agent', 'node', 'agent', 'claude', 'claude-code']);
+
+function defaultBusyFile(home) {
+    return path.join(home || os.homedir(), '.cache', 'dreamscape', 'busy-status.json');
+}
+
+const SNAPSHOT_MAX_AGE_MS = 10000;
+
+function readInProcess({ busyFile, home, procRoot, serverPid, now }) {
+    const empty = { reasons: [], status: null };
+    const target = busyFile || defaultBusyFile(home);
+    let snap = null;
+    try { snap = JSON.parse(fs.readFileSync(target, 'utf8')); } catch (_) { return empty; }
+    if (!snap || typeof snap !== 'object') return empty;
+    if (serverPid && snap.pid && Number(snap.pid) !== Number(serverPid)) return empty;
+    if (snap.pid && !procStat(procRoot, snap.pid)) return empty;
+    // The live server refreshes every ~2s. An old file from that same pid means
+    // the refresh loop is wedged: never call that idle.
+    const age = (now || Date.now()) - Number(snap.at || 0);
+    if (!(age <= SNAPSHOT_MAX_AGE_MS)) return { reasons: ['busy-snapshot-stale'], status: null };
+    const status = snap.status && typeof snap.status === 'object' ? snap.status : null;
+    const reasons = status && Array.isArray(status.reasons)
+        ? status.reasons.filter((row) => typeof row === 'string' && row)
+        : [];
+    return { reasons, status };
+}
 
 function xiRuns({ procRoot, xiRunsDir, skip }) {
     let names = [];
@@ -72,8 +120,8 @@ function xiRuns({ procRoot, xiRunsDir, skip }) {
 
 function wrenSandboxes({ procRoot, serverPid, skip }) {
     if (!serverPid) return [];
-    return listProcs(procRoot)
-        .filter((p) => p.ppid === serverPid && p.comm === 'bwrap' && !skip.has(p.pid))
+    return descendantsOf(listProcs(procRoot), serverPid)
+        .filter((p) => p.comm === 'bwrap' && !skip.has(p.pid))
         .map((p) => ({ pid: p.pid }));
 }
 
@@ -99,6 +147,17 @@ function readServerPid(pm2Home) {
     return Number.isFinite(n) && n > 1 ? n : null;
 }
 
+function uniqueReasons(list) {
+    const seen = new Set();
+    const out = [];
+    (list || []).forEach((row) => {
+        if (!row || seen.has(row)) return;
+        seen.add(row);
+        out.push(row);
+    });
+    return out;
+}
+
 function checkIdle(opts = {}) {
     const home = opts.home || os.homedir();
     const procRoot = opts.procRoot || '/proc';
@@ -111,12 +170,38 @@ function checkIdle(opts = {}) {
     const xi = xiRuns({ procRoot, xiRunsDir: opts.xiRunsDir || path.join(home, '.cache', 'dreamscape-xi', 'runs'), skip });
     const wren = wrenSandboxes({ procRoot, serverPid, skip });
     const images = recentImages(opts.imagesDir || path.join(root, 'images'), now - genWindowSec * 1000);
+    const inProcess = readInProcess({
+        busyFile: opts.busyFile,
+        home,
+        procRoot,
+        serverPid,
+        now
+    });
     const serverAlive = !!(serverPid && procStat(procRoot, serverPid));
-    const busy = xi.length > 0 || wren.length > 0 || images.length > 0;
-    return { idle: !busy && serverAlive, decided: serverAlive || busy, serverPid, serverAlive, xi, wren, recentImages: images, genWindowSec };
+    const reasons = uniqueReasons([
+        ...inProcess.reasons,
+        ...xi.map((row) => (row.sessionId ? `xi:${row.sessionId}` : `xi-pid:${row.pid}`)),
+        ...wren.map((row) => `sandbox:${row.pid}`)
+    ]);
+    const warnings = [];
+    if (images.length) warnings.push(`recent-images:${images.length}`);
+    const busy = reasons.length > 0;
+    return {
+        idle: !busy && serverAlive,
+        decided: serverAlive || busy,
+        serverPid,
+        serverAlive,
+        reasons,
+        warnings,
+        inProcess: inProcess.status,
+        xi,
+        wren,
+        recentImages: images,
+        genWindowSec
+    };
 }
 
-module.exports = { checkIdle, selfAndAncestors, procStat };
+module.exports = { checkIdle, selfAndAncestors, procStat, descendantsOf, AGENT_COMMS };
 
 if (require.main === module) {
     const json = process.argv.includes('--json');
@@ -127,7 +212,9 @@ if (require.main === module) {
         console.log(`[idle-check] server pid=${r.serverPid || '?'} alive=${r.serverAlive}`);
         console.log(`[idle-check] xi live runs=${r.xi.length}${r.xi.map((x) => ` ${x.pid}(${x.name || x.sessionId})`).join('')}`);
         console.log(`[idle-check] wren sandboxes=${r.wren.length}${r.wren.map((x) => ` ${x.pid}`).join('')}`);
-        console.log(`[idle-check] images in last ${r.genWindowSec}s=${r.recentImages.length}`);
+        console.log(`[idle-check] images in last ${r.genWindowSec}s=${r.recentImages.length} (warn only)`);
+        console.log(`[idle-check] busy=${r.reasons.length ? r.reasons.join(' ') : 'none'}`);
+        if (r.warnings.length) console.log(`[idle-check] warn ${r.warnings.join(' ')}`);
         console.log(r.idle ? '[idle-check] IDLE' : (r.decided ? '[idle-check] BUSY' : '[idle-check] UNKNOWN (Dreamscape pid not found)'));
     }
     process.exit(r.idle ? 0 : (r.decided ? 1 : 2));

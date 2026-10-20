@@ -51,7 +51,7 @@ const {
     agentHasNamedScope,
     buildAgentScopePayload
 } = require('./agentClientBridge');
-const { isGenerateTool, summarizeArgs, summarizeResult, recordActivity } = require('./mcpActivity');
+const { isGenerateTool, summarizeArgs, summarizeResult, recordActivity, beginCall, endCall } = require('./mcpActivity');
 const { compareImageFiles, evaluateThemeRows } = require('./mcpInsights');
 const { buildStudioSettingsCatalog, slimStudioSettingsCatalog, applyCatalogToListedTool } = require('./studioSettingsCatalog');
 const { buildMcpServerInfo, hashMcpToolsRevision, resolveMcpPublicBaseUrl } = require('./mcpServerInfo');
@@ -9525,6 +9525,12 @@ async function handleJsonRpc(globalResources, req, message) {
         const generating = isGenerateTool(name, args);
         const argsSummary = summarizeArgs(args);
         const actorName = resolveActorName(req);
+        const bindKey = resolveBindKey(req);
+        const inflightId = beginCall({
+            tool: name,
+            actorName,
+            key: actorName || bindKey || 'unknown'
+        });
         if (generating) {
             recordActivity(globalResources, {
                 tool: name,
@@ -9572,6 +9578,8 @@ async function handleJsonRpc(globalResources, req, message) {
                     result: failResult
                 }
             };
+        } finally {
+            endCall(inflightId);
         }
     }
 

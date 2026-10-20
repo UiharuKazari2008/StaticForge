@@ -617,8 +617,13 @@ async function upscaleBufferWithLocalWorker(globalResources, imageBuffer, option
         throw error;
     }
     const jobId = posted.body.job_id;
+    let busyJobId = null;
+    try {
+        busyJobId = require('./busyStatus').beginLocalJob('upscale', jobId);
+    } catch (_err) { /* idle snapshot is optional */ }
     const deadline = Date.now() + (options.timeoutMs || 15 * 60 * 1000);
     let last = null;
+    try {
     while (Date.now() < deadline) {
         await sleep(options.pollMs || 400);
         let status;
@@ -660,6 +665,11 @@ async function upscaleBufferWithLocalWorker(globalResources, imageBuffer, option
     }
     const bytes = Buffer.from(await result.arrayBuffer());
     return { buffer: bytes, jobId, model, scale, workerId: target.worker.id };
+    } finally {
+        if (busyJobId != null) {
+            try { require('./busyStatus').endLocalJob(busyJobId); } catch (_err) { /* */ }
+        }
+    }
 }
 
 function isLocalAnimateBackend(value) {
@@ -757,10 +767,15 @@ async function animateBufferWithLocalWorker(globalResources, imageBuffer, option
     }
     const jobId = posted.body.job_id;
     if (typeof options.onJobId === 'function') options.onJobId(jobId);
+    let busyJobId = null;
+    try {
+        busyJobId = require('./busyStatus').beginLocalJob('animate', jobId);
+    } catch (_err) { /* idle snapshot is optional */ }
     const deadline = Date.now() + (options.timeoutMs || 30 * 60 * 1000);
     let last = null;
     let lastPreviewSeq = 0;
     const workerName = workerDisplayName(target);
+    try {
     while (Date.now() < deadline) {
         await sleep(options.pollMs || 600);
         let status;
@@ -814,6 +829,11 @@ async function animateBufferWithLocalWorker(globalResources, imageBuffer, option
         }
     }
     return { buffers, jobId, motionPrompt, frames, fps, loop, backend, workerId: target.id };
+    } finally {
+        if (busyJobId != null) {
+            try { require('./busyStatus').endLocalJob(busyJobId); } catch (_err) { /* */ }
+        }
+    }
 }
 
 module.exports = {
