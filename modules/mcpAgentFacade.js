@@ -6233,6 +6233,8 @@ function runMemoryTool(globalResources, name, input, ctx) {
     if (!memoryName) {
         return { success: false, error: 'name is required' };
     }
+    const listError = invalidMemoryLists(input);
+    if (listError) return { success: false, error: listError, status: 400 };
     const existing = db.getKnowledgeMemory(memoryName, false);
     const description = input.description != null && String(input.description).trim()
         ? String(input.description).trim()
@@ -9787,10 +9789,29 @@ function registerRoutes(app, { globalResources }) {
     });
 }
 
+// save_memory replaces the stored lists with what it is sent. A list that
+// arrives as an object ({item: [...]} from an XML-style tool call) or a string
+// used to normalize to [] and wipe the memory. Reject it instead.
+function invalidMemoryLists(input) {
+    for (const key of ['observations', 'entities', 'relations']) {
+        const value = input ? input[key] : undefined;
+        if (value === undefined || value === null) continue;
+        if (!Array.isArray(value)) {
+            return `${key} must be an array, got ${typeof value === 'object' ? 'an object' : typeof value}. Nothing was saved.`;
+        }
+        if (key !== 'observations') continue;
+        const bad = value.findIndex((item) => !(typeof item === 'string'
+            || (item && typeof item === 'object' && !Array.isArray(item) && typeof item.content === 'string')));
+        if (bad >= 0) return `observations[${bad}] must be a string or an object with a string content. Nothing was saved.`;
+    }
+    return null;
+}
+
 module.exports = {
     registerRoutes,
     McpOAuthProvider,
     _test: {
+        invalidMemoryLists,
         TOOL_DEFS,
         MCP_CORS_ORIGINS,
         OAUTH_CORS_ORIGINS,
