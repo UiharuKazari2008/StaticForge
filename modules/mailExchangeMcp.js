@@ -20,11 +20,26 @@ const TOOLS = [
         inputSchema: { type: 'object', additionalProperties: false, properties: {} }
     },
     {
+        name: 'exchange_get_mailbox',
+        core: true,
+        role: 'exchange',
+        scope: SCOPE,
+        description: 'Exchange admin only. Get one mailbox, its public address, and extra intake aliases. Tsubame (mailroom) is the intended operator.',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['owner'],
+            properties: {
+                owner: { type: 'string' }
+            }
+        }
+    },
+    {
         name: 'exchange_create_mailbox',
         core: true,
         role: 'exchange',
         scope: SCOPE,
-        description: 'Exchange admin only. Create a mailbox mapped to name.dept@dream.737.jp.net. Never an external domain. Requires confirm:true.',
+        description: 'Exchange admin only. Create a mailbox mapped to name.dept@dream.737.jp.net. Never an external domain. Live immediately, no restart. Requires confirm:true.',
         inputSchema: {
             type: 'object',
             additionalProperties: false,
@@ -33,6 +48,25 @@ const TOOLS = [
                 owner: { type: 'string' },
                 dept: { type: 'string' },
                 displayName: { type: 'string' },
+                confirm: { type: 'boolean' }
+            }
+        }
+    },
+    {
+        name: 'exchange_update_mailbox',
+        core: true,
+        role: 'exchange',
+        scope: SCOPE,
+        description: 'Exchange admin only. Update display name, dept, or owner of a mailbox. Live immediately. Requires confirm:true. Mailroom kind stays on Tsubame.',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['owner', 'confirm'],
+            properties: {
+                owner: { type: 'string' },
+                displayName: { type: 'string' },
+                dept: { type: 'string' },
+                newOwner: { type: 'string' },
                 confirm: { type: 'boolean' }
             }
         }
@@ -84,6 +118,39 @@ const TOOLS = [
             properties: {
                 owner: { type: 'string' },
                 action: { type: 'string', enum: ['issue', 'rotate', 'revoke'] },
+                confirm: { type: 'boolean' }
+            }
+        }
+    },
+    {
+        name: 'exchange_add_address',
+        core: true,
+        role: 'exchange',
+        scope: SCOPE,
+        description: 'Exchange admin only. Add an intake local-part alias on dream.737.jp.net for an existing mailbox. Never an external domain. Live immediately. Requires confirm:true.',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['owner', 'localPart', 'confirm'],
+            properties: {
+                owner: { type: 'string' },
+                localPart: { type: 'string' },
+                confirm: { type: 'boolean' }
+            }
+        }
+    },
+    {
+        name: 'exchange_remove_address',
+        core: true,
+        role: 'exchange',
+        scope: SCOPE,
+        description: 'Exchange admin only. Remove a non-primary intake alias. Requires confirm:true.',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['localPart', 'confirm'],
+            properties: {
+                localPart: { type: 'string' },
                 confirm: { type: 'boolean' }
             }
         }
@@ -186,11 +253,28 @@ function isExchangeTool(name) {
     return TOOLS.some((tool) => tool.name === name);
 }
 
+function applicationKeyHasExchangeScope(req) {
+    const auth = req && req.applicationAuth;
+    if (!auth || !(auth.appName || auth.applicationName || auth.applicationKeyId || auth.keyId)) {
+        return true;
+    }
+    const scopes = auth.applicationScopes;
+    if (!Array.isArray(scopes)) return false;
+    return scopes.includes(SCOPE) || scopes.includes('universal');
+}
+
 async function handleExchangeTool(req, name, input = {}) {
     const actor = resolveMcpActor(req);
     let admin;
     try {
         admin = exchange.requireExchangeAdmin(actor, name, input && (input.owner || input.localPart || input.id));
+        if (!applicationKeyHasExchangeScope(req)) {
+            exchange.audit(admin, name, input && (input.owner || input.localPart || input.id) || null, false, 'exchange scope required');
+            throw new exchange.MailExchangeError(
+                'Application key does not have Exchange admin permission',
+                'INSUFFICIENT_SCOPE'
+            );
+        }
     } catch (err) {
         if (err instanceof exchange.MailExchangeError) {
             return mcpTextResult({ success: false, error: err.message, code: err.code }, true);
@@ -204,11 +288,30 @@ async function handleExchangeTool(req, name, input = {}) {
                 mailboxes: exchange.listMailboxRecords().map(exchange.publicMailboxView)
             });
         }
+        if (name === 'exchange_get_mailbox') {
+            const mailbox = exchange.publicMailboxView(exchange.getMailboxRecord(input.owner));
+            if (!mailbox) {
+                throw new exchange.MailExchangeError('Unknown mailbox', 'UNKNOWN_MAILBOX');
+            }
+            return mcpTextResult({ success: true, mailbox });
+        }
         if (name === 'exchange_create_mailbox') {
             return mcpTextResult({
                 success: true,
                 mailbox: exchange.publicMailboxView(exchange.createMailbox(admin, input))
             });
+        }
+        if (name === 'exchange_update_mailbox') {
+            return mcpTextResult({
+                success: true,
+                mailbox: exchange.publicMailboxView(exchange.updateMailbox(admin, input))
+            });
+        }
+        if (name === 'exchange_add_address') {
+            return mcpTextResult({ success: true, ...exchange.addAddress(admin, input) });
+        }
+        if (name === 'exchange_remove_address') {
+            return mcpTextResult({ success: true, ...exchange.removeAddress(admin, input) });
         }
         if (name === 'exchange_disable_mailbox') {
             return mcpTextResult({

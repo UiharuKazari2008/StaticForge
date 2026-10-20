@@ -1340,7 +1340,7 @@
       "type": "object",
       "label": "Mail Gateway",
       "closed": true,
-      "description": "Inbound SMTP/LMTP and outbound submission for <bot>.<dept>@dream.737.jp.net. Off until enabled. tifa and pyra stay unmapped until a department is confirmed."
+      "description": "Inbound SMTP/LMTP and outbound submission for <bot>.<dept>@dream.737.jp.net. Off until enabled. Intake addresses come from the Exchange DB (seeded from code defaults); config.mailGateway.mailboxes overlays that table and never replaces it wholesale. Never map an external domain."
     },
     {
       "path": [
@@ -1598,7 +1598,7 @@
       ],
       "type": "object",
       "label": "Mailbox Map",
-      "description": "local-part on dream.737.jp.net → Dovecote mailbox. First key per owner is the outbound address. Shipped: kazari.ops (Yukimi outbound) plus inbound aliases yukimi, kazari, yukimi.kazari; sala.ops; menma/rook/cursor/claude/frost .dev; hoshino.apocrypha; ivory.studio; guren.lab; chiyo.web; tsubame.ops (Tsubame). mailroom.ops is an alias that delivers to tsubame (LANTIS catch-all). Never ykazari@icloud.com or any external domain. tifa and pyra stay unmapped. X-Original-To is display only."
+      "description": "Optional overlay: local-part on dream.737.jp.net → Dovecote mailbox. Merged on top of the Exchange DB (which is seeded from code defaults); this map does not replace the DB wholesale. First key per owner is the outbound address. Seeded: kazari.ops (Yukimi outbound) plus inbound aliases yukimi, kazari, yukimi.kazari; sala.ops; menma/rook/cursor/claude/frost/stylus/sequenzia .dev; anvil.ci; pyra.dev; tifa.studio; hoshino.apocrypha; ivory.studio; guren.lab; chiyo.web; tsubame.ops, mailroom.ops, postmaster, abuse → tsubame. Never ykazari@icloud.com or any external domain. X-Original-To is display only."
     },
     {
       "path": [
@@ -1694,7 +1694,7 @@
       ],
       "type": "object",
       "label": "Pending Mailboxes",
-      "description": "tifa and pyra: department still to be decided. Leave unmapped. Do not add them to mailboxes until confirmed."
+      "description": "Legacy. tifa.studio and pyra.dev are seeded into the Exchange DB. This object is unused for routing."
     },
     {
       "path": [

@@ -9,7 +9,10 @@ const { resolveOwnerFromActor } = require('./dovecoteMail');
 const {
     isExchangeAdmin,
     canonicalizeAdmin,
-    HUMAN_OWNER
+    HUMAN_OWNER,
+    requireExchangeAdmin,
+    MailExchangeError,
+    audit
 } = require('./mailExchange');
 
 function actorFromApplicationAuth(applicationAuth) {
@@ -54,6 +57,25 @@ function resolveHttpActor(req) {
     return fromKey;
 }
 
+const EXCHANGE_SCOPE = 'sfapp_mail_exchange';
+
+function hasExchangeAdminScope(auth) {
+    if (!hasApplicationKey(auth)) return true;
+    const scopes = auth && auth.applicationScopes;
+    if (!Array.isArray(scopes)) return false;
+    return scopes.includes(EXCHANGE_SCOPE) || scopes.includes('universal');
+}
+
+function requireExchangeAdminScope(actor, action, target, auth) {
+    const admin = requireExchangeAdmin(actor, action, target);
+    if (hasExchangeAdminScope(auth)) return admin;
+    audit(admin, action || 'access', target || null, false, 'exchange scope required');
+    throw new MailExchangeError(
+        'Application key does not have Exchange admin permission',
+        'INSUFFICIENT_SCOPE'
+    );
+}
+
 function resolveMcpActor(req) {
     try {
         const { resolveDovecoteOwnerFromReq } = require('./dovecoteIdentity');
@@ -72,5 +94,8 @@ module.exports = {
     actorFromApplicationAuth,
     resolveWsActor,
     resolveHttpActor,
-    resolveMcpActor
+    resolveMcpActor,
+    hasExchangeAdminScope,
+    requireExchangeAdminScope,
+    EXCHANGE_SCOPE
 };

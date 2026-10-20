@@ -876,7 +876,9 @@ Lists scheduled/pending preset generation requests.
 
 Base path `/mail-exchange/*`. Handler: `modules/mailExchangeHttp.js`. Off until `config.mailExchange.enabled` is true (mutations return `DISABLED` / 503).
 
-Every route: **authMiddleware** plus an identity gate. Allowed actors: Yukimi, Sala, Tsubame (mailroom). Anyone else is `403` `{ "error": "Exchange admin required", "code": "FORBIDDEN" }`. Relay tokens (`secureConfig.mailExchange.relayReadToken` / `relayAdminToken`) are never returned.
+Every route: **authMiddleware** plus an identity gate. Allowed actors: Yukimi, Sala, Tsubame (mailroom). Application keys also need `sfapp_mail_exchange`. Anyone else is `403` `{ "error": "Exchange admin required", "code": "FORBIDDEN" }` or `INSUFFICIENT_SCOPE`. Relay tokens (`secureConfig.mailExchange.relayReadToken` / `relayAdminToken`) are never returned.
+
+Mailbox owners and intake addresses live in the Exchange DB (seeded from code defaults). `config.mailGateway.mailboxes` overlays that table; it does not replace it wholesale. Creates and address aliases take effect live (no restart). Never map an external domain as a local mailbox.
 
 Yukimi's public From is `kazari.ops@dream.737.jp.net` (aliases `kazari@`, `yukimi.kazari@`, `yukimi@`).
 
@@ -885,9 +887,13 @@ Writes require `confirm: true`. Soft-delete also requires `confirmText: "DELETE"
 | Method | Path | Notes |
 |--------|------|-------|
 | GET | `/mail-exchange/mailboxes` | List mailboxes |
-| POST | `/mail-exchange/mailboxes` | Create `{ owner, dept, displayName?, confirm }` |
+| GET | `/mail-exchange/mailboxes/:owner` | Get one mailbox plus extra intake addresses |
+| POST | `/mail-exchange/mailboxes` | Create `{ owner, dept, displayName?, confirm }` — live immediately |
+| PATCH | `/mail-exchange/mailboxes/:owner` | `{ displayName?, dept?, newOwner?, confirm }` |
 | POST | `/mail-exchange/mailboxes/:owner/disable` | `{ enabled, confirm }` |
 | DELETE | `/mail-exchange/mailboxes/:owner` | `{ confirm, confirmText }` |
+| POST | `/mail-exchange/mailboxes/:owner/addresses` | `{ localPart, confirm }` extra intake alias |
+| DELETE | `/mail-exchange/addresses/:localPart` | `{ confirm }` — cannot remove the primary address |
 | POST | `/mail-exchange/mailboxes/:owner/keys` | Issue |
 | POST | `/mail-exchange/mailboxes/:owner/keys/rotate` | Rotate |
 | POST | `/mail-exchange/mailboxes/:owner/keys/revoke` | Revoke |

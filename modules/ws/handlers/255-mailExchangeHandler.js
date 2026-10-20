@@ -7,7 +7,7 @@
 
 const wsPacketRegistry = require('../wsPacketRegistry');
 const exchange = require('../../mailExchange');
-const { resolveWsActor } = require('../../mailExchangeAuth');
+const { resolveWsActor, requireExchangeAdminScope } = require('../../mailExchangeAuth');
 
 const DESTRUCTIVE = { destructive: true };
 
@@ -23,7 +23,12 @@ function sendOk(handlersCtx, ws, type, requestId, data) {
 function requireActor(handlersCtx, ws, message, clientInfo) {
     const actor = resolveWsActor(clientInfo);
     try {
-        return exchange.requireExchangeAdmin(actor, message.type, null);
+        const auth = clientInfo && (clientInfo.applicationAuth || {
+            appName: clientInfo.appName,
+            applicationKeyId: clientInfo.applicationKeyId,
+            applicationScopes: clientInfo.applicationScopes
+        });
+        return requireExchangeAdminScope(actor, message.type, null, auth);
     } catch (err) {
         handlersCtx.sendError(ws, err.message, err.code || 'FORBIDDEN', message.requestId);
         return null;
@@ -52,6 +57,12 @@ const handleListMailboxes = wrap(async () => ({
     mailboxes: exchange.listMailboxRecords().map(exchange.publicMailboxView)
 }));
 
+const handleGetMailbox = wrap(async (_actor, message) => {
+    const mailbox = exchange.publicMailboxView(exchange.getMailboxRecord(message.owner));
+    if (!mailbox) throw new exchange.MailExchangeError('Unknown mailbox', 'UNKNOWN_MAILBOX');
+    return { mailbox };
+});
+
 const handleCreateMailbox = wrap(async (actor, message) => ({
     mailbox: exchange.publicMailboxView(exchange.createMailbox(actor, {
         owner: message.owner,
@@ -60,6 +71,31 @@ const handleCreateMailbox = wrap(async (actor, message) => ({
         confirm: message.confirm === true
     }))
 }));
+
+const handleUpdateMailbox = wrap(async (actor, message) => ({
+    mailbox: exchange.publicMailboxView(exchange.updateMailbox(actor, {
+        owner: message.owner,
+        displayName: message.displayName,
+        dept: message.dept,
+        newOwner: message.newOwner,
+        confirm: message.confirm === true
+    }))
+}));
+
+const handleAddAddress = wrap(async (actor, message) => (
+    exchange.addAddress(actor, {
+        owner: message.owner,
+        localPart: message.localPart,
+        confirm: message.confirm === true
+    })
+));
+
+const handleRemoveAddress = wrap(async (actor, message) => (
+    exchange.removeAddress(actor, {
+        localPart: message.localPart,
+        confirm: message.confirm === true
+    })
+));
 
 const handleDisableMailbox = wrap(async (actor, message) => ({
     mailbox: exchange.publicMailboxView(exchange.disableMailbox(actor, {
@@ -172,7 +208,11 @@ function registerPackets(handlersCtx) {
         }, { owner: 'mailExchange', ...meta });
     };
     reg('exchange_list_mailboxes', handleListMailboxes);
+    reg('exchange_get_mailbox', handleGetMailbox);
     reg('exchange_create_mailbox', handleCreateMailbox, DESTRUCTIVE);
+    reg('exchange_update_mailbox', handleUpdateMailbox, DESTRUCTIVE);
+    reg('exchange_add_address', handleAddAddress, DESTRUCTIVE);
+    reg('exchange_remove_address', handleRemoveAddress, DESTRUCTIVE);
     reg('exchange_disable_mailbox', handleDisableMailbox, DESTRUCTIVE);
     reg('exchange_delete_mailbox', handleDeleteMailbox, DESTRUCTIVE);
     reg('exchange_issue_key', handleIssueKey, DESTRUCTIVE);

@@ -6,13 +6,13 @@
 'use strict';
 
 const exchange = require('./mailExchange');
-const { resolveHttpActor } = require('./mailExchangeAuth');
+const { resolveHttpActor, requireExchangeAdminScope } = require('./mailExchangeAuth');
 
 function sendError(res, err) {
-    const status = err.code === 'FORBIDDEN' ? 403
+    const status = err.code === 'FORBIDDEN' || err.code === 'INSUFFICIENT_SCOPE' ? 403
         : err.code === 'DISABLED' ? 503
             : err.code === 'CONFIRM_REQUIRED' ? 400
-                : err.code === 'UNKNOWN_MAILBOX' || err.code === 'KEY_NOT_FOUND' ? 404
+                : err.code === 'UNKNOWN_MAILBOX' || err.code === 'KEY_NOT_FOUND' || err.code === 'UNKNOWN_ADDRESS' ? 404
                     : 400;
     res.status(status).json({ error: err.message, code: err.code || 'EXCHANGE_ERROR' });
 }
@@ -20,7 +20,7 @@ function sendError(res, err) {
 function requireActor(req, res) {
     const actor = resolveHttpActor(req);
     try {
-        return exchange.requireExchangeAdmin(actor, req.method + ' ' + req.path, null);
+        return requireExchangeAdminScope(actor, req.method + ' ' + req.path, null, req.applicationAuth);
     } catch (err) {
         sendError(res, err);
         return null;
@@ -46,9 +46,23 @@ function registerRoutes(app, { authMiddleware }) {
     app.get('/mail-exchange/mailboxes', authMiddleware, gated(async () => ({
         mailboxes: exchange.listMailboxRecords().map(exchange.publicMailboxView)
     })));
+    app.get('/mail-exchange/mailboxes/:owner', authMiddleware, gated(async (_actor, req) => {
+        const mailbox = exchange.publicMailboxView(exchange.getMailboxRecord(req.params.owner));
+        if (!mailbox) throw new exchange.MailExchangeError('Unknown mailbox', 'UNKNOWN_MAILBOX');
+        return { mailbox };
+    }));
     app.post('/mail-exchange/mailboxes', authMiddleware, json, gated(async (actor, req) => ({
         mailbox: exchange.publicMailboxView(exchange.createMailbox(actor, req.body || {}))
     })));
+    app.patch('/mail-exchange/mailboxes/:owner', authMiddleware, json, gated(async (actor, req) => ({
+        mailbox: exchange.publicMailboxView(exchange.updateMailbox(actor, Object.assign({ owner: req.params.owner }, req.body || {})))
+    })));
+    app.post('/mail-exchange/mailboxes/:owner/addresses', authMiddleware, json, gated(async (actor, req) => (
+        exchange.addAddress(actor, Object.assign({ owner: req.params.owner }, req.body || {}))
+    )));
+    app.delete('/mail-exchange/addresses/:localPart', authMiddleware, json, gated(async (actor, req) => (
+        exchange.removeAddress(actor, Object.assign({ localPart: req.params.localPart }, req.body || {}))
+    )));
     app.post('/mail-exchange/mailboxes/:owner/disable', authMiddleware, json, gated(async (actor, req) => ({
         mailbox: exchange.publicMailboxView(exchange.disableMailbox(actor, Object.assign({ owner: req.params.owner }, req.body || {})))
     })));

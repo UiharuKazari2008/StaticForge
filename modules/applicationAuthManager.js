@@ -106,10 +106,12 @@ const SCOPE_WS_PACKETS = {
     ],
     infrastructure: ['ping', 'pong', 'server_status', 'check_updates', 'version_check', 'runpod_pods_status', 'remote_workers_status'],
     sfapp_mail_exchange: [
-        'exchange_list_mailboxes', 'exchange_create_mailbox', 'exchange_disable_mailbox',
+        'exchange_list_mailboxes', 'exchange_get_mailbox', 'exchange_create_mailbox',
+        'exchange_update_mailbox', 'exchange_disable_mailbox',
         'exchange_delete_mailbox', 'exchange_issue_key', 'exchange_rotate_key', 'exchange_revoke_key',
         'exchange_list_aliases', 'exchange_upsert_alias', 'exchange_delete_alias',
         'exchange_upsert_list', 'exchange_delete_list',
+        'exchange_add_address', 'exchange_remove_address',
         'exchange_get_signature', 'exchange_set_signature',
         'exchange_get_toggles', 'exchange_set_toggles',
         'exchange_dashboard', 'exchange_list_spam', 'exchange_spam_move', 'exchange_audit',
@@ -145,7 +147,7 @@ const AVAILABLE_SCOPES = [
     { id: 'sfapp_usage', label: 'Usage', description: 'NovelAI account usage data (Anlas, Opus meter, generation count)' },
     { id: 'sfapp_apocrypha', label: 'Apocrypha Publish', description: 'Publish Apocrypha zine content directly' },
     { id: 'sfapp_dovecote', label: 'Dovecote Mail', description: 'Own-mailbox-only internal mail (send, list, read, mark, forward). Tsubame (mailroom role) cross-mailbox Spam tools stay gated on the Tsubame key.' },
-    { id: 'sfapp_mail_exchange', label: 'Dreamscape Exchange Server', description: 'Mail system admin console. Yukimi, Sala, and Tsubame (mailroom) only; everyone else is denied server-side.' }
+    { id: 'sfapp_mail_exchange', label: 'Dreamscape Exchange Server', description: 'Mail system admin console. Granted per application key (Tsubame mailroom, Sala, Yukimi). Identity-gated to those owners; other bot keys cannot call the tools.' }
 ];
 
 // Scope ids for O(1) membership in normalizeScopes (Jules GH #341)

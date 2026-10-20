@@ -10,6 +10,7 @@ const crypto = require('crypto');
 const addresses = require('./mailGatewayAddresses');
 const { sanitizeHtml } = require('./dovecoteSanitize');
 const { getDb, isReady } = require('./mailExchangeDatabase');
+const { seedOwnerKind, OWNER_KIND_MAILROOM } = addresses;
 
 const HUMAN_OWNER = 'yukimi';
 const SALA_OWNER = 'sala';
@@ -37,13 +38,32 @@ class MailExchangeError extends Error {
 }
 
 let testConfig = null;
+let directoryGeneration = 0;
 
 function setTestConfig(config) {
     testConfig = config || null;
+    invalidateDirectory();
 }
 
 function resetTestConfig() {
     testConfig = null;
+    invalidateDirectory();
+}
+
+function isDirectoryReady() {
+    return isReady();
+}
+
+function invalidateDirectory() {
+    directoryGeneration += 1;
+    try {
+        const dovecoteMail = require('./dovecoteMail');
+        if (typeof dovecoteMail.invalidateOwnerCache === 'function') {
+            dovecoteMail.invalidateOwnerCache();
+        }
+    } catch (_err) {
+        /* dovecoteMail may not be loaded yet */
+    }
 }
 
 function nowIso() {
@@ -144,11 +164,77 @@ function listAudit({ limit } = {}) {
 }
 
 function shippedMailboxes() {
+    return addresses.mergeMailboxMaps(addresses.DEFAULT_MAILBOXES, configMailboxOverlay());
+}
+
+function configMailboxOverlay() {
     const gw = gatewayConfig();
-    const table = gw.mailboxes && typeof gw.mailboxes === 'object'
-        ? gw.mailboxes
-        : addresses.DEFAULT_MAILBOXES;
-    return addresses.cleanMailboxes(table);
+    return addresses.cleanMailboxes(gw.mailboxes);
+}
+
+function secureMailboxOverlay() {
+    if (testConfig && testConfig.secureMailboxes) {
+        return addresses.cleanMailboxes(testConfig.secureMailboxes);
+    }
+    try {
+        const gr = require('./globalResources');
+        const secure = gr.getSecureConfig({ path: 'mailGateway' }) || {};
+        return addresses.cleanMailboxes(secure.mailboxes);
+    } catch (_err) {
+        return Object.create(null);
+    }
+}
+
+function storedAddresses() {
+    if (!isReady()) return {};
+    const rows = getDb().prepare(`
+        SELECT a.local_part, a.owner, a.is_primary, m.enabled, m.deleted_at
+        FROM exchange_address a
+        INNER JOIN exchange_mailbox m ON m.owner = a.owner
+    `).all();
+    const map = Object.create(null);
+    rows.forEach((row) => {
+        if (row.deleted_at || row.enabled === 0) return;
+        map[row.local_part] = row.owner;
+    });
+    return map;
+}
+
+function disabledOwners() {
+    if (!isReady()) return new Set();
+    const rows = getDb().prepare(
+        'SELECT owner FROM exchange_mailbox WHERE deleted_at IS NOT NULL OR enabled = 0'
+    ).all();
+    return new Set(rows.map((row) => row.owner));
+}
+
+function dbMailboxTable() {
+    const table = addresses.mergeMailboxMaps(addresses.DEFAULT_MAILBOXES, storedAddresses());
+    disabledOwners().forEach((owner) => {
+        Object.keys(table).forEach((local) => {
+            if (table[local] === owner) delete table[local];
+        });
+    });
+    return table;
+}
+
+function listAddressRows(owner) {
+    if (!isReady()) return [];
+    const name = owner ? normalizeOwner(owner) : null;
+    const rows = name
+        ? getDb().prepare(
+            'SELECT local_part, owner, is_primary, created_at FROM exchange_address WHERE owner = ? ORDER BY is_primary DESC, local_part'
+        ).all(name)
+        : getDb().prepare(
+            'SELECT local_part, owner, is_primary, created_at FROM exchange_address ORDER BY owner, is_primary DESC, local_part'
+        ).all();
+    return rows.map((row) => ({
+        localPart: row.local_part,
+        owner: row.owner,
+        primary: row.is_primary === 1,
+        address: publicAddress(row.local_part),
+        createdAt: row.created_at
+    }));
 }
 
 function invalidLocalPart(local) {
@@ -180,6 +266,7 @@ function mailboxRowToView(row, shippedLocal) {
         address: publicAddress(local),
         dept: row.dept || null,
         displayName: row.display_name || row.owner,
+        kind: row.kind || seedOwnerKind(row.owner),
         enabled: !row.deleted_at && row.enabled !== 0,
         deleted: !!row.deleted_at,
         inboundEnabled: row.inbound_enabled !== 0,
@@ -187,7 +274,8 @@ function mailboxRowToView(row, shippedLocal) {
         hasSignature: !!(row.signature_html && String(row.signature_html).trim()),
         hasKey: false,
         createdAt: row.created_at || null,
-        updatedAt: row.updated_at || null
+        updatedAt: row.updated_at || null,
+        addresses: listAddressRows(row.owner)
     };
 }
 
@@ -226,6 +314,7 @@ function listMailboxRecords() {
             address: publicAddress(shippedLocal),
             dept: shippedLocal.includes('.') ? shippedLocal.split('.').slice(1).join('.') : null,
             displayName: owner === TSUBAME_OWNER ? 'Tsubame (Mailroom)' : owner,
+            kind: seedOwnerKind(owner),
             enabled: true,
             deleted: false,
             inboundEnabled: true,
@@ -233,7 +322,8 @@ function listMailboxRecords() {
             hasSignature: false,
             hasKey: keyed.has(owner),
             createdAt: null,
-            updatedAt: null
+            updatedAt: null,
+            addresses: listAddressRows(owner)
         });
     }
     return out.sort((a, b) => a.owner.localeCompare(b.owner));
@@ -252,6 +342,11 @@ function isActiveMailbox(owner) {
 function listActiveOwners() {
     if (!isReady()) return [];
     return listMailboxRecords().filter((row) => row.enabled && !row.deleted).map((row) => row.owner);
+}
+
+function listDirectoryOwners() {
+    if (!isReady()) return [];
+    return listMailboxRecords().filter((row) => !row.deleted).map((row) => row.owner);
 }
 
 function ensureMailboxRow(owner, extra) {
@@ -293,8 +388,8 @@ function ensureMailboxRow(owner, extra) {
     getDb().prepare(`
         INSERT INTO exchange_mailbox (
             owner, local_part, dept, display_name, enabled, deleted_at,
-            inbound_enabled, outbound_enabled, signature_html, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            inbound_enabled, outbound_enabled, signature_html, created_at, updated_at, kind
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
         owner,
         local,
@@ -306,8 +401,40 @@ function ensureMailboxRow(owner, extra) {
         extra && typeof extra.outbound_enabled === 'number' ? extra.outbound_enabled : 1,
         extra && Object.prototype.hasOwnProperty.call(extra, 'signature_html') ? extra.signature_html : null,
         now,
-        now
+        now,
+        extra && extra.kind || rec.kind || seedOwnerKind(owner)
     );
+}
+
+function upsertAddressRow(owner, localPart, isPrimary) {
+    requireReady();
+    const local = String(localPart || '').trim().toLowerCase();
+    const now = nowIso();
+    getDb().prepare(`
+        INSERT INTO exchange_address (local_part, owner, is_primary, created_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(local_part) DO UPDATE SET owner = excluded.owner, is_primary = excluded.is_primary
+    `).run(local, owner, isPrimary ? 1 : 0, now);
+    if (isPrimary) {
+        getDb().prepare(
+            'UPDATE exchange_address SET is_primary = CASE WHEN local_part = ? THEN 1 ELSE 0 END WHERE owner = ?'
+        ).run(local, owner);
+        getDb().prepare('UPDATE exchange_mailbox SET local_part = ?, updated_at = ? WHERE owner = ?')
+            .run(local, now, owner);
+    }
+}
+
+function addressTaken(local, exceptOwner) {
+    const overlay = getAddressOverlay();
+    if (overlay.mailboxes[local] && overlay.mailboxes[local] !== exceptOwner) return 'mailbox';
+    if (overlay.aliases[local]) return 'alias';
+    if (overlay.lists[local]) return 'list';
+    if (!isReady()) return null;
+    const row = getDb().prepare('SELECT owner FROM exchange_address WHERE local_part = ?').get(local);
+    if (row && row.owner !== exceptOwner) return 'mailbox';
+    const box = getDb().prepare('SELECT owner FROM exchange_mailbox WHERE local_part = ? AND deleted_at IS NULL').get(local);
+    if (box && box.owner !== exceptOwner) return 'mailbox';
+    return null;
 }
 
 function createMailbox(actor, { owner, dept, displayName, confirm } = {}) {
@@ -330,8 +457,7 @@ function createMailbox(actor, { owner, dept, displayName, confirm } = {}) {
         audit(admin, 'create_mailbox', name, false, bad);
         throw new MailExchangeError(bad, 'INVALID_LOCAL');
     }
-    const taken = listMailboxRecords().find((row) => row.localPart === local && row.owner !== name && !row.deleted);
-    if (taken) {
+    if (addressTaken(local, name)) {
         audit(admin, 'create_mailbox', name, false, 'local-part taken');
         throw new MailExchangeError(`Address ${publicAddress(local)} is already mapped`, 'LOCAL_TAKEN');
     }
@@ -339,21 +465,28 @@ function createMailbox(actor, { owner, dept, displayName, confirm } = {}) {
     const label = displayName ? String(displayName).trim() : name;
     const now = nowIso();
     const existing = getDb().prepare('SELECT owner FROM exchange_mailbox WHERE owner = ?').get(name);
+    const kind = name === TSUBAME_OWNER ? OWNER_KIND_MAILROOM : seedOwnerKind(name);
+    if (kind === OWNER_KIND_MAILROOM && name !== TSUBAME_OWNER) {
+        audit(admin, 'create_mailbox', name, false, 'mailroom role is tsubame only');
+        throw new MailExchangeError('The mailroom role is only on the Tsubame key', 'FORBIDDEN');
+    }
     if (existing) {
         getDb().prepare(`
             UPDATE exchange_mailbox SET
-                local_part = ?, dept = ?, display_name = ?, enabled = 1, deleted_at = NULL, updated_at = ?
+                local_part = ?, dept = ?, display_name = ?, enabled = 1, deleted_at = NULL, kind = ?, updated_at = ?
             WHERE owner = ?
-        `).run(local, deptValue, label, now, name);
+        `).run(local, deptValue, label, kind, now, name);
     } else {
         getDb().prepare(`
             INSERT INTO exchange_mailbox (
                 owner, local_part, dept, display_name, enabled, deleted_at,
-                inbound_enabled, outbound_enabled, signature_html, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, 1, NULL, 1, 1, NULL, ?, ?)
-        `).run(name, local, deptValue, label, now, now);
+                inbound_enabled, outbound_enabled, signature_html, created_at, updated_at, kind
+            ) VALUES (?, ?, ?, ?, 1, NULL, 1, 1, NULL, ?, ?, ?)
+        `).run(name, local, deptValue, label, now, now, kind);
     }
+    upsertAddressRow(name, local, true);
     audit(admin, 'create_mailbox', name, true, `local=${local}`);
+    invalidateDirectory();
     return getMailboxRecord(name);
 }
 
@@ -371,6 +504,7 @@ function disableMailbox(actor, { owner, enabled, confirm } = {}) {
     const on = enabled !== false;
     ensureMailboxRow(name, { enabled: on ? 1 : 0 });
     audit(admin, 'disable_mailbox', name, true, `enabled=${on}`);
+    invalidateDirectory();
     return getMailboxRecord(name);
 }
 
@@ -395,7 +529,121 @@ function deleteMailbox(actor, { owner, confirm, confirmText } = {}) {
     // A soft-deleted mailbox must not keep a working key.
     getDb().prepare('UPDATE exchange_key SET revoked_at = ? WHERE mailbox = ? AND revoked_at IS NULL').run(nowIso(), name);
     audit(admin, 'delete_mailbox', name, true, 'soft-deleted; key revoked');
+    invalidateDirectory();
     return getMailboxRecord(name);
+}
+
+function updateMailbox(actor, { owner, displayName, dept, newOwner, confirm } = {}) {
+    const admin = requireExchangeAdmin(actor, 'update_mailbox', owner);
+    requireEnabled(admin, 'update_mailbox', owner);
+    requireConfirm(confirm, 'update_mailbox');
+    requireReady();
+    const name = normalizeOwner(owner);
+    const rec = getMailboxRecord(name);
+    if (!rec || rec.deleted) {
+        audit(admin, 'update_mailbox', name, false, 'not found');
+        throw new MailExchangeError('Unknown mailbox', 'UNKNOWN_MAILBOX');
+    }
+    let target = name;
+    if (newOwner != null && String(newOwner).trim() !== '') {
+        const next = normalizeOwner(newOwner);
+        if (!next || next.includes('@')) {
+            throw new MailExchangeError('Mailbox owner must be a bare name, never an email', 'INVALID_OWNER');
+        }
+        if (name === HUMAN_OWNER) {
+            throw new MailExchangeError("Cannot rename Yukimi's mailbox", 'FORBIDDEN');
+        }
+        if (next === MAILROOM_ROLE || seedOwnerKind(next) === OWNER_KIND_MAILROOM) {
+            throw new MailExchangeError('The mailroom role is only on the Tsubame key', 'FORBIDDEN');
+        }
+        if (next !== name) {
+            if (getMailboxRecord(next) || getDb().prepare('SELECT owner FROM exchange_mailbox WHERE owner = ?').get(next)) {
+                throw new MailExchangeError('Mailbox already exists', 'MAILBOX_EXISTS');
+            }
+            const now = nowIso();
+            getDb().prepare(
+                'UPDATE exchange_mailbox SET owner = ?, kind = ?, updated_at = ? WHERE owner = ?'
+            ).run(next, seedOwnerKind(next), now, name);
+            getDb().prepare('UPDATE exchange_address SET owner = ? WHERE owner = ?').run(next, name);
+            getDb().prepare('UPDATE exchange_key SET mailbox = ? WHERE mailbox = ?').run(next, name);
+            target = next;
+        }
+    }
+    const fields = {};
+    if (displayName != null) fields.display_name = String(displayName).trim() || target;
+    if (dept != null && String(dept).trim()) {
+        const nextDept = String(dept).trim().toLowerCase();
+        const nextLocal = localPartFor(target, nextDept);
+        const bad = invalidLocalPart(nextLocal);
+        if (bad) throw new MailExchangeError(bad, 'INVALID_LOCAL');
+        const collision = addressTaken(nextLocal, target);
+        if (collision) {
+            throw new MailExchangeError(`Address ${publicAddress(nextLocal)} is already mapped`, 'LOCAL_TAKEN');
+        }
+        fields.dept = nextDept;
+        fields.local_part = nextLocal;
+        upsertAddressRow(target, nextLocal, true);
+    }
+    if (Object.keys(fields).length) ensureMailboxRow(target, fields);
+    audit(admin, 'update_mailbox', target, true, `from=${name}`);
+    invalidateDirectory();
+    return getMailboxRecord(target);
+}
+
+function addAddress(actor, { owner, localPart, confirm } = {}) {
+    const admin = requireExchangeAdmin(actor, 'add_address', localPart || owner);
+    requireEnabled(admin, 'add_address', localPart);
+    requireConfirm(confirm, 'add_address');
+    requireReady();
+    const name = normalizeOwner(owner);
+    const rec = getMailboxRecord(name);
+    if (!rec || rec.deleted) {
+        audit(admin, 'add_address', name, false, 'not found');
+        throw new MailExchangeError('Unknown mailbox', 'UNKNOWN_MAILBOX');
+    }
+    const local = String(localPart || '').trim().toLowerCase();
+    const bad = invalidLocalPart(local);
+    if (bad) {
+        audit(admin, 'add_address', local, false, bad);
+        throw new MailExchangeError(bad, 'INVALID_LOCAL');
+    }
+    const collision = addressTaken(local, name);
+    if (collision) {
+        audit(admin, 'add_address', local, false, 'taken');
+        throw new MailExchangeError(`Address ${publicAddress(local)} is already mapped`, 'LOCAL_TAKEN');
+    }
+    upsertAddressRow(name, local, false);
+    audit(admin, 'add_address', name, true, `local=${local}`);
+    invalidateDirectory();
+    return {
+        owner: name,
+        localPart: local,
+        address: publicAddress(local),
+        primary: false
+    };
+}
+
+function removeAddress(actor, { localPart, confirm } = {}) {
+    const admin = requireExchangeAdmin(actor, 'remove_address', localPart);
+    requireEnabled(admin, 'remove_address', localPart);
+    requireConfirm(confirm, 'remove_address');
+    requireReady();
+    const local = String(localPart || '').trim().toLowerCase();
+    const row = getDb().prepare(
+        'SELECT local_part, owner, is_primary FROM exchange_address WHERE local_part = ?'
+    ).get(local);
+    if (!row) {
+        audit(admin, 'remove_address', local, false, 'not found');
+        throw new MailExchangeError('Unknown address', 'UNKNOWN_ADDRESS');
+    }
+    if (row.is_primary === 1) {
+        audit(admin, 'remove_address', local, false, 'primary');
+        throw new MailExchangeError('Cannot remove the primary address; update dept instead', 'PRIMARY_ADDRESS');
+    }
+    getDb().prepare('DELETE FROM exchange_address WHERE local_part = ?').run(local);
+    audit(admin, 'remove_address', row.owner, true, `local=${local}`);
+    invalidateDirectory();
+    return { localPart: local, owner: row.owner, deleted: true };
 }
 
 function issueMailboxKey(actor, { owner, confirm, rotate } = {}) {
@@ -484,36 +732,43 @@ function storedLists() {
     return map;
 }
 
-function overlayMailboxes() {
-    const shipped = shippedMailboxes();
-    if (!isReady()) return shipped;
-    const rows = getDb().prepare('SELECT owner, local_part, enabled, deleted_at FROM exchange_mailbox').all();
-    const table = Object.assign(Object.create(null), shipped);
-    rows.forEach((row) => {
-        if (row.deleted_at || row.enabled === 0) {
-            Object.keys(table).forEach((local) => {
-                if (table[local] === row.owner) delete table[local];
-            });
-            return;
-        }
-        table[row.local_part] = row.owner;
+function omitDisabledMailboxes(map) {
+    const disabled = disabledOwners();
+    if (!disabled.size) return map;
+    const out = Object.assign(Object.create(null), map || {});
+    Object.keys(out).forEach((local) => {
+        if (disabled.has(out[local])) delete out[local];
     });
-    return table;
+    return out;
+}
+
+function overlayMailboxes() {
+    // defaults + DB, then config.json, then secureConfig. Disabled/deleted
+    // owners are stripped last so a leftover config overlay cannot resurrect them.
+    return omitDisabledMailboxes(addresses.mergeMailboxMaps(
+        isReady() ? dbMailboxTable() : addresses.DEFAULT_MAILBOXES,
+        configMailboxOverlay(),
+        secureMailboxOverlay()
+    ));
 }
 
 function getAddressOverlay() {
     const mailboxes = overlayMailboxes();
-    YUKIMI_ALIASES.forEach((local) => {
-        if (!mailboxes[local]) mailboxes[local] = HUMAN_OWNER;
-    });
-    if (!mailboxes[YUKIMI_LOCAL]) mailboxes[YUKIMI_LOCAL] = HUMAN_OWNER;
-    if (!mailboxes[TSUBAME_LOCAL]) mailboxes[TSUBAME_LOCAL] = TSUBAME_OWNER;
-    if (!mailboxes[MAILROOM_CATCHALL]) mailboxes[MAILROOM_CATCHALL] = TSUBAME_OWNER;
-    const aliases = storedAliases();
-    const lists = {};
-    Object.entries(storedLists()).forEach(([local, info]) => {
-        lists[local] = info.members.slice();
-    });
+    const disabled = isReady() ? disabledOwners() : new Set();
+    const ensure = (local, owner) => {
+        if (disabled.has(owner)) return;
+        if (!mailboxes[local]) mailboxes[local] = owner;
+    };
+    YUKIMI_ALIASES.forEach((local) => ensure(local, HUMAN_OWNER));
+    ensure(YUKIMI_LOCAL, HUMAN_OWNER);
+    ensure(TSUBAME_LOCAL, TSUBAME_OWNER);
+    ensure(MAILROOM_CATCHALL, TSUBAME_OWNER);
+    const gw = gatewayConfig();
+    const aliases = addresses.mergeAliasMaps(storedAliases(), gw.aliases);
+    const lists = addresses.mergeListMaps(
+        Object.fromEntries(Object.entries(storedLists()).map(([local, info]) => [local, info.members])),
+        gw.lists
+    );
     return { mailboxes, aliases, lists, domain: PUBLIC_DOMAIN };
 }
 
@@ -568,6 +823,7 @@ function upsertAlias(actor, { localPart, target, confirm } = {}) {
         ON CONFLICT(local_part) DO UPDATE SET target = excluded.target
     `).run(local, dest, nowIso());
     audit(admin, 'upsert_alias', local, true, `target=${dest}`);
+    invalidateDirectory();
     return { localPart: local, target: dest, address: publicAddress(local) };
 }
 
@@ -579,6 +835,7 @@ function deleteAlias(actor, { localPart, confirm } = {}) {
     const local = String(localPart || '').trim().toLowerCase();
     getDb().prepare('DELETE FROM exchange_alias WHERE local_part = ?').run(local);
     audit(admin, 'delete_alias', local, true, null);
+    invalidateDirectory();
     return { localPart: local, deleted: true };
 }
 
@@ -648,6 +905,7 @@ function upsertDistributionList(actor, { localPart, name, members, confirm } = {
         ON CONFLICT(local_part) DO UPDATE SET name = excluded.name, members = excluded.members, updated_at = excluded.updated_at
     `).run(local, name ? String(name).trim() : local, JSON.stringify(list), now, now);
     audit(admin, 'upsert_list', local, true, `members=${list.join(',')}`);
+    invalidateDirectory();
     return { localPart: local, name: name || local, members: list, address: publicAddress(local) };
 }
 
@@ -659,6 +917,7 @@ function deleteDistributionList(actor, { localPart, confirm } = {}) {
     const local = String(localPart || '').trim().toLowerCase();
     getDb().prepare('DELETE FROM exchange_list WHERE local_part = ?').run(local);
     audit(admin, 'delete_list', local, true, null);
+    invalidateDirectory();
     return { localPart: local, deleted: true };
 }
 
@@ -1003,12 +1262,14 @@ function publicMailboxView(row) {
         address: row.address,
         dept: row.dept,
         displayName: row.displayName,
+        kind: row.kind || seedOwnerKind(row.owner),
         enabled: row.enabled,
         deleted: row.deleted,
         inboundEnabled: row.inboundEnabled,
         outboundEnabled: row.outboundEnabled,
         hasSignature: row.hasSignature,
-        hasKey: row.hasKey
+        hasKey: row.hasKey,
+        addresses: Array.isArray(row.addresses) ? row.addresses : listAddressRows(row.owner)
     };
 }
 
@@ -1027,20 +1288,28 @@ module.exports = {
     PUBLIC_DOMAIN,
     CONFIRM_DELETE,
     isEnabled,
+    isDirectoryReady,
     isExchangeAdmin,
     requireExchangeAdmin,
     canonicalizeAdmin,
     setTestConfig,
     resetTestConfig,
+    invalidateDirectory,
     audit,
     listAudit,
     listMailboxRecords,
     getMailboxRecord,
     listActiveOwners,
+    listDirectoryOwners,
+    omitDisabledMailboxes,
     isActiveMailbox,
     createMailbox,
+    updateMailbox,
     disableMailbox,
     deleteMailbox,
+    addAddress,
+    removeAddress,
+    listAddressRows,
     issueMailboxKey,
     rotateMailboxKey,
     revokeMailboxKey,

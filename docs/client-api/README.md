@@ -100,7 +100,7 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | References & vibes | [ws/references.md](./ws/references.md) | 22 |
 | Replication | [ws/replication.md](./ws/replication.md) | 12 |
 | Melaton packages | [ws/melatonPackages.md](./ws/melatonPackages.md) | 4 |
-| Dreamscape Exchange Server | [ws/mailExchange.md](./ws/mailExchange.md) | 21 |
+| Dreamscape Exchange Server | [ws/mailExchange.md](./ws/mailExchange.md) | 25 |
 
 ## Apocrypha public Grim (HTTP)
 

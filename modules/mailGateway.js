@@ -63,6 +63,21 @@ function getConfigSource() {
     }
 }
 
+function getSecureMailboxOverlay() {
+    if (testOverrides && testOverrides.secureMailboxes) {
+        return addresses.cleanMailboxes(testOverrides.secureMailboxes);
+    }
+    if (!globalResourcesRef || typeof globalResourcesRef.getSecureConfig !== 'function') {
+        return Object.create(null);
+    }
+    try {
+        const secure = globalResourcesRef.getSecureConfig({ path: 'mailGateway' }) || {};
+        return addresses.cleanMailboxes(secure.mailboxes);
+    } catch (_err) {
+        return Object.create(null);
+    }
+}
+
 function getSecurePassword() {
     if (testOverrides && Object.prototype.hasOwnProperty.call(testOverrides, 'smtpPassword')) {
         return testOverrides.smtpPassword || '';
@@ -85,17 +100,36 @@ function resolveConfig(extra) {
     const mode = String(outbound.mode || 'starttls').trim().toLowerCase() === 'implicit'
         ? 'implicit'
         : 'starttls';
-    let overlay = null;
+    // Address map precedence (later wins on the same local-part):
+    //   1. DEFAULT_MAILBOXES seed
+    //   2. Exchange DB (when ready)
+    //   3. config.json mailGateway.mailboxes
+    //   4. secureConfig mailGateway.mailboxes
+    // Config is an overlay, never a whole-map replacement.
+    let directory = null;
+    let exchangeMod = null;
     try {
-        const exchange = require('./mailExchange');
-        if (exchange.isEnabled()) overlay = exchange.getAddressOverlay();
+        exchangeMod = require('./mailExchange');
+        // modules/mailExchange.js isDirectoryReady / getAddressOverlay
+        if (exchangeMod.isDirectoryReady()) {
+            directory = exchangeMod.getAddressOverlay();
+        }
     } catch (_err) {
-        overlay = null;
+        directory = null;
+    }
+    let mailboxMap = addresses.mergeMailboxMaps(
+        (directory && directory.mailboxes) || addresses.DEFAULT_MAILBOXES,
+        raw.mailboxes,
+        getSecureMailboxOverlay()
+    );
+    if (exchangeMod) {
+        // modules/mailExchange.js omitDisabledMailboxes
+        mailboxMap = exchangeMod.omitDisabledMailboxes(mailboxMap);
     }
     const mapping = addresses.createMapping({
-        mailboxes: (overlay && overlay.mailboxes) || raw.mailboxes || addresses.DEFAULT_MAILBOXES,
-        aliases: overlay && overlay.aliases,
-        lists: overlay && overlay.lists,
+        mailboxes: mailboxMap,
+        aliases: addresses.mergeAliasMaps(directory && directory.aliases, raw.aliases),
+        lists: addresses.mergeListMaps(directory && directory.lists, raw.lists),
         domain: raw.domain || addresses.DEFAULT_DOMAIN
     });
     return {
