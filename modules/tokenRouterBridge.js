@@ -567,6 +567,35 @@ function coerceLeaf(value, type) {
     return undefined;
 }
 
+// Values with no schema of their own (inside an untyped object such as
+// apply_studio_changes change, or an array with no items schema) still arrive
+// from MiniMax as {"item": {...}} wrappers and "0" / "true" strings. Unwrap the
+// wrapper and type the plain scalars there too. Text-like keys keep strings.
+const LOOSE_TEXT_KEYS = new Set(['prompt', 'uc', 'promptNegative', 'prompt_negative', 'name', 'presetName',
+    'text', 'content', 'label', 'title', 'description', 'filename', 'customText', 'caption', 'id', 'key',
+    'source', 'value', 'workspace', 'model', 'sampler', 'noiseScheduler', 'resolution', 'effort', 'dreamscape']);
+
+function looseCoerce(value, key, depth) {
+    const d = depth || 0;
+    if (d > 24) return value;
+    if (Array.isArray(value)) return value.map((item) => looseCoerce(item, null, d + 1));
+    if (value && typeof value === 'object') {
+        const keys = Object.keys(value);
+        if (keys.length === 1 && keys[0] === 'item') {
+            const inner = Array.isArray(value.item) ? value.item : [value.item];
+            return inner.map((item) => looseCoerce(item, null, d + 1));
+        }
+        const next = {};
+        keys.forEach((k) => { next[k] = looseCoerce(value[k], k, d + 1); });
+        return next;
+    }
+    if (typeof value !== 'string' || (key && LOOSE_TEXT_KEYS.has(key))) return value;
+    const t = value.trim();
+    if (t === 'true' || t === 'false') return t === 'true';
+    if (/^-?(\d+\.?\d*|\.\d+)$/.test(t) && t.length <= 17) return Number(t);
+    return value;
+}
+
 function coerceToSchema(value, schema, depth) {
     const d = depth || 0;
     if (!schema || typeof schema !== 'object' || d > 24) return value;
@@ -589,7 +618,7 @@ function coerceToSchema(value, schema, depth) {
     if (!target) return value;
     if (Array.isArray(out)) {
         const itemSchema = target.items && !Array.isArray(target.items) ? target.items : null;
-        return itemSchema ? out.map((item) => coerceToSchema(item, itemSchema, d + 1)) : out;
+        return itemSchema ? out.map((item) => coerceToSchema(item, itemSchema, d + 1)) : out.map((item) => looseCoerce(item, null, d + 1));
     }
     if (out && typeof out === 'object') {
         const props = target.properties && typeof target.properties === 'object' ? target.properties : {};
@@ -597,7 +626,9 @@ function coerceToSchema(value, schema, depth) {
         const next = {};
         Object.keys(out).forEach((key) => {
             const sub = props[key] || extra;
-            next[key] = sub ? coerceToSchema(out[key], sub, d + 1) : out[key];
+            // additionalProperties: true means the tool takes any value there as sent.
+            if (sub) next[key] = coerceToSchema(out[key], sub, d + 1);
+            else next[key] = target.additionalProperties === true ? out[key] : looseCoerce(out[key], key, d + 1);
         });
         return next;
     }
@@ -606,7 +637,16 @@ function coerceToSchema(value, schema, depth) {
 
 function toolInputFor(names, upstreamName, input) {
     const schema = names && typeof names.schema === 'function' ? names.schema(names.down(upstreamName)) : null;
-    return schema ? coerceToSchema(input, schema) : input;
+    if (!schema) return input;
+    const out = coerceToSchema(input, schema);
+    // change mirrors the top-level apply_studio_changes fields: type it with them.
+    const props = schema.properties || {};
+    if (props.change && out && out.change && typeof out.change === 'object' && !Array.isArray(out.change)) {
+        const mirror = Object.assign({}, props);
+        delete mirror.change;
+        out.change = coerceToSchema(out.change, { type: 'object', properties: mirror }, 1);
+    }
+    return out;
 }
 
 const REPEAT_MIN = 24;
@@ -1202,6 +1242,8 @@ module.exports = {
         parseToolArguments,
         unwrapToolInput,
         coerceToSchema,
+        looseCoerce,
+        toolInputFor,
         undoubledReasoning,
         toolNames,
         safeToolName,

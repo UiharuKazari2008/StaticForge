@@ -6235,6 +6235,7 @@ function runMemoryTool(globalResources, name, input, ctx) {
     }
     const listError = invalidMemoryLists(input);
     if (listError) return { success: false, error: listError, status: 400 };
+    if (Array.isArray(input.observations)) input = Object.assign({}, input, { observations: input.observations.map(trimObservationLead) });
     const existing = db.getKnowledgeMemory(memoryName, false);
     const description = input.description != null && String(input.description).trim()
         ? String(input.description).trim()
@@ -9792,6 +9793,15 @@ function registerRoutes(app, { globalResources }) {
 // save_memory replaces the stored lists with what it is sent. A list that
 // arrives as an object ({item: [...]} from an XML-style tool call) or a string
 // used to normalize to [] and wipe the memory. Reject it instead.
+// Some models start every observation with ": " (a dropped date or label).
+// Trim that lead so it is not stored.
+function trimObservationLead(item) {
+    const fix = (text) => text.replace(/^\s*:\s+/, '');
+    if (typeof item === 'string') return fix(item);
+    if (item && typeof item.content === 'string') return Object.assign({}, item, { content: fix(item.content) });
+    return item;
+}
+
 function invalidMemoryLists(input) {
     for (const key of ['observations', 'entities', 'relations']) {
         const value = input ? input[key] : undefined;
@@ -9812,6 +9822,7 @@ module.exports = {
     McpOAuthProvider,
     _test: {
         invalidMemoryLists,
+        trimObservationLead,
         TOOL_DEFS,
         MCP_CORS_ORIGINS,
         OAUTH_CORS_ORIGINS,
