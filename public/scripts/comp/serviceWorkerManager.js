@@ -561,6 +561,25 @@ class ServiceWorkerManager {
         }
     }
 
+    _askBootGateRetry(detail) {
+        const message = 'MeletonFX could not confirm the offline cache.';
+        const text = detail || 'The update check did not finish.';
+        if (window.bootMessageBox && typeof window.bootMessageBox.show === 'function') {
+            return window.bootMessageBox.show({
+                title: 'MeletonFX',
+                icon: 'error',
+                message: message,
+                detail: 'DETAIL - ' + text,
+                buttons: [
+                    { label: 'Retry', value: 'retry', default: true },
+                    { label: 'Restart', value: 'restart' }
+                ]
+            });
+        }
+        this._showBootFatalError(new Error(text));
+        return Promise.resolve(null);
+    }
+
     _readInstallWizardSession() {
         try {
             const raw = sessionStorage.getItem(INSTALL_WIZARD_SESSION_KEY);
@@ -723,9 +742,45 @@ class ServiceWorkerManager {
         } catch (_) { /* storage off: every boot fetches the full manifest */ }
     }
 
-    async _fetchManifest(options = {}) {
-        const full = options.full === true;
+    _readManifestSnapshot() {
+        try {
+            const raw = localStorage.getItem('melatonManifestSnapshot');
+            const parsed = raw ? JSON.parse(raw) : null;
+            if (!Array.isArray(parsed) || !parsed.length) return null;
+            return parsed.filter((file) => file && file.url && file.hash);
+        } catch (_) {
+            return null;
+        }
+    }
+
+    _writeManifestSnapshot(manifest) {
+        try {
+            if (!Array.isArray(manifest) || !manifest.length) return;
+            const rows = manifest.filter((file) => file && file.url && file.hash)
+                .map((file) => ({ url: file.url, hash: file.hash }));
+            if (!rows.length) return;
+            localStorage.setItem('melatonManifestSnapshot', JSON.stringify(rows));
+        } catch (_) { /* next boot fetches the full list */ }
+    }
+
+    // A 304 only means the server manifest matches the stored digest. The cache is valid
+    // when that stored list is still present, file for file.
+    async _cacheMatchesStoredManifest() {
+        const snapshot = this._readManifestSnapshot();
+        if (!snapshot) return false;
+        try {
+            const needing = await this.getFilesNeedingUpdate(snapshot);
+            return this._filesCountingTowardInstaller(needing).length === 0;
+        } catch (error) {
+            console.warn('Offline cache check failed:', error);
+            return false;
+        }
+    }
+
+    async _fetchManifest(options) {
+        const full = !!(options && options.full === true);
         if (!full) this._fetchedManifestHash = '';
+        this._manifestOutcome = 'failed';
         try {
             const known = full ? '' : this._readSyncedManifestHash();
             const headers = {
@@ -736,20 +791,32 @@ class ServiceWorkerManager {
             const response = await fetch('/', {
                 method: 'OPTIONS',
                 headers,
-                signal: AbortSignal.timeout(8000)
+                // The file list is about half a megabyte. 8s was aborting it, and a
+                // missed list was treated as "do not install."
+                signal: AbortSignal.timeout(30000)
             });
             if (response.status === 304) {
-                // Same manifest the cache was in sync with: nothing to diff
+                // Same digest. The cache still has to be checked against the stored file list.
+                this._manifestOutcome = 'unchanged';
                 this._fetchedManifestHash = known;
                 return [];
             }
-            if (!response.ok) {
+            if (response.status === 503) {
+                // Runtime compile has not published a manifest yet. Not an empty cache.
+                this._manifestOutcome = 'compiling';
                 return [];
             }
-            if (!full) this._fetchedManifestHash = response.headers.get('X-Manifest-Hash') || '';
-            return await response.json();
+            if (!response.ok) {
+                this._manifestOutcome = 'failed';
+                return [];
+            }
+            this._fetchedManifestHash = (response.headers && response.headers.get && response.headers.get('X-Manifest-Hash')) || '';
+            const manifest = await response.json();
+            this._manifestOutcome = Array.isArray(manifest) && manifest.length ? 'list' : 'failed';
+            return Array.isArray(manifest) ? manifest : [];
         } catch (error) {
-            console.warn('Manifest fetch failed or timed out — skipping update check');
+            console.warn('Manifest fetch failed or timed out:', error);
+            this._manifestOutcome = 'failed';
             return [];
         }
     }
@@ -1303,12 +1370,15 @@ class ServiceWorkerManager {
                 } else {
                     this.bootPromise = this.runBootSequence().then((result) => {
                         if (result && result.rebooted) return;
+                        // A failed cache check must not fulfill the boot gate. The desktop waits.
+                        if (result && (result.blocked || result.ask)) return new Promise(() => {});
                         this._resolveBootComplete();
                     }).catch((err) => {
                         console.error('Boot sequence failed:', err);
                         if (!this.bootComplete) {
-                            this._resolveBootComplete();
+                            this._showBootFatalError(err);
                         }
+                        return new Promise(() => {});
                     });
                 }
 
@@ -1324,10 +1394,14 @@ class ServiceWorkerManager {
                     this._resolveLoginBootComplete();
                 } else {
                     const skipFatal = error.message === 'Server did not become ready in time';
+                    if (!skipFatal && this._rebootIntoInstaller(0, 'The offline service did not register')) {
+                        return;
+                    }
                     if (!skipFatal) {
                         this._showBootFatalError(error);
+                    } else {
+                        this._resolveBootComplete();
                     }
-                    this._resolveBootComplete();
                 }
             }
         } else {
@@ -1337,7 +1411,6 @@ class ServiceWorkerManager {
                 this._resolveLoginBootComplete();
             } else {
                 this._showBootFatalError(new Error('Service Worker not supported in this browser'));
-                this._resolveBootComplete();
             }
         }
     }
@@ -3730,7 +3803,7 @@ class ServiceWorkerManager {
                 this._hideInitUpdateModal();
             }
             this.initialCheckDone = true;
-            // Don't fail the startup process for update check errors - continue normally
+            // The boot gate decides. A failed check must not look like an empty update list.
             return { success: false };
         }
     }
@@ -4483,7 +4556,7 @@ class ServiceWorkerManager {
      * (the installer's own reboot, or a /launch that could not install): then the old wizard
      * here finishes the job, so the two pages never bounce. Returns true when navigating.
      */
-    _rebootIntoInstaller(count) {
+    _rebootIntoInstaller(count, reason) {
         if (this._launchRedirectStarted) return true;
         if (!window.isDesktop) return false;
         let last = 0;
@@ -4497,11 +4570,22 @@ class ServiceWorkerManager {
         this._launchRedirectStarted = true;
         this._hideInitUpdateModal();
         this._hideInstallWizardUi();
-        console.log(`[boot] ${count} files to update: rebooting into the installer (/launch)`);
+        const why = reason || `${count} files to update`;
+        console.log(`[boot] ${why}: rebooting into the installer (/launch)`);
         // restartClientNavigate: public/scripts/comp/modalUtils.js (desktop → /launch)
         if (typeof restartClientNavigate === 'function') restartClientNavigate();
         else location.replace('/launch');
         return true;
+    }
+
+    /**
+     * The cache is not proven. /launch's installer is what makes it valid.
+     * A reboot already tried in the last few minutes, or a non-desktop client,
+     * falls through to the retry dialog.
+     */
+    _enterUpdater(detail, count) {
+        if (this._rebootIntoInstaller(count || 0, detail)) return { rebooted: true };
+        return { ask: detail };
     }
 
     async runBootSequence() {
@@ -4513,52 +4597,48 @@ class ServiceWorkerManager {
             await dismissLaunchHandoffIfNeeded();
         }
         this._bootOrchestrating = true;
-        let installWizardUsed = false;
+        let outcome = null;
         try {
             const resumeSession = this._readInstallWizardSession();
             // Desktop: a leftover wizard session must not skip the /launch reboot.
             // Narrow mode still finishes with the in-app wizard.
             if (resumeSession && resumeSession.active && !window.isDesktop) {
-                installWizardUsed = true;
                 this.installWizardUsed = true;
                 this.bootPhase = resumeSession.phase === 'verify' ? 'verify' : 'wizard';
             } else {
+                this.installWizardUsed = false;
                 this.bootPhase = 'waiting_sw';
             }
 
             const ready = await this.waitForServiceWorkerReady();
             if (ready && ready.timedOut) {
-                console.warn('Service Worker not ready — booting from network');
-                this._clearInstallWizardSession();
-                this._hideInstallWizardUi();
-                document.body.classList.remove('initializing');
-                this._resolveBootComplete();
-                this._warmAfterSwActive();
-                return;
+                // Registration can still be in flight. The file list and the cache
+                // check do not need a controlling worker, and a late worker must
+                // not skip the installer.
+                console.warn('Service Worker not ready yet. The update check still runs.');
             }
-            // A resumed install wizard still blocks. Every other boot defers the manifest
-            // hash scan and the file re-fetch until after first paint.
-            if (!installWizardUsed) {
-                this._skipBootFlush = true;
-                this._resolveBootComplete();
-                this._skipBootFlush = false;
-                scheduleAfterFirstPaint(() => {
-                    this._bootOrchestrating = true;
-                    this._runDeferredHashRefetch().catch((err) => {
-                        console.error('Idle service worker hash re-fetch failed:', err);
-                    }).finally(() => {
-                        this._bootOrchestrating = false;
-                    });
-                });
-                return;
-            }
-            await this._runDeferredHashRefetch();
+            // The update check finishes before the desktop. A 304 is accepted only when the
+            // stored file list is still in the cache.
+            outcome = await this._runDeferredHashRefetch();
         } catch (error) {
             this._showBootFatalError(error);
-            throw error;
+            outcome = { blocked: true };
         } finally {
             this._bootOrchestrating = false;
         }
+        if (outcome && outcome.ask) {
+            const choice = await this._askBootGateRetry(outcome.ask);
+            if (choice === 'restart') {
+                // restartClientNavigate: public/scripts/comp/modalUtils.js
+                if (typeof restartClientNavigate === 'function') restartClientNavigate();
+                else location.reload();
+                return { blocked: true };
+            }
+            if (choice === 'retry') return this.runBootSequence();
+            if (window.bootMessageBox) this._showBootFatalError(new Error(outcome.ask));
+            return { blocked: true };
+        }
+        return outcome;
     }
 
     async _runDeferredHashRefetch() {
@@ -4572,18 +4652,56 @@ class ServiceWorkerManager {
             let verifyPass = 0;
             const MAX_VERIFY_PASSES = 5;
             let lastPendingFingerprint = '';
+            let manifestMisses = 0;
 
             while (true) {
                 if (this._launchRedirectStarted) return { rebooted: true };
                 this.bootPhase = this.bootPhase === 'wizard' ? 'wizard' : 'checking';
-                const manifest = await this._fetchManifest();
+                let manifest = await this._fetchManifest();
+                if (this._manifestOutcome === 'compiling') {
+                    // Runtime files are still being built. There is no list to install yet.
+                    // Waiting here stays on the boot path. A dialog would not install anything.
+                    await new Promise((resolve) => setTimeout(resolve, 2000));
+                    continue;
+                }
+                if (this._manifestOutcome === 'failed') {
+                    manifestMisses += 1;
+                    if (manifestMisses >= 3) {
+                        const sent = this._enterUpdater('The update check did not get a file list back.');
+                        if (sent.rebooted) return sent;
+                        // Narrow mode, or /launch was just tried. Keep fetching. The retry
+                        // dialog does not install the cache.
+                        manifestMisses = 0;
+                    }
+                    await new Promise((resolve) => setTimeout(resolve, 1000));
+                    continue;
+                }
+                if (this._manifestOutcome === 'unchanged') {
+                    if (await this._cacheMatchesStoredManifest()) {
+                        this._writeSyncedManifestHash(this._fetchedManifestHash);
+                        break;
+                    }
+                    manifest = await this._fetchManifest({ full: true });
+                    if (this._manifestOutcome !== 'list') {
+                        manifestMisses += 1;
+                        if (manifestMisses >= 3) {
+                            const sent = this._enterUpdater('The offline cache is not a complete copy and the file list did not load.');
+                            if (sent.rebooted) return sent;
+                            manifestMisses = 0;
+                        }
+                        await new Promise((resolve) => setTimeout(resolve, 1000));
+                        continue;
+                    }
+                }
+                manifestMisses = 0;
                 const filesToUpdate = await this.getFilesNeedingUpdate(manifest);
                 const fresh = this._filesCountingTowardInstaller(filesToUpdate);
                 const installInProgress = this._melatonInstallInProgress();
 
                 // Stragglers are fetched at runtime. They must not open update progress or Setup.
                 if (fresh.length === 0 && !installInProgress) {
-                    // In sync: the next boot asks with this digest and gets a 304
+                    // Proven against the real file list. The next boot may send the digest.
+                    this._writeManifestSnapshot(manifest);
                     this._writeSyncedManifestHash(this._fetchedManifestHash);
                     break;
                 }
@@ -4598,8 +4716,24 @@ class ServiceWorkerManager {
                     lastPendingFingerprint = pendingFingerprint;
                 }
                 if (verifyPass > MAX_VERIFY_PASSES) {
-                    console.warn('Boot update verify exceeded max passes; continuing startup');
-                    break;
+                    if (!installWizardUsed) {
+                        const sent = this._enterUpdater(
+                            'The offline cache still does not match after the update check.',
+                            this._installerFileCount(pendingSource)
+                        );
+                        if (sent.rebooted) {
+                            this._clearInstallWizardSession();
+                            return sent;
+                        }
+                        // /launch was just tried, or this is not the desktop. The in-app
+                        // wizard finishes the same file list.
+                        installWizardUsed = true;
+                        this.installWizardUsed = true;
+                        verifyPass = 0;
+                        lastPendingFingerprint = '';
+                        continue;
+                    }
+                    return { ask: 'The offline cache still does not match after the update check.' };
                 }
 
                 // More than the cutoff, or an install /launch already started: leave before any dialog.
@@ -4629,7 +4763,7 @@ class ServiceWorkerManager {
 
                 const outcome = await this.checkAndDownloadUpdatesForInit(fresh);
                 if (outcome && outcome.rebooted) return { rebooted: true };
-                if (outcome && outcome.userChoice === 'restart') break;
+                if (outcome && outcome.userChoice === 'restart') return { rebooted: true };
                 if (outcome && outcome.needsWizard) {
                     installWizardUsed = true;
                     this.installWizardUsed = true;

@@ -17,8 +17,11 @@
  *            (Cache Storage, SW, local/session storage, IndexedDB) → /launch
  *   updates  after the session check, under the boot screen (updateEngine.js): the worker's
  *            cache diffed against the server manifest. Up to 20 files download silently behind
- *            the marquee, then the handoff. More (or an install a reload interrupted) cut to
- *            black and open the installer.
+ *            the marquee, then the handoff. If that quiet download does not finish the cache,
+ *            the worker is not controlling the page, or the set is larger (or an install a
+ *            reload interrupted), cut to black and open the installer. A missed file list
+ *            stays on the boot screen until it arrives. The installer writes the cache
+ *            itself, so a missing controlling worker must not leave for /app.
  *   install  Windows Setup in Vista Basic on the aurora: "Install MeletonFX", Installing
  *            MeletonFX..., the automatic checklist (Copying files = one compressed pack from the
  *            server, Expanding files = manifest vs the service worker, store only mismatches,
@@ -80,7 +83,8 @@
         unreachable: 'The server did not respond.',
         busy: 'The server stopped responding while it was starting.',
         session: 'The server could not confirm this session.',
-        install: 'The installation of MeletonFX was cancelled.'
+        install: 'The installation of MeletonFX was cancelled.',
+        cache: 'The offline cache is not a complete copy.'
     };
 
     // weight = share of the formatting progress bar
@@ -392,22 +396,46 @@
             const engine = env.engine;
             if (!engine || env.designMode) return 'handoff';
             const resumed = engine.readState(env);
-            const workerOk = await engine.ensureWorker(env);
+            const started = env.now();
+            let found = null;
+            let workerOk = false;
+            while (run === ctl.runId) {
+                workerOk = await engine.ensureWorker(env);
+                if (run !== ctl.runId) return 'cancelled';
+                found = await engine.check(env);
+                if (run !== ctl.runId) return 'cancelled';
+                // A timeout or a runtime compile has no list yet. Stay on this page.
+                // Handing off to /app is what showed the retry dialog instead of Setup.
+                const noList = !found || found.failed || (found.skipped && found.skipped !== 'no-cache-storage');
+                if (!noList) break;
+                if (env.now() - started >= config.busyTimeoutMs) {
+                    await openMenu('cache');
+                    return 'menu';
+                }
+                await env.sleep(config.pollMs);
+            }
             if (run !== ctl.runId) return 'cancelled';
-            if (!workerOk) {
-                // No controlling worker on this page: /app's boot gate takes the update
+            if (!found || found.skipped === 'no-cache-storage') {
                 if (resumed) engine.writeState(env, null);
                 return 'handoff';
             }
-            const found = await engine.check(env);
-            if (run !== ctl.runId) return 'cancelled';
-            if (found.skipped || !found.files.length) {
+            if (!found.files || !found.files.length) {
                 if (resumed) engine.writeState(env, null);
                 return 'handoff';
             }
-            if (!engine.needsInstaller(env, found.files)) {
-                // A few files: behind the boot screen, the marquee keeps running
-                await engine.download(env, found.files, { silent: true });
+            // The installer uses fetch and Cache Storage. It does not need a controlling
+            // worker. The quiet path does, so a missing worker opens Setup instead.
+            if (workerOk && !engine.needsInstaller(env, found.files)) {
+                const downloaded = await engine.download(env, found.files, { silent: true });
+                if (downloaded && downloaded.ok === false) {
+                    return install(found, run);
+                }
+                if (typeof engine.verify === 'function') {
+                    const still = await engine.verify(env, found.files);
+                    if (still && still.length) {
+                        return install(found, run);
+                    }
+                }
                 return run === ctl.runId ? 'handoff' : 'cancelled';
             }
             return install(found, run);

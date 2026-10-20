@@ -85,6 +85,19 @@ function memoryStorage() {
         const behind = await engine.check({ ...condEnv, localStorage: behindStorage, caches: fakeCaches([]) });
         assert.strictEqual(behind.files.length, 1);
         assert.strictEqual(behindStorage.getItem('melatonManifestHash'), null, 'out of sync: no digest');
+
+        const bare = memoryStorage();
+        bare.setItem('melatonManifestHash', DIGEST);
+        const hole = await engine.check({ ...condEnv, localStorage: bare, caches: fakeCaches([]) });
+        assert.ok(!hole.unchanged, '304 without a stored file list is not a full cache');
+        assert.strictEqual(hole.files.length, 1, 'empty cache is taken from the full list');
+
+        const snapped = memoryStorage();
+        snapped.setItem('melatonManifestHash', DIGEST);
+        snapped.setItem('melatonManifestSnapshot', JSON.stringify([{ url: '/app', hash: 'app1' }]));
+        const emptySnap = await engine.check({ ...condEnv, localStorage: snapped, caches: fakeCaches([]) });
+        assert.ok(!emptySnap.unchanged, '304 still diffs the stored file list');
+        assert.strictEqual(emptySnap.files.length, 1, 'a wiped cache is not treated as in sync');
     }
     assert.deepStrictEqual((await engine.filesNeedingUpdate({ ...env, caches: null }, manifest)).length, 5, 'no Cache Storage: everything');
     const withAuth = manifest.concat([
@@ -377,6 +390,51 @@ function memoryStorage() {
     assert.strictEqual(bad.error, 'pack-hash');
 
     fs.rmSync(tmp, { recursive: true, force: true });
+
+    // Realistic install: ~3k files in one pack. fflate 0.8 Unzip.push recursed once
+    // per entry, so a single push of the whole pack hit "Maximum call stack size exceeded".
+    const bigDir = path.join(tmp, 'big');
+    fs.mkdirSync(path.join(bigDir, 'scripts'), { recursive: true });
+    const bigManifest = [];
+    for (let i = 0; i < 3000; i++) {
+        const body = i % 4 === 0 ? crypto.randomBytes(2048) : Buffer.from(`console.log(${i});\n`.repeat(20 + (i % 40)));
+        const rel = `scripts/f${i}.${i % 4 === 0 ? 'png' : 'js'}`;
+        fs.writeFileSync(path.join(bigDir, rel), body);
+        bigManifest.push({ url: '/' + rel, hash: crypto.createHash('sha256').update(body).digest('hex'), size: body.length });
+    }
+    const bigOut = path.join(bigDir, 'out');
+    const bigBuilt = await pack.rebuild({ outputDir: bigOut, manifest: bigManifest, resolveFile: (file) => path.join(bigDir, file.url.slice(1)) });
+    const bigZip = fs.readFileSync(path.join(bigOut, 'pack.zip'));
+    const bigCaches = memoryCache([]);
+    // The real 172 MB pack (2.8k entries) overflows on one push; it is too big
+    // for a unit test, so pin the slicing instead.
+    let maxPush = 0;
+    class SpyUnzip extends fflate.Unzip {
+        push(chunk, final) {
+            maxPush = Math.max(maxPush, chunk.length);
+            return super.push(chunk, final);
+        }
+    }
+    const spyFflate = Object.assign({}, fflate, { Unzip: SpyUnzip });
+    const benv = {
+        location: { origin: ORIGIN },
+        caches: bigCaches,
+        fflate: spyFflate,
+        fetch: async () => ({
+            ok: true,
+            status: 200,
+            headers: { get: (name) => (name === 'x-pack-hash' ? bigBuilt.hash : name === 'content-length' ? String(bigZip.length) : null) },
+            arrayBuffer: async () => bigZip.buffer.slice(bigZip.byteOffset, bigZip.byteOffset + bigZip.byteLength)
+        }),
+        sleep: async () => {}
+    };
+    const bigCopy = await engine.copyPack(benv, bigManifest, {});
+    assert.strictEqual(bigCopy.ok, true, bigCopy.error || 'big copy');
+    const bigExpand = await engine.expandPack(benv, bigManifest, {});
+    assert.strictEqual(bigExpand.ok, true, bigExpand.error || 'big expand');
+    assert.deepStrictEqual(bigExpand.missing, []);
+    assert.strictEqual(bigExpand.stored, 3000, 'every file of a 3k-entry pack lands');
+    assert.ok(maxPush > 0 && maxPush <= 64 * 1024, `Unzip.push is fed in slices (max ${maxPush})`);
 
     console.log('✅ test-update-engine: all assertions passed');
 })().catch((err) => {

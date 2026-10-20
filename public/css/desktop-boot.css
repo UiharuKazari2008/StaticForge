@@ -460,10 +460,23 @@ body.vista-logon #desktopPreStartupLoginBtn:active {
 }
 
 /* Message view (wrong password and the like): the icon and text, one OK; the tile, the name,
-   the password row, Switch User and the options bar buttons give way, the branding stays */
+   the password row, Switch User and the options bar buttons give way, the branding stays.
+   A dead connection uses the same view with Retry and Cancel (vista-logon-error) instead of OK. */
 body.vista-logon #desktopPreStartupModal:has(#desktopPreStartupAuthError:not(.hidden)) :is(.desktop-prestartup-vista-tile, #desktopPreStartupUsername, #desktopPreStartupPassword, #desktopPreStartupLoginBtn, .desktop-prestartup-vista-switch, .desktop-prestartup-vista-options),
-body.vista-logon #desktopPreStartupModal:not(:has(#desktopPreStartupAuthError:not(.hidden))) #desktopPreStartupMessageOkBtn {
+body.vista-logon #desktopPreStartupModal:not(:has(#desktopPreStartupAuthError:not(.hidden))) #desktopPreStartupMessageOkBtn,
+body.vista-logon #desktopPreStartupModal:not(.vista-logon-error) :is(#desktopPreStartupRetryBtn, #desktopPreStartupLogonCancelBtn),
+body.vista-logon #desktopPreStartupModal.vista-logon-error :is(#desktopPreStartupMessageOkBtn, #desktopPreStartupStatus) {
     display: none;
+}
+
+/* Retry and Cancel share OK's row (180 px below centre). Each is the 93 px logon button;
+   the pair is centred with 8 px between them. */
+body.vista-logon #desktopPreStartupModal.vista-logon-error #desktopPreStartupRetryBtn {
+    left: calc(50% - 97px);
+}
+
+body.vista-logon #desktopPreStartupModal.vista-logon-error #desktopPreStartupLogonCancelBtn {
+    left: calc(50% + 4px);
 }
 
 /* Icon 32 px, 10 px, the text in white 9 pt; the right padding keeps Vista's group 8 px left of centre */

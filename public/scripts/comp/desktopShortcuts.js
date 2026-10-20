@@ -3999,16 +3999,19 @@ wsClient.registerInitStep(18, 'Loading Desktop Shortcuts', async () => {
         
         // Load and render shortcuts for current workspace
         // activeWorkspace is set in step 12 (Loading Workspaces)
-        if (typeof activeWorkspace !== 'undefined') {
-            desktopShortcuts.currentWorkspace = activeWorkspace;
-            const loaded = await desktopShortcuts.loadShortcuts(activeWorkspace);
-            if (loaded) {
-                // Drawn after icon bitmaps decode (public/scripts/comp/assetPreload.js).
-                desktopShortcuts._bootShortcutsLoaded = true;
-            }
+        if (typeof activeWorkspace === 'undefined' || !activeWorkspace) {
+            throw new Error('Desktop icons did not load');
         }
+        desktopShortcuts.currentWorkspace = activeWorkspace;
+        const loaded = await desktopShortcuts.loadShortcuts(activeWorkspace);
+        // A failed read must not look like an empty desktop. Empty shortcuts is a real list.
+        if (!loaded) {
+            throw new Error('Desktop icons did not load');
+        }
+        // Drawn after icon bitmaps decode (public/scripts/comp/assetPreload.js).
+        desktopShortcuts._bootShortcutsLoaded = true;
     }
-});
+}, false, { critical: true, failureText: 'MeletonFX could not load your desktop icons.' });
 
 // Handle context menu actions for shortcuts
 document.addEventListener('contextMenuAction', async (event) => {

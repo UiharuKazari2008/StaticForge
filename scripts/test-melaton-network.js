@@ -183,6 +183,11 @@ assert.strictEqual(logon({ _logonInitStatus: { message: 'Loading Application Dat
 assert.strictEqual(logon({ connectionPhase: 'auth' }), false, 'the password prompt is the logon dialog');
 assert.strictEqual(logon({ connectionPhase: 'idle' }), false);
 assert.strictEqual(logon({ connectionPhase: 'failed' }), true, 'failures show Error Connecting to domain controller');
+assert.strictEqual(logon({ connectionPhase: 'failed', vistaLogon: true }), false, 'Vista Welcome screen keeps the failure on its own message view');
+assert.strictEqual(logon({ vistaLogon: true }), false, 'Vista dialing stays on Please wait, with no VPN dialog');
+assert.ok(wsSrc.includes('There are currently no logon servers available to service the logon request.'), 'ntdll no-logon-servers line');
+assert.ok(fs.readFileSync(path.join(__dirname, '../public/app.html'), 'utf8').includes('id="desktopPreStartupRetryBtn"'), 'Retry on the Welcome screen');
+assert.ok(fs.readFileSync(path.join(__dirname, '../public/app.html'), 'utf8').includes('id="desktopPreStartupLogonCancelBtn"'), 'Cancel on the Welcome screen');
 assert.strictEqual(logon({ preStartupAuthBusy: true }), false);
 
 // ---- Logon-screen placement: bottom-right quadrant, off the grid, under the logon dialog ----
