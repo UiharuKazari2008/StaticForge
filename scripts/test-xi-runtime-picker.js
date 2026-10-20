@@ -28,6 +28,10 @@ function main() {
     assert.strictEqual(sanitizeRuntime(null), 'cursor');
     assert.strictEqual(sanitizeRuntime('grok'), 'cursor');
     assert.strictEqual(sanitizeRuntime(''), 'cursor');
+    assert.strictEqual(sanitizeRuntime('custom:sloproxy'), 'custom:sloproxy');
+    assert.strictEqual(sanitizeRuntime('CUSTOM:SloProxy'), 'custom:sloproxy');
+    assert.strictEqual(sanitizeRuntime('custom:bad id'), 'cursor');
+    assert.strictEqual(usesClaudeCli('custom:sloproxy'), true);
 
     assert.strictEqual(usesClaudeCli('claude'), true);
     assert.strictEqual(usesClaudeCli('tokenrouter'), true);

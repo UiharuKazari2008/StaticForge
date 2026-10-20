@@ -44,4 +44,6 @@ Destructive packets need `confirm: true`. Soft-delete also needs `confirmText: "
 | `exchange_audit` | `exchange_audit_response` | exchange admin | `{ audit: [{ ts, actor, action, target, detail, success }] }` |
 
 HTTP surface: [rest-api.md — Dreamscape Exchange Server](../rest-api.md#dreamscape-exchange-server).
-MCP tools (`role: exchange`, scope `sfapp_mail_exchange`): `exchange_list_mailboxes`, `exchange_get_mailbox`, `exchange_create_mailbox`, `exchange_update_mailbox`, `exchange_disable_mailbox`, `exchange_delete_mailbox`, `exchange_add_address`, `exchange_remove_address`, `exchange_mailbox_key`, `exchange_aliases`, `exchange_signatures`, `exchange_toggles`, `exchange_status`, `exchange_spam`.
+MCP tools (`role: exchange`, scope `sfapp_mail_exchange`): `exchange_list_mailboxes`, `exchange_get_mailbox`, `exchange_create_mailbox`, `exchange_update_mailbox`, `exchange_disable_mailbox`, `exchange_delete_mailbox`, `exchange_add_address`, `exchange_remove_address`, `exchange_mailbox_key`, `exchange_aliases`, `exchange_signatures`, `exchange_toggles`, `exchange_status`, `exchange_spam`, `exchange_set_mailbox_notify_forward`, `exchange_get_mailbox_notify_forward`, `exchange_clear_mailbox_notify_forward`.
+
+Per-mailbox notify-forward (own-mailbox MCP + `/dovecote/mailbox/notify-forward`, admin variants above): [rest-api.md — Dovecote mailbox notify-forward](../rest-api.md#dovecote-mailbox-notify-forward). Inbox delivery emits `mailbox_new_mail`; the dispatcher consumes that event stream.

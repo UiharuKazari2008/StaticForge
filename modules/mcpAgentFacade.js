@@ -126,7 +126,7 @@ const {
 const naxTagsDatabase = require('./naxTagsDatabase');
 const naiPromptGuideSync = require('./naiPromptGuideSync');
 // modules/knowledgeMemoryDatabase.js — refine math + model default
-const { normalizeMemoryModel, resolveRefinementConfidence } = require('./knowledgeMemoryDatabase');
+const { normalizeMemoryModel, resolveRefinementConfidence, withKnowledgeMemoryStore, registerObliteratedCheckpoint, OBLITERATED_MEMORY_STORE } = require('./knowledgeMemoryDatabase');
 // modules/mcpModuleRegistry.js — module sets + scope filtering
 const {
     scopesAllowModuleTool,
@@ -3173,6 +3173,42 @@ const TOOL_DEFS = [
         }
     },
     {
+        name: 'set_mailbox_notify_forward',
+        core: true,
+        description: 'Register or replace the notify-forward address for your own Dovecote mailbox. When new inbox mail arrives, a short plain notice ("You have new mail in <mailbox>: <from> — <subject>") is sent to that external address through the outbound relay. No body content or attachments. Address must be a valid external email, not on dream.737.jp.net. You cannot set another mailbox.',
+        scope: 'sfapp_dovecote',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['address'],
+            properties: {
+                address: { type: 'string', description: 'External email that receives the short new-mail notice' }
+            }
+        }
+    },
+    {
+        name: 'get_mailbox_notify_forward',
+        core: true,
+        description: 'Read the notify-forward address registered for your own Dovecote mailbox. Other mailboxes are not visible.',
+        scope: 'sfapp_dovecote',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {}
+        }
+    },
+    {
+        name: 'clear_mailbox_notify_forward',
+        core: true,
+        description: 'Remove the notify-forward address from your own Dovecote mailbox. Other mailboxes are not affected.',
+        scope: 'sfapp_dovecote',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {}
+        }
+    },
+    {
         name: 'mailroom_forward_mail',
         core: true,
         role: 'mailroom',
@@ -6198,7 +6234,40 @@ const PROTECTED_MEMORY_NAMES = new Set([
     'V5 Medium effort testing'
 ]);
 
-function runMemoryTool(globalResources, name, input, ctx) {
+function turnMemoryStore(globalResources) {
+    const customProviders = require('./customModelProviders');
+    const wren = require('./cursorDirector');
+    const xi = require('./xiDirector');
+    const xiId = xi.activeSessionId();
+    const wrenId = wren.activeDirectorSessionId();
+    const brief = (xiId && !wrenId) ? xi.activeChatBrief() : wren.activeChatBrief();
+    if (!brief || !customProviders.isEngine(brief.engine)) return '';
+    return customProviders.memoryStoreForEngine(globalResources, brief.engine);
+}
+
+function ageToolAllowed(globalResources) {
+    const customProviders = require('./customModelProviders');
+    const wren = require('./cursorDirector');
+    const xi = require('./xiDirector');
+    const xiId = xi.activeSessionId();
+    const wrenId = wren.activeDirectorSessionId();
+    const brief = (xiId && !wrenId) ? xi.activeChatBrief() : wren.activeChatBrief();
+    if (!brief || !customProviders.isEngine(brief.engine)) return true;
+    return customProviders.ageToolEnabled(globalResources, brief.engine);
+}
+
+function runMemoryTool(globalResources, name, input, ctx, storeForced) {
+    if (storeForced === undefined) {
+        const store = turnMemoryStore(globalResources);
+        if (store) {
+            return withKnowledgeMemoryStore(store, () => {
+                registerObliteratedCheckpoint(globalResources);
+                return runMemoryTool(globalResources, name, input, ctx, store);
+            });
+        }
+        storeForced = '';
+    }
+    const obliterated = storeForced === OBLITERATED_MEMORY_STORE;
     name = canonMemoryTool(name);
     const db = resolveKnowledgeMemoryDb(globalResources);
     if (!db) {
@@ -6225,14 +6294,14 @@ function runMemoryTool(globalResources, name, input, ctx) {
             offset: input.offset,
             search: input.search || '',
             category: input.category || null,
-            model: input.model || null
+            model: obliterated ? null : (input.model || null)
         });
         return { success: true, ...paged };
     }
     if (name === 'search_memories') {
         const query = String(input.query || '').trim();
         if (!query) return { success: false, error: 'query is required' };
-        const raw = db.searchKnowledgeMemories(query, input.category || null, input.model || null);
+        const raw = db.searchKnowledgeMemories(query, input.category || null, obliterated ? null : (input.model || null));
         const limit = Math.min(20, Math.max(1, Number(input.limit) || 5));
         const minRelevance = input.minRelevance != null ? Number(input.minRelevance) : 40;
         const hits = (Array.isArray(raw) ? raw : [])
@@ -6302,7 +6371,9 @@ function runMemoryTool(globalResources, name, input, ctx) {
     const confidence = refined
         ? resolveRefinementConfidence(existing.confidence, input.confidence)
         : 0.1;
-    const model = normalizeMemoryModel(input.model || (existing && existing.model));
+    const model = obliterated
+        ? OBLITERATED_MEMORY_STORE
+        : normalizeMemoryModel(input.model || (existing && existing.model));
     const previousObservations = existing && Array.isArray(existing.observations) ? existing.observations : [];
     const nextObservations = input.observations !== undefined ? input.observations : previousObservations;
     const droppedObservations = input.observations !== undefined
@@ -8737,6 +8808,9 @@ async function callTool(globalResources, req, name, args) {
     }
 
     if (name === 'lookup_character_age') {
+        if (!ageToolAllowed(globalResources)) {
+            return mcpTextResult({ success: false, error: 'lookup_character_age is turned off for this Director engine.' }, true);
+        }
         const { lookupCharacterAge } = require('./characterAgeLookup');
         const asked = input.character || input.name || input.tag || input.tagName || input.query;
         const result = lookupCharacterAge(asked);
@@ -9125,7 +9199,29 @@ async function callTool(globalResources, req, name, args) {
         }
     }
 
+<<<<<<< HEAD
     if (name === 'send_mail' || name === 'list_mail' || name === 'read_mail' || name === 'mark_mail' || name === 'delete_mail' || name === 'forward_mail') {
+=======
+    if (name === 'set_mailbox_notify_forward' || name === 'get_mailbox_notify_forward' || name === 'clear_mailbox_notify_forward') {
+        const { resolveDovecoteOwnerFromReq } = require('./dovecoteIdentity');
+        const dovecoteMail = require('./dovecoteMail');
+        const notify = require('./dovecoteMailboxNotify');
+        const owner = resolveDovecoteOwnerFromReq(req);
+        if (!owner) {
+            return mcpTextResult({ success: false, error: 'Caller identity does not map to a Dovecote mailbox' }, true);
+        }
+        try {
+            return mcpTextResult(await notify.handleMailboxNotifyTool(name, owner, input));
+        } catch (mailError) {
+            if (mailError instanceof dovecoteMail.DovecoteError) {
+                return mcpTextResult({ success: false, error: mailError.message, code: mailError.code }, true);
+            }
+            throw mailError;
+        }
+    }
+
+    if (name === 'send_mail' || name === 'list_mail' || name === 'read_mail' || name === 'mark_mail' || name === 'forward_mail') {
+>>>>>>> live-edits-oct20-1641
         const { resolveDovecoteOwnerFromReq } = require('./dovecoteIdentity');
         const dovecoteMail = require('./dovecoteMail');
         // read_by_recipient: the snake_case name callers look for, alongside the
@@ -9672,7 +9768,10 @@ async function handleJsonRpc(globalResources, req, message) {
             body: {
                 jsonrpc: '2.0',
                 id,
-                result: { tools: listToolsForScopes(scopes, globalResources, { owner, actor }) }
+                result: {
+                    tools: listToolsForScopes(scopes, globalResources, { owner, actor })
+                        .filter((tool) => tool.name !== 'lookup_character_age' || ageToolAllowed(globalResources))
+                }
             }
         };
     }

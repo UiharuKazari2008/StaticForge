@@ -246,9 +246,11 @@ class Director {
         // tray menu status line, and the computer's CPU / memory
         this._status = null;
         this.PREFS_KEY = 'staticforge_director_chat_prefs';
-        // Wren's engine (Cursor, Claude, or TokenRouter). Each engine keeps its own
+        // Wren's engine (Cursor, Claude, TokenRouter, or a custom host). Each engine keeps its own
         // last model config and model catalog; Xi picks its runtime per session instead.
         this.ENGINE_KEY = 'staticforge_director_engine';
+        // OpenAI-compatible hosts from director_get_models_response.providers.
+        this.customProviders = [];
         // New Wren chats default to TokenRouter (DeepSeek V4.1 Flash, Yukimi 2026-10-20).
         // A saved last-used engine still wins; Cursor and Claude stay selectable.
         this.engine = 'tokenrouter';
@@ -387,13 +389,29 @@ class Director {
         return id === 'cursor' ? this.PREFS_KEY : `${this.PREFS_KEY}_${id}`;
     }
 
-    // Wren's engines, in menu order.
+    // Wren's built-in engines, then custom OpenAI-compatible hosts.
+    engineChoices() {
+        const extra = (this.customProviders || []).map((row) => row && row.engine).filter((id) => this.isCustomEngine(id));
+        return ['cursor', 'claude', 'tokenrouter'].concat(extra);
+    }
+
     get ENGINES() {
-        return ['cursor', 'claude', 'tokenrouter'];
+        return this.engineChoices();
+    }
+
+    isCustomEngine(engine) {
+        return /^custom:[a-z][a-z0-9_-]{0,31}$/.test(String(engine || '').trim().toLowerCase());
+    }
+
+    customProvider(engine) {
+        const id = this.normalizeEngine(engine);
+        return (this.customProviders || []).find((row) => row && row.engine === id) || null;
     }
 
     normalizeEngine(engine) {
-        return engine === 'claude' || engine === 'tokenrouter' ? engine : 'cursor';
+        const text = String(engine || '').trim().toLowerCase();
+        if (this.isCustomEngine(text)) return text;
+        return text === 'claude' || text === 'tokenrouter' ? text : 'cursor';
     }
 
     activeEngine() {
@@ -422,6 +440,7 @@ class Director {
         document.querySelectorAll('#directorHeaderTitle .xai-icon, #directorSessionTitle .xai-icon').forEach((icon) => {
             icon.classList.toggle('engine-claude-mark', engine === 'claude');
             icon.classList.toggle('engine-tokenrouter-mark', engine === 'tokenrouter');
+            icon.classList.toggle('engine-custom-mark', this.isCustomEngine(engine));
             icon.title = this.engineName(engine);
         });
         this.paintAccountBadge();
@@ -432,12 +451,19 @@ class Director {
     }
 
     engineName(engine) {
-        if (engine === 'claude') return 'Claude';
-        return engine === 'tokenrouter' ? 'TokenRouter' : 'Cursor';
+        const custom = this.customProvider(engine);
+        if (custom && custom.name) return custom.name;
+        const id = this.normalizeEngine(engine);
+        if (id === 'claude') return 'Claude';
+        return id === 'tokenrouter' ? 'TokenRouter' : 'Cursor';
     }
 
     defaultModel(engine) {
-        const id = engine || this.activeEngine();
+        const id = this.normalizeEngine(engine || this.activeEngine());
+        if (this.isCustomEngine(id)) {
+            const marked = this.catalogFor(id).find((item) => item.default) || this.catalogFor(id)[0];
+            return marked ? marked.id : '';
+        }
         if (id === 'claude') return 'claude-opus-5-5';
         return id === 'tokenrouter' ? 'deepseek/deepseek-v4.1-flash' : 'grok-4.7';
     }
@@ -471,7 +497,7 @@ class Director {
             text: 'Engine',
             hidden: () => director.persona === 'xi',
             valueDisplay: () => director.engineName(director.activeEngine()),
-            submenu: director.ENGINES.map((id) => ({
+            optionsfn: () => director.engineChoices().map((id) => ({
                 text: director.engineName(id),
                 action: `director-tools-engine-${id}`,
                 showIndicator: true,
@@ -583,6 +609,9 @@ class Director {
         if (this.modelCatalog.length && !this.modelCatalog[0].provider) this._modelsRequested = 0;
         this.requestDirectorModels();
         const order = ['Cursor', 'Anthropic', 'OpenAI', 'Google', 'Moonshot', 'Meta', 'Z.ai', 'Other'];
+        if (!this.modelCatalog.length && this._modelCatalogError) {
+            return [{ text: this._modelCatalogError, disabled: () => true }];
+        }
         const models = (this.modelCatalog.length
             ? this.modelCatalog.slice()
             : [{ id: this.selectedModel || this.defaultModel(), name: this.selectedModelName(), provider: { claude: 'Anthropic', tokenrouter: 'Other' }[this.activeEngine()] || 'Cursor', cost: 2, price: '' }]
@@ -878,7 +907,10 @@ class Director {
 
     requestDirectorModels(engine, force) {
         if (!window.wsClient || !window.wsClient.isConnected()) return;
-        const id = this.ENGINES.includes(engine) ? engine : this.activeEngine();
+        const requested = String(engine || '').trim().toLowerCase();
+        const id = !engine
+            ? this.activeEngine()
+            : ((this.engineChoices().includes(requested) || this.isCustomEngine(requested)) ? requested : this.activeEngine());
         this._modelsRequestedAt = this._modelsRequestedAt || {};
         const at = id === this.activeEngine() ? this._modelsRequested : this._modelsRequestedAt[id];
         if (!force && at && (Date.now() - at) < 60000 && this.catalogFor(id).length) return;
@@ -1039,8 +1071,7 @@ class Director {
         }
         this.paintModelPick();
         if (this.directorRuntimePick) {
-            // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
-            contextMenu.attachClickMenuToElement(this.directorRuntimePick, {
+            const runtimeMenu = {
                 onAction: (action, target, item) => {
                     this._nextXiRuntime = item.runtimeId;
                     this.loadChatPrefs();
@@ -1049,15 +1080,19 @@ class Director {
                     this.paintModelPick();
                     this.paintRuntimePicker();
                 },
-                sections: [{
-                    type: 'list',
-                    items: [
-                        { text: 'TokenRouter', action: 'director-runtime-tokenrouter', runtimeId: 'tokenrouter', showIndicator: true, loadfn: (it) => { it.checked = this.nextXiRuntime() === 'tokenrouter'; } },
-                        { text: 'Cursor', action: 'director-runtime-cursor', runtimeId: 'cursor', showIndicator: true, loadfn: (it) => { it.checked = this.nextXiRuntime() === 'cursor'; } },
-                        { text: 'Claude', action: 'director-runtime-claude', runtimeId: 'claude', showIndicator: true, loadfn: (it) => { it.checked = this.nextXiRuntime() === 'claude'; } }
-                    ]
-                }]
-            });
+                beforeShow: () => {
+                    runtimeMenu.sections[0].items = this.engineChoices().map((id) => ({
+                        text: this.engineName(id),
+                        action: `director-runtime-${id}`,
+                        runtimeId: id,
+                        showIndicator: true,
+                        loadfn: (it) => { it.checked = this.nextXiRuntime() === id; }
+                    }));
+                },
+                sections: [{ type: 'list', items: [] }]
+            };
+            // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
+            contextMenu.attachClickMenuToElement(this.directorRuntimePick, runtimeMenu);
         }
     }
 
@@ -6388,8 +6423,15 @@ class Director {
 
         // Handle Director sessions response
         window.wsClient.on('director_get_models_response', (data) => {
-            if (window.directorInstance && data.data && Array.isArray(data.data.models)) {
-                window.directorInstance.applyModelCatalog(data.data.models, data.data.engine);
+            const director = window.directorInstance;
+            if (!director || !data.data) return;
+            if (Array.isArray(data.data.providers)) director.customProviders = data.data.providers;
+            director._modelCatalogError = data.data.error || '';
+            if (Array.isArray(data.data.models) && data.data.models.length) {
+                director._modelCatalogError = '';
+                director.applyModelCatalog(data.data.models, data.data.engine);
+            } else if (data.data.engine && director.normalizeEngine(data.data.engine) === director.activeEngine()) {
+                director.paintModelPick();
             }
         });
 
@@ -6910,13 +6952,17 @@ class Director {
 
     engineIconHtml(engine) {
         const id = this.normalizeEngine(engine);
-        return `<span class="director-engine-icon engine-${id}" role="img" aria-label="${this.engineName(id)}" title="${this.engineName(id)}"></span>`;
+        const mark = id === 'claude' ? 'engine-claude' : (id === 'tokenrouter' ? 'engine-tokenrouter' : (this.isCustomEngine(id) ? 'engine-custom' : 'engine-cursor'));
+        const name = this.engineName(id);
+        return `<span class="director-engine-icon ${mark}" role="img" aria-label="${name}" title="${name}"></span>`;
     }
 
     // Older rounds have no engine. An id only the Claude catalog has ran on
     // Claude; so did a bare family id (run === id) in a chat last run on Claude,
     // since Cursor runs record a variant id (effort / thinking suffix) as run.
     engineForModelId(model, session) {
+        const fromSession = session && (this.persona === 'xi' ? session.runtime : session.engine);
+        if (this.isCustomEngine(fromSession)) return this.normalizeEngine(fromSession);
         const id = model && (typeof model === 'string' ? model : model.id);
         // TokenRouter ids are vendor/model; Cursor and Claude ids never have a slash.
         if (id && id.indexOf('/') !== -1) return 'tokenrouter';

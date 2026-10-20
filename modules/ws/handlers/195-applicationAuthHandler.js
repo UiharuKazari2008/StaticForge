@@ -46,6 +46,12 @@ async function handleAuthenticateApplication(handlersCtx, ws, message, clientInf
     clientInfo.authMethod = 'application_key';
     clientInfo.applicationKeyId = result.applicationKeyId;
     clientInfo.applicationScopes = result.scopes;
+    clientInfo.appName = result.appName || null;
+    clientInfo.applicationAuth = {
+        appName: result.appName,
+        applicationScopes: result.scopes,
+        applicationKeyId: result.applicationKeyId
+    };
     clientInfo.applicationUserAgent = ua;
     clientInfo.sessionId = `appkey:${result.applicationKeyId}`;
 

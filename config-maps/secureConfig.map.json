@@ -366,6 +366,14 @@
       "label": "LANTIS Relay Admin Token",
       "secret": true,
       "description": "Bearer token for PUT /v1/toggles and future relay mutations. Env MAIL_EXCHANGE_RELAY_ADMIN_TOKEN. Never send to the browser or log."
+    },
+    {
+      "path": [
+        "customModelProviders"
+      ],
+      "type": "object",
+      "label": "Custom Model Providers",
+      "description": "Bearer tokens for config.json customModelProviders. Each key name is the provider id. These keys are not a Security Center service."
     }
   ]
 }

@@ -1,6 +1,7 @@
 const wsPacketRegistry = require('../wsPacketRegistry');
 const dovecoteMail = require('../../dovecoteMail');
 const { renderMailBody } = require('../../dovecoteRender');
+const mailboxEvents = require('../../dovecoteMailboxEvents');
 
 const DOVECOTE_DESTRUCTIVE = { destructive: true };
 
@@ -313,6 +314,44 @@ function isMailboxSnapshotRecipient(clientInfo) {
     return clientInfo.userType === 'admin' || clientInfo.userType === 'readonly';
 }
 
+async function handleSubscribeNewMail(handlersCtx, ws, message, clientInfo) {
+    try {
+        const mailbox = mailboxEvents.resolveSubscribeMailbox(clientInfo, message.mailbox);
+        mailboxEvents.subscribeSocket(ws, clientInfo, mailbox);
+        handlersCtx.sendToClient(ws, {
+            type: 'dovecote_subscribe_mailbox_new_mail_response',
+            requestId: message.requestId,
+            data: { mailbox, subscribed: true },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        if (error instanceof dovecoteMail.DovecoteError) {
+            handlersCtx.sendError(ws, error.message, error.code, message.requestId);
+            return;
+        }
+        handlersCtx.sendError(ws, 'Failed to subscribe to mailbox_new_mail', error.message, message.requestId);
+    }
+}
+
+async function handleUnsubscribeNewMail(handlersCtx, ws, message, clientInfo) {
+    try {
+        const mailbox = mailboxEvents.resolveSubscribeMailbox(clientInfo, message.mailbox);
+        mailboxEvents.unsubscribeSocket(ws, mailbox);
+        handlersCtx.sendToClient(ws, {
+            type: 'dovecote_unsubscribe_mailbox_new_mail_response',
+            requestId: message.requestId,
+            data: { mailbox, subscribed: false },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        if (error instanceof dovecoteMail.DovecoteError) {
+            handlersCtx.sendError(ws, error.message, error.code, message.requestId);
+            return;
+        }
+        handlersCtx.sendError(ws, 'Failed to unsubscribe from mailbox_new_mail', error.message, message.requestId);
+    }
+}
+
 function bindMailboxPush(handlersCtx) {
     // setMailboxChangedListener: modules/dovecoteMail.js — WS and MCP writes share this
     dovecoteMail.setMailboxChangedListener((owners) => {
@@ -356,6 +395,10 @@ function registerPackets(handlersCtx) {
         return;
     }
     bindMailboxPush(handlersCtx);
+    mailboxEvents.bindWebSocketServer(() => {
+        const gr = handlersCtx && handlersCtx.globalResources;
+        return gr && gr.getWebSocketServer ? gr.getWebSocketServer() : null;
+    });
 
     const reg = (type, fn, meta = {}) => {
         wsPacketRegistry.registerWsPacket(type, async (ctx) => {
@@ -372,6 +415,8 @@ function registerPackets(handlersCtx) {
     reg('dovecote_send_mail', handleSendMail, DOVECOTE_DESTRUCTIVE);
     reg('dovecote_forward_mail', handleForwardMail, DOVECOTE_DESTRUCTIVE);
     reg('dovecote_set_image_pref', handleSetImagePref, DOVECOTE_DESTRUCTIVE);
+    reg('dovecote_subscribe_mailbox_new_mail', handleSubscribeNewMail);
+    reg('dovecote_unsubscribe_mailbox_new_mail', handleUnsubscribeNewMail);
 }
 
 module.exports = {

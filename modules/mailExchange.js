@@ -1254,6 +1254,52 @@ function rescueOrPurgeSpam(actor, { mailbox, id, spam, confirm } = {}) {
     return dovecoteMail.mailroomMoveMail(admin, { mailbox, id, spam: spam === true });
 }
 
+function wrapNotifyError(err) {
+    const { DovecoteError } = require('./dovecoteMail');
+    if (err instanceof DovecoteError) {
+        throw new MailExchangeError(err.message, err.code);
+    }
+    throw err;
+}
+
+function adminGetMailboxNotifyForward(actor, { owner } = {}) {
+    requireExchangeAdmin(actor, 'get_mailbox_notify_forward', owner);
+    const notify = require('./dovecoteMailboxNotify');
+    try {
+        return notify.getMailboxNotifyForward(normalizeOwner(owner));
+    } catch (err) {
+        wrapNotifyError(err);
+    }
+}
+
+function adminSetMailboxNotifyForward(actor, { owner, address, confirm } = {}) {
+    const admin = requireExchangeAdmin(actor, 'set_mailbox_notify_forward', owner);
+    requireEnabled(admin, 'set_mailbox_notify_forward', owner);
+    requireConfirm(confirm, 'set_mailbox_notify_forward');
+    const notify = require('./dovecoteMailboxNotify');
+    try {
+        const result = notify.setMailboxNotifyForward(normalizeOwner(owner), { address });
+        audit(admin, 'set_mailbox_notify_forward', result.mailbox, true, 'address-set');
+        return result;
+    } catch (err) {
+        wrapNotifyError(err);
+    }
+}
+
+function adminClearMailboxNotifyForward(actor, { owner, confirm } = {}) {
+    const admin = requireExchangeAdmin(actor, 'clear_mailbox_notify_forward', owner);
+    requireEnabled(admin, 'clear_mailbox_notify_forward', owner);
+    requireConfirm(confirm, 'clear_mailbox_notify_forward');
+    const notify = require('./dovecoteMailboxNotify');
+    try {
+        const result = notify.clearMailboxNotifyForward(normalizeOwner(owner));
+        audit(admin, 'clear_mailbox_notify_forward', result.mailbox, true, null);
+        return result;
+    } catch (err) {
+        wrapNotifyError(err);
+    }
+}
+
 function publicMailboxView(row) {
     if (!row) return null;
     return {
@@ -1338,6 +1384,9 @@ module.exports = {
     dashboard,
     listSpamOverview,
     rescueOrPurgeSpam,
+    adminGetMailboxNotifyForward,
+    adminSetMailboxNotifyForward,
+    adminClearMailboxNotifyForward,
     publicMailboxView,
     publicAddress
 };

@@ -135,10 +135,11 @@ const MODULE_DEFS = {
         id: 'dovecote',
         scope: 'sfapp_dovecote',
         label: 'Dovecote Mail',
-        description: 'Own-mailbox-only internal mail (send, list, read, mark, forward) plus a per-mailbox new-mail webhook. Tsubame (mailroom role) may list/read/purge/rescue Spam in every mailbox, including Yukimi (Spam-only), and move Inbox↔Spam in other bots.',
+        description: 'Own-mailbox-only internal mail (send, list, read, mark, forward) plus a per-mailbox new-mail webhook and optional notify-forward address. Tsubame (mailroom role) may list/read/purge/rescue Spam in every mailbox, including Yukimi (Spam-only), and move Inbox↔Spam in other bots.',
         tools: [
             'send_mail', 'list_mail', 'read_mail', 'mark_mail', 'delete_mail', 'forward_mail',
             'set_mailbox_webhook', 'get_mailbox_webhook', 'clear_mailbox_webhook',
+            'set_mailbox_notify_forward', 'get_mailbox_notify_forward', 'clear_mailbox_notify_forward',
             'mailroom_forward_mail', 'mailroom_move_mail', 'mailroom_list_mail', 'mailroom_read_mail', 'mailroom_purge_mail'
         ],
         submodules: {
@@ -146,6 +147,7 @@ const MODULE_DEFS = {
             read: ['list_mail', 'read_mail'],
             mark: ['mark_mail', 'delete_mail'],
             webhook: ['set_mailbox_webhook', 'get_mailbox_webhook', 'clear_mailbox_webhook'],
+            notify: ['set_mailbox_notify_forward', 'get_mailbox_notify_forward', 'clear_mailbox_notify_forward'],
             mailroom: [
                 'mailroom_forward_mail', 'mailroom_move_mail',
                 'mailroom_list_mail', 'mailroom_read_mail', 'mailroom_purge_mail'
@@ -162,7 +164,9 @@ const MODULE_DEFS = {
             'exchange_update_mailbox', 'exchange_disable_mailbox',
             'exchange_delete_mailbox', 'exchange_add_address', 'exchange_remove_address',
             'exchange_mailbox_key', 'exchange_aliases',
-            'exchange_signatures', 'exchange_toggles', 'exchange_status', 'exchange_spam'
+            'exchange_signatures', 'exchange_toggles', 'exchange_status', 'exchange_spam',
+            'exchange_set_mailbox_notify_forward', 'exchange_get_mailbox_notify_forward',
+            'exchange_clear_mailbox_notify_forward'
         ]
     },
     report_issue: {

@@ -1754,6 +1754,91 @@
       "label": "NovelAI API Key (legacy)",
       "secret": true,
       "description": "Legacy fallback read by searchService when no managed key is available. Prefer secure.config.json key lists."
+    },
+    {
+      "path": [
+        "customModelProviders"
+      ],
+      "type": "array",
+      "label": "Custom Model Providers",
+      "allowAdd": true,
+      "description": "OpenAI-compatible Director engines. Each row is id, name, baseUrl (https), and optional defaultModel. The bearer token is a secure.config.json customModelProviders key whose name equals id."
+    },
+    {
+      "path": [
+        "customModelProviders",
+        "*"
+      ],
+      "type": "object",
+      "closed": true
+    },
+    {
+      "path": [
+        "customModelProviders",
+        "*",
+        "id"
+      ],
+      "type": "string",
+      "label": "Provider Id",
+      "editorType": "input",
+      "required": true,
+      "description": "Lowercase id. The engine is custom:<id>. Must match the secure key name."
+    },
+    {
+      "path": [
+        "customModelProviders",
+        "*",
+        "name"
+      ],
+      "type": "string",
+      "label": "Display Name",
+      "editorType": "input",
+      "required": true
+    },
+    {
+      "path": [
+        "customModelProviders",
+        "*",
+        "baseUrl"
+      ],
+      "type": "string",
+      "label": "Base URL",
+      "editorType": "input",
+      "required": true,
+      "description": "https host for /v1/models and /v1/chat/completions. No path userinfo. A trailing /v1 is stripped."
+    },
+    {
+      "path": [
+        "customModelProviders",
+        "*",
+        "defaultModel"
+      ],
+      "type": "string",
+      "label": "Default Model",
+      "editorType": "input",
+      "description": "Model id from that host's /v1/models. Empty uses the first listed model. Set in Dreamscape Services."
+    },
+    {
+      "path": [
+        "customModelProviders",
+        "*",
+        "obliteratedMemories"
+      ],
+      "type": "boolean",
+      "label": "Obliterated Memories",
+      "editMode": "inline",
+      "description": "This engine uses the shared Obliterated Memories database instead of Studio knowledge memories."
+    },
+    {
+      "path": [
+        "customModelProviders",
+        "*",
+        "ageTool"
+      ],
+      "type": "boolean",
+      "label": "Age Tool",
+      "editMode": "inline",
+      "description": "When off, lookup_character_age is hidden from this engine. On when the field is missing."
     }
   ]
 }

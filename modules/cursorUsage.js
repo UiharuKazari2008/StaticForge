@@ -457,6 +457,17 @@ async function handleDirectorGetCursorUsage(handler, ws, message) {
             usage = { ...require('./cursorDirector')._test.claudeUsageSummary(), persona };
         } else if (message && message.engine === 'tokenrouter') {
             usage = { ...(await require('./cursorDirector').tokenRouterUsageSummary(handler.globalResources)), persona };
+        } else if (message && require('./customModelProviders').isEngine(message.engine)) {
+            const name = require('./customModelProviders').displayName(handler.globalResources, message.engine);
+            usage = {
+                success: true,
+                engine: message.engine,
+                persona,
+                limited: false,
+                autoPercent: null,
+                apiPercent: null,
+                title: name
+            };
         } else {
             usage = await getCursorUsage(persona);
         }

@@ -174,6 +174,14 @@ function createDovecoteTables() {
             updated_at TEXT NOT NULL
         )
     `);
+    // One external notify-forward address per mailbox. Live immediately.
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS dovecote_mailbox_notify_forward (
+            owner TEXT PRIMARY KEY,
+            address TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+    `);
 }
 
 function getDb() {
