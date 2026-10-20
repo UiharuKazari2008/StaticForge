@@ -3704,6 +3704,8 @@ class Director {
                     }
                     if (body && body.success) {
                         this.directorSessions = body.sessions || [];
+                        // _doRenderDirectorSessions prefers window.directorSessions; a stale copy hid new rows.
+                        window.directorSessions = this.directorSessions;
                         this.activeAccountId = body.activeAccountId || 'default';
                         this.cursorAccounts = body.accounts || [];
                         this.paintAccountBadge();
