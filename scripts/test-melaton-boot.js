@@ -363,10 +363,32 @@ const flush = () => new Promise((r) => setImmediate(r));
     assert.deepStrictEqual(u.calls, ['check', 'download:5:silent']);
     assert.ok(!u.t.screens().includes('install'), 'no installer for a small update');
 
-    // no worker controlling the page: /app's boot gate takes it
-    u = await runWith({ worker: false, checks: [{ files: files(50), bytes: 5000 }] });
-    assert.strictEqual(u.result, 'teal');
-    assert.deepStrictEqual(u.calls, [], 'not even checked');
+    // a quiet download that does not land opens the installer instead of the boot menu
+    u = await runWith({ checks: [{ files: files(5), bytes: 500 }], download: () => ({ ok: false, errors: ['no-worker'] }) });
+    assert.strictEqual(u.result, 'error');
+    assert.ok(u.t.screens().includes('install'), 'a failed quiet download enters the installer');
+    assert.ok(!u.t.screens().includes('menu'), 'a failed quiet download is not the boot menu');
+
+    // one missed file list is retried into the installer; a list that never arrives
+    // stays on the boot screen until the busy budget, and does not open /app
+    u = await runWith({ checks: [{ failed: true }, { files: files(50), bytes: 5000 }, { files: [], bytes: 0 }] });
+    assert.strictEqual(u.result, 'reboot');
+    assert.ok(u.t.screens().includes('install'), 'a retried file list still enters the installer');
+    u = await runWith({ checks: [{ skipped: 'no-manifest' }, { files: files(50), bytes: 5000 }, { files: [], bytes: 0 }] });
+    assert.strictEqual(u.result, 'reboot');
+    assert.ok(u.t.screens().includes('install'), 'a compile skip must not hand off before the file list');
+    assert.ok(!u.t.replaced.includes('/app'));
+    u = await runWith({ checks: [{ failed: true }] });
+    assert.strictEqual(u.result, 'menu');
+    assert.ok(u.t.now >= boot.config.busyTimeoutMs, 'a missed file list keeps the boot screen until the busy budget');
+    assert.ok(!u.t.replaced.includes('/app'), 'a missed file list must not leave for /app');
+    assert.strictEqual(u.t.last().data.info, boot.INFO.cache);
+
+    // no controlling worker: Setup still runs. Leaving for /app was the retry dialog.
+    u = await runWith({ worker: false, checks: [{ files: files(50), bytes: 5000 }, { files: [], bytes: 0 }] });
+    assert.strictEqual(u.result, 'reboot');
+    assert.ok(u.t.screens().includes('install'), 'a missing worker still enters the installer');
+    assert.ok(!u.t.replaced.includes('/app'), 'a missing worker must not leave for /app');
 
     // a large update: black, Setup, the checklist, linger, black, reboot /launch
     u = await runWith({ checks: [{ files: files(50), bytes: 5000 }, { files: [], bytes: 0 }] });

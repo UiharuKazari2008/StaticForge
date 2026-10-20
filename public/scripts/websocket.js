@@ -900,6 +900,12 @@ class WebSocketClient {
         'Too many failed login attempts. IP blocked.': 'The referenced account is currently locked out and may not be logged on to.'
     };
 
+    /**
+     * ntdll.dll.mui, the line LogonUI shows when the domain controller cannot be reached.
+     * Buttons on that view: Retry (user32.dll.mui 803) and Cancel (authui.dll.mui 11414).
+     */
+    static VISTA_NO_LOGON_SERVERS = 'There are currently no logon servers available to service the logon request.';
+
     static CONNECTION_BEATS = {
         initializing: {
             message: 'Initializing…',
@@ -1003,6 +1009,8 @@ class WebSocketClient {
          * follows every /status.
          */
         this.vistaLogon = document.body.classList.contains('vista-logon');
+        /** Welcome screen is on its no-logon-servers message (Retry / Cancel) until the user answers */
+        this._vistaLogonError = false;
         this._vistaLogonArtPromise = null;
         if (this.vistaLogon) {
             this._showVistaLogonPicture(localStorage.getItem(WebSocketClient.VISTA_LOGON_STORAGE_KEY));
@@ -1390,6 +1398,72 @@ class WebSocketClient {
         this.manualReconnect();
     }
 
+    /**
+     * Vista Welcome screen, before the desktop handoff: the socket died or never stayed up.
+     * LogonUI has no VPN dialog here, so the wait line would spin forever. Offer the
+     * no-logon-servers message instead. A server that is still booting keeps waiting.
+     */
+    _offerVistaLogonError() {
+        return !!(this.vistaLogon
+            && this._shouldUsePreStartupDialog()
+            && !this._vistaLogonError
+            && !this._userCancelledConnect
+            && !this.winlogonPowerText
+            && !this._serverReportsBooting()
+            && !this._isStartupHaltedForInstall());
+    }
+
+    /** Stop the reconnect loop and show Retry / Cancel on the Welcome screen. */
+    _showVistaLogonError() {
+        if (!this.vistaLogon || !this._shouldUsePreStartupDialog() || this.winlogonPowerText) return;
+        if (!this._vistaLogonError) {
+            this._vistaLogonError = true;
+            this._userCancelledConnect = true;
+            this._connectEpoch += 1;
+            if (this._reconnectTimer) {
+                clearTimeout(this._reconnectTimer);
+                this._reconnectTimer = null;
+            }
+            if (this._bootWaitReconnectTimer) {
+                clearTimeout(this._bootWaitReconnectTimer);
+                this._bootWaitReconnectTimer = null;
+            }
+            this._releaseConnectLock();
+            this._disposeExistingSocket();
+        }
+        this._hideConnectionDialModal();
+        this._dismissLogonInitError();
+        if (this._shouldUsePreStartupDialog()) this._renderPreStartupDialog();
+    }
+
+    _retryVistaLogonError() {
+        if (!this._vistaLogonError) return;
+        this._vistaLogonError = false;
+        const modal = document.getElementById('desktopPreStartupModal');
+        if (modal) modal.classList.remove('vista-logon-error');
+        this._updatePreStartupAuthError('');
+        this.manualReconnect();
+    }
+
+    /** Cancel leaves the message and returns to the account, the way LogonUI leaves a message. */
+    _cancelVistaLogonError() {
+        if (!this._vistaLogonError) return;
+        this._vistaLogonError = false;
+        const modal = document.getElementById('desktopPreStartupModal');
+        if (modal) modal.classList.remove('vista-logon-error');
+        this._updatePreStartupAuthError('');
+        this._userCancelledConnect = true;
+        if (this._reconnectTimer) {
+            clearTimeout(this._reconnectTimer);
+            this._reconnectTimer = null;
+        }
+        this._releaseConnectLock();
+        this._setConnectionPhase('auth', {
+            beat: 'establishing',
+            message: 'Authentication required. Enter your password.'
+        });
+    }
+
     /** Close in "Error Connecting to domain controller": the failure stays in the tray until Reconnect. */
     closeConnectionDialStatus() {
         const modal = document.getElementById('connectionDialModal');
@@ -1680,6 +1754,13 @@ class WebSocketClient {
                 const authSection = document.getElementById('desktopPreStartupAuth');
                 if (!authSection || authSection.classList.contains('hidden')) return;
                 if (e.target.tagName === 'INPUT' && e.target.closest('#desktopPreStartupAuth')) return;
+                const logonModal = document.getElementById('desktopPreStartupModal');
+                if (logonModal && logonModal.classList.contains('vista-logon-error')) {
+                    const retryBtn = document.getElementById('desktopPreStartupRetryBtn');
+                    if (!clickIfEnabled(retryBtn)) return;
+                    e.preventDefault();
+                    return true;
+                }
                 const loginBtn = document.getElementById('desktopPreStartupLoginBtn');
                 if (!clickIfEnabled(loginBtn)) return;
                 e.preventDefault();
@@ -1854,6 +1935,14 @@ class WebSocketClient {
                 if (passwordInput) passwordInput.focus();
             });
         }
+        const retryBtn = document.getElementById('desktopPreStartupRetryBtn');
+        if (retryBtn) {
+            retryBtn.addEventListener('click', () => this._retryVistaLogonError());
+        }
+        const logonCancelBtn = document.getElementById('desktopPreStartupLogonCancelBtn');
+        if (logonCancelBtn) {
+            logonCancelBtn.addEventListener('click', () => this._cancelVistaLogonError());
+        }
         // runClientShutdownDirect / runClientRestartDirect: public/scripts/comp/modalUtils.js
         const shutdownBtn = document.getElementById('desktopPreStartupShutdownBtn');
         if (shutdownBtn) {
@@ -1887,9 +1976,16 @@ class WebSocketClient {
                 : message;
             errorEl.classList.remove('hidden');
             if (this.vistaLogon) {
-                // Vista's message view: the account gives way, OK takes the focus (desktop-boot.css)
+                // Vista's message view: the account gives way, OK takes the focus (desktop-boot.css).
+                // The no-logon-servers view focuses Retry unless Cancel already has it.
+                const retryBtn = document.getElementById('desktopPreStartupRetryBtn');
+                const cancelBtn = document.getElementById('desktopPreStartupLogonCancelBtn');
                 const okBtn = document.getElementById('desktopPreStartupMessageOkBtn');
-                if (okBtn) okBtn.focus();
+                if (this._vistaLogonError && retryBtn) {
+                    if (document.activeElement !== retryBtn && document.activeElement !== cancelBtn) retryBtn.focus();
+                } else if (okBtn) {
+                    okBtn.focus();
+                }
             }
         } else {
             errorEl.textContent = '';
@@ -2037,11 +2133,14 @@ class WebSocketClient {
         modal.classList.toggle('auth-active', authVisible);
         // Use Vista Logon: the account gives way to "Welcome" while the password is checked (desktop-boot.css)
         modal.classList.toggle('auth-busy', this.preStartupAuthBusy);
+        modal.classList.toggle('vista-logon-error', this._vistaLogonError === true);
 
         if (authSection) {
-            authSection.classList.toggle('hidden', !authVisible);
+            authSection.classList.toggle('hidden', !authVisible && !this._vistaLogonError);
         }
-        if (authVisible) {
+        if (this._vistaLogonError) {
+            this._updatePreStartupAuthError(WebSocketClient.VISTA_NO_LOGON_SERVERS);
+        } else if (authVisible) {
             if (usernameInput && !usernameInput.value) {
                 usernameInput.value = 'Administrator';
             }
@@ -2325,6 +2424,40 @@ class WebSocketClient {
         });
     }
 
+    /**
+     * A critical startup-window step failed (desktop icons). The desktop stays on the
+     * startup window. Retry runs the remaining steps; Restart goes through /launch.
+     */
+    _showStartupInitError(step, error) {
+        if (this._startupInitBoxOpen) return;
+        const detail = error && error.message ? error.message : String(error || 'Unknown error');
+        const message = step.failureText || `MeletonFX could not finish "${step.message}".`;
+        this._startupInitBoxOpen = true;
+        const choose = window.bootMessageBox
+            ? window.bootMessageBox.show({
+                title: 'MeletonFX',
+                icon: 'error',
+                message,
+                detail: `DETAIL - ${detail}`,
+                buttons: [{ label: 'Retry', value: 'retry', default: true }, { label: 'Restart', value: 'restart' }]
+            })
+            : showConfirmationDialog(`${message}\n\nDETAIL - ${detail}`, [
+                { text: 'Retry', value: 'retry', className: 'btn-primary' },
+                { text: 'Restart', value: 'restart', className: 'btn-secondary' }
+            ], null, { title: 'MeletonFX', icon: 'fas fa-circle-xmark' });
+        Promise.resolve(choose).then((value) => {
+            this._startupInitBoxOpen = false;
+            if (value == null) return;
+            if (value === 'restart') {
+                // restartClientNavigate: public/scripts/comp/modalUtils.js (/launch on the desktop)
+                if (typeof restartClientNavigate === 'function') restartClientNavigate();
+                else location.reload();
+                return;
+            }
+            this.executeInitSteps();
+        });
+    }
+
     /** Logon error state → Retry: run the logon steps again and continue the boot. */
     async retryLogonInitSteps() {
         if (!this._logonInitError || this._logonInitRunning) return;
@@ -2536,6 +2669,11 @@ class WebSocketClient {
             // One error at a time (Yozora #515): a lost connection replaces the app-data box;
             // the logon steps run again once the socket is back
             if (phase === 'failed') this._dismissLogonInitError();
+            // Vista Welcome screen: the failure is the no-logon-servers message, not the VPN dialog
+            if (phase === 'failed' && this.vistaLogon && !this._serverReportsBooting()) {
+                this._showVistaLogonError();
+                return;
+            }
             if (phase === 'failed' && this._shouldUseConnectivityErrorInsteadOfConnectionDial()) {
                 this._hideConnectionDialModal();
                 this._presentConnectivityFailure();
@@ -2622,10 +2760,10 @@ class WebSocketClient {
      */
     _shouldShowLogonConnectingDialog() {
         const phase = this.connectionPhase;
-        if (phase === 'failed') return true;
-        // Vista Welcome screen stays on "Please wait...". LogonUI has no
-        // "getting network connection ready" line, so the VPN dialog stays hidden.
+        // Vista Welcome screen stays on "Please wait..." while dialing, and a failure
+        // is its own message view (_showVistaLogonError), not this VPN dialog.
         if (this.vistaLogon) return false;
+        if (phase === 'failed') return true;
         if (phase !== 'dialing') return false;
         if (this.lastServerStartupStatus && !this.serverStartupReady) return false;
         if (this._logonInitStatus || this._logonInitError || this._logonInitRunning) return false;
@@ -4083,6 +4221,11 @@ class WebSocketClient {
                         ]);
                         if (outcome && outcome.skipped) {
                             console.warn(`⏭️ Init step skipped by user: ${step.message}`);
+                            if (step.critical && window.isDesktop && !this.initializationCompleted) {
+                                this.initializationLock = false;
+                                this._showStartupInitError(step, new Error(step.message + ' was skipped before it finished.'));
+                                return;
+                            }
                         }
                     } else {
                         await step.stepFunction();   // run the step
@@ -4096,6 +4239,12 @@ class WebSocketClient {
                     if (this.connectionPhase === 'auth' || !this.isConnected()) {
                         console.log('⚠️ Aborting init steps due to auth error or disconnect.');
                         this.initializationLock = false;
+                        return;
+                    }
+                    // A critical startup step (desktop icons) keeps the desktop from opening.
+                    if (step.critical && window.isDesktop && !this.initializationCompleted) {
+                        this.initializationLock = false;
+                        this._showStartupInitError(step, error);
                         return;
                     }
                     // scripts/comp/fatalErrorBootstrap.js — presentDreamscapeApplicationError
@@ -4525,6 +4674,13 @@ class WebSocketClient {
                         return;
                     }
 
+                    // Vista Welcome screen: stop spinning on "Please wait..." and ask Retry / Cancel
+                    if (this._offerVistaLogonError()) {
+                        this._showVistaLogonError();
+                        this.triggerEvent('disconnected', event);
+                        return;
+                    }
+
                     // Clear and fail all pending requests when connection is lost
                     this._teardownGenerationUiState();
                     // A hidden or just-resumed tab already has a connect coming from
@@ -4826,7 +4982,7 @@ class WebSocketClient {
     }
 
     reconnect() {
-        if (this._isStartupHaltedForInstall()) {
+        if (this._isStartupHaltedForInstall() || this._vistaLogonError) {
             return;
         }
         // Check if we're in circuit breaker mode
@@ -5164,6 +5320,10 @@ class WebSocketClient {
             if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
                 this.reconnectAttempts += 1;
                 this._bumpConnectingWatchdogDelay();
+                if (this._offerVistaLogonError()) {
+                    this._showVistaLogonError();
+                    return;
+                }
                 this._replaceStaleSocket('connecting-watchdog');
             }
         }, delayMs);
@@ -5263,7 +5423,11 @@ class WebSocketClient {
     }
 
     _replaceStaleSocket(source) {
-        if (this._replacingSocket || this.isManualClose || this._isStartupHaltedForInstall()) {
+        if (this._replacingSocket || this.isManualClose || this._isStartupHaltedForInstall() || this._vistaLogonError) {
+            return;
+        }
+        if (this._offerVistaLogonError()) {
+            this._showVistaLogonError();
             return;
         }
         this._replacingSocket = true;

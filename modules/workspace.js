@@ -2412,7 +2412,7 @@ class WorkspaceManager {
             };
         } catch (error) {
             console.error('❌ Error getting desktop shortcuts:', error);
-            return { shortcuts: [], windowPositions: {} };
+            throw error;
         }
     }
 

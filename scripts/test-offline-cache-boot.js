@@ -134,6 +134,8 @@ function makeManager(proto, overrides) {
         wired: 0,
         documentBodyClasses: classList,
         _hideInstallWizardUi() {},
+        _isBeforeDesktop() { return true; },
+        _readSyncedManifestHash() { return ''; },
         _flushPendingCacheUpdates() {
             this.flushed = true;
         },
@@ -143,6 +145,7 @@ function makeManager(proto, overrides) {
         checkStaticFileUpdates() {
             this.warmed += 1;
         },
+        ensurePlanetSwitcherBgmCache() {},
         startHealthCheck() {
             this.healthStarted = true;
         },
@@ -213,6 +216,8 @@ async function testManifestJsonTimeoutReturnsEmpty(proto) {
 }
 
 async function testWarmAfterSwActiveRunsOnce(proto) {
+    const prevSchedule = global.scheduleAfterFirstPaint;
+    global.scheduleAfterFirstPaint = (fn) => fn();
     return withNavigator({
         serviceWorker: {
             controller: null,
@@ -232,6 +237,9 @@ async function testWarmAfterSwActiveRunsOnce(proto) {
         }));
         await delay(20);
         assert.strictEqual(mgr.warmed, 1, 'background warm must run once');
+    }).finally(() => {
+        if (prevSchedule) global.scheduleAfterFirstPaint = prevSchedule;
+        else delete global.scheduleAfterFirstPaint;
     });
 }
 
@@ -254,6 +262,12 @@ async function testReadyTimeoutReturnsTimedOut(proto) {
 
 async function testLateRegisterStillWires(proto) {
     let resolveReady;
+    const prevDocument = global.document;
+    const prevRaf = global.requestAnimationFrame;
+    const prevSchedule = global.scheduleAfterFirstPaint;
+    global.document = { readyState: 'complete' };
+    global.requestAnimationFrame = (fn) => { fn(); return 1; };
+    global.scheduleAfterFirstPaint = (fn) => fn();
     return withNavigator({
         serviceWorker: {
             controller: null,
@@ -278,19 +292,30 @@ async function testLateRegisterStillWires(proto) {
         assert.strictEqual(mgr.swRegistration, registration);
         assert.strictEqual(mgr.healthStarted, true);
         resolveReady();
-        await delay(20);
+        await delay(80);
         assert.ok(mgr.warmed >= 1, 'late registration must warm once ready');
+    }).finally(() => {
+        global.document = prevDocument;
+        if (prevRaf) global.requestAnimationFrame = prevRaf;
+        else delete global.requestAnimationFrame;
+        if (prevSchedule) global.scheduleAfterFirstPaint = prevSchedule;
+        else delete global.scheduleAfterFirstPaint;
     });
 }
 
 function testNoFatalRegisterDiscard(src) {
     assert.ok(src.includes('_attachLateServiceWorkerRegistration'), 'late register wiring missing');
     assert.ok(src.includes('_warmAfterSwActive'), 'background warm missing');
-    assert.ok(src.includes('return await response.json()'), 'manifest json() must be awaited so timeout is caught');
+    assert.ok(src.includes('await response.json()'), 'manifest json() must be awaited so timeout is caught');
     assert.ok(src.includes('_swWarmScheduled'), 'background warm must be single-flight');
     assert.ok(src.includes('timedOut: true'), 'ready timeout must report timedOut');
     assert.ok(!src.includes('Boot gate timed out — continuing from network'), '12s boot gate must be gone');
     assert.ok(!src.includes('Service worker failed to become ready in time'), 'ready path must not reject fatally');
+    assert.ok(!src.includes('booting from network'), 'a missing service worker must not boot');
+    assert.ok(!src.includes('The offline cache is not ready.'), 'a late service worker must still run the update check');
+    assert.ok(src.includes('_enterUpdater'), 'an unproven cache must be sent to the installer');
+    assert.ok(src.includes('_cacheMatchesStoredManifest'), 'boot must prove the cache before finishing');
+    assert.ok(!src.includes('continuing startup'), 'a failed cache verify must not boot');
 }
 
 function main() {

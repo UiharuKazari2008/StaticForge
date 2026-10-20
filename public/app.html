@@ -751,6 +751,10 @@
                     <div class="desktop-prestartup-auth-actions">
                         <button type="button" id="desktopPreStartupLoginBtn" class="btn-secondary">OK</button>
                         <button type="button" id="desktopPreStartupMessageOkBtn" class="desktop-prestartup-vista desktop-prestartup-vista-button">OK</button>
+                        <!-- Connection died on the Welcome screen: ntdll's no-logon-servers line,
+                             Retry (user32 803) and Cancel (authui 11414). websocket.js _showVistaLogonError -->
+                        <button type="button" id="desktopPreStartupRetryBtn" class="desktop-prestartup-vista desktop-prestartup-vista-button">Retry</button>
+                        <button type="button" id="desktopPreStartupLogonCancelBtn" class="desktop-prestartup-vista desktop-prestartup-vista-button">Cancel</button>
                         <!-- Vista's Switch User, shown for the look only: the logon has one account -->
                         <button type="button" class="desktop-prestartup-vista desktop-prestartup-vista-button desktop-prestartup-vista-switch" tabindex="-1">Switch User</button>
                     </div>

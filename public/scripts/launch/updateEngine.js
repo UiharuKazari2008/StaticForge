@@ -51,7 +51,7 @@
         // More than this uses the full pack built at asset recreation.
         subsetMax: 120,
         stallMs: 60000,
-        manifestTimeoutMs: 8000,
+        manifestTimeoutMs: 30000,
         readyTimeoutMs: 20000,
         controllerTimeoutMs: 6000
     };
@@ -250,6 +250,7 @@
     // The manifest digest the cache was last found in sync with; shared with /app's
     // serviceWorkerManager. OPTIONS / answers 304 for it (Yozora #516).
     const SYNCED_MANIFEST_KEY = 'melatonManifestHash';
+    const MANIFEST_SNAPSHOT_KEY = 'melatonManifestSnapshot';
 
     function readSyncedManifestHash(env) {
         try {
@@ -259,15 +260,37 @@
         }
     }
 
-    function writeSyncedManifestHash(env, hash) {
+    function readManifestSnapshot(env) {
+        try {
+            const raw = env.localStorage && env.localStorage.getItem(MANIFEST_SNAPSHOT_KEY);
+            const parsed = raw ? JSON.parse(raw) : null;
+            if (!Array.isArray(parsed) || !parsed.length) return null;
+            return parsed.filter((file) => file && file.url && file.hash);
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function writeManifestSnapshot(env, manifest) {
+        try {
+            if (!env.localStorage || !Array.isArray(manifest) || !manifest.length) return;
+            const rows = manifest.filter((file) => file && file.url && file.hash)
+                .map((file) => ({ url: file.url, hash: file.hash }));
+            if (!rows.length) return;
+            env.localStorage.setItem(MANIFEST_SNAPSHOT_KEY, JSON.stringify(rows));
+        } catch (_) { /* next check fetches the full list */ }
+    }
+
+    function writeSyncedManifestHash(env, hash, manifest) {
         try {
             if (hash && env.localStorage) env.localStorage.setItem(SYNCED_MANIFEST_KEY, hash);
         } catch (_) { /* storage off */ }
+        if (manifest) writeManifestSnapshot(env, manifest);
     }
 
-    /** OPTIONS / with the synced digest: { unchanged } on 304, else { manifest, hash } (manifest null on failure). */
-    async function fetchManifestConditional(env) {
-        const known = readSyncedManifestHash(env);
+    /** OPTIONS / with the synced digest: { unchanged } on 304, { compile } on 503, { failed } on any other miss, else { manifest, hash }. */
+    async function fetchManifestConditional(env, options = {}) {
+        const known = options.full ? '' : readSyncedManifestHash(env);
         try {
             const headers = { 'X-Service-Worker-Version': '2.0', 'X-Requested-With': 'ServiceWorker' };
             if (known) headers['X-Manifest-Hash'] = known;
@@ -278,24 +301,49 @@
                 signal: timeoutSignal(config.manifestTimeoutMs)
             });
             if (res.status === 304) return { unchanged: true, hash: known };
-            if (!res.ok) return { manifest: null };
+            if (res.status === 503) return { compile: true, manifest: null };
+            if (!res.ok) return { failed: true };
             const data = await res.json();
             const hash = (res.headers && res.headers.get && res.headers.get('X-Manifest-Hash')) || '';
-            return { manifest: Array.isArray(data) ? data.filter((f) => f && f.url && f.hash) : null, hash };
+            const manifest = Array.isArray(data) ? data.filter((f) => f && f.url && f.hash) : null;
+            if (!manifest || !manifest.length) return { failed: true };
+            return { manifest, hash };
         } catch (_) {
-            return { manifest: null };
+            return { failed: true };
         }
     }
 
-    /** { files, bytes } to install, or { skipped } when this page cannot check. */
+    // Stragglers from the last install are not part of a valid cache. They must not
+    // block the handoff or be fetched again on every start.
+    function requiredFiles(env, files) {
+        const record = readRecord(env);
+        const known = new Set((record && record.stragglers) || []);
+        return (files || []).filter((file) => file && !known.has(file.url));
+    }
+
+    /** { files, bytes } to install, { unchanged } when the cache still holds that list, { skipped } while compiling, or { failed }. */
     async function check(env) {
         if (!env.caches) return { skipped: 'no-cache-storage' };
         const fetched = await fetchManifestConditional(env);
-        if (fetched.unchanged) return { files: [], bytes: 0, unchanged: true };
+        if (fetched.failed) return { failed: true };
+        if (fetched.unchanged) {
+            const snapshot = readManifestSnapshot(env);
+            if (snapshot) {
+                const files = requiredFiles(env, await filesNeedingUpdate(env, snapshot));
+                if (files.length) return { files, bytes: totalBytes(files), manifest: snapshot };
+                return { files: [], bytes: 0, unchanged: true };
+            }
+            const full = await fetchManifestConditional(env, { full: true });
+            if (full.compile) return { skipped: 'no-manifest' };
+            if (full.failed || !full.manifest) return { failed: true };
+            const files = requiredFiles(env, await filesNeedingUpdate(env, full.manifest));
+            if (!files.length) writeSyncedManifestHash(env, full.hash, full.manifest);
+            return { files, bytes: totalBytes(files), manifest: full.manifest };
+        }
         const manifest = fetched.manifest;
         if (!manifest || !manifest.length) return { skipped: 'no-manifest' };
-        const files = await filesNeedingUpdate(env, manifest);
-        if (!files.length) writeSyncedManifestHash(env, fetched.hash);
+        const files = requiredFiles(env, await filesNeedingUpdate(env, manifest));
+        if (!files.length) writeSyncedManifestHash(env, fetched.hash, manifest);
         return { files, bytes: totalBytes(files), manifest };
     }
 
@@ -303,7 +351,7 @@
         return env.navigator && env.navigator.serviceWorker ? env.navigator.serviceWorker : null;
     }
 
-    /** Registered, active and controlling this page → true; otherwise false (boot without it). */
+    /** Registered, active and controlling this page → true; otherwise false. The installer still runs. */
     async function ensureWorker(env) {
         const sw = workerContainer(env);
         if (!sw) return false;
@@ -522,7 +570,15 @@
                 file.start();
             };
             try {
-                unzip.push(bytes, true);
+                // fflate 0.8 Unzip.push recurses once per entry it finds in the
+                // buffer; one push of the whole pack (~2.8k files) overflows the
+                // stack. Feed it in slices so each push only sees a few entries.
+                const step = 64 * 1024;
+                if (!bytes.length) unzip.push(bytes, true);
+                for (let at = 0; at < bytes.length; at += step) {
+                    const end = Math.min(at + step, bytes.length);
+                    unzip.push(bytes.subarray(at, end), end >= bytes.length);
+                }
             } catch (err) {
                 reject(err);
                 return;
