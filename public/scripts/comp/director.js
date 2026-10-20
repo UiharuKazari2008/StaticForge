@@ -428,7 +428,7 @@ class Director {
     defaultModel(engine) {
         const id = engine || this.activeEngine();
         if (id === 'claude') return 'claude-opus-5-5';
-        return id === 'tokenrouter' ? 'moonshotai/kimi-k3' : 'grok-4.7';
+        return id === 'tokenrouter' ? 'deepseek/deepseek-v4.1-flash' : 'grok-4.7';
     }
 
     // Saves the outgoing engine's config, then loads the other engine's last

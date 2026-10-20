@@ -56,8 +56,10 @@ function testCatalog() {
     assert.deepStrictEqual(run, { family: 'z-ai/glm-5.3', model: 'z-ai/glm-5.3-fast', effort: 'high', fast: true });
     assert.deepStrictEqual(bridge.resolveRun(families, { model: 'moonshotai/kimi-k3', fast: true, effort: 'xhigh' }),
         { family: 'moonshotai/kimi-k3', model: 'moonshotai/kimi-k3', effort: 'medium', fast: false });
-    assert.strictEqual(bridge.resolveRun(families, { model: 'nope/unknown' }).model, 'moonshotai/kimi-k3');
-    assert.strictEqual(bridge.resolveRun([], { model: '' }).model, 'moonshotai/kimi-k3');
+    // default is DeepSeek V4.1 Flash; with it missing from the catalog the first family is used
+    assert.strictEqual(bridge.resolveRun(families, { model: 'nope/unknown' }).model, families[0].id);
+    assert.strictEqual(bridge.resolveRun([...families, { id: 'deepseek/deepseek-v4.1-flash', efforts: [] }], { model: '' }).family, 'deepseek/deepseek-v4.1-flash');
+    assert.strictEqual(bridge.resolveRun([], { model: '' }).model, 'deepseek/deepseek-v4.1-flash');
     console.log('ok catalog + resolveRun');
 }
 
@@ -438,7 +440,8 @@ async function testDirectorWiring() {
     const catalog = d.publicTokenRouterCatalog(t.catalogFromPricing(PRICING));
     assert.deepStrictEqual(catalog.map((m) => m.provider), ['Moonshot', 'Z.ai', 'Other']);
     const kimi = catalog[0];
-    assert.strictEqual(kimi.default, true);
+    assert.strictEqual(bridge.DEFAULT_MODEL, 'deepseek/deepseek-v4.1-flash');
+    assert.strictEqual(kimi.default, false, 'Kimi is no longer the default');
     assert.strictEqual(kimi.cost, 2);
     assert.strictEqual(kimi.price, '$1.8 in, $9 out per million tokens');
     assert.deepStrictEqual(kimi.efforts.map((e) => [e.id, e.fast]), [['none', false], ['low', false], ['medium', false], ['high', false]]);
