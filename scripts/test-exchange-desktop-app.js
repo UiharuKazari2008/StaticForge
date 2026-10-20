@@ -109,7 +109,8 @@ function main() {
     assert.doesNotMatch(exchangeJs, /explorer-command-btn/);
     assert.doesNotMatch(exchangeJs, /className = 'form-control'/);
 
-    assert.match(exchangeCss, /data-mgmt-account-info-table/);
+    assert.doesNotMatch(exchangeCss, /data-mgmt-account-info-table/);
+    assert.match(smfCss, /\[data-dsap\] \.data-mgmt-account-info-table/);
     assert.match(exchangeCss, /exchange-table-wrap/);
     assert.match(exchangeCss, /overflow: auto/);
     assert.match(exchangeCss, /exchange-from-list/);

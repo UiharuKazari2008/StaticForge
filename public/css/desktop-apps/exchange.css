@@ -10,39 +10,9 @@
 }
 
 [data-dsap="exchange"] .exchange-view {
-    padding: 4px 0 0;
+    padding: var(--spacing-xs) 0 0;
     max-width: 100%;
     min-width: 0;
-}
-
-/* Same two-column property list as Data Management's account info table
-   (dataMgmtDsapScopedCss in dataManagementDsapApplet.js). Those rules are
-   scoped to [data-dsap="data-mgmt"], so Exchange repeats them for the
-   same class names. */
-[data-dsap="exchange"] .data-mgmt-account-info-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.82rem;
-    margin-top: 5px;
-    background: #fff;
-}
-
-[data-dsap="exchange"] .data-mgmt-account-info-table td {
-    padding: 4px 6px;
-    border: 1px solid #e2e8ee;
-    vertical-align: top;
-}
-
-[data-dsap="exchange"] .data-mgmt-account-info-label {
-    width: 34%;
-    font-weight: 600;
-    background: #f4f6f8;
-    color: var(--dsap-smf-context-bg, #336699);
-    white-space: nowrap;
-}
-
-[data-dsap="exchange"] .data-mgmt-account-info-value {
-    word-break: break-word;
 }
 
 [data-dsap="exchange"] .form-row {
