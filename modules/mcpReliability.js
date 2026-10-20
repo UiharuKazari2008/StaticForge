@@ -174,6 +174,16 @@ function characterLookupQueries(name, franchise) {
     return out;
 }
 
+// True when the alias's name (qualifier dropped) has `bare` as whole words:
+// "kobeni (chainsaw man)" names kobeni, "kobeni's car (chainsaw man)" does not.
+function aliasNamesCharacter(title, bare) {
+    const norm = (value) => String(value || '').toLowerCase().replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+    const want = norm(bare);
+    if (!want) return true;
+    const name = ` ${norm(characterBareName(title))} `;
+    return name.includes(` ${want} `);
+}
+
 function pickWikiPageTitles(queries, aliasTitles, franchise) {
     const scored = [];
     const add = (title, score) => {
@@ -181,8 +191,12 @@ function pickWikiPageTitles(queries, aliasTitles, franchise) {
         if (!t) return;
         scored.push({ t, score: Number(score) || 0 });
     };
+    // A franchise alias outranks the asked-for name only when it names the same
+    // character. Once alias search answered within CARD_ALIAS_TIMEOUT_MS (it used to
+    // time out), "kobeni's car (chainsaw man)" won the card for kobeni.
+    const bare = characterBareName(Array.isArray(queries) && queries.length ? queries[0] : '');
     (Array.isArray(aliasTitles) ? aliasTitles : []).forEach((title) => {
-        add(title, naxTagMatchesFranchise(title, franchise) ? 6 : 1);
+        add(title, naxTagMatchesFranchise(title, franchise) && aliasNamesCharacter(title, bare) ? 6 : 1);
     });
     (Array.isArray(queries) ? queries : []).forEach((query, index) => {
         add(query, 4 - Math.min(index, 3));
