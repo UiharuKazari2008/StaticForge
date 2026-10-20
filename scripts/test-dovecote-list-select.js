@@ -31,8 +31,8 @@ function main() {
     assert.match(dovecoteJs, /Fwd: ' \+ mails\.length \+ ' messages'/);
     assert.match(dovecoteJs, /desktopDovecoteSelectedCount/);
     assert.match(dovecoteJs, /selectedCount\.className = 'indicator'/);
-    assert.match(dovecoteJs, /data-dove-action = 'restore'/);
-    assert.match(dovecoteJs, /' \+ selected \+ ' selected'/);
+    assert.match(dovecoteJs, /restoreBtn\.dataset\.doveAction = 'restore'/);
+    assert.match(dovecoteJs, /' · ' \+ selected \+ ' selected'/);
     assert.match(dovecoteJs, /count \+ ' messages selected\.'/);
 
     assert.match(dovecoteJs, /const doveLoadMoreFolder = async function/);

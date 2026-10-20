@@ -100,7 +100,7 @@ function main() {
 
     assert.strictEqual(mail.forwardMailBatch('ivory', { ids: fwdIds, to: 'hoshino' }).updated, 0);
     assert.throws(
-        () => mail.markMailBatch('rook', { ids: new Array(201).fill('x') }),
+        () => mail.markMailBatch('rook', { ids: Array.from({ length: 201 }, (_, i) => 'x' + i) }),
         (err) => err.code === 'BATCH_TOO_LARGE'
     );
 

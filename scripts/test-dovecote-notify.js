@@ -11,6 +11,10 @@ const path = require('path');
 const dovecoteJs = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/desktop-apps/dovecote.js'), 'utf8');
 const { doveCollectFreshMailIds } = require('../public/scripts/comp/desktop-apps/dovecote.js')._test;
 
+function has(snippet, label) {
+    assert.ok(dovecoteJs.includes(snippet), label || snippet);
+}
+
 function main() {
     const seen = new Set();
     assert.deepStrictEqual(doveCollectFreshMailIds(seen, [{ id: 'a' }, { id: 'b' }]), ['a', 'b']);
@@ -24,18 +28,22 @@ function main() {
     assert.deepStrictEqual(doveCollectFreshMailIds(seen, null), []);
     assert.deepStrictEqual(doveCollectFreshMailIds(seen, [{ id: '' }, {}]), []);
 
-    assert.match(dovecoteJs, /const doveNotifiedMailIds = new Set\(\)/);
-    assert.match(dovecoteJs, /const doveCollectFreshMailIds = function/);
-    assert.match(dovecoteJs, /const doveNoteMailIds = function/);
-    assert.match(dovecoteJs, /const dovePlayNewMailAlert = function/);
-    assert.match(dovecoteJs, /announce && doveNotifiedMailIds\.size > 0/);
-    assert.match(dovecoteJs, /if \(announce && fresh\.length\) dovePlayNewMailAlert/);
-    assert.match(dovecoteJs, /doveNoteMailIds\(desktopDovecote\.mail, \{ announce: false \}\)/);
-    assert.match(dovecoteJs, /doveNoteMailIds\(\(result && result\.mail\) \|\| \[\], \{ announce: false \}\)/);
-    assert.match(dovecoteJs, /doveNoteMailIds\(Array\.isArray\(humanUnread\) \? humanUnread : \[\], \{ announce: true \}\)/);
-    assert.match(dovecoteJs, /Never plays the new-mail\s+sound/);
-    assert.doesNotMatch(dovecoteJs, /const fresh = prev != null && unread > prev/);
-    assert.doesNotMatch(dovecoteJs, /if \(reveal && \(!doveHasAnnouncedMail \|\| \(prev != null && unread > prev\)\)\)/);
+    // Delete-then-push: remaining unread ids were already notified this session.
+    const session = new Set();
+    doveCollectFreshMailIds(session, [{ id: 'keep' }, { id: 'gone' }, { id: 'also' }]);
+    assert.deepStrictEqual(doveCollectFreshMailIds(session, [{ id: 'keep' }, { id: 'also' }]), []);
+    assert.deepStrictEqual(doveCollectFreshMailIds(session, [{ id: 'inbound-new' }]), ['inbound-new']);
+
+    // First snapshot in a session seeds the set. Announce is gated on size>0
+    // so that seed never plays the sound.
+    has("const announce = !!(options && options.announce) && doveNotifiedMailIds.size > 0;");
+    has('if (announce && fresh.length) dovePlayNewMailAlert(fresh.length);');
+    has('doveNoteMailIds(desktopDovecote.mail, { announce: false });');
+    has('doveNoteMailIds((result && result.mail) || [], { announce: false });');
+    has('doveNoteMailIds(Array.isArray(humanUnread) ? humanUnread : [], { announce: true });');
+    has('Never plays the new-mail');
+    assert.ok(!dovecoteJs.includes('const fresh = prev != null && unread > prev'), 'unread-count delta must not drive the sound');
+    assert.ok(!dovecoteJs.includes('unread > prev'), 'tray badge must not ding on unread > prev');
 
     console.log('dovecote notify-id tests passed');
 }

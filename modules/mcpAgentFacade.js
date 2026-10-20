@@ -9198,6 +9198,14 @@ async function callTool(globalResources, req, name, args) {
                     spam: name === 'delete_mail' ? undefined : (typeof input.spam === 'boolean' ? input.spam : undefined)
                 });
                 if (!result.updated) {
+                    if (batch) {
+                        return mcpTextResult({
+                            success: false,
+                            mail: result.mail,
+                            missing: result.missing,
+                            updated: 0
+                        }, true);
+                    }
                     const err = new Error('Mail not found');
                     err.status = 404;
                     throw err;
@@ -9216,6 +9224,14 @@ async function callTool(globalResources, req, name, args) {
             const batchFwd = Array.isArray(input.ids) && input.ids.length > 0;
             const result = dovecoteMail.forwardMailBatch(owner, { id: input.id, ids: input.ids, to: input.to });
             if (!result.updated) {
+                if (batchFwd) {
+                    return mcpTextResult({
+                        success: false,
+                        forwarded: result.forwarded,
+                        missing: result.missing,
+                        updated: 0
+                    }, true);
+                }
                 const err = new Error('Mail not found');
                 err.status = 404;
                 throw err;
