@@ -59,3 +59,30 @@ console.log('test-tokenrouter-coerce: ok');
 // fix 2: jail env carries MAX_MCP_OUTPUT_TOKENS
 assert.ok(/MAX_MCP_OUTPUT_TOKENS: '60000'/.test(require('fs').readFileSync(require('path').join(__dirname, '../modules/cursorDirector.js'), 'utf8')));
 console.log('test-tokenrouter-coerce: reasoning + env ok');
+// 2026-10-20 dirc_f2c4bcf247283280: {item:{...}} and string scalars inside the untyped change object
+{
+    const real = { type: 'object', properties: {
+        change: { type: ['object', 'string'] },
+        characters: { type: 'array' },
+        characterPrompts: { type: 'array' },
+        presetName: { type: 'string' },
+        autoGenerate: { type: 'boolean' },
+        params: { type: 'object', additionalProperties: true, properties: { steps: { type: 'number' } } }
+    } };
+    const names = { schema: () => real, down: (n) => n };
+    const out = _test.toolInputFor(names, 'apply_studio_changes', { autoGenerate: 'true', change: {
+        dreamscape: 'change', v: '1', presetName: '7',
+        characterPrompts: { item: { action: 'replace', index: '0', enabled: 'true', name: 'Regensburg', prompt: '1.2::a::', position: { x: '0.52', y: '0.5' } } },
+        params: { steps: '14' } } });
+    assert.strictEqual(out.autoGenerate, true);
+    assert.deepStrictEqual(out.change.characterPrompts, [{ action: 'replace', index: 0, enabled: true, name: 'Regensburg', prompt: '1.2::a::', position: { x: 0.52, y: 0.5 } }]);
+    assert.strictEqual(out.change.v, 1);
+    assert.strictEqual(out.change.presetName, '7');
+    assert.strictEqual(out.change.dreamscape, 'change');
+    assert.strictEqual(out.change.params.steps, 14);
+    const top = _test.toolInputFor(names, 'apply_studio_changes', { characters: [{ index: '0', prompt: '3', position: { x: '0.5' } }] });
+    assert.deepStrictEqual(top.characters, [{ index: 0, prompt: '3', position: { x: 0.5 } }]);
+    const typed = { change: { v: 1, characters: [{ index: 0, prompt: 'a' }] } };
+    assert.deepStrictEqual(_test.toolInputFor(names, 'apply_studio_changes', typed), typed);
+    console.log('test-tokenrouter-coerce: change item-unwrap ok');
+}
