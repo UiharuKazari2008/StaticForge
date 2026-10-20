@@ -5,9 +5,10 @@
  * always scheduled on a later macrotask (setImmediate) so the ws message path
  * returns immediately and parallel work is not held behind unrelated packets.
  *
- * FIFO ordering is enforced by checking the client array for earlier queued or
- * running entries on the same chain — not by blocking the message receive path.
- * Handlers that must wait on a prior request can use waitForClientRequest().
+ * FIFO ordering chains each entry behind the previous entry on the same chain
+ * (per client) — not by blocking the message receive path, and not by polling:
+ * a setImmediate wait loop kept the event loop spinning for as long as an earlier
+ * handler ran. Handlers that must wait on a prior request can use waitForClientRequest().
  */
 
 /** @type {Map<string, { requests: ClientRequestEntry[] }>} */
@@ -40,11 +41,26 @@ function normalizeDispatchMeta(meta) {
     };
 }
 
+// `ws:${ws}` was "ws:[object Object]" for every socket, so all session-less
+// sockets shared one request list and FIFO chain. Number each socket instead.
+const socketIds = new WeakMap();
+let nextSocketId = 1;
+
+function socketKey(ws) {
+    if (!ws || typeof ws !== 'object') return `ws:${ws}`;
+    let id = socketIds.get(ws);
+    if (!id) {
+        id = nextSocketId++;
+        socketIds.set(ws, id);
+    }
+    return `ws:${id}`;
+}
+
 function getClientKey(ws, clientInfo) {
     if (clientInfo && clientInfo.sessionId) {
         return `session:${clientInfo.sessionId}`;
     }
-    return `ws:${ws}`;
+    return socketKey(ws);
 }
 
 function getFifoChainKey(ws, clientInfo, fifoScope) {
@@ -54,13 +70,14 @@ function getFifoChainKey(ws, clientInfo, fifoScope) {
     if (clientInfo && clientInfo.sessionId) {
         return `session:${clientInfo.sessionId}`;
     }
-    return `ws:${ws}`;
+    return socketKey(ws);
 }
 
 function getOrCreateClientState(clientKey) {
     let state = clientStates.get(clientKey);
     if (!state) {
-        state = { requests: [], nextSequence: 0 };
+        // fifoTails: chain key -> settled promise of the newest entry on that chain
+        state = { requests: [], nextSequence: 0, fifoTails: new Map() };
         clientStates.set(clientKey, state);
     }
     return state;
@@ -76,27 +93,10 @@ function pruneCompletedRequests(state) {
     });
 }
 
-function hasPriorFifoWork(state, entry) {
-    if (!entry.fifoChainKey) return false;
-    return state.requests.some((r) =>
-        r.fifoChainKey
-        && r.fifoChainKey === entry.fifoChainKey
-        && r.id !== entry.id
-        && (r.status === 'queued' || r.status === 'running')
-        && r.sequence < entry.sequence
-    );
-}
-
 function yieldToEventLoop() {
     return new Promise((resolve) => {
         setImmediate(resolve);
     });
-}
-
-async function waitForFifoTurn(state, entry) {
-    while (hasPriorFifoWork(state, entry)) {
-        await yieldToEventLoop();
-    }
 }
 
 /**
@@ -113,10 +113,10 @@ function runHandlerIsolated(handlerFn) {
     });
 }
 
-async function runTrackedRequest(state, entry, handlerFn, onError) {
+async function runTrackedRequest(state, entry, handlerFn, onError, priorTurn) {
     try {
-        if (entry.dispatch === 'fifo' && entry.fifoChainKey) {
-            await waitForFifoTurn(state, entry);
+        if (priorTurn) {
+            await priorTurn;
         }
 
         entry.status = 'running';
@@ -135,6 +135,13 @@ async function runTrackedRequest(state, entry, handlerFn, onError) {
         } else {
             console.error('[wsMessageDispatcher] handler error:', err);
         }
+    }
+}
+
+function settleEntry(entry) {
+    if (entry.settle) {
+        entry.settle();
+        entry.settle = null;
     }
 }
 
@@ -168,11 +175,30 @@ function dispatch(ws, clientInfo, handlerFn, meta, onError, tracking) {
         completedAt: null,
         error: null
     };
+    // settled resolves (never rejects) when the entry completes or fails. Not
+    // enumerable, so getClientRequestList snapshots stay plain data.
+    let settle = null;
+    const settled = new Promise((resolve) => { settle = resolve; });
+    Object.defineProperties(entry, {
+        settled: { value: settled },
+        settle: { value: settle, writable: true }
+    });
 
     state.requests.push(entry);
 
+    let priorTurn = null;
+    if (entry.fifoChainKey) {
+        priorTurn = state.fifoTails.get(entry.fifoChainKey) || null;
+        state.fifoTails.set(entry.fifoChainKey, entry.settled);
+        entry.settled.then(() => {
+            if (state.fifoTails.get(entry.fifoChainKey) === entry.settled) {
+                state.fifoTails.delete(entry.fifoChainKey);
+            }
+        });
+    }
+
     setImmediate(() => {
-        runTrackedRequest(state, entry, handlerFn, onError);
+        runTrackedRequest(state, entry, handlerFn, onError, priorTurn).then(() => settleEntry(entry));
     });
 }
 
@@ -212,7 +238,7 @@ async function waitForClientRequest(ws, clientInfo, requestId, options) {
     const deadline = Date.now() + timeoutMs;
     const clientKey = getClientKey(ws, clientInfo);
 
-    while (Date.now() < deadline) {
+    for (;;) {
         const state = clientStates.get(clientKey);
         if (!state) {
             return false;
@@ -232,7 +258,14 @@ async function waitForClientRequest(ws, clientInfo, requestId, options) {
             throw err;
         }
 
-        await yieldToEventLoop();
+        const left = deadline - Date.now();
+        if (left <= 0) break;
+        let timer = null;
+        await Promise.race([
+            entry.settled,
+            new Promise((resolve) => { timer = setTimeout(resolve, left); })
+        ]);
+        clearTimeout(timer);
     }
 
     throw new Error(`Timeout waiting for WebSocket request ${requestId}`);

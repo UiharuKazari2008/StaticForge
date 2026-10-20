@@ -598,9 +598,10 @@ class WebSocketServer {
         }
     }
 
+    // message may already be a JSON string (broadcast serializes once for every client).
     sendToClient(ws, message) {
         if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify(message));
+            ws.send(typeof message === 'string' ? message : JSON.stringify(message));
         }
     }
 
@@ -818,10 +819,12 @@ class WebSocketServer {
     }
 
     broadcast(message, filter = null) {
+        let payload = null;
         this.wss.clients.forEach(client => {
             if (client.readyState === WebSocket.OPEN) {
                 if (!filter || filter(this.clients.get(client))) {
-                    this.sendToClient(client, message);
+                    if (payload === null) payload = JSON.stringify(message);
+                    this.sendToClient(client, payload);
                 }
             }
         });
@@ -833,10 +836,12 @@ class WebSocketServer {
     }
 
     sendToUser(sessionId, message) {
+        let payload = null;
         this.wss.clients.forEach(client => {
             const clientInfo = this.clients.get(client);
             if (clientInfo && clientInfo.sessionId === sessionId && client.readyState === WebSocket.OPEN) {
-                this.sendToClient(client, message);
+                if (payload === null) payload = JSON.stringify(message);
+                this.sendToClient(client, payload);
             }
         });
     }
