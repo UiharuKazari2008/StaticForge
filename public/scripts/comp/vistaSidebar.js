@@ -461,7 +461,7 @@ const VSB_NOTE_FONTS = [
     'Arial', 'Tahoma', 'Verdana', 'Georgia', 'Times New Roman', 'Courier New', 'Comic Sans MS',
     'Noto Sans', 'Atkinson Hyperlegible Next', 'Trebuchet MS',
     'Zen Kurenaido', 'Kaisei Decol', 'Zen Antique', 'Solway', 'Eczar', 'Bodoni Moda', 'Texturina',
-    'Share Tech Mono', 'DotGothic16'
+    'Space Grotesk', 'Share Tech Mono', 'IBM Plex Mono', 'DotGothic16'
 ];
 /* value is px, label is the point size. Large sizes are only offered while the note is undocked. */
 const VSB_NOTE_SIZES = [[8, '6'], [9, '7'], [11, '8'], [12, '9'], [13, '10'], [15, '11'], [16, '12'], [18, '14'], [20, '15'], [22, '16']];

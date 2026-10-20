@@ -96,7 +96,9 @@ const AVAILABLE_PRIMARY_FONTS = [
     { value: 'Zen Kurenaido', label: 'Zen Kurenaido' },
     { value: 'Kaisei Decol', label: 'Kaisei Decol' },
     { value: 'Zen Antique', label: 'Zen Antique' },
-    { value: 'Solway', label: 'Solway' }
+    { value: 'Solway', label: 'Solway' },
+    { value: 'Space Grotesk', label: 'Space Grotesk' },
+    { value: 'IBM Plex Mono', label: 'IBM Plex Mono' }
 ];
 
 const AVAILABLE_TEXTAREA_FONTS = [
@@ -113,7 +115,9 @@ const AVAILABLE_TEXTAREA_FONTS = [
     { value: 'Red Hat Display', label: 'Red Hat Display' },
     { value: 'Eczar', label: 'Eczar' },
     { value: 'Mozilla Text', label: 'Mozilla Text' },
-    { value: 'Solway', label: 'Solway' }
+    { value: 'Solway', label: 'Solway' },
+    { value: 'Space Grotesk', label: 'Space Grotesk' },
+    { value: 'IBM Plex Mono', label: 'IBM Plex Mono' }
 ];
 
 function isWorkspaceCssDevMode() {

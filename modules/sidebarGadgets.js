@@ -34,7 +34,7 @@ const NOTE_FONTS = [
     'Arial', 'Tahoma', 'Verdana', 'Georgia', 'Times New Roman', 'Courier New', 'Comic Sans MS',
     'Noto Sans', 'Atkinson Hyperlegible Next', 'Trebuchet MS',
     'Zen Kurenaido', 'Kaisei Decol', 'Zen Antique', 'Solway', 'Eczar', 'Bodoni Moda', 'Texturina',
-    'Share Tech Mono', 'DotGothic16'
+    'Space Grotesk', 'Share Tech Mono', 'IBM Plex Mono', 'DotGothic16'
 ];
 const MAX_NOTES = 10;
 const MAX_NOTE_LENGTH = 1000;
