@@ -9199,9 +9199,6 @@ async function callTool(globalResources, req, name, args) {
         }
     }
 
-<<<<<<< HEAD
-    if (name === 'send_mail' || name === 'list_mail' || name === 'read_mail' || name === 'mark_mail' || name === 'delete_mail' || name === 'forward_mail') {
-=======
     if (name === 'set_mailbox_notify_forward' || name === 'get_mailbox_notify_forward' || name === 'clear_mailbox_notify_forward') {
         const { resolveDovecoteOwnerFromReq } = require('./dovecoteIdentity');
         const dovecoteMail = require('./dovecoteMail');
@@ -9220,8 +9217,7 @@ async function callTool(globalResources, req, name, args) {
         }
     }
 
-    if (name === 'send_mail' || name === 'list_mail' || name === 'read_mail' || name === 'mark_mail' || name === 'forward_mail') {
->>>>>>> live-edits-oct20-1641
+    if (name === 'send_mail' || name === 'list_mail' || name === 'read_mail' || name === 'mark_mail' || name === 'delete_mail' || name === 'forward_mail') {
         const { resolveDovecoteOwnerFromReq } = require('./dovecoteIdentity');
         const dovecoteMail = require('./dovecoteMail');
         // read_by_recipient: the snake_case name callers look for, alongside the
