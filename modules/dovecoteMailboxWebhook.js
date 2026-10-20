@@ -10,6 +10,9 @@
 'use strict';
 
 const dns = require('dns').promises;
+const dnsCb = require('dns');
+const http = require('http');
+const https = require('https');
 const { getDb } = require('./dovecoteDatabase');
 const {
     normalizeIp,
@@ -27,8 +30,20 @@ const EXTRA_BLOCKED_CIDRS = Object.freeze([
     '224.0.0.0/4',
     '240.0.0.0/4',
     '255.255.255.255/32',
-    '::/128'
+    '::/128',
+    // Menma review: CGNAT, IETF/benchmark ranges, and IPv6 forms that embed
+    // an IPv4 address (NAT64, 6to4) or are multicast.
+    '100.64.0.0/10',
+    '192.0.0.0/24',
+    '198.18.0.0/15',
+    '64:ff9b::/96',
+    '64:ff9b:1::/48',
+    '2002::/16',
+    'ff00::/8'
 ]);
+// Bounded in-flight deliveries (each can sleep through the backoff list).
+const MAX_PENDING = 200;
+const MAX_FIELD_CHARS = 1000;
 const BLOCKED_HOSTS = new Set([
     'localhost',
     'localhost.localdomain',
@@ -108,7 +123,58 @@ function sleep(ms) {
 
 function fetchFn() {
     if (testOverrides && testOverrides.fetch) return testOverrides.fetch;
-    return globalThis.fetch;
+    return pinnedPost;
+}
+
+// Connect-time DNS guard: the socket only ever connects to an address that
+// passed isBlockedIp in this same lookup, so a rebinding answer between the
+// pre-check and the connect cannot reach a private host. Literal-IP URLs
+// skip lookup and were already checked by resolveWebhookUrl.
+function guardedLookup(hostname, options, callback) {
+    if (typeof options === 'function') { callback = options; options = {}; }
+    const opts = Object.assign({}, typeof options === 'object' ? options : { family: options }, { all: true, verbatim: true });
+    const lookupImpl = testOverrides && testOverrides.connectLookup
+        ? testOverrides.connectLookup
+        : (h, o, cb) => dnsCb.lookup(h, o, cb);
+    lookupImpl(hostname, opts, (err, rows) => {
+        if (err) return callback(err);
+        const list = (Array.isArray(rows) ? rows : [rows]).filter((row) => row && row.address);
+        if (!list.length) return callback(Object.assign(new Error('Webhook host did not resolve'), { code: 'ENOTFOUND' }));
+        if (!hostIsAllowlisted(hostname, list) && list.some((row) => isBlockedIp(row.address))) {
+            return callback(Object.assign(new Error('Webhook host resolves to a private or reserved address'), { code: 'EWEBHOOKBLOCKED' }));
+        }
+        if (options && options.all) return callback(null, list);
+        return callback(null, list[0].address, list[0].family);
+    });
+}
+
+// POST with the guarded lookup, no redirects, and the response body
+// discarded unread (status is all we need).
+function pinnedPost(url, { headers, body, signal } = {}) {
+    return new Promise((resolve, reject) => {
+        const target = new URL(url);
+        const mod = target.protocol === 'https:' ? https : http;
+        const payload = Buffer.from(String(body || ''), 'utf8');
+        const req = mod.request(target, {
+            method: 'POST',
+            headers: Object.assign({}, headers, { 'content-length': payload.length }),
+            lookup: guardedLookup,
+            agent: false,
+            signal
+        }, (res) => {
+            res.resume();
+            res.destroy();
+            resolve({ status: res.statusCode });
+        });
+        req.on('error', (err) => {
+            if (err && err.code === 'EWEBHOOKBLOCKED') {
+                reject(new UrlCheckError(err.message));
+                return;
+            }
+            reject(err);
+        });
+        req.end(payload);
+    });
 }
 
 function isBlockedHostName(hostname) {
@@ -255,11 +321,11 @@ function clearMailboxWebhook(owner) {
 
 function deliveryPayload(delivery) {
     return {
-        mailbox: String(delivery.mailbox),
-        id: String(delivery.id),
-        from: String(delivery.from || ''),
-        subject: String(delivery.subject || ''),
-        receivedAt: String(delivery.receivedAt || '')
+        mailbox: String(delivery.mailbox).slice(0, MAX_FIELD_CHARS),
+        id: String(delivery.id).slice(0, MAX_FIELD_CHARS),
+        from: String(delivery.from || '').slice(0, MAX_FIELD_CHARS),
+        subject: String(delivery.subject || '').slice(0, MAX_FIELD_CHARS),
+        receivedAt: String(delivery.receivedAt || '').slice(0, MAX_FIELD_CHARS)
     };
 }
 
@@ -292,7 +358,7 @@ async function postOnce(row, payload) {
         error.status = status;
         throw error;
     } catch (err) {
-        if (err && err.name === 'AbortError') {
+        if (err && (err.name === 'AbortError' || err.code === 'ABORT_ERR')) {
             const timeout = new Error('webhook timeout');
             timeout.retryable = true;
             throw timeout;
@@ -336,6 +402,12 @@ function notifyDeliveries(deliveries) {
     if (!Array.isArray(deliveries) || !deliveries.length) return;
     deliveries.forEach((delivery) => {
         if (!delivery || !delivery.mailbox || !delivery.id) return;
+        if (pending.size >= MAX_PENDING) {
+            try {
+                dovecoteMail().audit('system', 'mailbox_webhook', delivery.id, false, `mailbox=${delivery.mailbox} status=dropped-queue-full`);
+            } catch (_err) { /* audit best-effort */ }
+            return;
+        }
         const job = Promise.resolve()
             .then(() => deliverToMailbox(delivery))
             .catch((err) => {
@@ -383,5 +455,8 @@ module.exports = {
     waitForIdle,
     handleMailboxWebhookTool,
     hasMailboxWebhookScope,
-    publicWebhookView
+    publicWebhookView,
+    MAX_PENDING,
+    _guardedLookup: guardedLookup,
+    _pinnedPost: pinnedPost
 };

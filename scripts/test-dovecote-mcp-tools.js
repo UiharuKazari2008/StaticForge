@@ -298,7 +298,9 @@ async function main() {
             if (hostname === 'hook.example') return [{ address: '203.0.113.10', family: 4 }];
             throw new Error('unexpected host ' + hostname);
         },
-        fetch: async () => ({ ok: true, status: 204 })
+        fetch: async () => ({ ok: true, status: 204 }),
+        // Avoid loading globalResources (its intervals keep the test alive).
+        config: {}
     });
     const hookSet = textOf(await callTool(gr, reqFor('Rook'), 'set_mailbox_webhook', {
         url: 'https://hook.example/mail',

@@ -348,7 +348,74 @@ async function main() {
     assert.match(handlerSrc, /silent:\s*true/);
     assert.match(handlerSrc, /clientInfo && clientInfo.authenticated/);
 
+    await menmaReviewChecks();
     console.log('dovecote mailbox webhook tests passed');
+}
+
+// Menma review r1: connect-time rebinding guard, embedded-IPv4 ranges,
+// real HTTP path (no redirect follow), bounded queue.
+async function menmaReviewChecks() {
+    const http = require('http');
+    for (const ip of ['100.64.1.1', '64:ff9b::7f00:1', '2002:7f00:1::1', '::ffff:10.0.0.1', '::ffff:7f00:1', 'ff02::1', '198.18.0.1']) {
+        assert.strictEqual(webhook.isBlockedIp(ip), true, ip);
+    }
+    assert.strictEqual(webhook.isBlockedIp('203.0.113.10'), false);
+
+    // Rebinding: pre-check sees a public IP, connect-time lookup sees loopback.
+    let hits = 0;
+    const server = http.createServer((req, res) => {
+        hits += 1;
+        if (req.url === '/redir') { res.writeHead(302, { location: 'http://127.0.0.1/x' }); res.end(); return; }
+        res.writeHead(204); res.end();
+    });
+    await new Promise((r) => server.listen(0, '127.0.0.1', r));
+    const port = server.address().port;
+    try {
+        webhook.setTestOverrides({
+            lookup: async () => [{ address: PUBLIC_IP, family: 4 }],
+            connectLookup: (h, o, cb) => cb(null, [{ address: '127.0.0.1', family: 4 }]),
+            config: { backoffMs: [0], maxAttempts: 3 }
+        });
+        await webhook.setMailboxWebhook('rook', { url: `http://rebind.example:${port}/hook`, authHeader: 'Bearer s3cret' });
+        mail.sendMail({ fromOwner: 'cursor', to: 'rook', subject: 'rebind', body: 'x' });
+        await webhook.waitForIdle();
+        assert.strictEqual(hits, 0, 'rebinding answer must never be connected to');
+        const last = auditRows('mailbox_webhook').pop();
+        assert.strictEqual(last.success, 0);
+        assert.doesNotMatch(JSON.stringify(auditRows('set_mailbox_webhook')), /s3cret/);
+        assert.strictEqual(webhook.getMailboxWebhook('rook').hasAuthHeader, true);
+        assert.doesNotMatch(JSON.stringify(webhook.getMailboxWebhook('rook')), /s3cret/);
+
+        // Allowlisted loopback: real POST succeeds; 302 is not followed.
+        webhook.setTestOverrides({
+            lookup: async () => [{ address: '127.0.0.1', family: 4 }],
+            config: { allowPrivateHosts: ['127.0.0.1'], backoffMs: [0], maxAttempts: 3 }
+        });
+        const ok = await webhook._pinnedPost(`http://127.0.0.1:${port}/hook`, { headers: {}, body: '{}' });
+        assert.strictEqual(ok.status, 204);
+        const before = hits;
+        const red = await webhook._pinnedPost(`http://127.0.0.1:${port}/redir`, { headers: {}, body: '{}' });
+        assert.strictEqual(red.status, 302);
+        assert.strictEqual(hits, before + 1, 'redirect not followed');
+    } finally {
+        server.close();
+    }
+
+    // Bounded queue: never more than MAX_PENDING in flight.
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    webhook.setTestOverrides({
+        lookup: async () => [{ address: PUBLIC_IP, family: 4 }],
+        config: { backoffMs: [0], maxAttempts: 1 },
+        fetch: async () => { await gate; return { status: 204 }; }
+    });
+    await webhook.setMailboxWebhook('rook', { url: PUBLIC_URL });
+    const n = webhook.MAX_PENDING + 25;
+    webhook.notifyDeliveries(Array.from({ length: n }, (_, i) => ({ mailbox: 'rook', id: `q${i}`, subject: 's' })));
+    const dropped = auditRows('mailbox_webhook').filter((row) => /dropped-queue-full/.test(row.detail)).length;
+    assert.strictEqual(dropped, 25);
+    release();
+    await webhook.waitForIdle();
 }
 
 main().catch((err) => {
