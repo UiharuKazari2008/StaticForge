@@ -457,6 +457,15 @@ const flush = () => new Promise((r) => setImmediate(r));
     h.ctl.preview('install-linger');
     assert.strictEqual(h.t.last().data.phase, 'linger');
 
+    // /app no longer has a second installer; large updates reboot here
+    const fs = require('fs');
+    const path = require('path');
+    const appHtml = fs.readFileSync(path.join(__dirname, '../public/app.html'), 'utf8');
+    const swSrc = fs.readFileSync(path.join(__dirname, '../public/scripts/comp/serviceWorkerManager.js'), 'utf8');
+    assert.ok(!appHtml.includes('dreamscapeOsInstallWizardModal'), '/app has no install wizard');
+    assert.ok(!swSrc.includes('_runInstallWizard'), '/app does not run an in-app wizard');
+    assert.ok(swSrc.includes("location.replace('/launch')"), '/app reboots to /launch for Install MeletonFX');
+
     console.log('✅ test-melaton-boot: all assertions passed');
 })().catch((err) => {
     console.error('❌ test-melaton-boot failed:', err);

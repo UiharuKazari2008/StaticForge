@@ -579,7 +579,7 @@
                 if (storage && typeof storage.persist === 'function') await storage.persist();
             } catch (_) { /* best effort */ }
             try {
-                // The old /app install wizard's resume key and its reboot guard
+                // Leftover /app wizard key (removed) and the reboot guard so /app does not bounce
                 env.sessionStorage.removeItem('dreamscapeOsInstallWizard');
                 env.sessionStorage.setItem('melatonInstallRebootAt', String(env.now()));
             } catch (_) { /* best effort */ }

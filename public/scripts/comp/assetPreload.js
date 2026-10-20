@@ -39,17 +39,16 @@ var assetPreload = (function () {
     var STAGE_TIMEOUT_MS = 20000;
     var IMAGE_TIMEOUT_MS = 12000;
 
-    // Banner and art that can be on screen at the logon, including the connecting dialog
-    // and the install wizard. desktop-boot.css also contributes header.png.
+    // Banner and art that can be on screen at the logon, including the connecting dialog.
+    // desktop-boot.css also contributes header.png.
     var LOGIN_URLS = [
         '/static_images/header.png',
-        '/static_images/explorer-banner.png',
         '/static_images/melaton/net-laptop.png',
         '/static_images/melaton/net-server.png',
         '/static_images/melaton/net-globe.png',
         '/static_images/apple-touch-icon.png'
     ];
-    var LOGIN_STYLES = ['desktop-boot.css', 'connection-dial.css', 'modal-window-title-toolbar.css'];
+    var LOGIN_STYLES = ['desktop-boot.css', 'modal-window-title-toolbar.css'];
     // Faces the logon paints. Body text is Noto Sans; classic boot copy is Tahoma.
     var LOGIN_FONT_SPECS = [
         '400 16px "Noto Sans"',

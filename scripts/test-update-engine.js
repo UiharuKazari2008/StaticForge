@@ -186,7 +186,7 @@ function memoryStorage() {
     assert.ok(fnStart > 0 && fnEnd > fnStart, 'installer helpers are in serviceWorkerManager.js');
     const gate = {};
     vm.runInNewContext(
-        'var WIZARD_FILE_THRESHOLD = 20;\n' + swSrc.slice(fnStart, fnEnd) +
+        'var INSTALLER_FILE_THRESHOLD = 20;\n' + swSrc.slice(fnStart, fnEnd) +
         '\nthis.filesCountingTowardInstaller = filesCountingTowardInstaller;\nthis.needsLaunchInstaller = needsLaunchInstaller;\nthis.servicePackFromFiles = servicePackFromFiles;\nthis.servicePackPatchId = servicePackPatchId;',
         gate
     );
@@ -218,6 +218,15 @@ function memoryStorage() {
         swSrc.indexOf('async downloadUpdatesForInit')
     );
     assert.ok(initFn.length > 0 && !initFn.includes('_showInitUpdateModal'), 'the boot download does not open the System Update dialog');
+    assert.ok(!initFn.includes('needsWizard'), 'a large boot update reboots to /launch; it does not open a wizard');
+    assert.ok(swSrc.includes('_rebootIntoInstaller'), 'large /app updates reboot to /launch');
+    assert.ok(!swSrc.includes('_runInstallWizard') && !swSrc.includes('_showInstallWizardUi'), 'the /app install wizard is gone');
+    assert.ok(!swSrc.includes('dreamscapeOsInstallWizardModal'), 'the /app wizard modal is gone');
+    const appHtml = fs.readFileSync(path.join(__dirname, '../public/app.html'), 'utf8');
+    assert.ok(!appHtml.includes('dreamscapeOsInstallWizardModal'), 'app.html no longer has the install wizard');
+    assert.ok(!appHtml.includes('connection-dial.css'), 'the wizard-only connection-dial sheet is gone');
+    assert.ok(!fs.existsSync(path.join(__dirname, '../public/css/connection-dial.css')), 'connection-dial.css deleted');
+    assert.ok(!fs.existsSync(path.join(__dirname, '../public/static_images/explorer-banner.png')), 'wizard banner deleted');
 
     // ---- install groups and the one-stream pack ----
     assert.strictEqual(engine.fileGroup({ url: '/app', type: 'route' }), 'features');

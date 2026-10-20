@@ -5,7 +5,6 @@
 const BOOT_UI_DEBUG_STAGES = [
     { id: 'pre-startup', label: 'Pre-startup' },
     { id: 'system-update', label: 'System Update' },
-    { id: 'install-wizard', label: 'Install wizard' },
     { id: 'startup-splash', label: 'Startup splash' },
     { id: 'gallery', label: 'Gallery' },
     { id: 'desktop', label: 'Desktop' }
@@ -36,14 +35,6 @@ function bootUiDebugStageLabel(id) {
     return stage ? stage.label : id;
 }
 
-function bootUiDebugIsInstallWizardActive() {
-    // serviceWorkerManager._isInstallWizardActive: public/scripts/comp/serviceWorkerManager.js
-    if (serviceWorkerManager && serviceWorkerManager._isInstallWizardActive()) {
-        return true;
-    }
-    return document.body.classList.contains('dreamscape-install-wizard');
-}
-
 function bootUiDebugIsTypingTarget(target) {
     if (!target) return false;
     const tag = target.tagName;
@@ -58,7 +49,6 @@ function bootUiDebugIsBootLive() {
     if (!bootUiDebug.splashDismissed || !bootUiDebug.galleryReady) return true;
     if (document.body.classList.contains('windows-startup')) return true;
     if (document.body.classList.contains('initializing')) return true;
-    if (document.body.classList.contains('dreamscape-install-wizard')) return true;
     const updateModal = document.getElementById('windowsUpdateModal');
     if (updateModal && !updateModal.classList.contains('hidden')) return true;
     const preStartup = document.getElementById('desktopPreStartupModal');
@@ -71,7 +61,6 @@ function bootUiDebugIsBootLive() {
 }
 
 function bootUiDebugDetectStage() {
-    if (bootUiDebugIsInstallWizardActive()) return 'install-wizard';
     const updateModal = document.getElementById('windowsUpdateModal');
     if (updateModal && !updateModal.classList.contains('hidden')) return 'system-update';
     const preStartup = document.getElementById('desktopPreStartupModal');
@@ -89,14 +78,8 @@ function bootUiDebugDetectStage() {
 
 function bootUiDebugNextStage(fromId) {
     const start = bootUiDebugStageIndex(fromId);
-    for (let i = start + 1; i < BOOT_UI_DEBUG_STAGES.length; i++) {
-        const id = BOOT_UI_DEBUG_STAGES[i].id;
-        if (id === 'install-wizard' && !bootUiDebugIsInstallWizardActive()) {
-            continue;
-        }
-        return id;
-    }
-    return 'desktop';
+    const next = BOOT_UI_DEBUG_STAGES[start + 1];
+    return next ? next.id : 'desktop';
 }
 
 function bootUiDebugMajorStageForInitStep(step) {

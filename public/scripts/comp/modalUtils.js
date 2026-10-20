@@ -38,7 +38,6 @@ const TASKBAR_SYSTEM_MODAL_IDS = new Set([
     'connectionDialModal',
     'domainConnectModal',
     'desktopPreStartupModal',
-    'dreamscapeOsInstallWizardModal',
     'confirmationDialog',
     'creditCostDialog',
     'agentClientUpdateDialog',

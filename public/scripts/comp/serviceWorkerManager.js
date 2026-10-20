@@ -67,10 +67,10 @@ function pathnameMatchesAssetUrl(assetPath, rawUrl) {
     }
 }
 
-const WIZARD_FILE_THRESHOLD = 20;
+const INSTALLER_FILE_THRESHOLD = 20;
 const DOWNLOAD_STALL_MS = 60000;
-const INSTALL_WIZARD_SESSION_KEY = 'dreamscapeOsInstallWizard';
 const LOGIN_BOOT_SESSION_KEY = 'dreamscapeLoginBoot';
+const LEGACY_INSTALL_WIZARD_SESSION_KEY = 'dreamscapeOsInstallWizard';
 const SERVICE_WORKER_HEALTH_CHECK_MEASURE = 'staticforge:service-worker-health-check';
 
 const LOGIN_CRITICAL_EXACT_PATHS = new Set([
@@ -111,7 +111,7 @@ function filesCountingTowardInstaller(files, stragglers) {
 function needsLaunchInstaller(files, options) {
     const opts = options || {};
     if (opts.installInProgress) return true;
-    return filesCountingTowardInstaller(files, opts.stragglers).length > WIZARD_FILE_THRESHOLD;
+    return filesCountingTowardInstaller(files, opts.stragglers).length > INSTALLER_FILE_THRESHOLD;
 }
 
 /** Short id of this exact file set. Same urls and hashes always produce the same id. */
@@ -212,45 +212,10 @@ class ServiceWorkerManager {
         this._pendingCacheUpdateQueue = [];
         this._swMessageListenerAttached = false;
         this._swWarmScheduled = false;
-        this.installWizardToastId = null;
-        this.installWizardUsed = false;
-        this._installWizardEtaState = null;
         this._activeDownloadAttach = null;
-        this._installWizardKeyboardWired = false;
         this._updateCompleteToastTimeout = null;
 
-        this._wireInstallWizardKeyboardListeners();
         this.init();
-    }
-
-    _wireInstallWizardKeyboardListeners() {
-        if (this._installWizardKeyboardWired) return;
-        this._installWizardKeyboardWired = true;
-
-        // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
-        registerKeyboardListener({
-            id: 'overlay.dreamscapeOsInstallWizard.close',
-            type: 'whenFocused',
-            modalId: 'dreamscapeOsInstallWizardModal',
-            label: 'Cancel',
-            keys: 'Alt+Q',
-            overlayIcon: 'fas fa-times',
-            overlayGroup: 'Startup',
-            overlayOnly: true,
-            priority: -10
-        });
-
-        registerKeyboardListener({
-            id: 'overlay.dreamscapeOsInstallWizard.enter',
-            type: 'whenFocused',
-            modalId: 'dreamscapeOsInstallWizardModal',
-            label: 'Continue',
-            keys: 'Enter',
-            overlayIcon: 'fas fa-forward',
-            overlayGroup: 'Startup',
-            overlayOnly: true,
-            priority: -10
-        });
     }
 
     _isDesktopTrayMode() {
@@ -311,26 +276,7 @@ class ServiceWorkerManager {
         }
     }
 
-    _isInstallWizardActive() {
-        if (this.installWizardUsed || this.bootPhase === 'wizard' || document.body.classList.contains('dreamscape-install-wizard')) {
-            return true;
-        }
-        // A leftover in-app wizard session is not the installer. It only stays on screen when
-        // /launch just refused another reboot (narrow mode, or the 3-minute guard).
-        if (!this._readInstallWizardSession()?.active) return false;
-        if (!window.isDesktop) return true;
-        try {
-            const last = Number(sessionStorage.getItem('melatonInstallRebootAt')) || 0;
-            return last > 0 && (Date.now() - last < 3 * 60 * 1000);
-        } catch (_) {
-            return false;
-        }
-    }
-
     _isPreStartupUpdatePhase() {
-        if (this._isInstallWizardActive()) {
-            return false;
-        }
         // Block startup update UI until runBootSequence finishes (not just pre-startup dialog handoff)
         return Boolean(window.isDesktop && !this.bootComplete);
     }
@@ -485,9 +431,7 @@ class ServiceWorkerManager {
     _resolveBootComplete() {
         this.bootComplete = true;
         this.bootPhase = 'complete';
-        document.body.classList.remove('dreamscape-install-wizard');
         document.body.classList.remove('initializing');
-        this._hideInstallWizardUi();
         // The logon is still up. A queued download paints progress on it if flushed here.
         // _skipBootFlush: the hash re-fetch is deferred to idle (scheduleAfterFirstPaint).
         if (!this._isBeforeDesktop() && !this._skipBootFlush) {
@@ -580,25 +524,9 @@ class ServiceWorkerManager {
         return Promise.resolve(null);
     }
 
-    _readInstallWizardSession() {
+    _clearLegacyInstallWizardSession() {
         try {
-            const raw = sessionStorage.getItem(INSTALL_WIZARD_SESSION_KEY);
-            return raw ? JSON.parse(raw) : null;
-        } catch (_) {
-            return null;
-        }
-    }
-
-    _writeInstallWizardSession(patch) {
-        try {
-            const prev = this._readInstallWizardSession() || {};
-            sessionStorage.setItem(INSTALL_WIZARD_SESSION_KEY, JSON.stringify({ ...prev, ...patch, active: true }));
-        } catch (_) { /* ignore */ }
-    }
-
-    _clearInstallWizardSession() {
-        try {
-            sessionStorage.removeItem(INSTALL_WIZARD_SESSION_KEY);
+            sessionStorage.removeItem(LEGACY_INSTALL_WIZARD_SESSION_KEY);
         } catch (_) { /* ignore */ }
     }
 
@@ -2243,10 +2171,6 @@ class ServiceWorkerManager {
 
         console.log('Static cache update classified:', updateKind, updatedFiles);
 
-        if (this._isInstallWizardActive()) {
-            return;
-        }
-
         if (canApplyWithoutRestart) {
             if (silent && this.isCssOnlyAutoApplyEnabled()) {
                 this.applyStaticCacheUpdate(updatedFiles, { silent: true });
@@ -2525,7 +2449,7 @@ class ServiceWorkerManager {
     }
 
     showUpdateToast(files) {
-        if (this._isBeforeDesktop() || this._isInstallWizardActive()) {
+        if (this._isBeforeDesktop()) {
             return;
         }
 
@@ -2562,7 +2486,7 @@ class ServiceWorkerManager {
     updateProgressToast(progress) {
         this.updateProgress = progress;
 
-        if (this._isBeforeDesktop() || this._isInstallWizardActive()) {
+        if (this._isBeforeDesktop()) {
             return;
         }
 
@@ -3042,13 +2966,8 @@ class ServiceWorkerManager {
                 break;
 
             case 'SW_SCRIPT_UPDATED':
-                // Boot manifest loop handles asset updates; only react during install wizard / login boot
-                if (this.bootPhase === 'wizard' || this._readInstallWizardSession()?.active) {
-                    this._writeInstallWizardSession({ phase: this.bootPhase || 'verify' });
-                    if (this.swRegistration && this.swRegistration.waiting) {
-                        this.checkForWaiting();
-                    }
-                } else if (this._loginBootOrchestrating || this._readLoginBootSession()?.active) {
+                // Boot manifest loop handles asset updates; only react during login boot
+                if (this._loginBootOrchestrating || this._readLoginBootSession()?.active) {
                     this._writeLoginBootSession();
                     if (this.swRegistration && this.swRegistration.waiting) {
                         this.checkForWaiting();
@@ -3776,7 +3695,7 @@ class ServiceWorkerManager {
                 if (this._rebootIntoInstaller(count)) {
                     return { rebooted: true };
                 }
-                return { needsWizard: true, files: filesToUpdate };
+                return { ask: 'A large update needs Install MeletonFX.' };
             }
 
             const fresh = this._filesCountingTowardInstaller(filesToUpdate);
@@ -3876,7 +3795,7 @@ class ServiceWorkerManager {
                 return { success: true, filesDownloaded: result.filesDownloaded, userChoice: 'apply' };
             }
 
-            // Boot init downloads: script updates must reload to execute — same as install wizard finish.
+            // Boot init downloads: script updates must reload to execute — same as a finished install.
             if (useInitModal) {
                 this._updateInitUpdateModal('Restarting Dreamscape...', 100);
                 this._setPreStartupUpdateStageMessage('Restarting Dreamscape...');
@@ -3991,10 +3910,6 @@ class ServiceWorkerManager {
     
     // Show update complete toast with restart or apply button
     showUpdateCompleteToast(mode = 'restart') {
-        if (this._isInstallWizardActive()) {
-            return;
-        }
-
         // Manual re-check already showed the pending-restart prompt — don't overwrite it.
         if (this.trayPopup.state === 'complete' && this.trayPopup.kind === 'sw-update'
             && typeof this.trayPopup.message === 'string'
@@ -4112,7 +4027,7 @@ class ServiceWorkerManager {
         });
     }
 
-    // Shared stall-based download progress attach — boot gate, wizard, init, login
+    // Shared stall-based download progress attach — boot gate, init, login
     attachToDownloadProgress(options = {}) {
         const {
             files = null,
@@ -4317,248 +4232,14 @@ class ServiceWorkerManager {
         });
     }
 
-    _resetInstallWizardEtaState() {
-        this._installWizardEtaState = {
-            lastCompleted: 0,
-            lastTime: Date.now(),
-            lastRate: null,
-            lastEtaText: '',
-            stallSince: null
-        };
-    }
-
-    _formatInstallWizardEta(remainingSeconds) {
-        if (remainingSeconds == null || !isFinite(remainingSeconds) || remainingSeconds <= 0) {
-            return '';
-        }
-        if (remainingSeconds < 60) {
-            return '< 1 min remaining';
-        }
-        const mins = Math.round(remainingSeconds / 60);
-        if (mins <= 1) {
-            return '~1 min remaining';
-        }
-        return `~${mins} min remaining`;
-    }
-
-    _computeInstallWizardEta(completed, total) {
-        if (!total || completed >= total) {
-            return '';
-        }
-
-        const state = this._installWizardEtaState;
-        if (!state) {
-            return '';
-        }
-
-        const now = Date.now();
-        if (completed <= state.lastCompleted) {
-            if (!state.stallSince) {
-                state.stallSince = now;
-            }
-            if (now - state.stallSince > 3000) {
-                state.lastRate = null;
-                state.lastEtaText = '';
-            }
-            return state.lastEtaText;
-        }
-
-        state.stallSince = null;
-        const elapsedSec = (now - state.lastTime) / 1000;
-        if (elapsedSec >= 0.5 && completed > state.lastCompleted) {
-            const rate = (completed - state.lastCompleted) / elapsedSec;
-            if (rate > 0) {
-                const remainingSec = (total - completed) / rate;
-                state.lastRate = rate;
-                state.lastEtaText = this._formatInstallWizardEta(remainingSec);
-            }
-        }
-
-        state.lastCompleted = completed;
-        state.lastTime = now;
-        return state.lastEtaText;
-    }
-
-    _buildInstallWizardStatus(phase, completed, total) {
-        const phases = {
-            prepare: {
-                phase: 'Preparing installation…',
-                detail: total > 0 ? `${total} files to download` : 'Checking for files to download…'
-            },
-            download: {
-                phase: 'Downloading application files',
-                detail: total > 0 ? `${completed} of ${total} files` : 'Starting download…'
-            },
-            verify: {
-                phase: 'Verifying installation',
-                detail: 'Checking cached files…'
-            },
-            stalled: {
-                phase: 'Download paused',
-                detail: total > 0 ? `Waiting to resume (${completed} of ${total} files)…` : 'Waiting to resume…'
-            },
-            finishing: {
-                phase: 'Finishing installation',
-                detail: 'Restarting Dreamscape OS…'
-            }
-        };
-
-        const labels = phases[phase] || phases.download;
-        const eta = phase === 'download' && total > 0
-            ? this._computeInstallWizardEta(completed, total)
-            : '';
-
-        return { ...labels, eta };
-    }
-
-    _showInstallWizardUi(pendingCount) {
-        this.installWizardUsed = true;
-        this._resetInstallWizardEtaState();
-        document.body.classList.add('dreamscape-install-wizard', 'initializing');
-        this._writeInstallWizardSession({ phase: 'wizard', pendingCount });
-
-        // Install wizard owns the screen — dismiss overlapping boot dialogs (both are .on-top)
-        // and hard-stop WS startup/reconnect (page reloads when install finishes).
-        // wsClient.haltStartupForInstallReload / _hidePreStartupDialog: public/scripts/websocket.js
-        if (window.wsClient) {
-            window.wsClient.haltStartupForInstallReload();
-            window.wsClient._hidePreStartupDialog();
-        }
-        const windowsStartup = document.getElementById('windowsStartupModal');
-        if (windowsStartup && !windowsStartup.classList.contains('hidden')) {
-            // closeModal: public/scripts/comp/modalUtils.js
-            closeModal(windowsStartup);
-        }
-
-        const status = this._buildInstallWizardStatus('prepare', 0, pendingCount);
-
-        if (window.isDesktop) {
-            const modal = document.getElementById('dreamscapeOsInstallWizardModal');
-            const phaseEl = document.getElementById('dreamscapeOsInstallWizardPhase');
-            const detailEl = document.getElementById('dreamscapeOsInstallWizardDetail');
-            const etaEl = document.getElementById('dreamscapeOsInstallWizardEta');
-            const progressBar = document.getElementById('dreamscapeOsInstallWizardProgressBar');
-            if (modal && phaseEl && detailEl && progressBar) {
-                phaseEl.textContent = status.phase;
-                detailEl.textContent = status.detail;
-                if (etaEl) {
-                    etaEl.textContent = status.eta;
-                }
-                progressBar.style.width = '0%';
-                modal.classList.remove('hidden');
-                modal.classList.add('opening');
-                if (typeof openModal === 'function') {
-                    openModal(modal);
-                }
-            }
-        } else if (typeof showGlassToast === 'function') {
-            this.installWizardToastId = showGlassToast(
-                'info',
-                'Installing Dreamscape OS',
-                `${status.phase} ${status.detail}`,
-                true,
-                false,
-                '<i class="fa-duotone fa-star-christmas"></i>'
-            );
-        }
-    }
-
-    _updateInstallWizardUi(completed, total, phase = 'download') {
-        const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
-        const status = this._buildInstallWizardStatus(phase, completed, total);
-        const toastMessage = status.eta
-            ? `${status.phase} — ${status.detail} (${status.eta})`
-            : `${status.phase} — ${status.detail}`;
-
-        const modal = document.getElementById('dreamscapeOsInstallWizardModal');
-        const phaseEl = document.getElementById('dreamscapeOsInstallWizardPhase');
-        const detailEl = document.getElementById('dreamscapeOsInstallWizardDetail');
-        const etaEl = document.getElementById('dreamscapeOsInstallWizardEta');
-        const progressBar = document.getElementById('dreamscapeOsInstallWizardProgressBar');
-        if (modal && !modal.classList.contains('hidden') && phaseEl && detailEl && progressBar) {
-            phaseEl.textContent = status.phase;
-            detailEl.textContent = status.detail;
-            if (etaEl) {
-                etaEl.textContent = status.eta;
-            }
-            progressBar.style.width = `${progress}%`;
-        } else if (this.installWizardToastId) {
-            // updateGlassToastComplete / updateGlassToastProgress: public/scripts/comp/toastManager.js
-            if (typeof updateGlassToastComplete === 'function') {
-                updateGlassToastComplete(this.installWizardToastId, {
-                    type: 'info',
-                    title: 'Installing Dreamscape OS',
-                    message: toastMessage,
-                    customIcon: '<i class="fa-duotone fa-star-christmas"></i>',
-                    showProgress: true
-                });
-            }
-            if (typeof updateGlassToastProgress === 'function') {
-                updateGlassToastProgress(this.installWizardToastId, progress);
-            }
-        }
-    }
-
-    _hideInstallWizardUi() {
-        document.body.classList.remove('dreamscape-install-wizard');
-        this._installWizardEtaState = null;
-        const modal = document.getElementById('dreamscapeOsInstallWizardModal');
-        if (modal) {
-            if (typeof closeModal === 'function') {
-                closeModal(modal);
-            } else {
-                modal.classList.add('hidden');
-                modal.classList.remove('opening');
-                debouncedUpdateTaskbarWindows();
-            }
-        }
-        if (this.installWizardToastId && typeof removeGlassToast === 'function') {
-            removeGlassToast(this.installWizardToastId);
-            this.installWizardToastId = null;
-        }
-    }
-
-    async _finishInstallWizardWithRestart() {
-        this._updateInstallWizardUi(0, 0, 'finishing');
-        this._clearInstallWizardSession();
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        this.forceRestart();
-    }
-
-    async _runInstallWizard(filesToUpdate) {
-        if (this._launchRedirectStarted) return { success: false, rebooted: true };
-        this._showInstallWizardUi(filesToUpdate.length);
-        this._updateInstallWizardUi(0, filesToUpdate.length, 'download');
-        const result = await this.attachToDownloadProgress({
-            files: filesToUpdate,
-            onProgress: ({ completed, total }) => {
-                this._updateInstallWizardUi(completed, total, 'download');
-            }
-        });
-        if (result.stalled) {
-            this._updateInstallWizardUi(
-                result.completed || 0,
-                result.total || 0,
-                'stalled'
-            );
-            throw new Error(`Install wizard download stalled at ${result.completed}/${result.total}`);
-        }
-        if (!result.success && !result.hasErrors) {
-            throw new Error(result.reason || 'Install wizard download failed');
-        }
-        this._updateInstallWizardUi(result.completed || filesToUpdate.length, result.total || filesToUpdate.length, 'verify');
-        return result;
-    }
-
     /**
-     * A large update found at the /app boot gate on the desktop: reboot into /launch, whose
-     * installer (melatonBoot.js + updateEngine.js) takes it. Not twice within a few minutes
-     * (the installer's own reboot, or a /launch that could not install): then the old wizard
-     * here finishes the job, so the two pages never bounce. Returns true when navigating.
+     * A large update found at the /app boot gate: reboot into /launch, whose installer
+     * (melatonBoot.js + updateEngine.js) takes it. Not twice within a few minutes (the
+     * installer's own reboot, or a /launch that could not install) so the pages never
+     * bounce; the boot gate then asks Retry / Restart. Returns true when navigating.
      */
     _rebootIntoInstaller(count, reason) {
         if (this._launchRedirectStarted) return true;
-        if (!window.isDesktop) return false;
         let last = 0;
         try {
             last = Number(sessionStorage.getItem('melatonInstallRebootAt')) || 0;
@@ -4567,21 +4248,22 @@ class ServiceWorkerManager {
         try {
             sessionStorage.setItem('melatonInstallRebootAt', String(Date.now()));
         } catch (_) { /* best effort */ }
+        this._clearLegacyInstallWizardSession();
         this._launchRedirectStarted = true;
         this._hideInitUpdateModal();
-        this._hideInstallWizardUi();
+        // wsClient.haltStartupForInstallReload: public/scripts/websocket.js
+        if (window.wsClient && typeof window.wsClient.haltStartupForInstallReload === 'function') {
+            window.wsClient.haltStartupForInstallReload();
+        }
         const why = reason || `${count} files to update`;
         console.log(`[boot] ${why}: rebooting into the installer (/launch)`);
-        // restartClientNavigate: public/scripts/comp/modalUtils.js (desktop → /launch)
-        if (typeof restartClientNavigate === 'function') restartClientNavigate();
-        else location.replace('/launch');
+        location.replace('/launch');
         return true;
     }
 
     /**
      * The cache is not proven. /launch's installer is what makes it valid.
-     * A reboot already tried in the last few minutes, or a non-desktop client,
-     * falls through to the retry dialog.
+     * A reboot already tried in the last few minutes falls through to the retry dialog.
      */
     _enterUpdater(detail, count) {
         if (this._rebootIntoInstaller(count || 0, detail)) return { rebooted: true };
@@ -4592,23 +4274,15 @@ class ServiceWorkerManager {
         if (this.bootComplete) {
             return;
         }
-        // dismissLaunchHandoffIfNeeded: public/app.html — app boot UI (wizard, startup) must not sit under the handoff layer
+        // dismissLaunchHandoffIfNeeded: public/app.html — app boot UI (startup) must not sit under the handoff layer
         if (typeof dismissLaunchHandoffIfNeeded === 'function') {
             await dismissLaunchHandoffIfNeeded();
         }
         this._bootOrchestrating = true;
         let outcome = null;
         try {
-            const resumeSession = this._readInstallWizardSession();
-            // Desktop: a leftover wizard session must not skip the /launch reboot.
-            // Narrow mode still finishes with the in-app wizard.
-            if (resumeSession && resumeSession.active && !window.isDesktop) {
-                this.installWizardUsed = true;
-                this.bootPhase = resumeSession.phase === 'verify' ? 'verify' : 'wizard';
-            } else {
-                this.installWizardUsed = false;
-                this.bootPhase = 'waiting_sw';
-            }
+            this._clearLegacyInstallWizardSession();
+            this.bootPhase = 'waiting_sw';
 
             const ready = await this.waitForServiceWorkerReady();
             if (ready && ready.timedOut) {
@@ -4631,7 +4305,7 @@ class ServiceWorkerManager {
             if (choice === 'restart') {
                 // restartClientNavigate: public/scripts/comp/modalUtils.js
                 if (typeof restartClientNavigate === 'function') restartClientNavigate();
-                else location.reload();
+                else location.replace('/launch');
                 return { blocked: true };
             }
             if (choice === 'retry') return this.runBootSequence();
@@ -4642,7 +4316,6 @@ class ServiceWorkerManager {
     }
 
     async _runDeferredHashRefetch() {
-        let installWizardUsed = this.installWizardUsed === true;
         this.bootPhase = 'checking';
         // bootUiDebug.gate: public/scripts/comp/bootUiDebug.js
         if (window.bootUiDebug) {
@@ -4656,7 +4329,7 @@ class ServiceWorkerManager {
 
             while (true) {
                 if (this._launchRedirectStarted) return { rebooted: true };
-                this.bootPhase = this.bootPhase === 'wizard' ? 'wizard' : 'checking';
+                this.bootPhase = 'checking';
                 let manifest = await this._fetchManifest();
                 if (this._manifestOutcome === 'compiling') {
                     // Runtime files are still being built. There is no list to install yet.
@@ -4669,8 +4342,7 @@ class ServiceWorkerManager {
                     if (manifestMisses >= 3) {
                         const sent = this._enterUpdater('The update check did not get a file list back.');
                         if (sent.rebooted) return sent;
-                        // Narrow mode, or /launch was just tried. Keep fetching. The retry
-                        // dialog does not install the cache.
+                        // /launch was just tried. Keep fetching. The retry dialog does not install the cache.
                         manifestMisses = 0;
                     }
                     await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -4716,69 +4388,30 @@ class ServiceWorkerManager {
                     lastPendingFingerprint = pendingFingerprint;
                 }
                 if (verifyPass > MAX_VERIFY_PASSES) {
-                    if (!installWizardUsed) {
-                        const sent = this._enterUpdater(
-                            'The offline cache still does not match after the update check.',
-                            this._installerFileCount(pendingSource)
-                        );
-                        if (sent.rebooted) {
-                            this._clearInstallWizardSession();
-                            return sent;
-                        }
-                        // /launch was just tried, or this is not the desktop. The in-app
-                        // wizard finishes the same file list.
-                        installWizardUsed = true;
-                        this.installWizardUsed = true;
-                        verifyPass = 0;
-                        lastPendingFingerprint = '';
-                        continue;
-                    }
+                    const sent = this._enterUpdater(
+                        'The offline cache still does not match after the update check.',
+                        this._installerFileCount(pendingSource)
+                    );
+                    if (sent.rebooted) return sent;
                     return { ask: 'The offline cache still does not match after the update check.' };
                 }
 
                 // More than the cutoff, or an install /launch already started: leave before any dialog.
-                if (!installWizardUsed && this._needsLaunchInstaller(filesToUpdate)) {
+                if (this._needsLaunchInstaller(filesToUpdate)) {
                     if (this._rebootIntoInstaller(this._installerFileCount(filesToUpdate))) {
-                        this._clearInstallWizardSession();
                         return { rebooted: true };
                     }
-                    installWizardUsed = true;
-                    this.installWizardUsed = true;
-                }
-
-                if (installWizardUsed) {
-                    const wizardFiles = fresh.length ? fresh : filesToUpdate;
-                    this.bootPhase = 'wizard';
-                    // bootUiDebug.gate: public/scripts/comp/bootUiDebug.js
-                    if (window.bootUiDebug) {
-                        await window.bootUiDebug.gate('install-wizard', { detail: 'Install wizard' });
-                    }
-                    await this._runInstallWizard(wizardFiles);
-                    if (this._launchRedirectStarted) return { rebooted: true };
-                    this.bootPhase = 'verify';
-                    this._writeInstallWizardSession({ phase: 'verify', pendingCount: wizardFiles.length });
-                    this._updateInstallWizardUi(0, 0, 'verify');
-                    continue;
+                    return { ask: 'A large update needs Install MeletonFX.' };
                 }
 
                 const outcome = await this.checkAndDownloadUpdatesForInit(fresh);
                 if (outcome && outcome.rebooted) return { rebooted: true };
                 if (outcome && outcome.userChoice === 'restart') return { rebooted: true };
-                if (outcome && outcome.needsWizard) {
-                    installWizardUsed = true;
-                    this.installWizardUsed = true;
-                    continue;
-                }
+                if (outcome && outcome.ask) return outcome;
                 this.bootPhase = 'verify';
             }
 
-            if (installWizardUsed) {
-                await this._finishInstallWizardWithRestart();
-                return;
-            }
-
-            this._clearInstallWizardSession();
-            this._hideInstallWizardUi();
+            this._clearLegacyInstallWizardSession();
             document.body.classList.remove('initializing');
             this._resolveBootComplete();
     }

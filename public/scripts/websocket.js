@@ -2036,10 +2036,6 @@ class WebSocketClient {
     }
 
     _renderPreStartupDialog() {
-        // serviceWorkerManager._isInstallWizardActive: public/scripts/comp/serviceWorkerManager.js
-        if (window.serviceWorkerManager && window.serviceWorkerManager._isInstallWizardActive()) {
-            return;
-        }
         if (this.winlogonPowerText) {
             const held = document.getElementById('desktopPreStartupStatus');
             if (held) held.textContent = this.winlogonPowerText;
@@ -3772,10 +3768,6 @@ class WebSocketClient {
     // Windows Startup Modal Methods (Desktop Mode Only)
     showWindowsStartupModal(message = 'Initializing...', progress = 0) {
         if (!window.isDesktop) return;
-        // serviceWorkerManager._isInstallWizardActive: public/scripts/comp/serviceWorkerManager.js
-        if (window.serviceWorkerManager && window.serviceWorkerManager._isInstallWizardActive()) {
-            return;
-        }
 
         const modal = document.getElementById('windowsStartupModal');
         const statusElement = document.getElementById('windowsStartupStatus');
@@ -4599,7 +4591,7 @@ class WebSocketClient {
 
                 if (connectEpoch !== this._connectEpoch || this.ws !== connectedSocket) return;
 
-                // Install wizard reloads the page — never hand off or run init after halt
+                // A reboot into /launch must not hand off or run init after halt
                 if (this.isManualClose || this._isStartupHaltedForInstall()) {
                     return;
                 }
@@ -4963,8 +4955,8 @@ class WebSocketClient {
     }
 
     /**
-     * Hard-stop connect/reconnect/startup handoff for OS install — page will reload when install finishes.
-     * suppressAutoReconnect + disconnect; public/scripts/comp/serviceWorkerManager.js (_showInstallWizardUi)
+     * Hard-stop connect/reconnect/startup handoff while /app reboots into /launch.
+     * suppressAutoReconnect + disconnect; public/scripts/comp/serviceWorkerManager.js (_rebootIntoInstaller)
      */
     haltStartupForInstallReload() {
         this.startupHaltedForInstall = true;
@@ -4974,11 +4966,7 @@ class WebSocketClient {
     }
 
     _isStartupHaltedForInstall() {
-        if (this.startupHaltedForInstall) {
-            return true;
-        }
-        // serviceWorkerManager._isInstallWizardActive: public/scripts/comp/serviceWorkerManager.js
-        return Boolean(window.serviceWorkerManager && window.serviceWorkerManager._isInstallWizardActive());
+        return this.startupHaltedForInstall === true;
     }
 
     reconnect() {

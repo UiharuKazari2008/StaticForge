@@ -966,85 +966,6 @@ body.desktop-mode.windows-startup.vista-logon {
     background: #000000;
 }
 
-/* Dreamscape OS installation wizard (>20 files during boot) */
-#dreamscapeOsInstallWizardModal {
-    max-width: calc(100vw - 48px);
-    z-index: var(--z-modal-top) !important;
-}
-
-#dreamscapeOsInstallWizardModal .connection-dial-main {
-    min-height: 370px;
-}
-
-.dreamscape-os-install-wizard-intro {
-    flex: 0 0 auto;
-}
-
-.dreamscape-os-install-wizard-intro-lead {
-    margin: 0 0 8px;
-    font-size: 15px;
-    font-weight: 600;
-    color: #474747;
-}
-
-.dreamscape-os-install-wizard-intro-copy {
-    margin: 0;
-    font-size: 13px;
-    line-height: 1.45;
-    color: #474747;
-}
-
-.dreamscape-os-install-wizard-body {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    min-height: 0;
-    margin-top: auto;
-    flex: 0 0 auto;
-    padding-top: 16px;
-}
-
-.dreamscape-os-install-wizard-phase {
-    font-size: 14px;
-    font-weight: 500;
-    color: #474747;
-}
-
-.dreamscape-os-install-wizard-detail {
-    font-size: 13px;
-    color: #474747;
-}
-
-.dreamscape-os-install-wizard-eta {
-    font-size: 12px;
-    color: #474747;
-    min-height: 1.2em;
-}
-
-.dreamscape-os-install-wizard-eta:empty {
-    display: none;
-}
-
-.dreamscape-os-install-wizard-progress {
-    width: 100%;
-    margin-top: 4px;
-}
-
-#dreamscapeOsInstallWizardModal .connection-dial-art {
-    width: 165px;
-    height: 370px;
-}
-
-body.dreamscape-install-wizard {
-    overflow: hidden;
-}
-
-/* Hide all other modals (including .on-top boot dialogs) while the install wizard is active */
-body.dreamscape-install-wizard .modal:not(#dreamscapeOsInstallWizardModal):not(#bootUiDebugWindow) {
-    display: none !important;
-    pointer-events: none !important;
-}
-
 #bootUiDebugWindow {
     z-index: var(--z-modal-top) !important;
 }
@@ -1117,8 +1038,8 @@ body.desktop-mode.session-suspended.vista-logon::before {
 }
 
 /* :is() carries the id specificity, so this beats the dialogs' own `#id { z-index: … !important }` */
-body.desktop-mode.session-suspended :is(.modal.boot-dialog, #windowsStartupModal, #dreamscapeOsInstallWizardModal, #bootUiDebugWindow),
-body.desktop-mode.workstation-locked :is(.modal.boot-dialog, #windowsStartupModal, #dreamscapeOsInstallWizardModal, #bootUiDebugWindow) {
+body.desktop-mode.session-suspended :is(.modal.boot-dialog, #windowsStartupModal, #bootUiDebugWindow),
+body.desktop-mode.workstation-locked :is(.modal.boot-dialog, #windowsStartupModal, #bootUiDebugWindow) {
     z-index: 2147482001 !important;
 }
 
