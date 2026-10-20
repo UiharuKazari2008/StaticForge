@@ -125,13 +125,6 @@
         open: () => navigate('appearance')
     });
     registerItem({
-        id: 'mouse',
-        name: 'Mouse',
-        image: '/static_images/app_icons/64/vista-mouse.webp',
-        description: 'Choose the pointer scheme: Vista, Classic, or Posy.',
-        open: () => navigate('mouse')
-    });
-    registerItem({
         id: 'sound',
         name: 'Sound',
         image: '/static_images/app_icons/64/vista-sound.webp',

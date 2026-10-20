@@ -2640,9 +2640,14 @@ function autoResizeTextarea(textarea, _minHeight = 70, extraContainerHeight = 0,
 
     // For director / text-overlay prompts, use CSS min-height (avoid getComputedStyle unless needed)
     if (isDirectorPrompt || isTextOverlayPrompt) {
-        const computedStyle = window.getComputedStyle(textarea);
-        const cssMinHeight = parseFloat(computedStyle.minHeight) || 24;
-        minHeight = cssMinHeight;
+        if (container && container._promptMinHeight) {
+            minHeight = container._promptMinHeight;
+        } else {
+            const computedStyle = getComputedStyle(textarea);
+            const cssMinHeight = parseFloat(computedStyle.minHeight) || 24;
+            minHeight = cssMinHeight;
+            if (container) container._promptMinHeight = minHeight;
+        }
     }
 
     const valueLen = textarea.value.length;
@@ -2655,6 +2660,19 @@ function autoResizeTextarea(textarea, _minHeight = 70, extraContainerHeight = 0,
     const needsGrow = overflowPx > 1;
     const needsShrinkCheck = !!(prevMeta && valueLen < prevMeta.len);
     const toolbarChanged = !!(prevMeta && prevMeta.toolbarVis !== toolbarVis);
+
+    if (!layoutOnly && needsShrinkCheck && !needsGrow && !toolbarChanged && !textarea._autoResizeForceShrink) {
+        textarea._autoResizeMeta = { len: valueLen, height: priorEffectivePx, toolbarVis };
+        if (!textarea._autoResizeShrinkTimer) {
+            textarea._autoResizeShrinkTimer = setTimeout(() => {
+                textarea._autoResizeShrinkTimer = null;
+                textarea._autoResizeForceShrink = true;
+                autoResizeTextarea(textarea, _minHeight, extraContainerHeight, false, deferContainerSync);
+                textarea._autoResizeForceShrink = false;
+            }, 80);
+        }
+        return false;
+    }
 
     if (!layoutOnly && !needsGrow && !needsShrinkCheck && !toolbarChanged
         && prevMeta && prevMeta.height === priorEffectivePx) {

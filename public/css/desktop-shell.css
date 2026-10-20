@@ -2125,7 +2125,7 @@ html[data-glass="basic"] #startMenu.start-menu {
     color: #fff;
     font: 12px 'Segoe UI', 'Noto Sans', sans-serif;
     text-shadow: 0 1px 1px rgba(0, 0, 0, 0.45);
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 .winlogon-block-go {

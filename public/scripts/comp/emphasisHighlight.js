@@ -44,13 +44,22 @@ function promptNeedsFullSyntaxHighlight(text) {
 // and carets go mid-grey, strong fills are capped so dark text stays readable, and the solid
 // syntax chips become tints. Only colours change; the overlay's metrics are untouched.
 let emphasisLightSurface = false;
+let emphasisLightSurfaceGen = 0;
+
+function invalidateLightPromptSurfaceCache() {
+    emphasisLightSurfaceGen++;
+}
 
 function isLightPromptSurface(textarea) {
     const host = textarea && textarea.closest
         ? textarea.closest('.prompt-textarea-container, .character-prompt-textarea-container')
         : null;
     if (!host || typeof getComputedStyle !== 'function') return false;
-    return getComputedStyle(host).getPropertyValue('--prompt-surface').trim() === 'light';
+    const cached = host._lightPromptSurface;
+    if (cached && cached.gen === emphasisLightSurfaceGen) return cached.value;
+    const light = getComputedStyle(host).getPropertyValue('--prompt-surface').trim() === 'light';
+    host._lightPromptSurface = { gen: emphasisLightSurfaceGen, value: light };
+    return light;
 }
 
 /** highlightEmphasisInText in the palette of the box the textarea sits in. */
@@ -1149,3 +1158,6 @@ function highlightEmphasisInText(text, weightSource) {
 
     return highlightedText;
 }
+
+document.addEventListener('workspaceChanged', invalidateLightPromptSurfaceCache);
+document.addEventListener('workspaceUpdated', invalidateLightPromptSurfaceCache);

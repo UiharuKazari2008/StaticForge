@@ -25,7 +25,7 @@ try {
     write(root, 'public/images/login_array.jpg', 'jpeg');
     write(root, '.cache/runtime-assets/static_images/app_icons/icon-32.webp', 'webp');
     write(root, 'public/scripts/vendor/fflate.js', 'exports');
-    write(root, 'public/cursors/vista/aero_arrow.cur', 'cur');
+    write(root, 'public/css/toasts.css', 'toast{}');
     write(root, 'public/sounds/vista/Windows Notify.wav', 'wav');
 
     const entries = [
@@ -37,8 +37,8 @@ try {
         { url: '/.login.jpg', hash: 'c' },
         { url: '/static_images/app_icons/icon-32.webp', hash: 'd' },
         { url: '/protected/fflate.js', hash: 'e' },
-        { url: '/cursors/vista/aero_arrow.cur', hash: 'f' },
-        { url: '/cursors/vista/aero_link.cur', hash: 'g' },
+        { url: '/css/toasts.css', hash: 'f' },
+        { url: '/css/missing-toasts.css', hash: 'g' },
         { url: '/sounds/vista/Windows%20Ding.wav', hash: 'h' },
         { url: '/sounds/vista/Windows%20Notify.wav', hash: 'i' },
         { url: '/css/../../.env', hash: 'i' },
@@ -55,12 +55,12 @@ try {
         '/.login.jpg',
         '/static_images/app_icons/icon-32.webp',
         '/protected/fflate.js',
-        '/cursors/vista/aero_arrow.cur',
+        '/css/toasts.css',
         '/sounds/vista/Windows%20Notify.wav'
     ]);
     assert.ok(!urls.includes('/launch'), 'missing launch.html is omitted');
     assert.ok(!urls.includes('/css/missing.css'));
-    assert.ok(!urls.includes('/cursors/vista/aero_link.cur'));
+    assert.ok(!urls.includes('/css/missing-toasts.css'));
     assert.ok(!urls.includes('/sounds/vista/Windows%20Ding.wav'), 'a sound not on disk is omitted');
     assert.strictEqual(filter.manifestEntryExists(root, { url: '/css/../../.env' }), false);
     // /protected/fflate.js resolves only to the vendored copy (GH #336)
@@ -70,17 +70,17 @@ try {
         { url: '/protected/fflate.js', hash: 'e' },
         { url: '/protected/t5_tokenizer.json', hash: 't' },
         { url: '/css/app.css', hash: 'a' },
-        { url: '/cursors/vista/aero_arrow.cur', hash: 'f' }
+        { url: '/css/toasts.css', hash: 'f' }
     ]);
     assert.strictEqual(marked[0].auth, true);
     assert.strictEqual(marked[1].auth, true);
     assert.strictEqual(marked[2].auth, undefined);
-    assert.strictEqual(marked[3].auth, undefined, 'cursor packs are public static files');
+    assert.strictEqual(marked[3].auth, undefined, 'css rows are public static files');
 
     const server = fs.readFileSync(path.join(__dirname, '..', 'web_server.js'), 'utf8');
     assert.ok(server.includes('filterExistingManifestEntries'), 'manifest builder filters on disk');
     assert.ok(server.includes('markAuthGatedEntries'), 'protected rows are marked auth');
-    assert.ok(server.includes('listCursorPackFiles'), 'cursor packs are added to the cache manifest');
+    assert.ok(!server.includes('listCursorPackFiles'), 'cursor packs are not in the cache manifest');
     assert.ok(server.includes('resolveLoginSpritePath'), 'login sprite falls back to the committed seed');
 
     const seeds = fs.readFileSync(path.join(__dirname, 'fetch-seeds.sh'), 'utf8');

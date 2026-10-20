@@ -30,15 +30,13 @@ Shipped assets a fresh clone must already contain (these used to live only on th
 
 | Path | Role |
 |------|------|
-| `public/cursors/vista/*.cur` and `*.ani` | Vista pointer scheme (`/cursors/vista/...`) |
 | `public/images/login_array.jpg` | Neutral 1024x1024 login tile. `/.login.jpg` serves `.cache/login_array.jpg` once the gallery rebuilds a sheet |
 | `public/data/nai-quickstart-v5.json` | Quick Start catalog |
 | `public/sounds/planet/innerlight.opus` | Planet switcher bed |
 | `public/scripts/comp/blockContainer.js` | Login blocks. The preload URL is `/scripts/comp/blockContainer.js` |
 
 The install manifest (`OPTIONS /`, `buildServiceWorkerCacheManifest`) lists static files the
-service worker precaches. That includes the committed Vista cursor pack (`/cursors/vista/...`,
-from `public/cursors/vista`) and a Posy pack when those files are on disk in `public/cursors/posy`.
+service worker precaches.
 Device splash and screenshot images under `public/static_images/` stay out: each client only
 needs one size. Any row whose file is not on disk is omitted. The service worker gives each
 install fetch 20s and treats HTTP 404 as absent: that file is not retried, and the installer

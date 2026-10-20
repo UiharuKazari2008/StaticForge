@@ -12,6 +12,9 @@
  * outside the viewport (plus a margin) it gets .offscreen-paused (public/css/hidden.css:
  * animation-play-state: paused), and the class comes off as soon as it is back in view. A
  * looping animation resumes from where it paused, which is invisible.
+ *
+ * One-shot animations (gallery fade-in, Director row arrive, context menus) are ignored so
+ * they do not join the observer. Class toggles are flushed on rAF.
  */
 (function () {
     'use strict';
@@ -20,13 +23,40 @@
 
     const PAUSED_CLASS = 'offscreen-paused';
     const watched = new WeakSet();
+    const pending = [];
+    let flushRaf = 0;
+    const SKIP_ANIMATION = {
+        'fade-in': true,
+        'fadeIn': true,
+        'slide-in': true,
+        'slideIn': true,
+        'director-row-arrive': true,
+        'director-composer-fade-in': true,
+        'submenuFadeIn': true,
+        'contextMenuFadeIn': true,
+        'contextMenuFadeOut': true,
+        'confettiFall': true,
+        'sakuraPetalFall': true
+    };
 
     const io = new IntersectionObserver((entries) => {
         for (let i = 0; i < entries.length; i++) {
             const el = entries[i].target;
             const off = !entries[i].isIntersecting;
-            if (el.classList.contains(PAUSED_CLASS) !== off) el.classList.toggle(PAUSED_CLASS, off);
+            if (el.classList.contains(PAUSED_CLASS) !== off) pending.push([el, off]);
         }
+        if (!pending.length || flushRaf) return;
+        flushRaf = requestAnimationFrame(() => {
+            flushRaf = 0;
+            for (let i = 0; i < pending.length; i++) {
+                const pair = pending[i];
+                if (!watched.has(pair[0])) continue;
+                if (pair[0].classList.contains(PAUSED_CLASS) !== pair[1]) {
+                    pair[0].classList.toggle(PAUSED_CLASS, pair[1]);
+                }
+            }
+            pending.length = 0;
+        });
     }, { rootMargin: '64px' });
 
     function hasInfiniteAnimation(el) {
@@ -52,9 +82,18 @@
         if (el.classList.contains(PAUSED_CLASS)) el.classList.remove(PAUSED_CLASS);
     }
 
-    document.addEventListener('animationstart', (event) => watch(event.target), true);
-    document.addEventListener('animationend', (event) => unwatchIfDone(event.target), true);
-    document.addEventListener('animationcancel', (event) => unwatchIfDone(event.target), true);
+    document.addEventListener('animationstart', (event) => {
+        if (SKIP_ANIMATION[event.animationName]) return;
+        watch(event.target);
+    }, true);
+    document.addEventListener('animationend', (event) => {
+        if (SKIP_ANIMATION[event.animationName]) return;
+        unwatchIfDone(event.target);
+    }, true);
+    document.addEventListener('animationcancel', (event) => {
+        if (SKIP_ANIMATION[event.animationName]) return;
+        unwatchIfDone(event.target);
+    }, true);
 
     // Animations that started before this script ran
     if (typeof document.getAnimations === 'function') {

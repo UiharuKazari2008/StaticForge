@@ -23,9 +23,10 @@ assert.ok(cpl.taskLinkHtml('Taskbar and Start Menu', 'nav', 'taskbar').includes(
 // the items: Personalization and Global Settings open their pages
 const ids = cpl._test.items.map((i) => i.id);
 // Global Settings is split into Vista's items (Yukimi 2026-10-13), one group of the global sections each
-for (const id of ['personalization', 'appearance', 'mouse', 'sound', 'taskbar', 'keyboard']) assert.ok(ids.includes(id), `${id} is listed`);
+for (const id of ['personalization', 'appearance', 'sound', 'taskbar', 'keyboard']) assert.ok(ids.includes(id), `${id} is listed`);
 assert.ok(!ids.includes('global-settings'), 'the Global Settings item is gone');
-for (const id of ['appearance', 'mouse', 'sound', 'taskbar', 'keyboard']) {
+assert.ok(!ids.includes('mouse'), 'pointer schemes were dropped');
+for (const id of ['appearance', 'sound', 'taskbar', 'keyboard']) {
     assert.ok(String(cpl._test.items.find((i) => i.id === id).open).includes(`navigate('${id}')`), `${id} opens its own page`);
 }
 assert.ok(!/openDesktopSettingsModal/.test(String(cpl._test.items.find((i) => i.id === 'personalization').open)), 'Personalization navigates instead of opening the old window');
@@ -33,13 +34,13 @@ assert.ok(!/openDesktopSettingsModal/.test(String(cpl._test.items.find((i) => i.
 // wiring in modalUtils.js / app.html / CSS
 const js = read('public/scripts/comp/modalUtils.js');
 assert.ok(js.includes("cpl.registerPage('personalization'") && /GLOBAL_PAGES\.forEach\(\(\[id, name, heading, intro\]\) => \{\s*cpl\.registerPage\(id/.test(js), 'the pages are registered');
-for (const id of ['appearance', 'mouse', 'sound', 'taskbar', 'keyboard']) assert.ok(js.includes(`['${id}', `), `${id} page`);
+for (const id of ['appearance', 'sound', 'taskbar', 'keyboard']) assert.ok(js.includes(`['${id}', `), `${id} page`);
 assert.ok(js.includes("mountDesktopSettingsInControlPanel(main, 'global', id)"), 'each global page mounts its group');
 assert.ok(/offGroup\(section\)/.test(js) && js.includes('section.dataset.desktopSettingsGroup !== desktopSettingsActiveGroup'), 'the scope switch hides the other groups');
 assert.ok(js.includes("cpl.open(scope === 'global' ? 'appearance' : 'personalization')"), 'openDesktopSettingsModal opens the page');
 const html = read('public/app.html');
 const groups = [...html.matchAll(/data-desktop-settings-scope="global" data-desktop-settings-group="([a-z]+)"/g)].map((m) => m[1]);
-assert.deepStrictEqual(groups, ['appearance', 'appearance', 'mouse', 'sound', 'taskbar', 'taskbar', 'taskbar', 'keyboard'], 'every global section has its group');
+assert.deepStrictEqual(groups, ['appearance', 'appearance', 'sound', 'taskbar', 'taskbar', 'taskbar', 'keyboard'], 'every global section has its group');
 assert.ok(/const layout = document\.getElementById\('desktopSettingsLayout'\) \|\| modal;/.test(js), 'the scope switch works wherever the forms are');
 assert.ok((js.match(/finishDesktopSettingsDialog\(\);/g) || []).length >= 5, 'saving / removing the wallpaper only closes the window when it is the one showing');
 assert.ok(read('public/app.html').includes('<div id="desktopSettingsLayout" class="desktop-settings-layout">'), 'the forms have their id');

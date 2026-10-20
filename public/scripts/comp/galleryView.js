@@ -766,6 +766,7 @@ function processNextPlaceholders() {
                     ensureGalleryItemComplete(placeholderData.element, image, fileIndex);
                 }
                 placeholderData.element.classList.remove('gallery-placeholder');
+                if (intersectionObserver) intersectionObserver.unobserve(placeholderData.element);
                 if (!galleryItemHasImageWork(placeholderData.element)) {
                     if (image) {
                         // Start async image loading with completion callback
@@ -2822,6 +2823,7 @@ async function addNewGalleryItemAfterGeneration(newImage) {
         ensureGalleryItemComplete(newItem, newImage, 0);
     }
     newItem.classList.remove('gallery-placeholder');
+    if (intersectionObserver) intersectionObserver.unobserve(newItem);
     if (!galleryItemHasImageWork(newItem)) {
         addImgToGalleryItemAsync(newItem, newImage);
     }
@@ -3506,10 +3508,9 @@ function displayCurrentPageOptimized() {
     // Initialize intersection observer for better performance
     initIntersectionObserver();
 
-    // Observe all gallery items for intersection changes
     if (intersectionObserver) {
         items.forEach(item => {
-            intersectionObserver.observe(item);
+            if (item.classList.contains('gallery-placeholder')) intersectionObserver.observe(item);
         });
     }
 
@@ -5533,6 +5534,10 @@ function initIntersectionObserver() {
         // Only trigger virtual scroll updates when items become visible/hidden
         let needsUpdate = false;
         entries.forEach(entry => {
+            if (!entry.target.classList.contains('gallery-placeholder')) {
+                intersectionObserver.unobserve(entry.target);
+                return;
+            }
             if (entry.isIntersecting !== entry.target.dataset.wasIntersecting) {
                 needsUpdate = true;
                 entry.target.dataset.wasIntersecting = entry.isIntersecting;
@@ -7494,8 +7499,7 @@ function displayGalleryFromStartIndex(startIndex, highlightTargetItem = false) {
         initIntersectionObserver();
 
         if (intersectionObserver) {
-            const allItems = gallery.querySelectorAll('.gallery-item, .gallery-placeholder');
-            allItems.forEach(item => {
+            gallery.querySelectorAll('.gallery-placeholder').forEach((item) => {
                 intersectionObserver.observe(item);
             });
         }
