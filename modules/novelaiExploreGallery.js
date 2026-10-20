@@ -31,6 +31,7 @@ function initNovelaiExploreGallery(cacheRootDir, options = {}) {
     if (!cacheRootDir) return;
     pageCacheDir = path.join(cacheRootDir, 'novelai_explore_gallery');
     imageCacheDir = path.join(cacheRootDir, 'explore_files');
+    imageNameIndex = null;
     try {
         fs.mkdirSync(pageCacheDir, { recursive: true });
         fs.mkdirSync(imageCacheDir, { recursive: true });
@@ -414,16 +415,42 @@ function publicBlobUrl(id, ext) {
     return `/cache/explore_files/blob_${id}${ext || ''}`;
 }
 
-function findExistingImageFile(kind, id) {
-    if (!imageCacheDir) return null;
-    const prefix = kind === 'blob' ? `blob_${id}` : `thumb_${id}`;
+// File names in imageCacheDir by base name ("thumb_<id>" / "blob_<id>" -> name with ext).
+// Read once; this module is the only writer. normalizeResult looked up two files per
+// search result with a readdirSync of the whole cache each time (~200ms stalls).
+let imageNameIndex = null;
+
+function imageBaseName(name) {
+    const dot = name.indexOf('.');
+    return dot < 0 ? name : name.slice(0, dot);
+}
+
+function noteImageFile(name) {
+    if (!imageNameIndex) return;
+    const base = imageBaseName(name);
+    if (!imageNameIndex.has(base)) imageNameIndex.set(base, name);
+}
+
+function loadImageNameIndex() {
+    if (imageNameIndex) return imageNameIndex;
+    imageNameIndex = new Map();
     try {
-        const names = fs.readdirSync(imageCacheDir);
-        const hit = names.find((n) => n === prefix || n.startsWith(`${prefix}.`));
-        if (hit) return path.join(imageCacheDir, hit);
+        for (const name of fs.readdirSync(imageCacheDir)) noteImageFile(name);
     } catch {
         /* empty */
     }
+    return imageNameIndex;
+}
+
+function findExistingImageFile(kind, id) {
+    if (!imageCacheDir) return null;
+    const prefix = kind === 'blob' ? `blob_${id}` : `thumb_${id}`;
+    const index = loadImageNameIndex();
+    const hit = index.get(prefix);
+    if (!hit) return null;
+    const filePath = path.join(imageCacheDir, hit);
+    if (fs.existsSync(filePath)) return filePath;
+    index.delete(prefix);
     return null;
 }
 
@@ -1240,7 +1267,8 @@ async function ensureExploreImage(id, kind, opts = {}) {
         const prefix = kind === 'blob' ? `blob_${postId}` : `thumb_${postId}`;
         const fileName = `${prefix}${ext}`;
         const filePath = path.join(imageCacheDir, fileName);
-        fs.writeFileSync(filePath, res.body);
+        await fs.promises.writeFile(filePath, res.body);
+        noteImageFile(fileName);
 
         return {
             publicUrl: `/cache/explore_files/${fileName}`,
@@ -1732,13 +1760,7 @@ function thumbExtById(ids) {
     const wanted = new Set(ids);
     const map = new Map();
     if (!imageCacheDir || !wanted.size) return map;
-    let names = [];
-    try {
-        names = fs.readdirSync(imageCacheDir);
-    } catch {
-        return map;
-    }
-    names.forEach((name) => {
+    loadImageNameIndex().forEach((name) => {
         const match = /^thumb_([0-9a-fA-F-]{36})(\.[a-zA-Z0-9]+)?$/.exec(name);
         if (!match || !wanted.has(match[1])) return;
         if (!map.has(match[1])) map.set(match[1], match[2] || '');
@@ -1937,6 +1959,7 @@ function clearExploreGalleryCache(options = {}) {
                 fs.unlinkSync(path.join(imageCacheDir, name));
                 clearedImages += 1;
             }
+            imageNameIndex = null;
         } catch (e) {
             console.warn('novelaiExploreGallery: clear image cache failed', e.message);
         }

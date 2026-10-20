@@ -94,9 +94,29 @@ function writeIndex(index, indexPath) {
     fs.renameSync(tmp, file);
 }
 
+// Read-only view, reparsed only when index.json changes (mtime/size; the detached
+// Xi host writes it too). readChatWorkspace runs on every MCP call while Xi has a
+// session. Never edit what this returns.
+let indexPeek = null;
+
+function peekIndex() {
+    const file = layout().indexPath;
+    let stamp = null;
+    try {
+        const st = fs.statSync(file);
+        stamp = `${st.mtimeMs}:${st.size}`;
+    } catch (_) {
+        return { chats: [] };
+    }
+    if (!indexPeek || indexPeek.file !== file || indexPeek.stamp !== stamp) {
+        indexPeek = { file, stamp, index: readIndex(file) };
+    }
+    return indexPeek.index;
+}
+
 function hasChat(sessionId) {
     if (!sessionId) return false;
-    return readIndex().chats.some((chat) => chat.id === sessionId);
+    return peekIndex().chats.some((chat) => chat.id === sessionId);
 }
 
 function activeSessionId() {
@@ -106,7 +126,7 @@ function activeSessionId() {
 function activeChatBrief() {
     const sessionId = activeSessionId();
     if (!sessionId) return null;
-    const chat = readIndex().chats.find((item) => item.id === sessionId);
+    const chat = peekIndex().chats.find((item) => item.id === sessionId);
     if (!chat) return null;
     const choice = chat.choice && typeof chat.choice === 'object' ? chat.choice : {};
     return {
@@ -143,7 +163,7 @@ function activeRuntime() {
 function readChatWorkspace(sessionId) {
     const id = String(sessionId || '').trim();
     if (!id) return '';
-    const chat = readIndex().chats.find((item) => item.id === id);
+    const chat = peekIndex().chats.find((item) => item.id === id);
     return chat && typeof chat.workspaceId === 'string' ? chat.workspaceId.trim() : '';
 }
 
