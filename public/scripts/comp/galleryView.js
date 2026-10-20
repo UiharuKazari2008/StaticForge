@@ -876,14 +876,28 @@ function updateGalleryCatchupBusyLine() {
     desktopTaskMonitor.sync();
 }
 
+
+// JULES: perf sweep - O(N) array mapping replaced with O(N) loop with preallocated array
+function getFilteredImagesToProcess() {
+    if (window.filteredImageIndices && Array.isArray(window.filteredImageIndices) && window.filteredImageIndices.length > 0) {
+        const result = new Array(window.filteredImageIndices.length);
+        const sourceArray = window.originalAllImages || allImages;
+        let count = 0;
+        for (let i = 0; i < window.filteredImageIndices.length; i++) {
+            const img = sourceArray[window.filteredImageIndices[i]];
+            if (img) result[count++] = img;
+        }
+        result.length = count;
+        return result;
+    }
+    return window.originalAllImages || allImages;
+}
+
 function triggerBuildGalleryNavigationCache() {
     // Build cache from filtered images if in search mode
     if (window.filteredImageIndices && window.filteredImageIndices.length > 0 && window.filteredImageIndices.length < (window.originalAllImages ? window.originalAllImages.length : allImages.length)) {
         // We're in search mode - build cache from filtered array
-        const filteredArray = window.filteredImageIndices.map(idx => {
-            const sourceArray = window.originalAllImages || allImages;
-            return sourceArray[idx];
-        }).filter(img => img !== undefined);
+        const filteredArray = getFilteredImagesToProcess();
         buildGalleryNavigationCache(filteredArray);
     } else {
         buildGalleryNavigationCache(allImages);
@@ -3646,9 +3660,7 @@ function wireGalleryItemCheckbox(item, checkbox, filename, image) {
             let lastSelectedArrayIndex = null;
             if (selectedImages.size > 0) {
                 // Find the last selected item by checking allImages array
-                const sourceArray = window.filteredImageIndices && window.filteredImageIndices.length > 0
-                    ? window.filteredImageIndices.map(idx => allImages[idx]).filter(img => img)
-                    : allImages;
+                const sourceArray = getFilteredImagesToProcess();
 
                 // Find both the lowest and highest selected indices
                 let lowestSelectedIndex = null;
@@ -3696,9 +3708,7 @@ function wireGalleryItemCheckbox(item, checkbox, filename, image) {
                 const [start, end] = [lastSelectedArrayIndex, clickedArrayIndex].sort((a, b) => a - b);
 
                 // Get the source array (filtered or full)
-                const sourceArray = window.filteredImageIndices && window.filteredImageIndices.length > 0
-                    ? window.filteredImageIndices.map(idx => allImages[idx]).filter(img => img)
-                    : allImages;
+                const sourceArray = getFilteredImagesToProcess();
 
                 // Select all items in range using array indices
                 for (let i = start; i <= end; i++) {
@@ -6433,9 +6443,7 @@ async function handleImageSelection(image, isSelected, event) {
         let lastSelectedArrayIndex = null;
         if (selectedImages.size > 0) {
             // Find the last selected item by checking allImages array
-            const sourceArray = window.filteredImageIndices && window.filteredImageIndices.length > 0
-                ? window.filteredImageIndices.map(idx => allImages[idx]).filter(img => img)
-                : allImages;
+            const sourceArray = getFilteredImagesToProcess();
 
             // Find both the lowest and highest selected indices
             let lowestSelectedIndex = null;
@@ -6483,9 +6491,7 @@ async function handleImageSelection(image, isSelected, event) {
             const [start, end] = [lastSelectedArrayIndex, clickedArrayIndex].sort((a, b) => a - b);
 
             // Get the source array (filtered or full)
-            const sourceArray = window.filteredImageIndices && window.filteredImageIndices.length > 0
-                ? window.filteredImageIndices.map(idx => allImages[idx]).filter(img => img)
-                : allImages;
+            const sourceArray = getFilteredImagesToProcess();
 
             // Select all items in range using array indices
             for (let i = start; i <= end; i++) {
@@ -6575,9 +6581,7 @@ function findImageArrayIndex(filename) {
     if (!filename) return -1;
 
     // Get the source array (filtered or full)
-    const sourceArray = window.filteredImageIndices && window.filteredImageIndices.length > 0
-        ? window.filteredImageIndices.map(idx => allImages[idx]).filter(img => img)
-        : allImages;
+    const sourceArray = getFilteredImagesToProcess();
 
     // Find the index in the source array
     return sourceArray.findIndex(img => {
@@ -6599,9 +6603,7 @@ function isImageSelected(filename) {
 function getSelectedFilenames() {
     if (isAllSelected) {
         // Return all filenames (excluding any explicitly deselected)
-        const images = window.filteredImageIndices && Array.isArray(window.filteredImageIndices) && window.filteredImageIndices.length > 0
-            ? window.filteredImageIndices.map(idx => allImages[idx])
-            : allImages;
+        const images = getFilteredImagesToProcess();
         return images
             .filter(img => img != null)
             .map(img => img.filename || img.original || img.upscaled)
@@ -8841,9 +8843,7 @@ async function handleBulkScrapDestinationAction(subItem, target, event) {
 
 // Select a contiguous index range in the current filtered gallery order (merges with existing selection unless was "all selected")
 function bulkSelectFilteredIndexRange(startIndex, endIndex) {
-    const imagesToProcess = window.filteredImageIndices && Array.isArray(window.filteredImageIndices) && window.filteredImageIndices.length > 0
-        ? window.filteredImageIndices.map(idx => allImages[idx])
-        : allImages;
+    const imagesToProcess = getFilteredImagesToProcess();
     if (!imagesToProcess.length || startIndex > endIndex) return;
 
     const cappedStart = Math.max(0, startIndex);
@@ -9319,9 +9319,7 @@ function handleBulkActionsContextMenu(event) {
                 break;
             }
 
-            const imagesToProcess = window.filteredImageIndices && Array.isArray(window.filteredImageIndices) && window.filteredImageIndices.length > 0
-                ? window.filteredImageIndices.map(idx => allImages[idx])
-                : allImages;
+            const imagesToProcess = getFilteredImagesToProcess();
 
             bulkSelectFilteredIndexRange(clickedImageIndex + 1, imagesToProcess.length - 1);
             break;
@@ -9332,9 +9330,7 @@ function handleBulkActionsContextMenu(event) {
             isAllSelected = false;
 
             // Get all images
-            const imagesToProcess = window.filteredImageIndices && Array.isArray(window.filteredImageIndices) && window.filteredImageIndices.length > 0
-                ? window.filteredImageIndices.map(idx => allImages[idx])
-                : allImages;
+            const imagesToProcess = getFilteredImagesToProcess();
 
             // Create a new selection set
             const newSelection = new Set();
