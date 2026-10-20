@@ -72,7 +72,7 @@ function exchangeDsapBuildTabBarHtml(activeTabId) {
 }
 
 function exchangeDsapBuildShellHtml(activeTabId) {
-    return `<div data-dsap="exchange" class="dsap-root exchange-dsap">
+    return `<div data-dsap="exchange" class="dsap-root exchange-dsap win7">
   <div class="exchange-toolbar explorer-actions-header" role="toolbar">
     <div class="explorer-command-set" id="exchangeCommandSet"></div>
     <div class="explorer-command-set" id="exchangeCommandSetEnd"></div>

@@ -257,7 +257,9 @@ function exchangeFromList(login, from) {
 
 function exchangeToggleButton(label, on, onClick) {
     const btn = exchangeCreateButton('btn-secondary btn-small indicator', label);
-    btn.append(label);
+    const text = document.createElement('span');
+    text.textContent = label;
+    btn.appendChild(text);
     btn.dataset.state = on ? 'on' : 'off';
     btn.setAttribute('aria-pressed', on ? 'true' : 'false');
     btn.addEventListener('click', onClick);

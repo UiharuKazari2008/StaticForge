@@ -141,8 +141,8 @@
 }
 
 [data-dsap="exchange"] .exchange-table {
-    width: 100%;
-    table-layout: fixed;
+    width: max-content;
+    min-width: 100%;
     border-collapse: collapse;
 }
 
@@ -154,7 +154,12 @@
     vertical-align: middle;
 }
 
+[data-dsap="exchange"] .exchange-table .button-group {
+    width: max-content;
+}
+
 [data-dsap="exchange"] .exchange-cell-address {
+    max-width: 12rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
