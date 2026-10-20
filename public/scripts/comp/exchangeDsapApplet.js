@@ -1,8 +1,22 @@
 /**
  * Exchange Server DSAP — exchange.dreamscape.jp
- * Hosted in Grimoire. Section tabs are sub-routes.
+ * Hosted in Grimoire. Same SMF chrome as Data Management (data.dreamscape.jp).
+ *
+ * Shared CSS / classes (loaded the same way Data Management loads them):
+ *   css/dsap-smf.css via theme: 'dsap-smf'  (also in app.html)
+ *   dsap-root dsap-smf
+ *   dsap-smf-header / dsap-smf-header-branch / dsap-smf-header-tool
+ *   dsap-smf-tabbar / dsap-smf-tab / dsap-smf-tab-active
+ *   dsap-smf-toolbar / dsap-smf-btn / dsap-smf-btn-primary / dsap-smf-btn-small / dsap-smf-btn-danger
+ *   dsap-smf-section-hdr
+ *   dsap-smf-statusbox / dsap-smf-status-message / dsap-smf-status-error / dsap-smf-status-ok
+ *   dsap-smf-input
+ *   data-mgmt-ws-table  (shared data-table in dsap-smf.css)
+ *   data-mgmt-account-info-table / -label / -value  (Data Management property list)
+ *   form-row / form-group  (manual-modal.css + app.css, already in Grimoire)
+ *
  * UI + WS/MCP: public/scripts/comp/desktop-apps/exchange.js
- * Depends on: dsapRegistry.js
+ * Depends on: dsapRegistry.js, dsapSmfMarkup.js
  */
 
 const EXCHANGE_DSAP_URL = 'exchange.dreamscape.jp';
@@ -20,6 +34,9 @@ const EXCHANGE_DSAP_ALIASES = {
     status: 'overview',
     lists: 'aliases'
 };
+const EXCHANGE_DSAP_TAB_LABELS = Object.fromEntries(
+    EXCHANGE_DSAP_TABS.map((tab) => [tab.id, tab.label])
+);
 
 function exchangeDsapResolveActiveTab(host) {
     const queryTab = host && host.getQueryParam ? host.getQueryParam('tab') : null;
@@ -62,25 +79,33 @@ function exchangeDsapHostStub(match) {
     };
 }
 
-function exchangeDsapBuildTabBarHtml(activeTabId) {
-    const cells = EXCHANGE_DSAP_TABS.map((tab) => {
-        const selected = tab.id === activeTabId;
-        const icon = tab.icon ? `<i class="${tab.icon}" aria-hidden="true"></i> ` : '';
-        return `<button type="button" class="btn-secondary btn-small exchange-tab${selected ? ' active' : ''}" data-exchange-tab="${tab.id}" role="tab" aria-selected="${selected ? 'true' : 'false'}">${icon}${tab.label}</button>`;
-    }).join('');
-    return `<div class="exchange-tabs" id="exchangeTabBar" role="tablist">${cells}</div>`;
+function exchangeDsapBuildTabBar(activeTabId) {
+    // dsapSmfBuildTabBar: public/scripts/comp/dsapSmfMarkup.js
+    return dsapSmfBuildTabBar(EXCHANGE_DSAP_TABS, activeTabId, {
+        tabBarId: 'exchangeTabBar',
+        dataAttr: 'data-exchange-tab'
+    });
 }
 
 function exchangeDsapBuildShellHtml(activeTabId) {
-    return `<div data-dsap="exchange" class="dsap-root exchange-dsap win7">
-  <div class="exchange-toolbar explorer-actions-header" role="toolbar">
-    <div class="explorer-command-set" id="exchangeCommandSet"></div>
-    <div class="explorer-command-set" id="exchangeCommandSetEnd"></div>
-  </div>
-  ${exchangeDsapBuildTabBarHtml(activeTabId)}
-  <div class="exchange-inset-panel" id="exchangeMain"></div>
-  <div class="exchange-status-bar" id="exchangeStatus">Ready</div>
-</div>`;
+    const tabId = activeTabId || 'overview';
+    const branchTitle = typeof DSAP_SMF_BRANCH_EXCHANGE !== 'undefined'
+        ? DSAP_SMF_BRANCH_EXCHANGE
+        : 'Exchange Server';
+    // dsapSmfBuildRootOpen / Header / Toolbar / StatusBox / RootClose: public/scripts/comp/dsapSmfMarkup.js
+    return `${dsapSmfBuildRootOpen('exchange')}
+${dsapSmfBuildHeader({
+    branchTitle: branchTitle,
+    toolTitle: EXCHANGE_DSAP_TAB_LABELS[tabId] || 'Overview'
+})}
+${exchangeDsapBuildTabBar(tabId)}
+${dsapSmfBuildToolbar(
+    `<button type="button" class="dsap-smf-btn dsap-smf-btn-small" id="exchangeRefreshBtn"><i class="fas fa-rotate-right"></i> Refresh</button>`,
+    'exchangeCommandSet'
+)}
+<div class="exchange-view" id="exchangeMain"></div>
+${dsapSmfBuildStatusBox('Ready', 'exchangeStatusBox', 'exchangeStatus')}
+${dsapSmfBuildRootClose()}`;
 }
 
 const exchangeDsapDriver = {
@@ -92,27 +117,19 @@ const exchangeDsapDriver = {
         const activeTab = exchangeDsapResolveActiveTab(host);
         desktopExchange.section = activeTab;
 
-        const tabBar = root.querySelector('#exchangeTabBar');
-        if (tabBar && tabBar.dataset.exchangeWired !== '1') {
-            tabBar.dataset.exchangeWired = '1';
-            tabBar.addEventListener('click', (e) => {
-                const tab = e.target.closest('[data-exchange-tab]');
-                if (!tab) return;
-                host.navigate(exchangeDsapBuildTabUrl(tab.getAttribute('data-exchange-tab')));
-            });
-        }
+        // dsapSmfWireTabBar / dsapSmfSetActiveTab / dsapSmfUpdateHeaderTool: public/scripts/comp/dsapSmfMarkup.js
+        dsapSmfWireTabBar(root, '#exchangeTabBar', 'data-exchange-tab', exchangeDsapBuildTabUrl, host);
+        dsapSmfSetActiveTab(root, 'data-exchange-tab', activeTab);
+        dsapSmfUpdateHeaderTool(root, EXCHANGE_DSAP_TAB_LABELS[activeTab] || 'Overview');
 
         const toolbar = root.querySelector('#exchangeCommandSet');
-        if (toolbar && toolbar.dataset.exchangeWired !== '1') {
-            toolbar.dataset.exchangeWired = '1';
-            // exchangeCreateButton: public/scripts/comp/desktop-apps/exchange.js
-            const refreshBtn = exchangeCreateButton('btn-secondary btn-small explorer-command-btn', 'Refresh', 'fas fa-rotate-right');
-            refreshBtn.append('Refresh');
+        const refreshBtn = root.querySelector('#exchangeRefreshBtn');
+        if (refreshBtn && refreshBtn.dataset.exchangeWired !== '1') {
+            refreshBtn.dataset.exchangeWired = '1';
             refreshBtn.addEventListener('click', () => {
                 // exchangeLoadSection: public/scripts/comp/desktop-apps/exchange.js
                 exchangeLoadSection();
             });
-            toolbar.appendChild(refreshBtn);
         }
 
         // exchangeBindHost / exchangeLoadSection: public/scripts/comp/desktop-apps/exchange.js
@@ -120,8 +137,8 @@ const exchangeDsapDriver = {
             root: root,
             main: root.querySelector('#exchangeMain'),
             status: root.querySelector('#exchangeStatus'),
-            toolbar: toolbar,
-            toolbarEnd: root.querySelector('#exchangeCommandSetEnd')
+            statusBox: root.querySelector('#exchangeStatusBox'),
+            toolbar: toolbar
         });
         void exchangeLoadSection();
     },
@@ -142,11 +159,13 @@ function registerExchangeDsapApplet() {
     if (typeof registerDsap !== 'function') return;
     registerDsap({
         url: EXCHANGE_DSAP_URL,
+        theme: 'dsap-smf',
         getContent(match) {
             const activeTab = exchangeDsapResolveActiveTab(exchangeDsapHostStub(match || {}));
             return {
                 html: exchangeDsapBuildShellHtml(activeTab),
-                drivers: exchangeDsapDriver
+                drivers: exchangeDsapDriver,
+                baseBackground: '#eeeeee'
             };
         }
     });

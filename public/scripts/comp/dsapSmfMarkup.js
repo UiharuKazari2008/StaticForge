@@ -15,6 +15,7 @@ const DSAP_SMF_BRANCH_WIKI = 'Wiki Manager';
 const DSAP_SMF_BRANCH_PANTRY = 'Pantry';
 const DSAP_SMF_BRANCH_SIMILAR = 'Zanzou';
 const DSAP_SMF_BRANCH_MCP = 'MCP Connector';
+const DSAP_SMF_BRANCH_EXCHANGE = 'Exchange Server';
 
 const DSAP_SMF_DEFAULT_LOGO = '/static_images/logo_icon.png';
 

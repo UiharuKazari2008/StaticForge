@@ -1,165 +1,72 @@
-/* Dreamscape Exchange Server DSAP — public/scripts/comp/exchangeDsapApplet.js
-   + public/scripts/comp/desktop-apps/exchange.js.
-   Inset recipe matches eMotion / Dovecote (emotion.css L25-30, Vista override L186-190). */
+/* Exchange-specific leftovers only.
+   Shared DSAP chrome lives in css/dsap-smf.css (theme: 'dsap-smf') plus
+   form-row / form-group from css/manual-modal.css and css/app.css. */
 
-[data-dsap="exchange"] {
-    display: flex;
-    flex-direction: column;
-    box-sizing: border-box;
+[data-dsap="exchange"] .exchange-view {
+    padding: 4px 0 0;
+}
+
+/* Same two-column property list as Data Management's account info table
+   (dataMgmtDsapScopedCss in dataManagementDsapApplet.js). Those rules are
+   scoped to [data-dsap="data-mgmt"], so Exchange repeats them for the
+   same class names. */
+[data-dsap="exchange"] .data-mgmt-account-info-table {
     width: 100%;
-    max-width: 100%;
-    min-width: 0;
-    min-height: 0;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    margin-top: 5px;
+    background: #fff;
 }
 
-[data-dsap="exchange"] > * {
-    min-width: 0;
+[data-dsap="exchange"] .data-mgmt-account-info-table td {
+    padding: 4px 6px;
+    border: 1px solid #e2e8ee;
+    vertical-align: top;
 }
 
-[data-dsap="exchange"] .exchange-toolbar.explorer-actions-header {
-    display: flex;
-    flex: none;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--spacing-xs);
-    padding: var(--spacing-sm) var(--spacing-md);
-    overflow: auto;
-}
-
-[data-dsap="exchange"] .exchange-toolbar .explorer-command-set {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--spacing-xs);
-    min-width: 0;
-}
-
-[data-dsap="exchange"] .exchange-toolbar .explorer-command-set + .explorer-command-set {
-    margin-left: auto;
-}
-
-[data-dsap="exchange"] .exchange-mailbox-picker {
-    flex: 0 1 16rem;
-    justify-content: space-between;
-    max-width: 100%;
-}
-
-[data-dsap="exchange"] .exchange-tabs {
-    display: flex;
-    flex: none;
-    flex-wrap: wrap;
-    gap: var(--spacing-xs);
-    padding: 0 var(--spacing-md) var(--spacing-sm);
-}
-
-[data-dsap="exchange"] .exchange-tabs .exchange-tab {
-    flex: 0 1 auto;
-    min-width: 0;
-}
-
-[data-dsap="exchange"] .exchange-inset-panel {
-    /* Same inset recipe as Dovecote's list/viewer panes (dovecote.css) / eMotion. */
-    flex: 1 1 auto;
-    min-width: 0;
-    min-height: 0;
-    overflow: auto;
-    padding: var(--spacing-md);
-    background: var(--glass-layer-dark-4);
-    border: 1px solid var(--glass-border-4);
-    border-radius: var(--border-radius-md);
-}
-
-[data-dsap="exchange"] .exchange-inset-panel > h2 {
-    margin: 0 0 var(--spacing-sm);
-}
-
-[data-dsap="exchange"] .exchange-inset-panel > h3 {
-    margin: var(--spacing-md) 0 var(--spacing-xs);
-}
-
-[data-dsap="exchange"] .exchange-status-bar {
-    display: block;
-    flex: none;
-    overflow: hidden;
-    padding: var(--spacing-xs) var(--spacing-md);
-    text-overflow: ellipsis;
+[data-dsap="exchange"] .data-mgmt-account-info-label {
+    width: 34%;
+    font-weight: 600;
+    background: #f4f6f8;
+    color: var(--dsap-smf-context-bg, #336699);
     white-space: nowrap;
 }
 
-[data-dsap="exchange"] .exchange-stats {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(12rem, 100%), 1fr));
-    gap: var(--spacing-sm);
-    margin: 0 0 var(--spacing-md);
+[data-dsap="exchange"] .data-mgmt-account-info-value {
+    word-break: break-word;
 }
 
-[data-dsap="exchange"] .exchange-stat-label {
-    margin: 0 0 var(--spacing-xs);
-    opacity: 0.85;
-}
-
-[data-dsap="exchange"] .exchange-stat-value {
-    min-width: 0;
-    overflow-wrap: anywhere;
-}
-
-[data-dsap="exchange"] .exchange-form-row,
-[data-dsap="exchange"] .exchange-toggle-row {
-    display: flex;
+[data-dsap="exchange"] .form-row {
     flex-wrap: wrap;
-    align-items: flex-end;
-    gap: var(--spacing-xs);
     min-width: 0;
     margin: 0 0 var(--spacing-sm);
 }
 
-[data-dsap="exchange"] .exchange-field {
-    display: flex;
+[data-dsap="exchange"] .form-row .form-group {
     flex: 1 1 8rem;
-    flex-direction: column;
-    gap: var(--spacing-xs);
     min-width: 0;
 }
 
-[data-dsap="exchange"] .exchange-field .form-control,
-[data-dsap="exchange"] .exchange-signature-input {
+[data-dsap="exchange"] .form-row .dsap-smf-input {
     width: 100%;
     min-width: 0;
-}
-
-[data-dsap="exchange"] .exchange-signature-input {
-    display: block;
-    margin: 0 0 var(--spacing-sm);
 }
 
 [data-dsap="exchange"] .exchange-table-wrap {
     width: 100%;
     max-width: 100%;
     min-width: 0;
-    margin: 0 0 var(--spacing-md);
+    margin: 0 0 var(--spacing-sm);
     overflow: auto;
 }
 
-[data-dsap="exchange"] .exchange-table {
+[data-dsap="exchange"] .exchange-table-wrap > table {
     width: max-content;
     min-width: 100%;
-    border-collapse: collapse;
-}
-
-[data-dsap="exchange"] .exchange-table th,
-[data-dsap="exchange"] .exchange-table td {
-    text-align: left;
-    padding: var(--spacing-xs) var(--spacing-sm);
-    border-bottom: 1px solid var(--glass-border-4);
-    vertical-align: middle;
-}
-
-[data-dsap="exchange"] .exchange-table .button-group {
-    width: max-content;
 }
 
 [data-dsap="exchange"] .exchange-cell-address {
-    max-width: 12rem;
+    max-width: 14rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -184,6 +91,14 @@
     opacity: 0.85;
 }
 
+[data-dsap="exchange"] .exchange-signature-input {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    min-height: 8rem;
+    margin: 0 0 var(--spacing-sm);
+}
+
 [data-dsap="exchange"] .exchange-from-list {
     margin-top: var(--spacing-xs);
 }
@@ -197,8 +112,6 @@
     padding-left: 1.2em;
 }
 
-body:not(.windows-classic-theme) [data-dsap="exchange"] .exchange-inset-panel {
-    background: #fff;
-    border-color: #828790;
-    border-radius: 0;
+[data-dsap="exchange"] .exchange-mailbox-picker {
+    max-width: 100%;
 }

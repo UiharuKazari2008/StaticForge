@@ -13,6 +13,9 @@ const loader = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/f
 const manifests = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/dsapManifests.js'), 'utf8');
 const registry = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/dsapRegistry.js'), 'utf8');
 const reserved = fs.readFileSync(path.join(__dirname, '..', 'modules/melatonPackageStore.js'), 'utf8');
+const smfMarkup = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/dsapSmfMarkup.js'), 'utf8');
+const smfCss = fs.readFileSync(path.join(__dirname, '..', 'public/css/dsap-smf.css'), 'utf8');
+const dataMgmtJs = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/dataManagementDsapApplet.js'), 'utf8');
 
 function stripCommentsAndStrings(src) {
     return src
@@ -28,25 +31,53 @@ function main() {
     assert.match(appletJs, /function exchangeDsapResolveActiveTab/);
     assert.match(appletJs, /function exchangeDsapBuildTabUrl/);
     assert.match(appletJs, /dsap:\/\/\$\{EXCHANGE_DSAP_URL\}\//);
-    assert.match(appletJs, /data-dsap="exchange"/);
-    assert.match(appletJs, /exchange-dsap win7/);
-    assert.match(appletJs, /exchange-inset-panel/);
-    assert.match(appletJs, /exchange-status-bar/);
-    assert.match(appletJs, /explorer-actions-header/);
+    assert.match(appletJs, /dsapSmfBuildRootOpen\('exchange'\)/);
+    assert.match(appletJs, /dsapSmfBuildHeader\(/);
+    assert.match(appletJs, /dsapSmfBuildTabBar\(/);
+    assert.match(appletJs, /dsapSmfBuildToolbar\(/);
+    assert.match(appletJs, /dsapSmfBuildStatusBox\(/);
+    assert.match(appletJs, /dsapSmfWireTabBar\(/);
+    assert.match(appletJs, /dsapSmfSetActiveTab\(/);
+    assert.match(appletJs, /dsapSmfUpdateHeaderTool\(/);
+    assert.match(appletJs, /theme: 'dsap-smf'/);
+    assert.match(appletJs, /baseBackground: '#eeeeee'/);
     assert.match(appletJs, /getContent\(/);
-    assert.match(appletJs, /host\.navigate/);
     assert.match(appletJs, /registerDsap\(/);
     assert.doesNotMatch(appletJs, /activate\s*\(/);
     assert.doesNotMatch(appletJs, /desktopOnly/);
+    assert.doesNotMatch(appletJs, /exchange-dsap win7/);
+    assert.doesNotMatch(appletJs, /exchange-inset-panel/);
+    assert.doesNotMatch(appletJs, /exchange-tabs/);
+    assert.doesNotMatch(appletJs, /explorer-actions-header/);
     assert.doesNotMatch(appletJs, /createElement\(['"]select['"]\)/);
     assert.doesNotMatch(appletJs, /custom-dropdown/);
+
+    assert.match(dataMgmtJs, /theme: 'dsap-smf'/);
+    assert.match(dataMgmtJs, /dsapSmfBuildRootOpen\('data-mgmt'\)/);
+    assert.match(dataMgmtJs, /dsapSmfBuildTabBar\(/);
+    assert.match(dataMgmtJs, /baseBackground: '#eeeeee'/);
+
+    assert.match(smfCss, /\.dsap-smf-header/);
+    assert.match(smfCss, /\.dsap-smf-tabbar/);
+    assert.match(smfCss, /\.dsap-smf-section-hdr/);
+    assert.match(smfCss, /\.dsap-smf-toolbar/);
+    assert.match(smfCss, /\.dsap-smf-input/);
+    assert.match(smfCss, /\.data-mgmt-ws-table/);
+    assert.match(appHtml, /href="\/css\/dsap-smf\.css"/);
+    assert.match(appHtml, /href="\/css\/manual-modal\.css"/);
 
     assert.match(exchangeJs, /function openDesktopExchange\(\)/);
     assert.match(exchangeJs, /openDsapInGrimoire\('dsap:\/\/exchange\.dreamscape\.jp\/'\)/);
     assert.match(exchangeJs, /function exchangeBindHost/);
     assert.match(exchangeJs, /function exchangeSend/);
-    assert.match(exchangeJs, /explorer-command-btn/);
-    assert.match(exchangeJs, /'btn-secondary btn-small indicator'/);
+    assert.match(exchangeJs, /className = 'form-row'/);
+    assert.match(exchangeJs, /className = 'form-group'/);
+    assert.match(exchangeJs, /className = 'dsap-smf-input'/);
+    assert.match(exchangeJs, /dsap-smf-btn/);
+    assert.match(exchangeJs, /dsap-smf-section-hdr/);
+    assert.match(exchangeJs, /data-mgmt-account-info-table/);
+    assert.match(exchangeJs, /data-mgmt-ws-table/);
+    assert.match(exchangeJs, /indicator'/);
     assert.match(exchangeJs, /dataset\.state/);
     assert.match(exchangeJs, /button-group/);
     assert.match(exchangeJs, /showIndicator: true/);
@@ -65,6 +96,8 @@ function main() {
     assert.match(exchangeJs, /confirmText: 'DELETE'/);
     assert.match(exchangeJs, /showInputDialog/);
     assert.match(exchangeJs, /exchangeMailboxAddress/);
+    assert.doesNotMatch(exchangeJs, /yukimi\.ops@/);
+    assert.doesNotMatch(exchangeJs, /sala\.dev@/);
     assert.doesNotMatch(exchangeJs, /fas fa-circle/);
     assert.doesNotMatch(exchangeJs, /desktopExchangeModal/);
     assert.doesNotMatch(exchangeJs, /data-window-min-width/);
@@ -73,27 +106,23 @@ function main() {
     assert.doesNotMatch(exchangeJs, /relayReadToken|relayAdminToken/);
     assert.doesNotMatch(exchangeJs, /\bwindow\./);
     assert.doesNotMatch(exchangeJs, /indicatorStyle:\s*'dot'/);
+    assert.doesNotMatch(exchangeJs, /explorer-command-btn/);
+    assert.doesNotMatch(exchangeJs, /className = 'form-control'/);
 
-    assert.match(exchangeCss, /background: var\(--glass-layer-dark-4\);\s*border: 1px solid var\(--glass-border-4\);/);
-    assert.match(exchangeCss, /border-radius: var\(--border-radius-md\);/);
-    assert.match(exchangeCss, /body:not\(\.windows-classic-theme\) \[data-dsap="exchange"\] \.exchange-inset-panel/);
-    assert.match(exchangeCss, /background: #fff;/);
-    assert.match(exchangeCss, /border-color: #828790;/);
-    assert.match(exchangeCss, /exchange-from-list/);
-    assert.match(exchangeCss, /exchange-status-bar/);
+    assert.match(exchangeCss, /data-mgmt-account-info-table/);
     assert.match(exchangeCss, /exchange-table-wrap/);
-    assert.match(exchangeCss, /overflow-wrap: anywhere/);
+    assert.match(exchangeCss, /overflow: auto/);
+    assert.match(exchangeCss, /exchange-from-list/);
     assert.match(exchangeCss, /min-width: 0/);
-    assert.doesNotMatch(exchangeCss, /box-shadow/);
+    assert.doesNotMatch(exchangeCss, /exchange-inset-panel/);
+    assert.doesNotMatch(exchangeCss, /exchange-tabs/);
+    assert.doesNotMatch(exchangeCss, /exchange-stats/);
+    assert.doesNotMatch(exchangeCss, /exchange-field/);
+    assert.doesNotMatch(exchangeCss, /explorer-actions-header/);
+    assert.doesNotMatch(exchangeCss, /#desktopExchangeModal/);
     assert.doesNotMatch(exchangeCss, /exchange-card/);
     assert.doesNotMatch(exchangeCss, /#c9a227/);
-    assert.doesNotMatch(exchangeCss, /#desktopExchangeModal/);
-    assert.doesNotMatch(exchangeCss, /padding:\s*\d+px/);
-    assert.doesNotMatch(exchangeCss, /margin:\s*[^;]*\d+px/);
-    assert.doesNotMatch(exchangeCss, /gap:\s*\d+px/);
-
-    const cssCode = stripCommentsAndStrings(exchangeCss);
-    assert.doesNotMatch(cssCode, /(?:padding|margin|gap)\s*:[^;{]*\d+px/);
+    assert.doesNotMatch(exchangeCss, /glass-layer-dark-4/);
 
     assert.match(loader, /css\/desktop-apps\/exchange\.css/);
     assert.match(loader, /scripts\/comp\/desktop-apps\/exchange\.js/);
@@ -117,6 +146,7 @@ function main() {
         manifests.indexOf('EXCHANGE_DSAP_MANIFEST_URL'),
         manifests.indexOf('MCP_DSAP_MANIFEST_URL')
     );
+    assert.match(exchangeManifest, /theme: 'dsap-smf'/);
     assert.match(exchangeManifest, /appMenu: true/);
     assert.match(exchangeManifest, /openDsapInGrimoire/);
     assert.match(exchangeManifest, /exchangeDsapApplet\.js/);
@@ -125,11 +155,14 @@ function main() {
     assert.doesNotMatch(exchangeManifest, /desktopOnly/);
     assert.doesNotMatch(exchangeManifest, /activate\s*\(/);
     assert.match(registry, /adminOnly: !!me\.adminOnly/);
-    const smf = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/dsapSmfMarkup.js'), 'utf8');
-    assert.match(smf, /dsap:\/\/exchange\.dreamscape\.jp\//);
-    assert.match(smf, /Exchange Server/);
+    assert.match(smfMarkup, /dsap:\/\/exchange\.dreamscape\.jp\//);
+    assert.match(smfMarkup, /DSAP_SMF_BRANCH_EXCHANGE = 'Exchange Server'/);
     assert.match(modalUtilsJs, /item\.adminOnly && localStorage\.getItem\('userType'\) !== 'admin'/);
     assert.match(reserved, /exchange\.dreamscape\.jp/);
+
+    const cssCode = stripCommentsAndStrings(exchangeCss);
+    assert.doesNotMatch(cssCode, /exchange-inset-panel/);
+    assert.doesNotMatch(cssCode, /exchange-tabs/);
 
     console.log('test-exchange-desktop-app: ok');
 }

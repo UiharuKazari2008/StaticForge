@@ -358,6 +358,7 @@ function registerDsapManifests() {
         ],
         type: 'dsap',
         title: 'Dreamscape Exchange Server',
+        theme: 'dsap-smf',
         assets: {
             scripts: [
                 'scripts/comp/desktop-apps/exchange.js',
