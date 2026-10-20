@@ -39,7 +39,7 @@ const STUDIO_CHANGE_AI_SPEC = `Dreamscape studio change JSON. Paste into Studio 
 tokens is echoed on read (prompt/uc totals, ofLimit, ofRecommended). Do not send tokens when writing a change.
 
 Rules:
-- characters: ALWAYS replace + index. NEVER add. index 0 = first slot, index 1 = second. add+index is illegal (treated as replace). Do not copy slot 0 into slot 1. Key is characters, not characterPrompts. center maps to position.
+- characters: ALWAYS replace + index. NEVER add. index 0 = first slot, index 1 = second. add+index is illegal (treated as replace). Do not copy slot 0 into slot 1. Canonical MCP/apply key is top-level characters:[...]. characterPrompts is accepted as that full list. A characters-only change is valid (no prompt/uc/params required). center maps to position.
 - overwrite true: characters is the whole roster. Slots not in that list are removed, then the list is written. text_overlays, expanders, vibes, and vSlider already replace their lists when the key is present, including []. read_image_metadata sets overwrite so applying change restores that print.
 - Optional per-character position: {x,y} and/or cell A1–E5 (maps to Studio slot dataset / existing position dialog / V5 freeform tool). Echoed by GET /agent/session/state. Omit if unused. No new chrome.
 - fields = prompt | uc | promptNegative only. Always replace. Named chunks are your groups, not comma-splits. Never character:N:... ids.
@@ -932,9 +932,51 @@ function studioDatasetConfigHasWork(cfg) {
     return false;
 }
 
+// MiniMax / XML-style tools send arrays as {"item": {...}} or {"item": [...]}.
+function coerceStudioChangeList(value) {
+    if (value == null) return null;
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'string') {
+        const t = value.trim();
+        if (!t) return [];
+        if (t.charAt(0) === '[') {
+            try {
+                const parsed = JSON.parse(t);
+                if (Array.isArray(parsed)) return parsed;
+            } catch (_err) { /* keep */ }
+        }
+        return null;
+    }
+    if (typeof value !== 'object') return null;
+    const keys = Object.keys(value);
+    if (keys.length === 1 && keys[0] === 'item') {
+        const item = value.item;
+        if (item == null) return [];
+        return Array.isArray(item) ? item : [item];
+    }
+    const numeric = keys.filter((key) => /^\d+$/.test(key)).sort((a, b) => Number(a) - Number(b));
+    if (numeric.length && numeric.length === keys.length) {
+        return numeric.map((key) => value[key]);
+    }
+    return null;
+}
+
+function normalizeStudioChangeCharacterLists(payload) {
+    if (!payload || typeof payload !== 'object') return payload;
+    const chars = coerceStudioChangeList(payload.characters);
+    const prompts = coerceStudioChangeList(payload.characterPrompts);
+    if (chars) payload.characters = chars;
+    else if (prompts) {
+        payload.characters = prompts;
+        payload.overwrite = true;
+    }
+    return payload;
+}
+
 function buildOpsFromPayload(payload) {
     const ops = [];
     if (!payload) return ops;
+    payload = normalizeStudioChangeCharacterLists(payload);
 
     const currentParams = getStudioParamSnapshot();
     const params = payload.params && typeof payload.params === 'object' ? { ...payload.params } : {};
@@ -2227,6 +2269,7 @@ async function applyStudioParam(paramId, value) {
 }
 
 async function applyStudioChangeOps(ops) {
+    const unapplied = [];
     const enabled = ops.filter((op) => op.enabled !== false);
     for (const op of enabled.filter((item) => item.kind === 'workspace')) {
         if (op.toValue === activeWorkspace && op.toValue === manualSelectedWorkspace) continue;
@@ -2297,18 +2340,22 @@ async function applyStudioChangeOps(ops) {
         addCharacterPrompt();
         const newIndex = before;
         addedByPayloadIndex.set(op.payloadIndex != null ? op.payloadIndex : newIndex, newIndex);
+        if (!getStudioCharacterItems()[newIndex]) unapplied.push(`characters[${op.payloadIndex != null ? op.payloadIndex : newIndex}]`);
         if (op.name) setStudioCharacterName(newIndex, op.name);
         if (op.prompt) {
-            writeStudioFieldValue(`character:${newIndex}:prompt`, op.prompt);
-            writtenCharacterFields.add(`character:${newIndex}:prompt`);
+            if (writeStudioFieldValue(`character:${newIndex}:prompt`, op.prompt)) {
+                writtenCharacterFields.add(`character:${newIndex}:prompt`);
+            } else unapplied.push(`characters[${newIndex}].prompt`);
         }
         if (op.uc) {
-            writeStudioFieldValue(`character:${newIndex}:uc`, op.uc);
-            writtenCharacterFields.add(`character:${newIndex}:uc`);
+            if (writeStudioFieldValue(`character:${newIndex}:uc`, op.uc)) {
+                writtenCharacterFields.add(`character:${newIndex}:uc`);
+            } else unapplied.push(`characters[${newIndex}].uc`);
         }
         if (op.promptNegative) {
-            writeStudioFieldValue(`character:${newIndex}:promptNegative`, op.promptNegative);
-            writtenCharacterFields.add(`character:${newIndex}:promptNegative`);
+            if (writeStudioFieldValue(`character:${newIndex}:promptNegative`, op.promptNegative)) {
+                writtenCharacterFields.add(`character:${newIndex}:promptNegative`);
+            } else unapplied.push(`characters[${newIndex}].promptNegative`);
         }
         if (op.position) applyStudioCharacterPosition(newIndex, op.position);
         op.createdIndex = newIndex;
@@ -2316,19 +2363,23 @@ async function applyStudioChangeOps(ops) {
 
     enabled.filter((op) => op.kind === 'character' && op.action === 'replace').forEach((op) => {
         ensureStudioCharacterCount(op.charIndex + 1);
+        if (!getStudioCharacterItems()[op.charIndex]) unapplied.push(`characters[${op.charIndex}]`);
         if (op.name && op.rename !== false) setStudioCharacterName(op.charIndex, op.name);
         const clearParts = op.clearParts || [];
         if (op.prompt || op.writeEmpty || clearParts.includes('prompt')) {
-            writeStudioFieldValue(`character:${op.charIndex}:prompt`, op.prompt || '');
-            writtenCharacterFields.add(`character:${op.charIndex}:prompt`);
+            if (writeStudioFieldValue(`character:${op.charIndex}:prompt`, op.prompt || '')) {
+                writtenCharacterFields.add(`character:${op.charIndex}:prompt`);
+            } else unapplied.push(`characters[${op.charIndex}].prompt`);
         }
         if (op.uc || op.writeEmpty || clearParts.includes('uc')) {
-            writeStudioFieldValue(`character:${op.charIndex}:uc`, op.uc || '');
-            writtenCharacterFields.add(`character:${op.charIndex}:uc`);
+            if (writeStudioFieldValue(`character:${op.charIndex}:uc`, op.uc || '')) {
+                writtenCharacterFields.add(`character:${op.charIndex}:uc`);
+            } else unapplied.push(`characters[${op.charIndex}].uc`);
         }
         if (op.promptNegative || op.writeEmpty || clearParts.includes('promptNegative')) {
-            writeStudioFieldValue(`character:${op.charIndex}:promptNegative`, op.promptNegative || '');
-            writtenCharacterFields.add(`character:${op.charIndex}:promptNegative`);
+            if (writeStudioFieldValue(`character:${op.charIndex}:promptNegative`, op.promptNegative || '')) {
+                writtenCharacterFields.add(`character:${op.charIndex}:promptNegative`);
+            } else unapplied.push(`characters[${op.charIndex}].promptNegative`);
         }
         if (op.position) applyStudioCharacterPosition(op.charIndex, op.position);
         if (typeof op.characterEnabled === 'boolean') {
@@ -2422,7 +2473,7 @@ async function applyStudioChangeOps(ops) {
     // applyModelLocks: public/scripts/comp/utilities.js — after params, including steps written before effort
     if (typeof applyModelLocks === 'function') applyModelLocks();
 
-    return enabled.length;
+    return { count: enabled.length, unapplied: [...new Set(unapplied)] };
 }
 
 async function saveStudioChangeToDesktop(payload, suggestedName) {
@@ -2505,7 +2556,8 @@ async function applyStudioChangePayload(payload, options) {
             showGlassToast('info', 'Studio change', 'Nothing selected', false, 2500, '<i class="fas fa-info-circle"></i>');
             return false;
         }
-        const count = await applyStudioChangeOps(enabledOps);
+        const appliedOps = await applyStudioChangeOps(enabledOps);
+        const count = appliedOps && appliedOps.count != null ? appliedOps.count : enabledOps.length;
         const extras = enabledOps.some((op) => op.kind === 'dynamicGeneration' || op.kind === 'director');
         // noteStudioActivityChange: public/scripts/comp/studioActivityTool.js
         if (typeof noteStudioActivityChange === 'function') noteStudioActivityChange(enabledOps, { source: (options && options.source) || 'manual', title: payload.title || '', extras });
@@ -2529,7 +2581,8 @@ async function applyStudioChangePayloadSilent(payload, options) {
         const ops = buildOpsFromPayload(payload);
         const enabledOps = ops.filter((op) => op.enabled !== false);
         if (!enabledOps.length) return false;
-        await applyStudioChangeOps(enabledOps);
+        const appliedOps = await applyStudioChangeOps(enabledOps);
+        const unapplied = (appliedOps && appliedOps.unapplied) || [];
         // noteStudioActivityChange: public/scripts/comp/studioActivityTool.js
         const extras = enabledOps.some((op) => op.kind === 'dynamicGeneration' || op.kind === 'director');
         if (typeof noteStudioActivityChange === 'function') noteStudioActivityChange(enabledOps, {
@@ -2540,7 +2593,7 @@ async function applyStudioChangePayloadSilent(payload, options) {
         });
         // refreshStudioTokenCounts: public/scripts/comp/presetTokenCount.js
         await refreshStudioTokenCounts();
-        return true;
+        return { applied: true, unapplied, count: appliedOps && appliedOps.count != null ? appliedOps.count : enabledOps.length };
     } finally {
         studioChangeDialogBusy = false;
     }

@@ -641,14 +641,26 @@
         return { dreamscape: 'change', v: 1, fields };
     }
 
+    function mergeTopLevelStudioCharacters(payload, data) {
+        if (!payload || !data) return payload;
+        // normalizeStudioChangeCharacterLists: public/scripts/comp/studioChangeJson.js
+        const next = normalizeStudioChangeCharacterLists(Object.assign({}, payload));
+        if (Array.isArray(next.characters) || Array.isArray(next.characterPrompts)) return next;
+        if (Array.isArray(data.characters)) return Object.assign({}, next, { characters: data.characters });
+        if (Array.isArray(data.characterPrompts)) {
+            return Object.assign({}, next, { characterPrompts: data.characterPrompts });
+        }
+        return next;
+    }
+
     function resolveStudioPayload(data) {
         if (!data || typeof data !== 'object') return null;
         if (data.change && typeof data.change === 'object' && !Array.isArray(data.change)) {
-            return data.change;
+            return mergeTopLevelStudioCharacters(data.change, data);
         }
         const text = resolveStudioText(data);
         if (!text || typeof window.extractStudioChangeJson !== 'function') return null;
-        return window.extractStudioChangeJson(text);
+        return mergeTopLevelStudioCharacters(window.extractStudioChangeJson(text), data);
     }
 
     function readVSliderHydration(payload) {
@@ -921,9 +933,9 @@
         const modal = document.getElementById('manualModal');
         const studioWasClosed = !modal || modal.classList.contains('hidden');
         const beforePrompt = readStudioChangeSnapshot();
-        let applied = false;
+        let applyResult = false;
         try {
-            applied = !!await window.applyStudioChangePayloadSilent(payload, { source: 'mcp', actorName: data.actorName || '' });
+            applyResult = await window.applyStudioChangePayloadSilent(payload, { source: 'mcp', actorName: data.actorName || '' });
         } catch (err) {
             return {
                 ok: false,
@@ -933,6 +945,8 @@
                 error: (err && err.message) || 'Failed to apply studio change'
             };
         }
+        const applied = applyResult === true || !!(applyResult && applyResult.applied);
+        const unapplied = Array.isArray(applyResult && applyResult.unapplied) ? applyResult.unapplied : [];
         const hydration = readVSliderHydration(payload);
         if (!applied) {
             return {
@@ -941,6 +955,7 @@
                 autoApply: true,
                 autoGenerate,
                 ...hydration,
+                ...(unapplied.length ? { unapplied, warning: `Did not apply: ${unapplied.join(', ')}` } : {}),
                 error: hydration.vSliderRejected
                     ? 'Studio change was not applied (vSlider catalog did not hydrate — check kind, axes, and 2+ stops per axis)'
                     : 'Studio change was not applied'
@@ -961,7 +976,8 @@
             const restore = studioChangeTokenLimitRestore(beforePrompt, limitFailure.written);
             if (restore) {
                 try {
-                    reverted = !!await window.applyStudioChangePayloadSilent(restore, { source: 'mcp', actorName: data.actorName || '' });
+                    const restored = await window.applyStudioChangePayloadSilent(restore, { source: 'mcp', actorName: data.actorName || '' });
+                    reverted = restored === true || !!(restored && restored.applied);
                 } catch (_err) {
                     reverted = false;
                 }
@@ -979,11 +995,16 @@
             };
         }
         const partialVSlider = hydration.vSliderRejected > 0;
+        const unappliedWarning = unapplied.length
+            ? `Did not apply: ${unapplied.join(', ')}`
+            : (partialVSlider
+                ? 'Prompt/expanders applied but vSlider catalog did not hydrate — fix kind, axes, and 2+ stops per axis, then retry vSlider only.'
+                : '');
         // showAgentSessionTrayNotice: public/scripts/comp/mcpActivityClient.js
         showAgentSessionTrayNotice(studioWasClosed ? 'open' : 'update', data);
         const checkpointId = storeStudioCheckpoint(captureStudioCheckpointPayload());
         const baseResult = {
-            ok: true,
+            ok: unapplied.length === 0 && !partialVSlider,
             applied: true,
             autoApply: true,
             opened: studioWasClosed,
@@ -994,9 +1015,10 @@
             ...(typeof studioChangeLastMediumUcFold !== 'undefined' && studioChangeLastMediumUcFold
                 ? { mediumUcFolded: studioChangeLastMediumUcFold }
                 : {}),
-            ...(partialVSlider ? {
+            ...(unapplied.length ? { unapplied } : {}),
+            ...((unapplied.length || partialVSlider) ? {
                 partial: true,
-                warning: 'Prompt/expanders applied but vSlider catalog did not hydrate — fix kind, axes, and 2+ stops per axis, then retry vSlider only.'
+                warning: unappliedWarning
             } : {})
         };
         if (!autoGenerate) {

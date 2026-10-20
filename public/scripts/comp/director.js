@@ -249,9 +249,12 @@ class Director {
         // Wren's engine (Cursor, Claude, or TokenRouter). Each engine keeps its own
         // last model config and model catalog; Xi picks its runtime per session instead.
         this.ENGINE_KEY = 'staticforge_director_engine';
-        this.engine = 'cursor';
+        // New Wren chats default to TokenRouter (DeepSeek V4.1 Flash, Yukimi 2026-10-20).
+        // A saved last-used engine still wins; Cursor and Claude stay selectable.
+        this.engine = 'tokenrouter';
         try {
-            this.engine = this.normalizeEngine(localStorage.getItem(this.ENGINE_KEY));
+            const savedEngine = localStorage.getItem(this.ENGINE_KEY);
+            if (savedEngine) this.engine = this.normalizeEngine(savedEngine);
         } catch (_err) { /* default engine */ }
         this.modelCatalogs = {};
         this.loadChatPrefs();
@@ -5472,7 +5475,8 @@ class Director {
         // applyStudioChangePayloadSilent: public/scripts/comp/studioChangeJson.js
         try {
             const applied = await applyStudioChangePayloadSilent(payload, { source: 'director' });
-            showGlassToast(applied ? 'success' : 'error', null, applied ? 'Studio changes applied' : 'Studio changes were not applied');
+            const ok = applied === true || !!(applied && applied.applied && !(applied.unapplied && applied.unapplied.length));
+            showGlassToast(ok ? 'success' : 'error', null, ok ? 'Studio changes applied' : 'Studio changes were not applied');
         } catch (err) {
             showGlassToast('error', null, err && err.message ? err.message : 'Studio changes were not applied');
         }
