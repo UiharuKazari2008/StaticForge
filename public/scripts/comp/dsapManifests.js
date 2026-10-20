@@ -359,31 +359,24 @@ function registerDsapManifests() {
         type: 'dsap',
         title: 'Dreamscape Exchange Server',
         assets: {
-            scripts: ['scripts/comp/desktop-apps/exchange.js'],
+            scripts: [
+                'scripts/comp/desktop-apps/exchange.js',
+                'scripts/comp/exchangeDsapApplet.js'
+            ],
             styles: ['css/desktop-apps/exchange.css']
         },
         menuEntry: {
             launchId: 'exchange',
             icon: 'fas fa-building-columns',
+            imageIcon: 'vista-mail.png',
             text: 'Exchange Server',
             appMenu: true,
             startMenu: false,
-            desktopOnly: true,
             adminOnly: true,
             launch() {
-                // featureLoader.loadFeature: public/scripts/comp/featureLoader.js
-                void featureLoader.loadFeature('exchange').then(() => {
-                    // openDesktopExchange: public/scripts/comp/desktop-apps/exchange.js
-                    openDesktopExchange();
-                });
+                // openDsapInGrimoire: public/scripts/comp/dsapRegistry.js
+                openDsapInGrimoire(`dsap://${EXCHANGE_DSAP_MANIFEST_URL}/`);
             }
-        },
-        activate() {
-            // featureLoader.loadFeature: public/scripts/comp/featureLoader.js
-            void featureLoader.loadFeature('exchange').then(() => {
-                // openDesktopExchange: public/scripts/comp/desktop-apps/exchange.js
-                openDesktopExchange();
-            });
         }
     });
 

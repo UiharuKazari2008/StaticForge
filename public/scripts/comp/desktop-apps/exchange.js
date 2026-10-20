@@ -1,23 +1,17 @@
-// Dreamscape Exchange Server desktop console.
+// Dreamscape Exchange Server — UI + WS/MCP layer for the Grimoire DSAP.
+// Host / tab routing: public/scripts/comp/exchangeDsapApplet.js
 // Server: modules/mailExchange.js, modules/ws/handlers/255-mailExchangeHandler.js
-// openModal / closeModal / bringModalToFront / restoreMinimizedModal: public/scripts/comp/modalUtils.js
+// openDsapInGrimoire: public/scripts/comp/dsapRegistry.js
 // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
-// showConfirmationDialog: public/scripts/comp/confirmationDialog.js
+// showConfirmationDialog / showInputDialog: public/scripts/comp/confirmationDialog.js
 // wsClient.sendMessage: public/scripts/websocket.js
 // Layout: public/css/desktop-apps/exchange.css
 
-const DESKTOP_EXCHANGE_MODAL_ID = 'desktopExchangeModal';
-const EXCHANGE_SECTIONS = [
-    { id: 'status', label: 'Status', icon: 'fas fa-heart-pulse' },
-    { id: 'mailboxes', label: 'Mailboxes', icon: 'fas fa-inbox' },
-    { id: 'lists', label: 'Lists', icon: 'fas fa-sitemap' },
-    { id: 'signatures', label: 'Signatures', icon: 'fas fa-pen-nib' },
-    { id: 'toggles', label: 'Toggles', icon: 'fas fa-toggle-on' },
-    { id: 'spam', label: 'Spam', icon: 'fas fa-ban' }
-];
+const EXCHANGE_DEPTS = ['ops', 'dev', 'lab'];
+const EXCHANGE_DEFAULT_FROM = 'kazari.ops@dream.737.jp.net';
 
 const desktopExchange = {
-    section: 'status',
+    section: 'overview',
     mailboxes: [],
     aliases: [],
     lists: [],
@@ -25,11 +19,25 @@ const desktopExchange = {
     dashboard: null,
     spam: null,
     selectedOwner: 'yukimi',
+    createDept: 'ops',
     lastKey: null,
     statusText: 'Ready'
 };
 
 let desktopExchangeEls = null;
+
+function exchangeBindHost(els) {
+    desktopExchangeEls = els || null;
+}
+
+function exchangeUnbindHost() {
+    desktopExchangeEls = null;
+}
+
+function openDesktopExchange() {
+    // openDsapInGrimoire: public/scripts/comp/dsapRegistry.js
+    openDsapInGrimoire('dsap://exchange.dreamscape.jp/');
+}
 
 function exchangeCreateButton(className, title, iconClass) {
     const button = document.createElement('button');
@@ -45,121 +53,9 @@ function exchangeCreateButton(className, title, iconClass) {
     return button;
 }
 
-function openDesktopExchange() {
-    const modal = ensureDesktopExchangeModal();
-    if (modal.classList.contains('minimised')) restoreMinimizedModal(modal);
-    if (modal.classList.contains('hidden') || modal.classList.contains('hidden-alt')) openModal(modal);
-    bringModalToFront(modal);
-    exchangeLoadSection();
-}
-
-const ensureDesktopExchangeModal = function () {
-    let modal = document.getElementById(DESKTOP_EXCHANGE_MODAL_ID);
-    if (modal) return modal;
-
-    modal = document.createElement('div');
-    modal.id = DESKTOP_EXCHANGE_MODAL_ID;
-    modal.className = 'modal resizeable-window toolbar-visible hidden';
-    modal.dataset.windowIdentifier = 'desktopExchange';
-    modal.dataset.windowClient = 'light';
-    modal.dataset.windowDefaultWidth = '960';
-    modal.dataset.windowDefaultHeight = '640';
-    modal.dataset.windowMinWidth = '720';
-    modal.dataset.windowMinHeight = '420';
-
-    const title = document.createElement('div');
-    title.className = 'modal-window-title';
-    const titleMain = document.createElement('div');
-    titleMain.className = 'modal-window-title-main';
-    const titleIcon = document.createElement('i');
-    titleIcon.className = 'fas fa-building-columns';
-    const titleText = document.createElement('span');
-    titleText.textContent = 'Dreamscape Exchange Server';
-    titleMain.appendChild(titleIcon);
-    titleMain.appendChild(titleText);
-    title.appendChild(titleMain);
-
-    const commandBar = document.createElement('div');
-    commandBar.className = 'explorer-actions-header';
-    commandBar.setAttribute('role', 'toolbar');
-    const toolbar = document.createElement('div');
-    toolbar.className = 'explorer-command-set';
-    commandBar.appendChild(toolbar);
-
-    const sectionButtons = {};
-    EXCHANGE_SECTIONS.forEach((section, index) => {
-        if (index === 4) {
-            const divider = document.createElement('div');
-            divider.className = 'exchange-toolbar-divider';
-            toolbar.appendChild(divider);
-        }
-        const btn = exchangeCreateButton(
-            'btn-secondary btn-small explorer-command-btn indicator',
-            section.label,
-            section.icon
-        );
-        btn.append(section.label);
-        btn.dataset.exchangeSection = section.id;
-        btn.dataset.state = section.id === desktopExchange.section ? 'on' : 'off';
-        btn.addEventListener('click', () => exchangeSetSection(section.id));
-        toolbar.appendChild(btn);
-        sectionButtons[section.id] = btn;
-    });
-
-    const refreshBtn = exchangeCreateButton('btn-secondary btn-small explorer-command-btn', 'Refresh', 'fas fa-rotate-right');
-    refreshBtn.append('Refresh');
-    refreshBtn.addEventListener('click', () => exchangeLoadSection());
-    toolbar.appendChild(refreshBtn);
-
-    const controls = document.createElement('div');
-    controls.className = 'modal-window-controls';
-    const minimizeBtn = exchangeCreateButton('btn-secondary minimize-btn btn-small', 'Minimize', 'fa-regular fa-window-minimize');
-    const maximizeBtn = exchangeCreateButton('btn-secondary btn-small modal-work-area-maximize', 'Maximize', 'fa-regular fa-window-maximize');
-    const closeBtn = exchangeCreateButton('btn-danger close-btn btn-small', 'Close', 'fa-regular fa-xmark-large');
-    controls.appendChild(minimizeBtn);
-    controls.appendChild(maximizeBtn);
-    controls.appendChild(closeBtn);
-    closeBtn.addEventListener('click', () => {
-        closeModal(modal);
-    });
-
-    const content = document.createElement('div');
-    content.className = 'modal-content modal-padding dark';
-    const body = document.createElement('div');
-    body.className = 'modal-body exchange-body';
-
-    const main = document.createElement('div');
-    main.className = 'exchange-main exchange-inset-panel';
-
-    const status = document.createElement('div');
-    status.className = 'exchange-status exchange-inset-panel';
-    status.textContent = 'Ready';
-
-    body.appendChild(main);
-    body.appendChild(status);
-    content.appendChild(body);
-
-    modal.appendChild(title);
-    modal.appendChild(commandBar);
-    modal.appendChild(controls);
-    modal.appendChild(content);
-    document.body.appendChild(modal);
-
-    desktopExchangeEls = { modal, main, status, sectionButtons };
-    return modal;
-};
-
-function exchangeSetSection(id) {
-    desktopExchange.section = id;
-    Object.entries(desktopExchangeEls.sectionButtons).forEach(([key, btn]) => {
-        btn.dataset.state = key === id ? 'on' : 'off';
-    });
-    exchangeLoadSection();
-}
-
 function exchangeSetStatus(text, degraded) {
     desktopExchange.statusText = text;
-    if (!desktopExchangeEls) return;
+    if (!desktopExchangeEls || !desktopExchangeEls.status) return;
     desktopExchangeEls.status.textContent = text;
     desktopExchangeEls.status.classList.toggle('exchange-degraded', !!degraded);
 }
@@ -208,24 +104,75 @@ async function exchangeConfirm(message) {
 }
 
 function exchangeClearMain() {
+    if (!desktopExchangeEls || !desktopExchangeEls.main) return;
     desktopExchangeEls.main.replaceChildren();
 }
 
-function exchangeHeading(text) {
-    const h = document.createElement('h2');
+function exchangeClearToolbarEnd() {
+    if (!desktopExchangeEls || !desktopExchangeEls.toolbarEnd) return;
+    desktopExchangeEls.toolbarEnd.replaceChildren();
+}
+
+function exchangeHeading(text, tag) {
+    const h = document.createElement(tag || 'h2');
     h.textContent = text;
     return h;
 }
 
+function exchangeInput(title) {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'form-control';
+    if (title) input.title = title;
+    return input;
+}
+
+function exchangeField(labelText, control) {
+    const field = document.createElement('label');
+    field.className = 'exchange-field';
+    const caption = document.createElement('span');
+    caption.className = 'exchange-field-label';
+    caption.textContent = labelText;
+    field.appendChild(caption);
+    field.appendChild(control);
+    return field;
+}
+
+function exchangeButtonGroup() {
+    const group = document.createElement('div');
+    group.className = 'button-group';
+    return group;
+}
+
+function exchangeMailboxAddress(owner, boxes) {
+    const list = boxes || desktopExchange.mailboxes || [];
+    const found = list.find((box) => box.owner === owner);
+    return (found && found.address) || owner;
+}
+
+function exchangeMenuButton(className, title, iconClass, labelText) {
+    const button = exchangeCreateButton(className, title, iconClass);
+    const label = document.createElement('span');
+    label.textContent = labelText;
+    button.appendChild(label);
+    const glyph = document.createElement('span');
+    glyph.className = 'explorer-command-glyph';
+    glyph.setAttribute('aria-hidden', 'true');
+    button.appendChild(glyph);
+    return { button: button, label: label };
+}
+
 async function exchangeLoadSection() {
     if (!desktopExchangeEls) return;
+    exchangeClearToolbarEnd();
     exchangeSetStatus('Loading…');
     try {
-        if (desktopExchange.section === 'status') await exchangeRenderStatus();
+        if (desktopExchange.section === 'overview') await exchangeRenderOverview();
         else if (desktopExchange.section === 'mailboxes') await exchangeRenderMailboxes();
-        else if (desktopExchange.section === 'lists') await exchangeRenderLists();
+        else if (desktopExchange.section === 'aliases') await exchangeRenderAliases();
         else if (desktopExchange.section === 'signatures') await exchangeRenderSignatures();
         else if (desktopExchange.section === 'toggles') await exchangeRenderToggles();
+        else if (desktopExchange.section === 'relay') await exchangeRenderRelay();
         else await exchangeRenderSpam();
         exchangeSetStatus(desktopExchange.statusText === 'Loading…' ? 'Ready' : desktopExchange.statusText);
     } catch (err) {
@@ -234,63 +181,167 @@ async function exchangeLoadSection() {
 }
 
 function exchangeStat(label, value, extra) {
-    const card = document.createElement('div');
-    card.className = 'exchange-card';
-    const h = document.createElement('h3');
-    h.textContent = label;
-    const p = document.createElement('div');
-    p.textContent = value == null ? '—' : String(value);
-    if (extra) p.className = extra;
-    card.appendChild(h);
-    card.appendChild(p);
-    return card;
+    const item = document.createElement('div');
+    item.className = 'exchange-stat';
+    const name = document.createElement('div');
+    name.className = 'exchange-stat-label';
+    name.textContent = label;
+    const val = document.createElement('div');
+    val.className = 'exchange-stat-value';
+    val.textContent = value == null ? '—' : String(value);
+    if (extra) val.classList.add(extra);
+    item.appendChild(name);
+    item.appendChild(val);
+    return item;
 }
 
-async function exchangeRenderStatus() {
-    const dash = await exchangeSend('exchange_dashboard', {});
-    desktopExchange.dashboard = dash;
-    exchangeClearMain();
-    desktopExchangeEls.main.appendChild(exchangeHeading('Status'));
-    const grid = document.createElement('div');
-    grid.className = 'exchange-grid';
-    const intake = dash.intake || {};
-    const relay = dash.relay || {};
+function exchangeTable(headers, rows, columnClasses) {
+    const wrap = document.createElement('div');
+    wrap.className = 'exchange-table-wrap';
+    const table = document.createElement('table');
+    table.className = 'exchange-table';
+    const thead = document.createElement('thead');
+    const hr = document.createElement('tr');
+    headers.forEach((h, index) => {
+        const th = document.createElement('th');
+        th.textContent = h;
+        if (columnClasses && columnClasses[index]) th.className = columnClasses[index];
+        hr.appendChild(th);
+    });
+    thead.appendChild(hr);
+    table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    rows.forEach((cols) => {
+        const tr = document.createElement('tr');
+        cols.forEach((c, index) => {
+            const td = document.createElement('td');
+            if (columnClasses && columnClasses[index]) td.className = columnClasses[index];
+            if (c && c.nodeType === 1) td.appendChild(c);
+            else td.textContent = c == null ? '' : String(c);
+            tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    return wrap;
+}
+
+function exchangeFromList(login, from) {
+    const addrs = Array.isArray(from) ? from : [];
+    const block = document.createElement('div');
+    const h = exchangeHeading('Login ' + (login || '—'), 'h3');
+    block.appendChild(h);
+    const compact = addrs.length > 6 || addrs.some((addr) => String(addr).indexOf('*') !== -1);
+    const list = document.createElement('ul');
+    list.className = 'exchange-from-addresses';
+    addrs.forEach((addr) => {
+        const li = document.createElement('li');
+        li.textContent = addr;
+        list.appendChild(li);
+    });
+    if (!compact) {
+        block.appendChild(list);
+        return block;
+    }
+    const details = document.createElement('details');
+    details.className = 'exchange-from-list';
+    const summary = document.createElement('summary');
+    const wild = addrs.filter((addr) => String(addr).indexOf('*') !== -1)[0];
+    summary.textContent = (wild || addrs[0] || 'From') + ' · ' + addrs.length + ' addresses';
+    details.appendChild(summary);
+    details.appendChild(list);
+    block.appendChild(details);
+    return block;
+}
+
+function exchangeToggleButton(label, on, onClick) {
+    const btn = exchangeCreateButton('btn-secondary btn-small indicator', label);
+    btn.append(label);
+    btn.dataset.state = on ? 'on' : 'off';
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    btn.addEventListener('click', onClick);
+    return btn;
+}
+
+function exchangeDashboardParts(dash) {
+    const intake = (dash && dash.intake) || {};
+    const relay = (dash && dash.relay) || {};
     const status = relay.status && relay.status.data;
-    grid.appendChild(exchangeStat('Intake', intake.enabled ? `${intake.bind}:${intake.port}` : 'disabled'));
-    grid.appendChild(exchangeStat(
-        'LANTIS Postfix',
-        status && status.postfix && status.postfix.up ? 'up' : (relay.status && relay.status.degraded ? 'unreachable' : 'down'),
-        relay.status && relay.status.degraded ? 'exchange-degraded' : ''
-    ));
     const queue = relay.queue && relay.queue.data;
-    grid.appendChild(exchangeStat('Queue deferred', queue ? queue.deferred : '—'));
     const filters = status && status.filters;
-    grid.appendChild(exchangeStat('Filters', filters ? Object.entries(filters).map(([k, v]) => `${k}:${v}`).join(' ') : '—'));
     const dkim = relay.dkim || (status && status.oci);
-    const ociSender = (dkim && dkim.sender) || 'kazari.ops@dream.737.jp.net';
-    grid.appendChild(exchangeStat('OCI sender', ociSender));
-    grid.appendChild(exchangeStat('OCI DKIM', dkim && dkim.dkim ? dkim.dkim : '—'));
     const senders = relay.senders && relay.senders.data;
     const snapshotAt = senders && senders.refreshed_at;
-    grid.appendChild(exchangeStat(
-        'OCI snapshot',
-        snapshotAt ? exchangeFormatAge(snapshotAt) + ' (' + snapshotAt + ')' : '—'
-    ));
+    const wg = status && status.wireguard;
+    const bl = relay.blocklists && relay.blocklists.data;
+    const ociSender = (dkim && dkim.sender) || EXCHANGE_DEFAULT_FROM;
     const yukimiFrom = (status && status.oci && status.oci.sender)
         || (senders && senders.oci && senders.oci.approved && senders.oci.approved[0] && senders.oci.approved[0].email)
-        || 'kazari.ops@dream.737.jp.net';
-    grid.appendChild(exchangeStat('Yukimi From', yukimiFrom));
-    const wg = status && status.wireguard;
-    grid.appendChild(exchangeStat('WireGuard', wg && wg.up ? 'up' : (relay.status && relay.status.degraded ? 'unknown' : 'down')));
-    const bl = relay.blocklists && relay.blocklists.data;
-    grid.appendChild(exchangeStat('SA rules', bl && bl.sa_rules_updated ? bl.sa_rules_updated : '—'));
+        || EXCHANGE_DEFAULT_FROM;
+    return {
+        intake: intake,
+        relay: relay,
+        status: status,
+        queue: queue,
+        filters: filters,
+        dkim: dkim,
+        senders: senders,
+        snapshotAt: snapshotAt,
+        wg: wg,
+        bl: bl,
+        ociSender: ociSender,
+        yukimiFrom: yukimiFrom
+    };
+}
+
+async function exchangeRenderOverview() {
+    const dash = await exchangeSend('exchange_dashboard', {});
+    desktopExchange.dashboard = dash;
+    const parts = exchangeDashboardParts(dash);
+    exchangeClearMain();
+    desktopExchangeEls.main.appendChild(exchangeHeading('Overview'));
+    const grid = document.createElement('div');
+    grid.className = 'exchange-stats';
+    grid.appendChild(exchangeStat('Intake', parts.intake.enabled ? `${parts.intake.bind}:${parts.intake.port}` : 'disabled'));
+    grid.appendChild(exchangeStat(
+        'LANTIS Postfix',
+        parts.status && parts.status.postfix && parts.status.postfix.up ? 'up' : (parts.relay.status && parts.relay.status.degraded ? 'unreachable' : 'down'),
+        parts.relay.status && parts.relay.status.degraded ? 'exchange-degraded' : ''
+    ));
+    grid.appendChild(exchangeStat('Queue deferred', parts.queue ? parts.queue.deferred : '—'));
+    grid.appendChild(exchangeStat('Filters', parts.filters ? Object.entries(parts.filters).map(([k, v]) => `${k}:${v}`).join(' ') : '—'));
+    grid.appendChild(exchangeStat(
+        'OCI snapshot',
+        parts.snapshotAt ? exchangeFormatAge(parts.snapshotAt) + ' (' + parts.snapshotAt + ')' : '—'
+    ));
+    grid.appendChild(exchangeStat('Yukimi From', parts.yukimiFrom));
+    grid.appendChild(exchangeStat('WireGuard', parts.wg && parts.wg.up ? 'up' : (parts.relay.status && parts.relay.status.degraded ? 'unknown' : 'down')));
     desktopExchangeEls.main.appendChild(grid);
-    desktopExchangeEls.main.appendChild(exchangeHeading('Blocklists'));
+    if (parts.relay.status && parts.relay.status.degraded) {
+        exchangeSetStatus('Relay unreachable — showing local state', true);
+    }
+}
+
+async function exchangeRenderRelay() {
+    const dash = await exchangeSend('exchange_dashboard', {});
+    desktopExchange.dashboard = dash;
+    const parts = exchangeDashboardParts(dash);
+    exchangeClearMain();
+    desktopExchangeEls.main.appendChild(exchangeHeading('Relay'));
+    const grid = document.createElement('div');
+    grid.className = 'exchange-stats';
+    grid.appendChild(exchangeStat('OCI sender', parts.ociSender));
+    grid.appendChild(exchangeStat('OCI DKIM', parts.dkim && parts.dkim.dkim ? parts.dkim.dkim : '—'));
+    grid.appendChild(exchangeStat('Yukimi From', parts.yukimiFrom));
+    grid.appendChild(exchangeStat('SA rules', parts.bl && parts.bl.sa_rules_updated ? parts.bl.sa_rules_updated : '—'));
+    desktopExchangeEls.main.appendChild(grid);
+    desktopExchangeEls.main.appendChild(exchangeHeading('Blocklists', 'h3'));
     const blNote = document.createElement('p');
     blNote.className = 'exchange-note';
     blNote.textContent = 'Lookup answered correctly is whether the test-point replied. Our IP listed is whether this host is on that list.';
     desktopExchangeEls.main.appendChild(blNote);
-    const listMap = (bl && bl.lists) || {};
+    const listMap = (parts.bl && parts.bl.lists) || {};
     desktopExchangeEls.main.appendChild(exchangeTable(
         ['List', 'Lookup answered correctly', 'Our IP listed', 'Checked'],
         Object.keys(listMap).map((name) => {
@@ -303,8 +354,8 @@ async function exchangeRenderStatus() {
             ];
         })
     ));
-    desktopExchangeEls.main.appendChild(exchangeHeading('Submission From addresses'));
-    const submissions = (senders && senders.submission) || [];
+    desktopExchangeEls.main.appendChild(exchangeHeading('Submission From addresses', 'h3'));
+    const submissions = (parts.senders && parts.senders.submission) || [];
     if (!submissions.length) {
         const empty = document.createElement('p');
         empty.textContent = 'No submission logins reported.';
@@ -313,80 +364,16 @@ async function exchangeRenderStatus() {
     submissions.forEach((row) => {
         desktopExchangeEls.main.appendChild(exchangeFromList(row.login, row.from));
     });
-    const rejects = (relay.rejects && relay.rejects.data && relay.rejects.data.rejects) || [];
-    desktopExchangeEls.main.appendChild(exchangeHeading('Recent rejects'));
+    const rejects = (parts.relay.rejects && parts.relay.rejects.data && parts.relay.rejects.data.rejects) || [];
+    desktopExchangeEls.main.appendChild(exchangeHeading('Recent rejects', 'h3'));
     desktopExchangeEls.main.appendChild(exchangeTable(
         ['At', 'From', 'To', 'Reason'],
-        rejects.map((row) => [row.at, row.from, row.to, row.reason])
+        rejects.map((row) => [row.at, row.from, row.to, row.reason]),
+        ['', 'exchange-cell-address', 'exchange-cell-address', '']
     ));
-    if (relay.status && relay.status.degraded) {
+    if (parts.relay.status && parts.relay.status.degraded) {
         exchangeSetStatus('Relay unreachable — showing local state', true);
     }
-}
-
-function exchangeFromList(login, from) {
-    const addrs = Array.isArray(from) ? from : [];
-    const card = document.createElement('div');
-    card.className = 'exchange-card';
-    const h = document.createElement('h3');
-    h.textContent = 'Login ' + (login || '—');
-    card.appendChild(h);
-    const compact = addrs.length > 6 || addrs.some((addr) => String(addr).indexOf('*') !== -1);
-    const list = document.createElement('ul');
-    list.className = 'exchange-from-addresses';
-    addrs.forEach((addr) => {
-        const li = document.createElement('li');
-        li.textContent = addr;
-        list.appendChild(li);
-    });
-    if (!compact) {
-        card.appendChild(list);
-        return card;
-    }
-    const details = document.createElement('details');
-    details.className = 'exchange-from-list';
-    const summary = document.createElement('summary');
-    const wild = addrs.filter((addr) => String(addr).indexOf('*') !== -1)[0];
-    summary.textContent = (wild || addrs[0] || 'From') + ' · ' + addrs.length + ' addresses';
-    details.appendChild(summary);
-    details.appendChild(list);
-    card.appendChild(details);
-    return card;
-}
-
-function exchangeTable(headers, rows) {
-    const table = document.createElement('table');
-    table.className = 'exchange-table';
-    const thead = document.createElement('thead');
-    const hr = document.createElement('tr');
-    headers.forEach((h) => {
-        const th = document.createElement('th');
-        th.textContent = h;
-        hr.appendChild(th);
-    });
-    thead.appendChild(hr);
-    table.appendChild(thead);
-    const tbody = document.createElement('tbody');
-    rows.forEach((cols) => {
-        const tr = document.createElement('tr');
-        cols.forEach((c) => {
-            const td = document.createElement('td');
-            if (c && c.nodeType === 1) td.appendChild(c);
-            else td.textContent = c == null ? '' : String(c);
-            tr.appendChild(td);
-        });
-        tbody.appendChild(tr);
-    });
-    table.appendChild(tbody);
-    return table;
-}
-
-function exchangeInput(placeholder) {
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'form-control';
-    input.placeholder = placeholder;
-    return input;
 }
 
 async function exchangeRenderMailboxes() {
@@ -395,37 +382,59 @@ async function exchangeRenderMailboxes() {
     exchangeClearMain();
     desktopExchangeEls.main.appendChild(exchangeHeading('Mailboxes'));
     const row = document.createElement('div');
-    row.className = 'exchange-row';
-    const ownerIn = exchangeInput('owner (bare name)');
-    const deptIn = exchangeInput('dept (ops, dev, lab)');
-    const createBtn = exchangeCreateButton('btn-primary btn-small explorer-command-btn', 'Create', 'fas fa-plus');
+    row.className = 'exchange-form-row';
+    const ownerIn = exchangeInput('Bare mailbox owner name');
+    const deptPick = exchangeMenuButton(
+        'btn-secondary btn-small has-menu',
+        'Department',
+        'fas fa-sitemap',
+        desktopExchange.createDept
+    );
+    // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
+    contextMenu.attachClickMenuToElement(deptPick.button, () => ({
+        sections: [{
+            type: 'list',
+            items: EXCHANGE_DEPTS.map((dept) => ({
+                text: dept,
+                action: 'pick',
+                showIndicator: true,
+                indicatorMark: 'radio',
+                checked: dept === desktopExchange.createDept,
+                onSelect: () => {
+                    desktopExchange.createDept = dept;
+                    deptPick.label.textContent = dept;
+                }
+            }))
+        }]
+    }));
+    const createBtn = exchangeCreateButton('btn-primary btn-small', 'Create', 'fas fa-plus');
     createBtn.append('Create');
     createBtn.addEventListener('click', async () => {
-        const ok = await exchangeConfirm('Create mailbox ' + ownerIn.value + '.' + deptIn.value + '@dream.737.jp.net?');
+        const ok = await exchangeConfirm('Create mailbox ' + ownerIn.value + '.' + desktopExchange.createDept + '@dream.737.jp.net?');
         if (!ok) return;
-        await exchangeSend('exchange_create_mailbox', { owner: ownerIn.value, dept: deptIn.value, confirm: true }, true);
+        await exchangeSend('exchange_create_mailbox', {
+            owner: ownerIn.value,
+            dept: desktopExchange.createDept,
+            confirm: true
+        }, true);
         exchangeLoadSection();
     });
-    row.appendChild(ownerIn);
-    row.appendChild(deptIn);
-    row.appendChild(createBtn);
+    const createGroup = exchangeButtonGroup();
+    createGroup.appendChild(createBtn);
+    row.appendChild(exchangeField('Owner', ownerIn));
+    row.appendChild(exchangeField('Dept', deptPick.button));
+    row.appendChild(createGroup);
     desktopExchangeEls.main.appendChild(row);
     if (desktopExchange.lastKey) {
-        const once = document.createElement('div');
-        once.className = 'exchange-card';
-        const h = document.createElement('h3');
-        h.textContent = 'Mailbox key (shown once)';
+        desktopExchangeEls.main.appendChild(exchangeHeading('Mailbox key (shown once)', 'h3'));
         const pre = document.createElement('div');
         pre.className = 'exchange-key-once';
         pre.textContent = desktopExchange.lastKey;
-        once.appendChild(h);
-        once.appendChild(pre);
-        desktopExchangeEls.main.appendChild(once);
+        desktopExchangeEls.main.appendChild(pre);
     }
     const actionCell = (box) => {
-        const wrap = document.createElement('div');
-        wrap.className = 'exchange-row';
-        const disable = exchangeCreateButton('btn-secondary btn-small explorer-command-btn', box.enabled ? 'Disable' : 'Enable', 'fas fa-power-off');
+        const group = exchangeButtonGroup();
+        const disable = exchangeCreateButton('btn-secondary btn-small', box.enabled ? 'Disable' : 'Enable', 'fas fa-power-off');
         disable.append(box.enabled ? 'Disable' : 'Enable');
         disable.addEventListener('click', async () => {
             const ok = await exchangeConfirm((box.enabled ? 'Disable' : 'Enable') + ' ' + box.address + '?');
@@ -433,7 +442,7 @@ async function exchangeRenderMailboxes() {
             await exchangeSend('exchange_disable_mailbox', { owner: box.owner, enabled: !box.enabled, confirm: true }, true);
             exchangeLoadSection();
         });
-        const keyBtn = exchangeCreateButton('btn-secondary btn-small explorer-command-btn', 'Issue / rotate key', 'fas fa-key');
+        const keyBtn = exchangeCreateButton('btn-secondary btn-small', 'Issue / rotate key', 'fas fa-key');
         keyBtn.append(box.hasKey ? 'Rotate key' : 'Issue key');
         keyBtn.addEventListener('click', async () => {
             const ok = await exchangeConfirm((box.hasKey ? 'Rotate' : 'Issue') + ' key for ' + box.address + '? The secret is shown once.');
@@ -442,7 +451,7 @@ async function exchangeRenderMailboxes() {
             desktopExchange.lastKey = result && result.key;
             exchangeLoadSection();
         });
-        const del = exchangeCreateButton('btn-danger btn-small explorer-command-btn', 'Soft delete', 'fas fa-trash');
+        const del = exchangeCreateButton('btn-danger btn-small', 'Soft delete', 'fas fa-trash');
         del.append('Delete');
         del.addEventListener('click', async () => {
             // showInputDialog: public/scripts/comp/confirmationDialog.js
@@ -451,10 +460,10 @@ async function exchangeRenderMailboxes() {
             await exchangeSend('exchange_delete_mailbox', { owner: box.owner, confirm: true, confirmText: 'DELETE' }, true);
             exchangeLoadSection();
         });
-        wrap.appendChild(disable);
-        wrap.appendChild(keyBtn);
-        wrap.appendChild(del);
-        return wrap;
+        group.appendChild(disable);
+        group.appendChild(keyBtn);
+        group.appendChild(del);
+        return group;
     };
     desktopExchangeEls.main.appendChild(exchangeTable(
         ['Owner', 'Address', 'Enabled', 'In', 'Out', 'Key', 'Actions'],
@@ -466,21 +475,23 @@ async function exchangeRenderMailboxes() {
             box.outboundEnabled ? 'on' : 'off',
             box.hasKey ? 'yes' : 'no',
             actionCell(box)
-        ])
+        ]),
+        ['', 'exchange-cell-address', '', '', '', 'exchange-cell-key', '']
     ));
 }
 
-async function exchangeRenderLists() {
+async function exchangeRenderAliases() {
     const data = await exchangeSend('exchange_list_aliases', {});
     desktopExchange.aliases = data.aliases || [];
     desktopExchange.lists = data.lists || [];
     exchangeClearMain();
     desktopExchangeEls.main.appendChild(exchangeHeading('Aliases and distribution lists'));
     const row = document.createElement('div');
-    row.className = 'exchange-row';
-    const localIn = exchangeInput('local-part');
-    const targetIn = exchangeInput('target mailbox or local-part');
-    const addAlias = exchangeCreateButton('btn-primary btn-small explorer-command-btn', 'Add alias', 'fas fa-plus');
+    row.className = 'exchange-form-row';
+    const localIn = exchangeInput('Local-part of the alias or list');
+    const targetIn = exchangeInput('Target mailbox or local-part');
+    const membersIn = exchangeInput('Comma-separated member names');
+    const addAlias = exchangeCreateButton('btn-primary btn-small', 'Add alias', 'fas fa-plus');
     addAlias.append('Add alias');
     addAlias.addEventListener('click', async () => {
         const ok = await exchangeConfirm('Add alias ' + localIn.value + ' → ' + targetIn.value + '?');
@@ -488,8 +499,7 @@ async function exchangeRenderLists() {
         await exchangeSend('exchange_upsert_alias', { localPart: localIn.value, target: targetIn.value, confirm: true }, true);
         exchangeLoadSection();
     });
-    const membersIn = exchangeInput('list members (comma names)');
-    const addList = exchangeCreateButton('btn-secondary btn-small explorer-command-btn', 'Add list', 'fas fa-plus');
+    const addList = exchangeCreateButton('btn-secondary btn-small', 'Add list', 'fas fa-plus');
     addList.append('Add list');
     addList.addEventListener('click', async () => {
         const ok = await exchangeConfirm('Add distribution list ' + localIn.value + '?');
@@ -502,55 +512,64 @@ async function exchangeRenderLists() {
         }, true);
         exchangeLoadSection();
     });
-    row.appendChild(localIn);
-    row.appendChild(targetIn);
-    row.appendChild(addAlias);
-    row.appendChild(membersIn);
-    row.appendChild(addList);
+    const actions = exchangeButtonGroup();
+    actions.appendChild(addAlias);
+    actions.appendChild(addList);
+    row.appendChild(exchangeField('Local-part', localIn));
+    row.appendChild(exchangeField('Target', targetIn));
+    row.appendChild(exchangeField('List members', membersIn));
+    row.appendChild(actions);
     desktopExchangeEls.main.appendChild(row);
     desktopExchangeEls.main.appendChild(exchangeTable(
         ['Address', 'Target', 'Kind'],
-        desktopExchange.aliases.map((item) => [item.address, item.target, item.kind + (item.note ? ' — ' + item.note : '')])
+        desktopExchange.aliases.map((item) => [item.address, item.target, item.kind + (item.note ? ' — ' + item.note : '')]),
+        ['exchange-cell-address', 'exchange-cell-address', '']
     ));
 }
 
 async function exchangeRenderSignatures() {
     const boxes = (await exchangeSend('exchange_list_mailboxes', {})).mailboxes || [];
+    desktopExchange.mailboxes = boxes;
+    if (!boxes.some((box) => box.owner === desktopExchange.selectedOwner) && boxes[0]) {
+        desktopExchange.selectedOwner = boxes[0].owner;
+    }
     exchangeClearMain();
     desktopExchangeEls.main.appendChild(exchangeHeading('Signatures'));
-    const row = document.createElement('div');
-    row.className = 'exchange-row';
-    const picker = exchangeCreateButton('btn-secondary btn-small explorer-command-btn has-menu', 'Mailbox', 'fas fa-inbox');
-    const pickerLabel = document.createElement('span');
-    pickerLabel.textContent = desktopExchange.selectedOwner;
-    picker.appendChild(pickerLabel);
-    const glyph = document.createElement('span');
-    glyph.className = 'explorer-command-glyph';
-    picker.appendChild(glyph);
-    contextMenu.attachClickMenuToElement(picker, () => ({
+    const picker = exchangeMenuButton(
+        'btn-secondary btn-small explorer-command-btn has-menu exchange-mailbox-picker',
+        'Mailbox',
+        'fas fa-inbox',
+        exchangeMailboxAddress(desktopExchange.selectedOwner, boxes)
+    );
+    // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
+    contextMenu.attachClickMenuToElement(picker.button, () => ({
         sections: [{
             type: 'list',
             items: boxes.map((box) => ({
                 text: box.address,
                 action: 'pick',
-                indicatorStyle: 'dot',
+                showIndicator: true,
+                indicatorMark: 'radio',
                 checked: box.owner === desktopExchange.selectedOwner,
                 onSelect: () => {
                     desktopExchange.selectedOwner = box.owner;
-                    pickerLabel.textContent = box.address;
+                    picker.label.textContent = box.address;
                     loadSig();
                 }
             }))
         }]
     }));
-    row.appendChild(picker);
-    desktopExchangeEls.main.appendChild(row);
-    const area = document.createElement('textarea');
-    area.className = 'form-control prompt-textarea textarea-inset';
-    area.rows = 8;
-    desktopExchangeEls.main.appendChild(area);
     const save = exchangeCreateButton('btn-primary btn-small explorer-command-btn', 'Save signature', 'fas fa-floppy-disk');
     save.append('Save');
+    if (desktopExchangeEls.toolbarEnd) {
+        desktopExchangeEls.toolbarEnd.appendChild(picker.button);
+        desktopExchangeEls.toolbarEnd.appendChild(save);
+    }
+    const area = document.createElement('textarea');
+    area.className = 'form-control prompt-textarea textarea-inset exchange-signature-input';
+    area.rows = 8;
+    area.setAttribute('aria-label', 'Signature HTML');
+    desktopExchangeEls.main.appendChild(area);
     save.addEventListener('click', async () => {
         const ok = await exchangeConfirm('Save sanitized HTML signature for ' + desktopExchange.selectedOwner + '?');
         if (!ok) return;
@@ -561,20 +580,11 @@ async function exchangeRenderSignatures() {
         }, true);
         exchangeSetStatus('Signature saved');
     });
-    desktopExchangeEls.main.appendChild(save);
     async function loadSig() {
         const sig = await exchangeSend('exchange_get_signature', { owner: desktopExchange.selectedOwner });
         area.value = (sig && sig.html) || '';
     }
     await loadSig();
-}
-
-function exchangeToggleButton(label, on, onClick) {
-    const btn = exchangeCreateButton('btn-secondary btn-small explorer-command-btn indicator', label, 'fas fa-circle');
-    btn.append(label);
-    btn.dataset.state = on ? 'on' : 'off';
-    btn.addEventListener('click', onClick);
-    return btn;
 }
 
 async function exchangeRenderToggles() {
@@ -584,7 +594,7 @@ async function exchangeRenderToggles() {
     exchangeClearMain();
     desktopExchangeEls.main.appendChild(exchangeHeading('External mail toggles'));
     const row = document.createElement('div');
-    row.className = 'exchange-row';
+    row.className = 'exchange-toggle-row';
     const save = async (patch) => {
         const ok = await exchangeConfirm('Apply toggle change? This also PUTs the LANTIS relay.');
         if (!ok) return;
@@ -618,7 +628,8 @@ async function exchangeRenderToggles() {
                 save({ mailboxes: one });
             });
             return [box.address, inBtn, outBtn];
-        })
+        }),
+        ['exchange-cell-address', '', '']
     ));
 }
 
@@ -629,14 +640,15 @@ async function exchangeRenderSpam() {
     desktopExchangeEls.main.appendChild(exchangeHeading('Spam overview'));
     desktopExchangeEls.main.appendChild(exchangeTable(
         ['Mailbox', 'Count'],
-        (data.counts || []).map((row) => [row.address || row.owner, String(row.count)])
+        (data.counts || []).map((row) => [row.address || row.owner, String(row.count)]),
+        ['exchange-cell-address', '']
     ));
     desktopExchangeEls.main.appendChild(exchangeTable(
         ['Mailbox', 'From', 'Subject', 'Actions'],
         (data.recent || []).map((row) => {
-            const wrap = document.createElement('div');
+            const group = exchangeButtonGroup();
             if (row.rescueAllowed) {
-                const rescue = exchangeCreateButton('btn-secondary btn-small explorer-command-btn', 'Rescue', 'fas fa-inbox');
+                const rescue = exchangeCreateButton('btn-secondary btn-small', 'Rescue', 'fas fa-inbox');
                 rescue.append('Rescue');
                 rescue.addEventListener('click', async () => {
                     const ok = await exchangeConfirm('Rescue this message to Inbox?');
@@ -644,7 +656,7 @@ async function exchangeRenderSpam() {
                     await exchangeSend('exchange_spam_move', { mailbox: row.mailbox, id: row.id, spam: false, confirm: true }, true);
                     exchangeLoadSection();
                 });
-                const purge = exchangeCreateButton('btn-danger btn-small explorer-command-btn', 'Keep in Spam', 'fas fa-ban');
+                const purge = exchangeCreateButton('btn-danger btn-small', 'Keep in Spam', 'fas fa-ban');
                 purge.append('Purge');
                 purge.addEventListener('click', async () => {
                     const ok = await exchangeConfirm('Leave this message in Spam?');
@@ -652,13 +664,15 @@ async function exchangeRenderSpam() {
                     await exchangeSend('exchange_spam_move', { mailbox: row.mailbox, id: row.id, spam: true, confirm: true }, true);
                     exchangeLoadSection();
                 });
-                wrap.appendChild(rescue);
-                wrap.appendChild(purge);
+                group.appendChild(rescue);
+                group.appendChild(purge);
             } else {
-                wrap.textContent = 'Yukimi Spam-only';
+                const note = document.createElement('span');
+                note.textContent = 'Yukimi Spam-only';
+                group.appendChild(note);
             }
-            return [row.mailbox, row.from, row.subject, wrap];
-        })
+            return [row.mailbox, row.from, row.subject, group];
+        }),
+        ['exchange-cell-address', 'exchange-cell-address', '', '']
     ));
 }
-
