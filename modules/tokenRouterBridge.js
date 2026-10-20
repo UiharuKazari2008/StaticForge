@@ -15,7 +15,8 @@ const path = require('path');
 const gate = require('./tokenRouterGate');
 
 const DEFAULT_BASE = 'https://api.tokenrouter.com';
-const DEFAULT_MODEL = 'moonshotai/kimi-k3';
+// Default for new Director/Xi TokenRouter sessions (Yukimi 2026-10-20). Saved per-session picks win.
+const DEFAULT_MODEL = 'deepseek/deepseek-v4.1-flash';
 const CATALOG_TTL_MS = 10 * 60 * 1000;
 // none turns thinking off (reasoning_effort: "none"; DeepSeek V4.1 Flash answers with 0 reasoning tokens).
 const EFFORTS = ['none', 'low', 'medium', 'high'];
