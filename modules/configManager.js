@@ -700,6 +700,11 @@ class ConfigManager {
                             allowPrivateHosts: [],
                             timeoutMs: 8000,
                             maxAttempts: 5
+                        },
+                        notify: {
+                            coalesceMs: 120000,
+                            globalPerMinute: 20,
+                            socketPerMinute: 60
                         }
                     }
                 };

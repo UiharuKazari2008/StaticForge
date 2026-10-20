@@ -131,6 +131,13 @@ function emitMailDelivered(deliveries) {
     } catch (err) {
         console.error('Dovecote mailbox webhook notify failed:', err.message);
     }
+    try {
+        // emitNewMail: modules/dovecoteMailboxEvents.js — notify-forward
+        // consumes this stream (does not hook sendMail / deliverInboundMail).
+        require('./dovecoteMailboxEvents').emitNewMail(deliveries);
+    } catch (err) {
+        console.error('Dovecote mailbox_new_mail emit failed:', err.message);
+    }
 }
 
 // Maps a resolved caller identity (bot name / Xi active runtime) to a mailbox
@@ -675,7 +682,7 @@ function sanitizeOriginalTo(value) {
     return text || null;
 }
 
-function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, body, format, threadId, spam, spamMeta, originalTo, ownDomainFrom, trustedOwnSender }) {
+function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, body, format, threadId, spam, spamMeta, originalTo, ownDomainFrom, trustedOwnSender, notifyLoop, headers }) {
     if (!isValidOwner(toOwner)) throw new DovecoteError('Unknown mailbox', 'UNKNOWN_OWNER');
     const from = String(fromAddress || '').trim();
     if (!from || (from !== NULL_SENDER && !from.includes('@'))) {
@@ -730,7 +737,9 @@ function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, 
             id,
             from,
             subject: subjectText,
-            receivedAt: createdAt
+            receivedAt: createdAt,
+            notifyLoop: notifyLoop === true,
+            headers: headers || null
         }]);
     }
     return {

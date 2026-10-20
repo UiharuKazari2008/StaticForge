@@ -3156,6 +3156,42 @@ const TOOL_DEFS = [
         }
     },
     {
+        name: 'set_mailbox_notify_forward',
+        core: true,
+        description: 'Register or replace the notify-forward address for your own Dovecote mailbox. When new inbox mail arrives, a short plain notice ("You have new mail in <mailbox>: <from> — <subject>") is sent to that external address through the outbound relay. No body content or attachments. Address must be a valid external email, not on dream.737.jp.net. You cannot set another mailbox.',
+        scope: 'sfapp_dovecote',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['address'],
+            properties: {
+                address: { type: 'string', description: 'External email that receives the short new-mail notice' }
+            }
+        }
+    },
+    {
+        name: 'get_mailbox_notify_forward',
+        core: true,
+        description: 'Read the notify-forward address registered for your own Dovecote mailbox. Other mailboxes are not visible.',
+        scope: 'sfapp_dovecote',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {}
+        }
+    },
+    {
+        name: 'clear_mailbox_notify_forward',
+        core: true,
+        description: 'Remove the notify-forward address from your own Dovecote mailbox. Other mailboxes are not affected.',
+        scope: 'sfapp_dovecote',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {}
+        }
+    },
+    {
         name: 'mailroom_forward_mail',
         core: true,
         role: 'mailroom',
@@ -9099,6 +9135,24 @@ async function callTool(globalResources, req, name, args) {
         }
         try {
             return mcpTextResult(await webhook.handleMailboxWebhookTool(name, owner, input));
+        } catch (mailError) {
+            if (mailError instanceof dovecoteMail.DovecoteError) {
+                return mcpTextResult({ success: false, error: mailError.message, code: mailError.code }, true);
+            }
+            throw mailError;
+        }
+    }
+
+    if (name === 'set_mailbox_notify_forward' || name === 'get_mailbox_notify_forward' || name === 'clear_mailbox_notify_forward') {
+        const { resolveDovecoteOwnerFromReq } = require('./dovecoteIdentity');
+        const dovecoteMail = require('./dovecoteMail');
+        const notify = require('./dovecoteMailboxNotify');
+        const owner = resolveDovecoteOwnerFromReq(req);
+        if (!owner) {
+            return mcpTextResult({ success: false, error: 'Caller identity does not map to a Dovecote mailbox' }, true);
+        }
+        try {
+            return mcpTextResult(await notify.handleMailboxNotifyTool(name, owner, input));
         } catch (mailError) {
             if (mailError instanceof dovecoteMail.DovecoteError) {
                 return mcpTextResult({ success: false, error: mailError.message, code: mailError.code }, true);

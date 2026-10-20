@@ -314,6 +314,24 @@ async function main() {
     textOf(await callTool(gr, reqFor('Rook'), 'clear_mailbox_webhook', {}));
     webhook.resetForTests();
 
+    const notifyMod = require('../modules/dovecoteMailboxNotify');
+    notifyMod.setTestOverrides({
+        coalesceMs: 0,
+        globalPerMinute: 50,
+        submitOutbound: async () => ({ to: ['alerts@example.com'] })
+    });
+    const notifySet = textOf(await callTool(gr, reqFor('Rook'), 'set_mailbox_notify_forward', {
+        address: 'alerts@example.com',
+        mailbox: 'ivory'
+    }));
+    assert.strictEqual(notifySet.mailbox, 'rook');
+    assert.strictEqual(notifySet.address, 'alerts@example.com');
+    const ivoryNotify = textOf(await callTool(gr, reqFor('Ivory'), 'get_mailbox_notify_forward', {}));
+    assert.strictEqual(ivoryNotify.mailbox, 'ivory');
+    assert.strictEqual(ivoryNotify.address, null);
+    textOf(await callTool(gr, reqFor('Rook'), 'clear_mailbox_notify_forward', {}));
+    notifyMod.resetForTests();
+
     // Oversized attachments are rejected with a clear error, not a partial send.
     const tooBig = await callTool(gr, reqFor('Menma'), 'send_mail', {
         to: 'rook', subject: 'too big', body: 'x',

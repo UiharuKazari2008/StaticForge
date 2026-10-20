@@ -357,7 +357,7 @@ function capabilitiesOf(reply) {
     return caps;
 }
 
-function buildOutboundMessage({ fromAddress, to, cc, subject, body, format, domain }) {
+function buildOutboundMessage({ fromAddress, to, cc, subject, body, format, domain, extraHeaders }) {
     const date = new Date().toUTCString();
     const host = domain || addresses.DEFAULT_DOMAIN;
     const messageId = `<${crypto.randomUUID()}@${host}>`;
@@ -374,6 +374,13 @@ function buildOutboundMessage({ fromAddress, to, cc, subject, body, format, doma
         'Content-Transfer-Encoding: 8bit'
     ];
     if (cc && cc.length) headers.splice(3, 0, `Cc: ${cc.join(', ')}`);
+    if (extraHeaders && typeof extraHeaders === 'object') {
+        Object.entries(extraHeaders).forEach(([name, value]) => {
+            const headerName = String(name || '').replace(/[\r\n:]+/g, '').trim();
+            const headerValue = String(value == null ? '' : value).replace(/[\r\n]+/g, ' ');
+            if (headerName) headers.push(`${headerName}: ${headerValue}`);
+        });
+    }
     const rawBody = String(body || '').replace(/\r\n/g, '\n').replace(/\n/g, '\r\n');
     return `${headers.join('\r\n')}\r\n\r\n${rawBody}`;
 }
@@ -568,10 +575,12 @@ async function submitOutbound(input) {
         smtpWrite(socket, 'DATA');
         await expectCode(reader, socket, [354], 'DATA');
         let outboundBody = input.body;
-        try {
-            outboundBody = require('./mailExchange').appendSignature(input.body, input.format, fromOwner);
-        } catch (_err) {
-            outboundBody = input.body;
+        if (input.skipSignature !== true) {
+            try {
+                outboundBody = require('./mailExchange').appendSignature(input.body, input.format, fromOwner);
+            } catch (_err) {
+                outboundBody = input.body;
+            }
         }
         const message = buildOutboundMessage({
             fromAddress,
@@ -580,7 +589,8 @@ async function submitOutbound(input) {
             subject: input.subject,
             body: outboundBody,
             format: input.format,
-            domain: cfg.domain
+            domain: cfg.domain,
+            extraHeaders: input.extraHeaders || input.headers
         });
         socket.write(`${stuffDots(message)}\r\n.\r\n`);
         await expectCode(reader, socket, [250], 'DATA end');
