@@ -301,6 +301,22 @@ async function main() {
     const rookMails = wsSends.filter((row) => row.ws === rookWs && row.message.type === 'mailbox_new_mail');
     assert.strictEqual(rookMails.length, 2);
 
+    const later = Date.now() + 61000;
+    events.setTestOverrides({
+        socketPerMinute: 2,
+        now: () => later,
+        sendToClient: (ws, message) => {
+            wsSends.push({ ws, message });
+        }
+    });
+    events.emitNewMail([
+        { mailbox: 'rook', id: 'e5', from: 'yukimi', subject: 'ws-5', receivedAt: 't' }
+    ]);
+    const afterLimit = wsSends.filter((row) => row.ws === rookWs && row.message.type === 'mailbox_new_mail');
+    assert.strictEqual(afterLimit.length, 3);
+    assert.strictEqual(afterLimit[2].message.data.id, 'e5');
+    assert.strictEqual(afterLimit[2].message.data.dropped, 1);
+
     const menmaClient = {
         authMethod: 'application_key',
         appName: 'Menma',
