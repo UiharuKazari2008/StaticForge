@@ -12,6 +12,8 @@ const SKIP_KEYS = new Set([
 const GENERATE_TOOLS = new Set(['generate_image', 'generate_preset', 'upscale_image', 'expand_image']);
 
 let entries = [];
+const inflight = new Map();
+let inflightSeq = 0;
 
 function isGenerateTool(name, args) {
     if (GENERATE_TOOLS.has(name)) return true;
@@ -135,8 +137,30 @@ function getRecent(now = Date.now()) {
     return entries.filter((row) => now - row.at <= MCP_ACTIVITY_TTL_MS);
 }
 
+function beginCall(entry) {
+    const id = ++inflightSeq;
+    inflight.set(id, {
+        id,
+        tool: String((entry && entry.tool) || 'tool'),
+        key: String((entry && (entry.key || entry.actorName)) || 'unknown'),
+        actorName: (entry && entry.actorName) || null,
+        at: Date.now()
+    });
+    return id;
+}
+
+function endCall(id) {
+    inflight.delete(id);
+}
+
+function getInflight() {
+    return Array.from(inflight.values());
+}
+
 function resetActivityLog() {
     entries = [];
+    inflight.clear();
+    inflightSeq = 0;
 }
 
 module.exports = {
@@ -148,5 +172,8 @@ module.exports = {
     summarizeValue,
     recordActivity,
     getRecent,
+    beginCall,
+    endCall,
+    getInflight,
     resetActivityLog
 };
