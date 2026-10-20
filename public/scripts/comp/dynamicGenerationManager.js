@@ -21,6 +21,19 @@ let rentanSystemMenuConfig = null;
 // Model catalogs and the choice helpers are the Director's (director.js catalogFor,
 // normalizeRetryChoice, retryEfforts, retryFastAvailable).
 const RENTAN_AGENT_ENGINES = ['cursor', 'claude', 'tokenrouter'];
+
+function rentanAgentEngineOk(engine) {
+    if (RENTAN_AGENT_ENGINES.includes(engine)) return true;
+    return /^custom:[a-z][a-z0-9_-]{0,31}$/.test(String(engine || ''));
+}
+
+function rentanAgentEngineIds() {
+    const director = rentanAgentDirector();
+    const extra = director && director.engineChoices
+        ? director.engineChoices().filter((id) => !RENTAN_AGENT_ENGINES.includes(id))
+        : [];
+    return RENTAN_AGENT_ENGINES.concat(extra);
+}
 const RENTAN_AGENT_FALLBACK = { engine: 'cursor', model: null, effort: 'medium', fast: false };
 let rentanAgentDefault = null;
 // The server's built-in default (director_rentan_agent_get fallback); RENTAN_AGENT_FALLBACK until it answers.
@@ -33,7 +46,7 @@ function rentanAgentDirector() {
 function getRentanAgentOverride() {
     const carousel = document.getElementById('dynamicCarousel');
     const engine = carousel && carousel.dataset.agentEngine;
-    if (!RENTAN_AGENT_ENGINES.includes(engine)) return null;
+    if (!rentanAgentEngineOk(engine)) return null;
     return {
         engine,
         model: carousel.dataset.agentModel || null,
@@ -46,7 +59,7 @@ function getRentanAgentOverride() {
 function setRentanAgentOverride(agent) {
     const carousel = document.getElementById('dynamicCarousel');
     if (!carousel) return;
-    if (!agent || typeof agent !== 'object' || !RENTAN_AGENT_ENGINES.includes(agent.engine)) {
+    if (!agent || typeof agent !== 'object' || !rentanAgentEngineOk(agent.engine)) {
         delete carousel.dataset.agentEngine;
         delete carousel.dataset.agentModel;
         delete carousel.dataset.agentEffort;
@@ -126,8 +139,8 @@ function wireRentanAgentDefaults() {
     const take = (message) => {
         const body = message && message.data;
         if (!body || body.success === false) return;
-        rentanAgentDefault = body.default && RENTAN_AGENT_ENGINES.includes(body.default.engine) ? body.default : null;
-        if (body.fallback && RENTAN_AGENT_ENGINES.includes(body.fallback.engine)) rentanAgentBuiltIn = body.fallback;
+        rentanAgentDefault = body.default && rentanAgentEngineOk(body.default.engine) ? body.default : null;
+        if (body.fallback && rentanAgentEngineOk(body.fallback.engine)) rentanAgentBuiltIn = body.fallback;
     };
     window.wsClient.on('director_rentan_agent_get_response', take);
     window.wsClient.on('director_rentan_agent_set_default_response', take);
@@ -196,7 +209,7 @@ function rentanAgentMenuItems() {
         text: 'Engine',
         icon: 'fas fa-gears',
         valueDisplay: () => escapeRentanAgentText(rentanAgentEngineName(rentanAgentEffective().engine)),
-        submenu: RENTAN_AGENT_ENGINES.map((id) => ({
+        optionsfn: () => rentanAgentEngineIds().map((id) => ({
             text: rentanAgentEngineName(id),
             action: 'setRentanAgentEngine',
             value: id,

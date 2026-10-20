@@ -1,4 +1,5 @@
 const wsPacketRegistry = require('../wsPacketRegistry');
+const { withKnowledgeMemoryStore, registerObliteratedCheckpoint } = require('../../knowledgeMemoryDatabase');
 
 const KNOWLEDGE_DESTRUCTIVE = { destructive: true };
 
@@ -566,7 +567,11 @@ function registerPackets(handlersCtx) {
 
     const reg = (type, fn, meta = {}) => {
         wsPacketRegistry.registerWsPacket(type, async (ctx) => {
-            await fn(ctx.handlers, ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer);
+            const store = ctx.message && ctx.message.store;
+            await withKnowledgeMemoryStore(store, async () => {
+                registerObliteratedCheckpoint(ctx.handlers && ctx.handlers.globalResources);
+                await fn(ctx.handlers, ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer);
+            });
         }, { owner: 'knowledge', ...meta });
     };
 

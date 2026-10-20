@@ -15,6 +15,17 @@
 
 'use strict';
 
+// Use globalResources only when the server already loaded it. Requiring it
+// here would boot its timers/plumbing in isolated tools and tests.
+function loadedGlobalResources() {
+    try {
+        const id = require.resolve('./globalResources');
+        return require.cache[id] ? require.cache[id].exports : null;
+    } catch (_err) {
+        return null;
+    }
+}
+
 const { getDb } = require('./dovecoteDatabase');
 const addresses = require('./mailGatewayAddresses');
 
@@ -61,7 +72,7 @@ function nowMs() {
 function notifyConfig() {
     if (testOverrides && testOverrides.config) return testOverrides.config;
     try {
-        const gr = require('./globalResources');
+        const gr = loadedGlobalResources();
         const cfg = gr.getConfig() || {};
         return (cfg.dovecote && cfg.dovecote.notify) || {};
     } catch (_err) {

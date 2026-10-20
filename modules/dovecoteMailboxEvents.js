@@ -13,6 +13,17 @@
 
 'use strict';
 
+// Use globalResources only when the server already loaded it. Requiring it
+// here would boot its timers/plumbing in isolated tools and tests.
+function loadedGlobalResources() {
+    try {
+        const id = require.resolve('./globalResources');
+        return require.cache[id] ? require.cache[id].exports : null;
+    } catch (_err) {
+        return null;
+    }
+}
+
 const EVENT_TYPE = 'mailbox_new_mail';
 const RATE_LIMITED_TYPE = 'mailbox_new_mail_rate_limited';
 const PLUMBING_TOPIC = 'dovecote:mailbox_new_mail';
@@ -49,7 +60,7 @@ function socketPerMinute() {
         return Number.isFinite(value) && value > 0 ? Math.floor(value) : DEFAULT_SOCKET_PER_MINUTE;
     }
     try {
-        const gr = require('./globalResources');
+        const gr = loadedGlobalResources();
         const cfg = (gr.getConfig && gr.getConfig()) || {};
         const value = Number(cfg.dovecote && cfg.dovecote.notify && cfg.dovecote.notify.socketPerMinute);
         if (Number.isFinite(value) && value > 0) return Math.min(600, Math.floor(value));
@@ -76,7 +87,7 @@ function getPlumbing() {
         return testOverrides.plumbing;
     }
     try {
-        const gr = require('./globalResources');
+        const gr = loadedGlobalResources();
         if (gr && typeof gr.getDataPlumbing === 'function') return gr.getDataPlumbing();
     } catch (_err) { /* optional */ }
     return null;
@@ -126,6 +137,13 @@ function resolveSubscribeMailbox(clientInfo, requested) {
         if (!owner) {
             throw new DovecoteError('Caller identity does not map to a Dovecote mailbox', 'FORBIDDEN');
         }
+        // Same scope gate as the own-mailbox Dovecote tools.
+        const scopes = (clientInfo.applicationAuth && clientInfo.applicationAuth.applicationScopes)
+            || clientInfo.applicationScopes || [];
+        if (!Array.isArray(scopes) || !scopes.some((s) => s === 'universal'
+            || s === 'sfapp_dovecote' || String(s).startsWith('sfapp_dovecote:'))) {
+            throw new DovecoteError('Application key does not have Dovecote permission', 'INSUFFICIENT_SCOPE');
+        }
         if (want && want !== owner) {
             throw new DovecoteError('App-key sockets may subscribe to their own mailbox only', 'FORBIDDEN');
         }
@@ -133,6 +151,10 @@ function resolveSubscribeMailbox(clientInfo, requested) {
     }
     if (!clientInfo || clientInfo.authenticated !== true) {
         throw new DovecoteError('Authentication required', 'FORBIDDEN');
+    }
+    // Cross-mailbox events: same audience as the mailbox snapshot push.
+    if (clientInfo.userType !== 'admin' && clientInfo.userType !== 'readonly') {
+        throw new DovecoteError('Not allowed to subscribe to mailbox events', 'FORBIDDEN');
     }
     const mailbox = want || HUMAN_OWNER;
     if (!isValidOwner(mailbox)) {

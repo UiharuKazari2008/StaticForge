@@ -369,13 +369,28 @@ async function main() {
     assert.match(httpSrc, /resolveDovecoteOwnerFromReq/);
     assert.doesNotMatch(httpSrc, /body\.mailbox|params\.owner|query\.mailbox/);
 
+    // Scope + audience gates on mailbox_new_mail subscriptions.
+    assert.throws(() => events.resolveSubscribeMailbox({
+        authenticated: true, authMethod: 'application_key',
+        applicationAuth: { appName: 'rook', applicationScopes: ['sfapp_images'], applicationKeyId: 'k-x' }
+    }, 'rook'), (err) => err.code === 'INSUFFICIENT_SCOPE');
+    assert.throws(() => events.resolveSubscribeMailbox({
+        authenticated: true, userType: 'user'
+    }, 'rook'), (err) => err.code === 'FORBIDDEN');
+    assert.strictEqual(events.resolveSubscribeMailbox({
+        authenticated: true, userType: 'admin'
+    }, 'rook'), 'rook');
+
     notify.resetForTests();
     events.resetForTests();
     exchange.resetTestConfig();
     console.log('dovecote mailbox notify-forward tests passed');
 }
 
-main().catch((err) => {
+main().then(() => {
+    // Required modules keep handles open; exit explicitly once done.
+    process.exit(0);
+}).catch((err) => {
     console.error(err);
     process.exit(1);
 });

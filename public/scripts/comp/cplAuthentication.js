@@ -7,6 +7,7 @@
  *   Service Keys        the keys Dreamscape uses for outside services (Save changes)
  *   Application Keys    keys programs use to reach Dreamscape, requests waiting for approval,
  *                       the request log (Create an application key, View the request log)
+ *   Custom Model Providers (Director)   URL, key, default model, Obliterated Memories, age tool
  *
  * PINs moved to User Accounts (cplUserAccounts.js) and approved IPs to Windows Defender
  * (cplDefender.js). The page runs its own copy of the Security Center driver
@@ -408,6 +409,188 @@
         });
     }
 
+    let customProviderRows = [];
+
+    function customField(label, control) {
+        const item = document.createElement('div');
+        item.className = 'cpl-vault-field';
+        const lab = document.createElement('div');
+        lab.className = 'cpl-vault-label';
+        lab.textContent = label;
+        const value = document.createElement('div');
+        value.className = 'cpl-vault-value';
+        value.appendChild(control);
+        item.append(lab, value);
+        return item;
+    }
+
+    function customInput(value, placeholder) {
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'cpl-ua-input';
+        input.value = value || '';
+        if (placeholder) input.placeholder = placeholder;
+        return input;
+    }
+
+    function customCheck(text, checked) {
+        const wrap = document.createElement('div');
+        wrap.className = 'desktop-settings-check';
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.checked = checked === true;
+        const id = `cplCustomCheck-${Math.random().toString(36).slice(2, 8)}`;
+        input.id = id;
+        const label = document.createElement('label');
+        label.htmlFor = id;
+        label.textContent = text;
+        wrap.append(input, label);
+        return { wrap, input };
+    }
+
+    function paintCustomProviders() {
+        const list = hostEl && hostEl.querySelector('#cplCustomProviderList');
+        if (!list) return;
+        list.textContent = '';
+        if (!customProviderRows.length) {
+            const empty = document.createElement('div');
+            empty.className = 'cpl-vault-empty';
+            empty.textContent = 'No custom model providers.';
+            list.appendChild(empty);
+            return;
+        }
+        customProviderRows.forEach((row) => {
+            const block = document.createElement('div');
+            block.className = 'cpl-vault-row' + (row._open ? ' is-open' : '');
+            const line = document.createElement('button');
+            line.type = 'button';
+            line.className = 'cpl-vault-line';
+            const name = document.createElement('span');
+            name.className = 'cpl-vault-name';
+            name.textContent = row.name || row.id || 'New provider';
+            const summary = document.createElement('span');
+            summary.className = 'cpl-vault-summary';
+            const bits = [];
+            if (row.defaultModel) bits.push(row.defaultModel.split('/').pop());
+            if (row.obliteratedMemories) bits.push('Obliterated Memories');
+            if (row.ageTool === false) bits.push('No age tool');
+            if (!row.hasKey && row.id) bits.push('No key');
+            summary.textContent = bits.join(' · ');
+            const chevron = document.createElement('span');
+            chevron.className = 'cpl-vault-chevron';
+            line.append(name, summary, chevron);
+            line.addEventListener('click', () => {
+                row._open = !row._open;
+                paintCustomProviders();
+            });
+
+            const details = document.createElement('div');
+            details.className = 'cpl-vault-details';
+            const idInput = customInput(row.id, 'sloproxy');
+            if (row.id) idInput.readOnly = true;
+            const nameInput = customInput(row.name, 'SloProxy');
+            const urlInput = customInput(row.baseUrl, 'https://host.example');
+            const modelInput = customInput(row.defaultModel, 'model id from /v1/models');
+            const keyInput = document.createElement('input');
+            keyInput.type = 'password';
+            keyInput.className = 'cpl-ua-input';
+            keyInput.autocomplete = 'new-password';
+            keyInput.placeholder = row.hasKey ? 'Leave blank to keep the current key' : 'Bearer token';
+            const memories = customCheck('Obliterated Memories', row.obliteratedMemories === true);
+            const age = customCheck('Age tool', row.ageTool !== false);
+            details.append(
+                customField('Id', idInput),
+                customField('Name', nameInput),
+                customField('URL', urlInput),
+                customField('Model', modelInput),
+                customField('Key', keyInput),
+                customField('Memories', memories.wrap),
+                customField('Age tool', age.wrap)
+            );
+            const actions = document.createElement('div');
+            actions.className = 'cpl-vault-actions';
+            const save = document.createElement('button');
+            save.type = 'button';
+            save.className = 'sec-dsap-action-btn';
+            save.textContent = 'Save';
+            save.addEventListener('click', async () => {
+                save.disabled = true;
+                try {
+                    const resp = await window.wsClient.sendMessage('director_custom_providers_save', {
+                        provider: {
+                            id: idInput.value,
+                            name: nameInput.value,
+                            baseUrl: urlInput.value,
+                            defaultModel: modelInput.value,
+                            apiKey: keyInput.value,
+                            obliteratedMemories: memories.input.checked,
+                            ageTool: age.input.checked
+                        }
+                    });
+                    customProviderRows = customProviderPayload(resp);
+                    const savedId = String(idInput.value || '').trim().toLowerCase();
+                    customProviderRows.forEach((item) => { item._open = item.id === savedId; });
+                    paintCustomProviders();
+                } catch (err) {
+                    save.disabled = false;
+                    if (typeof showGlassToast === 'function') showGlassToast('error', 'Dreamscape Services', err.message || 'Could not save the provider');
+                }
+            });
+            actions.appendChild(save);
+            details.appendChild(actions);
+            block.append(line, details);
+            list.appendChild(block);
+        });
+    }
+
+    function customProviderPayload(resp) {
+        if (!resp || typeof resp !== 'object') return [];
+        const body = resp.data && typeof resp.data === 'object' ? resp.data : resp;
+        return Array.isArray(body.providers) ? body.providers : [];
+    }
+
+    function mountCustomProviders() {
+        if (!hostEl || hostEl.querySelector('#cplVault-custom-models')) return;
+        const head = document.createElement('div');
+        head.className = 'cpl-vault-head';
+        head.id = 'cplVault-custom-models';
+        head.innerHTML = `<img src="${ART}/key-16.png" alt=""><span class="cpl-vault-title">Custom Model Providers (Director)</span><span class="cpl-vault-links"></span>`;
+        const add = document.createElement('button');
+        add.type = 'button';
+        add.className = 'cpl-vault-link';
+        add.textContent = 'Add a custom model provider';
+        add.addEventListener('click', () => {
+            if (customProviderRows.some((row) => !row.id && row._open)) return;
+            customProviderRows.push({
+                id: '', name: '', baseUrl: '', defaultModel: '', hasKey: false,
+                obliteratedMemories: false, ageTool: true, _open: true
+            });
+            paintCustomProviders();
+        });
+        head.querySelector('.cpl-vault-links').appendChild(add);
+        const list = document.createElement('div');
+        list.className = 'cpl-vault-list';
+        list.id = 'cplCustomProviderList';
+        hostEl.append(head, list);
+        paintCustomProviders();
+        if (!window.wsClient || typeof window.wsClient.sendMessage !== 'function') return;
+        window.wsClient.sendMessage('director_custom_providers_get', {}).then((resp) => {
+            if (!hostEl || !hostEl.isConnected) return;
+            const openIds = new Set(customProviderRows.filter((row) => row._open).map((row) => row.id));
+            customProviderRows = customProviderPayload(resp);
+            customProviderRows.forEach((row) => { row._open = openIds.has(row.id); });
+            paintCustomProviders();
+        }).catch((err) => {
+            const note = hostEl && hostEl.querySelector('#cplCustomProviderList');
+            if (!note) return;
+            note.textContent = '';
+            const empty = document.createElement('div');
+            empty.className = 'cpl-vault-empty';
+            empty.textContent = err.message || 'Custom model providers could not be loaded.';
+            note.appendChild(empty);
+        });
+    }
+
     // ---- the page ----
 
     async function mount(main) {
@@ -437,6 +620,7 @@
         driver._clickMenuTargets = [];
         driver.init(makeHost(hostEl));
         vault();
+        mountCustomProviders();
     }
 
     function unmount() {
@@ -446,6 +630,7 @@
             try { driver.destroy(makeHost(hostEl)); } catch (_err) { /* the page is going away */ }
         }
         driver = null;
+        customProviderRows = [];
         if (hostEl) hostEl.innerHTML = '';
         hostEl = null;
     }
@@ -474,6 +659,7 @@
                     <h3 class="cpl-task-heading">Tasks</h3>
                     <ul class="cpl-task-list">
                         ${VAULTS.map((v) => `<li><button type="button" class="cpl-link" data-cpl-auth-section="${esc(v.id)}">${esc(v.title)}</button></li>`).join('')}
+                        <li><button type="button" class="cpl-link" data-cpl-auth-section="custom-models">Custom Model Providers (Director)</button></li>
                     </ul>
                 </div>
                 <div class="cpl-task-group cpl-task-group--see-also">

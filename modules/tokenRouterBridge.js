@@ -936,21 +936,47 @@ function estimateTokens(body) {
 
 // Sends the request, dropping refused fields one at a time. Resolves with the
 // upstream Response (ok) or { status, text } for the error to report.
-async function callUpstream(body, run, signal, stream) {
+// TokenRouter, or a custom provider from the x-dreamscape-provider header
+// (modules/customModelProviders.js). Custom calls skip the TokenRouter rate gate.
+function resolveUpstream(run) {
+    const id = String((run && run.providerId) || '').trim().toLowerCase();
+    if (id) {
+        const custom = require('./customModelProviders');
+        const provider = custom.lookup(boundGr, id);
+        if (!provider) {
+            return { error: { status: 401, text: JSON.stringify({ error: { message: `Unknown custom model provider "${id}".` } }) } };
+        }
+        if (!provider.apiKey) {
+            return { error: { status: 401, text: JSON.stringify({ error: { message: `${provider.name} has no API key.` } }) } };
+        }
+        return { id: provider.engine, baseUrl: provider.baseUrl, key: provider.apiKey, label: provider.name, gated: false };
+    }
     const key = apiKey();
-    if (!key) return { status: 401, text: JSON.stringify({ error: { message: 'No TokenRouter API key. Add one in Security Center > API keys (TokenRouter).' } }) };
+    if (!key) {
+        return { error: { status: 401, text: JSON.stringify({ error: { message: 'No TokenRouter API key. Add one in Security Center > API keys (TokenRouter).' } }) } };
+    }
+    return { id: 'tokenrouter', baseUrl: baseUrl(), key, label: 'TokenRouter', gated: true };
+}
+
+async function callUpstream(body, run, signal, stream) {
+    const upstream = resolveUpstream(run);
+    if (upstream.error) return upstream.error;
     const model = run.model || body.model;
-    const learned = learnedRelaxers.get(model) || new Set();
+    const learnKey = upstream.id === 'tokenrouter' ? model : `${upstream.id}\0${model}`;
+    const learned = learnedRelaxers.get(learnKey) || new Set();
     const flags = {};
     learned.forEach((name) => { flags[name] = true; });
     for (let attempt = 0; attempt <= RELAXERS.length; attempt++) {
         const { request } = toOpenAIRequest(body, { ...flags, model, effort: run.effort, stream });
-        const res = await gate.run(() => fetch(`${baseUrl()}/v1/chat/completions`, {
+        const send = () => fetch(`${upstream.baseUrl}/v1/chat/completions`, {
             method: 'POST',
-            headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
+            headers: { 'content-type': 'application/json', authorization: `Bearer ${upstream.key}` },
             body: JSON.stringify(request),
             signal
-        }), { lane: run.lane, signal, label: `${run.lane || 'interactive'} ${model}` });
+        });
+        const res = upstream.gated
+            ? await gate.run(send, { lane: run.lane, signal, label: `${run.lane || 'interactive'} ${model}` })
+            : await send();
         if (res.ok) return res;
         const text = await res.text().catch(() => '');
         if (res.status !== 400 && res.status !== 422) return { status: res.status, text };
@@ -958,10 +984,10 @@ async function callUpstream(body, run, signal, stream) {
         if (!relaxer) return { status: res.status, text };
         flags[relaxer.key] = true;
         learned.add(relaxer.key);
-        learnedRelaxers.set(model, learned);
-        console.warn(`TokenRouter ${model}: retrying without ${RELAXER_LABELS[relaxer.key]} (${res.status})`);
+        learnedRelaxers.set(learnKey, learned);
+        console.warn(`${upstream.label} ${model}: retrying without ${RELAXER_LABELS[relaxer.key]} (${res.status})`);
     }
-    return { status: 400, text: JSON.stringify({ error: { message: 'TokenRouter refused every request shape' } }) };
+    return { status: 400, text: JSON.stringify({ error: { message: `${upstream.label} refused every request shape` } }) };
 }
 
 function relaxerApplies(key, request) {
@@ -1031,7 +1057,14 @@ async function handleMessages(req, res) {
     const effort = String(req.headers['x-dreamscape-effort'] || '').trim().toLowerCase();
     // x-dreamscape-lane: interactive (Director), normal (Rentan); see modules/tokenRouterGate.js.
     const lane = String(req.headers['x-dreamscape-lane'] || '').trim().toLowerCase();
-    const run = { model: body.model, effort: EFFORTS.includes(effort) ? effort : null, lane: gate.LANES.includes(lane) ? lane : 'interactive' };
+    // x-dreamscape-provider: custom OpenAI host (modules/customModelProviders.js). Absent means TokenRouter.
+    const providerId = String(req.headers['x-dreamscape-provider'] || '').trim().toLowerCase();
+    const run = {
+        model: body.model,
+        effort: EFFORTS.includes(effort) ? effort : null,
+        lane: gate.LANES.includes(lane) ? lane : 'interactive',
+        providerId: /^[a-z][a-z0-9_-]{0,31}$/.test(providerId) ? providerId : ''
+    };
     const abort = new AbortController();
     res.on('close', () => { if (!res.writableEnded) abort.abort(); });
     const stream = body.stream === true;

@@ -126,7 +126,7 @@ const {
 const naxTagsDatabase = require('./naxTagsDatabase');
 const naiPromptGuideSync = require('./naiPromptGuideSync');
 // modules/knowledgeMemoryDatabase.js — refine math + model default
-const { normalizeMemoryModel, resolveRefinementConfidence } = require('./knowledgeMemoryDatabase');
+const { normalizeMemoryModel, resolveRefinementConfidence, withKnowledgeMemoryStore, registerObliteratedCheckpoint, OBLITERATED_MEMORY_STORE } = require('./knowledgeMemoryDatabase');
 // modules/mcpModuleRegistry.js — module sets + scope filtering
 const {
     scopesAllowModuleTool,
@@ -6216,7 +6216,40 @@ const PROTECTED_MEMORY_NAMES = new Set([
     'V5 Medium effort testing'
 ]);
 
-function runMemoryTool(globalResources, name, input, ctx) {
+function turnMemoryStore(globalResources) {
+    const customProviders = require('./customModelProviders');
+    const wren = require('./cursorDirector');
+    const xi = require('./xiDirector');
+    const xiId = xi.activeSessionId();
+    const wrenId = wren.activeDirectorSessionId();
+    const brief = (xiId && !wrenId) ? xi.activeChatBrief() : wren.activeChatBrief();
+    if (!brief || !customProviders.isEngine(brief.engine)) return '';
+    return customProviders.memoryStoreForEngine(globalResources, brief.engine);
+}
+
+function ageToolAllowed(globalResources) {
+    const customProviders = require('./customModelProviders');
+    const wren = require('./cursorDirector');
+    const xi = require('./xiDirector');
+    const xiId = xi.activeSessionId();
+    const wrenId = wren.activeDirectorSessionId();
+    const brief = (xiId && !wrenId) ? xi.activeChatBrief() : wren.activeChatBrief();
+    if (!brief || !customProviders.isEngine(brief.engine)) return true;
+    return customProviders.ageToolEnabled(globalResources, brief.engine);
+}
+
+function runMemoryTool(globalResources, name, input, ctx, storeForced) {
+    if (storeForced === undefined) {
+        const store = turnMemoryStore(globalResources);
+        if (store) {
+            return withKnowledgeMemoryStore(store, () => {
+                registerObliteratedCheckpoint(globalResources);
+                return runMemoryTool(globalResources, name, input, ctx, store);
+            });
+        }
+        storeForced = '';
+    }
+    const obliterated = storeForced === OBLITERATED_MEMORY_STORE;
     name = canonMemoryTool(name);
     const db = resolveKnowledgeMemoryDb(globalResources);
     if (!db) {
@@ -6243,14 +6276,14 @@ function runMemoryTool(globalResources, name, input, ctx) {
             offset: input.offset,
             search: input.search || '',
             category: input.category || null,
-            model: input.model || null
+            model: obliterated ? null : (input.model || null)
         });
         return { success: true, ...paged };
     }
     if (name === 'search_memories') {
         const query = String(input.query || '').trim();
         if (!query) return { success: false, error: 'query is required' };
-        const raw = db.searchKnowledgeMemories(query, input.category || null, input.model || null);
+        const raw = db.searchKnowledgeMemories(query, input.category || null, obliterated ? null : (input.model || null));
         const limit = Math.min(20, Math.max(1, Number(input.limit) || 5));
         const minRelevance = input.minRelevance != null ? Number(input.minRelevance) : 40;
         const hits = (Array.isArray(raw) ? raw : [])
@@ -6320,7 +6353,9 @@ function runMemoryTool(globalResources, name, input, ctx) {
     const confidence = refined
         ? resolveRefinementConfidence(existing.confidence, input.confidence)
         : 0.1;
-    const model = normalizeMemoryModel(input.model || (existing && existing.model));
+    const model = obliterated
+        ? OBLITERATED_MEMORY_STORE
+        : normalizeMemoryModel(input.model || (existing && existing.model));
     const previousObservations = existing && Array.isArray(existing.observations) ? existing.observations : [];
     const nextObservations = input.observations !== undefined ? input.observations : previousObservations;
     const droppedObservations = input.observations !== undefined
@@ -8755,6 +8790,9 @@ async function callTool(globalResources, req, name, args) {
     }
 
     if (name === 'lookup_character_age') {
+        if (!ageToolAllowed(globalResources)) {
+            return mcpTextResult({ success: false, error: 'lookup_character_age is turned off for this Director engine.' }, true);
+        }
         const { lookupCharacterAge } = require('./characterAgeLookup');
         const asked = input.character || input.name || input.tag || input.tagName || input.query;
         const result = lookupCharacterAge(asked);
@@ -9647,7 +9685,10 @@ async function handleJsonRpc(globalResources, req, message) {
             body: {
                 jsonrpc: '2.0',
                 id,
-                result: { tools: listToolsForScopes(scopes, globalResources, { owner, actor }) }
+                result: {
+                    tools: listToolsForScopes(scopes, globalResources, { owner, actor })
+                        .filter((tool) => tool.name !== 'lookup_character_age' || ageToolAllowed(globalResources))
+                }
             }
         };
     }

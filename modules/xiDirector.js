@@ -16,6 +16,7 @@ const { spawn, execFileSync } = require('child_process');
 const director = require('./cursorDirector');
 const xiLaunch = require('./xiLaunch');
 const tokenRouter = require('./tokenRouterBridge');
+const customProviders = require('./customModelProviders');
 
 // Xi runs as long as its log keeps growing; 10 minutes of silence stops it. No total cap.
 const RUN_IDLE_MS = 10 * 60 * 1000;
@@ -102,6 +103,19 @@ function activeSessionId() {
     return runs.size === 1 ? Array.from(runs.keys())[0] : null;
 }
 
+function activeChatBrief() {
+    const sessionId = activeSessionId();
+    if (!sessionId) return null;
+    const chat = readIndex().chats.find((item) => item.id === sessionId);
+    if (!chat) return null;
+    const choice = chat.choice && typeof chat.choice === 'object' ? chat.choice : {};
+    return {
+        id: chat.id,
+        model: String(choice.id || chat.model || '').trim(),
+        engine: String(chat.runtime || '').trim()
+    };
+}
+
 // In-process Xi tails, including after the agent pid exits while finishRun
 // is still settling the session (Yozora #565).
 function listActiveRuns() {
@@ -159,12 +173,13 @@ const XI_TOKENROUTER_DEFAULT_MODEL = tokenRouter.DEFAULT_MODEL;
 
 function sanitizeRuntime(value) {
     const text = String(value || '').trim().toLowerCase();
+    if (customProviders.isEngine(text)) return text;
     return XI_RUNTIMES.has(text) ? text : 'cursor';
 }
 
-// Claude and TokenRouter turns are Claude CLI sessions (chat.claudeSessionId).
+// Claude, TokenRouter, and custom OpenAI providers are Claude CLI sessions.
 function usesClaudeCli(runtime) {
-    return runtime === 'claude' || runtime === 'tokenrouter';
+    return runtime === 'claude' || runtime === 'tokenrouter' || customProviders.isEngine(runtime);
 }
 
 function publicXiSession(chat) {
@@ -375,6 +390,10 @@ function directorClientId(clientInfo, message) {
 }
 
 function xiIdentityLine(runtime) {
+    if (customProviders.isEngine(runtime)) {
+        const name = customProviders.displayName(boundGr, runtime);
+        return `You are Xi, the host Claude Code agent for this repo, running through ${name}. Wren is the Dreamspace persona. You are not Wren and you are not in the jail.`;
+    }
     if (runtime === 'tokenrouter') {
         return 'You are Xi, the host Claude Code agent for this repo, running through TokenRouter. Wren is the Dreamspace persona. You are not Wren and you are not in the jail.';
     }
@@ -384,7 +403,7 @@ function xiIdentityLine(runtime) {
     return 'You are Xi, the host Cursor agent for this repo. Wren is the Dreamspace persona. You are not Wren and you are not in the jail.';
 }
 
-function buildPrompt(chat, userText, files, clientId) {
+function buildPrompt(chat, userText, files, clientId, options) {
     const runtime = sanitizeRuntime(chat.runtime);
     const lines = [
         xiIdentityLine(runtime),
@@ -400,6 +419,12 @@ function buildPrompt(chat, userText, files, clientId) {
             : 'No Dreamscape workspace is paired yet.',
         `Workspace: ${workspacePath(boundGr)}`
     ];
+    if (options && options.memoryStore === 'obliterated') {
+        lines.push('Memory store: Obliterated Memories. list_memories, search_memories, get_memory, and save_memory use that shared store. It is not the Studio memory database. Do not pass a Studio model filter.');
+    }
+    if (options && options.ageTool === false) {
+        lines.push('lookup_character_age is turned off for this engine. Do not call it.');
+    }
     if (clientId) lines.push(`Studio clientId: ${clientId}. If a tool says not bound, bind_session once with it.`);
     if (files.length) {
         lines.push('Attached files:');
@@ -1006,9 +1031,11 @@ async function handleDirectorCreateSession(handler, ws, message) {
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
                 archived: false,
-                model: sanitizeRuntime(message.runtime) === 'tokenrouter'
-                    ? XI_TOKENROUTER_DEFAULT_MODEL
-                    : director.EFFORT_MODELS.medium,
+                model: customProviders.isEngine(sanitizeRuntime(message.runtime))
+                    ? ((customProviders.lookup(gr, message.runtime) || {}).defaultModel || XI_TOKENROUTER_DEFAULT_MODEL)
+                    : (sanitizeRuntime(message.runtime) === 'tokenrouter'
+                        ? XI_TOKENROUTER_DEFAULT_MODEL
+                        : director.EFFORT_MODELS.medium),
                 replay: false,
                 messages: []
             };
@@ -1189,10 +1216,14 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
         const runtime = sanitizeRuntime((readIndex().chats.find((item) => item.id === sessionId) || {}).runtime);
         if (runtime === 'cursor') director.installUnrestrictedCli(layout().configDir);
         if (runtime === 'tokenrouter') director._test.requireTokenRouterKey(gr);
+        if (customProviders.isEngine(runtime)) customProviders.requireReady(gr, runtime);
         await ensureXiMcp(gr);
         const catalog = cachedModels();
         const runModel = runtime === 'cursor' ? director._test.resolveRunModel(catalog, message) : null;
         const claudeEffort = sanitizeClaudeEffort(message.effort);
+        const customRun = customProviders.isEngine(runtime)
+            ? await customProviders.resolveForTurn(gr, runtime, message)
+            : null;
         const tokenRun = runtime === 'tokenrouter'
             ? await director._test.resolveTokenRouterRun({
                 model: message.model || XI_TOKENROUTER_DEFAULT_MODEL,
@@ -1211,11 +1242,15 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
             if (!spoken) throw new Error('Say what you want, or attach a file');
             const userText = message.steer ? `Stop the previous attempt. Do this instead:\n${spoken}` : spoken;
             if ((chat.name === 'Xi' || chat.name === 'Director') && spoken) chat.name = spoken.slice(0, 48);
-            chat.model = runtime === 'tokenrouter'
-                ? tokenRun.model
-                : (runtime === 'claude' ? `claude-${claudeEffort}` : runModel);
+            chat.model = customRun
+                ? customRun.model
+                : (runtime === 'tokenrouter'
+                    ? tokenRun.model
+                    : (runtime === 'claude' ? `claude-${claudeEffort}` : runModel));
             chat.choice = {
-                id: message.model ? String(message.model) : (runtime === 'tokenrouter' ? tokenRun.family || tokenRun.model : 'auto'),
+                id: message.model ? String(message.model) : (customRun
+                    ? customRun.family || customRun.model
+                    : (runtime === 'tokenrouter' ? tokenRun.family || tokenRun.model : 'auto')),
                 effort: message.effort || 'medium',
                 fast: message.fast === true
             };
@@ -1253,9 +1288,9 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
                 chat.claudeSessionId = claudeSessionId;
             }
             const round = director._test.roundModelRecord(
-                runtime === 'tokenrouter' ? tokenRun.family || tokenRun.model : message.model,
-                runtime === 'tokenrouter' ? tokenRun.effort : (runtime === 'claude' ? claudeEffort : (message.effort || 'medium')),
-                runtime === 'tokenrouter' ? tokenRun.fast === true : message.fast === true,
+                customRun ? customRun.family || customRun.model : (runtime === 'tokenrouter' ? tokenRun.family || tokenRun.model : message.model),
+                customRun ? customRun.effort : (runtime === 'tokenrouter' ? tokenRun.effort : (runtime === 'claude' ? claudeEffort : (message.effort || 'medium'))),
+                customRun ? false : (runtime === 'tokenrouter' ? tokenRun.fast === true : message.fast === true),
                 chat.model,
                 usesClaudeCli(runtime) ? runtime : undefined
             );
@@ -1266,7 +1301,11 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
                 userText: userText.slice(0, 2000)
             };
             const clientId = directorClientId(clientInfo, message);
-            const prompt = buildPrompt(chat, userText, files, clientId);
+            const memoryStore = customProviders.isEngine(runtime)
+                ? customProviders.memoryStoreForEngine(gr, runtime)
+                : '';
+            const ageTool = !customProviders.isEngine(runtime) || customProviders.ageToolEnabled(gr, runtime);
+            const prompt = buildPrompt(chat, userText, files, clientId, { memoryStore, ageTool });
             writeIndex(index);
             return { prompt, cursorId, claudeSessionId, claudeFirstTurn, model: chat.model, name: chat.name, round, runtime };
         });
@@ -1288,7 +1327,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
                 '--strict-mcp-config',
                 '--mcp-config', claudeMcpConfigArg(),
                 '--append-system-prompt', claudeProjectPrompt(workspace),
-                ...(runtime === 'tokenrouter' ? ['--model', prepared.model] : ['--effort', claudeEffort]),
+                ...(runtime === 'tokenrouter' || customProviders.isEngine(runtime) ? ['--model', prepared.model] : ['--effort', claudeEffort]),
                 prepared.claudeFirstTurn ? '--session-id' : '--resume', prepared.claudeSessionId,
                 '--',
                 prepared.prompt
@@ -1308,9 +1347,12 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
                 prepared.prompt
             ];
         let extraEnv = {};
-        if (runtime === 'tokenrouter') {
+        if (runtime === 'tokenrouter' || customProviders.isEngine(runtime)) {
             const link = await tokenRouter.ensureBridge();
-            extraEnv = director._test.tokenRouterCliEnv(link, { ...tokenRun, lane: 'interactive' });
+            const bridged = customRun
+                ? { model: customRun.model, effort: customRun.effort, lane: 'interactive', providerId: customProviders.providerId(runtime) }
+                : { ...tokenRun, lane: 'interactive' };
+            extraEnv = director._test.tokenRouterCliEnv(link, bridged);
         }
         const started = spawnDetached(args, log, workspace, { runtime, extraEnv });
         const meta = {
@@ -1572,6 +1614,7 @@ module.exports = {
     runtimeStatus,
     hasChat,
     activeSessionId,
+    activeChatBrief,
     listActiveRuns,
     activeRuntime,
     sanitizeRuntime,

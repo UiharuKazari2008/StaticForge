@@ -72,6 +72,7 @@ assert.ok(/function openSecurityCenterDsap\(view\) \{\s*if \(securityDsapNormali
 const auth = read('public/scripts/comp/cplAuthentication.js');
 assert.ok(auth.includes('driver = Object.create(securityDsapDriver)') && auth.includes("getPathSegments: () => ['auth']"), 'the page runs its own driver on the auth view');
 assert.ok(auth.includes("name: 'Dreamscape Services'") && auth.includes("title: () => 'Dreamscape Services'"), 'the page is Dreamscape Services');
+assert.ok(auth.includes('Custom Model Providers (Director)') && auth.includes('director_custom_providers_get'), 'Dreamscape Services lists custom Director providers');
 assert.ok(auth.includes("image: '/static_images/vista-cpl/cardspace-32.png'"), 'home icon is CardSpace at 32');
 assert.ok(read('public/scripts/comp/windowsDefender.js').includes("toolItem('authentication', 'cardspace-48.png', 'Dreamscape Services'"), 'Defender link uses the 48 px CardSpace icon');
 assert.ok(read('public/css/vista-glass-controls.css').includes('vista-icons/cardspace-16.png') && read('public/css/vista-glass-controls.css').includes('vista-icons/cardspace-32.png'), 'wallet tray uses the 16 and 32 CardSpace frames');
