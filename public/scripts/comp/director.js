@@ -374,7 +374,10 @@ class Director {
     }
 
     chatPrefsKey() {
-        if (this.persona === 'xi') return `${this.PREFS_KEY}_xi`;
+        if (this.persona === 'xi') {
+            const engine = this.activeEngine();
+            return engine === 'cursor' ? `${this.PREFS_KEY}_xi` : `${this.PREFS_KEY}_xi_${engine}`;
+        }
         return this.enginePrefsKey(this.activeEngine());
     }
 
@@ -394,17 +397,22 @@ class Director {
     }
 
     activeEngine() {
-        return this.persona === 'xi' ? 'cursor' : this.normalizeEngine(this.engine);
+        if (this.persona === 'xi') return this.displayEngine();
+        return this.normalizeEngine(this.engine);
+    }
+
+    // Draft picker choice. New Xi chats default to TokenRouter (DeepSeek V4.1 Flash).
+    nextXiRuntime() {
+        return this.normalizeEngine(this._nextXiRuntime || 'tokenrouter');
     }
 
     // The engine the header shows: Wren's selected engine, or for Xi the
     // runtime of the open session (the picker's choice on a draft).
     displayEngine() {
-        if (this.persona !== 'xi') return this.activeEngine();
+        if (this.persona !== 'xi') return this.normalizeEngine(this.engine);
         const session = this.currentSession;
         const draft = !session || session.draft || !session.id;
-        const runtime = draft ? this._nextXiRuntime : session.runtime;
-        return runtime === 'claude' ? 'claude' : 'cursor';
+        return draft ? this.nextXiRuntime() : this.normalizeEngine(session.runtime);
     }
 
     // Header badge and usage follow displayEngine; refetch usage when it flips.
@@ -1035,13 +1043,18 @@ class Director {
             contextMenu.attachClickMenuToElement(this.directorRuntimePick, {
                 onAction: (action, target, item) => {
                     this._nextXiRuntime = item.runtimeId;
+                    this.loadChatPrefs();
+                    this.loadModelCache();
+                    this.requestDirectorModels(item.runtimeId, true);
+                    this.paintModelPick();
                     this.paintRuntimePicker();
                 },
                 sections: [{
                     type: 'list',
                     items: [
-                        { text: 'Cursor', action: 'director-runtime-cursor', runtimeId: 'cursor', showIndicator: true, loadfn: (it) => { it.checked = (this._nextXiRuntime || 'cursor') === 'cursor'; } },
-                        { text: 'Claude', action: 'director-runtime-claude', runtimeId: 'claude', showIndicator: true, loadfn: (it) => { it.checked = this._nextXiRuntime === 'claude'; } }
+                        { text: 'TokenRouter', action: 'director-runtime-tokenrouter', runtimeId: 'tokenrouter', showIndicator: true, loadfn: (it) => { it.checked = this.nextXiRuntime() === 'tokenrouter'; } },
+                        { text: 'Cursor', action: 'director-runtime-cursor', runtimeId: 'cursor', showIndicator: true, loadfn: (it) => { it.checked = this.nextXiRuntime() === 'cursor'; } },
+                        { text: 'Claude', action: 'director-runtime-claude', runtimeId: 'claude', showIndicator: true, loadfn: (it) => { it.checked = this.nextXiRuntime() === 'claude'; } }
                     ]
                 }]
             });
@@ -1591,6 +1604,8 @@ class Director {
             // A Claude or TokenRouter draft starts from that engine's last config; Cursor drafts start on Auto.
             if (this.activeEngine() !== 'cursor') {
                 this.loadChatPrefs();
+                this.loadModelCache();
+                this.requestDirectorModels(this.activeEngine());
                 this.paintModelPick();
                 this.syncEngineChrome();
                 return;
@@ -1609,6 +1624,10 @@ class Director {
         // it if one was saved with an engine, otherwise the server's record.
         const engine = (choice && choice.engine) || this.normalizeEngine(session.engine);
         if (this.persona !== 'xi') this.setEngine(engine, { skipSave: true });
+        else {
+            this.loadModelCache();
+            this.requestDirectorModels(this.activeEngine());
+        }
         this.selectedModel = choice && choice.id ? choice.id : (this.activeEngine() !== 'cursor' ? this.defaultModel() : 'auto');
         this.selectedEffort = choice && choice.effort ? choice.effort : 'medium';
         this.selectedContext = choice && choice.context ? choice.context : '';
@@ -3657,9 +3676,9 @@ class Director {
         const session = this.currentSession;
         const isDraft = !session || session.draft || !session.id;
         this.directorRuntimePick.classList.remove('hidden');
-        const runtime = isDraft ? (this._nextXiRuntime || 'cursor') : (session.runtime === 'claude' ? 'claude' : 'cursor');
+        const runtime = isDraft ? this.nextXiRuntime() : this.normalizeEngine(session.runtime);
         if (this.directorRuntimePickName) {
-            this.directorRuntimePickName.textContent = runtime === 'claude' ? 'Claude' : 'Cursor';
+            this.directorRuntimePickName.textContent = this.engineName(runtime);
         }
         if (isDraft) {
             this.directorRuntimePick.disabled = false;
@@ -4770,7 +4789,7 @@ class Director {
             workspaceId: window.currentWorkspace || null,
             persona: this.persona || 'wren',
             sessionType: this._nextSessionType || null,
-            runtime: this.persona === 'xi' ? (this._nextXiRuntime || 'cursor') : undefined
+            runtime: this.persona === 'xi' ? this.nextXiRuntime() : undefined
         });
         this._nextSessionType = null;
         return true;

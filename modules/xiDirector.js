@@ -15,6 +15,7 @@ const os = require('os');
 const { spawn, execFileSync } = require('child_process');
 const director = require('./cursorDirector');
 const xiLaunch = require('./xiLaunch');
+const tokenRouter = require('./tokenRouterBridge');
 
 // Xi runs as long as its log keeps growing; 10 minutes of silence stops it. No total cap.
 const RUN_IDLE_MS = 10 * 60 * 1000;
@@ -115,8 +116,9 @@ function listActiveRuns() {
 
 // Runtime of whatever Xi session is currently driving a call through the
 // shared "Xi" MCP key (modules/dovecoteMail.js uses this to tell a Cursor
-// job's mail apart from a Claude job's — they share one application key).
-// null when no Xi session is running (caller should default to 'cursor').
+// job's mail apart from a Claude or TokenRouter job's — they share one
+// application key). null when no Xi session is running (caller should
+// default to 'cursor' so existing sessions without a runtime stay Cursor).
 function activeRuntime() {
     const sessionId = activeSessionId();
     if (!sessionId) return null;
@@ -152,11 +154,17 @@ function chatIsListed(chat) {
     return (chat.messages || []).some((item) => item && item.role === 'user' && item.message_type !== 'Attachment');
 }
 
-const XI_RUNTIMES = new Set(['cursor', 'claude']);
+const XI_RUNTIMES = new Set(['cursor', 'claude', 'tokenrouter']);
+const XI_TOKENROUTER_DEFAULT_MODEL = tokenRouter.DEFAULT_MODEL;
 
 function sanitizeRuntime(value) {
     const text = String(value || '').trim().toLowerCase();
     return XI_RUNTIMES.has(text) ? text : 'cursor';
+}
+
+// Claude and TokenRouter turns are Claude CLI sessions (chat.claudeSessionId).
+function usesClaudeCli(runtime) {
+    return runtime === 'claude' || runtime === 'tokenrouter';
 }
 
 function publicXiSession(chat) {
@@ -366,12 +374,20 @@ function directorClientId(clientInfo, message) {
     return /^[0-9a-f]{12}$/.test(id) ? id : '';
 }
 
+function xiIdentityLine(runtime) {
+    if (runtime === 'tokenrouter') {
+        return 'You are Xi, the host Claude Code agent for this repo, running through TokenRouter. Wren is the Dreamspace persona. You are not Wren and you are not in the jail.';
+    }
+    if (runtime === 'claude') {
+        return 'You are Xi, the host Claude Code agent for this repo. Wren is the Dreamspace persona. You are not Wren and you are not in the jail.';
+    }
+    return 'You are Xi, the host Cursor agent for this repo. Wren is the Dreamspace persona. You are not Wren and you are not in the jail.';
+}
+
 function buildPrompt(chat, userText, files, clientId) {
     const runtime = sanitizeRuntime(chat.runtime);
     const lines = [
-        runtime === 'claude'
-            ? 'You are Xi, the host Claude Code agent for this repo. Wren is the Dreamspace persona. You are not Wren and you are not in the jail.'
-            : 'You are Xi, the host Cursor agent for this repo. Wren is the Dreamspace persona. You are not Wren and you are not in the jail.',
+        xiIdentityLine(runtime),
         'Be short. A few sentences. Do not explain the obvious. Do not paste large code blocks or long examples. Name the file and the change.',
         'clientLink.clientGeneration no-go means generate_image on the server, show_chat_image, and open_in_studio only if Studio is already open. Resolution stays normal unless they name a size. Wallpaper is finish, not the wallpaper resolution preset. Over 1 megapixel needs userApprovedPaidRequest after they agree.',
         `Detail belongs on a Yozora issue. File or update the issue, then link it (${YOZORA_ISSUE}<number>). The issue is the write-up.`,
@@ -756,7 +772,7 @@ function consumeClaudeStreamLine(line, state) {
 }
 
 function consumeXiStreamLine(runtime, line, state) {
-    if (runtime === 'claude') {
+    if (usesClaudeCli(runtime)) {
         consumeClaudeStreamLine(line, state);
         return;
     }
@@ -990,7 +1006,9 @@ async function handleDirectorCreateSession(handler, ws, message) {
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
                 archived: false,
-                model: director.EFFORT_MODELS.medium,
+                model: sanitizeRuntime(message.runtime) === 'tokenrouter'
+                    ? XI_TOKENROUTER_DEFAULT_MODEL
+                    : director.EFFORT_MODELS.medium,
                 replay: false,
                 messages: []
             };
@@ -1170,10 +1188,18 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
         const workspace = workspacePath(gr);
         const runtime = sanitizeRuntime((readIndex().chats.find((item) => item.id === sessionId) || {}).runtime);
         if (runtime === 'cursor') director.installUnrestrictedCli(layout().configDir);
+        if (runtime === 'tokenrouter') director._test.requireTokenRouterKey(gr);
         await ensureXiMcp(gr);
         const catalog = cachedModels();
         const runModel = runtime === 'cursor' ? director._test.resolveRunModel(catalog, message) : null;
         const claudeEffort = sanitizeClaudeEffort(message.effort);
+        const tokenRun = runtime === 'tokenrouter'
+            ? await director._test.resolveTokenRouterRun({
+                model: message.model || XI_TOKENROUTER_DEFAULT_MODEL,
+                effort: message.effort,
+                fast: message.fast
+            })
+            : null;
         const draftId = crypto.randomUUID();
         const prepared = await enqueue(async () => {
             const index = readIndex();
@@ -1185,9 +1211,11 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
             if (!spoken) throw new Error('Say what you want, or attach a file');
             const userText = message.steer ? `Stop the previous attempt. Do this instead:\n${spoken}` : spoken;
             if ((chat.name === 'Xi' || chat.name === 'Director') && spoken) chat.name = spoken.slice(0, 48);
-            chat.model = runtime === 'claude' ? `claude-${claudeEffort}` : runModel;
+            chat.model = runtime === 'tokenrouter'
+                ? tokenRun.model
+                : (runtime === 'claude' ? `claude-${claudeEffort}` : runModel);
             chat.choice = {
-                id: message.model ? String(message.model) : 'auto',
+                id: message.model ? String(message.model) : (runtime === 'tokenrouter' ? tokenRun.family || tokenRun.model : 'auto'),
                 effort: message.effort || 'medium',
                 fast: message.fast === true
             };
@@ -1225,10 +1253,11 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
                 chat.claudeSessionId = claudeSessionId;
             }
             const round = director._test.roundModelRecord(
-                message.model,
-                runtime === 'claude' ? claudeEffort : (message.effort || 'medium'),
-                message.fast === true,
-                chat.model
+                runtime === 'tokenrouter' ? tokenRun.family || tokenRun.model : message.model,
+                runtime === 'tokenrouter' ? tokenRun.effort : (runtime === 'claude' ? claudeEffort : (message.effort || 'medium')),
+                runtime === 'tokenrouter' ? tokenRun.fast === true : message.fast === true,
+                chat.model,
+                usesClaudeCli(runtime) ? runtime : undefined
             );
             chat.inflight = {
                 model: chat.model,
@@ -1250,7 +1279,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
         fs.mkdirSync(paths.logs, { recursive: true });
         fs.writeFileSync(log, '');
         const metaPath = path.join(paths.runs, `${sessionId}.json`);
-        const args = runtime === 'claude'
+        const args = usesClaudeCli(runtime)
             ? [
                 '-p',
                 '--output-format', 'stream-json',
@@ -1259,7 +1288,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
                 '--strict-mcp-config',
                 '--mcp-config', claudeMcpConfigArg(),
                 '--append-system-prompt', claudeProjectPrompt(workspace),
-                '--effort', claudeEffort,
+                ...(runtime === 'tokenrouter' ? ['--model', prepared.model] : ['--effort', claudeEffort]),
                 prepared.claudeFirstTurn ? '--session-id' : '--resume', prepared.claudeSessionId,
                 '--',
                 prepared.prompt
@@ -1278,7 +1307,12 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
                 '--',
                 prepared.prompt
             ];
-        const started = spawnDetached(args, log, workspace, { runtime });
+        let extraEnv = {};
+        if (runtime === 'tokenrouter') {
+            const link = await tokenRouter.ensureBridge();
+            extraEnv = director._test.tokenRouterCliEnv(link, { ...tokenRun, lane: 'interactive' });
+        }
+        const started = spawnDetached(args, log, workspace, { runtime, extraEnv });
         const meta = {
             pid: started.pid,
             runHome: started.runHome,
@@ -1567,6 +1601,7 @@ module.exports = {
     _test: {
         shouldPark, markToolDiffs, readToolDiffText, buildPrompt, launchPlan,
         sanitizeRuntime, assertRuntimeUnchanged, publicXiSession, consumeClaudeStreamLine,
-        claudeProjectPrompt, claudeMcpConfigArg, sanitizeClaudeEffort
+        claudeProjectPrompt, claudeMcpConfigArg, sanitizeClaudeEffort,
+        usesClaudeCli, xiIdentityLine, XI_TOKENROUTER_DEFAULT_MODEL
     }
 };

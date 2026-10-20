@@ -436,6 +436,14 @@ async function testDirectorWiring() {
     assert.strictEqual(d.sanitizeEngine('tokenrouter'), 'tokenrouter');
     assert.strictEqual(d.usesClaudeCli('tokenrouter'), true);
     assert.strictEqual(d.usesClaudeCli('cursor'), false);
+    const cliEnv = d.tokenRouterCliEnv(
+        { url: 'http://127.0.0.1:4090', secret: 'bridge-secret' },
+        { model: 'deepseek/deepseek-v4.1-flash', effort: 'low', lane: 'interactive' }
+    );
+    assert.strictEqual(cliEnv.ANTHROPIC_BASE_URL, 'http://127.0.0.1:4090');
+    assert.strictEqual(cliEnv.ANTHROPIC_AUTH_TOKEN, 'bridge-secret');
+    assert.strictEqual(cliEnv.ANTHROPIC_DEFAULT_HAIKU_MODEL, 'deepseek/deepseek-v4.1-flash');
+    assert.strictEqual(cliEnv.ANTHROPIC_CUSTOM_HEADERS, 'x-dreamscape-lane: interactive\nx-dreamscape-effort: low');
 
     const catalog = d.publicTokenRouterCatalog(t.catalogFromPricing(PRICING));
     assert.deepStrictEqual(catalog.map((m) => m.provider), ['Moonshot', 'Z.ai', 'Other']);

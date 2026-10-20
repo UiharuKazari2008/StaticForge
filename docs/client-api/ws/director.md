@@ -112,11 +112,11 @@ Broadcast with the same `data` shape (minus a fresh CPU sample — `resources` i
 
 ### Engines (Wren)
 
-`director_send_message` takes `engine`: `cursor` (default), `claude`, or `tokenrouter`. Xi keeps its own runtime choice (Cursor or Claude).
+`director_send_message` takes `engine`: `cursor` (default), `claude`, or `tokenrouter`. Xi keeps its own runtime choice (TokenRouter, Cursor, or Claude), picked once at session creation. New Xi drafts default to TokenRouter (`deepseek/deepseek-v4.1-flash`); existing sessions keep the runtime they were created with.
 
 - **`claude`** runs the Claude Code CLI in the same jail, with the OAuth token file bound read-only.
 - **`tokenrouter`** (#409) runs the same Claude Code CLI, pointed at a loopback bridge in Dreamscape (`modules/tokenRouterBridge.js`, `127.0.0.1`, random port, per-boot secret). The bridge turns the CLI's Anthropic Messages calls into OpenAI chat completions on TokenRouter (`https://api.tokenrouter.com/v1/chat/completions`, `TOKENROUTER_BASE_URL` overrides) and streams the answer back: text, thinking (`reasoning_content`), and tool calls. Tool images go to the model as a user image message after the tool results. The TokenRouter key never enters the jail; it is the `tokenrouter` service in Security Center > API keys (`secure.config.json` `tokenrouter.keys[]`), with `TOKENROUTER_API_KEY` as the fallback. A turn without a key fails with `TOKENROUTER_KEY_MISSING`.
-  - Catalog: TokenRouter's public `/api/pricing`, chat models with the `openai` endpoint type only, saved to `~/.cache/dreamscape-director/tokenrouter-models.json` for when the gateway is down. Prices are new-api ratios (ratio 1 = $2 per million input tokens). The default model is `moonshotai/kimi-k3`.
+  - Catalog: TokenRouter's public `/api/pricing`, chat models with the `openai` endpoint type only, saved to `~/.cache/dreamscape-director/tokenrouter-models.json` for when the gateway is down. Prices are new-api ratios (ratio 1 = $2 per million input tokens). The default model is `deepseek/deepseek-v4.1-flash`.
   - `effort` (`low`, `medium`, `high`) becomes `reasoning_effort`. `fast` picks the family's fast sibling (`-fast`, `-highspeed`, `-ultraspeed`) and is offered only where one exists. When a model refuses `reasoning_effort`, `reasoning_content`, images, or `max_tokens`, the bridge sends the request again without that field and remembers it for that model until the server restarts.
 - Switching engines inside a chat starts a new engine-side session with the kept transcript (handoff). Claude and TokenRouter sessions are separate even though both run the Claude CLI.
 
