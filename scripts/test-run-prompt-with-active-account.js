@@ -37,8 +37,16 @@ async function testPromptWithActiveAccount() {
 }
 
 testPromptWithActiveAccount()
-    .then(() => process.exit(0))
-    .catch((err) => {
+    .then(async () => {
+        if (typeof globalResources.closeHandlesForTests === 'function') {
+            await globalResources.closeHandlesForTests();
+        }
+        process.exit(0);
+    })
+    .catch(async (err) => {
         console.error('❌ Error:', err);
+        if (typeof globalResources.closeHandlesForTests === 'function') {
+            await globalResources.closeHandlesForTests();
+        }
         process.exit(1);
     });

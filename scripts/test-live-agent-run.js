@@ -32,11 +32,21 @@ async function testAgentRun() {
         console.log('✅ PASS: Active account profile matches activeAccountId!');
     } else {
         console.error('❌ FAIL: Active account profile diverged from activeAccountId!');
-        process.exit(1);
+        process.exitCode = 1;
     }
 }
 
-testAgentRun().catch(err => {
-    console.error('Test error:', err);
-    process.exit(1);
-});
+testAgentRun()
+    .then(async () => {
+        if (typeof globalResources.closeHandlesForTests === 'function') {
+            await globalResources.closeHandlesForTests();
+        }
+        process.exit(process.exitCode || 0);
+    })
+    .catch(async (err) => {
+        console.error('Test error:', err);
+        if (typeof globalResources.closeHandlesForTests === 'function') {
+            await globalResources.closeHandlesForTests();
+        }
+        process.exit(1);
+    });
