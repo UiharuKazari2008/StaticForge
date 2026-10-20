@@ -224,15 +224,18 @@ function safeToolName(name) {
 function toolNames(tools) {
     const toUpstream = new Map();
     const fromUpstream = new Map();
+    const schemas = new Map();
     (Array.isArray(tools) ? tools : []).forEach((tool) => {
         if (!tool || !tool.name) return;
         const safe = safeToolName(tool.name);
         toUpstream.set(tool.name, safe);
         fromUpstream.set(safe, tool.name);
+        if (tool.input_schema && typeof tool.input_schema === 'object') schemas.set(tool.name, tool.input_schema);
     });
     return {
         up: (name) => toUpstream.get(name) || safeToolName(name),
-        down: (name) => fromUpstream.get(name) || name
+        down: (name) => fromUpstream.get(name) || name,
+        schema: (name) => schemas.get(name) || null
     };
 }
 
@@ -507,6 +510,117 @@ function unwrapToolInput(input) {
     return {};
 }
 
+// MiniMax (and other vendors with an XML-style native tool format) send every
+// leaf as a string ("14", "true", "0.5"), arrays as {"item": [...]} and an
+// empty array as "". Put the values back in the types the tool schema asks
+// for. Only a value whose type does not match is touched; strings the schema
+// allows are left alone.
+function schemaTypes(schema) {
+    if (!schema || typeof schema !== 'object') return [];
+    if (Array.isArray(schema.type)) return schema.type;
+    if (typeof schema.type === 'string') return [schema.type];
+    if (schema.properties) return ['object'];
+    if (schema.items) return ['array'];
+    return [];
+}
+
+function schemaVariants(schema) {
+    const alts = (schema && (schema.anyOf || schema.oneOf)) || null;
+    return Array.isArray(alts) && alts.length ? alts : [schema];
+}
+
+function matchesType(value, type) {
+    if (type === 'array') return Array.isArray(value);
+    if (type === 'object') return !!value && typeof value === 'object' && !Array.isArray(value);
+    if (type === 'integer') return Number.isInteger(value);
+    if (type === 'number') return typeof value === 'number' && Number.isFinite(value);
+    if (type === 'null') return value === null;
+    return typeof value === type;
+}
+
+function coerceLeaf(value, type) {
+    if (type === 'array') {
+        if (value && typeof value === 'object' && !Array.isArray(value)) {
+            const keys = Object.keys(value);
+            if (keys.length === 1 && keys[0] === 'item') return Array.isArray(value.item) ? value.item : [value.item];
+        }
+        if (typeof value === 'string') {
+            const t = value.trim();
+            if (!t) return [];
+            if (t.startsWith('[')) { try { const v = JSON.parse(t); if (Array.isArray(v)) return v; } catch (_) { /* keep */ } }
+        }
+        return undefined;
+    }
+    if (typeof value !== 'string') return undefined;
+    const t = value.trim();
+    if (type === 'object' && t.startsWith('{')) {
+        try { const v = JSON.parse(t); if (v && typeof v === 'object' && !Array.isArray(v)) return v; } catch (_) { /* keep */ }
+        return undefined;
+    }
+    if ((type === 'number' || type === 'integer') && /^-?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(t)) {
+        const n = Number(t);
+        if (type === 'integer' && !Number.isInteger(n)) return undefined;
+        return n;
+    }
+    if (type === 'boolean' && (t === 'true' || t === 'false')) return t === 'true';
+    if (type === 'null' && t === 'null') return null;
+    return undefined;
+}
+
+function coerceToSchema(value, schema, depth) {
+    const d = depth || 0;
+    if (!schema || typeof schema !== 'object' || d > 24) return value;
+    const variants = schemaVariants(schema);
+    let target = null;
+    let out = value;
+    for (const variant of variants) {
+        const types = schemaTypes(variant);
+        if (!types.length || types.some((type) => matchesType(value, type))) { target = variant; break; }
+    }
+    if (!target) {
+        for (const variant of variants) {
+            for (const type of schemaTypes(variant)) {
+                const fixed = coerceLeaf(value, type);
+                if (fixed !== undefined) { out = fixed; target = variant; break; }
+            }
+            if (target) break;
+        }
+    }
+    if (!target) return value;
+    if (Array.isArray(out)) {
+        const itemSchema = target.items && !Array.isArray(target.items) ? target.items : null;
+        return itemSchema ? out.map((item) => coerceToSchema(item, itemSchema, d + 1)) : out;
+    }
+    if (out && typeof out === 'object') {
+        const props = target.properties && typeof target.properties === 'object' ? target.properties : {};
+        const extra = target.additionalProperties && typeof target.additionalProperties === 'object' ? target.additionalProperties : null;
+        const next = {};
+        Object.keys(out).forEach((key) => {
+            const sub = props[key] || extra;
+            next[key] = sub ? coerceToSchema(out[key], sub, d + 1) : out[key];
+        });
+        return next;
+    }
+    return out;
+}
+
+function toolInputFor(names, upstreamName, input) {
+    const schema = names && typeof names.schema === 'function' ? names.schema(names.down(upstreamName)) : null;
+    return schema ? coerceToSchema(input, schema) : input;
+}
+
+const REPEAT_MIN = 24;
+
+// Whole reasoning that is one text twice over ("AB" + "AB") comes back once.
+function undoubledReasoning(text) {
+    const s = String(text || '');
+    if (s.length >= REPEAT_MIN * 2 && s.length % 2 === 0) {
+        const half = s.length / 2;
+        if (s.slice(0, half) === s.slice(half)) return s.slice(0, half);
+    }
+    return s;
+}
+
 function newMessageId() {
     return `msg_${crypto.randomBytes(12).toString('hex')}`;
 }
@@ -527,6 +641,7 @@ class StreamTranslator {
         this.calls = new Map();
         this.finishReason = null;
         this.usage = null;
+        this.reasoningSeen = '';
     }
 
     start() {
@@ -567,6 +682,21 @@ class StreamTranslator {
         this.open = type;
     }
 
+    // MiniMax streams its reasoning, then sends the whole reasoning again in
+    // one chunk. A chunk that repeats what this thinking block already holds
+    // replaces it: only the part past the received text goes out.
+    freshReasoning(chunk) {
+        if (this.open !== 'thinking') this.reasoningSeen = '';
+        const seen = this.reasoningSeen;
+        let fresh = chunk;
+        if (seen.length >= REPEAT_MIN && chunk.length >= REPEAT_MIN) {
+            if (chunk.startsWith(seen)) fresh = chunk.slice(seen.length);
+            else if (seen.startsWith(chunk) || seen.endsWith(chunk)) fresh = '';
+        }
+        this.reasoningSeen = seen + fresh;
+        return fresh;
+    }
+
     chunk(json) {
         const events = [];
         if (json && json.usage) this.usage = json.usage;
@@ -575,12 +705,13 @@ class StreamTranslator {
         const delta = choice.delta || choice.message || {};
         const reasoning = typeof delta.reasoning_content === 'string' ? delta.reasoning_content
             : (typeof delta.reasoning === 'string' ? delta.reasoning : '');
-        if (reasoning) {
+        const fresh = reasoning ? this.freshReasoning(reasoning) : '';
+        if (fresh) {
             this.ensureOpen('thinking', events);
             events.push(['content_block_delta', {
                 type: 'content_block_delta',
                 index: this.index,
-                delta: { type: 'thinking_delta', thinking: reasoning }
+                delta: { type: 'thinking_delta', thinking: fresh }
             }]);
         }
         if (typeof delta.content === 'string' && delta.content) {
@@ -626,7 +757,7 @@ class StreamTranslator {
         this.closeOpen(events);
         this.calls.forEach((slot) => {
             if (!slot.name) return;
-            const input = parseToolArguments(slot.args);
+            const input = toolInputFor(this.names, slot.name, parseToolArguments(slot.args));
             events.push(['content_block_start', {
                 type: 'content_block_start',
                 index: this.index,
@@ -659,7 +790,7 @@ function toAnthropicMessage(json, model, names) {
     const choice = json && Array.isArray(json.choices) ? json.choices[0] : null;
     const message = (choice && choice.message) || {};
     const reasoning = message.reasoning_content || message.reasoning;
-    if (typeof reasoning === 'string' && reasoning) content.push({ type: 'thinking', thinking: reasoning, signature: THINKING_SIGNATURE });
+    if (typeof reasoning === 'string' && reasoning) content.push({ type: 'thinking', thinking: undoubledReasoning(reasoning), signature: THINKING_SIGNATURE });
     if (typeof message.content === 'string' && message.content) content.push({ type: 'text', text: message.content });
     (Array.isArray(message.tool_calls) ? message.tool_calls : []).forEach((call) => {
         const fn = call && call.function;
@@ -668,9 +799,9 @@ function toAnthropicMessage(json, model, names) {
             type: 'tool_use',
             id: call.id || newToolId(),
             name: translator.names.down(fn.name),
-            input: unwrapToolInput(
+            input: toolInputFor(translator.names, fn.name, unwrapToolInput(
                 typeof fn.arguments === 'object' && fn.arguments ? fn.arguments : parseToolArguments(fn.arguments)
-            )
+            ))
         });
     });
     const hasTools = content.some((block) => block.type === 'tool_use');
@@ -1070,6 +1201,9 @@ module.exports = {
         toAnthropicMessage,
         parseToolArguments,
         unwrapToolInput,
+        coerceToSchema,
+        undoubledReasoning,
+        toolNames,
         safeToolName,
         resetCatalog: () => { catalogCache = { at: 0, families: null }; learnedRelaxers.clear(); },
         resetWallet: () => { walletCache = { at: 0, key: '', value: null }; }

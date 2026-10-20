@@ -1149,7 +1149,10 @@ async function tokenRouterJail(jail, run) {
         ANTHROPIC_DEFAULT_HAIKU_MODEL: run.model,
         ANTHROPIC_SMALL_FAST_MODEL: run.model,
         CLAUDE_CODE_SUBAGENT_MODEL: run.model,
-        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1'
+        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+        // Big Dreamscape results (user_interests is ~80 KB) otherwise come back
+        // as a 2 KB preview plus a file path the model never opens.
+        MAX_MCP_OUTPUT_TOKENS: '60000'
     };
     // Newline-separated; the bridge reads both (effort -> reasoning_effort, lane -> modules/tokenRouterGate.js).
     const headers = [`x-dreamscape-lane: ${run.lane === 'normal' ? 'normal' : 'interactive'}`];
