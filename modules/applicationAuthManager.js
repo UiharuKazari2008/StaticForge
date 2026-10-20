@@ -471,7 +471,7 @@ class ApplicationAuthManager {
     }
 
     isApplicationAuthPacket(type) {
-        return APPLICATION_AUTH_WS_PACKETS.has(type) || ADMIN_MANAGEMENT_WS_PACKETS.has(type);
+        return APPLICATION_AUTH_WS_PACKETS.has(type);
     }
 
     isAdminManagementPacket(type) {
@@ -672,6 +672,10 @@ class ApplicationAuthManager {
     canAccessWsPacket(scopes, packetType, userType) {
         if (this.isApplicationAuthPacket(packetType)) {
             return true;
+        }
+        // JULES: Restrict admin management packets to keys with 'universal' scope to prevent privilege leakage from scoped app keys
+        if (this.isAdminManagementPacket(packetType)) {
+            return Array.isArray(scopes) && scopes.includes('universal');
         }
         return scopesAllowPacket(scopes, packetType);
     }
