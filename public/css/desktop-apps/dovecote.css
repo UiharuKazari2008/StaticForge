@@ -209,6 +209,7 @@
 
 #desktopDovecoteModal .dovecote-message-rows .dovecote-message-row {
     cursor: var(--c-pointer);
+    user-select: none;
 }
 
 #desktopDovecoteModal .dovecote-col-unread,
@@ -696,6 +697,9 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
 .dovecote-cmd[data-dove-icon="send"] { --dove-icon: 47; }
 .dovecote-cmd[data-dove-icon="attach"] { --dove-icon: 49; }
 .dovecote-cmd[data-dove-icon="save"] { --dove-icon: 35; }
+.dovecote-cmd[data-dove-icon="restore"] { --dove-icon: 11; }
+.dovecote-cmd[data-dove-icon="spam"] { --dove-icon: 11; }
+.dovecote-cmd[data-dove-icon="notSpam"] { --dove-icon: 7; }
 
 /* Mark as Read: the list's open envelope (list-16.png, bitmap 2, icon 10) */
 body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-command-bar > button.dovecote-cmd[data-dove-icon="read"]::before {

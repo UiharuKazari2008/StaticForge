@@ -3058,7 +3058,7 @@ const TOOL_DEFS = [
     {
         name: 'list_mail',
         core: true,
-        description: 'List mail in your own Dovecote mailbox. Returns summaries (no body, attachments as metadata only) — use read_mail for the full message. `to` and `cc` are arrays of mailbox names (older single-recipient rows still come back as a one-element `to` and an empty `cc`). Each message has `route` (internal | inbound | outbound) set by the path it took, never from headers; `external` is true for gateway inbound/outbound mail. fromLabel is display-only. Inbound copies may include originalTo (trusted X-Original-To, display only), spamScore / spamRequired / spamReport plus spamReceivedSpf / spamDkim / spamDmarc / spamDmarcPolicy (auth info) and spamForgedOurs (LANTIS_FORGED_OURS warning). Pass folder to list one folder (inbox, spam, sent, outbox, deleted, archive). read_mail works on Spam. The result always includes owner, the mailbox of the calling key, even when mail is empty. read_by_recipient is true once a To recipient has opened a message you sent.',
+        description: 'List mail in your own Dovecote mailbox. Returns summaries (no body, attachments as metadata only) — use read_mail for the full message. `to` and `cc` are arrays of mailbox names (older single-recipient rows still come back as a one-element `to` and an empty `cc`). Each message has `route` (internal | inbound | outbound) set by the path it took, never from headers; `external` is true for gateway inbound/outbound mail. fromLabel is display-only. Inbound copies may include originalTo (trusted X-Original-To, display only), spamScore / spamRequired / spamReport plus spamReceivedSpf / spamDkim / spamDmarc / spamDmarcPolicy (auth info) and spamForgedOurs (LANTIS_FORGED_OURS warning). Pass folder to list one folder (inbox, spam, sent, outbox, deleted, archive). read_mail works on Spam. The result always includes owner, the mailbox of the calling key, even when mail is empty. read_by_recipient is true once a To recipient has opened a message you sent. Pages newest-first: default 50, max 200. Pass the returned nextCursor to reach older mail. total and unread are folder-wide counts (not this page), so unread badges stay correct while paging.',
         scope: 'sfapp_dovecote',
         inputSchema: {
             type: 'object',
@@ -3066,7 +3066,8 @@ const TOOL_DEFS = [
             properties: {
                 folder: { type: 'string', enum: ['inbox', 'spam', 'outbox', 'sent', 'deleted', 'archive'], description: 'Default: all folders. spam is inbound gateway mail the relay marked.' },
                 unreadOnly: { type: 'boolean' },
-                limit: { type: 'number', description: 'Default 50, max 200' }
+                limit: { type: 'number', description: 'Default 50, max 200' },
+                cursor: { type: 'string', description: 'Opaque nextCursor from a previous list_mail page' }
             }
         }
     },
@@ -3087,14 +3088,14 @@ const TOOL_DEFS = [
     {
         name: 'mark_mail',
         core: true,
-        description: 'Mark a message in your own Dovecote mailbox read/unread, archived, deleted, moved to Spam (`spam: true`), or marked not-spam (`spam: false`, moves to inbox). Owner-scoped — ids from other mailboxes 404. Moving folders does not change route, external, or labelSuspicious.',
+        description: 'Mark message(s) in your own Dovecote mailbox read/unread, archived, deleted, restored (`deleted: false`, back to inbox), moved to Spam (`spam: true`), or marked not-spam (`spam: false`, moves to inbox). Pass `id` or `ids` (max 200) — one round trip. Owner-scoped — ids from other mailboxes are missing/404. Moving folders does not change route, external, or labelSuspicious. A batch returns `{ mail, missing, updated }`.',
         scope: 'sfapp_dovecote',
         inputSchema: {
             type: 'object',
             additionalProperties: false,
-            required: ['id'],
             properties: {
-                id: { type: 'string' },
+                id: { type: 'string', description: 'Single message id. Use ids for several.' },
+                ids: { type: 'array', items: { type: 'string' }, maxItems: 200, description: 'Batch of message ids in your mailbox' },
                 read: { type: 'boolean' },
                 archived: { type: 'boolean' },
                 archiveSubfolder: { type: 'string' },
@@ -3104,16 +3105,32 @@ const TOOL_DEFS = [
         }
     },
     {
-        name: 'forward_mail',
+        name: 'delete_mail',
         core: true,
-        description: 'Forward a message from your own Dovecote mailbox to another mailbox, including Yukimi, as a new copy (new thread — the recipient does not gain access to the original thread or mailbox).',
+        description: 'Delete message(s) in your own Dovecote mailbox. Soft-deletes to Trash; deleting a message already in deleted permanently removes it. Pass `id` or `ids` (max 200) — one round trip. Owner-scoped — ids from other mailboxes are missing/404. Same as mark_mail with deleted: true. A batch (ids) that includes messages already in Trash needs confirm: true, otherwise CONFIRM_REQUIRED and nothing changes.',
         scope: 'sfapp_dovecote',
         inputSchema: {
             type: 'object',
             additionalProperties: false,
-            required: ['id', 'to'],
             properties: {
-                id: { type: 'string', description: 'Message id in your own mailbox' },
+                id: { type: 'string', description: 'Single message id. Use ids for several.' },
+                ids: { type: 'array', items: { type: 'string' }, maxItems: 200, description: 'Batch of message ids in your mailbox' },
+                confirm: { type: 'boolean', description: 'Required (true) when an ids batch includes messages already in deleted (Trash) — those are purged permanently.' }
+            }
+        }
+    },
+    {
+        name: 'forward_mail',
+        core: true,
+        description: 'Forward message(s) from your own Dovecote mailbox to another mailbox, including Yukimi, as new copies (new thread — the recipient does not gain access to the original thread or mailbox). Pass `id` or `ids` (max 200) — one round trip; each source becomes its own forwarded copy. A batch returns `{ forwarded, missing, updated, to }`.',
+        scope: 'sfapp_dovecote',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['to'],
+            properties: {
+                id: { type: 'string', description: 'Message id in your own mailbox. Use ids for several.' },
+                ids: { type: 'array', items: { type: 'string' }, maxItems: 200, description: 'Batch of message ids in your mailbox' },
                 to: { type: 'string', description: 'Recipient mailbox owner' }
             }
         }
@@ -3202,7 +3219,8 @@ const TOOL_DEFS = [
                 mailbox: { type: 'string', description: 'Target mailbox owner' },
                 folder: { type: 'string', enum: ['spam'], description: 'Spam only' },
                 unreadOnly: { type: 'boolean' },
-                limit: { type: 'number', description: 'Default 50, max 200' }
+                limit: { type: 'number', description: 'Default 50, max 200' },
+                cursor: { type: 'string', description: 'Opaque nextCursor from a previous mailroom_list_mail page' }
             }
         }
     },
@@ -9107,7 +9125,7 @@ async function callTool(globalResources, req, name, args) {
         }
     }
 
-    if (name === 'send_mail' || name === 'list_mail' || name === 'read_mail' || name === 'mark_mail' || name === 'forward_mail') {
+    if (name === 'send_mail' || name === 'list_mail' || name === 'read_mail' || name === 'mark_mail' || name === 'delete_mail' || name === 'forward_mail') {
         const { resolveDovecoteOwnerFromReq } = require('./dovecoteIdentity');
         const dovecoteMail = require('./dovecoteMail');
         // read_by_recipient: the snake_case name callers look for, alongside the
@@ -9149,10 +9167,16 @@ async function callTool(globalResources, req, name, args) {
                 const listed = dovecoteMail.listMail(owner, {
                     folder: input.folder,
                     unreadOnly: input.unreadOnly === true,
-                    limit: input.limit
+                    limit: input.limit,
+                    cursor: input.cursor
                 });
                 const mail = listed.map(withMailReadByRecipientAlias);
-                return mcpTextResult({ success: true, owner: listed.owner, mail });
+                return mcpTextResult({
+                    success: true,
+                    owner: listed.owner,
+                    mail,
+                    ...dovecoteMail.listPageMeta(listed)
+                });
             }
             if (name === 'read_mail') {
                 const mail = dovecoteMail.readMail(owner, input.id);
@@ -9163,30 +9187,78 @@ async function callTool(globalResources, req, name, args) {
                 }
                 return mcpTextResult({ success: true, mail: withMailReadByRecipientAlias(mail) });
             }
-            if (name === 'mark_mail') {
-                const mail = dovecoteMail.markMail(owner, {
+            if (name === 'mark_mail' || name === 'delete_mail') {
+                const batch = Array.isArray(input.ids) && input.ids.length > 0;
+                if (name === 'delete_mail' && batch && input.confirm !== true) {
+                    // Permanent purge guard: ids already in Trash are removed for good.
+                    const inTrash = dovecoteMail.countMailInFolder(owner, input.ids, 'deleted');
+                    if (inTrash > 0) {
+                        return mcpTextResult({
+                            success: false,
+                            code: 'CONFIRM_REQUIRED',
+                            error: `${inTrash} of these messages are already in Trash and would be permanently deleted. Re-run with confirm: true.`,
+                            inTrash
+                        }, true);
+                    }
+                }
+                const result = dovecoteMail.markMailBatch(owner, {
                     id: input.id,
-                    read: typeof input.read === 'boolean' ? input.read : undefined,
-                    archived: typeof input.archived === 'boolean' ? input.archived : undefined,
-                    deleted: typeof input.deleted === 'boolean' ? input.deleted : undefined,
-                    archiveSubfolder: input.archiveSubfolder,
-                    spam: typeof input.spam === 'boolean' ? input.spam : undefined
+                    ids: input.ids,
+                    read: name === 'delete_mail' ? undefined : (typeof input.read === 'boolean' ? input.read : undefined),
+                    archived: name === 'delete_mail' ? undefined : (typeof input.archived === 'boolean' ? input.archived : undefined),
+                    deleted: name === 'delete_mail' ? true : (typeof input.deleted === 'boolean' ? input.deleted : undefined),
+                    archiveSubfolder: name === 'delete_mail' ? undefined : input.archiveSubfolder,
+                    spam: name === 'delete_mail' ? undefined : (typeof input.spam === 'boolean' ? input.spam : undefined)
                 });
-                if (!mail) {
+                if (!result.updated) {
+                    if (batch) {
+                        return mcpTextResult({
+                            success: false,
+                            mail: result.mail,
+                            missing: result.missing,
+                            updated: 0
+                        }, true);
+                    }
                     const err = new Error('Mail not found');
                     err.status = 404;
                     throw err;
                 }
-                return mcpTextResult({ success: true, mail });
+                if (batch) {
+                    return mcpTextResult({
+                        success: true,
+                        mail: result.mail,
+                        missing: result.missing,
+                        updated: result.updated
+                    });
+                }
+                return mcpTextResult({ success: true, mail: result.mail[0] });
             }
             // forward_mail
-            const result = dovecoteMail.forwardMail(owner, { id: input.id, to: input.to });
-            if (!result) {
+            const batchFwd = Array.isArray(input.ids) && input.ids.length > 0;
+            const result = dovecoteMail.forwardMailBatch(owner, { id: input.id, ids: input.ids, to: input.to });
+            if (!result.updated) {
+                if (batchFwd) {
+                    return mcpTextResult({
+                        success: false,
+                        forwarded: result.forwarded,
+                        missing: result.missing,
+                        updated: 0
+                    }, true);
+                }
                 const err = new Error('Mail not found');
                 err.status = 404;
                 throw err;
             }
-            return mcpTextResult({ success: true, ...result });
+            if (batchFwd) {
+                return mcpTextResult({
+                    success: true,
+                    forwarded: result.forwarded,
+                    missing: result.missing,
+                    updated: result.updated,
+                    to: result.to
+                });
+            }
+            return mcpTextResult({ success: true, ...result.forwarded[0] });
         } catch (mailError) {
             if (mailError instanceof dovecoteMail.DovecoteError) {
                 return mcpTextResult({ success: false, error: mailError.message, code: mailError.code }, true);
@@ -9232,9 +9304,16 @@ async function callTool(globalResources, req, name, args) {
                     mailbox: input.mailbox,
                     folder: input.folder,
                     unreadOnly: input.unreadOnly === true,
-                    limit: input.limit
+                    limit: input.limit,
+                    cursor: input.cursor
                 });
-                return mcpTextResult({ success: true, mailbox: listed.owner, folder: 'spam', mail: listed });
+                return mcpTextResult({
+                    success: true,
+                    mailbox: listed.owner,
+                    folder: 'spam',
+                    mail: listed,
+                    ...dovecoteMail.listPageMeta(listed)
+                });
             }
             if (name === 'mailroom_read_mail') {
                 const mail = dovecoteMail.mailroomReadMail(owner, { mailbox: input.mailbox, id: input.id });

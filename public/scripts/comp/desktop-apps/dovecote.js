@@ -30,7 +30,8 @@ const DOVE_COMMUNITIES_LABEL = 'Dreamscape Communities';
 const DOVE_MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const DOVE_MAX_TOTAL_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
-// { folder, sortKey, sortDir, viewAsOwner, mail: [], selectedId, mailboxes: [], bodyView, searchOpen, searchText, mobileMessageOpen }
+// { folder, sortKey, sortDir, viewAsOwner, mail: [], selectedId, selectedIds, mailboxes: [],
+//   bodyView, searchText, mobileMessageOpen, nextCursor, hasMore, folderTotal, folderUnread }
 const desktopDovecote = {
     loaded: false,
     folder: 'inbox',
@@ -40,9 +41,17 @@ const desktopDovecote = {
     mail: [],
     mailboxes: [],
     selectedId: null,
+    selectedIds: [],
+    anchorId: null,
     selectedMail: null,
     bodyView: 'rendered',
     inboxUnread: 0,
+    folderTotal: 0,
+    folderUnread: 0,
+    nextCursor: null,
+    hasMore: false,
+    loadingMore: false,
+    touchMulti: false,
     allowRemoteImagesOnce: false,
     searchText: '',
     mobileMessageOpen: false,
@@ -145,6 +154,44 @@ const doveBareAddress = function (value) {
 
 const doveIsBotOwner = function (owner) {
     return owner !== DESKTOP_DOVECOTE_HUMAN_OWNER;
+};
+
+const doveSelectedIdSet = function () {
+    return new Set(desktopDovecote.selectedIds.map(String));
+};
+
+const doveSelectedCount = function () {
+    return desktopDovecote.selectedIds.length;
+};
+
+const doveSelectedMailRows = function () {
+    const ids = doveSelectedIdSet();
+    return doveFilteredSortedMail().filter((mail) => ids.has(String(mail.id)));
+};
+
+const doveClearSelection = function () {
+    desktopDovecote.selectedIds = [];
+    desktopDovecote.selectedId = null;
+    desktopDovecote.anchorId = null;
+    desktopDovecote.selectedMail = null;
+    desktopDovecote.touchMulti = false;
+};
+
+const doveSetSelectedIds = function (ids, focusId) {
+    const unique = [];
+    const seen = new Set();
+    (ids || []).forEach((id) => {
+        const text = String(id || '');
+        if (!text || seen.has(text)) return;
+        seen.add(text);
+        unique.push(text);
+    });
+    desktopDovecote.selectedIds = unique;
+    desktopDovecote.selectedId = focusId ? String(focusId) : (unique[unique.length - 1] || null);
+};
+
+const doveHasModifierSelect = function (ev) {
+    return !!(ev && (ev.ctrlKey || ev.metaKey));
 };
 
 // Shared title bar builder for the compose and reader windows (ensureDesktopDovecoteModal
@@ -344,11 +391,21 @@ const doveBuildToolbar = function () {
     spamBtn.dataset.doveAction = 'spam';
     const notSpamBtn = doveCreateCommand('notSpam', 'Not spam', 'fas fa-inbox');
     notSpamBtn.dataset.doveAction = 'notSpam';
-    [toggleReadBtn, deleteBtn, archiveBtn, spamBtn, notSpamBtn].forEach((btn) => {
+    const restoreBtn = doveCreateCommand('restore', 'Restore', 'fas fa-inbox');
+    restoreBtn.dataset.doveAction = 'restore';
+    [toggleReadBtn, deleteBtn, restoreBtn, archiveBtn, spamBtn, notSpamBtn].forEach((btn) => {
         btn.dataset.doveMutating = 'true';
         btn.dataset.doveNeedsMail = 'true';
         toolbar.appendChild(btn);
     });
+
+    const selectedCount = document.createElement('span');
+    selectedCount.id = 'desktopDovecoteSelectedCount';
+    selectedCount.className = 'indicator';
+    selectedCount.dataset.state = 'off';
+    selectedCount.title = 'Selected messages';
+    selectedCount.textContent = '0';
+    toolbar.appendChild(selectedCount);
 
     toolbar.appendChild(doveCreateCommandSeparator());
 
@@ -371,26 +428,42 @@ const doveMenuItem = function (text, menuAction, extra) {
     return Object.assign({ text: text, action: 'dove-menu', doveMenu: menuAction }, extra || {});
 };
 
+const doveMenuSelection = function () {
+    const rows = doveSelectedMailRows();
+    const count = rows.length;
+    const one = count === 1 ? rows[0] : null;
+    const anyUnread = rows.some((mail) => !mail.read);
+    const inDeleted = desktopDovecote.folder === 'deleted' || rows.some((mail) => mail.folder === 'deleted');
+    const inSpam = rows.length > 0 && rows.every((mail) => mail.folder === 'spam');
+    const anyNotSpam = rows.some((mail) => mail.folder !== 'spam');
+    return { rows, count, one, anyUnread, inDeleted, inSpam, anyNotSpam };
+};
+
 const DOVE_MENUS = {
     file: () => {
-        const mail = desktopDovecote.selectedMail;
+        const sel = doveMenuSelection();
         const readOnly = !!desktopDovecote.viewAsOwner;
         return [
             doveMenuItem('New Message', 'create', { disabled: readOnly }),
-            doveMenuItem('Open', 'open', { disabled: !mail }),
+            doveMenuItem('Open', 'open', { disabled: sel.count !== 1 }),
             { separator: true },
             doveMenuItem('Close', 'close')
         ];
     },
     edit: () => {
-        const mail = desktopDovecote.selectedMail;
-        const off = !mail || !!desktopDovecote.viewAsOwner;
+        const sel = doveMenuSelection();
+        const off = !sel.count || !!desktopDovecote.viewAsOwner;
         return [
-            doveMenuItem('Delete', 'delete', { disabled: off }),
-            doveMenuItem(mail && !mail.read ? 'Mark as Read' : 'Mark as Unread', 'toggleRead', { disabled: off }),
+            doveMenuItem('Select All', 'selectAll'),
+            { separator: true },
+            doveMenuItem(sel.inDeleted ? 'Delete Permanently' : 'Delete', 'delete', { disabled: off }),
+            doveMenuItem('Restore', 'restore', { disabled: off || !sel.inDeleted }),
+            doveMenuItem(sel.anyUnread ? 'Mark as Read' : 'Mark as Unread', 'toggleRead', { disabled: off }),
+            doveMenuItem('Mark as Read', 'markRead', { disabled: off || !sel.anyUnread }),
+            doveMenuItem('Mark as Unread', 'markUnread', { disabled: off || !sel.rows.some((mail) => mail.read) }),
             doveMenuItem('Move to Archive', 'archive', { disabled: off }),
-            doveMenuItem('Move to Spam', 'spam', { disabled: off || !mail || mail.folder === 'spam' }),
-            doveMenuItem('Not spam', 'notSpam', { disabled: off || !mail || mail.folder !== 'spam' }),
+            doveMenuItem('Move to Spam', 'spam', { disabled: off || !sel.anyNotSpam }),
+            doveMenuItem('Not spam', 'notSpam', { disabled: off || !sel.inSpam }),
             { separator: true },
             doveMenuItem('Find', 'find')
         ];
@@ -415,17 +488,17 @@ const DOVE_MENUS = {
         ];
     },
     message: () => {
-        const mail = desktopDovecote.selectedMail;
+        const sel = doveMenuSelection();
         const readOnly = !!desktopDovecote.viewAsOwner;
         const others = doveOtherMailboxes();
         return [
             doveMenuItem('New Message', 'create', { disabled: readOnly }),
             { separator: true },
-            doveMenuItem('Reply to Sender', 'reply', { disabled: readOnly || !mail }),
-            doveMenuItem('Reply to All', 'replyAll', { disabled: readOnly || !mail }),
+            doveMenuItem('Reply to Sender', 'reply', { disabled: readOnly || sel.count !== 1 }),
+            doveMenuItem('Reply to All', 'replyAll', { disabled: readOnly || sel.count !== 1 }),
             {
-                text: 'Forward',
-                disabled: readOnly || !mail || !others.length,
+                text: sel.count > 1 ? 'Forward ' + sel.count + ' Messages' : 'Forward',
+                disabled: readOnly || !sel.count || !others.length,
                 submenu: others.map((box) => doveMenuItem(box.label, 'forward', { doveOwner: box.owner }))
             }
         ];
@@ -433,9 +506,9 @@ const DOVE_MENUS = {
 };
 
 const doveRunMenuAction = function (item) {
-    const mail = desktopDovecote.selectedMail;
+    const sel = doveMenuSelection();
     switch (item.doveMenu) {
-        case 'open': if (mail) doveOpenReaderWindow(mail.id); return;
+        case 'open': if (sel.one) doveOpenReaderWindow(sel.one.id); return;
         // closeModal: public/scripts/comp/modalUtils.js
         case 'close': closeModal(desktopDovecoteEls.modal); return;
         case 'find': desktopDovecoteEls.searchInput.focus(); return;
@@ -446,7 +519,8 @@ const doveRunMenuAction = function (item) {
             // cplMail.open: public/scripts/comp/cplMail.js — Control Panel Mail
             if (window.cplMail) cplMail.open();
             return;
-        case 'forward': if (mail) doveOpenCompose('forward', mail, item.doveOwner); return;
+        case 'forward': doveForwardSelected(item.doveOwner); return;
+        case 'selectAll': doveSelectAllVisible(); return;
         default: doveDispatchAction(item.doveMenu);
     }
 };
@@ -701,14 +775,22 @@ const doveOtherMailboxes = function () {
 // not just bots, and there is no separate one-click "Fwd to Bot" action.
 // getMail: reads the mail to forward at click time — the main toolbar's Forward button reads the
 // currently selected message, a reader window's Forward button reads its own loaded message.
-const doveMakeForwardMenuConfig = function (getMail) {
+const doveMakeForwardMenuConfig = function (getMail, getIds) {
     return {
-        onAction: (action, target, item) => doveOpenCompose('forward', getMail(), item.doveOwner),
+        onAction: (action, target, item) => {
+            const ids = getIds ? getIds() : null;
+            if (ids && ids.length > 1) {
+                doveForwardSelected(item.doveOwner, ids);
+                return;
+            }
+            doveOpenCompose('forward', getMail(), item.doveOwner);
+        },
         sections: [{
             type: 'list',
             initfn: (section) => {
                 // Read-only admin view: forwarding someone else's mail is still a mutation, same as Reply/Delete/Archive.
-                const disabled = !getMail() || !!desktopDovecote.viewAsOwner;
+                const count = getIds ? getIds().length : (getMail() ? 1 : 0);
+                const disabled = !count || !!desktopDovecote.viewAsOwner;
                 const others = doveOtherMailboxes();
                 section.items = others.length
                     ? others.map((box) => ({
@@ -725,8 +807,11 @@ const doveMakeForwardMenuConfig = function (getMail) {
 };
 
 // Main window's own Forward button (toolbar + mobile preview toolbar) forwards whatever is
-// currently selected.
-const doveForwardMenuConfig = doveMakeForwardMenuConfig(() => desktopDovecote.selectedMail);
+// currently selected. Several selected messages become one digest compose.
+const doveForwardMenuConfig = doveMakeForwardMenuConfig(
+    () => desktopDovecote.selectedMail,
+    () => desktopDovecote.selectedIds.slice()
+);
 
 // ---- Mail row right-click context menu (#4): Open, Open in window, Reply, Forward > (mailbox
 // submenu), Mark read/unread, Archive, Delete. One config attached to the whole rows container
@@ -742,64 +827,96 @@ const doveMailRowMenuConfig = {
     onAction: (action, target, item) => doveHandleMailRowMenuAction(item)
 };
 
+const doveMenuIdsForRow = function (mailId) {
+    const inSel = doveSelectedIdSet().has(String(mailId));
+    if (inSel && doveSelectedCount() > 1) return desktopDovecote.selectedIds.slice();
+    return mailId ? [String(mailId)] : [];
+};
+
 const doveBuildMailRowMenuSections = function (mailId) {
-    const mail = desktopDovecote.mail.find((m) => String(m.id) === String(mailId));
-    if (!mail) return [];
+    const ids = doveMenuIdsForRow(mailId);
+    const rows = desktopDovecote.mail.filter((mail) => ids.includes(String(mail.id)));
+    if (!rows.length) return [];
+    const mail = rows.find((row) => String(row.id) === String(mailId)) || rows[0];
     const readOnly = !!desktopDovecote.viewAsOwner;
     const others = doveOtherMailboxes();
-    return [{
-        type: 'list',
-        items: [
-            { text: 'Open', icon: 'fas fa-envelope-open-text', action: 'dove-row-open', doveMailId: mailId },
-            { text: 'Open in Window', icon: 'fas fa-up-right-from-square', action: 'dove-row-open-window', doveMailId: mailId },
-            { separator: true },
-            { text: 'Reply', icon: 'fas fa-reply', action: 'dove-row-reply', doveMailId: mailId, disabled: readOnly },
-            {
-                text: 'Forward',
-                icon: 'fas fa-share',
-                disabled: readOnly || !others.length,
-                submenu: others.length
-                    ? others.map((box) => ({
-                        text: box.label,
-                        icon: doveIsBotOwner(box.owner) ? 'fas fa-robot' : 'fas fa-user',
-                        action: 'dove-row-forward',
-                        doveMailId: mailId,
-                        doveOwner: box.owner
-                    }))
-                    : [{ text: 'No other mailboxes', disabled: true }]
-            },
-            { separator: true },
-            { text: mail.read ? 'Mark Unread' : 'Mark Read', icon: 'fas fa-envelope', action: 'dove-row-toggle-read', doveMailId: mailId, disabled: readOnly },
-            { text: 'Archive', icon: 'fas fa-box-archive', action: 'dove-row-archive', doveMailId: mailId, disabled: readOnly },
-            { text: 'Move to Spam', icon: 'fas fa-ban', action: 'dove-row-spam', doveMailId: mailId, disabled: readOnly || mail.folder === 'spam' },
-            { text: 'Not spam', icon: 'fas fa-inbox', action: 'dove-row-not-spam', doveMailId: mailId, disabled: readOnly || mail.folder !== 'spam' },
-            { text: 'Delete', icon: 'fas fa-trash', action: 'dove-row-delete', doveMailId: mailId, disabled: readOnly, className: 'context-menu-item-danger' }
-        ]
-    }];
+    const count = rows.length;
+    const bulk = count > 1;
+    const anyUnread = rows.some((row) => !row.read);
+    const anyRead = rows.some((row) => row.read);
+    const inSpam = rows.every((row) => row.folder === 'spam');
+    const anyNotSpam = rows.some((row) => row.folder !== 'spam');
+    const inDeleted = desktopDovecote.folder === 'deleted' || rows.every((row) => row.folder === 'deleted');
+    const items = [];
+    if (bulk) {
+        items.push({ text: count + ' selected', disabled: true });
+        items.push({ separator: true });
+    } else {
+        items.push({ text: 'Open', icon: 'fas fa-envelope-open-text', action: 'dove-row-open', doveMailId: mailId });
+        items.push({ text: 'Open in Window', icon: 'fas fa-up-right-from-square', action: 'dove-row-open-window', doveMailId: mailId });
+        items.push({ separator: true });
+        items.push({ text: 'Reply', icon: 'fas fa-reply', action: 'dove-row-reply', doveMailId: mailId, disabled: readOnly });
+    }
+    items.push({
+        text: bulk ? 'Forward ' + count + ' Messages' : 'Forward',
+        icon: 'fas fa-share',
+        disabled: readOnly || !others.length,
+        submenu: others.length
+            ? others.map((box) => ({
+                text: box.label,
+                icon: doveIsBotOwner(box.owner) ? 'fas fa-robot' : 'fas fa-user',
+                action: 'dove-row-forward',
+                doveMailIds: ids,
+                doveOwner: box.owner
+            }))
+            : [{ text: 'No other mailboxes', disabled: true }]
+    });
+    items.push({ separator: true });
+    items.push({ text: 'Mark as Read', icon: 'fas fa-envelope-open', action: 'dove-row-mark-read', doveMailIds: ids, disabled: readOnly || !anyUnread });
+    items.push({ text: 'Mark as Unread', icon: 'fas fa-envelope', action: 'dove-row-mark-unread', doveMailIds: ids, disabled: readOnly || !anyRead });
+    items.push({ text: 'Archive', icon: 'fas fa-box-archive', action: 'dove-row-archive', doveMailIds: ids, disabled: readOnly });
+    items.push({ text: 'Move to Spam', icon: 'fas fa-ban', action: 'dove-row-spam', doveMailIds: ids, disabled: readOnly || !anyNotSpam });
+    items.push({ text: 'Not spam', icon: 'fas fa-inbox', action: 'dove-row-not-spam', doveMailIds: ids, disabled: readOnly || !inSpam });
+    items.push({ text: 'Restore', icon: 'fas fa-inbox', action: 'dove-row-restore', doveMailIds: ids, disabled: readOnly || !inDeleted });
+    items.push({
+        text: inDeleted ? 'Delete Permanently' : 'Delete',
+        icon: 'fas fa-trash',
+        action: 'dove-row-delete',
+        doveMailIds: ids,
+        disabled: readOnly,
+        className: 'context-menu-item-danger'
+    });
+    return [{ type: 'list', items: items }];
 };
 
 const doveHandleMailRowMenuAction = function (item) {
-    const mailId = item.doveMailId;
-    if (!mailId) return;
+    const ids = item.doveMailIds || (item.doveMailId ? [item.doveMailId] : []);
+    const mailId = item.doveMailId || ids[0];
+    if (!mailId && !ids.length) return;
     switch (item.action) {
-        case 'dove-row-open': doveSelectMail(mailId); return;
+        case 'dove-row-open': doveOpenSelected(mailId); return;
         case 'dove-row-open-window': doveOpenReaderWindow(mailId); return;
         case 'dove-row-reply': doveReplyToMailId(mailId); return;
-        case 'dove-row-forward': doveForwardMailId(mailId, item.doveOwner); return;
-        case 'dove-row-toggle-read': doveToggleReadForId(mailId); return;
-        case 'dove-row-archive': doveMarkMailId(mailId, { archived: true }); return;
-        case 'dove-row-spam': doveMarkMailId(mailId, { spam: true }); return;
-        case 'dove-row-not-spam': doveMarkMailId(mailId, { spam: false }); return;
-        case 'dove-row-delete': doveMarkMailId(mailId, { deleted: true }); return;
+        case 'dove-row-forward': doveForwardSelected(item.doveOwner, ids); return;
+        case 'dove-row-mark-read': doveMarkMailIds(ids, { read: true }); return;
+        case 'dove-row-mark-unread': doveMarkMailIds(ids, { read: false }); return;
+        case 'dove-row-archive': doveMarkMailIds(ids, { archived: true }); return;
+        case 'dove-row-spam': doveMarkMailIds(ids, { spam: true }); return;
+        case 'dove-row-not-spam': doveMarkMailIds(ids, { spam: false }); return;
+        case 'dove-row-restore': doveMarkMailIds(ids, { deleted: false }); return;
+        case 'dove-row-delete':
+            doveConfirmPermanentDelete(ids.length).then((ok) => { if (ok) doveMarkMailIds(ids, { deleted: true }); });
+            return;
         default: return;
     }
 };
 
 // Reply/Forward need the full message body, which the list summaries don't carry —
 // dovecote_get_mail: modules/ws/handlers/250-dovecoteHandler.js (also marks it read).
-const doveFetchMailFull = async function (id) {
+const doveFetchMailFull = async function (id, options) {
     const request = { id: id };
     if (desktopDovecote.viewAsOwner) request.viewAsOwner = desktopDovecote.viewAsOwner;
+    if (options && options.markRead === false) request.markRead = false;
     try {
         const result = await wsClient.sendMessage('dovecote_get_mail', request);
         return result && result.mail;
@@ -817,33 +934,90 @@ const doveReplyToMailId = async function (id) {
 
 const doveForwardMailId = async function (id, owner) {
     if (desktopDovecote.viewAsOwner) return;
-    const mail = await doveFetchMailFull(id);
+    const mail = await doveFetchMailFull(id, { markRead: false });
     if (mail) doveOpenCompose('forward', mail, owner);
+};
+
+const doveBuildForwardDigest = function (mails) {
+    return mails.map((mail, index) => {
+        const heading = [
+            '-------- Original Message ' + (index + 1) + ' --------',
+            'From: ' + doveDisplayAddress(mail.from),
+            'To: ' + doveFormatAddressList(mail.to),
+            'Subject: ' + (mail.subject || '(no subject)'),
+            'Date: ' + doveFormatDate(mail.createdAt)
+        ].join('\n');
+        return heading + '\n\n' + (mail.body || '');
+    }).join('\n\n');
+};
+
+const doveForwardSelected = async function (owner, ids) {
+    if (desktopDovecote.viewAsOwner) return;
+    const list = (ids && ids.length ? ids : desktopDovecote.selectedIds).map(String);
+    if (!list.length && desktopDovecote.selectedMail) list.push(String(desktopDovecote.selectedMail.id));
+    if (!list.length) return;
+    if (list.length === 1) {
+        await doveForwardMailId(list[0], owner);
+        return;
+    }
+    const mails = [];
+    for (let i = 0; i < list.length; i++) {
+        const mail = await doveFetchMailFull(list[i], { markRead: false });
+        if (mail) mails.push(mail);
+    }
+    if (!mails.length) return;
+    doveOpenComposeWindow({
+        mode: 'forward',
+        to: owner || '',
+        subject: 'Fwd: ' + mails.length + ' messages',
+        body: doveBuildForwardDigest(mails),
+        replyTo: null,
+        sourceMailId: 'digest:' + list.join(',')
+    });
 };
 
 const doveToggleReadForId = async function (id) {
     const mail = desktopDovecote.mail.find((m) => String(m.id) === String(id));
     if (!mail || desktopDovecote.viewAsOwner) return;
-    try {
-        await wsClient.sendMessage('dovecote_mark_mail', { id: id, read: !mail.read });
-        mail.read = !mail.read;
-        if (desktopDovecote.selectedMail && String(desktopDovecote.selectedMail.id) === String(id)) {
-            desktopDovecote.selectedMail.read = mail.read;
-        }
-        doveRenderMessageList();
-        doveRenderInboxBadgeFromState();
-    } catch (err) {
-        doveShowError((err && err.message) || 'Could not update read state');
-    }
+    await doveMarkMailIds([id], { read: !mail.read }, { stay: true });
 };
 
 const doveMarkMailId = async function (id, patch) {
+    return doveMarkMailIds([id], patch);
+};
+
+const doveMarkMailIds = async function (ids, patch, options) {
     if (desktopDovecote.viewAsOwner) return;
+    const list = (ids || []).map(String).filter(Boolean);
+    if (!list.length) return;
+    const stay = options && options.stay;
     try {
-        await wsClient.sendMessage('dovecote_mark_mail', Object.assign({ id: id }, patch));
-        if (desktopDovecote.selectedId && String(desktopDovecote.selectedId) === String(id)) {
-            desktopDovecote.selectedId = null;
-            desktopDovecote.selectedMail = null;
+        const request = Object.assign({ ids: list }, patch);
+        // dovecote_mark_mail: modules/ws/handlers/250-dovecoteHandler.js — ids[] is one round trip
+        await wsClient.sendMessage('dovecote_mark_mail', request);
+        if (stay && typeof patch.read === 'boolean') {
+            const unreadDelta = list.reduce((sum, id) => {
+                const found = desktopDovecote.mail.find((mail) => String(mail.id) === id);
+                if (!found || found.read === patch.read) return sum;
+                return sum + (patch.read ? -1 : 1);
+            }, 0);
+            list.forEach((id) => {
+                const found = desktopDovecote.mail.find((mail) => String(mail.id) === id);
+                if (found) found.read = patch.read;
+                if (desktopDovecote.selectedMail && String(desktopDovecote.selectedMail.id) === id) {
+                    desktopDovecote.selectedMail.read = patch.read;
+                }
+            });
+            if (desktopDovecote.folder === 'inbox' || !desktopDovecote.viewAsOwner) {
+                desktopDovecote.folderUnread = Math.max(0, (desktopDovecote.folderUnread || 0) + unreadDelta);
+                if (!desktopDovecote.viewAsOwner) doveRenderInboxBadge(desktopDovecote.folderUnread);
+            }
+            doveRenderMessageList();
+            return;
+        }
+        const selected = doveSelectedIdSet();
+        if (list.some((id) => selected.has(id) || String(desktopDovecote.selectedId) === id)) {
+            doveClearSelection();
             doveRenderPreview();
         }
         doveLoadFolder(desktopDovecote.folder);
@@ -854,8 +1028,7 @@ const doveMarkMailId = async function (id, patch) {
 
 const doveSwitchMailbox = function (owner) {
     desktopDovecote.viewAsOwner = owner === DESKTOP_DOVECOTE_HUMAN_OWNER ? null : owner;
-    desktopDovecote.selectedId = null;
-    desktopDovecote.selectedMail = null;
+    doveClearSelection();
     doveRenderMailboxBanner();
     doveRenderToolbarState();
     // Already-open reader windows (doveReaderWindows) enforce the same read-only rule as
@@ -931,13 +1104,14 @@ const doveBuildMainPane = function () {
     rows.addEventListener('click', (ev) => {
         const row = ev.target.closest('[data-dove-mail-id]');
         if (!row) return;
-        doveSelectMail(row.dataset.doveMailId);
+        doveHandleRowActivate(row.dataset.doveMailId, ev);
     });
     rows.addEventListener('dblclick', (ev) => {
         const row = ev.target.closest('[data-dove-mail-id]');
         if (!row) return;
         doveOpenReaderWindow(row.dataset.doveMailId);
     });
+    doveWireListGestures(rows);
     // contextMenu.attachToElement: public/scripts/comp/contextMenu.js — one config attached
     // to the whole rows container, beforeShow resolves which row was targeted (explorerApplet.js
     // setupExplorerContextMenu's gridHost pattern), same as Director's session list rows.
@@ -1192,6 +1366,15 @@ const doveCacheEls = function () {
 
 const doveWireEvents = function () {
     desktopDovecoteEls.modal.addEventListener('click', doveHandleBodyClick);
+    desktopDovecoteEls.modal.addEventListener('keydown', doveHandleListKeydown);
+};
+
+const doveHandleListKeydown = function (ev) {
+    if (!((ev.ctrlKey || ev.metaKey) && (ev.key === 'a' || ev.key === 'A'))) return;
+    const tag = ev.target && ev.target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    ev.preventDefault();
+    doveSelectAllVisible();
 };
 
 const doveHandleBodyClick = function (ev) {
@@ -1206,10 +1389,14 @@ const doveDispatchAction = function (action) {
         case 'reply': doveOpenCompose('reply', desktopDovecote.selectedMail); return;
         case 'replyAll': doveOpenCompose('replyAll', desktopDovecote.selectedMail); return;
         case 'toggleRead': doveToggleRead(); return;
+        case 'markRead': doveMarkMailIds(desktopDovecote.selectedIds, { read: true }, { stay: true }); return;
+        case 'markUnread': doveMarkMailIds(desktopDovecote.selectedIds, { read: false }, { stay: true }); return;
         case 'delete': doveDeleteSelected(); return;
+        case 'restore': doveRestoreSelected(); return;
         case 'archive': doveArchiveSelected(); return;
         case 'spam': doveSpamSelected(true); return;
         case 'notSpam': doveSpamSelected(false); return;
+        case 'selectAll': doveSelectAllVisible(); return;
         case 'refresh': doveLoadFolder(desktopDovecote.folder); return;
         case 'mobileBack': doveSetMobileMessageOpen(false); return;
         default: return;
@@ -1240,9 +1427,26 @@ const doveRefreshMailboxes = async function () {
 
 let doveFolderToken = 0;
 
+const doveApplyListPage = function (result, append) {
+    const page = (result && result.mail) || [];
+    if (append) {
+        const seen = new Set(desktopDovecote.mail.map((mail) => String(mail.id)));
+        page.forEach((mail) => {
+            if (!seen.has(String(mail.id))) desktopDovecote.mail.push(mail);
+        });
+    } else {
+        desktopDovecote.mail = page;
+    }
+    desktopDovecote.nextCursor = (result && result.nextCursor) || null;
+    desktopDovecote.hasMore = !!(result && result.hasMore);
+    if (result && result.total != null) desktopDovecote.folderTotal = result.total;
+    if (result && result.unread != null) desktopDovecote.folderUnread = result.unread;
+};
+
 const doveLoadFolder = async function (folder, options) {
     const token = ++doveFolderToken;
     desktopDovecote.folder = folder;
+    desktopDovecote.loadingMore = false;
     doveRenderFolderButton();
     doveShowError(null);
     const request = { folder: folder };
@@ -1251,10 +1455,19 @@ const doveLoadFolder = async function (folder, options) {
         // dovecote_list_mail: modules/ws/handlers/250-dovecoteHandler.js
         const result = await wsClient.sendMessage('dovecote_list_mail', request, false);
         if (token !== doveFolderToken) return;
-        desktopDovecote.mail = (result && result.mail) || [];
+        doveApplyListPage(result, false);
+        doveNoteMailIds(desktopDovecote.mail, { announce: false });
+        const keep = doveSelectedIdSet();
+        desktopDovecote.selectedIds = desktopDovecote.mail
+            .map((mail) => String(mail.id))
+            .filter((id) => keep.has(id));
+        if (desktopDovecote.selectedId && !doveSelectedIdSet().has(String(desktopDovecote.selectedId))) {
+            desktopDovecote.selectedId = desktopDovecote.selectedIds[0] || null;
+            desktopDovecote.selectedMail = null;
+        }
         doveRenderMessageList();
         if (folder === 'inbox') {
-            doveRenderInboxBadge(desktopDovecote.mail.filter((m) => !m.read).length);
+            doveRenderInboxBadge(desktopDovecote.folderUnread);
         } else if (!desktopDovecote.viewAsOwner) {
             const known = options && options.inboxUnread;
             if (known != null) doveRenderInboxBadge(known);
@@ -1263,9 +1476,34 @@ const doveLoadFolder = async function (folder, options) {
     } catch (err) {
         if (token !== doveFolderToken) return;
         desktopDovecote.mail = [];
+        desktopDovecote.hasMore = false;
+        desktopDovecote.nextCursor = null;
+        desktopDovecote.folderTotal = 0;
+        desktopDovecote.folderUnread = 0;
         doveRenderMessageList();
         doveShowError((err && err.message) || 'Could not load mail');
     }
+};
+
+const doveLoadMoreFolder = async function () {
+    if (!desktopDovecote.hasMore || desktopDovecote.loadingMore || !desktopDovecote.nextCursor) return;
+    const token = doveFolderToken;
+    desktopDovecote.loadingMore = true;
+    doveRenderMessageList();
+    const request = { folder: desktopDovecote.folder, cursor: desktopDovecote.nextCursor };
+    if (desktopDovecote.viewAsOwner) request.viewAsOwner = desktopDovecote.viewAsOwner;
+    try {
+        // dovecote_list_mail: modules/ws/handlers/250-dovecoteHandler.js
+        const result = await wsClient.sendMessage('dovecote_list_mail', request, false);
+        if (token !== doveFolderToken) return;
+        doveApplyListPage(result, true);
+        doveNoteMailIds((result && result.mail) || [], { announce: false });
+    } catch (err) {
+        if (token !== doveFolderToken) return;
+        doveShowError((err && err.message) || 'Could not load older mail');
+    }
+    desktopDovecote.loadingMore = false;
+    doveRenderMessageList();
 };
 
 // Keeps the Inbox unread badge current even while another folder is open.
@@ -1273,10 +1511,9 @@ let doveBadgeToken = 0;
 const doveRefreshInboxBadgeOnly = async function () {
     const token = ++doveBadgeToken;
     try {
-        const result = await wsClient.sendMessage('dovecote_list_mail', { folder: 'inbox' }, false);
+        const result = await wsClient.sendMessage('dovecote_list_mail', { folder: 'inbox', limit: 1 }, false);
         if (token !== doveBadgeToken) return;
-        const mail = (result && result.mail) || [];
-        doveRenderInboxBadge(mail.filter((m) => !m.read).length);
+        doveRenderInboxBadge((result && result.unread) || 0);
     } catch (_) {
         // Non-critical background refresh; the visible folder's own error path already surfaced issues.
     }
@@ -1351,7 +1588,7 @@ const doveRenderMessageList = function () {
         row.className = 'dovecote-message-row';
         row.dataset.doveMailId = mail.id;
         if (!mail.read) row.classList.add('unread');
-        if (mail.id === desktopDovecote.selectedId) row.classList.add('selected');
+        if (doveSelectedIdSet().has(String(mail.id))) row.classList.add('selected');
 
         const unreadCell = document.createElement('span');
         unreadCell.className = 'dovecote-col-unread';
@@ -1405,46 +1642,210 @@ const doveRenderMessageList = function () {
         row.appendChild(dateCell);
         rows.appendChild(row);
     });
+    if (desktopDovecote.hasMore) {
+        const more = document.createElement('div');
+        more.className = 'form-hint dovecote-empty-hint';
+        more.id = 'desktopDovecoteLoadMore';
+        more.textContent = desktopDovecote.loadingMore ? 'Loading older messages...' : 'Scroll for older messages';
+        rows.appendChild(more);
+        doveObserveLoadMore(more);
+    }
     doveRenderStatusCounts();
+    doveRenderToolbarState();
+};
+
+const doveObserveLoadMore = function (el) {
+    if (typeof IntersectionObserver !== 'function') {
+        doveBindListScroll();
+        return;
+    }
+    if (doveLoadMoreObserver) doveLoadMoreObserver.disconnect();
+    doveLoadMoreObserver = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) doveLoadMoreFolder();
+    }, { root: desktopDovecoteEls.rows, rootMargin: '40px' });
+    doveLoadMoreObserver.observe(el);
+};
+
+let doveListScrollBound = false;
+let doveLoadMoreObserver = null;
+const doveBindListScroll = function () {
+    if (doveListScrollBound || !desktopDovecoteEls || !desktopDovecoteEls.rows) return;
+    doveListScrollBound = true;
+    desktopDovecoteEls.rows.addEventListener('scroll', () => {
+        const box = desktopDovecoteEls.rows;
+        if (box.scrollTop + box.clientHeight >= box.scrollHeight - 48) doveLoadMoreFolder();
+    });
 };
 
 const doveRenderStatusCounts = function () {
-    const total = desktopDovecote.mail.length;
-    const unread = desktopDovecote.mail.filter((m) => !m.read).length;
+    const total = desktopDovecote.folderTotal || desktopDovecote.mail.length;
+    const unread = desktopDovecote.folderUnread;
+    const selected = doveSelectedCount();
     if (!desktopDovecoteEls.statusCounts) return;
-    // Windows Mail's wording
-    desktopDovecoteEls.statusCounts.textContent = total + ' message(s), ' + unread + ' unread';
+    // Windows Mail's wording, plus a selected-count when more than one is highlighted
+    let text = total + ' message(s), ' + unread + ' unread';
+    if (desktopDovecote.hasMore && desktopDovecote.mail.length < total) {
+        text = desktopDovecote.mail.length + ' of ' + total + ' message(s), ' + unread + ' unread';
+    }
+    if (selected > 1) text += ' · ' + selected + ' selected';
+    desktopDovecoteEls.statusCounts.textContent = text;
 };
 
 // ---- Selection + preview ----------------------------------------------------
 
-const doveSelectMail = async function (id) {
+const doveSelectRange = function (toId) {
+    const list = doveFilteredSortedMail();
+    const fromId = desktopDovecote.anchorId || desktopDovecote.selectedId || toId;
+    const start = list.findIndex((mail) => String(mail.id) === String(fromId));
+    const end = list.findIndex((mail) => String(mail.id) === String(toId));
+    if (start < 0 || end < 0) {
+        doveSetSelectedIds([toId], toId);
+        return;
+    }
+    const lo = Math.min(start, end);
+    const hi = Math.max(start, end);
+    doveSetSelectedIds(list.slice(lo, hi + 1).map((mail) => mail.id), toId);
+};
+
+const doveSelectAllVisible = function () {
+    const list = doveFilteredSortedMail();
+    doveSetSelectedIds(list.map((mail) => mail.id), desktopDovecote.selectedId || (list[0] && list[0].id));
+    desktopDovecote.selectedMail = list.length === 1 ? desktopDovecote.selectedMail : null;
+    doveRenderMessageList();
+    doveRenderPreview();
+};
+
+const doveOpenSelected = async function (id) {
     doveShowError(null);
     const request = { id: id };
     if (desktopDovecote.viewAsOwner) request.viewAsOwner = desktopDovecote.viewAsOwner;
     try {
         // dovecote_get_mail: modules/ws/handlers/250-dovecoteHandler.js (also marks the message read server-side)
         const result = await wsClient.sendMessage('dovecote_get_mail', request);
-        desktopDovecote.selectedId = id;
+        doveSetSelectedIds([id], id);
+        desktopDovecote.anchorId = String(id);
         desktopDovecote.selectedMail = result && result.mail;
         desktopDovecote.allowRemoteImagesOnce = false;
         const found = desktopDovecote.mail.find((m) => String(m.id) === String(id));
-        if (found) found.read = true;
+        if (found && !found.read) {
+            found.read = true;
+            if (desktopDovecote.folder === 'inbox') {
+                desktopDovecote.folderUnread = Math.max(0, (desktopDovecote.folderUnread || 1) - 1);
+            }
+        }
         doveRenderMessageList();
         doveRenderInboxBadgeFromState();
         doveRenderPreview();
-        doveRenderToolbarState();
         doveSetMobileMessageOpen(true);
     } catch (err) {
         doveShowError((err && err.message) || 'Could not open message');
     }
 };
 
+const doveSelectMail = doveOpenSelected;
+
+const doveHandleRowActivate = function (id, ev) {
+    if (doveIgnoreRowClick) return;
+    if (desktopDovecoteEls && desktopDovecoteEls.rows) desktopDovecoteEls.rows.focus();
+    if (desktopDovecote.touchMulti) {
+        const ids = doveSelectedIdSet();
+        if (ids.has(String(id))) ids.delete(String(id));
+        else ids.add(String(id));
+        doveSetSelectedIds(Array.from(ids), id);
+        desktopDovecote.anchorId = String(id);
+        if (!ids.size) desktopDovecote.touchMulti = false;
+        desktopDovecote.selectedMail = null;
+        doveRenderMessageList();
+        doveRenderPreview();
+        return;
+    }
+    if (ev && ev.shiftKey) {
+        doveSelectRange(id);
+        desktopDovecote.selectedMail = doveSelectedCount() === 1 ? desktopDovecote.selectedMail : null;
+        doveRenderMessageList();
+        if (doveSelectedCount() === 1) doveOpenSelected(id);
+        else doveRenderPreview();
+        return;
+    }
+    if (doveHasModifierSelect(ev)) {
+        const ids = doveSelectedIdSet();
+        if (ids.has(String(id))) ids.delete(String(id));
+        else ids.add(String(id));
+        doveSetSelectedIds(Array.from(ids), id);
+        desktopDovecote.anchorId = String(id);
+        if (ids.size === 1) {
+            doveOpenSelected(id);
+            return;
+        }
+        desktopDovecote.selectedMail = null;
+        doveRenderMessageList();
+        doveRenderPreview();
+        return;
+    }
+    doveOpenSelected(id);
+};
+
+let doveIgnoreRowClick = false;
+let dovePressTimer = null;
+const doveWireListGestures = function (rows) {
+    rows.tabIndex = 0;
+    rows.addEventListener('pointerdown', (ev) => {
+        if (ev.pointerType === 'mouse' || ev.button) return;
+        const row = ev.target.closest('[data-dove-mail-id]');
+        if (!row) return;
+        const id = row.dataset.doveMailId;
+        const startX = ev.clientX;
+        const startY = ev.clientY;
+        dovePressTimer = setTimeout(() => {
+            dovePressTimer = null;
+            doveIgnoreRowClick = true;
+            desktopDovecote.touchMulti = true;
+            if (!doveSelectedIdSet().has(String(id))) {
+                const ids = doveSelectedIdSet();
+                ids.add(String(id));
+                doveSetSelectedIds(Array.from(ids), id);
+            }
+            desktopDovecote.anchorId = String(id);
+            desktopDovecote.selectedMail = null;
+            // contextMenu: public/scripts/comp/contextMenu.js — cancel the same hold's menu
+            if (typeof contextMenu !== 'undefined' && contextMenu._cancelTouchLongPress) {
+                contextMenu._cancelTouchLongPress();
+            }
+            doveRenderMessageList();
+            doveRenderPreview();
+        }, 480);
+        const cancel = function (moveEv) {
+            if (moveEv && moveEv.type === 'pointermove') {
+                const dx = Math.abs(moveEv.clientX - startX);
+                const dy = Math.abs(moveEv.clientY - startY);
+                if (dx < 12 && dy < 12) return;
+            }
+            if (dovePressTimer) {
+                clearTimeout(dovePressTimer);
+                dovePressTimer = null;
+            }
+            rows.removeEventListener('pointermove', cancel);
+            rows.removeEventListener('pointerup', cancel);
+            rows.removeEventListener('pointercancel', cancel);
+            setTimeout(() => { doveIgnoreRowClick = false; }, 0);
+        };
+        rows.addEventListener('pointermove', cancel);
+        rows.addEventListener('pointerup', cancel);
+        rows.addEventListener('pointercancel', cancel);
+    });
+};
+
 const doveRenderPreview = function () {
-    const mail = desktopDovecote.selectedMail;
-    // No selection: the viewer pane is hidden entirely and the list takes the space.
+    const count = doveSelectedCount();
+    const mail = count === 1 ? desktopDovecote.selectedMail : null;
+    // No single message: the viewer pane is hidden and the list takes the space.
     desktopDovecoteEls.mainPane.classList.toggle('dovecote-no-selection', !mail);
     desktopDovecoteEls.emptyHint.classList.toggle('hidden', !!mail);
+    if (desktopDovecoteEls.emptyHint) {
+        desktopDovecoteEls.emptyHint.textContent = count > 1
+            ? (count + ' messages selected.')
+            : 'There is no message selected.';
+    }
     doveRenderOeHeaderInto(desktopDovecoteEls, mail);
     desktopDovecoteEls.safetyBar.classList.add('hidden');
     desktopDovecoteEls.imagesBar.classList.add('hidden');
@@ -1991,75 +2392,80 @@ const doveRenderMailboxBanner = function () {
 const doveRenderToolbarState = function () {
     // Same as doveRenderMessageList: a sidebar reader has no main toolbar yet
     if (!desktopDovecoteEls || !desktopDovecoteEls.toolbar) return;
+    const sel = doveMenuSelection();
     const readOnly = !!desktopDovecote.viewAsOwner;
-    const noMail = !desktopDovecote.selectedMail;
-    const inSpam = !!(desktopDovecote.selectedMail && desktopDovecote.selectedMail.folder === 'spam');
+    const noMail = sel.count === 0;
     desktopDovecoteEls.toolbar.querySelectorAll('[data-dove-mutating="true"]').forEach((btn) => {
+        const action = btn.dataset.doveAction;
         let off = readOnly || (noMail && btn.dataset.doveNeedsMail === 'true');
-        if (btn.dataset.doveAction === 'spam') off = off || inSpam;
-        if (btn.dataset.doveAction === 'notSpam') off = off || !desktopDovecote.selectedMail || !inSpam;
+        if (action === 'reply' || action === 'replyAll') off = off || sel.count !== 1;
+        if (action === 'spam') off = off || !sel.anyNotSpam;
+        if (action === 'notSpam') off = off || !sel.inSpam;
+        if (action === 'restore') off = off || !sel.inDeleted;
         btn.disabled = off;
     });
+    const countEl = document.getElementById('desktopDovecoteSelectedCount');
+    if (countEl) {
+        countEl.textContent = String(sel.count);
+        countEl.dataset.state = sel.count > 1 ? 'on' : 'off';
+        countEl.title = sel.count ? (sel.count + ' selected') : 'Selected messages';
+        countEl.classList.toggle('hidden', sel.count < 2);
+    }
 };
 
 // ---- Mutations ---------------------------------------------------------------
 
 const doveToggleRead = async function () {
-    const mail = desktopDovecote.selectedMail;
-    if (!mail || desktopDovecote.viewAsOwner) return;
-    try {
-        // dovecote_mark_mail: modules/ws/handlers/250-dovecoteHandler.js
-        await wsClient.sendMessage('dovecote_mark_mail', { id: mail.id, read: !mail.read });
-        mail.read = !mail.read;
-        const found = desktopDovecote.mail.find((m) => String(m.id) === String(mail.id));
-        if (found) found.read = mail.read;
-        doveRenderMessageList();
-        doveRenderInboxBadgeFromState();
-    } catch (err) {
-        doveShowError((err && err.message) || 'Could not update read state');
-    }
+    const rows = doveSelectedMailRows();
+    if (!rows.length || desktopDovecote.viewAsOwner) return;
+    const markRead = rows.some((mail) => !mail.read);
+    await doveMarkMailIds(rows.map((mail) => mail.id), { read: markRead }, { stay: true });
+};
+
+// Deleting from Trash is permanent: ask first (Vista message box).
+const doveConfirmPermanentDelete = async function (count) {
+    if (desktopDovecote.folder !== 'deleted') return true;
+    // showConfirmationDialog: public/scripts/comp/confirmationDialog.js
+    if (typeof showConfirmationDialog !== 'function') return window.confirm('Permanently delete ' + count + ' message(s)?');
+    const answer = await showConfirmationDialog(
+        'Permanently delete ' + (count === 1 ? 'this message' : count + ' messages') + '? This cannot be undone.',
+        [
+            { text: 'Delete', value: 'delete', className: 'btn-danger' },
+            { text: 'Cancel', value: false, className: 'btn-secondary' }
+        ],
+        null,
+        { title: 'Delete Permanently', icon: 'fas fa-trash' }
+    );
+    return answer === 'delete';
 };
 
 const doveDeleteSelected = async function () {
-    const mail = desktopDovecote.selectedMail;
-    if (!mail || desktopDovecote.viewAsOwner) return;
-    try {
-        await wsClient.sendMessage('dovecote_mark_mail', { id: mail.id, deleted: true });
-        desktopDovecote.selectedId = null;
-        desktopDovecote.selectedMail = null;
-        doveRenderPreview();
-        doveLoadFolder(desktopDovecote.folder);
-    } catch (err) {
-        doveShowError((err && err.message) || 'Could not delete message');
-    }
+    const ids = desktopDovecote.selectedIds.slice();
+    if (!ids.length && desktopDovecote.selectedMail) ids.push(desktopDovecote.selectedMail.id);
+    if (!ids.length) return;
+    if (!(await doveConfirmPermanentDelete(ids.length))) return;
+    await doveMarkMailIds(ids, { deleted: true });
+};
+
+const doveRestoreSelected = async function () {
+    const ids = desktopDovecote.selectedIds.slice();
+    if (!ids.length && desktopDovecote.selectedMail) ids.push(desktopDovecote.selectedMail.id);
+    if (!ids.length) return;
+    await doveMarkMailIds(ids, { deleted: false });
 };
 
 const doveArchiveSelected = async function () {
-    const mail = desktopDovecote.selectedMail;
-    if (!mail || desktopDovecote.viewAsOwner) return;
-    try {
-        await wsClient.sendMessage('dovecote_mark_mail', { id: mail.id, archived: true });
-        desktopDovecote.selectedId = null;
-        desktopDovecote.selectedMail = null;
-        doveRenderPreview();
-        doveLoadFolder(desktopDovecote.folder);
-    } catch (err) {
-        doveShowError((err && err.message) || 'Could not archive message');
-    }
+    const ids = desktopDovecote.selectedIds.slice();
+    if (!ids.length && desktopDovecote.selectedMail) ids.push(desktopDovecote.selectedMail.id);
+    if (!ids.length) return;
+    await doveMarkMailIds(ids, { archived: true });
 };
 
 const doveSpamSelected = async function (toSpam) {
-    const mail = desktopDovecote.selectedMail;
-    if (!mail || desktopDovecote.viewAsOwner) return;
-    try {
-        await wsClient.sendMessage('dovecote_mark_mail', { id: mail.id, spam: toSpam === true });
-        desktopDovecote.selectedId = null;
-        desktopDovecote.selectedMail = null;
-        doveRenderPreview();
-        doveLoadFolder(desktopDovecote.folder);
-    } catch (err) {
-        doveShowError((err && err.message) || (toSpam ? 'Could not move to Spam' : 'Could not mark not spam'));
-    }
+    const ids = desktopDovecote.selectedIds.slice();
+    if (!ids.length && desktopDovecote.selectedMail) ids.push(desktopDovecote.selectedMail.id);
+    if (!ids.length) return;
+    await doveMarkMailIds(ids, { spam: toSpam === true });
 };
 
 // ---- Compose: its own top-level window (desktopDovecoteCompose_*), not an overlay
@@ -2551,11 +2957,17 @@ const doveReaderToggleRead = async function (state) {
 const doveReaderMarkSelected = async function (state, patch) {
     const mail = state.mail;
     if (!mail || desktopDovecote.viewAsOwner) return;
+    if (patch && patch.deleted === true && mail.folder === 'deleted') {
+        const prev = desktopDovecote.folder;
+        desktopDovecote.folder = 'deleted';
+        const ok = await doveConfirmPermanentDelete(1);
+        desktopDovecote.folder = prev;
+        if (!ok) return;
+    }
     try {
         await wsClient.sendMessage('dovecote_mark_mail', Object.assign({ id: mail.id }, patch));
-        if (desktopDovecote.selectedId && String(desktopDovecote.selectedId) === String(mail.id)) {
-            desktopDovecote.selectedId = null;
-            desktopDovecote.selectedMail = null;
+        if (doveSelectedIdSet().has(String(mail.id)) || String(desktopDovecote.selectedId) === String(mail.id)) {
+            doveClearSelection();
             doveRenderPreview();
         }
         if (desktopDovecote.loaded) doveLoadFolder(desktopDovecote.folder);
@@ -2760,12 +3172,63 @@ let doveTrayInitialized = false;
 let doveLastUnread = null;
 let doveHasAnnouncedMail = false;
 let doveTrayRegistered = false;
+// Inbox ids already seen this session. A delete/mark/move/refresh/page must not
+// re-play the new-mail sound just because the unread count moved.
+const doveNotifiedMailIds = new Set();
+// Primed after the first note (even an empty inbox), so the first mail into an
+// empty inbox still dings. Newest createdAt seen: an old id that reappears
+// (not-spam, restore, mark unread on an unpaged row) is not "new mail".
+let doveNotifyPrimed = false;
+let doveNotifyNewestAt = '';
 // Login fills the tray with balloons. The mail icon waits, then the unread balloon can be seen.
 const DOVE_TRAY_REGISTER_DELAY_MS = 60000;
 
+const doveCollectFreshMailIds = function (seen, mail) {
+    const fresh = [];
+    (Array.isArray(mail) ? mail : []).forEach((item) => {
+        const id = item && item.id != null ? String(item.id) : '';
+        if (!id) return;
+        if (!seen.has(id)) fresh.push(id);
+        seen.add(id);
+    });
+    return fresh;
+};
+
+const doveNoteMailIds = function (mail, options) {
+    const announce = !!(options && options.announce) && doveNotifyPrimed;
+    const watermark = doveNotifyNewestAt;
+    const fresh = doveCollectFreshMailIds(doveNotifiedMailIds, mail);
+    (Array.isArray(mail) ? mail : []).forEach((item) => {
+        const at = item && item.createdAt ? String(item.createdAt) : '';
+        if (at > doveNotifyNewestAt) doveNotifyNewestAt = at;
+    });
+    doveNotifyPrimed = true;
+    if (announce && fresh.length) {
+        const freshSet = new Set(fresh);
+        const newer = (Array.isArray(mail) ? mail : []).filter((item) => item && freshSet.has(String(item.id))
+            && (!item.createdAt || String(item.createdAt) > watermark));
+        if (newer.length) dovePlayNewMailAlert(newer.length);
+    }
+    return fresh;
+};
+
+const dovePlayNewMailAlert = function (count) {
+    if (!doveTrayRegistered || (typeof isDesktopTrayBootPending === 'function' && isDesktopTrayBootPending())) {
+        return;
+    }
+    // cplMail: public/scripts/comp/cplMail.js — Windows Mail's "Play sound when new messages arrive"
+    const mailSettings = window.cplMail;
+    if (!mailSettings || mailSettings.soundOn()) {
+        // desktopSounds.play: public/scripts/comp/desktopSounds.js
+        desktopSounds.play('notify');
+    }
+    if (!mailSettings || mailSettings.dialogOn()) doveShowNewMail(count);
+};
+
 // options: { reveal } — same two-phase boot convention as updateFixedCreditsIndicator
 // (public/scripts/comp/trayIndicators.js): reveal:false sets state without showing,
-// reveal:true (or omitted, post-boot) shows/hides for real.
+// reveal:true (or omitted, post-boot) shows/hides for real. Never plays the new-mail
+// sound; that is doveNoteMailIds({ announce: true }) when a new inbox id appears.
 const doveApplyTrayBadge = function (unread, options) {
     const icon = document.getElementById('dovecoteTrayIcon');
     const badge = document.getElementById('dovecoteTrayBadge');
@@ -2773,7 +3236,6 @@ const doveApplyTrayBadge = function (unread, options) {
     const opts = options || {};
     // isDesktopTrayBootPending: public/scripts/comp/trayIndicators.js
     const reveal = opts.reveal !== false && !isDesktopTrayBootPending() && doveTrayRegistered;
-    const prev = doveLastUnread;
     doveLastUnread = unread;
     icon.classList.toggle('hidden', !reveal);
     icon.classList.toggle('has-unread', unread > 0);
@@ -2781,22 +3243,14 @@ const doveApplyTrayBadge = function (unread, options) {
         badge.textContent = unread > 99 ? '99+' : String(unread);
         badge.classList.remove('hidden');
         icon.title = 'Dovecote — ' + unread + ' unread';
-        if (reveal && (!doveHasAnnouncedMail || (prev != null && unread > prev))) {
-            const fresh = prev != null && unread > prev;
-            // cplMail: public/scripts/comp/cplMail.js — Windows Mail's "Play sound when new messages arrive"
+        if (reveal && !doveHasAnnouncedMail) {
             const mailSettings = window.cplMail;
-            if (!mailSettings || mailSettings.soundOn()) {
-                // desktopSounds.play: public/scripts/comp/desktopSounds.js
-                desktopSounds.play('notify');
-            }
-            if (!doveHasAnnouncedMail && (!mailSettings || mailSettings.dialogOn())) doveShowUnreadBalloon(unread);
-            if (fresh && (!mailSettings || mailSettings.dialogOn())) doveShowNewMail(unread - prev);
+            if (!mailSettings || mailSettings.dialogOn()) doveShowUnreadBalloon(unread);
             doveHasAnnouncedMail = true;
         }
     } else {
         badge.classList.add('hidden');
         icon.title = 'Dovecote';
-        doveHasAnnouncedMail = false;
     }
 };
 
@@ -2807,6 +3261,10 @@ const doveRefreshTrayUnread = async function (options) {
         const mailboxes = (result && result.mailboxes) || [];
         const mine = mailboxes.find((box) => box.owner === DESKTOP_DOVECOTE_HUMAN_OWNER);
         doveApplyTrayBadge(mine ? (mine.unread || 0) : 0, options);
+        if (!doveNotifiedMailIds.size) {
+            const listed = await wsClient.sendMessage('dovecote_list_mail', { folder: 'inbox', limit: 200 }, false);
+            doveNoteMailIds(listed && listed.mail, { announce: false });
+        }
     } catch (_) {
         // Non-critical background refresh.
     }
@@ -2817,11 +3275,10 @@ const doveRefreshTrayUnread = async function (options) {
 // doveRefreshInboxBadgeOnly both land here, same as doveRenderInboxBadge.
 const doveRenderInboxBadgeFromState = function () {
     if (desktopDovecote.viewAsOwner) return;
-    // An empty list is not the inbox until the main window has loaded a folder.
-    // Sidebar reads would otherwise paint the tray badge as zero.
-    const mail = desktopDovecote.loaded && desktopDovecote.folder === 'inbox' ? desktopDovecote.mail : null;
-    if (mail) {
-        doveApplyTrayBadge(mail.filter((m) => !m.read).length);
+    // Folder-wide unread from list_mail, not the loaded page — pagination and
+    // deletes must not paint the tray from a 50-row slice.
+    if (desktopDovecote.loaded && desktopDovecote.folder === 'inbox' && desktopDovecote.folderUnread != null) {
+        doveApplyTrayBadge(desktopDovecote.folderUnread);
     } else {
         doveRefreshTrayUnread();
     }
@@ -2896,6 +3353,7 @@ const doveFillInboxFlyout = async function (preloaded) {
         dovePlaceInboxFlyout();
         return;
     }
+    doveNoteMailIds(mail, { announce: false });
     mail.forEach((item) => {
         const row = document.createElement('button');
         row.type = 'button';
@@ -2978,10 +3436,13 @@ const doveOnMailboxUpdated = function (message) {
     desktopDovecote.mailboxes = data.mailboxes;
     const human = data.mailboxes.find((box) => box.owner === DESKTOP_DOVECOTE_HUMAN_OWNER);
     doveApplyTrayBadge(human ? (human.unread || 0) : 0);
+    const humanInbox = data.inbox && data.inbox[DESKTOP_DOVECOTE_HUMAN_OWNER];
+    const humanUnread = data.unreadInbox && data.unreadInbox[DESKTOP_DOVECOTE_HUMAN_OWNER];
+    doveNoteMailIds(Array.isArray(humanUnread) ? humanUnread : [], { announce: true });
+    doveNoteMailIds(Array.isArray(humanInbox) ? humanInbox : [], { announce: false });
     document.dispatchEvent(new CustomEvent('dovecoteMailboxUpdated', { detail: data }));
 
     const owners = Array.isArray(data.owners) ? data.owners : [];
-    const humanInbox = data.inbox && data.inbox[DESKTOP_DOVECOTE_HUMAN_OWNER];
     if (doveInboxFlyout && !doveInboxFlyout.classList.contains('hidden') && Array.isArray(humanInbox) && owners.indexOf(DESKTOP_DOVECOTE_HUMAN_OWNER) !== -1) {
         doveFillInboxFlyout(humanInbox.slice(0, 8));
     }
@@ -2995,10 +3456,18 @@ const doveOnMailboxUpdated = function (message) {
     const pushedInbox = data.inbox && data.inbox[viewing];
     if (desktopDovecote.folder === 'inbox' && Array.isArray(pushedInbox)) {
         doveFolderToken++;
-        desktopDovecote.mail = pushedInbox;
+        const meta = (data.inboxMeta && data.inboxMeta[viewing]) || {};
+        doveApplyListPage({
+            mail: pushedInbox,
+            nextCursor: meta.nextCursor,
+            hasMore: meta.hasMore,
+            total: meta.total,
+            unread: meta.unread != null ? meta.unread : (human && viewing === DESKTOP_DOVECOTE_HUMAN_OWNER ? human.unread : undefined)
+        }, false);
+        doveNoteMailIds(pushedInbox, { announce: false });
         doveRenderMessageList();
         const box = data.mailboxes.find((entry) => entry.owner === viewing);
-        doveRenderInboxBadge(box ? (box.unread || 0) : pushedInbox.filter((m) => !m.read).length);
+        doveRenderInboxBadge(box ? (box.unread || 0) : (meta.unread != null ? meta.unread : 0));
         return;
     }
     doveLoadFolder(desktopDovecote.folder, human ? { inboxUnread: human.unread || 0 } : null);
@@ -3021,4 +3490,11 @@ const doveBindMailboxPush = function () {
 };
 
 doveBindMailboxPush();
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports._test = {
+        doveCollectFreshMailIds: doveCollectFreshMailIds,
+        doveNotifiedMailIds: doveNotifiedMailIds
+    };
+}
 

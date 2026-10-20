@@ -71,6 +71,9 @@ const FORMATS = Object.freeze(['text', 'md', 'html']);
 
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024; // per file
 const MAX_TOTAL_ATTACHMENT_BYTES = 25 * 1024 * 1024; // per message
+const MAX_LIST = 200;
+const DEFAULT_LIST = 50;
+const MAX_BATCH_IDS = 200;
 
 class DovecoteError extends Error {
     constructor(message, code) {
@@ -131,6 +134,76 @@ function emitMailDelivered(deliveries) {
     } catch (err) {
         console.error('Dovecote mailbox webhook notify failed:', err.message);
     }
+}
+
+function normalizeMailIds(id, ids) {
+    const list = [];
+    const seen = new Set();
+    const push = (value) => {
+        const text = String(value || '').trim();
+        if (!text || seen.has(text)) return;
+        seen.add(text);
+        list.push(text);
+    };
+    if (Array.isArray(ids)) ids.forEach(push);
+    else if (ids) push(ids);
+    if (id) push(id);
+    if (list.length > MAX_BATCH_IDS) {
+        throw new DovecoteError(`At most ${MAX_BATCH_IDS} message ids`, 'BATCH_TOO_LARGE');
+    }
+    return list;
+}
+
+function encodeListCursor(row) {
+    return Buffer.from(`${row.created_at}\n${row.id}`, 'utf8').toString('base64url');
+}
+
+function decodeListCursor(cursor) {
+    if (cursor == null || cursor === '') return null;
+    try {
+        const raw = Buffer.from(String(cursor), 'base64url').toString('utf8');
+        const split = raw.indexOf('\n');
+        if (split < 1) throw new Error('empty');
+        const createdAt = raw.slice(0, split);
+        const id = raw.slice(split + 1);
+        if (!createdAt || !id) throw new Error('empty');
+        return { createdAt, id };
+    } catch (_err) {
+        throw new DovecoteError('Invalid list cursor', 'INVALID_CURSOR');
+    }
+}
+
+function listCap(limit) {
+    return Math.max(1, Math.min(MAX_LIST, Number(limit) || DEFAULT_LIST));
+}
+
+function decorateMailList(mail, extra) {
+    Object.keys(extra).forEach((key) => {
+        Object.defineProperty(mail, key, { value: extra[key], enumerable: false });
+    });
+    return mail;
+}
+
+function listPageMeta(listed) {
+    return {
+        nextCursor: listed.nextCursor || null,
+        hasMore: !!listed.hasMore,
+        total: listed.total || 0,
+        unread: listed.unread || 0
+    };
+}
+
+function countOwnedMail(owner, { folder, unreadOnly } = {}) {
+    let sql = `SELECT COUNT(*) AS total,
+        COALESCE(SUM(CASE WHEN read = 0 THEN 1 ELSE 0 END), 0) AS unread
+        FROM dovecote_message WHERE owner = ?`;
+    const params = [owner];
+    if (folder) {
+        sql += ' AND folder = ?';
+        params.push(String(folder));
+    }
+    if (unreadOnly) sql += ' AND read = 0';
+    return getDb().prepare(sql).get(...params);
 }
 
 // Maps a resolved caller identity (bot name / Xi active runtime) to a mailbox
@@ -753,9 +826,10 @@ function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, 
     };
 }
 
-function listMail(owner, { folder, unreadOnly, limit, silent } = {}) {
+function listMail(owner, { folder, unreadOnly, limit, cursor, silent } = {}) {
     if (!isValidOwner(owner)) throw new DovecoteError('Unknown mailbox', 'UNKNOWN_OWNER');
-    const cap = Math.max(1, Math.min(200, Number(limit) || 50));
+    const cap = listCap(limit);
+    const after = cursor ? decodeListCursor(cursor) : null;
     let sql = 'SELECT * FROM dovecote_message WHERE owner = ?';
     const params = [owner];
     if (folder) {
@@ -763,28 +837,40 @@ function listMail(owner, { folder, unreadOnly, limit, silent } = {}) {
         params.push(String(folder));
     }
     if (unreadOnly) sql += ' AND read = 0';
-    sql += ' ORDER BY created_at DESC LIMIT ?';
-    params.push(cap);
+    if (after) {
+        sql += ' AND (created_at < ? OR (created_at = ? AND id < ?))';
+        params.push(after.createdAt, after.createdAt, after.id);
+    }
+    sql += ' ORDER BY created_at DESC, id DESC LIMIT ?';
+    params.push(cap + 1);
     const rows = getDb().prepare(sql).all(...params);
+    const hasMore = rows.length > cap;
+    if (hasMore) rows.pop();
+    const counts = countOwnedMail(owner, { folder, unreadOnly });
     if (silent !== true) {
-        audit(owner, 'list_mail', null, true, `folder=${folder || 'all'} count=${rows.length}`);
+        audit(owner, 'list_mail', null, true, `folder=${folder || 'all'} count=${rows.length} total=${counts.total}`);
     }
     const mail = rows.map(toSummary);
     // Mailbox owner of the caller. Non-enumerable so the value stays an array
     // for existing callers; list_mail copies it onto the result even when mail is empty.
-    Object.defineProperty(mail, 'owner', { value: owner, enumerable: false });
-    return mail;
+    return decorateMailList(mail, {
+        owner,
+        nextCursor: hasMore && rows.length ? encodeListCursor(rows[rows.length - 1]) : null,
+        hasMore,
+        total: counts.total,
+        unread: unreadOnly ? counts.total : counts.unread
+    });
 }
 
 /** Returns null (never throws) when the message does not exist or is not owned by `owner` — callers should treat that as a 404. */
-function readMail(owner, id) {
+function readMail(owner, id, { markRead } = {}) {
     if (!isValidOwner(owner)) throw new DovecoteError('Unknown mailbox', 'UNKNOWN_OWNER');
     const row = getDb().prepare('SELECT * FROM dovecote_message WHERE id = ? AND owner = ?').get(id, owner);
     if (!row) {
         audit(owner, 'read_mail', id, false, 'not found or not owned');
         return null;
     }
-    if (!row.read) {
+    if (!row.read && markRead !== false) {
         getDb().prepare('UPDATE dovecote_message SET read = 1, updated_at = ? WHERE id = ?').run(nowIso(), row.id);
         row.read = 1;
         const receiptOwner = markPairedReadReceipt(owner, row);
@@ -794,7 +880,7 @@ function readMail(owner, id) {
     return toFull(row);
 }
 
-function markMail(owner, { id, read, archived, deleted, archiveSubfolder, spam }) {
+function markMail(owner, { id, read, archived, deleted, archiveSubfolder, spam, silent, changedOwners }) {
     if (!isValidOwner(owner)) throw new DovecoteError('Unknown mailbox', 'UNKNOWN_OWNER');
     const row = getDb().prepare('SELECT * FROM dovecote_message WHERE id = ? AND owner = ?').get(id, owner);
     if (!row) {
@@ -805,7 +891,7 @@ function markMail(owner, { id, read, archived, deleted, archiveSubfolder, spam }
     // removes it (and its attachments) — same as hitting Delete on a Trash
     // item in a real mail client, rather than soft-deleting it again.
     if (deleted === true && row.folder === 'deleted') {
-        return permanentlyDeleteMail(owner, id);
+        return permanentlyDeleteMail(owner, id, { silent });
     }
     const updates = { updated_at: nowIso() };
     if (typeof read === 'boolean') updates.read = read ? 1 : 0;
@@ -829,9 +915,40 @@ function markMail(owner, { id, read, archived, deleted, archiveSubfolder, spam }
     const values = Object.values(updates);
     getDb().prepare(`UPDATE dovecote_message SET ${sets} WHERE id = ?`).run(...values, row.id);
     audit(owner, 'mark_mail', id, true, JSON.stringify(updates));
-    emitMailboxChanged([owner, receiptOwner]);
+    if (!silent) emitMailboxChanged([owner, receiptOwner]);
+    else if (receiptOwner && changedOwners instanceof Set) changedOwners.add(receiptOwner);
     const updated = getDb().prepare('SELECT * FROM dovecote_message WHERE id = ?').get(row.id);
     return toSummary(updated);
+}
+
+function countMailInFolder(owner, ids, folder) {
+    const list = normalizeMailIds(null, ids);
+    if (!list.length) return 0;
+    const marks = list.map(() => '?').join(',');
+    return getDb().prepare(
+        `SELECT COUNT(*) AS n FROM dovecote_message WHERE owner = ? AND folder = ? AND id IN (${marks})`
+    ).get(owner, String(folder), ...list).n;
+}
+
+function markMailBatch(owner, { id, ids, read, archived, deleted, archiveSubfolder, spam }) {
+    const list = normalizeMailIds(id, ids);
+    if (!list.length) throw new DovecoteError('Message id is required', 'MESSAGE_ID_REQUIRED');
+    const mail = [];
+    const missing = [];
+    // Paired read-receipt senders must refresh too (single markMail emits them).
+    const changedOwners = new Set([owner]);
+    const apply = getDb().transaction(() => {
+        list.forEach((one) => {
+            const row = markMail(owner, {
+                id: one, read, archived, deleted, archiveSubfolder, spam, silent: true, changedOwners
+            });
+            if (row) mail.push(row);
+            else missing.push(one);
+        });
+    });
+    apply();
+    emitMailboxChanged(Array.from(changedOwners));
+    return { mail, missing, updated: mail.length };
 }
 
 /**
@@ -861,7 +978,7 @@ function resolveForwardTarget(to) {
     throw new DovecoteError(`Unknown recipient mailbox: ${to}`, 'UNKNOWN_RECIPIENT');
 }
 
-function forwardMail(owner, { id, to }) {
+function forwardMail(owner, { id, to, silent }) {
     if (!isValidOwner(owner)) throw new DovecoteError('Unknown mailbox', 'UNKNOWN_OWNER');
     const toOwner = resolveForwardTarget(to);
     const source = getDb().prepare('SELECT * FROM dovecote_message WHERE id = ? AND owner = ?').get(id, owner);
@@ -890,7 +1007,6 @@ function forwardMail(owner, { id, to }) {
     // never takes the other's attachments with it.
     duplicateMessageAttachments(source.id, newId, source.attachments);
     audit(owner, 'forward_mail', newId, true, `to=${toOwner} source=${id}`);
-    emitMailboxChanged([toOwner]);
     emitMailDelivered([{
         mailbox: toOwner,
         id: newId,
@@ -898,7 +1014,28 @@ function forwardMail(owner, { id, to }) {
         subject: `Fwd: ${source.subject}`,
         receivedAt: createdAt
     }]);
-    return { id: newId, to: toOwner };
+    if (!silent) emitMailboxChanged([toOwner]);
+    return { id: newId, to: toOwner, sourceId: id };
+}
+
+function forwardMailBatch(owner, { id, ids, to }) {
+    const list = normalizeMailIds(id, ids);
+    if (!list.length) throw new DovecoteError('Message id is required', 'MESSAGE_ID_REQUIRED');
+    const forwarded = [];
+    const missing = [];
+    let toOwner = null;
+    const apply = getDb().transaction(() => {
+        list.forEach((one) => {
+            const row = forwardMail(owner, { id: one, to, silent: true });
+            if (row) {
+                forwarded.push(row);
+                toOwner = row.to;
+            } else missing.push(one);
+        });
+    });
+    apply();
+    if (toOwner) emitMailboxChanged([toOwner]);
+    return { forwarded, missing, updated: forwarded.length, to: toOwner };
 }
 
 function isMailroomActor(actor) {
@@ -1005,7 +1142,7 @@ function mailroomMoveMail(actor, { mailbox, id, spam }) {
  * Mailroom-only: list another mailbox's Spam folder. Every mailbox including
  * Yukimi. Other folders are refused.
  */
-function mailroomListMail(actor, { mailbox, folder, unreadOnly, limit } = {}) {
+function mailroomListMail(actor, { mailbox, folder, unreadOnly, limit, cursor } = {}) {
     requireMailroomRole(actor, 'mailroom_list_mail', { mailbox });
     const target = resolveMailroomTarget(mailbox, actor, 'mailroom_list_mail', undefined);
     const wantFolder = String(folder || 'spam').toLowerCase();
@@ -1015,18 +1152,10 @@ function mailroomListMail(actor, { mailbox, folder, unreadOnly, limit } = {}) {
         });
         throw new DovecoteError('Cross-mailbox list is Spam-folder only', 'FORBIDDEN');
     }
-    const cap = Math.max(1, Math.min(200, Number(limit) || 50));
-    let sql = 'SELECT * FROM dovecote_message WHERE owner = ? AND folder = ?';
-    const params = [target, 'spam'];
-    if (unreadOnly) sql += ' AND read = 0';
-    sql += ' ORDER BY created_at DESC LIMIT ?';
-    params.push(cap);
-    const rows = getDb().prepare(sql).all(...params);
+    const listed = listMail(target, { folder: 'spam', unreadOnly, limit, cursor });
     mailroomAudit(actor, 'mailroom_list_mail', {
-        mailbox: target, success: true, extra: `folder=spam count=${rows.length}`
+        mailbox: target, success: true, extra: `folder=spam count=${listed.length} total=${listed.total}`
     });
-    const listed = rows.map(toSummary);
-    Object.defineProperty(listed, 'owner', { value: target, enumerable: false });
     return listed;
 }
 
@@ -1093,7 +1222,7 @@ function mailroomPurgeMail(actor, { mailbox, id }) {
  * that is already in the 'deleted' folder (see markMail), matching a mail
  * client's "delete from Trash" convention.
  */
-function permanentlyDeleteMail(owner, id) {
+function permanentlyDeleteMail(owner, id, { silent } = {}) {
     if (!isValidOwner(owner)) throw new DovecoteError('Unknown mailbox', 'UNKNOWN_OWNER');
     const row = getDb().prepare('SELECT * FROM dovecote_message WHERE id = ? AND owner = ?').get(id, owner);
     if (!row) {
@@ -1104,7 +1233,7 @@ function permanentlyDeleteMail(owner, id) {
     removeMessageAttachmentDir(row.id);
     cleanupOrphanedAttachmentMeta(row.attachments);
     audit(owner, 'permanently_delete_mail', id, true, null);
-    emitMailboxChanged([owner]);
+    if (!silent) emitMailboxChanged([owner]);
     return { id: row.id, permanentlyDeleted: true };
 }
 
@@ -1152,7 +1281,12 @@ module.exports = {
     ROUTES,
     MAX_ATTACHMENT_BYTES,
     MAX_TOTAL_ATTACHMENT_BYTES,
+    MAX_LIST,
+    DEFAULT_LIST,
+    MAX_BATCH_IDS,
     DovecoteError,
+    normalizeMailIds,
+    listPageMeta,
     isValidOwner,
     isBotOwner,
     isMailroomActor,
@@ -1163,7 +1297,10 @@ module.exports = {
     listMail,
     readMail,
     markMail,
+    markMailBatch,
+    countMailInFolder,
     forwardMail,
+    forwardMailBatch,
     mailroomForwardMail,
     auditMailroomDenied,
     mailroomMoveMail,
