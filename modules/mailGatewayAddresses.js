@@ -1,7 +1,16 @@
 /**
  * Bidirectional Dovecote ↔ <bot>.<dept>@dream.737.jp.net mapping.
- * The mailbox table lives in config (config.mailGateway.mailboxes), not here.
+ * Code defaults here are seed data. Live intake reads the Exchange DB,
+ * then merges config.json / secureConfig mailGateway.mailboxes on top.
  * This module only applies a mapping object it is given.
+ *
+ * Precedence (later wins on the same local-part):
+ *   1. DEFAULT_MAILBOXES (seed / fallback)
+ *   2. Exchange DB (exchange_address + enabled mailboxes)
+ *   3. config.json mailGateway.mailboxes
+ *   4. secureConfig mailGateway.mailboxes
+ * Keys are local-parts on dream.737.jp.net only. A full address
+ * (ykazari@icloud.com or any other) is never a local recipient.
  */
 
 'use strict';
@@ -10,13 +19,12 @@ const DEFAULT_DOMAIN = 'dream.737.jp.net';
 // Display-only domain the Dovecote UI appends to bare mailbox names.
 const INTERNAL_DISPLAY_DOMAIN = 'dream.co.jp';
 
-// Shipped defaults (pending confirmation of tifa / pyra — those stay unmapped).
-// Yukimi's outbound / public address is kazari.ops@dream.737.jp.net (first
-// key for that owner is what toExternal uses). Inbound aliases:
-// yukimi@dream.737.jp.net, kazari@dream.737.jp.net, and
-// yukimi.kazari@dream.737.jp.net. Never map an external domain
-// (ykazari@icloud.com or any other) as a local recipient.
 const YUKIMI_LOCAL = 'kazari.ops';
+const TSUBAME_LOCAL = 'tsubame.ops';
+const MAILROOM_CATCHALL = 'mailroom.ops';
+
+// Seed / fallback map. Exchange seeds these into exchange_address on first
+// run. Config maps overlay them; they do not replace this table wholesale.
 const DEFAULT_MAILBOXES = Object.freeze({
     'kazari.ops': 'yukimi',
     yukimi: 'yukimi',
@@ -28,14 +36,54 @@ const DEFAULT_MAILBOXES = Object.freeze({
     'cursor.dev': 'cursor',
     'claude.dev': 'claude',
     'frost.dev': 'frost',
+    'stylus.dev': 'stylus',
+    'anvil.ci': 'anvil',
+    'pyra.dev': 'pyra',
+    'sequenzia.dev': 'sequenzia',
+    'tifa.studio': 'tifa',
     'hoshino.apocrypha': 'hoshino',
     'ivory.studio': 'ivory',
     'guren.lab': 'guren',
     'chiyo.web': 'chiyo',
     'tsubame.ops': 'tsubame',
     'mailroom.ops': 'tsubame',
-    postmaster: 'tsubame'
+    postmaster: 'tsubame',
+    abuse: 'tsubame'
 });
+
+// Dovecote owner keys. Constants stay as seed/fallback; live checks read the
+// Exchange DB (cached, invalidated on mailbox writes).
+const SEED_BOT_OWNERS = Object.freeze([
+    'rook', 'menma', 'hoshino', 'ivory', 'guren', 'chiyo', 'frost', 'sala', 'tifa', 'pyra',
+    'cursor', 'claude', 'wren', 'stylus', 'anvil', 'sequenzia', 'tsubame'
+]);
+
+const OWNER_KIND_HUMAN = 'human';
+const OWNER_KIND_BOT = 'bot';
+const OWNER_KIND_MAILROOM = 'mailroom';
+
+function seedOwnerKind(owner) {
+    const name = String(owner || '').trim().toLowerCase();
+    if (name === 'yukimi') return OWNER_KIND_HUMAN;
+    if (name === 'tsubame') return OWNER_KIND_MAILROOM;
+    return OWNER_KIND_BOT;
+}
+
+function seedOwnerDept(localPart) {
+    const part = String(localPart || '');
+    const dot = part.indexOf('.');
+    return dot > 0 ? part.slice(dot + 1) : null;
+}
+
+function seedOwnerPrimary(owner) {
+    const name = String(owner || '').trim().toLowerCase();
+    if (name === 'yukimi') return YUKIMI_LOCAL;
+    if (name === 'tsubame') return TSUBAME_LOCAL;
+    for (const [local, mapped] of Object.entries(DEFAULT_MAILBOXES)) {
+        if (mapped === name && local.includes('.')) return local;
+    }
+    return null;
+}
 
 function extractAddress(raw) {
     const text = String(raw || '').trim();
@@ -107,6 +155,28 @@ function cleanLists(lists) {
     return map;
 }
 
+/**
+ * Merge local-part → owner maps. Later arguments win. Each map is cleaned
+ * so a full address never becomes a local recipient.
+ */
+function mergeMailboxMaps(...maps) {
+    const out = Object.create(null);
+    maps.forEach((map) => Object.assign(out, cleanMailboxes(map)));
+    return out;
+}
+
+function mergeAliasMaps(...maps) {
+    const out = Object.create(null);
+    maps.forEach((map) => Object.assign(out, cleanAliasMap(map)));
+    return out;
+}
+
+function mergeListMaps(...maps) {
+    const out = Object.create(null);
+    maps.forEach((map) => Object.assign(out, cleanLists(map)));
+    return out;
+}
+
 function createMapping({ mailboxes, aliases, lists, domain } = {}) {
     const table = cleanMailboxes(mailboxes);
     const aliasTable = cleanAliasMap(aliases);
@@ -117,6 +187,8 @@ function createMapping({ mailboxes, aliases, lists, domain } = {}) {
     const preferred = Object.keys(table).sort((a, b) => {
         if (table[a] === 'yukimi' && a === YUKIMI_LOCAL) return -1;
         if (table[b] === 'yukimi' && b === YUKIMI_LOCAL) return 1;
+        if (table[a] === 'tsubame' && a === TSUBAME_LOCAL) return -1;
+        if (table[b] === 'tsubame' && b === TSUBAME_LOCAL) return 1;
         return 0;
     });
     for (const local of preferred) {
@@ -562,7 +634,19 @@ module.exports = {
     DEFAULT_DOMAIN,
     INTERNAL_DISPLAY_DOMAIN,
     YUKIMI_LOCAL,
+    TSUBAME_LOCAL,
+    MAILROOM_CATCHALL,
     DEFAULT_MAILBOXES,
+    SEED_BOT_OWNERS,
+    OWNER_KIND_HUMAN,
+    OWNER_KIND_BOT,
+    OWNER_KIND_MAILROOM,
+    seedOwnerKind,
+    seedOwnerDept,
+    seedOwnerPrimary,
+    mergeMailboxMaps,
+    mergeAliasMaps,
+    mergeListMaps,
     extractAddress,
     normalizeEmail,
     splitLocalDomain,

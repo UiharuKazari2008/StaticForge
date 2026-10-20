@@ -677,29 +677,9 @@ class ConfigManager {
                             recipientAllowlist: []
                         },
                         mailboxes: {
-                            'kazari.ops': 'yukimi',
-                            yukimi: 'yukimi',
-                            kazari: 'yukimi',
-                            'yukimi.kazari': 'yukimi',
-                            'sala.ops': 'sala',
-                            'menma.dev': 'menma',
-                            'rook.dev': 'rook',
-                            'cursor.dev': 'cursor',
-                            'claude.dev': 'claude',
-                            'frost.dev': 'frost',
-                            'stylus.dev': 'stylus',
-                            'anvil.ci': 'anvil',
-                            'pyra.dev': 'pyra',
-                            'sequenzia.dev': 'sequenzia',
-                            'tifa.studio': 'tifa',
-                            'hoshino.apocrypha': 'hoshino',
-                            'ivory.studio': 'ivory',
-                            'guren.lab': 'guren',
-                            'chiyo.web': 'chiyo',
-                            'tsubame.ops': 'tsubame',
-                            'mailroom.ops': 'tsubame'
+                            // Overlay only. Seeded owners live in the Exchange DB
+                            // (modules/mailGatewayAddresses.js DEFAULT_MAILBOXES).
                             // Never map ykazari@icloud.com or any external domain.
-                            // Yukimi's public address is kazari.ops@dream.737.jp.net.
                         },
                         spam: {
                             flagHeader: 'X-Spam-Flag',

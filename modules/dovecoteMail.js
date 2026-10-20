@@ -23,10 +23,10 @@ function storedRoute(value) {
 const HUMAN_OWNER = 'yukimi';
 const MAILROOM_OWNER = 'tsubame';
 const MAILROOM_ROLE = 'mailroom';
-const BOT_OWNERS = Object.freeze([
-    'rook', 'menma', 'hoshino', 'ivory', 'guren', 'chiyo', 'frost', 'sala', 'tifa', 'pyra', 'cursor', 'claude', 'wren', 'stylus', 'anvil', 'sequenzia',
-    MAILROOM_OWNER
-]);
+// Seed / fallback only. Live owner checks read the Exchange DB (cached,
+// invalidated on mailbox writes). Adding a bot is an Exchange admin action,
+// not a code edit.
+const BOT_OWNERS = addresses.SEED_BOT_OWNERS;
 // Caller app names that are not bot names themselves but belong to a bot
 // mailbox. Director chat (modules/cursorDirector.js app key "Dreamscape
 // Director") runs as Wren, so it reads/sends as the 'wren' bot mailbox.
@@ -39,6 +39,32 @@ const ACTOR_ALIASES = Object.freeze({
 });
 const BOT_OWNER_SET = new Set(BOT_OWNERS);
 const ALL_OWNERS = new Set([HUMAN_OWNER, ...BOT_OWNERS]);
+
+let cachedOwners = null;
+let cachedBotOwners = null;
+
+function invalidateOwnerCache() {
+    cachedOwners = null;
+    cachedBotOwners = null;
+}
+
+function liveOwners() {
+    if (cachedOwners) return cachedOwners;
+    const set = new Set(ALL_OWNERS);
+    extraOwners().forEach((owner) => set.add(owner));
+    cachedOwners = set;
+    return set;
+}
+
+function liveBotOwners() {
+    if (cachedBotOwners) return cachedBotOwners;
+    const set = new Set(BOT_OWNER_SET);
+    extraOwners().forEach((owner) => {
+        if (owner !== HUMAN_OWNER) set.add(owner);
+    });
+    cachedBotOwners = set;
+    return set;
+}
 
 const FOLDERS = Object.freeze(['inbox', 'spam', 'outbox', 'sent', 'deleted', 'archive']);
 const FORMATS = Object.freeze(['text', 'md', 'html']);
@@ -56,8 +82,9 @@ class DovecoteError extends Error {
 function extraOwners() {
     try {
         const exchange = require('./mailExchange');
-        if (!exchange.isEnabled()) return [];
-        return exchange.listActiveOwners();
+        // modules/mailExchange.js isDirectoryReady / listDirectoryOwners
+        if (!exchange.isDirectoryReady()) return [];
+        return exchange.listDirectoryOwners();
     } catch (_err) {
         return [];
     }
@@ -65,15 +92,13 @@ function extraOwners() {
 
 function isValidOwner(owner) {
     if (typeof owner !== 'string') return false;
-    if (ALL_OWNERS.has(owner)) return true;
-    return extraOwners().includes(owner);
+    return liveOwners().has(owner);
 }
 
 function isBotOwner(owner) {
     if (typeof owner !== 'string') return false;
-    if (BOT_OWNER_SET.has(owner)) return true;
     if (owner === HUMAN_OWNER) return false;
-    return extraOwners().includes(owner);
+    return liveBotOwners().has(owner);
 }
 
 // One listener, set by the WS handler (modules/ws/handlers/250-dovecoteHandler.js).
@@ -105,9 +130,10 @@ function emitMailboxChanged(owners) {
 function resolveOwnerFromActor(actorName) {
     if (!actorName) return null;
     const lower = String(actorName).trim().toLowerCase().replace(/\s+/g, ' ');
-    if (BOT_OWNER_SET.has(lower)) return lower;
+    const bots = liveBotOwners();
+    if (bots.has(lower)) return lower;
     const alias = ACTOR_ALIASES[lower] || ACTOR_ALIASES[lower.replace(/\s+/g, '')];
-    return alias && BOT_OWNER_SET.has(alias) ? alias : null;
+    return alias && bots.has(alias) ? alias : null;
 }
 
 function nowIso() {
@@ -642,7 +668,7 @@ function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, 
     const ccList = Array.isArray(cc) ? cc : [];
     const inspected = addresses.inspectFromLabel(fromLabel, {
         mapping: addresses.createMapping(),
-        owners: [HUMAN_OWNER, ...BOT_OWNERS]
+        owners: Array.from(liveOwners())
     });
     const storedLabel = inspected.suspicious ? from : (inspected.label || '').slice(0, 300);
     const folder = spam === true ? 'spam' : 'inbox';
@@ -1058,10 +1084,7 @@ function listMailboxes() {
         if (row.folder === 'spam') spamByOwner.set(row.owner, row.unread);
         else inboxByOwner.set(row.owner, row.unread);
     });
-    const owners = [HUMAN_OWNER, ...BOT_OWNERS];
-    extraOwners().forEach((owner) => {
-        if (!owners.includes(owner)) owners.push(owner);
-    });
+    const owners = Array.from(liveOwners());
     return owners.map((owner) => ({
         owner,
         unread: inboxByOwner.get(owner) || 0,
@@ -1074,6 +1097,7 @@ module.exports = {
     MAILROOM_OWNER,
     MAILROOM_ROLE,
     BOT_OWNERS,
+    invalidateOwnerCache,
     FOLDERS,
     FORMATS,
     ROUTES,

@@ -16,7 +16,7 @@ const { startMockRelay } = require('../modules/lantisRelayMock');
 const relayClient = require('../modules/lantisRelayClient');
 const gateway = require('../modules/mailGateway');
 const { handleExchangeTool } = require('../modules/mailExchangeMcp');
-const { resolveHttpActor, resolveWsActor, resolveMcpActor } = require('../modules/mailExchangeAuth');
+const { resolveHttpActor, resolveWsActor, resolveMcpActor, requireExchangeAdminScope } = require('../modules/mailExchangeAuth');
 
 exchange.setTestConfig({
     config: { enabled: true },
@@ -430,6 +430,280 @@ async function testRoleGating() {
     assert.ok(!JSON.stringify(tsubame).includes('relayReadToken'));
     assert.ok(!JSON.stringify(tsubame).includes('relayAdminToken'));
     assert.ok(!JSON.stringify(tsubame).includes('Bearer '));
+
+    const noScope = textOf(await handleExchangeTool({
+        applicationAuth: {
+            appName: 'Tsubame',
+            applicationKeyId: 'k-tsubame-noscope',
+            applicationScopes: ['sfapp_dovecote']
+        }
+    }, 'exchange_list_mailboxes', {}));
+    assert.strictEqual(noScope.success, false);
+    assert.strictEqual(noScope.code, 'INSUFFICIENT_SCOPE');
+
+    const emptyScopes = textOf(await handleExchangeTool({
+        applicationAuth: {
+            appName: 'Tsubame',
+            applicationKeyId: 'k-tsubame-empty',
+            applicationScopes: []
+        }
+    }, 'exchange_create_mailbox', { owner: 'ghost', dept: 'ops', confirm: true }));
+    assert.strictEqual(emptyScopes.success, false);
+    assert.strictEqual(emptyScopes.code, 'INSUFFICIENT_SCOPE');
+
+    assert.throws(
+        () => requireExchangeAdminScope('tsubame', 'list', null, {
+            appName: 'Tsubame',
+            applicationKeyId: 'k-tsubame-noscope',
+            applicationScopes: ['sfapp_dovecote']
+        }),
+        (err) => err.code === 'INSUFFICIENT_SCOPE'
+    );
+    assert.strictEqual(requireExchangeAdminScope('sala', 'list', null, {
+        appName: 'Sala',
+        applicationKeyId: 'k-sala-universal',
+        applicationScopes: ['universal']
+    }), 'sala');
+    assert.strictEqual(requireExchangeAdminScope('tsubame', 'list', null, {
+        appName: 'Tsubame',
+        applicationKeyId: 'k-tsubame',
+        applicationScopes: ['sfapp_mail_exchange']
+    }), 'tsubame');
+    assert.strictEqual(requireExchangeAdminScope('yukimi', 'list', null, { userType: 'admin' }), 'yukimi');
+    assert.throws(
+        () => requireExchangeAdminScope('sala', 'create_mailbox', 'ghost', {
+            appName: 'Sala',
+            applicationKeyId: 'k-sala-empty',
+            applicationScopes: []
+        }),
+        (err) => err.code === 'INSUFFICIENT_SCOPE'
+    );
+    assert.throws(
+        () => requireExchangeAdminScope('menma', 'list', null, {
+            appName: 'Menma',
+            applicationKeyId: 'k-menma',
+            applicationScopes: ['sfapp_mail_exchange']
+        }),
+        (err) => err.code === 'FORBIDDEN'
+    );
+
+    const scopeAudit = exchange.listAudit({ limit: 30 });
+    assert.ok(scopeAudit.some((row) => (
+        row.success === 0 && String(row.detail || '').includes('exchange scope required')
+    )));
+}
+
+function testSeedIdempotentAndOverlay() {
+    const db = require('../modules/mailExchangeDatabase');
+    const count = () => db.getDb().prepare('SELECT COUNT(*) AS n FROM exchange_address').get().n;
+    const owners = () => db.getDb().prepare('SELECT COUNT(*) AS n FROM exchange_mailbox').get().n;
+    const beforeAddr = count();
+    const beforeOwners = owners();
+    assert.ok(beforeAddr >= 20, 'seed should insert the shipped address map');
+    assert.ok(beforeOwners >= 16, 'seed should insert shipped owners');
+    db.seedDirectory();
+    db.seedDirectory();
+    assert.strictEqual(count(), beforeAddr);
+    assert.strictEqual(owners(), beforeOwners);
+
+    const live = exchange.createLiveMapping();
+    assert.strictEqual(addresses.toMailbox('stylus.dev@dream.737.jp.net', live), 'stylus');
+    assert.strictEqual(addresses.toMailbox('anvil.ci@dream.737.jp.net', live), 'anvil');
+    assert.strictEqual(addresses.toMailbox('pyra.dev@dream.737.jp.net', live), 'pyra');
+    assert.strictEqual(addresses.toMailbox('sequenzia.dev@dream.737.jp.net', live), 'sequenzia');
+    assert.strictEqual(addresses.toMailbox('tifa.studio@dream.737.jp.net', live), 'tifa');
+    assert.strictEqual(addresses.toMailbox('abuse@dream.737.jp.net', live), 'tsubame');
+    assert.strictEqual(addresses.toMailbox('postmaster@dream.737.jp.net', live), 'tsubame');
+    assert.strictEqual(addresses.toMailbox('ykazari@icloud.com', live), null);
+
+    exchange.setTestConfig({
+        config: { enabled: true },
+        mailGateway: { mailboxes: { 'overlay.ops': 'sala', 'menma.dev': 'rook' } },
+        secureMailboxes: { 'secure.ops': 'ivory' }
+    });
+    const overlaid = exchange.createLiveMapping();
+    assert.strictEqual(addresses.toMailbox('stylus.dev@dream.737.jp.net', overlaid), 'stylus');
+    assert.strictEqual(addresses.toMailbox('overlay.ops@dream.737.jp.net', overlaid), 'sala');
+    assert.strictEqual(addresses.toMailbox('menma.dev@dream.737.jp.net', overlaid), 'rook');
+    assert.strictEqual(addresses.toMailbox('secure.ops@dream.737.jp.net', overlaid), 'ivory');
+    exchange.setTestConfig({
+        config: { enabled: true },
+        mailGateway: { mailboxes: addresses.DEFAULT_MAILBOXES }
+    });
+}
+
+async function testLiveCreateAndAddress() {
+    const mail = require('../modules/dovecoteMail');
+    assert.strictEqual(mail.isValidOwner('stylus'), true);
+    assert.strictEqual(mail.resolveOwnerFromActor('Anvil'), 'anvil');
+    assert.strictEqual(mail.resolveOwnerFromActor('Sequenzia'), 'sequenzia');
+
+    const created = textOf(await handleExchangeTool(reqFor('Tsubame'), 'exchange_create_mailbox', {
+        owner: 'quill',
+        dept: 'lab',
+        displayName: 'Quill',
+        confirm: true
+    }));
+    assert.strictEqual(created.success, true);
+    assert.strictEqual(created.mailbox.address, 'quill.lab@dream.737.jp.net');
+    assert.strictEqual(mail.isValidOwner('quill'), true);
+    assert.strictEqual(mail.resolveOwnerFromActor('Quill'), 'quill');
+    assert.strictEqual(mail.isBotOwner('quill'), true);
+
+    const got = textOf(await handleExchangeTool(reqFor('Tsubame'), 'exchange_get_mailbox', { owner: 'quill' }));
+    assert.strictEqual(got.mailbox.displayName, 'Quill');
+    assert.ok(got.mailbox.addresses.some((row) => row.localPart === 'quill.lab' && row.primary));
+
+    const updated = textOf(await handleExchangeTool(reqFor('Tsubame'), 'exchange_update_mailbox', {
+        owner: 'quill',
+        displayName: 'Quill Bot',
+        confirm: true
+    }));
+    assert.strictEqual(updated.mailbox.displayName, 'Quill Bot');
+
+    const added = textOf(await handleExchangeTool(reqFor('Tsubame'), 'exchange_add_address', {
+        owner: 'quill',
+        localPart: 'quill.desk',
+        confirm: true
+    }));
+    assert.strictEqual(added.address, 'quill.desk@dream.737.jp.net');
+
+    const inbound = await gateway.startInbound({
+        port: 0,
+        bind: '127.0.0.1',
+        allowFrom: ['127.0.0.1']
+    });
+    try {
+        const replies = await smtpTalk(inbound.port, [
+            'LHLO postfix',
+            'MAIL FROM:<alice@example.com>',
+            'RCPT TO:<quill.lab@dream.737.jp.net>',
+            'RCPT TO:<quill.desk@dream.737.jp.net>',
+            'RCPT TO:<ykazari@icloud.com>',
+            'RCPT TO:<alice@gmail.com>',
+            'QUIT'
+        ]);
+        assert.strictEqual(replies[3].code, 250);
+        assert.strictEqual(replies[4].code, 250);
+        assert.strictEqual(replies[5].code, 550);
+        assert.strictEqual(replies[6].code, 550);
+    } finally {
+        await inbound.close();
+    }
+
+    const removed = textOf(await handleExchangeTool(reqFor('Tsubame'), 'exchange_remove_address', {
+        localPart: 'quill.desk',
+        confirm: true
+    }));
+    assert.strictEqual(removed.deleted, true);
+
+    const outside = textOf(await handleExchangeTool(reqFor('Tsubame'), 'exchange_add_address', {
+        owner: 'quill',
+        localPart: 'ykazari@icloud.com',
+        confirm: true
+    }));
+    assert.strictEqual(outside.success, false);
+    assert.strictEqual(outside.code, 'INVALID_LOCAL');
+
+    const badOwner = textOf(await handleExchangeTool(reqFor('Tsubame'), 'exchange_create_mailbox', {
+        owner: 'alice@example.com',
+        dept: 'ops',
+        confirm: true
+    }));
+    assert.strictEqual(badOwner.success, false);
+    assert.strictEqual(badOwner.code, 'INVALID_OWNER');
+
+    const depted = textOf(await handleExchangeTool(reqFor('Tsubame'), 'exchange_update_mailbox', {
+        owner: 'quill',
+        dept: 'ops',
+        confirm: true
+    }));
+    assert.strictEqual(depted.mailbox.address, 'quill.ops@dream.737.jp.net');
+
+    const disabled = textOf(await handleExchangeTool(reqFor('Tsubame'), 'exchange_disable_mailbox', {
+        owner: 'quill',
+        enabled: false,
+        confirm: true
+    }));
+    assert.strictEqual(disabled.mailbox.enabled, false);
+    assert.strictEqual(mail.isValidOwner('quill'), true);
+
+    const inboundOff = await gateway.startInbound({
+        port: 0,
+        bind: '127.0.0.1',
+        allowFrom: ['127.0.0.1']
+    });
+    try {
+        const offReplies = await smtpTalk(inboundOff.port, [
+            'LHLO postfix',
+            'MAIL FROM:<alice@example.com>',
+            'RCPT TO:<quill.ops@dream.737.jp.net>',
+            'QUIT'
+        ]);
+        assert.strictEqual(offReplies[3].code, 550);
+    } finally {
+        await inboundOff.close();
+    }
+
+    const enabledBox = textOf(await handleExchangeTool(reqFor('Tsubame'), 'exchange_disable_mailbox', {
+        owner: 'quill',
+        enabled: true,
+        confirm: true
+    }));
+    assert.strictEqual(enabledBox.mailbox.enabled, true);
+
+    const inboundOn = await gateway.startInbound({
+        port: 0,
+        bind: '127.0.0.1',
+        allowFrom: ['127.0.0.1']
+    });
+    try {
+        const onReplies = await smtpTalk(inboundOn.port, [
+            'LHLO postfix',
+            'MAIL FROM:<alice@example.com>',
+            'RCPT TO:<quill.ops@dream.737.jp.net>',
+            'QUIT'
+        ]);
+        assert.strictEqual(onReplies[3].code, 250);
+    } finally {
+        await inboundOn.close();
+    }
+
+    exchange.disableMailbox('tsubame', { owner: 'ivory', enabled: false, confirm: true });
+    assert.strictEqual(addresses.toMailbox('ivory.studio@dream.737.jp.net', exchange.createLiveMapping()), null);
+    exchange.disableMailbox('tsubame', { owner: 'ivory', enabled: true, confirm: true });
+    assert.strictEqual(addresses.toMailbox('ivory.studio@dream.737.jp.net', exchange.createLiveMapping()), 'ivory');
+
+    const noConfirmText = textOf(await handleExchangeTool(reqFor('Tsubame'), 'exchange_delete_mailbox', {
+        owner: 'quill',
+        confirm: true
+    }));
+    assert.strictEqual(noConfirmText.success, false);
+    assert.strictEqual(noConfirmText.code, 'CONFIRM_REQUIRED');
+
+    const deleted = textOf(await handleExchangeTool(reqFor('Tsubame'), 'exchange_delete_mailbox', {
+        owner: 'quill',
+        confirm: true,
+        confirmText: 'DELETE'
+    }));
+    assert.strictEqual(deleted.success, true);
+    assert.strictEqual(deleted.mailbox.deleted, true);
+    assert.strictEqual(mail.isValidOwner('quill'), false);
+
+    const mutAudit = exchange.listAudit({ limit: 80 });
+    assert.ok(mutAudit.some((row) => row.action === 'create_mailbox' && row.target === 'quill' && row.success === 1));
+    assert.ok(mutAudit.some((row) => row.action === 'update_mailbox' && row.success === 1));
+    assert.ok(mutAudit.some((row) => row.action === 'add_address' && row.success === 1));
+    assert.ok(mutAudit.some((row) => row.action === 'remove_address' && row.success === 1));
+    assert.ok(mutAudit.some((row) => row.action === 'disable_mailbox' && row.target === 'quill' && row.success === 1));
+    assert.ok(mutAudit.some((row) => row.action === 'delete_mailbox' && row.target === 'quill' && row.success === 1));
+
+    const menmaCreate = textOf(await handleExchangeTool(reqFor('Menma'), 'exchange_create_mailbox', {
+        owner: 'ghost',
+        dept: 'ops',
+        confirm: true
+    }));
+    assert.strictEqual(menmaCreate.code, 'FORBIDDEN');
 }
 
 function testTokensStayServerSide() {
@@ -465,6 +739,8 @@ async function main() {
     await testTogglesAtGateway();
     await testLiveAliasIntake();
     await testRoleGating();
+    testSeedIdempotentAndOverlay();
+    await testLiveCreateAndAddress();
     console.log('test-mail-exchange: ok');
 }
 

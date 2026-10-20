@@ -6,7 +6,9 @@ DSAP: `dsap://exchange.dreamscape.jp` (Control Panel DSAP page, All Apps, admin 
 
 See [WebSocket protocol](../websocket.md) for envelope format, auth, and error handling.
 
-Every packet is identity-gated to **Yukimi, Sala, or Tsubame (mailroom)**. Anyone else gets `type: "error"` with code `FORBIDDEN`. Off until `config.mailExchange.enabled` is true — mutations then return `DISABLED`. Relay tokens never appear in responses or audit details.
+Every packet is identity-gated to **Yukimi, Sala, or Tsubame (mailroom)**. Application keys also need the `sfapp_mail_exchange` scope (granted per key — Tsubame's mailroom key is given it, other bot keys are not). Anyone else gets `type: "error"` with code `FORBIDDEN` or `INSUFFICIENT_SCOPE`. Off until `config.mailExchange.enabled` is true — mutations then return `DISABLED`. Relay tokens never appear in responses or audit details.
+
+Mailbox owners and intake addresses live in the Exchange DB (seeded from code defaults). `config.mailGateway.mailboxes` / secureConfig overlay that table; they do not replace it wholesale. Creating a mailbox or adding an address is live — no restart.
 
 Yukimi's public From is `kazari.ops@dream.737.jp.net` (aliases `kazari@`, `yukimi.kazari@`, `yukimi@`).
 
@@ -17,9 +19,13 @@ Destructive packets need `confirm: true`. Soft-delete also needs `confirmText: "
 | Request type | Typical response | Auth | Notes |
 |---|---|---|---|
 | `exchange_list_mailboxes` | `exchange_list_mailboxes_response` | exchange admin | `{ mailboxes: [...] }` |
-| `exchange_create_mailbox` | `exchange_create_mailbox_response` | exchange admin / destructive | `{ owner, dept, displayName?, confirm }` → `{ mailbox }` mapped to `name.dept@dream.737.jp.net` |
+| `exchange_get_mailbox` | `exchange_get_mailbox_response` | exchange admin | `{ owner }` → `{ mailbox }` including extra intake addresses |
+| `exchange_create_mailbox` | `exchange_create_mailbox_response` | exchange admin / destructive | `{ owner, dept, displayName?, confirm }` → `{ mailbox }` mapped to `name.dept@dream.737.jp.net`. Live immediately |
+| `exchange_update_mailbox` | `exchange_update_mailbox_response` | exchange admin / destructive | `{ owner, displayName?, dept?, newOwner?, confirm }` |
 | `exchange_disable_mailbox` | `exchange_disable_mailbox_response` | exchange admin / destructive | `{ owner, enabled, confirm }` |
 | `exchange_delete_mailbox` | `exchange_delete_mailbox_response` | exchange admin / destructive | Soft-delete. Cannot delete Yukimi. |
+| `exchange_add_address` | `exchange_add_address_response` | exchange admin / destructive | `{ owner, localPart, confirm }` extra intake local-part. Never an external domain |
+| `exchange_remove_address` | `exchange_remove_address_response` | exchange admin / destructive | `{ localPart, confirm }`. Cannot remove the primary address |
 | `exchange_issue_key` | `exchange_issue_key_response` | exchange admin / destructive | `{ owner, confirm }` → `{ owner, key, shownOnce }` (the secret is shown once; the hash stays on the server) |
 | `exchange_rotate_key` | `exchange_rotate_key_response` | exchange admin / destructive | Replaces the hash; new secret shown once |
 | `exchange_revoke_key` | `exchange_revoke_key_response` | exchange admin / destructive | |
@@ -38,4 +44,4 @@ Destructive packets need `confirm: true`. Soft-delete also needs `confirmText: "
 | `exchange_audit` | `exchange_audit_response` | exchange admin | `{ audit: [{ ts, actor, action, target, detail, success }] }` |
 
 HTTP surface: [rest-api.md — Dreamscape Exchange Server](../rest-api.md#dreamscape-exchange-server).
-MCP tools (`role: exchange`, scope `sfapp_mail_exchange`): `exchange_list_mailboxes`, `exchange_create_mailbox`, `exchange_disable_mailbox`, `exchange_delete_mailbox`, `exchange_mailbox_key`, `exchange_aliases`, `exchange_signatures`, `exchange_toggles`, `exchange_status`, `exchange_spam`.
+MCP tools (`role: exchange`, scope `sfapp_mail_exchange`): `exchange_list_mailboxes`, `exchange_get_mailbox`, `exchange_create_mailbox`, `exchange_update_mailbox`, `exchange_disable_mailbox`, `exchange_delete_mailbox`, `exchange_add_address`, `exchange_remove_address`, `exchange_mailbox_key`, `exchange_aliases`, `exchange_signatures`, `exchange_toggles`, `exchange_status`, `exchange_spam`.

@@ -267,7 +267,12 @@ function testMapping() {
     assert.strictEqual(addresses.toMailbox('Postmaster@Dream.737.jp.net.', map), 'tsubame');
     assert.strictEqual(addresses.toMailbox('postmaster@mx.dream.737.jp.net', map), null);
     assert.strictEqual(addresses.toMailbox('tifa.ops@dream.737.jp.net', map), null);
-    assert.strictEqual(addresses.toMailbox('pyra.dev@dream.737.jp.net', map), null);
+    assert.strictEqual(addresses.toMailbox('tifa.studio@dream.737.jp.net', map), 'tifa');
+    assert.strictEqual(addresses.toMailbox('pyra.dev@dream.737.jp.net', map), 'pyra');
+    assert.strictEqual(addresses.toMailbox('stylus.dev@dream.737.jp.net', map), 'stylus');
+    assert.strictEqual(addresses.toMailbox('anvil.ci@dream.737.jp.net', map), 'anvil');
+    assert.strictEqual(addresses.toMailbox('sequenzia.dev@dream.737.jp.net', map), 'sequenzia');
+    assert.strictEqual(addresses.toMailbox('abuse@dream.737.jp.net', map), 'tsubame');
     assert.strictEqual(addresses.toMailbox('unknown@dream.737.jp.net', map), null);
     assert.strictEqual(addresses.toMailbox('menma@gmail.com', map), null);
     assert.strictEqual(addresses.toMailbox('kazari.ops@dream.737.jp.net', map), 'yukimi');
@@ -292,8 +297,19 @@ function testMapping() {
         assert.strictEqual(classified.kind, 'internal', local);
         assert.strictEqual(classified.owner, 'yukimi', local);
     }
-    assert.strictEqual(addresses.toExternal('tifa', map), null);
-    assert.strictEqual(addresses.toExternal('pyra', map), null);
+    assert.strictEqual(addresses.toExternal('tifa', map), 'tifa.studio@dream.737.jp.net');
+    assert.strictEqual(addresses.toExternal('pyra', map), 'pyra.dev@dream.737.jp.net');
+    assert.strictEqual(addresses.toExternal('stylus', map), 'stylus.dev@dream.737.jp.net');
+
+    const overlay = addresses.mergeMailboxMaps(
+        addresses.DEFAULT_MAILBOXES,
+        { 'extra.ops': 'sala', 'ykazari@icloud.com': 'yukimi' },
+        { 'menma.dev': 'rook' }
+    );
+    assert.strictEqual(overlay['stylus.dev'], 'stylus');
+    assert.strictEqual(overlay['extra.ops'], 'sala');
+    assert.strictEqual(overlay['menma.dev'], 'rook');
+    assert.strictEqual(overlay['ykazari@icloud.com'], undefined);
 
     const poisoned = addresses.createMapping({
         mailboxes: Object.assign({}, addresses.DEFAULT_MAILBOXES, {
@@ -376,7 +392,7 @@ async function testUnknownRecipientReject() {
             'MAIL FROM:<alice@example.com>',
             'RCPT TO:<nobody@dream.737.jp.net>',
             'RCPT TO:<tifa.ops@dream.737.jp.net>',
-            'RCPT TO:<pyra.dev@dream.737.jp.net>',
+            'RCPT TO:<pyra.ops@dream.737.jp.net>',
             'RCPT TO:<ykazari@icloud.com>',
             'RCPT TO:<kazari.ops@dream.737.jp.net>',
             'RCPT TO:<kazari@dream.737.jp.net>',
