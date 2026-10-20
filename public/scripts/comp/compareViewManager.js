@@ -646,11 +646,6 @@ function applyCompareDefaultSettings() {
     persistCompareViewQuickStoredIfActive();
 }
 
-// Kept for any external callers that still use the stub name
-function applyCompareDefaultSettingsStub() {
-    applyCompareDefaultSettings();
-}
-
 function loadCompareDefaultSettings() {
     const parsed = readCompareDefaultSettingsRaw();
     if (!parsed) {
