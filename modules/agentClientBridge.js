@@ -412,6 +412,37 @@ function normalizeStudioChangeCharacters(list) {
     });
 }
 
+// MiniMax / XML-style tools send arrays as {"item": {...}} or {"item": [...]},
+// an empty list as "", or a JSON array string. Direct MCP (not TokenRouter)
+// still has to accept those, or a characters-only change 400s.
+function coerceStudioChangeList(value) {
+    if (value == null) return null;
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'string') {
+        const t = value.trim();
+        if (!t) return [];
+        if (t.charAt(0) === '[') {
+            try {
+                const parsed = JSON.parse(t);
+                if (Array.isArray(parsed)) return parsed;
+            } catch (_err) { /* keep */ }
+        }
+        return null;
+    }
+    if (typeof value !== 'object') return null;
+    const keys = Object.keys(value);
+    if (keys.length === 1 && keys[0] === 'item') {
+        const item = value.item;
+        if (item == null) return [];
+        return Array.isArray(item) ? item : [item];
+    }
+    const numeric = keys.filter((key) => /^\d+$/.test(key)).sort((a, b) => Number(a) - Number(b));
+    if (numeric.length && numeric.length === keys.length) {
+        return numeric.map((key) => value[key]);
+    }
+    return null;
+}
+
 function assembleStudioChangeFromToolArgs(body) {
     if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
     let base = coerceStudioChangeObject(body.change);
@@ -423,7 +454,8 @@ function assembleStudioChangeFromToolArgs(body) {
         out.params = { ...base.params };
     }
     if (Array.isArray(base && base.fields)) out.fields = base.fields.slice();
-    if (Array.isArray(base && base.characters)) out.characters = base.characters.slice();
+    const baseCharacters = coerceStudioChangeList(base && base.characters);
+    if (baseCharacters) out.characters = baseCharacters.slice();
     if (Array.isArray(base && base.expanders)) out.expanders = base.expanders.slice();
     if (Array.isArray(base && base.vibes)) out.vibes = base.vibes.slice();
     if (Array.isArray(base && base.vSlider)) out.vSlider = base.vSlider.slice();
@@ -469,13 +501,12 @@ function assembleStudioChangeFromToolArgs(body) {
     upsertStudioChangeField(fields, 'promptNegative', promptNegative);
     if (fields.length) out.fields = fields;
 
-    const fromPromptsKey = !Array.isArray(body.characters)
-        && !Array.isArray(out.characters)
-        && (Array.isArray(body.characterPrompts) || (base && Array.isArray(base.characterPrompts)));
-    const rawCharacters = Array.isArray(body.characters) ? body.characters
-        : (Array.isArray(body.characterPrompts) ? body.characterPrompts
-            : (Array.isArray(out.characters) ? out.characters
-                : (base && Array.isArray(base.characterPrompts) ? base.characterPrompts : null)));
+    const bodyCharacters = coerceStudioChangeList(body.characters);
+    const bodyPrompts = coerceStudioChangeList(body.characterPrompts);
+    const outCharacters = coerceStudioChangeList(out.characters);
+    const basePrompts = coerceStudioChangeList(base && base.characterPrompts);
+    const fromPromptsKey = !bodyCharacters && !outCharacters && !!(bodyPrompts || basePrompts);
+    const rawCharacters = bodyCharacters || bodyPrompts || outCharacters || basePrompts;
     if (rawCharacters) out.characters = normalizeStudioChangeCharacters(rawCharacters);
     if (body.overwrite === true || body.mode === 'overwrite' || (base && (base.overwrite === true || base.mode === 'overwrite')) || fromPromptsKey) {
         out.overwrite = true;
@@ -2496,6 +2527,7 @@ module.exports = {
     resolveStudioAutoFlags,
     coerceStudioChangeObject,
     assembleStudioChangeFromToolArgs,
+    coerceStudioChangeList,
     flattenGenerateToolArgs,
     resolveWorkspaceRef,
     resolveGenerateWorkspaceId,
@@ -2522,6 +2554,7 @@ module.exports = {
         stripStudioAutoFlagsDeep,
         coerceStudioChangeObject,
         assembleStudioChangeFromToolArgs,
+        coerceStudioChangeList,
         flattenGenerateToolArgs,
         resolveWorkspaceRef,
         resolveGenerateWorkspaceId,

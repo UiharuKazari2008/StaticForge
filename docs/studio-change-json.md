@@ -11,7 +11,7 @@ Source of truth for the rules: this file. Keep `STUDIO_CHANGE_AI_SPEC` in `publi
 
 ## How to emit
 
-Reply with JSON only — no markdown unless fenced as `json`. One object. Omit keys you are not changing. A params-only object is a valid change (`model`, `steps`, `guidance`, `sampler`, and the other param keys). Those keys belong in `params`. The apply API also accepts them as siblings on the change object and moves them into `params`.
+Reply with JSON only — no markdown unless fenced as `json`. One object. Omit keys you are not changing. A params-only object is a valid change (`model`, `steps`, `guidance`, `sampler`, and the other param keys). Those keys belong in `params`. The apply API also accepts them as siblings on the change object and moves them into `params`. A **characters-only** object is also valid: canonical form is top-level `characters:[{index, action:"replace", name, prompt, uc, promptNegative, position}]`. Character edits apply even when sent alongside `params` or `presetName`. MCP `apply_studio_changes` lists any part that did not land in `unapplied` instead of claiming a full success.
 
 Discriminators Studio accepts:
 
@@ -386,7 +386,7 @@ Dreamscape studio change JSON. Paste into Studio to apply. Reply with JSON only 
  "vSlider":[{"id":"body_weight","kind":"slider","commit":"expander","value":{"weight":0.55},"axes":[{"id":"weight","default":0.55,"target":{"kind":"expander","prefix":"body"},"stops":[{"at":0,"text":"skinny"},{"at":0.55,"text":"slightly chubby"},{"at":1,"text":"fat"}]}]}]}
 
 Rules:
-- characters: ALWAYS replace + index. NEVER add. index 0 = first slot, index 1 = second. add+index is illegal (treated as replace). Do not copy slot 0 into slot 1. The key is `characters`. `characterPrompts` is accepted as that same list. `center` is `position`.
+- characters: ALWAYS replace + index. NEVER add. index 0 = first slot, index 1 = second. add+index is illegal (treated as replace). Do not copy slot 0 into slot 1. Canonical key is top-level `characters:[...]`. A characters-only change is valid. `characterPrompts` is accepted as that same list. `center` is `position`.
 - `overwrite: true`: `characters` is the whole roster. Slots that are not in the list are removed, then the list is written. `read_image_metadata` sets this so applying `change` restores that print. `text_overlays`, `expanders`, `vibes`, and `vSlider` already replace their lists when the key is present, including `[]`.
 - Optional per-character position: {x,y} and/or cell A1–E5 (maps to Studio slot dataset / existing position dialog / V5 freeform tool). Echoed by GET /agent/session/state. Omit if unused. No new chrome.
 - fields = prompt | uc | promptNegative only. Always replace. Named chunks are your groups, not comma-splits. Never character:N:... ids.

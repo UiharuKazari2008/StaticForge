@@ -614,7 +614,27 @@ function saveKnowledgeMemory(name, description, category, entities = [], relatio
 
         let memoryId;
         let revision;
+        let previousRevision = null;
+        let droppedObservations = [];
         if (existing) {
+            // Snapshot the live observations at the current revision before they
+            // are replaced, so a later save can roll back. Legacy rows with no
+            // memory_revisions entry get revision 1 for that snapshot.
+            const priorRows = db.prepare(
+                'SELECT entity_id, content, importance FROM knowledge_observations WHERE memory_id = ?'
+            ).all(existing.id);
+            previousRevision = Number(existing.revision) || 0;
+            if (previousRevision < 1) previousRevision = 1;
+            const priorStored = db.prepare(
+                'SELECT 1 FROM memory_revisions WHERE memory_name = ? AND revision = ?'
+            ).get(name, previousRevision);
+            if (!priorStored) {
+                db.prepare(`
+                    INSERT INTO memory_revisions (memory_name, revision, observations_json, session_id, created_at)
+                    VALUES (?, ?, ?, ?, strftime('%s', 'now'))
+                `).run(name, previousRevision, JSON.stringify(priorRows), sessionId);
+            }
+            droppedObservations = droppedObservationContents(priorRows, normalizedObservations);
             // Update existing memory
             const updateStmt = db.prepare(`
                 UPDATE knowledge_memories 
@@ -623,7 +643,7 @@ function saveKnowledgeMemory(name, description, category, entities = [], relatio
             `);
             updateStmt.run(description, category, confidence, resolvedModel, name);
             memoryId = existing.id;
-            revision = (Number(existing.revision) || 0) + 1;
+            revision = previousRevision + 1;
 
             // Delete existing entities, relations, and observations (cascade will clean up)
             db.prepare('DELETE FROM knowledge_entities WHERE memory_id = ?').run(memoryId);
@@ -693,7 +713,7 @@ function saveKnowledgeMemory(name, description, category, entities = [], relatio
             );
         });
 
-        return { memoryId, revision };
+        return { memoryId, revision, previousRevision, droppedObservations };
     });
 
     // Execute transaction
@@ -720,7 +740,9 @@ function saveKnowledgeMemory(name, description, category, entities = [], relatio
         observations: normalizedObservations,
         confidence,
         model: resolvedModel,
-        revision: savedRow.revision
+        revision: savedRow.revision,
+        previousRevision: savedRow.previousRevision,
+        droppedObservations: savedRow.droppedObservations || []
     };
 }
 
@@ -1556,6 +1578,17 @@ function listMemoryImageLinks(input = {}) {
     `).all(name).map(mapImageLinkRow);
 }
 
+function observationContentOf(row) {
+    if (typeof row === 'string') return row.trim();
+    if (row && typeof row.content === 'string') return row.content.trim();
+    return '';
+}
+
+function droppedObservationContents(prev, next) {
+    const keep = new Set((Array.isArray(next) ? next : []).map(observationContentOf).filter(Boolean));
+    return (Array.isArray(prev) ? prev : []).map(observationContentOf).filter((text) => text && !keep.has(text));
+}
+
 function parseStoredObservations(raw) {
     if (!raw) return [];
     try {
@@ -1855,6 +1888,8 @@ module.exports = {
     unlinkMemoryImage,
     listMemoryImageLinks,
     listMemoryRevisions,
+    droppedObservationContents,
+    observationContentOf,
     getMemoryRevisionImages,
     attachObservationImages,
     parseV5Finding,

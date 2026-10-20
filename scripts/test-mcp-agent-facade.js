@@ -639,6 +639,35 @@ assert.strictEqual(refinedMemory.confidence, 0.35);
 assert.strictEqual(refinedMemory.memory.entities.length, 1);
 assert.strictEqual(refinedMemory.needsRefinement, true);
 
+let storeWithObs = {
+    name: 'drop-me',
+    description: 'keep',
+    category: 'mcp',
+    confidence: 0.4,
+    model: 'v5',
+    revision: 1,
+    entities: [],
+    relations: [],
+    observations: [
+        { entity_id: 'memory', content: 'keep this line', importance: 0.5 },
+        { entity_id: 'memory', content: 'this one is dropped', importance: 0.5 }
+    ]
+};
+const droppedSave = _test.runMemoryTool({
+    getKnowledgeMemoryDb: () => ({
+        getKnowledgeMemory: () => storeWithObs,
+        saveKnowledgeMemory: (name, description, category, entities, relations, observations, confidence, model) => {
+            storeWithObs = { name, description, category, entities, relations, observations, confidence, model, revision: 2, previousRevision: 1 };
+            return storeWithObs;
+        }
+    })
+}, 'save_memory', { name: 'drop-me', observations: ['keep this line'] });
+assert.strictEqual(droppedSave.success, true);
+assert.deepStrictEqual(droppedSave.droppedObservations, ['this one is dropped']);
+assert.match(droppedSave.warning, /Dropped 1 observation/);
+assert.match(droppedSave.warning, /revision 1/);
+assert.ok(_test.formatDroppedObservationsWarning(['a', 'b'], 3).includes('revision 3'));
+
 const gotMemory = _test.runMemoryTool({
     getKnowledgeMemoryDb: () => ({
         getKnowledgeMemory: () => ({ name: 'a', confidence: 0.2, entities: [] })
@@ -951,6 +980,11 @@ assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.p
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'generate_image').inputSchema.properties.append_uc);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'apply_studio_changes').inputSchema.properties.params);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'apply_studio_changes').inputSchema.properties.characters);
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'apply_studio_changes').description.includes('characters:[{index'));
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'apply_studio_changes').description.includes('characters-only'));
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'apply_studio_changes').description.includes('unapplied'));
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'save_memory').description.includes('snapshotted as a revision'));
+assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'save_memory').description.includes('droppedObservations'));
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'apply_studio_changes').inputSchema.properties.steps);
 assert.ok(_test.TOOL_DEFS.find((t) => t.name === 'expand_image').inputSchema.properties.overrideParams);
 assert.ok(_test.MCP_INSTRUCTIONS.includes('append_quality / append_uc'));
@@ -2028,6 +2062,44 @@ async function runDirectorMcpTests() {
     assert.deepStrictEqual(sentNestedFields.echo.change, sentTop.echo.change);
     assert.strictEqual(sentNested.echo.prompt, '1girl, rain');
     assert.strictEqual(sentNested.echo.uc, 'blurry');
+
+    const sentCharsOnly = await _test.applyStudioChanges(applyStudio.globalResources, {
+        ...applyArgs,
+        characters: [{ index: 0, action: 'replace', prompt: 'alice', uc: '' }]
+    });
+    assert.ok(sentCharsOnly.echo.change.characters, 'characters-only apply must send change.characters');
+    assert.strictEqual(sentCharsOnly.echo.change.characters[0].prompt, 'alice');
+    const sentCharsWithParams = await _test.applyStudioChanges(applyStudio.globalResources, {
+        ...applyArgs,
+        params: { steps: 14 },
+        presetName: 'Regensburg',
+        change: {
+            characterPrompts: { item: { index: 0, action: 'replace', prompt: '1.2::a::', name: 'Regensburg' } }
+        }
+    });
+    assert.strictEqual(sentCharsWithParams.echo.change.params.steps, 14);
+    assert.strictEqual(sentCharsWithParams.echo.change.characters[0].prompt, '1.2::a::');
+    assert.strictEqual(sentCharsWithParams.echo.change.presetName, 'Regensburg');
+
+    const applyStudioPartial = fakeBoundStudio('b2c3d4e5f607', (data) => ({
+        ok: false,
+        applied: true,
+        partial: true,
+        unapplied: ['characters[0].prompt'],
+        warning: 'Did not apply: characters[0].prompt',
+        echo: data
+    }));
+    const partialKey = 'appkey:director-mcp-unapplied';
+    bridge.bindClient(applyStudioPartial.globalResources, { clientId: 'b2c3d4e5f607', bindKey: partialKey });
+    const partialApply = await _test.applyStudioChanges(applyStudioPartial.globalResources, {
+        bindKey: partialKey,
+        autoApply: true,
+        autoGenerate: false,
+        params: { steps: 14 },
+        characters: [{ index: 0, prompt: 'alice' }]
+    });
+    assert.strictEqual(partialApply.ok, false);
+    assert.deepStrictEqual(partialApply.unapplied, ['characters[0].prompt']);
 
     // await_generation_job: never filenameBefore, never an older print.
     const galleryDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'mcp-apply-gallery-'));

@@ -487,8 +487,10 @@ const opsSrc = changeSrc.slice(
     changeSrc.indexOf('async function saveStudioChangeToDesktop')
 );
 const opsLock = opsSrc.lastIndexOf('applyModelLocks(');
-const opsReturn = opsSrc.lastIndexOf('return enabled.length');
+const opsReturn = opsSrc.lastIndexOf('return { count: enabled.length');
 assert.ok(opsLock > 0 && opsLock < opsReturn, 'apply_studio_changes locks after params are written');
+assert.ok(changeSrc.includes('function coerceStudioChangeList'), 'MiniMax character lists are unwrapped before apply');
+assert.ok(changeSrc.includes('normalizeStudioChangeCharacterLists(payload)'), 'character lists are normalized in buildOpsFromPayload');
 
 // Medium folds user UC into the inline negative (deduped, raw saved fields untouched).
 {

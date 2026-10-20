@@ -123,6 +123,36 @@ const cleared = _test.assembleStudioChangeFromToolArgs({ overwrite: true, charac
 assert.strictEqual(cleared.overwrite, true);
 assert.deepStrictEqual(cleared.characters, []);
 
+const charsOnly = _test.assembleStudioChangeFromToolArgs({
+    characters: [{ index: 0, action: 'replace', prompt: 'alice, smile', uc: '' }]
+});
+assert.ok(charsOnly, 'characters-only change must assemble (not 400)');
+assert.strictEqual(charsOnly.characters[0].prompt, 'alice, smile');
+assert.ok(!charsOnly.fields || !charsOnly.fields.length);
+const nestedCharsOnly = _test.assembleStudioChangeFromToolArgs({
+    change: { characterPrompts: [{ prompt: 'bob', chara_name: 'Bob' }] }
+});
+assert.ok(nestedCharsOnly, 'nested characterPrompts-only change must assemble');
+assert.strictEqual(nestedCharsOnly.overwrite, true);
+assert.strictEqual(nestedCharsOnly.characters[0].name, 'Bob');
+const itemWrap = _test.assembleStudioChangeFromToolArgs({
+    params: { steps: 14 },
+    presetName: 'Regensburg',
+    change: {
+        characterPrompts: { item: { action: 'replace', index: 0, prompt: '1.2::a::', name: 'Regensburg' } }
+    }
+});
+assert.ok(itemWrap, 'MiniMax {item:{}} characterPrompts plus params must assemble');
+assert.strictEqual(itemWrap.params.steps, 14);
+assert.strictEqual(itemWrap.presetName, 'Regensburg');
+assert.strictEqual(itemWrap.characters[0].prompt, '1.2::a::');
+assert.deepStrictEqual(_test.coerceStudioChangeList({ item: { prompt: 'a' } }), [{ prompt: 'a' }]);
+assert.deepStrictEqual(_test.coerceStudioChangeList(''), []);
+assert.deepStrictEqual(_test.coerceStudioChangeList({ 0: { prompt: 'a' }, 1: { prompt: 'b' } }), [
+    { prompt: 'a' },
+    { prompt: 'b' }
+]);
+
 const liftedFlags = _test.assembleStudioChangeFromToolArgs({
     append_transparency: true,
     n: 2,
