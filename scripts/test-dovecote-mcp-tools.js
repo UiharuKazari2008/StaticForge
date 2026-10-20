@@ -358,6 +358,16 @@ async function main() {
     assert.strictEqual(del.updated, 2);
     const frostInbox = textOf(await callTool(gr, reqFor('Frost'), 'list_mail', { folder: 'inbox', limit: 1 }));
     assert.ok(frostInbox.total < page1.total);
+    // Purging from Trash in a batch needs confirm:true; nothing changes without it.
+    const trashIds = batchIds.slice(0, 2);
+    const guarded = await callTool(gr, reqFor('Frost'), 'delete_mail', { ids: trashIds });
+    const guardedBody = textOf(guarded);
+    assert.strictEqual(guardedBody.code, 'CONFIRM_REQUIRED');
+    assert.strictEqual(guardedBody.inTrash, 2);
+    assert.strictEqual(dovecoteMail.readMail('frost', trashIds[0], { markRead: false }).folder, 'deleted');
+    const purged = textOf(await callTool(gr, reqFor('Frost'), 'delete_mail', { ids: trashIds, confirm: true }));
+    assert.strictEqual(purged.updated, 2);
+    assert.strictEqual(dovecoteMail.readMail('frost', trashIds[0], { markRead: false }), null);
 
     console.log('dovecote MCP tool tests passed');
 }

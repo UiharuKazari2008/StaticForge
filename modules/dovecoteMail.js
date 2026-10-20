@@ -921,6 +921,15 @@ function markMail(owner, { id, read, archived, deleted, archiveSubfolder, spam, 
     return toSummary(updated);
 }
 
+function countMailInFolder(owner, ids, folder) {
+    const list = normalizeMailIds(null, ids);
+    if (!list.length) return 0;
+    const marks = list.map(() => '?').join(',');
+    return getDb().prepare(
+        `SELECT COUNT(*) AS n FROM dovecote_message WHERE owner = ? AND folder = ? AND id IN (${marks})`
+    ).get(owner, String(folder), ...list).n;
+}
+
 function markMailBatch(owner, { id, ids, read, archived, deleted, archiveSubfolder, spam }) {
     const list = normalizeMailIds(id, ids);
     if (!list.length) throw new DovecoteError('Message id is required', 'MESSAGE_ID_REQUIRED');
@@ -1289,6 +1298,7 @@ module.exports = {
     readMail,
     markMail,
     markMailBatch,
+    countMailInFolder,
     forwardMail,
     forwardMailBatch,
     mailroomForwardMail,

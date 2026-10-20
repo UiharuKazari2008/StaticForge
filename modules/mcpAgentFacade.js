@@ -3107,14 +3107,15 @@ const TOOL_DEFS = [
     {
         name: 'delete_mail',
         core: true,
-        description: 'Delete message(s) in your own Dovecote mailbox. Soft-deletes to Trash; deleting a message already in deleted permanently removes it. Pass `id` or `ids` (max 200) — one round trip. Owner-scoped — ids from other mailboxes are missing/404. Same as mark_mail with deleted: true.',
+        description: 'Delete message(s) in your own Dovecote mailbox. Soft-deletes to Trash; deleting a message already in deleted permanently removes it. Pass `id` or `ids` (max 200) — one round trip. Owner-scoped — ids from other mailboxes are missing/404. Same as mark_mail with deleted: true. A batch (ids) that includes messages already in Trash needs confirm: true, otherwise CONFIRM_REQUIRED and nothing changes.',
         scope: 'sfapp_dovecote',
         inputSchema: {
             type: 'object',
             additionalProperties: false,
             properties: {
                 id: { type: 'string', description: 'Single message id. Use ids for several.' },
-                ids: { type: 'array', items: { type: 'string' }, maxItems: 200, description: 'Batch of message ids in your mailbox' }
+                ids: { type: 'array', items: { type: 'string' }, maxItems: 200, description: 'Batch of message ids in your mailbox' },
+                confirm: { type: 'boolean', description: 'Required (true) when an ids batch includes messages already in deleted (Trash) — those are purged permanently.' }
             }
         }
     },
@@ -9188,6 +9189,18 @@ async function callTool(globalResources, req, name, args) {
             }
             if (name === 'mark_mail' || name === 'delete_mail') {
                 const batch = Array.isArray(input.ids) && input.ids.length > 0;
+                if (name === 'delete_mail' && batch && input.confirm !== true) {
+                    // Permanent purge guard: ids already in Trash are removed for good.
+                    const inTrash = dovecoteMail.countMailInFolder(owner, input.ids, 'deleted');
+                    if (inTrash > 0) {
+                        return mcpTextResult({
+                            success: false,
+                            code: 'CONFIRM_REQUIRED',
+                            error: `${inTrash} of these messages are already in Trash and would be permanently deleted. Re-run with confirm: true.`,
+                            inTrash
+                        }, true);
+                    }
+                }
                 const result = dovecoteMail.markMailBatch(owner, {
                     id: input.id,
                     ids: input.ids,
