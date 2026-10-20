@@ -321,7 +321,7 @@ function assistantMessage(message, names, options) {
             calls.push({
                 id: block.id,
                 type: 'function',
-                function: { name: names.up(block.name), arguments: JSON.stringify(block.input || {}) }
+                function: { name: names.up(block.name), arguments: JSON.stringify(unwrapToolInput(block.input || {})) }
             });
         }
     });
@@ -421,15 +421,90 @@ function anthropicUsage(usage) {
     };
 }
 
+function asToolObject(parsed) {
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+    return { value: parsed };
+}
+
+function tryParseJson(text) {
+    try {
+        return asToolObject(JSON.parse(text));
+    } catch (_) {
+        return null;
+    }
+}
+
+// First `{...}` that balances, strings and escapes included. MiniMax (and some
+// other TokenRouter vendors) stream fragments and then repeat the full object,
+// so the concatenated buffer is `{...}{...}` and JSON.parse of the whole fails.
+function firstCompleteJsonObject(text) {
+    const s = String(text || '');
+    let start = -1;
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    for (let i = 0; i < s.length; i++) {
+        const ch = s[i];
+        if (inString) {
+            if (escape) escape = false;
+            else if (ch === '\\') escape = true;
+            else if (ch === '"') inString = false;
+            continue;
+        }
+        if (ch === '"') {
+            inString = true;
+            continue;
+        }
+        if (ch === '{') {
+            if (depth === 0) start = i;
+            depth += 1;
+        } else if (ch === '}') {
+            if (depth === 0) continue;
+            depth -= 1;
+            if (depth === 0 && start >= 0) return s.slice(start, i + 1);
+        }
+    }
+    return null;
+}
+
+function completeJsonObjects(text) {
+    const out = [];
+    let rest = String(text || '');
+    for (let i = 0; i < 32 && rest; i++) {
+        const raw = firstCompleteJsonObject(rest);
+        if (!raw) break;
+        const parsed = tryParseJson(raw);
+        if (parsed) out.push(parsed);
+        const at = rest.indexOf(raw);
+        rest = at >= 0 ? rest.slice(at + raw.length) : '';
+    }
+    return out;
+}
+
+// Prefer the full buffer when it is JSON. MiniMax then appends a second copy
+// of the same object: use that final copy when it parses, otherwise the first
+// complete object. Never put `_unparsed_arguments` in tool input — the CLI
+// feeds that object back on the next turn and it nests.
 function parseToolArguments(raw) {
     const text = String(raw || '').trim();
     if (!text) return {};
-    try {
-        const parsed = JSON.parse(text);
-        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : { value: parsed };
-    } catch (_) {
-        return { _unparsed_arguments: text };
+    const whole = tryParseJson(text);
+    if (whole) return unwrapToolInput(whole);
+    const objects = completeJsonObjects(text);
+    if (objects.length) return unwrapToolInput(objects[objects.length - 1]);
+    return {};
+}
+
+function unwrapToolInput(input) {
+    let cur = input;
+    for (let i = 0; i < 20; i++) {
+        if (!cur || typeof cur !== 'object' || Array.isArray(cur)) return {};
+        if (typeof cur._unparsed_arguments !== 'string') return cur;
+        const next = parseToolArguments(cur._unparsed_arguments);
+        if (next === cur || (next && next._unparsed_arguments === cur._unparsed_arguments)) return {};
+        cur = next;
     }
+    return {};
 }
 
 function newMessageId() {
@@ -527,8 +602,20 @@ class StreamTranslator {
             if (call.id && !slot.id) slot.id = call.id;
             const fn = call.function || {};
             if (fn.name) slot.name = slot.name && slot.name !== fn.name ? slot.name + fn.name : fn.name;
-            if (typeof fn.arguments === 'string') slot.args += fn.arguments;
-            else if (fn.arguments && typeof fn.arguments === 'object') slot.args = JSON.stringify(fn.arguments);
+            if (typeof fn.arguments === 'string' && fn.arguments) {
+                // MiniMax streams pieces, then a final full JSON object. Replace
+                // when that last chunk parses; otherwise keep concatenating.
+                // Only a whole object arriving after an already-complete buffer
+                // is a repeat; a scalar fragment (`1`, `"abc"`) also parses and
+                // must keep concatenating.
+                const chunk = fn.arguments.trim();
+                const repeat = chunk.startsWith('{') && slot.args.trim()
+                    && tryParseJson(slot.args.trim()) && tryParseJson(chunk);
+                if (repeat) slot.args = fn.arguments;
+                else slot.args += fn.arguments;
+            } else if (fn.arguments && typeof fn.arguments === 'object') {
+                slot.args = JSON.stringify(fn.arguments);
+            }
         });
         if (choice.finish_reason) this.finishReason = choice.finish_reason;
         return events;
@@ -581,7 +668,9 @@ function toAnthropicMessage(json, model, names) {
             type: 'tool_use',
             id: call.id || newToolId(),
             name: translator.names.down(fn.name),
-            input: typeof fn.arguments === 'object' && fn.arguments ? fn.arguments : parseToolArguments(fn.arguments)
+            input: unwrapToolInput(
+                typeof fn.arguments === 'object' && fn.arguments ? fn.arguments : parseToolArguments(fn.arguments)
+            )
         });
     });
     const hasTools = content.some((block) => block.type === 'tool_use');
@@ -979,6 +1068,8 @@ module.exports = {
         toOpenAIRequest,
         StreamTranslator,
         toAnthropicMessage,
+        parseToolArguments,
+        unwrapToolInput,
         safeToolName,
         resetCatalog: () => { catalogCache = { at: 0, families: null }; learnedRelaxers.clear(); },
         resetWallet: () => { walletCache = { at: 0, key: '', value: null }; }
