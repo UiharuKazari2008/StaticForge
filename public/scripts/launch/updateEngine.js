@@ -51,6 +51,7 @@
         // More than this uses the full pack built at asset recreation.
         subsetMax: 120,
         stallMs: 60000,
+        packReadyWaitMs: 180000,
         manifestTimeoutMs: 30000,
         readyTimeoutMs: 20000,
         controllerTimeoutMs: 6000
@@ -258,6 +259,15 @@
         } catch (_) {
             return '';
         }
+    }
+
+    /** Retry after a mismatch: drop the stored digest and list so the next check fetches the full list. */
+    function forgetManifest(env) {
+        try {
+            if (!env.localStorage) return;
+            env.localStorage.removeItem(SYNCED_MANIFEST_KEY);
+            env.localStorage.removeItem(MANIFEST_SNAPSHOT_KEY);
+        } catch (_) { /* storage off */ }
     }
 
     function readManifestSnapshot(env) {
@@ -528,6 +538,14 @@
                 }
             }
             if (!res) res = await env.fetch(PACK_URL, { cache: 'no-store' });
+            // 503 while the server rebuilds a pack that went stale. Wait it out here.
+            for (let waited = 0; res && res.status === 503 && waited < config.packReadyWaitMs;) {
+                const after = Number(res.headers && res.headers.get && res.headers.get('retry-after')) || 5;
+                const pause = Math.min(Math.max(after, 1), 15) * 1000;
+                await env.sleep(pause);
+                waited += pause;
+                res = await env.fetch(PACK_URL, { cache: 'no-store' });
+            }
             if (!res || !res.ok) {
                 const status = res && res.status;
                 return { ok: false, stalled: false, error: status === 503 ? 'pack-not-ready' : `HTTP ${status || 0}` };
@@ -734,6 +752,7 @@
         verify,
         readState,
         writeState,
+        forgetManifest,
         writeRecord,
         readRecord,
         needsInstaller

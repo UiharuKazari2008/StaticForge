@@ -2217,9 +2217,32 @@ function sendInstallPack(res, pack, cleanup) {
 }
 
 // MeletonFX installer pack: one zip built when the service-worker manifest is recreated.
-app.get('/install/meletonfx.zip', (req, res) => {
+let installPackRefresh = null;
+// The manifest is computed per request, but the pack is only rebuilt on a runtime
+// compile. /.login.jpg is regenerated hourly with random images, so its hash moved
+// under a built pack and every install failed with pack-hash. Rebuild on demand.
+function refreshInstallPackIfStale() {
     const pack = meletonInstallPack.status();
-    if (!pack.ready || !pack.path) {
+    if (pack.building || installPackRefresh) return true;
+    const want = meletonInstallPack.hashManifest(buildServiceWorkerCacheManifest());
+    if (pack.ready && pack.hash === want) return false;
+    installPackRefresh = meletonInstallPack.rebuild({
+        manifest: buildServiceWorkerCacheManifest(),
+        resolveFile: resolveInstallPackFile
+    }).then((built) => {
+        globalResources.logger.info(`Install pack ${built.rebuilt ? 'rebuilt' : 'reused'} for manifest ${String(built.hash).slice(0, 12)}`);
+    }).catch((error) => {
+        globalResources.logger.error(`Install pack refresh failed: ${error.message}`);
+    }).finally(() => {
+        installPackRefresh = null;
+    });
+    return true;
+}
+app.get('/install/meletonfx.zip', (req, res) => {
+    let stale = false;
+    try { stale = refreshInstallPackIfStale(); } catch (_) { stale = false; }
+    const pack = meletonInstallPack.status();
+    if (stale || !pack.ready || !pack.path) {
         res.set('Retry-After', '5');
         return res.status(503).json({
             success: false,

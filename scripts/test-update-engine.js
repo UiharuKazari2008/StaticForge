@@ -436,6 +436,26 @@ function memoryStorage() {
     assert.strictEqual(bigExpand.stored, 3000, 'every file of a 3k-entry pack lands');
     assert.ok(maxPush > 0 && maxPush <= 64 * 1024, `Unzip.push is fed in slices (max ${maxPush})`);
 
+    // A stale pack answers 503 while the server rebuilds it; copyPack waits, then copies.
+    let calls503 = 0;
+    const waitEnv = {
+        ...benv,
+        caches: memoryCache([]),
+        sleep: async () => {},
+        fetch: async () => {
+            calls503 += 1;
+            if (calls503 < 3) return { ok: false, status: 503, headers: { get: (n) => (n === 'retry-after' ? '5' : null) } };
+            return benv.fetch();
+        }
+    };
+    const waited = await engine.copyPack(waitEnv, bigManifest, {});
+    assert.strictEqual(waited.ok, true, waited.error || 'copy after 503');
+    assert.strictEqual(calls503, 3);
+    // Retry drops the stored digest and list.
+    const ls = new Map([['melatonManifestHash', 'x'], ['melatonManifestSnapshot', '[]'], ['other', '1']]);
+    engine.forgetManifest({ localStorage: { removeItem: (k) => ls.delete(k), getItem: (k) => ls.get(k), setItem: (k, v) => ls.set(k, v) } });
+    assert.deepStrictEqual([...ls.keys()], ['other']);
+
     console.log('✅ test-update-engine: all assertions passed');
 })().catch((err) => {
     console.error('❌ test-update-engine failed:', err);
