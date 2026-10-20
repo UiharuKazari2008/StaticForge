@@ -269,7 +269,8 @@ async function main() {
     assert.strictEqual(broadcasts[0].type, 'dovecote_mailbox_updated');
     assert.strictEqual(countListMail('sala'), salaListBefore, 'browser push must not log list_mail as the mailbox owner');
     assert.strictEqual(countListMail('system'), systemListBefore, 'browser push must not log list_mail as system either');
-    assert.strictEqual(filters[0]({ authenticated: true }), true);
+    assert.strictEqual(filters[0]({ authenticated: true, userType: 'admin', sessionId: 'sess-cookie' }), true);
+    assert.strictEqual(filters[0]({ authenticated: true, userType: 'admin', authMethod: 'application_key', applicationKeyId: 'k-rook', applicationScopes: ['sfapp_dovecote'], sessionId: 'appkey:k-rook' }), false);
     assert.strictEqual(filters[0]({ authenticated: false, applicationAuth: { appName: 'Rook' } }), false);
     assert.strictEqual(filters[0]({ applicationAuth: { appName: 'Rook' } }), false);
     mail.setMailboxChangedListener(null);
@@ -346,7 +347,7 @@ async function main() {
     assert.doesNotMatch(httpSrc, /body\.mailbox|params\.owner|query\.mailbox/);
     const handlerSrc = fs.readFileSync(path.join(__dirname, '..', 'modules/ws/handlers/250-dovecoteHandler.js'), 'utf8');
     assert.match(handlerSrc, /silent:\s*true/);
-    assert.match(handlerSrc, /clientInfo && clientInfo.authenticated/);
+    assert.match(handlerSrc, /isMailboxSnapshotRecipient/);
 
     await menmaReviewChecks();
     console.log('dovecote mailbox webhook tests passed');
