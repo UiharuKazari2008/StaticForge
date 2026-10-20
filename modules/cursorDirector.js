@@ -1374,7 +1374,8 @@ function publicSession(chat) {
         tasks: normalizeSessionTasks(chat.tasks),
         created_at: chat.created_at,
         model: chat.model || EFFORT_MODELS.medium,
-        engine: sanitizeEngine(chat.lastEngine),
+        engine: sanitizeEngine(chat.lastEngine || (chat.choice && chat.choice.engine)),
+        running: runs.has(chat.id),
         choice: sessionChoice(chat),
         ...sessionContext(chat),
         updated_at: chat.updated_at || chat.created_at || null,
@@ -2613,12 +2614,7 @@ async function directorStatus(sample) {
     let runningName = null;
     try {
         const index = readIndex(layout().indexPath);
-        sessions = index.chats.filter((chat) => !chat.archived && chatIsListed(chat)).slice(-TRAY_RECENT_SESSIONS).reverse().map((chat) => ({
-            id: chat.id,
-            name: chat.name || 'Director',
-            created_at: chat.created_at,
-            current: chat.id === runningSessionId
-        }));
+        sessions = traySessions(index, runningSessionId);
         if (runningSessionId) {
             const running = index.chats.find((chat) => chat.id === runningSessionId);
             runningName = running ? (running.name || 'Director') : null;
@@ -3873,6 +3869,29 @@ function chatOwnsFilename(chat, filename) {
 
 // Empty drafts stay off the list until a real message starts the agent.
 // Rentan and Quips chats stay hidden; the carousel menu opens Rentan by id.
+// Newest activity first. The index is in creation order, so an older chat that just
+// ran (e.g. a TokenRouter chat started days ago) sat deep in the list and never made
+// the sandbox tray's recent three.
+function listedChatsByActivity(index) {
+    return ((index && index.chats) || [])
+        .filter(chatIsListed)
+        .map((chat, at) => ({ chat, at, activity: chatActivity(chat) }))
+        .sort((a, b) => (b.activity - a.activity) || (b.at - a.at))
+        .map((row) => row.chat);
+}
+
+function traySessions(index, runningSessionId) {
+    return listedChatsByActivity(index).filter((chat) => !chat.archived).slice(0, TRAY_RECENT_SESSIONS).map((chat) => ({
+        id: chat.id,
+        name: chat.name || 'Director',
+        created_at: chat.created_at,
+        updated_at: chat.updated_at || chat.created_at || null,
+        engine: sanitizeEngine(chat.lastEngine || (chat.choice && chat.choice.engine)),
+        model: chat.model || null,
+        current: chat.id === runningSessionId
+    }));
+}
+
 function chatIsListed(chat) {
     if (!chat || chat.dynagen || chat.quips) return false;
     if (chat.cursorId) return true;
@@ -4437,7 +4456,7 @@ async function handleDirectorGetSessions(handler, ws, message) {
         ];
         const accounts = rawAccounts.map(cursorAccountAuthStore.publicCursorAccount).filter(Boolean);
         sendOk(handler, ws, 'director_get_sessions_response', message.requestId, {
-            sessions: index.chats.filter(chatIsListed).map(publicSession).reverse(),
+            sessions: listedChatsByActivity(index).map(publicSession),
             persona: 'wren',
             activeAccountId: activeAccId,
             accounts,
@@ -6478,7 +6497,7 @@ module.exports = {
         publicSession, publicMessage, publicTraceRow, roundModelRecord, watchGeneratedPrints, rememberGeneratedPrint,
         isLinkDrop, continuationPrompt,
         normalizeSessionTasks, readProcStat, directorState, computerReadiness,
-        parseDynagenAnswer, dynagenThoughtTracker, dynagenTurnPrompt, dynagenRules, chatIsListed, chatIsHidden, pickOpenWorkspaceChat, dynagenDeliveries,
+        parseDynagenAnswer, dynagenThoughtTracker, dynagenTurnPrompt, dynagenRules, chatIsListed, listedChatsByActivity, traySessions, chatIsHidden, pickOpenWorkspaceChat, dynagenDeliveries,
         quipsRules, quipsTurnPrompt, normalizeQuipsAnswer, quipsDeliveries, quipsTurnLimits, QUIPS_PHRASE_MAX,
         takeAssistantText, settleDirectorResult, turnDeadline, dynagenTurnLimits, killAgentChild, signalProcessTree,
         RUN_IDLE_MS, RUN_HARD_MS, DYNAGEN_IDLE_MS, DYNAGEN_HARD_MS, RENTAN_REVIEW_HARD_MS,
