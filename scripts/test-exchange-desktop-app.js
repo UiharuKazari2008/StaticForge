@@ -29,6 +29,7 @@ function main() {
     assert.match(appletJs, /function exchangeDsapBuildTabUrl/);
     assert.match(appletJs, /dsap:\/\/\$\{EXCHANGE_DSAP_URL\}\//);
     assert.match(appletJs, /data-dsap="exchange"/);
+    assert.match(appletJs, /exchange-dsap win7/);
     assert.match(appletJs, /exchange-inset-panel/);
     assert.match(appletJs, /exchange-status-bar/);
     assert.match(appletJs, /explorer-actions-header/);
