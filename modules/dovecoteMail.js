@@ -651,7 +651,7 @@ function sanitizeOriginalTo(value) {
     return text || null;
 }
 
-function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, body, format, threadId, spam, spamMeta, originalTo, ownDomainFrom }) {
+function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, body, format, threadId, spam, spamMeta, originalTo, ownDomainFrom, trustedOwnSender }) {
     if (!isValidOwner(toOwner)) throw new DovecoteError('Unknown mailbox', 'UNKNOWN_OWNER');
     const from = String(fromAddress || '').trim();
     if (!from || (from !== NULL_SENDER && !from.includes('@'))) {
@@ -670,6 +670,13 @@ function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, 
         mapping: addresses.createMapping(),
         owners: Array.from(liveOwners())
     });
+    // Own-domain labels (sala.ops@…, Yozora <yozora@…>) trip the protected-name
+    // check by design. Mail the intake marked trustedOwnSender (aligned
+    // own-domain envelope, not forged, no spam) is our own and not a spoof.
+    const forged = !!(spamMeta && spamMeta.forgedOurs);
+    if (inspected.suspicious && trustedOwnSender === true && ownDomainFrom && spam !== true && !forged) {
+        inspected.suspicious = false;
+    }
     const storedLabel = inspected.suspicious ? from : (inspected.label || '').slice(0, 300);
     const folder = spam === true ? 'spam' : 'inbox';
     const storedSpamMeta = encodeSpamMeta(spamMeta);
