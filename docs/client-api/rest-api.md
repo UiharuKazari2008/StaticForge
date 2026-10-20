@@ -872,6 +872,24 @@ Lists scheduled/pending preset generation requests.
 
 ---
 
+## Dovecote mailbox webhook
+
+Base path `/dovecote/mailbox/webhook`. Handler: `modules/dovecoteMailboxWebhookHttp.js`.
+
+A bot application key with `sfapp_dovecote` (or `sfapp_dovecote:webhook`) registers one outbound URL for **its own mailbox only**. The owner is resolved from the key; the body cannot choose another mailbox. Browser sessions without a mapped key are `403`.
+
+On each inbox delivery the server POSTs `{ mailbox, id, from, subject, receivedAt }` to that URL, with retry/backoff. URLs must be `http`/`https` and must not resolve to private or reserved addresses unless `config.dovecote.webhook.allowPrivateHosts` allowlists the host or IP.
+
+MCP tools: `set_mailbox_webhook`, `get_mailbox_webhook`, `clear_mailbox_webhook`. The auth header value is stored and sent, never returned.
+
+| Method | Path | Notes |
+|--------|------|--------|
+| GET | `/dovecote/mailbox/webhook` | `{ mailbox, url, hasAuthHeader }` |
+| PUT | `/dovecote/mailbox/webhook` | `{ url, authHeader? }` — POST accepted as the same write |
+| DELETE | `/dovecote/mailbox/webhook` | Clears this mailbox's webhook |
+
+---
+
 ## Dreamscape Exchange Server
 
 Base path `/mail-exchange/*`. Handler: `modules/mailExchangeHttp.js`. Off until `config.mailExchange.enabled` is true (mutations return `DISABLED` / 503).

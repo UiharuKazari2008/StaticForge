@@ -165,6 +165,15 @@ function createDovecoteTables() {
             created_at TEXT NOT NULL
         )
     `);
+    // One outbound webhook per mailbox, registered by that mailbox's app key.
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS dovecote_mailbox_webhook (
+            owner TEXT PRIMARY KEY,
+            url TEXT NOT NULL,
+            auth_header TEXT,
+            updated_at TEXT NOT NULL
+        )
+    `);
 }
 
 function getDb() {

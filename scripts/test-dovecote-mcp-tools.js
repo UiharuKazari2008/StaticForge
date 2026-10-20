@@ -292,6 +292,28 @@ async function main() {
     assert.strictEqual(dovecoteMail.readMail('yukimi', yukimiIn.id).folder, 'inbox');
     assert.strictEqual(dovecoteMail.readMail('yukimi', yukimiSpam.id).folder, 'inbox');
 
+    const webhook = require('../modules/dovecoteMailboxWebhook');
+    webhook.setTestOverrides({
+        lookup: async (hostname) => {
+            if (hostname === 'hook.example') return [{ address: '203.0.113.10', family: 4 }];
+            throw new Error('unexpected host ' + hostname);
+        },
+        fetch: async () => ({ ok: true, status: 204 }),
+        // Avoid loading globalResources (its intervals keep the test alive).
+        config: {}
+    });
+    const hookSet = textOf(await callTool(gr, reqFor('Rook'), 'set_mailbox_webhook', {
+        url: 'https://hook.example/mail',
+        mailbox: 'ivory'
+    }));
+    assert.strictEqual(hookSet.mailbox, 'rook');
+    assert.strictEqual(hookSet.url, 'https://hook.example/mail');
+    const ivoryHook = textOf(await callTool(gr, reqFor('Ivory'), 'get_mailbox_webhook', {}));
+    assert.strictEqual(ivoryHook.mailbox, 'ivory');
+    assert.strictEqual(ivoryHook.url, null);
+    textOf(await callTool(gr, reqFor('Rook'), 'clear_mailbox_webhook', {}));
+    webhook.resetForTests();
+
     // Oversized attachments are rejected with a clear error, not a partial send.
     const tooBig = await callTool(gr, reqFor('Menma'), 'send_mail', {
         to: 'rook', subject: 'too big', body: 'x',
