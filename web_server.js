@@ -1,3 +1,9 @@
+// libuv's pool (default 4) carries every async SQLite query (node-sqlite3), WebSocket
+// permessage-deflate, async fs, crypto and DNS. One tag search held all 4 for seconds
+// (profile 2026-10-20). Read at the pool's first use, so set before anything else;
+// here rather than ecosystem.config.js, since restarts keep pm2's saved env.
+if (!process.env.UV_THREADPOOL_SIZE) process.env.UV_THREADPOOL_SIZE = '16';
+
 // Bind the HTTP port before ~3 s of module loading so a restarting server answers /status and
 // /status/stream from the start instead of refusing connections (Yozora #431)
 const earlyHttpServer = require('./modules/earlyHttpServer').bindEarly(__dirname);
@@ -3978,12 +3984,10 @@ async function handleAdminUnixSocketMessage(message, socket) {
 
     updateServerStage('initializing');
     
-    // Preview Synchronization
-    await globalResources.logger.bootStep('Preview Synchronization', async () => {
-        updateServerStage('syncing_previews');
-        await globalResources.syncPreviews();
-    });
-    
+    // Preview Synchronization runs after boot (see the end of this function): it took
+    // 6-83s (mostly waiting on metadata.db) and held runtime compile, the WebSocket
+    // server, and so every client's logon behind it. Nothing in boot needs it.
+
     // Account & Cache Initialization
     await globalResources.logger.bootStep('Runtime Asset Compilation', async () => {
         updateServerStage('runtime_compile');
@@ -4200,6 +4204,17 @@ async function handleAdminUnixSocketMessage(message, socket) {
 
     // Server is now fully ready
     updateServerStage('ready', true);
+    globalResources.logger.endBoot();
+
+    // Its own boot tree, so the preview sync sub-steps still reach the log.
+    globalResources.logger.startBoot();
+    try {
+        await globalResources.logger.bootStep('Preview Synchronization', async () => {
+            await globalResources.syncPreviews();
+        });
+    } catch (err) {
+        globalResources.logger.warn(`Preview synchronization failed: ${err.message}`);
+    }
     globalResources.logger.endBoot();
 })();
 
