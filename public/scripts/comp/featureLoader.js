@@ -115,7 +115,10 @@ const FEATURE_MANIFEST = {
     },
     exchange: {
         styles: ['css/desktop-apps/exchange.css'],
-        scripts: ['scripts/comp/desktop-apps/exchange.js']
+        scripts: [
+            'scripts/comp/desktop-apps/exchange.js',
+            'scripts/comp/exchangeDsapApplet.js'
+        ]
     },
     start_menu_organizer: {
         scripts: ['scripts/comp/desktop-apps/startMenuOrganizer.js']

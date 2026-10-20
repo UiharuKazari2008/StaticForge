@@ -1,122 +1,97 @@
-/* Dreamscape Exchange Server — desktop-apps/exchange.js.
-   Title-bar toolbar + inset panels (same recipe as eMotion / Dovecote). */
+/* Exchange-specific leftovers only.
+   Shared DSAP chrome lives in css/dsap-smf.css (theme: 'dsap-smf') plus
+   form-row / form-group from css/manual-modal.css and css/app.css. */
 
-#desktopExchangeModal {
-    width: 960px;
-}
-
-#desktopExchangeModal > .modal-content {
-    flex: 1 1 auto;
-    height: auto;
-    min-height: 0;
-}
-
-#desktopExchangeModal .exchange-body {
-    display: flex;
-    flex-direction: column;
-    flex: 1 1 auto;
-    min-height: 0;
-    gap: var(--spacing-sm);
-    padding: var(--spacing-md);
-}
-
-#desktopExchangeModal .exchange-inset-panel {
-    background: var(--glass-layer-dark-4);
-    border: 1px solid var(--glass-border-4);
-    border-radius: var(--border-radius-md);
-    box-shadow: var(--glass-shadow-3);
-}
-
-#desktopExchangeModal .exchange-main {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow: auto;
-    padding: var(--spacing-md);
-}
-
-#desktopExchangeModal .exchange-status {
-    flex: none;
-    padding: var(--spacing-xs) var(--spacing-sm);
-    font-size: 12px;
-}
-
-#desktopExchangeModal .exchange-toolbar-divider {
-    width: 1px;
-    align-self: stretch;
-    background: var(--glass-border-4);
-    margin: 0 4px;
-}
-
-#desktopExchangeModal .exchange-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: var(--spacing-sm);
-}
-
-#desktopExchangeModal .exchange-card {
-    padding: var(--spacing-sm);
-    border: 1px solid var(--glass-border-4);
-    border-radius: var(--border-radius-md);
-}
-
-#desktopExchangeModal .exchange-card h3 {
-    margin: 0 0 var(--spacing-xs);
-    font-size: 13px;
-}
-
-#desktopExchangeModal .exchange-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--spacing-xs);
-    align-items: center;
-    margin-bottom: var(--spacing-sm);
-}
-
-#desktopExchangeModal .exchange-table {
+[data-dsap="exchange"] {
     width: 100%;
-    border-collapse: collapse;
-    font-size: 12px;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
 }
 
-#desktopExchangeModal .exchange-table th,
-#desktopExchangeModal .exchange-table td {
-    text-align: left;
-    padding: 4px 6px;
-    border-bottom: 1px solid var(--glass-border-4);
+[data-dsap="exchange"] .exchange-view {
+    padding: var(--spacing-xs) 0 0;
+    max-width: 100%;
+    min-width: 0;
 }
 
-#desktopExchangeModal .exchange-key-once {
-    font-family: Consolas, "Courier New", monospace;
-    word-break: break-all;
-}
-
-#desktopExchangeModal .exchange-degraded {
-    color: var(--text-warning, #c9a227);
-}
-
-#desktopExchangeModal .exchange-note {
+[data-dsap="exchange"] .form-row {
+    flex-wrap: wrap;
+    min-width: 0;
     margin: 0 0 var(--spacing-sm);
-    font-size: 12px;
+}
+
+[data-dsap="exchange"] .form-row .form-group {
+    flex: 1 1 10rem;
+    max-width: 24rem;
+    min-width: 0;
+}
+
+[data-dsap="exchange"] .form-row .dsap-smf-input {
+    width: 100%;
+    min-width: 0;
+}
+
+[data-dsap="exchange"] .exchange-table-wrap {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    margin: 0 0 var(--spacing-sm);
+    overflow: auto;
+}
+
+[data-dsap="exchange"] .exchange-table-wrap > table {
+    width: max-content;
+    min-width: 100%;
+}
+
+[data-dsap="exchange"] .exchange-cell-address {
+    max-width: 14rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+[data-dsap="exchange"] .exchange-cell-key,
+[data-dsap="exchange"] .exchange-key-once {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+[data-dsap="exchange"] .exchange-key-once {
+    font-family: Consolas, "Courier New", monospace;
+}
+
+[data-dsap="exchange"] .exchange-degraded {
+    color: var(--warning-color);
+}
+
+[data-dsap="exchange"] .exchange-note {
+    margin: 0 0 var(--spacing-sm);
     opacity: 0.85;
 }
 
-#desktopExchangeModal .exchange-from-list {
+[data-dsap="exchange"] .exchange-signature-input {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    min-height: 8rem;
+    margin: 0 0 var(--spacing-sm);
+}
+
+[data-dsap="exchange"] .exchange-from-list {
     margin-top: var(--spacing-xs);
 }
 
-#desktopExchangeModal .exchange-from-list summary {
+[data-dsap="exchange"] .exchange-from-list summary {
     cursor: pointer;
-    font-size: 12px;
 }
 
-#desktopExchangeModal .exchange-from-addresses {
+[data-dsap="exchange"] .exchange-from-addresses {
     margin: var(--spacing-xs) 0 0;
     padding-left: 1.2em;
-    font-size: 12px;
 }
 
-@media (max-width: 760px) {
-    #desktopExchangeModal .exchange-body {
-        flex-direction: column;
-    }
+[data-dsap="exchange"] .exchange-mailbox-picker {
+    max-width: 100%;
 }

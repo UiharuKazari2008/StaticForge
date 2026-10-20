@@ -528,6 +528,33 @@
     margin: 6px 0;
 }
 
+/* --- Two-column property list (Data Management account info; shared by Exchange) --- */
+[data-dsap] .data-mgmt-account-info-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    margin-top: 5px;
+    background: #fff;
+}
+
+[data-dsap] .data-mgmt-account-info-table td {
+    padding: 4px 6px;
+    border: 1px solid #e2e8ee;
+    vertical-align: top;
+}
+
+[data-dsap] .data-mgmt-account-info-label {
+    width: 34%;
+    font-weight: 600;
+    background: #f4f6f8;
+    color: var(--dsap-smf-context-bg, #336699);
+    white-space: nowrap;
+}
+
+[data-dsap] .data-mgmt-account-info-value {
+    word-break: break-word;
+}
+
 /* --- Data tables --- */
 [data-dsap] .sec-data-table,
 [data-dsap] .data-mgmt-ws-table,
