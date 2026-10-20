@@ -93,10 +93,22 @@ d.setEngine('claude');
 assert.strictEqual(d.selectedModel, 'claude-sonnet-5-5');
 assert.strictEqual(d.selectedEffort, 'high');
 
-// Xi never uses the Claude engine prefs or catalog.
+// Xi uses its own runtime picker, not Wren's engine switcher. New drafts
+// default to TokenRouter (DeepSeek); setEngine stays a no-op.
 d.persona = 'xi';
-assert.strictEqual(d.activeEngine(), 'cursor');
+d.currentSession = null;
+assert.strictEqual(d.nextXiRuntime(), 'tokenrouter');
+assert.strictEqual(d.activeEngine(), 'tokenrouter');
+assert.strictEqual(d.displayEngine(), 'tokenrouter');
+assert.strictEqual(d.defaultModel(), 'deepseek/deepseek-v4.1-flash');
 assert.strictEqual(d.setEngine('cursor'), false);
+assert.strictEqual(d.sessionEngine({ runtime: 'cursor' }), 'cursor');
+assert.strictEqual(d.sessionEngine({ runtime: 'claude' }), 'claude');
+assert.strictEqual(d.sessionEngine({ runtime: 'tokenrouter' }), 'tokenrouter');
+d._nextXiRuntime = 'cursor';
+assert.strictEqual(d.nextXiRuntime(), 'cursor');
+assert.strictEqual(d.activeEngine(), 'cursor');
+d._nextXiRuntime = null;
 d.persona = 'wren';
 
 // Retry choice: fast is only offered where the model has it.
@@ -140,9 +152,10 @@ assert.strictEqual(d.engineForModelId({ id: 'claude-opus-5-5', run: 'claude-opus
 assert.strictEqual(d.engineForModelId({ id: 'claude-opus-5-5', run: 'claude-opus-5-5-high-thinking' }, { engine: 'claude' }), 'cursor');
 d.modelCatalogs.cursor = cursorCatalog;
 
-// TokenRouter (#409): its own prefs, catalog cache, default (Kimi K3), and mark.
+// TokenRouter (#409): its own prefs, catalog cache, default (DeepSeek V4.1 Flash), and mark.
 const routerCatalog = [
-    { id: 'moonshotai/kimi-k3', name: 'Kimi K3', provider: 'Moonshot', default: true, efforts: [{ id: 'low', name: 'Low', fast: false }, { id: 'medium', name: 'Medium', fast: false }, { id: 'high', name: 'High', fast: false }] },
+    { id: 'deepseek/deepseek-v4.1-flash', name: 'DeepSeek V4.1 Flash', provider: 'DeepSeek', default: true, efforts: [{ id: 'none', name: 'None', fast: false }, { id: 'low', name: 'Low', fast: false }, { id: 'medium', name: 'Medium', fast: false }, { id: 'high', name: 'High', fast: false }] },
+    { id: 'moonshotai/kimi-k3', name: 'Kimi K3', provider: 'Moonshot', efforts: [{ id: 'low', name: 'Low', fast: false }, { id: 'medium', name: 'Medium', fast: false }, { id: 'high', name: 'High', fast: false }] },
     { id: 'z-ai/glm-5.3', name: 'GLM 5.3', provider: 'Z.ai', efforts: [{ id: 'low', name: 'Low', fast: true }, { id: 'medium', name: 'Medium', fast: true }] }
 ];
 d.applyModelCatalog(routerCatalog, 'tokenrouter');
@@ -151,7 +164,7 @@ sent.length = 0;
 assert.strictEqual(d.setEngine('tokenrouter'), true);
 assert.strictEqual(d.activeEngine(), 'tokenrouter');
 assert.strictEqual(d.modelCatalog, routerCatalog);
-assert.strictEqual(d.selectedModel, 'moonshotai/kimi-k3');
+assert.strictEqual(d.selectedModel, 'deepseek/deepseek-v4.1-flash');
 assert.ok(titleClasses.has('engine-tokenrouter-mark') && !titleClasses.has('engine-claude-mark'), 'title mark shows TokenRouter');
 assert.ok(sent.some((m) => m.type === 'director_get_models' && m.engine === 'tokenrouter'));
 assert.strictEqual(d.engineName('tokenrouter'), 'TokenRouter');

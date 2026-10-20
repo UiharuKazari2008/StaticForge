@@ -16,6 +16,7 @@ function main() {
     assert.strictEqual(typeof xiDirector.activeRuntime, 'function');
     assert.strictEqual(xiDirector.sanitizeRuntime('claude'), 'claude');
     assert.strictEqual(xiDirector.sanitizeRuntime('cursor'), 'cursor');
+    assert.strictEqual(xiDirector.sanitizeRuntime('tokenrouter'), 'tokenrouter');
     assert.strictEqual(xiDirector.sanitizeRuntime('nonsense'), 'cursor');
 
     // No Xi session running in this process, so there is nothing "active" —
@@ -30,9 +31,10 @@ function main() {
     assert.strictEqual(resolveDovecoteOwnerFromReq({ applicationAuth: { appName: 'Yukimi' } }), null);
     assert.strictEqual(resolveDovecoteOwnerFromReq({}), null);
 
-    // The shared "Xi" key (Cursor- and Claude-runtime jobs both authenticate
-    // as this one key) maps to the active session's runtime, defaulting to
-    // 'cursor' (the #395 picker's own default) when nothing is actively running.
+    // The shared "Xi" key (Cursor-, Claude-, and TokenRouter-runtime jobs all
+    // authenticate as this one key) maps to the active session's runtime,
+    // defaulting to 'cursor' (existing sessions without a runtime field) when
+    // nothing is actively running.
     assert.strictEqual(resolveDovecoteOwnerFromReq({ applicationAuth: { appName: 'Xi' } }), 'cursor');
     assert.strictEqual(resolveDovecoteOwnerFromReq({ applicationAuth: { appName: 'xi' } }), 'cursor');
 
