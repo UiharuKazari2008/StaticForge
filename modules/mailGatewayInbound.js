@@ -372,7 +372,10 @@ function handleInboundConnection(plainSocket, options) {
                 spam: spamMark.spam,
                 spamMeta: spam.displayMeta(spamMark),
                 originalTo,
-                ownDomainFrom
+                ownDomainFrom,
+                // Aligned own-domain envelope via the relay, not diverted and
+                // no spam / LANTIS_FORGED_OURS signal: our own system mail.
+                trustedOwnSender: ownDomainFrom && !divertOwnDomain && !spamMark.spam && !spamMark.forgedOurs
             })).then(() => ({ owner, ok: true }));
         }).catch((err) => ({ owner, ok: false, error: err })));
 

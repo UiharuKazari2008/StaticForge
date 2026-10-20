@@ -2424,6 +2424,44 @@ async function testAlignedOwnDomainSenderDelivers() {
     }
 }
 
+// Sala follow-up: aligned own-domain relay mail must not be labelSuspicious;
+// spoofs and LANTIS_FORGED_OURS keep the label.
+async function testOwnDomainLabelNotSuspicious() {
+    const cases = [
+        { env: 'sala.ops@dream.737.jp.net', rcpt: 'stylus.dev', from: 'sala.ops@dream.737.jp.net', extra: '', owner: 'stylus', susp: false },
+        { env: 'yozora@dream.737.jp.net', rcpt: 'kazari.ops', from: 'Yozora <yozora@dream.737.jp.net>', extra: '', owner: 'yukimi', susp: false },
+        { env: 'a@evil.com', rcpt: 'kazari.ops', from: 'Sala <sala.ops@dream.737.jp.net>', extra: '', owner: 'tsubame', susp: true },
+        { env: 'yozora@dream.737.jp.net', rcpt: 'kazari.ops', from: 'Sala <sala.ops@dream.737.jp.net>', extra: 'X-Spam-Status: No, score=2.0 tests=LANTIS_FORGED_OURS\r\n', owner: 'tsubame', susp: true },
+        { env: 'alice@example.com', rcpt: 'kazari.ops', from: 'Sala <alice@example.com>', extra: '', owner: 'yukimi', susp: true }
+    ];
+    for (const c of cases) {
+        const { inbound, delivered } = await startOpenInbound({ deliver: async (msg) => { delivered.push(mail.deliverInboundMail(msg)); } });
+        try {
+            const socket = await connectSmtp(inbound.port);
+            const reader = createLineReader(socket);
+            await expectCode(reader, 220);
+            socket.write('EHLO lantis\r\n');
+            await expectCode(reader, 250);
+            socket.write(`MAIL FROM:<${c.env}>\r\n`);
+            await expectCode(reader, 250);
+            socket.write(`RCPT TO:<${c.rcpt}@dream.737.jp.net>\r\n`);
+            await expectCode(reader, 250);
+            socket.write('DATA\r\n');
+            await expectCode(reader, 354);
+            socket.write(`${c.extra}From: ${c.from}\r\nTo: ${c.rcpt}@dream.737.jp.net\r\nSubject: label\r\n\r\nbody\r\n.\r\n`);
+            await expectCode(reader, 250);
+            socket.write('QUIT\r\n');
+            await readReply(reader);
+            socket.end();
+        } finally {
+            await inbound.close();
+        }
+        assert.strictEqual(delivered.length, 1, JSON.stringify(c));
+        assert.strictEqual(delivered[0].owner, c.owner, JSON.stringify(c));
+        assert.strictEqual(delivered[0].labelSuspicious, c.susp, JSON.stringify(c));
+    }
+}
+
 async function main() {
     testMapping();
     await testAllowlistReject();
@@ -2431,6 +2469,7 @@ async function main() {
     await testInboundDelivery();
     await testOwnDomainFromDivertR1();
     await testAlignedOwnDomainSenderDelivers();
+    await testOwnDomainLabelNotSuspicious();
     await testInboundRelaySenders();
     await testInboundPlaintextUnchanged();
     await testInboundStarttlsHandshake();
