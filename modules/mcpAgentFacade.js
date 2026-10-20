@@ -65,7 +65,9 @@ const {
 } = require('../public/scripts/comp/textDisplayStyles');
 const {
     lookupRunningSessionWorkspace,
-    scopeWriteWorkspace,
+    scopeWriteWorkspaceForRequest,
+    requestIsFromRunningSession,
+    pairedWorkspaceForRequest,
     studioWriteAllowed
 } = require('./sessionWorkspacePairing');
 const { parseAutofillArtistSearchPrefix } = require('./autofillSearchSettings');
@@ -5077,12 +5079,13 @@ function resolveDirectorChat(input) {
     return { director: wren, chatId: asked };
 }
 
-function pairedWriteWorkspace(requested) {
-    return scopeWriteWorkspace(lookupRunningSessionWorkspace(), requested);
+function pairedWriteWorkspace(requested, req, input) {
+    return scopeWriteWorkspaceForRequest(requested, req, input);
 }
 
 function refuseStudioOutsideWorkspace(globalResources, req) {
-    const paired = lookupRunningSessionWorkspace();
+    if (!requestIsFromRunningSession(req)) return null;
+    const paired = pairedWorkspaceForRequest(req);
     const here = inferBoundWorkspaceId(globalResources, req) || '';
     if (studioWriteAllowed(paired, here)) return null;
     return mcpTextResult({
@@ -6029,7 +6032,7 @@ async function collectSessionState(globalResources, req, input) {
             ? stateData.workspaceId
             : null) || (windowData && windowData.workspaceId) || null;
         out.studioReachable = true;
-        const pairedWorkspaceId = lookupRunningSessionWorkspace();
+        const pairedWorkspaceId = pairedWorkspaceForRequest(req);
         out.sessionWorkspaceId = pairedWorkspaceId || null;
         const clientWorkspaceId = out.workspaceId || inferBoundWorkspaceId(globalResources, req) || '';
         out.in_workspace = studioWriteAllowed(pairedWorkspaceId, clientWorkspaceId);
@@ -7519,7 +7522,7 @@ async function callTool(globalResources, req, name, args) {
 
     if (name === 'create_note') {
         input.id = input.id || crypto.randomUUID();
-        input.workspaceId = pairedWriteWorkspace(resolveNoteWorkspaceId(globalResources, input, req) || '');
+        input.workspaceId = pairedWriteWorkspace(resolveNoteWorkspaceId(globalResources, input, req) || '', req, input);
         if (!input.workspaceId) {
             const err = new Error('workspaceId is required (or bind a Studio tab)');
             err.status = 400;
@@ -7534,7 +7537,7 @@ async function callTool(globalResources, req, name, args) {
         if (input.icon != null) updates.icon = input.icon;
         if (input.color != null) updates.color = input.color;
         if (input.workspaceId != null || updates.workspaceId != null) {
-            updates.workspaceId = pairedWriteWorkspace(resolveWorkspaceId(updates.workspaceId || input.workspaceId, globalResources));
+            updates.workspaceId = pairedWriteWorkspace(resolveWorkspaceId(updates.workspaceId || input.workspaceId, globalResources), req, input);
         }
         return mcpTextResult(await dispatchPacketTool(globalResources, req, 'notes_update', {
             noteId: input.noteId,
@@ -7570,7 +7573,7 @@ async function callTool(globalResources, req, name, args) {
         if (!filenames.length) {
             return mcpTextResult({ success: false, error: 'filename or filenames is required' }, true);
         }
-        const workspaceId = pairedWriteWorkspace(resolveWorkspaceId(input.workspace || input.workspaceId, globalResources));
+        const workspaceId = pairedWriteWorkspace(resolveWorkspaceId(input.workspace || input.workspaceId, globalResources), req, input);
         if (input.remove === true) {
             const results = [];
             for (const filename of filenames) {
@@ -7592,7 +7595,7 @@ async function callTool(globalResources, req, name, args) {
         if (!filenames.length) {
             return mcpTextResult({ success: false, error: 'filename or filenames is required' }, true);
         }
-        const workspaceId = pairedWriteWorkspace(resolveWorkspaceId(input.workspace || input.workspaceId, globalResources));
+        const workspaceId = pairedWriteWorkspace(resolveWorkspaceId(input.workspace || input.workspaceId, globalResources), req, input);
         const record = workspaceRecord(globalResources, workspaceId) || {};
         const pinned = Array.isArray(record.pinned) ? record.pinned : [];
         const results = [];
@@ -7716,7 +7719,7 @@ async function callTool(globalResources, req, name, args) {
     }
 
     if (name === 'create_shortcut') {
-        const workspaceId = pairedWriteWorkspace(resolveWorkspaceId(input.workspace || input.workspaceId, globalResources));
+        const workspaceId = pairedWriteWorkspace(resolveWorkspaceId(input.workspace || input.workspaceId, globalResources), req, input);
         const dest = pickShortcutString(input, ['dest', 'path']) || '@desktop';
         const wantStudio = input.fromStudio === true || input.fromStudio === 'true'
             || (String(input.type || '') === 'studio-change' && !input.payload && !input.change
@@ -7912,7 +7915,7 @@ async function callTool(globalResources, req, name, args) {
         if (name === 'expand_image') {
             payload = mergeExpansionOverrideParams(payload);
         }
-        payload.workspace = pairedWriteWorkspace(resolveGenerateWorkspaceId(globalResources, req, payload));
+        payload.workspace = pairedWriteWorkspace(resolveGenerateWorkspaceId(globalResources, req, payload), req, payload);
         payload.mcp_generated = true;
         let qualityDropped = null;
         let qualityInherited = null;
@@ -8022,7 +8025,7 @@ async function callTool(globalResources, req, name, args) {
     }
 
     if (def.packet && name !== 'get_generated_image' && name !== 'get_linkxi_persona' && name !== 'save_linkxi_persona') {
-        const pairedTarget = pairedWriteWorkspace('');
+        const pairedTarget = pairedWriteWorkspace('', req, input);
         const writesWorkspace = rateGroupForTool(name) === 'write' || rateGroupForTool(name) === 'generate';
         if (writesWorkspace && pairedTarget) {
             input.workspaceId = pairedTarget;

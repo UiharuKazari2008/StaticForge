@@ -857,6 +857,15 @@ assert.ok(_test.MCP_INSTRUCTIONS.includes('request_workspace_switch'));
 const pairing = require('../modules/sessionWorkspacePairing');
 pairing.setWorkspaceLookupForTests(() => 'atelier');
 assert.strictEqual(_test.pairedWriteWorkspace('other'), 'atelier');
+assert.strictEqual(
+    _test.pairedWriteWorkspace('516399f0-lab', { applicationAuth: { appName: 'Guren' } }),
+    '516399f0-lab',
+    'Guren generate_image keeps Laboratory while a Director turn is live'
+);
+assert.strictEqual(
+    _test.pairedWriteWorkspace('other', { applicationAuth: { appName: 'Dreamscape Director' } }),
+    'atelier'
+);
 pairing.setWorkspaceLookupForTests(null);
 const workspaceOffer = _test.TOOL_DEFS.find((t) => t.name === 'offer_workspace_switch');
 assert.ok(workspaceOffer.description.includes('does not move the workspace itself'));
