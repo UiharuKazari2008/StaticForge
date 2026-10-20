@@ -27,6 +27,8 @@ module.exports = {
         cwd: __dirname,
         autorestart: true,
         watch: false,
+        // Timestamp every log line (SQLITE_IOERR on 2026-10-15 could not be dated).
+        time: true,
         // Cap glibc arenas (Oct 4 mem investigation: ~1.46GB across ~103 arenas).
         // Do NOT add max_memory_restart / cron_restart / watch.
         env: {
@@ -38,6 +40,8 @@ module.exports = {
         cwd: path.join(__dirname, 'services', 'grimoire-browser'),
         autorestart: true,
         watch: false,
+        // Timestamp every log line (SQLITE_IOERR on 2026-10-15 could not be dated).
+        time: true,
         env: {
             HOST: '127.0.0.1',
             PORT: '9330',

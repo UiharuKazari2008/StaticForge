@@ -1125,8 +1125,104 @@
     color: var(--success-color, #81ffb3);
 }
 
-/* ---- Vista light client (#485): Studio's expander Inspector. The window remap and the expander
-   rows are shared with Properties (image-prompt-inspector.css). ---- */
+/* ---- Vista light client (#485): Studio's expander Inspector. Window remap and expander
+   rows are also used by Properties (same markup). ---- */
+/* the dark theme's glass fills and tinted text, remapped for the white page (as tag-wiki-search.css).
+   Studio's expander Inspector (#485) shares these and the expander rules below: same markup. */
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, .image-prompt-inspector-json, #textReplacementLockModal)[data-window-client="light"] > .modal-content {
+    --inspector-font-size: 11pt;
+    font-size: var(--inspector-font-size);
+    --text-accent: #1e3287;
+    --hover-show-colored-text: #1e395b;
+    --glass-layer-1: #f7f7f7;
+    --glass-layer-2: #f3f3f3;
+    --glass-layer-3: #eee;
+    --glass-layer-4: #e8e8e8;
+    --glass-layer-dark-1: #fafafa;
+    --glass-layer-dark-2: #f6f6f6;
+    --glass-layer-dark-3: #f3f3f3;
+    --glass-layer-dark-4: #fff;
+    --glass-layer-dark-5: #eee;
+    --glass-layer-dark-bg: #f7f7f7;
+    --glass-inset-bg-4: #fff;
+    --glass-border-1: #ddd;
+    --glass-border-2: #d0d0d0;
+    --glass-border-3: #ccc;
+    --glass-border-4: #ddd;
+    --glass-border-5: #bbb;
+}
+/* Segoe UI at the window's text size everywhere outside the prompt boxes (their overlay mirrors the prompt font) */
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, #textReplacementLockModal)[data-window-client="light"] :is(.image-prompt-inspector-filename, .image-prompt-inspector-subtitle, .image-prompt-inspector-character strong, .blueprint-info label, .meta-value, .forgedata-badge, .info-label, .info-item span, .text-replacement-full-value, .text-replacement-lock-info .reason-text, .text-replacement-original, .text-replacement-selected) {
+    font-family: inherit;
+    font-size: var(--inspector-font-size);
+    letter-spacing: normal;
+    text-transform: none;
+}
+/* Text expanders: white group boxes, read-only Vista text boxes, Segoe captions */
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, #textReplacementLockModal)[data-window-client="light"] .text-replacement-lock-item.dynamic-replacement-type {
+    border-left: 0;
+}
+
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, #textReplacementLockModal)[data-window-client="light"] .text-replacement-lock-content {
+    background: #fff;
+    border: 1px solid #d5dfe5;
+    border-radius: 3px;
+}
+
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, #textReplacementLockModal)[data-window-client="light"] .negative-prompt .text-replacement-lock-content {
+    background: #fff5f5;
+    border-color: #e5c4c4;
+}
+
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, #textReplacementLockModal)[data-window-client="light"] :is(.text-replacement-full-value, .text-replacement-original, .text-replacement-selected) {
+    padding: 3px 5px;
+    color: #000;
+    background: #fff;
+    border: 1px solid;
+    border-color: #abadb3 #dbdfe6 #e3e9ef #e2e3ea;
+    border-radius: 2px;
+}
+
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, #textReplacementLockModal)[data-window-client="light"] .text-replacement-full-value {
+    word-break: normal;
+    overflow-wrap: anywhere;
+}
+
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, #textReplacementLockModal)[data-window-client="light"] :is(.text-replacement-lock-info .reason-text, .text-replacement-references) {
+    color: #444;
+}
+
+/* textReplacementManager.js sizes the sources list inline */
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, #textReplacementLockModal)[data-window-client="light"] .text-replacement-references {
+    font-size: var(--inspector-font-size) !important;
+}
+
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, #textReplacementLockModal)[data-window-client="light"] :is(.text-replacement-arrow, .text-replacement-references a) {
+    color: #0066cc !important;
+}
+
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, #textReplacementLockModal)[data-window-client="light"] .text-replacement-badge {
+    font-size: calc(var(--inspector-font-size) - 1pt);
+    letter-spacing: normal;
+    text-transform: none;
+}
+
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, #textReplacementLockModal)[data-window-client="light"] .text-replacement-badge-combined {
+    padding: 2px 6px;
+    background: #fff;
+    border-color: #abadb3;
+    border-radius: 2px;
+}
+
+/* the location / type / status icons are tinted inline in pastels for the dark glass */
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, #textReplacementLockModal)[data-window-client="light"] .text-replacement-badge-combined > span {
+    filter: brightness(0.55) saturate(1.8);
+}
+
+body:not(.windows-classic-theme) :is(.image-prompt-inspector, #textReplacementLockModal)[data-window-client="light"] .text-replacement-index {
+    color: var(--badge-text);
+}
+
 body:not(.windows-classic-theme) #textReplacementLockModal[data-window-client="light"] .compiled-prompt-expandable-section {
     background: #fff;
     border-color: #d5dfe5;
