@@ -1,0 +1,15 @@
+'use strict';
+const assert = require('assert'); const fs = require('fs'); const os = require('os'); const path = require('path');
+const d = require('../modules/cursorDirector')._test;
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'payload-cap-'));
+assert.strictEqual(d.SESSION_PAYLOAD_DISK_MAX, 64 * 1024 * 1024);
+const big = 'x'.repeat(d.TOOL_PAYLOAD_MAX);
+const rows = []; for (let i = 0; i < 80; i++) rows.push({ type: 'tool', name: 't', args: big, result: big });
+d.parkToolBodies('cap-test', rows, dir);
+let total = 0; fs.readdirSync(path.join(dir, 'payloads')).forEach((n) => { total += fs.statSync(path.join(dir, 'payloads', n)).size; });
+assert.ok(total <= d.SESSION_PAYLOAD_DISK_MAX, 'payload folder stays under the per-session budget');
+assert.ok(total > 32 * 1024 * 1024, 'still persists up to the budget');
+fs.rmSync(dir, { recursive: true, force: true });
+const src = fs.readFileSync(path.join(__dirname, '../public/scripts/comp/director.js'), 'utf8');
+assert.ok(/this\.engine = 'tokenrouter';\s*try \{\s*const savedEngine = localStorage\.getItem\(this\.ENGINE_KEY\);\s*if \(savedEngine\) this\.engine = this\.normalizeEngine\(savedEngine\);/.test(src), 'Wren defaults to TokenRouter, saved engine wins');
+console.log('test-director-defaults: ok');

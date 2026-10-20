@@ -3061,6 +3061,18 @@ const toolBodies = new Map();
 let toolBodiesBytes = 0;
 const TOOL_BODIES_MAX_BYTES = 25 * 1024 * 1024;
 
+const SESSION_PAYLOAD_DISK_MAX = 64 * 1024 * 1024;
+
+function payloadFolderBytes(folder) {
+    let total = 0;
+    try {
+        fs.readdirSync(folder).forEach((name) => {
+            try { total += fs.statSync(path.join(folder, name)).size; } catch (_err) { /* gone */ }
+        });
+    } catch (_err) { /* no folder yet */ }
+    return total;
+}
+
 function parkToolBodies(sessionId, rows, persistDir) {
     (rows || []).forEach((row) => {
         if (!row || row.type !== 'tool') return;
@@ -3094,7 +3106,11 @@ function parkToolBodies(sessionId, rows, persistDir) {
             const folder = path.join(persistDir, 'payloads');
             fs.mkdirSync(folder, { recursive: true });
             const file = path.join(folder, `${safeName(row.payloadId)}.json`);
-            if (!fs.existsSync(file)) fs.writeFileSync(file, JSON.stringify(body));
+            if (!fs.existsSync(file)) {
+                const text = JSON.stringify(body);
+                // Bodies can be 512 KiB each now; stop persisting a session past its disk budget.
+                if (payloadFolderBytes(folder) + text.length <= SESSION_PAYLOAD_DISK_MAX) fs.writeFileSync(file, text);
+            }
         } catch (_err) { /* the live copy still answers the glasses button */ }
     });
 }
@@ -6514,7 +6530,7 @@ module.exports = {
     startRentanReviewTurn,
     _test: {
         projectPrompt, wrenRules, claudeProjectPrompt, WREN_COVERED_SENTENCES,
-        insideDir, safeName, effortModel, consumeStreamLine, clipToolPayload, TOOL_PAYLOAD_MAX, groupCursorModels, publicModelCatalog, directorModelCost, resolveRunModel,
+        insideDir, safeName, effortModel, consumeStreamLine, clipToolPayload, TOOL_PAYLOAD_MAX, SESSION_PAYLOAD_DISK_MAX, parkToolBodies, groupCursorModels, publicModelCatalog, directorModelCost, resolveRunModel,
         parseCursorModelLine, agentJailTarget, claudeJailTarget, buildJail, jailEnv, systemBindArgs,
         noteClaudeUsage, claudeUsageSummary, claudeUsageAt, availableClaudeModels,
         updateAgentClis, runCliUpdate, describeCliUpdate, cliAtLeast,

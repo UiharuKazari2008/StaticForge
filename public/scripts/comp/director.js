@@ -249,9 +249,12 @@ class Director {
         // Wren's engine (Cursor, Claude, or TokenRouter). Each engine keeps its own
         // last model config and model catalog; Xi picks its runtime per session instead.
         this.ENGINE_KEY = 'staticforge_director_engine';
-        this.engine = 'cursor';
+        // New Wren chats default to TokenRouter (DeepSeek V4.1 Flash, Yukimi 2026-10-20).
+        // A saved last-used engine still wins; Cursor and Claude stay selectable.
+        this.engine = 'tokenrouter';
         try {
-            this.engine = this.normalizeEngine(localStorage.getItem(this.ENGINE_KEY));
+            const savedEngine = localStorage.getItem(this.ENGINE_KEY);
+            if (savedEngine) this.engine = this.normalizeEngine(savedEngine);
         } catch (_err) { /* default engine */ }
         this.modelCatalogs = {};
         this.loadChatPrefs();
