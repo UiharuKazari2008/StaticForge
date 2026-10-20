@@ -310,6 +310,29 @@ class ContextMenuController {
     }
 
     /**
+     * Plain text fields with no custom menu keep the browser menu (copy / paste).
+     * Everything else is ours, including empty desktop and chrome.
+     */
+    _keepsBrowserContextMenu(el) {
+        if (!el || !el.closest) return false;
+        if (el.closest('[data-context-menu]')) return false;
+        const field = el.closest('input, textarea, [contenteditable="true"], [contenteditable=""]');
+        if (field) return this._isTextInputContextMenuTarget(field);
+        // Selected text (chat transcripts, logs, wiki) has no menu of ours: keep Copy.
+        return this._targetInSelection(el);
+    }
+
+    _targetInSelection(el) {
+        try {
+            const sel = typeof window !== 'undefined' && window.getSelection ? window.getSelection() : null;
+            if (!sel || sel.isCollapsed || !sel.rangeCount || !String(sel).trim()) return false;
+            return sel.containsNode(el, true);
+        } catch (_) {
+            return false;
+        }
+    }
+
+    /**
      * Textareas/inputs: on touch, ignore native contextmenu unless our long-press timer fired.
      * Desktop mouse right-click is always allowed.
      */
@@ -875,6 +898,12 @@ class ContextMenuController {
         document.addEventListener('mouseup', swallowOpeningGhost, true);
         document.addEventListener('click', swallowOpeningGhost, true);
         document.addEventListener('contextmenu', swallowOpeningGhost, true);
+
+        // Default: block the browser menu. Capture so a target stopPropagation cannot skip it.
+        document.addEventListener('contextmenu', (e) => {
+            if (this._keepsBrowserContextMenu(e.target)) return;
+            e.preventDefault();
+        }, true);
 
         // Click/tap menus open on mousedown (capture) so title-toolbar buttons still work when
         // preventDefault blocks the follow-up click; ghost clicks are suppressed via _suppressClickMenuClickUntil.
