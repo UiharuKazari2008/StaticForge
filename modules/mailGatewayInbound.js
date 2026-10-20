@@ -348,7 +348,14 @@ function handleInboundConnection(plainSocket, options) {
         const body = parsed.body;
         const format = parsed.format;
         const ownDomainFrom = fromCheck.ownDomain === true;
-        const deliverTo = ownDomainFrom
+        // Own-domain From is only diverted to postmaster when it is not backed
+        // by an aligned own-domain envelope sender. Our own systems (Yozora,
+        // bot mailboxes via the Lantis relay) submit with MAIL FROM on
+        // dream.737.jp.net and carry no relay spam/auth stamps; outside
+        // spoofs arrive with a foreign or null envelope, or are flagged
+        // LANTIS_FORGED_OURS / trusted SPF/DKIM/DMARC fail by the relay.
+        const divertOwnDomain = ownDomainFrom && !alignedOwnSender(mailFrom, spamMark, mapping);
+        const deliverTo = divertOwnDomain
             ? [addresses.resolvePostmasterMailbox(mapping)]
             : recipients;
         const jobs = deliverTo.map((owner) => Promise.resolve().then(() => {
@@ -375,7 +382,7 @@ function handleInboundConnection(plainSocket, options) {
                 // RFC 2033: one reply per accepted RCPT. An own-domain From is
                 // diverted to a single postmaster copy, so every original RCPT
                 // gets that copy's status (never fewer replies than RCPTs).
-                const perRcpt = ownDomainFrom
+                const perRcpt = divertOwnDomain
                     ? recipients.map(() => Object.assign({}, results[0], { owner: results[0].owner }))
                     : results;
                 perRcpt.forEach((item) => {
@@ -468,6 +475,19 @@ function handleInboundConnection(plainSocket, options) {
     socket.on('data', onData);
     socket.on('error', () => closeSession());
     socket.on('end', () => closeSession());
+}
+
+
+function alignedOwnSender(mailFrom, spamMark, mapping) {
+    const parts = addresses.splitLocalDomain(mailFrom || '');
+    if (!parts) return false;
+    // Exact public domain only: mx.dream.737.jp.net is the bounce host.
+    if (String(parts.domain || '').trim().toLowerCase().replace(/\.$/, '') !== String((mapping && mapping.domain) || addresses.DEFAULT_DOMAIN).toLowerCase()) return false;
+    const mark = spamMark || {};
+    if (mark.forgedOurs) return false;
+    if (mark.receivedSpf === 'fail' || mark.receivedSpf === 'softfail') return false;
+    if (mark.dkim === 'fail' || mark.dmarc === 'fail') return false;
+    return true;
 }
 
 module.exports = {

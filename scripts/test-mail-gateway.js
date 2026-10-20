@@ -2383,12 +2383,54 @@ async function testOwnDomainFromDivertR1() {
     }
 }
 
+// Regression (#594 report, Sala 8DA63213850E): internal mail submitted through
+// the relay with an aligned own-domain envelope (Yozora, sala.ops) must reach
+// the RCPT owner, not postmaster. Spoofs (foreign/null/bounce-host envelope,
+// LANTIS_FORGED_OURS, SPF fail) still divert.
+async function testAlignedOwnDomainSenderDelivers() {
+    const cases = [
+        { env: 'yozora@dream.737.jp.net', rcpt: 'kazari.ops', from: 'Yozora <yozora@dream.737.jp.net>', extra: '', want: ['yukimi'] },
+        { env: 'sala.ops@dream.737.jp.net', rcpt: 'stylus.dev', from: 'sala.ops@dream.737.jp.net', extra: '', want: ['stylus'] },
+        { env: 'SALA.OPS@Dream.737.jp.net', rcpt: 'menma.dev', from: 'sala.ops@dream.737.jp.net', extra: '', want: ['menma'] },
+        { env: 'a@evil.com', rcpt: 'kazari.ops', from: 'kazari.ops@dream.737.jp.net', extra: '', want: ['tsubame'] },
+        { env: 'double-bounce@mx.dream.737.jp.net', rcpt: 'kazari.ops', from: 'mailer-daemon@mx.dream.737.jp.net', extra: '', want: ['tsubame'] },
+        { env: 'yozora@dream.737.jp.net', rcpt: 'kazari.ops', from: 'yozora@dream.737.jp.net', extra: 'X-Spam-Status: No, score=1.0 tests=LANTIS_FORGED_OURS\r\n', want: ['tsubame'] },
+        { env: 'yozora@dream.737.jp.net', rcpt: 'kazari.ops', from: 'yozora@dream.737.jp.net', extra: 'Received-SPF: fail (mx)\r\n', want: ['tsubame'] }
+    ];
+    for (const c of cases) {
+        const { inbound, delivered } = await startOpenInbound();
+        try {
+            const socket = await connectSmtp(inbound.port);
+            const reader = createLineReader(socket);
+            await expectCode(reader, 220);
+            socket.write('EHLO lantis\r\n');
+            await expectCode(reader, 250);
+            socket.write(`MAIL FROM:<${c.env}>\r\n`);
+            await expectCode(reader, 250);
+            socket.write(`RCPT TO:<${c.rcpt}@dream.737.jp.net>\r\n`);
+            await expectCode(reader, 250);
+            socket.write('DATA\r\n');
+            await expectCode(reader, 354);
+            socket.write(`${c.extra}From: ${c.from}\r\nTo: ${c.rcpt}@dream.737.jp.net\r\nSubject: aligned\r\n\r\nbody\r\n.\r\n`);
+            await expectCode(reader, 250);
+            socket.write('QUIT\r\n');
+            await readReply(reader);
+            socket.end();
+        } finally {
+            await inbound.close();
+        }
+        assert.deepStrictEqual(delivered.map((m) => m.toOwner), c.want, JSON.stringify(c));
+        assert.strictEqual(delivered[0].ownDomainFrom, true);
+    }
+}
+
 async function main() {
     testMapping();
     await testAllowlistReject();
     await testUnknownRecipientReject();
     await testInboundDelivery();
     await testOwnDomainFromDivertR1();
+    await testAlignedOwnDomainSenderDelivers();
     await testInboundRelaySenders();
     await testInboundPlaintextUnchanged();
     await testInboundStarttlsHandshake();
