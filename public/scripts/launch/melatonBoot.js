@@ -67,6 +67,7 @@
     const INSTALL_ERRORS = {
         download: 'MeletonFX could not copy the files it needs to install. The connection to the server was interrupted.',
         stalled: 'MeletonFX could not copy the files it needs to install. The server stopped sending files.',
+        mismatch: 'MeletonFX could not copy the files it needs to install. The installation files changed on the server while they were being copied. Retry downloads the current files.',
         verify: 'MeletonFX could not expand the installation files. Some files did not arrive intact.',
         worker: 'MeletonFX could not start the offline service it installs into.'
     };
@@ -509,7 +510,10 @@
                 onProgress: (p) => { if (run === ctl.runId) setStep('copy', 'active', p.fraction); }
             });
             if (run !== ctl.runId) return 'cancelled';
-            if (!copied.ok) return installFailed(copied.stalled ? 'stalled' : 'download', copied.error || null);
+            if (!copied.ok) {
+                const kind = copied.stalled ? 'stalled' : (copied.error === 'pack-hash' ? 'mismatch' : 'download');
+                return installFailed(kind, copied.error || null);
+            }
             await stepAtLeast(started);
             setStep('copy', 'done');
 
@@ -603,6 +607,8 @@
             ctl.install.error = null;
             ctl.install.phase = 'installing';
             show('install', installData());
+            // Bypass the stored digest/list so Retry works from the server's current files.
+            if (env.engine && typeof env.engine.forgetManifest === 'function') env.engine.forgetManifest(env);
             const outcome = await runUpdates(run);
             if (outcome !== 'handoff') return outcome;
             await handOff();
