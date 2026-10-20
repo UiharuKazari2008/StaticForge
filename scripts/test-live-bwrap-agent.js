@@ -50,4 +50,17 @@ async function testLiveBwrap() {
     console.log('create-chat Stderr:', chatResult.stderr);
 }
 
-testLiveBwrap().catch(err => console.error(err));
+testLiveBwrap()
+    .then(async () => {
+        if (typeof globalResources.closeHandlesForTests === 'function') {
+            await globalResources.closeHandlesForTests();
+        }
+        process.exit(0);
+    })
+    .catch(async (err) => {
+        console.error(err);
+        if (typeof globalResources.closeHandlesForTests === 'function') {
+            await globalResources.closeHandlesForTests();
+        }
+        process.exit(1);
+    });

@@ -59,11 +59,21 @@ async function testAccountExecution() {
         console.log('\n✅ SUCCESS: Account profiles are strictly isolated and credentials stay matched!');
     } else {
         console.error('\n❌ FAILURE: Credentials leaked or diverged across profile switches!');
-        process.exit(1);
+        process.exitCode = 1;
     }
 }
 
-testAccountExecution().catch(err => {
-    console.error('Test threw error:', err);
-    process.exit(1);
-});
+testAccountExecution()
+    .then(async () => {
+        if (typeof globalResources.closeHandlesForTests === 'function') {
+            await globalResources.closeHandlesForTests();
+        }
+        process.exit(process.exitCode || 0);
+    })
+    .catch(async (err) => {
+        console.error('Test threw error:', err);
+        if (typeof globalResources.closeHandlesForTests === 'function') {
+            await globalResources.closeHandlesForTests();
+        }
+        process.exit(1);
+    });

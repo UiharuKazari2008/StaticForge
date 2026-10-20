@@ -282,10 +282,16 @@ async function main() {
         const { exact } = await testCoreFunctions();
         await testToolHandlers(exact);
         console.log('\n✅ tag-lookup smoke tests completed');
+        if (typeof globalResources.closeHandlesForTests === 'function') {
+            await globalResources.closeHandlesForTests();
+        }
         process.exit(0);
     } catch (error) {
         console.error('\n❌ tag-lookup smoke tests failed:', error);
-        process.exitCode = 1;
+        if (typeof globalResources.closeHandlesForTests === 'function') {
+            await globalResources.closeHandlesForTests();
+        }
+        process.exit(1);
     }
 }
 
