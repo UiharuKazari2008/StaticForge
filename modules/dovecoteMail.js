@@ -24,7 +24,7 @@ const HUMAN_OWNER = 'yukimi';
 const MAILROOM_OWNER = 'tsubame';
 const MAILROOM_ROLE = 'mailroom';
 const BOT_OWNERS = Object.freeze([
-    'rook', 'menma', 'hoshino', 'ivory', 'guren', 'chiyo', 'frost', 'sala', 'tifa', 'pyra', 'cursor', 'claude', 'wren',
+    'rook', 'menma', 'hoshino', 'ivory', 'guren', 'chiyo', 'frost', 'sala', 'tifa', 'pyra', 'cursor', 'claude', 'wren', 'stylus', 'anvil', 'sequenzia',
     MAILROOM_OWNER
 ]);
 // Caller app names that are not bot names themselves but belong to a bot
