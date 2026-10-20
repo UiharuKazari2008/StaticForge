@@ -178,6 +178,59 @@ function testStream() {
     assert.deepStrictEqual(message.content.map((b) => b.type), ['thinking', 'text', 'tool_use']);
     assert.deepStrictEqual(message.content[2].input, { a: 1 });
     assert.strictEqual(message.stop_reason, 'tool_use');
+
+    // MiniMax (TokenRouter) streams argument pieces, then repeats the full JSON.
+    // Concatenating that last copy used to yield `{...}{...}` → `_unparsed_arguments`,
+    // which the CLI fed back and nested.
+    assert.deepStrictEqual(t.parseToolArguments('{"workspace":"lab"}'), { workspace: 'lab' });
+    assert.deepStrictEqual(t.parseToolArguments('{"workspace":"lab"}{"workspace":"lab"}'), { workspace: 'lab' });
+    assert.deepStrictEqual(t.parseToolArguments('{"a":1}{"a":2}'), { a: 2 }, 'final complete object wins');
+    assert.deepStrictEqual(t.parseToolArguments('{"a":1}{broken'), { a: 1 }, 'first complete object if the tail is junk');
+    assert.deepStrictEqual(t.parseToolArguments('not-json'), {}, 'never _unparsed_arguments');
+    assert.ok(!('_unparsed_arguments' in t.parseToolArguments('{')), 'incomplete JSON is empty');
+    const nested = { _unparsed_arguments: JSON.stringify({ _unparsed_arguments: '{"file_path":"/a"}{"file_path":"/a"}' }) };
+    assert.deepStrictEqual(t.unwrapToolInput(nested), { file_path: '/a' });
+
+    const minimax = new t.StreamTranslator('minimax/minimax-m3.1-flash', names);
+    const miniEvents = [];
+    const miniPush = (list) => list.forEach(([name, data]) => miniEvents.push({ name, data }));
+    miniPush(minimax.start());
+    miniPush(minimax.chunk({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'call_mm', type: 'function', function: { name: 'Read', arguments: '{"file_' } }] } }] }));
+    miniPush(minimax.chunk({ choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: 'path":"/workspace/a.png"}' } }] } }] }));
+    miniPush(minimax.chunk({ choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '{"file_path":"/workspace/a.png"}' } }] } }] }));
+    miniPush(minimax.chunk({ choices: [{ delta: {}, finish_reason: 'tool_calls' }] }));
+    miniPush(minimax.finish());
+    const miniJson = miniEvents.filter((e) => e.data.delta && e.data.delta.type === 'input_json_delta').map((e) => JSON.parse(e.data.delta.partial_json));
+    assert.deepStrictEqual(miniJson, [{ file_path: '/workspace/a.png' }]);
+    assert.ok(!JSON.stringify(miniJson).includes('_unparsed_arguments'));
+
+    const frag = new t.StreamTranslator('minimax/minimax-m3.1-flash', names);
+    const fragEvents = [];
+    const fragPush = (list) => list.forEach(([name, data]) => fragEvents.push({ name, data }));
+    fragPush(frag.start());
+    fragPush(frag.chunk({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'call_f', type: 'function', function: { name: 'Read', arguments: '{"limit":' } }] } }] }));
+    fragPush(frag.chunk({ choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '5' } }] } }] }));
+    fragPush(frag.chunk({ choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: ',"q":' } }] } }] }));
+    fragPush(frag.chunk({ choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '"abc"' } }] } }] }));
+    fragPush(frag.chunk({ choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '}' } }] } }] }));
+    fragPush(frag.chunk({ choices: [{ delta: {}, finish_reason: 'tool_calls' }] }));
+    fragPush(frag.finish());
+    const fragJson = fragEvents.filter((e) => e.data.delta && e.data.delta.type === 'input_json_delta').map((e) => JSON.parse(e.data.delta.partial_json));
+    assert.deepStrictEqual(fragJson, [{ limit: 5, q: 'abc' }], 'scalar fragments that parse alone must not replace the buffer');
+
+    const replayed = t.toOpenAIRequest({
+        model: 'minimax/minimax-m3.1-flash',
+        messages: [{
+            role: 'assistant',
+            content: [{
+                type: 'tool_use',
+                id: 'call_old',
+                name: 'Read',
+                input: { _unparsed_arguments: '{"file_path":"/a"}{"file_path":"/a"}' }
+            }]
+        }]
+    }, { model: 'minimax/minimax-m3.1-flash' }).request;
+    assert.deepStrictEqual(JSON.parse(replayed.messages[0].tool_calls[0].function.arguments), { file_path: '/a' });
     console.log('ok stream translation');
 }
 
