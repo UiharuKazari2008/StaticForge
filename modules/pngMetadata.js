@@ -1563,6 +1563,10 @@ class PngMetadata {
      * Row-major RGB bytes (H×W×3) matching numpy image_array[:,:,:3].tobytes().
      */
     async extractRgbBytes(buffer) {
+        // libvips drops the alpha off the main thread. The per-pixel copy below took
+        // ~25ms per call on the event loop, up to 4 calls per generation.
+        const rgbOut = await sharp(buffer).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+        if (rgbOut.info.channels === 3) return rgbOut.data;
         const { data, info } = await sharp(buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
         const { width, height, channels } = info;
         const rgb = Buffer.alloc(width * height * 3);

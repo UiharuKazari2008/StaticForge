@@ -1947,6 +1947,9 @@ class TagLookup {
             tagWordsVersion: this.searchDb.prepare('SELECT MAX(id) FROM tag_words').pluck()
         };
         this._suffixIndexDataVersion = null;
+        // Build it ahead of the first autofill after a boot (~0.5s of paged work).
+        const warm = setTimeout(() => { this.ensureSuffixIndex().catch(() => {}); }, 15000);
+        if (typeof warm.unref === 'function') warm.unref();
     } catch (e) {
         console.warn('Read-only tag search DB unavailable:', e.message);
         this.searchDb = null;
