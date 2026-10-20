@@ -223,7 +223,7 @@ body.vista-logon #desktopPreStartupModal {
     color: #fff;
     font-family: 'Segoe UI', 'Noto Sans', sans-serif;
     font-size: 12px;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 /* Black until the art has decoded (websocket.js _whenVistaLogonArtReady); the Connecting and

@@ -180,7 +180,11 @@ let observeOptions = null;
 const doc = {
     documentElement: htmlEl,
     body: bodyEl,
-    querySelector: (sel) => { queries++; return matches.has(sel) ? {} : null; },
+    querySelector: (sel) => {
+        queries++;
+        if (matches.has(sel)) return {};
+        return registry.find((n) => n.matches(sel)) || null;
+    },
     querySelectorAll: (sel) => registry.filter((n) => n.matches(sel)),
     addEventListener: () => {}
 };
@@ -196,6 +200,7 @@ const setCls = (node, className) => { const old = node.getAttribute('class'); cl
 const clearCls = (node, className) => { const old = node.getAttribute('class'); node.classList.toggle(className, false); return old; };
 
 assert.strictEqual(typeof win.syncRootStateFlags, 'function', 'syncRootStateFlags is exposed');
+assert.strictEqual(typeof win.setDesktopTaskbarNetFlags, 'function', 'setDesktopTaskbarNetFlags is exposed');
 assert.ok(observerCallback && observeOptions.subtree && observeOptions.childList && observeOptions.attributeOldValue, 'observes the body subtree');
 assert.deepStrictEqual(observeOptions.attributeFilter, ['class'], 'only class attributes');
 assert.ok(!htmlEl.classList.contains('has-maximized-window') && !bodyEl.classList.contains('taskbar-orb'), 'flags start off');
@@ -246,17 +251,16 @@ galleryEl.inside.clear(); wrapperEl.inside.clear();
 observerCallback(attr(itemEl, clearCls(itemEl, 'context-open')));
 assert.ok(!galleryEl.classList.contains('has-context-open-item'), 'closing the menu clears it');
 
-// taskbar globe: traffic arrows and the ping wait
-const SEND = '#taskbarWebsocketIndicator .websocket-arrow-up:is(.active, .active-http, .streaming-up:not(.streaming-stalled-up))';
+// taskbar globe: traffic arrows are set from websocket.js; ping wait stays observed
+win.setDesktopTaskbarNetFlags({ send: true, recv: false });
+assert.ok(taskbarEl.classList.contains('net-send') && !taskbarEl.classList.contains('net-recv'), 'setDesktopTaskbarNetFlags sets .net-send');
 const LIMITED = '#taskbarWsStatus.ping-response-wait';
-taskbarEl.inside.add(SEND);
-observerCallback(attr(arrowUp, setCls(arrowUp, 'active')));
-assert.ok(taskbarEl.classList.contains('net-send') && !taskbarEl.classList.contains('net-recv'), 'up arrow flash sets .net-send');
 taskbarEl.inside.add(LIMITED);
 observerCallback(attr(wsStatus, setCls(wsStatus, 'ping-response-wait')));
 assert.ok(taskbarEl.classList.contains('net-limited'), 'ping wait sets .net-limited');
 taskbarEl.inside.clear();
-observerCallback([...attr(arrowUp, clearCls(arrowUp, 'active')), ...attr(wsStatus, clearCls(wsStatus, 'ping-response-wait'))]);
+observerCallback(attr(wsStatus, clearCls(wsStatus, 'ping-response-wait')));
+win.setDesktopTaskbarNetFlags({ send: false, recv: false, limited: false });
 assert.ok(!taskbarEl.classList.contains('net-send') && !taskbarEl.classList.contains('net-limited'), 'flags clear when the arrows rest');
 
 // window caption: only the window that changed is re-checked

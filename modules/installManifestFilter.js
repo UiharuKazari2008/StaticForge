@@ -77,11 +77,6 @@ function candidatePaths(projectRoot, webPath) {
     if (!rel || rel.split('/').includes('..')) {
         return out;
     }
-    if (webPath.startsWith('/cursors/')) {
-        const rest = webPath.slice('/cursors/'.length);
-        push(path.join('public', 'cursors', rest));
-        return out;
-    }
     if (webPath.startsWith('/sounds/vista/')) {
         let name = path.basename(webPath);
         try { name = decodeURIComponent(name); } catch (_) { /* keep raw */ }

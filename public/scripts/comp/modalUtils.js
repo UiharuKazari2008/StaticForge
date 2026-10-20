@@ -8681,41 +8681,6 @@ function syncDesktopSettingsGlassModeUI() {
     });
 }
 
-// Personalize → Cursors. Client-only preference applied at once (public/scripts/comp/desktopCursors.js)
-let desktopSettingsCursorSchemeWired = false;
-
-function syncDesktopSettingsCursorSchemeUI() {
-    const toggle = document.getElementById('desktopSettingsCursorSchemeToggle');
-    if (!toggle) return;
-    const scheme = desktopCursors.getScheme();
-    toggle.setAttribute('data-active', scheme);
-    toggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
-        btn.classList.toggle('active', btn.dataset.cursorScheme === scheme);
-    });
-}
-
-function setupDesktopSettingsCursorSchemeToggle() {
-    if (desktopSettingsCursorSchemeWired) {
-        return;
-    }
-    const toggle = document.getElementById('desktopSettingsCursorSchemeToggle');
-    if (!toggle) return;
-
-    toggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
-        btn.addEventListener('click', (e) => {
-            e.preventDefault();
-            const scheme = btn.dataset.cursorScheme;
-            if (!scheme) return;
-            // desktopCursors.setScheme: public/scripts/comp/desktopCursors.js
-            desktopCursors.setScheme(scheme);
-            syncDesktopSettingsCursorSchemeUI();
-        });
-    });
-    document.addEventListener('desktopCursorSchemeChanged', syncDesktopSettingsCursorSchemeUI);
-    syncDesktopSettingsCursorSchemeUI();
-    desktopSettingsCursorSchemeWired = true;
-}
-
 function setupDesktopSettingsGlassModeToggle() {
     if (desktopSettingsGlassModeWired) {
         return;
@@ -9466,8 +9431,6 @@ async function prepareDesktopSettingsForm(wallpaperPath = null) {
     updateDesktopSettingsVirtualKeyboardToggleUI(desktopSettingsGlobalState.virtualKeyboardEnabled);
     // desktopSounds.isEnabled: public/scripts/comp/desktopSounds.js
     updateDesktopSettingsSoundsToggleUI(desktopSounds.isEnabled());
-    // desktopCursors.getScheme: public/scripts/comp/desktopCursors.js
-    syncDesktopSettingsCursorSchemeUI();
     // syncImageGenerationSettingsUI: public/scripts/comp/imageGenerationSettings.js
     syncImageGenerationSettingsUI();
     if (typeof isAndroidNotificationBridgeDetected === 'function' && isAndroidNotificationBridgeDetected()) {
@@ -9581,8 +9544,6 @@ function registerDesktopSettingsControlPanelPages() {
     const GLOBAL_PAGES = [
         ['appearance', 'Window Color and Appearance', 'Windows and their glass',
             'How windows move and resize, and the frame glass: frosted, live or basic.'],
-        ['mouse', 'Mouse', 'Pointers',
-            'Choose the pointer scheme: Vista, Classic, or Posy.'],
         ['sound', 'Sound', 'Program sounds',
             'Windows Vista sounds for dialogs, errors, lock, logon, shutdown, navigation and the planet switcher.'],
         ['taskbar', 'Taskbar and Start Menu', 'Taskbar and Start Menu',
@@ -9778,7 +9739,6 @@ function initializeDesktopSettingsModal() {
     setupDesktopSettingsStartMenuLogoToggle();
     setupDesktopSettingsUseApplicationImageIcon();
     setupDesktopSettingsGlassModeToggle();
-    setupDesktopSettingsCursorSchemeToggle();
 
     // Setup button handlers
     setupDesktopSettingsButtonHandlers();

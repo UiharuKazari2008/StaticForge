@@ -1,10 +1,9 @@
 /**
- * Vista task monitor for pointers. A busy window gets wait (--c-wait) while
- * hovered. Other work remints the arrow to Working in Background (--c-progress).
- * Desktop mode only. Syncs from pending WS progress requests, generate flags,
- * Director, Explorer, replication, and gallery catchup.
+ * Busy-window a11y. Desktop mode only. Syncs from pending WS progress requests,
+ * generate flags, Director, Explorer, replication, and gallery catchup. Sets
+ * aria-busy on the owning window; does not remint pointers.
  *
- * Test: scripts/test-desktop-cursors.js. Yozora #457.
+ * Test: scripts/test-desktop-cursors.js. Yozora #457, #588.
  */
 (function () {
     'use strict';
@@ -186,13 +185,7 @@
         state.snapshot = snapshot;
         if (!doc || !doc.documentElement) return snapshot;
         const desktop = !!(win && win.isDesktop);
-        const progress = desktop && Object.keys(snapshot.background).length > 0;
-        if (progress) {
-            doc.documentElement.setAttribute('data-task-cursor', 'progress');
-        } else {
-            doc.documentElement.removeAttribute('data-task-cursor');
-        }
-        state.lastProgress = progress;
+        state.lastProgress = desktop && Object.keys(snapshot.background).length > 0;
 
         const next = snapshot.windows;
         Object.keys(state.lastWindows).forEach((id) => {

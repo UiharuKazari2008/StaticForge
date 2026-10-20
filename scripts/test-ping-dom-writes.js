@@ -94,24 +94,38 @@ function animEl(iterations) {
     node.anims = iterations === null ? [] : [{ effect: { target: node, getTiming: () => ({ iterations }) } }];
     return node;
 }
+const rafQueue = [];
 const sandbox = {
     document: { addEventListener: (type, fn) => { listeners[type] = fn; }, getAnimations: () => [] },
-    IntersectionObserver: class { constructor(cb) { ioCallback = cb; } observe(el) { observed.add(el); } unobserve(el) { observed.delete(el); } }
+    IntersectionObserver: class { constructor(cb) { ioCallback = cb; } observe(el) { observed.add(el); } unobserve(el) { observed.delete(el); } },
+    requestAnimationFrame: (fn) => { rafQueue.push(fn); return 1; }
 };
-new Function('document', 'IntersectionObserver', read('public/scripts/utils/offscreenAnimationPause.js'))(sandbox.document, sandbox.IntersectionObserver);
+new Function('document', 'IntersectionObserver', 'requestAnimationFrame', read('public/scripts/utils/offscreenAnimationPause.js'))(
+    sandbox.document, sandbox.IntersectionObserver, sandbox.requestAnimationFrame
+);
+function flushRaf() {
+    const queued = rafQueue.splice(0);
+    queued.forEach((fn) => fn());
+}
 
 const dot = animEl(Infinity);
 const fade = animEl(1);
+const named = animEl(Infinity);
 listeners.animationstart({ target: dot });
 listeners.animationstart({ target: fade });
+listeners.animationstart({ target: named, animationName: 'fade-in' });
 assert.ok(observed.has(dot) && !observed.has(fade), 'only looping animations are watched');
+assert.ok(!observed.has(named), 'one-shot animation names are ignored');
 ioCallback([{ target: dot, isIntersecting: false }]);
+flushRaf();
 assert.ok(dot.classList.contains('offscreen-paused'), 'off-screen loop is paused');
 ioCallback([{ target: dot, isIntersecting: true }]);
+flushRaf();
 assert.ok(!dot.classList.contains('offscreen-paused'), 'back on screen it runs again');
 ioCallback([{ target: dot, isIntersecting: false }]);
 dot.anims = [];
 listeners.animationcancel({ target: dot });
+flushRaf();
 assert.ok(!observed.has(dot) && !dot.classList.contains('offscreen-paused'), 'a cancelled loop (display: none) is unwatched and unflagged');
 
 console.log('test-ping-dom-writes: ok');

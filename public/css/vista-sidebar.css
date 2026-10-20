@@ -21,7 +21,7 @@ body:not(.desktop-mode) #vistaSidebar {
     font: inherit;
     min-width: 0;
     min-height: 0;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 .vsb button:disabled {
@@ -144,7 +144,7 @@ body:not(.desktop-mode) #vistaSidebar {
 .vsb .vsb-tool-options { height: 13px; background-image: url('/static_images/vista-sidebar/sidebar/tb-options.png'); }
 .vsb .vsb-tool-options:hover { background-position: 0 -13px; }
 .vsb .vsb-tool-options:active { background-position: 0 -26px; }
-.vsb .vsb-tool-grip { height: 19px; background: url('/static_images/vista-sidebar/sidebar/tb-grip.png') no-repeat; cursor: move; }
+.vsb .vsb-tool-grip { height: 19px; background: url('/static_images/vista-sidebar/sidebar/tb-grip.png') no-repeat; cursor: var(--c-move); }
 
 .vsb-gadget[data-docked="0"] {
     position: fixed;
@@ -489,7 +489,7 @@ body.desktop-mode .vsb-gadget[data-docked="0"] .vsb-notes-text:is(:hover, :focus
 }
 
 .vsb-notes-text[readonly] {
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 .vsb-notes:is(:hover, :focus-within) .vsb-notes-text {
@@ -711,7 +711,7 @@ body.desktop-mode:not(.windows-classic-theme) .vsb-notes:is(:hover, :focus-withi
     height: var(--vsb-vh);
     overflow: hidden;
     z-index: 1;
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 .vsb-slide-img {
@@ -1332,7 +1332,7 @@ body.desktop-mode:not(.windows-classic-theme) .vsb-notes:is(:hover, :focus-withi
     width: 22px;
     height: 23px;
     background: url('/static_images/vista-sidebar/sidebar/gallery-prev.png') 0 0 no-repeat;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 .vsb-gallery-page-next { background-image: url('/static_images/vista-sidebar/sidebar/gallery-next.png'); }
@@ -1425,7 +1425,7 @@ body.desktop-mode:not(.windows-classic-theme) .vsb-notes:is(:hover, :focus-withi
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 .vsb-gallery-chevron {

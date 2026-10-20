@@ -175,18 +175,6 @@ class CustomScrollbar {
     }
 
     observeNewElements() {
-        const observer = new MutationObserver((mutations) => {
-            mutations.forEach((mutation) => {
-                mutation.addedNodes.forEach((node) => this._initScrollHostsInNode(node));
-                mutation.removedNodes.forEach((node) => this._teardownScrollHostsInNode(node));
-            });
-        });
-
-        observer.observe(document.body, {
-            childList: true,
-            subtree: true
-        });
-
         document.addEventListener('staticforge:modal-lifecycle', (e) => {
             if (!e.detail || e.detail.type !== 'opened') return;
             const modal = e.detail.id ? document.getElementById(e.detail.id) : null;
@@ -473,6 +461,8 @@ class CustomScrollbar {
         const resizeObserver = new ResizeObserver(() => {
             // Clear cache when size changes
             this.maxScrollCache.delete(scrollableContent);
+            data._trackHeight = 0;
+            data._thumbTop = null;
             // Update scrollbar on any resize event - content or container size changes
             this._scheduleUpdateScrollbar(element);
         });
@@ -565,8 +555,8 @@ class CustomScrollbar {
                 const atTop = scrollTop <= 0;
                 const atBottom = scrollTop >= (maxScrollDistance - 1);
 
-                element.classList.toggle('scroll-top', atTop);
-                element.classList.toggle('scroll-end', atBottom);
+                if (scrollState.atTop !== atTop) element.classList.toggle('scroll-top', atTop);
+                if (scrollState.atBottom !== atBottom) element.classList.toggle('scroll-end', atBottom);
 
                 scrollState.needsScrollbar = true;
                 scrollState.atTop = atTop;
@@ -575,7 +565,8 @@ class CustomScrollbar {
 
             // Calculate thumb position for static height
             const thumbHeight = 80; // Height of the scrollbar thumb in pixels
-            const scrollbarTrackHeight = scrollbar.offsetHeight;
+            const scrollbarTrackHeight = data._trackHeight || scrollbar.offsetHeight;
+            data._trackHeight = scrollbarTrackHeight;
             const maxThumbPosition = scrollbarTrackHeight - thumbHeight;
 
             // Clamp scrollRatio between 0 and 1
@@ -585,21 +576,23 @@ class CustomScrollbar {
 
             // Update thumb position
             const isReversed = element.classList.contains('reverse-scroll');
+            let thumbTop;
             if (isReversed) {
-                // Clamp thumbTop to not exceed maxThumbPosition (negative for reversed)
-                const thumbTop = Math.max(-maxThumbPosition, Math.min(0, -1 * (scrollRatio * maxThumbPosition)));
-                // For reversed scrollbars, use bottom positioning
-                thumb.style.bottom = `${thumbTop}px`;
-                thumb.style.top = 'auto';
+                thumbTop = Math.max(-maxThumbPosition, Math.min(0, -1 * (scrollRatio * maxThumbPosition)));
+                if (data._thumbTop !== thumbTop) {
+                    data._thumbTop = thumbTop;
+                    thumb.style.bottom = `${thumbTop}px`;
+                    thumb.style.top = 'auto';
+                }
             } else {
-                // Clamp thumbTop to not exceed maxThumbPosition
-                const thumbTop = Math.max(0, Math.min(maxThumbPosition, scrollRatio * maxThumbPosition));
-                // For normal scrollbars, use top positioning
-                thumb.style.top = `${thumbTop}px`;
-                thumb.style.bottom = 'auto';
+                thumbTop = Math.max(0, Math.min(maxThumbPosition, scrollRatio * maxThumbPosition));
+                if (data._thumbTop !== thumbTop) {
+                    data._thumbTop = thumbTop;
+                    thumb.style.top = `${thumbTop}px`;
+                    thumb.style.bottom = 'auto';
+                }
             }
 
-            // Show scrollbar (no-op writes still queue mutation records)
             if (scrollbar.classList.contains('hidden')) scrollbar.classList.remove('hidden');
         } else {
             if (!skipScrollStateClasses && scrollState.needsScrollbar) {
@@ -609,8 +602,8 @@ class CustomScrollbar {
                 scrollState.atBottom = false;
             }
 
-            // Hide scrollbar when not needed
             if (!scrollbar.classList.contains('hidden')) scrollbar.classList.add('hidden');
+            data._thumbTop = null;
         }
 
         data.scrollState = scrollState;

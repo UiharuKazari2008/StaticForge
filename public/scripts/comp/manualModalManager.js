@@ -960,10 +960,29 @@ document.addEventListener('contextMenuAction', handleManualPreviewImageContextMe
 // MANUAL MODAL MANAGEMENT FUNCTIONS (MOVED FROM app.js)
 // ============================================================================
 
+let manualPreviewModalWidth = 0;
+let manualPreviewWidthObserver = null;
+
+function bindManualPreviewWidthObserver() {
+    if (manualPreviewWidthObserver || !manualModal || typeof ResizeObserver !== 'function') return;
+    manualPreviewWidthObserver = new ResizeObserver((entries) => {
+        const entry = entries[0];
+        if (!entry) return;
+        const next = Math.round(entry.contentRect.width);
+        if (next > 0) manualPreviewModalWidth = next;
+    });
+    manualPreviewWidthObserver.observe(manualModal);
+}
+
 function showManualPreview(setResolutionDimensions = false) {
-    // Check modal width for windowed modals, window width for non-windowed
+    if (manualModal.classList.contains('show-preview')) return;
+
+    bindManualPreviewWidthObserver();
     const isWindowed = manualModal.classList.contains('windowed');
-    const modalWidth = isWindowed ? manualModal.offsetWidth : window.innerWidth;
+    if (isWindowed && !manualPreviewModalWidth) {
+        manualPreviewModalWidth = manualModal.offsetWidth || 0;
+    }
+    const modalWidth = isWindowed ? (manualPreviewModalWidth || window.innerWidth) : window.innerWidth;
     const shouldShowPreview = modalWidth <= 1100;
 
     if (shouldShowPreview) {

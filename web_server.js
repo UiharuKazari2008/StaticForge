@@ -65,7 +65,6 @@ const melatonNetwork = require('./modules/melatonNetwork');
 const accountPictures = require('./modules/accountPictures');
 const { handleStatusStream } = require('./modules/statusStream');
 const desktopSoundsStatic = require('./modules/desktopSoundsStatic');
-const desktopCursorsStatic = require('./modules/desktopCursorsStatic');
 const installManifestFilter = require('./modules/installManifestFilter');
 const { browserRequest } = require('./modules/browserHttp');
 const { mountGrimoireBrowserBridge } = require('./modules/grimoireBrowserBridge');
@@ -1138,28 +1137,6 @@ async function generateCacheData(directory) {
             }
         }
 
-        // Cursor packs in public/cursors (Vista committed, Posy host-local), hashed via the /cursors route's resolver.
-        // desktopCursorsStatic.listCursorPackFiles: modules/desktopCursorsStatic.js
-        const cursorPack = desktopCursorsStatic.listCursorPackFiles(__dirname);
-        for (const cursor of cursorPack) {
-            if (assets.some((entry) => entry.path === cursor.webPath)) {
-                continue;
-            }
-            const cursorStats = await statOrNull(cursor.abs);
-            if (!cursorStats || !cursorStats.isFile()) continue;
-            const hash = await runtimeAssetService.hashServedFileIfChangedAsync(
-                cursor.abs,
-                cursorStats,
-                previousByPath.get(cursor.webPath)
-            );
-            assets.push({
-                path: cursor.webPath,
-                hash,
-                size: cursorStats.size,
-                modified: cursorStats.mtime.getTime()
-            });
-        }
-
         // Vista sound scheme (public/sounds/vista, whitelist). URLs match desktopSounds.js soundUrl
         // (encodeURIComponent), so the precache and install pack hold what the page asks for.
         // desktopSoundsStatic.ALLOWED_FILES: modules/desktopSoundsStatic.js
@@ -1217,8 +1194,7 @@ async function scanDirectory(dir, relFromPublic = '') {
         if (itemRel === 'sounds/vista' || itemRel.startsWith('sounds/vista/')) {
             continue;
         }
-        // public/cursors is hashed above via listCursorPackFiles (same files the /cursors route serves);
-        // skip it here so it is not listed twice.
+        // Cursor packs were dropped (#588). Skip a leftover public/cursors tree if one remains.
         if (itemRel === 'cursors' || itemRel.startsWith('cursors/')) {
             continue;
         }
@@ -4104,12 +4080,6 @@ async function handleAdminUnixSocketMessage(message, socket) {
         // Vista scheme WAVs from public/sounds/vista (allowlisted files are committed and in the manifest)
         app.get('/sounds/vista/:file', (req, res) => {
             desktopSoundsStatic.sendSound(req, res, __dirname);
-        });
-
-        // Cursor packs from public/cursors (Vista is committed; Posy is host-local).
-        // Both are rows in the install manifest when the files are on disk.
-        app.get('/cursors/:scheme/:file', (req, res) => {
-            desktopCursorsStatic.sendCursor(req, res, __dirname);
         });
 
         // Serve static files from public directory (after routes to avoid conflicts).

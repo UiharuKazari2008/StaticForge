@@ -1571,7 +1571,7 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
     color: #000;
     font: inherit;
     text-align: left;
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 .dove-inbox-flyout-row:hover {
@@ -1632,7 +1632,7 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
     color: #0066cc;
     font: inherit;
     text-align: left;
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 .dove-inbox-flyout-link:hover {

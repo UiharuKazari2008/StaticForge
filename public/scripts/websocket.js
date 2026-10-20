@@ -6421,10 +6421,6 @@ class WebSocketClient {
                     manualForm.classList.add('streaming');
                     // lockGenerationQuips: public/scripts/comp/generationQuips.js
                     lockGenerationQuips();
-                    // showManualPreview: public/scripts/comp/manualModalManager.js
-                    if (showManualPreview) {
-                        showManualPreview(true);
-                    }
                 }
 
                 manualPreviewImage.title = `Generating... Step ${stepNum}`;
@@ -9528,29 +9524,18 @@ class WebSocketClient {
         }
     }
 
-    // True when an element is actually shown (no layout reads — safe for deferred refresh).
+    // Class-only visibility (no getComputedStyle / checkVisibility — those force layout).
     _isWsFlashElementVisible(el) {
         if (!el || document.hidden) return false;
 
-        const modal = el.closest('.modal');
-        if (modal && (modal.classList.contains('hidden') || modal.classList.contains('hidden-alt'))) {
-            return false;
-        }
-
         let node = el;
         while (node && node !== document.documentElement) {
-            if (node.classList?.contains('hidden') || node.classList?.contains('hidden-alt')) {
-                return false;
-            }
-            const style = getComputedStyle(node);
-            if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0) {
+            if (node.classList?.contains('hidden')
+                || node.classList?.contains('hidden-alt')
+                || node.classList?.contains('minimised')) {
                 return false;
             }
             node = node.parentElement;
-        }
-
-        if (typeof el.checkVisibility === 'function') {
-            return el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
         }
         return true;
     }
@@ -9743,6 +9728,7 @@ class WebSocketClient {
         }
         timeoutStore[timeoutKey] = null;
         this._clearArrowFlashMeta(timeoutStore, timeoutKey);
+        this._syncTaskbarNetFlags();
     }
 
     _startArrowFlashTimer(arrow, timeoutStore, timeoutKey, activeClass, duration) {
@@ -9800,6 +9786,7 @@ class WebSocketClient {
 
         arrow.classList.add(activeClass);
         this._startArrowFlashTimer(arrow, timeoutStore, timeoutKey, activeClass, duration);
+        this._syncTaskbarNetFlags();
     }
 
     _touchHttpStream(direction) {
@@ -9870,6 +9857,23 @@ class WebSocketClient {
             this._httpStreamDownActive,
             this._httpStreamDownStalled
         );
+        this._syncTaskbarNetFlags();
+    }
+
+    _syncTaskbarNetFlags() {
+        const up = document.querySelector('#taskbarWebsocketIndicator .websocket-arrow-up');
+        const down = document.querySelector('#taskbarWebsocketIndicator .websocket-arrow-down');
+        const status = document.getElementById('taskbarWsStatus');
+        const upOn = !!(up && (up.classList.contains('active') || up.classList.contains('active-http')
+            || (up.classList.contains('streaming-up') && !up.classList.contains('streaming-stalled-up'))));
+        const downOn = !!(down && (down.classList.contains('active') || down.classList.contains('active-http')
+            || (down.classList.contains('streaming-down') && !down.classList.contains('streaming-stalled-down'))));
+        // setDesktopTaskbarNetFlags: public/scripts/comp/rootStateFlags.js
+        window.setDesktopTaskbarNetFlags({
+            send: upOn,
+            recv: downOn,
+            limited: !!(status && status.classList.contains('ping-response-wait'))
+        });
     }
 
     _teardownGenerationUiState() {
@@ -10017,6 +10021,7 @@ class WebSocketClient {
         }
         this._wsBurstUntilUp = 0;
         this._wsBurstUntilDown = 0;
+        this._syncTaskbarNetFlags();
     }
 
     // Handle service worker messages

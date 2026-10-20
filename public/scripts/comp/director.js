@@ -2058,6 +2058,13 @@ class Director {
     applyMessageFilter() {
         if (!this.directorChatMessages) return;
         const messages = this.directorChatMessages.querySelectorAll('.director-message, .director-message-captions');
+        if (this.messageFilter === 'all') {
+            if (!this._filterHidRows) return;
+            messages.forEach((message) => message.classList.remove('hidden'));
+            this._filterHidRows = false;
+            return;
+        }
+        this._filterHidRows = true;
         
         messages.forEach(message => {
             let shouldShow = true;
@@ -2235,6 +2242,7 @@ class Director {
                 row.classList.toggle('expanded');
                 row.dataset.autoOpen = '0';
                 const key = row.dataset.expandKey;
+                if (row.classList.contains('expanded')) this.ensureTraceRowMarkdown(row);
                 if (!key) return;
                 if (row.classList.contains('expanded')) this._expandedTrace.add(key);
                 else this._expandedTrace.delete(key);
@@ -5158,8 +5166,14 @@ class Director {
         const body = document.createElement('div');
         body.className = 'director-message-content';
         if (kind === 'assistant') {
-            body.dataset.raw = row.text || '';
-            body.innerHTML = this.processMarkdown(row.text || '');
+            const text = row.text || '';
+            body.dataset.raw = text;
+            if (String(expandKey || '').startsWith('live:')) {
+                setDirectorText(body, text);
+            } else {
+                body.innerHTML = this.processMarkdown(text);
+                body.dataset.md = '1';
+            }
         } else if (kind === 'tool') {
             const detail = row.detail || (row.text && row.text !== 'tool' && row.text !== toolLabel ? row.text : '');
             const line = document.createElement('div');
@@ -5175,7 +5189,12 @@ class Director {
             const full = document.createElement('div');
             full.className = 'director-thinking-full';
             full.dataset.raw = text;
-            full.innerHTML = this.processMarkdown(text);
+            if (messageDiv.classList.contains('expanded') && !String(expandKey || '').startsWith('live:')) {
+                full.innerHTML = this.processMarkdown(text);
+                full.dataset.md = '1';
+            } else {
+                full.textContent = text;
+            }
             body.append(line, full);
         }
         const plain = kind === 'thinking' ? (row.text || '') : (body.textContent || '');
@@ -5528,7 +5547,14 @@ class Director {
             setDirectorText(line, text);
             if (full && full.dataset.raw !== text) {
                 full.dataset.raw = text;
-                full.innerHTML = this.processMarkdown(text);
+                const live = String(el.dataset.expandKey || '').startsWith('live:');
+                if (el.classList.contains('expanded') && !live) {
+                    full.innerHTML = this.processMarkdown(text);
+                    full.dataset.md = '1';
+                } else {
+                    setDirectorText(full, text);
+                    full.dataset.md = '';
+                }
             }
             return true;
         }
@@ -5537,7 +5563,14 @@ class Director {
             const text = row.text || '';
             if (body && body.dataset.raw !== text) {
                 body.dataset.raw = text;
-                body.innerHTML = this.processMarkdown(text);
+                const live = String(el.dataset.expandKey || '').startsWith('live:');
+                if (!live) {
+                    body.innerHTML = this.processMarkdown(text);
+                    body.dataset.md = '1';
+                } else {
+                    setDirectorText(body, text);
+                    body.dataset.md = '';
+                }
             }
             return true;
         }
@@ -5548,6 +5581,22 @@ class Director {
             return true;
         }
         return false;
+    }
+
+    ensureTraceRowMarkdown(row) {
+        if (!row) return;
+        const full = row.querySelector('.director-thinking-full');
+        if (full && full.dataset.raw && full.dataset.md !== '1') {
+            full.innerHTML = this.processMarkdown(full.dataset.raw);
+            full.dataset.md = '1';
+        }
+        if (row.dataset.traceKind === 'assistant') {
+            const body = row.querySelector('.director-message-content');
+            if (body && body.dataset.raw && body.dataset.md !== '1') {
+                body.innerHTML = this.processMarkdown(body.dataset.raw);
+                body.dataset.md = '1';
+            }
+        }
     }
 
     renderLiveTrace(payload) {
@@ -5599,6 +5648,9 @@ class Director {
             }
         });
         this.applyMessageFilter();
+        if (!streaming) {
+            [...host.children].forEach((el) => this.ensureTraceRowMarkdown(el));
+        }
         this.notePendingPrint(payload.rows, payload.live);
         this.showTypingIndicator();
     }
@@ -5643,8 +5695,13 @@ class Director {
     directorChatVisible() {
         const chat = this.directorChatMessages;
         if (!chat || !chat.isConnected || document.hidden) return false;
-        if (chat.closest('.hidden, .minimised')) return false;
-        return chat.getClientRects().length > 0;
+        const modal = chat.closest('.modal');
+        if (modal && (modal.classList.contains('hidden')
+            || modal.classList.contains('hidden-alt')
+            || modal.classList.contains('minimised'))) {
+            return false;
+        }
+        return !chat.closest('.hidden, .hidden-alt, .minimised');
     }
 
     // A generation tool in the live trace means a print is on the way, until that many prints have landed this turn.

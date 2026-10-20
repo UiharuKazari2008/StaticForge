@@ -20,8 +20,7 @@
  * body.taskbar-luna                      | body:has(#desktopTaskbar .taskbar-start-button.luna)
  * .gallery.has-context-open-item,
  * .gallery-container-wrapper.has-context-open-item | :has(.gallery-item.context-open)
- * .desktop-taskbar.net-send              | .desktop-taskbar:has(#taskbarWebsocketIndicator .websocket-arrow-up:is(.active, .active-http, .streaming-up:not(.streaming-stalled-up)))
- * .desktop-taskbar.net-recv              | .desktop-taskbar:has(#taskbarWebsocketIndicator .websocket-arrow-down:is(.active, .active-http, .streaming-down:not(.streaming-stalled-down)))
+ * .desktop-taskbar.net-send / net-recv   | set from websocket.js _syncTaskbarNetFlags (not observed)
  * .desktop-taskbar.net-limited           | .desktop-taskbar:has(#taskbarWsStatus.ping-response-wait)
  * .modal.window-has-caption              | .modal:has(> .modal-window-title)   (CSS uses it inside :where(), same specificity)
  * .manual-preview-container.has-workspace-overlay | :has(.manual-preview-workspace-overlay:not(.hidden))
@@ -45,8 +44,6 @@
         { host: 'body', className: 'taskbar-orb', selector: '#desktopTaskbar .taskbar-start-button.orb', watch: ['taskbar-start-button'] },
         { host: 'body', className: 'taskbar-luna', selector: '#desktopTaskbar .taskbar-start-button.luna', watch: ['taskbar-start-button'] },
         { host: '.gallery, .gallery-container-wrapper', className: 'has-context-open-item', selector: '.gallery-item.context-open', watch: ['context-open', 'gallery', 'gallery-container-wrapper'] },
-        { host: '.desktop-taskbar', className: 'net-send', selector: '#taskbarWebsocketIndicator .websocket-arrow-up:is(.active, .active-http, .streaming-up:not(.streaming-stalled-up))', watch: ['websocket-arrow-up', 'websocket-indicator', 'desktop-taskbar'] },
-        { host: '.desktop-taskbar', className: 'net-recv', selector: '#taskbarWebsocketIndicator .websocket-arrow-down:is(.active, .active-http, .streaming-down:not(.streaming-stalled-down))', watch: ['websocket-arrow-down', 'websocket-indicator', 'desktop-taskbar'] },
         { host: '.desktop-taskbar', className: 'net-limited', selector: '#taskbarWsStatus.ping-response-wait', watch: ['ping-response-wait', 'desktop-taskbar'] },
         { host: '.modal', className: 'window-has-caption', selector: ':scope > .modal-window-title', watch: ['modal-window-title', 'modal'] },
         { host: '.manual-preview-container', className: 'has-workspace-overlay', selector: '.manual-preview-workspace-overlay:not(.hidden)', watch: ['manual-preview-workspace-overlay', 'manual-preview-container'] },
@@ -189,7 +186,16 @@
         });
     }
 
+    function setDesktopTaskbarNetFlags(flags) {
+        const bar = document.querySelector('.desktop-taskbar');
+        if (!bar) return;
+        setClass(bar, 'net-send', !!flags.send);
+        setClass(bar, 'net-recv', !!flags.recv);
+        if (flags.limited !== undefined) setClass(bar, 'net-limited', !!flags.limited);
+    }
+
     window.syncRootStateFlags = syncRootStateFlags;
+    window.setDesktopTaskbarNetFlags = setDesktopTaskbarNetFlags;
 
     if (document.body) {
         start();

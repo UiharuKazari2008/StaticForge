@@ -222,7 +222,20 @@ async function flushClientPerfSample(reason = 'interval') {
     return sample;
 }
 
+function clientPerfShouldSampleFrames() {
+    // isGenerating: public/scripts/comp/generationOrchestrator.js
+    if (typeof isGenerating !== 'undefined' && isGenerating) return false;
+    // directorInstance: public/scripts/comp/director.js
+    if (typeof directorInstance !== 'undefined' && directorInstance && directorInstance._running) return false;
+    return true;
+}
+
 function sampleClientPerfFrame(timestamp) {
+    if (!clientPerfShouldSampleFrames()) {
+        clientPerfState.frameRafId = 0;
+        clientPerfState.lastFrameAt = 0;
+        return;
+    }
     if (clientPerfState.lastFrameAt) {
         clientPerfState.frameTimes.push(Math.round((timestamp - clientPerfState.lastFrameAt) * 100) / 100);
     }
@@ -232,6 +245,7 @@ function sampleClientPerfFrame(timestamp) {
 
 function startClientPerfFrameWindow() {
     if (clientPerfState.frameRafId) return;
+    if (!clientPerfShouldSampleFrames()) return;
     clientPerfState.lastFrameAt = 0;
     clientPerfState.frameRafId = requestAnimationFrame(sampleClientPerfFrame);
     clientPerfState.frameWindowTimer = setTimeout(() => {

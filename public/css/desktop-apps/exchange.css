@@ -84,7 +84,7 @@
 }
 
 [data-dsap="exchange"] .exchange-from-list summary {
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 [data-dsap="exchange"] .exchange-from-addresses {

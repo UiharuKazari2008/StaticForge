@@ -1093,7 +1093,7 @@ body.desktop-mode:not(.windows-classic-theme) .modal:not(.modal-maximized):not(#
     border: 1px solid #8e8f8f;
     border-radius: 2px;
     background: #f3f3f3 url("/static_images/vista-icons/volume-high-16.png") center / 16px 16px no-repeat;
-    cursor: pointer;
+    cursor: var(--c-pointer);
     outline: none;
 }
 
