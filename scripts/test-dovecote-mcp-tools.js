@@ -322,6 +322,43 @@ async function main() {
     assert.strictEqual(tooBig.isError, true);
     assert.strictEqual(textOf(tooBig).code, 'ATTACHMENT_TOO_LARGE');
 
+    // list_mail pages with a cursor; folder unread/total are not the page size.
+    for (let i = 0; i < 12; i++) {
+        await callTool(gr, reqFor('Menma'), 'send_mail', {
+            to: 'frost', subject: 'page-' + i, body: 'n'
+        });
+    }
+    const page1 = textOf(await callTool(gr, reqFor('Frost'), 'list_mail', { folder: 'inbox', limit: 5 }));
+    assert.strictEqual(page1.mail.length, 5);
+    assert.strictEqual(page1.hasMore, true);
+    assert.ok(page1.nextCursor);
+    assert.ok(page1.total >= 12);
+    assert.ok(page1.unread >= 12);
+    const page2 = textOf(await callTool(gr, reqFor('Frost'), 'list_mail', {
+        folder: 'inbox', limit: 5, cursor: page1.nextCursor
+    }));
+    assert.strictEqual(page2.mail.length, 5);
+    const page1Ids = new Set(page1.mail.map((row) => row.id));
+    page2.mail.forEach((row) => assert.ok(!page1Ids.has(row.id)));
+
+    const batchIds = page1.mail.map((row) => row.id);
+    const batchMark = textOf(await callTool(gr, reqFor('Frost'), 'mark_mail', { ids: batchIds, read: true }));
+    assert.strictEqual(batchMark.updated, 5);
+    assert.strictEqual(batchMark.mail.length, 5);
+    const otherOwns = textOf(await callTool(gr, reqFor('Rook'), 'mark_mail', { ids: batchIds, read: false }));
+    assert.strictEqual(otherOwns.success, false);
+
+    const batchFwd = textOf(await callTool(gr, reqFor('Frost'), 'forward_mail', {
+        ids: batchIds.slice(0, 2), to: 'sala'
+    }));
+    assert.strictEqual(batchFwd.updated, 2);
+    assert.strictEqual(batchFwd.forwarded.length, 2);
+
+    const del = textOf(await callTool(gr, reqFor('Frost'), 'delete_mail', { ids: batchIds.slice(0, 2) }));
+    assert.strictEqual(del.updated, 2);
+    const frostInbox = textOf(await callTool(gr, reqFor('Frost'), 'list_mail', { folder: 'inbox', limit: 1 }));
+    assert.ok(frostInbox.total < page1.total);
+
     console.log('dovecote MCP tool tests passed');
 }
 

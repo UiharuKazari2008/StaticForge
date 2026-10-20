@@ -137,14 +137,14 @@ const MODULE_DEFS = {
         label: 'Dovecote Mail',
         description: 'Own-mailbox-only internal mail (send, list, read, mark, forward) plus a per-mailbox new-mail webhook. Tsubame (mailroom role) may list/read/purge/rescue Spam in every mailbox, including Yukimi (Spam-only), and move Inbox↔Spam in other bots.',
         tools: [
-            'send_mail', 'list_mail', 'read_mail', 'mark_mail', 'forward_mail',
+            'send_mail', 'list_mail', 'read_mail', 'mark_mail', 'delete_mail', 'forward_mail',
             'set_mailbox_webhook', 'get_mailbox_webhook', 'clear_mailbox_webhook',
             'mailroom_forward_mail', 'mailroom_move_mail', 'mailroom_list_mail', 'mailroom_read_mail', 'mailroom_purge_mail'
         ],
         submodules: {
             send: ['send_mail', 'forward_mail'],
             read: ['list_mail', 'read_mail'],
-            mark: ['mark_mail'],
+            mark: ['mark_mail', 'delete_mail'],
             webhook: ['set_mailbox_webhook', 'get_mailbox_webhook', 'clear_mailbox_webhook'],
             mailroom: [
                 'mailroom_forward_mail', 'mailroom_move_mail',

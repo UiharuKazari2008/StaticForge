@@ -181,6 +181,7 @@ const TOOL_RATE_GROUPS = {
     mailroom_read_mail: 'mail',
     mailroom_purge_mail: 'write',
     mark_mail: 'mail',
+    delete_mail: 'mail',
     list_mail: 'mail',
     read_mail: 'mail',
     get_mailbox_webhook: 'mail',

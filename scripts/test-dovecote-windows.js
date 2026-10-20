@@ -139,7 +139,9 @@ function main() {
     assert.match(dovecoteJs, /action: 'dove-row-open-window'/);
     assert.match(dovecoteJs, /action: 'dove-row-reply'/);
     assert.match(dovecoteJs, /action: 'dove-row-forward'/);
-    assert.match(dovecoteJs, /action: 'dove-row-toggle-read'/);
+    assert.match(dovecoteJs, /action: 'dove-row-mark-read'/);
+    assert.match(dovecoteJs, /action: 'dove-row-mark-unread'/);
+    assert.match(dovecoteJs, /action: 'dove-row-restore'/);
     assert.match(dovecoteJs, /action: 'dove-row-archive'/);
     assert.match(dovecoteJs, /action: 'dove-row-delete'/);
 

@@ -55,15 +55,20 @@ async function handleListMail(handlersCtx, ws, message) {
         const mail = dovecoteMail.listMail(owner, {
             folder: message.folder,
             unreadOnly: message.unreadOnly === true,
-            limit: message.limit
+            limit: message.limit,
+            cursor: message.cursor
         });
         handlersCtx.sendToClient(ws, {
             type: 'dovecote_list_mail_response',
             requestId: message.requestId,
-            data: { owner, mail },
+            data: { owner, mail, ...dovecoteMail.listPageMeta(mail) },
             timestamp: new Date().toISOString()
         });
     } catch (error) {
+        if (error instanceof dovecoteMail.DovecoteError) {
+            handlersCtx.sendError(ws, error.message, error.code, message.requestId);
+            return;
+        }
         handlersCtx.sendError(ws, 'Failed to list mail', error.message, message.requestId);
     }
 }
@@ -75,7 +80,9 @@ async function handleGetMail(handlersCtx, ws, message) {
             return;
         }
         const owner = resolveViewOwner(message);
-        const mail = dovecoteMail.readMail(owner, message.id);
+        const mail = dovecoteMail.readMail(owner, message.id, {
+            markRead: message.markRead !== false
+        });
         if (!mail) {
             handlersCtx.sendError(ws, 'Message not found', 'MESSAGE_NOT_FOUND', message.requestId);
             return;
@@ -122,31 +129,47 @@ async function handleRenderBody(handlersCtx, ws, message) {
     }
 }
 
+function markPatchFromMessage(message) {
+    return {
+        id: message.id,
+        ids: message.ids,
+        read: typeof message.read === 'boolean' ? message.read : undefined,
+        archived: typeof message.archived === 'boolean' ? message.archived : undefined,
+        deleted: typeof message.deleted === 'boolean' ? message.deleted : undefined,
+        archiveSubfolder: message.archiveSubfolder,
+        spam: typeof message.spam === 'boolean' ? message.spam : undefined
+    };
+}
+
+function isBatchIds(message) {
+    return Array.isArray(message.ids) && message.ids.length > 0;
+}
+
 async function handleMarkMail(handlersCtx, ws, message) {
     try {
-        if (!message.id) {
+        if (!message.id && !isBatchIds(message)) {
             handlersCtx.sendError(ws, 'Message id is required', 'dovecote_mark_mail', message.requestId);
             return;
         }
-        const mail = dovecoteMail.markMail(dovecoteMail.HUMAN_OWNER, {
-            id: message.id,
-            read: typeof message.read === 'boolean' ? message.read : undefined,
-            archived: typeof message.archived === 'boolean' ? message.archived : undefined,
-            deleted: typeof message.deleted === 'boolean' ? message.deleted : undefined,
-            archiveSubfolder: message.archiveSubfolder,
-            spam: typeof message.spam === 'boolean' ? message.spam : undefined
-        });
-        if (!mail) {
+        const batch = isBatchIds(message);
+        const result = dovecoteMail.markMailBatch(dovecoteMail.HUMAN_OWNER, markPatchFromMessage(message));
+        if (!result.updated) {
             handlersCtx.sendError(ws, 'Message not found', 'MESSAGE_NOT_FOUND', message.requestId);
             return;
         }
         handlersCtx.sendToClient(ws, {
             type: 'dovecote_mark_mail_response',
             requestId: message.requestId,
-            data: { mail },
+            data: batch
+                ? { mail: result.mail, missing: result.missing, updated: result.updated }
+                : { mail: result.mail[0] },
             timestamp: new Date().toISOString()
         });
     } catch (error) {
+        if (error instanceof dovecoteMail.DovecoteError) {
+            handlersCtx.sendError(ws, error.message, error.code, message.requestId);
+            return;
+        }
         handlersCtx.sendError(ws, 'Failed to mark mail', error.message, message.requestId);
     }
 }
@@ -197,19 +220,25 @@ async function handleSendMail(handlersCtx, ws, message) {
 
 async function handleForwardMail(handlersCtx, ws, message) {
     try {
-        if (!message.id || !message.to) {
+        if ((!message.id && !isBatchIds(message)) || !message.to) {
             handlersCtx.sendError(ws, 'Message id and recipient are required', 'dovecote_forward_mail', message.requestId);
             return;
         }
-        const result = dovecoteMail.forwardMail(dovecoteMail.HUMAN_OWNER, { id: message.id, to: message.to });
-        if (!result) {
+        const batch = isBatchIds(message);
+        const result = dovecoteMail.forwardMailBatch(dovecoteMail.HUMAN_OWNER, {
+            id: message.id, ids: message.ids, to: message.to
+        });
+        if (!result.updated) {
             handlersCtx.sendError(ws, 'Message not found', 'MESSAGE_NOT_FOUND', message.requestId);
             return;
         }
+        const data = batch
+            ? { success: true, forwarded: result.forwarded, missing: result.missing, updated: result.updated, to: result.to }
+            : { success: true, ...result.forwarded[0] };
         handlersCtx.sendToClient(ws, {
             type: 'dovecote_forward_mail_response',
             requestId: message.requestId,
-            data: { success: true, ...result },
+            data,
             timestamp: new Date().toISOString()
         });
     } catch (error) {
@@ -290,9 +319,12 @@ function bindMailboxPush(handlersCtx) {
             }));
             const inbox = {};
             const unreadInbox = {};
+            const inboxMeta = {};
             owners.forEach((owner) => {
                 // silent: this snapshot is the browser push, not a mailbox-owner list_mail.
-                inbox[owner] = dovecoteMail.listMail(owner, { folder: 'inbox', limit: PUSH_INBOX_LIMIT, silent: true });
+                const listed = dovecoteMail.listMail(owner, { folder: 'inbox', limit: PUSH_INBOX_LIMIT, silent: true });
+                inbox[owner] = listed;
+                inboxMeta[owner] = dovecoteMail.listPageMeta(listed);
                 unreadInbox[owner] = dovecoteMail.listMail(owner, { folder: 'inbox', unreadOnly: true, limit: PUSH_UNREAD_LIMIT, silent: true });
             });
             // Any authenticated socket receives this snapshot (pre-existing
@@ -301,7 +333,7 @@ function bindMailboxPush(handlersCtx) {
             // app-key socket is confirmed not to depend on it.
             wsServer.broadcast({
                 type: 'dovecote_mailbox_updated',
-                data: { owners, mailboxes, inbox, unreadInbox },
+                data: { owners, mailboxes, inbox, inboxMeta, unreadInbox },
                 timestamp: new Date().toISOString()
             }, (clientInfo) => !!(clientInfo && clientInfo.authenticated));
         } catch (err) {
