@@ -21,7 +21,13 @@ const JAIL_ENV_KEYS = [
     'NO_COLOR', 'NO_OPEN_BROWSER', 'GIT_TERMINAL_PROMPT',
     'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_DATA_HOME', 'XDG_RUNTIME_DIR',
     'CURSOR_CONFIG_DIR',
-    'DREAMSCAPE_MCP_URL', 'DREAMSCAPE_MCP_KEY'
+    'DREAMSCAPE_MCP_URL', 'DREAMSCAPE_MCP_KEY',
+    // TokenRouter bridge (#409): Claude CLI talks to modules/tokenRouterBridge.js.
+    'ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_CUSTOM_HEADERS',
+    'ANTHROPIC_DEFAULT_OPUS_MODEL', 'ANTHROPIC_DEFAULT_SONNET_MODEL',
+    'ANTHROPIC_DEFAULT_HAIKU_MODEL', 'ANTHROPIC_SMALL_FAST_MODEL',
+    'CLAUDE_CODE_SUBAGENT_MODEL', 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC',
+    'MAX_MCP_OUTPUT_TOKENS'
 ];
 const JAIL_ENV_ALLOW = new Set(JAIL_ENV_KEYS);
 
@@ -230,6 +236,15 @@ function mountPlan(entries) {
     };
 }
 
+function sanitizeLaunchRuntime(value) {
+    const text = String(value || '').trim().toLowerCase();
+    return text === 'claude' || text === 'tokenrouter' ? text : 'cursor';
+}
+
+function usesClaudeCli(runtime) {
+    return runtime === 'claude' || runtime === 'tokenrouter';
+}
+
 function refuseWholeHome(dir) {
     const resolved = path.resolve(dir);
     if (resolved === path.resolve(os.homedir())) {
@@ -241,7 +256,7 @@ function refuseWholeHome(dir) {
 
 function buildLaunch(options) {
     const opts = options || {};
-    const runtime = opts.runtime === 'claude' ? 'claude' : 'cursor';
+    const runtime = sanitizeLaunchRuntime(opts.runtime);
     const bwrapBin = opts.bwrapBin || director().findBwrap();
     if (!bwrapBin) {
         const error = new Error('bubblewrap (bwrap) is not installed on this host');
@@ -268,10 +283,14 @@ function buildLaunch(options) {
     let agent = null;
     let claudeBin = null;
     if (useBinary) {
-        if (runtime === 'claude') {
+        if (usesClaudeCli(runtime)) {
             claudeBin = opts.agentBin || director().findClaude();
             if (!claudeBin) {
-                const error = new Error('Claude Code is not installed on this host');
+                const error = new Error(
+                    runtime === 'tokenrouter'
+                        ? 'Claude Code is not installed on this host, and the TokenRouter engine runs on it'
+                        : 'Claude Code is not installed on this host'
+                );
                 error.code = 'CLAUDE_MISSING';
                 throw error;
             }
@@ -290,6 +309,8 @@ function buildLaunch(options) {
 
     // Cursor carries an account credential seeded into a jailed CLI config.
     // Claude carries no account state here: auth is the mounted token file below.
+    // TokenRouter uses the Claude CLI against the loopback bridge — no OAuth token,
+    // no Cursor account. The bridge secret arrives in extraEnv.
     let credential = { accountId: null, auth: {}, keyFile: null, storedKey: '' };
     let authFile = null;
     let jailConfig = null;
@@ -301,7 +322,7 @@ function buildLaunch(options) {
             error.code = 'CLAUDE_TOKEN_MISSING';
             throw error;
         }
-    } else {
+    } else if (runtime !== 'tokenrouter') {
         credential = loadActiveCredential(opts);
         const hostConfig = path.join(runHome, '.config', 'cursor');
         authFile = seedConfig(hostConfig, credential);
@@ -429,6 +450,8 @@ module.exports = {
     resolveHomeAccess,
     resolveClaudeTokenFile,
     loadActiveCredential,
+    sanitizeLaunchRuntime,
+    usesClaudeCli,
     buildLaunch,
     spawnLaunch,
     hostSpawnEnv

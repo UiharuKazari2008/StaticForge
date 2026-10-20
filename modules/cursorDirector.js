@@ -1133,18 +1133,13 @@ function requireTokenRouterKey(gr) {
     throw error;
 }
 
-// Claude CLI jail for a TokenRouter turn: the Claude binary, no OAuth token, and
-// the bridge address and per-boot secret. run: { model, effort }.
-async function tokenRouterJail(jail, run) {
-    const claudeBin = findClaude();
-    if (!claudeBin) {
-        const error = new Error('Claude Code is not installed on this host, and the TokenRouter engine runs on it');
-        error.code = 'CLAUDE_MISSING';
-        throw error;
-    }
-    const link = await tokenRouter.ensureBridge();
-    const target = claudeJailTarget(claudeBin, JAIL_CLAUDE_ROOT);
-    const env = {
+// Claude CLI env for a TokenRouter turn (Wren jail or Xi sandbox). The CLI talks
+// to the loopback bridge; the TokenRouter key never enters the process.
+// run: { model, effort, lane }.
+function tokenRouterCliEnv(link, run) {
+    const headers = [`x-dreamscape-lane: ${run.lane === 'normal' ? 'normal' : 'interactive'}`];
+    if (run.effort) headers.push(`x-dreamscape-effort: ${run.effort}`);
+    return {
         ANTHROPIC_BASE_URL: link.url,
         ANTHROPIC_AUTH_TOKEN: link.secret,
         // Background and subagent calls stay on the picked model, never a Claude id.
@@ -1156,12 +1151,24 @@ async function tokenRouterJail(jail, run) {
         CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
         // Big Dreamscape results (user_interests is ~80 KB) otherwise come back
         // as a 2 KB preview plus a file path the model never opens.
-        MAX_MCP_OUTPUT_TOKENS: '60000'
+        MAX_MCP_OUTPUT_TOKENS: '60000',
+        // Newline-separated; the bridge reads both (effort -> reasoning_effort, lane -> modules/tokenRouterGate.js).
+        ANTHROPIC_CUSTOM_HEADERS: headers.join('\n')
     };
-    // Newline-separated; the bridge reads both (effort -> reasoning_effort, lane -> modules/tokenRouterGate.js).
-    const headers = [`x-dreamscape-lane: ${run.lane === 'normal' ? 'normal' : 'interactive'}`];
-    if (run.effort) headers.push(`x-dreamscape-effort: ${run.effort}`);
-    env.ANTHROPIC_CUSTOM_HEADERS = headers.join('\n');
+}
+
+// Claude CLI jail for a TokenRouter turn: the Claude binary, no OAuth token, and
+// the bridge address and per-boot secret. run: { model, effort }.
+async function tokenRouterJail(jail, run) {
+    const claudeBin = findClaude();
+    if (!claudeBin) {
+        const error = new Error('Claude Code is not installed on this host, and the TokenRouter engine runs on it');
+        error.code = 'CLAUDE_MISSING';
+        throw error;
+    }
+    const link = await tokenRouter.ensureBridge();
+    const target = claudeJailTarget(claudeBin, JAIL_CLAUDE_ROOT);
+    const env = tokenRouterCliEnv(link, run);
     const args = jail.args.slice();
     // Mount the binary with the other binds. --setenv must follow --clearenv:
     // buildJail clears the environment after --chdir, and bwrap drops any
@@ -6535,7 +6542,7 @@ module.exports = {
         noteClaudeUsage, claudeUsageSummary, claudeUsageAt, availableClaudeModels,
         updateAgentClis, runCliUpdate, describeCliUpdate, cliAtLeast,
         sanitizeEngine, resolveClaudeRun, publicClaudeCatalog, consumeClaudeStreamLine, claudeToolName, claudeJail, chatAgentSession,
-        usesClaudeCli, publicTokenRouterCatalog, resolveTokenRouterRun, tokenRouterJail, spawnClaude,
+        usesClaudeCli, publicTokenRouterCatalog, resolveTokenRouterRun, tokenRouterCliEnv, tokenRouterJail, requireTokenRouterKey, spawnClaude,
         sanitizeRentanAgent, rentanAgentFor, saveRentanAgentDefault, rentanAgentPath, claimDynagenChat, rentanFallback,
         publicSession, publicMessage, publicTraceRow, roundModelRecord, watchGeneratedPrints, rememberGeneratedPrint,
         isLinkDrop, continuationPrompt,

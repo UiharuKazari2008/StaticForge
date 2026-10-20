@@ -2,8 +2,8 @@
  * Resolves an MCP caller's request into a Dovecote mailbox owner. Never
  * reads anything client-supplied — only req.applicationAuth (set by
  * modules/auth.js from the application key) and, for the shared "Xi" key
- * that Cursor- and Claude-runtime jobs both use, the currently active Xi
- * session's runtime (modules/xiDirector.js, #395's runtime picker).
+ * that Cursor-, Claude-, and TokenRouter-runtime jobs all use, the currently
+ * active Xi session's runtime (modules/xiDirector.js, #395's runtime picker).
  */
 
 'use strict';
