@@ -160,9 +160,10 @@ function main() {
     // Mailbox changes push once (send, first read, not a second read of the same row).
     const handler = require('../modules/ws/handlers/250-dovecoteHandler');
     const broadcasts = [];
+    const broadcastFilters = [];
     handler.registerPackets({
         globalResources: {
-            getWebSocketServer: () => ({ broadcast: (msg) => broadcasts.push(msg) })
+            getWebSocketServer: () => ({ broadcast: (msg, filter) => { broadcasts.push(msg); broadcastFilters.push(filter); } })
         }
     });
     broadcasts.length = 0;
@@ -178,6 +179,26 @@ function main() {
     assert.ok(Array.isArray(broadcasts[0].data.inbox.sala));
     assert.ok(broadcasts[0].data.inbox.sala.some((row) => row.subject === 'push'));
     assert.ok(Array.isArray(broadcasts[0].data.unreadInbox.sala));
+    // Yukimi-approved: the all-mailbox snapshot reaches only cookie sessions.
+    // An app-key socket (e.g. Rook's sfapp_dovecote key) must not get sala's inbox.
+    const snapFilter = broadcastFilters[0];
+    assert.strictEqual(typeof snapFilter, 'function');
+    const appKeySocket = { authenticated: true, userType: 'admin', authMethod: 'application_key', applicationKeyId: 'k-rook', applicationScopes: ['sfapp_dovecote'], sessionId: 'appkey:k-rook' };
+    const appKeyNoMethod = { authenticated: true, userType: 'admin', applicationKeyId: 'k-rook', sessionId: 'appkey:k-rook' };
+    const replicationSocket = { authenticated: true, userType: 'readonly', authMethod: 'replication_token', replicationReadOnly: true, sessionId: 'replication:abcd1234' };
+    const browserSocket = { authenticated: true, userType: 'admin', sessionId: 'sess-cookie-1' };
+    const readonlyBrowser = { authenticated: true, userType: 'readonly', sessionId: 'sess-cookie-2' };
+    const anon = { authenticated: false, sessionId: null };
+    assert.strictEqual(snapFilter(appKeySocket), false);
+    assert.strictEqual(snapFilter(appKeyNoMethod), false);
+    assert.strictEqual(snapFilter(replicationSocket), false);
+    assert.strictEqual(snapFilter(anon), false);
+    assert.strictEqual(snapFilter(browserSocket), true);
+    assert.strictEqual(snapFilter(readonlyBrowser), true);
+    // Simulate delivery: the app-key socket receives nothing (no other mailbox data).
+    const received = [appKeySocket, browserSocket].map((c) => (snapFilter(c) ? broadcasts[0] : null));
+    assert.strictEqual(received[0], null);
+    assert.ok(received[1].data.inbox.sala.some((row) => row.subject === 'push'));
     assert.ok(pushed.id);
     const listMailAfterPush = dovecoteDatabase.getDb().prepare(
         "SELECT COUNT(*) AS n FROM dovecote_audit_log WHERE action = 'list_mail' AND actor = 'sala'"

@@ -304,6 +304,15 @@ async function handleGetAttachment(handlersCtx, ws, message) {
 const PUSH_INBOX_LIMIT = 50;
 const PUSH_UNREAD_LIMIT = 24;
 
+function isMailboxSnapshotRecipient(clientInfo) {
+    if (!clientInfo || clientInfo.authenticated !== true) return false;
+    if (clientInfo.authMethod === 'application_key' || clientInfo.authMethod === 'replication_token') return false;
+    if (clientInfo.applicationKeyId || clientInfo.applicationScopes || clientInfo.applicationAuth || clientInfo.replicationReadOnly) return false;
+    const sid = String(clientInfo.sessionId || '');
+    if (!sid || sid.startsWith('appkey:') || sid.startsWith('replication:')) return false;
+    return clientInfo.userType === 'admin' || clientInfo.userType === 'readonly';
+}
+
 function bindMailboxPush(handlersCtx) {
     // setMailboxChangedListener: modules/dovecoteMail.js — WS and MCP writes share this
     dovecoteMail.setMailboxChangedListener((owners) => {
@@ -327,15 +336,14 @@ function bindMailboxPush(handlersCtx) {
                 inboxMeta[owner] = dovecoteMail.listPageMeta(listed);
                 unreadInbox[owner] = dovecoteMail.listMail(owner, { folder: 'inbox', unreadOnly: true, limit: PUSH_UNREAD_LIMIT, silent: true });
             });
-            // Any authenticated socket receives this snapshot (pre-existing
-            // filter). Bots should use the per-mailbox webhook instead.
-            // TODO(menma): restrict to browser/admin sessions once Director's
-            // app-key socket is confirmed not to depend on it.
+            // All-mailbox snapshot: Yukimi's own cookie-session sockets only
+            // (browser / user login). Never app-key (sfapp_) or replication
+            // sockets; bots use the per-mailbox webhook (#598).
             wsServer.broadcast({
                 type: 'dovecote_mailbox_updated',
                 data: { owners, mailboxes, inbox, inboxMeta, unreadInbox },
                 timestamp: new Date().toISOString()
-            }, (clientInfo) => !!(clientInfo && clientInfo.authenticated));
+            }, isMailboxSnapshotRecipient);
         } catch (err) {
             console.error('Dovecote mailbox push failed:', err.message);
         }
@@ -367,5 +375,6 @@ function registerPackets(handlersCtx) {
 }
 
 module.exports = {
+    isMailboxSnapshotRecipient,
     registerPackets
 };
