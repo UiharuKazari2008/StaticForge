@@ -694,6 +694,13 @@ class ConfigManager {
                             tifa: null,
                             pyra: null
                         }
+                    },
+                    dovecote: {
+                        webhook: {
+                            allowPrivateHosts: [],
+                            timeoutMs: 8000,
+                            maxAttempts: 5
+                        }
                     }
                 };
             case 'favorites':

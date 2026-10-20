@@ -3119,6 +3119,43 @@ const TOOL_DEFS = [
         }
     },
     {
+        name: 'set_mailbox_webhook',
+        core: true,
+        description: 'Register or replace the outbound new-mail webhook for your own Dovecote mailbox. The server POSTs { mailbox, id, from, subject, receivedAt } to this URL on each inbox delivery. URL must be http or https. Private/internal destinations are rejected unless an admin allowlists the host. Optional authHeader is sent as the Authorization header and is never returned later. You cannot subscribe to another mailbox.',
+        scope: 'sfapp_dovecote',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['url'],
+            properties: {
+                url: { type: 'string', description: 'http(s) URL that receives the delivery POST' },
+                authHeader: { type: 'string', description: 'Optional Authorization header value sent on each POST' }
+            }
+        }
+    },
+    {
+        name: 'get_mailbox_webhook',
+        core: true,
+        description: 'Read the outbound new-mail webhook registered for your own Dovecote mailbox. Returns url and hasAuthHeader. The auth header value is never returned. Other mailboxes are not visible.',
+        scope: 'sfapp_dovecote',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {}
+        }
+    },
+    {
+        name: 'clear_mailbox_webhook',
+        core: true,
+        description: 'Remove the outbound new-mail webhook from your own Dovecote mailbox. Other mailboxes are not affected.',
+        scope: 'sfapp_dovecote',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {}
+        }
+    },
+    {
         name: 'mailroom_forward_mail',
         core: true,
         role: 'mailroom',
@@ -9050,6 +9087,24 @@ async function callTool(globalResources, req, name, args) {
 
     if (name === 'get_apocrypha') {
         return mcpTextResult(listApocrypha(input));
+    }
+
+    if (name === 'set_mailbox_webhook' || name === 'get_mailbox_webhook' || name === 'clear_mailbox_webhook') {
+        const { resolveDovecoteOwnerFromReq } = require('./dovecoteIdentity');
+        const dovecoteMail = require('./dovecoteMail');
+        const webhook = require('./dovecoteMailboxWebhook');
+        const owner = resolveDovecoteOwnerFromReq(req);
+        if (!owner) {
+            return mcpTextResult({ success: false, error: 'Caller identity does not map to a Dovecote mailbox' }, true);
+        }
+        try {
+            return mcpTextResult(await webhook.handleMailboxWebhookTool(name, owner, input));
+        } catch (mailError) {
+            if (mailError instanceof dovecoteMail.DovecoteError) {
+                return mcpTextResult({ success: false, error: mailError.message, code: mailError.code }, true);
+            }
+            throw mailError;
+        }
     }
 
     if (name === 'send_mail' || name === 'list_mail' || name === 'read_mail' || name === 'mark_mail' || name === 'forward_mail') {

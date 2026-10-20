@@ -146,7 +146,7 @@ const AVAILABLE_SCOPES = [
     { id: 'sfapp_report_issue', label: 'Report Issue', description: 'Development QA reporting (tool failures, errors, reviews)' },
     { id: 'sfapp_usage', label: 'Usage', description: 'NovelAI account usage data (Anlas, Opus meter, generation count)' },
     { id: 'sfapp_apocrypha', label: 'Apocrypha Publish', description: 'Publish Apocrypha zine content directly' },
-    { id: 'sfapp_dovecote', label: 'Dovecote Mail', description: 'Own-mailbox-only internal mail (send, list, read, mark, forward). Tsubame (mailroom role) cross-mailbox Spam tools stay gated on the Tsubame key.' },
+    { id: 'sfapp_dovecote', label: 'Dovecote Mail', description: 'Own-mailbox-only internal mail (send, list, read, mark, forward) plus a per-mailbox new-mail webhook. Tsubame (mailroom role) cross-mailbox Spam tools stay gated on the Tsubame key.' },
     { id: 'sfapp_mail_exchange', label: 'Dreamscape Exchange Server', description: 'Mail system admin console. Granted per application key (Tsubame mailroom, Sala, Yukimi). Identity-gated to those owners; other bot keys cannot call the tools.' }
 ];
 

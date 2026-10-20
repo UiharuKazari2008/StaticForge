@@ -123,6 +123,16 @@ function emitMailboxChanged(owners) {
     }
 }
 
+function emitMailDelivered(deliveries) {
+    if (!Array.isArray(deliveries) || !deliveries.length) return;
+    try {
+        // notifyDeliveries: modules/dovecoteMailboxWebhook.js
+        require('./dovecoteMailboxWebhook').notifyDeliveries(deliveries);
+    } catch (err) {
+        console.error('Dovecote mailbox webhook notify failed:', err.message);
+    }
+}
+
 // Maps a resolved caller identity (bot name / Xi active runtime) to a mailbox
 // owner. Never maps anything to the human mailbox — only send_mail/mark_mail/
 // forward_mail reaching Yukimi's own mailbox go through the WS path, which
@@ -615,6 +625,13 @@ function sendMail({ fromOwner, to, cc, subject, body, format, replyToId, attachm
         writeCopies('sent');
         audit(fromOwner, 'send_mail', sentId, true, `to=${storedTo.join(',')} cc=${storedCc.join(',')}`);
         emitMailboxChanged([fromOwner, ...delivered]);
+        emitMailDelivered(delivered.map((owner, index) => ({
+            mailbox: owner,
+            id: inboxIds[index],
+            from: fromOwner,
+            subject: subjectText,
+            receivedAt: createdAt
+        })));
         return { id: sentId, threadId, to: storedTo, cc: storedCc };
     }
 
@@ -630,6 +647,13 @@ function sendMail({ fromOwner, to, cc, subject, body, format, replyToId, attachm
         writeCopies('sent');
         audit(fromOwner, 'send_mail', sentId, true, `to=${storedTo.join(',')} cc=${storedCc.join(',')}`);
         emitMailboxChanged([fromOwner, ...delivered]);
+        emitMailDelivered(delivered.map((owner, index) => ({
+            mailbox: owner,
+            id: inboxIds[index],
+            from: fromOwner,
+            subject: subjectText,
+            receivedAt: createdAt
+        })));
     }).catch((err) => {
         writeCopies('outbox');
         audit(fromOwner, 'send_mail', sentId, false, err.message);
@@ -700,6 +724,15 @@ function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, 
     });
     audit(toOwner, 'receive_external_mail', id, true, `from=${from}`);
     emitMailboxChanged([toOwner]);
+    if (folder === 'inbox') {
+        emitMailDelivered([{
+            mailbox: toOwner,
+            id,
+            from,
+            subject: subjectText,
+            receivedAt: createdAt
+        }]);
+    }
     return {
         id, owner: toOwner, from,
         fromLabel: storedLabel || null,
@@ -720,7 +753,7 @@ function deliverInboundMail({ fromAddress, fromLabel, toOwner, to, cc, subject, 
     };
 }
 
-function listMail(owner, { folder, unreadOnly, limit } = {}) {
+function listMail(owner, { folder, unreadOnly, limit, silent } = {}) {
     if (!isValidOwner(owner)) throw new DovecoteError('Unknown mailbox', 'UNKNOWN_OWNER');
     const cap = Math.max(1, Math.min(200, Number(limit) || 50));
     let sql = 'SELECT * FROM dovecote_message WHERE owner = ?';
@@ -733,7 +766,9 @@ function listMail(owner, { folder, unreadOnly, limit } = {}) {
     sql += ' ORDER BY created_at DESC LIMIT ?';
     params.push(cap);
     const rows = getDb().prepare(sql).all(...params);
-    audit(owner, 'list_mail', null, true, `folder=${folder || 'all'} count=${rows.length}`);
+    if (silent !== true) {
+        audit(owner, 'list_mail', null, true, `folder=${folder || 'all'} count=${rows.length}`);
+    }
     const mail = rows.map(toSummary);
     // Mailbox owner of the caller. Non-enumerable so the value stays an array
     // for existing callers; list_mail copies it onto the result even when mail is empty.
@@ -856,6 +891,13 @@ function forwardMail(owner, { id, to }) {
     duplicateMessageAttachments(source.id, newId, source.attachments);
     audit(owner, 'forward_mail', newId, true, `to=${toOwner} source=${id}`);
     emitMailboxChanged([toOwner]);
+    emitMailDelivered([{
+        mailbox: toOwner,
+        id: newId,
+        from: source.from_owner,
+        subject: `Fwd: ${source.subject}`,
+        receivedAt: createdAt
+    }]);
     return { id: newId, to: toOwner };
 }
 

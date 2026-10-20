@@ -2409,6 +2409,7 @@ agentClientBridge.registerRoutes(app, { devAuthMiddleware, globalResources });
 mcpAgentFacade.registerRoutes(app, { globalResources });
 apocryphaSite.registerRoutes(app, { globalResources });
 require('./modules/mailExchangeHttp').registerRoutes(app, { authMiddleware, globalResources });
+require('./modules/dovecoteMailboxWebhookHttp').registerRoutes(app, { authMiddleware, globalResources });
 app.get('/.login.jpg', (req, res) => {
     const sprite = resolveLoginSpritePath();
     if (!sprite) {

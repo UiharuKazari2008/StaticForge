@@ -128,6 +128,7 @@
     "test:dovecote-windows": "node scripts/test-dovecote-windows.js",
     "test:dovecote-reader-window": "node scripts/test-dovecote-reader-window.js",
     "test:dovecote-multi": "node scripts/test-dovecote-multi.js",
+    "test:dovecote-mailbox-webhook": "node scripts/test-dovecote-mailbox-webhook.js",
     "test:mail-gateway": "node scripts/test-mail-gateway.js",
     "test:mail-exchange": "node scripts/test-mail-exchange.js",
     "test:exchange-desktop-app": "node scripts/test-exchange-desktop-app.js",

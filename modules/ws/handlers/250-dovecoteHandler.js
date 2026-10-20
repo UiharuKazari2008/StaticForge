@@ -291,9 +291,12 @@ function bindMailboxPush(handlersCtx) {
             const inbox = {};
             const unreadInbox = {};
             owners.forEach((owner) => {
-                inbox[owner] = dovecoteMail.listMail(owner, { folder: 'inbox', limit: PUSH_INBOX_LIMIT });
-                unreadInbox[owner] = dovecoteMail.listMail(owner, { folder: 'inbox', unreadOnly: true, limit: PUSH_UNREAD_LIMIT });
+                // silent: this snapshot is the browser push, not a mailbox-owner list_mail.
+                inbox[owner] = dovecoteMail.listMail(owner, { folder: 'inbox', limit: PUSH_INBOX_LIMIT, silent: true });
+                unreadInbox[owner] = dovecoteMail.listMail(owner, { folder: 'inbox', unreadOnly: true, limit: PUSH_UNREAD_LIMIT, silent: true });
             });
+            // Browser sessions only. App-key sockets must not receive this
+            // all-mailbox snapshot; bots use the per-mailbox webhook instead.
             wsServer.broadcast({
                 type: 'dovecote_mailbox_updated',
                 data: { owners, mailboxes, inbox, unreadInbox },

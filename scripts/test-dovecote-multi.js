@@ -166,6 +166,9 @@ function main() {
         }
     });
     broadcasts.length = 0;
+    const listMailBeforePush = dovecoteDatabase.getDb().prepare(
+        "SELECT COUNT(*) AS n FROM dovecote_audit_log WHERE action = 'list_mail' AND actor = 'sala'"
+    ).get().n;
     const pushed = mail.sendMail({ fromOwner: 'yukimi', to: 'sala', subject: 'push', body: 'live' });
     assert.strictEqual(broadcasts.length, 1);
     assert.strictEqual(broadcasts[0].type, 'dovecote_mailbox_updated');
@@ -176,6 +179,10 @@ function main() {
     assert.ok(broadcasts[0].data.inbox.sala.some((row) => row.subject === 'push'));
     assert.ok(Array.isArray(broadcasts[0].data.unreadInbox.sala));
     assert.ok(pushed.id);
+    const listMailAfterPush = dovecoteDatabase.getDb().prepare(
+        "SELECT COUNT(*) AS n FROM dovecote_audit_log WHERE action = 'list_mail' AND actor = 'sala'"
+    ).get().n;
+    assert.strictEqual(listMailAfterPush, listMailBeforePush, 'mailbox push snapshot must not audit list_mail as the owner');
     const salaId = mail.listMail('sala', { folder: 'inbox' }).find((row) => row.subject === 'push').id;
     broadcasts.length = 0;
     mail.readMail('sala', salaId);
