@@ -238,11 +238,12 @@ function mountPlan(entries) {
 
 function sanitizeLaunchRuntime(value) {
     const text = String(value || '').trim().toLowerCase();
+    if (require('./customModelProviders').isEngine(text)) return text;
     return text === 'claude' || text === 'tokenrouter' ? text : 'cursor';
 }
 
 function usesClaudeCli(runtime) {
-    return runtime === 'claude' || runtime === 'tokenrouter';
+    return runtime === 'claude' || runtime === 'tokenrouter' || require('./customModelProviders').isEngine(runtime);
 }
 
 function refuseWholeHome(dir) {
@@ -287,9 +288,9 @@ function buildLaunch(options) {
             claudeBin = opts.agentBin || director().findClaude();
             if (!claudeBin) {
                 const error = new Error(
-                    runtime === 'tokenrouter'
-                        ? 'Claude Code is not installed on this host, and the TokenRouter engine runs on it'
-                        : 'Claude Code is not installed on this host'
+                    runtime === 'claude'
+                        ? 'Claude Code is not installed on this host'
+                        : 'Claude Code is not installed on this host, and this engine runs on it'
                 );
                 error.code = 'CLAUDE_MISSING';
                 throw error;
@@ -322,7 +323,7 @@ function buildLaunch(options) {
             error.code = 'CLAUDE_TOKEN_MISSING';
             throw error;
         }
-    } else if (runtime !== 'tokenrouter') {
+    } else if (!usesClaudeCli(runtime)) {
         credential = loadActiveCredential(opts);
         const hostConfig = path.join(runHome, '.config', 'cursor');
         authFile = seedConfig(hostConfig, credential);

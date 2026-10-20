@@ -18,6 +18,17 @@ const MEMORIES_DSAP_TAB_LABELS = {
 const MEMORIES_DEFAULT_PER_PAGE = 25;
 const MEMORIES_PER_PAGE_OPTIONS = [10, 25, 50, 100];
 const MEMORIES_V5_EFFORT = 'V5 Medium effort testing';
+let memoriesDsapActiveStore = '';
+
+function memoriesDsapStoreId(value) {
+    return value === 'obliterated' ? 'obliterated' : '';
+}
+
+function memoriesDsapNoteStore(value) {
+    memoriesDsapActiveStore = memoriesDsapStoreId(value);
+    return memoriesDsapActiveStore;
+}
+
 const MEMORIES_SORT_OPTIONS = [
     { id: '', label: 'Most used' },
     { id: 'name', label: 'Name' },
@@ -91,7 +102,7 @@ function memoriesDsapDecodeSegment(segment) {
 }
 
 /** Build a canonical list URL carrying the current list filters/page (for history + back buttons) */
-function memoriesDsapBuildListUrl({ page = 1, perPage = MEMORIES_DEFAULT_PER_PAGE, search = '', category = '', sort = '', view = '' } = {}) {
+function memoriesDsapBuildListUrl({ page = 1, perPage = MEMORIES_DEFAULT_PER_PAGE, search = '', category = '', sort = '', view = '', store = null } = {}) {
     const q = new URLSearchParams();
     if (page && page > 1) q.set('page', String(page));
     if (perPage && perPage !== MEMORIES_DEFAULT_PER_PAGE) q.set('perPage', String(perPage));
@@ -99,6 +110,8 @@ function memoriesDsapBuildListUrl({ page = 1, perPage = MEMORIES_DEFAULT_PER_PAG
     if (category) q.set('category', category);
     if (sort) q.set('sort', sort);
     if (view && view !== 'list') q.set('view', view);
+    const storeId = store != null ? memoriesDsapStoreId(store) : memoriesDsapActiveStore;
+    if (storeId) q.set('store', storeId);
     const qs = q.toString();
     return qs ? `dsap://${MEMORIES_DSAP_URL}/?${qs}` : `dsap://${MEMORIES_DSAP_URL}/`;
 }
@@ -114,6 +127,8 @@ function memoriesDsapBuildDetailUrl(name, listContext = null) {
         if (listContext.category) q.set('category', listContext.category);
         if (listContext.sort) q.set('sort', listContext.sort);
         if (listContext.view && listContext.view !== 'list') q.set('view', listContext.view);
+        const storeId = listContext.store != null ? memoriesDsapStoreId(listContext.store) : memoriesDsapActiveStore;
+        if (storeId) q.set('store', storeId);
         const qs = q.toString();
         if (qs) base += `?${qs}`;
     }
@@ -171,6 +186,13 @@ ${memoriesDsapBuildTabBar(tab)}
             <i class="fas fa-search memories-search-icon"></i>
             <input type="text" id="memoriesSearchInput" class="memories-search-input" placeholder="Search memories — Enter opens the top hit" autocomplete="off">
             <div id="memoriesFastSearch" class="memories-fast-search hidden"></div>
+        </div>
+        <div class="memories-filter-wrap" id="memoriesStoreWrap">
+            <button type="button" id="memoriesStoreBtn" class="memories-filter-btn" title="Memory store. Obliterated Memories is shared by custom models marked for it.">
+                <i class="fas fa-database"></i>
+                <span id="memoriesStoreLabel">Studio</span>
+                <i class="fas fa-caret-down"></i>
+            </button>
         </div>
         <div class="memories-filter-wrap" id="memoriesSortWrap">
             <button type="button" id="memoriesSortBtn" class="memories-filter-btn" title="Sort memories">
@@ -1486,6 +1508,7 @@ const memoriesDsapDriver = {
         // Determine view mode from the *current* DSAP URL (this enables back/forward + direct links)
         const segments = (typeof host.getPathSegments === 'function' ? host.getPathSegments() : []).map(memoriesDsapDecodeSegment);
         const normalizedPath = typeof host.displayPath === 'string' ? host.displayPath : '';
+        memoriesDsapNoteStore(host.getQueryParam('store'));
         const activeTab = memoriesDsapResolveActiveTab(segments, normalizedPath);
         const isDetailView = activeTab === 'memories' && segments[0] === 'view' && !!segments[1];
         const isDeleteView = activeTab === 'memories' && (segments[0] === 'delete' || segments[0] === 'bulk-delete');
@@ -1506,6 +1529,7 @@ const memoriesDsapDriver = {
         setTimeout(() => {
             this._wireCategoryClickMenu(root);
             this._wireSortClickMenu(root);
+            this._wireStoreClickMenu(root);
             this._wireViewToggle(root);
             this._wirePerPageClickMenu(root);
         }, 0);
@@ -1539,8 +1563,9 @@ const memoriesDsapDriver = {
             const category = host.getQueryParam('category') || null;
             const sort = host.getQueryParam('sort') || '';
             const view = host.getQueryParam('view') || 'list';
+            const store = memoriesDsapNoteStore(host.getQueryParam('store'));
 
-            this._state.listMeta = { total: 0, page, perPage, search, category, sort, view };
+            this._state.listMeta = { total: 0, page, perPage, search, category, sort, view, store };
 
             this._prefillListControlsFromMeta(root);
             this._markViewToggle(root, view);
@@ -1733,7 +1758,7 @@ const memoriesDsapDriver = {
             );
             if (!ok) return;
             try {
-                const resp = await window.wsClient.sendMessage('delete_knowledge_memory', { name });
+                const resp = await window.wsClient.sendMessage('delete_knowledge_memory', { name, store: this._memoryStore() || undefined });
                 if (resp && resp.success) {
                     if (typeof showGlassToast === 'function') showGlassToast('success', null, 'Memory deleted');
                     if (this._state?.current?.name === name) {
@@ -1810,6 +1835,8 @@ const memoriesDsapDriver = {
         if (label) label.textContent = meta.category || 'All Categories';
         const sortLabel = root.querySelector('#memoriesSortLabel');
         if (sortLabel) sortLabel.textContent = memoriesDsapSortLabel(meta.sort);
+        const storeLabel = root.querySelector('#memoriesStoreLabel');
+        if (storeLabel) storeLabel.textContent = meta.store === 'obliterated' ? 'Obliterated' : 'Studio';
         this._markViewToggle(root, meta.view || 'list');
 
         const hidden = root.querySelector('#memoriesPerPageHidden');
@@ -1896,7 +1923,8 @@ const memoriesDsapDriver = {
                 perPage,
                 search,
                 category,
-                sort: sort || undefined
+                sort: sort || undefined,
+                store: this._memoryStore() || undefined
             });
 
             if (resp && resp.success) {
@@ -1908,7 +1936,8 @@ const memoriesDsapDriver = {
                     search: search || '',
                     category: category || null,
                     sort: sort || '',
-                    view: view || 'list'
+                    view: view || 'list',
+                    store: this._memoryStore()
                 };
 
                 this._updateStats(resp.stats);
@@ -1943,7 +1972,7 @@ const memoriesDsapDriver = {
             if (!window.wsClient || !window.wsClient.isConnected()) {
                 throw new Error('WebSocket not connected');
             }
-            const resp = await window.wsClient.sendMessage('get_knowledge_memory', { name });
+            const resp = await window.wsClient.sendMessage('get_knowledge_memory', { name, store: this._memoryStore() || undefined });
             if (resp && resp.success && resp.memory) {
                 this._state.current = resp.memory;
                 this._state.isEdit = false;
@@ -2361,7 +2390,8 @@ const memoriesDsapDriver = {
         try {
             const resp = await window.wsClient.sendMessage('update_knowledge_memory', {
                 name: this._state.current.name,
-                updates: form.updates
+                updates: form.updates,
+                store: this._memoryStore() || undefined
             });
             if (resp && resp.success) {
                 // apply locally
@@ -2395,7 +2425,7 @@ const memoriesDsapDriver = {
         if (!ok) return;
 
         try {
-            const resp = await window.wsClient.sendMessage('delete_knowledge_memory', { name: mem.name });
+            const resp = await window.wsClient.sendMessage('delete_knowledge_memory', { name: mem.name, store: this._memoryStore() || undefined });
             if (resp && resp.success) {
                 this._state.current = null;
                 if (typeof showGlassToast === 'function') showGlassToast('success', null, 'Memory deleted');
@@ -2649,6 +2679,54 @@ const memoriesDsapDriver = {
         });
     },
 
+    _memoryStore() {
+        const meta = this._state && this._state.listMeta;
+        if (meta && meta.store === 'obliterated') return 'obliterated';
+        return memoriesDsapActiveStore;
+    },
+
+    _wireStoreClickMenu(root) {
+        const btn = root.querySelector('#memoriesStoreBtn');
+        const label = root.querySelector('#memoriesStoreLabel');
+        if (!btn || btn.dataset.memoriesClickMenuWired === '1') return;
+        btn.dataset.memoriesClickMenuWired = '1';
+        const driver = this;
+        const config = {
+            position: 'anchor',
+            anchorAlign: 'start',
+            beforeShow: () => {
+                const current = driver._memoryStore();
+                config.sections[0].items = [
+                    { text: 'Studio', storeValue: '' },
+                    { text: 'Obliterated Memories', storeValue: 'obliterated' }
+                ].map((row) => ({
+                    text: row.text,
+                    action: 'select-memories-store',
+                    storeValue: row.storeValue,
+                    loadfn: (item) => { item.highlighted = memoriesDsapStoreId(item.storeValue) === current; }
+                }));
+            },
+            sections: [{ type: 'list', items: [] }],
+            onAction: (action, target, item) => {
+                if (action !== 'select-memories-store') return;
+                const store = memoriesDsapNoteStore(item.storeValue);
+                if (label) label.textContent = store ? 'Obliterated' : 'Studio';
+                const meta = driver._state.listMeta || {};
+                const url = memoriesDsapBuildListUrl({
+                    page: 1,
+                    perPage: meta.perPage || MEMORIES_DEFAULT_PER_PAGE,
+                    search: meta.search || '',
+                    category: meta.category || '',
+                    sort: meta.sort || '',
+                    view: meta.view || 'list',
+                    store
+                });
+                if (typeof driver._state.host.navigate === 'function') driver._state.host.navigate(url);
+            }
+        };
+        this._attachMemoriesClickMenu(btn, config);
+    },
+
     _wireSortClickMenu(root) {
         const btn = root.querySelector('#memoriesSortBtn');
         const label = root.querySelector('#memoriesSortLabel');
@@ -2723,7 +2801,7 @@ const memoriesDsapDriver = {
             return;
         }
         try {
-            const resp = await window.wsClient.sendMessage('search_knowledge_memories_fast', { query: q, limit: 12 });
+            const resp = await window.wsClient.sendMessage('search_knowledge_memories_fast', { query: q, limit: 12, store: this._memoryStore() || undefined });
             if (!resp || !resp.success) {
                 this._hideFastSearch();
                 return;
@@ -2764,7 +2842,8 @@ const memoriesDsapDriver = {
             const resp = await window.wsClient.sendMessage('get_memory_mind_map', {
                 search: meta.search || '',
                 category: meta.category || null,
-                limit: 60
+                limit: 60,
+                store: this._memoryStore() || undefined
             });
             if (!resp || !resp.success) {
                 mapEl.innerHTML = '<div style="padding:8px;">Mind map unavailable</div>';
@@ -3021,7 +3100,7 @@ const memoriesDsapDriver = {
         };
 
         try {
-            const resp = await window.wsClient.sendMessage('count_knowledge_memories_by_filter', { filterType });
+            const resp = await window.wsClient.sendMessage('count_knowledge_memories_by_filter', { filterType, store: this._memoryStore() || undefined });
             const count = (resp && resp.success) ? (resp.count || 0) : 0;
             this._state.deleteCount = count;
 
@@ -3064,7 +3143,7 @@ const memoriesDsapDriver = {
         if (!confirmed) return;
 
         try {
-            const delResp = await window.wsClient.sendMessage('delete_knowledge_memories_by_filter', { filterType });
+            const delResp = await window.wsClient.sendMessage('delete_knowledge_memories_by_filter', { filterType, store: this._memoryStore() || undefined });
             if (delResp && delResp.success) {
                 const deleted = delResp.deletedCount || 0;
                 if (typeof showGlassToast === 'function') {

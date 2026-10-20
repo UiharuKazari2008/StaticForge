@@ -890,6 +890,31 @@ MCP tools: `set_mailbox_webhook`, `get_mailbox_webhook`, `clear_mailbox_webhook`
 
 ---
 
+## Dovecote mailbox notify-forward
+
+Base path `/dovecote/mailbox/notify-forward`. Handler: `modules/dovecoteMailboxNotifyHttp.js`. Stored in `dovecote.db` next to the webhook (`dovecote_mailbox_notify_forward`). Live immediately.
+
+A bot application key with `sfapp_dovecote` (or `sfapp_dovecote:notify`) registers one **external** address for **its own mailbox only**. The owner is resolved from the key; the body cannot choose another mailbox.
+
+Inbox delivery publishes `mailbox_new_mail` on the event bus (`modules/dovecoteMailboxEvents.js`) and to WebSocket subscribers. The notify-forward dispatcher **consumes that stream** (it does not hook `sendMail`). App-key sockets may subscribe to their own mailbox only (`dovecote_subscribe_mailbox_new_mail`). Flood control: per-mailbox coalesce window (default 2 minutes, `config.dovecote.notify.coalesceMs`), a global notice cap per minute (`globalPerMinute`, default 20), and a per-socket event rate limit with drop+count (`socketPerMinute`, default 60).
+
+A notice is a short plain email through the existing outbound relay: `You have new mail in <mailbox>: <from> — <subject>` (or `You have N new messages in <mailbox>` when coalesced). No original body, no attachments. Notices carry `X-Dovecote-Notify-Forward: 1`. Mail sent by the mailbox itself, spam-folder mail, and those notice mails are never forwarded. The address cannot be on `dream.737.jp.net`.
+
+MCP tools (own mailbox): `set_mailbox_notify_forward`, `get_mailbox_notify_forward`, `clear_mailbox_notify_forward`. Exchange admin (`sfapp_mail_exchange`, Yukimi / Sala / Tsubame): `exchange_set_mailbox_notify_forward`, `exchange_get_mailbox_notify_forward`, `exchange_clear_mailbox_notify_forward` (writes need `confirm: true`). Set/clear and every notice sent are audit-logged (no secrets).
+
+| Method | Path | Notes |
+|--------|------|--------|
+| GET | `/dovecote/mailbox/notify-forward` | `{ mailbox, address }` |
+| PUT | `/dovecote/mailbox/notify-forward` | `{ address }` — POST accepted as the same write |
+| DELETE | `/dovecote/mailbox/notify-forward` | Clears this mailbox's notify address |
+| GET | `/mail-exchange/mailboxes/:owner/notify-forward` | Exchange admin |
+| PUT | `/mail-exchange/mailboxes/:owner/notify-forward` | Exchange admin `{ address, confirm }` |
+| DELETE | `/mail-exchange/mailboxes/:owner/notify-forward` | Exchange admin `{ confirm }` |
+
+WebSocket: `dovecote_subscribe_mailbox_new_mail` / `dovecote_unsubscribe_mailbox_new_mail` → push `mailbox_new_mail` `{ mailbox, id, from, subject, receivedAt, dropped }`. Over the per-socket cap the next event is dropped and the first drop in a window sends `mailbox_new_mail_rate_limited` `{ mailbox, dropped }`; the next delivered event includes the dropped count.
+
+---
+
 ## Dreamscape Exchange Server
 
 Base path `/mail-exchange/*`. Handler: `modules/mailExchangeHttp.js`. Off until `config.mailExchange.enabled` is true (mutations return `DISABLED` / 503).
@@ -927,6 +952,9 @@ Writes require `confirm: true`. Soft-delete also requires `confirmText: "DELETE"
 | GET | `/mail-exchange/status` | Intake + relay dashboard (degrades if LANTIS is down) |
 | GET | `/mail-exchange/spam` | Tsubame: all mailboxes. Yukimi: her Spam only |
 | POST | `/mail-exchange/spam/move` | Rescue/purge via mailroom tools |
+| GET | `/mail-exchange/mailboxes/:owner/notify-forward` | `{ mailbox, address }` |
+| PUT | `/mail-exchange/mailboxes/:owner/notify-forward` | `{ address, confirm }` |
+| DELETE | `/mail-exchange/mailboxes/:owner/notify-forward` | `{ confirm }` |
 | GET | `/mail-exchange/audit` | Mutation log (no secrets) |
 
 LANTIS relay API: [docs/lantis-relay-api.md](../lantis-relay-api.md). WebSocket: [ws/mailExchange.md](./ws/mailExchange.md).

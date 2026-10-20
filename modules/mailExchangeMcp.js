@@ -223,6 +223,54 @@ const TOOLS = [
         inputSchema: { type: 'object', additionalProperties: false, properties: {} }
     },
     {
+        name: 'exchange_set_mailbox_notify_forward',
+        core: true,
+        role: 'exchange',
+        scope: SCOPE,
+        description: 'Exchange admin only. Set the notify-forward address on any mailbox. External address only (not dream.737.jp.net). Live immediately. Requires confirm:true.',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['owner', 'address', 'confirm'],
+            properties: {
+                owner: { type: 'string' },
+                address: { type: 'string' },
+                confirm: { type: 'boolean' }
+            }
+        }
+    },
+    {
+        name: 'exchange_get_mailbox_notify_forward',
+        core: true,
+        role: 'exchange',
+        scope: SCOPE,
+        description: 'Exchange admin only. Read the notify-forward address for any mailbox.',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['owner'],
+            properties: {
+                owner: { type: 'string' }
+            }
+        }
+    },
+    {
+        name: 'exchange_clear_mailbox_notify_forward',
+        core: true,
+        role: 'exchange',
+        scope: SCOPE,
+        description: 'Exchange admin only. Clear the notify-forward address on any mailbox. Requires confirm:true.',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['owner', 'confirm'],
+            properties: {
+                owner: { type: 'string' },
+                confirm: { type: 'boolean' }
+            }
+        }
+    },
+    {
         name: 'exchange_spam',
         core: true,
         role: 'exchange',
@@ -358,6 +406,24 @@ async function handleExchangeTool(req, name, input = {}) {
         if (name === 'exchange_status') {
             const dash = await exchange.dashboard();
             return mcpTextResult({ success: true, ...dash });
+        }
+        if (name === 'exchange_get_mailbox_notify_forward') {
+            return mcpTextResult({
+                success: true,
+                ...exchange.adminGetMailboxNotifyForward(admin, input)
+            });
+        }
+        if (name === 'exchange_set_mailbox_notify_forward') {
+            return mcpTextResult({
+                success: true,
+                ...exchange.adminSetMailboxNotifyForward(admin, input)
+            });
+        }
+        if (name === 'exchange_clear_mailbox_notify_forward') {
+            return mcpTextResult({
+                success: true,
+                ...exchange.adminClearMailboxNotifyForward(admin, input)
+            });
         }
         if (name === 'exchange_spam') {
             if (input.id && input.mailbox) {

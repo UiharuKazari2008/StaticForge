@@ -32,6 +32,7 @@ const EFFORT_MODELS = {
 };
 const { DIRECTOR_MCP_SCOPES } = require('./directorAppKeyScopes');
 const tokenRouter = require('./tokenRouterBridge');
+const customProviders = require('./customModelProviders');
 const MCP_SCOPES = DIRECTOR_MCP_SCOPES;
 // Bubblewrap is the barrier. The jail's own CLI config copy approves every
 // shell and web search so Cursor does not stop to ask inside the computer.
@@ -993,12 +994,14 @@ const CLAUDE_MODEL_INFO = {
 
 function sanitizeEngine(value) {
     const text = String(value || '').trim().toLowerCase();
+    if (customProviders.isEngine(text)) return text;
     return DIRECTOR_ENGINES.includes(text) ? text : 'cursor';
 }
 
-// Claude and TokenRouter turns are Claude CLI sessions (chat.claudeSessionId).
+// Claude, TokenRouter, and custom OpenAI providers are Claude CLI sessions
+// (chat.claudeSessionId). Custom providers are relayed by the TokenRouter bridge.
 function usesClaudeCli(engine) {
-    return engine === 'claude' || engine === 'tokenrouter';
+    return engine === 'claude' || engine === 'tokenrouter' || customProviders.isEngine(engine);
 }
 
 let claudeCliCache = { at: 0, version: null };
@@ -1113,6 +1116,26 @@ function publicTokenRouterCatalog(families) {
     });
 }
 
+function publicCustomCatalog(families, provider) {
+    const list = Array.isArray(families) ? families : [];
+    const preferred = provider && provider.defaultModel;
+    const fallback = list.find((item) => item.id === preferred) || list[0];
+    return list.map((family) => ({
+        id: family.id,
+        name: family.name,
+        short: '',
+        provider: family.provider || (provider && provider.name) || 'Custom',
+        released: family.released || 0,
+        cost: null,
+        price: '',
+        fast: false,
+        thinkingToggle: false,
+        contexts: [],
+        default: family === fallback,
+        efforts: customProviders.EFFORTS.map((id) => ({ id, name: EFFORT_LABELS[id] || id, fast: false }))
+    })).sort((a, b) => b.released - a.released);
+}
+
 // { family, model, effort, fast }. A catalog the gateway cannot serve still
 // resolves on the requested id (or Kimi K3), so a turn is not blocked by it.
 async function resolveTokenRouterRun(message) {
@@ -1139,6 +1162,9 @@ function requireTokenRouterKey(gr) {
 function tokenRouterCliEnv(link, run) {
     const headers = [`x-dreamscape-lane: ${run.lane === 'normal' ? 'normal' : 'interactive'}`];
     if (run.effort) headers.push(`x-dreamscape-effort: ${run.effort}`);
+    if (run.providerId && customProviders.providerId(`custom:${run.providerId}`) === run.providerId) {
+        headers.push(`x-dreamscape-provider: ${run.providerId}`);
+    }
     return {
         ANTHROPIC_BASE_URL: link.url,
         ANTHROPIC_AUTH_TOKEN: link.secret,
@@ -3775,6 +3801,12 @@ function buildPrompt(chat, userText, files, priorMessages, clientId, options) {
     if (priorMessages.length && !chat.replay && !handoff) lines.push('Follow-up: the next frame (section 3).');
     if (clientId) lines.push(`Bound Studio clientId: ${clientId}`);
     lines.push(`Workspace id: ${chat.workspaceId || 'unknown'}. Chat id: ${chat.id} (folder chats/${chat.id}/); session tools default to it.`);
+    if (options && options.memoryStore === 'obliterated') {
+        lines.push('Memory store: Obliterated Memories. list_memories, search_memories, get_memory, and save_memory use that shared store. It is not the Studio memory database. Do not pass a Studio model filter.');
+    }
+    if (options && options.ageTool === false) {
+        lines.push('lookup_character_age is turned off for this engine. Do not call it.');
+    }
     const openTasks = normalizeSessionTasks(chat.tasks);
     if (openTasks.length) {
         lines.push('Tasks:');
@@ -4319,6 +4351,20 @@ function broadcastDirectorSession(gr, type, data) {
 
 function activeDirectorSessionId() {
     return runs.size === 1 ? Array.from(runs.keys())[0] : null;
+}
+
+function activeChatBrief() {
+    const sessionId = activeDirectorSessionId();
+    if (!sessionId) return null;
+    const index = readIndex(layout().indexPath);
+    const chat = index.chats.find((item) => item.id === sessionId);
+    if (!chat) return null;
+    const choice = chat.choice && typeof chat.choice === 'object' ? chat.choice : {};
+    return {
+        id: chat.id,
+        model: String(choice.id || chat.model || '').trim(),
+        engine: String(chat.lastEngine || choice.engine || '').trim()
+    };
 }
 
 // In-process Director turns, including the window before bwrap starts and
@@ -5024,10 +5070,13 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
         // Resumed TokenRouter turns skip the key check, so the bridge learns the key source here.
         tokenRouter.bindGlobalResources(gr);
         if (!message.resume && engine === 'tokenrouter') requireTokenRouterKey(gr);
+        if (!message.resume && customProviders.isEngine(engine)) customProviders.requireReady(gr, engine);
         // Claude and TokenRouter: { model, effort, fast } plus family (the picked id) on TokenRouter.
+        // Custom providers use the same shape, resolved against that host's /v1/models list.
         let claudeRun = null;
         if (!message.resume && engine === 'claude') claudeRun = resolveClaudeRun(message);
         if (!message.resume && engine === 'tokenrouter') claudeRun = await resolveTokenRouterRun(message);
+        if (!message.resume && customProviders.isEngine(engine)) claudeRun = await customProviders.resolveForTurn(gr, engine, message);
         const runModel = message.resume || usesClaudeCli(engine) ? null : resolveRunModel(await listCursorModels(jail), message);
         const freshDraftId = message.resume ? null : crypto.randomUUID();
         prepared = await enqueue(async () => {
@@ -5134,7 +5183,11 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
                 userText: userText.slice(0, 2000)
             };
             const clientId = await bindDirectorTab(handler.globalResources, paths, directorClientId(clientInfo, message));
-            const prompt = buildPrompt(chat, userText, files, fresh ? [] : priorMessages, clientId, { handoff });
+            const memoryStore = customProviders.isEngine(engine)
+                ? customProviders.memoryStoreForEngine(handler.globalResources, engine)
+                : '';
+            const ageTool = !customProviders.isEngine(engine) || customProviders.ageToolEnabled(handler.globalResources, engine);
+            const prompt = buildPrompt(chat, userText, files, fresh ? [] : priorMessages, clientId, { handoff, memoryStore, ageTool });
             chat.replay = false;
             writeIndex(paths.indexPath, index);
             return {
@@ -5191,16 +5244,21 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
             if (prepared.engine === 'claude') {
                 const run = { ...prepared.claude, first: !claudeSessionExists(paths, prepared.claude.sessionId) };
                 turned = await runClaudeTurn(claudeJail(jail), run, prepared.prompt, onTrace, marker);
-            } else if (prepared.engine === 'tokenrouter') {
+            } else if (prepared.engine === 'tokenrouter' || customProviders.isEngine(prepared.engine)) {
+                const providerId = customProviders.providerId(prepared.engine);
                 const run = {
                     model: prepared.claude.model,
                     effort: null,
                     fast: false,
                     sessionId: prepared.claude.sessionId,
                     first: !claudeSessionExists(paths, prepared.claude.sessionId),
-                    label: 'TokenRouter'
+                    label: providerId ? customProviders.displayName(gr, prepared.engine) : 'TokenRouter'
                 };
-                turned = await runClaudeTurn(await tokenRouterJail(jail, { ...prepared.claude, lane: 'interactive' }), run, prepared.prompt, onTrace, marker);
+                turned = await runClaudeTurn(await tokenRouterJail(jail, {
+                    ...prepared.claude,
+                    lane: 'interactive',
+                    providerId: providerId || undefined
+                }), run, prepared.prompt, onTrace, marker);
             } else {
                 turned = await runCursorTurn(jail, prepared.cursorId, prepared.model, prepared.prompt, onTrace, marker);
             }
@@ -5580,7 +5638,7 @@ function rentanAgentPath() {
 function sanitizeRentanAgent(value) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
     const engine = String(value.engine || '').trim().toLowerCase();
-    if (!DIRECTOR_ENGINES.includes(engine)) return null;
+    if (!DIRECTOR_ENGINES.includes(engine) && !customProviders.isEngine(engine)) return null;
     const model = String(value.model || '').trim().slice(0, 200);
     const effort = String(value.effort || 'medium').trim().toLowerCase();
     return {
@@ -5598,7 +5656,7 @@ function readRentanAgentDefault() {
 function saveRentanAgentDefault(value) {
     const agent = sanitizeRentanAgent(value);
     if (!agent) {
-        const error = new Error('Pick an engine: cursor, claude, or tokenrouter');
+        const error = new Error('Pick an engine: cursor, claude, tokenrouter, or a custom provider');
         error.code = 'INVALID_RENTAN_AGENT';
         throw error;
     }
@@ -5625,6 +5683,11 @@ function rentanAgentFor(job, gr) {
 // turn. A TokenRouter pick with no key falls back to Cursor so prints still resolve.
 function rentanRoute(gr, job) {
     const agent = rentanAgentFor(job, gr);
+    if (customProviders.isEngine(agent.engine)) {
+        if (customProviders.hasKey(gr, agent.engine)) return { agent, server: false };
+        console.warn('Rentan: custom provider has no API key, resolving on Cursor instead');
+        return { agent: { ...RENTAN_CURSOR_FALLBACK }, server: false };
+    }
     if (agent.engine !== 'tokenrouter') return { agent, server: false };
     if (tokenRouter.hasApiKey(gr)) return { agent, server: true };
     console.warn('Rentan: TokenRouter has no API key, resolving on Cursor instead');
@@ -5719,6 +5782,9 @@ async function executeDynagenTurn(gr, job, review, started) {
             model = resolveRunModel(await listCursorModels(jail), { model: agent.model || undefined, effort: agent.effort, fast: agent.fast });
         } else if (agent.engine === 'claude') {
             cliRun = resolveClaudeRun(agent);
+        } else if (customProviders.isEngine(agent.engine)) {
+            customProviders.requireReady(gr, agent.engine);
+            cliRun = await customProviders.resolveForTurn(gr, agent.engine, agent);
         } else {
             requireTokenRouterKey(gr);
             cliRun = await resolveTokenRouterRun(agent);
@@ -5744,8 +5810,18 @@ async function executeDynagenTurn(gr, job, review, started) {
                 first: !claudeSessionExists(paths, probe.claudeSessionId)
             };
             if (agent.engine === 'claude') return runClaudeTurn(claudeJail(jail), run, probe.prompt, tracker, marker, limits);
-            const routed = { ...run, effort: null, fast: false, label: 'TokenRouter' };
-            return runClaudeTurn(await tokenRouterJail(jail, { ...cliRun, lane: 'normal' }), routed, probe.prompt, tracker, marker, limits);
+            const providerId = customProviders.providerId(agent.engine);
+            const routed = {
+                ...run,
+                effort: null,
+                fast: false,
+                label: providerId ? customProviders.displayName(gr, agent.engine) : 'TokenRouter'
+            };
+            return runClaudeTurn(await tokenRouterJail(jail, {
+                ...cliRun,
+                lane: 'normal',
+                providerId: providerId || undefined
+            }), routed, probe.prompt, tracker, marker, limits);
         };
         let turned;
         try {
@@ -5865,9 +5941,65 @@ async function rememberContext(paths, sessionId, context) {
     });
 }
 
+function requireAdmin(clientInfo) {
+    if (!clientInfo || clientInfo.userType !== 'admin') {
+        const error = new Error('Administrator only');
+        error.code = 'ADMIN_ONLY';
+        throw error;
+    }
+}
+
+async function handleDirectorCustomProvidersGet(handler, ws, message, clientInfo) {
+    try {
+        requireAdmin(clientInfo);
+        sendOk(handler, ws, 'director_custom_providers_response', message.requestId, {
+            providers: customProviders.publicAdminList(handler.globalResources)
+        });
+    } catch (error) {
+        handler.sendError(ws, error.message || 'Failed to list custom model providers', error.code || 'DIRECTOR_ERROR', message.requestId);
+    }
+}
+
+async function handleDirectorCustomProvidersSave(handler, ws, message, clientInfo) {
+    try {
+        requireAdmin(clientInfo);
+        const saved = customProviders.saveProvider(handler.globalResources, message.provider || message);
+        sendOk(handler, ws, 'director_custom_providers_save_response', message.requestId, {
+            provider: saved,
+            providers: customProviders.publicAdminList(handler.globalResources)
+        });
+    } catch (error) {
+        handler.sendError(ws, error.message || 'Failed to save the custom model provider', error.code || 'DIRECTOR_ERROR', message.requestId);
+    }
+}
+
 async function handleDirectorGetModels(handler, ws, message) {
     try {
-        if (sanitizeEngine(message.engine) === 'tokenrouter') {
+        const providers = customProviders.publicList(handler.globalResources);
+        const engine = sanitizeEngine(message.engine);
+        if (customProviders.isEngine(engine)) {
+            let models = [];
+            let error = null;
+            const provider = customProviders.lookup(handler.globalResources, engine);
+            try {
+                if (!provider) throw new Error('Unknown custom model provider');
+                models = publicCustomCatalog(
+                    await customProviders.listModels(handler.globalResources, engine, { force: message.force === true }),
+                    provider
+                );
+            } catch (err) {
+                error = err.message || 'Custom provider catalog unavailable';
+            }
+            sendOk(handler, ws, 'director_get_models_response', message.requestId, {
+                engine,
+                models,
+                providers,
+                available: !!findClaude() && !!(provider && provider.apiKey),
+                error
+            });
+            return;
+        }
+        if (engine === 'tokenrouter') {
             let models = [];
             let error = null;
             try {
@@ -5878,15 +6010,17 @@ async function handleDirectorGetModels(handler, ws, message) {
             sendOk(handler, ws, 'director_get_models_response', message.requestId, {
                 engine: 'tokenrouter',
                 models,
+                providers,
                 available: !!findClaude() && tokenRouter.hasApiKey(handler.globalResources),
                 error
             });
             return;
         }
-        if (sanitizeEngine(message.engine) === 'claude') {
+        if (engine === 'claude') {
             sendOk(handler, ws, 'director_get_models_response', message.requestId, {
                 engine: 'claude',
                 models: publicClaudeCatalog(),
+                providers,
                 available: !!findClaude() && fs.existsSync(require('./xiLaunch').resolveClaudeTokenFile())
             });
             return;
@@ -5895,7 +6029,8 @@ async function handleDirectorGetModels(handler, ws, message) {
         const catalog = await listCursorModels(jail);
         sendOk(handler, ws, 'director_get_models_response', message.requestId, {
             engine: 'cursor',
-            models: publicModelCatalog(catalog)
+            models: publicModelCatalog(catalog),
+            providers
         });
     } catch (error) {
         handler.sendError(ws, error.message || 'Failed to list models', error.code || 'DIRECTOR_ERROR', message.requestId);
@@ -6465,6 +6600,9 @@ module.exports = {
     handleDirectorSendMessage,
     handleDirectorAbort,
     handleDirectorGetModels,
+    handleDirectorCustomProvidersGet,
+    handleDirectorCustomProvidersSave,
+    activeChatBrief,
     handleDirectorComputerSize,
     handleDirectorComputerStatus,
     handleDirectorCleanup,

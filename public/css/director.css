@@ -3280,7 +3280,9 @@ html.disable-blur .director-attach-chip {
 }
 
 .director-engine-icon.engine-tokenrouter,
-.xai-icon.engine-tokenrouter-mark {
+.xai-icon.engine-tokenrouter-mark,
+.director-engine-icon.engine-custom,
+.xai-icon.engine-custom-mark {
     -webkit-mask-image: url('/dist/custom-icons/tokenrouter-icon.svg');
     mask-image: url('/dist/custom-icons/tokenrouter-icon.svg');
 }

@@ -116,6 +116,15 @@ function registerRoutes(app, { authMiddleware }) {
     app.get('/mail-exchange/audit', authMiddleware, gated(async (_actor, req) => ({
         audit: exchange.listAudit({ limit: req.query.limit })
     })));
+    app.get('/mail-exchange/mailboxes/:owner/notify-forward', authMiddleware, gated(async (actor, req) => (
+        exchange.adminGetMailboxNotifyForward(actor, { owner: req.params.owner })
+    )));
+    app.put('/mail-exchange/mailboxes/:owner/notify-forward', authMiddleware, json, gated(async (actor, req) => (
+        exchange.adminSetMailboxNotifyForward(actor, Object.assign({ owner: req.params.owner }, req.body || {}))
+    )));
+    app.delete('/mail-exchange/mailboxes/:owner/notify-forward', authMiddleware, json, gated(async (actor, req) => (
+        exchange.adminClearMailboxNotifyForward(actor, Object.assign({ owner: req.params.owner }, req.body || {}))
+    )));
 }
 
 module.exports = { registerRoutes };

@@ -14,6 +14,9 @@ const { DEFAULT_FORGE_MODEL } = require('./modelFeatures');
 let dbPath = null;
 let db = null;
 let checkpointHost = null;
+let databasesDir = null;
+const extraStores = new Map();
+const OBLITERATED_MEMORY_STORE = 'obliterated';
 
 /**
  * Initialize the SQLite database for knowledge memory
@@ -23,6 +26,7 @@ function initializeKnowledgeMemoryDatabase(databasesPath) {
         if (db !== null) {
             return true;
         }
+        databasesDir = databasesPath;
         dbPath = path.join(databasesPath, 'knowledge_memory.db');
         const cacheDir = path.dirname(dbPath);
         if (!fs.existsSync(cacheDir)) {
@@ -390,11 +394,88 @@ function resolveRefinementConfidence(existingConfidence, requested) {
 /**
  * Close database connection
  */
+function normalizeMemoryStore(storeId) {
+    const raw = String(storeId == null ? '' : storeId).trim().toLowerCase();
+    if (!raw || raw === 'default' || raw === 'studio') return '';
+    if (raw === OBLITERATED_MEMORY_STORE) return OBLITERATED_MEMORY_STORE;
+    const error = new Error('Unknown memory store');
+    error.code = 'MEMORY_STORE_UNKNOWN';
+    throw error;
+}
+
+function openObliteratedStore() {
+    if (extraStores.has(OBLITERATED_MEMORY_STORE)) return extraStores.get(OBLITERATED_MEMORY_STORE);
+    if (!databasesDir) throw new Error('Knowledge memory database not initialized');
+    const slotPath = path.join(databasesDir, 'knowledge_memory_obliterated.db');
+    const slotDb = new Database(slotPath);
+    slotDb.pragma('journal_mode = WAL');
+    slotDb.pragma('synchronous = NORMAL');
+    slotDb.pragma('cache_size = -16000');
+    slotDb.pragma('temp_store = MEMORY');
+    const slotHost = { checkpointManager: null };
+    attachLegacyDatabaseCheckpoint(slotHost, slotPath, () => slotDb, null);
+    const prevDb = db;
+    const prevPath = dbPath;
+    const prevHost = checkpointHost;
+    db = slotDb;
+    dbPath = slotPath;
+    checkpointHost = slotHost;
+    try {
+        createKnowledgeMemoryTables();
+    } finally {
+        db = prevDb;
+        dbPath = prevPath;
+        checkpointHost = prevHost;
+    }
+    const slot = { db: slotDb, dbPath: slotPath, checkpointHost: slotHost, registered: false };
+    extraStores.set(OBLITERATED_MEMORY_STORE, slot);
+    return slot;
+}
+
+function registerObliteratedCheckpoint(gr) {
+    const slot = extraStores.get(OBLITERATED_MEMORY_STORE);
+    if (!slot || slot.registered || !gr || !gr.globalCheckpointManager || !slot.checkpointHost.checkpointManager) return;
+    gr.globalCheckpointManager.registerCheckpointManager(
+        'knowledge_memory_obliterated',
+        slot.checkpointHost.checkpointManager,
+        'database'
+    );
+    slot.registered = true;
+}
+
+// Runs fn against the named store. Empty, default, and studio stay on the Studio database.
+// obliterated is knowledge_memory_obliterated.db, shared by every custom model marked for it.
+function withKnowledgeMemoryStore(storeId, fn) {
+    const id = normalizeMemoryStore(storeId);
+    if (!id) return fn();
+    const slot = openObliteratedStore();
+    const prevDb = db;
+    const prevPath = dbPath;
+    const prevHost = checkpointHost;
+    db = slot.db;
+    dbPath = slot.dbPath;
+    checkpointHost = slot.checkpointHost;
+    try {
+        return fn();
+    } finally {
+        db = prevDb;
+        dbPath = prevPath;
+        checkpointHost = prevHost;
+    }
+}
+
 function closeKnowledgeMemoryDatabase() {
+    extraStores.forEach((slot) => {
+        try { slot.db.close(); } catch (_) { /* already closed */ }
+    });
+    extraStores.clear();
     if (db) {
         db.close();
         db = null;
     }
+    dbPath = null;
+    checkpointHost = null;
+    databasesDir = null;
 }
 
 /**
@@ -1859,6 +1940,10 @@ function buildMemoryMindMap({ limit = 60, search = '', category = null, model = 
 module.exports = {
     initializeKnowledgeMemoryDatabase,
     closeKnowledgeMemoryDatabase,
+    OBLITERATED_MEMORY_STORE,
+    normalizeMemoryStore,
+    withKnowledgeMemoryStore,
+    registerObliteratedCheckpoint,
     getCheckpointManager: () => checkpointHost?.checkpointManager || null,
     listKnowledgeMemories,
     listKnowledgeMemoriesPaged,

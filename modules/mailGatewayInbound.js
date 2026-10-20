@@ -375,7 +375,10 @@ function handleInboundConnection(plainSocket, options) {
                 ownDomainFrom,
                 // Aligned own-domain envelope via the relay, not diverted and
                 // no spam / LANTIS_FORGED_OURS signal: our own system mail.
-                trustedOwnSender: ownDomainFrom && !divertOwnDomain && !spamMark.spam && !spamMark.forgedOurs
+                trustedOwnSender: ownDomainFrom && !divertOwnDomain && !spamMark.spam && !spamMark.forgedOurs,
+                // isNotifyLoopHeader: modules/dovecoteMailboxNotify.js
+                notifyLoop: require('./dovecoteMailboxNotify').isNotifyLoopHeader(parsed.headers),
+                headers: parsed.headers
             })).then(() => ({ owner, ok: true }));
         }).catch((err) => ({ owner, ok: false, error: err })));
 

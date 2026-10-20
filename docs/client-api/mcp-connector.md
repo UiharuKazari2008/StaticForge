@@ -393,6 +393,21 @@ Structured NovelAI account/subscription data. Grok web may receive this module.
 - Does NOT invent remaining gens from usageToolManager's 17.3 * percent
 - Uses existing `opusUsage.js` / account endpoints
 
+#### Dovecote Mail Module (`sfapp_dovecote`)
+
+Own-mailbox mail plus per-mailbox new-mail webhook and notify-forward. Submodule `sfapp_dovecote:notify` is the notify tools only. Exchange admin notify tools are on `sfapp_mail_exchange` (Yukimi / Sala / Tsubame).
+
+| Tool | Description | Submodule |
+|------|-------------|-----------|
+| `set_mailbox_notify_forward` | Set the external notice address for **this** mailbox. Not `dream.737.jp.net`. | `notify` |
+| `get_mailbox_notify_forward` | Read this mailbox's notify address. | `notify` |
+| `clear_mailbox_notify_forward` | Clear this mailbox's notify address. | `notify` |
+| `exchange_set_mailbox_notify_forward` | Admin: set any mailbox. `confirm: true`. | mail_exchange |
+| `exchange_get_mailbox_notify_forward` | Admin: read any mailbox. | mail_exchange |
+| `exchange_clear_mailbox_notify_forward` | Admin: clear any mailbox. `confirm: true`. | mail_exchange |
+
+Inbox delivery emits `mailbox_new_mail`. The dispatcher consumes that stream (2-minute coalesce, global notice cap). Notices are short plain mail, no body or attachments. See [rest-api.md](./rest-api.md#dovecote-mailbox-notify-forward).
+
 #### Apocrypha Module (`sfapp_apocrypha`)
 
 Hoshino (and Rook/Menma) live-publish the zine. Grok web is hard-denied this scope, same as cake pantry.

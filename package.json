@@ -132,6 +132,7 @@
     "test:dovecote-batch": "node scripts/test-dovecote-batch.js",
     "test:dovecote-list-select": "node scripts/test-dovecote-list-select.js",
     "test:dovecote-notify": "node scripts/test-dovecote-notify.js",
+    "test:dovecote-mailbox-notify": "node scripts/test-dovecote-mailbox-notify.js",
     "test:mail-gateway": "node scripts/test-mail-gateway.js",
     "test:mail-exchange": "node scripts/test-mail-exchange.js",
     "test:exchange-desktop-app": "node scripts/test-exchange-desktop-app.js",
