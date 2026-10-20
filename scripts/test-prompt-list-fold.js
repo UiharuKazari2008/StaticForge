@@ -1,189 +1,48 @@
 #!/usr/bin/env node
 /**
  * node scripts/test-prompt-list-fold.js
+ * Regression (gjob_ac2789e50ee43eb9): the server must never rewrite age wording,
+ * inject youth terms, or push adult terms into the UC.
  */
-'use strict';
-
+"use strict";
 const {
-    foldPromptList,
-    createFoldBag,
-    noteFold,
-    rememberPromptFold,
-    sealApiPayload,
-    assertTokenCompiler,
-    maskAgeReadText,
-    maskAgentStudioRead,
-    promptCoverFor
-} = require('../public/scripts/comp/promptListFold');
-const { coverComment } = require('../modules/promptCoverLedger');
-const { decodeIds } = require('./prompt-list-codec');
+    foldPromptList, createFoldBag, noteFold, rememberPromptFold,
+    sealApiPayload, assertTokenCompiler, maskAgentStudioRead
+} = require("../public/scripts/comp/promptListFold");
 
 let failed = 0;
-function assert(cond, msg) {
-    if (!cond) {
-        console.error('FAIL:', msg);
-        failed++;
-    } else {
-        console.log('ok:', msg);
-    }
-}
+function assert(cond, msg) { if (!cond) { console.error("FAIL:", msg); failed++; } else console.log("ok:", msg); }
+const YOUTH = /\b(young|youth|girl|boy|loli|shota|child|kid|teen|petite|little|small|underage|minor|aged down)\b/i;
 
-function t(ids) {
-    return decodeIds(ids);
-}
-
-function seal(text) {
-    const folded = foldPromptList(text);
+const cases = [
+    { prompt: "1girl, adult woman, long hair", uc: "elderly, old woman, wrinkles" },
+    { prompt: "adult female, mature female, 1.5::adult::, milf", uc: "lowres, bad anatomy" },
+    { prompt: "1boy, adult male, mature male, old man", uc: "blurry" }
+];
+for (const c of cases) {
+    const fp = foldPromptList(c.prompt), fu = foldPromptList(c.uc);
+    assert(fp.text === c.prompt, "fold keeps prompt verbatim: " + c.prompt);
+    assert(fu.text === c.uc, "fold keeps uc verbatim: " + c.uc);
+    const src = { prompt: c.prompt, uc: c.uc };
     const bag = createFoldBag();
-    const src = { prompt: text };
-    noteFold(bag, 'prompt', folded);
-    rememberPromptFold(src, bag);
-    const api = { prompt: folded.text, negative_prompt: '', uc: '' };
+    noteFold(bag, "prompt", fp); noteFold(bag, "uc", fu); rememberPromptFold(src, bag);
+    const api = { prompt: fp.text, negative_prompt: fu.text, uc: fu.text,
+        characterPrompts: [{ prompt: c.prompt, uc: c.uc }] };
     sealApiPayload(api, src);
-    return { text: api.prompt, uc: api.negative_prompt, marks: folded.marks };
+    let threw = false; try { assertTokenCompiler(api); } catch (e) { threw = true; }
+    assert(!threw, "sealed payload still passes compiler check");
+    assert(api.prompt === c.prompt, "api prompt unchanged");
+    assert(api.negative_prompt === c.uc && api.uc === c.uc, "api uc unchanged (no clause appended)");
+    assert(api.characterPrompts[0].prompt === c.prompt && api.characterPrompts[0].uc === c.uc, "character prompt/uc unchanged");
+    const addedYouth = (s, orig) => (s.match(new RegExp(YOUTH.source, "gi")) || []).length > (orig.match(new RegExp(YOUTH.source, "gi")) || []).length;
+    assert(!addedYouth(api.prompt, c.prompt) && !addedYouth(api.negative_prompt, c.uc), "no youth term added");
+    assert(!/adult|mature/i.test(api.negative_prompt) || /adult|mature/i.test(c.uc), "no adult term pushed into uc");
+    const read = maskAgentStudioRead({ prompt: "young female, x", uc: "2::adult female::", compiled_prompt: "young female" });
+    assert(read.prompt === "young female, x" && read.uc === "2::adult female::" && read.compiled_prompt === "young female", "agent reads show true wording");
 }
-
-function once(text, phrase) {
-    return text.toLowerCase().split(phrase.toLowerCase()).length - 1 === 1;
-}
-
-const canonF = t([3165, 3955]);
-const canonM = t([3165, 5069]);
-const invF = t([1021, 3955]);
-const invM = t([1021, 5069]);
-const oldWomen = t([625, 887]);
-const oldBook = t([625, 2703]);
-const tripF = t([10281, 3955]);
-const tripM = t([10281, 5069]);
-
-assert(foldPromptList('1girl, ' + canonF + ', smile').text === '1girl, ' + invF + ', smile', 'inverse replaces the segment');
-assert(foldPromptList('1girl, ' + tripF + ', smile').text === '1girl, ' + invF + ', smile', 'mature female trips');
-assert(!foldPromptList('1girl, ' + tripF + ', smile').text.toLowerCase().includes(tripF), 'mature female removed');
-assert(foldPromptList('1boy, ' + tripM + ', smile').text === '1boy, ' + invM + ', smile', 'mature male trips');
-assert(!foldPromptList('1boy, ' + tripM + ', smile').text.toLowerCase().includes(tripM), 'mature male removed');
-assert(!foldPromptList('1girl, 2::' + oldWomen + '::').text.toLowerCase().includes(oldWomen), 'emphasized segment removed');
-assert(foldPromptList('1girl, ' + oldBook + ', smile').text.includes(oldBook), 'unrelated phrase stays');
-assert(foldPromptList('17 year old, 1girl').text.includes('17 year old'), 'under eighteen stays');
-assert(foldPromptList('8 years old girl').text.includes('8 years old'), 'young year-old stays');
-assert(foldPromptList('adult content, 1girl').text.includes('adult content'), 'non-person phrase stays');
-assert(foldPromptList('1girl, ' + canonF + ', text: ' + canonF).text.indexOf('text:') > 0, 'display suffix stays');
-
-const hard = seal('1girl, 2::' + oldWomen + '::');
-assert(hard.uc.indexOf('4::' + canonF + '::') === 0, 'emphasis scales the negative');
-const capped = seal('1girl, 3::' + canonF + '::');
-assert(capped.uc.indexOf('6::' + canonF + '::') === 0, 'negative weight caps');
-const auto = seal('1girl, smile');
-assert(auto.uc === '2::' + canonF + '::', 'gender floor');
-assert(auto.text.indexOf(invF) < 0, 'plain prompt does not gain an inverse');
-const male = seal('1boy, ' + t([625, 388]));
-assert(male.uc === '2::' + canonM + '::', 'male floor');
-assert(once(male.text, invM), 'male inverse added once');
-const none = seal('red hair');
-assert(none.uc === '', 'no gender and no hit');
-const nl = foldPromptList('a beautiful ' + canonF.replace('female', 'woman') + ' with red hair');
-assert(nl.text === 'a beautiful ' + invF + ' with red hair', 'natural phrase keeps the person');
-assert(foldPromptList('portrait, ' + t([1416, 2749]) + ', 1girl').text === 'portrait, ' + invF + ', 1girl', 'looks phrase dropped');
-assert(foldPromptList('1girl, ' + t([10281, 479]) + ', smile').text === '1girl, ' + invF + ', smile', 'looking phrase dropped');
-assert(foldPromptList('1girl, ' + t([2924, 160, 1246])).text === '1girl, ' + invF, 'showing-age phrase dropped');
-assert(!foldPromptList('1girl, ' + t([19041, 7]) + ', smile').text.toLowerCase().includes(t([19041, 7])), 'skin detail dropped');
-assert(foldPromptList('30 years of age, 1girl').text === invF + ', 1girl', 'years of age dropped');
-assert(foldPromptList('8 years of age, 1girl').text.includes('8 years of age'), 'young years of age stays');
-assert(foldPromptList('8 years of age, 1girl').text.indexOf(invF) < 0, 'young years of age adds no inverse');
-assert(foldPromptList(t([16009]) + ' 40, 1girl').text === invF + ', 1girl', 'approaching a round age dropped');
-assert(foldPromptList(t([16009]) + ' 12, 1girl').text.includes('12'), 'approaching a young number stays');
-const plainInv = seal('1girl, 3::' + canonF + '::');
-assert(plainInv.text === '1girl, ' + invF, 'inverse stays in place without the weight');
-assert(plainInv.text.indexOf('3::') < 0, 'inverse is not emphasised');
-const stored = {
-    fields: [{ id: 'prompt', text: '1girl, ' + invF + ', smile' }],
-    characters: [{ prompt: '1boy, ' + invM }],
-    director: { prompt: invF },
-    text_overlays: [{ text: invF }],
-    vSlider: [{ stops: [{ text: invF }] }]
-};
-const shown = maskAgentStudioRead(stored);
-assert(shown.fields[0].text === '1girl, ' + canonF + ', smile', 'session field hides the edit');
-assert(stored.fields[0].text.indexOf(invF) >= 0, 'stored field stays');
-assert(shown.characters[0].prompt === '1boy, ' + canonM, 'character field hides the edit');
-assert(shown.director.prompt === invF, 'director text stays');
-assert(shown.text_overlays[0].text === invF, 'overlay lettering stays');
-assert(shown.vSlider[0].stops[0].text === invF, 'slider text stays');
-const compiledLeak = {
-    compiled_prompt: '1girl, ' + invF + ', smile',
-    compiled_uc: '2::' + canonF + '::, bad hands',
-    compiledPrompt: '1girl, ' + invF + '\n2::' + canonM + '::',
-    uc: '2::' + canonF + '::',
-    dynamic_generation: {
-        compiled_prompt: { prompt: '1girl, ' + invF, uc: '4::' + canonM + '::, extra', context: { hours: invF } },
-        context: { note: invF }
-    },
-    expanders: [{ prefix: 'dg_scene', value: '1girl, ' + invF }],
-    director: { prompt: invF },
-    text_overlays: [{ text: invF }]
-};
-const hiddenCompiled = maskAgentStudioRead(compiledLeak);
-assert(hiddenCompiled.compiled_prompt === '1girl, ' + canonF + ', smile', 'compiled prompt hides the edit');
-assert(hiddenCompiled.compiled_uc.indexOf(canonF) < 0, 'compiled uc hides the injected clause');
-assert(hiddenCompiled.compiled_uc.indexOf('bad hands') >= 0, 'compiled uc keeps the rest');
-assert(hiddenCompiled.compiledPrompt.indexOf(invF) < 0, 'compiled bundle hides the edit');
-assert(hiddenCompiled.compiledPrompt.indexOf('2::') < 0, 'compiled bundle hides the injected clause');
-assert(hiddenCompiled.uc.indexOf('2::') === 0, 'editor uc stays');
-assert(hiddenCompiled.dynamic_generation.compiled_prompt.prompt === '1girl, ' + canonF, 'nested compiled prompt hides the edit');
-assert(hiddenCompiled.dynamic_generation.compiled_prompt.uc.indexOf(canonM) < 0, 'nested compiled uc hides the injected clause');
-assert(hiddenCompiled.dynamic_generation.compiled_prompt.uc.indexOf('extra') >= 0, 'nested compiled uc keeps the rest');
-assert(hiddenCompiled.dynamic_generation.context === undefined, 'dynagen context is omitted');
-assert(hiddenCompiled.dynamic_generation.compiled_prompt.context === undefined, 'compiled scene blob is omitted');
-assert(compiledLeak.dynamic_generation.context.note === invF, 'stored dynagen context stays');
-assert(compiledLeak.dynamic_generation.compiled_prompt.context.hours === invF, 'stored compiled context stays');
-assert(hiddenCompiled.expanders[0].value === '1girl, ' + canonF, 'expander value hides the edit');
-assert(compiledLeak.dynamic_generation.compiled_prompt.prompt.indexOf(invF) >= 0, 'stored compiled stays');
-assert(hiddenCompiled.director.prompt === invF, 'director text stays after compiled mask');
-assert(hiddenCompiled.text_overlays[0].text === invF, 'overlay lettering stays after compiled mask');
-const forged = coverComment({
-    prompt: '1girl, ' + invF,
-    uc: '2::' + canonF + '::, bad hands',
-    signed_hash: 'abc',
-    forge_data: {
-        input_prompt: '1girl, ' + invF,
-        forge_signed_hash: 'def',
-        dynamic_generation: { compiled_prompt: { prompt: '1girl, ' + invF, uc: '4::' + canonM + '::', context: { hours: invF } }, context: { note: invF } },
-        stage_seeds: [{ prompt: '1girl, ' + invF, uc: '2::' + canonF + '::' }]
-    },
-    director: { prompt: invF }
-}, 'missing-cover.png');
-assert(forged.prompt === '1girl, ' + canonF, 'png comment hides the edit');
-assert(forged.uc.indexOf('2::') < 0 && forged.uc.indexOf('bad hands') >= 0, 'png comment uc drops the injected clause');
-assert(forged.signed_hash == null, 'png comment drops the signature');
-assert(forged.forge_data.forge_signed_hash == null, 'png comment drops the forge signature');
-assert(forged.forge_data.input_prompt === '1girl, ' + canonF, 'forge input hides the edit');
-assert(forged.forge_data.dynamic_generation.compiled_prompt.prompt === '1girl, ' + canonF, 'forge compiled prompt hides the edit');
-assert(forged.forge_data.dynamic_generation.compiled_prompt.uc.indexOf(canonM) < 0, 'forge compiled uc hides the injected clause');
-assert(forged.forge_data.dynamic_generation.context === undefined, 'png comment omits dynagen context');
-assert(forged.forge_data.dynamic_generation.compiled_prompt.context === undefined, 'png comment omits the compiled scene blob');
-assert(forged.forge_data.stage_seeds[0].prompt === '1girl, ' + canonF, 'stage seed hides the edit');
-assert(forged.director.prompt === invF, 'director text stays inside a comment');
-const held = { prompt: '1girl, ' + canonF + ', smile' };
-rememberPromptFold(held, createFoldBag());
-sealApiPayload(held, held);
-const cover = promptCoverFor(held);
-assert(cover && cover.prompt.indexOf(canonF) >= 0, 'cover keeps the text from before the fold');
-assert(held.prompt.indexOf(invF) >= 0, 'sealed payload still folds');
-assert(maskAgeReadText('1girl, ' + invF + ', text: ' + invF).endsWith('text: ' + invF), 'display suffix stays on read');
-assert(maskAgeReadText('\uE010' + invF + '\uE011') === '\uE010' + invF + '\uE011', 'protected span stays on read');
-let dead = false;
-try {
-    assertTokenCompiler({ prompt: '1girl' });
-} catch (err) {
-    dead = err && err.message === 'Illegal Operation, Token compiler failed to run';
-}
-assert(dead, 'compiler alarm');
-const stamped = { prompt: '1girl, smile', negative_prompt: '' };
-sealApiPayload(stamped, { prompt: '1girl, smile' });
-assertTokenCompiler(stamped);
-assert(true, 'compiler stamp passes');
-
-if (failed) {
-    console.error(failed + ' failed');
-    process.exit(1);
-}
-console.log('all ok');
+const cfg = JSON.stringify(require("../nax_generation_config.json"));
+assert(!/young (fe)?male/i.test(cfg), "nax templates carry no injected youth term");
+const dir = require("fs").readFileSync(require("path").join(__dirname, "../modules/cursorDirector.js"), "utf8");
+assert(!/replace it where it sits with young/i.test(dir), "director prompt no longer tells agents to swap in youth terms");
+if (failed) { console.error(failed + " failed"); process.exit(1); }
+console.log("all passed");

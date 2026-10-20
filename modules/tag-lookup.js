@@ -1909,10 +1909,15 @@ class TagLookup {
             WHERE LOWER(tws.sequence) = LOWER(?)
             LIMIT ?
         `;
+        // Prefix and suffix lookups below are index range scans, not LIKE: a LIKE on
+        // LOWER(col) scanned the whole table (seqPrefix ~0.5-0.9s, fuzzy/suffix up to
+        // ~160ms, all on the main thread). ORDER BY +id keeps the rows LIMIT picked
+        // under the old scan order (the + stops the planner from scanning by id).
         const tagIdsFromSeqPrefix = `
             SELECT DISTINCT t.id FROM tag_word_sequences tws
             INNER JOIN tags t ON t.id = tws.tag_id
-            WHERE LOWER(tws.sequence) LIKE LOWER(?) || '%' ESCAPE '\\'
+            WHERE LOWER(tws.sequence) >= ? AND LOWER(tws.sequence) < ?
+            ORDER BY +t.id
             LIMIT ?
         `;
 
@@ -1933,26 +1938,104 @@ class TagLookup {
                 WHERE LOWER(tw.word) = LOWER(?)
                 LIMIT ?
             `),
+            // (tag_id, word) is UNIQUE, so these rows were already distinct.
             wordFuzzyIds: this.searchDb.prepare(`
-                SELECT DISTINCT tw.tag_id AS id, tw.word AS matched_word
+                SELECT tw.tag_id AS id, tw.word AS matched_word
                 FROM tag_words tw
-                WHERE LOWER(tw.word) LIKE LOWER(?) || '%' ESCAPE '\\'
+                WHERE LOWER(tw.word) >= ? AND LOWER(tw.word) < ?
                   AND ABS(LENGTH(tw.word) - ?) <= 2
+                ORDER BY +tw.id
                 LIMIT ?
             `),
+            // The words come from the in-memory suffix index (getWordsEndingWith).
             wordFuzzySuffixIds: this.searchDb.prepare(`
-                SELECT DISTINCT tw.tag_id AS id, tw.word AS matched_word
+                SELECT tw.tag_id AS id, tw.word AS matched_word
                 FROM tag_words tw
-                WHERE LOWER(tw.word) LIKE '%' || LOWER(?) ESCAPE '\\'
-                  AND ABS(LENGTH(tw.word) - ?) <= 2
+                WHERE LOWER(tw.word) IN (SELECT value FROM json_each(?))
+                ORDER BY +tw.id
                 LIMIT ?
-            `)
+            `),
+            suffixWordsPage: this.searchDb.prepare(`
+                SELECT DISTINCT LOWER(word) AS w FROM tag_words
+                WHERE LOWER(word) > ?
+                ORDER BY LOWER(word)
+                LIMIT ?
+            `).pluck(),
+            tagWordsVersion: this.searchDb.prepare('SELECT MAX(id) FROM tag_words').pluck()
         };
+        this._suffixIndexDataVersion = null;
     } catch (e) {
         console.warn('Read-only tag search DB unavailable:', e.message);
         this.searchDb = null;
         this._searchDbStmts = null;
     }
+}
+
+    // SQLite's LOWER() without ICU folds ASCII only; match it so range bounds agree with the index.
+    sqliteLower(value = '') {
+    return String(value).replace(/[A-Z]/g, ch => ch.toLowerCase());
+}
+
+    // [low, high) covering every string that starts with prefix (high: prefix + U+10FFFF).
+    prefixRange(prefix = '') {
+    const low = this.sqliteLower(prefix);
+    return [low, low + String.fromCodePoint(0x10FFFF)];
+}
+
+    // Distinct LOWER(word) values, each reversed, sorted, so "ends with" is a binary search.
+    // Built in pages (~40 x 5k rows) that yield between them, and rebuilt in the
+    // background when tag_words grows (MAX(id); words are only ever inserted).
+    async ensureSuffixIndex() {
+    if (!this.searchDb || !this._searchDbStmts) return null;
+    const version = this._searchDbStmts.tagWordsVersion.get();
+    if (this._suffixIndex && this._suffixIndexDataVersion === version) return this._suffixIndex;
+    if (!this._suffixIndexBuild) this._suffixIndexBuild = this.buildSuffixIndex(version);
+    // A stale index answers while the rebuild runs; only the first build is awaited.
+    if (this._suffixIndex) return this._suffixIndex;
+    return this._suffixIndexBuild;
+}
+
+    buildSuffixIndex(version) {
+    return (async () => {
+        const reversed = [];
+        let after = '';
+        for (;;) {
+            const page = this._searchDbStmts.suffixWordsPage.all(after, 5000);
+            for (const word of page) reversed.push(Array.from(word).reverse().join(''));
+            if (page.length < 5000) break;
+            after = page[page.length - 1];
+            await new Promise(resolve => setImmediate(resolve));
+        }
+        // Default sort (UTF-16 order, same as <) on plain strings: ~90ms vs ~230ms for tuples.
+        reversed.sort();
+        this._suffixIndex = reversed;
+        this._suffixIndexDataVersion = version;
+        return reversed;
+    })().catch((e) => {
+        console.warn('Tag suffix index build failed:', e.message);
+        return this._suffixIndex || null;
+    }).finally(() => {
+        this._suffixIndexBuild = null;
+    });
+}
+
+    // Lowercased words ending with suffix whose length is within 2 of wordLength
+    // (the old LIKE '%suffix' AND ABS(LENGTH(word) - ?) <= 2).
+    getWordsEndingWith(index, suffix, wordLength) {
+    const needle = Array.from(this.sqliteLower(suffix)).reverse().join('');
+    let lo = 0;
+    let hi = index.length;
+    while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (index[mid] < needle) lo = mid + 1;
+        else hi = mid;
+    }
+    const words = [];
+    for (let i = lo; i < index.length && index[i].startsWith(needle); i++) {
+        const chars = Array.from(index[i]);
+        if (Math.abs(chars.length - wordLength) <= 2) words.push(chars.reverse().join(''));
+    }
+    return words;
 }
 
     getAutofillSearchCacheEntry(cacheKey) {
@@ -2083,18 +2166,20 @@ class TagLookup {
         const fuzzySuffixes = this.getFuzzyWordSuffixes(word);
         const seenFuzzyIds = new Set();
         for (const prefix of fuzzyPrefixes) {
-            const pattern = this.escapeLikePattern(prefix) + '%';
+            const [low, high] = this.prefixRange(prefix);
             const fuzzyLimit = prefix.length <= 2
                 ? Math.min(120, perWordLimit * 2)
                 : perWordLimit;
-            const rows = stmts.wordFuzzyIds.all(pattern, word.length, fuzzyLimit);
+            const rows = stmts.wordFuzzyIds.all(low, high, word.length, fuzzyLimit);
             for (const { row, fuzzyScore } of this.collectScoredFuzzyWordRows(word, rows, seenFuzzyIds)) {
                 addCandidate(row.id, fuzzyScore);
             }
         }
-        for (const suffix of fuzzySuffixes) {
-            const pattern = this.escapeLikePattern(suffix);
-            const rows = stmts.wordFuzzySuffixIds.all(pattern, word.length, Math.min(40, perWordLimit));
+        const suffixIndex = fuzzySuffixes.length ? await this.ensureSuffixIndex() : null;
+        for (const suffix of suffixIndex ? fuzzySuffixes : []) {
+            const words = this.getWordsEndingWith(suffixIndex, suffix, word.length);
+            if (!words.length) continue;
+            const rows = stmts.wordFuzzySuffixIds.all(JSON.stringify(words), Math.min(40, perWordLimit));
             for (const { row, fuzzyScore } of this.collectScoredFuzzyWordRows(word, rows, seenFuzzyIds)) {
                 addCandidate(row.id, fuzzyScore);
             }
@@ -2110,8 +2195,8 @@ class TagLookup {
         for (const row of stmts.seqExactIds.all(phrase, perWordLimit)) {
             addCandidate(row.id, baseCfg.phraseExactBase + wordTokens.length * baseCfg.phraseExactPerToken);
         }
-        const prefixPattern = this.escapeLikePattern(phrase) + '%';
-        for (const row of stmts.seqPrefixIds.all(prefixPattern, perWordLimit)) {
+        const [phraseLow, phraseHigh] = this.prefixRange(phrase);
+        for (const row of stmts.seqPrefixIds.all(phraseLow, phraseHigh, perWordLimit)) {
             addCandidate(row.id, baseCfg.phrasePrefix);
         }
     }
