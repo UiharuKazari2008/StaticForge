@@ -38,10 +38,13 @@ assert.match(dovecoteCss, /data-dove-field="originalTo"/);
 assert.match(mcpFacade, /originalTo \(trusted X-Original-To/);
 assert.match(dovecoteCss, /dovecote-col-route/);
 assert.match(dovecoteCss, /data-dove-route="inbound"/);
-assert.match(dovecoteCss, /net-limited-16\.png/);
+assert.match(dovecoteCss, /net-trusted-16\.png/);
+assert.doesNotMatch(dovecoteCss, /net-limited-16\.png/);
+assert.match(dovecoteJs, /internal: 'Internal and trusted\./);
 assert.match(dovecoteCss, /net-internet-recv-16\.png/);
 assert.match(dovecoteCss, /net-internet-send-16\.png/);
 assert.ok(fs.existsSync(path.join(__dirname, '..', 'public/static_images/vista-icons/net-limited-16.png')));
+assert.ok(fs.existsSync(path.join(__dirname, '..', 'public/static_images/vista-icons/net-trusted-16.png')));
 assert.ok(fs.existsSync(path.join(__dirname, '..', 'public/static_images/vista-icons/net-internet-recv-16.png')));
 assert.ok(fs.existsSync(path.join(__dirname, '..', 'public/static_images/vista-icons/net-internet-send-16.png')));
 

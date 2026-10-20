@@ -1114,7 +1114,7 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
     height: 16px;
     font-size: 0;
     color: #1e395b;
-    background: image-set(url('/static_images/vista-icons/net-limited-16.png') 1x, url('/static_images/vista-icons/net-limited-32.png') 2x) center / 16px 16px no-repeat;
+    background: image-set(url('/static_images/vista-icons/net-trusted-16.png') 1x, url('/static_images/vista-icons/net-trusted-32.png') 2x) center / 16px 16px no-repeat;
 }
 
 body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-route-icon[data-dove-route="inbound"] {

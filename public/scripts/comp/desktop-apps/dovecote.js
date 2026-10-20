@@ -110,7 +110,7 @@ const doveFormatAddressList = function (value) {
     return list.map((name) => doveDisplayAddress(String(name).trim())).filter(Boolean).join(', ');
 };
 const DOVE_ROUTE_TOOLTIP = {
-    internal: 'Delivered inside the Dreamscape network and never left it.',
+    internal: 'Internal and trusted. Delivered inside the Dreamscape network and never left it.',
     inbound: 'Arrived from the internet through the mail gateway.',
     outbound: 'Sent to the internet through the mail gateway.'
 };
@@ -120,7 +120,7 @@ const doveNormalizeRoute = function (route) {
 const doveRouteIconClass = function (route) {
     if (route === 'inbound') return 'fas fa-globe dovecote-route-icon';
     if (route === 'outbound') return 'fas fa-arrow-up-right-from-square dovecote-route-icon';
-    return 'fas fa-house dovecote-route-icon';
+    return 'fas fa-shield-halved dovecote-route-icon';
 };
 const doveBuildRouteIcon = function (route) {
     const kind = doveNormalizeRoute(route);
