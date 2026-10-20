@@ -2,8 +2,17 @@
    Shared DSAP chrome lives in css/dsap-smf.css (theme: 'dsap-smf') plus
    form-row / form-group from css/manual-modal.css and css/app.css. */
 
+[data-dsap="exchange"] {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
+}
+
 [data-dsap="exchange"] .exchange-view {
     padding: 4px 0 0;
+    max-width: 100%;
+    min-width: 0;
 }
 
 /* Same two-column property list as Data Management's account info table
@@ -43,7 +52,8 @@
 }
 
 [data-dsap="exchange"] .form-row .form-group {
-    flex: 1 1 8rem;
+    flex: 1 1 10rem;
+    max-width: 24rem;
     min-width: 0;
 }
 
