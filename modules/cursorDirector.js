@@ -1118,7 +1118,8 @@ function publicTokenRouterCatalog(families) {
 
 function publicCustomCatalog(families, provider) {
     const list = Array.isArray(families) ? families : [];
-    const preferred = provider && provider.defaultModel;
+    const preferred = (provider && provider.defaultModel)
+        || (provider && provider.kind === 'tokenrouter' ? tokenRouter.DEFAULT_MODEL : '');
     const fallback = list.find((item) => item.id === preferred) || list[0];
     return list.map((family) => ({
         id: family.id,
@@ -1351,20 +1352,228 @@ function sessionContext(chat) {
     return { contextTokens: tokens, contextPercent: percent };
 }
 
-function readIndex(indexPath) {
+// ---- Chat index store ----
+// The index lives in memory. Parsing and rewriting the whole file on every call
+// held the event loop for up to ~2s once it reached 26MB (profile 2026-10-20).
+// On disk, index.json keeps the chat records without their messages, and each
+// chat's messages sit in messages/<id>.json, rewritten only when they change.
+// Writes are coalesced and land asynchronously; exit and SIGINT/SIGTERM flush
+// synchronously. An index.json that still has messages inline (the old format)
+// loads as-is and moves out on the first flush.
+const INDEX_FLUSH_MS = 500;
+const indexStores = new Map();
+
+function fileStamp(file) {
+    try {
+        const st = fs.statSync(file);
+        return `${st.mtimeMs}:${st.size}`;
+    } catch (_) {
+        return null;
+    }
+}
+
+function chatMessagesPath(indexPath, chatId) {
+    return path.join(path.dirname(indexPath), 'messages', `${safeName(chatId)}.json`);
+}
+
+// readIndex hands out a copy, so a caller that edits and then throws instead of
+// calling writeIndex leaves the store as it was (the old re-read-from-disk behaviour).
+function copyIndex(index) {
+    return {
+        ...index,
+        chats: index.chats.map((chat) => (Array.isArray(chat.messages)
+            ? { ...chat, messages: chat.messages.map((item) => (item && typeof item === 'object' ? { ...item } : item)) }
+            : { ...chat }))
+    };
+}
+
+function loadIndexStore(indexPath) {
+    let index = { chats: [] };
     try {
         const parsed = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
-        if (parsed && Array.isArray(parsed.chats)) return parsed;
+        if (parsed && Array.isArray(parsed.chats)) index = parsed;
     } catch (_) { /* new */ }
-    return { chats: [] };
+    const store = {
+        indexPath,
+        index,
+        stamp: fileStamp(indexPath),
+        indexDirty: false,
+        dirty: new Set(),
+        removed: new Set(),
+        flushing: null,
+        inflight: null,
+        timer: null
+    };
+    index.chats.forEach((chat) => {
+        if (Array.isArray(chat.messages)) {
+            store.dirty.add(chat.id);
+            store.indexDirty = true;
+            return;
+        }
+        try {
+            const list = JSON.parse(fs.readFileSync(chatMessagesPath(indexPath, chat.id), 'utf8'));
+            if (Array.isArray(list)) chat.messages = list;
+        } catch (_) { /* no messages yet */ }
+    });
+    indexStores.set(indexPath, store);
+    if (store.indexDirty) {
+        // Keep the old-format file once, so a rollback to the inline format has its messages.
+        try { fs.copyFileSync(indexPath, `${indexPath}.pre-split`, fs.constants.COPYFILE_EXCL); } catch (_) { /* kept already, or no file */ }
+        scheduleIndexFlush(store);
+    }
+    return store;
+}
+
+function indexStore(indexPath) {
+    const store = indexStores.get(indexPath);
+    if (!store) return loadIndexStore(indexPath);
+    // Nothing pending: pick up an index.json changed outside this process.
+    if (!store.indexDirty && !store.flushing && fileStamp(indexPath) !== store.stamp) return loadIndexStore(indexPath);
+    return store;
+}
+
+function readIndex(indexPath) {
+    return copyIndex(indexStore(indexPath).index);
+}
+
+// The live store object, without a copy. Read-only callers only: never edit what this returns.
+function peekIndex(indexPath) {
+    return indexStore(indexPath).index;
+}
+
+function sameMessage(a, b) {
+    if (a === b) return true;
+    if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false;
+    const keys = Object.keys(a);
+    if (keys.length !== Object.keys(b).length) return false;
+    return keys.every((key) => a[key] === b[key]);
+}
+
+function sameMessages(a, b) {
+    if (!Array.isArray(a) || !Array.isArray(b)) return a === b;
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (!sameMessage(a[i], b[i])) return false;
+    return true;
 }
 
 function writeIndex(indexPath, index) {
-    fs.mkdirSync(path.dirname(indexPath), { recursive: true });
-    const tmp = `${indexPath}.${process.pid}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(index));
-    fs.renameSync(tmp, indexPath);
+    const store = indexStore(indexPath);
+    const next = copyIndex(index);
+    const before = new Map(store.index.chats.map((chat) => [chat.id, chat]));
+    next.chats.forEach((chat) => {
+        const prev = before.get(chat.id);
+        before.delete(chat.id);
+        store.removed.delete(chat.id);
+        if (!prev || !sameMessages(prev.messages, chat.messages)) store.dirty.add(chat.id);
+    });
+    before.forEach((_chat, id) => {
+        store.dirty.delete(id);
+        store.removed.add(id);
+    });
+    store.index = next;
+    store.indexDirty = true;
+    scheduleIndexFlush(store);
 }
+
+function scheduleIndexFlush(store) {
+    if (store.timer) return;
+    store.timer = setTimeout(() => {
+        store.timer = null;
+        // A flush in progress reschedules when it finishes.
+        if (!store.flushing) flushIndexStore(store);
+    }, INDEX_FLUSH_MS);
+    if (typeof store.timer.unref === 'function') store.timer.unref();
+}
+
+// Serialize now (the snapshot), write after: index.json goes last, after the messages it lists.
+function indexSnapshot(store, dirty, removed) {
+    const files = [];
+    store.index.chats.forEach((chat) => {
+        if (dirty.has(chat.id)) files.push([chatMessagesPath(store.indexPath, chat.id), JSON.stringify(chat.messages || [])]);
+    });
+    const chats = store.index.chats.map(({ messages, ...rest }) => rest);
+    return {
+        files,
+        removed: Array.from(removed).map((id) => chatMessagesPath(store.indexPath, id)),
+        indexText: JSON.stringify({ ...store.index, chats })
+    };
+}
+
+function takePending(store) {
+    const pending = { dirty: store.dirty, removed: store.removed };
+    store.dirty = new Set();
+    store.removed = new Set();
+    store.indexDirty = false;
+    return pending;
+}
+
+async function writeFileAtomic(file, text) {
+    const tmp = `${file}.${process.pid}.tmp`;
+    await fs.promises.writeFile(tmp, text);
+    await fs.promises.rename(tmp, file);
+}
+
+function flushIndexStore(store) {
+    if (!store.indexDirty) return;
+    const pending = takePending(store);
+    store.inflight = pending;
+    const snap = indexSnapshot(store, pending.dirty, pending.removed);
+    store.flushing = (async () => {
+        await fs.promises.mkdir(path.join(path.dirname(store.indexPath), 'messages'), { recursive: true });
+        for (const [file, text] of snap.files) await writeFileAtomic(file, text);
+        await writeFileAtomic(store.indexPath, snap.indexText);
+        for (const file of snap.removed) await fs.promises.unlink(file).catch(() => {});
+        store.stamp = fileStamp(store.indexPath);
+    })().catch((error) => {
+        console.error(`Director index write failed: ${error.message}`);
+        pending.dirty.forEach((id) => store.dirty.add(id));
+        pending.removed.forEach((id) => store.removed.add(id));
+        store.indexDirty = true;
+    }).finally(() => {
+        store.flushing = null;
+        store.inflight = null;
+        if (store.indexDirty) scheduleIndexFlush(store);
+    });
+}
+
+// Exit path: write whatever is pending, including a batch an unfinished async flush was writing.
+function flushIndexStoresSync() {
+    indexStores.forEach((store) => {
+        if (!store.indexDirty && !store.inflight) return;
+        try {
+            const dirty = new Set([...(store.inflight ? store.inflight.dirty : []), ...store.dirty]);
+            const removed = new Set([...(store.inflight ? store.inflight.removed : []), ...store.removed]);
+            const snap = indexSnapshot(store, dirty, removed);
+            fs.mkdirSync(path.join(path.dirname(store.indexPath), 'messages'), { recursive: true });
+            const writeSync = (file, text) => {
+                const tmp = `${file}.${process.pid}.exit.tmp`;
+                fs.writeFileSync(tmp, text);
+                fs.renameSync(tmp, file);
+            };
+            snap.files.forEach(([file, text]) => writeSync(file, text));
+            writeSync(store.indexPath, snap.indexText);
+            snap.removed.forEach((file) => { try { fs.unlinkSync(file); } catch (_) { /* gone */ } });
+            takePending(store);
+            store.inflight = null;
+            store.stamp = fileStamp(store.indexPath);
+        } catch (error) {
+            console.error(`Director index exit flush failed: ${error.message}`);
+        }
+    });
+}
+
+// Flush on the signal too, in case the graceful shutdown is killed before it exits.
+// Alone (a script that loaded this module), keep the default: exit on the signal.
+function flushOnSignal(signal, code) {
+    process.on(signal, () => {
+        flushIndexStoresSync();
+        if (process.listenerCount(signal) === 1) process.exit(code);
+    });
+}
+
+process.on('exit', flushIndexStoresSync);
+flushOnSignal('SIGINT', 130);
+flushOnSignal('SIGTERM', 143);
 
 function sessionChoice(chat) {
     const picked = chat && chat.choice;
@@ -2653,7 +2862,7 @@ async function directorStatus(sample) {
     let sessions = [];
     let runningName = null;
     try {
-        const index = readIndex(layout().indexPath);
+        const index = peekIndex(layout().indexPath);
         sessions = traySessions(index, runningSessionId);
         if (runningSessionId) {
             const running = index.chats.find((chat) => chat.id === runningSessionId);
@@ -4356,7 +4565,7 @@ function activeDirectorSessionId() {
 function activeChatBrief() {
     const sessionId = activeDirectorSessionId();
     if (!sessionId) return null;
-    const index = readIndex(layout().indexPath);
+    const index = peekIndex(layout().indexPath);
     const chat = index.chats.find((item) => item.id === sessionId);
     if (!chat) return null;
     const choice = chat.choice && typeof chat.choice === 'object' ? chat.choice : {};
@@ -4380,13 +4589,13 @@ function listActiveRuns() {
 function readChatWorkspace(sessionId) {
     const id = String(sessionId || '').trim();
     if (!id) return '';
-    const index = readIndex(layout().indexPath);
+    const index = peekIndex(layout().indexPath);
     const chat = index.chats.find((item) => item.id === id);
     return chat && typeof chat.workspaceId === 'string' ? chat.workspaceId.trim() : '';
 }
 
 function readSessionTasks(sessionId) {
-    const index = readIndex(layout().indexPath);
+    const index = peekIndex(layout().indexPath);
     const chat = index.chats.find((item) => item.id === sessionId);
     if (!chat) return null;
     return normalizeSessionTasks(chat.tasks);
@@ -4720,7 +4929,7 @@ async function handleDirectorDeleteSession(handler, ws, message) {
 async function handleDirectorGetMessages(handler, ws, message) {
     try {
         const { paths } = await ensureProject(handler.globalResources);
-        const index = readIndex(paths.indexPath);
+        const index = peekIndex(paths.indexPath);
         const chat = index.chats.find((item) => item.id === message.sessionId);
         if (!chat) {
             handler.sendError(ws, 'Session not found', 'SESSION_NOT_FOUND', message.requestId);
@@ -4966,7 +5175,7 @@ async function clearInflight(sessionId) {
 
 async function inflightCanResume(sessionId) {
     const paths = layout();
-    const index = readIndex(paths.indexPath);
+    const index = peekIndex(paths.indexPath);
     const chat = index.chats.find((item) => item.id === sessionId);
     if (!chat || !chat.inflight || !chatAgentSession(chat)) return false;
     const started = Date.parse(chat.inflight.startedAt || '');
