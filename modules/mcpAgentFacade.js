@@ -1061,7 +1061,7 @@ const TOOL_DEFS = [
     {
         name: 'apply_studio_changes',
         core: true,
-        description: 'Write Change-JSON into the bound Studio tab. Auto-binds if one tab is connected. Accepts full Change-JSON or top-level prompt/uc/params/characters/expanders/vibes/vSlider/dynamicGeneration/director (same keys as Studio). text_overlays type is a display-style id; the enum lists every style, including custom (empty customText injects no display tag). prompt and uc work top-level or inside change (change.prompt / change.uc or change.fields {prompt, uc}) — one apply is enough. A params-only change is enough: model, steps, guidance, sampler, and the other param keys may sit in params or on the change object. Do not resend the prompt just to change those. Characters are the `characters` array (action replace + index). `characterPrompts` is accepted and treated as that full list. `overwrite: true` removes Studio character slots that are not in the list, then writes the list. text_overlays, expanders, vibes, and vSlider replace their lists when present, including empty arrays. To roll a new seed set params.seedLock false; do not ask the user to unlock it. vSlider installs interactive intensity widgets (slider/xypad/star/dropdown) — prefer this over static expanders when they ask for sliders. autoGenerate omitted uses Remote Access Settings (default off). To print without changing anything, call print_studio. After apply the tab stores a checkpoint — later get_session_state / get_studio_state return only the delta. Refused when the bound client has in_workspace false: call request_workspace_switch first. If the prompt or UC goes over the model token limit, the apply fails, the previous text is restored, and nothing is generated.',
+        description: 'Write Change-JSON into the bound Studio tab. Auto-binds if one tab is connected. Accepts full Change-JSON or top-level prompt/uc/params/characters/expanders/vibes/vSlider/dynamicGeneration/director (same keys as Studio). text_overlays type is a display-style id; the enum lists every style, including custom (empty customText injects no display tag). prompt and uc work top-level or inside change (change.prompt / change.uc or change.fields {prompt, uc}) — one apply is enough. A params-only change is enough: model, steps, guidance, sampler, and the other param keys may sit in params or on the change object. Do not resend the prompt just to change those. Canonical character form is top-level `characters:[{index, action:"replace", name, prompt, uc, promptNegative, position:{x,y}}]`. A characters-only change is valid — no prompt/uc/params required. Character edits apply even when sent with params, presetName, or a nested `change` object. `characterPrompts` is accepted as that full list (overwrite). `overwrite: true` removes Studio character slots that are not in the list, then writes the list. The result lists `unapplied` keys when any part of the change did not land — that is not a full success. text_overlays, expanders, vibes, and vSlider replace their lists when present, including empty arrays. To roll a new seed set params.seedLock false; do not ask the user to unlock it. vSlider installs interactive intensity widgets (slider/xypad/star/dropdown) — prefer this over static expanders when they ask for sliders. autoGenerate omitted uses Remote Access Settings (default off). To print without changing anything, call print_studio. After apply the tab stores a checkpoint — later get_session_state / get_studio_state return only the delta. Refused when the bound client has in_workspace false: call request_workspace_switch first. If the prompt or UC goes over the model token limit, the apply fails, the previous text is restored, and nothing is generated.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -1079,7 +1079,7 @@ const TOOL_DEFS = [
                 },
                 characters: {
                     type: 'array',
-                    description: 'Character slots. Each item is {index, action:"replace", name, prompt, uc, promptNegative, position:{x,y}}. characterPrompts is the same list and turns overwrite on.'
+                    description: 'Canonical character slots. Each item is {index, action:"replace", name, prompt, uc, promptNegative, position:{x,y}}. A characters-only apply is valid. Applied even when params or presetName are also set. characterPrompts is the same list and turns overwrite on.'
                 },
                 characterPrompts: {
                     type: 'array',
@@ -1663,7 +1663,7 @@ const TOOL_DEFS = [
     {
         name: 'save_memory',
         core: true,
-        description: 'MCP write — the ONLY way to persist a Dreamscape knowledge memory (the living rules you write after a gen). Alias saveKnowledgeMemory (old paid API). Grok Memory / "I will remember" does not upsert. Same name = UPDATE (refine). SAVE after you try something: what worked, what failed, even when it broke a guide note. (1) Rendering techniques, (2) Character-specific mods, (3) Character traits/patterns, (4) Scenario approaches, (5) Token/tag combos, (6) Tag preferences. The person is user_vibe and user_interests (category taste). get_memory first: observations you send replace the list. Self-contained snake_case names (e.g. miku_hatsune_hair_rendering) — a later session will not have this chat. New=10%; refinement adds 0–25% (max 100%). Omit unchanged graph fields. Set model (v5 default; existing rows keep their stored model). Images generated in this session since the previous save_memory are linked to the new revision automatically — do not call link_memory_image for those.',
+        description: 'MCP write — the ONLY way to persist a Dreamscape knowledge memory (the living rules you write after a gen). Alias saveKnowledgeMemory (old paid API). Grok Memory / "I will remember" does not upsert. Same name = UPDATE (refine). SAVE after you try something: what worked, what failed, even when it broke a guide note. (1) Rendering techniques, (2) Character-specific mods, (3) Character traits/patterns, (4) Scenario approaches, (5) Token/tag combos, (6) Tag preferences. The person is user_vibe and user_interests (category taste). get_memory first: observations you send replace the list. Before a replace, the prior observations are snapshotted as a revision so they can be rolled back. The result includes droppedObservations and a warning listing what was dropped. Self-contained snake_case names (e.g. miku_hatsune_hair_rendering) — a later session will not have this chat. New=10%; refinement adds 0–25% (max 100%). Omit unchanged graph fields. Set model (v5 default; existing rows keep their stored model). Images generated in this session since the previous save_memory are linked to the new revision automatically — do not call link_memory_image for those.',
         scope: 'generation',
         inputSchema: {
             type: 'object',
@@ -1675,7 +1675,7 @@ const TOOL_DEFS = [
                 category: { type: 'string', description: 'technique, style, anatomy, character_specific, token_optimization, tag_preference, …' },
                 entities: { type: 'array' },
                 relations: { type: 'array' },
-                observations: { type: 'array', description: 'Evidence notes. Strings are fine (attached to a default memory entity). Or {entity_id, content}.' },
+                observations: { type: 'array', description: 'Evidence notes. Strings are fine (attached to a default memory entity). Or {entity_id, content}. Replaces the stored list. Prior observations are snapshotted as a revision first; dropped lines are listed in the result warning.' },
                 confidence: { type: 'number', description: 'On create ignored (starts 0.1). On refine, added to current confidence, capped at +0.25 per save.' },
                 model: { type: 'string', description: 'Studio forge model this memory applies to (v5, v4_5, v5_cur, …). Default v5.' },
                 reason: { type: 'string', description: 'Optional. Old API required this; stored only if you also put evidence in observations.' }
@@ -6248,18 +6248,29 @@ function runMemoryTool(globalResources, name, input, ctx) {
         ? resolveRefinementConfidence(existing.confidence, input.confidence)
         : 0.1;
     const model = normalizeMemoryModel(input.model || (existing && existing.model));
+    const previousObservations = existing && Array.isArray(existing.observations) ? existing.observations : [];
+    const nextObservations = input.observations !== undefined ? input.observations : previousObservations;
+    const droppedObservations = input.observations !== undefined
+        ? droppedMemoryObservations(previousObservations, nextObservations)
+        : [];
     const saved = db.saveKnowledgeMemory(
         memoryName,
         description,
         input.category != null ? input.category : ((existing && existing.category) || 'mcp'),
         input.entities !== undefined ? input.entities : ((existing && existing.entities) || []),
         input.relations !== undefined ? input.relations : ((existing && existing.relations) || []),
-        input.observations !== undefined ? input.observations : ((existing && existing.observations) || []),
+        nextObservations,
         confidence,
         model,
         sessionId ? { sessionId } : null
     );
     const linkedImages = autoLinkSessionImages(db, sessionId, memoryName, saved && saved.revision, nowMs);
+    const previousRevision = saved && saved.previousRevision != null
+        ? saved.previousRevision
+        : (existing ? (Number(existing.revision) || 0) : null);
+    const warning = droppedObservations.length
+        ? formatDroppedObservationsWarning(droppedObservations, previousRevision)
+        : undefined;
     return {
         success: true,
         refined,
@@ -6267,7 +6278,10 @@ function runMemoryTool(globalResources, name, input, ctx) {
         confidence: saved.confidence,
         model: saved.model,
         revision: saved.revision,
+        previousRevision: previousRevision || undefined,
         linkedImages,
+        droppedObservations: droppedObservations.length ? droppedObservations : undefined,
+        warning,
         needsRefinement: saved.confidence < 0.6,
         memory: saved
     };
@@ -8533,19 +8547,26 @@ async function callTool(globalResources, req, name, args) {
         const { filenameExpected: _openBefore, ...applied } = data || {};
         const decompileBlock = !!(data && data.needsDecompile);
         const tokenLimitBlock = !!(data && data.code === 'TOKEN_LIMIT');
+        const unapplied = Array.isArray(data && data.unapplied) ? data.unapplied : [];
+        const applyFailed = !!(data && data.ok === false && !decompileBlock && !tokenLimitBlock);
+        const partialApply = unapplied.length > 0 || !!(data && data.partial);
         if (tokenLimitBlock) {
             responseNext = data.error || 'Prompt is over the token limit. The previous text was restored. Shorten it and apply again.';
+        } else if (unapplied.length && !responseNext) {
+            responseNext = data.warning || `Did not apply: ${unapplied.join(', ')}`;
         }
+        const applyOk = !decompileBlock && !tokenLimitBlock && !applyFailed && !partialApply;
         return mcpTextResult({
-            success: !decompileBlock && !tokenLimitBlock,
+            success: applyOk,
             autoBound: !!bind.auto,
             ...applied,
+            ...(unapplied.length ? { unapplied } : {}),
             ...(applyJob ? {
                 jobId: applyJob.jobId,
                 filenameBefore: applyJob.filenameBefore
             } : {}),
             ...(responseNext ? { next: responseNext } : {})
-        }, decompileBlock || tokenLimitBlock);
+        }, decompileBlock || tokenLimitBlock || applyFailed);
     }
 
     if (name === 'print_studio') {
@@ -9802,6 +9823,27 @@ function trimObservationLead(item) {
     return item;
 }
 
+function observationContentOf(row) {
+    if (typeof row === 'string') return row.trim();
+    if (row && typeof row.content === 'string') return row.content.trim();
+    return '';
+}
+
+function droppedMemoryObservations(prev, next) {
+    const keep = new Set((Array.isArray(next) ? next : []).map(observationContentOf).filter(Boolean));
+    return (Array.isArray(prev) ? prev : []).map(observationContentOf).filter((text) => text && !keep.has(text));
+}
+
+function formatDroppedObservationsWarning(dropped, previousRevision) {
+    const shown = (dropped || []).slice(0, 6).map((text) => {
+        const one = String(text || '').replace(/\s+/g, ' ').trim();
+        return one.length > 80 ? `${one.slice(0, 79)}…` : one;
+    });
+    const extra = dropped.length > shown.length ? ` (+${dropped.length - shown.length} more)` : '';
+    const rev = previousRevision ? ` Prior observations are revision ${previousRevision}.` : '';
+    return `Dropped ${dropped.length} observation(s) that were not in this save.${rev} Dropped: ${shown.map((text) => JSON.stringify(text)).join('; ')}${extra}`;
+}
+
 function invalidMemoryLists(input) {
     for (const key of ['observations', 'entities', 'relations']) {
         const value = input ? input[key] : undefined;
@@ -9823,6 +9865,8 @@ module.exports = {
     _test: {
         invalidMemoryLists,
         trimObservationLead,
+        droppedMemoryObservations,
+        formatDroppedObservationsWarning,
         TOOL_DEFS,
         MCP_CORS_ORIGINS,
         OAUTH_CORS_ORIGINS,

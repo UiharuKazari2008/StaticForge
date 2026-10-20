@@ -24,3 +24,9 @@ assert.strictEqual(_test.trimObservationLead('Fixed: a'), 'Fixed: a');
 assert.strictEqual(_test.trimObservationLead('2026-10-20: a'), '2026-10-20: a');
 assert.ok(src.indexOf('observations.map(trimObservationLead)') > at && src.indexOf('observations.map(trimObservationLead)') < src.indexOf('db.saveKnowledgeMemory(', at));
 console.log('test-memory-save-guard: trim ok');
+assert.deepStrictEqual(_test.droppedMemoryObservations(
+    ['keep', 'gone'],
+    ['keep']
+), ['gone']);
+assert.match(_test.formatDroppedObservationsWarning(['gone'], 1), /revision 1/);
+console.log('test-memory-save-guard: drop warning ok');

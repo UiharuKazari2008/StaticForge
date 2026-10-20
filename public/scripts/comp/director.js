@@ -5472,7 +5472,8 @@ class Director {
         // applyStudioChangePayloadSilent: public/scripts/comp/studioChangeJson.js
         try {
             const applied = await applyStudioChangePayloadSilent(payload, { source: 'director' });
-            showGlassToast(applied ? 'success' : 'error', null, applied ? 'Studio changes applied' : 'Studio changes were not applied');
+            const ok = applied === true || !!(applied && applied.applied && !(applied.unapplied && applied.unapplied.length));
+            showGlassToast(ok ? 'success' : 'error', null, ok ? 'Studio changes applied' : 'Studio changes were not applied');
         } catch (err) {
             showGlassToast('error', null, err && err.message ? err.message : 'Studio changes were not applied');
         }

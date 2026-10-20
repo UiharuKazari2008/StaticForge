@@ -50,4 +50,42 @@ settleDirectorResult(doubled, full);
 assert.strictEqual(doubled.text, full);
 assert.deepStrictEqual(assistantTexts(doubled), [full]);
 
+const { clipToolPayload, TOOL_PAYLOAD_MAX, consumeClaudeStreamLine } = require('../modules/cursorDirector')._test;
+assert.ok(TOOL_PAYLOAD_MAX > 4000);
+const longPrompt = 'x'.repeat(6000);
+assert.strictEqual(clipToolPayload(longPrompt).length, 6000, 'payloads over 4000 chars are stored in full');
+assert.ok(clipToolPayload('y'.repeat(TOOL_PAYLOAD_MAX + 50)).endsWith('…'));
+const toolState = { text: '', rows: [], live: null, keepToolBodies: true };
+consumeStreamLine(JSON.stringify({
+    type: 'assistant',
+    message: { content: [{ type: 'tool_use', name: 'apply_studio_changes', input: { prompt: longPrompt } }] }
+}), toolState);
+const toolRow = (toolState.rows || []).find((row) => row && row.type === 'tool');
+assert.ok(toolRow, 'tool row captured');
+assert.ok(String(toolRow.args).includes(longPrompt), 'Director session stores the full apply_studio_changes payload');
+const claudeState = { text: '', rows: [], live: null, openTools: new Map(), keepToolBodies: true };
+consumeClaudeStreamLine(JSON.stringify({
+    type: 'assistant',
+    message: { content: [{ type: 'tool_use', id: 't1', name: 'mcp__dreamscape__save_memory', input: { observations: [longPrompt] } }] }
+}), claudeState);
+assert.ok(String(claudeState.rows[0].args).includes(longPrompt), 'Claude/MiniMax tool args are not truncated at 4000');
+
+const replayState = { text: '', rows: [], live: null };
+consumeStreamLine(JSON.stringify({
+    type: 'assistant',
+    message: {
+        content: [{
+            type: 'tool_use',
+            name: 'apply_studio_changes',
+            input: {
+                params: { steps: 14 },
+                change: { characterPrompts: { item: { index: 0, action: 'replace', prompt: 'alice' } } }
+            }
+        }]
+    }
+}), replayState);
+const replayRow = (replayState.rows || []).find((row) => row && row.type === 'tool');
+assert.ok(Array.isArray(replayRow && replayRow.replay && replayRow.replay.characters), 'replay unwraps MiniMax characterPrompts');
+assert.strictEqual(replayRow.replay.characters[0].prompt, 'alice');
+
 console.log('test-director-stream-reply: ok');

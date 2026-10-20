@@ -77,6 +77,10 @@ const CLEANUP_DIRS = [
 const CLEANUP_NAME_DIRS = ['__pycache__', '.pytest_cache', 'node_modules/.cache'];
 const CLEANUP_FILE_RE = /\.(tmp|part|partial|crdownload|download)$/i;
 const MAX_DIFF_CHARS = 400000;
+// Per-tool payload stored on the session row / glasses button. 512 KiB holds
+// a full apply_studio_changes or save_memory body; parkToolBodies still evicts
+// at TOOL_BODIES_MAX_BYTES.
+const TOOL_PAYLOAD_MAX = 512 * 1024;
 const PROMPT_GUIDE_BRANCH = 'director-draft';
 const PROMPT_GUIDE_PENDING = 'director-draft-pending.json';
 const PROMPT_GUIDE_INDEX = 'director-draft.index';
@@ -3048,7 +3052,7 @@ function clipToolPayload(value, limit) {
     }
     raw = redactToolText(raw).trim();
     if (!raw || raw === '{}' || raw === '[]' || raw === 'null') return '';
-    const cap = Number.isFinite(limit) && limit > 0 ? limit : 4000;
+    const cap = Number.isFinite(limit) && limit > 0 ? limit : TOOL_PAYLOAD_MAX;
     if (raw.length <= cap) return raw;
     return `${raw.slice(0, cap)}…`;
 }
@@ -3226,6 +3230,19 @@ function toolArgs(body, evt) {
     return {};
 }
 
+function studioReplayList(value) {
+    if (Array.isArray(value)) return value;
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+        const keys = Object.keys(value);
+        if (keys.length === 1 && keys[0] === 'item') {
+            const item = value.item;
+            if (item == null) return [];
+            return Array.isArray(item) ? item : [item];
+        }
+    }
+    return null;
+}
+
 function studioReplayArgs(args) {
     if (!args || typeof args !== 'object') return null;
     const payload = (args.change && typeof args.change === 'object' && !Array.isArray(args.change))
@@ -3238,6 +3255,13 @@ function studioReplayArgs(args) {
     ].forEach((key) => {
         if (args[key] !== undefined && payload[key] === undefined) payload[key] = args[key];
     });
+    const replayChars = studioReplayList(payload.characters);
+    const replayPrompts = studioReplayList(payload.characterPrompts);
+    if (replayChars) payload.characters = replayChars;
+    else if (replayPrompts) {
+        payload.characters = replayPrompts;
+        payload.overwrite = true;
+    }
     if (!Object.keys(payload).length) return null;
     let raw;
     try {
@@ -3323,7 +3347,7 @@ function consumeStreamLine(line, state) {
         return;
     }
     if (!state.rows) state.rows = [];
-    const toolCap = state.keepToolBodies ? 200000 : 4000;
+    const toolCap = TOOL_PAYLOAD_MAX;
     noteContext(evt, state);
     if (evt.type === 'thinking') {
         if (evt.subtype === 'completed') {
@@ -3453,7 +3477,7 @@ function consumeClaudeStreamLine(line, state) {
     }
     if (!state.rows) state.rows = [];
     if (!state.openTools) state.openTools = new Map();
-    const toolCap = state.keepToolBodies ? 200000 : 4000;
+    const toolCap = TOOL_PAYLOAD_MAX;
     if (evt.type === 'system' && evt.subtype === 'init') {
         if (evt.session_id) state.claudeSessionId = evt.session_id;
         return;
@@ -3609,7 +3633,7 @@ function runAgentTurn(engine, onText, marker, limits) {
             signalProcessTree(child.pid, 'SIGTERM');
             setTimeout(() => signalProcessTree(child.pid, 'SIGKILL'), 500);
         }
-        const state = { text: '', tool: '', error: null, finished: false, rows: [], live: null, context: null };
+        const state = { text: '', tool: '', error: null, finished: false, rows: [], live: null, context: null, keepToolBodies: true };
         let buffer = '';
         let stderr = '';
         let lastEmit = 0;
@@ -6490,7 +6514,7 @@ module.exports = {
     startRentanReviewTurn,
     _test: {
         projectPrompt, wrenRules, claudeProjectPrompt, WREN_COVERED_SENTENCES,
-        insideDir, safeName, effortModel, consumeStreamLine, groupCursorModels, publicModelCatalog, directorModelCost, resolveRunModel,
+        insideDir, safeName, effortModel, consumeStreamLine, clipToolPayload, TOOL_PAYLOAD_MAX, groupCursorModels, publicModelCatalog, directorModelCost, resolveRunModel,
         parseCursorModelLine, agentJailTarget, claudeJailTarget, buildJail, jailEnv, systemBindArgs,
         noteClaudeUsage, claudeUsageSummary, claudeUsageAt, availableClaudeModels,
         updateAgentClis, runCliUpdate, describeCliUpdate, cliAtLeast,
