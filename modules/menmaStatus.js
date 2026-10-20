@@ -699,6 +699,9 @@ async function updateCakeLogImagesToDb(db, accountId, row, patch = {}) {
         && (nextExtra.meal_id == null || String(nextExtra.meal_id).trim() === '')) {
         nextExtra.meal_id = String(patch.meal_id);
     }
+    if (patch.landscape === true || patch.landscape === false) {
+        nextExtra.landscape = patch.landscape;
+    }
 
     const syncAlias = (key, value) => {
         if (key in nextExtra) nextExtra[key] = value;
