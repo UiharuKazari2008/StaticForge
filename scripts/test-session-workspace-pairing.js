@@ -30,6 +30,31 @@ function testWriteScoping() {
     pairing.setWorkspaceLookupForTests(() => '');
     assert.strictEqual(pairing.scopeWriteWorkspaceForTurn('desk'), 'desk');
     pairing.setWorkspaceLookupForTests(null);
+
+    pairing.setWorkspaceLookupForTests(() => 'atelier');
+    assert.strictEqual(pairing.scopeWriteWorkspaceForRequest('desk'), 'atelier', 'no req keeps turn pairing');
+    assert.strictEqual(
+        pairing.scopeWriteWorkspaceForRequest('516399f0-lab', { applicationAuth: { appName: 'Guren' } }),
+        '516399f0-lab',
+        'Guren keeps the workspace she passed while Wren is running'
+    );
+    assert.strictEqual(
+        pairing.scopeWriteWorkspaceForRequest('desk', { applicationAuth: { appName: 'Dreamscape Director' } }),
+        'atelier',
+        'Director jail still pairs to the running session'
+    );
+    assert.strictEqual(
+        pairing.scopeWriteWorkspaceForRequest('desk', { applicationAuth: { appName: 'Xi' } }),
+        'atelier'
+    );
+    assert.strictEqual(
+        pairing.scopeWriteWorkspaceForRequest('other', { applicationAuth: { appName: 'Ivory' } }),
+        'other'
+    );
+    assert.strictEqual(pairing.actorKind('Dreamscape Director'), 'wren');
+    assert.strictEqual(pairing.actorKind('Guren'), '');
+    assert.strictEqual(pairing.requestIsFromRunningSession({ applicationAuth: { appName: 'Guren' } }), false);
+    pairing.setWorkspaceLookupForTests(null);
 }
 
 function testInWorkspace() {
@@ -91,8 +116,30 @@ async function testSwitchAnswers() {
     sw.resetWorkspaceSwitchForTests();
 }
 
+function testWrenAndXiBothRunning() {
+    const path = require('path');
+    const stub = (file, exp) => {
+        const id = require.resolve(path.join(__dirname, '..', 'modules', file));
+        const prev = require.cache[id];
+        require.cache[id] = { id, filename: id, loaded: true, exports: exp };
+        return () => { if (prev) require.cache[id] = prev; else delete require.cache[id]; };
+    };
+    const undoW = stub('cursorDirector.js', { activeDirectorSessionId: () => 'dirc_w', readChatWorkspace: () => 'atelier' });
+    const undoX = stub('xiDirector.js', { activeSessionId: () => 'xi_1', readChatWorkspace: () => 'lab' });
+    try {
+        pairing.setWorkspaceLookupForTests(null);
+        const xiReq = { applicationAuth: { appName: 'Xi' } };
+        const wrenReq = { applicationAuth: { appName: 'Dreamscape Director' } };
+        const guren = { applicationAuth: { appName: 'Guren' } };
+        assert.strictEqual(pairing.scopeWriteWorkspaceForRequest('x', xiReq, {}), 'lab', 'Xi turn gets Xi workspace');
+        assert.strictEqual(pairing.scopeWriteWorkspaceForRequest('x', wrenReq, {}), 'atelier', 'Wren turn gets Wren workspace');
+        assert.strictEqual(pairing.scopeWriteWorkspaceForRequest('516399f0', guren, {}), '516399f0', 'other keys keep their workspace');
+    } finally { undoW(); undoX(); }
+}
+
 async function main() {
     testKeepSessionWorkspace();
+    testWrenAndXiBothRunning();
     testWriteScoping();
     testInWorkspace();
     await testSwitchTimeout();
