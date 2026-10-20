@@ -324,6 +324,62 @@ class TagLookup {
 
     getStatements() {
     if (!this.sqlStatements) {
+        // The match statements below filter the match table first and join tags after.
+        // The old form scanned all 318k tags and probed the match table per tag (0.6s
+        // per sequence statement, several per searched word). Results are unchanged:
+        // a bare column takes the tag's first matching row in the old scan's order
+        // (lowest tag_word_sequences.id, lowest tag_words.word; checked on node-sqlite3 /
+        // SQLite 3.44), rows come out in
+        // tags.id order where the old scan returned them that way, and wiki_sources
+        // keeps the tag_wikis index order.
+        const wikiSources = `(SELECT GROUP_CONCAT(DISTINCT w.source) FROM tag_wikis tw
+                LEFT JOIN wikis w ON w.id = tw.wiki_id WHERE tw.tag_id = t.id)`;
+        const sequenceMatches = (where) => `
+                WITH m AS (
+                    SELECT tag_id, MIN(id) AS first_id FROM (${where})
+                    GROUP BY tag_id
+                )
+                SELECT t.*, ${wikiSources} AS wiki_sources
+                FROM m
+                INNER JOIN tags t ON t.id = m.tag_id
+                INNER JOIN tag_word_sequences tws ON tws.id = m.first_id
+                ORDER BY tws.sequence_length DESC, t.title
+                LIMIT ?2
+            `;
+        // word% as an index range when ?1 has no LIKE metacharacters, else the LIKE scan.
+        // The scans read the LOWER(sequence) index (stored lowercase, narrower than the
+        // table): ~250ms against ~570ms for the planner's pick of the wide autoindex.
+        const sequenceStartsWith = sequenceMatches(`
+                    SELECT id, tag_id FROM tag_word_sequences
+                    WHERE instr(?1, '%') + instr(?1, '_') + instr(?1, '\\') = 0
+                      AND LOWER(sequence) >= LOWER(?1) AND LOWER(sequence) < LOWER(?1) || char(1114111)
+                    UNION ALL
+                    SELECT id, tag_id FROM tag_word_sequences INDEXED BY idx_tag_word_sequences_sequence_lower
+                    WHERE instr(?1, '%') + instr(?1, '_') + instr(?1, '\\') > 0
+                      AND LOWER(sequence) LIKE LOWER(?1) || '%' ESCAPE '\\'`);
+        const tagWordMatches = (where) => `
+                WITH m AS (
+                    SELECT tag_id, MIN(word) AS matched_word FROM tag_words
+                    WHERE ${where}
+                    GROUP BY tag_id
+                )
+                SELECT t.*, ${wikiSources} AS wiki_sources, m.matched_word
+                FROM m
+                INNER JOIN tags t ON t.id = m.tag_id
+                ORDER BY t.id
+                LIMIT ?
+            `;
+        const otherNameMatches = (where, limit) => `
+                WITH m AS (
+                    SELECT DISTINCT tag_id FROM tag_other_names
+                    WHERE ${where}
+                )
+                SELECT t.*, ${wikiSources} AS wiki_sources
+                FROM m
+                INNER JOIN tags t ON t.id = m.tag_id
+                ORDER BY t.id
+                LIMIT ${limit}
+            `;
         this.sqlStatements = {
             getTagById: `
                 SELECT t.*, 
@@ -343,17 +399,7 @@ class TagLookup {
                 WHERE t.normalized_title = ?
                 GROUP BY t.id
             `,
-            getTagByOtherNameExact: `
-                SELECT t.*, 
-                       GROUP_CONCAT(DISTINCT w.source) AS wiki_sources
-                FROM tag_other_names onames
-                JOIN tags t ON t.id = onames.tag_id
-                LEFT JOIN tag_wikis tw ON tw.tag_id = t.id
-                LEFT JOIN wikis w ON w.id = tw.wiki_id
-                WHERE LOWER(REPLACE(onames.other_name, '_', ' ')) = ?
-                GROUP BY t.id
-                LIMIT 1
-            `,
+            getTagByOtherNameExact: otherNameMatches(`LOWER(REPLACE(other_name, '_', ' ')) = ?`, '1'),
             searchTitleLike: `
                 SELECT t.*, 
                        GROUP_CONCAT(DISTINCT w.source) AS wiki_sources
@@ -364,17 +410,7 @@ class TagLookup {
                 GROUP BY t.id
                 LIMIT ?
             `,
-            searchOtherNamesLike: `
-                SELECT DISTINCT t.*, 
-                       GROUP_CONCAT(DISTINCT w.source) AS wiki_sources
-                FROM tag_other_names onames
-                JOIN tags t ON t.id = onames.tag_id
-                LEFT JOIN tag_wikis tw ON tw.tag_id = t.id
-                LEFT JOIN wikis w ON w.id = tw.wiki_id
-                WHERE LOWER(onames.other_name) LIKE ? ESCAPE '\\'
-                GROUP BY t.id
-                LIMIT ?
-            `,
+            searchOtherNamesLike: otherNameMatches(`LOWER(other_name) LIKE ? ESCAPE '\\'`, '?'),
             // Search tag_word_sequences for exact sequence matches (fast indexed lookup)
             searchWordSequencesExact: `
                 SELECT DISTINCT t.*,
@@ -389,57 +425,17 @@ class TagLookup {
                 LIMIT ?
             `,
             // Search tag_word_sequences for prefix matches (fast indexed lookup)
-            searchWordSequencesPrefix: `
-                SELECT DISTINCT t.*,
-                       GROUP_CONCAT(DISTINCT w.source) AS wiki_sources
-                FROM tag_word_sequences tws
-                INNER JOIN tags t ON t.id = tws.tag_id
-                LEFT JOIN tag_wikis tw ON tw.tag_id = t.id
-                LEFT JOIN wikis w ON w.id = tw.wiki_id
-                WHERE LOWER(tws.sequence) LIKE LOWER(?) || '%' ESCAPE '\\'
-                GROUP BY t.id
-                ORDER BY tws.sequence_length DESC, t.title
-                LIMIT ?
-            `,
+            searchWordSequencesPrefix: sequenceStartsWith,
             // Search tag_word_sequences for inner matches (word appears anywhere in sequence, like %word%)
-            searchWordSequencesInner: `
-                SELECT DISTINCT t.*,
-                       GROUP_CONCAT(DISTINCT w.source) AS wiki_sources
-                FROM tag_word_sequences tws
-                INNER JOIN tags t ON t.id = tws.tag_id
-                LEFT JOIN tag_wikis tw ON tw.tag_id = t.id
-                LEFT JOIN wikis w ON w.id = tw.wiki_id
-                WHERE LOWER(tws.sequence) LIKE '%' || LOWER(?) || '%' ESCAPE '\\'
-                GROUP BY t.id
-                ORDER BY tws.sequence_length DESC, t.title
-                LIMIT ?
-            `,
+            searchWordSequencesInner: sequenceMatches(`
+                    SELECT id, tag_id FROM tag_word_sequences INDEXED BY idx_tag_word_sequences_sequence_lower
+                    WHERE LOWER(sequence) LIKE '%' || LOWER(?1) || '%' ESCAPE '\\'`),
             // Search tag_word_sequences for word at start (like word%)
-            searchWordSequencesStart: `
-                SELECT DISTINCT t.*,
-                       GROUP_CONCAT(DISTINCT w.source) AS wiki_sources
-                FROM tag_word_sequences tws
-                INNER JOIN tags t ON t.id = tws.tag_id
-                LEFT JOIN tag_wikis tw ON tw.tag_id = t.id
-                LEFT JOIN wikis w ON w.id = tw.wiki_id
-                WHERE LOWER(tws.sequence) LIKE LOWER(?) || '%' ESCAPE '\\'
-                GROUP BY t.id
-                ORDER BY tws.sequence_length DESC, t.title
-                LIMIT ?
-            `,
+            searchWordSequencesStart: sequenceStartsWith,
             // Search tag_word_sequences for word at end (like %word)
-            searchWordSequencesEnd: `
-                SELECT DISTINCT t.*,
-                       GROUP_CONCAT(DISTINCT w.source) AS wiki_sources
-                FROM tag_word_sequences tws
-                INNER JOIN tags t ON t.id = tws.tag_id
-                LEFT JOIN tag_wikis tw ON tw.tag_id = t.id
-                LEFT JOIN wikis w ON w.id = tw.wiki_id
-                WHERE LOWER(tws.sequence) LIKE '%' || LOWER(?) ESCAPE '\\'
-                GROUP BY t.id
-                ORDER BY tws.sequence_length DESC, t.title
-                LIMIT ?
-            `,
+            searchWordSequencesEnd: sequenceMatches(`
+                    SELECT id, tag_id FROM tag_word_sequences INDEXED BY idx_tag_word_sequences_sequence_lower
+                    WHERE LOWER(sequence) LIKE '%' || LOWER(?1) ESCAPE '\\'`),
             // FTS5 search for body text (fast full-text search) - tagged wikis only
             searchBodyByKeywordFTS: `
                 SELECT DISTINCT t.*
@@ -568,32 +564,8 @@ class TagLookup {
                 GROUP BY t.id
                 LIMIT ?
             `,
-            searchTagWordsFuzzyPrefix: `
-                SELECT DISTINCT t.*,
-                       GROUP_CONCAT(DISTINCT w.source) AS wiki_sources,
-                       tw.word AS matched_word
-                FROM tag_words tw
-                INNER JOIN tags t ON t.id = tw.tag_id
-                LEFT JOIN tag_wikis twi ON twi.tag_id = t.id
-                LEFT JOIN wikis w ON w.id = twi.wiki_id
-                WHERE LOWER(tw.word) LIKE LOWER(?) || '%' ESCAPE '\\'
-                  AND ABS(LENGTH(tw.word) - ?) <= 2
-                GROUP BY t.id
-                LIMIT ?
-            `,
-            searchTagWordsFuzzySuffix: `
-                SELECT DISTINCT t.*,
-                       GROUP_CONCAT(DISTINCT w.source) AS wiki_sources,
-                       tw.word AS matched_word
-                FROM tag_words tw
-                INNER JOIN tags t ON t.id = tw.tag_id
-                LEFT JOIN tag_wikis twi ON twi.tag_id = t.id
-                LEFT JOIN wikis w ON w.id = twi.wiki_id
-                WHERE LOWER(tw.word) LIKE '%' || LOWER(?) ESCAPE '\\'
-                  AND ABS(LENGTH(tw.word) - ?) <= 2
-                GROUP BY t.id
-                LIMIT ?
-            `,
+            searchTagWordsFuzzyPrefix: tagWordMatches(`LOWER(word) >= ? AND LOWER(word) < ? AND ABS(LENGTH(word) - ?) <= 2`),
+            searchTagWordsFuzzySuffix: tagWordMatches(`LOWER(word) IN (SELECT value FROM json_each(?))`),
             searchTagsTitleFts: `
                 SELECT t.*,
                        GROUP_CONCAT(DISTINCT w.source) AS wiki_sources
@@ -1675,6 +1647,14 @@ class TagLookup {
         await this.db.run(`
             CREATE INDEX IF NOT EXISTS idx_tag_words_prefix ON tag_words(substr(word, 1, 3), word)
         `);
+        // The LOWER() expression indexes the search statements range-scan, and
+        // name with INDEXED BY (scripts/create-tag-database.js creates them too).
+        await this.db.run(`
+            CREATE INDEX IF NOT EXISTS idx_words_word_lower ON tag_words(LOWER(word))
+        `);
+        await this.db.run(`
+            CREATE INDEX IF NOT EXISTS idx_tag_word_sequences_sequence_lower ON tag_word_sequences(LOWER(sequence))
+        `);
     } catch (e) {
         // Index may already exist with different definition
     }
@@ -1847,19 +1827,22 @@ class TagLookup {
     const seenTagIds = new Set();
 
     for (const prefix of prefixes) {
-        const pattern = this.escapeLikePattern(prefix) + '%';
+        const [low, high] = this.prefixRange(prefix);
         const rowLimit = prefix.length <= 2
             ? Math.min(120, limit * 4)
             : Math.min(60, limit * 2);
-        const rows = await this.db.all(statements.searchTagWordsFuzzyPrefix, [pattern, word.length, rowLimit]);
+        const rows = await this.db.all(statements.searchTagWordsFuzzyPrefix, [low, high, word.length, rowLimit]);
         for (const { row, fuzzyScore } of this.collectScoredFuzzyWordRows(word, rows, seenTagIds)) {
             addMatch(row, normalized, fuzzyScore, 'word_fuzzy', 2);
         }
     }
 
-    for (const suffix of suffixes) {
-        const pattern = this.escapeLikePattern(suffix);
-        const rows = await this.db.all(statements.searchTagWordsFuzzySuffix, [pattern, word.length, Math.min(40, limit * 2)]);
+    this.initSearchDb();
+    const suffixIndex = suffixes.length ? await this.ensureSuffixIndex() : null;
+    for (const suffix of suffixIndex ? suffixes : []) {
+        const words = this.getWordsEndingWith(suffixIndex, suffix, word.length);
+        if (!words.length) continue;
+        const rows = await this.db.all(statements.searchTagWordsFuzzySuffix, [JSON.stringify(words), Math.min(40, limit * 2)]);
         for (const { row, fuzzyScore } of this.collectScoredFuzzyWordRows(word, rows, seenTagIds)) {
             addMatch(row, normalized, fuzzyScore, 'word_fuzzy', 2);
         }
@@ -3491,20 +3474,25 @@ class TagLookup {
 
         const stemPrefix = this.getWordStemPrefix(word);
         const queryBatch = [
-            this.db.all(statements.searchWordSequencesExact, [word, sanitizedLimit]),
-            this.db.all(statements.searchWordSequencesStart, [word, sanitizedLimit]),
-            this.db.all(statements.searchWordSequencesEnd, [word, sanitizedLimit]),
-            this.db.all(statements.searchWordSequencesInner, [word, sanitizedLimit]),
-            this.db.all(statements.searchTagWordsExact, [word, sanitizedLimit])
+            [statements.searchWordSequencesExact, word],
+            [statements.searchWordSequencesStart, word],
+            [statements.searchWordSequencesEnd, word],
+            [statements.searchWordSequencesInner, word],
+            [statements.searchTagWordsExact, word]
         ];
         if (stemPrefix) {
             queryBatch.push(
-                this.db.all(statements.searchWordSequencesStart, [stemPrefix, sanitizedLimit]),
-                this.db.all(statements.searchWordSequencesInner, [stemPrefix, sanitizedLimit])
+                [statements.searchWordSequencesStart, stemPrefix],
+                [statements.searchWordSequencesInner, stemPrefix]
             );
         }
 
-        const batchResults = await Promise.all(queryBatch);
+        // One after another: the connection runs them one at a time anyway, and
+        // issued together each waiting query holds a libuv pool thread (4 in all).
+        const batchResults = [];
+        for (const [sql, term] of queryBatch) {
+            batchResults.push(await this.db.all(sql, [term, sanitizedLimit]));
+        }
         let bi = 0;
         for (const row of batchResults[bi++] || []) addMatch(row, normalized, 100, 'word_exact', 2);
         for (const row of batchResults[bi++] || []) addMatch(row, normalized, 85, 'word_start', 2);
