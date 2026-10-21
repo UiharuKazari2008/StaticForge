@@ -118,6 +118,8 @@ function dispatchWsInbound(message, wsClient, phase) {
             entry.handler(message, wsClient);
         } catch (error) {
             console.error('[wsInboundRegistry] handler error for', entry.id, error);
+            // report: public/scripts/comp/programFaults.js (the program the handler belongs to stops working)
+            if (typeof window !== 'undefined' && window.programFaults) window.programFaults.report(error, { source: 'ws:' + entry.id });
         }
     }
 

@@ -256,103 +256,8 @@ body:not(.windows-classic-theme) :is(.round-button, .toolbar-btn, .toggle-btn) {
 }
 
 
-/* ---------- taskbar buttons, 1:1 with Vista (slice 5, #443) ----------
-   Measured on the Vista Aero VM (2026-10-12):
-   - rest: no fill of its own, the bar's glass shows through (glossy upper half, sharp edge
-     at the middle, near-black lower half); the button is a three-line bevel: light outer,
-     dark middle, light inner, 3 px corners.
-   - hover: the glass lights up (brighter upper half) and a blue-teal bloom rises from the
-     bottom edge (#3e6457 to #6fa7c4).
-   - active (the foreground window): pressed black glass, #000 top line, #474848 to
-     #323333 above the middle, #0c0d0d below.
-   Heights stay ours (Yukimi). Hover and active fade through the item's ::before layer. */
-body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item {
-    background: none;
-    border: 1px solid hsl(0 0% 0% / 78%);
-    border-radius: 3px;
-    box-shadow: 0 0 0 1px hsl(0 0% 100% / 20%), inset 0 0 0 1px hsl(0 0% 100% / 16%);
-}
-
-body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item::before {
-    inset: -1px;
-    border: 0;
-    border-radius: inherit;
-    background:
-        radial-gradient(ellipse 90% 75% at 50% 100%, hsl(197 55% 60% / 80%), hsl(170 35% 28% / 45%) 55%, transparent 80%),
-        linear-gradient(hsl(0 0% 100% / 26%), hsl(0 0% 100% / 12%) calc(50% - 1px), hsl(0 0% 100% / 4%) 50%, transparent 100%);
-    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 26%);
-    transition: opacity 0.2s linear;
-}
-
-@media (hover: hover) {
-    body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item:hover:not(:disabled) {
-        background: none;
-        border-color: hsl(0 0% 0% / 78%);
-        box-shadow: 0 0 0 1px hsl(0 0% 100% / 28%), inset 0 0 0 1px hsl(0 0% 100% / 16%);
-    }
-
-    body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item:hover:not(:disabled)::before {
-        opacity: 1;
-    }
-}
-
-body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item.active {
-    border-color: #000;
-    background: linear-gradient(#474848, #323333 calc(50% - 1px), #0c0d0d 50%, #0b0b0c 100%);
-    box-shadow: 0 0 0 1px hsl(0 0% 100% / 18%), inset 0 1px 0 hsl(0 0% 100% / 10%), inset 0 2px 4px hsl(0 0% 0% / 55%);
-    color: #fff;
-}
-
-/* the active button is pressed: no hover bloom on top of it */
-body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item.active::before {
-    opacity: 0;
-}
-
-@media (hover: hover) {
-    body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item.active:hover:not(:disabled)::before {
-        opacity: 0.35;
-    }
-}
-
-body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item .taskbar-window-item-content {
-    color: #fff;
-    text-shadow: 0 0 4px hsl(0 0% 0% / 90%), 0 1px 1px hsl(0 0% 0% / 80%);
-}
-
-/* Taskbar alert (Vista FlashWindowEx, measured on the VM): amber glass, gold above the middle
-   (#dad1a7 to #a56938), bronze below (#86400a) with a yellow bloom at the bottom edge
-   (#c88211 to #e2cb43). It blinks seven times, then stays lit until the window comes to the
-   front (requestWindowAttention / clearWindowAttention, modalUtils.js). */
-body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item::after {
-    content: '';
-    position: absolute;
-    inset: -1px;
-    z-index: 0;
-    border-radius: inherit;
-    pointer-events: none;
-    opacity: 0;
-    background:
-        radial-gradient(ellipse 90% 70% at 50% 100%, #e2cb43, #c88211 35%, transparent 75%),
-        linear-gradient(#dad1a7, #a56938 calc(50% - 1px), #86400a 50%, #a34308 100%);
-    box-shadow: inset 0 0 0 1px hsl(45 100% 85% / 45%), 0 0 6px 1px hsl(38 100% 55% / 45%);
-}
-
-body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item.attention::after {
-    animation: vistaTaskbarAttention 1.2s steps(1, end) 7 forwards;
-}
-
-@keyframes vistaTaskbarAttention {
-    0% { opacity: 1; }
-    50% { opacity: 0; }
-    100% { opacity: 1; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item.attention::after {
-        animation: none;
-        opacity: 1;
-    }
-}
+/* Taskbar buttons, the Start orb, the chevron and the clock: public/css/vista-taskbar.css
+   (Vista's own faces from aero.msstyles, 2026-10-21). */
 
 /* ---------- light client windows (#444) ----------
    data-window-client="light" on a window + .win7 on its .modal-content: a Vista client area
@@ -1161,47 +1066,6 @@ body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):
     line-height: 16px;
     text-align: center;
     padding: 7px 0 8px;
-}
-
-/* Overflow chevron: the Vista notification-area arrow (shell tray, 16x15). */
-.tray-overflow-btn {
-    flex: none;
-    width: 16px;
-    height: 15px;
-    margin: 0 2px;
-    padding: 0;
-    border: 0;
-    background: url("/static_images/vista-icons/tray-overflow.png") center / 16px 15px no-repeat;
-    cursor: var(--c-pointer);
-}
-
-.tray-overflow-btn.is-open {
-    background-image: url("/static_images/vista-icons/tray-overflow-open.png");
-}
-
-.taskbar-tray-icons > .taskbar-tray-icon.tray-overflow {
-    display: none;
-}
-
-.tray-overflow-flyout {
-    display: none;
-    position: fixed;
-    z-index: 80;
-    gap: 2px;
-    padding: 4px 6px;
-    background: linear-gradient(#fff, #eaebf4);
-    border: 1px solid #000;
-    border-radius: 5px;
-}
-
-.tray-overflow-flyout.is-open {
-    display: flex;
-    align-items: center;
-}
-
-.tray-overflow-flyout .taskbar-tray-icon {
-    display: flex;
-    position: static;
 }
 
 #melatonControlPanelModal .tray-customize-list {

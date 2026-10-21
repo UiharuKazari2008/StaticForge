@@ -553,6 +553,7 @@ class WebSocketMessageHandlers {
             'vfs_create_shortcut',
             'wallpaper_history_delete',
             'set_account_picture',
+            'set_account_name',
             'dovecote_send_mail',
             'dovecote_forward_mail',
             'dovecote_mark_mail',

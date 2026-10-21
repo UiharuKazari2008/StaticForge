@@ -829,13 +829,14 @@
         syncActive() {
             const c = this.modal.classList;
             this.game.iconic = c.contains('minimised') || c.contains('minimising');
-            const active = this.windowActive() && !this.dialogs.length;
-            if (active && !this.started && !c.contains('opening')) {
-                // the first WM_ACTIVATE: state 1, then New Game
+            // the balls wait for the desktop's open animation to end
+            const active = this.windowActive() && !this.dialogs.length && !c.contains('opening');
+            if (!this.started && this.windowActive() && !this.dialogs.length) {
+                // the first WM_ACTIVATE: state 1, then New Game, painted at once (New Game leaves
+                // the client black for the WM_PAINT that follows the activation). Done as the
+                // window shows, not after its open animation: the client was black all through it.
                 this.started = true;
-                this.game.active = true;
                 this.game.start();
-                // New Game left the client black for the WM_PAINT that follows the activation
                 this.game.paint();
                 this.flush();
             }

@@ -1,6 +1,22 @@
 /**
  * Melaton boot: the Windows loading on /launch for desktop starts (PWA and browser tabs).
  *
+ *   bios     Phoenix BIOS POST first (phoenixBios.js, #611): the logo splash with the Starting
+ *            bar for ~2 s, F2 = Setup Utility, ESC = Boot Menu, F12 = network boot, F8 held
+ *            for the Boot Manager. Its boot order decides what starts: the Hard Drive is
+ *            Melaton when it is installed (an install record, or a populated static cache);
+ *            the CD-ROM Drive is the installation media. A device with nothing installed falls
+ *            through to the media like a real PC with the DVD in the drive.
+ *   loading  "MeletonFX is loading files..." (Vista's bootmgr bar from the DVD) while the
+ *            installer's base assets land: the server answers, /sw.js registers, the manifest
+ *            arrives and the Setup window's own files are fetched. Then black, then Setup.
+ *   setup    Windows Setup in Vista Basic on the aurora, page by page as Vista's: language,
+ *            Install now, "Which type of installation do you want?" (Upgrade: the manifest
+ *            digest is forgotten, a full check, every differing file installed; Custom
+ *            (advanced): "Where do you want to install MeletonFX?" with Drive options whose
+ *            Format wipes this device), then after a format "Setup is restarting..." with a
+ *            countdown and a reboot that comes straight back into the installer with the
+ *            server's current installer files (localStorage melatonSetup.resume = install).
  *   boot     Vista boot screen (black, Enso, green marquee) while the checks run:
  *            offline → menu. /status: any JSON answer counts as connected, so a starting
  *            server keeps the marquee running until it says ready (no cap). A client-side
@@ -10,11 +26,8 @@
  *   handoff  success: cut to black for modeSwitchMs (Windows switching graphics modes),
  *            then /app, which opens on teal; the logon dialog waits until tealHoldMs after
  *            that (app.html + websocket.js _deferPreStartupForTealHold)
- *   menu     failure: cut to black, Boot Manager text screen, countdownSec → retry
- *   confirm  Melaton Recovery: ENTER continue / ESC back; chosen by touch, a two-item menu
- *            (Continue / Return to Boot Menu) since there is no keyboard to assume
- *   recover  "Formatting startup disk..." + progress bar while the clean install runs
- *            (Cache Storage, SW, local/session storage, IndexedDB) → /launch
+ *   menu     failure: cut to black, Boot Manager text screen, countdownSec → retry.
+ *            Melaton Recovery (Reinstall) boots the installation media: loading → Setup.
  *   updates  after the session check, under the boot screen (updateEngine.js): the worker's
  *            cache diffed against the server manifest. Up to 20 files download silently behind
  *            the marquee, then the handoff. If that quiet download does not finish the cache,
@@ -32,7 +45,7 @@
  *            /launch, which then boots normally.
  *
  * Design mode (/launch?design=1) previews every screen: no checks, no wipe, no navigation.
- * Yozora #411 (plan), #416 (S2), #417 (S3), #419 (S4). Test: scripts/test-melaton-boot.js.
+ * Yozora #411 (plan), #416 (S2), #417 (S3), #419 (S4), #611 (BIOS, Setup pages). Test: scripts/test-melaton-boot.js.
  */
 (function (root) {
     'use strict';
@@ -52,8 +65,46 @@
         installStepMs: 900,     // each installer checklist line stays at least this long
         installTolerance: 10,   // files still missing after Expanding that do not fail the install
         installArriveMs: 1000,  // aurora alone before the setup window opens
-        installLingerMs: 3000   // after the installer window closes, before the black + reboot
+        installLingerMs: 2000,  // after the installer window closes: the aurora alone this long
+        rebootBlackMs: 1500,    // then black this long before /launch (a restart's mode switch)
+        loadingMinMs: 1500,     // "MeletonFX is loading files..." shows at least this long
+        loadingStepMs: 120,     // each installer asset counts for at least this long on the bar
+        keyCheckMs: 2000,       // the product key page with a configured key moves on after this
+        restartSec: 10,         // "Setup is restarting..." countdown after a format
+        osCacheRows: 50,        // a static cache with at least this many rows counts as installed
+        loadingBarCells: 76,    // the loading bar is 76 character cells (912 px / 12 px Lucida Console)
+        loadingBarCellPx: 12,
+        biosProbeMs: 1500       // the POST waits at most this long for the server's first answer
     };
+    const INSTALLED_KEY = 'melatonInstalled';   // set by the desktop's last boot step (desktopBoot.js finish)
+
+    // Files the Setup window needs before it opens (fetched under the loading bar; the HTTP
+    // cache and the worker keep them). Fonts and the aurora come first so nothing pops in.
+    const INSTALLER_ASSETS = [
+        '/css/launch-install.css',
+        '/css/vista-fonts.css',
+        '/dist/fonts/vista/segoeui.woff2',
+        '/dist/fonts/vista/segoeuib.woff2',
+        '/static_images/wallpapers/aurora-plain.webp',
+        '/static_images/vista-logon/basic-close.png',
+        '/static_images/logo_icon.png',
+        '/static_images/vista-icons/msgbox-warning-32.png',
+        '/static_images/vista-icons/msgbox-question-32.png',
+        '/protected/fflate.js',
+        '/launch-games.html'
+    ];
+
+    // Setup window pages, in the order Vista shows them (install = the checklist, restart = after a format)
+    const SETUP_PAGES = ['language', 'start', 'key', 'license', 'type', 'where', 'restart', 'install'];
+
+    // Progress shares of the loading bar
+    const LOADING_STEPS = [
+        { id: 'server', weight: 0.25 },
+        { id: 'worker', weight: 0.25 },
+        { id: 'manifest', weight: 0.2 },
+        { id: 'assets', weight: 0.3 }
+    ];
+    const SETUP_RESUME_KEY = 'melatonSetup';
 
     // Vista "Installing Windows..." checklist; weight = share of the strip's second bar
     const INSTALL_STEPS = [
@@ -85,7 +136,8 @@
         busy: 'The server stopped responding while it was starting.',
         session: 'The server could not confirm this session.',
         install: 'The installation of MeletonFX was cancelled.',
-        cache: 'The offline cache is not a complete copy.'
+        cache: 'The offline cache is not a complete copy.',
+        media: 'The installation media could not be read.'
     };
 
     // weight = share of the formatting progress bar
@@ -94,11 +146,6 @@
         { id: 'serviceWorker', label: 'Removing the offline service', weight: 0.1 },
         { id: 'storage', label: 'Clearing settings', weight: 0.1 },
         { id: 'indexedDb', label: 'Removing local databases', weight: 0.35 }
-    ];
-
-    const CONFIRM_OPTIONS = [
-        { id: 'continue', label: 'Continue' },
-        { id: 'menu', label: 'Return to Boot Menu' }
     ];
 
     function timeoutSignal(ms) {
@@ -243,6 +290,74 @@
         return results;
     }
 
+    function readSetupResume(env) {
+        try {
+            const raw = env.localStorage && env.localStorage.getItem(SETUP_RESUME_KEY);
+            const data = raw ? JSON.parse(raw) : null;
+            return data && data.resume ? data : null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function writeSetupResume(env, data) {
+        try {
+            if (!env.localStorage) return;
+            if (data) env.localStorage.setItem(SETUP_RESUME_KEY, JSON.stringify(data));
+            else env.localStorage.removeItem(SETUP_RESUME_KEY);
+        } catch (_) { /* the next boot asks again */ }
+    }
+
+    /**
+     * Is Melaton on the disk? An install record, or a static cache with enough rows that the
+     * app would start from it. A device the installer never ran on still counts as installed
+     * when its worker already filled the cache (it will not be sent through Setup for that).
+     */
+    async function hasOsOnDisk(env) {
+        if (hasInstallRecord(env)) return true;
+        try {
+            if (!env.caches) return false;
+            const name = (engine && engine.STATIC_CACHE) || 'static-cache-v1';
+            if (!(await env.caches.has(name))) return false;
+            const cache = await env.caches.open(name);
+            const keys = await cache.keys();
+            return keys.length >= config.osCacheRows;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    /** An existing installation: the installer's record, or the bit the desktop sets when it has fully booted. */
+    function hasInstallRecord(env) {
+        const engine = env.engine;
+        if (engine && typeof engine.readRecord === 'function' && engine.readRecord(env)) return true;
+        try {
+            return !!(env.localStorage && env.localStorage.getItem(INSTALLED_KEY));
+        } catch (_) {
+            return false;
+        }
+    }
+
+    /** Whole cells of the loading bar for a 0..1 progress: the bar never shows part of a character. */
+    function loadingBarCells(progress) {
+        return Math.floor(Math.max(0, Math.min(1, progress || 0)) * config.loadingBarCells);
+    }
+
+    /** Disk sizes for "Where do you want to install MeletonFX?" (navigator.storage.estimate). */
+    async function diskFacts(env) {
+        let quota = 0;
+        let usage = 0;
+        try {
+            const storage = env.navigator && env.navigator.storage;
+            if (storage && typeof storage.estimate === 'function') {
+                const est = await storage.estimate();
+                quota = Number(est.quota) || 0;
+                usage = Number(est.usage) || 0;
+            }
+        } catch (_) { /* unknown sizes */ }
+        return { quota, usage };
+    }
+
     function createController(env, view) {
         const ctl = {
             screen: null,
@@ -251,12 +366,14 @@
             countdown: null,
             countdownTimer: null,
             info: null,
-            confirmMode: 'keyboard',
-            confirmSelected: 0,
-            recoverProgress: 0,
             lastProbe: null,
             serverStatus: null,
             install: null,
+            setup: null,        // the Setup window outside the checklist (page, disk, msgbox, countdown)
+            loading: null,      // { progress, label }
+            bios: null,
+            biosF8: false,      // F8 during the POST: the Boot Manager after it
+            disk: { quota: 0, usage: 0 },
             bootMode: 'normal'
         };
 
@@ -323,6 +440,48 @@
             env.location.replace('/app');
         }
 
+        // ---------- the BIOS (phoenixBios.js, #611) ----------
+
+        function ensureBios() {
+            if (ctl.bios || !env.bios || typeof env.bios.createBios !== 'function') return ctl.bios;
+            ctl.bios = env.bios.createBios(Object.assign({}, env, { get storageQuota() { return ctl.disk.quota; } }), env.paintBios || null);
+            return ctl.bios;
+        }
+
+        /**
+         * The POST, with the work a real one does under its bar (the disk probe, the cache scan
+         * for an installation, the first word from the server), then the device its boot order
+         * picks: 'hdd' (Melaton, the boot screen) or 'cdrom' (the installation media, the
+         * loading bar and Setup). No BIOS module: the same work, no screen.
+         */
+        async function runBios(run) {
+            ctl.biosF8 = false;
+            show('bios');
+            const tasks = [
+                { id: 'disk', run: async () => { ctl.disk = await diskFacts(env); return ctl.disk; } },
+                { id: 'os', run: () => hasOsOnDisk(env) },
+                { id: 'resume', run: async () => readSetupResume(env) || (env.engine && env.engine.readState(env) ? { resume: 'install' } : null) },
+                // the network card's init: the first word from the server, but a hung server does not hold the POST
+                { id: 'server', run: () => Promise.race([
+                    probeStatus(env).then((probe) => { ctl.lastProbe = probe; if (probe.kind === 'json') { ctl.serverStatus = probe.data; rememberVistaLogon(env, probe.data); } return probe; }),
+                    env.sleep(config.biosProbeMs).then(() => null)
+                ]) }
+            ];
+            const hasOsAfter = (results) => !!results.os && !results.resume;
+            const bios = ensureBios();
+            if (!bios) {
+                const results = {};
+                for (const task of tasks) results[task.id] = await task.run();
+                if (run !== ctl.runId) return 'cancelled';
+                ctl.biosWork = results;
+                return { device: hasOsAfter(results) ? 'hdd' : 'cdrom', via: 'none' };
+            }
+            const outcome = await bios.post({ tasks, hasOsAfter, run: { cancelled: () => run !== ctl.runId } });
+            if (outcome === 'cancelled' || run !== ctl.runId) return 'cancelled';
+            ctl.biosWork = bios.work || {};
+            return outcome;
+        }
+
         async function runChecks() {
             const run = ++ctl.runId;
             if (!env.designMode && globalThis.melatonBootInterrupt) {
@@ -330,11 +489,28 @@
                 await openMenu(null, { cut: false, countdown: false });
                 return 'menu';
             }
+            if (env.designMode) {
+                show('bios');
+                return 'design';
+            }
+            const device = await runBios(run);
+            if (device === 'cancelled') return 'cancelled';
+            const resume = (ctl.biosWork && ctl.biosWork.resume) || null;
+            if (ctl.biosF8) {
+                ctl.biosF8 = false;
+                await openMenu(null, { cut: false, countdown: false });
+                return 'menu';
+            }
+            if (device.device === 'cdrom') return bootMedia(run, { resume: resume ? resume.resume : null });
+            return bootDisk(run);
+        }
+
+        /** The Hard Drive: Vista's boot screen while the server, the session and updates are checked. */
+        async function bootDisk(run) {
             const startedAt = env.now();
             let failures = 0;
             let busySince = null;
             show('boot');
-            if (env.designMode) return 'design';
             for (;;) {
                 const probe = await probeStatus(env);
                 if (run !== ctl.runId) return 'cancelled';
@@ -429,31 +605,484 @@
             if (workerOk && !engine.needsInstaller(env, found.files)) {
                 const downloaded = await engine.download(env, found.files, { silent: true });
                 if (downloaded && downloaded.ok === false) {
-                    return install(found, run);
+                    return installFromDisk(found, run);
                 }
                 if (typeof engine.verify === 'function') {
                     const still = await engine.verify(env, found.files);
                     if (still && still.length) {
-                        return install(found, run);
+                        return installFromDisk({ ...found, files: still, bytes: 0 }, run);
                     }
                 }
-                return run === ctl.runId ? 'handoff' : 'cancelled';
+                return 'handoff';
             }
+            return installFromDisk(found, run);
+        }
+
+        /** A large update found by the boot screen: the loading bar (the worker and Setup's files), then the checklist. */
+        async function installFromDisk(found, run) {
+            await cutToBlack();
+            if (run !== ctl.runId) return 'cancelled';
+            const loaded = await loadingScreen(run, { steps: ['worker', 'assets'], found });
+            if (loaded !== 'ok') return loaded;
             return install(found, run);
         }
 
-        function installData(extra = {}) {
+        // ---------- the installation media: loading bar and Setup (#611) ----------
+
+        function showLoading(progress, label) {
+            ctl.loading = { progress: Math.max(0, Math.min(1, progress)), label: label || 'MeletonFX is loading files...' };
+            show('loading', ctl.loading);
+        }
+
+        /**
+         * "MeletonFX is loading files...": the server answers, /sw.js registers, the manifest
+         * arrives, Setup's own files are fetched. Returns 'ok' (ctl.setupFound holds the file
+         * list), 'menu' (the media could not be read) or 'cancelled'.
+         */
+        async function loadingScreen(run, opts = {}) {
+            const engine = env.engine;
+            const steps = opts.steps || LOADING_STEPS.map((s) => s.id);
+            const startedAt = env.now();
+            let base = 0;
+            const weightOf = (id) => (LOADING_STEPS.find((s) => s.id === id) || { weight: 0 }).weight;
+            const total = steps.reduce((n, id) => n + weightOf(id), 0) || 1;
+            const report = (id, within) => showLoading((base + weightOf(id) * Math.max(0, Math.min(1, within))) / total);
+            showLoading(0);
+            let found = opts.found || null;
+            for (const id of steps) {
+                report(id, 0);
+                if (id === 'server') {
+                    let failures = 0;
+                    let busySince = null;
+                    for (;;) {
+                        const probe = await probeStatus(env);
+                        if (run !== ctl.runId) return 'cancelled';
+                        ctl.lastProbe = probe;
+                        if (probe.kind === 'offline') {
+                            await openMenu('offline');
+                            return 'menu';
+                        }
+                        if (probe.kind === 'json') {
+                            ctl.serverStatus = probe.data;
+                            rememberVistaLogon(env, probe.data);
+                            if (probe.data.isReady) break;
+                            report(id, typeof probe.data.progressPercent === 'number' ? probe.data.progressPercent / 100 : 0.3);
+                            failures = 0;
+                            busySince = null;
+                        } else if (probe.kind === 'timeout') {
+                            if (busySince == null) busySince = env.now();
+                            if (env.now() - busySince >= config.busyTimeoutMs) {
+                                await openMenu('media');
+                                return 'menu';
+                            }
+                        } else {
+                            failures += 1;
+                            if (failures >= config.maxFailures) {
+                                await openMenu('media');
+                                return 'menu';
+                            }
+                        }
+                        await env.sleep(config.pollMs);
+                        if (run !== ctl.runId) return 'cancelled';
+                    }
+                } else if (id === 'worker') {
+                    if (engine) await engine.ensureWorker(env);
+                    if (run !== ctl.runId) return 'cancelled';
+                } else if (id === 'manifest') {
+                    const started = env.now();
+                    while (engine && run === ctl.runId) {
+                        found = await engine.check(env);
+                        if (run !== ctl.runId) return 'cancelled';
+                        const noList = !found || found.failed || (found.skipped && found.skipped !== 'no-cache-storage');
+                        if (!noList) break;
+                        if (env.now() - started >= config.busyTimeoutMs) {
+                            await openMenu('media');
+                            return 'menu';
+                        }
+                        await env.sleep(config.pollMs);
+                    }
+                    if (run !== ctl.runId) return 'cancelled';
+                } else if (id === 'assets') {
+                    const list = env.installerAssets || INSTALLER_ASSETS;
+                    for (let i = 0; i < list.length; i++) {
+                        const t0 = env.now();
+                        try {
+                            await env.fetch(list[i], { cache: 'force-cache' });
+                        } catch (_) { /* the page already has it, or Setup fetches it later */ }
+                        if (run !== ctl.runId) return 'cancelled';
+                        const rest = config.loadingStepMs - (env.now() - t0);
+                        if (rest > 0) await env.sleep(rest);
+                        report(id, (i + 1) / list.length);
+                    }
+                }
+                report(id, 1);
+                base += weightOf(id);
+            }
+            const rest = startedAt + config.loadingMinMs - env.now();
+            if (rest > 0) await env.sleep(rest);
+            if (run !== ctl.runId) return 'cancelled';
+            showLoading(1);
+            ctl.setupFound = found;
+            return 'ok';
+        }
+
+        function setupData() {
+            const s = ctl.setup || {};
+            return {
+                page: s.page || 'language',
+                phase: 'setup',
+                upgradeAllowed: !!s.upgradeAllowed,
+                driveOptions: !!s.driveOptions,
+                formatted: !!s.formatted,
+                formatting: s.formatting || null,
+                msgbox: s.msgbox || null,
+                countdown: s.countdown,
+                keyConfigured: s.keyConfigured !== false,
+                keyError: s.keyError || null,
+                keyBusy: !!s.keyBusy,
+                license: s.license || null,
+                licenseAccepted: !!s.licenseAccepted,
+                disk: s.disk || diskRows(),
+                diskSelected: s.diskSelected == null ? 0 : s.diskSelected,
+                steps: [],
+                overall: 0,
+                error: null
+            };
+        }
+
+        function mb(n) {
+            return `${(n / 1048576).toFixed(1)} MB`;
+        }
+
+        /** The rows of "Where do you want to install MeletonFX?": one disk, one partition when something is on it. */
+        function diskRows() {
+            const quota = ctl.disk.quota || 0;
+            const usage = ctl.disk.usage || 0;
+            const installed = !!(ctl.setup && ctl.setup.hasOs) && !(ctl.setup && ctl.setup.formatted);
+            if (installed) {
+                return [{ name: 'Disk 0 Partition 1 (Melaton)', total: mb(quota), free: mb(Math.max(0, quota - usage)), type: 'System', selectable: true }];
+            }
+            return [{ name: 'Disk 0 Unallocated Space', total: mb(quota), free: mb(quota), type: '', selectable: true }];
+        }
+
+        function showSetup(page) {
+            if (!ctl.setup) ctl.setup = { page: 'language', hasOs: false, upgradeAllowed: false, driveOptions: false, formatted: false, msgbox: null, countdown: null };
+            if (page) ctl.setup.page = page;
+            ctl.setup.disk = diskRows();
+            show('install', setupData());
+        }
+
+        /**
+         * The CD-ROM Drive: loading bar, then Setup. A resume (a format just happened, or an
+         * install a reload interrupted) goes straight to the checklist with the current files.
+         */
+        async function bootMedia(run, opts = {}) {
+            if (ctl.screen !== 'black') await cutToBlack();
+            if (run !== ctl.runId) return 'cancelled';
+            const loaded = await loadingScreen(run);
+            if (loaded !== 'ok') return loaded;
+            await cutToBlack();
+            if (run !== ctl.runId) return 'cancelled';
+            const found = ctl.setupFound || { files: [], bytes: 0 };
+            if (opts.resume === 'install') {
+                writeSetupResume(env, null);
+                return install(found, run);
+            }
+            const hasOs = await hasOsOnDisk(env);
+            if (run !== ctl.runId) return 'cancelled';
+            const status = ctl.serverStatus || {};
+            // Upgrade only over an existing installation (the record, or the desktop's installed bit)
+            const upgradeAllowed = hasInstallRecord(env);
+            ctl.setup = { page: 'language', hasOs, upgradeAllowed, driveOptions: false, formatted: false, msgbox: null, countdown: null, found, keyConfigured: status.novelaiKeyConfigured !== false, license: null, licenseAccepted: false };
+            show('install', { ...setupData(), phase: 'arrive' });
+            await env.sleep(config.installArriveMs);
+            if (run !== ctl.runId) return 'cancelled';
+            showSetup('language');
+            return 'setup';
+        }
+
+        /** Upgrade: forget the synced digest, a full check, then the checklist with everything that differs. */
+        async function upgrade() {
+            const run = ++ctl.runId;
+            const engine = env.engine;
+            if (engine && typeof engine.forgetManifest === 'function') engine.forgetManifest(env);
+            let found = null;
+            if (engine) {
+                const started = env.now();
+                for (;;) {
+                    found = await engine.check(env);
+                    if (run !== ctl.runId) return 'cancelled';
+                    const noList = !found || found.failed || (found.skipped && found.skipped !== 'no-cache-storage');
+                    if (!noList) break;
+                    if (env.now() - started >= config.busyTimeoutMs) {
+                        await openMenu('media');
+                        return 'menu';
+                    }
+                    await env.sleep(config.pollMs);
+                }
+            }
+            return install(found || { files: [], bytes: 0 }, run, { keepWindow: true });
+        }
+
+        /**
+         * Format: the clean install (Cache Storage, the worker, storage, databases) under a
+         * progress dialog. The BIOS settings and the resume flag survive it; the next boot has no
+         * OS on the disk, boots the media and goes straight to the checklist.
+         */
+        async function formatDisk() {
+            const run = ++ctl.runId;
+            const s = ctl.setup;
+            s.msgbox = null;
+            s.formatting = { progress: 0 };
+            showSetup();
+            let cmos = null;
+            try { cmos = env.localStorage ? env.localStorage.getItem('melatonCmos') : null; } catch (_) { /* no CMOS */ }
+            const onProgress = (fraction) => {
+                if (run !== ctl.runId) return;
+                s.formatting = { progress: fraction };
+                showSetup();
+            };
+            if (env.designMode) {
+                let base = 0;
+                for (const step of RECOVERY_STEPS) {
+                    await env.sleep(config.recoverStepMs);
+                    base += step.weight;
+                    onProgress(base);
+                }
+            } else {
+                await cleanInstall(env, null, onProgress);
+            }
+            if (run !== ctl.runId) return 'cancelled';
+            try { if (cmos && env.localStorage) env.localStorage.setItem('melatonCmos', cmos); } catch (_) { /* defaults next boot */ }
+            writeSetupResume(env, { resume: 'install', at: env.now() });
+            s.formatting = null;
+            s.formatted = true;
+            s.hasOs = false;
+            s.upgradeAllowed = false;
+            s.driveOptions = false;
+            return restartCountdown(run);
+        }
+
+        /** A restart: black for rebootBlackMs (the mode switch), then /launch, which POSTs again. */
+        async function rebootCut() {
+            show('black');
+            await env.sleep(config.rebootBlackMs);
+            if (!env.designMode) env.location.replace('/launch');
+        }
+
+        /** "Setup is restarting...": a countdown, Restart now, the window closes, the aurora alone, black, /launch. */
+        function restartCountdown(run) {
+            const s = ctl.setup;
+            s.countdown = config.restartSec;
+            showSetup('restart');
+            return new Promise((resolve) => {
+                const finish = async () => {
+                    if (s.countdownTimer) env.clearInterval(s.countdownTimer);
+                    s.countdownTimer = null;
+                    s.restartNow = null;
+                    show('install', { ...setupData(), phase: 'linger' });
+                    await env.sleep(config.installLingerMs);
+                    await rebootCut();
+                    resolve('restart');
+                };
+                s.restartNow = finish;
+                s.countdownTimer = env.setInterval(() => {
+                    if (run !== ctl.runId || ctl.screen !== 'install') {
+                        env.clearInterval(s.countdownTimer);
+                        s.countdownTimer = null;
+                        resolve('cancelled');
+                        return;
+                    }
+                    s.countdown -= 1;
+                    if (s.countdown <= 0) {
+                        finish();
+                        return;
+                    }
+                    showSetup();
+                }, 1000);
+            });
+        }
+
+        function setupMsgbox(kind) {
+            const boxes = {
+                cancel: { title: 'Install MeletonFX', icon: null, message: 'To install MeletonFX, you must run MeletonFX installation. If you cancel the installation, your computer might restart.', detail: 'Are you sure you want to cancel MeletonFX installation?', buttons: [['Yes', 'setup-cancel-yes'], ['No', 'setup-msgbox-close']] },
+                format: { title: 'Install MeletonFX', icon: 'warning', message: 'If you format this partition, any data stored on it will be deleted. Downloaded files, the offline service, settings and local databases on this device are removed. Your images and data on the server are not affected.', detail: 'You might have to sign in again when MeletonFX starts.', buttons: [['OK', 'setup-format-ok'], ['Cancel', 'setup-msgbox-close']] },
+                know: { title: 'Install MeletonFX', icon: 'info', message: 'Upgrade keeps everything on this device and installs the files on the server that differ from the ones here. Custom (advanced) lets you format this device first: every downloaded file, setting and local database is removed before MeletonFX is installed again.', detail: 'Your images and data stay on the server either way.', buttons: [['OK', 'setup-msgbox-close']] },
+                driver: { title: 'Load Driver', icon: 'info', message: 'MeletonFX runs on the browser’s own storage drivers. No additional driver is needed to access this device.', detail: '', buttons: [['OK', 'setup-msgbox-close']] }
+            };
+            return boxes[kind] || null;
+        }
+
+        /** The Setup window's own buttons and links (page by page). Returns a promise for the flows that run. */
+        function setupAction(action) {
+            const s = ctl.setup;
+            if (!s || ctl.screen !== 'install') return null;
+            if (s.msgbox) {
+                if (action === 'setup-msgbox-close') { s.msgbox = null; showSetup(); return null; }
+                if (action === 'setup-cancel-yes') return setupCancel();
+                if (action === 'setup-format-ok') return formatDisk();
+                return null;
+            }
+            if (s.formatting) return null;
+            switch (action) {
+                case 'setup-close':
+                    if (s.page === 'restart') return null;
+                    s.msgbox = setupMsgbox('cancel');
+                    showSetup();
+                    return null;
+                case 'setup-next':
+                    if (s.page === 'language') showSetup('start');
+                    else if (s.page === 'key') return keyNext();
+                    else if (s.page === 'license') { if (s.licenseAccepted) showSetup('type'); }
+                    else if (s.page === 'where') return installHere();
+                    return null;
+                case 'setup-back':
+                    if (s.page === 'key') showSetup('start');
+                    else if (s.page === 'license') showSetup('key');
+                    else if (s.page === 'type') showSetup('license');
+                    else if (s.page === 'where') showSetup('type');
+                    return null;
+                case 'setup-install':
+                    return keyPage();
+                case 'setup-license-accept':
+                    s.licenseAccepted = !s.licenseAccepted;
+                    showSetup();
+                    return null;
+                case 'setup-know':
+                    s.msgbox = setupMsgbox('know');
+                    showSetup();
+                    return null;
+                case 'setup-repair':
+                    return openMenu(null, { countdown: false });
+                case 'setup-upgrade':
+                    if (!s.upgradeAllowed) return null;
+                    return upgrade();
+                case 'setup-custom':
+                    showSetup('where');
+                    return null;
+                case 'setup-refresh':
+                    showSetup();
+                    return null;
+                case 'setup-driver':
+                    s.msgbox = setupMsgbox('driver');
+                    showSetup();
+                    return null;
+                case 'setup-drive-options':
+                    s.driveOptions = true;
+                    showSetup();
+                    return null;
+                case 'setup-format':
+                    if (!s.driveOptions || s.formatted) return null;
+                    s.msgbox = setupMsgbox('format');
+                    showSetup();
+                    return null;
+                case 'setup-restart-now':
+                    if (typeof s.restartNow === 'function') s.restartNow();
+                    return null;
+                default:
+                    return null;
+            }
+        }
+
+        /**
+         * "Type your product key": a configured NovelAI key shows starred out in a disabled field
+         * and the page moves on by itself after keyCheckMs; none at all (initial server setup)
+         * takes a key and stores it through POST /install/product-key.
+         */
+        async function keyPage() {
+            const s = ctl.setup;
+            showSetup('key');
+            if (s.keyConfigured === false) return null;
+            const run = ctl.runId;
+            await env.sleep(config.keyCheckMs);
+            if (run !== ctl.runId || ctl.setup !== s || s.page !== 'key') return null;
+            return licensePage();
+        }
+
+        async function keyNext() {
+            const s = ctl.setup;
+            if (s.keyConfigured !== false) return licensePage();
+            const value = typeof env.readProductKey === 'function' ? String(env.readProductKey() || '').trim() : '';
+            if (!value) {
+                s.keyError = 'Type the product key (the NovelAI API key) to continue.';
+                showSetup();
+                return null;
+            }
+            s.keyBusy = true;
+            s.keyError = null;
+            showSetup();
+            let ok = false;
+            let error = null;
+            try {
+                const res = await env.fetch('/install/product-key', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: value }) });
+                ok = res.ok || res.status === 409;
+                if (!ok) {
+                    try { error = (await res.json()).error || null; } catch (_) { error = null; }
+                }
+            } catch (_) {
+                ok = false;
+            }
+            if (ctl.setup !== s) return null;
+            s.keyBusy = false;
+            if (!ok) {
+                s.keyError = error || 'The product key could not be stored. Check the connection to the server and try again.';
+                showSetup();
+                return null;
+            }
+            s.keyConfigured = true;
+            return licensePage();
+        }
+
+        /** "Please read the license terms": the README, with the checkbox that unlocks Next. */
+        async function licensePage() {
+            const s = ctl.setup;
+            if (s.license == null) {
+                s.license = '';
+                try {
+                    const res = await env.fetch('/install/license.txt', { cache: 'no-cache' });
+                    if (res.ok) s.license = await res.text();
+                } catch (_) { /* the page shows without text */ }
+                if (ctl.setup !== s) return null;
+            }
+            showSetup('license');
+            return null;
+        }
+
+        /** Next on "Where do you want to install": into the partition as it is (an upgrade of what is there). */
+        function installHere() {
+            const s = ctl.setup;
+            if (s.hasOs) return upgrade();
+            const run = ++ctl.runId;
+            return install(s.found || ctl.setupFound || { files: [], bytes: 0 }, run, { keepWindow: true });
+        }
+
+        /** The window's close box: back to the BIOS (a device with nothing installed boots the media again). */
+        async function setupCancel() {
+            ctl.runId += 1;
+            if (ctl.setup && ctl.setup.countdownTimer) env.clearInterval(ctl.setup.countdownTimer);
+            if (env.engine) env.engine.writeState(env, null);
+            show('install', { ...setupData(), phase: 'linger' });
+            ctl.setup = null;
+            await env.sleep(config.installLingerMs);
+            await rebootCut();
+            return 'reboot';
+        }
+
+        // ---------- the checklist: Installing MeletonFX... ----------
+
+        function installData() {
             const st = ctl.install;
             return {
+                page: 'install',
                 steps: st.steps.map((s) => ({ ...s })),
                 overall: st.overall,
                 phase: st.phase,
                 error: st.error,
-                ...extra
+                resumed: !!st.resumed
             };
         }
 
-        function setStep(id, state, fraction = null) {
+        function setStep(id, state, fraction) {
             const st = ctl.install;
             let overall = 0;
             st.steps.forEach((step) => {
@@ -469,6 +1098,11 @@
             show('install', installData());
         }
 
+        // a game coming off the installation media (launchGames.js): Setup waits for it
+        async function gamesGate() {
+            if (env.games) await env.games.gate();
+        }
+
         async function stepAtLeast(started) {
             const rest = config.installStepMs - (env.now() - started);
             if (rest > 0) await env.sleep(rest);
@@ -482,30 +1116,40 @@
             return 'error';
         }
 
-        async function install(found, run) {
+        /** opts.keepWindow: Setup's window is already up (a wizard page), no arrive pause. An empty list still runs every line. */
+        async function install(found, run, opts = {}) {
             const engine = env.engine;
             const resumed = !!engine.readState(env);
+            const nothing = !found.files || !found.files.length;
+            // a finished install before this one: this is an upgrade (the restart notice says so)
+            const upgrade = !!(typeof engine.readRecord === 'function' && engine.readRecord(env));
             engine.writeState(env, { startedAt: env.now(), total: found.files.length, bytes: found.bytes });
+            writeSetupResume(env, null);
+            ctl.setup = null;
             if (ctl.screen !== 'install') await cutToBlack();
             ctl.install = {
                 steps: INSTALL_STEPS.map((s) => ({ id: s.id, label: s.label, state: 'pending', fraction: null })),
                 overall: 0,
-                phase: 'arrive',
+                phase: opts.keepWindow ? 'installing' : 'arrive',
                 error: null,
                 resumed
             };
             show('install', installData());
-            await env.sleep(config.installArriveMs);
-            if (run !== ctl.runId) return 'cancelled';
+            if (!opts.keepWindow) {
+                await env.sleep(config.installArriveMs);
+                if (run !== ctl.runId) return 'cancelled';
+            }
             ctl.install.phase = 'installing';
             show('install', installData());
+            // the Games toolbar (launchGames.js): something to play while the files land
+            if (env.games) env.games.show();
 
             const manifest = found.manifest || found.files;
 
             // 1 Copying: one compressed pack, by bytes received. A short list is its own zip.
             let started = env.now();
             setStep('copy', 'active', 0);
-            const copied = await engine.copyPack(env, manifest, {
+            const copied = nothing ? { ok: true, absent: [] } : await engine.copyPack(env, manifest, {
                 subset: found.files,
                 onProgress: (p) => { if (run === ctl.runId) setStep('copy', 'active', p.fraction); }
             });
@@ -518,9 +1162,11 @@
             setStep('copy', 'done');
 
             // 2 Expanding: manifest vs the cache, store only the files that differ
+            await gamesGate();
+            if (run !== ctl.runId) return 'cancelled';
             started = env.now();
             setStep('expand', 'active', 0);
-            const expanded = await engine.expandPack(env, manifest, {
+            const expanded = nothing ? { ok: true, missing: [] } : await engine.expandPack(env, manifest, {
                 onProgress: (p) => { if (run === ctl.runId) setStep('expand', 'active', p.fraction); }
             });
             if (run !== ctl.runId) return 'cancelled';
@@ -533,12 +1179,20 @@
             // Files the server answered 404 for (#507) are not counted as missing; they are
             // recorded as stragglers so later boots stay silent
             const absent = new Set(copied.absent || []);
-            let missing = (expanded.missing || []).filter((url) => !absent.has(url));
+            // Only this install's list counts. Expanding compares the whole manifest, so it
+            // also finds the stragglers an earlier install recorded (requiredFiles left them
+            // out of the list, and a subset pack never carries them): they stay stragglers
+            // instead of failing every later upgrade
+            const requested = new Set(found.files.map((file) => file.url));
+            const prior = (expanded.missing || []).filter((url) => !requested.has(url) && !absent.has(url));
+            let missing = (expanded.missing || []).filter((url) => requested.has(url) && !absent.has(url));
             if (tooMany(missing)) return installFailed('verify', detailFor(missing));
             await stepAtLeast(started);
             setStep('expand', 'done');
 
             // 3 Installing features: code and markup that were written, then a post-write hash check
+            await gamesGate();
+            if (run !== ctl.runId) return 'cancelled';
             started = env.now();
             setStep('features', 'active', 0);
             const features = await engine.installGroup(env, 'features', {
@@ -552,6 +1206,8 @@
             setStep('features', 'done');
 
             // 4 Installing updates: the other group, same post-write check
+            await gamesGate();
+            if (run !== ctl.runId) return 'cancelled';
             started = env.now();
             setStep('updates', 'active', 0);
             const updates = await engine.installGroup(env, 'updates', {
@@ -563,11 +1219,18 @@
             if (tooMany(missing)) return installFailed('verify', detailFor(missing));
             await stepAtLeast(started);
             setStep('updates', 'done');
-            ctl.install.stragglers = missing.concat(Array.from(absent).filter((url) => missing.indexOf(url) === -1));
+            ctl.install.stragglers = missing.concat(prior, Array.from(absent)).filter((url, i, all) => all.indexOf(url) === i);
 
             // 5 Completing installation: the install record, storage the browser keeps
+            await gamesGate();
+            if (run !== ctl.runId) return 'cancelled';
             started = env.now();
             setStep('complete', 'active');
+            // the lighter copies the games came off the media with become the full files
+            if (env.games && typeof env.games.upgradeLite === 'function') {
+                await env.games.upgradeLite((f) => { if (run === ctl.runId) setStep('complete', 'active', f); }).catch(() => null);
+                if (run !== ctl.runId) return 'cancelled';
+            }
             engine.writeRecord(env, {
                 completedAt: env.now(),
                 files: found.files.length,
@@ -587,15 +1250,27 @@
             await stepAtLeast(started);
             setStep('complete', 'done');
 
-            // The window closes, a few seconds on the bare aurora, black, reboot
+            // The window closes, a few seconds on the bare aurora, black, reboot. A game still
+            // open holds the restart: a message box behind it offers Restart now instead.
             ctl.install.phase = 'linger';
             show('install', installData());
-            await env.sleep(config.installLingerMs);
-            if (run !== ctl.runId) return 'cancelled';
-            await cutToBlack();
-            if (!env.designMode) env.location.replace('/launch');
+            if (env.games && env.games.busy()) {
+                ctl.install.phase = 'held';
+                await env.games.holdRestart({ upgrade });
+                if (run !== ctl.runId) return 'cancelled';
+            } else {
+                await env.sleep(config.installLingerMs);
+                if (run !== ctl.runId) return 'cancelled';
+            }
+            if (env.games) env.games.close();
+            await rebootCut();
             return 'reboot';
         }
+
+        /**
+         * Message box on the installer: Retry stays in Setup and runs the update work again (the
+         * files that already landed are skipped); nothing left to install → the normal handoff.
+         */
 
         /**
          * Message box on the installer: Retry stays in Setup and runs the update work again (the
@@ -617,6 +1292,7 @@
 
         function installCancel() {
             if (!ctl.install || ctl.install.phase !== 'error') return null;
+            if (env.games) env.games.hide();
             env.engine.writeState(env, null);
             ctl.install = null;
             return openMenu('install');
@@ -628,49 +1304,7 @@
             return runChecks();
         }
 
-        function confirmData() {
-            return { mode: ctl.confirmMode, options: CONFIRM_OPTIONS, selected: ctl.confirmSelected };
-        }
-
-        /** mode 'touch': a two-item menu (no keyboard to assume); 'keyboard': ENTER / ESC */
-        function showConfirm(mode) {
-            stopCountdown();
-            ctl.confirmMode = mode === 'touch' ? 'touch' : 'keyboard';
-            ctl.confirmSelected = 0;
-            show('confirm', confirmData());
-        }
-
-        function backToMenu() {
-            show('menu', menuData());
-            return null;
-        }
-
-        async function recover() {
-            ctl.recoverProgress = 0;
-            show('recover', { progress: 0, restarting: false });
-            const onProgress = (fraction) => {
-                ctl.recoverProgress = fraction;
-                show('recover', { progress: fraction, restarting: false });
-            };
-            if (env.designMode) {
-                let base = 0;
-                for (const step of RECOVERY_STEPS) {
-                    await env.sleep(config.recoverStepMs);
-                    base += step.weight;
-                    onProgress(base);
-                }
-            } else {
-                await cleanInstall(env, null, onProgress);
-            }
-            show('recover', { progress: 1, restarting: true });
-            await env.sleep(config.blackCutMs);
-            await cutToBlack();
-            if (env.designMode) return 'design';
-            env.location.replace('/launch');
-            return 'restart';
-        }
-
-        function choose(index, mode) {
+        function choose(index) {
             const entry = ENTRIES[index];
             if (!entry || ctl.screen !== 'menu') return null;
             ctl.selected = index;
@@ -679,22 +1313,40 @@
                 ctl.bootMode = entry.id === 'melaton' ? 'normal' : entry.id;
                 return retry();
             }
-            showConfirm(mode);
-            return null;
+            // Melaton Recovery (Reinstall): the installation media, Setup asks the rest
+            const run = ++ctl.runId;
+            return bootMedia(run);
         }
 
-        function confirmOption(index) {
-            const option = CONFIRM_OPTIONS[index];
-            if (!option) return null;
-            return option.id === 'continue' ? recover() : backToMenu();
-        }
-
-        /** Keyboard: returns true when the key was used. */
-        function handleKey(key) {
+        /** Keyboard: returns true when the key was used. ch is the printable character, if any. */
+        function handleKey(key, ch) {
+            if (ctl.screen === 'bios') {
+                if (key === 'F8') {
+                    ctl.biosF8 = true;
+                    return true;
+                }
+                return ctl.bios ? ctl.bios.handleKey(key, ch) : false;
+            }
+            if (ctl.screen === 'loading') return false;
             if (ctl.screen === 'install') {
                 if (ctl.install && ctl.install.phase === 'error') {
                     if (key === 'Enter') { installRetry(); return true; }
                     if (key === 'Escape') { installCancel(); return true; }
+                    return true;
+                }
+                if (ctl.setup && !ctl.install) {
+                    const s = ctl.setup;
+                    if (s.msgbox) {
+                        if (key === 'Enter') setupAction(s.msgbox.buttons[0][1]);
+                        else if (key === 'Escape') setupAction('setup-msgbox-close');
+                        return true;
+                    }
+                    if (key === 'Escape') { setupAction('setup-close'); return true; }
+                    if (key === 'Enter') {
+                        const defaults = { language: 'setup-next', start: 'setup-install', key: 'setup-next', license: 'setup-next', type: s.upgradeAllowed ? 'setup-upgrade' : 'setup-custom', where: 'setup-next', restart: 'setup-restart-now' };
+                        if (defaults[s.page]) setupAction(defaults[s.page]);
+                        return true;
+                    }
                 }
                 return true; // the installer runs by itself
             }
@@ -719,52 +1371,25 @@
                 show('menu', menuData());
                 return true;
             }
-            if (ctl.screen === 'confirm') {
-                if (key === 'Escape') {
-                    backToMenu();
-                    return true;
-                }
-                if (ctl.confirmMode === 'touch') {
-                    if (key === 'ArrowUp' || key === 'ArrowDown') {
-                        ctl.confirmSelected = key === 'ArrowUp' ? 0 : CONFIRM_OPTIONS.length - 1;
-                        show('confirm', confirmData());
-                        return true;
-                    }
-                    if (key === 'Enter') {
-                        confirmOption(ctl.confirmSelected);
-                        return true;
-                    }
-                    return false;
-                }
-                if (key === 'Enter') {
-                    recover();
-                    return true;
-                }
-                return false;
-            }
             return false;
         }
 
         /**
          * Touch / mouse: a tap on an entry chooses it; any press on the menu stops the countdown.
-         * pointerType 'touch' / 'pen' choosing Recovery gets the touch confirm menu.
+         * Setup's buttons and links come in as their data-action names.
          */
         function handlePointer(action, index, pointerType) {
-            const mode = pointerType === 'touch' || pointerType === 'pen' ? 'touch' : 'keyboard';
+            void pointerType;
             if (ctl.screen === 'install') {
                 if (action === 'install-retry') return installRetry();
                 if (action === 'install-cancel') return installCancel();
+                if (typeof action === 'string' && action.indexOf('setup-') === 0) return setupAction(action);
                 return null;
             }
             if (ctl.screen === 'menu') {
                 stopCountdown();
-                if (action === 'choose') return choose(typeof index === 'number' ? index : ctl.selected, mode);
+                if (action === 'choose') return choose(typeof index === 'number' ? index : ctl.selected);
                 return null;
-            }
-            if (ctl.screen === 'confirm') {
-                if (action === 'option' && typeof index === 'number') return confirmOption(index);
-                if (action === 'continue') return recover();
-                if (action === 'cancel') return backToMenu();
             }
             return null;
         }
@@ -773,6 +1398,16 @@
         function preview(name) {
             ctl.runId += 1;
             stopCountdown();
+            if (ctl.setup && ctl.setup.countdownTimer) env.clearInterval(ctl.setup.countdownTimer);
+            ctl.setup = null;
+            ctl.install = null;
+            if (name === 'bios' || name === 'bios-setup' || name === 'bios-menu' || name === 'bios-diag') {
+                show('bios');
+                const bios = ensureBios();
+                if (bios) bios.preview({ bios: 'splash', 'bios-setup': 'setup', 'bios-menu': 'bootmenu', 'bios-diag': 'diag' }[name]);
+                return undefined;
+            }
+            if (name === 'loading') return showLoading(0.62);
             if (name === 'boot') return show('boot');
             if (name === 'black') return show('black');
             if (name === 'teal') return show('teal');
@@ -782,25 +1417,35 @@
                 ctl.countdown = config.countdownSec;
                 return show('menu', menuData());
             }
-            if (name === 'confirm' || name === 'confirm-touch') {
-                ctl.confirmMode = name === 'confirm-touch' ? 'touch' : 'keyboard';
-                ctl.confirmSelected = 0;
-                return show('confirm', confirmData());
+            if (name.indexOf('setup') === 0) {
+                const page = { setup: 'language', 'setup-start': 'start', 'setup-key': 'key', 'setup-key-entry': 'key', 'setup-license': 'license', 'setup-type': 'type', 'setup-type-fresh': 'type', 'setup-where': 'where', 'setup-where-options': 'where', 'setup-format': 'where', 'setup-formatting': 'where', 'setup-cancel': 'start', 'setup-restart': 'restart' }[name] || 'language';
+                ctl.setup = { page, hasOs: name !== 'setup-type-fresh', upgradeAllowed: name !== 'setup-type-fresh', driveOptions: name === 'setup-where-options' || name === 'setup-format' || name === 'setup-formatting', formatted: false, msgbox: null, countdown: config.restartSec };
+                if (name === 'setup-format') ctl.setup.msgbox = setupMsgbox('format');
+                if (name === 'setup-cancel') ctl.setup.msgbox = setupMsgbox('cancel');
+                if (name === 'setup-formatting') ctl.setup.formatting = { progress: 0.42 };
+                ctl.setup.keyConfigured = name !== 'setup-key-entry';
+                if (name === 'setup-license') ctl.setup.license = 'Dreamscape\n\nThe README is shown here on a live server (GET /install/license.txt).';
+                return showSetup(page);
             }
-            if (name === 'recover') return show('recover', { progress: 0.42, restarting: false });
             if (name.startsWith('install')) {
                 const steps = INSTALL_STEPS.map((s) => ({ id: s.id, label: s.label, state: 'pending', fraction: null }));
                 ctl.install = { steps, overall: 0, phase: 'installing', error: null };
-                const at = { install: 'copy', 'install-expand': 'expand', 'install-updates': 'updates', 'install-error': 'copy', 'install-linger': null }[name];
+                const at = { install: 'copy', 'install-expand': 'expand', 'install-updates': 'updates', 'install-error': 'copy', 'install-linger': null, 'install-games': 'updates', 'install-held': null }[name];
                 const fraction = { copy: 0.42, expand: 0.6, updates: 0.3 };
                 let reached = at == null;
                 steps.forEach((step) => {
                     if (step.id === at) { reached = true; step.state = 'active'; step.fraction = fraction[at]; }
                     else if (!reached) step.state = 'done';
                 });
-                if (name === 'install-linger') {
+                if (name === 'install-linger' || name === 'install-held') {
                     steps.forEach((step) => { step.state = 'done'; });
                     ctl.install.phase = 'linger';
+                }
+                // the Games toolbar; held: Setup finished under an open game (launchGames.js)
+                if (env.games) {
+                    if (name === 'install-games' || name === 'install-held') env.games.show();
+                    else env.games.hide();
+                    if (name === 'install-held') env.games.holdRestart({ upgrade: true });
                 }
                 if (name === 'install-error') {
                     ctl.install.phase = 'error';
@@ -818,7 +1463,8 @@
             return null;
         }
 
-        Object.assign(ctl, { runChecks, runUpdates, install, installRetry, installCancel, openMenu, retry, choose, confirmOption, handleKey, handlePointer, preview, recover, stopCountdown, handOff });
+        // (install, the function, is not put on ctl: ctl.install is the checklist's state)
+        Object.assign(ctl, { runChecks, runBios, bootDisk, bootMedia, loadingScreen, runUpdates, installChecklist: install, installRetry, installCancel, upgrade, formatDisk, keyPage, keyNext, licensePage, setupAction, setupCancel, openMenu, retry, choose, handleKey, handlePointer, preview, stopCountdown, handOff, ensureBios });
         return ctl;
     }
 
@@ -854,12 +1500,133 @@
     }
 
     /** Windows Setup in Vista Basic on the aurora (#melatonInstall in launch.html). */
+    /** Vista Basic message box inside Setup (install errors and the wizard's questions). */
+    function renderMsgbox(doc, box, data) {
+        if (!box) return;
+        const err = data.phase === 'error' ? data.error : null;
+        const spec = err
+            ? { title: 'Install MeletonFX', icon: 'error', message: err.message, detail: err.detail ? `Details: ${err.detail}` : '', buttons: [['Retry', 'install-retry'], ['Cancel', 'install-cancel']] }
+            : data.msgbox;
+        box.hidden = !spec;
+        if (!spec) return;
+        const title = box.querySelector('.mi-msgbox-title');
+        if (title) title.textContent = spec.title || 'Install MeletonFX';
+        const icon = box.querySelector('.mi-msgbox-icon');
+        if (icon) {
+            icon.hidden = !spec.icon;
+            icon.dataset.icon = spec.icon || '';
+        }
+        const msg = box.querySelector('.mi-msgbox-message');
+        const detail = box.querySelector('.mi-msgbox-detail');
+        if (msg) msg.textContent = spec.message || '';
+        if (detail) detail.textContent = spec.detail || '';
+        const buttons = box.querySelector('.mi-msgbox-buttons');
+        if (buttons) {
+            buttons.replaceChildren(...spec.buttons.map(([label, action]) => {
+                const btn = el(doc, 'button', null, label);
+                btn.type = 'button';
+                btn.dataset.action = action;
+                return btn;
+            }));
+            const first = buttons.querySelector('button');
+            // preventScroll: the VGA frame clips (overflow hidden) but still scrolls to a
+            // focused control; a plain focus() shifted the whole frame sideways
+            if (first && doc.activeElement !== first) setTimeout(() => first.focus({ preventScroll: true }), 0);
+        }
+    }
+
+    /** Windows Setup on the aurora (#melatonInstall in launch.html): the page, the strip, the checklist, the message box. */
     function renderInstall(doc, data) {
         const host = doc.getElementById('melatonInstall');
         if (!host) return;
+        const page = data.page || 'install';
         host.dataset.phase = data.phase;
+        host.dataset.page = page;
+        host.querySelectorAll('.mi-page').forEach((node) => {
+            node.hidden = node.dataset.page !== page;
+        });
+        // Vista's strip (1 Collecting information / 2 Installing) appears from the third page on
+        host.dataset.strip = page === 'language' || page === 'start' ? 'none' : (page === 'install' ? 'install' : 'collect');
+        if (page === 'type') {
+            // no existing installation: no Upgrade, and Custom (advanced) reads Install
+            const up = host.querySelector('[data-action="setup-upgrade"]');
+            if (up) up.hidden = !data.upgradeAllowed;
+            const custom = host.querySelector('[data-action="setup-custom"] .mi-option-text b');
+            if (custom) custom.replaceChildren(...(data.upgradeAllowed ? [el(doc, 'u', null, 'C'), doc.createTextNode('ustom (advanced)')] : [el(doc, 'u', null, 'I'), doc.createTextNode('nstall')]));
+            const desc = host.querySelector('[data-action="setup-custom"] .mi-option-desc');
+            if (desc) desc.textContent = data.upgradeAllowed
+                ? 'Install a clean copy of MeletonFX, select where you want to install it, or make changes to disks and partitions. This option does not keep your downloaded files, settings, and local databases.'
+                : 'Install MeletonFX on this device. Select where you want to install it, or make changes to disks and partitions first.';
+        }
+        if (page === 'where') {
+            const rows = host.querySelector('.mi-disk-rows');
+            if (rows) {
+                rows.replaceChildren(...(data.disk || []).map((row, i) => {
+                    const tr = el(doc, 'tr', i === data.diskSelected ? 'mi-disk-row mi-disk-row--selected' : 'mi-disk-row');
+                    const name = el(doc, 'td', 'mi-disk-name');
+                    name.appendChild(el(doc, 'span', 'mi-disk-icon'));
+                    name.appendChild(el(doc, 'span', null, row.name));
+                    tr.appendChild(name);
+                    tr.appendChild(el(doc, 'td', 'mi-disk-size', row.total));
+                    tr.appendChild(el(doc, 'td', 'mi-disk-size', row.free));
+                    tr.appendChild(el(doc, 'td', 'mi-disk-type', row.type));
+                    return tr;
+                }));
+            }
+            const options = host.querySelector('.mi-drive-options');
+            if (options) options.hidden = !data.driveOptions;
+            const opener = host.querySelector('[data-action="setup-drive-options"]');
+            if (opener) opener.hidden = !!data.driveOptions;
+            const format = host.querySelector('[data-action="setup-format"]');
+            if (format) format.disabled = !!data.formatted || !(data.disk || []).some((row) => row.type);
+            const next = host.querySelector('.mi-page[data-page="where"] [data-action="setup-next"]');
+            if (next) next.disabled = !!data.formatting;
+            const dlg = host.querySelector('.mi-format-dialog');
+            if (dlg) {
+                dlg.hidden = !data.formatting;
+                const bar = dlg.querySelector('[role="progressbar"] > div');
+                if (bar && data.formatting) {
+                    const pct = Math.round(Math.max(0, Math.min(1, data.formatting.progress || 0)) * 1000) / 10;
+                    bar.style.width = pct + '%';
+                    bar.parentNode.setAttribute('aria-valuenow', String(Math.round(pct)));
+                }
+            }
+        }
+        if (page === 'key') {
+            const input = host.querySelector('.mi-key-input');
+            if (input) {
+                input.disabled = !!data.keyConfigured || !!data.keyBusy;
+                if (data.keyConfigured) input.value = '*****-*****-*****-*****-*****';
+                else if (input.value === '*****-*****-*****-*****-*****') input.value = '';
+            }
+            const err = host.querySelector('.mi-key-error');
+            if (err) {
+                err.hidden = !data.keyError;
+                err.textContent = data.keyError || '';
+            }
+            const checking = host.querySelector('.mi-key-checking');
+            if (checking) checking.hidden = !data.keyConfigured;
+            const next = host.querySelector('.mi-page[data-page="key"] [data-action="setup-next"]');
+            if (next) next.disabled = !!data.keyBusy;
+        }
+        if (page === 'license') {
+            const text = host.querySelector('.mi-license-text');
+            if (text && text.dataset.shown !== String(data.license == null ? '' : data.license.length)) {
+                text.textContent = data.license || '';
+                text.dataset.shown = String(data.license == null ? '' : data.license.length);
+                text.scrollTop = 0;
+            }
+            const box = host.querySelector('.mi-license-accept input');
+            if (box) box.checked = !!data.licenseAccepted;
+            const next = host.querySelector('.mi-page[data-page="license"] [data-action="setup-next"]');
+            if (next) next.disabled = !data.licenseAccepted;
+        }
+        if (page === 'restart') {
+            const count = host.querySelector('.mi-restart-count');
+            if (count) count.textContent = data.countdown == null ? '' : `Restarting in ${data.countdown} second${data.countdown === 1 ? '' : 's'}...`;
+        }
         const list = host.querySelector('.mi-steps');
-        if (list) {
+        if (list && page === 'install') {
             list.replaceChildren(...data.steps.map((step) => {
                 const li = el(doc, 'li', `mi-step mi-step--${step.state}`);
                 const mark = el(doc, 'span', 'mi-step-mark');
@@ -874,34 +1641,41 @@
         }
         const bar = host.querySelector('.mi-bar-install > div');
         if (bar) {
-            const pct = Math.round((data.overall || 0) * 1000) / 10;
+            const pct = page === 'install' ? Math.round((data.overall || 0) * 1000) / 10 : 0;
             bar.style.width = pct + '%';
             if (bar.parentNode) bar.parentNode.setAttribute('aria-valuenow', String(Math.round(pct)));
         }
-        const box = host.querySelector('.mi-msgbox');
-        if (box) {
-            const err = data.phase === 'error' ? data.error : null;
-            box.hidden = !err;
-            if (err) {
-                const msg = box.querySelector('.mi-msgbox-message');
-                const detail = box.querySelector('.mi-msgbox-detail');
-                if (msg) msg.textContent = err.message;
-                if (detail) detail.textContent = err.detail ? `Details: ${err.detail}` : '';
-                const retry = box.querySelector('[data-action="install-retry"]');
-                if (retry && doc.activeElement !== retry) setTimeout(() => retry.focus(), 0);
-            }
+        const collect = host.querySelector('.mi-bar-collect > div');
+        if (collect) {
+            const share = { key: 0.2, license: 0.35, type: 0.5, where: 0.7, restart: 1 }[page];
+            collect.style.width = (page === 'install' ? 100 : Math.round((share || 0.2) * 100)) + '%';
         }
+        renderMsgbox(doc, host.querySelector('.mi-msgbox'), data);
     }
 
     function createDomView(doc) {
         const rootEl = doc.getElementById('melatonBoot');
         const textEl = doc.getElementById('melatonBootText');
+        const loadingEl = doc.getElementById('melatonLoading');
         return {
             render(screen, data) {
                 if (!rootEl) return;
                 rootEl.dataset.screen = screen;
                 if (screen === 'install') {
                     renderInstall(doc, data);
+                    if (textEl) textEl.replaceChildren();
+                    return;
+                }
+                if (screen === 'loading') {
+                    if (loadingEl) {
+                        const fill = loadingEl.querySelector('.melaton-loading-bar > div');
+                        const cells = loadingBarCells(data.progress);
+                        if (fill) fill.style.width = (cells * config.loadingBarCellPx) + 'px';
+                        const bar = loadingEl.querySelector('.melaton-loading-bar');
+                        if (bar) bar.setAttribute('aria-valuenow', String(Math.round(cells / config.loadingBarCells * 100)));
+                        const label = loadingEl.querySelector('.melaton-loading-label');
+                        if (label && data.label) label.textContent = data.label;
+                    }
                     if (textEl) textEl.replaceChildren();
                     return;
                 }
@@ -922,45 +1696,10 @@
                         list,
                         el(doc, 'p', 'melaton-boot-countdown', data.countdown != null
                             ? `Seconds until the highlighted choice will be started automatically: ${data.countdown}`
-                            : ' ')
+                            : ' ')
                     ];
                     if (data.info) nodes.push(el(doc, 'p', 'melaton-boot-info', `Info: ${data.info}`));
                     textEl.replaceChildren(textScreen(doc, 'Melaton Boot Manager', nodes, [['ENTER=Choose', 'choose']]));
-                } else if (screen === 'confirm') {
-                    const intro = [
-                        el(doc, 'p', null, 'Melaton Recovery will remove MeletonFX from this device and install it again.'),
-                        el(doc, 'p', null, 'Everything stored on this device is deleted: downloaded files, the offline service, settings and local databases. Your images and data on the server are not affected. You may have to sign in again.')
-                    ];
-                    if (data.mode === 'touch') {
-                        const list = el(doc, 'ul', 'melaton-boot-entries melaton-confirm-options');
-                        list.setAttribute('role', 'listbox');
-                        data.options.forEach((option, i) => {
-                            const li = el(doc, 'li', i === data.selected ? 'selected' : '', option.label);
-                            li.dataset.option = String(i);
-                            li.setAttribute('role', 'option');
-                            li.setAttribute('aria-selected', i === data.selected ? 'true' : 'false');
-                            list.appendChild(li);
-                        });
-                        textEl.replaceChildren(textScreen(doc, 'Melaton Recovery', [...intro, list], [['ENTER=Choose', 'option-selected']]));
-                    } else {
-                        textEl.replaceChildren(textScreen(doc, 'Melaton Recovery', [
-                            ...intro,
-                            el(doc, 'p', null, 'Press ENTER to continue, or ESC to return to the boot menu.')
-                        ], [['ENTER=Continue', 'continue'], ['ESC=Cancel', 'cancel']]));
-                    }
-                } else if (screen === 'recover') {
-                    const pct = Math.round(Math.max(0, Math.min(1, data.progress || 0)) * 1000) / 10;
-                    const bar = el(doc, 'div', 'melaton-format-bar');
-                    bar.setAttribute('role', 'progressbar');
-                    bar.setAttribute('aria-valuemin', '0');
-                    bar.setAttribute('aria-valuemax', '100');
-                    bar.setAttribute('aria-valuenow', String(Math.round(pct)));
-                    const fill = el(doc, 'div', 'melaton-format-bar-fill');
-                    fill.style.width = `${pct}%`;
-                    bar.appendChild(fill);
-                    const nodes = [el(doc, 'p', 'melaton-text-tight', 'Formatting startup disk...'), bar];
-                    if (data.restarting) nodes.push(el(doc, 'p', 'melaton-recover-restart', 'Restarting...'));
-                    textEl.replaceChildren(textScreen(doc, 'Melaton Recovery', nodes, []));
                 } else {
                     textEl.replaceChildren();
                 }
@@ -975,6 +1714,9 @@
     /** Wire the controller to the page (launch.html). */
     function start(win) {
         const doc = win.document;
+        const biosCanvas = doc.getElementById('melatonBiosCanvas');
+        const biosModule = win.MelatonPhoenixBios || null;
+        const biosFont = win.MelatonBiosFont || null;
         const env = {
             window: win,
             fetch: win.fetch.bind(win),
@@ -983,7 +1725,18 @@
             localStorage: (() => { try { return win.localStorage; } catch (_) { return null; } })(),
             caches: win.caches || null,
             engine: win.melatonUpdateEngine || null,
+            // the Games toolbar while Setup runs (public/scripts/launch/launchGames.js)
+            games: win.MelatonLaunchGames || null,
+            // the Phoenix BIOS (phoenixBios.js) painted into its own 640 x 480 canvas
+            bios: biosModule,
+            paintBios: biosModule && biosCanvas && biosFont
+                ? biosModule.createCanvasPainter(biosCanvas, biosFont, doc.querySelector('.melaton-boot-enso'))
+                : null,
             location: win.location,
+            readProductKey: () => {
+                const input = doc.querySelector('#melatonInstall .mi-key-input');
+                return input ? input.value : '';
+            },
             now: () => Date.now(),
             sleep,
             setInterval: win.setInterval.bind(win),
@@ -993,43 +1746,49 @@
         const ctl = createController(env, createDomView(doc));
         win.melatonBoot = Object.assign(win.melatonBoot || {}, { controller: ctl, preview: ctl.preview });
 
+        // Keys the document head caught before this script loaded (F2 / Esc / F12 during the POST)
+        const early = Array.isArray(globalThis.melatonBiosKeys) ? globalThis.melatonBiosKeys.splice(0) : [];
         win.addEventListener('keydown', (ev) => {
             if (ev.repeat && ev.key !== 'ArrowUp' && ev.key !== 'ArrowDown') return;
-            if (ctl.handleKey(ev.key)) ev.preventDefault();
+            if (ctl.handleKey(ev.key, ev.key.length === 1 ? ev.key : null)) ev.preventDefault();
         });
         const text = doc.getElementById('melatonBootText');
         if (text) {
-            let lastPointerType = 'mouse';
-            text.addEventListener('pointerdown', (ev) => {
-                lastPointerType = ev.pointerType || 'mouse';
-                ctl.stopCountdown();
-            });
+            text.addEventListener('pointerdown', () => ctl.stopCountdown());
             text.addEventListener('click', (ev) => {
-                const pointerType = ev.pointerType || lastPointerType;
                 const entry = ev.target.closest('[data-index]');
                 if (entry) {
-                    ctl.handlePointer('choose', Number(entry.dataset.index), pointerType);
-                    return;
-                }
-                const option = ev.target.closest('[data-option]');
-                if (option) {
-                    ctl.handlePointer('option', Number(option.dataset.option), pointerType);
+                    ctl.handlePointer('choose', Number(entry.dataset.index), ev.pointerType || 'mouse');
                     return;
                 }
                 const key = ev.target.closest('[data-action]');
-                if (!key) return;
-                if (key.dataset.action === 'option-selected') ctl.handleKey('Enter');
-                else ctl.handlePointer(key.dataset.action, undefined, pointerType);
+                if (key) ctl.handlePointer(key.dataset.action, undefined, ev.pointerType || 'mouse');
             });
         }
         const installer = doc.getElementById('melatonInstall');
         if (installer) {
             installer.addEventListener('click', (ev) => {
                 const btn = ev.target.closest('[data-action]');
-                if (btn) ctl.handlePointer(btn.dataset.action, undefined, ev.pointerType || 'mouse');
+                if (btn && !btn.disabled) ctl.handlePointer(btn.dataset.action, undefined, ev.pointerType || 'mouse');
             });
         }
-        ctl.runChecks();
+        if (biosCanvas) {
+            // a tap on the BIOS: cell under the pointer (the canvas is stretched to the window)
+            biosCanvas.addEventListener('pointerdown', (ev) => {
+                if (!ctl.bios) return;
+                const rect = biosCanvas.getBoundingClientRect();
+                if (!rect.width || !rect.height) return;
+                const col = Math.floor((ev.clientX - rect.left) / rect.width * 640 / 8);
+                const row = Math.floor((ev.clientY - rect.top) / rect.height * 480 / 19);
+                if (ctl.bios.handlePointer(col, row)) ev.preventDefault();
+            });
+        }
+        const started = ctl.runChecks();
+        if (early.length) {
+            // the POST is up by the next tick; replay what the head caught
+            win.setTimeout(() => early.forEach((key) => ctl.handleKey(key)), 0);
+        }
+        void started;
         if (env.designMode) {
             // /launch?design=1&screen=menu opens one screen directly (review links, screenshots)
             let screen = null;
@@ -1039,7 +1798,7 @@
         return ctl;
     }
 
-    const api = { config, ENTRIES, INFO, RECOVERY_STEPS, CONFIRM_OPTIONS, INSTALL_STEPS, INSTALL_ERRORS, probeStatus, checkSession, cleanInstall, createController, createDomView, start };
+    const api = { config, ENTRIES, INFO, RECOVERY_STEPS, INSTALL_STEPS, INSTALL_ERRORS, INSTALLER_ASSETS, LOADING_STEPS, SETUP_PAGES, SETUP_RESUME_KEY, INSTALLED_KEY, probeStatus, checkSession, cleanInstall, hasOsOnDisk, hasInstallRecord, loadingBarCells, readSetupResume, writeSetupResume, createController, createDomView, start };
     if (root) {
         root.melatonBoot = Object.assign(root.melatonBoot || {}, api);
         const doc = root.document;

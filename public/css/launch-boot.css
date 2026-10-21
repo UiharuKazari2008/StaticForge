@@ -44,8 +44,66 @@ html.melaton-boot #melatonBoot {
     pointer-events: none;
 }
 
-#melatonBoot[data-screen="boot"] .melaton-boot-pixels {
+#melatonBoot[data-screen="boot"] #melatonBootCanvas,
+#melatonBoot[data-screen="bios"] #melatonBiosCanvas {
     display: block;
+}
+
+/* The BIOS takes the pointer (tabs, items and the key bar answer taps); the boot screen does not */
+#melatonBoot[data-screen="bios"] #melatonBiosCanvas {
+    pointer-events: auto;
+    outline: none;
+}
+
+/* ---------- "MeletonFX is loading files..." (Vista's bootmgr off the DVD) ----------
+   Measured at 1024x768 on the Vista VM: Lucida Console 20 px, #BFBFBF, the text's left edge at
+   x 332 and its cap height at y 588; the bar x 56-967 (912 x 30) from y 639, #7F7F7F trough and
+   a #BFBFBF fill that grows from the left, no frame. Lives in the VGA frame, so it stretches. */
+
+#melatonLoading {
+    display: none;
+    position: absolute;
+    inset: 0;
+    background: #000;
+    font-family: 'Lucida Console', Consolas, 'Courier New', monospace;
+    color: #bfbfbf;
+}
+
+#melatonBoot[data-screen="loading"] #melatonLoading {
+    display: block;
+}
+
+.melaton-loading-label {
+    position: absolute;
+    left: 332px;
+    top: 584px;
+    margin: 0;
+    font-size: 20px;
+    line-height: 24px;
+    white-space: pre;
+}
+
+.melaton-loading-bar {
+    position: absolute;
+    left: 56px;
+    top: 639px;
+    width: 912px;
+    height: 30px;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: #7f7f7f;
+    overflow: hidden;
+}
+
+.melaton-loading-bar > div {
+    height: 100%;
+    width: 0;
+    background: #bfbfbf;
+    background-image: none;
+    box-shadow: none;
+    transition: none;
 }
 
 .melaton-vga {
@@ -210,9 +268,7 @@ html.melaton-boot #melatonBoot {
     color: #c0c0c0;
 }
 
-#melatonBoot[data-screen="menu"] #melatonBootText,
-#melatonBoot[data-screen="confirm"] #melatonBootText,
-#melatonBoot[data-screen="recover"] #melatonBootText {
+#melatonBoot[data-screen="menu"] #melatonBootText {
     display: flex;
 }
 
@@ -285,24 +341,3 @@ html.melaton-boot #melatonBoot {
     margin-bottom: 0 !important;
 }
 
-/* "Formatting startup disk..." bar, in the manner of Boot Manager's "Windows is loading
-   files..." bar: light fill in a thin grey frame, jumps with the work (no easing) */
-.melaton-format-bar {
-    width: min(60ch, 100%);
-    height: 0.85em;
-    margin-top: 0.65em;
-    box-sizing: border-box;
-    border: max(1px, 0.07em) solid #808080;
-    padding: max(1px, 0.07em);
-    background: #000;
-}
-
-.melaton-format-bar-fill {
-    height: 100%;
-    width: 0;
-    background: #e8e8e8;
-}
-
-.melaton-recover-restart {
-    margin-top: 1.3em !important;
-}

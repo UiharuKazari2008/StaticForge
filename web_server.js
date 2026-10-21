@@ -1878,6 +1878,8 @@ app.use((req, res, next) => {
         '/spellcheck',
         '/vibe',
         '/vibe/images',
+        // modules/programFaultReports.js: stacks up to 16 KB per post, kept in data/fault-reports
+        '/api/fault-reports',
     ];
     if (skippedPaths.some(path => req.path.startsWith(path))) {
         return next();
@@ -1978,6 +1980,8 @@ app.use((req, res, next) => {
 // After session + body parsing. Earlier registration never saw the login cookie.
 mountGrimoireBrowserBridge(app, authMiddleware);
 mountGuacRemoteBridge(app, authMiddleware);
+// modules/programFaultReports.js — the desktop's "has stopped working" dialogs, one report per fault
+require('./modules/programFaultReports').mountProgramFaultReports(app, authMiddleware);
 
 app.use('/images/:filename', authMiddleware, async (req, res) => {
     const filename = req.params.filename;
@@ -2339,11 +2343,50 @@ function publicStatusExtras(req) {
         // and shows the Administrator tile with its picture like Vista's Welcome screen
         useVistaLogon,
         logonPicture: useVistaLogon ? accountPictures.logonPictureUrl(config) : null,
+        // the Administrator's name for the Welcome screen and the logon dialog (User Accounts'
+        // Change the account name), shown before anyone signs in
+        logonName: accountPictures.accountName(config, 'administrator'),
         runtimeCompileComplete,
         runtimeCompile: runtimeAssetService.getPublicStatus(),
-        runtimeAutoRecompile: getRuntimeAutoRecompileConfig()
+        runtimeAutoRecompile: getRuntimeAutoRecompileConfig(),
+        // MeletonFX Setup's product key page (#611): a configured NovelAI key shows starred out
+        // and the page moves on by itself; none at all (initial server setup) asks for one
+        novelaiKeyConfigured: novelaiKeyConfigured()
     };
 }
+
+function novelaiKeyConfigured() {
+    try {
+        return globalResources.getApiKeyManager().getServiceKeys('novelai').length > 0;
+    } catch (_) {
+        return false;
+    }
+}
+
+// Setup's "Type your product key": only while the server has no NovelAI key at all (initial
+// setup; once one exists this answers 409 and the Account Manager owns the keys). The key is
+// stored under the name Setup gives it.
+app.post('/install/product-key', express.json({ limit: '4kb' }), (req, res) => {
+    const key = typeof (req.body && req.body.key) === 'string' ? req.body.key.trim() : '';
+    if (!key) return res.status(400).json({ success: false, error: 'A product key is required' });
+    if (novelaiKeyConfigured()) return res.status(409).json({ success: false, error: 'A NovelAI key is already configured' });
+    try {
+        const added = globalResources.getApiKeyManager().addApiKey('novelai', 'Setup', key);
+        res.json({ success: true, index: added.index });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err && err.message ? err.message : 'Could not store the key' });
+    }
+});
+
+// Setup's license page shows the README
+app.get('/install/license.txt', (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache');
+    res.type('text/plain; charset=utf-8');
+    fs.readFile(path.join(__dirname, 'README.md'), 'utf8', (err, text) => {
+        if (err) return res.status(404).end('README.md is not available');
+        res.end(text);
+    });
+});
 app.options('/status', (req, res) => {
     res.json(serverStartupStatus.getPublicStatus(publicStatusExtras(req)));
 });

@@ -253,6 +253,9 @@
         media="screen and (device-width: 1024px) and (device-height: 768px) and (-webkit-device-pixel-ratio: 2)"
         href="/static_images/apple-splash-2048x1536.png">
 
+    <!-- Vista's own Segoe UI (public/css/vista-fonts.css): the shell's face, fetched before first paint -->
+    <link rel="preload" href="/dist/fonts/vista/segoeui.woff2" as="font" type="font/woff2" crossorigin="anonymous">
+    <link rel="stylesheet" href="/css/vista-fonts.css">
     <link rel="stylesheet" href="/css/fonts.css">
     <link rel="stylesheet" href="/dist/fontawesome/css/all.min.css">
     <link rel="stylesheet" href="/css/app.css">
@@ -388,9 +391,13 @@
     <link rel="stylesheet" href="/css/vista-explorer.css">
     <link rel="stylesheet" href="/css/vista-scrollbars.css">
     <link rel="stylesheet" href="/css/vista-dialogs.css">
+    <link rel="stylesheet" href="/css/vista-wer-dialog.css">
     <link rel="stylesheet" href="/css/vista-sidebar.css">
     <link rel="stylesheet" href="/css/vista-visual-index.css">
     <link rel="stylesheet" href="/css/vista-import-wizard.css">
+    <!-- Taskbar: Start orb, buttons, Quick Launch, chevron, clock (taskbarSettings.js, taskbarClock.js) -->
+    <link rel="stylesheet" href="/css/vista-taskbar.css">
+    <link rel="stylesheet" href="/css/system-font.css">
     <link rel="stylesheet" href="/css/hidden.css">
     <script>
         // Stand-in until public/scripts/comp/assetPreload.js loads on first use (or after first paint).
@@ -8271,14 +8278,17 @@ Examples:
         </div>
     </div>
 
-    <!-- About Melaton Modal -->
-    <div id="aboutMelatoninModal" class="modal hidden" data-window-restore-position="false"
-        data-window-restore-size="false">
+    <!-- About MeletonFX: Vista's About Windows (winver.exe, shell32 dialog 14352: 275x238 DLU in
+         MS Shell Dlg 8, so a 413x387 client). Brand banner from scripts/build-about-windows-banner.sh;
+         openAboutMelatoninModal (modalUtils.js) fills the version, owner and memory lines. -->
+    <div id="aboutMelatoninModal" class="modal hidden transient about-windows-modal" role="dialog"
+        aria-labelledby="aboutWindowsTitle" data-window-restore-position="false"
+        data-window-restore-size="false" data-window-client="light">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fa-light fa-info-circle icon-fa"></i>
                 <img src="/static_images/app_icons/24/vista-system.webp" srcset="/static_images/app_icons/24/vista-system.webp 1x, /static_images/app_icons/48/vista-system.webp 2x" alt="" class="icon-image" />
-                <span>About MeletonFX</span>
+                <span id="aboutWindowsTitle">About MeletonFX</span>
             </div>
         </div>
         <div class="modal-window-controls">
@@ -8286,43 +8296,24 @@ Examples:
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content modal-padding dark">
-            <div class="modal-body">
-                <!-- Logo and Title Section -->
-                <div class="form-row center-align">
-                    <div class="about-logo-container">
-                        <img src="/static_images/app_icons/64/dreamscape-logo.webp" srcset="/static_images/app_icons/64/dreamscape-logo.webp 1x, /static_images/app_icons/128/dreamscape-logo.webp 2x" alt="Dreamscape Logo" class="about-logo">
-                        <h2 class="logo-text">Dreamscape</h2>
-                    </div>
-                </div>
-                <div class="form-section-separator"></div>
-
-                <div class="about-product-description-container">
-                    <!-- Version Information -->
-                    <div class="form-group">
-                        <p class="about-product-name">MeletonFX Desktop</p>
-                        <p class="about-version">Version 25H1 (Build Release <span
-                                id="aboutMelatoninVersion">Unknown</span>)</p>
-                        <p class="about-copyright">© Academy City Research P.S.R. All Rights Reserved</p>
-                    </div>
-
-                    <!-- Description -->
-                    <div class="form-group">
-                        <p id="aboutMelatoninDescription" class="about-description">The MeletonFX Dynamic Web Desktop
-                            Environment (DWDE) and its user interface are protected by trademark and other pending or
-                            existing intellectual property rights in the United States and other countries/regions.</p>
-                    </div>
-                </div>
-
-                <div class="form-section-separator"></div>
-
-                <!-- System Information Section -->
-                <div class="about-system-infomation-container">
-                    <div id="aboutMelatoninSystemInfo" class="about-system-info">
-                        <p class="text-muted">Loading system information...</p>
-                    </div>
-                </div>
-            </div>
+        <div class="modal-content win7 about-windows-client">
+            <img class="about-windows-banner" src="/static_images/vista-about/banner.png" width="413" height="72"
+                alt="MeletonFX 2026 R7" draggable="false">
+            <img class="about-windows-rule" src="/static_images/vista-about/banner-rule.png" width="413" height="5"
+                alt="" draggable="false">
+            <div class="about-windows-text about-windows-product" id="aboutWindowsProduct">Dreamscape&reg; MeletonFX&reg;</div>
+            <div class="about-windows-text about-windows-version" id="aboutMelatoninVersion">Version 2026 R7</div>
+            <div class="about-windows-text about-windows-copyright" id="aboutWindowsCopyright">Copyright &copy; 2026 Academy City Research P.S.R.  All rights reserved.</div>
+            <div class="about-windows-text about-windows-legal" id="aboutMelatoninDescription">The MeletonFX&trade; 2026 R7
+                operating system and its user interface are protected by trademark and other pending or existing
+                intellectual property rights in the United States and other countries.</div>
+            <div class="about-windows-text about-windows-license">This product is licensed under the <a href="#"
+                    class="about-windows-license-link" id="aboutWindowsLicenseLink">Dreamscape Software License Terms</a> to:</div>
+            <div class="about-windows-text about-windows-owner" id="aboutWindowsOwner">Administrator</div>
+            <div class="about-windows-text about-windows-org" id="aboutWindowsOrg">Dreamscape</div>
+            <div class="about-windows-separator" role="separator"></div>
+            <div class="about-windows-text about-windows-memory" id="aboutWindowsMemory"></div>
+            <button type="button" class="about-windows-ok" id="aboutWindowsOkBtn">OK</button>
         </div>
     </div>
 
@@ -8701,7 +8692,6 @@ Examples:
         <div class="taskbar-tray">
             <div class="taskbar-tray-icons">
                 <button type="button" class="tray-overflow-btn hidden" id="trayOverflowBtn" title="Show hidden icons" aria-label="Show hidden icons"></button>
-                <div class="tray-overflow-flyout" id="trayOverflowFlyout"></div>
                 <!-- Image Generation Active Indicator -->
                 <div class="image-generation-indicator taskbar-tray-icon hidden" id="imageGenerationIndicator"
                     title="Image generation in progress">
@@ -8820,7 +8810,14 @@ Examples:
     <script src="scripts/comp/contextMenu.js"></script>
     <script src="scripts/comp/windowGeometry.js"></script>
     <script src="scripts/comp/modalUtils.js"></script>
+    <!-- Taskbar and Start Menu Properties settings, Quick Launch, taskbar menus; the clock tooltip and flyout -->
+    <!-- The two accounts' names and pictures (User Accounts), for every place that shows them -->
+    <script src="scripts/comp/meletonAccounts.js"></script>
+    <script src="scripts/comp/taskbarSettings.js"></script>
+    <script src="scripts/comp/taskbarClock.js"></script>
     <script src="scripts/comp/winlogonPower.js"></script>
+    <!-- "<program> has stopped working" (Windows Error Reporting) for faults fatalErrorBootstrap.js hands over -->
+    <script src="scripts/comp/programFaults.js"></script>
     <script src="scripts/comp/modalListenerScope.js"></script>
     <script src="scripts/comp/modalKeyboardRegistry.js"></script>
     <script src="scripts/comp/bootUiDebug.js"></script>

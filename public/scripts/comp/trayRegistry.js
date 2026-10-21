@@ -1,5 +1,5 @@
-// Tray icons and tray popups register here so Taskbar settings can hide popups
-// and tuck icons behind the overflow chevron. Client-only (this computer).
+// Tray icons and tray popups register here so Taskbar and Start Menu Properties can hide popups
+// and tuck icons behind the notification area's chevron. Client-only (this computer).
 
 const TRAY_ICON_CATALOG = [
     { id: 'imageGenerationIndicator', label: 'Image generation' },
@@ -42,7 +42,6 @@ const TRAY_POPUP_HIDE_KEY = 'desktop-tray-hidden-popups';
 const TRAY_ICON_OVERFLOW_KEY = 'desktop-tray-overflow-icons';
 const TRAY_POPUP_MIN_DEFAULT_MS = 8000;
 
-const trayIconHomes = new WeakMap();
 let traySyncing = false;
 
 function trayReadSet(key) {
@@ -93,25 +92,85 @@ function traySetPopupHidden(id, hidden) {
     trayWriteSet(TRAY_POPUP_HIDE_KEY, set);
 }
 
+// ---- Notification area icons, Vista's way (taskbarSettings.js "Hide inactive icons") ----
+// Each icon has a behaviour from Customize Notification Icons: 'show', 'hide', or 'inactive'
+// (Hide when inactive: tucked once it has not changed or been clicked for TRAY_INACTIVE_MS).
+// Tucked icons wait behind the chevron at the tray's left edge; the chevron expands the tray in
+// place (Vista slides them in left of the visible icons) and it folds again TRAY_COLLAPSE_MS after
+// the pointer leaves the notification area (measured on the Vista VM: 4-5 s). With "Hide inactive
+// icons" off every icon shows and the chevron goes. The system icons (Volume, Network) are not
+// in this list: the Notification Area tab turns them on or off as a whole.
+const TRAY_ICON_BEHAVIOR_KEY = 'desktop-tray-icon-behavior';
+const TRAY_INACTIVE_MS = 10 * 60 * 1000;
+const TRAY_COLLAPSE_MS = 4500;
+const TRAY_SYSTEM_ICON_IDS = ['volumeTrayIcon', 'modemTrayIcon'];
+// state classes this file and the boot reveal set, which are not the icon's own activity
+const TRAY_OWN_CLASSES = new Set(['tray-overflow', 'tray-boot-in']);
+const TRAY_BEHAVIORS = ['inactive', 'hide', 'show'];
+
+const trayActivity = new Map();
+let trayCollapseTimer = 0;
+let trayInactiveTimer = 0;
+
+function trayReadBehaviors() {
+    try {
+        const raw = localStorage.getItem(TRAY_ICON_BEHAVIOR_KEY);
+        const map = raw ? JSON.parse(raw) : null;
+        return map && typeof map === 'object' && !Array.isArray(map) ? map : null;
+    } catch (_) {
+        return null;
+    }
+}
+
+/** 'show' | 'hide' | 'inactive'. Before the first save: the old "not always shown" list
+ *  ('hide' for its icons, 'show' for the rest), or Vista's default, Hide when inactive. */
+function trayIconBehavior(id) {
+    const map = trayReadBehaviors();
+    if (map) return TRAY_BEHAVIORS.includes(map[id]) ? map[id] : 'inactive';
+    let legacy = null;
+    try { legacy = localStorage.getItem(TRAY_ICON_OVERFLOW_KEY); } catch (_) { /* private mode */ }
+    if (legacy !== null) return trayReadSet(TRAY_ICON_OVERFLOW_KEY).has(id) ? 'hide' : 'show';
+    return 'inactive';
+}
+
+/** Save every icon's behaviour at once (Customize Notification Icons OK). */
+function traySetIconBehaviors(behaviors) {
+    const out = {};
+    TRAY_ICON_CATALOG.forEach((row) => {
+        if (TRAY_SYSTEM_ICON_IDS.includes(row.id)) return;
+        const b = behaviors && behaviors[row.id];
+        out[row.id] = TRAY_BEHAVIORS.includes(b) ? b : trayIconBehavior(row.id);
+    });
+    try {
+        localStorage.setItem(TRAY_ICON_BEHAVIOR_KEY, JSON.stringify(out));
+    } catch (_) { /* private mode */ }
+    traySyncOverflow();
+}
+
+function traySetIconBehavior(id, behavior) {
+    const all = {};
+    TRAY_ICON_CATALOG.forEach((row) => { all[row.id] = trayIconBehavior(row.id); });
+    all[id] = behavior;
+    traySetIconBehaviors(all);
+}
+
+/** Kept for older callers: "not always shown" = anything but Show. */
 function trayIconOverflow(id) {
     if (!id) return false;
-    return trayReadSet(TRAY_ICON_OVERFLOW_KEY).has(id);
+    return trayIconBehavior(id) !== 'show';
 }
 
 function traySetIconOverflow(id, overflow) {
-    const set = trayReadSet(TRAY_ICON_OVERFLOW_KEY);
-    if (overflow) set.add(id);
-    else set.delete(id);
-    trayWriteSet(TRAY_ICON_OVERFLOW_KEY, set);
-    traySyncOverflow();
+    traySetIconBehavior(id, overflow ? 'hide' : 'show');
 }
 
 function trayPopupCatalog() {
     return TRAY_POPUP_CATALOG.slice();
 }
 
+/** The icons Customize Notification Icons lists (the system icons have their own checkboxes). */
 function trayIconCatalog() {
-    return TRAY_ICON_CATALOG.filter((row) => document.getElementById(row.id));
+    return TRAY_ICON_CATALOG.filter((row) => !TRAY_SYSTEM_ICON_IDS.includes(row.id) && document.getElementById(row.id));
 }
 
 function trayNotePopup(id, label) {
@@ -119,24 +178,35 @@ function trayNotePopup(id, label) {
     TRAY_POPUP_CATALOG.push({ id, label: label || id });
 }
 
-function trayRememberHome(el) {
-    if (!el || trayIconHomes.has(el)) return;
-    trayIconHomes.set(el, { parent: el.parentNode, next: el.nextSibling });
+/** An icon changed or was clicked: it counts as active again (Hide when inactive). */
+function trayNoteActivity(id) {
+    if (!id) return;
+    trayActivity.set(id, Date.now());
 }
 
-function trayRestoreHome(el) {
-    const home = trayIconHomes.get(el);
-    if (!home || !home.parent) return;
-    if (home.next && home.next.parentNode === home.parent) home.parent.insertBefore(el, home.next);
-    else home.parent.appendChild(el);
+function trayHideInactiveEnabled() {
+    // taskbarSettings: public/scripts/comp/taskbarSettings.js (loads after this file)
+    if (typeof taskbarSettings !== 'undefined' && taskbarSettings && typeof taskbarSettings.get === 'function') {
+        return taskbarSettings.get().hideInactive !== false;
+    }
+    return true;
+}
+
+function trayIconTucked(id, el, now) {
+    if (!el || el.classList.contains('hidden') || !trayHideInactiveEnabled()) return false;
+    const behavior = trayIconBehavior(id);
+    if (behavior === 'show') return false;
+    if (behavior === 'hide') return true;
+    const seen = trayActivity.get(id);
+    return !seen || now - seen >= TRAY_INACTIVE_MS;
 }
 
 function trayOverflowButton() {
     return document.getElementById('trayOverflowBtn');
 }
 
-function trayOverflowFlyout() {
-    return document.getElementById('trayOverflowFlyout');
+function trayTray() {
+    return document.querySelector('.taskbar-tray');
 }
 
 // Chrome records a class mutation for remove() even when the token is already
@@ -145,86 +215,129 @@ function trayClassRemove(el, token) {
     if (el && el.classList.contains(token)) el.classList.remove(token);
 }
 
+function trayClassToggle(el, token, on) {
+    if (!el || el.classList.contains(token) === on) return;
+    el.classList.toggle(token, on);
+}
+
+function trayExpanded() {
+    const tray = trayTray();
+    return !!(tray && tray.classList.contains('tray-expanded'));
+}
+
+function trayCancelCollapse() {
+    if (trayCollapseTimer) clearTimeout(trayCollapseTimer);
+    trayCollapseTimer = 0;
+}
+
+function trayScheduleCollapse() {
+    trayCancelCollapse();
+    if (!trayExpanded()) return;
+    trayCollapseTimer = setTimeout(() => {
+        trayCollapseTimer = 0;
+        trayCloseOverflow();
+    }, TRAY_COLLAPSE_MS);
+}
+
 function trayCloseOverflow() {
-    const fly = trayOverflowFlyout();
+    trayCancelCollapse();
     const btn = trayOverflowButton();
-    if (fly) {
-        Array.from(fly.children).forEach(trayRestoreHome);
-        trayClassRemove(fly, 'is-open');
-    }
+    trayClassRemove(trayTray(), 'tray-expanded');
     if (btn) {
         trayClassRemove(btn, 'is-open');
         if (btn.title !== 'Show hidden icons') btn.title = 'Show hidden icons';
+        btn.setAttribute('aria-expanded', 'false');
     }
 }
 
 function trayOpenOverflow() {
-    const fly = trayOverflowFlyout();
     const btn = trayOverflowButton();
-    if (!fly || !btn) return;
-    TRAY_ICON_CATALOG.forEach((row) => {
-        const el = document.getElementById(row.id);
-        if (!el || !el.classList.contains('tray-overflow') || el.classList.contains('hidden')) return;
-        trayRememberHome(el);
-        fly.appendChild(el);
-    });
-    const rect = btn.getBoundingClientRect();
-    fly.style.left = Math.max(8, rect.right - fly.offsetWidth) + 'px';
-    if (!fly.classList.contains('is-open')) fly.classList.add('is-open');
-    const flyRect = fly.getBoundingClientRect();
-    fly.style.top = Math.max(8, rect.top - flyRect.height - 6) + 'px';
-    fly.style.left = Math.max(8, rect.right - flyRect.width) + 'px';
-    if (!btn.classList.contains('is-open')) btn.classList.add('is-open');
-    btn.title = 'Hide icons';
+    const tray = trayTray();
+    if (!btn || !tray) return;
+    trayClassToggle(tray, 'tray-expanded', true);
+    trayClassToggle(btn, 'is-open', true);
+    if (btn.title !== 'Hide') btn.title = 'Hide';
+    btn.setAttribute('aria-expanded', 'true');
+    // folds again once the pointer has left the notification area
+    if (!tray.matches(':hover')) trayScheduleCollapse();
 }
 
 function trayToggleOverflow() {
-    const fly = trayOverflowFlyout();
-    if (fly && fly.classList.contains('is-open')) trayCloseOverflow();
+    if (trayExpanded()) trayCloseOverflow();
     else trayOpenOverflow();
 }
 
 function traySyncOverflow() {
     if (traySyncing) return;
     traySyncing = true;
+    const now = Date.now();
     let any = false;
+    let waiting = false;
     TRAY_ICON_CATALOG.forEach((row) => {
+        if (TRAY_SYSTEM_ICON_IDS.includes(row.id)) return;
         const el = document.getElementById(row.id);
         if (!el) return;
-        const overflow = trayIconOverflow(row.id) && !el.classList.contains('hidden');
-        el.classList.toggle('tray-overflow', overflow);
-        if (overflow) any = true;
-        else if (el.parentNode && el.parentNode.id === 'trayOverflowFlyout') trayRestoreHome(el);
+        const tucked = trayIconTucked(row.id, el, now);
+        trayClassToggle(el, 'tray-overflow', tucked);
+        if (tucked) any = true;
+        else if (!el.classList.contains('hidden') && trayHideInactiveEnabled() && trayIconBehavior(row.id) === 'inactive') waiting = true;
     });
     const btn = trayOverflowButton();
-    if (btn) btn.classList.toggle('hidden', !any);
+    trayClassToggle(btn, 'hidden', !any);
     if (!any) trayCloseOverflow();
-    else if (trayOverflowFlyout() && trayOverflowFlyout().classList.contains('is-open')) trayOpenOverflow();
+    // an icon that is active now goes inactive later: look again then
+    if (waiting && !trayInactiveTimer) {
+        trayInactiveTimer = setTimeout(() => {
+            trayInactiveTimer = 0;
+            traySyncOverflow();
+        }, 30000);
+    }
     traySyncing = false;
+}
+
+/** Activity = a change to the icon's own classes (shown, state) or its tooltip text. */
+function trayMutationIsActivity(m) {
+    if (m.attributeName === 'title') return true;
+    const before = new Set(String(m.oldValue || '').split(/\s+/).filter(Boolean));
+    const after = new Set(Array.from(m.target.classList));
+    for (const c of before) if (!after.has(c) && !TRAY_OWN_CLASSES.has(c)) return true;
+    for (const c of after) if (!before.has(c) && !TRAY_OWN_CLASSES.has(c)) return true;
+    return false;
 }
 
 function trayWatchIcons() {
     const root = document.querySelector('.taskbar-tray-icons');
     if (!root || root.dataset.trayWatch === '1') return;
     root.dataset.trayWatch = '1';
-    const fly = trayOverflowFlyout();
-    if (fly && fly.parentNode !== document.body) document.body.appendChild(fly);
-    const obs = new MutationObserver(() => traySyncOverflow());
-    obs.observe(root, { subtree: true, attributes: true, attributeFilter: ['class'] });
+    const ids = new Set(TRAY_ICON_CATALOG.map((row) => row.id));
+    // every icon starts active: Vista shows a new icon before it can go inactive
+    ids.forEach((id) => trayNoteActivity(id));
+    const obs = new MutationObserver((mutations) => {
+        mutations.forEach((m) => {
+            const icon = m.target.closest && m.target.closest('.taskbar-tray-icon');
+            if (icon && ids.has(icon.id) && (icon !== m.target || trayMutationIsActivity(m))) trayNoteActivity(icon.id);
+        });
+        traySyncOverflow();
+    });
+    obs.observe(root, { subtree: true, attributes: true, attributeOldValue: true, attributeFilter: ['class', 'title'] });
+    root.addEventListener('pointerdown', (ev) => {
+        const icon = ev.target.closest('.taskbar-tray-icon');
+        if (icon && ids.has(icon.id)) trayNoteActivity(icon.id);
+    }, true);
     const btn = trayOverflowButton();
     if (btn) {
+        btn.setAttribute('aria-expanded', 'false');
         btn.addEventListener('click', (ev) => {
             ev.preventDefault();
             ev.stopPropagation();
             trayToggleOverflow();
         });
     }
-    document.addEventListener('mousedown', (ev) => {
-        const fly = trayOverflowFlyout();
-        if (!fly || !fly.classList.contains('is-open')) return;
-        if (fly.contains(ev.target) || (btn && btn.contains(ev.target))) return;
-        trayCloseOverflow();
-    });
+    const tray = trayTray();
+    if (tray) {
+        tray.addEventListener('pointerenter', trayCancelCollapse);
+        tray.addEventListener('pointerleave', trayScheduleCollapse);
+    }
     traySyncOverflow();
 }
 

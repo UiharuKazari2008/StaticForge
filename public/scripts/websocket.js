@@ -1503,7 +1503,17 @@ class WebSocketClient {
         this._setConnectionPhase('idle');
     }
 
+    /** The account the startup logon signs in to, by its name (meletonAccounts.js). */
+    _logonAccountName() {
+        return window.meletonAccounts ? window.meletonAccounts.name('administrator') : 'Administrator';
+    }
+
     _getConnectionUsername() {
+        // the account's name (User Accounts' Change the account name; public/scripts/comp/meletonAccounts.js)
+        const accountType = localStorage.getItem('userType');
+        if (window.meletonAccounts && accountType && accountType !== 'readonly') {
+            return window.meletonAccounts.name(accountType === 'admin' ? 'administrator' : 'guest');
+        }
         try {
             const raw = localStorage.getItem('userData');
             if (raw) {
@@ -2138,7 +2148,7 @@ class WebSocketClient {
             this._updatePreStartupAuthError(WebSocketClient.VISTA_NO_LOGON_SERVERS);
         } else if (authVisible) {
             if (usernameInput && !usernameInput.value) {
-                usernameInput.value = 'Administrator';
+                usernameInput.value = this._logonAccountName();
             }
             if (passwordInput && !this.preStartupAuthBusy && document.activeElement !== passwordInput) {
                 passwordInput.focus();
@@ -2152,7 +2162,7 @@ class WebSocketClient {
 
         if (usernameInput) {
             usernameInput.readOnly = true;
-            usernameInput.value = 'Administrator';
+            usernameInput.value = this._logonAccountName();
         }
         if (passwordInput) {
             passwordInput.disabled = !authVisible || this.preStartupAuthBusy;
@@ -2191,10 +2201,11 @@ class WebSocketClient {
         const username = usernameInput ? String(usernameInput.value || '').trim() : '';
         const password = passwordInput ? String(passwordInput.value || '') : '';
 
-        if (username.toLowerCase() !== 'administrator') {
-            this._updatePreStartupAuthError('Only the Administrator account can sign in during startup.');
+        const accountsApi = window.meletonAccounts;
+        if (accountsApi ? !accountsApi.matchesLogonName(username, 'administrator') : username.toLowerCase() !== 'administrator') {
+            this._updatePreStartupAuthError(`Only the ${this._logonAccountName()} account can sign in during startup.`);
             if (usernameInput) {
-                usernameInput.value = 'Administrator';
+                usernameInput.value = this._logonAccountName();
                 usernameInput.focus();
                 usernameInput.select();
             }
@@ -3301,6 +3312,10 @@ class WebSocketClient {
         // Domain name + WAN / Ethernet for the connection dialogs (modules/melatonNetwork.js)
         if (data.melaton && typeof data.melaton === 'object') {
             this.melatonConnection = data.melaton;
+        }
+        // the Administrator's name for the Welcome screen and logon dialog (User Accounts' rename)
+        if (typeof data.logonName === 'string' && window.meletonAccounts) {
+            window.meletonAccounts.setLogonName(data.logonName);
         }
         if (typeof data.useVistaLogon === 'boolean') {
             this._setVistaLogon(data.useVistaLogon, data.logonPicture);
@@ -4648,14 +4663,22 @@ class WebSocketClient {
             };
 
             this.ws.onmessage = (event) => {
+                let message;
                 try {
-                    const message = JSON.parse(event.data);
+                    message = JSON.parse(event.data);
+                } catch (error) {
+                    console.error('❌ Failed to parse WebSocket message:', error);
+                    return;
+                }
+                try {
                     this._recordWsMessage('in', message);
                     // Flash down arrow to indicate inbound traffic
                     this.flashWebSocketArrow('down');
                     this.handleMessage(message);
                 } catch (error) {
-                    console.error('❌ Failed to parse WebSocket message:', error);
+                    console.error('❌ Failed to handle WebSocket message:', message && message.type, error);
+                    // report: public/scripts/comp/programFaults.js
+                    if (window.programFaults) window.programFaults.report(error, { source: 'ws:' + (message && message.type) });
                 }
             };
 
@@ -10387,6 +10410,8 @@ class WebSocketClient {
                     handler(data);
                 } catch (error) {
                     console.error(`❌ Error in event handler for ${event}:`, error);
+                    // report: public/scripts/comp/programFaults.js
+                    if (window.programFaults) window.programFaults.report(error, { source: 'ws-event:' + event });
                 }
             });
         }

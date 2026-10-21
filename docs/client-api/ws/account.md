@@ -25,13 +25,14 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `wallet_status` | `wallet_status_response` | admin (session: `restricted`) | Wallet tray: usage and balance of the other accounts and API keys. Handler `modules/ws/handlers/176-walletHandler.js` (owner `wallet`) |
 | `get_account_pictures` | `get_account_pictures_response` | session | Administrator and Guest account pictures (Control Panel User Accounts, start menu). Handler `modules/ws/handlers/270-accountPicturesHandler.js` (owner `accountPictures`) |
 | `set_account_picture` | `set_account_picture_response` | admin | Change one account's picture: a default name or `custom` with a 128x128 PNG data URL (destructive) |
+| `set_account_name` | `set_account_name_response` | admin | Rename an account (User Accounts' Change the account name; destructive) |
 
 ## Server push (no request)
 
 | Push type | When | Client handler |
 |---|---|---|
 | `account_data_health_updated` | Account health fields change (including after balance/subscription sync) | `public/scripts/ws/handlers/40-appCoreInbound.js` |
-| `account_pictures_changed` | An administrator changed an account picture | `public/scripts/comp/cplUserAccounts.js` (`wsClient.on`) |
+| `account_pictures_changed` | An administrator changed an account picture or name | `public/scripts/comp/cplUserAccounts.js` (`wsClient.on`) |
 
 Periodic **ping** payloads include `balance`, `opusUsage`, and `accountHealth` — see [infrastructure.md](./infrastructure.md#ping-server-push-fields).
 
@@ -313,6 +314,19 @@ PIN) and Guest (the user PIN). A picture is one of Vista's defaults
 a PNG of at most 256 KB (the client draws the upload into 128x128). Stored in `config.json`
 `accountPictures` and `data/account-pictures/<account>.png`. After a change the server pushes
 `account_pictures_changed` (`data.accounts`) to every client.
+
+Every account row also carries `name`: the account's name (`config.json` `accountNames`, else
+Vista's built-in `Administrator` / `Guest`).
+
+```json
+{ "type": "set_account_name", "account": "administrator", "name": "Yukimi" }
+{ "type": "set_account_name_response", "data": { "success": true, "accounts": { "administrator": { "picture": "fireworks", "url": "...", "name": "Yukimi" }, ... } } }
+```
+
+`set_account_name` is admin only. The name is trimmed, 1-20 characters, none of
+`" / \ [ ] : ; | = , + * ? < > @`, and not the other account's name (`BAD_NAME`, `NAME_TAKEN`).
+The built-in name again removes the stored one. The server pushes `account_pictures_changed`
+afterwards. `/status` carries `logonName` (the Administrator's name) for the Welcome screen.
 
 ## Subscription renewal failure notice
 

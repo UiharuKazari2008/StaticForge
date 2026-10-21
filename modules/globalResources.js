@@ -1617,6 +1617,47 @@ class GlobalResources {
             const totalMem = os.totalmem();
             const ramInfo = `${(totalMem / 1024 / 1024 / 1024).toFixed(2)} GB`;
 
+            // The host as Control Panel's System page shows it (public/scripts/comp/cplSystem.js)
+            let osName = null;
+            try {
+                const osRelease = fs.readFileSync('/etc/os-release', 'utf8');
+                const pretty = osRelease.match(/^PRETTY_NAME="?([^"\n]*)"?$/m);
+                if (pretty) osName = pretty[1];
+            } catch (osReleaseError) {
+                // Not Linux, or no os-release
+            }
+            // Rated (base) clock as Vista prints it; os.cpus().speed is the current, moving clock
+            let cpuMHz = cpus.length > 0 ? cpus[0].speed : null;
+            for (const freqFile of ['base_frequency', 'bios_limit']) {
+                try {
+                    const khz = parseInt(fs.readFileSync(`/sys/devices/system/cpu/cpu0/cpufreq/${freqFile}`, 'utf8'), 10);
+                    if (khz > 0) { cpuMHz = Math.round(khz / 1000); break; }
+                } catch (freqError) {
+                    // Not exposed by this cpufreq driver
+                }
+            }
+            let packageVersion = null;
+            try {
+                packageVersion = require('../package.json').version || null;
+            } catch (packageError) {
+                // package.json unavailable
+            }
+            const hostInfo = {
+                hostname: os.hostname(),
+                platform: os.platform(),
+                arch: os.arch(),
+                osType: os.type(),
+                osRelease: os.release(),
+                osName,
+                cpuModel: cpus.length > 0 ? cpus[0].model.trim() : null,
+                cpuCores: cpus.length,
+                cpuMHz,
+                totalMemBytes: totalMem,
+                nodeVersion: process.version,
+                packageVersion,
+                bootedAt: new Date(Date.now() - os.uptime() * 1000).toISOString()
+            };
+
             // Get disk space information for the filesystem where the project resides
             const diskInfo = {
                 total: 'N/A',
@@ -1886,6 +1927,7 @@ class GlobalResources {
                 gitHash: gitHash,
                 cpu: cpuInfo,
                 ram: ramInfo,
+                host: hostInfo,
                 disk: diskInfo,
                 workspaces: workspaceList,
                 usage: usageStats

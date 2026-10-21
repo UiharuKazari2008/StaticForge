@@ -441,16 +441,26 @@
             const dpr = Math.max(1, root.devicePixelRatio || 1);
             // Smooth edges off: no supersampling past the device pixels
             const k = this.quality.smooth ? dpr : Math.min(dpr, 1);
+            // a new backing size clears a canvas (the balloon on the overlay too), so it is only
+            // set when it changes, and both are drawn again at once (this runs from the stage's
+            // ResizeObserver, before the paint): no blank frame when the window opens or resizes
+            let resized = false;
             [this.glCanvas, this.overlay].forEach((c, i) => {
                 const kk = i === 0 ? k : dpr;
-                c.width = Math.round(w * kk);
-                c.height = Math.round(h * kk);
+                const bw = Math.round(w * kk);
+                const bh = Math.round(h * kk);
+                if (c.width !== bw || c.height !== bh) {
+                    c.width = bw;
+                    c.height = bh;
+                    resized = true;
+                }
                 c.style.width = w + 'px';
                 c.style.height = h + 'px';
             });
             this.cssW = w;
             this.cssH = h;
             this.dpr = dpr;
+            if (resized && this.renderer && w > 1 && h > 1) this.render();
             this.win.stage.invalidate();
         }
 
@@ -821,7 +831,10 @@
                 const dt = Math.max(0, now - (this.tip.last || now));
                 this.tip.last = now;
                 const step = Math.max(dt, 16) / 200;
-                this.tip.alpha = target > before ? Math.min(1, before + step) : Math.max(0, before - step);
+                // at its target it stays: the old step took a shown balloon down to 0.9 and back up
+                // every other frame, a constant flicker
+                if (target > before) this.tip.alpha = Math.min(1, before + step);
+                else if (target < before) this.tip.alpha = Math.max(0, before - step);
                 if (this.tip.alpha !== before) busy = true;
                 if (!this.tip.target && this.tip.alpha <= 0) this.tip = null;
                 else if (this.tip && this.tip.target && this.tip.timeout && now - this.tip.shownAt > this.tip.timeout) this.tip.target = false;

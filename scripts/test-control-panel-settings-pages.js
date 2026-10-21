@@ -26,15 +26,18 @@ const ids = cpl._test.items.map((i) => i.id);
 for (const id of ['personalization', 'appearance', 'sound', 'taskbar', 'keyboard']) assert.ok(ids.includes(id), `${id} is listed`);
 assert.ok(!ids.includes('global-settings'), 'the Global Settings item is gone');
 assert.ok(!ids.includes('mouse'), 'pointer schemes were dropped');
-for (const id of ['appearance', 'sound', 'taskbar', 'keyboard']) {
+for (const id of ['appearance', 'sound', 'keyboard']) {
     assert.ok(String(cpl._test.items.find((i) => i.id === id).open).includes(`navigate('${id}')`), `${id} opens its own page`);
 }
+// Taskbar and Start Menu opens Vista's Properties dialog (public/scripts/comp/taskbarProperties.js)
+assert.ok(String(cpl._test.items.find((i) => i.id === 'taskbar').open).includes("taskbarSettings.openProperties('taskbar')"), 'Taskbar and Start Menu opens its Properties dialog');
 assert.ok(!/openDesktopSettingsModal/.test(String(cpl._test.items.find((i) => i.id === 'personalization').open)), 'Personalization navigates instead of opening the old window');
 
 // wiring in modalUtils.js / app.html / CSS
 const js = read('public/scripts/comp/modalUtils.js');
 assert.ok(js.includes("cpl.registerPage('personalization'") && /GLOBAL_PAGES\.forEach\(\(\[id, name, heading, intro\]\) => \{\s*cpl\.registerPage\(id/.test(js), 'the pages are registered');
-for (const id of ['appearance', 'sound', 'taskbar', 'keyboard']) assert.ok(js.includes(`['${id}', `), `${id} page`);
+for (const id of ['appearance', 'sound', 'keyboard']) assert.ok(js.includes(`['${id}', `), `${id} page`);
+assert.ok(!js.includes("['taskbar', 'Taskbar and Start Menu'"), 'no Taskbar and Start Menu page: the item opens the Properties dialog');
 assert.ok(js.includes("mountDesktopSettingsInControlPanel(main, 'global', id)"), 'each global page mounts its group');
 assert.ok(/offGroup\(section\)/.test(js) && js.includes('section.dataset.desktopSettingsGroup !== desktopSettingsActiveGroup'), 'the scope switch hides the other groups');
 assert.ok(js.includes("cpl.open(scope === 'global' ? 'appearance' : 'personalization')"), 'openDesktopSettingsModal opens the page');

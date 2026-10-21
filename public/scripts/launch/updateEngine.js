@@ -233,13 +233,13 @@
         await cache.put(file.url, new Response(bytes, { status: 200, headers }));
     }
 
-    /** Body hash matches, and the stored headers name that hash and the right type. Rewrites headers when the body is already right. */
+    /** Body hash matches (file.body, the bytes the pack carried, else the manifest hash), and the stored headers name the manifest hash and the right type. Rewrites headers when the body is already right. */
     async function confirmWritten(cache, file, origin) {
         const stored = await cache.match(file.url);
         if (!stored) return false;
         const body = new Uint8Array(await stored.arrayBuffer());
         const hash = await sha256Hex(body);
-        if (hash !== file.hash) return false;
+        if (hash !== (file.body || file.hash)) return false;
         const type = stored.headers.get('content-type');
         const headerHash = stored.headers.get('x-file-hash');
         if (headerHash === file.hash && type === contentType(file.url)) return true;
@@ -639,8 +639,16 @@
                 const row = listing.get(name);
                 const file = row && neededByUrl.get(row.url);
                 if (!file || row.hash !== file.hash) return;
+                // pack.json names the bytes the server zipped (body). A payload that does not
+                // match them did not arrive intact. The manifest hash is not always a body
+                // hash (the workspace stylesheet is hashed by its source), so the post-write
+                // check in installGroup compares against the body hash where there is one
+                if (row.body) {
+                    const got = await sha256Hex(payload);
+                    if (got !== row.body) return;
+                }
                 await putHashed(cache, file, payload, origin);
-                stored.push(file);
+                stored.push(row.body ? { ...file, body: row.body } : file);
                 seen.add(file.url);
                 if (onProgress) onProgress({ fraction: seen.size / needed.length });
             });

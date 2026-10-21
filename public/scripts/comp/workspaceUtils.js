@@ -75,12 +75,29 @@ function normalizeWallpaperPath(wallpaper) {
 let nextBackgroundImage = null;
 let backgroundTransitionInProgress = false;
 
-// Fonts available for selection (match loaded @font-face names in css/fonts.css)
+// Fonts available for selection (match loaded @font-face names in css/fonts.css and, for the
+// Windows Vista faces, css/vista-fonts.css). Default is Segoe UI / Consolas (app.css).
 const AVAILABLE_PRIMARY_FONTS = [
-    { value: '', label: 'Default', fontFamily: "var(--font-primary)" },
+    { value: '', label: 'Default (Segoe UI)', fontFamily: "var(--font-primary)" },
+    { value: 'Segoe UI', label: 'Segoe UI' },
+    { value: 'Tahoma', label: 'Tahoma' },
+    { value: 'Verdana', label: 'Verdana' },
+    { value: 'Microsoft Sans Serif', label: 'Microsoft Sans Serif' },
+    { value: 'Calibri', label: 'Calibri' },
+    { value: 'Cambria', label: 'Cambria' },
+    { value: 'Candara', label: 'Candara' },
+    { value: 'Constantia', label: 'Constantia' },
+    { value: 'Corbel', label: 'Corbel' },
+    { value: 'Trebuchet MS', label: 'Trebuchet MS' },
+    { value: 'Arial', label: 'Arial' },
+    { value: 'Georgia', label: 'Georgia' },
+    { value: 'Palatino Linotype', label: 'Palatino Linotype' },
+    { value: 'Times New Roman', label: 'Times New Roman' },
+    { value: 'Segoe Print', label: 'Segoe Print' },
+    { value: 'Segoe Script', label: 'Segoe Script' },
+    { value: 'Comic Sans MS', label: 'Comic Sans MS' },
     { value: 'Noto Sans', label: 'Noto Sans' },
     { value: 'Noto Sans JP', label: 'Noto Sans JP' },
-    { value: 'Tahoma', label: 'Tahoma' },
     { value: 'Oxanium', label: 'Oxanium' },
     { value: 'Atkinson Hyperlegible Next', label: 'Atkinson Hyperlegible' },
     { value: 'Eczar', label: 'Eczar' },
@@ -102,9 +119,15 @@ const AVAILABLE_PRIMARY_FONTS = [
 ];
 
 const AVAILABLE_TEXTAREA_FONTS = [
-    { value: '', label: 'Default', fontFamily: "var(--font-mono)" },
-    { value: 'Share Tech Mono', label: 'Share Tech Mono' },
+    { value: '', label: 'Default (Consolas)', fontFamily: "var(--font-mono)" },
+    { value: 'Consolas', label: 'Consolas' },
+    { value: 'Lucida Console', label: 'Lucida Console' },
+    { value: 'Courier New', label: 'Courier New' },
+    { value: 'Segoe UI', label: 'Segoe UI' },
     { value: 'Tahoma', label: 'Tahoma' },
+    { value: 'Verdana', label: 'Verdana' },
+    { value: 'Calibri', label: 'Calibri' },
+    { value: 'Share Tech Mono', label: 'Share Tech Mono' },
     { value: 'Oxanium', label: 'Oxanium' },
     { value: 'Kanit', label: 'Kanit' },
     { value: 'Tomorrow', label: 'Tomorrow' },
@@ -166,7 +189,7 @@ function refreshWorkspaceStylesheet(hash) {
         requestAnimationFrame(() => {
             link.href = nextHref;
             if (window.serviceWorkerManager) {
-                window.serviceWorkerManager.lastAppliedWorkspaceCssHash = bust;
+                window.serviceWorkerManager.lastAppliedWorkspaceCssHash = hash || null;
             }
         });
     });
@@ -787,10 +810,10 @@ function generateWorkspaceCSSVariables(workspaceColor, workspaceBackgroundColor,
 
     // Fonts: if provided, set per-workspace font variables used by styles.css
     if (primaryFont && typeof primaryFont === 'string') {
-        variables.push(`--font-primary: '${primaryFont}', 'Noto Sans', 'Noto Sans JP', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;`);
+        variables.push(`--font-primary: '${primaryFont}', 'Segoe UI', 'Meiryo', 'Noto Sans JP', sans-serif;`);
     }
     if (textareaFont && typeof textareaFont === 'string') {
-        variables.push(`--font-mono: '${textareaFont}', 'Share Tech Mono', 'Noto Sans', 'Noto Sans JP', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;`);
+        variables.push(`--font-mono: '${textareaFont}', 'Consolas', 'Meiryo', 'Noto Sans JP', monospace;`);
     }
     
 
@@ -2586,8 +2609,8 @@ async function editWorkspaceSettings(id) {
         // Set font dropdown labels
         const primaryFontSelected = document.getElementById('workspacePrimaryFontSelected');
         const textareaFontSelected = document.getElementById('workspaceTextareaFontSelected');
-        if (primaryFontSelected) primaryFontSelected.textContent = workspace.primaryFont || 'Default';
-        if (textareaFontSelected) textareaFontSelected.textContent = workspace.textareaFont || 'Default';
+        if (primaryFontSelected) primaryFontSelected.textContent = workspace.primaryFont || AVAILABLE_PRIMARY_FONTS[0].label;
+        if (textareaFontSelected) textareaFontSelected.textContent = workspace.textareaFont || AVAILABLE_TEXTAREA_FONTS[0].label;
         setWorkspaceNicknameDraft(workspace.nicknames);
         const nickInput = document.getElementById('workspaceNicknamesInput');
         if (nickInput) nickInput.value = '';

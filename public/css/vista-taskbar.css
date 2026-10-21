@@ -1,0 +1,760 @@
+/* The Vista taskbar, 1:1 with the Vista Aero VM at 96 dpi (2026-10-21). Our bar stays 35 px tall
+   (Vista's is 30 px); every part keeps Vista's own size and is centred in it.
+
+   Art (scripts/build-vista-taskbar-art.sh, public/static_images/vista-taskbar/):
+     start-orb.png       aero.msstyles IMAGE_872: the Start orb for a bottom taskbar, 60x46 cells
+                         (normal / hot / pressed), centred on the bar so it overhangs it
+     button-*.png        IMAGE_897: the taskbar button faces, 134x29, 6 px sizing margins;
+                         button-flash.png is IMAGE_735 (FlashWindowEx)
+     tray-chevron.png    IMAGE_911: the notification area chevron, 19x20 (normal / hot / pressed)
+     gripper.png         the toolbar gripper an unlocked taskbar shows
+   Measured: orb cell at x 0 (60 wide); Quick Launch buttons 23 px apart from x 62 (16 px icons,
+   hover face 23x26 at y 2); the button band from x 160, buttons 160 px apart with no gap (the
+   faces have a clear column each side), icon at +10, label at +30, Segoe UI 9 pt white; the
+   chevron right before the first icon; the clock's text 17 px from the screen's right edge;
+   window previews in a 6 px glass frame 4 px above the bar. Settings classes on #desktopTaskbar
+   come from public/scripts/comp/taskbarSettings.js; the clock tooltip and flyout from
+   taskbarClock.js. Desktop mode, not Classic. Linked after vista-glass-controls.css. */
+
+body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar {
+    --taskbar-button-width: 160px;
+    gap: 0;
+}
+
+/* ---------- Start orb ---------- */
+
+body.desktop-mode:not(.windows-classic-theme) .taskbar-start-button.orb {
+    width: 60px;
+    min-width: 60px;
+    max-width: 60px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .taskbar-start-button.orb .taskbar-start-button-orb-frame {
+    top: round(down, calc(50% - 23px), 1px);
+    bottom: auto;
+    left: 0;
+    width: 60px;
+    height: 46px;
+    overflow: visible;
+    background: url("/static_images/vista-taskbar/start-orb.png") 0 0 / 60px 138px no-repeat;
+}
+
+/* the old single-image sprite stays in the markup for Classic; the cells below replace it */
+body.desktop-mode:not(.windows-classic-theme) .taskbar-start-button.orb .taskbar-start-button-orb {
+    display: none;
+}
+
+/* hot and pressed fade over the normal cell, as Vista crossfades the orb */
+body.desktop-mode:not(.windows-classic-theme) .taskbar-start-button.orb .taskbar-start-button-orb-frame::before,
+body.desktop-mode:not(.windows-classic-theme) .taskbar-start-button.orb .taskbar-start-button-orb-frame::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: url("/static_images/vista-taskbar/start-orb.png") 0 -46px / 60px 138px no-repeat;
+    opacity: 0;
+    transition: opacity 0.3s linear;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .taskbar-start-button.orb .taskbar-start-button-orb-frame::after {
+    background-position: 0 -92px;
+    transition-duration: 0.1s;
+}
+
+@media (hover: hover) {
+    body.desktop-mode:not(.windows-classic-theme) .taskbar-start-button.orb:hover:not(:disabled) .taskbar-start-button-orb-frame::before {
+        opacity: 1;
+        transition-duration: 0.15s;
+    }
+}
+
+body.desktop-mode:not(.windows-classic-theme) .taskbar-start-button.orb:is(.active, :active) .taskbar-start-button-orb-frame::after {
+    opacity: 1;
+}
+
+/* the old sprite offsets (desktop-shell.css) moved the img; the frame cells do it now */
+body.desktop-mode:not(.windows-classic-theme) .taskbar-start-button.orb:is(:hover, .active) .taskbar-start-button-orb {
+    top: 0;
+}
+
+/* ---------- Quick Launch ---------- */
+
+.taskbar-quick-launch {
+    display: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .taskbar-quick-launch {
+    display: flex;
+    flex: none;
+    align-items: center;
+    height: 100%;
+    margin-left: 2px;
+    padding: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar.taskbar-no-quick-launch .taskbar-quick-launch {
+    display: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .taskbar-quick-launch-btn {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 23px;
+    height: 26px;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    cursor: var(--c-pointer, pointer);
+}
+
+body.desktop-mode:not(.windows-classic-theme) .taskbar-quick-launch-btn img {
+    position: relative;
+    z-index: 1;
+    width: 16px;
+    height: 16px;
+    pointer-events: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .taskbar-quick-launch-btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-style: solid;
+    border-width: 0 4px;
+    border-image: url("/static_images/vista-taskbar/button-hot.png") 0 6 fill / 0 4px stretch;
+    opacity: 0;
+    transition: opacity 0.2s linear;
+}
+
+@media (hover: hover) {
+    body.desktop-mode:not(.windows-classic-theme) .taskbar-quick-launch-btn:hover::before {
+        opacity: 1;
+        transition-duration: 0.1s;
+    }
+}
+
+body.desktop-mode:not(.windows-classic-theme) .taskbar-quick-launch-btn:active::before {
+    border-image-source: url("/static_images/vista-taskbar/button-pressed.png");
+    opacity: 1;
+}
+
+/* ---------- toolbar grippers (Lock the taskbar off) ---------- */
+
+body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar.taskbar-unlocked :is(.taskbar-quick-launch, .taskbar-windows)::before {
+    content: '';
+    flex: none;
+    align-self: center;
+    width: 8px;
+    height: 22px;
+    margin: 0 3px 0 2px;
+    background: url("/static_images/vista-taskbar/gripper.png") 0 0 / 8px 22px no-repeat;
+}
+
+/* ---------- taskbar buttons ---------- */
+
+body.desktop-mode:not(.windows-classic-theme) .taskbar-windows {
+    gap: 0;
+    padding: 0;
+    margin-left: 6px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar.taskbar-no-quick-launch .taskbar-windows {
+    margin-left: 4px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item {
+    flex: 0 1 var(--taskbar-button-width);
+    min-width: 0;
+    max-width: var(--taskbar-button-width);
+    height: 29px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    color: #fff;
+    font-weight: 400;
+    font-style: normal;
+    font-variation-settings: normal;
+    opacity: 1;
+    border-style: solid;
+    border-width: 0;
+    border-image: url("/static_images/vista-taskbar/button-normal.png") 0 6 fill / 0 6px stretch;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item.active {
+    border-image-source: url("/static_images/vista-taskbar/button-checked.png");
+}
+
+body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item:active:not(.leaving) {
+    border-image-source: url("/static_images/vista-taskbar/button-pressed.png");
+}
+
+/* hot: Vista fades the hot face in over the button (checked windows get the hot + checked face) */
+body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item::before {
+    inset: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    border-style: solid;
+    border-width: 0;
+    border-image: url("/static_images/vista-taskbar/button-hot.png") 0 6 fill / 0 6px stretch;
+    opacity: 0;
+    transition: opacity 0.25s linear;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item.active::before {
+    border-image-source: url("/static_images/vista-taskbar/button-checked-hot.png");
+    opacity: 0;
+}
+
+@media (hover: hover) {
+    body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item:hover:not(:active)::before,
+    body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item.active:hover:not(:active)::before {
+        opacity: 1;
+        transition-duration: 0.1s;
+    }
+
+    body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item:hover:not(:disabled) {
+        background: none;
+        box-shadow: none;
+    }
+}
+
+/* FlashWindowEx: the amber face blinks seven times, then stays lit until the window comes to the
+   front (requestWindowAttention / clearWindowAttention, modalUtils.js) */
+body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0;
+    border-style: solid;
+    border-width: 0;
+    border-image: url("/static_images/vista-taskbar/button-flash.png") 0 6 fill / 0 6px stretch;
+    background: none;
+    box-shadow: none;
+    border-radius: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item.attention::after {
+    animation: vistaTaskbarAttention 1.2s steps(1, end) 7 forwards;
+}
+
+@keyframes vistaTaskbarAttention {
+    0% { opacity: 1; }
+    50% { opacity: 0; }
+    100% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item.attention::after {
+        animation: none;
+        opacity: 1;
+    }
+}
+
+/* icon at +10, label at +30 (16 px icon, 4 px gap), Segoe UI 9 pt white */
+body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item .taskbar-window-item-content {
+    width: 100%;
+    min-width: 0;
+    gap: 4px;
+    /* Vista centres the label 2 px above the face's middle */
+    padding: 0 8px 4px 10px;
+    color: #fff;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    text-shadow: 0 0 6px hsl(0 0% 0% / 55%), 0 1px 2px hsl(0 0% 0% / 45%);
+}
+
+body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item :is(i, .icon-image) {
+    --taskbar-window-icon-size: 16px;
+    width: 16px;
+    height: 16px;
+    flex: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item span {
+    font: inherit;
+    line-height: 15px;
+    color: #fff;
+}
+
+/* group buttons: "[icon] 7 Windows Explorer ▾", the count in bold before the name */
+body.desktop-mode:not(.windows-classic-theme) .taskbar-window-group .taskbar-window-item-content {
+    padding-right: 20px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .taskbar-window-group .taskbar-group-count {
+    order: 1;
+    flex: none;
+    min-width: 0;
+    height: auto;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    color: #fff;
+    font: 700 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 15px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .taskbar-window-group .taskbar-window-item-content > span:not(.taskbar-group-count) {
+    order: 2;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .taskbar-window-group .taskbar-window-item-content::after {
+    content: '';
+    position: absolute;
+    right: 8px;
+    top: calc(50% - 4px);
+    border: 4px solid transparent;
+    border-top: 4px solid #fff;
+    border-bottom: 0;
+    filter: drop-shadow(0 0 1px hsl(0 0% 0% / 60%));
+}
+
+body.desktop-mode:not(.windows-classic-theme) .taskbar-window-group.group-menu-open {
+    border-image-source: url("/static_images/vista-taskbar/button-pressed.png");
+    background: none;
+    box-shadow: none;
+}
+
+/* ---------- window previews (taskbarSettings.js) ---------- */
+
+.taskbar-thumb {
+    position: fixed;
+    z-index: var(--z-taskbar-popover, 2710);
+    box-sizing: border-box;
+    padding: 6px;
+    border-radius: 6px;
+    background: linear-gradient(hsl(210 22% 70% / 72%), hsl(212 20% 52% / 72%));
+    box-shadow:
+        inset 0 0 0 1px hsl(210 25% 85% / 90%),
+        inset 0 0 0 5px hsl(212 18% 56% / 35%),
+        0 0 0 1px hsl(214 30% 12% / 70%),
+        3px 3px 8px hsl(0 0% 0% / 45%);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+    pointer-events: auto;
+    cursor: var(--c-pointer, pointer);
+}
+
+.taskbar-thumb.hidden {
+    display: none;
+}
+
+.taskbar-thumb-title {
+    display: none;
+}
+
+.taskbar-thumb-body {
+    position: relative;
+    min-width: 40px;
+    min-height: 30px;
+    box-shadow: 0 0 0 1px hsl(214 20% 25% / 85%);
+}
+
+.taskbar-thumb-body.is-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 120px;
+    height: 80px;
+    background: hsl(210 15% 90% / 40%);
+}
+
+.taskbar-thumb-body.is-icon :is(img, i) {
+    width: 32px;
+    height: 32px;
+    font-size: 28px;
+    display: inline-block !important;
+}
+
+.taskbar-thumb-still {
+    position: relative;
+    overflow: hidden;
+    contain: strict;
+}
+
+/* With previews off Vista shows the plain title tooltip */
+.taskbar-thumb.is-tooltip,
+.taskbar-clock-tooltip {
+    padding: 2px 6px 3px;
+    border-radius: 2px;
+    background: linear-gradient(#fff, #e4e5f0);
+    box-shadow: inset 0 0 0 1px #767676, 2px 2px 3px hsl(0 0% 0% / 30%);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    color: #575757;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 15px;
+    white-space: nowrap;
+    cursor: default;
+    pointer-events: none;
+}
+
+.taskbar-thumb.is-tooltip .taskbar-thumb-title {
+    display: block;
+}
+
+.taskbar-thumb.is-tooltip .taskbar-thumb-body {
+    display: none;
+}
+
+/* ---------- notification area: chevron, hidden icons, system icons ---------- */
+
+body.desktop-mode:not(.windows-classic-theme) .tray-overflow-btn {
+    flex: none;
+    width: 19px;
+    height: 20px;
+    margin: 0 1px 0 0;
+    padding: 0;
+    border: 0;
+    background: url("/static_images/vista-taskbar/tray-chevron.png") 0 0 / 19px 60px no-repeat;
+    cursor: var(--c-pointer, pointer);
+}
+
+body.desktop-mode:not(.windows-classic-theme) .tray-overflow-btn.hidden {
+    display: none;
+}
+
+@media (hover: hover) {
+    body.desktop-mode:not(.windows-classic-theme) .tray-overflow-btn:hover {
+        background-position: 0 -20px;
+    }
+}
+
+body.desktop-mode:not(.windows-classic-theme) .tray-overflow-btn:active {
+    background-position: 0 -40px;
+}
+
+/* expanded: the arrow points the other way (Vista mirrors it) */
+body.desktop-mode:not(.windows-classic-theme) .tray-overflow-btn.is-open {
+    transform: scaleX(-1);
+}
+
+/* hidden icons fold to nothing and slide back in place when the chevron opens the tray */
+.taskbar-tray-icons > .taskbar-tray-icon.tray-overflow {
+    max-width: 0;
+    margin-left: 0;
+    margin-right: 0;
+    opacity: 0;
+    overflow: hidden;
+    visibility: hidden;
+    pointer-events: none;
+    transition: max-width 0.2s ease-out, margin 0.2s ease-out, opacity 0.15s linear, visibility 0s linear 0.2s;
+}
+
+.taskbar-tray.tray-expanded .taskbar-tray-icons > .taskbar-tray-icon.tray-overflow {
+    max-width: var(--taskbar-tray-icon-size, 24px);
+    margin-right: 4px;
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition: max-width 0.2s ease-out, margin 0.2s ease-out, opacity 0.15s linear 0.05s, visibility 0s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .taskbar-tray-icons > .taskbar-tray-icon.tray-overflow,
+    .taskbar-tray.tray-expanded .taskbar-tray-icons > .taskbar-tray-icon.tray-overflow {
+        transition: none;
+    }
+}
+
+/* System icons turned off on the Notification Area tab */
+.desktop-taskbar.tray-no-volume #volumeTrayIcon,
+.desktop-taskbar.tray-no-network #modemTrayIcon,
+.desktop-taskbar.tray-no-clock #taskbarClock,
+.desktop-taskbar.taskbar-no-ticker .taskbar-ticker {
+    display: none !important;
+}
+
+/* ---------- clock ---------- */
+
+body.desktop-mode:not(.windows-classic-theme) .taskbar-clock {
+    min-width: 0;
+    /* the time's caps sit 1 px above the bar's middle, its right edge 17 px from the screen's */
+    padding: 0 9px 6px;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    font-variation-settings: normal;
+    line-height: 15px;
+    cursor: default;
+    white-space: nowrap;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .taskbar-clock .taskbar-time {
+    color: #fff;
+    text-shadow: 0 0 6px hsl(0 0% 0% / 55%), 0 1px 2px hsl(0 0% 0% / 40%);
+}
+
+body.desktop-mode:not(.windows-classic-theme) .taskbar-tray {
+    padding-right: 4px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .taskbar-clock:focus-visible {
+    outline: 1px dotted #fff;
+    outline-offset: -3px;
+}
+
+/* the clock tooltip: timedate.cpl's calendar and the long date (Vista's rich tooltip) */
+.taskbar-clock-tooltip {
+    position: fixed;
+    z-index: var(--z-taskbar-popover, 2710);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 9px 6px;
+    color: #575757;
+}
+
+.taskbar-clock-tooltip.hidden {
+    display: none;
+}
+
+/* the Date and Time flyout: white client 334 px wide over a #f0f0f0 link band, in a 7 px glass frame */
+.taskbar-clock-flyout {
+    position: fixed;
+    z-index: var(--z-taskbar-popover, 2710);
+    box-sizing: border-box;
+    width: 348px;
+    padding: 7px;
+    border-radius: 6px;
+    background: linear-gradient(hsl(207 30% 72% / 78%), hsl(210 25% 60% / 78%));
+    box-shadow:
+        inset 0 0 0 1px hsl(210 30% 88% / 90%),
+        inset 0 0 0 6px hsl(210 20% 60% / 25%),
+        0 0 0 1px hsl(214 32% 18% / 80%),
+        3px 3px 10px hsl(0 0% 0% / 45%);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+    color: #000;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 15px;
+    user-select: none;
+}
+
+.taskbar-clock-flyout.hidden {
+    display: none;
+}
+
+.taskbar-clock-flyout-client {
+    background: #fff;
+    box-shadow: 0 0 0 1px hsl(213 30% 18% / 85%);
+}
+
+.taskbar-clock-flyout-today {
+    display: block;
+    width: 100%;
+    height: 43px;
+    padding: 14px 0 0;
+    margin: 0;
+    border: 0;
+    background: none;
+    color: #0066cc;
+    font: inherit;
+    line-height: 15px;
+    text-align: center;
+    cursor: var(--c-pointer, pointer);
+}
+
+.taskbar-clock-flyout-today:hover {
+    color: #3399ff;
+    text-decoration: underline;
+}
+
+.taskbar-clock-flyout-main {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 0 14px 0 13px;
+    height: 159px;
+}
+
+.taskbar-clock-cal {
+    width: 168px;
+}
+
+.taskbar-clock-cal-head {
+    position: relative;
+    height: 22px;
+    text-align: center;
+}
+
+.taskbar-clock-cal-title {
+    line-height: 15px;
+}
+
+.taskbar-clock-cal-head button {
+    position: absolute;
+    top: 3px;
+    width: 12px;
+    height: 12px;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: var(--c-pointer, pointer);
+}
+
+.taskbar-clock-cal-head button::before {
+    content: '';
+    position: absolute;
+    top: 2px;
+    border: 4px solid transparent;
+}
+
+.taskbar-clock-cal-prev {
+    left: 4px;
+}
+
+.taskbar-clock-cal-prev::before {
+    left: 0;
+    border-right: 4px solid #000 !important;
+    border-left: 0 !important;
+}
+
+.taskbar-clock-cal-next {
+    right: 4px;
+}
+
+.taskbar-clock-cal-next::before {
+    right: 0;
+    border-left: 4px solid #000 !important;
+    border-right: 0 !important;
+}
+
+.taskbar-clock-cal-days,
+.taskbar-clock-cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 24px);
+}
+
+.taskbar-clock-cal-days {
+    height: 16px;
+    margin-bottom: 0;
+}
+
+.taskbar-clock-cal-days span {
+    text-align: center;
+}
+
+.taskbar-clock-cal-grid span {
+    height: 15px;
+    padding-right: 6px;
+    text-align: right;
+}
+
+.taskbar-clock-cal-grid span.is-other {
+    color: #8d8d8d;
+}
+
+.taskbar-clock-cal-grid span.is-today {
+    background: #e4f6fe;
+    box-shadow: inset 0 0 0 1px #2a2a2a;
+}
+
+.taskbar-clock-analog {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 128px;
+    margin-top: 1px;
+}
+
+.taskbar-clock-face {
+    position: relative;
+    width: 128px;
+    height: 128px;
+}
+
+.taskbar-clock-face > img,
+.taskbar-clock-hands {
+    position: absolute;
+    inset: 0;
+    width: 128px;
+    height: 128px;
+}
+
+.taskbar-clock-hands line {
+    stroke-linecap: round;
+}
+
+.taskbar-clock-hands .hand-hour {
+    stroke: #1e1e1e;
+    stroke-width: 3;
+}
+
+.taskbar-clock-hands .hand-minute {
+    stroke: #1e1e1e;
+    stroke-width: 2;
+}
+
+.taskbar-clock-hands .hand-second {
+    stroke: #3f6b8f;
+    stroke-width: 1;
+}
+
+.taskbar-clock-hands circle {
+    fill: #1e1e1e;
+}
+
+.taskbar-clock-digital {
+    margin-top: 2px;
+    text-align: center;
+}
+
+.taskbar-clock-flyout-links {
+    margin-top: 1px;
+    padding: 0;
+    height: 43px;
+    border-top: 1px solid #dde0e2;
+    box-shadow: inset 0 1px 0 #fff;
+    background: #f0f0f0;
+    text-align: center;
+}
+
+.taskbar-clock-flyout-link {
+    margin-top: 16px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #0066cc;
+    font: inherit;
+    line-height: 15px;
+    cursor: var(--c-pointer, pointer);
+}
+
+.taskbar-clock-flyout-link:hover {
+    color: #3399ff;
+    text-decoration: underline;
+}
+
+/* ---------- auto-hide, keep on top ---------- */
+
+body.desktop-mode .desktop-taskbar.taskbar-autohide {
+    transition: transform 0.2s ease-out;
+}
+
+/* 2 px stay on screen to catch the pointer; the orb and Quick Launch slide away with the bar */
+body.desktop-mode .desktop-taskbar.taskbar-autohide:not(.taskbar-revealed) {
+    transform: translateY(calc(100% - 2px));
+}
+
+body.desktop-mode .desktop-taskbar.taskbar-not-on-top:not(.taskbar-raised) {
+    z-index: calc(var(--z-modal, 1100) - 1);
+}
+
+body.desktop-mode .desktop-taskbar.taskbar-autohide .taskbar-start-button-orb-frame {
+    transition: opacity 0.2s linear;
+}
+
+body.desktop-mode .desktop-taskbar.taskbar-autohide:not(.taskbar-revealed) .taskbar-start-button-orb-frame {
+    opacity: 0;
+}

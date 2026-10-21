@@ -203,10 +203,20 @@ const FEATURE_MANIFEST = {
     start_menu_organizer: {
         scripts: ['scripts/comp/desktop-apps/startMenuOrganizer.js']
     },
+    // Taskbar and Start Menu Properties (public/scripts/comp/taskbarSettings.js openProperties)
+    taskbar_properties: {
+        styles: ['css/taskbar-properties.css'],
+        scripts: ['scripts/comp/taskbarProperties.js']
+    },
     control_panel: {
-        styles: ['css/desktop-settings.css', 'css/vista-defender.css'],
+        // Remote Access Properties draws with Taskbar Properties' Vista controls (tbp-*)
+        styles: ['css/desktop-settings.css', 'css/vista-defender.css', 'css/cpl-system.css',
+            'css/taskbar-properties.css', 'css/remote-access-properties.css'],
         scripts: [
             'scripts/comp/melatonControlPanel.js',
+            'scripts/comp/experienceIndex.js',
+            'scripts/comp/cplSystem.js',
+            'scripts/comp/remoteAccessProperties.js',
             'scripts/comp/cplAuthentication.js',
             'scripts/comp/cplUpdate.js',
             'scripts/comp/cplUserAccounts.js',

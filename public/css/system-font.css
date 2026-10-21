@@ -1,0 +1,40 @@
+/* The shell's font is not the workspace font. On the Vista desktop the workspace font pickers
+   (Personalize, Planet) choose --font-primary / --font-mono for the Dreamscape apps (Studio,
+   Workspaces, Grimoire, Atelier, Phasewalker, Chat ...). Windows itself draws its chrome and its own
+   applications in the system font whatever the user picks, so these keep --font-system (Segoe UI,
+   Meiryo for Japanese; app.css, faces in vista-fonts.css):
+   - shell: window captions, taskbar and tray, desktop icon labels, the Sidebar
+   - every light-client window and Vista dialog (Run, Cartograph, Periscope, Runes, Notion, the
+     message boxes ...), which already set Segoe UI on their client; the variables follow here too
+   - the Windows-analogue apps that still draw on the dark client: Task Manager, Personalize,
+     Remote Access, Runes' value and checkpoint dialogs, the Save dialogs, the PIN prompt, the
+     On-Screen Keyboard, Control Panel, Lumen (Photo Viewer) and Glancewell (slide show)
+   Inside them --font-primary and --font-mono are re-pointed, so rules that name the workspace
+   variables draw the system faces as well (Consolas is Vista's fixed-width face). */
+
+body.desktop-mode :is(
+    .modal > .modal-window-title .modal-window-title-main,
+    .desktop-taskbar,
+    .desktop-shortcut-label,
+    #vistaSidebar,
+    .vista-sidebar,
+    .modal[data-window-client="light"],
+    .modal[data-vista-dialog],
+    .boot-dialog,
+    #websocketRequestsModal,
+    #desktopSettingsModal,
+    #remoteAccessSettingsModal,
+    #configEditorValueModal,
+    #configEditorCheckpointsModal,
+    #studioSaveNameModal,
+    #studioSaveFolderModal,
+    #pinModal,
+    #virtualKeyboardModal,
+    #melatonControlPanelModal,
+    .image-viewer-modal,
+    #photoSwipeWindow
+) {
+    --font-primary: var(--font-system);
+    --font-mono: 'Consolas', 'Meiryo', 'Noto Sans JP', monospace;
+    font-family: var(--font-system);
+}

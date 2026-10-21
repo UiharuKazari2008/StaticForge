@@ -58,11 +58,12 @@ assert.ok(/if \(typeof this\.foregroundUpdateView === 'function'\) \{\s*this\._h
 assert.ok(swm.includes("foregroundUpdateView('preparing'") && !swm.includes("kind: 'runtime-compile'") && !swm.includes('Compiling runtime assets'), 'compile progress is the prepare stage, not a tray balloon');
 assert.ok(swm.includes("localStorage.setItem('meletonUpdateCheckedAt'") && swm.includes("localStorage.setItem('meletonUpdateInstalledAt'"), 'check and install times for the facts');
 
-// Remote Access hosted in Control Panel
+// Remote Access: the item opens Remote Access Properties (remoteAccessProperties.js, Yukimi
+// 2026-10-21); the Control Panel page stays as the fallback without it
 const mu = read('public/scripts/comp/modalUtils.js');
-assert.ok(mu.includes("cpl.registerPage('remote-access'") && mu.includes("cpl.open('remote-access')"), 'Remote Access is a Control Panel page');
+assert.ok(mu.includes("cpl.registerPage('remote-access'") && mu.includes("cpl.open('remote-access')"), 'Remote Access is still a Control Panel page');
 assert.ok(read('public/app.html').includes('<div id="remoteAccessSettingsLayout" class="desktop-settings-layout">'), 'the form has its id');
-assert.ok(read('public/scripts/comp/melatonControlPanel.js').includes("open: () => navigate('remote-access')"), 'the item opens the page');
+assert.ok(read('public/scripts/comp/melatonControlPanel.js').includes("open: () => (root.remoteAccessProperties ? root.remoteAccessProperties.open() : navigate('remote-access'))"), 'the item opens the properties sheet, else the page');
 
 // Authentication moved out of Security Center
 const sec = read('public/scripts/comp/securityCenterDsapApplet.js');

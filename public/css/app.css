@@ -311,13 +311,17 @@
     /* Background image */
     --background-image: none;
 
-    /* Fonts */
-    --font-primary: 'Noto Sans', 'Noto Sans JP', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    /* Fonts. --font-system is the Vista shell's face (Segoe UI, Meiryo for Japanese, as Vista links
+       them; public/css/vista-fonts.css serves Vista's own files): window captions, the taskbar and the
+       Windows-analogue apps keep it whatever the workspace font is (public/css/system-font.css).
+       --font-primary / --font-mono are the workspace's "Default" fonts (workspaceUtils.js). */
+    --font-system: 'Segoe UI', 'Meiryo', 'Noto Sans JP', sans-serif;
+    --font-primary: 'Segoe UI', 'Meiryo', 'Noto Sans JP', 'Noto Sans', sans-serif;
     --font-secondary: 'Oxanium', 'Noto Sans', 'Noto Sans JP', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     --font-tertiary: 'Atkinson Hyperlegible Next', 'Noto Sans', 'Noto Sans JP', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     --font-quaternary: 'Eczar', 'Noto Sans', 'Noto Sans JP', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     --font-quinary: 'Kanit', 'Noto Sans', 'Noto Sans JP', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    --font-mono: 'Share Tech Mono', 'Noto Sans', 'Noto Sans JP', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    --font-mono: 'Consolas', 'Meiryo', 'Noto Sans JP', 'Lucida Console', monospace;
     /* Variable font weight presets */
     --wght-regular: 400;
     --wght-medium: 500;

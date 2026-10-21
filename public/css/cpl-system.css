@@ -1,0 +1,229 @@
+/* Control Panel's System page (public/scripts/comp/cplSystem.js): Vista's Control Panel > System, 1:1
+   with the VM (systemcpl.dll UIFILE 1001). Measured from the content pane's top left: the help glyph
+   at the top right (1 px in), the title at 23 / 19 (16 px, 21 px line), group headers 15 px high with
+   10 px under them and a #ccc rule to the right edge less 11 px, rows indented 20 px with the values at
+   150 px; edition rows 15 + 8 px, System rows 15 + 7 px (Rating is 24 px for the badge), name rows
+   15 + 8 px, 10 px after each group; the edition logo 157 x 151 on the right of the edition rows. */
+
+#melatonControlPanelModal .cpl-main:has(> .cpl-sys-page) {
+    padding: 0;
+}
+
+#melatonControlPanelModal .cpl-sys-page {
+    position: relative;
+    min-width: 560px;
+    padding: 19px 11px 10px 23px;
+    color: #000;
+    font: 12px/15px var(--cpl-font);
+}
+
+#melatonControlPanelModal .cpl-sys-page p {
+    margin: 0;
+}
+
+/* Vista's two spaces after a sentence ("P.S.R.  All rights reserved.") */
+#melatonControlPanelModal .cpl-sys-line {
+    white-space: pre-wrap;
+}
+
+#melatonControlPanelModal .cpl-sys-help {
+    position: absolute;
+    top: 1px;
+    right: 1px;
+    width: 18px;
+    height: 18px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    background: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    cursor: var(--c-pointer);
+}
+
+#melatonControlPanelModal .cpl-sys-help::before,
+#melatonControlPanelModal .cpl-sys-help::after {
+    content: none;
+}
+
+#melatonControlPanelModal .cpl-sys-help img {
+    display: block;
+    width: 18px;
+    height: 18px;
+}
+
+#melatonControlPanelModal .cpl-content h1.cpl-sys-title {
+    margin: 0 0 14px;
+    color: #003399;
+    font: 16px/21px var(--cpl-font);
+}
+
+#melatonControlPanelModal .cpl-sys-section {
+    padding-bottom: 10px;
+}
+
+#melatonControlPanelModal .cpl-content h2.cpl-sys-head {
+    display: flex;
+    align-items: center;
+    margin: 0 0 10px;
+    color: #000;
+    font: 12px/15px var(--cpl-font);
+}
+
+#melatonControlPanelModal .cpl-sys-head::after {
+    content: '';
+    flex: 1 1 auto;
+    height: 1px;
+    margin: 4px 0 0 -1px;
+    background: #cccccc;
+}
+
+#melatonControlPanelModal .cpl-sys-edition {
+    display: flex;
+    flex-direction: row-reverse;
+    align-items: flex-start;
+    padding-left: 20px;
+}
+
+#melatonControlPanelModal .cpl-sys-logo {
+    flex: none;
+    width: 157px;
+    height: 151px;
+}
+
+#melatonControlPanelModal .cpl-sys-edition-text {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+#melatonControlPanelModal .cpl-sys-edition-text .cpl-sys-line {
+    padding-bottom: 8px;
+}
+
+#melatonControlPanelModal .cpl-sys-edition-text .cpl-sys-line--last {
+    padding-bottom: 2px;
+}
+
+#melatonControlPanelModal .cpl-sys-rows {
+    position: relative;
+    padding-left: 20px;
+}
+
+#melatonControlPanelModal .cpl-sys-row {
+    display: flex;
+    align-items: center;
+    padding-bottom: 8px;
+}
+
+#melatonControlPanelModal .cpl-sys-rows--system .cpl-sys-row {
+    padding-bottom: 7px;
+}
+
+#melatonControlPanelModal .cpl-sys-label {
+    flex: 0 0 150px;
+}
+
+#melatonControlPanelModal .cpl-sys-value {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+#melatonControlPanelModal .cpl-sys-row--rating {
+    align-items: flex-start;
+}
+
+#melatonControlPanelModal .cpl-sys-row--rating .cpl-sys-label {
+    padding-top: 1px;
+}
+
+/* the rating row is 24 px with or without the badge */
+#melatonControlPanelModal .cpl-sys-rating {
+    min-height: 24px;
+}
+
+/* the Experience Index badge: Vista's tile (the VM's grey one, its digits taken out, in the rated
+   blue) with the base score drawn on it as Vista does, white Tahoma Bold over a dark shadow */
+#melatonControlPanelModal .cpl-sys-wei {
+    position: relative;
+    flex: none;
+    width: 32px;
+    height: 24px;
+    margin-right: 3px;
+}
+
+#melatonControlPanelModal .cpl-sys-wei img {
+    display: block;
+    width: 32px;
+    height: 24px;
+}
+
+#melatonControlPanelModal .cpl-sys-wei-num {
+    position: absolute;
+    inset: 0;
+    color: #fff;
+    font: bold 15px/24px Tahoma, Verdana, sans-serif;
+    text-align: center;
+    text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.6);
+    pointer-events: none;
+}
+
+/* Vista's link colour; the subscores are in the badge's tooltip (there is no Performance page) */
+#melatonControlPanelModal .cpl-sys-wei-text {
+    color: #0066cc;
+}
+
+#melatonControlPanelModal .cpl-sys-wei-text--none {
+    color: #6d6d6d;
+}
+
+#melatonControlPanelModal .cpl-sys-clock {
+    margin-left: 3em;
+}
+
+#melatonControlPanelModal .cpl-sys-na {
+    color: #6d6d6d;
+}
+
+#melatonControlPanelModal .cpl-sys-change {
+    position: absolute;
+    top: 0;
+    right: 14px;
+    display: inline-flex;
+    align-items: center;
+    line-height: 16px;
+}
+
+#melatonControlPanelModal .cpl-sys-change img,
+#melatonControlPanelModal .cpl-sys-task img,
+#melatonControlPanelModal .cpl-sys-task-pad {
+    flex: none;
+    width: 16px;
+    height: 16px;
+}
+
+#melatonControlPanelModal .cpl-sys-rows--activation .cpl-sys-line {
+    padding-bottom: 8px;
+}
+
+#melatonControlPanelModal .cpl-sys-pid {
+    display: flex;
+    align-items: baseline;
+}
+
+#melatonControlPanelModal .cpl-sys-pid-value {
+    margin: 0 20px 0 5px;
+}
+
+/* the task pane's links carry Vista's shields (the text lines up past a 16 px icon + 6 px) */
+#melatonControlPanelModal .cpl-sys-task {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#melatonControlPanelModal .cpl-sys-tasks h3.cpl-task-heading {
+    padding-left: 22px;
+}

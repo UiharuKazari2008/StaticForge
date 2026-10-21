@@ -7,11 +7,14 @@
  *                   user PIN login (wsClient.setUserPinLoginEnabled)
  *
  * Views inside the one page: the account list ("Choose the account you would like to change"),
- * an account ("Make changes to the … account": Change / Create the password, Change the
- * picture, Turn off / on the guest account), the password form and the picture chooser (Vista's
- * default pictures from the VM, or Browse for more pictures: drawn into 128x128 and uploaded).
- * Pictures live on the server (modules/accountPictures.js); the start menu shows the signed-in
- * account's (localStorage userType: admin = Administrator, otherwise Guest). Admins only change.
+ * an account ("Make changes to … account": Change the account name, Change / Create the
+ * password, Change the picture, Turn off / on the guest account), the rename form ("Type a new
+ * account name", as the VM's Change Your Name page), the password form and the picture chooser
+ * (Vista's default pictures from the VM, or Browse for more pictures: drawn into 128x128 and
+ * uploaded). Names and pictures live on the server (modules/accountPictures.js) and reach the rest
+ * of the desktop through meletonAccounts.js (the Start menu, the Welcome screen, the lock screen,
+ * the About box show the signed-in account's: localStorage userType admin = Administrator,
+ * otherwise Guest). Admins only change.
  * Admins also get "Use Vista Logon" under the list (wsClient.setUseVistaLogon, one server-wide
  * choice): the logon screen reads it from /status (websocket.js _setVistaLogon).
  */
@@ -20,6 +23,18 @@
 
     const ART = '/static_images/vista-cpl';
     const NAMES = { administrator: 'Administrator', guest: 'Guest' };
+    // account names may be changed (meletonAccounts.js); NAMES are the built-in ones
+
+    function nameOf(account) {
+        const accounts = root.meletonAccounts;
+        return accounts ? accounts.name(account) : NAMES[account];
+    }
+
+    /** "Yukimi's" / "Administrator's", for Vista's page titles. */
+    function possessive(account) {
+        const n = nameOf(account);
+        return /s$/i.test(n) ? `${n}'` : `${n}'s`;
+    }
     let registered = false;
     let main = null;
     let state = { view: 'list', account: null, picture: null, upload: null };
@@ -47,6 +62,7 @@
     function pictureUrl(account) {
         const p = pictures && pictures[account];
         if (p && p.url) return p.url;
+        if (root.meletonAccounts) return root.meletonAccounts.pictureUrl(account);
         return `/static_images/account-pictures/${account === 'guest' ? 'guest' : 'kitten'}.png`;
     }
 
@@ -75,11 +91,9 @@
         }
     }
 
-    /** The start menu's user tile follows the signed-in account. */
+    /** The rest of the desktop follows (the Start menu's tile and name, the logon and lock screens). */
     function applyStartMenuPicture() {
-        if (typeof document === 'undefined') return;
-        const img = document.querySelector('.start-menu-user-tile-picture');
-        if (img && pictures) img.src = pictureUrl(currentAccount());
+        if (pictures && root.meletonAccounts) root.meletonAccounts.set(pictures);
     }
 
     // ---- views ----
@@ -97,7 +111,7 @@
             <div class="cpl-ua-tile${big ? ' cpl-ua-tile--big' : ''}${account === 'guest' && pins && pins.userPinLoginEnabled === false ? ' is-off' : ''}" ${big ? '' : `role="button" tabindex="0" data-cpl-ua="open" data-cpl-ua-account="${account}"`}>
                 <span class="cpl-ua-picture"><img src="${esc(pictureUrl(account))}" alt=""><img class="cpl-ua-frame" src="${ART}/usertile-frame-48.png" alt=""></span>
                 <span class="cpl-ua-tile-text">
-                    <span class="cpl-ua-name">${esc(NAMES[account])}</span>
+                    <span class="cpl-ua-name">${esc(nameOf(account))}</span>
                     ${lines.map((l, i) => `<span class="${i === 0 ? 'cpl-ua-type' : 'cpl-ua-sub'}">${esc(l)}</span>`).join('')}
                 </span>
             </div>`;
@@ -132,27 +146,52 @@
     function accountView() {
         const a = state.account;
         const hasPin = a === 'administrator' ? pins && pins.adminPinConfigured : pins && pins.userPinConfigured;
-        const links = [
+        // the signed-in account in Vista's own words (the VM's "Make changes to your user account")
+        const own = a === currentAccount();
+        const links = own ? [
+            link(hasPin ? 'Change your password' : 'Create a password for your account', 'password', true),
+            link('Change your picture', 'picture', true),
+            link('Change your account name', 'rename', true)
+        ] : [
+            link('Change the account name', 'rename', true),
             link(hasPin ? 'Change the password' : 'Create a password', 'password', true),
             link('Change the picture', 'picture', true)
         ];
         if (a === 'guest') links.push(link(pins && pins.userPinLoginEnabled === false ? 'Turn on the guest account' : 'Turn off the guest account', 'guest-toggle', true));
         links.push('<li class="cpl-ua-gap"></li>', link('Manage another account', 'list', false));
         return `
-            <h1 class="cpl-page-title">Make changes to the ${esc(NAMES[a])} account</h1>
+            <h1 class="cpl-page-title">${own ? 'Make changes to your user account' : `Make changes to ${esc(possessive(a))} account`}</h1>
             <div class="cpl-ua-account">
                 <ul class="cpl-ua-links">${links.join('')}</ul>
                 ${tile(a, true)}
             </div>`;
     }
 
+    /** Vista's Change Your Name page: the tile, "New account name", Change Name / Cancel. */
+    function renameView() {
+        const a = state.account;
+        const own = a === currentAccount();
+        return `
+            <h1 class="cpl-page-title">${own ? 'Type a new account name' : `Type a new account name for ${esc(possessive(a))} account`}</h1>
+            <div class="cpl-ua-form">
+                ${tile(a, true)}
+                <input type="text" class="cpl-ua-input" data-cpl-ua-field="name" placeholder="New account name" maxlength="20" autocomplete="off" spellcheck="false">
+                <p>This name will appear on the Welcome screen and on the Start menu.</p>
+                <p class="cpl-ua-error hidden" data-cpl-ua-error></p>
+                <div class="cpl-ua-buttons">
+                    <button type="button" class="cpl-wu-button" data-cpl-ua="rename-save">Change Name</button>
+                    <button type="button" class="cpl-wu-button" data-cpl-ua="account">Cancel</button>
+                </div>
+            </div>`;
+    }
+
     function passwordView() {
         const a = state.account;
         return `
-            <h1 class="cpl-page-title">Change the ${esc(NAMES[a])} account's password</h1>
+            <h1 class="cpl-page-title">Change ${esc(possessive(a))} password</h1>
             <div class="cpl-ua-form">
                 ${tile(a, true)}
-                <p>Signing in to MeletonFX as ${esc(NAMES[a])} asks for this password (PIN).</p>
+                <p>Signing in to MeletonFX as ${esc(nameOf(a))} asks for this password (PIN).</p>
                 <input type="password" class="cpl-ua-input" data-cpl-ua-field="pin" placeholder="New password" autocomplete="new-password">
                 <input type="password" class="cpl-ua-input" data-cpl-ua-field="confirm" placeholder="Confirm new password" autocomplete="new-password">
                 <p class="cpl-ua-error hidden" data-cpl-ua-error></p>
@@ -168,11 +207,11 @@
         const chosen = state.picture || (pictures && pictures[a] && pictures[a].picture) || null;
         const preview = state.upload || (chosen && chosen !== 'custom' ? `/static_images/account-pictures/${chosen}.png` : pictureUrl(a));
         return `
-            <h1 class="cpl-page-title">Choose a new picture for the ${esc(NAMES[a])} account</h1>
+            <h1 class="cpl-page-title">Choose a new picture for ${esc(possessive(a))} account</h1>
             <div class="cpl-ua-form">
                 <div class="cpl-ua-tile cpl-ua-tile--big">
                     <span class="cpl-ua-picture"><img src="${esc(preview)}" alt=""><img class="cpl-ua-frame" src="${ART}/usertile-frame-48.png" alt=""></span>
-                    <span class="cpl-ua-tile-text"><span class="cpl-ua-name">${esc(NAMES[a])}</span></span>
+                    <span class="cpl-ua-tile-text"><span class="cpl-ua-name">${esc(nameOf(a))}</span></span>
                 </div>
                 <p>The picture you choose will appear on the Welcome screen and on the Start menu.</p>
                 <div class="cpl-ua-gallery" role="listbox">${(defaults.length ? defaults : ['music', 'starfish', 'leaf', 'robot', 'fish', 'bonsai', 'sports', 'dog', 'chess', 'kitten', 'fireworks', 'guest', 'user']).map((name) => `
@@ -193,7 +232,7 @@
         if (!main || !main.isConnected) return;
         const host = main.querySelector('.cpl-ua-page');
         if (!host) return;
-        const views = { list: listView, account: accountView, password: passwordView, picture: pictureView };
+        const views = { list: listView, account: accountView, rename: renameView, password: passwordView, picture: pictureView };
         host.innerHTML = (views[state.view] || listView)();
     }
 
@@ -206,6 +245,10 @@
         state.view = view;
         if (view !== 'picture') { state.picture = null; state.upload = null; }
         paint();
+        if (view === 'rename') {
+            const input = main && main.querySelector('[data-cpl-ua-field="name"]');
+            if (input) input.focus();
+        }
     }
 
     /** Draw an upload into 128x128 (centre crop) as a PNG data URL, as Vista sizes account pictures. */
@@ -230,7 +273,22 @@
     async function act(action, el) {
         const client = ws();
         if (action === 'open') return go('account', el.dataset.cplUaAccount);
-        if (action === 'list' || action === 'account' || action === 'password' || action === 'picture') return go(action);
+        if (action === 'list' || action === 'account' || action === 'rename' || action === 'password' || action === 'picture') return go(action);
+        if (action === 'rename-save') {
+            const value = main.querySelector('[data-cpl-ua-field="name"]').value.trim();
+            const error = main.querySelector('[data-cpl-ua-error]');
+            const fail = (text) => { error.textContent = text; error.classList.remove('hidden'); };
+            if (!value) return fail('Type a new account name.');
+            if (/["/\\[\]:;|=,+*?<>@]/.test(value)) return fail('The name cannot contain any of these characters: " / \\ [ ] : ; | = , + * ? < > @');
+            if (!root.meletonAccounts) return fail('The account name could not be changed.');
+            try {
+                const res = await root.meletonAccounts.setName(state.account, value);
+                if (res && res.accounts) pictures = res.accounts;
+                return go('account');
+            } catch (err) {
+                return fail((err && err.message && !/^Request timeout|Unknown message/i.test(err.message)) ? err.message : 'The account name could not be changed. The server may need a restart to offer this.');
+            }
+        }
         if (action === 'guest-toggle' && client) {
             const enable = pins && pins.userPinLoginEnabled === false;
             try {
@@ -312,6 +370,11 @@
                 if (b && modal.contains(b)) act(b.dataset.cplUa, b);
             });
             modal.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Enter' && ev.target.matches && ev.target.matches('[data-cpl-ua-field="name"]')) {
+                    ev.preventDefault();
+                    act('rename-save', ev.target);
+                    return;
+                }
                 const b = ev.target.closest && ev.target.closest('[data-cpl-ua="open"]');
                 if (b && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); act('open', b); }
             });
@@ -350,38 +413,28 @@
         return true;
     }
 
-    // the start menu's picture once the session is up, and whenever an administrator changes one
-    function watchStartMenu() {
-        let tries = 0;
-        const timer = setInterval(() => {
-            const client = ws();
-            tries += 1;
-            if (client && client.isConnected && client.isConnected() && client.initializationCompleted) {
-                clearInterval(timer);
-                load();
-                if (typeof client.on === 'function') {
-                    client.on('account_pictures_changed', (msg) => {
-                        if (msg && msg.data && msg.data.accounts) {
-                            pictures = msg.data.accounts;
-                            applyStartMenuPicture();
-                        }
-                    });
-                }
-            } else if (tries > 120) {
-                clearInterval(timer);
+    // meletonAccounts.js keeps the Start menu, logon and lock screens current; this page repaints
+    // when an administrator elsewhere changes a name or picture
+    function watchAccounts() {
+        if (typeof root.addEventListener !== 'function') return;
+        root.addEventListener('meletonaccountschange', (ev) => {
+            const next = ev && ev.detail && ev.detail.accounts;
+            if (next && pictures) {
+                Object.keys(next).forEach((acc) => { pictures[acc] = { ...(pictures[acc] || {}), ...next[acc] }; });
             }
-        }, 1000);
+            paint();
+        });
     }
 
     root.cplUserAccounts = { register, open: () => register() && root.melatonControlPanel.open('user-accounts'), _test: {
         tile: (a, p, pics) => { pins = p; pictures = pics; return tile(a); },
         view: (name, st, p, pics) => {
             pins = p; pictures = pics; state = { view: name, account: null, picture: null, upload: null, ...st };
-            return ({ list: listView, account: accountView, password: passwordView, picture: pictureView })[name]();
+            return ({ list: listView, account: accountView, rename: renameView, password: passwordView, picture: pictureView })[name]();
         }
     } };
     if (typeof document !== 'undefined') {
-        const start = () => { register(); watchStartMenu(); };
+        const start = () => { register(); watchAccounts(); };
         if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
         else start();
     }

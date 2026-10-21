@@ -495,9 +495,15 @@
         };
     }
 
-    function presentFatal(detail) {
+    function presentFatal(detail, context) {
         try {
             var entry = registerError(detail);
+            // A fault in one desktop program: Vista's "<program> has stopped working" for that
+            // program (programFaults.js). It stays in Spectator's list for the details.
+            if (window.programFaults && window.programFaults.present(detail, context)) {
+                renderErrorList();
+                return;
+            }
             presentErrorUI(entry);
         } catch (e2) {
             try {
@@ -980,7 +986,7 @@
             if (isResizeObserverLoopNotice(message) || isResizeObserverLoopNotice(msg)) return;
             var reason = err && err.message ? err.message : String(msg);
             var errorUrl = url || parseScriptUrlFromStack(stack);
-            presentFatal(normalizeDetail(message, reason, url || '', line, col, stack, errorUrl));
+            presentFatal(normalizeDetail(message, reason, url || '', line, col, stack, errorUrl), { error: err, filename: url || '' });
         } catch (e) { /* ignore */ }
     }
 
@@ -1023,7 +1029,7 @@
                 return;
             }
             var errorUrl = parseScriptUrlFromStack(stack);
-            presentFatal(normalizeDetail(message, reason, '', '', '', stack, errorUrl));
+            presentFatal(normalizeDetail(message, reason, '', '', '', stack, errorUrl), { error: r });
         } catch (e) { /* ignore */ }
     }
 

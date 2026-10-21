@@ -30,7 +30,9 @@
     const DLU_X = 6 / 4;
     const DLU_Y = 13 / 8;
 
-    const VG = {};
+    // window.VistaGamesOptions, set before this file loads, presets engine switches
+    // (Setup's games: { pixelRatio: 1, maxSheetScale: 1 }, public/scripts/launch/launchGamesHost.js)
+    const VG = Object.assign({}, root.VistaGamesOptions || {});
     root.VistaGames = VG;
 
     // ---- XML nodes ({ t, a, c, v } from build-vista-games.js) --------------------------------
@@ -120,8 +122,10 @@
             return { one: this.base + 'images/' + one + '.png', two: two ? this.base + 'images/' + two + '.png' : null };
         }
 
-        // scale 1 or 2: the 1x sheet or the 2x (high DPI) sheet
+        // scale 1 or 2: the 1x sheet or the 2x (high DPI) sheet. VG.maxSheetScale 1 never asks
+        // for a 2x sheet (Setup's games: public/scripts/launch/launchGamesHost.js)
         sheet(texture, scale) {
+            if (VG.maxSheetScale === 1) scale = 1;
             const info = this.sheetInfo(texture);
             if (!info) return Promise.resolve(null);
             const two = scale === 2 && info.length > 2;
@@ -136,6 +140,8 @@
                     img.onload = () => resolve(img);
                     img.onerror = () => resolve(null);
                     img.src = url;
+                    // the image's own scale (a capped 2x request returns the 1x sheet)
+                    img.__vgScale = two ? 2 : 1;
                 });
                 this.sheets.set(id, p);
             }
@@ -240,9 +246,19 @@
         fit() {
             const w = Math.max(1, this.host.clientWidth);
             const h = Math.max(1, this.host.clientHeight);
-            this.dpr = Math.max(1, root.devicePixelRatio || 1);
-            this.canvas.width = Math.round(w * this.dpr);
-            this.canvas.height = Math.round(h * this.dpr);
+            // VG.pixelRatio pins the backing store (Setup's games draw at 1x, stretched with its
+            // 1024 x 768 frame: public/scripts/launch/launchGamesHost.js)
+            this.dpr = VG.pixelRatio || Math.max(1, root.devicePixelRatio || 1);
+            // A new backing size clears the canvas (to black: it is opaque), so it is only set when
+            // it changes, and then drawn again at once: the ResizeObserver runs before the paint,
+            // and waiting for the next frame showed one black frame on every launch and resize
+            const bw = Math.round(w * this.dpr);
+            const bh = Math.round(h * this.dpr);
+            const resized = this.canvas.width !== bw || this.canvas.height !== bh;
+            if (resized) {
+                this.canvas.width = bw;
+                this.canvas.height = bh;
+            }
             this.canvas.style.width = w + 'px';
             this.canvas.style.height = h + 'px';
             this.cssW = w;
@@ -252,6 +268,7 @@
             this.ox = Math.round((w - this.nativeW * this.scale) / 2);
             this.oy = Math.round((h - this.nativeH * this.scale) / 2);
             if (this.options.onFit) this.options.onFit(this);
+            if (resized && this.draw && w > 1 && h > 1) this.render();
             this.invalidate();
         }
 
@@ -261,6 +278,7 @@
         }
 
         get sheetScale() {
+            if (VG.maxSheetScale === 1) return 1;
             return this.pixelScale >= 1.5 ? 2 : 1;
         }
 
@@ -378,10 +396,7 @@
             if (pack.sheetsPending.has(id)) return;
             pack.sheetsPending.add(id);
             pack.sheet(texture, scale).then((img) => {
-                if (img) {
-                    img.__vgScale = scale === 2 && pack.sheetInfo(texture).length > 2 ? 2 : 1;
-                    pack.sheetsReady.set(id, img);
-                }
+                if (img) pack.sheetsReady.set(id, img);
                 this.invalidate();
             });
             if (scale === 2) this.requestSheet(pack, texture, 1);
@@ -411,7 +426,6 @@
             [1, 2].forEach((scale) => {
                 jobs.push(owner.sheet(a.texture, scale).then((img) => {
                     if (!img) return;
-                    img.__vgScale = scale === 2 && owner.sheetInfo(a.texture).length > 2 ? 2 : 1;
                     owner.sheetsReady.set(VG.key(a.texture) + '@' + scale, img);
                 }));
             });
@@ -691,16 +705,35 @@
         const ur = style.ur;
         const ll = style.ll;
         const lr = style.lr;
+        // The nine pieces go together in a layer at the sheets' own scale (1 or 2) and the layer
+        // is drawn as one image: drawn straight onto a window scaled by a fraction, each piece's
+        // clipped edge lands mid-pixel and the seams between them show as hairlines.
+        const k = stage.sheetScale;
+        const layer = stage.tipLayer || (stage.tipLayer = document.createElement('canvas'));
+        layer.width = Math.max(1, w * k);
+        layer.height = Math.max(1, h * k);
+        const lctx = layer.getContext('2d');
+        lctx.setTransform(k, 0, 0, k, 0, 0);
+        lctx.imageSmoothingEnabled = true;
+        lctx.imageSmoothingQuality = 'medium';
+        const pieces = Object.create(stage);
+        pieces.ctx = lctx;
+        pieces.invalidate = () => stage.invalidate();
+        pieces.requestSheet = (pack, texture, scale) => stage.requestSheet(pack, texture, scale);
         // centre fill, then the edges and corners over it
-        stage.sprite(style.back, x + style.left.w, y + ul.h, { w: w - style.left.w - style.right.w, h: h - ul.h - ll.h, alpha: a });
-        stage.sprite(style.top, x + ul.w, y, { w: w - ul.w - ur.w, alpha: a });
-        stage.sprite(style.bottom, x + ll.w, y + h - style.bottom.h, { w: w - ll.w - lr.w, alpha: a });
-        stage.sprite(style.left, x, y + ul.h, { h: h - ul.h - ll.h, alpha: a });
-        stage.sprite(style.right, x + w - style.right.w, y + ur.h, { h: h - ur.h - lr.h, alpha: a });
-        stage.sprite(ul, x, y, { alpha: a });
-        stage.sprite(ur, x + w - ur.w, y, { alpha: a });
-        stage.sprite(ll, x, y + h - ll.h, { alpha: a });
-        stage.sprite(lr, x + w - lr.w, y + h - lr.h, { alpha: a });
+        pieces.sprite(style.back, style.left.w, ul.h, { w: w - style.left.w - style.right.w, h: h - ul.h - ll.h });
+        pieces.sprite(style.top, ul.w, 0, { w: w - ul.w - ur.w });
+        pieces.sprite(style.bottom, ll.w, h - style.bottom.h, { w: w - ll.w - lr.w });
+        pieces.sprite(style.left, 0, ul.h, { h: h - ul.h - ll.h });
+        pieces.sprite(style.right, w - style.right.w, ur.h, { h: h - ur.h - lr.h });
+        pieces.sprite(ul, 0, 0);
+        pieces.sprite(ur, w - ur.w, 0);
+        pieces.sprite(ll, 0, h - ll.h);
+        pieces.sprite(lr, w - lr.w, h - lr.h);
+        ctx.save();
+        ctx.globalAlpha = a;
+        ctx.drawImage(layer, x, y, w, h);
+        ctx.restore();
         const close = { x: x + w - 24, y: y + 8, w: 12, h: 12 };
         if (style.close) stage.sprite(style.close, close.x, close.y, { anim: tip.closeDown ? 2 : (tip.closeHot ? 1 : 0), alpha: a });
         const ctx2 = stage.ctx;
@@ -1133,8 +1166,20 @@
         const min = VG.minClient(win, c);
         modal.dataset.windowMinWidth = String(min.w + c.x);
         modal.dataset.windowMinHeight = String(min.h + c.y);
+        const oldW = modal.offsetWidth;
+        const oldH = modal.offsetHeight;
         modal.style.width = w + 'px';
         modal.style.height = h + 'px';
+        // The top left corner stays put, as Windows sizes a window. The desktop centres a window
+        // on its --modal-offset-x / -y while it opens and then pins the top left it restored at the
+        // saved size (modalUtils.js settleModalPixelAnchor), so without this the window grew around
+        // its centre during the open animation and jumped by half the size change at its end.
+        if (oldW && oldH && (oldW !== w || oldH !== h) && modal.dataset.windowContentAnchor !== 'top') {
+            const ox = parseFloat(modal.style.getPropertyValue('--modal-offset-x')) || 0;
+            const oy = parseFloat(modal.style.getPropertyValue('--modal-offset-y')) || 0;
+            modal.style.setProperty('--modal-offset-x', (ox + (w - oldW) / 2) + 'px');
+            modal.style.setProperty('--modal-offset-y', (oy + (h - oldH) / 2) + 'px');
+        }
         if (win.stage) win.stage.fit();
     };
 
@@ -1616,7 +1661,7 @@
                 img.alt = '';
                 img.src = item.img;
                 // the thumbnails' 2x copies (scripts/build-vista-games-hidpi.sh)
-                if (/thumb[^/]*\.png$/i.test(item.img)) img.srcset = item.img + ' 1x, ' + item.img.replace(/\.png$/i, '@2x.png') + ' 2x';
+                if (VG.maxSheetScale !== 1 && /thumb[^/]*\.png$/i.test(item.img)) img.srcset = item.img + ' 1x, ' + item.img.replace(/\.png$/i, '@2x.png') + ' 2x';
                 cell.appendChild(img);
             }
             cell.appendChild(el('span', '', item.text));
@@ -1645,7 +1690,7 @@
             img.src = opts.icon;
             // icons/<id>-48.png: the app icon set has the same icon at 96 px
             const id = /\/icons\/([a-z]+)-48\.png$/.exec(opts.icon);
-            if (id) img.srcset = opts.icon + ' 1x, /static_images/app_icons/96/vista-' + id[1] + '.webp 2x';
+            if (id && VG.maxSheetScale !== 1) img.srcset = opts.icon + ' 1x, /static_images/app_icons/96/vista-' + id[1] + '.webp 2x';
             row.appendChild(img);
         }
         const text = el('div');
@@ -1680,9 +1725,9 @@
         return (d.getMonth() + 1) + '/' + d.getDate() + '/' + d.getFullYear();
     };
 
-    // the account name for "Minesweeper Statistics - <name>": the desktop's domain logon is
-    // Administrator (workstationLock.js, the Start menu)
-    VG.userName = () => 'Administrator';
+    // the account name for "Minesweeper Statistics - <name>": the signed-in account's name
+    // (User Accounts' Change the account name; meletonAccounts.js)
+    VG.userName = () => (root.meletonAccountName ? root.meletonAccountName() : 'Administrator');
 
     VG.now = () => (root.performance && performance.now ? performance.now() : Date.now());
 })(typeof window !== 'undefined' ? window : globalThis);

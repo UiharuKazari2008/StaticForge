@@ -607,7 +607,7 @@
     box-sizing: border-box;
 }
 
-/* Match #aboutMelatoninModal logo hero (app.html) inside DreamWiki home */
+/* DreamWiki home logo hero (once shared with the old About MeletonFX dialog) */
 .tag-wiki-display-content .dreamwiki-home .about-logo-container {
     display: flex;
     flex-wrap: nowrap;

@@ -107,6 +107,12 @@ function writeZipSync(tmpZip, listing, progress) {
             }
             if (final) done = true;
         };
+        // body: the bytes each entry carries, hashed, so the installer can tell a damaged
+        // transfer from a manifest hash that is not a body hash (the workspace stylesheet is
+        // hashed by its source). One read ahead of the zip pass: pack.json leads the stream.
+        for (const file of listing.files) {
+            file.body = crypto.createHash('sha256').update(fs.readFileSync(file.diskPath)).digest('hex');
+        }
         const metaEntry = new ZipDeflate('pack.json', { level: ZIP_LEVEL });
         zip.add(metaEntry);
         metaEntry.push(strToU8(JSON.stringify({
@@ -115,6 +121,7 @@ function writeZipSync(tmpZip, listing, progress) {
                 entry: file.entry,
                 url: file.url,
                 hash: file.hash,
+                body: file.body,
                 size: file.size,
                 group: file.group
             }))

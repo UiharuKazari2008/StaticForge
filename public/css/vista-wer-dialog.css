@@ -1,0 +1,140 @@
+/* Program faults (programFaults.js): Vista's "<program> has stopped working" dialog, the Windows
+   Error Reporting dialog of a crashed program. Measured on the VM (dw20.exe, Aero, 96 dpi), client
+   coordinates: 360 px wide, white; the 12 pt #003399 heading's caps at y 15, the 9 pt body's first
+   line at 49 (15 px lines), both 10 px from the left; the marquee bar 340x15 at 10,76 (at 10,61 on
+   "<program> is restarting...", which has no body line); a 1 px
+   #dfdfdf line over the #f0f0f0 footer, 40 px tall, its 21 px buttons 9 px under the line, 11 px
+   from the right edge, text 15 px in from each side ("Close program" 108 px, "Cancel" 66 px).
+   The button faces, the light client and the default button's pulse come from vista-dialogs.css
+   (data-vista-dialog="task"). */
+
+/* Every rule hangs off this prefix so it outranks vista-dialogs.css's dialog rules. */
+
+body.desktop-mode .modal.program-fault-dialog[data-vista-dialog] {
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    height: auto;
+    min-height: 0;
+}
+
+body.desktop-mode .modal.program-fault-dialog[data-vista-dialog] > .modal-content.program-fault-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    box-sizing: border-box;
+    width: 360px;
+    max-width: calc(100vw - 32px);
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: #fff;
+    color: #000;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 15px;
+    text-align: left;
+    text-shadow: none;
+}
+
+body.desktop-mode .modal.program-fault-dialog[data-vista-dialog] .program-fault-body {
+    margin: 0;
+    padding: 10px 10px 15px;
+    background: #fff;
+}
+
+body.desktop-mode .modal.program-fault-dialog[data-vista-dialog]:is([data-fault-page="checking"], [data-fault-page="restarting"]) .program-fault-body {
+    padding-bottom: 10px;
+}
+
+body.desktop-mode .modal.program-fault-dialog[data-vista-dialog] .program-fault-heading {
+    margin: 0;
+    padding: 0;
+    color: #003399;
+    font: 12pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    font-weight: 400;
+    line-height: 21px;
+    letter-spacing: normal;
+    text-align: left;
+    text-shadow: none;
+    text-transform: none;
+}
+
+body.desktop-mode .modal.program-fault-dialog[data-vista-dialog] .program-fault-text {
+    margin: 15px 0 0;
+    padding: 0;
+    color: #000;
+    font: inherit;
+    line-height: 15px;
+    text-align: left;
+}
+
+/* 7.css's marquee bar, without its 1 px outer ring (the VM's bar is 15 px overall) */
+body.desktop-mode .modal.program-fault-dialog[data-vista-dialog] .program-fault-progress[role="progressbar"] {
+    box-sizing: border-box;
+    height: 15px;
+    margin: 15px 0 0;
+    box-shadow: inset 0 0 0 1px #f3f3f388;
+}
+
+/* "<program> is restarting...": no body line, the bar 30 px under the heading (y 61) */
+body.desktop-mode .modal.program-fault-dialog[data-vista-dialog][data-fault-page="restarting"] .program-fault-progress[role="progressbar"] {
+    margin-top: 30px;
+}
+
+body.desktop-mode .modal.program-fault-dialog[data-vista-dialog] .program-fault-progress[hidden] {
+    display: none;
+}
+
+body.desktop-mode .modal.program-fault-dialog[data-vista-dialog] > .modal-content .program-fault-footer.vista-dialog-footer {
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 7px;
+    box-sizing: border-box;
+    height: 41px;
+    margin: 0;
+    padding: 9px 11px 10px;
+    background: #f0f0f0;
+    border: 0;
+    border-top: 1px solid #dfdfdf;
+    box-shadow: none;
+}
+
+/* WER's buttons are 21 px with no minimum width (vista-dialogs.css: 23 px, 75 px wide) */
+body.desktop-mode:not(.windows-classic-theme) .modal.program-fault-dialog[data-vista-dialog] > .modal-content.program-fault-content .program-fault-footer.vista-dialog-footer button.program-fault-button.btn-secondary:not(.close-btn) {
+    box-sizing: border-box;
+    min-width: 0;
+    min-height: 0;
+    height: 21px;
+    padding: 0 14px;
+    line-height: 19px;
+    white-space: nowrap;
+}
+
+/* shown without the window manager (programFaults.js, when the shell fault broke openModal) */
+body .modal.program-fault-dialog.program-fault-standalone {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    right: auto;
+    bottom: auto;
+    margin: 0;
+    transform: translate(-50%, -50%);
+    z-index: 2147483000;
+}
+
+/* A fault before the desktop is up (boot, logon): the staged boot hides every window but the
+   boot dialogs (desktop-boot.css .boot-staged); this one shows over them, as WER's would.
+   :not(#confirmationDialog) only matches that rule's specificity. */
+body.desktop-mode.boot-staged:not(.boot-reveal-windows) .modal.program-fault-dialog.program-fault-standalone:not(#confirmationDialog) {
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+}
+
+
+/* Copy Report (not Vista's): on the footer's left, the dialog's own buttons stay on the right */
+body.desktop-mode .modal.program-fault-dialog[data-vista-dialog] > .modal-content .program-fault-footer.vista-dialog-footer .program-fault-copy {
+    margin-right: auto;
+}

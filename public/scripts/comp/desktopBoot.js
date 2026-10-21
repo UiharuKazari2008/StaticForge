@@ -301,6 +301,9 @@
      */
     function finish(options = {}) {
         if (!state.active) return Promise.resolve();
+        // The desktop reached its last step: this device has an installation. Setup on
+        // /launch offers Upgrade only when this bit (or the installer's record) is there.
+        try { localStorage.setItem('melatonInstalled', String(Date.now())); } catch (_) { /* storage off */ }
         return new Promise((resolve) => {
             state.finishResolvers.push(resolve);
             if (options.timeoutMs > 0) {

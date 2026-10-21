@@ -1,0 +1,455 @@
+/* Games while Setup runs (/launch): the games live in launch-games.html
+   (public/scripts/launch/launchGamesHost.js), a transparent 1024 x 768 frame laid over Setup's
+   inside its stretched VGA framebuffer, so they share its false resolution. This file styles both
+   sides: the frame on /launch, and the Games toolbar, the media and "Restart now" boxes and the
+   games' own windows inside it, drawn in Vista Basic like Setup's.
+   Measured on the VM with composition off (Minesweeper, 238 x 281): 1 px outer line (#343434 on
+   top, black elsewhere; #4c4c4c inactive), 1 px highlight (white top / left, cyan right / bottom),
+   6 px frame (#bad2ea, inactive #d7e4f2), caption 28 px from the outer top to the client with the
+   #98b4d0 -> #b9d1ea gradient, caption buttons 28 x 16 at 10 px from the top and right, 2 px
+   apart (public/static_images/window-controls/basic/: normal, hot, pressed, inactive).
+   JezzBall's windows keep their classic frame: its rules carry an id's specificity and win. */
+
+/* ---- /launch: the frame over Setup, and Setup's error box above it ---- */
+.melaton-vga > .mg-frame {
+    position: absolute;
+    left: 0;
+    top: 0;
+    z-index: 5;
+    width: 1024px;
+    height: 768px;
+    border: 0;
+    background: transparent;
+    color-scheme: light;
+}
+
+.melaton-vga > .mg-frame[hidden],
+#melatonBoot:not([data-screen="install"]) .melaton-vga > .mg-frame {
+    display: none;
+}
+
+/* Setup's message box keeps its centring (launch-install.css: absolute, translated); it only
+   stacks above the frame. As a flex item it sat beside the Setup window, off the screen. */
+#melatonInstall .mi-msgbox {
+    z-index: 6;
+}
+
+/* ---- launch-games.html: a transparent 1024 x 768 screen ---- */
+/* the desktop's variables the menu, dialog and 7.css rules read (app.css :root); menus above
+   every game window */
+body.melaton-games {
+    --animation-panel-fade-in: 0.125s ease-out;
+    --animation-panel-fade-out: 0.25s ease-in;
+    --border-radius-md: 3px;
+    --border-radius-sm: 2px;
+    --btn-hover-bg-danger: hsl(0 100% 45% / 50%);
+    --btn-hover-text-danger: #ffffff;
+    --glass-border-2: hsl(0 0% 100% / 15%);
+    --glass-inset-bg-1: hsl(0 0% 100% / 5%);
+    --glass-layer-2: hsl(0 0% 100% / 10%);
+    --glass-layer-3: hsl(0 0% 100% / 20%);
+    --glass-layer-5-opaque: hsl(0 0% 60% / 60%);
+    --glass-layer-dark-1: hsl(0 0% 27% / 13%);
+    --glass-layer-dark-2: hsl(0 0% 27% / 22%);
+    --glass-layer-dark-3: hsl(0 0% 27% / 33%);
+    --glass-layer-dark-4: hsl(0 0% 27% / 44%);
+    --glass-layer-dark-5: hsl(0 0% 27% / 66%);
+    --glass-shadow-3: 0 8px 24px hsl(0 0% 0% / 20%);
+    --primary-color: #ff4500;
+    --primary-glass-border: hsl(16 100% 46% / 58%);
+    --primary-glass-color: hsl(16 100% 38% / 72%);
+    --spacing-lg: 16px;
+    --spacing-md: 12px;
+    --spacing-sm: 8px;
+    --spacing-xs: 4px;
+    --text-accent: #ff4500;
+    --text-accent-tinted: #ffffff;
+    --text-muted: #888888;
+    --text-primary: #ffffff;
+    --text-secondary: #cccccc;
+    --transition-fast: 0.2s ease;
+    --transition-tray-menu: background-color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast), opacity var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+    --true-inset-top: calc(env(titlebar-area-height, 0px) + env(safe-area-inset-top, 0px));
+    --warning-color: #ffc107;
+    --z-context-menu: 2000000;
+    --z-context-overlay: 1999999;
+    --z-system: 2100000;
+}
+
+/* the desktop's reset (app.css *): the games' windows, dialogs and menus are laid out on it */
+:where(body.melaton-games, body.melaton-games *) {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* app.css .hidden: contextMenu.js parks its menus with it */
+body.melaton-games .hidden {
+    display: none !important;
+}
+
+/* the page itself */
+html:has(> body.melaton-games),
+body.melaton-games {
+    width: 1024px;
+    height: 768px;
+    margin: 0;
+    overflow: hidden;
+    background: transparent;
+    color-scheme: light;
+}
+
+/* the same false resolution as the VGA frame around it (launch-boot.css .melaton-vga):
+   a document of its own does not inherit the frame's rendering */
+body.melaton-games {
+    -webkit-font-smoothing: none;
+    text-rendering: optimizeSpeed;
+}
+
+body.melaton-games,
+body.melaton-games * {
+    image-rendering: crisp-edges;
+    image-rendering: pixelated;
+}
+
+/* ---- the frame (toolbar, message box and game windows) ---- */
+.mg-window,
+body.melaton-games > .modal.modal {
+    --mg-frame: #bad2ea;
+    --mg-cap-top: #98b4d0;
+    --mg-cap-bottom: #b9d1ea;
+    position: fixed;
+    box-sizing: border-box;
+    border: 1px solid #000;
+    border-top-color: #343434;
+    border-radius: 6px 6px 0 0;
+    background: var(--mg-frame);
+    box-shadow: inset 1px 1px #fff, inset -1px -1px #3fcef2;
+    color: #000;
+    font: 12px 'Segoe UI', Tahoma, 'Noto Sans', sans-serif;
+    cursor: var(--c-default, default);
+}
+
+body.melaton-games > .modal.modal:not(.active-window),
+.mg-notice {
+    --mg-frame: #d7e4f2;
+    --mg-cap-top: #bfcddb;
+    --mg-cap-bottom: #d7e4f2;
+    border-color: #4c4c4c;
+    box-shadow: inset 1px 1px #e9ecf3, inset -1px -1px #e9ecf3;
+}
+
+.mg-window[hidden] {
+    display: none;
+}
+
+.mg-title,
+body.melaton-games > .modal.modal > .modal-window-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 27px;
+    margin: 0 1px;
+    padding: 1px 0 0 7px;
+    box-sizing: border-box;
+    border-radius: 5px 5px 0 0;
+    background: linear-gradient(var(--mg-cap-top), var(--mg-cap-bottom));
+    color: #000;
+    font: 12px 'Segoe UI', Tahoma, 'Noto Sans', sans-serif;
+    white-space: nowrap;
+    user-select: none;
+}
+
+body.melaton-games > .modal.modal:not(.active-window) > .modal-window-title {
+    color: #434e54;
+}
+
+/* ---- game windows ---- */
+body.melaton-games > .modal.modal {
+    display: flex;
+    flex-direction: column;
+    padding: 0 7px 7px;
+    min-width: 0;
+    min-height: 0;
+    overflow: visible;
+    transform: none;
+    animation: none;
+    backdrop-filter: none;
+}
+
+body.melaton-games > .modal.modal.hidden,
+body.melaton-games > .modal.modal.minimised {
+    display: none;
+}
+
+body.melaton-games > .modal.modal > .modal-window-title {
+    flex: none;
+    margin: 0 -6px;
+    padding-left: 8px;
+}
+
+body.melaton-games > .modal.modal > .modal-window-title .modal-window-title-main {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+body.melaton-games > .modal.modal > .modal-window-title .icon-fa,
+body.melaton-games > .modal.modal > .modal-focus-overlay {
+    display: none;
+}
+
+body.melaton-games > .modal.modal > .modal-window-title .icon-image {
+    width: 16px;
+    height: 16px;
+}
+
+body.melaton-games > .modal.modal > .modal-window-controls {
+    position: absolute;
+    top: 9px;
+    right: 9px;
+    display: flex;
+    gap: 2px;
+}
+
+body.melaton-games > .modal.modal > .modal-window-controls button {
+    width: 28px;
+    height: 16px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: url('/static_images/window-controls/basic/close.png') 0 0 / 28px 64px no-repeat;
+    color: transparent;
+    font-size: 0;
+}
+
+body.melaton-games > .modal.modal > .modal-window-controls button > * {
+    display: none;
+}
+
+body.melaton-games > .modal.modal > .modal-window-controls .minimize-btn {
+    background-image: url('/static_images/window-controls/basic/min.png');
+}
+
+body.melaton-games > .modal.modal > .modal-window-controls :is(.maximize-btn, .modal-work-area-maximize) {
+    background-image: url('/static_images/window-controls/basic/max.png');
+}
+
+body.melaton-games > .modal.modal > .modal-window-controls button:hover {
+    background-position: 0 -16px;
+}
+
+body.melaton-games > .modal.modal > .modal-window-controls button:active {
+    background-position: 0 -32px;
+}
+
+body.melaton-games > .modal.modal:not(.active-window) > .modal-window-controls button:not(:hover) {
+    background-position: 0 -48px;
+}
+
+body.melaton-games > .modal.modal > .modal-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+/* ---- the Games toolbar, bottom right ---- */
+.mg-toolbar {
+    right: 16px;
+    bottom: 16px;
+    z-index: 2500;
+    padding: 0 7px 7px;
+}
+
+.mg-toolbar .mg-title {
+    margin: 0 -6px;
+}
+
+.mg-title-icon {
+    width: 16px;
+    height: 16px;
+}
+
+.mg-body {
+    padding: 8px 10px 10px;
+    background: #f0f0f0;
+    border: 1px solid #8e9fb5;
+}
+
+.mg-hint {
+    margin: 0 0 8px;
+    color: #003399;
+}
+
+.mg-games {
+    display: flex;
+    gap: 2px;
+}
+
+.mg-game {
+    position: relative;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: transparent;
+    cursor: var(--c-default, default);
+}
+
+.mg-game img {
+    display: block;
+    width: 32px;
+    height: 32px;
+    margin: auto;
+}
+
+.mg-game:hover {
+    border-color: #b8d6fb;
+    background: linear-gradient(#fafbfd, #ebf3fd);
+}
+
+.mg-game.running {
+    border-color: #a8bed6;
+    background: linear-gradient(#f2f6fb, #dde7f2);
+}
+
+.mg-game.active,
+.mg-game:active {
+    border-color: #7da2ce;
+    background: linear-gradient(#dcebfc, #c1dbfc);
+}
+
+.mg-game.loading {
+    cursor: var(--c-busy, progress);
+}
+
+.mg-game.loading img {
+    opacity: 0.55;
+}
+
+/* ---- Setup finished while a game was open ---- */
+.mg-notice {
+    left: 50%;
+    top: 38%;
+    width: 380px;
+    padding: 0 7px 7px;
+    transform: translate(-50%, -50%);
+}
+
+.mg-notice .mg-title {
+    margin: 0 -6px;
+}
+
+.mg-notice-body {
+    display: flex;
+    gap: 12px;
+    padding: 16px 14px 18px;
+    background: #fff;
+    border: 1px solid #8e9fb5;
+    border-bottom: 0;
+}
+
+.mg-notice-icon {
+    flex: none;
+    width: 32px;
+    height: 32px;
+    background: url('/static_images/app_icons/32/vista-info.webp') center / 32px no-repeat;
+}
+
+.mg-notice-text p {
+    margin: 0 0 6px;
+    line-height: 1.35;
+}
+
+.mg-notice-heading {
+    color: #003399;
+    font-size: 15px;
+}
+
+.mg-notice-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding: 10px 12px;
+    background: #f0f0f0;
+    border: 1px solid #8e9fb5;
+    border-top: 1px solid #dfdfdf;
+}
+
+.mg-button {
+    min-width: 86px;
+    height: 23px;
+    padding: 0 12px;
+    border: 1px solid #707070;
+    border-radius: 3px;
+    background: linear-gradient(#f2f2f2, #ebebeb 50%, #dddddd 51%, #cfcfcf);
+    color: #000;
+    font: 12px 'Segoe UI', Tahoma, 'Noto Sans', sans-serif;
+}
+
+.mg-button:hover {
+    border-color: #3c7fb1;
+    background: linear-gradient(#eaf6fd, #d9f0fc 50%, #bee6fd 51%, #a7d9f5);
+}
+
+/* ---- a game coming off the installation media ---- */
+.mg-media {
+    left: 50%;
+    top: 40%;
+    width: 340px;
+    padding: 0 7px 7px;
+    transform: translate(-50%, -50%);
+}
+
+.mg-media .mg-title {
+    margin: 0 -6px;
+}
+
+.mg-media-body {
+    display: flex;
+    gap: 12px;
+    padding: 14px 14px 12px;
+    background: #f0f0f0;
+    border: 1px solid #8e9fb5;
+}
+
+.mg-media-icon {
+    flex: none;
+    width: 32px;
+    height: 32px;
+}
+
+.mg-media-text {
+    flex: 1 1 auto;
+}
+
+.mg-media-text p {
+    margin: 0 0 8px;
+}
+
+.mg-media-note {
+    color: #444;
+}
+
+/* Vista's progress bar (Setup's, launch-install.css .mi-bar) */
+.mg-progress {
+    height: 15px;
+    margin: 0 0 8px;
+    border: 1px solid #a5a5a5;
+    border-radius: 2px;
+    background: linear-gradient(#f3f3f3, #e2e2e2 50%, #d7d7d7 51%, #e8e8e8);
+    overflow: hidden;
+}
+
+.mg-progress > div {
+    width: 0;
+    height: 100%;
+    background: linear-gradient(#a3f19c, #4bd341 45%, #29b81f 50%, #59d84f);
+    transition: width 120ms linear;
+}

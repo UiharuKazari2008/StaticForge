@@ -31,6 +31,25 @@ glyph restore 1 573 12 12
 glyph close 1 462 11 10
 echo "wrote $OUT/vista-{minimize,maximize,restore,close}.png"
 
+# Menu (an app's menu button in the cluster, Font Awesome fa-bars): Vista has no such glyph, so
+# it is drawn in the glyphs' own language, the Maximize box (12x10) split into three bars: the
+# #535666 edge with 0x96 corners, the close glyph's row ramp (ff fd fa e9 e9 e2 dc d7) as fill,
+# and the disabled state's flat edge / corner / fill alphas from the minimize sprite.
+awk 'BEGIN {
+    split("255 253 250 233 233 226 220 215", ramp, " ");
+    print "# ImageMagick pixel enumeration: 12,20,255,srgba";
+    for (d = 0; d < 2; d++) for (y = 0; y < 10; y++) for (x = 0; x < 12; x++) {
+        edge = (y % 3 == 0) || x == 0 || x == 11;
+        corner = (y == 0 || y == 9) && (x == 0 || x == 11);
+        if (corner) c = d ? "81,84,101,75" : "83,86,101,150";
+        else if (edge) c = d ? "83,85,101,128" : "83,86,102,255";
+        else if (d) c = "241,241,241,219";
+        else { v = ramp[y]; c = v "," v "," v ",255" }
+        printf "%d,%d: (%s)\n", x, y + 10 * d, c;
+    }
+}' | convert txt:- -strip "PNG32:$OUT/vista-menu.png"
+echo "wrote $OUT/vista-menu.png"
+
 # Button faces, 18 px tall at 96 DPI, in 20 px cells (1 px duplicated margin all round), four
 # states each: normal, hot, pressed, disabled. The inactive window's sets draw only an outline
 # at rest. left = the cluster's first button (Minimize), mid = any button between (Maximize,

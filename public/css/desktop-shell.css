@@ -797,8 +797,8 @@ body.desktop-mode.use-app-image-icons .modal-window-title-main:has(.icon-image) 
     }
 
     to {
-        min-width: 180px;
-        max-width: 180px;
+        min-width: var(--taskbar-button-width, 180px);
+        max-width: var(--taskbar-button-width, 180px);
         border-left-width: 1px;
         border-right-width: 1px;
     }
@@ -806,8 +806,8 @@ body.desktop-mode.use-app-image-icons .modal-window-title-main:has(.icon-image) 
 
 @keyframes taskbar-item-shrink {
     from {
-        min-width: 180px;
-        max-width: 180px;
+        min-width: var(--taskbar-button-width, 180px);
+        max-width: var(--taskbar-button-width, 180px);
         border-left-width: 1px;
         border-right-width: 1px;
     }
@@ -1707,6 +1707,52 @@ html[data-glass="basic"] #startMenu.start-menu {
     font-size: 15px;
 }
 
+/* Customize Start Menu (taskbarSettings.js): "Use large icons" off makes the pinned and most used
+   rows small rows (Vista: 16 px icons, one line; x 1.25 here); the All Programs size takes its
+   rows to medium (24 px x 1.25) or the large rows' size */
+#startMenu.start-menu-small-icons :is(.start-menu-row-pinned, .start-menu-row-frequent) {
+    height: 24px;
+}
+
+#startMenu.start-menu-small-icons :is(.start-menu-row-pinned, .start-menu-row-frequent) .start-menu-row-icon {
+    width: 20px;
+    height: 20px;
+}
+
+#startMenu.start-menu-small-icons :is(.start-menu-row-pinned, .start-menu-row-frequent) .start-menu-row-icon i {
+    font-size: 15px;
+}
+
+#startMenu.start-menu-small-icons .start-menu-row-pinned .start-menu-row-sub {
+    display: none;
+}
+
+#startMenu[data-programs-size="medium"] .start-menu-row-program {
+    height: 34px;
+}
+
+#startMenu[data-programs-size="medium"] .start-menu-row-program .start-menu-row-icon {
+    width: 30px;
+    height: 30px;
+}
+
+#startMenu[data-programs-size="medium"] .start-menu-row-program .start-menu-row-icon i {
+    font-size: 22px;
+}
+
+#startMenu[data-programs-size="large"] .start-menu-row-program {
+    height: 48px;
+}
+
+#startMenu[data-programs-size="large"] .start-menu-row-program .start-menu-row-icon {
+    width: 40px;
+    height: 40px;
+}
+
+#startMenu[data-programs-size="large"] .start-menu-row-program .start-menu-row-icon i {
+    font-size: 28px;
+}
+
 .start-menu-row-icon .workspace-color-indicator {
     width: 14px;
     height: 14px;
@@ -1973,6 +2019,16 @@ html[data-glass="basic"] #startMenu.start-menu {
 
 .start-menu-power-button.is-lock {
     background-image: url('/static_images/vista-start/lock.png');
+}
+
+/* the buttons' other actions (Customize Start Menu): Log off draws Vista's disconnect cell, and on
+   the lock button the lock cell with that X */
+.start-menu-power-button.is-disconnect {
+    background-image: url('/static_images/vista-start/disconnect.png');
+}
+
+.start-menu-power-button.is-lock-logoff {
+    background-image: url('/static_images/vista-start/lock-logoff.png');
 }
 
 .start-menu-power-button.is-arrow {

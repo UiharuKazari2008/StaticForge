@@ -1,8 +1,22 @@
-/* Melaton installer on /launch (melatonBoot.js install): Windows Setup in Vista Basic on the
-   aurora backdrop. Measured with the boot windows (desktop-boot.css): 1 px frame, Basic caption
-   gradient, black Segoe UI caption, the 28 x 15 close button. Checklist and Vista's two-step
-   strip (1 Collecting information, 2 Installing MeletonFX). data-phase on #melatonInstall:
-   arrive (aurora only) | installing | error | linger (the window has closed). */
+/* Melaton installer on /launch (melatonBoot.js, Yozora #419, #611): Windows Setup on the aurora,
+   page by page as Vista's Install Windows, measured on the Vista VM (800x600 captures; the
+   window keeps its pixel size at every resolution, so the same numbers hold in the 1024x768 frame):
+
+   media pages (language, Install now)   a Vista Basic window 616 x 454 (22 px caption, 1 px
+                                         frame) whose client area shows the aurora bitmap; the
+                                         logo, three dropdowns 295 x 21 at 36 px pitch, the hint
+                                         line, the copyright, Next 73 x 23 in the corner
+   paper pages (key, license, type, ...) the wizard frame: 632 x 478 outside, a translucent 8 px
+                                         frame, a 41 px caption with the back button, a #F8F8F8
+                                         client 622 x 428 whose last 46 px are the #F0F0F0 footer
+                                         (1 px #DFDFDF rule); the heading 16 px #003399 at (42, 21)
+   the strip                             66 px across the screen bottom: 1 px #808080, a 9 px bar
+                                         (#7A93B1 trough, #99CC33 fill, a white tick where phase 1
+                                         ends at 26 %), then "1 Collecting information" and
+                                         "2 Installing MeletonFX" in white (34 px Segoe UI Light
+                                         digits, 12 px labels); it appears from the key page on
+   data-phase on #melatonInstall: arrive (aurora only) | setup | installing | error | linger (the
+   window has closed) | held. data-page picks the page, data-strip the strip (none | collect | install). */
 
 #melatonInstall {
     display: none;
@@ -15,14 +29,11 @@
 #melatonBoot[data-screen="install"] #melatonInstall {
     position: absolute;
     inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 16px;
-    box-sizing: border-box;
+    display: block;
     background: #06202c url('/static_images/wallpapers/aurora-plain.webp') center / cover no-repeat;
     font-family: 'Segoe UI', Tahoma, 'Noto Sans', sans-serif;
     font-size: 12px;
+    line-height: 15px;
     color: #000;
     cursor: var(--c-default);
 }
@@ -30,62 +41,242 @@
 /* The window closes; the aurora stays for the last few seconds */
 #melatonInstall[data-phase="linger"] .mi-window,
 #melatonInstall[data-phase="linger"] .mi-msgbox,
+#melatonInstall[data-phase="linger"] .mi-strip,
 #melatonInstall[data-phase="arrive"] .mi-window,
-#melatonInstall[data-phase="arrive"] .mi-msgbox {
+#melatonInstall[data-phase="arrive"] .mi-msgbox,
+#melatonInstall[data-phase="arrive"] .mi-strip {
     display: none;
 }
 
-/* ---- Vista Basic window ---- */
+#melatonInstall button {
+    font: inherit;
+    color: inherit;
+    cursor: var(--c-default);
+}
 
-.mi-window,
-.mi-msgbox {
-    background: #f0f0f0;
-    border: 1px solid #343434;
-    border-color: #343434 #000 #000;
-    border-radius: 5px 5px 0 0;
-    box-shadow: inset 1px 1px #fff, inset -1px 0 #3fcef2, inset 0 -1px #28cfe4;
+#melatonInstall u {
+    text-decoration: underline;
+}
+
+/* ---- the window ---- */
+
+.mi-window {
+    position: absolute;
+    box-sizing: border-box;
     overflow: hidden;
 }
 
+/* media pages: the Windows Classic frame Setup has before any theme runs (measured: a 3 px 3-D
+   edge #D4D0C8 / white / #D4D0C8 and #D4D0C8 / #808080 / #404040, an 18 px caption that runs
+   from #0A246A on the left to #A6CAF0 on the right with white bold text, the aurora inside) */
 .mi-window {
-    width: min(620px, 100%);
-    display: flex;
-    flex-direction: column;
+    left: 204px;
+    top: 117px;
+    width: 616px;
+    height: 454px;
+    background: #06202c url('/static_images/wallpapers/aurora-plain.webp') center / 1024px 768px no-repeat;
+    border: 3px solid #d4d0c8;
+    border-radius: 0;
+    box-shadow: inset 1px 1px #fff, inset -1px -1px #404040, inset -2px -2px #808080;
 }
 
 .mi-title {
+    position: absolute;
+    left: 1px;
+    right: 1px;
+    top: 1px;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    height: 22px;
-    padding: 0 4px 0 6px;
-    background: linear-gradient(#99b4d1, #b9d1ea);
-    color: #000;
-    font: 12px 'Segoe UI', Tahoma, 'Noto Sans', sans-serif;
-    font-weight: 400;
+    height: 18px;
+    padding: 0 2px 0 3px;
+    background: linear-gradient(90deg, #0a246a, #a6caf0);
+    color: #fff;
+    font: 700 12px 'Segoe UI', Tahoma, 'Noto Sans', sans-serif;
     white-space: nowrap;
 }
 
+/* the classic caption buttons (minimize, maximize, close), the VM's own pixels: 50 x 14 */
 .mi-title-close {
-    width: 28px;
-    height: 15px;
-    flex: 0 0 28px;
-    background: url('/static_images/vista-logon/basic-close.png') 0 0 / 28px 15px no-repeat;
+    width: 52px;
+    height: 16px;
+    flex: 0 0 52px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: url('/static_images/vista-setup/classic-caption-buttons.png') 0 0 / 52px 16px no-repeat;
     color: transparent;
     font-size: 0;
-    line-height: 0;
     box-shadow: none;
 }
 
-.mi-body {
-    padding: 18px 22px 16px;
-    min-height: 230px;
-    box-sizing: border-box;
+.mi-title-icon {
+    width: 16px;
+    height: 16px;
+    margin-right: 5px;
+    background: url('/static_images/logo_icon.png') center / 16px 16px no-repeat;
+}
+
+#miTitle {
+    flex: 1 1 auto;
+}
+
+.mi-page {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 20px;
+    bottom: 0;
+}
+
+.mi-page[hidden] {
+    display: none;
+}
+
+/* paper pages: the wizard frame */
+#melatonInstall[data-page="key"] .mi-window,
+#melatonInstall[data-page="license"] .mi-window,
+#melatonInstall[data-page="type"] .mi-window,
+#melatonInstall[data-page="where"] .mi-window,
+#melatonInstall[data-page="restart"] .mi-window,
+#melatonInstall[data-page="install"] .mi-window {
+    /* Aero Basic without the blur: white at 40 % over whatever is behind (measured against the
+       aurora on both sides), a 1 px dark outline, a 1 px light line inside the top and left edges */
+    left: 196px;
+    top: 112px;
+    width: 632px;
+    height: 478px;
+    border: 1px solid #263730;
+    border-radius: 7px 7px 0 0;
+    background: rgba(255, 255, 255, 0.4);
+    box-shadow: inset 1px 1px rgba(255, 255, 255, 0.85), inset -1px -1px rgba(255, 255, 255, 0.45);
+}
+
+#melatonInstall[data-page="key"] .mi-window > .mi-title,
+#melatonInstall[data-page="license"] .mi-window > .mi-title,
+#melatonInstall[data-page="type"] .mi-window > .mi-title,
+#melatonInstall[data-page="where"] .mi-window > .mi-title,
+#melatonInstall[data-page="restart"] .mi-window > .mi-title,
+#melatonInstall[data-page="install"] .mi-window > .mi-title {
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 41px;
+    padding: 0 8px 0 48px;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    font-weight: 400;
+    color: #000260;
+}
+
+#melatonInstall[data-page="key"] .mi-window > .mi-title #miTitle,
+#melatonInstall[data-page="license"] .mi-window > .mi-title #miTitle,
+#melatonInstall[data-page="type"] .mi-window > .mi-title #miTitle,
+#melatonInstall[data-page="where"] .mi-window > .mi-title #miTitle,
+#melatonInstall[data-page="restart"] .mi-window > .mi-title #miTitle,
+#melatonInstall[data-page="install"] .mi-window > .mi-title #miTitle {
+    margin-right: 0;
+}
+
+#melatonInstall[data-page="key"] .mi-window > .mi-title::before,
+#melatonInstall[data-page="license"] .mi-window > .mi-title::before,
+#melatonInstall[data-page="type"] .mi-window > .mi-title::before,
+#melatonInstall[data-page="where"] .mi-window > .mi-title::before,
+#melatonInstall[data-page="restart"] .mi-window > .mi-title::before,
+#melatonInstall[data-page="install"] .mi-window > .mi-title::before {
+    /* the wizard's back button: the Vista navigation button already cut for Defender (26 x 25) */
+    content: '';
+    position: absolute;
+    left: 8px;
+    top: 7px;
+    width: 26px;
+    height: 25px;
+    background: url('/static_images/vista-defender/back.png') 0 0 / 26px 25px no-repeat;
+}
+
+#melatonInstall[data-page="key"] .mi-window > .mi-title::after,
+#melatonInstall[data-page="license"] .mi-window > .mi-title::after,
+#melatonInstall[data-page="type"] .mi-window > .mi-title::after,
+#melatonInstall[data-page="where"] .mi-window > .mi-title::after,
+#melatonInstall[data-page="restart"] .mi-window > .mi-title::after,
+#melatonInstall[data-page="install"] .mi-window > .mi-title::after {
+    content: none;
+}
+
+#melatonInstall[data-page="key"] .mi-window > .mi-title > .mi-title-close,
+#melatonInstall[data-page="license"] .mi-window > .mi-title > .mi-title-close,
+#melatonInstall[data-page="type"] .mi-window > .mi-title > .mi-title-close,
+#melatonInstall[data-page="where"] .mi-window > .mi-title > .mi-title-close,
+#melatonInstall[data-page="restart"] .mi-window > .mi-title > .mi-title-close,
+#melatonInstall[data-page="install"] .mi-window > .mi-title > .mi-title-close {
+    /* the wizard's close button, the VM's own pixels (42 x 19), on the frame's top edge */
+    position: absolute;
+    right: 5px;
+    top: -1px;
+    width: 42px;
+    height: 19px;
+    flex-basis: 42px;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    background: url('/static_images/vista-setup/wizard-close.png') 0 0 / 42px 19px no-repeat;
+    box-shadow: none;
+    font-size: 0;
+    color: transparent;
+}
+
+#melatonInstall[data-page="key"] .mi-window > .mi-title > .mi-title-close::before,
+#melatonInstall[data-page="license"] .mi-window > .mi-title > .mi-title-close::before,
+#melatonInstall[data-page="type"] .mi-window > .mi-title > .mi-title-close::before,
+#melatonInstall[data-page="where"] .mi-window > .mi-title > .mi-title-close::before,
+#melatonInstall[data-page="restart"] .mi-window > .mi-title > .mi-title-close::before,
+#melatonInstall[data-page="install"] .mi-window > .mi-title > .mi-title-close::before {
+    content: none;
+}
+
+.mi-page--paper {
+    top: 41px;
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    background: #f8f8f8;
+    border-top: 1px solid #334;
+}
+
+.mi-paper {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 46px;
+    padding: 20px 42px 0;
+    overflow: hidden;
+}
+
+.mi-footer {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 45px;
+    border-top: 1px solid #dfdfdf;
+    background: #f0f0f0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    padding: 0 11px;
+}
+
+.mi-footer-link {
+    margin-right: auto;
+    padding-left: 13px;
 }
 
 .mi-heading {
-    margin: 0 0 10px;
-    font-size: 15px;
+    margin: 0 0 22px;
+    font-size: 16px;
+    line-height: 21px;
     font-weight: 400;
     color: #003399;
 }
@@ -93,8 +284,640 @@
 .mi-lead {
     margin: 0 0 16px;
     max-width: 470px;
-    line-height: 1.35;
+    line-height: 15px;
 }
+
+.mi-lead--wide {
+    max-width: 530px;
+}
+
+/* ---- Vista Basic buttons and links ---- */
+
+.mi-button {
+    min-width: 73px;
+    height: 23px;
+    padding: 0 12px;
+    border: 1px solid #707070;
+    border-radius: 3px;
+    background: linear-gradient(#f2f2f2, #ebebeb 50%, #dddddd 50%, #cfcfcf);
+    box-shadow: inset 0 0 0 1px #fcfcfc;
+    color: #000;
+    line-height: 20px;
+}
+
+.mi-button:hover {
+    border-color: #3c7fb1;
+    background: linear-gradient(#eaf6fd, #d9f0fc 50%, #bee6fd 50%, #a7d9f5);
+}
+
+.mi-button:active {
+    border-color: #2c628b;
+    background: linear-gradient(#e5f4fc, #c4e5f6 50%, #98d1ef 50%, #68b3db);
+    box-shadow: inset 1px 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.mi-button:disabled {
+    border-color: #adb2b5;
+    background: #f4f4f4;
+    box-shadow: none;
+    color: #838383;
+}
+
+.mi-button--default,
+.mi-button:focus-visible {
+    border-color: #3c7fb1;
+    box-shadow: inset 0 0 0 1px #fcfcfc, inset 0 0 3px 1px #9fd3f4;
+}
+
+.mi-button--corner {
+    position: absolute;
+    right: 11px;
+    bottom: 15px;
+}
+
+.mi-link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #0066cc;
+    text-align: left;
+}
+
+.mi-link:hover {
+    color: #3399ff;
+}
+
+.mi-link:disabled {
+    color: #6d6d6d;
+}
+
+.mi-link--help {
+    display: block;
+    margin-top: 18px;
+}
+
+.mi-check {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin: 14px 0 0;
+}
+
+.mi-check input {
+    width: 13px;
+    height: 13px;
+    margin: 0;
+}
+
+/* ---- media pages: the logo, the fields, Install now ---- */
+
+.mi-logo {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+.mi-logo-enso {
+    width: 84px;
+    height: 84px;
+    background: url('/static_images/logo_icon.png') center / contain no-repeat;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+}
+
+.mi-logo-word {
+    font-size: 27px;
+    line-height: 30px;
+    font-weight: 300;
+    letter-spacing: -0.3px;
+}
+
+.mi-logo-word b {
+    font-weight: 300;
+}
+
+.mi-fields {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 203px;
+    display: grid;
+    grid-template-columns: 1fr 295px;
+    row-gap: 15px;
+    column-gap: 3px;
+    align-items: center;
+    padding-right: 90px;
+    color: #000;
+}
+
+.mi-field {
+    display: contents;
+}
+
+.mi-field-label {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.mi-dropdown {
+    position: relative;
+    display: block;
+    box-sizing: border-box;
+    width: 295px;
+    height: 21px;
+    padding: 2px 20px 0 3px;
+    border: 1px solid #000;
+    background: #fff;
+    line-height: 16px;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.mi-dropdown i {
+    position: absolute;
+    right: 1px;
+    top: 1px;
+    width: 17px;
+    height: 17px;
+    border: 1px solid #fff;
+    border-right-color: #404040;
+    border-bottom-color: #404040;
+    box-shadow: inset -1px -1px #808080;
+    background: #d4d0c8;
+}
+
+.mi-dropdown i::after {
+    content: '';
+    position: absolute;
+    left: 5px;
+    top: 7px;
+    border: 3px solid transparent;
+    border-top: 4px solid #000;
+}
+
+.mi-fields .mi-field:first-child .mi-dropdown {
+    outline: 1px dotted #000;
+    outline-offset: -2px;
+    background: #39f;
+    background: #3399ff;
+    color: #fff;
+}
+
+.mi-media-hint {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 347px;
+    margin: 0;
+    text-align: center;
+    color: #fff;
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
+}
+
+.mi-copyright {
+    position: absolute;
+    left: 27px;
+    bottom: 29px;
+    margin: 0;
+    font-size: 10.5px;
+    color: #fff;
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
+}
+
+.mi-page[data-page="start"] .mi-copyright {
+    bottom: 33px;
+}
+
+#melatonInstall .mi-install-now {
+    position: absolute;
+    left: 226px;
+    top: 186px;
+    display: flex;
+    align-items: center;
+    width: 162px;
+    height: 35px;
+    padding: 0 0 0 36px;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    background: rgba(255, 255, 255, 0.07);
+    color: #fff;
+    font-size: 16px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.mi-install-now:hover {
+    background: rgba(255, 255, 255, 0.18);
+}
+
+.mi-go {
+    margin-left: 9px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 50% 30%, #9ad0ff 0, #2b7de0 45%, #0b3f99 100%);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5), 0 1px 1px rgba(0, 0, 0, 0.5);
+    position: relative;
+}
+
+.mi-go::after {
+    content: '';
+    position: absolute;
+    left: 6px;
+    top: 7px;
+    width: 9px;
+    height: 9px;
+    border-right: 3px solid #fff;
+    border-top: 3px solid #fff;
+    transform: rotate(45deg);
+    box-sizing: border-box;
+}
+
+.mi-media-links {
+    position: absolute;
+    left: 27px;
+    top: 326px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.mi-media-links .mi-link {
+    color: #fff;
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
+}
+
+.mi-media-links .mi-link:hover {
+    color: #d9ecff;
+}
+
+/* ---- product key ---- */
+
+.mi-key-sticker-label {
+    margin: 0 0 5px;
+}
+
+.mi-key-sticker {
+    position: relative;
+    width: 214px;
+    height: 60px;
+    margin: 0 0 16px;
+    border-radius: 3px;
+    background: linear-gradient(#f8e35a, #f2c531);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+    color: #222;
+    font-size: 9px;
+}
+
+.mi-key-sticker-brand {
+    position: absolute;
+    right: 8px;
+    top: 5px;
+    font-weight: 700;
+}
+
+.mi-key-sticker-key {
+    position: absolute;
+    left: 10px;
+    top: 19px;
+    font: 700 8px 'Lucida Console', Consolas, monospace;
+    white-space: nowrap;
+}
+
+.mi-key-sticker-bars {
+    position: absolute;
+    left: 10px;
+    top: 34px;
+    width: 150px;
+    height: 16px;
+    background: repeating-linear-gradient(90deg, #222 0 1px, transparent 1px 3px, #222 3px 5px, transparent 5px 6px, #222 6px 7px, transparent 7px 10px);
+}
+
+.mi-key-label {
+    display: block;
+    margin: 0 0 4px;
+}
+
+.mi-key-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 12px;
+}
+
+.mi-key-input {
+    width: 240px;
+    height: 21px;
+    padding: 0 3px;
+    box-sizing: border-box;
+    border: 1px solid #abadb3;
+    background: #fff;
+    font: 12px 'Segoe UI', Tahoma, sans-serif;
+    color: #000;
+}
+
+.mi-key-input:disabled {
+    background: #f4f4f4;
+    color: #6d6d6d;
+    letter-spacing: 1px;
+}
+
+.mi-key-kbd {
+    width: 28px;
+    height: 18px;
+    border: 1px solid #4477aa;
+    border-radius: 2px;
+    background: linear-gradient(#dff0ff, #8fc0ea);
+    box-shadow: inset 0 0 0 1px #fff;
+    position: relative;
+}
+
+.mi-key-kbd::before {
+    content: '';
+    position: absolute;
+    left: 3px;
+    right: 3px;
+    top: 4px;
+    bottom: 4px;
+    background: repeating-linear-gradient(90deg, #2b5a8a 0 2px, transparent 2px 4px);
+    opacity: 0.6;
+}
+
+.mi-key-checking,
+.mi-key-error {
+    margin: 0 0 6px;
+    color: #333;
+}
+
+.mi-key-error {
+    color: #c00000;
+}
+
+/* ---- license (the README) ---- */
+
+.mi-license-text {
+    box-sizing: border-box;
+    width: 542px;
+    height: 268px;
+    margin: 0;
+    padding: 8px 8px;
+    border: 1px solid #abadb3;
+    background: #fff;
+    overflow: auto;
+    white-space: pre-wrap;
+    font: 12px/15px 'Segoe UI', Tahoma, 'Noto Sans', sans-serif;
+    color: #000;
+}
+
+.mi-license-accept {
+    margin-top: 12px;
+}
+
+/* ---- Which type of installation do you want? ---- */
+
+.mi-options {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.mi-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    width: 526px;
+    box-sizing: border-box;
+    padding: 4px 8px 6px 0;
+    border: 1px solid transparent;
+    background: none;
+    text-align: left;
+}
+
+.mi-option:hover,
+.mi-option:focus-visible {
+    border-color: #808080;
+    background: #f8f8f8;
+    outline: none;
+}
+
+.mi-option-icon {
+    flex: 0 0 62px;
+    width: 62px;
+    height: 58px;
+    background: url('/static_images/vista-setup/type-upgrade.png') center / contain no-repeat;
+}
+
+.mi-option-icon--custom {
+    background-image: url('/static_images/vista-setup/type-custom.png');
+}
+
+.mi-option-text {
+    display: block;
+    padding-top: 2px;
+    color: #1e5fb4;
+    line-height: 15px;
+}
+
+.mi-option-text b {
+    display: block;
+    margin-bottom: 1px;
+    font-weight: 400;
+    font-size: 12px;
+    color: #1b2d4f;
+}
+
+.mi-option[hidden] {
+    display: none;
+}
+
+.mi-option--disabled {
+    pointer-events: none;
+}
+
+.mi-option--disabled .mi-option-icon {
+    filter: grayscale(1);
+    opacity: 0.55;
+}
+
+.mi-option--disabled .mi-option-text,
+.mi-option--disabled .mi-option-text b {
+    color: #808080;
+}
+
+.mi-upgrade-note {
+    margin: 22px 0 0;
+    line-height: 34px;
+}
+
+.mi-upgrade-note::first-line {
+    font-weight: 700;
+}
+
+/* ---- Where do you want to install MeletonFX? ---- */
+
+.mi-disk {
+    width: 548px;
+    height: 206px;
+    border: 1px solid #808080;
+    border-right-color: #d4d0c8;
+    border-bottom-color: #d4d0c8;
+    box-shadow: inset 1px 1px #404040, inset -1px -1px #fff;
+    border-collapse: collapse;
+    background: #fff;
+    table-layout: fixed;
+    display: block;
+    overflow: hidden;
+}
+
+.mi-disk thead,
+.mi-disk tbody,
+.mi-disk tr {
+    display: table;
+    width: 100%;
+    table-layout: fixed;
+}
+
+.mi-disk th,
+.mi-disk td {
+    padding: 0 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: 400;
+}
+
+.mi-disk th {
+    height: 19px;
+    background: #d4d0c8;
+    border-right: 1px solid #fff;
+    box-shadow: inset -1px 0 #808080;
+    text-align: left;
+}
+
+.mi-disk th:nth-child(1) { width: 262px; padding-left: 46px; }
+.mi-disk th:nth-child(2), .mi-disk td:nth-child(2) { width: 82px; text-align: right; }
+.mi-disk th:nth-child(3), .mi-disk td:nth-child(3) { width: 82px; text-align: right; }
+.mi-disk th:nth-child(4), .mi-disk td:nth-child(4) { width: 94px; }
+
+.mi-disk thead tr {
+    border-bottom: 1px solid #808080;
+}
+
+.mi-disk-row td {
+    height: 26px;
+    border-top: 1px solid transparent;
+    border-bottom: 1px solid transparent;
+}
+
+.mi-disk-row--selected td {
+    background: linear-gradient(#dcf4ff, #bde7fd 60%, #9fdffb);
+    border-color: #808080;
+}
+
+.mi-disk-name {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-left: 4px !important;
+}
+
+.mi-disk-icon {
+    flex: 0 0 32px;
+    width: 32px;
+    height: 24px;
+    background: url('/static_images/vista-setup/disk-32.png') center / contain no-repeat;
+}
+
+.mi-disk-tools {
+    display: grid;
+    grid-template-columns: 136px 120px 120px 120px;
+    grid-auto-flow: column;
+    grid-template-rows: repeat(2, 20px);
+    row-gap: 8px;
+    margin-top: 12px;
+    width: 548px;
+}
+
+.mi-tool {
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+}
+
+.mi-tool::before {
+    content: '';
+    flex: 0 0 16px;
+    width: 16px;
+    height: 16px;
+    margin-right: 6px;
+    background: center / contain no-repeat;
+}
+
+.mi-tool--refresh::before { background-image: url('/static_images/vista-setup/tool-refresh.png'); }
+.mi-tool--driver::before { background-image: url('/static_images/vista-setup/tool-driver.png'); }
+.mi-tool--delete::before { background-image: url('/static_images/vista-setup/tool-delete.png'); }
+.mi-tool--format::before { background-image: url('/static_images/vista-setup/tool-format.png'); }
+.mi-tool--new::before { background-image: url('/static_images/vista-setup/tool-new.png'); }
+.mi-tool--extend::before { background-image: url('/static_images/vista-setup/tool-extend.png'); }
+.mi-tool--options::before { display: none; }
+
+.mi-tool--options {
+    grid-column: 4;
+    grid-row: 1;
+    justify-self: end;
+}
+
+.mi-tool--options[hidden] {
+    display: none;
+}
+
+.mi-drive-options {
+    display: contents;
+}
+
+.mi-drive-options[hidden] {
+    display: none;
+}
+
+.mi-tool:disabled::before {
+    filter: grayscale(1);
+    opacity: 0.5;
+}
+
+.mi-format-dialog {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 280px;
+    padding: 14px 16px 12px;
+    box-sizing: border-box;
+    border: 1px solid #343434;
+    border-radius: 5px 5px 0 0;
+    background: #f0f0f0;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.mi-format-dialog[hidden] {
+    display: none;
+}
+
+.mi-format-dialog p {
+    margin: 0 0 8px;
+}
+
+/* ---- Setup is restarting ---- */
+
+.mi-restart-count {
+    margin: 0;
+    font-weight: 700;
+}
+
+/* ---- the checklist ---- */
 
 .mi-steps {
     list-style: none;
@@ -135,101 +958,187 @@
     color: #666;
 }
 
-/* ---- Vista's two-step strip ---- */
+/* ---- the strip across the bottom ---- */
 
 .mi-strip {
-    padding: 8px 12px 10px;
-    border-top: 1px solid #d0d0d0;
-    background: #f0f0f0;
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 66px;
+    display: none;
+    background: rgba(0, 0, 0, 0.08);
+    color: #fff;
 }
 
-.mi-phases,
-.mi-bars {
+#melatonInstall[data-strip="collect"] .mi-strip,
+#melatonInstall[data-strip="install"] .mi-strip {
+    display: block;
+}
+
+.mi-strip .mi-bars {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 9px;
+    border-top: 1px solid #808080;
+    border-bottom: 1px solid #fff;
     display: grid;
-    grid-template-columns: 1fr 3fr;
-    gap: 6px;
+    grid-template-columns: 26% 1fr;
+    background: #7a93b1;
+}
+
+.mi-strip .mi-bar {
+    height: 9px;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: #7a93b1;
+    overflow: hidden;
+}
+
+.mi-strip .mi-bar-collect {
+    border-right: 1px solid #fff;
+}
+
+/* the notch where phase 1 ends and phase 2 begins: a white tick through the whole bar */
+.mi-strip-notch {
+    position: absolute;
+    left: 26%;
+    top: -1px;
+    width: 2px;
+    height: 11px;
+    background: #fff;
+    z-index: 1;
+}
+
+.mi-strip .mi-bar > div {
+    height: 100%;
+    width: 0;
+    background: #99cc33;
+    background-image: none;
+    box-shadow: none;
+    transition: width 0.3s ease;
+}
+
+.mi-strip .mi-phases {
+    position: absolute;
+    left: 10px;
+    top: 24px;
+    display: flex;
+    gap: 34px;
 }
 
 .mi-phase {
     display: flex;
-    align-items: center;
-    gap: 5px;
-    color: #666;
-    white-space: nowrap;
-}
-
-.mi-phase--active,
-.mi-phase--done {
-    color: #000;
-}
-
-.mi-phase--active {
-    font-weight: 600;
+    align-items: flex-start;
+    gap: 6px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
 .mi-phase-num {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 14px;
-    height: 14px;
-    font-size: 10px;
-    font-weight: 700;
-    color: #fff;
-    background: #8d8d8d;
+    font-size: 36px;
+    line-height: 34px;
+    font-weight: 300;
+    width: 34px;
+    text-align: center;
 }
 
-.mi-phase--done .mi-phase-num {
-    background: #5a8fbf;
+.mi-phase-label {
+    line-height: 14px;
+    padding-top: 2px;
 }
 
-.mi-phase--active .mi-phase-num {
-    background: #1a5fb4;
+#melatonInstall[data-strip="collect"] .mi-phase-install,
+#melatonInstall[data-strip="install"] .mi-phase-collect {
+    opacity: 0.85;
 }
 
-.mi-bars {
-    margin-top: 5px;
+/* The Games toolbar (launchGames.js, the mg-frame after this element) only once the checklist runs */
+#melatonInstall:not([data-page="install"]) ~ .mg-frame {
+    display: none;
 }
 
-/* Fill is the Aero bar in cache-browser.css ([role=progressbar] > div). */
-
-/* ---- Vista Basic message box (failure) ---- */
+/* ---- Vista Basic message box (failure, and Setup's questions) ---- */
 
 .mi-msgbox {
     position: absolute;
     left: 50%;
     top: 50%;
     transform: translate(-50%, -50%);
-    width: min(400px, calc(100vw - 32px));
+    width: 504px;
+    background: #f0f0f0;
+    border: 1px solid #343434;
+    border-color: #343434 #000 #000;
+    border-radius: 5px 5px 0 0;
+    box-shadow: inset 1px 1px #fff, inset -1px 0 #3fcef2, inset 0 -1px #28cfe4, 0 6px 24px rgba(0, 0, 0, 0.45);
+    overflow: hidden;
 }
 
 .mi-msgbox[hidden] {
     display: none;
 }
 
+.mi-msgbox .mi-title {
+    position: static;
+    height: 22px;
+    padding: 0 4px 0 7px;
+    border: 0;
+    background: linear-gradient(#99b4d1, #b9d1ea);
+    color: #000;
+    font-weight: 400;
+}
+
+.mi-msgbox .mi-title-close--static {
+    width: 28px;
+    height: 15px;
+    flex: 0 0 28px;
+    margin-left: auto;
+    border: 0;
+    box-shadow: none;
+    background: url('/static_images/vista-logon/basic-close.png') 0 0 / 28px 15px no-repeat;
+    color: transparent;
+    font-size: 0;
+}
+
+.mi-msgbox .mi-title-close--static::before {
+    display: none;
+}
+
 .mi-msgbox-body {
     display: flex;
-    gap: 14px;
-    padding: 14px 14px 6px;
+    gap: 12px;
+    padding: 14px 28px 10px 24px;
+    background: #fff;
+    min-height: 100px;
+    box-sizing: border-box;
 }
 
 .mi-msgbox-icon {
     flex: 0 0 32px;
     width: 32px;
     height: 32px;
-    border-radius: 50%;
-    background: radial-gradient(circle at 40% 35%, #ff6a5c, #e01b0f 60%, #9a0d06);
-    box-shadow: 0 0 0 1px #6e0a05;
-    color: #fff;
-    font-size: 26px;
-    font-weight: 700;
-    line-height: 30px;
-    text-align: center;
+    background: center / 32px 32px no-repeat;
+}
+
+.mi-msgbox-icon[hidden] {
+    display: none;
+}
+
+.mi-msgbox-icon[data-icon="error"] { background-image: url('/static_images/vista-icons/msgbox-error-32.png'); }
+.mi-msgbox-icon[data-icon="warning"] { background-image: url('/static_images/vista-icons/msgbox-warning-32.png'); }
+.mi-msgbox-icon[data-icon="info"] { background-image: url('/static_images/vista-icons/msgbox-info-32.png'); }
+.mi-msgbox-icon[data-icon="question"] { background-image: url('/static_images/vista-icons/msgbox-question-32.png'); }
+
+.mi-msgbox-text {
+    flex: 1 1 auto;
 }
 
 .mi-msgbox-text p {
-    margin: 0 0 8px;
-    line-height: 1.35;
+    margin: 0 0 15px;
+    line-height: 15px;
 }
 
 .mi-msgbox-detail:empty {
@@ -238,30 +1147,32 @@
 
 .mi-msgbox-buttons {
     display: flex;
-    justify-content: center;
+    justify-content: flex-end;
     gap: 8px;
-    padding: 4px 0 12px;
+    padding: 10px 10px 10px;
+    border-top: 1px solid #dfdfdf;
 }
 
 .mi-msgbox-buttons button {
-    min-width: 75px;
+    min-width: 73px;
     height: 23px;
     padding: 0 12px;
     border: 1px solid #707070;
     border-radius: 3px;
-    background: linear-gradient(#f6f6f6, #e3e3e3);
-    box-shadow: inset 0 0 0 1px #fff;
+    background: linear-gradient(#f2f2f2, #ebebeb 50%, #dddddd 50%, #cfcfcf);
+    box-shadow: inset 0 0 0 1px #fcfcfc;
     font: 12px 'Segoe UI', Tahoma, 'Noto Sans', sans-serif;
     color: #000;
 }
 
+.mi-msgbox-buttons button:first-child,
 .mi-msgbox-buttons button:focus-visible,
 .mi-msgbox-buttons button:focus {
     border-color: #3c7fb1;
-    outline: 1px dotted #000;
-    outline-offset: -4px;
+    box-shadow: inset 0 0 0 1px #fcfcfc, inset 0 0 3px 1px #9fd3f4;
+    outline: none;
 }
 
 .mi-msgbox-buttons button:active {
-    background: linear-gradient(#e3e3e3, #f6f6f6);
+    background: linear-gradient(#e5f4fc, #c4e5f6 50%, #98d1ef 50%, #68b3db);
 }

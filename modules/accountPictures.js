@@ -5,6 +5,9 @@
  * (public/static_images/account-pictures/<name>.png, from the Vista VM) or an uploaded one.
  *
  *   config.json accountPictures = { administrator: '<default name>' | 'custom', guest: ... }
+ *   config.json accountNames    = { administrator: 'Yukimi', guest: 'Guest' }   (Change the account
+ *                                 name; the Welcome screen, Start menu, lock screen and About box
+ *                                 show it; absent = Vista's built-in names)
  *   data/account-pictures/<account>.png     an uploaded picture (128x128 PNG, the client resizes)
  */
 const fs = require('fs');
@@ -13,6 +16,10 @@ const path = require('path');
 const ACCOUNTS = ['administrator', 'guest'];
 const DEFAULT_PICTURES = ['music', 'starfish', 'leaf', 'robot', 'fish', 'bonsai', 'sports', 'dog', 'chess', 'kitten', 'fireworks', 'guest', 'user'];
 const DEFAULTS = { administrator: 'kitten', guest: 'guest' };
+const DEFAULT_NAMES = { administrator: 'Administrator', guest: 'Guest' };
+// Windows refuses these in an account name (and a name of only dots or spaces)
+const NAME_FORBIDDEN = /["/\\[\]:;|=,+*?<>@\u0000-\u001f]/;
+const NAME_MAX = 20;
 const PICTURE_DIR = path.join(__dirname, '..', 'data', 'account-pictures');
 const MAX_UPLOAD_BYTES = 256 * 1024;
 
@@ -42,7 +49,25 @@ function readCustomDataUrl(account) {
     }
 }
 
-/** { administrator: { picture, url }, guest: { picture, url } } for the clients. */
+/** The account's name: the one set in User Accounts, else Vista's built-in name. */
+function accountName(config, account) {
+    const stored = (config && config.accountNames) || {};
+    const name = typeof stored[account] === 'string' ? stored[account].trim() : '';
+    return name || DEFAULT_NAMES[account] || '';
+}
+
+/** A new account name as Windows accepts it: trimmed, 1-20 characters, none of "/\[]:;|=,+*?<>@. */
+function normalizeName(value) {
+    const name = String(value == null ? '' : value).trim();
+    if (!name) throw new AccountPictureError('Type a name for the account.', 'BAD_NAME');
+    if (name.length > NAME_MAX) throw new AccountPictureError(`The name can be at most ${NAME_MAX} characters long.`, 'BAD_NAME');
+    if (NAME_FORBIDDEN.test(name) || /^[.\s]+$/.test(name)) {
+        throw new AccountPictureError('The name cannot contain any of these characters: " / \\ [ ] : ; | = , + * ? < > @', 'BAD_NAME');
+    }
+    return name;
+}
+
+/** { administrator: { picture, url, name }, guest: { picture, url, name } } for the clients. */
 function describe(config) {
     const stored = (config && config.accountPictures) || {};
     const out = {};
@@ -54,7 +79,7 @@ function describe(config) {
             if (!url) picture = DEFAULTS[account];
         }
         if (!url) url = `/static_images/account-pictures/${picture}.png`;
-        out[account] = { picture, url };
+        out[account] = { picture, url, name: accountName(config, account) };
     }
     return out;
 }
@@ -92,6 +117,9 @@ module.exports = {
     ACCOUNTS,
     DEFAULT_PICTURES,
     DEFAULTS,
+    DEFAULT_NAMES,
+    accountName,
+    normalizeName,
     AccountPictureError,
     describe,
     applyChange,

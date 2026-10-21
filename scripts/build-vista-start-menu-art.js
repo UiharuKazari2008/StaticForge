@@ -12,6 +12,11 @@
  *   user-frame.png                             authui.dll IMAGE 11201: the start menu account frame
  *                                              (Vista ships it at 96 DPI only and scales it: 64 -> 80 px here)
  *
+ * The two main buttons can be set to other actions (Customize Start Menu, taskbarSettings.js
+ * powerButton / lockButton): disconnect.png is cell 0 (Vista's amber disconnect, our Log off on
+ * the power button); lock-logoff.png is the lock cell's face with cell 0's white X in place of the
+ * padlock (Log off on the lock button).
+ *
  * Each button becomes one sprite with its three states stacked (rest, hover, pressed), so CSS
  * moves background-position only. The arrow button Vista draws next to Lock is not in the strip.
  * The lock sprite already ends on the group's divider, so the arrow does not repeat that line.
@@ -32,7 +37,7 @@ const OUT = path.join(ROOT, 'public/static_images/vista-start');
 
 const CELL_W = 70;
 const CELL_H = 30;
-const CELLS = { shutdown: 1, lock: 5 };
+const CELLS = { shutdown: 1, lock: 5, disconnect: 0 };
 const STATES = ['rest', 'hover', 'pressed'];
 const ARROW_W = 28; // Vista's 22 px arrow button at 120 DPI
 const CAP_W = 6; // leading-cell columns that form the rounded end cap (mirrored onto the arrow)
@@ -121,6 +126,34 @@ async function main() {
     });
     await save(arrow, 'arrow.png');
 
+    // Log off on the lock button: the lock cell's face, its padlock painted out with a glyph-free
+    // column, then cell 0's white X laid over it (alpha = how far a pixel rises over that cell's face)
+    const logoff = blank(CELL_W, CELL_H * STATES.length);
+    STATES.forEach((state, row) => {
+        const strip = strips[state];
+        for (let x = 0; x < CELL_W; x++) {
+            const sx = x >= 6 && x < CELL_W - 6 ? lock + 6 : lock + x;
+            copyColumn(logoff, x, row * CELL_H, strip, sx, 0, CELL_H);
+        }
+        for (let y = 0; y < CELL_H; y++) {
+            const bi = (y * strip.width + 6) * 4;
+            const bg = Math.min(strip.data[bi], strip.data[bi + 1], strip.data[bi + 2]);
+            for (let x = 8; x < CELL_W - 8; x++) {
+                const si = (y * strip.width + x) * 4;
+                const lo = Math.min(strip.data[si], strip.data[si + 1], strip.data[si + 2]);
+                const a = Math.max(0, Math.min(1, (lo - bg - 12) / Math.max(1, 255 - bg - 12)));
+                if (!a) continue;
+                const di = ((row * CELL_H + y) * CELL_W + x) * 4;
+                // white over the (translucent) face, alpha included
+                const da = logoff.data[di + 3] / 255;
+                const oa = a + da * (1 - a);
+                for (let k = 0; k < 3; k++) logoff.data[di + k] = Math.round((255 * a + logoff.data[di + k] * da * (1 - a)) / oa);
+                logoff.data[di + 3] = Math.round(oa * 255);
+            }
+        }
+    });
+    await save(logoff, 'lock-logoff.png');
+
     // the rest are used as they are
     const copies = {
         'usertile-kitten.png': 'usertile-kitten.png',
@@ -133,7 +166,7 @@ async function main() {
     for (const [from, to] of Object.entries(copies)) fs.copyFileSync(path.join(PARTS, from), path.join(OUT, to));
     // the account frame at 120 DPI (the menu's scale): 64 px x 1.25, the picture opening 48 -> 60 px
     await sharp(path.join(PARTS, 'user-frame.png')).resize(80, 80, { kernel: 'lanczos3' }).png({ compressionLevel: 9 }).toFile(path.join(OUT, 'user-frame.png'));
-    console.log(`wrote ${path.relative(ROOT, OUT)}: shutdown, lock, arrow sprites + ${Object.keys(copies).length} parts + the 120 DPI account frame`);
+    console.log(`wrote ${path.relative(ROOT, OUT)}: shutdown, lock, disconnect, lock-logoff, arrow sprites + ${Object.keys(copies).length} parts + the 120 DPI account frame`);
 }
 
 main().catch((err) => {

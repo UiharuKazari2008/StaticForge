@@ -249,11 +249,16 @@ function memoryStorage() {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'meleton-pack-'));
     const jsBody = Buffer.from('console.log(1)\n');
     const pngBody = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    // a served file whose manifest hash is not its body hash (/css/workspaces.css is hashed by its source)
+    const cssBody = Buffer.from('body{color:red}\n');
     fs.writeFileSync(path.join(tmp, 'a.js'), jsBody);
     fs.writeFileSync(path.join(tmp, 'a.png'), pngBody);
+    fs.writeFileSync(path.join(tmp, 'w.css'), cssBody);
+    const cssSourceHash = crypto.createHash('sha256').update('source-of-w.css').digest('hex');
     const packManifest = [
         { url: '/a.js', hash: crypto.createHash('sha256').update(jsBody).digest('hex'), size: jsBody.length },
-        { url: '/a.png', hash: crypto.createHash('sha256').update(pngBody).digest('hex'), size: pngBody.length }
+        { url: '/a.png', hash: crypto.createHash('sha256').update(pngBody).digest('hex'), size: pngBody.length },
+        { url: '/w.css', hash: cssSourceHash, size: cssBody.length }
     ];
     const outDir = path.join(tmp, 'out');
     const built = await pack.rebuild({
@@ -262,7 +267,7 @@ function memoryStorage() {
         resolveFile: (file) => path.join(tmp, file.url.slice(1))
     });
     assert.strictEqual(built.rebuilt, true);
-    assert.strictEqual(built.count, 2);
+    assert.strictEqual(built.count, 3);
     assert.strictEqual(built.hash, pack.hashManifest(packManifest));
     const again = await pack.rebuild({
         outputDir: outDir,
@@ -288,6 +293,9 @@ function memoryStorage() {
     assert.strictEqual(byName.get('a.js'), 8, 'script is deflated');
     assert.strictEqual(byName.get('a.png'), 0, 'png is stored');
     assert.strictEqual(byName.get('pack.json'), 8);
+    const packJson = JSON.parse(fflate.strFromU8(fflate.unzipSync(new Uint8Array(zipBytes))['pack.json']));
+    assert.strictEqual(packJson.files.find((row) => row.url === '/w.css').body, crypto.createHash('sha256').update(cssBody).digest('hex'), 'pack.json carries the body hash of each entry');
+    assert.strictEqual(packJson.files.find((row) => row.url === '/a.js').body, packManifest[0].hash);
 
     function memoryCache(rows) {
         const store = new Map();
@@ -363,13 +371,14 @@ function memoryStorage() {
     const expanded = await engine.expandPack(penv, packManifest, { onProgress: () => {} });
     assert.strictEqual(expanded.ok, true, expanded.error || 'expand');
     assert.deepStrictEqual(expanded.missing, []);
-    assert.strictEqual(expanded.stored, 1, 'only the png was missing from the cache');
+    assert.strictEqual(expanded.stored, 2, 'the png and the stylesheet were missing from the cache');
     const features = await engine.installGroup(penv, 'features', {});
     const updates = await engine.installGroup(penv, 'updates', {});
-    assert.deepStrictEqual(features.mismatched, [], 'the script was already current and is not in this group write');
+    assert.deepStrictEqual(features.mismatched, [], 'the stylesheet confirms against the body hash the pack named, not its source hash');
     assert.deepStrictEqual(updates.mismatched, [], 'the stored png matches after write');
     const pngKey = new URL('/a.png', ORIGIN).href;
     assert.strictEqual(caches.store.get(pngKey).hash, packManifest[1].hash);
+    assert.strictEqual(caches.store.get(new URL('/w.css', ORIGIN).href).hash, cssSourceHash, 'stored under the manifest hash, as the service worker matches it');
 
     const posted = [];
     const subsetCopy = await engine.copyPack({

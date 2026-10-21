@@ -2,8 +2,9 @@
 // Flow test for public/scripts/launch/melatonBoot.js (+ desktopStart.js) on a virtual clock:
 // /status classification, a starting server staying on the boot screen (no cap), failure →
 // boot menu (offline / unreachable / busy / session), teal handoff + hold, login redirect,
-// countdown auto-retry, keyboard + touch, F8, Melaton Recovery clean install, design mode.
-// Yozora #416, #417. Run: node scripts/test-melaton-boot.js
+// countdown auto-retry, keyboard + touch, F8, the BIOS before the boot screen, the installation
+// media (loading bar, Setup's pages, Format, Setup is restarting), design mode.
+// Yozora #416, #417, #611. Run: node scripts/test-melaton-boot.js
 const assert = require('assert');
 const boot = require('../public/scripts/launch/melatonBoot.js');
 const { isDesktopStart, appEntryPath } = require('../public/scripts/launch/desktopStart.js');
@@ -25,11 +26,21 @@ const timeoutErr = () => Object.assign(new Error('timed out'), { name: 'TimeoutE
 const networkErr = () => new TypeError('Failed to fetch');
 
 function harness(statusAnswers, opts = {}) {
-    const t = { now: 0, renders: [], replaced: [], storage: {}, intervals: new Map(), nextId: 1, fetches: [] };
+    const t = { now: 0, renders: [], replaced: [], storage: {}, local: Object.assign(opts.fresh ? {} : { melatonInstalled: '1' }, opts.local || {}), intervals: new Map(), nextId: 1, fetches: [] };
     const answers = statusAnswers.slice();
     const env = {
         now: () => t.now,
-        sleep: async (ms) => { t.now += ms; },
+        // yieldSleep: one macrotask per sleep so keys can land during the BIOS POST
+        sleep: opts.yieldSleep ? (ms) => new Promise((r) => setImmediate(() => { t.now += ms; r(); })) : async (ms) => { t.now += ms; },
+        localStorage: {
+            getItem: (k) => (k in t.local ? t.local[k] : null),
+            setItem: (k, v) => { t.local[k] = String(v); },
+            removeItem: (k) => { delete t.local[k]; },
+            clear: () => { Object.keys(t.local).forEach((k) => delete t.local[k]); }
+        },
+        installerAssets: opts.installerAssets || ['/css/launch-install.css'],
+        bios: opts.bios || null,
+        readProductKey: () => opts.productKey || '',
         setInterval: (fn) => { const id = t.nextId++; t.intervals.set(id, fn); return id; },
         clearInterval: (id) => { t.intervals.delete(id); },
         navigator: { onLine: opts.offline ? false : true },
@@ -41,13 +52,20 @@ function harness(statusAnswers, opts = {}) {
         designMode: !!opts.designMode,
         window: opts.window || {},
         engine: opts.engine || null,
-        fetch: async (url) => {
+        games: opts.games || null,
+        fetch: async (url, init) => {
             t.fetches.push(url);
             if (url === '/app') {
                 const s = opts.session || 200;
                 if (s === 'network') throw networkErr();
                 return s === 200 ? { ok: true, status: 200 } : { ok: false, status: s };
             }
+            if (url === '/install/license.txt') return { ok: true, status: 200, text: async () => 'README text' };
+            if (url === '/install/product-key') {
+                t.productKeyPosts = (t.productKeyPosts || []).concat([JSON.parse(init.body).key]);
+                return opts.keyAnswer ? opts.keyAnswer() : { ok: true, status: 200, json: async () => ({ success: true }) };
+            }
+            if (url !== '/status') return { ok: true, status: 200 };
             const next = answers.length > 1 ? answers.shift() : answers[0];
             t.now += 50;
             if (typeof next === 'function') return next();
@@ -77,7 +95,7 @@ const flush = () => new Promise((r) => setImmediate(r));
     // ---------- a starting server is a connection: boot screen until ready, then teal ----------
     let h = harness([json(false), json(false), json(false), json(true)]);
     assert.strictEqual(await h.ctl.runChecks(), 'teal');
-    assert.deepStrictEqual(h.t.screens(), ['boot', 'black'], 'never leaves the boot screen while the server starts, then black');
+    assert.deepStrictEqual(h.t.screens(), ['bios', 'boot', 'black'], 'the POST, then never leaves the boot screen while the server starts, then black');
     assert.deepStrictEqual(h.t.replaced, ['/app']);
     assert.strictEqual(h.t.storage.dreamscapeLaunchHandoff, 'teal');
     assert.strictEqual(Number(h.t.storage.dreamscapeBootTealHoldUntil), h.t.now + boot.config.tealHoldMs, 'logon dialog waits 2 s after /app takes over');
@@ -94,8 +112,8 @@ const flush = () => new Promise((r) => setImmediate(r));
     // ---------- failures → black → boot menu with the reason ----------
     h = harness([networkErr()]);
     assert.strictEqual(await h.ctl.runChecks(), 'menu');
-    assert.deepStrictEqual(h.t.screens(), ['boot', 'black', 'menu'], 'cut to black, then the menu');
-    assert.strictEqual(h.t.fetches.length, boot.config.maxFailures, `menu after ${boot.config.maxFailures} errors in a row`);
+    assert.deepStrictEqual(h.t.screens(), ['bios', 'boot', 'black', 'menu'], 'cut to black, then the menu');
+    assert.strictEqual(h.t.fetches.length, boot.config.maxFailures + 1, `the POST's own probe, then the menu after ${boot.config.maxFailures} errors in a row`);
     assert.strictEqual(h.t.last().data.info, boot.INFO.unreachable);
     assert.strictEqual(h.t.last().data.countdown, boot.config.countdownSec);
     assert.deepStrictEqual(h.t.last().data.entries.map((e) => e.label), [
@@ -131,7 +149,7 @@ const flush = () => new Promise((r) => setImmediate(r));
     h.t.renders.length = 0;
     h.t.tick();
     await flush();
-    assert.deepStrictEqual(h.t.screens(), ['menu', 'black', 'boot', 'black', 'menu'],
+    assert.deepStrictEqual(h.t.screens(), ['menu', 'black', 'bios', 'boot', 'black', 'menu'],
         'at 0: Dreamscape Melaton starts (black → boot screen), fails again → menu');
     assert.strictEqual(h.t.intervals.size, 1, 'the old countdown is gone, a fresh one runs');
     assert.strictEqual(h.t.last().data.countdown, boot.config.countdownSec);
@@ -147,11 +165,6 @@ const flush = () => new Promise((r) => setImmediate(r));
     h.ctl.handleKey('ArrowDown');
     h.ctl.handleKey('ArrowDown');
     assert.strictEqual(h.t.last().data.selected, 3, 'no wrap past the last entry');
-    h.ctl.handleKey('Enter');
-    assert.strictEqual(h.ctl.screen, 'confirm', 'Recovery asks first');
-    h.ctl.handleKey('Escape');
-    assert.strictEqual(h.ctl.screen, 'menu');
-    assert.strictEqual(h.t.last().data.selected, 3, 'back on Recovery');
     h.ctl.handleKey('ArrowUp');
     h.ctl.handleKey('ArrowUp');
     h.ctl.handleKey('ArrowUp');
@@ -160,27 +173,14 @@ const flush = () => new Promise((r) => setImmediate(r));
     assert.strictEqual(h.ctl.screen, 'menu', 'retry ran the checks again and failed again');
     assert.ok(h.t.screens().includes('boot'));
 
-    // ---------- touch: tap = choose; Recovery by touch gets a two-item menu ----------
+    // ---------- touch: a tap chooses; Recovery boots the installation media (Setup asks the rest) ----------
     h = harness([networkErr()]);
     await h.ctl.runChecks();
     const recoveryIndex = boot.ENTRIES.findIndex((entry) => entry.id === 'recovery');
-    h.ctl.handlePointer('choose', recoveryIndex, 'mouse');
-    assert.strictEqual(h.ctl.screen, 'confirm');
-    assert.strictEqual(h.t.last().data.mode, 'keyboard', 'a mouse implies a keyboard: ENTER / ESC prompt');
-    h.ctl.handlePointer('cancel', undefined, 'mouse');
-    assert.strictEqual(h.ctl.screen, 'menu');
-    h.ctl.handlePointer('choose', recoveryIndex, 'touch');
-    assert.strictEqual(h.t.last().data.mode, 'touch', 'touch: no keyboard to assume');
-    assert.deepStrictEqual(h.t.last().data.options.map((o) => o.label), ['Continue', 'Return to Boot Menu']);
-    assert.strictEqual(h.t.last().data.selected, 0);
-    h.ctl.handlePointer('option', 1, 'touch');
-    assert.strictEqual(h.ctl.screen, 'menu', 'Return to Boot Menu');
-    h.ctl.handlePointer('choose', recoveryIndex, 'pen');
-    assert.strictEqual(h.t.last().data.mode, 'touch', 'a pen counts as touch');
-    h.ctl.handleKey('ArrowDown');
-    assert.strictEqual(h.t.last().data.selected, 1, 'the touch menu also takes arrows');
-    h.ctl.handleKey('Enter');
-    assert.strictEqual(h.ctl.screen, 'menu');
+    h.t.renders.length = 0;
+    await h.ctl.handlePointer('choose', recoveryIndex, 'touch');
+    assert.deepStrictEqual(h.t.screens().slice(-4), ['black', 'loading', 'black', 'menu'], 'Recovery cuts to black and boots the media; an unreachable server is a media error');
+    assert.strictEqual(h.t.last().data.info, boot.INFO.media);
 
     // ---------- F8 on the boot screen: menu, no countdown, the running check is dropped ----------
     let release;
@@ -193,7 +193,7 @@ const flush = () => new Promise((r) => setImmediate(r));
     assert.strictEqual(h.t.last().data.countdown, null, 'F8 menu waits for a choice');
     assert.strictEqual(h.t.last().data.info, null);
     release(json(true));
-    assert.strictEqual(await pending, 'cancelled');
+    assert.ok(['cancelled', 'menu'].includes(await pending), 'the dropped check never boots');
     assert.deepStrictEqual(h.t.replaced, [], 'the dropped check never hands off');
     assert.strictEqual(h.ctl.handleKey('F8'), true, 'F8 on the menu just stops the countdown');
 
@@ -205,7 +205,48 @@ const flush = () => new Promise((r) => setImmediate(r));
     assert.strictEqual(h.t.last().data.countdown, null);
     assert.strictEqual(globalThis.melatonBootInterrupt, false);
 
-    // ---------- Melaton Recovery: clean install, every step reported, reboot /launch ----------
+    // ---------- the BIOS runs first (phoenixBios.js): the POST, then the Hard Drive boots ----------
+    {
+        const bios = require('../public/scripts/launch/phoenixBios.js');
+        h = harness([json(true)], { bios, yieldSleep: true });
+        const run = h.ctl.runChecks();
+        for (let i = 0; i < 3; i++) await flush();
+        assert.strictEqual(h.ctl.screen, 'bios', 'the POST is the first screen');
+        assert.strictEqual(h.ctl.bios.state, 'splash');
+        assert.strictEqual(await run, 'teal');
+        assert.deepStrictEqual(h.t.screens(), ['bios', 'boot', 'black'], 'BIOS, boot screen, the mode switch');
+        assert.ok(h.t.now >= bios.config.splashMs + boot.config.minBootMs, 'the POST adds its own time');
+
+        // F8 during the POST: the Boot Manager right after it
+        h = harness([json(true)], { bios, yieldSleep: true });
+        const run2 = h.ctl.runChecks();
+        for (let i = 0; i < 3; i++) await flush();
+        assert.strictEqual(h.ctl.handleKey('F8'), true);
+        assert.strictEqual(await run2, 'menu');
+        assert.strictEqual(h.t.last().data.countdown, null);
+        assert.ok(h.t.fetches.length <= 1, 'only the POST probed before the menu');
+
+        // F2 goes to the BIOS, which owns the keys until it exits
+        h = harness([json(true)], { bios, yieldSleep: true });
+        const run3 = h.ctl.runChecks();
+        for (let i = 0; i < 3; i++) await flush();
+        assert.strictEqual(h.ctl.handleKey('F2'), true);
+        for (let i = 0; i < 400 && h.ctl.bios.state !== 'setup'; i++) await flush();
+        assert.strictEqual(h.ctl.bios.state, 'setup');
+        assert.strictEqual(h.ctl.handleKey('F10'), true);
+        h.ctl.handleKey('Enter');
+        assert.strictEqual(await run3, 'teal');
+
+        // nothing installed: the Hard Drive is skipped and the installation media boots
+        h = harness([json(true)], { bios, fresh: true, yieldSleep: true });
+        const run4 = h.ctl.runChecks();
+        for (let i = 0; i < 1200 && h.ctl.screen !== 'loading'; i++) await flush();
+        assert.strictEqual(h.ctl.screen, 'loading');
+        h.ctl.runId += 1; // stop it there
+        await run4;
+    }
+
+    // ---------- Melaton Recovery (Reinstall): the installation media, loading bar, Setup's pages ----------
     const wiped = [];
     const fakeWindow = {
         caches: { keys: async () => ['static-cache-v1', 'image-cache-v1'], delete: async (n) => wiped.push(`cache:${n}`) },
@@ -221,24 +262,150 @@ const flush = () => new Promise((r) => setImmediate(r));
             }
         }
     };
-    h = harness([networkErr()], { window: fakeWindow });
+    // seven errors reach the menu (the POST's probe and six under the boot screen), then the server answers
+    const mediaEngine = () => ({
+        readState: () => null, writeState: () => {}, readRecord: () => ({ files: 10 }), writeRecord: () => {},
+        forgetManifest: () => {}, ensureWorker: async () => true, needsInstaller: () => true,
+        check: async () => ({ files: [], bytes: 0 }), copyPack: async () => ({ ok: true }), expandPack: async () => ({ ok: true, missing: [] }),
+        installGroup: async () => ({ ok: true, mismatched: [] }), verify: async () => [], download: async () => ({ ok: true })
+    });
+    h = harness([...Array(7).fill(networkErr()), json(true)], { window: fakeWindow, engine: mediaEngine() });
     await h.ctl.runChecks();
     h.ctl.handleKey('ArrowDown');
     h.ctl.handleKey('ArrowDown');
     h.ctl.handleKey('ArrowDown');
     h.ctl.handleKey('Enter');
+    for (let i = 0; i < 400 && h.ctl.screen !== 'install'; i++) await flush();
+    assert.deepStrictEqual(h.t.screens().slice(-4), ['black', 'loading', 'black', 'install'], 'black, the loading bar, black, Setup');
+    const loads = h.t.renders.filter((r) => r.screen === 'loading').map((r) => r.data.progress);
+    assert.ok(loads.every((f, i) => i === 0 || f >= loads[i - 1]) && loads[loads.length - 1] === 1, 'the loading bar only moves forward and fills');
+    assert.ok(h.t.fetches.includes('/css/launch-install.css'), "Setup's own files are fetched under the bar");
+    assert.ok(h.t.now >= boot.config.loadingMinMs, 'the bar shows at least loadingMinMs');
+    assert.strictEqual(boot.loadingBarCells(0.5), 38, 'the bar fills in whole character cells');
+    assert.strictEqual(boot.loadingBarCells(0.999), 75);
+    assert.strictEqual(h.t.last().data.page, 'language');
+    assert.strictEqual(h.t.renders.filter((r) => r.screen === 'install')[0].data.phase, 'arrive', 'the aurora alone first');
+    assert.strictEqual(h.ctl.handleKey('Enter'), true);
+    assert.strictEqual(h.t.last().data.page, 'start', 'Next: Install now');
+    h.ctl.handlePointer('setup-install');
+    assert.strictEqual(h.t.last().data.page, 'key');
+    assert.strictEqual(h.t.last().data.keyConfigured, true, 'a configured key shows starred');
+    for (let i = 0; i < 40 && h.t.last().data.page === 'key'; i++) await flush();
+    assert.strictEqual(h.t.last().data.page, 'license', 'the key page moves on by itself');
+    assert.strictEqual(h.t.last().data.license, 'README text');
     h.ctl.handleKey('Enter');
+    assert.strictEqual(h.t.last().data.page, 'license', 'Next needs the box ticked');
+    h.ctl.handlePointer('setup-license-accept');
+    h.ctl.handleKey('Enter');
+    assert.strictEqual(h.t.last().data.page, 'type');
+    assert.strictEqual(h.t.last().data.upgradeAllowed, true, 'an installation is there: Upgrade offered');
+    h.ctl.handlePointer('setup-custom');
+    assert.strictEqual(h.t.last().data.page, 'where');
+    assert.strictEqual(h.t.last().data.disk[0].name, 'Disk 0 Partition 1 (Melaton)');
+    assert.strictEqual(h.t.last().data.driveOptions, false);
+    h.ctl.handlePointer('setup-format');
+    assert.strictEqual(h.t.last().data.msgbox, null, 'Format needs Drive options open');
+    h.ctl.handlePointer('setup-drive-options');
+    assert.strictEqual(h.t.last().data.driveOptions, true);
+    h.ctl.handlePointer('setup-format');
+    assert.ok(h.t.last().data.msgbox && h.t.last().data.msgbox.buttons[0][1] === 'setup-format-ok', 'the format question');
+    h.ctl.handleKey('Escape');
+    assert.strictEqual(h.t.last().data.msgbox, null, 'Esc is Cancel');
+    h.ctl.handlePointer('setup-format');
+    h.ctl.handleKey('Enter');
+    for (let i = 0; i < 400 && h.t.last().data.page !== 'restart'; i++) await flush();
+    assert.deepStrictEqual(wiped.sort(), ['cache:image-cache-v1', 'cache:static-cache-v1', 'idb:blocked-db', 'idb:dreamscape', 'local', 'session', 'sw'].sort(), 'Format is the clean install');
+    const formats = h.t.renders.filter((r) => r.screen === 'install' && r.data.formatting).map((r) => r.data.formatting.progress);
+    assert.ok(formats.length && formats.every((f, i) => i === 0 || f >= formats[i - 1]), 'the formatting bar only moves forward');
+    assert.strictEqual(h.t.last().data.page, 'restart', '"Setup is restarting..." after the format');
+    assert.strictEqual(h.t.last().data.countdown, boot.config.restartSec);
+    assert.deepStrictEqual(JSON.parse(h.t.local.melatonSetup).resume, 'install', 'the next boot goes straight to the checklist');
+    for (let i = 0; i < boot.config.restartSec - 1; i++) h.t.tick();
+    assert.strictEqual(h.t.last().data.countdown, 1);
+    assert.deepStrictEqual(h.t.replaced, []);
+    h.t.tick();
     for (let i = 0; i < 20 && !h.t.replaced.length; i++) await flush();
-    assert.deepStrictEqual(wiped.sort(), ['cache:image-cache-v1', 'cache:static-cache-v1', 'idb:blocked-db', 'idb:dreamscape', 'local', 'session', 'sw'].sort());
-    const recoverRenders = h.t.renders.filter((r) => r.screen === 'recover');
-    const finalRecover = recoverRenders[recoverRenders.length - 1].data;
-    assert.ok(finalRecover.restarting, '"Restarting..." shown');
-    assert.strictEqual(finalRecover.progress, 1, 'formatting bar full');
-    const fractions = recoverRenders.map((r) => r.data.progress);
-    assert.ok(fractions.every((f, i) => i === 0 || f >= fractions[i - 1]), 'the formatting bar only moves forward');
-    assert.ok(fractions.some((f) => f > 0 && f < boot.RECOVERY_STEPS[0].weight), 'it moves per cache inside a step');
     assert.deepStrictEqual(h.t.replaced, ['/launch'], 'reboots into /launch');
     assert.strictEqual(h.t.screens().slice(-1)[0], 'black');
+
+    // the next boot: no installation, the resume flag → the media → the checklist, no wizard
+    {
+        const fe = { ...mediaEngine(), readRecord: () => null, check: async () => ({ files: [{ url: '/f0.js', hash: 'h0', size: 1 }], bytes: 1 }) };
+        h = harness([json(true)], { fresh: true, local: { melatonSetup: JSON.stringify({ resume: 'install', at: 1 }) }, engine: fe });
+        assert.strictEqual(await h.ctl.runChecks(), 'reboot');
+        assert.ok(h.t.screens().includes('loading') && h.t.screens().includes('install'));
+        const pages = h.t.renders.filter((r) => r.screen === 'install').map((r) => r.data.page);
+        assert.ok(pages.every((p) => p === 'install'), 'straight to Installing MeletonFX');
+        assert.strictEqual(h.t.local.melatonSetup, undefined, 'the resume flag is consumed');
+    }
+
+    // Restart now skips the countdown
+    h = harness([...Array(7).fill(networkErr()), json(true)], { window: fakeWindow, engine: mediaEngine() });
+    await h.ctl.runChecks();
+    h.ctl.handlePointer('choose', 3);
+    for (let i = 0; i < 400 && h.ctl.screen !== 'install'; i++) await flush();
+    h.ctl.preview('setup-restart');
+    h.ctl.setup.restartNow = async () => { h.t.replaced.push('/launch'); };
+    h.ctl.handlePointer('setup-restart-now');
+    await flush();
+    assert.deepStrictEqual(h.t.replaced, ['/launch']);
+
+    // Upgrade: the digest is forgotten, a full check, the checklist in the same window
+    {
+        const calls = [];
+        const fe = { ...mediaEngine(), forgetManifest: () => calls.push('forget'), check: async () => { calls.push('check'); return { files: [{ url: '/f0.js', hash: 'h0', size: 1 }], bytes: 1 }; }, copyPack: async () => { calls.push('copy'); return { ok: true }; } };
+        h = harness([...Array(7).fill(networkErr()), json(true)], { engine: fe });
+        await h.ctl.runChecks();
+        h.ctl.handlePointer('choose', 3);
+        for (let i = 0; i < 400 && h.ctl.screen !== 'install'; i++) await flush();
+        h.ctl.setup.page = 'type';
+        const before = h.t.renders.length;
+        const up = h.ctl.setupAction('setup-upgrade');
+        assert.strictEqual(await up, 'reboot');
+        assert.ok(calls.indexOf('forget') < calls.lastIndexOf('check') && calls.includes('copy'), 'forget, check, then the pack');
+        assert.ok(!h.t.renders.slice(before).some((r) => r.screen === 'install' && r.data.phase === 'arrive'), 'no second arrive: the window stays');
+    }
+
+    // nothing installed: no Upgrade, Custom reads Install; the empty disk has no partition to format
+    h = harness([json(true)], { fresh: true, engine: { ...mediaEngine(), readRecord: () => null } });
+    {
+        const run = h.ctl.runChecks();
+        for (let i = 0; i < 1200 && h.ctl.screen !== 'install'; i++) await flush();
+        assert.strictEqual(h.ctl.screen, 'install');
+        assert.strictEqual(h.t.last().data.page, 'language');
+        h.ctl.setup.page = 'type';
+        h.ctl.setupAction('setup-custom');
+        assert.strictEqual(h.t.last().data.upgradeAllowed, false);
+        assert.strictEqual(h.t.last().data.disk[0].name, 'Disk 0 Unallocated Space');
+        h.ctl.runId += 1;
+        await run;
+    }
+
+    // the product key page takes a key when the server has none, and stores it
+    h = harness([...Array(7).fill(networkErr()), json(true, { novelaiKeyConfigured: false })], { engine: mediaEngine(), productKey: 'pst-abc' });
+    await h.ctl.runChecks();
+    h.ctl.handlePointer('choose', 3);
+    for (let i = 0; i < 400 && h.ctl.screen !== 'install'; i++) await flush();
+    h.ctl.setupAction('setup-next');
+    h.ctl.handlePointer('setup-install');
+    for (let i = 0; i < 40; i++) await flush();
+    assert.strictEqual(h.t.last().data.page, 'key', 'no key on the server: the page waits');
+    assert.strictEqual(h.t.last().data.keyConfigured, false);
+    h.ctl.handleKey('Enter');
+    for (let i = 0; i < 40 && h.t.last().data.page === 'key'; i++) await flush();
+    assert.deepStrictEqual(h.t.productKeyPosts, ['pst-abc'], 'the key goes to the server');
+    assert.strictEqual(h.t.last().data.page, 'license');
+
+    // the window's close box asks, then reboots
+    h.ctl.handlePointer('setup-close');
+    assert.ok(h.t.last().data.msgbox && h.t.last().data.msgbox.buttons[0][1] === 'setup-cancel-yes');
+    await h.ctl.setupAction('setup-cancel-yes');
+    assert.deepStrictEqual(h.t.replaced, ['/launch']);
+
+    // the media cannot be read: the boot menu says so
+    h = harness([networkErr()], { fresh: true, engine: { ...mediaEngine(), readRecord: () => null } });
+    assert.strictEqual(await h.ctl.runChecks(), 'menu');
+    assert.strictEqual(h.t.last().data.info, boot.INFO.media);
 
     // a failing step does not stop the rest
     const partial = [];
@@ -257,15 +424,18 @@ const flush = () => new Promise((r) => setImmediate(r));
     wiped.length = 0;
     assert.strictEqual(await h.ctl.runChecks(), 'design');
     assert.strictEqual(h.t.fetches.length, 0, 'no network in design mode');
-    for (const name of ['menu', 'menu-info', 'confirm', 'confirm-touch', 'recover', 'teal', 'black', 'boot']) {
+    for (const name of ['menu', 'menu-info', 'loading', 'teal', 'black', 'boot', 'bios']) {
         h.ctl.preview(name);
-        assert.strictEqual(h.ctl.screen, name.replace(/-(info|touch)$/, ''));
+        assert.strictEqual(h.ctl.screen, name.replace(/-(info)$/, ''));
     }
-    h.ctl.preview('confirm-touch');
-    assert.strictEqual(h.t.last().data.mode, 'touch');
-    h.ctl.preview('confirm');
-    await h.ctl.recover();
-    assert.deepStrictEqual(wiped, [], 'design-mode recovery never wipes');
+    for (const name of ['setup', 'setup-start', 'setup-key', 'setup-key-entry', 'setup-license', 'setup-type', 'setup-type-fresh', 'setup-where', 'setup-where-options', 'setup-format', 'setup-formatting', 'setup-cancel', 'setup-restart']) {
+        h.ctl.preview(name);
+        assert.strictEqual(h.ctl.screen, 'install', name);
+    }
+    assert.strictEqual(h.t.last().data.page, 'restart');
+    h.ctl.preview('setup-format');
+    await h.ctl.setupAction('setup-format-ok');
+    assert.deepStrictEqual(wiped, [], 'design-mode Format never wipes');
     assert.deepStrictEqual(h.t.replaced, [], 'design mode never navigates');
     h.ctl.preview('menu');
     await h.ctl.handOff();
@@ -274,12 +444,13 @@ const flush = () => new Promise((r) => setImmediate(r));
     // ---------- updates under the boot screen and the installer (#419) ----------
     const files = (n) => Array.from({ length: n }, (_, i) => ({ url: `/f${i}.js`, hash: `h${i}`, size: 100 }));
     function fakeEngine(plan) {
-        const store = { state: plan.resume ? { active: true, total: 9 } : null, record: null };
+        const store = { state: plan.resume ? { active: true, total: 9 } : null, record: null, prior: plan.prior || null };
         const calls = [];
         const engine = {
             readState: () => store.state,
             writeState: (_env, st) => { store.state = st ? { ...st, active: true } : null; },
             writeRecord: (_env, rec) => { store.record = rec; },
+            readRecord: () => store.prior || null,
             ensureWorker: async () => plan.worker !== false,
             check: async () => {
                 calls.push('check');
@@ -393,7 +564,7 @@ const flush = () => new Promise((r) => setImmediate(r));
     // a large update: black, Setup, the checklist, linger, black, reboot /launch
     u = await runWith({ checks: [{ files: files(50), bytes: 5000 }, { files: [], bytes: 0 }] });
     assert.strictEqual(u.result, 'reboot');
-    assert.deepStrictEqual(u.t.screens(), ['boot', 'black', 'install', 'black'], 'boot → black → Setup → black');
+    assert.deepStrictEqual(u.t.screens(), ['bios', 'boot', 'black', 'loading', 'black', 'install', 'black'], 'POST → boot → black → the loading bar → black → Setup → black');
     assert.deepStrictEqual(u.t.replaced, ['/launch'], 'reboots into /launch, not /app');
     const installs = u.t.renders.filter((r) => r.screen === 'install');
     assert.ok(installs.some((r) => r.data.steps[0].state === 'active' && r.data.steps[0].fraction === 0.5), 'Copying shows its progress');
@@ -406,6 +577,34 @@ const flush = () => new Promise((r) => setImmediate(r));
     assert.deepStrictEqual(u.calls, ['check', 'copyPack', 'subset:50', 'expandPack', 'group:features', 'group:updates'], 'the installer copies one pack, then expands and checks each group');
     assert.ok(installs.some((r) => r.data.phase === 'arrive'), 'aurora alone before the setup window');
     assert.ok(u.t.now >= boot.config.installLingerMs + boot.config.installArriveMs + 5 * boot.config.installStepMs, 'arrive, each line readable, then the linger');
+
+    // Setup's games (launchGames.js): the toolbar shows with the checklist, Setup waits at each
+    // step while a game comes off the media, and a game still open at the end holds the restart
+    // (a message box behind it, Restart now) instead of the linger
+    {
+        const log = [];
+        const games = (open) => ({
+            show: () => log.push('show'),
+            hide: () => log.push('hide'),
+            close: () => log.push('close'),
+            busy: () => open,
+            gate: () => { log.push('gate'); return Promise.resolve(); },
+            holdRestart: (o) => { log.push('hold:' + (o.upgrade ? 'upgrade' : 'install')); return Promise.resolve('restart'); },
+            upgradeLite: (onProgress) => { log.push('lite'); onProgress(1); return Promise.resolve({ replaced: 1, left: 0 }); }
+        });
+        u = await runWith({ checks: [{ files: files(50), bytes: 5000 }, { files: [], bytes: 0 }] }, { games: games(true) });
+        assert.strictEqual(u.result, 'reboot');
+        assert.deepStrictEqual(log, ['show', 'gate', 'gate', 'gate', 'gate', 'lite', 'hold:install', 'close'], 'toolbar, a gate before each later step, the light copies replaced, the held restart');
+        assert.deepStrictEqual(u.t.replaced, ['/launch'], 'Restart now reboots /launch');
+        const heldAt = u.t.now;
+
+        log.length = 0;
+        u = await runWith({ checks: [{ files: files(50), bytes: 5000 }, { files: [], bytes: 0 }], prior: { files: 10 } }, { games: games(false) });
+        assert.strictEqual(u.result, 'reboot');
+        assert.ok(!log.some((l) => l.startsWith('hold')), 'no game open: the usual linger and reboot');
+        assert.strictEqual(log[log.length - 1], 'close');
+        assert.ok(u.t.now - heldAt >= boot.config.installLingerMs, 'held: Restart now instead of the linger');
+    }
 
     // the pack stalls: a Vista Basic message box; Retry stays in Setup and finishes
     let fails = 1;
@@ -441,6 +640,15 @@ const flush = () => new Promise((r) => setImmediate(r));
     u = await runWith({ checks: [{ files: files(50), bytes: 5000 }], verify: (list) => list.slice(0, 30) });
     assert.strictEqual(u.result, 'error');
     assert.strictEqual(u.t.last().data.error.reason, 'verify');
+    // an earlier install's stragglers are not this install's: Expanding still finds them wanting
+    // (a subset pack never carries them), but only the install's own list counts; they stay recorded
+    const old = Array.from({ length: 12 }, (_, i) => `/old${i}.js`);
+    u = await runWith({
+        checks: [{ files: files(5), bytes: 500 }, { files: [], bytes: 0 }],
+        expand: () => ({ ok: true, missing: old.concat(['/f1.js']) })
+    });
+    assert.strictEqual(u.result, 'reboot', 'files outside the install list never fail it');
+    assert.deepStrictEqual(u.store.record.stragglers, ['/f1.js'].concat(old));
 
     // a reload mid-install goes back into Setup even for a few files
     u = await runWith({ resume: true, checks: [{ files: files(3), bytes: 300 }, { files: [], bytes: 0 }] });

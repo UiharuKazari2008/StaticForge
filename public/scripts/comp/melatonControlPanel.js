@@ -135,8 +135,9 @@
         id: 'taskbar',
         name: 'Taskbar and Start Menu',
         image: '/static_images/app_icons/64/vista-taskbar.webp',
-        description: 'The start button, what opens at startup, and where notifications go.',
-        open: () => navigate('taskbar')
+        description: 'Customize the Start menu and the taskbar, such as the types of items to be displayed and how they should appear.',
+        // Vista opens "Taskbar and Start Menu Properties" from here (public/scripts/comp/taskbarSettings.js)
+        open: () => (root.taskbarSettings ? root.taskbarSettings.openProperties('taskbar') : undefined)
     });
     registerItem({
         id: 'keyboard',
@@ -150,14 +151,16 @@
         name: 'Remote Access',
         image: '/static_images/app_icons/64/vista-remote-desktop.webp',
         description: 'Choose how agents deliver and open images on this computer.',
-        open: () => navigate('remote-access')
+        // Remote Access Properties (remoteAccessProperties.js), as Vista opens System Properties' Remote tab
+        open: () => (root.remoteAccessProperties ? root.remoteAccessProperties.open() : navigate('remote-access'))
     });
     registerItem({
         id: 'system',
         name: 'System',
         image: '/static_images/app_icons/64/vista-system.webp',
-        description: 'See the version and details of MeletonFX.',
-        open: () => callGlobal('openAboutMelatoninModal')
+        description: 'View basic information about your computer: the edition, the server host, the session and activation.',
+        // the page is cplSystem.js (Vista's System); without it, the About box as before
+        open: () => (pages.system ? navigate('system') : callGlobal('openAboutMelatoninModal'))
     });
     registerItem({
         id: 'runes',

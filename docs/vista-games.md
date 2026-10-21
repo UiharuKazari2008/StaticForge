@@ -124,6 +124,41 @@ resources, VM captures and the decompile notes are in `~/.cache/vista-vm/jezzbal
   sheet, the About logo and trophy, the icons, the caption-button glyphs (cut from VM shots), the
   WAVs and `jezzball.json` (the System and MS Sans Serif 24 px fonts as 1-bit atlases, the demo).
 
+## Games while Setup runs (`/launch`)
+
+A long install or upgrade (melatonBoot.js's installer) shows a Games toolbar at the bottom right:
+Minesweeper, Solitaire, Spider Solitaire, FreeCell, Hearts, Block Drop, Brick Breaker, JezzBall.
+
+- **Where they run:** `launch-games.html` (`public/scripts/launch/launchGamesHost.js`) is a
+  transparent 1024 x 768 frame that `launchGames.js` lays over Setup inside its stretched VGA
+  framebuffer. The games share Setup's false resolution, as if no display driver were installed:
+  they draw at 1x (`VistaGames.pixelRatio = 1`) and stretch with the frame. Inside the frame every
+  coordinate is the frame's own, so the games run unchanged.
+- **Window look:** they open at the top left (24 px in, cascading) in Vista Basic frames
+  (`public/css/launch-games.css`; caption buttons from the VM with composition off,
+  `static_images/window-controls/basic/`). The page stands in for the few `modalUtils.js` calls
+  the games make and loads the desktop's menu and dialog styles.
+- **No HiDPI art:** the page sets `VistaGamesOptions = { pixelRatio: 1, maxSheetScale: 1 }`
+  before the engine loads, so no 2x sheet, `@2x` image or srcset is ever fetched.
+- **Loading a game:** a click loads the game "from the installation media".
+  `media/<id>.json` lists the game's files, and only when the cache lacks one does the page
+  fetch `media/<id>.zip`. The zip carries 1x art and sound in lighter copies (WebP q70, palette
+  PNG, AAC 48 kbps, Opus 40 kbps). Only the missing files are written into the service worker's
+  `static-cache-v1`; a copy already cached (full or light) is used as it is. A small progress
+  dialog shows meanwhile, and Setup waits between its steps (`gate()`) until the game has
+  loaded.
+- **Light copies replaced:** each light copy is marked `x-media-lite` and listed in
+  localStorage `melatonGamesLite`. Setup's "Completing installation" step replaces them with
+  the full files from `media/<id>.full.zip` (`launchGames.js` `upgradeLite`), one request per
+  game.
+- **Rebuilding the media:** `scripts/build-vista-games-media.js`. Rebuild after any game,
+  engine or asset change: `scripts/test-vista-games-media.js` fails when a zip is stale.
+- **When Setup finishes under an open game:** no reboot. A message box opens behind the games
+  ("MeletonFX has been installed / upgraded", Restart now), and the toolbar says "Setup has
+  finished" with its own Restart now.
+- **Previews:** `/launch?design=1`, "Installer: games toolbar" and "Installer: restart held by
+  a game".
+
 ## Tests
 
 `npm run test:vista-games` (deal, menus, animation scripts, card fans, Mahjong deals, MUI parsing,

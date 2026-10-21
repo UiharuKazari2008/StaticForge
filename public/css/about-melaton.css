@@ -1,127 +1,224 @@
-/* About Melaton modal */
-/* About Melaton Modal */
+/* About MeletonFX: Vista's About Windows (winver.exe), 1:1 with the Vista VM.
+   The dialog is shell32 template 14352 (275x238 DLU, MS Shell Dlg 8; base units 6x13, so
+   x = DLU * 6 / 4 and y = DLU * 13 / 8): a 413x387 client inside the shared 8/28/8/8 frame.
+   Every control keeps the template's x and width; the text is Segoe UI 11px on a 13px line. The
+   tops are the VM's measured baselines (winver moves some statics at runtime, so the product,
+   version and owner lines sit 1-2px lower than the template says). The banner and its orange
+   rule are basebrd.dll's (scripts/build-about-windows-banner.sh). openAboutMelatoninModal in
+   public/scripts/comp/modalUtils.js fills the version, owner and memory lines. */
+
 #aboutMelatoninModal {
-    width: 550px;
-    max-width: 90vw;
+    width: 429px;
+    max-width: none;
+    min-width: 0;
 }
 
-#aboutMelatoninModal .modal-content p {
+#aboutMelatoninModal > .modal-content.about-windows-client {
+    position: relative;
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    width: 413px;
+    height: 387px;
+    min-height: 0;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: #f0f0f0;
+    color: #000;
+    font: 11px/13px "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
     text-align: left;
+    user-select: text;
+    cursor: default;
 }
 
-#aboutMelatoninModal .about-logo-container {
-    display: flex;
-    flex-wrap: nowrap;
-    flex-direction: row;
-    align-items: center;
-    justify-content: center;
-    gap: var(--spacing-md);
-    padding: var(--spacing-md);
+/* Vista's About Windows has no caption icon (the taskbar still takes it from the title) */
+body.desktop-mode:not(.windows-classic-theme) #aboutMelatoninModal .modal-window-title-main > :is(.icon-fa, .icon-image) {
+    display: none;
 }
 
-#aboutMelatoninModal .about-logo {
-    width: 64px;
-    height: 64px;
-    flex-shrink: 0;
+#aboutMelatoninModal .about-windows-banner,
+#aboutMelatoninModal .about-windows-rule {
+    position: absolute;
+    left: 0;
+    display: block;
+    width: 413px;
+    max-width: none;
+    user-select: none;
+    pointer-events: none;
 }
 
-#aboutMelatoninModal .form-row h2 {
+#aboutMelatoninModal .about-windows-banner {
+    top: 0;
+    height: 72px;
+}
+
+#aboutMelatoninModal .about-windows-rule {
+    top: 72px;
+    height: 5px;
+}
+
+/* the static controls: template x 35 (53px), one 13px line each */
+#aboutMelatoninModal .about-windows-text {
+    position: absolute;
+    left: 53px;
     margin: 0;
-    font-size: 2.75rem;
-    font-weight: bold;
-    color: #ffffff;
-}
-
-#aboutMelatoninModal .about-product-description-container {
-    display: flex;
-    flex-direction: column;
-    padding: var(--spacing-lg) var(--spacing-xxl);
-    gap: var(--spacing-xl);
-}
-
-#aboutMelatoninModal .about-system-infomation-container {
-    display: flex;
-    flex-direction: column;
-    padding: var(--spacing-lg) var(--spacing-xxl);
-}
-
-#aboutMelatoninModal .about-product-name {
-    margin: 0;
-    font-weight: 600;
-    font-size: 0.85rem;
-    line-height: 1;
-}
-
-#aboutMelatoninModal .about-version ,
-#aboutMelatoninModal .about-copyright {
-    margin: 0;
-    font-size: 0.85rem;
-    line-height: 1;
-}
-
-#aboutMelatoninModal .about-description {
-    margin: 0;
-    font-size: 0.8rem;
-    line-height: 1;
-}
-
-#aboutMelatoninModal .about-system-info {
-    font-size: 0.85rem;
-}
-
-#aboutMelatoninModal .about-info-label {
-    font-weight: 500;
-    min-width: 120px;
-}
-
-#aboutMelatoninModal .text-danger {
-    color: var(--text-danger, #d32f2f);
-}
-
-/* Workspace Table */
-#aboutMelatoninModal .about-workspaces-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.85rem;
-}
-
-#aboutMelatoninModal .about-workspaces-table thead th {
-    text-align: right;
-    padding: 0.5rem;
-    border-bottom: 1px solid var(--glass-border-3);
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
-#aboutMelatoninModal .about-workspaces-table tbody td {
-    padding: 0.35rem;
-    border-bottom: 1px solid var(--glass-border-2);
-    color: var(--text-secondary);
-}
-
-#aboutMelatoninModal .about-workspaces-table tbody tr:last-child td {
-    border-bottom: none;
-}
-
-#aboutMelatoninModal .about-workspaces-table thead th.about-workspace-name-header {
-    text-align: left;
-    width: 100%;
-}
-
-#aboutMelatoninModal .about-workspace-name-cell {
-    display: flex;
-    align-items: center;
-}
-
-#aboutMelatoninModal .about-workspace-col {
-    text-align: right;
+    padding: 0;
+    color: #000;
+    font: inherit;
+    line-height: 13px;
     white-space: nowrap;
+    text-shadow: none;
 }
 
-#aboutMelatoninModal .about-workspace-name-cell .workspace-color-indicator {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    display: inline-block;
-    flex-shrink: 0;
+/* 13568 (35,55,200,10): product */
+#aboutMelatoninModal .about-windows-product {
+    top: 90px;
+    width: 300px;
+}
+
+/* 13579 (35,65,235,10): version, build, service pack */
+#aboutMelatoninModal .about-windows-version {
+    top: 106px;
+    width: 352px;
+}
+
+/* 13578 (35,75,210,10): copyright; pre keeps the two spaces before "All rights reserved." */
+#aboutMelatoninModal .about-windows-copyright {
+    top: 121px;
+    width: 315px;
+    white-space: pre;
+}
+
+/* 13587 (35,85,210,40): the trademark paragraph, 315px; Chrome's advances run a little wider
+   than GDI's, so 5px of slack keeps Vista's line breaks */
+#aboutMelatoninModal .about-windows-legal {
+    top: 137px;
+    width: 320px;
+    white-space: normal;
+}
+
+/* 13586 SysLink (35,145,180,20): the license line, 270px wide, SysLink's 14px line */
+#aboutMelatoninModal .about-windows-license {
+    top: 235px;
+    width: 274px;
+    line-height: 14px;
+    white-space: normal;
+}
+
+#aboutMelatoninModal .about-windows-license-link {
+    color: #0066cc;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+}
+
+#aboutMelatoninModal .about-windows-license-link:focus {
+    outline: none;
+}
+
+#aboutMelatoninModal .about-windows-license-link:focus-visible {
+    outline: 1px dotted #000;
+}
+
+/* 13575 / 13576 (45,165) / (45,175): registered owner and organization */
+#aboutMelatoninModal .about-windows-owner,
+#aboutMelatoninModal .about-windows-org {
+    left: 68px;
+    width: 270px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#aboutMelatoninModal .about-windows-owner {
+    top: 268px;
+}
+
+#aboutMelatoninModal .about-windows-org {
+    top: 284px;
+}
+
+/* 13095 (35,187,235,1) SS_ETCHEDHORZ: the grey-over-white rule */
+#aboutMelatoninModal .about-windows-separator {
+    position: absolute;
+    left: 53px;
+    top: 304px;
+    width: 351px;
+    height: 0;
+    border-top: 1px solid #a0a0a0;
+    border-bottom: 1px solid #fff;
+}
+
+/* 13571 (35,192,230,10): physical memory */
+#aboutMelatoninModal .about-windows-memory {
+    top: 311px;
+    width: 345px;
+}
+
+/* IDOK (220,218,50,14): a 75x23 control at 330,354 whose Aero face leaves a 1px clear margin,
+   so the visible button is 73x21 at 331,355 (as the VM draws it); the default button */
+#aboutMelatoninModal .about-windows-ok {
+    position: absolute;
+    left: 331px;
+    top: 355px;
+    width: 73px;
+    height: 21px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    color: #000;
+    font: 11px "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    border-color: #5586a3;
+    box-shadow: none;
+}
+
+/* Vista's default-button glow: the pulse layers of vista-dialogs.css (keyframes there) */
+#aboutMelatoninModal .about-windows-ok:not(:disabled)::before,
+#aboutMelatoninModal .about-windows-ok:not(:disabled)::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: 2px;
+    pointer-events: none;
+    background: none;
+    animation: vista-default-pulse 1s ease infinite alternate;
+}
+
+#aboutMelatoninModal .about-windows-ok:not(:disabled)::before {
+    opacity: 1;
+    box-shadow: inset 0 0 3px 1px #34deffdd;
+}
+
+#aboutMelatoninModal .about-windows-ok:not(:disabled)::after {
+    opacity: 0;
+    box-shadow: inset 0 0 1px 1px #34deffdd;
+    animation-name: vista-default-pulse-in;
+}
+
+/* hover and press keep 7.css's faces under the glow */
+#aboutMelatoninModal .about-windows-ok:not(:disabled):hover {
+    border-color: #3c7fb1;
+    background: linear-gradient(#eaf6fd 45%, #bee6fd 0, #a7d9f5);
+}
+
+#aboutMelatoninModal .about-windows-ok:not(:disabled):active {
+    border-color: #6d91ab;
+    background: linear-gradient(#e5f4fc, #c4e5f6 30% 50%, #98d1ef 50%, #68b3db);
+}
+
+#aboutMelatoninModal .about-windows-ok:focus {
+    outline: none;
+}
+
+#aboutMelatoninModal .about-windows-ok:focus-visible {
+    outline: 1px dotted #000;
+    outline-offset: -4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #aboutMelatoninModal .about-windows-ok:not(:disabled)::before,
+    #aboutMelatoninModal .about-windows-ok:not(:disabled)::after {
+        animation: none;
+    }
 }

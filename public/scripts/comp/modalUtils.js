@@ -208,7 +208,8 @@ function computeModalWorkAreaBounds(trueInsetTop) {
     let bottom = window.innerHeight;
     if (window.isDesktop && document.body.classList.contains('desktop-mode')) {
         const taskbar = document.getElementById('desktopTaskbar');
-        if (taskbar) {
+        // Auto-hide the taskbar: windows get the whole screen (taskbarSettings.js)
+        if (taskbar && !taskbar.classList.contains('taskbar-autohide')) {
             bottom -= taskbar.offsetHeight || 35;
         }
     }
@@ -4557,7 +4558,10 @@ function updateTaskbarClock() {
     if (!taskbarClock) return;
 
     const now = new Date();
-    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    // Vista's short time in the system's format ("1:52 PM"): taskbarClockText, public/scripts/comp/taskbarClock.js
+    const timeStr = typeof window.taskbarClockText === 'function'
+        ? window.taskbarClockText(now)
+        : now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     const dateStr = `${now.getMonth() + 1}/${now.getDate()}`;
 
     const timeEl = taskbarClock.querySelector('.taskbar-time');
@@ -4818,7 +4822,7 @@ function updateTaskbarActiveStates() {
         } else if (groupType) {
             // Group item - update based on modals in the group
             const modals = modalGroups.get(groupType) || [];
-            const shouldGroup = modals.length > 3;
+            const shouldGroup = taskbarGroupingEnabled() && modals.length > 3;
 
             if (shouldGroup && modals.length > 0) {
                 // Recalculate active state for the group
@@ -4837,6 +4841,11 @@ function updateTaskbarActiveStates() {
     });
 }
 
+/** Group similar taskbar buttons (Taskbar and Start Menu Properties; public/scripts/comp/taskbarSettings.js). */
+function taskbarGroupingEnabled() {
+    return !(window.taskbarSettings && window.taskbarSettings.get().group === false);
+}
+
 function updateTaskbarWindows() {
     if (!taskbarWindows) return;
 
@@ -4851,7 +4860,7 @@ function updateTaskbarWindows() {
     taskbarModalGroupsCache.forEach((modalsMap, type) => {
         const modals = Array.from(modalsMap.values());
         if (modals.length === 0) return;
-        const shouldGroup = modals.length > 3;
+        const shouldGroup = taskbarGroupingEnabled() && modals.length > 3;
 
         if (shouldGroup) {
             const modalIds = modals.map(m => m.id);
@@ -5203,7 +5212,7 @@ const APP_ICON_DISPLAY_PX = {
     switcher: 32,     // window-switcher.css 2rem
     fallback: 192     // surfaces that never said; the old fixed value
 };
-const START_MENU_ROW_ICON_PX = { large: 40, small: 20 }; // desktop-shell.css .start-menu-row-icon
+const START_MENU_ROW_ICON_PX = { large: 40, medium: 30, small: 20 }; // desktop-shell.css .start-menu-row-icon
 
 function appIconSizesAttr(displayPx) {
     const px = Number(displayPx) > 0 ? Math.round(Number(displayPx)) : APP_ICON_DISPLAY_PX.fallback;
@@ -7391,8 +7400,13 @@ const START_MENU_FREQUENT_LIMIT = 8;
 const START_MENU_RECENT_LIMIT = 12;
 // The most used list until the launch history fills it (Vista ships a starting list too)
 const START_MENU_DEFAULT_FREQUENT = ['director', 'bracket-generation', 'encyclopedia', 'spellbook', 'reference', 'chat'];
-// The domain logon's account (workstationLock.js)
+// The domain logon's account (workstationLock.js); its name can be changed in User Accounts
 const START_MENU_USER_NAME = 'Administrator';
+
+/** The signed-in account's name for the Start menu (public/scripts/comp/meletonAccounts.js). */
+function startMenuUserName() {
+    return window.meletonAccountName ? window.meletonAccountName() : START_MENU_USER_NAME;
+}
 const START_MENU_ART = '/static_images/vista-start';
 
 let startMenuView = 'home'; // 'home' | 'programs' | 'search'
@@ -7469,13 +7483,22 @@ function isStartMenuListedItem(item) {
     return isStartMenuItemLaunchable(item) && !isStartMenuPlanetLaunchId(item.launchId);
 }
 
+/** Taskbar and Start Menu Properties (public/scripts/comp/taskbarSettings.js): Privacy and Customize Start Menu. */
+function startMenuTaskbarSettings() {
+    return window.taskbarSettings ? window.taskbarSettings.get() : null;
+}
+
 function getStartMenuFrequentItems() {
+    const prefs = startMenuTaskbarSettings();
+    // "Store and display a list of recently opened programs" off: no most used list
+    if (prefs && prefs.recentPrograms === false) return [];
+    const limit = prefs ? prefs.recentProgramCount : START_MENU_FREQUENT_LIMIT;
     const activity = readStartMenuActivity();
     const pinned = new Set(getStartMenuPinnedLaunchIds());
     const out = [];
     const seen = new Set();
     const add = (launchId) => {
-        if (out.length >= START_MENU_FREQUENT_LIMIT || seen.has(launchId) || pinned.has(launchId)) return;
+        if (out.length >= limit || seen.has(launchId) || pinned.has(launchId)) return;
         if (activity[launchId] && activity[launchId].hidden) return;
         const item = findStartMenuLaunchableById(launchId);
         if (!isStartMenuListedItem(item)) return;
@@ -7631,6 +7654,20 @@ function wireStartMenuTileHover(element, item) {
     element.addEventListener('mouseleave', () => setStartMenuTilePicture(null));
 }
 
+/** The drawn icon size of a row (CSS: desktop-shell.css), so the sized art matches it: Customize
+ *  Start Menu's "Use large icons" for the pinned / most used rows, and the All Programs size. */
+function startMenuRowIconPx(kind) {
+    const prefs = startMenuTaskbarSettings();
+    if (kind === 'pinned' || kind === 'frequent') {
+        return prefs && prefs.largeIcons === false ? START_MENU_ROW_ICON_PX.small : START_MENU_ROW_ICON_PX.large;
+    }
+    if (kind === 'program' && prefs) {
+        if (prefs.programsIconSize === 'large') return START_MENU_ROW_ICON_PX.large;
+        if (prefs.programsIconSize === 'medium') return START_MENU_ROW_ICON_PX.medium;
+    }
+    return START_MENU_ROW_ICON_PX.small;
+}
+
 /** kind: 'pinned' | 'frequent' (large rows), 'program' | 'result' (small rows). */
 function createStartMenuListRow(item, kind, options = {}) {
     const row = document.createElement('div');
@@ -7642,14 +7679,17 @@ function createStartMenuListRow(item, kind, options = {}) {
     const icon = document.createElement('span');
     icon.className = 'start-menu-row-icon';
     if (item.folder) {
-        icon.innerHTML = `<img src="${START_MENU_ART}/folder-20.png" srcset="${START_MENU_ART}/folder-20.png 1x, ${START_MENU_ART}/folder-40.png 2x" alt="">`;
+        // the 40 px folder once the row draws it larger than 20 px (All Programs medium / large)
+        icon.innerHTML = startMenuRowIconPx(kind) > START_MENU_ROW_ICON_PX.small
+            ? `<img src="${START_MENU_ART}/folder-40.png" alt="">`
+            : `<img src="${START_MENU_ART}/folder-20.png" srcset="${START_MENU_ART}/folder-20.png 1x, ${START_MENU_ART}/folder-40.png 2x" alt="">`;
     } else if (item.color) {
         const dot = document.createElement('span');
         dot.className = 'workspace-color-indicator';
         dot.style.backgroundColor = item.color;
         icon.appendChild(dot);
     } else {
-        const iconPx = (kind === 'pinned' || kind === 'frequent') ? START_MENU_ROW_ICON_PX.large : START_MENU_ROW_ICON_PX.small;
+        const iconPx = startMenuRowIconPx(kind);
         icon.innerHTML = getIconHTML(item.icon, item.imageIcon || null, '', iconPx);
     }
     row.appendChild(icon);
@@ -7859,7 +7899,15 @@ function renderStartMenuList() {
 
 // ---- right column ----
 
+/** The places column as the Start menu shows it (Customize Start Menu and Privacy applied). */
 function getStartMenuPlaces() {
+    return getStartMenuPlacesAll()
+        .filter((place) => startMenuPlaceShown(place))
+        .filter((place, i, all) => !place.separator || (i > 0 && !all[i - 1].separator && i < all.length - 1));
+}
+
+/** Every place the column can show (Customize Start Menu lists them). */
+function getStartMenuPlacesAll() {
     const desktop = isDesktopStartMenuEnvironment();
     const launch = (launchId) => () => {
         const item = findStartMenuLaunchableById(launchId);
@@ -7871,7 +7919,7 @@ function getStartMenuPlaces() {
         if (window.melatonControlPanel) window.melatonControlPanel.open(page);
     };
     return [
-        { id: 'user', text: START_MENU_USER_NAME, action: () => openExplorerApplet() },
+        { id: 'user', text: startMenuUserName(), action: () => openExplorerApplet() },
         { id: 'cartograph', text: 'Cartograph', imageIcon: 'vista-explorer.png', action: launch('explorer') },
         { id: 'gallery', text: 'Gallery', imageIcon: 'art.png', desktopOnly: true, action: launch('workspace') },
         { id: 'notion', text: 'Notion', imageIcon: 'vista-journal.png', action: launch('notebook') },
@@ -7887,6 +7935,14 @@ function getStartMenuPlaces() {
         { id: 'remote-access', text: 'Remote Access', imageIcon: 'vista-remote-desktop.png', action: () => openRemoteAccessSettingsModal() },
         { id: 'help', text: 'Help and Support', imageIcon: 'vista-help.png', action: () => openGrimoireApplet() },
     ].filter((place) => !(place.desktopOnly && !desktop));
+}
+
+/** Customize Start Menu's "Don't display this item", and Privacy's recently opened files (Recent Items). */
+function startMenuPlaceShown(place) {
+    const prefs = startMenuTaskbarSettings();
+    if (!prefs || place.separator || place.id === 'user') return true;
+    if (place.id === 'recent' && prefs.recentFiles === false) return false;
+    return prefs.places[place.id] !== false;
 }
 
 /** Recent Items: a click menu of the latest launches, rebuilt as the pointer reaches it. */
@@ -7961,10 +8017,30 @@ function buildStartMenuPower() {
         container.appendChild(btn);
         return btn;
     };
-    button('is-shutdown', 'Shut down', () => runClientShutdownDirect());
-    if (isDesktopStartMenuEnvironment()) button('is-lock', 'Lock this computer', () => runClientLockDirect());
+    // what the two buttons do: Customize Start Menu (public/scripts/comp/taskbarSettings.js)
+    const prefs = startMenuTaskbarSettings() || {};
+    const power = START_MENU_POWER_BUTTONS[prefs.powerButton] || START_MENU_POWER_BUTTONS.shutdown;
+    button(power.className, power.title, power.run);
+    if (isDesktopStartMenuEnvironment()) {
+        const lock = START_MENU_LOCK_BUTTONS[prefs.lockButton] || START_MENU_LOCK_BUTTONS.lock;
+        button(lock.className, lock.title, lock.run);
+    }
     attachStartMenuPowerMenu(button('is-arrow', 'Show more options'));
 }
+
+// The power button's choices, drawn with Vista's own cells (scripts/build-vista-start-menu-art.js):
+// shut down and restart the red power cell, log off the amber disconnect cell
+const START_MENU_POWER_BUTTONS = {
+    shutdown: { className: 'is-shutdown', title: 'Shut down', run: () => runClientShutdownDirect() },
+    restart: { className: 'is-shutdown is-restart', title: 'Restart', run: () => runClientRestartDirect() },
+    logoff: { className: 'is-disconnect', title: 'Log off', run: () => runLogoutDirect() }
+};
+
+// The lock button's: the padlock, or the lock cell with the disconnect X
+const START_MENU_LOCK_BUTTONS = {
+    lock: { className: 'is-lock', title: 'Lock this computer', run: () => runClientLockDirect() },
+    logoff: { className: 'is-lock is-lock-logoff', title: 'Log off', run: () => runLogoutDirect() }
+};
 
 // ---- build ----
 
@@ -9665,7 +9741,7 @@ function registerDesktopSettingsControlPanelPages() {
         </div>
         <div class="cpl-task-group">
             <h3 class="cpl-task-heading">See also</h3>
-            <ul class="cpl-task-list">${cpl.taskLinkHtml('Remote Access', 'item', 'remote-access')}</ul>
+            <ul class="cpl-task-list">${cpl.taskLinkHtml('Taskbar and Start Menu', 'item', 'taskbar')}${cpl.taskLinkHtml('Remote Access', 'item', 'remote-access')}</ul>
         </div>`;
     // Global Settings split into Vista's own Control Panel items (Yukimi 2026-10-13): each page
     // mounts the shared forms with one data-desktop-settings-group of the global sections.
@@ -9674,8 +9750,6 @@ function registerDesktopSettingsControlPanelPages() {
             'How windows move and resize, and the frame glass: frosted, live or basic.'],
         ['sound', 'Sound', 'Program sounds',
             'Windows Vista sounds for dialogs, errors, lock, logon, shutdown, navigation and the planet switcher.'],
-        ['taskbar', 'Taskbar and Start Menu', 'Taskbar and Start Menu',
-            'The start button, taskbar icons, what opens at startup, and where notifications go.'],
         ['keyboard', 'Keyboard', 'Input',
             'The virtual keyboard on touch devices.']
     ];
@@ -10381,9 +10455,16 @@ function wireRemoteAccessSettingsModal() {
     ]);
 }
 
-/** Remote Access lives in Control Panel; the old window stays as the fallback without it. */
+/**
+ * Remote Access opens Remote Access Properties (remoteAccessProperties.js, in Control Panel's
+ * bundle), Vista's System Properties > Remote tab; then the Control Panel page, then the old window.
+ */
 async function openRemoteAccessSettingsModal() {
     await featureLoader.loadFeature('control_panel');
+    if (window.remoteAccessProperties && typeof window.remoteAccessProperties.open === 'function') {
+        window.remoteAccessProperties.open();
+        return;
+    }
     const cpl = window.melatonControlPanel;
     if (cpl && typeof cpl.open === 'function' && registerRemoteAccessControlPanelPage()) {
         cpl.open('remote-access');
@@ -10418,7 +10499,7 @@ function registerRemoteAccessControlPanelPage() {
                 <h3 class="cpl-task-heading">See also</h3>
                 <ul class="cpl-task-list">
                     ${cpl.taskLinkHtml('Network and Server Center', 'nav', 'network')}
-                    ${cpl.taskLinkHtml('Taskbar and Start Menu', 'nav', 'taskbar')}
+                    ${cpl.taskLinkHtml('Taskbar and Start Menu', 'item', 'taskbar')}
                 </ul>
             </div>`,
         body: () => `
@@ -11231,8 +11312,104 @@ function restoreWindowPositions() {
     }
 }
 
-// About Melaton Modal
-let aboutMelatoninSystemInfo = null;
+// About MeletonFX: Vista's About Windows (winver.exe). public/app.html #aboutMelatoninModal, drawn by
+// public/css/about-melaton.css. The version facts live here once so Control Panel's System page
+// (public/scripts/comp/cplSystem.js) shows the same edition, build and owner.
+const MELETON_VERSION_DEFAULTS = Object.freeze({
+    productName: 'MeletonFX',
+    fullName: 'MeletonFX Desktop',
+    edition: '2026 R7',
+    version: '2026 R7',
+    servicePack: '',
+    copyrightYear: '2026',
+    copyrightHolder: 'Academy City Research P.S.R.',
+    copyright: 'Copyright \u00a9 2026 Academy City Research P.S.R.  All rights reserved.',
+    organization: 'Dreamscape'
+});
+
+let meletonSystemInfo = null;
+let meletonSystemInfoPromise = null;
+
+/** The signed-in domain account (the VPN logon's user, as the Start menu and lock screen name it). */
+function getMeletonRegisteredUser() {
+    const ws = window.wsClient;
+    const name = ws && typeof ws._getConnectionUsername === 'function' ? ws._getConnectionUsername() : '';
+    return name && name !== '\u2014' ? name : startMenuUserName();
+}
+
+/** Edition, version, build, service pack, copyright and registered owner; build and systemInfo
+ *  fill in once loadMeletonVersionInfo has fetched get_system_info. */
+function getMeletonVersionInfo() {
+    const info = meletonSystemInfo || null;
+    const build = info && info.gitHash && info.gitHash !== 'Unknown' ? String(info.gitHash) : 'Unknown';
+    return {
+        ...MELETON_VERSION_DEFAULTS,
+        build,
+        registeredUser: getMeletonRegisteredUser(),
+        systemInfo: info
+    };
+}
+
+/** Fetches get_system_info once (the server answers from its cache) and resolves getMeletonVersionInfo(). */
+async function loadMeletonVersionInfo(force = false) {
+    if (meletonSystemInfo && !force) return getMeletonVersionInfo();
+    if (!window.wsClient || !window.wsClient.isConnected()) return getMeletonVersionInfo();
+    if (!meletonSystemInfoPromise) {
+        meletonSystemInfoPromise = window.wsClient.sendMessage('get_system_info', {})
+            .then((response) => {
+                if (response) meletonSystemInfo = response;
+            })
+            .catch((error) => {
+                console.warn('About MeletonFX: system information unavailable', error);
+            })
+            .finally(() => {
+                meletonSystemInfoPromise = null;
+            });
+    }
+    await meletonSystemInfoPromise;
+    return getMeletonVersionInfo();
+}
+
+window.getMeletonVersionInfo = getMeletonVersionInfo;
+window.loadMeletonVersionInfo = loadMeletonVersionInfo;
+
+/** Physical memory in KB as winver prints it: the host's exact bytes, else the cached "N.NN GB". */
+function meletonPhysicalMemoryKb(systemInfo) {
+    if (!systemInfo) return null;
+    const bytes = systemInfo.host && Number(systemInfo.host.totalMemBytes);
+    if (bytes > 0) return Math.round(bytes / 1024);
+    const match = typeof systemInfo.ram === 'string' ? systemInfo.ram.match(/([\d.]+)\s*GB/i) : null;
+    return match ? Math.round(parseFloat(match[1]) * 1024 * 1024) : null;
+}
+
+function renderAboutMelatoninModal(modal) {
+    const info = getMeletonVersionInfo();
+    const set = (id, text) => {
+        const el = modal.querySelector('#' + id);
+        if (el) el.textContent = text;
+    };
+    const servicePack = info.servicePack ? `: ${info.servicePack}` : '';
+    const build = info.build !== 'Unknown' ? ` (Build ${info.build}${servicePack})` : '';
+    set('aboutMelatoninVersion', `Version ${info.version}${build}`);
+    set('aboutWindowsCopyright', info.copyright);
+    set('aboutWindowsOwner', info.registeredUser);
+    set('aboutWindowsOrg', info.organization);
+    const kb = meletonPhysicalMemoryKb(info.systemInfo);
+    set('aboutWindowsMemory', kb ? `Physical memory available to ${info.productName}\u00ae: ${kb.toLocaleString('en-US')} KB` : '');
+}
+
+function showMeletonLicenseTerms() {
+    const info = getMeletonVersionInfo();
+    const esc = (text) => String(text).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    // showConfirmationDialog: public/scripts/comp/confirmationDialog.js (a Vista message box on the desktop)
+    showConfirmationDialog(
+        `<p>${esc(info.fullName)} ${esc(info.edition)} is licensed to ${esc(info.registeredUser)}, ${esc(info.organization)}.</p>` +
+        `<p>${esc(info.copyright)}</p>`,
+        [{ text: 'OK', value: true, className: 'btn-standard primary' }],
+        null,
+        { title: 'Dreamscape Software License Terms', icon: 'fa-light fa-info-circle' }
+    );
+}
 
 async function openAboutMelatoninModal() {
     const modal = document.getElementById('aboutMelatoninModal');
@@ -11241,107 +11418,39 @@ async function openAboutMelatoninModal() {
         return;
     }
 
-    // Version will be loaded with system info
-
-    // Load system information (from server cache - instant response)
-    await loadAboutMelatoninSystemInfo();
-
-    // Setup close button
+    const close = () => { closeModal(modal); };
     const closeBtn = document.getElementById('closeAboutMelatoninBtn');
-
-    const closeModalHandler = () => {
-        closeModal(modal);
-    };
-
-    if (closeBtn) {
-        closeBtn.onclick = closeModalHandler;
+    if (closeBtn) closeBtn.onclick = close;
+    const okBtn = document.getElementById('aboutWindowsOkBtn');
+    if (okBtn) okBtn.onclick = close;
+    const licenseLink = document.getElementById('aboutWindowsLicenseLink');
+    if (licenseLink) {
+        licenseLink.onclick = (event) => {
+            event.preventDefault();
+            showMeletonLicenseTerms();
+        };
     }
 
-    // Open modal
+    renderAboutMelatoninModal(modal);
     openModal(modal);
-}
-
-async function loadAboutMelatoninSystemInfo() {
-    const systemInfoElement = document.getElementById('aboutMelatoninSystemInfo');
-    if (!systemInfoElement) return;
-
-    // Check if websocket is connected
-    if (!window.wsClient || !window.wsClient.isConnected()) {
-        systemInfoElement.innerHTML = '<p class="text-danger">System information unavailable (WebSocket not connected)</p>';
-        return;
-    }
-
-    try {
-        systemInfoElement.innerHTML = '<p class="text-muted">Loading system information...</p>';
-
-        const response = await window.wsClient.sendMessage('get_system_info', {});
-
-        if (response) {
-            aboutMelatoninSystemInfo = response;
-
-            // Update version display
-            const versionElement = document.getElementById('aboutMelatoninVersion');
-            if (versionElement && response.gitHash) {
-                versionElement.textContent = response.gitHash;
-            }
-
-            renderAboutMelatoninSystemInfo(response);
-        } else {
-            systemInfoElement.innerHTML = '<p class="text-danger">Failed to load system information</p>';
-        }
-    } catch (error) {
-        console.error('Failed to load system information:', error);
-        systemInfoElement.innerHTML = '<p class="text-danger">Error loading system information</p>';
-    }
-}
-
-function renderAboutMelatoninSystemInfo(data) {
-    const systemInfoElement = document.getElementById('aboutMelatoninSystemInfo');
-    if (!systemInfoElement || !data) return;
-
-    // Helper function to format numbers with thousands separators
-    const formatNumber = (num) => {
-        if (num === null || num === undefined || isNaN(num)) return '0';
-        return Number(num).toLocaleString('en-US');
+    // Centred, the 429px window sits on a half pixel: settle it onto whole pixels once it is open.
+    // OK is the default button and takes the focus, so Enter and Space close the dialog.
+    const settle = () => {
+        settleModalPixelAnchor(modal);
+        if (okBtn && !modal.classList.contains('hidden')) okBtn.focus({ preventScroll: true });
     };
-
-    // Helper function to format size strings (e.g., "1234.56 MB" -> "1,234.56 MB")
-    const formatSizeString = (sizeStr) => {
-        if (!sizeStr || typeof sizeStr !== 'string') return sizeStr;
-        // Don't format if it's "Unknown" or "N/A"
-        if (sizeStr === 'Unknown' || sizeStr === 'N/A') return sizeStr;
-        // Match pattern: number(s) followed by optional decimal, then unit (MB, GB, TB, KB, B)
-        return sizeStr.replace(/(\d+\.?\d*)\s*(MB|GB|TB|KB|B)/gi, (match, number, unit) => {
-            const num = parseFloat(number);
-            if (isNaN(num)) return match;
-            return `${num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} ${unit}`;
+    if (modal.classList.contains('opening')) {
+        modal.addEventListener('animationend', function onOpened(e) {
+            if (e.target !== modal) return;
+            modal.removeEventListener('animationend', onOpened);
+            settle();
         });
-    };
-
-    let html = '';
-
-    // CPU and RAM
-    if (data.cpu || data.ram) {
-        html += '<div class="form-row">';
-        html += `<span class="text-secondary">${data.cpu || 'Unknown'}`;
-        if (data.ram) {
-            html += ` (${formatSizeString(data.ram)})`;
-        }
-        html += '</span></div>';
+    } else {
+        settle();
     }
 
-    // Disk Space
-    if (data.disk) {
-        html += '<div class="form-row">';
-        html += '<span class="about-info-label">Disk Space:</span> ';
-        html += `<span class="text-secondary">`;
-        html += `Total: ${formatSizeString(data.disk.total || 'Unknown')}, `;
-        html += `Used: ${formatSizeString(data.disk.used || 'Unknown')}, `;
-        html += `Free: ${formatSizeString(data.disk.free || 'Unknown')}`;
-        html += '</span></div>';
-    }
-
-    systemInfoElement.innerHTML = html || '<p class="text-danger">No system information available</p>';
+    await loadMeletonVersionInfo();
+    renderAboutMelatoninModal(modal);
 }
 
 function isKeyboardEditableTarget(el) {

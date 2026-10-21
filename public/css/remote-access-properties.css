@@ -1,0 +1,163 @@
+/* Remote Access Properties (public/scripts/comp/remoteAccessProperties.js): Vista's System
+   Properties > Remote tab and its sub-dialogs, measured on the Vista Aero VM (2026-10-21).
+   The controls, tabs, pane and buttons are Taskbar Properties' (taskbar-properties.css, tbp-*);
+   this file has only what differs:
+     the sheet's client 404x436 (System Properties' 256 x 226 DLU pages): the pane 390x372 at 6,27,
+       OK / Cancel / Apply 75x23 at y 406, x 161 / 242 / 323
+     Remote Access Settings (racpldlg.dll.mui 503, 277 x 181 DLU): client 416x294
+     Open Generated Images (remotepg.dll.mui 513's frame, 250 x 172 DLU): client 375x280 */
+
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.rap-sheet {
+    width: 404px;
+    height: 436px;
+}
+
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.rap-settings {
+    width: 416px;
+    height: 294px;
+}
+
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.rap-openwith {
+    width: 375px;
+    height: 280px;
+}
+
+.rap-sheet .tbp-pane {
+    width: 390px;
+    height: 372px;
+}
+
+.rap-sheet .tbp-footer {
+    left: 162px;
+    top: 407px;
+}
+
+/* the sub-dialogs have no pane: group labels sit on the dialog face */
+.rap-settings .tbp-group-label,
+.rap-openwith .tbp-group-label {
+    background: #f0f0f0;
+}
+
+.rap-settings .rap-to {
+    text-align: center;
+}
+
+/* 7.css makes a select position: relative; these are placed like every other control */
+.tbp-client select.tbp-select.rap-min,
+.tbp-client select.tbp-select.rap-max {
+    position: absolute;
+}
+
+/* Open With's list: Remote Desktop Users' list view, one 16 px icon and name per row */
+.tbp-client .rap-list {
+    padding: 1px;
+    outline: none;
+}
+
+.tbp-client .rap-list-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 18px;
+    padding: 0 4px 0 3px;
+    border-radius: 2px;
+    outline: none;
+    cursor: default;
+}
+
+@media (hover: hover) {
+    .tbp-client .rap-list-row:not(.is-selected):hover {
+        background: linear-gradient(#fafbfd, #ebf3fd);
+        box-shadow: inset 0 0 0 1px #b8d6fb;
+    }
+}
+
+.tbp-client .rap-list-row.is-selected {
+    background: linear-gradient(#f2f9fd, #d9effc);
+    box-shadow: inset 0 0 0 1px #84acdd;
+}
+
+.tbp-client .rap-list-row:focus-visible {
+    box-shadow: inset 0 0 0 1px #84acdd, inset 0 0 0 2px #fff;
+}
+
+.tbp-client .rap-list-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+}
+
+.tbp-client .rap-list-icon img {
+    display: block;
+    width: 16px;
+    height: 16px;
+}
+
+.tbp-client .rap-list-name {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* BS_MULTILINE: the text wraps beside the box */
+.tbp-client .tbp-check.rap-multi {
+    white-space: normal;
+}
+
+/* ---- check boxes and radio buttons: Vista's own art ----
+   aero.msstyles BUTTON parts, un-premultiplied (the VM's pixels match them exactly):
+     checkbox.png 13x260, 13 px a state: unchecked normal / hot / pressed / disabled, then checked
+     radio.png    13x104, the same eight
+   Placed as the VM draws them: the box at the control's left; a check box centred in the control
+   (BS_VCENTER), a BS_TOP radio button 1 px under its top; the text 16 px right of the box's left,
+   its first line 13 px tall from the box's top (check box) or 1 px above it (radio). */
+.rap-window .tbp-client .tbp-check {
+    display: block;
+}
+
+.rap-window .tbp-client .tbp-check input:is([type="checkbox"], [type="radio"]) + label {
+    position: relative;
+    display: block;
+    margin: 0;
+    padding: 0 0 0 16px;
+    line-height: 13px;
+    white-space: inherit;
+}
+
+.rap-window .tbp-client .tbp-check input:is([type="checkbox"], [type="radio"]) + label::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 13px;
+    height: 13px;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: url("/static_images/vista-controls/checkbox.png") 0 0 / 13px auto no-repeat;
+    transition: none;
+}
+
+.rap-window .tbp-client .tbp-check input[type="radio"] + label::before {
+    top: 1px;
+    background-image: url("/static_images/vista-controls/radio.png");
+}
+
+.rap-window .tbp-client .tbp-check input:is([type="checkbox"], [type="radio"]) + label::after {
+    content: none;
+}
+
+.rap-window .tbp-client .tbp-check:hover input + label::before { background-position-y: -13px; }
+.rap-window .tbp-client .tbp-check:active input + label::before { background-position-y: -26px; }
+.rap-window .tbp-client .tbp-check input:disabled + label::before { background-position-y: -39px; }
+.rap-window .tbp-client .tbp-check input:checked + label::before { background-position-y: -52px; }
+.rap-window .tbp-client .tbp-check:hover input:checked + label::before { background-position-y: -65px; }
+.rap-window .tbp-client .tbp-check:active input:checked + label::before { background-position-y: -78px; }
+.rap-window .tbp-client .tbp-check input:checked:disabled + label::before { background-position-y: -91px; }
+
+/* the focused control's dotted rectangle round its text, as Vista draws it */
+.rap-window .tbp-client .tbp-check input:focus-visible + label span {
+    outline: 1px dotted #000;
+    outline-offset: 0;
+}

@@ -25,7 +25,8 @@
 
     const STORAGE_KEY = 'melatonWorkstationLocked';
     const DOMAIN = 'DREAMSCAPE'; // fallback; the configured name comes from melatonDomainName()
-    const USER = 'Administrator';
+    // the signed-in account's name (User Accounts' Change the account name; meletonAccounts.js)
+    const user = () => (root.meletonAccountName ? root.meletonAccountName('administrator') : 'Administrator');
 
     const LOCK_ICON = '<svg viewBox="0 0 32 32" aria-hidden="true">'
         + '<rect x="2.5" y="3.5" width="22" height="16" rx="1" fill="#d4d0c8" stroke="#404040"/>'
@@ -85,7 +86,7 @@
                         <p class="workstation-lock-hint">Press Ctrl+Alt+Delete to unlock this computer.</p>
                         <form class="workstation-lock-form" autocomplete="off">
                             <label class="workstation-lock-row"><span>User name:</span>
-                                <input class="workstation-lock-user" type="text" value="${USER}" readonly tabindex="-1"></label>
+                                <input class="workstation-lock-user" type="text" value="${user()}" readonly tabindex="-1"></label>
                             <label class="workstation-lock-row"><span>Password:</span>
                                 <input class="workstation-lock-password" type="password" autocomplete="current-password"></label>
                             <div class="workstation-lock-actions">
@@ -118,7 +119,7 @@
     function showView(view) {
         if (!ensureModal()) return;
         modal.dataset.view = view;
-        el('.workstation-lock-who').textContent = `Only ${domainName()}\\${USER} or an administrator can unlock this computer.`;
+        el('.workstation-lock-who').textContent = `Only ${domainName()}\\${user()} or an administrator can unlock this computer.`;
         el('.workstation-lock-title').textContent = view === 'unlock' ? 'Unlock Computer' : 'Computer Locked';
         const password = el('.workstation-lock-password');
         password.value = '';
@@ -158,7 +159,7 @@
         screen.classList.add('auth-active');
         screen.classList.remove('auth-busy');
         doc.getElementById('desktopPreStartupAuth').classList.remove('hidden');
-        doc.getElementById('desktopPreStartupUsername').value = USER;
+        doc.getElementById('desktopPreStartupUsername').value = user();
         // The logon's last render (websocket.js _renderPreStartupDialog) left both disabled
         password.disabled = false;
         doc.getElementById('desktopPreStartupLoginBtn').disabled = false;

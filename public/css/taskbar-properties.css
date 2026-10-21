@@ -1,0 +1,641 @@
+/* Taskbar and Start Menu Properties (public/scripts/comp/taskbarProperties.js), 1:1 with Vista's
+   at 96 dpi, measured on the Vista Aero VM (2026-10-21), client coordinates:
+     the sheet's client 398x423 (#f0f0f0): tabs from x 8, the selected one 2 px wider each side
+     and 2 px taller (top 7, the others 9), 5 px / 6 px around the label; the tab pane 384x359 at
+     6,27 (#898c95 edge, white inside, a white line outside right and bottom); OK / Cancel / Apply
+     75x23 at y 393, x 155 / 236 / 317.
+     Pages place controls by dialog units from 10,29 (taskbarProperties.js dlu()); group boxes
+     draw their #d5dfe5 frame from 6 px under the box's top (the label's middle).
+   Text is the template's MS Shell Dlg 8, which Vista draws in Tahoma 8 pt (11 px; the VM's widths
+   match Tahoma, not Segoe UI). The light client and the 7.css check boxes, radio buttons, combo boxes and
+   buttons come from vista-dialogs.css (data-vista-dialog="form", .win7 on the client). */
+
+body.desktop-mode .modal.tbp-window[data-vista-dialog] {
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    height: auto;
+    min-height: 0;
+}
+
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-client {
+    position: relative;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    --w7-font: 11px Tahoma, "Segoe UI", sans-serif;
+    background: #f0f0f0;
+    color: #000;
+    font: 11px Tahoma, "Segoe UI", sans-serif;
+    line-height: 13px;
+    text-align: left;
+    user-select: none;
+}
+
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-client :is(button, input, select, label, span, div) {
+    font-family: Tahoma, "Segoe UI", sans-serif;
+    font-size: 11px;
+}
+
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-sheet {
+    width: 398px;
+    height: 423px;
+}
+
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-icons {
+    width: 348px;
+    height: 390px;
+}
+
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-start {
+    width: 377px;
+    height: 445px;
+}
+
+.tbp-client u {
+    text-decoration: none;
+}
+
+/* Vista shows the access keys while Alt is down */
+.tbp-client:focus-within u {
+    text-decoration: none;
+}
+
+/* ---- tabs and the pane ---- */
+
+.tbp-tabs {
+    position: absolute;
+    left: 8px;
+    top: 9px;
+    display: flex;
+    align-items: flex-end;
+    height: 18px;
+    z-index: 2;
+}
+
+.tbp-client .tbp-tab {
+    position: relative;
+    box-sizing: border-box;
+    height: 18px;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 1px 5px 0 4px;
+    border: 1px solid #898c95;
+    border-bottom: 0;
+    border-radius: 1px 1px 0 0;
+    background: linear-gradient(#fcfcfc 0 1px, #f2f2f2 1px, #ebebeb 45%, #dddddd 55%, #cfcfcf);
+    box-shadow: none;
+    color: #000;
+    font: inherit;
+    line-height: 16px;
+    white-space: nowrap;
+    cursor: default;
+    outline: none;
+}
+
+@media (hover: hover) {
+    .tbp-client .tbp-tab:not(.is-selected):hover {
+        border-color: #3c7fb1;
+        background: linear-gradient(#eaf6fd 45%, #bee6fd 55%, #a7d9f5);
+    }
+}
+
+.tbp-client .tbp-tab::before,
+.tbp-client .tbp-tab::after {
+    content: none;
+}
+
+.tbp-client .tbp-tab.is-selected {
+    z-index: 1;
+    height: 21px;
+    margin: 0 -2px -1px;
+    padding: 0 8px 2px 7px;
+    border-radius: 0;
+    background: #fff;
+    border-color: #898c95;
+}
+
+.tbp-client .tbp-tab.is-selected + .tbp-tab {
+    margin-left: 1px;
+}
+
+.tbp-client .tbp-tab:focus-visible {
+    outline: 1px dotted #000;
+    outline-offset: -4px;
+}
+
+.tbp-pane {
+    position: absolute;
+    left: 6px;
+    top: 27px;
+    box-sizing: border-box;
+    width: 384px;
+    height: 359px;
+    border: 1px solid #898c95;
+    background: #fff;
+    box-shadow: 1px 1px 0 #fff;
+}
+
+.tbp-client .tbp-page,
+.tbp-client .tbp-page[role="tabpanel"] {
+    position: absolute;
+    left: 3px;
+    top: 1px;
+    right: 0;
+    bottom: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    z-index: auto;
+}
+
+.tbp-client .tbp-page[hidden] {
+    display: none;
+}
+
+/* ---- controls placed by dialog units ---- */
+
+.tbp-client .tbp-ctl {
+    position: absolute;
+    box-sizing: border-box;
+    margin: 0;
+}
+
+.tbp-icons .tbp-ctl,
+.tbp-start .tbp-ctl {
+    /* the sub-dialogs have no pane: their units start at the client's corner */
+    position: absolute;
+}
+
+.tbp-client .tbp-static {
+    line-height: 13px;
+    white-space: normal;
+}
+
+.tbp-client .tbp-static.is-disabled,
+.tbp-client .tbp-static .is-disabled {
+    color: #6d6d6d;
+}
+
+.tbp-client .tbp-check {
+    display: flex;
+    align-items: flex-start;
+    white-space: nowrap;
+}
+
+.tbp-client .tbp-check input {
+    margin: 0;
+}
+
+.tbp-client .tbp-check label {
+    line-height: 13px;
+}
+
+.tbp-client .tbp-group {
+    position: absolute;
+    box-sizing: border-box;
+    border: 0;
+    pointer-events: none;
+}
+
+.tbp-client .tbp-group::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 6px;
+    bottom: 0;
+    border: 1px solid #d5dfe5;
+    border-radius: 3px;
+    box-shadow: inset 1px 1px 0 #fff, 1px 1px 0 #fff;
+}
+
+.tbp-client .tbp-group-label {
+    position: absolute;
+    left: 8px;
+    top: 0;
+    padding: 0 2px 0 1px;
+    background: #fff;
+    line-height: 13px;
+}
+
+.tbp-icons .tbp-group-label,
+.tbp-start .tbp-group-label {
+    background: #f0f0f0;
+}
+
+.tbp-client button.tbp-button {
+    min-width: 0;
+    min-height: 0;
+    padding: 0 4px;
+    font: inherit;
+    line-height: 13px;
+}
+
+.tbp-client .tbp-link-row {
+    line-height: 13px;
+}
+
+.tbp-client .tbp-link {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+    min-height: 0;
+    background: none;
+    box-shadow: none;
+    color: #0066cc;
+    font: inherit;
+    line-height: 13px;
+    text-decoration: underline;
+    cursor: var(--c-pointer, pointer);
+}
+
+.tbp-client .tbp-link:hover {
+    color: #3399ff;
+}
+
+.tbp-client select.tbp-select {
+    height: 21px;
+    min-height: 0;
+    padding: 0 18px 0 3px;
+    font: inherit;
+}
+
+.tbp-client input.tbp-edit {
+    height: 20px;
+    min-height: 0;
+    padding: 1px 3px;
+    font: inherit;
+}
+
+/* Customize Start Menu's spin box, measured on the VM: the edit 41x20 with the number right-aligned,
+   and two 15x8 buttons inside its border (2 px from the top and right edges), each a light face
+   with a 5/3/1 px blue-grey arrow; hot = #3c7fb1 edge over a pale blue face, pressed = #2e6690
+   over a deeper one. Spans, not buttons: 7.css paints its own button face in ::before. */
+.tbp-client .tbp-spinedit {
+    width: 41px;
+    height: 20px;
+}
+
+.tbp-client .tbp-spinedit input.tbp-edit {
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    padding: 0 21px 0 2px;
+    text-align: right;
+}
+
+.tbp-client .tbp-spin {
+    --spin-edge: #abadb3;
+    --spin-side: #fbfbfb;
+    position: absolute;
+    left: 24px;
+    width: 15px;
+    height: 8px;
+    box-sizing: border-box;
+    border: 1px solid var(--spin-edge);
+    background-repeat: no-repeat;
+    cursor: default;
+}
+
+/* up: no top edge (the edit's own border is above it), seven face rows */
+.tbp-client .tbp-spin-up {
+    top: 2px;
+    border-top: 0;
+    background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='7' shape-rendering='crispEdges'%3E%3Crect x='6' y='2' width='1' height='1' fill='%234d5678'/%3E%3Crect x='5' y='3' width='3' height='1' fill='%235f6ea5'/%3E%3Crect x='4' y='4' width='5' height='1' fill='%237085d1'/%3E%3C/svg%3E"),
+        linear-gradient(var(--spin-r0, #fcfcfc) 0 1px, var(--spin-r1, #f2f2f2) 1px 2px, var(--spin-r2, #efefef) 2px 3px, var(--spin-r3, #eeeeee) 3px 4px, var(--spin-r4, #e8e8e8) 4px 5px, var(--spin-r5, #d1d1d1) 5px 6px, var(--spin-r6, #f3f3f3) 6px 7px);
+    box-shadow: inset 1px 0 var(--spin-side), inset -1px 0 var(--spin-side);
+}
+
+/* down: its own top and bottom edges, six face rows */
+.tbp-client .tbp-spin-down {
+    top: 10px;
+    background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='6' shape-rendering='crispEdges'%3E%3Crect x='4' y='1' width='5' height='1' fill='%237085d1'/%3E%3Crect x='5' y='2' width='3' height='1' fill='%235f6ea5'/%3E%3Crect x='6' y='3' width='1' height='1' fill='%234d5678'/%3E%3C/svg%3E"),
+        linear-gradient(var(--spin-r0, #fcfcfc) 0 1px, var(--spin-r1, #f1f1f1) 1px 2px, var(--spin-r2, #efefef) 2px 3px, var(--spin-r3, #eeeeee) 3px 4px, var(--spin-r4, #e8e8e8) 4px 5px, var(--spin-r6, #f3f3f3) 5px 6px);
+    box-shadow: inset 1px 0 var(--spin-side), inset -1px 0 var(--spin-side);
+}
+
+@media (hover: hover) {
+    .tbp-client .tbp-spin:hover {
+        --spin-edge: #3c7fb1;
+        --spin-side: #f4f9fc;
+        --spin-r0: #fafdfe;
+        --spin-r1: #e9f6fd;
+        --spin-r2: #e3f3fc;
+        --spin-r3: #dff2fc;
+        --spin-r4: #d2edfc;
+        --spin-r5: #a9dbf5;
+        --spin-r6: #e9f5fc;
+    }
+}
+
+.tbp-client .tbp-spin:active {
+    --spin-edge: #2e6690;
+    --spin-side: #829dad;
+    --spin-r0: #829dad;
+    --spin-r1: #afcede;
+    --spin-r2: #c7e6f7;
+    --spin-r3: #c6e6f7;
+    --spin-r4: #c4e5f7;
+    --spin-r5: #98d0ed;
+    --spin-r6: #9ed2ed;
+}
+
+/* ---- footer ---- */
+
+.tbp-footer {
+    position: absolute;
+    left: 156px;
+    top: 394px;
+    display: flex;
+    gap: 8px;
+}
+
+/* 75x23 rectangles, the face drawn 1 px inside */
+.tbp-client .tbp-footer-button {
+    box-sizing: border-box;
+    width: 73px;
+    min-width: 73px;
+    height: 21px;
+    min-height: 0;
+    padding: 0;
+    font: inherit;
+}
+
+/* ---- tree views (Toolbars, Customize Start Menu) ---- */
+
+.tbp-client .tbp-tree,
+.tbp-client .tbp-list {
+    overflow: auto;
+    border: 1px solid #828790;
+    background: #fff;
+}
+
+.tbp-client .tbp-tree {
+    padding: 1px 0;
+}
+
+.tbp-client .tbp-tree-row {
+    display: flex;
+    align-items: center;
+    height: 16px;
+    padding: 0 0 0 3px;
+    white-space: nowrap;
+}
+
+.tbp-client .tbp-tree-row.is-node {
+    padding-left: 4px;
+}
+
+.tbp-client .tbp-tree-row.is-child {
+    padding-left: 20px;
+}
+
+.tbp-client .tbp-tree-row input {
+    margin: 0;
+}
+
+.tbp-client .tbp-tree-row label {
+    line-height: 13px;
+}
+
+/* ---- list views (Customize Notification Icons, Customize Notifications) ---- */
+
+.tbp-client .tbp-list {
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.tbp-client .tbp-list-header {
+    display: grid;
+    grid-template-columns: 184px 125px 1fr;
+    flex: none;
+    height: 24px;
+    background: linear-gradient(#fff 0 40%, #f7f8fa 40% 100%);
+    border-bottom: 1px solid #d5d5d5;
+}
+
+.tbp-client .tbp-list-header span {
+    padding: 4px 6px 0;
+    border-right: 1px solid #e3e8ee;
+}
+
+.tbp-client .tbp-list-body {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.tbp-client .tbp-list-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 20px;
+    margin: 2px 6px 0 13px;
+    color: #1e3287;
+    line-height: 15px;
+}
+
+.tbp-client .tbp-list-group::after {
+    content: '';
+    flex: 1;
+    border-top: 1px solid #abc4ea;
+}
+
+.tbp-client .tbp-list-row {
+    display: grid;
+    grid-template-columns: 18px 162px 1fr;
+    align-items: center;
+    height: 18px;
+    padding: 0 0 0 4px;
+    outline: none;
+    column-gap: 0;
+}
+
+.tbp-client .tbp-list-row .tbp-list-name.is-wide {
+    grid-column: 1 / 3;
+    padding-left: 4px;
+}
+
+.tbp-client .tbp-list-row.is-selected {
+    background: linear-gradient(#f2f9fd, #d9effc);
+    box-shadow: inset 0 0 0 1px #84acdd;
+}
+
+.tbp-client .tbp-list-name {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.tbp-client .tbp-list-icon {
+    display: flex;
+    align-items: center;
+    width: 16px;
+    height: 16px;
+    overflow: hidden;
+}
+
+/* the tray icon itself, scaled into the 16 px column */
+.tbp-client .tbp-list-glyph {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 16px !important;
+    height: 16px !important;
+    margin: 0 !important;
+    color: #2a4a6a;
+    font-size: 12px;
+    text-shadow: none;
+    pointer-events: none;
+}
+
+.tbp-client .tbp-list-behavior {
+    position: relative;
+    padding: 0 6px;
+}
+
+.tbp-client .tbp-list-select {
+    display: none;
+    position: absolute;
+    left: 0;
+    top: -2px;
+    width: 120px;
+    height: 20px;
+    min-height: 0;
+    font: inherit;
+}
+
+.tbp-client .tbp-list-row.is-editing .tbp-list-select {
+    display: block;
+}
+
+.tbp-client .tbp-list-row.is-editing .tbp-list-behavior-text {
+    visibility: hidden;
+}
+
+/* ---- previews ---- */
+
+.tbp-client .tbp-preview {
+    overflow: hidden;
+    background: #fff;
+}
+
+/* our taskbar, filling the strip as Vista's preview bitmaps do (34 px; the orb's top is cut off) */
+.tbp-client .tbp-preview .desktop-taskbar.tbp-preview-bar {
+    --taskbar-height: 34px;
+    position: absolute;
+    left: 0;
+    right: auto;
+    top: 0;
+    bottom: auto;
+    width: 900px;
+    height: 34px;
+    display: flex;
+    z-index: 0;
+    pointer-events: none;
+    contain: none;
+}
+
+.tbp-client .tbp-preview-traybar.desktop-taskbar.tbp-preview-bar {
+    left: auto;
+    right: 0;
+    width: 100%;
+    justify-content: flex-end;
+}
+
+.tbp-client .tbp-preview .taskbar-start-button {
+    pointer-events: none;
+}
+
+.tbp-client .tbp-preview .taskbar-window-item {
+    animation: none;
+}
+
+.tbp-client .tbp-preview .taskbar-tray {
+    margin-left: auto;
+}
+
+.tbp-client .tbp-preview .taskbar-clock {
+    display: flex;
+    align-items: center;
+}
+
+/* ---- check boxes and radio buttons: Vista's own art ----
+   aero.msstyles BUTTON parts (public/static_images/vista-controls/, cut by the Control Panel
+   System session for Remote Access Properties; they match the VM's pixels exactly):
+     checkbox.png 13x260, 13 px a state: unchecked normal / hot / pressed / disabled, then checked
+     radio.png    13x104, the same eight
+   The box sits at the control's left, centred in it (checkStyle in taskbarProperties.js pads
+   the row), the text 16 px right of the box's left; tree rows (Toolbars, Customize Start Menu)
+   centre theirs in the 16 px row. The input itself takes no room. */
+.tbp-window .tbp-client .tbp-check {
+    display: block;
+}
+
+.tbp-window .tbp-client :is(.tbp-check, .tbp-tree-row) input:is([type="checkbox"], [type="radio"]) {
+    position: absolute;
+    width: 0;
+    height: 0;
+    margin: 0;
+    padding: 0;
+    opacity: 0;
+}
+
+.tbp-window .tbp-client :is(.tbp-check, .tbp-tree-row) input:is([type="checkbox"], [type="radio"]) + label {
+    position: relative;
+    display: block;
+    margin: 0;
+    padding: 0 0 0 16px;
+    line-height: 13px;
+    white-space: nowrap;
+}
+
+.tbp-window .tbp-client :is(.tbp-check, .tbp-tree-row) input:is([type="checkbox"], [type="radio"]) + label::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 13px;
+    height: 13px;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: url("/static_images/vista-controls/checkbox.png") 0 0 / 13px auto no-repeat;
+    transition: none;
+}
+
+.tbp-window .tbp-client :is(.tbp-check, .tbp-tree-row) input[type="radio"] + label::before {
+    background-image: url("/static_images/vista-controls/radio.png");
+}
+
+.tbp-window .tbp-client :is(.tbp-check, .tbp-tree-row) input:is([type="checkbox"], [type="radio"]) + label::after {
+    content: none;
+}
+
+.tbp-window .tbp-client :is(.tbp-check, .tbp-tree-row):hover input + label::before { background-position-y: -13px; }
+.tbp-window .tbp-client :is(.tbp-check, .tbp-tree-row):active input + label::before { background-position-y: -26px; }
+.tbp-window .tbp-client :is(.tbp-check, .tbp-tree-row):hover input:checked + label::before { background-position-y: -65px; }
+.tbp-window .tbp-client :is(.tbp-check, .tbp-tree-row):active input:checked + label::before { background-position-y: -78px; }
+.tbp-window .tbp-client :is(.tbp-check, .tbp-tree-row) input:checked + label::before { background-position-y: -52px; }
+/* re-stated for hover so a greyed control never lights up */
+.tbp-window .tbp-client :is(.tbp-check, .tbp-tree-row):is(*, :hover, :active) input:disabled + label::before { background-position-y: -39px; }
+.tbp-window .tbp-client :is(.tbp-check, .tbp-tree-row):is(*, :hover, :active) input:checked:disabled + label::before { background-position-y: -91px; }
+
+/* the focused control's dotted rectangle round its text, as Vista draws it */
+.tbp-window .tbp-client :is(.tbp-check, .tbp-tree-row) input:focus-visible + label span {
+    outline: 1px dotted #000;
+    outline-offset: 0;
+}
+
+/* greyed controls (the light client's own label colour would otherwise win) */
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-client :is(input:disabled + label, input:disabled + label span, .tbp-static.is-disabled, .is-disabled) {
+    color: #6d6d6d;
+}

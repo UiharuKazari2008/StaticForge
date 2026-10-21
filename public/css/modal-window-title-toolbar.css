@@ -1580,7 +1580,7 @@ body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has
 }
 
 /* App icons and labels in the cluster (Studio's indicators, app buttons): drawn like the window glyphs */
-body:not(.windows-classic-theme) .modal .modal-window-controls:has(> .close-btn, > .modal-close) > button > :is(i, span):not(.fa-window-minimize, .fa-window-maximize, .fa-window-restore, .fa-xmark-large),
+body:not(.windows-classic-theme) .modal .modal-window-controls:has(> .close-btn, > .modal-close) > button > :is(i, span):not(.fa-window-minimize, .fa-window-maximize, .fa-window-restore, .fa-xmark-large, .fa-bars:only-child),
 body:not(.windows-classic-theme) .modal .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button > :is(i, span) {
     /* the Vista glyph look of minimize / maximize / close: white-to-grey fill, #535666 edge */
     color: #ececec;
@@ -1592,9 +1592,10 @@ body:not(.windows-classic-theme) .modal .modal-window-controls:has(> .close-btn,
    and inactive (Vista draws the same glyph on hover and press). Each PNG holds the normal glyph
    over the disabled one. Drawn at their pixel size on whole pixels (12 / 12 / 11 px wide in the
    24 / 24 / 41 px button faces), never scaled; the earlier vector tracings anti-aliased into a
-   soft edge (Yukimi: fuzzy). Only the window glyphs swap; indicators and app buttons in a
-   cluster keep their icons. */
-body:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > button > i:is(.fa-window-minimize, .fa-window-maximize, .fa-window-restore, .fa-xmark-large) {
+   soft edge (Yukimi: fuzzy). Only the window glyphs swap, plus an app's menu button (a lone
+   fa-bars, Ledge's), which takes a glyph drawn in the same language; indicators and other app
+   buttons in a cluster keep their icons. */
+body:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > button > i:is(.fa-window-minimize, .fa-window-maximize, .fa-window-restore, .fa-xmark-large, .fa-bars:only-child) {
     position: relative;
     display: inline-block;
     vertical-align: middle;
@@ -1606,7 +1607,7 @@ body:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed)))
     image-rendering: pixelated;
 }
 
-body:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > button:disabled > i:is(.fa-window-minimize, .fa-window-maximize, .fa-window-restore, .fa-xmark-large) {
+body:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > button:disabled > i:is(.fa-window-minimize, .fa-window-maximize, .fa-window-restore, .fa-xmark-large, .fa-bars:only-child) {
     background-position: 0 100%;
 }
 
@@ -1632,6 +1633,13 @@ body:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed)))
     width: 11px;
     height: 10px;
     background-image: url("/static_images/window-controls/vista-close.png");
+}
+
+/* the Maximize box in three bars (scripts/build-vista-caption-glyphs.sh) */
+body:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > button > i.fa-bars:only-child {
+    width: 12px;
+    height: 10px;
+    background-image: url("/static_images/window-controls/vista-menu.png");
 }
 
 /* The bloom layer (7.css button:before): under the glyph, active windows only */
@@ -1916,14 +1924,15 @@ html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModa
 }
 
 /* widths and glyph places for the window buttons (border 5 px + padding = the VM offset) */
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button:is(.minimize-btn, .modal-work-area-maximize, .close-btn, .modal-close, [id="restoreManualBtn"], [id="maximizeGalleryBtn"], [id="maximizePhotoSwipeBtn"]):has(> i:is(.fa-window-minimize, .fa-window-maximize, .fa-window-restore, .fa-xmark-large)) {
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button:is(.minimize-btn, .modal-work-area-maximize, .close-btn, .modal-close, [id="restoreManualBtn"], [id="maximizeGalleryBtn"], [id="maximizePhotoSwipeBtn"]):has(> i:is(.fa-window-minimize, .fa-window-maximize, .fa-window-restore, .fa-xmark-large)),
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button:not(.indicator):has(> i.fa-bars:only-child) {
     justify-content: flex-start;
     min-width: 26px;
     width: 26px;
     padding-left: 2px;
 }
 
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button:is(:first-child, .indicator + *):has(> i.fa-window-minimize) {
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button:is(:first-child, .indicator + *):has(> i:is(.fa-window-minimize, .fa-bars:only-child)) {
     padding-left: 3px;
 }
 

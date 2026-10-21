@@ -105,6 +105,28 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 
 **Success response:** `get_system_info_response`
 
+`data` is the server's system info cache (`globalResources.refreshSystemInfoCache`, refreshed in the background, so the call answers at once):
+
+| Field | Notes |
+|-------|-------|
+| `gitHash` | Short commit of the running tree, or `Unknown` |
+| `cpu` | `"<model> (<n> cores)"` (display string) |
+| `ram` | Total memory, `"<n> GB"` (display string) |
+| `host.hostname` | `os.hostname()` |
+| `host.platform` / `host.arch` | `os.platform()` / `os.arch()` (e.g. `linux` / `x64`) |
+| `host.osType` / `host.osRelease` | `os.type()` / `os.release()` (kernel) |
+| `host.osName` | `PRETTY_NAME` from `/etc/os-release`, or `null` |
+| `host.cpuModel` | First CPU's model string, trimmed |
+| `host.cpuCores` | Logical CPU count |
+| `host.cpuMHz` | Rated clock: cpufreq `base_frequency` or `bios_limit` when the driver exposes one, else `os.cpus()[0].speed` |
+| `host.totalMemBytes` | `os.totalmem()` |
+| `host.nodeVersion` / `host.packageVersion` | `process.version` / `package.json` version |
+| `host.bootedAt` | ISO time the host booted (from `os.uptime()`) |
+| `disk` | `{ total, used, free }` display strings for the project's filesystem |
+| `workspaces` / `usage` | Workspace list and storage usage (Data Management) |
+
+`host` is present from the server build that added Control Panel's System page (`public/scripts/comp/cplSystem.js`); clients fall back to `cpu` / `ram` without it.
+
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 
 ### `ping`

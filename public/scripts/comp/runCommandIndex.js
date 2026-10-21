@@ -601,6 +601,20 @@ function buildRunAgentEntries() {
     }];
 }
 
+/** Run: winver opens About MeletonFX (Vista's About Windows, openAboutMelatoninModal in modalUtils.js). */
+function buildRunSystemCommandEntries() {
+    if (typeof openAboutMelatoninModal !== 'function') return [];
+    return [{
+        id: 'system-winver',
+        category: 'app',
+        label: 'winver',
+        subtitle: 'About MeletonFX',
+        icon: 'fa-light fa-info-circle',
+        keywords: ['winver', 'about', 'about meletonfx', 'about windows', 'version', 'build'],
+        execute: () => { openAboutMelatoninModal(); }
+    }];
+}
+
 function buildRunWorkspaceEntries() {
     const entries = [];
     const workspacesData = typeof workspaces !== 'undefined' ? workspaces : (window.workspaces || {});
@@ -1322,6 +1336,7 @@ function buildRunStaticEntries() {
     return [
         ...buildRunAppEntries(),
         ...buildRunAgentEntries(),
+        ...buildRunSystemCommandEntries(),
         ...buildRunWorkspaceEntries(),
         ...buildRunShortcutOnlyEntries()
     ];
