@@ -570,8 +570,6 @@ function hasPhrase(text, phrase) {
 }
 
 function foldPromptList(text) {
-    // Age-term rewriting removed: never fold adult wording or add age clauses (see test-prompt-list-fold).
-    return { text: typeof text === 'string' ? text : (text || ''), marks: emptyMarks(), gender: { f: false, m: false } };
     if (typeof text !== 'string' || !text) {
         return { text: text || '', marks: emptyMarks(), gender: { f: false, m: false } };
     }
@@ -683,8 +681,6 @@ function resolveGender(slot, promptText) {
 }
 
 function mergeUc(uc, prompt, slot) {
-    // Age-term rewriting removed: never fold adult wording or add age clauses (see test-prompt-list-fold).
-    return uc || '';
     const pos = (slot && slot.pos) || emptyMarks();
     const neg = (slot && slot.uc) || emptyMarks();
     const g = resolveGender(slot, prompt);
@@ -795,8 +791,6 @@ function assertTokenCompiler(apiOpts) {
 }
 
 function maskAgeReadText(text) {
-    // Age-term rewriting removed: never fold adult wording or add age clauses (see test-prompt-list-fold).
-    return text;
     if (typeof text !== 'string' || !text) return text;
     if (!ensurePromptListTables()) return text;
     const split = splitTextColon(text);
@@ -814,8 +808,6 @@ function maskAgeReadText(text) {
 }
 
 function stripWeightedCanon(text) {
-    // Age-term rewriting removed: never fold adult wording or add age clauses (see test-prompt-list-fold).
-    return text;
     if (typeof text !== 'string' || !text) return text;
     if (!ensurePromptListTables()) return text;
     const split = splitTextColon(text);
