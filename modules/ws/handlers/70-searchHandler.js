@@ -910,8 +910,8 @@ async function resolveWorkspaceFilesForSearch(handlers, sessionId, workspaceId, 
         const fileSet = new Set();
 
         if (viewType === 'upscaled') {
-            const allFiles = await metadataDb.getAllFilenames();
-            return { workspaceId: '*', files: allFiles };
+            const upscaledFiles = await metadataDb.getUpscaledViewFilenames();
+            return { workspaceId: '*', files: upscaledFiles };
         }
 
         for (const workspace of Object.values(allWorkspaces)) {
@@ -934,7 +934,7 @@ async function resolveWorkspaceFilesForSearch(handlers, sessionId, workspaceId, 
 
     let workspaceFiles = collectWorkspaceFilesForViewType(workspace, viewType, metadataDb) || [];
     if (viewType === 'upscaled') {
-        workspaceFiles = await metadataDb.getAllFilenames();
+        workspaceFiles = await metadataDb.getUpscaledViewFilenames();
     }
 
     return {

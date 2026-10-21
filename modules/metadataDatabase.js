@@ -2618,6 +2618,27 @@ async function addReceiptMetadata(filename, imagesDir, receiptData = null, forge
 /**
  * Get all filenames from the database
  */
+// The upscaled view scopes its search to these, then keeps results whose metadata
+// says upscaled. Rows marked upscaled plus pending (hot) writes cover everything
+// that filter can keep, so results match scoping to getAllFilenames(): 64k names
+// built on the event loop and a 64k-placeholder IN list for ~130 upscaled images.
+async function getUpscaledViewFilenames() {
+    try {
+        if (!dbInitialized || !db) {
+            throw new Error('Database not initialized');
+        }
+        const rows = await db.all(`SELECT filename FROM images WHERE upscaled IS NOT NULL AND upscaled != 0 AND upscaled != ''`);
+        const filenames = new Set(rows.map(row => row.filename));
+        for (const filename of metadataWriteQueue.getActiveHotFilenames()) {
+            filenames.add(filename);
+        }
+        return Array.from(filenames);
+    } catch (error) {
+        logger.error('Error getting upscaled filenames from database:', error);
+        return [];
+    }
+}
+
 async function getAllFilenames() {
     try {
         if (!dbInitialized || !db) {
@@ -8034,6 +8055,7 @@ module.exports = {
     getDatabaseStats,
     updateFileMetadata,
     getAllFilenames,
+    getUpscaledViewFilenames,
     findLatestImageFilenameByNovelNoteId,
     
     // Search index functions
