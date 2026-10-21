@@ -584,42 +584,6 @@ function normalizePromptNewlines(text) {
 }
 
 /**
- * Step backward over spaces, tabs, and prompt newline placeholders.
- * @param {string} text
- * @param {number} index
- * @returns {number}
- */
-function skipPromptWhitespaceBackward(text, index) {
-    let j = index;
-    while (j >= 0) {
-        if (/[\s\r\n\t]/.test(text[j])) {
-            j--;
-            continue;
-        }
-        if (j >= PROMPT_NEWLINE_PLACEHOLDER.length - 1) {
-            const phStart = j - PROMPT_NEWLINE_PLACEHOLDER.length + 1;
-            if (phStart >= 0 && text.substring(phStart, phStart + PROMPT_NEWLINE_PLACEHOLDER.length) === PROMPT_NEWLINE_PLACEHOLDER) {
-                j = phStart - 1;
-                continue;
-            }
-        }
-        break;
-    }
-    return j;
-}
-
-/**
- * True when index is immediately preceded by whitespace or a newline placeholder.
- * @param {string} text
- * @param {number} index
- * @returns {boolean}
- */
-function hasWhitespaceBeforeIndex(text, index) {
-    if (index <= 0) return false;
-    return skipPromptWhitespaceBackward(text, index - 1) < index - 1;
-}
-
-/**
  * Ensure every newline (or placeholder) is preceded by a space — e.g. ",\n" -> ", \n".
  * @param {string} text
  * @returns {string}
