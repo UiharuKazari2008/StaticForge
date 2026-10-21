@@ -1482,6 +1482,23 @@ body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):
     box-shadow: inset 1px 1px 0 hsl(0 0% 0% / 55%), inset -1px 0 0 hsl(0 0% 0% / 55%);
 }
 
+/* Caption text (2026-10-21, VM Notepad): Vista's black title on a white glow in every frame
+   colour, active or not (the IE7 caption in vista-explorer.css uses the same glow). It was white
+   with a dark outline. Maximized windows keep the light caption on their dark frame. html and
+   the child chain outrank aero-glass.css's inactive caption colour, which loads after this file. */
+html body.desktop-mode:not(.windows-classic-theme) .modal.window-has-caption:not(.modal-maximized) > .modal-window-title > .modal-window-title-main {
+    color: #000;
+    text-shadow: 0 0 10px #fff, 0 0 6px #fff, 0 0 3px #fff;
+}
+
+/* The title keeps overflow: hidden for its ellipsis, which clipped the glow at the text's own box
+   (Yukimi: the glow is cut). 10 px of padding inside the clip, taken back by the margin, leaves the
+   text where it was. The import wizard and IE7 place their titles by id and keep their own box. */
+html body.desktop-mode:not(.windows-classic-theme) .modal.window-has-caption:not(.modal-maximized):where(:not(#unifiedUploadModal, #tagWikiSearchModal)) > .modal-window-title > .modal-window-title-main > span {
+    padding: 10px;
+    margin: -10px;
+}
+
 /* Windowed Studio: manual-modal.css sets padding: 27px 0 0 by id; the client is #manualForm */
 body.desktop-mode:not(.windows-classic-theme) #manualModal.windowed {
     padding-left: var(--window-frame-inset, 0px);
@@ -1570,44 +1587,51 @@ body:not(.windows-classic-theme) .modal .modal-window-controls:has(> .close-btn,
     text-shadow: -1px 0 0 #535666, 1px 0 0 #535666, 0 -1px 0 #535666, 0 1px 0 #535666;
 }
 
-/* Glyphs: Vista's own (traced from the bitmaps of a Vista Aero VM into vector SVGs in
-   static_images/window-controls/, #407): a #535666 outline around a white-to-grey fill on
-   half-pixel paths, so they are pixel-exact at 1x and smooth at 2x. The
-   Font Awesome glyph they replace looked soft under its 8-way text-shadow outline (Yukimi).
-   Only the window glyphs swap; indicators and app buttons in a cluster keep their icons.
-   Revert = delete this block. */
+/* Glyphs: Vista's own bitmaps, cut from the DWM atlas in aero.msstyles (STREAM 850) by
+   scripts/build-vista-caption-glyphs.sh: every opaque pixel identical to the VM's Notepad, active
+   and inactive (Vista draws the same glyph on hover and press). Each PNG holds the normal glyph
+   over the disabled one. Drawn at their pixel size on whole pixels (12 / 12 / 11 px wide in the
+   24 / 24 / 41 px button faces), never scaled; the earlier vector tracings anti-aliased into a
+   soft edge (Yukimi: fuzzy). Only the window glyphs swap; indicators and app buttons in a
+   cluster keep their icons. */
 body:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > button > i:is(.fa-window-minimize, .fa-window-maximize, .fa-window-restore, .fa-xmark-large) {
     position: relative;
     display: inline-block;
     vertical-align: middle;
+    flex: none;
     font-size: 0 !important;
     color: transparent;
     text-shadow: none;
-    background: no-repeat center / 100% 100%;
+    background: no-repeat 0 0 / 100% 200%;
+    image-rendering: pixelated;
+}
+
+body:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > button:disabled > i:is(.fa-window-minimize, .fa-window-maximize, .fa-window-restore, .fa-xmark-large) {
+    background-position: 0 100%;
 }
 
 body:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > button > i.fa-window-minimize {
-    width: 15px;
-    height: 6px;
-    background-image: url("/static_images/window-controls/vista-minimize.svg");
+    width: 12px;
+    height: 5px;
+    background-image: url("/static_images/window-controls/vista-minimize.png");
 }
 
 body:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > button > i.fa-window-maximize {
-    width: 15px;
-    height: 12px;
-    background-image: url("/static_images/window-controls/vista-maximize.svg");
+    width: 12px;
+    height: 10px;
+    background-image: url("/static_images/window-controls/vista-maximize.png");
 }
 
 body:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > button > i.fa-window-restore {
-    width: 15px;
-    height: 15px;
-    background-image: url("/static_images/window-controls/vista-restore.svg");
+    width: 12px;
+    height: 12px;
+    background-image: url("/static_images/window-controls/vista-restore.png");
 }
 
 body:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > button > i.fa-xmark-large {
-    width: 14px;
-    height: 12px;
-    background-image: url("/static_images/window-controls/vista-close.svg");
+    width: 11px;
+    height: 10px;
+    background-image: url("/static_images/window-controls/vista-close.png");
 }
 
 /* The bloom layer (7.css button:before): under the glyph, active windows only */
@@ -1665,33 +1689,252 @@ body:not(.windows-classic-theme) .modal.active-window .modal-window-controls:has
         linear-gradient(#d1a894, #b67562 25% var(--window-caption-edge), #7d0d01 var(--window-caption-edge));
 }
 
-/* Caption button size. Vista Aero at 96 DPI is an 18 px row, 26 / 26 / 43 wide (measured);
-   that read as tiny next to our caption fonts (Yukimi), so the buttons use Vista's 125 %
-   (120 DPI) proportions: a 22 px row hanging from the top edge, minimize / maximize 32 px,
-   Close 53 px, glyphs (redrawn on that grid, 1 px outline) 4 px above the bottom border.
-   The whole cluster takes the height, so app buttons and indicators (Studio's toggles)
-   line up. Desktop only (touch layouts keep 24 px); the fullscreen Studio editor keeps its own. */
-body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > button,
-body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > .custom-dropdown > button {
-    min-height: 22px;
-    height: 22px;
-    min-width: 32px;
+/* Caption buttons on the desktop: Vista's own faces, cut from the DWM atlas (aero.msstyles
+   STREAM 850) by scripts/build-vista-caption-glyphs.sh into static_images/window-controls/faces/.
+   VM Notepad, 96 DPI (2026-10-21): the faces are 18 px tall from the row under the window's top
+   edge, with their white hairline and dark edge built in; Minimize 26 px, Maximize 25 px (its
+   26 px art one middle column narrower), Close 44 px; the glyph 8 / 7 / 16 px from each face's
+   left edge and 5 px above its foot; the fold at mid-height. The faces are
+   translucent, so the frame colour shows through as on Vista. An inactive window's faces are an
+   outline only; hover and press show the hot / pressed faces in either state. The 125 % set
+   (fab58c2) and the 7.css gradients read too big and off (Yukimi, 2026-10-21). The whole
+   cluster takes the height, so app buttons and indicators (Studio's toggles) line up on the
+   middle face. Desktop only (touch layouts keep 24 px); the fullscreen Studio editor keeps its
+   own. */
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls {
+    top: 0;
+}
+
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls:has(> .close-btn, > .modal-close) {
+    gap: 0;
+    background: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > button,
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > .custom-dropdown > button {
+    min-height: 18px;
+    height: 18px;
+    min-width: 26px;
     padding-top: 0;
     padding-bottom: 0;
     line-height: 1;
 }
 
-body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > button:is(.minimize-btn, .modal-work-area-maximize, .close-btn, .modal-close, [id="restoreManualBtn"], [id="maximizeGalleryBtn"], [id="maximizePhotoSwipeBtn"]):has(> i:is(.fa-window-minimize, .fa-window-maximize, .fa-window-restore, .fa-xmark-large)) {
+/* the piece and window state pick the face; the paint rule below reads these */
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls:has(> .close-btn, > .modal-close) > button,
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button {
+    --caption-face-piece: mid;
+}
+
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls:has(> .close-btn, > .modal-close) > :first-child:not(:last-child),
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown:first-child:not(:last-child) > button {
+    --caption-face-piece: left;
+}
+
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))).active-window .modal-window-controls:has(> .close-btn, > .modal-close) > *,
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))).active-window .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button {
+    --caption-face-normal: url("/static_images/window-controls/faces/mid-active-normal.png");
+    --caption-face-hot: url("/static_images/window-controls/faces/mid-active-hot.png");
+    --caption-face-pressed: url("/static_images/window-controls/faces/mid-active-pressed.png");
+    --caption-face-disabled: url("/static_images/window-controls/faces/mid-active-disabled.png");
+}
+
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.active-window) .modal-window-controls:has(> .close-btn, > .modal-close) > *,
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.active-window) .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button {
+    --caption-face-normal: url("/static_images/window-controls/faces/mid-inactive-normal.png");
+    --caption-face-hot: url("/static_images/window-controls/faces/mid-inactive-hot.png");
+    --caption-face-pressed: url("/static_images/window-controls/faces/mid-inactive-pressed.png");
+    --caption-face-disabled: url("/static_images/window-controls/faces/mid-inactive-disabled.png");
+}
+
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))).active-window .modal-window-controls:has(> .close-btn, > .modal-close) > :is(:first-child, .indicator + :not(.indicator)):not(:last-child),
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))).active-window .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown:first-child:not(:last-child) > button {
+    --caption-face-normal: url("/static_images/window-controls/faces/left-active-normal.png");
+    --caption-face-hot: url("/static_images/window-controls/faces/left-active-hot.png");
+    --caption-face-pressed: url("/static_images/window-controls/faces/left-active-pressed.png");
+    --caption-face-disabled: url("/static_images/window-controls/faces/left-active-disabled.png");
+}
+
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.active-window) .modal-window-controls:has(> .close-btn, > .modal-close) > :is(:first-child, .indicator + :not(.indicator)):not(:last-child),
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.active-window) .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown:first-child:not(:last-child) > button {
+    --caption-face-normal: url("/static_images/window-controls/faces/left-inactive-normal.png");
+    --caption-face-hot: url("/static_images/window-controls/faces/left-inactive-hot.png");
+    --caption-face-pressed: url("/static_images/window-controls/faces/left-inactive-pressed.png");
+    --caption-face-disabled: url("/static_images/window-controls/faces/left-inactive-disabled.png");
+}
+
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))).active-window .modal-window-controls:has(> .close-btn, > .modal-close) > button:is(.close-btn, .modal-close):not(:first-child, .indicator + *) {
+    --caption-face-normal: url("/static_images/window-controls/faces/right-active-normal.png");
+    --caption-face-hot: url("/static_images/window-controls/faces/right-active-hot.png");
+    --caption-face-pressed: url("/static_images/window-controls/faces/right-active-pressed.png");
+    --caption-face-disabled: url("/static_images/window-controls/faces/right-active-disabled.png");
+}
+
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.active-window) .modal-window-controls:has(> .close-btn, > .modal-close) > button:is(.close-btn, .modal-close):not(:first-child, .indicator + *) {
+    --caption-face-normal: url("/static_images/window-controls/faces/right-inactive-normal.png");
+    --caption-face-hot: url("/static_images/window-controls/faces/right-inactive-hot.png");
+    --caption-face-pressed: url("/static_images/window-controls/faces/right-inactive-pressed.png");
+    --caption-face-disabled: url("/static_images/window-controls/faces/right-inactive-disabled.png");
+}
+
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))).active-window .modal-window-controls:has(> .close-btn, > .modal-close) > button:is(.close-btn, .modal-close):is(:first-child, .indicator + *) {
+    --caption-face-normal: url("/static_images/window-controls/faces/single-active-normal.png");
+    --caption-face-hot: url("/static_images/window-controls/faces/single-active-hot.png");
+    --caption-face-pressed: url("/static_images/window-controls/faces/single-active-pressed.png");
+    --caption-face-disabled: url("/static_images/window-controls/faces/single-active-disabled.png");
+}
+
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):not(.active-window) .modal-window-controls:has(> .close-btn, > .modal-close) > button:is(.close-btn, .modal-close):is(:first-child, .indicator + *) {
+    --caption-face-normal: url("/static_images/window-controls/faces/single-inactive-normal.png");
+    --caption-face-hot: url("/static_images/window-controls/faces/single-inactive-hot.png");
+    --caption-face-pressed: url("/static_images/window-controls/faces/single-inactive-pressed.png");
+    --caption-face-disabled: url("/static_images/window-controls/faces/single-inactive-disabled.png");
+}
+
+/* The face: a horizontal 9-slice over 5 px caps, so wider app buttons stretch only the middle. The .modal.active-window / :not() pair outranks the 7.css rules above. */
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button,
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button {
     display: inline-flex;
     align-items: flex-end;
     justify-content: center;
-    min-width: 32px;
-    width: 32px;
-    padding: 0 0 4px;
+    box-sizing: border-box;
+    padding: 0 0 5px;
+    border-style: solid;
+    border-color: transparent;
+    border-width: 0 5px;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    border-image: var(--caption-face-normal) 0 5 fill / 0 5px / 0 stretch;
 }
 
-body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls > button:is(.close-btn, .modal-close):has(> i.fa-xmark-large) {
-    min-width: 53px;
-    width: 53px;
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button:disabled,
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button:disabled {
+    border-image-source: var(--caption-face-disabled);
+}
+
+/* hot / pressed: the same 9-slice on ::before, faded in 0.1 s and out 0.3 s */
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button::before,
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button::before {
+    content: '';
+    position: absolute;
+    inset: 0 -5px;
+    z-index: -1;
+    box-sizing: border-box;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s linear;
+    border: 0 solid transparent;
+    border-width: 0 5px;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    border-image: var(--caption-face-hot) 0 5 fill / 0 5px / 0 stretch;
+}
+
+@media (hover: hover) {
+    html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button:hover:not(:disabled)::before,
+    html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button:hover:not(:disabled)::before {
+        opacity: 1;
+        transition: opacity 0.1s linear;
+    }
+}
+
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button:active:not(:disabled)::before,
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button:active:not(:disabled)::before {
+    opacity: 1;
+    transition: none;
+    border-image-source: var(--caption-face-pressed);
+}
+
+/* Indicators in the caption (Studio's Allow Charge, Pipeline Stage(s), Toggle Dialogs): Vista
+   never put toggles in the caption button strip, so they stand apart as a glass toolbar to its
+   left, the way Vista apps put their buttons on the frame (Explorer, Media Player): a bare icon
+   on the glass at rest, a glass face on hover, and a latched (pushed-in, back-lit) face while
+   on, as Studio's latching toolbar buttons do. The lamp moves to the lower right corner, clear
+   of the icon. The first window button after them takes the left cap. */
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button.indicator {
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    min-width: 24px;
+    height: 20px;
+    min-height: 20px;
+    margin: 1px 1px 0 0;
+    padding: 0 3px 0 0;
+    border: 1px solid transparent;
+    border-image: none;
+    border-radius: 3px;
+    background: none;
+    box-shadow: none;
+}
+
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button.indicator > i {
+    font-size: 12px;
+}
+
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > .indicator + :not(.indicator) {
+    margin-left: 5px;
+}
+
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button.indicator::before {
+    inset: -1px;
+    border: 1px solid hsl(0 0% 0% / 45%);
+    border-image: none;
+    border-radius: 3px;
+    background: linear-gradient(hsl(0 0% 100% / 52%), hsl(0 0% 100% / 30%) 50%, hsl(0 0% 100% / 12%) 50%, hsl(0 0% 100% / 32%));
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 60%);
+}
+
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button.indicator:is([data-state="on"], [data-state="onhigh"], [data-state="partial"], [data-state="open"], [data-state="armed"], [data-state="compiled"]),
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button.indicator:active:not(:disabled) {
+    border-color: hsl(0 0% 0% / 55%);
+    background:
+        linear-gradient(hsl(0 0% 0% / 20%), hsl(0 0% 0% / 10%) 50%, hsl(0 0% 0% / 20%) 50%, hsl(0 0% 100% / 8%)),
+        radial-gradient(ellipse 80% 70% at 50% 100%, rgb(var(--lit, 255 255 255) / 30%), transparent 70%);
+    box-shadow: inset 0 1px 3px hsl(0 0% 0% / 55%), 0 1px 0 hsl(0 0% 100% / 35%);
+}
+
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button.indicator:active:not(:disabled)::before {
+    opacity: 0;
+}
+
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button.indicator::after {
+    top: auto;
+    right: 1px;
+    bottom: 1px;
+    width: 3px;
+    height: 3px;
+}
+
+/* a lit lamp keeps a small halo; the toolbar's 15 px one spilled under the frame */
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button.indicator:is([data-state="on"], [data-state="onhigh"], [data-state="partial"], [data-state="open"], [data-state="armed"], [data-state="compiled"], [data-state="asc"], [data-state="desc"])::after {
+    box-shadow: 0 0 4px rgb(var(--lit) / 80%);
+}
+
+/* widths and glyph places for the window buttons (border 5 px + padding = the VM offset) */
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button:is(.minimize-btn, .modal-work-area-maximize, .close-btn, .modal-close, [id="restoreManualBtn"], [id="maximizeGalleryBtn"], [id="maximizePhotoSwipeBtn"]):has(> i:is(.fa-window-minimize, .fa-window-maximize, .fa-window-restore, .fa-xmark-large)) {
+    justify-content: flex-start;
+    min-width: 26px;
+    width: 26px;
+    padding-left: 2px;
+}
+
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button:is(:first-child, .indicator + *):has(> i.fa-window-minimize) {
+    padding-left: 3px;
+}
+
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button:is(.close-btn, .modal-close):has(> i.fa-xmark-large) {
+    min-width: 44px;
+    width: 44px;
+    padding-left: 11px;
+}
+
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button:not(:first-child, .indicator + *):not(.close-btn, .modal-close):has(> i:is(.fa-window-maximize, .fa-window-restore)) {
+    min-width: 25px;
+    width: 25px;
 }
 

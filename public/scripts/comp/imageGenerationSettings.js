@@ -1633,10 +1633,16 @@ function getStudioAddComponentMenuItems() {
         { icon: 'fas fa-user', text: 'Character', action: 'studio-add-character' },
         { icon: 'fas fa-text', text: 'Text Overlay', action: 'studio-add-text-overlay' },
         { separator: true, text: 'Reference' },
-        { icon: 'nai-img2img', text: 'Base Image', action: 'studio-add-transform', value: 'base-image' },
-        { icon: 'nai-vibe-transfer', text: 'Vibe Transfer', action: 'studio-add-transform', value: 'vibe-transfer' },
-        { icon: 'nai-precise-reference-style-and-character', text: 'Character / Style', action: 'studio-add-transform', value: 'character-reference' }
+        { icon: 'nai-img2img', text: 'Base Image', action: 'studio-add-transform', value: 'base-image' }
     ];
+    // getForgeModelFeatures: public/scripts/comp/utilities.js
+    const refCaps = typeof getForgeModelFeatures === 'function' ? getForgeModelFeatures() : null;
+    if (!refCaps || refCaps.vibeTransfer !== false) {
+        items.push({ icon: 'nai-vibe-transfer', text: 'Vibe Transfer', action: 'studio-add-transform', value: 'vibe-transfer' });
+    }
+    if (!refCaps || refCaps.preciseReference !== false) {
+        items.push({ icon: 'nai-precise-reference-style-and-character', text: 'Character / Style', action: 'studio-add-transform', value: 'character-reference' });
+    }
     const hasValidImage = window.currentEditImage && window.currentEditMetadata;
     const hasBaseImage = hasValidImage && (
         window.currentEditMetadata.original_filename ||

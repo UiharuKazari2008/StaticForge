@@ -39,7 +39,7 @@ assert.ok(js.includes("attributeFilter: ['class']"), 'dialogs are re-read when t
 
 // the look
 assert.ok(css.includes(`${G} .modal[data-vista-dialog] > .modal-content {`) && css.includes('background: #f0f0f0;') && css.includes('font: 9pt "Segoe UI"'), 'light client, Segoe UI 9pt');
-assert.ok(css.includes(`${G} .modal[data-vista-dialog] .modal-window-title-main > :is(i:first-child, .icon-fa, .icon-image) {\n    display: none;`), 'no caption icon');
+assert.ok(css.includes(`${G} .modal[data-vista-dialog="message"] .modal-window-title-main > :is(i:first-child, .icon-fa, .icon-image) {\n    display: none;`), 'message boxes hide the caption icon');
 assert.ok(css.includes('background: linear-gradient(#f2f2f2 45%, #ebebeb 45%, #cfcfcf);\n    border: 1px solid #8e8f8f;'), "7.css's standard button face");
 assert.ok(css.includes('animation: vista-default-pulse 1s ease infinite alternate;'), "the default button's glow");
 assert.ok(css.includes('animation-name: vista-default-pulse-in;') && !/animation:\s*pulse-anim/.test(css), "the glow cross-fades two layers by opacity (box-shadow animations run on the main thread)");

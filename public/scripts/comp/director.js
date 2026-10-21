@@ -41,6 +41,140 @@ const DIRECTOR_TRAY_ICONS = {
     offline: 'fas fa-plug-circle-xmark'
 };
 
+// The closing paragraph of a Director reply often offers the next move as
+// "A, B, or C". These buttons send that phrase as the next user message.
+function directorMaskParens(text) {
+    const map = [];
+    const masked = String(text || '').replace(/\([^)]*\)/g, (hit) => {
+        const token = `\u0000${map.length}\u0000`;
+        map.push(hit);
+        return token;
+    });
+    return { text: masked, map };
+}
+
+function directorUnmask(text, map) {
+    return String(text || '').replace(/\u0000(\d+)\u0000/g, (_, index) => map[Number(index)] || '');
+}
+
+function directorSplitTopCommas(text) {
+    return String(text || '').split(',').map((part) => part.trim()).filter(Boolean);
+}
+
+function directorChoiceSpan(segment, keepWithoutOr) {
+    let best = segment;
+    const marks = /:\s+|\u2014\s*|\s\u2013\s+|\beither\s+(?!of\b)/gi;
+    let match;
+    while ((match = marks.exec(segment))) {
+        const rest = segment.slice(match.index + match[0].length).trim();
+        if (rest && (keepWithoutOr || /\bor\b/i.test(rest))) best = rest;
+    }
+    return best;
+}
+
+function directorSplitChoices(span) {
+    const masked = directorMaskParens(span);
+    if (!/,\s*or\s+/i.test(masked.text)) return [];
+    const chunks = masked.text.split(/,\s*or\s+/i);
+    let parts = [];
+    chunks.forEach((chunk, index) => {
+        const plain = chunk.trim();
+        if (!plain) return;
+        if (index === 0) {
+            const head = directorSplitTopCommas(plain);
+            if (head.length > 1 && head.every((part) => part.length >= 8)) {
+                parts = parts.concat(head);
+                return;
+            }
+        }
+        parts.push(plain);
+    });
+    return parts.map((part) => directorUnmask(part, masked.map));
+}
+
+function directorCleanChoice(raw) {
+    let text = String(raw || '').replace(/\s+/g, ' ').trim();
+    text = text.replace(/(?:[.?!]\s*)?(?:which(?: one)?|what do you think|where to)[.?!]*\s*$/i, '').trim();
+    text = text.replace(/^(?:do you want to|want me to|should i|want it|want|i can|i'll|let me)\s+/i, '');
+    text = text.replace(/^(?:and|then)\s+/i, '');
+    text = text.replace(/[.?!,\s]+$/g, '').trim();
+    if (!text || text.length < 2 || /^which(?: one)?$/i.test(text)) return '';
+    return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function directorSentences(tail) {
+    const masked = directorMaskParens(tail);
+    const parts = masked.text.split(/(?<=[.?!])\s+(?=(?:Or\b|[A-Z]))/);
+    return parts.map((part) => directorUnmask(part, masked.map).trim()).filter(Boolean);
+}
+
+function directorOfferBlock(tail) {
+    const sentences = directorSentences(tail);
+    if (!sentences.length) return '';
+    let start = sentences.length - 1;
+    while (start > 0 && /^\s*or\b/i.test(sentences[start])) start -= 1;
+    return sentences.slice(start).join(' ');
+}
+
+function directorReplyOptions(text) {
+    const paragraphs = String(text || '').replace(/\r/g, '').trim().split(/\n+/);
+    let tail = (paragraphs[paragraphs.length - 1] || '').replace(/\s+/g, ' ').trim();
+    tail = tail.replace(/(?:[.?!]\s*)?(?:which(?: one)?|what do you think|where to)[.?!]*\s*$/i, '').trim();
+    tail = directorOfferBlock(tail);
+    if (!tail || !/\bor\b/i.test(tail)) return [];
+    const pieces = tail.split(/\.\s+Or\s+|;\s+or\s+/i).map((part) => part.trim()).filter(Boolean);
+    const grouped = pieces.length > 1;
+    let items = [];
+    pieces.forEach((piece) => {
+        const span = directorChoiceSpan(piece, grouped && !/\bor\b/i.test(piece));
+        if (grouped && !/,\s*or\s+/i.test(span)) {
+            items.push(span);
+            return;
+        }
+        const parts = directorSplitChoices(span);
+        if (parts.length) items = items.concat(parts);
+        else if (!grouped && /\?\s*$/.test(piece)) {
+            const masked = directorMaskParens(span);
+            const bits = masked.text.split(/\s+or\s+/i).map((bit) => bit.trim()).filter(Boolean);
+            if (bits.length === 2 && bits.every((bit) => bit.length >= 12)) {
+                items = items.concat(bits.map((bit) => directorUnmask(bit, masked.map)));
+            }
+        }
+    });
+    const seen = new Set();
+    items = items.map(directorCleanChoice).filter((item) => {
+        if (!item || item.length > 240) return false;
+        const key = item.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+    if (items.length < 2 || items.length > 5) return [];
+    return items;
+}
+
+function directorLastOfferText(messages) {
+    if (!Array.isArray(messages) || !messages.length) return '';
+    let lastRole = '';
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const role = messages[i] && messages[i].role;
+        if (role === 'event') continue;
+        lastRole = role;
+        break;
+    }
+    if (lastRole !== 'assistant') return '';
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const message = messages[i];
+        if (!message || message.role !== 'assistant') continue;
+        const rows = Array.isArray(message.trace) ? message.trace : [];
+        const parts = rows.filter((row) => row && row.type === 'assistant' && row.text).map((row) => row.text);
+        if (parts.length) return parts[parts.length - 1];
+        if (typeof message.content === 'string') return message.content;
+        return '';
+    }
+    return '';
+}
+
 const DIRECTOR_QUICK_STARTS = [
     {
         id: 'high-five',
@@ -2982,6 +3116,40 @@ class Director {
         });
     }
 
+    // Closing "A, or B" on the latest unanswered reply. Clicking sends that phrase.
+    paintReplyChoices(messages) {
+        const root = this.directorChatMessages;
+        if (!root) return;
+        root.querySelectorAll('[data-reply-choices]').forEach((node) => node.remove());
+        const runningHere = this._running && this.currentSession && this._runningSessionId === this.currentSession.id;
+        if (runningHere) return;
+        const options = directorReplyOptions(directorLastOfferText(messages));
+        if (options.length < 2) return;
+        const rows = root.querySelectorAll('.director-message.assistant');
+        let host = null;
+        for (let i = rows.length - 1; i >= 0; i--) {
+            if (rows[i].closest('.director-live-turn')) continue;
+            host = rows[i];
+            break;
+        }
+        if (!host) return;
+        const bar = document.createElement('div');
+        bar.className = 'director-message-actions';
+        bar.dataset.replyChoices = '1';
+        options.forEach((label) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'btn-secondary btn-small';
+            button.textContent = label;
+            button.addEventListener('click', () => {
+                bar.querySelectorAll('button').forEach((item) => { item.disabled = true; });
+                this.sendMessage(label);
+            });
+            bar.appendChild(button);
+        });
+        host.appendChild(bar);
+    }
+
     mountInlineForm(spec) {
         if (!this.directorChatMessages || !spec || !spec.id) return null;
         if (this.directorChatMessages.querySelector(`[data-form-id="${CSS.escape(spec.id)}"]`)) {
@@ -4361,6 +4529,7 @@ class Director {
             this._settleTurn = false;
             this.applyMessageFilter();
             this.paintMessagePrints(messages);
+            this.paintReplyChoices(messages);
             this.paintContext();
             this.wireDirectorRowScroll();
             if (follow) this.scrollToBottom();
@@ -4397,6 +4566,7 @@ class Director {
         this.directorChatMessages.replaceChildren(fragment);
         this.applyMessageFilter();
         this.paintMessagePrints(messages);
+        this.paintReplyChoices(messages);
         this.paintContext();
         this.wireDirectorRowScroll();
         if (follow) {

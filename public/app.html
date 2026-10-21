@@ -729,6 +729,9 @@
             <div class="desktop-prestartup-main">
                 <div class="desktop-prestartup-info">
                     <div id="desktopPreStartupStatus" class="desktop-prestartup-status">Initializing...</div>
+                    <!-- Use Vista Logon boots under the Welcome screen: the startup window's Skip this
+                         step for a stalled step (desktopBoot.js showSkipButton) -->
+                    <button type="button" id="desktopPreStartupSkipStepBtn" class="desktop-prestartup-vista desktop-prestartup-vista-button hidden">Skip this step</button>
                 </div>
                 <div id="desktopPreStartupAuth" class="desktop-prestartup-auth hidden">
                     <!-- body.vista-logon only (User Accounts "Use Vista Logon", desktop-boot.css): the

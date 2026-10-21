@@ -1602,12 +1602,34 @@ function resolveManualPreviewGalleryIndex() {
         return galleryIndex;
     }
 
-    const lastGenFilename = window.lastGeneration?.filename || window.lastGeneration?.original;
-    if (lastGenFilename && lastGenFilename === currentFilename) {
-        return 0;
-    }
-
     return -1;
+}
+
+// Same file as the preview, across filename / original / upscaled / base.
+function manualPreviewSameFile(a, b) {
+    if (!a || !b) return false;
+    const names = [a.upscaled, a.original, a.filename, a.base].filter((name) => typeof name === 'string' && name);
+    if (!names.length) return false;
+    const other = [b.upscaled, b.original, b.filename, b.base];
+    return names.some((name) => other.indexOf(name) !== -1);
+}
+
+// Gallery slot the lightbox can open. -1 when the stored index is not that picture
+// (an empty gallery still leaves currentManualPreviewIndex at 0).
+function resolveManualPreviewLightboxIndex(preview, index, sourceImages) {
+    const source = Array.isArray(sourceImages) ? sourceImages : [];
+    if (typeof index === 'number' && index >= 0 && index < source.length && manualPreviewSameFile(preview, source[index])) {
+        return index;
+    }
+    if (!preview) return -1;
+    return source.findIndex((img) => manualPreviewSameFile(preview, img));
+}
+
+function manualPreviewLightboxSource() {
+    if (window.filteredImageIndices && window.originalAllImages && window.originalAllImages.length > 0) {
+        return window.originalAllImages;
+    }
+    return Array.isArray(allImages) ? allImages : [];
 }
 
 // Function to update manual preview navigation buttons
@@ -1938,79 +1960,40 @@ function handleManualPreviewClick(e) {
         return;
     }
 
-    // Use the current manual preview index that was set by the update functions
-    let imageIndex = window.currentManualPreviewIndex;
+    if (!window.showLightbox) {
+        console.warn('showLightbox function not available');
+        return;
+    }
 
-    // If we have a valid index, use it directly (trust the update functions)
-    if (imageIndex !== null && imageIndex !== undefined && imageIndex >= 0) {
-        // Open lightbox with the index set by the update functions
-        if (window.showLightbox) {
-            isOpeningLightbox = true;
-            try {
-                window.showLightbox(imageIndex);
-            } finally {
-                // Reset flag after a delay to allow lightbox to open
-                setTimeout(() => {
-                    isOpeningLightbox = false;
-                }, 1000);
+    // A stored 0 is not the gallery when that list is empty. Open this preview either way.
+    const source = manualPreviewLightboxSource();
+    const imageIndex = resolveManualPreviewLightboxIndex(
+        window.currentManualPreviewImage,
+        window.currentManualPreviewIndex,
+        source
+    );
+    const filename = window.currentManualPreviewImage.upscaled
+        || window.currentManualPreviewImage.original
+        || window.currentManualPreviewImage.filename;
+    const shown = image.currentSrc || image.src || '';
+    const fileUrl = filename ? localGalleryImageUrl(filename) : '';
+    const url = fileUrl || (shown.indexOf('about:') === 0 ? '' : shown);
+    isOpeningLightbox = true;
+    try {
+        if (imageIndex !== -1) {
+            window.showLightbox(imageIndex);
+        } else if (url) {
+            const payload = { url };
+            if (image.naturalWidth > 0 && image.naturalHeight > 0) {
+                payload.width = image.naturalWidth;
+                payload.height = image.naturalHeight;
             }
-        } else {
-            console.warn('showLightbox function not available');
+            window.showLightbox(payload);
         }
-    } else {
-        // If no valid index, try to find the image by filename in the gallery
-        let foundIndex = -1;
-
-        if (window.originalAllImages && window.originalAllImages.length > 0 && window.filteredImageIndices) {
-            // Search mode - use filtered results
-            foundIndex = window.originalAllImages.findIndex(img => {
-                return img.upscaled === window.currentManualPreviewImage.upscaled ||
-                    img.original === window.currentManualPreviewImage.original ||
-                    img.filename === window.currentManualPreviewImage.filename;
-            });
-        } else if (allImages && allImages.length > 0) {
-            // Normal mode - use current allImages
-            foundIndex = allImages.findIndex(img => {
-                return img.upscaled === window.currentManualPreviewImage.upscaled ||
-                    img.original === window.currentManualPreviewImage.original ||
-                    img.filename === window.currentManualPreviewImage.filename;
-            });
-        }
-
-        if (foundIndex !== -1) {
-            // Found the image in the gallery, open lightbox at that index
-            if (window.showLightbox) {
-                isOpeningLightbox = true;
-                try {
-                    window.showLightbox(foundIndex);
-                } finally {
-                    // Reset flag after a delay to allow lightbox to open
-                    setTimeout(() => {
-                        isOpeningLightbox = false;
-                    }, 1000);
-                }
-            } else {
-                console.warn('showLightbox function not available');
-            }
-        } else {
-            // Image not found in gallery, open as standalone image
-            if (window.showLightbox) {
-                const imageUrl = window.currentManualPreviewImage.upscaled ||
-                    window.currentManualPreviewImage.original ||
-                    window.currentManualPreviewImage.filename;
-                isOpeningLightbox = true;
-                try {
-                    window.showLightbox({ url: localGalleryImageUrl(imageUrl) });
-                } finally {
-                    // Reset flag after a delay to allow lightbox to open
-                    setTimeout(() => {
-                        isOpeningLightbox = false;
-                    }, 1000);
-                }
-            } else {
-                console.warn('showLightbox function not available');
-            }
-        }
+    } finally {
+        setTimeout(() => {
+            isOpeningLightbox = false;
+        }, 1000);
     }
 }
 

@@ -52,6 +52,8 @@ function shouldShowInTaskbar(modal) {
     if (!modal.querySelector('.modal-window-title')) return false;
     // Small alert overlays — not taskbar windows
     if (modal.classList.contains('alert-theme')) return false;
+    // Owned dialogs (a game's Options, Statistics...) have no taskbar button, as in Windows
+    if (modal.dataset.windowOwned === 'true') return false;
     return true;
 }
 
@@ -3309,6 +3311,7 @@ function openModal(modal) {
     if (!modal) return;
     // State-flag classes (e.g. .window-has-caption = the Vista frame inset) before anything measures it
     window.syncRootStateFlags?.(modal);
+    ensureModalApplicationIcon(modal);
     // Start decoding this window's art if no launcher warmed it yet (assetPreload.js, Yozora #518)
     if (modal.id && window.assetPreload && assetPreload.warmWindow) assetPreload.warmWindow(modal.id);
 
@@ -5354,6 +5357,67 @@ function getModalIcon(modal) {
     return 'fas fa-window';
 }
 
+/** App icon filename when a tool window has no img.icon-image (parent chain or id map). */
+const MODAL_APPLICATION_ICONS = {
+    positionDialog: 'studio.png',
+    characterPositionTool: 'studio.png',
+    compiledPromptModal: 'studio.png',
+    compileToPromptsModal: 'studio.png',
+    expansionCompiledPromptDialog: 'studio.png',
+    stageResultsReview: 'studio.png',
+    studioSaveNameModal: 'studio.png',
+    studioSaveFolderModal: 'studio.png',
+    studioVSliderTool: 'studio.png',
+    studioVSliderEditorTool: 'studio.png',
+    generationUsageTool: 'studio.png',
+    directorFeedbackModal: 'director.png',
+    directorWindow: 'director.png',
+    vibeEncodingModal: 'ref.png',
+    vibeManagerDeleteModal: 'ref.png'
+};
+
+/**
+ * Vista tool windows need img.icon-image in the caption for the taskbar and glass title bar.
+ * Inherit from data-parent-modal-id when missing; message boxes (data-vista-dialog=message) skip.
+ */
+function ensureModalApplicationIcon(modal) {
+    if (!modal || !window.isDesktop || !document.body.classList.contains('desktop-mode')) return;
+    if (document.body.classList.contains('windows-classic-theme')) return;
+    if (modal.dataset.vistaDialog === 'message') return;
+
+    const main = modal.querySelector(':scope > .modal-window-title > .modal-window-title-main');
+    if (!main || main.querySelector('img.icon-image')) return;
+
+    let imageIcon = null;
+    let parentId = modal.getAttribute('data-parent-modal-id');
+    while (parentId && !imageIcon) {
+        const parent = document.getElementById(parentId);
+        if (!parent) break;
+        const parentImg = parent.querySelector('.modal-window-title-main img.icon-image');
+        if (parentImg) {
+            imageIcon = appIconBasename(parentImg.getAttribute('src') || parentImg.src);
+            break;
+        }
+        parentId = parent.getAttribute('data-parent-modal-id');
+    }
+    if (!imageIcon && modal.id && MODAL_APPLICATION_ICONS[modal.id]) {
+        imageIcon = MODAL_APPLICATION_ICONS[modal.id];
+    }
+    if (!imageIcon) return;
+
+    const iconEl = main.querySelector('i');
+    if (iconEl && !iconEl.classList.contains('icon-fa')) {
+        iconEl.classList.add('icon-fa');
+    }
+    const holder = document.createElement('div');
+    holder.innerHTML = renderAppIconImg(imageIcon, '', APP_ICON_DISPLAY_PX.taskbar);
+    const img = holder.firstElementChild;
+    if (!img) return;
+    const anchor = main.querySelector('span');
+    if (anchor) main.insertBefore(img, anchor);
+    else main.appendChild(img);
+}
+
 // Get both Font Awesome icon and image icon from modal (for dual icon rendering)
 function getModalIcons(modal) {
     let icon = null;
@@ -6306,6 +6370,25 @@ const startMenuLaunchables = [
     { launchId: 'planet-switcher', icon: 'fas fa-planet-moon', imageIcon: 'vista-teleport.png', text: 'Teleport', desktopOnly: true, appMenu: true, action: async () => { await openPlanetSwitcher(); } },
 ];
 
+// All Programs > Games (Yozora #609): Windows Vista's games, recreated from the VM
+// (public/scripts/comp/desktop-apps/vista-games/), opened through openVistaGame
+// (public/scripts/comp/featureLoader.js). Only listed here, not at the top level.
+const startMenuGameLaunchables = [
+    { launchId: 'game-blockdrop', game: 'blockdrop', icon: 'fas fa-cubes', imageIcon: 'vista-blockdrop.png', text: 'Block Drop' },
+    { launchId: 'game-brickbreaker', game: 'brickbreaker', icon: 'fas fa-table-tennis-paddle-ball', imageIcon: 'vista-brickbreaker.png', text: 'Brick Breaker' },
+    { launchId: 'game-chess', game: 'chess', icon: 'fas fa-chess', imageIcon: 'vista-chess.png', text: 'Chess Titans' },
+    { launchId: 'game-freecell', game: 'freecell', icon: 'fas fa-crown', imageIcon: 'vista-freecell.png', text: 'FreeCell' },
+    { launchId: 'games-explorer', game: 'explorer', icon: 'fas fa-trophy', imageIcon: 'vista-games.png', text: 'Games Explorer' },
+    { launchId: 'game-hearts', game: 'hearts', icon: 'fas fa-heart', imageIcon: 'vista-hearts.png', text: 'Hearts' },
+    { launchId: 'game-inkball', game: 'inkball', icon: 'fas fa-pen', imageIcon: 'vista-inkball.png', text: 'InkBall' },
+    { launchId: 'game-jezzball', game: 'jezzball', icon: 'fas fa-circle-half-stroke', imageIcon: 'vista-jezzball.png', text: 'JezzBall' },
+    { launchId: 'game-mahjong', game: 'mahjong', icon: 'fas fa-dragon', imageIcon: 'vista-mahjong.png', text: 'Mahjong Titans' },
+    { launchId: 'game-minesweeper', game: 'minesweeper', icon: 'fas fa-bomb', imageIcon: 'vista-minesweeper.png', text: 'Minesweeper' },
+    { launchId: 'game-purble', game: 'purble', icon: 'fas fa-eye', imageIcon: 'vista-purble.png', text: 'Purble Place' },
+    { launchId: 'game-solitaire', game: 'solitaire', icon: 'fas fa-diamond', imageIcon: 'vista-solitaire.png', text: 'Solitaire' },
+    { launchId: 'game-spider', game: 'spider', icon: 'fas fa-spider', imageIcon: 'vista-spider.png', text: 'Spider Solitaire' }
+].map((item) => ({ appMenu: false, desktopOnly: true, ...item, action: () => openVistaGame(item.game) }));
+
 /** Root start menu shell rows (folders + run). */
 const startMenuShellConfig = [
     { icon: 'fas fa-grid-2', imageIcon: 'atom.png', text: 'All Apps', hasSubmenu: true, submenu: 'all-apps', appMenu: false },
@@ -6817,6 +6900,7 @@ function collectStartMenuLaunchableDescriptors() {
 
     startMenuLaunchables.forEach(pushItem);
     flattenToolsSubmenuItems(buildToolsSubmenuItems()).forEach(pushItem);
+    startMenuGameLaunchables.forEach(pushItem);
 
     // getDsapMenuEntries: public/scripts/comp/dsapRegistry.js
     if (typeof getDsapMenuEntries === 'function') {
@@ -7485,6 +7569,7 @@ function getStartMenuProgramsTree() {
     // folders after the apps, by name: Accessories, Dreamscape 2026 R7
     entries.push({ folder: true, folderId: 'accessories', text: 'Accessories', children: getStartMenuAccessoriesItems() });
     entries.push({ folder: true, folderId: 'dreamscape-r7', text: START_MENU_PACKAGE_FOLDER, children: getStartMenuPackageItems() });
+    entries.push({ folder: true, folderId: 'games', text: 'Games', children: startMenuGameLaunchables.filter(isStartMenuItemLaunchable).sort(byStartMenuLabel) });
     return entries.filter((entry) => !entry.folder || entry.children.length > 0);
 }
 
@@ -7697,7 +7782,13 @@ function onStartMenuSearchInput() {
         if (startMenuView === 'search') setStartMenuView('home');
         return;
     }
-    if (typeof searchRunCommands !== 'function') return;
+    // the run index is lazy (featureLoader run_index): load it on the first keystroke
+    if (typeof searchRunCommands !== 'function') {
+        featureLoader.loadFeature('run_index').then(() => {
+            if (seq === startMenuSearchSeq && typeof searchRunCommands === 'function') onStartMenuSearchInput();
+        }).catch((err) => console.warn('[startMenu] run index failed to load', err));
+        return;
+    }
     searchRunCommands(query, (results) => {
         if (seq !== startMenuSearchSeq) return;
         // network results stay in Run ("See all results")
@@ -7786,6 +7877,8 @@ function getStartMenuPlaces() {
         { id: 'notion', text: 'Notion', imageIcon: 'vista-journal.png', action: launch('notebook') },
         { id: 'workspaces', text: 'Workspaces', imageIcon: 'planet.png', action: () => showWorkspaceManagementModal() },
         { id: 'teleport', text: 'Teleport', imageIcon: 'vista-teleport.png', desktopOnly: true, action: launch('planet-switcher') },
+        // Vista's Games place: the Games Explorer (public/scripts/comp/desktop-apps/vista-games/gamesExplorer.js)
+        { id: 'games', text: 'Games', imageIcon: 'vista-games.png', desktopOnly: true, action: launch('games-explorer') },
         { separator: true },
         { id: 'recent', text: 'Recent Items', flyout: true },
         { id: 'network', text: 'Network and Server Center', image: '/static_images/melaton/net-globe.png', action: controlPanel('network') },
@@ -7955,6 +8048,8 @@ function openStartMenu() {
         buildStartMenuPower();
         setStartMenuTilePicture(null);
         if (startMenuHasFinePointer()) startMenuEls.search.focus({ preventScroll: true });
+        // warm Start Search's index while the menu fades in
+        if (typeof searchRunCommands !== 'function') void featureLoader.loadFeature('run_index').catch(() => {});
     }
 
     startMenu.classList.remove('start-menu-opening');

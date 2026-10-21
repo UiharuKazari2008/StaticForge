@@ -1,0 +1,389 @@
+/* Games Explorer (Yozora #609), measured on the Vista VM's Games folder (800x600): the address row
+   on the glass, the command bar (Vista's blue-black gradient, 26 px), column headers, Large Icons
+   (96 px), the preview pane (204 px, white), the details pane (70 px, Explorer's pale blue with the
+   swoosh). Script: public/scripts/comp/desktop-apps/vista-games/gamesExplorer.js. Art: gameux.dll
+   (public/static_images/vista-games/explorer/) and Cartograph's (public/static_images/vista-explorer/). */
+
+.vista-games-explorer > .modal-content.gx-content {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+    background: #fff;
+    color: #000;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+}
+
+/* ---- the title row: Control Panel's (vista-explorer.css styles both); the address shows the trophy ---- */
+body.desktop-mode:not(.windows-classic-theme) #vistaGamesExplorerModal .modal-window-title-toolbar .cpl-address-icon {
+    flex: none;
+    background: url("/static_images/vista-games/icons/games-16.png") no-repeat center / 16px 16px;
+    background-image: image-set(url("/static_images/vista-games/icons/games-16.png") 1x, url("/static_images/vista-games/icons/games-16@2x.png") 2x);
+}
+
+/* icon > Games in a row (the separator is a mask, it has no size inline), the history arrow at
+   the right end as on the VM */
+body.desktop-mode:not(.windows-classic-theme) #vistaGamesExplorerModal .modal-window-title-toolbar .cpl-address {
+    display: flex;
+    align-items: center;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #vistaGamesExplorerModal .modal-window-title-toolbar .cpl-crumb-sep {
+    flex: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #vistaGamesExplorerModal .modal-window-title-toolbar .cpl-address::after {
+    content: '';
+    flex: none;
+    width: 7px;
+    height: 4px;
+    margin: 0 -19px 0 auto;
+    background: #000;
+    clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+/* the crumb is flat until hovered (a bare button would take the browser's ButtonFace) */
+body.desktop-mode:not(.windows-classic-theme) #vistaGamesExplorerModal .modal-window-title-toolbar .cpl-crumb:not(:hover) {
+    background: transparent;
+}
+
+/* the list and preview are white whatever the window's glass mode */
+body.desktop-mode #vistaGamesExplorerModal > .modal-content.gx-content,
+#vistaGamesExplorerModal > .modal-content.gx-content {
+    background: #fff;
+    color: #000;
+    text-shadow: none;
+}
+
+/* ---- command bar ---- */
+.vista-games-explorer .gx-commandbar {
+    display: flex;
+    align-items: center;
+    flex: none;
+    gap: 1px;
+    height: 31px;
+    padding: 0 4px;
+    background: linear-gradient(#5d8ab3, #3e6d97 45%, #1b4c73 46%, #2f6489);
+    border-bottom: 1px solid #0e2e4d;
+    box-sizing: border-box;
+}
+
+.vista-games-explorer .gx-commandbar button.gx-command {
+    all: unset;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 24px;
+    padding: 0 7px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    color: #fff;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    white-space: nowrap;
+    cursor: default;
+}
+
+.vista-games-explorer .gx-commandbar button.gx-command img {
+    width: 16px;
+    height: 16px;
+}
+
+.vista-games-explorer .gx-commandbar button.gx-command:is(:hover, .context-open) {
+    background: linear-gradient(#ffffff4d, #ffffff1a 50%, #00000014 51%, #ffffff26);
+    border-color: #ffffff59 #0d2c4880 #0d2c4880 #ffffff59;
+    box-shadow: inset 0 0 0 1px #ffffff26;
+}
+
+.vista-games-explorer .gx-command-glyph {
+    width: 0;
+    height: 0;
+    margin-left: 2px;
+    border-top: 4px solid #fff;
+    border-left: 3px solid transparent;
+    border-right: 3px solid transparent;
+}
+
+.vista-games-explorer .gx-commandbar button.gx-help {
+    all: unset;
+    margin-left: auto;
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ---- list, preview ---- */
+.vista-games-explorer .gx-body {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.vista-games-explorer .gx-list {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-width: 0;
+    border-right: 1px solid #d5dfe5;
+}
+
+.vista-games-explorer .gx-columns {
+    display: flex;
+    flex: none;
+    height: 22px;
+    background: linear-gradient(#fff, #fff 50%, #f7f8fa 51%, #f3f4f6);
+    border-bottom: 1px solid #d5d5d5;
+}
+
+.vista-games-explorer .gx-column {
+    position: relative;
+    flex: none;
+    width: 86px;
+    padding: 0 6px;
+    line-height: 21px;
+    color: #4c607a;
+    border-right: 1px solid #e3e3e3;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+/* header widths on the VM: 80, 88, 112, 80, 82, 80 */
+.vista-games-explorer .gx-column:nth-child(1) { width: 80px; }
+.vista-games-explorer .gx-column:nth-child(2) { width: 88px; }
+.vista-games-explorer .gx-column:nth-child(3) { width: 112px; }
+.vista-games-explorer .gx-column:nth-child(4) { width: 80px; }
+.vista-games-explorer .gx-column:nth-child(5) { width: 82px; }
+.vista-games-explorer .gx-column:nth-child(6) { width: 80px; }
+
+.vista-games-explorer .gx-column.sorted {
+    background: linear-gradient(#f2f9fc, #f2f9fc 50%, #e1f1f9 51%, #d8ecf6);
+    color: #000;
+}
+
+.vista-games-explorer .gx-column.sorted::before {
+    content: '';
+    position: absolute;
+    top: 1px;
+    left: 50%;
+    border-bottom: 3px solid #607a96;
+    border-left: 3px solid transparent;
+    border-right: 3px solid transparent;
+}
+
+.vista-games-explorer .gx-column-more {
+    margin-left: auto;
+    padding: 0 10px;
+    line-height: 21px;
+    color: #000;
+}
+
+.vista-games-explorer .gx-grid {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 4px 0;
+    flex: 1 1 auto;
+    padding: 0 4px 4px;
+    overflow: auto;
+    outline: none;
+}
+
+.vista-games-explorer .gx-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    /* Large Icons spacing on the VM: 105 px across, 148 px down */
+    width: 105px;
+    height: 144px;
+    padding: 2px 0 0;
+    box-sizing: border-box;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    cursor: default;
+}
+
+.vista-games-explorer .gx-item img {
+    width: 96px;
+    height: 96px;
+    object-fit: contain;
+}
+
+.vista-games-explorer .gx-item-name {
+    margin-top: 2px;
+    text-align: center;
+    color: #000;
+}
+
+.vista-games-explorer .gx-grid[data-view="medium"] .gx-item {
+    width: 84px;
+    height: 76px;
+}
+
+.vista-games-explorer .gx-grid[data-view="medium"] .gx-item img {
+    width: 48px;
+    height: 48px;
+}
+
+.vista-games-explorer .gx-grid[data-view="details"] {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    gap: 0;
+}
+
+.vista-games-explorer .gx-grid[data-view="details"] .gx-item {
+    flex-direction: row;
+    width: auto;
+    height: 20px;
+    gap: 6px;
+    padding: 0 4px;
+}
+
+.vista-games-explorer .gx-grid[data-view="details"] .gx-item img {
+    width: 16px;
+    height: 16px;
+}
+
+.vista-games-explorer .gx-item:hover {
+    background: linear-gradient(#fafbfd, #ebf3fd);
+    border-color: #b8d6fb;
+}
+
+.vista-games-explorer .gx-item.selected {
+    background: linear-gradient(#dcebfc, #c1dbfc);
+    border-color: #7da2ce;
+}
+
+.vista-games-explorer .gx-preview {
+    display: flex;
+    flex-direction: column;
+    flex: none;
+    width: 204px;
+    padding: 6px 4px 6px 6px;
+    box-sizing: border-box;
+    overflow: auto;
+    background: #fff;
+}
+
+.vista-games-explorer .gx-preview-icon {
+    width: 128px;
+    height: 128px;
+    margin: 6px auto 0;
+}
+
+.vista-games-explorer .gx-preview > .gx-preview-icon:only-of-type:first-child {
+    margin-top: 52px;
+}
+
+.vista-games-explorer .gx-preview-name {
+    margin: 2px 0 18px;
+    text-align: center;
+    color: #1e5aa8;
+    font-weight: 600;
+}
+
+.vista-games-explorer .gx-preview-perf {
+    margin-top: auto;
+}
+
+.vista-games-explorer .gx-preview :is(.gx-preview-perf, .gx-preview-ratings) > div {
+    margin: 0 0 1px;
+    line-height: 15px;
+    color: #1e3287;
+}
+
+.vista-games-explorer .gx-link {
+    color: #1e3287;
+}
+
+.vista-games-explorer .gx-link-u {
+    color: #0066cc;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.vista-games-explorer .gx-rating-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    margin: 4px 0 6px !important;
+}
+
+/* the Windows Experience Index badge */
+.vista-games-explorer .gx-badge {
+    display: inline-block;
+    min-width: 28px;
+    padding: 2px 0;
+    text-align: center;
+    border-radius: 3px;
+    border: 1px solid #5a7fa3;
+    background: linear-gradient(#cfe1f1, #9fc0e0 50%, #7fa6cd 51%, #a8c6e3);
+    color: #fff;
+    font-weight: 700;
+    text-shadow: 0 1px 1px #2b4c6e;
+}
+
+.vista-games-explorer .gx-esrb {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-top: 6px !important;
+}
+
+.vista-games-explorer .gx-esrb span {
+    color: #1e5aa8;
+    font-weight: 600;
+}
+
+/* ---- details pane ---- */
+.vista-games-explorer .gx-details {
+    display: flex;
+    align-items: flex-start;
+    gap: 22px;
+    flex: none;
+    height: 70px;
+    padding: 8px 14px;
+    box-sizing: border-box;
+    border-top: 1px solid #a5b8cf;
+    background:
+        url("/static_images/vista-explorer/details-swoosh.png") no-repeat right 2px bottom 0 / 140px 64px,
+        linear-gradient(#f2f8fd, #dbe8f4);
+    background-image:
+        image-set(url("/static_images/vista-explorer/details-swoosh.png") 1x, url("/static_images/vista-explorer/details-swoosh@2x.png") 2x),
+        linear-gradient(#f2f8fd, #dbe8f4);
+}
+
+.vista-games-explorer .gx-details-icon {
+    width: 48px;
+    height: 48px;
+    margin-top: 2px;
+}
+
+.vista-games-explorer .gx-details-count {
+    padding-top: 6px;
+}
+
+.vista-games-explorer .gx-details-grid {
+    display: grid;
+    grid-template-columns: auto auto auto auto auto;
+    grid-auto-flow: row;
+    column-gap: 6px;
+    row-gap: 3px;
+    padding-top: 6px;
+}
+
+.vista-games-explorer .gx-details-name {
+    grid-row: 1 / span 3;
+    padding-right: 30px;
+}
+
+.vista-games-explorer .gx-k {
+    color: #5a677a;
+    text-align: right;
+}
+
+.vista-games-explorer .gx-k2 {
+    padding-left: 14px;
+}

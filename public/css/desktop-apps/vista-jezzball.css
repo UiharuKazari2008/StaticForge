@@ -1,0 +1,833 @@
+/* JezzBall (Win 3.x, in the Vista games folder): a 16-bit program on the Aero desktop. Vista draws
+   its windows unthemed, as Windows Classic in the Aero colour scheme (otvdm on the VM, which is how
+   NTVDM shows them too): a raised 8 px sizing frame, a flat 19 px gradient caption with 17 x 15
+   bevelled caption buttons, a flat menu bar and flat menus with a drop shadow, all measured on the
+   VM pixel for pixel. Its dialogs are 16-bit ones (white client, as Windows 3.1 draws them), the
+   Entertainment Pack's gray boxes (WEP4UTIL.DLL, a 1 px border) and a Vista message box.
+   Script: public/scripts/comp/desktop-apps/vista-games/jezzball.js.
+
+   Every rule is scoped with :is(#vistaJezzballModal, .jz-classic), which carries an id's
+   specificity for all of JezzBall's windows: the desktop's Aero frame rules
+   (modal-window-title-toolbar.css, vista-glass-controls.css, aero-glass.css) lose to it. */
+
+:is(#vistaJezzballModal, .jz-classic) {
+    /* Vista's system colours in the Aero scheme (COLOR_*) */
+    --jz-face: #f0f0f0;
+    --jz-light: #e3e3e3;
+    --jz-hilight: #ffffff;
+    --jz-shadow: #a0a0a0;
+    --jz-dkshadow: #696969;
+    --jz-frame: #646464;
+    --jz-border: #b4b4b4;
+    --jz-border-inactive: #f4f7fc;
+    --jz-caption-a: #99b4d1;
+    --jz-caption-b: #b9d1ea;
+    --jz-caption-ia: #bfcddb;
+    --jz-caption-ib: #d7e4f2;
+    --jz-caption-text: #000000;
+    --jz-caption-text-inactive: #434e54;
+    --jz-highlight: #3399ff;
+    --jz-graytext: #6d6d6d;
+    --jz-menu-inactive-text: #a0a0a0;
+    --jz-gray: #c0c0c0;
+    --jz-ui: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    --jz-border-now: var(--jz-border);
+    --jz-caption-now-a: var(--jz-caption-a);
+    --jz-caption-now-b: var(--jz-caption-b);
+    --jz-caption-text-now: var(--jz-caption-text);
+    --modal-title-chrome-height: 20px;
+}
+
+:is(#vistaJezzballModal, .jz-classic):not(.active-window) {
+    --jz-border-now: var(--jz-border-inactive);
+    --jz-caption-now-a: var(--jz-caption-ia);
+    --jz-caption-now-b: var(--jz-caption-ib);
+    --jz-caption-text-now: var(--jz-caption-text-inactive);
+}
+
+/* ---- the frame ---------------------------------------------------------------------------- */
+
+/* sizing frame (main window): 227 / 255 / 5 x border / 240 on the top and left, 105 / 160 /
+   5 x border / 240 on the bottom and right; the dark edge wins the corners */
+html body :is(#vistaJezzballModal, .jz-classic).modal {
+    box-sizing: border-box;
+    padding: 28px 8px 8px 8px;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: var(--jz-face) !important;
+    background-image: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    box-shadow:
+        inset -1px -1px 0 var(--jz-dkshadow),
+        inset 1px 1px 0 var(--jz-light),
+        inset -2px -2px 0 var(--jz-shadow),
+        inset 2px 2px 0 var(--jz-hilight),
+        inset -7px -7px 0 var(--jz-border-now),
+        inset 7px 7px 0 var(--jz-border-now) !important;
+    color: #000;
+    font: var(--jz-ui);
+    text-shadow: none;
+    overflow: visible;
+    --window-frame-inset: 0px;
+    --aero-frame-highlight: none;
+    --window-frame-shadow: none;
+}
+
+html body :is(#vistaJezzballModal, .jz-classic).modal::before,
+html body :is(#vistaJezzballModal, .jz-classic).modal::after {
+    content: none !important;
+    display: none !important;
+}
+
+/* dialog frame (DS_MODALFRAME): 3 px */
+html body .jz-classic.modal[data-jz-frame="dialog"] {
+    padding: 23px 3px 3px 3px;
+    box-shadow:
+        inset -1px -1px 0 var(--jz-dkshadow),
+        inset 1px 1px 0 var(--jz-light),
+        inset -2px -2px 0 var(--jz-shadow),
+        inset 2px 2px 0 var(--jz-hilight) !important;
+}
+
+/* WS_BORDER (the Entertainment Pack's boxes): 1 px of window frame, and a frame line under the caption */
+html body .jz-classic.modal[data-jz-frame="border"] {
+    padding: 21px 1px 1px 1px;
+    box-shadow: inset 0 0 0 1px var(--jz-frame) !important;
+}
+
+/* maximized: Windows puts the frame off screen, the caption runs edge to edge */
+html body #vistaJezzballModal.modal.modal-maximized {
+    padding: 20px 0 0 0;
+    box-shadow: none !important;
+}
+
+/* ---- caption ---------------------------------------------------------------------------- */
+
+html body :is(#vistaJezzballModal, .jz-classic).modal > .modal-window-title {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    right: 8px;
+    width: auto !important;
+    height: 19px !important;
+    min-height: 0 !important;
+    max-width: none !important;
+    margin: 0;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: linear-gradient(to right, var(--jz-caption-now-a), var(--jz-caption-now-b)) !important;
+    opacity: 1 !important;
+    overflow: hidden;
+}
+
+html body .jz-classic.modal[data-jz-frame="dialog"] > .modal-window-title {
+    top: 3px;
+    left: 3px;
+    right: 3px;
+}
+
+html body .jz-classic.modal[data-jz-frame="border"] > .modal-window-title {
+    top: 1px;
+    left: 1px;
+    right: 1px;
+    box-shadow: 0 1px 0 var(--jz-frame) !important;
+}
+
+html body #vistaJezzballModal.modal.modal-maximized > .modal-window-title {
+    top: 0;
+    left: 0;
+    right: 0;
+}
+
+html body :is(#vistaJezzballModal, .jz-classic).modal > .modal-window-title::before,
+html body :is(#vistaJezzballModal, .jz-classic).modal > .modal-window-title::after {
+    content: none !important;
+    display: none !important;
+}
+
+html body :is(#vistaJezzballModal, .jz-classic).modal > .modal-window-title > .modal-window-title-main {
+    position: absolute;
+    inset: 0;
+    display: block;
+    height: 19px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: none !important;
+    opacity: 1 !important;
+    filter: none !important;
+    text-shadow: none !important;
+}
+
+/* the desktop's icon elements stay for the taskbar; the caption draws Vista's own 16 px icon */
+html body :is(#vistaJezzballModal, .jz-classic).modal .modal-window-title-main > :is(i, .icon-image) {
+    display: none !important;
+}
+
+html body :is(#vistaJezzballModal, .jz-classic).modal .jz-caption-icon {
+    position: absolute;
+    left: 2px;
+    top: 1px;
+    width: 16px;
+    height: 16px;
+    background: url("/static_images/vista-games/jezzball/caption16.png") no-repeat;
+}
+
+/* WEP4UTIL's mono icon: its opaque pixels, then the ones it XORs with the caption */
+html body .jz-classic.modal .jz-caption-icon.jz-wep-icon {
+    background-image: url("/static_images/vista-games/jezzball/wep16.png");
+}
+
+html body .jz-classic.modal .jz-caption-icon.jz-wep-icon::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: url("/static_images/vista-games/jezzball/wep16-invert.png") no-repeat;
+    mix-blend-mode: difference;
+}
+
+html body :is(#vistaJezzballModal, .jz-classic).modal .modal-window-title-main > span {
+    position: absolute;
+    left: 22px;
+    top: 0;
+    right: 60px;
+    margin: 0 !important;
+    padding: 0 !important;
+    font: var(--jz-ui) !important;
+    line-height: 19px !important;
+    color: var(--jz-caption-text-now) !important;
+    text-shadow: none !important;
+    white-space: nowrap;
+    overflow: hidden;
+    -webkit-font-smoothing: subpixel-antialiased;
+}
+
+html body .jz-classic.modal.jz-no-icon .modal-window-title-main > span {
+    left: 3px;
+}
+
+/* ---- caption buttons -------------------------------------------------------------------- */
+
+html body :is(#vistaJezzballModal, .jz-classic).modal > .modal-window-controls {
+    position: absolute;
+    top: 10px !important;
+    right: 10px !important;
+    left: auto !important;
+    display: flex !important;
+    gap: 0 !important;
+    height: 15px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: none !important;
+    box-shadow: none !important;
+    z-index: 2;
+}
+
+html body .jz-classic.modal[data-jz-frame="dialog"] > .modal-window-controls {
+    top: 5px !important;
+    right: 5px !important;
+}
+
+html body .jz-classic.modal[data-jz-frame="border"] > .modal-window-controls {
+    top: 3px !important;
+    right: 3px !important;
+}
+
+html body #vistaJezzballModal.modal.modal-maximized > .modal-window-controls {
+    top: 2px !important;
+    right: 2px !important;
+}
+
+html body :is(#vistaJezzballModal, .jz-classic).modal > .modal-window-controls > button {
+    position: relative;
+    display: block !important;
+    flex: none !important;
+    width: 17px !important;
+    min-width: 0 !important;
+    height: 15px !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-image: none !important;
+    border-radius: 0 !important;
+    background: var(--jz-face) !important;
+    box-shadow:
+        inset -1px -1px 0 var(--jz-dkshadow),
+        inset 1px 1px 0 var(--jz-hilight),
+        inset -2px -2px 0 var(--jz-shadow),
+        inset 2px 2px 0 var(--jz-light) !important;
+    opacity: 1 !important;
+    filter: none !important;
+    transform: none !important;
+    overflow: hidden;
+}
+
+html body :is(#vistaJezzballModal, .jz-classic).modal > .modal-window-controls > button:is(.close-btn, .jz-close) {
+    margin-left: 2px !important;
+}
+
+html body :is(#vistaJezzballModal, .jz-classic).modal > .modal-window-controls > button::before,
+html body :is(#vistaJezzballModal, .jz-classic).modal > .modal-window-controls > button::after {
+    content: none !important;
+    display: none !important;
+}
+
+html body :is(#vistaJezzballModal, .jz-classic).modal > .modal-window-controls > button:active:not(:disabled) {
+    box-shadow:
+        inset 1px 1px 0 var(--jz-dkshadow),
+        inset -1px -1px 0 var(--jz-hilight),
+        inset 2px 2px 0 var(--jz-shadow),
+        inset -2px -2px 0 var(--jz-light) !important;
+}
+
+/* glyphs.png: minimize, maximize, restore, close, close disabled (13 x 11 each) */
+html body :is(#vistaJezzballModal, .jz-classic).modal > .modal-window-controls > button > i {
+    position: absolute !important;
+    left: 2px !important;
+    top: 2px !important;
+    display: block !important;
+    width: 13px !important;
+    height: 11px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    font-size: 0 !important;
+    color: transparent !important;
+    background: url("/static_images/vista-games/jezzball/glyphs.png") no-repeat 0 0 !important;
+    background-size: 65px 11px !important;
+    filter: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+}
+
+html body :is(#vistaJezzballModal, .jz-classic).modal > .modal-window-controls > button > i::before,
+html body :is(#vistaJezzballModal, .jz-classic).modal > .modal-window-controls > button > i::after {
+    content: none !important;
+}
+
+html body :is(#vistaJezzballModal, .jz-classic).modal > .modal-window-controls > button > i.fa-window-maximize {
+    background-position: -13px 0 !important;
+}
+
+html body :is(#vistaJezzballModal, .jz-classic).modal > .modal-window-controls > button > i.fa-window-restore {
+    background-position: -26px 0 !important;
+}
+
+html body :is(#vistaJezzballModal, .jz-classic).modal > .modal-window-controls > button > i.fa-xmark-large {
+    background-position: -39px 0 !important;
+}
+
+html body :is(#vistaJezzballModal, .jz-classic).modal > .modal-window-controls > button:disabled > i.fa-xmark-large {
+    background-position: -52px 0 !important;
+}
+
+html body :is(#vistaJezzballModal, .jz-classic).modal > .modal-window-controls > button:active:not(:disabled) > i {
+    left: 3px !important;
+    top: 3px !important;
+}
+
+/* the sizing border is the frame itself */
+html body #vistaJezzballModal.modal > .resize-handle {
+    background: none !important;
+}
+
+html body #vistaJezzballModal.modal > .resize-handle.n { top: 0; height: 8px; left: 16px; right: 16px; }
+html body #vistaJezzballModal.modal > .resize-handle.s { bottom: 0; height: 8px; left: 16px; right: 16px; }
+html body #vistaJezzballModal.modal > .resize-handle.w { left: 0; width: 8px; top: 16px; bottom: 16px; }
+html body #vistaJezzballModal.modal > .resize-handle.e { right: 0; width: 8px; top: 16px; bottom: 16px; }
+html body #vistaJezzballModal.modal > .resize-handle:is(.nw, .ne, .sw, .se) { width: 16px; height: 16px; }
+html body #vistaJezzballModal.modal > .resize-handle.nw { left: 0; top: 0; }
+html body #vistaJezzballModal.modal > .resize-handle.ne { right: 0; top: 0; }
+html body #vistaJezzballModal.modal > .resize-handle.sw { left: 0; bottom: 0; }
+html body #vistaJezzballModal.modal > .resize-handle.se { right: 0; bottom: 0; }
+
+html body :is(#vistaJezzballModal, .jz-classic).modal > .modal-focus-overlay {
+    top: 28px;
+    height: auto;
+    bottom: 0;
+}
+
+/* ---- client ------------------------------------------------------------------------------ */
+
+html body :is(#vistaJezzballModal, .jz-classic).modal > .modal-content {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: var(--jz-face) !important;
+    box-shadow: none !important;
+    overflow: hidden;
+    color: #000;
+    font: var(--jz-ui);
+}
+
+#vistaJezzballModal .jz-client {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    background: #000;
+    outline: none;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+}
+
+#vistaJezzballModal .jz-canvas {
+    position: absolute;
+    left: 0;
+    top: 0;
+    display: block;
+    image-rendering: pixelated;
+}
+
+/* the window is disabled while one of its dialogs is up */
+#vistaJezzballModal .jz-blocker {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    display: none;
+}
+
+#vistaJezzballModal.jz-blocked .jz-blocker {
+    display: block;
+}
+
+/* ---- menu bar and menus --------------------------------------------------------------------- */
+
+#vistaJezzballModal .jz-menubar {
+    display: flex;
+    flex: none;
+    height: 20px;
+    margin: 0;
+    padding: 0;
+    background: var(--jz-face);
+}
+
+#vistaJezzballModal .jz-menu-title {
+    flex: none;
+    box-sizing: border-box;
+    height: 19px;
+    margin: 0;
+    padding: 0 7px;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    color: #000;
+    font: var(--jz-ui);
+    line-height: 19px;
+    text-align: left;
+    white-space: nowrap;
+    cursor: default;
+}
+
+#vistaJezzballModal:not(.active-window) .jz-menu-title {
+    color: var(--jz-menu-inactive-text);
+}
+
+#vistaJezzballModal .jz-menu-title.jz-open {
+    background: var(--jz-highlight);
+    color: #fff;
+}
+
+.jz-menu-popup {
+    position: fixed;
+    z-index: 2147483000;
+    box-sizing: border-box;
+    padding: 2px 1px;
+    border: 1px solid #a0a0a0;
+    background: #f0f0f0;
+    color: #000;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    cursor: default;
+    user-select: none;
+    -webkit-user-select: none;
+    animation: jz-menu-fade 0.18s linear;
+}
+
+@keyframes jz-menu-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* CS_DROPSHADOW: 4 px falling off (x 0.56, 0.67, 0.83, 0.95 of what is under it) */
+.jz-menu-popup::before,
+.jz-menu-popup::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+}
+
+.jz-menu-popup::before {
+    top: 3px;
+    right: -5px;
+    width: 4px;
+    bottom: -5px;
+    background: linear-gradient(to right, rgba(0, 0, 0, 0.443) 0 1px, rgba(0, 0, 0, 0.329) 1px 2px, rgba(0, 0, 0, 0.169) 2px 3px, rgba(0, 0, 0, 0.055) 3px 4px);
+}
+
+.jz-menu-popup::after {
+    left: 3px;
+    right: -1px;
+    bottom: -5px;
+    height: 4px;
+    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.443) 0 1px, rgba(0, 0, 0, 0.329) 1px 2px, rgba(0, 0, 0, 0.169) 2px 3px, rgba(0, 0, 0, 0.055) 3px 4px);
+}
+
+.jz-menu-item {
+    position: relative;
+    height: 19px;
+    line-height: 19px;
+    white-space: nowrap;
+}
+
+.jz-menu-item.jz-hot::before {
+    content: "";
+    position: absolute;
+    left: 1px;
+    right: 1px;
+    top: 0;
+    bottom: 0;
+    background: #3399ff;
+}
+
+.jz-menu-item > span {
+    position: absolute;
+    top: 0;
+}
+
+.jz-menu-item .jz-menu-text { left: 20px; }
+.jz-menu-item .jz-menu-accel { left: var(--jz-accel-x, 0); }
+
+.jz-menu-item.jz-hot > span { color: #fff; }
+.jz-menu-item.jz-disabled > span { color: #6d6d6d; }
+.jz-menu-item.jz-disabled.jz-hot > span { color: #6d6d6d; }
+
+.jz-menu-item .jz-menu-check {
+    left: 6px;
+    top: 6px;
+    width: 7px;
+    height: 7px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='7' shape-rendering='crispEdges'%3E%3Cpath d='M6 0h1v1H6zM5 1h2v1H5zM0 2h1v1H0zM4 2h3v1H4zM0 3h2v1H0zM3 3h3v1H3zM0 4h5v1H0zM1 5h3v1H1zM2 6h1v1H2z'/%3E%3C/svg%3E") no-repeat;
+}
+
+.jz-menu-item.jz-hot .jz-menu-check {
+    filter: invert(1);
+}
+
+.jz-menu-separator {
+    position: relative;
+    height: 9px;
+}
+
+.jz-menu-separator::before {
+    content: "";
+    position: absolute;
+    left: 2px;
+    right: 2px;
+    top: 3px;
+    height: 1px;
+    background: #a0a0a0;
+    box-shadow: 0 1px 0 #ffffff;
+}
+
+/* mnemonics show once the keyboard drives the menu */
+.jz-menu-popup u,
+#vistaJezzballModal .jz-menu-title u {
+    text-decoration: none;
+}
+
+.jz-menu-popup.jz-cues u,
+#vistaJezzballModal.jz-cues .jz-menu-title u {
+    text-decoration: underline;
+}
+
+/* ---- controls in the client ------------------------------------------------------------------ */
+
+/* a push button (DrawFrameControl, EDGE_RAISED); default: a frame line inside its rect */
+:is(#vistaJezzballModal, .jz-classic) .jz-button {
+    position: absolute;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: #f0f0f0;
+    box-shadow:
+        inset -1px -1px 0 #696969,
+        inset 1px 1px 0 #e3e3e3,
+        inset -2px -2px 0 #a0a0a0,
+        inset 2px 2px 0 #ffffff;
+    color: #000;
+    cursor: default;
+    outline: none;
+}
+
+:is(#vistaJezzballModal, .jz-classic) .jz-button.jz-default {
+    box-shadow:
+        inset 0 0 0 1px #646464,
+        inset -2px -2px 0 #696969,
+        inset 2px 2px 0 #e3e3e3,
+        inset -3px -3px 0 #a0a0a0,
+        inset 3px 3px 0 #ffffff;
+}
+
+:is(#vistaJezzballModal, .jz-classic) .jz-button.jz-ui {
+    box-shadow:
+        inset -1px -1px 0 #696969,
+        inset 1px 1px 0 #ffffff,
+        inset -2px -2px 0 #a0a0a0,
+        inset 2px 2px 0 #e3e3e3;
+}
+
+:is(#vistaJezzballModal, .jz-classic) .jz-button.jz-ui.jz-default {
+    box-shadow:
+        inset 0 0 0 1px #646464,
+        inset -2px -2px 0 #696969,
+        inset 2px 2px 0 #ffffff,
+        inset -3px -3px 0 #a0a0a0,
+        inset 3px 3px 0 #e3e3e3;
+}
+
+:is(#vistaJezzballModal, .jz-classic) .jz-button.jz-pressed {
+    box-shadow: inset 0 0 0 1px #646464, inset 0 0 0 2px #a0a0a0;
+}
+
+:is(#vistaJezzballModal, .jz-classic) .jz-button > canvas,
+:is(#vistaJezzballModal, .jz-classic) .jz-label > canvas {
+    position: absolute;
+    display: block;
+    image-rendering: pixelated;
+    pointer-events: none;
+}
+
+:is(#vistaJezzballModal, .jz-classic) .jz-button.jz-pressed > canvas {
+    transform: translate(1px, 1px);
+}
+
+/* the dotted focus rectangle */
+:is(#vistaJezzballModal, .jz-classic) .jz-button.jz-focus::after {
+    content: "";
+    position: absolute;
+    left: var(--jz-focus-l, 4px);
+    top: var(--jz-focus-t, 4px);
+    right: var(--jz-focus-r, 4px);
+    bottom: var(--jz-focus-b, 4px);
+    background:
+        repeating-linear-gradient(to right, #000 0 1px, transparent 1px 2px) top / 100% 1px no-repeat,
+        repeating-linear-gradient(to right, #000 0 1px, transparent 1px 2px) bottom / 100% 1px no-repeat,
+        repeating-linear-gradient(to bottom, #000 0 1px, transparent 1px 2px) left / 1px 100% no-repeat,
+        repeating-linear-gradient(to bottom, #000 0 1px, transparent 1px 2px) right / 1px 100% no-repeat;
+    pointer-events: none;
+}
+
+:is(#vistaJezzballModal, .jz-classic) .jz-label {
+    position: absolute;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+/* ---- dialogs ------------------------------------------------------------------------------------ */
+
+html body .jz-classic.modal > .modal-content.jz-dialog-client {
+    position: relative;
+    display: block;
+    overflow: hidden;
+}
+
+/* a 16-bit dialog: Windows 3.1's white dialog background */
+html body .jz-classic.modal > .modal-content.jz-dialog-client.jz-win16 {
+    background: #ffffff !important;
+}
+
+/* the Entertainment Pack's gray: LTGRAY_BRUSH, a 1 px white left edge, dark gray right and bottom */
+html body .jz-classic.modal > .modal-content.jz-dialog-client.jz-wep {
+    background: #c0c0c0 !important;
+    box-shadow: inset 1px 0 0 #ffffff, inset -1px -1px 0 #808080 !important;
+}
+
+.jz-classic .jz-edit {
+    position: absolute;
+    box-sizing: border-box;
+    border: 1px solid #646464;
+    background: #ffffff;
+    overflow: hidden;
+}
+
+.jz-classic .jz-edit.jz-wep-edit {
+    border: 0;
+    background: #c0c0c0;
+    box-shadow: inset 1px 1px 0 #808080, inset -1px -1px 0 #ffffff;
+}
+
+.jz-classic .jz-edit > input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: transparent;
+    caret-color: transparent;
+    outline: none;
+    opacity: 0;
+}
+
+.jz-classic .jz-caret {
+    position: absolute;
+    width: 1px;
+    background: #000;
+    animation: jz-caret-blink 1.06s steps(1) infinite;
+}
+
+@keyframes jz-caret-blink {
+    0% { opacity: 1; }
+    50% { opacity: 0; }
+}
+
+/* IndentBox / OutdentBox / DentedBox (WEP4UTIL) */
+.jz-classic .jz-indent { position: absolute; box-sizing: border-box; box-shadow: inset 1px 1px 0 #808080, inset -1px -1px 0 #ffffff; }
+.jz-classic .jz-outdent { position: absolute; box-sizing: border-box; box-shadow: inset 1px 1px 0 #ffffff, inset -1px -1px 0 #808080; }
+.jz-classic .jz-dented { position: absolute; box-sizing: border-box; border: 1px solid #808080; box-shadow: 1px 1px 0 #ffffff, inset 1px 1px 0 #ffffff; }
+.jz-classic .jz-bitmap { position: absolute; display: block; image-rendering: pixelated; }
+
+/* the Vista message box: white message area over a gray button band */
+html body .jz-classic.modal > .modal-content.jz-msgbox {
+    background: #f0f0f0 !important;
+}
+
+.jz-classic .jz-msgbox-top {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    background: #ffffff;
+}
+
+.jz-classic .jz-msgbox-text {
+    position: absolute;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 15px;
+    color: #000;
+    white-space: pre-wrap;
+}
+
+.jz-classic .jz-button.jz-ui {
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 24px;
+    text-align: center;
+}
+
+.jz-classic .jz-button.jz-ui.jz-pressed > span {
+    position: relative;
+    left: 1px;
+    top: 1px;
+}
+
+/* ---- Windows Help (WinHlp32 on Vista: a themed 32-bit window) ----------------------------------- */
+
+#vistaJezzballHelp > .modal-content.jz-help-content {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    background: #f0f0f0;
+    overflow: hidden;
+}
+
+#vistaJezzballHelp .jz-help-buttons {
+    display: flex;
+    flex: none;
+    gap: 4px;
+    padding: 4px 6px;
+    border-bottom: 1px solid #a0a0a0;
+}
+
+#vistaJezzballHelp .jz-help-button {
+    min-width: 66px;
+    height: 23px;
+    padding: 0 8px;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+}
+
+#vistaJezzballHelp .jz-help-button u,
+.jz-help-popupbox u {
+    text-decoration: none;
+}
+
+#vistaJezzballHelp .jz-help-topic {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 6px 10px 12px;
+    background: #ffffff;
+    color: #000;
+    font: 10pt Arial, "Liberation Sans", sans-serif;
+    line-height: 1.25;
+    outline: none;
+    user-select: text;
+}
+
+#vistaJezzballHelp .jz-help-title {
+    margin: 0 -10px 8px;
+    padding: 2px 10px 6px;
+    border-bottom: 1px solid #c0c0c0;
+    font-weight: bold;
+    font-size: 12pt;
+}
+
+#vistaJezzballHelp .jz-help-heading {
+    margin: 10px 0 4px;
+    font-weight: bold;
+}
+
+#vistaJezzballHelp .jz-help-para,
+.jz-help-popupbox .jz-help-para {
+    margin: 0 0 7px;
+}
+
+#vistaJezzballHelp .jz-help-step {
+    position: relative;
+    padding-left: 22px;
+}
+
+#vistaJezzballHelp .jz-help-num {
+    position: absolute;
+    left: 0;
+}
+
+#vistaJezzballHelp .jz-help-jump,
+.jz-help-popupbox .jz-help-jump {
+    color: #008000;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+#vistaJezzballHelp .jz-help-popup {
+    color: #008000;
+    text-decoration: underline dotted;
+    cursor: pointer;
+}
+
+.jz-help-popupbox {
+    position: fixed;
+    z-index: 2147483000;
+    box-sizing: border-box;
+    padding: 6px 8px 0;
+    border: 1px solid #000;
+    background: #ffffe1;
+    color: #000;
+    font: 10pt Arial, "Liberation Sans", sans-serif;
+    box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.35);
+}

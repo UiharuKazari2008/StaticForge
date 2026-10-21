@@ -7,7 +7,8 @@
  *   Status   one row per account, a status dot on the left: NovelAI (Anlas fixed + paid,
  *            subscription and days left), each Cursor profile (a Log in link when it needs
  *            one), Claude (5-hour / 7-day windows), TokenRouter (balance), RunPod (running
- *            pods, spend an hour, balance). NovelAI V5, Cursor and Claude usage percents sit in
+ *            pods, spend an hour, balance), each custom Director engine (API status, and the
+ *            balance where its host has one). NovelAI V5, Cursor and Claude usage percents sit in
  *            a column on the right behind a divider (usageSide). No OpenAI: it gives API keys
  *            no balance, and work is moving to TokenRouter.
  *   Alerts   logins needed (with a Log in button), out of / almost out of usage, NovelAI
@@ -38,6 +39,8 @@
     // lavender (#B29EF1), which alone wash out to grey / nothing. TokenRouter: tokenrouter.com
     // --tr-color-brand-primary.
     const BRAND = { novelai: '#4f46c8', cursor: '#555555', claude: '#d97757', tokenrouter: '#0086ff', runpod: '#7046e0' };
+    // Custom Director engines by host kind (customModelProviders.js hostKind); generic hosts get none
+    const CUSTOM_BRAND = { tokenrouter: BRAND.tokenrouter, openrouter: '#6467f2', openai: '#10a37f', google: '#4285f4' };
 
     let server = null;       // last wallet_status data
     let serverError = '';
@@ -513,6 +516,64 @@
         return { key: 'runpod', service: 'runpod', dot: worst(levels), name: 'RunPod', value: '', lines, side };
     }
 
+    // Custom Director engines (Dreamscape Services > Custom Model Providers). Every one shows its
+    // API status in the right-hand column, usage or not; a balance column comes first where the
+    // host has one (TokenRouter with a management key, OpenRouter credits).
+    function customApiSide(api) {
+        const ms = api.ms != null ? `${count(api.ms)} ms` : '';
+        if (api.state === 'ok') return sideColumn('API', 'Online', null, 'ok', ms, api.message);
+        if (api.state === 'fail') return sideColumn('API', 'Refused', null, 'bad', api.status ? `HTTP ${api.status}` : '', api.message);
+        if (api.state === 'off') return sideColumn('API', 'No key', null, 'ok', '', api.message);
+        const limited = api.status === 402 || api.status === 429;
+        return sideColumn('API', limited ? 'Limited' : api.status ? 'Error' : 'Offline', null, 'warn',
+            api.status ? `HTTP ${api.status}` : ms, api.message);
+    }
+
+    function customRows(data, alerts) {
+        const providers = data && Array.isArray(data.providers) ? data.providers : [];
+        return providers.map((p) => {
+            const key = `custom:${p.id}`;
+            const api = p.api || { state: 'off', message: '' };
+            const keys = { label: 'Service keys', name: 'keys' };
+            const lines = [];
+            const levels = [];
+            if (!p.hasKey) {
+                lines.push({ text: 'No API key.', link: keys });
+            } else if (api.state === 'ok') {
+                lines.push(['API online', api.models ? plural(api.models, 'model') : ''].filter(Boolean).join(', '));
+            } else if (api.state === 'fail') {
+                lines.push('API key refused');
+                alert(alerts, `${key}:refused`, 'critical', p.name, `${p.name} API key refused`, api.message, keys);
+            } else {
+                lines.push(api.message || 'API status unknown');
+                alert(alerts, `${key}:down`, 'warning', p.name, `${p.name} API not answering`, api.message);
+            }
+            const sides = [];
+            const b = p.balance;
+            if (b && b.balance != null && num(b.balance) != null) {
+                // Same thresholds as TokenRouter: red at $1 or less, orange under $5
+                const level = balanceLevel(b.balance, 1, 5);
+                if (b.balance <= 0) {
+                    alert(alerts, `${key}:out`, 'critical', p.name, `${p.name} balance used up`, 'Top up to keep this engine running.');
+                } else if (level === 'bad') {
+                    alert(alerts, `${key}:low`, 'warning', p.name, `${p.name} balance almost used up: ${usd(b.balance)}`, 'Top up to keep this engine running.');
+                }
+                sides.push(sideColumn('Balance', usd(b.balance), null, level, '', b.title || ''));
+            } else if (b && b.title) {
+                lines.push(b.title.replace(`${p.name}: `, '').replace(/^./, (c) => c.toUpperCase()));
+            }
+            const apiSide = customApiSide(api);
+            sides.push(apiSide);
+            sides.forEach((side) => levels.push(sideDot(side)));
+            const dot = !p.hasKey ? 'off' : api.state === 'fail' ? 'bad' : worst(levels);
+            return {
+                key, service: 'custom', dot, name: p.name, value: '', lines, sides,
+                title: [p.host, p.kind && p.kind !== 'generic' ? p.kind : ''].filter(Boolean).join(', '),
+                accent: CUSTOM_BRAND[p.kind] || ''
+            };
+        });
+    }
+
     // The RunPod tray snapshot (runpodTray.js) gets pod pushes between wallet refreshes
     function runpodLive() {
         const snap = typeof root.getRunpodTraySnapshot === 'function' ? root.getRunpodTraySnapshot() : null;
@@ -567,6 +628,7 @@
         const live = runpodLive();
         if (s.runpod) rows.push(runpodRow(live && live.pods.length ? { ...s.runpod, pods: live.pods } : s.runpod, alerts));
         else if (restricted && live && live.pods.length) rows.push(runpodRow({ pods: live.pods }, alerts));
+        if (s.custom && !s.custom.error) rows.push(...customRows(s.custom, alerts));
         keyAlerts(s.keys, rows, alerts);
         rows.forEach((row) => { row.accent = row.accent || accentFor(row); });
         alerts.sort((a, b) => (a.level === b.level ? 0 : a.level === 'critical' ? -1 : 1));
@@ -1086,6 +1148,7 @@
             claudeRow,
             tokenRouterRow,
             runpodRow,
+            customRows,
             v5Trend,
             keyAlerts,
             span,

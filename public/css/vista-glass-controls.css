@@ -1025,7 +1025,49 @@ body.desktop-mode:not(.windows-classic-theme) select[multiple]:not(.hover-show):
    was a 30% white border with a 17% highlight. ---------- */
 body.desktop-mode:not(.windows-classic-theme) .modal:not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow):not(#virtualKeyboardModal) {
     border-color: hsl(210 24% 14% / 82%);
-    --aero-frame-highlight: inset 0 0 0 1px hsl(0 0% 100% / 82%);
+    /* 2026-10-21 pass, measured against Notepad on the VM at the same screen spot over the same
+       wallpaper. Corners: 6 px at the top, 5 px at the bottom (ours were 8). Inner line: the
+       active frame's is cyan (44,211,254) on the right and bottom, white on the top and left
+       (aero.msstyles IMAGE_839 draws the same); inactive it is ~66 % white all round. Shadow:
+       the window's own shadow divided by the bare wallpaper is ~50 % dark at the edge and gone
+       after 13 px left / top, 17 px right / bottom; inactive 8 px. Ours was 25 % at the edge,
+       25 px long, the same in both states, and almost none on inactive live windows. */
+    border-radius: 6px 6px 5px 5px;
+    --aero-frame-radius: 5px 5px 4px 4px;
+    --aero-frame-highlight: inset -1px -1px 0 #2cd3fe, inset 0 0 0 1px hsl(0 0% 100% / 82%);
+    --window-frame-shadow: 2px 2px 12px 1px hsl(0 0% 0% / 27%), 2px 2px 12px 3px hsl(0 0% 0% / 69%);
+    box-shadow: var(--window-frame-shadow);
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal:not(.active-window):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow):not(#virtualKeyboardModal) {
+    --aero-frame-highlight: inset 0 0 0 1px hsl(0 0% 100% / 66%);
+    --window-frame-shadow: 1px 1px 7px 0 hsl(0 0% 0% / 88%), 1px 1px 8px -2px hsl(0 0% 0% / 24%);
+}
+
+/* Live glass has no ::before frame paint (aero-glass.css), so the inner line rides on the
+   window's own box-shadow, which still carried app.css's 17 % white ring */
+html[data-glass="live"] body.desktop-mode:not(.windows-classic-theme) .modal:not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow):not(#virtualKeyboardModal) {
+    box-shadow: var(--window-frame-shadow), var(--aero-frame-highlight);
+}
+
+/* Caption icon and title: Vista draws the 16 px icon 8 px in from the window edge and the title
+   5 px after it (29 px in); with no icon the title starts at 8 px. Ours: an 18 px icon at 13 px,
+   the title at 37 px. The import wizard (Back orb first) and IE7's caption place their own. */
+body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):where(:not(#manualModal:not(.windowed), #photoSwipeWindow, #virtualKeyboardModal, #unifiedUploadModal, #tagWikiSearchModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-window-title > .modal-window-title-main {
+    margin-left: -5px;
+    gap: 5px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):where(:not(#manualModal:not(.windowed), #photoSwipeWindow, #virtualKeyboardModal, #unifiedUploadModal, #tagWikiSearchModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-window-title > .modal-window-title-main > .icon-image {
+    width: 16px;
+    height: 16px;
+}
+
+/* Caption buttons: Vista hangs the cluster with its right edge on the client edge's dark line
+   (7 px in from the window edge on the 8 px frame) and the face's white hairline one column
+   further out; ours sat 14 px in */
+body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):where(:not(#manualModal:not(.windowed), #photoSwipeWindow, #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-window-controls {
+    right: calc(var(--window-frame-inset) - 2px);
 }
 
 /* Volume tray flyout (tabVolume.js). Measured on the Vista VM: a narrow white

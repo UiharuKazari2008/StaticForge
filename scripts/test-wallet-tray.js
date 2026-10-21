@@ -125,6 +125,57 @@ const NOW = Date.now();
     assert.strictEqual(bare.runpod, null);
     assert.strictEqual(bare.tokenrouter, null);
 
+    // Custom Director engines: API status for every one, a balance only where the host has one
+    t.reset();
+    const customFetches = [];
+    global.fetch = async (url, init = {}) => {
+        customFetches.push(String(url));
+        const json = (status, body) => ({ ok: status >= 200 && status < 300, status, json: async () => body, text: async () => JSON.stringify(body) });
+        if (String(url) === 'https://slop.example/v1/models') return json(200, { data: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] });
+        // The refused key is echoed back; it must not reach the wallet
+        if (String(url) === 'https://bad.example/v1/models') return json(401, { error: { message: `Invalid key ${init.headers.authorization}` } });
+        if (String(url) === 'https://openrouter.ai/api/v1/key') return json(200, { data: { label: 'k' } });
+        if (String(url) === 'https://openrouter.ai/api/v1/credits') return json(200, { data: { total_credits: 10, total_usage: 9.4 } });
+        if (String(url) === 'https://down.example/v1/models') throw new Error('getaddrinfo ENOTFOUND down.example');
+        throw new Error(`unexpected fetch ${url}`);
+    };
+    const customGr = {
+        ...gr,
+        getConfig: (opts) => (opts && opts.path === 'customModelProviders' ? [
+            { id: 'slop', name: 'SloProxy', baseUrl: 'https://slop.example', defaultModel: 'a' },
+            { id: 'bad', name: 'Bad Host', baseUrl: 'https://bad.example' },
+            { id: 'orouter', name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api' },
+            { id: 'down', name: 'Down Host', baseUrl: 'https://down.example' },
+            { id: 'nokey', name: 'No Key', baseUrl: 'https://nokey.example' }
+        ] : {}),
+        getSecureConfig: (opts) => (opts && opts.path === 'customModelProviders'
+            ? { keys: [{ name: 'slop', apiKey: 'sk-slop' }, { name: 'bad', apiKey: 'sk-bad' }, { name: 'orouter', apiKey: 'sk-or' }, { name: 'down', apiKey: 'sk-down' }] }
+            : null),
+        getApiKeyManager: () => ({ getActiveApiKey: () => null }),
+        getRunpodPodManager: () => ({ getCachedSnapshot: () => ({ pods: [] }) })
+    };
+    const withCustom = await wallet.getWalletStatus(customGr, { fresh: true });
+    const byId = Object.fromEntries(withCustom.custom.providers.map((p) => [p.id, p]));
+    assert.deepStrictEqual(
+        (({ state, status, models }) => ({ state, status, models }))(byId.slop.api),
+        { state: 'ok', status: 200, models: 3 }
+    );
+    assert.strictEqual(byId.slop.balance, null, 'a generic host has no balance');
+    assert.strictEqual(byId.slop.host, 'slop.example');
+    assert.strictEqual(byId.bad.api.state, 'fail');
+    assert.ok(!JSON.stringify(withCustom.custom).includes('sk-bad'), 'the key never reaches the wallet');
+    assert.strictEqual(byId.orouter.api.state, 'ok');
+    assert.strictEqual(byId.orouter.api.models, null, 'OpenRouter is checked on its key endpoint');
+    assert.strictEqual(byId.orouter.balance.balance, 0.6);
+    assert.strictEqual(byId.down.api.state, 'warn');
+    assert.match(byId.down.api.message, /Could not reach the host/);
+    assert.deepStrictEqual({ hasKey: byId.nokey.hasKey, state: byId.nokey.api.state }, { hasKey: false, state: 'off' });
+    assert.ok(!customFetches.some((u) => u.includes('nokey')), 'no key, no call');
+    // Each provider is checked at most once a minute, even on a fresh collect
+    const customBefore = customFetches.length;
+    await wallet.getWalletStatus(customGr, { fresh: true });
+    assert.strictEqual(customFetches.length, customBefore);
+
     // ---- client ----
     const store = {};
     global.sessionStorage = { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); } };
@@ -351,6 +402,28 @@ const NOW = Date.now();
     assert.strictEqual(limited.rows[1].value, '');
 
     fs.rmSync(tmp, { recursive: true, force: true });
+    // Custom engines: API status in the right-hand column, a balance first where there is one
+    {
+        const alerts = [];
+        const rows = c.customRows(withCustom.custom, alerts);
+        const row = (id) => rows.find((r) => r.key === `custom:${id}`);
+        assert.strictEqual(row('slop').dot, 'ok');
+        assert.deepStrictEqual(row('slop').sides.map((x) => `${x.label} ${x.value}`), ['API Online']);
+        assert.strictEqual(row('slop').lines[0], 'API online, 3 models');
+        assert.strictEqual(row('bad').dot, 'bad');
+        assert.deepStrictEqual(row('orouter').sides.map((x) => `${x.label} ${x.value}`), ['Balance $0.60', 'API Online']);
+        assert.strictEqual(row('orouter').dot, 'bad', '$0.60 left is red');
+        assert.strictEqual(row('down').dot, 'warn');
+        assert.strictEqual(row('down').sides[0].value, 'Offline');
+        assert.strictEqual(row('nokey').dot, 'off');
+        assert.strictEqual(row('nokey').sides[0].value, 'No key');
+        assert.deepStrictEqual(alerts.map((a) => a.id).sort(), ['custom:bad:refused', 'custom:down:down', 'custom:orouter:low']);
+        // TokenRouter host without a management key: no balance column, the reason as a line
+        const noBalance = c.customRows({ providers: [{ id: 'tr', name: 'Router Box', kind: 'tokenrouter', hasKey: true,
+            api: { state: 'ok', status: 200, ms: 5, models: 4 }, balance: { balance: null, title: 'Router Box: add a management key to show the balance' } }] }, []);
+        assert.deepStrictEqual(noBalance[0].sides.map((x) => x.label), ['API']);
+        assert.strictEqual(noBalance[0].lines[1], 'Add a management key to show the balance');
+    }
     console.log('wallet tray: ok');
     process.exit(0);
 })().catch((error) => {

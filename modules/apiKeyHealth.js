@@ -144,11 +144,11 @@ async function runProbe(service, slot, secret) {
         const res = probe.gate
             ? await require('./tokenRouterGate').run(send, { lane: 'background', label: `key check ${service}` })
             : await send();
-        const text = await res.text().catch(() => '');
+        // Secrets can come back in error bodies; never keep them (classify reads the message from body).
+        const text = (await res.text().catch(() => '')).split(secret).join('<key>');
         let body = null;
         try { body = text ? JSON.parse(text) : null; } catch (_) { body = null; }
-        // Secrets can come back in error bodies; never keep them.
-        const safeText = text.split(secret).join('<key>').slice(0, 400);
+        const safeText = text.slice(0, 400);
         return { ...classify(res.status, body, safeText, probe.judge, probe.accept), status: res.status };
     } catch (error) {
         return { state: 'warn', message: `Could not reach the service (${error.name === 'TimeoutError' ? 'timed out' : error.message})` };
@@ -274,6 +274,7 @@ module.exports = {
     start,
     sweep,
     checksService,
+    classify,
     statusFor,
     publicStatuses,
     noteKeysChanged,

@@ -137,6 +137,8 @@
         el.dataset.vistaDialog = kindOf(el);
         el.dataset.vistaIcon = iconFor(el);
         if (!el.dataset.windowClient) { el.dataset.windowClient = 'light'; el.dataset.vistaDialogLight = '1'; }
+        // ensureModalApplicationIcon: public/scripts/comp/modalUtils.js
+        if (typeof ensureModalApplicationIcon === 'function') ensureModalApplicationIcon(el);
         markParts(el);
         if (!tagged.has(el)) {
             tagged.add(el);

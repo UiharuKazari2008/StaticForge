@@ -1438,12 +1438,17 @@ function collectPreciseReferenceData() {
 }
 
 function applyPreciseReferenceToRequestBody(requestBody) {
-    const data = collectPreciseReferenceData();
     delete requestBody.chara_reference_source;
     delete requestBody.chara_reference_type;
     delete requestBody.chara_reference_strength;
     delete requestBody.chara_reference_fidelity;
     delete requestBody.chara_reference_with_style;
+    // getForgeModelFeatures: public/scripts/comp/utilities.js
+    const caps = typeof getForgeModelFeatures === 'function' ? getForgeModelFeatures() : null;
+    if (caps && caps.preciseReference === false) {
+        return;
+    }
+    const data = collectPreciseReferenceData();
     if (!data) return;
     requestBody.chara_reference_source = data.chara_reference_source;
     requestBody.chara_reference_type = data.chara_reference_type;
@@ -1453,6 +1458,13 @@ function applyPreciseReferenceToRequestBody(requestBody) {
 
 async function loadPreciseReferencesFromMetadata(data) {
     if (!data || !data.chara_reference_source) {
+        clearAllPreciseReferenceItems();
+        return;
+    }
+
+    // getForgeModelFeatures: public/scripts/comp/utilities.js
+    const caps = typeof getForgeModelFeatures === 'function' ? getForgeModelFeatures() : null;
+    if (caps && caps.preciseReference === false) {
         clearAllPreciseReferenceItems();
         return;
     }

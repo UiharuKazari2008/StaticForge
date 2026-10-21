@@ -8,6 +8,9 @@
 //   claude       the 5-hour and 7-day windows of the last Claude turn (Director claude-usage.json)
 //   tokenrouter  the account wallet (tokenRouterBridge.wallet: management key, 60 s cache)
 //   runpod       managed pods (RunpodPodManager snapshot) and the account balance (GraphQL myself)
+//   custom       every custom Director engine (customModelProviders.js): whether its API answers
+//                and takes the key (apiStatus), plus the balance where the host has one
+//                (TokenRouter management key, OpenRouter credits), 60 s cache per provider
 //   keys         services the key tripwire stopped calling (apiKeyManager locks, Unlock =
 //                unlock_api_service) and keys Security Center's check refused (apiKeyHealth);
 //                local state, so it is read on every request instead of cached
@@ -15,7 +18,7 @@
 // Grok is left out of keys (it is being retired). OpenAI is left out: it gives API keys no balance (/dashboard/billing/credit_grants answers 403
 // "must be made with a session key"), and work is moving to TokenRouter anyway.
 //
-// getWalletStatus(gr, { refresh, fresh }) -> { fetchedAt, cursor, claude, tokenrouter, runpod, keys };
+// getWalletStatus(gr, { refresh, fresh }) -> { fetchedAt, cursor, claude, tokenrouter, runpod, custom, keys };
 // a service that is not set up is null.
 const fs = require('fs');
 const path = require('path');
@@ -24,6 +27,7 @@ const CACHE_MS = 2 * 60 * 1000;
 // A refresh (flyout opened) still reuses a snapshot this young.
 const REFRESH_FLOOR_MS = 20 * 1000;
 const RUNPOD_TTL_MS = 60 * 1000;
+const CUSTOM_TTL_MS = 60 * 1000;
 const REQUEST_TIMEOUT_MS = 12000;
 // Same rule as Security Center's Login button (securityCenterDsapApplet.js loginNeeded), plus a
 // profile with no saved credentials at all.
@@ -33,6 +37,7 @@ const KEY_SKIP_SERVICES = new Set(['grok']);
 let snapshot = null;
 let inflight = null;
 let runpodCache = { at: 0, key: '', value: null };
+const customCache = new Map(); // provider id -> { at, fp, value }
 
 function shortError(error) {
     return String((error && error.message) || error || 'unavailable').replace(/\s+/g, ' ').slice(0, 160);
@@ -241,6 +246,44 @@ async function runpodStatus(gr) {
     };
 }
 
+// ---- Custom Director engines: API status, and a balance where the host has one ----
+
+function hostName(baseUrl) {
+    try { return new URL(baseUrl).hostname; } catch (_) { return ''; }
+}
+
+async function customProviderStatus(cmp, gr, row) {
+    const fp = require('crypto').createHash('sha256')
+        .update([row.baseUrl, row.kind, row.apiKey, row.managementKey].join('\n')).digest('hex').slice(0, 16);
+    const hit = customCache.get(row.id);
+    if (hit && hit.fp === fp && Date.now() - hit.at < CUSTOM_TTL_MS) return hit.value;
+    const [api, balance] = await Promise.all([
+        cmp.apiStatus(gr, row.id).catch((error) => ({ state: 'warn', message: shortError(error) })),
+        row.apiKey ? cmp.balanceInfo(row).catch((error) => ({ balance: null, title: shortError(error) })) : null
+    ]);
+    const value = {
+        id: row.id,
+        name: row.name,
+        kind: row.kind,
+        host: hostName(row.baseUrl),
+        defaultModel: row.defaultModel || '',
+        monitorUsage: row.monitorUsage === true,
+        hasKey: !!row.apiKey,
+        api: { ...api, checkedAt: Date.now() },
+        balance: balance || null
+    };
+    customCache.set(row.id, { at: Date.now(), fp, value });
+    return value;
+}
+
+async function customStatus(gr) {
+    const cmp = require('./customModelProviders');
+    const rows = cmp.publicAdminList(gr).map((item) => cmp.lookup(gr, item.id)).filter(Boolean);
+    if (!rows.length) return null;
+    const providers = await Promise.all(rows.map((row) => customProviderStatus(cmp, gr, row)));
+    return { providers };
+}
+
 // ---- Service keys: tripwire locks and refused keys ----
 
 function keyStatus(gr) {
@@ -308,13 +351,14 @@ async function settle(label, fn) {
 }
 
 async function collect(gr) {
-    const [cursor, claude, tokenrouter, runpod] = await Promise.all([
+    const [cursor, claude, tokenrouter, runpod, custom] = await Promise.all([
         settle('cursor', () => cursorStatus(gr)),
         settle('claude', () => claudeStatus()),
         settle('tokenrouter', () => tokenRouterStatus(gr)),
-        settle('runpod', () => runpodStatus(gr))
+        settle('runpod', () => runpodStatus(gr)),
+        settle('custom', () => customStatus(gr))
     ]);
-    return { fetchedAt: Date.now(), cursor, claude, tokenrouter, runpod };
+    return { fetchedAt: Date.now(), cursor, claude, tokenrouter, runpod, custom };
 }
 
 // refresh: the flyout opened (reuses a snapshot younger than REFRESH_FLOOR_MS);
@@ -349,6 +393,7 @@ module.exports = {
             snapshot = null;
             inflight = null;
             runpodCache = { at: 0, key: '', value: null };
+            customCache.clear();
         }
     }
 };

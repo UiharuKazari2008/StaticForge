@@ -2525,6 +2525,13 @@ class WebSocketClient {
             if (window.workstationLock) window.workstationLock.reshowAfterRestart();
             return;
         }
+        if (this._useWelcomeBoot()) {
+            // Use Vista Logon: the Welcome screen stays and the startup window's stages run under
+            // it, then it fades straight to the desktop (desktopBoot.js fadeOutWelcome)
+            this.preStartupHandoffCompleted = true;
+            window.desktopBoot.begin({ welcome: true });
+            return;
+        }
         await this._hidePreStartupDialog();
         await this._sleepConnectionBeat(750);
         if (!this._canCompletePreStartupHandoff()) return;
@@ -2533,6 +2540,22 @@ class WebSocketClient {
             // XP-style staged reveal from here: solid colour, then wallpaper, icons, taskbar, windows
             window.desktopBoot.begin();
         }
+    }
+
+    /**
+     * Use Vista Logon boots under the Welcome screen, with no startup window. Step-by-step mode
+     * and the boot UI debugger keep the startup window: their controls live in it.
+     */
+    _useWelcomeBoot() {
+        return Boolean(this.vistaLogon && window.isDesktop && window.desktopBoot
+            && typeof window.desktopBoot.isWelcomeBoot === 'function'
+            && !this.stepByStepMode && !(window.bootUiDebug && window.bootUiDebug.active));
+    }
+
+    /** The boot is running under the Welcome screen (desktopBoot.begin({ welcome: true })). */
+    _isWelcomeBoot() {
+        return Boolean(window.desktopBoot && typeof window.desktopBoot.isWelcomeBoot === 'function'
+            && window.desktopBoot.isWelcomeBoot());
     }
 
     _hideConnectionDialModal() {
@@ -3776,6 +3799,13 @@ class WebSocketClient {
 
         if (!modal || !statusElement || !progressBar) return;
 
+        if (this._isWelcomeBoot()) {
+            // The Welcome screen's status line takes the text; the startup window stays shut
+            window.desktopBoot.onStepMessage(message, progress);
+            window.desktopBoot.refresh();
+            return;
+        }
+
         // Top-left corner layout (#windowsStartupModal CSS); skip center clamp / pixel-settle — modalUtils.js
         modal.dataset.windowPositionMode = 'manual-only';
         modal.dataset.windowRestorePosition = 'false';
@@ -3831,7 +3861,8 @@ class WebSocketClient {
             }
         }
 
-        if (document.body.classList.contains('windows-startup') && typeof setActiveWindow === 'function') {
+        if (document.body.classList.contains('windows-startup') && !this._isWelcomeBoot()
+            && typeof setActiveWindow === 'function') {
             setActiveWindow('windowsStartupModal');
         }
 
@@ -3842,8 +3873,13 @@ class WebSocketClient {
     async hideWindowsStartupModal() {
         if (!window.isDesktop) return;
 
+        // Use Vista Logon: the desktop is complete under the Welcome screen, which fades out over it
+        const welcomeBoot = this._isWelcomeBoot();
+        if (welcomeBoot) await window.desktopBoot.fadeOutWelcome();
+
         const modal = document.getElementById('windowsStartupModal');
-        if (modal) {
+        // (under the Welcome screen it never opened: nothing to wait for)
+        if (modal && !(welcomeBoot && modal.classList.contains('hidden'))) {
             // clearModalPixelAnchor — modalUtils.js (corner modal; do not use center-based revert)
             clearModalPixelAnchor(modal);
             // Use normal modal closing process; wait so body background stays in sync with close animation

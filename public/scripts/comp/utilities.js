@@ -2161,7 +2161,10 @@ function updateManualPriceDisplay(bypass = false) {
             };
 
             // Create values object with all form data (same as handleManualGeneration)
-            const preciseRefData = collectPreciseReferenceData();
+            const priceCaps = getForgeModelFeatures(model);
+            const preciseRefData = (priceCaps && priceCaps.preciseReference === false)
+                ? null
+                : collectPreciseReferenceData();
             const values = {
                 upscale: document.getElementById('manualUpscale')?.getAttribute('data-state') === 'on' || false,
                 vibe_transfer: collectVibeTransferData(),

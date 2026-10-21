@@ -751,10 +751,11 @@ function selectManualModel(value, group, preventPropagation = false) {
     // updateV3ModelVisibility: public/scripts/comp/utilities.js
     updateV3ModelVisibility();
 
-    if (preventPropagation) return;
-
-    // Migrate params when switching into/out of V5 (clear unsupported vibe / precise ref)
+    // Migrate params when switching into/out of V5 (clear unsupported vibe / precise ref).
+    // Must run even when preventPropagation skips dropdown side effects (Change JSON, MCP restore).
     migrateManualParamsForModelChange(previousModel, manualSelectedModel);
+
+    if (preventPropagation) return;
     renderDatasetDropdown();
     updateSubTogglesButtonState();
     renderUcPresetsDropdown();
@@ -851,9 +852,16 @@ function selectTransformation(value) {
         case 'vibe-transfer':
             openReferenceBrowserWithFilter('vibe');
             break;
-        case 'character-reference':
+        case 'character-reference': {
+            // getForgeModelFeatures: public/scripts/comp/utilities.js
+            const refCaps = getForgeModelFeatures();
+            if (refCaps && refCaps.preciseReference === false) {
+                showGlassToast('info', 'Not Available', 'Character / style reference is not supported on this model.', false, undefined, '<i class="nai-precise-reference-style-and-character"></i>');
+                break;
+            }
             openReferenceBrowserWithFilter('character');
             break;
+        }
         case 'upload':
             // Determine upload type based on current state
             const hasValidImage = window.currentEditImage && window.currentEditMetadata;

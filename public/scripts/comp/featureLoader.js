@@ -120,6 +120,86 @@ const FEATURE_MANIFEST = {
             'scripts/comp/exchangeDsapApplet.js'
         ]
     },
+    // Windows Vista's games (Yozora #609): the shared engine, then one feature per game
+    vista_games: {
+        styles: ['css/desktop-apps/vista-games.css'],
+        scripts: ['scripts/comp/desktop-apps/vista-games/vistaGameEngine.js']
+    },
+    vista_minesweeper: {
+        depends: ['vista_games'],
+        scripts: ['scripts/comp/desktop-apps/vista-games/minesweeper.js']
+    },
+    vista_cards: {
+        depends: ['vista_games'],
+        scripts: ['scripts/comp/desktop-apps/vista-games/cardEngine.js']
+    },
+    vista_solitaire: {
+        depends: ['vista_cards'],
+        scripts: ['scripts/comp/desktop-apps/vista-games/solitaire.js']
+    },
+    vista_spider: {
+        depends: ['vista_cards'],
+        scripts: ['scripts/comp/desktop-apps/vista-games/spider.js']
+    },
+    vista_freecell: {
+        depends: ['vista_cards'],
+        scripts: ['scripts/comp/desktop-apps/vista-games/freecell.js']
+    },
+    vista_hearts: {
+        depends: ['vista_cards'],
+        scripts: ['scripts/comp/desktop-apps/vista-games/hearts.js']
+    },
+    vista_mahjong: {
+        depends: ['vista_cards'],
+        scripts: ['scripts/comp/desktop-apps/vista-games/mahjong.js']
+    },
+    vista_chess: {
+        depends: ['vista_games'],
+        scripts: [
+            'scripts/comp/desktop-apps/vista-games/chessEngine.js',
+            'scripts/comp/desktop-apps/vista-games/chessRender.js',
+            'scripts/comp/desktop-apps/vista-games/chess.js'
+        ]
+    },
+    vista_inkball: {
+        depends: ['vista_games'],
+        scripts: ['scripts/comp/desktop-apps/vista-games/inkball.js']
+    },
+    vista_purble: {
+        // vista_cards for its status bar (VG.Cards.statusBar)
+        depends: ['vista_cards'],
+        scripts: [
+            'scripts/comp/desktop-apps/vista-games/purbleRules.js',
+            'scripts/comp/desktop-apps/vista-games/purble.js',
+            'scripts/comp/desktop-apps/vista-games/purblePairs.js',
+            'scripts/comp/desktop-apps/vista-games/purbleCakes.js',
+            'scripts/comp/desktop-apps/vista-games/purbleShop.js'
+        ]
+    },
+    vista_blockdrop: {
+        depends: ['vista_games'],
+        scripts: ['scripts/comp/desktop-apps/vista-games/blockdrop.js']
+    },
+    vista_brickbreaker: {
+        depends: ['vista_games'],
+        scripts: ['scripts/comp/desktop-apps/vista-games/brickbreaker.js']
+    },
+    // JezzBall (Win 3.x Entertainment Pack): a 16-bit program's classic window on the Vista desktop
+    vista_jezzball: {
+        depends: ['vista_games'],
+        styles: ['css/desktop-apps/vista-jezzball.css'],
+        scripts: [
+            'scripts/comp/desktop-apps/vista-games/jezzballReal.js',
+            'scripts/comp/desktop-apps/vista-games/jezzballCore.js',
+            'scripts/comp/desktop-apps/vista-games/jezzballHelp.js',
+            'scripts/comp/desktop-apps/vista-games/jezzball.js'
+        ]
+    },
+    vista_explorer: {
+        depends: ['vista_games'],
+        styles: ['css/desktop-apps/vista-games-explorer.css'],
+        scripts: ['scripts/comp/desktop-apps/vista-games/gamesExplorer.js']
+    },
     start_menu_organizer: {
         scripts: ['scripts/comp/desktop-apps/startMenuOrganizer.js']
     },
@@ -289,6 +369,15 @@ async function openGrimoireUrl(url) {
     await featureLoader.loadFeature('grimoire');
     tagWikiSearchModal.open('', { skipInitialHome: true });
     tagWikiSearchModal.navigate(url);
+}
+
+// Start a Vista game by id (minesweeper, solitaire ...): its feature, then the game's open()
+// from the VistaGames registry (public/scripts/comp/desktop-apps/vista-games/vistaGameEngine.js)
+async function openVistaGame(id) {
+    await featureLoader.loadFeature('vista_' + id);
+    const game = window.VistaGames && VistaGames.list().find((entry) => entry.id === id);
+    if (!game) throw new Error('Game not found: ' + id);
+    return game.open();
 }
 
 async function openSpellbookApplet() {

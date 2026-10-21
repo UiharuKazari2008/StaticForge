@@ -23,6 +23,7 @@ const MODEL_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,159}$/;
 const EFFORTS = ['none', 'low', 'medium', 'high'];
 const OBLITERATED_STORE = 'obliterated';
 const CATALOG_TTL_MS = 10 * 60 * 1000;
+const STATUS_TIMEOUT_MS = 12000;
 
 const catalogs = new Map();
 const LOGO_MAX_BYTES = 64 * 1024;
@@ -405,6 +406,45 @@ function usdText(amount) {
     return `${n < 0 ? '-' : ''}$${Math.abs(n).toFixed(2)}`;
 }
 
+// TokenRouter (management key) and OpenRouter credits. { balance, title, topUp?, vouchers? };
+// balance is null when it could not be read. null: the host has no balance to read.
+async function balanceInfo(row) {
+    const name = row.name;
+    if (row.kind === 'tokenrouter') {
+        const missing = { balance: null, title: `${name}: add a management key to show the balance` };
+        if (!row.managementKey) return missing;
+        const info = await require('./tokenRouterBridge').walletAt(row.baseUrl, row.managementKey);
+        if (info.error) return { balance: null, title: `${name} balance unavailable: ${info.error}` };
+        if (!info.configured) return missing;
+        return {
+            balance: info.remaining,
+            topUp: info.topUp,
+            vouchers: info.vouchers,
+            title: [
+                `${name} balance: ${usdText(info.remaining)}`,
+                `Top-up ${usdText(info.topUp)} + vouchers ${usdText(info.vouchers)}`
+            ].join('\n')
+        };
+    }
+    if (row.kind === 'openrouter') {
+        try {
+            const res = await fetch(`${row.baseUrl}/v1/credits`, {
+                headers: { authorization: `Bearer ${row.apiKey}` },
+                signal: AbortSignal.timeout(10000)
+            });
+            const body = await res.json().catch(() => null);
+            const data = body && body.data;
+            if (!res.ok || !data) return { balance: null, title: `${name} credits unavailable` };
+            const remaining = (Number(data.total_credits) || 0) - (Number(data.total_usage) || 0);
+            const rounded = Math.round(remaining * 100) / 100;
+            return { balance: rounded, title: `${name} credits: ${usdText(rounded)}` };
+        } catch (error) {
+            return { balance: null, title: `${name} credits unavailable: ${error.message}` };
+        }
+    }
+    return null;
+}
+
 // Director badge. Monitor Usage off means this host has no cap: the client hides the indicator.
 async function usageSummary(gr, idOrEngine) {
     const row = lookup(gr, idOrEngine);
@@ -422,47 +462,60 @@ async function usageSummary(gr, idOrEngine) {
         title: name
     };
     if (base.hidden || !row) return base;
-    if (row.kind === 'tokenrouter') {
-        if (!row.managementKey) {
-            return { ...base, title: `${name}: add a management key to show the balance` };
-        }
-        const info = await require('./tokenRouterBridge').walletAt(row.baseUrl, row.managementKey);
-        if (info.error) return { ...base, title: `${name} balance unavailable: ${info.error}` };
-        if (!info.configured) return { ...base, title: `${name}: add a management key to show the balance` };
-        return {
-            ...base,
-            balance: info.remaining,
-            balanceText: usdText(info.remaining),
-            limited: info.remaining <= 0,
-            title: [
-                `${name} balance: ${usdText(info.remaining)}`,
-                `Top-up ${usdText(info.topUp)} + vouchers ${usdText(info.vouchers)}`
-            ].join('\n')
-        };
-    }
-    if (row.kind === 'openrouter') {
-        try {
-            const res = await fetch(`${row.baseUrl}/v1/credits`, {
-                headers: { authorization: `Bearer ${row.apiKey}` },
-                signal: AbortSignal.timeout(10000)
+    const info = await balanceInfo(row);
+    if (!info) return base;
+    if (info.balance == null) return { ...base, title: info.title };
+    return {
+        ...base,
+        balance: info.balance,
+        balanceText: usdText(info.balance),
+        limited: info.balance <= 0,
+        title: info.title
+    };
+}
+
+// Account Manager (modules/walletStatus.js): one authenticated read that says whether the host
+// answers and takes the key, for every provider whether or not it has a balance to show.
+// OpenRouter's model list is public, so its key endpoint stands in.
+function statusUrl(row) {
+    if (row.kind === 'openrouter') return `${row.baseUrl}/v1/key`;
+    if (row.kind === 'tokenrouter') return `${row.baseUrl}/v1/models`;
+    return row.modelsUrl;
+}
+
+// { state: ok | warn | fail | off, message, status, ms, models }. state follows Security
+// Center's key dots (apiKeyHealth.classify): fail = the host refused the key, warn = it could
+// not be confirmed (outage, rate limit, network), off = no key to try.
+async function apiStatus(gr, idOrEngine) {
+    const row = lookup(gr, idOrEngine);
+    if (!row) return { state: 'off', message: 'Provider not found', status: null, ms: null, models: null };
+    if (!row.apiKey) return { state: 'off', message: 'No API key', status: null, ms: null, models: null };
+    let ms = null;
+    try {
+        const send = async () => {
+            const started = Date.now();
+            const res = await fetch(statusUrl(row), {
+                headers: { accept: 'application/json', authorization: `Bearer ${row.apiKey}` },
+                signal: AbortSignal.timeout(STATUS_TIMEOUT_MS)
             });
-            const body = await res.json().catch(() => null);
-            const data = body && body.data;
-            if (!res.ok || !data) return { ...base, title: `${name} credits unavailable` };
-            const remaining = (Number(data.total_credits) || 0) - (Number(data.total_usage) || 0);
-            const rounded = Math.round(remaining * 100) / 100;
-            return {
-                ...base,
-                balance: rounded,
-                balanceText: usdText(rounded),
-                limited: rounded <= 0,
-                title: `${name} credits: ${usdText(rounded)}`
-            };
-        } catch (error) {
-            return { ...base, title: `${name} credits unavailable: ${error.message}` };
-        }
+            ms = Date.now() - started;
+            return res;
+        };
+        // TokenRouter counts these against the account's 10 a minute (#418)
+        const res = row.kind === 'tokenrouter'
+            ? await require('./tokenRouterGate').run(send, { lane: 'background', label: `status ${row.id}` })
+            : await send();
+        // Secrets can come back in error bodies; never keep them (the message is read from body).
+        const text = (await res.text().catch(() => '')).split(row.apiKey).join('<key>');
+        let body = null;
+        try { body = text ? JSON.parse(text) : null; } catch (_) { body = null; }
+        const verdict = require('./apiKeyHealth').classify(res.status, body, text.slice(0, 400));
+        const models = res.ok && row.kind !== 'openrouter' && body && Array.isArray(body.data) ? body.data.length : null;
+        return { state: verdict.state, message: verdict.message, status: res.status, ms, models };
+    } catch (error) {
+        const why = error && error.name === 'TimeoutError' ? 'timed out' : String((error && error.message) || error);
+        return { state: 'warn', message: `Could not reach the host (${why})`, status: null, ms: null, models: null };
     }
-    return base;
 }
 
 async function listModels(gr, idOrEngine, options) {
@@ -541,6 +594,8 @@ module.exports = {
     publicAdminList,
     saveProvider,
     usageSummary,
+    balanceInfo,
+    apiStatus,
     listModels,
     resolveRun,
     resolveForTurn,

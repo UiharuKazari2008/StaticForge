@@ -15,6 +15,11 @@
  * the cumulative body.boot-reveal-* classes drive public/css/desktop-boot.css; each layer
  * appears at once, like Windows (no fade, no slide).
  *
+ * Use Vista Logon (begin({ welcome: true })): the same stages, dwells, watchdog and connection
+ * waits run under the Welcome screen (#desktopPreStartupModal, body.boot-welcome) instead of
+ * the startup window, its status line takes the startup window's text, and fadeOutWelcome()
+ * fades it straight to the finished desktop. The startup window never opens.
+ *
  * Hardening:
  *   watchStep(step)         after config.stepWatchdogMs the splash names the step and
  *                           offers "Skip this step" (executeInitSteps races the step
@@ -70,6 +75,9 @@
     // boot windows in Windows Vista Basic instead of Classic
     const VISTA_LOGON_CLASS = 'vista-logon';
     const VISTA_BASIC_THEME_CLASS = 'vista-basic-theme';
+    // The boot runs under the Vista Welcome screen until fadeOutWelcome() (desktop-boot.css)
+    const WELCOME_CLASS = 'boot-welcome';
+    const WELCOME_FADE_CLASS = 'boot-welcome-fading';
 
     const config = {
         dwellMs: { session: 600, settings: 0, wallpaper: 700, icons: 450, taskbar: 450, gadgets: 300, windows: 500, done: 350 },
@@ -79,7 +87,8 @@
         suspendText: 'Restoring your session…',
         lockSwitchMs: 500,   // black hold after the fade, before the lock screen shows
         unlockSwitchMs: 1500, // black hold while the desktop comes back under it
-        sessionFadeMs: 900   // fade to black, same pace as the winlogon power cover
+        sessionFadeMs: 900,   // fade to black, same pace as the winlogon power cover
+        welcomeFadeMs: 900   // Welcome screen to the desktop (desktop-boot.css transition)
     };
 
     const doc = typeof document !== 'undefined' ? document : null;
@@ -87,6 +96,7 @@
 
     const state = {
         active: false,
+        welcome: false,       // boot under the Vista Welcome screen (begin({ welcome: true }))
         stage: null,          // last stage shown
         stageShownAt: 0,
         requested: null,      // highest stage requested so far
@@ -140,6 +150,8 @@
     function setPrimaryText(text) {
         const el = byId('windowsStartupStatus');
         if (el && typeof text === 'string') el.textContent = text;
+        const welcome = state.welcome ? byId('desktopPreStartupStatus') : null;
+        if (welcome && typeof text === 'string') welcome.textContent = text;
     }
 
     /** The real init step: kept on the (hidden, Vista has one line) detail element and the console. */
@@ -165,7 +177,9 @@
             setPrimaryText(`Still working on: ${state.watchdogStep.message || 'this step'}`);
             return;
         }
-        setPrimaryText(STAGE_TEXT[state.stage] || STAGE_TEXT.session);
+        // The Welcome screen said "Welcome" before the stages; it does not go back to it at done
+        const stage = state.welcome && state.stage === 'done' ? 'windows' : state.stage;
+        setPrimaryText(STAGE_TEXT[stage] || STAGE_TEXT.session);
     }
 
     /** Real init-step message and progress go to the small detail line (executeInitSteps). */
@@ -174,7 +188,7 @@
         if (typeof progress === 'number') state.lastProgress = progress;
         setDetailText(state.lastStepMessage);
         setProgress(progress);
-        if (!state.active) {
+        if (!state.active && !state.welcome) {
             // Not staged (e.g. non-desktop or a reconnect after boot): behave like before
             setPrimaryText(message);
         }
@@ -246,10 +260,12 @@
         return true;
     }
 
-    function begin() {
+    /** options.welcome: Use Vista Logon, the stages run under the Welcome screen (fadeOutWelcome). */
+    function begin(options = {}) {
         if (!doc || !isDesktop()) return false;
         if (state.active) return true;
         state.active = true;
+        state.welcome = !!options.welcome;
         state.stage = null;
         state.requested = 'logon';
         state.queue = [];
@@ -258,9 +274,10 @@
         if (b) {
             b.classList.add('boot-staged');
             b.classList.remove('boot-from-launch'); // solid colour from here, not the launch black
+            b.classList.toggle(WELCOME_CLASS, state.welcome);
         }
         requestStage('session');
-        dispatch('desktopBootBegin', {});
+        dispatch('desktopBootBegin', { welcome: state.welcome });
         return true;
     }
 
@@ -311,10 +328,48 @@
             BOOT_CLASSES.forEach((cls) => b.classList.remove(cls));
             delete b.dataset.bootStage;
         }
+        endWelcome();
     }
 
     function isBooting() {
         return state.active;
+    }
+
+    // ---------- Use Vista Logon: Welcome screen to the desktop ----------
+
+    function endWelcome() {
+        state.welcome = false;
+        const b = body();
+        if (b) b.classList.remove(WELCOME_CLASS, WELCOME_FADE_CLASS);
+    }
+
+    /** True while the boot runs (or has just finished) under the Welcome screen. */
+    function isWelcomeBoot() {
+        return state.welcome;
+    }
+
+    /**
+     * The desktop is up under the Welcome screen: fade the screen out over it, then close it
+     * (websocket.js hideWindowsStartupModal, after finish()). Resolves once it is gone.
+     */
+    async function fadeOutWelcome() {
+        if (!state.welcome) return;
+        const screen = byId('desktopPreStartupModal');
+        const b = body();
+        if (screen && b && !screen.classList.contains('hidden')) {
+            void screen.offsetWidth;
+            b.classList.add(WELCOME_FADE_CLASS);
+            const fade = Math.max(0, config.welcomeFadeMs);
+            if (fade > 0) await new Promise((resolve) => setTimeout(resolve, fade));
+            delete screen.dataset.prestartupOpened;
+            // closeModal: public/scripts/comp/modalUtils.js
+            if (win && typeof win.closeModal === 'function') {
+                try { await win.closeModal(screen); } catch (_) { screen.classList.add('hidden'); }
+            } else {
+                screen.classList.add('hidden');
+            }
+        }
+        endWelcome();
     }
 
     // ---------- init step mapping ----------
@@ -341,23 +396,28 @@
 
     // ---------- watchdog ----------
 
+    // The startup window's button, and the Welcome screen's under Use Vista Logon
+    const SKIP_BUTTON_IDS = ['windowsStartupSkipStepBtn', 'desktopPreStartupSkipStepBtn'];
+
     function wireSkipButton() {
         if (state.skipWired) return;
-        const btn = byId('windowsStartupSkipStepBtn');
-        if (!btn) return;
-        btn.addEventListener('click', () => {
+        const buttons = SKIP_BUTTON_IDS.map(byId).filter(Boolean);
+        if (!buttons.length) return;
+        buttons.forEach((btn) => btn.addEventListener('click', () => {
             if (state.skipResolve) {
                 const resolve = state.skipResolve;
                 state.skipResolve = null;
                 resolve({ skipped: true });
             }
-        });
+        }));
         state.skipWired = true;
     }
 
     function showSkipButton(show) {
-        const btn = byId('windowsStartupSkipStepBtn');
-        if (btn) btn.classList.toggle('hidden', !show);
+        SKIP_BUTTON_IDS.forEach((id) => {
+            const btn = byId(id);
+            if (btn) btn.classList.toggle('hidden', !show);
+        });
     }
 
     function clearWatchdog() {
@@ -623,6 +683,7 @@
         const taskbar = byId('desktopTaskbar');
         const body = doc.body;
         if (!taskbar || taskbar.classList.contains('hidden')) return false;
+        if (state.welcome) return false; // under the Welcome screen until it has faded out
         if (body.classList.contains('boot-staged') && !body.classList.contains(REVEAL_CLASS.taskbar)) return false;
         if (body.classList.contains('session-suspended') || body.classList.contains('workstation-locked')) return false;
         if (isSwitching()) return false;
@@ -768,6 +829,8 @@
         finish,
         reset,
         isBooting,
+        isWelcomeBoot,
+        fadeOutWelcome,
         onInitStep,
         onStepDone,
         onStepMessage,

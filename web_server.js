@@ -939,11 +939,15 @@ function buildServiceWorkerCacheManifest() {
     // its own URL: the login sheet seed there 404s, the client never caches it, and every boot
     // re-runs the update check into /launch. The seed ships as /.login.jpg below.
     const shadowedByGalleryRoute = (webPath) => typeof webPath === 'string' && webPath.startsWith('/images/');
+    // The Vista games' art and sounds (Yozora #609, tens of MB) load when a game opens, like
+    // Windows' optional Games feature; the service worker caches them on that first fetch.
+    const onDemandGameAsset = (webPath) => typeof webPath === 'string' && webPath.startsWith('/static_images/vista-games/');
 
     const staticFiles = globalResources.getGlobalCacheData()
         .filter(file =>
             !routeNames.includes(file.path) &&
             !shadowedByGalleryRoute(file.path) &&
+            !onDemandGameAsset(file.path) &&
             !splashOrScreenshotPattern.test(file.path) &&
             !unrelatedFilePattern.test(file.path)
         )

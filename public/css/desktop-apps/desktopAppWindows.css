@@ -922,23 +922,24 @@ body:not(.windows-classic-theme) #desktopGuacModal .modal-content {
 .desktop-guac-pinbar > button > i.fa-xmark-large {
     display: inline-block;
     font-size: 0;
-    background: no-repeat center / 100% 100%;
+    background: no-repeat 0 0 / 100% 200%;
+    image-rendering: pixelated;
 }
 
 .desktop-guac-pinbar > button > i.fa-window-minimize {
-    width: 15px;
-    height: 6px;
-    background-image: url("/static_images/window-controls/vista-minimize.svg");
+    width: 12px;
+    height: 5px;
+    background-image: url("/static_images/window-controls/vista-minimize.png");
 }
 
 .desktop-guac-pinbar > button > i.fa-window-restore {
-    width: 15px;
-    height: 15px;
-    background-image: url("/static_images/window-controls/vista-restore.svg");
+    width: 12px;
+    height: 12px;
+    background-image: url("/static_images/window-controls/vista-restore.png");
 }
 
 .desktop-guac-pinbar > button > i.fa-xmark-large {
-    width: 14px;
-    height: 12px;
-    background-image: url("/static_images/window-controls/vista-close.svg");
+    width: 11px;
+    height: 10px;
+    background-image: url("/static_images/window-controls/vista-close.png");
 }

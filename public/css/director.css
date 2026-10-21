@@ -2896,8 +2896,17 @@ html.disable-blur .director-attach-chip {
     opacity: 1;
 }
 
-.director-message .director-message-actions[data-prints] {
+.director-message .director-message-actions[data-prints],
+.director-message .director-message-actions[data-reply-choices] {
     flex-wrap: wrap;
+}
+
+.director-message .director-message-actions[data-reply-choices] .btn-small {
+    white-space: normal;
+    text-align: left;
+    justify-content: flex-start;
+    height: auto;
+    max-width: 100%;
 }
 
 .director-message .director-attach-chip .director-session-preview,

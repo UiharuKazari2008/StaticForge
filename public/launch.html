@@ -893,16 +893,30 @@
             if (!screen || !out) return;
             var sx = out.getContext('2d');
             var logo = document.querySelector('.melaton-boot-enso');
+            var logoBitmap = null;
             var paintId = 0;
+            // The 731 px logo, area-resampled once to its 88 px boot size: point sampling it
+            // in paint() drops whole pixels and leaves a ragged ring.
+            function bootLogoBitmap() {
+                if (logoBitmap) return logoBitmap;
+                if (!logo || !logo.complete || !logo.naturalWidth) return null;
+                var fit = document.createElement('canvas');
+                fit.width = fit.height = 88;
+                var fx = fit.getContext('2d');
+                fx.imageSmoothingEnabled = true;
+                fx.imageSmoothingQuality = 'high';
+                fx.drawImage(logo, 0, 0, 88, 88);
+                logoBitmap = fit;
+                return logoBitmap;
+            }
             function paint(now) {
                 paintId = 0;
                 if (screen.getAttribute('data-screen') !== 'boot') return;
                 sx.imageSmoothingEnabled = false;
                 sx.fillStyle = '#000';
                 sx.fillRect(0, 0, 640, 480);
-                if (logo && logo.complete && logo.naturalWidth) {
-                    sx.drawImage(logo, 276, 161, 88, 88);
-                }
+                var logoPixels = bootLogoBitmap();
+                if (logoPixels) sx.drawImage(logoPixels, 276, 161);
                 sx.fillStyle = '#737373';
                 sx.fillRect(257, 353, 122, 5);
                 sx.fillStyle = '#424242';

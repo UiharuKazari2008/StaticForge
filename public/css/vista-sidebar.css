@@ -51,6 +51,29 @@ body:not(.desktop-mode) #vistaSidebar {
     display: none;
 }
 
+/* Hover: sidebar.exe's own highlight (resources 20026 right / 20025 left) over the background, a
+   dark then a white line on the desktop edge and a faint white wash. Timed on the VM
+   (2026-10-21): it waits about 0.4 s after the pointer comes in, then fades in over about 1 s;
+   it fades out over about 1 s as soon as the pointer leaves. Gadgets count as the pane. */
+.vsb-pane::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: url('/static_images/vista-sidebar/sidebar/hover-right.png') 0 0 / 100% 100% no-repeat;
+    opacity: 0;
+    transition: opacity 1s linear;
+}
+
+.vsb[data-side="left"] .vsb-pane::before {
+    background-image: url('/static_images/vista-sidebar/sidebar/hover-left.png');
+}
+
+.vsb-pane:hover::before {
+    opacity: 1;
+    transition: opacity 1s linear 0.4s;
+}
+
 .vsb-pane.is-on-top,
 .vsb.vsb-raised .vsb-pane {
     z-index: 2600;

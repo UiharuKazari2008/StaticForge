@@ -1,0 +1,514 @@
+/* The Windows Vista games (Yozora #609): the game window (menu bar over a canvas that keeps the
+   game's aspect ratio), the dialog boxes built from the games' own dialog templates (Segoe UI 8 pt,
+   1 DLU = 1.5 x 1.625 px, absolute layout as Win32), Vista task dialogs (Select Difficulty, New
+   Game, Exit Game) and the Games Explorer window. Script: public/scripts/comp/desktop-apps/
+   vista-games/vistaGameEngine.js. The buttons and the light client come from vista-dialogs.css
+   (data-vista-dialog="form") and 7.css (.win7). */
+
+/* ---- game window ---- */
+
+.vista-game-window > .modal-content.vista-game-content {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+    background: #f0f0f0;
+}
+
+.vista-game-window .modal-window-title-toolbar {
+    display: none;
+}
+
+/* the menu bar: the Win32 menu bar under Aero, as calc.exe's (vista-calculator.css) */
+.vista-game-window .naxt-menubar.vista-game-menubar {
+    display: flex;
+    flex: none;
+    align-items: stretch;
+    height: 20px;
+    margin: 0;
+    padding: 0 1px;
+    background: linear-gradient(#fefeff, #e5eaf5 7px, #d4dbed 7px, #e1e6f6 18px);
+    border-bottom: 1px solid #b6bccc;
+    box-sizing: border-box;
+}
+
+.vista-game-window .naxt-menubar.vista-game-menubar .naxt-menu-title {
+    display: inline-flex;
+    align-items: center;
+    width: auto;
+    min-width: 0;
+    height: 19px;
+    min-height: 0;
+    padding: 0 7px;
+    background: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    color: #000;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    text-shadow: none;
+}
+
+.vista-game-window .naxt-menubar.vista-game-menubar .naxt-menu-title::before,
+.vista-game-window .naxt-menubar.vista-game-menubar .naxt-menu-title::after {
+    content: none;
+}
+
+.vista-game-window .naxt-menubar.vista-game-menubar .naxt-menu-title:is(:hover, :focus-visible, .context-open) {
+    background: #3399ff;
+    color: #fff;
+    outline: none;
+}
+
+/* mnemonics show while Alt is held, as Windows draws them */
+.vista-game-window .naxt-menu-title u,
+.vista-game-dialog u {
+    text-decoration: none;
+}
+
+.vista-game-window.vista-game-alt .naxt-menu-title u,
+.vista-game-dialog.vista-game-alt u {
+    text-decoration: underline;
+}
+
+.vista-game-surface {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    outline: none;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.vista-game-canvas {
+    position: absolute;
+    inset: 0;
+    display: block;
+}
+
+/* an owned dialog is up: the game takes no input (Windows disables the owner) */
+.vista-game-blocker {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: none;
+}
+
+.vista-game-window.vista-game-blocked .vista-game-blocker {
+    display: block;
+}
+
+/* ---- dialog boxes from DIALOGEX templates ---- */
+
+/* vista-dialogs.css pads form dialogs; these lay out by the template instead */
+body.desktop-mode:not(.windows-classic-theme) .modal.vista-game-dialog[data-vista-dialog] > .modal-content,
+.modal.vista-game-dialog > .modal-content {
+    padding: 0;
+}
+
+.modal.vista-game-dialog > .modal-content.vista-game-dialog-client {
+    position: relative;
+    box-sizing: content-box;
+    padding: 0;
+    overflow: hidden;
+    background: #f0f0f0;
+    color: #000;
+    font: 8pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 13px;
+    text-shadow: none;
+}
+
+.modal.vista-game-dialog .modal-window-title-main > :is(i, .icon-image) {
+    display: none;
+}
+
+.vista-game-dialog .vista-game-ctl {
+    position: absolute;
+    box-sizing: border-box;
+    margin: 0;
+}
+
+.vista-game-dialog .vista-game-static {
+    white-space: pre-wrap;
+    overflow: hidden;
+}
+
+.vista-game-dialog .vista-game-ctl.disabled,
+.vista-game-dialog .vista-game-choice.disabled label {
+    color: #6d6d6d;
+}
+
+.vista-game-dialog fieldset.vista-game-group {
+    min-width: 0;
+    padding: 0;
+    border: 1px solid #d5dfe5;
+    border-radius: 3px;
+    box-shadow: inset 1px 1px 0 #fff;
+}
+
+.vista-game-dialog fieldset.vista-game-group > legend {
+    margin-left: 6px;
+    padding: 0 2px;
+    color: #000;
+    font: inherit;
+    line-height: 13px;
+}
+
+/* the group box line runs through the middle of its caption: the fieldset top sits 6 px down */
+.vista-game-dialog fieldset.vista-game-group {
+    margin-top: -1px;
+}
+
+.vista-game-dialog .vista-game-choice {
+    display: flex;
+    align-items: center;
+    gap: 0;
+}
+
+.vista-game-dialog .vista-game-choice.multiline {
+    align-items: center;
+}
+
+.vista-game-dialog .vista-game-choice > input {
+    flex: none;
+    margin: 0;
+}
+
+.vista-game-dialog .win7 .vista-game-choice > input + label,
+.vista-game-dialog .vista-game-choice > label {
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: pre-wrap;
+    font: inherit;
+    line-height: 13px;
+}
+
+.vista-game-dialog .vista-game-edit {
+    padding: 0 3px;
+    font: inherit;
+    height: auto;
+    min-height: 0;
+}
+
+.vista-game-dialog .vista-game-listbox {
+    padding: 1px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid #828790;
+    outline: none;
+    cursor: default;
+}
+
+.vista-game-listbox-item {
+    padding: 0 2px;
+    line-height: 13px;
+    white-space: nowrap;
+}
+
+.vista-game-listbox-item.selected {
+    background: #3399ff;
+    color: #fff;
+}
+
+.vista-game-listbox:not(:focus) .vista-game-listbox-item.selected {
+    background: #f0f0f0;
+    color: #000;
+}
+
+/* push buttons: 7.css's Vista button (.win7 client); the template gives their size. No .btn-*
+   classes, so vista-dialogs.css's app-button rule (position: relative) stays off them. */
+.modal.vista-game-dialog > .modal-content button.vista-game-button {
+    min-width: 0;
+    min-height: 0;
+    padding: 0 4px;
+    font: 8pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 19px;
+    white-space: nowrap;
+}
+
+/* a list view of thumbnails (Change Appearance) */
+.vista-game-dialog .vista-game-listview {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 0;
+    padding: 4px;
+    overflow: auto;
+    background: #fff;
+    border: 1px solid #828790;
+}
+
+.vista-game-listview-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 128px;
+    padding: 4px 2px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    color: #000;
+    cursor: default;
+}
+
+.vista-game-listview-item img {
+    width: 100px;
+    height: auto;
+    max-height: 75px;
+    object-fit: contain;
+}
+
+.vista-game-listview-item span {
+    margin-top: 3px;
+    text-align: center;
+}
+
+.vista-game-listview-item:hover {
+    background: linear-gradient(#fafbfd, #ebf3fd);
+    border-color: #b8d6fb;
+}
+
+.vista-game-listview-item.selected {
+    background: linear-gradient(#dcebfc, #c1dbfc);
+    border-color: #7da2ce;
+}
+
+/* ---- Vista task dialog (TaskDialogIndirect) ----
+   Measured on the VM (Minesweeper's Select Difficulty, 416 px window = 400 px client): main
+   instruction 12 pt #003399 10 px from the top and 12 px from the left; the first command link
+   30 px under it; command links 378 px wide (11 px in), 57 px apart with no gap, arrow 8 px in,
+   the text after it; 10 px under the last link the footer (#f0f0f0, a #dfdfdf top line, 9 pt). */
+
+.modal.vista-game-taskdialog > .modal-content.vista-game-dialog-client {
+    height: auto;
+    background: #fff;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 15px;
+}
+
+.modal.vista-game-dialog .vista-task-main {
+    display: flex;
+    flex-direction: column;
+    padding: 10px 11px 10px 11px;
+    background: #fff;
+}
+
+.modal.vista-game-dialog .vista-task-instruction {
+    margin: 0 0 30px 1px;
+    color: #003399;
+    font: 12pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 21px;
+}
+
+.modal.vista-game-dialog .vista-task-instruction:last-child {
+    /* instruction only (Exit Game): 30 px down to the button row, as on the VM */
+    margin-bottom: 20px;
+}
+
+.modal.vista-game-dialog .vista-task-content {
+    margin: -22px 0 18px 1px;
+}
+
+/* the desktop's 7.css / glass button rules reach these too: every property is set */
+body .modal.vista-game-dialog > .modal-content button.vista-task-link {
+    all: unset;
+    display: flex;
+    align-items: flex-start;
+    gap: 3px;
+    min-height: 57px;
+    margin: 0;
+    padding: 10px 10px 9px 8px;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    box-shadow: none;
+    color: #151c55;
+    text-align: left;
+    text-shadow: none;
+    cursor: default;
+    box-sizing: border-box;
+}
+
+body .modal.vista-game-dialog > .modal-content button.vista-task-link:hover {
+    background: linear-gradient(#fefefe, #f3f6fb);
+    border-color: #c6d4e5;
+    box-shadow: 0 1px 2px #0001;
+}
+
+body .modal.vista-game-dialog > .modal-content button.vista-task-link:active {
+    background: #f6f7f9;
+    border-color: #c8c8c8;
+    box-shadow: none;
+}
+
+/* the default command link (focused when the dialog opens): the pale cyan outline the VM draws */
+body .modal.vista-game-dialog > .modal-content button.vista-task-link:is(.default, :focus-visible):not(:hover):not(:active) {
+    border-color: #b9eefe;
+}
+
+/* aero.msstyles COMMANDLINKGLYPH (IMAGE_512, 20x100): normal, hot, pressed, disabled, default */
+.vista-task-link-arrow {
+    flex: none;
+    width: 20px;
+    height: 20px;
+    margin: 1px 0 0;
+    background: url("/static_images/vista-games/ui/commandlink-glyph.png") no-repeat 0 0 / 20px 100px;
+    background-image: image-set(url("/static_images/vista-games/ui/commandlink-glyph.png") 1x, url("/static_images/vista-games/ui/commandlink-glyph@2x.png") 2x);
+}
+
+.vista-task-link:hover .vista-task-link-arrow {
+    background-position: 0 -20px;
+}
+
+.vista-task-link:active .vista-task-link-arrow {
+    background-position: 0 -40px;
+}
+
+.modal.vista-game-dialog .vista-task-link-body {
+    display: flex;
+    flex-direction: column;
+}
+
+.modal.vista-game-dialog .vista-task-link-text {
+    font: 12pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 21px;
+}
+
+.modal.vista-game-dialog .vista-task-link-note {
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 15px;
+}
+
+.modal.vista-game-dialog .vista-task-footer {
+    padding: 9px 12px 9px 12px;
+    background: #f0f0f0;
+    border-top: 1px solid #dfdfdf;
+    color: #000;
+}
+
+/* the button row: the verification check box left, buttons right */
+.vista-task-buttons {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 10px 10px 13px;
+    background: #f0f0f0;
+    border-top: 1px solid #dfdfdf;
+}
+
+.vista-task-buttons .vista-task-check {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 6px;
+    margin-right: auto;
+    white-space: nowrap;
+}
+
+.modal.vista-game-dialog > .modal-content .vista-task-buttons button.vista-game-button {
+    flex-shrink: 0;
+    min-width: 66px;
+    height: 21px;
+    padding: 0 14px;
+    white-space: nowrap;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 19px;
+}
+
+.vista-task-buttons .vista-task-check + * {
+    margin-left: auto;
+}
+
+/* ---- About box (shell32's ShellAbout, as the games call it) ---- */
+
+.vista-game-about {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 0 12px 12px;
+}
+
+.vista-game-about-banner {
+    height: 64px;
+    margin: 0 -12px 8px;
+    background: url("/static_images/vista-games/ui/about-banner.png") no-repeat left top;
+}
+
+.vista-game-about-row {
+    display: flex;
+    gap: 10px;
+}
+
+.vista-game-about-row img {
+    width: 32px;
+    height: 32px;
+}
+
+.vista-game-about-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 10px;
+}
+
+/* 7.css draws its check boxes and radios at 9 pt with a 6 px gap; the games' dialogs are 8 pt
+   and the VM puts the text 4 px after the box */
+.win7.vista-game-dialog-client input:is([type=checkbox], [type=radio]) + label {
+    font: 8pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 13px;
+}
+
+.win7.vista-game-dialog-client input[type=checkbox] + label::before {
+    margin-right: 4px;
+}
+
+.modal.vista-game-taskdialog .win7.vista-game-dialog-client input[type=checkbox] + label {
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 15px;
+}
+
+/* ---- the Win32 status bar under the card table (Solitaire: Time, Score) ----
+   VM: 23 px, panes with an etched divider, 9 pt text, a size grip at the right */
+.vista-game-statusbar {
+    position: relative;
+    display: flex;
+    flex: none;
+    align-items: stretch;
+    height: 23px;
+    padding: 2px 0 0;
+    background: #f0f0f0;
+    border-top: 1px solid #d7d7d7;
+    box-sizing: border-box;
+    color: #000;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 19px;
+}
+
+.vista-game-statusbar-pane {
+    box-sizing: border-box;
+    flex: none;
+    min-width: 0;
+    padding: 0 6px;
+    overflow: hidden;
+    white-space: pre;
+    border-left: 1px solid #d0d0d0;
+    box-shadow: inset 1px 0 0 #fff;
+}
+
+.vista-game-statusbar-pane:first-child {
+    border-left: 0;
+    box-shadow: none;
+}
+
+.vista-game-statusbar-grip {
+    position: absolute;
+    right: 1px;
+    bottom: 1px;
+    width: 12px;
+    height: 12px;
+    background:
+        radial-gradient(circle, #a0a0a0 0.8px, transparent 1.2px) 0 0 / 4px 4px;
+    clip-path: polygon(100% 0, 100% 100%, 0 100%);
+    pointer-events: none;
+}

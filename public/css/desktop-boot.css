@@ -479,6 +479,35 @@ body.vista-logon #desktopPreStartupModal.vista-logon-error #desktopPreStartupLog
     left: calc(50% + 4px);
 }
 
+/* ---------- Boot under the Welcome screen (desktopBoot.js begin({ welcome: true })) ----------
+   The startup window's stages run under the Welcome screen, which stays above every desktop
+   layer they reveal (the lock layer's z-index); its message boxes go on top. Once the desktop
+   is complete the screen fades out over it (fadeOutWelcome, config.welcomeFadeMs). A stalled
+   step shows Skip on OK's row: the startup window's Skip this step. */
+body.desktop-mode.boot-welcome #desktopPreStartupModal {
+    z-index: 2147482001 !important;
+    opacity: 1;
+    transition: opacity 900ms ease;
+}
+
+body.desktop-mode.boot-welcome #bootMessageBox {
+    z-index: 2147482003 !important;
+}
+
+body.desktop-mode.boot-welcome-fading #desktopPreStartupModal {
+    opacity: 0;
+    pointer-events: none;
+}
+
+body.vista-logon #desktopPreStartupModal #desktopPreStartupSkipStepBtn {
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+body:not(.boot-welcome) #desktopPreStartupModal #desktopPreStartupSkipStepBtn {
+    display: none;
+}
+
 /* Icon 32 px, 10 px, the text in white 9 pt; the right padding keeps Vista's group 8 px left of centre */
 body.vista-logon #desktopPreStartupAuthError {
     position: absolute;

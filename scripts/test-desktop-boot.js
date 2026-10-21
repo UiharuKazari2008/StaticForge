@@ -288,6 +288,7 @@ boot.config.stepWatchdogMs = 30;
     boot.reset();
     assert.strictEqual(boot.isBooting(), false);
 
+    await testWelcomeBoot(body, status);
     testRevealCss();
     testTaskbarGate(body);
     await testLockTriggers(body);
@@ -375,6 +376,66 @@ function liftMethod(src, name) {
         }
     }
     throw new Error(`unbalanced ${name}`);
+}
+
+// Use Vista Logon: the startup window's stages, waits and Skip run under the Welcome screen,
+// which keeps the text until the desktop is done, then fades out (no startup window)
+async function testWelcomeBoot(body, status) {
+    ['desktopPreStartupStatus', 'desktopPreStartupSkipStepBtn', 'desktopPreStartupModal'].forEach((id) => { els[id] = new Element(id); });
+    els.desktopPreStartupSkipStepBtn.classList.add('hidden');
+    const ownTaskbar = !els.desktopTaskbar;
+    if (ownTaskbar) els.desktopTaskbar = new Element('desktopTaskbar');
+    const welcome = els.desktopPreStartupStatus;
+    const skip = els.desktopPreStartupSkipStepBtn;
+    welcome.textContent = 'Welcome';
+    boot._test.state.skipWired = false; // the page wires both Skip buttons on the first watch
+    assert.strictEqual(boot.begin({ welcome: true }), true);
+    assert.ok(boot.isWelcomeBoot() && body.classList.contains('boot-welcome'));
+    assert.strictEqual(welcome.textContent, 'Preparing your desktop...', 'the Welcome screen takes the stage text');
+    boot.onStepMessage('Loading wallpaper', 40);
+    assert.strictEqual(welcome.textContent, 'Preparing your desktop...', 'the step stays on the detail line');
+    boot.setConnectionState('dialing');
+    assert.strictEqual(welcome.textContent, 'Please wait...', 'a connection wait shows on the Welcome screen');
+    boot.setConnectionState('connected');
+    assert.strictEqual(welcome.textContent, 'Preparing your desktop...');
+    const w = boot.watchStep({ message: 'Loading Gallery' });
+    await sleep(45);
+    assert.strictEqual(welcome.textContent, 'Still working on: Loading Gallery');
+    assert.ok(!skip.classList.contains('hidden'), 'the Welcome screen offers Skip for a stalled step');
+    skip.click();
+    assert.deepStrictEqual(await w.promise, { skipped: true });
+    w.clear();
+    assert.ok(skip.classList.contains('hidden'));
+    boot.requestStage('windows');
+    assert.strictEqual(boot.isTaskbarVisible(), false, 'no tray balloons under the Welcome screen');
+    await boot.finish();
+    assert.strictEqual(boot.isBooting(), false);
+    assert.ok(!body.classList.contains('boot-staged'), 'the desktop is complete under the screen');
+    assert.ok(boot.isWelcomeBoot(), 'the Welcome screen stays until it fades');
+    assert.strictEqual(welcome.textContent, 'Preparing your desktop...', 'done does not flip back to Welcome');
+    assert.strictEqual(status.textContent, 'Preparing your desktop...');
+    assert.strictEqual(boot.isTaskbarVisible(), false);
+    const closed = [];
+    window.closeModal = async (m) => { closed.push(m.id); m.classList.add('hidden'); };
+    const fadeMs = boot.config.welcomeFadeMs;
+    boot.config.welcomeFadeMs = 15;
+    const fading = boot.fadeOutWelcome();
+    assert.ok(body.classList.contains('boot-welcome-fading'), 'the fade starts at once');
+    assert.deepStrictEqual(closed, [], 'closed only after the fade');
+    await fading;
+    assert.deepStrictEqual(closed, ['desktopPreStartupModal']);
+    assert.ok(!boot.isWelcomeBoot() && !body.classList.contains('boot-welcome') && !body.classList.contains('boot-welcome-fading'));
+    assert.strictEqual(boot.isTaskbarVisible(), true, 'tray balloons once the screen is gone');
+    await boot.fadeOutWelcome(); // no-op without a Welcome boot
+    assert.deepStrictEqual(closed, ['desktopPreStartupModal']);
+    // A plain begin() after it is the Classic boot again
+    boot.begin();
+    assert.ok(!boot.isWelcomeBoot() && !body.classList.contains('boot-welcome'));
+    boot.reset();
+    boot.config.welcomeFadeMs = fadeMs;
+    delete window.closeModal;
+    if (ownTaskbar) delete els.desktopTaskbar;
+    await sleep(30);
 }
 
 async function testLockTriggers(body) {
@@ -509,6 +570,32 @@ async function testLockTriggers(body) {
     await handoff.call(h);
     assert.deepStrictEqual(order, ['hold', 'sleep1000', 'resume', 'hide'], 'unlock: Preparing… then black, dialog closes under it');
     assert.strictEqual(h.preStartupHandoffCompleted, true);
+
+    // First logon: Classic closes the logon dialog, a black beat, then the staged boot (startup
+    // window); Use Vista Logon keeps the Welcome screen and boots under it with no beat
+    const useWelcome = liftMethod(src, '_useWelcomeBoot')(WebSocketClient);
+    const realBoot = window.desktopBoot;
+    const firstLogon = async (vistaLogon, extra = {}) => {
+        const log = [];
+        window.desktopBoot = { begin: (o) => log.push(o && o.welcome ? 'begin:welcome' : 'begin'), isWelcomeBoot: () => false };
+        const f = Object.assign(Object.create(proto), {
+            sessionSuspended: false, preStartupHandoffCompleted: false, vistaLogon, stepByStepMode: false,
+            connectionPhase: 'connected', socketAuthenticated: true, connectionUi: {},
+            _setConnectionPhase: () => {}, _sleepConnectionBeat: async (ms) => { log.push(`sleep${ms}`); },
+            _updatePreStartupStageProgress: () => {}, _waitForTealHold: async () => {},
+            _canCompletePreStartupHandoff() { return this._shouldUsePreStartupDialog() && this.socketAuthenticated === true; },
+            _useWelcomeBoot: useWelcome,
+            _hidePreStartupDialog: async () => { log.push('hide'); }
+        }, extra);
+        await handoff.call(f);
+        assert.strictEqual(f.preStartupHandoffCompleted, true);
+        return log;
+    };
+    assert.deepStrictEqual(await firstLogon(false), ['sleep1000', 'hide', 'sleep750', 'begin'], 'Classic logon unchanged');
+    assert.deepStrictEqual(await firstLogon(true), ['sleep1000', 'begin:welcome'], 'Vista: Welcome stays, boot under it');
+    assert.deepStrictEqual(await firstLogon(true, { stepByStepMode: true }), ['sleep1000', 'hide', 'sleep750', 'begin'],
+        'step-by-step mode keeps the startup window (its Advance button)');
+    window.desktopBoot = realBoot;
 
     // Melaton boot teal hold (#416): the logon dialog (or the Connecting dialog, #429) stays away
     // until dreamscapeTealHoldUntil, then the connection renderer picks the right one

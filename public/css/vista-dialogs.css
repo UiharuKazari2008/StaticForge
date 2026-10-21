@@ -10,7 +10,7 @@
    icon; a #f0f0f0 footer with the buttons right-aligned, 88x26, 8 px apart, 8 px from the right
    edge, 12 px above and 11 px below; Segoe UI 9 pt, black. Form dialogs are Vista's property-sheet
    kind: #f0f0f0 client, 11 px margins, 7.css controls, 75x23 buttons in a footer row.
-   The caption is the shared glass chrome, without the caption icon (Vista dialogs have none).
+   Message-box captions have no app icon; form / tool windows keep theirs in the glass caption.
    Desktop mode, not Classic. Linked after vista-scrollbars.css. */
 
 /* ---- every dialog: light client, Segoe UI, no caption icon ---- */
@@ -37,7 +37,8 @@ body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal
     text-shadow: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] .modal-window-title-main > :is(i:first-child, .icon-fa, .icon-image) {
+/* Message boxes only: the 32 px icon lives in the client; form / tool windows keep the app icon. */
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog="message"] .modal-window-title-main > :is(i:first-child, .icon-fa, .icon-image) {
     display: none;
 }
 
@@ -390,6 +391,11 @@ body.desktop-mode:not(.windows-classic-theme) #creditCostDialog[data-vista-dialo
     text-shadow: none;
     background: none;
     border: 0;
+}
+
+/* Caption already shows "Payment Required"; keep the blue instruction row icon-only. */
+body.desktop-mode:not(.windows-classic-theme) #creditCostDialog[data-vista-dialog] .credit-cost-header span {
+    display: none;
 }
 
 body.desktop-mode:not(.windows-classic-theme) #creditCostDialog[data-vista-dialog] .credit-cost-header i {
