@@ -255,10 +255,9 @@ if (window.wsClient) {
         try {
             t5Tokenizer = new T5Tokenizer();
 
-            // Load tokenizer configuration from protected folder
-            const response = await fetch('/protected/t5_tokenizer.json');
-            const config = await response.json();
-            await t5Tokenizer.loadFromJSON(config);
+            // Load tokenizer configuration from protected folder (parsed in a worker:
+            // public/protected/t5-tokenizer.js loadFromURL)
+            await t5Tokenizer.loadFromURL('/protected/t5_tokenizer.json');
             // bindPromptListTokenizer: public/scripts/comp/promptListFold.js
             if (typeof bindPromptListTokenizer === 'function') bindPromptListTokenizer(t5Tokenizer);
 

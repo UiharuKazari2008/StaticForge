@@ -253,23 +253,31 @@
     // Main T5 Tokenizer Class
     // ============================================================================
     class T5TokenizerCore {
-        constructor(config) {
-            this.vocab = config.model.vocab;
+        // tables: { vocab, vocabMap, trie, minScore } already built (loadFromURL in a
+        // browser builds them in slices); without it the constructor builds them here.
+        constructor(config, tables) {
+            this.vocab = tables ? tables.vocab : config.model.vocab;
             this.unkTokenId = config.model.unk_id;
             this.specialTokens = config.added_tokens;
             this.bosTokenId = 0;
             this.eosTokenId = 1;
             
-            // Build vocabulary map and trie
-            this.vocabMap = new Map();
-            this.trie = new Trie();
-            this.minScore = Infinity;
-            
-            for (let i = 0; i < this.vocab.length; i++) {
-                const [token, score] = this.vocab[i];
-                this.vocabMap.set(token, { id: i, score });
-                this.trie.push(token);
-                this.minScore = Math.min(this.minScore, score);
+            if (tables) {
+                this.vocabMap = tables.vocabMap;
+                this.trie = tables.trie;
+                this.minScore = tables.minScore;
+            } else {
+                // Build vocabulary map and trie
+                this.vocabMap = new Map();
+                this.trie = new Trie();
+                this.minScore = Infinity;
+                
+                for (let i = 0; i < this.vocab.length; i++) {
+                    const [token, score] = this.vocab[i];
+                    this.vocabMap.set(token, { id: i, score });
+                    this.trie.push(token);
+                    this.minScore = Math.min(this.minScore, score);
+                }
             }
             
             this.unkScore = this.minScore - 10;
@@ -365,6 +373,73 @@
     // ============================================================================
     // Public API
     // ============================================================================
+    // Browser load of a .json tokenizer. Parsing it and building the map and trie took
+    // ~130ms of the main thread at boot. A worker parses it and sends the tokens back as
+    // one NUL-joined string plus a Float64Array of scores; the main thread builds the
+    // same tables in slices, yielding between them. Same order as the constructor.
+    const T5_WORKER_SOURCE = `
+        self.onmessage = async (event) => {
+            try {
+                const response = await fetch(event.data.url, { credentials: 'same-origin' });
+                if (!response.ok) throw new Error('T5 tokenizer request failed with HTTP ' + response.status);
+                const config = await response.json();
+                const vocab = config.model.vocab;
+                const tokens = vocab.map((row) => row[0]);
+                if (tokens.some((t) => t.includes('\\0'))) throw new Error('NUL in tokenizer strings');
+                const scores = new Float64Array(vocab.map((row) => row[1]));
+                self.postMessage({
+                    tokens: tokens.join('\\0'),
+                    scores,
+                    unkId: config.model.unk_id,
+                    addedTokens: config.added_tokens
+                }, [scores.buffer]);
+            } catch (error) {
+                self.postMessage({ error: error && error.message ? error.message : String(error) });
+            }
+        };
+    `;
+
+    function parseT5InWorker(url) {
+        return new Promise((resolve, reject) => {
+            const blobUrl = URL.createObjectURL(new Blob([T5_WORKER_SOURCE], { type: 'text/javascript' }));
+            const worker = new Worker(blobUrl);
+            const done = (fn, value) => {
+                worker.terminate();
+                URL.revokeObjectURL(blobUrl);
+                fn(value);
+            };
+            worker.onmessage = (event) => {
+                if (event.data && event.data.error) done(reject, new Error(event.data.error));
+                else done(resolve, event.data);
+            };
+            worker.onerror = (event) => done(reject, new Error(event.message || 'T5 tokenizer worker failed'));
+            worker.postMessage({ url: new URL(url, location.href).href });
+        });
+    }
+
+    async function buildT5TablesInSlices(parsed) {
+        const tokens = parsed.tokens.split('\0');
+        const scores = parsed.scores;
+        const vocab = new Array(tokens.length);
+        const vocabMap = new Map();
+        const trie = new Trie();
+        let minScore = Infinity;
+        const slice = 4000;
+        for (let start = 0; start < tokens.length; start += slice) {
+            const end = Math.min(tokens.length, start + slice);
+            for (let i = start; i < end; i++) {
+                const token = tokens[i];
+                const score = scores[i];
+                vocab[i] = [token, score];
+                vocabMap.set(token, { id: i, score });
+                trie.push(token);
+                minScore = Math.min(minScore, score);
+            }
+            await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+        return { vocab, vocabMap, trie, minScore };
+    }
+
     class T5Tokenizer {
         constructor() {
             this.tokenizer = null;
@@ -405,6 +480,19 @@
          * @param {string} url - URL to JSON or .def file
          */
         async loadFromURL(url) {
+            if (!url.endsWith('.def') && typeof Worker === 'function' && typeof document !== 'undefined') {
+                try {
+                    const parsed = await parseT5InWorker(url);
+                    const tables = await buildT5TablesInSlices(parsed);
+                    const config = { model: { unk_id: parsed.unkId }, added_tokens: parsed.addedTokens };
+                    this.tokenizer = new T5TokenizerCore(config, tables);
+                    this.specialTokens = config.added_tokens || [];
+                    this.loaded = true;
+                    return this;
+                } catch (error) {
+                    console.warn('T5 tokenizer worker load failed, loading on the page:', error.message);
+                }
+            }
             const response = await fetch(url);
             const buffer = await response.arrayBuffer();
             
