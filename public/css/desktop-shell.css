@@ -1707,24 +1707,37 @@ html[data-glass="basic"] #startMenu.start-menu {
     font-size: 15px;
 }
 
-/* Customize Start Menu (taskbarSettings.js): "Use large icons" off makes the pinned and most used
-   rows small rows (Vista: 16 px icons, one line; x 1.25 here); the All Programs size takes its
-   rows to medium (24 px x 1.25) or the large rows' size */
-#startMenu.start-menu-small-icons :is(.start-menu-row-pinned, .start-menu-row-frequent) {
+/* Customize Start Menu (taskbarSettings.js): the Start menu icon size takes the pinned and most
+   used rows to small (Vista's "Use large icons" off: 16 px icons, one line; x 1.25 here) or medium
+   (24 px x 1.25); the All Programs size does the same for the program list */
+#startMenu[data-start-size="small"] :is(.start-menu-row-pinned, .start-menu-row-frequent) {
     height: 24px;
 }
 
-#startMenu.start-menu-small-icons :is(.start-menu-row-pinned, .start-menu-row-frequent) .start-menu-row-icon {
+#startMenu[data-start-size="small"] :is(.start-menu-row-pinned, .start-menu-row-frequent) .start-menu-row-icon {
     width: 20px;
     height: 20px;
 }
 
-#startMenu.start-menu-small-icons :is(.start-menu-row-pinned, .start-menu-row-frequent) .start-menu-row-icon i {
+#startMenu[data-start-size="small"] :is(.start-menu-row-pinned, .start-menu-row-frequent) .start-menu-row-icon i {
     font-size: 15px;
 }
 
-#startMenu.start-menu-small-icons .start-menu-row-pinned .start-menu-row-sub {
+#startMenu[data-start-size="small"] .start-menu-row-pinned .start-menu-row-sub {
     display: none;
+}
+
+#startMenu[data-start-size="medium"] :is(.start-menu-row-pinned, .start-menu-row-frequent) {
+    height: 38px;
+}
+
+#startMenu[data-start-size="medium"] :is(.start-menu-row-pinned, .start-menu-row-frequent) .start-menu-row-icon {
+    width: 30px;
+    height: 30px;
+}
+
+#startMenu[data-start-size="medium"] :is(.start-menu-row-pinned, .start-menu-row-frequent) .start-menu-row-icon i {
+    font-size: 22px;
 }
 
 #startMenu[data-programs-size="medium"] .start-menu-row-program {

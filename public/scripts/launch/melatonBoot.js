@@ -66,7 +66,7 @@
         installTolerance: 10,   // files still missing after Expanding that do not fail the install
         installArriveMs: 1000,  // aurora alone before the setup window opens
         installLingerMs: 2000,  // after the installer window closes: the aurora alone this long
-        rebootBlackMs: 1500,    // then black this long before /launch (a restart's mode switch)
+        rebootBlackMs: 3000,    // then black this long before /launch (a real restart's dark seconds)
         loadingMinMs: 1500,     // "MeletonFX is loading files..." shows at least this long
         loadingStepMs: 120,     // each installer asset counts for at least this long on the bar
         keyCheckMs: 2000,       // the product key page with a configured key moves on after this

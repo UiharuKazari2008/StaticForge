@@ -21,7 +21,8 @@
  *                   the Notification Area tab's system icons
  *   recentFiles / recentPrograms / recentProgramCount / places
  *                   the Start Menu tab's Privacy and Customize Start Menu (modalUtils.js start menu)
- *   largeIcons      Customize Start Menu's "Use large icons" (the pinned and most used list)
+ *   startIconSize   'small' | 'medium' | 'large': the pinned and most used list's rows
+ *                   (Vista's "Use large icons" is large / small; medium is ours)
  *   programsIconSize
  *                   'small' | 'medium' | 'large': the All Programs list's rows
  *   powerButton     what the Start menu's power button does: 'shutdown' | 'restart' | 'logoff'
@@ -54,7 +55,7 @@
         recentPrograms: true,
         recentProgramCount: 8,
         ticker: true,
-        largeIcons: true,
+        startIconSize: 'large',
         programsIconSize: 'small',
         powerButton: 'shutdown',
         lockButton: 'lock',
@@ -63,6 +64,7 @@
 
     // the choices of the string settings
     const CHOICES = Object.freeze({
+        startIconSize: ['small', 'medium', 'large'],
         programsIconSize: ['small', 'medium', 'large'],
         powerButton: ['shutdown', 'restart', 'logoff'],
         lockButton: ['lock', 'logoff']
@@ -79,6 +81,8 @@
         BOOLEAN_KEYS.forEach((k) => {
             if (typeof raw[k] === 'boolean') out[k] = raw[k];
         });
+        // the first build stored Vista's "Use large icons" as largeIcons
+        if (raw.largeIcons === false && raw.startIconSize === undefined) out.startIconSize = 'small';
         Object.keys(CHOICES).forEach((k) => {
             if (CHOICES[k].includes(raw[k])) out[k] = raw[k];
         });
@@ -150,10 +154,10 @@
         toggle(tb, 'tray-no-clock', !settings.clock);
         toggle(tb, 'tray-no-volume', !settings.volume);
         toggle(tb, 'tray-no-network', !settings.network);
-        // the Start menu's icon sizes (desktop-shell.css .start-menu-small-icons, [data-programs-size])
+        // the Start menu's icon sizes (desktop-shell.css #startMenu[data-start-size], [data-programs-size])
         const start = doc.getElementById('startMenu');
         if (start) {
-            toggle(start, 'start-menu-small-icons', !settings.largeIcons);
+            if (start.dataset.startSize !== settings.startIconSize) start.dataset.startSize = settings.startIconSize;
             if (start.dataset.programsSize !== settings.programsIconSize) start.dataset.programsSize = settings.programsIconSize;
         }
         setAutoHide(settings.autoHide);

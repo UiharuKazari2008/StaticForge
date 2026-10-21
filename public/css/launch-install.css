@@ -139,16 +139,19 @@
 #melatonInstall[data-page="where"] .mi-window,
 #melatonInstall[data-page="restart"] .mi-window,
 #melatonInstall[data-page="install"] .mi-window {
-    /* Aero Basic without the blur: white at 40 % over whatever is behind (measured against the
-       aurora on both sides), a 1 px dark outline, a 1 px light line inside the top and left edges */
+    /* Aero Basic without the blur, measured on the VM: a 1 px dark outline (#263730 top, #16262a
+       left, #071418 right, #0a1a21 bottom), inside it a 1 px light line on the top and left
+       (#eef4f1 / #cbd9de) and a 1 px cyan glow on the right and bottom (#16bed8 / #1dbbd5), then
+       the translucent body (white over the aurora), 8 px wide on the sides and bottom */
     left: 196px;
     top: 112px;
     width: 632px;
     height: 478px;
-    border: 1px solid #263730;
+    border: 1px solid;
+    border-color: #263730 #071418 #0a1a21 #16262a;
     border-radius: 7px 7px 0 0;
-    background: rgba(255, 255, 255, 0.4);
-    box-shadow: inset 1px 1px rgba(255, 255, 255, 0.85), inset -1px -1px rgba(255, 255, 255, 0.45);
+    background: rgba(255, 255, 255, 0.5);
+    box-shadow: inset 1px 1px #eef4f1, inset -1px -1px #19bdd6;
 }
 
 #melatonInstall[data-page="key"] .mi-window > .mi-title,
@@ -184,14 +187,17 @@
 #melatonInstall[data-page="where"] .mi-window > .mi-title::before,
 #melatonInstall[data-page="restart"] .mi-window > .mi-title::before,
 #melatonInstall[data-page="install"] .mi-window > .mi-title::before {
-    /* the wizard's back button: the Vista navigation button already cut for Defender (26 x 25) */
+    /* the wizard's back button: the Vista navigation button already cut for Defender (26 x 25),
+       in the shallow round recess the frame has for it (a 1 px darker ring, a lighter rim) */
     content: '';
     position: absolute;
     left: 8px;
     top: 7px;
     width: 26px;
     height: 25px;
+    border-radius: 50%;
     background: url('/static_images/vista-defender/back.png') 0 0 / 26px 25px no-repeat;
+    box-shadow: 0 0 0 1px rgba(70, 90, 100, 0.45), 0 0 0 2px rgba(255, 255, 255, 0.45);
 }
 
 #melatonInstall[data-page="key"] .mi-window > .mi-title::after,
@@ -220,8 +226,8 @@
     margin: 0;
     border: 0;
     border-radius: 0 0 5px 5px;
-    background: rgba(0, 0, 0, 0.06) url('/static_images/vista-setup/wizard-close.png') 0 0 / 42px 19px no-repeat;
-    box-shadow: 0 0 0 1px rgba(28, 44, 38, 0.55), inset 0 -1px rgba(255, 255, 255, 0.35);
+    background: rgba(255, 255, 255, 0.28) url('/static_images/vista-setup/wizard-close.png') 0 0 / 42px 19px no-repeat;
+    box-shadow: 0 0 0 1px rgba(28, 44, 38, 0.65), 0 0 0 2px rgba(255, 255, 255, 0.35);
     font-size: 0;
     color: transparent;
 }
@@ -235,13 +241,15 @@
     content: none;
 }
 
+/* the client area: a 1 px dark edge (#283638) with a 1 px light halo outside it */
 .mi-page--paper {
     top: 41px;
     left: 8px;
     right: 8px;
     bottom: 8px;
     background: #f8f8f8;
-    border-top: 1px solid #334;
+    border: 1px solid #283638;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.6);
 }
 
 .mi-paper {

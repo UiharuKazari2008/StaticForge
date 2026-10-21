@@ -71,10 +71,12 @@ assert.deepStrictEqual(size('tray-chevron.png'), [19, 60]);
 assert.strictEqual(ts.normalize({ programsIconSize: 'huge', powerButton: 'logoff', lockButton: 'restart' }).programsIconSize, 'small');
 assert.strictEqual(ts.normalize({ powerButton: 'logoff' }).powerButton, 'logoff');
 assert.strictEqual(ts.normalize({ lockButton: 'restart' }).lockButton, 'lock', 'the lock button has no restart');
-assert.strictEqual(ts.get().largeIcons, true, 'Vista: Use large icons is on');
+assert.strictEqual(ts.get().startIconSize, 'large', 'Vista: Use large icons is on');
+assert.strictEqual(ts.normalize({ largeIcons: false }).startIconSize, 'small', 'the first build\'s setting carries over');
+assert.strictEqual(ts.normalize({ startIconSize: 'medium' }).startIconSize, 'medium');
 assert.ok(mu.includes('START_MENU_POWER_BUTTONS[prefs.powerButton]') && mu.includes('START_MENU_LOCK_BUTTONS[prefs.lockButton]'), 'the buttons follow the settings');
 const shell = read('public/css/desktop-shell.css');
-assert.ok(shell.includes('#startMenu.start-menu-small-icons') && shell.includes('#startMenu[data-programs-size="large"]'));
+assert.ok(shell.includes('#startMenu[data-start-size="medium"]') && shell.includes('#startMenu[data-programs-size="large"]'));
 for (const f of ['disconnect.png', 'lock-logoff.png']) {
     const b = fs.readFileSync(path.join(ROOT, 'public/static_images/vista-start', f));
     assert.deepStrictEqual([b.readUInt32BE(16), b.readUInt32BE(20)], [70, 90], f);
@@ -102,5 +104,10 @@ for (const f of ['public/scripts/websocket.js', 'public/scripts/comp/workstation
     assert.ok(read(f).includes('meletonAccount'), `${f} shows the account's name`);
 }
 assert.ok(read('public/scripts/comp/cplUserAccounts.js').includes("link('Change your account name', 'rename', true)"));
+
+// closing a Customize dialog: it fades out on top, the owner comes back after (Yukimi 2026-10-21)
+const tp = read('public/scripts/comp/taskbarProperties.js');
+assert.ok(/closeWindow\(sub\.modal\)\.then\(\(\) => \{[\s\S]*?bringModalToFront', owner\)/.test(tp), 'the owner is raised only after the dialog has closed');
+assert.ok(!/closeWindow\(sub\.modal\);\s*callGlobal\('openModal', dlg\.modal\)/.test(tp));
 
 console.log('test-taskbar-properties: ok');

@@ -7684,11 +7684,12 @@ function wireStartMenuTileHover(element, item) {
 }
 
 /** The drawn icon size of a row (CSS: desktop-shell.css), so the sized art matches it: Customize
- *  Start Menu's "Use large icons" for the pinned / most used rows, and the All Programs size. */
+ *  Start Menu's Start menu icon size for the pinned / most used rows, and the All Programs size. */
 function startMenuRowIconPx(kind) {
     const prefs = startMenuTaskbarSettings();
     if (kind === 'pinned' || kind === 'frequent') {
-        return prefs && prefs.largeIcons === false ? START_MENU_ROW_ICON_PX.small : START_MENU_ROW_ICON_PX.large;
+        const size = prefs ? prefs.startIconSize : 'large';
+        return START_MENU_ROW_ICON_PX[size] || START_MENU_ROW_ICON_PX.large;
     }
     if (kind === 'program' && prefs) {
         if (prefs.programsIconSize === 'large') return START_MENU_ROW_ICON_PX.large;

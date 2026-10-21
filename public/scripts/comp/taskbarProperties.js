@@ -459,12 +459,18 @@
         });
     }
 
+    /** Close a window the window manager's way: it fades out on top, and the next window is
+     *  activated once it has gone. Resolves when it is out of the DOM. */
     function closeWindow(modal) {
-        if (!modal) return;
+        if (!modal) return Promise.resolve();
+        let closing = Promise.resolve();
         try {
-            if (typeof root.closeModal === 'function') root.closeModal(modal);
+            if (typeof root.closeModal === 'function') closing = Promise.resolve(root.closeModal(modal));
         } catch (_) { /* window manager gone */ }
-        setTimeout(() => { if (modal.parentNode) modal.parentNode.removeChild(modal); }, 400);
+        const fallback = new Promise((resolve) => setTimeout(resolve, 600));
+        return Promise.race([closing.catch(() => {}), fallback]).then(() => {
+            if (modal.parentNode) modal.parentNode.removeChild(modal);
+        });
     }
 
     function buildSheet() {
@@ -638,9 +644,15 @@
             syncControls();
         }
         dlg.sub = null;
-        dlg.modal.removeAttribute('inert');
-        closeWindow(sub.modal);
-        callGlobal('openModal', dlg.modal);
+        const owner = dlg.modal;
+        owner.removeAttribute('inert');
+        // Vista: the dialog fades out over its owner, then the owner is the active window again.
+        // Raising the owner at once put it over the closing dialog (Yukimi 2026-10-21).
+        closeWindow(sub.modal).then(() => {
+            if (owner.isConnected && !owner.classList.contains('hidden') && !owner.classList.contains('closing')) {
+                callGlobal('bringModalToFront', owner);
+            }
+        });
     }
 
     function okCancel(okX, cancelX, y) {
@@ -793,18 +805,23 @@
         const shownPlaces = places.map((pl) => node(pl.text,
             radioRow(`place-${pl.id}`, 'link', 'Display as a link', p.core.places[pl.id] !== false)
             + radioRow(`place-${pl.id}`, 'none', "Don't display this item", p.core.places[pl.id] === false))).join('');
-        const tree = node('Start button',
-            radioRow('style', 'orb', 'Orb', sb.style === 'orb')
-            + radioRow('style', 'luna', 'Media Center', sb.style === 'luna')
-            + radioRow('style', 'workspace', 'Workspace', sb.style === 'workspace'))
-            + node('Start button logo',
-                radioRow('logo', 'royal', 'Royal', sb.logo === 'royal')
-                + radioRow('logo', 'vista', 'Vista', sb.logo === 'vista')
-                + radioRow('logo', 'dreamscape', 'Dreamscape', sb.logo === 'dreamscape'))
+        // the sizes first: they are what people look for (Yukimi 2026-10-21)
+        const tree = node('Start menu icon size',
+            radioRow('startsize', 'small', 'Small icons', p.core.startIconSize === 'small')
+            + radioRow('startsize', 'medium', 'Medium icons', p.core.startIconSize === 'medium')
+            + radioRow('startsize', 'large', 'Large icons', p.core.startIconSize === 'large'))
             + node('All Programs icon size',
                 radioRow('progsize', 'small', 'Small icons', p.core.programsIconSize === 'small')
                 + radioRow('progsize', 'medium', 'Medium icons', p.core.programsIconSize === 'medium')
                 + radioRow('progsize', 'large', 'Large icons', p.core.programsIconSize === 'large'))
+            + node('Start button',
+                radioRow('style', 'orb', 'Orb', sb.style === 'orb')
+                + radioRow('style', 'luna', 'Media Center', sb.style === 'luna')
+                + radioRow('style', 'workspace', 'Workspace', sb.style === 'workspace'))
+            + node('Start button logo',
+                radioRow('logo', 'royal', 'Royal', sb.logo === 'royal')
+                + radioRow('logo', 'vista', 'Vista', sb.logo === 'vista')
+                + radioRow('logo', 'dreamscape', 'Dreamscape', sb.logo === 'dreamscape'))
             + shownPlaces
             + node('Power button',
                 radioRow('powerbtn', 'shutdown', 'Shut down', p.core.powerButton === 'shutdown')
@@ -813,8 +830,7 @@
             + node('Lock button',
                 radioRow('lockbtn', 'lock', 'Lock', p.core.lockButton === 'lock')
                 + radioRow('lockbtn', 'logoff', 'Log off', p.core.lockButton === 'logoff'))
-            + checkRow('tbp-cs-autolaunch', '1', 'Open the workspace at startup', p.autoLaunch)
-            + checkRow('tbp-cs-largeicons', '1', 'Use large icons', p.core.largeIcons !== false);
+            + checkRow('tbp-cs-autolaunch', '1', 'Open the workspace at startup', p.autoLaunch);
         const groups = (typeof getStartMenuButtonPresetGroups !== 'undefined') ? getStartMenuButtonPresetGroups() : [];
         const options = groups.map((gr) => `<optgroup label="${esc(gr.group)}">${gr.options.map((o) => `<option value="${esc(o.value)}"${o.value === sb.preset ? ' selected' : ''}>${esc(o.label)}</option>`).join('')}</optgroup>`).join('');
         const html = `
@@ -853,8 +869,7 @@
             if (Number.isFinite(cnt)) p.core.recentProgramCount = Math.max(0, Math.min(30, Math.round(cnt)));
             const auto = content.querySelector('.tbp-cs-autolaunch');
             if (auto) p.autoLaunch = auto.checked;
-            const large = content.querySelector('.tbp-cs-largeicons');
-            if (large) p.core.largeIcons = large.checked;
+            p.core.startIconSize = val('startsize') || p.core.startIconSize;
             p.core.programsIconSize = val('progsize') || p.core.programsIconSize;
             p.core.powerButton = val('powerbtn') || p.core.powerButton;
             p.core.lockButton = val('lockbtn') || p.core.lockButton;
@@ -912,11 +927,11 @@
                 // Vista's defaults for the rest of the tree
                 const d = root.taskbarSettings ? root.taskbarSettings.DEFAULTS : {};
                 const pick = (name, value) => { const r = c.querySelector(`input[name="tbp-cs-${name}"][value="${value}"]`); if (r) r.checked = true; };
+                pick('startsize', d.startIconSize || 'large');
                 pick('progsize', d.programsIconSize || 'small');
                 pick('powerbtn', d.powerButton || 'shutdown');
                 pick('lockbtn', d.lockButton || 'lock');
-                const large = c.querySelector('.tbp-cs-largeicons');
-                if (large) large.checked = true;
+
             }
         });
     }
