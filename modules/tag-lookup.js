@@ -6525,21 +6525,24 @@ class TagLookup {
             // Extract tag-to-tag relationships from wiki links
             const wikiLinks = this._extractWikiLinks(normalized.body);
             if (wikiLinks.length > 0) {
-                // Get all tags for linking
-                const allTags = await this.db.all('SELECT id, title, normalized_title FROM tags');
-                const tagIdMap = new Map();
-                const titleToIdMap = new Map();
-                
-                for (const tag of allTags) {
-                    tagIdMap.set(tag.normalized_title.toLowerCase(), tag.id);
-                    titleToIdMap.set(tag.title.toLowerCase(), tag.id);
-                }
-                
+                // Look up each linked tag by index. Loading every tag (318k rows) to build
+                // two maps held the event loop ~1s per fetched wiki page. MAX(id) matches the
+                // maps' last-row-wins; normalized_title is stored lowercase and LOWER(title)
+                // agrees with toLowerCase() on every stored title (checked 2026-10-20).
+                const tagIdByNormalized = async (title) => {
+                    const row = await this.db.get('SELECT MAX(id) AS id FROM tags WHERE normalized_title = ?', [title]);
+                    return row ? row.id : null;
+                };
+                const tagIdByTitle = async (title) => {
+                    const row = await this.db.get('SELECT MAX(id) AS id FROM tags WHERE LOWER(title) = ?', [title]);
+                    return row ? row.id : null;
+                };
+
                 for (const link of wikiLinks) {
                     const linkTitle = link.title;
                     const linkPosition = link.position;
                     const normalizedLinkTitle = this._normalizeTitle(linkTitle);
-                    const linkedTagId = tagIdMap.get(normalizedLinkTitle) || titleToIdMap.get(linkTitle.toLowerCase());
+                    const linkedTagId = (await tagIdByNormalized(normalizedLinkTitle)) || (await tagIdByTitle(linkTitle.toLowerCase()));
                     
                     if (linkedTagId && linkedTagId !== tagId) {
                         const relationship = this._detectLinkRelationship(normalized.body, linkTitle, linkPosition);
