@@ -1,13 +1,17 @@
 'use strict';
 
 // Custom Director engines. Each one is an OpenAI-compatible chat-completions
-// host (POST {baseUrl}/v1/chat/completions, GET {baseUrl}/v1/models). Wren and
-// Xi still run the Claude CLI; modules/tokenRouterBridge.js relays that CLI
-// to the provider named in the x-dreamscape-provider header. The bearer token
-// stays in secure.config.json customModelProviders.keys[] (key name = id).
-// The public row (id, name, baseUrl, defaultModel) is config.json
-// customModelProviders[]. Upstream /v1/models payloads can echo other hosts'
-// keys under _provider; only id and name are kept.
+// host. Wren and Xi still run the Claude CLI; modules/tokenRouterBridge.js
+// relays that CLI to the provider named in the x-dreamscape-provider header.
+// The bearer token stays in secure.config.json customModelProviders.keys[]
+// (key name = id). A TokenRouter URL can also store managementKey on that
+// entry. The public row is config.json customModelProviders[]. The host kind
+// (tokenrouter, openai, google, openrouter, generic) comes from the URL.
+// Google's OpenAI path is {baseUrl}/chat/completions; everyone else is
+// {baseUrl}/v1/chat/completions. TokenRouter catalogs come from /api/pricing.
+// monitorUsage off means no usage cap and the Director badge stays hidden.
+// A PNG logo lives in data/provider-logos/<id>.png. Upstream /v1/models
+// payloads can echo other hosts' keys under _provider; only id and name are kept.
 
 const fs = require('fs');
 const path = require('path');
@@ -21,6 +25,79 @@ const OBLITERATED_STORE = 'obliterated';
 const CATALOG_TTL_MS = 10 * 60 * 1000;
 
 const catalogs = new Map();
+const LOGO_MAX_BYTES = 64 * 1024;
+let logoDirectory = path.join(__dirname, '..', 'data', 'provider-logos');
+
+// Presets only fill the form. The host kind is read from the saved URL.
+const PRESETS = [
+    { id: 'google', name: 'Google', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai' },
+    { id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com' },
+    { id: 'tokenrouter', name: 'TokenRouter', baseUrl: 'https://api.tokenrouter.com' },
+    { id: 'openrouter', name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api' }
+];
+
+function hostKind(baseUrl) {
+    let host = '';
+    let pathName = '';
+    try {
+        const url = new URL(String(baseUrl || ''));
+        host = url.hostname.toLowerCase();
+        pathName = url.pathname.toLowerCase();
+    } catch (_) {
+        return 'generic';
+    }
+    if (host === 'api.tokenrouter.com' || host.endsWith('.tokenrouter.com')) return 'tokenrouter';
+    if (host === 'api.openai.com') return 'openai';
+    if (host === 'generativelanguage.googleapis.com' || (host.endsWith('.googleapis.com') && pathName.includes('/openai'))) return 'google';
+    if (host === 'openrouter.ai') return 'openrouter';
+    return 'generic';
+}
+
+function endpointsFor(baseUrl, kind) {
+    if (kind === 'google') {
+        return { chatUrl: `${baseUrl}/chat/completions`, modelsUrl: `${baseUrl}/models` };
+    }
+    if (kind === 'tokenrouter') {
+        return { chatUrl: `${baseUrl}/v1/chat/completions`, modelsUrl: `${baseUrl}/api/pricing` };
+    }
+    return { chatUrl: `${baseUrl}/v1/chat/completions`, modelsUrl: `${baseUrl}/v1/models` };
+}
+
+function logoFile(id) {
+    return path.join(logoDirectory, `${id}.png`);
+}
+
+function readLogo(id) {
+    try {
+        const buf = fs.readFileSync(logoFile(id));
+        if (!buf.length || buf.length > LOGO_MAX_BYTES) return '';
+        return `data:image/png;base64,${buf.toString('base64')}`;
+    } catch (_) {
+        return '';
+    }
+}
+
+function writeLogo(id, dataUrl) {
+    if (dataUrl == null) return;
+    if (dataUrl === '') {
+        try { fs.unlinkSync(logoFile(id)); } catch (_) { /* already gone */ }
+        return;
+    }
+    const match = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl));
+    if (!match) {
+        const error = new Error('Provider logo must be a PNG.');
+        error.code = 'CUSTOM_PROVIDER_LOGO';
+        throw error;
+    }
+    const buf = Buffer.from(match[1], 'base64');
+    if (buf.length > LOGO_MAX_BYTES || buf.length < 8 || buf.readUInt32BE(0) !== 0x89504e47) {
+        const error = new Error('Provider logo must be a PNG under 64 KB.');
+        error.code = 'CUSTOM_PROVIDER_LOGO';
+        throw error;
+    }
+    fs.mkdirSync(logoDirectory, { recursive: true });
+    fs.writeFileSync(logoFile(id), buf);
+}
 
 function isEngine(value) {
     return ENGINE_RE.test(String(value || '').trim().toLowerCase());
@@ -65,9 +142,18 @@ function readKeys(gr) {
     return keys.filter((row) => row && row.apiKey);
 }
 
+function keyRow(gr, id) {
+    return readKeys(gr).find((item) => String(item.name || '').trim().toLowerCase() === id) || null;
+}
+
 function apiKeyFor(gr, id) {
-    const row = readKeys(gr).find((item) => String(item.name || '').trim().toLowerCase() === id);
+    const row = keyRow(gr, id);
     return row ? String(row.apiKey).trim() : '';
+}
+
+function managementKeyFor(gr, id) {
+    const row = keyRow(gr, id);
+    return row && row.managementKey ? String(row.managementKey).trim() : '';
 }
 
 function rowById(gr, id) {
@@ -78,15 +164,21 @@ function rowById(gr, id) {
     if (!baseUrl) return null;
     const name = String(row.name || id).trim().slice(0, 60) || id;
     const wanted = String(row.defaultModel || '').trim();
+    const kind = hostKind(baseUrl);
     return {
         id,
         engine: engineFor(id),
         name,
         baseUrl,
+        kind,
+        ...endpointsFor(baseUrl, kind),
         defaultModel: MODEL_ID_RE.test(wanted) ? wanted : '',
         obliteratedMemories: row.obliteratedMemories === true,
         ageTool: row.ageTool !== false,
-        apiKey: apiKeyFor(gr, id)
+        monitorUsage: row.monitorUsage === true,
+        apiKey: apiKeyFor(gr, id),
+        managementKey: managementKeyFor(gr, id),
+        logo: readLogo(id)
     };
 }
 
@@ -145,10 +237,14 @@ function adminRow(row) {
         id: row.id,
         name: row.name,
         baseUrl: row.baseUrl,
+        kind: row.kind || hostKind(row.baseUrl),
         defaultModel: row.defaultModel,
         obliteratedMemories: row.obliteratedMemories === true,
         ageTool: row.ageTool !== false,
-        hasKey: !!row.apiKey
+        monitorUsage: row.monitorUsage === true,
+        hasKey: !!row.apiKey,
+        hasManagementKey: !!row.managementKey,
+        logo: row.logo || ''
     };
 }
 
@@ -156,16 +252,27 @@ function publicAdminList(gr) {
     return readRows(gr).map((item) => lookup(gr, item && item.id)).filter(Boolean).map(adminRow);
 }
 
-function writeSecureKey(gr, id, apiKey) {
+function writeSecureKey(gr, id, apiKey, managementKey) {
     const key = String(apiKey || '').trim();
-    if (!key) return;
+    const hasManagement = managementKey != null;
+    const management = hasManagement ? String(managementKey).trim() : null;
+    if (!key && !hasManagement) return;
     let block;
     try { block = gr.getSecureConfig({ path: 'customModelProviders' }); } catch (_) { block = null; }
     const keys = block && Array.isArray(block.keys) ? block.keys.map((item) => Object.assign({}, item)) : [];
     const at = keys.findIndex((item) => String(item && item.name || '').trim().toLowerCase() === id);
-    const entry = { name: id, apiKey: key };
-    if (at >= 0) keys[at] = Object.assign({}, keys[at], entry);
-    else keys.push(entry);
+    const prev = at >= 0 ? keys[at] : {};
+    const nextKey = key || String(prev.apiKey || '').trim();
+    if (!nextKey && !management) return;
+    const entry = { name: id, apiKey: nextKey };
+    if (hasManagement) {
+        if (management) entry.managementKey = management;
+    } else if (prev.managementKey) {
+        entry.managementKey = prev.managementKey;
+    }
+    if (at >= 0) keys[at] = Object.assign({}, prev, entry);
+    else if (nextKey) keys.push(entry);
+    else return;
     gr.updateConfigValue('secureConfig', ['customModelProviders'], { keys });
 }
 
@@ -199,12 +306,15 @@ function saveProvider(gr, input) {
         baseUrl,
         defaultModel: MODEL_ID_RE.test(wanted) ? wanted : '',
         obliteratedMemories: body.obliteratedMemories === true,
-        ageTool: body.ageTool !== false
+        ageTool: body.ageTool !== false,
+        monitorUsage: body.monitorUsage === true
     });
+    delete next.logo;
     if (at >= 0) rows[at] = next;
     else rows.push(next);
     gr.updateConfigValue('config', ['customModelProviders'], rows);
-    writeSecureKey(gr, id, body.apiKey);
+    writeSecureKey(gr, id, body.apiKey, Object.prototype.hasOwnProperty.call(body, 'managementKey') ? body.managementKey : null);
+    if (Object.prototype.hasOwnProperty.call(body, 'logo')) writeLogo(id, body.logo || '');
     const saved = lookup(gr, id);
     return saved ? adminRow(saved) : adminRow(Object.assign({ apiKey: '' }, next));
 }
@@ -219,7 +329,10 @@ function publicList(gr) {
     return readRows(gr).map((item) => lookup(gr, item && item.id)).filter(Boolean).map((row) => ({
         id: row.id,
         engine: row.engine,
-        name: row.name
+        name: row.name,
+        kind: row.kind,
+        monitorUsage: row.monitorUsage === true,
+        logo: row.logo || ''
     }));
 }
 
@@ -273,14 +386,83 @@ function writeCacheFile(file, families) {
 }
 
 async function fetchCatalog(provider) {
-    const res = await fetch(`${provider.baseUrl}/v1/models`, {
-        headers: { authorization: `Bearer ${provider.apiKey}` },
+    const headers = { authorization: `Bearer ${provider.apiKey}` };
+    const res = await fetch(provider.modelsUrl, {
+        headers,
         signal: AbortSignal.timeout(20000)
     });
     if (!res.ok) throw new Error(`${provider.name} model list answered ${res.status}`);
-    const families = catalogFromModels(await res.json(), provider.name);
+    const body = await res.json();
+    const families = provider.kind === 'tokenrouter'
+        ? require('./tokenRouterBridge').catalogFromPricing(body)
+        : catalogFromModels(body, provider.name);
     if (!families.length) throw new Error(`${provider.name} model list is empty`);
     return families;
+}
+
+function usdText(amount) {
+    const n = Math.round(Number(amount) * 100) / 100;
+    return `${n < 0 ? '-' : ''}$${Math.abs(n).toFixed(2)}`;
+}
+
+// Director badge. Monitor Usage off means this host has no cap: the client hides the indicator.
+async function usageSummary(gr, idOrEngine) {
+    const row = lookup(gr, idOrEngine);
+    const name = row ? row.name : 'Custom';
+    const base = {
+        success: true,
+        engine: row ? row.engine : '',
+        persona: 'wren',
+        limited: false,
+        autoPercent: null,
+        apiPercent: null,
+        balance: null,
+        balanceText: null,
+        hidden: !row || row.monitorUsage !== true,
+        title: name
+    };
+    if (base.hidden || !row) return base;
+    if (row.kind === 'tokenrouter') {
+        if (!row.managementKey) {
+            return { ...base, title: `${name}: add a management key to show the balance` };
+        }
+        const info = await require('./tokenRouterBridge').walletAt(row.baseUrl, row.managementKey);
+        if (info.error) return { ...base, title: `${name} balance unavailable: ${info.error}` };
+        if (!info.configured) return { ...base, title: `${name}: add a management key to show the balance` };
+        return {
+            ...base,
+            balance: info.remaining,
+            balanceText: usdText(info.remaining),
+            limited: info.remaining <= 0,
+            title: [
+                `${name} balance: ${usdText(info.remaining)}`,
+                `Top-up ${usdText(info.topUp)} + vouchers ${usdText(info.vouchers)}`
+            ].join('\n')
+        };
+    }
+    if (row.kind === 'openrouter') {
+        try {
+            const res = await fetch(`${row.baseUrl}/v1/credits`, {
+                headers: { authorization: `Bearer ${row.apiKey}` },
+                signal: AbortSignal.timeout(10000)
+            });
+            const body = await res.json().catch(() => null);
+            const data = body && body.data;
+            if (!res.ok || !data) return { ...base, title: `${name} credits unavailable` };
+            const remaining = (Number(data.total_credits) || 0) - (Number(data.total_usage) || 0);
+            const rounded = Math.round(remaining * 100) / 100;
+            return {
+                ...base,
+                balance: rounded,
+                balanceText: usdText(rounded),
+                limited: rounded <= 0,
+                title: `${name} credits: ${usdText(rounded)}`
+            };
+        } catch (error) {
+            return { ...base, title: `${name} credits unavailable: ${error.message}` };
+        }
+    }
+    return base;
 }
 
 async function listModels(gr, idOrEngine, options) {
@@ -321,7 +503,8 @@ async function listModels(gr, idOrEngine, options) {
 function resolveRun(families, choice, provider) {
     const list = Array.isArray(families) ? families : [];
     const requested = String((choice && choice.model) || '').trim();
-    const preferred = provider && provider.defaultModel;
+    const preferred = (provider && provider.defaultModel)
+        || (provider && provider.kind === 'tokenrouter' ? 'deepseek/deepseek-v4.1-flash' : '');
     const fallback = list.find((item) => item.id === preferred) || list[0] || null;
     const family = list.find((item) => item.id === requested) || fallback;
     const wanted = String((choice && choice.effort) || 'medium').trim().toLowerCase();
@@ -343,8 +526,10 @@ async function resolveForTurn(gr, idOrEngine, choice) {
 
 module.exports = {
     EFFORTS,
+    PRESETS,
     isEngine,
     providerId,
+    hostKind,
     lookup,
     hasKey,
     requireReady,
@@ -355,12 +540,14 @@ module.exports = {
     ageToolEnabled,
     publicAdminList,
     saveProvider,
+    usageSummary,
     listModels,
     resolveRun,
     resolveForTurn,
     catalogFromModels,
     normalizeBaseUrl,
     _test: {
-        resetCatalogs: () => catalogs.clear()
+        resetCatalogs: () => catalogs.clear(),
+        setLogoDir: (dir) => { logoDirectory = dir; }
     }
 };

@@ -472,6 +472,7 @@
             summary.className = 'cpl-vault-summary';
             const bits = [];
             if (row.defaultModel) bits.push(row.defaultModel.split('/').pop());
+            if (row.monitorUsage) bits.push('Usage');
             if (row.obliteratedMemories) bits.push('Obliterated Memories');
             if (row.ageTool === false) bits.push('No age tool');
             if (!row.hasKey && row.id) bits.push('No key');
@@ -486,24 +487,122 @@
 
             const details = document.createElement('div');
             details.className = 'cpl-vault-details';
-            const idInput = customInput(row.id, 'sloproxy');
+            const idInput = customInput(row.id, 'my-provider');
             if (row.id) idInput.readOnly = true;
-            const nameInput = customInput(row.name, 'SloProxy');
+            const nameInput = customInput(row.name, 'My Provider');
             const urlInput = customInput(row.baseUrl, 'https://host.example');
-            const modelInput = customInput(row.defaultModel, 'model id from /v1/models');
+            const modelInput = customInput(row.defaultModel, 'model id');
+            const preset = document.createElement('select');
+            preset.className = 'cpl-ua-input';
+            // Same hosts as PRESETS in modules/customModelProviders.js.
+            [
+                ['', 'Custom'],
+                ['google', 'Google'],
+                ['openai', 'OpenAI'],
+                ['tokenrouter', 'TokenRouter'],
+                ['openrouter', 'OpenRouter']
+            ].forEach(([id, label]) => {
+                const option = document.createElement('option');
+                option.value = id;
+                option.textContent = label;
+                preset.appendChild(option);
+            });
+            const presetHosts = {
+                google: ['google', 'Google', 'https://generativelanguage.googleapis.com/v1beta/openai'],
+                openai: ['openai', 'OpenAI', 'https://api.openai.com'],
+                tokenrouter: ['tokenrouter', 'TokenRouter', 'https://api.tokenrouter.com'],
+                openrouter: ['openrouter', 'OpenRouter', 'https://openrouter.ai/api']
+            };
+            if (presetHosts[row.kind]) preset.value = row.kind;
+            preset.addEventListener('change', () => {
+                const fill = presetHosts[preset.value];
+                if (!fill) return;
+                if (!idInput.readOnly) idInput.value = fill[0];
+                nameInput.value = fill[1];
+                urlInput.value = fill[2];
+                syncManagement();
+            });
             const keyInput = document.createElement('input');
             keyInput.type = 'password';
             keyInput.className = 'cpl-ua-input';
             keyInput.autocomplete = 'new-password';
             keyInput.placeholder = row.hasKey ? 'Leave blank to keep the current key' : 'Bearer token';
+            const managementInput = document.createElement('input');
+            managementInput.type = 'password';
+            managementInput.className = 'cpl-ua-input';
+            managementInput.autocomplete = 'new-password';
+            managementInput.placeholder = row.hasManagementKey ? 'Leave blank to keep the current key' : 'Personal management key';
+            const managementField = customField('Management key', managementInput);
+            // modules/customModelProviders.js hostKind — a TokenRouter URL is the only host that reads a management key.
+            const syncManagement = () => {
+                let host = '';
+                try { host = new URL(urlInput.value).hostname.toLowerCase(); } catch (_err) { host = ''; }
+                const show = host === 'api.tokenrouter.com' || host.endsWith('.tokenrouter.com');
+                managementField.style.display = show ? '' : 'none';
+            };
+            urlInput.addEventListener('input', syncManagement);
+            syncManagement();
+            const usage = customCheck('Monitor Usage', row.monitorUsage === true);
             const memories = customCheck('Obliterated Memories', row.obliteratedMemories === true);
             const age = customCheck('Age tool', row.ageTool !== false);
+            const logoInput = document.createElement('input');
+            logoInput.type = 'file';
+            logoInput.className = 'cpl-ua-input';
+            logoInput.accept = 'image/png,image/jpeg,image/webp,image/gif';
+            const logoPreview = document.createElement('img');
+            logoPreview.width = 32;
+            logoPreview.height = 32;
+            logoPreview.alt = '';
+            const logoSrc = row._logoData || row.logo || '';
+            if (logoSrc) logoPreview.src = logoSrc;
+            else logoPreview.style.display = 'none';
+            logoInput.addEventListener('change', () => {
+                const file = logoInput.files && logoInput.files[0];
+                if (!file) return;
+                // Same centre-crop as cplUserAccounts.js toTile, drawn at icon size.
+                const img = new Image();
+                const url = URL.createObjectURL(file);
+                img.onload = () => {
+                    const size = Math.min(img.naturalWidth, img.naturalHeight);
+                    const canvas = document.createElement('canvas');
+                    canvas.width = 64;
+                    canvas.height = 64;
+                    canvas.getContext('2d').drawImage(img, (img.naturalWidth - size) / 2, (img.naturalHeight - size) / 2, size, size, 0, 0, 64, 64);
+                    URL.revokeObjectURL(url);
+                    row._logoData = canvas.toDataURL('image/png');
+                    row._logoClear = false;
+                    logoPreview.src = row._logoData;
+                    logoPreview.style.display = '';
+                };
+                img.onerror = () => {
+                    URL.revokeObjectURL(url);
+                    if (typeof showGlassToast === 'function') showGlassToast('error', 'Dreamscape Services', 'That file is not a picture');
+                };
+                img.src = url;
+            });
+            const logoClear = document.createElement('button');
+            logoClear.type = 'button';
+            logoClear.className = 'cpl-vault-link';
+            logoClear.textContent = 'Remove picture';
+            logoClear.addEventListener('click', () => {
+                row._logoData = '';
+                row._logoClear = true;
+                logoPreview.removeAttribute('src');
+                logoPreview.style.display = 'none';
+                logoInput.value = '';
+            });
+            const logoWrap = document.createElement('div');
+            logoWrap.append(logoPreview, logoInput, logoClear);
             details.append(
+                customField('Preset', preset),
                 customField('Id', idInput),
                 customField('Name', nameInput),
                 customField('URL', urlInput),
                 customField('Model', modelInput),
                 customField('Key', keyInput),
+                managementField,
+                customField('Picture', logoWrap),
+                customField('Usage', usage.wrap),
                 customField('Memories', memories.wrap),
                 customField('Age tool', age.wrap)
             );
@@ -517,15 +616,17 @@
                 save.disabled = true;
                 try {
                     const resp = await window.wsClient.sendMessage('director_custom_providers_save', {
-                        provider: {
+                        provider: Object.assign({
                             id: idInput.value,
                             name: nameInput.value,
                             baseUrl: urlInput.value,
                             defaultModel: modelInput.value,
                             apiKey: keyInput.value,
+                            managementKey: managementInput.value,
+                            monitorUsage: usage.input.checked,
                             obliteratedMemories: memories.input.checked,
                             ageTool: age.input.checked
-                        }
+                        }, row._logoClear ? { logo: '' } : (row._logoData ? { logo: row._logoData } : {}))
                     });
                     customProviderRows = customProviderPayload(resp);
                     const savedId = String(idInput.value || '').trim().toLowerCase();
@@ -562,8 +663,8 @@
         add.addEventListener('click', () => {
             if (customProviderRows.some((row) => !row.id && row._open)) return;
             customProviderRows.push({
-                id: '', name: '', baseUrl: '', defaultModel: '', hasKey: false,
-                obliteratedMemories: false, ageTool: true, _open: true
+                id: '', name: '', baseUrl: '', defaultModel: '', hasKey: false, hasManagementKey: false,
+                monitorUsage: false, obliteratedMemories: false, ageTool: true, logo: '', _open: true
             });
             paintCustomProviders();
         });

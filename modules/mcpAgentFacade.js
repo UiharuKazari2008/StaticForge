@@ -6961,6 +6961,23 @@ function generationCaller(req) {
     return { caller: bind || 'unknown', callerId: '' };
 }
 
+const MCP_GENERATE_JOB_KEYS = new Set([
+    'success', 'jobId', 'status', 'type', 'source', 'requestId', 'position', 'delayMs',
+    'createdAt', 'startedAt', 'finishedAt', 'caller', 'workspace', 'filename', 'filenames',
+    'seed', 'dest_path', 'destPath', 'error', 'contentLength', 'saved_memory', 'qualityDropped',
+    'qualityInherited', 'pending', 'next', 'stages', 'generateStarted', 'filenameBefore',
+    'total_stages', 'walk', 'appliedWithoutRestart', 'readyForRestart', 'alreadyCurrent'
+]);
+
+function wireGenerateJobFlat(flat) {
+    if (!flat || typeof flat !== 'object') return {};
+    const out = {};
+    Object.keys(flat).forEach((key) => {
+        if (MCP_GENERATE_JOB_KEYS.has(key)) out[key] = flat[key];
+    });
+    return out;
+}
+
 function attachDurableGalleryFields(globalResources, body) {
     const names = collectFilenames(body);
     if (!names.length) return body;
@@ -6985,7 +7002,10 @@ async function mcpResultFromGenerateFlat(globalResources, flat, success, destPat
     const filename = sanitizeGalleryFilename(
         (flat && flat.filename) || (flat && Array.isArray(flat.filenames) ? flat.filenames[0] : '')
     );
-    const body = attachDurableGalleryFields(globalResources, { ...(flat || {}), filename: filename || null });
+    const body = attachDurableGalleryFields(globalResources, {
+        ...wireGenerateJobFlat(flat),
+        filename: filename || null
+    });
     if (filename && success) {
         try {
             const resolved = resolveGalleryImagePath(globalResources, filename);

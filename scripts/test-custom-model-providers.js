@@ -88,5 +88,64 @@ assert.strictEqual(marked.baseUrl, 'https://sloproxy-10af421.gcti.moe');
 assert.strictEqual(custom.memoryStoreForEngine(memoryGr, 'custom:sloproxy'), 'obliterated');
 assert.strictEqual(custom.ageToolEnabled(memoryGr, 'custom:sloproxy'), false);
 assert.strictEqual(JSON.stringify(marked).includes('sk-test'), false);
+assert.strictEqual(marked.monitorUsage, false);
+assert.strictEqual(marked.kind, 'generic');
 
-console.log('custom model provider tests passed');
+assert.strictEqual(custom.hostKind('https://api.tokenrouter.com'), 'tokenrouter');
+assert.strictEqual(custom.hostKind('https://api.openai.com/v1'), 'openai');
+assert.strictEqual(custom.hostKind('https://generativelanguage.googleapis.com/v1beta/openai'), 'google');
+assert.strictEqual(custom.hostKind('https://openrouter.ai/api'), 'openrouter');
+assert.strictEqual(custom.hostKind('https://sloproxy-10af421.gcti.moe'), 'generic');
+assert.deepStrictEqual(custom.PRESETS.map((item) => item.id), ['google', 'openai', 'tokenrouter', 'openrouter']);
+
+const routed = custom.saveProvider(memoryGr, {
+    id: 'routerbox',
+    name: 'Router Box',
+    baseUrl: 'https://api.tokenrouter.com',
+    monitorUsage: false,
+    apiKey: 'sk-router',
+    managementKey: 'mgmt-secret'
+});
+assert.strictEqual(routed.kind, 'tokenrouter');
+assert.strictEqual(routed.monitorUsage, false);
+assert.strictEqual(routed.hasManagementKey, true);
+assert.strictEqual(JSON.stringify(routed).includes('mgmt-secret'), false);
+assert.strictEqual(JSON.stringify(custom.publicList(memoryGr)).includes('mgmt-secret'), false);
+const os = require('os');
+const fs = require('fs');
+const path = require('path');
+const logoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'provider-logo-'));
+custom._test.setLogoDir(logoDir);
+const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const withLogo = custom.saveProvider(memoryGr, {
+    id: 'routerbox',
+    name: 'Router Box',
+    baseUrl: 'https://api.tokenrouter.com',
+    apiKey: '',
+    managementKey: '',
+    logo: `data:image/png;base64,${png.toString('base64')}`
+});
+assert.ok(withLogo.logo.startsWith('data:image/png;base64,'));
+assert.strictEqual(withLogo.hasManagementKey, true);
+
+const metered = custom.saveProvider(memoryGr, {
+    id: 'metered',
+    name: 'Metered',
+    baseUrl: 'https://api.tokenrouter.com',
+    monitorUsage: true,
+    apiKey: 'sk-meter'
+});
+assert.strictEqual(metered.hasManagementKey, false);
+
+Promise.all([
+    custom.usageSummary(memoryGr, 'custom:routerbox'),
+    custom.usageSummary(memoryGr, 'custom:metered')
+]).then(([hidden, shown]) => {
+    assert.strictEqual(hidden.hidden, true);
+    assert.strictEqual(shown.hidden, false);
+    assert.ok(shown.title.includes('add a management key'));
+    console.log('custom model provider tests passed');
+}).catch((error) => {
+    console.error(error);
+    process.exit(1);
+});
