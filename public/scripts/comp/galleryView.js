@@ -6737,6 +6737,29 @@ function setGalleryOverscrollGlow(edge, on) {
     }
 }
 
+/**
+ * Every cell in the gallery's view has its preview in (not a placeholder, <img> inserted, which
+ * only happens after it loaded). An empty gallery is ready. Works while the window is held
+ * under its splash (visibility hidden keeps layout).
+ */
+function galleryVisiblePreviewsReady() {
+    if (!gallery) return true;
+    const { galleryContainer, isContainerScroll } = getGalleryScrollRoots();
+    const view = isContainerScroll && galleryContainer
+        ? galleryContainer.getBoundingClientRect()
+        : { top: 0, bottom: window.innerHeight };
+    let seen = 0;
+    for (let el = gallery.firstElementChild; el; el = el.nextElementSibling) {
+        const rect = el.getBoundingClientRect();
+        if (rect.bottom <= view.top + 1) continue;
+        if (rect.top >= view.bottom - 1) break;
+        if (rect.height === 0) continue;
+        seen++;
+        if (el.classList.contains('gallery-placeholder') || !el.querySelector('img')) return false;
+    }
+    return seen > 0 || !(allImages && allImages.length);
+}
+
 // More rows exist past the first / last cell in the DOM (placeholders count as loaded)
 function galleryHasRowsBeyond(edge) {
     if (!gallery) return false;

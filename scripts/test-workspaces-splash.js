@@ -52,7 +52,12 @@ assert.ok(splashJs.includes('applyGalleryProgressBarState(this.progress, this.pr
 // opening from closed, and the progress routing
 assert.ok(modalUtils.includes("const splash = isGalleryWindowHidden() && workspaceSplash.show('Opening Workspaces...');"), 'showGalleryWindow shows the splash when opening from closed');
 assert.ok(modalUtils.includes('galleryWindowPreparePromise = prepareGalleryWindowContent().catch('), 'openModal keeps the prepare promise');
-assert.ok(modalUtils.includes('Promise.resolve(galleryWindowPreparePromise).then(() => workspaceSplash.hide(), () => workspaceSplash.hide());'), 'the splash hides once the content is ready');
+assert.ok(modalUtils.includes('const prepared = Promise.resolve(galleryWindowPreparePromise).catch(() => {});')
+    && modalUtils.includes('prepared.then(() => workspaceSplash.hide());'), 'the splash hides once the content is ready');
+// ... and not before the rows in view show their previews (no BlurHash wall), at most 10 s
+assert.ok(modalUtils.includes('workspaceSplash.waitFor(prepared.then(() => waitForGalleryVisiblePreviews()), 10000);'), 'the splash waits for the visible previews');
+assert.ok(splashJs.includes('waitFor(ready, capMs)') && /if \(this\.readyGate\) \{\s*const gate = this\.readyGate;\s*gate\.then\(\(\) => this\.hide\(onHidden\)\);/.test(splashJs), 'hide() holds while the ready gate is pending');
+assert.ok(read('public/scripts/comp/galleryView.js').includes('function galleryVisiblePreviewsReady()'), 'galleryView.js says when the visible previews are in');
 assert.ok(galleryView.includes('if (workspaceSplash.isActive()) {\n        workspaceSplash.setStatus(`Loading ${viewName}...`);\n        return;\n    }'), 'no loading dialog while the splash is up');
 assert.ok(galleryView.includes('workspaceSplash.setProgress(progress);\n        if (terminal) workspaceSplash.hide();\n        return;'), 'progress goes to the splash corner; terminal phase hides it');
 assert.ok(galleryView.includes('function hideGalleryProgressModal() {\n    // workspaceSplash') && galleryView.includes('    if (workspaceSplash.isActive()) workspaceSplash.hide();\n    if (galleryProgressModal) {'), 'every end of a load hides the splash (with the linger)');

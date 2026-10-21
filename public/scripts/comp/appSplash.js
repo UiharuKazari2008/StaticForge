@@ -16,6 +16,7 @@ class AppSplash {
         this.startedAt = 0;
         this.closeTimer = null;
         this.heldWindow = null;
+        this.readyGate = null;
         this.progressSwitched = false;
         this.statusText = this.el ? this.el.querySelector('.splash-status-text') : null;
         this.progress = this.el ? this.el.querySelector('.splash-progress') : null;
@@ -94,11 +95,31 @@ class AppSplash {
         }, 1000);
     }
 
+    /**
+     * Keep the splash up until ready settles (at most capMs), however often hide() is asked
+     * meanwhile: the window must not show its BlurHash placeholders (Yukimi, 2026-10-21).
+     */
+    waitFor(ready, capMs) {
+        if (!this.isActive()) return;
+        const gate = Promise.race([
+            Promise.resolve(ready).catch(() => {}),
+            new Promise((resolve) => setTimeout(resolve, capMs || 10000))
+        ]).then(() => {
+            if (this.readyGate === gate) this.readyGate = null;
+        });
+        this.readyGate = gate;
+    }
+
     /** Hide after the minimum display time and the linger; a later call restarts the linger. */
     hide(onHidden) {
         if (!this.isActive()) {
             this.releaseWindow();
             if (typeof onHidden === 'function') onHidden();
+            return;
+        }
+        if (this.readyGate) {
+            const gate = this.readyGate;
+            gate.then(() => this.hide(onHidden));
             return;
         }
         const remaining = this.minDisplayMs - (Date.now() - this.startedAt);

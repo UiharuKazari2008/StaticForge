@@ -3159,6 +3159,20 @@ function handleModalResize(e, resizedModal) {
         newTop = session.startTop + session.startHeight - newHeight;
     }
 
+    // Aspect-locked windows (the Vista games: VistaGames.constrainResize,
+    // public/scripts/comp/desktop-apps/vista-games/vistaGameEngine.js) fit the box inside the work area
+    if (typeof resizedModal.windowResizeConstrain === 'function') {
+        const fixed = resizedModal.windowResizeConstrain(newWidth, newHeight, resizeDirection, {
+            width: resizeDirection.includes('w') ? session.startLeft + session.startWidth - workArea.left : workArea.right - session.startLeft,
+            height: resizeDirection.includes('n') ? session.startTop + session.startHeight - workArea.top : workArea.bottom - session.startTop
+        });
+        newWidth = fixed.width;
+        newHeight = fixed.height;
+        if (resizeDirection.includes('w')) newLeft = session.startLeft + session.startWidth - newWidth;
+        if (resizeDirection.includes('n')) newTop = session.startTop + session.startHeight - newHeight;
+        shouldUpdatePosition = true;
+    }
+
     newWidth = Math.max(session.minWidth, roundCssPixel(newWidth));
     newHeight = Math.max(session.minHeight, roundCssPixel(newHeight));
 
@@ -4337,10 +4351,28 @@ function showGalleryWindow() {
     ensureModalEdgesWithinWorkArea(galleryWindow);
 
     if (splash) {
-        Promise.resolve(galleryWindowPreparePromise).then(() => workspaceSplash.hide(), () => workspaceSplash.hide());
+        // The splash stays until the rows in view show their previews, not their BlurHash
+        // (galleryVisiblePreviewsReady: public/scripts/comp/galleryView.js), at most 10 s
+        const prepared = Promise.resolve(galleryWindowPreparePromise).catch(() => {});
+        workspaceSplash.waitFor(prepared.then(() => waitForGalleryVisiblePreviews()), 10000);
+        prepared.then(() => workspaceSplash.hide());
     }
 
     console.log('Gallery shown in desktop mode');
+}
+
+/** Resolves once galleryVisiblePreviewsReady() holds, checked every 100 ms. */
+function waitForGalleryVisiblePreviews() {
+    return new Promise((resolve) => {
+        const check = () => {
+            if (typeof galleryVisiblePreviewsReady !== 'function' || galleryVisiblePreviewsReady()) {
+                resolve();
+                return;
+            }
+            setTimeout(check, 100);
+        };
+        check();
+    });
 }
 
 // Check if gallery is hidden in desktop mode (for function inhibition)
