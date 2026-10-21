@@ -5717,9 +5717,17 @@ function updateVirtualScrollInternal() {
             loadMaxG = Math.max(fi, la);
         }
     }
-    let stripMin = minKeep;
-    let stripMax = maxKeep;
-    if (loadMinG !== Infinity) {
+    // Resolved cells stay up to a screen past the viewport; further ones go back to their BlurHash
+    // (and later out of the DOM with the placeholder cleanup). This strip used to widen to the
+    // whole loaded DOM, so nothing was ever demoted: a long session grew the gallery to 400 live
+    // cells, and every scroll-stop style and layout pass paid for all of them. The DOM-wide strip
+    // stays only while the viewport and the loaded rows disagree (the desync guards below).
+    const keepPad = Math.max(indexPad, rowsOnScreen * realGalleryColumns);
+    let stripMin = Math.max(0, minVisibleGallery - keepPad);
+    let stripMax = Math.min(Math.max(0, effectiveMaxGalleryIndex), maxVisibleGallery + keepPad);
+    const stripDesyncTol = Math.max(realGalleryColumns * 2, 8);
+    if (loadMinG !== Infinity
+        && (loadMinG - minVisibleGallery > stripDesyncTol || maxVisibleGallery - loadMaxG > stripDesyncTol)) {
         stripMin = Math.min(stripMin, Math.max(0, loadMinG - indexPad));
         stripMax = Math.max(stripMax, Math.min(effectiveMaxGalleryIndex, loadMaxG + indexPad));
     }
@@ -6779,16 +6787,22 @@ window.wsClient.registerInitStep(30, 'Initializing Gallery System', async () => 
                 fastScrollTimeout = null;
             }
             setGalleryScrollShield(false);
-            // Process any queued placeholder cleanup when scrolling stops
-            if (placeholderCleanupQueue.size > 0) {
-                processPlaceholderCleanup();
-            }
-            // One catch-up pass replaces all layout/DOM work formerly repeated while moving.
-            handleInfiniteScroll();
-            if (placeholderResolutionQueue.length > 0) {
-                processNextPlaceholders();
-            }
-            sendGalleryPositionHint();
+            // The stop pass runs at the next frame, and the virtual-scroll pass it requests
+            // (updateVirtualScroll) one frame later, so each frame carries one forced layout:
+            // run from the timer, both landed in the same frame (52-70 ms at every stop).
+            requestAnimationFrame(() => {
+                if (isScrolling) return;
+                // Process any queued placeholder cleanup when scrolling stops
+                if (placeholderCleanupQueue.size > 0) {
+                    processPlaceholderCleanup();
+                }
+                // One catch-up pass replaces all layout/DOM work formerly repeated while moving.
+                handleInfiniteScroll();
+                if (placeholderResolutionQueue.length > 0) {
+                    processNextPlaceholders();
+                }
+                sendGalleryPositionHint();
+            });
         }, scrollEndDelay);
     }
 
