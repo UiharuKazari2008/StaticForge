@@ -427,7 +427,7 @@ async function tryServeGalleryFastPaginatedPage(handlers, ws, requestId, {
 
     const gallery = [];
     for (const item of paginatedItems) {
-        const { base, original, upscaled, mtime, width, height, size } = item;
+        const { base, original, upscaled, mtime, width, height, size, blurhash } = item;
         const file = upscaled || original;
         if (!file) {
             continue;
@@ -442,6 +442,9 @@ async function tryServeGalleryFastPaginatedPage(handlers, ws, requestId, {
             upscaled,
             filename: file,
             preview: getPreviewFilename(base),
+            // Placeholders paint this until the preview loads (galleryView.js scheduleGalleryItemBlurhash);
+            // listWorkspaceGalleryItemsPaginated selects it, this row used to drop it
+            blurhash: blurhash || null,
             mtime: mtime || Date.now(),
             width: itemWidth,
             height: itemHeight,

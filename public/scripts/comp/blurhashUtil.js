@@ -89,6 +89,16 @@
         }
         const bytesPerRow = width * 4;
         const pixels = new Uint8ClampedArray(bytesPerRow * height);
+        // Same cosines as computing them per pixel, looked up instead (the per-pixel Math.cos
+        // calls were most of the decode: gallery placeholders paint while scrolling)
+        const cosX = new Float64Array(width * numX);
+        for (let x = 0; x < width; x++) {
+            for (let i = 0; i < numX; i++) cosX[x * numX + i] = Math.cos((Math.PI * x * i) / width);
+        }
+        const cosY = new Float64Array(height * numY);
+        for (let y = 0; y < height; y++) {
+            for (let j = 0; j < numY; j++) cosY[y * numY + j] = Math.cos((Math.PI * y * j) / height);
+        }
         for (let y = 0; y < height; y++) {
             for (let x = 0; x < width; x++) {
                 let r = 0;
@@ -96,7 +106,7 @@
                 let b = 0;
                 for (let j = 0; j < numY; j++) {
                     for (let i = 0; i < numX; i++) {
-                        const basis = Math.cos((Math.PI * x * i) / width) * Math.cos((Math.PI * y * j) / height);
+                        const basis = cosX[x * numX + i] * cosY[y * numY + j];
                         const color = colors[i + j * numX];
                         r += color[0] * basis;
                         g += color[1] * basis;
@@ -115,6 +125,39 @@
 
     const dataUrlCache = new Map();
 
+    /**
+     * RGBA pixels -> uncompressed 32-bit BMP data URL. A canvas + toDataURL('image/png') cost
+     * ~1.6-2.2 ms per hash (PNG encode and readback); this is plain JS. Same pixels either way.
+     */
+    function pixelsToBmpDataUrl(pixels, width, height) {
+        const rowBytes = width * 4;
+        const size = 54 + rowBytes * height;
+        const bytes = new Uint8Array(size);
+        const view = new DataView(bytes.buffer);
+        bytes[0] = 0x42; // 'B'
+        bytes[1] = 0x4d; // 'M'
+        view.setUint32(2, size, true);
+        view.setUint32(10, 54, true);
+        view.setUint32(14, 40, true);
+        view.setInt32(18, width, true);
+        view.setInt32(22, -height, true); // top-down rows
+        view.setUint16(26, 1, true);
+        view.setUint16(28, 32, true);
+        view.setUint32(34, rowBytes * height, true);
+        for (let i = 0, o = 54; i < width * height; i++, o += 4) {
+            const p = i * 4;
+            bytes[o] = pixels[p + 2];
+            bytes[o + 1] = pixels[p + 1];
+            bytes[o + 2] = pixels[p];
+            bytes[o + 3] = 255;
+        }
+        let binary = '';
+        for (let i = 0; i < bytes.length; i += 8192) {
+            binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+        }
+        return 'data:image/bmp;base64,' + btoa(binary);
+    }
+
     function blurhashToDataUrl(blurhash, width, height, punch) {
         if (!blurhash) return null;
         const w = width || 32;
@@ -122,15 +165,7 @@
         const key = `${blurhash}|${w}x${h}|${punch || 1}`;
         if (dataUrlCache.has(key)) return dataUrlCache.get(key);
         try {
-            const pixels = blurhashDecode(blurhash, w, h, punch);
-            const canvas = document.createElement('canvas');
-            canvas.width = w;
-            canvas.height = h;
-            const ctx = canvas.getContext('2d');
-            const imageData = ctx.createImageData(w, h);
-            imageData.data.set(pixels);
-            ctx.putImageData(imageData, 0, 0);
-            const url = canvas.toDataURL('image/png');
+            const url = pixelsToBmpDataUrl(blurhashDecode(blurhash, w, h, punch), w, h);
             if (dataUrlCache.size > 400) dataUrlCache.clear();
             dataUrlCache.set(key, url);
             return url;
