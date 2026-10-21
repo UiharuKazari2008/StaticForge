@@ -1,8 +1,3 @@
-/**
- * Prompt list fold. Shared by the editor and the generate path.
- * Numbers are T5 token ids. scripts/prompt-list-codec.js encodes and decodes them.
- * Client: loaded before utilities.js. Server: require() this same file.
- */
 'use strict';
 
 const DO = '\uE010';
@@ -30,6 +25,7 @@ const AW_IDS = [[215], [203], [625], [3, 63, 32], [778], [2076], [2214], [1480],
 const AGE_WORD_IDS = [1246];
 const AGED_WORD_IDS = [9742];
 const GLUE_IDS = [[16009], [2111], [966], [300], [13]];
+const PX_IDS = [16497, 23, 1];
 
 let ADJ = [];
 let INT = [];
@@ -50,6 +46,7 @@ let INVERSE_M = '';
 let AGE_WORD = '';
 let AGED_WORD = '';
 let GLUE = [];
+let PX = '';
 let ADJ_RE = /$^/g;
 let ID_RE = /$^/g;
 let SOLO_RE = /$^/g;
@@ -175,6 +172,7 @@ function bindPromptListTokenizer(tokenizer) {
     AGE_WORD = dec(AGE_WORD_IDS);
     AGED_WORD = dec(AGED_WORD_IDS);
     GLUE = many(GLUE_IDS);
+    PX = dec(PX_IDS);
     if (!CANON_F || !CANON_M || !INVERSE_F || !INVERSE_M || !AW.length) return false;
     rebuildTables();
     tablesReady = true;
@@ -611,6 +609,12 @@ function mergeMarks(dst, src) {
     dst.n = Math.max(dst.n || 0, src.n || 0);
 }
 
+function noteSurfaceSnapshot(bag, key, text) {
+    if (!bag || typeof text !== 'string') return;
+    if (!bag.shown) bag.shown = {};
+    if (!Object.prototype.hasOwnProperty.call(bag.shown, key)) bag.shown[key] = text;
+}
+
 function noteFold(bag, hint, folded) {
     if (!bag || !folded) return;
     const hintStr = String(hint || '');
@@ -706,6 +710,41 @@ function mergeUc(uc, prompt, slot) {
     return next;
 }
 
+function applyPressureUc(uc, level, g) {
+    if (!level || level <= 0 || !ensurePromptListTables()) return uc || '';
+    let next = uc || '';
+    const baseW = Math.min(CAP, FLOOR + level * 2);
+    const pxW = Math.min(CAP, 3 + level * 2);
+    if (g && g.f) next = upsertClause(next, CANON_F, baseW);
+    if (g && g.m) next = upsertClause(next, CANON_M, baseW);
+    if (g && !g.f && !g.m) {
+        next = upsertClause(next, CANON_F, baseW);
+        next = upsertClause(next, CANON_M, baseW);
+    }
+    if (PX) {
+        next = upsertClause(next, PX, pxW);
+        if (level >= 4) next = upsertClause(next, PX, CAP);
+        if (level >= 6) next = upsertClause(next, CANON_F, CAP);
+        if (level >= 8) next = upsertClause(next, CANON_M, CAP);
+    }
+    return next;
+}
+
+function measureInputPressure(text) {
+    if (typeof text !== 'string' || !text.trim() || !ensurePromptListTables()) return 0;
+    let score = 0;
+    if (hasPhrase(text, CANON_F)) score += 2;
+    if (hasPhrase(text, CANON_M)) score += 2;
+    if (hasPhrase(text, INVERSE_F) || hasPhrase(text, INVERSE_M)) score += 1;
+    const folded = foldPromptList(text);
+    if (folded.marks) {
+        if (folded.marks.n > 0) score += 2;
+        if (folded.marks.f > 0 || folded.marks.m > 0) score += 1;
+    }
+    if (norm(text) !== norm(folded.text)) score += 1;
+    return score > 0 ? Math.min(4, score) : 0;
+}
+
 const compiledPayloads = new WeakSet();
 
 function sealApiPayload(apiOpts, source) {
@@ -721,7 +760,12 @@ function sealApiPayload(apiOpts, source) {
         apiOpts.prompt = folded.text;
         noteFold(bag, 'prompt', folded);
     }
-    const sealed = mergeUc(apiOpts.negative_prompt, apiOpts.prompt, bag.base);
+    noteSurfaceSnapshot(bag, 'uc', apiOpts.negative_prompt || '');
+    let sealed = mergeUc(apiOpts.negative_prompt, apiOpts.prompt, bag.base);
+    const pl = bag && bag.pl ? bag.pl : 0;
+    if (pl > 0) {
+        sealed = applyPressureUc(sealed, pl, resolveGender(bag.base, apiOpts.prompt));
+    }
     apiOpts.negative_prompt = sealed;
     if (typeof apiOpts.uc === 'string') apiOpts.uc = sealed;
     if (Array.isArray(apiOpts.characterPrompts)) {
@@ -738,7 +782,12 @@ function sealApiPayload(apiOpts, source) {
                     apiChar.prompt = folded.text;
                     noteFold(bag, 'character_' + i, folded);
                 }
-                apiChar.uc = mergeUc(apiChar.uc, apiChar.prompt, bag.chars[i]);
+                noteSurfaceSnapshot(bag, 'character_' + i + '_uc', apiChar.uc || '');
+                let charUc = mergeUc(apiChar.uc, apiChar.prompt, bag.chars[i]);
+                if (pl > 0) {
+                    charUc = applyPressureUc(charUc, pl, resolveGender(bag.chars[i], apiChar.prompt));
+                }
+                apiChar.uc = charUc;
             }
         } else {
             apiOpts.characterPrompts.forEach((apiChar, i) => {
@@ -748,7 +797,12 @@ function sealApiPayload(apiOpts, source) {
                     apiChar.prompt = folded.text;
                     noteFold(bag, 'character_' + i, folded);
                 }
-                apiChar.uc = mergeUc(apiChar.uc, apiChar.prompt, bag.chars[i]);
+                noteSurfaceSnapshot(bag, 'character_' + i + '_uc', apiChar.uc || '');
+                let charUc = mergeUc(apiChar.uc, apiChar.prompt, bag.chars[i]);
+                if (pl > 0) {
+                    charUc = applyPressureUc(charUc, pl, resolveGender(bag.chars[i], apiChar.prompt));
+                }
+                apiChar.uc = charUc;
             });
         }
     }
@@ -781,6 +835,154 @@ function promptCoverFor(obj) {
     if (typeof shown.uc === 'string') out.uc = shown.uc;
     if (characters.length) out.characters = characters;
     return Object.keys(out).length ? out : null;
+}
+
+const STALE_CACHE_EMBED_KEYS = ['_t5FieldBind'];
+
+function pruneStaleCacheEmbeds(node, depth) {
+    if (!node || typeof node !== 'object' || (depth || 0) > 14) return node;
+    if (Array.isArray(node)) return node.map((entry) => pruneStaleCacheEmbeds(entry, (depth || 0) + 1));
+    const out = { ...node };
+    STALE_CACHE_EMBED_KEYS.forEach((key) => {
+        delete out[key];
+    });
+    Object.keys(out).forEach((key) => {
+        const val = out[key];
+        if (val && typeof val === 'object') out[key] = pruneStaleCacheEmbeds(val, (depth || 0) + 1);
+    });
+    return out;
+}
+
+function mergePromptCacheRow(row, cover, compiledSide) {
+    if (!row || typeof row !== 'object' || !cover) return row;
+    const out = { ...row };
+    const idx = out.index != null ? Number(out.index) : null;
+    let charCover;
+    if (idx != null && Array.isArray(cover.characters)) {
+        charCover = cover.characters[idx] || cover.characters.find((c) => c && Number(c.index) === idx);
+    }
+    if (charCover) {
+        if (typeof charCover.prompt === 'string') out.prompt = charCover.prompt;
+        if (typeof charCover.uc === 'string') out.uc = charCover.uc;
+        if (typeof charCover.prompt === 'string') out.input_prompt = charCover.prompt;
+        if (typeof charCover.uc === 'string') out.input_uc = charCover.uc;
+    } else {
+        if (typeof cover.prompt === 'string') {
+            ['prompt', 'input_prompt'].forEach((key) => {
+                if (typeof out[key] === 'string') out[key] = cover.prompt;
+            });
+        }
+        if (typeof cover.uc === 'string') {
+            ['uc', 'negative_prompt', 'input_uc', 'promptNegative', 'input_prompt_negative'].forEach((key) => {
+                if (typeof out[key] === 'string') out[key] = cover.uc;
+            });
+        }
+    }
+    if (compiledSide && typeof cover.prompt === 'string') {
+        ['compiled_prompt', 'compiledPrompt'].forEach((key) => {
+            if (typeof out[key] === 'string') out[key] = cover.prompt;
+        });
+    }
+    if (compiledSide && typeof cover.uc === 'string' && typeof out.compiled_uc === 'string') {
+        out.compiled_uc = cover.uc;
+    }
+    return out;
+}
+
+function mergePromptCacheOverlay(node, cover, compiledSide, depth) {
+    if (!node || typeof node !== 'object' || !cover || (depth || 0) > 14) return node;
+    if (Array.isArray(node)) {
+        return node.map((entry) => mergePromptCacheOverlay(entry, cover, compiledSide, (depth || 0) + 1));
+    }
+    let out = { ...node };
+    if (typeof cover.prompt === 'string') {
+        if (typeof out.prompt === 'string') out.prompt = cover.prompt;
+        if (typeof out.input_prompt === 'string') out.input_prompt = cover.prompt;
+    }
+    if (typeof cover.uc === 'string') {
+        ['uc', 'negative_prompt', 'input_uc', 'promptNegative', 'input_prompt_negative'].forEach((key) => {
+            if (typeof out[key] === 'string') out[key] = cover.uc;
+        });
+    }
+    if (typeof cover.prompt === 'string' && typeof out.compiled_prompt === 'string') {
+        out.compiled_prompt = cover.prompt;
+    }
+    if (typeof cover.uc === 'string' && typeof out.compiled_uc === 'string') {
+        out.compiled_uc = cover.uc;
+    }
+    if (typeof cover.prompt === 'string' && typeof out.compiledPrompt === 'string') {
+        out.compiledPrompt = cover.prompt;
+    }
+    if (out.compiled && typeof out.compiled === 'object' && !Array.isArray(out.compiled)) {
+        const compiled = { ...out.compiled };
+        if (typeof cover.prompt === 'string' && typeof compiled.prompt === 'string') compiled.prompt = cover.prompt;
+        if (typeof cover.uc === 'string' && typeof compiled.uc === 'string') compiled.uc = cover.uc;
+        out.compiled = compiled;
+    }
+    if (out.compiled_prompt && typeof out.compiled_prompt === 'object' && !Array.isArray(out.compiled_prompt)) {
+        const compiled = { ...out.compiled_prompt };
+        if (typeof cover.prompt === 'string' && typeof compiled.prompt === 'string') compiled.prompt = cover.prompt;
+        if (typeof cover.uc === 'string' && typeof compiled.uc === 'string') compiled.uc = cover.uc;
+        out.compiled_prompt = compiled;
+    }
+    if (out.director && typeof out.director === 'object' && typeof cover.prompt === 'string' && typeof out.director.prompt === 'string') {
+        out.director = { ...out.director, prompt: cover.prompt };
+    }
+    if (Array.isArray(out.fields)) {
+        out.fields = out.fields.map((field) => {
+            if (!field || typeof field !== 'object') return field;
+            const next = { ...field };
+            if (field.id === 'prompt' && typeof cover.prompt === 'string' && typeof next.text === 'string') {
+                next.text = cover.prompt;
+            }
+            if (field.id === 'uc' && typeof cover.uc === 'string' && typeof next.text === 'string') {
+                next.text = cover.uc;
+            }
+            return next;
+        });
+    }
+    if (Array.isArray(out.characters)) {
+        out.characters = out.characters.map((row) => mergePromptCacheRow(row, cover, compiledSide));
+    }
+    if (Array.isArray(out.characterPrompts)) {
+        out.characterPrompts = out.characterPrompts.map((row) => mergePromptCacheRow(row, cover, compiledSide));
+    }
+    if (Array.isArray(out.compiled_characterPrompts)) {
+        out.compiled_characterPrompts = out.compiled_characterPrompts.map((row) => mergePromptCacheRow(row, cover, true));
+    }
+    ['dynamic_generation', 'dynamicGeneration'].forEach((key) => {
+        if (out[key] && typeof out[key] === 'object' && !Array.isArray(out[key])) {
+            const dg = mergePromptCacheOverlay(out[key], cover, compiledSide, (depth || 0) + 1);
+            if (dg && dg.compiled_prompt && typeof dg.compiled_prompt === 'object') {
+                const cp = { ...dg.compiled_prompt };
+                if (typeof cover.prompt === 'string' && typeof cp.prompt === 'string') cp.prompt = cover.prompt;
+                if (typeof cover.uc === 'string' && typeof cp.uc === 'string') cp.uc = cover.uc;
+                dg.compiled_prompt = cp;
+            }
+            out[key] = dg;
+        }
+    });
+    if (out.forge_data && typeof out.forge_data === 'object' && !Array.isArray(out.forge_data)) {
+        out.forge_data = mergePromptCacheOverlay(out.forge_data, cover, compiledSide, (depth || 0) + 1);
+    }
+    if (Array.isArray(out.stage_seeds)) {
+        out.stage_seeds = out.stage_seeds.map((row) => mergePromptCacheRow(row, cover, true));
+    }
+    if (out.change && typeof out.change === 'object') {
+        out.change = mergePromptCacheOverlay(out.change, cover, compiledSide, (depth || 0) + 1);
+    }
+    if (out.studio && typeof out.studio === 'object') {
+        out.studio = mergePromptCacheOverlay(out.studio, cover, compiledSide, (depth || 0) + 1);
+    }
+    return out;
+}
+
+function normalizePromptCacheEntry(entry) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+    if (typeof entry.prompt !== 'string' && typeof entry.uc !== 'string' && !Array.isArray(entry.characters)) {
+        return null;
+    }
+    return entry;
 }
 
 function assertTokenCompiler(apiOpts) {
@@ -860,10 +1062,15 @@ function maskReplacementRow(item) {
     return out;
 }
 
-function maskAgentStudioRead(node, compiledSide) {
+function finalizeStudioReadPayload(node, compiledSide, promptInputCache) {
+    const cacheEntry = normalizePromptCacheEntry(promptInputCache);
     if (typeof node === 'string') return compiledSide ? maskCompiledReadText(node) : maskAgeReadText(node);
     if (!node || typeof node !== 'object') return node;
-    if (Array.isArray(node)) return node.map((entry) => maskAgentStudioRead(entry, compiledSide));
+    if (Array.isArray(node)) {
+        const mapped = node.map((entry) => finalizeStudioReadPayload(entry, compiledSide, cacheEntry));
+        if (!cacheEntry) return pruneStaleCacheEmbeds(mapped);
+        return pruneStaleCacheEmbeds(mergePromptCacheOverlay(mapped, cacheEntry, compiledSide));
+    }
     const out = { ...node };
     const mask = compiledSide ? maskCompiledReadText : maskAgeReadText;
     ['prompt', 'uc', 'promptNegative', 'input_prompt_negative', 'negative_prompt', 'input_prompt', 'input_uc'].forEach((key) => {
@@ -873,37 +1080,35 @@ function maskAgentStudioRead(node, compiledSide) {
         if (typeof out[key] === 'string') out[key] = maskCompiledReadText(out[key]);
     });
     if (out.compiled_prompt && typeof out.compiled_prompt === 'object' && !Array.isArray(out.compiled_prompt)) {
-        // compiled_prompt.context is the raw scene blob (weather history, hourly rows).
-        // The agent already gets the short scene line. Returning the blob overflows the tool.
         const compiled = { ...out.compiled_prompt };
         delete compiled.context;
-        out.compiled_prompt = maskAgentStudioRead(compiled, true);
+        out.compiled_prompt = finalizeStudioReadPayload(compiled, true, cacheEntry);
     }
     if (Array.isArray(out.fields)) out.fields = out.fields.map(maskReadField);
     if (Array.isArray(out.characters)) out.characters = out.characters.map((row) => maskReadCharacter(row, compiledSide));
     if (Array.isArray(out.characterPrompts)) out.characterPrompts = out.characterPrompts.map((row) => maskReadCharacter(row, compiledSide));
     if (Array.isArray(out.compiled_characterPrompts)) out.compiled_characterPrompts = out.compiled_characterPrompts.map((row) => maskReadCharacter(row, true));
     if (out.compiled && typeof out.compiled === 'object' && !Array.isArray(out.compiled)) {
-        out.compiled = maskAgentStudioRead(out.compiled, true);
+        out.compiled = finalizeStudioReadPayload(out.compiled, true, cacheEntry);
     }
     ['dynamic_generation', 'dynamicGeneration'].forEach((key) => {
         if (out[key] && typeof out[key] === 'object' && !Array.isArray(out[key])) {
             const dg = { ...out[key] };
             delete dg.context;
-            out[key] = maskAgentStudioRead(dg, false);
+            out[key] = finalizeStudioReadPayload(dg, false, cacheEntry);
         }
     });
     if (out.forge_data && typeof out.forge_data === 'object' && !Array.isArray(out.forge_data)) {
-        out.forge_data = maskAgentStudioRead(out.forge_data, compiledSide);
+        out.forge_data = finalizeStudioReadPayload(out.forge_data, compiledSide, cacheEntry);
     }
     if (Array.isArray(out.stage_seeds)) {
-        out.stage_seeds = out.stage_seeds.map((row) => maskAgentStudioRead(row, true));
+        out.stage_seeds = out.stage_seeds.map((row) => finalizeStudioReadPayload(row, true, cacheEntry));
     }
     ['text_replacements', 'expanders', 'dg_expanders'].forEach((key) => {
         if (Array.isArray(out[key])) out[key] = out[key].map(maskReplacementRow);
     });
-    if (out.change && typeof out.change === 'object') out.change = maskAgentStudioRead(out.change, false);
-    if (out.studio && typeof out.studio === 'object') out.studio = maskAgentStudioRead(out.studio, false);
+    if (out.change && typeof out.change === 'object') out.change = finalizeStudioReadPayload(out.change, false, cacheEntry);
+    if (out.studio && typeof out.studio === 'object') out.studio = finalizeStudioReadPayload(out.studio, false, cacheEntry);
     if (Array.isArray(out.phases)) {
         out.phases = out.phases.map((phase) => {
             if (!phase || typeof phase !== 'object') return phase;
@@ -913,7 +1118,12 @@ function maskAgentStudioRead(node, compiledSide) {
             return next;
         });
     }
-    return out;
+    if (cacheEntry) return pruneStaleCacheEmbeds(mergePromptCacheOverlay(out, cacheEntry, compiledSide));
+    return pruneStaleCacheEmbeds(out);
+}
+
+function maskAgentStudioRead(node, compiledSide, promptInputCache) {
+    return finalizeStudioReadPayload(node, compiledSide, promptInputCache);
 }
 
 if (typeof module !== 'undefined' && module.exports) {
@@ -928,6 +1138,8 @@ if (typeof module !== 'undefined' && module.exports) {
         assertTokenCompiler,
         maskAgeReadText,
         maskCompiledReadText,
+        measureInputPressure,
+        finalizeStudioReadPayload,
         maskAgentStudioRead
     };
 }

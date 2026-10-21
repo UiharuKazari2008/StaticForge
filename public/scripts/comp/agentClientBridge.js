@@ -797,7 +797,8 @@
             stepCount,
             change: readStudioChangeSnapshot()
         };
-        return typeof maskAgentStudioRead === 'function' ? maskAgentStudioRead(opened) : opened;
+        const prep = typeof finalizeStudioReadPayload === 'function' ? finalizeStudioReadPayload : maskAgentStudioRead;
+        return typeof prep === 'function' ? prep(opened) : opened;
     }
 
     function phasewalkerSnapshot() {
@@ -907,11 +908,13 @@
             change: readStudioChangeSnapshot()
         };
         if (!data || data.autoGenerate !== true) {
-            return typeof maskAgentStudioRead === 'function' ? maskAgentStudioRead(result) : result;
+            const prep = typeof finalizeStudioReadPayload === 'function' ? finalizeStudioReadPayload : maskAgentStudioRead;
+            return typeof prep === 'function' ? prep(result) : result;
         }
         const gen = fireBoundTabGenerate({ n: 1 });
         const generated = { ...result, autoGenerate: true, ...gen };
-        return typeof maskAgentStudioRead === 'function' ? maskAgentStudioRead(generated) : generated;
+        const prep = typeof finalizeStudioReadPayload === 'function' ? finalizeStudioReadPayload : maskAgentStudioRead;
+        return typeof prep === 'function' ? prep(generated) : generated;
     }
 
     async function applyStudioFromCommand(data) {
@@ -1158,7 +1161,8 @@
                 ...current
             };
         }
-        if (typeof maskAgentStudioRead === 'function') body = maskAgentStudioRead(body);
+        const prep = typeof finalizeStudioReadPayload === 'function' ? finalizeStudioReadPayload : maskAgentStudioRead;
+        if (typeof prep === 'function') body = prep(body);
         body.desktopState = computeDesktopState();
         replyAgentSessionResult(requestId, body);
     }

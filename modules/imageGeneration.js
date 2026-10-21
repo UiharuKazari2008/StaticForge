@@ -4388,6 +4388,11 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             if (body.upscale) baseOptions.upscale = baseOptions.localUpscaleScale;
         }
 
+        if (body._pl != null) {
+            const n = Number(body._pl);
+            if (Number.isFinite(n) && n > 0) foldBag.pl = Math.min(15, Math.floor(n));
+            delete body._pl;
+        }
         rememberPromptFold(baseOptions, foldBag);
         return baseOptions;
     } catch (error) {

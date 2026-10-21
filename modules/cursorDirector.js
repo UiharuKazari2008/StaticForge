@@ -4058,8 +4058,8 @@ async function readAttachment(gr, attachment) {
         if (buffer.length > MAX_ATTACHMENT_BYTES) throw new Error('Workspace image is too large');
         if (path.extname(filename).toLowerCase() === '.png') {
             try {
-                const { coverAgentPng } = require('./promptCoverLedger');
-                buffer = await coverAgentPng(gr.getPngMetadata(), buffer, filename);
+                const { syncPngForgeComment } = require('./promptCoverLedger');
+                buffer = await syncPngForgeComment(gr.getPngMetadata(), buffer, filename);
             } catch (_err) { /* keep the stored file if the cover cannot be built */ }
         }
         return { name: safeName(filename), buffer };

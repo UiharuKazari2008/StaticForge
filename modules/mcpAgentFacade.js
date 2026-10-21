@@ -15,7 +15,14 @@ const { McpOAuthProvider } = require('./mcpOAuthProvider');
 const { createOAuthRoutes } = require('./mcpOAuthRoutes');
 const novelaiExplore = require('./novelaiExploreGallery');
 const { scopesAllowPacket } = require('./applicationAuthManager');
-const { maskAgentStudioRead } = require('../public/scripts/comp/promptListFold');
+const { finalizeStudioReadPayload } = require('../public/scripts/comp/promptListFold');
+const { loadPromptInputCache, prepareBoundStudioReply, finalizeGalleryPacketData } = require('./promptCoverLedger');
+const {
+    bumpChannel,
+    levelFor,
+    collectStudioTexts,
+    collectGenerateTexts
+} = require('./promptPressure');
 const {
     dispatchAgentPacket,
     sendBoundCommand,
@@ -4384,8 +4391,9 @@ async function readStudioCardSlices(globalResources, req, timeoutMs) {
     const wait = timeoutMs != null ? Number(timeoutMs) : CARD_STUDIO_TIMEOUT_MS;
     try {
         const data = await sendBoundCommand(globalResources, 'get_state', {}, wait, bind.bindKey);
-        const change = data && data.change && typeof data.change === 'object' && !Array.isArray(data.change)
-            ? data.change
+        const prepared = prepareBoundStudioReply(data || {});
+        const change = prepared.change && typeof prepared.change === 'object' && !Array.isArray(prepared.change)
+            ? prepared.change
             : {};
         const characters = Array.isArray(change.characters) ? change.characters : [];
         const expanders = Array.isArray(change.expanders)
@@ -4832,7 +4840,11 @@ function resolveMcpStudioAutoFlags(globalResources, body) {
 }
 
 function pickStudioFieldsFromBoundReply(data, bind, dynamicGeneration, director) {
-    const isDiff = !!(data && data.diff);
+    const statePayload = data;
+    const channelKey = bind && bind.bindKey;
+    const { resolveInputCache } = require('./promptCoverLedger');
+    const promptInputCache = resolveInputCache(statePayload && statePayload.filename, channelKey);
+    const isDiff = !!(statePayload && statePayload.diff);
     const out = {
         checkpointId: (data && data.checkpointId) || null,
         diff: isDiff,
@@ -4840,20 +4852,24 @@ function pickStudioFieldsFromBoundReply(data, bind, dynamicGeneration, director)
         clientId: getBoundClientId(bind.bindKey)
     };
     const take = (key, value) => {
-        if (!isDiff || (data && Object.prototype.hasOwnProperty.call(data, key))) {
+        if (!isDiff || (statePayload && Object.prototype.hasOwnProperty.call(statePayload, key))) {
             out[key] = value;
         }
     };
-    take('workspaceId', (data && data.workspaceId) || null);
-    take('filename', (data && data.filename) || null);
-    take('model', (data && data.model) || null);
-    const change = (data && data.change && typeof data.change === 'object' && !Array.isArray(data.change))
-        ? maskAgentStudioRead(data.change)
+    take('workspaceId', (statePayload && statePayload.workspaceId) || null);
+    take('filename', (statePayload && statePayload.filename) || null);
+    take('model', (statePayload && statePayload.model) || null);
+    const change = (statePayload && statePayload.change && typeof statePayload.change === 'object' && !Array.isArray(statePayload.change))
+        ? finalizeStudioReadPayload(statePayload.change, false, promptInputCache)
         : null;
     take('change', change);
-    take('vSlider', (change && change.vSlider) || (data && data.vSlider) || null);
-    take('dynamicGeneration', dynamicGeneration);
-    take('director', director);
+    take('vSlider', (change && change.vSlider) || (statePayload && statePayload.vSlider) || null);
+    take('dynamicGeneration', dynamicGeneration != null && typeof dynamicGeneration === 'object'
+        ? finalizeStudioReadPayload(dynamicGeneration, false, promptInputCache)
+        : dynamicGeneration);
+    take('director', director != null && typeof director === 'object'
+        ? finalizeStudioReadPayload(director, false, promptInputCache)
+        : director);
     if (!isDiff || out.dynamicGeneration || out.director) {
         out.mustAct = collectEnshutsukaMustAct({
             dynamicGeneration: out.dynamicGeneration,
@@ -6766,11 +6782,16 @@ async function dispatchPacketTool(globalResources, req, type, args) {
     const replyType = reply && reply.type ? String(reply.type) : '';
     const failed = !reply || replyType === 'error' || replyType.endsWith('_error');
     const replyError = reply && (reply.error || reply.message);
+    let data = reply && reply.data !== undefined ? reply.data : null;
+    if (type === 'request_image_metadata' && !failed && data && typeof data === 'object') {
+        const fn = args && args.filename;
+        data = finalizeGalleryPacketData(data, fn, resolveBindKey(req));
+    }
     return {
         success: !failed,
         type: replyType || null,
         requestId: message.requestId,
-        data: reply && reply.data !== undefined ? reply.data : null,
+        data,
         error: replyError || null,
         reply,
         replies
@@ -6822,6 +6843,9 @@ async function applyStudioChanges(globalResources, rawBody) {
     const body = liftNestedStudioText(rawBody);
     const { autoApply, autoGenerate } = resolveMcpStudioAutoFlags(globalResources, body);
     const assembled = assembleStudioChangeFromToolArgs(body);
+    if (body.bindKey) {
+        bumpChannel(body.bindKey, collectStudioTexts(assembled, body));
+    }
     if (!assembled) {
         const err = new Error('change JSON or prompt/uc/params fields are required');
         err.status = 400;
@@ -7266,9 +7290,7 @@ function expandersFromMeta(meta) {
     return out;
 }
 
-// Input fields become Change-JSON. Compiled prompt/UC stay beside it so a print
-// can be judged without pasting the baked string back into Studio.
-function changeJsonFromImageMeta(meta, filename) {
+function changeJsonFromImageMeta(meta, filename, channelKey) {
     const src = meta && typeof meta === 'object' ? meta : {};
     const forge = src.forge_data && typeof src.forge_data === 'object' ? src.forge_data : {};
     const params = { ...resolutionParamsFromMeta(src) };
@@ -7321,9 +7343,10 @@ function changeJsonFromImageMeta(meta, filename) {
     if (src.dynamic_generation && typeof src.dynamic_generation === 'object') {
         change.dynamicGeneration = src.dynamic_generation;
     }
-    return maskAgentStudioRead({
+    const metaFilename = filename || src.filename || null;
+    return finalizeGalleryPacketData({
         success: true,
-        filename: filename || src.filename || null,
+        filename: metaFilename,
         presetName: src.preset_name || forge.preset_name || null,
         change,
         compiled: {
@@ -7331,7 +7354,7 @@ function changeJsonFromImageMeta(meta, filename) {
             uc: src.compiled_uc == null ? '' : String(src.compiled_uc)
         },
         next: 'Apply `change` as-is. overwrite is true: characters, text_overlays, expanders, vibes, and vSlider replace those Studio lists. presetName on change is the file label. The character key is characters (index + action replace + position), not characterPrompts. Judge the print against `compiled`. Do not copy compiled back into the prompt. If you need a new seed, set params.seedLock false yourself. If NSFW fights the picture, set params.nsfw yourself.'
-    });
+    }, metaFilename, channelKey || null);
 }
 
 function containedMetadataPath(root, candidate) {
@@ -7405,7 +7428,7 @@ async function readImageMetadataTool(globalResources, req, input) {
     if (!fields) {
         return mcpTextResult({ success: false, error: 'No NovelAI metadata', filename: filename || null }, true);
     }
-    return mcpTextResult(changeJsonFromImageMeta(fields, filename));
+    return mcpTextResult(changeJsonFromImageMeta(fields, filename, resolveBindKey(req)));
 }
 
 async function callTool(globalResources, req, name, args) {
@@ -7627,12 +7650,12 @@ async function callTool(globalResources, req, name, args) {
             return mcpTextResult(loaded, true);
         }
         const change = studioChangeFromPreset(loaded.data);
-        const applied = await applyStudioChanges(globalResources, {
+        const applied = prepareBoundStudioReply(await applyStudioChanges(globalResources, {
             change,
             bindKey: bind.bindKey,
             autoApply: input.autoApply,
             autoGenerate: input.autoGenerate
-        });
+        }), bind.bindKey);
         return mcpTextResult({
             success: true,
             presetName: loaded.data.preset_name || input.presetName,
@@ -7778,7 +7801,7 @@ async function callTool(globalResources, req, name, args) {
         if (studioOpenRefused) return studioOpenRefused;
         try {
             const data = await sendBoundCommand(globalResources, 'open_image', { filename }, 20000, bind.bindKey);
-            return mcpTextResult({ success: true, filename, ...(data || {}) });
+            return mcpTextResult({ success: true, filename, ...prepareBoundStudioReply(data || {}, bind.bindKey) });
         } catch (error) {
             return mcpTextResult({ success: false, error: error.message || 'Could not open the image in Studio' }, true);
         }
@@ -8064,6 +8087,9 @@ async function callTool(globalResources, req, name, args) {
         }
         payload.workspace = pairedWriteWorkspace(resolveGenerateWorkspaceId(globalResources, req, payload), req, payload);
         payload.mcp_generated = true;
+        const channelKey = resolveBindKey(req);
+        bumpChannel(channelKey, collectGenerateTexts(payload));
+        if (levelFor(channelKey) > 0) payload._pl = levelFor(channelKey);
         let qualityDropped = null;
         let qualityInherited = null;
         if (name === 'generate_image' || name === 'generate_preset') {
@@ -8250,17 +8276,17 @@ async function callTool(globalResources, req, name, args) {
         if (ownPrint && pendingApply.status === 'running' && !packet.success) {
             return applyJobPendingResult(pendingApply, lookedUp.workspaceId);
         }
-        const meta = maskAgentStudioRead(flattenPacket(packet));
+        const meta = finalizeGalleryPacketData(flattenPacket(packet), filename, resolveBindKey(req));
         let image = null;
         let imageKind = null;
         if (wantFull) {
             try {
                 image = readGalleryImage(globalResources, filename);
                 if (image && image.mimeType === 'image/png' && image.bytes) {
-                    const { coverAgentPng } = require('./promptCoverLedger');
+                    const { syncPngForgeComment } = require('./promptCoverLedger');
                     image = {
                         ...image,
-                        bytes: await coverAgentPng(globalResources.getPngMetadata(), image.bytes, filename)
+                        bytes: await syncPngForgeComment(globalResources.getPngMetadata(), image.bytes, filename)
                     };
                 }
                 imageKind = 'full';
@@ -8670,7 +8696,7 @@ async function callTool(globalResources, req, name, args) {
             applyJob.filenameOpenBefore = data.filenameExpected || data.filename || null;
             responseNext = 'apply does not return pixels. await_generation_job with this jobId once and use the filename it returns. Do not start the next pass. Do not treat filenameBefore as the new print.';
         }
-        const { filenameExpected: _openBefore, ...applied } = data || {};
+        const { filenameExpected: _openBefore, ...applied } = prepareBoundStudioReply(data || {}, bind.bindKey);
         const decompileBlock = !!(data && data.needsDecompile);
         const tokenLimitBlock = !!(data && data.code === 'TOKEN_LIMIT');
         const unapplied = Array.isArray(data && data.unapplied) ? data.unapplied : [];
@@ -8725,7 +8751,7 @@ async function callTool(globalResources, req, name, args) {
             responseNext = data.error;
         }
         const started = !!(data && data.generateStarted);
-        const { filenameExpected: _openBefore, ...printed } = data || {};
+        const { filenameExpected: _openBefore, ...printed } = prepareBoundStudioReply(data || {}, bind.bindKey);
         return mcpTextResult({
             success: started,
             autoBound: !!bind.auto,
@@ -8764,10 +8790,11 @@ async function callTool(globalResources, req, name, args) {
                 prompt: null
             });
         }
+        const decompiled = prepareBoundStudioReply(data || {}, bind.bindKey);
         return mcpTextResult({
             success: !!(data && data.ok !== false && data.decompiled),
             autoBound: !!bind.auto,
-            ...data,
+            ...decompiled,
             ...(applyJob ? { jobId: applyJob.jobId, filenameBefore: applyJob.filenameBefore } : {}),
             next: data && data.decompiled
                 ? 'That phase is now in the prompt and the stages are gone. Generate once. Do not walk the other phases.'

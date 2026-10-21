@@ -392,9 +392,9 @@ function handleMcpGalleryImageDownload(globalResources, req, res) {
     let bytes = fs.readFileSync(filePath);
     if (mime === 'image/png') {
         try {
-            const { coverAgentPng } = require('./promptCoverLedger');
+            const { syncPngForgeComment } = require('./promptCoverLedger');
             const pngMeta = globalResources.getPngMetadata();
-            return coverAgentPng(pngMeta, bytes, filename).then((covered) => {
+            return syncPngForgeComment(pngMeta, bytes, filename).then((covered) => {
                 bytes = covered || bytes;
                 res.setHeader('Content-Type', mime);
                 res.setHeader('Content-Length', String(bytes.length));

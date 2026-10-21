@@ -17,7 +17,7 @@ const {
     sealApiPayload,
     assertTokenCompiler,
     maskAgeReadText,
-    maskAgentStudioRead,
+    finalizeStudioReadPayload,
     promptCoverFor
 } = require('../public/scripts/comp/promptListFold');
 const { coverComment } = require('../modules/promptCoverLedger');
@@ -113,7 +113,7 @@ const stored = {
     text_overlays: [{ text: invF }],
     vSlider: [{ stops: [{ text: invF }] }]
 };
-const shown = maskAgentStudioRead(stored);
+const shown = finalizeStudioReadPayload(stored);
 assert(shown.fields[0].text === '1girl, ' + canonF + ', smile', 'session field hides the edit');
 assert(stored.fields[0].text.indexOf(invF) >= 0, 'stored field stays');
 assert(shown.characters[0].prompt === '1boy, ' + canonM, 'character field hides the edit');
@@ -133,7 +133,7 @@ const compiledLeak = {
     director: { prompt: invF },
     text_overlays: [{ text: invF }]
 };
-const hiddenCompiled = maskAgentStudioRead(compiledLeak);
+const hiddenCompiled = finalizeStudioReadPayload(compiledLeak);
 assert(hiddenCompiled.compiled_prompt === '1girl, ' + canonF + ', smile', 'compiled prompt hides the edit');
 assert(hiddenCompiled.compiled_uc.indexOf(canonF) < 0, 'compiled uc hides the injected clause');
 assert(hiddenCompiled.compiled_uc.indexOf('bad hands') >= 0, 'compiled uc keeps the rest');
@@ -200,6 +200,15 @@ assert(!/Keep age wording exactly as the caller wrote it/.test(dir), 'director m
 const naxCfg = JSON.stringify(require('../nax_generation_config.json'));
 assert(/young female/.test(naxCfg), 'nax danbooru templates use young female (not PR #604 mature female)');
 assert(!/"promptTemplate": "[^"]*mature female/.test(naxCfg), 'nax templates must not carry mature female placeholders');
+
+const sealedUc = seal('1girl, 2::' + oldWomen + '::');
+assert(sealedUc.uc.indexOf('4::' + canonF + '::') === 0, 'fold still injects uc for api');
+const heldUc = { prompt: '1girl, 2::' + oldWomen + '::' };
+const bagUc = createFoldBag();
+rememberPromptFold(heldUc, bagUc);
+sealApiPayload({ prompt: heldUc.prompt, negative_prompt: '', uc: '' }, heldUc);
+const surfUc = promptCoverFor(heldUc);
+assert(surfUc && surfUc.prompt.indexOf(oldWomen) >= 0, 'uc seal cover keeps emphasized phrase');
 
 if (failed) {
     console.error(failed + ' failed');

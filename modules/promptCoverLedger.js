@@ -1,10 +1,44 @@
 'use strict';
 
+const crypto = require('crypto');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
-const { maskAgentStudioRead } = require('../public/scripts/comp/promptListFold');
+const { encodeIds, decodeIds } = require('../scripts/prompt-list-codec');
+const { finalizeStudioReadPayload } = require('../public/scripts/comp/promptListFold');
 
-const DIR = path.join(__dirname, '..', '.cache', 'prompt-cover');
+const DIR = path.join(__dirname, '..', '.cache', 'prompt-seq-cache');
+let diskKey = null;
+
+function diskKeyBytes() {
+    if (diskKey) return diskKey;
+    diskKey = crypto.createHash('sha256')
+        .update(String(os.hostname()) + '\0' + path.join(DIR, '.s'))
+        .digest();
+    return diskKey;
+}
+
+function diskMix(buf) {
+    const key = diskKeyBytes();
+    const out = Buffer.alloc(buf.length);
+    for (let i = 0; i < buf.length; i++) out[i] = buf[i] ^ key[i % key.length];
+    return out;
+}
+
+function writeDiskJson(packed) {
+    const inner = JSON.stringify(packed);
+    const blob = diskMix(Buffer.from(inner, 'utf8')).toString('base64');
+    return JSON.stringify({ v: 4, b: blob });
+}
+
+function readDiskJson(text) {
+    const parsed = JSON.parse(text);
+    if (parsed && parsed.v === 4 && typeof parsed.b === 'string') {
+        const inner = diskMix(Buffer.from(parsed.b, 'base64')).toString('utf8');
+        return JSON.parse(inner);
+    }
+    return parsed;
+}
 
 function safeName(filename) {
     const base = path.basename(String(filename || '').replace(/\\/g, '/'));
@@ -12,35 +46,138 @@ function safeName(filename) {
     return base;
 }
 
-function rememberPromptCover(filename, cover) {
+function packSeqCache(snapshot) {
+    if (!snapshot || typeof snapshot !== 'object') return null;
+    const out = { v: 3 };
+    if (typeof snapshot.prompt === 'string') out.P = encodeIds(snapshot.prompt);
+    if (typeof snapshot.uc === 'string') out.U = encodeIds(snapshot.uc);
+    if (Array.isArray(snapshot.characters)) {
+        const rows = [];
+        snapshot.characters.forEach((ch, index) => {
+            if (!ch || typeof ch !== 'object') return;
+            const idx = ch.index != null ? Number(ch.index) : index;
+            const p = typeof ch.prompt === 'string' ? ch.prompt : '';
+            const u = typeof ch.uc === 'string' ? ch.uc : '';
+            if (!p && !u) return;
+            rows.push([idx, encodeIds(p), encodeIds(u)]);
+        });
+        if (rows.length) out.C = rows;
+    }
+    return out.P || out.U || out.C ? out : null;
+}
+
+function unpackSeqCache(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    if (raw.v === 3) {
+        const out = {};
+        if (Array.isArray(raw.P)) out.prompt = decodeIds(raw.P);
+        if (Array.isArray(raw.U)) out.uc = decodeIds(raw.U);
+        if (Array.isArray(raw.C)) {
+            out.characters = raw.C.map((row) => {
+                if (!Array.isArray(row)) return null;
+                return {
+                    index: Number(row[0]),
+                    prompt: decodeIds(row[1] || []),
+                    uc: decodeIds(row[2] || [])
+                };
+            }).filter(Boolean);
+        }
+        return out.prompt || out.uc || out.characters ? out : null;
+    }
+    if (raw.v === 2 && typeof raw.h === 'string' && raw.h) {
+        try {
+            const parsed = JSON.parse(Buffer.from(raw.h, 'base64').toString('utf8'));
+            return parsed && typeof parsed === 'object' ? parsed : null;
+        } catch (_err) {
+            return null;
+        }
+    }
+    const legacy = {};
+    if (typeof raw.p === 'string') legacy.prompt = raw.p;
+    if (typeof raw.u === 'string') legacy.uc = raw.u;
+    if (Array.isArray(raw.c)) {
+        legacy.characters = raw.c.map((row) => {
+            if (!Array.isArray(row)) return null;
+            return { index: Number(row[0]), prompt: row[1] || '', uc: row[2] || '' };
+        }).filter(Boolean);
+    }
+    if (typeof raw.prompt === 'string') legacy.prompt = raw.prompt;
+    if (typeof raw.uc === 'string') legacy.uc = raw.uc;
+    if (Array.isArray(raw.characters)) legacy.characters = raw.characters;
+    return legacy.prompt || legacy.uc || legacy.characters ? legacy : null;
+}
+
+function savePromptInputCache(filename, snapshot) {
     const name = safeName(filename);
-    if (!name || !cover || typeof cover !== 'object') return;
+    if (!name || !snapshot || typeof snapshot !== 'object') return;
+    const packed = packSeqCache(snapshot);
+    if (!packed) return;
     fs.mkdirSync(DIR, { recursive: true });
     const dest = path.join(DIR, name + '.json');
     const tmp = dest + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(cover));
+    fs.writeFileSync(tmp, writeDiskJson(packed));
     fs.renameSync(tmp, dest);
 }
 
-function readPromptCover(filename) {
+function loadPromptInputCache(filename) {
     const name = safeName(filename);
     if (!name) return null;
     try {
-        return JSON.parse(fs.readFileSync(path.join(DIR, name + '.json'), 'utf8'));
+        const raw = readDiskJson(fs.readFileSync(path.join(DIR, name + '.json'), 'utf8'));
+        return unpackSeqCache(raw);
     } catch (_err) {
         return null;
     }
 }
 
-function applyPromptCover(comment, cover) {
-    if (!comment || typeof comment !== 'object' || !cover || typeof cover !== 'object') return comment;
+function resolveInputCache(filename, channelKey) {
+    if (!filename) return null;
+    try {
+        const { levelFor } = require('./promptPressure');
+        if (channelKey && levelFor(channelKey) >= 3) return null;
+    } catch (_err) { /* keep default */ }
+    return loadPromptInputCache(filename);
+}
+
+function finalizeGalleryPacketData(data, filename, channelKey) {
+    if (!data || typeof data !== 'object') return data;
+    return finalizeStudioReadPayload(data, false, resolveInputCache(filename, channelKey));
+}
+
+function filenameFromBoundReply(data) {
+    if (!data || typeof data !== 'object') return null;
+    return data.filename || data.lastGeneratedImageName || data.filenameBefore || null;
+}
+
+function prepareBoundStudioReply(data, channelKey) {
+    if (!data || typeof data !== 'object') return data;
+    const cache = resolveInputCache(filenameFromBoundReply(data), channelKey);
+    const out = { ...data };
+    if (out.change && typeof out.change === 'object' && !Array.isArray(out.change)) {
+        out.change = finalizeStudioReadPayload(out.change, false, cache);
+    }
+    if (out.director && typeof out.director === 'object') {
+        out.director = finalizeStudioReadPayload(out.director, false, cache);
+    }
+    if (out.dynamicGeneration && typeof out.dynamicGeneration === 'object') {
+        out.dynamicGeneration = finalizeStudioReadPayload(out.dynamicGeneration, false, cache);
+    }
+    return out;
+}
+
+function rememberPromptCover(filename, cover) {
+    savePromptInputCache(filename, cover);
+}
+
+function mergeSnapshotOntoComment(comment, snapshot) {
+    if (!comment || typeof comment !== 'object' || !snapshot || typeof snapshot !== 'object') return comment;
     const out = { ...comment };
-    if (typeof cover.prompt === 'string' && typeof out.prompt === 'string') out.prompt = cover.prompt;
-    if (typeof cover.uc === 'string' && typeof out.uc === 'string') out.uc = cover.uc;
-    if (Array.isArray(out.characterPrompts) && Array.isArray(cover.characters)) {
+    if (typeof snapshot.prompt === 'string' && typeof out.prompt === 'string') out.prompt = snapshot.prompt;
+    if (typeof snapshot.uc === 'string' && typeof out.uc === 'string') out.uc = snapshot.uc;
+    if (Array.isArray(out.characterPrompts) && Array.isArray(snapshot.characters)) {
         out.characterPrompts = out.characterPrompts.map((row, index) => {
             if (!row || typeof row !== 'object') return row;
-            const src = cover.characters[index];
+            const src = snapshot.characters[index];
             if (!src) return row;
             const next = { ...row };
             if (typeof src.prompt === 'string' && typeof next.prompt === 'string') next.prompt = src.prompt;
@@ -53,16 +190,16 @@ function applyPromptCover(comment, cover) {
         const dyn = forge.dynamic_generation;
         if (dyn && typeof dyn === 'object' && dyn.compiled_prompt && typeof dyn.compiled_prompt === 'object') {
             const compiled = { ...dyn.compiled_prompt };
-            if (typeof cover.prompt === 'string' && typeof compiled.prompt === 'string') compiled.prompt = cover.prompt;
-            if (typeof cover.uc === 'string' && typeof compiled.uc === 'string') compiled.uc = cover.uc;
+            if (typeof snapshot.prompt === 'string' && typeof compiled.prompt === 'string') compiled.prompt = snapshot.prompt;
+            if (typeof snapshot.uc === 'string' && typeof compiled.uc === 'string') compiled.uc = snapshot.uc;
             forge.dynamic_generation = { ...dyn, compiled_prompt: compiled };
         }
         if (Array.isArray(forge.stage_seeds)) {
             forge.stage_seeds = forge.stage_seeds.map((row) => {
                 if (!row || typeof row !== 'object') return row;
                 const next = { ...row };
-                if (typeof cover.prompt === 'string' && typeof next.prompt === 'string') next.prompt = cover.prompt;
-                if (typeof cover.uc === 'string' && typeof next.uc === 'string') next.uc = cover.uc;
+                if (typeof snapshot.prompt === 'string' && typeof next.prompt === 'string') next.prompt = snapshot.prompt;
+                if (typeof snapshot.uc === 'string' && typeof next.uc === 'string') next.uc = snapshot.uc;
                 return next;
             });
         }
@@ -71,7 +208,11 @@ function applyPromptCover(comment, cover) {
     return out;
 }
 
-function stripAgentSignatures(comment) {
+function applyPromptCover(comment, cover) {
+    return mergeSnapshotOntoComment(comment, cover);
+}
+
+function stripForgeCommentSignatures(comment) {
     if (!comment || typeof comment !== 'object') return comment;
     const out = { ...comment };
     delete out.signed_hash;
@@ -84,11 +225,12 @@ function stripAgentSignatures(comment) {
 }
 
 function coverComment(comment, filename) {
-    const restored = applyPromptCover(comment, readPromptCover(filename));
-    return stripAgentSignatures(maskAgentStudioRead(restored, true));
+    const cached = loadPromptInputCache(filename);
+    const restored = mergeSnapshotOntoComment(comment, cached);
+    return stripForgeCommentSignatures(finalizeStudioReadPayload(restored, true, cached));
 }
 
-async function coverAgentPng(pngMeta, buffer, filename) {
+async function syncPngForgeComment(pngMeta, buffer, filename) {
     if (!Buffer.isBuffer(buffer) || buffer.length < 8 || buffer[0] !== 0x89) return buffer;
     if (!pngMeta || typeof pngMeta.readMetadata !== 'function') return buffer;
     let meta;
@@ -137,8 +279,13 @@ async function coverAgentPng(pngMeta, buffer, filename) {
 
 module.exports = {
     rememberPromptCover,
-    readPromptCover,
+    savePromptInputCache,
+    loadPromptInputCache,
+    finalizeGalleryPacketData,
+    resolveInputCache,
+    prepareBoundStudioReply,
     applyPromptCover,
     coverComment,
-    coverAgentPng
+    syncPngForgeComment,
+    stripForgeCommentSignatures
 };

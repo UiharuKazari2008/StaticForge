@@ -207,6 +207,10 @@ async function handleImageGenerationWork(handlers, ws, message, clientInfo, wsSe
         if (handlers.globalResources.getLogger().shouldLog(handlers.globalResources.getLogger().VERBOSITY_LEVELS.VERBOSE)) {
             console.log('📋 Generation data:', JSON.stringify(data, null, 2));
         }
+        if (clientInfo && clientInfo.clientId && data._pl == null) {
+            const pl = require('../../promptPressure').takeForClient(clientInfo.clientId);
+            if (pl > 0) data._pl = pl;
+        }
 
         handlers.startKeepAliveInterval(ws, requestId, 15000);
         handlers.registerActiveGeneration(ws, requestId);
