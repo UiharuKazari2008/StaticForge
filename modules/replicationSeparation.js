@@ -167,9 +167,7 @@ function collectOptionalPaths(root, cloneProfile) {
             'dataset_tags.json',
             'dataset_tags_furry.json',
             'dataset_tag_groups.json',
-            '.cache/tag_cache.json',
-            '.cache/anime_search_index.json',
-            '.cache/furry_search_index.json'
+            '.cache/tag_cache.json'
         ];
         for (const file of autoFiles) {
             if (fs.existsSync(path.join(root, file))) paths.push(file);
