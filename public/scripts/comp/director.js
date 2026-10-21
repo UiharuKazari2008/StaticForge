@@ -438,9 +438,7 @@ class Director {
         const engine = this.displayEngine();
         // The title mark (public/app.html #directorHeaderTitle / #directorSessionTitle) is the engine's logo.
         document.querySelectorAll('#directorHeaderTitle .xai-icon, #directorSessionTitle .xai-icon').forEach((icon) => {
-            icon.classList.toggle('engine-claude-mark', engine === 'claude');
-            icon.classList.toggle('engine-tokenrouter-mark', engine === 'tokenrouter');
-            icon.classList.toggle('engine-custom-mark', this.isCustomEngine(engine));
+            this.applyEngineMark(icon, engine, true);
             icon.title = this.engineName(engine);
         });
         this.paintAccountBadge();
@@ -448,6 +446,39 @@ class Director {
         this._chromeEngine = engine;
         this.paintCursorUsage(null);
         this.requestCursorUsage();
+    }
+
+    // Header marks use the *-mark class names; the inline icon uses the short ones.
+    engineVisual(engine) {
+        const id = this.normalizeEngine(engine);
+        const custom = this.customProvider(id);
+        const logo = custom && custom.logo ? String(custom.logo) : '';
+        const kind = custom && custom.kind;
+        if (logo) return { logo: true, image: logo };
+        if (id === 'claude') return { claude: true };
+        if (id === 'tokenrouter' || kind === 'tokenrouter') return { tokenrouter: true };
+        if (kind === 'google') return { font: 'google' };
+        if (kind === 'openai') return { font: 'openai' };
+        if (this.isCustomEngine(id)) return { font: 'custom' };
+        return { cursor: true };
+    }
+
+    applyEngineMark(icon, engine, header) {
+        const visual = this.engineVisual(engine);
+        const claude = header ? 'engine-claude-mark' : 'engine-claude';
+        const token = header ? 'engine-tokenrouter-mark' : 'engine-tokenrouter';
+        const generic = header ? 'engine-custom-mark' : 'engine-custom';
+        icon.classList.toggle(claude, visual.claude === true);
+        icon.classList.toggle(token, visual.tokenrouter === true);
+        icon.classList.toggle(generic, false);
+        icon.classList.toggle('engine-font-mark', !!visual.font);
+        icon.classList.toggle('engine-mark-google', visual.font === 'google');
+        icon.classList.toggle('engine-mark-openai', visual.font === 'openai');
+        icon.classList.toggle('engine-mark-custom', visual.font === 'custom');
+        icon.classList.toggle('engine-logo', visual.logo === true);
+        if (icon.style) {
+            icon.style.backgroundImage = visual.image ? `url("${String(visual.image).replace(/"/g, '')}")` : '';
+        }
     }
 
     engineName(engine) {
@@ -5826,13 +5857,16 @@ class Director {
         const iconEl = document.getElementById('directorUsageIcon');
         if (!host || !autoEl) return;
         const data = usage || {};
+        const custom = this.customProvider(this.displayEngine());
+        const hide = data.hidden === true || (custom && custom.monitorUsage !== true);
+        host.classList.toggle('hidden', hide);
         const auto = Number.isFinite(Number(data.autoPercent)) ? Math.round(Number(data.autoPercent)) : null;
         const other = Number.isFinite(Number(data.apiPercent)) ? Math.round(Number(data.apiPercent)) : null;
         const split = document.getElementById('directorUsageSplit');
         const otherEl = document.getElementById('directorUsageOther');
-        // TokenRouter: one remaining balance (top-up plus vouchers) instead of percents.
-        const wallet = data.engine === 'tokenrouter';
-        const money = wallet && typeof data.balanceText === 'string' && data.balanceText ? data.balanceText : null;
+        // TokenRouter and a monitored custom host: one remaining balance instead of percents.
+        const money = typeof data.balanceText === 'string' && data.balanceText ? data.balanceText : null;
+        const wallet = data.engine === 'tokenrouter' || !!money;
         const showSplit = !wallet && (auto != null || other != null);
         if (split) split.classList.toggle('hidden', !showSplit);
         autoEl.textContent = money || (auto == null ? '—' : `${auto}%`);
@@ -6952,9 +6986,15 @@ class Director {
 
     engineIconHtml(engine) {
         const id = this.normalizeEngine(engine);
-        const mark = id === 'claude' ? 'engine-claude' : (id === 'tokenrouter' ? 'engine-tokenrouter' : (this.isCustomEngine(id) ? 'engine-custom' : 'engine-cursor'));
         const name = this.engineName(id);
-        return `<span class="director-engine-icon ${mark}" role="img" aria-label="${name}" title="${name}"></span>`;
+        const visual = this.engineVisual(id);
+        const classes = ['director-engine-icon'];
+        if (visual.logo) classes.push('engine-logo');
+        else if (visual.claude) classes.push('engine-claude');
+        else if (visual.tokenrouter) classes.push('engine-tokenrouter');
+        else if (visual.font) classes.push('engine-font-mark', `engine-mark-${visual.font}`);
+        const style = visual.image ? ` style="background-image:url(&quot;${String(visual.image).replace(/"/g, '')}&quot;)"` : '';
+        return `<span class="${classes.join(' ')}"${style} role="img" aria-label="${name}" title="${name}"></span>`;
     }
 
     // Older rounds have no engine. An id only the Claude catalog has ran on

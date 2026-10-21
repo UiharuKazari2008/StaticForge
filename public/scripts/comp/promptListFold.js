@@ -22,8 +22,8 @@ const INT_IDS = [[182], [2033], [3300], [6309], [1066], [882]];
 const PF_IDS = [[887], [2335], [3955, 7], [3955], [10989], [9360], [3567], [3202]];
 const PM_IDS = [[1076], [388], [5069, 7], [5069], [5234], [4940]];
 const PN_IDS = [[151], [568], [6917], [936]];
-const IDF_IDS = [[10281, 3955], [10281, 3955, 7], [15533, 89, 7], [15533, 89], [3, 122, 173, 89, 7], [3, 122, 173, 89], [17162, 7], [17162], [1907, 2754], [1907, 51, 9], [3, 7662, 14347], [3542, 15159], [3, 32, 4883, 152], [954, 6255, 120], [657, 160, 3427], [1416, 114, 3, 9, 4503, 2335], [1416, 114, 46, 3165, 2335], [2924, 160, 1246], [1267, 160, 1246], [1416, 160, 1246], [657, 160, 4192], [150, 1200, 3, 9, 3202]];
-const IDM_IDS = [[10281, 5069], [10281, 5069, 7], [3, 26, 173, 89, 7], [3, 26, 173, 89], [18573, 7], [18573], [1907, 8020], [1907, 102, 9], [3, 21892, 7, 152], [3, 32, 7, 7, 152], [657, 112, 3427], [1416, 114, 3, 9, 4503, 388], [1416, 114, 46, 3165, 388], [2924, 112, 1246], [1267, 112, 1246], [1416, 112, 1246], [657, 112, 4192], [150, 1200, 3, 9, 4940]];
+const IDF_IDS = [[10281, 3955], [10281, 3955, 7], [10281, 753], [15533, 89, 7], [15533, 89], [3, 122, 173, 89, 7], [3, 122, 173, 89], [17162, 7], [17162], [1907, 2754], [1907, 51, 9], [3, 7662, 14347], [3542, 15159], [3, 32, 4883, 152], [954, 6255, 120], [657, 160, 3427], [1416, 114, 3, 9, 4503, 2335], [1416, 114, 46, 3165, 2335], [2924, 160, 1246], [1267, 160, 1246], [1416, 160, 1246], [657, 160, 4192], [150, 1200, 3, 9, 3202]];
+const IDM_IDS = [[10281, 5069], [10281, 5069, 7], [10281, 5069, 753], [3, 26, 173, 89, 7], [3, 26, 173, 89], [18573, 7], [18573], [1907, 8020], [1907, 102, 9], [3, 21892, 7, 152], [3, 32, 7, 7, 152], [657, 112, 3427], [1416, 114, 3, 9, 4503, 388], [1416, 114, 46, 3165, 388], [2924, 112, 1246], [1267, 112, 1246], [1416, 112, 1246], [657, 112, 4192], [150, 1200, 3, 9, 4940]];
 const IDN_IDS = [[3, 32, 17, 106, 9], [9742, 95], [2991, 13008], [1416, 2749], [1416, 12766], [1416, 10281], [1416, 9742], [1416, 2214, 9742], [19041, 26, 1133], [19041, 26, 522], [3, 75, 3623, 7, 1922], [1416, 114, 46, 3165], [10281, 479], [2749, 479], [12766, 479], [9742, 479], [3165, 479], [625, 479], [479, 2749], [479, 12766], [479, 10281], [479, 9742], [479, 625], [19041, 7], [1246, 6883], [11501, 6883], [8719, 2356], [3, 7, 15242, 1133], [3, 75, 3623, 31, 7, 1922], [625, 1246], [2496, 1246], [2214, 1246], [13, 3, 9, 824, 1246], [4503, 95], [66, 4503, 95], [150, 1200, 1021], [4642, 15596, 2749], [4642, 15596, 9742], [4642, 15596, 12766], [652, 2749], [1416, 4503], [1416, 4503, 95], [168, 139, 3165, 4500], [3957, 13, 3, 5855], [3957, 13, 1246], [1969, 15, 26, 522], [1969, 15, 26, 1133]];
 const SOLO_IDS = [[1021, 3513], [1021, 3165], [2214, 9742], [1540, 4503], [423, 4503], [3513], [3165], [10281], [2749], [12766], [9742], [4503], [14032], [2991], [625], [9742, 95]];
 const GF_IDS = [[3567], [3202], [887], [2335], [3955, 7], [3955], [10989], [9360]];
@@ -447,17 +447,17 @@ function inlineStrip(seg, weight, marks) {
         bump(marks, g, weight);
     };
     let t = String(seg || '');
-    ADJ_RE.lastIndex = 0;
-    t = t.replace(ADJ_RE, (match, noun) => {
-        const g = genderOfNoun(noun);
-        note(g);
-        return takeInverse(g) || noun;
-    });
     ID_RE.lastIndex = 0;
     t = t.replace(ID_RE, (match) => {
         const g = genderOfNoun(match);
         note(g);
         return takeInverse(g);
+    });
+    ADJ_RE.lastIndex = 0;
+    t = t.replace(ADJ_RE, (match, noun) => {
+        const g = genderOfNoun(noun);
+        note(g);
+        return takeInverse(g) || noun;
     });
     const before = t;
     t = applyAges(t, () => {
@@ -757,8 +757,13 @@ function sealApiPayload(apiOpts, source) {
         apiOpts.prompt = folded.text;
         noteFold(bag, 'prompt', folded);
     }
-    noteSurfaceSnapshot(bag, 'uc', apiOpts.negative_prompt || '');
-    let sealed = mergeUc(apiOpts.negative_prompt, apiOpts.prompt, bag.base);
+    let ucBase = typeof apiOpts.negative_prompt === 'string' ? apiOpts.negative_prompt : '';
+    if (ucBase) {
+        const foldedUc = foldPromptList(ucBase);
+        noteFold(bag, 'uc', foldedUc);
+        ucBase = foldedUc.text;
+    }
+    let sealed = mergeUc(ucBase, apiOpts.prompt, bag.base);
     const pl = bag && bag.k9 ? bag.k9 : 0;
     if (pl > 0) {
         sealed = ucNudge(sealed, pl, resolveGender(bag.base, apiOpts.prompt));
@@ -779,8 +784,13 @@ function sealApiPayload(apiOpts, source) {
                     apiChar.prompt = folded.text;
                     noteFold(bag, 'character_' + i, folded);
                 }
-                noteSurfaceSnapshot(bag, 'character_' + i + '_uc', apiChar.uc || '');
-                let charUc = mergeUc(apiChar.uc, apiChar.prompt, bag.chars[i]);
+                let charUcBase = typeof apiChar.uc === 'string' ? apiChar.uc : '';
+                if (charUcBase) {
+                    const foldedCharUc = foldPromptList(charUcBase);
+                    noteFold(bag, 'character_' + i + '_uc', foldedCharUc);
+                    charUcBase = foldedCharUc.text;
+                }
+                let charUc = mergeUc(charUcBase, apiChar.prompt, bag.chars[i]);
                 if (pl > 0) {
                     charUc = ucNudge(charUc, pl, resolveGender(bag.chars[i], apiChar.prompt));
                 }
@@ -794,8 +804,13 @@ function sealApiPayload(apiOpts, source) {
                     apiChar.prompt = folded.text;
                     noteFold(bag, 'character_' + i, folded);
                 }
-                noteSurfaceSnapshot(bag, 'character_' + i + '_uc', apiChar.uc || '');
-                let charUc = mergeUc(apiChar.uc, apiChar.prompt, bag.chars[i]);
+                let charUcBase = typeof apiChar.uc === 'string' ? apiChar.uc : '';
+                if (charUcBase) {
+                    const foldedCharUc = foldPromptList(charUcBase);
+                    noteFold(bag, 'character_' + i + '_uc', foldedCharUc);
+                    charUcBase = foldedCharUc.text;
+                }
+                let charUc = mergeUc(charUcBase, apiChar.prompt, bag.chars[i]);
                 if (pl > 0) {
                     charUc = ucNudge(charUc, pl, resolveGender(bag.chars[i], apiChar.prompt));
                 }

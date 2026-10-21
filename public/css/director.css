@@ -3280,12 +3280,42 @@ html.disable-blur .director-attach-chip {
 }
 
 .director-engine-icon.engine-tokenrouter,
-.xai-icon.engine-tokenrouter-mark,
-.director-engine-icon.engine-custom,
-.xai-icon.engine-custom-mark {
+.xai-icon.engine-tokenrouter-mark {
     -webkit-mask-image: url('/dist/custom-icons/tokenrouter-icon.svg');
     mask-image: url('/dist/custom-icons/tokenrouter-icon.svg');
 }
+
+/* Uploaded provider picture. Google and OpenAI use the remixicon marks; other custom hosts use the robot mark. */
+.director-engine-icon.engine-logo,
+.xai-icon.engine-logo {
+    background-color: transparent;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: contain;
+    -webkit-mask: none;
+    mask: none;
+}
+
+.director-engine-icon.engine-font-mark,
+.xai-icon.engine-font-mark {
+    background: none;
+    -webkit-mask: none;
+    mask: none;
+    font-family: remixicon;
+    font-style: normal;
+    font-weight: normal;
+    line-height: 1;
+    text-align: center;
+}
+
+.director-engine-icon.engine-mark-google::before,
+.xai-icon.engine-mark-google::before { content: "\edd4"; }
+
+.director-engine-icon.engine-mark-openai::before,
+.xai-icon.engine-mark-openai::before { content: "\f34a"; }
+
+.director-engine-icon.engine-mark-custom::before,
+.xai-icon.engine-mark-custom::before { content: "\f3d8"; }
 
 .director-request-type-badge .director-engine-icon {
     margin-right: 0.3em;
