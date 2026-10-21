@@ -1744,7 +1744,7 @@ class SearchService {
             return;
         }
 
-        const tags = this.tagAutofillSearch.getTagsByIdsForAutofill(tagIds, { limit: resolved.maxResults });
+        const tags = await this.tagAutofillSearch.getTagsByIdsForAutofill(tagIds, { limit: resolved.maxResults });
         if (!tags.length) {
             return;
         }
@@ -2181,7 +2181,7 @@ class SearchService {
             .map((item, index) => this.mapNaxArtistAutofillTag(item, query, index));
     }
 
-    attachWikiArtistCounts(tags) {
+    async attachWikiArtistCounts(tags) {
         if (!tags || !tags.length) return tags || [];
         let lookup = null;
         try {
@@ -2190,7 +2190,7 @@ class SearchService {
             return tags;
         }
         if (!lookup || typeof lookup.lookupAutofillCountRows !== 'function') return tags;
-        const rows = lookup.lookupAutofillCountRows(tags.map((tag) => tag.title || tag.name || ''));
+        const rows = await lookup.lookupAutofillCountRows(tags.map((tag) => tag.title || tag.name || ''));
         return tags.map((tag) => {
             const key = lookup.normalizeTagName(tag.title || tag.name || '');
             const row = key ? rows.get(key) : null;
@@ -2328,7 +2328,7 @@ class SearchService {
         }
 
         try {
-            const naxTags = this.attachWikiArtistCounts(
+            const naxTags = await this.attachWikiArtistCounts(
                 this.collectNaxArtistAutofillTags(trimmed, model, maxResults)
             );
             let localTags = [];

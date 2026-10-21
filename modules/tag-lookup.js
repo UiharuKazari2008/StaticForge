@@ -15,7 +15,6 @@ const { exec } = require('child_process');
 const { promisify } = require('util');
 
 const execAsync = promisify(exec);
-const Database = require('better-sqlite3');
 const { buildTitleSearchIndexData } = require('./tagTitleIndex');
 const { normalizeAutofillRanking } = require('./autofillRankingSettings');
 const { parseAutofillArtistSearchPrefix } = require('./autofillSearchSettings');
@@ -49,7 +48,6 @@ class TagLookup {
                 this.tagGroupPresenceCache.clear();
             }
         }, 60 * 60 * 1000);
-        this.searchDb = null;
         this._searchDbStmts = null;
         this._autofillSearchCache = new Map();
         this.MAX_USAGE_CAP = 100000;
@@ -816,11 +814,10 @@ class TagLookup {
         .trim();
 }
 
-    /** Sync d_count / e_count lookup for artist autofill (Danbooru and e621 on one title). */
-    lookupAutofillCountRows(titles) {
+    /** d_count / e_count lookup for artist autofill (Danbooru and e621 on one title). */
+    async lookupAutofillCountRows(titles) {
     const out = new Map();
-    this.initSearchDb();
-    if (!this.searchDb || !titles || !titles.length) return out;
+    if (!this.db || !titles || !titles.length) return out;
     const keys = [];
     const seen = new Set();
     for (const title of titles) {
@@ -833,10 +830,11 @@ class TagLookup {
     for (let i = 0; i < keys.length; i += chunkSize) {
         const chunk = keys.slice(i, i + chunkSize);
         const placeholders = chunk.map(() => '?').join(',');
-        const rows = this.searchDb.prepare(
+        const rows = await this.db.all(
             `SELECT id, title, normalized_title, category, d_count, e_count, n_count
-             FROM tags WHERE normalized_title IN (${placeholders})`
-        ).all(...chunk);
+             FROM tags WHERE normalized_title IN (${placeholders})`,
+            chunk
+        );
         for (const row of rows) {
             if (row && row.normalized_title) out.set(row.normalized_title, row);
         }
@@ -1913,15 +1911,26 @@ class TagLookup {
     }
 }
 
+    // Autofill statements, run on TagLookup's own node-sqlite3 connection. They used a
+    // second, read-only better-sqlite3 handle on tag_wiki.db: two SQLite libraries in
+    // one process share the file's POSIX locks, so one releasing its WAL read lock (or
+    // closing) can drop the other's (the IOERR hazard). Same SQL; callers await.
     initSearchDb() {
-    if (this.searchDb || !this.dbPath) {
+    if (this._searchDbStmts || !this.db) {
         return;
     }
-    try {
-        this.searchDb = new Database(this.dbPath, { readonly: true, fileMustExist: true });
-        this.searchDb.pragma('journal_mode = WAL');
-        this.searchDb.pragma('cache_size = -64000');
-        this.searchDb.pragma('temp_store = MEMORY');
+    {
+        const db = this.db;
+        const statement = (sql, pluck = false) => ({
+            all: async (...params) => {
+                const rows = await db.all(sql, params);
+                return pluck ? rows.map(row => row[Object.keys(row)[0]]) : rows;
+            },
+            get: async (...params) => {
+                const row = await db.get(sql, params);
+                return pluck ? (row ? row[Object.keys(row)[0]] : undefined) : row;
+            }
+        });
 
         const tagIdsFromSeqExact = `
             SELECT DISTINCT t.id FROM tag_word_sequences tws
@@ -1942,7 +1951,7 @@ class TagLookup {
         `;
 
         this._searchDbStmts = {
-            getByNormalizedTitle: this.searchDb.prepare(`
+            getByNormalizedTitle: statement(`
                 SELECT t.*, GROUP_CONCAT(DISTINCT w.source) AS wiki_sources
                 FROM tags t
                 LEFT JOIN tag_wikis tw ON tw.tag_id = t.id
@@ -1951,15 +1960,15 @@ class TagLookup {
                 GROUP BY t.id
                 LIMIT 1
             `),
-            seqExactIds: this.searchDb.prepare(tagIdsFromSeqExact),
-            seqPrefixIds: this.searchDb.prepare(tagIdsFromSeqPrefix),
-            wordExactIds: this.searchDb.prepare(`
+            seqExactIds: statement(tagIdsFromSeqExact),
+            seqPrefixIds: statement(tagIdsFromSeqPrefix),
+            wordExactIds: statement(`
                 SELECT DISTINCT tw.tag_id AS id FROM tag_words tw
                 WHERE LOWER(tw.word) = LOWER(?)
                 LIMIT ?
             `),
             // (tag_id, word) is UNIQUE, so these rows were already distinct.
-            wordFuzzyIds: this.searchDb.prepare(`
+            wordFuzzyIds: statement(`
                 SELECT tw.tag_id AS id, tw.word AS matched_word
                 FROM tag_words tw
                 WHERE LOWER(tw.word) >= ? AND LOWER(tw.word) < ?
@@ -1968,29 +1977,25 @@ class TagLookup {
                 LIMIT ?
             `),
             // The words come from the in-memory suffix index (getWordsEndingWith).
-            wordFuzzySuffixIds: this.searchDb.prepare(`
+            wordFuzzySuffixIds: statement(`
                 SELECT tw.tag_id AS id, tw.word AS matched_word
                 FROM tag_words tw
                 WHERE LOWER(tw.word) IN (SELECT value FROM json_each(?))
                 ORDER BY +tw.id
                 LIMIT ?
             `),
-            suffixWordsPage: this.searchDb.prepare(`
+            suffixWordsPage: statement(`
                 SELECT DISTINCT LOWER(word) AS w FROM tag_words
                 WHERE LOWER(word) > ?
                 ORDER BY LOWER(word)
                 LIMIT ?
-            `).pluck(),
-            tagWordsVersion: this.searchDb.prepare('SELECT MAX(id) FROM tag_words').pluck()
+            `, true),
+            tagWordsVersion: statement('SELECT MAX(id) FROM tag_words', true)
         };
         this._suffixIndexDataVersion = null;
         // Build it ahead of the first autofill after a boot (~0.5s of paged work).
         const warm = setTimeout(() => { this.ensureSuffixIndex().catch(() => {}); }, 15000);
         if (typeof warm.unref === 'function') warm.unref();
-    } catch (e) {
-        console.warn('Read-only tag search DB unavailable:', e.message);
-        this.searchDb = null;
-        this._searchDbStmts = null;
     }
 }
 
@@ -2009,8 +2014,8 @@ class TagLookup {
     // Built in pages (~40 x 5k rows) that yield between them, and rebuilt in the
     // background when tag_words grows (MAX(id); words are only ever inserted).
     async ensureSuffixIndex() {
-    if (!this.searchDb || !this._searchDbStmts) return null;
-    const version = this._searchDbStmts.tagWordsVersion.get();
+    if (!this._searchDbStmts) return null;
+    const version = await this._searchDbStmts.tagWordsVersion.get();
     if (this._suffixIndex && this._suffixIndexDataVersion === version) return this._suffixIndex;
     if (!this._suffixIndexBuild) this._suffixIndexBuild = this.buildSuffixIndex(version);
     // A stale index answers while the rebuild runs; only the first build is awaited.
@@ -2023,7 +2028,7 @@ class TagLookup {
         const reversed = [];
         let after = '';
         for (;;) {
-            const page = this._searchDbStmts.suffixWordsPage.all(after, 5000);
+            const page = await this._searchDbStmts.suffixWordsPage.all(after, 5000);
             for (const word of page) reversed.push(Array.from(word).reverse().join(''));
             if (page.length < 5000) break;
             after = page[page.length - 1];
@@ -2081,8 +2086,8 @@ class TagLookup {
     this._autofillSearchCache.set(cacheKey, { at: Date.now(), tags });
 }
 
-    fetchTagsByIdsSync(tagIds) {
-    if (!this.searchDb || !tagIds || tagIds.length === 0) {
+    async fetchTagsByIds(tagIds) {
+    if (!this.db || !tagIds || tagIds.length === 0) {
         return [];
     }
     const placeholders = tagIds.map(() => '?').join(',');
@@ -2094,21 +2099,22 @@ class TagLookup {
         WHERE t.id IN (${placeholders})
         GROUP BY t.id
     `;
-    return this.searchDb.prepare(sql).all(...tagIds);
+    return this.db.all(sql, tagIds);
 }
 
-    batchTagHasGroupsSync(tagIds = []) {
+    async batchTagHasGroups(tagIds = []) {
     const withGroups = new Set();
-    if (!this.searchDb || tagIds.length === 0) {
+    if (!this.db || tagIds.length === 0) {
         return withGroups;
     }
     const chunkSize = 400;
     for (let i = 0; i < tagIds.length; i += chunkSize) {
         const chunk = tagIds.slice(i, i + chunkSize);
         const placeholders = chunk.map(() => '?').join(',');
-        const rows = this.searchDb.prepare(
-            `SELECT DISTINCT tag_id FROM tag_d_groups WHERE tag_id IN (${placeholders})`
-        ).all(...chunk);
+        const rows = await this.db.all(
+            `SELECT DISTINCT tag_id FROM tag_d_groups WHERE tag_id IN (${placeholders})`,
+            chunk
+        );
         for (const row of rows) {
             withGroups.add(row.tag_id);
         }
@@ -2117,7 +2123,7 @@ class TagLookup {
 }
 
     /**
-     * Fast autofill tag search (read-only better-sqlite3, few queries). Used by prompt autocomplete.
+     * Fast autofill tag search (few indexed queries). Used by prompt autocomplete.
      */
     async searchTagsAutofill(searchTerm, options = {}) {
     const {
@@ -2146,7 +2152,7 @@ class TagLookup {
     }
 
     this.initSearchDb();
-    if (!this.searchDb || !this._searchDbStmts) {
+    if (!this._searchDbStmts) {
         return this.searchTags(searchTerm, { ...options, autofill: false });
     }
 
@@ -2163,13 +2169,13 @@ class TagLookup {
 
     const stmts = this._searchDbStmts;
     const baseCfg = rankingCfg.serverBase;
-    const titleRow = stmts.getByNormalizedTitle.get(normalized);
+    const titleRow = await stmts.getByNormalizedTitle.get(normalized);
     if (titleRow) {
         addCandidate(titleRow.id, baseCfg.exactTitle);
     } else {
         for (const variant of this.getTagNameLookupVariants(normalized)) {
             if (variant === normalized) continue;
-            const variantRow = stmts.getByNormalizedTitle.get(variant);
+            const variantRow = await stmts.getByNormalizedTitle.get(variant);
             if (variantRow) {
                 addCandidate(variantRow.id, baseCfg.variantTitle);
                 break;
@@ -2181,7 +2187,7 @@ class TagLookup {
     for (const word of wordTokens) {
         if (!word) continue;
 
-        for (const row of stmts.wordExactIds.all(word, perWordLimit)) {
+        for (const row of await stmts.wordExactIds.all(word, perWordLimit)) {
             addCandidate(row.id, baseCfg.wordExact);
         }
 
@@ -2193,7 +2199,7 @@ class TagLookup {
             const fuzzyLimit = prefix.length <= 2
                 ? Math.min(120, perWordLimit * 2)
                 : perWordLimit;
-            const rows = stmts.wordFuzzyIds.all(low, high, word.length, fuzzyLimit);
+            const rows = await stmts.wordFuzzyIds.all(low, high, word.length, fuzzyLimit);
             for (const { row, fuzzyScore } of this.collectScoredFuzzyWordRows(word, rows, seenFuzzyIds)) {
                 addCandidate(row.id, fuzzyScore);
             }
@@ -2202,24 +2208,24 @@ class TagLookup {
         for (const suffix of suffixIndex ? fuzzySuffixes : []) {
             const words = this.getWordsEndingWith(suffixIndex, suffix, word.length);
             if (!words.length) continue;
-            const rows = stmts.wordFuzzySuffixIds.all(JSON.stringify(words), Math.min(40, perWordLimit));
+            const rows = await stmts.wordFuzzySuffixIds.all(JSON.stringify(words), Math.min(40, perWordLimit));
             for (const { row, fuzzyScore } of this.collectScoredFuzzyWordRows(word, rows, seenFuzzyIds)) {
                 addCandidate(row.id, fuzzyScore);
             }
         }
 
-        for (const row of stmts.seqExactIds.all(word, perWordLimit)) {
+        for (const row of await stmts.seqExactIds.all(word, perWordLimit)) {
             addCandidate(row.id, baseCfg.wordSeqExact);
         }
     }
 
     if (wordTokens.length >= 2) {
         const phrase = wordTokens.join(' ');
-        for (const row of stmts.seqExactIds.all(phrase, perWordLimit)) {
+        for (const row of await stmts.seqExactIds.all(phrase, perWordLimit)) {
             addCandidate(row.id, baseCfg.phraseExactBase + wordTokens.length * baseCfg.phraseExactPerToken);
         }
         const [phraseLow, phraseHigh] = this.prefixRange(phrase);
-        for (const row of stmts.seqPrefixIds.all(phraseLow, phraseHigh, perWordLimit)) {
+        for (const row of await stmts.seqPrefixIds.all(phraseLow, phraseHigh, perWordLimit)) {
             addCandidate(row.id, baseCfg.phrasePrefix);
         }
     }
@@ -2233,9 +2239,9 @@ class TagLookup {
         .slice(0, (artistOrNovelai || artistOnly || novelaiOnly) ? sanitizedLimit * 12 : sanitizedLimit * 4)
         .map(([id]) => id);
 
-    const rows = this.fetchTagsByIdsSync(rankedIds);
+    const rows = await this.fetchTagsByIds(rankedIds);
     const rowById = new Map(rows.map(row => [row.id, row]));
-    const groupSet = this.batchTagHasGroupsSync(rankedIds);
+    const groupSet = await this.batchTagHasGroups(rankedIds);
 
     const bonusCfg = rankingCfg.serverBonus;
     let results = rankedIds
