@@ -6663,10 +6663,19 @@ window.wsClient.registerInitStep(30, 'Initializing Gallery System', async () => 
     // With sentinel-based approach, the main infinite scroll is handled by Intersection Observer
     // The scroll event marks the static fast path; one stop pass catches up the virtual DOM.
 
+    // While the gallery scrolls, one transparent shield inside the scroller takes the pointer
+    // (no hover or clicks on items, wheel input still scrolls). It replaced .gallery.is-scrolling:
+    // any style change that cascades into the gallery restyles every item (~60 µs per element,
+    // 1000+ elements), 100-200 ms at each scroll start and end, i.e. on every wheel notch.
+    const galleryScrollShield = document.querySelector('.gallery-scroll-shield');
+    function setGalleryScrollShield(on) {
+        if (galleryScrollShield && galleryScrollShield.hidden === on) galleryScrollShield.hidden = !on;
+    }
+
     function throttledInfiniteScroll() {
         // Mark as scrolling and clear any existing timeout
         isScrolling = true;
-        if (gallery) gallery.classList.add('is-scrolling');
+        setGalleryScrollShield(true);
         if (scrollEndTimeout) clearTimeout(scrollEndTimeout);
 
         // Set a timeout to detect when scrolling stops
@@ -6679,7 +6688,7 @@ window.wsClient.registerInitStep(30, 'Initializing Gallery System', async () => 
                 clearTimeout(fastScrollTimeout);
                 fastScrollTimeout = null;
             }
-            if (gallery) gallery.classList.remove('is-scrolling');
+            setGalleryScrollShield(false);
             // Process any queued placeholder cleanup when scrolling stops
             if (placeholderCleanupQueue.size > 0) {
                 processPlaceholderCleanup();

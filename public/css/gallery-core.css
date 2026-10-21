@@ -701,21 +701,28 @@
     contain: paint;
 }
 
-.gallery.is-scrolling .gallery-item,
-.gallery.is-scrolling .gallery-placeholder,
-.gallery.is-scrolling .gallery-item img,
-.gallery.is-scrolling .gallery-item-overlay {
-    transition: none;
+/* Scroll shield (galleryView.js setGalleryScrollShield): while the gallery scrolls it covers the
+   visible area so items get no hover or clicks. One element changes instead of the whole gallery
+   (.gallery.is-scrolling restyled 1000+ elements per wheel notch). Sticky inside the scroller:
+   wheel input on it still scrolls the gallery; the scroller clips the 100vh cover. */
+.gallery-scroll-shield {
+    position: sticky;
+    top: 0;
+    height: 0;
+    z-index: var(--z-layer-10);
 }
 
-.gallery.is-scrolling .gallery-item {
-    pointer-events: none;
+.gallery-scroll-shield[hidden] {
+    display: none;
 }
 
-.gallery.is-scrolling .gallery-item-overlay {
-    visibility: hidden;
-    opacity: 0;
-    box-shadow: none;
+.gallery-scroll-shield::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100vh;
 }
 
 #galleryWindow.windowed .gallery-item {

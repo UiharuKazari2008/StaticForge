@@ -114,10 +114,21 @@ assert.match(
     /const scrollEndDelay = isIOS \? 180 : 150;/,
     'scroll stop waits long enough to avoid class and decode flapping between wheel events'
 );
+// Scrolling changes one shield element, never a class on the gallery: any style change that
+// cascades into the gallery restyles every item (~60 µs each), 100-200 ms per wheel notch.
+assert.ok(
+    !/gallery\.classList\.(add|remove|toggle)\(['"]is-scrolling/.test(source),
+    'scrolling never toggles a class on the gallery'
+);
 assert.match(
-    galleryCss,
-    /\.gallery\.is-scrolling \.gallery-item,\s*\.gallery\.is-scrolling \.gallery-placeholder,\s*\.gallery\.is-scrolling \.gallery-item img,\s*\.gallery\.is-scrolling \.gallery-item-overlay\s*\{\s*transition:\s*none;/,
-    'scrolling disables descendant image and overlay transitions'
+    source,
+    /isScrolling = true;\s*setGalleryScrollShield\(true\);/,
+    'scroll start raises the pointer shield'
+);
+assert.match(
+    source,
+    /scrollVelocity = 0;[\s\S]{0,200}setGalleryScrollShield\(false\);/,
+    'scroll stop lowers the pointer shield'
 );
 assert.ok(
     !/\.gallery-item\s*\{[^}]*content-visibility:\s*auto/s.test(galleryCss),
@@ -134,13 +145,18 @@ assert.match(
 );
 assert.match(
     galleryCss,
-    /\.gallery\.is-scrolling \.gallery-item\s*\{\s*pointer-events:\s*none;/,
-    'moving tiles cannot churn hover paint beneath a stationary pointer'
+    /\.gallery-scroll-shield\s*\{[^}]*position:\s*sticky;[^}]*top:\s*0;[^}]*height:\s*0;/s,
+    'moving tiles cannot churn hover paint beneath a stationary pointer (sticky shield in the scroller)'
 );
 assert.match(
     galleryCss,
-    /\.gallery\.is-scrolling \.gallery-item-overlay\s*\{[^}]*visibility:\s*hidden;[^}]*box-shadow:\s*none;/s,
-    'hidden action overlays do not paint while scrolling'
+    /\.gallery-scroll-shield::before\s*\{[^}]*position:\s*absolute;[^}]*height:\s*100vh;/s,
+    'the shield covers the visible gallery'
+);
+assert.match(
+    galleryCss,
+    /\.gallery-scroll-shield\[hidden\]\s*\{\s*display:\s*none;/,
+    'the shield takes no pointer when scrolling stops'
 );
 for (const field of ['activeResolutions', 'blurhashQueue', 'scrolling', 'watcherRunning']) {
     assert.match(galleryLoadSource, new RegExp(`\\b${field}\\b`), `telemetry includes ${field}`);
