@@ -15,6 +15,7 @@ class AppSplash {
         this.lingerMs = opts.lingerMs || 1500;
         this.startedAt = 0;
         this.closeTimer = null;
+        this.heldWindow = null;
         this.progressSwitched = false;
         this.statusText = this.el ? this.el.querySelector('.splash-status-text') : null;
         this.progress = this.el ? this.el.querySelector('.splash-progress') : null;
@@ -57,9 +58,46 @@ class AppSplash {
         this.setStatus(formatGalleryProgressStatusText(progress));
     }
 
+    /**
+     * Keep the app's window invisible while the splash is up (it still opens, so its content
+     * loads behind the splash), then reveal it with its open animation when the splash closes.
+     * Like DreamStudio, which opens its window after the splash; without this the window drew
+     * in the same frame as the splash, or before its art had decoded.
+     */
+    holdWindow(windowEl) {
+        if (!this.isActive() || !windowEl) return;
+        this.releaseWindow();
+        this.heldWindow = windowEl;
+        windowEl.classList.add('app-splash-held');
+    }
+
+    releaseWindow() {
+        const windowEl = this.heldWindow;
+        this.heldWindow = null;
+        if (!windowEl || !windowEl.classList.contains('app-splash-held')) return;
+        windowEl.classList.remove('app-splash-held');
+        if (windowEl.classList.contains('hidden')) return;
+        // Replay the open animation (openModal's ran while the window was held)
+        windowEl.classList.remove('opening');
+        void windowEl.offsetWidth;
+        windowEl.classList.add('opening');
+        const done = (event) => {
+            if (event.target !== windowEl) return;
+            windowEl.removeEventListener('animationend', done);
+            windowEl.classList.remove('opening');
+        };
+        windowEl.addEventListener('animationend', done);
+        // No animation (reduced motion, no-animation boot): never leave the class on
+        setTimeout(() => {
+            windowEl.removeEventListener('animationend', done);
+            windowEl.classList.remove('opening');
+        }, 1000);
+    }
+
     /** Hide after the minimum display time and the linger; a later call restarts the linger. */
     hide(onHidden) {
         if (!this.isActive()) {
+            this.releaseWindow();
             if (typeof onHidden === 'function') onHidden();
             return;
         }
@@ -69,6 +107,7 @@ class AppSplash {
         this.closeTimer = setTimeout(() => {
             this.closeTimer = null;
             this.el.classList.add('hidden');
+            this.releaseWindow();
             if (typeof onHidden === 'function') onHidden();
         }, wait);
     }

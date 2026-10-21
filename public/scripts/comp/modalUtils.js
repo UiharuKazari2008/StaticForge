@@ -4329,6 +4329,8 @@ function showGalleryWindow() {
     // content being ready; while it is up the gallery load progress draws in its corner.
     const splash = isGalleryWindowHidden() && workspaceSplash.show('Opening Workspaces...');
     galleryWindowPreparePromise = null;
+    // The window opens under the splash and shows when the splash closes (appSplash.js holdWindow)
+    if (splash) workspaceSplash.holdWindow(galleryWindow);
 
     // Mark gallery as visible (openModal restores saved size/position and prepares content)
     openModal(galleryWindow);

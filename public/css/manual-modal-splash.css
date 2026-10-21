@@ -29,6 +29,14 @@
     opacity: 1;
 }
 
+/* A window opening under its splash (appSplash.js holdWindow): open, loading, not shown.
+   Opacity too: children with their own visibility: visible (e.g. .gallery) stay hidden. */
+.app-splash-held {
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
 #manualModalSplash .splash-background {
     background-image: url('/static_images/splash_bg2.jpg');
 }
