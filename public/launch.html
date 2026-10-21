@@ -1104,6 +1104,11 @@
             try {
                 sessionStorage.setItem('dreamscapeLaunchHandoff', '1');
             } catch (e) { /* ignore */ }
+            // This card never installs (melatonBoot.js does, on desktop starts). An install flag
+            // left from a desktop start would send /app straight back here on every boot.
+            try {
+                localStorage.removeItem('melatonInstall');
+            } catch (e) { /* ignore */ }
             var go = function () {
                 window.location.replace('/app');
             };

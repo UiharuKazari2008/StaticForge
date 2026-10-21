@@ -294,10 +294,26 @@ class ServiceWorkerManager {
             const raw = localStorage.getItem(MELATON_INSTALL_STATE_KEY);
             if (!raw) return false;
             const state = JSON.parse(raw);
-            return !!(state && state.active);
+            if (!(state && state.active)) return false;
+            if (!this._launchInstallsHere()) {
+                // Nothing on this start can finish that install; kept, it reboots every boot
+                localStorage.removeItem(MELATON_INSTALL_STATE_KEY);
+                console.log('[boot] cleared an install flag /launch cannot resume on this start');
+                return false;
+            }
+            return true;
         } catch (_) {
             return false;
         }
+    }
+
+    /**
+     * /launch installs only on a desktop start (desktopStart.js: wide and windowed, the rule
+     * app.html uses for isDesktop). Narrow, phone and maximized starts get the plain launch
+     * card, which hands straight back to /app, so those download updates here instead.
+     */
+    _launchInstallsHere() {
+        return window.isDesktop === true;
     }
 
     _melatonInstallStragglers() {
@@ -316,8 +332,10 @@ class ServiceWorkerManager {
     }
 
     _needsLaunchInstaller(files) {
+        const installInProgress = this._melatonInstallInProgress();
+        if (!this._launchInstallsHere()) return false;
         return needsLaunchInstaller(files, {
-            installInProgress: this._melatonInstallInProgress(),
+            installInProgress,
             stragglers: this._melatonInstallStragglers()
         });
     }
@@ -4240,6 +4258,8 @@ class ServiceWorkerManager {
      */
     _rebootIntoInstaller(count, reason) {
         if (this._launchRedirectStarted) return true;
+        // The launch card would hand straight back here (_launchInstallsHere)
+        if (!this._launchInstallsHere()) return false;
         let last = 0;
         try {
             last = Number(sessionStorage.getItem('melatonInstallRebootAt')) || 0;

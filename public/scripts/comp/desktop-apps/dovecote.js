@@ -835,7 +835,8 @@ const doveMenuIdsForRow = function (mailId) {
 
 const doveBuildMailRowMenuSections = function (mailId) {
     const ids = doveMenuIdsForRow(mailId);
-    const rows = desktopDovecote.mail.filter((mail) => ids.includes(String(mail.id)));
+    const idSet = new Set(ids);
+    const rows = desktopDovecote.mail.filter((mail) => idSet.has(String(mail.id)));
     if (!rows.length) return [];
     const mail = rows.find((row) => String(row.id) === String(mailId)) || rows[0];
     const readOnly = !!desktopDovecote.viewAsOwner;
