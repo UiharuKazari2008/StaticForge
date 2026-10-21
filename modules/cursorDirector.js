@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const os = require('os');
-const { spawn, spawnSync } = require('child_process');
+const { spawn, spawnSync, execFile } = require('child_process');
 
 const PROJECT_NAME = 'Dreamscape Director';
 const DIRECTOR_UA = 'DreamscapeDirector/1.0';
@@ -1006,14 +1006,45 @@ function usesClaudeCli(engine) {
 
 let claudeCliCache = { at: 0, version: null };
 
+function parseClaudeCliVersion(stdout) {
+    const match = String(stdout || '').match(/(\d+)\.(\d+)\.(\d+)/);
+    return match ? match.slice(1, 4).map(Number) : null;
+}
+
+let claudeCliRefresh = null;
+
+// Reads `claude --version` without holding the event loop (spawnSync took ~0.5s).
+function refreshClaudeCliVersion() {
+    if (claudeCliRefresh) return claudeCliRefresh;
+    const bin = findClaude();
+    if (!bin) {
+        claudeCliCache = { at: Date.now(), version: null };
+        return Promise.resolve(null);
+    }
+    claudeCliRefresh = new Promise((resolve) => {
+        execFile(bin, ['--version'], { encoding: 'utf8', timeout: 10000 }, (_err, stdout) => {
+            const version = parseClaudeCliVersion(stdout);
+            claudeCliCache = { at: Date.now(), version };
+            claudeCliRefresh = null;
+            resolve(version);
+        });
+    });
+    return claudeCliRefresh;
+}
+
+// Sync for the catalog code. Once a version is known, an expired cache answers with
+// it and refreshes in the background; only a never-read cache spawns here, as before.
 function claudeCliVersion() {
     if (Date.now() - claudeCliCache.at < MODEL_CACHE_MS) return claudeCliCache.version;
+    if (claudeCliCache.at) {
+        refreshClaudeCliVersion();
+        return claudeCliCache.version;
+    }
     let version = null;
     const bin = findClaude();
     if (bin) {
         const out = spawnSync(bin, ['--version'], { encoding: 'utf8', timeout: 10000 });
-        const match = String(out.stdout || '').match(/(\d+)\.(\d+)\.(\d+)/);
-        if (match) version = match.slice(1, 4).map(Number);
+        version = parseClaudeCliVersion(out.stdout);
     }
     claudeCliCache = { at: Date.now(), version };
     return version;
@@ -2311,15 +2342,20 @@ function cliUpdateEnv() {
     return { ...process.env, PATH: dirs.concat(String(process.env.PATH || '/usr/bin:/bin')).join(path.delimiter), NO_COLOR: '1', CI: '1' };
 }
 
+// Async: the update check runs after boot with clients connected (spawnSync held the
+// event loop ~0.7-1.2s per CLI).
 function cliVersion(bin) {
-    const out = spawnSync(bin, ['--version'], { encoding: 'utf8', timeout: 15000, env: cliUpdateEnv() });
-    const match = String(out.stdout || '').match(/\d[\w.-]*/);
-    return match ? match[0] : null;
+    return new Promise((resolve) => {
+        execFile(bin, ['--version'], { encoding: 'utf8', timeout: 15000, env: cliUpdateEnv() }, (_err, stdout) => {
+            const match = String(stdout || '').match(/\d[\w.-]*/);
+            resolve(match ? match[0] : null);
+        });
+    });
 }
 
-function runCliUpdate(name, bin, args) {
-    return new Promise((resolve) => {
-        const before = cliVersion(bin);
+async function runCliUpdate(name, bin, args) {
+    const before = await cliVersion(bin);
+    const finished = await new Promise((resolve) => {
         let output = '';
         let child;
         try {
@@ -2340,11 +2376,13 @@ function runCliUpdate(name, bin, args) {
         });
         child.on('close', (code, signal) => {
             clearTimeout(timer);
-            const after = cliVersion(bin) || before;
             const error = code === 0 ? null : (signal ? `timed out after ${CLI_UPDATE_MS / 1000}s` : output.trim().split('\n').pop() || `exit ${code}`);
-            resolve({ name, ok: code === 0, before, after, error });
+            resolve({ name, ok: code === 0, before, error, closed: true });
         });
     });
+    if (!finished.closed) return finished;
+    const after = (await cliVersion(bin)) || before;
+    return { name, ok: finished.ok, before, after, error: finished.error };
 }
 
 async function updateAgentClis(gr) {
@@ -2362,7 +2400,7 @@ async function updateAgentClis(gr) {
     results.forEach((row) => {
         if (row.ok && row.after !== row.before) {
             if (row.name === 'cursor-agent') modelCatalogAt = 0;
-            if (row.name === 'claude') claudeCliCache = { at: 0, version: null };
+            if (row.name === 'claude') refreshClaudeCliVersion();
         }
     });
     return results;
@@ -2396,6 +2434,8 @@ async function prepareDirector(gr, options = {}) {
         return lastPrepare;
     }
     const cliUpdates = options.deferCliUpdates ? [] : await updateDirectorClis(gr);
+    // Warm the Claude CLI version so the first model catalog does not spawn for it.
+    if (!claudeCliCache.at) refreshClaudeCliVersion();
     try {
         await ensureProject(gr);
         armIdleShutdown(gr);

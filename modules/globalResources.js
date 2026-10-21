@@ -1797,27 +1797,30 @@ class GlobalResources {
             // Sort workspaces by image count (descending)
             workspaceList.sort((a, b) => b.images - a.images);
 
-            // Helper function to recursively calculate folder size
-            const calculateFolderSize = (dirPath) => {
-                let totalSize = 0;
+            // Recursive folder size, async: the sync walk of .previews (~193k files) held
+            // the event loop ~1.5s at boot and again on every hourly refresh.
+            const calculateFolderSize = async (dirPath) => {
+                let items;
                 try {
-                    if (!fs.existsSync(dirPath)) return 0;
-                    const items = fs.readdirSync(dirPath);
-                    for (const item of items) {
-                        const itemPath = path.join(dirPath, item);
-                        try {
-                            const stats = fs.statSync(itemPath);
-                            if (stats.isDirectory()) {
-                                totalSize += calculateFolderSize(itemPath);
-                            } else {
-                                totalSize += stats.size;
-                            }
-                        } catch (e) {
-                            // Skip items we can't access
-                        }
-                    }
+                    items = await fs.promises.readdir(dirPath);
                 } catch (e) {
                     // Directory doesn't exist or can't be read
+                    return 0;
+                }
+                let totalSize = 0;
+                const batch = 256;
+                for (let i = 0; i < items.length; i += batch) {
+                    const sizes = await Promise.all(items.slice(i, i + batch).map(async (item) => {
+                        const itemPath = path.join(dirPath, item);
+                        try {
+                            const stats = await fs.promises.stat(itemPath);
+                            return stats.isDirectory() ? calculateFolderSize(itemPath) : stats.size;
+                        } catch (e) {
+                            // Skip items we can't access
+                            return 0;
+                        }
+                    }));
+                    for (const size of sizes) totalSize += size;
                 }
                 return totalSize;
             };
@@ -1844,7 +1847,7 @@ class GlobalResources {
                 // Calculate preview images size from .previews/ folder
                 const previewPath = this.getPath('previews');
                 if (fs.existsSync(previewPath)) {
-                    const previewSize = calculateFolderSize(previewPath);
+                    const previewSize = await calculateFolderSize(previewPath);
                     usageStats.previewImages = formatSize(previewSize);
                 }
 
@@ -1853,11 +1856,11 @@ class GlobalResources {
                 try {
                     const previewCachePath = this.getPath('previewCache');
                     if (fs.existsSync(previewCachePath)) {
-                        referenceItemsSize += calculateFolderSize(previewCachePath);
+                        referenceItemsSize += await calculateFolderSize(previewCachePath);
                     }
                     const uploadCachePath = this.getPath('uploadCache');
                     if (fs.existsSync(uploadCachePath)) {
-                        referenceItemsSize += calculateFolderSize(uploadCachePath);
+                        referenceItemsSize += await calculateFolderSize(uploadCachePath);
                     }
                     usageStats.referenceItems = formatSize(referenceItemsSize);
                 } catch (refError) {
@@ -4264,8 +4267,11 @@ class GlobalResources {
         const previewsDir = this.getPath('previews');
         const metadataDb = this.getMetadataDatabase();
 
-        const files = fs.readdirSync(imagesDir).filter(f => f.match(/\.(png|jpg|jpeg|gif)$/i));
-        const previews = fs.readdirSync(previewsDir).filter(f => f.endsWith('.webp'));
+        // Async listings, and existence checks against the listing: ~193k existsSync
+        // calls held the event loop ~1s right after boot.
+        const files = (await fs.promises.readdir(imagesDir)).filter(f => f.match(/\.(png|jpg|jpeg|gif)$/i));
+        const previews = (await fs.promises.readdir(previewsDir)).filter(f => f.endsWith('.webp'));
+        const previewNames = new Set(previews);
         const baseMap = {};
 
         this.logger.bootSubStep(`Found ${files.length} images and ${previews.length} existing previews`);
@@ -4302,8 +4308,7 @@ class GlobalResources {
             const imgFile = baseMap[base].original || baseMap[base].upscaled;
             if (imgFile) {
                 for (const type of previewTypes) {
-                    const previewPath = path.join(previewsDir, `${base}${type}`);
-                    if (!fs.existsSync(previewPath)) {
+                    if (!previewNames.has(`${base}${type}`)) {
                         missingPreviews++;
                         break; // Only count once per base image
                     }
@@ -4324,8 +4329,7 @@ class GlobalResources {
 
                     // Check if any preview type is missing
                     for (const type of previewTypes) {
-                        const previewPath = path.join(previewsDir, `${base}${type}`);
-                        if (!fs.existsSync(previewPath)) {
+                        if (!previewNames.has(`${base}${type}`)) {
                             needsGeneration = true;
                             break;
                         }
