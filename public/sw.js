@@ -22,7 +22,9 @@ const WALLPAPER_CACHE = 'wallpaper-cache-v1';
 const IMAGE_METADATA_KEY = '/internal/sw-image-cache-metadata-v1';
 
 const IMAGE_CACHE_POLICY = {
-  maxEntries: 5000,
+  // Previews are ~20-40 KB; 20000 covers the largest workspace (~20k images) and stays under
+  // maxSizeBytes. 5000 was never really enforced (lost metadata entries were not counted).
+  maxEntries: 20000,
   maxSizeBytes: 2 * 1024 * 1024 * 1024, // 2GB
   // Previews only. Full /images/ responses are not stored.
   // galleryView.js syncImageCacheRules sends the same week.
@@ -547,7 +549,32 @@ function getApproximateResponseSize(response) {
   return Number.isFinite(contentLength) && contentLength > 0 ? contentLength : 0;
 }
 
+// Image cache metadata lives in memory for the worker's lifetime: every preview hit and miss
+// used to read, parse, change one entry of, re-serialize and rewrite the whole blob (~325 KB),
+// concurrently and unlocked. That held each preview response 37-236 ms instead of a few ms,
+// and overlapping writes lost entries (6244 of 7988 cached previews had none). Callers still
+// readImageMetadata() / writeImageMetadata(); the write is a debounced flush to Cache Storage.
+const IMAGE_METADATA_FLUSH_MS = 1500;
+let imageMetadataState = null;
+let imageMetadataLoading = null;
+let imageMetadataFlushTimer = null;
+
 async function readImageMetadata() {
+  if (imageMetadataState) return imageMetadataState;
+  if (!imageMetadataLoading) {
+    imageMetadataLoading = loadImageMetadataFromCache()
+      .then((metadata) => {
+        imageMetadataState = imageMetadataState || metadata;
+        return imageMetadataState;
+      })
+      .finally(() => {
+        imageMetadataLoading = null;
+      });
+  }
+  return imageMetadataLoading;
+}
+
+async function loadImageMetadataFromCache() {
   const cache = await caches.open(INTERNAL_CACHE);
   const response = await cache.match(IMAGE_METADATA_KEY);
   if (!response) {
@@ -587,10 +614,20 @@ async function readImageMetadata() {
 }
 
 async function writeImageMetadata(metadata) {
+  imageMetadataState = metadata;
+  if (imageMetadataFlushTimer) return;
+  imageMetadataFlushTimer = setTimeout(() => {
+    imageMetadataFlushTimer = null;
+    flushImageMetadata().catch(() => {});
+  }, IMAGE_METADATA_FLUSH_MS);
+}
+
+async function flushImageMetadata() {
+  if (!imageMetadataState) return;
   const cache = await caches.open(INTERNAL_CACHE);
   await cache.put(
     IMAGE_METADATA_KEY,
-    new Response(JSON.stringify(metadata), {
+    new Response(JSON.stringify(imageMetadataState), {
       headers: {
         'Content-Type': 'application/json'
       }
@@ -661,6 +698,14 @@ async function enforceImageCachePolicy() {
   for (const url of Object.keys(metadata.entries)) {
     if (!keySet.has(url)) {
       delete metadata.entries[url];
+    }
+  }
+
+  // Cached previews whose entry an old overlapping write lost: track them as recently used,
+  // so they count toward the limits and can be evicted in order instead of never
+  for (const url of keySet) {
+    if (!metadata.entries[url] && isManagedImageCacheUrl(url)) {
+      metadata.entries[url] = { size: 0, lastAccess: now, cachedAt: now, seq: metadata.sequence, pinned: false };
     }
   }
 
