@@ -52,7 +52,15 @@ const mcp = read('public/scripts/comp/melatonControlPanel.js');
 assert.ok(/unmountPage\(\);\s*const main = el\('\.cpl-main'\);/.test(mcp), 'pages unmount before every re-render');
 assert.ok(/function close\(\) \{\s*stopTimers\(\);\s*unmountPage\(\);/.test(mcp), 'and when the window closes');
 
-assert.ok(js.includes("document.addEventListener('DOMContentLoaded', () => registerDesktopSettingsControlPanelPages());"), 'the pages exist before the old opener ever runs (Control Panel opened first)');
+// featureLoader loads Control Panel long after DOMContentLoaded: it registers modalUtils.js's pages itself
+const registered = [];
+globalThis.registerDesktopSettingsControlPanelPages = () => registered.push('desktop-settings');
+globalThis.registerRemoteAccessControlPanelPage = () => registered.push('remote-access');
+delete require.cache[require.resolve('../public/scripts/comp/melatonControlPanel.js')];
+require('../public/scripts/comp/melatonControlPanel.js');
+delete globalThis.registerDesktopSettingsControlPanelPages;
+delete globalThis.registerRemoteAccessControlPanelPage;
+assert.deepStrictEqual(registered, ['desktop-settings', 'remote-access'], 'the pages exist when Control Panel is opened first');
 
 assert.ok(html.includes('id="desktopSettingsUseAppImageIcon"') && html.includes('Use Application Image Icon when available'), 'Taskbar and Start Menu has the application image icon checkbox');
 assert.ok(js.includes('useApplicationImageIcon') && js.includes("classList.toggle('use-app-image-icons'"), 'the checkbox is saved and applied on the taskbar');

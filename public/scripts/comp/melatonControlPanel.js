@@ -1133,4 +1133,8 @@
     };
     if (root) root.melatonControlPanel = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
+    // featureLoader brings this file in long after DOMContentLoaded, so the pages modalUtils.js
+    // hosts (Personalization, the Global Settings items, Remote Access) register here
+    callGlobal('registerDesktopSettingsControlPanelPages');
+    callGlobal('registerRemoteAccessControlPanelPage');
 })(typeof window !== 'undefined' ? window : globalThis);

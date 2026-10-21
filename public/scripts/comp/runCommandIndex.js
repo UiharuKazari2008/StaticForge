@@ -738,7 +738,7 @@ function buildRunReferenceEntries(query) {
     return entries;
 }
 
-function buildRunPresetEntriesFast(query) {
+function buildRunPresetEntriesFast(query, categoryHint) {
     const entries = [];
     const presetsList = window.optionsData && Array.isArray(window.optionsData.presets)
         ? window.optionsData.presets
@@ -746,7 +746,8 @@ function buildRunPresetEntriesFast(query) {
     presetsList.forEach((p) => {
         const name = p && p.name;
         if (!name) return;
-        const score = runScoreText(query, name, 'preset', 'preset');
+        // the category bonus only when the query asks for presets, or every preset passes
+        const score = runScoreText(query, name, categoryHint, 'preset');
         if (score < 25) return;
         entries.push(createRunPresetEntry(name, 'Spellbook preset', score));
     });
@@ -1362,7 +1363,7 @@ function searchRunCommandsFast(rawQuery) {
     }
 
     lists.push(scoreAndFilterEntries(buildRunReferenceEntries(query), query, categoryHint, 20));
-    lists.push(scoreAndFilterEntries(buildRunPresetEntriesFast(query), query, categoryHint, 20));
+    lists.push(scoreAndFilterEntries(buildRunPresetEntriesFast(query, categoryHint), query, categoryHint, 20));
 
     const dateEntry = buildRunGalleryDateEntry(query, categoryHint);
     if (dateEntry) lists.push([dateEntry]);

@@ -9573,9 +9573,8 @@ function registerDesktopSettingsControlPanelPages() {
     });
 }
 
-// Register as soon as every script is in (melatonControlPanel.js loads after this file), so the
-// Personalization and Global Settings items work when Control Panel is opened first.
-document.addEventListener('DOMContentLoaded', () => registerDesktopSettingsControlPanelPages());
+// melatonControlPanel.js calls this when featureLoader loads it, so the Personalization and
+// Global Settings items work when Control Panel is opened first.
 
 // Parse wallpaper position string into state
 function parseWallpaperPosition(position) {
@@ -10320,7 +10319,7 @@ function registerRemoteAccessControlPanelPage() {
     });
     return true;
 }
-document.addEventListener('DOMContentLoaded', () => registerRemoteAccessControlPanelPage());
+// melatonControlPanel.js also calls this when featureLoader loads it (Control Panel's own item)
 
 function buildUserGlobalSettingsSnapshotFromClient() {
     let elevatePins = 0;
