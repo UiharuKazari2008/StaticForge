@@ -544,6 +544,11 @@ function startPlaceholderWatcher() {
 // Process queued placeholders with RTT-based multiplexing
 function processNextPlaceholders() {
     try {
+    // One chain: a direct call (scroll end, a finished load) takes over any pending wake-up
+    if (placeholderWatcherFrameId) {
+        clearTimeout(placeholderWatcherFrameId);
+        placeholderWatcherFrameId = null;
+    }
     if (placeholderResolutionQueue.length === 0) {
         placeholderWatcherRunning = false;
         placeholderWatcherFrameId = null;
@@ -655,7 +660,9 @@ function processNextPlaceholders() {
     }
 
     // Prioritize placeholders: always resolve in-viewport first, then apply direction preference.
-    if (Math.abs(scrollVelocity) > 0.5) {
+    // At rest too: cells queued during a long scroll (far above or below now) otherwise sat in
+    // front of the visible ones in arrival order (#gallery stuck on BlurHash, 2026-10-21).
+    if (placeholderResolutionQueue.length > 1) {
         const viewportCenter = viewportTop + (window.innerHeight / 2);
         const viewportPad = itemHeight * 0.5;
         const pageY = window.pageYOffset;
@@ -815,10 +822,15 @@ function processNextPlaceholders() {
         return;
     }
 
-    // If queue is empty but we have active resolutions, keep checking for completion
-    if (activeResolutions > 0) {
+    // Queue left (this cycle hit its drop cap, or no free slots) or loads still in flight: come
+    // back shortly. Returning with neither scheduled while placeholderWatcherRunning stayed true
+    // stalled resolution for good — queuePlaceholderResolution only starts a stopped watcher.
+    if (placeholderResolutionQueue.length > 0 || activeResolutions > 0) {
         placeholderWatcherFrameId = setTimeout(processNextPlaceholders, PLACEHOLDER_WATCHER_WAIT_MS);
+        return;
     }
+    placeholderWatcherRunning = false;
+    placeholderWatcherFrameId = null;
     } finally {
         updateGalleryCatchupBusyLine();
     }
@@ -1433,9 +1445,12 @@ function applyGalleryItemImage(img, image, options = {}) {
         if (!isCurrent) return;
         if (didLoad) {
             insertGalleryItemImage(host, img);
-            requestAnimationFrame(() => {
+            // Two frames: the first paints the new <img> at opacity 0 over the BlurHash, the
+            // second starts the fade (.gallery-item img transition). Removing the class in the
+            // first callback ran before the image ever had a style, so it popped in unfaded.
+            requestAnimationFrame(() => requestAnimationFrame(() => {
                 img.classList.remove('loading-image');
-            });
+            }));
         }
         if (typeof options.onComplete === 'function') options.onComplete();
     };
@@ -1495,10 +1510,14 @@ function ensureGalleryItemBlurhash(el, image) {
     paintGalleryItemBlurhash(el, image.blurhash);
 }
 
+// Placeholders show their BlurHash while scrolling too (no empty squares): a paint is one
+// cell's background (~0.3-0.5 ms decode, BMP data URL, blurhashUtil.js), kept under a
+// per-frame budget so a fling never spends the frame on it.
+const GALLERY_BLURHASH_FRAME_BUDGET_MS = 3;
+
 function scheduleGalleryItemBlurhash(el, image) {
     if (!el || !image || !image.blurhash) return;
     if (el.dataset.blurhash === image.blurhash && el.style.backgroundImage) return;
-    if (isScrolling) return;
     galleryBlurhashPaintQueue.push({ el, hash: image.blurhash });
     if (galleryBlurhashPaintFrame) return;
     galleryBlurhashPaintFrame = requestAnimationFrame(flushGalleryBlurhashPaintQueue);
@@ -1506,13 +1525,13 @@ function scheduleGalleryItemBlurhash(el, image) {
 
 function flushGalleryBlurhashPaintQueue() {
     galleryBlurhashPaintFrame = 0;
-    if (isScrolling) {
-        galleryBlurhashPaintQueue.length = 0;
-        return;
-    }
+    const started = performance.now();
     let painted = 0;
-    while (painted < 8 && galleryBlurhashPaintQueue.length) {
+    while (galleryBlurhashPaintQueue.length && painted < 16
+        && (painted === 0 || performance.now() - started < GALLERY_BLURHASH_FRAME_BUDGET_MS)) {
         const job = galleryBlurhashPaintQueue.shift();
+        // Cells recycled or removed by the virtual window since they were queued are skipped
+        if (!job.el.isConnected) continue;
         paintGalleryItemBlurhash(job.el, job.hash);
         painted++;
     }
@@ -4504,6 +4523,7 @@ function addPlaceholdersAbove() {
     // Batch create all placeholders at once (batchCreatePlaceholders keeps the view anchored)
     if (indicesToAdd.length > 0) {
         batchCreatePlaceholders(indicesToAdd, 'prepend');
+        setGalleryOverscrollGlow('top', false);
     }
 }
 
@@ -4578,6 +4598,7 @@ function addPlaceholdersBelow() {
     // Batch create all placeholders at once
     if (indicesToAdd.length > 0) {
         batchCreatePlaceholders(indicesToAdd, 'append');
+        setGalleryOverscrollGlow('bottom', false);
     }
 }
 
@@ -4776,6 +4797,7 @@ async function loadMoreImages() {
     } finally {
         isLoadingMore = false;
         if (infiniteScrollLoading) infiniteScrollLoading.classList.add('hidden');
+        setGalleryOverscrollGlow('bottom', false);
     }
 }
 
@@ -4831,6 +4853,7 @@ async function loadMoreImagesBefore() {
     } finally {
         isLoadingMore = false;
         if (infiniteScrollLoading) infiniteScrollLoading.classList.add('hidden');
+        setGalleryOverscrollGlow('top', false);
     }
 }
 
@@ -6659,6 +6682,43 @@ function clearSelection() {
     updateBulkActionsBar();
 }
 
+// Overscroll glow: the wheel pushes against the top or bottom of the loaded rows while more
+// images exist beyond them (they come in once scrolling pauses). One class on one element,
+// fades shortly after the last push, and goes off as soon as the new rows are in.
+const GALLERY_OVERSCROLL_GLOW_MS = 700;
+const galleryOverscrollGlowTimers = { top: 0, bottom: 0 };
+
+function setGalleryOverscrollGlow(edge, on) {
+    const el = document.querySelector(`.gallery-overscroll-glow-${edge}`);
+    if (!el) return;
+    clearTimeout(galleryOverscrollGlowTimers[edge]);
+    galleryOverscrollGlowTimers[edge] = 0;
+    if (el.classList.contains('active') !== on) el.classList.toggle('active', on);
+    if (on) {
+        galleryOverscrollGlowTimers[edge] = setTimeout(() => setGalleryOverscrollGlow(edge, false), GALLERY_OVERSCROLL_GLOW_MS);
+    }
+}
+
+// More rows exist past the first / last cell in the DOM (placeholders count as loaded)
+function galleryHasRowsBeyond(edge) {
+    if (!gallery) return false;
+    const cell = edge === 'top' ? gallery.firstElementChild : gallery.lastElementChild;
+    const index = cell ? parseInt(cell.dataset.index, 10) : NaN;
+    if (!Number.isFinite(index)) return false;
+    if (edge === 'top') return index > 0;
+    const length = window.filteredImageIndices ? window.filteredImageIndices.length : allImages.length;
+    return index < length - 1;
+}
+
+function pulseGalleryOverscrollGlow(scroller, deltaY) {
+    if (!scroller || !deltaY) return;
+    if (deltaY > 0 && scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2) {
+        if (galleryHasRowsBeyond('bottom')) setGalleryOverscrollGlow('bottom', true);
+    } else if (deltaY < 0 && scroller.scrollTop <= 1) {
+        if (galleryHasRowsBeyond('top')) setGalleryOverscrollGlow('top', true);
+    }
+}
+
 window.wsClient.registerInitStep(30, 'Initializing Gallery System', async () => {
     // With sentinel-based approach, the main infinite scroll is handled by Intersection Observer
     // The scroll event marks the static fast path; one stop pass catches up the virtual DOM.
@@ -6724,6 +6784,10 @@ window.wsClient.registerInitStep(30, 'Initializing Gallery System', async () => 
     if (galleryContainer) {
         galleryContainer.addEventListener('scroll', () => {
             onGalleryScrollEvent(galleryContainer);
+        }, { passive: true });
+        // Once per wheel notch, never blocks the scroll (passive); windowed gallery only
+        galleryContainer.addEventListener('wheel', (e) => {
+            if (getGalleryScrollRoots().isContainerScroll) pulseGalleryOverscrollGlow(galleryContainer, e.deltaY);
         }, { passive: true });
     }
 

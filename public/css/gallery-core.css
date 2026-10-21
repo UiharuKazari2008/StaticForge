@@ -725,6 +725,35 @@
     height: 100vh;
 }
 
+/* Overscroll glow (galleryView.js pulseGalleryOverscrollGlow): the wheel pushes against the top
+   or bottom of the loaded rows while more images are on their way. In the workspace colour, on
+   the wrapper outside the scroller, never takes the pointer; one class on one element. */
+.gallery-overscroll-glow {
+    position: absolute;
+    left: 8%;
+    right: 8%;
+    height: 64px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.45s ease-out;
+    z-index: var(--z-layer-10);
+}
+
+.gallery-overscroll-glow-bottom {
+    bottom: 0;
+    background: radial-gradient(ellipse 50% 100% at 50% 100%, var(--header-border, hsl(210 80% 60% / 45%)), transparent 100%);
+}
+
+.gallery-overscroll-glow-top {
+    top: 0;
+    background: radial-gradient(ellipse 50% 100% at 50% 0%, var(--header-border, hsl(210 80% 60% / 45%)), transparent 100%);
+}
+
+.gallery-overscroll-glow.active {
+    opacity: 1;
+    transition-duration: 0.12s;
+}
+
 #galleryWindow.windowed .gallery-item {
     border-color: var(--glass-layer-dark-menu);
 }

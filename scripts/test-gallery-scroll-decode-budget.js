@@ -68,14 +68,18 @@ const boundedResolve = virtualScroll.slice(
 assert.match(boundedResolve, /queuePlaceholderResolution\(el, fileIndex, filteredIndex\)/);
 assert.ok(!boundedResolve.includes('addImgToGalleryItemAsync'), 'stop pass uses the bounded resolver');
 
+// Placeholders get their BlurHash while scrolling too (Yukimi: no empty squares), under a
+// per-frame time budget instead of being dropped.
 const blurhashSchedule = extractFunction('function scheduleGalleryItemBlurhash(');
-assert.match(blurhashSchedule, /if \(isScrolling\) return;/);
+assert.ok(!/isScrolling/.test(blurhashSchedule), 'BlurHash is queued while scrolling');
 const blurhashFlush = extractFunction('function flushGalleryBlurhashPaintQueue()');
+assert.ok(!/galleryBlurhashPaintQueue\.length = 0/.test(blurhashFlush), 'scrolling never drops queued BlurHash paints');
 assert.match(
     blurhashFlush,
-    /if \(isScrolling\)\s*\{\s*galleryBlurhashPaintQueue\.length = 0;\s*return;/,
-    'scrolling drops optional BlurHash canvas work'
+    /performance\.now\(\) - started < GALLERY_BLURHASH_FRAME_BUDGET_MS/,
+    'BlurHash paints stay under a per-frame time budget'
 );
+assert.match(source, /const GALLERY_BLURHASH_FRAME_BUDGET_MS = \d+;/);
 
 const infiniteScroll = extractFunction('function handleInfiniteScroll()');
 assert.match(
