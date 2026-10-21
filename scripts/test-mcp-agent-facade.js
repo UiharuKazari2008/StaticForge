@@ -983,7 +983,7 @@ assert.ok(coreNames.includes('exchange_spam'));
 assert.ok(coreNames.includes('exchange_set_mailbox_notify_forward'));
 assert.ok(coreNames.includes('exchange_get_mailbox_notify_forward'));
 assert.ok(coreNames.includes('exchange_clear_mailbox_notify_forward'));
-assert.strictEqual(coreNames.length, 146);
+assert.strictEqual(coreNames.length, 149);
 assert.ok(!_test.listToolsForScopes(['universal'], null).some((t) => t.name === 'exchange_list_mailboxes'));
 assert.ok(_test.listToolsForScopes(['universal'], null, { owner: 'yukimi' }).some((t) => t.name === 'exchange_list_mailboxes'));
 assert.ok(_test.listToolsForScopes(['sfapp_mail_exchange'], null, { owner: 'sala' }).some((t) => t.name === 'exchange_toggles'));
