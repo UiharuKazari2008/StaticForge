@@ -1837,10 +1837,16 @@ class ServiceWorkerManager {
                 this.showUpdateToastFromChecking(filesToUpdate, { silent: noToast });
 
                 // Start background caching
+                this._activeDownloadFiles = filesToUpdate;
+                this._downloadRecoveries = 0;
                 this.swRegistration.active.postMessage({
                     type: 'CACHE_STATIC_FILES',
                     files: filesToUpdate
                 });
+                // watched from here, not only from STATIC_CACHE_STARTED: a worker replaced before it
+                // started would otherwise leave the page on "Downloading" with nothing running
+                this.isUpdating = true;
+                this.startPeriodicStateCheck();
             } else if (!noToast) {
                 this.servicePack = null;
                 this._clearScheduledUpdateCompleteToast();
@@ -2877,6 +2883,7 @@ class ServiceWorkerManager {
             case 'STATIC_CACHE_COMPLETE':
                 // Always clear isUpdating state, even if total is 0 (handles race condition with fast downloads)
                 this.isUpdating = false;
+                this._activeDownloadFiles = null;
                 this.updateProgress = 100;
                 this.updateProgressToast(100);
                 this.lastUpdateCounts = { completed: event.data.completed || 0, total: event.data.total || 0 };
@@ -2965,6 +2972,7 @@ class ServiceWorkerManager {
             case 'STATIC_CACHE_CANCELLED':
                 console.log('Download cancelled');
                 this.isUpdating = false;
+                this._activeDownloadFiles = null;
                 this.updateProgress = 0;
                 this._clearStallToast();
                 this.stopPeriodicStateCheck();
@@ -3058,14 +3066,7 @@ class ServiceWorkerManager {
                     // Service worker says download is not in progress
                     console.warn('Periodic check: Service worker reports no download, but we think it is');
                     if (this.isUpdating) {
-                        // Download might have completed without us receiving the message
-                        this.isUpdating = false;
-                        this.stopPeriodicStateCheck();
-                        // Try to check if it actually completed
-                        if (this.updateProgress >= 100 && !this._updateCompleteToastTimeout
-                            && this.updateToastId !== 'service-worker-tray-popup') {
-                            this.showUpdateCompleteToast();
-                        }
+                        this._recoverLostDownload();
                     }
                 }
             } catch (error) {
@@ -3333,9 +3334,69 @@ class ServiceWorkerManager {
             // Service worker says it's not downloading, but we think it is
             // This might mean the download completed or crashed
             console.warn('Service worker reports no download in progress, but we thought it was');
-            this._clearStallToast();
+            if (this.isUpdating) {
+                this._recoverLostDownload();
+            } else {
+                this._clearStallToast();
+                this.stopPeriodicStateCheck();
+            }
+        }
+    }
+
+    /**
+     * The worker that ran a download no longer has it: a new sw.js activates at once (skipWaiting)
+     * and the old worker's download dies with it, or its STATIC_CACHE_COMPLETE never arrived. The
+     * page used to drop isUpdating and leave MeletonFX Update and the tray on the last progress
+     * ("Downloading 2 files (50% complete)") for good. Finish from what reached the cache, or send
+     * the whole set again (the completion classifies restart / apply from every file), twice at most.
+     */
+    async _recoverLostDownload() {
+        if (this._recoveringDownload) return;
+        this._recoveringDownload = true;
+        try {
+            const files = this._activeDownloadFiles;
             this.isUpdating = false;
             this.stopPeriodicStateCheck();
+            this.stopHeartbeatTracking();
+            this.lastHeartbeatTime = null;
+            if (this.stallDetectionTimeout) {
+                clearTimeout(this.stallDetectionTimeout);
+                this.stallDetectionTimeout = null;
+            }
+            this._clearStallToast();
+            if (!Array.isArray(files) || files.length === 0) {
+                // a download this page did not start (silent / boot): only say it if it reached 100%
+                if (this.updateProgress >= 100 && !this._updateCompleteToastTimeout
+                    && this.updateToastId !== 'service-worker-tray-popup') {
+                    this.showUpdateCompleteToast();
+                }
+                return;
+            }
+            const missing = await this.getFilesNeedingUpdate(files);
+            if (missing.length === 0) {
+                console.log('Lost download: every file reached the cache, finishing it');
+                this._activeDownloadFiles = null;
+                this.updateProgress = 100;
+                this.lastUpdateCounts = { completed: files.length, total: files.length };
+                this._processStaticCacheComplete({ files, updatedFiles: files, completed: files.length, total: files.length });
+                return;
+            }
+            const worker = this.swRegistration && this.swRegistration.active;
+            if (!worker || (this._downloadRecoveries || 0) >= 2) {
+                console.warn(`Lost download: ${missing.length} of ${files.length} file(s) not cached, giving up`);
+                this._activeDownloadFiles = null;
+                this._showServiceWorkerTrayPopup('checking', { kind: 'sw-update', message: 'Failed to download updates. Please try again.', progress: 0 });
+                return;
+            }
+            this._downloadRecoveries = (this._downloadRecoveries || 0) + 1;
+            console.warn(`Lost download: ${missing.length} of ${files.length} file(s) not cached, sending the set again`);
+            worker.postMessage({ type: 'CACHE_STATIC_FILES', files });
+            this.isUpdating = true;
+            this.startPeriodicStateCheck();
+        } catch (error) {
+            console.error('Recovering the update download failed:', error);
+        } finally {
+            this._recoveringDownload = false;
         }
     }
     
