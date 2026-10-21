@@ -4,6 +4,7 @@
  * Still used by fastTagSearch.js and promptLogitAnalyzer.js until migrated.
  */
 const fs = require('fs');
+const { createAffixIndex } = require('./tagAffixIndex');
 const path = require('path');
 const logger = require('./logger');
 
@@ -69,6 +70,11 @@ class FurryTagSearch {
             this.buildSearchIndex();
             this.saveSearchIndexes();
         }
+        // Prefix/suffix lookups come from the word index (modules/tagAffixIndex.js); the
+        // *_prefix_index / *_suffix_index files are still written for a rebuild check but
+        // not read (3.7s of parse and 523MB of heap for both datasets).
+        this.prefixIndex = createAffixIndex(this.wordIndex, this.tagData, 'prefix');
+        this.suffixIndex = createAffixIndex(this.wordIndex, this.tagData, 'suffix');
     }
 
     canLoadIndexes() {
@@ -107,10 +113,8 @@ class FurryTagSearch {
 
             this.searchIndex = JSON.parse(fs.readFileSync(this.indexFiles.searchIndex, 'utf8'));
             this.wordIndex = JSON.parse(fs.readFileSync(this.indexFiles.wordIndex, 'utf8'));
-            this.prefixIndex = JSON.parse(fs.readFileSync(this.indexFiles.prefixIndex, 'utf8'));
-            this.suffixIndex = JSON.parse(fs.readFileSync(this.indexFiles.suffixIndex, 'utf8'));
 
-            logger.bootSubStep(`Furry indexes: ${Object.keys(this.searchIndex).length} terms, ${Object.keys(this.wordIndex).length} words, ${Object.keys(this.prefixIndex).length} prefixes, ${Object.keys(this.suffixIndex).length} suffixes`);
+            logger.bootSubStep(`Furry indexes: ${Object.keys(this.searchIndex).length} terms, ${Object.keys(this.wordIndex).length} words (prefix/suffix derived)`);
         } catch (error) {
             logger.warn('Error loading furry indexes, rebuilding:', error.message);
             this.buildSearchIndex();
