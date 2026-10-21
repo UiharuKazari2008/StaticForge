@@ -873,18 +873,10 @@ async function initializeCacheData(force = false) {
         globalResources.logger.bootSubStep(`Cached ${cacheData.length} assets`);
         agentAssetBundle.invalidate();
         // The agent zip stays lazy. The installer pack is a separate on-disk zip of this
-        // manifest, built here so Copying can download one stream.
-        try {
-            const pack = await meletonInstallPack.rebuild({
-                manifest: buildServiceWorkerCacheManifest(),
-                resolveFile: resolveInstallPackFile,
-                log: (done, total) => globalResources.logger.bootSubStep(`Install pack ${done}/${total}`)
-            });
-            const verb = pack.rebuilt ? 'Built' : 'Reused';
-            globalResources.logger.bootSubStep(`${verb} install pack (${pack.count} files, ${pack.bytes} bytes)`);
-        } catch (packError) {
-            globalResources.logger.error(`Install pack build failed: ${packError.message}`);
-        }
+        // manifest so Copying can download one stream. It builds in the background: the
+        // logon (runtimeCompileComplete) waited ~5s on it at boot, and GET
+        // /install/meletonfx.zip already answers 503 + Retry-After until it is ready.
+        startInstallPackRebuild();
     } catch (error) {
         globalResources.logger.error('Error initializing cache data:', error.message);
     }
@@ -2199,7 +2191,33 @@ function sendInstallPack(res, pack, cleanup) {
 }
 
 // MeletonFX installer pack: one zip built when the service-worker manifest is recreated.
+// One rebuild at a time; asking while one runs queues one more, which reads the
+// manifest when it starts, so the newest manifest always gets a pack.
 let installPackRefresh = null;
+let installPackRefreshAgain = false;
+function startInstallPackRebuild() {
+    if (installPackRefresh) {
+        installPackRefreshAgain = true;
+        return installPackRefresh;
+    }
+    installPackRefresh = meletonInstallPack.rebuild({
+        manifest: buildServiceWorkerCacheManifest(),
+        resolveFile: resolveInstallPackFile
+    }).then((built) => {
+        const verb = built.rebuilt ? 'Built' : 'Reused';
+        globalResources.logger.info(`${verb} install pack (${built.count} files, ${built.bytes} bytes) for manifest ${String(built.hash).slice(0, 12)}`);
+    }).catch((error) => {
+        globalResources.logger.error(`Install pack build failed: ${error.message}`);
+    }).finally(() => {
+        installPackRefresh = null;
+        if (installPackRefreshAgain) {
+            installPackRefreshAgain = false;
+            startInstallPackRebuild();
+        }
+    });
+    return installPackRefresh;
+}
+
 // The manifest is computed per request, but the pack is only rebuilt on a runtime
 // compile. /.login.jpg is regenerated hourly with random images, so its hash moved
 // under a built pack and every install failed with pack-hash. Rebuild on demand.
@@ -2208,16 +2226,7 @@ function refreshInstallPackIfStale() {
     if (pack.building || installPackRefresh) return true;
     const want = meletonInstallPack.hashManifest(buildServiceWorkerCacheManifest());
     if (pack.ready && pack.hash === want) return false;
-    installPackRefresh = meletonInstallPack.rebuild({
-        manifest: buildServiceWorkerCacheManifest(),
-        resolveFile: resolveInstallPackFile
-    }).then((built) => {
-        globalResources.logger.info(`Install pack ${built.rebuilt ? 'rebuilt' : 'reused'} for manifest ${String(built.hash).slice(0, 12)}`);
-    }).catch((error) => {
-        globalResources.logger.error(`Install pack refresh failed: ${error.message}`);
-    }).finally(() => {
-        installPackRefresh = null;
-    });
+    startInstallPackRebuild();
     return true;
 }
 app.get('/install/meletonfx.zip', (req, res) => {
@@ -4015,8 +4024,14 @@ async function handleAdminUnixSocketMessage(message, socket) {
         await initializeAccountData();
         await refreshBalance(true);
 
+        // Runtime Asset Compilation just refreshed cache data and the install pack
+        // (refreshHashCacheAndBroadcast -> initializeCacheData(true)); a second pass
+        // rehashed all ~2800 assets again. Only fill it here if that did not run.
         updateServerStage('cache_init');
-        await initializeCacheData(true);
+        const cached = globalResources.getGlobalCacheData();
+        if (!Array.isArray(cached) || cached.length === 0) {
+            await initializeCacheData(true);
+        }
     });
     
     // Service Initialization
@@ -4167,7 +4182,7 @@ async function handleAdminUnixSocketMessage(message, socket) {
     // Director computer warm-up. Hosts without bubblewrap still boot; Director just stays offline.
     try {
         await globalResources.logger.bootStep('Director Computer', async () => {
-            const prepared = await cursorDirector.prepareDirector(globalResources);
+            const prepared = await cursorDirector.prepareDirector(globalResources, { deferCliUpdates: true });
             (prepared.cliUpdates || []).forEach((line) => {
                 if (/failed/.test(line)) globalResources.logger.warn(`Director: ${line}`);
                 else globalResources.logger.bootSubStep(line);
@@ -4206,7 +4221,8 @@ async function handleAdminUnixSocketMessage(message, socket) {
     updateServerStage('ready', true);
     globalResources.logger.endBoot();
 
-    // Its own boot tree, so the preview sync sub-steps still reach the log.
+    // Its own boot tree, so the preview sync and Director CLI sub-steps still reach
+    // the log. Both ran before ready and held every client's logon.
     globalResources.logger.startBoot();
     try {
         await globalResources.logger.bootStep('Preview Synchronization', async () => {
@@ -4214,6 +4230,16 @@ async function handleAdminUnixSocketMessage(message, socket) {
         });
     } catch (err) {
         globalResources.logger.warn(`Preview synchronization failed: ${err.message}`);
+    }
+    try {
+        await globalResources.logger.bootStep('Director CLI updates', async () => {
+            (await cursorDirector.updateDirectorClis(globalResources)).forEach((line) => {
+                if (/failed/.test(line)) globalResources.logger.warn(`Director: ${line}`);
+                else globalResources.logger.bootSubStep(line);
+            });
+        });
+    } catch (err) {
+        globalResources.logger.warn(`Director CLI updates failed: ${err.message}`);
     }
     globalResources.logger.endBoot();
 })();

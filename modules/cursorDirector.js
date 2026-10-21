@@ -2376,19 +2376,26 @@ function describeCliUpdate(row) {
         : `${row.name} is current (${row.after || 'unknown version'})`;
 }
 
+// CLI update check as log lines. Boot runs it after the server is ready:
+// `cursor-agent update` / `claude update` reach the network and took 3-13s while
+// every client's logon waited on isReady.
+async function updateDirectorClis(gr) {
+    try {
+        return (await updateAgentClis(gr)).map(describeCliUpdate);
+    } catch (err) {
+        return [`CLI updates failed: ${err.message}`];
+    }
+}
+
 // Boot-time warm-up. Dreamscape has to start on hosts with no bubblewrap and no
 // Cursor, so this never throws — the caller logs the code and carries on.
-async function prepareDirector(gr) {
+// options.deferCliUpdates: skip the CLI update check (the caller runs updateDirectorClis later).
+async function prepareDirector(gr, options = {}) {
     if (!findBwrap()) {
         lastPrepare = { ready: false, code: 'BWRAP_MISSING', error: 'bubblewrap is not installed' };
         return lastPrepare;
     }
-    let cliUpdates = [];
-    try {
-        cliUpdates = (await updateAgentClis(gr)).map(describeCliUpdate);
-    } catch (err) {
-        cliUpdates = [`CLI updates failed: ${err.message}`];
-    }
+    const cliUpdates = options.deferCliUpdates ? [] : await updateDirectorClis(gr);
     try {
         await ensureProject(gr);
         armIdleShutdown(gr);
@@ -6858,6 +6865,7 @@ module.exports = {
     findClaude,
     ensureProject,
     prepareDirector,
+    updateDirectorClis,
     syncCursorCliLogin,
     installUnrestrictedCli,
     getLastCursorLogin,
