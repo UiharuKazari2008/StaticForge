@@ -32,10 +32,13 @@ The isolated Chromium profile is stored at:
 
 The Chromium debugging endpoint listens only on `127.0.0.1:9334`.
 
+After the Dreamscape agent tab is ready, the supervisor also opens an **Alchemy-owned** tab (`about:blank#alchemy-owned`) on the same persistent profile. MCP `alchemy_browser` and `read_discord_channel_history` drive that tab only. They never navigate the `/app?agent=1` priority tab and never launch a second Chrome. Discord cookies stay in this profile after Yukimi signs in once in that tab.
+
 ## Verification
 
 ```bash
 node scripts/test-dedicated-agent-client.js
+node scripts/test-alchemy-owned-tab.js
 node scripts/test-agent-priority-client.js
 systemctl --user is-active dreamscape-agent-client.service
 ```

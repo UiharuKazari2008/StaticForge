@@ -157,6 +157,7 @@
     "test:window-maximize": "node scripts/test-window-maximize.js",
     "test:window-animations": "node scripts/test-window-animations.js",
     "test:agent-priority-client": "node scripts/test-agent-priority-client.js",
+    "test:alchemy-owned-tab": "node scripts/test-alchemy-owned-tab.js",
     "test:vista-start-menu": "node scripts/test-vista-start-menu.js",
     "test:control-panel-settings-pages": "node scripts/test-control-panel-settings-pages.js",
     "test:cartograph-vista-explorer": "node scripts/test-cartograph-vista-explorer.js",

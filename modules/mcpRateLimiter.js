@@ -123,6 +123,8 @@ const TOOL_RATE_GROUPS = {
     delete_character_db_entry: 'write',
     run_client_js: 'studio',
     inspect_elements: 'studio',
+    alchemy_browser: 'studio',
+    read_discord_channel_history: 'search',
     update_client: 'studio',
     restart_client: 'studio',
     apply_preset_to_studio: 'studio',

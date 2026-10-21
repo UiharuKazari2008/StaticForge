@@ -29,6 +29,7 @@ const MODULE_DEFS = {
             'set_session_title', 'set_session_type', 'set_session_tasks', 'set_session_task', 'get_session_tasks', 'close_session_tasks',
             'offer_workspace_switch', 'request_workspace_switch', 'show_chat_image', 'request_form', 'deliver_rentan', 'await_rentan_attempt', 'finish_rentan',
             'list_clients', 'bind_session', 'apply_studio_changes', 'print_studio', 'run_client_js', 'inspect_elements',
+            'alchemy_browser', 'read_discord_channel_history',
             'update_client', 'restart_client',
             'get_linkxi_persona', 'save_linkxi_persona',
             'get_prompt_guide', 'list_memories', 'search_memories', 'get_memory', 'save_memory', 'delete_memory', 'link_memory_image',
