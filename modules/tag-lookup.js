@@ -436,6 +436,20 @@ class TagLookup {
             searchWordSequencesEnd: sequenceMatches(`
                     SELECT id, tag_id FROM tag_word_sequences INDEXED BY idx_tag_word_sequences_sequence_lower
                     WHERE LOWER(sequence) LIKE '%' || LOWER(?1) ESCAPE '\\'`),
+            // Candidate rows for a word's %word% / %word and its stem's %stem% (see
+            // sequenceContainsRows); the *Within forms keep each statement's own LIKE.
+            sequenceIdsContaining: `
+                SELECT id FROM tag_word_sequences INDEXED BY idx_tag_word_sequences_sequence_lower
+                WHERE LOWER(sequence) LIKE '%' || LOWER(?) || '%' ESCAPE '\\'
+            `,
+            searchWordSequencesInnerWithin: sequenceMatches(`
+                    SELECT id, tag_id FROM tag_word_sequences
+                    WHERE id IN (SELECT value FROM json_each(?3))
+                      AND LOWER(sequence) LIKE '%' || LOWER(?1) || '%' ESCAPE '\\'`),
+            searchWordSequencesEndWithin: sequenceMatches(`
+                    SELECT id, tag_id FROM tag_word_sequences
+                    WHERE id IN (SELECT value FROM json_each(?3))
+                      AND LOWER(sequence) LIKE '%' || LOWER(?1) ESCAPE '\\'`),
             // FTS5 search for body text (fast full-text search) - tagged wikis only
             searchBodyByKeywordFTS: `
                 SELECT DISTINCT t.*
@@ -1814,6 +1828,29 @@ class TagLookup {
         accepted.push({ row, fuzzyScore });
     }
     return accepted;
+}
+
+    // word% / %word% / %word for a word and %stem% for its stem prefix. Every row
+    // matching %word% or %word also matches %stem% (the stem is the word's first 4-5
+    // characters), so one %stem% scan gives the candidate ids for all three; each
+    // statement still applies its own LIKE, so the rows are unchanged. Three ~260ms
+    // scans of tag_word_sequences become one. LIKE metacharacters take the plain path.
+    async sequenceContainsRows(word, stemPrefix, limit) {
+    const statements = this.getStatements();
+    if (!stemPrefix || /[%_\\]/.test(word)) {
+        return {
+            end: await this.db.all(statements.searchWordSequencesEnd, [word, limit]),
+            inner: await this.db.all(statements.searchWordSequencesInner, [word, limit]),
+            stemInner: stemPrefix ? await this.db.all(statements.searchWordSequencesInner, [stemPrefix, limit]) : []
+        };
+    }
+    const ids = await this.db.all(statements.sequenceIdsContaining, [stemPrefix]);
+    const within = JSON.stringify(ids.map(row => row.id));
+    return {
+        end: await this.db.all(statements.searchWordSequencesEndWithin, [word, limit, within]),
+        inner: await this.db.all(statements.searchWordSequencesInnerWithin, [word, limit, within]),
+        stemInner: await this.db.all(statements.searchWordSequencesInnerWithin, [stemPrefix, limit, within])
+    };
 }
 
     async addFuzzyWordMatches(word, addMatch, limit, normalized) {
@@ -3476,35 +3513,23 @@ class TagLookup {
         if (!word || word.length === 0) continue;
 
         const stemPrefix = this.getWordStemPrefix(word);
-        const queryBatch = [
-            [statements.searchWordSequencesExact, word],
-            [statements.searchWordSequencesStart, word],
-            [statements.searchWordSequencesEnd, word],
-            [statements.searchWordSequencesInner, word],
-            [statements.searchTagWordsExact, word]
-        ];
-        if (stemPrefix) {
-            queryBatch.push(
-                [statements.searchWordSequencesStart, stemPrefix],
-                [statements.searchWordSequencesInner, stemPrefix]
-            );
-        }
-
         // One after another: the connection runs them one at a time anyway, and
-        // issued together each waiting query holds a libuv pool thread (4 in all).
-        const batchResults = [];
-        for (const [sql, term] of queryBatch) {
-            batchResults.push(await this.db.all(sql, [term, sanitizedLimit]));
-        }
-        let bi = 0;
-        for (const row of batchResults[bi++] || []) addMatch(row, normalized, 100, 'word_exact', 2);
-        for (const row of batchResults[bi++] || []) addMatch(row, normalized, 85, 'word_start', 2);
-        for (const row of batchResults[bi++] || []) addMatch(row, normalized, 85, 'word_end', 2);
-        for (const row of batchResults[bi++] || []) addMatch(row, normalized, 75, 'word_inner', 2);
-        for (const row of batchResults[bi++] || []) addMatch(row, normalized, 95, 'tag_word_exact', 2);
+        // issued together each waiting query holds a libuv pool thread.
+        const exactRows = await this.db.all(statements.searchWordSequencesExact, [word, sanitizedLimit]);
+        const startRows = await this.db.all(statements.searchWordSequencesStart, [word, sanitizedLimit]);
+        const contains = await this.sequenceContainsRows(word, stemPrefix, sanitizedLimit);
+        const tagWordRows = await this.db.all(statements.searchTagWordsExact, [word, sanitizedLimit]);
+        const stemStartRows = stemPrefix
+            ? await this.db.all(statements.searchWordSequencesStart, [stemPrefix, sanitizedLimit])
+            : [];
+        for (const row of exactRows) addMatch(row, normalized, 100, 'word_exact', 2);
+        for (const row of startRows) addMatch(row, normalized, 85, 'word_start', 2);
+        for (const row of contains.end) addMatch(row, normalized, 85, 'word_end', 2);
+        for (const row of contains.inner) addMatch(row, normalized, 75, 'word_inner', 2);
+        for (const row of tagWordRows) addMatch(row, normalized, 95, 'tag_word_exact', 2);
         if (stemPrefix) {
-            for (const row of batchResults[bi++] || []) addMatch(row, normalized, 70, 'word_stem_start', 2);
-            for (const row of batchResults[bi++] || []) addMatch(row, normalized, 60, 'word_stem_inner', 2);
+            for (const row of stemStartRows) addMatch(row, normalized, 70, 'word_stem_start', 2);
+            for (const row of contains.stemInner) addMatch(row, normalized, 60, 'word_stem_inner', 2);
         }
 
         await this.addFuzzyWordMatches(word, addMatch, sanitizedLimit, normalized);
@@ -3639,24 +3664,22 @@ class TagLookup {
             addMatch(row, normalized, 85, 'word_start', 2);
         }
 
-        const endRows = await this.db.all(statements.searchWordSequencesEnd, [word, sanitizedLimit]);
-        for (const row of endRows) {
+        const stemPrefix = this.getWordStemPrefix(word);
+        const contains = await this.sequenceContainsRows(word, stemPrefix, sanitizedLimit);
+        for (const row of contains.end) {
             addMatch(row, normalized, 85, 'word_end', 2);
         }
 
-        const innerRows = await this.db.all(statements.searchWordSequencesInner, [word, sanitizedLimit]);
-        for (const row of innerRows) {
+        for (const row of contains.inner) {
             addMatch(row, normalized, 75, 'word_inner', 2);
         }
 
-        const stemPrefix = this.getWordStemPrefix(word);
         if (stemPrefix) {
             const stemStartRows = await this.db.all(statements.searchWordSequencesStart, [stemPrefix, sanitizedLimit]);
             for (const row of stemStartRows) {
                 addMatch(row, normalized, 70, 'word_stem_start', 2);
             }
-            const stemInnerRows = await this.db.all(statements.searchWordSequencesInner, [stemPrefix, sanitizedLimit]);
-            for (const row of stemInnerRows) {
+            for (const row of contains.stemInner) {
                 addMatch(row, normalized, 60, 'word_stem_inner', 2);
             }
         }
