@@ -54,7 +54,6 @@ const GLOBAL_RESOURCES_STEPS = [
     { id: 'gr_custom_resolutions', message: 'Loading custom resolutions…' },
     { id: 'gr_master_clients', message: 'Initializing API clients…' },
     { id: 'gr_character_data', message: 'Loading character data…' },
-    { id: 'gr_tag_search_services', message: 'Loading tag search services…' },
     { id: 'gr_system_info', message: 'Initializing system info cache…' },
     { id: 'gr_novelai_status', message: 'Starting NovelAI status monitor…' },
     { id: 'gr_account_snapshot', message: 'Initializing account subscription snapshot…' },

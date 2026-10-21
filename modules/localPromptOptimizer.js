@@ -16,6 +16,8 @@ class LocalPromptOptimizer {
         this.tokenIndex = null;
         this.synonymCache = new Map(); // Cache for synonym lookups
         this.spellChecker = null;
+        // The legacy JSON tag search (fastTagSearch) was removed; the tag-aware
+        // optimizer paths below stay off (none of them had callers).
         this.fastTagSearch = null;
         this.tagCache = new Map(); // Cache for tag lookups
         this.initialized = false;
@@ -56,10 +58,6 @@ class LocalPromptOptimizer {
 
             // Get services from global resources instead of creating new instances
             this.spellChecker = this.globalResources.getSpellChecker();
-            // FastTagSearch is optional at boot (may lazy-load with tag search services later)
-            if (this.globalResources.fastTagSearch) {
-                this.fastTagSearch = this.globalResources.fastTagSearch;
-            }
 
             this.initialized = true;
             console.log(`✅ Local Prompt Optimizer initialized with ${this.vocabulary.length} tokens`);

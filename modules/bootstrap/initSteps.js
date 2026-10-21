@@ -263,18 +263,6 @@ const INIT_STEPS = [
         run: (gr) => gr.loadCharacterData(),
     },
     {
-        id: 'gr_tag_search_services',
-        label: 'Loading tag search services',
-        // Config is loaded earlier in the pipeline; honor explicit option or preloadTags.
-        when: (gr, options) => (
-            options.loadTagSearchServices != null
-                ? !!options.loadTagSearchServices
-                : !!gr.getConfig()?.preloadTags
-        ),
-        skipMessage: 'Skipping tag search services (lazy-load)',
-        run: (gr) => databases.initializeTagSearchServices(gr),
-    },
-    {
         id: 'gr_system_info',
         label: 'Initializing system info cache',
         sync: true,

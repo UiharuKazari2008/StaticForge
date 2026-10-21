@@ -1,6 +1,6 @@
 /**
  * NovelAI `suggest-tags` API result cache (`search_cache`, `cached_tags`, processed cache tables).
- * Local autofill tag search uses TagLookup via modules/tagAutofillSearch.js, not animeTagSearch/furryTagSearch.
+ * Local autofill tag search uses TagLookup via modules/tagAutofillSearch.js.
  */
 const Database = require('better-sqlite3');
 const fs = require('fs');
