@@ -209,7 +209,8 @@
 #melatonInstall[data-page="where"] .mi-window > .mi-title > .mi-title-close,
 #melatonInstall[data-page="restart"] .mi-window > .mi-title > .mi-title-close,
 #melatonInstall[data-page="install"] .mi-window > .mi-title > .mi-title-close {
-    /* the wizard's close button, the VM's own pixels (42 x 19), on the frame's top edge */
+    /* the wizard's close button, the VM's own pixels (42 x 19), in the recessed gutter the
+       frame's top edge has for it (a darker rounded track, 1 px outline) */
     position: absolute;
     right: 5px;
     top: -1px;
@@ -218,9 +219,9 @@
     flex-basis: 42px;
     margin: 0;
     border: 0;
-    border-radius: 0;
-    background: url('/static_images/vista-setup/wizard-close.png') 0 0 / 42px 19px no-repeat;
-    box-shadow: none;
+    border-radius: 0 0 5px 5px;
+    background: rgba(0, 0, 0, 0.06) url('/static_images/vista-setup/wizard-close.png') 0 0 / 42px 19px no-repeat;
+    box-shadow: 0 0 0 1px rgba(28, 44, 38, 0.55), inset 0 -1px rgba(255, 255, 255, 0.35);
     font-size: 0;
     color: transparent;
 }
@@ -976,42 +977,35 @@
     display: block;
 }
 
+/* Two sunken segments (measured: 1 px #808080 top and left, 1 px white bottom and right, the
+   #7A93B1 trough 9 px tall, the #99CC33 fill 1 px in from the left line), 2 px of background
+   between them at 26 % of the width: that gap is the notch between phase 1 and phase 2 */
 .mi-strip .mi-bars {
     position: absolute;
     left: 0;
     right: 0;
     top: 0;
-    height: 9px;
-    border-top: 1px solid #808080;
-    border-bottom: 1px solid #fff;
+    height: 11px;
     display: grid;
-    grid-template-columns: 26% 1fr;
-    background: #7a93b1;
+    grid-template-columns: calc(26% - 1px) 1fr;
+    column-gap: 2px;
 }
 
 .mi-strip .mi-bar {
-    height: 9px;
+    box-sizing: border-box;
+    height: 11px;
     margin: 0;
-    border: 0;
+    padding: 0 0 0 1px;
+    border: 1px solid;
+    border-color: #808080 #fff #fff #808080;
     border-radius: 0;
     box-shadow: none;
     background: #7a93b1;
     overflow: hidden;
 }
 
-.mi-strip .mi-bar-collect {
-    border-right: 1px solid #fff;
-}
-
-/* the notch where phase 1 ends and phase 2 begins: a white tick through the whole bar */
 .mi-strip-notch {
-    position: absolute;
-    left: 26%;
-    top: -1px;
-    width: 2px;
-    height: 11px;
-    background: #fff;
-    z-index: 1;
+    display: none;
 }
 
 .mi-strip .mi-bar > div {
