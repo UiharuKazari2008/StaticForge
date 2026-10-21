@@ -193,15 +193,17 @@
                 report(done / items.length);
             }));
         };
+        const guard = (fn) => {
+            try { return fn(); } catch (_) { return null; }
+        };
         const actions = {
             async caches() {
-                if (!w.caches) return;
-                const names = await w.caches.keys();
-                await eachWithProgress(names, (name) => w.caches.delete(name));
+                const c = guard(() => w.caches); if (!c) return;
+                const names = await c.keys();
+                await eachWithProgress(names, (name) => c.delete(name));
             },
             async serviceWorker() {
-                const sw = w.navigator && w.navigator.serviceWorker;
-                if (!sw || typeof sw.getRegistrations !== 'function') return;
+                const sw = guard(() => w.navigator && w.navigator.serviceWorker); if (!sw || typeof sw.getRegistrations !== 'function') return;
                 const regs = await sw.getRegistrations();
                 await Promise.all(regs.map((reg) => reg.unregister()));
             },
@@ -210,8 +212,7 @@
                 try { if (w.sessionStorage) w.sessionStorage.clear(); } catch (_) { /* blocked */ }
             },
             async indexedDb() {
-                const idb = w.indexedDB;
-                if (!idb || typeof idb.databases !== 'function') return;
+                const idb = guard(() => w.indexedDB); if (!idb || typeof idb.databases !== 'function') return;
                 const dbs = (await idb.databases()).filter((db) => db && db.name);
                 await eachWithProgress(dbs, (db) => withTimeout(new Promise((resolve) => {
                     const req = idb.deleteDatabase(db.name);

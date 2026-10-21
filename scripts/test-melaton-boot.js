@@ -251,6 +251,18 @@ const flush = () => new Promise((r) => setImmediate(r));
     assert.strictEqual(progress[progress.length - 1], 1, 'a failed step still completes the bar');
     assert.deepStrictEqual(results, { caches: false, serviceWorker: true, storage: true, indexedDb: true });
     assert.deepStrictEqual(partial, ['local', 'session']);
+    // a failing step due to getter throwing SecurityError does not stop the rest
+    const partial2 = [];
+    const results2 = await boot.cleanInstall({ now: () => 0, sleep: async () => {}, window: {
+        get caches() { throw new Error('SecurityError'); },
+        get indexedDB() { throw new Error('SecurityError'); },
+        get navigator() { throw new Error('SecurityError'); },
+        localStorage: { clear: () => partial2.push('local') },
+        sessionStorage: { clear: () => partial2.push('session') }
+    } }, () => {}, () => {});
+    assert.deepStrictEqual(results2, { caches: true, serviceWorker: true, storage: true, indexedDb: true }, 'SecurityError on getters caught');
+    assert.deepStrictEqual(partial2, ['local', 'session']);
+
 
     // ---------- design mode: previews only ----------
     h = harness([json(true)], { designMode: true, window: fakeWindow });
