@@ -10,6 +10,7 @@ let itemSizePx = 0;
 let galleryRows = 5;
 let debounceGalleryTimeout = null;
 let isLoadingMore = false;
+let galleryAnchorScrollTop = null; // scrollTop written by restoreGalleryScrollAnchor, not by the user
 let hasMoreImages = true;
 let hasMoreImagesBefore = false; // Track if there are images before current page
 let visibleItems = new Set(); // Track visible gallery indices (data-index), not DOM positions
@@ -440,7 +441,8 @@ function captureGalleryScrollAnchor() {
     for (let el = gallery.firstElementChild; el; el = el.nextElementSibling) {
         const rect = el.getBoundingClientRect();
         if (rect.height > 0 && rect.bottom > viewTop) {
-            return { el, top: rect.top, roots };
+            const scrollTop = isContainerScroll && galleryContainer ? galleryContainer.scrollTop : window.pageYOffset;
+            return { el, top: rect.top, roots, scrollTop };
         }
     }
     return null;
@@ -450,8 +452,17 @@ function captureGalleryScrollAnchor() {
 function restoreGalleryScrollAnchor(anchor) {
     if (!anchor || !anchor.el.isConnected) return;
     const delta = anchor.el.getBoundingClientRect().top - anchor.top;
-    if (Math.abs(delta) < 0.5) return;
     const { galleryContainer, isContainerScroll } = anchor.roots;
+    if (Math.abs(delta) < 0.5) {
+        // Chrome's own scroll anchoring (overflow-anchor: auto) already held the view during the
+        // layout above; its scrollTop shift fires a scroll event that is just as much ours
+        const now = isContainerScroll && galleryContainer ? galleryContainer.scrollTop : window.pageYOffset;
+        if (Number.isFinite(anchor.scrollTop) && Math.abs(now - anchor.scrollTop) >= 1) {
+            lastScrollTop = now;
+            galleryAnchorScrollTop = now;
+        }
+        return;
+    }
     if (isContainerScroll && galleryContainer) {
         galleryContainer.scrollTop += delta;
         // Keep velocity tracking from reading the correction as a user scroll
@@ -460,6 +471,10 @@ function restoreGalleryScrollAnchor(anchor) {
         window.scrollBy({ top: delta, behavior: 'instant' });
         lastScrollTop = window.pageYOffset;
     }
+    // The scroll event this correction fires is not the user scrolling (onGalleryScrollEvent):
+    // read as one, it raised the shield and re-ran the scroll-end pass, which added or trimmed
+    // rows and corrected again, so the gallery kept cycling after every stop (hover flicker)
+    galleryAnchorScrollTop = lastScrollTop;
 }
 
 // Preserve scroll position when adding placeholders above
@@ -622,7 +637,8 @@ function processNextPlaceholders() {
     // Get viewport bounds for visibility checking
     const viewportTop = window.pageYOffset;
     const viewportBottom = viewportTop + window.innerHeight;
-    const bufferRows = isVeryFastScrolling ? 3 : (isRapidScrolling ? 5 : 8);
+    // Rows past the viewport worth resolving; further ones are dropped (re-queued when they come back)
+    const bufferRows = isVeryFastScrolling ? 2 : 3;
 
     // Calculate viewport buffer based on actual item dimensions
     // Try to get a sample item height, or use viewport height as fallback
@@ -5771,17 +5787,31 @@ function updateVirtualScrollInternal() {
             continue;
         }
 
+        // A preview still loading for a cell now more than a screen out of view: stop it and
+        // show the BlurHash again (it resolves when the cell comes back), instead of fetching,
+        // decoding and fading in a picture nobody is looking at.
+        if (!hasPlaceholderClass && !visibleItems.has(itemIndex) && pendingGalleryItemImages.has(el) && !el.querySelector('img')) {
+            const far = (galleryStripGeometryPass && galleryItemScrollBoundsFromDomIndex(i, galleryStripGeometryPass))
+                || galleryItemScrollBoundsFromRect(el, rootsVs, viewportVs);
+            const margin = viewportVs.viewportBottom - viewportVs.viewportTop;
+            if (far.itemBottom < viewportVs.viewportTop - margin || far.itemTop > viewportVs.viewportBottom + margin) {
+                demoteFarToPlaceholder(el);
+                continue;
+            }
+        }
+
         {
             // Items near viewport - remove placeholder class and resolve
             const isItemVisible = visibleItems.has(itemIndex);
 
-            // Check for predictive loading: items near viewport but not fully visible.
-            // At idle, resolve the whole keep-strip so overscan does not sit as placeholders.
-            let isItemNearViewport = isItemVisible || galleryIdle;
+            // Predictive loading: items near the viewport but not fully visible. Only near it:
+            // at idle this used to resolve the whole keep strip, which spans the loaded DOM
+            // (300+ cells), so every stop fetched and faded in pictures far out of view.
+            let isItemNearViewport = isItemVisible;
             if (!isItemNearViewport && hasPlaceholderClass) {
                 // Hoisted viewport + strip math (or one GBCR fallback) — no per-item querySelector/getComputedStyle
                 const cellHeight = (galleryStripGeometryPass && galleryStripGeometryPass.itemHeight) || itemHeight || (window.innerHeight / 5);
-                const predictiveBuffer = cellHeight * 2; // Load items 2 rows away
+                const predictiveBuffer = cellHeight * (galleryIdle ? 3 : 2); // rows away to load ahead
                 const bounds = (galleryStripGeometryPass && galleryItemScrollBoundsFromDomIndex(i, galleryStripGeometryPass))
                     || galleryItemScrollBoundsFromRect(el, rootsVs, viewportVs);
                 const isAboveViewport = bounds.itemBottom > viewportVs.viewportTop - predictiveBuffer && bounds.itemTop < viewportVs.viewportTop;
@@ -6766,6 +6796,13 @@ window.wsClient.registerInitStep(30, 'Initializing Gallery System', async () => 
     function onGalleryScrollEvent(scrollTarget) {
         // Collapse from content-visibility:hidden must not look like a scroll-to-top.
         if (document.body.classList.contains('is-window-dragging')) return;
+        // Our own anchor correction (restoreGalleryScrollAnchor), unless the user moved since
+        if (galleryAnchorScrollTop !== null) {
+            const top = scrollTarget ? scrollTarget.scrollTop : window.pageYOffset;
+            const own = Math.abs(top - galleryAnchorScrollTop) < 1;
+            galleryAnchorScrollTop = null;
+            if (own) return;
+        }
         lastGalleryUserScrollAt = Date.now();
         updateScrollVelocity(scrollTarget || null);
         if (galleryScrollRaf) return;
