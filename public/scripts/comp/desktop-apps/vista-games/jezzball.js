@@ -163,20 +163,34 @@
 
     // ---- raster text for the controls ------------------------------------------------------------
     // DrawText with a bitmap font: lines wrapped at spaces (DT_WORDBREAK), each aligned in `width`
-    function wrapLines(font, text, width) {
+    // edit: an EDIT control's wrap, which keeps the space at the end of a broken line (and centres
+    // the line with it)
+    function wrapLines(font, text, width, edit) {
         const out = [];
         String(text).split(/\r?\n/).forEach((para) => {
             if (!width) {
                 out.push(para);
                 return;
             }
-            const words = para.split(' ');
+            if (edit) {
+                let line = '';
+                (para.match(/[^ ]+ *| +/g) || ['']).forEach((w) => {
+                    if (line && font.width((line + w).replace(/ +$/, '')) > width) {
+                        out.push(line);
+                        line = w;
+                    } else line += w;
+                });
+                out.push(line);
+                return;
+            }
+            // words with the spaces before them; a break drops the spaces at the start of the next line
+            const words = para.match(/ *[^ ]+| +$/g) || [''];
             let line = '';
             words.forEach((w) => {
-                const next = line ? line + ' ' + w : w;
+                const next = line + w;
                 if (line && font.width(next) > width) {
                     out.push(line);
-                    line = w;
+                    line = w.replace(/^ +/, '');
                 } else line = next;
             });
             out.push(line);
@@ -194,7 +208,7 @@
         const ctx = c.getContext('2d');
         const img = ctx.createImageData(c.width, c.height);
         const rgb = opts.color || [0, 0, 0];
-        const lines = opts.single ? [String(text)] : wrapLines(font, text, opts.wrap === false ? 0 : w);
+        const lines = opts.single ? [String(text)] : wrapLines(font, text, opts.wrap === false ? 0 : w, opts.edit);
         const total = lines.length * font.height;
         let y = opts.vcenter ? Math.trunc((h - total) / 2) : (opts.top || 0);
         const surf = { w: c.width, h: c.height, data: img.data, dirty: false };
@@ -231,6 +245,39 @@
     }
 
     // ---- push buttons ------------------------------------------------------------------------------
+    // the control with the focus in its window: Windows draws the focus rectangle while that
+    // window is active, whether or not the browser tab itself has the system focus
+    function setControlFocus(node) {
+        if (!node) return;
+        const box = node.closest('.jz-classic, #vistaJezzballModal');
+        if (box) box.querySelectorAll('.jz-has-focus').forEach((n) => { if (n !== node) n.classList.remove('jz-has-focus'); });
+        if (!node.classList.contains('jz-has-focus')) node.classList.add('jz-has-focus');
+        try { node.focus({ preventScroll: true }); } catch (_) { /* detached */ }
+    }
+
+    // DrawFocusRect inset 4 px: dots where x + y (from the button's corner) is odd
+    function focusCanvas(w, h) {
+        const c = document.createElement('canvas');
+        c.className = 'jz-focus-rect';
+        c.width = w;
+        c.height = h;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#000';
+        const l = 4;
+        const t = 4;
+        const r = w - 5;
+        const btm = h - 5;
+        for (let x = l; x <= r; x++) {
+            if ((x + t) & 1) ctx.fillRect(x, t, 1, 1);
+            if ((x + btm) & 1) ctx.fillRect(x, btm, 1, 1);
+        }
+        for (let y = t + 1; y < btm; y++) {
+            if ((l + y) & 1) ctx.fillRect(l, y, 1, 1);
+            if ((r + y) & 1) ctx.fillRect(r, y, 1, 1);
+        }
+        return c;
+    }
+
     // spec: { x, y, w, h, text, font (raster) | ui (Segoe UI text), def, onClick, mnemonic }
     function pushButton(parent, spec) {
         const b = el('button', 'jz-button' + (spec.def ? ' jz-default' : '') + (spec.ui ? ' jz-ui' : ''));
@@ -241,15 +288,16 @@
             const s = el('span');
             s.appendChild(mnemonicFragment(spec.text));
             b.appendChild(s);
-            b.style.lineHeight = (spec.h - 2) + 'px';
         } else {
             const label = spec.text.replace(/&(.)/g, '$1');
             const tw = spec.font.width(label);
             const c = textCanvas(spec.font, label, tw, spec.font.height, { single: true });
+            // the label cell sits a pixel above the centre (measured on the VM's 30 and 40 px buttons)
             c.style.left = Math.trunc((spec.w - tw) / 2) + 'px';
-            c.style.top = Math.trunc((spec.h - spec.font.height) / 2) + 'px';
+            c.style.top = (Math.trunc((spec.h - spec.font.height) / 2) - 1) + 'px';
             b.appendChild(c);
         }
+        b.appendChild(focusCanvas(spec.w, spec.h));
         b.dataset.mnemonic = mnemonicOf(spec.text);
         let down = false;
         const setPressed = (on) => b.classList.toggle('jz-pressed', on);
@@ -258,7 +306,7 @@
             down = true;
             setPressed(true);
             try { b.setPointerCapture(e.pointerId); } catch (_) { /* old browsers */ }
-            b.focus({ preventScroll: true });
+            setControlFocus(b);
             e.preventDefault();
         });
         b.addEventListener('pointermove', (e) => {
@@ -291,9 +339,9 @@
                 e.preventDefault();
             }
         });
-        b.addEventListener('focus', () => b.classList.add('jz-focus'));
-        b.addEventListener('blur', () => b.classList.remove('jz-focus'));
         b.addEventListener('click', (e) => e.preventDefault());
+        // Enter on the default button, a mnemonic, BM_CLICK
+        b.jzActivate = () => { if (!b.disabled && spec.onClick) spec.onClick(); };
         parent.appendChild(b);
         return b;
     }
@@ -359,10 +407,14 @@
         const fh = opts.frame === 'dialog' ? 26 : 22;
         modal.style.width = (opts.w + fw) + 'px';
         modal.style.height = (opts.h + fh) + 'px';
+        // the desktop's layout size never goes below its default minimum (200 x 150) otherwise
+        modal.dataset.windowMinWidth = String(opts.w + fw);
+        modal.dataset.windowMinHeight = String(opts.h + fh);
         const title = el('div', 'modal-window-title');
         const main = el('div', 'modal-window-title-main');
         if (opts.icon) {
-            const ic = el('span', 'jz-caption-icon' + (opts.icon === 'wep' ? ' jz-wep-icon' : ''));
+            // a div: the taskbar takes the caption's first span as the title (getModalTitle)
+            const ic = el('div', 'jz-caption-icon' + (opts.icon === 'wep' ? ' jz-wep-icon' : ''));
             main.appendChild(ic);
         }
         main.appendChild(el('span', '', opts.title));
@@ -391,9 +443,32 @@
                 if (opts.owner) opts.owner.addDialog(win);
                 // openModal / bringModalToFront / setModalOffsetsFromViewportTopLeft: modalUtils.js
                 openModal(modal);
-                if (typeof setModalOffsetsFromViewportTopLeft === 'function') {
-                    setModalOffsetsFromViewportTopLeft(modal, Math.round(left), Math.round(top), { skipClamp: true });
-                }
+                // placed again once the opened window has its layout size
+                const place = () => {
+                    if (!win.closed && typeof setModalOffsetsFromViewportTopLeft === 'function') {
+                        setModalOffsetsFromViewportTopLeft(modal, Math.round(left), Math.round(top), { skipClamp: true });
+                    }
+                };
+                place();
+                // the desktop measures (and settles) the window during its open animation; place it
+                // again once the animation is over
+                let settled = false;
+                const settle = () => {
+                    if (settled || modal.classList.contains('opening')) return;
+                    settled = true;
+                    watch.disconnect();
+                    place();
+                };
+                const watch = new MutationObserver(() => setTimeout(settle, 0));
+                watch.observe(modal, { attributes: true, attributeFilter: ['class'] });
+                requestAnimationFrame(() => requestAnimationFrame(settle));
+                setTimeout(() => {
+                    if (!settled) {
+                        settled = true;
+                        watch.disconnect();
+                        place();
+                    }
+                }, 1000);
                 bringModalToFront(modal);
             },
             close() {
@@ -426,10 +501,11 @@
     function dialogKeys(win, buttons, onEnter, onEscape) {
         return (e) => {
             const focusable = buttons.filter((b) => !b.disabled);
+            const focused = focusable.find((b) => b.classList.contains('jz-has-focus'));
             if (e.key === 'Enter') {
-                const focused = focusable.find((b) => b === document.activeElement);
-                if (focused && focused.tagName === 'BUTTON') focused.dispatchEvent(new KeyboardEvent('keyup', { key: ' ' }));
-                if (onEnter) onEnter(focused);
+                // the focused push button, else the dialog's default
+                if (focused && focused.tagName === 'BUTTON') focused.jzActivate();
+                else if (onEnter) onEnter(null);
                 return true;
             }
             if (e.key === 'Escape') {
@@ -437,16 +513,16 @@
                 return true;
             }
             if (e.key === 'Tab' && focusable.length) {
-                const i = focusable.indexOf(document.activeElement);
+                const i = focusable.indexOf(focused);
                 const next = focusable[(i + (e.shiftKey ? -1 : 1) + focusable.length) % focusable.length];
-                next.focus({ preventScroll: true });
+                setControlFocus(next);
                 return true;
             }
             if (e.key.length === 1 && (e.altKey || !focusable.some((b) => b.tagName === 'INPUT'))) {
                 const hit = focusable.find((b) => b.dataset && b.dataset.mnemonic === e.key.toUpperCase());
                 if (hit) {
-                    hit.focus({ preventScroll: true });
-                    if (hit.tagName === 'BUTTON') hit.dispatchEvent(new KeyboardEvent('keyup', { key: ' ' }));
+                    setControlFocus(hit);
+                    if (hit.tagName === 'BUTTON') hit.jzActivate();
                     return true;
                 }
             }
@@ -463,18 +539,21 @@
 
     // ---- the Vista message box -----------------------------------------------------------------------
     // MessageBox(text, caption, MB_YESNO | MB_OKCANCEL, MB_ICONQUESTION) -> 'yes' / 'no' / 'ok' / 'cancel'
+    // client widths Vista gave the game's messages (GDI's text widths, measured on the VM)
+    const MESSAGE_WIDTH = { 'Do you want to start a new game?': 282 };
     function messageBox(owner, text, caption, kind) {
         return new Promise((resolve) => {
             const buttons = kind === 'okcancel' ? [['OK', 'ok'], ['Cancel', 'cancel']] : [['&Yes', 'yes'], ['&No', 'no']];
             const measure = document.createElement('canvas').getContext('2d');
             measure.font = '9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif';
             const textW = Math.ceil(measure.measureText(text).width);
-            const w = Math.max(65 + textW + 39, 8 + buttons.length * 88 + (buttons.length - 1) * 9 + 8 + 65);
+            const w = MESSAGE_WIDTH[text] || Math.max(65 + textW + 39, 8 + buttons.length * 88 + (buttons.length - 1) * 9 + 8 + 65);
             const h = 133;
             const win = classicWindow({
                 id: 'vistaJezzballMessage', title: caption, frame: 'dialog', w, h, clientClass: 'jz-msgbox', captionGap: 0,
                 closeDisabled: kind !== 'okcancel', owner,
-                onClose: () => done(kind === 'okcancel' ? 'cancel' : null)
+                onClose: () => done(kind === 'okcancel' ? 'cancel' : null),
+                onKey: (e) => keys(e)
             });
             const top = el('div', 'jz-msgbox-top');
             top.style.height = '84px';
@@ -500,14 +579,12 @@
                 resolve(result);
             }
             const keys = dialogKeys(win, made, (focused) => {
-                if (!focused) made[0].dispatchEvent(new KeyboardEvent('keyup', { key: ' ' }));
+                if (!focused) made[0].jzActivate();
             }, () => { if (kind === 'okcancel') done('cancel'); });
-            const ownKey = (e) => keys(e);
-            win.modal.addEventListener('keydown', ownKey);
             const sw = root.innerWidth;
             const sh = root.innerHeight;
             win.open((sw - (w + 6)) / 2 + 3, (sh - (h + 26)) / 2 + 9);
-            made[0].focus({ preventScroll: true });
+            setControlFocus(made[0]);
         });
     }
 
@@ -598,7 +675,7 @@
             img.alt = '';
             img.src = '/static_images/app_icons/16/vista-jezzball.webp';
             main.appendChild(img);
-            main.appendChild(el('span', 'jz-caption-icon'));
+            main.appendChild(el('div', 'jz-caption-icon'));
             this.titleText = el('span', '', 'JezzBall');
             main.appendChild(this.titleText);
             title.appendChild(main);
@@ -770,7 +847,7 @@
                 this.game.active = active;
                 if (!active) this.wave.stop();
             }
-            if (!active) this.menu.close();
+            if (!active && this.menu.isOpen()) this.menu.close();
         }
 
         syncState() {
@@ -917,14 +994,14 @@
         // ---- dialogs ----
         addDialog(d) {
             this.dialogs.push(d);
-            this.modal.classList.add('jz-blocked');
+            if (!this.modal.classList.contains('jz-blocked')) this.modal.classList.add('jz-blocked');
             this.menu.close();
             this.syncActive();
         }
 
         removeDialog(d) {
             this.dialogs = this.dialogs.filter((x) => x !== d);
-            this.modal.classList.toggle('jz-blocked', this.dialogs.length > 0);
+            if (this.modal.classList.contains('jz-blocked') !== this.dialogs.length > 0) this.modal.classList.toggle('jz-blocked', this.dialogs.length > 0);
             if (!this.dialogs.length && this.isOpen()) bringModalToFront(this.modal);
             this.syncActive();
         }
@@ -951,7 +1028,7 @@
                 });
                 const edit = el('div', 'jz-edit');
                 Object.assign(edit.style, { left: '24px', top: '16px', width: '152px', height: '58px' });
-                const text = textCanvas(font, 'You have completed Level ' + level, 150, 56, { align: 'center', top: 1 });
+                const text = textCanvas(font, 'You have completed Level ' + level, 150, 56, { align: 'center', top: 1, edit: true });
                 text.style.position = 'absolute';
                 text.style.left = '0px';
                 text.style.top = '0px';
@@ -965,7 +1042,7 @@
                 }
                 const o = this.clientOrigin();
                 win.open(o.x + 178, o.y + 106);
-                button.focus({ preventScroll: true });
+                setControlFocus(button);
             });
         }
 
@@ -1063,7 +1140,8 @@
                 box('jz-dented', 10, 164, 320, 110);
                 const title2 = box('jz-outdent', 60, 150, 220, 26);
                 title2.style.background = '#c0c0c0';
-                rasterLabel(c, a.title, "Today's High Scores", 60, 150, 220, 26, { align: 'center', single: true, top: 1 });
+                // only the Hall of Fame label has WS_BORDER (its text one pixel in)
+                rasterLabel(c, a.title, "Today's High Scores", 60, 150, 220, 26, { align: 'center', single: true });
                 rows(rec.today, 180);
                 const trophy = (x) => {
                     const t = el('img', 'jz-bitmap');
@@ -1102,7 +1180,7 @@
                 }
                 const p = wepPlace(342, 362);
                 win.open(p.left, p.top);
-                ok.focus({ preventScroll: true });
+                setControlFocus(ok);
             });
         }
 
@@ -1120,7 +1198,9 @@
                 const logo = el('img', 'jz-bitmap');
                 logo.src = ART + 'wep-logo.png';
                 logo.alt = '';
-                Object.assign(logo.style, { left: '10px', top: '10px', width: '259px', height: '64px' });
+                // the owner-drawn button is 260 x 65, the bitmap 259 x 64: the BitBlt's extra column and
+                // row come out white
+                Object.assign(logo.style, { left: '10px', top: '10px', width: '259px', height: '64px', padding: '0 1px 1px 0', background: '#fff', boxSizing: 'content-box' });
                 c.appendChild(logo);
                 const icon = el('img', 'jz-bitmap');
                 icon.src = ART + 'icon32.png';
@@ -1138,7 +1218,7 @@
                 }
                 const p = wepPlace(282, 278);
                 win.open(p.left, p.top);
-                ok.focus({ preventScroll: true });
+                setControlFocus(ok);
             });
         }
 
@@ -1149,6 +1229,11 @@
 
         open() {
             const modal = this.modal;
+            // still minimizing: restore once the animation has ended
+            if (modal.classList.contains('minimising')) {
+                modal.addEventListener('animationend', () => this.open(), { once: true });
+                return;
+            }
             // restoreMinimizedModal / openModal / bringModalToFront: public/scripts/comp/modalUtils.js
             if (modal.classList.contains('minimised') && typeof restoreMinimizedModal === 'function') restoreMinimizedModal(modal);
             if (modal.classList.contains('hidden')) {
@@ -1201,8 +1286,9 @@
         input.autocomplete = 'off';
         const caret = el('div', 'jz-caret');
         let canvas = null;
+        // a single-line EDIT draws its text (and caret) at the top of the formatting rect
         const left = 2;
-        const top = Math.trunc((h - font.height) / 2);
+        const top = 2;
         const render = () => {
             if (canvas) canvas.remove();
             const v = input.value;
@@ -1215,12 +1301,11 @@
             caret.style.left = (left + font.width(v.slice(0, pos))) + 'px';
             caret.style.top = top + 'px';
             caret.style.height = font.height + 'px';
-            caret.style.display = document.activeElement === input ? '' : 'none';
         };
         box.appendChild(caret);
         box.appendChild(input);
         ['input', 'keyup', 'focus', 'blur', 'select', 'click'].forEach((ev) => input.addEventListener(ev, render));
-        box.addEventListener('pointerdown', () => setTimeout(() => input.focus({ preventScroll: true }), 0));
+        box.addEventListener('pointerdown', () => setTimeout(() => setControlFocus(input), 0));
         parent.appendChild(box);
         render();
         input.dataset.mnemonic = '';
@@ -1228,7 +1313,7 @@
             box,
             value: () => input.value,
             focus: () => {
-                input.focus({ preventScroll: true });
+                setControlFocus(input);
                 input.select();
                 render();
             }
@@ -1246,7 +1331,7 @@
         const line = el('div');
         Object.assign(line.style, {
             position: 'absolute', left: x0 + 'px', width: cw + 'px', height: '1px', background: '#000',
-            top: (Math.trunc((h - font.height) / 2) + font.ascent + 1) + 'px', pointerEvents: 'none'
+            top: (Math.trunc((h - font.height) / 2) - 1 + font.ascent + 1) + 'px', pointerEvents: 'none'
         });
         button.appendChild(line);
     }
@@ -1304,7 +1389,7 @@
             this.keyboard = !!keyboard;
             this.mode = false;
             this.titles.forEach((t, k) => t.classList.toggle('jz-open', k === i));
-            this.win.modal.classList.toggle('jz-cues', this.keyboard);
+            if (this.win.modal.classList.contains('jz-cues') !== this.keyboard) this.win.modal.classList.toggle('jz-cues', this.keyboard);
             const popup = el('div', 'jz-menu-popup' + (this.keyboard ? ' jz-cues' : ''));
             popup.setAttribute('role', 'menu');
             this.popup = popup;
@@ -1383,8 +1468,10 @@
             this.hot = -1;
             if (!keepMode) {
                 this.mode = false;
-                this.win.modal.classList.remove('jz-cues');
-                this.titles.forEach((t) => t.classList.remove('jz-open'));
+                // classList.remove writes the attribute even when the class is absent, which would
+                // wake the window's class observer (syncActive -> close) again
+                if (this.win.modal.classList.contains('jz-cues')) this.win.modal.classList.remove('jz-cues');
+                this.titles.forEach((t) => { if (t.classList.contains('jz-open')) t.classList.remove('jz-open'); });
             }
         }
 
@@ -1459,7 +1546,7 @@
             this.mode = true;
             this.modeIndex = i === undefined ? 0 : i;
             this.titles.forEach((t, k) => t.classList.toggle('jz-open', k === this.modeIndex));
-            this.win.modal.classList.add('jz-cues');
+            if (!this.win.modal.classList.contains('jz-cues')) this.win.modal.classList.add('jz-cues');
         }
 
         // Alt released on its own toggles the menu bar's selection (keyup)
@@ -1513,7 +1600,10 @@
             const button = (label, fn, disabled) => {
                 const b = el('button', 'btn-secondary jz-help-button');
                 b.type = 'button';
-                b.appendChild(mnemonicFragment(label));
+                // one span: the desktop's buttons are flex boxes and would space the mnemonic apart
+                const text = el('span');
+                text.appendChild(mnemonicFragment(label));
+                b.appendChild(text);
                 b.disabled = !!disabled;
                 b.addEventListener('click', fn);
                 bar.appendChild(b);
