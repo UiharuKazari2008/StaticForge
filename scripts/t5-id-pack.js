@@ -2,9 +2,9 @@
 /**
  * Encode text to T5 token ids, or decode ids back to text.
  *
- *   node scripts/prompt-list-codec.js enc -- your phrase here
- *   node scripts/prompt-list-codec.js dec -- 12,34,56
- *   node scripts/prompt-list-codec.js dec -- 12 34 56
+ *   node scripts/t5-id-pack.js enc -- your phrase here
+ *   node scripts/t5-id-pack.js dec -- 12,34,56
+ *   node scripts/t5-id-pack.js dec -- 12 34 56
  */
 'use strict';
 
@@ -63,8 +63,8 @@ if (require.main === module) {
     } else if (cmd === 'dec') {
         console.log(decodeIds(parseIds(args)));
     } else {
-        console.error('usage: prompt-list-codec.js enc -- <text>');
-        console.error('       prompt-list-codec.js dec -- <ids>');
+        console.error('usage: t5-id-pack.js enc -- <text>');
+        console.error('       t5-id-pack.js dec -- <ids>');
         process.exitCode = 1;
     }
 }

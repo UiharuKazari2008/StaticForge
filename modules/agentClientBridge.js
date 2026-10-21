@@ -11,8 +11,8 @@ const {
 } = require('./applicationAuthManager');
 const { getWsPacketEntry } = require('./ws/wsPacketRegistry');
 const { buildStudioSettingsCatalog } = require('./studioSettingsCatalog');
-const { finalizeStudioReadPayload } = require('../public/scripts/comp/promptListFold');
-const { resolveInputCache } = require('./promptCoverLedger');
+const { pktPrep } = require('./pktWire');
+const { rowForBind } = require('./pktSideStore');
 
 const SHARE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const SHARE_TTL_MS = 5 * 60 * 1000;
@@ -2434,9 +2434,9 @@ function registerRoutes(app, { devAuthMiddleware, globalResources }) {
             if (scopePayload.vfsPathUuid) fallback.vfsPathUuid = scopePayload.vfsPathUuid;
             try {
                 const data = await sendBoundCommand(globalResources, 'get_state', {}, 8000, bindKey);
-                const promptInputCache = resolveInputCache(data && data.filename, bindKey);
+                const rowCache = rowForBind(data && data.filename, bindKey);
                 const change = (data && data.change && typeof data.change === 'object' && !Array.isArray(data.change))
-                    ? finalizeStudioReadPayload(data.change, false, promptInputCache)
+                    ? pktPrep(data.change, false, rowCache)
                     : null;
                 const rawDirector = data.director || (change && change.director) || null;
                 const enrichedDyn = await enrichDynamicGenerationForMcp(
@@ -2453,10 +2453,10 @@ function registerRoutes(app, { devAuthMiddleware, globalResources }) {
                     bound: true,
                     change,
                     dynamicGeneration: enrichedDyn != null && typeof enrichedDyn === 'object'
-                        ? finalizeStudioReadPayload(enrichedDyn, false, promptInputCache)
+                        ? pktPrep(enrichedDyn, false, rowCache)
                         : enrichedDyn,
                     director: rawDirector != null && typeof rawDirector === 'object'
-                        ? finalizeStudioReadPayload(rawDirector, false, promptInputCache)
+                        ? pktPrep(rawDirector, false, rowCache)
                         : rawDirector,
                     vSlider: (change && change.vSlider) || data.vSlider || null,
                     settings: buildStudioSettingsCatalog(globalResources, data.model),
@@ -2641,12 +2641,12 @@ module.exports = {
     }
 };
 
-const promptPressure = require('./promptPressure');
-promptPressure.registerClientLevel((clientId) => {
+const bindKv = require('./bindKv');
+bindKv.hookTabKv((clientId) => {
     let max = 0;
     for (const [key, sess] of bindSessions.entries()) {
         if (sess && String(sess.clientId) === String(clientId)) {
-            const n = promptPressure.levelFor(key);
+            const n = bindKv.kvN(key);
             if (n > max) max = n;
         }
     }

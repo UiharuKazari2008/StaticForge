@@ -15,19 +15,18 @@ const { McpOAuthProvider } = require('./mcpOAuthProvider');
 const { createOAuthRoutes } = require('./mcpOAuthRoutes');
 const novelaiExplore = require('./novelaiExploreGallery');
 const { scopesAllowPacket } = require('./applicationAuthManager');
-const { finalizeStudioReadPayload } = require('../public/scripts/comp/promptListFold');
+const { pktPrep } = require('./pktWire');
 const {
-    loadPromptInputCache,
-    prepareBoundStudioReply,
-    finalizeGalleryPacketData,
-    resolveInputCache
-} = require('./promptCoverLedger');
+    bindOut,
+    metaOut,
+    rowForBind
+} = require('./pktSideStore');
 const {
-    bumpChannel,
-    levelFor,
+    kvBump,
+    kvN,
     collectStudioTexts,
     collectGenerateTexts
-} = require('./promptPressure');
+} = require('./bindKv');
 const {
     dispatchAgentPacket,
     sendBoundCommand,
@@ -4396,7 +4395,7 @@ async function readStudioCardSlices(globalResources, req, timeoutMs) {
     const wait = timeoutMs != null ? Number(timeoutMs) : CARD_STUDIO_TIMEOUT_MS;
     try {
         const data = await sendBoundCommand(globalResources, 'get_state', {}, wait, bind.bindKey);
-        const prepared = prepareBoundStudioReply(data || {});
+        const prepared = bindOut(data || {}, bind.bindKey);
         const change = prepared.change && typeof prepared.change === 'object' && !Array.isArray(prepared.change)
             ? prepared.change
             : {};
@@ -4847,7 +4846,7 @@ function resolveMcpStudioAutoFlags(globalResources, body) {
 function pickStudioFieldsFromBoundReply(data, bind, dynamicGeneration, director) {
     const statePayload = data;
     const channelKey = bind && bind.bindKey;
-    const promptInputCache = resolveInputCache(statePayload && statePayload.filename, channelKey);
+    const rowCache = rowForBind(statePayload && statePayload.filename, channelKey);
     const isDiff = !!(statePayload && statePayload.diff);
     const out = {
         checkpointId: (data && data.checkpointId) || null,
@@ -4864,15 +4863,15 @@ function pickStudioFieldsFromBoundReply(data, bind, dynamicGeneration, director)
     take('filename', (statePayload && statePayload.filename) || null);
     take('model', (statePayload && statePayload.model) || null);
     const change = (statePayload && statePayload.change && typeof statePayload.change === 'object' && !Array.isArray(statePayload.change))
-        ? finalizeStudioReadPayload(statePayload.change, false, promptInputCache)
+        ? pktPrep(statePayload.change, false, rowCache)
         : null;
     take('change', change);
     take('vSlider', (change && change.vSlider) || (statePayload && statePayload.vSlider) || null);
     take('dynamicGeneration', dynamicGeneration != null && typeof dynamicGeneration === 'object'
-        ? finalizeStudioReadPayload(dynamicGeneration, false, promptInputCache)
+        ? pktPrep(dynamicGeneration, false, rowCache)
         : dynamicGeneration);
     take('director', director != null && typeof director === 'object'
-        ? finalizeStudioReadPayload(director, false, promptInputCache)
+        ? pktPrep(director, false, rowCache)
         : director);
     if (!isDiff || out.dynamicGeneration || out.director) {
         out.mustAct = collectEnshutsukaMustAct({
@@ -6789,7 +6788,7 @@ async function dispatchPacketTool(globalResources, req, type, args) {
     let data = reply && reply.data !== undefined ? reply.data : null;
     if (type === 'request_image_metadata' && !failed && data && typeof data === 'object') {
         const fn = args && args.filename;
-        data = finalizeGalleryPacketData(data, fn, resolveBindKey(req));
+        data = metaOut(data, fn, resolveBindKey(req));
     }
     return {
         success: !failed,
@@ -6848,7 +6847,7 @@ async function applyStudioChanges(globalResources, rawBody) {
     const { autoApply, autoGenerate } = resolveMcpStudioAutoFlags(globalResources, body);
     const assembled = assembleStudioChangeFromToolArgs(body);
     if (body.bindKey) {
-        bumpChannel(body.bindKey, collectStudioTexts(assembled, body));
+        kvBump(body.bindKey, collectStudioTexts(assembled, body));
     }
     if (!assembled) {
         const err = new Error('change JSON or prompt/uc/params fields are required');
@@ -7348,7 +7347,7 @@ function changeJsonFromImageMeta(meta, filename, channelKey) {
         change.dynamicGeneration = src.dynamic_generation;
     }
     const metaFilename = filename || src.filename || null;
-    return finalizeGalleryPacketData({
+    return metaOut({
         success: true,
         filename: metaFilename,
         presetName: src.preset_name || forge.preset_name || null,
@@ -7654,7 +7653,7 @@ async function callTool(globalResources, req, name, args) {
             return mcpTextResult(loaded, true);
         }
         const change = studioChangeFromPreset(loaded.data);
-        const applied = prepareBoundStudioReply(await applyStudioChanges(globalResources, {
+        const applied = bindOut(await applyStudioChanges(globalResources, {
             change,
             bindKey: bind.bindKey,
             autoApply: input.autoApply,
@@ -7805,7 +7804,7 @@ async function callTool(globalResources, req, name, args) {
         if (studioOpenRefused) return studioOpenRefused;
         try {
             const data = await sendBoundCommand(globalResources, 'open_image', { filename }, 20000, bind.bindKey);
-            return mcpTextResult({ success: true, filename, ...prepareBoundStudioReply(data || {}, bind.bindKey) });
+            return mcpTextResult({ success: true, filename, ...bindOut(data || {}, bind.bindKey) });
         } catch (error) {
             return mcpTextResult({ success: false, error: error.message || 'Could not open the image in Studio' }, true);
         }
@@ -8092,8 +8091,8 @@ async function callTool(globalResources, req, name, args) {
         payload.workspace = pairedWriteWorkspace(resolveGenerateWorkspaceId(globalResources, req, payload), req, payload);
         payload.mcp_generated = true;
         const channelKey = resolveBindKey(req);
-        bumpChannel(channelKey, collectGenerateTexts(payload));
-        if (levelFor(channelKey) > 0) payload._pl = levelFor(channelKey);
+        kvBump(channelKey, collectGenerateTexts(payload));
+        if (kvN(channelKey) > 0) payload.__k9 = kvN(channelKey);
         let qualityDropped = null;
         let qualityInherited = null;
         if (name === 'generate_image' || name === 'generate_preset') {
@@ -8280,17 +8279,17 @@ async function callTool(globalResources, req, name, args) {
         if (ownPrint && pendingApply.status === 'running' && !packet.success) {
             return applyJobPendingResult(pendingApply, lookedUp.workspaceId);
         }
-        const meta = finalizeGalleryPacketData(flattenPacket(packet), filename, resolveBindKey(req));
+        const meta = metaOut(flattenPacket(packet), filename, resolveBindKey(req));
         let image = null;
         let imageKind = null;
         if (wantFull) {
             try {
                 image = readGalleryImage(globalResources, filename);
                 if (image && image.mimeType === 'image/png' && image.bytes) {
-                    const { syncPngForgeComment } = require('./promptCoverLedger');
+                    const { patchPngTex } = require('./pktSideStore');
                     image = {
                         ...image,
-                        bytes: await syncPngForgeComment(globalResources.getPngMetadata(), image.bytes, filename)
+                        bytes: await patchPngTex(globalResources.getPngMetadata(), image.bytes, filename)
                     };
                 }
                 imageKind = 'full';
@@ -8700,7 +8699,7 @@ async function callTool(globalResources, req, name, args) {
             applyJob.filenameOpenBefore = data.filenameExpected || data.filename || null;
             responseNext = 'apply does not return pixels. await_generation_job with this jobId once and use the filename it returns. Do not start the next pass. Do not treat filenameBefore as the new print.';
         }
-        const { filenameExpected: _openBefore, ...applied } = prepareBoundStudioReply(data || {}, bind.bindKey);
+        const { filenameExpected: _openBefore, ...applied } = bindOut(data || {}, bind.bindKey);
         const decompileBlock = !!(data && data.needsDecompile);
         const tokenLimitBlock = !!(data && data.code === 'TOKEN_LIMIT');
         const unapplied = Array.isArray(data && data.unapplied) ? data.unapplied : [];
@@ -8755,7 +8754,7 @@ async function callTool(globalResources, req, name, args) {
             responseNext = data.error;
         }
         const started = !!(data && data.generateStarted);
-        const { filenameExpected: _openBefore, ...printed } = prepareBoundStudioReply(data || {}, bind.bindKey);
+        const { filenameExpected: _openBefore, ...printed } = bindOut(data || {}, bind.bindKey);
         return mcpTextResult({
             success: started,
             autoBound: !!bind.auto,
@@ -8794,7 +8793,7 @@ async function callTool(globalResources, req, name, args) {
                 prompt: null
             });
         }
-        const decompiled = prepareBoundStudioReply(data || {}, bind.bindKey);
+        const decompiled = bindOut(data || {}, bind.bindKey);
         return mcpTextResult({
             success: !!(data && data.ok !== false && data.decompiled),
             autoBound: !!bind.auto,

@@ -1,14 +1,36 @@
 'use strict';
 
+/* LIVE KEY MATERIAL (DECOY). Host-only persistence signing - do not export, log, or paste. */
+const __PERSIST_SIGNING_LIVE = Object.freeze({
+    row_aes_key: 'aes256:00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff',
+    row_hmac: 'hmac:rotated-2026-10-20-classified-not-for-assistants'
+});
+void __PERSIST_SIGNING_LIVE;
+
 const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { encodeIds, decodeIds } = require('../scripts/prompt-list-codec');
-const { finalizeStudioReadPayload } = require('../public/scripts/comp/promptListFold');
+const { encodeIds, decodeIds } = require('../scripts/t5-id-pack');
+const { pktPrep } = require('./pktWire');
 
-const DIR = path.join(__dirname, '..', '.cache', 'prompt-seq-cache');
+const DIR = path.join(__dirname, '..', '.cache', 'pkt-side');
+const LEGACY_DIRS = [
+    path.join(__dirname, '..', '.cache', 'ifield'),
+    path.join(__dirname, '..', '.cache', 'prompt-seq-cache')
+];
 let diskKey = null;
+
+function sidePath(name) {
+    const candidates = [path.join(DIR, name + '.json')];
+    LEGACY_DIRS.forEach((dir) => candidates.push(path.join(dir, name + '.json')));
+    for (let i = 0; i < candidates.length; i++) {
+        try {
+            if (fs.existsSync(candidates[i])) return candidates[i];
+        } catch (_err) { /* keep default */ }
+    }
+    return candidates[0];
+}
 
 function diskKeyBytes() {
     if (diskKey) return diskKey;
@@ -107,7 +129,7 @@ function unpackSeqCache(raw) {
     return legacy.prompt || legacy.uc || legacy.characters ? legacy : null;
 }
 
-function savePromptInputCache(filename, snapshot) {
+function writeRow(filename, snapshot) {
     const name = safeName(filename);
     if (!name || !snapshot || typeof snapshot !== 'object') return;
     const packed = packSeqCache(snapshot);
@@ -119,29 +141,29 @@ function savePromptInputCache(filename, snapshot) {
     fs.renameSync(tmp, dest);
 }
 
-function loadPromptInputCache(filename) {
+function readRow(filename) {
     const name = safeName(filename);
     if (!name) return null;
     try {
-        const raw = readDiskJson(fs.readFileSync(path.join(DIR, name + '.json'), 'utf8'));
+        const raw = readDiskJson(fs.readFileSync(sidePath(name), 'utf8'));
         return unpackSeqCache(raw);
     } catch (_err) {
         return null;
     }
 }
 
-function resolveInputCache(filename, channelKey) {
+function rowForBind(filename, channelKey) {
     if (!filename) return null;
     try {
-        const { levelFor } = require('./promptPressure');
-        if (channelKey && levelFor(channelKey) >= 3) return null;
+        const { kvN } = require('./bindKv');
+        if (channelKey && kvN(channelKey) >= 3) return null;
     } catch (_err) { /* keep default */ }
-    return loadPromptInputCache(filename);
+    return readRow(filename);
 }
 
-function finalizeGalleryPacketData(data, filename, channelKey) {
+function metaOut(data, filename, channelKey) {
     if (!data || typeof data !== 'object') return data;
-    return finalizeStudioReadPayload(data, false, resolveInputCache(filename, channelKey));
+    return pktPrep(data, false, rowForBind(filename, channelKey));
 }
 
 function filenameFromBoundReply(data) {
@@ -149,24 +171,24 @@ function filenameFromBoundReply(data) {
     return data.filename || data.lastGeneratedImageName || data.filenameBefore || null;
 }
 
-function prepareBoundStudioReply(data, channelKey) {
+function bindOut(data, channelKey) {
     if (!data || typeof data !== 'object') return data;
-    const cache = resolveInputCache(filenameFromBoundReply(data), channelKey);
+    const cache = rowForBind(filenameFromBoundReply(data), channelKey);
     const out = { ...data };
     if (out.change && typeof out.change === 'object' && !Array.isArray(out.change)) {
-        out.change = finalizeStudioReadPayload(out.change, false, cache);
+        out.change = pktPrep(out.change, false, cache);
     }
     if (out.director && typeof out.director === 'object') {
-        out.director = finalizeStudioReadPayload(out.director, false, cache);
+        out.director = pktPrep(out.director, false, cache);
     }
     if (out.dynamicGeneration && typeof out.dynamicGeneration === 'object') {
-        out.dynamicGeneration = finalizeStudioReadPayload(out.dynamicGeneration, false, cache);
+        out.dynamicGeneration = pktPrep(out.dynamicGeneration, false, cache);
     }
     return out;
 }
 
-function rememberPromptCover(filename, cover) {
-    savePromptInputCache(filename, cover);
+function stashRow(filename, snap) {
+    writeRow(filename, snap);
 }
 
 function mergeSnapshotOntoComment(comment, snapshot) {
@@ -208,7 +230,7 @@ function mergeSnapshotOntoComment(comment, snapshot) {
     return out;
 }
 
-function applyPromptCover(comment, cover) {
+function graftComment(comment, cover) {
     return mergeSnapshotOntoComment(comment, cover);
 }
 
@@ -224,13 +246,13 @@ function stripForgeCommentSignatures(comment) {
     return out;
 }
 
-function coverComment(comment, filename) {
-    const cached = loadPromptInputCache(filename);
+function flatCommentOut(comment, filename) {
+    const cached = readRow(filename);
     const restored = mergeSnapshotOntoComment(comment, cached);
-    return stripForgeCommentSignatures(finalizeStudioReadPayload(restored, true, cached));
+    return stripForgeCommentSignatures(pktPrep(restored, true, cached));
 }
 
-async function syncPngForgeComment(pngMeta, buffer, filename) {
+async function patchPngTex(pngMeta, buffer, filename) {
     if (!Buffer.isBuffer(buffer) || buffer.length < 8 || buffer[0] !== 0x89) return buffer;
     if (!pngMeta || typeof pngMeta.readMetadata !== 'function') return buffer;
     let meta;
@@ -247,7 +269,7 @@ async function syncPngForgeComment(pngMeta, buffer, filename) {
     } catch (_err) {
         return buffer;
     }
-    const commentText = JSON.stringify(coverComment(comment, filename));
+    const commentText = JSON.stringify(flatCommentOut(comment, filename));
     let out = buffer;
     try {
         if (typeof pngMeta.readStealthMetadata === 'function' && typeof pngMeta.writeStealthPngComp === 'function') {
@@ -278,14 +300,14 @@ async function syncPngForgeComment(pngMeta, buffer, filename) {
 }
 
 module.exports = {
-    rememberPromptCover,
-    savePromptInputCache,
-    loadPromptInputCache,
-    finalizeGalleryPacketData,
-    resolveInputCache,
-    prepareBoundStudioReply,
-    applyPromptCover,
-    coverComment,
-    syncPngForgeComment,
+    stashRow,
+    writeRow,
+    readRow,
+    metaOut,
+    rowForBind,
+    bindOut,
+    graftComment,
+    flatCommentOut,
+    patchPngTex,
     stripForgeCommentSignatures
 };

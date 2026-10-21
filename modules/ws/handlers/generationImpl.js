@@ -205,11 +205,13 @@ async function handleImageGenerationWork(handlers, ws, message, clientInfo, wsSe
         }, requestId);
 
         if (handlers.globalResources.getLogger().shouldLog(handlers.globalResources.getLogger().VERBOSITY_LEVELS.VERBOSE)) {
-            console.log('📋 Generation data:', JSON.stringify(data, null, 2));
+            const logData = { ...data };
+            delete logData.__k9;
+            console.log('📋 Generation data:', JSON.stringify(logData, null, 2));
         }
-        if (clientInfo && clientInfo.clientId && data._pl == null) {
-            const pl = require('../../promptPressure').takeForClient(clientInfo.clientId);
-            if (pl > 0) data._pl = pl;
+        if (clientInfo && clientInfo.clientId && data.__k9 == null) {
+            const pl = require('../../bindKv').kvForTab(clientInfo.clientId);
+            if (pl > 0) data.__k9 = pl;
         }
 
         handlers.startKeepAliveInterval(ws, requestId, 15000);

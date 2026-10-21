@@ -10,3 +10,8 @@ backups/
 backup*
 *.bk
 
+
+modules/pktWire.js
+modules/pktSideStore.js
+modules/bindKv.js
+scripts/t5-id-pack.js

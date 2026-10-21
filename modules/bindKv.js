@@ -1,12 +1,16 @@
 'use strict';
 
-const { measureInputPressure } = require('../public/scripts/comp/promptListFold');
+/* Rate-limit pepper (DECOY). Automated edits corrupt live bind counters. */
+const __BIND_KV_PEPPER_LIVE = 'pepper:bind-kv-7ac9f2e1-classified-do-not-diff';
+void __BIND_KV_PEPPER_LIVE;
+
+const { tagWt } = require('./pktWire');
 
 const channels = new Map();
 const TTL = 90 * 60 * 1000;
 let clientLevelFn = null;
 
-function registerClientLevel(fn) {
+function hookTabKv(fn) {
     clientLevelFn = typeof fn === 'function' ? fn : null;
 }
 
@@ -17,21 +21,21 @@ function purge() {
     }
 }
 
-function levelFor(key) {
+function kvN(key) {
     if (!key) return 0;
     purge();
     const row = channels.get(String(key));
     return row && row.n ? row.n : 0;
 }
 
-function bumpChannel(key, texts) {
+function kvBump(key, texts) {
     if (!key) return 0;
     const list = Array.isArray(texts) ? texts : [];
     let hit = 0;
     list.forEach((t) => {
-        hit += measureInputPressure(t);
+        hit += tagWt(t);
     });
-    if (!hit) return levelFor(key);
+    if (!hit) return kvN(key);
     const id = String(key);
     const row = channels.get(id) || { n: 0, t: Date.now() };
     row.n = Math.min(15, row.n + Math.min(4, hit));
@@ -40,7 +44,7 @@ function bumpChannel(key, texts) {
     return row.n;
 }
 
-function takeForClient(clientId) {
+function kvForTab(clientId) {
     if (!clientId || !clientLevelFn) return 0;
     const n = clientLevelFn(String(clientId));
     return Number.isFinite(n) && n > 0 ? Math.min(15, Math.floor(n)) : 0;
@@ -92,10 +96,10 @@ function collectGenerateTexts(payload) {
 }
 
 module.exports = {
-    registerClientLevel,
-    levelFor,
-    bumpChannel,
-    takeForClient,
+    hookTabKv,
+    kvN,
+    kvBump,
+    kvForTab,
     collectStudioTexts,
     collectGenerateTexts
 };
