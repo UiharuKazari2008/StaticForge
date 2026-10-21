@@ -188,21 +188,23 @@ function collectPageAssetUrls(content) {
     return urls;
 }
 
+// Resolves the file a page asset's hash is read from: { abs, buf }.
 async function readAssetBytesForHash(targetRoot, webPath) {
     const override = PAGE_ASSET_FILES[webPath];
     if (override) {
-        return fs.promises.readFile(path.join(targetRoot, ...override));
+        const abs = path.join(targetRoot, ...override);
+        return { abs, buf: await fs.promises.readFile(abs) };
     }
     const compiled = runtimeAssetCompiler.webPathToCompiledPath(targetRoot, webPath);
     try {
-        return await fs.promises.readFile(compiled);
+        return { abs: compiled, buf: await fs.promises.readFile(compiled) };
     } catch (err) {
         if (err.code !== 'ENOENT') {
             throw err;
         }
     }
     const pub = path.join(runtimeAssetCompiler.getPublicRoot(targetRoot), webPath.replace(/^\//, ''));
-    return fs.promises.readFile(pub);
+    return { abs: pub, buf: await fs.promises.readFile(pub) };
 }
 
 async function prehashHtmlContent(targetRoot, content) {
@@ -215,10 +217,12 @@ async function prehashHtmlContent(targetRoot, content) {
             continue;
         }
         try {
-            const buf = await readAssetBytesForHash(targetRoot, webPath);
+            const { abs, buf } = await readAssetBytesForHash(targetRoot, webPath);
+            const stat = await fs.promises.stat(abs);
             runtimeAssetMemory.rememberHash(
                 webPath,
-                crypto.createHash('sha256').update(buf).digest('hex')
+                crypto.createHash('sha256').update(buf).digest('hex'),
+                { abs, mtimeMs: stat.mtimeMs, size: stat.size }
             );
         } catch (err) {
             if (err.code !== 'ENOENT' && err.code !== 'EISDIR') {
@@ -282,6 +286,7 @@ async function rebuildHtmlFileAsync(targetRoot, webPath) {
         }
         throw err;
     }
+    await runtimeAssetMemory.revalidateHashOnly();
     await prehashHtmlContent(targetRoot, content);
     const updated = rewriteHtmlAssetUrls(content, targetRoot);
     const cachePath = path.join(runtimeAssetCompiler.getOutputRoot(targetRoot), name);
@@ -369,6 +374,8 @@ async function postCompileActions(result, options = {}) {
         return compileResult;
     }
 
+    // Edited non-compiled page assets (e.g. /protected/*.js) get their new ?sha= here.
+    await runtimeAssetMemory.revalidateHashOnly();
     updateHtmlStylesheetShaLinks(options.projectRoot || projectRoot);
 
     if (options.refreshCache !== false && typeof refreshCacheCallback === 'function') {

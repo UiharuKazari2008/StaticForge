@@ -5,9 +5,6 @@
 
 const fs = require('fs');
 const path = require('path');
-const AnimeTagSearch = require('../animeTagSearch');
-const FurryTagSearch = require('../furryTagSearch');
-const FastTagSearch = require('../fastTagSearch');
 const knowledgeMemoryDb = require('../knowledgeMemoryDatabase');
 const dovecoteDatabase = require('../dovecoteDatabase');
 const mailExchangeDatabase = require('../mailExchangeDatabase');
@@ -350,24 +347,6 @@ function initializeCharactersDatabase(gr) {
     }
 }
 
-async function initializeTagSearchServices(gr) {
-    try {
-        gr.animeTagSearch = new AnimeTagSearch(gr);
-        gr.initializationProgress.animeTagSearch = true;
-        console.log('✓ AnimeTagSearch loaded');
-
-        gr.furryTagSearch = new FurryTagSearch(gr);
-        gr.initializationProgress.furryTagSearch = true;
-        console.log('✓ FurryTagSearch loaded');
-
-        gr.fastTagSearch = new FastTagSearch(gr);
-        gr.initializationProgress.fastTagSearch = true;
-        console.log('✓ FastTagSearch initialized');
-    } catch (error) {
-        console.error('  ❌ Failed to load tag search services:', error);
-        throw error;
-    }
-}
 
 module.exports = {
     initializeAsyncSQLiteManager,
@@ -385,5 +364,4 @@ module.exports = {
     initializeReferenceMetadataDatabase,
     initializeGenerationQuipsDatabase,
     initializeCharactersDatabase,
-    initializeTagSearchServices,
 };

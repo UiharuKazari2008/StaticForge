@@ -12,6 +12,10 @@ const path = require('path');
 const assets = new Map();
 const hashes = new Map();
 const inflight = new Map();
+// Hash-only entries (page assets that are not precompiled, e.g. /protected/*.js):
+// the file each hash was read from and its mtime/size, so a refresh can rehash
+// the ones edited since. Without this they kept their boot ?sha= until a restart.
+const hashSources = new Map();
 
 function normalizeWebPath(webPath) {
     let value = String(webPath || '').split('#')[0].split('?')[0];
@@ -66,15 +70,50 @@ function remember(webPath, body, meta = {}) {
     };
     assets.set(key, entry);
     hashes.set(key, hash);
+    hashSources.delete(key);
     return entry;
 }
 
-function rememberHash(webPath, hash) {
+// source: { abs, mtimeMs, size } of the file hashed; lets revalidateHashOnly() notice edits.
+function rememberHash(webPath, hash, source) {
     const key = normalizeWebPath(webPath);
     if (!key || !hash) {
         return;
     }
     hashes.set(key, hash);
+    if (source && source.abs) {
+        hashSources.set(key, { abs: source.abs, mtimeMs: source.mtimeMs, size: source.size });
+    }
+}
+
+// Rehash hash-only entries whose file changed (mtime or size). Returns the web paths updated.
+async function revalidateHashOnly() {
+    const updated = [];
+    for (const [key, source] of hashSources) {
+        let stat;
+        try {
+            stat = await fs.promises.stat(source.abs);
+        } catch (err) {
+            if (err.code === 'ENOENT') {
+                hashes.delete(key);
+                hashSources.delete(key);
+                updated.push(key);
+            }
+            continue;
+        }
+        if (stat.mtimeMs === source.mtimeMs && stat.size === source.size) {
+            continue;
+        }
+        // A precompiled body replaced this entry meanwhile: its hash is authoritative.
+        if (!hashSources.has(key) || assets.has(key)) {
+            continue;
+        }
+        const buf = await fs.promises.readFile(source.abs);
+        hashes.set(key, sha256(buf));
+        hashSources.set(key, { abs: source.abs, mtimeMs: stat.mtimeMs, size: stat.size });
+        updated.push(key);
+    }
+    return updated;
 }
 
 function decorate(webPath, body, meta = {}) {
@@ -130,6 +169,7 @@ function singleFlight(key, fn) {
 function clear() {
     assets.clear();
     hashes.clear();
+    hashSources.clear();
 }
 
 function summary() {
@@ -217,6 +257,7 @@ module.exports = {
     contentTypeFor,
     remember,
     rememberHash,
+    revalidateHashOnly,
     decorate,
     lookup,
     servedHash,

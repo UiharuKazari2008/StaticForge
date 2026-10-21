@@ -949,7 +949,14 @@ function resolveUpstream(run) {
         if (!provider.apiKey) {
             return { error: { status: 401, text: JSON.stringify({ error: { message: `${provider.name} has no API key.` } }) } };
         }
-        return { id: provider.engine, baseUrl: provider.baseUrl, key: provider.apiKey, label: provider.name, gated: false };
+        return {
+            id: provider.engine,
+            baseUrl: provider.baseUrl,
+            chatUrl: provider.chatUrl,
+            key: provider.apiKey,
+            label: provider.name,
+            gated: provider.kind === 'tokenrouter'
+        };
     }
     const key = apiKey();
     if (!key) {
@@ -968,7 +975,7 @@ async function callUpstream(body, run, signal, stream) {
     learned.forEach((name) => { flags[name] = true; });
     for (let attempt = 0; attempt <= RELAXERS.length; attempt++) {
         const { request } = toOpenAIRequest(body, { ...flags, model, effort: run.effort, stream });
-        const send = () => fetch(`${upstream.baseUrl}/v1/chat/completions`, {
+        const send = () => fetch(upstream.chatUrl || `${upstream.baseUrl}/v1/chat/completions`, {
             method: 'POST',
             headers: { 'content-type': 'application/json', authorization: `Bearer ${upstream.key}` },
             body: JSON.stringify(request),
@@ -1220,16 +1227,15 @@ function walletAmount(value) {
 
 // { configured: false } | { configured, error } | { configured, topUp, vouchers, remaining, spent }.
 // Failures are cached too, so a bad key cannot spend the endpoint's rate limit.
-async function wallet(gr) {
-    const key = managementKey(gr);
-    if (!key) return { configured: false };
-    const fingerprint = crypto.createHash('sha256').update(key).digest('hex').slice(0, 16);
+async function walletAt(base, key) {
+    const root = String(base || '').replace(/\/+$/, '');
+    const fingerprint = crypto.createHash('sha256').update(`${root}\n${key}`).digest('hex').slice(0, 16);
     if (walletCache.value && walletCache.key === fingerprint && Date.now() - walletCache.at < WALLET_TTL_MS) {
         return walletCache.value;
     }
     let value;
     try {
-        const res = await gate.run(() => fetch(`${baseUrl()}/api/management/self/wallet`, {
+        const res = await gate.run(() => fetch(`${root}/api/management/self/wallet`, {
             headers: { authorization: `Bearer ${key}` },
             signal: AbortSignal.timeout(10000)
         }), { lane: 'background', label: 'balance' });
@@ -1254,6 +1260,12 @@ async function wallet(gr) {
     return value;
 }
 
+async function wallet(gr) {
+    const key = managementKey(gr);
+    if (!key) return { configured: false };
+    return walletAt(baseUrl(), key);
+}
+
 module.exports = {
     DEFAULT_MODEL,
     EFFORTS,
@@ -1261,8 +1273,10 @@ module.exports = {
     bindGlobalResources,
     hasApiKey,
     baseUrl,
+    catalogFromPricing,
     listModels,
     resolveRun,
+    walletAt,
     ensureBridge,
     closeBridge,
     wallet,

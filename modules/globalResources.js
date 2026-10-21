@@ -24,7 +24,6 @@ const PromptManager = require('./promptManager');
 const AIServiceManager = require('./aiServiceManager');
 const GrokService = require('./aiServices/grokService');
 const XaiNativeService = require('./aiServices/xaiNativeService');
-const PromptLogitAnalyzer = require('./promptLogitAnalyzer');
 const WorkspaceManager = require('./workspace');
 const Queue = require('./queue');
 const { normalizeNovelAiSubscription } = require('./novelAiSubscription');
@@ -79,9 +78,6 @@ class GlobalResources {
         this.paths = this.initializePaths();
 
         // Tag search services
-        this.animeTagSearch = null;
-        this.furryTagSearch = null;
-        this.fastTagSearch = null;
 
         // Other services
         this.spellChecker = null;
@@ -121,7 +117,6 @@ class GlobalResources {
         this.aiServiceManager = null;
         this.grokService = null;
         this.xaiNativeService = null;
-        this.promptLogitAnalyzer = null;
 
         // Workspace module (exports functions)
         this.workspace = null;
@@ -245,9 +240,6 @@ class GlobalResources {
 
         // Initialization status
         this.initializationProgress = {
-            animeTagSearch: false,
-            furryTagSearch: false,
-            fastTagSearch: false,
             spellChecker: false,
             t5Tokenizer: false,
             searchService: false,
@@ -362,17 +354,6 @@ class GlobalResources {
 
             // T5 vocabulary (securePrompts/t5-vocabulary.json)
             t5Vocabulary: path.resolve(rootDir, 'securePrompts/t5-vocabulary.json'),
-
-            // Anime search index (scripts/create-anime-search-index.js)
-            animeSearchIndex: path.join(rootDir, '.cache', 'anime_search_index.json'),
-            animeWordIndex: path.join(rootDir, '.cache', 'anime_word_index.json'),
-            animePrefixIndex: path.join(rootDir, '.cache', 'anime_prefix_index.json'),
-            animeSuffixIndex: path.join(rootDir, '.cache', 'anime_suffix_index.json'),
-            animeWordsIndex: path.join(rootDir, '.cache', 'anime_words_index.json'),
-            furrySearchIndex: path.join(rootDir, '.cache', 'furry_search_index.json'),
-            furryWordIndex: path.join(rootDir, '.cache', 'furry_word_index.json'),
-            furryPrefixIndex: path.join(rootDir, '.cache', 'furry_prefix_index.json'),
-            furrySuffixIndex: path.join(rootDir, '.cache', 'furry_suffix_index.json'),
 
             // Image counter (scripts/image-counter.js)
             imageCounterFile: path.join(rootDir, '.cache', 'image_counter.json'),
@@ -923,15 +904,6 @@ class GlobalResources {
         }
     }
 
-    /**
-     * Initialize legacy JSON tag indexes (AnimeTagSearch, FurryTagSearch, FastTagSearch).
-     * Prompt autofill local tags use TagLookup via tagAutofillSearch (not these modules).
-     * Still required by fastTagSearch.js and promptLogitAnalyzer.js until migrated.
-     * Body: modules/bootstrap/databases.js
-     */
-    async initializeTagSearchServices() {
-        return bootstrapDatabases.initializeTagSearchServices(this);
-    }
 
     /**
      * Initialize polymorphic modules (modules not written in Node.js)
@@ -1342,11 +1314,6 @@ class GlobalResources {
             this.xaiNativeService = new XaiNativeService(this);
             this.initializationProgress.xaiNativeService = true;
             console.log('✓ xAI Native service ready (for small tasks / quips / streaming + web search)');
-
-            // Prompt logit analyzer (instantiate class with globalResources)
-            this.promptLogitAnalyzer = new PromptLogitAnalyzer(this);
-            this.initializationProgress.promptLogitAnalyzer = true;
-            console.log('✓ psudo-Logit analyzer ready');
         } catch (error) {
             console.error('  ❌ Failed to load singleton managers:', error);
             throw error;
@@ -2015,55 +1982,6 @@ class GlobalResources {
         }
     }
 
-    /**
-     * Legacy JSON tag index (dataset_tags.json). Not used for prompt autofill — see getTagAutofillSearch().
-     * @deprecated Migrate callers to TagLookup; remove after fastTagSearch and promptLogitAnalyzer are migrated.
-     */
-    async getAnimeTagSearch() {
-        if (!this.initialized) {
-            throw new Error('Global resources not initialized - call initialize() first');
-        }
-
-        if (!this.animeTagSearch) {
-            console.log('⚡ Initializing Danbooru Anime Tag Search (legacy JSON)...');
-            await this.initializeTagSearchServices();
-        }
-
-        return this.animeTagSearch;
-    }
-
-    /**
-     * Legacy JSON tag index (dataset_tags_furry.json). Not used for prompt autofill — see getTagAutofillSearch().
-     * @deprecated Migrate callers to TagLookup; remove after fastTagSearch and promptLogitAnalyzer are migrated.
-     */
-    async getFurryTagSearch() {
-        if (!this.initialized) {
-            throw new Error('Global resources not initialized - call initialize() first');
-        }
-
-        if (!this.furryTagSearch) {
-            console.log('⚡ Initializing e621 Furry Tag Search (Sleeping)...');
-            await this.initializeTagSearchServices();
-        }
-
-        return this.furryTagSearch;
-    }
-
-    /**
-     * @deprecated Legacy JSON wrapper. Migrate to TagLookup before removing animeTagSearch/furryTagSearch.
-     */
-    async getFastTagSearch() {
-        if (!this.initialized) {
-            throw new Error('Global resources not initialized - call initialize() first');
-        }
-
-        if (!this.fastTagSearch) {
-            console.log('⚡ Lazy-loading FastTagSearch (first use)...');
-            await this.initializeTagSearchServices();
-        }
-
-        return this.fastTagSearch;
-    }
 
     /**
      * Get SpellChecker instance
@@ -3073,15 +2991,6 @@ class GlobalResources {
         return this.xaiNativeService;
     }
 
-    /**
-     * Get Prompt Logit Analyzer instance
-     */
-    getPromptLogitAnalyzer() {
-        if (!this.initialized || !this.promptLogitAnalyzer) {
-            throw new Error('Global resources not initialized - call initialize() first');
-        }
-        return this.promptLogitAnalyzer;
-    }
 
     refreshGrokClient() {
         this.grokClient = null;

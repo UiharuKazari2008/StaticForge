@@ -93,16 +93,6 @@
     },
     {
       "path": [
-        "preloadTags"
-      ],
-      "type": "boolean",
-      "label": "Preload Tags",
-      "editMode": "inline",
-      "restartRequired": true,
-      "description": "Load tag search services during boot instead of lazily. Read once at startup. Default off."
-    },
-    {
-      "path": [
         "sequenziaFolder"
       ],
       "type": "string",
@@ -1839,6 +1829,17 @@
       "label": "Age Tool",
       "editMode": "inline",
       "description": "When off, lookup_character_age is hidden from this engine. On when the field is missing."
+    },
+    {
+      "path": [
+        "customModelProviders",
+        "*",
+        "monitorUsage"
+      ],
+      "type": "boolean",
+      "label": "Monitor Usage",
+      "editMode": "inline",
+      "description": "When on, Director shows this host's balance or credits. When off, the host has no usage cap and the indicator stays hidden."
     }
   ]
 }

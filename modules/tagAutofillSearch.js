@@ -1,6 +1,6 @@
 /**
  * Autofill tag search backed by the unified tag wiki database (TagLookup).
- * Prompt autocomplete local results — does not use animeTagSearch/furryTagSearch JSON indexes.
+ * Prompt autocomplete local results (TagLookup / tag_wiki.db).
  */
 
 const ANIME_LOCAL_SERVICE = 'anime-local';

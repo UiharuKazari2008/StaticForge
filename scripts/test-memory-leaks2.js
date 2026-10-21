@@ -17,12 +17,7 @@ function runTest(name, fn) {
     }
 }
 
-// 1. Check localPromptOptimizer
-runTest('localPromptOptimizer caps', () => {
-    const content = fs.readFileSync(path.join(__dirname, '../modules/localPromptOptimizer.js'), 'utf8');
-    assert.ok(content.includes('this.synonymCache.delete(first)'), 'missing synonymCache delete');
-    assert.ok(content.includes('this.tagCache.delete(first)'), 'missing tagCache delete');
-});
+// localPromptOptimizer's synonym/tag caches went with its unused optimizer.
 
 // 2. Check wordLookupService
 runTest('wordLookupService sweep', () => {

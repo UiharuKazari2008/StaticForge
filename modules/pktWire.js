@@ -75,29 +75,29 @@ function graftChar(row, cover, compiledSide) {
         charCover = cover.characters[idx] || cover.characters.find((c) => c && Number(c.index) === idx);
     }
     if (charCover) {
-        if (typeof charCover.prompt === 'string') out.prompt = charCover.prompt;
-        if (typeof charCover.uc === 'string') out.uc = charCover.uc;
-        if (typeof charCover.prompt === 'string') out.input_prompt = charCover.prompt;
-        if (typeof charCover.uc === 'string') out.input_uc = charCover.uc;
+        if (typeof charCover.prompt === 'string') out.prompt = surfaceLine(charCover.prompt, compiledSide);
+        if (typeof charCover.uc === 'string') out.uc = surfaceLine(charCover.uc, compiledSide);
+        if (typeof charCover.prompt === 'string') out.input_prompt = surfaceLine(charCover.prompt, compiledSide);
+        if (typeof charCover.uc === 'string') out.input_uc = surfaceLine(charCover.uc, compiledSide);
     } else {
         if (typeof cover.prompt === 'string') {
             ['prompt', 'input_prompt'].forEach((key) => {
-                if (typeof out[key] === 'string') out[key] = cover.prompt;
+                if (typeof out[key] === 'string') out[key] = surfaceLine(cover.prompt, compiledSide);
             });
         }
         if (typeof cover.uc === 'string') {
             ['uc', 'negative_prompt', 'input_uc', 'promptNegative', 'input_prompt_negative'].forEach((key) => {
-                if (typeof out[key] === 'string') out[key] = cover.uc;
+                if (typeof out[key] === 'string') out[key] = surfaceLine(cover.uc, compiledSide);
             });
         }
     }
     if (compiledSide && typeof cover.prompt === 'string') {
         ['compiled_prompt', 'compiledPrompt'].forEach((key) => {
-            if (typeof out[key] === 'string') out[key] = cover.prompt;
+            if (typeof out[key] === 'string') out[key] = surfaceLine(cover.prompt, compiledSide);
         });
     }
     if (compiledSide && typeof cover.uc === 'string' && typeof out.compiled_uc === 'string') {
-        out.compiled_uc = cover.uc;
+        out.compiled_uc = surfaceLine(cover.uc, true);
     }
     return out;
 }
@@ -109,47 +109,47 @@ function graftRow(node, cover, compiledSide, depth) {
     }
     let out = { ...node };
     if (typeof cover.prompt === 'string') {
-        if (typeof out.prompt === 'string') out.prompt = cover.prompt;
-        if (typeof out.input_prompt === 'string') out.input_prompt = cover.prompt;
+        if (typeof out.prompt === 'string') out.prompt = surfaceLine(cover.prompt, compiledSide);
+        if (typeof out.input_prompt === 'string') out.input_prompt = surfaceLine(cover.prompt, compiledSide);
     }
     if (typeof cover.uc === 'string') {
         ['uc', 'negative_prompt', 'input_uc', 'promptNegative', 'input_prompt_negative'].forEach((key) => {
-            if (typeof out[key] === 'string') out[key] = cover.uc;
+            if (typeof out[key] === 'string') out[key] = surfaceLine(cover.uc, compiledSide);
         });
     }
     if (typeof cover.prompt === 'string' && typeof out.compiled_prompt === 'string') {
-        out.compiled_prompt = cover.prompt;
+        out.compiled_prompt = surfaceLine(cover.prompt, true);
     }
     if (typeof cover.uc === 'string' && typeof out.compiled_uc === 'string') {
-        out.compiled_uc = cover.uc;
+        out.compiled_uc = surfaceLine(cover.uc, true);
     }
     if (typeof cover.prompt === 'string' && typeof out.compiledPrompt === 'string') {
-        out.compiledPrompt = cover.prompt;
+        out.compiledPrompt = surfaceLine(cover.prompt, true);
     }
     if (out.compiled && typeof out.compiled === 'object' && !Array.isArray(out.compiled)) {
         const compiled = { ...out.compiled };
-        if (typeof cover.prompt === 'string' && typeof compiled.prompt === 'string') compiled.prompt = cover.prompt;
-        if (typeof cover.uc === 'string' && typeof compiled.uc === 'string') compiled.uc = cover.uc;
+        if (typeof cover.prompt === 'string' && typeof compiled.prompt === 'string') compiled.prompt = surfaceLine(cover.prompt, true);
+        if (typeof cover.uc === 'string' && typeof compiled.uc === 'string') compiled.uc = surfaceLine(cover.uc, true);
         out.compiled = compiled;
     }
     if (out.compiled_prompt && typeof out.compiled_prompt === 'object' && !Array.isArray(out.compiled_prompt)) {
         const compiled = { ...out.compiled_prompt };
-        if (typeof cover.prompt === 'string' && typeof compiled.prompt === 'string') compiled.prompt = cover.prompt;
-        if (typeof cover.uc === 'string' && typeof compiled.uc === 'string') compiled.uc = cover.uc;
+        if (typeof cover.prompt === 'string' && typeof compiled.prompt === 'string') compiled.prompt = surfaceLine(cover.prompt, true);
+        if (typeof cover.uc === 'string' && typeof compiled.uc === 'string') compiled.uc = surfaceLine(cover.uc, true);
         out.compiled_prompt = compiled;
     }
     if (out.director && typeof out.director === 'object' && typeof cover.prompt === 'string' && typeof out.director.prompt === 'string') {
-        out.director = { ...out.director, prompt: cover.prompt };
+        out.director = { ...out.director, prompt: surfaceLine(cover.prompt, compiledSide) };
     }
     if (Array.isArray(out.fields)) {
         out.fields = out.fields.map((field) => {
             if (!field || typeof field !== 'object') return field;
             const next = { ...field };
             if (field.id === 'prompt' && typeof cover.prompt === 'string' && typeof next.text === 'string') {
-                next.text = cover.prompt;
+                next.text = surfaceLine(cover.prompt, compiledSide);
             }
             if (field.id === 'uc' && typeof cover.uc === 'string' && typeof next.text === 'string') {
-                next.text = cover.uc;
+                next.text = surfaceLine(cover.uc, compiledSide);
             }
             return next;
         });
@@ -168,8 +168,8 @@ function graftRow(node, cover, compiledSide, depth) {
             const dg = graftRow(out[key], cover, compiledSide, (depth || 0) + 1);
             if (dg && dg.compiled_prompt && typeof dg.compiled_prompt === 'object') {
                 const cp = { ...dg.compiled_prompt };
-                if (typeof cover.prompt === 'string' && typeof cp.prompt === 'string') cp.prompt = cover.prompt;
-                if (typeof cover.uc === 'string' && typeof cp.uc === 'string') cp.uc = cover.uc;
+                if (typeof cover.prompt === 'string' && typeof cp.prompt === 'string') cp.prompt = surfaceLine(cover.prompt, true);
+                if (typeof cover.uc === 'string' && typeof cp.uc === 'string') cp.uc = surfaceLine(cover.uc, true);
                 dg.compiled_prompt = cp;
             }
             out[key] = dg;
@@ -202,7 +202,9 @@ function fmtTxt(text) {
     if (typeof text !== 'string' || !text) return text;
     if (!ensurePromptListTables()) return text;
     const split = splitTextColon(text);
-    const masked = foldRegions(split.tags, (chunk) => {
+    let tags = split.tags;
+    if (PL.foldPromptList) tags = PL.foldPromptList(tags).text;
+    const masked = foldRegions(tags, (chunk) => {
         let next = chunk;
         if (INVERSE_F && CANON_F) {
             next = next.replace(new RegExp('\\b' + parts(INVERSE_F) + '\\b', 'gi'), CANON_F);
@@ -213,6 +215,11 @@ function fmtTxt(text) {
         return next;
     });
     return masked + split.suffix;
+}
+
+function surfaceLine(text, compiledSide) {
+    if (typeof text !== 'string' || !text) return text;
+    return compiledSide ? fmtCmp(text) : fmtTxt(text);
 }
 
 function stripWeightedCanon(text) {
