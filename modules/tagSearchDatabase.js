@@ -361,6 +361,29 @@ function applyCachedNovelCounts(tagDbOrPath) {
 }
 
 /**
+ * Same fill as applyCachedNovelCounts, through the server's own async tag_wiki.db
+ * connection (TagLookup's SQLiteAsyncWrapper) in one UPDATE. Opening and closing a
+ * second, better-sqlite3 handle on that file while node-sqlite3 holds it can drop
+ * node-sqlite3's POSIX locks (the two-library IOERR hazard).
+ * @param {{ run: Function }} tagDb - async connection with run(sql, params) -> { changes }
+ */
+async function applyCachedNovelCountsVia(tagDb) {
+    const counts = getCachedTagNovelCounts();
+    if (!counts.size || !tagDb || typeof tagDb.run !== 'function') {
+        return { filled: 0, candidates: counts.size };
+    }
+    // One index probe of tags.normalized_title per cached count (~420k), off the event loop.
+    // The + keeps the planner off idx_tags_n_count: driven from n_count IS NULL it
+    // rescanned the whole JSON list for every such tag.
+    const result = await tagDb.run(`
+        UPDATE tags SET n_count = c.value
+        FROM json_each(?) AS c
+        WHERE +tags.n_count IS NULL AND tags.normalized_title = c.key
+    `, [JSON.stringify(Object.fromEntries(counts))]);
+    return { filled: (result && result.changes) || 0, candidates: counts.size };
+}
+
+/**
  * Get cached processed search results
  * @param {string} query - The search query
  * @returns {Object|null} - Object with api and database arrays, or null if not found/expired
@@ -555,6 +578,7 @@ module.exports = {
     getCachedTags,
     getCachedTagNovelCounts,
     applyCachedNovelCounts,
+    applyCachedNovelCountsVia,
     saveSearchResults,
     cleanupOldCache,
     clearCacheForQuery,

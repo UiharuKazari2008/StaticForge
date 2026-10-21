@@ -239,12 +239,17 @@ function initializeTagSearchDatabase(gr) {
         gr.initializationProgress.tagSearchDatabase = true;
         console.log('✓ Tag search database ready');
 
-        const wikiPath = path.join(gr.getPath('databases'), 'tag_wiki.db');
-        if (fs.existsSync(wikiPath)) {
-            const applied = tagSearchDatabase.applyCachedNovelCounts(wikiPath);
-            if (applied.filled > 0) {
-                console.log(`✓ Filled ${applied.filled} missing tag n_count values from NovelAI search cache`);
-            }
+        // Through TagLookup's connection (opened in gr_databases), never a second handle
+        // on tag_wiki.db; off the boot path, nothing in boot reads n_count.
+        const tagWikiDb = gr.tagDatabase && gr.tagDatabase.db;
+        if (tagWikiDb) {
+            tagSearchDatabase.applyCachedNovelCountsVia(tagWikiDb).then((applied) => {
+                if (applied.filled > 0) {
+                    console.log(`✓ Filled ${applied.filled} missing tag n_count values from NovelAI search cache`);
+                }
+            }).catch((error) => {
+                console.warn('Tag n_count fill from NovelAI search cache failed:', error.message);
+            });
         }
     } catch (error) {
         console.error('  ❌ Failed to load tag search database:', error);
