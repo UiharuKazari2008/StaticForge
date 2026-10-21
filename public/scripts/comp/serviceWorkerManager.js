@@ -97,6 +97,8 @@ const LOGIN_CRITICAL_PREFIXES = [
 
 // Same keys as public/scripts/launch/updateEngine.js (melatonInstall / melatonInstallRecord).
 const MELATON_INSTALL_STATE_KEY = 'melatonInstall';
+// Parallel cache lookups in getFilesNeedingUpdate (the boot update check)
+const CACHE_CHECK_PARALLEL = 32;
 const MELATON_INSTALL_RECORD_KEY = 'melatonInstallRecord';
 
 /** Files the last install could not keep. They must not reopen Setup on the next boot. */
@@ -1890,27 +1892,37 @@ class ServiceWorkerManager {
     }
 
     async _hashIndexForPath(cache, pathname) {
+        // One build per check even when parallel lookups ask at once (getFilesNeedingUpdate)
         if (!this._staticCacheKeyIndex) {
-            const index = new Map();
-            const keys = await cache.keys();
-            for (let i = 0; i < keys.length; i++) {
-                const request = keys[i];
-                let keyPath = '';
-                try {
-                    keyPath = new URL(request.url).pathname;
-                } catch (_) {
-                    continue;
-                }
-                let list = index.get(keyPath);
-                if (!list) {
-                    list = [];
-                    index.set(keyPath, list);
-                }
-                list.push(request);
+            if (!this._staticCacheKeyIndexBuild) {
+                this._staticCacheKeyIndexBuild = this._buildStaticCacheKeyIndex(cache).finally(() => {
+                    this._staticCacheKeyIndexBuild = null;
+                });
             }
-            this._staticCacheKeyIndex = index;
+            await this._staticCacheKeyIndexBuild;
         }
-        return this._staticCacheKeyIndex.get(pathname) || [];
+        return (this._staticCacheKeyIndex && this._staticCacheKeyIndex.get(pathname)) || [];
+    }
+
+    async _buildStaticCacheKeyIndex(cache) {
+        const index = new Map();
+        const keys = await cache.keys();
+        for (let i = 0; i < keys.length; i++) {
+            const request = keys[i];
+            let keyPath = '';
+            try {
+                keyPath = new URL(request.url).pathname;
+            } catch (_) {
+                continue;
+            }
+            let list = index.get(keyPath);
+            if (!list) {
+                list = [];
+                index.set(keyPath, list);
+            }
+            list.push(request);
+        }
+        this._staticCacheKeyIndex = index;
     }
 
     async getFilesNeedingUpdate(files) {
@@ -1920,14 +1932,16 @@ class ServiceWorkerManager {
         this._diffTail = prev.then(() => gate, () => gate);
         try {
         await prev;
-        const filesToUpdate = [];
         const cache = await caches.open('static-cache-v1');
         this._staticCacheKeyIndex = null;
 
-        for (const file of files) {
-            if (isAuthGatedManifestFile(file)) {
-                continue;
-            }
+        // Lookups run CACHE_CHECK_PARALLEL at a time: one at a time, each cache.match round trip
+        // made the boot check 1.2-2 s for ~2800 files; in parallel it is ~0.5 s. Same checks,
+        // and the list keeps the manifest's order.
+        const list = Array.isArray(files) ? files : [];
+        const needs = new Array(list.length).fill(false);
+        let next = 0;
+        const checkOne = async (file) => {
             try {
                 const cachedResponse = await this._matchCachedFile(cache, file);
                 let cachedHash = cachedResponse && cachedResponse.headers.get('x-file-hash');
@@ -1941,7 +1955,7 @@ class ServiceWorkerManager {
                 }
 
                 if (cachedHash === file.hash) {
-                    continue;
+                    return false;
                 }
 
                 // A Vary / ?sha= sibling can hide the row that actually has the new hash.
@@ -1957,18 +1971,27 @@ class ServiceWorkerManager {
                     }
                 }
                 if (found) {
-                    continue;
+                    return false;
                 }
 
                 console.log(`Hash mismatch or missing for ${file.url}, adding to update list`);
-                filesToUpdate.push(file);
+                return true;
             } catch (error) {
                 console.error(`Error checking file ${file.url}:`, error);
-                filesToUpdate.push(file);
+                return true;
             }
-        }
+        };
+        const lane = async () => {
+            while (next < list.length) {
+                const i = next++;
+                const file = list[i];
+                if (isAuthGatedManifestFile(file)) continue;
+                needs[i] = await checkOne(file);
+            }
+        };
+        await Promise.all(Array.from({ length: Math.min(CACHE_CHECK_PARALLEL, list.length) }, lane));
         this._staticCacheKeyIndex = null;
-        return filesToUpdate;
+        return list.filter((file, i) => needs[i]);
         } finally {
             release();
         }
