@@ -3587,14 +3587,22 @@ app.post('/test-bias-adjustment', serverReadinessMiddleware, authMiddleware, asy
             return res.status(400).json({ success: false, error: 'Missing required parameters' });
         }
         
-        // Load image from disk based on source
-        let imagePath;
+        // JULES: Validate image source path to prevent path traversal outside designated directories
+        let baseDir;
+        let relPath;
         if (image_source.startsWith('file:')) {
-            imagePath = path.join(imagesDir, image_source.replace('file:', ''));
+            baseDir = imagesDir;
+            relPath = image_source.replace('file:', '');
         } else if (image_source.startsWith('cache:')) {
-            imagePath = path.join(uploadCacheDir, image_source.replace('cache:', ''));
+            baseDir = uploadCacheDir;
+            relPath = image_source.replace('cache:', '');
         } else {
             return res.status(400).json({ success: false, error: 'Invalid image source format' });
+        }
+
+        const imagePath = path.resolve(baseDir, relPath);
+        if (!imagePath.startsWith(baseDir + path.sep) && imagePath !== baseDir) {
+            return res.status(400).json({ success: false, error: 'Access denied: path outside allowed directory' });
         }
         
         // Check if file exists
