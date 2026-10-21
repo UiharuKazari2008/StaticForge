@@ -179,7 +179,6 @@
     "test:vista-logon-branding": "node scripts/test-vista-logon-branding.js",
     "test:vfs-descendants": "node scripts/test-vfs-descendants.js",
     "test:runtime-data-paths": "node scripts/test-runtime-data-paths.js",
-    "test:prompt-list-fold": "node scripts/test-prompt-list-fold.js",
     "backfill:tag-search": "node scripts/backfill-tag-search-index.js",
     "flow-map": "node scripts/tools/flow-map.js",
     "icon:app": "node scripts/generate-app-icon.js",

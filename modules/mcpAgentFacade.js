@@ -16,7 +16,12 @@ const { createOAuthRoutes } = require('./mcpOAuthRoutes');
 const novelaiExplore = require('./novelaiExploreGallery');
 const { scopesAllowPacket } = require('./applicationAuthManager');
 const { finalizeStudioReadPayload } = require('../public/scripts/comp/promptListFold');
-const { loadPromptInputCache, prepareBoundStudioReply, finalizeGalleryPacketData } = require('./promptCoverLedger');
+const {
+    loadPromptInputCache,
+    prepareBoundStudioReply,
+    finalizeGalleryPacketData,
+    resolveInputCache
+} = require('./promptCoverLedger');
 const {
     bumpChannel,
     levelFor,
@@ -4842,7 +4847,6 @@ function resolveMcpStudioAutoFlags(globalResources, body) {
 function pickStudioFieldsFromBoundReply(data, bind, dynamicGeneration, director) {
     const statePayload = data;
     const channelKey = bind && bind.bindKey;
-    const { resolveInputCache } = require('./promptCoverLedger');
     const promptInputCache = resolveInputCache(statePayload && statePayload.filename, channelKey);
     const isDiff = !!(statePayload && statePayload.diff);
     const out = {
