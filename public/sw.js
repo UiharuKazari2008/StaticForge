@@ -116,8 +116,15 @@ async function matchStaticShell(pathname) {
     return null;
   }
   const cache = await caches.open(STATIC_CACHE);
+  // Exact key first: rows are stored under the bare pathname. An ignoreSearch match cannot
+  // use the cache's key index and scans every row; at boot 300 lookups on a 2800-row cache
+  // took 27 s that way and 60 ms exact (Chrome), which held the page before the logon.
+  const exact = await cache.match(pathname, { ignoreVary: true });
+  if (exact && exact.status === 200 && exact.headers.get('x-file-hash')) {
+    return exact;
+  }
   const query = { ignoreSearch: true, ignoreVary: true };
-  const first = await cache.match(pathname, query);
+  const first = exact || await cache.match(pathname, query);
   if (!first) {
     return null;
   }
