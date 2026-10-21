@@ -13,6 +13,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
+const { Worker, isMainThread } = require('worker_threads');
 const { Zip, ZipDeflate, ZipPassThrough, strToU8 } = require('fflate');
 const updateEngine = require('../public/scripts/launch/updateEngine');
 
@@ -85,62 +86,97 @@ function yieldTick() {
     return new Promise((resolve) => setImmediate(resolve));
 }
 
-function writeZip(tmpZip, listing, log) {
-    return new Promise((resolve, reject) => {
-        const fd = fs.openSync(tmpZip, 'w');
-        let bytes = 0;
-        let settled = false;
-        const finish = (error, value) => {
-            if (settled) return;
-            settled = true;
-            try { fs.closeSync(fd); } catch (_) { /* already closed on the last chunk */ }
-            if (error) reject(error);
-            else resolve(value);
-        };
+// Level-9 deflate of ~2800 files is seconds of CPU. Run on the main thread it held
+// the event loop per file (up to ~100ms each), at boot and on every runtime rebuild
+// or subset pack (client update). writeZipSync runs in a worker thread instead.
+function writeZipSync(tmpZip, listing, progress) {
+    const fd = fs.openSync(tmpZip, 'w');
+    let bytes = 0;
+    let failure = null;
+    let done = false;
+    try {
         const zip = new Zip();
         zip.ondata = (err, chunk, final) => {
-            if (settled) return;
             if (err) {
-                finish(err);
+                failure = failure || err;
                 return;
             }
             if (chunk && chunk.length) {
                 fs.writeSync(fd, chunk);
                 bytes += chunk.length;
             }
-            if (final) finish(null, bytes);
+            if (final) done = true;
         };
-        (async () => {
+        const metaEntry = new ZipDeflate('pack.json', { level: ZIP_LEVEL });
+        zip.add(metaEntry);
+        metaEntry.push(strToU8(JSON.stringify({
+            hash: listing.hash,
+            files: listing.files.map((file) => ({
+                entry: file.entry,
+                url: file.url,
+                hash: file.hash,
+                size: file.size,
+                group: file.group
+            }))
+        })), true);
+        let written = 0;
+        for (const file of listing.files) {
+            if (failure) break;
+            const payload = new Uint8Array(fs.readFileSync(file.diskPath));
+            const entry = STORE_EXT.has(extensionOf(file.entry))
+                ? new ZipPassThrough(file.entry)
+                : new ZipDeflate(file.entry, { level: ZIP_LEVEL });
+            zip.add(entry);
+            entry.push(payload, true);
+            written += 1;
+            if (progress && (written === listing.files.length || written % 400 === 0)) progress(written, listing.files.length);
+        }
+        if (!failure) zip.end();
+    } finally {
+        fs.closeSync(fd);
+    }
+    if (failure) throw failure;
+    if (!done) throw new Error('meletonInstallPack: zip did not finish');
+    return bytes;
+}
+
+function writeZip(tmpZip, listing, log) {
+    return new Promise((resolve, reject) => {
+        let worker;
+        try {
+            worker = new Worker(__filename, { workerData: { tmpZip, listing } });
+        } catch (error) {
+            // No worker threads: build here, as before.
             try {
-                const metaEntry = new ZipDeflate('pack.json', { level: ZIP_LEVEL });
-                zip.add(metaEntry);
-                metaEntry.push(strToU8(JSON.stringify({
-                    hash: listing.hash,
-                    files: listing.files.map((file) => ({
-                        entry: file.entry,
-                        url: file.url,
-                        hash: file.hash,
-                        size: file.size,
-                        group: file.group
-                    }))
-                })), true);
-                let written = 0;
-                for (const file of listing.files) {
-                    const payload = new Uint8Array(fs.readFileSync(file.diskPath));
-                    const entry = STORE_EXT.has(extensionOf(file.entry))
-                        ? new ZipPassThrough(file.entry)
-                        : new ZipDeflate(file.entry, { level: ZIP_LEVEL });
-                    zip.add(entry);
-                    entry.push(payload, true);
-                    written += 1;
-                    if (log && (written === listing.files.length || written % 400 === 0)) log(written, listing.files.length);
-                    await yieldTick();
-                }
-                zip.end();
-            } catch (error) {
-                finish(error);
+                resolve(writeZipSync(tmpZip, listing, log));
+            } catch (syncError) {
+                reject(syncError);
             }
-        })();
+            return;
+        }
+        let settled = false;
+        worker.on('message', (message) => {
+            if (!message) return;
+            if (message.type === 'progress') {
+                if (log) log(message.written, message.total);
+            } else if (message.type === 'done') {
+                settled = true;
+                resolve(message.bytes);
+            } else if (message.type === 'error') {
+                settled = true;
+                reject(new Error(message.message));
+            }
+        });
+        worker.on('error', (error) => {
+            if (settled) return;
+            settled = true;
+            reject(error);
+        });
+        worker.on('exit', (code) => {
+            if (settled) return;
+            settled = true;
+            reject(new Error(`meletonInstallPack: zip worker exited with code ${code}`));
+        });
     });
 }
 
@@ -258,6 +294,20 @@ async function rebuild(options = {}) {
         throw error;
     } finally {
         building = false;
+    }
+}
+
+if (!isMainThread) {
+    const { parentPort, workerData } = require('worker_threads');
+    if (workerData && workerData.tmpZip) {
+        try {
+            const bytes = writeZipSync(workerData.tmpZip, workerData.listing, (written, total) => {
+                parentPort.postMessage({ type: 'progress', written, total });
+            });
+            parentPort.postMessage({ type: 'done', bytes });
+        } catch (error) {
+            parentPort.postMessage({ type: 'error', message: error && error.message ? error.message : String(error) });
+        }
     }
 }
 
