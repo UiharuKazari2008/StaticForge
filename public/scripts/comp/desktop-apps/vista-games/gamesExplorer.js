@@ -36,7 +36,7 @@
                 description: 'The object of Block Drop is to fit the falling blocks together into solid rows. A '
                     + 'full row disappears; clear 150 rows to win. If the blocks stack up to the top, the game is over.',
                 genre: 'Family Entertainment',
-                developer: 'MeletonFX',
+                developer: 'Academy City Research P.S.R.',
                 publisher: 'MeletonFX',
                 version: '6.0.6002.18005',
                 minimum: '1',
@@ -51,7 +51,7 @@
                 description: 'The object of Brick Breaker is to clear every brick with the ball. Bounce the ball off '
                     + 'your paddle and catch the capsules that fall from broken bricks. Clear all 20 levels to win.',
                 genre: 'Family Entertainment',
-                developer: 'MeletonFX',
+                developer: 'Academy City Research P.S.R.',
                 publisher: 'MeletonFX',
                 version: '6.0.6002.18005',
                 minimum: '1',

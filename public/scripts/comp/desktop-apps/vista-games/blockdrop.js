@@ -22,6 +22,9 @@
 
     // The game's name, everywhere it shows (title bar, menus, dialogs, Games Explorer)
     const DISPLAY_NAME = 'Block Drop';
+    // who made it (About box, Games Explorer)
+    const DEVELOPER = 'Academy City Research P.S.R.';
+    const COPYRIGHT = 'Copyright \u00a9 2026 ' + DEVELOPER + '\u00a0 All rights reserved.';
 
     // ---- rules --------------------------------------------------------------------------------
     const COLS = 10;
@@ -2130,7 +2133,7 @@
         }
 
         showAbout() {
-            VG.aboutBox({ owner: this.win, title: DISPLAY_NAME, text: DISPLAY_NAME + ' developed by MeletonFX.', icon: ICON + '-48.png' });
+            VG.aboutBox({ owner: this.win, title: DISPLAY_NAME, text: DISPLAY_NAME + ' developed by ' + DEVELOPER, copyright: COPYRIGHT, icon: ICON + '-48.png' });
         }
 
         showResult(won) {

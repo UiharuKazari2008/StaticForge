@@ -100,6 +100,36 @@
         return m ? m[1].toUpperCase() : '';
     };
 
+    // The caption's gradient as Windows draws it (measured, exact on every VM caption): solid up to
+    // `start` (19 behind an icon, else 0), then a + (d * t - 1) / L across L px, solid after it, the
+    // span ending `gap` px before the caption buttons (2; Vista's own message box: 0). Painted into
+    // 1 px strips for the active and inactive colours, set as --jz-cap-active / --jz-cap-inactive.
+    const CAPTION_COLORS = { active: [[153, 180, 209], [185, 209, 234]], inactive: [[191, 205, 219], [215, 228, 242]] };
+    function paintCaption(modal, width, start, buttons, gap) {
+        width = Math.max(1, Math.round(width));
+        if (modal.__jzCaptionW === width) return;
+        modal.__jzCaptionW = width;
+        const end = Math.max(start + 1, width - 2 - buttons - gap);
+        const L = end - start;
+        Object.entries(CAPTION_COLORS).forEach(([kind, [a, b]]) => {
+            const c = document.createElement('canvas');
+            c.width = width;
+            c.height = 1;
+            const ctx = c.getContext('2d');
+            const img = ctx.createImageData(width, 1);
+            for (let x = 0; x < width; x++) {
+                const t = Math.min(Math.max(x - start, 0), L);
+                for (let k = 0; k < 3; k++) {
+                    const d = b[k] - a[k];
+                    img.data[x * 4 + k] = t >= L ? b[k] : t > 0 ? a[k] + Math.floor((d * t - 1) / L) : a[k];
+                }
+                img.data[x * 4 + 3] = 255;
+            }
+            ctx.putImageData(img, 0, 0);
+            modal.style.setProperty('--jz-cap-' + kind, 'url("' + c.toDataURL('image/png') + '")');
+        });
+    }
+
     // ---- assets --------------------------------------------------------------------------------
     let assetsPromise = null;
     function loadAssets() {
@@ -349,6 +379,8 @@
         modal.appendChild(el('div', 'modal-focus-overlay'));
         modal.appendChild(controls);
         modal.appendChild(client);
+        // caption: the frame's inner width; one close box (17 px)
+        paintCaption(modal, opts.w + fw - (opts.frame === 'dialog' ? 6 : 2), opts.icon ? 19 : 0, 17, opts.captionGap === undefined ? 2 : opts.captionGap);
         const win = {
             modal,
             client,
@@ -440,7 +472,7 @@
             const w = Math.max(65 + textW + 39, 8 + buttons.length * 88 + (buttons.length - 1) * 9 + 8 + 65);
             const h = 133;
             const win = classicWindow({
-                id: 'vistaJezzballMessage', title: caption, frame: 'dialog', w, h, clientClass: 'jz-msgbox',
+                id: 'vistaJezzballMessage', title: caption, frame: 'dialog', w, h, clientClass: 'jz-msgbox', captionGap: 0,
                 closeDisabled: kind !== 'okcancel', owner,
                 onClose: () => done(kind === 'okcancel' ? 'cancel' : null)
             });
@@ -629,8 +661,13 @@
             this.onKeyDown = (e) => this.keyDown(e);
             document.addEventListener('keydown', this.onKeyDown, true);
 
-            this.resizeObserver = new ResizeObserver(() => this.resizeClient(false));
+            this.resizeObserver = new ResizeObserver(() => {
+                this.resizeClient(false);
+                // three caption buttons: 17 + 17 + 2 + 17
+                paintCaption(modal, title.clientWidth || (CLIENT_W), 19, 53, 2);
+            });
             this.resizeObserver.observe(client);
+            this.resizeObserver.observe(title);
 
             // active / minimized: the game runs only in the active window
             this.observer = new MutationObserver(() => this.syncActive());
@@ -721,6 +758,8 @@
                 this.started = true;
                 this.game.active = true;
                 this.game.start();
+                // New Game left the client black for the WM_PAINT that follows the activation
+                this.game.paint();
                 this.flush();
             }
             if (this.windowActive() && this.dialogs.length) {
@@ -1119,6 +1158,19 @@
             bringModalToFront(modal);
             try { this.client.focus({ preventScroll: true }); } catch (_) { /* old browsers */ }
             this.syncActive();
+        }
+
+        // the window and its listeners gone (a reloaded script replaces the instance)
+        destroy() {
+            this.destroyed = true;
+            this.stopTimer();
+            this.wave.stop();
+            this.menu.close();
+            this.dialogs.slice().forEach((d) => d.close());
+            document.removeEventListener('keydown', this.onKeyDown, true);
+            this.resizeObserver.disconnect();
+            this.observer.disconnect();
+            this.modal.remove();
         }
 
         // WM_CLOSE: settings written (1:0109); the next start is a new process
@@ -1626,6 +1678,7 @@
     };
 
     let jz = null;
+    if (root.VistaJezzBall && root.VistaJezzBall.destroy) root.VistaJezzBall.destroy();
     document.addEventListener('keyup', (e) => {
         if (!jz || !jz.windowActive() || jz.dialogs.length) return;
         if (e.key === 'Alt') {
@@ -1660,5 +1713,14 @@
     });
     root.openVistaJezzBall = open;
     // for scripts/test-vista-jezzball.js
-    root.VistaJezzBall = { CMD, MENU, readScores, writeScores, rankIn, wrapLines, wepPlace };
+    root.VistaJezzBall = {
+        CMD, MENU, readScores, writeScores, rankIn, wrapLines, wepPlace,
+        window: () => jz,
+        destroy: () => {
+            if (jz) jz.destroy();
+            jz = null;
+            if (help) help.modal.remove();
+            help = null;
+        }
+    };
 })(window);

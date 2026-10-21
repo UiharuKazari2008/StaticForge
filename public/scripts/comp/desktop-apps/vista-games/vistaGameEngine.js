@@ -1629,7 +1629,8 @@
         });
     };
 
-    // Help > About <game>: Vista's ShellAbout box
+    // Help > About <game>: Vista's ShellAbout box (Minesweeper's on the VM, without the Windows
+    // banner and licence lines). opts.copyright replaces Microsoft's line for our own games.
     VG.aboutBox = function (opts) {
         const tpl = { cx: 0, cy: 0, controls: [], title: 'About ' + opts.title };
         const dlg = VG.dialog({ mui: { dialogs: {} } }, tpl, { owner: opts.owner, title: 'About ' + opts.title });
@@ -1650,10 +1651,10 @@
         const text = el('div');
         text.appendChild(el('div', '', opts.title));
         text.appendChild(el('div', '', 'Version 6.0 (Build 6002: Service Pack 2)'));
-        text.appendChild(el('div', '', '\u00a9 2006 Microsoft Corporation. All rights reserved.'));
+        text.appendChild(el('div', '', opts.copyright || 'Copyright \u00a9 2007 Microsoft Corporation.\u00a0 All rights reserved.'));
         if (opts.text) {
             const note = el('div', '', opts.text);
-            note.style.marginTop = '10px';
+            note.className = 'vista-game-about-note';
             text.appendChild(note);
         }
         row.appendChild(text);

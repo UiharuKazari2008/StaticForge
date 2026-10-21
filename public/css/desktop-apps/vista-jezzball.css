@@ -35,6 +35,7 @@
     --jz-caption-now-a: var(--jz-caption-a);
     --jz-caption-now-b: var(--jz-caption-b);
     --jz-caption-text-now: var(--jz-caption-text);
+    --jz-cap-now: var(--jz-cap-active);
     --modal-title-chrome-height: 20px;
 }
 
@@ -43,6 +44,7 @@
     --jz-caption-now-a: var(--jz-caption-ia);
     --jz-caption-now-b: var(--jz-caption-ib);
     --jz-caption-text-now: var(--jz-caption-text-inactive);
+    --jz-cap-now: var(--jz-cap-inactive);
 }
 
 /* ---- the frame ---------------------------------------------------------------------------- */
@@ -118,7 +120,8 @@ html body :is(#vistaJezzballModal, .jz-classic).modal > .modal-window-title {
     border: 0 !important;
     border-radius: 0 !important;
     box-shadow: none !important;
-    background: linear-gradient(to right, var(--jz-caption-now-a), var(--jz-caption-now-b)) !important;
+    /* jezzball.js paints the exact strips (paintCaption); the gradient is only the fallback */
+    background: var(--jz-cap-now, linear-gradient(to right, var(--jz-caption-now-a), var(--jz-caption-now-b))) repeat-y 0 0 / 100% 1px !important;
     opacity: 1 !important;
     overflow: hidden;
 }
@@ -166,21 +169,26 @@ html body :is(#vistaJezzballModal, .jz-classic).modal .modal-window-title-main >
     display: none !important;
 }
 
-html body :is(#vistaJezzballModal, .jz-classic).modal .jz-caption-icon {
+html body :is(#vistaJezzballModal, .jz-classic).modal .modal-window-title-main > .jz-caption-icon {
     position: absolute;
     left: 2px;
     top: 1px;
+    box-sizing: content-box;
     width: 16px;
     height: 16px;
+    margin: 0 !important;
+    padding: 0 !important;
+    text-shadow: none !important;
+    filter: none !important;
     background: url("/static_images/vista-games/jezzball/caption16.png") no-repeat;
 }
 
 /* WEP4UTIL's mono icon: its opaque pixels, then the ones it XORs with the caption */
-html body .jz-classic.modal .jz-caption-icon.jz-wep-icon {
+html body .jz-classic.modal .modal-window-title-main > .jz-caption-icon.jz-wep-icon {
     background-image: url("/static_images/vista-games/jezzball/wep16.png");
 }
 
-html body .jz-classic.modal .jz-caption-icon.jz-wep-icon::after {
+html body .jz-classic.modal .modal-window-title-main > .jz-caption-icon.jz-wep-icon::after {
     content: "";
     position: absolute;
     inset: 0;
@@ -188,7 +196,7 @@ html body .jz-classic.modal .jz-caption-icon.jz-wep-icon::after {
     mix-blend-mode: difference;
 }
 
-html body :is(#vistaJezzballModal, .jz-classic).modal .modal-window-title-main > span {
+html body :is(#vistaJezzballModal, .jz-classic).modal .modal-window-title-main > span:not(.jz-caption-icon) {
     position: absolute;
     left: 22px;
     top: 0;
@@ -204,7 +212,7 @@ html body :is(#vistaJezzballModal, .jz-classic).modal .modal-window-title-main >
     -webkit-font-smoothing: subpixel-antialiased;
 }
 
-html body .jz-classic.modal.jz-no-icon .modal-window-title-main > span {
+html body .jz-classic.modal.jz-no-icon .modal-window-title-main > span:not(.jz-caption-icon) {
     left: 3px;
 }
 
@@ -224,7 +232,7 @@ html body :is(#vistaJezzballModal, .jz-classic).modal > .modal-window-controls {
     border-radius: 0 !important;
     background: none !important;
     box-shadow: none !important;
-    z-index: 2;
+    z-index: 20 !important;
 }
 
 html body .jz-classic.modal[data-jz-frame="dialog"] > .modal-window-controls {

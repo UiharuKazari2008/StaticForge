@@ -427,7 +427,16 @@ body .modal.vista-game-dialog > .modal-content button.vista-task-link:is(.defaul
     display: flex;
     flex-direction: column;
     gap: 6px;
-    padding: 0 12px 12px;
+    /* the VM's About Minesweeper: text 17 px below the top, icon 11 px in, OK 10 px from the
+       right and 11 px from the bottom */
+    padding: 17px 10px 11px 11px;
+    line-height: 16px;
+}
+
+.vista-game-about-note {
+    margin-top: 13px;
+    padding-right: 6px;
+    line-height: 13px;
 }
 
 .vista-game-about-banner {
