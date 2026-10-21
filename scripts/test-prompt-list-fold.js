@@ -194,6 +194,13 @@ sealApiPayload(stamped, { prompt: '1girl, smile' });
 assertTokenCompiler(stamped);
 assert(true, 'compiler stamp passes');
 
+const dir = fs.readFileSync(path.join(__dirname, '../modules/cursorDirector.js'), 'utf8');
+assert(/replace it where it sits with young female or young male/i.test(dir), 'director hard rule tells agents to swap in young terms');
+assert(!/Keep age wording exactly as the caller wrote it/.test(dir), 'director must not keep PR #604 pass-through age wording');
+const naxCfg = JSON.stringify(require('../nax_generation_config.json'));
+assert(/young female/.test(naxCfg), 'nax danbooru templates use young female (not PR #604 mature female)');
+assert(!/"promptTemplate": "[^"]*mature female/.test(naxCfg), 'nax templates must not carry mature female placeholders');
+
 if (failed) {
     console.error(failed + ' failed');
     process.exit(1);

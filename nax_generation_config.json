@@ -37,7 +37,7 @@
       "seed": 2138582679
     },
     "danbooru-hair-tags-v5": {
-      "promptTemplate": "1girl, solo, mature female, 1.25::<INPUT_VALUE> ::, upper body, standing, arms at sides, looking at viewer, soft smile, closed mouth, sweater, black sweater, blonde hair, blue eyes, small breasts, simple background, white background",
+      "promptTemplate": "1girl, solo, young female, 1.25::<INPUT_VALUE> ::, upper body, standing, arms at sides, looking at viewer, soft smile, closed mouth, sweater, black sweater, blonde hair, blue eyes, small breasts, simple background, white background",
       "model": "nai-diffusion-5-full",
       "resPreset": "normal_portrait",
       "steps": 23,
@@ -109,7 +109,7 @@
       "seed": 282427355
     },
     "danbooru-face-tags-v4.5": {
-      "promptTemplate": "girl, mature female, 1.25::<INPUT_VALUE> ::, 1.5::portrait::, black hoodie, blonde hair, medium hair, blue eyes, white background, small breasts",
+      "promptTemplate": "girl, young female, 1.25::<INPUT_VALUE> ::, 1.5::portrait::, black hoodie, blonde hair, medium hair, blue eyes, white background, small breasts",
       "model": "nai-diffusion-4-full",
       "resPreset": "normal_portrait",
       "steps": 28,
@@ -120,7 +120,7 @@
       "seed": 2320725169
     },
     "danbooru-hair-tags-v4.5": {
-      "promptTemplate": "girl, mature female, 1.25::<INPUT_VALUE> ::, 1.5::arms at sides, portrait::, black hoodie, blonde hair, blue eyes, white background, small breasts",
+      "promptTemplate": "girl, young female, 1.25::<INPUT_VALUE> ::, 1.5::arms at sides, portrait::, black hoodie, blonde hair, blue eyes, white background, small breasts",
       "model": "nai-diffusion-4-5-full",
       "resPreset": "normal_portrait",
       "steps": 28,
@@ -157,7 +157,7 @@
       "seed": 2320725169
     },
     "danbooru-face-tags-v4": {
-      "promptTemplate": "girl, mature female, 1.25::<INPUT_VALUE> ::, 1.5::arms at sides, portrait::, black hoodie, blonde hair, medium hair, blue eyes, white background, small breasts",
+      "promptTemplate": "girl, young female, 1.25::<INPUT_VALUE> ::, 1.5::arms at sides, portrait::, black hoodie, blonde hair, medium hair, blue eyes, white background, small breasts",
       "model": "nai-diffusion-4-full",
       "resPreset": "normal_portrait",
       "steps": 28,

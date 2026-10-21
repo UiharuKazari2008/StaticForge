@@ -4,6 +4,8 @@ Server-side prompt text correction lives in `public/scripts/comp/promptListFold.
 
 PR #604 disabled this path with early-return stubs. That revert is permanent policy: do not reintroduce pass-through stubs or `Age-term rewriting removed` comments.
 
+Wren hard rule #1 in `modules/cursorDirector.js` and the danbooru NAX `promptTemplate` strings must stay aligned with this fold (young female/male in agent-authored text; server fold handles generate). Do not reintroduce PR #604 wording that tells agents to keep adult/mature phrasing verbatim.
+
 Before merging changes to `promptListFold.js`, run:
 
 ```bash
