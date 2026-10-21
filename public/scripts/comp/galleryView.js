@@ -6329,54 +6329,75 @@ function removeMultipleImagesFromGallery(images) {
             return;
         }
 
-        // Sort removed indices in descending order for safe splicing
-        removedIndices.sort((a, b) => b - a);
+        // JULES: Optimize bulk removal with single-pass index mapping O(N + M + F) instead of O(N * (Q + M + F))
+        const uniqueRemovedIndices = Array.from(new Set(removedIndices)).sort((a, b) => a - b);
+        const removedFilenames = new Set();
+        for (let i = 0; i < uniqueRemovedIndices.length; i++) {
+            const img = allImages[uniqueRemovedIndices[i]];
+            if (img) {
+                const fn = img.filename || img.original || img.upscaled;
+                if (fn) removedFilenames.add(fn);
+            }
+        }
 
-        for (const removedIndex of removedIndices) {
-            // Clean up placeholder resolution queue
+        const totalCount = allImages.length;
+        const shiftMap = new Int32Array(totalCount);
+        let currentShift = 0;
+        let removeIdx = 0;
+        for (let i = 0; i < totalCount; i++) {
+            if (removeIdx < uniqueRemovedIndices.length && i === uniqueRemovedIndices[removeIdx]) {
+                currentShift++;
+                removeIdx++;
+                shiftMap[i] = -1;
+            } else {
+                shiftMap[i] = currentShift;
+            }
+        }
+
+        if (placeholderResolutionQueue && placeholderResolutionQueue.length > 0) {
             placeholderResolutionQueue = placeholderResolutionQueue.filter(item => {
                 if (!item || !item.element || !item.element.parentNode) return false;
-                if (item.fileImageIndex === removedIndex) {
-                    disposeGalleryItemElement(item.element);
-                    item.element.remove();
-                    return false;
-                } else if (item.fileImageIndex > removedIndex) {
-                    item.fileImageIndex--;
-                    if (item.element) {
-                        item.element.dataset.fileIndex = item.fileImageIndex.toString();
+                const idx = item.fileImageIndex;
+                if (idx >= 0 && idx < totalCount) {
+                    const shift = shiftMap[idx];
+                    if (shift === -1) {
+                        disposeGalleryItemElement(item.element);
+                        item.element.remove();
+                        return false;
+                    }
+                    if (shift > 0) {
+                        item.fileImageIndex = idx - shift;
+                        if (item.element) {
+                            item.element.dataset.fileIndex = item.fileImageIndex.toString();
+                        }
                     }
                 }
                 return true;
             });
+        }
 
-            // Splice from allImages
-            const removedImg = allImages[removedIndex];
-            allImages.splice(removedIndex, 1);
+        allImages = allImages.filter((_, idx) => shiftMap[idx] !== -1);
 
-            // Splice from originalAllImages if separate copy exists
-            if (window.originalAllImages && window.originalAllImages.length > 0 && window.originalAllImages !== allImages) {
-                if (removedImg) {
-                    const targetFilename = removedImg.filename || removedImg.original || removedImg.upscaled;
-                    const origIdx = window.originalAllImages.findIndex(img => {
-                        return img && (img.filename === targetFilename || img.original === targetFilename || img.upscaled === targetFilename);
-                    });
-                    if (origIdx !== -1) {
-                        window.originalAllImages.splice(origIdx, 1);
+        if (window.originalAllImages && window.originalAllImages.length > 0 && window.originalAllImages !== allImages) {
+            window.originalAllImages = window.originalAllImages.filter(img => {
+                if (!img) return true;
+                const fn = img.filename || img.original || img.upscaled;
+                return !removedFilenames.has(fn);
+            });
+        }
+
+        if (window.filteredImageIndices && Array.isArray(window.filteredImageIndices)) {
+            const newFiltered = [];
+            for (let j = 0; j < window.filteredImageIndices.length; j++) {
+                const idx = window.filteredImageIndices[j];
+                if (idx >= 0 && idx < totalCount) {
+                    const shift = shiftMap[idx];
+                    if (shift !== -1) {
+                        newFiltered.push(idx - shift);
                     }
                 }
             }
-
-            // Update filteredImageIndices
-            if (window.filteredImageIndices && Array.isArray(window.filteredImageIndices)) {
-                for (let j = 0; j < window.filteredImageIndices.length; j++) {
-                    if (window.filteredImageIndices[j] > removedIndex) {
-                        window.filteredImageIndices[j]--;
-                    } else if (window.filteredImageIndices[j] === removedIndex) {
-                        window.filteredImageIndices.splice(j, 1);
-                        j--;
-                    }
-                }
-            }
+            window.filteredImageIndices = newFiltered;
         }
 
         // Dispose DOM contents before wiping to avoid leaks
