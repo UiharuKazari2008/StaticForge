@@ -3078,7 +3078,7 @@ const vsbEnsureGallery = function () {
     modal.dataset.windowClient = 'light';
     modal.innerHTML = `
         <div class="modal-window-title">
-            <div class="modal-window-title-main"><img class="vsb-gallery-title-icon" src="/static_images/app_icons/vista-sidebar.webp" alt=""><span>Gadget Gallery</span></div>
+            <div class="modal-window-title-main"><img class="icon-image vsb-gallery-title-icon" src="/static_images/app_icons/24/vista-sidebar.webp" srcset="/static_images/app_icons/24/vista-sidebar.webp 1x, /static_images/app_icons/48/vista-sidebar.webp 2x" alt=""><span>Gadget Gallery</span></div>
             <div class="modal-window-title-toolbar win7">
                 <div class="vsb-gallery-pager">
                     <span class="vsb-gallery-page-btn vsb-gallery-page-prev" title="Previous page"></span>

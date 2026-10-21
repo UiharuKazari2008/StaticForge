@@ -27,7 +27,7 @@
  *            then /app, which opens on teal; the logon dialog waits until tealHoldMs after
  *            that (app.html + websocket.js _deferPreStartupForTealHold)
  *   menu     failure: cut to black, Boot Manager text screen, countdownSec → retry.
- *            Melaton Recovery (Reinstall) boots the installation media: loading → Setup.
+ *            Melaton Recovery boots the installation media: loading → Setup.
  *   updates  after the session check, under the boot screen (updateEngine.js): the worker's
  *            cache diffed against the server manifest. Up to 20 files download silently behind
  *            the marquee, then the handoff. If that quiet download does not finish the cache,
@@ -127,7 +127,7 @@
         { id: 'melaton', label: 'Dreamscape Melaton' },
         { id: 'restore', label: 'Dreamscape Melaton (via System Restore)' },
         { id: 'safe', label: 'Dreamscape Melaton (Safe Mode with Networking)' },
-        { id: 'recovery', label: 'Melaton Recovery (Reinstall)' }
+        { id: 'recovery', label: 'Melaton Recovery' }
     ];
 
     const INFO = {
@@ -1313,7 +1313,7 @@
                 ctl.bootMode = entry.id === 'melaton' ? 'normal' : entry.id;
                 return retry();
             }
-            // Melaton Recovery (Reinstall): the installation media, Setup asks the rest
+            // Melaton Recovery: the installation media, Setup asks the rest
             const run = ++ctl.runId;
             return bootMedia(run);
         }

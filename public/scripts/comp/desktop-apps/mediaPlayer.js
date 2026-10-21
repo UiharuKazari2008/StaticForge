@@ -352,6 +352,8 @@ function mediaPlayerBuildUrlDialog(player) {
     const modal = document.createElement('div');
     modal.id = 'desktopMediaPlayerUrl';
     modal.className = 'modal hidden wmp-url-dialog';
+    // ensureModalApplicationIcon (modalUtils.js): the caption and taskbar show Media Player's icon
+    if (player.modal && player.modal.id) modal.dataset.iconOwnerId = player.modal.id;
     modal.dataset.windowIdentifier = 'desktop-media-player-url';
     modal.dataset.windowClient = 'light';
     modal.innerHTML = ''

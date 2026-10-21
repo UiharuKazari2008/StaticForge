@@ -159,6 +159,8 @@
         modal.dataset.windowRestoreSize = 'false';
         modal.dataset.windowFixedSize = 'true';
         modal.dataset.vistaDialog = 'form';
+        // as in Vista, no caption icon; the taskbar button still gets one (modalUtils.js)
+        modal.dataset.captionIcon = 'none';
         modal.dataset.windowClient = 'light';
         modal.setAttribute('role', 'dialog');
         modal.setAttribute('aria-label', title);
@@ -181,6 +183,8 @@
     }
 
     function showWindow(modal, owner) {
+        // a sheet without its own icon shows its owner's on the taskbar button (ensureModalApplicationIcon)
+        if (owner && owner.id) modal.dataset.iconOwnerId = owner.id;
         callGlobal('openModal', modal);
         if (modal.classList.contains('hidden')) modal.classList.remove('hidden');
         // centred over the owner (or the screen), as Vista places a property sheet

@@ -1324,7 +1324,8 @@ body.desktop-mode:not(.windows-classic-theme) .vsb-notes:is(:hover, :focus-withi
     padding: 0 2px;
 }
 
-.vsb-gallery-title-icon {
+/* .icon-image (the taskbar reads it) is 1.5em in modal-window-title-toolbar.css: keep 16 px */
+.modal-window-title-main .vsb-gallery-title-icon {
     width: 16px;
     height: 16px;
 }

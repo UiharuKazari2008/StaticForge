@@ -98,13 +98,15 @@
     }
     const blank = { type: 'blank' };
 
-    function driveSubmenu(id, title, present) {
+    function driveSubmenu(id, title, present, facts) {
         return {
             id,
             title,
             items: present ? [
                 opt(id + 'Type', 'Type:', ['Auto', 'User', 'CD-ROM', 'ATAPI Removable', 'None'], present === 'cdrom' ? 'CD-ROM' : 'Auto', DRIVE_HELP),
-                info('Device:', title),
+                info('Device:', title.split('  [')[0]),
+                // the autotyped disk's size, from the storage estimate that lands during the POST
+                ...(facts ? [{ type: 'info', label: 'Maximum Capacity:', get value() { return facts.capacity; }, help: [] }] : []),
                 blank,
                 opt(id + 'Multi', 'Multi-Sector Transfers:', ['Disabled', '2 Sectors', '4 Sectors', '8 Sectors', '16 Sectors'], present === 'cdrom' ? 'Disabled' : '16 Sectors', ['Any selection except', 'Disabled determines the', 'number of sectors', 'transferred per block.']),
                 opt(id + 'Lba', 'LBA Mode Control:', ENABLED, present === 'cdrom' ? 'Disabled' : 'Enabled', ['Enabling LBA causes', 'Logical Block Addressing', 'to be used in place of', 'Cylinders, Heads &', 'Sectors.']),
@@ -129,7 +131,7 @@
         const cacheRanges = ['A000 - AFFF', 'B000 - BFFF', 'C800 - CBFF', 'CC00 - CFFF', 'D000 - D3FF', 'D400 - D7FF', 'D800 - DBFF', 'DC00 - DFFF', 'E000 - E3FF', 'E400 - E7FF', 'E800 - EBFF', 'EC00 - EFFF'];
         const BOOT_DEVICES = [
             { id: 'removable', label: 'Removable Devices', help: ['Keys used to view or', 'configure devices:', '<Enter> expands or', 'collapses devices with', 'a + or -', '<Ctrl+Enter> expands', 'all', '<+> and <-> moves the', 'device up or down.', '<n> May move removable', 'device between Hard', 'Disk or Removable Disk', '<d> Remove a device', 'that is not installed.'] },
-            { id: 'hdd', label: 'Hard Drive', get children() { return [facts.diskLabel + '-(PM)', 'Bootable Add-in Cards']; } },
+            { id: 'hdd', label: 'Hard Drive', children: [facts.diskModel + '-(PM)', 'Bootable Add-in Cards'] },
             { id: 'cdrom', label: 'CD-ROM Drive' },
             { id: 'network', label: 'Network boot from Intel E1000' }
         ];
@@ -144,9 +146,9 @@
                         opt('fdA', 'Legacy Diskette A:', ['Disabled', '360 KB  5¼"', '1.2 MB  5¼"', '720 KB  3½"', '1.44/1.25 MB 3½"', '2.88 MB  3½"'], 'Disabled', ['Selects floppy type.', 'Note that 1.25 MB 3½"', 'references a 1024 byte/', 'sector Japanese media', 'format. The 1.25 MB,', '3½" diskette requires', 'a 3-Mode floppy-disk', 'drive.']),
                         opt('fdB', 'Legacy Diskette B:', ['Disabled', '360 KB  5¼"', '1.2 MB  5¼"', '720 KB  3½"', '1.44/1.25 MB 3½"', '2.88 MB  3½"'], 'Disabled', ['Selects floppy type.', 'Note that 1.25 MB 3½"', 'references a 1024 byte/', 'sector Japanese media', 'format. The 1.25 MB,', '3½" diskette requires', 'a 3-Mode floppy-disk', 'drive.']),
                         blank,
-                        sub('pm', 'Primary Master', 'pm', [], { value: () => `[${facts.diskLabel}]` }),
+                        sub('pm', 'Primary Master', 'pm', [], { value: () => `[${facts.diskModel}]` }),
                         sub('ps', 'Primary Slave', 'ps', [], { value: () => '[None]' }),
-                        sub('sm', 'Secondary Master', 'sm', [], { value: () => '[DS Virtual CDROM]' }),
+                        sub('sm', 'Secondary Master', 'sm', [], { value: () => `[${facts.cdModel}]` }),
                         sub('ss', 'Secondary Slave', 'ss', [], { value: () => '[None]' }),
                         blank,
                         sub('kb', 'Keyboard Features', 'kb', ['Select keyboard options']),
@@ -156,9 +158,9 @@
                         opt('diag', 'Boot-time Diagnostic Screen:', ENABLED, 'Disabled', ['Display the diagnostic', 'screen during boot'])
                     ]
                 },
-                get pm() { return driveSubmenu('pm', `Primary Master  [${facts.diskLabel}]`, 'hdd'); },
+                get pm() { return driveSubmenu('pm', `Primary Master  [${facts.diskModel}]`, 'hdd', facts); },
                 ps: driveSubmenu('ps', 'Primary Slave  [None]', null),
-                sm: driveSubmenu('sm', 'Secondary Master  [DS Virtual CDROM]', 'cdrom'),
+                sm: driveSubmenu('sm', `Secondary Master  [${facts.cdModel}]`, 'cdrom'),
                 ss: driveSubmenu('ss', 'Secondary Slave  [None]', null),
                 kb: {
                     id: 'kb', title: 'Keyboard Features', items: [
@@ -340,13 +342,17 @@
         return {
             extendedKb: gb * 1048576 - 1024,
             cpus: Number(nav.hardwareConcurrency) || 2,
+            // the drives identify as a Maxtor DiamondMax Plus 9 and an LG Blu-ray burner
+            // (HL-DT-ST is how Hitachi-LG drives answer an ATA identify)
+            diskModel: 'Maxtor 6Y080L0',
+            cdModel: 'LG BH16NS40',
+            diskName: 'Maxtor 6Y080L0',
+            cdName: 'HL-DT-ST BD-RE  BH16NS40',
             // the storage estimate lands while the POST runs: read it when drawn
-            get diskLabel() {
+            get capacity() {
                 const quotaMb = Math.round((Number(env.storageQuota) || 0) / 1048576);
-                return quotaMb > 0 ? `${quotaMb}MB` : 'DS Virtual IDE Disk';
-            },
-            diskName: 'DS Virtual IDE Hard Drive',
-            cdName: 'DS Virtual IDE CDROM Drive'
+                return quotaMb > 0 ? `${quotaMb}MB` : 'Unknown';
+            }
         };
     }
 
@@ -460,11 +466,13 @@
                 done: () => state.finished,
                 results: () => state.results,
                 progress: (elapsed) => {
-                    if (!list.length) return Math.min(1, elapsed / config.splashMs);
-                    const share = 1 / list.length;
-                    // the running task crawls up to 90 % of its share with the time it takes
-                    const crawl = state.finished ? 0 : Math.min(0.9, (env.now() - state.startedAt) / config.splashMs) * share;
-                    return Math.min(1, state.done * share + crawl);
+                    // a steady fill over splashMs; a task still running holds it just short
+                    // of full, and the finished tasks never let it fall behind their share
+                    const byTime = Math.min(1, elapsed / config.splashMs);
+                    if (!list.length) return byTime;
+                    const byTasks = state.done / list.length;
+                    const cap = state.finished ? 1 : 0.95;
+                    return Math.min(cap, Math.max(byTime, byTasks));
                 }
             };
         }
@@ -740,8 +748,11 @@
             bios.setup = { page: null, stack: [], sel: 0, scroll: 0, field: 0, popup: null, bootExpanded: false, tab: 0 };
             openPage('main');
             drawSetup();
+            // System Time ticks: redraw once a second while the utility is open
+            const timer = (env.setInterval || setInterval)(() => { if (bios.setup) drawSetup(); }, 1000);
             return new Promise((resolve) => {
                 bios.setup.resolve = (outcome) => {
+                    (env.clearInterval || clearInterval)(timer);
                     bios.setup = null;
                     resolve(outcome);
                 };
@@ -823,7 +834,7 @@
                     if (item.value) screen.put(34, row, item.value(), sel ? C.white : C.blue, C.grey);
                 } else if (item.type === 'info') {
                     screen.put(labelCol, row, item.label, C.blue, C.grey);
-                    screen.put(34, row, item.value, C.blue, C.grey);
+                    screen.put(34, row, typeof item.value === 'function' ? item.value() : item.value, C.blue, C.grey);
                 } else if (item.type === 'status') {
                     screen.put(labelCol, row, item.label, C.blue, C.grey);
                     screen.put(34, row, cmos[item.id + 'Set'] === true ? 'Set' : 'Clear', C.blue, C.grey);
@@ -1362,7 +1373,7 @@
 
     // ---------- canvas painter ----------
 
-    const SPLASH_BAR_CELLS = 43;
+    const SPLASH_BAR_CELLS = 66;    // x 92 to 620 of 640: the bar runs to near the right edge
 
     /** Whole cells of the Starting bar for a 0..1 progress (never a fraction of a character). */
     function splashBarCells(progress) {

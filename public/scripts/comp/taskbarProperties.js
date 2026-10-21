@@ -419,6 +419,8 @@
         modal.setAttribute('aria-label', title);
         const cap = el('div', 'modal-window-title');
         const main = el('div', 'modal-window-title-main');
+        // the sub-dialogs have no caption icon, as in Vista; their taskbar button still gets one
+        if (!iconSrc) modal.dataset.captionIcon = 'none';
         if (iconSrc) {
             const img = el('img', 'icon-image');
             img.alt = '';
@@ -437,6 +439,8 @@
     }
 
     function showWindow(modal, owner) {
+        // a sheet without its own icon shows its owner's on the taskbar button (ensureModalApplicationIcon)
+        if (owner && owner.id) modal.dataset.iconOwnerId = owner.id;
         callGlobal('openModal', modal);
         if (modal.classList.contains('hidden')) modal.classList.remove('hidden');
         // centred over the owner (or the screen), as Vista places a property sheet

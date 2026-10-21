@@ -1510,6 +1510,8 @@ function linkToolWindowToParent(toolWindow, parentModal) {
 
     // Set the parent modal ID on the tool window
     toolElement.setAttribute('data-parent-modal-id', parentElement.id);
+    // A tool window without an icon of its own shows its parent's (openModal links on-top tools late)
+    ensureModalApplicationIcon(toolElement);
 }
 
 // Get all tool windows linked to a parent modal
@@ -5053,27 +5055,8 @@ function updateTaskbarWindows() {
                 const currentImageIconEl = existingItem.querySelector('img.icon-image');
                 const currentIcon = currentIconEl?.className || '';
 
-                // Extract current image icon filename for comparison
-                let currentImageIcon = null;
-                if (currentImageIconEl) {
-                    try {
-                        const url = new URL(currentImageIconEl.src);
-                        const pathParts = url.pathname.split('/');
-                        const filename = pathParts[pathParts.length - 1];
-                        if (pathParts.includes('app_icons') && filename) {
-                            currentImageIcon = filename;
-                        }
-                    } catch (e) {
-                        // If URL parsing fails, try simple string extraction
-                        if (currentImageIconEl.src.includes('/static_images/app_icons/')) {
-                            const parts = currentImageIconEl.src.split('/static_images/app_icons/');
-                            if (parts.length > 1) {
-                                const rel = parts[1].split('?')[0];
-                                currentImageIcon = rel.split('/').pop();
-                            }
-                        }
-                    }
-                }
+                // Current image icon, read the same way getModalIcons reads the caption's
+                const currentImageIcon = currentImageIconEl ? (appIconRefFromImg(currentImageIconEl) || null) : null;
 
                 // Check if icons actually changed
                 const expectedIconClass = (icon && !isImageIcon(icon)) ?
@@ -5366,7 +5349,7 @@ function getModalIcon(modal) {
     return 'fas fa-window';
 }
 
-/** App icon filename when a tool window has no img.icon-image (parent chain or id map). */
+/** App icon filename when a window has no img.icon-image and no parent / owner that has one. */
 const MODAL_APPLICATION_ICONS = {
     positionDialog: 'studio.png',
     characterPositionTool: 'studio.png',
@@ -5382,47 +5365,93 @@ const MODAL_APPLICATION_ICONS = {
     directorFeedbackModal: 'director.png',
     directorWindow: 'director.png',
     vibeEncodingModal: 'ref.png',
-    vibeManagerDeleteModal: 'ref.png'
+    vibeManagerDeleteModal: 'ref.png',
+    // windows of their own that are built in script (startMenuOrganizer.js, remoteAccessProperties.js,
+    // agentClientUpdateDialog.js, mainframeExceptionDialog.js, vfsSystemOpenRouter.js)
+    desktopEmotionModal: 'emotion.png',
+    startMenuOrganizerModal: 'vista-taskbar.png',
+    remoteAccessPropertiesDialog: 'vista-remote-access.png',
+    agentClientUpdateDialog: 'vista-windows-update.png',
+    mainframeExceptionDialog: 'vista-system.png',
+    vfsSystemTextViewerModal: 'vista-explorer.png'
 };
 
+/** The window this one belongs to, for its icon: the linked parent, else the owner it names. */
+function modalIconOwnerId(modal) {
+    return modal.getAttribute('data-parent-modal-id') || modal.dataset.iconOwnerId || '';
+}
+
+/** An app icon reference from a caption img: the app_icons file name, or the path of other art. */
+function appIconRefFromImg(img) {
+    const raw = img.getAttribute('src') || img.src || '';
+    if (!raw) return '';
+    if (raw.includes('/static_images/app_icons/')) return appIconBasename(raw);
+    try {
+        return new URL(raw, window.location.origin).pathname;
+    } catch (_e) {
+        return raw;
+    }
+}
+
 /**
- * Vista tool windows need img.icon-image in the caption for the taskbar and glass title bar.
- * Inherit from data-parent-modal-id when missing; message boxes (data-vista-dialog=message) skip.
+ * Icon for a window that has none of its own: the parent's or owner's (up the chain), then
+ * MODAL_APPLICATION_ICONS by id.
+ */
+function resolveInheritedAppIcon(modal) {
+    const seen = new Set([modal.id]);
+    let ownerId = modalIconOwnerId(modal);
+    while (ownerId && !seen.has(ownerId)) {
+        seen.add(ownerId);
+        const owner = document.getElementById(ownerId);
+        if (!owner) break;
+        const img = owner.querySelector(':scope > .modal-window-title > .modal-window-title-main > img.icon-image');
+        if (img) return appIconRefFromImg(img);
+        if (owner.dataset.taskbarIcon) return owner.dataset.taskbarIcon;
+        if (owner.id && MODAL_APPLICATION_ICONS[owner.id]) return MODAL_APPLICATION_ICONS[owner.id];
+        ownerId = modalIconOwnerId(owner);
+    }
+    return (modal.id && MODAL_APPLICATION_ICONS[modal.id]) || '';
+}
+
+/**
+ * Every window shows an image icon in its caption and on its taskbar button. A window without
+ * one of its own takes its parent's or owner's (data-parent-modal-id, data-icon-owner-id) or its
+ * MODAL_APPLICATION_ICONS entry, looked up again on every open, since a tool window can open from
+ * a different parent. Message boxes (data-vista-dialog=message) and dialogs Vista draws without
+ * a caption icon (data-caption-icon=none: property sheets, the .NET exception dialog) keep a bare
+ * caption; their taskbar button still gets the icon (data-taskbar-icon, read by getModalIcons).
  */
 function ensureModalApplicationIcon(modal) {
     if (!modal || !window.isDesktop || !document.body.classList.contains('desktop-mode')) return;
-    if (document.body.classList.contains('windows-classic-theme')) return;
-    if (modal.dataset.vistaDialog === 'message') return;
 
     const main = modal.querySelector(':scope > .modal-window-title > .modal-window-title-main');
-    if (!main || main.querySelector('img.icon-image')) return;
+    if (!main) return;
+    if (main.querySelector(':scope > img.icon-image:not([data-inherited-icon])')) return;
 
-    let imageIcon = null;
-    let parentId = modal.getAttribute('data-parent-modal-id');
-    while (parentId && !imageIcon) {
-        const parent = document.getElementById(parentId);
-        if (!parent) break;
-        const parentImg = parent.querySelector('.modal-window-title-main img.icon-image');
-        if (parentImg) {
-            imageIcon = appIconBasename(parentImg.getAttribute('src') || parentImg.src);
-            break;
-        }
-        parentId = parent.getAttribute('data-parent-modal-id');
+    const imageIcon = resolveInheritedAppIcon(modal);
+    const current = main.querySelector(':scope > img[data-inherited-icon]');
+    if (modal.dataset.vistaDialog === 'message' || modal.dataset.captionIcon === 'none') {
+        if (current) current.remove();
+        if (imageIcon) modal.dataset.taskbarIcon = imageIcon;
+        else delete modal.dataset.taskbarIcon;
+        return;
     }
-    if (!imageIcon && modal.id && MODAL_APPLICATION_ICONS[modal.id]) {
-        imageIcon = MODAL_APPLICATION_ICONS[modal.id];
-    }
-    if (!imageIcon) return;
+    delete modal.dataset.taskbarIcon;
+    // nothing resolved: keep what an earlier open inherited rather than fall back to the glyph
+    if (!imageIcon || (current && current.dataset.inheritedIcon === imageIcon)) return;
 
-    const iconEl = main.querySelector('i');
-    if (iconEl && !iconEl.classList.contains('icon-fa')) {
-        iconEl.classList.add('icon-fa');
-    }
     const holder = document.createElement('div');
     holder.innerHTML = renderAppIconImg(imageIcon, '', APP_ICON_DISPLAY_PX.taskbar);
     const img = holder.firstElementChild;
     if (!img) return;
-    const anchor = main.querySelector('span');
+    img.dataset.inheritedIcon = imageIcon;
+    const iconEl = main.querySelector(':scope > i');
+    if (iconEl && !iconEl.classList.contains('icon-fa')) iconEl.classList.add('icon-fa');
+    if (current) {
+        current.replaceWith(img);
+        return;
+    }
+    const anchor = main.querySelector(':scope > span');
     if (anchor) main.insertBefore(img, anchor);
     else main.appendChild(img);
 }
@@ -5440,14 +5469,14 @@ function getModalIcons(modal) {
         icon = iconClass.replace(/\bicon-fa\b/g, '').trim();
     }
 
-    // Get image icon
+    // Get image icon: the caption's, else the one a message box keeps for its taskbar button
     const imgEl = modal.querySelector('.modal-window-title-main img.icon-image');
     if (imgEl) {
-        const src = imgEl.src;
-        const url = new URL(src, window.location.origin);
-        // Extract just the filename from the path
-        const pathParts = url.pathname.split('/');
-        imageIcon = pathParts[pathParts.length - 1]; // Get filename (e.g., "studio.png")
+        imageIcon = appIconRefFromImg(imgEl);
+    } else if (modal.dataset.taskbarIcon) {
+        // the served name, as a rendered taskbar img reads back (studio.png -> studio.webp)
+        const ref = modal.dataset.taskbarIcon;
+        imageIcon = ref.startsWith('/') ? ref : appIconBasename(resolveAppIconPath(ref));
     }
 
     // Check if this is a gallery-move-modal-content modal (no titlebar)

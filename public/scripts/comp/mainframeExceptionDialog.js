@@ -126,6 +126,8 @@
         modal = doc.createElement('div');
         modal.id = 'mainframeExceptionDialog';
         modal.className = 'modal hidden on-top vpn-dialog dotnet-exception-modal';
+        // ThreadExceptionDialog has no caption icon; its taskbar button still gets one (modalUtils.js)
+        modal.dataset.captionIcon = 'none';
         modal.dataset.windowRestorePosition = 'false';
         modal.dataset.windowRestoreSize = 'false';
         modal.setAttribute('role', 'alertdialog');

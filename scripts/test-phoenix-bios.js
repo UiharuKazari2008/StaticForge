@@ -124,7 +124,7 @@ function harness(opts = {}) {
     h.bios.handleKey('ArrowRight');
     assert.ok(h.row(5).indexOf('+Hard Drive') !== -1);
     h.bios.handleKey('Enter');
-    assert.ok(h.row(5).indexOf('-Hard Drive') !== -1 && h.row(6).indexOf('40960MB-(PM)') !== -1, 'expanded with the disk');
+    assert.ok(h.row(5).indexOf('-Hard Drive') !== -1 && h.row(6).indexOf('Maxtor 6Y080L0-(PM)') !== -1, 'expanded with the disk');
     h.bios.handleKey('ArrowDown');
     h.bios.handleKey('ArrowDown');
     h.bios.handleKey('ArrowDown');
@@ -235,9 +235,9 @@ function harness(opts = {}) {
         const seen = [];
         for (let i = 0; i < 400; i++) { await h.flush(); seen.push(h.bios.screen.splash.progress); }
         assert.ok(Math.max(...seen) < 1, 'the bar waits for the task that is still running');
-        assert.ok(Math.max(...seen) >= 0.5, 'the finished task is half the bar');
+        assert.ok(Math.max(...seen) >= 0.9, 'it fills steadily and holds just short of full');
         assert.ok(seen.every((v, i) => i === 0 || v >= seen[i - 1]), 'the bar never moves back');
-        assert.ok(B.splashBarCells(0.5) === 21 && B.splashBarCells(0.999) === 42, 'the bar fills in whole cells');
+        assert.ok(B.splashBarCells(0.5) === 33 && B.splashBarCells(0.999) === 65, 'the bar fills in whole cells');
         release(true);
         assert.deepStrictEqual(await p, { device: 'hdd', via: 'order' });
         assert.deepStrictEqual(h.bios.work, { disk: 'disk', os: true }, 'the results are kept for the boot');

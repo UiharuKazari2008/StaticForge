@@ -2079,6 +2079,8 @@ class Director {
         const modal = document.createElement('div');
         modal.id = 'directorHistoryWindow';
         modal.className = 'modal hidden transient resizeable-window';
+        // ensureModalApplicationIcon (modalUtils.js): the caption and taskbar show Director's icon
+        modal.dataset.iconOwnerId = 'directorWindow';
         modal.dataset.windowIdentifier = 'directorHistory';
         modal.dataset.windowDefaultWidth = '980';
         modal.dataset.windowDefaultHeight = '720';

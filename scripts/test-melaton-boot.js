@@ -120,7 +120,7 @@ const flush = () => new Promise((r) => setImmediate(r));
         'Dreamscape Melaton',
         'Dreamscape Melaton (via System Restore)',
         'Dreamscape Melaton (Safe Mode with Networking)',
-        'Melaton Recovery (Reinstall)'
+        'Melaton Recovery'
     ]);
 
     h = harness([timeoutErr()]);
@@ -246,7 +246,7 @@ const flush = () => new Promise((r) => setImmediate(r));
         await run4;
     }
 
-    // ---------- Melaton Recovery (Reinstall): the installation media, loading bar, Setup's pages ----------
+    // ---------- Melaton Recovery: the installation media, loading bar, Setup's pages ----------
     const wiped = [];
     const fakeWindow = {
         caches: { keys: async () => ['static-cache-v1', 'image-cache-v1'], delete: async (n) => wiped.push(`cache:${n}`) },
