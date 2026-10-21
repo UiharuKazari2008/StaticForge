@@ -935,10 +935,15 @@ function buildServiceWorkerCacheManifest() {
     const routeNames = routeFiles.map(f => f.name);
     const splashOrScreenshotPattern = /^\/static_images\/(apple-splash|android-screenshot)-.*\.(png|jpg|jpeg|webp)$/i;
     const unrelatedFilePattern = /\.(backup\..*|md|markdown|txt|log|DS_Store|swp|tmp|bak)$/i;
+    // /images/:filename is the gallery route (imagesDir), so public/images is never served at
+    // its own URL: the login sheet seed there 404s, the client never caches it, and every boot
+    // re-runs the update check into /launch. The seed ships as /.login.jpg below.
+    const shadowedByGalleryRoute = (webPath) => typeof webPath === 'string' && webPath.startsWith('/images/');
 
     const staticFiles = globalResources.getGlobalCacheData()
         .filter(file =>
             !routeNames.includes(file.path) &&
+            !shadowedByGalleryRoute(file.path) &&
             !splashOrScreenshotPattern.test(file.path) &&
             !unrelatedFilePattern.test(file.path)
         )
