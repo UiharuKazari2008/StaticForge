@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+   <name>Hasher</name>
+   <namespace>Manuel van Rijn</namespace>
+   <version>1.0</version>
+   <author name="Manuel van Rijn">
+     <info url="http://manuel.manuelles.nl" />
+	 <logo src="images/designer.png"/>
+   </author>
+   <copyright>&#169; 2007 ManuElles</copyright>
+   <description>Encrypt a string easy with this gadget</description>
+   <icons>
+     <icon height="48" width="48" src="images/icon.png" />
+   </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="gadget.html" />
+      <permissions>Full</permissions>
+      <platform minPlatformVersion="1.0" />
+	  <defaultImage src="images/dragicon.png"/>
+    </host>
+  </hosts>
+</gadget>

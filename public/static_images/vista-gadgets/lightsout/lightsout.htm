@@ -1,0 +1,587 @@
+<html>
+
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+<meta name="GENERATOR" content="Microsoft FrontPage 6.0">
+<meta name="ProgId" content="FrontPage.Editor.Document">
+
+<title>Lights Out!</title>
+
+<style> 
+
+body{
+        margin:0;
+        border:none;
+        width:130;
+        height:144;
+        cursor:default;
+        font:8pt tahoma;
+        zoom:1
+    }
+    
+</style>
+
+</head>
+
+<SCRIPT language="javascript">
+
+// ****************************************************************
+//	LightsOut
+//	Author: Jim Moore (jimmo), 2006
+//
+//	LightsOut is based on the Tiger handheld game of the same name.
+//
+//	The player is presented with a 5x5 playing field of lights, and
+//  must click the appropriate lights to completely turn off all
+//  the lights.
+//
+//	Programmatically, the board is considered a 25 bit number, and
+//  the players actions modify the mask representing the state of the
+//  board.
+// ****************************************************************
+
+
+// Array of numbers representing level states. These are the 50 that
+// are in the handheld game.  More may be added later.
+// Interesting note: Not all patterns on the board are solveable.
+var g_Levels = new Array(21504,22708917,11399018,28869472,29122287,
+                         15389696,16303663,11184256,8207338,14798,
+                         15390389,10972511,2271880,2164736,65600,
+                         32539681,32968704,4543812,22041621,17408,
+                         2177118,15255086,4616192,19907584,31956065,
+                         18415153,4329924,30306304,64,4096,
+                         18667121,32575775,26793224,32196148,705880,
+                         18859332,473536,22369621,10882090,10240,
+                         4329809,7642407,14753137,14843744,22540462,
+                         4685252,17373156,561696,18157905,33554431);
+
+var grid = new Array();
+
+var MAX_LEVEL     = 49;   // max number of levels available to play. 0-based
+var gBoardState   = 0; 	  // always has the state of the board
+var gCurrentLevel = 0;    // The current level of the board
+var gMovesMade    = 0;    // Number of moves so far
+var gMinimumMoves = 0;    // Minimum Moves for current board
+var gfResetGame   = false;// Should the game be reset? Used in Settings Read/Write.
+var gScore        = 0;    // Tallied as adding number of moves player makes to solve.
+                          // So lower the score, the better. 525 minimum for completed board.
+
+var gDocked       = true; // are we docked?
+
+// Sizes to use for the cell and buttom img tags.
+var g_CellHeight   = 22;
+var g_CellWidth    = 22;
+var g_ButtonHeight = 12;
+var g_ButtonWidth  = 30;
+
+// ---------------------------------------------------------------
+//	init
+//
+//	It all starts here
+//	
+//	The array is created and zero'd out, and the initial state is
+//  set.
+// ---------------------------------------------------------------
+function init()
+{
+	var str;
+	for(i = 0; i < 5; i++)
+	{
+    	grid[i] = new Array(5);
+
+		for (j = 0; j < 5; j++)
+		{
+			grid[i][j] = 0;
+        }
+	}
+    
+    //
+    // Gadget Setup
+    //
+    System.Gadget.onDock           = displayDockedMode;    
+    System.Gadget.onUndock         = displayUnDockedMode;
+    System.Gadget.settingsUI       = "Settings.htm";
+    System.Gadget.onSettingsClosed = SettingsClosed;
+
+	gMovesMade    = 0;
+    gScore        = 0;
+    gCurrentLevel = 0;
+    gBoardState   = 0;
+    
+	SetLevel(gCurrentLevel);
+
+    System.Gadget.Settings.write("ResetGame", "false");
+
+    displayDockedMode();
+}
+
+// ---------------------------------------------------------------
+//  SettingsClosed
+//
+//	This function handles event when user closes settings dialog.
+//  If user selected "OK", the the game is reset.
+//  If user selected "CANCEL", do nothing.
+// ---------------------------------------------------------------
+function SettingsClosed() 
+{
+	gfResetGame = System.Gadget.Settings.read("ResetGame");
+	
+	if (gfResetGame == "true")
+	{
+	    gMovesMade    = 0;
+        gScore        = 0;
+        gCurrentLevel = 0;
+        gBoardState   = 0;
+        gMinimumMoves = 0;
+        
+	    SetLevel(gCurrentLevel);
+	}
+}
+
+
+// ---------------------------------------------------------------
+//  ShowStats
+//
+//	This function handles updating the Score, Level, and Moves
+//  information.  Adjusted depending on Docked or UnDocked.
+// ---------------------------------------------------------------
+function ShowStats()
+{
+	gMinimumMoves = Math.floor((((gCurrentLevel) / 5))) + 6;
+
+    if (gDocked)
+    {
+	    txtLevel.innerText = "L:" + (gCurrentLevel + 1); // +1 because zero based.
+	    txtScore.innerText = "S:" + gScore;
+	    txtMoves.innerText = "M:" + gMovesMade + "/" + gMinimumMoves;
+    }
+    else
+    {
+	    txtLevel.innerText = "Level:" + (gCurrentLevel + 1); // +1 because zero based.
+	    txtScore.innerText = "Score:" + gScore;
+	    txtMoves.innerText = "Moves:" + gMovesMade + "/" + gMinimumMoves;
+    }
+}
+
+// ---------------------------------------------------------------
+//  Set Level
+//
+//	Handles setting the board to the state given by nLevel.
+// ---------------------------------------------------------------
+function SetLevel(nLevel)
+{
+	gMovesMade = 0;
+
+	if ((nLevel >= 0) && (nLevel <= MAX_LEVEL))
+	{
+		gCurrentLevel = nLevel
+		SetBoard(g_Levels[gCurrentLevel]);
+	}
+	
+	ShowStats();
+}
+
+// ---------------------------------------------------------------
+//  SetBoard
+//
+//	Handles setting the board to the state given by the mask
+// ---------------------------------------------------------------
+function SetBoard(mask)
+{
+	gBoardState = mask;
+	for (i = 0; i < 25; i++)
+	{
+    	oCell        = document.getElementById("cell_" + i);
+    	oCell.width  = g_CellWidth;
+    	oCell.height = g_CellHeight;
+
+		if (1 & mask)
+		{
+			grid[i] = 1;
+			oCell.src = "LightsOut_On.gif";
+		}
+		else
+		{
+			grid[i] = 0;
+			oCell.src = "LightsOut_Off.gif";
+		}
+	
+		mask >>= 1;
+	}
+}
+
+// ---------------------------------------------------------------
+//	ToggleCell
+//
+//	This function handles toggling of the given cell.
+//	
+//	nCell is number of the cell.
+//
+//  This function gets the cell by it's Element ID.
+//  Using the cell number, it modifies the BoardState mask to 
+//  represent the board after toggling.
+// ---------------------------------------------------------------
+function ToggleCell(nCell)
+{
+	oCell = document.getElementById("cell_" + nCell);
+	if (oCell == null)
+	{
+		//alert("Unable to find cell_"+ nCell);
+		return;
+	}
+
+    // If the cell is OFF, toggle on, and vice versa
+	if (grid[nCell] == 0)
+	{
+		oCell.src = "LightsOut_On.gif";
+		grid[nCell] = 1;
+		
+		// Simply OR the number to turn on the cell
+		gBoardState |= (1 << nCell); 
+	}
+	else
+	{
+		oCell.src = "LightsOut_Off.gif";
+		grid[nCell] = 0;
+		
+		// Need to AND the inverse of the desired cell, to retain
+		// board state and turn off that specific cell.
+		gBoardState &= ~(1 << nCell);
+	}
+}
+
+// ---------------------------------------------------------------
+//	DoCellClick
+//
+//	This function handles the event when the User clicks a cell.
+//	
+//	nCell is the number of the cell.
+//
+//  This function handles the logic of toggling the cell that's
+//	clicked as well as the up/left/right/down cells. It handles
+//  the case where a clicked cell is on an edge.
+// ---------------------------------------------------------------
+function DoCellClick(nCell)
+{
+
+	// Center
+	ToggleCell(nCell);
+
+	//left
+	if ( ((nCell % 5) > 0) && (nCell > 0) )	{ ToggleCell(nCell-1);	}
+	
+	//top
+	if (nCell > 4){ ToggleCell(nCell-5); }
+
+	//right
+	if ( ((nCell % 5) < 4) && (nCell < 25)) { ToggleCell(nCell+1); }
+
+	//bottom
+	if (nCell < 20)	{ ToggleCell(nCell+5); }
+
+	gMovesMade++;
+	ShowStats();
+
+	//
+	//	Figure out if the game has been solved.
+	//
+	if (gBoardState == 0)
+	{
+	    var nLevelMinimum = (((gCurrentLevel) / 5) + 1 ) * 6;
+    	DoSolvedAnimation();
+    }
+}
+
+// ---------------------------------------------------------------
+//	DoLevelUp/Down
+//
+//	Handles Level Up/Down clicks.  Adjust gCurrentLevel accordingly
+//  and then calls SetLevel, to update boad.
+// ---------------------------------------------------------------
+function DoLevelUp()
+{
+	gCurrentLevel++;
+	if (gCurrentLevel > MAX_LEVEL) 
+	{
+	    gCurrentLevel = MAX_LEVEL;
+	    //DoFinishedGameAnimation(); // TODO
+    }
+	SetLevel(gCurrentLevel);
+}
+
+function DoLevelDown()
+{
+	gCurrentLevel--;
+	if (gCurrentLevel < 0) { gCurrentLevel = 0; }
+	SetLevel(gCurrentLevel);
+}
+
+// ---------------------------------------------------------------
+//	DoReset
+//
+//	Handles click of the Reset button.  Simply calls SetLevel
+//  with the current level number
+// ---------------------------------------------------------------
+function DoReset()
+{
+	SetLevel(gCurrentLevel);
+}
+
+// ---------------------------------------------------------------
+//	DoSolvedAnimation
+//
+//	Handles kicking off animation for 3 states of board completion
+//  1) Board was solved in minimum steps
+//  2) Board was solved in less than maximum, but more than minimum
+//  3) Board was solved but in over maximum steps (lose).
+// ---------------------------------------------------------------
+function DoSolvedAnimation()
+{
+	g_AnimationArray = g_BoardSolved;
+	g_FrameNo = 0;
+
+	var nLevelMinimum = Math.floor((((gCurrentLevel) / 5))) + 6;
+
+	nMovesOverMinimum = gMovesMade - nLevelMinimum;
+
+	// Perfect!
+	if (nMovesOverMinimum == 0)
+	{
+		window.setTimeout(LevelTransitionAnimation, ANIMATION_SPEED, "JavaScript");
+		gScore = gScore + nLevelMinimum;
+ 	}
+ 	// Took too many moves.
+	else if (nMovesOverMinimum > 10)
+	{
+		window.setTimeout(LevelLostAnimation, ANIMATION_SPEED, "JavaScript");
+	}
+	// Not perfect, but under maximum.
+	else 
+	{
+		window.setTimeout(ShowNumbersOverMinimum, ANIMATION_SPEED, "JavaScript");
+		gScore = gScore + nLevelMinimum + nMovesOverMinimum;
+	}
+}
+
+// ---------------------------------------------------------------
+//	DoFinishedGameAnimation
+//
+//	Handles kicking off animation when the game is finished.
+//  (Last level cleared)
+//  Right now, just display random pattern
+// ---------------------------------------------------------------
+function DoFinishedGameAnimation()
+{
+	var nRandomState = Math.round(Math.random() * 33554431);//Number is all lights on
+
+    SetBoard(nRandomState);
+   	
+    window.setTimeout(DoFinishedGameAnimation, ANIMATION_SPEED,"JavaScript");
+}
+
+// ---------------------------------------------------------------
+//	LevelTransitionAnimation
+//
+//	Handles animating the board between levels.
+// ---------------------------------------------------------------
+function LevelTransitionAnimation()
+{
+	SetBoard(g_AnimationArray[g_FrameNo]);
+
+	g_FrameNo++;
+	
+	if (g_FrameNo <= g_AnimationArray.length)
+	{
+		window.setTimeout(LevelTransitionAnimation,ANIMATION_SPEED,"JavaScript");
+	}
+	else
+	{
+        DoLevelUp();
+	}
+}
+
+// ---------------------------------------------------------------
+//	ShowNumbersOverMinimum
+//
+//	Handles animation where board was solved, but not within minimum
+//  steps.  The number of cells blink that player was over minimum.
+//  ie. if minimum is 6 and player made 8 moves, 2 cells will blink.
+// ---------------------------------------------------------------
+function ShowNumbersOverMinimum()
+{
+	g_FrameNo++;
+	var nLevelMinimum = Math.floor((((gCurrentLevel) / 5))) + 6;
+	nMovesOverMinimum = gMovesMade - nLevelMinimum;
+
+	if (g_FrameNo > NUM_INFO_ANIMATION_FRAMES)
+	{
+		g_FrameNo = 0;
+	    DoLevelUp();
+		return;
+	}
+	else
+	{
+	    //  Alternate between blank and illuminating cells (blink).
+		if ((g_FrameNo % 2) == 0)
+		{
+			gBoardState = Math.pow(2,nMovesOverMinimum) - 1; // number of steps over minimum.
+		}
+		else
+		{
+			gBoardState = 0;
+		}
+		SetBoard(gBoardState);
+		window.setTimeout(ShowNumbersOverMinimum,ANIMATION_SPEED*2,"JavaScript");
+	}
+}
+
+// ---------------------------------------------------------------
+//	LevelLostAnimation
+//
+//	Handles animating a losing board.  This animation fires off
+//  when the player solves the puzzle but over the maximum steps
+//  allowed.  A big red X is blinked on/off.
+// ---------------------------------------------------------------
+function LevelLostAnimation()
+{
+	g_FrameNo++;
+	
+	if (g_FrameNo > NUM_INFO_ANIMATION_FRAMES)
+	{
+		g_FrameNo = 0;
+		SetLevel(gCurrentLevel);
+		return;
+	}
+	else
+	{
+	    //  Alternate between blank and illuminating cells (blink).
+		if ((g_FrameNo % 2) == 0)
+		{
+			gBoardState = 18157905; // X pattern
+		}
+		else
+		{
+			gBoardState = 0;
+		}
+		SetBoard(gBoardState);
+		window.setTimeout(LevelLostAnimation, ANIMATION_SPEED*2, "JavaScript");
+	}
+}
+
+var g_AnimationArray;                // array pointing to current animation sequence.
+var g_FrameNo                 = 0;   // Current frame number
+var ANIMATION_SPEED           = 100; // Base animation speed (ms). Used window.setTimeout calls.
+var NUM_INFO_ANIMATION_FRAMES = 12;  // Number of rames in Info animation (Lost and above minimum animations)
+
+// Arrays representing animations
+var g_BoardSolved = new Array(1,32,1024,32768,1048576,2097152,4194304,8388608,16777216,
+							  524288,16384,512,16,8,4,2,64,2048,65536,131072,262144,8192,256,128,4096,469440,33080895,33080895);
+
+
+
+// ----------------------------------------------------------------------------------
+//      Gadget Functions
+// ----------------------------------------------------------------------------------
+function displayDockedMode()
+{
+    gDocked = true;
+
+    // HACK -- need to use Gadget OM to find out width of display and adjust.
+    g_CellHeight   = 22;
+    g_CellWidth    = 22;
+    g_ButtonHeight = 12;
+    g_ButtonWidth  = 30;
+
+    // Adjust button sizes
+    document.getElementById("btnReset").height     = g_ButtonHeight;
+    document.getElementById("btnReset").width      = g_ButtonWidth;
+
+    document.getElementById("txtScore").style.fontSize="10pt";
+    document.getElementById("txtLevel").style.fontSize="10pt";
+    document.getElementById("txtMoves").style.fontSize="10pt";
+
+    document.body.style.width       = "130px";
+    document.body.style.height      = "160px";
+    document.body.style.borderStyle = "none";
+    document.body.style.borderWidth = "0";
+
+    SetBoard(gBoardState);
+    ShowStats();
+}
+
+function displayUnDockedMode()    
+{
+    gDocked = false;
+   
+    // HACK -- need to use Gadget OM to find out width of display and adjust.
+    g_CellHeight   = 80;
+    g_CellWidth    = 80;
+    g_ButtonHeight = 40;
+    g_ButtonWidth  = 100;
+
+    // Adjust button sizes
+    document.getElementById("btnReset").height=g_ButtonHeight;
+    document.getElementById("btnReset").width=g_ButtonWidth;
+
+    document.getElementById("txtScore").style.fontSize="20pt";
+    document.getElementById("txtLevel").style.fontSize="20pt";
+    document.getElementById("txtMoves").style.fontSize="20pt";
+
+    document.body.style.width       = "430px";
+    document.body.style.height      = "506px";
+    document.body.style.borderStyle = "inset";
+    document.body.style.borderWidth = "4";
+
+    SetBoard(gBoardState);
+    ShowStats();
+}
+
+</SCRIPT>
+
+<body text=#00FF00 style="background-color: #000000" onload=init()>
+<CENTER>
+<table>
+<tr>
+		<td align="center" valign="center"><label title="Current Score" id="txtScore" style="color:White;font-size:10pt"></label></td>
+		<td align="center" valign="center"><label title="Current Level" id="txtLevel" style="font-size:10pt"></label></td>
+		<td align="center" valign="center"><label title="Moves made over minimum for current level" id="txtMoves" style="color:White;font-size:10pt"></label></td>
+</tr>
+</table>
+		<img id=Cell_0 width="100" height="100" border="0" src="LightsOut_Off.gif" onclick="DoCellClick(0)">
+		<img id=cell_1 width="100" height="100" border="0" src="LightsOut_Off.gif" onclick="DoCellClick(1)">
+		<img id=cell_2 width="100" height="100" border="0" src="LightsOut_Off.gif" onclick="DoCellClick(2)">
+		<img id=cell_3 width="100" height="100" border="0" src="LightsOut_Off.gif" onclick="DoCellClick(3)">
+		<img id=cell_4 width="100" height="100" border="0" src="LightsOut_Off.gif" onclick="DoCellClick(4)">
+<br>
+		<img id=cell_5 width="100" height="100" border="0" src="LightsOut_Off.gif" onclick="DoCellClick(5)">
+		<img id=cell_6 width="100" height="100" border="0" src="LightsOut_Off.gif" onclick="DoCellClick(6)">
+		<img id=cell_7 width="100" height="100" border="0" src="LightsOut_Off.gif" onclick="DoCellClick(7)">
+		<img id=cell_8 width="100" height="100" border="0" src="LightsOut_Off.gif" onclick="DoCellClick(8)">
+		<img id=cell_9 width="100" height="100" border="0" src="LightsOut_Off.gif" onclick="DoCellClick(9)">
+<br>
+		<img id=cell_10 width="100" height="100" border="0" src="LightsOut_Off.gif" onclick="DoCellClick(10)">
+		<img id=cell_11 width="100" height="100" border="0" src="LightsOut_Off.gif" onclick="DoCellClick(11)">
+		<img id=cell_12 width="100" height="100" border="0" src="LightsOut_Off.gif" onclick="DoCellClick(12)">
+		<img id=cell_13 width="100" height="100" border="0" src="LightsOut_Off.gif" onclick="DoCellClick(13)">
+		<img id=cell_14 width="100" height="100" border="0" src="LightsOut_Off.gif" onclick="DoCellClick(14)">
+<br>
+		<img id=cell_15 width="100" height="100" border="0" src="LightsOut_Off.gif" onclick="DoCellClick(15)">
+		<img id=cell_16 width="100" height="100" border="0" src="LightsOut_Off.gif" onclick="DoCellClick(16)">
+		<img id=cell_17 width="100" height="100" border="0" src="LightsOut_Off.gif" onclick="DoCellClick(17)">
+		<img id=cell_18 width="100" height="100" border="0" src="LightsOut_Off.gif" onclick="DoCellClick(18)">
+		<img id=cell_19 width="100" height="100" border="0" src="LightsOut_Off.gif" onclick="DoCellClick(19)">
+<br>
+		<img id=cell_20 width="100" height="100" border="0" src="LightsOut_Off.gif" onclick="DoCellClick(20)">
+		<img id=cell_21 width="100" height="100" border="0" src="LightsOut_Off.gif" onclick="DoCellClick(21)">
+		<img id=cell_22 width="100" height="100" border="0" src="LightsOut_Off.gif" onclick="DoCellClick(22)">
+		<img id=cell_23 width="100" height="100" border="0" src="LightsOut_Off.gif" onclick="DoCellClick(23)">
+		<img id=cell_24 width="100" height="100" border="0" src="LightsOut_Off.gif" onclick="DoCellClick(24)">
+<br>
+
+<table>
+<tr>
+		<td align="center" valign="center"><img   title="Resets the current level" id=btnReset border="0" src="Reset_button.gif" width="100" height="40" onmouseup="document.images['btnReset'].src='Reset_button.gif'" onmousedown="document.images['btnReset'].src='Reset_button_down.gif'" onclick="DoReset()" language="javascript"></td>
+</tr>
+</table>
+</CENTER>
+</body>
+</html>

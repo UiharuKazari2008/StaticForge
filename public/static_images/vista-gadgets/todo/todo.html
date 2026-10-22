@@ -1,0 +1,106 @@
+<html>
+	<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+	    <title>To-Do List</title>
+	    <style>
+	        body{width:170;height:327;}
+	    </style>
+	    <style>
+		    .check {
+			    font-size:1px;
+			    line-height:0; 
+			    padding-top: 0px; 
+			    height: 10px; 
+			    width: 12px; 
+			    background-color:transparent; 
+			    background-image: url('./images/checked.gif');
+			}
+			.uncheck {
+				font-size:1px;
+			    line-height:0; 
+			    padding-top: 0px; 
+			    height: 10px; 
+			    width: 12px; 
+			    background-color:transparent; 
+			    background-image: url('./images/unchecked.gif');
+			} 
+			.hide  {
+				font-size:1px;
+			    line-height:0; 
+			    padding-top: 0px; 
+			    height: 0px; 
+			    width: 0px; 
+			    background-color:transparent; 
+			} 
+
+			.disableit {
+			}
+			.enableit {
+			}
+	    </style>
+	</head>
+	<body>
+		<script language="javascript">
+			function checktodo(ID){
+				var ID2 = '_' + ID;
+				if (document.getElementById(ID2).value !== '') {
+					check(ID,ID2,0);
+				} else if (document.getElementById(ID2).value == '')  {
+					check(ID,ID2,2);
+				}
+			}
+			function check(ID,ID2,STATUS) {
+				var inputboxElem = document.getElementById(ID);
+				var inputboxElem2 = document.getElementById(ID2);
+				if (STATUS == 0) {
+					inputboxElem.setAttribute("class", "uncheck");
+					inputboxElem.setAttribute("className", "uncheck");
+					inputboxElem.onclick = function () {check(ID,ID2,1)};
+					inputboxElem2.disabled=false;
+				} else if (STATUS == 1) {
+					inputboxElem.setAttribute("class", "check");
+					inputboxElem.setAttribute("className", "check");
+					inputboxElem.onclick = function () {check(ID,ID2,0)};
+					inputboxElem2.disabled=true;
+				} else if (STATUS == 2) {
+					inputboxElem.setAttribute("class", "hide");
+					inputboxElem.setAttribute("className", "hide");
+				}
+
+			}
+		</script>
+		<div style="position: absolute; left: 0px; top: 0px; background-image: url(./images/bg.jpg); height: 327px; width: 170px;">
+			<form name="form">
+			<input type="text" style="font-family: Verdana; font-weight: bold; font-size: 9px; position: absolute; left: 10px; top: 36px; background-color:transparent;border-width:0px; width: 138px; height: 15px;" size="10" value=""onblur="checktodo('checkmark_1');"  id="_checkmark_1">
+				<div id="checkmark_1" onclick="check('checkmark_1','_checkmark_1',1);" style="position: absolute; left: 150px; top: 38px; ">&nbsp;</div>
+			<input type="text" style="font-family: Verdana; font-weight: bold; font-size: 9px; position: absolute; left: 10px; top: 55px; background-color:transparent;border-width:0px; width: 138px; height: 15px;" size="10" value=""onblur="checktodo('checkmark_2');"  id="_checkmark_2">
+				<div id="checkmark_2" onclick="check('checkmark_2','_checkmark_2',1);" style="position: absolute; left: 150px; top: 57px; ">&nbsp;</div>
+			<input type="text" style="font-family: Verdana; font-weight: bold; font-size: 9px; position: absolute; left: 10px; top: 74px; background-color:transparent;border-width:0px; width: 138px; height: 15px;" size="10" value=""onblur="checktodo('checkmark_3');"  id="_checkmark_3">
+				<div id="checkmark_3" onclick="check('checkmark_3','_checkmark_3',1);" style="position: absolute; left: 150px; top: 76px; ">&nbsp;</div>
+			<input type="text" style="font-family: Verdana; font-weight: bold; font-size: 9px; position: absolute; left: 10px; top: 93px; background-color:transparent;border-width:0px; width: 138px; height: 15px;" size="10" value=""onblur="checktodo('checkmark_4');"  id="_checkmark_4">
+				<div id="checkmark_4" onclick="check('checkmark_4','_checkmark_4',1);" style="position: absolute; left: 150px; top: 95px; ">&nbsp;</div>
+			<input type="text" style="font-family: Verdana; font-weight: bold; font-size: 9px; position: absolute; left: 10px; top: 112px; background-color:transparent;border-width:0px; width: 138px; height: 15px;" size="10" value=""onblur="checktodo('checkmark_5');"  id="_checkmark_5">
+				<div id="checkmark_5" onclick="check('checkmark_5','_checkmark_5',1);" style="position: absolute; left: 150px; top: 114px; ">&nbsp;</div>
+			<input type="text" style="font-family: Verdana; font-weight: bold; font-size: 9px; position: absolute; left: 10px; top: 131px; background-color:transparent;border-width:0px; width: 138px; height: 15px;" size="10" value=""onblur="checktodo('checkmark_6');"  id="_checkmark_6">
+				<div id="checkmark_6" onclick="check('checkmark_6','_checkmark_6',1);" style="position: absolute; left: 150px; top: 133px; ">&nbsp;</div>
+			<input type="text" style="font-family: Verdana; font-weight: bold; font-size: 9px; position: absolute; left: 10px; top: 150px; background-color:transparent;border-width:0px; width: 138px; height: 15px;" size="10" value=""onblur="checktodo('checkmark_7');"  id="_checkmark_7">
+				<div id="checkmark_7" onclick="check('checkmark_7','_checkmark_7',1);" style="position: absolute; left: 150px; top: 152px; ">&nbsp;</div>
+			<input type="text" style="font-family: Verdana; font-weight: bold; font-size: 9px; position: absolute; left: 10px; top: 169px; background-color:transparent;border-width:0px; width: 138px; height: 15px;" size="10" value=""onblur="checktodo('checkmark_8');"  id="_checkmark_8">
+				<div id="checkmark_8" onclick="check('checkmark_8','_checkmark_8',1);" style="position: absolute; left: 150px; top: 171px; ">&nbsp;</div>
+			<input type="text" style="font-family: Verdana; font-weight: bold; font-size: 9px; position: absolute; left: 10px; top: 283px; background-color:transparent;border-width:0px; width: 138px; height: 15px;" size="10" value=""onblur="checktodo('checkmark_9');"  id="_checkmark_9">
+				<div id="checkmark_9" onclick="check('checkmark_9','_checkmark_9',1);" style="position: absolute; left: 150px; top: 190px; ">&nbsp;</div>
+			<input type="text" style="font-family: Verdana; font-weight: bold; font-size: 9px; position: absolute; left: 10px; top: 264px; background-color:transparent;border-width:0px; width: 138px; height: 15px;" size="10" value=""onblur="checktodo('checkmark_10');"  id="_checkmark_10">
+				<div id="checkmark_10" onclick="check('checkmark_10','_checkmark_10',1);" style="position: absolute; left: 150px; top: 209px; ">&nbsp;</div>
+			<input type="text" style="font-family: Verdana; font-weight: bold; font-size: 9px; position: absolute; left: 10px; top: 245px; background-color:transparent;border-width:0px; width: 138px; height: 15px;" size="10" value=""onblur="checktodo('checkmark_11');"  id="_checkmark_11">
+				<div id="checkmark_11" onclick="check('checkmark_11','_checkmark_11',1);" style="position: absolute; left: 150px; top: 228px; ">&nbsp;</div>
+			<input type="text" style="font-family: Verdana; font-weight: bold; font-size: 9px; position: absolute; left: 10px; top: 226px; background-color:transparent;border-width:0px; width: 138px; height: 15px;" size="10" value=""onblur="checktodo('checkmark_12');"  id="_checkmark_12">
+				<div id="checkmark_12" onclick="check('checkmark_12','_checkmark_12',1);" style="position: absolute; left: 150px; top: 247px; ">&nbsp;</div>
+			<input type="text" style="font-family: Verdana; font-weight: bold; font-size: 9px; position: absolute; left: 10px; top: 207px; background-color:transparent;border-width:0px; width: 138px; height: 15px;" size="10" value=""onblur="checktodo('checkmark_13');"  id="_checkmark_13">
+				<div id="checkmark_13" onclick="check('checkmark_13','_checkmark_13',1);" style="position: absolute; left: 150px; top: 266px; ">&nbsp;</div>
+			<input type="text" style="font-family: Verdana; font-weight: bold; font-size: 9px; position: absolute; left: 10px; top: 188px; background-color:transparent;border-width:0px; width: 138px; height: 15px;" size="10" value=""onblur="checktodo('checkmark_14');"  id="_checkmark_14">
+				<div id="checkmark_14" onclick="check('checkmark_14','_checkmark_14',1);" style="position: absolute; left: 150px; top: 285px; ">&nbsp;</div>
+			<input type="text" style="font-family: Verdana; font-weight: bold; font-size: 9px; position: absolute; left: 10px; top: 302px; background-color:transparent;border-width:0px; width: 138px; height: 15px;" size="10" value=""onblur="checktodo('checkmark_15');"  id="_checkmark_15">
+				<div id="checkmark_15" onclick="check('checkmark_15','_checkmark_15',1);" style="position: absolute; left: 150px; top: 304px; ">&nbsp;</div>
+			</form>		 
+		</div>
+	</body>
+</html>

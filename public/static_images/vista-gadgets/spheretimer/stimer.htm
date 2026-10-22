@@ -1,0 +1,82 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" >
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+
+    <bgsound src="" id="sound" />
+    
+    <title>Sphere Timer</title>
+    <link id="GadgetStyle" rel="stylesheet" type="text/css" href="css/undocked.css" />
+    <script type="text/javascript" src="js/STimer.js">
+    </script>
+    <script type="text/javascript">
+
+    </script>
+    
+</head>
+
+<body onload="gadget_onload();" dir="ltr">
+    
+    <g:background id="frmBack" style="position:absolute;top:0px;left:0px;width:130px;height:142px;z-index:-1;">
+    </g:background>
+    <div id="frmMain" class="frame_Main">
+        <div id="lblDay_frame"  class="lblDay_frame" >
+            <span id="lblDay"   class="lblDay">SEG</span>
+        </div>
+        <div id="lblAMPM_frame" class="lblAMPM_frame">
+            <span id="lblAMPM" class="lblAMPM">AM</span>
+        </div>
+        <div id="lblTime_frame" class="lblTime_frame" onclick="lblTime_frame_onclick();">
+            <span id="lblTime" class="lblTime" onclick="lblTime_frame_onclick();">00:00</span>
+        </div>
+        <div id="lblSeconds_frame" class="lblSeconds_frame">
+            <span id="lblSeconds" class="lblSeconds">00</span>
+        </div>
+    </div>
+
+    <div id="Alarm_frame" class="Alarm_frame">
+      <img id="Alarm_img" class="Alarm_img" src="images/docked/alarm_0.png" 
+           onclick="cmdAlarm_onclick();"/>
+      <span id="lblAlarm" class="lblAlarm">12:34</span>
+      <img id="Alarm_fwd" class="Alarm_fwd" src="images/docked/right.png"
+      	   onclick="cmdAlarm_fwd_onclick();" />
+      <span id="Alarm_id" class="lblAlarm_id" onclick="lblAlarm_id_onclick();">Alarm 1</span>
+      <img id="Alarm_rwd" class="Alarm_rwd" src="images/docked/left.png"
+      	   onclick="cmdAlarm_rwd_onclick();" />
+    </div>
+    
+    <div id="Count_frame" class="Count_frame">
+      <span id="lblCount" class="lblCount">00:00:00</span>
+      <input type="text"  class="txtCount" id="txtCount"  value="00:00:00" />
+      <img border="0" id="btn_Del"  src="images\docked\del.png"  alt="Cancel   (Reset)"     class="btn_Del"  onclick="cmdDel_onclick();"/>
+      <img border="0" id="btn_Up"   src="images\docked\up.png"   alt="CountUp"    class="btn_Up"   onclick="cmdUp_onclick();" />
+      <img border="0" id="btn_Down" src="images\docked\down.png" alt="CountDown"  class="btn_Down" onclick="cmdDown_onclick();"/>
+    </div>
+    
+    <div id="Chrno_frame"     class="Chrno_frame">
+        <span id="lblChrno"   class="lblChrno">00:00:00.000</span>
+        <img border="0" id="cmd_Start_Pause" class="cmd_Start_Pause" src="images\docked\play.png" alt="Start Chronometer." onclick="cmd_Start_Pause_onclick();"/>
+        <img border="0" id="cmd_Lap"         class="cmd_Lap"         src="images\docked\lap.png"  alt="Lap."                onclick="cmd_Lap_onclick();"/>
+        <img border="0" id="cmd_Shutdown"    class="cmd_Off"         src="images\docked\off.png"  alt="Stop."              onclick="cmd_Off_onclick();"/>
+    </div>
+    
+    <div id="Messagebox"        class="Messagebox_frame">
+        <img  border="0"        src="images\docked\error.png" 
+              alt="Click here to hide this message." class="ErrorIcon" 
+              id="ErrorIcon"    onclick="ErrorIcon_onclick();"/>
+        <span id="lblMsg"       class="lblMsg" >Incorrect Input.</span>
+    </div>
+    
+    <div id="cmd_ClockButton" class="frmClockButton" onclick="bring_toFront('frmMain');">
+    </div>
+    <div id="cmd_AlarmButton" class="frmAlarmButton" onclick="bring_toFront('Alarm_frame');">
+    </div>
+    <div id="cmd_CountButton" class="frmCountButton" onclick="bring_toFront('Count_frame');">
+    </div>
+    <div id="cmd_ChrnoButton" class="frmChrnoButton" onclick="bring_toFront('Chrno_frame');">
+    </div>
+    
+    <div id="frmShine" class="frmShine">
+        <img border="0" id="img_Shine" src="images\docked\shine.png" alt="" />
+    </div>    
+</body>
+</html>

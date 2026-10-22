@@ -1,0 +1,72 @@
+<html>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+    <style>
+        body
+        { 
+            width: 250px;
+            height: 120px;
+            font-family: Tahoma;
+            font-size: 10px;
+        }
+    </style>
+    <script>
+        System.Gadget.onSettingsClosing = settingsClosing;
+        function loadSettings()
+        {
+            var currentCol = System.Gadget.Settings.read("colorTheme");
+            var currentOpa = System.Gadget.Settings.read("bgOpacity");
+            if (currentCol != "")
+            	colTheme.selectedIndex = currentCol - 1 ;
+            if (currentOpa != "")
+			{
+				for(i=0;i<6;i++)
+				{
+				if(bgOpacity.options[i].value == currentOpa)
+            	{
+					bgOpacity.options[i].selected = 'selected';
+					break;
+				}
+				}
+            }
+        }
+    	
+        function settingsClosing(event)
+        {
+            if (event.closeAction == event.Action.commit)
+            {
+				c = document.getElementById('colTheme');
+                o = document.getElementById('bgOpacity');
+                col = c.selectedIndex + 1;
+                opa = o.options[o.selectedIndex].value;
+				System.Gadget.Settings.write("colorTheme", col);
+				System.Gadget.Settings.write("bgOpacity", opa);
+			}
+        }
+    </script>
+</head>
+
+<body onload="loadSettings()">
+    <label for="colTheme">Color Theme:</label><br />
+    <select name="colTheme" id="colTheme" >
+		<option value="1">Red</option>
+		<option value="2">Cyan</option>
+		<option value="3">Green</option>
+		<option value="4">Magenta</option>
+		<option value="5">Bisque</option>
+		<option value="6">Silver</option>
+		<option value="7">Yellow</option>
+		<option value="8">White</option>	
+	</select>
+	<br /><br />
+	<label for="bgOpacity">Opacity:</label><br />
+    <select name="bgOpacity" id="bgOpacity" >
+		<option value="10">10</option>
+		<option value="20">20</option>
+		<option value="40">40</option>
+		<option value="60">60</option>
+		<option value="80">80</option>	
+		<option value="100">100</option>
+	</select>
+	
+</body>
+</html>

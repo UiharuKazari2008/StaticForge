@@ -1,0 +1,19 @@
+<html>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+<meta http-equiv="MSThemeCompatible" CONTENT="yes" />
+
+<title>Metronome Settings</title>
+<link href="css/settings.css" rel="stylesheet" type="text/css" />
+<script type="text/javascript" src="js/settings.js" language="javascript"></script>
+</head>
+<body onLoad="loadSetting();">
+Metronome sound: 
+<select id="soundSelect" name="soundSelect" onChange="javascript:changeSound();">
+</select>
+
+<script language="javascript">
+populateSoundDropdown();
+</script>
+
+</body>
+</html>

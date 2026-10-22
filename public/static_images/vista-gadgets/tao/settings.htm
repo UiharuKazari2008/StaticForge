@@ -1,0 +1,20 @@
+<html xmlns="http://www.w3.org/1999/xhtml" >
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+    <title>Settings</title> 
+    <script src="settings.js" language="javascript" type="text/javascript"></script>
+    
+    <link href="Settings.css" rel="stylesheet" type="text/css" />
+
+</head>
+
+<body onload="init()">
+	<span id="optionsForm">
+		Image: <span id="images"><select id="img" onchange="changePreview()">
+			<option value="YinYang.png">YinYang</option>
+			<option value="Vista.png">Vista</option>
+		</select></span>
+	</span>
+	<div id="preview"><img src="YinYang.png" /></div>
+</body>
+</html>
+

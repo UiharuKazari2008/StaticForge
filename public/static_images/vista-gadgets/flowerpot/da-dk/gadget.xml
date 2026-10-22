@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>Virtuel blomsterkrukke</name>
+  <namespace>microsoft.windows</namespace>
+  <version>1.0.0.1</version>
+  <author name="KaKaNow.com">
+    <info url="kakanow.com"  text="KaKaNow.com"/>
+    <logo src="images/logo.png" />
+  </author>
+  <copyright>&#169; 2010</copyright>
+  <description>Vis noget flot og levende på din computer.
+Få solen til at skinne på dit skrivebord.  I denne virtuelle blomsterkrukke vokser og blomstrer blomsterne lige foran dine øjne, hvis du giver dem vand ved hjælp af musen.  Akkurat som en ægte plante vil den visne hen, hvis du glemmer den.  Det kan tage mange dage, før den er i fuldt flor, men den lyser op på skærmen, hver gang du kigger på den.</description>
+  <icons>
+    <icon height="64" width="64" src="images/icon.png" />
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="default.html" />
+      <permissions>Full</permissions>
+      <platform minPlatformVersion="1.0" />
+      <defaultImage src="images/drag.png" />
+    </host>
+  </hosts>
+</gadget>

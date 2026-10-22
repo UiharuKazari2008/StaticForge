@@ -1,0 +1,673 @@
+<html>
+
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+<title>My First Gadget</title>
+<style>
+        body{width:130;height:320;
+		background: url('Card/tablero.png');}
+#Layer8 {
+	position:absolute;
+	width:24px;
+	height:17px;
+	z-index:8;
+	left: 8px;
+	top: 81px;
+}
+#Layer9 {
+	position:absolute;
+	width:51px;
+	height:18px;
+	z-index:9;
+	left: 5px;
+	top: 274px;
+}
+#Layer10 {
+	position:absolute;
+	width:31px;
+	height:17px;
+	z-index:10;
+	left: 5px;
+	top: 297px;
+}
+#Layer11 {
+	position:absolute;
+	width:45px;
+	height:27px;
+	z-index:11;
+	left: 47px;
+	top: 230px;
+}
+#Layer1 {
+	position:absolute;
+	width:41px;
+	height:61px;
+	z-index:12;
+	left: 13px;
+	top: 184px;
+}
+.Estilo1 {
+	font-family: Geneva, Arial, Helvetica, sans-serif;
+	font-size: 14px;
+	font-weight: bold;
+}
+#Layer2 {
+	position:absolute;
+	width:23px;
+	height:17px;
+	z-index:12;
+	left: 64px;
+	top: 81px;
+}
+#Layer3 {
+	position:absolute;
+	width:23px;
+	height:18px;
+	z-index:13;
+	left: 92px;
+	top: 81px;
+}
+#Layer4 {
+	position:absolute;
+	width:23px;
+	height:17px;
+	z-index:14;
+	left: 63px;
+	top: 274px;
+}
+#Layer5 {
+	position:absolute;
+	width:32px;
+	height:17px;
+	z-index:15;
+	left: 61px;
+	top: 297px;
+}
+#Layer6 {
+	position:absolute;
+	width:40px;
+	height:23px;
+	z-index:16;
+	left: 12px;
+	top: 191px;
+}
+#Layer7 {
+	position:absolute;
+	width:64px;
+	height:22px;
+	z-index:17;
+	left: 74px;
+	top: 192px;
+}
+#Layer12 {
+	position:absolute;
+	width:86px;
+	height:34px;
+	z-index:18;
+	left: 23px;
+	top: 150px;
+}
+#Layer13 {
+	position:absolute;
+	width:93px;
+	height:25px;
+	z-index:18;
+	left: 20px;
+	top: 145px;
+}
+#Layer14 {
+	position:absolute;
+	width:86px;
+	height:27px;
+	z-index:19;
+	left: 9px;
+	top: 167px;
+}
+</style>
+<script language="JavaScript"> 
+
+var toplevel=1;
+var aquien=true;
+var vez=0;
+var izquierda=15;
+var arriba=190;
+var player=0;
+var dealer=0;
+var vpas=0;
+var vdas=0;
+var total=100;
+var bet=0;
+var sumap=2;
+var ordenar=new Array()
+var cont=0;
+
+//HAce funcionar la opcion de apuesta
+function subir(){
+	if (bet<total){
+	bet+=5;
+	}
+	
+	x = document.getElementById("Layer5");
+	x.innerHTML = '';
+	x.innerHTML = bet;
+	
+}
+function bajar(){
+	if (bet>5){
+	bet-=5;
+	}
+	
+	x = document.getElementById("Layer5");
+	x.innerHTML = '';
+	x.innerHTML = bet;
+	
+}
+//HAce el random del palo y el numero
+function crear_carta() {
+var rand_palo= Math.floor(Math.random()*3);
+var numero= Math.floor(Math.random()*12);
+var palo;
+var carta;
+
+x = document.getElementById("Layer6");
+x.innerHTML = '';
+x = document.getElementById("Layer7");
+x.innerHTML = '';
+
+if (bet>total){
+	bet=total;
+	x = document.getElementById("Layer5");
+	x.innerHTML = '';
+	x.innerHTML = bet;
+}
+
+switch (rand_palo){
+   case 0:
+	palo = "tr"
+	break   	
+   case 1:
+	palo = "di"
+	break
+   case 2:
+    palo = "pi"
+	break
+   case 3:
+    palo = "co"
+	break
+	}
+
+	carta=palo+numero;
+	verificar(carta,numero);
+
+}
+
+//verifica que la carta creada no haya sido usada antes
+function verificar(carta,numero) {
+	obj = document.getElementById(carta);
+	if(obj.style.left!="120px"){
+	crear_carta();
+	return;
+	}
+	pre_repartir(carta,numero);
+
+}
+
+//Identificar a quien se le va a dar la carta, cuanto ha sumado, aparecer los botones una vez puestas //las cartas
+
+function pre_repartir(carta,numero) {
+var valornum=0;
+var valoras=0;
+
+valornum=numero;
+
+switch (numero){
+   case 0:
+	valornum = 10;
+	break;   	
+   case 1:
+	valornum = 11;
+	valoras = 1;
+	break;
+   case 11:
+	valornum = 10;
+	break;
+   case 12:
+	valornum = 10;
+	break;
+	}
+	
+
+switch (vez){
+   case 0:
+   	obj = document.getElementById("BotonDeal");
+    obj.style.visibility="hidden";
+   	obj = document.getElementById("subir");
+    obj.style.visibility="hidden";
+   	obj = document.getElementById("bajar");
+    obj.style.visibility="hidden";		
+   	player=valornum;
+	if (valoras!=0){
+	vpas+=1;
+	}
+	izquierda=15;
+	arriba=190;
+	repartir(carta);
+	break;   	
+   case 1:
+    dealer=valornum;
+	if (valoras!=0){
+	vdas+=1;
+	}
+	izquierda=15;
+	arriba=15;
+	x = document.getElementById("Layer2");
+	x.innerHTML = '';
+	x.innerHTML = dealer;
+	repartir(carta);
+	break;
+   case 2:	
+	player=player+valornum;
+	if (valoras!=0){
+	vpas+=1;
+	}
+	izquierda+=20;
+	arriba=190
+	repartir(carta)
+	break;
+   case 3:
+  	dealer=dealer+valornum;
+	if (valoras!=0){
+	vdas+=1;
+	}
+	arriba=15
+	repartir(carta)
+	//Se pone la tarjeta del dealer boca abajo
+	obj = document.getElementById("atras");
+    obj.style.visibility="visible";
+	obj.style.zIndex = toplevel;
+	toplevel+=1;
+	//Se muestra la suma del player
+	x = document.getElementById("Layer4");
+	x.innerHTML = '';
+	x.innerHTML = player;
+	//Se muestran las opciones del jugador	
+	obj = document.getElementById("hit");
+    obj.style.visibility="visible";
+	obj = document.getElementById("double");
+    obj.style.visibility="visible";
+	obj = document.getElementById("stand");
+    obj.style.visibility="visible";
+	break;
+   case 100:
+   	repartir(carta);
+	player=player+valornum;
+	if (valoras!=0){
+	vpas+=1;
+	}
+	x = document.getElementById("Layer4");
+	x.innerHTML = '';
+	x.innerHTML = player;
+	break;
+   case 200:
+    izquierda+=20
+    repartir(carta)
+    dealer=dealer+valornum;
+	if (valoras!=0){
+	vdas+=1;
+	}
+	x = document.getElementById("Layer2");
+	x.innerHTML = '';
+	x.innerHTML = dealer;
+	break;
+	}
+}	
+
+
+//reparte una carta
+function repartir(carta) {
+	
+	obj = document.getElementById(carta);
+    obj.style.visibility="visible";
+    obj.style.left =izquierda;
+    obj.style.top =arriba;	
+	obj.style.zIndex = toplevel;
+	toplevel+=1;
+	vez+=1;
+	ordenar[cont]=carta;
+	cont+=1;
+	
+	if (vez<=3) {
+	crear_carta();
+	}
+}
+
+function hit(){
+	sumap+=1
+	obj = document.getElementById("double");
+    obj.style.visibility="hidden";
+	izquierda+=20;
+	if (arriba < 210) {
+	arriba=190;
+	}
+	vez=100;
+	if (izquierda==95){
+	izquierda=35;
+	arriba=210;
+	}
+	crear_carta();
+	compararhit();
+}
+
+function compararhit(){
+var ban=0;
+	if (vpas>=1){
+	ban+=1;		
+	}
+	if (player>=22){
+	ban+=1;
+	}
+		
+	if (ban==2){
+	player-=10;
+	vpas-=1;
+	x = document.getElementById("Layer4");
+	x.innerHTML = '';
+	x.innerHTML = player;
+	}
+	
+	if (player>21){
+	x = document.getElementById("Layer4");
+	x.innerHTML = '';
+	x.innerHTML = "BUST";
+		obj = document.getElementById("play");
+    obj.style.visibility="visible";
+	obj = document.getElementById("hit");
+    obj.style.visibility="hidden";
+	obj = document.getElementById("stand");
+    obj.style.visibility="hidden";
+	obj = document.getElementById("double");
+    obj.style.visibility="hidden";
+	obj = document.getElementById("atras");
+    obj.style.visibility="hidden";	
+	total-=bet
+	}
+	
+	if (sumap==6 && player<=21){
+	x = document.getElementById("Layer7");
+	x.innerHTML = '';
+	x.innerHTML = "Player Wins";
+	obj = document.getElementById("play");
+    obj.style.visibility="visible";
+	obj = document.getElementById("hit");
+    obj.style.visibility="hidden";
+	obj = document.getElementById("stand");
+    obj.style.visibility="hidden";
+	obj = document.getElementById("double");
+    obj.style.visibility="hidden";
+	obj = document.getElementById("atras");
+    obj.style.visibility="hidden";		
+	}
+}
+
+function stand(){
+	obj = document.getElementById("hit");
+    obj.style.visibility="hidden";
+	obj = document.getElementById("stand");
+    obj.style.visibility="hidden";
+	obj = document.getElementById("double");
+    obj.style.visibility="hidden";
+	obj = document.getElementById("atras");
+    obj.style.visibility="hidden";
+	izquierda=35;
+	arriba=15;
+	vez=200;
+	x = document.getElementById("Layer2");
+	x.innerHTML = '';
+	x.innerHTML = dealer;
+	
+	if (dealer<16){
+	crear_carta();
+	}
+
+	compararstand();
+}
+
+function compararstand(){
+var ban=0;
+	if (vdas>=1){
+	ban+=1;		
+	}
+	if (dealer>=22){
+	ban+=1;
+	}
+		
+	if (ban==2){
+	dealer-=10;
+	vdas-=1;
+	x = document.getElementById("Layer2");
+	x.innerHTML = '';
+	x.innerHTML = dealer;
+	}
+	
+	if (dealer>21){
+	x = document.getElementById("Layer2");
+	x.innerHTML = '';
+	x.innerHTML = "BUST";
+	obj = document.getElementById("play");
+    obj.style.visibility="visible";
+	obj = document.getElementById("hit");
+    obj.style.visibility="hidden";
+	obj = document.getElementById("stand");
+    obj.style.visibility="hidden";
+	obj = document.getElementById("double");
+    obj.style.visibility="hidden";
+	obj = document.getElementById("atras");
+    obj.style.visibility="hidden";
+	total+=bet;	
+	}
+	
+	if (dealer<16){
+	stand();
+	}
+	
+	if (dealer>=16 && dealer<=21) {
+	compararjugador();
+	}
+	
+}
+
+function compararjugador(){
+
+
+	
+if (player>dealer) {
+	x = document.getElementById("Layer13");
+	x.innerHTML = '';
+	x.innerHTML = "Player Wins";
+	obj = document.getElementById("play");
+    obj.style.visibility="visible";
+	total+=bet;
+
+}
+if (player<dealer) {
+	x = document.getElementById("Layer13");
+	x.innerHTML = '';
+	x.innerHTML = "Dealer Wins";
+	obj = document.getElementById("play");
+    obj.style.visibility="visible";
+	total-=bet;
+}
+if (player==dealer) {
+	x = document.getElementById("Layer13");
+	x.innerHTML = '';
+	x.innerHTML = "Draw";
+	obj = document.getElementById("play");
+    obj.style.visibility="visible";	
+}
+
+}
+
+function reordenar(){
+var or="";
+cont-=1;
+do{
+	
+	or=ordenar[cont];
+	obj = document.getElementById(or);
+    obj.style.visibility="hidden";
+    obj.style.left =120;
+    obj.style.top =90;	
+	cont-=1;
+	
+}
+while(cont>=0)
+	obj = document.getElementById("BotonDeal");
+    obj.style.visibility="visible";
+	obj = document.getElementById("play");
+    obj.style.visibility="hidden";
+   	obj = document.getElementById("subir");
+    obj.style.visibility="visible";
+   	obj = document.getElementById("bajar");
+    obj.style.visibility="visible";			
+	
+	x = document.getElementById("Layer2");
+	x.innerHTML = '';
+	x = document.getElementById("Layer13");
+	x.innerHTML = '';	
+	x = document.getElementById("Layer4");
+	x.innerHTML = '';	
+	x = document.getElementById("Layer6");
+	x.innerHTML = '';
+	x.innerHTML = "Money:$";
+	x = document.getElementById("Layer7");
+	x.innerHTML = '';
+	x.innerHTML = total;
+
+	izquierda=15;
+ 	arriba=190;
+ 	player=0;
+ 	dealer=0;
+ 	vpas=0;
+ 	vdas=0;
+	vez=0;
+	cont=0;
+	sumap=2;
+
+}
+
+function double(){
+	bet+=bet;
+	x = document.getElementById("Layer5");
+	x.innerHTML = '';
+	x.innerHTML = bet;
+	obj = document.getElementById("double");
+    obj.style.visibility="hidden";
+}
+
+</script>
+</head>
+
+<body>
+<p>&nbsp;</p>
+<div class="Estilo1" id="Layer9">Player: </div>
+<div class="Estilo1" id="Layer2"></div>
+<p>&nbsp;</p>
+<div class="Estilo1" id="Layer8">Dealer:</div>
+<p></p>
+<p></p>
+<div id="Layer14">
+  <input name="button" type="button" id="play" onClick="reordenar()" value="Play Again?" style="visibility= hidden">
+</div>
+<p> </p>
+<p></p>
+<div class="Estilo1" id="Layer13"></div>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<div id="Layer11"><input type="button" value="Deal" id="BotonDeal" onClick="crear_carta()">
+</div>
+
+<input type="image" id="hit" src="hit.png" style="visibility= hidden" name="image" width="28" height="20" style="position:absolute; top:145; left:25" onClick="hit()">
+<input type="image" id="stand" src="stand.png" style="visibility= hidden"  name="image1" width="53" height="20" style="position:absolute; top:145; left:54" onClick="stand()" >
+<input type="image" id="double" src="double.png" style="visibility= hidden"  name="image2" width="60" height="20" style="position:absolute; top:166; left:35"  onClick="double()" >
+
+
+<p><br>
+</p>
+<div id="Layer10"><span class="Estilo1">Bet</span></div>
+<p><br>
+  <br></p>
+<div class="Estilo1" id="Layer4"></div>
+<div class="Estilo1" id="Layer5">0</div>
+<input type="image" id="subir" src="subir.png" name="image5" width="20" height="20" style="position:absolute; top:295; left:38" onClick="subir()" >
+<input type="image" id="bajar" src="bajar.png" name="image6" width="20" height="20" style="position:absolute; top:295; left:95" onClick="bajar()" >
+<div class="Estilo1" id="Layer6">Money:$</div>
+<div class="Estilo1" id="Layer7">100</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<form>
+<img src=card/1di.png style="visibility= hidden" " id="di1" " style="position:absolute; top:90; left:120">
+<img src=card/2di.png style="visibility= hidden" " id="di2" " style="position:absolute; top:90; left:120">
+<img src=card/3di.png style="visibility= hidden" " id="di3" " style="position:absolute; top:90; left:120">
+<img src=card/4di.png style="visibility= hidden" " id="di4" " style="position:absolute; top:90; left:120">
+<img src=card/5di.png style="visibility= hidden" " id="di5" " style="position:absolute; top:90; left:120">
+<img src=card/6di.png style="visibility= hidden" " id="di6" " style="position:absolute; top:90; left:120">
+<img src=card/7di.png style="visibility= hidden" " id="di7" " style="position:absolute; top:90; left:120">
+<img src=card/8di.png style="visibility= hidden" " id="di8" " style="position:absolute; top:90; left:120">
+<img src=card/9di.png style="visibility= hidden" " id="di9" " style="position:absolute; top:90; left:120">
+<img src=card/10di.png style="visibility= hidden" " id="di10" " style="position:absolute; top:90; left:120">
+<img src=card/jdi.png style="visibility= hidden" " id="di11" " style="position:absolute; top:90; left:120">
+<img src=card/qdi.png style="visibility= hidden" " id="di12" " style="position:absolute; top:90; left:120">
+<img src=card/kdi.png style="visibility= hidden" " id="di0" " style="position:absolute; top:90; left:120">
+<img src=card/1tr.png style="visibility= hidden" " id="tr1" " style="position:absolute; top:90; left:120">
+<img src=card/2tr.png style="visibility= hidden" " id="tr2" " style="position:absolute; top:90; left:120">
+<img src=card/3tr.png style="visibility= hidden" " id="tr3" " style="position:absolute; top:90; left:120">
+<img src=card/4tr.png style="visibility= hidden" " id="tr4" " style="position:absolute; top:90; left:120">
+<img src=card/5tr.png style="visibility= hidden" " id="tr5" " style="position:absolute; top:90; left:120">
+<img src=card/6tr.png style="visibility= hidden" " id="tr6" " style="position:absolute; top:90; left:120">
+<img src=card/7tr.png style="visibility= hidden" " id="tr7" " style="position:absolute; top:90; left:120">
+<img src=card/8tr.png style="visibility= hidden" " id="tr8" " style="position:absolute; top:90; left:120">
+<img src=card/9tr.png style="visibility= hidden" " id="tr9" " style="position:absolute; top:90; left:120">
+<img src=card/10tr.png style="visibility= hidden" " id="tr10" " style="position:absolute; top:90; left:120">
+<img src=card/jtr.png style="visibility= hidden" " id="tr11" " style="position:absolute; top:90; left:120">
+<img src=card/qtr.png style="visibility= hidden" " id="tr12" " style="position:absolute; top:90; left:120">
+<img src=card/ktr.png style="visibility= hidden" " id="tr0" " style="position:absolute; top:90; left:120">
+<img src=card/1co.png style="visibility= hidden" " id="co1" " style="position:absolute; top:90; left:120">
+<img src=card/2co.png style="visibility= hidden" " id="co2" " style="position:absolute; top:90; left:120">
+<img src=card/3co.png style="visibility= hidden" " id="co3" " style="position:absolute; top:90; left:120">
+<img src=card/4co.png style="visibility= hidden" " id="co4" " style="position:absolute; top:90; left:120">
+<img src=card/5co.png style="visibility= hidden" " id="co5" " style="position:absolute; top:90; left:120">
+<img src=card/6co.png style="visibility= hidden" " id="co6" " style="position:absolute; top:90; left:120">
+<img src=card/7co.png style="visibility= hidden" " id="co7" " style="position:absolute; top:90; left:120">
+<img src=card/8co.png style="visibility= hidden" " id="co8" " style="position:absolute; top:90; left:120">
+<img src=card/9co.png style="visibility= hidden" " id="co9" " style="position:absolute; top:90; left:120">
+<img src=card/10co.png style="visibility= hidden" " id="co10" " style="position:absolute; top:90; left:120">
+<img src=card/jco.png style="visibility= hidden" " id="co11" " style="position:absolute; top:90; left:120">
+<img src=card/qco.png style="visibility= hidden" " id="co12" " style="position:absolute; top:90; left:120">
+<img src=card/kco.png style="visibility= hidden" " id="co0" " style="position:absolute; top:90; left:120">
+<img src=card/1pi.png style="visibility= hidden" " id="pi1" " style="position:absolute; top:90; left:120">
+<img src=card/2pi.png style="visibility= hidden" " id="pi2" " style="position:absolute; top:90; left:120">
+<img src=card/3pi.png style="visibility= hidden" " id="pi3" " style="position:absolute; top:90; left:120">
+<img src=card/4pi.png style="visibility= hidden" " id="pi4" " style="position:absolute; top:90; left:120">
+<img src=card/5pi.png style="visibility= hidden" " id="pi5" " style="position:absolute; top:90; left:120">
+<img src=card/6pi.png style="visibility= hidden" " id="pi6" " style="position:absolute; top:90; left:120">
+<img src=card/7pi.png style="visibility= hidden" " id="pi7" " style="position:absolute; top:90; left:120">
+<img src=card/8pi.png style="visibility= hidden" " id="pi8" " style="position:absolute; top:90; left:120">
+<img src=card/9pi.png style="visibility= hidden" " id="pi9" " style="position:absolute; top:90; left:120">
+<img src=card/10pi.png style="visibility= hidden" " id="pi10" " style="position:absolute; top:90; left:120">
+<img src=card/jpi.png style="visibility= hidden" " id="pi11" " style="position:absolute; top:90; left:120">
+<img src=card/qpi.png style="visibility= hidden" " id="pi12" " style="position:absolute; top:90; left:120">
+<img src=card/kpi.png style="visibility= hidden" " id="pi0" " style="position:absolute; top:90; left:120">
+<img src=card/atras.png style="visibility= hidden" " id="atras" " style="position:absolute; top:15; left:35">
+
+</form>
+
+</body>
+
+</html>
+

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+	<name>Pong Clock</name>
+	<namespace>MagicCanvas.Gadgets</namespace>
+	<version>1.0.0.0</version>
+	
+	<author name="Luiz Henrique Gama">
+		<info url="http://www.twitter.com/luizhgama" text="http://www.twitter.com/luizhgama"/>
+	</author>
+	<copyright>
+		<!--_locComment_text="{Locked}"-->© 2010
+	</copyright>
+	<description>A cool pong-style clock for your sidebar. Game on! :D</description>
+	<icons>
+		<icon height="48" width="48" src="icon.png"/>
+	</icons>
+	
+	<hosts>
+		<host name="sidebar">
+			<base type="HTML" apiVersion="1.0.0" src="pongclock.htm" />
+			<permissions>Full</permissions>
+			<platform minPlatformVersion="1.0" />
+		</host>
+	</hosts>
+</gadget>
+

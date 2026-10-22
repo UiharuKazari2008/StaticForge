@@ -1,0 +1,195 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" >
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+    <title>Compositor Example</title>
+    <style type="text/css">
+      body {
+        margin-left: 0px;
+        margin-top: 0px;
+      }
+ 	div#bar
+	{
+    position:absolute;
+    z-index:10;
+    
+ 	width: 26px;
+    height: 26px;
+    top: 90px;
+    left: 27px;
+
+    filter:alpha(opacity=100);
+    overflow:hidden; 
+    direction: ltr;
+   background-image:url(eat_rr_s.png);
+	}
+    </style>
+</head>
+<script language="javascript" type="text/javascript">
+  var Swatch1Color;
+  var Swatch2Color;
+  var Swatch3Color;
+  var SwatchCopy;
+  var C1;
+  var C2;
+  var C3;
+  var C4;
+  var C5;
+  var C6;
+  var C7;
+  var C8;
+  var C9;
+  var C10;
+  var C11;
+  var C12;
+  var C13;
+  var C14;
+  var C15;
+  var C16;
+  var C17;
+  var C18;
+  var at;
+  var step = 150;
+
+////////////////////////////////////////////////////////////////////////////////
+function showBar()
+	{
+	   CopyButton.opacity=100;   
+	}
+
+////////////////////////////////////////////////////////////////////////////////
+function hideBar()
+{
+    CopyButton.src="copy.png";
+   CopyButton.opacity=0;
+   
+}
+////////////////////////////////////////////////////////////////////////////////
+function swapImage(img, src) {
+	img.src = ''+src;
+}
+////////////////////////////////////////////////////////////////////////////////
+function CopyColors() {
+	System.Sound.playSound('color.wav')
+	var x = SwatchCopy ;
+ 	window.clipboardData.setData('Text',x);
+}
+////////////////////////////////////////////////////////////////////////////////
+function setbgColor(r, g, b, r1, g1, b1, r2, g2, b2) {
+	Swatch1Color = "Color(100,"+r+","+g+","+b+")";
+	Swatch2Color = "Color(100,"+r1+","+g1+","+b1+")";
+	Swatch3Color = "Color(100,"+r2+","+g2+","+b2+")";
+	rgb1=Math.floor(r*0.8)+","+Math.floor(g*0.8)+","+Math.floor(b*0.8)+"),"+"("+r+","+g+","+b+"),"+"("+Math.floor(r+(256-r)*0.3)+","+Math.floor(g+(256-g)*0.3)+","+Math.floor(b+(256-b)*0.3);
+    rgb2=Math.floor(r1*0.8)+","+Math.floor(g1*0.8)+","+Math.floor(b1*0.8)+"),"+"("+r1+","+g1+","+b1+"),"+"("+Math.floor(r1+(256-r1)*0.3)+","+Math.floor(g1+(256-g1)*0.3)+","+Math.floor(b1+(256-b1)*0.3);
+ 	rgb3=Math.floor(r2*0.8)+","+Math.floor(g2*0.8)+","+Math.floor(b2*0.8)+"),"+"("+r2+","+g2+","+b2+"),"+"("+Math.floor(r2+(256-r2)*0.3)+","+Math.floor(g2+(256-g2)*0.3)+","+Math.floor(b2+(256-b2)*0.3);
+    SwatchCopy = "Swatch 1 (top, middle, bottom): ("+rgb1+"),"+" Swatch 2 (top, middle, bottom): ("+rgb2+"), Swatch 3 (top, middle, bottom): ("+rgb3+")";
+ 	Swatch1.color = Swatch1Color;
+	Swatch2.color = Swatch1Color;
+	Swatch3.color = Swatch1Color;
+	Swatch4.color = Swatch2Color;
+	Swatch5.color = Swatch2Color;
+	Swatch7.color = Swatch3Color;
+	Swatch8.color = Swatch3Color;
+	}
+////////////////////////////////////////////////////////////////////////////////
+function randomColor(){
+	C1=C4;
+	C2=C5;
+	C3=C6;
+	C4=Math.floor(Math.random()*256);
+	C5=Math.floor(Math.random()*256);
+	C6=Math.floor(Math.random()*256);
+	C7=C10;
+	C8=C11;
+	C9=C12;
+	C10=Math.floor(Math.random()*256);
+	C11=Math.floor(Math.random()*256);
+	C12=Math.floor(Math.random()*256);
+	C13=C16;
+	C14=C17;
+	C15=C18;
+	C16=Math.floor(Math.random()*256);
+	C17=Math.floor(Math.random()*256);
+	C18=Math.floor(Math.random()*256);
+    setBg();
+}
+////////////////////////////////////////////////////////////////////////////////
+function setBg() {
+	setbgColor(
+		Math.floor(C1 * ((step-at)/step)  + C4 * (at/step)),
+		Math.floor(C2 * ((step-at)/step) +  C5 * (at/step)),
+		Math.floor(C3 * ((step-at)/step) +  C6 * (at/step)),
+		Math.floor(C7 * ((step-at)/step)  + C10 * (at/step)),
+		Math.floor(C8 * ((step-at)/step) +  C11 * (at/step)),
+		Math.floor(C9 * ((step-at)/step) +  C12 * (at/step)),
+		Math.floor(C13 * ((step-at)/step)  + C16 * (at/step)),
+		Math.floor(C14 * ((step-at)/step) +  C17 * (at/step)),
+		Math.floor(C15 * ((step-at)/step) +  C18 * (at/step)));
+	at++;
+	if (at<=step){
+	 setTimeout("setBg()",200);
+	}else{
+	at=1;
+	randomColor()
+	}
+	}
+////////////////////////////////////////////////////////////////////////////////  
+function setup() {
+	System.Sound.playSound('color.wav')
+   Swatch7 = mybg.addTextObject("¼", "Wingdings 2", 63, "Color( 100, 86, 134, 162)", 111, 18);
+   Swatch8 = mybg.addTextObject("n", "Wingdings", 62, "Color( 100, 100, 147, 175)", 112, 12);
+   Swatch7.rotation = 60;
+   Swatch8.rotation = 60;
+   Swatch8.height = 165;
+   Swatch8.width = 89;
+   Swatch4 = mybg.addTextObject("¼", "Wingdings 2", 63, "Color( 100, 86, 134, 162)", 50, -8);
+   Swatch5 = mybg.addTextObject("n", "Wingdings", 62, "Color( 100, 100, 147, 175)", 48, -15);
+  
+   Swatch4.rotation = 25;
+   Swatch5.rotation = 25;
+   Swatch5.height = 165;
+   Swatch5.width = 89;
+
+   Swatch1 = mybg.addTextObject("¼", "Wingdings 2", 63, "Color( 100, 86, 134, 162)", -16, 7);
+   Swatch2 = mybg.addTextObject("n", "Wingdings", 62, "Color( 100, 100, 147, 175)", -21, 4);
+   Swatch3 = mybg.addTextObject("½", "Wingdings 2", 63, "Color( 100, 136, 184, 213)", -3, 81);
+   Swatch1.rotation = -10;
+   Swatch2.rotation = -10;
+   Swatch3.rotation = -10;
+
+   Overlay = mybg.addImageObject("colortop_s.png", 0, 0);
+
+   CopyButton = mybg.addImageObject("copy.png", 27, 90);
+   CopyButton.opacity=0;
+   Swatch2.height = 165;
+   Swatch2.width = 89;
+  	C1=Math.floor(Math.random()*256);
+	C2=Math.floor(Math.random()*256);
+	C3=Math.floor(Math.random()*256);
+	C4=Math.floor(Math.random()*256);
+	C5=Math.floor(Math.random()*256);
+	C6=Math.floor(Math.random()*256);
+	C7=Math.floor(Math.random()*256);
+	C8=Math.floor(Math.random()*256);
+	C9=Math.floor(Math.random()*256);
+	C10=Math.floor(Math.random()*256);
+	C11=Math.floor(Math.random()*256);
+	C12=Math.floor(Math.random()*256);
+	C13=Math.floor(Math.random()*256);
+	C14=Math.floor(Math.random()*256);
+	C15=Math.floor(Math.random()*256);
+	C16=Math.floor(Math.random()*256);
+	C17=Math.floor(Math.random()*256);
+	C18=Math.floor(Math.random()*256);
+	setBg()
+	  
+	 }
+   
+  
+</script>
+<body onMouseOver="showBar();"  onMouseOut="hideBar();" style="width: 135px; height: 135px;" onload="setup()">
+    <g:background id="mybg" src="colorbkg_s.png" style="position:absolute;z-index:-1"></g:background>
+ 	 <div id="bar" style="cursor:hand;" onMouseDown="javascript: swapImage(CopyButton, 'copydown.png');" onMouseUp="javascript: CopyColors(); swapImage(CopyButton, 'copy.png');">
+	<img src="empty.gif" alt="Copy colors"> 	 
+ 	 </div>
+</body>
+</html>

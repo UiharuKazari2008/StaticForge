@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>Virtueller Blumentopf</name>
+  <namespace>microsoft.windows</namespace>
+  <version>1.0.0.1</version>
+  <author name="KaKaNow.com">
+    <info url="kakanow.com"  text="KaKaNow.com"/>
+    <logo src="images/logo.png" />
+  </author>
+  <copyright>&#169; 2010</copyright>
+  <description>Holen Sie sich etwas Lebendiges und Schönes auf Ihren Desktop.
+Holen Sie ein wenig Sonnenschein auf Ihren Desktop. Die Blumen in diesem virtuellen Blumentopf blühen vor Ihren Augen vollständig auf, wenn Sie die Blumen mithilfe des Mauszeigers mit Wasser versorgen. Wie bei einer richtigen Pflanze gehen die Blumen bei Vernachlässigung ein. Es kann einige Tage dauern, bis die Blumen in voller Blüte aufgehen, aber dann werden Sie dieses Schmuckstück auf Ihrem Desktop jeden Tag erneut genießen.</description>
+  <icons>
+    <icon height="64" width="64" src="images/icon.png" />
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="default.html" />
+      <permissions>Full</permissions>
+      <platform minPlatformVersion="1.0" />
+      <defaultImage src="images/drag.png" />
+    </host>
+  </hosts>
+</gadget>

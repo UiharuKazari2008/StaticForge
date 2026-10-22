@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>Bouncy Balls</name>
+  <namespace>Mike.gadgets</namespace>
+  <version>0.6.5</version>
+  <author name="Michael Hall">
+    <logo src="ball.gif" />
+  </author>
+  <copyright></copyright>
+  <description>Bouncy balls. Click to attract to mouse, CTRL + Click to reverse effect. Select # of balls in settings.</description>
+  <icons>
+      <icon height="48" width="48" src="ball.gif" />
+  </icons>
+  <logo>logo.png</logo>
+  <hosts>
+    <host name="sidebar">
+      <base type="html" apiVersion="1.0.0" src="gadget.html" />
+      <permissions>full</permissions>
+      <platform minPlatformVersion ="0.3"/>
+    </host>
+  </hosts>
+</gadget>

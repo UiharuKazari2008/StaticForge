@@ -1,0 +1,27 @@
+body 
+{
+    font-family: @Arial Unicode MS;
+    font-size: 48px;
+    font-weight: bold;
+    margin: 0;
+    padding: 16;
+    line-height: normal;
+    border: none;
+    color: #ffffff;
+    text-align: center;   
+}
+
+table
+{
+    height: 100%;
+    width: 100%;
+    text-align: center;
+    vertical-align: middle;
+}
+
+#divDetail
+{
+    font-size: 16pt;
+    font-weight: normal;
+    color: #ffffff;
+}

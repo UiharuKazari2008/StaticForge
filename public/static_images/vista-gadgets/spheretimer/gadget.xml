@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-16"?>
+<gadget>
+  <name>Sphere Timer</name>
+  <namespace>
+    <!--_locComment_text="{Locked}"-->microsoft.windows
+  </namespace>
+  <version>
+    <!--_locComment_text="{Locked}"-->1.0.0.0
+  </version>
+  <author name="Rogério Tomio Hirooka">
+    <info url="http://dimensionsphere.no-ip.com/SphereTimer" text="dimensionsphere.no-ip.com"/>
+    <logo src="logo.png"/>
+  </author>
+  <copyright>
+    <!--_locComment_text="{Locked}"-->© 2006
+  </copyright>
+  <description>
+    Absolute Time Control. Always at your side.
+  </description>
+  <icons>
+    <icon width="128" height="128" src="icon.png"/>
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="STimer.htm"/>
+      <permissions>
+        <!--_locComment_text="{Locked}"-->Full
+      </permissions>
+      <platform minPlatformVersion="1.0"/>
+      <defaultImage src="drag.png"/>
+    </host>
+  </hosts>
+</gadget>

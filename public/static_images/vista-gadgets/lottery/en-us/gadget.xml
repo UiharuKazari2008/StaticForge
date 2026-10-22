@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+    <name>Lottery Numbers</name>
+    <namespace>Example.You</namespace>
+    <version>0.2</version>
+    <author name="Andre Knight">
+        <info url="www.example.com" />
+    </author>
+    <copyright>2006</copyright>
+    <description>Lottery Number Picker</description>
+	<icons>
+    <icon height="48" width="48" src="icon.png"/>
+  </icons>
+    <hosts>
+        <host name="sidebar">
+            <base type="HTML" apiVersion="1.0.0" src="lotterynumberpickerdocked.html" />
+            <permissions>full</permissions>
+            <platform minPlatformVersion="0.3" />
+        </host>
+    </hosts>
+</gadget>

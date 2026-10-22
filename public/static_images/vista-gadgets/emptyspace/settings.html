@@ -1,0 +1,93 @@
+<!--//
+////////////////////////////////////////////////////////////////////////////////
+//
+//  Created by All in One Computer Center
+//  http://www.all-n1.net
+//  Copyright (c) 2007
+//  All rights reserved
+//
+////////////////////////////////////////////////////////////////////////////////
+//-->
+
+<html>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+	<style>
+		body{ 
+			width:225;
+			height:155;
+			margin-top: 0px;
+		}
+	</style>
+	<script>
+	function init() {
+	   isIE=document.all? 1:0
+		var currentSetting = System.Gadget.Settings.read("height");
+		var currentChecked = System.Gadget.Settings.readString("radiobutton");
+		
+		if (currentSetting != ""){
+			height.innerText = parseInt(currentSetting);}
+		
+		if (currentChecked == "type")
+				{
+			type.checked = true;
+			height.disabled = false;
+				}
+		else if (currentChecked == "drag")
+			{
+			drag.checked = true;
+				}
+			}
+		  
+	System.Gadget.onSettingsClosing = SettingsClosing;
+	function SettingsClosing(event)
+	{
+ 		if (event.closeAction == event.Action.commit){ 
+		SaveSettings();
+        }
+		event.cancel = false;
+	}
+	function SaveSettings()
+{
+	System.Gadget.Settings.write("height", height.value);
+	
+	if (type.checked == true)
+	{
+		System.Gadget.Settings.writeString("radiobutton", "type");
+	}
+	else if (drag.checked == true)
+	{
+		System.Gadget.Settings.writeString("radiobutton", "drag");
+	}
+	
+}
+function enable() {
+height.disabled = false;}
+
+function disenable() {
+height.disabled = true;}
+
+function numCheck(e){
+keyEntry = !isIE? e.which:event.keyCode; if((keyEntry < '48') || (keyEntry > '57')) {return false;  }}
+
+	</script>
+</head>
+<body onLoad="init()">
+<div> <input name="radiobutton" type="radio" id="drag" onClick="disenable();" checked> 
+        <span style="font-family: Tahoma; font-size: 10pt;">Drag and Resize</span>
+          <p>
+		  <input name="radiobutton" type="radio" id="type" onClick="enable();">
+          <span style="font-family: Tahoma; font-size: 10pt;">The height of the empty space:</span><br>
+          <div style="padding-left:24px"><input disabled name="height" type="text" id="height" size="7" maxlength="4" onKeyPress="return numCheck(event)">
+          <span style="font-family: Tahoma; font-size: 10pt;">Pixels</span></div>
+        </div>
+<div style="padding-left:40px; padding-top:10px"><img src="images/designlogo.png" alt="" name="logo" width="100" height="63"></div>
+</body>
+</html>
+
+<!--//
+///////////////////////////////////
+\\  	   						//
+//	All in One Computer Center  \\
+\\								//
+//////////////////////////////////
+//-->

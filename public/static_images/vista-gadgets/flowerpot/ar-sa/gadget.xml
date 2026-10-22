@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>الظاهري اناء للزهور</name>
+  <namespace>microsoft.windows</namespace>
+  <version>1.0.0.1</version>
+  <author name="KaKaNow.com">
+    <info url="kakanow.com"  text="KaKaNow.com"/>
+    <logo src="images/logo.png" />
+  </author>
+  <copyright>&#169; 2010</copyright>
+  <description>وشيء جميل ، والحق على قيد الحياة على سطح المكتب.
+جلب بعض أشعة الشمس إلى سطح المكتب. هذا الظاهري اناء للزهور ستنمو إلى الحق الكامل تتفتح أمام عينيك اذا كنت أعطي بعض الزهور المياه باستخدام الماوس. تماما مثل أي محطة حقيقية ، وسوف يتقلص إذا أهملت. ان الامر قد يستغرق عدة أيام للوصول إلى إزهار كامل ، لكن من المؤكد أنها لسطع مكتبك عند كل عرض.</description>
+  <icons>
+    <icon height="64" width="64" src="images/icon.png" />
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="default.html" />
+      <permissions>Full</permissions>
+      <platform minPlatformVersion="1.0" />
+      <defaultImage src="images/drag.png" />
+    </host>
+  </hosts>
+</gadget>

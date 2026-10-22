@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+    <name>Pickabar BPM</name>
+    <namespace>Pickabar.Gadgets</namespace>
+    <version>1.0</version>
+    <author name="Gerrard Lindsay">
+        <info url="http://www.pickabar.com" />
+    </author>
+    <copyright>2006</copyright>
+    <description>A little gadget that I leave in my sidebar when beat matching to calculate BPM.</description>
+	<icons>
+        <icon height="94" width="73" src="Pickabar BPM Icon.png" />
+    </icons>
+    <hosts>
+        <host name="sidebar">
+            <base type="HTML" apiVersion="1.0.0" src="PickabarBPM.html" />
+            <permissions>full</permissions>
+            <platform minPlatformVersion="0.3" />
+        </host>
+    </hosts>
+</gadget>

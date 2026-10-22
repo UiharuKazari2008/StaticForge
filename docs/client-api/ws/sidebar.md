@@ -48,7 +48,7 @@ Every packet is admin only. A non-admin session gets `type: "error"` with code `
 |---|---|
 | `calendar` | `view`: `day` \| `month` |
 | `clock` | `theme` 0-7, `name` (30 chars), `timeZone` (IANA, empty = computer time), `seconds` |
-| `hero` | same as `clock`, `theme` 0-8 (HTC Hero faces) |
+| `hero` | same as `clock`, `theme` 0-11 (HTC Hero faces, then Vista Orb Clock's globe, globe2, acw) |
 | `calculator` | `color` (`grey`, `pink`, `yellow`), `historyOn`, `entry`, `acc`, `op`, `fresh`, `memory`, `history` (up to 8 lines) |
 | `deskcalc` | `color` (`plain`, `aqua`, `black`, `blue`, `green`, `pink`, `red`, `white`, `yellow`) plus the same arithmetic fields as `calculator`. Scientific keys show when the gadget is undocked |
 | `timer` | `endAt` (ms, 0 = not running), `mins` (0-60), `secs` (0-59), `ringing` |

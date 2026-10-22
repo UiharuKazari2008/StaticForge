@@ -1,0 +1,39 @@
+body
+{
+    width: 588px;
+    height: 336px;
+    font-family: Segoe UI, Verdana, Arial, Sans-Serif;
+    background: url(flyoutBackground.png) no-repeat;
+}
+a
+{
+    text-decoration: none;
+}
+a:hover
+{
+    text-decoration: underline;
+}
+#tableDiv
+{
+    position: absolute;
+    left: 6px;
+    right: 6px;
+    top: 6px;
+    bottom: 6px;
+    width: 576px;
+    height: 324px;
+}
+.elementCell
+{
+    text-align: center;
+}
+.an
+{
+    font-size:10px;
+    color: #be96ff;
+}
+.sy
+{
+    font-size:15px;
+    color: #d7bfff;
+}

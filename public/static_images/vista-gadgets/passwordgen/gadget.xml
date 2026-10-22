@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+    <name>Password Generator</name>
+    <namespace>pg.main</namespace>
+    <version>1.0.0.0</version>
+    <author name="Onay 'AmonRa' YALCINER">
+        <info url="www.kureselyazilim.net/gadgets"  text="AmonRa Design" />
+    </author>
+    <copyright>&#169; 2007</copyright>
+    <description>Simple Password Generator, generate strong passwords from words and sentences.</description>
+	<icons>
+    	<icon src="pg.png"/>
+ 	</icons>
+    <hosts>
+        <host name="sidebar">
+            <base type="HTML" apiVersion="1.0.0" src="PasswordGenerator.html" />
+            <permissions>Full</permissions>
+            <platform minPlatformVersion="1.0" />
+			<defaultImage src="pg.png"/>
+        </host>
+    </hosts>
+</gadget>

@@ -1,0 +1,145 @@
+<html xmlns:v="urn:schemas-microsoft-com:vml">
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+<meta http-equiv="MSThemeCompatible" CONTENT="yes" />
+
+<title>Voodoo!</title>
+<script language="javascript" src="js/easings.js"></script>
+<script language="javascript" src="js/tween.js"></script>
+<script language="javascript" src="js/voodoo.js"></script>
+<script language="javascript">
+function kH(e) {
+var pK = e ? e.which : window.event.keyCode;
+return pK != 13;
+}
+document.onkeypress = kH;
+if (document.layers) document.captureEvents(Event.KEYPRESS);
+function filterKey(field){
+	var str=field.value
+	if(str.length>8){
+		field.value=str.slice(0,8)
+	}
+}
+</script>
+<style type="text/css">
+.style1 {
+	border-width: 0px;
+}
+.style2 {
+	text-align: center;
+	font-family: Comic Sans MS;
+	color: #643323;
+}
+.style3 {
+text-align: center; font-family: Segoe UI; 
+color: #7d3f2b
+}
+</style>
+
+</head>
+<body onLoad="loadMain()">
+
+<div style="position: absolute; width: 140px; height: 235px; z-index: 1; left: 0px; top: 0px;" id="voodo_set">
+	<div  style="position: absolute; width: 104px; height: 26px; z-index: 3; left: 10px; top: 185px" id="reset_trigger">
+	<table width="100%" cellspacing="0" cellpadding="0" class="style1" style="border-style: solid">
+		<tr>
+			<td onclick="pardon()" class="style2"><img src="images/pardon.jpg" /></td>
+		</tr>
+	</table>
+	</div>
+	<div style=" position: absolute; width: 127px; height: 172px; z-index: 4; left: -2px; top: 0px;" id="doll">
+		<div style="position: absolute; width: 129px; height: 174px; z-index: 3; left: -5px; top: 3px" id="right_leg_set">
+			<div style="position: absolute; width: 24px; height: 9px; z-index: 5; left: 84px; top: 144px" id="right_leg_pin4">
+				<img src="images/needle_rightleg4.png" width="11" height="18" /></div>
+			<div style="position: absolute; width: 26px; height: 11px; z-index: 4; left: 75px; top: 135px" id="right_leg_pin3">
+				<img src="images/needle_rightleg3.png" width="18" height="8" /></div>
+			<div style="position: absolute; width: 1px; height: 0px; z-index: 3; left: 94px; top: 109px" id="right_leg_pin2">
+				<img src="images/needle_rightleg2.png" width="17" height="14" /></div>
+			<div style="position: absolute; width: 2px; height: 19px; z-index: 2; left: 102px; top: 136px" id="right_leg_pin1">
+				<img src="images/needle_rightleg1.png" width="19" height="9" /></div>
+			<div style="position: absolute; width: 4px; height: 2px; z-index: 1; left: 74px; top: 102px" id="right_leg">
+				<img onclick=pinDoll('right_leg') src="images/doll_leg_right.png" width="42" height="56" /></div>
+		</div>
+		<div style="position: absolute; width: 129px; height: 173px; z-index: 4; left: -2px; top: -4px" id="left_leg_set">
+			<div style="position: absolute; width: 18px; height: 16px; z-index: 6; left: 36px; top: 157px" id="left_leg_pin4">
+				<img src="images/needle_leftleg_4.png" width="14" height="15" /></div>
+			<div style="position: absolute; width: 2px; height: 6px; z-index: 5; left: 36px; top: 137px" id="left_leg_pin3">
+				<img src="images/needle_leftleg_3.png" width="17" height="12" /></div>
+			<div style="position: absolute; width: 11px; height: 12px; z-index: 4; left: 57px; top: 132px" id="left_leg_pin2">
+				<img src="images/needle_leftleg_2.png" width="18" height="10" /></div>
+			<div style="position: absolute; width: 2px; height: 2px; z-index: 3; left: 59px; top: 158px" id="left_leg_pin1">
+				<img src="images/needle_leftleg_1.png" width="17" height="8" /></div>
+			<div style="position: absolute; width: 8px; height: 0px; z-index: 2; left: 39px; top: 115px" id="left_leg">
+				<img onclick=pinDoll('left_leg') src="images/doll_leg_left.png" width="30" height="59" /></div>
+		</div>
+		<div style="position: absolute; width: 130px; height: 175px; z-index: 5; left: -5px; top: 0px" id="right_hand_set">
+			<div style="position: absolute; width: 16px; height: 0px; z-index: 6; left: 111px; top: 76px" id="right_hand_pin3">
+				<img src="images/needle_righthand3.png" width="17" height="14" /></div>
+			<div style="position: absolute; width: 17px; height: 18px; z-index: 5; left: 113px; top: 57px" id="right_hand_pin2">
+				<img src="images/needle_righthand2.png" width="15" height="15" /></div>
+			<div style="position: absolute; width: 4px; height: 7px; z-index: 4; left: 99px; top: 61px" id="right_hand_pin1">
+				<img src="images/needle_righthand1.png" width="11" height="18" /></div>
+			<div style="position: absolute; width: 53px; height: 27px; z-index: 3; left: 75px; top: 60px" id="right_hand">
+				<img onclick=pinDoll('right_hand') src="images/doll_hand_right.png" width="53" height="27" /></div>
+		</div>
+		<div style="position: absolute; width: 128px; height: 173px; z-index: 6; left: 1px; top: 0px" id="left_hand_set">
+			<div style="position: absolute; width: 18px; height: 17px; z-index: 8; left: 3px; top: 78px" id="left_hand_pin3">
+				<img src="images/needle_lefthand_3.png" width="17" height="13" /></div>
+			<div style="position: absolute; width: 1px; height: 13px; z-index: 7; left: 6px; top: 60px" id="left_hand_pin2">
+				<img src="images/needle_lefthand_2.png" width="15" height="15" /></div>
+			<div style="position: absolute; width: 33px; height: 18px; z-index: 6; left: 21px; top: 66px" id="left_hand_pin1">
+				<img src="images/needle_lefthand_1.png" width="11" height="18" /></div>
+			<div style="position: absolute; width: 0px; height: 6px; z-index: 5; left: 2px; top: 62px" id="left_hand">
+				<img onclick=pinDoll('left_hand') src="images/doll_hand_left.png" width="53" height="29" /></div>
+		</div>
+		<div style="position: absolute; width: 129px; height: 174px; z-index: 7; left: 0px; top: 0px;" id="body_set">
+		<div style="position: absolute; width: 91px; height: 49px; z-index: 11; left: 19px; top: 56px" id="name_set">
+			<div style="position: absolute; width: 64px; height: 13px; z-index: 2; left: 6px; top: 22px;" id="name_filed">
+				<form onSubmit="this.text1.value=''" method="post">
+					<input onkeydown="filterKey(this)" name="Text1" type="text" style="width: 72px; text-align: center; background: transparent; border: 0 transparent; font-family: Comic Sans MS; font-weight: bold; color: #005c91" value="Name Me" /></form>
+			</div>
+		<div style="position: absolute; width: 9px; height: 0px; z-index: 1; left: 8px; top: 15px" id="doll_name">
+			<img src="images/doll_name.png" width="70" height="35" /></div>
+		</div>
+			<div style="position: absolute; width: 3px; height: 2px; z-index: 10; left: 41px; top: 62px" id="body_pin5">
+				<img src="images/needle_body_5.png" width="18" height="7" /></div>
+			<div style="position: absolute; width: 5px; height: 5px; z-index: 9; left: 30px; top: 106px" id="body_pin4">
+				<img src="images/needle_body_4.png" width="16" height="14" /></div>
+			<div style="position: absolute; width: 0px; height: 2px; z-index: 8; left: 52px; top: 112px" id="body_pin3">
+				<img src="images/needle_body_3.png" width="12" height="17" /></div>
+			<div style="position: absolute; width: 12px; height: 9px; z-index: 7; left: 77px; top: 109px" id="body_pin2">
+				<img src="images/needle_body_2.png" width="9" height="18" /></div>
+			<div style="position: absolute; width: 4px; height: 5px; z-index: 6; left: 68px; top: 56px" id="body_pin1">
+				<img src="images/needle_body_1.png" width="10" height="18" /></div>
+			<div style="position: absolute; width: 41px; height: 51px; z-index: 5; left: 31px; top: 54px;" id="body">
+				<img onclick=pinDoll('body') src="images/doll_body.png" width="61" height="70" /></div>
+		</div>
+		<div style="position: absolute; width: 127px; height: 176px; z-index: 8; left: 0px; top: 0px" id="head_set">
+			<div style="position: absolute; width: 21px; height: 6px; z-index: 15; left: 68px; top: 44px; " id="head_pin9">
+				<img src="images/needle_head_9.png" width="17" height="12" /></div>
+			<div style="position: absolute; width: 6px; height: 4px; z-index: 14; left: 18px; top: 39px" id="head_pin8">
+				<img src="images/needle_head_8.png" width="18" height="8" /></div>
+			<div style="position: absolute; width: 2px; height: 0px; z-index: 13; left: 60px; top: 39px" id="head_pin7">
+				<img src="images/needle_head_7.png" width="19" height="7" /></div>
+			<div style="position: absolute; width: 1px; height: 4px; z-index: 12; left: 15px; top: 17px; bottom: 74px" id="head_pin6">
+				<img src="images/needle_head_6.png" width="19" height="9" /></div>
+			<div style="position: absolute; width: 4px; height: 4px; z-index: 11; left: 66px; top: 19px" id="head_pin5">
+				<img src="images/needle_head_5.png" width="14" height="16" /></div>
+			<div style="position: absolute; width: 13px; height: 0px; z-index: 10; left: 54px; top: 4px" id="head_pin4">
+				<img src="images/needle_head_4.png" width="18" height="11" /></div>
+			<div style="position: absolute; width: 13px; height: 1px; z-index: 9; left: 31px; top: 15px" id="head_pin3">
+				<img src="images/needle_head_3.png" width="19" height="6" /></div>
+			<div style="position: absolute; width: 4px; height: 9px; z-index: 8; left: 27px; top: 44px" id="head_pin2">
+				<img src="images/needle_head_2.png" width="19" height="9" /></div>
+			<div style="position: absolute; width: 4px; height: 1px; z-index: 7; left: 21px; top: 30px" id="head_pin1">
+				<img src="images/needle_head_1.png" width="17" height="6" /></div>
+			<div style="position: absolute; width: 47px; height: 51px; z-index: 6; left: 26px; top: 3px;" id="head">
+				<img onclick=pinDoll('head') src="images/doll_head.png" width="50" height="61" /></div>
+			<br />
+		</div>
+	</div>
+	<div style="position: absolute; width: 100px; height: 100px; z-index: 1" id="board">
+		</div>
+</div>
+
+</body>
+</html>

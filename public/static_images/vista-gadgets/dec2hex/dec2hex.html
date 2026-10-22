@@ -1,0 +1,124 @@
+<html>
+    <!-- background image provided by SFkilla
+            www.betanetwork.net/hobbylounge -->
+    <head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+        <style>
+            body {
+                width: 130px; height: 67px;
+            }
+            .text {
+                font-size: 10px;
+                color: FFFFFF;
+                font-family: Segoe UI, Arial, Verdana;
+            }
+            .forminputs {
+                font-size: 10px; font-family: Segoe UI, Arial, Verdana;
+                color: 666666; width: 19px; text-align: center;
+            }
+        </style>
+        <script>
+            var firstpair;
+            var secpair;
+            var thirdpair;
+            function hex2dec() {
+                if (hex.value.substr(4,6) == '') {
+                    decimal_three.value = '';
+                }
+                if (hex.value.substr(2,4) == '') {
+                    decimal_two.value = '';
+                }
+                if (hex.value.substr(0,2) == '') {
+                    decimal_one.value = '';
+                }
+                if (hex.value.length > 1) {
+                    decimal_one.value = parseInt(hex.value.substr(0,2),16);
+                }
+                if (hex.value.length > 3) {
+                    decimal_two.value = parseInt(hex.value.substr(2,2),16);
+                }
+                if (hex.value.length > 5) {
+                    decimal_three.value = parseInt(hex.value.substr(4,2),16);
+                }
+            }
+
+            var hexArray = new Array();
+            function dec2hex() {
+                function convert(num) {
+                    var j = num;
+                    var hexchars =  "0123456789ABCDEF";
+                    var hv = "";
+                    for (var i=0; i< 4; i++)
+                      {
+                        k = j & 15;
+                        hv = hexchars.charAt(k) + hv;
+                        j = j >> 4;
+                      }
+                    return hv.substr(2,4);
+                }
+
+                if (decimal_one.value.length > 0) {
+                    hexArray[0] = convert(decimal_one.value);
+                    hex.value = hexArray[0];
+                }
+                if (decimal_two.value.length > 0) {
+                    hexArray[1] = convert(decimal_two.value);
+                    hex.value = hexArray[0] + hexArray[1];
+                }
+                if (decimal_three.value.length > 0) {
+                    hexArray[2] = convert(decimal_three.value);
+                    hex.value = hexArray[0] + hexArray[1] + hexArray[2];
+                }
+
+                if (hex.value.length == 6) {
+                    color.style.backgroundColor = hex.value;
+                }
+            }
+
+            function copyit() {
+                hex.value = "#"+hex.value;
+                txt=hex.createTextRange()
+                txt.execCommand("Copy")
+                hex.value = hex.value.substr(1,6);
+                copied.style.display="block";
+                setTimeout("copied.style.display='none';", 3000);
+            }
+        </script>
+    </head>
+    <body>
+        <g:background id="bgImage" src="bg.png" style="position:absolute; left: 0px; top: 0px;  z-index:-999" ></g:background>
+        <span style="position: absolute; left: -3px; top: 0px; z-index: 1;">
+            <table border="0" width="134" height="67" cellpadding="0" cellspacing="0" class="text">
+                <tr>
+                    <td align="center">
+                        <table id="converter" border="0" cellpadding="0" cellspacing="0" class="text">
+                            <tr><td>
+                                <strong>DECIMAL</strong> <input type="text"
+                                id="decimal_one" 
+                                onkeyup="dec2hex();" maxlength="3" class="forminputs" size="1">&nbsp;<input 
+                                type="text" id="decimal_two" class="forminputs" 
+                                onkeyup="dec2hex();" maxlength="3" 
+                                size="1">&nbsp;<input type="text" 
+                                id="decimal_three" maxlength="3" 
+                                onkeyup="dec2hex(); if (this.value.length == 3) { copyit(); }" class="forminputs" size="1"><br> 
+                                <strong>HEX</strong> <input type="text" id="hex" 
+                                maxlength="6" class="forminputs" 
+                                style="width: 35px; text-transform: lowercase;" 
+                                onkeyup="hex2dec(); color.style.backgroundColor=this.value; if (this.value.length == 6) { copyit(); }">
+                                <span id="color" style="position: absolute; left: 72px; top: 34px; width: 23px; height: 18px; border: 1px solid #FFFFFF;">
+                                    
+                                </span>
+                            </td></tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+        </span>
+        <span id="copied" style="display: none; width: 130px; height: 67px; position: absolute; left: 0px; top: 0px; z-index: 2">
+            <table border="0" cellpadding="0" cellspacing="0" width="100%" height="67">
+                <tr>
+                    <td align="center"><img src="copied.png"></td>
+                </tr>
+            </table>
+        </span>
+    </body>
+</html>

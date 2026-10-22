@@ -1,0 +1,215 @@
+<!--Metric Clock Gadget v2 - Copyright 2008 Brad Nicolle - IF YOU MODIFY ANY CODE, PLEASE E-MAIL ME AT: 'bradnicolle@hotmail.com'-->
+<html>
+
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+<title>Metric Clock</title>
+<style>
+  body { 
+    width: 125px;
+    height: 57px;
+    text-align: left;
+    font-family: Segoe UI;
+    font-size: 12pt;
+    color: black;
+    margin: 0px;
+    padding: 0px;
+  }
+</style>
+<script type="Text/JavaScript">
+<!--
+
+  var ABT;
+  var hour;
+  var minute;
+  var second;
+  var MT;
+  var ccpulse;
+  var cpulse;
+  var pulse;
+  var czero;
+  var zero;
+  var colour;
+  var start;
+  var end;
+  var tock;
+  var addpx = 0;
+  var filltime = false;
+  var time = true;
+
+  function pageLoad() {
+    System.Gadget.onSettingsClosed = close;
+    System.Gadget.settingsUI = "Settings.html";
+    System.Gadget.visibilityChanged = checkVisibility;
+
+    background.src = "background.png";
+    glass.src = "glass.png";
+    frame.src = "frame.png";
+    loadSettings();
+
+    tick();
+  }
+
+  function getABT() {
+    ABT = new Date(System.Time.getLocalTime(System.Time.currentTimeZone));
+    hour = ABT.getHours();
+    minute = ABT.getMinutes();
+    second = ABT.getSeconds();
+    MT = (second / 864) + (minute / 14.4) + (hour / 0.24);
+    ccpulse = Math.floor(MT / 10);
+    cpulse = Math.floor((MT - (ccpulse * 10)) * 10);
+    pulse = Math.floor((MT * 1000) - (ccpulse * 10000) - (cpulse * 100));
+    if (filltime == true) {
+      addpx = MT / 0.82644628;
+      document.getElementById("fill").style.width = addpx + "px";
+    }
+    else {
+      document.getElementById("fill").style.width = "121px";
+    }
+    if (time == true) {
+      changeBG();
+    }
+  }
+
+  function tick() {
+    pulse++;
+    if (pulse == 100) {
+      cpulse++;
+      pulse = 0;
+      if (cpulse % 8 == 0 && filltime == true) {
+        document.getElementById("fill").style.width = addpx + "px";
+        addpx++;
+      }
+    }
+    if (cpulse == 100) {
+      ccpulse++;
+      if (time == true) {
+        changeBG();
+      }
+      cpulse = 0;
+    }
+    if (ccpulse == 10) {
+      getABT();
+    }
+    czero = cpulse < 10 ? "0" + cpulse :  cpulse;
+    zero = pulse < 10 ? "0" + pulse :  pulse;
+    document.getElementById("timeText").innerText = ccpulse + ":" + czero + ":" + zero;
+    tock = setTimeout("tick()", 864);
+  }
+
+  function changeBG() {
+    if (ccpulse == 4 || ccpulse == 5 || ccpulse == 6) {
+      start = "steelblue";
+      end = "lightskyblue";
+    }
+    else if (ccpulse == 3 || ccpulse == 7) {
+      start = "blue";
+      end = "pink";
+    }
+    else if (ccpulse == 2 || ccpulse == 8) {
+      start = "midnightblue";
+      end = "royalblue";
+    }
+    else if (ccpulse == 0 || ccpulse == 1 || ccpulse == 9) {
+      start = "black";
+      end = "midnightblue";
+    }
+    fill.style.filter = "progid:DXImageTransform.Microsoft.Gradient(GradientType=0, StartColorStr='" + start + "', EndColorStr='" + end + "')";
+  }
+
+  function close(event) {
+    loadSettings();
+  }
+
+  function checkVisibility() {
+    if (System.Gadget.visible) {
+      if (!tock) {
+        getABT();
+        tick();
+      }
+    }
+    else {
+      clearTimeout(tock);
+      tock = null;
+    }
+  }
+
+  function loadSettings() {
+    colour = System.Gadget.Settings.read("index");
+    if (colour != "" && colour != 0) {
+      time = false;
+      if (colour == 1) {
+        start = "#005600";
+        end = "#CCFF55";
+        timeText.style.color = "white";
+        label.style.color = "white";
+      }
+      else if (colour == 2) {
+        start = "slateblue";
+        end = "lightblue";
+        timeText.style.color = "white";
+        label.style.color = "white";
+      }
+      else if (colour == 3) {
+        start = "gray";
+        end = "lightgrey";
+        timeText.style.color = "white";
+        label.style.color = "white";
+      }
+      else if (colour == 4) {
+        start = "darkorange";
+        end = "yellow";
+        timeText.style.color = "black";
+        label.style.color = "black";
+      }
+      else if (colour == 5) {
+        start = "darkblue";
+        end = "lightblue";
+        timeText.style.color = "white";
+        label.style.color = "white";
+      }
+      else if (colour == 6) {
+        start = "black";
+        end = "black";
+        timeText.style.color = "white";
+        label.style.color = "white";
+      }
+      else if (colour == 7) {
+        start = "red";
+        end = "pink";
+        timeText.style.color = "white";
+        label.style.color = "white";
+      }
+      else if (colour == 8) {
+        start = "hotpink";
+        end = "pink";
+        timeText.style.color = "black";
+        label.style.color = "black";
+      }
+      fill.style.filter = "progid:DXImageTransform.Microsoft.Gradient(GradientType=0, StartColorStr='" + start + "', EndColorStr='" + end + "')";
+    }
+    else {
+      time = true;
+      timeText.style.color = "white";
+      label.style.color = "white";
+      changeBG();
+    }
+
+    document.getElementById("label").innerText = System.Gadget.Settings.read("label");
+    filltime = System.Gadget.Settings.read("filltime");
+    getABT();
+  }
+
+//-->
+</script>
+</head>
+
+<body onLoad="pageLoad()">
+<g:background id="background" style="position: absolute; z-index: 0; width: 125px; height: 57px; left: 0px; top: 0px;"></g:background>
+<div id="fill" style="position: absolute; z-index: 1; background-color: limegreen; width: 121px; height: 53px; left: 2px; top: 2px; border-right: 1px solid lightblue;"></div>
+<span id="timeText" style="position: absolute; z-index: 3; font-family: Segoe UI; font-size: 15pt; color: white; text-align: center; width: 125px; height: 57px; line-height: 50px;"></span>
+<span id="label" style="position: absolute; z-index: 3; font-family: Segoe UI; font-size: 10pt; color: white; text-align: center; width: 110px; height: 57px; left: 8px; padding-top: 35px; text-overflow: ellipsis; white-space: nowrap; overflow: hidden;"></span>
+<g:image id="frame" style="position: absolute; z-index: 2; width: 125px; height: 57px; left: 0px; top: 0px;"></g:image>
+<g:image id="glass" style="position: absolute; z-index: 2; width: 125px; height: 57px; left: 0px; top: 0px;"></g:image>
+</body>
+
+</html>

@@ -175,6 +175,11 @@ const FEATURE_MANIFEST = {
         depends: ['vista_games'],
         scripts: ['scripts/comp/desktop-apps/vista-games/inkball.js']
     },
+    // Hosted Sidebar gadgets (Yozora #629): loaded by vistaSidebar.js when a gadget from public/static_images/vista-gadgets/catalog.json shows
+    vista_gadget_host: {
+        styles: ['css/vista-gadget-host.css'],
+        scripts: ['scripts/comp/vistaGadgetHost.js']
+    },
     vista_purble: {
         // vista_cards for its status bar (VG.Cards.statusBar)
         depends: ['vista_cards'],
@@ -255,6 +260,8 @@ const FEATURE_MANIFEST = {
             'scripts/comp/windowsDefender.js',
             'scripts/comp/cplSearch.js',
             'scripts/comp/cplMail.js',
+            // the photo galleries' list and credits, read by Desktop Background
+            'scripts/comp/wallpaperGalleries.js',
             'scripts/comp/cplDesktopBackground.js',
             // Personalization's hub and Window Color page, then the Screen Saver and Sound dialogs
             'scripts/comp/cplPersonalization.js',

@@ -1,0 +1,173 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+
+<title>Flower Pot</title>
+
+<style type="text/css">
+body{
+		margin: 0px;
+	font-family: Segoe UI, Arial, Microsoft Yahei ,Microsoft JhengHei , Helvetica, sans-serif, Simsun, Verana;
+}
+body #button,body #button_info ,body #button_restart{
+	display:none;
+}
+body:hover #button,body:hover #button_info,,body:hover #button_restart{
+	display:block;
+}
+
+#button {
+	width: 20px;
+	height: 27px;
+	position: fixed;
+	cursor: pointer;
+	background-repeat: no-repeat;
+	background-image: url('images/button.png');
+	top: 180px;
+	left: 109px;
+	background-attachment: scroll;
+}
+#button a{
+	width: 100%;
+	height: 100%;
+	position: absolute;
+	top: 0px;
+	left: 0px;
+	text-decoration: none;
+}
+#button:hover {
+	width: 26px;
+	height: 38px;
+	background-image: url('images/button_hover.png');
+	top:171px;
+	left:106px;
+}
+#button_info {
+	width: 16px;
+	height: 16px;
+	position: fixed;
+	cursor: pointer;
+	background-repeat: no-repeat;
+	background-image: url('images/info.png');
+	top:191px;
+	left:5px;
+}
+#button_info:hover {
+	width: 24px;
+	height: 24px;
+	background-image: url('images/info_hover.png');
+	top:185px;
+	left:2px;
+}
+#button_restart {
+	width: 15px;
+	height: 16px;
+	position: fixed;
+	cursor: pointer;
+	background-repeat: no-repeat;
+	background-image: url('images/restart.png');
+	top:165px;
+	left:6px;
+}
+#button_restart:hover {
+	width: 24px;
+	height: 25px;
+	background-image: url('images/restart_hover.png');
+	top:159px;
+	left:2px;
+}
+#div_update{
+	overflow: hidden;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	-o-text-overflow: ellipsis;
+	text-align: center;
+	left:27px;bottom:4px;width:80px;height:18px;position:fixed;font-size:11px;
+	line-height: 18px;
+}
+#div_update a {
+	color: #18431B;
+	padding: 0px 1px 1px 1px;
+	font-weight: bold;
+}
+#div_update a:hover{
+	color: #18431B;
+	background-color: #97D598;
+}
+</style>
+<script src="localizedStrings.js" type="text/javascript"></script>
+</head>
+
+<body style="width:135px;height:214px;" onload="view_onopen()" scroll="no" id="view">
+<g:background id="imgBackground" src="images/background.png" style="position:fixed;top:0px;left:0px;z-index:0" ></g:background>
+<img alt="" src="images/pot.png" style="left:20px;top:117px;position:fixed;" />
+	<g:image alt="" opacity="0" name="leaves1_" id="leaves1_" src="images/leaves1_1.png" style="left:55px;top:50px;position:fixed;" ></g:image>
+  <g:image alt="" opacity="100" name="leaves1" id="leaves1" src="images/leaves1_1.png" style="left:55px;top:50px;position:fixed;" ></g:image>
+
+  <img alt="" src="images/stems.png" style="left:37px;top:35px;position:fixed;"/>
+<g:image alt="" opacity="0" name="leaves2_" id="leaves2_" src="images/leaves2_1.png" style="left:1px;top:39px;position:fixed;" ></g:image>
+  <g:image alt="" opacity="100" name="leaves2" id="leaves2" src="images/leaves2_1.png" style="left:1px;top:39px;position:fixed;" ></g:image>
+  
+    <g:image alt="" opacity="0" name="Flower6_" id="Flower6_" src="images/Flower5_1.png" style="left:94px;top:13px;position:fixed;" ></g:image>
+  <g:image alt="" opacity="100" name="Flower6" id="Flower6" src="images/Flower5_1.png" style="left:94px;top:13px;position:fixed;" ></g:image>
+    <g:image alt="" opacity="0" name="Flower3_" id="Flower3_" src="images/Flower3_1.png" style="left:42px;top:16px;position:fixed;" ></g:image>
+  <g:image alt="" opacity="100" name="Flower3" id="Flower3" src="images/Flower3_1.png" style="left:42px;top:16px;position:fixed;" ></g:image>
+    <g:image alt="" opacity="0" name="Flower4_" id="Flower4_" src="images/Flower3_1.png" style="left:63px;top:10px;position:fixed;" ></g:image>
+  <g:image alt="" opacity="100" name="Flower4" id="Flower4" src="images/Flower3_1.png" style="left:63px;top:10px;position:fixed;" ></g:image>
+    <g:image alt="" opacity="0" name="Flower5_" id="Flower5_" src="images/Flower4_1.png" style="left:15px;top:16px;position:fixed;" ></g:image>
+  <g:image alt="" opacity="100" name="Flower5" id="Flower5" src="images/Flower4_1.png" style="left:15px;top:16px;position:fixed;" ></g:image>
+    <g:image alt="" opacity="0" name="Flower1_" id="Flower1_" src="images/Flower1_1.png" style="left:74px;top:22px;position:fixed;" ></g:image>
+  <g:image alt="" opacity="100" name="Flower1" id="Flower1" src="images/Flower1_1.png" style="left:74px;top:22px;position:fixed;" ></g:image>
+    <g:image alt="" opacity="0" name="Flower2_" id="Flower2_" src="images/Flower2_1.png" style="left:42px;top:27px;position:fixed;" ></g:image>
+  <g:image alt="" opacity="100" name="Flower2" id="Flower2" src="images/Flower2_1.png" style="left:42px;top:27px;position:fixed;" ></g:image>
+
+
+  <div name="animated" id="animated" style="left:32px;top:5px;width:95px;height:100px;position:fixed;">
+    <g:image opacity="0" alt="" src="images/animations/rain1.png" style="left:-4px;top:5px;position:absolute;"></g:image>
+    <g:image opacity="0" alt="" src="images/animations/rain2.png" style="left:0px;top:31px;position:absolute;"></g:image>
+    <g:image opacity="0" alt="" src="images/animations/rain3.png" style="left:4px;top:59px;position:absolute;"></g:image>
+    <g:image opacity="0" alt="" src="images/animations/rain1.png" style="left:-6px;top:15px;position:absolute;"></g:image>
+
+    <g:image opacity="0" alt="" src="images/animations/rain1.png" style="left:26px;top:2px;position:absolute;"></g:image>
+    <g:image opacity="0" alt="" src="images/animations/rain2.png" style="left:54px;top:58px;position:absolute;"></g:image>
+    <g:image opacity="0" alt="" src="images/animations/rain3.png" style="left:42px;top:16px;position:absolute;"></g:image>
+    <g:image opacity="0" alt="" src="images/animations/rain1.png" style="left:58px;top:62px;position:absolute;"></g:image>
+
+    <g:image opacity="0" alt="" src="images/animations/rain1.png" style="left:50px;top:0px;position:absolute;"></g:image>
+    <g:image opacity="0" alt="" src="images/animations/rain2.png" style="left:44px;top:27px;position:absolute;"></g:image>
+    <g:image opacity="0" alt="" src="images/animations/rain3.png" style="left:36px;top:15px;position:absolute;"></g:image>
+
+    <g:image opacity="0" alt="" src="images/animations/rain1.png" style="left:56px;top:33px;position:absolute;"></g:image>
+    <g:image opacity="0" alt="" src="images/animations/rain2.png" style="left:70px;top:35px;position:absolute;"></g:image>
+    <g:image opacity="0" alt="" src="images/animations/rain3.png" style="left:50px;top:38px;position:absolute;"></g:image>
+
+    <g:image opacity="0" alt="" src="images/animations/rain1.png" style="left:16px;top:45px;position:absolute;"></g:image>
+    <g:image opacity="0" alt="" src="images/animations/rain2.png" style="left:0px;top:31px;position:absolute;"></g:image>
+    <g:image opacity="0" alt="" src="images/animations/rain3.png" style="left:24px;top:69px;position:absolute;"></g:image>
+    <g:image opacity="0" alt="" src="images/animations/rain1.png" style="left:14px;top:75px;position:absolute;"></g:image>
+
+    <g:image opacity="0" alt="" src="images/animations/rain1.png" style="left:16px;top:92px;position:absolute;"></g:image>
+    <g:image opacity="0" alt="" src="images/animations/rain2.png" style="left:44px;top:88px;position:absolute;"></g:image>
+    <g:image opacity="0" alt="" src="images/animations/rain3.png" style="left:62px;top:76px;position:absolute;"></g:image>
+    <g:image opacity="0" alt="" src="images/animations/rain1.png" style="left:28px;top:52px;position:absolute;"></g:image>
+  </div>
+    <div name="border_top" style="left:20px;top:25px;width:90px;height:15px;position:fixed;" 
+     onmouseover="flowers_onmouseover()" ></div>
+  <div name="border_left" style="left:40px;top:10px;width:15px;height:95px;position:fixed;" 
+     onmouseover="flowers_onmouseover()" ></div>
+  <div name="border_right" style="left:80px;top:10px;width:15px;height:95px;position:fixed;" 
+     onmouseover="flowers_onmouseover()" ></div>
+  <div name="border_bottom" style="left:20px;top:75px;width:95px;height:15px;position:fixed;" 
+     onmouseover="flowers_onmouseover()" ></div>
+
+  <div id="button_info" unselectable="on" onclick="flowerpot.OpenFlyout();" title="Info"></div>
+  <div id="button_restart" unselectable="on" onclick="OnReset();" style="display:none;"></div>
+  <div id="button" unselectable="on" >
+  	<a id="weblink" unselectable="on" title="KaKa Now" href="http://kakanow.com/">&nbsp;</a></div>
+  <div id="div_update" unselectable="on"></div>
+  <script type="text/javascript" src="default.js" id="default_js"></script>
+  <script type="text/javascript" id="check_update" name="check_update"></script>
+</body>
+
+</html>

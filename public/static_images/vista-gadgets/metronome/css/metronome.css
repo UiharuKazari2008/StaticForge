@@ -1,0 +1,66 @@
+/*
+//---------------------------------------------
+//  THIS CODE IS NOT APPROVED FOR USE IN/ON ANY OTHER UI ELEMENT OR PRODUCT COMPONENT.  
+//  Copyright (c) 2006 Microsoft Corporation.  All rights reserved.
+// ----------------------------------------------
+*/
+body
+{
+    width: 129px;
+    height: 94px;
+    margin: 0px;
+    background-repeat: no-repeat;
+	background: url('../images/background.png'); 
+}
+
+#tempo {
+	margin-top: 0px;
+	margin-left: 12px;
+}
+
+#tempoHue {
+	color: #DDDDDD;
+	font-size: 24px;
+	font-family: Segoe UI;
+
+	position: absolute;
+	margin: 0px;
+	margin-top: 1px;
+	padding: 0px;
+}
+
+#tempoShadow {
+	color: #555555;
+	font-size: 24px;
+	font-family: Segoe UI;
+
+	margin: 0px;
+	position: absolute;
+	padding: 0px;
+}
+
+.bpm {
+	color: #DBDBDB;
+	font-size: 10px;
+	font-family: Segoe UI;
+
+	position: relative;
+}
+
+#iterators {
+	position: absolute;
+	left: 96px;
+	top: 4px;
+}
+
+#blinker {
+	position: absolute;
+	left: 10px;
+	top: 46px;
+}
+
+#starter {
+	position: absolute;
+	left: 44px;
+	top: 37px;
+}

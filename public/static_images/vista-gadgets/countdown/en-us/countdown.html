@@ -1,0 +1,412 @@
+<html>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+    <title>CountDown V1.3</title>
+
+    <script>
+
+	
+	var myBackground = "background.png";
+	var myHeight = "62";
+	var myWidth = "125";
+	document.write("<style>body { margin: 0; width: 128px; height: 65px; }");
+	document.write("#gadgetContent { width: 128px; top: 0px; text-align: center; font-family: Tahoma; font-size: 10pt; position: absolute; }");
+	document.write("#background { width: 128px; height: 65px; position: absolute; z-index: -1; background-repeat: no-repeat; }</style>");
+	var myStrapState = "inline";
+
+	</script>
+
+    
+    <style type="text/css">
+<!--
+.style1 {
+	font-family: Geneva, Arial, Helvetica, sans-serif;
+	font-size: 11px;
+	color:#FF0000;
+}
+.style3 {font-family: Geneva, Arial, Helvetica, sans-serif; font-size: 9px; color:#FF0000; }
+
+-->
+</style>
+</head>
+
+<body onLoad="setTimeout('init()',3000)" id="body">
+        
+
+	
+	<script>
+	
+	var countDate = new Date;
+	var thisDate = new Date;
+	var strapText = "Until Christmas " + thisDate.getFullYear().toString() + "!";
+	var fontFace = "Segoe UI";
+	var textColour = "#FFFFFF";
+	var mainTextSize = "18px";
+	var strapTextSize = "10px";
+	var scrollTxt = "Yes";
+	var scrollOpts = "Scroll Left";
+	var view = "smart1";
+	var skin = "mini";
+	var differenceUTC = 0;
+	var secsleft = 0;
+	countDate.setDate(25);
+	countDate.setMonth((12 - 1));
+	countDate.setFullYear(thisDate.getFullYear());
+	countDate.setHours(00);
+	countDate.setMinutes(00);
+	countDate.setSeconds(00);
+	
+
+	
+	function loadSettings(){
+	
+		document.getElementById('counterText').style.display = "none";
+		document.getElementById('strapText').style.display = "none";
+		document.getElementById('loadingImg').style.display = "inline";
+	
+		if (System.Gadget.Settings.read("skin")){
+		skin = System.Gadget.Settings.read("skin");
+		} else {
+		skin = "standard";
+		}
+		
+		if(skin == "standard"){
+	
+		var myBackground = "background.png";
+		var myHeight = "65";
+		var myWidth = "125";
+		var mycHeight = "59";
+		var mycWidth = "125";
+		var mybHeight = "65";
+		var mybWidth = "125";
+		var myStrapState = "inline";
+		
+		} else if(skin == "mini"){
+		
+		var myBackground = "background-mini.png";
+		var myHeight = "59";
+		var myWidth = "135";
+		var mycHeight = "64";
+		var mycWidth = "135";
+		var mybHeight = "59";
+		var mybWidth = "135";
+		var myStrapState = "none";
+	
+		} else if(skin == "cal"){
+		
+		var myBackground = "background-cal.png";
+		var myHeight = "71";
+		var myWidth = "125";
+		var mycHeight = "73";
+		var mycWidth = "125";
+		var mybHeight = "71";
+		var mybWidth = "125";
+		var myStrapState = "inline";
+	
+		}
+	
+		myContentTable = document.getElementById('contentTable');
+		myContentTable.width = mycWidth + "px";
+		myContentTable.height = mycHeight + "px";
+		document.getElementById('background').src = myBackground;
+		//document.getElementById('strapText').style.display = myStrapState;
+		document.getElementById('background').width = mybWidth
+		document.getElementById('background').height = mybHeight
+		document.getElementById('body').width = myWidth + "px"
+		document.getElementById('body').height = myHeight + "px";
+	
+	
+		if (System.Gadget.Settings.read("displayText")){
+		strapText = System.Gadget.Settings.read("displayText");
+		}
+				
+		if (System.Gadget.Settings.read("txtColour").length > 3){
+		textColour = System.Gadget.Settings.read("txtColour");
+		}
+		
+		if (System.Gadget.Settings.read("txtfFace").length > 3){
+		fontFace = System.Gadget.Settings.read("txtFface");
+		}
+		
+		if (System.Gadget.Settings.read("format").length > 2){
+		view = System.Gadget.Settings.read("format");
+		}
+		
+		if (System.Gadget.Settings.read("displayTxtSize").length > 2){
+		strapTextSize = System.Gadget.Settings.read("displayTxtSize");
+		}
+		
+		if (System.Gadget.Settings.read("scrollTxt").length > 1){
+		scrollTxt = System.Gadget.Settings.read("scrollTxt");
+		}
+		
+		if (System.Gadget.Settings.read("scrollOpts").length > 2){
+		scrollOpts = System.Gadget.Settings.read("scrollOpts");
+		}
+		
+		if (System.Gadget.Settings.read("timerTxtSize").length > 2){
+		mainTextSize = System.Gadget.Settings.read("timerTxtSize");
+		}
+     	
+		if (System.Gadget.Settings.read("dateText").length > 3){
+		var dateArray = System.Gadget.Settings.read("dateText").split("/");	
+		countDate.setFullYear(dateArray[2]);
+		countDate.setMonth((dateArray[1] - 1));
+		countDate.setDate(dateArray[0]);
+		}
+		
+		if (System.Gadget.Settings.read("timeText").length > 3){
+		var timeElements = System.Gadget.Settings.read("timeText").split(":");
+		countDate.setHours(timeElements[0]);
+		countDate.setMinutes(timeElements[1]);
+		countDate.setSeconds(timeElements[2]);
+		//window.document.countdown.SetVariable("startCounter", 1);
+		}
+		if(strapText.length > 26 && scrollTxt == "Yes"){
+		if(scrollOpts == "left"){
+		document.getElementById('strapText').innerHTML = '<marquee scrollamount="2" direction="left">' + strapText + '</marquee>';
+		} else if(scrollOpts == "right"){
+		document.getElementById('strapText').innerHTML = '<marquee scrollamount="2" direction="right">' + strapText + '</marquee>';
+		} else if(scrollOpts == "bounce"){
+		document.getElementById('strapText').innerHTML = '<marquee scrollamount="2" direction="left" behavior="alternate">' + strapText + '</marquee>';
+		}
+		
+		} else {
+		document.getElementById('strapText').innerHTML = strapText;
+		}
+		//document.getElementById('strapText').innerHTML = scrollTxt;
+		setTimeout("showCounter('"+ myStrapState +"')",1000)
+		
+		
+	}
+	
+	function showCounter(myStrapState){
+	
+	document.getElementById('loadingImg').style.display = "none";
+	document.getElementById('counterText').style.display = "inline";
+	document.getElementById('strapText').style.display = myStrapState;
+	
+	}
+	
+        System.Gadget.settingsUI = 'Settings.html';
+        System.Gadget.onSettingsClosed = SettingsClosed;
+        function SettingsClosed(event) {
+
+   			if (event.closeAction == event.Action.commit)
+    		{
+    				loadSettings();
+					//window.document.countdown.SetVariable("counterRestart", 1);
+					//window.document.countdown.SetVariable("startCounter", 1);  
+					//window.document.countdown.SetVariable("FstartCounter", 1);  
+    			}
+   			}
+	
+</script>
+<script>
+
+
+
+function init(){
+setInterval('tick()',1000);
+setTimeout('document.getElementById(\'strapText\').innerHTML = strapText;',1000);
+setTimeout('loadSettings()',1000);
+}
+
+function tick(){
+document.getElementById('counterText').style.color = textColour;
+document.getElementById('strapText').style.color = textColour;
+document.getElementById('counterText').style.fontSize = mainTextSize;
+document.getElementById('strapText').style.fontSize  = strapTextSize;
+document.getElementById('counterText').style.fontFamily = fontFace;
+document.getElementById('strapText').style.fontFamily  = fontFace;
+ele = document.getElementById('counterText');
+thisDate = new Date;
+differenceUTC = Date.parse(countDate) - Date.parse(thisDate);
+secsleft = differenceUTC/1000;
+if(secsleft >= 0){
+ele.innerHTML = formatDate(secsleft,view);
+} else {
+ele.innerHTML = "Finished!";
+}
+//alert("helo: " + secsleft);
+}
+
+
+function formatDate(dateSeconds,view){
+
+returnText = "";
+
+if(view == "smart2"){
+// Days
+days = Math.floor(dateSeconds / (60 * 60 * 24));
+dateSeconds = dateSeconds - (days * (60 * 60 * 24));
+
+// Hours
+hours = Math.floor(dateSeconds / (60 * 60));
+dateSeconds = dateSeconds - (hours * (60 * 60));
+
+// Minutes
+minutes = Math.floor(dateSeconds / 60);
+dateSeconds = dateSeconds - (minutes * 60);
+
+//Days
+if(days > 0){
+returnText += days + "d ";
+returnText += (hours+1) + "h";
+} else if(hours > 0){
+//Hours
+returnText += hours + "h ";
+returnText += (minutes+1) + "m";
+} else if(minutes > 0){
+//Minutes
+returnText += minutes + "m ";
+returnText += (dateSeconds + 1) + "s";
+} else {
+// Seconds
+returnText += (dateSeconds+1) + " Seconds";
+}
+} else if(view == "smart1"){
+// Days
+days = Math.floor(dateSeconds / (60 * 60 * 24));
+dateSeconds = dateSeconds - (days * (60 * 60 * 24));
+
+// Hours
+hours = Math.floor(dateSeconds / (60 * 60));
+dateSeconds = dateSeconds - (hours * (60 * 60));
+
+// Minutes
+minutes = Math.floor(dateSeconds / 60);
+dateSeconds = dateSeconds - (minutes * 60);
+
+//Days
+if(days > 0){
+returnText += (days + 1) + " Days ";
+} else if(hours > 0){
+//Hours
+returnText += (hours + 1) + " Hours";
+} else if(minutes > 0){
+//Minutes
+returnText += (minutes + 1) + " Minutes";
+} else {
+// Seconds
+returnText += (dateSeconds + 1) + " Seconds";
+}
+} else if(view == "timer"){
+// Days
+days = Math.floor(dateSeconds / (60 * 60 * 24));
+dateSeconds = dateSeconds - (days * (60 * 60 * 24));
+
+// Hours
+hours = Math.floor(dateSeconds / (60 * 60));
+dateSeconds = dateSeconds - (hours * (60 * 60));
+
+// Minutes
+minutes = Math.floor(dateSeconds / 60);
+dateSeconds = dateSeconds - (minutes * 60);
+
+returnText += PadDigits(days,2) + ":";
+returnText += PadDigits(hours,2) + ":";
+returnText += PadDigits(minutes,2) + ":";
+returnText += PadDigits(dateSeconds,2);
+} else if(view == "all"){
+// Days
+days = Math.floor(dateSeconds / (60 * 60 * 24));
+dateSeconds = dateSeconds - (days * (60 * 60 * 24));
+returnText += days + "d ";
+// Hours
+hours = Math.floor(dateSeconds / (60 * 60));
+dateSeconds = dateSeconds - (hours * (60 * 60));
+returnText += PadDigits(hours,2) + "h ";
+
+// Minutes
+minutes = Math.floor(dateSeconds / 60);
+dateSeconds = dateSeconds - (minutes * 60);
+returnText += PadDigits(minutes,2) + "m ";
+
+
+// Seconds
+returnText += PadDigits(dateSeconds,2) + "s";
+} else if(view == "weeks"){
+// Days
+days = Math.floor(dateSeconds / (60 * 60 * 24));
+dateSeconds = dateSeconds - (days * (60 * 60 * 24));
+weeks = Math.floor(days / 7);
+returnText += (weeks + 1);
+if(weeks == 0){
+returnText = "> " + returnText + " Week";
+} else if((weeks+1) == 1){
+returnText += " Week";
+} else {
+returnText += " Weeks";
+ }
+
+} else if(view == "days"){
+// Days
+days = Math.floor(dateSeconds / (60 * 60 * 24));
+dateSeconds = dateSeconds - (days * (60 * 60 * 24));
+returnText += (days + 1);
+if(days == 0){
+returnText = "> " + returnText + " Day";
+} else if((days+1) == 1){
+returnText += " Day";
+} else {
+returnText += " Days";
+ }
+
+} else if(view == "hours"){
+// Hours
+hours = Math.floor(dateSeconds / (60 * 60));
+dateSeconds = dateSeconds - (hours * (60 * 60));
+returnText += (hours+1);
+if(hours == 0){
+returnText = "> " + returnText + " Hour";
+} else if((hours+1) == 1){
+returnText += " Hour";
+} else {
+returnText += " Hours";
+ }
+} else if(view == "minutes"){
+minutes = Math.floor(dateSeconds / 60);
+dateSeconds = dateSeconds - (minutes * 60);
+returnText += (minutes+1);
+if(weeks == 0){
+returnText = "> " + returnText + " Minute";
+} else if((minutes+1) == 1){
+returnText += " Min";
+} else {
+returnText += " Mins";
+ }
+}
+return returnText;
+}
+
+function PadDigits(n, totalDigits) 
+    { 
+        n = n.toString(); 
+        var pd = ''; 
+        if (totalDigits > n.length) 
+        { 
+            for (i=0; i < (totalDigits-n.length); i++) 
+            { 
+                pd += '0'; 
+            } 
+        } 
+        return pd + n.toString(); 
+    } 
+
+</script>
+<g:background 
+    id="background" 
+    src="background.png"
+    style="position:absolute;top:0;left:0;z-index:-999;no=repeat;" ></g:background>
+<span id="gadgetContent">
+<table width="128px" height="62px" align="center" id="contentTable" style="overflow:hidden">
+<tr>
+<td align="center" valign="middle" class="style3">
+<span id="loadingImg" style="display:inline;"><img src="loading.gif" width="16" height="16" style="margin-top:5px"></span>
+<span class="style1" id="counterText" style="overflow:hidden;display:none">CountDown v1.2</span>
+<span class="style3" id="strapText" style="width:110px;overflow-x:hidden;overflow-y:hidden;display:none">&nbsp;&nbsp;Starting Up . . .</span></td>
+</tr>
+</table>
+</span>
+</body>
+</html>

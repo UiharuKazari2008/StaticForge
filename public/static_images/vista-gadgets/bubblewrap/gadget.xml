@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>Bubble Wrap</name>
+  <namespace><!--_locComment_text="{Locked}"-->microsoft.windows</namespace>
+  <version><!--_locComment_text="{Locked}"-->1.0.0.0</version>
+  <author name="Team Blackshirt">
+    <logo src="logo.png" />
+  </author>
+  <copyright><!--_locComment_text="{Locked}"-->&#169; 2006</copyright>
+  <description>Pop! Pop! Pop!</description>
+    <icons>
+      <icon height="64" width="64" src="icon.png" />
+    </icons>
+  <version value="1.0.0.0" MinPlatformVersion ="0.3"/>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="BubbleWrap.html"/>
+      <permissions><!--_locComment_text="{Locked}"-->Full</permissions>
+      <platform minPlatformVersion="1.0"/>
+      <defaultImage src="drag.png"/>
+    </host>
+  </hosts>
+</gadget>

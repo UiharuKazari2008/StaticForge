@@ -1,0 +1,42 @@
+<html>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+<meta http-equiv="MSThemeCompatible" CONTENT="yes" />
+
+<title>Piano Settings</title>
+<link href="css/settings.css" rel="stylesheet" type="text/css" />
+<script type="text/javascript" src="js/settings.js" language="javascript"></script>
+<style>
+.tile {
+	margin: 5px;
+	padding: 5px;
+}
+</style>
+</head>
+<!-- <body onload="loadSetting();"> -->
+<body onLoad="loadSetting();">
+<div style="width:275px;height:151px;border:none;background:url(images/settingsBack.png) no-repeat;padding-top:7px">
+<table align="center" border="0" cellpadding="1" cellspacing="5" class="normal">
+
+	<tr>
+        <td colspan="2" align="center">
+				
+			<img id="skin" src="images/settings_skin.png" style="background-color: #000000;">
+
+		</td>
+    </tr>
+	<tr>
+        <td colspan="2"><p style="margin-left: 20px;"><br/>Piano Color:</p></td>
+    </tr>
+    <tr>
+        <td colspan="2" align="center">
+			<script language="javascript">
+			renderColorTiles();
+			renderPatternTiles();
+			</script>
+
+		</td>
+    </tr>
+</table>
+</div>
+</body>
+</html>

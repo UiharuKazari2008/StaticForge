@@ -1,0 +1,59 @@
+/**
+ * ExpressCalc Calculator Visual Styles
+ */
+body
+{
+	background: url(background.png) no-repeat;
+	color: #a8b4d8;
+	font: 9pt 'Segoe UI', Tahoma, Arial, sans-serif;
+	height: 200px;
+	width: 130px;
+}
+
+/**
+ * Question box
+ */
+input {
+	background: url(input.png);
+	border: none;
+	color: #000000;
+	font: 9pt 'Segoe UI', Tahoma, Arial, sans-serif;
+	padding: 1px 4px;
+	display: block;
+	position: absolute;
+	top: 7px;
+	left: 7px;
+	height: 16px;
+	width: 107px;
+}
+input.prompt {
+	color: #707890;
+	font-style: italic;
+}
+.hot {
+	background: url(inputHot.png);
+}
+
+/**
+ * Results section
+ */
+#results {
+	overflow: hidden;
+	position: absolute;
+	top: 30px;
+	left: 9px;
+	height: 160px;
+	width: 111px;
+}
+.question {
+	line-height: 19px;
+	margin: 0 1px;
+	padding: 2px 3px 1px;
+}
+.answer {
+	background: url(result.png) no-repeat;
+	line-height: 18px;
+	margin: 0 1px;
+	padding: 0 3px;
+	text-align: right;
+}

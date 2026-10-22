@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>Εικονική γλάστρα</name>
+  <namespace>microsoft.windows</namespace>
+  <version>1.0.0.1</version>
+  <author name="KaKaNow.com">
+    <info url="kakanow.com"  text="KaKaNow.com"/>
+    <logo src="images/logo.png" />
+  </author>
+  <copyright>&#169; 2010</copyright>
+  <description>Απολαύστε κάτι όμορφο και ζωντανό στον υπολογιστή σας.
+Φέρτε λίγη λιακάδα στον υπολογιστή σας.  Αυτή η εικονική γλάστρα θα γεμίσει λουλούδια μπροστά στα μάτια σας, εάν βέβαια την ποτίζετε, χρησιμοποιώντας το ποντίκι σας.  Όπως κάθε αληθινό φυτό, εάν το παραμελήσετε θα μαραθεί.  Ίσως χρειαστούν αρκετές μέρες για να ανθίσουν τα λουλούδια, όμως σίγουρα θα φωτίζει την επιφάνεια εργασίας σας συνεχώς.</description>
+  <icons>
+    <icon height="64" width="64" src="images/icon.png" />
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="default.html" />
+      <permissions>Full</permissions>
+      <platform minPlatformVersion="1.0" />
+      <defaultImage src="images/drag.png" />
+    </host>
+  </hosts>
+</gadget>

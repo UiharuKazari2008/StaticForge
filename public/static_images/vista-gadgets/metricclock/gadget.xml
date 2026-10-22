@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+    <name>Metric Clock</name>
+    <namespace>SideScreen</namespace>
+    <version>2.0</version>
+    <author name="SideScreen">
+        <info url="www.sidescreen.co.nr" />
+        <logo src="logo.png" />
+    </author>
+    <copyright>© 2008 Brad Nicolle</copyright>
+    <description>View the current system time in metric (10 metric hours per day, 100 metric minutes per hour, 100 metric seconds per minute).</description>
+    <icons>
+      <icon height="48" width="48" src="icon.png" />
+    </icons>
+    <hosts>
+        <host name="sidebar">
+            <base type="HTML" apiVersion="1.0.0" src="MetricClock.html" />
+            <permissions>full</permissions>
+            <platform minPlatformVersion="0.3" />
+            <defaultImage src="icon.png"/>
+        </host>
+    </hosts>
+</gadget>

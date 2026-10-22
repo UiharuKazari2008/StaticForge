@@ -1,0 +1,50 @@
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+//  THIS CODE MAY NOT BE USED IN/ON ANY OTHER UI ELEMENT OR PRODUCT COMPONENT.
+//  Copyright (c) 2007 JQL.  All rights reserved.
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+<html>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+    <title>JQL Take-A-Break Settings</title>
+    
+	<meta name="description" content="Take-A-Break Gadget settings page for displaying the Take-A-Break gadget in Windows Vista Sidebar">
+	<meta name="Author" content="JQL">
+	<meta name="copyright" content="©2007 JQL All Rights Reserved">
+	<link href="../css/settings.css" rel="stylesheet" type="text/css">
+    <script type="text/javascript" src="core/js/local.js"></script>
+    <script type="text/javascript" src="../js/settings.js"></script>
+</head>
+<body onload="init()">
+	<table class="tablestyle" border="0">
+		<tr>
+			<td align="left">
+				<input type="checkbox" id="chbxAudible" name="chbxAudible" checked="checked">
+				<label id="lblAudible" for="chbxAudible"> Enable Sound</label>
+			</td>
+			<td align="right">
+				<input type="checkbox" id="chbxFadeIn" checked="checked">
+				<label id="lblFadeIn" for="chbxFadeIn"> Fade In</label>
+			</td>
+		</tr>
+	</table>
+	<hr>
+	<!-- Footer start -->
+	<div class="footer">
+		<table class="tablestyle" border="0">
+			<tr>
+				<td>
+					<input type="button" id="btnHelp" onclick="openHelp()">
+				</td>
+				<td nowrap="nowrap" align="right" class="website">
+					<a href="http://www.jqlgadget.com" id="jqlGadget">www.jqlgadet.com</a>
+				</td>
+			</tr>
+		</table>
+	</div>
+	<!-- Footer end -->
+</body>
+
+</html>

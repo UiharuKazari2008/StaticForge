@@ -1,0 +1,122 @@
+body {
+	width: 250px;
+	height: 263px;
+	background-image: url(../images/BackgroundUndocked.png);
+	background-repeat: no-repeat;
+}
+
+.positionNumber1 {
+	font-family: Arial, Helvetica, sans-serif;
+	font-size: 34px;
+	font-weight: bold;
+	color: #000000;
+	position: absolute;
+	left: 27px;
+	top: 55px;
+}
+.positionNumber2 {
+	font-family: Arial, Helvetica, sans-serif;
+	font-size: 34px;
+	font-weight: bold;
+	color: #000000;
+	position: absolute;
+	left: 108px;
+	top: 55px;
+}
+.positionNumber3 {
+	font-family: Arial, Helvetica, sans-serif;
+	font-size: 34px;
+	font-weight: bold;
+	color: #000000;
+	position: absolute;
+	left: 187px;
+	top: 55px;
+}
+.positionNumber4 {
+	font-family: Arial, Helvetica, sans-serif;
+	font-size: 34px;
+	font-weight: bold;
+	color: #000000;
+	position: absolute;
+	left: 27px;
+	top: 137px;
+}
+.positionNumber5 {
+	font-family: Arial, Helvetica, sans-serif;
+	font-size: 34px;
+	font-weight: bold;
+	color: #000000;
+	position: absolute;
+	left: 108px;
+	top: 137px;
+}
+.positionNumber6 {
+	font-family: Arial, Helvetica, sans-serif;
+	font-size: 34px;
+	font-weight: bold;
+	color: #000000;
+	position: absolute;
+	left: 187px;
+	top: 137px;
+}
+a.button:link
+{
+	font-family: Arial, Helvetica, sans-serif;
+	font-size: 20px;
+	font-weight: bold;
+	color: #FFFFFF;
+	text-decoration: none;
+	background-image: url(../../images/buttonundocked.png);
+	background-repeat: no-repeat;
+	background-position: center center;
+	position: absolute;
+	left: 15px;
+	top: 204px;
+	text-align: center;
+	vertical-align: middle;
+	display: block;
+	padding-top: 12px;
+	height: 49px;
+	width: 221px;
+}
+a.button:visited
+{
+	font-family: Arial, Helvetica, sans-serif;
+	font-size: 20px;
+	font-weight: bold;
+	color: #FFFFFF;
+	text-decoration: none;
+	background-image: url(../../images/buttonundocked.png);
+	background-repeat: no-repeat;
+	background-position: center center;
+	position: absolute;
+	left: 15px;
+	top: 204px;
+	text-align: center;
+	vertical-align: middle;
+	display: block;
+	padding-top: 12px;
+	height: 49px;
+	width: 221px;
+}
+a.button:hover
+{
+	font-family: Arial, Helvetica, sans-serif;
+	font-size: 20px;
+	font-weight: bold;
+	color: #FFFFFF;
+	text-decoration: none;
+	background-image: url(../../images/buttonHoverundocked.png);
+	background-repeat: no-repeat;
+	background-position: center center;
+	position: absolute;
+	left: 15px;
+	top: 204px;
+	text-align: center;
+	vertical-align: middle;
+	display: block;
+	padding-top: 12px;
+	height: 49px;
+	width: 221px;
+}
+

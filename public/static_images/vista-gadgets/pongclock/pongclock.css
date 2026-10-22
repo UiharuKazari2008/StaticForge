@@ -1,0 +1,35 @@
+body 
+{
+	background-color:Black;	
+	width:130;
+	height:98;	
+	border:0;
+	padding:0;	
+	margin:0;
+	font-family:System,Helvetica,sans-serif;
+	font-size:smaller;
+	color:White;
+}
+
+div
+{
+	position:absolute;	
+}
+
+img.paddle 
+{
+	width:4;
+	height:20;
+}
+
+img.ball 
+{
+	width:4;
+	height:4;	
+}
+
+img.line 
+{
+	width:1;
+	height:98;
+}

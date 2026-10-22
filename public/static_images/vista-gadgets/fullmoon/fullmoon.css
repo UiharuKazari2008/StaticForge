@@ -1,0 +1,114 @@
+#mainBody
+{
+    margin: 0px;
+    color: #cc0000;
+	width:130px;
+	height:100px;
+	border: 0px;
+}
+
+#calendarBody
+{
+    margin: 0;
+    color: #cc0000;
+	width:218px;
+	height:220px;
+	border: 0;
+}
+#settingsBody
+{
+	margin: 0;
+	width: 275px;
+	height: 300px;
+	font-size: 18px;
+}
+#PrevMonthButton
+{
+	position: absolute;
+	left: 165px;
+	top: 12px;
+	width: 16px;
+	height:16px;
+	border: 0;
+}
+#NextMonthButton
+{
+	position: absolute;
+	left: 185px;
+	top: 12px;
+	width: 16px;
+	height:16px;
+	border: 0;
+}
+.dateCell
+{
+	width: 16 px;
+	height: 16 px;
+}
+
+.dateCellImg
+{
+	width: 16 px;
+	height: 16 px;
+}
+#WobbleLink
+{
+	position: absolute;
+	top: 198px;
+	left: 0;
+	width: 218px;
+	height: 15px;
+	text-align: center;
+	color: white;
+	z-index: 20;
+}
+#WobbleLink a
+{
+	text-decoration: none;
+	color: white;
+}
+#Wobblelink a:hover
+{
+	text-decoration: underline;
+}
+.settingLabel
+{
+	font-size: 100%;
+	font-weight: bold;
+	margin-bottom: 0.25em;
+}
+.settingGroup
+{
+	margin-left: 32px;
+	margin-bottom: 0.5em;
+	font-size: 80%;
+}
+.settingGroup2
+{
+	margin-left: 32px;
+	margin-top: 0.1em;
+}
+.settingAbout
+{
+}
+.settingProductName
+{
+	font-size: 100%;
+	font-weight: bold;
+	margin-bottom: 0.25em;
+}
+.settingProductAuthor
+{
+	margin-left: 32px;
+	font-size: 80%;
+}
+.settingCopyright
+{
+	margin-left: 32px;
+	font-size: 60%;
+}
+.settingLink
+{
+	margin-left: 32px;
+	font-size: 60%;
+}

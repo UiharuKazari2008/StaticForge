@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+    <name>Magic 8-Ball</name>
+    <namespace>soft.selbit.com/tinyApps/8ball</namespace>
+    <version>0.5</version>
+    <author name="B. Rasmussen">
+        <info url="soft.selbit.com/tinyApps/8ball" />
+    </author>
+    <copyright>2006</copyright>
+    <description>Can't decide or problems predicting the future ? 
+	The Magic Ball has it all !</description>
+    <hosts>
+        <host name="sidebar">
+            <base type="HTML" apiVersion="0.5.8" src="8ball.html" />
+            <permissions>full</permissions>
+            <platform minPlatformVersion="0.3" />
+        </host>
+    </hosts>
+</gadget>

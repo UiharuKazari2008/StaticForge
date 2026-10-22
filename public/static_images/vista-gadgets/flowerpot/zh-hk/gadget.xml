@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>虛擬花盆</name>
+  <namespace>microsoft.windows</namespace>
+  <version>1.0.0.1</version>
+  <author name="KaKaNow.com">
+    <info url="kakanow.com"  text="KaKaNow.com"/>
+    <logo src="images/logo.png" />
+  </author>
+  <copyright>&#169; 2010</copyright>
+  <description>在您的桌面上擁有漂亮又生動的工具。
+為您的桌面帶來陽光。  只要使用滑鼠為這個「虛擬花盆」澆水，您將會看到花朵茁壯成長並盛開。  就像真正的植物一樣，如果不悉心照料就會枯萎。  也許要等很多天才會開花，但每次看到桌面都會讓您覺得賞心悅目。</description>
+  <icons>
+    <icon height="64" width="64" src="images/icon.png" />
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="default.html" />
+      <permissions>Full</permissions>
+      <platform minPlatformVersion="1.0" />
+      <defaultImage src="images/drag.png" />
+    </host>
+  </hosts>
+</gadget>

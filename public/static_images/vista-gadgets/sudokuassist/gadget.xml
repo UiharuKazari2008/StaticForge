@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>Sudoku Assistant</name>
+  <namespace>BruceMeister.Gadgets</namespace>
+  <version>2.0.0.0</version>
+  <author name="Bruce &amp; John">
+      <info url="http://galactic-patrol.blogspot.com" text="Galactic Patrol Blog" />
+      <logo src="BruceMeisterLogo.png" />
+  </author>
+  <copyright>&#169; 2006</copyright>
+  <description>Solves simple sudoku, and helps out with the hard ones.</description>
+  <icons>
+    <icon height="48" width="48" src="icon.png" />
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="html" apiVersion="1.0.0" src="gadget.html" />
+      <permissions>full</permissions>
+      <platform minPlatformVersion ="0.3"/>
+    </host>
+  </hosts>
+</gadget>

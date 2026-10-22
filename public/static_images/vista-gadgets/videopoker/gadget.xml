@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+    <name>Video Poker - Beta</name>
+  <namespace><!--_locComment_text="{Locked}"-->microsoft.windows</namespace>
+  <version><!--_locComment_text="{Locked}"-->1.1.0.0</version>
+  <author name="Microsoft Corporation">
+    <info url="http://go.microsoft.com/fwlink/?LinkId=55696" text="www.microsoftgadgets.com" />
+    <logo src="logo.png" />
+  </author>
+  <copyright><!--_locComment_text="{Locked}"-->&#169; 2006</copyright>
+  <description>Play Jacks-or-Better video poker.</description>
+  <icons>
+    <icon height="48" width="48" src="icon.png" />
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="poker.html" />
+      <permissions><!--_locComment_text="{Locked}"-->Full</permissions>
+      <platform minPlatformVersion="0.3" />
+    </host>
+  </hosts>
+</gadget>

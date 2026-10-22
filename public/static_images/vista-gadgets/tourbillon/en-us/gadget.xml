@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<gadget>
+  <name>Happy Buddha Tourbillon</name>
+  <namespace><!--_locComment_text="{Locked}"-->microsoft.windows</namespace>
+  <version><!--_locComment_text="{Locked}"-->1.1.0.0</version>
+  <author name="Marc Rogivue">
+    <info url="http://www.kultuhr.net/store" text="www.KULTUhR.net"/>
+    <logo src="logo.png"/>
+  </author>
+  <copyright><!--_locComment_text="{Locked}"-->© 2007</copyright>
+  <description>Happy Buddha Tourbillon Clock with Genuine Tourbillon Indicator</description>
+    <icons>
+      <icon height="48" width="48" src="icon.png"/>
+    </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="html" apiVersion="1.0.0" src="clock.html"/>
+      <permissions><!--_locComment_text="{Locked}"-->full</permissions>
+      <platform minPlatformVersion="1.0"/>
+      <defaultImage src="drag.png"/>
+    </host>
+  </hosts>
+</gadget>

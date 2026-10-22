@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>FutureClock</name>
+  <namespace>FutureClock.MarkVanBeek</namespace>
+  <version>1.0.0.0</version>
+  <author name="Mark Van Beek">
+    <logo src="logo.png" />
+  </author>
+  <copyright>&#169; 2007</copyright>
+  <description>Modern clock of the future...</description>
+  <icons>
+      <icon height="45" width="48" src="icon.png" />
+  </icons>
+  <logo>logo.png</logo>
+  <hosts>
+    <host name="sidebar">
+      <base type="html" apiVersion="1.0.0" src="futureclock.html" />
+      <permissions>full</permissions>
+      <platform minPlatformVersion ="0.3"/>
+    </host>
+  </hosts>
+</gadget>

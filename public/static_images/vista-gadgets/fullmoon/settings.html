@@ -1,0 +1,28 @@
+<html>
+	<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+		<meta http-equiv="MSThemeCompatible" CONTENT="yes"/>
+		
+		<title>Full Moon Settings</title>
+		<link href="FullMoon.css" type="text/css" rel="stylesheet"/>
+		<script language="javascript" src="FullMoon.js" type="text/javascript"></script>
+		<script language="VBScript" src="FullMoon.vbs" type="text/vbscript"></script>
+	</head>
+	<body id="settingsBody" onload="Settings_OnLoad()">
+		<div class="settingLabel">Settings</div>
+		<div class="settingGroup"><input type="checkbox" id="Checkbox_South"/><label for="Checkbox_South">Southern hemisphere <span style="font-size: 60%">(rotates image 180&deg;)</span></label></div>
+		<div class="settingGroup"><input type="checkbox" id="Checkbox_Highlight"/><label for="Checkbox_Highlight">Highlight phases in the calendar</label></div>
+		<div class="settingGroup"><input type="checkbox" id="Checkbox_Large"/><label for="Checkbox_Large">Use big moon</label></div>
+		<div class="settingGroup">
+			<input type="checkbox" id="Checkbox_ShowClock"/><label for="Checkbox_ShowClock">Show sidereal clock</label>
+			<div class="settingGroup2">Longitude:&nbsp;<input type="text" id="Text_Longitude" maxlength="8" style="width: 80px; vertical-align: middle"/><span style="font-size: 75%"><a href="http://www.google.com/custom?q=world+cities+latitude+longitude&sa=Search&sitesearch=&client=pub-5909281654227655&forid=1&ie=UTF-8&oe=UTF-8&safe=active&cof=GALT%3A%23ff941d%3BGL%3A1%3BDIV%3A%23444444%3BVLC%3Aff941d%3BAH%3Acenter%3BBGC%3A111111%3BLBGC%3A000000%3BALC%3Aff941d%3BLC%3Aff941d%3BT%3Affffff%3BGFNT%3Affffff%3BGIMP%3Affffff%3BFORID%3A1&hl=en">Google</a></span></div>
+			<div class="settingGroup2"><input type="checkbox" id="Checkbox_ShowOnHover"/><label for="Checkbox_ShowOnHover">Show only on hover</label></div>
+			<div class="settingGroup2"><input type="checkbox" id="Checkbox_ShowSkymap"/><label for="Checkbox_ShowSkymap">Show sky map <span style="font-size: 60%">(on hover)</span></label></div>
+		</div>
+		<div class="settingAbout">
+			<div class="settingProductName">Full Moon 3.2</div>
+			<div class="settingProductAuthor">Designed and written by John Stephen</div>
+			<div class="settingCopyright">&copy;2007, 2008 John Stephen</div>
+			<div class="settingLink"><a href="http://wobbleworks.com">wobbleworks.com</a></div>
+		</div>
+	</body>
+</html>

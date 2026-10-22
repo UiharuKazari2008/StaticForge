@@ -1,0 +1,39 @@
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+//  clock.html
+//
+//  Derived from the original Live Clock by Donavon West.
+//  Used with permission from the original author.
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+<html>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+<meta http-equiv="MSThemeCompatible" CONTENT="yes" />
+
+<title>Clock</title>
+<link href="css/clock.css" rel="stylesheet" type="text/css" />
+<script src="js/timeZones.js" language="javascript" type="text/javascript"></script>
+<script src="js/settings.js" language="javascript" type="text/javascript"></script>
+<script src="js/clock.js" language="javascript" type="text/javascript"></script>
+</head>
+<body scroll="no" unselectable="on" onload="loadMain()">
+<bgsound id="sound">
+<img id="clockTime" style="position:absolute;top:-1px;left:-1px;width:1px;height:1px" tabindex="1" />
+<g:background id="clockBg" style="position:absolute;width:130px;height:130px;z-index:-1" ></g:background>
+<g:image id="highlights" unselectable="on" src="images/live_highlights.png" style="position:absolute;left:0px;top:0px;width:130px;height:130px;z-index:30" ></g:image>
+<g:image id="s" unselectable="on" src="images/live_s.png" style="position:absolute;left:58px;top:0px;width:13px;height:129px;z-index:23" ></g:image>
+<g:image id="dot" unselectable="on" src="images/live_dot.png" style="position:absolute;left:58px;top:0px;width:13px;height:129px;z-index:22" ></g:image>
+<g:image id="m" unselectable="on" src="images/live_m.png" style="position:absolute;left:58px;top:0px;width:13px;height:129px;z-index:21" ></g:image>
+<g:image id="h" unselectable="on" src="images/live_h.png" style="position:absolute;left:59px;top:0px;width:13px;height:129px;z-index:20" ></g:image>
+<g:image id="d" unselectable="on" src="images/date.png" style="position:absolute;left:94px;top:58px;width:18px;height:14px;z-index:5" ></g:image>
+<div id="clockNamePosition" style="position:absolute;top:70px;left:0px;width:130px;text-align:center;z-index:10">
+    <div id="clockName" style="text-overflow:ellipsis;white-space:nowrap;overflow:hidden"></div>
+</div>
+<div id="clockDatePosition" style="position:absolute;top:58px;left:94px;width:18px;height:14px;text-align:center;z-index:10">
+    <div id="clockDate" style="text-overflow:ellipsis;white-space:nowrap;overflow:hidden;"></div>
+</div>
+</div>
+</body>
+</html>

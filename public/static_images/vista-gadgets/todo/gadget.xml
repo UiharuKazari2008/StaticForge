@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>ToDo List</name>
+  <namespace>Chad</namespace>
+  <version>1.00</version>
+  <author name="Chad">
+    <info url="http://www.codersshack.com/forum/" text="Coders Shack" />
+    <logo src="layout/logo.png" />
+  </author>
+  <copyright>Copyright Coders Shack ©2006-2007</copyright>
+  <description>Basically it is a 15 item to-do list. I made this because there were none for the sidebar yet.. This allows you to uncheck or check or remove your items on the to-do list. So if you are in need for a to-do list then you have found it. (www.CodersShack.com)</description>
+
+  <icons>
+    <icon height="48" width="48" src="layout/icon.png"/>
+  </icons>
+
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="todo.html" />
+      <permissions>full</permissions>
+      <platform minPlatformVersion="0.3" />
+    </host>
+  </hosts>
+</gadget>

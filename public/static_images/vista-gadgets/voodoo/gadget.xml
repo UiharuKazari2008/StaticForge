@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>Voodoo Doll</name>
+  <namespace><!--_locComment_text="{Locked}"-->microsoft.windows</namespace>
+  <version><!--_locComment_text="{Locked}"-->1.0.0.0</version>
+   <author name="Team Blackshirt">
+    <info  />
+    <logo src="logo.png"/>
+  </author>
+  <copyright><!--_locComment_text="{Locked}"-->&#169; 2006</copyright>
+  <description>Don't ged mad, get EVIL ! Mwahahahaha...</description>
+  <icons>
+    <icon height="65" width="108" src="icon.png" />
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="html" apiVersion="1.0.0" src="voodoo.html" />
+      <permissions><!--_locComment_text="{Locked}"-->full</permissions>
+      <platform minPlatformVersion ="0.3"/>
+    </host>
+  </hosts>
+</gadget>

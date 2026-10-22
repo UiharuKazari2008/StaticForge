@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+    <name>Toss The Dice</name>
+    <namespace>Josh</namespace>
+    <version>1.0</version>
+    <author name="Joshua Woodbury">
+    <logo src="CD.jpg" />
+    </author>
+    <copyright>2007</copyright>
+    <description>In this simple gadget you can click roll the dice to make the dice roll and flip to a random side. Warning: Do not over click the button, it might take a while to finish rolling.</description>
+<icons>
+	<icon src="Logo.jpg" />
+</icons>
+       <hosts>
+        <host name="sidebar">
+            <base type="HTML" apiVersion="1.0.0" src="Dice.html" />
+            <permissions>full</permissions>
+            <platform minPlatformVersion="0.3" />
+        </host>
+    </hosts>
+</gadget>

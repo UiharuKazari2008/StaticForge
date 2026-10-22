@@ -71,6 +71,7 @@ const melatonNetwork = require('./modules/melatonNetwork');
 const accountPictures = require('./modules/accountPictures');
 const { handleStatusStream } = require('./modules/statusStream');
 const desktopSoundsStatic = require('./modules/desktopSoundsStatic');
+const vistaGadgetStatic = require('./modules/vistaGadgetStatic');
 const installManifestFilter = require('./modules/installManifestFilter');
 const { browserRequest } = require('./modules/browserHttp');
 const { mountGrimoireBrowserBridge } = require('./modules/grimoireBrowserBridge');
@@ -992,7 +993,9 @@ function buildServiceWorkerCacheManifestUncached() {
     const shadowedByGalleryRoute = (webPath) => typeof webPath === 'string' && webPath.startsWith('/images/');
     // The Vista games' art and sounds (Yozora #609, tens of MB) load when a game opens, like
     // Windows' optional Games feature; the service worker caches them on that first fetch.
-    const onDemandGameAsset = (webPath) => typeof webPath === 'string' && webPath.startsWith('/static_images/vista-games/');
+    // Sidebar gadget packages (Yozora #629, modules/vistaGadgetStatic.js) load when a gadget is added
+    const onDemandGameAsset = (webPath) => typeof webPath === 'string'
+        && (webPath.startsWith('/static_images/vista-games/') || webPath.startsWith('/static_images/vista-gadgets/'));
 
     const staticFiles = globalResources.getGlobalCacheData()
         .filter(file =>
@@ -4374,6 +4377,9 @@ async function handleAdminUnixSocketMessage(message, socket) {
         app.get('/sounds/vista/:file', (req, res) => {
             desktopSoundsStatic.sendSound(req, res, __dirname);
         });
+
+        // Sidebar gadget packages: lowercase paths, locale folder then gadget root (Yozora #629)
+        app.use(vistaGadgetStatic.WEB_PREFIX, vistaGadgetStatic.middleware(__dirname));
 
         // graphify-out holds an internal cache (stat-index.json) that lists absolute server
         // paths, sizes and mtimes for the whole tree. Auth before any bytes leave the host.

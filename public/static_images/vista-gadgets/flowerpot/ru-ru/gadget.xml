@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>Виртуальный цветочный горшок</name>
+  <namespace>microsoft.windows</namespace>
+  <version>1.0.0.1</version>
+  <author name="KaKaNow.com">
+    <info url="kakanow.com"  text="KaKaNow.com"/>
+    <logo src="images/logo.png" />
+  </author>
+  <copyright>&#169; 2010</copyright>
+  <description>Пусть на рабочем столе происходит что-нибудь красивое.
+Наполните свой рабочий стол солнечным светом. Цветок в этом виртуальном горшке вырастет и распустится прямо у вас на глазах, если "поливать" его с помощью мыши. Если на него не обращать внимания, он, как и любое настоящее растение, завянет. Может пройти много дней, прежде чем цветок полностью расцветет, но одно можно сказать с уверенностью: при каждом просмотре он будет делать ваш рабочий стол ярче.</description>
+  <icons>
+    <icon height="64" width="64" src="images/icon.png" />
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="default.html" />
+      <permissions>Full</permissions>
+      <platform minPlatformVersion="1.0" />
+      <defaultImage src="images/drag.png" />
+    </host>
+  </hosts>
+</gadget>

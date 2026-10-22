@@ -1,0 +1,36 @@
+/*
+////////////////////////////////////////////////////////////////////////////////
+//
+//  THIS CODE MAY NOT BE USED IN/ON ANY OTHER UI ELEMENT OR PRODUCT COMPONENT.
+//  Copyright (c) 2007 JQL.  All rights reserved.
+//
+////////////////////////////////////////////////////////////////////////////////
+*/
+body{
+	font-family: Calibri, Tahoma, Arial, Helvetica, sans-serif;
+	font-size: 10pt;
+	width: 300px;
+	height: 90px;
+	margin: 2px;
+}
+.tablestyle {
+	font-size: 10pt;
+	margin: 2px;
+	width: 290px;
+}
+.numInput {
+	width: 90px;
+}
+.footer {
+	top: 50px;
+	position: absolute;
+}
+.website {
+	text-align: right;
+}
+.website a {
+	text-decoration: none;
+}
+.website a:hover {
+	text-decoration: underline;
+}

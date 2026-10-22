@@ -1,0 +1,62 @@
+body {
+	vertical-align: top;
+	margin: 0px;
+	font-family: "Calibri", Trebuchet MS, Verdana, Tahoma;
+	color: #000000;
+	font-size: 11px;
+	width: 130px;
+	height: 72px;
+
+}
+input, textarea { 
+	border: 1px solid #AAAAAA;
+	font-family: "Calibri", Trebuchet MS, Verdana, Tahoma;
+	font-size: 11px;
+	margin-bottom: 2px;
+	-moz-box-sizing: border-box;
+}
+p {
+	padding: 0px 5px 0px 0px;
+	margin: 0px;
+}
+/* Main gadget */
+
+div.gadget {
+	width: 120px;
+    height: 62px;
+	position: absolute;
+	overflow: hidden;
+	top: 4px;
+	left: 5px;
+	background-color: #FFFFFF;
+	padding-left: 5px;
+	padding-top: 5px;
+}
+input.inputTXT {
+	width: 110px;
+}
+
+/* EOF Main gadget */
+
+/* Flyout gadget */
+div#flyoutMainFrame {
+	width: 248px;
+	height: 120px;
+	position: absolute;
+	overflow: hidden;
+	top: 4px;
+	left: 5px;
+	background-color: #FFFFFF;
+	padding-left: 5px;
+	padding-top: 5px;
+}
+table {
+	font-family: "Calibri", Trebuchet MS, Verdana, Tahoma;
+	font-size: 11px;
+}
+
+.encText {
+	width: 240px;
+	font-size: 11px;
+}
+/* EOF Flyout gadget */

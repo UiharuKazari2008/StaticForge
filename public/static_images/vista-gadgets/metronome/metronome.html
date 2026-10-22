@@ -1,0 +1,51 @@
+<html xmlns:v="urn:schemas-microsoft-com:vml">
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+	<meta http-equiv="MSThemeCompatible" CONTENT="yes" />
+	
+	<title>Metronome</title>
+	<link href="css/metronome.css" rel="stylesheet" type="text/css"/>
+
+ 	<script type="text/javascript" src="js/settings.js" language="javascript"></script>
+	<script type="text/javascript" src="js/metronome.js" language="javascript"></script>
+	<script>
+	System.Gadget.settingsUI = "settings.html";
+	</script>
+</head>
+<body id="piano" scroll="no" unselectable="on" onKeyUp="keyUp();" onKeyDown="keyDown();">
+<div id="tempo">
+	<p id="tempoShadow">120</p>
+	<p id="tempoHue"><span id="tempoHueValue">120</span><span class="bpm"> bpm</span></p>
+</div>
+
+<div id="iterators">
+	<div><img src="images/button_iteratorUp.png" border="0" 
+		onMouseDown="javascript: incrementLoop(); incrementTempo(); swapImage(this, 'button_iteratorUp_press.png');"
+		onMouseUp="javascript:stopLoop(); swapImage(this, 'button_iteratorUp_hover.png');"
+		onMouseOver="javascript:swapImage(this, 'button_iteratorUp_hover.png');"
+		onMouseOut="javascript:swapImage(this, 'button_iteratorUp.png');"/></div>
+	<div><img src="images/button_iteratorDown.png" border="0" style="margin:0px;"
+		onMouseDown="javascript:decrementLoop(); decrementTempo(); swapImage(this, 'button_iteratorDown_press.png');"
+		onMouseUp="javascript:stopLoop(); swapImage(this, 'button_iteratorDown_hover.png');"
+		onMouseOver="javascript:swapImage(this, 'button_iteratorDown_hover.png');"
+		onMouseOut="javascript:swapImage(this, 'button_iteratorDown.png');"/></div>
+</div>
+
+<img id="blinker" src="images/light_beat.png"/>
+
+<img id="starter" src="images/button_starter.png" border="0"
+	onMouseDown="javascript:starterMouseDown();"
+	onMouseUp="javascript:starterMouseUp();"
+	onMouseOver="javascript:starterMouseOver();"
+	onMouseOut="javascript:starterMouseOut();"/>
+
+</body>
+</html>
+<script language="javascript">
+
+setTempo(tempo);
+
+System.Gadget.onUndock = checkState;
+System.Gadget.onDock = checkState;
+System.Gadget.onSettingsClosed = SettingsClosed;
+System.Gadget.onShowSettings = ShowSettings;
+</script>

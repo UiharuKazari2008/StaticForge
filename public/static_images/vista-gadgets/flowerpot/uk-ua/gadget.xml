@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>Віртуальний квітковий горщик</name>
+  <namespace>microsoft.windows</namespace>
+  <version>1.0.0.1</version>
+  <author name="KaKaNow.com">
+    <info url="kakanow.com"  text="KaKaNow.com"/>
+    <logo src="images/logo.png" />
+  </author>
+  <copyright>&#169; 2010</copyright>
+  <description>Що-небудь гарне і живе прямо на робочому столі.
+Принеси сонця на робочому столі. Квітка у цьому віртуальному горщику виросте і розпуститься прямо перед вашими очима, якщо ви дасте кольору води за допомогою миші. Так само, як і будь-який даний рослина, він буде зменшений, якщо знехтувати. Це може зайняти багато днів, щоб досягти повного розквіту, але воно, безсумнівно, Ваш робочий стіл яскравіше при кожному перегляді.</description>
+  <icons>
+    <icon height="64" width="64" src="images/icon.png" />
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="default.html" />
+      <permissions>Full</permissions>
+      <platform minPlatformVersion="1.0" />
+      <defaultImage src="images/drag.png" />
+    </host>
+  </hosts>
+</gadget>

@@ -1,0 +1,36 @@
+<!--
+//---------------------------------------------
+//  THIS CODE IS APPROVED FOR USE IN/ON ANY OTHER UI ELEMENT OR PRODUCT COMPONENT.
+//  Copyright (c) 2006 Designing Webs, Inc. All rights reserved.
+// ----------------------------------------------
+-->
+<html>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+<title>mines</title>
+<link href="library/css/gadget.css" type="text/css" rel="StyleSheet">
+<script src="library/js/gadget.js" type="text/javascript"></script>
+</head>
+
+<body onload="setUpGadget();">
+
+ 	<div id="mineBoard" style="filter:progid:DXImageTransform.Microsoft.alpha();"></div>
+ 	<div id="coverInner" style="filter:progid:DXImageTransform.Microsoft.alpha();background-image:url('images/coverInner.gif');"></div>
+ 	<div id="displayHolder">
+         <div class="display" id="displayHolderMines"></div>
+         <div class="display" id="displayHolderTime"></div>
+    </div>
+
+	<div id="alerts"  class="alerts" >
+      	    <div id="alertsText" class="alertsText"></div>
+    </div>
+	<div id="playAgain"  class="playAgain"><a class="text" id="playAgainTextHref" href="JavaScript:setUpGadget();"><id id="L_playAgain">PLAY AGAIN</id></a></div>
+		<div id="formHolder">
+		    <div class="directionsText" id = "formHolderDirections"></div><nobr>
+		    <ul style="margin-top: -10px;">
+                <li>&#187;&nbsp;<a class="text" id="formField1" href="JavaScript:init(1);"></a></li>
+                <li>&#187;&nbsp;<a class="text" id="formField2" href="JavaScript:init(2);"></a></li>
+                <li>&#187;&nbsp;<a class="text" id="formField3"  href="JavaScript:init(3);"></a></li>
+             </ul>
+      </div>
+
+</body></html>

@@ -1,0 +1,22 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+<html>
+	<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+        <meta http-equiv="MSThemeCompatible" CONTENT="yes" />
+        
+        <title>Simple Stopwatch</title>
+        <link href="css/stopwatch.css" rel="stylesheet" type="text/css" />
+        <script src="js/stopwatch.js" language="javascript" type="text/javascript"></script>
+	</head>
+    <body scroll="no" unselectable="on" onload="loadMain()">
+        <g:background id="dockBg" 
+            style="position:absolute;width:130px;height:75px;z-index:-1;top:0px;left:0px;" src="images/docked.png"></g:background>
+        <input type="text" id="timeDisplay" value="00:00:00.000" />
+        <div id="status">&nbsp;</div>
+        <div id="stopBtn" onclick="onStop()" onmouseover="onStopStatus()" onmouseout="offStopStatus()">
+            <g:image id="stopImg" src="images/stop.png" ></g:image>
+        </div>
+        <div id="playBtn" onclick="onPlay()" onmouseover="onPlayStatus()" onmouseout="offPlayStatus()">
+            <g:image id="playImg" src="images/play.png" ></g:image>
+        </div>
+	</body>
+</html>

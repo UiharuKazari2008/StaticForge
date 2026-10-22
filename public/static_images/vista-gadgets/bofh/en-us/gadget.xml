@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<gadget>
+  <name>BOFH: Excuse of the Day</name>
+  <namespace>
+    <!--_locComment_text="{Locked}"-->microsoft.windows
+  </namespace>
+  <version>
+    <!--_locComment_text="{Locked}"-->1.0.0.0
+  </version>
+  <author name="Jordan Wiseman">
+  </author>
+  <copyright>
+    <!--_locComment_text="{Locked}"-->© 2007
+  </copyright>
+  <description>Gadget to display the ever so necessary 'Excuse of the Day' for all us BOFH's.  BOFH is copyright © 1995-2001, Simon Travaglia</description>
+  <icons>
+    <icon src="images/bofhlogo.png"></icon>
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="gadget.htm"/>
+      <permissions>
+        <!--_locComment_text="{Locked}"-->Full
+      </permissions>
+      <platform minPlatformVersion="0.3"/>
+      <defaultImage src="images/bofhlogo.png"></defaultImage>
+    </host>
+  </hosts>
+</gadget>

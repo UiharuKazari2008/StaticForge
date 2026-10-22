@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+    <name>Take-A-Break</name>
+    <namespace>Example.You</namespace>
+    <version>1.0.0.1</version>
+    <author name="JQL">
+        <info url="http://www.jqlgadget.com" text="www.jqlgadget.com"/>
+        <logo src="../images/icons/smallcoffee.png"/>
+    </author>
+    <copyright>©2007 JQL All Rights Reserved</copyright>
+    <description>Man muss eine Pause nehmen wenn er gut arbeiten will. JQL Eine-Pause-Nehmen hilft sie zu erinnern eine Pause zu nehmen.</description>
+    <icons>
+    	<icon height="48" width="48" src="../images/icons/smallcoffee.png"/>
+    </icons>
+    <hosts>
+        <host name="sidebar">
+            <base type="HTML" apiVersion="1.0.0" src="takeabreak.html" />
+            <permissions>full</permissions>
+            <platform minPlatformVersion="0.3" />
+        </host>
+    </hosts>
+</gadget>

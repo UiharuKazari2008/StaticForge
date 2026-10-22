@@ -1294,6 +1294,11 @@ body.desktop-mode:not(.windows-classic-theme) .vsb-notes:is(:hover, :focus-withi
     color: #444;
 }
 
+/* A gadget's settings window and its messages: Vista draws them with a bare caption */
+#confirmationDialog.vsb-plain-dialog > .modal-window-title > .modal-window-title-main > :is(i, img) {
+    display: none;
+}
+
 /* ---------- Gadget Gallery ---------- */
 
 /* The pager and search sit on the frame glass in the title toolbar, as #logViewerModal
@@ -1330,10 +1335,33 @@ body.desktop-mode:not(.windows-classic-theme) .vsb-notes:is(:hover, :focus-withi
     height: 16px;
 }
 
-.vsb-gallery {
+/* Vista's gallery is glass all through (VM, 2026-10-22, ~/.cache/vista-vm/gallery-ref): the tiles sit
+   on a light wash between a white highlight under the toolbar and a grey line over the footer,
+   not on a white client. Text is black 9pt Segoe UI on the glass too. */
+#vistaGadgetGallery .vsb-gallery.modal-content {
     display: flex;
     flex-direction: column;
     padding: 0;
+    border: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.75);
+    border-bottom: 1px solid rgba(70, 90, 120, 0.3);
+    border-radius: 0;
+    background: rgba(255, 255, 255, 0.38);
+    box-shadow: none;
+    color: #000;
+    font: 9pt "Segoe UI", Tahoma, sans-serif;
+}
+
+/* no client edge either (the light client's ::after frame line): the glass runs through */
+#vistaGadgetGallery::after {
+    display: none;
+}
+
+#vistaGadgetGallery .vsb-gallery-pager,
+#vistaGadgetGallery .vsb-gallery-footer {
+    color: #000;
+    font: 9pt "Segoe UI", Tahoma, sans-serif;
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.9), 0 0 3px rgba(255, 255, 255, 0.9);
 }
 
 .vsb-gallery-pager {
@@ -1380,6 +1408,9 @@ body.desktop-mode:not(.windows-classic-theme) .vsb-notes:is(:hover, :focus-withi
 }
 
 .vsb-gallery-tile {
+    color: #000;
+    font: 9pt "Segoe UI", Tahoma, sans-serif;
+    text-align: center;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1416,33 +1447,75 @@ body.desktop-mode:not(.windows-classic-theme) .vsb-notes:is(:hover, :focus-withi
 
 .vsb-gallery-details {
     display: flex;
-    gap: 12px;
-    padding: 8px 14px;
-    border-top: 1px solid rgba(0, 0, 0, 0.12);
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 88px;
+    box-sizing: border-box;
+    padding: 14px 22px 12px;
+    border-top: 1px solid rgba(70, 90, 120, 0.3);
+    box-shadow: inset 0 1px rgba(255, 255, 255, 0.75);
 }
 
-.vsb-gallery-details img {
-    width: 64px;
-    height: 64px;
+.vsb-gallery-details-main {
+    min-width: 0;
+}
+
+/* "Calendar 1.1.0.0": the name and version in one 12pt line, the description in 9pt under it */
+.vsb-gallery-details-name {
+    font-size: 12pt;
+    line-height: 20px;
+}
+
+.vsb-gallery-details-pub {
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    flex: 0 0 auto;
+    max-width: 50%;
+}
+
+.vsb-gallery-details-logo {
+    max-width: 64px;
+    max-height: 40px;
     object-fit: contain;
 }
 
-.vsb-gallery-details-name {
-    font-weight: 600;
+.vsb-gallery-details-author {
+    font-size: 11pt;
+    line-height: 17px;
 }
 
-.vsb-gallery-details-version,
-.vsb-gallery-details-author {
-    color: #555;
+#vistaGadgetGallery .vsb-gallery-details-site,
+#vistaGadgetGallery .vsb-gallery-online {
+    color: #0066cc;
+    text-decoration: none;
+}
+
+#vistaGadgetGallery .vsb-gallery-details-site:hover,
+#vistaGadgetGallery .vsb-gallery-online:hover {
+    text-decoration: underline;
 }
 
 .vsb-gallery-footer {
     position: absolute;
     left: calc(var(--window-frame-inset, 0px) + 10px);
+    right: calc(var(--window-frame-inset, 0px) + 10px);
     bottom: var(--window-frame-inset, 0px);
     display: flex;
     align-items: center;
+    justify-content: space-between;
     height: var(--window-frame-bottom);
+}
+
+.vsb-gallery-online {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.vsb-gallery-online img {
+    width: 16px;
+    height: 16px;
 }
 
 .vsb-gallery-details-toggle {
@@ -1453,27 +1526,33 @@ body.desktop-mode:not(.windows-classic-theme) .vsb-notes:is(:hover, :focus-withi
 }
 
 .vsb-gallery-chevron {
-    width: 16px;
-    height: 16px;
-    border: 1px solid #8ea4c1;
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    width: 18px;
+    height: 18px;
+    border: 1px solid #8a8f96;
     border-radius: 50%;
-    background: linear-gradient(#fff, #dde6f0);
+    background: url('/static_images/vista-sidebar/sidebar/gallery-chevron-down.png') 50% 55% no-repeat,
+        linear-gradient(#ffffff, #f1f1f1 45%, #d9dadc 55%, #eceded);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.8);
 }
 
-.vsb-gallery-chevron::before {
-    content: "";
-    display: block;
-    width: 5px;
-    height: 5px;
-    margin: 4px auto 0;
-    border-right: 1.5px solid #333;
-    border-bottom: 1.5px solid #333;
-    transform: rotate(45deg);
+/* sidebar.exe's chevrons (resources 4006 up, 4007 down) on the round button DirectUI draws */
+.vsb-gallery-show-details .vsb-gallery-chevron {
+    background-image: url('/static_images/vista-sidebar/sidebar/gallery-chevron-up.png'),
+        linear-gradient(#ffffff, #f1f1f1 45%, #d9dadc 55%, #eceded);
+    background-position: 50% 45%, 0 0;
 }
 
-.vsb-gallery-show-details .vsb-gallery-chevron::before {
-    margin-top: 6px;
-    transform: rotate(-135deg);
+.vsb-gallery-details-toggle:hover .vsb-gallery-chevron {
+    border-color: #3c7fb1;
+    background-image: url('/static_images/vista-sidebar/sidebar/gallery-chevron-down.png'),
+        linear-gradient(#f2fafe, #e3f3fc 45%, #bfe3f8 55%, #d9eefa);
+}
+
+.vsb-gallery-show-details .vsb-gallery-details-toggle:hover .vsb-gallery-chevron {
+    background-image: url('/static_images/vista-sidebar/sidebar/gallery-chevron-up.png'),
+        linear-gradient(#f2fafe, #e3f3fc 45%, #bfe3f8 55%, #d9eefa);
 }
 
 .vsb-gallery-ghost {

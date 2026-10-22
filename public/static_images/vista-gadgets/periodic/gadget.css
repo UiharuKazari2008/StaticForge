@@ -1,0 +1,71 @@
+body
+{
+    font-family: Segoe UI;
+    margin: 0;
+    padding: 0;
+    color: #eeeeee;
+    text-align: center;
+    width: 130px;
+    height: 130px;
+}
+a
+{
+    text-decoration:none;
+}
+.anDiv
+{
+    font-size: 13px;
+	position:absolute;
+	left:7px;
+	top:10px;
+	right:7px;
+	width:116px;
+	color: #be96ff;
+}
+.symbolDiv
+{
+    font-size: 23px;
+	position:absolute;
+	left:7px;
+	top:27px;
+	right:7px;
+	width:116px;
+	color: #d7bfff;
+}
+.symbolDiv a
+{
+    color: #d7bfff;
+}
+.nameDiv
+{
+    font-size: 13px;
+	position:absolute;
+	left:7px;
+	top:58px;
+	right:7px;
+	width:116px;
+	color: #e0ceff;
+}
+.nameDiv a
+{
+    color: #e0ceff;
+}
+.ramDiv
+{
+    font-size: 13px;
+	position:absolute;
+	left:7px;
+	top:77px;
+	right:7px;
+	width:116px;
+	color: #be96ff;
+}
+.linkDiv
+{
+    font-size: 12px;
+	position:absolute;
+	left:7px;
+	top:108px;
+	right:7px;
+	width:116px;
+}
