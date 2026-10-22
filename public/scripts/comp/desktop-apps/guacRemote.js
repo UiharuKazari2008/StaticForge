@@ -738,7 +738,8 @@ function trackDesktopGuacFrame(modal, frame, fallbackTitle) {
     if (!frameWindow || !frameDocument || !frameDocument.head) return;
     const sync = () => {
         const conn = desktopGuacRouteConnection(frameWindow.location.hash);
-        const text = frameDocument.title || (conn && conn.name) || fallbackTitle;
+        // a quick connection's page title is its URI (vnc://host:port/); mstsc's "host - Remote Desktop" stays
+        const text = (conn && conn.quick ? '' : frameDocument.title) || (conn && conn.name) || fallbackTitle;
         const protocol = (conn && conn.protocol) || frame.dataset.protocol || '';
         if (conn) setDesktopGuacTitle(modal, text, GUAC_PROTOCOL_ICONS[protocol] || 'fas fa-desktop');
         else setDesktopGuacTitle(modal, text, DESKTOP_GUAC_APP_FA_ICON);
@@ -773,6 +774,10 @@ function mirrorDesktopGuacFrame(frame, kind, payload) {
             }
         }
     }
+    if (kind === 'client' && modal.dataset.windowIdentifier === 'desktopGuacSession') {
+        mirrorDesktopGuacSession(modal, frame, payload);
+        return;
+    }
     const entry = desktopGuacDialog && desktopGuacDialog.frame === frame && desktopGuacDialog.kind === kind ? desktopGuacDialog : null;
     if (!payload.id || payload.className === 'connecting') {
         if (entry && !entry.open) desktopGuacDialog = null;
@@ -797,6 +802,96 @@ function mirrorDesktopGuacFrame(frame, kind, payload) {
     // Opening while our hide is still closing the shared dialog would be undone by that hide
     Promise.resolve(desktopGuacDialogClosing).then(() => {
         if (desktopGuacDialog === next) openDesktopGuacDialog(modal, next);
+    });
+}
+
+// Session windows end the way mstsc's do (Yukimi 2026-10-22; the dialogs are mstsc's, in
+// remoteDesktopConnection.js): a connection lost after it was up retries under the Reconnecting
+// panel, at most remoteDesktopConnection.reconnectMax times; any other end is Remote Desktop
+// Disconnected with mstsc's words for the status code, then the window closes. A plain disconnect
+// (the bar's Disconnect, a remote log off) closes it without a word, like mstsc.
+function desktopGuacStatusCode(key) {
+    const match = /ERROR_(?:CLIENT|TUNNEL)_([0-9A-F]+)$/.exec(key || '');
+    return match ? parseInt(match[1], 16) : null;
+}
+
+function closeDesktopGuacSession(modal) {
+    const close = modal.querySelector('.modal-window-controls .close-btn');
+    if (close) close.click();
+}
+
+async function loadDesktopGuacSessionDialogs() {
+    // remoteDesktopConnection: public/scripts/comp/desktop-apps/remoteDesktopConnection.js
+    if (!window.remoteDesktopConnection) await featureLoader.loadFeature('remote_desktop_connection');
+    return window.remoteDesktopConnection;
+}
+
+// opts.onState (Remote Desktop Connection waits on it): 'connected' the first time, 'ended' once
+function noteDesktopGuacSessionState(modal, state) {
+    const opts = modal._guacSession;
+    if (!opts || typeof opts.onState !== 'function') return;
+    const onState = opts.onState;
+    if (state === 'ended') opts.onState = null;
+    onState(state);
+}
+
+function mirrorDesktopGuacSession(modal, frame, payload) {
+    const session = frame._rdcSession || (frame._rdcSession = {
+        connected: false, attempts: 0, started: 0, timer: 0, panel: null, lastId: null, ended: false
+    });
+    if (session.ended) return;
+    if (payload.state === 'CONNECTED') {
+        if (!session.connected) noteDesktopGuacSessionState(modal, 'connected');
+        session.connected = true;
+        session.attempts = 0;
+        if (session.panel) session.panel.close();
+        session.panel = null;
+        return;
+    }
+    if (!payload.id || payload.id === session.lastId || payload.className === 'connecting') return;
+    session.lastId = payload.id;
+    if (payload.className !== 'error') {
+        if (payload.state === 'DISCONNECTED') {
+            session.ended = true;
+            closeDesktopGuacSession(modal);
+        }
+        return;
+    }
+    const code = desktopGuacStatusCode(payload.key);
+    const reconnect = payload.actions.find((action) => /\breconnect\b/.test(action.className));
+    const end = () => {
+        session.ended = true;
+        clearTimeout(session.timer);
+        if (session.panel) session.panel.close();
+        session.panel = null;
+    };
+    loadDesktopGuacSessionDialogs().then((rdc) => {
+        if (session.ended || !modal.isConnected) return;
+        if (reconnect && session.connected && rdc.reconnectable(code) && session.attempts < rdc.reconnectMax) {
+            session.attempts++;
+            if (!session.panel) {
+                session.panel = rdc.sessionReconnecting(modal, () => {
+                    end();
+                    closeDesktopGuacSession(modal);
+                });
+            }
+            session.panel.update(session.attempts);
+            // each attempt starts at least 5 s after the one before (Guacamole's own countdown is 15 s)
+            clearTimeout(session.timer);
+            session.timer = setTimeout(() => {
+                if (session.ended) return;
+                session.started = Date.now();
+                reconnect.run();
+            }, Math.max(0, session.started + 5000 - Date.now()));
+            return;
+        }
+        end();
+        rdc.sessionDisconnected(modal, code, session.connected).then(() => closeDesktopGuacSession(modal));
+    }).catch(() => {
+        // without mstsc's dialogs, Guacamole's status in the shared box
+        if (!modal.isConnected) return;
+        end();
+        openDesktopGuacDialog(modal, { frame: frame, kind: 'client', id: payload.id, payload: payload, open: false, answered: false, labels: '' });
     });
 }
 
@@ -843,6 +938,7 @@ function desktopGuacStatusLabel(payload) {
     }
     if (state === 'CONNECTED') return 'Connected';
     if (state === 'DISCONNECTING') return 'Disconnecting...';
+    if (payload && payload.className === 'error') return 'Disconnected';
     if (payload && payload.text && payload.className && payload.className !== 'connecting') return payload.text;
     if (state === 'DISCONNECTED' || state === 'CLIENT_ERROR' || state === 'TUNNEL_ERROR') return 'Disconnected';
     return payload && payload.text || state;
@@ -1079,6 +1175,7 @@ function openDesktopGuacFrame(opts) {
     modal.appendChild(document.createElement('div')).className = 'modal-focus-overlay';
     modal.appendChild(desktopGuacControls(modal, () => {
         guacSessionModals.delete(opts.key);
+        noteDesktopGuacSessionState(modal, 'ended');
         const frame = modal.querySelector('iframe');
         if (frame && desktopGuacDialogOwned(frame)) hideDesktopGuacDialog();
         if (desktopGuacDialog && desktopGuacDialog.frame === frame) desktopGuacDialog = null;
