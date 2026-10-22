@@ -1685,7 +1685,7 @@ class SpellbookModalManager {
         // Disable upscale button during upscaling
         if (this.upscaleBtn) {
             this.upscaleBtn.disabled = true;
-            this.upscaleBtn.textContent = 'Upscaling...';
+            this.upscaleBtn.lastElementChild.textContent = 'Upscaling...';
         }
 
         let toastId;
@@ -1711,7 +1711,7 @@ class SpellbookModalManager {
             if (!confirmed) {
                 // Reset button state
                 this.upscaleBtn.disabled = false;
-                this.upscaleBtn.textContent = 'Upscale';
+                this.upscaleBtn.lastElementChild.textContent = 'Upscale';
                 return;
             }
 
@@ -1832,7 +1832,7 @@ class SpellbookModalManager {
             // Re-enable upscale button
             if (this.upscaleBtn) {
                 this.upscaleBtn.disabled = false;
-                this.upscaleBtn.textContent = 'Upscale';
+                this.upscaleBtn.lastElementChild.textContent = 'Upscale';
             }
         }
     }

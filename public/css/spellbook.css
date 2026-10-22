@@ -328,6 +328,13 @@ body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal :is(.spe
     border-radius: 0;
 }
 
+/* Photo Gallery's viewer glyphs keep their own size (20x20, 19x17) rather than a blurred 16 px */
+body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal .spellbook-command-bar :is(#spellbookExpandBtn, #spellbookUpscaleBtn) > .explorer-command-icon {
+    width: auto;
+    height: auto;
+    margin-block: -2px;
+}
+
 /* the controls row */
 body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal .spellbook-controls-container {
     gap: 6px;
