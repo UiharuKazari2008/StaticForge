@@ -150,8 +150,11 @@ function registerVfsFuseRoutes(app, { vfsPath, authMiddleware, globalResources }
     }
 
     async function findChild(dirPath, name) {
-        const direct = await vfs().findGalleryChildByName(dirPath, name);
-        if (direct !== undefined) return direct;
+        // Canonical gallery folders (navPath of Pictures/Scraps) skip the full gallery listing.
+        if (/^\/Workspaces\/[^/]+\/(Pictures|Scraps)$/.test(dirPath)) {
+            const direct = await vfs().findGalleryChildByName(dirPath, name);
+            if (direct !== undefined) return direct;
+        }
         const result = await vfs().listDirectory(dirPath, {
             offset: 0,
             limit: LIST_HARD_LIMIT,

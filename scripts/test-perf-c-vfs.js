@@ -65,6 +65,59 @@ function openRo(file) {
     return { db, all, close: () => new Promise((r) => db.close(() => r())) };
 }
 
+// Finding 5 end to end: old vs new FUSE routes answer /fs/stat and /fs/list the same.
+async function fuseRequest(port, urlPath) {
+    const http = require('http');
+    return new Promise((resolve, reject) => {
+        http.get({ host: '127.0.0.1', port, path: urlPath }, (res) => {
+            let body = '';
+            res.on('data', (c) => { body += c; });
+            res.on('end', () => resolve({ status: res.statusCode, body }));
+        }).on('error', reject);
+    });
+}
+
+async function compareFuseRoutes(gr, oldVfs, newVfs, wsName, fileNames) {
+    const express = require('express');
+    const oldFuse = loadOld('modules/vfsFuseHttp.js');
+    const newFuse = require('../modules/vfsFuseHttp');
+    const mk = (fuse, vfs) => {
+        const app = express();
+        app.use(express.json());
+        fuse.registerVfsFuseRoutes(app, {
+            vfsPath: '/vfs',
+            authMiddleware: (req, res, next) => next(),
+            globalResources: { ...gr, getVfsManager: () => vfs, getVfsDatabase: () => vfsDatabase, getWebSocketServer: () => null }
+        });
+        return new Promise((resolve) => { const srv = app.listen(0, '127.0.0.1', () => resolve(srv)); });
+    };
+    const oldSrv = await mk(oldFuse, oldVfs);
+    const newSrv = await mk(newFuse, newVfs);
+    try {
+        const urls = [
+            `/vfs/fs/list?path=${encodeURIComponent(`/Workspaces/${wsName}`)}`,
+            ...fileNames.map((n) => `/vfs/fs/stat?path=${encodeURIComponent(`/Workspaces/${wsName}/Pictures/${n}`)}`),
+            `/vfs/fs/list?path=${encodeURIComponent(`/Workspaces/${wsName}/Pictures`)}&limit=50`
+        ];
+        let oldMs = 0;
+        let newMs = 0;
+        for (const u of urls) {
+            let t0 = Date.now();
+            const a = await fuseRequest(oldSrv.address().port, u);
+            oldMs += Date.now() - t0;
+            t0 = Date.now();
+            const b = await fuseRequest(newSrv.address().port, u);
+            newMs += Date.now() - t0;
+            assert.strictEqual(b.status, a.status, `status ${u}`);
+            assert.deepStrictEqual(JSON.parse(b.body), JSON.parse(a.body), `body ${u}`);
+        }
+        console.log(`  FUSE routes: ${urls.length} requests equal; old ${oldMs} ms -> new ${newMs} ms`);
+    } finally {
+        oldSrv.close();
+        newSrv.close();
+    }
+}
+
 async function testPicturesListing(scratchDb) {
     if (!fs.existsSync(METADATA_DB) || !fs.existsSync(IMAGES_DIR)) {
         console.log('  pictures: skipped (no metadata.db copy or images dir)');
@@ -139,6 +192,7 @@ async function testPicturesListing(scratchDb) {
     }
     console.log(`  FUSE Pictures name lookup x${picks.length}: old ${oldMs} ms -> new ${newMs} ms`);
     assert.strictEqual(await newVfs.findGalleryChildByName(`/Workspaces/${top.workspace_id}`, 'Pictures'), undefined);
+    await compareFuseRoutes(gr, oldVfs, newVfs, 'Top', [files[3], files[files.length - 2], files[9].toUpperCase(), 'missing-file.png']);
     await ro.close();
 }
 
