@@ -1357,7 +1357,7 @@ function dataMgmtDsapReplicationBuildChildSummaryHtml(status) {
     const masterLabel = status.masterAccessUrl || status.displayName || '—';
     const masterName = dataMgmtDsapReplicationEscapeHtml(masterLabel);
     const masterUrl = status.masterAccessUrl
-        ? `<a href="${dataMgmtDsapReplicationEscapeHtml(status.masterAccessUrl)}" target="_blank" rel="noopener">${masterName}</a>`
+        ? `<a href="${dataMgmtDsapReplicationEscapeHtml(status.masterAccessUrl)}" target="_blank" rel="noopener" data-browser-tab>${masterName}</a>`
         : masterName;
     let serverProbe = '—';
     if (status.connectivity === 'airgapped') {

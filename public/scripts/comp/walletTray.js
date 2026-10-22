@@ -1012,7 +1012,8 @@
         } else if (action === 'unlock') {
             unlockService(arg);
         } else if (action === 'novelai-site') {
-            root.open('https://novelai.net/', '_blank', 'noopener,noreferrer');
+            // openWebUrl: public/scripts/comp/featureLoader.js
+            void root.openWebUrl('https://novelai.net/');
         } else if (action === 'keys') {
             hideFlyout();
             // openSecurityCenterDsap: public/scripts/comp/securityCenterDsapApplet.js (Service Keys live on the auth view)

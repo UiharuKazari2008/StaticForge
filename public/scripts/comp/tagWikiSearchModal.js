@@ -265,7 +265,7 @@ class WikiDisplayBase {
                         e.preventDefault();
                         this.showLeaveDSAPDialog(href, a);
                     }
-                    // else let the target=_blank happen
+                    // else the document link catch opens it in Alchemy (catchWebLinkClick: public/scripts/comp/featureLoader.js)
                 }, { once: true });
                 return;
             }
@@ -343,7 +343,8 @@ class WikiDisplayBase {
             b.addEventListener('click', () => {
                 const act = b.dataset.act;
                 if (act === 'new') {
-                    window.open(href, '_blank', 'noopener,noreferrer');
+                    // openWebUrl: public/scripts/comp/featureLoader.js
+                    void openWebUrl(href);
                 } else if (act === 'right') {
                     const host = grimoireHost || this;
                     if (host && typeof host.showRightPane === 'function') {
@@ -354,7 +355,7 @@ class WikiDisplayBase {
                         rightPane.navigate(href);
                         if (host.setActivePane) host.setActivePane('right');
                     } else {
-                        window.open(href, '_blank', 'noopener,noreferrer');
+                        void openWebUrl(href);
                     }
                 }
                 cleanup();
@@ -652,7 +653,7 @@ class WikiDisplayBase {
             if (href) this.copyToClipboard(href);
         } else if (action === 'grimoire-img-open') {
             const src = item && item._grimoireImgSrc;
-            if (src) window.open(src, '_blank', 'noopener,noreferrer');
+            if (src) void openWebUrl(src);
         } else if (action === 'grimoire-img-copy') {
             const src = item && item._grimoireImgSrc;
             if (src) this.copyToClipboard(src);
@@ -911,7 +912,7 @@ class WikiDisplayBase {
                 this.showLeaveDSAPDialog(href, null);
                 return;
             }
-            window.open(href, '_blank', 'noopener,noreferrer');
+            void openWebUrl(href);
             return;
         }
         if (forceNewWindow) {
@@ -930,7 +931,7 @@ class WikiDisplayBase {
                 wikiWindowManager.createDsapWindow(href);
                 return;
             }
-            window.open(href, '_blank', 'noopener,noreferrer');
+            void openWebUrl(href);
             return;
         }
         if (typeof this.navigate === 'function') {
@@ -1406,7 +1407,7 @@ class WikiDisplayBase {
         const text = selection.toString().trim();
         if (text) {
             const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(text)}`;
-            window.open(searchUrl, '_blank', 'noopener,noreferrer');
+            void openWebUrl(searchUrl);
             window.getSelection().removeAllRanges();
         }
     }

@@ -1375,7 +1375,8 @@ function handlePromptTextareaContextMenuAction(action, textarea, item) {
             if (!promptCtxHasMeaningfulSelection(textarea)) break;
             const term = state.selectedText.trim();
             if (term) {
-                window.open('https://www.google.com/search?q=' + encodeURIComponent(term), '_blank', 'noopener,noreferrer');
+                // openWebUrl: public/scripts/comp/featureLoader.js
+                void openWebUrl('https://www.google.com/search?q=' + encodeURIComponent(term));
             }
             break;
         }

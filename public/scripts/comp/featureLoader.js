@@ -407,6 +407,38 @@ async function openGrimoireUrl(url) {
     tagWikiSearchModal.navigate(url);
 }
 
+// A web link from anywhere in the app opens as an Alchemy tab instead of a browser tab.
+// Same-origin and non-web URLs, and a Grimoire that will not load, keep the browser's new tab.
+// Sign-in flows that need the user's own browser cookies (NovelAI Explore, Cursor login) call open() directly.
+function openWebUrl(url) {
+    let parsed = null;
+    try { parsed = new URL(url, location.href); } catch (_) { /* not a URL */ }
+    if (!parsed || (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || parsed.origin === location.origin) {
+        open(url, '_blank', 'noopener,noreferrer');
+        return Promise.resolve();
+    }
+    return openGrimoireUrl(parsed.href).catch(() => {
+        open(parsed.href, '_blank', 'noopener,noreferrer');
+    });
+}
+
+// Every web <a> in the app (Grimoire articles, references, applets) goes through openWebUrl on a
+// left or middle click. Handlers that own their links (Grimoire search links, the DSAP leave dialog,
+// Director chat) preventDefault first. Ctrl/Shift/Alt/Meta-click and data-browser-tab keep the browser.
+function catchWebLinkClick(e) {
+    if (e.defaultPrevented || e.ctrlKey || e.shiftKey || e.altKey || e.metaKey) return;
+    if (e.button !== 0 && e.button !== 1) return;
+    const link = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+    if (!link || link.hasAttribute('download') || link.hasAttribute('data-browser-tab')) return;
+    let url;
+    try { url = new URL(link.href); } catch (_) { return; }
+    if ((url.protocol !== 'http:' && url.protocol !== 'https:') || url.origin === location.origin) return;
+    e.preventDefault();
+    void openWebUrl(url.href);
+}
+document.addEventListener('click', catchWebLinkClick);
+document.addEventListener('auxclick', catchWebLinkClick);
+
 // New standalone Alchemy window (wikiWindowManager), not the main Grimoire tab.
 // grimoireOpenStandaloneWindow: public/scripts/comp/grimoireRemoteBrowser.js
 async function openGrimoireStandaloneUrl(url, windowTitle) {

@@ -2415,7 +2415,9 @@ const doveWireFrameLinks = function (iframe) {
         const doc = iframe.contentDocument;
         if (!doc || doc.__doveLinksWired) return;
         doc.__doveLinksWired = true;
-        doc.addEventListener('click', (ev) => {
+        // middle-click too: the sandbox's allow-popups would otherwise open a browser tab
+        const onClick = (ev) => {
+            if (ev.button !== 0 && ev.button !== 1) return;
             const anchor = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
             if (!anchor) return;
             let url;
@@ -2425,7 +2427,9 @@ const doveWireFrameLinks = function (iframe) {
             if (typeof openGrimoireUrl !== 'function') return;
             ev.preventDefault();
             openGrimoireUrl(url.href).catch(() => window.open(url.href, '_blank', 'noopener'));
-        });
+        };
+        doc.addEventListener('click', onClick);
+        doc.addEventListener('auxclick', onClick);
     };
     iframe.addEventListener('load', wire);
 };
