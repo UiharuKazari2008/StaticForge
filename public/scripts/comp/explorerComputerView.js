@@ -26,7 +26,7 @@
     const ART = '/static_images/vista-explorer';
     const COMPUTER_PATH = 'Computer';
     const DRIVES = [{ letter: 'C', label: 'Local Disk', path: '/' }];
-    // the column headers Vista gives Computer (VM: 78, 80, 80 and 85px, grouped and sorted by Type)
+    // the column headers Vista gives Computer (VM: 80, 80, 80 and 85px, grouped and sorted by Type)
     const COLUMNS = [{ label: 'Name' }, { label: 'Type', active: true }, { label: 'Total Size' }, { label: 'Free Space' }];
 
     function esc(text) {
@@ -165,7 +165,7 @@
         mountColumns() {
             const header = document.getElementById('explorerDetailsHeader');
             if (!header || header.querySelector('.explorer-computer-col')) return;
-            header.insertAdjacentHTML('beforeend', COLUMNS.map((c) => `<button type="button" class="explorer-details-sort-col explorer-computer-col${c.active ? ' active' : ''}" tabindex="-1"><span class="explorer-details-col-label">${esc(c.label)}</span></button>`).join(''));
+            header.insertAdjacentHTML('beforeend', COLUMNS.map((c) => `<button type="button" class="explorer-details-sort-col explorer-computer-col${c.active ? ' active' : ''}" tabindex="-1"><span class="explorer-details-col-label">${esc(c.label)}</span>${c.active ? '<i class="explorer-details-sort-icon fas fa-sort-up" aria-hidden="true"></i>' : ''}</button>`).join(''));
         }
 
         onMenuAction(action) {

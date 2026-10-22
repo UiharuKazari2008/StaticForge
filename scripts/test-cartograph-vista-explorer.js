@@ -80,7 +80,11 @@ assert.ok(html.includes('id="explorerRecentPagesBtn"') && html.includes('id="exp
 const css = read('public/css/vista-explorer.css');
 assert.ok(css.includes("url('/static_images/vista-explorer/recent-pages.png')"), 'Recent Pages uses the theme art');
 assert.ok(/\.explorer-address-group[^{]*\{[^}]*overflow: visible/.test(css), 'refresh is not clipped');
-assert.ok(css.includes('grid-template-columns: 157px 120px 120px 80px'), 'Vista column widths');
+assert.ok(css.includes('grid-template-columns: 160px 120px 120px 80px 1fr;') && css.includes('padding: 0 0 0 1px;'), 'Vista column widths, 1px in, then the filler');
+assert.ok(css.includes('header-item-normal.png") 0 2 0 1 fill / 0 2px 0 1px stretch') && css.includes('header-sort-arrow.png'), "the header is Vista's HEADER art with its sort arrow");
+for (const f of ['normal', 'hot', 'pressed', 'sorted', 'sorted-hot', 'sorted-pressed', 'edged', 'edged-hot', 'edged-pressed', 'edged-sorted', 'edged-sorted-hot', 'edged-sorted-pressed']) {
+    assert.ok(fs.existsSync(path.join(__dirname, '..', `public/static_images/vista-controls/header-item-${f}.png`)), `header-item-${f}`);
+}
 assert.ok(css.includes('.explorer-view-pane[data-view="details"] .explorer-grid-host'), 'column lines in Details');
 assert.ok(/(#explorerModal \.modal-window-title-toolbar \.naxt-nav-group) \{[^}]*height: 27px;[^}]*align-items: flex-start;[^}]*background: url\('\/static_images\/vista-explorer\/travel-gutter\.png'\) no-repeat 0 0;/.test(css), 'the orbs sit in the gutter, the band the orbs\' height (the groove was 3px low)');
 assert.ok(/#explorerForwardBtn \{\s*margin-left: -1px;/.test(css), 'orb centres 28px apart');
@@ -202,7 +206,7 @@ assert.ok(/\.explorer-address-group > #explorerBreadcrumb \{\s*position: absolut
 assert.ok(/\.explorer-address-group > :is\(#explorerRefreshBtn, #explorerAddressDropBtn\) \{\s*position: absolute;/.test(css2), 'the ▾ keeps its place left of refresh');
 assert.ok(css2.includes('.explorer-computer-tile.is-selected') && css2.includes('drive-bar-track.png') && css2.includes('drive-bar-fill.png') && css2.includes('drive-bar-fill-error.png'), "the drive bar is Vista's track and fill");
 assert.ok(/\.explorer-drive-bar-fill \{\s*left: -1px;\s*top: -1px;\s*bottom: -1px;\s*width: calc\(var\(--used, 0\) \* \(100% \+ 2px\)\);/.test(css2), 'the fill spans the whole bar, frame included');
-assert.ok(css2.includes('#explorerModal.explorer-in-computer .explorer-details-header {\n    grid-template-columns: 78px 80px 80px 85px;'), "Computer's column widths");
+assert.ok(css2.includes('#explorerModal.explorer-in-computer .explorer-details-header {\n    grid-template-columns: 80px 80px 80px 85px 1fr;'), "Computer's column widths");
 assert.ok(/\.explorer-computer-group-head \{[^}]*gap: 0;[^}]*margin: 2px 9px 0 13px;/.test(css2) && css2.includes('.explorer-computer-group-toggle {'), 'the heading rule runs to the chevron');
 const exCss = read('public/css/explorer.css');
 assert.ok(exCss.includes('#explorerModal.explorer-in-computer #explorerGridHost {') && !exCss.includes(':is(#explorerGridHost, #explorerDetailsHeader)'), 'Computer keeps the column headers');

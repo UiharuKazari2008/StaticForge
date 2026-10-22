@@ -781,42 +781,85 @@ body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFol
         #fcfcfc;
 }
 
-/* column headers in every view, Vista's default widths: Name 157, Date modified 120, Type 120,
-   Size 80 (sorted column the pale blue, #96d9f9 under it) */
+/* column headers in every view: aero.msstyles HEADER items (IMAGE 551, cut to the item and its bottom
+   line, 23px), Vista's default widths 1px in: Name 160, Date modified 120, Type 120, Size 80 (the
+   column lines below at 160 / 280 / 400 / 480). An item is a light column, the gradient, a light
+   column and the dark edge; the space after the last is an item without its right end. Black
+   12px text, its caps 7px down; the sorted column's arrow (IMAGE 558) centred on its top edge. */
 body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-details-header {
-    grid-template-columns: 157px 120px 120px 80px;
-    justify-content: start;
+    grid-template-columns: 160px 120px 120px 80px 1fr;
+    justify-content: stretch;
     gap: 0;
-    height: 21px;
-    padding: 0 0 0 3px;
-    background: linear-gradient(#fff, #fff 40%, #f3f5f8);
-    border-bottom: 1px solid #d5d5d5;
-    color: #4c607a;
+    height: 23px;
+    padding: 0 0 0 1px;
+    background: #fff;
+    border-bottom: 0;
+    color: #000;
     font: 12px var(--ex-font);
+}
+
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-details-header::after {
+    content: '';
+    height: 23px;
+    border-image: url("/static_images/vista-controls/header-item-normal.png") 0 0 0 1 fill / 0 0 0 1px stretch;
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-details-header .explorer-details-sort-col {
-    height: 21px;
-    padding: 0 6px;
+    position: relative;
+    align-items: flex-start;
+    height: 23px;
+    padding: 3px 6px 0;
     border: 0;
-    border-right: 1px solid #e3e8ec;
-    color: #4c607a;
+    border-image: url("/static_images/vista-controls/header-item-normal.png") 0 2 0 1 fill / 0 2px 0 1px stretch;
+    line-height: 16px;
+    background: none;
+    box-shadow: none;
+    color: #000;
     font: 12px var(--ex-font);
 }
 
-body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-details-header .explorer-details-sort-col.active {
-    background: linear-gradient(#f2f9fc 40%, #e1f1f9 42%, #d8ecf6);
-    box-shadow: inset 0 -1px 0 #96d9f9;
-    color: #000;
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-details-header .explorer-details-sort-col:hover {
+    border-image-source: url("/static_images/vista-controls/header-item-hot.png");
 }
 
-body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-details-header .explorer-details-sort-col:hover {
-    background: linear-gradient(#f2f9fc 40%, #e1f1f9 42%, #d8ecf6);
-    color: #000;
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-details-header .explorer-details-sort-col:active {
+    border-image-source: url("/static_images/vista-controls/header-item-pressed.png");
+}
+
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-details-header .explorer-details-sort-col.active {
+    border-image-source: url("/static_images/vista-controls/header-item-sorted.png");
+}
+
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-details-header .explorer-details-sort-col.active:hover {
+    border-image-source: url("/static_images/vista-controls/header-item-sorted-hot.png");
+}
+
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-details-header .explorer-details-sort-col.active:active {
+    border-image-source: url("/static_images/vista-controls/header-item-sorted-pressed.png");
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-details-header :is(.explorer-details-sort-icon, .explorer-details-col-icon) {
     display: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-details-header .explorer-details-sort-col.active .explorer-details-sort-icon {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: calc(50% - 6px);
+    width: 13px;
+    height: 5px;
+    margin: 0;
+    opacity: 1;
+    background: url("/static_images/vista-controls/header-sort-arrow.png") 0 0 no-repeat;
+}
+
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-details-header .explorer-details-sort-col.active .explorer-details-sort-icon.fa-sort-down {
+    background-position: 0 -5px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-details-header .explorer-details-sort-icon::before {
+    content: none;
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item {
@@ -953,7 +996,7 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-status-sp
 }
 
 /* ---- Computer (explorerComputerView.js), from the VM's Computer window in Tiles view ----
-   Columns Name 78, Type 80 (sorted), Total Size 80, Free Space 85. "Hard Disk Drives (1)" in
+   Columns Name 80, Type 80 (sorted), Total Size 80, Free Space 85. "Hard Disk Drives (1)" in
    #003399, 13px in, its 1px #b0bfde rule 11px under the headers, from 4px after the text to 25px
    before the right edge, then the 7x5 #003399 collapse chevron 9px from the edge (2px either side of
    the rule). The 219x50 tile 7px in; its name's baseline 26px under the rule; the drive bar (156x13,
@@ -963,8 +1006,39 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-status-sp
    (VM: 61px at 41.2% and 91px at 58.7% of 156, 55px at 41.2% of the details pane's 133); "free of"
    in grey, its baseline 25px under the bar's top. */
 
+/* Computer's columns: the items with an edge on both sides (VM) */
 body.desktop-mode:not(.windows-classic-theme) #explorerModal.explorer-in-computer .explorer-details-header {
-    grid-template-columns: 78px 80px 80px 85px;
+    grid-template-columns: 80px 80px 80px 85px 1fr;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal.explorer-in-computer .explorer-details-header::after {
+    border-image: url("/static_images/vista-controls/header-item-edged.png") 0 0 0 2 fill / 0 0 0 2px stretch;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal.explorer-in-computer .explorer-details-header .explorer-details-sort-col {
+    border-image-source: url("/static_images/vista-controls/header-item-edged.png");
+    border-image-slice: 0 2 fill;
+    border-image-width: 0 2px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal.explorer-in-computer .explorer-details-header .explorer-details-sort-col:hover {
+    border-image-source: url("/static_images/vista-controls/header-item-edged-hot.png");
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal.explorer-in-computer .explorer-details-header .explorer-details-sort-col:active {
+    border-image-source: url("/static_images/vista-controls/header-item-edged-pressed.png");
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal.explorer-in-computer .explorer-details-header .explorer-details-sort-col.active {
+    border-image-source: url("/static_images/vista-controls/header-item-edged-sorted.png");
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal.explorer-in-computer .explorer-details-header .explorer-details-sort-col.active:hover {
+    border-image-source: url("/static_images/vista-controls/header-item-edged-sorted-hot.png");
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal.explorer-in-computer .explorer-details-header .explorer-details-sort-col.active:active {
+    border-image-source: url("/static_images/vista-controls/header-item-edged-sorted-pressed.png");
 }
 
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-computer-view {
