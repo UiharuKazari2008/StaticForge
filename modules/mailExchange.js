@@ -68,6 +68,11 @@ function invalidateDirectory() {
     }
 }
 
+/**
+ * Full virtual_known set for LANTIS. The relay accepts every
+ * @dream.737.jp.net address; a catch-all pcre rewrites anything missing
+ * from this map to mailroom.ops. Disabled/deleted mailboxes are omitted.
+ */
 function listRelayRecipients() {
     const overlay = getAddressOverlay();
     const out = [];
@@ -101,6 +106,20 @@ function listRelayRecipients() {
     return out;
 }
 
+function logRecipientPush(result) {
+    if (!result) return;
+    if (result.ok) return;
+    if (result.code === 'RELAY_ADMIN_TOKEN_MISSING') return;
+    if (result.code === 'RELAY_ENDPOINT_MISSING') {
+        console.warn(
+            '[mail-exchange] PUT /v1/recipients is pending approval; '
+            + `virtual_known not synced (${result.count || 0} local-parts)`
+        );
+        return;
+    }
+    console.warn('[mail-exchange] recipient push failed:', result.code, result.error);
+}
+
 async function pushRecipientsToRelay({ actor } = {}) {
     const recipients = listRelayRecipients();
     const client = require('./lantisRelayClient');
@@ -108,20 +127,15 @@ async function pushRecipientsToRelay({ actor } = {}) {
         actor: canonicalizeAdmin(actor) || String(actor || '').trim() || TSUBAME_OWNER,
         confirm: true
     });
-    return Object.assign({ count: recipients.length }, result);
+    const next = Object.assign({ count: recipients.length }, result);
+    logRecipientPush(next);
+    return next;
 }
 
 function notifyRecipientChange(actor) {
     invalidateDirectory();
     const name = canonicalizeAdmin(actor) || String(actor || 'unknown');
-    recipientPushPending = pushRecipientsToRelay({ actor: name }).then((result) => {
-        if (!result || result.ok || result.skipped) return result;
-        if (result.code === 'RELAY_ADMIN_TOKEN_MISSING' || result.code === 'RELAY_ENDPOINT_MISSING') {
-            return result;
-        }
-        console.warn('[mail-exchange] recipient push failed:', result.code, result.error);
-        return result;
-    }).catch((err) => {
+    recipientPushPending = pushRecipientsToRelay({ actor: name }).catch((err) => {
         console.warn('[mail-exchange] recipient push failed:', err && err.message);
         return { ok: false, skipped: true, code: 'RELAY_UNREACHABLE', error: err && err.message };
     });

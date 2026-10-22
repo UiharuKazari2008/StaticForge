@@ -306,7 +306,7 @@ function startMockRelay(options) {
                 state.audit.push({
                     actor,
                     action: 'recipients',
-                    target: 'global',
+                    target: 'virtual_known',
                     time: new Date().toISOString()
                 });
                 json(res, 200, { ok: true, count: body.recipients.length });

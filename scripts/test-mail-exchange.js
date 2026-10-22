@@ -202,15 +202,27 @@ async function testRelayMockAndClient() {
         assert.strictEqual(noConfirm.code, 'CONFIRM_REQUIRED');
 
         const listed = exchange.listRelayRecipients();
-        assert.ok(listed.some((row) => row.local === 'kazari.ops' && row.mailbox === 'yukimi' && row.kind === 'mailbox'));
-        assert.ok(listed.some((row) => row.local === 'mailroom.ops' && row.kind === 'catchall'));
+        Object.entries(addresses.DEFAULT_MAILBOXES).forEach(([local, mailbox]) => {
+            const row = listed.find((item) => item.local === local);
+            assert.ok(row, `virtual_known missing ${local}`);
+            assert.strictEqual(row.address, `${local}@dream.737.jp.net`);
+            assert.strictEqual(row.mailbox, mailbox);
+            assert.strictEqual(row.kind, local === 'mailroom.ops' ? 'catchall' : 'mailbox');
+        });
+        assert.strictEqual(listed.filter((row) => row.local === 'mailroom.ops').length, 1);
         const pushed = await relayClient.putRecipients(listed, { actor: 'yukimi', confirm: true });
         assert.strictEqual(pushed.ok, true);
         assert.strictEqual(pushed.data.count, listed.length);
         assert.strictEqual(mock.state.lastRecipientsBody.actor, 'yukimi');
         assert.ok(!Object.prototype.hasOwnProperty.call(mock.state.lastRecipientsBody, 'confirm'));
         assert.ok(Array.isArray(mock.state.lastRecipientsBody.recipients));
-        assert.ok(mock.state.audit.some((row) => row.action === 'recipients' && row.actor === 'yukimi'));
+        assert.deepStrictEqual(
+            mock.state.lastRecipientsBody.recipients.map((row) => row.local).sort(),
+            listed.map((row) => row.local).sort()
+        );
+        assert.ok(mock.state.audit.some((row) => (
+            row.action === 'recipients' && row.actor === 'yukimi' && row.target === 'virtual_known'
+        )));
 
         mock.state.recipientsEndpoint = false;
         const missing = await relayClient.putRecipients(listed, { actor: 'yukimi', confirm: true });
@@ -231,11 +243,59 @@ async function testRelayMockAndClient() {
         assert.strictEqual(afterCreate.ok, true);
         assert.ok(mock.state.lastRecipientsBody.recipients.some((row) => row.local === 'relaypush.lab'));
 
+        exchange.upsertAlias('yukimi', { localPart: 'helpdesk', target: 'tsubame', confirm: true });
+        const afterAlias = await exchange.waitForRecipientPush();
+        assert.strictEqual(afterAlias.ok, true);
+        assert.ok(mock.state.lastRecipientsBody.recipients.some((row) => (
+            row.local === 'helpdesk' && row.kind === 'alias' && row.mailbox === 'tsubame'
+        )));
+
+        exchange.upsertDistributionList('sala', {
+            localPart: 'ops-all',
+            name: 'ops',
+            members: ['yukimi', 'sala'],
+            confirm: true
+        });
+        const afterList = await exchange.waitForRecipientPush();
+        assert.strictEqual(afterList.ok, true);
+        assert.ok(mock.state.lastRecipientsBody.recipients.some((row) => (
+            row.local === 'ops-all'
+            && row.kind === 'list'
+            && Array.isArray(row.members)
+            && row.members.includes('yukimi')
+            && row.members.includes('sala')
+        )));
+        const pushedLocals = new Set(mock.state.lastRecipientsBody.recipients.map((row) => row.local));
+        Object.keys(addresses.DEFAULT_MAILBOXES).forEach((local) => {
+            assert.ok(pushedLocals.has(local), `push dropped seed local ${local}`);
+        });
+        assert.ok(pushedLocals.has('helpdesk'));
+        assert.ok(pushedLocals.has('ops-all'));
+        assert.ok(pushedLocals.has('relaypush.lab'));
+
+        exchange.disableMailbox('yukimi', { owner: 'relaypush', enabled: false, confirm: true });
+        const afterDisable = await exchange.waitForRecipientPush();
+        assert.strictEqual(afterDisable.ok, true);
+        assert.ok(!mock.state.lastRecipientsBody.recipients.some((row) => row.local === 'relaypush.lab'));
+        assert.ok(!mock.state.lastRecipientsBody.recipients.some((row) => row.mailbox === 'relaypush'));
+
         mock.state.recipientsEndpoint = false;
-        const resynced = await exchange.resyncRecipients('yukimi', { confirm: true });
+        const warnings = [];
+        const origWarn = console.warn;
+        console.warn = (...args) => { warnings.push(args.map(String).join(' ')); };
+        let resynced;
+        try {
+            resynced = await exchange.resyncRecipients('yukimi', { confirm: true });
+        } finally {
+            console.warn = origWarn;
+        }
         assert.ok(resynced.relay.skipped);
         assert.strictEqual(resynced.relay.code, 'RELAY_ENDPOINT_MISSING');
         assert.ok(resynced.count >= listed.length);
+        assert.ok(warnings.some((line) => (
+            line.includes('PUT /v1/recipients is pending approval')
+            && line.includes('virtual_known not synced')
+        )));
         mock.state.recipientsEndpoint = true;
         const mcpResync = textOf(await handleExchangeTool(reqFor('Tsubame'), 'exchange_resync_recipients', { confirm: true }));
         assert.strictEqual(mcpResync.success, true);
@@ -757,8 +817,12 @@ function testRecipientPushSurfaces() {
     assert.match(handlerSrc, /exchange_resync_recipients/);
     assert.match(httpSrc, /\/mail-exchange\/recipients\/resync/);
     assert.match(mcpSrc, /exchange_resync_recipients/);
+    assert.match(mcpSrc, /virtual_known/);
+    assert.match(mcpSrc, /pending approval/);
     assert.match(wsDoc, /exchange_resync_recipients/);
+    assert.match(wsDoc, /virtual_known/);
     assert.match(restDoc, /\/mail-exchange\/recipients\/resync/);
+    assert.match(restDoc, /virtual_known/);
 }
 
 function testTokensStayServerSide() {
@@ -772,6 +836,14 @@ function testTokensStayServerSide() {
     assert.match(docSrc, /GET \/v1\/senders/);
     assert.match(docSrc, /PUT \/v1\/recipients/);
     assert.match(clientSrc, /putRecipients/);
+    assert.match(docSrc, /virtual_known/);
+    assert.match(docSrc, /[Pp]ending approval/);
+    assert.match(docSrc, /catch-all pcre/);
+    assert.match(docSrc, /"kind": "mailbox"/);
+    assert.match(docSrc, /"kind": "alias"/);
+    assert.match(docSrc, /"kind": "list"/);
+    assert.match(docSrc, /"kind": "catchall"/);
+    assert.match(docSrc, /kazari@dream\.737\.jp\.net/);
     assert.match(docSrc, /RELAY_ENDPOINT_MISSING|NOT_FOUND/);
     assert.match(docSrc, /refreshed_at/);
     assert.match(docSrc, /UNKNOWN_MAILBOX/);

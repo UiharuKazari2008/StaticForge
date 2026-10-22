@@ -246,9 +246,21 @@ Audit on the relay:
 
 ### `PUT /v1/recipients`
 
-Admin token required. Dreamscape pushes the live intake directory after every mailbox, address, alias, or list change, and on the Exchange admin resync action. The relay should replace its accept-list with this document so unknown locals stop falling through to `mailroom.ops`.
+**Pending approval.** The LANTIS HTTP service does not expose this path yet.
+Dreamscape still PUTs after every mailbox, address, alias, or list change
+(and on the Exchange admin resync). A `404` is the expected answer until
+the endpoint is approved. The client **fails soft** (`RELAY_ENDPOINT_MISSING`)
+and **logs**; local Exchange/intake stay up. Intake recovery still files
+trusted catch-all mail whose headers name an active mailbox.
 
-If the endpoint is not implemented yet, respond `404` `{ "error": "Not found", "code": "NOT_FOUND" }`. Dreamscape fails soft (`RELAY_ENDPOINT_MISSING`) and keeps the local directory.
+LANTIS SMTP already accepts **any** `@dream.737.jp.net` address. Addresses
+that are **not** in the Postfix `virtual_known` rewrite map are rewritten
+by a catch-all pcre to `mailroom.ops@dream.737.jp.net`. This PUT replaces
+`virtual_known` with the full set of **active** mailbox addresses, aliases,
+and distribution lists so those locals are not rewritten.
+
+Admin token required. `confirm` is Dreamscape-client-only and is **not**
+part of the relay body.
 
 ```json
 {
@@ -257,6 +269,12 @@ If the endpoint is not implemented yet, respond `404` `{ "error": "Not found", "
     {
       "local": "kazari.ops",
       "address": "kazari.ops@dream.737.jp.net",
+      "mailbox": "yukimi",
+      "kind": "mailbox"
+    },
+    {
+      "local": "kazari",
+      "address": "kazari@dream.737.jp.net",
       "mailbox": "yukimi",
       "kind": "mailbox"
     },
@@ -283,17 +301,20 @@ If the endpoint is not implemented yet, respond `404` `{ "error": "Not found", "
 ```
 
 - `actor` is required (same as toggles).
-- `recipients` is the full accept-list. Replace, do not merge.
+- `recipients` is the **full** `virtual_known` set. Replace, do not merge.
+  Each `address` / `local` is a rewrite-map key. Disabled or deleted
+  mailboxes are omitted. `mailroom.ops` stays in the set (the catch-all
+  destination).
 - `kind`: `mailbox` | `alias` | `list` | `catchall`.
 - `mailbox` is the Dovecote owner for mailbox/alias/catchall rows.
 - `members` is present on lists (mailbox names or local-parts).
-- `confirm` is Dreamscape-client-only and is **not** part of the relay body.
-- Response: `{ "ok": true, "count": 42 }` (count is the accepted row count).
+- Response: `{ "ok": true, "count": 42 }` (accepted row count).
+- Until implemented: `404` `{ "error": "Not found", "code": "NOT_FOUND" }`.
 - Missing or empty `actor` → `400` `{ "error": "actor is required", "code": "ACTOR_REQUIRED" }`.
 - `recipients` not an array → `400` `{ "error": "recipients must be an array", "code": "BAD_BODY" }`.
 
-Audit on the relay:
-`{ actor, action: "recipients", target: "global", time }`.
+Audit on the relay (once the path exists):
+`{ actor, action: "recipients", target: "virtual_known", time }`.
 
 ## Dreamscape client
 

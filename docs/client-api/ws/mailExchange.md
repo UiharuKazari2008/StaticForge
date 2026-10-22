@@ -39,7 +39,7 @@ Destructive packets need `confirm: true`. Soft-delete also needs `confirmText: "
 | `exchange_get_toggles` | `exchange_get_toggles_response` | exchange admin | `{ toggles: { inbound, outbound, mailboxes, services } }` |
 | `exchange_set_toggles` | `exchange_set_toggles_response` | exchange admin / destructive | `PUT /v1/toggles` first (admin token + `actor`, no `confirm` on the wire). Local store is written only after the relay accepts. Relay `400` codes `UNKNOWN_MAILBOX` / `UNKNOWN_SERVICE` / `BAD_BODY` / `ACTOR_REQUIRED` come back on `relay` with a friendly message |
 | `exchange_dashboard` | `exchange_dashboard_response` | exchange admin | Intake listener, Postfix, queue, filters, OCI senders+DKIM, WireGuard, blocklists, rejects. `degraded` when the relay is down |
-| `exchange_resync_recipients` | `exchange_resync_recipients_response` | exchange admin / destructive | Push the live mailbox/address/alias/list directory to LANTIS `PUT /v1/recipients`. Missing endpoint fails soft (`RELAY_ENDPOINT_MISSING`). `{ confirm }` |
+| `exchange_resync_recipients` | `exchange_resync_recipients_response` | exchange admin / destructive | Replace LANTIS `virtual_known` with the full active mailbox/alias/list set (`PUT /v1/recipients`). Endpoint is pending approval — `404` fails soft and is logged (`RELAY_ENDPOINT_MISSING`). `{ confirm }` |
 | `exchange_list_spam` | `exchange_list_spam_response` | exchange admin | Tsubame: all mailboxes. Yukimi/Sala: Yukimi Spam-only |
 | `exchange_spam_move` | `exchange_spam_move_response` | exchange admin / destructive | Rescue/purge via mailroom tools; never Yukimi |
 | `exchange_audit` | `exchange_audit_response` | exchange admin | `{ audit: [{ ts, actor, action, target, detail, success }] }` |

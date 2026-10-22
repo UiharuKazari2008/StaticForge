@@ -227,7 +227,7 @@ const TOOLS = [
         core: true,
         role: 'exchange',
         scope: SCOPE,
-        description: 'Exchange admin only. Push every mailbox, address, alias, and list to the LANTIS relay via PUT /v1/recipients. Directory changes already push automatically; this is the manual resync. Missing endpoint fails soft (RELAY_ENDPOINT_MISSING). Requires confirm:true.',
+        description: 'Exchange admin only. Replace LANTIS virtual_known with the full set of active mailbox addresses, aliases, and lists (PUT /v1/recipients). Directory changes already push automatically; this is the manual resync. The endpoint is pending approval — 404 fails soft and is logged (RELAY_ENDPOINT_MISSING). Requires confirm:true.',
         inputSchema: {
             type: 'object',
             additionalProperties: false,

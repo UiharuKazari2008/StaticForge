@@ -1093,7 +1093,7 @@ Writes require `confirm: true`. Soft-delete also requires `confirmText: "DELETE"
 | GET | `/mail-exchange/toggles` | Global + per-mailbox + per-service |
 | PUT | `/mail-exchange/toggles` | PATCH-like. PUTs LANTIS first (admin token + `actor`, not `confirm`); local store writes only on relay success. Relay `400`: `UNKNOWN_MAILBOX` / `UNKNOWN_SERVICE` / `BAD_BODY` / `ACTOR_REQUIRED` |
 | GET | `/mail-exchange/status` | Intake + relay dashboard (degrades if LANTIS is down) |
-| POST | `/mail-exchange/recipients/resync` | Push mailbox/address/alias/list directory to LANTIS `PUT /v1/recipients`. `{ confirm }`. Missing endpoint fails soft |
+| POST | `/mail-exchange/recipients/resync` | Replace LANTIS `virtual_known` with the full active mailbox/alias/list set. `{ confirm }`. `PUT /v1/recipients` is pending — `404` fails soft and is logged |
 | GET | `/mail-exchange/spam` | Tsubame: all mailboxes. Yukimi: her Spam only |
 | POST | `/mail-exchange/spam/move` | Rescue/purge via mailroom tools |
 | GET | `/mail-exchange/mailboxes/:owner/notify-forward` | `{ mailbox, address }` |
