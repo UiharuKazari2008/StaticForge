@@ -957,7 +957,7 @@ async function backfillMissingBlurhashes(options = {}) {
             });
             return hash ? [hash, row.filename] : null;
         },
-        commitPairs: async (pairs) => {
+        commitPairs: (pairs) => withDbTransactionLock(async () => {
             try {
                 await db.run('BEGIN TRANSACTION');
             } catch (txError) {
@@ -985,7 +985,7 @@ async function backfillMissingBlurhashes(options = {}) {
                 logger.error('BlurHash backfill commit failed:', txError);
                 throw txError;
             }
-        }
+        })
     });
 
     let gallerySynced = 0;
@@ -1581,8 +1581,10 @@ async function removeImageMetadataBatch(filenames, batchSize = 500, precomputedB
                     metadataWriteQueue.removeHotImage(filename);
                 }
                 
-                // Use a transaction for each batch
+                // Use a transaction for each batch (one transaction at a time on the shared handle)
+                await withDbTransactionLock(async () => {
                 await db.run('BEGIN TRANSACTION');
+                try {
                 
                 // First, extract all receipts for images in this batch
                 const placeholders = batch.map(() => '?').join(',');
@@ -1624,13 +1626,18 @@ async function removeImageMetadataBatch(filenames, batchSize = 500, precomputedB
                 
                 // Commit transaction
                 await db.run('COMMIT');
+                } catch (error) {
+                    // Roll back inside the lock so another caller's transaction is never undone
+                    try {
+                        await db.run('ROLLBACK');
+                    } catch (rollbackError) {
+                        logger.error(`Error rolling back transaction:`, rollbackError);
+                    }
+                    throw error;
+                }
+                });
                 });
             } catch (error) {
-                try {
-                    await db.run('ROLLBACK');
-                } catch (rollbackError) {
-                    logger.error(`Error rolling back transaction:`, rollbackError);
-                }
                 logger.error(`Error in batch metadata deletion:`, error);
                 throw error;
             }
@@ -5950,7 +5957,72 @@ function buildFilenameScopeClause(workspaceScope, filenamesFilter) {
 /**
  * Update search indexes for a filename based on its metadata
  */
+// One explicit transaction at a time on the shared `db` handle (node-sqlite3 has one
+// connection, so a second BEGIN would fail with "cannot start a transaction within a transaction").
+let dbTransactionTail = Promise.resolve();
+function withDbTransactionLock(fn) {
+    const run = dbTransactionTail.then(fn, fn);
+    dbTransactionTail = run.catch(() => {});
+    return run;
+}
+
+// Replication changelog payloads keep at most 32 params (replicationChangelog.handleSqliteWrite),
+// so multi-row INSERTs stay at or under 32 bound values.
+const MULTI_ROW_INSERT_MAX_PARAMS = 32;
+
+async function insertRowsChunked(sqlPrefix, rowPlaceholder, columnCount, rows) {
+    const perStatement = Math.max(1, Math.floor(MULTI_ROW_INSERT_MAX_PARAMS / columnCount));
+    for (let i = 0; i < rows.length; i += perStatement) {
+        const chunk = rows.slice(i, i + perStatement);
+        const params = [];
+        for (const row of chunk) params.push(...row);
+        await db.run(`${sqlPrefix} VALUES ${chunk.map(() => rowPlaceholder).join(', ')}`, params);
+    }
+}
+
+/**
+ * Rebuild search index rows for one image. Runs as one transaction (it was 100-300
+ * autocommit statements per image). On error the work done so far is still committed,
+ * like the old autocommit behaviour, so writes other callers interleave on the shared
+ * handle are never rolled back by us.
+ */
 async function updateSearchIndexes(filename, metadata) {
+    if (!dbInitialized || !db) {
+        throw new Error('Database not initialized');
+    }
+    if (indexingPaused) {
+        return;
+    }
+    return withDbTransactionLock(async () => {
+        let inTransaction = false;
+        try {
+            await db.run('BEGIN IMMEDIATE');
+            inTransaction = true;
+        } catch (txError) {
+            // Another transaction is open on this handle (unlocked backfill); join it as before.
+            logger.warn(`Search index transaction begin failed for ${filename}, continuing without:`, txError.message);
+        }
+        try {
+            await updateSearchIndexesInner(filename, metadata);
+        } finally {
+            if (inTransaction) {
+                try {
+                    await db.run('COMMIT');
+                } catch (commitError) {
+                    // A backfill COMMIT on the shared handle may already have closed it.
+                    if (!/no transaction is active/i.test(commitError.message || '')) {
+                        logger.error(`Search index commit failed for ${filename}:`, commitError);
+                        try {
+                            await db.run('ROLLBACK');
+                        } catch (_) { /* ignore */ }
+                    }
+                }
+            }
+        }
+    });
+}
+
+async function updateSearchIndexesInner(filename, metadata) {
     if (!dbInitialized || !db) {
         throw new Error('Database not initialized');
     }
@@ -6024,11 +6096,11 @@ async function updateSearchIndexes(filename, metadata) {
         }
 
         // Insert tags
-        for (const tagData of fileTags) {
-            await db.run(`
-                INSERT INTO search_tags (filename, tag, original_tag, weight, tag_type, source, character)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            `, [
+        await insertRowsChunked(
+            'INSERT INTO search_tags (filename, tag, original_tag, weight, tag_type, source, character)',
+            '(?, ?, ?, ?, ?, ?, ?)',
+            7,
+            fileTags.map((tagData) => [
                 filename,
                 tagData.tag,
                 tagData.originalTag,
@@ -6036,15 +6108,15 @@ async function updateSearchIndexes(filename, metadata) {
                 tagData.type || 'normal',
                 tagData.source || 'prompt',
                 tagData.character || null
-            ]);
-        }
+            ])
+        );
 
         // Insert full text entries
-        for (const textData of fileFullText) {
-            await db.run(`
-                INSERT INTO search_fulltext (filename, text_content, original_text, weight, text_type, source, character)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            `, [
+        await insertRowsChunked(
+            'INSERT INTO search_fulltext (filename, text_content, original_text, weight, text_type, source, character)',
+            '(?, ?, ?, ?, ?, ?, ?)',
+            7,
+            fileFullText.map((textData) => [
                 filename,
                 textData.text,
                 textData.originalText,
@@ -6052,8 +6124,8 @@ async function updateSearchIndexes(filename, metadata) {
                 textData.type || 'full_text',
                 textData.source || 'prompt',
                 textData.character || null
-            ]);
-        }
+            ])
+        );
 
         // Index preset names (forge_data.preset_name is canonical in this corpus)
         if (presetName) {

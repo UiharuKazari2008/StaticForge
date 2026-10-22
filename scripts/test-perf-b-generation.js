@@ -81,7 +81,148 @@ function readForgeData(pm, buffer) {
     return JSON.parse(meta.tEXt.Comment).forge_data;
 }
 
+const BASE_REV = process.env.PERF_BASE_REV || 'f2ac8aa';
+const oldModuleFiles = [];
+
+/** Load a module as it was at BASE_REV (written next to the live one so relative requires work). */
+function requireOldModule(relPath) {
+    const { execFileSync } = require('child_process');
+    const repoRoot = path.join(__dirname, '..');
+    const src = execFileSync('git', ['show', `${BASE_REV}:${relPath}`], { cwd: repoRoot, maxBuffer: 64 * 1024 * 1024 });
+    const target = path.join(repoRoot, path.dirname(relPath), `__perf_old_${path.basename(relPath)}`);
+    fs.writeFileSync(target, src);
+    oldModuleFiles.push(target);
+    return require(target);
+}
+
+function cleanupOldModules() {
+    for (const file of oldModuleFiles.splice(0)) {
+        try { fs.unlinkSync(file); } catch (_) { /* ignore */ }
+    }
+}
+
+async function openSqlite(file, readOnly = true) {
+    const sqlite3 = require('sqlite3');
+    const { open } = require('sqlite');
+    return open({
+        filename: file,
+        driver: sqlite3.Database,
+        mode: readOnly ? sqlite3.OPEN_READONLY : (sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE)
+    });
+}
+
+function haveDbCopy() {
+    if (fs.existsSync(DB_COPY)) return true;
+    console.log(`  skipped: no DB copy at ${DB_COPY}`);
+    return false;
+}
+
+async function sampleImageRows(limit, where = '1=1') {
+    const src = await openSqlite(DB_COPY);
+    try {
+        return await src.all(`
+            SELECT id, filename, md5, width, height, parent, upscaled, size, mtime, blurhash, metadata
+            FROM images
+            WHERE length(metadata) < 1000000 AND ${where}
+            ORDER BY (id * 2654435761) % 1000003
+            LIMIT ?
+        `, [limit]);
+    } finally {
+        await src.close();
+    }
+}
+
+const INDEX_TABLES = [
+    'search_tags', 'search_fulltext', 'search_characters', 'search_presets', 'search_models',
+    'image_prompt_text', 'prompt_fts_compiled', 'prompt_fts_input', 'image_search_facets',
+    'image_seed_chain'
+];
+const VOLATILE_COLUMNS = new Set(['id', 'indexed_at', 'updated_at', 'created_at', 'image_id']);
+
+async function dumpIndexTables(dbFile) {
+    const conn = await openSqlite(dbFile);
+    const out = {};
+    try {
+        for (const table of INDEX_TABLES) {
+            const rows = await conn.all(`SELECT * FROM ${table}`);
+            out[table] = rows
+                .map((row) => JSON.stringify(Object.keys(row).sort()
+                    .filter((k) => !VOLATILE_COLUMNS.has(k))
+                    .map((k) => [k, row[k]])))
+                .sort();
+        }
+        out.images_ready = (await conn.all(
+            'SELECT filename, search_indexes_ready, blob_extract_attempted, fts_extract_attempted, input_prompt_tags_extract_attempted FROM images ORDER BY filename'
+        )).map((r) => JSON.stringify(r));
+    } finally {
+        await conn.close();
+    }
+    return out;
+}
+
+async function seedImagesTable(dbFile, rows) {
+    const conn = await openSqlite(dbFile, false);
+    try {
+        await conn.exec('PRAGMA busy_timeout = 60000');
+        await conn.run('BEGIN');
+        for (const r of rows) {
+            await conn.run(`
+                INSERT INTO images (id, filename, md5, width, height, parent, upscaled, size, mtime, blurhash, metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `, [r.id, r.filename, r.md5, r.width, r.height, r.parent, r.upscaled, r.size, r.mtime, r.blurhash, r.metadata]);
+        }
+        await conn.run('COMMIT');
+    } finally {
+        await conn.close();
+    }
+}
+
+function rowToIndexMetadata(r) {
+    return {
+        id: r.id,
+        filename: r.filename,
+        md5: r.md5,
+        width: r.width,
+        height: r.height,
+        parent: r.parent,
+        upscaled: Boolean(r.upscaled),
+        size: r.size,
+        mtime: r.mtime,
+        blurhash: r.blurhash,
+        metadata: JSON.parse(r.metadata || '{}')
+    };
+}
+
 const sections = {};
+
+// Finding 2: updateSearchIndexes in one transaction with chunked multi-row INSERTs.
+sections.searchIndex = async function searchIndex() {
+    if (!haveDbCopy()) return;
+    const rows = await sampleImageRows(Number(process.env.PERF_SEARCH_INDEX_ROWS || 300));
+    const results = {};
+    for (const variant of ['old', 'new']) {
+        const mod = variant === 'old'
+            ? requireOldModule('modules/metadataDatabase.js')
+            : require('../modules/metadataDatabase');
+        const dir = makeWorkDir(`search-index-${variant}`);
+        assert.strictEqual(await mod.initializeDatabase(dir, new PngMetadata(null)), true);
+        const dbFile = path.join(dir, 'metadata.db');
+        await seedImagesTable(dbFile, rows);
+        const t0 = process.hrtime.bigint();
+        for (const r of rows) {
+            await mod.updateSearchIndexes(r.filename, rowToIndexMetadata(r));
+        }
+        const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+        await mod.closeDatabase();
+        results[variant] = { ms, dump: await dumpIndexTables(dbFile) };
+        console.log(`  ${variant}: ${rows.length} images indexed in ${ms.toFixed(0)} ms (${(ms / rows.length).toFixed(2)} ms/image)`);
+    }
+    for (const table of Object.keys(results.old.dump)) {
+        assert.deepStrictEqual(results.new.dump[table], results.old.dump[table], `index table ${table} differs`);
+    }
+    const tagRows = results.new.dump.search_tags.length + results.new.dump.search_fulltext.length;
+    console.log(`  searchIndex: identical index rows (${tagRows} tag+fulltext rows)`);
+};
 
 // #624: addReceiptMetadata must not merge forge_data that finalizeWithForgeData already embedded.
 sections.forge624 = async function forge624() {
@@ -158,7 +299,11 @@ async function main() {
     console.log('test-perf-b-generation: all passed');
 }
 
-main().then(() => process.exit(0)).catch((error) => {
+main().then(() => {
+    cleanupOldModules();
+    process.exit(0);
+}).catch((error) => {
+    cleanupOldModules();
     console.error(error);
     process.exit(1);
 });
