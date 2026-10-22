@@ -5356,6 +5356,9 @@ function resolveAppIconPath(imageIcon, size) {
 function buildAppIconSrcset(imageIcon) {
     const filename = appIconBasename(imageIcon);
     if (!filename) return '';
+    // only app_icons have compiled sizes; other art (a dialog's own caption icon) has none to list
+    const path = resolveAppIconPath(imageIcon);
+    if (path && !path.includes('/static_images/app_icons/')) return '';
     return APP_ICON_SRCSET_SIZES
         .map((size) => `${resolveAppIconPath(filename, size)} ${size}w`)
         .join(', ');
@@ -5364,8 +5367,15 @@ function buildAppIconSrcset(imageIcon) {
 // displayPx: the size this surface draws the icon at (APP_ICON_DISPLAY_PX).
 function renderAppIconImg(imageIcon, className = '', displayPx) {
     const imagePath = resolveAppIconPath(imageIcon);
-    const srcset = buildAppIconSrcset(imageIcon);
     const classAttr = className ? ` class="icon-image ${className}"` : ' class="icon-image"';
+    // Art outside app_icons (a Vista dialog's own caption icon, e.g. vista-file-progress/progress-16.png)
+    // has no compiled sizes: the app_icons srcset named files that do not exist and the taskbar
+    // button drew nothing. Its own file, and its -32 twin for 2x when it is a -16 icon.
+    if (imagePath && !imagePath.includes('/static_images/app_icons/') && /^\/(?!\/)/.test(imagePath)) {
+        const twin = /-16\.png$/i.test(imagePath) ? ` srcset="${imagePath} 1x, ${imagePath.replace(/-16\.png$/i, '-32.png')} 2x"` : '';
+        return `<img src="${imagePath}" alt=""${twin}${classAttr} />`;
+    }
+    const srcset = buildAppIconSrcset(imageIcon);
     const srcsetAttr = srcset ? ` srcset="${srcset}" sizes="${appIconSizesAttr(displayPx)}"` : '';
     return `<img src="${imagePath}" alt=""${srcsetAttr}${classAttr} />`;
 }
@@ -6612,7 +6622,6 @@ function buildToolsSubmenuItems() {
         { launchId: 'pomodoro', icon: 'fas fa-timer', imageIcon: 'vista-date-time.png', text: 'Pomodoro', appMenuLocation: 'tools', startMenu: false, appMenu: false, /* the Pomodoro tab of Alarm Clock; kept for old shortcuts */ action: async () => { await featureLoader.loadFeature('alarm'); /* public/scripts/comp/desktop-apps/alarmPomodoro.js */ openDesktopPomodoro(); } },
         { launchId: 'media-player', icon: 'fas fa-play', imageIcon: 'media_player.png', text: 'Media Player', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('media_player'); /* public/scripts/comp/desktop-apps/mediaPlayer.js */ openDesktopMediaPlayer(); } },
         { launchId: 'emotion', icon: 'fas fa-photo-film', imageIcon: 'emotion.png', text: 'eMotion LIVE', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('emotion'); /* public/scripts/comp/desktop-apps/emotion.js */ openDesktopEmotion(); } },
-        { launchId: 'exchange', icon: 'fas fa-building-columns', imageIcon: 'vista-mail.png', text: 'Exchange Server', adminOnly: true, appMenuLocation: 'tools', action: () => { /* openDsapInGrimoire: public/scripts/comp/dsapRegistry.js */ openDsapInGrimoire('dsap://exchange.dreamscape.jp/'); } },
     ].filter(isStartMenuEntryEnabled).filter((item) => !item.adminOnly || localStorage.getItem('userType') === 'admin');
     // getDsapStartMenuEntriesAtLocation: public/scripts/comp/dsapRegistry.js
     const dsapAtTools = typeof getDsapStartMenuEntriesAtLocation === 'function'
