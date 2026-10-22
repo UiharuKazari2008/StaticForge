@@ -1493,8 +1493,11 @@ const vsbMailOptions = {
 // ---------------------------------------------------------------- calculator (Microsoft + Desktop Calculator)
 
 const VSB_CALC_COLORS = [['grey', 'Grey'], ['pink', 'Pink'], ['yellow', 'Yellow']];
-const VSB_DESK_COLORS = [['plain', 'Classic'], ['aqua', 'Aqua'], ['black', 'Black'], ['blue', 'Blue'], ['green', 'Green'], ['pink', 'Pink'], ['red', 'Red'], ['white', 'White'], ['yellow', 'Yellow']];
-const VSB_DESK_INK = { plain: 'gray', aqua: 'blue', black: 'black', blue: 'blue', green: 'green', pink: 'red', red: 'red', white: 'gray', yellow: 'beige' };
+// Desktop Calculator's back colour (its PerSettings "backcolor", default #1F202A): any colour, drawn by
+// tinting bg_*.png with the gadget's own colour layers (vsbDeskTint). The names are the presets offered.
+const VSB_DESK_COLORS = [['plain', 'Classic', '#1F202A'], ['black', 'Black', '#101010'], ['blue', 'Blue', '#1C3A78'],
+    ['aqua', 'Aqua', '#17707C'], ['green', 'Green', '#1E5E2A'], ['red', 'Red', '#7A1C1C'], ['pink', 'Pink', '#8C2A62'],
+    ['yellow', 'Yellow', '#8A7414'], ['white', 'White', '#C8C8CC']];
 
 const vsbCalcDefaults = () => ({ entry: '0', acc: null, op: '', fresh: true, memory: null, history: [] });
 
@@ -1554,10 +1557,22 @@ const vsbCalcAct = (inst, op) => {
         s.acc = null;
         s.op = '';
         s.fresh = true;
-    } else if (op === 'sqrt' || op === 'sq' || op === 'inv' || op === 'pct' || op === 'sin' || op === 'cos' || op === 'tan' || op === 'ln' || op === 'log') {
+    } else if (/^(sqrt|sq|inv|pct|a?(sin|cos|tan)|ln|log|fact)$/.test(op)) {
         const n = vsbCalcNum(s);
-        const rad = n * Math.PI / 180;
+        // Desktop Calculator's Settings > Function: degrees (default) or radians
+        const toRad = s.angles === 'rad' ? 1 : Math.PI / 180;
+        const rad = n * toRad;
+        const fact = (x) => {
+            if (x < 0 || x > 170 || Math.floor(x) !== x) return NaN;
+            let r = 1;
+            for (let i = 2; i <= x; i++) r *= i;
+            return r;
+        };
         const fns = {
+            asin: () => Math.asin(n) / toRad,
+            acos: () => Math.acos(n) / toRad,
+            atan: () => Math.atan(n) / toRad,
+            fact: () => fact(n),
             sqrt: () => Math.sqrt(n),
             sq: () => n * n,
             inv: () => 1 / n,
@@ -1618,6 +1633,8 @@ const vsbCalcBind = (root, inst) => {
         else if (e.key === 'Backspace') op = 'bk';
         else if (e.key === '%') op = 'pct';
         else if ('+-*/'.includes(e.key)) op = e.key;
+        else if (e.key === '^' && inst.g.type === 'deskcalc') op = 'pow';
+        else if (e.key === '!' && inst.g.type === 'deskcalc') op = 'fact';
         if (!op) return;
         e.preventDefault();
         vsbCalcAct(inst, op);
@@ -1682,48 +1699,177 @@ const vsbCalcOptions = {
     }
 };
 
+// Desktop Calculator (tmp/gadget/DesktopCalculator.gadget, Home Cooked Gadgets 1.5), laid out as its
+// Calculator.html draws itself: bg_*.png tinted to the back colour by four colour layers, then each key as
+// its 3-slice art (bs_* 20 px docked, bb_* 36 px undocked: middle / edges for normal, hot and pressed),
+// then cover_*.png on top with the LCD and every key's label; the number is Arial on the LCD.
+// Docked 130x186 (24 keys), undocked 398x335 (36: the 24 plus pi, n! and ten scientific keys).
+const VSB_DESK_KEYS = [
+    ['mp', 'memory', 'M+'], ['mr', 'memory', 'MR'], ['mc', 'memory', 'MC'], ['c', 'clear', 'C'],
+    ['inv', 'operations', '1/x'], ['pct', 'operations', '%'], ['sqrt', 'operations', 'Square root'], ['/', 'operations', 'Divide'],
+    ['7', 'numbers'], ['8', 'numbers'], ['9', 'numbers'], ['*', 'operations', 'Multiply'],
+    ['4', 'numbers'], ['5', 'numbers'], ['6', 'numbers'], ['-', 'operations', 'Subtract'],
+    ['1', 'numbers'], ['2', 'numbers'], ['3', 'numbers'], ['+', 'operations', 'Add'],
+    ['0', 'numbers'], ['sign', 'numbers', 'Change sign'], ['dot', 'numbers', 'Decimal point'], ['eq', 'equals', 'Equals']
+];
+const VSB_DESK_EXTRA = [['pi', 'pi'], ['fact', 'n!'], ['sin', 'sin'], ['asin', 'asin'], ['cos', 'cos'], ['acos', 'acos'],
+    ['tan', 'tan'], ['atan', 'atan'], ['log', 'log'], ['ln', 'ln'], ['sq', 'x squared'], ['pow', 'x to the power y']];
+// PerSettings.sDefaults: the art for each key group
+const VSB_DESK_INK = { memory: 'blue', clear: 'red', operations: 'gray', numbers: 'black', equals: 'green', extra: 'beige' };
+
+// addOverBoxes(): each key's rectangle, docked and undocked
+const vsbDeskRects = function (docked) {
+    const rects = [];
+    if (docked) {
+        for (let i = 0; i < 24; i++) {
+            const col = i % 4;
+            const row = Math.floor(i / 4);
+            rects.push({ x: 8 + col * 29, y: row === 0 ? 45 : 70 + (row - 1) * 22, w: 28, h: 20 });
+        }
+        return rects;
+    }
+    for (let i = 0; i < 24; i++) {
+        const col = i % 4;
+        const row = Math.floor(i / 4);
+        rects.push({ x: 11 + col * 54, y: row === 0 ? 77 : 123 + (row - 1) * 41, w: 50, h: 36 });
+    }
+    rects.push({ x: 233, y: 77, w: 75, h: 36 }, { x: 312, y: 77, w: 75, h: 36 });
+    for (let i = 0; i < 10; i++) rects.push({ x: 233 + (i % 2) * 79, y: 123 + Math.floor(i / 2) * 41, w: 75, h: 36 });
+    return rects;
+};
+
+// One key: the two rounded ends and the stretched middle of its sprite, under the label cover
+const vsbDeskKey = function (parent, op, group, title, rect) {
+    const btn = vsbButton('vsb-desk-key', title || op, parent);
+    btn.dataset.calc = op;
+    btn.dataset.ink = VSB_DESK_INK[group];
+    btn.style.cssText = `left:${rect.x}px;top:${rect.y}px;width:${rect.w}px;height:${rect.h}px;--k:${rect.h}px`;
+    vsbEl('span', 'vsb-desk-key-l', btn);
+    vsbEl('span', 'vsb-desk-key-m', btn);
+    vsbEl('span', 'vsb-desk-key-r', btn);
+    return btn;
+};
+
 const vsbDeskMount = function (inst) {
     const root = vsbEl('div', 'vsb-desk', inst.body);
-    const readout = vsbEl('div', 'vsb-desk-readout', root);
+    const tint = vsbEl('div', 'vsb-desk-tint', root);
+    const layers = {};
+    ['base', 'main', 'color', 'white', 'black'].forEach((name) => {
+        layers[name] = vsbEl('div', 'vsb-desk-layer', tint);
+        layers[name].dataset.layer = name;
+    });
+    [true, false].forEach((docked) => {
+        const pad = vsbEl('div', 'vsb-desk-pad ' + (docked ? 'is-docked' : 'is-undocked'), root);
+        const rects = vsbDeskRects(docked);
+        VSB_DESK_KEYS.forEach(([op, group, title], i) => vsbDeskKey(pad, op, group, title, rects[i]));
+        if (!docked) VSB_DESK_EXTRA.forEach(([op, title], i) => vsbDeskKey(pad, op, 'extra', title, rects[24 + i]));
+    });
+    vsbEl('div', 'vsb-desk-cover', root);
     const memflag = vsbEl('span', 'vsb-desk-mem', root);
     memflag.textContent = 'M';
-    const mem = vsbEl('div', 'vsb-desk-memrow', root);
-    [['M', 'ms'], ['M+', 'mp'], ['MR', 'mr'], ['MC', 'mc']].forEach(([label, op]) => vsbCalcKey(label, op, mem, 'vsb-desk-key'));
-    const keys = vsbEl('div', 'vsb-desk-keys', root);
-    const sci = vsbEl('div', 'vsb-desk-sci', keys);
-    [['sin', 'sin'], ['cos', 'cos'], ['tan', 'tan'], ['ln', 'ln'], ['log', 'log'],
-        ['pi', 'pi'], ['x2', 'sq'], ['1/x', 'inv'], ['x^y', 'pow'], ['sqrt', 'sqrt']
-    ].forEach(([label, op]) => vsbCalcKey(label, op, sci, 'vsb-desk-key'));
-    [['7', '7'], ['8', '8'], ['9', '9'], ['/', '/'], ['<', 'bk'],
-        ['4', '4'], ['5', '5'], ['6', '6'], ['*', '*'], ['C', 'c'],
-        ['1', '1'], ['2', '2'], ['3', '3'], ['-', '-'], ['+/-', 'sign'],
-        ['0', '0'], ['.', 'dot'], ['=', 'eq'], ['+', '+'], ['%', 'pct']
-    ].forEach(([label, op]) => vsbCalcKey(label, op, keys, 'vsb-desk-key'));
-    inst.parts = { root, readout, memflag };
+    const readout = vsbEl('div', 'vsb-desk-readout', root);
+    inst.parts = { root, readout, memflag, layers };
     vsbCalcBind(root, inst);
     vsbDeskPaint(inst);
+};
+
+// setColorLayers(): the strongest channel picks the colour layer, the order of the other two the main
+// layer; the colour, white and black layers' opacities mix the rest
+const vsbDeskTint = function (hex) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+    const v = parseInt(m ? m[1] : '1F202A', 16);
+    const r = (v >> 16) & 255;
+    const g = (v >> 8) & 255;
+    const b = v & 255;
+    let color; let main; let v1; let v2; let v3;
+    if (r > g && r > b) {
+        color = 'red';
+        if (g > b) { main = 'yellow'; v1 = r; v2 = g; v3 = b; } else { main = 'pink'; v1 = r; v2 = b; v3 = g; }
+    } else if (g > b) {
+        color = 'green';
+        if (r > b) { main = 'yellow'; v1 = g; v2 = r; v3 = b; } else { main = 'aqua'; v1 = g; v2 = b; v3 = r; }
+    } else {
+        color = 'blue';
+        if (g > r) { main = 'aqua'; v1 = b; v2 = g; v3 = r; } else { main = 'pink'; v1 = b; v2 = r; v3 = g; }
+    }
+    const share = (x) => (Number.isFinite(x) ? Math.min(1, Math.max(0, x)) : 0);
+    return { main, color, colorOpacity: share((v2 - v1) / (v3 - v1)), whiteOpacity: share(v3 / v1), blackOpacity: share(1 - v1 / 255) };
+};
+
+const vsbDeskHex = function (s) {
+    if (/^#[0-9a-f]{6}$/i.test(s.backcolor || '')) return s.backcolor;
+    const preset = VSB_DESK_COLORS.find(([id]) => id === s.color);
+    return preset ? preset[2] : VSB_DESK_COLORS[0][2];
+};
+
+// format_disp_num(): a trailing point, thousands grouped, at most 10 (docked) / 20 characters, else
+// rounded or in exponent form
+const vsbDeskFormat = function (entry, docked) {
+    if (entry === 'Error') return 'Error';
+    const max = docked ? 10 : 20;
+    const group = (t) => {
+        const neg = t.startsWith('-');
+        const body = neg ? t.slice(1) : t;
+        const dot = body.indexOf('.');
+        const int = dot === -1 ? body : body.slice(0, dot);
+        const frac = dot === -1 ? '.' : body.slice(dot);
+        return (neg ? '-' : '') + int.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + frac;
+    };
+    let text = String(entry);
+    if (!/e/i.test(text)) {
+        const shown = group(text);
+        if (shown.length <= max) return shown;
+        const n = Number(text);
+        const dot = text.replace('-', '').indexOf('.');
+        if (dot > -1 && dot < max) {
+            const scale = Math.pow(10, Math.max(0, max - dot - 1));
+            const rounded = group(String(Math.round(n * scale) / scale));
+            if (rounded.length <= max) return rounded;
+        }
+    }
+    const n = Number(text);
+    if (!Number.isFinite(n)) return 'Error';
+    for (let digits = max - 5; digits >= 0; digits--) {
+        text = n.toExponential(digits);
+        if (text.length <= max) return text;
+    }
+    return text;
 };
 
 const vsbDeskPaint = function (inst) {
     const s = inst.g.settings;
     const p = inst.parts;
-    const color = VSB_DESK_COLORS.some(([id]) => id === s.color) ? s.color : 'plain';
-    p.root.dataset.color = color;
-    p.root.dataset.ink = VSB_DESK_INK[color] || 'gray';
-    p.readout.textContent = s.entry || '0';
-    p.memflag.classList.toggle('hidden', s.memory == null);
+    const docked = !!inst.g.docked;
+    const size = docked ? 'small' : 'big';
+    const tint = vsbDeskTint(vsbDeskHex(s));
+    const art = (name) => `url(${VSB_ASSETS}deskcalc/bg_${size}${name ? '_' + name : ''}.png)`;
+    p.layers.base.style.backgroundImage = art('');
+    p.layers.main.style.backgroundImage = art(tint.main);
+    p.layers.color.style.backgroundImage = art(tint.color);
+    p.layers.color.style.opacity = String(tint.colorOpacity);
+    p.layers.white.style.backgroundImage = art('white');
+    p.layers.white.style.opacity = String(tint.whiteOpacity);
+    p.layers.black.style.backgroundImage = art('black');
+    p.layers.black.style.opacity = String(tint.blackOpacity);
+    p.readout.textContent = vsbDeskFormat(s.entry || '0', docked);
+    p.memflag.classList.toggle('hidden', !s.memory);
 };
 
 const vsbDeskOptions = {
     html(set) {
+        const current = VSB_DESK_COLORS.some(([id]) => id === set.color) ? set.color : 'plain';
         return `<div class="vsb-options">
             <div class="group"><label for="vsbDeskColor">Color:</label>
-                <select id="vsbDeskColor">${vsbOptions(VSB_DESK_COLORS, set.color || 'plain')}</select></div>
-            <p>Undock the calculator for scientific keys. Trigonometry uses degrees.</p>
+                <select id="vsbDeskColor">${vsbOptions(VSB_DESK_COLORS.map(([id, label]) => [id, label]), current)}</select></div>
+            <div class="group"><label for="vsbDeskAngles">Angles:</label>
+                <select id="vsbDeskAngles">${vsbOptions([['deg', 'Degrees'], ['rad', 'Radians']], set.angles === 'rad' ? 'rad' : 'deg')}</select></div>
+            <p>Undock the calculator for scientific keys.</p>
         </div>`;
     },
     read(dialog, set) {
-        return { ...set, color: dialog.querySelector('#vsbDeskColor').value };
+        const next = { ...set, color: dialog.querySelector('#vsbDeskColor').value, angles: dialog.querySelector('#vsbDeskAngles').value };
+        delete next.backcolor;
+        return next;
     }
 };
 
@@ -2732,7 +2878,7 @@ const vsbDefaultSettings = function (type) {
         case 'clock':
         case 'hero': return { theme: 0, name: '', timeZone: '', seconds: false };
         case 'calculator': return { ...vsbCalcDefaults(), color: 'grey', historyOn: true };
-        case 'deskcalc': return { ...vsbCalcDefaults(), color: 'plain' };
+        case 'deskcalc': return { ...vsbCalcDefaults(), color: 'plain', angles: 'deg' };
         case 'timer': return { endAt: 0, mins: 0, secs: 0, ringing: false };
         case 'clipboard': return { items: [] };
         case 'outlook': return { unreadOnly: false };

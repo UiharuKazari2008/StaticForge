@@ -1646,120 +1646,128 @@ body.desktop-mode:not(.windows-classic-theme) .vsb-notes:is(:hover, :focus-withi
 .vsb-calc-plus { grid-column: 6; grid-row: 1 / span 2; }
 .vsb-calc-eq { grid-column: 6; grid-row: 3 / span 2; }
 
-/* ---------- Desktop Calculator ---------- */
+/* ---------- Desktop Calculator (tmp/gadget/DesktopCalculator.gadget) ----------
+   Calculator.html's stack: bg_*.png and its four tint layers (vistaSidebar.js vsbDeskTint), the keys'
+   3-slice art, cover_*.png with the LCD and every label, then the number in Arial on the LCD.
+   Docked 130x186, undocked 398x335; key sprites are six rows of the key height: middle, ends, hot
+   middle, hot ends, pressed middle, pressed ends (b_out / b_over / b_down). */
 
 .vsb-desk {
     position: relative;
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
     width: 130px;
     height: 186px;
-    padding: 22px 8px 8px;
-    background-repeat: no-repeat;
-    background-size: 100% 100%;
+    overflow: hidden;
 }
 
 .vsb-gadget[data-docked="0"] .vsb-desk {
-    width: 320px;
-    height: 320px;
-    padding: 28px 14px 12px;
+    width: 398px;
+    height: 335px;
 }
 
-.vsb-desk[data-color="plain"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_small.png'); }
-.vsb-desk[data-color="aqua"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_small_aqua.png'); }
-.vsb-desk[data-color="black"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_small_black.png'); }
-.vsb-desk[data-color="blue"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_small_blue.png'); }
-.vsb-desk[data-color="green"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_small_green.png'); }
-.vsb-desk[data-color="pink"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_small_pink.png'); }
-.vsb-desk[data-color="red"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_small_red.png'); }
-.vsb-desk[data-color="white"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_small_white.png'); }
-.vsb-desk[data-color="yellow"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_small_yellow.png'); }
-
-.vsb-gadget[data-docked="0"] .vsb-desk[data-color="plain"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_big.png'); }
-.vsb-gadget[data-docked="0"] .vsb-desk[data-color="aqua"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_big_aqua.png'); }
-.vsb-gadget[data-docked="0"] .vsb-desk[data-color="black"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_big_black.png'); }
-.vsb-gadget[data-docked="0"] .vsb-desk[data-color="blue"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_big_blue.png'); }
-.vsb-gadget[data-docked="0"] .vsb-desk[data-color="green"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_big_green.png'); }
-.vsb-gadget[data-docked="0"] .vsb-desk[data-color="pink"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_big_pink.png'); }
-.vsb-gadget[data-docked="0"] .vsb-desk[data-color="red"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_big_red.png'); }
-.vsb-gadget[data-docked="0"] .vsb-desk[data-color="white"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_big_white.png'); }
-.vsb-gadget[data-docked="0"] .vsb-desk[data-color="yellow"] { background-image: url('/static_images/vista-sidebar/deskcalc/bg_big_yellow.png'); }
-
-.vsb .vsb-desk-readout {
-    height: 22px;
-    overflow: hidden;
-    color: #d7ffe8;
-    font: bold 14px/22px Tahoma, sans-serif;
-    text-align: right;
-}
-
-.vsb .vsb-desk-mem {
+.vsb-desk-tint,
+.vsb-desk-layer,
+.vsb-desk-pad,
+.vsb-desk-cover {
     position: absolute;
-    top: 24px;
-    left: 10px;
-    color: #d7ffe8;
-    font: bold 10px Tahoma, sans-serif;
+    inset: 0;
 }
 
-.vsb-desk[data-color="white"] .vsb-desk-readout,
-.vsb-desk[data-color="yellow"] .vsb-desk-readout,
-.vsb-desk[data-color="white"] .vsb-desk-mem,
-.vsb-desk[data-color="yellow"] .vsb-desk-mem { color: #143; }
-
-.vsb-desk-memrow,
-.vsb-desk-keys {
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 2px;
+.vsb-desk-layer {
+    background: 0 0 / 100% 100% no-repeat;
 }
 
-.vsb-desk-memrow { grid-template-columns: repeat(4, 1fr); }
+.vsb-gadget[data-docked="1"] .vsb-desk-pad.is-undocked,
+.vsb-gadget[data-docked="0"] .vsb-desk-pad.is-docked {
+    display: none;
+}
 
-.vsb-desk-sci { display: contents; }
+.vsb-desk-cover {
+    background: url('/static_images/vista-sidebar/deskcalc/cover_small.png') 0 0 no-repeat;
+    pointer-events: none;
+}
 
-.vsb-gadget[data-docked="1"] .vsb-desk-sci { display: none; }
+.vsb-gadget[data-docked="0"] .vsb-desk-cover {
+    background-image: url('/static_images/vista-sidebar/deskcalc/cover_big.png');
+}
 
 .vsb .vsb-desk-key {
-    height: 18px;
-    color: #fff;
-    font: 8px/18px "Segoe UI", Tahoma, sans-serif;
-    text-align: center;
+    position: absolute;
+    display: block;
+    overflow: hidden;
+}
+
+.vsb-desk-key > span {
+    position: absolute;
+    top: 0;
+    height: var(--k);
     background-repeat: no-repeat;
-    background-position: center 0;
-    background-size: 20px 120px;
+    pointer-events: none;
 }
 
-.vsb .vsb-desk-key:hover { background-position: center -20px; }
-.vsb .vsb-desk-key:active { background-position: center -40px; }
+.vsb-desk-key > .vsb-desk-key-l { left: 0; width: calc(var(--k) / 2); background-position: 0 calc(var(--k) * -1); }
+.vsb-desk-key > .vsb-desk-key-r { right: 0; width: calc(var(--k) / 2); background-position: calc(var(--k) / -2) calc(var(--k) * -1); }
+.vsb-desk-key > .vsb-desk-key-m { left: calc(var(--k) / 2); right: calc(var(--k) / 2); background-repeat: repeat-x; background-position: 0 0; }
 
-.vsb-gadget[data-docked="0"] .vsb-desk-key {
-    height: 28px;
-    font-size: 11px;
-    line-height: 28px;
-    background-size: 36px 216px;
+.vsb .vsb-desk-key:hover .vsb-desk-key-l { background-position: 0 calc(var(--k) * -3); }
+.vsb .vsb-desk-key:hover .vsb-desk-key-r { background-position: calc(var(--k) / -2) calc(var(--k) * -3); }
+.vsb .vsb-desk-key:hover .vsb-desk-key-m { background-position: 0 calc(var(--k) * -2); }
+.vsb .vsb-desk-key:active .vsb-desk-key-l { background-position: 0 calc(var(--k) * -5); }
+.vsb .vsb-desk-key:active .vsb-desk-key-r { background-position: calc(var(--k) / -2) calc(var(--k) * -5); }
+.vsb .vsb-desk-key:active .vsb-desk-key-m { background-position: 0 calc(var(--k) * -4); }
+
+.vsb-desk-pad.is-docked .vsb-desk-key[data-ink="blue"] > span { background-image: url('/static_images/vista-sidebar/deskcalc/bs_blue.png'); }
+.vsb-desk-pad.is-docked .vsb-desk-key[data-ink="red"] > span { background-image: url('/static_images/vista-sidebar/deskcalc/bs_red.png'); }
+.vsb-desk-pad.is-docked .vsb-desk-key[data-ink="gray"] > span { background-image: url('/static_images/vista-sidebar/deskcalc/bs_gray.png'); }
+.vsb-desk-pad.is-docked .vsb-desk-key[data-ink="black"] > span { background-image: url('/static_images/vista-sidebar/deskcalc/bs_black.png'); }
+.vsb-desk-pad.is-docked .vsb-desk-key[data-ink="green"] > span { background-image: url('/static_images/vista-sidebar/deskcalc/bs_green.png'); }
+.vsb-desk-pad.is-docked .vsb-desk-key[data-ink="beige"] > span { background-image: url('/static_images/vista-sidebar/deskcalc/bs_beige.png'); }
+
+.vsb-desk-pad.is-undocked .vsb-desk-key[data-ink="blue"] > span { background-image: url('/static_images/vista-sidebar/deskcalc/bb_blue.png'); }
+.vsb-desk-pad.is-undocked .vsb-desk-key[data-ink="red"] > span { background-image: url('/static_images/vista-sidebar/deskcalc/bb_red.png'); }
+.vsb-desk-pad.is-undocked .vsb-desk-key[data-ink="gray"] > span { background-image: url('/static_images/vista-sidebar/deskcalc/bb_gray.png'); }
+.vsb-desk-pad.is-undocked .vsb-desk-key[data-ink="black"] > span { background-image: url('/static_images/vista-sidebar/deskcalc/bb_black.png'); }
+.vsb-desk-pad.is-undocked .vsb-desk-key[data-ink="green"] > span { background-image: url('/static_images/vista-sidebar/deskcalc/bb_green.png'); }
+.vsb-desk-pad.is-undocked .vsb-desk-key[data-ink="beige"] > span { background-image: url('/static_images/vista-sidebar/deskcalc/bb_beige.png'); }
+
+/* div_num: Arial on the LCD, right-aligned (docked 10,15 / 110 wide / 20 px; undocked 10,22 / 378 / 34 px) */
+.vsb .vsb-desk-readout {
+    position: absolute;
+    left: 10px;
+    top: 15px;
+    width: 110px;
+    overflow: hidden;
+    color: #000;
+    font: 20px/23px Arial, sans-serif;
+    text-align: right;
+    white-space: nowrap;
+    pointer-events: none;
 }
 
-.vsb-gadget[data-docked="0"] .vsb-desk-key:hover { background-position: center -36px; }
-.vsb-gadget[data-docked="0"] .vsb-desk-key:active { background-position: center -72px; }
+.vsb-gadget[data-docked="0"] .vsb-desk-readout {
+    top: 22px;
+    width: 378px;
+    font-size: 34px;
+    line-height: 39px;
+}
 
-.vsb-desk[data-color="white"] .vsb-desk-key,
-.vsb-desk[data-color="yellow"] .vsb-desk-key { color: #222; }
+/* the memory mark: an Arial M with a dark glow, top left of the LCD */
+.vsb .vsb-desk-mem {
+    position: absolute;
+    left: 6px;
+    top: 6px;
+    color: #000;
+    font: 10px/12px Arial, sans-serif;
+    text-shadow: 0 0 1px rgba(0, 0, 0, 0.6);
+    pointer-events: none;
+}
 
-.vsb-desk[data-ink="gray"] .vsb-desk-key { background-image: url('/static_images/vista-sidebar/deskcalc/bs_gray.png'); }
-.vsb-desk[data-ink="blue"] .vsb-desk-key { background-image: url('/static_images/vista-sidebar/deskcalc/bs_blue.png'); }
-.vsb-desk[data-ink="black"] .vsb-desk-key { background-image: url('/static_images/vista-sidebar/deskcalc/bs_black.png'); }
-.vsb-desk[data-ink="green"] .vsb-desk-key { background-image: url('/static_images/vista-sidebar/deskcalc/bs_green.png'); }
-.vsb-desk[data-ink="red"] .vsb-desk-key { background-image: url('/static_images/vista-sidebar/deskcalc/bs_red.png'); }
-.vsb-desk[data-ink="beige"] .vsb-desk-key { background-image: url('/static_images/vista-sidebar/deskcalc/bs_beige.png'); }
-
-.vsb-gadget[data-docked="0"] .vsb-desk[data-ink="gray"] .vsb-desk-key { background-image: url('/static_images/vista-sidebar/deskcalc/bb_gray.png'); }
-.vsb-gadget[data-docked="0"] .vsb-desk[data-ink="blue"] .vsb-desk-key { background-image: url('/static_images/vista-sidebar/deskcalc/bb_blue.png'); }
-.vsb-gadget[data-docked="0"] .vsb-desk[data-ink="black"] .vsb-desk-key { background-image: url('/static_images/vista-sidebar/deskcalc/bb_black.png'); }
-.vsb-gadget[data-docked="0"] .vsb-desk[data-ink="green"] .vsb-desk-key { background-image: url('/static_images/vista-sidebar/deskcalc/bb_green.png'); }
-.vsb-gadget[data-docked="0"] .vsb-desk[data-ink="red"] .vsb-desk-key { background-image: url('/static_images/vista-sidebar/deskcalc/bb_red.png'); }
-.vsb-gadget[data-docked="0"] .vsb-desk[data-ink="beige"] .vsb-desk-key { background-image: url('/static_images/vista-sidebar/deskcalc/bb_beige.png'); }
+.vsb-gadget[data-docked="0"] .vsb-desk-mem {
+    left: 12px;
+    top: 12px;
+    font-size: 14px;
+    line-height: 16px;
+    text-shadow: 0 0 2px rgba(0, 0, 0, 0.6);
+}
 
 /* ---------- Timer ---------- */
 
