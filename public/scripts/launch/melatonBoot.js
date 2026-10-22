@@ -17,7 +17,7 @@
  *            Format wipes this device), then after a format "Setup is restarting..." with a
  *            countdown and a reboot that comes straight back into the installer with the
  *            server's current installer files (localStorage melatonSetup.resume = install).
- *   boot     Vista boot screen (black, Enso, green marquee) while the checks run:
+ *   boot     Vista boot screen (black, green marquee, no logo) while the checks run:
  *            offline → menu. /status: any JSON answer counts as connected, so a starting
  *            server keeps the marquee running until it says ready (no cap). A client-side
  *            timeout means alive but busy (menu after busyTimeoutMs without an answer).

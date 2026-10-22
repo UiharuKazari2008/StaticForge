@@ -1,6 +1,6 @@
 /* Melaton boot on /launch (public/scripts/launch/melatonBoot.js), desktop starts only:
    html.melaton-boot hides the launch card and shows #melatonBoot. data-screen picks the
-   layer: boot (Vista boot screen + Enso), black, teal, menu / confirm / recover (Boot
+   layer: boot (Vista boot screen), black, teal, menu / confirm / recover (Boot
    Manager text mode). Screens switch by cutting, never fading. Yozora #416, #417. */
 
 html.melaton-boot,
@@ -135,7 +135,7 @@ html.melaton-boot #melatonBoot {
     background: teal;
 }
 
-/* ---------- Vista boot screen, with the Enso the later versions added ----------
+/* ---------- Vista boot screen: the bar and the copyright on black, no logo ----------
    Vista draws its boot screen at 640x480 in 16 colours. --vpx scales that drawing up to the
    1024x768 VGA frame (1024/640), and the frame is what stretches to the window.
    Measured from the stock Vista boot screen (640x480 capture):
@@ -146,8 +146,6 @@ html.melaton-boot #melatonBoot {
                 2 x #A3B16E, 5 x #4D5622; slides left to right in 2 px steps and comes
                 round again
      copyright  centred, glyphs y 389-400 (about 12 px Segoe UI), white
-   The Enso takes the Windows 7 logo's place and size (its 200 px animation frame at
-   1024x768 is 125 px here; the visible logo inside it about 84 px), centred at y 205.
    --melaton-sweep is one pass of the cluster (not measurable from a still; tune here). */
 
 .melaton-boot-screen {
@@ -169,16 +167,6 @@ html.melaton-boot #melatonBoot {
     width: calc(640 * var(--vpx));
     height: calc(480 * var(--vpx));
     transform: translate(-50%, -50%);
-}
-
-.melaton-boot-enso {
-    position: absolute;
-    left: calc(276 * var(--vpx));
-    top: calc(161 * var(--vpx));
-    width: calc(88 * var(--vpx));
-    height: calc(88 * var(--vpx));
-    -webkit-user-drag: none;
-    pointer-events: none;
 }
 
 .melaton-boot-bar {
