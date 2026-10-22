@@ -14,6 +14,9 @@ const {
     REPLICATION_TRACKED_CONFIG_TYPES
 } = require('./replication/replicationContracts');
 
+// _getReactiveConfig: min interval between mtime checks per config type
+const REACTIVE_STAT_INTERVAL_MS = 1000;
+
 /**
  * Fluent API for config modifications
  * Provides type-safe, chainable methods for common config operations
@@ -506,7 +509,8 @@ class ConfigManager {
                 pendingSaveStartTime: 0,
                 pendingSaveData: null,
                 pendingSaveOptions: null,
-                lastWriteTime: 0
+                lastWriteTime: 0,
+                lastStatAt: 0
             };
         }
     }
@@ -1457,9 +1461,21 @@ class ConfigManager {
             throw new Error(`Unknown config type: ${configType}`);
         }
         
-        // Check if file was modified
-        if (fs.existsSync(configInfo.path)) {
-            const stats = fs.statSync(configInfo.path);
+        // Check if file was modified. Stat at most once per REACTIVE_STAT_INTERVAL_MS per
+        // config: writes made by this module update cache/lastSaved immediately, so only
+        // external edits wait (up to ~1 s) to be picked up.
+        let stats = null;
+        const now = Date.now();
+        if (!configInfo.cache || !configInfo.lastStatAt || now - configInfo.lastStatAt >= REACTIVE_STAT_INTERVAL_MS) {
+            try {
+                stats = fs.statSync(configInfo.path);
+            } catch (_statError) {
+                // ENOENT (or any stat error, as existsSync did): serve the cache
+                stats = null;
+            }
+            configInfo.lastStatAt = now;
+        }
+        if (stats) {
             const lastModified = stats.mtime.getTime();
             
             // Reload if file changed or not cached
