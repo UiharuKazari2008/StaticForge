@@ -18,9 +18,14 @@ const METADATA_DB = process.env.PERF_METADATA_DB || path.join(os.homedir(), '.ca
 const IMAGES_DIR = process.env.PERF_IMAGES_DIR || '/home/kanmi/staticforge/images';
 const CACHE_DIR = process.env.PERF_CACHE_DIR || '/home/kanmi/staticforge/.cache';
 
-function loadOld(rel) {
+function loadOld(rel, append = '') {
     const abs = path.join(ROOT, rel);
-    const src = execFileSync('git', ['-C', ROOT, 'show', `${BASE}:${rel}`], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    const src = execFileSync('git', ['-C', ROOT, 'show', `${BASE}:${rel}`], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }) + append;
+    return compileAt(abs, src);
+}
+
+// Compile a source string as if it lived at abs (relative requires resolve next to it).
+function compileAt(abs, src) {
     const m = new Module(abs + '.old', module);
     m.filename = abs;
     m.paths = Module._nodeModulePaths(path.dirname(abs));
@@ -298,6 +303,88 @@ async function testUploadHelpers(scratch) {
     console.log('  md5HexAsync / writeFileIfMissing / statNamesInDir: OK');
 }
 
+const EXPLORE_PAGES = process.env.PERF_EXPLORE_PAGES || '/home/kanmi/staticforge/.cache/novelai_explore_gallery';
+const EXPLORE_FILES = process.env.PERF_EXPLORE_FILES || '/home/kanmi/staticforge/.cache/explore_files';
+const EXPLORE_EXPOSE = '\nmodule.exports.__t = { thumbExtById, normalizeResult, setCache, getCached, memoryCache };\n';
+
+async function testExploreCache(scratch) {
+    if (!fs.existsSync(EXPLORE_PAGES)) {
+        console.log('  explore: skipped (no page cache)');
+        return;
+    }
+    const root = path.join(scratch, 'explore');
+    fs.rmSync(root, { recursive: true, force: true });
+    fs.mkdirSync(path.join(root, 'novelai_explore_gallery'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'explore_files'), { recursive: true });
+    for (const name of fs.readdirSync(EXPLORE_PAGES)) {
+        fs.copyFileSync(path.join(EXPLORE_PAGES, name), path.join(root, 'novelai_explore_gallery', name));
+    }
+    // Names only: the module indexes file names, the bytes do not matter here.
+    const imageNames = fs.existsSync(EXPLORE_FILES) ? fs.readdirSync(EXPLORE_FILES) : [];
+    for (const name of imageNames) fs.writeFileSync(path.join(root, 'explore_files', name), '');
+
+    const rel = 'modules/novelaiExploreGallery.js';
+    const oldX = loadOld(rel, EXPLORE_EXPOSE);
+    const newX = compileAt(path.join(ROOT, rel), fs.readFileSync(path.join(ROOT, rel), 'utf8') + EXPLORE_EXPOSE);
+    oldX.initNovelaiExploreGallery(root);
+    newX.initNovelaiExploreGallery(root);
+
+    const ids = new Set();
+    const multi = new Map();
+    for (const name of fs.readdirSync(path.join(root, 'novelai_explore_gallery'))) {
+        if (!name.endsWith('.json')) continue;
+        try {
+            const entry = JSON.parse(fs.readFileSync(path.join(root, 'novelai_explore_gallery', name), 'utf8'));
+            for (const r of entry?.payload?.results || []) {
+                if (r && r.id) { ids.add(r.id); multi.set(r.id, (multi.get(r.id) || 0) + 1); }
+            }
+        } catch (_) { /* not a page */ }
+    }
+    const list = [...ids].concat(['00000000-0000-0000-0000-000000000000', '']);
+    const sample = list.filter((_, i) => i % Math.max(1, Math.floor(list.length / 200)) === 0).concat(list.slice(-2));
+    let oldMs = 0;
+    for (const id of sample.slice(0, 20)) {
+        const t0 = Date.now();
+        oldX.getExplorePostFromCache(id);
+        oldMs += Date.now() - t0;
+    }
+    const missOld = await measure(async () => oldX.getExplorePostFromCache('00000000-0000-0000-0000-000000000000'));
+    const firstNew = await measure(() => newX.getExplorePostFromCache(sample[0]));
+    let newMs = 0;
+    for (const id of sample) {
+        const a = oldX.getExplorePostFromCache(id);
+        const t0 = process.hrtime.bigint();
+        const b = await newX.getExplorePostFromCache(id);
+        newMs += Number(process.hrtime.bigint() - t0) / 1e6;
+        assert.deepStrictEqual(b, a, `post ${id} (in ${multi.get(id) || 0} pages)`);
+    }
+    console.log(`  getExplorePostFromCache: ${sample.length} ids equal (${ids.size} posts in ${fs.readdirSync(path.join(root, 'novelai_explore_gallery')).length} files); old ~${Math.round(oldMs / 20)} ms per hit, ${missOld.ms} ms per miss, all sync -> new first call ${firstNew.ms} ms (one async scan, max block ${firstNew.maxLagMs} ms), then ${(newMs / sample.length).toFixed(2)} ms per call`);
+
+    // A page set in memory is found without the disk scan and wins over disk.
+    const fresh = { id: 'fresh-post-id', title: 'fresh', image: {} };
+    newX.__t.setCache('k-fresh', { results: [fresh], rawResults: [fresh] });
+    assert.strictEqual((await newX.getExplorePostFromCache('fresh-post-id')).title, 'fresh');
+
+    // thumbExtById: direct lookups equal the old whole-index regex pass.
+    const thumbIds = imageNames.map((n) => (/^thumb_([0-9a-fA-F-]{36})/.exec(n) || [])[1]).filter(Boolean);
+    const wanted = thumbIds.concat([...ids].slice(0, 50), ['nope']);
+    assert.deepStrictEqual([...newX.__t.thumbExtById(wanted)].sort(), [...oldX.__t.thumbExtById(wanted)].sort());
+
+    // normalizeResult skips the existsSync but reports the same files.
+    for (const id of [...ids].slice(0, 300)) {
+        assert.deepStrictEqual(newX.__t.normalizeResult({ id, image: {} }), oldX.__t.normalizeResult({ id, image: {} }));
+    }
+
+    // memoryCache stays bounded; evicted pages still come back from disk.
+    for (let i = 0; i < 260; i++) newX.__t.setCache(`k-${i}`, { results: [{ id: `p-${i}` }] });
+    assert.ok(newX.__t.memoryCache.size <= 200, `memoryCache size ${newX.__t.memoryCache.size}`);
+    await new Promise((r) => setTimeout(r, 200));
+    assert.strictEqual(newX.__t.getCached('k-0').results[0].id, 'p-0', 'evicted page served from disk');
+    assert.strictEqual((await newX.getExplorePostFromCache('p-0')).id, 'p-0');
+    assert.ok(!fs.readdirSync(path.join(root, 'novelai_explore_gallery')).some((n) => n.endsWith('.tmp')), 'no temp files left');
+    console.log('  thumbExtById / normalizeResult / memoryCache bound / async page writes: OK');
+}
+
 async function main() {
     fs.mkdirSync(SCRATCH, { recursive: true });
     console.log('vfs db batching (finding 9):');
@@ -306,6 +393,8 @@ async function main() {
     await testPicturesListing(SCRATCH);
     console.log('system folder sizes (finding 2):');
     await testDirSizes(SCRATCH);
+    console.log('explore cache (finding 3):');
+    await testExploreCache(SCRATCH);
     console.log('upload helpers (finding 6):');
     await testUploadHelpers(SCRATCH);
     console.log('test-perf-c-vfs: OK');
