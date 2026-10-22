@@ -141,7 +141,7 @@ function registerDsapManifests() {
             launchId: 'security-center',
             icon: 'fas fa-shield-halved',
             imageIcon: 'vista-defender.png',
-            text: 'Windows Defender',
+            text: 'Melaton Defender',
             appMenu: false,
             startMenu: false,
             desktopOnly: true,

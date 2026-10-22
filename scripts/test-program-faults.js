@@ -323,10 +323,10 @@ const othersOpen = () => !minesweeper.classList.contains('hidden') && !calculato
     assert.strictEqual(PF.openDialogs().length, 1);
     let m = dialogEl();
     assert.ok(m.classList.contains('program-fault-dialog') && !m.classList.contains('hidden'));
-    assert.strictEqual(m.querySelector('.modal-window-title-main span').textContent, 'Microsoft Windows');
+    assert.strictEqual(m.querySelector('.modal-window-title-main span').textContent, 'Melaton');
     assert.strictEqual(heading(m), 'Solitaire has stopped working');
     assert.strictEqual(m.dataset.faultPage, 'checking');
-    assert.strictEqual(text(m), 'Windows is checking for a solution to the problem...');
+    assert.strictEqual(text(m), 'Melaton is checking for a solution to the problem...');
     assert.strictEqual(m.querySelector('.program-fault-progress').hidden, false);
     assert.deepStrictEqual(buttons(m).map((b) => b.textContent), ['Continue', 'Cancel']);
     assert.strictEqual(m.querySelector('.program-fault-footer').children[0], copyButton(m), 'Copy Report leads the footer (floated left)');
@@ -368,7 +368,7 @@ const othersOpen = () => !minesweeper.classList.contains('hidden') && !calculato
     assert.strictEqual(m.dataset.faultPage, 'final');
     assert.strictEqual(heading(m), 'Solitaire has stopped working');
     assert.strictEqual(m.querySelector('.program-fault-progress').hidden, true);
-    assert.strictEqual(text(m), 'A problem caused the program to stop working correctly. Windows will close the program and notify you if a solution is available.');
+    assert.strictEqual(text(m), 'A problem caused the program to stop working correctly. Melaton will close the program and notify you if a solution is available.');
     assert.deepStrictEqual(buttons(m).map((b) => b.textContent), ['Continue', 'Close program']);
     assert.strictEqual(buttons(m)[1].dataset.dialogPrimary, '1', 'Close program is the default button');
     assert.ok(!buttons(m)[0].dataset.dialogPrimary);

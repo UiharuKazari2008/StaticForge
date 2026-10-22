@@ -407,7 +407,7 @@
             icon.src = ART + 'options-32.png';
             page.appendChild(icon);
             page.appendChild(node('div', 'gxo-instruction', title));
-            page.appendChild(node('div', 'gxo-text', 'Windows can provide additional information about the games installed on your computer by downloading information from the Internet.'));
+            page.appendChild(node('div', 'gxo-text', 'Melaton can provide additional information about the games installed on your computer by downloading information from the Internet.'));
             page.appendChild(node('div', 'gxo-label', 'Games folder options'));
             const group = node('div', 'gxo-group');
             const check = (id, text, on) => {

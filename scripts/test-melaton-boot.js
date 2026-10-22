@@ -277,7 +277,7 @@ const flush = () => new Promise((r) => setImmediate(r));
     h.ctl.handleKey('ArrowDown');
     h.ctl.handleKey('Enter');
     for (let i = 0; i < 400 && h.ctl.screen !== 'install'; i++) await flush();
-    assert.deepStrictEqual(h.t.screens().slice(-4), ['black', 'loading', 'black', 'install'], 'black, the loading bar, black, Setup');
+    assert.deepStrictEqual(h.t.screens().slice(-6), ['black', 'loading', 'black', 'boot', 'black', 'install'], 'black, the loading bar, the boot screen, Setup (loading files before the boot screen, as from the DVD)');
     const loads = h.t.renders.filter((r) => r.screen === 'loading').map((r) => r.data.progress);
     assert.ok(loads.every((f, i) => i === 0 || f >= loads[i - 1]) && loads[loads.length - 1] === 1, 'the loading bar only moves forward and fills');
     assert.ok(h.t.fetches.includes('/css/launch-install.css'), "Setup's own files are fetched under the bar");
@@ -447,6 +447,34 @@ const flush = () => new Promise((r) => setImmediate(r));
     await h.ctl.setupAction('setup-cancel-yes');
     assert.deepStrictEqual(h.t.replaced, ['/launch']);
 
+    // "loading files" always comes before the boot screen (as Vista's DVD boots into Setup), never after it
+    {
+        const big = Array.from({ length: 50 }, (_, i) => ({ url: `/o${i}.js`, hash: `h${i}`, size: 100 }));
+        const orderEngine = (checks) => ({
+            ...mediaEngine(), readRecord: () => null, readState: () => null,
+            needsInstaller: (_env, list) => list.length > 20,
+            check: async () => (checks.length > 1 ? checks.shift() : checks[0])
+        });
+        const loadingThenBoot = (screens) => screens.every((name, i) => name !== 'loading' || (screens[i + 1] === 'black' && screens[i + 2] === 'boot'));
+        // foreseen at the POST (its manifest check found the large update): loading, then the one boot screen
+        let o = harness([json(true)], { engine: orderEngine([{ files: big, bytes: 5000 }, { files: big, bytes: 5000 }]) });
+        let runP = o.ctl.runChecks();
+        for (let i = 0; i < 400 && o.ctl.screen !== 'install'; i++) await flush();
+        let sc = o.t.screens();
+        assert.ok(sc.indexOf('loading') >= 0 && sc.indexOf('loading') < sc.indexOf('boot'), 'foreseen: loading files before the boot screen');
+        assert.strictEqual(sc.filter((n) => n === 'boot').length, 1, 'foreseen: one boot screen');
+        assert.ok(loadingThenBoot(sc) && sc.indexOf('install') > sc.lastIndexOf('boot'), 'foreseen: loading, boot screen, Setup');
+        void runP;
+        // found only under the boot screen (the POST had no list): loading, then the boot screen again, then Setup
+        o = harness([json(true)], { engine: orderEngine([{ failed: true }, { files: big, bytes: 5000 }]) });
+        runP = o.ctl.runChecks();
+        for (let i = 0; i < 400 && o.ctl.screen !== 'install'; i++) await flush();
+        sc = o.t.screens();
+        assert.ok(loadingThenBoot(sc), 'unforeseen: every loading bar is followed by the boot screen');
+        assert.ok(sc.indexOf('install') > sc.lastIndexOf('boot') && sc.lastIndexOf('boot') > sc.lastIndexOf('loading'), 'unforeseen: loading, boot screen, Setup');
+        void runP;
+    }
+
     // the media cannot be read: the boot menu says so
     h = harness([networkErr()], { fresh: true, engine: { ...mediaEngine(), readRecord: () => null } });
     assert.strictEqual(await h.ctl.runChecks(), 'menu');
@@ -479,7 +507,14 @@ const flush = () => new Promise((r) => setImmediate(r));
     }
     assert.strictEqual(h.t.last().data.page, 'restart');
     h.ctl.preview('setup-format');
-    await h.ctl.setupAction('setup-format-ok');
+    {
+        // Format ends in "Setup is restarting...": its countdown runs on the harness intervals, so tick
+        // them (awaiting the action alone never settled, and node exited before the rest of this file)
+        const formatting = h.ctl.setupAction('setup-format-ok');
+        for (let i = 0; i < 40 && h.t.last().data.page !== 'restart'; i++) await flush();
+        for (let i = 0; i < 15; i++) { h.t.tick(); await flush(); }
+        void formatting;
+    }
     assert.deepStrictEqual(wiped, [], 'design-mode Format never wipes');
     assert.deepStrictEqual(h.t.replaced, [], 'design mode never navigates');
     h.ctl.preview('menu');
@@ -609,7 +644,7 @@ const flush = () => new Promise((r) => setImmediate(r));
     // a large update: black, Setup, the checklist, linger, black, reboot /launch
     u = await runWith({ checks: [{ files: files(50), bytes: 5000 }, { files: [], bytes: 0 }] });
     assert.strictEqual(u.result, 'reboot');
-    assert.deepStrictEqual(u.t.screens(), ['bios', 'black', 'boot', 'black', 'loading', 'black', 'install', 'black'], 'POST → black → boot → black → the loading bar → black → Setup → black');
+    assert.deepStrictEqual(u.t.screens(), ['bios', 'black', 'loading', 'black', 'boot', 'black', 'install', 'black'], 'POST → black → the loading bar → black → boot → black → Setup → black (the POST foresaw the update)');
     assert.deepStrictEqual(u.t.replaced, ['/launch'], 'reboots into /launch, not /app');
     const installs = u.t.renders.filter((r) => r.screen === 'install');
     assert.ok(installs.some((r) => r.data.steps[0].state === 'active' && r.data.steps[0].fraction === 0.5), 'Copying shows its progress');

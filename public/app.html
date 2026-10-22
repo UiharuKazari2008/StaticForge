@@ -6886,9 +6886,11 @@ Examples:
     </div>
 
     <!-- Application error list modal (scripts/comp/fatalErrorBootstrap.js) -->
-    <div id="dreamscapeAppErrorModal" class="modal hidden resizeable-window dreamscape-app-error-modal dark"
+    <!-- Spectator (the fallback error list when Vista's "has stopped working" dialog cannot show):
+         a light Vista window, Explorer's command bar, the errors as a list (fatal-error.css) -->
+    <div id="dreamscapeAppErrorModal" class="modal hidden resizeable-window dreamscape-app-error-modal"
         data-window-max-width="960" data-window-max-height="900" data-window-min-width="420"
-        data-window-min-height="320">
+        data-window-min-height="320" data-window-client="light">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-wave-pulse icon-fa"></i>
@@ -6905,16 +6907,16 @@ Examples:
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content dreamscape-app-error-modal-content dark">
-            <div class="dreamscape-app-error-toolbar">
-                <div class="toolbar-right">
-                    <button type="button" class="btn-secondary btn-small" data-fatal-toolbar="repair"
+        <div class="modal-content dreamscape-app-error-modal-content">
+            <div class="explorer-actions-header dreamscape-app-error-toolbar">
+                <div class="explorer-command-set">
+                    <button type="button" class="explorer-command-btn" data-fatal-toolbar="repair"
                         title="Redownload all files listed in the error list">Repair</button>
-                    <button type="button" class="btn-secondary btn-small" data-fatal-toolbar="restart"
+                    <button type="button" class="explorer-command-btn" data-fatal-toolbar="restart"
                         title="Reload the application">Restart</button>
-                    <button type="button" class="btn-danger btn-small" data-fatal-toolbar="reinstall"
+                    <button type="button" class="explorer-command-btn" data-fatal-toolbar="reinstall"
                         title="Clear all caches, storage, databases, and reinstall the application">Reinstall</button>
-                    <button type="button" class="btn-secondary btn-small" data-fatal-toolbar="clear"
+                    <button type="button" class="explorer-command-btn" data-fatal-toolbar="clear"
                         title="Clear the error list">Clear All</button>
                 </div>
             </div>
@@ -6926,8 +6928,9 @@ Examples:
 
     <!-- Application fatal error window (cloned by scripts/comp/fatalErrorBootstrap.js) -->
     <div id="dreamscapeAppErrorWindowTemplate"
-        class="modal hidden transient resizeable-window dreamscape-app-error-window dark" data-window-max-width="960"
-        data-window-max-height="900" data-window-min-width="360" data-window-min-height="280">
+        class="modal hidden transient resizeable-window dreamscape-app-error-window" data-window-max-width="960"
+        data-window-max-height="900" data-window-min-width="360" data-window-min-height="280"
+        data-window-client="light">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-wave-pulse icon-fa"></i>
@@ -6943,73 +6946,61 @@ Examples:
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content dreamscape-app-error-modal-content dark">
+        <div class="modal-content dreamscape-app-error-modal-content">
             <div class="dreamscape-app-error-scroll form-section-scroll">
                 <div class="dreamscape-app-error-body"></div>
             </div>
-            <div class="modal-footer modal-footer-colored dreamscape-app-error-window-footer">
+            <div class="modal-footer dreamscape-app-error-window-footer">
                 <div class="modal-actions dreamscape-app-error-actions">
-                    <button type="button" class="btn-secondary btn-small" data-fatal-toolbar="repair"
+                    <button type="button" class="btn-standard" data-fatal-toolbar="repair"
                         title="Redownload all files listed in the error list">Repair</button>
-                    <button type="button" class="btn-secondary btn-small" data-fatal-toolbar="restart"
+                    <button type="button" class="btn-standard" data-fatal-toolbar="restart"
                         title="Reload the application">Restart</button>
-                    <button type="button" class="btn-danger btn-small" data-fatal-toolbar="reinstall"
+                    <button type="button" class="btn-standard" data-fatal-toolbar="reinstall"
                         title="Clear all caches, storage, databases, and reinstall the application">Reinstall</button>
-                    <button type="button" class="btn-secondary btn-small" data-fatal-toolbar="clear"
+                    <button type="button" class="btn-standard" data-fatal-toolbar="clear"
                         title="Clear the error list">Clear All</button>
-                    <button type="button" class="btn-secondary btn-small" data-fatal-action="copy"
+                    <button type="button" class="btn-standard" data-fatal-action="copy"
                         title="Copy formatted issue for Cursor">Copy Issue</button>
-                    <button type="button" class="btn-secondary btn-small" data-fatal-action="return"
-                        title="Close this error window">Return</button>
+                    <button type="button" class="btn-standard" data-dialog-primary="1" data-fatal-action="return"
+                        title="Close this error window">Close</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Connectivity error window (boot / network — scripts/comp/fatalErrorBootstrap.js) -->
+    <!-- Connection Failure: Vista's error message box (vista-dialogs.css message layout, fatal-error.css
+         places the text and the left-hand Details button); fatalErrorBootstrap.js clones it -->
     <div id="dreamscapeConnectivityErrorTemplate"
-        class="modal hidden transient on-top dreamscape-connectivity-error-window" data-window-max-width="420"
-        data-window-max-height="480" data-window-min-width="320" data-window-min-height="160"
-        data-window-default-width="420" data-window-default-height="180">
+        class="modal hidden transient on-top dreamscape-connectivity-error-window" data-vista-dialog="message"
+        data-vista-icon="error" data-window-client="light" data-caption-icon="none"
+        data-taskbar-icon="/static_images/app_icons/24/vista-event-viewer.webp" data-window-fixed-size="true"
+        data-window-no-maximize="true">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
-                <i class="fas fa-plug-circle-xmark icon-fa"></i>
-                <img src="/static_images/app_icons/24/vista-event-viewer.webp" srcset="/static_images/app_icons/24/vista-event-viewer.webp 1x, /static_images/app_icons/48/vista-event-viewer.webp 2x" alt="" class="icon-image">
                 <span class="dreamscape-connectivity-window-title">Connection Failure</span>
             </div>
         </div>
         <div class="modal-window-controls">
-            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
-                <i class="fa-regular fa-window-minimize"></i>
-            </button>
             <button type="button" class="btn-danger close-btn btn-small dreamscape-connectivity-close-btn"
                 title="Close">
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
         <div class="modal-content">
-            <div class="modal-body modal-padding">
-                <div class="dreamscape-connectivity-message-row">
-                    <div class="dreamscape-connectivity-icon" aria-hidden="true">
-                        <i class="fas fa-plug-circle-xmark"></i>
-                    </div>
-                    <div class="dreamscape-connectivity-message-text">
-                        <p class="dreamscape-connectivity-headline"></p>
-                        <p class="dreamscape-connectivity-summary"></p>
-                    </div>
+            <div class="dreamscape-connectivity-message-row">
+                <div class="vista-dialog-text">
+                    <p class="dreamscape-connectivity-headline"></p>
+                    <p class="dreamscape-connectivity-summary"></p>
                 </div>
             </div>
-            <div class="modal-footer modal-footer-colored modal-footer-padded">
-                <div class="modal-footer-left">
-                    <button type="button" class="btn-secondary btn-small" data-connectivity-action="details"
-                        title="Open technical details">Details</button>
-                </div>
-                <div class="modal-footer-right">
-                    <button type="button" class="btn-secondary btn-small dreamscape-connectivity-recovery-btn"
-                        data-connectivity-action="restart" title="Reload the application">Restart</button>
-                    <button type="button" class="btn-danger btn-small" data-connectivity-action="exit"
-                        title="Close the application">Shutdown</button>
-                </div>
+            <div class="vista-dialog-footer">
+                <button type="button" class="btn-standard dreamscape-connectivity-details-btn" data-connectivity-action="details"
+                    title="Open technical details">Details</button>
+                <button type="button" class="btn-standard dreamscape-connectivity-recovery-btn" data-dialog-primary="1"
+                    data-connectivity-action="restart" title="Reload the application">Restart</button>
+                <button type="button" class="btn-standard" data-connectivity-action="exit"
+                    title="Close the application">Shutdown</button>
             </div>
         </div>
     </div>
@@ -7927,7 +7918,7 @@ Examples:
                     <span class="dovecote-tray-badge hidden" id="dovecoteTrayBadge">0</span>
                 </div>
                 <!-- Windows Sidebar, while it runs (vistaSidebar.js vsbSyncTray) -->
-                <div class="taskbar-tray-icon hidden" id="vistaSidebarTrayIcon" title="Windows Sidebar">
+                <div class="taskbar-tray-icon hidden" id="vistaSidebarTrayIcon" title="Melaton Sidebar">
                     <i class="fas fa-sidebar-flip"></i>
                 </div>
                 <!-- Search Indexing Indicator -->

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Windows Defender (Yukimi 2026-10-13): Security Center as Vista's Windows Defender window, the
+// Melaton Defender (Yukimi 2026-10-13): Security Center as Vista's Melaton Defender window, the
 // authorised IPs under Allowed items. Run: node scripts/test-windows-defender.js
 const assert = require('assert');
 const fs = require('fs');
@@ -28,7 +28,7 @@ assert.ok(tools.includes('Tools and Settings') && tools.includes('Quarantined it
 const sec = read('public/scripts/comp/securityCenterDsapApplet.js');
 assert.ok(sec.includes('if (securityDsapOpenDefender(normalized)) return;'));
 const man = read('public/scripts/comp/dsapManifests.js');
-assert.ok(man.includes("text: 'Windows Defender'") && man.includes("window.windowsDefender.open('home')"));
+assert.ok(man.includes("text: 'Melaton Defender'") && man.includes("window.windowsDefender.open('home')"));
 const loader = read('public/scripts/comp/featureLoader.js');
 assert.ok(loader.includes("'scripts/comp/windowsDefender.js'") && loader.includes("'css/vista-defender.css'"), 'Defender loads with Control Panel');
 const css = read('public/css/vista-defender.css');

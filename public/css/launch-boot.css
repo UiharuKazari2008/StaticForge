@@ -1,7 +1,8 @@
 /* Melaton boot on /launch (public/scripts/launch/melatonBoot.js), desktop starts only:
    html.melaton-boot hides the launch card and shows #melatonBoot. data-screen picks the
    layer: boot (Vista boot screen), black, teal, menu / confirm / recover (Boot
-   Manager text mode). Screens switch by cutting, never fading. Yozora #416, #417. */
+   Manager text mode). Screens switch by cutting; only the boot screen fades in (1 s, as Vista's
+   comes up). Yozora #416, #417. */
 
 html.melaton-boot,
 html.melaton-boot body {
@@ -47,6 +48,16 @@ html.melaton-boot #melatonBoot {
 #melatonBoot[data-screen="boot"] #melatonBootCanvas,
 #melatonBoot[data-screen="bios"] #melatonBiosCanvas {
     display: block;
+}
+
+/* Vista's boot screen comes up from black over about a second */
+#melatonBoot[data-screen="boot"] #melatonBootCanvas {
+    animation: melaton-boot-fade-in 1s ease-out both;
+}
+
+@keyframes melaton-boot-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 
 /* The BIOS takes the pointer (tabs, items and the key bar answer taps); the boot screen does not */

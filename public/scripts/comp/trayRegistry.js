@@ -10,7 +10,7 @@ const TRAY_ICON_CATALOG = [
     { id: 'directorTrayIcon', label: 'Director' },
     { id: 'naxtBagTrayIcon', label: 'Atelier Bag' },
     { id: 'dovecoteTrayIcon', label: 'Mail' },
-    { id: 'vistaSidebarTrayIcon', label: 'Windows Sidebar' },
+    { id: 'vistaSidebarTrayIcon', label: 'Melaton Sidebar' },
     { id: 'searchIndexingIndicator', label: 'Search indexing' },
     { id: 'walletTrayIcon', label: 'Account Manager' },
     { id: 'workspaceTrayIcon', label: 'Workspace' },

@@ -15,13 +15,15 @@
  *   aurora   curtains of green and violet light drifting on black
  *   blank    black
  *   bubbles  iridescent soap bubbles drifting over the desktop, bouncing off the edges and each other
- *   logo     the start button's logo fading in and out across a black screen (Windows Logo)
+ *   logo     logon.scr (Melaton Logo): the Melaton logo and the flaring glyph in turn across a black screen
  *   mystify  two four-point polygons with trails, colours cycling, on black
- *   photos   the Vista and Melaton wallpapers, panning and zooming, cross-fading (Photos)
+ *   photos   Windows Pictures, workspace images, a saved Image Search or a VFS folder, in one of
+ *            Vista's slide show themes, optionally in black and white (Photos)
  *   ribbons  twisting lit ribbons that grow and fade on black
  *
- *   screenSaver.preview(id)                full screen until input (the dialog's Preview)
- *   screenSaver.attachPreview(canvas, id)  the dialog's monitor picture; returns { stop() }
+ *   screenSaver.preview(id, opts?)         full screen until input (the dialog's Preview)
+ *   screenSaver.attachPreview(canvas, id, opts?)  the dialog's monitor picture; returns { stop() }
+ *       opts.photos: the Photos settings to show instead of the saved ones (unsaved dialog choices)
  *   screenSaver.showForFocusLoss() / hideForFocusReturn()   focusOverlayManager.js
  *
  * Never on the dedicated agent tab (/app?agent=1), while the workstation is locked or booting, or
@@ -33,7 +35,6 @@
     const doc = typeof document !== 'undefined' ? document : null;
     const CHECK_MS = 5000;
     const MOVE_THRESHOLD = 6; // px of mouse travel that ends a saver (Vista ignores a nudge)
-    const PHOTO_SECONDS = 7;
 
     const state = {
         lastInput: Date.now(),
@@ -59,20 +60,37 @@
         return a + Math.random() * (b - a);
     }
 
+    /** The dedicated agent tab (/app?agent=1) or any browser driven by automation (WebDriver,
+        headless Chrome): no idle start and never a lock. */
     function isAgentTab() {
         try {
+            const nav = root.navigator || {};
+            if (nav.webdriver === true || /HeadlessChrome/.test(String(nav.userAgent || ''))) return true;
             return new URLSearchParams(root.location.search).get('agent') === '1';
         } catch (_) {
             return false;
         }
     }
 
+    function lockOnResume() {
+        if (isAgentTab() || !settings().resumeLogon) return;
+        const boot = root.desktopBoot;
+        if (boot && typeof boot.lockWorkstation === 'function') boot.lockWorkstation();
+    }
+
+    /** A visible video that is playing (Media Player, a gallery video): Vista holds the saver off. */
+    function videoPlaying() {
+        if (!doc) return false;
+        return Array.from(doc.querySelectorAll('video')).some((v) => !v.paused && !v.ended && v.readyState > 2 && v.getClientRects().length > 0);
+    }
+
     function blocked() {
         const b = doc && doc.body;
         if (!b || !b.classList.contains('desktop-mode')) return true;
-        if (b.classList.contains('workstation-locked') || b.classList.contains('initializing')
-            || b.classList.contains('boot-from-launch') || b.classList.contains('windows-startup')) return true;
-        if (doc.fullscreenElement) return true;
+        // locked, booting (boot-staged, the start-up classes) or held by the server-restart lock
+        if (['workstation-locked', 'initializing', 'boot-from-launch', 'windows-startup', 'boot-staged', 'session-suspended']
+            .some((c) => b.classList.contains(c))) return true;
+        if (doc.fullscreenElement || videoPlaying()) return true;
         const boot = root.desktopBoot;
         if (boot && typeof boot.isWorkstationLocked === 'function' && boot.isWorkstationLocked()) return true;
         return false;
@@ -105,6 +123,9 @@
     const SAVERS = {};
 
     SAVERS.blank = () => ({ frame() {} });
+
+    // the dialog's monitor for (None) and the focus cover: just the desktop (the engine's backdrop)
+    const PREVIEW_ONLY = { desktop: () => ({ transparent: true, frame() {} }) };
 
     /* Bubbles: each size is drawn once to a sprite (clear middle, a rainbow film toward the rim, a
        window-shaped highlight and a faint lower reflection) and turned slowly as it drifts. */
@@ -425,96 +446,306 @@
         };
     };
 
-    /* Photos: Vista and Melaton wallpapers with a slow pan and zoom, cross-fading. */
+    // ---- Photos: its pictures (photoSource) and Vista's slide show themes ----
+
+    const PHOTO_SECONDS = { slow: 10, medium: 6, fast: 3 };
+    const PHOTO_AGE_MS = { day: 864e5, week: 7 * 864e5, month: 30 * 864e5, year: 365 * 864e5 };
+    const PHOTO_THEMES = ['classic', 'fade', 'panzoom', 'travel', 'frame', 'stack'];
+
+    function photoSettings() {
+        const pers = root.desktopPersonalization;
+        const s = settings();
+        return pers && typeof pers.normalizePhotos === 'function' ? pers.normalizePhotos(s.photos) : (s.photos || {});
+    }
+
+    function galleryUrl(file, base, preview) {
+        /* global localGalleryImageUrl, resolveGalleryPreviewUrl */
+        if (preview && base && typeof resolveGalleryPreviewUrl === 'function') return resolveGalleryPreviewUrl({ base });
+        if (file && typeof localGalleryImageUrl === 'function') return localGalleryImageUrl(file);
+        return file ? `/images/${encodeURIComponent(file)}` : null;
+    }
+
+    /** Every picture of the chosen workspaces' galleries (newest first), stopping at the age limit. */
+    async function workspacePhotoUrls(ps, preview) {
+        const client = root.wsClient;
+        /* global workspaces, activeWorkspace */
+        const all = typeof workspaces !== 'undefined' && workspaces ? Object.keys(workspaces) : [];
+        const current = (typeof activeWorkspace !== 'undefined' && activeWorkspace) || 'default';
+        const ids = ps.workspace === 'all' ? all : [ps.workspace === 'current' ? current : ps.workspace].filter((id) => all.includes(id) || id === current);
+        const cutoff = PHOTO_AGE_MS[ps.age] ? Date.now() - PHOTO_AGE_MS[ps.age] : 0;
+        const urls = [];
+        if (!client || typeof client.sendMessage !== 'function') return urls;
+        for (const workspaceId of ids) {
+            for (let offset = 0; offset < 2000 && urls.length < 4000; offset += 200) {
+                let data = null;
+                try {
+                    // request_gallery: modules/ws/handlers/120-galleryHandler.js (newest first, with mtime)
+                    data = await client.sendMessage('request_gallery', {
+                        viewType: ps.favorites ? 'pinned' : 'images', includePinnedStatus: false, workspaceId, offset, limit: 200, light: true
+                    }, false);
+                } catch (_) { break; }
+                const rows = (data && data.gallery) || [];
+                let older = false;
+                for (const row of rows) {
+                    if (cutoff && Number(row.mtime) < cutoff) { older = true; break; }
+                    const url = galleryUrl(row.filename || row.upscaled || row.original, row.base, preview);
+                    if (url) urls.push(url);
+                }
+                if (older || rows.length < 200) break;
+            }
+        }
+        return urls;
+    }
+
+    /** The image files of a VFS folder (Explorer's listing, vfsClient.js). */
+    async function folderPhotoUrls(ps, preview) {
+        /* global vfsClient */
+        if (!ps.folder || typeof vfsClient === 'undefined') return [];
+        let res = null;
+        try { res = await vfsClient.listDirectory(ps.folder.path, { offset: 0, limit: 1000 }); } catch (_) { return []; }
+        const urls = [];
+        ((res && res.items) || []).forEach((item) => {
+            // gallery pictures, scraps, references (they carry a previewUrl) and image files
+            const isImage = item.targetKind === 'image' || item.targetKind === 'scrap' || item.targetKind === 'reference'
+                || /^image\//.test(item.mimeType || item.mime || '') || /\.(png|jpe?g|webp|gif)$/i.test(item.name || '');
+            if (!isImage || item.kind === 'folder') return;
+            let url = null;
+            if (item.targetKind === 'image' || item.targetKind === 'scrap') {
+                const file = item.previewImageFilename || item.targetId;
+                url = galleryUrl(file, preview && file ? String(file).replace(/\.(png|jpe?g|webp)$/i, '').replace(/_upscaled$/, '') : null, preview);
+            } else {
+                url = item.url || item.downloadUrl || item.fileUrl || item.previewUrl || null;
+            }
+            if (url) urls.push(url);
+        });
+        return urls;
+    }
+
+    /** A picture source: next() resolves the next URL (or null when there are none). */
+    function photoSource(ps, preview) {
+        let list = null;
+        let at = 0;
+        let seq = 0;
+        const order = (urls) => (ps.shuffle ? urls.sort(() => Math.random() - 0.5) : urls);
+        async function ensure() {
+            if (list) return list;
+            if (ps.source === 'workspace') list = order(await workspacePhotoUrls(ps, preview));
+            else if (ps.source === 'folder') list = order(await folderPhotoUrls(ps, preview));
+            else {
+                const vista = root.cplDesktopBackground && root.cplDesktopBackground.VISTA_WALLPAPERS;
+                const ids = vista ? vista.map((v) => v.id) : ['img24', 'img25', 'img30', 'img31', 'img33', 'img34', 'img20', 'img16'];
+                const dir = preview ? '/static_images/wallpapers/vista/thumbs/' : '/static_images/wallpapers/vista/';
+                list = order(ids.map((id) => `${dir}${id}.webp`));
+            }
+            return list;
+        }
+        return {
+            async next() {
+                if (ps.source === 'search') {
+                    const client = root.wsClient;
+                    if (!ps.search || !client) return null;
+                    try {
+                        // sidebar_random_image: modules/ws/handlers/290-sidebarHandler.js (the Slide Show gadget's)
+                        const data = await client.sendMessage('sidebar_random_image', {
+                            source: 'images', offset: ps.shuffle ? undefined : seq++, search: ps.search
+                        }, false);
+                        const item = data && data.item;
+                        return item ? galleryUrl(item.upscaled || item.original, item.base, preview) : null;
+                    } catch (_) { return null; }
+                }
+                const urls = await ensure();
+                if (!urls.length) return null;
+                const url = urls[at % urls.length];
+                at += 1;
+                return url;
+            }
+        };
+    }
+
+    /* Photos: Vista's Photos screen saver. The pictures come from Windows Pictures, workspace
+       images, a saved Image Search or a folder; each theme moves them its own way (Classic cuts,
+       Fade cross-fades, Pan and zoom drifts, Travel slides across, Frame mounts each in a white
+       mat, Stack piles them up); Monotone draws them in black and white. */
     SAVERS.photos = (ctx, w, h, opts) => {
-        const vista = root.cplDesktopBackground && root.cplDesktopBackground.VISTA_WALLPAPERS;
-        const ids = vista ? vista.map((v) => v.id) : ['img24', 'img25', 'img30', 'img31', 'img33', 'img34', 'img20', 'img16'];
-        const dir = opts.preview ? '/static_images/wallpapers/vista/thumbs/' : '/static_images/wallpapers/vista/';
-        const urls = ids.map((id) => `${dir}${id}.webp`).sort(() => Math.random() - 0.5);
-        const own = wallpaperUrl();
-        if (own && !opts.preview) urls.unshift(own);
-        let index = 0;
+        const ps = opts.photos || photoSettings();
+        const hold = PHOTO_SECONDS[ps.speed] || 6;
+        const source = photoSource(ps, !!opts.preview);
+        const scale = opts.preview ? Math.max(0.1, w / 1920) : 1;
         let cur = null;
         let next = null;
         let shownAt = 0;
         let loading = false;
+        let empty = false;
+        let misses = 0;
+        let dead = false; // the engine stopped: no more fetching or retrying
+        const pile = []; // Stack: the pictures already put down
+        function themeFor() {
+            return ps.theme === 'random' ? PHOTO_THEMES[Math.floor(Math.random() * PHOTO_THEMES.length)] : ps.theme;
+        }
         function fetchNext() {
-            if (loading) return;
+            if (loading || dead) return;
             loading = true;
-            const url = urls[index++ % urls.length];
-            loadImage(url).then((img) => {
+            source.next().then((url) => (url && !dead ? loadImage(url) : null)).then((img) => {
                 loading = false;
-                if (img) next = { img, start: null, zoomIn: Math.random() < 0.5, dx: rand(-1, 1), dy: rand(-1, 1) };
+                if (dead) return;
+                if (!img) {
+                    misses += 1;
+                    // nothing at all after a few tries: say so; with a picture up, keep trying, slower
+                    if (misses > 3 && !cur) empty = true;
+                    else setTimeout(fetchNext, misses > 3 ? 10000 : 1500);
+                    return;
+                }
+                misses = 0;
+                next = {
+                    img, start: null, theme: themeFor(),
+                    zoomIn: Math.random() < 0.5, dx: rand(-1, 1), dy: rand(-1, 1), rot: rand(-0.12, 0.12),
+                    px: rand(0.3, 0.7), py: rand(0.35, 0.65)
+                };
             });
         }
         fetchNext();
-        function draw(p, t, alpha) {
-            const age = t - p.start;
-            const k = Math.min(1, age / (PHOTO_SECONDS + 1.5));
-            const z = p.zoomIn ? 1.04 + 0.1 * k : 1.14 - 0.1 * k;
-            const iw = p.img.naturalWidth;
-            const ih = p.img.naturalHeight;
-            const cover = Math.max(w / iw, h / ih) * z;
-            const dw = iw * cover;
-            const dh = ih * cover;
-            const x = (w - dw) / 2 + p.dx * (dw - w) * 0.5 * (k - 0.5);
-            const y = (h - dh) / 2 + p.dy * (dh - h) * 0.5 * (k - 0.5);
+        function fit(img, k, cover) {
+            const iw = img.naturalWidth;
+            const ih = img.naturalHeight;
+            const f = (cover ? Math.max(w / iw, h / ih) : Math.min(w / iw, h / ih)) * k;
+            return [iw * f, ih * f];
+        }
+        function framed(p, size, alpha, x, y, rot) {
+            const [dw, dh] = fit(p.img, size, false);
+            const mat = Math.max(2, 14 * scale);
+            ctx.save();
             ctx.globalAlpha = alpha;
-            ctx.drawImage(p.img, x, y, dw, dh);
+            ctx.translate(x, y);
+            ctx.rotate(rot);
+            ctx.shadowColor = 'rgba(0,0,0,0.6)';
+            ctx.shadowBlur = 18 * scale;
+            ctx.shadowOffsetY = 6 * scale;
+            ctx.fillStyle = '#fbfbf8';
+            ctx.fillRect(-dw / 2 - mat, -dh / 2 - mat, dw + mat * 2, dh + mat * 2);
+            ctx.shadowColor = 'transparent';
+            ctx.drawImage(p.img, -dw / 2, -dh / 2, dw, dh);
+            ctx.restore();
+        }
+        function draw(p, t, alpha, enter) {
+            const age = t - p.start;
+            const k = Math.min(1, age / (hold + 1.5));
+            if (p.theme === 'panzoom') {
+                const z = p.zoomIn ? 1.04 + 0.1 * k : 1.14 - 0.1 * k;
+                const [dw, dh] = fit(p.img, z, true);
+                ctx.globalAlpha = alpha;
+                ctx.drawImage(p.img, (w - dw) / 2 + p.dx * (dw - w) * 0.5 * (k - 0.5), (h - dh) / 2 + p.dy * (dh - h) * 0.5 * (k - 0.5), dw, dh);
+            } else if (p.theme === 'travel') {
+                const [dw, dh] = fit(p.img, 0.82, false);
+                // slides in from the right, drifts, and leaves to the left as the next comes in
+                const inK = Math.min(1, age / 1.2);
+                const ease = 1 - Math.pow(1 - inK, 3);
+                const x = (w - dw) / 2 + (1 - ease) * w * 0.9 - (enter === false ? (1 - alpha) * w * 0.9 : 0) - k * 30 * scale;
+                ctx.globalAlpha = 1;
+                ctx.drawImage(p.img, x, (h - dh) / 2, dw, dh);
+            } else if (p.theme === 'frame') {
+                framed(p, 0.72, alpha, w / 2, h / 2, p.rot * 0.4);
+            } else if (p.theme === 'stack') {
+                const drop = Math.min(1, age / 0.6);
+                framed(p, 0.55, 1, w * p.px, h * p.py - (1 - drop) * 40 * scale, p.rot);
+            } else {
+                // classic and fade show the whole picture
+                const [dw, dh] = fit(p.img, 1, false);
+                ctx.globalAlpha = p.theme === 'classic' ? 1 : alpha;
+                ctx.drawImage(p.img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+            }
             ctx.globalAlpha = 1;
         }
         return {
             resize(nw, nh) { w = nw; h = nh; },
+            stop() { dead = true; },
             frame(t) {
                 ctx.fillStyle = '#000';
                 ctx.fillRect(0, 0, w, h);
-                if (!cur && next) {
-                    cur = next; cur.start = t; next = null; shownAt = t; fetchNext();
+                ctx.filter = ps.monotone ? 'grayscale(1)' : 'none';
+                if (empty) {
+                    ctx.filter = 'none';
+                    ctx.fillStyle = '#fff';
+                    ctx.font = `${Math.max(8, Math.round(16 * scale * 1.4))}px "Segoe UI", Tahoma, sans-serif`;
+                    ctx.textAlign = 'center';
+                    ctx.fillText(opts.preview ? 'No pictures' : 'There are no pictures or videos to play. Change your Photos Screen Saver settings.', w / 2, h / 2);
+                    return;
                 }
+                if (!cur && next) { cur = next; cur.start = t; next = null; shownAt = t; fetchNext(); }
                 if (!cur) return;
+                if (cur.theme === 'stack' || (next && next.theme === 'stack')) {
+                    pile.forEach((p) => framed(p, 0.55, 1, w * p.px, h * p.py, p.rot));
+                }
                 const age = t - shownAt;
-                if (age > PHOTO_SECONDS && next) {
+                if (age > hold && next) {
                     if (next.start === null) next.start = t;
-                    const fade = Math.min(1, (t - next.start) / 1.5);
-                    draw(cur, t, 1);
-                    draw(next, t, fade);
+                    const dur = next.theme === 'classic' ? 0 : next.theme === 'travel' ? 1.2 : next.theme === 'stack' ? 0.6 : 1.5;
+                    const fade = dur ? Math.min(1, (t - next.start) / dur) : 1;
+                    if (next.theme !== 'stack') draw(cur, t, next.theme === 'travel' ? 1 - fade : 1, false);
+                    else draw(cur, t, 1);
+                    draw(next, t, fade, true);
                     if (fade >= 1) {
+                        if (cur.theme === 'stack' || next.theme === 'stack') {
+                            pile.push(cur);
+                            if (pile.length > 6) pile.shift();
+                        } else pile.length = 0;
                         cur = next; next = null; shownAt = t; fetchNext();
                     }
+                    ctx.filter = 'none';
                     return;
                 }
                 draw(cur, t, 1);
+                ctx.filter = 'none';
             }
         };
     };
 
-    /* Windows Logo: the start button's logo, fading in at a new place every few seconds. */
+    /* Windows Logo (logon.scr, measured on the Vista VM): black, then at a random place either the
+       Melaton logo (the flower over the wordmark, where Vista has its flag) or the glyph, the green swoosh a flare of light runs
+       along (logon.scr bitmaps IDB_FLARE01-45, IDB_SMALLFLARE for small screens). Each fades in
+       over 1.6 s, holds, fades out over 2.7 s, and the screen stays black for 5 s before the next
+       one, logo and glyph in turn. */
+    const LOGO_ART = '/static_images/vista-personalization';
     SAVERS.logo = (ctx, w, h, opts) => {
-        let img = null;
-        // the start button's logo (modalUtils.js startMenuButtonLogoUrl, classic-script globals)
-        /* global startMenuButtonLogoUrl, desktopSettingsGlobalState */
-        const url = (typeof startMenuButtonLogoUrl === 'function' && typeof desktopSettingsGlobalState !== 'undefined')
-            ? startMenuButtonLogoUrl(desktopSettingsGlobalState.startMenuButtonLogo)
-            : '/static_images/logo_icon.png';
-        loadImage(url.replace('/48/', '/96/')).then((i) => { img = i || null; if (!img) loadImage(url).then((j) => { img = j; }); });
-        let spot = null;
-        const cycle = 6;
+        const small = !!opts.preview;
+        const art = { logo: null, sheet: null };
+        loadImage(`${LOGO_ART}/logo-saver.png`).then((i) => { art.logo = i; });
+        loadImage(`${LOGO_ART}/${small ? 'logo-flare-small-sheet.png' : 'logo-flare-sheet.png'}`).then((i) => { art.sheet = i; });
+        const FW = small ? 69 : 274;
+        const FH = small ? 36 : 144;
+        const FADE_IN = 1.6;
+        const HOLD = 4.2;
+        const FADE_OUT = 2.7;
+        const GAP = 5;
+        const FLARE_FPS = 15;
+        let item = null;
+        let count = 0;
+        function place(t) {
+            const kind = count % 2 === 0 ? 'logo' : 'glyph';
+            count += 1;
+            const iw = kind === 'logo' ? (small ? 48 : 194) : FW;
+            const ih = kind === 'logo' ? (small ? 33 : 135) : FH;
+            item = { kind, start: t, iw, ih, x: rand(0, Math.max(1, w - iw)), y: rand(0, Math.max(1, h - ih)) };
+        }
         return {
             resize(nw, nh) { w = nw; h = nh; },
             frame(t) {
                 ctx.fillStyle = '#000';
                 ctx.fillRect(0, 0, w, h);
-                if (!img) return;
-                const phase = t % cycle;
-                if (!spot || phase < spot.phase) {
-                    const size = Math.min(w, h) * (opts.preview ? 0.3 : 0.16);
-                    spot = { size, x: rand(0, Math.max(1, w - size)), y: rand(0, Math.max(1, h - size)), phase };
-                }
-                spot.phase = phase;
-                const a = phase < 1.5 ? phase / 1.5 : phase > cycle - 1.5 ? (cycle - phase) / 1.5 : 1;
+                if (!art.logo || !art.sheet) return;
+                if (!item) place(t + (small ? 0.3 : 1.5));
+                const age = t - item.start;
+                const life = FADE_IN + HOLD + FADE_OUT;
+                if (age < 0) return;
+                if (age > life + GAP) { place(t); return; }
+                if (age > life) return;
+                const a = age < FADE_IN ? age / FADE_IN : age > FADE_IN + HOLD ? (life - age) / FADE_OUT : 1;
                 ctx.globalAlpha = Math.max(0, Math.min(1, a));
-                const ratio = img.naturalHeight / (img.naturalWidth || 1);
-                ctx.drawImage(img, spot.x, spot.y, spot.size, spot.size * ratio);
+                if (item.kind === 'logo') {
+                    ctx.drawImage(art.logo, item.x, item.y, item.iw, item.ih);
+                } else {
+                    const f = Math.min(44, Math.floor(age * FLARE_FPS));
+                    ctx.drawImage(art.sheet, (f % 9) * FW, Math.floor(f / 9) * FH, FW, FH, item.x, item.y, FW, FH);
+                }
                 ctx.globalAlpha = 1;
             }
         };
@@ -522,8 +753,10 @@
 
     // ---- engine: one canvas, one saver, one animation frame loop ----
 
+    /** opts.backdrop: a picture drawn under a transparent saver inside the canvas itself (the
+        dialog's monitor; an accelerated canvas can drop its alpha and show black where it is clear) */
     function makeEngine(canvas, id, opts = {}) {
-        const make = SAVERS[id];
+        const make = SAVERS[id] || (opts.preview ? PREVIEW_ONLY[id] : null);
         if (!make) return null;
         const ctx = canvas.getContext('2d');
         // full screen at CSS pixels (the savers are soft; 2x would double the fill cost)
@@ -540,6 +773,15 @@
         }
         fit();
         const saver = make(ctx, w, h, opts);
+        let backdrop = null;
+        if (opts.backdrop && saver.transparent) loadImage(opts.backdrop).then((img) => { backdrop = img; });
+        const drawBackdrop = () => {
+            if (!backdrop) return;
+            const iw = backdrop.naturalWidth;
+            const ih = backdrop.naturalHeight;
+            const k = Math.max(w / iw, h / ih);
+            ctx.drawImage(backdrop, (w - iw * k) / 2, (h - ih * k) / 2, iw * k, ih * k);
+        };
         let raf = 0;
         let last = 0;
         let t = 0;
@@ -549,7 +791,15 @@
             const dt = last ? Math.min(0.1, (now - last) / 1000) : 0.016;
             last = now;
             t += dt;
-            try { saver.frame(t, dt); } catch (err) { console.error('screenSaver frame', err); stop(); return; }
+            try {
+                saver.frame(t, dt);
+                if (backdrop) {
+                    ctx.save();
+                    ctx.globalCompositeOperation = 'destination-over';
+                    drawBackdrop();
+                    ctx.restore();
+                }
+            } catch (err) { console.error('screenSaver frame', err); stop(); return; }
             raf = root.requestAnimationFrame(loop);
         }
         function onResize() {
@@ -558,6 +808,7 @@
         }
         function stop() {
             stopped = true;
+            if (typeof saver.stop === 'function') saver.stop();
             root.cancelAnimationFrame(raf);
             root.removeEventListener('resize', onResize);
         }
@@ -586,7 +837,7 @@
         doc.head.appendChild(style);
     }
 
-    function show(id, reason) {
+    function show(id, reason, extra) {
         if (!doc || !SAVERS[id]) return false;
         hide(false);
         ensureStyle();
@@ -601,7 +852,7 @@
         state.showing = reason;
         state.shownAt = Date.now();
         state.startPoint = null;
-        state.engine = makeEngine(canvas, id);
+        state.engine = makeEngine(canvas, id, extra || {});
         if (state.engine && state.engine.transparent) cover.classList.add('is-transparent');
         if (typeof root.closeAllContextMenus === 'function') {
             try { root.closeAllContextMenus(); } catch (_) { /* optional */ }
@@ -617,10 +868,21 @@
         state.cover = null;
         state.canvas = null;
         state.showing = null;
-        if (fromInput && was === 'idle' && settings().resumeLogon) {
-            const boot = root.desktopBoot;
-            if (boot && typeof boot.lockWorkstation === 'function') boot.lockWorkstation();
-        }
+        if (fromInput && was === 'idle') lockOnResume();
+    }
+
+    /** The mouse press that ends a saver must not also click what is under it: swallow the rest of
+        that press (up, click, menu) for a moment. */
+    function swallowRestOfPress() {
+        const types = ['pointerup', 'mouseup', 'click', 'auxclick', 'contextmenu', 'dblclick'];
+        const eat = (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            if (ev.type === 'click' || ev.type === 'contextmenu') done();
+        };
+        const done = () => types.forEach((t) => root.removeEventListener(t, eat, true));
+        types.forEach((t) => root.addEventListener(t, eat, true));
+        setTimeout(done, 700);
     }
 
     function focusCover() {
@@ -647,15 +909,14 @@
             state.lastInput = now;
             return;
         }
-        if (state.showing === 'idle-focus') {
-            // the focus cover ends itself on click / key (focusOverlayManager.js)
+        if (state.showing === 'idle-focus' || state.showing === 'preview-focus') {
+            // the focus cover ends itself on click / key (focusOverlayManager.js); only the one
+            // that started on idle locks, never a Preview
             state.lastInput = now;
             if (ev.type !== 'pointermove' && ev.type !== 'mousemove') {
+                const was = state.showing;
                 state.showing = null;
-                if (settings().resumeLogon) {
-                    const boot = root.desktopBoot;
-                    if (boot && typeof boot.lockWorkstation === 'function') boot.lockWorkstation();
-                }
+                if (was === 'idle-focus') lockOnResume();
             }
             return;
         }
@@ -670,11 +931,31 @@
         if (ev.cancelable && ev.type !== 'pointermove' && ev.type !== 'mousemove' && ev.type !== 'wheel') {
             ev.preventDefault();
             ev.stopPropagation();
+            if (typeof ev.stopImmediatePropagation === 'function') ev.stopImmediatePropagation();
         }
+        if (ev.type === 'pointerdown' || ev.type === 'touchstart') swallowRestOfPress();
         hide(true);
     }
 
+    const INPUT_TYPES = ['pointermove', 'pointerdown', 'keydown', 'wheel', 'touchstart'];
+    const inputOptions = (type) => ({ capture: true, passive: type === 'pointermove' || type === 'wheel' || type === 'touchstart' });
+
+    /** Typing or pointing inside a same-origin frame (Grimoire pages, applets) counts as input too. */
+    function watchFrames() {
+        if (!doc) return;
+        doc.querySelectorAll('iframe').forEach((frame) => {
+            let win = null;
+            try { win = frame.contentWindow; void win.document; } catch (_) { return; } // cross-origin
+            if (!win || win.__screenSaverWatched) return;
+            win.__screenSaverWatched = true;
+            INPUT_TYPES.forEach((type) => {
+                win.addEventListener(type, () => { state.lastInput = Date.now(); }, inputOptions(type));
+            });
+        });
+    }
+
     function tick() {
+        watchFrames();
         if (state.showing) return;
         const s = settings();
         if (s.id === 'none' || blocked()) return;
@@ -682,30 +963,31 @@
     }
 
     function bind() {
-        if (state.bound || !doc || isAgentTab()) return;
+        if (state.bound || !doc) return;
         state.bound = true;
-        ['pointermove', 'pointerdown', 'keydown', 'wheel', 'touchstart'].forEach((type) => {
-            doc.addEventListener(type, onInput, { capture: true, passive: type === 'pointermove' || type === 'wheel' || type === 'touchstart' });
-        });
-        state.timer = root.setInterval(tick, CHECK_MS);
+        // input always ends a saver (a Preview too); only the idle start stays off on the agent tab.
+        // On the window, in capture: ahead of every document-level listener (modalKeyboardRegistry.js),
+        // so the key that wakes the screen does nothing else
+        INPUT_TYPES.forEach((type) => root.addEventListener(type, onInput, inputOptions(type)));
+        if (!isAgentTab()) state.timer = root.setInterval(tick, CHECK_MS);
         doc.addEventListener('desktopWorkstationLocked', () => hide(false));
     }
 
     const api = {
         IDS: Object.keys(SAVERS),
         /** The dialog's Preview: full screen until input (never locks). */
-        preview(id) {
+        preview(id, extra) {
             if (id === 'focus') {
                 const fc = focusCover();
-                if (fc) { fc.show(true); state.showing = 'idle-focus'; }
+                if (fc) { fc.show(true); state.showing = 'preview-focus'; }
                 return;
             }
-            if (show(id, 'preview')) state.lastInput = Date.now();
+            if (show(id, 'preview', extra)) state.lastInput = Date.now();
         },
-        /** The dialog's monitor picture. */
-        attachPreview(canvas, id) {
-            if (!canvas || !SAVERS[id]) return { stop() {} };
-            return makeEngine(canvas, id, { preview: true }) || { stop() {} };
+        /** The dialog's monitor picture; 'desktop' shows only the desktop picture. */
+        attachPreview(canvas, id, extra = {}) {
+            if (!canvas || !(SAVERS[id] || PREVIEW_ONLY[id])) return { stop() {} };
+            return makeEngine(canvas, id, { preview: true, backdrop: wallpaperUrl(), ...extra }) || { stop() {} };
         },
         /** focusOverlayManager.js: the Focus Cover shows the workspace's saver when it has one. */
         showForFocusLoss() {
@@ -719,7 +1001,7 @@
         },
         isShowing: () => !!state.showing,
         hide: () => hide(false),
-        _test: { state, SAVERS, settings }
+        _test: { state, SAVERS, settings, tick, blocked }
     };
 
     root.screenSaver = api;

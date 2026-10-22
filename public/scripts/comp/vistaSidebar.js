@@ -2754,7 +2754,7 @@ const vsbAddGadget = function (type, options) {
     const opts = options || {};
     if (!vsb.state) return;
     if (vsb.state.gadgets.length >= 24) {
-        showGlassToast('warning', 'Windows Sidebar', 'The Sidebar is full. Close a gadget first.', false, 5000);
+        showGlassToast('warning', 'Melaton Sidebar', 'The Sidebar is full. Close a gadget first.', false, 5000);
         return;
     }
     vsbMutate((state) => {
@@ -3003,7 +3003,7 @@ const vsbOpenProperties = async function (event) {
         { text: 'OK', value: true, className: 'btn-standard primary' },
         { text: 'Cancel', value: false, className: 'btn-standard' }
     ], event, {
-        title: 'Windows Sidebar Properties',
+        title: 'Melaton Sidebar Properties',
         icon: 'fas fa-sliders',
         width: 360,
         showCloseButton: false,

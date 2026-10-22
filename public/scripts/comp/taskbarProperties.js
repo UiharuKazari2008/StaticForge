@@ -158,7 +158,7 @@
 
     function pageTaskbar() {
         return `
-            ${group(6, 6, 240, 121, 'Taskbar appearance')}
+            ${group(6, 6, 240, 133, 'Taskbar appearance')}
             <div class="tbp-ctl tbp-preview tbp-preview-taskbar" style="${dlu(13, 18, 224, 21)}"></div>
             ${check('lock', 13, 45, 200, '<u>L</u>ock the taskbar', 'locked')}
             ${check('autohide', 13, 58, 200, 'A<u>u</u>to-hide the taskbar', 'autoHide')}
@@ -166,20 +166,23 @@
             ${check('group', 13, 84, 200, '<u>G</u>roup similar taskbar buttons', 'group')}
             ${check('quicklaunch', 13, 97, 200, 'Show <u>Q</u>uick Launch', 'quickLaunch')}
             ${check('thumbs', 13, 110, 200, '<u>S</u>how window previews (thumbnails)', 'thumbnails')}
-            ${group(6, 131, 240, 66, 'Start button')}
-            ${text(13, 146, 26, 8, 'St<u>y</u>le:')}
-            <select class="tbp-ctl tbp-select" id="tbp-sb-style" style="${dlu(40, 144, 86, 12)}" aria-label="Start button style">
+            ${text(13, 125, 30, 8, 'O<u>p</u>acity:')}
+            <input type="range" class="tbp-ctl tbp-opacity" id="tbp-opacity" min="20" max="100" step="1" style="${dlu(46, 121, 150, 15)}" aria-label="Taskbar opacity">
+            ${text(200, 125, 30, 8, '100%', 'tbp-opacity-value')}
+            ${group(6, 142, 240, 58, 'Start button')}
+            ${text(13, 157, 26, 8, 'St<u>y</u>le:')}
+            <select class="tbp-ctl tbp-select" id="tbp-sb-style" style="${dlu(40, 155, 86, 12)}" aria-label="Start button style">
                 <option value="orb">Orb</option><option value="luna">Media Center</option><option value="workspace">Workspace</option>
             </select>
-            ${text(132, 146, 22, 8, 'L<u>o</u>go:', 'tbp-sb-dep')}
-            <select class="tbp-ctl tbp-select" id="tbp-sb-logo" style="${dlu(156, 144, 83, 12)}" aria-label="Windows logo">
+            ${text(132, 157, 22, 8, 'L<u>o</u>go:', 'tbp-sb-dep')}
+            <select class="tbp-ctl tbp-select" id="tbp-sb-logo" style="${dlu(156, 155, 83, 12)}" aria-label="Melaton logo">
                 <option value="royal">Royal</option><option value="vista">Vista</option><option value="dreamscape">Dreamscape</option>
             </select>
-            ${text(13, 163, 26, 8, 'Te<u>x</u>t:', 'tbp-sb-dep')}
-            <select class="tbp-ctl tbp-select" id="tbp-sb-text" style="${dlu(40, 161, 110, 12)}" aria-label="Start button text">${startTextOptions()}</select>
-            <input type="text" class="tbp-ctl tbp-edit" id="tbp-sb-custom" maxlength="24" style="${dlu(154, 161, 85, 12)}" placeholder="Custom text" aria-label="Custom start button text">
-            ${check('appicons', 13, 179, 224, 'Show program <u>p</u>ictures on taskbar buttons', 'x:useAppImageIcon')}
-            ${link(7, 200, 238, 'How do I customize the taskbar?', 'help-taskbar')}`;
+            ${text(13, 173, 26, 8, 'Te<u>x</u>t:', 'tbp-sb-dep')}
+            <select class="tbp-ctl tbp-select" id="tbp-sb-text" style="${dlu(40, 171, 110, 12)}" aria-label="Start button text">${startTextOptions()}</select>
+            <input type="text" class="tbp-ctl tbp-edit" id="tbp-sb-custom" maxlength="24" style="${dlu(154, 171, 85, 12)}" placeholder="Custom text" aria-label="Custom start button text">
+            ${check('appicons', 13, 187, 224, 'Show program pictures on taskbar buttons', 'x:useAppImageIcon')}
+            ${link(7, 205, 238, 'How do I customize the taskbar?', 'help-taskbar')}`;
     }
 
     function startTextOptions() {
@@ -212,7 +215,7 @@
             ${text(20, 17, 150, 24, 'This menu style gives you easy access to your folders, favorite programs, and search.')}
             ${button(192, 4, 53, 14, '<u>C</u>ustomize...', 'customize-start')}
             ${radio('sm-classic', 7, 47, 105, 'smstyle', 'classic', 'Classic Start <u>m</u>enu', { disabled: true })}
-            ${text(20, 57, 150, 24, 'This menu style gives you the look and functionality of previous versions of Windows.', 'is-disabled')}
+            ${text(20, 57, 150, 24, 'This menu style gives you the look and functionality of previous versions of Melaton.', 'is-disabled')}
             ${button(192, 44, 53, 14, '<u>C</u>ustomize...', 'customize-classic', { disabled: true })}
             ${group(7, 100, 238, 42, 'Privacy')}
             ${check('recentfiles', 14, 114, 224, 'Store and display a list of recently opened <u>f</u>iles', 'recentFiles')}
@@ -343,9 +346,22 @@
         if (!live) host.querySelector('.taskbar-tray-icons').textContent = '';
     }
 
+    /** The live taskbar's text colours and size, for the previews (inside the light dialog they
+     *  would take its near-black text). */
+    function barLook() {
+        const tb = doc.getElementById('desktopTaskbar');
+        if (!tb) return '';
+        const tbs = getComputedStyle(tb);
+        const icon = tb.querySelector('.taskbar-tray-icon:not(.hidden)');
+        const tray = icon ? getComputedStyle(icon).color : tbs.color;
+        return `--tbp-bar-color:${tbs.color};--tbp-bar-font-size:${tbs.fontSize};--tbp-tray-color:${tray};`;
+    }
+
     function renderPreviews() {
         renderTaskbarPreview();
         renderTrayPreview();
+        const look = barLook();
+        if (dlg && look) dlg.content.querySelectorAll('.tbp-preview-bar').forEach((bar) => { bar.style.cssText += look; });
     }
 
     // ---- sync controls <-> pending -------------------------------------------------------------
@@ -372,6 +388,11 @@
         if (vista) vista.checked = true;
         const sel = content.querySelector('#tbp-mintime');
         if (sel) sel.value = String(dlg.pending.trayMinMs);
+        const op = content.querySelector('#tbp-opacity');
+        if (op) {
+            op.value = String(dlg.pending.core.opacity || 100);
+            content.querySelector('.tbp-opacity-value').textContent = `${op.value}%`;
+        }
         syncStartButtonControls();
         renderPreviews();
     }
@@ -384,10 +405,53 @@
 
     // ---- apply ---------------------------------------------------------------------------------
 
+    function same(a, b) {
+        return JSON.stringify(a) === JSON.stringify(b);
+    }
+
+    /** The taskbarSettings fields that differ from when the dialog opened (or last applied). */
+    function corePatch(pending, saved) {
+        const patch = {};
+        Object.keys(pending).forEach((k) => {
+            if (k === 'places' || same(pending[k], saved[k])) return;
+            patch[k] = pending[k];
+        });
+        const ids = new Set([...Object.keys(pending.places || {}), ...Object.keys(saved.places || {})]);
+        const places = {};
+        ids.forEach((id) => {
+            const now = (pending.places || {})[id] === false;
+            if (now !== ((saved.places || {})[id] === false)) places[id] = now ? false : true;
+        });
+        if (Object.keys(places).length) patch.places = places;
+        return patch;
+    }
+
+    /** A change made elsewhere while the dialog is open (the taskbar menu's Lock the Taskbar, Quick
+     *  Launch's Add / Delete) shows in it, unless the dialog has its own pending change there. */
+    function onSettingsChange(ev) {
+        if (!dlg || !ev || !ev.detail) return;
+        const live = ev.detail;
+        const p = dlg.pending.core;
+        const s = dlg.saved.core;
+        let changed = false;
+        Object.keys(live).forEach((k) => {
+            if (k === 'places' || !(k in s) || same(live[k], s[k]) || !same(p[k], s[k])) return;
+            p[k] = clone(live[k]);
+            s[k] = clone(live[k]);
+            changed = true;
+        });
+        if (changed) syncControls();
+    }
+
     async function applyPending() {
         const p = dlg.pending;
         const s = dlg.saved;
-        if (root.taskbarSettings) root.taskbarSettings.set(p.core);
+        // only what this dialog changed: Lock the Taskbar or a Quick Launch add / delete made
+        // while it was open stays (the review's M13)
+        if (root.taskbarSettings) {
+            const patch = corePatch(p.core, s.core);
+            if (Object.keys(patch).length) root.taskbarSettings.set(patch);
+        }
         // notification area (trayRegistry.js)
         if ((typeof traySetIconBehaviors !== 'undefined')) traySetIconBehaviors(p.behaviors);
         if ((typeof traySetMinPopupMs !== 'undefined')) traySetMinPopupMs(p.trayMinMs);
@@ -456,7 +520,9 @@
 
     /** A Vista dialog window (light client, 7.css controls) with only the close box. */
     function makeWindow(id, title, iconSrc, clientClass) {
-        const modal = el('div', `modal hidden on-top tbp-window ${clientClass}-window`);
+        // an ordinary window, not always on top (Vista's property sheets stack with the rest);
+        // a Customize dialog opens over its sheet, which stays inert until it closes
+        const modal = el('div', `modal hidden tbp-window ${clientClass}-window`);
         modal.id = id;
         modal.dataset.windowIdentifier = id;
         modal.dataset.windowRestorePosition = 'false';
@@ -492,6 +558,9 @@
         if (owner && owner.id) modal.dataset.iconOwnerId = owner.id;
         callGlobal('openModal', modal);
         if (modal.classList.contains('hidden')) modal.classList.remove('hidden');
+        // a window that has just opened is the foreground one, as in Vista (openModal can slot it
+        // under a window that was on top); not always on top after that
+        callGlobal('bringModalToFront', modal);
         // centred over the owner (or the screen), as Vista places a property sheet
         requestAnimationFrame(() => {
             const r = modal.getBoundingClientRect();
@@ -594,6 +663,14 @@
     }
 
     function onInput(ev) {
+        if (ev.target.id === 'tbp-opacity') {
+            // the taskbar follows the slider at once; Cancel puts the saved opacity back
+            dlg.pending.core.opacity = Number(ev.target.value);
+            dlg.content.querySelector('.tbp-opacity-value').textContent = `${ev.target.value}%`;
+            if (root.taskbarSettings && root.taskbarSettings.previewOpacity) root.taskbarSettings.previewOpacity(dlg.pending.core.opacity);
+            setDirty(true);
+            return;
+        }
         if (ev.target.id !== 'tbp-sb-custom') return;
         dlg.pending.startButton = { ...dlg.pending.startButton, customText: ev.target.value.slice(0, 24) };
         setDirty(true);
@@ -660,11 +737,19 @@
         finish();
     }
 
+    /** An unapplied opacity preview goes back to the saved opacity (Cancel, Close, or OK with nothing applied). */
+    function revertOpacityPreview() {
+        const ts = root.taskbarSettings;
+        if (ts && ts.previewOpacity) ts.previewOpacity(ts.get().opacity);
+    }
+
     function finish() {
         if (!dlg) return;
         if (dlg.sub) closeSub(false);
+        revertOpacityPreview();
         const modal = dlg.modal;
         dlg = null;
+        root.removeEventListener('taskbarsettingschange', onSettingsChange);
         closeWindow(modal);
     }
 
@@ -678,6 +763,7 @@
         const saved = readState();
         const { modal, content } = buildSheet();
         dlg = { modal, content, saved, pending: clone(saved), tab, sub: null, dirty: false };
+        root.addEventListener('taskbarsettingschange', onSettingsChange);
         fillPages();
         syncControls();
         selectTab(tab);
@@ -988,7 +1074,9 @@
             readState,
             state: () => dlg,
             select: (tab) => dlg && selectTab(tab),
-            apply: () => dlg && applyPending()
+            apply: () => dlg && applyPending(),
+            corePatch,
+            revertOpacityPreview
         }
     };
 })(typeof window !== 'undefined' ? window : globalThis);

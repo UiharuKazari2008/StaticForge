@@ -79,12 +79,12 @@
     const MAX_DETAILS = 50;
 
     const TEXT = {
-        caption: 'Microsoft Windows',
+        caption: 'Melaton',
         heading: (name) => `${name} has stopped working`,
         restarting: (name) => `${name} is restarting...`,
-        checking: 'Windows is checking for a solution to the problem...',
-        close: 'A problem caused the program to stop working correctly. Windows will close the program and notify you if a solution is available.',
-        core: 'A problem caused the program to stop working correctly. Windows needs to restart to recover from this problem.',
+        checking: 'Melaton is checking for a solution to the problem...',
+        close: 'A problem caused the program to stop working correctly. Melaton will close the program and notify you if a solution is available.',
+        core: 'A problem caused the program to stop working correctly. Melaton needs to restart to recover from this problem.',
         closeButton: 'Close program',
         restartNow: 'Restart now',
         restartLater: 'Restart later',

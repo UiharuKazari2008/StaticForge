@@ -130,7 +130,7 @@
                     <button type="button" class="btn-secondary toggle-btn icon-only indicator" data-cpl-ua="vista-logon" data-state="${on ? 'on' : 'off'}" aria-pressed="${on}" aria-label="Use Vista Logon"></button>
                     <div class="desktop-settings-option-body">
                         <span class="desktop-settings-option-label">Use Vista Logon</span>
-                        <p class="desktop-settings-hint">Start at the Windows Vista Welcome screen instead of the Classic logon dialog. The connection and startup windows use Windows Vista Basic. Applies to every computer that signs in to this server.</p>
+                        <p class="desktop-settings-hint">Start at the Melaton Welcome screen instead of the Classic logon dialog. The connection and startup windows use Melaton Basic. Applies to every computer that signs in to this server.</p>
                     </div>
                 </div>
             </div>`;

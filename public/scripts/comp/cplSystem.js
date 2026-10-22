@@ -357,12 +357,12 @@
         return `
             <button type="button" class="cpl-sys-help" data-cpl-sys="help" title="Get help with this page"><img src="/static_images/vista-explorer/help.png" alt="Help"></button>
             <h1 class="cpl-sys-title">View basic information about your computer</h1>
-            ${section('Windows edition', editionBody, 'cpl-sys-section--edition')}
+            ${section('Melaton edition', editionBody, 'cpl-sys-section--edition')}
             ${section('System', systemBody)}
             ${section(`${OEM.manufacturer} support`, supportBody)}
             ${section('Computer name, domain, and workgroup settings', computerBody)}
             ${section('Session', sessionBody)}
-            ${section('Windows activation', activationBody)}`;
+            ${section('Melaton activation', activationBody)}`;
     }
 
     function paint() {

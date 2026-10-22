@@ -9,7 +9,9 @@
  *            through to the media like a real PC with the DVD in the drive.
  *   loading  "Melaton is loading files..." (Vista's bootmgr bar from the DVD) while the
  *            installer's base assets land: the server answers, /sw.js registers, the manifest
- *            arrives and the Setup window's own files are fetched. Then black, then Setup.
+ *            arrives and the Setup window's own files are fetched. Then black, the boot screen
+ *            (as Vista's DVD boots into Setup), then Setup. "Loading files" always comes before
+ *            the boot screen, never after it.
  *   setup    Windows Setup in Vista Basic on the aurora, page by page as Vista's: language,
  *            Install now, "Which type of installation do you want?" (Upgrade: the manifest
  *            digest is forgotten, a full check, every differing file installed; Custom
@@ -32,7 +34,9 @@
  *            cache diffed against the server manifest. Up to 20 files download silently behind
  *            the marquee, then the handoff. If that quiet download does not finish the cache,
  *            the worker is not controlling the page, or the set is larger (or an install a
- *            reload interrupted), cut to black and open the installer. A missed file list
+ *            reload interrupted), the installer: when the POST's manifest check already shows
+ *            that, "loading files" runs first and the boot screen after it; found only now, cut
+ *            to black, loading files, the boot screen again, then the installer. A missed file list
  *            stays on the boot screen until it arrives. The installer writes the cache
  *            itself, so a missing controlling worker must not leave for /app.
  *   install  Windows Setup in Vista Basic on the aurora: "Install Melaton", Installing
@@ -517,8 +521,34 @@
             return bootDisk(run);
         }
 
+        /** Vista's boot screen for minBootMs after "loading files", the way the DVD boots into Setup. */
+        async function bootScreenAfterLoading(run) {
+            await cutToBlack();
+            if (run !== ctl.runId) return 'cancelled';
+            show('boot');
+            await env.sleep(config.minBootMs);
+            return run === ctl.runId ? 'ok' : 'cancelled';
+        }
+
+        /** The POST's manifest check (runBios) already shows an update only the installer takes. */
+        function installerForeseen() {
+            const engine = env.engine;
+            const found = ctl.biosWork && ctl.biosWork.manifest;
+            if (!engine || env.designMode || ctl.bootMode === 'restore' || typeof engine.needsInstaller !== 'function') return false;
+            if (!found || found.failed || found.skipped || !Array.isArray(found.files) || !found.files.length) return false;
+            return !!engine.needsInstaller(env, found.files);
+        }
+
         /** The Hard Drive: Vista's boot screen while the server, the session and updates are checked. */
         async function bootDisk(run) {
+            // a large update the POST already found: "loading files" first, the boot screen after it
+            if (!ctl.installerLoaded && installerForeseen()) {
+                const loaded = await loadingScreen(run, { steps: ['worker', 'assets'], found: ctl.biosWork.manifest });
+                if (loaded !== 'ok') return loaded;
+                ctl.installerLoaded = true;
+                await cutToBlack();
+                if (run !== ctl.runId) return 'cancelled';
+            }
             const startedAt = env.now();
             let failures = 0;
             let busySince = null;
@@ -630,12 +660,21 @@
             return installFromDisk(found, run);
         }
 
-        /** A large update found by the boot screen: the loading bar (the worker and Setup's files), then the checklist. */
+        /**
+         * A large update: the checklist. Foreseen at the POST, its loading bar already ran before
+         * this boot screen; found only now, loading files and then the boot screen again come first,
+         * so "loading files" never follows the boot screen straight into Setup.
+         */
         async function installFromDisk(found, run) {
             await cutToBlack();
             if (run !== ctl.runId) return 'cancelled';
-            const loaded = await loadingScreen(run, { steps: ['worker', 'assets'], found });
-            if (loaded !== 'ok') return loaded;
+            if (!ctl.installerLoaded) {
+                const loaded = await loadingScreen(run, { steps: ['worker', 'assets'], found });
+                if (loaded !== 'ok') return loaded;
+                ctl.installerLoaded = true;
+                const booted = await bootScreenAfterLoading(run);
+                if (booted !== 'ok') return booted;
+            }
             return install(found, run);
         }
 
@@ -795,8 +834,10 @@
             if (run !== ctl.runId) return 'cancelled';
             const loaded = await loadingScreen(run);
             if (loaded !== 'ok') return loaded;
-            await cutToBlack();
-            if (run !== ctl.runId) return 'cancelled';
+            ctl.installerLoaded = true;
+            // the DVD: loading files, then the boot screen, then Setup
+            const booted = await bootScreenAfterLoading(run);
+            if (booted !== 'ok') return booted;
             const found = ctl.setupFound || { files: [], bytes: 0 };
             if (!opts.wizard) {
                 writeSetupResume(env, null);
@@ -815,6 +856,8 @@
             const upgradeAllowed = hasOs || diffSaysInstalled;
             if (typeof console !== 'undefined' && console.debug) console.debug('[setup] Upgrade offered:', upgradeAllowed, { hasOs, diffSaysInstalled, files: found && found.files ? found.files.length : null, manifest: found && found.manifest ? found.manifest.length : null });
             ctl.setup = { page: 'language', hasOs, upgradeAllowed, driveOptions: false, formatted: false, msgbox: null, countdown: null, found, keyConfigured: status.novelaiKeyConfigured !== false, license: null, licenseAccepted: false };
+            await cutToBlack();
+            if (run !== ctl.runId) return 'cancelled';
             show('install', { ...setupData(), phase: 'arrive' });
             await env.sleep(config.installArriveMs);
             if (run !== ctl.runId) return 'cancelled';

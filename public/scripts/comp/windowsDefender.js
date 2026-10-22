@@ -23,10 +23,10 @@
     const ART = '/static_images/vista-defender';
     const SECURITY_URL = 'security.dreamscape.jp';
     const PAGES = {
-        quarantine: { view: 'blocked', icon: 'quarantine-32.png', title: 'Quarantined items', text: 'Windows Defender keeps these clients from reaching Dreamscape until you unblock them.' },
+        quarantine: { view: 'blocked', icon: 'quarantine-32.png', title: 'Quarantined items', text: 'Melaton Defender keeps these clients from reaching Dreamscape until you unblock them.' },
         allowed: { view: 'auth', icon: 'allowed-32.png', title: 'Allowed items', text: 'These addresses are authorised to reach Dreamscape.' },
         honeypot: { view: 'honeypot', icon: 'explorer-32.png', title: 'Honeypot traps', text: 'Paths that only scanners ask for. A client that asks for one is blocked.' },
-        history: { view: 'telemetry', icon: 'history-32.png', title: 'History', text: 'See all Windows Defender activities: sign-ins, blocks and other security events.' }
+        history: { view: 'telemetry', icon: 'history-32.png', title: 'History', text: 'See all Melaton Defender activities: sign-ins, blocks and other security events.' }
     };
     const VIEW_TO_PAGE = { blocked: 'quarantine', honeypot: 'honeypot', telemetry: 'history', auth: 'allowed', home: 'home' };
 
@@ -76,7 +76,7 @@
             <div class="modal-window-title">
                 <div class="modal-window-title-main">
                     <img src="${ART}/defender-16.png" alt="" class="icon-image">
-                    <span>Windows Defender</span>
+                    <span>Melaton Defender</span>
                 </div>
             </div>
             <div class="modal-focus-overlay"></div>
@@ -96,7 +96,7 @@
                     <span class="defender-bar-sep" aria-hidden="true"></span>
                     ${toolButton('history', 'history', 'History')}
                     ${toolButton('tools', 'tools', 'Tools')}
-                    <img class="defender-logo" src="${ART}/logo.png" alt="Windows Defender">
+                    <img class="defender-logo" src="${ART}/logo.png" alt="Melaton Defender">
                 </div>
                 <div class="defender-sub">Protection against malicious and unwanted software</div>
                 <div class="defender-panel"></div>
@@ -167,7 +167,7 @@
         modal.querySelectorAll('.defender-tool').forEach((b) => b.classList.toggle('is-current', b.dataset.defender === page));
         stopDriver();
         if (!isAdmin()) {
-            panel.innerHTML = '<div class="defender-page"><p class="defender-note">Windows Defender needs the Administrator. Sign in as the Administrator to use it.</p></div>';
+            panel.innerHTML = '<div class="defender-page"><p class="defender-note">Melaton Defender needs the Administrator. Sign in as the Administrator to use it.</p></div>';
             return;
         }
         if (page === 'home') { panel.innerHTML = homeHtml(); if (!homeData) scan(); return; }
@@ -181,10 +181,10 @@
         if (scanning || !d) {
             banner = { kind: 'scan', shield: null, title: 'Scanning…', body: 'Checking blocked clients and honeypot traps.' };
         } else if (d.error) {
-            banner = { kind: 'warn', shield: 'shield-warning-32', title: 'Windows Defender could not check Dreamscape', body: d.error };
+            banner = { kind: 'warn', shield: 'shield-warning-32', title: 'Melaton Defender could not check Dreamscape', body: d.error };
         } else if (d.blockedToday || d.honeypotToday) {
             banner = {
-                kind: 'warn', shield: 'shield-warning-32', title: 'Windows Defender blocked clients today',
+                kind: 'warn', shield: 'shield-warning-32', title: 'Melaton Defender blocked clients today',
                 body: `${d.blockedToday} ${d.blockedToday === 1 ? 'client was' : 'clients were'} blocked and ${d.honeypotToday} honeypot ${d.honeypotToday === 1 ? 'trap was' : 'traps were'} hit today.`,
                 link: ['Review quarantined items', 'quarantine']
             };
@@ -230,7 +230,7 @@
                 </div>
                 <div class="defender-group"><span>Tools</span></div>
                 <div class="defender-items">
-                    ${toolItem('quarantine', 'quarantine-48.png', 'Quarantined items', 'Unblock or remove clients that Windows Defender has kept from reaching Dreamscape')}
+                    ${toolItem('quarantine', 'quarantine-48.png', 'Quarantined items', 'Unblock or remove clients that Melaton Defender has kept from reaching Dreamscape')}
                     ${toolItem('honeypot', 'explorer-48.png', 'Honeypot traps', 'View the paths that only scanners ask for, and the clients that asked')}
                     ${toolItem('allowed', 'allowed-48.png', 'Allowed items', 'View and change the addresses authorised to reach Dreamscape')}
                 </div>
@@ -308,7 +308,7 @@
         if (!host || !host.isConnected || page !== id) return;
         /* global securityDsapBuildHtml, securityDsapNormalizeView */
         if (!ready || typeof securityDsapBuildHtml !== 'function' || typeof securityDsapDriver === 'undefined') {
-            host.innerHTML = '<p class="defender-note">Windows Defender could not load this list.</p>';
+            host.innerHTML = '<p class="defender-note">Melaton Defender could not load this list.</p>';
             return;
         }
         host.innerHTML = securityDsapBuildHtml();
@@ -364,7 +364,7 @@
         if (!cpl || typeof cpl.registerItem !== 'function') return;
         cpl.registerItem({
             id: 'windows-defender',
-            name: 'Windows Defender',
+            name: 'Melaton Defender',
             image: `${ART}/defender-32.png`,
             description: 'Blocked clients, honeypot traps, allowed addresses and security history.',
             open: () => open('home')

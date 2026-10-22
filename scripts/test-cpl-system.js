@@ -93,7 +93,7 @@ const rated = { base: 4.8, scores: { processor: 5.4, memory: 5.9, graphics: 4.8,
 const html = t.render({ fullName: 'Melaton Desktop', edition: '2026 R7', copyright: 'Copyright', build: 'abc1234' }, {
     host: { hostname: 'dream<scape', arch: 'x64', cpuModel: 'Test CPU', cpuMHz: 3000, totalMemBytes: 8 * 1024 ** 3 }
 }, rated);
-const order = ['View basic information about your computer', 'Windows edition', 'System', 'Computer name, domain, and workgroup settings', 'Session', 'Windows activation'];
+const order = ['View basic information about your computer', 'Melaton edition', 'System', 'Computer name, domain, and workgroup settings', 'Session', 'Melaton activation'];
 let at = -1;
 order.forEach((text) => {
     const i = html.indexOf(text, at + 1);
