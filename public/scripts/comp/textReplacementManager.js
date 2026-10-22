@@ -1057,23 +1057,6 @@ async function hideCreateTextReplacementModal() {
     }
 }
 
-// Handle type selection change
-function handleTextReplacementTypeChange() {
-    const typeSelect = document.getElementById('textReplacementTypeSelect');
-    const stringRow = document.getElementById('stringValueRow');
-    const arrayRow = document.getElementById('arrayValueRow');
-    
-    if (typeSelect.value === 'array') {
-        stringRow.classList.add('hidden');
-        arrayRow.classList.remove('hidden');
-        // Initialize with one empty array item
-        initializeCreateArrayItems();
-    } else {
-        stringRow.classList.remove('hidden');
-        arrayRow.classList.add('hidden');
-    }
-}
-
 // Initialize array items for create modal
 function initializeCreateArrayItems() {
     const container = document.getElementById('createArrayItemsContainer');
