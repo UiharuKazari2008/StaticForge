@@ -1470,3 +1470,24 @@ body:not(.windows-classic-theme) #maskEditorDialog .mask-editor-hint {
     color: #6d6d6d;
     font-size: 9pt;
 }
+
+/* Shape: Paint's Rectangle / Ellipse tools (mspaint.exe bitmap 859), painted on the glyph element
+   inpaint.js toggleBrushShape switches between fa-square and fa-circle */
+#maskEditorDialog #brushShapeBtn > i {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    margin-right: 5px;
+    font-size: 0;
+    color: transparent;
+    text-shadow: none;
+    background: url("/static_images/vista-cmdbar/paint-rectangle.png") no-repeat center / 16px 16px;
+}
+
+#maskEditorDialog #brushShapeBtn > i.fa-circle {
+    background-image: url("/static_images/vista-cmdbar/paint-ellipse.png");
+}
+
+#maskEditorDialog #brushShapeBtn > i::before {
+    content: none;
+}

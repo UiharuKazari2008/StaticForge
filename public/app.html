@@ -3986,11 +3986,16 @@
             <div class="explorer-actions-header" role="toolbar">
                 <div class="explorer-command-set">
                     <button type="button" id="saveMaskBtn" class="btn-secondary btn-small explorer-command-btn"
-                        title="Save Mask (Ctrl+S)"><i class="nai-save"></i><span>Save</span></button>
+                        title="Save Mask (Ctrl+S)"><img class="explorer-command-icon"
+                            src="/static_images/vista-cmdbar/save.png" alt=""><span>Save</span></button>
                     <button type="button" id="maskBrushBtn" class="btn-secondary btn-small explorer-command-btn"
-                        data-state="on" title="Brush Tool (F1)"><i class="nai-pen"></i><span>Brush</span></button>
+                        data-state="on" title="Brush Tool (F1)"><img class="explorer-command-icon"
+                            src="/static_images/vista-cmdbar/paint-brush.png" alt=""><span>Brush</span></button>
                     <button type="button" id="maskEraserBtn" class="btn-secondary btn-small explorer-command-btn"
-                        data-state="off" title="Eraser Tool (F2)"><i class="nai-eraser"></i><span>Eraser</span></button>
+                        data-state="off" title="Eraser Tool (F2)"><img class="explorer-command-icon"
+                            src="/static_images/vista-cmdbar/paint-eraser.png" alt=""><span>Eraser</span></button>
+                    <!-- inpaint.js toggleBrushShape swaps the i's fa-square / fa-circle class; mask-editor.css
+                         paints Paint's Rectangle / Ellipse tool on it -->
                     <button type="button" id="brushShapeBtn" class="btn-secondary btn-small explorer-command-btn"
                         title="Toggle Brush Shape (F3)"><i class="fas fa-square"></i><span>Shape</span></button>
                     <label class="brush-size-control command-bar-field" for="brushSize" title="Brush Size">
@@ -4000,16 +4005,19 @@
                 </div>
                 <div class="explorer-command-set">
                     <button type="button" id="maskNegativeBtn" class="btn-secondary btn-small explorer-command-btn"
-                        title="Negative (Invert Mask) (F5)"><i class="fas fa-adjust"></i><span>Invert</span></button>
+                        title="Negative (Invert Mask) (F5)"><img class="explorer-command-icon"
+                            src="/static_images/vista-cmdbar/contrast.png" alt=""><span>Invert</span></button>
                     <button type="button" id="clearMaskBtn" class="btn-secondary btn-small explorer-command-btn"
-                        title="Clear Mask (F4)"><i class="fas fa-empty-set"></i><span>Clear</span></button>
+                        title="Clear Mask (F4)"><img class="explorer-command-icon"
+                            src="/static_images/vista-cmdbar/clear.png" alt=""><span>Clear</span></button>
                     <button type="button" id="deleteMaskBtn" class="btn-secondary btn-small explorer-command-btn"
-                        title="Delete Mask (F6)"><i class="fas fa-trash"></i><span>Delete</span></button>
+                        title="Delete Mask (F6)"><img class="explorer-command-icon"
+                            src="/static_images/vista-cmdbar/delete.png" alt=""><span>Delete</span></button>
                 </div>
             </div>
             <div class="modal-body">
                 <div class="mask-editor-hint">
-                    <i class="fas fa-info-circle"></i> Use one connected region. Don't pepper nearby micro-masks.
+                    <img src="/static_images/vista-icons/info-16.png" width="16" height="16" alt=""> Use one connected region. Don't pepper nearby micro-masks.
                     (ght901 sparse-inpaint)
                 </div>
                 <div class="mask-editor-canvas-container">
@@ -4045,7 +4053,8 @@
             <div class="explorer-actions-header" role="toolbar">
                 <div class="explorer-command-set">
                     <button type="button" id="saveBiasAdjustmentBtn" class="btn-secondary btn-small explorer-command-btn"
-                        title="Save (Enter)"><i class="nai-save"></i><span>Save</span></button>
+                        title="Save (Enter)"><img class="explorer-command-icon"
+                            src="/static_images/vista-cmdbar/save.png" alt=""><span>Save</span></button>
                     <label class="command-bar-field" for="biasX" title="X Position">
                         <span>X:</span>
                         <input type="number" id="biasX" class="form-control" min="0" max="2048" step="1" value="0">
@@ -4073,9 +4082,11 @@
                 </div>
                 <div class="explorer-command-set">
                     <button type="button" id="previewToggleBtn" class="btn-secondary btn-small explorer-command-btn"
-                        data-state="on" title="Client Preview"><i class="fas fa-image"></i><span>Preview</span></button>
+                        data-state="on" title="Client Preview"><img class="explorer-command-icon"
+                            src="/static_images/vista-cmdbar/photo-gallery.png" alt=""><span>Preview</span></button>
                     <button type="button" id="biasResetBtn" class="btn-secondary btn-small explorer-command-btn"
-                        title="Reset Bias (Ctrl+R)"><i class="nai-reload"></i><span>Reset</span></button>
+                        title="Reset Bias (Ctrl+R)"><img class="explorer-command-icon"
+                            src="/static_images/vista-cmdbar/refresh.png" alt=""><span>Reset</span></button>
                 </div>
             </div>
             <div class="modal-body">
