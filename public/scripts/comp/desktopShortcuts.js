@@ -1189,37 +1189,68 @@ class DesktopShortcutsManager {
 
         if (!confirmed) return;
 
-        for (const id of ids) {
-            const shortcut = this.shortcuts.find(s => s.id === id);
-            if (shortcut?.type === 'folder') {
-                await this.deleteFolderShortcut(id);
-            } else {
-                await this.removeShortcut(id);
-            }
-        }
+        await this.runWithProgress('delete', selected, null, (shortcut) => (shortcut.type === 'folder'
+            ? this.deleteFolderShortcut(shortcut.id)
+            : this.removeShortcut(shortcut.id)), 'Delete failed');
         this.clearSelection();
+    }
+
+    /**
+     * fn(shortcut) for each shortcut in turn under Vista's progress dialog (fileOperationProgress.js,
+     * through Explorer's _beginProgress): from this desktop to destPath (a VFS path, or null for a
+     * delete). A failure asks Try Again / Skip / Cancel there; off the desktop it toasts failText.
+     * batch: one fn(shortcuts) call for the lot. Resolves { done, shown }.
+     */
+    async runWithProgress(op, shortcuts, destPath, fn, failText, batch = false) {
+        const list = (shortcuts || []).filter(Boolean);
+        // initializeExplorerApplet: public/scripts/comp/explorerApplet.js
+        const explorer = typeof initializeExplorerApplet === 'function' ? initializeExplorerApplet() : null;
+        const ws = this.currentWorkspace;
+        const progress = explorer && list.length
+            ? explorer._beginProgress(op, list.map(s => ({ name: s.name, size: 0 })), ws ? `/Workspaces/${ws}/Desktop` : null, destPath)
+            : null;
+        const groups = batch ? [list] : list.map(s => [s]);
+        const done = [];
+        try {
+            for (const group of groups) {
+                if (!group.length) continue;
+                if (progress && !progress.next()) break;
+                const call = () => (batch ? fn(group) : fn(group[0]));
+                if (progress) {
+                    const info = group.map(s => ({ name: s.name, size: 0 }));
+                    const r = await progress.attempt(info, call);
+                    if (r.ok) done.push(...group);
+                    progress.doneAll(info);
+                    continue;
+                }
+                try {
+                    await call();
+                    done.push(...group);
+                } catch (error) {
+                    console.error(failText, error);
+                    showGlassToast('error', 'Error', error.message || failText, false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
+                }
+            }
+        } finally {
+            if (progress) progress.finish();
+        }
+        return { done, shown: !!progress };
     }
 
     async moveSelectedShortcutsToWorkspace(targetWorkspaceId) {
         const ids = [...this.selectedShortcutIds];
         if (!ids.length) return;
 
-        let moved = 0;
-        for (const id of ids) {
-            try {
-                await this.moveShortcutToWorkspace(id, targetWorkspaceId, true);
-                moved++;
-            } catch (error) {
-                // moveShortcutToWorkspace already toasts errors
-            }
-        }
+        const selected = ids.map(id => this.shortcuts.find(s => s.id === id)).filter(Boolean);
+        const { done, shown } = await this.runWithProgress('move', selected, `/Workspaces/${targetWorkspaceId}/Desktop`,
+            (shortcut) => this._moveShortcutToWorkspace(shortcut.id, targetWorkspaceId), 'Failed to move shortcut');
         this.clearSelection();
 
-        if (moved > 0) {
+        if (done.length && !shown) {
             const wsName = workspaces[targetWorkspaceId]?.name || targetWorkspaceId;
-            const message = moved === 1
+            const message = done.length === 1
                 ? `Shortcut moved to ${wsName}`
-                : `${moved} shortcuts moved to ${wsName}`;
+                : `${done.length} shortcuts moved to ${wsName}`;
             showGlassToast('success', null, message, false, 3000, '<i class="fas fa-arrow-right"></i>');
         }
     }
@@ -3549,7 +3580,13 @@ class DesktopShortcutsManager {
                 const dragIds = this.dragGroup && this.dragGroup.length > 0
                     ? this.dragGroup.map((item) => item.shortcut.id)
                     : [this.draggedShortcut.shortcut.id];
-                await this.assignShortcutsToFolder(dragIds, folderTarget);
+                // into a folder: a move in Vista's progress dialog
+                const moving = dragIds.filter(id => id !== folderTarget.id)
+                    .map(id => this.shortcuts.find(s => s.id === id));
+                const ws = this.currentWorkspace;
+                const folderId = folderTarget.data?.vfsFolderId;
+                await this.runWithProgress('move', moving, ws && folderId ? `/Workspaces/${ws}/Desktop/${folderId}` : null,
+                    () => this.assignShortcutsToFolder(dragIds, folderTarget), 'Move failed', true);
             } else if (droppedOnManual) {
                 // Handle drop on manual modal
                 const typeHandler = this.shortcutTypes[this.draggedShortcut.shortcut.type];
@@ -4291,38 +4328,41 @@ class DesktopShortcutsManager {
         return workspaceList;
     }
 
-    // Move a shortcut to another workspace
-    async moveShortcutToWorkspace(shortcutId, targetWorkspaceId, silent = false) {
-        try {
-            const shortcut = this.shortcuts.find(s => s.id === shortcutId);
-            if (!shortcut) {
-                throw new Error('Shortcut not found');
-            }
-
-            if (!wsClient || !wsClient.isConnected()) {
-                throw new Error('WebSocket not connected');
-            }
-
-            // Create a copy of the shortcut without internal flags
-            const shortcutCopy = { ...shortcut };
-            delete shortcutCopy._isNew;
-            delete shortcutCopy._isModified;
-            delete shortcutCopy._isDeleted;
-
-            // Add shortcut to target workspace
-            await wsClient.addDesktopShortcut(targetWorkspaceId, shortcutCopy);
-
-            // Remove shortcut from current workspace using debounced save
-            await this.removeShortcut(shortcutId);
-
-            if (!silent) {
-                showGlassToast('success', null, `Shortcut moved to ${workspaces[targetWorkspaceId]?.name || targetWorkspaceId}`, false, 3000, '<i class="fas fa-arrow-right"></i>');
-            }
-        } catch (error) {
-            console.error('Failed to move desktop shortcut:', error);
+    // Move a shortcut to another workspace (Vista's progress dialog on the desktop, toasts off it)
+    async moveShortcutToWorkspace(shortcutId, targetWorkspaceId) {
+        const shortcut = this.shortcuts.find(s => s.id === shortcutId);
+        if (!shortcut) {
             showGlassToast('error', 'Error', 'Failed to move shortcut', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
-            throw error;
+            return;
         }
+        const { done, shown } = await this.runWithProgress('move', [shortcut], `/Workspaces/${targetWorkspaceId}/Desktop`,
+            () => this._moveShortcutToWorkspace(shortcutId, targetWorkspaceId), 'Failed to move shortcut');
+        if (done.length && !shown) {
+            showGlassToast('success', null, `Shortcut moved to ${workspaces[targetWorkspaceId]?.name || targetWorkspaceId}`, false, 3000, '<i class="fas fa-arrow-right"></i>');
+        }
+    }
+
+    async _moveShortcutToWorkspace(shortcutId, targetWorkspaceId) {
+        const shortcut = this.shortcuts.find(s => s.id === shortcutId);
+        if (!shortcut) {
+            throw new Error('Shortcut not found');
+        }
+
+        if (!wsClient || !wsClient.isConnected()) {
+            throw new Error('WebSocket not connected');
+        }
+
+        // Create a copy of the shortcut without internal flags
+        const shortcutCopy = { ...shortcut };
+        delete shortcutCopy._isNew;
+        delete shortcutCopy._isModified;
+        delete shortcutCopy._isDeleted;
+
+        // Add shortcut to target workspace
+        await wsClient.addDesktopShortcut(targetWorkspaceId, shortcutCopy);
+
+        // Remove shortcut from current workspace using debounced save
+        await this.removeShortcut(shortcutId);
     }
 }
 
@@ -4471,12 +4511,8 @@ document.addEventListener('contextMenuAction', async (event) => {
                     syntheticEvent
                 );
                 if (folderDeleteConfirmed) {
-                    try {
-                        await desktopShortcuts.deleteFolderShortcut(shortcutId);
-                    } catch (error) {
-                        console.error('Failed to delete folder:', error);
-                        showGlassToast('error', 'Error', error.message || 'Failed to delete folder', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
-                    }
+                    await desktopShortcuts.runWithProgress('delete', [shortcut], null,
+                        () => desktopShortcuts.deleteFolderShortcut(shortcutId), 'Failed to delete folder');
                 }
                 break;
             }
@@ -4495,7 +4531,8 @@ document.addEventListener('contextMenuAction', async (event) => {
             );
             
             if (confirmed) {
-                await desktopShortcuts.removeShortcut(shortcutId);
+                await desktopShortcuts.runWithProgress('delete', [shortcut], null,
+                    () => desktopShortcuts.removeShortcut(shortcutId), 'Remove failed');
             }
             break;
 
@@ -4509,12 +4546,8 @@ document.addEventListener('contextMenuAction', async (event) => {
                 syntheticEvent
             );
             if (deleteFolderConfirmed) {
-                try {
-                    await desktopShortcuts.deleteFolderShortcut(shortcutId);
-                } catch (error) {
-                    console.error('Failed to delete folder:', error);
-                    showGlassToast('error', 'Error', error.message || 'Failed to delete folder', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
-                }
+                await desktopShortcuts.runWithProgress('delete', [shortcut], null,
+                    () => desktopShortcuts.deleteFolderShortcut(shortcutId), 'Failed to delete folder');
             }
             break;
         }
@@ -4541,12 +4574,8 @@ document.addEventListener('contextMenuAction', async (event) => {
                 syntheticEvent
             );
             if (deleteConfirmed) {
-                try {
-                    await desktopShortcuts.permanentlyDeleteShortcutTarget(shortcut);
-                } catch (error) {
-                    console.error('Failed to permanently delete shortcut target:', error);
-                    showGlassToast('error', 'Error', error.message || 'Delete failed', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
-                }
+                await desktopShortcuts.runWithProgress('delete', [shortcut], null,
+                    () => desktopShortcuts.permanentlyDeleteShortcutTarget(shortcut), 'Delete failed');
             }
             break;
         }

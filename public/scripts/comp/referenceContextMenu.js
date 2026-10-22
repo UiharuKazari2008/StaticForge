@@ -500,40 +500,52 @@ async function executeReferenceMove(cacheImage, targetWorkspace) {
     }
 
     try {
-        let response;
+        const moveReference = async () => {
+            let response;
 
-        if (cacheImage.isStandalone) {
-            if (cacheImage.vibes && cacheImage.vibes.length > 0) {
-                response = await wsClient.moveVibeImage(cacheImage.vibes[0].id, targetWorkspace, cacheManagerCurrentWorkspace);
+            if (cacheImage.isStandalone) {
+                if (cacheImage.vibes && cacheImage.vibes.length > 0) {
+                    response = await wsClient.moveVibeImage(cacheImage.vibes[0].id, targetWorkspace, cacheManagerCurrentWorkspace);
+                } else {
+                    throw new Error('Standalone image has no vibe data');
+                }
             } else {
-                throw new Error('Standalone image has no vibe data');
-            }
-        } else {
-            response = await wsClient.moveReferences([cacheImage.hash], targetWorkspace, cacheManagerCurrentWorkspace);
+                response = await wsClient.moveReferences([cacheImage.hash], targetWorkspace, cacheManagerCurrentWorkspace);
 
-            if (response.success && cacheImage.hasVibes) {
-                const vibeMovePromises = [];
-                for (const vibe of cacheImage.vibes) {
-                    if (vibe.type === 'cache') {
-                        vibeMovePromises.push(
-                            wsClient.moveVibeImage(vibe.id, targetWorkspace, cacheManagerCurrentWorkspace)
-                        );
+                if (response.success && cacheImage.hasVibes) {
+                    const vibeMovePromises = [];
+                    for (const vibe of cacheImage.vibes) {
+                        if (vibe.type === 'cache') {
+                            vibeMovePromises.push(
+                                wsClient.moveVibeImage(vibe.id, targetWorkspace, cacheManagerCurrentWorkspace)
+                            );
+                        }
                     }
-                }
 
-                if (vibeMovePromises.length > 0) {
-                    try {
-                        await Promise.all(vibeMovePromises);
-                    } catch (vibeError) {
-                        console.warn('Some vibe images failed to move:', vibeError);
+                    if (vibeMovePromises.length > 0) {
+                        try {
+                            await Promise.all(vibeMovePromises);
+                        } catch (vibeError) {
+                            console.warn('Some vibe images failed to move:', vibeError);
+                        }
                     }
                 }
             }
-        }
 
-        if (!response.success) {
-            throw new Error(`Failed to move image: ${response.message}`);
-        }
+            if (!response.success) {
+                throw new Error(`Failed to move image: ${response.message}`);
+            }
+        };
+        // Vista's progress dialog on the desktop (fileOperationProgress.js, a failure asks there);
+        // galleryTransferPlace: public/scripts/comp/bulkOperationsManager.js
+        const transfer = typeof fileOperationProgress !== 'undefined'
+            ? await fileOperationProgress.run({
+                op: 'move',
+                from: galleryTransferPlace(cacheManagerCurrentWorkspace, 'References'),
+                to: galleryTransferPlace(targetWorkspace, 'References')
+            }, [{ name: cacheImage.originalFilename || cacheImage.filename || cacheImage.hash }], moveReference)
+            : (await moveReference(), { done: 1, shown: false });
+        if (!transfer.done) return false;
 
         cacheManagerImages = cacheManagerImages.filter(img => img.hash !== cacheImage.hash);
         await loadCacheManagerImages();
@@ -541,7 +553,7 @@ async function executeReferenceMove(cacheImage, targetWorkspace) {
         const targetWorkspaceObj = Object.values(workspaces).find(ws => ws.id === targetWorkspace);
         const workspaceName = targetWorkspaceObj ? targetWorkspaceObj.name : targetWorkspace;
 
-        showGlassToast('success', 'Image Moved', `Image moved to ${workspaceName} workspace`);
+        if (!transfer.shown) showGlassToast('success', 'Image Moved', `Image moved to ${workspaceName} workspace`);
         return true;
     } catch (error) {
         console.error('Error moving cache image:', error);

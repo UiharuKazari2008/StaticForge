@@ -1,4 +1,30 @@
 /** Gallery bulk pin/move/delete ops (Phase 2 batch 13). */
+
+/** "Pictures (/Workspaces/Main/Pictures)": a gallery folder as Vista's progress dialog names it. */
+function galleryTransferPlace(wsId, folder) {
+    if (!wsId) return null;
+    const wsName = (typeof workspaces !== 'undefined' && workspaces[wsId]?.name) || wsId;
+    return { name: folder, path: `/Workspaces/${wsName}/${folder}` };
+}
+
+/** The gallery folder a view's images live in. */
+function galleryViewFolder(view) {
+    return view === 'scraps' ? 'Scraps' : 'Pictures';
+}
+
+/**
+ * Gallery images moved or deleted under Vista's progress dialog (fileOperationProgress.js, on the
+ * desktop): worker(filenames) in batches so the bar moves and Cancel stops between them; a failure
+ * asks Try Again / Skip / Cancel. Off the desktop it is one worker call with every filename and a
+ * failure throws. Resolves { done, cancelled, shown, values } (values: each worker's result).
+ */
+async function galleryTransfer(op, filenames, from, to, worker) {
+    if (typeof fileOperationProgress === 'undefined') {
+        const value = await worker(filenames);
+        return { done: filenames.length, cancelled: false, shown: false, values: [value] };
+    }
+    return fileOperationProgress.batches({ op, from, to, items: filenames.map(name => ({ name })) }, filenames, worker);
+}
 async function handleBulkCopy() {
     const selectedImagesArray = getSelectedImages();
     if (selectedImagesArray.length === 0) {
@@ -392,7 +418,11 @@ async function moveBulkImagesToWorkspace(workspaceId) {
             moveType = 'pinned';
         }
 
-        await window.wsClient.moveFilesToWorkspace(validFilenames, workspaceId, null, moveType);
+        const folder = galleryViewFolder(currentGalleryView);
+        const { done, shown } = await galleryTransfer('move', validFilenames,
+            galleryTransferPlace(activeWorkspace, folder), galleryTransferPlace(workspaceId, folder),
+            (names) => window.wsClient.moveFilesToWorkspace(names, workspaceId, null, moveType));
+        if (shown) return;
 
         const workspace = workspaces[workspaceId];
         let itemType;
@@ -404,7 +434,7 @@ async function moveBulkImagesToWorkspace(workspaceId) {
             itemType = 'images';
         }
 
-        showGlassToast('success', null, `Moved ${validFilenames.length} ${itemType} to ${workspace.name}`, false, 5000, '<i class="mdi mdi-1-5 mdi-folder-move"></i>');
+        showGlassToast('success', null, `Moved ${done} ${itemType} to ${workspace.name}`, false, 5000, '<i class="mdi mdi-1-5 mdi-folder-move"></i>');
     } catch (error) {
         console.error('Error moving items to workspace:', error);
         showError('Failed to move items: ' + error.message);
@@ -457,20 +487,32 @@ async function handleBulkDelete(event = null) {
         window.skipNextGalleryRefresh = (window.skipNextGalleryRefresh || 0) + 1;
         let deleted = false;
         try {
-            responseData = await window.wsClient.deleteImagesBulk(validFilenames);
+            const transfer = await galleryTransfer('delete', validFilenames,
+                galleryTransferPlace(activeWorkspace, galleryViewFolder(currentGalleryView)), null,
+                (names) => window.wsClient.deleteImagesBulk(names));
+            // the batches' answers as one
+            const answers = transfer.values.filter(Boolean);
+            responseData = answers.length ? {
+                successful: answers.reduce((n, r) => n + (r.successful || 0), 0),
+                failed: answers.reduce((n, r) => n + (r.failed || 0), 0),
+                message: answers.length === 1 ? answers[0].message : null,
+                results: answers.flatMap(r => r.results || [])
+            } : null;
             deleted = !!(responseData && responseData.successful > 0);
 
-            if (responseData) {
-                const { successful, failed, message } = responseData;
-                let toastMessage = message || `Successfully removed ${successful} image(s)`;
+            if (!transfer.shown) {
+                if (responseData) {
+                    const { successful, failed, message } = responseData;
+                    let toastMessage = message || `Successfully removed ${successful} image(s)`;
 
-                if (failed > 0) {
-                    toastMessage += ` (${failed} failed)`;
+                    if (failed > 0) {
+                        toastMessage += ` (${failed} failed)`;
+                    }
+
+                    showGlassToast('success', null, toastMessage, false, 5000, '<i class="fas fa-trash"></i>');
+                } else {
+                    showGlassToast('success', null, `Successfully removed ${validFilenames.length} image(s)`, false, 5000, '<i class="fas fa-trash"></i>');
                 }
-
-                showGlassToast('success', null, toastMessage, false, 5000, '<i class="fas fa-trash"></i>');
-            } else {
-                showGlassToast('success', null, `Successfully removed ${validFilenames.length} image(s)`, false, 5000, '<i class="fas fa-trash"></i>');
             }
 
             const removedNames = new Set(
@@ -524,8 +566,6 @@ async function handleBulkSequenzia(event = null) {
     }
 
     try {
-        showManualLoading(true, 'Sending images to Sequenzia...');
-
         // Filter out any null/undefined values from selected images
         const validFilenames = getSelectedFilenames().filter(filename => filename && typeof filename === 'string');
 
@@ -540,7 +580,14 @@ async function handleBulkSequenzia(event = null) {
             throw new Error('WebSocket not connected');
         }
 
-        responseData = await window.wsClient.sendToSequenziaBulk(validFilenames);
+        if (typeof fileOperationProgress === 'undefined' || !fileOperationProgress.available()) {
+            showManualLoading(true, 'Sending images to Sequenzia...');
+        }
+        const transfer = await galleryTransfer('move', validFilenames,
+            galleryTransferPlace(activeWorkspace, galleryViewFolder(currentGalleryView)), { name: 'Sequenzia', path: '' },
+            (names) => window.wsClient.sendToSequenziaBulk(names));
+        if (transfer.shown) return;
+        responseData = transfer.values[0];
 
         // Use server response data for accurate toast message
         if (responseData) {
@@ -589,8 +636,6 @@ async function handleBulkMoveToScraps(event = null) {
     }
 
     try {
-        showManualLoading(true, 'Moving images to scraps...');
-
         // Filter out any null/undefined values from selected images
         const validFilenames = getSelectedFilenames().filter(filename => filename && typeof filename === 'string');
 
@@ -605,7 +650,14 @@ async function handleBulkMoveToScraps(event = null) {
             throw new Error('WebSocket not connected');
         }
 
-        responseData = await window.wsClient.addScrapBulk(activeWorkspace, validFilenames);
+        if (typeof fileOperationProgress === 'undefined' || !fileOperationProgress.available()) {
+            showManualLoading(true, 'Moving images to scraps...');
+        }
+        const transfer = await galleryTransfer('move', validFilenames,
+            galleryTransferPlace(activeWorkspace, 'Pictures'), galleryTransferPlace(activeWorkspace, 'Scraps'),
+            (names) => window.wsClient.addScrapBulk(activeWorkspace, names));
+        if (transfer.shown) return;
+        responseData = transfer.values[0];
 
         // Use server response data for accurate toast message
         if (responseData) {
@@ -655,8 +707,6 @@ async function handleBulkUnscrap(event = null) {
     }
 
     try {
-        showManualLoading(true, 'Unscraping images...');
-
         const validFilenames = getSelectedFilenames().filter(filename => filename && typeof filename === 'string');
 
         if (validFilenames.length === 0) {
@@ -667,7 +717,14 @@ async function handleBulkUnscrap(event = null) {
             throw new Error('WebSocket not connected');
         }
 
-        const responseData = await window.wsClient.removeScrapBulk(activeWorkspace, validFilenames);
+        if (typeof fileOperationProgress === 'undefined' || !fileOperationProgress.available()) {
+            showManualLoading(true, 'Unscraping images...');
+        }
+        const transfer = await galleryTransfer('move', validFilenames,
+            galleryTransferPlace(activeWorkspace, 'Scraps'), galleryTransferPlace(activeWorkspace, 'Pictures'),
+            (names) => window.wsClient.removeScrapBulk(activeWorkspace, names));
+        if (transfer.shown) return;
+        const responseData = transfer.values[0];
         const removedCount = responseData && responseData.removedCount != null
             ? responseData.removedCount
             : validFilenames.length;
@@ -705,8 +762,6 @@ async function handleBulkScrapToWorkspace(workspaceId, workspaceName, event = nu
     }
 
     try {
-        showManualLoading(true, `Scraping images into ${workspaceName}...`);
-
         const validFilenames = getSelectedFilenames().filter(filename => filename && typeof filename === 'string');
 
         if (validFilenames.length === 0) {
@@ -717,7 +772,14 @@ async function handleBulkScrapToWorkspace(workspaceId, workspaceName, event = nu
             throw new Error('WebSocket not connected');
         }
 
-        const responseData = await window.wsClient.addScrapBulk(workspaceId, validFilenames);
+        if (typeof fileOperationProgress === 'undefined' || !fileOperationProgress.available()) {
+            showManualLoading(true, `Scraping images into ${workspaceName}...`);
+        }
+        const transfer = await galleryTransfer('move', validFilenames,
+            galleryTransferPlace(activeWorkspace, galleryViewFolder(currentGalleryView)), galleryTransferPlace(workspaceId, 'Scraps'),
+            (names) => window.wsClient.addScrapBulk(workspaceId, names));
+        if (transfer.shown) return;
+        const responseData = transfer.values[0];
         const addedCount = responseData && responseData.addedCount != null
             ? responseData.addedCount
             : validFilenames.length;
@@ -756,8 +818,6 @@ async function handleBulkUnscrapToWorkspace(workspaceId, workspaceName, event = 
 
     let unscraped = false;
     try {
-        showManualLoading(true, `Unscraping images into ${workspaceName}...`);
-
         const validFilenames = getSelectedFilenames().filter(filename => filename && typeof filename === 'string');
 
         if (validFilenames.length === 0) {
@@ -768,12 +828,20 @@ async function handleBulkUnscrapToWorkspace(workspaceId, workspaceName, event = 
             throw new Error('WebSocket not connected');
         }
 
-        await window.wsClient.removeScrapBulk(activeWorkspace, validFilenames);
-        unscraped = true;
-        const response = await window.wsClient.moveFilesToWorkspace(validFilenames, workspaceId, activeWorkspace, 'files');
-        if (response && response.success === false) {
-            throw new Error(response.error || 'Failed to move images');
+        if (typeof fileOperationProgress === 'undefined' || !fileOperationProgress.available()) {
+            showManualLoading(true, `Unscraping images into ${workspaceName}...`);
         }
+        const transfer = await galleryTransfer('move', validFilenames,
+            galleryTransferPlace(activeWorkspace, 'Scraps'), galleryTransferPlace(workspaceId, 'Pictures'),
+            async (names) => {
+                await window.wsClient.removeScrapBulk(activeWorkspace, names);
+                unscraped = true;
+                const response = await window.wsClient.moveFilesToWorkspace(names, workspaceId, activeWorkspace, 'files');
+                if (response && response.success === false) {
+                    throw new Error(response.error || 'Failed to move images');
+                }
+            });
+        if (transfer.shown) return;
 
         showGlassToast('success', null, `Unscraped ${validFilenames.length} image(s) into ${workspaceName}`, false, 5000, '<i class="fas fa-rotate-left"></i>');
     } catch (error) {
