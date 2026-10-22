@@ -174,6 +174,9 @@
     box-shadow: -3px 0 0 #dce4ef, -2px 0 0 #fff, -1px 0 0 #c8cfd7;
     margin-left: 3px;
     color: #000;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 15px;
+    text-shadow: none;
     user-select: text;
 }
 
@@ -357,4 +360,42 @@
 body.windows-classic-theme .wpg-viewer .wpg-main,
 body.windows-classic-theme .wpg-viewer .wpg-main .image-container {
     background: #fff;
+}
+
+/* ---- Glancewell (#photoSwipeWindow): windowed it is the same viewer around PhotoSwipe (the
+   pictures on #eef3fa, PhotoSwipe's own bars and arrows hidden: the band and the pill drive it);
+   full screen (not .windowed) it stays the slide show without the frame. ---- */
+
+/* inside the frame like any client (the shell's own rule pads the caption only) */
+body.desktop-mode #photoSwipeWindow.wpg-glancewell.windowed {
+    padding: 27px 7px 7px;
+}
+
+body.desktop-mode #photoSwipeWindow.wpg-glancewell.windowed .wpg-main {
+    position: relative;
+}
+
+body.desktop-mode #photoSwipeWindow.wpg-glancewell.windowed #photoSwipeMount {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: auto;
+    border-radius: 0;
+}
+
+body.desktop-mode #photoSwipeWindow.wpg-glancewell.windowed #photoSwipeMount .pswp {
+    --pswp-bg: #eef3fa;
+    --pswp-placeholder-bg: #eef3fa;
+}
+
+body.desktop-mode #photoSwipeWindow.wpg-glancewell.windowed #photoSwipeMount .pswp :is(.pswp__top-bar, .pswp__button--arrow, .pswp__counter, .pswp__custom-bottom-bar) {
+    display: none !important;
+}
+
+body.desktop-mode #photoSwipeWindow.wpg-glancewell:not(.windowed) :is(.wpg-toolbar, .wpg-controls, .wpg-info) {
+    display: none !important;
+}
+
+body.desktop-mode #photoSwipeWindow.wpg-glancewell:not(.windowed) .wpg-main {
+    flex: 1 1 auto;
+    min-height: 0;
 }

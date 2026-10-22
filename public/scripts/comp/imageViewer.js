@@ -191,6 +191,83 @@ class ImageViewerManager {
     }
 }
 
+/**
+ * Photo Gallery's Info pane (Lumen and Glancewell, vista-photo-gallery.css): the thumbnail, the name,
+ * the date and size, the generation parameters and the prompts. The full metadata comes from the
+ * Properties loader (imagePromptInspector.js) when the record lacks it.
+ * @param {Element} pane the .wpg-info element
+ * @param {{metadata: object, src: string, title: string, img: HTMLImageElement|null}} source
+ */
+async function renderPhotoGalleryInfoPane(pane, source) {
+    if (!pane) return;
+    const token = (pane._wpgToken = (pane._wpgToken || 0) + 1);
+    const set = (sel, text) => {
+        const el = pane.querySelector(sel);
+        if (el) el.textContent = text || '';
+    };
+    const img = source.img || null;
+    const thumb = pane.querySelector('.wpg-info-thumb-img');
+    if (thumb) thumb.src = source.src || '';
+    set('.wpg-info-name', source.title);
+    // the full metadata (prompts, seed ...) comes from the Properties loader when the record lacks it
+    let meta = source.metadata || {};
+    try {
+        if (typeof featureLoader !== 'undefined') await featureLoader.loadFeature('image_prompt_inspector');
+        // imagePromptInspectorManager.resolveMetadata: public/scripts/comp/imagePromptInspector.js
+        if (typeof imagePromptInspectorManager !== 'undefined' && imagePromptInspectorManager.resolveMetadata) {
+            meta = { ...meta, ...(await imagePromptInspectorManager.resolveMetadata(source.metadata || {})) };
+        }
+    } catch (_err) { /* the record's own fields */ }
+    if (token !== pane._wpgToken) return;
+    const forge = meta.forge_data || {};
+    const pick = (...vals) => vals.find((v) => v !== undefined && v !== null && v !== '');
+    const when = pick(meta.timestamp, meta.created_at, meta.createdAt, meta.date, forge.timestamp);
+    const date = when ? new Date(typeof when === 'number' && when < 1e12 ? when * 1000 : when) : null;
+    set('.wpg-info-date', date && !Number.isNaN(date.getTime())
+        ? `${date.toLocaleDateString()}   ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+        : '');
+    const w = pick(meta.width, img && img.naturalWidth);
+    const h = pick(meta.height, img && img.naturalHeight);
+    set('.wpg-info-size', w && h ? `${w} x ${h}` : '');
+    const params = [
+        ['Model', pick(meta.model_display, meta.model, forge.model)],
+        ['Seed', pick(meta.seed, forge.seed)],
+        ['Steps', pick(meta.steps, forge.steps)],
+        ['Guidance', pick(meta.scale, meta.guidance, forge.scale)],
+        ['Rescale', pick(meta.cfg_rescale, meta.rescale, forge.cfg_rescale)],
+        ['Sampler', pick(meta.sampler, forge.sampler)],
+        ['Noise', pick(meta.noise_schedule, meta.noiseScheduler, forge.noise_schedule)],
+        ['Strength', pick(meta.strength, forge.strength)],
+        ['Preset', pick(meta.preset, meta.presetName, forge.preset)]
+    ].filter(([, v]) => v !== undefined);
+    const dl = pane.querySelector('.wpg-info-params');
+    if (dl) {
+        dl.innerHTML = '';
+        params.forEach(([k, v]) => {
+            const dt = document.createElement('dt');
+            dt.textContent = k;
+            const dd = document.createElement('dd');
+            dd.textContent = String(v);
+            dl.append(dt, dd);
+        });
+    }
+    const prompt = pick(meta.input_prompt, meta.prompt, forge.input_prompt, forge.prompt);
+    const uc = pick(meta.input_uc, meta.uc, meta.negative_prompt, forge.input_uc, forge.uc);
+    const promptHost = pane.querySelector('.wpg-info-prompt');
+    if (promptHost) {
+        promptHost.innerHTML = '';
+        [['Prompt', prompt], ['Undesired content', uc]].forEach(([label, text]) => {
+            if (!text) return;
+            const h4 = document.createElement('h4');
+            h4.textContent = label;
+            const para = document.createElement('p');
+            para.textContent = String(text);
+            promptHost.append(h4, para);
+        });
+        if (!prompt && !uc && !params.length) promptHost.textContent = 'No generation parameters.';
+    }
+}
+
 class ImageViewer {
     constructor(id, element, imageSrc, title, metadata, manager) {
         this.id = id;
@@ -833,75 +910,10 @@ class ImageViewer {
         if (this.infoOpen) this.renderInfoPane();
     }
 
-    async renderInfoPane() {
+    renderInfoPane() {
         const pane = this.element.querySelector('.wpg-info');
-        if (!pane) return;
-        const token = (this._infoToken = (this._infoToken || 0) + 1);
-        const set = (sel, text) => {
-            const el = pane.querySelector(sel);
-            if (el) el.textContent = text || '';
-        };
         const img = this.element.querySelector(`#imageViewerImage_${this.id}`);
-        const thumb = pane.querySelector('.wpg-info-thumb-img');
-        if (thumb) thumb.src = this.imageSrc || '';
-        set('.wpg-info-name', this.title);
-        // the full metadata (prompts, seed ...) comes from the Properties loader when the record lacks it
-        let meta = this.metadata || {};
-        try {
-            if (typeof featureLoader !== 'undefined') await featureLoader.loadFeature('image_prompt_inspector');
-            // imagePromptInspectorManager.resolveMetadata: public/scripts/comp/imagePromptInspector.js
-            if (typeof imagePromptInspectorManager !== 'undefined' && imagePromptInspectorManager.resolveMetadata) {
-                meta = { ...meta, ...(await imagePromptInspectorManager.resolveMetadata(this.metadata || {})) };
-            }
-        } catch (_err) { /* the record's own fields */ }
-        if (token !== this._infoToken) return;
-        const forge = meta.forge_data || {};
-        const pick = (...vals) => vals.find((v) => v !== undefined && v !== null && v !== '');
-        const when = pick(meta.timestamp, meta.created_at, meta.createdAt, meta.date, forge.timestamp);
-        const date = when ? new Date(typeof when === 'number' && when < 1e12 ? when * 1000 : when) : null;
-        set('.wpg-info-date', date && !Number.isNaN(date.getTime())
-            ? `${date.toLocaleDateString()}   ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
-            : '');
-        const w = pick(meta.width, img && img.naturalWidth);
-        const h = pick(meta.height, img && img.naturalHeight);
-        set('.wpg-info-size', w && h ? `${w} x ${h}` : '');
-        const params = [
-            ['Model', pick(meta.model_display, meta.model, forge.model)],
-            ['Seed', pick(meta.seed, forge.seed)],
-            ['Steps', pick(meta.steps, forge.steps)],
-            ['Guidance', pick(meta.scale, meta.guidance, forge.scale)],
-            ['Rescale', pick(meta.cfg_rescale, meta.rescale, forge.cfg_rescale)],
-            ['Sampler', pick(meta.sampler, forge.sampler)],
-            ['Noise', pick(meta.noise_schedule, meta.noiseScheduler, forge.noise_schedule)],
-            ['Strength', pick(meta.strength, forge.strength)],
-            ['Preset', pick(meta.preset, meta.presetName, forge.preset)]
-        ].filter(([, v]) => v !== undefined);
-        const dl = pane.querySelector('.wpg-info-params');
-        if (dl) {
-            dl.innerHTML = '';
-            params.forEach(([k, v]) => {
-                const dt = document.createElement('dt');
-                dt.textContent = k;
-                const dd = document.createElement('dd');
-                dd.textContent = String(v);
-                dl.append(dt, dd);
-            });
-        }
-        const prompt = pick(meta.input_prompt, meta.prompt, forge.input_prompt, forge.prompt);
-        const uc = pick(meta.input_uc, meta.uc, meta.negative_prompt, forge.input_uc, forge.uc);
-        const promptHost = pane.querySelector('.wpg-info-prompt');
-        if (promptHost) {
-            promptHost.innerHTML = '';
-            [['Prompt', prompt], ['Undesired content', uc]].forEach(([label, text]) => {
-                if (!text) return;
-                const h4 = document.createElement('h4');
-                h4.textContent = label;
-                const para = document.createElement('p');
-                para.textContent = String(text);
-                promptHost.append(h4, para);
-            });
-            if (!prompt && !uc && !params.length) promptHost.textContent = 'No generation parameters.';
-        }
+        return renderPhotoGalleryInfoPane(pane, { metadata: this.metadata, src: this.imageSrc, title: this.title, img });
     }
 
     setupContextMenu() {
@@ -1955,3 +1967,4 @@ window.openReferenceImageInViewer = function (cacheImage) {
 
 // Export for use in other modules
 window.imageViewerManager = imageViewerManager;
+window.renderPhotoGalleryInfoPane = renderPhotoGalleryInfoPane;

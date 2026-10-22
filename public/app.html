@@ -1019,16 +1019,18 @@
         </div>
     </div>
 
-    <!-- PhotoSwipe viewer window (desktop mode only; wired from public/scripts/comp/lightbox.js) -->
-    <div id="photoSwipeWindow" class="modal photo-swipe-window resizeable-window transient hidden windowed"
-        data-window-identifier="photoSwipeShell" data-window-min-width="320" data-window-min-height="240"
-        data-window-max-width="2500" data-window-max-height="2500">
+    <!-- Glancewell: PhotoSwipe in a window (desktop mode only; lightbox.js). Windowed it is Vista's
+         Windows Photo Gallery viewer (vista-photo-gallery.css, like Lumen): the command band, the
+         pictures with the Info pane, the control pill on the glass; full screen it is the slide show -->
+    <div id="photoSwipeWindow" class="modal photo-swipe-window resizeable-window transient hidden windowed wpg-viewer wpg-glancewell"
+        data-window-identifier="photoSwipeShell" data-window-min-width="460" data-window-min-height="340"
+        data-window-max-width="2500" data-window-max-height="2500" data-window-client="light">
         <div class="modal-focus-overlay"></div>
         <div class="modal-window-title photo-swipe-window-title">
             <div class="modal-window-title-main">
                 <i class="fa-duotone fa-images icon-fa"></i>
                 <img src="/static_images/app_icons/24/vista-photo-gallery.webp" srcset="/static_images/app_icons/24/vista-photo-gallery.webp 1x, /static_images/app_icons/48/vista-photo-gallery.webp 2x" alt="" class="icon-image" />
-                <span>Glancewell</span>
+                <span id="photoSwipeWindowTitle">Glancewell</span>
             </div>
         </div>
         <div class="modal-window-controls">
@@ -1042,7 +1044,41 @@
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div id="photoSwipeMount"></div>
+        <div class="wpg-toolbar" role="toolbar">
+            <button type="button" class="wpg-back" data-gw="gallery" title="Back to the gallery"><span class="wpg-back-orb" aria-hidden="true"></span>Back To Gallery</button>
+            <button type="button" class="wpg-cmd has-menu" data-gw="file" title="File"><span class="wpg-icon" style="--wpg-art: url('/static_images/vista-photo-gallery/file.png')"></span>File<span class="wpg-drop" aria-hidden="true"></span></button>
+            <button type="button" class="wpg-cmd" data-gw="fix" title="Fix: edit in DreamStudio"><span class="wpg-icon" style="--wpg-art: url('/static_images/vista-photo-gallery/fix.png')"></span>Fix</button>
+            <button type="button" class="wpg-cmd" data-gw="info" title="Show or hide the Info pane" aria-pressed="false"><span class="wpg-icon" style="--wpg-art: url('/static_images/vista-photo-gallery/info.png')"></span>Info</button>
+            <button type="button" class="wpg-cmd" data-gw="lumen" title="Open in Lumen"><span class="wpg-icon" style="--wpg-art: url('/static_images/vista-photo-gallery/open.png')"></span>Open</button>
+            <button type="button" class="wpg-help" data-gw="help" title="Help"></button>
+        </div>
+        <div class="wpg-main">
+            <div id="photoSwipeMount"></div>
+            <aside class="wpg-info hidden" aria-label="Info">
+                <button type="button" class="wpg-info-close" data-gw="info-close" title="Close the Info pane"></button>
+                <div class="wpg-info-thumb"><img class="wpg-info-thumb-img" alt=""></div>
+                <div class="wpg-info-name"></div>
+                <div class="wpg-info-line wpg-info-date"></div>
+                <div class="wpg-info-line wpg-info-size"></div>
+                <div class="wpg-info-sep"></div>
+                <dl class="wpg-info-params"></dl>
+                <div class="wpg-info-sep"></div>
+                <div class="wpg-info-prompt"></div>
+            </aside>
+        </div>
+        <div class="wpg-controls">
+            <div class="wpg-pill">
+                <button type="button" class="wpg-ctl wpg-zoom" data-gw="zoom" title="Change the display size"></button>
+                <button type="button" class="wpg-ctl wpg-fit" data-gw="fit" title="Actual size"></button>
+                <button type="button" class="wpg-ctl wpg-prev" data-gw="previous" title="Previous (Left Arrow)"></button>
+                <button type="button" class="wpg-ctl wpg-show" data-gw="slideshow" title="Play Slide Show (F11)"></button>
+                <button type="button" class="wpg-ctl wpg-next" data-gw="next" title="Next (Right Arrow)"></button>
+                <button type="button" class="wpg-ctl wpg-rotl" data-gw="rotate-left" title="Rotate Counterclockwise"></button>
+                <button type="button" class="wpg-ctl wpg-rotr" data-gw="rotate-right" title="Rotate Clockwise"></button>
+                <span class="wpg-sep" aria-hidden="true"></span>
+                <button type="button" class="wpg-ctl wpg-delete" data-gw="delete" title="Delete (to Scraps)"></button>
+            </div>
+        </div>
     </div>
 
     <!-- Visual Index Tool Window. Vista (#469): a light owned tool window (vista-visual-index.css) -->
