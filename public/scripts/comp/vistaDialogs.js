@@ -7,8 +7,9 @@
  *                                 client update dialogs, the alert-theme modals (white content
  *                                 over the grey footer, the icon left of the text)
  *   data-vista-dialog="task"      the confirmation dialog when it carries a form (input dialog,
- *                                 enhance, studio change, explore publish): white content, grey
- *                                 footer, no icon
+ *                                 enhance, studio change, explore publish), and the name prompts
+ *                                 built like it (Studio's Save to Desktop / Save Preset): white
+ *                                 content, grey footer, no icon
  *   data-vista-dialog="form"      the tool-window form dialogs (presets, replacements,
  *                                 workspaces, uploads, vibes ...): Vista's property sheet
  *   data-vista-icon               question | warning | error | info, from the caption's icon
@@ -38,7 +39,9 @@
     // forms with Studio's prompt boxes: no 7.css on the client (its textarea and button rules would
     // move the text off the emphasis overlay and restyle the prompt toolbar)
     const PROMPT_IDS = ['createTextReplacementModal', 'createRequestBodyReplacementModal', 'cacheMetadataModal'];
-    const ALL_IDS = MESSAGE_IDS.concat(FORM_IDS);
+    // name prompts laid out as the input dialog (a task dialog)
+    const TASK_IDS = ['studioSaveNameModal'];
+    const ALL_IDS = MESSAGE_IDS.concat(FORM_IDS, TASK_IDS);
     // the confirmation dialog is a task dialog (form inside) rather than a message box when
     const TASK_CLASSES = ['enhance-dialog-modal', 'studio-change-dialog-modal', 'explore-publish-dialog-modal'];
     const TASK_CONTENT = 'input, select, textarea, form, .form-group, .form-row, [data-custom-scrollbar], img, table, .custom-dropdown';
@@ -70,6 +73,7 @@
 
     function kindOf(el) {
         if (FORM_IDS.includes(el.id)) return 'form';
+        if (TASK_IDS.includes(el.id)) return 'task';
         if (el.id !== 'confirmationDialog') return 'message';
         if (TASK_CLASSES.some((c) => el.classList.contains(c))) return 'task';
         const message = el.querySelector('#confirmationMessage');
@@ -207,7 +211,7 @@
         bodyObserver.observe(doc.body, { childList: true, attributes: true, attributeFilter: ['class'] });
     }
 
-    const api = { apply, ownerCenter, isVista, MESSAGE_IDS, FORM_IDS };
+    const api = { apply, ownerCenter, isVista, MESSAGE_IDS, FORM_IDS, TASK_IDS };
     if (root) {
         root.vistaDialogs = api;
         if (doc && doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', init);

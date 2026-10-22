@@ -389,6 +389,7 @@
     <link rel="stylesheet" href="/css/vista-director.css">
     <link rel="stylesheet" href="/css/vista-menus.css">
     <link rel="stylesheet" href="/css/vista-explorer.css">
+    <link rel="stylesheet" href="/css/desktop-icon-view.css">
     <link rel="stylesheet" href="/css/vista-scrollbars.css">
     <link rel="stylesheet" href="/css/vista-dialogs.css">
     <link rel="stylesheet" href="/css/vista-wer-dialog.css">
@@ -964,7 +965,8 @@
                     <i class="fas fa-circle" style="font-size: 0.35rem; padding-top: 0.15rem;"></i>
                     <span id="workspaceSelected" class="workspace-name">Default</span>
                 </div>
-                <div class="main-menu-bar-outer" data-aero-surface>
+                <!-- data-aero-contrast: aeroGlass.js sets data-backdrop light / dark from the glass under it -->
+                <div class="main-menu-bar-outer" data-aero-surface data-aero-contrast>
                     <div class="main-menu-contents">
                         <div class="main-menu-row">
                             <div id="galleryToggleGroup" class="gallery-toggle-group"
@@ -1238,11 +1240,11 @@
         </div>
     </div>
 
-    <!-- Run Applet (Application Finder) -->
-    <div id="runModal" class="modal hidden transient tool-window on-top resizeable-window run-applet"
-        data-window-max-width="720" data-window-min-width="560" data-window-min-height="100"
-        data-window-max-height="520" data-window-content-anchor="top" data-window-position-mode="run-open"
-        data-window-restore-position="false" data-window-restore-size="false" data-window-client="light">
+    <!-- Run (Application Finder): Vista's Run dialog (shell32 dialog 1003), run-applet.css -->
+    <div id="runModal" class="modal hidden transient run-applet" role="dialog" aria-label="Run"
+        data-window-position-mode="run-open" data-window-fixed-size="true" data-window-no-maximize="true"
+        data-window-restore-position="false" data-window-restore-size="false" data-window-client="light"
+        data-vista-dialog="run">
         <div class="modal-focus-overlay"></div>
         <div class="modal-window-title">
             <div class="modal-window-title-main">
@@ -1256,17 +1258,28 @@
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content win7 run-applet-content">
-            <div class="run-applet-search-row">
-                <i class="fas fa-magnifying-glass run-applet-search-icon"></i>
-                <input type="text" id="runAppletInput" class="form-control run-applet-input"
-                    placeholder="Type to search…" autocomplete="off" spellcheck="false" />
+        <div class="modal-content run-applet-content">
+            <div class="run-applet-panel">
+                <img class="run-applet-icon" src="/static_images/vista-icons/run-32.png" alt="" width="32" height="32" />
+                <div class="run-applet-text">Type the name of a program, note, preset, or tag, and MeletonFX will open it for you.</div>
+                <label class="run-applet-open-label" for="runAppletInput"><u>O</u>pen:</label>
+                <div class="run-applet-combo">
+                    <input type="text" id="runAppletInput" class="run-applet-input" autocomplete="off" spellcheck="false" />
+                    <span class="run-applet-drop" aria-hidden="true"></span>
+                </div>
+                <img class="run-applet-hint-icon" src="/static_images/vista-icons/info-16.png" alt="" width="16" height="16" />
+                <div id="runAppletPrefixHint" class="run-applet-prefix-hint"></div>
             </div>
-            <div id="runAppletPrefixHint" class="run-applet-prefix-hint"></div>
-            <div class="run-applet-results-shell">
-                <div id="runAppletSuggestions" class="character-autocomplete-list run-applet-suggestions hidden"></div>
-                <div id="runAppletActionPanel" class="run-applet-action-panel hidden"></div>
+            <div class="run-applet-footer">
+                <button type="button" class="btn-standard run-applet-button" data-run-action="ok" data-dialog-primary="1" disabled>OK</button>
+                <button type="button" class="btn-standard run-applet-button" data-run-action="cancel">Cancel</button>
+                <button type="button" class="btn-standard run-applet-button" data-run-action="browse"><u>B</u>rowse...</button>
             </div>
+        </div>
+        <div class="run-applet-results-shell hidden">
+            <div id="runAppletSuggestions" class="run-applet-suggestions" role="listbox"></div>
+            <div id="runAppletActionPanel" class="run-applet-action-panel hidden"></div>
+            <span class="run-applet-grip" aria-hidden="true"></span>
         </div>
     </div>
 
@@ -5572,7 +5585,7 @@ Examples:
                             <i class="fas fa-chevron-down naxt-dataset-chevron" aria-hidden="true"></i>
                         </button>
                         <button type="button" id="explorerHelpBtn" class="explorer-help-btn" title="Get help">
-                            <img src="/static_images/vista-explorer/help.png" alt="">
+                            <img src="/static_images/vista-explorer/help-16.png" srcset="/static_images/vista-explorer/help-16.png 1x, /static_images/vista-explorer/help-16@2x.png 2x" alt="">
                         </button>
                     </div>
                 </div>
@@ -5647,6 +5660,7 @@ Examples:
             </button>
         </div>
         <div class="modal-content modal-padding dark">
+            <label for="studioSaveNameInput" class="studio-save-name-label">Name:</label>
             <input type="text" id="studioSaveNameInput" class="form-control hover-show colored"
                 placeholder="Name" spellcheck="false" autocapitalize="false" autocorrect="false">
             <div id="studioSaveNameSuggestions" class="preset-autocomplete-overlay preset-autocomplete-list size-small hidden"></div>
@@ -8904,6 +8918,8 @@ Examples:
     <script src="scripts/comp/vfsImportRouter.js"></script>
     <script src="scripts/comp/vfsSystemOpenRouter.js"></script>
     <script src="scripts/comp/desktopShortcuts.js"></script>
+    <!-- Vista's desktop icon view: sizes, Auto Arrange / Align to Grid, Sort By, the desktop menu (desktop-icon-view.css) -->
+    <script src="scripts/comp/desktopIconView.js"></script>
     <script src="scripts/comp/desktop-apps/dovecote.js"></script>
     <script src="scripts/comp/vistaSidebar.js"></script>
     <script src="scripts/comp/fileSearch.js"></script>

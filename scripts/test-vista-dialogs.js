@@ -24,13 +24,16 @@ assert.ok(confirm.includes("if (point && event && event.target && typeof window.
 // the tagged set: every id exists in app.html or is created by its script
 const api = require(path.join(ROOT, 'public/scripts/comp/vistaDialogs.js'));
 assert.deepStrictEqual(api.MESSAGE_IDS.slice(0, 3), ['confirmationDialog', 'creditCostDialog', 'agentClientUpdateDialog'], 'message boxes');
-const created = { confirmationDialog: 'public/scripts/comp/confirmationDialog.js', creditCostDialog: 'public/scripts/comp/creditCostDialog.js', agentClientUpdateDialog: 'public/scripts/comp/agentClientUpdateDialog.js' };
-for (const id of api.MESSAGE_IDS.concat(api.FORM_IDS)) {
-    const inHtml = html.includes(`id="${id}"`);
+const created = { confirmationDialog: 'public/scripts/comp/confirmationDialog.js', creditCostDialog: 'public/scripts/comp/creditCostDialog.js', agentClientUpdateDialog: 'public/scripts/comp/agentClientUpdateDialog.js', dovecoteNewMailModal: 'public/scripts/comp/desktop-apps/dovecote.js' };
+// lazy-loaded features keep their windows in public/templates
+const templates = fs.readdirSync(path.join(ROOT, 'public/templates')).filter((f) => f.endsWith('.html')).map((f) => read('public/templates/' + f));
+for (const id of api.MESSAGE_IDS.concat(api.FORM_IDS, api.TASK_IDS)) {
+    const inHtml = html.includes(`id="${id}"`) || templates.some((t) => t.includes(`id="${id}"`));
     const inJs = created[id] && read(created[id]).includes(`'${id}'`);
     assert.ok(inHtml || inJs, `${id} exists`);
 }
 assert.ok(api.FORM_IDS.length >= 20, 'the tool-window form dialogs are tagged');
+assert.ok(api.TASK_IDS.includes('studioSaveNameModal') && css.includes('#studioSaveNameModal[data-vista-dialog="task"] > .modal-content'), "Studio's name prompt (Save to Desktop) is a task dialog");
 assert.ok(js.includes("el.dataset.windowClient = 'light'") && js.includes("content.classList.add('win7')"), 'light client mechanism');
 assert.ok(js.includes('TASK_CLASSES') && js.includes("'task'") && js.includes('vista-dialog-text'), 'confirmation: message box vs task dialog, text cell for the icon grid');
 assert.ok(js.includes('ensureCaption') && js.includes("el.id !== 'creditCostDialog'"), 'the credit cost dialog gets the shared caption');

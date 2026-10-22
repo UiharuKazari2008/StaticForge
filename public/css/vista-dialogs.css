@@ -281,6 +281,92 @@ body.desktop-mode:not(.windows-classic-theme) #confirmationDialog[data-vista-dia
     color: #000;
 }
 
+/* Studio's name prompt (Save to Desktop, Save / Open Preset, Session Name): a task dialog laid out
+   as the input dialog above, the "Name:" caption over the text box, the workspace and Auto
+   buttons at the footer's left, the default button (Save / Open / Set) before Cancel */
+body.desktop-mode:not(.windows-classic-theme) #studioSaveNameModal[data-vista-dialog="task"] {
+    width: min(400px, 92vw);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #studioSaveNameModal[data-vista-dialog="task"] > .modal-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 0;
+    background: #fff;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #studioSaveNameModal[data-vista-dialog="task"] > .modal-content > .studio-save-name-label {
+    margin: 0;
+    padding: 18px 22px 5px;
+    color: #000;
+    font-weight: 400;
+    line-height: 15px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #studioSaveNameModal[data-vista-dialog="task"] > .modal-content > #studioSaveNameInput {
+    width: auto;
+    margin: 0 22px 18px;
+}
+
+/* the name suggestions: the text box's AutoComplete list, white, the selection Vista's blue */
+body.desktop-mode:not(.windows-classic-theme) #studioSaveNameModal[data-vista-dialog="task"] > .modal-content > #studioSaveNameSuggestions {
+    width: auto;
+    margin: -17px 22px 18px;
+    padding: 1px 0;
+    background: #fff;
+    border: 1px solid #828790;
+    border-radius: 0;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #studioSaveNameModal[data-vista-dialog="task"] #studioSaveNameSuggestions .preset-autocomplete-item {
+    padding: 1px 4px;
+    border: 0;
+    color: #000;
+    font-size: 9pt;
+    line-height: 15px;
+    transition: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #studioSaveNameModal[data-vista-dialog="task"] #studioSaveNameSuggestions .preset-autocomplete-item :is(.preset-name, .preset-details) {
+    color: inherit;
+    font-size: inherit;
+    font-weight: 400;
+    font-style: normal;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #studioSaveNameModal[data-vista-dialog="task"] #studioSaveNameSuggestions .preset-autocomplete-item .preset-details {
+    color: #6d6d6d;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #studioSaveNameModal[data-vista-dialog="task"] #studioSaveNameSuggestions .preset-autocomplete-item:is(:hover, .selected) {
+    background: #3399ff;
+    color: #fff;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #studioSaveNameModal[data-vista-dialog="task"] #studioSaveNameSuggestions .preset-autocomplete-item:is(:hover, .selected) .preset-details {
+    color: #fff;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #studioSaveNameModal[data-vista-dialog="task"] .vista-dialog-footer > #studioSaveNameSaveBtn {
+    order: 1;
+    margin-left: auto;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #studioSaveNameModal[data-vista-dialog="task"] .vista-dialog-footer > #studioSaveNameCancelBtn {
+    order: 2;
+}
+
+/* the workspace button shows only its colour dot: a square push button */
+body.desktop-mode:not(.windows-classic-theme) #studioSaveNameModal[data-vista-dialog="task"] .vista-dialog-footer > #studioSaveNameWorkspaceBtn {
+    min-width: 23px;
+    width: 23px;
+    padding: 0;
+}
+
 /* the credit cost dialog (Payment Required / Upscale Image): a task dialog, the caption carries
    the title, the body header becomes Vista's blue main instruction */
 body.desktop-mode:not(.windows-classic-theme) #creditCostDialog[data-vista-dialog] > .modal-content.credit-cost-content {

@@ -33,6 +33,11 @@
     align-items: center;
 }
 
+/* the "Name:" caption is the Vista dialog's (vista-dialogs.css); the glass dialog keeps the placeholder */
+#studioSaveNameModal:not([data-vista-dialog]) .studio-save-name-label {
+    display: none;
+}
+
 #studioSaveNameModal .preset-autocomplete-overlay {
     position: relative;
     width: 100%;
