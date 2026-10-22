@@ -215,6 +215,12 @@ const FEATURE_MANIFEST = {
         styles: ['css/taskbar-properties.css', 'css/desktop-icon-dialogs.css'],
         scripts: ['scripts/comp/desktopIconDialogs.js']
     },
+    // Dovecote Express's Tools > Options (and Control Panel's Mail item): drawn with Taskbar
+    // Properties' Vista controls (tbp-*); desktop-apps/dovecote.js openDovecoteMailOptions
+    mail_options: {
+        styles: ['css/taskbar-properties.css', 'css/mail-options.css'],
+        scripts: ['scripts/comp/mailOptions.js']
+    },
     // Taskbar and Start Menu Properties (public/scripts/comp/taskbarSettings.js openProperties)
     taskbar_properties: {
         styles: ['css/taskbar-properties.css'],

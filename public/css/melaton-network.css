@@ -621,17 +621,8 @@
     color: var(--cpl-heading);
 }
 
-#melatonControlPanelModal .cpl-mail-options {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-    margin: 4px 0 0;
-}
-
 /* 7.css draws the box on input + label. The input stays in the tree for the label. */
-#melatonControlPanelModal .desktop-settings-check,
-#melatonControlPanelModal .cpl-mail-options > div {
+#melatonControlPanelModal .desktop-settings-check {
     position: relative;
 }
 

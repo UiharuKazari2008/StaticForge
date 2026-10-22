@@ -1089,6 +1089,16 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
     background-position: -144px 0;
 }
 
+/* internal mail: Windows Mail's digitally signed envelope, closed with the seal for unread,
+   open with the seal once read (list-16.png 12 / 15); Sent Items' read check still wins */
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .signed > .dovecote-col-unread:not(:has(> .dovecote-read-receipt))::before {
+    background-position: -240px 0;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .signed.unread > .dovecote-col-unread:not(:has(> .dovecote-read-receipt))::before {
+    background-position: -192px 0;
+}
+
 /* Sent Items: read by the recipient (#2) = Windows Mail's blue check (marks-16.png 13) */
 body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-col-unread:has(> .dovecote-read-receipt)::before {
     background: url('/static_images/vista-mail/marks-16.png') no-repeat -208px 0 / 224px 16px;
@@ -1217,60 +1227,28 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
     color: #8a5a00;
 }
 
-body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-body-view-toggle {
-    display: flex;
-    gap: 0;
-    padding: 0;
-    background: none;
-    border: 0;
-    box-shadow: none;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
+/* Classic theme: a latched push button, sunken on the 50% checker */
+body.windows-classic-theme .dovecote-body-view-toggle[aria-pressed="true"] {
+    background: repeating-conic-gradient(#c0c0c0 0 25%, #fff 0 50%) 0 0 / 2px 2px;
+    box-shadow: inset 1px 1px 0 #000, inset -1px -1px 0 #fff;
 }
 
-body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-body-view-toggle > button {
+/* Render: one push button, pressed while the message shows as HTML (aria-pressed); the pressed
+   face is 7.css's own (--w7-el-grad-a), held instead of only while the mouse is down */
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-body-view-toggle {
     min-width: 0;
     height: 21px;
     min-height: 0;
     padding: 0 7px;
-    border-radius: 0;
     font-size: 11px;
 }
 
-body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-body-view-toggle > button:first-child {
-    border-radius: 3px 0 0 3px;
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-body-view-toggle[aria-pressed="true"] {
+    border-color: var(--w7-el-bd-a);
 }
 
-body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-body-view-toggle > button:last-child {
-    margin-left: -1px;
-    border-radius: 0 3px 3px 0;
-}
-
-body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-body-view-toggle > button[data-state="on"] {
-    background: linear-gradient(#e5f4fc, #c4e5f6 30% 50%, #98d1ef 50%, #68b3db);
-    border-color: #2c628b;
-}
-
-body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-body-view-toggle > button > i {
-    display: none;
-}
-
-body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-body-view-toggle > button[data-dove-body-view="rendered"]::after {
-    content: 'HTML';
-}
-
-body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-body-view-toggle > button[data-dove-body-view="raw"]::after {
-    content: 'Source';
-}
-
-body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-body-view-toggle > button::after {
-    position: static;
-    width: auto;
-    height: auto;
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-body-view-toggle[aria-pressed="true"]::after {
     opacity: 1;
-    background: none;
-    box-shadow: none;
-    z-index: auto;
 }
 
 /* the preview's order as in Windows Mail: header, its Attach row, then the information bar */

@@ -9364,6 +9364,11 @@ function applyUserGlobalSettingsToClient(settings) {
         // applyImageGenerationSettingsToClient: public/scripts/comp/imageGenerationSettings.js
         applyImageGenerationSettingsToClient(settings.imageGeneration);
     }
+
+    if (settings.mail && typeof settings.mail === 'object' && window.dovecoteMailSettings) {
+        // Dovecote Express's signature (Mail Options): public/scripts/comp/desktop-apps/dovecote.js
+        window.dovecoteMailSettings.applyServer(settings.mail);
+    }
 }
 
 async function loadUserGlobalSettingsFromServer() {
