@@ -380,7 +380,7 @@
             this.clearClient();
             if (this.state === S_TITLE) {
                 this.drawCentered(248, 131, 'Jezz Ball');
-                this.drawCentered(248, 171, 'Copyright 1992 Microsoft');
+                this.drawCentered(248, 171, 'Copyright 1992 Xyridian');
             } else if (this.state === S_PLAYING || this.state === S_LEVEL_END || this.state === S_PAUSED) {
                 for (let y = 1; y <= ROWS; y++) for (let x = 1; x <= COLS; x++) this.drawCell(x, y);
                 if (this.arms[1].active) this.drawTip(1);

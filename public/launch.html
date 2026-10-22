@@ -297,7 +297,7 @@
     <link rel="preload" href="/static_images/logo_icon.png" as="image">
     <link rel="preload" href="/dist/fonts/MozillaHeadline-VariableFont_wdth,wght.ttf" as="font" type="font/ttf"
         crossorigin="anonymous">
-    <link rel="preload" href="/dist/fonts/vista/segoeui.woff2" as="font" type="font/woff2" crossorigin="anonymous">
+    <link rel="preload" href="/protected/fonts/vista/segoeui.woff2" as="font" type="font/woff2" crossorigin="anonymous">
 
     <!-- PWA Icons -->
     <link rel="icon" type="image/png" sizes="32x32" href="/static_images/icon-32x32.png">
@@ -795,6 +795,8 @@
         <canvas class="melaton-boot-pixels" id="melatonBootCanvas" width="640" height="480" aria-hidden="true"></canvas>
         <!-- Phoenix BIOS (phoenixBios.js): 80x25 text cells of 8x19 painted at 640x480, stretched the same way -->
         <canvas class="melaton-boot-pixels" id="melatonBiosCanvas" width="640" height="480" aria-label="PhoenixBIOS" tabindex="-1"></canvas>
+        <!-- the OEM logo the BIOS splash paints (never shown itself): Xyridian, not the Enso -->
+        <img class="melaton-bios-oem" src="/static_images/xyridian/xyridian-oem.png" alt="" hidden>
         <div class="melaton-vga">
         <!-- 640x480 stage scaled to fit: Vista's boot screen geometry (launch-boot.css) -->
         <div class="melaton-boot-screen">
@@ -805,7 +807,7 @@
                         <div class="melaton-boot-bar-cluster"><i></i><i></i><i></i><i></i><i></i><i></i></div>
                     </div>
                 </div>
-                <div class="melaton-boot-copyright">&copy; Dreamscape</div>
+                <div class="melaton-boot-copyright">&copy; Xyridian Corporation</div>
             </div>
         </div>
         <div id="melatonBootText"></div>
@@ -829,7 +831,7 @@
                         <label class="mi-field"><span class="mi-field-label"><u>K</u>eyboard or input method:</span><span class="mi-dropdown" tabindex="0" role="combobox"><span class="mi-dropdown-value">US</span><i></i><ul class="mi-dropdown-list" role="listbox"><li class="selected" role="option" aria-selected="true">US</li></ul></span></label>
                     </div>
                     <p class="mi-media-hint">Enter your language and other preferences and click "Next" to continue.</p>
-                    <p class="mi-copyright">Copyright &copy; 2026 Dreamscape. All rights reserved.</p>
+                    <p class="mi-copyright">Copyright &copy; 2026 Xyridian Corporation. All rights reserved.</p>
                     <button type="button" class="mi-button mi-button--corner" data-action="setup-next"><u>N</u>ext</button>
                 </div>
 
@@ -841,7 +843,7 @@
                         <button type="button" class="mi-link" data-action="setup-know"><u>W</u>hat to know before installing MeletonFX</button>
                         <button type="button" class="mi-link" data-action="setup-repair"><u>R</u>epair your computer</button>
                     </div>
-                    <p class="mi-copyright">Copyright &copy; 2026 Dreamscape. All rights reserved.</p>
+                    <p class="mi-copyright">Copyright &copy; 2026 Xyridian Corporation. All rights reserved.</p>
                 </div>
 
                 <!-- Type your product key (the NovelAI API key): starred and automatic when the server has one -->
@@ -1084,7 +1086,7 @@
                 sx.font = '12px "Segoe UI", Tahoma, Arial, sans-serif';
                 sx.textAlign = 'center';
                 sx.textBaseline = 'top';
-                sx.fillText('\u00A9 Dreamscape', 320, 389);
+                sx.fillText('\u00A9 Xyridian Corporation', 320, 389);
                 paintId = requestAnimationFrame(paint);
             }
             function arm() {

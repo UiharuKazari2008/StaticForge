@@ -18,6 +18,7 @@ Treat "Cursor agent" in those rules as "any coding agent, including Claude Code"
 @.cursor/rules/yozora-cursor-agent.mdc
 @.cursor/rules/yozora-ingest-2stage.mdc
 @.cursor/rules/vista-icons-not-fa.mdc
+@.cursor/rules/copyrights-not-1to1.mdc
 
 ## Yozora access from Claude Code
 

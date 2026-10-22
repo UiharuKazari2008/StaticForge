@@ -81,11 +81,13 @@
 
     // Files the Setup window needs before it opens (fetched under the loading bar; the HTTP
     // cache and the worker keep them). Fonts and the aurora come first so nothing pops in.
+    // The Vista fonts are signed-in only (/protected/fonts/vista); before logon vista-fonts.css
+    // falls back to Selawik (OFL, Segoe metrics), the face Setup actually draws with.
     const INSTALLER_ASSETS = [
         '/css/launch-install.css',
         '/css/vista-fonts.css',
-        '/dist/fonts/vista/segoeui.woff2',
-        '/dist/fonts/vista/segoeuib.woff2',
+        '/dist/fonts/selawik/selawk.woff2',
+        '/dist/fonts/selawik/selawkb.woff2',
         '/static_images/wallpapers/aurora-plain.webp',
         '/static_images/vista-logon/basic-close.png',
         '/static_images/logo_icon.png',
@@ -318,7 +320,7 @@
         if (hasInstallRecord(env)) return true;
         try {
             if (!env.caches) return false;
-            const name = (engine && engine.STATIC_CACHE) || 'static-cache-v1';
+            const name = (env.engine && env.engine.STATIC_CACHE) || 'static-cache-v1';
             if (!(await env.caches.has(name))) return false;
             const cache = await env.caches.open(name);
             const keys = await cache.keys();
@@ -501,7 +503,6 @@
             }
             const device = await runBios(run);
             if (device === 'cancelled') return 'cancelled';
-            const resume = (ctl.biosWork && ctl.biosWork.resume) || null;
             if (ctl.biosF8) {
                 ctl.biosF8 = false;
                 await openMenu(null, { cut: false, countdown: false });
@@ -511,7 +512,6 @@
             show('black');
             await env.sleep(config.biosBlackMs);
             if (run !== ctl.runId) return 'cancelled';
-            void resume;
             if (device.device === 'cdrom') return bootMedia(run);
             return bootDisk(run);
         }
@@ -1369,6 +1369,9 @@
                         if (defaults[s.page] && !blocked) setupAction(defaults[s.page]);
                         return true;
                     }
+                    // every other key is the page's: typing and pasting into the product key
+                    // field, Tab between the controls, Space on the license checkbox
+                    return false;
                 }
                 return true; // the installer runs by itself
             }
@@ -1754,7 +1757,7 @@
             // the Phoenix BIOS (phoenixBios.js) painted into its own 640 x 480 canvas
             bios: biosModule,
             paintBios: biosModule && biosCanvas && biosFont
-                ? biosModule.createCanvasPainter(biosCanvas, biosFont, doc.querySelector('.melaton-boot-enso'))
+                ? biosModule.createCanvasPainter(biosCanvas, biosFont, doc.querySelector('.melaton-bios-oem'))
                 : null,
             location: win.location,
             readProductKey: () => {

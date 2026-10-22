@@ -1696,7 +1696,7 @@
         const text = el('div');
         text.appendChild(el('div', '', opts.title));
         text.appendChild(el('div', '', 'Version 6.0 (Build 6002: Service Pack 2)'));
-        text.appendChild(el('div', '', opts.copyright || 'Copyright \u00a9 2007 Microsoft Corporation.\u00a0 All rights reserved.'));
+        text.appendChild(el('div', '', opts.copyright || 'Copyright \u00a9 2007 Xyridian Corporation.\u00a0 All rights reserved.'));
         if (opts.text) {
             const note = el('div', '', opts.text);
             note.className = 'vista-game-about-note';

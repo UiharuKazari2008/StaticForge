@@ -1210,7 +1210,7 @@
                 c.appendChild(icon);
                 rasterLabel(c, font, WEP_NAME, 52, 92, 184, 32, { align: 'center' });
                 rasterLabel(c, font, 'by Dima Pavlovsky\n Produced by Marjacq Micro Ltd.', 20, 124, 248, 32, { align: 'center' });
-                rasterLabel(c, font, 'Copyright © 1992 Microsoft Corp.', 20, 164, 248, 32, { align: 'center' });
+                rasterLabel(c, font, 'Copyright © 1992 Xyridian Corp.', 20, 164, 248, 32, { align: 'center' });
                 const ok = pushButton(c, { x: 106, y: 214, w: 68, h: 30, text: 'OK', font, def: true, onClick: () => finish() });
                 const keys = dialogKeys(win, [ok], () => finish(), () => finish());
                 function finish() {
@@ -1770,17 +1770,20 @@
 
     let jz = null;
     if (root.VistaJezzBall && root.VistaJezzBall.destroy) root.VistaJezzBall.destroy();
-    document.addEventListener('keyup', (e) => {
+    // named, so destroy() takes them off when the script is evaluated again
+    const onAltUp = (e) => {
         if (!jz || !jz.windowActive() || jz.dialogs.length) return;
         if (e.key === 'Alt') {
             e.preventDefault();
             jz.menu.altUp();
         }
-    }, true);
-    document.addEventListener('keydown', (e) => {
+    };
+    const onAltCancel = (e) => {
         // any other key with Alt down cancels the lone-Alt toggle
         if (jz && e.key !== 'Alt') jz.menu.altDown = false;
-    }, true);
+    };
+    document.addEventListener('keyup', onAltUp, true);
+    document.addEventListener('keydown', onAltCancel, true);
 
     function open() {
         return loadAssets().then((assets) => {
@@ -1808,6 +1811,8 @@
         CMD, MENU, readScores, writeScores, rankIn, wrapLines, wepPlace,
         window: () => jz,
         destroy: () => {
+            document.removeEventListener('keyup', onAltUp, true);
+            document.removeEventListener('keydown', onAltCancel, true);
             if (jz) jz.destroy();
             jz = null;
             if (help) help.modal.remove();

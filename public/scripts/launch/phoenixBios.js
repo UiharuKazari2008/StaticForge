@@ -494,7 +494,7 @@
                 'PhoenixBIOS 4.0 Release 6.0',
                 'Copyright 1985-2001 Phoenix Technologies Ltd.',
                 'All Rights Reserved',
-                'Copyright 2000-2026 Dreamscape',
+                'Copyright 2000-2026 Xyridian Corporation',
                 '',
                 `CPU = ${F.cpus} Processors`,
                 '640K System RAM Passed'
@@ -1390,7 +1390,7 @@
     /**
      * Paints the text screen into a 640 x 480 canvas: 8 x 19 cells, the 8 x 16 glyph on rows
      * 1-16 (box-drawing and block glyphs extend over the padding rows so lines join). The
-     * splash is the POST logo (the Enso, where VMware draws its own) over the Starting bar.
+     * splash is the POST logo (the Xyridian OEM logo, where VMware draws its own) over the Starting bar.
      */
     function createCanvasPainter(canvas, font, logo) {
         const ctx = canvas.getContext('2d');
@@ -1444,9 +1444,13 @@
                 ctx.fillStyle = '#000';
                 ctx.fillRect(0, 0, 640, 480);
                 if (logo && logo.complete && logo.naturalWidth) {
-                    // the Enso where VMware's wordmark sits: 70 px tall, centred, y 205-274
+                    // the OEM logo (Xyridian) where VMware's wordmark sits: fitted in 240 x 96, centred on 320, 238
+                    const k = Math.min(240 / logo.naturalWidth, 96 / logo.naturalHeight);
+                    const w = Math.round(logo.naturalWidth * k);
+                    const h = Math.round(logo.naturalHeight * k);
                     ctx.imageSmoothingEnabled = true;
-                    ctx.drawImage(logo, 285, 203, 70, 70);
+                    ctx.imageSmoothingQuality = 'high';
+                    ctx.drawImage(logo, Math.round(320 - w / 2), Math.round(238 - h / 2), w, h);
                     ctx.imageSmoothingEnabled = false;
                 }
                 textAt(16, 442, 'Starting', C.grey, 9);

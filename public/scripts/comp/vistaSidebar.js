@@ -114,24 +114,24 @@ const vsbLoadImage = function (url) {
 // ---------------------------------------------------------------- gadget definitions
 
 const VSB_GADGETS = {
-    calendar: { title: 'Calendar', icon: 'calendar/icon.png', desc: 'Browse the days of the calendar.', author: 'Microsoft Corporation' },
-    calculator: { title: 'Calculator', icon: 'calculator/icon.png', desc: 'Perform basic arithmetic tasks with this calculator.', author: 'Microsoft Corporation', options: true },
+    calendar: { title: 'Calendar', icon: 'calendar/icon.png', desc: 'Browse the days of the calendar.', author: 'Xyridian Corporation' },
+    calculator: { title: 'Calculator', icon: 'calculator/icon.png', desc: 'Perform basic arithmetic tasks with this calculator.', author: 'Xyridian Corporation', options: true },
     clipboard: { title: 'Clipboard', icon: 'clipboard/icon.png', desc: 'Keep the text you copy in Dreamscape and paste it back with one click.', author: 'Jan Zeman' },
-    clock: { title: 'Clock', icon: 'clock/icon.png', desc: 'Watch the clock in your own time zone or any city in the world.', author: 'Microsoft Corporation', options: true },
-    contacts: { title: 'Contacts', icon: 'contacts/icon.png', desc: 'Keep names, e-mail addresses, and phone numbers on the Sidebar.', author: 'Microsoft Corporation', options: true },
-    cpu: { title: 'CPU Meter', icon: 'cpu/icon.png', desc: 'See the server\'s current CPU and system memory (RAM), the same figures as Periscope.', author: 'Microsoft Corporation' },
-    currency: { title: 'Currency', icon: 'currency/icon.png', desc: 'Convert an amount from one currency to another.', author: 'Microsoft Corporation' },
+    clock: { title: 'Clock', icon: 'clock/icon.png', desc: 'Watch the clock in your own time zone or any city in the world.', author: 'Xyridian Corporation', options: true },
+    contacts: { title: 'Contacts', icon: 'contacts/icon.png', desc: 'Keep names, e-mail addresses, and phone numbers on the Sidebar.', author: 'Xyridian Corporation', options: true },
+    cpu: { title: 'CPU Meter', icon: 'cpu/icon.png', desc: 'See the server\'s current CPU and system memory (RAM), the same figures as Periscope.', author: 'Xyridian Corporation' },
+    currency: { title: 'Currency', icon: 'currency/icon.png', desc: 'Convert an amount from one currency to another.', author: 'Xyridian Corporation' },
     deskcalc: { title: 'Desktop Calculator', icon: 'deskcalc/icon.png', desc: 'A calculator for the Sidebar. Undock it for scientific keys.', author: 'Home Cooked Gadgets', options: true },
-    feed: { title: 'Feed Headlines', icon: 'feed/icon.png', desc: 'See headlines from a web feed. Click a headline to open it.', author: 'Microsoft Corporation', options: true },
+    feed: { title: 'Feed Headlines', icon: 'feed/icon.png', desc: 'See headlines from a web feed. Click a headline to open it.', author: 'Xyridian Corporation', options: true },
     hero: { title: 'HTC Hero Clock', icon: 'hero/icon.png', desc: 'Nine clock faces based on the HTC Hero.', author: 'Marc22', options: true },
     mail: { title: 'Mail', iconUrl: '/static_images/app_icons/vista-mail.webp', desc: 'See your latest Dovecote Inbox messages and how many are unread. Click a message to read it.', author: 'Dreamscape', options: true },
     outlook: { title: 'Sidebar Outlook', icon: 'outlook/icon.png', desc: 'Watch your Dovecote Inbox from the desktop. Click a message to read it.', author: 'Edward J. Boelzner', options: true },
-    notes: { title: 'Notes', icon: 'notes/icon.png', desc: 'Capture ideas, notes, and reminders in a quick and easy way.', author: 'Microsoft Corporation', options: true },
-    puzzle: { title: 'Picture Puzzle', icon: 'puzzle/icon.png', desc: 'Move the pieces of the puzzle and try to put them in order. The picture comes from this workspace.', author: 'Microsoft Corporation', options: true },
-    slideshow: { title: 'Slide Show', icon: 'slideshow/icon.png', desc: 'Show a continuous slide show of the pictures in this workspace.', author: 'Microsoft Corporation', options: true },
-    stocks: { title: 'Stocks', icon: 'stocks/icon.png', desc: 'Watch the latest price of the symbols you choose.', author: 'Microsoft Corporation', options: true },
-    timer: { title: 'Timer', icon: 'timer/icon.png', desc: 'Use this countdown timer to time almost anything.', author: 'Microsoft Corporation' },
-    weather: { title: 'Weather', icon: 'weather/icon.png', desc: 'See what the weather looks like where you are.', author: 'Microsoft Corporation', options: true }
+    notes: { title: 'Notes', icon: 'notes/icon.png', desc: 'Capture ideas, notes, and reminders in a quick and easy way.', author: 'Xyridian Corporation', options: true },
+    puzzle: { title: 'Picture Puzzle', icon: 'puzzle/icon.png', desc: 'Move the pieces of the puzzle and try to put them in order. The picture comes from this workspace.', author: 'Xyridian Corporation', options: true },
+    slideshow: { title: 'Slide Show', icon: 'slideshow/icon.png', desc: 'Show a continuous slide show of the pictures in this workspace.', author: 'Xyridian Corporation', options: true },
+    stocks: { title: 'Stocks', icon: 'stocks/icon.png', desc: 'Watch the latest price of the symbols you choose.', author: 'Xyridian Corporation', options: true },
+    timer: { title: 'Timer', icon: 'timer/icon.png', desc: 'Use this countdown timer to time almost anything.', author: 'Xyridian Corporation' },
+    weather: { title: 'Weather', icon: 'weather/icon.png', desc: 'See what the weather looks like where you are.', author: 'Xyridian Corporation', options: true }
 };
 
 const vsbGadgetIconUrl = (type) => VSB_GADGETS[type].iconUrl || VSB_ASSETS + VSB_GADGETS[type].icon;
