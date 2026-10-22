@@ -95,7 +95,7 @@ const flush = () => new Promise((r) => setImmediate(r));
     // ---------- a starting server is a connection: boot screen until ready, then teal ----------
     let h = harness([json(false), json(false), json(false), json(true)]);
     assert.strictEqual(await h.ctl.runChecks(), 'teal');
-    assert.deepStrictEqual(h.t.screens(), ['bios', 'boot', 'black'], 'the POST, then never leaves the boot screen while the server starts, then black');
+    assert.deepStrictEqual(h.t.screens(), ['bios', 'black', 'boot', 'black'], 'the POST, a black switch, then never leaves the boot screen while the server starts, then black');
     assert.deepStrictEqual(h.t.replaced, ['/app']);
     assert.strictEqual(h.t.storage.dreamscapeLaunchHandoff, 'teal');
     assert.strictEqual(Number(h.t.storage.dreamscapeBootTealHoldUntil), h.t.now + boot.config.tealHoldMs, 'logon dialog waits 2 s after /app takes over');
@@ -112,7 +112,7 @@ const flush = () => new Promise((r) => setImmediate(r));
     // ---------- failures → black → boot menu with the reason ----------
     h = harness([networkErr()]);
     assert.strictEqual(await h.ctl.runChecks(), 'menu');
-    assert.deepStrictEqual(h.t.screens(), ['bios', 'boot', 'black', 'menu'], 'cut to black, then the menu');
+    assert.deepStrictEqual(h.t.screens(), ['bios', 'black', 'boot', 'black', 'menu'], 'cut to black, then the menu');
     assert.strictEqual(h.t.fetches.length, boot.config.maxFailures + 1, `the POST's own probe, then the menu after ${boot.config.maxFailures} errors in a row`);
     assert.strictEqual(h.t.last().data.info, boot.INFO.unreachable);
     assert.strictEqual(h.t.last().data.countdown, boot.config.countdownSec);
@@ -149,7 +149,7 @@ const flush = () => new Promise((r) => setImmediate(r));
     h.t.renders.length = 0;
     h.t.tick();
     await flush();
-    assert.deepStrictEqual(h.t.screens(), ['menu', 'black', 'bios', 'boot', 'black', 'menu'],
+    assert.deepStrictEqual(h.t.screens(), ['menu', 'black', 'bios', 'black', 'boot', 'black', 'menu'],
         'at 0: Dreamscape Melaton starts (black → boot screen), fails again → menu');
     assert.strictEqual(h.t.intervals.size, 1, 'the old countdown is gone, a fresh one runs');
     assert.strictEqual(h.t.last().data.countdown, boot.config.countdownSec);
@@ -214,7 +214,7 @@ const flush = () => new Promise((r) => setImmediate(r));
         assert.strictEqual(h.ctl.screen, 'bios', 'the POST is the first screen');
         assert.strictEqual(h.ctl.bios.state, 'splash');
         assert.strictEqual(await run, 'teal');
-        assert.deepStrictEqual(h.t.screens(), ['bios', 'boot', 'black'], 'BIOS, boot screen, the mode switch');
+        assert.deepStrictEqual(h.t.screens(), ['bios', 'black', 'boot', 'black'], 'BIOS, the mode switch, boot screen, the mode switch');
         assert.ok(h.t.now >= bios.config.splashMs + boot.config.minBootMs, 'the POST adds its own time');
 
         // F8 during the POST: the Boot Manager right after it
@@ -564,7 +564,7 @@ const flush = () => new Promise((r) => setImmediate(r));
     // a large update: black, Setup, the checklist, linger, black, reboot /launch
     u = await runWith({ checks: [{ files: files(50), bytes: 5000 }, { files: [], bytes: 0 }] });
     assert.strictEqual(u.result, 'reboot');
-    assert.deepStrictEqual(u.t.screens(), ['bios', 'boot', 'black', 'loading', 'black', 'install', 'black'], 'POST → boot → black → the loading bar → black → Setup → black');
+    assert.deepStrictEqual(u.t.screens(), ['bios', 'black', 'boot', 'black', 'loading', 'black', 'install', 'black'], 'POST → black → boot → black → the loading bar → black → Setup → black');
     assert.deepStrictEqual(u.t.replaced, ['/launch'], 'reboots into /launch, not /app');
     const installs = u.t.renders.filter((r) => r.screen === 'install');
     assert.ok(installs.some((r) => r.data.steps[0].state === 'active' && r.data.steps[0].fraction === 0.5), 'Copying shows its progress');

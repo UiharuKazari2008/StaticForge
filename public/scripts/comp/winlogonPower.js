@@ -10,6 +10,8 @@ const WINLOGON_FADE_OUT_MS = 900;
 const WINLOGON_BLACK_HOLD_MS = 250;
 const WINLOGON_FADE_IN_MS = 800;
 const WINLOGON_TEXT_HOLD_MS = 700;
+// a restart goes dark for a few seconds before the BIOS POSTs again on /launch (#611)
+const WINLOGON_RESTART_BLACK_MS = 3000;
 
 const WINLOGON_POWER_COPY = {
     restart: {
@@ -345,6 +347,11 @@ async function runWinlogonPower(kind, options) {
         showWinlogonPowerScreen(copy.screen);
         await fadeShutdownCover(false);
         await winlogonDelay(WINLOGON_TEXT_HOLD_MS);
+        if (kind === 'restart') {
+            // "Restarting..." goes black and stays black, like the monitor losing its signal
+            await fadeShutdownCover(true);
+            await winlogonDelay(WINLOGON_RESTART_BLACK_MS);
+        }
         await commitWinlogonPower(kind, opts.onCommit);
         if (kind === 'shutdown' || kind === 'logoff') winlogonPowerRunning = false;
         return true;

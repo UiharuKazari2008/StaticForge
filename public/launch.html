@@ -817,15 +817,15 @@
              Vista's Install Windows, then the Installing checklist. data-page picks the page. -->
         <div id="melatonInstall" data-phase="installing" data-page="install" data-strip="install">
             <div class="mi-window" role="dialog" aria-labelledby="miTitle">
-                <div class="mi-title"><span class="mi-title-icon" aria-hidden="true"></span><span id="miTitle">Install MeletonFX</span><button type="button" class="mi-title-close" data-action="setup-close" aria-label="Close">&times;</button></div>
+                <div class="mi-title"><button type="button" class="mi-title-back" data-action="setup-back" aria-label="Back"></button><span class="mi-title-icon" aria-hidden="true"></span><span id="miTitle">Install MeletonFX</span><button type="button" class="mi-title-close" data-action="setup-close" aria-label="Close">&times;</button></div>
 
                 <!-- language page: the first thing off the media -->
                 <div class="mi-page mi-page--media" data-page="language" hidden>
                     <div class="mi-logo"><span class="mi-logo-enso"></span><span class="mi-logo-word">Dreamscape <b>Melaton</b></span></div>
                     <div class="mi-fields">
-                        <label class="mi-field"><span class="mi-field-label"><u>L</u>anguage to install:</span><span class="mi-dropdown" tabindex="0">English<i></i></span></label>
-                        <label class="mi-field"><span class="mi-field-label"><u>T</u>ime and currency format:</span><span class="mi-dropdown" tabindex="0">English (United States)<i></i></span></label>
-                        <label class="mi-field"><span class="mi-field-label"><u>K</u>eyboard or input method:</span><span class="mi-dropdown" tabindex="0">US<i></i></span></label>
+                        <label class="mi-field"><span class="mi-field-label"><u>L</u>anguage to install:</span><span class="mi-dropdown" tabindex="0" role="combobox"><span class="mi-dropdown-value">English</span><i></i><ul class="mi-dropdown-list" role="listbox"><li class="selected" role="option" aria-selected="true">English</li></ul></span></label>
+                        <label class="mi-field"><span class="mi-field-label"><u>T</u>ime and currency format:</span><span class="mi-dropdown" tabindex="0" role="combobox"><span class="mi-dropdown-value">English (United States)</span><i></i><ul class="mi-dropdown-list" role="listbox"><li class="selected" role="option" aria-selected="true">English (United States)</li></ul></span></label>
+                        <label class="mi-field"><span class="mi-field-label"><u>K</u>eyboard or input method:</span><span class="mi-dropdown" tabindex="0" role="combobox"><span class="mi-dropdown-value">US</span><i></i><ul class="mi-dropdown-list" role="listbox"><li class="selected" role="option" aria-selected="true">US</li></ul></span></label>
                     </div>
                     <p class="mi-media-hint">Enter your language and other preferences and click "Next" to continue.</p>
                     <p class="mi-copyright">Copyright &copy; 2026 Dreamscape. All rights reserved.</p>
@@ -835,7 +835,7 @@
                 <!-- Install now -->
                 <div class="mi-page mi-page--media" data-page="start" hidden>
                     <div class="mi-logo"><span class="mi-logo-enso"></span><span class="mi-logo-word">Dreamscape <b>Melaton</b></span></div>
-                    <button type="button" class="mi-install-now" data-action="setup-install"><u>I</u>nstall now <i class="mi-go" aria-hidden="true"></i></button>
+                    <button type="button" class="mi-install-now" data-action="setup-install"><u>I</u>nstall now<i class="mi-go" aria-hidden="true"></i></button>
                     <div class="mi-media-links">
                         <button type="button" class="mi-link" data-action="setup-know"><u>W</u>hat to know before installing MeletonFX</button>
                         <button type="button" class="mi-link" data-action="setup-repair"><u>R</u>epair your computer</button>
@@ -881,7 +881,7 @@
                             </button>
                             <button type="button" class="mi-option" data-action="setup-custom">
                                 <span class="mi-option-icon mi-option-icon--custom" aria-hidden="true"></span>
-                                <span class="mi-option-text"><b><u>C</u>ustom (advanced)</b><span class="mi-option-desc">Install a clean copy of MeletonFX, select where you want to install it, or make changes to disks and partitions. This option does not keep your downloaded files, settings, and local databases.</span></span>
+                                <span class="mi-option-text"><b><u>I</u>nstall</b><span class="mi-option-desc">Install a clean copy of MeletonFX, select where you want to install it, or make changes to disks and partitions. This option does not keep your downloaded files, settings, and local databases.</span></span>
                             </button>
                         </div>
                         <button type="button" class="mi-link mi-link--help" data-action="setup-know"><u>H</u>elp me decide</button>

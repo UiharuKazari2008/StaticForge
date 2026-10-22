@@ -74,7 +74,8 @@
         osCacheRows: 50,        // a static cache with at least this many rows counts as installed
         loadingBarCells: 76,    // the loading bar is 76 character cells (912 px / 12 px Lucida Console)
         loadingBarCellPx: 12,
-        biosProbeMs: 1500       // the POST waits at most this long for the server's first answer
+        biosProbeMs: 1500,      // the POST waits at most this long for the server's first answer
+        biosBlackMs: 700        // black between the POST and whatever boots (the video mode switch)
     };
     const INSTALLED_KEY = 'melatonInstalled';   // set by the desktop's last boot step (desktopBoot.js finish)
 
@@ -501,6 +502,10 @@
                 await openMenu(null, { cut: false, countdown: false });
                 return 'menu';
             }
+            // the BIOS hands over on a black screen, like the video mode switch on a real PC
+            show('black');
+            await env.sleep(config.biosBlackMs);
+            if (run !== ctl.runId) return 'cancelled';
             if (device.device === 'cdrom') return bootMedia(run, { resume: resume ? resume.resume : null });
             return bootDisk(run);
         }
@@ -791,8 +796,9 @@
             const hasOs = await hasOsOnDisk(env);
             if (run !== ctl.runId) return 'cancelled';
             const status = ctl.serverStatus || {};
-            // Upgrade only over an existing installation (the record, or the desktop's installed bit)
-            const upgradeAllowed = hasInstallRecord(env);
+            // Upgrade only over an existing installation (the record, the desktop's installed bit,
+            // or a static cache the app already runs from)
+            const upgradeAllowed = hasOs;
             ctl.setup = { page: 'language', hasOs, upgradeAllowed, driveOptions: false, formatted: false, msgbox: null, countdown: null, found, keyConfigured: status.novelaiKeyConfigured !== false, license: null, licenseAccepted: false };
             show('install', { ...setupData(), phase: 'arrive' });
             await env.sleep(config.installArriveMs);
@@ -1551,8 +1557,6 @@
             // no existing installation: no Upgrade, and Custom (advanced) reads Install
             const up = host.querySelector('[data-action="setup-upgrade"]');
             if (up) up.hidden = !data.upgradeAllowed;
-            const custom = host.querySelector('[data-action="setup-custom"] .mi-option-text b');
-            if (custom) custom.replaceChildren(...(data.upgradeAllowed ? [el(doc, 'u', null, 'C'), doc.createTextNode('ustom (advanced)')] : [el(doc, 'u', null, 'I'), doc.createTextNode('nstall')]));
             const desc = host.querySelector('[data-action="setup-custom"] .mi-option-desc');
             if (desc) desc.textContent = data.upgradeAllowed
                 ? 'Install a clean copy of MeletonFX, select where you want to install it, or make changes to disks and partitions. This option does not keep your downloaded files, settings, and local databases.'
@@ -1606,9 +1610,13 @@
             }
             const checking = host.querySelector('.mi-key-checking');
             if (checking) checking.hidden = !data.keyConfigured;
+            // a configured key moves on by itself: Next is off and the window shows the wait cursor
             const next = host.querySelector('.mi-page[data-page="key"] [data-action="setup-next"]');
-            if (next) next.disabled = !!data.keyBusy;
+            if (next) next.disabled = !!data.keyBusy || !!data.keyConfigured;
         }
+        host.dataset.busy = page === 'key' && (data.keyBusy || data.keyConfigured) ? '1' : '';
+        const back = host.querySelector('.mi-title-back');
+        if (back) back.disabled = !(page === 'key' || page === 'license' || page === 'type' || page === 'where');
         if (page === 'license') {
             const text = host.querySelector('.mi-license-text');
             if (text && text.dataset.shown !== String(data.license == null ? '' : data.license.length)) {
@@ -1768,6 +1776,13 @@
         const installer = doc.getElementById('melatonInstall');
         if (installer) {
             installer.addEventListener('click', (ev) => {
+                // the language page's combo boxes open; their one entry is what they already show
+                const combo = ev.target.closest('.mi-dropdown');
+                installer.querySelectorAll('.mi-dropdown--open').forEach((node) => { if (node !== combo) node.classList.remove('mi-dropdown--open'); });
+                if (combo) {
+                    combo.classList.toggle('mi-dropdown--open');
+                    return;
+                }
                 const btn = ev.target.closest('[data-action]');
                 if (btn && !btn.disabled) ctl.handlePointer(btn.dataset.action, undefined, ev.pointerType || 'mouse');
             });

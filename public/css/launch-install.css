@@ -58,6 +58,12 @@
     text-decoration: underline;
 }
 
+#melatonInstall[data-busy="1"],
+#melatonInstall[data-busy="1"] button,
+#melatonInstall[data-busy="1"] .mi-window {
+    cursor: var(--c-wait);
+}
+
 /* ---- the window ---- */
 
 .mi-window {
@@ -95,8 +101,13 @@
     white-space: nowrap;
 }
 
-/* the classic caption buttons (minimize, maximize, close), the VM's own pixels: 50 x 14 */
-.mi-title-close {
+/* the wizard's back button, only on the paper pages */
+.mi-title-back {
+    display: none;
+}
+
+/* the classic caption buttons (minimize, maximize, close), the VM's own pixels: 52 x 16 */
+#melatonInstall .mi-title-close {
     width: 52px;
     height: 16px;
     flex: 0 0 52px;
@@ -181,16 +192,21 @@
     margin-right: 0;
 }
 
-#melatonInstall[data-page="key"] .mi-window > .mi-title::before,
-#melatonInstall[data-page="license"] .mi-window > .mi-title::before,
-#melatonInstall[data-page="type"] .mi-window > .mi-title::before,
-#melatonInstall[data-page="where"] .mi-window > .mi-title::before,
-#melatonInstall[data-page="restart"] .mi-window > .mi-title::before,
-#melatonInstall[data-page="install"] .mi-window > .mi-title::before {
+#melatonInstall[data-page="key"] .mi-window > .mi-title > .mi-title-back,
+#melatonInstall[data-page="license"] .mi-window > .mi-title > .mi-title-back,
+#melatonInstall[data-page="type"] .mi-window > .mi-title > .mi-title-back,
+#melatonInstall[data-page="where"] .mi-window > .mi-title > .mi-title-back,
+#melatonInstall[data-page="restart"] .mi-window > .mi-title > .mi-title-back,
+#melatonInstall[data-page="install"] .mi-window > .mi-title > .mi-title-back {
     /* the wizard's back button: the Vista navigation button already cut for Defender (26 x 25),
        in the shallow round recess the frame has for it (a 1 px darker ring, a lighter rim) */
-    content: '';
+    display: block;
     position: absolute;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    font-size: 0;
+    color: transparent;
     left: 8px;
     top: 7px;
     width: 26px;
@@ -198,6 +214,18 @@
     border-radius: 50%;
     background: url('/static_images/vista-defender/back.png') 0 0 / 26px 25px no-repeat;
     box-shadow: 0 0 0 1px rgba(70, 90, 100, 0.45), 0 0 0 2px rgba(255, 255, 255, 0.45);
+}
+
+#melatonInstall .mi-title-back:hover:not(:disabled) {
+    background-image: url('/static_images/vista-defender/back-hot.png');
+}
+
+#melatonInstall .mi-title-back:active:not(:disabled) {
+    background-image: url('/static_images/vista-defender/back-pressed.png');
+}
+
+#melatonInstall .mi-title-back:disabled {
+    background-image: url('/static_images/vista-defender/back-disabled.png');
 }
 
 #melatonInstall[data-page="key"] .mi-window > .mi-title::after,
@@ -372,10 +400,78 @@
     margin: 14px 0 0;
 }
 
+/* the check box as the VM draws it (no theme in Setup): 13 x 13, white, a sunken 3-D edge,
+   a black check mark; the focused label gets the dotted rectangle */
 .mi-check input {
+    appearance: none;
+    -webkit-appearance: none;
     width: 13px;
     height: 13px;
     margin: 0;
+    box-sizing: border-box;
+    border: 1px solid;
+    border-color: #808080 #fff #fff #808080;
+    box-shadow: inset 1px 1px #404040, inset -1px -1px #d4d0c8;
+    background: #fff;
+    position: relative;
+}
+
+.mi-check input:disabled {
+    background: #d4d0c8;
+}
+
+.mi-check input:checked::after {
+    content: '';
+    position: absolute;
+    left: 2px;
+    top: 0;
+    width: 3px;
+    height: 6px;
+    border-right: 2px solid #000;
+    border-bottom: 2px solid #000;
+    transform: rotate(45deg);
+}
+
+.mi-check input:disabled:checked::after {
+    border-color: #808080;
+}
+
+.mi-check input:focus-visible + span {
+    outline: 1px dotted #000;
+}
+
+/* the license box's scrollbar as the VM draws it: 16 px, grey 3-D arrow buttons, dithered track */
+.mi-license-text::-webkit-scrollbar {
+    width: 16px;
+}
+
+.mi-license-text::-webkit-scrollbar-track {
+    background: #fff url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFUlEQVQIW2P8////fwYGBgZGEAEBAAD+AgEB2N9KZgAAAABJRU5ErkJggg==") repeat;
+    background-color: #d4d0c8;
+}
+
+.mi-license-text::-webkit-scrollbar-thumb {
+    background: #d4d0c8;
+    border: 1px solid;
+    border-color: #fff #404040 #404040 #fff;
+    box-shadow: inset -1px -1px #808080, inset 1px 1px #d4d0c8;
+}
+
+.mi-license-text::-webkit-scrollbar-button:single-button {
+    display: block;
+    height: 16px;
+    background: #d4d0c8 center / 7px 4px no-repeat;
+    border: 1px solid;
+    border-color: #fff #404040 #404040 #fff;
+    box-shadow: inset -1px -1px #808080;
+}
+
+.mi-license-text::-webkit-scrollbar-button:single-button:vertical:decrement {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='7' height='4'><path d='M0 4h7L3.5 0z' fill='%23000'/></svg>");
+}
+
+.mi-license-text::-webkit-scrollbar-button:single-button:vertical:increment {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='7' height='4'><path d='M0 0h7L3.5 4z' fill='%23000'/></svg>");
 }
 
 /* ---- media pages: the logo, the fields, Install now ---- */
@@ -422,7 +518,8 @@
     column-gap: 3px;
     align-items: center;
     padding-right: 90px;
-    color: #000;
+    color: #fff;
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
 }
 
 .mi-field {
@@ -443,9 +540,41 @@
     padding: 2px 20px 0 3px;
     border: 1px solid #000;
     background: #fff;
+    color: #000;
+    text-shadow: none;
     line-height: 16px;
     white-space: nowrap;
-    overflow: hidden;
+    cursor: var(--c-default);
+}
+
+/* the combo opens on a click; its list holds the one entry it shows (classic list box) */
+.mi-dropdown-list {
+    display: none;
+    position: absolute;
+    left: -1px;
+    right: -1px;
+    top: 20px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border: 1px solid #000;
+    background: #fff;
+    color: #000;
+    z-index: 2;
+}
+
+.mi-dropdown--open .mi-dropdown-list {
+    display: block;
+}
+
+.mi-dropdown-list li {
+    padding: 1px 2px;
+    line-height: 16px;
+}
+
+.mi-dropdown-list li.selected {
+    background: #3399ff;
+    color: #fff;
 }
 
 .mi-dropdown i {
@@ -470,10 +599,12 @@
     border-top: 4px solid #000;
 }
 
-.mi-fields .mi-field:first-child .mi-dropdown {
+.mi-fields .mi-field:first-child .mi-dropdown .mi-dropdown-value {
+    display: block;
+    margin: -1px 0 0 -1px;
+    padding: 1px 1px 0;
     outline: 1px dotted #000;
-    outline-offset: -2px;
-    background: #39f;
+    outline-offset: -1px;
     background: #3399ff;
     color: #fff;
 }
@@ -503,47 +634,34 @@
     bottom: 33px;
 }
 
+/* Install now, measured: a 162 x 35 box with a 1 px #808080 line and nothing inside it, the
+   text in white 16 px from 35 px in, the blue arrow (the VM's pixels, 28 px) 9 px after it */
 #melatonInstall .mi-install-now {
     position: absolute;
     left: 226px;
     top: 186px;
     display: flex;
     align-items: center;
+    box-sizing: border-box;
     width: 162px;
     height: 35px;
-    padding: 0 0 0 36px;
-    border: 1px solid rgba(255, 255, 255, 0.35);
-    background: rgba(255, 255, 255, 0.07);
+    padding: 0 0 0 35px;
+    border: 1px solid #808080;
+    background: none;
     color: #fff;
     font-size: 16px;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
 .mi-install-now:hover {
-    background: rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.08);
 }
 
 .mi-go {
     margin-left: 9px;
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    background: radial-gradient(circle at 50% 30%, #9ad0ff 0, #2b7de0 45%, #0b3f99 100%);
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5), 0 1px 1px rgba(0, 0, 0, 0.5);
-    position: relative;
-}
-
-.mi-go::after {
-    content: '';
-    position: absolute;
-    left: 6px;
-    top: 7px;
-    width: 9px;
-    height: 9px;
-    border-right: 3px solid #fff;
-    border-top: 3px solid #fff;
-    transform: rotate(45deg);
-    box-sizing: border-box;
+    width: 28px;
+    height: 28px;
+    background: url('/static_images/vista-setup/go-arrow.png') 0 0 / 28px 28px no-repeat;
 }
 
 .mi-media-links {
@@ -555,12 +673,12 @@
     gap: 16px;
 }
 
-.mi-media-links .mi-link {
+#melatonInstall .mi-media-links .mi-link {
     color: #fff;
     text-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
 }
 
-.mi-media-links .mi-link:hover {
+#melatonInstall .mi-media-links .mi-link:hover {
     color: #d9ecff;
 }
 
