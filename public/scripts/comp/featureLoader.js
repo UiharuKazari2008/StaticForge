@@ -209,6 +209,12 @@ const FEATURE_MANIFEST = {
     start_menu_organizer: {
         scripts: ['scripts/comp/desktop-apps/startMenuOrganizer.js']
     },
+    // Desktop Icon Settings and Change Icon (Personalize, a desktop shortcut's Change Icon...);
+    // drawn with Taskbar Properties' Vista controls (tbp-*)
+    desktop_icon_dialogs: {
+        styles: ['css/taskbar-properties.css', 'css/desktop-icon-dialogs.css'],
+        scripts: ['scripts/comp/desktopIconDialogs.js']
+    },
     // Taskbar and Start Menu Properties (public/scripts/comp/taskbarSettings.js openProperties)
     taskbar_properties: {
         styles: ['css/taskbar-properties.css'],
@@ -217,7 +223,7 @@ const FEATURE_MANIFEST = {
     control_panel: {
         // Remote Access Properties draws with Taskbar Properties' Vista controls (tbp-*)
         styles: ['css/desktop-settings.css', 'css/vista-defender.css', 'css/cpl-system.css',
-            'css/taskbar-properties.css', 'css/remote-access-properties.css'],
+            'css/taskbar-properties.css', 'css/remote-access-properties.css', 'css/cpl-personalization.css'],
         scripts: [
             'scripts/comp/melatonControlPanel.js',
             'scripts/comp/experienceIndex.js',
@@ -229,7 +235,10 @@ const FEATURE_MANIFEST = {
             'scripts/comp/windowsDefender.js',
             'scripts/comp/cplSearch.js',
             'scripts/comp/cplMail.js',
-            'scripts/comp/cplDesktopBackground.js'
+            'scripts/comp/cplDesktopBackground.js',
+            // Personalization's hub and Window Color page, then the Screen Saver and Sound dialogs
+            'scripts/comp/cplPersonalization.js',
+            'scripts/comp/personalizationDialogs.js'
         ]
     }
 };

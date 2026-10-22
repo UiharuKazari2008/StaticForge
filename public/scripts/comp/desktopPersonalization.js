@@ -8,13 +8,17 @@
  *                  (default, graphite, blue, teal, red, orange, pink, frost) | 'custom' (the mixer)
  *   customColor    { h 0-359, s 0-100, b 0-100 }, Vista's color mixer
  *   intensity      10-85, the range of Vista's Color intensity slider; picking a swatch resets it to
- *                  the swatch's own. It sets the frame tint's opacity, and moving it away from the
- *                  swatch's value thickens or thins the taskbar and Start menu glass too.
+ *                  the swatch's own. It sets the frame tint's opacity; the taskbar and Start menu
+ *                  glass stay as they are (Yukimi 2026-10-21: intensity is for the window frames).
  *   transparency   false: opaque frames (Vista's Enable transparency)
  *   soundScheme    'default' | 'none' (No Sounds)
  *   sounds         { [event]: file | '' }: an event's own sound; '' is (None). Missing = the scheme's
  *   startupSound   false: no sound when the desktop comes up (Play Windows Startup sound)
- *   screenSaver    { id, wait (minutes), resumeLogon }, run by screenSaver.js
+ *   screenSaver    { id, wait (minutes), resumeLogon, photos }, run by screenSaver.js. photos is the
+ *                  Photos saver's settings (personalizationDialogs.js): source windows | workspace |
+ *                  search | folder, workspace (current | all | <id>), age (any | day | week | month |
+ *                  year), favorites, search (a saved Image Search), folder ({ path, label }), theme
+ *                  (Vista's slide show themes), speed, shuffle, monotone
  *
  * Saved on the workspace record (`personalization`, modules/workspace.js) through
  * wsClient.updateWorkspaceSettings, and in localStorage `desktop-personalization:<id>` so it holds
@@ -23,32 +27,35 @@
  * Colour: one <style id="desktopPersonalizationStyle"> after every stylesheet. Windows get their
  * own --glass-windows-bg (aero-glass.css builds the frame tint from it in live and frosted) and, in
  * basic, an opaque --aero-frame-base; nothing else that reads the workspace glass colour changes
- * (Yukimi: the colour only affects the windows). The default (Clear at its own intensity, with
- * transparency) writes no glass rules for the taskbar or Start menu.
+ * (Yukimi: the colour and its intensity only affect the windows).
  */
 (function (root) {
     'use strict';
 
     const doc = typeof document !== 'undefined' ? document : null;
     const STORAGE_PREFIX = 'desktop-personalization:';
+    // set while this browser holds a save the server has not taken yet (offline, or it failed)
+    const UNSYNCED_PREFIX = 'desktop-personalization-unsynced:';
     const STYLE_ID = 'desktopPersonalizationStyle';
     const INTENSITY_MIN = 10;
     const INTENSITY_MAX = 85;
 
     /* Vista's eight swatches (themecpl.dll 101-108; art: /static_images/vista-personalization/
-       swatch-*.png) with the ColorizationColor each sets, measured on the VM: rgb and the alpha as
-       the intensity slider shows it. Clear and Workspace are ours. */
+       swatch-*.png) with the ColorizationColor each writes on the VM (2026-10-21): Default
+       0x45409EFE, Graphite 0xA3000000, Blue 0xA8004ADE, Teal 0x82008CA5, Red 0x9CCE0C0F, Orange
+       0xA6FF7700, Pink 0x49F93EE7, Frost 0xCCEFF7F7. The alpha byte as a percentage is where the
+       Color intensity slider sits (Default 27). Clear and Workspace are ours. */
     const SWATCHES = [
         { id: 'clear', name: 'Clear', rgb: [116, 128, 140], intensity: 30 },
         { id: 'workspace', name: 'Workspace', rgb: null, intensity: 75 },
         { id: 'default', name: 'Default', rgb: [64, 158, 254], intensity: 27 },
         { id: 'graphite', name: 'Graphite', rgb: [0, 0, 0], intensity: 64 },
-        { id: 'blue', name: 'Blue', rgb: [0, 70, 173], intensity: 66 },
-        { id: 'teal', name: 'Teal', rgb: [0, 139, 139], intensity: 51 },
-        { id: 'red', name: 'Red', rgb: [159, 0, 0], intensity: 62 },
-        { id: 'orange', name: 'Orange', rgb: [255, 115, 0], intensity: 63 },
-        { id: 'pink', name: 'Pink', rgb: [255, 77, 255], intensity: 65 },
-        { id: 'frost', name: 'Frost', rgb: [255, 255, 255], intensity: 24 }
+        { id: 'blue', name: 'Blue', rgb: [0, 74, 222], intensity: 66 },
+        { id: 'teal', name: 'Teal', rgb: [0, 140, 165], intensity: 51 },
+        { id: 'red', name: 'Red', rgb: [206, 12, 15], intensity: 61 },
+        { id: 'orange', name: 'Orange', rgb: [255, 119, 0], intensity: 65 },
+        { id: 'pink', name: 'Pink', rgb: [249, 62, 231], intensity: 29 },
+        { id: 'frost', name: 'Frost', rgb: [239, 247, 247], intensity: 80 }
     ];
     const SWATCH_IDS = SWATCHES.map((s) => s.id).concat(['custom']);
 
@@ -65,7 +72,35 @@
         screenSaver: { id: 'none', wait: 10, resumeLogon: false }
     };
 
+    const PHOTO_SOURCES = ['windows', 'workspace', 'search', 'folder'];
+    const PHOTO_AGES = ['any', 'day', 'week', 'month', 'year'];
+    const PHOTO_THEMES = ['random', 'classic', 'fade', 'panzoom', 'travel', 'frame', 'stack'];
+    const PHOTO_SPEEDS = ['slow', 'medium', 'fast'];
+
+    function normalizePhotos(raw) {
+        const p = raw && typeof raw === 'object' ? raw : {};
+        const one = (v, list, d) => (list.includes(v) ? v : d);
+        const search = p.search && typeof p.search === 'object' && Array.isArray(p.search.blocks) && JSON.stringify(p.search).length <= 8000
+            ? p.search : null;
+        const folder = p.folder && typeof p.folder === 'object' && typeof p.folder.path === 'string' && p.folder.path.length <= 1000
+            ? { path: p.folder.path, label: String(p.folder.label || '').slice(0, 200) } : null;
+        return {
+            source: one(p.source, PHOTO_SOURCES, 'windows'),
+            workspace: typeof p.workspace === 'string' && p.workspace.length <= 100 ? p.workspace : 'current',
+            age: one(p.age, PHOTO_AGES, 'any'),
+            favorites: p.favorites === true,
+            search,
+            folder,
+            theme: one(p.theme, PHOTO_THEMES, 'panzoom'),
+            speed: one(p.speed, PHOTO_SPEEDS, 'medium'),
+            shuffle: p.shuffle !== false,
+            monotone: p.monotone === true
+        };
+    }
+
     let current = null;      // the active workspace's settings
+    let previewPatch = null; // Window Color's unsaved colour choices, shown over `current`
+    const sending = new Set(); // workspaces with a save on its way to the server
     let currentId = null;
     const listeners = new Set();
 
@@ -142,7 +177,8 @@
             screenSaver: {
                 id: SCREEN_SAVERS.includes(ss.id) ? ss.id : DEFAULTS.screenSaver.id,
                 wait: clamp(ss.wait, 1, 9999, DEFAULTS.screenSaver.wait),
-                resumeLogon: ss.resumeLogon === true
+                resumeLogon: ss.resumeLogon === true,
+                photos: normalizePhotos(ss.photos)
             }
         };
     }
@@ -174,7 +210,21 @@
     }
 
     /** The workspace's settings: the record's own, else this browser's copy, else the defaults. */
+    function isUnsynced(id) {
+        try { return !!(root.localStorage && root.localStorage.getItem(UNSYNCED_PREFIX + id)); } catch (_) { return false; }
+    }
+
+    function markUnsynced(id, on) {
+        try {
+            if (!root.localStorage) return;
+            if (on) root.localStorage.setItem(UNSYNCED_PREFIX + id, '1');
+            else root.localStorage.removeItem(UNSYNCED_PREFIX + id);
+        } catch (_) { /* quota / private mode */ }
+    }
+
     function read(id = activeWorkspaceId()) {
+        // a save the server has not taken yet wins over the (older) record
+        if (isUnsynced(id) && readStored(id)) return normalize(readStored(id));
         const ws = workspaceRecord(id);
         if (ws && ws.personalization && typeof ws.personalization === 'object') return normalize(ws.personalization);
         return normalize(readStored(id));
@@ -203,14 +253,6 @@
         return { rgb, alpha: Math.min(1, Math.max(0, alpha)) };
     }
 
-    /** How much thicker (above 1) or thinner the taskbar and Start menu glass is. */
-    function glassScale(p) {
-        const sw = swatch(p.windowColor);
-        const base = sw ? sw.intensity : 45;
-        if (!p.transparency) return 1.25;
-        return Math.min(1.25, Math.max(0.3, 1 + (p.intensity - base) / 75));
-    }
-
     function isDefaultLook(p) {
         return p.windowColor === 'workspace' && p.intensity === swatch('workspace').intensity && p.transparency;
     }
@@ -231,12 +273,6 @@
             // opaque frames need no backdrop pass
             lines.push('html[data-glass="live"] body.desktop-mode .modal:not(.modal-maximized) { -webkit-backdrop-filter: none; backdrop-filter: none; }');
         }
-        const k = glassScale(p);
-        if (Math.abs(k - 1) > 0.01) {
-            const pct = Math.round(Math.min(100, 55 * k));
-            lines.push(`html:not([data-glass="basic"]) .desktop-taskbar::after { opacity: ${Math.min(1, Math.round(0.85 * k * 100) / 100)}; }`);
-            lines.push(`html #startMenu.start-menu { --start-menu-tint: color-mix(in srgb, var(--glass-windows-bg, hsl(0 0% 20% / 75%)) ${pct}%, transparent); }`);
-        }
         return lines.join('\n');
     }
 
@@ -246,15 +282,17 @@
         const css = cssFor(p);
         if (!css) {
             if (el) el.remove();
-            return;
+        } else {
+            if (!el) {
+                el = doc.createElement('style');
+                el.id = STYLE_ID;
+            }
+            // last in <head>, after every stylesheet (feature CSS appends later; none sets these)
+            if (el.parentNode !== doc.head || el !== doc.head.lastElementChild) doc.head.appendChild(el);
+            if (el.textContent !== css) el.textContent = css;
         }
-        if (!el) {
-            el = doc.createElement('style');
-            el.id = STYLE_ID;
-        }
-        // last in <head>, after every stylesheet (feature CSS appends later; none sets these)
-        if (el.parentNode !== doc.head || el !== doc.head.lastElementChild) doc.head.appendChild(el);
-        if (el.textContent !== css) el.textContent = css;
+        // glass behind the Workspaces bar changed colour: let its glyphs re-pick light or dark
+        if (root.aeroGlass && typeof root.aeroGlass.refreshContrast === 'function') root.aeroGlass.refreshContrast();
     }
 
     // ---- state ----
@@ -268,11 +306,32 @@
         }
     }
 
+    /** What the windows show: the settings, with Window Color's unsaved colours over them. */
+    function view() {
+        if (!previewPatch || !current) return current;
+        return normalize({ ...current, ...previewPatch, customColor: { ...current.customColor, ...(previewPatch.customColor || {}) } });
+    }
+
+    /** Window Color's live preview (cplPersonalization.js): only the colour fields; null ends it. */
+    function preview(patch) {
+        if (!patch) previewPatch = null;
+        else {
+            const keep = {};
+            ['windowColor', 'customColor', 'intensity', 'transparency'].forEach((k) => { if (k in patch) keep[k] = patch[k]; });
+            previewPatch = { ...(previewPatch || {}), ...keep, customColor: { ...((previewPatch && previewPatch.customColor) || {}), ...(keep.customColor || {}) } };
+        }
+        if (!current) refresh();
+        applyColor(view());
+        return view();
+    }
+
     function refresh() {
         currentId = activeWorkspaceId();
         current = read(currentId);
-        applyColor(current);
+        applyColor(view());
         emit();
+        // a save made offline goes to the server once it can take it
+        if (isUnsynced(currentId) && !sending.has(currentId)) void persist(currentId, current);
         return current;
     }
 
@@ -289,7 +348,7 @@
         if (id === (currentId || activeWorkspaceId())) {
             currentId = id;
             current = next;
-            applyColor(next);
+            applyColor(view());
             emit();
         }
         if (save) persist(id, next);
@@ -300,13 +359,18 @@
         writeStored(id, value);
         const ws = workspaceRecord(id);
         if (ws) ws.personalization = value;
+        markUnsynced(id, true);
         const client = root.wsClient;
         if (!client || typeof client.updateWorkspaceSettings !== 'function') return;
         if (typeof client.isConnected === 'function' && !client.isConnected()) return;
+        sending.add(id);
         try {
             await client.updateWorkspaceSettings(id, { personalization: value });
+            markUnsynced(id, false);
         } catch (err) {
-            console.warn('desktopPersonalization: workspace save failed, kept in this browser', err && err.message);
+            console.warn('desktopPersonalization: workspace save failed, kept in this browser until it can be sent', err && err.message);
+        } finally {
+            sending.delete(id);
         }
     }
 
@@ -338,12 +402,14 @@
     const api = {
         SWATCHES,
         SCREEN_SAVERS,
+        PHOTO_THEMES,
         DEFAULTS,
         INTENSITY_MIN,
         INTENSITY_MAX,
         get,
         read,
         update,
+        preview,
         refresh,
         soundFile,
         frameColor,
@@ -351,7 +417,8 @@
         rgbToHsb,
         swatch,
         onChange: (fn) => { listeners.add(fn); return () => listeners.delete(fn); },
-        _test: { normalize, cssFor, glassScale }
+        normalizePhotos,
+        _test: { normalize, cssFor }
     };
 
     root.desktopPersonalization = api;

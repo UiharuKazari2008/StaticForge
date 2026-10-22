@@ -1,0 +1,273 @@
+/* The desktop's icon view, 1:1 with Vista's (desktopIconView.js; measured on the Vista Aero VM).
+   desktopShortcuts.js places every icon absolutely in its cell; #desktopIcons carries the size
+   (--di-size), the cell (--di-cx, --di-cy), the size bucket (data-icon-view: large / medium /
+   classic) and the extract tier (data-icon-tier: 16 / 32 / 48 / 96 / 256).
+
+   An item is the cell wide: the icon box is size + 4 high with the picture 2 px down, the label
+   starts 1 px under the box, 15 px lines with 1 px over and under, white Segoe UI 9 pt with the
+   desktop's shadow. The hot / selected frames are the Explorer::ListView LISTITEM states
+   (aero.msstyles, drawn on the VM with DrawThemeBackground: 70 % #6fd1fd edge over a pale-blue
+   gradient), stretched by 3 px slices like the theme's own. */
+
+body.desktop-mode #desktopIcons[data-icon-view] .desktop-grid-container {
+    display: none;
+}
+
+body.desktop-mode #desktopIcons[data-icon-view].desktop-icons-hidden .desktop-freeform-container > .desktop-shortcut {
+    display: none;
+}
+
+body.desktop-mode #desktopIcons[data-icon-view] .desktop-shortcut {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0;
+    box-sizing: border-box;
+    width: var(--di-cx);
+    height: auto;
+    min-height: 0;
+    margin: 0;
+    padding: 0 0 1px;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    transform: none;
+    transition: none;
+    font: 12px/15px var(--font-system);
+}
+
+/* hot, selected (the desktop has focus), selected without focus, hot and selected */
+body.desktop-mode #desktopIcons[data-icon-view] .desktop-shortcut::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    border: 3px solid transparent;
+    border-image: none;
+    pointer-events: none;
+}
+@media (hover: hover) {
+    body.desktop-mode #desktopIcons[data-icon-view] .desktop-shortcut:hover::before {
+        border-image: url('/static_images/vista-desktop/item-hot.png') 3 fill / 3px stretch;
+    }
+}
+body.desktop-mode #desktopIcons[data-icon-view] .desktop-shortcut.selected::before {
+    border-image: url('/static_images/vista-desktop/item-selected-nofocus.png') 3 fill / 3px stretch;
+}
+body.desktop-mode #desktopIcons[data-icon-view][data-focused="1"] .desktop-shortcut.selected::before {
+    border-image: url('/static_images/vista-desktop/item-selected.png') 3 fill / 3px stretch;
+}
+@media (hover: hover) {
+    body.desktop-mode #desktopIcons[data-icon-view] .desktop-shortcut.selected:hover::before {
+        border-image: url('/static_images/vista-desktop/item-hot-selected.png') 3 fill / 3px stretch;
+    }
+}
+body.desktop-mode #desktopIcons[data-icon-view] .desktop-shortcut.folder-drop-target::before {
+    border-image: url('/static_images/vista-desktop/item-hot-selected.png') 3 fill / 3px stretch;
+}
+
+body.desktop-mode #desktopIcons[data-icon-view] .desktop-shortcut > * {
+    position: relative;
+    z-index: 1;
+}
+
+/* the focused item shows its whole name over its neighbours, as Vista's does */
+body.desktop-mode #desktopIcons[data-icon-view] .desktop-shortcut.desktop-shortcut-focused {
+    z-index: 3;
+}
+
+body.desktop-mode #desktopIcons[data-icon-view] .desktop-shortcut-icon {
+    flex: none;
+    width: var(--di-size);
+    height: var(--di-size);
+    margin: 2px 0 3px;
+    font-size: calc(var(--di-size) * 0.75);
+    filter: none;
+    -webkit-filter: none;
+    box-shadow: none;
+}
+
+body.desktop-mode #desktopIcons[data-icon-view] .desktop-shortcut-icon :is(.icon-image, .desktop-shortcut-wiki-site-icon) {
+    width: var(--di-size);
+    height: var(--di-size);
+}
+
+body.desktop-mode #desktopIcons[data-icon-view] .desktop-shortcut-icon[data-vista-icon] {
+    background-size: var(--di-size) var(--di-size);
+}
+
+body.desktop-mode #desktopIcons[data-icon-view] .desktop-shortcut .desktop-shortcut-icon[data-vista-icon="note"] {
+    font-size: var(--di-size);
+}
+
+body.desktop-mode #desktopIcons[data-icon-view] .desktop-shortcut-icon-image {
+    --photo-box: calc(var(--di-size) - 6px);
+}
+body.desktop-mode #desktopIcons[data-icon-view="classic"][data-icon-tier="16"] .desktop-shortcut-icon-image {
+    --photo-box: calc(var(--di-size) - 2px);
+}
+
+/* the shortcut arrow is a third of the icon (16 on 48, 32 on 96), 48 at most */
+body.desktop-mode:not(.windows-classic-theme) #desktopIcons[data-icon-view] .desktop-shortcut:is([data-shortcut-type="applet"], [data-shortcut-type="dsap"]) .desktop-shortcut-icon::after {
+    width: min(48px, calc(var(--di-size) / 3));
+    height: min(48px, calc(var(--di-size) / 3));
+    background-size: 100% 100%;
+}
+body.desktop-mode:not(.windows-classic-theme) #desktopIcons[data-icon-view][data-icon-tier="96"] .desktop-shortcut:is([data-shortcut-type="applet"], [data-shortcut-type="dsap"]) .desktop-shortcut-icon::after {
+    background-image: image-set(url('/static_images/vista-icons/explorer/shortcut-arrow-32.png') 1x, url('/static_images/vista-icons/explorer/shortcut-arrow-48.png') 2x);
+}
+body.desktop-mode:not(.windows-classic-theme) #desktopIcons[data-icon-view][data-icon-tier="256"] .desktop-shortcut:is([data-shortcut-type="applet"], [data-shortcut-type="dsap"]) .desktop-shortcut-icon::after {
+    background-image: url('/static_images/vista-icons/explorer/shortcut-arrow-48.png');
+}
+
+/* Vista's extracts per size: the smallest one that covers the icon */
+body.desktop-mode:not(.windows-classic-theme) #desktopIcons[data-icon-tier="16"] .desktop-shortcut-icon[data-vista-icon="folder"] { background-image: url('/static_images/vista-icons/explorer/folder-16.png'); }
+body.desktop-mode:not(.windows-classic-theme) #desktopIcons[data-icon-tier="16"] .desktop-shortcut-icon[data-vista-icon="recycle"] { background-image: url('/static_images/vista-icons/explorer/recycle-16.png'); }
+body.desktop-mode:not(.windows-classic-theme) #desktopIcons[data-icon-tier="16"] .desktop-shortcut-icon[data-vista-icon="file"] { background-image: url('/static_images/vista-icons/explorer/file-16.png'); }
+body.desktop-mode:not(.windows-classic-theme) #desktopIcons[data-icon-tier="16"] .desktop-shortcut-icon[data-vista-icon="note"] { background-image: url('/static_images/vista-icons/explorer/text-16.png'); }
+body.desktop-mode:not(.windows-classic-theme) #desktopIcons[data-icon-tier="16"] .desktop-shortcut-icon[data-vista-icon="internet-shortcut"] { background-image: url('/static_images/vista-icons/explorer/internet-shortcut-16.png'); }
+body.desktop-mode:not(.windows-classic-theme) #desktopIcons[data-icon-tier="32"] .desktop-shortcut-icon[data-vista-icon="folder"] { background-image: url('/static_images/vista-icons/explorer/folder-32.png'); }
+body.desktop-mode:not(.windows-classic-theme) #desktopIcons[data-icon-tier="32"] .desktop-shortcut-icon[data-vista-icon="recycle"] { background-image: url('/static_images/vista-icons/explorer/recycle-32.png'); }
+body.desktop-mode:not(.windows-classic-theme) #desktopIcons[data-icon-tier="32"] .desktop-shortcut-icon[data-vista-icon="file"] { background-image: url('/static_images/vista-icons/explorer/file-32.png'); }
+body.desktop-mode:not(.windows-classic-theme) #desktopIcons[data-icon-tier="32"] .desktop-shortcut-icon[data-vista-icon="note"] { background-image: url('/static_images/vista-icons/explorer/text-32.png'); }
+body.desktop-mode:not(.windows-classic-theme) #desktopIcons[data-icon-tier="32"] .desktop-shortcut-icon[data-vista-icon="internet-shortcut"] { background-image: url('/static_images/vista-icons/explorer/internet-shortcut-32.png'); }
+body.desktop-mode:not(.windows-classic-theme) #desktopIcons[data-icon-tier="96"] .desktop-shortcut-icon[data-vista-icon="folder"] { background-image: url('/static_images/vista-icons/explorer/folder-96.png'); }
+body.desktop-mode:not(.windows-classic-theme) #desktopIcons[data-icon-tier="96"] .desktop-shortcut-icon[data-vista-icon="recycle"] { background-image: url('/static_images/vista-icons/explorer/recycle-96.png'); }
+body.desktop-mode:not(.windows-classic-theme) #desktopIcons[data-icon-tier="96"] .desktop-shortcut-icon[data-vista-icon="file"] { background-image: url('/static_images/vista-icons/explorer/file-96.png'); }
+body.desktop-mode:not(.windows-classic-theme) #desktopIcons[data-icon-tier="96"] .desktop-shortcut-icon[data-vista-icon="note"] { background-image: url('/static_images/vista-icons/explorer/text-96.png'); }
+body.desktop-mode:not(.windows-classic-theme) #desktopIcons[data-icon-tier="96"] .desktop-shortcut-icon:is([data-vista-icon="internet-shortcut"], [data-vista-icon="document"]) { background-image: url('/static_images/vista-icons/explorer/internet-shortcut-256.png'); }
+body.desktop-mode:not(.windows-classic-theme) #desktopIcons[data-icon-tier="96"] .desktop-shortcut-icon[data-vista-icon="document"] { background-image: url('/static_images/vista-icons/explorer/document-256.png'); }
+body.desktop-mode:not(.windows-classic-theme) #desktopIcons[data-icon-tier="256"] .desktop-shortcut-icon[data-vista-icon="folder"] { background-image: url('/static_images/vista-icons/explorer/folder-256.png'); }
+body.desktop-mode:not(.windows-classic-theme) #desktopIcons[data-icon-tier="256"] .desktop-shortcut-icon[data-vista-icon="recycle"] { background-image: url('/static_images/vista-icons/explorer/recycle-256.png'); }
+body.desktop-mode:not(.windows-classic-theme) #desktopIcons[data-icon-tier="256"] .desktop-shortcut-icon[data-vista-icon="file"] { background-image: url('/static_images/vista-icons/explorer/file-256.png'); }
+body.desktop-mode:not(.windows-classic-theme) #desktopIcons[data-icon-tier="256"] .desktop-shortcut-icon[data-vista-icon="note"] { background-image: url('/static_images/vista-icons/explorer/text-256.png'); }
+body.desktop-mode:not(.windows-classic-theme) #desktopIcons[data-icon-tier="256"] .desktop-shortcut-icon[data-vista-icon="internet-shortcut"] { background-image: url('/static_images/vista-icons/explorer/internet-shortcut-256.png'); }
+body.desktop-mode:not(.windows-classic-theme) #desktopIcons[data-icon-tier="256"] .desktop-shortcut-icon[data-vista-icon="document"] { background-image: url('/static_images/vista-icons/explorer/document-256.png'); }
+
+/* a picked icon (Change Icon: Vista's shell sheets, or an app picture) */
+.desktop-icon-custom {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.desktop-icon-custom > .desktop-icon-sprite {
+    position: relative;
+    display: block;
+    width: var(--desktop-icon-px, 48px);
+    height: var(--desktop-icon-px, 48px);
+    background: var(--sprite-image) no-repeat var(--sprite-pos) / var(--sprite-size);
+}
+.desktop-icon-custom > .icon-image {
+    display: block;
+    width: var(--desktop-icon-px, 48px);
+    height: var(--desktop-icon-px, 48px);
+    object-fit: contain;
+}
+body.desktop-mode #desktopIcons[data-icon-view] .desktop-icon-custom {
+    --desktop-icon-px: var(--di-size);
+}
+/* a picked icon replaces the type's own picture and its badges */
+body.desktop-mode #desktopIcons[data-icon-view] .desktop-shortcut-icon.desktop-icon-custom::after {
+    content: none;
+}
+
+body.desktop-mode #desktopIcons[data-icon-view] .desktop-shortcut-label {
+    display: block;
+    box-sizing: border-box;
+    max-width: calc(var(--di-cx) - 2px);
+    margin: 0;
+    padding: 1px 2px;
+    overflow: hidden;
+    color: #fff;
+    font: 12px/15px var(--font-system);
+    font-weight: 400;
+    font-variation-settings: normal;
+    text-align: center;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: normal;
+    text-overflow: clip;
+    -webkit-line-clamp: none;
+    line-clamp: none;
+    /* DrawShadowText's drop shadow; the text sits 2 px higher than a CSS line box puts it (VM pixels) */
+    top: -2px;
+    text-shadow: 1px 1px 2px #000, 1px 1px 2px #000, 0 0 2px rgb(0 0 0 / 50%);
+    filter: none;
+    -webkit-filter: none;
+}
+/* two lines and "..." (desktopShortcuts.js fillShortcutLabel); the focused item of the focused
+   desktop shows the whole name */
+body.desktop-mode #desktopIcons[data-icon-view] .desktop-shortcut-label-line {
+    display: block;
+    white-space: pre;
+}
+body.desktop-mode #desktopIcons[data-icon-view] .desktop-shortcut-label-full {
+    display: none;
+}
+body.desktop-mode #desktopIcons[data-icon-view][data-focused="1"] .desktop-shortcut.desktop-shortcut-focused .desktop-shortcut-label {
+    max-height: none;
+}
+body.desktop-mode #desktopIcons[data-icon-view][data-focused="1"] .desktop-shortcut.desktop-shortcut-focused .desktop-shortcut-label.is-cut > .desktop-shortcut-label-short {
+    display: none;
+}
+body.desktop-mode #desktopIcons[data-icon-view][data-focused="1"] .desktop-shortcut.desktop-shortcut-focused .desktop-shortcut-label-full {
+    display: block;
+}
+
+/* dragging: the icons stay where they are; a see-through copy follows the pointer */
+body.desktop-mode #desktopIcons[data-icon-view] .desktop-shortcut.dragging {
+    opacity: 1;
+    transform: none;
+    box-shadow: none;
+}
+body.desktop-mode #desktopIcons[data-icon-view] .desktop-shortcut.desktop-shortcut-ghost {
+    z-index: 5;
+    opacity: 0.55;
+    pointer-events: none;
+}
+body.desktop-mode #desktopIcons[data-icon-view] .desktop-shortcut.desktop-shortcut-ghost::before {
+    content: none;
+}
+/* the dragged icons draw no frame until they land (VM) */
+body.desktop-mode #desktopIcons[data-icon-view].desktop-icons-dragging .desktop-shortcut.selected::before {
+    border-image: none;
+}
+
+/* Auto Arrange: where the drop will go, Vista's white insertion mark (2 px, end caps 6 px) */
+.desktop-insert-mark {
+    position: absolute;
+    z-index: 6;
+    height: 2px;
+    margin-top: -2px;
+    background: #fff;
+    pointer-events: none;
+}
+.desktop-insert-mark::before,
+.desktop-insert-mark::after {
+    content: '';
+    position: absolute;
+    top: -2px;
+    width: 2px;
+    height: 6px;
+    background: #fff;
+}
+.desktop-insert-mark::before { left: 0; }
+.desktop-insert-mark::after { right: 0; }
+
+/* the desktop menu's pictures (Vista: Personalize carries themecpl.dll's icon, New > Folder the folder) */
+body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item > i.desktop-menu-icon:first-child {
+    display: block;
+    height: 16px;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 16px 16px;
+}
+body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item > i.desktop-menu-icon--personalize {
+    background-image: image-set(url('/static_images/vista-desktop/personalize-16.png') 1x, url('/static_images/vista-desktop/personalize-32.png') 2x);
+}
+body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-item > i.desktop-menu-icon--folder {
+    background-image: image-set(url('/static_images/vista-icons/explorer/folder-16.png') 1x, url('/static_images/vista-icons/explorer/folder-32.png') 2x);
+}

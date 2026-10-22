@@ -1,0 +1,1055 @@
+/* Control Panel > Personalization (cplPersonalization.js) and its dialogs
+   (personalizationDialogs.js), measured on the Vista Aero VM 2026-10-21 (themecpl.dll layouts
+   1001 / 1002, themeui 1015, mmsys 112). Art: public/static_images/vista-personalization/.
+
+   Hub: the title, then one row per item: the 24 px icon, 10 px, the link (15 px line) and the
+   description 5 px under it; 14 px between rows.
+   Window Color and Appearance: no task pane; Vista's 612 px column (756 here, for ten swatches)
+   centred in the page, its text 10 px in;
+   the swatches 72 x 93 (4 px round the 64 px art, the name 6 px under it) in a row from 5 px in;
+   Color intensity / Hue / Saturation / Brightness: a 95 px label column, then the track (259 px
+   channel) 8 px further; the rows 35 px apart. OK / Cancel in the grey bar at the bottom. */
+
+/* ---- the hub ---- */
+
+#melatonControlPanelModal .cpl-pers-hub h1.cpl-page-title {
+    margin-bottom: 14px;
+}
+
+#melatonControlPanelModal .cpl-pers-task {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin: 0 0 14px;
+}
+
+#melatonControlPanelModal .cpl-pers-task-icon {
+    flex: none;
+    width: 24px;
+    height: 24px;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    cursor: var(--c-pointer, pointer);
+}
+
+#melatonControlPanelModal .cpl-pers-task-icon::before,
+#melatonControlPanelModal .cpl-pers-task-icon::after {
+    content: none;
+}
+
+#melatonControlPanelModal .cpl-pers-icon {
+    display: block;
+    width: 24px;
+    height: 24px;
+}
+
+#melatonControlPanelModal .cpl-pers-task-text {
+    min-width: 0;
+}
+
+#melatonControlPanelModal .cpl-pers-task-link {
+    font-size: 12px;
+    line-height: 15px;
+}
+
+#melatonControlPanelModal .cpl-content p.cpl-pers-task-desc {
+    margin: 5px 0 0;
+    font-size: 12px;
+    line-height: 15px;
+}
+
+#melatonControlPanelModal .cpl-pers-shield {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* ---- Window Color and Appearance ---- */
+
+/* a spoke page without the task pane (outranks vista-explorer.css's task pane rule) */
+body.desktop-mode #melatonControlPanelModal[data-page="window-color"] .cpl-tasks,
+#melatonControlPanelModal[data-page="window-color"] .cpl-tasks {
+    display: none;
+}
+
+#melatonControlPanelModal[data-page="window-color"] .cpl-main {
+    padding: 0;
+    overflow: hidden;
+}
+
+#melatonControlPanelModal .cpl-pers-page {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+
+#melatonControlPanelModal .cpl-pers-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+}
+
+/* Vista's 612 px column holds its eight swatches; ours has ten (Clear, Workspace), so it is two
+   swatches wider */
+#melatonControlPanelModal .cpl-pers-pane {
+    box-sizing: border-box;
+    width: 756px;
+    max-width: 100%;
+    margin: 0 auto;
+    padding: 20px 4px 16px 10px;
+}
+
+#melatonControlPanelModal .cpl-pers-pane h1.cpl-page-title {
+    margin: 0 0 8px;
+}
+
+#melatonControlPanelModal .cpl-pers-pane p.cpl-intro {
+    margin: 0 0 12px;
+    line-height: 15px;
+}
+
+#melatonControlPanelModal .cpl-pers-swatches {
+    display: flex;
+    flex-wrap: wrap;
+    padding: 0 5px;
+    margin: 0 0 10px;
+    background: #fff;
+}
+
+#melatonControlPanelModal .cpl-pers-swatch {
+    position: relative;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 72px;
+    min-width: 0;
+    height: 93px;
+    min-height: 0;
+    margin: 0;
+    padding: 4px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: transparent;
+    box-shadow: none;
+    color: #000;
+    font: 12px var(--cpl-font);
+    cursor: var(--c-default, default);
+}
+
+#melatonControlPanelModal .cpl-pers-swatch::before,
+#melatonControlPanelModal .cpl-pers-swatch::after {
+    content: none;
+}
+
+/* Explorer's list view item: hot, selected, hot + selected */
+@media (hover: hover) {
+    #melatonControlPanelModal .cpl-pers-swatch:hover {
+        border-color: #b8d6fb;
+        background: linear-gradient(#fafbfd, #ebf3fd);
+    }
+}
+
+#melatonControlPanelModal .cpl-pers-swatch.is-selected {
+    border-color: #84acdd;
+    background: linear-gradient(#f2f9fd, #d9effc);
+}
+
+#melatonControlPanelModal .cpl-pers-swatch.is-selected:hover {
+    border-color: #7da2ce;
+    background: linear-gradient(#e7f3fd, #c4e3fb);
+}
+
+#melatonControlPanelModal .cpl-pers-swatch:focus-visible {
+    outline: 1px dotted #000;
+    outline-offset: -3px;
+}
+
+#melatonControlPanelModal .cpl-pers-swatch-art {
+    display: block;
+    flex: none;
+    width: 64px;
+    height: 64px;
+    margin: -1px 0 0;
+}
+
+/* Workspace: the Frost tile multiplied by the workspace's colour, in its shape */
+#melatonControlPanelModal .cpl-pers-swatch-art--workspace {
+    background: url("/static_images/vista-personalization/swatch-frost.png"), var(--cpl-pers-ws, #0a1a2a);
+    background-blend-mode: multiply;
+    -webkit-mask: url("/static_images/vista-personalization/swatch-frost.png") 0 0 / 64px 64px;
+    mask: url("/static_images/vista-personalization/swatch-frost.png") 0 0 / 64px 64px;
+}
+
+#melatonControlPanelModal .cpl-pers-swatch-label {
+    padding-top: 6px;
+    line-height: 15px;
+    white-space: nowrap;
+}
+
+#melatonControlPanelModal .cpl-pers-check {
+    position: relative;
+    margin: 0 0 6px;
+    line-height: 15px;
+}
+
+#melatonControlPanelModal .cpl-pers-check u {
+    text-decoration: none;
+}
+
+#melatonControlPanelModal .cpl-pers-perf {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin: 0 0 16px;
+}
+
+#melatonControlPanelModal .cpl-pers-slider-row {
+    display: flex;
+    align-items: center;
+    height: 22px;
+    margin: 0 0 13px;
+}
+
+#melatonControlPanelModal .cpl-pers-slider-label {
+    flex: none;
+    width: 95px;
+    color: #000;
+    font: 12px var(--cpl-font);
+    line-height: 15px;
+}
+
+#melatonControlPanelModal .win7 input[type="range"].cpl-pers-slider {
+    flex: none;
+    width: 261px;
+    height: 22px;
+    margin: 0 0 0 7px;
+    padding: 0;
+}
+
+/* Window Color's sliders draw the rectangular thumb, measured on the VM: 10x21, a #707070 edge
+   with rounded corners, a 1 px light inner line, the face #f2f2f2 to #ebebeb, then #dbdbdb to
+   #d0d0d0 below the middle (hot: Vista's blue button face) */
+#melatonControlPanelModal .win7 input[type="range"].cpl-pers-slider::-webkit-slider-thumb {
+    box-sizing: border-box;
+    width: 10px;
+    height: 21px;
+    margin-top: -9px;
+    background: linear-gradient(#f2f2f2 1px, #ebebeb 8px, #dbdbdb 8px, #dbdbdb 12px, #d0d0d0 18px);
+    border: 1px solid #707070;
+    border-radius: 2px;
+    box-shadow: inset 0 0 0 1px #f6f6f6, 1px 1px 0 hsl(0 0% 0% / 12%);
+}
+
+#melatonControlPanelModal .win7 input[type="range"].cpl-pers-slider::-webkit-slider-thumb:hover {
+    background: linear-gradient(#eaf6fd 1px, #d9f0fc 8px, #bee6fd 8px, #a7d9f5 18px);
+    border-color: #3c7fb1;
+}
+
+#melatonControlPanelModal .win7 input[type="range"].cpl-pers-slider:active::-webkit-slider-thumb {
+    background: linear-gradient(#e5f4fc 1px, #c4e5f6 8px, #98d1ef 8px, #68b3db 18px);
+    border-color: #2c628b;
+}
+
+/* the colour mixer's channels: Vista's 3 px gradient lines (hue: themecpl bitmap 102) */
+#melatonControlPanelModal .win7 input[type="range"].cpl-pers-hsb[data-hsb="h"]::-webkit-slider-runnable-track {
+    height: 3px;
+    border: 0;
+    border-image: none;
+    background: url("/static_images/vista-personalization/hue.png") 0 0 / 100% 100%;
+    box-shadow: none;
+}
+
+#melatonControlPanelModal .win7 input[type="range"].cpl-pers-hsb[data-hsb="s"]::-webkit-slider-runnable-track {
+    height: 3px;
+    border: 0;
+    border-image: none;
+    background: linear-gradient(90deg, #fff, var(--cpl-pers-hue-full, #f00));
+    box-shadow: none;
+}
+
+#melatonControlPanelModal .win7 input[type="range"].cpl-pers-hsb[data-hsb="b"]::-webkit-slider-runnable-track {
+    height: 3px;
+    border: 0;
+    border-image: none;
+    background: linear-gradient(90deg, #000, var(--cpl-pers-sat-full, #f00));
+    box-shadow: none;
+}
+
+#melatonControlPanelModal .win7 input[type="range"].cpl-pers-hsb[data-hsb="h"]::-moz-range-track {
+    height: 3px;
+    border: 0;
+    border-image: none;
+    background: url("/static_images/vista-personalization/hue.png") 0 0 / 100% 100%;
+    box-shadow: none;
+}
+
+#melatonControlPanelModal .win7 input[type="range"].cpl-pers-hsb[data-hsb="s"]::-moz-range-track {
+    height: 3px;
+    border: 0;
+    border-image: none;
+    background: linear-gradient(90deg, #fff, var(--cpl-pers-hue-full, #f00));
+    box-shadow: none;
+}
+
+#melatonControlPanelModal .win7 input[type="range"].cpl-pers-hsb[data-hsb="b"]::-moz-range-track {
+    height: 3px;
+    border: 0;
+    border-image: none;
+    background: linear-gradient(90deg, #000, var(--cpl-pers-sat-full, #f00));
+    box-shadow: none;
+}
+
+/* Show / Hide color mixer: the task dialog's expando button (aero.msstyles) */
+#melatonControlPanelModal .cpl-pers-mixer {
+    margin: 14px 0 0;
+}
+
+#melatonControlPanelModal .cpl-pers-expando {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    min-height: 0;
+    height: 21px;
+    margin: 0 0 11px;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    color: #000;
+    font: 12px var(--cpl-font);
+    cursor: var(--c-default, default);
+}
+
+#melatonControlPanelModal .cpl-pers-expando::before,
+#melatonControlPanelModal .cpl-pers-expando::after {
+    content: none;
+}
+
+#melatonControlPanelModal .cpl-pers-expando-image {
+    flex: none;
+    width: 19px;
+    height: 21px;
+    background: url("/static_images/vista-personalization/expando-down.png") no-repeat;
+}
+
+#melatonControlPanelModal .cpl-pers-expando:hover .cpl-pers-expando-image {
+    background-image: url("/static_images/vista-personalization/expando-down-hot.png");
+}
+
+#melatonControlPanelModal .cpl-pers-expando:active .cpl-pers-expando-image {
+    background-image: url("/static_images/vista-personalization/expando-down-pressed.png");
+}
+
+#melatonControlPanelModal .cpl-pers-mixer.is-open .cpl-pers-expando-image {
+    background-image: url("/static_images/vista-personalization/expando-up.png");
+}
+
+#melatonControlPanelModal .cpl-pers-mixer.is-open .cpl-pers-expando:hover .cpl-pers-expando-image {
+    background-image: url("/static_images/vista-personalization/expando-up-hot.png");
+}
+
+#melatonControlPanelModal .cpl-pers-mixer.is-open .cpl-pers-expando:active .cpl-pers-expando-image {
+    background-image: url("/static_images/vista-personalization/expando-up-pressed.png");
+}
+
+#melatonControlPanelModal .cpl-pers-expando:focus-visible .cpl-pers-expando-text {
+    outline: 1px dotted #000;
+}
+
+#melatonControlPanelModal .cpl-pers-mixer-body {
+    display: none;
+}
+
+#melatonControlPanelModal .cpl-pers-mixer.is-open .cpl-pers-mixer-body {
+    display: block;
+}
+
+#melatonControlPanelModal .cpl-content p.cpl-pers-classic {
+    margin: 19px 0 0;
+}
+
+/* OK / Cancel: the grey command bar across the page (Desktop Background's) */
+#melatonControlPanelModal .cpl-pers-footer {
+    display: flex;
+    flex: none;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 10px max(12px, calc((100% - 756px) / 2 + 12px)) 18px;
+    background: #f0f0f0;
+    border-top: 1px solid #dfdfdf;
+}
+
+#melatonControlPanelModal .cpl-pers-footer .cpl-wu-button {
+    min-width: 75px;
+}
+
+/* ---- Desktop Background: How should the picture be positioned? ---- */
+
+#melatonControlPanelModal .cpl-db-position {
+    flex: none;
+    margin: 12px 22px 0;
+}
+
+#melatonControlPanelModal .cpl-db-position-title {
+    margin: 0 0 8px;
+}
+
+#melatonControlPanelModal .cpl-db-position-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 28px;
+}
+
+#melatonControlPanelModal .cpl-db-align {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#melatonControlPanelModal .cpl-db-align .cpl-db-align-combo {
+    width: 120px;
+}
+
+#melatonControlPanelModal .cpl-db-align-manual {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#melatonControlPanelModal .cpl-db-align-manual.hidden {
+    display: none;
+}
+
+#melatonControlPanelModal .cpl-db-align-manual input[type="range"] {
+    width: 120px;
+    padding: 6px 1px;
+}
+
+#melatonControlPanelModal .cpl-db-align-pct {
+    min-width: 32px;
+    color: #000;
+}
+
+/* ---- the dialogs ---- */
+
+/* Screen Saver Settings: Segoe UI 9 pt and its dialog units (client 461x478, pane 447x414 at 6,27,
+   OK / Cancel / Apply 75x23 at y 448 from x 218) */
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-client.cpl-pers-saver-sheet {
+    width: 461px;
+    height: 478px;
+}
+
+.cpl-pers-saver-sheet .tbp-pane {
+    width: 447px;
+    height: 414px;
+}
+
+.cpl-pers-saver-sheet .tbp-footer {
+    left: 219px;
+    top: 449px;
+}
+
+/* both sheets draw their text in Segoe UI 9 pt (mmsys and desk.cpl set it), 15 px lines */
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-client:is(.cpl-pers-saver-sheet, .cpl-pers-sound-sheet),
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-client:is(.cpl-pers-saver-sheet, .cpl-pers-sound-sheet) :is(button, input, select, label, span, div) {
+    font-family: "Segoe UI", Tahoma, sans-serif;
+    font-size: 12px;
+}
+
+.tbp-client:is(.cpl-pers-saver-sheet, .cpl-pers-sound-sheet) .tbp-static,
+.tbp-client:is(.cpl-pers-saver-sheet, .cpl-pers-sound-sheet) .tbp-check label,
+.tbp-client:is(.cpl-pers-saver-sheet, .cpl-pers-sound-sheet) .tbp-link,
+.tbp-client:is(.cpl-pers-saver-sheet, .cpl-pers-sound-sheet) .tbp-link-row {
+    line-height: 15px;
+}
+
+.tbp-client:is(.cpl-pers-saver-sheet, .cpl-pers-sound-sheet) .tbp-group-label {
+    line-height: 15px;
+}
+
+/* the group frame runs through the middle of its 15 px label */
+.tbp-client.cpl-pers-saver-sheet .tbp-group::before {
+    top: 7px;
+}
+
+/* the monitor (themeui bitmap 126, centred in its static) with the saver in its 152x112 screen */
+.tbp-client .cpl-pers-monitor {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.tbp-client .cpl-pers-monitor img {
+    position: relative;
+    display: block;
+    width: 185px;
+    height: 163px;
+}
+
+.tbp-client .cpl-pers-monitor-screen {
+    position: absolute;
+    left: calc(50% - 92.5px + 16px);
+    top: calc(50% - 81.5px + 17px);
+    width: 152px;
+    height: 112px;
+    background: #000;
+}
+
+/* the drop-down lists (CBS_DROPDOWNLIST): a closed combo box; the list is the app's context menu */
+.tbp-client .cpl-pers-combo {
+    display: flex;
+    align-items: center;
+    height: 21px;
+    padding: 0 20px 0 4px;
+    border: 1px solid #707070;
+    border-radius: 3px;
+    background:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4'%3E%3Cpath d='M0 0h7L3.5 4z' fill='%23000'/%3E%3C/svg%3E") right 7px center no-repeat,
+        linear-gradient(#f2f2f2 45%, #ebebeb 45%, #cfcfcf);
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 80%);
+    color: #000;
+    outline: none;
+    cursor: var(--c-default, default);
+}
+
+.tbp-client.cpl-pers-saver-sheet .cpl-pers-combo {
+    height: 23px;
+}
+
+@media (hover: hover) {
+    .tbp-client .cpl-pers-combo:not(.is-disabled):hover {
+        border-color: #3c7fb1;
+        background:
+            url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4'%3E%3Cpath d='M0 0h7L3.5 4z' fill='%23000'/%3E%3C/svg%3E") right 7px center no-repeat,
+            linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
+    }
+}
+
+.tbp-client .cpl-pers-combo:focus-visible .cpl-pers-combo-text {
+    outline: 1px dotted #000;
+    outline-offset: 1px;
+}
+
+.tbp-client .cpl-pers-combo.is-disabled {
+    border-color: #adb2b5;
+    background:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4'%3E%3Cpath d='M0 0h7L3.5 4z' fill='%23afafaf'/%3E%3C/svg%3E") right 7px center no-repeat,
+        #f4f4f4;
+    color: #838383;
+}
+
+.tbp-client .cpl-pers-combo-text {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    line-height: 15px;
+}
+
+/* the Wait spin box: Taskbar Properties' faces, inside the right edge of a wider edit */
+.tbp-client .cpl-pers-wait .tbp-spin {
+    left: auto;
+    right: 2px;
+}
+
+.tbp-client .cpl-pers-wait.is-disabled .tbp-spin {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.tbp-client.cpl-pers-saver-sheet .cpl-pers-wait {
+    height: 23px;
+}
+
+.tbp-client.cpl-pers-saver-sheet .cpl-pers-wait .tbp-spin-up {
+    top: 2px;
+    height: 9px;
+}
+
+.tbp-client.cpl-pers-saver-sheet .cpl-pers-wait .tbp-spin-down {
+    top: 11px;
+    height: 9px;
+}
+
+/* Sound > Playback / Recording: Vista's tile list, measured on the VM: the tile 5 px in, 51 px
+   tall; the 48 px icon 2 px down with the default check (mmsys PNG 240) on its lower right; three
+   13 px lines from 60 px in (the hardware and the state grey); a 10-bar meter 10 px from the
+   right (3 px bars, 1 px apart, #c1dce2 idle). Selected: #b7e7fc edge, #f3fafe to #c5e9fb. */
+.tbp-client .cpl-pers-devices {
+    padding: 3px 1px 0 5px;
+    outline: none;
+}
+
+.tbp-client .cpl-pers-device {
+    position: relative;
+    box-sizing: border-box;
+    display: flex;
+    align-items: flex-start;
+    height: 51px;
+    padding: 1px 0 0 1px;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    cursor: var(--c-default, default);
+}
+
+.tbp-client .cpl-pers-device.is-selected {
+    border-color: #b7e7fc;
+    background: linear-gradient(#f3fafe, #e2f4fd 48%, #dbf1fc 52%, #c5e9fb);
+}
+
+.tbp-client .cpl-pers-devices:focus-visible .cpl-pers-device.is-selected {
+    outline: 1px dotted #000;
+    outline-offset: -3px;
+}
+
+.tbp-client .cpl-pers-device-icon {
+    position: relative;
+    flex: none;
+    width: 48px;
+    height: 48px;
+}
+
+.tbp-client .cpl-pers-device-icon img {
+    display: block;
+}
+
+.tbp-client .cpl-pers-device-default {
+    position: absolute;
+    right: -1px;
+    bottom: -1px;
+}
+
+.tbp-client .cpl-pers-device.is-unplugged .cpl-pers-device-icon > img:first-child {
+    opacity: 0.55;
+}
+
+.tbp-client .cpl-pers-device-text {
+    display: flex;
+    flex-direction: column;
+    margin: 5px 0 0 11px;
+    min-width: 0;
+}
+
+.tbp-client .cpl-pers-device-text > span {
+    line-height: 13px;
+    white-space: nowrap;
+}
+
+.tbp-client .cpl-pers-device-sub {
+    color: #6d6d6d;
+}
+
+.tbp-client .cpl-pers-meter {
+    position: absolute;
+    right: 9px;
+    top: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.tbp-client .cpl-pers-meter i {
+    display: block;
+    width: 14px;
+    height: 3px;
+    background: #c1dce2;
+}
+
+.tbp-client .cpl-pers-meter i.is-lit {
+    background: #3cc23c;
+}
+
+/* Program Events: a tree view, 16 px rows, dotted lines, the speaker where an event has a sound
+   (mmsys bitmap 221: program, blank, speaker, playing speaker, warning) */
+.tbp-client .cpl-pers-events {
+    padding: 1px 0;
+    overflow-y: auto;
+    outline: none;
+}
+
+.tbp-client .cpl-pers-tree-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: 16px;
+    white-space: nowrap;
+}
+
+.tbp-client .cpl-pers-tree-root {
+    padding-left: 3px;
+}
+
+.tbp-client .cpl-pers-tree-event {
+    padding-left: 22px;
+}
+
+/* the tree's dotted lines: down from the root icon, across to each event */
+.tbp-client .cpl-pers-tree-event::before {
+    content: '';
+    position: absolute;
+    left: 11px;
+    top: 0;
+    bottom: 0;
+    border-left: 1px dotted #a0a0a0;
+}
+
+.tbp-client .cpl-pers-tree-event:last-child::before {
+    bottom: 8px;
+}
+
+.tbp-client .cpl-pers-tree-event::after {
+    content: '';
+    position: absolute;
+    left: 12px;
+    width: 8px;
+    top: 8px;
+    border-top: 1px dotted #a0a0a0;
+}
+
+.tbp-client .cpl-pers-tree-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin-right: 6px;
+    background: url("/static_images/vista-personalization/sound-tree.png") -16px 0 no-repeat;
+}
+
+.tbp-client .cpl-pers-tree-icon.is-program {
+    background-position: 0 0;
+}
+
+.tbp-client .cpl-pers-tree-icon.is-sound {
+    background-position: -32px 0;
+}
+
+.tbp-client .cpl-pers-tree-name {
+    padding: 0 2px;
+    line-height: 15px;
+}
+
+/* the selected event: the VM's light blue box (#9adffe edge) round the name */
+.tbp-client .cpl-pers-tree-name {
+    border: 1px solid transparent;
+    border-radius: 2px;
+}
+
+.tbp-client .cpl-pers-tree-event.is-selected .cpl-pers-tree-name {
+    border-color: #9adffe;
+    background: linear-gradient(#f7fcfe, #e3f4fd 50%, #e8f6fe);
+    color: #000;
+}
+
+.tbp-client .cpl-pers-events:not(:focus) .cpl-pers-tree-event.is-selected .cpl-pers-tree-name {
+    border-color: #dadada;
+    background: linear-gradient(#f8f8f8, #e5e5e5);
+}
+
+/* Test's green play mark */
+.tbp-client .cpl-pers-play {
+    display: inline-block;
+    width: 0;
+    height: 0;
+    margin: 0 5px 0 0;
+    border-style: solid;
+    border-width: 5px 0 5px 9px;
+    border-color: transparent transparent transparent #339933;
+    vertical-align: -1px;
+}
+
+.tbp-client button:disabled .cpl-pers-play {
+    border-left-color: #9ccf9c;
+}
+
+/* ---- Window Color and Appearance: the glass and live dragging (were Appearance Settings) ---- */
+
+#melatonControlPanelModal .cpl-pers-glass-row {
+    margin-top: 14px;
+}
+
+#melatonControlPanelModal .cpl-pers-glass-row .cpl-db-combo {
+    width: 261px;
+    margin-left: 7px;
+}
+
+#melatonControlPanelModal .cpl-pers-glass-row .cpl-db-combo::before {
+    content: none;
+}
+
+/* ---- dialogs without tabs: Photos Screen Saver Settings, Browse For Folder ---- */
+
+/* PhotoScreensaver.scr.mui dialog 2004, Segoe UI 9 pt: client 533 wide like the VM's, taller for
+   the two extra sources */
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-client.cpl-pers-photos {
+    width: 533px;
+    height: 525px;
+}
+
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-client:is(.cpl-pers-photos, .cpl-pers-folders, .cpl-pers-theme-sheet),
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-client:is(.cpl-pers-photos, .cpl-pers-folders, .cpl-pers-theme-sheet) :is(button, input, select, label, span, div) {
+    font-family: "Segoe UI", Tahoma, sans-serif;
+    font-size: 12px;
+}
+
+.tbp-client:is(.cpl-pers-photos, .cpl-pers-folders, .cpl-pers-theme-sheet) :is(.tbp-static, .tbp-check label, .tbp-link, .tbp-link-row, .tbp-group-label) {
+    line-height: 15px;
+}
+
+.tbp-client.cpl-pers-photos .cpl-pers-combo {
+    height: 23px;
+}
+
+/* the etched rules (SS_ETCHEDHORZ) */
+.tbp-client .cpl-pers-rule {
+    border-top: 1px solid #a0a0a0;
+    border-bottom: 1px solid #fff;
+    height: 0 !important;
+}
+
+.tbp-client .tbp-static.cpl-ph-search-label,
+.tbp-client .tbp-static.cpl-ph-folder-label {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.tbp-client .cpl-pers-combo.is-disabled {
+    pointer-events: none;
+}
+
+/* Browse For Folder: the text, the folder tree, OK / Cancel */
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-client.cpl-pers-folders {
+    width: 330px;
+    height: 372px;
+}
+
+.tbp-client.cpl-pers-folders .cpl-bf-text {
+    position: absolute;
+    left: 14px;
+    top: 12px;
+    right: 14px;
+    line-height: 15px;
+}
+
+.tbp-client.cpl-pers-folders .cpl-bf-tree {
+    position: absolute;
+    left: 14px;
+    top: 52px;
+    right: 14px;
+    bottom: 48px;
+    overflow: auto;
+    padding: 2px 0;
+    outline: none;
+}
+
+.tbp-client.cpl-pers-folders .cpl-bf-buttons {
+    position: absolute;
+    right: 12px;
+    bottom: 12px;
+    display: flex;
+    gap: 8px;
+}
+
+.tbp-client .cpl-bf-row {
+    display: flex;
+    align-items: center;
+    height: 18px;
+    gap: 3px;
+    white-space: nowrap;
+    cursor: var(--c-default, default);
+}
+
+.tbp-client .cpl-bf-name {
+    padding: 0 3px;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    line-height: 15px;
+}
+
+.tbp-client .cpl-bf-row.is-selected .cpl-bf-name {
+    border-color: #9adffe;
+    background: linear-gradient(#f7fcfe, #e3f4fd 50%, #e8f6fe);
+}
+
+/* the expander: Vista's tree triangles (open = solid, pointing down-right) */
+.tbp-client .cpl-bf-twisty {
+    flex: none;
+    width: 9px;
+    height: 9px;
+    border-left: 5px solid #8d8d8d;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    box-sizing: border-box;
+}
+
+.tbp-client .cpl-bf-node.is-open > .cpl-bf-row .cpl-bf-twisty {
+    border: 0;
+    border-right: 6px solid #3c3c3c;
+    border-top: 6px solid transparent;
+    transform: translate(1px, -1px);
+}
+
+.tbp-client .cpl-bf-node.is-leaf > .cpl-bf-row .cpl-bf-twisty {
+    visibility: hidden;
+}
+
+.tbp-client .cpl-bf-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    background: url("/static_images/vista-icons/explorer/folder-16.png") center / 16px 16px no-repeat;
+}
+
+.tbp-client .cpl-bf-node[data-path="/"] > .cpl-bf-row .cpl-bf-icon {
+    background-image: url("/static_images/vista-personalization/computer-16.png");
+}
+
+.tbp-client .cpl-bf-loading {
+    padding: 2px 0 2px 40px;
+    color: #6d6d6d;
+}
+
+/* ---- Theme Settings: Vista's Sample (the desktop picture, an Active Window in the theme's window
+   colour, the Recycle Bin) ---- */
+
+.tbp-client .cpl-th-sample {
+    overflow: hidden;
+    border: 1px solid #828790;
+    background: #3a6ea5 center / cover no-repeat;
+}
+
+.tbp-client .cpl-th-sample-win {
+    position: absolute;
+    left: 33px;
+    top: 34px;
+    width: 211px;
+    height: 124px;
+    box-sizing: border-box;
+    padding: 0 4px 4px;
+    border: 1px solid hsl(210 24% 14% / 82%);
+    border-radius: 6px 6px 3px 3px;
+    background:
+        linear-gradient(hsl(0 0% 100% / 28%), hsl(0 0% 100% / 8%) 45%, hsl(0 0% 100% / 0%) 50%, hsl(0 0% 100% / 10%)),
+        linear-gradient(var(--cpl-th-frame, hsl(210 10% 50% / 30%)), var(--cpl-th-frame, hsl(210 10% 50% / 30%)));
+    -webkit-backdrop-filter: blur(3px);
+    backdrop-filter: blur(3px);
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 60%), 2px 2px 8px hsl(0 0% 0% / 45%);
+}
+
+.tbp-client .cpl-th-sample-caption {
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: 22px;
+    padding-left: 6px;
+}
+
+.tbp-client .cpl-th-sample-caption span {
+    color: #000;
+    text-shadow: 0 0 6px #fff, 0 0 3px #fff;
+}
+
+/* the caption buttons: Minimize, Maximize, Close (the close one red), Vista's 25 / 25 / 43 ratio */
+.tbp-client .cpl-th-sample-btns {
+    position: absolute;
+    right: 0;
+    top: 0;
+    display: flex;
+}
+
+.tbp-client .cpl-th-sample-btns b {
+    position: relative;
+    display: block;
+    width: 22px;
+    height: 15px;
+    box-sizing: border-box;
+    border: 1px solid hsl(210 30% 20% / 70%);
+    border-top: 0;
+    border-left-width: 0;
+    background: linear-gradient(hsl(0 0% 100% / 70%), hsl(0 0% 100% / 35%) 50%, hsl(210 30% 40% / 25%) 50%, hsl(0 0% 100% / 40%));
+}
+
+.tbp-client .cpl-th-sample-btns b.is-min {
+    border-left-width: 1px;
+    border-bottom-left-radius: 3px;
+}
+
+.tbp-client .cpl-th-sample-btns b.is-close {
+    width: 38px;
+    border-bottom-right-radius: 3px;
+    background: linear-gradient(#e8a493, #cf6a55 50%, #b3321e 50%, #d66c4c);
+}
+
+.tbp-client .cpl-th-sample-btns b::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    box-sizing: border-box;
+}
+
+.tbp-client .cpl-th-sample-btns b.is-min::after {
+    width: 7px;
+    height: 3px;
+    margin-top: 2px;
+    background: #fff;
+    border: 1px solid #3d4f66;
+}
+
+.tbp-client .cpl-th-sample-btns b.is-max::after {
+    width: 8px;
+    height: 6px;
+    border: 1px solid #3d4f66;
+    box-shadow: inset 0 1px 0 #fff, inset 0 0 0 2px #fff;
+}
+
+.tbp-client .cpl-th-sample-btns b.is-close::after {
+    content: '\00d7';
+    color: #fff;
+    font: bold 12px/1 Tahoma, sans-serif;
+    text-shadow: 0 0 2px #6e1b0f;
+}
+
+.tbp-client .cpl-th-sample-client {
+    position: relative;
+    height: calc(100% - 22px);
+    box-sizing: border-box;
+    padding: 1px 3px;
+    border: 1px solid hsl(210 24% 30% / 70%);
+    background: #fff;
+    color: #000;
+}
+
+.tbp-client .cpl-th-sample-scroll {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 15px;
+    border-left: 1px solid #e3e3e3;
+    background:
+        linear-gradient(#f4f4f4, #e6e6e6) 1px 18px / 12px 22px no-repeat,
+        linear-gradient(#fbfbfb, #eaeaea) 0 0 / 100% 16px no-repeat,
+        linear-gradient(#fbfbfb, #eaeaea) 0 100% / 100% 16px no-repeat,
+        #f2f2f2;
+}
+
+.tbp-client .cpl-th-sample-bin {
+    position: absolute;
+    right: 30px;
+    bottom: 10px;
+}
+
+.tbp-client input[type="color"].tbp-ctl {
+    padding: 1px;
+    border: 1px solid #707070;
+    border-radius: 2px;
+    background: #fff;
+}

@@ -55,7 +55,9 @@ assert.ok(modalUtils.includes('galleryWindowPreparePromise = prepareGalleryWindo
 assert.ok(modalUtils.includes('const prepared = Promise.resolve(galleryWindowPreparePromise).catch(() => {});')
     && modalUtils.includes('prepared.then(() => workspaceSplash.hide());'), 'the splash hides once the content is ready');
 // ... and not before the rows in view show their previews (no BlurHash wall), at most 10 s
-assert.ok(modalUtils.includes('workspaceSplash.waitFor(prepared.then(() => waitForGalleryVisiblePreviews()), 10000);'), 'the splash waits for the visible previews');
+assert.ok(modalUtils.includes('workspaceSplash.waitFor(prepared.then(() => waitForGalleryVisiblePreviews(10000)), 10000);'), 'the splash waits for the visible previews');
+// ... and the poll stops with the splash: at the cap, or once the window is closed or minimised
+assert.ok(/Date\.now\(\) >= deadline \|\| isGalleryWindowHidden\(\) \|\| galleryWindow\.classList\.contains\('minimised'\)/.test(modalUtils), 'the preview poll gives up with the splash');
 assert.ok(splashJs.includes('waitFor(ready, capMs)') && /if \(this\.readyGate\) \{\s*const gate = this\.readyGate;\s*gate\.then\(\(\) => this\.hide\(onHidden\)\);/.test(splashJs), 'hide() holds while the ready gate is pending');
 assert.ok(read('public/scripts/comp/galleryView.js').includes('function galleryVisiblePreviewsReady()'), 'galleryView.js says when the visible previews are in');
 assert.ok(galleryView.includes('if (workspaceSplash.isActive()) {\n        workspaceSplash.setStatus(`Loading ${viewName}...`);\n        return;\n    }'), 'no loading dialog while the splash is up');

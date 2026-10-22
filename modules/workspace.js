@@ -50,6 +50,28 @@ function personalizationInt(value, lo, hi, fallback) {
     return Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.round(n))) : fallback;
 }
 
+// the Photos screen saver's settings (personalizationDialogs.js)
+function normalizePersonalizationPhotos(raw) {
+    const p = raw && typeof raw === 'object' ? raw : {};
+    const one = (value, list, fallback) => (list.includes(value) ? value : fallback);
+    const search = p.search && typeof p.search === 'object' && Array.isArray(p.search.blocks) && JSON.stringify(p.search).length <= 8000
+        ? p.search : null;
+    const folder = p.folder && typeof p.folder === 'object' && typeof p.folder.path === 'string' && p.folder.path.length <= 1000
+        ? { path: p.folder.path, label: String(p.folder.label || '').slice(0, 200) } : null;
+    return {
+        source: one(p.source, ['windows', 'workspace', 'search', 'folder'], 'windows'),
+        workspace: typeof p.workspace === 'string' && p.workspace.length <= 100 ? p.workspace : 'current',
+        age: one(p.age, ['any', 'day', 'week', 'month', 'year'], 'any'),
+        favorites: p.favorites === true,
+        search,
+        folder,
+        theme: one(p.theme, ['random', 'classic', 'fade', 'panzoom', 'travel', 'frame', 'stack'], 'panzoom'),
+        speed: one(p.speed, ['slow', 'medium', 'fast'], 'medium'),
+        shuffle: p.shuffle !== false,
+        monotone: p.monotone === true
+    };
+}
+
 function normalizeWorkspacePersonalization(raw) {
     if (!raw || typeof raw !== 'object') return null;
     const cc = raw.customColor && typeof raw.customColor === 'object' ? raw.customColor : {};
@@ -76,8 +98,49 @@ function normalizeWorkspacePersonalization(raw) {
         screenSaver: {
             id: PERSONALIZATION_SAVERS.has(ss.id) ? ss.id : 'none',
             wait: personalizationInt(ss.wait, 1, 9999, 10),
-            resumeLogon: ss.resumeLogon === true
+            resumeLogon: ss.resumeLogon === true,
+            photos: normalizePersonalizationPhotos(ss.photos)
         }
+    };
+}
+
+/**
+ * The desktop's icon view (desktopIconView.js): Vista's icon size (16-256; 32 / 48 / 96 are
+ * Classic / Medium / Large), Auto Arrange, Align to Grid, Show Desktop Icons, the last Sort By,
+ * and the icons picked in Desktop Icon Settings for its system icons.
+ */
+const DESKTOP_VIEW_SORTS = new Set(['name', 'size', 'type', 'date']);
+const DESKTOP_VIEW_SLOTS = ['computer', 'user', 'network', 'recycle-full', 'recycle-empty'];
+const DESKTOP_VIEW_ICON_FILES = { imageres: 185, shell32: 278, NetworkExplorer: 23 };
+
+function normalizeDesktopViewIcon(ref) {
+    if (!ref || typeof ref !== 'object') return null;
+    if (ref.file === 'app') {
+        return typeof ref.name === 'string' && /^[\w .-]{1,80}\.(png|webp|svg)$/i.test(ref.name) ? { file: 'app', name: ref.name } : null;
+    }
+    const count = DESKTOP_VIEW_ICON_FILES[ref.file];
+    const index = Math.round(Number(ref.index));
+    if (!count || !Number.isFinite(index) || index < 0 || index >= count) return null;
+    return { file: ref.file, index };
+}
+
+function normalizeWorkspaceDesktopView(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const systemIcons = {};
+    if (raw.systemIcons && typeof raw.systemIcons === 'object') {
+        DESKTOP_VIEW_SLOTS.forEach((slot) => {
+            const ref = normalizeDesktopViewIcon(raw.systemIcons[slot]);
+            if (ref) systemIcons[slot] = ref;
+        });
+    }
+    return {
+        size: personalizationInt(raw.size, 16, 256, 48),
+        autoArrange: raw.autoArrange === true,
+        alignToGrid: raw.alignToGrid !== false,
+        showIcons: raw.showIcons !== false,
+        sortBy: DESKTOP_VIEW_SORTS.has(raw.sortBy) ? raw.sortBy : 'name',
+        sortDir: raw.sortDir === 'desc' ? 'desc' : 'asc',
+        systemIcons
     };
 }
 
@@ -156,6 +219,10 @@ class WorkspaceManager {
 
     normalizeWorkspaceNicknames(raw) {
         return normalizeWorkspaceNicknames(raw);
+    }
+
+    normalizeWorkspacePersonalization(raw) {
+        return normalizeWorkspacePersonalization(raw);
     }
 
     resolveWorkspaceRef(value) {
@@ -526,6 +593,9 @@ class WorkspaceManager {
         }
         if (typeof settings.personalization !== 'undefined') {
             updates.personalization = normalizeWorkspacePersonalization(settings.personalization);
+        }
+        if (typeof settings.desktopView !== 'undefined') {
+            updates.desktopView = normalizeWorkspaceDesktopView(settings.desktopView);
         }
 
         // Merge all updates at once (fluent API - use array notation for workspace ID)
@@ -2560,3 +2630,4 @@ module.exports.normalizeWorkspaceAlias = normalizeWorkspaceAlias;
 module.exports.normalizeWorkspaceNicknames = normalizeWorkspaceNicknames;
 module.exports.resolveWorkspaceRef = resolveWorkspaceRef;
 module.exports.nextDesktopGridPosition = nextDesktopGridPosition;
+module.exports.normalizeWorkspaceDesktopView = normalizeWorkspaceDesktopView;

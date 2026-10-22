@@ -261,17 +261,45 @@ function applyDesktopWallpaperInline(wallpaperPath, wallpaperPosition) {
     }
     const position = wallpaperPosition || 'center';
     const wallpaperCss = formatCssUrl(wallpaperUrl);
-    document.documentElement.style.setProperty('--desktop-wallpaper', wallpaperCss);
-    document.documentElement.style.setProperty('--desktop-wallpaper-position', position);
-    document.body.style.setProperty('--desktop-wallpaper', wallpaperCss);
-    document.body.style.setProperty('--desktop-wallpaper-position', position);
+    const seq = ++desktopWallpaperWriteSeq;
+    const write = () => {
+        if (seq !== desktopWallpaperWriteSeq) return;
+        document.documentElement.style.setProperty('--desktop-wallpaper', wallpaperCss);
+        document.documentElement.style.setProperty('--desktop-wallpaper-position', position);
+        document.body.style.setProperty('--desktop-wallpaper', wallpaperCss);
+        document.body.style.setProperty('--desktop-wallpaper-position', position);
+        // Frosted frames rebuild from the new wallpaper (public/scripts/comp/aeroGlass.js)
+        if (window.aeroGlass) {
+            window.aeroGlass.refreshWallpaper();
+        }
+    };
     // preloadWallpaperIntoMemory: this file
-    preloadWallpaperIntoMemory(wallpaperUrl);
-    // Frosted frames rebuild from the new wallpaper (public/scripts/comp/aeroGlass.js)
-    if (window.aeroGlass) {
-        window.aeroGlass.refreshWallpaper();
+    const decoded = preloadWallpaperIntoMemory(wallpaperUrl);
+    // Vista keeps the old picture until the new one is decoded, then cuts (no fade).
+    // Boot and an empty desktop paint at once; a change waits for the decode.
+    const shown = document.body.style.getPropertyValue('--desktop-wallpaper');
+    if (!shown || shown === wallpaperCss || wallpaperIsDecoded(wallpaperUrl)) {
+        write();
+    } else {
+        decoded.then(write);
     }
     return true;
+}
+
+let desktopWallpaperWriteSeq = 0;
+
+function wallpaperIsDecoded(url) {
+    const img = wallpaperMemoryImages.get(url);
+    return !!(img && img.complete && img.naturalWidth > 0);
+}
+
+// Drops the inline wallpaper (and any change still waiting for its decode).
+function clearDesktopWallpaperInline() {
+    desktopWallpaperWriteSeq++;
+    document.documentElement.style.removeProperty('--desktop-wallpaper');
+    document.documentElement.style.removeProperty('--desktop-wallpaper-position');
+    document.body.style.removeProperty('--desktop-wallpaper');
+    document.body.style.removeProperty('--desktop-wallpaper-position');
 }
 
 // Paint the active workspace wallpaper now. Compiled workspaces.css can lag
@@ -279,10 +307,7 @@ function applyDesktopWallpaperInline(wallpaperPath, wallpaperPosition) {
 function syncDesktopWallpaperInline(workspaceId) {
     const workspace = workspaces && workspaces[workspaceId];
     if (!workspace || !workspace.wallpaper) {
-        document.documentElement.style.removeProperty('--desktop-wallpaper');
-        document.documentElement.style.removeProperty('--desktop-wallpaper-position');
-        document.body.style.removeProperty('--desktop-wallpaper');
-        document.body.style.removeProperty('--desktop-wallpaper-position');
+        clearDesktopWallpaperInline();
         if (window.aeroGlass && window.aeroGlass.refreshWallpaper) {
             window.aeroGlass.refreshWallpaper();
         }
@@ -425,10 +450,7 @@ function applyEarlyWorkspaceThemeInline(settings) {
         if (settings.wallpaper) {
             applyDesktopWallpaperInline(settings.wallpaper, settings.wallpaperPosition);
         } else {
-            document.documentElement.style.removeProperty('--desktop-wallpaper');
-            document.documentElement.style.removeProperty('--desktop-wallpaper-position');
-            document.body.style.removeProperty('--desktop-wallpaper');
-            document.body.style.removeProperty('--desktop-wallpaper-position');
+            clearDesktopWallpaperInline();
         }
     }
 }
@@ -450,10 +472,7 @@ function bodyHasInlineWallpaper() {
 function clearEarlyWorkspaceThemeInline() {
     document.documentElement.style.removeProperty('--workspace-color');
     document.documentElement.style.removeProperty('--workspace-background-color');
-    document.documentElement.style.removeProperty('--desktop-wallpaper');
-    document.documentElement.style.removeProperty('--desktop-wallpaper-position');
-    document.body.style.removeProperty('--desktop-wallpaper');
-    document.body.style.removeProperty('--desktop-wallpaper-position');
+    clearDesktopWallpaperInline();
     if (window.aeroGlass) {
         window.aeroGlass.refreshWallpaper();
     }

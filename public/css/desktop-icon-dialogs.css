@@ -1,0 +1,119 @@
+/* Desktop Icon Settings and Change Icon (desktopIconDialogs.js), on Taskbar Properties' Vista
+   controls (taskbar-properties.css tbp-*), measured on the Vista Aero VM:
+     Desktop Icon Settings   the sheet's client 398x423; the icon list is a classic LVS_ICON list:
+                             75x75 cells, the item 74 wide, a 36 px icon box with the 32 px picture
+                             2 px down, Tahoma 11 px labels on 13 px lines under it. Selected: the
+                             label on the highlight (#3399ff, white text; #f0f0f0 without focus)
+                             and the picture blended half with the highlight.
+     Change Icon             client 290x325; the list box at 11,76, 268x199 with its 17 px
+                             horizontal scroll bar; 36x44 cells (the picture 2, 6 in), four rows,
+                             the selected cell filled #3399ff. */
+
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.dic-change-icon {
+    width: 290px;
+    height: 325px;
+}
+
+/* ---- Desktop Icon Settings: the icon list ---- */
+
+.tbp-client .dic-list {
+    overflow: hidden auto;
+    border: 1px solid #828790;
+    background: #fff;
+    outline: none;
+}
+
+.tbp-client .dic-item {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 74px;
+}
+
+.tbp-client .dic-item .dic-item-icon {
+    --desktop-icon-px: 32px;
+    width: 32px;
+    height: 32px;
+    margin: 2px 0 1px;
+}
+
+.tbp-client .dic-item .dic-item-label {
+    max-width: 72px;
+    padding: 0 2px 1px;
+    line-height: 13px;
+    text-align: center;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.tbp-client .dic-item.is-selected .dic-item-label {
+    background: #f0f0f0;
+}
+
+.tbp-client .dic-list:focus .dic-item.is-selected .dic-item-label {
+    background: #3399ff;
+    color: #fff;
+}
+
+/* ILD_SELECTED: the picture half blended with the highlight, only where it is drawn */
+.tbp-client .dic-item.is-selected .desktop-icon-sprite::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgb(51 153 255 / 50%);
+    -webkit-mask: var(--sprite-image) no-repeat var(--sprite-pos) / var(--sprite-size);
+    mask: var(--sprite-image) no-repeat var(--sprite-pos) / var(--sprite-size);
+}
+
+/* ---- Change Icon: the list box ---- */
+
+.tbp-client .dic-ci-list {
+    border: 1px solid #828790;
+    background: #fff;
+    outline: none;
+}
+
+.tbp-client .dic-ci-scroll {
+    position: absolute;
+    inset: 0;
+    overflow-x: scroll;
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+}
+
+.tbp-client .dic-ci-grid {
+    display: grid;
+    grid-auto-flow: column;
+    grid-template-rows: repeat(4, 44px);
+    grid-auto-columns: 36px;
+    width: max-content;
+    padding: 1px 0 0 1px;
+}
+
+.tbp-client .dic-ci-item {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 36px;
+    height: 44px;
+    padding-top: 6px;
+    scroll-snap-align: start;
+}
+
+.tbp-client .dic-ci-item .dic-ci-icon {
+    --desktop-icon-px: 32px;
+    width: 32px;
+    height: 32px;
+}
+
+.tbp-client .dic-ci-item.is-selected {
+    background: #3399ff;
+}
+
+.tbp-client .dic-ci-list:focus .dic-ci-item.is-selected {
+    outline: 1px dotted #fff;
+    outline-offset: -1px;
+}

@@ -102,6 +102,8 @@ class WorkspaceWebSocketHandlers {
                 nicknames: Array.isArray(workspace.nicknames) ? workspace.nicknames : [],
                 // window colour, sounds, screen saver (desktopPersonalization.js)
                 personalization: workspace.personalization && typeof workspace.personalization === 'object' ? workspace.personalization : null,
+                // icon size, Auto Arrange, Align to Grid, system icons' pictures (desktopIconView.js)
+                desktopView: workspace.desktopView && typeof workspace.desktopView === 'object' ? workspace.desktopView : null,
                 sort: workspace.sort || 0, // Include sort field
                 fileCount,
                 presetCount: Array.isArray(workspace.presets) ? workspace.presets.length : 0,
@@ -1290,6 +1292,11 @@ class WorkspaceWebSocketHandlers {
                     return;
                 }
                 settings.nicknames = this.globalResources.getWorkspaceManager().normalizeWorkspaceNicknames(settings.nicknames);
+            }
+
+            // stored and broadcast in the same normalised shape (modules/workspace.js)
+            if (settings.personalization !== undefined) {
+                settings.personalization = this.globalResources.getWorkspaceManager().normalizeWorkspacePersonalization(settings.personalization);
             }
 
             this.globalResources.getWorkspaceManager().updateWorkspaceSettings(id, settings);

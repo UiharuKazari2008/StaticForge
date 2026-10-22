@@ -224,18 +224,40 @@
         });
     }
 
+    /** Every sound passes one analyser on its way out: the Sound dialog's Playback level meter. */
+    function outputNode(ctx) {
+        if (!state.analyser && ctx.createAnalyser) {
+            state.analyser = ctx.createAnalyser();
+            state.analyser.fftSize = 512;
+            state.analyser.connect(ctx.destination);
+        }
+        return state.analyser || ctx.destination;
+    }
+
+    /** The output's level now, 0-1 (peak of the last few ms; 0 before anything has played). */
+    function outputLevel() {
+        const a = state.analyser;
+        if (!a) return 0;
+        if (!state.levelBuf) state.levelBuf = new Uint8Array(a.fftSize);
+        a.getByteTimeDomainData(state.levelBuf);
+        let peak = 0;
+        for (let i = 0; i < state.levelBuf.length; i++) peak = Math.max(peak, Math.abs(state.levelBuf[i] - 128));
+        return Math.min(1, peak / 128);
+    }
+
     function playBuffer(buffer) {
         const ctx = getContext();
         if (!ctx || !buffer) return Promise.resolve(false);
         const source = ctx.createBufferSource();
         const gain = ctx.createGain ? ctx.createGain() : null;
         source.buffer = buffer;
+        const out = outputNode(ctx);
         if (gain) {
             gain.gain.value = 1;
             source.connect(gain);
-            gain.connect(ctx.destination);
+            gain.connect(out);
         } else {
-            source.connect(ctx.destination);
+            source.connect(out);
         }
         return new Promise((resolve) => {
             let done = false;
@@ -351,6 +373,7 @@
         play,
         playFile,
         resolveFile,
+        outputLevel,
         unlock,
         prefetch,
         bind,

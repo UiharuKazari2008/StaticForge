@@ -13,8 +13,13 @@
  *                        to remove it from the history
  *
  * Browse... uploads a picture (modalUtils.js uploadCustomWallpaper) and selects it under Your
- * Uploads. OK (or a double-click) sets the workspace's wallpaper (setDesktopWallpaper, keeping the
- * position) and goes back to Personalization; Cancel goes back unchanged.
+ * Uploads. "How should the picture be positioned?" holds the wallpaper's horizontal and vertical
+ * alignment (moved here from the old Personalize page, 2026-10-21; Manual adds a slider). OK (or a
+ * double-click) sets the workspace's wallpaper and position (setDesktopWallpaper) and goes back;
+ * Cancel goes back unchanged.
+ *
+ * openWith(path) is "Set as desktop background" from a gallery or Explorer picture: the page opens
+ * with that picture selected under Selected Picture (modalUtils.js openDesktopSettingsModal).
  */
 (function (root) {
     'use strict';
@@ -61,9 +66,22 @@
     ];
     const LOCATIONS = [['windows', 'Windows Wallpapers'], ['melaton', 'Melaton Wallpapers'], ['uploads', 'Your Uploads']];
 
+    const ALIGN = {
+        horizontal: [['left', 'Left'], ['center', 'Center'], ['right', 'Right'], ['custom', 'Manual']],
+        vertical: [['top', 'Top'], ['center', 'Center'], ['bottom', 'Bottom'], ['custom', 'Manual']]
+    };
+
     let main = null;
     let registered = false;
-    let state = { location: 'windows', selected: null, collapsed: new Set(), uploads: [] };
+    let state = {
+        location: 'windows',
+        selected: null,
+        collapsed: new Set(),
+        uploads: [],
+        pending: null,  // { path, url }: a picture handed in by openWith
+        current: null,  // { path, url }: the workspace's wallpaper when the page opened
+        pos: { h: 'center', v: 'center', ch: 50, cv: 50 }
+    };
 
     function esc(text) {
         return String(text == null ? '' : text)
@@ -88,18 +106,50 @@
         }));
     }
 
-    /** The workspace's wallpaper as a URL (null = the default). */
-    function currentUrl() {
+    function workspaceRecord() {
         /* global workspaces, activeWorkspace */
         const wsId = (typeof activeWorkspace !== 'undefined' && activeWorkspace) || root.currentWorkspace || 'default';
-        const ws = typeof workspaces !== 'undefined' && workspaces ? workspaces[wsId] : null;
-        const path = ws && ws.wallpaper;
+        return typeof workspaces !== 'undefined' && workspaces ? workspaces[wsId] : null;
+    }
+
+    /** A wallpaper path (type:id, modalUtils.js) as the URL that shows it. */
+    function pathToUrl(path) {
         if (!path) return null;
         const [type, ...rest] = String(path).split(':');
         const id = rest.join(':');
-        if (type === 'url') return id;
-        if (type === 'wallpaper') return `/cache/wallpapers/${encodeURIComponent(`${id}.png`)}`;
-        return null;
+        /* global localGalleryImageUrl, localCacheUploadUrl, localCachePreviewUrl */
+        switch (type) {
+            case 'url': return id;
+            case 'wallpaper': return `/cache/wallpapers/${encodeURIComponent(`${id}.png`)}`;
+            case 'file': return typeof localGalleryImageUrl === 'function' ? localGalleryImageUrl(id) : `/images/${encodeURIComponent(id)}`;
+            case 'cache': return typeof localCacheUploadUrl === 'function' ? localCacheUploadUrl(id) : null;
+            case 'cache-preview': return typeof localCachePreviewUrl === 'function' ? localCachePreviewUrl(id) : null;
+            case 'vibe': return `/cache/vibe/${id}`;
+            default: return null;
+        }
+    }
+
+    /** The workspace's wallpaper as a URL (null = the default). */
+    function currentUrl() {
+        const ws = workspaceRecord();
+        return pathToUrl(ws && ws.wallpaper);
+    }
+
+    function readPosition() {
+        const ws = workspaceRecord();
+        const [h = 'center', v = 'center'] = String((ws && ws.wallpaperPosition) || 'center center').split(/\s+/);
+        const pct = (t) => (String(t).endsWith('%') ? Math.min(100, Math.max(0, parseInt(t, 10) || 0)) : null);
+        return {
+            h: pct(h) !== null ? 'custom' : (ALIGN.horizontal.some(([k]) => k === h) ? h : 'center'),
+            v: pct(v) !== null ? 'custom' : (ALIGN.vertical.some(([k]) => k === v) ? v : 'center'),
+            ch: pct(h) !== null ? pct(h) : 50,
+            cv: pct(v) !== null ? pct(v) : 50
+        };
+    }
+
+    function positionValue() {
+        const p = state.pos;
+        return `${p.h === 'custom' ? `${p.ch}%` : p.h} ${p.v === 'custom' ? `${p.cv}%` : p.v}`;
     }
 
     function locationFor(url) {
@@ -135,6 +185,13 @@
     }
 
     function gridHtml() {
+        const handed = state.pending
+            ? group('Selected Picture', [{ url: state.pending.url, thumb: state.pending.url, name: 'Selected picture' }])
+            : '';
+        return handed + locationHtml();
+    }
+
+    function locationHtml() {
         if (state.location === 'windows') {
             const all = windowsWallpapers();
             return CATEGORIES.map((c) => group(c, all.filter((w) => w.category === c))).join('');
@@ -156,9 +213,29 @@
                 <input type="file" accept="image/*" class="hidden" data-cpl-db-file>
             </div>
             <div class="cpl-db-grid">${gridHtml()}</div>
+            <div class="cpl-db-position">
+                <div class="cpl-db-position-title">How should the picture be positioned?</div>
+                <div class="cpl-db-position-row">
+                    ${alignHtml('horizontal', 'Horizontal', state.pos.h, state.pos.ch)}
+                    ${alignHtml('vertical', 'Vertical', state.pos.v, state.pos.cv)}
+                </div>
+            </div>
             <div class="cpl-db-footer">
                 <button type="button" class="cpl-wu-button" data-cpl-db="ok">OK</button>
                 <button type="button" class="cpl-wu-button" data-cpl-db="cancel">Cancel</button>
+            </div>`;
+    }
+
+    function alignHtml(axis, label, value, pct) {
+        const name = (ALIGN[axis].find(([k]) => k === value) || ALIGN[axis][1])[1];
+        return `
+            <div class="cpl-db-align">
+                <span class="cpl-db-align-label">${label}</span>
+                <button type="button" class="cpl-db-combo cpl-db-align-combo" data-cpl-db-axis="${axis}">${esc(name)}</button>
+                <span class="cpl-db-align-manual${value === 'custom' ? '' : ' hidden'}">
+                    <input type="range" min="0" max="100" step="1" value="${pct}" data-cpl-db-pct="${axis}" aria-label="${label} position">
+                    <span class="cpl-db-align-pct">${pct}%</span>
+                </span>
             </div>`;
     }
 
@@ -172,6 +249,26 @@
         const cm = root.contextMenu;
         const locationBtn = host.querySelector('[data-cpl-db="location"]');
         if (!cm || !locationBtn) return;
+        host.querySelectorAll('[data-cpl-db-axis]').forEach((btn) => {
+            const axis = btn.dataset.cplDbAxis;
+            const key = axis === 'horizontal' ? 'h' : 'v';
+            cm.attachPickerMenu(btn, {
+                items: () => ALIGN[axis].map(([value, text]) => ({ value, text })),
+                value: () => state.pos[key],
+                onSelect: (value) => {
+                    state.pos[key] = value;
+                    btn.textContent = (ALIGN[axis].find(([k]) => k === value) || ALIGN[axis][1])[1];
+                    btn.parentElement.querySelector('.cpl-db-align-manual').classList.toggle('hidden', value !== 'custom');
+                }
+            });
+        });
+        host.querySelectorAll('[data-cpl-db-pct]').forEach((input) => {
+            input.addEventListener('input', () => {
+                const key = input.dataset.cplDbPct === 'horizontal' ? 'ch' : 'cv';
+                state.pos[key] = Number(input.value) || 0;
+                input.parentElement.querySelector('.cpl-db-align-pct').textContent = `${state.pos[key]}%`;
+            });
+        });
         cm.attachPickerMenu(locationBtn, {
             items: () => LOCATIONS.map(([id, text]) => ({ value: id, text })),
             value: () => state.location,
@@ -196,20 +293,29 @@
 
     function back() {
         const cpl = root.melatonControlPanel;
-        if (cpl) cpl.navigate('personalization');
+        if (!cpl) return;
+        // Vista returns to the page it came from; opened on its own it goes to Personalization
+        if (typeof cpl.goBack === 'function' && cpl.currentPage() === 'desktop-background') {
+            cpl.goBack(); // no history: stays here, and goes to Personalization below
+            if (cpl.currentPage() !== 'desktop-background') return;
+        }
+        cpl.navigate('personalization');
     }
 
     async function apply() {
         const url = state.selected || null;
-        /* global setDesktopWallpaper, workspaces, activeWorkspace */
-        const wsId = (typeof activeWorkspace !== 'undefined' && activeWorkspace) || root.currentWorkspace || 'default';
-        const ws = typeof workspaces !== 'undefined' && workspaces ? workspaces[wsId] : null;
-        const position = (ws && ws.wallpaperPosition) || 'center center';
+        /* global setDesktopWallpaper */
+        const position = positionValue();
         let path = null;
-        if (url) {
+        if (url && state.pending && url === state.pending.url) {
+            path = state.pending.path;
+        } else if (url && state.current && url === state.current.url) {
+            path = state.current.path; // a gallery or uploaded picture keeps its own kind of path
+        } else if (url) {
             const m = /^\/cache\/wallpapers\/([^/]+)\.png$/.exec(url);
             path = m ? `wallpaper:${decodeURIComponent(m[1])}` : `url:${url}`;
         }
+        state.pending = null;
         if (typeof setDesktopWallpaper === 'function') await setDesktopWallpaper(path, position);
         back();
     }
@@ -264,8 +370,12 @@
 
     async function mount(el) {
         main = el;
-        state.selected = currentUrl();
-        state.location = locationFor(state.selected);
+        const ws = workspaceRecord();
+        state.current = ws && ws.wallpaper ? { path: ws.wallpaper, url: currentUrl() } : null;
+        state.pos = readPosition();
+        state.selected = state.pending ? state.pending.url : currentUrl();
+        state.location = locationFor(state.pending ? null : state.selected);
+        if (state.pending) state.location = 'windows';
         paint();
         await loadUploads();
         if (state.location === 'uploads') paint();
@@ -289,6 +399,7 @@
 
     function unmount() {
         main = null;
+        state.pending = null;
     }
 
     function register() {
@@ -298,6 +409,7 @@
         registered = true;
         cpl.registerPage('desktop-background', {
             title: () => 'Desktop Background',
+            parent: 'personalization',
             tasks: () => `
                 <div class="cpl-task-group cpl-task-group--see-also">
                     <h3 class="cpl-task-heading">See also</h3>
@@ -315,6 +427,14 @@
     root.cplDesktopBackground = {
         register,
         open: () => register() && root.melatonControlPanel.navigate('desktop-background'),
+        /** Open with a picture (a wallpaper path, type:id) selected. */
+        openWith: (path) => {
+            if (!register()) return false;
+            const url = pathToUrl(path);
+            state.pending = url ? { path, url } : null;
+            root.melatonControlPanel.navigate('desktop-background');
+            return true;
+        },
         VISTA_WALLPAPERS,
         CATEGORIES,
         _test: { html: (st) => { state = { ...state, ...st }; return html(); }, locationFor }

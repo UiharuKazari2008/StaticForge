@@ -16,16 +16,20 @@
  *   recentItems.clear(workspaceId?)   the Start menu's "Clear Recent Items list"
  *
  * Kept in this browser (localStorage 'recentItems:<workspace>'), like the Start menu's launch
- * history. Nothing is recorded while Taskbar and Start Menu Properties' "Store and display a list
- * of recently opened files" is off (taskbarSettings.js recentFiles), as in Vista. Fires
- * 'recentitemschange' on window.
+ * history. While Taskbar and Start Menu Properties' "Store and display a list of recently opened
+ * files" is off (taskbarSettings.js recentFiles) nothing is recorded and every workspace's list
+ * is cleared, as in Vista. Fires 'recentitemschange' on window.
  */
 (function (root) {
     'use strict';
 
     const PREFIX = 'recentItems:';
     const MAX = 15; // Vista's Recent Items shows 15
+    const REOPEN_MS = 5000;
     const openers = {};
+    // an item reopened from the list: the app it opens in may record it again under a key of its
+    // own (a new browser session, a file opened from another folder); that entry replaces it
+    let reopening = null;
 
     function workspaceId() {
         // activeWorkspace: public/scripts/comp/workspaceUtils.js (a classic-script global)
@@ -66,10 +70,28 @@
         return s.length > n ? `${s.slice(0, n - 1)}…` : s;
     }
 
+    /** Privacy off: every workspace's list goes, as Vista clears Recent Items. */
+    function clearAll() {
+        const ls = root.localStorage;
+        if (!ls) return;
+        try {
+            const keys = [];
+            for (let i = 0; i < (ls.length || 0); i++) {
+                const k = ls.key(i);
+                if (k && k.startsWith(PREFIX)) keys.push(k);
+            }
+            if (!keys.length && ls.getItem(storageKey())) keys.push(storageKey());
+            keys.forEach((k) => ls.removeItem(k));
+            if (keys.length) root.dispatchEvent(new CustomEvent('recentitemschange', { detail: { workspace: null } }));
+        } catch (_) { /* private mode */ }
+    }
+
     function add(entry) {
         if (!entry || !entry.kind || !entry.key || !entry.title || !recording()) return false;
         const ws = entry.workspace || workspaceId();
         const key = `${entry.kind}:${entry.key}`;
+        if (reopening && (Date.now() > reopening.until || reopening.ws !== ws)) reopening = null;
+        const replaces = reopening && reopening.kind === entry.kind && reopening.key !== key ? reopening.key : null;
         const item = {
             kind: String(entry.kind),
             key,
@@ -81,13 +103,22 @@
             data: entry.data && typeof entry.data === 'object' ? entry.data : {},
             t: Date.now()
         };
-        const list = read(ws).filter((e) => e.key !== key);
+        const before = read(ws);
+        // recorded again without its folder (reopened from the list): it keeps the one it had
+        const was = before.find((e) => e.key === key);
+        if (!item.sub && was && was.sub) item.sub = was.sub;
+        const list = before.filter((e) => e.key !== key && e.key !== replaces);
         list.unshift(item);
         write(list, ws);
+        if (replaces) reopening = null;
         return true;
     }
 
     function list(ws) {
+        if (!recording()) {
+            clearAll();
+            return [];
+        }
         return read(ws);
     }
 
@@ -106,12 +137,17 @@
     async function open(entry) {
         const fn = entry && openers[entry.kind];
         if (!fn) return false;
+        reopening = { kind: entry.kind, key: entry.key, ws: workspaceId(), until: Date.now() + REOPEN_MS };
         try {
             await fn(entry);
-            // opening it again makes it the newest
-            add({ kind: entry.kind, key: entry.key.slice(entry.kind.length + 1), title: entry.title, sub: entry.sub, imageIcon: entry.imageIcon, image: entry.image, icon: entry.icon, data: entry.data });
+            // opening it again makes it the newest, unless the app recorded it afresh meanwhile;
+            // one that records it a moment later (a page's first load) still replaces it
+            if (reopening && reopening.key === entry.key) {
+                add({ kind: entry.kind, key: entry.key.slice(entry.kind.length + 1), title: entry.title, sub: entry.sub, imageIcon: entry.imageIcon, image: entry.image, icon: entry.icon, data: entry.data });
+            }
             return true;
         } catch (err) {
+            reopening = null;
             console.error('Recent Items: could not open', entry.title, err);
             return false;
         }
@@ -161,7 +197,10 @@
         if (!item || !item.name || !['user-file', 'system-file'].includes(item.targetKind)) return;
         const saved = {};
         EXPLORER_FIELDS.forEach((f) => { if (item[f] !== undefined && typeof item[f] !== 'function') saved[f] = item[f]; });
-        add({ kind: 'file', key: `${folder || ''}/${item.id || item.name}`, title: item.name, sub: folder || '', data: { item: saved } });
+        // keyed by the file itself, not the folder it was opened from: reopened from the list, Cartograph
+        // records it with no folder
+        const id = item.systemFileKey || item.targetId || item.id || item.name;
+        add({ kind: 'file', key: `${item.targetKind}:${id}`, title: item.name, sub: folder || '', data: { item: saved } });
     }
 
     /** Studio: an image loaded into it. */
@@ -251,8 +290,12 @@
         return undefined;
     });
 
+    root.addEventListener?.('taskbarsettingschange', (ev) => {
+        if (ev && ev.detail && ev.detail.recentFiles === false) clearAll();
+    });
+
     const api = {
-        add, list, open, remove, clear, registerOpener, workspaceId, MAX,
+        add, list, open, remove, clear, clearAll, registerOpener, workspaceId, MAX,
         notePage, noteExplorerItem, noteStudioImage, noteDirectorSession, noteNote, notePicture,
         _test: { storageKey, openers, sessionKey }
     };
