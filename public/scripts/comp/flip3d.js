@@ -1166,11 +1166,12 @@ void main() { gl_FragColor = texture2D(uTex, vUv) * uAlpha; }`;
             if (!src) return;
             drawCard(cam, vw, vh, uploadTexture(src), pose, card.w, card.h, alpha, src.flipRim);
         });
-        // the first frame uploads the textures (slow on a weak GPU): the flight's clock starts
-        // when it is done, so the open is never half over before it is seen
-        if (!s.primed && s.phase.dir > 0) {
-            s.primed = true;
-            s.phase.t0 = performance.now();
+        // the first frame uploads the textures (slow on a weak GPU, and the cost lands when it
+        // is shown): the flight's clock starts at the frame after, so the open is never half
+        // over before it is seen
+        if (s.primeFrames > 0 && s.phase.dir > 0) {
+            s.primeFrames -= 1;
+            if (!s.primeFrames) s.phase.t0 = performance.now();
             s.raf = root.requestAnimationFrame(frame);
             return;
         }
@@ -1291,7 +1292,7 @@ void main() { gl_FragColor = texture2D(uTex, vUv) * uAlpha; }`;
         });
         // u = 0 until the first frame is drawn (frame() starts the clock then)
         s.phase = { dir: 1, t0: Infinity };
-        s.primed = false;
+        s.primeFrames = 2;
         redraw();
     }
 
