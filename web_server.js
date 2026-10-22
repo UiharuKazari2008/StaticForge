@@ -908,9 +908,11 @@ function resolveLoginSpritePath() {
 // The manifest is memoised: rebuilding it stats every row (installManifestFilter) and hashes
 // fflate + the login sheet, and OPTIONS / plus /agent/assets* ask for it on every call.
 // Keyed on the cache data array (replaced by initializeCacheData), the site-access flag and
-// the stat of the two files hashed here; a short TTL picks up rows deleted between rebuilds.
+// the stat of the two files hashed here; a TTL picks up rows deleted between rebuilds. The
+// uncached build blocks 130-365 ms on the live tree, so the TTL is minutes, not seconds
+// (recompiles and cache rebuilds invalidate it at once).
 // Callers must treat the returned array as read-only.
-const SW_MANIFEST_TTL_MS = 60 * 1000;
+const SW_MANIFEST_TTL_MS = 10 * 60 * 1000;
 let swManifestMemo = null;
 function invalidateServiceWorkerManifest() {
     swManifestMemo = null;
