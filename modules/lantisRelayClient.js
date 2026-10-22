@@ -207,6 +207,8 @@ function friendlyRelayError(code, fallback) {
             return 'Confirm this change before it is sent to the relay.';
         case 'RELAY_TOKEN_MISSING':
             return 'The relay read token is not set on this server.';
+        case 'RELAY_ENDPOINT_MISSING':
+            return 'The LANTIS relay does not have PUT /v1/recipients yet.';
         default:
             return fallback || 'The relay rejected that change.';
     }
@@ -269,6 +271,45 @@ function getToggles() {
     return getJson('/v1/toggles');
 }
 
+function missingRecipientsEndpoint(err) {
+    return !!(err && (err.status === 404 || err.code === 'NOT_FOUND' || err.code === 'RELAY_ENDPOINT_MISSING'));
+}
+
+async function putRecipients(recipients, { actor, confirm } = {}) {
+    const token = resolveAdminToken();
+    if (!token) return clientError('RELAY_ADMIN_TOKEN_MISSING', 'Relay admin token is not set');
+    const name = String(actor || '').trim();
+    if (!name) return clientError('ACTOR_REQUIRED', 'actor is required');
+    if (confirm !== true) {
+        return clientError('CONFIRM_REQUIRED', 'confirm:true is required for relay mutations');
+    }
+    if (!Array.isArray(recipients)) {
+        return clientError('BAD_BODY', 'recipients must be an array');
+    }
+    const body = { actor: name, recipients };
+    try {
+        const data = await relayFetch('/v1/recipients', { method: 'PUT', token, body });
+        return { ok: true, degraded: false, data };
+    } catch (err) {
+        if (missingRecipientsEndpoint(err)) {
+            return {
+                ok: false,
+                skipped: true,
+                degraded: true,
+                code: 'RELAY_ENDPOINT_MISSING',
+                error: redact(err.message || 'PUT /v1/recipients is not implemented'),
+                friendly: friendlyRelayError('RELAY_ENDPOINT_MISSING')
+            };
+        }
+        if (err instanceof LantisRelayError && err.status >= 400 && err.status < 500) {
+            return clientError(err.code, err.message);
+        }
+        const fail = degraded(err.code, err.message);
+        fail.friendly = friendlyRelayError(err.code, fail.error);
+        return fail;
+    }
+}
+
 module.exports = {
     LantisRelayError,
     READ_TOKEN_ENV,
@@ -287,6 +328,7 @@ module.exports = {
     getSenders,
     getToggles,
     putToggles,
+    putRecipients,
     pickTogglePatch,
     friendlyRelayError
 };

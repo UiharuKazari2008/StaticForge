@@ -234,7 +234,8 @@ function isInboundSpam(headerBlock, config) {
 /**
  * Relay-stamped X-Original-To from the trusted top block only (above the
  * first Received / origination header). Lower and duplicate copies are
- * ignored. Display only — never used to pick a mailbox.
+ * ignored. Stored for display. Catch-all recovery may also read this
+ * trusted stamp (never To/Cc) when the envelope was rewritten to mailroom.ops.
  */
 function trustedOriginalTo(headerBlock, rawConfig) {
     const cfg = resolveSpamConfig(rawConfig);

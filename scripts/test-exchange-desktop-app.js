@@ -84,6 +84,9 @@ function main() {
     assert.match(exchangeJs, /indicatorMark: 'radio'/);
     assert.match(exchangeJs, /kazari\.ops@dream\.737\.jp\.net/);
     assert.match(exchangeJs, /function exchangeRelayFriendly/);
+    assert.match(exchangeJs, /exchange_resync_recipients/);
+    assert.match(exchangeJs, /Resync recipients/);
+    assert.match(exchangeJs, /RELAY_ENDPOINT_MISSING/);
     assert.match(exchangeJs, /UNKNOWN_MAILBOX/);
     assert.match(exchangeJs, /UNKNOWN_SERVICE/);
     assert.match(exchangeJs, /BAD_BODY/);

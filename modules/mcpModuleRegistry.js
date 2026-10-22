@@ -164,7 +164,7 @@ const MODULE_DEFS = {
             'exchange_update_mailbox', 'exchange_disable_mailbox',
             'exchange_delete_mailbox', 'exchange_add_address', 'exchange_remove_address',
             'exchange_mailbox_key', 'exchange_aliases',
-            'exchange_signatures', 'exchange_toggles', 'exchange_status', 'exchange_spam',
+            'exchange_signatures', 'exchange_toggles', 'exchange_status', 'exchange_resync_recipients', 'exchange_spam',
             'exchange_set_mailbox_notify_forward', 'exchange_get_mailbox_notify_forward',
             'exchange_clear_mailbox_notify_forward'
         ]

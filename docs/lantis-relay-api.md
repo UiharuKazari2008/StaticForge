@@ -24,7 +24,7 @@ Two Bearer tokens, stored separately on Dreamscape as
 | Token | Used for |
 |---|---|
 | Read | Every `GET` |
-| Admin | `PUT /v1/toggles` and any future mutation |
+| Admin | `PUT /v1/toggles`, `PUT /v1/recipients` |
 
 Send `Authorization: Bearer <token>`. A GET with the admin token may be
 accepted; a mutation with the read token must be `403`.
@@ -243,6 +243,80 @@ on that key is left unchanged.
 
 Audit on the relay:
 `{ actor, action: "toggles", target: "global"|mailbox|service, time }`.
+
+### `PUT /v1/recipients`
+
+**Pending approval.** The LANTIS HTTP service does not expose this path yet.
+Dreamscape still PUTs after every mailbox, address, alias, or list change
+(and on the Exchange admin resync). A `404` is the expected answer until
+the endpoint is approved. The client **fails soft** (`RELAY_ENDPOINT_MISSING`)
+and **logs**; local Exchange/intake stay up. Intake recovery still files
+trusted catch-all mail whose relay `X-Original-To` names an active mailbox
+(never To/Cc, lists, or aliases; peer must be in `mailGateway.recoveryRelayPeers`,
+which is empty by default and disables recovery).
+
+LANTIS SMTP already accepts **any** `@dream.737.jp.net` address. Addresses
+that are **not** in the Postfix `virtual_known` rewrite map are rewritten
+by a catch-all pcre to `mailroom.ops@dream.737.jp.net`. This PUT replaces
+`virtual_known` with the full set of **active** mailbox addresses, aliases,
+and distribution lists so those locals are not rewritten.
+
+Admin token required. `confirm` is Dreamscape-client-only and is **not**
+part of the relay body.
+
+```json
+{
+  "actor": "yukimi",
+  "recipients": [
+    {
+      "local": "kazari.ops",
+      "address": "kazari.ops@dream.737.jp.net",
+      "mailbox": "yukimi",
+      "kind": "mailbox"
+    },
+    {
+      "local": "kazari",
+      "address": "kazari@dream.737.jp.net",
+      "mailbox": "yukimi",
+      "kind": "mailbox"
+    },
+    {
+      "local": "helpdesk",
+      "address": "helpdesk@dream.737.jp.net",
+      "mailbox": "tsubame",
+      "kind": "alias"
+    },
+    {
+      "local": "ops-all",
+      "address": "ops-all@dream.737.jp.net",
+      "members": ["yukimi", "sala"],
+      "kind": "list"
+    },
+    {
+      "local": "mailroom.ops",
+      "address": "mailroom.ops@dream.737.jp.net",
+      "mailbox": "tsubame",
+      "kind": "catchall"
+    }
+  ]
+}
+```
+
+- `actor` is required (same as toggles).
+- `recipients` is the **full** `virtual_known` set. Replace, do not merge.
+  Each `address` / `local` is a rewrite-map key. Disabled or deleted
+  mailboxes are omitted. `mailroom.ops` stays in the set (the catch-all
+  destination).
+- `kind`: `mailbox` | `alias` | `list` | `catchall`.
+- `mailbox` is the Dovecote owner for mailbox/alias/catchall rows.
+- `members` is present on lists (mailbox names or local-parts).
+- Response: `{ "ok": true, "count": 42 }` (accepted row count).
+- Until implemented: `404` `{ "error": "Not found", "code": "NOT_FOUND" }`.
+- Missing or empty `actor` → `400` `{ "error": "actor is required", "code": "ACTOR_REQUIRED" }`.
+- `recipients` not an array → `400` `{ "error": "recipients must be an array", "code": "BAD_BODY" }`.
+
+Audit on the relay (once the path exists):
+`{ actor, action: "recipients", target: "virtual_known", time }`.
 
 ## Dreamscape client
 

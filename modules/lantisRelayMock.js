@@ -219,7 +219,14 @@ function defaultState() {
             }
         },
         audit: [],
-        lastPutBody: null
+        lastPutBody: null,
+        lastRecipientsBody: null,
+        recipients: [],
+        recipientsEndpoint: true,
+        recipientsDelayMs: 0,
+        recipientsInFlight: 0,
+        maxRecipientsInFlight: 0,
+        recipientPuts: []
     };
 }
 
@@ -282,6 +289,50 @@ function startMockRelay(options) {
             if (isGet && url.pathname === '/v1/toggles') {
                 json(res, 200, cloneToggles(state.toggles));
                 return;
+            }
+            if (isPut && url.pathname === '/v1/recipients') {
+                state.recipientsInFlight = (state.recipientsInFlight || 0) + 1;
+                state.maxRecipientsInFlight = Math.max(
+                    state.maxRecipientsInFlight || 0,
+                    state.recipientsInFlight
+                );
+                try {
+                    if (state.recipientsDelayMs) {
+                        await new Promise((resolve) => setTimeout(resolve, Number(state.recipientsDelayMs) || 0));
+                    }
+                    if (state.recipientsEndpoint === false) {
+                        json(res, 404, { error: 'Not found', code: 'NOT_FOUND' });
+                        return;
+                    }
+                    const body = await readBody(req);
+                    state.lastRecipientsBody = body;
+                    state.recipientPuts = Array.isArray(state.recipientPuts) ? state.recipientPuts : [];
+                    state.recipientPuts.push({
+                        locals: Array.isArray(body.recipients)
+                            ? body.recipients.map((row) => row.local)
+                            : []
+                    });
+                    const actor = body && body.actor != null ? String(body.actor).trim() : '';
+                    if (!actor) {
+                        json(res, 400, { error: 'actor is required', code: 'ACTOR_REQUIRED' });
+                        return;
+                    }
+                    if (!Array.isArray(body.recipients)) {
+                        json(res, 400, { error: 'recipients must be an array', code: 'BAD_BODY' });
+                        return;
+                    }
+                    state.recipients = body.recipients;
+                    state.audit.push({
+                        actor,
+                        action: 'recipients',
+                        target: 'virtual_known',
+                        time: new Date().toISOString()
+                    });
+                    json(res, 200, { ok: true, count: body.recipients.length });
+                    return;
+                } finally {
+                    state.recipientsInFlight = Math.max(0, (state.recipientsInFlight || 1) - 1);
+                }
             }
             if (isPut && url.pathname === '/v1/toggles') {
                 const body = await readBody(req);
