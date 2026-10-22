@@ -228,6 +228,14 @@ class WikiDisplayBase {
         grimoireShowRemoteTabPage(this, state, opts.url || '');
     }
 
+    // The full Grimoire window this display belongs to (#615): the window itself, a split pane's window
+    // (GrimoireSplitPane host), else the window used last (grimoireActiveWindow, below).
+    grimoireHostWindow() {
+        if (this instanceof TagWikiSearchModal) return this;
+        if (this.host) return this.host;
+        return grimoireActiveWindow();
+    }
+
     // Robust link interception for any content rendered into displayArea.
     // Prevents links/anchors from "exiting the application" (following real hrefs or causing full nav).
     // Called after innerHTML sets for wiki content, search pages, lookup pages, etc.
@@ -287,8 +295,8 @@ class WikiDisplayBase {
                     e.preventDefault();
                     if (typeof this.navigate === 'function') {
                         this.navigate(href);
-                    } else if (window.tagWikiSearchModal && typeof window.tagWikiSearchModal.navigate === 'function') {
-                        window.tagWikiSearchModal.navigate(href);
+                    } else if (this.grimoireHostWindow()) {
+                        this.grimoireHostWindow().navigate(href);
                     }
                 });
             }
@@ -313,7 +321,7 @@ class WikiDisplayBase {
     showLeaveDSAPDialog(href, linkEl) {
         const dialog = document.createElement('div');
         dialog.style.cssText = 'position:fixed;z-index:999999;top:50%;left:50%;transform:translate(-50%,-50%);background:#f0f0f0;border:2px solid #003366;padding:14px;min-width:300px;box-shadow:0 6px 20px rgba(0,0,0,0.35);font-family:Arial,Helvetica,sans-serif;font-size:10pt;';
-        const grimoireHost = window.tagWikiSearchModal;
+        const grimoireHost = this.grimoireHostWindow();
         const wide = (grimoireHost && typeof grimoireHost.isWideEnoughForSplit === 'function' && grimoireHost.isWideEnoughForSplit())
             || (this.isWideEnoughForSplit && this.isWideEnoughForSplit());
         const rightVisible = (grimoireHost && grimoireHost.modal && grimoireHost.modal.classList.contains('tag-wiki-split-active'))
@@ -432,7 +440,7 @@ class WikiDisplayBase {
                             icon: 'fas fa-arrow-right',
                             action: 'wiki-link-open-on-right',
                             hidden: () => {
-                                const host = window.tagWikiSearchModal;
+                                const host = this.grimoireHostWindow();
                                 return !host || typeof host.isWideEnoughForSplit !== 'function' || !host.isWideEnoughForSplit()
                                     || host.isRightPaneDisplay(this.displayArea);
                             }
@@ -442,7 +450,7 @@ class WikiDisplayBase {
                             icon: 'fas fa-arrow-left',
                             action: 'wiki-link-open-on-left',
                             hidden: () => {
-                                const host = window.tagWikiSearchModal;
+                                const host = this.grimoireHostWindow();
                                 return !host || typeof host.isSplitMode !== 'function' || !host.isSplitMode()
                                     || !host.isRightPaneDisplay(this.displayArea);
                             }
@@ -499,13 +507,11 @@ class WikiDisplayBase {
                 } else if (action === 'wiki-link-open-new-window') {
                     this.openLinkInNewWindow(tagName);
                 } else if (action === 'wiki-link-open-on-right') {
-                    if (window.tagWikiSearchModal && typeof window.tagWikiSearchModal.openLinkOnPane === 'function') {
-                        window.tagWikiSearchModal.openLinkOnPane(tagName, 'right');
-                    }
+                    const host = this.grimoireHostWindow();
+                    if (host && typeof host.openLinkOnPane === 'function') host.openLinkOnPane(tagName, 'right');
                 } else if (action === 'wiki-link-open-on-left') {
-                    if (window.tagWikiSearchModal && typeof window.tagWikiSearchModal.openLinkOnPane === 'function') {
-                        window.tagWikiSearchModal.openLinkOnPane(tagName, 'left');
-                    }
+                    const host = this.grimoireHostWindow();
+                    if (host && typeof host.openLinkOnPane === 'function') host.openLinkOnPane(tagName, 'left');
                 } else if (action === 'wiki-link-add-to-desktop') {
                     this.addWikiPageToDesktop(tagName);
                 }
@@ -783,7 +789,7 @@ class WikiDisplayBase {
     openCurrentUrlOnPane(side) {
         const uri = this.getCurrentPageUri();
         if (!uri) return;
-        const host = window.tagWikiSearchModal;
+        const host = this.grimoireHostWindow();
         if (host && typeof host.openUrlOnPane === 'function') {
             host.openUrlOnPane(uri, side);
             return;
@@ -929,8 +935,8 @@ class WikiDisplayBase {
         }
         if (typeof this.navigate === 'function') {
             this.navigate(href);
-        } else if (window.tagWikiSearchModal && typeof window.tagWikiSearchModal.navigate === 'function') {
-            window.tagWikiSearchModal.navigate(href);
+        } else if (this.grimoireHostWindow()) {
+            this.grimoireHostWindow().navigate(href);
         }
     }
 
@@ -952,7 +958,7 @@ class WikiDisplayBase {
     }
 
     _grimoireSplitHost() {
-        return window.tagWikiSearchModal || this;
+        return this.grimoireHostWindow() || this;
     }
 
     buildGrimoireBrowserPageChromeItems() {
@@ -3003,9 +3009,8 @@ class WikiDisplayBase {
                         link.addEventListener('click', (e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            if (window.tagWikiSearchModal) {
-                                window.tagWikiSearchModal.open(searchQuery);
-                            }
+                            const host = this.grimoireHostWindow();
+                            if (host) host.open(searchQuery);
                         });
                     }
                     link.style.cursor = 'var(--c-pointer)';
@@ -3474,6 +3479,7 @@ class WikiDisplayBase {
 class GrimoireSplitPane extends WikiDisplayBase {
     constructor(opts) {
         super();
+        this.host = opts.host || null; // the Grimoire window (#615)
         this.displayArea = opts.displayArea;
         this.history = [];
         this.historyIndex = -1;
@@ -3652,7 +3658,7 @@ class GrimoireSplitPane extends WikiDisplayBase {
     // pane is currently the active one, the shared address bar + top controls get updated.
     setAddress(args) {
         super.setAddress(args);
-        const host = window.tagWikiSearchModal;
+        const host = this.grimoireHostWindow();
         if (host && typeof host.notifyPaneAddressChanged === 'function') {
             host.notifyPaneAddressChanged(this);
         }
@@ -3664,7 +3670,7 @@ class GrimoireSplitPane extends WikiDisplayBase {
         // desktopSounds.play: public/scripts/comp/desktopSounds.js
         desktopSounds.play('navigate');
         this.blank = false;
-        const host = window.tagWikiSearchModal;
+        const host = this.grimoireHostWindow();
         if (host && typeof host._navigateToPane === 'function') {
             host._navigateToPane(this, target);
             return;
@@ -4016,7 +4022,7 @@ class WikiWindowInstance extends WikiDisplayBase {
 
     /** Grimoire search results drawn into this wiki window. Does not open the main browser. */
     showSearchForTerm(term) {
-        const host = tagWikiSearchModal;
+        const host = grimoireActiveWindow();
         if (!host || !this.displayArea || typeof host.showSearchResultsPage !== 'function') return;
         const q = String(term || '').trim().replace(/_/g, ' ').replace(/\s+/g, ' ');
         this.getSourceIcon = (source) => host.getSourceIcon(source);
@@ -4137,8 +4143,8 @@ class WikiWindowInstance extends WikiDisplayBase {
             }
             this.historyIndex = 0;
             this.updateNavigationButtons();
-        } else if (tagWikiSearchModal) {
-            tagWikiSearchModal.getTagWikiPageDirectly('tag groups');
+        } else if (grimoireActiveWindow()) {
+            grimoireActiveWindow().getTagWikiPageDirectly('tag groups');
         }
     }
     
@@ -4318,7 +4324,9 @@ class WikiWindowInstance extends WikiDisplayBase {
     }
     
     maximizeToMainWindow() {
-        if (!window.tagWikiSearchModal) {
+        // the Grimoire window used last (#615)
+        const mainWin = grimoireActiveWindow();
+        if (!mainWin) {
             console.error('Main wiki modal not available');
             return;
         }
@@ -4328,15 +4336,15 @@ class WikiWindowInstance extends WikiDisplayBase {
                 ? this.history.slice(0, this.historyIndex + 1)
                 : [];
             const dsapUrl = this._dsapState.url;
-            window.tagWikiSearchModal.open('', { skipInitialHome: true, initialAddress: dsapUrl });
+            mainWin.open('', { skipInitialHome: true, initialAddress: dsapUrl });
             // navigateDsapIfMatched: public/scripts/comp/dsapRegistry.js
             if (typeof navigateDsapIfMatched === 'function') {
-                navigateDsapIfMatched(window.tagWikiSearchModal, dsapUrl, { skipHistory: true, skipLoadingDelay: true });
+                navigateDsapIfMatched(mainWin, dsapUrl, { skipHistory: true, skipLoadingDelay: true });
             }
             if (historyToCopy.length > 0) {
-                window.tagWikiSearchModal.history = historyToCopy.map((entry) => ({ ...entry }));
-                window.tagWikiSearchModal.historyIndex = historyToCopy.length - 1;
-                window.tagWikiSearchModal.updateNavigationButtons();
+                mainWin.history = historyToCopy.map((entry) => ({ ...entry }));
+                mainWin.historyIndex = historyToCopy.length - 1;
+                mainWin.updateNavigationButtons();
             }
             this.close();
             return;
@@ -4362,24 +4370,24 @@ class WikiWindowInstance extends WikiDisplayBase {
             : [];
         
         // Open main modal
-        window.tagWikiSearchModal.open('', { skipInitialHome: true });
+        mainWin.open('', { skipInitialHome: true });
         
         // Navigate to current page in main window
         // Use getTagWikiPageDirectly to load the page
-        window.tagWikiSearchModal.getTagWikiPageDirectly(tagName).then((result) => {
+        mainWin.getTagWikiPageDirectly(tagName).then((result) => {
             // Copy history to main window if there's history
-            if (historyToCopy.length > 0 && window.tagWikiSearchModal.history) {
+            if (historyToCopy.length > 0 && mainWin.history) {
                 // Replace the history with copied history
                 // The current page was just added by getTagWikiPageDirectly, so we need to replace it
                 // with the copied history which already includes the current page
-                window.tagWikiSearchModal.history = historyToCopy.map(entry => ({ ...entry }));
-                window.tagWikiSearchModal.historyIndex = historyToCopy.length - 1;
-                window.tagWikiSearchModal.updateNavigationButtons();
-            } else if (result && window.tagWikiSearchModal.hasWikiPageContent(result)) {
+                mainWin.history = historyToCopy.map(entry => ({ ...entry }));
+                mainWin.historyIndex = historyToCopy.length - 1;
+                mainWin.updateNavigationButtons();
+            } else if (result && mainWin.hasWikiPageContent(result)) {
                 // If no history to copy, ensure the current page is in history
                 // (getTagWikiPageDirectly should have already added it, but ensure it's there)
-                if (window.tagWikiSearchModal.history.length === 0) {
-                    window.tagWikiSearchModal.addToHistory({
+                if (mainWin.history.length === 0) {
+                    mainWin.addToHistory({
                         type: 'wiki',
                         tag: { title: tagName, name: tagName },
                         content: result
@@ -4440,8 +4448,11 @@ class WikiWindowInstance extends WikiDisplayBase {
 }
 
 class TagWikiSearchModal extends WikiDisplayBase {
-    constructor() {
+    // root: a second or later window's modal (#615, TagWikiSearchModal.openNewWindow); none: app.html's #tagWikiSearchModal
+    constructor(root = null) {
         super();
+        this.root = root;
+        this.lastActive = 0;
         this._activePane = 'left';
         this._searchResultIndex = -1;
         this.modal = null;
@@ -4500,28 +4511,42 @@ class TagWikiSearchModal extends WikiDisplayBase {
         this.init();
     }
     
+    /** A part of this window by its app.html id (#615: a later window's ids carry a suffix, data-grimoire-part keeps the name). */
+    part(id) {
+        if (!this.modal) return null;
+        return this.modal.querySelector(`[data-grimoire-part="${id}"]`) || (this.root ? null : document.getElementById(id));
+    }
+
     init() {
-        this.modal = document.getElementById('tagWikiSearchModal');
+        this.modal = this.root || document.getElementById('tagWikiSearchModal');
         if (!this.modal) return;
+        // ids of a later window end in this (TagWikiSearchModal.openNewWindow); '' for the first
+        this.idSuffix = this.root ? (this.modal.dataset.grimoireSuffix || '') : '';
+        if (!this.root) this.modal.querySelectorAll('[id]').forEach((el) => { if (!el.dataset.grimoirePart) el.dataset.grimoirePart = el.id; });
+        grimoireWindows.push(this);
+        // the window used last takes searches and shortcuts (grimoireActiveWindow)
+        const markActive = () => { this.lastActive = Date.now(); };
+        this.modal.addEventListener('pointerdown', markActive, true);
+        this.modal.addEventListener('focusin', markActive);
         
-        this.searchInput = document.getElementById('tagWikiSearchInput');
-        this.displayArea = document.getElementById('tagWikiSearchDisplay');
-        this.backBtn = document.getElementById('tagWikiSearchBackBtn');
-        this.forwardBtn = document.getElementById('tagWikiSearchForwardBtn');
-        this.homeBtn = document.getElementById('tagWikiSearchHomeBtn');
-        this.closeBtn = document.getElementById('closeTagWikiSearchModalBtn');
+        this.searchInput = this.part('tagWikiSearchInput');
+        this.displayArea = this.part('tagWikiSearchDisplay');
+        this.backBtn = this.part('tagWikiSearchBackBtn');
+        this.forwardBtn = this.part('tagWikiSearchForwardBtn');
+        this.homeBtn = this.part('tagWikiSearchHomeBtn');
+        this.closeBtn = this.part('closeTagWikiSearchModalBtn');
         this.searchBody = this.modal.querySelector('.tag-wiki-search-body');
-        this.splitSwapBtn = document.getElementById('tagWikiSearchSplitSwapBtn');
-        this.splitDividerEl = document.getElementById('tagWikiSearchSplitDivider');
-        this.rightPaneEl = document.getElementById('tagWikiSearchRightPane');
-        this.refreshBtn = document.getElementById('tagWikiSearchRefreshBtn');
+        this.splitSwapBtn = this.part('tagWikiSearchSplitSwapBtn');
+        this.splitDividerEl = this.part('tagWikiSearchSplitDivider');
+        this.rightPaneEl = this.part('tagWikiSearchRightPane');
+        this.refreshBtn = this.part('tagWikiSearchRefreshBtn');
 
         // Layered pseudo-browser address bar elements (new two-layer widget)
-        this.addressBar = document.getElementById('grimoireAddressBar');
-        this.addressDisplay = document.getElementById('grimoireAddressDisplay');
-        this.addressEdit = document.getElementById('grimoireAddressEdit');
-        this.addressPath = document.getElementById('grimoireAddressPath');
-        this.addressModeIcon = document.getElementById('grimoireAddressModeIcon');
+        this.addressBar = this.part('grimoireAddressBar');
+        this.addressDisplay = this.part('grimoireAddressDisplay');
+        this.addressEdit = this.part('grimoireAddressEdit');
+        this.addressPath = this.part('grimoireAddressPath');
+        this.addressModeIcon = this.part('grimoireAddressModeIcon');
 
         // Dynamic right-pane toggle button (visible only when wide enough for dual view).
         // Placed as the last (rightmost) button in the title toolbar, using exact same class as the home button.
@@ -4531,7 +4556,8 @@ class TagWikiSearchModal extends WikiDisplayBase {
             this.rightToggleBtn = document.createElement('button');
             this.rightToggleBtn.type = 'button';
             this.rightToggleBtn.className = 'btn-secondary btn-toggle';
-            this.rightToggleBtn.id = 'tagWikiSearchRightToggleBtn';
+            this.rightToggleBtn.id = 'tagWikiSearchRightToggleBtn' + this.idSuffix;
+            this.rightToggleBtn.dataset.grimoirePart = 'tagWikiSearchRightToggleBtn';
             this.rightToggleBtn.title = 'Toggle Right Side Panel';
             this.rightToggleBtn.innerHTML = '<i class="fas fa-columns"></i>';
             this.rightToggleBtn.style.display = 'none';
@@ -4799,9 +4825,10 @@ class TagWikiSearchModal extends WikiDisplayBase {
         if (!this.rightPane) {
             // each tab has its own right pane (public/scripts/comp/grimoireTabs.js)
             this.rightPane = new GrimoireSplitPane({
-                displayArea: this.tabs ? this.tabs.activeRightArea() : document.getElementById('tagWikiSearchRightDisplay')
+                host: this,
+                displayArea: this.tabs ? this.tabs.activeRightArea() : this.part('tagWikiSearchRightDisplay')
             });
-            const saved = (!this.tabs || this.tabs.restoresSavedRightPane()) ? this.loadRightPaneStateFromStorage() : null;
+            const saved = !this.root && (!this.tabs || this.tabs.restoresSavedRightPane()) ? this.loadRightPaneStateFromStorage() : null;
             if (saved && saved.blank !== true) {
                 this.rightPane.applyState(saved);
             } else {
@@ -5351,7 +5378,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
         this.setAddress({ displayUrl: 'en.grimoire.jp/index.dtxt', mode: 'edtx' });
 
         // Expose a convenience for other modules / the address bar future full-router usage
-        if (!window.grimoireNavigate && this.navigate) {
+        if (!this.root && !window.grimoireNavigate && this.navigate) {
             window.grimoireNavigate = (u) => this.navigate(u);
         }
 
@@ -5451,7 +5478,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
         const tabCommand = this.tabs && this.tabs.available() ? grimoireTabShortcut(e) : '';
         if (tabCommand) {
             e.preventDefault();
-            grimoireRunTabCommand(tabCommand);
+            grimoireRunTabCommand(tabCommand, this);
             return true;
         }
 
@@ -5547,20 +5574,23 @@ class TagWikiSearchModal extends WikiDisplayBase {
             this._grimoireKeydownHandler = (e) => this._handleGrimoireKeydown(e);
         }
         // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+        // one set per window (#615): ids and modalId follow the window's own id
+        const winId = this.modal.id;
+        this._keyboardListenerIds = [`${winId}.escape`, `${winId}.keydown`];
         registerKeyboardListener({
-            id: 'tagWikiSearchModal.escape',
+            id: `${winId}.escape`,
             handler: this._escapeKeyHandler,
             type: 'whenFocused',
-            modalId: 'tagWikiSearchModal',
+            modalId: winId,
             priority: 80,
             critical: true,
             showInOverlay: false
         });
         registerKeyboardListener({
-            id: 'tagWikiSearchModal.keydown',
+            id: `${winId}.keydown`,
             handler: this._grimoireKeydownHandler,
             type: 'whenFocused',
-            modalId: 'tagWikiSearchModal',
+            modalId: winId,
             priority: 75,
             showInOverlay: false
         });
@@ -5578,10 +5608,12 @@ class TagWikiSearchModal extends WikiDisplayBase {
             { id: 'overlay.tagWikiSearchModal.resultUp', label: 'Previous result', keys: '↑', icon: 'fas fa-chevron-up', overlayValid: () => this._grimoireOverlayHasSearchResults() },
             { id: 'overlay.tagWikiSearchModal.search', label: 'Search / open result', keys: 'Enter', icon: 'fas fa-search', overlayValid: () => this._grimoireOverlayHasSearchResults() }
         ].forEach((entry) => {
+            const id = this.root ? entry.id.replace('overlay.tagWikiSearchModal.', `overlay.${winId}.`) : entry.id;
+            this._keyboardListenerIds.push(id);
             registerKeyboardListener({
-                id: entry.id,
+                id,
                 type: 'whenFocused',
-                modalId: 'tagWikiSearchModal',
+                modalId: winId,
                 label: entry.label,
                 keys: entry.keys,
                 overlayIcon: entry.icon,
@@ -5621,14 +5653,14 @@ class TagWikiSearchModal extends WikiDisplayBase {
     wireAddressBar() {
         if (!this.addressBar || !this.addressDisplay || !this.addressEdit) return;
 
-        const siteBtn = document.getElementById('grimoireAddressSiteBtn');
+        const siteBtn = this.part('grimoireAddressSiteBtn');
         if (siteBtn && !siteBtn.dataset.grimoireSiteMenu) {
             siteBtn.dataset.grimoireSiteMenu = '1';
             siteBtn.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 // grimoireShowSiteMenu: public/scripts/comp/grimoireRemoteBrowser.js
-                grimoireShowSiteMenu(e);
+                grimoireShowSiteMenu(e, this);
             });
         }
 
@@ -6139,6 +6171,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
 
     open(initialQuery = '', options = {}) {
         if (!this.modal) return;
+        this.lastActive = Date.now();
         const wasClosed = this.modal.classList.contains('hidden');
         const trimmedQuery = String(initialQuery || '').trim();
         const skipInitialHome = options && options.skipInitialHome;
@@ -6422,7 +6455,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
         if (!this.modal) return;
 
         const rightHasState = this.rightPane && !this.rightPane.isBlank();
-        if (this.hasEverMaximized && rightHasState) {
+        if (!this.root && this.hasEverMaximized && rightHasState) {
             const result = await showConfirmationDialog(
                 'Save the right panel state for the next time you maximise Grimoire?',
                 [
@@ -6458,6 +6491,11 @@ class TagWikiSearchModal extends WikiDisplayBase {
         this.exitSplitMode();
         this.teardownSplitModeListeners();
         closeModal(this.modal).then(() => {
+            // a later window (#615) goes for good; the first stays in app.html for the next opening
+            if (this.root) {
+                this.destroyWindow();
+                return;
+            }
             this.currentSearchResults = [];
             this.currentSelectedTag = null;
             this.history = [];
@@ -6468,6 +6506,63 @@ class TagWikiSearchModal extends WikiDisplayBase {
             this.clearDisplay();
             this.setResultsOverlayOpen(false);
         });
+    }
+
+    /** A later window leaves: its keys, its applet, its menus and its element (#615). */
+    destroyWindow() {
+        const at = grimoireWindows.indexOf(this);
+        if (at >= 0) grimoireWindows.splice(at, 1);
+        // unregisterKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+        (this._keyboardListenerIds || []).forEach((id) => unregisterKeyboardListener(id));
+        if (typeof deactivateDsapOnShell === 'function') deactivateDsapOnShell(this);
+        if (this.ieChrome) this.ieChrome.destroy();
+        if (contextMenu) this.contextMenuElements.forEach((el) => { if (el) contextMenu.detachFromElement(el); });
+        this.contextMenuElements = [];
+        if (this.modal && this.modal.parentNode) this.modal.remove();
+    }
+
+    /** Page > New Window (Ctrl+N): another full Grimoire window with the page on show (#615). */
+    openPageInNewWindow() {
+        const shell = this.activePane || this;
+        const top = shell.history ? shell.history[shell.historyIndex] : null;
+        const target = top && top.type === 'web' && top.url
+            ? { url: top.url }
+            : (top && top.type !== 'home' && this.currentAddress && this.currentAddress.fullUrl ? { address: this.currentAddress.fullUrl } : {});
+        return TagWikiSearchModal.openNewWindow(target);
+    }
+
+    /**
+     * Another full Grimoire window (#615): app.html's window markup as served (the window on the page has
+     * the chrome, scrollbars and resize handles the app added at run time), ids suffixed with __w<n> and
+     * the old ids kept as data-grimoire-part (part(), the :is() selectors in the CSS). target is what
+     * grimoireTabs.js load takes ({ url }, { address }, { tag }, {} for the home page).
+     */
+    static async openNewWindow(target = {}) {
+        const markup = await grimoireWindowMarkup();
+        const first = document.getElementById('tagWikiSearchModal');
+        if (!markup || !first) {
+            showGlassToast('error', null, 'Could not open a new Grimoire window', false, 4000);
+            return null;
+        }
+        grimoireWindowCount += 1;
+        const suffix = '__w' + grimoireWindowCount;
+        const el = document.importNode(markup, true);
+        el.id = 'tagWikiSearchModal' + suffix;
+        el.classList.add('grimoire-window', 'hidden');
+        el.dataset.grimoireSuffix = suffix;
+        el.dataset.windowIdentifier = 'grimoire' + suffix;
+        el.querySelectorAll('[id]').forEach((node) => {
+            node.dataset.grimoirePart = node.id;
+            node.id += suffix;
+        });
+        first.after(el);
+        const win = new TagWikiSearchModal(el);
+        win.lastActive = Date.now();
+        const hasPage = !!(target && (target.url || target.address || target.tag || target.session));
+        win.open('', { skipInitialHome: hasPage });
+        if (hasPage && win.tabs) setTimeout(() => win.tabs.load(target), 50);
+        else if (hasPage) win.navigate(target.url || target.address);
+        return win;
     }
 
     async refreshToolbar() {
@@ -7787,6 +7882,47 @@ class TagWikiSearchModal extends WikiDisplayBase {
     }
 }
 
+// Grimoire windows (#615): app.html's window first, then any opened with New Window (TagWikiSearchModal.openNewWindow)
+const grimoireWindows = [];
+let grimoireWindowCount = 1;
+let grimoireWindowMarkupPromise = null;
+
+/** Every full Grimoire window. */
+function grimoireAllWindows() {
+    return grimoireWindows.slice();
+}
+
+/** The window searches, shortcuts and outside links go to: the open window used last, else the first. */
+function grimoireActiveWindow() {
+    const open = grimoireWindows.filter((win) => win.modal && !win.modal.classList.contains('hidden') && !win.modal.classList.contains('hidden-alt'));
+    if (!open.length) return grimoireWindows[0] || null;
+    return open.reduce((best, win) => (win.lastActive > best.lastActive ? win : best), open[0]);
+}
+
+/** The window that holds a shell: the window itself, its right pane, or one of its background tabs. */
+function grimoireWindowOf(shell) {
+    if (!shell) return null;
+    return grimoireWindows.find((win) => win === shell || win.rightPane === shell || (win.tabs && win.tabs.backgroundTabOf(shell))) || null;
+}
+
+/** app.html's Grimoire window as served, before the app changed it at run time (parsed once). */
+function grimoireWindowMarkup() {
+    if (!grimoireWindowMarkupPromise) {
+        grimoireWindowMarkupPromise = fetch('/app', { credentials: 'same-origin' })
+            .then((res) => (res.ok ? res.text() : ''))
+            .then((html) => {
+                const node = html ? new DOMParser().parseFromString(html, 'text/html').getElementById('tagWikiSearchModal') : null;
+                if (!node) grimoireWindowMarkupPromise = null;
+                return node;
+            })
+            .catch(() => {
+                grimoireWindowMarkupPromise = null;
+                return null;
+            });
+    }
+    return grimoireWindowMarkupPromise;
+}
+
 // Global instances - create immediately
 const wikiWindowManager = new WikiWindowManager();
 const tagWikiSearchModal = new TagWikiSearchModal();
@@ -7803,6 +7939,10 @@ if (document.readyState === 'loading') {
 // Export for global access
 if (typeof window !== 'undefined') {
     window.tagWikiSearchModal = tagWikiSearchModal;
+    window.grimoireAllWindows = grimoireAllWindows;
+    window.grimoireActiveWindow = grimoireActiveWindow;
+    window.grimoireWindowOf = grimoireWindowOf;
+    window.TagWikiSearchModal = TagWikiSearchModal;
 // Convenience router for the pseudo-browser surface (used by the layered address bar, Run entries, internal links, etc.)
 if (tagWikiSearchModal && typeof tagWikiSearchModal.navigate === 'function') {
     window.grimoireNavigate = window.grimoireNavigate || ((u) => tagWikiSearchModal.navigate(u));

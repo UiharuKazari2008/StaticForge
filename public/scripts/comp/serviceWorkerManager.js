@@ -1,8 +1,14 @@
 // web_server.js isProtectedResource — do not precache these in the service worker
+// sw.js isAuthGatedStaticPath: never stored in the static cache, so never an update. By path
+// too: a manifest snapshot written before it kept `auth` had lost the flag, and the shell
+// pages then showed as "Hash mismatch or missing" on every start.
+const STATIC_SHELL_PATHS = new Set(['/', '/app', '/launch', '/index.html', '/manifest.json']);
+
 function isAuthGatedManifestFile(file) {
     if (file && file.auth === true) return true;
     const path = normalizeStaticFilePath(file && file.url);
-    return path.startsWith('/protected/') || path.startsWith('/private/');
+    // /graphify-out/: served behind sign-in (installManifestFilter.js flags it after a restart)
+    return STATIC_SHELL_PATHS.has(path) || path.startsWith('/protected/') || path.startsWith('/private/') || path.startsWith('/graphify-out/');
 }
 
 function normalizeStaticFilePath(url) {
@@ -716,8 +722,9 @@ class ServiceWorkerManager {
     _writeManifestSnapshot(manifest) {
         try {
             if (!Array.isArray(manifest) || !manifest.length) return;
+            // auth stays: without it the shell pages count as updates on every 304 start
             const rows = manifest.filter((file) => file && file.url && file.hash)
-                .map((file) => ({ url: file.url, hash: file.hash }));
+                .map((file) => (file.auth === true ? { url: file.url, hash: file.hash, auth: true } : { url: file.url, hash: file.hash }));
             if (!rows.length) return;
             localStorage.setItem('melatonManifestSnapshot', JSON.stringify(rows));
         } catch (_) { /* next boot fetches the full list */ }
@@ -1428,7 +1435,7 @@ class ServiceWorkerManager {
 
     // PLANET_SWITCHER_BGM.url: public/scripts/comp/planetSwitcher.js
     // The live hash scan still skips all of /sounds until Dreamscape is bounced;
-    // put the bed in static-cache-v1 so Teleport hits Cache Storage now.
+    // put the bed in static-cache-v2 so Teleport hits Cache Storage now.
     ensurePlanetSwitcherBgmCache() {
         const url = '/sounds/planet/innerlight.opus';
         if (!caches || !caches.match) return;
@@ -1917,7 +1924,8 @@ class ServiceWorkerManager {
         this._diffTail = prev.then(() => gate, () => gate);
         try {
         await prev;
-        const cache = await caches.open('static-cache-v1');
+        // sw.js STATIC_CACHE (and updateEngine.js): reading another name re-downloads every update forever
+        const cache = await caches.open('static-cache-v2');
         this._staticCacheKeyIndex = null;
 
         // Lookups run CACHE_CHECK_PARALLEL at a time: one at a time, each cache.match round trip

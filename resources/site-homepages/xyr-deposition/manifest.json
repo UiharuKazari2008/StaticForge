@@ -1,0 +1,71 @@
+{
+  "slug": "xyr-deposition",
+  "title": "Xyridian Ridge Atmospheric Deposition Monitoring Station (XYR)",
+  "lang": "en",
+  "pages": [
+    {
+      "file": "index.html",
+      "purpose": "Station overview, latest (2025) annual summary, sample ID lookup (the door)"
+    },
+    {
+      "file": "data.html",
+      "purpose": "Annual summaries 2017-2025: completeness, weighted mean concentrations, deposition, with CSV downloads"
+    },
+    {
+      "file": "methods.html",
+      "purpose": "Field, sample handling, laboratory and calculation methods"
+    },
+    {
+      "file": "qa.html",
+      "purpose": "QA/QC: field blanks, ion balance and conductivity checks, completeness criteria, flagged samples"
+    },
+    {
+      "file": "log.html",
+      "purpose": "Station and laboratory log of equipment changes and outages"
+    },
+    {
+      "file": "request.html",
+      "purpose": "Data request form"
+    },
+    {
+      "file": "request-sent.html",
+      "purpose": "Confirmation page for the data request form"
+    },
+    {
+      "file": "sample.html",
+      "purpose": "Door results page: no sample record found, form again"
+    },
+    {
+      "file": "404.html",
+      "purpose": "Not found page"
+    }
+  ],
+  "door": {
+    "page": "index.html",
+    "action": "sample.html",
+    "field": "q",
+    "label": "Retrieve a sample record by sample ID"
+  },
+  "notFound": "404.html",
+  "downloads": [
+    "xyr_annual_completeness_2017-2025.csv",
+    "xyr_annual_pwm_concentrations_2017-2025.csv",
+    "xyr_annual_wet_deposition_2017-2025.csv"
+  ],
+  "references": {
+    "Dreamscape": "index.html 'Related site' (Dreamscape Valley pumping station, lower valley in the east of District 21, lowland comparison collector DSV 2014-2017); also log.html entries 2014-04-01 and 2017-03-28, request.html checkbox, sample.html text",
+    "Xyridian": "Station name throughout (Xyridian Ridge), header of every page, index location row",
+    "Academy City Research": "Operator, in the header and footer of every page and in the acknowledgement text on data.html",
+    "Yukimi Kazari": "Station data steward: index.html details table, footer of every page, request.html, log.html 2023-04-04"
+  },
+  "academyCity": [
+    "index.html: purpose (record of precipitation chemistry reaching the catchment of the District 21 water-supply reservoirs behind the dams that supply Academy City's water); Location row (crest of Xyridian Ridge, School District 21, above the upper reservoirs, Nishikubo forestry depot, reservoir service road)",
+    "index.html and log.html 2014-04-01: Dreamscape Valley comparison site in a lower valley in the east of District 21",
+    "methods.html: weather data from the District 21 meteorological observatory; section 5 geothermal sector screening (District 21 geothermal power station on a peak 6 km WSW, H2S oxidising to sulfate)",
+    "qa.html: geothermal sector screening rule, GEO flags in the flagged-samples table and per-year counts",
+    "log.html: 2023-01-10 screening introduced; 2025-11-25 GEO flag; 2025-09-23 early sample change during the Daihaseisai festival (19 to 25 September)",
+    "request.html: requests from outside Academy City go through the routine data export review",
+    "footer of every page and request.html: office address in School District 18 (research institutes)"
+  ],
+  "phone": "+1 (997) 434-2600 (station office and data requests) in the footer of every page and on request.html; data steward Yukimi Kazari is ext. 4417"
+}

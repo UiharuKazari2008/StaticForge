@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Help desk - Facilities Booking System</title>
+<link rel="stylesheet" href="style.css">
+</head><body>
+<div class="c">
+<div class="h"><a href="index.html">Facilities Booking System</a><span>Academy City Research</span></div>
+<div class="t"><a href="index.html">Home</a> | <a href="offsite.html">Working off-site</a> | <a href="help.html">Help desk</a> | <a href="acceptable-use.html">Acceptable use</a></div>
+<div class="b">
+<h1>Facilities Help Desk</h1>
+<table class="g">
+<tr><th>Monday to Friday, 08:00-18:00</th><td>Facilities Help Desk, internal ext. 4410<br>From outside the network: <span class="nw">+1 (997) 434-2600</span>, ext. 4410</td></tr>
+<tr><th>Outside these hours</th><td>Site Services duty officer, internal ext. 4400 (building faults and urgent vehicle problems only)</td></tr>
+<tr><th>Booking system, room panels, accounts</th><td>Facilities Systems - Yukimi Kazari, internal ext. 4177</td></tr>
+</table>
+<p>The help desk is on the ground floor of the Main Building, next to reception.</p>
+<h2>Pool vehicle trips outside Academy City</h2>
+<p>Trips outside Academy City need a District 11 gate pass. Ask the help desk for one at least 3 working days before the trip, giving the booking reference, the driver and the date of travel.</p>
+<h2>Report a problem</h2>
+<p>Reports sent here are answered on the next working day. For anything affecting a meeting today, ring the help desk.</p>
+<form action="help-sent.html" method="get">
+<table class="f">
+<tr><th><label for="nm">Your name</label></th><td><input id="nm" name="name" type="text" required></td></tr>
+<tr><th><label for="dp">Department</label></th><td><input id="dp" name="dept" type="text"></td></tr>
+<tr><th><label for="ex">Internal extension</label></th><td><input id="ex" name="ext" type="text" maxlength="6"></td></tr>
+<tr><th><label for="ct">Category</label></th><td><select id="ct" name="cat">
+<option>Booking problem</option>
+<option>Room panel or AV fault</option>
+<option>Pool vehicle</option>
+<option>Account or access</option>
+<option>Other</option>
+</select></td></tr>
+<tr><th><label for="rf">Booking reference (if any)</label></th><td><input id="rf" name="ref" type="text" maxlength="16"></td></tr>
+<tr><th><label for="ds">Description</label></th><td><textarea id="ds" name="desc" required></textarea></td></tr>
+</table>
+<button type="submit">Send report</button>
+</form>
+</div>
+<div class="s"><span class="v">FBS 3.4.2 | Build 2211</span>&copy; 2026 Academy City Research - Facilities and Site Services</div>
+</div>
+</body></html>

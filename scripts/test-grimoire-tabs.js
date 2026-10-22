@@ -249,6 +249,15 @@ assert.strictEqual(host._grimoireRemoteSessionId, 'S1');
     for (const f of ['tab.png', 'tab-hot.png', 'tab-pressed.png', 'tab-close.png', 'tab-close-hot.png', 'tab-close-pressed.png', 'quick-tabs.png']) {
         assert.ok(fs.existsSync(path.join(ROOT, 'public/static_images/vista-ie', f)), f);
     }
+    // ---- several full windows (#615) ----
+    assert.ok(modal.includes('static async openNewWindow(target = {})'), 'New Window builds another full window');
+    assert.ok(modal.includes("el.querySelectorAll('[id]').forEach((node) => {") && modal.includes('node.dataset.grimoirePart = node.id;'), 'its ids carry a suffix and keep their name');
+    assert.ok(/function grimoireActiveWindow\(\)/.test(modal) && /function grimoireWindowOf\(shell\)/.test(modal), 'the window used last, and the window of a shell');
+    assert.ok(!/document\.getElementById\('(tagWikiSearch(?!Modal')|grimoireAddress)/.test(modal.slice(modal.indexOf('class TagWikiSearchModal'), modal.indexOf('// Grimoire windows (#615)'))), 'the window finds its parts through part()');
+    assert.ok(!/#tagWikiSearchModal(?![\w-])(?!, \.grimoire-window\))/.test(css.replace(/\/\*[\s\S]*?\*\//g, '')), 'every window rule also matches a later window');
+    assert.ok(read('public/scripts/comp/grimoireTabs.js').includes('root.grimoireActiveWindow()'), 'searches and shortcuts go to the window used last');
+    assert.ok(read('public/scripts/comp/modalKeyboardRegistry.js').includes('function unregisterKeyboardListener(id)'), 'a closed window drops its keys');
+
     console.log('test-grimoire-tabs: ok');
 })().catch((err) => {
     console.error(err);

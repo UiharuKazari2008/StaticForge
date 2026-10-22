@@ -2459,25 +2459,36 @@ async function deleteReferenceImage(cacheImage, workspace = null, refreshCallbac
     const targetWorkspace = workspace || cacheImage.workspaceId || 'default';
 
     try {
-        if (deleteType === 'base' || deleteType === 'both') {
-            // Delete the base image
-            const response = await wsClient.deleteReference(cacheImage.hash, targetWorkspace);
-            if (!response.success) {
-                throw new Error(`Failed to delete cache image: ${response.message}`);
+        const deleteIt = async () => {
+            if (deleteType === 'base' || deleteType === 'both') {
+                // Delete the base image
+                const response = await wsClient.deleteReference(cacheImage.hash, targetWorkspace);
+                if (!response.success) {
+                    throw new Error(`Failed to delete cache image: ${response.message}`);
+                }
             }
-        }
         
-        if (deleteType === 'vibes' || deleteType === 'both') {
-            // Delete the vibes
-            if (cacheImage.vibes && cacheImage.vibes.length > 0) {
-                for (const vibe of cacheImage.vibes) {
-                    const vibeResponse = await wsClient.deleteVibeImage(vibe.id, targetWorkspace);
-                    if (!vibeResponse.success) {
-                        console.error(`Failed to delete vibe ${vibe.id}: ${vibeResponse.message}`);
+            if (deleteType === 'vibes' || deleteType === 'both') {
+                // Delete the vibes
+                if (cacheImage.vibes && cacheImage.vibes.length > 0) {
+                    for (const vibe of cacheImage.vibes) {
+                        const vibeResponse = await wsClient.deleteVibeImage(vibe.id, targetWorkspace);
+                        if (!vibeResponse.success) {
+                            console.error(`Failed to delete vibe ${vibe.id}: ${vibeResponse.message}`);
+                        }
                     }
                 }
             }
-        }
+        };
+        // Vista's progress dialog on the desktop (fileOperationProgress.js, a failure asks there);
+        // galleryTransferPlace: public/scripts/comp/bulkOperationsManager.js
+        const transfer = typeof fileOperationProgress !== 'undefined'
+            ? await fileOperationProgress.run({
+                op: 'delete',
+                from: galleryTransferPlace(targetWorkspace, 'References')
+            }, [{ name: cacheImage.originalFilename || cacheImage.filename || cacheImage.hash }], deleteIt)
+            : (await deleteIt(), { done: 1, shown: false });
+        if (!transfer.done) return;
 
         // Execute refresh callback if provided
         if (refreshCallback) {
@@ -2487,7 +2498,7 @@ async function deleteReferenceImage(cacheImage, workspace = null, refreshCallbac
         // Ensure reference manager is refreshed after delete operation
         await refreshReferenceManagerAfterVibeOperation();
 
-        showGlassToast('success', null, 'Reference deleted');
+        if (!transfer.shown) showGlassToast('success', null, 'Reference deleted');
     } catch (error) {
         console.error('Error deleting reference image:', error);
         showError('Failed to delete reference');

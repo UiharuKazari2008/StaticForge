@@ -237,12 +237,34 @@ function harness(opts = {}) {
         assert.ok(Math.max(...seen) < 1, 'the bar waits for the task that is still running');
         assert.ok(Math.max(...seen) >= 0.5, 'the finished task is its share of the bar');
         assert.ok(Math.max(...seen) < 0.95, 'the running task never completes its share by itself');
-        assert.ok(seen[0] < 0.4, 'it starts near empty even when the first tasks are instant');
         assert.ok(seen.every((v, i) => i === 0 || v >= seen[i - 1]), 'the bar never moves back');
+        assert.ok(seen.every((v) => v === 0 || v === 0.5), 'the bar does not count up: it stands, then jumps by a finished share');
         assert.ok(B.splashBarCells(0.5) === 33 && B.splashBarCells(0.999) === 65, 'the bar fills in whole cells');
         release(true);
         assert.deepStrictEqual(await p, { device: 'hdd', via: 'order' });
         assert.deepStrictEqual(h.bios.work, { disk: 'disk', os: true }, 'the results are kept for the boot');
+    }
+
+    // ---------- weighted jumps, each at least its gap after the last, even for instant tasks ----------
+    {
+        h = harness();
+        const tasks = [
+            { id: 'a', weight: 1, run: async () => 1 },
+            { id: 'b', weight: 3, run: async () => 2 }
+        ];
+        const start = h.t.now;
+        p = h.bios.post({ tasks, hasOs: true });
+        const jumps = [];
+        let last = -1;
+        for (let i = 0; i < 2000 && h.bios.state === 'splash'; i++) {
+            await h.flush();
+            const v = h.bios.screen.splash && h.bios.screen.splash.progress;
+            if (typeof v === 'number' && v !== last) { jumps.push([h.t.now, v]); last = v; }
+        }
+        assert.deepStrictEqual(jumps.map((j) => j[1]), [0, 0.25, 1], 'the bar jumps by each weight');
+        assert.ok(jumps[1][0] - start >= B.config.barStepGapsMs[0], `instant work still waits its gap (${JSON.stringify(jumps)})`);
+        assert.ok(jumps[2][0] - jumps[1][0] >= B.config.barStepGapsMs[1]);
+        await p;
     }
 
     // ---------- the diagnostic POST ----------

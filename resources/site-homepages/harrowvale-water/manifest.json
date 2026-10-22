@@ -1,0 +1,90 @@
+{
+  "slug": "harrowvale-water",
+  "title": "Harrow Vale Water Reclamation District No. 7 - Backflow Prevention Program",
+  "lang": "en",
+  "pages": [
+    {
+      "file": "index.html",
+      "purpose": "Home: Cross-Connection Control and Backflow Prevention program, fees, and the assembly status lookup"
+    },
+    {
+      "file": "assembly-status.html",
+      "purpose": "Door results page: no matching assembly record, with the lookup form again"
+    },
+    {
+      "file": "forms.html",
+      "purpose": "Forms list with the three PDF downloads"
+    },
+    {
+      "file": "testers.html",
+      "purpose": "List of District-certified backflow testers and approved test kit calibration facilities"
+    },
+    {
+      "file": "pay.html",
+      "purpose": "How to pay a bill: mail, drop box, counter, automatic bank draft; no online payment"
+    },
+    {
+      "file": "board.html",
+      "purpose": "Board of Directors, meeting schedule, list of 2026 agendas and minutes"
+    },
+    {
+      "file": "board-2026-10-14.html",
+      "purpose": "Full agenda of the October 14, 2026 Board meeting (Dreamscape Estates contract award, Academy City Research service agreement, Xyridian calibration agreement)"
+    },
+    {
+      "file": "minutes-2026-09-09.html",
+      "purpose": "Approved minutes of the September 9, 2026 Board meeting"
+    },
+    {
+      "file": "notices.html",
+      "purpose": "Construction notices: Dreamscape Estates main replacement, hydrant flushing, lift station, manholes"
+    },
+    {
+      "file": "contact.html",
+      "purpose": "Contact form, office address and hours"
+    },
+    {
+      "file": "contact-sent.html",
+      "purpose": "Contact form confirmation page"
+    },
+    {
+      "file": "404.html",
+      "purpose": "Not-found page in the site style"
+    }
+  ],
+  "door": {
+    "page": "index.html",
+    "action": "assembly-status.html",
+    "field": "q",
+    "label": "Assembly serial or account number"
+  },
+  "notFound": "404.html",
+  "downloads": [
+    "forms/bf-1.pdf",
+    "forms/bf-2.pdf",
+    "forms/bf-5.pdf"
+  ],
+  "references": {
+    "Dreamscape": "notices.html (CN-26-16 Dreamscape Estates Water Main Replacement), board-2026-10-14.html item 5.1 (contract award), minutes-2026-09-09.html (call for bids, public comment)",
+    "Xyridian": "testers.html and forms/bf-5.pdf (Xyridian Instrument Calibration, District-approved test kit verification facility), board-2026-10-14.html consent item 4d (calibration service agreement)",
+    "Academy City Research": "board-2026-10-14.html item 5.2 (Service Agreement 26-031, high-hazard fire and domestic services needing RPDA and RP), minutes-2026-09-09.html GM report",
+    "Yukimi Kazari": "index.html sidebar (Cross-Connection Control Specialist, ext. 4417), board-2026-10-14.html item 5.2 staff contact"
+  },
+  "academyCity": [
+    "board-2026-10-14.html item 5.2: the Halloway Ridge site of Academy City Research is described once as the overseas laboratory campus of a research organisation partnered with Academy City"
+  ],
+  "phone": {
+    "number": "+1 (997) 434-2600",
+    "where": [
+      "index.html sidebar and closing paragraph (ext. 4417)",
+      "contact.html sidebar and emergency note",
+      "forms.html (ext. 4418)",
+      "pay.html (payment arrangements; no telephone payment)",
+      "forms/bf-1.pdf, forms/bf-2.pdf, forms/bf-5.pdf header lines"
+    ],
+    "extensions": {
+      "4417": "Yukimi Kazari, Cross-Connection Control Specialist",
+      "4418": "Ron Delacorte, Cross-Connection Technician"
+    }
+  }
+}

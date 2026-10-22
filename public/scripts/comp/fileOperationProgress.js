@@ -9,8 +9,10 @@
  *   - words: shell32.dll.mui string tables 849/850 (from, to, Time remaining:, More information)
  *     and 2055-2060 (Copying / Moving / Deleting / Recycling, "%1 items (%2)", "About %1",
  *     "%1 remaining", "%1/sec", "%1 Minutes and %2 Seconds" ...)
- *   - timing: the dialog shows ~1 s after an operation starts (one that ends sooner never shows
- *     it), and the caption turns from the banner text into "N Seconds remaining" ~1 s later
+ *   - timing: Vista holds the dialog back ~1 s and never shows it for a shorter operation; here it
+ *     comes up as the operation starts (our requests' length is not known ahead) and stays at least
+ *     MIN_VISIBLE_MS, and the caption turns from the banner text into "N Seconds remaining" ~1 s in
+ *   - an item that fails asks as Vista's Interrupted Action does: Try Again, Skip or Cancel
  *   - the banner movie is not stored anywhere in shell32 (DirectUI draws it in code): each
  *     operation's own loop was recorded from the screen at 20 ms, the header text unmixed out,
  *     and the frames are /static_images/vista-file-progress/movie-<op>.webp (400x40 strips)
@@ -20,25 +22,37 @@
  * API (window.fileOperationProgress):
  *   const op = begin({ op, items: [{ name, size }], from: { name, path }, to: { name, path } })
  *   op.next() / op.done(item)       around each item; op.cancelled once Cancel was pressed
+ *   op.doneAll(items)               a batch done at once (one request for several items)
+ *   op.attempt(item, fn)            await fn(); a failure asks Try Again / Skip / Cancel; resolves
+ *                                   { ok, value }. Without the dialog the failure throws as before.
  *   op.setPlace('from' | 'to', p)   a better name for a location (the server's, once it answers)
- *   op.finish()                     closes the dialog (or never shows it)
- *   run(options, items, worker)     begin + await worker(item, index) per item, stopping at Cancel;
- *                                   resolves { done, cancelled }
+ *   op.finish()                     closes the dialog
+ *   op.shown                        true when the dialog is up (the desktop); callers that toast
+ *                                   without it stay quiet with it
+ *   available()                     whether operations get the dialog (the desktop)
+ *   run(options, items, worker)     begin + attempt(worker(item, index)) per item, stopping at Cancel;
+ *                                   resolves { done, cancelled, shown, values }
+ *   batches(options, items, worker) the same for an API that takes a list: worker(chunk) for up to
+ *                                   BATCHES chunks, so the bar moves and Cancel stops between them
  */
 (function (root) {
     'use strict';
 
     const doc = typeof document !== 'undefined' ? document : null;
     const ART = '/static_images/vista-file-progress/';
-    const SHOW_DELAY_MS = 1000;
+    // shown at once, kept up at least this long so an operation that ends quickly is still seen
+    const MIN_VISIBLE_MS = 600;
     const ESTIMATE_DELAY_MS = 1000;
     const ESTIMATE_EVERY_MS = 1000;
     // More information: the open part fades out over this while the window grows (the other then
     // fades in, vista-file-progress.css)
     const EXPAND_FADE_MS = 300;
     const FRAME_HEIGHT = 40;
+    const BATCHES = 20;
 
     const VERBS = { copy: 'Copying', move: 'Moving', delete: 'Deleting', recycle: 'Recycling' };
+    // Interrupted Action: "An unexpected error is keeping you from copying the file."
+    const ERROR_VERBS = { copy: 'copying', move: 'moving', delete: 'deleting', recycle: 'deleting' };
     // when each recorded frame came up (ms into the loop) and the loop's length
     const MOVIES = {
         copy: {
@@ -72,7 +86,10 @@
         canceling: 'Canceling...',
         more: 'More information',
         less: 'Less information',
-        cancel: 'Cancel'
+        cancel: 'Cancel',
+        interrupted: 'Interrupted Action',
+        tryAgain: 'Try Again',
+        skip: 'Skip'
     };
 
     let dialogSeq = 0;
@@ -104,8 +121,14 @@
         return `${(Math.floor(v * f) / f).toFixed(decimals)} ${units[u]}`;
     }
 
-    function itemsText(n, bytes) {
-        return `${count(n)} ${n === 1 ? 'item' : 'items'} (${formatBytes(bytes)})`;
+    /** "3 items (1.20 MB)"; items whose size is not known (gallery images, shortcuts) leave it out. */
+    function itemsText(n, bytes, sized) {
+        const items = `${count(n)} ${n === 1 ? 'item' : 'items'}`;
+        return sized ? `${items} (${formatBytes(bytes)})` : items;
+    }
+
+    function escapeHtml(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
 
     function plural(n, one, many) {
@@ -126,7 +149,7 @@
     }
 
     function isDesktop() {
-        return !!doc && doc.body.classList.contains('desktop-mode');
+        return !!doc && !!doc.body && doc.body.classList.contains('desktop-mode');
     }
 
     function captionButton(className, title, iconClass, disabled) {
@@ -161,6 +184,7 @@
             this.items = (options.items || []).map((i) => ({ name: i && i.name, size: Math.max(0, Number(i && i.size) || 0) }));
             this.totalItems = this.items.length;
             this.totalBytes = this.items.reduce((sum, i) => sum + i.size, 0);
+            this.sized = this.totalBytes > 0;
             this.doneItems = 0;
             this.doneBytes = 0;
             this.cancelled = false;
@@ -170,14 +194,16 @@
             this.estimate = null;
             this.modal = null;
             this.raf = 0;
-            this.timers = [];
-            if (isDesktop() && this.totalItems > 0) {
-                this.timers.push(setTimeout(() => this.show(), SHOW_DELAY_MS));
-            }
+            this.shownAt = 0;
+            if (this.totalItems > 0) this.show();
         }
 
         get headerText() {
-            return `${VERBS[this.op]} ${itemsText(this.totalItems, this.totalBytes)}`;
+            return `${VERBS[this.op]} ${itemsText(this.totalItems, this.totalBytes, this.sized)}`;
+        }
+
+        get shown() {
+            return !!this.modal;
         }
 
         /** Before each item: false once Cancel was pressed. */
@@ -186,9 +212,53 @@
         }
 
         done(item) {
-            this.doneItems = Math.min(this.totalItems, this.doneItems + 1);
-            this.doneBytes = Math.min(this.totalBytes, this.doneBytes + Math.max(0, Number(item && item.size) || 0));
+            this.doneAll([item]);
+        }
+
+        doneAll(items) {
+            for (const item of items || []) {
+                this.doneItems = Math.min(this.totalItems, this.doneItems + 1);
+                this.doneBytes = Math.min(this.totalBytes, this.doneBytes + Math.max(0, Number(item && item.size) || 0));
+            }
             this.render();
+        }
+
+        /**
+         * await fn() for an item (or a batch); a failure asks Vista's Interrupted Action: Try Again
+         * runs it again, Skip goes on to the next, Cancel stops the operation. Resolves { ok, value }.
+         * Without the dialog (not the desktop) the failure throws, for the caller's own message.
+         */
+        async attempt(item, fn) {
+            for (;;) {
+                try {
+                    return { ok: true, value: await fn() };
+                } catch (err) {
+                    if (!this.modal) throw err;
+                    console.error('File operation:', err);
+                    const answer = await this.interrupted(item, err);
+                    if (answer === 'retry') continue;
+                    if (answer !== 'skip') this.cancel();
+                    return { ok: false, error: err };
+                }
+            }
+        }
+
+        /** "An unexpected error is keeping you from copying the file." with the error and the item. */
+        async interrupted(item, err) {
+            const names = (Array.isArray(item) ? item : [item]).map((i) => i && i.name).filter(Boolean);
+            const what = names.length > 1 ? 'files' : 'file';
+            const message = `<p>An unexpected error is keeping you from ${ERROR_VERBS[this.op]} the ${what}. `
+                + 'If you continue to receive this error, you can use the error code to search for help with this problem.</p>'
+                + `<p>${escapeHtml((err && err.message) || String(err || 'Unknown error'))}</p>`
+                + (names.length ? `<p><b>${escapeHtml(names.slice(0, 3).join(', '))}${names.length > 3 ? ', ...' : ''}</b></p>` : '');
+            // showConfirmationDialog: public/scripts/comp/confirmationDialog.js
+            if (typeof root.showConfirmationDialog !== 'function') return 'cancel';
+            const answer = await root.showConfirmationDialog(message, [
+                { text: TEXT.tryAgain, value: 'retry', className: 'btn-primary' },
+                { text: TEXT.skip, value: 'skip', className: 'btn-secondary' },
+                { text: TEXT.cancel, value: 'cancel', className: 'btn-secondary' }
+            ], null, { title: TEXT.interrupted, icon: 'fas fa-exclamation-triangle' });
+            return answer || 'cancel';
         }
 
         cancel() {
@@ -203,8 +273,21 @@
         finish() {
             if (this.finished) return;
             this.finished = true;
-            for (const t of this.timers) clearTimeout(t);
-            this.timers = [];
+            if (this.modal && !this.cancelled) {
+                // the bar full, and the dialog up long enough to be seen
+                this.doneItems = this.totalItems;
+                this.doneBytes = this.totalBytes;
+                this.render();
+                const left = MIN_VISIBLE_MS - (Date.now() - this.shownAt);
+                if (left > 0) {
+                    setTimeout(() => this.close(), left);
+                    return;
+                }
+            }
+            this.close();
+        }
+
+        close() {
             clearTimeout(this.tickTimer);
             clearTimeout(this.swapTimer);
             if (this.raf) cancelAnimationFrame(this.raf);
@@ -365,6 +448,7 @@
 
         show() {
             if (this.finished || this.modal || !isDesktop()) return;
+            this.shownAt = Date.now();
             this.build();
             this.render();
             try {
@@ -455,25 +539,80 @@
         return new Operation(options || {});
     }
 
-    /** Runs worker(item, index) for each item in turn with the dialog up; stops at Cancel. */
+    function available() {
+        return isDesktop();
+    }
+
+    function described(options, list) {
+        return Object.assign({}, options, {
+            items: options.items || list.map((i) => ({ name: i && i.name, size: i && i.size }))
+        });
+    }
+
+    /**
+     * worker(item, index, op) for each item in turn with the dialog up, a failure asking Try Again /
+     * Skip / Cancel; stops at Cancel. Resolves { done, cancelled, shown, values } (values: what each
+     * worker that went through returned). Without the dialog a failure throws.
+     */
     async function run(options, items, worker) {
         const list = Array.from(items || []);
-        const op = begin(Object.assign({}, options, { items: list.map((i) => ({ name: i && i.name, size: i && i.size })) }));
+        const op = begin(described(options || {}, list));
+        const shown = op.shown;
+        const values = [];
         let done = 0;
         try {
             for (let i = 0; i < list.length; i++) {
                 if (!op.next()) break;
-                await worker(list[i], i, op);
-                done += 1;
+                const r = await op.attempt(list[i], () => worker(list[i], i, op));
+                if (r.ok) {
+                    done += 1;
+                    values.push(r.value);
+                }
                 op.done(list[i]);
             }
         } finally {
             op.finish();
         }
-        return { done, cancelled: op.cancelled };
+        return { done, cancelled: op.cancelled, shown, values };
     }
 
-    const api = { begin, run, formatBytes, formatDuration, MOVIES, SHOW_DELAY_MS };
+    /**
+     * run() for an API that takes a list (deleteImagesBulk, moveFilesToWorkspace ...): worker(chunk,
+     * op) for up to BATCHES chunks in turn, so the bar moves and Cancel stops between them. Without
+     * the dialog it is one call with the whole list. `options.items` describes the list for the
+     * dialog when the list itself is plain names. Resolves as run(), done counting items.
+     */
+    async function batches(options, items, worker) {
+        const list = Array.from(items || []);
+        const opts = described(options || {}, list);
+        if (!available()) {
+            const value = list.length ? await worker(list, null) : undefined;
+            return { done: list.length, cancelled: false, shown: false, values: list.length ? [value] : [] };
+        }
+        const op = begin(opts);
+        const shown = op.shown;
+        const size = Math.max(1, Math.ceil(list.length / BATCHES));
+        const values = [];
+        let done = 0;
+        try {
+            for (let i = 0; i < list.length; i += size) {
+                if (!op.next()) break;
+                const chunk = list.slice(i, i + size);
+                const info = op.items.slice(i, i + size);
+                const r = await op.attempt(info, () => worker(chunk, op));
+                if (r.ok) {
+                    done += chunk.length;
+                    values.push(r.value);
+                }
+                op.doneAll(info);
+            }
+        } finally {
+            op.finish();
+        }
+        return { done, cancelled: op.cancelled, shown, values };
+    }
+
+    const api = { begin, run, batches, available, formatBytes, formatDuration, MOVIES, MIN_VISIBLE_MS };
     if (root) root.fileOperationProgress = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : null);

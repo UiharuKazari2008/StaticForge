@@ -3,20 +3,11 @@
 const fs = require('fs');
 const siteAccess = require('./siteAccess');
 const siteHomepage = require('./siteHomepageStorage');
+const siteHomepagePreview = require('./siteHomepagePreview');
 
-function readPreviewIndex(projectRoot, slug) {
-    const installed = siteHomepage.installedDir(projectRoot, slug);
-    const avail = siteHomepage.availableDir(projectRoot, slug);
-    let siteDir = installed;
-    if (!fs.existsSync(siteDir)) {
-        siteDir = avail;
-    }
-    if (!fs.existsSync(siteDir)) {
-        return null;
-    }
-    const resolved = siteHomepage.resolveSiteFile(siteDir, '/');
-    if (resolved.kind !== 'file') return null;
-    return fs.readFileSync(resolved.abs, 'utf8');
+function packetSlug(message) {
+    const body = message && (message.data && typeof message.data === 'object' ? message.data : message);
+    return typeof body.slug === 'string' ? body.slug.trim() : '';
 }
 
 async function handleGetSiteHomepage(handlersCtx, ws, message, clientInfo) {
@@ -25,7 +16,6 @@ async function handleGetSiteHomepage(handlersCtx, ws, message, clientInfo) {
         return;
     }
     const projectRoot = handlersCtx.globalResources.getPath('root');
-    siteHomepage.ensureAvailableCatalog(projectRoot);
     const status = siteAccess.publicSiteAccessStatus(handlersCtx.globalResources);
     handlersCtx.sendToClient(ws, {
         type: 'get_site_homepage_response',
@@ -34,10 +24,33 @@ async function handleGetSiteHomepage(handlersCtx, ws, message, clientInfo) {
             success: true,
             configured: status.configured,
             homepage: status.homepage,
-            available: siteHomepage.listAvailableSlugs(projectRoot),
-            doorFailures: handlersCtx.globalResources.getDataPlumbing ?
-                undefined : undefined
+            available: siteHomepage.listAvailableSlugs(projectRoot)
         },
+        timestamp: new Date().toISOString()
+    });
+}
+
+async function handleMintSiteHomepagePreviewUrl(handlersCtx, ws, message, clientInfo) {
+    if (clientInfo.userType !== 'admin') {
+        handlersCtx.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+        return;
+    }
+    const slug = packetSlug(message);
+    if (!siteHomepage.isSafeSlug(slug)) {
+        handlersCtx.sendError(ws, 'Invalid slug', 'INVALID_SLUG', message.requestId);
+        return;
+    }
+    const projectRoot = handlersCtx.globalResources.getPath('root');
+    if (!siteHomepage.resolvePreviewSiteDir(projectRoot, slug)) {
+        handlersCtx.sendError(ws, 'Preview not found', 'NOT_FOUND', message.requestId);
+        return;
+    }
+    const ticket = siteHomepagePreview.mintPreviewTicket(handlersCtx.globalResources, slug);
+    const previewPath = siteHomepagePreview.previewPathForSlug(slug, ticket);
+    handlersCtx.sendToClient(ws, {
+        type: 'mint_site_homepage_preview_url_response',
+        requestId: message.requestId,
+        data: { success: true, slug, previewPath, ticket },
         timestamp: new Date().toISOString()
     });
 }
@@ -47,15 +60,21 @@ async function handleGetSiteHomepagePreview(handlersCtx, ws, message, clientInfo
         handlersCtx.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
         return;
     }
-    const slug = typeof message.slug === 'string' ? message.slug.trim() : '';
+    const slug = packetSlug(message);
     if (!siteHomepage.isSafeSlug(slug)) {
         handlersCtx.sendError(ws, 'Invalid slug', 'INVALID_SLUG', message.requestId);
         return;
     }
     const projectRoot = handlersCtx.globalResources.getPath('root');
-    const html = readPreviewIndex(projectRoot, slug);
+    const hit = siteHomepage.resolvePreviewSiteDir(projectRoot, slug);
+    const html = hit ? fs.readFileSync(hit.resolved.abs, 'utf8') : null;
     if (!html) {
-        handlersCtx.sendError(ws, 'Preview not found', 'NOT_FOUND', message.requestId);
+        handlersCtx.sendError(
+            ws,
+            `Preview not found for "${slug}" (no index.html under resources/site-homepages/${slug}/)`,
+            'NOT_FOUND',
+            message.requestId
+        );
         return;
     }
     handlersCtx.sendToClient(ws, {
@@ -71,24 +90,39 @@ async function handleSetSiteHomepage(handlersCtx, ws, message, clientInfo) {
         handlersCtx.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
         return;
     }
-    const slug = typeof message.slug === 'string' ? message.slug.trim() : '';
+    const body = message && (message.data && typeof message.data === 'object' ? message.data : message);
+    const slug = typeof body.slug === 'string' ? body.slug.trim() : '';
     if (!siteHomepage.isSafeSlug(slug)) {
         handlersCtx.sendError(ws, 'Invalid homepage slug', 'INVALID_SLUG', message.requestId);
         return;
     }
-    const phrase = message.phrase != null ? String(message.phrase) : '';
+    const phraseRaw = body.phrase != null ? String(body.phrase) : '';
+    const phraseNorm = siteAccess.normalizeAccessPhrase(phraseRaw.trim() ? phraseRaw : '');
+    if (phraseRaw.trim() && !phraseNorm) {
+        handlersCtx.sendError(
+            ws,
+            `Access phrase must be at most ${siteAccess.ACCESS_PHRASE_MAX_LEN} characters`,
+            'PHRASE_TOO_LONG',
+            message.requestId
+        );
+        return;
+    }
+    const phrase = phraseNorm != null ? phraseNorm : phraseRaw;
     const projectRoot = handlersCtx.globalResources.getPath('root');
-    try {
-        siteHomepage.installHomepage(projectRoot, slug);
-    } catch (err) {
-        handlersCtx.sendError(ws, err.message || 'Install failed', 'INSTALL_FAILED', message.requestId);
+    if (!siteHomepage.slugHasCoverSite(projectRoot, slug)) {
+        handlersCtx.sendError(
+            ws,
+            `No cover site at resources/site-homepages/${slug}/`,
+            'NOT_FOUND',
+            message.requestId
+        );
         return;
     }
 
     try {
         const existing = siteAccess.readSiteAccessSecure(handlersCtx.globalResources);
-        if (!phrase.trim() && !existing.hash) {
-            handlersCtx.sendError(ws, 'Access phrase is required on first install', 'MISSING_PHRASE', message.requestId);
+        if (!phraseRaw.trim() && !existing.hash) {
+            handlersCtx.sendError(ws, 'Access phrase is required when enabling the gate', 'MISSING_PHRASE', message.requestId);
             return;
         }
         handlersCtx.globalResources.modifyConfig('secureConfig', (cfg) => {
@@ -100,8 +134,8 @@ async function handleSetSiteHomepage(handlersCtx, ws, message, clientInfo) {
             if (!cfg.siteAccess.pepper) {
                 cfg.siteAccess.pepper = siteAccess.generatePepper();
             }
-            if (phrase.trim()) {
-                cfg.siteAccess.hash = siteAccess.computeAccessHash(cfg.siteAccess.pepper, phrase.trim());
+            if (phraseNorm) {
+                cfg.siteAccess.hash = siteAccess.computeAccessHash(cfg.siteAccess.pepper, phraseNorm);
             }
             return cfg;
         });
@@ -122,7 +156,7 @@ async function handleSetSiteHomepage(handlersCtx, ws, message, clientInfo) {
             success: true,
             configured: status.configured,
             homepage: status.homepage,
-            message: 'Site homepage installed'
+            message: 'Cover site active'
         },
         timestamp: new Date().toISOString()
     });
@@ -154,6 +188,7 @@ async function handleClearSiteHomepage(handlersCtx, ws, message, clientInfo) {
 
 function registerSiteHomepagePackets(handlersCtx, reg, ADMIN_DESTRUCTIVE) {
     reg('get_site_homepage', handleGetSiteHomepage);
+    reg('mint_site_homepage_preview_url', handleMintSiteHomepagePreviewUrl);
     reg('get_site_homepage_preview', handleGetSiteHomepagePreview);
     reg('set_site_homepage', handleSetSiteHomepage, ADMIN_DESTRUCTIVE);
     reg('clear_site_homepage', handleClearSiteHomepage, ADMIN_DESTRUCTIVE);
@@ -161,5 +196,5 @@ function registerSiteHomepagePackets(handlersCtx, reg, ADMIN_DESTRUCTIVE) {
 
 module.exports = {
     registerSiteHomepagePackets,
-    readPreviewIndex
+    packetSlug
 };

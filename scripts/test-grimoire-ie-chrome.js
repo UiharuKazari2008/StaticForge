@@ -44,7 +44,7 @@ assert.strictEqual(c.shell(), host, 'no split: the window itself');
 // wiring
 assert.ok(read('public/scripts/comp/featureLoader.js').includes("'scripts/comp/grimoireRemoteBrowser.js', 'scripts/comp/grimoireIeChrome.js', 'scripts/comp/grimoireTabs.js', 'scripts/comp/tagWikiSearchModal.js'"), 'loads before the window');
 assert.ok(read('public/scripts/comp/tagWikiSearchModal.js').includes('this.ieChrome = new GrimoireIeChrome(this)'), 'the window builds it');
-const css = read('public/css/vista-explorer.css');
+const css = read('public/css/vista-explorer.css').replace(/:is\(#tagWikiSearchModal, \.grimoire-window\)/g, '#tagWikiSearchModal').replace(/:is\(#(\w+), \[data-grimoire-part="\1"\]\)/g, '#$1');  // later Grimoire windows (#615) share the window's rules through :is()
 for (const sel of ['.grimoire-travel', '.grimoire-ie-seg', '.grimoire-ie-search', '.grimoire-ie-tabrow', '.grimoire-ie-tab', '.grimoire-ie-newtab', '.grimoire-ie-commands', '.grimoire-ie-status']) {
     assert.ok(css.includes(sel), sel + ' is styled');
 }

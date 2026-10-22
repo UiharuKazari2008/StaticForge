@@ -7,6 +7,15 @@ const DSK_COOKIE = 'dsk';
 const ACCESS_HEADER = 'x-dreamscape-access';
 const DSK_MAX_AGE_SEC = 400 * 24 * 60 * 60;
 const HASH_BYTE_LEN = 32;
+/** Max characters for the cover lookup phrase (admin + door field q). */
+const ACCESS_PHRASE_MAX_LEN = 512;
+
+function normalizeAccessPhrase(raw) {
+    if (raw == null) return null;
+    const s = String(raw);
+    if (!s || s.length > ACCESS_PHRASE_MAX_LEN) return null;
+    return s;
+}
 
 function normalizeAccessHash(raw) {
     if (raw == null) return null;
@@ -149,6 +158,8 @@ module.exports = {
     DSK_COOKIE,
     ACCESS_HEADER,
     DSK_MAX_AGE_SEC,
+    ACCESS_PHRASE_MAX_LEN,
+    normalizeAccessPhrase,
     computeAccessHash,
     generatePepper,
     readSiteAccessSecure,

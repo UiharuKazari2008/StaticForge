@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Melaton update engine (public/scripts/launch/updateEngine.js, Yozora #419): manifest diff
-// against static-cache-v1 (x-file-hash, path normalisation, Vary / ?sha= siblings), the
+// against static-cache-v2 (x-file-hash, path normalisation, Vary / ?sha= siblings), the
 // installer threshold with remembered stragglers, install state, and the download driver over a
 // fake service worker (byte-weighted progress, errors, complete, stall).
 // Run: node scripts/test-update-engine.js
@@ -24,7 +24,7 @@ function fakeCaches(rows) {
             return rows.map((r) => ({ url: new URL(r.url, ORIGIN).href }));
         }
     };
-    return { open: async (name) => { assert.strictEqual(name, 'static-cache-v1'); return cache; } };
+    return { open: async (name) => { assert.strictEqual(name, 'static-cache-v2'); return cache; } };
 }
 
 function memoryStorage() {
@@ -55,16 +55,29 @@ function memoryStorage() {
     assert.deepStrictEqual(needed.map((f) => f.url), ['/scripts/b.js'], 'only the stale file; aliases and siblings count');
     assert.strictEqual(engine.totalBytes(needed), 40);
 
+    // ---- every page-side reader uses the worker's cache name (sw.js moved to v2 and the pages
+    // kept v1: each worker download landed where no check looked, so updates came back every start)
+    {
+        const read = (rel) => fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
+        const swName = (read('public/sw.js').match(/const STATIC_CACHE = '([^']+)'/) || [])[1];
+        assert.ok(swName, 'sw.js names its static cache');
+        assert.strictEqual(engine.STATIC_CACHE, swName, 'updateEngine.js reads the worker cache');
+        for (const rel of ['public/scripts/comp/serviceWorkerManager.js', 'public/scripts/launch/launchGames.js', 'public/scripts/launch/launchGamesHost.js', 'public/scripts/launch/melatonBoot.js']) {
+            const names = Array.from(read(rel).matchAll(/['"](static-cache-v\d+)['"]/g), (m) => m[1]);
+            assert.ok(names.length && names.every((n) => n === swName), `${rel} reads ${swName} (found ${names.join(', ')})`);
+        }
+    }
+
     // ---- conditional manifest (Yozora #516): digest stored once in sync, then 304 ----
     {
         const DIGEST = 'digest-1';
-        const synced = [{ url: '/app', hash: 'app1', size: 20 }];
+        const synced = [{ url: '/scripts/main.js', hash: 'app1', size: 20 }];
         const seen = [];
         const storage = memoryStorage();
         const condEnv = {
             location: { origin: ORIGIN },
             localStorage: storage,
-            caches: fakeCaches([{ url: '/app', hash: 'app1' }]),
+            caches: fakeCaches([{ url: '/scripts/main.js', hash: 'app1' }]),
             fetch: async (url, opts) => {
                 const sent = opts.headers['X-Manifest-Hash'] || '';
                 seen.push(sent);
@@ -94,12 +107,25 @@ function memoryStorage() {
 
         const snapped = memoryStorage();
         snapped.setItem('melatonManifestHash', DIGEST);
-        snapped.setItem('melatonManifestSnapshot', JSON.stringify([{ url: '/app', hash: 'app1' }]));
+        snapped.setItem('melatonManifestSnapshot', JSON.stringify([{ url: '/scripts/main.js', hash: 'app1' }]));
         const emptySnap = await engine.check({ ...condEnv, localStorage: snapped, caches: fakeCaches([]) });
         assert.ok(!emptySnap.unchanged, '304 still diffs the stored file list');
         assert.strictEqual(emptySnap.files.length, 1, 'a wiped cache is not treated as in sync');
+
+        // The shell pages are never cached (sw.js): never an update, flag or not. A snapshot
+        // written before it kept `auth` lost the flag, and they counted on every 304 start.
+        const shellSnap = memoryStorage();
+        shellSnap.setItem('melatonManifestHash', DIGEST);
+        shellSnap.setItem('melatonManifestSnapshot', JSON.stringify([{ url: '/scripts/main.js', hash: 'app1' }, { url: '/', hash: 'i' }, { url: '/app', hash: 'a' }, { url: '/launch', hash: 'l' }]));
+        const shellCheck = await engine.check({ ...condEnv, localStorage: shellSnap });
+        assert.ok(shellCheck.unchanged && shellCheck.files.length === 0, 'old snapshot: the shell pages are not updates');
+
+        const authStore = memoryStorage();
+        const routed = [{ url: '/scripts/main.js', hash: 'app1', size: 20 }, { url: '/app', hash: 'a', size: 9, type: 'route', auth: true }];
+        await engine.check({ ...condEnv, localStorage: authStore, fetch: async () => ({ ok: true, status: 200, headers: { get: (h) => (h === 'X-Manifest-Hash' ? DIGEST : null) }, json: async () => routed }) });
+        assert.deepStrictEqual(JSON.parse(authStore.getItem('melatonManifestSnapshot')), [{ url: '/scripts/main.js', hash: 'app1' }, { url: '/app', hash: 'a', auth: true }], 'the snapshot keeps auth');
     }
-    assert.deepStrictEqual((await engine.filesNeedingUpdate({ ...env, caches: null }, manifest)).length, 5, 'no Cache Storage: everything');
+    assert.deepStrictEqual((await engine.filesNeedingUpdate({ ...env, caches: null }, manifest)).map((f) => f.url), ['/scripts/a.js', '/scripts/b.js', '/css/c.css'], 'no Cache Storage: everything but the shell pages (never cached)');
     const withAuth = manifest.concat([
         { url: '/protected/fflate.js', hash: 'ff', size: 9, auth: true },
         { url: '/protected/t5_tokenizer.json', hash: 't5', size: 9 }
@@ -174,6 +200,26 @@ function memoryStorage() {
     assert.strictEqual(r2.ok, false);
     assert.strictEqual(r2.stalled, true);
     assert.strictEqual(clock.timers.size, 0, 'stall timer cleared');
+
+    // the worker busy with another page's job drops this list: give up at once (the boot then
+    // takes its pack) instead of waiting stallMs for a COMPLETE that is not about these files
+    w = fakeWorker();
+    const busy = engine.download(denv(w.container), list, {});
+    w.container.emit({ type: 'STATIC_CACHE_ALREADY_IN_PROGRESS', currentDownload: { completed: 3, total: 40 } });
+    const rb = await busy;
+    assert.deepStrictEqual([rb.ok, rb.busy], [false, true], 'busy worker: not ok, right away');
+    assert.strictEqual(clock.timers.size, 0, 'no stall timer left');
+    // once this job has started, the same notice (another page asking) does not end it
+    w = fakeWorker();
+    const ours = engine.download(denv(w.container), list, {});
+    w.container.emit({ type: 'STATIC_CACHE_STARTED', total: 2 });
+    w.container.emit({ type: 'STATIC_CACHE_ALREADY_IN_PROGRESS', currentDownload: { completed: 1, total: 2 } });
+    w.container.emit({ type: 'STATIC_CACHE_COMPLETE', completed: 2, total: 2 });
+    assert.strictEqual((await ours).ok, true, 'our own job still completes');
+
+    // a graphify-out row (served behind sign-in) is never an update, flagged or not
+    assert.deepStrictEqual((await engine.filesNeedingUpdate({ ...env, caches: null }, [{ url: '/graphify-out/cache/stat-index.json', hash: 'g', size: 1 }])), [], 'graphify-out is not precached');
+    assert.strictEqual(require('../modules/installManifestFilter.js').isAuthGatedWebPath('/graphify-out/cache/stat-index.json'), true, 'the server flags graphify-out as auth');
 
     // no controller: nothing posted
     const r3 = await engine.download({ navigator: { serviceWorker: { controller: null } } }, list, {});
@@ -495,6 +541,32 @@ function memoryStorage() {
     assert.deepStrictEqual(inflated, [1, 2], 'and inflates only those entries');
     assert.ok(!upCaches.store.has(new URL(bigManifest[0].url + '?sha=old', ORIGIN).href), 'the old row for the path is purged');
     assert.strictEqual(upCaches.store.get(new URL(bigManifest[0].url, ORIGIN).href).hash, bigManifest[0].hash);
+
+    // Paced (Setup's new install): the work is spread over the budget it is given, a few
+    // writes at a time; a budget of 0 is gentle but does not wait.
+    const pclock = { now: 0 };
+    const slept = [];
+    const pacedEnv = {
+        ...benv,
+        caches: memoryCache(bigManifest.slice(100).map((file) => ({ url: file.url, hash: file.hash }))),
+        now: () => pclock.now,
+        sleep: async (ms) => { slept.push(ms); pclock.now += ms; }
+    };
+    assert.strictEqual((await engine.copyPack(pacedEnv, bigManifest, {})).ok, true);
+    const fractions = [];
+    const paced = await engine.expandPack(pacedEnv, bigManifest, { pace: { budgetMs: 10000 }, onProgress: (p) => fractions.push([pclock.now, p.fraction]) });
+    assert.strictEqual(paced.stored, 100);
+    assert.ok(pclock.now >= 9900 && pclock.now <= 10000, `Expanding takes its budget (${pclock.now})`);
+    const half = fractions.find(([, f]) => f >= 0.5);
+    assert.ok(half[0] >= 4800 && half[0] <= 5200, `half the files land at half the budget (${half[0]})`);
+    const groupAt = pclock.now;
+    await engine.installGroup(pacedEnv, 'features', { pace: { budgetMs: 4000 } });
+    assert.ok(pclock.now - groupAt >= 3900, 'Installing features takes its budget too');
+    slept.length = 0;
+    assert.strictEqual((await engine.copyPack(pacedEnv, bigManifest, {})).ok, true);
+    const late = await engine.expandPack({ ...pacedEnv, caches: memoryCache([]) }, bigManifest, { pace: { budgetMs: 0 } });
+    assert.strictEqual(late.stored, 3000);
+    assert.strictEqual(slept.length, 0, 'no budget: no waiting');
 
     // A stale pack answers 503 while the server rebuilds it; copyPack waits, then copies.
     let calls503 = 0;

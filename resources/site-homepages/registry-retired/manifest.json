@@ -1,0 +1,70 @@
+{
+ "slug": "registry-retired",
+ "title": "Xyridian Sample Registry - service retired",
+ "lang": "en",
+ "pages": [
+  {
+   "file": "index.html",
+   "purpose": "Retirement notice for the Xyridian Sample Registry with the migration check form (the door)"
+  },
+  {
+   "file": "migration-check.html",
+   "purpose": "Door results: reference not found among migrated records, submit a written request; form repeated"
+  },
+  {
+   "file": "requests.html",
+   "purpose": "How to request copies: what to include, identity check, timescale, fees, postal address, office hours"
+  },
+  {
+   "file": "request-form.html",
+   "purpose": "Online copy request form (GET to request-received.html)"
+  },
+  {
+   "file": "request-received.html",
+   "purpose": "Confirmation after submitting the online request form"
+  },
+  {
+   "file": "collections.html",
+   "purpose": "What was transferred, returned or disposed of, with record counts"
+  },
+  {
+   "file": "retention.html",
+   "purpose": "Retention and disposal statement summary with link to the PDF"
+  },
+  {
+   "file": "privacy.html",
+   "purpose": "Privacy notice for handling copy requests"
+  },
+  {
+   "file": "404.html",
+   "purpose": "Not found page in the notice style"
+  }
+ ],
+ "door": {
+  "page": "index.html",
+  "action": "migration-check.html",
+  "field": "q",
+  "label": "Was my record migrated? Record reference:"
+ },
+ "notFound": "404.html",
+ "downloads": [
+  "files/xsr-request-form.pdf",
+  "files/xsr-retention-disposal-statement.pdf",
+  "files/xsr-collections-2023.csv"
+ ],
+ "references": {
+  "Dreamscape": "collections.html, retention PDF and CSV: the 'Dreamscape pilot collection, 2015-2017', a feasibility study whose records were not migrated and were destroyed on 14 June 2023 under retention class 7.3",
+  "Xyridian": "every page: the retired service is the 'Xyridian Sample Registry (XSR)'",
+  "Academy City Research": "every page: the institution whose Research Data Services retired XSR and holds the institutional archive",
+  "Yukimi Kazari": "index.html and retention.html signature (Records Officer, Research Data Services); also signs the retention and disposal statement PDF"
+ },
+ "academyCity": [
+  "School District 18: Records Office postal address (Building 7, 2-14 Hisame Avenue, School District 18) on requests.html, request-received.html and the request form PDF",
+  "School District 22: the institutional archive is at Archive Level B7, School District 22, on requests.html, collections.html, retention.html and the retention statement PDF (class 7.1)",
+  "School District 11: mail from outside Academy City routed through the District 11 goods and mail transfer point, about 5 extra working days each way, on requests.html, request-received.html (15 instead of 10 working days) and the request form PDF"
+ ],
+ "phone": {
+  "number": "+1 (997) 434-2600",
+  "where": "index.html and requests.html ('General enquiries about this notice'), staff line ext. 4410 on requests.html, and the request form PDF; requests themselves still cannot be made by telephone"
+ }
+}

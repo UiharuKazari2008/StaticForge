@@ -192,7 +192,7 @@ class ImageViewerManager {
 }
 
 /**
- * Photo Gallery's Info pane (Lumen and Glancewell, vista-photo-gallery.css): the thumbnail, the name,
+ * Photo Gallery's Info pane (Glancewell, vista-photo-gallery.css): the thumbnail, the name,
  * the date and size, the generation parameters and the prompts. The full metadata comes from the
  * Properties loader (imagePromptInspector.js) when the record lacks it.
  * @param {Element} pane the .wpg-info element
@@ -270,6 +270,46 @@ async function renderPhotoGalleryInfoPane(pane, source) {
     }
 }
 
+/**
+ * Lumen's pictures to step through when the gallery window has not loaded them (Lumen opened from
+ * the desktop, a shortcut, MCP...): the workspace's light gallery list (loadGalleryChunk:
+ * public/scripts/comp/galleryView.js), newest first, fetched once a minute per workspace.
+ */
+const lumenGalleryListCache = { workspace: null, at: 0, rows: null, pending: null };
+
+function lumenGalleryList() {
+    const workspace = (typeof activeWorkspace !== 'undefined' && activeWorkspace) || 'default';
+    const cache = lumenGalleryListCache;
+    if (cache.workspace === workspace) {
+        if (cache.rows && Date.now() - cache.at < 60000) return Promise.resolve(cache.rows);
+        if (cache.pending) return cache.pending;
+    }
+    cache.workspace = workspace;
+    cache.pending = (async () => {
+        // the first call reads the total, the second takes the whole list in one block
+        const head = await loadGalleryChunk('images', 0, 0);
+        const all = await loadGalleryChunk('images', 0, Math.max(head.total || 0, 1));
+        cache.rows = all.chunk;
+        cache.at = Date.now();
+        return cache.rows;
+    })().finally(() => { cache.pending = null; });
+    return cache.pending;
+}
+
+/** PhotoSwipe slides for a list of gallery rows (Lumen's slide show and Open > Glancewell). */
+function lumenSlidesFromRows(rows) {
+    return rows.map((row) => {
+        const name = row.upscaled || row.original || row.filename;
+        return {
+            // resolveGalleryFullImageUrl / localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+            src: resolveGalleryFullImageUrl(row) || localGalleryImageUrl(name),
+            width: Number(row.width) || 1024,
+            height: Number(row.height) || 1024,
+            filename: row.filename || name
+        };
+    });
+}
+
 class ImageViewer {
     constructor(id, element, imageSrc, title, metadata, manager) {
         this.id = id;
@@ -297,7 +337,7 @@ class ImageViewer {
         this.dragStartPanY = 0;
         this._loadGeneration = 0;
         this._trackedBlobUrl = null;
-        // the view's rotation (Photo Gallery's Rotate buttons turn the picture on screen, not the file)
+        // the view's rotation (the Rotate buttons turn the picture on screen, not the file)
         this.rotation = 0;
 
         this.wireBoundHandlers();
@@ -342,7 +382,7 @@ class ImageViewer {
             document.addEventListener('contextMenuAction', this.boundContextMenuHandler, { signal });
         });
 
-        // Photo Gallery: Left / Right step through the gallery
+        // Photo Viewer: Left / Right step through the gallery
         registerKeyboardListener({
             id: `imageViewer.step.${this.id}`,
             type: 'whenFocused',
@@ -350,9 +390,23 @@ class ImageViewer {
             priority: 40,
             showInOverlay: false,
             handler: (e) => {
-                if (e.altKey || e.ctrlKey || e.metaKey) return;
                 const tag = e.target && e.target.tagName;
-                if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+                if (tag === 'INPUT' || tag === 'TEXTAREA' || e.metaKey) return;
+                // Photo Viewer's keys: Del, F11 slide show, Ctrl+, / Ctrl+. rotate, Ctrl+0 fit, Ctrl+Alt+0 actual size
+                const key = e.ctrlKey && e.altKey && e.key === '0' ? 'actual'
+                    : e.ctrlKey && !e.altKey ? { ',': 'rotl', '.': 'rotr', 0: 'fit' }[e.key]
+                        : !e.ctrlKey && !e.altKey ? { Delete: 'delete', F11: 'show' }[e.key] : null;
+                if (key) {
+                    e.preventDefault();
+                    if (key === 'actual') this.actualSize();
+                    else if (key === 'fit') this.fitToScreen();
+                    else if (key === 'rotl') this.rotate(-90);
+                    else if (key === 'rotr') this.rotate(90);
+                    else if (key === 'show') void this.playSlideShow();
+                    else if (this.getImageFilename()) void this.deleteAndAdvance();
+                    return true;
+                }
+                if (e.altKey || e.ctrlKey) return;
                 if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
                 const step = e.key === 'ArrowLeft' ? -1 : 1;
                 if (!this.galleryNeighbor(step)) return;
@@ -713,6 +767,7 @@ class ImageViewer {
 
         // Toolbar buttons
         this.setupToolbarButtons();
+        void this.loadGalleryRows();
 
         // Image interaction
         if (imgElement) {
@@ -754,59 +809,60 @@ class ImageViewer {
         }
     }
 
-    /** "Forest - Lumen", as Photo Gallery names its viewer window. */
+    /** "Forest.jpg - Lumen", as Windows Photo Viewer names its window (the extension kept). */
     updateTitle() {
         const titleElement = this.element.querySelector(`#imageViewerTitle_${this.id}`);
-        // the name without its extension, as Photo Gallery shows it
-        if (titleElement) titleElement.textContent = `${String(this.title || '').replace(/\.[a-z0-9]{2,5}$/i, '')} - Lumen`;
+        if (titleElement) titleElement.textContent = `${String(this.title || '')} - Lumen`;
     }
 
     /**
-     * Photo Gallery's command band and control pill (app.html #imageViewerModalTemplate,
-     * vista-photo-gallery.css). The File / Print / Open menus send the context menu's own actions
-     * (handleContextMenuAction); the pill zooms, toggles actual size / fit, steps through the
-     * gallery, plays the slide show (Glancewell), rotates the view and deletes (to Scraps).
+     * Windows Photo Viewer's command bar and control pill (app.html #imageViewerModalTemplate,
+     * vista-photo-gallery.css). Its menus carry Lumen's own actions (handleContextMenuAction):
+     * File (copies, wallpaper, Properties = the generation parameters, delete, Exit), Print (Dreamscape's
+     * prints are generations: new pictures from this one), E-mail (send it to Wren), Burn (keep it:
+     * pin, desktop, reference), Open (DreamStudio, Glancewell, the gallery, a chat). The pill zooms,
+     * toggles actual size / fit, steps through the gallery, plays Photo Viewer's slide show, rotates and deletes.
      */
     setupToolbarButtons() {
         const q = (sel) => this.element.querySelector(sel);
         const on = (key, fn) => {
-            const btn = q(`[data-wpg="${key}"]`);
+            const btn = q(`[data-wpv="${key}"]`);
             if (btn) btn.addEventListener('click', (e) => fn(e, btn));
         };
-        on('gallery', () => this.jumpToInWorkspace());
-        on('fix', () => this.openInCreator());
-        on('info', () => this.toggleInfoPane());
-        on('info-close', () => this.toggleInfoPane(false));
+        on('email', () => {
+            const name = this.getImageFilename();
+            // askWrenAboutImage: public/scripts/comp/director.js
+            if (name && typeof askWrenAboutImage === 'function') askWrenAboutImage(name);
+        });
         on('help', () => {
             if (typeof openGrimoireApplet === 'function') openGrimoireApplet();
         });
         on('fit', () => this.toggleActualSize());
-        on('slideshow', () => this.openInLightbox());
+        on('slideshow', () => void this.playSlideShow());
         on('previous', () => this.step(-1));
         on('next', () => this.step(1));
         on('rotate-left', () => this.rotate(-90));
         on('rotate-right', () => this.rotate(90));
-        on('delete', () => this.scrap());
+        on('delete', () => void this.deleteAndAdvance());
 
         if (typeof contextMenu !== 'undefined' && contextMenu) {
             const menu = (key, items) => {
-                const btn = q(`[data-wpg="${key}"]`);
+                const btn = q(`[data-wpv="${key}"]`);
                 if (btn) contextMenu.attachClickMenuToElement(btn, { sections: [{ type: 'list', items }] });
             };
             const gallery = !!this.getImageFilename();
+            // Photo Viewer's File menu: Make a Copy..., Copy, Delete, Properties, Exit
             menu('file', [
+                { text: 'Make a Copy...', action: 'image-viewer-download' },
                 { text: 'Copy', action: 'image-viewer-copy' },
-                { text: 'Save a Copy...', action: 'image-viewer-download' },
-                { separator: true },
-                { text: 'Set as Desktop Background', action: 'image-viewer-set-wallpaper', disabled: !gallery },
-                { text: 'Add to Desktop', action: 'image-viewer-desktop-shortcut', disabled: !gallery },
-                { text: 'New Reference', action: 'image-viewer-create-reference' },
-                { separator: true },
+                { text: 'Delete', action: 'image-viewer-delete', disabled: !gallery },
+                { text: 'Delete Permanently', action: 'image-viewer-incinerate', disabled: !gallery },
                 { text: 'Properties', action: 'image-viewer-inspect-prompts' },
                 { separator: true },
-                { text: 'Delete Permanently', action: 'image-viewer-incinerate', disabled: !gallery }
+                { text: 'Set as Desktop Background', action: 'image-viewer-set-wallpaper', disabled: !gallery },
+                { separator: true },
+                { text: 'Exit', action: 'image-viewer-exit' }
             ]);
-            // Dreamscape's prints are generations: Print makes new pictures from this one
             menu('print', [
                 { text: 'Reroll', action: 'image-viewer-reroll' },
                 { text: 'Enhance...', action: 'image-viewer-enhance' },
@@ -814,29 +870,36 @@ class ImageViewer {
                 { text: 'Expand Canvas...', action: 'image-viewer-expand' },
                 { text: 'Create Animation', action: 'image-viewer-animate' }
             ]);
+            menu('burn', [
+                { text: 'Pin', action: 'image-viewer-toggle-pin', disabled: !gallery },
+                { text: 'Add to Desktop', action: 'image-viewer-desktop-shortcut', disabled: !gallery },
+                { text: 'New Reference', action: 'image-viewer-create-reference' }
+            ]);
             menu('open', [
                 { text: 'DreamStudio', action: 'image-viewer-creator' },
                 { text: 'Glancewell', action: 'image-viewer-slideshow' },
-                { text: 'Gallery', action: 'image-viewer-jump-workspace', disabled: !gallery }
+                { text: 'Gallery', action: 'image-viewer-jump-workspace', disabled: !gallery },
+                { separator: true },
+                { text: 'Chat', action: 'image-viewer-start-chat', disabled: !gallery }
             ]);
-            const zoom = q('[data-wpg="zoom"]');
+            const zoom = q('[data-wpv="zoom"]');
             if (zoom) {
                 contextMenu.attachClickMenuToElement(zoom, {
                     sections: [{
                         type: 'list',
                         items: [
-                            { text: 'Zoom In', action: 'wpg-zoom-in' },
-                            { text: 'Zoom Out', action: 'wpg-zoom-out' },
+                            { text: 'Zoom In', action: 'wpv-zoom-in' },
+                            { text: 'Zoom Out', action: 'wpv-zoom-out' },
                             { separator: true },
-                            { text: 'Actual Size', action: 'wpg-actual' },
-                            { text: 'Fit to Window', action: 'wpg-fit' }
+                            { text: 'Actual Size', action: 'wpv-actual' },
+                            { text: 'Fit to Window', action: 'wpv-fit' }
                         ]
                     }],
                     onAction: (action) => {
-                        if (action === 'wpg-zoom-in') this.zoomIn();
-                        else if (action === 'wpg-zoom-out') this.zoomOut();
-                        else if (action === 'wpg-actual') this.actualSize();
-                        else if (action === 'wpg-fit') this.fitToScreen();
+                        if (action === 'wpv-zoom-in') this.zoomIn();
+                        else if (action === 'wpv-zoom-out') this.zoomOut();
+                        else if (action === 'wpv-actual') this.actualSize();
+                        else if (action === 'wpv-fit') this.fitToScreen();
                     }
                 });
             }
@@ -845,7 +908,7 @@ class ImageViewer {
         // Work-area maximize: .modal-work-area-maximize → openModal wireModalMaximizeButton
     }
 
-    // ---- Photo Gallery's pill: actual size / fit, previous / next, rotate ----
+    // ---- the pill: actual size / fit, previous / next, rotate ----
 
     toggleActualSize() {
         if (this.zoomLevel > 1.001) this.fitToScreen();
@@ -853,32 +916,75 @@ class ImageViewer {
     }
 
     syncFitButton() {
-        const btn = this.element.querySelector('[data-wpg="fit"]');
+        const btn = this.element.querySelector('[data-wpv="fit"]');
         if (!btn) return;
         const actual = this.zoomLevel > 1.001;
         btn.classList.toggle('is-actual', actual);
-        btn.title = actual ? 'Fit to Window' : 'Actual Size';
+        btn.title = actual ? 'Fit to window (Ctrl+0)' : 'Actual size (Ctrl+Alt+0)';
     }
 
-    /** The gallery's pictures around this one (galleryView.js allImages), for Previous / Next. */
+    /**
+     * The pictures Lumen steps through and where this one is in them: the gallery window's loaded
+     * list (galleryView.js allImages) when it holds this picture, else Lumen's own copy of the
+     * workspace's list (lumenGalleryList, loaded by loadGalleryRows).
+     */
+    galleryPlace(name = this.getImageFilename()) {
+        if (!name) return null;
+        const find = (list) => (Array.isArray(list)
+            ? list.findIndex((img) => img && (img.filename === name || img.original === name || img.upscaled === name))
+            : -1);
+        if (typeof allImages !== 'undefined') {
+            const index = find(allImages);
+            if (index >= 0) return { list: allImages, index };
+        }
+        const index = find(this.galleryRows);
+        return index >= 0 ? { list: this.galleryRows, index } : null;
+    }
+
+    /** The gallery's pictures around this one, for Previous / Next. */
     galleryNeighbor(step) {
-        const name = this.getImageFilename();
-        if (!name || typeof allImages === 'undefined' || !Array.isArray(allImages)) return null;
-        const index = allImages.findIndex((img) => img && (img.filename === name || img.original === name || img.upscaled === name));
-        if (index < 0) return null;
-        return allImages[index + step] || null;
+        const place = this.galleryPlace();
+        return place ? place.list[place.index + step] || null : null;
+    }
+
+    /** Lumen's own list when the gallery window has not loaded this picture. */
+    async loadGalleryRows() {
+        if (!this.getImageFilename() || typeof loadGalleryChunk !== 'function') return;
+        if (this.galleryPlace() && this.galleryPlace().list !== this.galleryRows) return;
+        try {
+            this.galleryRows = await lumenGalleryList();
+        } catch (err) {
+            console.warn('Lumen: gallery list unavailable:', err && err.message);
+            return;
+        }
+        this.syncStepButtons();
     }
 
     syncStepButtons() {
-        const prev = this.element.querySelector('[data-wpg="previous"]');
-        const next = this.element.querySelector('[data-wpg="next"]');
+        const prev = this.element.querySelector('[data-wpv="previous"]');
+        const next = this.element.querySelector('[data-wpv="next"]');
         if (prev) prev.disabled = !this.galleryNeighbor(-1);
         if (next) next.disabled = !this.galleryNeighbor(1);
     }
 
     step(direction) {
         const image = this.galleryNeighbor(direction);
-        if (!image) return;
+        if (image) this.showGalleryImage(image);
+    }
+
+    /** Photo Viewer's Delete: the picture goes to Scraps and the next one shows (the window closes after the last). */
+    async deleteAndAdvance() {
+        const next = this.galleryNeighbor(1) || this.galleryNeighbor(-1);
+        // moveToScraps: public/scripts/comp/galleryView.js (true once scrapped)
+        if (typeof moveToScraps !== 'function' || !(await moveToScraps(this.metadata))) return;
+        // Lumen's own list drops it too (the gallery window's list updates itself)
+        const place = this.galleryPlace();
+        if (place && place.list === this.galleryRows) this.galleryRows.splice(place.index, 1);
+        if (next) this.showGalleryImage(next);
+        else this.close();
+    }
+
+    showGalleryImage(image) {
         const hasFile = !!(image.filename || image.original || image.upscaled);
         // resolveGalleryFullImageUrl / localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
         this.imageSrc = (image.url && (!image.url.startsWith('blob:') || !hasFile))
@@ -892,30 +998,11 @@ class ImageViewer {
         this.updateTitle();
         this.syncStepButtons();
         this.loadImage();
-        if (this.infoOpen) this.renderInfoPane();
     }
 
     rotate(degrees) {
         this.rotation = ((this.rotation + degrees) % 360 + 360) % 360;
         this.updateImageTransform();
-    }
-
-    // ---- the Info pane: the picture's details and its generation parameters ----
-
-    toggleInfoPane(force) {
-        const pane = this.element.querySelector('.wpg-info');
-        const btn = this.element.querySelector('[data-wpg="info"]');
-        if (!pane) return;
-        this.infoOpen = typeof force === 'boolean' ? force : !this.infoOpen;
-        pane.classList.toggle('hidden', !this.infoOpen);
-        if (btn) btn.setAttribute('aria-pressed', this.infoOpen ? 'true' : 'false');
-        if (this.infoOpen) this.renderInfoPane();
-    }
-
-    renderInfoPane() {
-        const pane = this.element.querySelector('.wpg-info');
-        const img = this.element.querySelector(`#imageViewerImage_${this.id}`);
-        return renderPhotoGalleryInfoPane(pane, { metadata: this.metadata, src: this.imageSrc, title: this.title, img });
     }
 
     setupContextMenu() {
@@ -1178,6 +1265,12 @@ class ImageViewer {
                 break;
             case 'image-viewer-slideshow':
                 this.openInLightbox();
+                break;
+            case 'image-viewer-delete':
+                void this.deleteAndAdvance();
+                break;
+            case 'image-viewer-exit':
+                this.close();
                 break;
             case 'image-viewer-download':
                 this.download();
@@ -1631,12 +1724,49 @@ class ImageViewer {
         this.element.addEventListener('modalResized', this.boundResizeHandler);
     }
 
+    /**
+     * Photo Viewer's slide show: the gallery from this picture on, full screen; Esc / Exit comes back
+     * here on the picture the show stopped on (playSlideShowFromLumen: public/scripts/comp/lightbox.js).
+     */
+    async playSlideShow() {
+        if (typeof playSlideShowFromLumen !== 'function') {
+            this.openInLightbox();
+            return;
+        }
+        const filename = this.getImageFilename();
+        const onExit = (name) => {
+            const place = name && name !== this.getImageFilename() ? this.galleryPlace(name) : null;
+            if (place) this.showGalleryImage(place.list[place.index]);
+            // bringModalToFront: public/scripts/comp/modalUtils.js
+            if (this.element && !this.element.classList.contains('hidden')) bringModalToFront(this.element);
+        };
+        const place = this.galleryPlace();
+        if (place && typeof allImages !== 'undefined' && place.list === allImages) {
+            await playSlideShowFromLumen({ filename }, onExit);
+            return;
+        }
+        if (place) {
+            await playSlideShowFromLumen({ dataSource: lumenSlidesFromRows(place.list), index: place.index }, onExit);
+            return;
+        }
+        const imgElement = this.element.querySelector(`#imageViewerImage_${this.id}`);
+        await playSlideShowFromLumen({
+            url: this.imageSrc,
+            width: imgElement ? (imgElement.naturalWidth || 1024) : 1024,
+            height: imgElement ? (imgElement.naturalHeight || 1024) : 1024
+        }, onExit);
+    }
+
     openInLightbox() {
         // Use existing lightbox functionality
         if (typeof showLightbox === 'function') {
             const filename = this.getImageFilename();
-            // If we have metadata with a filename, use that to find the image in the gallery
-            if (filename) {
+            const place = this.galleryPlace();
+            // a picture the gallery window has not loaded: Glancewell over Lumen's own list
+            // (openStandalonePhotoSwipe: public/scripts/comp/lightbox.js)
+            if (place && place.list === this.galleryRows && typeof openStandalonePhotoSwipe === 'function') {
+                void openStandalonePhotoSwipe(lumenSlidesFromRows(place.list), place.index);
+            } else if (filename) {
                 showLightbox({ filename });
             } else {
                 // Standalone image - use URL mode

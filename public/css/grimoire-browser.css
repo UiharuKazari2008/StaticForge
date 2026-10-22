@@ -39,7 +39,7 @@
    revealed on click of display or hover of the bar.
    ===================================================== */
 .wiki-address-bar,
-#grimoireAddressBar {
+:is(#grimoireAddressBar, [data-grimoire-part="grimoireAddressBar"]) {
     position: relative;
     display: flex;
     align-items: stretch;
@@ -185,7 +185,7 @@
 }
 
 /* Alchemy page load: glass tint fills left to right. --alchemy-load and data-alchemy-loading come from grimoireShowLoadProgress; wiki page waits hold it at 50% (grimoireBeginWikiLoad), both in grimoireRemoteBrowser.js */
-#grimoireAddressBar::before {
+:is(#grimoireAddressBar, [data-grimoire-part="grimoireAddressBar"])::before {
     content: '';
     position: absolute;
     inset: 0 auto 0 0;
@@ -198,12 +198,12 @@
     transition: width 0.3s ease, opacity 0.4s ease;
 }
 
-#grimoireAddressBar[data-alchemy-loading]::before {
+:is(#grimoireAddressBar, [data-grimoire-part="grimoireAddressBar"])[data-alchemy-loading]::before {
     opacity: 1;
 }
 
 /* Alchemy menu: data-alchemy is set by grimoireSyncAlchemyIdentity (grimoireRemoteBrowser.js) */
-#tagWikiSearchModal:not([data-alchemy="1"]) #grimoireAddressSiteBtn {
+:is(#tagWikiSearchModal, .grimoire-window):not([data-alchemy="1"]) :is(#grimoireAddressSiteBtn, [data-grimoire-part="grimoireAddressSiteBtn"]) {
     display: none;
 }
 

@@ -43,7 +43,7 @@ console.log('test-vista-form-controls: ok');
 
 // the chrome boxes (Cartograph, Control Panel, Grimoire) are Vista's opaque fills, and every other
 // window's caption toolbar takes the Vista command-bar look (2026-10-13)
-const ve = fs.readFileSync(path.join(__dirname, '..', 'public/css/vista-explorer.css'), 'utf8');
+const ve = fs.readFileSync(path.join(__dirname, '..', 'public/css/vista-explorer.css'), 'utf8').replace(/:is\(#tagWikiSearchModal, \.grimoire-window\)/g, '#tagWikiSearchModal').replace(/:is\(#(\w+), \[data-grimoire-part="\1"\]\)/g, '#$1');  // later Grimoire windows (#615) share the window's rules through :is()
 assert.ok(!ve.includes('hsl(0 0% 100% / 70%), hsl(0 0% 100% / 76%) 25%'), 'no translucent box fill is left');
 assert.ok(ve.includes('var(--vista-box-fill, linear-gradient(#e3ebf3, #eaf1f8 25%, #eaf1f8 75%, #e7eff6))'), "Explorer's address box fill");
 assert.ok(ve.includes('--vista-box-fill: linear-gradient(#ebf2f9, #f2f8fe 25%, #f3f8fd 75%, #eef5fb);'), 'the search / IE fill');

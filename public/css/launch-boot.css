@@ -50,16 +50,6 @@ html.melaton-boot #melatonBoot {
     display: block;
 }
 
-/* Vista's boot screen comes up from black over about a second */
-#melatonBoot[data-screen="boot"] #melatonBootCanvas {
-    animation: melaton-boot-fade-in 1s ease-out both;
-}
-
-@keyframes melaton-boot-fade-in {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-
 /* The BIOS takes the pointer (tabs, items and the key bar answer taps); the boot screen does not */
 #melatonBoot[data-screen="bios"] #melatonBiosCanvas {
     pointer-events: auto;
@@ -167,8 +157,16 @@ html.melaton-boot #melatonBoot {
     inset: 0;
 }
 
+/* The canvas (launch.html) paints the boot screen and its fade. This markup stays only as the
+   accessible progressbar: shown, it bled through the fading canvas as a second, unfaded
+   copyright and marquee. */
 #melatonBoot[data-screen="boot"] .melaton-boot-screen {
     display: block;
+    opacity: 0;
+}
+
+#melatonBoot[data-screen="boot"] .melaton-boot-bar-cluster {
+    animation: none;
 }
 
 .melaton-boot-stage {

@@ -1,0 +1,89 @@
+{
+ "slug": "grain-bulletin",
+ "title": "Agricultural Measurement Service - Quarterly Bulletin: Grain Moisture Meter Calibration Results",
+ "lang": "en",
+ "pages": [
+  {
+   "file": "index.html",
+   "purpose": "Bulletin No. 117 (Q2 2026, released Friday 14 August 2026): main points, three tables, revisions note, dataset-by-identifier form"
+  },
+  {
+   "file": "bulletin-116.html",
+   "purpose": "Bulletin No. 116 (Q1 2026) as first published, with a revision notice pointing to No. 117"
+  },
+  {
+   "file": "bulletin-115.html",
+   "purpose": "Bulletin No. 115 (Q4 2025)"
+  },
+  {
+   "file": "archive.html",
+   "purpose": "List of bulletins No. 100 to 117; only 115 to 117 are online, the rest available on request"
+  },
+  {
+   "file": "datasets.html",
+   "purpose": "Dataset identifiers and CSV downloads for every table in the three online bulletins"
+  },
+  {
+   "file": "dataset-lookup.html",
+   "purpose": "Door results page: no dataset with that identifier, form repeated"
+  },
+  {
+   "file": "methodology.html",
+   "purpose": "How checks are made: reference samples, air-oven reference moisture, wet basis, tolerance, statistics"
+  },
+  {
+   "file": "revisions.html",
+   "purpose": "Revisions policy and revisions log"
+  },
+  {
+   "file": "contact.html",
+   "purpose": "Statistics Branch contact form, postal address, internal extensions"
+  },
+  {
+   "file": "contact-sent.html",
+   "purpose": "Contact form confirmation"
+  },
+  {
+   "file": "404.html",
+   "purpose": "Not found page"
+  }
+ ],
+ "door": {
+  "page": "index.html",
+  "action": "dataset-lookup.html",
+  "field": "q",
+  "label": "Download a dataset by identifier:"
+ },
+ "notFound": "404.html",
+ "downloads": [
+  "data/amsb-117-t1.csv",
+  "data/amsb-117-t2.csv",
+  "data/amsb-117-t3.csv",
+  "data/amsb-116-t1.csv",
+  "data/amsb-116-t2.csv",
+  "data/amsb-115-t1.csv",
+  "data/amsb-115-t2.csv"
+ ],
+ "references": {
+  "Dreamscape": "index.html, bulletin-116.html, bulletin-115.html notes and methodology.html section 3: a two-row spring malting barley cultivar (Dreamscape and Marrowby) used for reference samples",
+  "Xyridian": "Table 2 (by meter model) in index.html, bulletin-116.html, bulletin-115.html and the T2 CSVs: meter models Xyridian GM-420 and Xyridian GM-310",
+  "Academy City Research": "Bulletin notes (index.html, bulletin-116.html, bulletin-115.html) and methodology.html section 4: the Academy City Research automated grain laboratory in School District 17 performs the reference air-oven moisture determinations under contract",
+  "Yukimi Kazari": "Responsible statistician, ext. 4417 of the statistical enquiries number: contact lines of each bulletin, methodology.html, and the staff table on contact.html"
+ },
+ "academyCity": [
+  "School District 17 (fully automated industry): location of the Academy City Research automated grain laboratory, named in the notes of index.html, bulletin-116.html, bulletin-115.html and in methodology.html section 4"
+ ],
+ "phone": {
+  "number": "+1 (997) 434-2600",
+  "label": "Statistical enquiries",
+  "where": [
+   "contact.html (Telephone section, staff extensions, office-hours note)",
+   "index.html, bulletin-116.html, bulletin-115.html contact lines"
+  ],
+  "extensions": {
+   "4417": "Yukimi Kazari, responsible statistician",
+   "4410": "Statistics Branch office",
+   "4302": "Inspection Division office"
+  }
+ }
+}

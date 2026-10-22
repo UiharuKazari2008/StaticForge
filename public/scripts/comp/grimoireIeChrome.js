@@ -182,6 +182,24 @@
                 this.content.prepend(this.tabRow);
                 this.content.append(this.status);
             }
+
+            // a later Grimoire window (#615): its ids end in the window's suffix, the name stays in data-grimoire-part
+            const suffix = this.host.idSuffix || '';
+            [this.recent, this.drop, this.refresh, this.stop, this.search, this.tabRow, this.status].filter(Boolean).forEach((root) => {
+                [root, ...root.querySelectorAll('[id]')].forEach((el) => {
+                    if (!el.id || el.dataset.grimoirePart) return;
+                    el.dataset.grimoirePart = el.id;
+                    el.id += suffix;
+                });
+            });
+        }
+
+        /** A later window closing (tagWikiSearchModal.js destroyWindow): its listeners go with it. */
+        destroy() {
+            root.removeEventListener('message', this.onFrameMessage);
+            if (this.observer) this.observer.disconnect();
+            if (this.bodyObserver) this.bodyObserver.disconnect();
+            this.toggleQuickTabs(false);
         }
 
         /** The caption's Home / Split view / site menu move into IE's command bar on the desktop. */
@@ -190,7 +208,7 @@
             if (this._placed === on) return;
             this._placed = on;
             const host = this.host;
-            const site = document.getElementById('grimoireAddressSiteBtn');
+            const site = typeof host.part === 'function' ? host.part('grimoireAddressSiteBtn') : document.getElementById('grimoireAddressSiteBtn');
             const parts = [host.homeBtn, host.rightToggleBtn, site].filter(Boolean);
             if (on) {
                 // Home first, then Page ▾ (the split toggle rides along hidden; Page ▾ drives it), Tools ▾
@@ -363,8 +381,10 @@
                 this.host.navigate(item.bookmarkUrl);
                 return;
             }
-            if (action === 'page-new-window' && shell && typeof shell.openInNewWindow === 'function') {
-                shell.openInNewWindow();
+            // IE7's New Window: another full Grimoire window with this page (tagWikiSearchModal.js, #615)
+            if (action === 'page-new-window') {
+                if (typeof this.host.openPageInNewWindow === 'function') this.host.openPageInNewWindow();
+                else if (shell && typeof shell.openInNewWindow === 'function') shell.openInNewWindow();
                 return;
             }
             if (action === 'page-copy-address') {
@@ -428,7 +448,7 @@
             const splitAvailable = !!toggle && toggle.style.display !== 'none';
             const splitOn = !!toggle && toggle.classList.contains('active');
             return [
-                { text: 'Open in New Window', icon: 'fas fa-window-restore', action: 'page-new-window' },
+                { text: 'New Window', subtext: 'Ctrl+N', icon: 'fas fa-window-restore', action: 'page-new-window' },
                 { text: 'Copy Address', icon: 'fas fa-link', action: 'page-copy-address', disabled: !this.currentAddress() },
                 { separator: true },
                 { text: 'Split View', action: 'page-split', indicatorStyle: 'box', checked: splitOn, disabled: !splitAvailable }

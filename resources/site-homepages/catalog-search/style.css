@@ -1,5 +1,0 @@
-body { font-family: Georgia, serif; margin: 2rem; background: #f7f4ee; color: #222; }
-header { border-bottom: 1px solid #ccc; margin-bottom: 1.5rem; }
-form { display: flex; gap: 0.5rem; max-width: 28rem; }
-input[type=search] { flex: 1; padding: 0.4rem; }
-button { padding: 0.4rem 0.8rem; }
