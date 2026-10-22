@@ -403,6 +403,71 @@ sections.galleryLocate = async function galleryLocate() {
         `old ${(tOld / probes.length).toFixed(2)} ms, new ${(tNew / probes.length).toFixed(2)} ms per call`);
 };
 
+// Finding 5: bulk delete / Sequenzia preview_image_hash from one batched DB lookup.
+sections.previewHash = async function previewHash() {
+    if (!haveDbCopy()) return;
+    const liveImages = process.env.PERF_IMAGES_DIR || '/home/kanmi/staticforge/images';
+    if (!fs.existsSync(liveImages)) {
+        console.log(`  skipped: no images dir ${liveImages}`);
+        return;
+    }
+    const pick = async (where) => (await sampleImageRows(150, `filename NOT LIKE '%_upscaled.png' AND ${where}`))
+        .map((r) => r.filename)
+        .filter((f) => fs.existsSync(path.join(liveImages, f)));
+    const withHash = await pick(`json_extract(metadata, '$.forge_data.dynamic_generation.compiled_prompt.preview_image_hash') IS NOT NULL`);
+    const dgNoHash = await pick(`json_type(metadata, '$.forge_data.dynamic_generation') = 'object' AND json_extract(metadata, '$.forge_data.dynamic_generation.compiled_prompt.preview_image_hash') IS NULL`);
+    const noDg = await pick(`json_extract(metadata, '$.forge_data.dynamic_generation') IS NULL`);
+    const names = [...withHash, ...dgNoHash, ...noDg];
+
+    const mod = require('../modules/metadataDatabase');
+    const pm = new PngMetadata(null);
+    assert.strictEqual(await mod.initializeDatabase(path.dirname(DB_COPY), pm), true);
+    const cacheDir = makeWorkDir('preview-cache');
+    fs.mkdirSync(path.join(cacheDir, 'dynGenPreview'));
+    const handlers = {
+        globalResources: {
+            getPath: (key) => (key === 'cache' ? cacheDir : liveImages),
+            getMetadataDatabase: () => mod,
+            getPngMetadata: () => pm
+        }
+    };
+    const { createDynGenPreviewHashResolver } = require('../modules/ws/handlers/120-galleryHandler');
+
+    const fromFile = async (file) => {
+        const buf = await fs.promises.readFile(path.join(liveImages, file));
+        const meta = pm.readMetadata(buf);
+        if (!meta?.tEXt?.Comment) return null;
+        return JSON.parse(meta.tEXt.Comment)?.forge_data?.dynamic_generation?.compiled_prompt?.preview_image_hash || null;
+    };
+    let t0 = process.hrtime.bigint();
+    const expected = [];
+    for (const f of names) expected.push(await fromFile(f));
+    const oldMs = Number(process.hrtime.bigint() - t0) / 1e6;
+
+    t0 = process.hrtime.bigint();
+    const resolve = await createDynGenPreviewHashResolver(handlers, names);
+    const actual = [];
+    for (const f of names) actual.push(await resolve(f, path.join(liveImages, f)));
+    const newMs = Number(process.hrtime.bigint() - t0) / 1e6;
+
+    let mismatches = 0;
+    for (let i = 0; i < names.length; i++) {
+        if (actual[i] !== expected[i]) {
+            mismatches += 1;
+            console.log(`  mismatch ${names[i]}: file=${expected[i]} resolver=${actual[i]}`);
+        }
+    }
+    assert.strictEqual(mismatches, 0, 'resolver must return the PNG hash for every file');
+
+    // No dynGenPreview folder: no lookup at all.
+    fs.rmdirSync(path.join(cacheDir, 'dynGenPreview'));
+    const none = await createDynGenPreviewHashResolver(handlers, names);
+    assert.strictEqual(await none(names[0], path.join(liveImages, names[0])), null);
+    await mod.closeDatabase();
+    console.log(`  previewHash: ${names.length} files (${withHash.length} hash, ${dgNoHash.length} dg w/o hash, ${noDg.length} no dg) ` +
+        `match; PNG reads ${oldMs.toFixed(0)} ms -> resolver ${newMs.toFixed(0)} ms`);
+};
+
 async function main() {
     const wanted = process.argv.slice(2);
     const names = wanted.length ? wanted : Object.keys(sections);

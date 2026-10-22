@@ -2696,6 +2696,54 @@ async function addReceiptMetadata(filename, imagesDir, receiptData = null, forge
 
 
 /**
+ * forge_data.dynamic_generation.compiled_prompt.preview_image_hash per filename, from stored
+ * metadata (hot cache first). Only rows whose stored metadata carries dynamic_generation are
+ * returned ({ hash } with hash null when none); callers read the PNG for the rest, since file
+ * extraction does not always keep dynamic_generation in the row.
+ */
+async function getDynGenPreviewHashes(filenames) {
+    const out = new Map();
+    const names = normalizeSearchIndexFilenames(filenames);
+    if (!names.length || !dbInitialized || !db) {
+        return out;
+    }
+
+    const hot = metadataWriteQueue.getHotImagesBatch(names);
+    const pending = [];
+    for (const name of names) {
+        if (!hot[name]) {
+            pending.push(name);
+            continue;
+        }
+        const dg = hot[name].metadata?.forge_data?.dynamic_generation;
+        if (dg && typeof dg === 'object' && !Array.isArray(dg)) {
+            out.set(name, { hash: dg.compiled_prompt?.preview_image_hash || null });
+        }
+    }
+
+    const readDb = await getMetadataReadDatabase() || await getReadOnlyDatabase();
+    const readHandle = readDb || db;
+    for (let i = 0; i < pending.length; i += 500) {
+        const chunk = pending.slice(i, i + 500);
+        const rows = await readHandle.all(`
+            SELECT filename,
+                CASE WHEN json_valid(metadata)
+                    THEN json_type(metadata, '$.forge_data.dynamic_generation') END AS dg_type,
+                CASE WHEN json_valid(metadata)
+                    THEN json_extract(metadata, '$.forge_data.dynamic_generation.compiled_prompt.preview_image_hash') END AS preview_hash
+            FROM images
+            WHERE filename IN (${chunk.map(() => '?').join(',')})
+        `, chunk);
+        for (const row of rows || []) {
+            if (row.dg_type === 'object') {
+                out.set(row.filename, { hash: row.preview_hash || null });
+            }
+        }
+    }
+    return out;
+}
+
+/**
  * Get all filenames from the database
  */
 // The upscaled view scopes its search to these, then keeps results whose metadata
@@ -8216,6 +8264,7 @@ module.exports = {
     updateFileMetadata,
     getAllFilenames,
     getUpscaledViewFilenames,
+    getDynGenPreviewHashes,
     findLatestImageFilenameByNovelNoteId,
     
     // Search index functions
