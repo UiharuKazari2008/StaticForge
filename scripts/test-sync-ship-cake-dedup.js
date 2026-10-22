@@ -116,13 +116,13 @@ async function runTest() {
 
     global.fetch = async (url) => {
         if (url.includes('/issues?')) {
-            return { json: async () => mockIssues };
+            return { ok: true, status: 200, json: async () => mockIssues };
         } else if (url.match(/\/pulls\/(\d+)\/commits$/)) {
             const num = url.match(/\/pulls\/(\d+)\/commits$/)[1];
-            return { json: async () => mockCommits[num] || [] };
+            return { ok: true, status: 200, json: async () => mockCommits[num] || [] };
         } else if (url.match(/\/pulls\/(\d+)$/)) {
             const num = url.match(/\/pulls\/(\d+)$/)[1];
-            return { json: async () => mockPrs[num] || {} };
+            return { ok: true, status: 200, json: async () => mockPrs[num] || {} };
         }
         throw new Error('Unknown URL mocked: ' + url);
     };
@@ -195,7 +195,58 @@ async function runTest() {
     }
 }
 
-runTest().catch(e => {
-    console.error('Test failed', e);
-    process.exit(1);
-});
+async function runFetchRetryTest() {
+    console.log('Running syncShipCake Gitea HTTP retry/status test...');
+
+    let issueCalls = 0;
+    const seenInits = [];
+    global.fetch = async (url, init) => {
+        seenInits.push({ url, init });
+        if (url.includes('/issues?')) {
+            issueCalls++;
+            return { ok: false, status: 403, json: async () => ({ message: 'forbidden' }) };
+        }
+        throw new Error('Unknown URL mocked: ' + url);
+    };
+
+    const mockDb = {
+        get: async (sql) => {
+            if (sql.includes('SELECT value FROM system_settings')) return { value: '1' };
+            if (sql.includes("key = 'imported_at'")) return { value: 'yes' };
+            return undefined;
+        },
+        all: async (sql) => {
+            if (sql.includes('SELECT key, value FROM cake_pantry_state WHERE account_id = ?')) {
+                return [
+                    { key: 'last_consume_at', value: JSON.stringify(new Date(Date.now() - 1000).toISOString()) },
+                    { key: 'pending_deliveries', value: JSON.stringify([]) }
+                ];
+            }
+            if (sql.includes('SELECT * FROM cake_pantry_log')) return [];
+            return [];
+        },
+        run: async () => ({})
+    };
+
+    pantry.setGlobalResources({ getTagDatabase: () => ({ db: mockDb }) });
+
+    try {
+        const result = await pantry.syncShipCake('menma', { dry_run: true });
+        assert.strictEqual(result.success, false);
+        assert.match(result.error, /Failed to fetch issues from Gitea after retries/);
+        assert.match(String(result.details), /403/);
+        assert.strictEqual(issueCalls, 2, 'non-OK issues body must retry once');
+        assert.ok(seenInits.every((c) => c.init && c.init.headers && c.init.headers['User-Agent'] === 'Dreamscape-CakePantry/1.0'));
+        assert.ok(seenInits.every((c) => c.init.headers.Accept === 'application/json'));
+        console.log('✅ HTTP retry/status test passed.');
+    } finally {
+        global.fetch = globalFetch;
+    }
+}
+
+runTest()
+    .then(runFetchRetryTest)
+    .catch(e => {
+        console.error('Test failed', e);
+        process.exit(1);
+    });
