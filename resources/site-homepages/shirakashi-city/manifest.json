@@ -1,0 +1,76 @@
+{
+ "slug": "shirakashi-city",
+ "title": "排水設備指定工事店一覧 | 白樫市 上下水道部 下水道課",
+ "lang": "ja",
+ "pages": [
+  {
+   "file": "index.html",
+   "purpose": "排水設備指定工事店一覧 (令和8年度): PDF lists, mid-year changes table, door search form"
+  },
+  {
+   "file": "search.html",
+   "purpose": "Door results page: no matching designated contractor, search form again"
+  },
+  {
+   "file": "shitei-shinsei.html",
+   "purpose": "How to apply for / renew designation: requirements, 責任技術者, documents, fees, renewal window, 講習会"
+  },
+  {
+   "file": "haisui-koji.html",
+   "purpose": "排水設備の工事について: what needs a designated contractor, 確認申請, 完了検査, new service areas, subsidy"
+  },
+  {
+   "file": "shiyoryo.html",
+   "purpose": "下水道使用料: monthly rate table, sample calculations, bi-monthly billing, well-water assessed volumes"
+  },
+  {
+   "file": "manhole-card.html",
+   "purpose": "マンホールカード distribution: two card designs, places, hours, rules, stock"
+  },
+  {
+   "file": "koji-kyushi.html",
+   "purpose": "Notice: sewer road works around the 第十一学区ゲート paused during 大覇星祭 (R8.9.19-9.25)"
+  },
+  {
+   "file": "toiawase.html",
+   "purpose": "Contact form (GET to toiawase-kanryo.html) and counter info"
+  },
+  {
+   "file": "toiawase-kanryo.html",
+   "purpose": "Contact form confirmation page"
+  },
+  {
+   "file": "404.html",
+   "purpose": "Not found page in site style"
+  }
+ ],
+ "door": {
+  "page": "index.html",
+  "action": "search.html",
+  "field": "q",
+  "label": "指定番号"
+ },
+ "notFound": "404.html",
+ "downloads": [
+  "files/shiteiten-shinai-r8.pdf",
+  "files/shiteiten-shigai-r8.pdf",
+  "files/yoshiki1-shitei-shinsei.pdf"
+ ],
+ "references": {
+  "Dreamscape": "manhole-card.html: second manhole card design title 「Dreamscape - 樫の森の夜空 -」 (oak forest at night with Academy City wind turbines beyond the boundary; also in the stock table)",
+  "Xyridian": "index.html: 年度途中の異動 table, new outside-city designation No.1558 Xyridian設備株式会社 (槙田市)",
+  "Academy City Research": "haisui-koji.html#kyoyo: new service area 学園台1丁目 includes 学園都市研究所 (Academy City Research) 白樫キャンパス, a research facility partnered with Academy City, outside the wall",
+  "Yukimi Kazari": "files/shiteiten-shinai-r8.pdf: 責任技術者 カザリ ユキミ at No.1205 有限会社 第一水道 (宮下町)"
+ },
+ "academyCity": [
+  "haisui-koji.html#kyoyo: 学園台1丁目 is the area facing Academy City's outer wall in front of the 第十一学区ゲート (学園都市第十一学区ゲート) where logistics facilities are located",
+  "haisui-koji.html#gakuen: drainage facilities inside 学園都市 are under Academy City's jurisdiction, outside the city's designated contractor scheme; contractors must follow 学園都市側の入構手続き at the 第十一学区ゲート",
+  "haisui-koji.html: 学園都市研究所 (Academy City Research) 白樫キャンパス described as 学園都市と提携する研究施設",
+  "index.html news (2026-09-01) + koji-kyushi.html: sewer works around the 第十一学区ゲート paused during 大覇星祭 (令和8年9月19日から25日, public visitors)",
+  "manhole-card.html: card 2 design shows Academy City's wind turbines beyond the city boundary (SVG has three small turbines)"
+ ],
+ "phone": {
+  "number": "042-199-7434",
+  "use": "下水道課 排水設備係; contact block on every content page, toiawase.html (table + emergency note), files/yoshiki1-shitei-shinsei.pdf footer"
+ }
+}

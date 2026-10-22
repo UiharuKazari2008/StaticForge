@@ -4,85 +4,81 @@ const fs = require('fs');
 const path = require('path');
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
-const BUNDLED_AVAILABLE = path.join(__dirname, '..', 'resources', 'site-homepages');
 
-function cacheRoot(projectRoot) {
-    return path.join(projectRoot, '.cache', 'site-homepage');
-}
-
-function availableDir(projectRoot) {
-    return path.join(cacheRoot(projectRoot), 'available');
-}
-
-function installedDir(projectRoot, slug) {
-    return path.join(cacheRoot(projectRoot), slug);
+function coverSitesRoot(projectRoot) {
+    return path.join(projectRoot || path.join(__dirname, '..'), 'resources', 'site-homepages');
 }
 
 function isSafeSlug(slug) {
     return typeof slug === 'string' && SLUG_RE.test(slug);
 }
 
-function ensureAvailableCatalog(projectRoot) {
-    const avail = availableDir(projectRoot);
-    fs.mkdirSync(avail, { recursive: true });
-    if (!fs.existsSync(BUNDLED_AVAILABLE)) return;
-    const bundled = fs.readdirSync(BUNDLED_AVAILABLE, { withFileTypes: true });
-    for (const ent of bundled) {
-        if (!ent.isDirectory() || !isSafeSlug(ent.name)) continue;
-        const dest = path.join(avail, ent.name);
-        if (fs.existsSync(dest)) continue;
-        copyTreeSync(path.join(BUNDLED_AVAILABLE, ent.name), dest);
-    }
+function coverSiteDir(projectRoot, slug) {
+    if (!isSafeSlug(slug)) return null;
+    return path.join(coverSitesRoot(projectRoot), slug);
+}
+
+function slugHasCoverSite(projectRoot, slug) {
+    const dir = coverSiteDir(projectRoot, slug);
+    if (!dir || !fs.existsSync(dir)) return false;
+    const resolved = resolveSiteFile(dir, '/');
+    return resolved.kind === 'file';
 }
 
 function listAvailableSlugs(projectRoot) {
-    ensureAvailableCatalog(projectRoot);
-    const avail = availableDir(projectRoot);
-    if (!fs.existsSync(avail)) return [];
-    return fs.readdirSync(avail, { withFileTypes: true })
+    const root = coverSitesRoot(projectRoot);
+    if (!fs.existsSync(root)) return [];
+    return fs.readdirSync(root, { withFileTypes: true })
         .filter((d) => d.isDirectory() && isSafeSlug(d.name))
+        .filter((d) => slugHasCoverSite(projectRoot, d.name))
         .map((d) => d.name)
         .sort();
 }
 
-function copyTreeSync(src, dest) {
-    fs.mkdirSync(dest, { recursive: true });
-    for (const name of fs.readdirSync(src)) {
-        const from = path.join(src, name);
-        const to = path.join(dest, name);
-        const st = fs.statSync(from);
-        if (st.isDirectory()) {
-            copyTreeSync(from, to);
-        } else if (st.isFile()) {
-            fs.copyFileSync(from, to);
-        }
-    }
+function resolvePreviewSiteDir(projectRoot, slug) {
+    const siteDir = coverSiteDir(projectRoot, slug);
+    if (!siteDir || !fs.existsSync(siteDir)) return null;
+    const resolved = resolveSiteFile(siteDir, '/');
+    if (resolved.kind !== 'file') return null;
+    return { siteDir, resolved };
 }
 
-function installHomepage(projectRoot, slug) {
-    if (!isSafeSlug(slug)) {
-        throw new Error('Invalid homepage slug');
-    }
-    ensureAvailableCatalog(projectRoot);
-    const src = path.join(availableDir(projectRoot), slug);
-    if (!fs.existsSync(src)) {
-        throw new Error('Homepage slug is not available');
-    }
-    const dest = installedDir(projectRoot, slug);
-    fs.rmSync(dest, { recursive: true, force: true });
-    copyTreeSync(src, dest);
-    return dest;
+function readPreviewHtml(projectRoot, slug) {
+    const hit = resolvePreviewSiteDir(projectRoot, slug);
+    if (!hit) return null;
+    return fs.readFileSync(hit.resolved.abs, 'utf8');
 }
 
 function readDoorMeta(siteDir) {
-    const doorPath = path.join(siteDir, 'door.json');
-    let postPath = '/';
+    let postPath = '/lookup';
     let noResultPath = 'noresult.html';
+    let actionPath = '/lookup';
+
+    const manifestPath = path.join(siteDir, 'manifest.json');
+    if (fs.existsSync(manifestPath)) {
+        try {
+            const meta = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+            if (meta && meta.door && typeof meta.door.action === 'string') {
+                const actionRel = meta.door.action.replace(/^\/+/, '').split('?')[0];
+                noResultPath = actionRel;
+                actionPath = '/' + actionRel;
+                postPath = actionPath;
+            }
+            if (meta && typeof meta.notFound === 'string') {
+                // used by resolveSiteFile 404 fallback name only when custom
+            }
+        } catch (_err) {
+            // fall through
+        }
+    }
+
+    const doorPath = path.join(siteDir, 'door.json');
     if (fs.existsSync(doorPath)) {
         try {
             const meta = JSON.parse(fs.readFileSync(doorPath, 'utf8'));
             if (meta && typeof meta.postPath === 'string' && meta.postPath.startsWith('/')) {
                 postPath = meta.postPath.split('?')[0];
+                actionPath = postPath;
             }
             if (meta && typeof meta.noResultPath === 'string') {
                 noResultPath = meta.noResultPath.replace(/^\/+/, '');
@@ -91,12 +87,33 @@ function readDoorMeta(siteDir) {
             // keep defaults
         }
     }
-    return { postPath, noResultPath };
+
+    return { postPath, noResultPath, actionPath };
+}
+
+function extractDoorPhrase(req, doorMeta) {
+    const method = (req.method || 'GET').toUpperCase();
+    const urlPath = (req.path || '/').split('?')[0] || '/';
+    const actionPath = doorMeta.actionPath || doorMeta.postPath;
+
+    if (method !== 'POST') {
+        return undefined;
+    }
+
+    if (urlPath === doorMeta.postPath || urlPath === actionPath || urlPath === '/lookup') {
+        return req.body && req.body.q != null ? String(req.body.q) : '';
+    }
+
+    return undefined;
 }
 
 function resolveSiteFile(siteDir, urlPath) {
     const rel = urlPath === '/' ? 'index.html' : urlPath.replace(/^\/+/, '');
     if (!rel || rel.includes('..') || rel.includes('\0')) {
+        return { kind: 'missing' };
+    }
+    const base = path.basename(rel);
+    if (base === 'manifest.json' || base === 'door.json') {
         return { kind: 'missing' };
     }
     const abs = path.resolve(siteDir, rel);
@@ -132,20 +149,23 @@ function contentTypeForRel(rel) {
         '.webp': 'image/webp',
         '.svg': 'image/svg+xml',
         '.ico': 'image/x-icon',
-        '.txt': 'text/plain; charset=utf-8'
+        '.txt': 'text/plain; charset=utf-8',
+        '.pdf': 'application/pdf',
+        '.csv': 'text/csv; charset=utf-8'
     };
     return map[ext] || 'application/octet-stream';
 }
 
 module.exports = {
     isSafeSlug,
-    cacheRoot,
-    availableDir,
-    installedDir,
-    ensureAvailableCatalog,
+    coverSitesRoot,
+    coverSiteDir,
+    slugHasCoverSite,
     listAvailableSlugs,
-    installHomepage,
     readDoorMeta,
+    extractDoorPhrase,
     resolveSiteFile,
-    contentTypeForRel
+    contentTypeForRel,
+    resolvePreviewSiteDir,
+    readPreviewHtml
 };

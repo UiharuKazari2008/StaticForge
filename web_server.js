@@ -83,7 +83,8 @@ const { createApprovedIpAutoLoginMiddleware } = require('./modules/approvedIpAcc
 const {
     createSiteGateMiddleware,
     attachSiteGateWebUpgrade,
-    registerDynamicManifestRoute
+    registerDynamicManifestRoute,
+    mountSiteHomepagePreview
 } = require('./modules/siteGate');
 const siteAccessPublic = require('./modules/siteAccess');
 
@@ -1254,7 +1255,7 @@ const { app, server } = globalResources.initializeExpressApp(null, null, { serve
 app.disable('x-powered-by');
 app.use(cookieParser());
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
-app.use(createSiteGateMiddleware(globalResources, __dirname));
+mountSiteHomepagePreview(app, globalResources, __dirname);
 registerDynamicManifestRoute(app, globalResources, path.join(__dirname, 'public', 'manifest.json'));
 
 // Security and performance middleware
@@ -1403,6 +1404,7 @@ const sessionMiddleware = session({
 globalResources.loadKnownBadPaths();
 app.use(sessionMiddleware);
 app.use(createApprovedIpAutoLoginMiddleware(globalResources));
+app.use(createSiteGateMiddleware(globalResources, __dirname));
 app.use(createApplicationAuthEarlyMiddleware(globalResources));
 app.use(securityMiddleware);
 app.use(limiter);
@@ -2598,6 +2600,10 @@ app.post('/', serverReadinessMiddleware, express.json(), (req, res) => {
                         if (saveErr) {
                             console.error('Session save failed on login:', saveErr);
                             return res.status(500).json({ success: false, error: 'Login failed' });
+                        }
+                        const siteCfg = siteAccessPublic.readSiteAccessSecure(globalResources);
+                        if (siteCfg.configured && siteCfg.hash) {
+                            siteAccessPublic.setDskCookie(req, res, siteCfg.hash);
                         }
                         const payload = userType === 'admin'
                             ? { success: true, message: 'Login successful', userType: 'admin', logViewerPathUuid: globalResources.getLogViewerPathUuid(), vfsPathUuid: globalResources.getVfsPathUuid() }

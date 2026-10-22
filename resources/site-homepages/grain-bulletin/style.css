@@ -1,0 +1,44 @@
+body{margin:0;font:13px/1.5 Georgia,"Times New Roman",serif;color:#222;background:#fff}
+a{color:#1f3f73}a:visited{color:#4b2f6b}
+.hd{border-bottom:3px double #575757;padding:12px 24px}
+.hd .brand{font-size:20px;font-weight:normal;letter-spacing:.02em;color:#222;text-decoration:none}
+.hd span{display:block;font:11px Arial,Helvetica,sans-serif;color:#666}
+.nav{font:12px Arial,Helvetica,sans-serif;padding:6px 24px;border-bottom:1px solid #ccc;background:#f7f7f4}
+.nav a{margin-right:14px;color:#1f3f73;text-decoration:none;white-space:nowrap}
+.nav a:hover{text-decoration:underline}.nav a.on{color:#222;font-weight:bold}
+.m{max-width:880px;padding:16px 24px}
+.bc{font:11px Arial,Helvetica,sans-serif;color:#666;margin-bottom:10px}
+h1{font-size:21px;font-weight:normal;margin:0 0 6px}
+h2{font-size:15px;font-weight:bold;margin:20px 0 4px}
+.k{font:11px Arial,Helvetica,sans-serif;color:#666;margin-bottom:12px}
+ul,ol{padding-left:22px}li{margin:2px 0}
+.tw{overflow-x:auto;margin:12px 0}
+table{border-collapse:collapse;font:11.5px Arial,Helvetica,sans-serif;width:100%}
+caption{text-align:left;font:bold 12px Arial,Helvetica,sans-serif;padding:0 0 4px;color:#333}
+th,td{border-top:1px solid #aaa;border-bottom:1px solid #aaa;padding:3px 6px;text-align:right;vertical-align:top}
+th:first-child,td:first-child{text-align:left}
+thead th{background:#f0f0f0}
+tbody th{font-weight:normal}
+tfoot th,tfoot td{font-weight:bold;background:#f0f0f0}
+table.arc th,table.arc td,table.ds th,table.ds td{text-align:left}
+.fn,.notes{font:10.5px/1.45 Arial,Helvetica,sans-serif;color:#575757}
+.notes{margin:4px 0 0}
+.notice{font:12px/1.5 Arial,Helvetica,sans-serif;border:1px solid #c9b77a;background:#fbf8ec;padding:8px 10px;margin:0 0 14px}
+.door{font:12px Arial,Helvetica,sans-serif;border:1px solid #ccc;padding:8px;margin:14px 0}
+.door input{font:12px Arial,Helvetica,sans-serif;max-width:100%}
+.door .fn{margin:6px 0 0}
+.cf{font:12px Arial,Helvetica,sans-serif;border:1px solid #ccc;padding:4px 10px;max-width:520px}
+.cf label{display:block;color:#444;margin-bottom:2px}
+.cf input[type=text],.cf input[type=email],.cf select,.cf textarea{font:12px Arial,Helvetica,sans-serif;width:100%;box-sizing:border-box}
+.cf input[size="6"]{width:6em}
+.eq{font-style:italic;margin-left:18px}
+.addr{margin-left:18px}
+.ft{border-top:1px solid #ccc;margin-top:18px;padding:8px 24px 16px;font:10.5px/1.5 Arial,Helvetica,sans-serif;color:#666}
+.ft p{margin:3px 0;max-width:880px}
+@media(max-width:600px){
+ .hd,.nav,.m,.ft{padding-left:16px;padding-right:16px}
+ .hd .brand{font-size:18px}
+ table{font-size:10px}th,td{padding:3px 4px}
+ .door input{width:100%;box-sizing:border-box;margin:4px 0}
+ h1{font-size:19px}
+}
