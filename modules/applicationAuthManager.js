@@ -116,7 +116,7 @@ const SCOPE_WS_PACKETS = {
         'exchange_get_toggles', 'exchange_set_toggles',
         'exchange_dashboard', 'exchange_list_spam', 'exchange_spam_move', 'exchange_audit',
         'exchange_mailbox_key', 'exchange_aliases', 'exchange_signatures',
-        'exchange_toggles', 'exchange_status', 'exchange_spam'
+        'exchange_toggles', 'exchange_status', 'exchange_resync_recipients', 'exchange_spam'
     ]
 };
 

@@ -223,6 +223,21 @@ const TOOLS = [
         inputSchema: { type: 'object', additionalProperties: false, properties: {} }
     },
     {
+        name: 'exchange_resync_recipients',
+        core: true,
+        role: 'exchange',
+        scope: SCOPE,
+        description: 'Exchange admin only. Push every mailbox, address, alias, and list to the LANTIS relay via PUT /v1/recipients. Directory changes already push automatically; this is the manual resync. Missing endpoint fails soft (RELAY_ENDPOINT_MISSING). Requires confirm:true.',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['confirm'],
+            properties: {
+                confirm: { type: 'boolean' }
+            }
+        }
+    },
+    {
         name: 'exchange_set_mailbox_notify_forward',
         core: true,
         role: 'exchange',
@@ -406,6 +421,9 @@ async function handleExchangeTool(req, name, input = {}) {
         if (name === 'exchange_status') {
             const dash = await exchange.dashboard();
             return mcpTextResult({ success: true, ...dash });
+        }
+        if (name === 'exchange_resync_recipients') {
+            return mcpTextResult({ success: true, ...await exchange.resyncRecipients(admin, input) });
         }
         if (name === 'exchange_get_mailbox_notify_forward') {
             return mcpTextResult({

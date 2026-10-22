@@ -74,6 +74,9 @@ function exchangeRelayFriendly(result) {
     if (code === 'RELAY_ADMIN_REQUIRED' || code === 'RELAY_ADMIN_TOKEN_MISSING') {
         return 'The relay rejected this change because the admin token was missing or wrong.';
     }
+    if (code === 'RELAY_ENDPOINT_MISSING') {
+        return 'The LANTIS relay does not have PUT /v1/recipients yet.';
+    }
     if (result.friendly) return result.friendly;
     return result.error || 'The relay rejected that change.';
 }
@@ -340,6 +343,23 @@ async function exchangeRenderOverview() {
         ['Yukimi From', parts.yukimiFrom],
         ['WireGuard', parts.wg && parts.wg.up ? 'up' : (relayDegraded ? 'unknown' : 'down')]
     ]));
+    const resyncRow = exchangeFormRow();
+    const resyncBtn = exchangeCreateButton('dsap-smf-btn', 'Push mailbox addresses to LANTIS', 'fas fa-sync');
+    resyncBtn.append('Resync recipients');
+    resyncBtn.addEventListener('click', async () => {
+        const ok = await exchangeConfirm('Push every mailbox, address, alias, and list to the LANTIS relay?');
+        if (!ok) return;
+        const result = await exchangeSend('exchange_resync_recipients', {}, true);
+        const friendly = exchangeRelayFriendly(result && result.relay);
+        if (friendly) {
+            exchangeSetStatus(friendly, !!(result.relay && result.relay.degraded && !result.relay.skipped));
+            return;
+        }
+        const count = result && result.count != null ? result.count : 0;
+        exchangeSetStatus('Pushed ' + count + ' recipients to LANTIS');
+    });
+    resyncRow.appendChild(resyncBtn);
+    desktopExchangeEls.main.appendChild(resyncRow);
     if (relayDegraded) {
         exchangeSetStatus('Relay unreachable — showing local state', true);
     }

@@ -634,7 +634,8 @@ function startInbound(options) {
         maxCommandLine: options && options.maxCommandLine,
         maxDataLine: options && options.maxDataLine,
         spam: (options && options.spam) || cfg.spam,
-        tls: tlsContext
+        tls: tlsContext,
+        log: (options && options.log) || ((message) => logInfo(message))
     };
 
     return new Promise((resolve, reject) => {

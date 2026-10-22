@@ -219,7 +219,10 @@ function defaultState() {
             }
         },
         audit: [],
-        lastPutBody: null
+        lastPutBody: null,
+        lastRecipientsBody: null,
+        recipients: [],
+        recipientsEndpoint: true
     };
 }
 
@@ -281,6 +284,32 @@ function startMockRelay(options) {
             }
             if (isGet && url.pathname === '/v1/toggles') {
                 json(res, 200, cloneToggles(state.toggles));
+                return;
+            }
+            if (isPut && url.pathname === '/v1/recipients') {
+                if (state.recipientsEndpoint === false) {
+                    json(res, 404, { error: 'Not found', code: 'NOT_FOUND' });
+                    return;
+                }
+                const body = await readBody(req);
+                state.lastRecipientsBody = body;
+                const actor = body && body.actor != null ? String(body.actor).trim() : '';
+                if (!actor) {
+                    json(res, 400, { error: 'actor is required', code: 'ACTOR_REQUIRED' });
+                    return;
+                }
+                if (!Array.isArray(body.recipients)) {
+                    json(res, 400, { error: 'recipients must be an array', code: 'BAD_BODY' });
+                    return;
+                }
+                state.recipients = body.recipients;
+                state.audit.push({
+                    actor,
+                    action: 'recipients',
+                    target: 'global',
+                    time: new Date().toISOString()
+                });
+                json(res, 200, { ok: true, count: body.recipients.length });
                 return;
             }
             if (isPut && url.pathname === '/v1/toggles') {

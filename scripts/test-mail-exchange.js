@@ -201,6 +201,48 @@ async function testRelayMockAndClient() {
         const noConfirm = await relayClient.putToggles({ outbound: true }, { actor: 'yukimi' });
         assert.strictEqual(noConfirm.code, 'CONFIRM_REQUIRED');
 
+        const listed = exchange.listRelayRecipients();
+        assert.ok(listed.some((row) => row.local === 'kazari.ops' && row.mailbox === 'yukimi' && row.kind === 'mailbox'));
+        assert.ok(listed.some((row) => row.local === 'mailroom.ops' && row.kind === 'catchall'));
+        const pushed = await relayClient.putRecipients(listed, { actor: 'yukimi', confirm: true });
+        assert.strictEqual(pushed.ok, true);
+        assert.strictEqual(pushed.data.count, listed.length);
+        assert.strictEqual(mock.state.lastRecipientsBody.actor, 'yukimi');
+        assert.ok(!Object.prototype.hasOwnProperty.call(mock.state.lastRecipientsBody, 'confirm'));
+        assert.ok(Array.isArray(mock.state.lastRecipientsBody.recipients));
+        assert.ok(mock.state.audit.some((row) => row.action === 'recipients' && row.actor === 'yukimi'));
+
+        mock.state.recipientsEndpoint = false;
+        const missing = await relayClient.putRecipients(listed, { actor: 'yukimi', confirm: true });
+        assert.strictEqual(missing.ok, false);
+        assert.strictEqual(missing.skipped, true);
+        assert.strictEqual(missing.code, 'RELAY_ENDPOINT_MISSING');
+        assert.strictEqual(missing.friendly, relayClient.friendlyRelayError('RELAY_ENDPOINT_MISSING'));
+        mock.state.recipientsEndpoint = true;
+
+        mock.state.lastRecipientsBody = null;
+        const createdForPush = exchange.createMailbox('sala', {
+            owner: 'relaypush',
+            dept: 'lab',
+            confirm: true
+        });
+        assert.strictEqual(createdForPush.owner, 'relaypush');
+        const afterCreate = await exchange.waitForRecipientPush();
+        assert.strictEqual(afterCreate.ok, true);
+        assert.ok(mock.state.lastRecipientsBody.recipients.some((row) => row.local === 'relaypush.lab'));
+
+        mock.state.recipientsEndpoint = false;
+        const resynced = await exchange.resyncRecipients('yukimi', { confirm: true });
+        assert.ok(resynced.relay.skipped);
+        assert.strictEqual(resynced.relay.code, 'RELAY_ENDPOINT_MISSING');
+        assert.ok(resynced.count >= listed.length);
+        mock.state.recipientsEndpoint = true;
+        const mcpResync = textOf(await handleExchangeTool(reqFor('Tsubame'), 'exchange_resync_recipients', { confirm: true }));
+        assert.strictEqual(mcpResync.success, true);
+        assert.strictEqual(mcpResync.relay.ok, true);
+        exchange.deleteMailbox('yukimi', { owner: 'relaypush', confirm: true, confirmText: 'DELETE' });
+        await exchange.waitForRecipientPush();
+
         assert.strictEqual(mock.state.audit[0].actor, 'yukimi');
         assert.strictEqual(mock.state.audit[0].action, 'toggles');
         assert.ok(!JSON.stringify(mock.state.audit).includes(mock.readToken));
@@ -706,6 +748,19 @@ async function testLiveCreateAndAddress() {
     assert.strictEqual(menmaCreate.code, 'FORBIDDEN');
 }
 
+function testRecipientPushSurfaces() {
+    const handlerSrc = fs.readFileSync(path.join(__dirname, '..', 'modules/ws/handlers/255-mailExchangeHandler.js'), 'utf8');
+    const httpSrc = fs.readFileSync(path.join(__dirname, '..', 'modules/mailExchangeHttp.js'), 'utf8');
+    const mcpSrc = fs.readFileSync(path.join(__dirname, '..', 'modules/mailExchangeMcp.js'), 'utf8');
+    const wsDoc = fs.readFileSync(path.join(__dirname, '..', 'docs/client-api/ws/mailExchange.md'), 'utf8');
+    const restDoc = fs.readFileSync(path.join(__dirname, '..', 'docs/client-api/rest-api.md'), 'utf8');
+    assert.match(handlerSrc, /exchange_resync_recipients/);
+    assert.match(httpSrc, /\/mail-exchange\/recipients\/resync/);
+    assert.match(mcpSrc, /exchange_resync_recipients/);
+    assert.match(wsDoc, /exchange_resync_recipients/);
+    assert.match(restDoc, /\/mail-exchange\/recipients\/resync/);
+}
+
 function testTokensStayServerSide() {
     const clientSrc = fs.readFileSync(path.join(__dirname, '..', 'modules/lantisRelayClient.js'), 'utf8');
     const uiSrc = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/desktop-apps/exchange.js'), 'utf8');
@@ -715,6 +770,9 @@ function testTokensStayServerSide() {
     assert.match(clientSrc, /relayReadToken/);
     assert.match(clientSrc, /relayAdminToken/);
     assert.match(docSrc, /GET \/v1\/senders/);
+    assert.match(docSrc, /PUT \/v1\/recipients/);
+    assert.match(clientSrc, /putRecipients/);
+    assert.match(docSrc, /RELAY_ENDPOINT_MISSING|NOT_FOUND/);
     assert.match(docSrc, /refreshed_at/);
     assert.match(docSrc, /UNKNOWN_MAILBOX/);
     assert.match(docSrc, /UNKNOWN_SERVICE/);
@@ -741,6 +799,7 @@ async function main() {
     await testRoleGating();
     testSeedIdempotentAndOverlay();
     await testLiveCreateAndAddress();
+    testRecipientPushSurfaces();
     console.log('test-mail-exchange: ok');
 }
 

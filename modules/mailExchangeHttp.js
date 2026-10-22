@@ -107,6 +107,9 @@ function registerRoutes(app, { authMiddleware }) {
         exchange.setToggles(actor, req.body || {})
     )));
     app.get('/mail-exchange/status', authMiddleware, gated(async () => exchange.dashboard()));
+    app.post('/mail-exchange/recipients/resync', authMiddleware, json, gated(async (actor, req) => (
+        exchange.resyncRecipients(actor, req.body || {})
+    )));
     app.get('/mail-exchange/spam', authMiddleware, gated(async (actor, req) => (
         exchange.listSpamOverview(actor, { limit: req.query.limit })
     )));

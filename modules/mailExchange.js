@@ -39,6 +39,7 @@ class MailExchangeError extends Error {
 
 let testConfig = null;
 let directoryGeneration = 0;
+let recipientPushPending = Promise.resolve(null);
 
 function setTestConfig(config) {
     testConfig = config || null;
@@ -48,6 +49,7 @@ function setTestConfig(config) {
 function resetTestConfig() {
     testConfig = null;
     invalidateDirectory();
+    recipientPushPending = Promise.resolve(null);
 }
 
 function isDirectoryReady() {
@@ -64,6 +66,89 @@ function invalidateDirectory() {
     } catch (_err) {
         /* dovecoteMail may not be loaded yet */
     }
+}
+
+function listRelayRecipients() {
+    const overlay = getAddressOverlay();
+    const out = [];
+    const seen = new Set();
+    const add = (local, extra) => {
+        const key = String(local || '').trim().toLowerCase();
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        out.push(Object.assign({
+            local: key,
+            address: publicAddress(key)
+        }, extra));
+    };
+    Object.entries(overlay.mailboxes || {}).forEach(([local, mailbox]) => {
+        add(local, {
+            mailbox,
+            kind: local === MAILROOM_CATCHALL ? 'catchall' : 'mailbox'
+        });
+    });
+    Object.entries(overlay.aliases || {}).forEach(([local, target]) => {
+        add(local, { mailbox: target, kind: 'alias' });
+    });
+    Object.entries(overlay.lists || {}).forEach(([local, members]) => {
+        add(local, {
+            members: Array.isArray(members) ? members.slice() : [],
+            kind: 'list'
+        });
+    });
+    add(MAILROOM_CATCHALL, { mailbox: TSUBAME_OWNER, kind: 'catchall' });
+    out.sort((a, b) => a.local.localeCompare(b.local));
+    return out;
+}
+
+async function pushRecipientsToRelay({ actor } = {}) {
+    const recipients = listRelayRecipients();
+    const client = require('./lantisRelayClient');
+    const result = await client.putRecipients(recipients, {
+        actor: canonicalizeAdmin(actor) || String(actor || '').trim() || TSUBAME_OWNER,
+        confirm: true
+    });
+    return Object.assign({ count: recipients.length }, result);
+}
+
+function notifyRecipientChange(actor) {
+    invalidateDirectory();
+    const name = canonicalizeAdmin(actor) || String(actor || 'unknown');
+    recipientPushPending = pushRecipientsToRelay({ actor: name }).then((result) => {
+        if (!result || result.ok || result.skipped) return result;
+        if (result.code === 'RELAY_ADMIN_TOKEN_MISSING' || result.code === 'RELAY_ENDPOINT_MISSING') {
+            return result;
+        }
+        console.warn('[mail-exchange] recipient push failed:', result.code, result.error);
+        return result;
+    }).catch((err) => {
+        console.warn('[mail-exchange] recipient push failed:', err && err.message);
+        return { ok: false, skipped: true, code: 'RELAY_UNREACHABLE', error: err && err.message };
+    });
+    return recipientPushPending;
+}
+
+function waitForRecipientPush() {
+    return recipientPushPending;
+}
+
+async function resyncRecipients(actor, { confirm } = {}) {
+    const admin = requireExchangeAdmin(actor, 'resync_recipients', 'recipients');
+    requireEnabled(admin, 'resync_recipients', 'recipients');
+    requireConfirm(confirm, 'resync_recipients');
+    const result = await pushRecipientsToRelay({ actor: admin });
+    audit(
+        admin,
+        'resync_recipients',
+        'recipients',
+        !!(result.ok || result.skipped),
+        result.code || (result.ok ? `count=${result.count}` : 'failed')
+    );
+    return {
+        relay: result,
+        count: result.count,
+        recipients: listRelayRecipients()
+    };
 }
 
 function nowIso() {
@@ -486,7 +571,7 @@ function createMailbox(actor, { owner, dept, displayName, confirm } = {}) {
     }
     upsertAddressRow(name, local, true);
     audit(admin, 'create_mailbox', name, true, `local=${local}`);
-    invalidateDirectory();
+    notifyRecipientChange(admin);
     return getMailboxRecord(name);
 }
 
@@ -504,7 +589,7 @@ function disableMailbox(actor, { owner, enabled, confirm } = {}) {
     const on = enabled !== false;
     ensureMailboxRow(name, { enabled: on ? 1 : 0 });
     audit(admin, 'disable_mailbox', name, true, `enabled=${on}`);
-    invalidateDirectory();
+    notifyRecipientChange(admin);
     return getMailboxRecord(name);
 }
 
@@ -529,7 +614,7 @@ function deleteMailbox(actor, { owner, confirm, confirmText } = {}) {
     // A soft-deleted mailbox must not keep a working key.
     getDb().prepare('UPDATE exchange_key SET revoked_at = ? WHERE mailbox = ? AND revoked_at IS NULL').run(nowIso(), name);
     audit(admin, 'delete_mailbox', name, true, 'soft-deleted; key revoked');
-    invalidateDirectory();
+    notifyRecipientChange(admin);
     return getMailboxRecord(name);
 }
 
@@ -586,7 +671,7 @@ function updateMailbox(actor, { owner, displayName, dept, newOwner, confirm } = 
     }
     if (Object.keys(fields).length) ensureMailboxRow(target, fields);
     audit(admin, 'update_mailbox', target, true, `from=${name}`);
-    invalidateDirectory();
+    notifyRecipientChange(admin);
     return getMailboxRecord(target);
 }
 
@@ -614,7 +699,7 @@ function addAddress(actor, { owner, localPart, confirm } = {}) {
     }
     upsertAddressRow(name, local, false);
     audit(admin, 'add_address', name, true, `local=${local}`);
-    invalidateDirectory();
+    notifyRecipientChange(admin);
     return {
         owner: name,
         localPart: local,
@@ -642,7 +727,7 @@ function removeAddress(actor, { localPart, confirm } = {}) {
     }
     getDb().prepare('DELETE FROM exchange_address WHERE local_part = ?').run(local);
     audit(admin, 'remove_address', row.owner, true, `local=${local}`);
-    invalidateDirectory();
+    notifyRecipientChange(admin);
     return { localPart: local, owner: row.owner, deleted: true };
 }
 
@@ -823,7 +908,7 @@ function upsertAlias(actor, { localPart, target, confirm } = {}) {
         ON CONFLICT(local_part) DO UPDATE SET target = excluded.target
     `).run(local, dest, nowIso());
     audit(admin, 'upsert_alias', local, true, `target=${dest}`);
-    invalidateDirectory();
+    notifyRecipientChange(admin);
     return { localPart: local, target: dest, address: publicAddress(local) };
 }
 
@@ -835,7 +920,7 @@ function deleteAlias(actor, { localPart, confirm } = {}) {
     const local = String(localPart || '').trim().toLowerCase();
     getDb().prepare('DELETE FROM exchange_alias WHERE local_part = ?').run(local);
     audit(admin, 'delete_alias', local, true, null);
-    invalidateDirectory();
+    notifyRecipientChange(admin);
     return { localPart: local, deleted: true };
 }
 
@@ -905,7 +990,7 @@ function upsertDistributionList(actor, { localPart, name, members, confirm } = {
         ON CONFLICT(local_part) DO UPDATE SET name = excluded.name, members = excluded.members, updated_at = excluded.updated_at
     `).run(local, name ? String(name).trim() : local, JSON.stringify(list), now, now);
     audit(admin, 'upsert_list', local, true, `members=${list.join(',')}`);
-    invalidateDirectory();
+    notifyRecipientChange(admin);
     return { localPart: local, name: name || local, members: list, address: publicAddress(local) };
 }
 
@@ -917,7 +1002,7 @@ function deleteDistributionList(actor, { localPart, confirm } = {}) {
     const local = String(localPart || '').trim().toLowerCase();
     getDb().prepare('DELETE FROM exchange_list WHERE local_part = ?').run(local);
     audit(admin, 'delete_list', local, true, null);
-    invalidateDirectory();
+    notifyRecipientChange(admin);
     return { localPart: local, deleted: true };
 }
 
@@ -1341,6 +1426,11 @@ module.exports = {
     setTestConfig,
     resetTestConfig,
     invalidateDirectory,
+    listRelayRecipients,
+    pushRecipientsToRelay,
+    notifyRecipientChange,
+    waitForRecipientPush,
+    resyncRecipients,
     audit,
     listAudit,
     listMailboxRecords,

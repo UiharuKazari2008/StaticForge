@@ -24,7 +24,7 @@ Two Bearer tokens, stored separately on Dreamscape as
 | Token | Used for |
 |---|---|
 | Read | Every `GET` |
-| Admin | `PUT /v1/toggles` and any future mutation |
+| Admin | `PUT /v1/toggles`, `PUT /v1/recipients` |
 
 Send `Authorization: Bearer <token>`. A GET with the admin token may be
 accepted; a mutation with the read token must be `403`.
@@ -243,6 +243,57 @@ on that key is left unchanged.
 
 Audit on the relay:
 `{ actor, action: "toggles", target: "global"|mailbox|service, time }`.
+
+### `PUT /v1/recipients`
+
+Admin token required. Dreamscape pushes the live intake directory after every mailbox, address, alias, or list change, and on the Exchange admin resync action. The relay should replace its accept-list with this document so unknown locals stop falling through to `mailroom.ops`.
+
+If the endpoint is not implemented yet, respond `404` `{ "error": "Not found", "code": "NOT_FOUND" }`. Dreamscape fails soft (`RELAY_ENDPOINT_MISSING`) and keeps the local directory.
+
+```json
+{
+  "actor": "yukimi",
+  "recipients": [
+    {
+      "local": "kazari.ops",
+      "address": "kazari.ops@dream.737.jp.net",
+      "mailbox": "yukimi",
+      "kind": "mailbox"
+    },
+    {
+      "local": "helpdesk",
+      "address": "helpdesk@dream.737.jp.net",
+      "mailbox": "tsubame",
+      "kind": "alias"
+    },
+    {
+      "local": "ops-all",
+      "address": "ops-all@dream.737.jp.net",
+      "members": ["yukimi", "sala"],
+      "kind": "list"
+    },
+    {
+      "local": "mailroom.ops",
+      "address": "mailroom.ops@dream.737.jp.net",
+      "mailbox": "tsubame",
+      "kind": "catchall"
+    }
+  ]
+}
+```
+
+- `actor` is required (same as toggles).
+- `recipients` is the full accept-list. Replace, do not merge.
+- `kind`: `mailbox` | `alias` | `list` | `catchall`.
+- `mailbox` is the Dovecote owner for mailbox/alias/catchall rows.
+- `members` is present on lists (mailbox names or local-parts).
+- `confirm` is Dreamscape-client-only and is **not** part of the relay body.
+- Response: `{ "ok": true, "count": 42 }` (count is the accepted row count).
+- Missing or empty `actor` → `400` `{ "error": "actor is required", "code": "ACTOR_REQUIRED" }`.
+- `recipients` not an array → `400` `{ "error": "recipients must be an array", "code": "BAD_BODY" }`.
+
+Audit on the relay:
+`{ actor, action: "recipients", target: "global", time }`.
 
 ## Dreamscape client
 
