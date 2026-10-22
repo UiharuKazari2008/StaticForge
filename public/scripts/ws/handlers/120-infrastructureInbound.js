@@ -10,6 +10,12 @@ registerWsInboundHandler({
         if (message.requestType === 'get_novelai_explore_gallery' || message.requestType === 'get_novelai_explore_post') {
             return;
         }
+        // A metadata miss (deleted or unknown image) is handled by every caller (getImageMetadata
+        // toast in galleryView.js, Omegasearch detail error, desktopShortcuts viewer fallback), so it
+        // is not an unhandled exception (Yozora #614).
+        if (message.requestType === 'request_image_metadata') {
+            return;
+        }
         // Desktop: a .NET-style "Unhandled exception" window in Windows wording instead of a toast
         // (public/scripts/comp/mainframeExceptionDialog.js). Logon / boot (auth errors, the desktop
         // not up yet) and narrow mode keep the banner.

@@ -756,7 +756,9 @@ async function handleImageMetadataRequest(handlers, ws, message, clientInfo, wsS
         }
 
         if (!cachedMetadata) {
-            handlers.sendError(ws, 'Image not found', 'request_image_metadata', message.requestId);
+            // Name the file so a client report says which image was missing (Yozora #614)
+            console.warn(`Image metadata: not found ${filename}`);
+            handlers.sendError(ws, 'Image not found', filename, message.requestId);
             return;
         }
 
