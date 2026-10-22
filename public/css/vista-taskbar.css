@@ -267,13 +267,16 @@ body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item.attention::af
     }
 }
 
-/* icon at +10, label at +30 (16 px icon, 4 px gap), Segoe UI 9 pt white */
+/* Placed, not centred (VM, pixel-exact on the cmd.exe icon): the 16 px icon 7 px under the face's
+   top and 10 px in; the label at +30, Segoe UI 9 pt white on a 16 px line from 6 px down, so its
+   baseline is 19 px down as Vista's ("Purble Place": caps on rows 10-18). Centring put both on
+   half pixels, and the label 2 px high in Windows' text rendering. */
 body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item .taskbar-window-item-content {
     width: 100%;
     min-width: 0;
     gap: 4px;
-    /* Vista centres the label 2 px above the face's middle */
-    padding: 0 8px 4px 10px;
+    align-items: flex-start;
+    padding: 0 8px 0 10px;
     color: #fff;
     font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
     text-shadow: 0 0 6px hsl(0 0% 0% / 55%), 0 1px 2px hsl(0 0% 0% / 45%);
@@ -284,11 +287,14 @@ body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item :is(i, .icon-
     width: 16px;
     height: 16px;
     flex: none;
+    margin-top: 7px;
+    line-height: 16px;
 }
 
 body.desktop-mode:not(.windows-classic-theme) .taskbar-window-item span {
+    margin-top: 6px;
     font: inherit;
-    line-height: 15px;
+    line-height: 16px;
     color: #fff;
 }
 
@@ -310,7 +316,7 @@ body.desktop-mode:not(.windows-classic-theme) .taskbar-window-group .taskbar-gro
     box-shadow: none;
     color: #fff;
     font: 700 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
-    line-height: 15px;
+    line-height: 16px;
 }
 
 body.desktop-mode:not(.windows-classic-theme) .taskbar-window-group .taskbar-window-item-content > span:not(.taskbar-group-count) {
@@ -321,7 +327,7 @@ body.desktop-mode:not(.windows-classic-theme) .taskbar-window-group .taskbar-win
     content: '';
     position: absolute;
     right: 8px;
-    top: calc(50% - 4px);
+    top: 12px;
     border: 4px solid transparent;
     border-top: 4px solid #fff;
     border-bottom: 0;
@@ -488,11 +494,14 @@ body.desktop-mode:not(.windows-classic-theme) .tray-overflow-btn.is-open {
 
 body.desktop-mode:not(.windows-classic-theme) .taskbar-clock {
     min-width: 0;
-    /* the time's caps sit 1 px above the bar's middle, its right edge 17 px from the screen's */
-    padding: 0 9px 6px;
+    /* the time's caps just above the bar's middle (Vista: caps on rows 10-18 of 30), its right edge
+       17 px from the screen's; a 16 px line over 3 px of bottom padding lands on a whole pixel in
+       every bar height (31, 33, 35: all odd), placed by Segoe UI's metrics rather than one
+       platform's text rendering */
+    padding: 0 9px 3px;
     font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
     font-variation-settings: normal;
-    line-height: 15px;
+    line-height: 16px;
     cursor: default;
     white-space: nowrap;
 }

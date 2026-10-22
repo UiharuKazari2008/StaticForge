@@ -799,8 +799,12 @@
             // Upgrade only over an existing installation: the record, the desktop's installed bit,
             // a static cache the app already runs from, or a manifest diff that found most files
             // already here (the cache scan can miss on a device that stores by full url)
-            const diffSaysInstalled = !!(found && Array.isArray(found.manifest) && found.manifest.length > 50 && found.files.length < found.manifest.length / 2);
+            const diffSaysInstalled = !!found && !found.skipped && (
+                found.unchanged === true
+                || (Array.isArray(found.files) && found.files.length === 0)
+                || (Array.isArray(found.manifest) && found.manifest.length > 50 && found.files.length < found.manifest.length / 2));
             const upgradeAllowed = hasOs || diffSaysInstalled;
+            if (typeof console !== 'undefined' && console.debug) console.debug('[setup] Upgrade offered:', upgradeAllowed, { hasOs, diffSaysInstalled, files: found && found.files ? found.files.length : null, manifest: found && found.manifest ? found.manifest.length : null });
             ctl.setup = { page: 'language', hasOs, upgradeAllowed, driveOptions: false, formatted: false, msgbox: null, countdown: null, found, keyConfigured: status.novelaiKeyConfigured !== false, license: null, licenseAccepted: false };
             show('install', { ...setupData(), phase: 'arrive' });
             await env.sleep(config.installArriveMs);
@@ -915,7 +919,7 @@
             const boxes = {
                 cancel: { title: 'Install MeletonFX', icon: null, message: 'To install MeletonFX, you must run MeletonFX installation. If you cancel the installation, your computer might restart.', detail: 'Are you sure you want to cancel MeletonFX installation?', buttons: [['Yes', 'setup-cancel-yes'], ['No', 'setup-msgbox-close']] },
                 format: { title: 'Install MeletonFX', icon: 'warning', message: 'If you format this partition, any data stored on it will be deleted. Downloaded files, the offline service, settings and local databases on this device are removed. Your images and data on the server are not affected.', detail: 'You might have to sign in again when MeletonFX starts.', buttons: [['OK', 'setup-format-ok'], ['Cancel', 'setup-msgbox-close']] },
-                know: { title: 'Install MeletonFX', icon: 'info', message: 'Upgrade keeps everything on this device and installs the files on the server that differ from the ones here. Custom (advanced) lets you format this device first: every downloaded file, setting and local database is removed before MeletonFX is installed again.', detail: 'Your images and data stay on the server either way.', buttons: [['OK', 'setup-msgbox-close']] },
+                know: { title: 'Install MeletonFX', icon: 'info', message: 'Upgrade keeps everything on this device and installs the files on the server that differ from the ones here. Install lets you format this device first: every downloaded file, setting and local database is removed before MeletonFX is installed again.', detail: 'Your images and data stay on the server either way.', buttons: [['OK', 'setup-msgbox-close']] },
                 driver: { title: 'Load Driver', icon: 'info', message: 'MeletonFX runs on the browser’s own storage drivers. No additional driver is needed to access this device.', detail: '', buttons: [['OK', 'setup-msgbox-close']] }
             };
             return boxes[kind] || null;
@@ -946,7 +950,7 @@
                     return null;
                 case 'setup-back':
                     if (s.page === 'key') showSetup('start');
-                    else if (s.page === 'license') showSetup('key');
+                    else if (s.page === 'license') return keyPage();
                     else if (s.page === 'type') showSetup('license');
                     else if (s.page === 'where') showSetup('type');
                     return null;
@@ -963,7 +967,7 @@
                 case 'setup-repair':
                     return openMenu(null, { countdown: false });
                 case 'setup-upgrade':
-                    if (!s.upgradeAllowed) return null;
+                    if (!s.upgradeAllowed || s.page !== 'type') return null;
                     return upgrade();
                 case 'setup-custom':
                     showSetup('where');
@@ -1352,7 +1356,8 @@
                     if (key === 'Escape') { setupAction('setup-close'); return true; }
                     if (key === 'Enter') {
                         const defaults = { language: 'setup-next', start: 'setup-install', key: 'setup-next', license: 'setup-next', type: s.upgradeAllowed ? 'setup-upgrade' : 'setup-custom', where: 'setup-next', restart: 'setup-restart-now' };
-                        if (defaults[s.page]) setupAction(defaults[s.page]);
+                        const blocked = (s.page === 'key' && (s.keyBusy || s.keyConfigured !== false)) || (s.page === 'license' && !s.licenseAccepted);
+                        if (defaults[s.page] && !blocked) setupAction(defaults[s.page]);
                         return true;
                     }
                 }

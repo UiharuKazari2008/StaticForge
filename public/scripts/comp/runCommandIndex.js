@@ -66,7 +66,7 @@ const RUN_APP_ALIAS_GROUPS = [
     { aliases: ['request', 'body', 'replacements', 'stages', 'pipeline'], launchIds: ['request-body-replacements'] },
     { aliases: ['wallpaper', 'desktop', 'background'], launchIds: ['desktop-settings'] },
     { aliases: ['websocket', 'ws', 'network monitor', 'requests'], launchIds: ['websocket-requests'] },
-    { aliases: ['solar system', 'workspaces', 'manage workspaces', 'data management'], launchIds: ['data-management'] },
+    { aliases: ['data management'], launchIds: ['data-management'] },
     { aliases: ['planets', 'planet switcher', 'switch planet', 'switch workspace', 'orrery', 'ring'], launchIds: ['planet-switcher'] },
     { aliases: ['favorites', 'favourite', 'stars'], launchIds: ['data-management'] },
     { aliases: ['memories', 'knowledge', 'dna'], launchIds: ['memories'] },
@@ -612,6 +612,20 @@ function buildRunSystemCommandEntries() {
         icon: 'fa-light fa-info-circle',
         keywords: ['winver', 'about', 'about meletonfx', 'about windows', 'version', 'build'],
         execute: () => { openAboutMelatoninModal(); }
+    }];
+}
+
+/** Run: workspaces opens the Data Management DSAP on its Workspaces page (openDataManagementDsap in dsapManifests.js). */
+function buildRunWorkspaceManagerEntries() {
+    if (typeof openDataManagementDsap !== 'function') return [];
+    return [{
+        id: 'system-workspaces',
+        category: 'app',
+        label: 'Workspaces',
+        subtitle: 'Data Management',
+        icon: 'fas fa-planet-ringed',
+        keywords: ['workspaces', 'manage workspaces', 'solar system', 'new planet', 'planets'],
+        execute: () => { openDataManagementDsap('workspaces'); }
     }];
 }
 
@@ -1337,6 +1351,7 @@ function buildRunStaticEntries() {
         ...buildRunAppEntries(),
         ...buildRunAgentEntries(),
         ...buildRunSystemCommandEntries(),
+        ...buildRunWorkspaceManagerEntries(),
         ...buildRunWorkspaceEntries(),
         ...buildRunShortcutOnlyEntries()
     ];

@@ -2406,71 +2406,7 @@ function updateManualWorkspaceDisplay() {
         }
     }
 }
-function renderWorkspaceManagementList(targetList, options) {
-    const list = targetList || document.getElementById('workspaceManageList');
-    if (!list) {
-        // dataMgmtDsapRefreshWorkspacesIfPresent: public/scripts/comp/dataManagementDsapApplet.js
-        if (typeof dataMgmtDsapRefreshWorkspacesIfPresent === 'function') {
-            dataMgmtDsapRefreshWorkspacesIfPresent();
-        }
-        return;
-    }
-
-    // Sort workspaces by their sort order - workspaces is an object, not an array
-    const sortedWorkspaces = Object.values(workspaces).sort((a, b) => (a.sort || 0) - (b.sort || 0));
-
-    delete list.dataset.workspaceDragWired;
-    list.innerHTML = '';
-
-    sortedWorkspaces.forEach(workspace => {
-        const item = document.createElement('div');
-        item.className = 'workspace-manage-item';
-        item.dataset.workspaceId = workspace.id;
-
-        const nicknames = Array.isArray(workspace.nicknames) ? workspace.nicknames.filter(Boolean) : [];
-        // escapeHtml: public/scripts/comp/utilities.js
-        const nickLine = nicknames.length
-            ? `<div class="workspace-manage-counts">${escapeHtml(nicknames.join(', '))}</div>`
-            : '';
-        item.innerHTML = `
-            <div class="workspace-drag-handle" title="Drag to reorder">
-                <i class="fas fa-grip-vertical"></i>
-            </div>
-            <div class="workspace-manage-info">
-                <div class="workspace-header">
-                    <div class="workspace-color-indicator" style="background-color: ${workspace.color || '#102040'}"></div>
-                    <h5>${workspace.name} ${workspace.id === activeWorkspace ? '<span class="badge-active"><i class="fas fa-check"></i></span>' : ''}</h5>
-                </div>
-                ${nickLine}
-                <div class="workspace-manage-counts"><div class="workspace-manage-counts-files"><span>${workspace.fileCount}</span><i class="fas fa-image"></i></div><div class="workspace-manage-counts-references"><span>${workspace.cacheFileCount}</span><i class="fas fa-swatchbook"></i></div></div>
-            </div>
-            <div class="workspace-manage-actions button-group">
-                <button type="button" class="btn-secondary" onclick="editWorkspaceSettings('${workspace.id}')" title="Workspace Settings">
-                    <i class="fas fa-cog"></i>
-                </button>
-                ${!workspace.isDefault ? `
-                    <button type="button" class="btn-secondary" onclick="showDumpWorkspaceModal('${workspace.id}', '${workspace.name}')" title="Dump">
-                        <i class="mdi mdi-1-5 mdi-folder-move"></i>
-                    </button>
-                    <button type="button" class="btn-secondary text-danger" onclick="confirmDeleteWorkspace('${workspace.id}', '${workspace.name}')" title="Delete">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                ` : ''}
-            </div>
-        `;
-
-        list.appendChild(item);
-    });
-
-    // Initialize drag and drop functionality
-    initializeWorkspaceDragAndDrop(list);
-}
-
 function refreshWorkspaceManagementListsIfPresent() {
-    const modalList = document.getElementById('workspaceManageList');
-    if (modalList) {
-        renderWorkspaceManagementList(modalList);
-    }
     // dataMgmtDsapRefreshWorkspacesIfPresent: public/scripts/comp/dataManagementDsapApplet.js
     if (typeof dataMgmtDsapRefreshWorkspacesIfPresent === 'function') {
         dataMgmtDsapRefreshWorkspacesIfPresent();
@@ -2481,34 +2417,10 @@ function refreshWorkspaceManagementListsIfPresent() {
     }
 }
 
-// Workspace modal functions
+// Workspace management lives in the Data Management DSAP's Workspaces page (the Solar System dialog is retired)
 function showWorkspaceManagementModal() {
-    // openDataManagementDsap: public/scripts/comp/dataManagementDsapApplet.js
-    if (typeof openDataManagementDsap === 'function') {
-        openDataManagementDsap('workspaces');
-        return;
-    }
-    if (typeof openDsapInGrimoire === 'function') {
-        openDsapInGrimoire('dsap://data.dreamscape.jp/workspaces');
-        return;
-    }
-
-    renderWorkspaceManagementList();
-    const modal = document.getElementById('workspaceManageModal');
-    openModal(modal);
-    
-    // Register event listeners when modal is shown
-    registerWorkspaceManagerEventListeners();
-}
-
-async function hideWorkspaceManagementModal() {
-    const modal = document.getElementById('workspaceManageModal');
-    if (modal) await closeModal(modal);
-    
-    // Deregister event listeners when modal is hidden
-    deregisterWorkspaceManagerEventListeners();
-    
-    switchWorkspaceTheme(activeWorkspace);
+    // openDataManagementDsap: public/scripts/comp/dsapManifests.js
+    openDataManagementDsap('workspaces');
 }
 
 let workspaceNicknameDraft = [];
@@ -2733,30 +2645,7 @@ function initializeWorkspaceSystem() {
         }
     });
 
-    // Workspace action button events
-    const workspaceManageBtn = document.getElementById('workspaceManageBtn');
-    const workspaceAddBtn = document.getElementById('workspaceAddBtn');
-
-    if (workspaceManageBtn) {
-        workspaceManageBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            showWorkspaceManagementModal();
-            closeSubMenu();
-        });
-    }
-
-    if (workspaceAddBtn) {
-        workspaceAddBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            showAddWorkspaceModal();
-        });
-    }
-    
     // Modal close events
-    document.getElementById('closeWorkspaceManageBtn')?.addEventListener('click', (e) => {
-        e.preventDefault();
-        hideWorkspaceManagementModal();
-    });
     document.getElementById('closeWorkspaceEditBtn')?.addEventListener('click', (e) => {
         e.preventDefault();
         hideWorkspaceEditModal();
@@ -2992,18 +2881,6 @@ function initializeWorkspaceSettingsForm() {
 
 let workspaceModalKeyboardWired = false;
 
-function handleWorkspaceManageModalKeydown(e) {
-    const modal = document.getElementById('workspaceManageModal');
-    if (!modal || modal.classList.contains('hidden')) return;
-
-    if ((e.ctrlKey || e.metaKey) && (e.key === 'n' || e.key === 'N')) {
-        e.preventDefault();
-        e.stopPropagation();
-        showAddWorkspaceModal();
-        return true;
-    }
-}
-
 function handleWorkspaceEditModalKeydown(e) {
     const modal = document.getElementById('workspaceEditModal');
     if (!modal || modal.classList.contains('hidden')) return;
@@ -3045,14 +2922,6 @@ function wireWorkspaceModalKeyboard() {
     workspaceModalKeyboardWired = true;
     // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
     registerKeyboardListener({
-        id: 'workspaceManageModal.keydown',
-        handler: handleWorkspaceManageModalKeydown,
-        type: 'whenFocused',
-        modalId: 'workspaceManageModal',
-        priority: 75,
-        showInOverlay: false
-    });
-    registerKeyboardListener({
         id: 'workspaceEditModal.keydown',
         handler: handleWorkspaceEditModalKeydown,
         type: 'whenFocused',
@@ -3070,10 +2939,6 @@ function wireWorkspaceModalKeyboard() {
         critical: true,
         showInOverlay: false
     });
-    registerModalOverlayEntries('workspaceManageModal', 'Workspaces', [
-        { id: 'overlay.workspaceManage.new', label: 'New workspace', keys: 'Ctrl+N', icon: 'fas fa-plus' },
-        { id: 'overlay.workspaceManage.close', label: 'Close', keys: 'Alt+Q', icon: 'fas fa-times' }
-    ]);
     registerModalOverlayEntries('workspaceEditModal', 'Workspaces', [
         { id: 'overlay.workspaceEdit.save', label: 'Save', keys: 'Ctrl+S', icon: 'fas fa-save' },
         { id: 'overlay.workspaceEdit.close', label: 'Close', keys: 'Esc', icon: 'fas fa-times' }
@@ -3213,19 +3078,6 @@ function initializeWebSocketWorkspaceEvents() {
                         }
                     });
                 }
-
-                // Remove loading state from all workspace items
-                document.querySelectorAll('#workspaceManageList, #dataMgmtWorkspaceList').forEach((workspaceManageList) => {
-                    const items = workspaceManageList.querySelectorAll('.workspace-manage-item');
-                    items.forEach(item => {
-                        item.style.opacity = '';
-                        item.style.pointerEvents = '';
-                        const loadingIndicator = item.querySelector('.workspace-reorder-loading');
-                        if (loadingIndicator) {
-                            loadingIndicator.remove();
-                        }
-                    });
-                });
 
                 // Update UI components that show the new order
                 updateActiveWorkspaceDisplay();
@@ -3499,223 +3351,6 @@ function completeWorkspaceSwitch() {
     isWorkspaceSwitching = false;
     window.isWorkspaceSwitching = false;
     notifyWorkspaceSwitchComplete(activeWorkspace);
-}
-
-// Initialize drag and drop functionality for workspace reordering
-function initializeWorkspaceDragAndDrop(listEl) {
-    const list = listEl || document.getElementById('workspaceManageList');
-    if (!list) {
-        return;
-    }
-    if (list.dataset.workspaceDragWired === '1') return;
-    list.dataset.workspaceDragWired = '1';
-
-    let draggedItem = null;
-    let draggedIndex = null;
-    let dragMidpoints = null;
-    let dragPendingY = null;
-    let dragRafId = null;
-    let dragOverItem = null;
-
-    // Add event listeners to drag handles
-    const dragHandles = list.querySelectorAll('.workspace-drag-handle');
-    
-    dragHandles.forEach((handle, index) => {
-        handle.addEventListener('mousedown', startDrag);
-        handle.addEventListener('touchstart', startDrag, { passive: false });
-        handle.addEventListener('touchmove', onDrag, { passive: false });
-        handle.addEventListener('touchend', endDrag);
-    });
-
-    function rebuildDragMidpoints() {
-        const items = Array.from(list.children);
-        dragMidpoints = items.map((item) => {
-            const r = item.getBoundingClientRect();
-            return { item, top: r.top, bottom: r.bottom };
-        });
-    }
-
-    function startDrag(e) {
-        e.preventDefault();
-        e.stopPropagation();
-
-        const item = e.target.closest('.workspace-manage-item');
-        if (!item) {
-            return;
-        }
-
-        draggedItem = item;
-        draggedIndex = Array.from(list.children).indexOf(item);
-        dragPendingY = null;
-        if (dragRafId != null) {
-            cancelAnimationFrame(dragRafId);
-            dragRafId = null;
-        }
-        rebuildDragMidpoints();
-
-        // Add dragging class
-        draggedItem.classList.add('dragging');
-
-        // Add event listeners for drag movement - only mouse events on document
-        document.addEventListener('mousemove', onDrag);
-        document.addEventListener('mouseup', endDrag);
-
-        // Prevent text selection during drag
-        document.body.style.userSelect = 'none';
-
-    }
-
-    function onDrag(e) {
-        if (!draggedItem) {
-            return;
-        }
-
-        e.preventDefault();
-
-        // Handle both mouse and touch events
-        let clientY;
-        if (e.type === 'mousemove') {
-            clientY = e.clientY;
-        } else if (e.type === 'touchmove' && e.touches.length > 0) {
-            clientY = e.touches[0].clientY;
-        } else {
-            return; // No valid input
-        }
-
-        dragPendingY = clientY;
-        if (dragRafId == null) {
-            dragRafId = requestAnimationFrame(flushWorkspaceDrag);
-        }
-    }
-
-    function flushWorkspaceDrag() {
-        dragRafId = null;
-        if (!draggedItem || dragPendingY == null || !dragMidpoints) {
-            return;
-        }
-
-        const mouseY = dragPendingY;
-        const entries = dragMidpoints;
-        let targetIndex = draggedIndex;
-
-        for (let i = 0; i < entries.length; i++) {
-            const entry = entries[i];
-            if (mouseY >= entry.top && mouseY <= entry.bottom) {
-                targetIndex = i;
-                break;
-            }
-        }
-
-        // Move the dragged item to new position
-        if (targetIndex !== draggedIndex) {
-            if (targetIndex < entries.length) {
-                list.insertBefore(draggedItem, entries[targetIndex].item);
-            } else {
-                list.appendChild(draggedItem);
-            }
-
-            if (dragOverItem && dragOverItem !== draggedItem) {
-                dragOverItem.classList.remove('drag-over');
-            }
-            draggedItem.classList.add('drag-over');
-            dragOverItem = draggedItem;
-
-            draggedIndex = targetIndex;
-            rebuildDragMidpoints();
-        }
-    }
-
-    function endDrag(e) {
-        if (!draggedItem) {
-            return;
-        }
-
-        e.preventDefault();
-
-        if (dragRafId != null) {
-            cancelAnimationFrame(dragRafId);
-            dragRafId = null;
-            flushWorkspaceDrag();
-        }
-
-        // Remove document event listeners
-        document.removeEventListener('mousemove', onDrag);
-        document.removeEventListener('mouseup', endDrag);
-
-        // Remove dragging classes
-        draggedItem.classList.remove('dragging');
-        if (dragOverItem) {
-            dragOverItem.classList.remove('drag-over');
-            dragOverItem = null;
-        } else {
-            draggedItem.classList.remove('drag-over');
-        }
-
-        // Restore text selection
-        document.body.style.userSelect = '';
-
-        // Get new order based on current DOM position
-        const newOrder = Array.from(list.children).map(item => item.dataset.workspaceId);
-        
-        // Show loading state on the dragged item
-        draggedItem.style.opacity = '0.6';
-        draggedItem.style.pointerEvents = 'none';
-        
-        // Add a small loading indicator
-        const loadingIndicator = document.createElement('div');
-        loadingIndicator.className = 'workspace-reorder-loading';
-        loadingIndicator.innerHTML = '<i class="fas fa-spinner-third fa-spin"></i>';
-        loadingIndicator.style.cssText = `
-            position: absolute;
-            top: 50%;
-            right: 10px;
-            transform: translateY(-50%);
-            color: var(--primary-color);
-            font-size: 14px;
-        `;
-        draggedItem.appendChild(loadingIndicator);
-        
-        // Update the backend and wait for response
-        reorderWorkspaces(newOrder).then(() => {
-            // The UI will be updated when we receive the 'reordered' WebSocket event
-        }).catch((error) => {
-            // Remove loading state on error
-            draggedItem.style.opacity = '';
-            draggedItem.style.pointerEvents = '';
-            const loadingIndicator = draggedItem.querySelector('.workspace-reorder-loading');
-            if (loadingIndicator) {
-                loadingIndicator.remove();
-            }
-            // Show error message
-            showError('Failed to reorder workspaces: ' + error.message);
-        });
-
-        // Clear dragged item
-        draggedItem = null;
-        draggedIndex = null;
-        dragMidpoints = null;
-        dragPendingY = null;
-    }
-}
-
-// Event listener management for workspace manager
-let workspaceManagerEventListenersRegistered = false;
-
-function registerWorkspaceManagerEventListeners() {
-    if (workspaceManagerEventListenersRegistered) return;
-
-    // Drag handles are wired when renderWorkspaceManagementList rebuilds the list.
-    workspaceManagerEventListenersRegistered = true;
-}
-
-function deregisterWorkspaceManagerEventListeners() {
-    if (!workspaceManagerEventListenersRegistered) return;
-    
-    // Note: The drag and drop event listeners are added to individual elements
-    // and are automatically cleaned up when the modal is closed
-    // We just need to mark that we're not registered anymore
-    
-    workspaceManagerEventListenersRegistered = false;
 }
 
 // Reorder workspaces via WebSocket

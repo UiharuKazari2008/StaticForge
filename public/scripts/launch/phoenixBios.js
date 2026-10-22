@@ -466,13 +466,11 @@
                 done: () => state.finished,
                 results: () => state.results,
                 progress: (elapsed) => {
-                    // a steady fill over splashMs; a task still running holds it just short
-                    // of full, and the finished tasks never let it fall behind their share
+                    // a steady fill over splashMs, from empty; the tasks only hold it back:
+                    // while one is still running the bar stops just short of full
                     const byTime = Math.min(1, elapsed / config.splashMs);
                     if (!list.length) return byTime;
-                    const byTasks = state.done / list.length;
-                    const cap = state.finished ? 1 : 0.95;
-                    return Math.min(cap, Math.max(byTime, byTasks));
+                    return Math.min(byTime, state.finished ? 1 : 0.95);
                 }
             };
         }

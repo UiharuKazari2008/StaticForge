@@ -217,8 +217,8 @@
     border: 0;
     font-size: 0;
     color: transparent;
-    left: 8px;
-    top: 7px;
+    left: 13px;
+    top: 10px;
     width: 26px;
     height: 25px;
     border-radius: 50%;
@@ -1222,20 +1222,24 @@
     font-weight: 400;
 }
 
-.mi-msgbox .mi-title-close--static {
+#melatonInstall .mi-msgbox .mi-title-close--static {
+    position: static;
     width: 28px;
     height: 15px;
     flex: 0 0 28px;
     margin-left: auto;
+    padding: 0;
     border: 0;
+    border-image: none;
+    border-radius: 0;
     box-shadow: none;
     background: url('/static_images/vista-logon/basic-close.png') 0 0 / 28px 15px no-repeat;
     color: transparent;
     font-size: 0;
 }
 
-.mi-msgbox .mi-title-close--static::before {
-    display: none;
+#melatonInstall .mi-msgbox .mi-title-close--static::before {
+    content: none;
 }
 
 .mi-msgbox-body {

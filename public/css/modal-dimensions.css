@@ -12,7 +12,6 @@
 }
 
 #directorFeedbackModal,
-#workspaceManageModal,
 #textReplacementManagerModal,
 #favoritesManagerModal,
 #updatePresetModal,
@@ -23,7 +22,6 @@
 }
 
 #presetManagerModal,
-#workspaceManageModal,
 #textReplacementManagerModal {
     height: 1024px;
 }

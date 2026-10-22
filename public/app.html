@@ -4351,34 +4351,6 @@
         </div>
     </div>
 
-    <!-- Workspace Management Modal -->
-    <div id="workspaceManageModal" class="modal hidden">
-        <div class="modal-window-title">
-            <div class="modal-window-title-main">
-                <i class="fas fa-solar-system icon-fa"></i>
-                <img src="/static_images/app_icons/24/planet.webp" srcset="/static_images/app_icons/24/planet.webp 1x, /static_images/app_icons/48/planet.webp 2x" alt="" class="icon-image" />
-                <span>Solar System</span>
-            </div>
-        </div>
-        <div class="modal-window-controls">
-            <button type="button" id="workspaceAddBtn" class="btn-secondary" title="New Planet">
-                <i class="fas fa-plus"></i>
-            </button>
-            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
-                <i class="fa-regular fa-window-minimize"></i>
-            </button>
-            <button type="button" id="closeWorkspaceManageBtn" class="btn-danger close-btn btn-small" title="Close">
-                <i class="fa-regular fa-xmark-large"></i>
-            </button>
-        </div>
-        <div class="modal-content modal-padding dark">
-            <div class="modal-body">
-                <div id="workspaceManageList" class="workspace-manage-list">
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- Compiled Prompt Modal -->
     <div id="compiledPromptModal" class="modal resizeable-window hidden tool-window on-top"
         data-parent-modal-id="manualModal" data-window-min-width="400" data-window-min-height="280"
@@ -5049,7 +5021,7 @@ Examples:
     </div>
 
     <!-- Add/Rename Workspace Modal -->
-    <div id="workspaceEditModal" class="modal hidden tool-window on-top" data-parent-modal-id="workspaceManageModal">
+    <div id="workspaceEditModal" class="modal hidden tool-window on-top">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-planet-ringed icon-fa"></i>
@@ -5120,7 +5092,7 @@ Examples:
     </div>
 
     <!-- Workspace Dump Modal -->
-    <div id="workspaceDumpModal" class="modal hidden tool-window on-top" data-parent-modal-id="workspaceManageModal">
+    <div id="workspaceDumpModal" class="modal hidden tool-window on-top">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-planet-ringed icon-fa"></i>

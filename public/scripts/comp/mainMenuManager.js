@@ -800,7 +800,7 @@ function setupMainMenuContextMenus() {
                 break;
 
             case 'workspace-manage':
-                // Open workspace management modal directly
+                // Data Management DSAP, Workspaces page (showWorkspaceManagementModal: workspaceUtils.js)
                 showWorkspaceManagementModal();
                 break;
 

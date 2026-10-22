@@ -367,7 +367,8 @@ const flush = () => new Promise((r) => setImmediate(r));
     }
 
     // nothing installed: no Upgrade, Custom reads Install; the empty disk has no partition to format
-    h = harness([json(true)], { fresh: true, engine: { ...mediaEngine(), readRecord: () => null } });
+    // (a blank device's diff lists every manifest file; an empty list would mean it is all there)
+    h = harness([json(true)], { fresh: true, engine: { ...mediaEngine(), readRecord: () => null, check: async () => { const all = Array.from({ length: 60 }, (_, i) => ({ url: `/g${i}.js`, hash: `g${i}`, size: 100 })); return { files: all, bytes: 6000, manifest: all }; } } });
     {
         const run = h.ctl.runChecks();
         for (let i = 0; i < 1200 && h.ctl.screen !== 'install'; i++) await flush();

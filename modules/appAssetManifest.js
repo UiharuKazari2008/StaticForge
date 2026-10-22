@@ -26,7 +26,7 @@ const VERSION = 1;
 // windows ending in * match every window id with that prefix. sheets: whole stylesheets in
 // public/css (name prefixes) for applications whose art is scoped by class, not by window id.
 const LAUNCH_GROUPS = {
-    workspace: { windows: ['workspaceManageModal', 'workspaceEditModal'] },
+    workspace: { windows: ['workspaceEditModal'] },
     studio: { windows: ['manualModal'], sheets: ['manual-modal', 'studio-'] },
     spellbook: { features: ['spellbook'], windows: ['spellbook*'] },
     reference: { windows: ['cacheManagerModal'] },
