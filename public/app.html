@@ -5482,12 +5482,23 @@ Examples:
                             <img class="explorer-command-icon" src="/static_images/vista-explorer/views-icons-lg.png" srcset="/static_images/vista-explorer/views-icons-lg.png 1x, /static_images/vista-explorer/views-icons-lg@2x.png 2x" alt="">Views<span
                                 class="explorer-command-glyph" aria-hidden="true"></span>
                         </button>
+                        <!-- icons: Upload shell32.dll 146, Download imageres.dll 158, Replace shell32.dll 68 -->
                         <button type="button" id="explorerUploadCmd" class="explorer-command-btn"
-                            title="Upload files to this folder.">Upload</button>
+                            title="Upload files to this folder."><img class="explorer-command-icon"
+                                src="/static_images/vista-cmdbar/upload.png" alt="">Upload</button>
                         <button type="button" id="explorerDownloadCmd" class="explorer-command-btn hidden"
-                            title="Download the selected file.">Download</button>
+                            title="Download the selected file."><img class="explorer-command-icon"
+                                src="/static_images/vista-cmdbar/download.png" alt="">Download</button>
                         <button type="button" id="explorerReplaceCmd" class="explorer-command-btn hidden"
-                            title="Replace the selected file.">Replace</button>
+                            title="Replace the selected file."><img class="explorer-command-icon"
+                                src="/static_images/vista-cmdbar/replace.png" alt="">Replace</button>
+                        <!-- Computer's own commands (explorerComputerView.js): shell32.dll 272 and 21 -->
+                        <button type="button" id="explorerSystemPropertiesCmd" class="explorer-command-btn hidden"
+                            title="View basic information about your computer."><img class="explorer-command-icon"
+                                src="/static_images/vista-cmdbar/system-properties.png" alt="">System properties</button>
+                        <button type="button" id="explorerControlPanelCmd" class="explorer-command-btn hidden"
+                            title="Open Control Panel."><img class="explorer-command-icon"
+                                src="/static_images/vista-cmdbar/control-panel.png" alt="">Open Control Panel</button>
                     </div>
                     <div class="button-group explorer-legacy-commands">
                         <button type="button" id="explorerNewFolderBtn" class="btn-secondary btn-small"
@@ -6216,6 +6227,27 @@ Examples:
                     class="fa-regular fa-xmark-large"></i></button>
         </div>
         <div class="modal-content modal-padding dark">
+            <!-- the picture's commands; Expand Canvas and Upscale have no Vista art (bare words, as
+                 Programs and Features' Uninstall / Change) -->
+            <div class="explorer-actions-header spellbook-command-bar" role="toolbar">
+                <div class="explorer-command-set">
+                    <button type="button" id="spellbookDownloadBtn" class="btn-secondary btn-small explorer-command-btn"
+                        title="Save a copy of the picture" disabled><img class="explorer-command-icon"
+                            src="/static_images/vista-cmdbar/save.png" alt="">Save a Copy</button>
+                    <button type="button" id="spellbookCopyBtn" class="btn-secondary btn-small explorer-command-btn"
+                        title="Copy the picture" disabled><img class="explorer-command-icon"
+                            src="/static_images/vista-cmdbar/copy.png" alt="">Copy</button>
+                    <button type="button" id="spellbookExpandBtn" class="btn-secondary btn-small explorer-command-btn"
+                        title="Expand Canvas" disabled>Expand Canvas</button>
+                    <button type="button" id="spellbookUpscaleBtn" class="btn-secondary btn-small explorer-command-btn hidden"
+                        title="Upscale the picture" disabled>Upscale</button>
+                </div>
+                <div class="explorer-command-set">
+                    <button type="button" id="spellbookGoToWorkspaceBtn" class="btn-secondary btn-small explorer-command-btn"
+                        title="Go to the planet the picture was cast on" disabled><img class="explorer-command-icon"
+                            src="/static_images/app_icons/24/planet.webp" alt="">Go to Planet</button>
+                </div>
+            </div>
             <div class="modal-body">
                 <div class="spellbook-modal-layout">
                     <!-- Preview Container -->
@@ -6377,43 +6409,6 @@ Examples:
                                 <div class="preview-line"></div>
                             </div>
 
-                            <!-- Overlay buttons -->
-                            <div class="spellbook-overlay-buttons">
-                                <!-- Top right: Close modal
-                                    <div class="spellbook-top-right-buttons">
-                                        <button type="button" id="closeSpellbookModalBtn" class="round-button" title="Close Modal" aria-label="Close">
-                                            <i class="fa-regular fa-xmark-large"></i>
-                                        </button>
-                                    </div> -->
-
-                                <!-- Bottom left: Download & Copy -->
-                                <div class="spellbook-bottom-left-buttons">
-                                    <button type="button" id="spellbookDownloadBtn" class="btn-secondary round-button"
-                                        title="Download Image">
-                                        <i class="fas fa-download"></i>
-                                    </button>
-                                    <button type="button" id="spellbookCopyBtn" class="btn-secondary round-button"
-                                        title="Copy Image">
-                                        <i class="fa-regular fa-clipboard"></i>
-                                    </button>
-                                    <button type="button" id="spellbookExpandBtn" class="btn-secondary round-button"
-                                        title="Expand Canvas">
-                                        <i class="mdi mdi-1-25 mdi-relative-scale"></i>
-                                    </button>
-                                    <button type="button" id="spellbookUpscaleBtn" class="btn-secondary round-button"
-                                        title="Upscale Image">
-                                        <i class="nai-upscale"></i>
-                                    </button>
-                                </div>
-
-                                <!-- Bottom right: Go to workspace -->
-                                <div class="spellbook-bottom-right-buttons">
-                                    <button type="button" id="spellbookGoToWorkspaceBtn"
-                                        class="btn-secondary round-button" title="Go to Planet">
-                                        <i class="fas fa-planet-ringed"></i>
-                                    </button>
-                                </div>
-                            </div>
                         </div>
                     </div>
 
