@@ -54,7 +54,7 @@ body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal
     line-height: 21px;
 }
 
-/* the old default-button glow pulse; About MeletonFX (about-melaton.css) still runs it */
+/* the old default-button glow pulse; About Melaton (about-melaton.css) still runs it */
 @keyframes vista-default-pulse {
     from {
         opacity: 1;
@@ -75,44 +75,30 @@ body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal
     }
 }
 
-/* ---- text boxes and lists: 7.css's, at Vista's 23 px (the app's .form-control is taller) ---- */
+/* ---- text boxes and lists at Vista's 23 px (the app's .form-control is taller); the faces are the
+   shared EDIT / COMBOBOX bitmaps (vista-glass-controls.css "Vista common controls"), so these
+   rules set metrics only: a border shorthand here would reset their border-image ---- */
 
 body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]), select):is(.form-control, .form-input) {
     box-sizing: border-box;
     height: 23px;
     min-height: 23px;
     padding: 2px 4px;
-    background: #fff;
-    border: 1px solid;
-    border-color: #abadb3 #dbdfe6 #e3e9ef #e2e3ea;
-    border-radius: 2px;
-    box-shadow: none;
-    color: #000;
+    border-width: 1px;
     font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
     line-height: 17px;
-    text-shadow: none;
+}
+
+/* the drop-down list's glyph sits in the last 18 px */
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content select:is(.form-control, .form-input) {
+    padding: 0 18px 0 4px;
 }
 
 body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content textarea:is(.form-control, .form-input):not(.prompt-textarea, .character-prompt-textarea) {
     padding: 3px 4px;
-    background: #fff;
-    border: 1px solid;
-    border-color: #abadb3 #dbdfe6 #e3e9ef #e2e3ea;
-    border-radius: 2px;
-    box-shadow: none;
-    color: #000;
+    border-width: 1px;
     font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
     line-height: 15px;
-}
-
-body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content :is(input, select, textarea):is(.form-control, .form-input):not(.prompt-textarea, .character-prompt-textarea):hover:not(:disabled) {
-    border-color: #5794bf #b7d5ea #c7e2f1 #c5daed;
-}
-
-body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content :is(input, select, textarea):is(.form-control, .form-input):not(.prompt-textarea, .character-prompt-textarea):focus {
-    border-color: #3d7bad #a4c9e3 #b7d9ed #b7d9ed;
-    outline: none;
-    box-shadow: none;
 }
 
 body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content :is(input, select, textarea):is(.form-control, .form-input):not(.prompt-textarea, .character-prompt-textarea)::placeholder {
@@ -120,7 +106,7 @@ body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal
     font-style: italic;
 }
 
-/* the app's drop-down buttons (hover-show pickers): Vista's drop-down list */
+/* the app's drop-down buttons (hover-show pickers): Vista's drop-down list, the shared COMBOBOX face */
 body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content .custom-dropdown-btn {
     min-height: 23px;
     padding: 0 22px 0 6px;
@@ -128,21 +114,12 @@ body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
-    background: linear-gradient(#f2f2f2 45%, #ebebeb 45%, #cfcfcf);
-    border: 1px solid #8e8f8f;
-    border-radius: 3px;
-    box-shadow: inset 0 0 0 1px #fffc;
     color: #000;
     font-family: "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
     font-size: 9pt;
     font-weight: 400;
     font-variation-settings: normal;
     text-shadow: none;
-}
-
-body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content .custom-dropdown-btn:is(:hover, .active) {
-    background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
-    border-color: #3c7fb1;
 }
 
 /* ---- the footer row: buttons right-aligned on #f0f0f0 ---- */

@@ -1,5 +1,5 @@
 /**
- * Control Panel's MeletonFX Update page (Yukimi 2026-10-13): Vista's Windows Update for the
+ * Control Panel's Melaton Update page (Yukimi 2026-10-13): Vista's Windows Update for the
  * client's files. While the page is open, updates run in the foreground: opening it checks the
  * server, and every state the service worker reaches (serviceWorkerManager.js
  * _showServiceWorkerTrayPopup) shows here instead of the tray balloon, background downloads
@@ -16,10 +16,10 @@
  *   downloading   blue, "Downloading updates…", "Downloading n files (x% complete)", the bar
  *   installing    blue, "Installing updates…", a marquee bar (styles and assets applying live)
  *   ready         yellow, "Install updates for your computer" (they install without a restart), Install updates
- *   restart       yellow, "Restart MeletonFX to finish installing updates", Restart now
+ *   restart       yellow, "Restart Melaton to finish installing updates", Restart now
  *   upgrade       yellow, "Upgrade to Service Pack <YY>Q<1-4> <patchid>" (built from the file set), Restart now
- *   uptodate      green, "MeletonFX is up to date", Check for updates
- *   failed        red, "MeletonFX could not search for new updates", Try again
+ *   uptodate      green, "Melaton is up to date", Check for updates
+ *   failed        red, "Melaton could not search for new updates", Try again
  *
  * Balloon wording for the tray (Vista's: only when something needs you) is balloonFor(state).
  */
@@ -76,14 +76,14 @@
     /** Vista's Windows Update balloons: only for something that needs you; null = no balloon. */
     function balloonFor(state, message) {
         switch (state) {
-            case 'available': return { title: 'Updates are available for MeletonFX', body: 'Click here to download and install them.' };
+            case 'available': return { title: 'Updates are available for Melaton', body: 'Click here to download and install them.' };
             case 'ready': return { title: 'Updates are ready to install', body: 'Click here to install them.' };
-            case 'restart': return { title: 'Restart MeletonFX to finish installing updates', body: 'Click here to restart now or later.' };
+            case 'restart': return { title: 'Restart Melaton to finish installing updates', body: 'Click here to restart now or later.' };
             case 'upgrade': {
                 const title = typeof message === 'string' && message.indexOf('Upgrade to Service Pack ') === 0
                     ? message
                     : 'Upgrade to Service Pack';
-                return { title, body: 'Restart MeletonFX to install it.' };
+                return { title, body: 'Restart Melaton to install it.' };
             }
             default: return null;
         }
@@ -98,9 +98,9 @@
             case 'installing': return 'Installing updates…';
             case 'available': return 'Updates are available';
             case 'ready': return 'Updates are ready to install';
-            case 'restart': return 'Restart MeletonFX to finish installing updates';
+            case 'restart': return 'Restart Melaton to finish installing updates';
             case 'upgrade': return 'Upgrade to Service Pack';
-            default: return 'MeletonFX Update';
+            default: return 'Melaton Update';
         }
     }
 
@@ -134,33 +134,33 @@
             checking: { band: 'blue', title: 'Checking for updates…', body: `<p>Looking for updates on the server.</p>${bar(null)}` },
             available: {
                 band: 'yellow', shield: 'shield-warning', title: 'Download and install updates for your computer',
-                body: `<p>${esc(view.message && !/available\.?$/i.test(view.message) ? view.message : 'Updates to MeletonFX are available.')}</p>`,
+                body: `<p>${esc(view.message && !/available\.?$/i.test(view.message) ? view.message : 'Updates to Melaton are available.')}</p>`,
                 button: ['Install updates', 'install']
             },
             downloading: {
                 band: 'blue', title: 'Downloading updates…',
                 body: `<p>Downloading ${esc(fileText)} (${Math.round(view.progress || 0)}% complete)</p>${bar(view.progress || 0)}`
             },
-            installing: { band: 'blue', title: 'Installing updates…', body: `<p>Installing ${esc(fileText)}. MeletonFX keeps running while they install.</p>${bar(null)}` },
+            installing: { band: 'blue', title: 'Installing updates…', body: `<p>Installing ${esc(fileText)}. Melaton keeps running while they install.</p>${bar(null)}` },
             ready: {
                 band: 'yellow', shield: 'shield-warning', title: 'Install updates for your computer',
-                body: `<p>${esc(fileText.charAt(0).toUpperCase() + fileText.slice(1))} downloaded. They change styles and assets only, so they install without restarting MeletonFX.</p>`,
+                body: `<p>${esc(fileText.charAt(0).toUpperCase() + fileText.slice(1))} downloaded. They change styles and assets only, so they install without restarting Melaton.</p>`,
                 button: ['Install updates', 'apply']
             },
             restart: {
-                band: 'yellow', shield: 'shield-warning', title: 'Restart MeletonFX to finish installing updates',
+                band: 'yellow', shield: 'shield-warning', title: 'Restart Melaton to finish installing updates',
                 body: `<p>${esc(fileText.charAt(0).toUpperCase() + fileText.slice(1))} downloaded and ready.</p><p>Please save your work and close your windows before restarting.</p>`,
                 button: ['Restart now', 'restart']
             },
             upgrade: {
                 band: 'yellow', shield: 'shield-warning',
                 title: view.message || 'Upgrade to Service Pack',
-                body: '<p>This update is too large to install while MeletonFX is running. Restart to install it.</p><p>Please save your work and close your windows before restarting.</p>',
+                body: '<p>This update is too large to install while Melaton is running. Restart to install it.</p><p>Please save your work and close your windows before restarting.</p>',
                 button: ['Restart now', 'restart']
             },
-            uptodate: { band: 'green', shield: 'shield-ok', title: 'MeletonFX is up to date', body: '<p>There are no updates available for your computer.</p>', button: ['Check for updates', 'check'] },
+            uptodate: { band: 'green', shield: 'shield-ok', title: 'Melaton is up to date', body: '<p>There are no updates available for your computer.</p>', button: ['Check for updates', 'check'] },
             failed: {
-                band: 'red', shield: 'shield-error', title: 'MeletonFX could not search for new updates',
+                band: 'red', shield: 'shield-error', title: 'Melaton could not search for new updates',
                 body: `<p class="cpl-wu-error"><em>Error(s) found:</em></p><p>${esc(view.message || 'The server did not answer.')}</p>`,
                 button: ['Try again', 'check']
             }
@@ -184,7 +184,7 @@
         const rows = [
             ['Most recent check for updates:', stamp('meletonUpdateCheckedAt')],
             ['Updates were installed:', stamp('meletonUpdateInstalledAt')],
-            ['You have MeletonFX set to:', 'Download updates in the background and install them when MeletonFX restarts (recommended)'],
+            ['You have Melaton set to:', 'Download updates in the background and install them when Melaton restarts (recommended)'],
             ['You receive updates:', `From the ${domain} domain controller (${root.location ? root.location.hostname : 'this server'})`]
         ];
         return `<table class="cpl-wu-facts">${rows.map(([a, b]) => `<tr><td>${esc(a)}</td><td>${esc(b)}</td></tr>`).join('')}</table>`;
@@ -279,13 +279,13 @@
         registered = true;
         cpl.registerItem({
             id: 'meleton-update',
-            name: 'MeletonFX Update',
+            name: 'Melaton Update',
             image: `${ART}/windows-update-32.png`,
-            description: 'Check for updates to MeletonFX and install them.',
+            description: 'Check for updates to Melaton and install them.',
             open: () => cpl.open('update')
         });
         cpl.registerPage('update', {
-            title: () => 'MeletonFX Update',
+            title: () => 'Melaton Update',
             tasks: () => `
                 <div class="cpl-task-group">
                     <ul class="cpl-task-list">
@@ -301,7 +301,7 @@
                 </div>`,
             body: () => `
                 <div class="cpl-wu-page">
-                    <h1 class="cpl-page-title">MeletonFX Update</h1>
+                    <h1 class="cpl-page-title">Melaton Update</h1>
                     <div class="cpl-wu-status"></div>
                     <div class="cpl-wu-facts-host"></div>
                 </div>`,

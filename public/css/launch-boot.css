@@ -55,7 +55,7 @@ html.melaton-boot #melatonBoot {
     outline: none;
 }
 
-/* ---------- "MeletonFX is loading files..." (Vista's bootmgr off the DVD) ----------
+/* ---------- "Melaton is loading files..." (Vista's bootmgr off the DVD) ----------
    Measured at 1024x768 on the Vista VM: Lucida Console 20 px, #BFBFBF, the text's left edge at
    x 332 and its cap height at y 588; the bar x 56-967 (912 x 30) from y 639, #7F7F7F trough and
    a #BFBFBF fill that grows from the left, no frame. Lives in the VGA frame, so it stretches. */

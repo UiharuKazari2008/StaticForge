@@ -240,7 +240,7 @@ const tinyOffset = ui.desktopWindowOffset({ w: 380, h: 130 }, { left: 0, top: 0,
 const tinyLeft = tinyOffset.x + 200 - 190;
 assert.ok(tinyLeft >= 16 && tinyLeft + 380 <= 400, 'kept on a small screen');
 
-// ---- MeletonFX Framework exception dialog: server errors in Windows language ----
+// ---- Melaton Framework exception dialog: server errors in Windows language ----
 const exceptions = require('../public/scripts/comp/mainframeExceptionDialog.js');
 const tr = (packet) => exceptions.translateServerError(packet);
 assert.deepStrictEqual(tr({ message: 'Unknown message type', details: 'foo' }), { exception: 'IllegalPacketOperationException', text: 'Illegal Operation in Packet' });

@@ -1,7 +1,7 @@
 # Vista VM agent (design reference)
 
 Yukimi's throwaway Windows Vista Ultimate SP2 VM (Aero on, 1920x1200) is the 1:1 reference for
-the MeletonFX desktop. A small HTTP agent inside it lets any coding agent run commands, move
+the Melaton desktop. A small HTTP agent inside it lets any coding agent run commands, move
 files, take lossless screenshots and rip icons without touching the RDP window. Nothing of value
 is on the VM: install tools freely, make test folders, change settings.
 

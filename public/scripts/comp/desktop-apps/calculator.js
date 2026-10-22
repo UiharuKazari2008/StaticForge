@@ -1,4 +1,4 @@
-// MeletonFX calculator window: Standard, Scientific, and Programmer keypads plus a history tape.
+// Melaton calculator window: Standard, Scientific, and Programmer keypads plus a history tape.
 // Shell wiring (script tag, Start menu) is a separate issue. This file only opens the window.
 // MCP get_calculator / set_calculator reach readDesktopCalculatorForAgent / applyDesktopCalculatorAgentAction
 // through public/scripts/comp/agentClientBridge.js.

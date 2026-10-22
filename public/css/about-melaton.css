@@ -1,4 +1,4 @@
-/* About MeletonFX: Vista's About Windows (winver.exe), 1:1 with the Vista VM.
+/* About Melaton: Vista's About Windows (winver.exe), 1:1 with the Vista VM.
    The dialog is shell32 template 14352 (275x238 DLU, MS Shell Dlg 8; base units 6x13, so
    x = DLU * 6 / 4 and y = DLU * 13 / 8): a 413x387 client inside the shared 8/28/8/8 frame.
    Every control keeps the template's x and width; the text is Segoe UI 11px on a 13px line. The

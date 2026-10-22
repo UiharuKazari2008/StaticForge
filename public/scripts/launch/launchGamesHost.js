@@ -37,6 +37,8 @@
     // what the desktop's app.html loads for these windows: menus, 7.css controls, Vista dialogs
     const STYLES = [
         '/css/fonts.css',
+        // the desktop's cursor tokens (--c-pointer and friends) the games' styles use
+        '/css/desktop-cursors.css',
         '/css/menu-chrome.css',
         '/css/context-menu.css',
         '/css/vista-menus.css',
@@ -49,6 +51,8 @@
     // lighter copies written from the media, url -> { hash (the full file's), game }; Setup's last step
     // swaps them for the full files (launchGames.js upgradeLite)
     const LITE_KEY = 'melatonGamesLite';
+    const IDLE_MS = 15000;           // a download with no bytes this long has stalled
+    const GATE_MAX_MS = 60000;       // the longest Setup waits for a game coming off the media
     const TYPES = {
         js: 'text/javascript; charset=utf-8', css: 'text/css; charset=utf-8', json: 'application/json',
         html: 'text/html; charset=utf-8', png: 'image/png', webp: 'image/webp', jpg: 'image/jpeg',
@@ -64,6 +68,7 @@
     let zTop = 3000;
     let cascade = 0;
     let loading = 0;
+    let loadDeadline = 0;
     let gateWaiters = [];
 
     function el(tag, cls, text) {
@@ -137,9 +142,9 @@
     async function missingFiles(id) {
         let list;
         try {
-            const res = await root.fetch(MEDIA(id, '.json'), { cache: 'no-store' });
-            if (!res.ok) return null;
-            list = await res.json();
+            const bytes = await fetchIdle(MEDIA(id, '.json'));
+            if (!bytes) return null;
+            list = JSON.parse(new TextDecoder().decode(bytes));
         } catch (_) {
             return null;
         }
@@ -188,30 +193,42 @@
         return true;
     }
 
-    // The zip with its progress: false when there is none (the game then loads file by file)
-    async function fetchMedia(id, onProgress) {
-        let res;
-        try {
-            res = await root.fetch(MEDIA(id), { cache: 'no-store' });
-        } catch (_) {
-            return null;
-        }
-        if (!res || !res.ok || !res.body) return null;
-        const total = Number(res.headers.get('content-length')) || 0;
-        const reader = res.body.getReader();
-        const chunks = [];
-        let got = 0;
-        for (;;) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            chunks.push(value);
-            got += value.byteLength;
-            if (total) onProgress(Math.min(1, got / total));
-        }
-        const bytes = new Uint8Array(got);
-        let at = 0;
-        chunks.forEach((c) => { bytes.set(c, at); at += c.byteLength; });
-        return bytes;
+    // A download that gives up when the server goes quiet: no answer, or no bytes, for IDLE_MS.
+    // null then (or on any error); the caller falls back.
+    function fetchIdle(url, onProgress) {
+        const ctl = new AbortController();
+        let timer = 0;
+        const poke = () => {
+            clearTimeout(timer);
+            timer = setTimeout(() => ctl.abort(), IDLE_MS);
+        };
+        poke();
+        return (async () => {
+            const res = await root.fetch(url, { cache: 'no-store', signal: ctl.signal });
+            if (!res || !res.ok || !res.body) return null;
+            const total = Number(res.headers.get('content-length')) || 0;
+            const reader = res.body.getReader();
+            const chunks = [];
+            let got = 0;
+            for (;;) {
+                poke();
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunks.push(value);
+                got += value.byteLength;
+                if (total && onProgress) onProgress(Math.min(1, got / total));
+            }
+            const bytes = new Uint8Array(got);
+            let at = 0;
+            chunks.forEach((c) => { bytes.set(c, at); at += c.byteLength; });
+            return bytes;
+        })().catch(() => null).finally(() => clearTimeout(timer));
+    }
+
+    // The zip with its progress: null when there is none or it stalls (the game then loads file
+    // by file)
+    function fetchMedia(id, onProgress) {
+        return fetchIdle(MEDIA(id), onProgress);
     }
 
     // ---- the window manager the games expect (modalUtils.js on the desktop) ---------------------
@@ -368,6 +385,7 @@
         if (button.classList.contains('loading')) return;
         button.classList.add('loading');
         loading += 1;
+        loadDeadline = Date.now() + GATE_MAX_MS;
         const dialog = mediaDialog(game);
         try {
             // only when the cache lacks some of the game's files: download 80 %, unpacking the rest
@@ -455,9 +473,16 @@
     }
 
     // Setup waits here between its steps while a game is coming off the media
+    // (until GATE_MAX_MS after the latest game started loading: one whose files stall does not
+    // hold Setup)
     function gate() {
         if (!loading) return Promise.resolve();
-        return new Promise((resolve) => gateWaiters.push(resolve));
+        const left = loadDeadline - Date.now();
+        if (left <= 0) return Promise.resolve();
+        return new Promise((resolve) => {
+            gateWaiters.push(resolve);
+            setTimeout(resolve, left);
+        });
     }
 
     // ---- Setup finished while a game is open ----------------------------------------------------
@@ -478,14 +503,14 @@
         if (notice) notice.remove();
         notice = el('div', 'mg-window mg-notice');
         notice.setAttribute('role', 'alertdialog');
-        notice.setAttribute('aria-label', 'MeletonFX Setup');
+        notice.setAttribute('aria-label', 'Melaton Setup');
         const title = el('div', 'mg-title');
-        title.appendChild(el('span', '', 'MeletonFX Setup'));
+        title.appendChild(el('span', '', 'Melaton Setup'));
         notice.appendChild(title);
         const body = el('div', 'mg-notice-body');
         body.appendChild(el('div', 'mg-notice-icon'));
         const text = el('div', 'mg-notice-text');
-        text.appendChild(el('p', 'mg-notice-heading', upgrade ? 'MeletonFX has been upgraded.' : 'MeletonFX has been installed.'));
+        text.appendChild(el('p', 'mg-notice-heading', upgrade ? 'Melaton has been upgraded.' : 'Melaton has been installed.'));
         text.appendChild(el('p', '', upgrade
             ? 'Restart your computer to finish the upgrade. Your game stays open until you do.'
             : 'Restart your computer to finish the installation. Your game stays open until you do.'));

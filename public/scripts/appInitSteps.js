@@ -245,7 +245,7 @@ if (window.wsClient) {
                 return; // Don't continue with initialization
             }
         }
-    }, true, { logon: true, critical: true, failureText: 'MeletonFX could not load your application data.' });
+    }, true, { logon: true, critical: true, failureText: 'Melaton could not load your application data.' });
 
     window.wsClient.registerInitStep(5, 'Initializing Tokenizer', async () => {
         // ensurePromptTokenizerForModel: public/scripts/comp/utilities.js

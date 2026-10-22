@@ -68,7 +68,15 @@ class DesktopShortcutsManager {
         this.folderHoldTarget = null;
         this.folderHoldTimer = null;
         this._lastDesktopContextCoords = null;
-        
+
+        // Vista's icon view (desktopIconView.js): the last layout's cells, list order and the
+        // focused item (its whole name shows)
+        this._iconMetrics = null;
+        this._iconPlaces = new Map();
+        this._iconOrder = [];
+        this._focusedShortcutId = null;
+        this._insertMark = null;
+
         // Shortcut type definitions
         this.shortcutTypes = {
             image: {
@@ -469,12 +477,20 @@ class DesktopShortcutsManager {
         // Clear existing shortcuts
         this.gridContainer.innerHTML = '';
         this.freeformContainer.innerHTML = '';
-        
+
         // Clear collision offsets
         this.collisionOffsets.clear();
 
         const activeShortcuts = this.shortcuts.filter(s => !s._isDeleted && (s.folderId == null || s.folderId === undefined));
-        
+
+        // Vista's icon view: every icon in its own cell (desktopIconView.js)
+        if (this.isVistaIconView()) {
+            this.renderVistaIconView(activeShortcuts);
+            this.notesMetadataCache = null;
+            this.updateSelectionVisuals();
+            return;
+        }
+
         // Separate grid shortcuts from freeform shortcuts
         const gridShortcuts = activeShortcuts
             .filter(s => s.position && s.position.index === 0)
@@ -507,6 +523,216 @@ class DesktopShortcutsManager {
         // Clear cache after rendering
         this.notesMetadataCache = null;
         this.updateSelectionVisuals();
+    }
+
+    // --- Vista's icon view (desktopIconView.js, desktop-icon-view.css) ---
+
+    isVistaIconView() {
+        return !!(window.desktopIconView && this.freeformContainer && this.desktopContainer);
+    }
+
+    renderVistaIconView(activeShortcuts) {
+        const V = window.desktopIconView;
+        const view = V.get(this.currentWorkspace);
+        const rect = this.freeformContainer.getBoundingClientRect();
+        const m = V.metrics(view.size, rect.width || window.innerWidth, rect.height || window.innerHeight);
+        V.applyContainer(view, m);
+        const tiers = [16, 32, 48, 96, 256];
+        this.desktopContainer.dataset.iconTier = String(tiers.find((t) => t >= m.size * (window.devicePixelRatio || 1)) || 256);
+        this._iconMetrics = m;
+        this._iconView = view;
+
+        const items = activeShortcuts.map((s) => ({
+            id: s.id,
+            position: s.position,
+            // the old quadrant places (index 1-4) as a top left in this work area
+            point: s.position && s.position.index !== 0 && s.position.index !== 'free'
+                ? this.calculateQuadrantPixelPosition(s)
+                : null
+        }));
+        const { order, places } = V.layout(items, view, m);
+        this._iconOrder = order;
+        this._iconPlaces = places;
+
+        const byId = new Map(activeShortcuts.map((s) => [s.id, s]));
+        const frag = document.createDocumentFragment();
+        order.forEach((id) => {
+            const shortcut = byId.get(id);
+            const place = places.get(id);
+            if (!shortcut || !place) return;
+            const el = this.createShortcutElement(shortcut, false);
+            el.style.left = `${place.x}px`;
+            el.style.top = `${place.y}px`;
+            frag.appendChild(el);
+            this.attachShortcutContextMenu(el, shortcut);
+        });
+        this.freeformContainer.appendChild(frag);
+    }
+
+    /** The label: the unfocused text (two lines, "...") and the whole name for the focused item. */
+    fillShortcutLabel(label, name) {
+        const V = window.desktopIconView;
+        const m = this._iconMetrics;
+        if (!V || !m || !label) {
+            if (label) label.textContent = name;
+            return;
+        }
+        if (!this._labelFont) {
+            const family = getComputedStyle(document.body).getPropertyValue('--font-system').trim() || '"Segoe UI", sans-serif';
+            this._labelFont = `12px ${family}`;
+        }
+        // the lines are Vista's own breaks (GDI widths), so the browser never wraps them again
+        const clamped = V.clampLabel(name, m.labelWidth, this._labelFont);
+        const block = (cls, lines) => {
+            const box = document.createElement('span');
+            box.className = cls;
+            lines.forEach((text) => {
+                const line = document.createElement('span');
+                line.className = 'desktop-shortcut-label-line';
+                line.textContent = text;
+                box.appendChild(line);
+            });
+            return box;
+        };
+        label.textContent = '';
+        label.classList.toggle('is-cut', clamped.cut);
+        label.appendChild(block('desktop-shortcut-label-short', clamped.lines));
+        if (clamped.cut) label.appendChild(block('desktop-shortcut-label-full', clamped.all));
+    }
+
+    /** A system icon's own picture (Desktop Icon Settings) or a shortcut's picked one (Change Icon). */
+    resolveCustomIcon(shortcut) {
+        const V = window.desktopIconView;
+        if (!V || !shortcut) return null;
+        const own = V.normalizeIconRef(shortcut.data && shortcut.data.customIcon);
+        if (own) return own;
+        const key = this.desktopIconKey(shortcut);
+        if (!key) return null;
+        return V.systemSlotIcon(key === 'recycle' ? 'recycle-empty' : key, V.get(this.currentWorkspace));
+    }
+
+    /** Which of Desktop Icon Settings' icons this is (Cartograph's Trash on the desktop is the Recycle Bin). */
+    desktopIconKey(shortcut) {
+        const d = shortcut && shortcut.data;
+        if (!d) return null;
+        if (d.desktopIcon) return d.desktopIcon;
+        return shortcut.type === 'system-folder' && d.systemKey === 'trash' ? 'recycle' : null;
+    }
+
+    /** Auto Arrange off: a new item at the right-click point (its nearest free cell with Align to Grid). */
+    vistaPositionAt(x, y) {
+        const V = window.desktopIconView;
+        const m = this._iconMetrics;
+        const view = this._iconView || V.get(this.currentWorkspace);
+        if (!m || view.autoArrange) return this.getNextAvailablePosition();
+        let px = Math.max(0, x - m.cx / 2);
+        let py = Math.max(0, y - m.iconBox / 2);
+        if (view.alignToGrid) {
+            const taken = new Set([...this._iconPlaces.values()].map((p) => `${p.col},${p.row}`));
+            const want = V.cellFromPoint(m, x, y);
+            const c = V.nearestFreeCell(m, want.col, want.row, taken);
+            px = c.col * m.cx;
+            py = c.row * m.cy;
+        }
+        return { index: 'free', x: Math.round(px), y: Math.round(py), w: Math.round(m.width), h: Math.round(m.height) };
+    }
+
+    /** Where a drop leaves the dragged icons (and, with Auto Arrange off, pins the others where they stand). */
+    computeVistaDrop(itemsToMove, clientX, clientY) {
+        const V = window.desktopIconView;
+        const m = this._iconMetrics;
+        const view = this._iconView || V.get(this.currentWorkspace);
+        const rect = this.freeformContainer.getBoundingClientRect();
+        const dragIds = new Set(itemsToMove.map((item) => item.shortcut.id));
+        const active = this.shortcuts.filter((s) => !s._isDeleted && (s.folderId == null || dragIds.has(s.id)));
+        const updates = [];
+        if (!m) return updates;
+
+        if (view.autoArrange) {
+            const order = this._iconOrder.filter((id) => active.some((s) => s.id === id));
+            const ins = V.insertionAt(m, clientX - rect.left, clientY - rect.top, order.length);
+            const moved = order.filter((id) => dragIds.has(id));
+            itemsToMove.forEach((item) => { if (!moved.includes(item.shortcut.id)) moved.push(item.shortcut.id); });
+            const rest = order.filter((id) => !dragIds.has(id));
+            const at = ins.index - order.slice(0, ins.index).filter((id) => dragIds.has(id)).length;
+            rest.slice(0, at).concat(moved, rest.slice(at))
+                .forEach((id, i) => updates.push({ id, position: { index: 0, pos: i } }));
+            return updates;
+        }
+
+        const free = (x, y) => ({ index: 'free', x: Math.round(x), y: Math.round(y), w: Math.round(m.width), h: Math.round(m.height) });
+        const taken = new Set();
+        active.forEach((s) => {
+            if (dragIds.has(s.id)) return;
+            const p = this._iconPlaces.get(s.id);
+            if (!p) return;
+            taken.add(`${p.col},${p.row}`);
+            // Vista keeps every icon where it is once one is moved by hand
+            if (!s.position || s.position.index !== 'free') updates.push({ id: s.id, position: free(p.x, p.y) });
+        });
+        itemsToMove.forEach((item) => {
+            const node = item.ghost || item.element;
+            const gx = parseFloat(node.style.left) || 0;
+            const gy = parseFloat(node.style.top) || 0;
+            if (view.alignToGrid) {
+                const want = V.snapCell(m, gx, gy);
+                const c = V.nearestFreeCell(m, want.col, want.row, taken);
+                taken.add(`${c.col},${c.row}`);
+                updates.push({ id: item.shortcut.id, position: free(c.col * m.cx, c.row * m.cy) });
+            } else {
+                updates.push({ id: item.shortcut.id, position: free(gx, gy) });
+            }
+        });
+        return updates;
+    }
+
+    /** The see-through copies Vista drags (the icons themselves stay put until the drop). */
+    createDragGhosts() {
+        if (!this.dragGroup) return;
+        this.dragGroup.forEach((item) => {
+            const ghost = item.element.cloneNode(true);
+            ghost.classList.remove('selected', 'desktop-shortcut-focused', 'folder-drop-target');
+            ghost.classList.add('desktop-shortcut-ghost');
+            ghost.removeAttribute('data-shortcut-data');
+            ghost.style.left = `${item.startX}px`;
+            ghost.style.top = `${item.startY}px`;
+            this.freeformContainer.appendChild(ghost);
+            item.ghost = ghost;
+        });
+    }
+
+    removeDragGhosts() {
+        this.desktopContainer?.classList.remove('desktop-icons-dragging');
+        (this.dragGroup || []).forEach((item) => {
+            if (item.ghost) item.ghost.remove();
+            item.ghost = null;
+        });
+        this.freeformContainer?.querySelectorAll('.desktop-shortcut-ghost').forEach((el) => el.remove());
+    }
+
+    /** Auto Arrange: Vista's insertion mark at the top of the cell the drop will take. */
+    updateInsertMark(clientX, clientY) {
+        const V = window.desktopIconView;
+        const m = this._iconMetrics;
+        const view = this._iconView;
+        if (!V || !m || !view || !view.autoArrange) {
+            this.removeInsertMark();
+            return;
+        }
+        const rect = this.freeformContainer.getBoundingClientRect();
+        const ins = V.insertionAt(m, clientX - rect.left, clientY - rect.top, this._iconOrder.length);
+        if (!this._insertMark) {
+            this._insertMark = document.createElement('div');
+            this._insertMark.className = 'desktop-insert-mark';
+        }
+        if (!this._insertMark.isConnected) this.freeformContainer.appendChild(this._insertMark);
+        this._insertMark.style.left = `${ins.x}px`;
+        this._insertMark.style.top = `${ins.y}px`;
+        this._insertMark.style.width = `${ins.width}px`;
+    }
+
+    removeInsertMark() {
+        if (this._insertMark && this._insertMark.isConnected) this._insertMark.remove();
     }
 
     // --- Multi-select ---
@@ -705,6 +931,7 @@ class DesktopShortcutsManager {
             this.selectedShortcutIds.clear();
         }
         this.selectedShortcutIds.add(shortcutId);
+        this._focusedShortcutId = shortcutId;
         this.updateSelectionVisuals();
     }
 
@@ -714,6 +941,7 @@ class DesktopShortcutsManager {
             this.selectedShortcutIds.delete(shortcutId);
         } else {
             this.selectedShortcutIds.add(shortcutId);
+            this._focusedShortcutId = shortcutId;
         }
         this.updateSelectionVisuals();
     }
@@ -763,6 +991,15 @@ class DesktopShortcutsManager {
             });
         }
         this.desktopContainer?.classList.toggle('desktop-has-selection', this.selectedShortcutIds.size > 0);
+        // Vista: the focused item (the last one clicked) shows its whole name
+        const focusedId = this.selectedShortcutIds.has(this._focusedShortcutId) ? this._focusedShortcutId : null;
+        this.freeformContainer?.querySelectorAll('.desktop-shortcut-focused').forEach((el) => {
+            if (el.dataset.shortcutId !== focusedId) el.classList.remove('desktop-shortcut-focused');
+        });
+        if (focusedId) {
+            const el = this.freeformContainer?.querySelector(`.desktop-shortcut[data-shortcut-id="${CSS.escape(focusedId)}"]:not(.desktop-shortcut-ghost)`);
+            if (el) el.classList.add('desktop-shortcut-focused');
+        }
         if (!skipOverlay) {
             // notifyKeyboardOverlayContextChanged: public/scripts/comp/modalKeyboardRegistry.js
             notifyKeyboardOverlayContextChanged();
@@ -1333,13 +1570,14 @@ class DesktopShortcutsManager {
         const containerRect = this.freeformContainer.getBoundingClientRect();
 
         this.dragGroup.forEach((item) => {
+            const node = item.ghost || item.element;
             let newX = item.startX + deltaX;
             let newY = item.startY + deltaY;
             const elementRect = item.element.getBoundingClientRect();
             newX = Math.max(0, Math.min(newX, containerRect.width - elementRect.width));
             newY = Math.max(0, Math.min(newY, containerRect.height - elementRect.height));
-            item.element.style.left = `${newX}px`;
-            item.element.style.top = `${newY}px`;
+            node.style.left = `${newX}px`;
+            node.style.top = `${newY}px`;
         });
     }
 
@@ -1377,7 +1615,7 @@ class DesktopShortcutsManager {
             element.classList.add('in-grid');
             // Store grid position for reordering
             element.dataset.gridPos = shortcut.position.pos || 0;
-        } else {
+        } else if (!this.isVistaIconView()) {
             // Freeform mode - calculate and set percentage-based position
             const pixelPos = this.calculateQuadrantPixelPosition(shortcut);
             if (pixelPos) {
@@ -1400,12 +1638,15 @@ class DesktopShortcutsManager {
         // Add label first (will be after icon in DOM due to prepend below)
         const label = document.createElement('div');
         label.className = 'desktop-shortcut-label';
-        label.textContent = shortcut.name;
+        this.fillShortcutLabel(label, shortcut.name);
         element.appendChild(label);
 
-        // Create icon based on type
+        // Create icon based on type (or the one picked with Change Icon, desktopIconView.js)
         const typeHandler = this.shortcutTypes[shortcut.type];
-        if (typeHandler && typeHandler.icon) {
+        const customIcon = this.isVistaIconView() ? this.resolveCustomIcon(shortcut) : null;
+        if (customIcon) {
+            element.insertBefore(window.desktopIconView.iconElement(customIcon, this._iconMetrics ? this._iconMetrics.size : 48), label);
+        } else if (typeHandler && typeHandler.icon) {
             const iconResult = typeHandler.icon.call(this, shortcut);
             // Handle async icon creation - prepend before label
             if (iconResult instanceof Promise) {
@@ -1846,13 +2087,16 @@ class DesktopShortcutsManager {
         return icon;
     }
 
-    createRemoteDesktopIcon() {
+    createRemoteDesktopIcon(shortcut) {
         const icon = document.createElement('div');
         icon.className = 'desktop-shortcut-icon';
         const imageIcon = document.createElement('img');
         // resolveAppIconPath: public/scripts/comp/modalUtils.js
-        imageIcon.src = resolveAppIconPath('vista-remote-desktop.png');
-        const srcset = buildAppIconSrcset('vista-remote-desktop.png');
+        // Remote Desktop Manager's connections take its icon; Remote Desktop Connection's quick
+        // connections (data.quick) take mstsc's
+        const iconFile = shortcut && shortcut.data && shortcut.data.quick ? 'vista-remote-desktop.png' : 'remote_desktop.png';
+        imageIcon.src = resolveAppIconPath(iconFile);
+        const srcset = buildAppIconSrcset(iconFile);
         if (srcset) {
             imageIcon.setAttribute('srcset', srcset);
             imageIcon.setAttribute('sizes', appIconSizesAttr(APP_ICON_DISPLAY_PX.desktop));
@@ -1863,7 +2107,13 @@ class DesktopShortcutsManager {
         return icon;
     }
 
-    handleRemoteDesktopClick(shortcut) {
+    async handleRemoteDesktopClick(shortcut) {
+        if (shortcut.data && shortcut.data.quick) {
+            // remoteDesktopConnection.connectTo: public/scripts/comp/desktop-apps/remoteDesktopConnection.js
+            await window.featureLoader.loadFeature('remote_desktop_connection');
+            window.remoteDesktopConnection.connectTo(shortcut.data.quick);
+            return;
+        }
         const id = shortcut.data && shortcut.data.connectionId;
         if (!id) return;
         // openDesktopGuacSession: public/scripts/comp/desktop-apps/guacRemote.js
@@ -2038,6 +2288,14 @@ class DesktopShortcutsManager {
     }
 
     handleSystemFolderClick(shortcut) {
+        // Desktop Icon Settings' Network and Control Panel open Control Panel (melatonControlPanel.js)
+        const key = shortcut?.data?.desktopIcon;
+        if (key === 'network' || key === 'control-panel') {
+            void featureLoader.loadFeature('control_panel').then(() => {
+                if (window.melatonControlPanel) window.melatonControlPanel.open(key === 'network' ? 'network' : 'home');
+            });
+            return;
+        }
         const navPath = shortcut?.data?.navPath;
         if (!navPath) return;
         openExplorerApplet(navPath);
@@ -2094,6 +2352,7 @@ class DesktopShortcutsManager {
             const rect = this.freeformContainer.getBoundingClientRect();
             const x = this._lastDesktopContextCoords.x - rect.left;
             const y = this._lastDesktopContextCoords.y - rect.top;
+            if (this.isVistaIconView()) return this.vistaPositionAt(x, y);
             return this.pixelToPositionData(x, y, rect);
         }
         return this.getNextAvailablePosition();
@@ -2902,15 +3161,60 @@ class DesktopShortcutsManager {
                         menuShortcut,
                         { isDesktopShortcut: true }
                     );
-                    config.sections = explorer.buildDesktopShortcutContextMenu(menuShortcut);
+                    config.sections = this.withChangeIconItem(explorer.buildDesktopShortcutContextMenu(menuShortcut));
                     return;
                 }
                 if (explorer) explorer._contextMenuTarget = null;
-                config.sections = singleMenuConfig.sections;
+                config.sections = this.withChangeIconItem(singleMenuConfig.sections);
             }
         };
 
         contextMenu.attachToElement(element, config);
+    }
+
+    /** A copy of a shortcut menu with Change Icon... last (desktopIconDialogs.js, Vista's picker). */
+    withChangeIconItem(sections) {
+        if (!this.isVistaIconView() || !Array.isArray(sections)) return sections;
+        const out = sections.map((s) => (s && Array.isArray(s.items) ? { ...s, items: s.items.slice() } : s));
+        let list = null;
+        for (let i = out.length - 1; i >= 0; i--) {
+            if (out[i] && out[i].type === 'list' && Array.isArray(out[i].items)) { list = out[i]; break; }
+        }
+        if (!list) {
+            list = { type: 'list', items: [] };
+            out.push(list);
+        }
+        if (list.items.length) list.items.push({ separator: true });
+        list.items.push({ text: 'Change Icon...', action: 'desktop-change-icon' });
+        return out;
+    }
+
+    /** Change Icon for one shortcut; the pick is saved in its data (customIcon), null restores the default. */
+    async openChangeIcon(shortcut) {
+        if (!shortcut) return;
+        await featureLoader.loadFeature('desktop_icon_dialogs');
+        // desktopIconDialogs.openChangeIcon: public/scripts/comp/desktopIconDialogs.js
+        window.desktopIconDialogs.openChangeIcon({
+            current: this.resolveCustomIcon(shortcut),
+            defaultFile: this.desktopIconKey(shortcut) === 'network' ? 'NetworkExplorer' : 'shell32',
+            onPick: (ref) => this.setShortcutIcon(shortcut.id, ref)
+        });
+    }
+
+    setShortcutIcon(shortcutId, ref) {
+        const shortcut = this.shortcuts.find((s) => s.id === shortcutId);
+        if (!shortcut) return;
+        const data = { ...(shortcut.data || {}) };
+        const clean = ref && window.desktopIconView ? window.desktopIconView.normalizeIconRef(ref) : null;
+        if (clean) data.customIcon = clean;
+        else delete data.customIcon;
+        shortcut.data = data;
+        if (!shortcut._isNew) {
+            shortcut._isModified = true;
+            shortcut._dataModified = true;
+        }
+        this.renderShortcuts();
+        this.debouncedSave();
     }
 
     // Get default context menu
@@ -3039,10 +3343,16 @@ class DesktopShortcutsManager {
             event.preventDefault();
 
             this.prepareDragGroup(this.draggedShortcut.element, this.draggedShortcut.shortcut);
-            this.convertDragGroupToFreeform();
-            
-            // Show drop zones
-            this.showDropZones();
+            if (this.isVistaIconView()) {
+                // Vista drags a see-through copy; the icons move on the drop
+                this.createDragGhosts();
+                this.desktopContainer.classList.add('desktop-icons-dragging');
+            } else {
+                this.convertDragGroupToFreeform();
+
+                // Show drop zones
+                this.showDropZones();
+            }
         }
         
         // Only update position if we're in drag mode
@@ -3061,18 +3371,23 @@ class DesktopShortcutsManager {
         newX = Math.max(0, Math.min(newX, containerRect.width - elementRect.width));
         newY = Math.max(0, Math.min(newY, containerRect.height - elementRect.height));
 
-        if (this.dragGroup && this.dragGroup.length > 1) {
+        if (this.dragGroup && (this.dragGroup.length > 1 || this.dragGroup.some((item) => item.ghost))) {
             this.updateDragGroupPositions(newX, newY);
         } else {
             this.draggedShortcut.element.style.left = `${newX}px`;
             this.draggedShortcut.element.style.top = `${newY}px`;
         }
-        
+
         // Check if hovering over manual modal for reference shortcuts
         this.checkManualModalDrop(clientX, clientY);
-        
-        // Highlight drop placeholder if hovering over grid
-        this.highlightDropZone(newX, newY, containerRect);
+
+        if (this.isVistaIconView()) {
+            // Auto Arrange: where the icons will be inserted
+            this.updateInsertMark(clientX, clientY);
+        } else {
+            // Highlight drop placeholder if hovering over grid
+            this.highlightDropZone(newX, newY, containerRect);
+        }
 
         // Folder drop target highlight + hold-to-folder gesture
         const folderTarget = this.getFolderShortcutUnderPoint(clientX, clientY);
@@ -3080,7 +3395,9 @@ class DesktopShortcutsManager {
             el.classList.toggle('folder-drop-target', folderTarget && el.dataset.shortcutId === folderTarget.id);
         });
 
-        const hoverTarget = this.getShortcutUnderPoint(clientX, clientY);
+        // Vista's icon view has no hold-to-folder: pointing at an icon is how a reorder is aimed
+        // (Create folder from selection stays in the icons' menu)
+        const hoverTarget = this.isVistaIconView() ? null : this.getShortcutUnderPoint(clientX, clientY);
         if (folderTarget && folderTarget.id !== this.draggedShortcut.shortcut.id) {
             this.clearFolderHoldTimer();
         } else if (hoverTarget && hoverTarget.id !== this.draggedShortcut.shortcut.id && hoverTarget.type !== 'folder') {
@@ -3096,6 +3413,7 @@ class DesktopShortcutsManager {
                     await this.createFolderFromSelection();
                     this.clearFolderHoldTimer();
                     this.hideDropZones();
+                    this.removeDragGhosts();
                     this.draggedShortcut = null;
                     this.dragGroup = null;
                     this.isDragging = false;
@@ -3254,6 +3572,17 @@ class DesktopShortcutsManager {
                     await this.promoteShortcutsToDesktopRoot(nestedIds);
                 }
 
+                if (this.isVistaIconView()) {
+                    // Auto Arrange reorders the list; otherwise the icons take the cells they were dropped on
+                    const vistaUpdates = this.computeVistaDrop(itemsToMove, clientX, clientY);
+                    this.removeDragGhosts();
+                    await this.updateMultipleShortcutPositions(vistaUpdates);
+                    this.draggedShortcut = null;
+                    this.dragGroup = null;
+                    this.isDragging = false;
+                    return;
+                }
+
                 itemsToMove.forEach((item) => {
                     const finalX = parseInt(item.element.style.left, 10) || 0;
                     const finalY = parseInt(item.element.style.top, 10) || 0;
@@ -3272,8 +3601,9 @@ class DesktopShortcutsManager {
                 await this.updateMultipleShortcutPositions(positionUpdates);
             }
         }
-        
+
         // Clean up
+        this.removeDragGhosts();
         this.draggedShortcut = null;
         this.dragGroup = null;
         this.isDragging = false;
@@ -3327,6 +3657,7 @@ class DesktopShortcutsManager {
         if (this.dropZoneOverlay && this.dropZoneOverlay.parentElement) {
             this.dropZoneOverlay.remove();
         }
+        this.removeInsertMark();
     }
 
     // Update shortcut position (local operation)
@@ -3381,7 +3712,7 @@ class DesktopShortcutsManager {
         if (updates.name) {
             const label = element.querySelector('.desktop-shortcut-label');
             if (label) {
-                label.textContent = updates.name;
+                this.fillShortcutLabel(label, updates.name);
             }
         }
     }
@@ -4019,7 +4350,7 @@ wsClient.registerInitStep(18, 'Loading Desktop Shortcuts', async () => {
         // Drawn after icon bitmaps decode (public/scripts/comp/assetPreload.js).
         desktopShortcuts._bootShortcutsLoaded = true;
     }
-}, false, { critical: true, failureText: 'MeletonFX could not load your desktop icons.' });
+}, false, { critical: true, failureText: 'Melaton could not load your desktop icons.' });
 
 // Handle context menu actions for shortcuts
 document.addEventListener('contextMenuAction', async (event) => {
@@ -4082,6 +4413,10 @@ document.addEventListener('contextMenuAction', async (event) => {
     }
     
     switch (action) {
+        case 'desktop-change-icon':
+            await desktopShortcuts.openChangeIcon(shortcut);
+            break;
+
         case 'open-folder-shortcut':
             if (shortcut.type === 'folder') {
                 desktopShortcuts.handleFolderClick(shortcut);

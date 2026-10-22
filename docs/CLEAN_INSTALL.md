@@ -18,7 +18,7 @@ A new `config.json` gets a random `loginKey` and PINs — change them, then add 
 `secure.config.json` (`novelai.keys[].apiKey`).
 
 After dependencies, the installer runs `node scripts/precompile-runtime-assets.js`. A fresh tree
-must print `compiled=` greater than 0. That warms `.cache/runtime-assets` so the MeletonFX
+must print `compiled=` greater than 0. That warms `.cache/runtime-assets` so the Melaton
 installer is not waiting on first-request CSS/JS minification. `scripts/setup.sh` does the same
 at the end of the baremetal path, the docker host path (when `node_modules` is already there),
 the image-build path, and the container `--runtime` entry. The Dockerfile also runs it after

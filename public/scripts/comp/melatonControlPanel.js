@@ -668,11 +668,11 @@
             icon = 'warning';
             message = `The domain controller is available, but ${i.connectionName} is not connected. Click "Connect ${i.connectionName}" to connect.`;
         } else {
-            message = "MeletonFX did not find any problems with this computer's connection to the domain controller.";
+            message = "Melaton did not find any problems with this computer's connection to the domain controller.";
         }
         if (box) {
             await box.show({
-                title: 'MeletonFX Network Diagnostics',
+                title: 'Melaton Network Diagnostics',
                 icon,
                 message,
                 buttons: [{ label: 'Close', value: 'close', default: true, cancel: true }]

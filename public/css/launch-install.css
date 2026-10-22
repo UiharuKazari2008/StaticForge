@@ -13,7 +13,7 @@
    the strip                             66 px across the screen bottom: 1 px #808080, a 9 px bar
                                          (#7A93B1 trough, #99CC33 fill, a white tick where phase 1
                                          ends at 26 %), then "1 Collecting information" and
-                                         "2 Installing MeletonFX" in white (34 px Segoe UI Light
+                                         "2 Installing Melaton" in white (34 px Segoe UI Light
                                          digits, 12 px labels); it appears from the key page on
    data-phase on #melatonInstall: arrive (aurora only) | setup | installing | error | linger (the
    window has closed) | held. data-page picks the page, data-strip the strip (none | collect | install). */
@@ -895,7 +895,7 @@
     font-weight: 700;
 }
 
-/* ---- Where do you want to install MeletonFX? ---- */
+/* ---- Where do you want to install Melaton? ---- */
 
 .mi-disk {
     width: 548px;

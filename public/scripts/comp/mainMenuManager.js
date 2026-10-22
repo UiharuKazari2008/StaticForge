@@ -722,7 +722,7 @@ function setupMainMenuContextMenus() {
                     },
                     {
                         icon: 'fa-regular fa-window-alt',
-                        tooltip: 'MeletonFX Desktop',
+                        tooltip: 'Melaton Desktop',
                         action: 'toggle-gallery-window',
                         hidden: () => document.body.classList.contains('desktop-mode'),
                         hideOnBreakpoint: "mobile"
@@ -1050,7 +1050,7 @@ function setupMainMenuContextMenus() {
 
             case 'sw-open-update':
                 await featureLoader.loadFeature('control_panel');
-                // cplUpdate.open: public/scripts/comp/cplUpdate.js (MeletonFX Update in Control Panel)
+                // cplUpdate.open: public/scripts/comp/cplUpdate.js (Melaton Update in Control Panel)
                 if (window.cplUpdate) window.cplUpdate.open();
                 break;
 

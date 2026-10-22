@@ -1,7 +1,7 @@
 # Vista games (Yozora #609)
 
 The web desktop's Games folder: Windows Vista's nine games recreated from their own resources,
-plus two MeletonFX additions in the same style. All Programs › Games lists them; the Start menu's
+plus two Melaton additions in the same style. All Programs › Games lists them; the Start menu's
 Games place opens Games Explorer.
 
 | Game | Script | Pack (`/static_images/vista-games/…`) | Feature |
@@ -12,7 +12,7 @@ Games place opens Games Explorer.
 | Purble Place | `purble*.js` | `purble` (PurblePlace.dll + PurblePlace2.dll) | `vista_purble` |
 | Chess Titans | `chess*.js` | `chess` | `vista_chess` |
 | InkBall | `inkball*.js` | `inkball` | `vista_inkball` |
-| Block Drop, Brick Breaker (MeletonFX) | `blockdrop.js`, `brickbreaker.js` | `blockdrop`, `brickbreaker` (own art, `scripts/build-vista-arcade-art.js`) + Minesweeper's frame and sounds, CardGames' particles and sounds, Mahjong's tile clacks; Block Drop also plays Teleport's `/sounds/planet/innerlight.opus` as music | `vista_blockdrop`, `vista_brickbreaker` |
+| Block Drop, Brick Breaker (Melaton) | `blockdrop.js`, `brickbreaker.js` | `blockdrop`, `brickbreaker` (own art, `scripts/build-vista-arcade-art.js`) + Minesweeper's frame and sounds, CardGames' particles and sounds, Mahjong's tile clacks; Block Drop also plays Teleport's `/sounds/planet/innerlight.opus` as music | `vista_blockdrop`, `vista_brickbreaker` |
 | JezzBall (Win 3.x, Entertainment Pack 4) | `jezzball.js` on `jezzballCore.js` + `jezzballReal.js`, `jezzballHelp.js`; `vista-jezzball.css` | `jezzball` (`scripts/build-vista-jezzball.js` from the game's own files) | `vista_jezzball` |
 | Games Explorer | `gamesExplorer.js` | `explorer` (icons taken from gameux.dll; the `gameux` pack is built but not loaded) + each game's GDF | `vista_explorer` |
 
@@ -20,7 +20,7 @@ Scripts live in `public/scripts/comp/desktop-apps/vista-games/`; styles in
 `public/css/desktop-apps/vista-games.css` (windows, dialogs, task dialogs, status bar) and
 `vista-games-explorer.css`. `openVistaGame(id)` (featureLoader.js) loads a game's feature and opens it.
 The Start menu's entries are `startMenuGameLaunchables` (modalUtils.js: the eleven games and Games
-Explorer). Games Explorer lists the nine with the facts of their GDFs and the two MeletonFX games
+Explorer). Games Explorer lists the nine with the facts of their GDFs and the two Melaton games
 with facts written in its `CATALOG`.
 
 Icons: the caption, taskbar, Start menu and Games Explorer use the app-icon set,
@@ -38,6 +38,10 @@ pages) → WebP, every XML → `data.json` (`{ t, a, c, v }` nodes, localisable 
 kept as Text), WMA → AAC, PNGs as they are, and the `.exe.mui` string tables, menus, DIALOGEX
 templates, accelerators and Game Definition File. The game art is left out of the install pack
 (`web_server.js` buildServiceWorkerCacheManifest); the service worker caches it on first use.
+Because no manifest names those files, `sw.js` checks each cached one after serving it
+(`revalidateGameAsset`: a HEAD against the server's `X-File-Hash`, once per file every 10 minutes)
+and fetches it again when it has changed, so a rebuilt sheet or `data.json` reaches clients on the
+next load. Test: `scripts/test-sw-game-assets.js`.
 
 HiDPI: the sprite sheets' @2x pages and the images' x2 PNGs are the games' own (the stage switches
 to them from 1.5x). The art the originals had only at 96 DPI, drawn as HTML (Change Appearance
@@ -146,15 +150,19 @@ Minesweeper, Solitaire, Spider Solitaire, FreeCell, Hearts, Block Drop, Brick Br
   PNG, AAC 48 kbps, Opus 40 kbps). Only the missing files are written into the service worker's
   `static-cache-v1`; a copy already cached (full or light) is used as it is. A small progress
   dialog shows meanwhile, and Setup waits between its steps (`gate()`) until the game has
-  loaded.
+  loaded, at most 60 s from the click. A download that sends nothing for 15 s is dropped and
+  the game loads file by file instead. The service worker leaves `media/` to the network
+  (`GAME_MEDIA_PREFIX`): the zips are unpacked, never cached themselves.
 - **Light copies replaced:** each light copy is marked `x-media-lite` and listed in
   localStorage `melatonGamesLite`. Setup's "Completing installation" step replaces them with
   the full files from `media/<id>.full.zip` (`launchGames.js` `upgradeLite`), one request per
-  game.
+  game, for at most 60 s. A light copy still left (that step cut short, or Setup closed) is
+  replaced by the service worker's check the next time the desktop opens the game; it makes
+  no checks while `/launch` is open.
 - **Rebuilding the media:** `scripts/build-vista-games-media.js`. Rebuild after any game,
   engine or asset change: `scripts/test-vista-games-media.js` fails when a zip is stale.
 - **When Setup finishes under an open game:** no reboot. A message box opens behind the games
-  ("MeletonFX has been installed / upgraded", Restart now), and the toolbar says "Setup has
+  ("Melaton has been installed / upgraded", Restart now), and the toolbar says "Setup has
   finished" with its own Restart now.
 - **Previews:** `/launch?design=1`, "Installer: games toolbar" and "Installer: restart held by
   a game".

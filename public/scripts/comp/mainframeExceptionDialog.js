@@ -2,7 +2,7 @@
  * Mainframe exception dialog (Yozora #434): on the desktop a WebSocket server error is no longer
  * a toast but a .NET-style "Unhandled exception" window (the WinForms ThreadExceptionDialog):
  *
- *   MeletonFX Framework
+ *   Melaton Framework
  *   [x]  Unhandled exception has occurred in a component in your application. If you click
  *        Continue, the application will ignore this error and attempt to continue. If you click
  *        Quit, the application will close immediately.
@@ -85,7 +85,7 @@
             if (packet.details && packet.details !== packet.message) lines.push(`   Details: ${packet.details}`);
             lines.push('   at Dreamscape.Mainframe.PacketRouter.Dispatch(Packet packet)');
             lines.push('   at Dreamscape.Mainframe.Session.Receive(Socket socket)');
-            lines.push(`   at MeletonFX.Net.WebSocketClient.Send(String type = "${packetType || 'unknown'}")`);
+            lines.push(`   at Melaton.Net.WebSocketClient.Send(String type = "${packetType || 'unknown'}")`);
             lines.push('');
             lines.push('************** Packet **************');
             lines.push(`Type: ${packetType || '(not a request)'}`);
@@ -133,7 +133,7 @@
         modal.setAttribute('role', 'alertdialog');
         modal.innerHTML = `
             <div class="modal-window-title">
-                <div class="modal-window-title-main"><span>MeletonFX Framework</span></div>
+                <div class="modal-window-title-main"><span>Melaton Framework</span></div>
             </div>
             <div class="modal-focus-overlay"></div>
             <div class="modal-window-controls">

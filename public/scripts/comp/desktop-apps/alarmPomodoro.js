@@ -1,4 +1,4 @@
-// MeletonFX alarm clock and pomodoro.
+// Melaton alarm clock and pomodoro.
 // public/scripts/comp/desktop-apps/alarmPomodoro.js
 // One .modal window ("Alarm Clock", Yukimi 2026-10-13: the two apps combined) with an Alarm tab and
 // a Pomodoro tab on the existing stack. Shell loads this script; no tray icon.

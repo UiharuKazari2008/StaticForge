@@ -514,7 +514,7 @@ function setupServiceWorkerTrayContextMenu() {
                     {
                         // Vista's Windows Update tray menu: the page first (cplUpdate.js)
                         icon: 'fas fa-shield-halved',
-                        text: 'Open MeletonFX Update',
+                        text: 'Open Melaton Update',
                         action: 'sw-open-update',
                         hidden: () => false
                     },

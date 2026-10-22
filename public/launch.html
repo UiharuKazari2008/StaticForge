@@ -802,7 +802,7 @@
         <div class="melaton-boot-screen">
             <div class="melaton-boot-stage">
                 <img class="melaton-boot-enso" src="/static_images/logo_icon.png" alt="" draggable="false">
-                <div class="melaton-boot-bar" role="progressbar" aria-label="Starting MeletonFX">
+                <div class="melaton-boot-bar" role="progressbar" aria-label="Starting Melaton">
                     <div class="melaton-boot-bar-track">
                         <div class="melaton-boot-bar-cluster"><i></i><i></i><i></i><i></i><i></i><i></i></div>
                     </div>
@@ -811,20 +811,20 @@
             </div>
         </div>
         <div id="melatonBootText"></div>
-        <!-- "MeletonFX is loading files...": Vista's bootmgr bar from the DVD (1024x768 geometry, launch-boot.css) -->
+        <!-- "Melaton is loading files...": Vista's bootmgr bar from the DVD (1024x768 geometry, launch-boot.css) -->
         <div id="melatonLoading" aria-live="polite">
-            <p class="melaton-loading-label">MeletonFX is loading files...</p>
+            <p class="melaton-loading-label">Melaton is loading files...</p>
             <div class="melaton-loading-bar" role="progressbar" aria-label="Loading files" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div></div></div>
         </div>
         <!-- Windows Setup in Vista Basic on the aurora (melatonBoot.js, launch-install.css): the pages of
              Vista's Install Windows, then the Installing checklist. data-page picks the page. -->
         <div id="melatonInstall" data-phase="installing" data-page="install" data-strip="install">
             <div class="mi-window" role="dialog" aria-labelledby="miTitle">
-                <div class="mi-title"><button type="button" class="mi-title-back" data-action="setup-back" aria-label="Back"></button><span class="mi-title-icon" aria-hidden="true"></span><span id="miTitle">Install MeletonFX</span><button type="button" class="mi-title-close" data-action="setup-close" aria-label="Close">&times;</button></div>
+                <div class="mi-title"><button type="button" class="mi-title-back" data-action="setup-back" aria-label="Back"></button><span class="mi-title-icon" aria-hidden="true"></span><span id="miTitle">Install Melaton</span><button type="button" class="mi-title-close" data-action="setup-close" aria-label="Close">&times;</button></div>
 
                 <!-- language page: the first thing off the media -->
                 <div class="mi-page mi-page--media" data-page="language" hidden>
-                    <div class="mi-logo"><span class="mi-logo-enso"></span><span class="mi-logo-word">Xyridian <b>Meleton</b></span></div>
+                    <div class="mi-logo"><span class="mi-logo-enso"></span><span class="mi-logo-word">Xyridian <b>Melaton</b></span></div>
                     <div class="mi-fields">
                         <label class="mi-field"><span class="mi-field-label"><u>L</u>anguage to install:</span><span class="mi-dropdown" tabindex="0" role="combobox"><span class="mi-dropdown-value">English</span><i></i><ul class="mi-dropdown-list" role="listbox"><li class="selected" role="option" aria-selected="true">English</li></ul></span></label>
                         <label class="mi-field"><span class="mi-field-label"><u>T</u>ime and currency format:</span><span class="mi-dropdown" tabindex="0" role="combobox"><span class="mi-dropdown-value">English (United States)</span><i></i><ul class="mi-dropdown-list" role="listbox"><li class="selected" role="option" aria-selected="true">English (United States)</li></ul></span></label>
@@ -837,10 +837,10 @@
 
                 <!-- Install now -->
                 <div class="mi-page mi-page--media" data-page="start" hidden>
-                    <div class="mi-logo"><span class="mi-logo-enso"></span><span class="mi-logo-word">Xyridian <b>Meleton</b></span></div>
+                    <div class="mi-logo"><span class="mi-logo-enso"></span><span class="mi-logo-word">Xyridian <b>Melaton</b></span></div>
                     <button type="button" class="mi-install-now" data-action="setup-install"><u>I</u>nstall now<i class="mi-go" aria-hidden="true"></i></button>
                     <div class="mi-media-links">
-                        <button type="button" class="mi-link" data-action="setup-know"><u>W</u>hat to know before installing MeletonFX</button>
+                        <button type="button" class="mi-link" data-action="setup-know"><u>W</u>hat to know before installing Melaton</button>
                         <button type="button" class="mi-link" data-action="setup-repair"><u>R</u>epair your computer</button>
                     </div>
                     <p class="mi-copyright">Copyright &copy; 2026 Xyridian Corporation. All rights reserved.</p>
@@ -850,14 +850,14 @@
                 <div class="mi-page mi-page--paper" data-page="key" hidden>
                     <div class="mi-paper">
                         <h1 class="mi-heading">Type your product key for activation</h1>
-                        <p class="mi-lead mi-lead--wide">You can find your product key in your NovelAI account settings. Although you are not required to enter your product key now to install, failure to enter it may result in MeletonFX being unable to generate. You may be required to enter it later in the Account Manager. We strongly advise that you enter your product identification key now.</p>
+                        <p class="mi-lead mi-lead--wide">You can find your product key in your NovelAI account settings. Although you are not required to enter your product key now to install, failure to enter it may result in Melaton being unable to generate. You may be required to enter it later in the Account Manager. We strongly advise that you enter your product identification key now.</p>
                         <p class="mi-key-sticker-label">The product key sticker looks like this:</p>
                         <div class="mi-key-sticker" aria-hidden="true"><span class="mi-key-sticker-brand">NovelAI</span><span class="mi-key-sticker-key">pst-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX</span><span class="mi-key-sticker-bars"></span></div>
                         <label class="mi-key-label" for="miKeyInput"><u>P</u>roduct key (the NovelAI API key):</label>
                         <div class="mi-key-row"><input type="text" class="mi-key-input" id="miKeyInput" autocomplete="off" spellcheck="false"><span class="mi-key-kbd" aria-hidden="true"></span></div>
                         <p class="mi-key-checking" hidden>Checking the product key that was found on the server...</p>
                         <p class="mi-key-error" hidden></p>
-                        <label class="mi-check"><input type="checkbox" checked disabled><span><u>A</u>utomatically activate MeletonFX when I'm online</span></label>
+                        <label class="mi-check"><input type="checkbox" checked disabled><span><u>A</u>utomatically activate Melaton when I'm online</span></label>
                         <button type="button" class="mi-link mi-link--help" data-action="setup-know"><u>W</u>hat is activation?</button>
                     </div>
                     <div class="mi-footer"><button type="button" class="mi-link mi-footer-link" data-action="setup-know"><u>R</u>ead our privacy statement</button><button type="button" class="mi-button mi-button--default" data-action="setup-next"><u>N</u>ext</button></div>
@@ -880,11 +880,11 @@
                         <div class="mi-options">
                             <button type="button" class="mi-option" data-action="setup-upgrade">
                                 <span class="mi-option-icon mi-option-icon--upgrade" aria-hidden="true"></span>
-                                <span class="mi-option-text"><b><u>U</u>pgrade</b><span class="mi-option-desc">Keep your files, settings, and programs and upgrade MeletonFX. Setup checks the server for the current files and installs the ones that differ from the copies on this device.</span></span>
+                                <span class="mi-option-text"><b><u>U</u>pgrade</b><span class="mi-option-desc">Keep your files, settings, and programs and upgrade Melaton. Setup checks the server for the current files and installs the ones that differ from the copies on this device.</span></span>
                             </button>
                             <button type="button" class="mi-option" data-action="setup-custom">
                                 <span class="mi-option-icon mi-option-icon--custom" aria-hidden="true"></span>
-                                <span class="mi-option-text"><b><u>I</u>nstall</b><span class="mi-option-desc">Install a clean copy of MeletonFX, select where you want to install it, or make changes to disks and partitions. This option does not keep your downloaded files, settings, and local databases.</span></span>
+                                <span class="mi-option-text"><b><u>I</u>nstall</b><span class="mi-option-desc">Install a clean copy of Melaton, select where you want to install it, or make changes to disks and partitions. This option does not keep your downloaded files, settings, and local databases.</span></span>
                             </button>
                         </div>
                         <button type="button" class="mi-link mi-link--help" data-action="setup-know"><u>H</u>elp me decide</button>
@@ -892,10 +892,10 @@
                     <div class="mi-footer"><button type="button" class="mi-button" data-action="setup-back"><u>B</u>ack</button></div>
                 </div>
 
-                <!-- Where do you want to install MeletonFX? -->
+                <!-- Where do you want to install Melaton? -->
                 <div class="mi-page mi-page--paper" data-page="where" hidden>
                     <div class="mi-paper">
-                        <h1 class="mi-heading">Where do you want to install MeletonFX?</h1>
+                        <h1 class="mi-heading">Where do you want to install Melaton?</h1>
                         <table class="mi-disk" aria-label="Disks">
                             <thead><tr><th>Name</th><th>Total Size</th><th>Free Space</th><th>Type</th></tr></thead>
                             <tbody class="mi-disk-rows"></tbody>
@@ -923,16 +923,16 @@
                 <div class="mi-page mi-page--paper" data-page="restart" hidden>
                     <div class="mi-paper">
                         <h1 class="mi-heading">Setup is restarting...</h1>
-                        <p class="mi-lead">MeletonFX needs to restart to continue. The installation starts again with the current installation files from the server after the restart.</p>
+                        <p class="mi-lead">Melaton needs to restart to continue. The installation starts again with the current installation files from the server after the restart.</p>
                         <p class="mi-restart-count"></p>
                     </div>
                     <div class="mi-footer"><button type="button" class="mi-button mi-button--default" data-action="setup-restart-now"><u>R</u>estart now</button></div>
                 </div>
 
-                <!-- Installing MeletonFX... -->
+                <!-- Installing Melaton... -->
                 <div class="mi-page mi-page--paper" data-page="install" hidden>
                     <div class="mi-paper">
-                        <h1 class="mi-heading">Installing MeletonFX...</h1>
+                        <h1 class="mi-heading">Installing Melaton...</h1>
                         <p class="mi-lead">That's all the information we need right now. Your computer will restart when the installation is complete.</p>
                         <ul class="mi-steps"></ul>
                     </div>
@@ -940,20 +940,20 @@
                 </div>
             </div>
 
-            <!-- Vista's strip under the window: 1 Collecting information, 2 Installing MeletonFX -->
+            <!-- Vista's strip under the window: 1 Collecting information, 2 Installing Melaton -->
             <div class="mi-strip" aria-hidden="true">
                 <div class="mi-bars">
                     <div class="mi-bar mi-bar-collect" role="progressbar" aria-label="Collecting information" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><div style="width: 100%"></div></div>
-                    <div class="mi-bar mi-bar-install" role="progressbar" aria-label="Installing MeletonFX" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div></div></div>
+                    <div class="mi-bar mi-bar-install" role="progressbar" aria-label="Installing Melaton" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div></div></div>
                 </div>
                 <div class="mi-phases">
                     <div class="mi-phase mi-phase-collect"><span class="mi-phase-num">1</span><span class="mi-phase-label">Collecting information</span></div>
-                    <div class="mi-phase mi-phase-install"><span class="mi-phase-num">2</span><span class="mi-phase-label">Installing MeletonFX</span></div>
+                    <div class="mi-phase mi-phase-install"><span class="mi-phase-num">2</span><span class="mi-phase-label">Installing Melaton</span></div>
                 </div>
             </div>
 
             <div class="mi-msgbox" role="alertdialog" aria-labelledby="miMsgTitle" hidden>
-                <div class="mi-title"><span id="miMsgTitle" class="mi-msgbox-title">Install MeletonFX</span><span class="mi-title-close mi-title-close--static" aria-hidden="true">&times;</span></div>
+                <div class="mi-title"><span id="miMsgTitle" class="mi-msgbox-title">Install Melaton</span><span class="mi-title-close mi-title-close--static" aria-hidden="true">&times;</span></div>
                 <div class="mi-msgbox-body">
                     <span class="mi-msgbox-icon" data-icon="error" aria-hidden="true"></span>
                     <div class="mi-msgbox-text">

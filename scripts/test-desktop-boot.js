@@ -647,7 +647,7 @@ async function testLockTriggers(body) {
         [0.45, 'Loading user global settings', null, { logon: true }],
         [0.46, 'Loading start menu layout'], [0.5, 'Loading Desktop Settings'], [18.4, 'Loading desktop assets'],
         [1, 'Loading Application Data', () => { if (failAppData) throw new Error('options timed out'); },
-            { logon: true, critical: true, failureText: 'MeletonFX could not load your application data.' }],
+            { logon: true, critical: true, failureText: 'Melaton could not load your application data.' }],
         [5, 'Initializing Tokenizer']
     ]);
     assert.strictEqual(await lc.c._runLogonInitSteps(), false, 'a critical failure stops the boot in the logon dialog');
@@ -657,7 +657,7 @@ async function testLockTriggers(body) {
     assert.ok(lc.c._logonInitStatus && lc.c._logonInitStatus.percent === undefined, 'no progress bar for the logon steps');
     assert.strictEqual(boxes.length, 1, 'a Windows message box over the logon dialog');
     assert.deepStrictEqual({ icon: boxes[0].icon, message: boxes[0].message, detail: boxes[0].detail, buttons: boxes[0].buttons.map((b) => b.label) },
-        { icon: 'error', message: 'MeletonFX could not load your application data.', detail: 'DETAIL - options timed out', buttons: ['Retry', 'Restart'] });
+        { icon: 'error', message: 'Melaton could not load your application data.', detail: 'DETAIL - options timed out', buttons: ['Retry', 'Restart'] });
     assert.strictEqual(lc.c._canCompletePreStartupHandoff(), false, 'no handoff to the desktop while the error is up');
     assert.ok(lc.c.initSteps[0]._logonPhase && !lc.c.initSteps[1]._logonPhase && !lc.c.initSteps[4]._logonPhase);
     failAppData = false;
@@ -667,7 +667,7 @@ async function testLockTriggers(body) {
     assert.deepStrictEqual(lc.ran, ['Loading user global settings', 'Loading Application Data'], 'Retry runs the logon steps again (runOnReconnect)');
     assert.strictEqual(lc.c._logonInitError, null);
     assert.strictEqual(lc.c.started, 1, 'Retry continues the boot');
-    assert.strictEqual(lc.c._logonInitStatus, null, 'status cleared before Preparing MeletonFX');
+    assert.strictEqual(lc.c._logonInitStatus, null, 'status cleared before Preparing Melaton');
     assert.strictEqual(lc.c._canCompletePreStartupHandoff(), true);
 
     lc = logonClient([[0.45, 'Loading user global settings', () => { throw new Error('settings 500'); }, { logon: true }],

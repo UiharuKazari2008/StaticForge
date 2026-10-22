@@ -14,7 +14,7 @@ const TRAY_ICON_CATALOG = [
     { id: 'searchIndexingIndicator', label: 'Search indexing' },
     { id: 'walletTrayIcon', label: 'Account Manager' },
     { id: 'workspaceTrayIcon', label: 'Workspace' },
-    { id: 'serviceWorkerTrayIcon', label: 'MeletonFX Update' },
+    { id: 'serviceWorkerTrayIcon', label: 'Melaton Update' },
     { id: 'alchemyAudioTrayIcon', label: 'Alchemy audio' },
     { id: 'pingWarningIndicator', label: 'Network latency' },
     { id: 'volumeTrayIcon', label: 'Volume' },
@@ -24,7 +24,7 @@ const TRAY_ICON_CATALOG = [
 ];
 
 const TRAY_POPUP_CATALOG = [
-    { id: 'windows-update', label: 'MeletonFX Update' },
+    { id: 'windows-update', label: 'Melaton Update' },
     { id: 'mail', label: 'Mail' },
     { id: 'generation-complete', label: 'Generation Complete' },
     { id: 'balance-updated', label: 'Balance Updated' },
@@ -122,14 +122,34 @@ function trayReadBehaviors() {
     }
 }
 
+// the saved behaviours, read once and kept until a save here or in another tab (a sync asks
+// for every icon's, many times a minute)
+let trayBehaviorSource = null;
+
+function trayBehaviorsSaved() {
+    if (!trayBehaviorSource) {
+        let legacy = null;
+        const map = trayReadBehaviors();
+        if (!map) {
+            try { legacy = localStorage.getItem(TRAY_ICON_OVERFLOW_KEY) !== null ? trayReadSet(TRAY_ICON_OVERFLOW_KEY) : null; } catch (_) { /* private mode */ }
+        }
+        trayBehaviorSource = { map, legacy };
+    }
+    return trayBehaviorSource;
+}
+
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('storage', (ev) => {
+        if (!ev || ev.key === null || ev.key === TRAY_ICON_BEHAVIOR_KEY || ev.key === TRAY_ICON_OVERFLOW_KEY) trayBehaviorSource = null;
+    });
+}
+
 /** 'show' | 'hide' | 'inactive'. Before the first save: the old "not always shown" list
  *  ('hide' for its icons, 'show' for the rest), or Vista's default, Hide when inactive. */
 function trayIconBehavior(id) {
-    const map = trayReadBehaviors();
+    const { map, legacy } = trayBehaviorsSaved();
     if (map) return TRAY_BEHAVIORS.includes(map[id]) ? map[id] : 'inactive';
-    let legacy = null;
-    try { legacy = localStorage.getItem(TRAY_ICON_OVERFLOW_KEY); } catch (_) { /* private mode */ }
-    if (legacy !== null) return trayReadSet(TRAY_ICON_OVERFLOW_KEY).has(id) ? 'hide' : 'show';
+    if (legacy) return legacy.has(id) ? 'hide' : 'show';
     return 'inactive';
 }
 
@@ -144,6 +164,7 @@ function traySetIconBehaviors(behaviors) {
     try {
         localStorage.setItem(TRAY_ICON_BEHAVIOR_KEY, JSON.stringify(out));
     } catch (_) { /* private mode */ }
+    trayBehaviorSource = { map: out, legacy: null };
     traySyncOverflow();
 }
 
@@ -192,8 +213,8 @@ function trayHideInactiveEnabled() {
     return true;
 }
 
-function trayIconTucked(id, el, now) {
-    if (!el || el.classList.contains('hidden') || !trayHideInactiveEnabled()) return false;
+function trayIconTucked(id, el, now, hideInactive = trayHideInactiveEnabled()) {
+    if (!el || el.classList.contains('hidden') || !hideInactive) return false;
     const behavior = trayIconBehavior(id);
     if (behavior === 'show') return false;
     if (behavior === 'hide') return true;
@@ -271,16 +292,17 @@ function traySyncOverflow() {
     if (traySyncing) return;
     traySyncing = true;
     const now = Date.now();
+    const hideInactive = trayHideInactiveEnabled();
     let any = false;
     let waiting = false;
     TRAY_ICON_CATALOG.forEach((row) => {
         if (TRAY_SYSTEM_ICON_IDS.includes(row.id)) return;
         const el = document.getElementById(row.id);
         if (!el) return;
-        const tucked = trayIconTucked(row.id, el, now);
+        const tucked = trayIconTucked(row.id, el, now, hideInactive);
         trayClassToggle(el, 'tray-overflow', tucked);
         if (tucked) any = true;
-        else if (!el.classList.contains('hidden') && trayHideInactiveEnabled() && trayIconBehavior(row.id) === 'inactive') waiting = true;
+        else if (!el.classList.contains('hidden') && hideInactive && trayIconBehavior(row.id) === 'inactive') waiting = true;
     });
     const btn = trayOverflowButton();
     trayClassToggle(btn, 'hidden', !any);

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // A download the service worker lost (a new sw.js activated mid-download, or its
 // STATIC_CACHE_COMPLETE never arrived) finishes from the cache or is sent again, instead of
-// leaving MeletonFX Update on "Downloading 2 files (50% complete)" for good.
+// leaving Melaton Update on "Downloading 2 files (50% complete)" for good.
 // Run: node scripts/test-sw-lost-download.js
 const assert = require('assert');
 const fs = require('fs');

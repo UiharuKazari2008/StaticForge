@@ -1,5 +1,5 @@
 /**
- * Account pictures for the two MeletonFX accounts (Control Panel's User Accounts,
+ * Account pictures for the two Melaton accounts (Control Panel's User Accounts,
  * public/scripts/comp/cplUserAccounts.js; Yukimi 2026-10-13): Administrator (the admin PIN) and
  * Guest (the user PIN). Each shows one of Vista's default pictures
  * (public/static_images/account-pictures/<name>.png, from the Vista VM) or an uploaded one.

@@ -79,7 +79,7 @@ const proto = {};
     d._logonInitError = null;
     d._dismissLogonInitError();
     assert.strictEqual(dismissed, 0, 'nothing to dismiss');
-    d._logonInitError = { message: 'MeletonFX could not load your application data.' };
+    d._logonInitError = { message: 'Melaton could not load your application data.' };
     d._logonInitBoxOpen = true;
     d._dismissLogonInitError();
     assert.strictEqual(dismissed, 1);

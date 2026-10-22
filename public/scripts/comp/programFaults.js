@@ -16,7 +16,7 @@
  *     Cancel leaves it closed. Vista restarts a program only if it ran 60 s since its last restart,
  *     so a second crash inside a minute gets the page below instead;
  *   - any other program: the page above, Close program.
- * The shell ("MeletonFX Desktop", this desktop's Explorer) cannot come back on its own: its page
+ * The shell ("Melaton Desktop", this desktop's Explorer) cannot come back on its own: its page
  * offers the client restart (runWinlogonPower('restart'), the Start menu's Restart) or Restart later.
  * The caption carries wer.dll's Problem Reports icon (static_images/vista-icons/problem-reports-*)
  * and the caption buttons of the reference capture (minimize, maximize greyed, close).
@@ -26,7 +26,7 @@
  * (report). The fault belongs to:
  *   1. the topmost stack frame in a program's script: FEATURE_MANIFEST (featureLoader.js) for the
  *      lazy features, MONOLITH_PROGRAMS for the program scripts app.html loads;
- *   2. else, with a frame in a shell script (CORE_SCRIPT), the desktop itself: "MeletonFX Desktop";
+ *   2. else, with a frame in a shell script (CORE_SCRIPT), the desktop itself: "Melaton Desktop";
  *   3. else (shared libraries only, or no stack) the window the current input event targeted
  *      (capture listeners below), or the shell when the event hit the taskbar / Start menu;
  *   4. else, with any frame of ours, the shell again.
@@ -67,11 +67,14 @@
     const MAX_OPEN = 3;
     const MAX_QUEUED = 12;
     const DEAD_GRACE_MS = 4000;
-    const DESKTOP_NAME = 'MeletonFX Desktop';
+    const DESKTOP_NAME = 'Melaton Desktop';
     const REPORT_URL = '/api/fault-reports';
     const REPORT_POST_MS = 8000;
     const REPORT_WAIT_MS = 1500;
     const REPORT_UPDATE_MS = 1200;
+    // a continued program faulting in a timer: at most one update per dialog this often
+    // (modules/programFaultReports.js allows 30 posts a minute per session)
+    const REPORT_MIN_GAP_MS = 10000;
     const COPIED_MS = 1600;
     const MAX_DETAILS = 50;
 
@@ -858,6 +861,7 @@
         const r = state.report;
         const body = JSON.stringify(reportBody(state));
         r.sent = state.repeats;
+        r.lastPostAt = now();
         r.sentAction = state.action || null;
         // the last post of a dialog may outlive the page (Restart now navigates away)
         const init = { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body };
@@ -900,7 +904,7 @@
             return (r.promise = r.promise.then(() => postReport(state, final)));
         };
         if (final) post();
-        else r.timer = setTimeout(post, REPORT_UPDATE_MS);
+        else r.timer = setTimeout(post, Math.max(REPORT_UPDATE_MS, (r.lastPostAt || 0) + REPORT_MIN_GAP_MS - now()));
     }
 
     /** The report as the server has it, or null with why (r.error) when it cannot be confirmed. */

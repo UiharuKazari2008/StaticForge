@@ -7,13 +7,13 @@
  *            Melaton when it is installed (an install record, or a populated static cache);
  *            the CD-ROM Drive is the installation media. A device with nothing installed falls
  *            through to the media like a real PC with the DVD in the drive.
- *   loading  "MeletonFX is loading files..." (Vista's bootmgr bar from the DVD) while the
+ *   loading  "Melaton is loading files..." (Vista's bootmgr bar from the DVD) while the
  *            installer's base assets land: the server answers, /sw.js registers, the manifest
  *            arrives and the Setup window's own files are fetched. Then black, then Setup.
  *   setup    Windows Setup in Vista Basic on the aurora, page by page as Vista's: language,
  *            Install now, "Which type of installation do you want?" (Upgrade: the manifest
  *            digest is forgotten, a full check, every differing file installed; Custom
- *            (advanced): "Where do you want to install MeletonFX?" with Drive options whose
+ *            (advanced): "Where do you want to install Melaton?" with Drive options whose
  *            Format wipes this device), then after a format "Setup is restarting..." with a
  *            countdown and a reboot that comes straight back into the installer with the
  *            server's current installer files (localStorage melatonSetup.resume = install).
@@ -35,8 +35,8 @@
  *            reload interrupted), cut to black and open the installer. A missed file list
  *            stays on the boot screen until it arrives. The installer writes the cache
  *            itself, so a missing controlling worker must not leave for /app.
- *   install  Windows Setup in Vista Basic on the aurora: "Install MeletonFX", Installing
- *            MeletonFX..., the automatic checklist (Copying files = one compressed pack from the
+ *   install  Windows Setup in Vista Basic on the aurora: "Install Melaton", Installing
+ *            Melaton..., the automatic checklist (Copying files = one compressed pack from the
  *            server, Expanding files = manifest vs the service worker, store only mismatches,
  *            Installing features = the code group, post-write hash check, Installing updates =
  *            the other group, same check, Completing installation = install record + persistent
@@ -67,7 +67,7 @@
         installArriveMs: 1000,  // aurora alone before the setup window opens
         installLingerMs: 2000,  // after the installer window closes: the aurora alone this long
         rebootBlackMs: 3000,    // then black this long before /launch (a real restart's dark seconds)
-        loadingMinMs: 1500,     // "MeletonFX is loading files..." shows at least this long
+        loadingMinMs: 1500,     // "Melaton is loading files..." shows at least this long
         loadingStepMs: 120,     // each installer asset counts for at least this long on the bar
         keyCheckMs: 2000,       // the product key page with a configured key moves on after this
         restartSec: 10,         // "Setup is restarting..." countdown after a format
@@ -111,26 +111,26 @@
 
     // Vista "Installing Windows..." checklist; weight = share of the strip's second bar
     const INSTALL_STEPS = [
-        { id: 'copy', label: 'Copying MeletonFX files', weight: 0.8 },
-        { id: 'expand', label: 'Expanding MeletonFX files', weight: 0.08 },
+        { id: 'copy', label: 'Copying Melaton files', weight: 0.8 },
+        { id: 'expand', label: 'Expanding Melaton files', weight: 0.08 },
         { id: 'features', label: 'Installing features', weight: 0.03 },
         { id: 'updates', label: 'Installing updates', weight: 0.06 },
         { id: 'complete', label: 'Completing installation', weight: 0.03 }
     ];
 
     const INSTALL_ERRORS = {
-        download: 'MeletonFX could not copy the files it needs to install. The connection to the server was interrupted.',
-        stalled: 'MeletonFX could not copy the files it needs to install. The server stopped sending files.',
-        mismatch: 'MeletonFX could not copy the files it needs to install. The installation files changed on the server while they were being copied. Retry downloads the current files.',
-        verify: 'MeletonFX could not expand the installation files. Some files did not arrive intact.',
-        worker: 'MeletonFX could not start the offline service it installs into.'
+        download: 'Melaton could not copy the files it needs to install. The connection to the server was interrupted.',
+        stalled: 'Melaton could not copy the files it needs to install. The server stopped sending files.',
+        mismatch: 'Melaton could not copy the files it needs to install. The installation files changed on the server while they were being copied. Retry downloads the current files.',
+        verify: 'Melaton could not expand the installation files. Some files did not arrive intact.',
+        worker: 'Melaton could not start the offline service it installs into.'
     };
 
     const ENTRIES = [
-        { id: 'melaton', label: 'Xyridian Meleton' },
-        { id: 'restore', label: 'Xyridian Meleton (via System Restore)' },
-        { id: 'safe', label: 'Xyridian Meleton (Safe Mode with Networking)' },
-        { id: 'recovery', label: 'Meleton Recovery' }
+        { id: 'melaton', label: 'Xyridian Melaton' },
+        { id: 'restore', label: 'Xyridian Melaton (via System Restore)' },
+        { id: 'safe', label: 'Xyridian Melaton (Safe Mode with Networking)' },
+        { id: 'recovery', label: 'Melaton Recovery' }
     ];
 
     const INFO = {
@@ -138,7 +138,7 @@
         unreachable: 'The server did not respond.',
         busy: 'The server stopped responding while it was starting.',
         session: 'The server could not confirm this session.',
-        install: 'The installation of MeletonFX was cancelled.',
+        install: 'The installation of Melaton was cancelled.',
         cache: 'The offline cache is not a complete copy.',
         media: 'The installation media could not be read.'
     };
@@ -346,7 +346,7 @@
         return Math.floor(Math.max(0, Math.min(1, progress || 0)) * config.loadingBarCells);
     }
 
-    /** Disk sizes for "Where do you want to install MeletonFX?" (navigator.storage.estimate). */
+    /** Disk sizes for "Where do you want to install Melaton?" (navigator.storage.estimate). */
     async function diskFacts(env) {
         let quota = 0;
         let usage = 0;
@@ -641,12 +641,12 @@
         // ---------- the installation media: loading bar and Setup (#611) ----------
 
         function showLoading(progress, label) {
-            ctl.loading = { progress: Math.max(0, Math.min(1, progress)), label: label || 'MeletonFX is loading files...' };
+            ctl.loading = { progress: Math.max(0, Math.min(1, progress)), label: label || 'Melaton is loading files...' };
             show('loading', ctl.loading);
         }
 
         /**
-         * "MeletonFX is loading files...": the server answers, /sw.js registers, the manifest
+         * "Melaton is loading files...": the server answers, /sw.js registers, the manifest
          * arrives, Setup's own files are fetched. Returns 'ok' (ctl.setupFound holds the file
          * list), 'menu' (the media could not be read) or 'cancelled'.
          */
@@ -765,7 +765,7 @@
             return `${(n / 1048576).toFixed(1)} MB`;
         }
 
-        /** The rows of "Where do you want to install MeletonFX?": one disk, one partition when something is on it. */
+        /** The rows of "Where do you want to install Melaton?": one disk, one partition when something is on it. */
         function diskRows() {
             const quota = ctl.disk.quota || 0;
             const usage = ctl.disk.usage || 0;
@@ -925,10 +925,10 @@
 
         function setupMsgbox(kind) {
             const boxes = {
-                cancel: { title: 'Install MeletonFX', icon: null, message: 'To install MeletonFX, you must run MeletonFX installation. If you cancel the installation, your computer might restart.', detail: 'Are you sure you want to cancel MeletonFX installation?', buttons: [['Yes', 'setup-cancel-yes'], ['No', 'setup-msgbox-close']] },
-                format: { title: 'Install MeletonFX', icon: 'warning', message: 'If you format this partition, any data stored on it will be deleted. Downloaded files, the offline service, settings and local databases on this device are removed. Your images and data on the server are not affected.', detail: 'You might have to sign in again when MeletonFX starts.', buttons: [['OK', 'setup-format-ok'], ['Cancel', 'setup-msgbox-close']] },
-                know: { title: 'Install MeletonFX', icon: 'info', message: 'Upgrade keeps everything on this device and installs the files on the server that differ from the ones here. Install lets you format this device first: every downloaded file, setting and local database is removed before MeletonFX is installed again.', detail: 'Your images and data stay on the server either way.', buttons: [['OK', 'setup-msgbox-close']] },
-                driver: { title: 'Load Driver', icon: 'info', message: 'MeletonFX runs on the browser’s own storage drivers. No additional driver is needed to access this device.', detail: '', buttons: [['OK', 'setup-msgbox-close']] }
+                cancel: { title: 'Install Melaton', icon: null, message: 'To install Melaton, you must run Melaton installation. If you cancel the installation, your computer might restart.', detail: 'Are you sure you want to cancel Melaton installation?', buttons: [['Yes', 'setup-cancel-yes'], ['No', 'setup-msgbox-close']] },
+                format: { title: 'Install Melaton', icon: 'warning', message: 'If you format this partition, any data stored on it will be deleted. Downloaded files, the offline service, settings and local databases on this device are removed. Your images and data on the server are not affected.', detail: 'You might have to sign in again when Melaton starts.', buttons: [['OK', 'setup-format-ok'], ['Cancel', 'setup-msgbox-close']] },
+                know: { title: 'Install Melaton', icon: 'info', message: 'Upgrade keeps everything on this device and installs the files on the server that differ from the ones here. Install lets you format this device first: every downloaded file, setting and local database is removed before Melaton is installed again.', detail: 'Your images and data stay on the server either way.', buttons: [['OK', 'setup-msgbox-close']] },
+                driver: { title: 'Load Driver', icon: 'info', message: 'Melaton runs on the browser’s own storage drivers. No additional driver is needed to access this device.', detail: '', buttons: [['OK', 'setup-msgbox-close']] }
             };
             return boxes[kind] || null;
         }
@@ -1088,7 +1088,7 @@
             return 'reboot';
         }
 
-        // ---------- the checklist: Installing MeletonFX... ----------
+        // ---------- the checklist: Installing Melaton... ----------
 
         function installData() {
             const st = ctl.install;
@@ -1530,12 +1530,12 @@
         if (!box) return;
         const err = data.phase === 'error' ? data.error : null;
         const spec = err
-            ? { title: 'Install MeletonFX', icon: 'error', message: err.message, detail: err.detail ? `Details: ${err.detail}` : '', buttons: [['Retry', 'install-retry'], ['Cancel', 'install-cancel']] }
+            ? { title: 'Install Melaton', icon: 'error', message: err.message, detail: err.detail ? `Details: ${err.detail}` : '', buttons: [['Retry', 'install-retry'], ['Cancel', 'install-cancel']] }
             : data.msgbox;
         box.hidden = !spec;
         if (!spec) return;
         const title = box.querySelector('.mi-msgbox-title');
-        if (title) title.textContent = spec.title || 'Install MeletonFX';
+        if (title) title.textContent = spec.title || 'Install Melaton';
         const icon = box.querySelector('.mi-msgbox-icon');
         if (icon) {
             icon.hidden = !spec.icon;
@@ -1578,8 +1578,8 @@
             if (up) up.hidden = !data.upgradeAllowed;
             const desc = host.querySelector('[data-action="setup-custom"] .mi-option-desc');
             if (desc) desc.textContent = data.upgradeAllowed
-                ? 'Install a clean copy of MeletonFX, select where you want to install it, or make changes to disks and partitions. This option does not keep your downloaded files, settings, and local databases.'
-                : 'Install MeletonFX on this device. Select where you want to install it, or make changes to disks and partitions first.';
+                ? 'Install a clean copy of Melaton, select where you want to install it, or make changes to disks and partitions. This option does not keep your downloaded files, settings, and local databases.'
+                : 'Install Melaton on this device. Select where you want to install it, or make changes to disks and partitions first.';
         }
         if (page === 'where') {
             const rows = host.querySelector('.mi-disk-rows');
@@ -1726,7 +1726,7 @@
                             : ' ')
                     ];
                     if (data.info) nodes.push(el(doc, 'p', 'melaton-boot-info', `Info: ${data.info}`));
-                    textEl.replaceChildren(textScreen(doc, 'Meleton Boot Manager', nodes, [['ENTER=Choose', 'choose']]));
+                    textEl.replaceChildren(textScreen(doc, 'Melaton Boot Manager', nodes, [['ENTER=Choose', 'choose']]));
                 } else {
                     textEl.replaceChildren();
                 }

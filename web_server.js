@@ -1351,6 +1351,9 @@ app.use(compression({
     }
 }));
 
+// Setup's product key (#611) takes a small body: its own parser runs before the 100 MB one
+// below (which skips a body that is already parsed), so a bigger body is refused with 413
+app.use('/install/product-key', express.json({ limit: '4kb' }));
 // Body parsing middleware with optimized limits
 app.use(express.json({limit: '100mb'}));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
@@ -1870,6 +1873,18 @@ app.use('/private/wiki', authMiddleware, express.static(path.join(cacheDir, 'wik
     etag: true,
     lastModified: true
 }));
+// Request bodies are logged, so credentials are masked by key wherever they sit
+// (Remote Desktop's /api/desktop-guac/quick and /connections carry passwords), and so is
+// the user:password part of any scheme://user:password@host string.
+const LOGGED_SECRET_KEY_RE = /^pin$|(pass|passwd|password|passphrase|secret|private[-_]?key|api[-_]?key|login[-_]?key)$/i;
+function redactLoggedSecret(key, value) {
+    if (key && LOGGED_SECRET_KEY_RE.test(key) && value !== '' && value != null) return '***';
+    if (typeof value === 'string' && value.includes('://')) {
+        return value.replace(/(\b[a-z][a-z0-9+.-]*:\/\/[^\s/@:]*:)[^\s/@]*@/gi, '$1***@');
+    }
+    return value;
+}
+
 // Logger // NOTE: Everything above this is not logged!
 app.use((req, res, next) => {
     const skippedPaths = [
@@ -1932,7 +1947,7 @@ app.use((req, res, next) => {
         console.log(`   Query: ${JSON.stringify(queryParams)}`);
     }
     if (req.body && Object.keys(req.body).length > 0) {
-        console.log(`   Body: ${JSON.stringify(req.body)}`);
+        console.log(`   Body: ${JSON.stringify(req.body, redactLoggedSecret)}`);
     }
     
     let completionLogged = false;
@@ -2203,7 +2218,7 @@ function sendInstallPack(res, pack, cleanup) {
     });
 }
 
-// MeletonFX installer pack: one zip built when the service-worker manifest is recreated.
+// Melaton installer pack: one zip built when the service-worker manifest is recreated.
 // One rebuild at a time; asking while one runs queues one more, which reads the
 // manifest when it starts, so the newest manifest always gets a pack.
 let installPackRefresh = null;
@@ -2349,27 +2364,35 @@ function publicStatusExtras(req) {
         runtimeCompileComplete,
         runtimeCompile: runtimeAssetService.getPublicStatus(),
         runtimeAutoRecompile: getRuntimeAutoRecompileConfig(),
-        // MeletonFX Setup's product key page (#611): a configured NovelAI key shows starred out
+        // Melaton Setup's product key page (#611): a configured NovelAI key shows starred out
         // and the page moves on by itself; none at all (initial server setup) asks for one
         novelaiKeyConfigured: novelaiKeyConfigured()
     };
 }
 
+// A stored NovelAI key or the NOVELAI_API_KEY environment fallback: the same answer as the
+// key the generators use (apiKeyManager.getActiveApiKey)
 function novelaiKeyConfigured() {
     try {
-        return globalResources.getApiKeyManager().getServiceKeys('novelai').length > 0;
+        return !!globalResources.getApiKeyManager().getActiveApiKey('novelai');
     } catch (_) {
         return false;
     }
 }
 
 // Setup's "Type your product key": only while the server has no NovelAI key at all (initial
-// setup; once one exists this answers 409 and the Account Manager owns the keys). The key is
-// stored under the name Setup gives it.
-app.post('/install/product-key', express.json({ limit: '4kb' }), (req, res) => {
+// setup; once one exists, stored or from the environment, this answers 409 and the Account
+// Manager owns the keys), and only from a private or loopback address (the first run is the
+// administrator on the LAN; nobody is signed in yet, so there is no session to check). The
+// key is stored under the name Setup gives it. The body is parsed by the 4 KB parser above.
+app.post('/install/product-key', (req, res) => {
     const key = typeof (req.body && req.body.key) === 'string' ? req.body.key.trim() : '';
     if (!key) return res.status(400).json({ success: false, error: 'A product key is required' });
     if (novelaiKeyConfigured()) return res.status(409).json({ success: false, error: 'A NovelAI key is already configured' });
+    if (!isPrivateIP(getRealIP(req))) {
+        return res.status(403).json({ success: false, error: 'The product key can only be entered from the local network. Set NOVELAI_API_KEY on the server or add the key to secure.config.json.' });
+    }
+    if (key.length > 512) return res.status(400).json({ success: false, error: 'That is not a NovelAI key' });
     try {
         const added = globalResources.getApiKeyManager().addApiKey('novelai', 'Setup', key);
         res.json({ success: true, index: added.index });

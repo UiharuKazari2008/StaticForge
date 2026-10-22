@@ -118,10 +118,10 @@ const flush = () => new Promise((r) => setImmediate(r));
     assert.strictEqual(h.t.last().data.info, boot.INFO.unreachable);
     assert.strictEqual(h.t.last().data.countdown, boot.config.countdownSec);
     assert.deepStrictEqual(h.t.last().data.entries.map((e) => e.label), [
-        'Xyridian Meleton',
-        'Xyridian Meleton (via System Restore)',
-        'Xyridian Meleton (Safe Mode with Networking)',
-        'Meleton Recovery'
+        'Xyridian Melaton',
+        'Xyridian Melaton (via System Restore)',
+        'Xyridian Melaton (Safe Mode with Networking)',
+        'Melaton Recovery'
     ]);
 
     h = harness([timeoutErr()]);
@@ -151,7 +151,7 @@ const flush = () => new Promise((r) => setImmediate(r));
     h.t.tick();
     await flush();
     assert.deepStrictEqual(h.t.screens(), ['menu', 'black', 'bios', 'black', 'boot', 'black', 'menu'],
-        'at 0: Xyridian Meleton starts (black → boot screen), fails again → menu');
+        'at 0: Xyridian Melaton starts (black → boot screen), fails again → menu');
     assert.strictEqual(h.t.intervals.size, 1, 'the old countdown is gone, a fresh one runs');
     assert.strictEqual(h.t.last().data.countdown, boot.config.countdownSec);
 
@@ -336,7 +336,7 @@ const flush = () => new Promise((r) => setImmediate(r));
         assert.strictEqual(await h.ctl.runChecks(), 'reboot');
         assert.ok(h.t.screens().includes('loading') && h.t.screens().includes('install'));
         const pages = h.t.renders.filter((r) => r.screen === 'install').map((r) => r.data.page);
-        assert.ok(pages.every((p) => p === 'install'), 'straight to Installing MeletonFX');
+        assert.ok(pages.every((p) => p === 'install'), 'straight to Installing Melaton');
         assert.strictEqual(h.t.local.melatonSetup, undefined, 'the resume flag is consumed');
     }
 
@@ -717,7 +717,7 @@ const flush = () => new Promise((r) => setImmediate(r));
     const swSrc = fs.readFileSync(path.join(__dirname, '../public/scripts/comp/serviceWorkerManager.js'), 'utf8');
     assert.ok(!appHtml.includes('dreamscapeOsInstallWizardModal'), '/app has no install wizard');
     assert.ok(!swSrc.includes('_runInstallWizard'), '/app does not run an in-app wizard');
-    assert.ok(swSrc.includes("location.replace('/launch')"), '/app reboots to /launch for Install MeletonFX');
+    assert.ok(swSrc.includes("location.replace('/launch')"), '/app reboots to /launch for Install Melaton');
 
     console.log('✅ test-melaton-boot: all assertions passed');
 })().catch((err) => {

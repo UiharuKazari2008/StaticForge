@@ -1,5 +1,5 @@
 /**
- * MeletonFX's two accounts as the rest of the desktop shows them: each account's name (User
+ * Melaton's two accounts as the rest of the desktop shows them: each account's name (User
  * Accounts' Change the account name) and picture (Change the picture). One source, so the
  * Start menu, the Welcome screen and logon dialog, the lock screen, the About box, the System
  * page and the games all agree.

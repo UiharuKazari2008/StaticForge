@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Control Panel as Vista's (Yukimi 2026-10-13): Remote Access, Authentication (from Security Center)
-// and MeletonFX Update are Control Panel pages; the update page takes the service worker's states
+// and Melaton Update are Control Panel pages; the update page takes the service worker's states
 // in the foreground while it is open; the window has Explorer's chrome and Vista's task pane.
 // Run: node scripts/test-control-panel-vista-pages.js
 const assert = require('assert');
@@ -32,7 +32,7 @@ assert.strictEqual(balloonFor('preparing'), null);
 assert.strictEqual(balloonFor('checking'), null);
 assert.strictEqual(balloonFor('downloading'), null);
 assert.strictEqual(balloonFor('uptodate'), null);
-assert.strictEqual(balloonFor('restart').title, 'Restart MeletonFX to finish installing updates');
+assert.strictEqual(balloonFor('restart').title, 'Restart Melaton to finish installing updates');
 assert.strictEqual(balloonFor('ready').title, 'Updates are ready to install');
 assert.strictEqual(classify('upgrade', 'Upgrade to Service Pack 26Q4 abcd1234'), 'upgrade');
 assert.strictEqual(balloonFor('upgrade', 'Upgrade to Service Pack 26Q4 abcd1234').title, 'Upgrade to Service Pack 26Q4 abcd1234');

@@ -847,7 +847,7 @@
     transition: width 0.35s ease;
 }
 
-/* ---- MeletonFX Framework exception dialog (mainframeExceptionDialog.js): .NET's unhandled
+/* ---- Melaton Framework exception dialog (mainframeExceptionDialog.js): .NET's unhandled
    exception window for WebSocket server errors on the desktop ------------------------------- */
 
 #mainframeExceptionDialog {
@@ -1395,7 +1395,7 @@ body.windows-classic-theme #melatonControlPanelModal .cpl-tasks {
     animation: sec-key-dot-pulse 0.9s ease-in-out infinite alternate;
 }
 
-/* ---- MeletonFX Update (cplUpdate.js): Vista's Windows Update page (wucltux.dll UIFILE colours,
+/* ---- Melaton Update (cplUpdate.js): Vista's Windows Update page (wucltux.dll UIFILE colours,
    the VM's layout: 33px band with a 24px shield, body text left and the button right, facts below) ---- */
 
 #melatonControlPanelModal .cpl-link--icon {
@@ -1461,29 +1461,16 @@ body.windows-classic-theme #melatonControlPanelModal .cpl-tasks {
     color: #000000;
 }
 
-/* the push button: 7.css */
+/* the push button: its face and states are the shared Vista push button
+   (vista-glass-controls.css, "Vista common controls"); here only its size */
 #melatonControlPanelModal .cpl-wu-button {
     flex: none;
     min-width: 86px;
     height: 23px;
     min-height: 23px;
     padding: 0 12px;
-    background: linear-gradient(#f2f2f2 45%, #ebebeb 45%, #cfcfcf);
-    border: 1px solid #707070;
-    border-radius: 3px;
-    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 80%);
     color: #000000;
     font: 12px var(--cpl-font);
-}
-
-#melatonControlPanelModal .cpl-wu-button:hover {
-    background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
-    border-color: #3c7fb1;
-}
-
-#melatonControlPanelModal .cpl-wu-button:active {
-    background: linear-gradient(#e5f4fc, #c4e5f6 30% 50%, #98d1ef 50%, #68b3db);
-    border-color: #6d91ab;
 }
 
 /* the bar is 7.css's [role=progressbar] (classic draws its own, desktop-boot.css): Vista's width */
@@ -2166,32 +2153,15 @@ body.windows-classic-theme #melatonControlPanelModal .cpl-tasks {
     margin: 6px 0 8px;
 }
 
+/* a drop-down list: the face and glyph are the shared Vista combo box (vista-glass-controls.css) */
 #melatonControlPanelModal .cpl-db-combo {
     position: relative;
     width: 250px;
     height: 23px;
     padding: 0 22px 0 6px;
-    background: linear-gradient(#f2f2f2 45%, #ebebeb 45%, #cfcfcf);
-    border: 1px solid #707070;
-    border-radius: 3px;
     color: #000;
     font: 12px var(--cpl-font);
     text-align: left;
-}
-
-#melatonControlPanelModal .cpl-db-combo::after {
-    content: '';
-    position: absolute;
-    right: 8px;
-    top: 9px;
-    border: 3.5px solid transparent;
-    border-top: 4px solid #000;
-    border-bottom: 0;
-}
-
-#melatonControlPanelModal .cpl-db-combo:hover {
-    background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
-    border-color: #3c7fb1;
 }
 
 #melatonControlPanelModal .cpl-db-grid {

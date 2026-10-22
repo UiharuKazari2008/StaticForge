@@ -79,8 +79,8 @@
         '<F10> saves the configuration and exits.',
         '',
         'The boot order on the Boot menu decides what starts: the',
-        'Hard Drive is Xyridian Meleton once it is installed and',
-        'the CD-ROM Drive is the MeletonFX installation media.'
+        'Hard Drive is Xyridian Melaton once it is installed and',
+        'the CD-ROM Drive is the Melaton installation media.'
     ];
 
     const DRIVE_HELP = ['User = you enter', 'parameters of hard-disk', 'drive installed at this', 'connection.', 'Auto = autotypes', 'hard-disk drive', 'installed here.', '1-39 = you select', 'pre-determined  type of', 'hard-disk drive', 'installed here.', 'CD-ROM = a CD-ROM drive', 'is installed here.', 'ATAPI Removable =', 'removable disk drive is', 'installed here.'];

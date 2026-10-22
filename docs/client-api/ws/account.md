@@ -295,7 +295,7 @@ Usage and balance of every connected account and API key except NovelAI, and the
 
 ### `get_account_pictures` / `set_account_picture`
 
-Account pictures for MeletonFX's two accounts (`modules/accountPictures.js`): Administrator (the admin
+Account pictures for Melaton's two accounts (`modules/accountPictures.js`): Administrator (the admin
 PIN) and Guest (the user PIN). A picture is one of Vista's defaults
 (`public/static_images/account-pictures/<name>.png`) or an uploaded one.
 

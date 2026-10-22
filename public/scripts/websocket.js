@@ -1581,7 +1581,7 @@ class WebSocketClient {
             // Updates are downloaded and pending restart.
             iconClass = 'fa-regular fa-laptop-arrow-down';
             trayIcon.classList.add('sw-update-complete');
-            title = 'Restart MeletonFX to finish installing updates';
+            title = 'Restart Melaton to finish installing updates';
         }
 
         if (typeof setClassNameIfChanged === 'function') {
@@ -2037,7 +2037,7 @@ class WebSocketClient {
         // Use Vista Logon: Vista's Welcome screen says "Welcome" from the password check to the desktop
         if (this.vistaLogon && (this.preStartupAuthBusy || this.preStartupCredentialsAccepted)) return 'Welcome';
         if (phase === 'auth' || phase === 'failed') return statusMessage;
-        if (statusMessage === 'Preparing MeletonFX...' || statusMessage === 'Welcome') return 'Welcome';
+        if (statusMessage === 'Preparing Melaton...' || statusMessage === 'Welcome') return 'Welcome';
         // winlogon string 1009, kept when a stage already set it
         if (statusMessage === 'Preparing your desktop...' || statusMessage === 'Preparing your desktop......') {
             return 'Preparing your desktop...';
@@ -2122,7 +2122,7 @@ class WebSocketClient {
         const isTasking = phase !== 'failed'
             && phase !== 'auth'
             && phase !== 'idle'
-            && (!this.preStartupHandoffCompleted || beat !== 'connected' || statusMessage === 'Preparing MeletonFX...')
+            && (!this.preStartupHandoffCompleted || beat !== 'connected' || statusMessage === 'Preparing Melaton...')
             && !this.preStartupAuthBusy
             && !logonError;
         const shouldPauseMarquee = !isTasking;
@@ -2401,13 +2401,13 @@ class WebSocketClient {
      */
     _showLogonInitError(step, error) {
         const detail = error && error.message ? error.message : String(error || 'Unknown error');
-        const message = step.failureText || `MeletonFX could not finish "${step.message}".`;
+        const message = step.failureText || `Melaton could not finish "${step.message}".`;
         this._logonInitError = { message, detail };
         if (this._shouldUsePreStartupDialog()) this._renderPreStartupDialog();
         this._logonInitBoxOpen = !!window.bootMessageBox;
         const choose = window.bootMessageBox
             ? window.bootMessageBox.show({
-                title: 'MeletonFX',
+                title: 'Melaton',
                 icon: 'error',
                 message,
                 detail: `DETAIL - ${detail}`,
@@ -2416,7 +2416,7 @@ class WebSocketClient {
             : showConfirmationDialog(`${message}\n\nDETAIL - ${detail}`, [
                 { text: 'Retry', value: 'retry', className: 'btn-primary' },
                 { text: 'Restart', value: 'restart', className: 'btn-secondary' }
-            ], null, { title: 'MeletonFX', icon: 'fas fa-circle-xmark' });
+            ], null, { title: 'Melaton', icon: 'fas fa-circle-xmark' });
         Promise.resolve(choose).then((value) => {
             this._logonInitBoxOpen = false;
             // null: dismissed because the connection failed (_dismissLogonInitError)
@@ -2438,11 +2438,11 @@ class WebSocketClient {
     _showStartupInitError(step, error) {
         if (this._startupInitBoxOpen) return;
         const detail = error && error.message ? error.message : String(error || 'Unknown error');
-        const message = step.failureText || `MeletonFX could not finish "${step.message}".`;
+        const message = step.failureText || `Melaton could not finish "${step.message}".`;
         this._startupInitBoxOpen = true;
         const choose = window.bootMessageBox
             ? window.bootMessageBox.show({
-                title: 'MeletonFX',
+                title: 'Melaton',
                 icon: 'error',
                 message,
                 detail: `DETAIL - ${detail}`,
@@ -2451,7 +2451,7 @@ class WebSocketClient {
             : showConfirmationDialog(`${message}\n\nDETAIL - ${detail}`, [
                 { text: 'Retry', value: 'retry', className: 'btn-primary' },
                 { text: 'Restart', value: 'restart', className: 'btn-secondary' }
-            ], null, { title: 'MeletonFX', icon: 'fas fa-circle-xmark' });
+            ], null, { title: 'Melaton', icon: 'fas fa-circle-xmark' });
         Promise.resolve(choose).then((value) => {
             this._startupInitBoxOpen = false;
             if (value == null) return;
@@ -2518,11 +2518,11 @@ class WebSocketClient {
         await this._waitForTealHold();
         if (!this._canCompletePreStartupHandoff()) return;
 
-        this.connectionUi.message = 'Preparing MeletonFX...';
+        this.connectionUi.message = 'Preparing Melaton...';
         this._updatePreStartupStageProgress(null);
         this._setConnectionPhase('connected', {
             beat: 'connected',
-            message: 'Preparing MeletonFX...'
+            message: 'Preparing Melaton...'
         });
         await this._sleepConnectionBeat(1000);
         if (!this._canCompletePreStartupHandoff()) return;

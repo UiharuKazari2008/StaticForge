@@ -1,4 +1,4 @@
-/* The MeletonFX calculator as Vista's calc.exe (Yozora #493). Linked after vista-visual-index.css.
+/* The Melaton calculator as Vista's calc.exe (Yozora #493). Linked after vista-visual-index.css.
    Desktop mode, not Classic: every rule is gated on body.desktop-mode:not(.windows-classic-theme).
 
    Measured on the VM (calc.exe, Aero, 96 dpi), client coordinates:

@@ -449,6 +449,22 @@ function maximizeModalToWorkArea(modal) {
     debouncedSaveWindowPositions();
 }
 
+/** Maximised windows follow a change of the work area without a viewport resize (taskbarSettings.js
+ *  auto-hide). Minimised ones are left as the resize sync leaves them. */
+function refitMaximizedModals() {
+    let changed = false;
+    document.querySelectorAll('.modal.modal-maximized:not(.hidden):not(.hidden-alt)').forEach((modal) => {
+        if (modal.classList.contains('minimised') || modal.classList.contains('minimising')) {
+            return;
+        }
+        finishModalRectMorph(modal);
+        restoreModalFromMaximize(modal);
+        maximizeModalToWorkArea(modal);
+        changed = true;
+    });
+    return changed;
+}
+
 function restoreModalFromMaximize(modal) {
     if (!modal || !isModalMaximized(modal)) {
         return;
@@ -4360,18 +4376,21 @@ function showGalleryWindow() {
         // The splash stays until the rows in view show their previews, not their BlurHash
         // (galleryVisiblePreviewsReady: public/scripts/comp/galleryView.js), at most 10 s
         const prepared = Promise.resolve(galleryWindowPreparePromise).catch(() => {});
-        workspaceSplash.waitFor(prepared.then(() => waitForGalleryVisiblePreviews()), 10000);
+        workspaceSplash.waitFor(prepared.then(() => waitForGalleryVisiblePreviews(10000)), 10000);
         prepared.then(() => workspaceSplash.hide());
     }
 
     console.log('Gallery shown in desktop mode');
 }
 
-/** Resolves once galleryVisiblePreviewsReady() holds, checked every 100 ms. */
-function waitForGalleryVisiblePreviews() {
+/** Resolves once galleryVisiblePreviewsReady() holds, checked every 100 ms. Gives up after
+ *  timeoutMs or once the window is closed or minimised, so the poll never outlives the splash. */
+function waitForGalleryVisiblePreviews(timeoutMs = 10000) {
+    const deadline = Date.now() + timeoutMs;
     return new Promise((resolve) => {
         const check = () => {
-            if (typeof galleryVisiblePreviewsReady !== 'function' || galleryVisiblePreviewsReady()) {
+            if (typeof galleryVisiblePreviewsReady !== 'function' || galleryVisiblePreviewsReady()
+                || Date.now() >= deadline || isGalleryWindowHidden() || galleryWindow.classList.contains('minimised')) {
                 resolve();
                 return;
             }
@@ -7151,6 +7170,44 @@ async function waitForServerDisconnect(options = {}) {
     });
 }
 
+/** When the process behind a /status answer started (timestamp - uptime), or null. */
+function serverStartFromStatus(status) {
+    if (!status || !Number.isFinite(status.timestamp) || !Number.isFinite(status.uptime)) return null;
+    return status.timestamp - status.uptime;
+}
+
+/** Any JSON /status answer, a starting server's 503 included; null while nothing answers. */
+async function probeServerStatusForRestart() {
+    try {
+        const response = await fetch('/status', { method: 'OPTIONS', cache: 'no-cache' });
+        return await response.json();
+    } catch (_) {
+        return null;
+    }
+}
+
+/**
+ * After waitForServerDisconnect: true once /status answers from a process that started
+ * other than oldStart (serverStartFromStatus before the restart; null = any answer),
+ * false at timeoutMs. /launch booted against the old process builds a stale pack.
+ */
+async function waitForServerReturn(oldStart, options = {}) {
+    const timeoutMs = options.timeoutMs || 180000;
+    const pollMs = options.pollMs || 1000;
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+        const status = await probeServerStatusForRestart();
+        if (status) {
+            const started = serverStartFromStatus(status);
+            if (oldStart == null || started == null || Math.abs(started - oldStart) > 2000) {
+                return true;
+            }
+        }
+        await new Promise((resolve) => setTimeout(resolve, pollMs));
+    }
+    return false;
+}
+
 function dismissTransientUIForShutdown() {
     if (startMenu && !startMenu.classList.contains('hidden')) {
         closeStartMenu({ immediate: true });
@@ -7322,7 +7379,9 @@ function runLeaveDesktopModeDirect() {
 function runLogoutDirect() {
     closeStartMenuAfterPowerAction();
     // runWinlogonPower: public/scripts/comp/winlogonPower.js
-    runWinlogonPower('logoff');
+    runWinlogonPower('logoff').catch((error) => {
+        showGlassToast('error', 'Log Off', error.message || 'Logout failed', false, 8000, '<i class="fas fa-exclamation-triangle"></i>');
+    });
 }
 
 /** Vista's power arrow menu (Yozora #443): the power button shuts down, the arrow has the rest. */
@@ -8022,6 +8081,10 @@ function recentItemIconClass(kind) {
 
 function renderStartMenuPlaces() {
     const container = startMenuEls.places;
+    // the old rows' click menus (Recent Items) go with them, or each open leaves one behind
+    if (typeof contextMenu !== 'undefined' && contextMenu) {
+        container.querySelectorAll('[data-click-menu]').forEach((el) => contextMenu.detachClickMenuFromElement(el));
+    }
     container.textContent = '';
     getStartMenuPlaces().forEach((place) => {
         if (place.separator) {
@@ -9154,7 +9217,9 @@ function setupDesktopContextMenu() {
     const freeformContainer = document.getElementById('desktopFreeformContainer');
     if ((!desktopIcons && !freeformContainer) || !contextMenu) return;
 
-    const desktopContextMenuConfig = {
+    // Vista's desktop menu: View, Sort By, Refresh, Paste, New, Personalize
+    // (desktopIconView.desktopMenuConfig: public/scripts/comp/desktopIconView.js)
+    const desktopContextMenuConfig = (window.desktopIconView && window.desktopIconView.desktopMenuConfig()) || {
         beforeShow: () => {
             if (typeof explorerApplet !== 'undefined' && explorerApplet) {
                 explorerApplet._contextMenuTarget = null;
@@ -9191,7 +9256,7 @@ function setupDesktopContextMenu() {
                     },
                     {
                         icon: 'fa-light fa-info-circle',
-                        text: 'About MeletonFX',
+                        text: 'About Melaton',
                         action: 'open-about-melatonin'
                     }
                 ]
@@ -9375,7 +9440,7 @@ function syncDesktopSettingsNotificationBridgeToggleUI() {
 
 function shouldExitDesktopOnWorkspaceMaximise() {
     // Maximizing the workspace window stays in desktop mode so it keeps behaving like a window
-    // (Yukimi, #403). Leaving desktop mode is the explicit MeletonFX Desktop toggle only.
+    // (Yukimi, #403). Leaving desktop mode is the explicit Melaton Desktop toggle only.
     return false;
 }
 
@@ -11315,12 +11380,12 @@ function restoreWindowPositions() {
     }
 }
 
-// About MeletonFX: Vista's About Windows (winver.exe). public/app.html #aboutMelatoninModal, drawn by
+// About Melaton: Vista's About Windows (winver.exe). public/app.html #aboutMelatoninModal, drawn by
 // public/css/about-melaton.css. The version facts live here once so Control Panel's System page
 // (public/scripts/comp/cplSystem.js) shows the same edition, build and owner.
 const MELETON_VERSION_DEFAULTS = Object.freeze({
-    productName: 'MeletonFX',
-    fullName: 'MeletonFX Desktop',
+    productName: 'Melaton',
+    fullName: 'Melaton Desktop',
     edition: '2026 R7',
     version: '2026 R7',
     servicePack: '',
@@ -11363,7 +11428,7 @@ async function loadMeletonVersionInfo(force = false) {
                 if (response) meletonSystemInfo = response;
             })
             .catch((error) => {
-                console.warn('About MeletonFX: system information unavailable', error);
+                console.warn('About Melaton: system information unavailable', error);
             })
             .finally(() => {
                 meletonSystemInfoPromise = null;
@@ -11417,7 +11482,7 @@ function showMeletonLicenseTerms() {
 async function openAboutMelatoninModal() {
     const modal = document.getElementById('aboutMelatoninModal');
     if (!modal) {
-        console.error('About MeletonFX modal not found');
+        console.error('About Melaton modal not found');
         return;
     }
 

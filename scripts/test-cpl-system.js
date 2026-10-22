@@ -60,8 +60,8 @@ assert.strictEqual(t.deviceText({ hardwareConcurrency: 8, deviceMemory: 8 }), '8
 assert.strictEqual(t.deviceText({ hardwareConcurrency: 1, deviceMemory: 2 }), '1 logical processor, 2 GB of memory');
 
 // the edition from the shared version source (About Windows), the build when there is no service pack
-assert.deepStrictEqual(t.edition({ fullName: 'MeletonFX Desktop', edition: '2026 R7', copyright: 'Copyright © 2026 Academy City Research P.S.R.  All rights reserved.', servicePack: '', build: '7bbd242' }), {
-    name: 'MeletonFX Desktop 2026 R7',
+assert.deepStrictEqual(t.edition({ fullName: 'Melaton Desktop', edition: '2026 R7', copyright: 'Copyright © 2026 Academy City Research P.S.R.  All rights reserved.', servicePack: '', build: '7bbd242' }), {
+    name: 'Melaton Desktop 2026 R7',
     copyright: 'Copyright © 2026 Academy City Research P.S.R.  All rights reserved.',
     servicePack: 'Build 7bbd242'
 });
@@ -90,7 +90,7 @@ assert.strictEqual(t.productId({ state: 'none' }), '');
 // the page: Vista's sections in order, real values in, markup escaped
 global.optionsData = account(1700000000);
 const rated = { base: 4.8, scores: { processor: 5.4, memory: 5.9, graphics: 4.8, gaming: 5, disk: null } };
-const html = t.render({ fullName: 'MeletonFX Desktop', edition: '2026 R7', copyright: 'Copyright', build: 'abc1234' }, {
+const html = t.render({ fullName: 'Melaton Desktop', edition: '2026 R7', copyright: 'Copyright', build: 'abc1234' }, {
     host: { hostname: 'dream<scape', arch: 'x64', cpuModel: 'Test CPU', cpuMHz: 3000, totalMemBytes: 8 * 1024 ** 3 }
 }, rated);
 const order = ['View basic information about your computer', 'Windows edition', 'System', 'Computer name, domain, and workgroup settings', 'Session', 'Windows activation'];
@@ -108,18 +108,18 @@ assert.ok(html.includes('Test CPU<span class="cpl-sys-clock">3.00 GHz</span>'));
 assert.ok(html.includes('8.00 GB') && html.includes('64-bit Operating System') && html.includes('Build abc1234'));
 assert.ok(html.includes('dream&lt;scape') && !html.includes('dream<scape'), 'host names are escaped');
 assert.ok(html.includes('system-logo.png') && html.includes('wei-rated.png'));
-assert.ok(html.includes('<span class="cpl-sys-wei-num">4.8</span>') && html.includes('MeletonFX Experience Index</span>'), 'the base score on the badge');
+assert.ok(html.includes('<span class="cpl-sys-wei-num">4.8</span>') && html.includes('Melaton Experience Index</span>'), 'the base score on the badge');
 assert.ok(html.includes('Primary hard disk: Not rated') && html.includes('Gaming graphics: 5.0'), 'the subscores in the tooltip');
 assert.ok(html.includes('data-cpl-action="customize"'), 'Change settings is Customize network');
-assert.ok(html.includes('MeletonFX is activated') && html.includes(pid), 'an account: activated, its Product ID');
+assert.ok(html.includes('Melaton is activated') && html.includes(pid), 'an account: activated, its Product ID');
 global.optionsData = { user: { ok: false, reason: 'missing_api_key' } };
 const none = t.render(null, null, null);
-assert.ok(none.includes('MeletonFX is not activated') && none.includes('Activate MeletonFX now'), 'no account: not activated');
+assert.ok(none.includes('Melaton is not activated') && none.includes('Activate Melaton now'), 'no account: not activated');
 assert.ok(/Product ID:<\/span><span class="cpl-sys-pid-value"><span class="cpl-sys-na">Not available/.test(none), 'no account, no Product ID');
 assert.ok(none.includes('Assessing this session...') && !none.includes('cpl-sys-wei-num'), 'no badge while the session is assessed');
 delete global.optionsData;
 const unknown = t.render(null, null, { base: null, scores: {} });
-assert.ok(unknown.includes('MeletonFX is not connected to the domain controller'), 'account unknown and no session: say why');
+assert.ok(unknown.includes('Melaton is not connected to the domain controller'), 'account unknown and no session: say why');
 assert.ok(unknown.includes('System rating is not available'), "nothing measurable: Vista's wording");
 
 // wiring: the feature bundle, the Classic View item, the server's host facts and the docs

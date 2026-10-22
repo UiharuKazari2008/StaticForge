@@ -1,4 +1,4 @@
-// MeletonFX Media Player: Windows Media Player 11 on the Vista desktop (Yozora #454).
+// Melaton Media Player: Windows Media Player 11 on the Vista desktop (Yozora #454).
 // public/scripts/comp/desktop-apps/mediaPlayer.js
 //
 // One window replaces the Music and Video players, built 1:1 after Windows Media Player 11

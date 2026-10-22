@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Same-origin bridge for the MeletonFX remote desktop.
+ * Same-origin bridge for the Melaton remote desktop.
  * Komaki (othinus) already logs into Apache Guacamole and lists connections:
  *   /home/kanmi/othinus/server.js  GET /console
  *   POST {origin}/api/tokens
@@ -25,7 +25,9 @@ const path = require('path');
 const http = require('http');
 const https = require('https');
 const net = require('net');
+const dns = require('dns');
 const express = require('express');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 
 const expressRawJpeg = express.raw({ type: 'image/jpeg', limit: '2mb' });
 const expressRawDownload = express.raw({ type: 'application/octet-stream', limit: '80mb' });
@@ -153,6 +155,15 @@ async function tokenAlive(auth) {
     }
 }
 
+// A 403 is either a dead token or Guacamole refusing the request. Only a dead token gets a new
+// login, since a new token is revoked in every open session window (see ensureAuth below), and
+// a refusal anyone can provoke must not end other people's sessions.
+async function reloginIfDead(auth) {
+    if (await tokenAlive(auth)) return null;
+    authCache = null;
+    return ensureAuth(true);
+}
+
 // Every iframe shares this one token. Komaki's webapp revokes the token in its
 // localStorage when a frame arrives with a different one
 // (authenticationService.authenticate), so a new login drops open sessions.
@@ -263,9 +274,11 @@ async function listGuacConnections() {
     let auth = await ensureAuth(false);
     let response = await guacFetch(auth, '/connectionGroups/ROOT/tree');
     if (response.status === 403) {
-        authCache = null;
-        auth = await ensureAuth(true);
-        response = await guacFetch(auth, '/connectionGroups/ROOT/tree');
+        const fresh = await reloginIfDead(auth);
+        if (fresh) {
+            auth = fresh;
+            response = await guacFetch(auth, '/connectionGroups/ROOT/tree');
+        }
     }
     if (!response.ok) {
         throw fail(502, 'Guacamole connection list failed (HTTP ' + response.status + ')');
@@ -301,6 +314,7 @@ async function createGuacConnection(body) {
     }
     const hostname = String(parameters.hostname || '').trim();
     if (!hostname) throw fail(400, 'Host is required');
+    await assertRemoteHost(hostname);
     const auth = await ensureAuth(false);
     const payload = {
         parentIdentifier: parentIdentifier,
@@ -382,6 +396,42 @@ const QUICK_DATA_SOURCE = 'quickconnect';
 const QUICK_PROTOCOLS = new Set(['rdp', 'ssh', 'vnc']);
 const QUICK_HOST_RE = /^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*\.?$/;
 
+// guacd dials from Komaki, so Komaki's own loopback, link-local (169.254.169.254 metadata),
+// unspecified, broadcast and multicast addresses are never a remote computer. The LAN stays
+// reachable: that is what Remote Desktop is for.
+const REMOTE_HOST_BLOCKED = new net.BlockList();
+REMOTE_HOST_BLOCKED.addSubnet('0.0.0.0', 8, 'ipv4');
+REMOTE_HOST_BLOCKED.addSubnet('127.0.0.0', 8, 'ipv4');
+REMOTE_HOST_BLOCKED.addSubnet('169.254.0.0', 16, 'ipv4');
+REMOTE_HOST_BLOCKED.addSubnet('224.0.0.0', 4, 'ipv4');
+REMOTE_HOST_BLOCKED.addAddress('255.255.255.255', 'ipv4');
+REMOTE_HOST_BLOCKED.addAddress('::', 'ipv6');
+REMOTE_HOST_BLOCKED.addAddress('::1', 'ipv6');
+REMOTE_HOST_BLOCKED.addSubnet('fe80::', 10, 'ipv6');
+REMOTE_HOST_BLOCKED.addSubnet('ff00::', 8, 'ipv6');
+const REMOTE_HOST_BLOCKED_TEXT = 'Remote Desktop cannot connect to the remote computer. Remote connections to this computer are not allowed.';
+
+function remoteAddressBlocked(address) {
+    const family = net.isIP(address);
+    return family !== 0 && REMOTE_HOST_BLOCKED.check(address, family === 6 ? 'ipv6' : 'ipv4');
+}
+
+function remoteNameBlocked(host) {
+    const name = String(host).toLowerCase().replace(/\.$/, '');
+    return name === 'localhost' || name.endsWith('.localhost') || remoteAddressBlocked(name);
+}
+
+// The name is resolved here as well; a name only Komaki knows is let through to guacd.
+async function assertRemoteHost(host) {
+    const bare = String(host).replace(/^\[(.*)\]$/, '$1');
+    if (remoteNameBlocked(bare)) throw quickFail(403, REMOTE_HOST_BLOCKED_TEXT, 'blocked');
+    if (net.isIP(bare)) return;
+    const addresses = await dns.promises.lookup(bare, { all: true }).catch(() => []);
+    if (addresses.some((row) => remoteAddressBlocked(row.address))) {
+        throw quickFail(403, REMOTE_HOST_BLOCKED_TEXT, 'blocked');
+    }
+}
+
 function quickFail(status, message, code) {
     const err = fail(status, message);
     err.code = code;
@@ -403,6 +453,7 @@ function quickConnectUri(body) {
     if (!net.isIP(host) && !QUICK_HOST_RE.test(host)) {
         throw quickFail(400, 'The specified computer name contains invalid characters.', 'invalid');
     }
+    if (remoteNameBlocked(host)) throw quickFail(403, REMOTE_HOST_BLOCKED_TEXT, 'blocked');
     const port = body && body.port ? Number(body.port) : 0;
     if (port && (!Number.isInteger(port) || port < 1 || port > 65535)) {
         throw quickFail(400, 'The remote computer name is not valid. Enter a valid remote computer name.', 'invalid');
@@ -436,6 +487,7 @@ function quickConnectUri(body) {
 
 async function createQuickConnection(body) {
     const target = quickConnectUri(body);
+    await assertRemoteHost(String(body.host).trim());
     let auth = await ensureAuth(false);
     if (!(auth.dataSources || []).includes(QUICK_DATA_SOURCE)) {
         throw quickFail(501, 'Quick connect is not available on the Remote Desktop Gateway.', 'unavailable');
@@ -450,9 +502,11 @@ async function createQuickConnection(body) {
     try {
         response = await post(auth);
         if (response.status === 403) {
-            authCache = null;
-            auth = await ensureAuth(true);
-            response = await post(auth);
+            const fresh = await reloginIfDead(auth);
+            if (fresh) {
+                auth = fresh;
+                response = await post(auth);
+            }
         }
     } catch (err) {
         if (err && err.status) throw err;
@@ -460,8 +514,15 @@ async function createQuickConnection(body) {
     }
     const data = await response.json().catch(() => null);
     if (!response.ok || !data || data.identifier === undefined) {
+        // Guacamole's own message stays in the server log (no URI: it carries the password)
+        if (response.status !== 404) {
+            console.warn('[guac] quickconnect create refused: HTTP ' + response.status
+                + (data && data.message ? ' ' + String(data.message).slice(0, 200) : ''));
+        }
         throw quickFail(response.status === 404 ? 501 : 502,
-            (data && data.message) || 'The Remote Desktop Gateway refused the connection.',
+            response.status === 404
+                ? 'Quick connect is not available on the Remote Desktop Gateway.'
+                : 'The Remote Desktop Gateway refused the connection.',
             response.status === 404 ? 'unavailable' : 'refused');
     }
     const clientId = Buffer.from([String(data.identifier), 'c', QUICK_DATA_SOURCE].join('\0')).toString('base64url');
@@ -502,6 +563,52 @@ async function guacHomeUrl() {
     return GUAC_WEB_PATH + '/#/?token=' + encodeURIComponent(auth.token);
 }
 
+// The frame is Guacamole's own web app holding our shared token, so the proxy passes only what a
+// session window needs: reads, the token check (POST /api/tokens) and tunnels. Extension calls
+// (quickconnect/create would skip quickConnectUri's checks), admin writes, password changes and
+// token deletion (one frame's logout would end every window) stop here. The path is normalised
+// the way Tomcat sees it (percent-decoded, ;params dropped, dot segments resolved).
+function guacProxyPath(rawPath) {
+    let decoded = String(rawPath || '/');
+    try {
+        decoded = decodeURIComponent(decoded);
+    } catch (_) {
+        return null;
+    }
+    if (decoded.includes('\\') || decoded.includes('\0')) return null;
+    return path.posix.normalize(decoded.replace(/;[^/]*/g, '')).toLowerCase();
+}
+
+function guacProxyAllowed(method, rawPath) {
+    const p = guacProxyPath(rawPath);
+    if (!p) return false;
+    if (p === '/api/session/ext' || p.startsWith('/api/session/ext/')) return false;
+    if (method === 'GET' || method === 'HEAD') return true;
+    if (method === 'POST' && (p === '/api/tokens' || p === '/api/tokens/')) return true;
+    return p === '/tunnel' || p.startsWith('/api/session/tunnels/');
+}
+
+// Remote Desktop hands out the shared Guacamole token, so it needs a full sign-in: not the
+// read-only PIN, and not an application key.
+function guacFullSession(req, res, next) {
+    if (req.userType === 'admin' && !req.applicationAuth) return next();
+    res.status(403).json({ ok: false, error: 'Remote Desktop needs a full sign-in' });
+}
+
+// Quick connect makes a Guacamole connection per call; a person connects a few times a minute.
+const quickConnectLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 12,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => 'guac-quick:' + (req.sessionId || ipKeyGenerator(req.ip || '')),
+    handler: (req, res) => res.status(429).json({
+        ok: false,
+        code: 'busy',
+        error: 'Too many connection attempts. Wait a minute, then try again.'
+    })
+});
+
 // express.json / express.urlencoded (web_server.js) already drained the body.
 function proxiedBody(req) {
     if (!req._body) return null;
@@ -539,6 +646,10 @@ function forwardHeaders(req, host) {
 }
 
 async function proxyGuacWeb(req, res) {
+    if (!guacProxyAllowed(req.method, req.path)) {
+        res.status(403).type('text/plain').send('Not available through Dreamscape');
+        return;
+    }
     let auth;
     try {
         auth = await ensureAuth(false);
@@ -592,6 +703,11 @@ async function proxyGuacWeb(req, res) {
 
 // websocket-tunnel upgrade: raw socket relay after Guacamole answers 101.
 async function proxyGuacUpgrade(req, socket, head) {
+    const rest = req.url.slice(GUAC_WEB_PATH.length).split('?')[0];
+    if (guacProxyPath(rest) !== '/websocket-tunnel') {
+        socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+        return;
+    }
     let auth;
     try {
         auth = await ensureAuth(false);
@@ -638,13 +754,18 @@ function attachGuacWebUpgrade(server, sessionMiddleware) {
                 socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
                 return;
             }
+            if (req.session.userType !== 'admin') {
+                socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+                return;
+            }
             proxyGuacUpgrade(req, socket, head);
         });
     });
 }
 
 function mountGuacRemoteBridge(app, authMiddleware) {
-    app.get('/api/desktop-guac/connections', authMiddleware, async (req, res) => {
+    const full = [authMiddleware, guacFullSession];
+    app.get('/api/desktop-guac/connections', full, async (req, res) => {
         try {
             res.json(await listGuacConnections());
         } catch (err) {
@@ -652,7 +773,7 @@ function mountGuacRemoteBridge(app, authMiddleware) {
         }
     });
 
-    app.post('/api/desktop-guac/connections', authMiddleware, async (req, res) => {
+    app.post('/api/desktop-guac/connections', full, async (req, res) => {
         try {
             res.json(await createGuacConnection(req.body || {}));
         } catch (err) {
@@ -660,7 +781,7 @@ function mountGuacRemoteBridge(app, authMiddleware) {
         }
     });
 
-    app.get('/api/desktop-guac/preview/:id', authMiddleware, (req, res) => {
+    app.get('/api/desktop-guac/preview/:id', full, (req, res) => {
         const id = String(req.params.id || '');
         if (!guacIdOk(id)) {
             res.status(400).json({ ok: false, error: 'Unknown connection' });
@@ -675,7 +796,7 @@ function mountGuacRemoteBridge(app, authMiddleware) {
         res.type('jpeg').sendFile(file);
     });
 
-    app.post('/api/desktop-guac/preview/:id', authMiddleware, expressRawJpeg, async (req, res) => {
+    app.post('/api/desktop-guac/preview/:id', full, expressRawJpeg, async (req, res) => {
         const id = String(req.params.id || '');
         const body = req.body;
         if (!guacIdOk(id) || !Buffer.isBuffer(body) || !body.length || body.length > GUAC_PREVIEW_MAX_BYTES) {
@@ -700,7 +821,7 @@ function mountGuacRemoteBridge(app, authMiddleware) {
         }
     });
 
-    app.post('/api/desktop-guac/download', authMiddleware, expressRawDownload, async (req, res) => {
+    app.post('/api/desktop-guac/download', full, expressRawDownload, async (req, res) => {
         try {
             const filename = decodeURIComponent(String(req.get('x-filename') || 'download'));
             const workspaceId = String(req.get('x-workspace-id') || '');
@@ -710,7 +831,7 @@ function mountGuacRemoteBridge(app, authMiddleware) {
         }
     });
 
-    app.get('/api/desktop-guac/session/:id', authMiddleware, async (req, res) => {
+    app.get('/api/desktop-guac/session/:id', full, async (req, res) => {
         try {
             res.json({ ok: true, url: await guacSessionUrl(String(req.params.id || '')) });
         } catch (err) {
@@ -718,7 +839,7 @@ function mountGuacRemoteBridge(app, authMiddleware) {
         }
     });
 
-    app.get('/api/desktop-guac/home', authMiddleware, async (req, res) => {
+    app.get('/api/desktop-guac/home', full, async (req, res) => {
         try {
             res.json({ ok: true, url: await guacHomeUrl() });
         } catch (err) {
@@ -726,7 +847,7 @@ function mountGuacRemoteBridge(app, authMiddleware) {
         }
     });
 
-    app.get('/api/desktop-guac/quick/status', authMiddleware, async (req, res) => {
+    app.get('/api/desktop-guac/quick/status', full, async (req, res) => {
         try {
             res.json(await quickConnectStatus());
         } catch (err) {
@@ -734,7 +855,7 @@ function mountGuacRemoteBridge(app, authMiddleware) {
         }
     });
 
-    app.post('/api/desktop-guac/quick', authMiddleware, async (req, res) => {
+    app.post('/api/desktop-guac/quick', full, quickConnectLimiter, async (req, res) => {
         try {
             res.json(await createQuickConnection(req.body || {}));
         } catch (err) {
@@ -742,12 +863,12 @@ function mountGuacRemoteBridge(app, authMiddleware) {
         }
     });
 
-    app.get(GUAC_WEB_PATH + '/' + GUAC_FRAME_SCRIPT_NAME, authMiddleware, (req, res) => {
+    app.get(GUAC_WEB_PATH + '/' + GUAC_FRAME_SCRIPT_NAME, full, (req, res) => {
         res.set('Cache-Control', 'no-cache');
         res.sendFile(GUAC_FRAME_SCRIPT_FILE);
     });
 
-    app.use(GUAC_WEB_PATH, authMiddleware, proxyGuacWeb);
+    app.use(GUAC_WEB_PATH, full, proxyGuacWeb);
 }
 
 module.exports = {
@@ -757,5 +878,7 @@ module.exports = {
     readGuacConfig,
     flattenGuacTree,
     guacIdOk,
-    quickConnectUri
+    quickConnectUri,
+    guacProxyAllowed,
+    remoteNameBlocked
 };

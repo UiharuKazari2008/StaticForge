@@ -1,5 +1,5 @@
 /**
- * Control Panel's User Accounts (Yukimi 2026-10-13): MeletonFX's two accounts as Vista shows
+ * Control Panel's User Accounts (Yukimi 2026-10-13): Melaton's two accounts as Vista shows
  * accounts (the VM's User Accounts and Manage Accounts pages).
  *
  *   Administrator   the admin PIN (wsClient.setAdminPin)
@@ -191,7 +191,7 @@
             <h1 class="cpl-page-title">Change ${esc(possessive(a))} password</h1>
             <div class="cpl-ua-form">
                 ${tile(a, true)}
-                <p>Signing in to MeletonFX as ${esc(nameOf(a))} asks for this password (PIN).</p>
+                <p>Signing in to Melaton as ${esc(nameOf(a))} asks for this password (PIN).</p>
                 <input type="password" class="cpl-ua-input" data-cpl-ua-field="pin" placeholder="New password" autocomplete="new-password">
                 <input type="password" class="cpl-ua-input" data-cpl-ua-field="confirm" placeholder="Confirm new password" autocomplete="new-password">
                 <p class="cpl-ua-error hidden" data-cpl-ua-error></p>

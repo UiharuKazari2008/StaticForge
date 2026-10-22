@@ -26,7 +26,7 @@
         { id: 'purble', pack: 'purble', name: 'Purble Place' },
         { id: 'solitaire', pack: 'solitaire', name: 'Solitaire' },
         { id: 'spider', pack: 'spider', name: 'Spider Solitaire' },
-        // the two MeletonFX additions: no GDF in a pack, so their facts are written here in the
+        // the two Melaton additions: no GDF in a pack, so their facts are written here in the
         // GDF's terms (Minesweeper's ratings, as small Direct3D games on the same engine)
         {
             id: 'blockdrop',
@@ -37,7 +37,7 @@
                     + 'full row disappears; clear 150 rows to win. If the blocks stack up to the top, the game is over.',
                 genre: 'Family Entertainment',
                 developer: 'Academy City Research P.S.R.',
-                publisher: 'MeletonFX',
+                publisher: 'Melaton',
                 version: '6.0.6002.18005',
                 minimum: '1',
                 recommended: '2'
@@ -52,7 +52,7 @@
                     + 'your paddle and catch the capsules that fall from broken bricks. Clear all 20 levels to win.',
                 genre: 'Family Entertainment',
                 developer: 'Academy City Research P.S.R.',
-                publisher: 'MeletonFX',
+                publisher: 'Melaton',
                 version: '6.0.6002.18005',
                 minimum: '1',
                 recommended: '2'
@@ -178,8 +178,8 @@
                     name: (gdf && txt('Name')) || g.name,
                     description: gdf ? txt('Description') : '',
                     genre: gdf ? nested('Genres', 'Genre') : 'Family Entertainment',
-                    developer: gdf ? nested('Developers', 'Developer') : 'MeletonFX',
-                    publisher: gdf ? nested('Publishers', 'Publisher') : 'MeletonFX',
+                    developer: gdf ? nested('Developers', 'Developer') : 'Melaton',
+                    publisher: gdf ? nested('Publishers', 'Publisher') : 'Melaton',
                     version: gdf ? '6.0.6002.18005' : '',
                     minimum: perf && perf.a ? perf.a.minimum : '',
                     recommended: perf && perf.a ? perf.a.recommended : '',
@@ -376,26 +376,15 @@
             });
         }
 
-        // Options: gameux's "Set up Games folder options"
+        // Options: gameux's "Set up Games folder options", a DirectUI page (gameux.dll UIFILE 113)
+        // under a main instruction, with an OK / Cancel footer. Laid out from the VM's
+        // (~/.cache/vista-vm/games-ref/gx-options.png): 556 x 362 client, 9 pt Segoe UI.
         showOptions() {
-            const tpl = { cx: 230, cy: 158, title: 'Set up Games folder options', controls: [] };
-            const add = (id, cls, text, x, y, cx, cy, style) => tpl.controls.push({ id, className: cls, text, x, y, cx, cy, style: (style || 0) | 0x10000000 });
-            add(-1, 'Static', 'Windows can provide additional information about the games installed on your computer by downloading information from the Internet.', 7, 7, 216, 24);
-            add(101, 'Button', '&Download information about installed games', 7, 34, 216, 10, 3);
-            add(102, 'Button', '&List most recently played games', 7, 48, 216, 10, 3);
-            add(103, 'Button', '&Clear history', 19, 62, 70, 14, 0);
-            add(104, 'Button', '&Unhide games', 7, 84, 90, 14, 0);
-            add(-1, 'Static', 'We do not collect information that can be used to contact you.', 7, 106, 216, 16);
-            add(1, 'Button', 'OK', 94, 137, 62, 14, 1);
-            add(2, 'Button', 'Cancel', 161, 137, 62, 14, 0);
             const store = VG.store('gamesExplorer');
-            VG.dialog({ mui: { dialogs: {} } }, tpl, {
-                title: 'Games folder options',
-                init: (dlg) => {
-                    dlg.checked(101, store.get('download', false));
-                    dlg.checked(102, store.get('recent', true));
-                },
-                onCommand: (id, dlg) => {
+            const title = 'Set up Games folder options';
+            const dlg = VG.dialog({ mui: { dialogs: {} } }, { cx: 0, cy: 0, controls: [], title }, {
+                title,
+                onCommand: (id) => {
                     if (id === 1) {
                         store.set('download', dlg.checked(101));
                         store.set('recent', dlg.checked(102));
@@ -403,6 +392,67 @@
                     return id === 1 || id === 2;
                 }
             });
+            dlg.modal.classList.add('vista-gx-options');
+            const c = dlg.content;
+            c.style.width = '556px';
+            c.style.height = '362px';
+            const node = (tag, cls, text) => {
+                const n = el(tag, cls);
+                if (text) VG.mnemonicText(n, text);
+                return n;
+            };
+            const page = node('div', 'gxo-page');
+            const icon = node('img', 'gxo-icon');
+            icon.alt = '';
+            icon.src = ART + 'options-32.png';
+            page.appendChild(icon);
+            page.appendChild(node('div', 'gxo-instruction', title));
+            page.appendChild(node('div', 'gxo-text', 'Windows can provide additional information about the games installed on your computer by downloading information from the Internet.'));
+            page.appendChild(node('div', 'gxo-label', 'Games folder options'));
+            const group = node('div', 'gxo-group');
+            const check = (id, text, on) => {
+                const row = node('div', 'vista-game-choice gxo-check');
+                const input = document.createElement('input');
+                input.type = 'checkbox';
+                input.id = dlg.modal.id + '-' + id;
+                input.checked = on;
+                const label = document.createElement('label');
+                label.htmlFor = input.id;
+                const span = node('span', '', text);
+                label.appendChild(span);
+                if (span.dataset.mnemonic) label.dataset.mnemonic = span.dataset.mnemonic;
+                row.appendChild(input);
+                row.appendChild(label);
+                row.input = input;
+                dlg.controls[id] = row;
+                group.appendChild(row);
+            };
+            const button = (id, text, parent, cls) => {
+                const b = node('button', 'vista-game-button' + (cls ? ' ' + cls : ''), text);
+                b.type = 'button';
+                b.addEventListener('click', () => dlg.command(id));
+                dlg.controls[id] = b;
+                parent.appendChild(b);
+                return b;
+            };
+            check(101, '&Download information about installed games', store.get('download', true));
+            check(102, '&List most recently played games', store.get('recent', true));
+            button(103, '&Clear history', group, 'gxo-push');
+            // no hidden games to bring back
+            button(104, '&Unhide games', group, 'gxo-push').disabled = true;
+            page.appendChild(group);
+            page.appendChild(node('div', 'gxo-privacy', 'We do not collect information that can be used to contact you.'));
+            const link = node('button', 'gxo-link', 'Read the Privacy Statement online');
+            link.type = 'button';
+            page.appendChild(link);
+            c.appendChild(page);
+            const footer = node('div', 'gxo-footer');
+            const ok = button(1, 'OK', footer, 'default');
+            ok.dataset.dialogPrimary = '1';
+            button(2, 'Cancel', footer);
+            c.appendChild(footer);
+            VG.centerOver(dlg.modal, this.modal);
+            try { ok.focus({ preventScroll: true }); } catch (_) { /* ignore */ }
         }
 
         open() {

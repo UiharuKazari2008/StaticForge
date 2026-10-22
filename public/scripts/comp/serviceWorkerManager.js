@@ -526,11 +526,11 @@ class ServiceWorkerManager {
     }
 
     _askBootGateRetry(detail) {
-        const message = 'MeletonFX could not confirm the offline cache.';
+        const message = 'Melaton could not confirm the offline cache.';
         const text = detail || 'The update check did not finish.';
         if (window.bootMessageBox && typeof window.bootMessageBox.show === 'function') {
             return window.bootMessageBox.show({
-                title: 'MeletonFX',
+                title: 'Melaton',
                 icon: 'error',
                 message: message,
                 detail: 'DETAIL - ' + text,
@@ -1170,10 +1170,24 @@ class ServiceWorkerManager {
 
         // Vista's Windows Update: no balloon while it checks or downloads (the tray icon's tooltip
         // says it); a balloon only when something needs you, worded as Vista's, and one click
-        // opens MeletonFX Update (cplUpdate.js balloonFor). Classic keeps the old popup.
+        // opens Melaton Update (cplUpdate.js balloonFor). Classic keeps the old popup.
         this.trayPopup.vistaBalloon = null;
-        const vista = window.cplUpdate
-            && document.body.classList.contains('desktop-mode') && !document.body.classList.contains('windows-classic-theme');
+        const vistaDesktop = document.body.classList.contains('desktop-mode') && !document.body.classList.contains('windows-classic-theme');
+        const showSeq = (this._trayShowSeq = (this._trayShowSeq || 0) + 1);
+        if (vistaDesktop && !window.cplUpdate) {
+            // The wording lives in Control Panel's update page (the control_panel feature). Until that
+            // has loaded, load it and come back, rather than fall through to the classic popup (the
+            // service pack offer showed it). Only states that can need you load it; a newer call wins.
+            if (nextState === 'available' || nextState === 'upgrade' || nextState === 'complete') {
+                featureLoader.loadFeature('control_panel').then(() => {
+                    if (window.cplUpdate && this._trayShowSeq === showSeq) this._showServiceWorkerTrayPopup(nextState, { message, progress, filesTotal, kind });
+                }).catch((err) => console.error('[update] balloon', err));
+            }
+            if (this.trayPopup.el && this.trayPopup.el.classList.contains('show')) this._hideServiceWorkerTrayPopup();
+            this.trayPopup.kind = popupKind;
+            return false;
+        }
+        const vista = vistaDesktop && window.cplUpdate;
         if (vista) {
             const pageState = window.cplUpdate.classify(nextState, typeof message === 'string' && message ? message : this.trayPopup.message);
             let balloon = window.cplUpdate.balloonFor(pageState, typeof message === 'string' && message ? message : this.trayPopup.message);
@@ -2607,7 +2621,7 @@ class ServiceWorkerManager {
             ? `Preparing system to update... (${Math.round(percent)}%)`
             : 'Preparing system to update...';
 
-        // The prepare stage is MeletonFX Update (cplUpdate.js). No tray balloon and no toast.
+        // The prepare stage is Melaton Update (cplUpdate.js). No tray balloon and no toast.
         this._hideRuntimeCompileNotify();
         if (this._isPreStartupUpdatePhase()) {
             this._setPreStartupUpdateStageMessage(label);
@@ -3346,7 +3360,7 @@ class ServiceWorkerManager {
     /**
      * The worker that ran a download no longer has it: a new sw.js activates at once (skipWaiting)
      * and the old worker's download dies with it, or its STATIC_CACHE_COMPLETE never arrived. The
-     * page used to drop isUpdating and leave MeletonFX Update and the tray on the last progress
+     * page used to drop isUpdating and leave Melaton Update and the tray on the last progress
      * ("Downloading 2 files (50% complete)") for good. Finish from what reached the cache, or send
      * the whole set again (the completion classifies restart / apply from every file), twice at most.
      */
@@ -3725,7 +3739,7 @@ class ServiceWorkerManager {
     }
 
     // Refresh server cache and check for updates.
-    // Always: MeletonFX Update (preparing = compile static assets), then the file check.
+    // Always: Melaton Update (preparing = compile static assets), then the file check.
     async refreshServerCacheAndCheck() {
         if (this._refreshAndCheckRunning) return this._refreshAndCheckRunning;
         console.log('Refreshing server cache and checking for updates...');
@@ -3797,7 +3811,7 @@ class ServiceWorkerManager {
                 if (this._rebootIntoInstaller(count)) {
                     return { rebooted: true };
                 }
-                return { ask: 'A large update needs Install MeletonFX.' };
+                return { ask: 'A large update needs Install Melaton.' };
             }
 
             const fresh = this._filesCountingTowardInstaller(filesToUpdate);
@@ -4505,7 +4519,7 @@ class ServiceWorkerManager {
                     if (this._rebootIntoInstaller(this._installerFileCount(filesToUpdate))) {
                         return { rebooted: true };
                     }
-                    return { ask: 'A large update needs Install MeletonFX.' };
+                    return { ask: 'A large update needs Install Melaton.' };
                 }
 
                 const outcome = await this.checkAndDownloadUpdatesForInit(fresh);

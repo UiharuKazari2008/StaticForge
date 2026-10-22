@@ -1,4 +1,4 @@
-// Remote Desktop Manager (MeletonFX).
+// Remote Desktop Manager (Melaton).
 // List window reads Komaki's Guacamole catalog through /api/desktop-guac/connections
 // (connection groups, last-frame previews from .cache/guac-previews).
 // Choosing a row opens a separate modal with Komaki's native Guacamole client in an
@@ -15,7 +15,8 @@ const DESKTOP_GUAC_LIST_ID = 'desktopGuacModal';
 
 const DESKTOP_GUAC_HOME_KEY = 'home';
 const DESKTOP_GUAC_APP_FA_ICON = 'fas fa-satellite-dish';
-const DESKTOP_GUAC_APP_IMAGE = 'vista-remote-desktop.png';
+// Remote Desktop Connection's sessions pass opts.image (mstsc's vista-remote-desktop.png)
+const DESKTOP_GUAC_APP_IMAGE = 'remote_desktop.png';
 
 const guacSessionModals = new Map();
 // Connection id -> { id, name, protocol } from the last list load
@@ -56,7 +57,8 @@ function showDesktopGuacModal(modal) {
     bringModalToFront(modal);
 }
 
-function desktopGuacTitle(text, iconClass) {
+function desktopGuacTitle(text, iconClass, image) {
+    const appImage = image || DESKTOP_GUAC_APP_IMAGE;
     const title = document.createElement('div');
     title.className = 'modal-window-title';
     const titleMain = document.createElement('div');
@@ -68,8 +70,8 @@ function desktopGuacTitle(text, iconClass) {
     titleImage.className = 'icon-image';
     titleImage.alt = '';
     // resolveAppIconPath / buildAppIconSrcset: public/scripts/comp/modalUtils.js
-    titleImage.src = resolveAppIconPath(DESKTOP_GUAC_APP_IMAGE);
-    const srcset = buildAppIconSrcset(DESKTOP_GUAC_APP_IMAGE);
+    titleImage.src = resolveAppIconPath(appImage);
+    const srcset = buildAppIconSrcset(appImage);
     if (srcset) {
         titleImage.setAttribute('srcset', srcset);
         titleImage.setAttribute('sizes', '32px');
@@ -468,6 +470,37 @@ function pinDesktopGuacConnection(conn, event) {
     showGlassToast('success', null, 'Shortcut added to the desktop', false, 3000, '<i class="fas fa-satellite-dish"></i>');
 }
 
+// Remote Desktop Connection's sessions: the computer and protocol, never the credentials
+// (opening the shortcut asks Windows Security again: remoteDesktopConnection.connectTo)
+function pinDesktopGuacQuick(shortcut) {
+    const workspaceId = currentWorkspace || (desktopShortcuts && desktopShortcuts.currentWorkspace);
+    if (!workspaceId || !desktopShortcuts) {
+        showGlassToast('error', null, 'Open a workspace before adding a shortcut', false, 4000, '<i class="fas fa-desktop"></i>');
+        return;
+    }
+    const quick = shortcut.data.quick;
+    const same = (data) => data && data.quick && data.quick.protocol === quick.protocol
+        && String(data.quick.host).toLowerCase() === String(quick.host).toLowerCase()
+        && Number(data.quick.port || 0) === Number(quick.port || 0);
+    if (desktopShortcuts.shortcuts.some((s) => s.type === 'remote-desktop' && !s._isDeleted && same(s.data))) {
+        showGlassToast('info', null, shortcut.name + ' is already on the desktop', false, 3000, '<i class="fas fa-desktop"></i>');
+        return;
+    }
+    desktopShortcuts.addShortcut({
+        name: shortcut.name,
+        type: 'remote-desktop',
+        data: { ...shortcut.data, icon: 'fas fa-desktop' }
+    });
+    showGlassToast('success', null, 'Shortcut added to the desktop', false, 3000, '<i class="fas fa-desktop"></i>');
+}
+
+/** The session bar's Add to Desktop: a Manager connection or a quick connection. */
+function addDesktopGuacSessionShortcut(modal) {
+    const opts = modal._guacSession || {};
+    if (opts.shortcut) pinDesktopGuacQuick(opts.shortcut);
+    else if (opts.connection) pinDesktopGuacConnection(opts.connection);
+}
+
 function desktopGuacThumb(conn) {
     const thumb = document.createElement('div');
     thumb.className = 'desktop-guac-thumb';
@@ -668,6 +701,7 @@ function openDesktopGuacSession(conn) {
         title: conn.name || id,
         iconClass: GUAC_PROTOCOL_ICONS[conn.protocol] || 'fas fa-desktop',
         protocol: conn.protocol || '',
+        connection: { id: id, name: conn.name || id, protocol: conn.protocol || '' },
         endpoint: '/api/desktop-guac/session/' + encodeURIComponent(id)
     });
 }
@@ -910,6 +944,8 @@ function buildDesktopGuacSessionBar(modal) {
     markDesktopGuacDownloadTarget(downloads);
     downloads.appendChild(downloadsBtn);
     downloads.appendChild(menu);
+    const pinBtn = desktopGuacBarButton('Add to Desktop', 'Put a shortcut to this connection on the desktop');
+    pinBtn.addEventListener('click', () => addDesktopGuacSessionShortcut(modal));
     const status = document.createElement('span');
     status.className = 'desktop-guac-status';
     status.dataset.state = 'CONNECTING';
@@ -921,6 +957,7 @@ function buildDesktopGuacSessionBar(modal) {
     bar.appendChild(uploadBtn);
     bar.appendChild(fileInput);
     bar.appendChild(downloads);
+    bar.appendChild(pinBtn);
     bar.appendChild(status);
     return bar;
 }
@@ -970,6 +1007,8 @@ function openDesktopGuacFrame(opts) {
     }
     const modal = document.createElement('div');
     modal.id = opts.modalId;
+    // opts.connection / opts.shortcut: what the session bar's Add to Desktop saves
+    modal._guacSession = opts;
     modal.className = 'modal resizeable-window hidden';
     modal.dataset.windowIdentifier = opts.windowIdentifier;
     modal.dataset.windowDefaultWidth = '1024';
@@ -1006,7 +1045,7 @@ function openDesktopGuacFrame(opts) {
     content.appendChild(body);
 
     guacSessionModals.set(opts.key, modal);
-    modal.appendChild(desktopGuacTitle(opts.title, opts.iconClass));
+    modal.appendChild(desktopGuacTitle(opts.title, opts.iconClass, opts.image));
     if (isSession) {
         const pin = buildDesktopGuacPinBar(modal);
         body.appendChild(pin.hit);

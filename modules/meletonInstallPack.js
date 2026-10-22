@@ -1,5 +1,5 @@
 /**
- * MeletonFX install pack: one highly compressed zip of the service-worker manifest,
+ * Melaton install pack: one highly compressed zip of the service-worker manifest,
  * written when cache data is recreated (web_server initializeCacheData). The installer
  * downloads this single stream instead of one request per file.
  *
@@ -16,6 +16,7 @@ const crypto = require('crypto');
 const { Worker, isMainThread } = require('worker_threads');
 const { Zip, ZipDeflate, ZipPassThrough, strToU8 } = require('fflate');
 const updateEngine = require('../public/scripts/launch/updateEngine');
+const { isAuthGatedWebPath } = require('./installManifestFilter');
 
 const PACK_NAME = 'pack.zip';
 const META_NAME = 'pack-meta.json';
@@ -34,6 +35,8 @@ let ready = null;
 function init(options = {}) {
     if (options.outputDir) outputDir = options.outputDir;
     ready = readMeta();
+    // never serve a pack from before auth rows were left out (it holds /protected files)
+    if (ready && ready.authExcluded !== true) ready = null;
 }
 
 function directory() {
@@ -187,6 +190,13 @@ function writeZip(tmpZip, listing, log) {
     });
 }
 
+// /protected and /private rows (installManifestFilter marks them auth) stay out of the zip: the
+// pack is served before sign-in, and the installer never stores them anyway. The pack hash still
+// covers the whole manifest, which is what the client checks (updateEngine.manifestHashMaterial).
+function isAuthGatedRow(file) {
+    return file.auth === true || isAuthGatedWebPath(file.url);
+}
+
 async function collectListing(manifest, resolveFile) {
     const files = [];
     const seen = new Set();
@@ -197,6 +207,7 @@ async function collectListing(manifest, resolveFile) {
             skipped += 1;
             continue;
         }
+        if (isAuthGatedRow(file)) continue;
         const diskPath = resolveFile ? resolveFile(file) : null;
         if (!diskPath) {
             skipped += 1;
@@ -270,7 +281,9 @@ async function rebuild(options = {}) {
     const manifest = Array.isArray(options.manifest) ? options.manifest : [];
     const hash = hashManifest(manifest);
     const current = !options.force && readMeta();
-    if (current && current.hash === hash && !unresolvedNowResolve(current, manifest, options.resolveFile)) {
+    // A pack written before auth rows were left out still holds them: rebuild it once
+    if (current && current.hash === hash && current.authExcluded === true
+        && !unresolvedNowResolve(current, manifest, options.resolveFile)) {
         ready = current;
         return { rebuilt: false, hash, bytes: current.bytes, count: current.count, skipped: 0 };
     }
@@ -290,6 +303,7 @@ async function rebuild(options = {}) {
             count: files.length,
             skipped,
             unresolved,
+            authExcluded: true,
             builtAt: Date.now()
         };
         fs.writeFileSync(metaPath(), JSON.stringify(meta));

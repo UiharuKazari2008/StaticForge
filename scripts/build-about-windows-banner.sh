@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Builds the About MeletonFX banner (winver.exe's "About Windows" brand strip): Vista's 413x72
-# banner gradient with the MeletonFX mark, "MeletonFX" and "2026 R7" centred where Vista has the
+# Builds the About Melaton banner (winver.exe's "About Windows" brand strip): Vista's 413x72
+# banner gradient with the Melaton mark, "Melaton" and "2026 R7" centred where Vista has the
 # flag, "Windows Vista" and "Ultimate", and the small copyright at bottom right; plus the 413x5
 # orange rule under it. #aboutMelatoninModal (public/css/about-melaton.css) draws both.
 #
@@ -23,7 +23,7 @@ SEGOE="${SEGOE_UI_TTF:-$HOME/.local/share/fonts/segoeui.ttf}"
 LIGHT="${XDG_CACHE_HOME:-$HOME/.cache}/selawik/selawkl.ttf"
 TAHOMA="$FONTS/tahoma.ttf"
 MARK_FONT="$ROOT/public/dist/remixicon/remixicon.ttf"
-MARK_GLYPH=$'\uebd3'   # ri-contrast-2-fill, the MeletonFX mark (Start menu, Workspace backdrop)
+MARK_GLYPH=$'\uebd3'   # ri-contrast-2-fill, the Melaton mark (Start menu, Workspace backdrop)
 
 # Geometry from Vista's banner (px): flag box 77,16 48x38; "Windows Vista" 28px on baseline 48;
 # "Ultimate" 20px light on the same baseline; copyright right edge 406, baseline 67. The group
@@ -33,7 +33,7 @@ MARK=34; MARK_TOP=19
 NAME_PT=28; EDITION_PT=20; BASELINE=48; NAME_KERNING=-0.6
 GAP_MARK=6; GAP_RUNS=6
 COPY_PT=8; COPY_RIGHT=406; COPY_BASELINE=67
-NAME="MeletonFX"; EDITION="2026 R7"; COPYRIGHT="© 2026 Academy City Research P.S.R."
+NAME="Melaton"; EDITION="2026 R7"; COPYRIGHT="© 2026 Academy City Research P.S.R."
 
 command -v convert >/dev/null || { echo "ImageMagick (convert) is required" >&2; exit 1; }
 

@@ -587,7 +587,7 @@ class RunApplet {
         if (typeof showConfirmationDialog !== 'function') return;
         // public/scripts/comp/confirmationDialog.js; vistaDialogs.js draws it as an error message box
         showConfirmationDialog(
-            `MeletonFX cannot find '${query}'. Make sure you typed the name correctly, and then try again.`,
+            `Melaton cannot find '${query}'. Make sure you typed the name correctly, and then try again.`,
             [{ text: 'OK', value: true, className: 'btn-standard primary' }],
             null,
             { title: query, icon: 'fas fa-circle-xmark' }

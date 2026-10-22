@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Slice 4 of the MeletonFX plan (Yozora #441): Aero window animations. Open / close / minimize
+// Slice 4 of the Melaton plan (Yozora #441): Aero window animations. Open / close / minimize
 // keyframes live with their rules in app.css, Vista timings come from tokens, reduced motion
 // keeps animationend alive, and maximize / restore morph the frame (FLIP on translate / scale).
 // Run: node scripts/test-window-animations.js

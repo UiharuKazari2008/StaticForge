@@ -73,7 +73,7 @@
         const buttons = Array.isArray(options.buttons) && options.buttons.length
             ? options.buttons
             : [{ label: 'OK', value: 'ok', default: true, cancel: true }];
-        el.querySelector('.boot-message-box-title').textContent = options.title || 'MeletonFX';
+        el.querySelector('.boot-message-box-title').textContent = options.title || 'Melaton';
         el.querySelector('.boot-message-box-icon').innerHTML = ICONS[options.icon] || ICONS.error;
         el.querySelector('.boot-message-box-message').textContent = options.message || '';
         el.querySelector('.boot-message-box-detail').textContent = options.detail || '';

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Slice 3 of the MeletonFX plan (Yozora #440): every resizable window gets a maximize box,
+// Slice 3 of the Melaton plan (Yozora #440): every resizable window gets a maximize box,
 // a caption double-click maximizes / restores (minimizes without a maximize box), and a drag
 // on a maximized caption restores the window under the pointer.
 // Run: node scripts/test-window-maximize.js

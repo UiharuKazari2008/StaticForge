@@ -18,15 +18,16 @@ HTTP routes defined in `web_server.js` and static middleware. Default base: `htt
 6. [Preset & generation (HTTP)](#preset--generation-http)
 7. [Admin: pending queue](#admin-pending-queue)
 8. [Traces](#traces)
-9. [Remote Desktop (Guacamole)](#remote-desktop-guacamole)
-10. [Dreamscape Exchange Server](#dreamscape-exchange-server)
-11. [Admin log viewer (UUID path)](#admin-log-viewer-uuid-path)
-12. [Public MCP / Grok connector (UUID path)](#public-mcp--grok-connector-uuid-path)
-13. [VFS (UUID path)](#vfs-uuid-path)
-14. [Android background notification](#android-background-notification)
-15. [Miscellaneous](#miscellaneous)
-16. [Replication](#replication)
-17. [Static files (public/)](#static-files-public)
+9. [Fault reports](#fault-reports)
+10. [Remote Desktop (Guacamole)](#remote-desktop-guacamole)
+11. [Dreamscape Exchange Server](#dreamscape-exchange-server)
+12. [Admin log viewer (UUID path)](#admin-log-viewer-uuid-path)
+13. [Public MCP / Grok connector (UUID path)](#public-mcp--grok-connector-uuid-path)
+14. [VFS (UUID path)](#vfs-uuid-path)
+15. [Android background notification](#android-background-notification)
+16. [Miscellaneous](#miscellaneous)
+17. [Replication](#replication)
+18. [Static files (public/)](#static-files-public)
 
 ---
 
@@ -509,11 +510,23 @@ during that `dev_admin` session may use a 120-second private HTTP cache after
   "runtimeCompileComplete": true,
   "runtimeCompile": { },
   "runtimeAutoRecompile": { "autoRecompile": false },
-  "melaton": { "domain": "DREAMSCAPE", "connectionName": "VPN Connection", "connectionType": "WAN", "device": "L-PPoP" }
+  "melaton": { "domain": "DREAMSCAPE", "connectionName": "VPN Connection", "connectionType": "WAN", "device": "L-PPoP" },
+  "useVistaLogon": false,
+  "logonPicture": null,
+  "logonName": "Administrator",
+  "novelaiKeyConfigured": true
 }
 ```
 
 Use before login if server may still be compiling runtime assets.
+
+`useVistaLogon` is `config.json` `useVistaLogon` (User Accounts "Use Vista Logon"); when it is on,
+`logonPicture` is the Administrator tile's picture URL (`GET /logon-picture`), else `null`.
+`logonName` is the Administrator's account name (User Accounts "Change the account name"), shown
+by the Welcome screen and the logon dialog before anyone signs in. `novelaiKeyConfigured` is
+whether the server has a NovelAI key, stored or from `NOVELAI_API_KEY`; Melaton Setup's
+product key page (#611) shows a starred key and moves on by itself when it is `true`, and asks
+for one when it is `false`. These are public because the screens that read them run before logon.
 
 `melaton` (`modules/melatonNetwork.js`) feeds the desktop's domain connection dialogs:
 `domain` is `config.json` `userGlobalSettings.desktop.domainName` (default `DREAMSCAPE`),
@@ -539,7 +552,7 @@ its first seconds; the boot steps yield to the event loop between steps and per 
 
 ### `GET /install/meletonfx.zip`
 
-**No auth.** The MeletonFX installer pack: one zip of the service-worker manifest, built when cache
+**No auth.** The Melaton installer pack: one zip of the service-worker manifest, built when cache
 data is recreated (`modules/meletonInstallPack.js`). Text is deflated at level 9. Images, fonts,
 and other already-compressed files are stored. `pack.json` inside the zip lists `{ entry, url, hash, size, group }`.
 
@@ -557,6 +570,25 @@ the server packs only the matching manifest rows and answers the same zip shape,
 **413** `{ "useFullPack": true, "max": 120 }` when the list is longer. The client then `GET`s the full pack.
 
 **404** when none of the urls are in the manifest. **400** when `files` is missing.
+
+### `POST /install/product-key`
+
+**No session**, but guarded three ways: it only works while the server has **no NovelAI key at
+all** (none stored and no `NOVELAI_API_KEY`), only from a **private or loopback client address**
+(`getRealIP` behind the trusted proxies), and the body is parsed by its own **4 KB** JSON parser,
+registered ahead of the global 100 MB one. Melaton Setup's "Type your product key" page (#611)
+posts here on the initial server setup; once a key exists the Account Manager owns the keys.
+
+Body `{ "key": "<NovelAI API key>" }`. The key is stored as the `novelai` entry named `Setup`.
+
+**200** `{ "success": true, "index": 0 }`. **400** no key, or longer than 512 characters.
+**403** from a public address (set the key on the server instead). **409** a key is already
+configured. **413** body over 4 KB. **500** the key could not be stored.
+
+### `GET /install/license.txt`
+
+**No auth.** Setup's "Please read the license terms" page: the repository `README.md` as
+`text/plain; charset=utf-8`, `Cache-Control: no-cache`. **404** when the file is missing.
 
 ### `OPTIONS /`
 
@@ -873,6 +905,75 @@ Lists scheduled/pending preset generation requests.
 
 ---
 
+## Fault reports
+
+`modules/programFaultReports.js`. The desktop's "*program* has stopped working" dialog
+(`public/scripts/comp/programFaults.js`) posts every fault it shows, so it can be fixed from the
+report alone; its **Copy Report** button reads the report back before it copies the short form.
+One JSON file per fault under `data/fault-reports/<id>.json` (gitignored). Kept: at most 500
+reports, none unseen for 30 days (pruned after each new report and when the server starts).
+These posts are left out of the request log.
+
+### `POST /api/fault-reports`
+
+**Auth required; not for read-only (user PIN) sessions.** Inserts the fault, or folds the post
+into the report with the same signature: program key + error name + message (numbers and quoted
+values ignored) + the top three frames of our scripts (line and column ignored).
+
+```json
+{
+  "occurrenceId": "mg0x1-3-ab12c",
+  "at": "2026-10-21T22:29:29.000Z",
+  "program": { "key": "launch:calculator", "name": "Calculator", "launchId": "calculator", "game": null, "core": false, "windowId": "desktopCalculatorModal", "windowTitle": "Calculator" },
+  "errorName": "TypeError",
+  "message": "Cannot read properties of undefined (reading 'mode')",
+  "stack": "TypeError: ...\n    at ...",
+  "fileLine": "", "source": "ws:...", "scripts": ["/scripts/comp/desktop-apps/calculator.js"],
+  "page": "checking", "action": null, "repeats": 1,
+  "extraFaults": [{ "message": "...", "stack": "..." }],
+  "client": { "url": "/app", "userAgent": "...", "viewport": "1920x1200", "uptimeMs": 27000, "desktopState": "desktop", "windows": ["Calculator (#desktopCalculatorModal)"] }
+}
+```
+
+`program` and one of `message` / `stack` are required. One dialog is one `occurrenceId`: the
+client posts it when the dialog opens and again (at most every 10 s) when more faults were
+counted into it or a button closed it (`action`: `continue`, `close`, `restarted`, `restart-os`,
+`cancel`, `dismiss`); a repeat post updates that occurrence instead of counting a new dialog.
+Text fields are clipped (stack 16 KB; older occurrences keep 4 KB and only a stack that differed).
+
+```json
+{ "ok": true, "id": "fault_0b592b5ceb07", "count": 3, "repeats": 7, "file": "data/fault-reports/fault_0b592b5ceb07.json" }
+```
+
+`count` is dialogs this fault caused, `repeats` the faults counted into them.
+
+**400** missing `program` or message/stack. **403** read-only session. **413** body over 64 KB.
+**429** more than 30 posts a minute from one session (`Retry-After: 60`); the dialog then copies
+the full error, as for any report it could not save.
+
+### `GET /api/fault-reports`
+
+**Auth required.** `?limit=` (default 50, max 200). Newest first, from the in-memory index:
+
+```json
+{ "ok": true, "reports": [{ "id": "fault_…", "program": "Calculator", "message": "…", "count": 3, "repeats": 7, "status": "open", "firstSeen": "…", "lastSeen": "…" }] }
+```
+
+### `GET /api/fault-reports/:id`
+
+**Auth required.** The whole report: `id`, `program`, `errorName`, `message`, `firstSeen`,
+`lastSeen`, `count`, `repeats`, `status` (`open`; set `fixed` by hand in the file once fixed: a
+later post turns it `regressed`), `latest` (the newest occurrence in full) and `recent` (the last
+ten, newest first).
+
+```json
+{ "ok": true, "report": { "id": "fault_…", "count": 3, "latest": { }, "recent": [ ] }, "file": "data/fault-reports/fault_….json" }
+```
+
+**404:** `{ "ok": false, "error": "No such fault report" }` (also for an id that is not `fault_` + 12 hex).
+
+---
+
 ## Dovecote mailbox webhook
 
 Base path `/dovecote/mailbox/webhook`. Handler: `modules/dovecoteMailboxWebhookHttp.js`.
@@ -918,28 +1019,31 @@ WebSocket: `dovecote_subscribe_mailbox_new_mail` / `dovecote_unsubscribe_mailbox
 
 ## Remote Desktop (Guacamole)
 
-Handler: `modules/guacRemoteBridge.js`, mounted by `mountGuacRemoteBridge`. Every route uses `authMiddleware`. Dreamscape signs in to Komaki's Apache Guacamole with one shared account and keeps one token (an extra login revokes the token that open session frames hold). Remote Desktop Manager (`public/scripts/comp/desktop-apps/guacRemote.js`) lists that account's connections. Remote Desktop Connection (`public/scripts/comp/desktop-apps/remoteDesktopConnection.js`) opens temporary quick connections.
+Handler: `modules/guacRemoteBridge.js`, mounted by `mountGuacRemoteBridge`. Every route needs a full sign-in (`authMiddleware`, then `guacFullSession`): the admin PIN, a session from it, or the login key. The read-only PIN and application keys get 403 `{ ok: false, error }`, because these routes hand out the shared Guacamole token. Dreamscape signs in to Komaki's Apache Guacamole with one shared account and keeps one token (an extra login revokes the token that open session frames hold, so a 403 from Guacamole logs in again only when the token is dead). Remote Desktop Manager (`public/scripts/comp/desktop-apps/guacRemote.js`) lists that account's connections. Remote Desktop Connection (`public/scripts/comp/desktop-apps/remoteDesktopConnection.js`) opens temporary quick connections.
 
 | Method | Path | Notes |
 |--------|------|--------|
 | GET | `/api/desktop-guac/connections` | `{ ok, connections[], groups[], groupOptions[] }`: the connection tree as `{ id, name, protocol, parentId, groupName, previewAt }` rows |
-| POST | `/api/desktop-guac/connections` | `{ name, protocol, parentIdentifier, parameters: { hostname, port, username, password } }` → `{ ok, id }`. Needs Guacamole's "Create new connections" permission on the shared account (it has none today, so this returns Guacamole's permission error) |
+| POST | `/api/desktop-guac/connections` | `{ name, protocol, parentIdentifier, parameters: { hostname, port, username, password } }` → `{ ok, id }`. The host rule of `quick` applies (403 for loopback and link-local). Needs Guacamole's "Create new connections" permission on the shared account (it has none today, so this returns Guacamole's permission error) |
 | GET | `/api/desktop-guac/session/:id` | `{ ok, url }`: Guacamole's client route for a catalog connection, token in the hash |
 | GET | `/api/desktop-guac/home` | `{ ok, url }`: Guacamole's home page |
 | GET / POST | `/api/desktop-guac/preview/:id` | Last-frame JPEG of a catalog connection (POST body `image/jpeg`, 2 MB max) |
 | POST | `/api/desktop-guac/download` | Raw body (80 MB max), headers `x-filename`, `x-workspace-id`: saves a session download into that workspace's Downloads folder |
 | GET | `/api/desktop-guac/quick/status` | `{ ok, available }`. `available` is true when the Guacamole token lists the `quickconnect` data source, meaning guacamole-auth-quickconnect is installed on the gateway |
-| POST | `/api/desktop-guac/quick` | `{ host, port?, protocol: "rdp" \| "ssh" \| "vnc", username?, password?, domain? }` → `{ ok, id, name, protocol, url }`. See below |
-| * | `/api/desktop-guac/web/*` | Same-origin proxy of Guacamole's web app, including the `websocket-tunnel` upgrade. The session cookie is required on the upgrade |
+| POST | `/api/desktop-guac/quick` | `{ host, port?, protocol: "rdp" \| "ssh" \| "vnc", username?, password?, domain? }` → `{ ok, id, name, protocol, url }`. 12 calls a minute per session. See below |
+| * | `/api/desktop-guac/web/*` | Same-origin proxy of Guacamole's web app, including the `websocket-tunnel` upgrade (the only upgrade path; it needs an admin session cookie). The proxy passes GET and HEAD, `POST /api/tokens` (the token check), `/tunnel` and `/api/session/tunnels/*`. It answers 403 to everything else: any `/api/session/ext/*` call (so quickconnect URIs only come from `POST /quick`), connection and user writes, password changes and `DELETE /api/tokens` (one frame's logout would end every window). Paths are checked percent-decoded, without `;` parameters and with dot segments resolved |
 
 ### `POST /api/desktop-guac/quick`
 
 Creates a temporary connection through Guacamole's quickconnect extension (`POST {guacamole}/api/session/ext/quickconnect/create` with a `rdp://`, `ssh://` or `vnc://` URI). The connection lives only in the shared token's `quickconnect` data source. Nothing is saved in Guacamole or in Dreamscape. The client opens `url` in Remote Desktop Manager's session window.
 
 - `host`: a DNS name, IPv4, or IPv6 address (brackets optional). `port`: 1 to 65535, or omitted for the protocol's default.
+- guacd dials from Komaki, so loopback (`127.0.0.0/8`, `::1`, `localhost`, `*.localhost`), link-local (`169.254.0.0/16`, `fe80::/10`), unspecified, broadcast and multicast addresses get 403 `blocked`. A name is also resolved on the Dreamscape server and refused if any address is one of those; a name only Komaki can resolve is let through. LAN addresses are allowed.
 - RDP: `DOMAIN\user` in `username` is split into `domain`. Certificates are not checked (`ignore-cert=true`, `security=any`).
-- The caller chooses the protocol. Dreamscape does not check which protocols the host offers.
-- Errors are `{ ok: false, code, error }`. `code` is one of: `protocol`, `blank` or `invalid` (400); `unavailable` (501: the quickconnect extension is not installed); `refused` (502: Guacamole refused the URI); `gateway` (Guacamole unreachable or login failed).
+- The caller chooses the protocol (Remote Desktop Connection's Protocol drop-down, or a typed `rdp://` / `ssh://` / `vnc://` scheme or well-known port). Dreamscape does not check which protocols the host offers.
+- The session window's **Add to Desktop** saves a `remote-desktop` shortcut. For a quick connection its data is `{ quick: { host, port, protocol }, protocol }`, with no credentials; opening it asks Windows Security again (`remoteDesktopConnection.connectTo`). For a Manager connection it is `{ connectionId, protocol }`.
+- Errors are `{ ok: false, code, error }`. `code` is one of: `protocol`, `blank` or `invalid` (400); `blocked` (403: see the host rule); `busy` (429: over 12 a minute); `unavailable` (501: the quickconnect extension is not installed); `refused` (502: Guacamole refused the URI; its own message goes to the server log only); `gateway` (Guacamole unreachable or login failed).
+- The request log masks credentials in every logged body (`web_server.js` `redactLoggedSecret`: keys ending in `password`, `pass`, `secret`, `apiKey`, `loginKey` and the like, `pin`, and the `user:password@` part of any URL), so `password` shows as `***`.
 
 Komaki needs `guacamole-auth-quickconnect-1.5.5.jar` (matching Guacamole 1.5.5) in `GUACAMOLE_HOME/extensions`. Recommended in `guacamole.properties`: `quickconnect-allowed-parameters: hostname, port, username, password, domain, security, ignore-cert`.
 

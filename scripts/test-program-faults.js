@@ -9,7 +9,8 @@ const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { createStore, faultId } = require(path.join(__dirname, '../modules/programFaultReports.js'));
+const { createStore, createRateLimiter, mountProgramFaultReports, faultId, MAX_BODY_BYTES } = require(path.join(__dirname, '../modules/programFaultReports.js'));
+const realSetTimeout = setTimeout;
 
 // ---- a small DOM: enough for the dialog, the windows and closest/querySelector ---------------
 
@@ -133,14 +134,14 @@ win.fetch = (url, init = {}) => {
     if (url === '/api/fault-reports' && init.method === 'POST') {
         net.posts++;
         if (net.postFails) return Promise.reject(new TypeError('Failed to fetch'));
-        const r = store.upsert(JSON.parse(init.body));
-        return reply(200, { ok: true, id: r.id, count: r.count, file: r.file });
+        return store.upsert(JSON.parse(init.body)).then((r) => ({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, id: r.id, count: r.count, file: r.file }) }));
     }
     const m = String(url).match(/^\/api\/fault-reports\/([^/?]+)$/);
     if (m) {
         if (net.getStatus) return reply(net.getStatus, { ok: false, error: 'down' });
-        const report = store.read(decodeURIComponent(m[1]));
-        return report ? reply(200, { ok: true, report, file: 'data/fault-reports/' + report.id + '.json' }) : reply(404, { ok: false, error: 'No such fault report' });
+        return store.read(decodeURIComponent(m[1])).then((report) => (report
+            ? { ok: true, status: 200, json: () => Promise.resolve({ ok: true, report, file: 'data/fault-reports/' + report.id + '.json' }) }
+            : { ok: false, status: 404, json: () => Promise.resolve({ ok: false, error: 'No such fault report' }) }));
     }
     return reply(404, { ok: false });
 };
@@ -174,11 +175,11 @@ assert.strictEqual(win.programFaults, PF, 'the module publishes window.programFa
 
 /** Fire the timers pending now (not the ones they queue), but never the report uploads' time limits */
 const REPORT_LIMITS = new Set([8000, 1500]);
-function runTimers(maxMs = Infinity) {
+function runTimers(maxMs = Infinity, minMs = -Infinity) {
     const pending = timers.length;
     for (let i = 0; i < pending; i++) {
         const t = timers[i];
-        if (t.fn && t.ms <= maxMs && !REPORT_LIMITS.has(t.ms)) { const fn = t.fn; t.fn = null; fn(); }
+        if (t.fn && t.ms <= maxMs && t.ms >= minMs && !REPORT_LIMITS.has(t.ms)) { const fn = t.fn; t.fn = null; fn(); }
     }
 }
 const flush = () => new Promise((r) => setImmediate(r));
@@ -245,7 +246,7 @@ assert.strictEqual(p.window, solitaire);
 
 p = PF.attribute({ stack: stack(frame('comp/modalUtils.js'), frame('comp/contextMenu.js')) });
 assert.strictEqual(p.core, true, 'shell frames only: the desktop');
-assert.strictEqual(p.name, 'MeletonFX Desktop');
+assert.strictEqual(p.name, 'Melaton Desktop');
 
 p = PF.attribute({ stack: stack(frame('comp/desktop-apps/vista-games/cardEngine.js')), eventWindow: minesweeper.children[1].children[0].closest('.modal') });
 assert.strictEqual(p.key, 'game:minesweeper', 'shared library frames: the window the event hit');
@@ -307,7 +308,10 @@ const press = (m, label) => {
     b.click();
 };
 const copyButton = (m) => m.querySelector('.program-fault-copy');
-const settle = async (n = 6) => { for (let i = 0; i < n; i++) await flush(); };
+// the store's file IO is real: wait in real time, not only for queued promise jobs
+const settle = async (n = 6) => { for (let i = 0; i < n; i++) await new Promise((r) => realSetTimeout(r, 5)); };
+/** The throttled report update (REPORT_MIN_GAP_MS after the last post), not the dialog's own timers */
+const runReportUpdate = () => runTimers(10000, 3000);
 
 const text = (m) => m.querySelector('.program-fault-text').textContent;
 const heading = (m) => m.querySelector('.program-fault-heading').textContent;
@@ -408,7 +412,7 @@ const othersOpen = () => !minesweeper.classList.contains('hidden') && !calculato
     // shared code with no window: the desktop's dialog, not Spectator
     PF.present({ message: 'x', stack: stack(frame('comp/customScrollbar.js')) }, {});
     assert.strictEqual(PF.openDialogs().length, 1, 'no frames of a program and no event: still the desktop, never Spectator');
-    assert.strictEqual(heading(dialogEl()), 'MeletonFX Desktop has stopped working');
+    assert.strictEqual(heading(dialogEl()), 'Melaton Desktop has stopped working');
     PF.reset();
     // nothing of ours at all stays with Spectator
     assert.strictEqual(PF.present({ message: 'x', stack: 'Error\n    at x (https://evil.example/x.js:1:1)' }, {}), false);
@@ -422,7 +426,7 @@ const othersOpen = () => !minesweeper.classList.contains('hidden') && !calculato
     assert.ok(m.classList.contains('program-fault-standalone'), 'standalone while booting');
     assert.ok(!m.classList.contains('hidden'));
     assert.ok(!calls.some((c) => c[0] === 'openModal'), 'the window manager is not asked while booting');
-    assert.strictEqual(heading(m), 'MeletonFX Desktop has stopped working');
+    assert.strictEqual(heading(m), 'Melaton Desktop has stopped working');
     PF.reset();
     win.getClientDesktopState = () => 'desktop';
 
@@ -445,7 +449,7 @@ const othersOpen = () => !minesweeper.classList.contains('hidden') && !calculato
     PF.present({ message: 'x', stack: stack(frame('comp/modalUtils.js')) }, {});
     m = dialogEl();
     runTimers();
-    assert.strictEqual(heading(m), 'MeletonFX Desktop has stopped working');
+    assert.strictEqual(heading(m), 'Melaton Desktop has stopped working');
     assert.strictEqual(m.dataset.faultPage, 'final', 'the desktop does not restart by itself');
     assert.deepStrictEqual(buttons(m).map((b) => b.textContent), ['Restart now', 'Restart later']);
     press(m, 'Restart later');
@@ -509,28 +513,91 @@ const othersOpen = () => !minesweeper.classList.contains('hidden') && !calculato
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fault-store-'));
         const st = createStore({ dir });
         const base = { program: { key: 'launch:calculator', name: 'Calculator' }, errorName: 'TypeError', message: "Cannot read properties of undefined (reading 'x')", stack: 'TypeError: boom\n    at onKey (http://h/scripts/comp/desktop-apps/calculator.js?sha=1:10:20)' };
-        const a = st.upsert({ ...base, occurrenceId: 'o1', repeats: 1 });
+        const a = await st.upsert({ ...base, occurrenceId: 'o1', repeats: 1 });
         assert.match(a.id, /^fault_[0-9a-f]{12}$/);
         assert.ok(fs.existsSync(path.join(dir, a.id + '.json')), 'one JSON file per fault');
-        let r = st.upsert({ ...base, occurrenceId: 'o1', repeats: 4, action: 'continue' });
+        let r = await st.upsert({ ...base, occurrenceId: 'o1', repeats: 4, action: 'continue' });
         assert.strictEqual(r.count, 1, 'the same dialog posted again updates its occurrence');
         assert.strictEqual(r.repeats, 4);
-        assert.strictEqual(st.read(a.id).recent[0].action, 'continue');
-        r = st.upsert({ ...base, occurrenceId: 'o2', message: "Cannot read properties of undefined (reading 'y')", stack: base.stack.replace(':10:20', ':99:1') });
+        assert.strictEqual((await st.read(a.id)).recent[0].action, 'continue');
+        r = await st.upsert({ ...base, occurrenceId: 'o2', message: "Cannot read properties of undefined (reading 'y')", stack: base.stack.replace(':10:20', ':99:1') });
         assert.strictEqual(r.id, a.id, 'quoted values and line numbers do not split one bug');
         assert.strictEqual(r.count, 2);
         assert.strictEqual(r.repeats, 5);
-        assert.strictEqual(st.read(a.id).latest.occurrenceId, 'o2');
-        assert.notStrictEqual(st.upsert({ ...base, occurrenceId: 'o3', message: 'other' }).id, a.id, 'another message is another fault');
+        assert.strictEqual((await st.read(a.id)).latest.occurrenceId, 'o2');
+        assert.notStrictEqual((await st.upsert({ ...base, occurrenceId: 'o3', message: 'other' })).id, a.id, 'another message is another fault');
         assert.notStrictEqual(faultId({ ...base, program: { key: 'game:solitaire' } }), a.id, 'another program is another fault');
-        const saved = st.read(a.id);
+        const saved = await st.read(a.id);
         saved.status = 'fixed';
         fs.writeFileSync(path.join(dir, a.id + '.json'), JSON.stringify(saved));
-        st.upsert({ ...base, occurrenceId: 'o4' });
-        assert.strictEqual(st.read(a.id).status, 'regressed', 'a fixed fault that comes back is reopened');
-        assert.strictEqual(st.read('../../etc/passwd'), null, 'ids are checked');
-        assert.throws(() => st.upsert({ message: 'x' }), /program is required/);
-        assert.strictEqual(st.list().length, 2);
+        await st.upsert({ ...base, occurrenceId: 'o4' });
+        assert.strictEqual((await st.read(a.id)).status, 'regressed', 'a fixed fault that comes back is reopened');
+        assert.strictEqual(await st.read('../../etc/passwd'), null, 'ids are checked');
+        await assert.rejects(st.upsert({ message: 'x' }), /program is required/);
+        assert.strictEqual((await st.list()).length, 2);
+        // posts to one report at once: each lands, none is lost
+        const many = await Promise.all([5, 6, 7, 8].map((n) => st.upsert({ ...base, occurrenceId: 'p' + n })));
+        assert.strictEqual(Math.max(...many.map((x) => x.count)), 7, 'concurrent posts are applied one after another');
+        assert.strictEqual((await st.read(a.id)).count, 7);
+        assert.ok(fs.statSync(path.join(dir, a.id + '.json')).size < 40000, 'ten occurrences stay small');
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+
+    // pruning: at most maxReports files, none older than maxAgeMs
+    {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fault-prune-'));
+        let t = Date.parse('2026-10-01T00:00:00Z');
+        const st = createStore({ dir, maxReports: 3, maxAgeMs: 10 * 24 * 3600 * 1000, now: () => t });
+        const ids = [];
+        for (let i = 0; i < 5; i++) {
+            t += 3600 * 1000;
+            ids.push((await st.upsert({ program: { key: 'p', name: 'P' }, message: 'fault ' + 'abcde'[i] })).id);
+        }
+        assert.strictEqual(st.size(), 3, 'the oldest reports go once there are too many');
+        assert.deepStrictEqual(fs.readdirSync(dir).sort(), ids.slice(2).map((id) => id + '.json').sort());
+        assert.strictEqual(await st.read(ids[0]), null);
+        t += 11 * 24 * 3600 * 1000;
+        assert.strictEqual(await st.prune(), 3, 'reports not seen for maxAgeMs go');
+        assert.deepStrictEqual(fs.readdirSync(dir), []);
+        // a new process reads the index from disk and prunes it on the way
+        for (let i = 0; i < 4; i++) {
+            t += 1000;
+            await st.upsert({ program: { key: 'p', name: 'P' }, message: 'again ' + 'abcd'[i] });
+        }
+        const fresh = createStore({ dir, maxReports: 2, now: () => t });
+        assert.strictEqual((await fresh.list()).length, 2);
+        assert.strictEqual(fs.readdirSync(dir).length, 2);
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+
+    // the routes: read-only sessions, size and rate limits
+    {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fault-routes-'));
+        const routes = {};
+        const fakeApp = { post: (p, auth, fn) => { routes['POST ' + p] = fn; }, get: (p, auth, fn) => { routes['GET ' + p] = fn; } };
+        let t = 0;
+        mountProgramFaultReports(fakeApp, null, { dir, allow: createRateLimiter({ max: 2, windowMs: 1000, now: () => t }) });
+        const call = async (key, req) => {
+            const res = { code: 200, headers: {}, status(c) { this.code = c; return this; }, setHeader(k, v) { this.headers[k] = v; }, json(b) { this.body = b; return this; } };
+            await routes[key]({ headers: {}, query: {}, params: {}, sessionID: 'sess1', ...req }, res);
+            return res;
+        };
+        const body = { program: { key: 'p', name: 'P' }, message: 'm' };
+        assert.strictEqual((await call('POST /api/fault-reports', { body, userType: 'readonly' })).code, 403, 'read-only sessions save nothing');
+        assert.strictEqual((await call('POST /api/fault-reports', { body, headers: { 'content-length': String(MAX_BODY_BYTES + 1) } })).code, 413);
+        assert.strictEqual((await call('POST /api/fault-reports', { body: { ...body, stack: 'x'.repeat(MAX_BODY_BYTES) } })).code, 413, 'measured when no length was sent');
+        const ok = await call('POST /api/fault-reports', { body, userType: 'admin' });
+        assert.strictEqual(ok.code, 200);
+        assert.strictEqual((await call('POST /api/fault-reports', { body })).code, 200);
+        const limited = await call('POST /api/fault-reports', { body });
+        assert.strictEqual(limited.code, 429, 'a session posting too often is told to wait');
+        assert.strictEqual(limited.headers['Retry-After'], '60');
+        assert.strictEqual((await call('POST /api/fault-reports', { body, sessionID: 'sess2' })).code, 200, 'other sessions are not held up');
+        t += 1001;
+        assert.strictEqual((await call('POST /api/fault-reports', { body })).code, 200, 'the window slides');
+        assert.strictEqual((await call('GET /api/fault-reports/:id', { params: { id: ok.body.id } })).body.report.count, 4, 'every accepted post without an occurrence id is a dialog');
+        assert.strictEqual((await call('GET /api/fault-reports/:id', { params: { id: 'fault_000000000000' } })).code, 404);
+        assert.strictEqual((await call('GET /api/fault-reports', {})).body.reports.length, 1);
         fs.rmSync(dir, { recursive: true, force: true });
     }
 
@@ -546,7 +613,7 @@ const othersOpen = () => !minesweeper.classList.contains('hidden') && !calculato
     let rep = PF.openDialogs()[0].report;
     assert.strictEqual(rep.status, 'saved', 'the dialog\'s fault is upserted as it opens');
     assert.strictEqual(net.posts, 1);
-    let onServer = store.read(rep.id);
+    let onServer = await store.read(rep.id);
     assert.strictEqual(onServer.program.name, 'Calculator');
     assert.strictEqual(onServer.errorName, 'TypeError');
     assert.match(onServer.latest.stack, /calculator\.js/);
@@ -554,11 +621,11 @@ const othersOpen = () => !minesweeper.classList.contains('hidden') && !calculato
     assert.ok(onServer.latest.client.windows.some((w) => /Calculator/.test(w)), 'the open windows go with it');
     PF.present(calcError, {});
     PF.present(calcError, {});
-    runTimers(1200);
+    runReportUpdate();
     await settle();
     assert.strictEqual(net.posts, 2, 'repeats are posted once, debounced');
-    assert.strictEqual(store.read(rep.id).count, 1);
-    assert.strictEqual(store.read(rep.id).repeats, 3);
+    assert.strictEqual((await store.read(rep.id)).count, 1);
+    assert.strictEqual((await store.read(rep.id)).repeats, 3);
 
     copyButton(m).click();
     await settle(10);
@@ -599,12 +666,12 @@ const othersOpen = () => !minesweeper.classList.contains('hidden') && !calculato
     assert.strictEqual(PF.openDialogs().length, 0, 'Continue closes the dialog');
     assert.ok(!calculator.classList.contains('hidden'), 'and leaves the program running');
     assert.ok(!calls.some((c) => c[1] === 'calculatorModal'), 'nothing is done to the Calculator');
-    assert.strictEqual(store.read(rep.id).recent[0].action, 'continue', 'the report says how the dialog ended');
+    assert.strictEqual((await store.read(rep.id)).recent[0].action, 'continue', 'the report says how the dialog ended');
     PF.present(calcError, {});
     assert.strictEqual(PF.openDialogs().length, 0, 'the same fault again is only counted');
-    runTimers(1200);
+    runReportUpdate();
     await settle();
-    assert.strictEqual(store.read(rep.id).repeats, 4, '... and the count still reaches the server');
+    assert.strictEqual((await store.read(rep.id)).repeats, 4, '... and the count still reaches the server');
     PF.present({ message: 'a different fault', stack: frame('comp/desktop-apps/calculator.js') }, {});
     assert.strictEqual(PF.openDialogs().length, 1, 'a different fault shows again');
     runTimers();

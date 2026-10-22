@@ -1,5 +1,5 @@
 /**
- * MeletonFX Experience Index (Yukimi 2026-10-21: "have the rating number be based on the client
+ * Melaton Experience Index (Yukimi 2026-10-21: "have the rating number be based on the client
  * browser session and is based on performance metrics, supported features, etc."): Vista's Windows
  * Experience Index for this browser session. Five subscores on Vista's 1.0 - 5.9 scale; the base
  * score is the lowest, as Vista's is.

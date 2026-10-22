@@ -394,7 +394,7 @@
 
 /* ---- Reference Manager (#cacheManagerModal) in the Workspace window's design (#474) ----
    As #galleryWindow: square tiles edge to edge with the frame-coloured 2px borders on the window
-   glass (no inset panel), the MeletonFX mark behind them, and the floating glass bar bottom-left
+   glass (no inset panel), the Melaton mark behind them, and the floating glass bar bottom-left
    built from the same classes as #main-menu-bar (app.css .floating-bar-left / .main-menu-bar-*):
    "References • <workspace>" over the type toggle (gallery-core.css .gallery-toggle-group) and
    the tools that used to sit in the caption. */

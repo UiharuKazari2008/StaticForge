@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Compose the MeletonFX tray icons from Vista's own pixels (Yukimi, 2026-10-12: generated
+ * Compose the Melaton tray icons from Vista's own pixels (Yukimi, 2026-10-12: generated
  * art scaled to 16 px is blurry, sampled "pixel art" is destroyed; take the Vista icons and
  * apply the edits). Every icon is built at 16 and 32 px directly from the 16 / 32 px Vista
  * originals in scripts/assets/vista-tray-parts/ (ripped from a Vista Aero VM), so nothing is

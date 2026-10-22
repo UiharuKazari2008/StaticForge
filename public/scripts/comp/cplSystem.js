@@ -6,7 +6,7 @@
  *   Windows edition     the product, copyright and service pack (or build) from the shared version
  *                       source (window.getMeletonVersionInfo / loadMeletonVersionInfo, modalUtils.js),
  *                       the edition logo on the right (shellbrd.dll bitmap 1050)
- *   System              Rating: this browser session's MeletonFX Experience Index (experienceIndex.js:
+ *   System              Rating: this browser session's Melaton Experience Index (experienceIndex.js:
  *                       performance and supported features, the base score is the lowest subscore);
  *                       the server host from get_system_info: processor and rated clock, memory,
  *                       system type = the server's architecture (host.* from modules/globalResources.js
@@ -16,9 +16,9 @@
  *   Session             this client: who is signed in, the browser, the device (navigator) and the
  *                       client version
  *   Windows activation  the NovelAI account (optionsData.user): activated when there is one, and the
- *                       Product ID is derived from it; without an account MeletonFX is not activated
+ *                       Product ID is derived from it; without an account Melaton is not activated
  *
- * The task pane links go to the MeletonFX analogues (Management Tools, Remote Access Properties,
+ * The task pane links go to the Melaton analogues (Management Tools, Remote Access Properties,
  * Windows Defender, Runes).
  */
 (function (root) {
@@ -209,7 +209,7 @@
 
     function ratingHtml() {
         if (rating && typeof rating.base === 'number') {
-            return `<span class="cpl-sys-wei is-rated" title="${esc(ratingTitle(rating))}"><img src="${ART}/wei-rated.png" alt="" draggable="false"><span class="cpl-sys-wei-num">${rating.base.toFixed(1)}</span></span><span class="cpl-sys-wei-text">MeletonFX Experience Index</span>`;
+            return `<span class="cpl-sys-wei is-rated" title="${esc(ratingTitle(rating))}"><img src="${ART}/wei-rated.png" alt="" draggable="false"><span class="cpl-sys-wei-num">${rating.base.toFixed(1)}</span></span><span class="cpl-sys-wei-text">Melaton Experience Index</span>`;
         }
         const msg = ratingFailed || (rating && rating.base === null) ? 'System rating is not available' : 'Assessing this session...';
         return `<span class="cpl-sys-wei-text cpl-sys-wei-text--none">${msg}</span>`;
@@ -222,7 +222,7 @@
 
     function edition(v, sys) {
         const info = v || {};
-        const name = [info.fullName || info.productName || 'MeletonFX Desktop', info.edition].filter(Boolean).join(' ');
+        const name = [info.fullName || info.productName || 'Melaton Desktop', info.edition].filter(Boolean).join(' ');
         const build = info.build && info.build !== 'Unknown' ? info.build : (sys && sys.gitHash && sys.gitHash !== 'Unknown' ? sys.gitHash : '');
         return {
             name,
@@ -320,10 +320,10 @@
 
         // the account decides; while it is unknown, say why (no domain link) or that it is coming
         let activation;
-        if (account.state === 'activated') activation = '<p class="cpl-sys-line">MeletonFX is activated</p>';
-        else if (account.state === 'none') activation = '<p class="cpl-sys-line">MeletonFX is not activated. <button type="button" class="cpl-link" data-cpl-action="nav" data-cpl-arg="authentication">Activate MeletonFX now</button></p>';
-        else if (state === 'auth') activation = '<p class="cpl-sys-line">MeletonFX must log on to the domain. <button type="button" class="cpl-link" data-cpl-action="connect">Log on now</button></p>';
-        else if (state !== 'connected') activation = '<p class="cpl-sys-line">MeletonFX is not connected to the domain controller. <button type="button" class="cpl-link" data-cpl-action="connect">Connect now</button></p>';
+        if (account.state === 'activated') activation = '<p class="cpl-sys-line">Melaton is activated</p>';
+        else if (account.state === 'none') activation = '<p class="cpl-sys-line">Melaton is not activated. <button type="button" class="cpl-link" data-cpl-action="nav" data-cpl-arg="authentication">Activate Melaton now</button></p>';
+        else if (state === 'auth') activation = '<p class="cpl-sys-line">Melaton must log on to the domain. <button type="button" class="cpl-link" data-cpl-action="connect">Log on now</button></p>';
+        else if (state !== 'connected') activation = '<p class="cpl-sys-line">Melaton is not connected to the domain controller. <button type="button" class="cpl-link" data-cpl-action="connect">Connect now</button></p>';
         else activation = '<p class="cpl-sys-line"><span class="cpl-sys-na">Checking activation...</span></p>';
         const activationBody = `
             <div class="cpl-sys-rows cpl-sys-rows--activation">
@@ -415,7 +415,7 @@
                 <div class="cpl-task-group cpl-task-group--see-also cpl-sys-tasks">
                     <h3 class="cpl-task-heading">See also</h3>
                     <ul class="cpl-task-list">
-                        ${plainLink('MeletonFX Update', 'nav', 'update')}
+                        ${plainLink('Melaton Update', 'nav', 'update')}
                         ${plainLink('Dreamscape Services', 'nav', 'authentication')}
                         ${plainLink('Network and Server Center', 'nav', 'network')}
                     </ul>

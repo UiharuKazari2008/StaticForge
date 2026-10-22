@@ -1,4 +1,4 @@
-# Desktop boot sequence (MeletonFX)
+# Desktop boot sequence (Melaton)
 
 How the desktop (`window.isDesktop`, `body.desktop-mode`) comes up, in the order the user
 sees it, and which code owns each step. Yozora #401, #410, #412, #416, #417, #420, #421 (parent #399; plan #411).
@@ -7,13 +7,13 @@ sees it, and which code owns each step. Yozora #401, #410, #412, #416, #417, #42
 
 | # | What the user sees | Owner |
 |---|--------------------|-------|
-| 1 | Melaton boot on `/launch` (every desktop start, PWA and tabs): the Phoenix BIOS POST (F2 Setup Utility, ESC Boot Menu), then Vista's boot screen with the Enso while the server and session are checked; on failure the boot menu; on success a cut to teal and `/app`. A device with nothing installed, or Melaton Recovery from the boot menu, boots the installation media instead: "MeletonFX is loading files..." and Windows Setup | `public/launch.html`, `public/scripts/launch/phoenixBios.js`, `public/scripts/launch/melatonBoot.js` (see below) |
+| 1 | Melaton boot on `/launch` (every desktop start, PWA and tabs): the Phoenix BIOS POST (F2 Setup Utility, ESC Boot Menu), then Vista's boot screen with the Enso while the server and session are checked; on failure the boot menu; on success a cut to teal and `/app`. A device with nothing installed, or Melaton Recovery from the boot menu, boots the installation media instead: "Melaton is loading files..." and Windows Setup | `public/launch.html`, `public/scripts/launch/phoenixBios.js`, `public/scripts/launch/melatonBoot.js` (see below) |
 | 2 | Teal (`body.windows-startup`); after max(2 s from the cut, `/app`'s own startup) the logon dialog `#desktopPreStartupModal`: dial beats (Initializing → Dialing → Negotiation → Establishing), password form when the socket is not authenticated | `app.html` teal handoff, `websocket.js` (`_deferPreStartupForTealHold`, `connect`, `pingHost`, `_renderPreStartupDialog`), `serviceWorkerManager.js` (`_waitForServerReady`, `_showBootUiEarly`) |
-| 3 | No update progress on the logon. More than 20 fresh files, or an install `/launch` already started, reboots to `/launch` before any update dialog so Install MeletonFX handles it. Up to 20 files download with no dialog | `serviceWorkerManager.js` (`runBootSequence`, `_rebootIntoInstaller`) |
+| 3 | No update progress on the logon. More than 20 fresh files, or an install `/launch` already started, reboots to `/launch` before any update dialog so Install Melaton handles it. Up to 20 files download with no dialog | `serviceWorkerManager.js` (`runBootSequence`, `_rebootIntoInstaller`) |
 | 3b | Logon-phase init steps in the logon dialog (desktop first boot): user global settings and **Loading Application Data** (`{ logon: true }`), one status line, no progress bar. A critical failure keeps the dialog on its line and opens a Windows message box (Retry / Restart); the desktop never starts | `websocket.js` `_runLogonInitSteps`, `bootMessageBox.js` (see below) |
 | 4 | Connection complete ("Connected"), still on the logon dialog | `websocket.js` `_runConnectionBeat('connected')`, wrapped from `assetPreload.js` before `_startAfterLogon` |
 | 5 | Logon dialog says "Preparing your desktop..." and keeps the marquee (not a progress bar) while the active workspace's wallpaper is decoded and kept. Nothing else loads here (Yozora #512). The desktop stays hidden | `assetPreload.js` `preloadBeforeDesktopTransition` |
-| 6 | "Preparing MeletonFX…", logon dialog closes, then the staged reveal. Each layer loads its own assets in the startup window and shows when they are ready: wallpaper (12.2), shortcut list (18) → desktop icons (18.2), then the taskbar, tray, sidebar and start menu art and icons (18.4) | `websocket.js` `_completePreStartupHandoff` → `desktopBoot.begin()`, `desktopBoot.js`, `assetPreload.js` |
+| 6 | "Preparing Melaton…", logon dialog closes, then the staged reveal. Each layer loads its own assets in the startup window and shows when they are ready: wallpaper (12.2), shortcut list (18) → desktop icons (18.2), then the taskbar, tray, sidebar and start menu art and icons (18.4) | `websocket.js` `_completePreStartupHandoff` → `desktopBoot.begin()`, `desktopBoot.js`, `assetPreload.js` |
 | 7 | "Welcome", startup window closes last; Vista logon sound | `desktopBoot.finish()` awaited by `hideProgressNotification`; `desktopSounds.js` plays on stage `done` |
 
 Each stage holds for at least `desktopBoot.config.dwellMs[stage]` so the sequence reads
@@ -41,11 +41,11 @@ straight on to `/app`.
 | Screen | What it is |
 |--------|------------|
 | bios | Every start begins with the Phoenix BIOS (`public/scripts/launch/phoenixBios.js`, Yozora #611): an 80×25 text screen in the CGA palette painted into a second 640×480 canvas with the VGA 8×16 glyphs (`biosFont.js`, u_vga16, MIT) in 8×19 cells, exactly PhoenixBIOS 4.0 Release 6 on a VMware guest (measured on the Vista VM over VNC). The POST splash: the Enso where the OEM logo sits, "Starting" and a bar of 43 character cells that fills with the POST's real work (the storage estimate, the static-cache scan for an installation, the resume flag, the first `/status` probe), at least `splashMs` (1.8 s), then `Press F2 to enter SETUP, F12 for Network Boot, ESC for Boot Menu`. The keys are caught in the document head (capture phase) before the boot script loads and replayed. **F2** opens the Setup Utility (Main / Advanced / Security / Boot / Exit with every sub-menu the VM has: drives, Keyboard Features, Cache Memory, I/O Device Configuration, Advanced Chipset Control; option lists, F1 General Help, Setup Confirmation boxes, passwords that are stored but never enforced). Settings live in `localStorage.melatonCmos`; most do nothing, as asked. The ones that do: the **Boot order** (the Hard Drive is Melaton when something is installed; the CD-ROM Drive is the installation media; Removable Devices and the network agent fail over to the next device; a CD-ROM ahead of a bootable disk shows Vista's `Press any key to boot from CD or DVD...` for 5 s) and **Boot-time Diagnostic Screen** (the text POST with the memory count instead of the splash). **ESC** opens the Boot Menu popup for this start only; **F12** runs the Intel Boot Agent text and falls through; **F8** is held for the Boot Manager after the POST. A tap on a tab, an item or the key bar does what the key would. Previews: `bios`, `bios-setup`, `bios-menu`, `bios-diag`. Test: `npm run test:phoenix-bios`. |
-| loading | The installation media (the CD-ROM Drive), which installs unattended (straight to the checklist) unless Melaton Recovery on the boot menu asked for Setup's pages: Vista's bootmgr bar off the DVD, "MeletonFX is loading files..." in Lucida Console 20 px at 1024×768 (text at x 332, cap height y 588; the bar 912×30 at (56, 639), #7F7F7F trough, #BFBFBF fill) that fills in whole 12 px character cells with the real work: the server answering `/status` until it is ready, `/sw.js` registered, the manifest fetched and diffed, Setup's own files (`INSTALLER_ASSETS`) fetched. At least `loadingMinMs` (1.5 s). Shown only on the way into Setup: a device with nothing installed, Melaton Recovery from the boot menu, a resumed install, or the unattended upgrade a large update at boot runs. Never before the BIOS. |
-| setup | Windows Setup on the aurora, page by page as Vista's installer (measured on the VM): the language page and Install now in the Windows Classic frame Setup has before any theme (3-D edge, the #0A246A → #A6CAF0 caption, the aurora inside); then the Aero Basic wizard frame (white at 40 % over the aurora, the back button, the 41 px caption, a #F8F8F8 page with a #F0F0F0 footer) for **Type your product key** (a configured NovelAI key shows starred in a disabled field and the page moves on after 2 s; none at all, the initial server setup, takes the key and stores it through `POST /install/product-key`), **Please read the license terms** (the README from `GET /install/license.txt`, the checkbox unlocks Next), **Which type of installation do you want?** (**Upgrade**, only over an existing installation: the record or the installed bit the desktop's last boot step sets, forgets the manifest digest, checks everything and installs what differs; **Custom (advanced)**, or **Install** when nothing is installed), **Where do you want to install MeletonFX?** (the disk from `navigator.storage.estimate()`; Drive options (advanced) → **Format** = the clean install under a progress box: Cache Storage, the worker, storage, databases, with the CMOS kept), then **Setup is restarting...** with a 10 s countdown and Restart now; the window closes, the aurora stays `installLingerMs` (2 s), black for `rebootBlackMs` (3 s), `/launch`. The next POST finds no installation and `localStorage.melatonSetup.resume = install`, boots the media and goes straight to **Installing MeletonFX...** with the server's current installer. Vista's strip (1 Collecting information / 2 Installing MeletonFX) runs along the screen bottom from the key page on. The Games toolbar only appears once the checklist runs. Previews: `setup`, `setup-start`, `setup-key`, `setup-key-entry`, `setup-license`, `setup-type`, `setup-type-fresh`, `setup-where`, `setup-where-options`, `setup-format`, `setup-formatting`, `setup-cancel`, `setup-restart`. |
+| loading | The installation media (the CD-ROM Drive), which installs unattended (straight to the checklist) unless Melaton Recovery on the boot menu asked for Setup's pages: Vista's bootmgr bar off the DVD, "Melaton is loading files..." in Lucida Console 20 px at 1024×768 (text at x 332, cap height y 588; the bar 912×30 at (56, 639), #7F7F7F trough, #BFBFBF fill) that fills in whole 12 px character cells with the real work: the server answering `/status` until it is ready, `/sw.js` registered, the manifest fetched and diffed, Setup's own files (`INSTALLER_ASSETS`) fetched. At least `loadingMinMs` (1.5 s). Shown only on the way into Setup: a device with nothing installed, Melaton Recovery from the boot menu, a resumed install, or the unattended upgrade a large update at boot runs. Never before the BIOS. |
+| setup | Windows Setup on the aurora, page by page as Vista's installer (measured on the VM): the language page and Install now in the Windows Classic frame Setup has before any theme (3-D edge, the #0A246A → #A6CAF0 caption, the aurora inside); then the Aero Basic wizard frame (white at 40 % over the aurora, the back button, the 41 px caption, a #F8F8F8 page with a #F0F0F0 footer) for **Type your product key** (a configured NovelAI key shows starred in a disabled field and the page moves on after 2 s; none at all, the initial server setup, takes the key and stores it through `POST /install/product-key`), **Please read the license terms** (the README from `GET /install/license.txt`, the checkbox unlocks Next), **Which type of installation do you want?** (**Upgrade**, only over an existing installation: the record or the installed bit the desktop's last boot step sets, forgets the manifest digest, checks everything and installs what differs; **Custom (advanced)**, or **Install** when nothing is installed), **Where do you want to install Melaton?** (the disk from `navigator.storage.estimate()`; Drive options (advanced) → **Format** = the clean install under a progress box: Cache Storage, the worker, storage, databases, with the CMOS kept), then **Setup is restarting...** with a 10 s countdown and Restart now; the window closes, the aurora stays `installLingerMs` (2 s), black for `rebootBlackMs` (3 s), `/launch`. The next POST finds no installation and `localStorage.melatonSetup.resume = install`, boots the media and goes straight to **Installing Melaton...** with the server's current installer. Vista's strip (1 Collecting information / 2 Installing Melaton) runs along the screen bottom from the key page on. The Games toolbar only appears once the checklist runs. Previews: `setup`, `setup-start`, `setup-key`, `setup-key-entry`, `setup-license`, `setup-type`, `setup-type-fresh`, `setup-where`, `setup-where-options`, `setup-format`, `setup-formatting`, `setup-cancel`, `setup-restart`. |
 | boot | Vista's boot screen drawn at 640×480 inside a 1024×768 VGA frame (`.melaton-vga`). `fitMelatonVga()` stretches that frame to the window with plain scale numbers (Chrome drops `scale(calc(100vw / 1024px))`) until the panel is past 2:1 or 1:2; outside that it keeps 4:3 and the rest stays black. The boot drawing is a 640x480 bitmap, nearest-neighbor stretched to the window, so the logo, bar, and copyright stay chunky and still readable. Sizes in stage pixels as measured from the stock Vista boot screen: two-tone bar frame at x 257–378, y 353–363 (#737373 / #424242), 120×9 interior, a cluster of six 2 px stripes with 2 px gaps (rows #F1F5E1 ×2, #A3B16E ×2, #4D5622 ×5) sliding across in 2 px steps (`--melaton-sweep` 2 s per pass, the one estimated value), "© Dreamscape" centred at y 389–400. The Enso takes the Windows 7 logo's place: 84 px, centred at y 205. Shown at least `minBootMs` (2.5 s). F8 is listened for in the document head (capture phase) so it can interrupt before the boot script finishes loading, and opens the menu immediately (no black hold, no countdown). |
-| teal | Success: cut to black for `modeSwitchMs` (1.5 s, Windows switching graphics modes), then `sessionStorage` `dreamscapeLaunchHandoff=teal` + `dreamscapeBootTealHoldUntil` (now + 2 s) and `location.replace('/app')`, which opens on teal. `app.html` puts up a teal `#launchHandoff` (removed without a fade) and sets `window.dreamscapeTealHoldUntil`; `websocket.js` holds the logon dialog (and "Preparing MeletonFX…") until then while startup runs underneath. |
-| menu | Failure: cut to black, then the Boot Manager text screen ("Meleton Boot Manager"): **Xyridian Meleton** (retry: black → the POST → boot screen → checks), **Xyridian Meleton (via System Restore)** (same boot, updates skipped, including a resumed install), **Xyridian Meleton (Safe Mode with Networking)** (updates still run; `sessionStorage.melatonSafeMode=1` so `/app` stays in the same 1024×768 VGA frame), and **Meleton Recovery**, which boots the installation media (loading, then Setup's pages; Setup asks the rest, nothing is wiped until Format). A 10 s countdown to the highlighted entry, an `Info:` line with the reason (`media` when the installation media could not be read), `ENTER=Choose`. ↑/↓/Enter; any key or press stops the countdown; a tap chooses. F8 on the POST or the boot screen opens this menu with no countdown. |
+| teal | Success: cut to black for `modeSwitchMs` (1.5 s, Windows switching graphics modes), then `sessionStorage` `dreamscapeLaunchHandoff=teal` + `dreamscapeBootTealHoldUntil` (now + 2 s) and `location.replace('/app')`, which opens on teal. `app.html` puts up a teal `#launchHandoff` (removed without a fade) and sets `window.dreamscapeTealHoldUntil`; `websocket.js` holds the logon dialog (and "Preparing Melaton…") until then while startup runs underneath. |
+| menu | Failure: cut to black, then the Boot Manager text screen ("Melaton Boot Manager"): **Xyridian Melaton** (retry: black → the POST → boot screen → checks), **Xyridian Melaton (via System Restore)** (same boot, updates skipped, including a resumed install), **Xyridian Melaton (Safe Mode with Networking)** (updates still run; `sessionStorage.melatonSafeMode=1` so `/app` stays in the same 1024×768 VGA frame), and **Melaton Recovery**, which boots the installation media (loading, then Setup's pages; Setup asks the rest, nothing is wiped until Format). A 10 s countdown to the highlighted entry, an `Info:` line with the reason (`media` when the installation media could not be read), `ENTER=Choose`. ↑/↓/Enter; any key or press stops the countdown; a tap chooses. F8 on the POST or the boot screen opens this menu with no countdown. |
 
 Checks under the boot screen (`runChecks`):
 
@@ -78,19 +78,19 @@ against `static-cache-v1` with the same rule as `serviceWorkerManager.getFilesNe
 - **Up to 20 files**: downloaded silently through the worker (`CACHE_STATIC_FILES`) while the
   marquee keeps running, then the handoff.
 - **More than 20, or an install a reload interrupted** (`localStorage.melatonInstall`): cut to
-  black, the loading bar (the worker and Setup's own files), and **Install MeletonFX** unattended,
+  black, the loading bar (the worker and Setup's own files), and **Install Melaton** unattended,
   straight to the checklist (no wizard: a device with nothing installed, a resumed install and a
   large update all install unattended; Setup's pages are only what the boot menu's Melaton
   Recovery gets), Windows Setup on the plain aurora
-  (`#melatonInstall`, `css/launch-install.css`). "Installing MeletonFX...", the checklist and
-  two-step strip (1 Collecting information, 2 Installing MeletonFX), each line doing real work:
-  - Copying MeletonFX files: one zip. Up to 120 files, the client `POST`s that list and the server
+  (`#melatonInstall`, `css/launch-install.css`). "Installing Melaton...", the checklist and
+  two-step strip (1 Collecting information, 2 Installing Melaton), each line doing real work:
+  - Copying Melaton files: one zip. Up to 120 files, the client `POST`s that list and the server
     packs only those (`413` falls back to the full pack). More than that is `GET /install/meletonfx.zip`.
     The server writes the full zip when it recreates the service-worker manifest (deflate level 9 for
     text, stored for images and fonts). Progress is bytes received. 60 s without a chunk = stalled.
     The pack hash must match the files that were packed. The aurora shows alone for `installArriveMs`
     (1 s) before the setup window opens.
-  - Expanding MeletonFX files: the manifest compared to `static-cache-v1`. Only files whose hash
+  - Expanding Melaton files: the manifest compared to `static-cache-v1`. Only files whose hash
     does not match are extracted and stored. A few that do not land (≤ max(10, 10 %)) do not fail
     the install; they are remembered in `melatonInstallRecord.stragglers` so later boots never
     reopen Setup for them.
@@ -101,7 +101,7 @@ against `static-cache-v1` with the same rule as `serviceWorkerManager.getFilesNe
     `/app` wizard session key cleared.
   Up to 20 files still download one by one behind the boot screen (`CACHE_STATIC_FILES`).
   Failure: a Vista Basic message box (Retry stays in Setup and resumes; Cancel → the boot menu with
-  "The installation of MeletonFX was cancelled."). Done: the window closes, 2 s on the aurora
+  "The installation of Melaton was cancelled."). Done: the window closes, 2 s on the aurora
   (`installLingerMs`), black for 3 s (`rebootBlackMs`), `/launch` again, which POSTs and then
   hands off normally.
 - **`/app`**: its boot gate (the safety net for starts that skipped `/launch`) reboots into
@@ -110,7 +110,7 @@ against `static-cache-v1` with the same rule as `serviceWorkerManager.getFilesNe
   install wizard. Remembered stragglers (`melatonInstallRecord.stragglers`) do not count and
   do not open a progress dialog. A cache push that arrives before the desktop uses the same
   rule. Up to 20 fresh files download with no System Update dialog. Once the desktop is up, a
-  large update is not downloaded in the session: MeletonFX Update asks for a restart titled
+  large update is not downloaded in the session: Melaton Update asks for a restart titled
   `Upgrade to Service Pack <YY>Q<1-4> <patchid>` (`servicePackFromFiles` in
   `serviceWorkerManager.js`). `YY` and the quarter come from the newest `modified` time in
   that file set (UTC), and the patch id is a hash of the urls and hashes, so the name is built
@@ -248,7 +248,7 @@ wording is VPN, not modem: Connecting / Reconnecting, "Reconnect attempt n of m"
   (16–40 px), and stepped clear of any desktop icons in that band. Cancel (or the title close / Esc) calls
   `wsClient.cancelConnectionFromUser()`: no more reconnects, offline until Connect / Reconnect.
 - **Server errors** (#434): on the desktop a WebSocket `error` packet is no longer a toast but
-  the **MeletonFX Framework** unhandled-exception window (`mainframeExceptionDialog.js`, .NET's
+  the **Melaton Framework** unhandled-exception window (`mainframeExceptionDialog.js`, .NET's
   ThreadExceptionDialog): "Unhandled exception has occurred in a component in your
   application…" plus the error in Windows language ("Unknown message type" → "Dreamscape
   Mainframe Server Exception: Illegal Operation in Packet"; malformed packet, packet handler
@@ -326,7 +326,7 @@ countdown) are listed in #435.
 
 Application data is mission-critical for the desktop, so on a desktop first boot the init
 steps registered with `{ logon: true }` run inside the logon dialog after the SW boot gate
-and authentication, before "Preparing MeletonFX…": 0.45 user global settings and
+and authentication, before "Preparing Melaton…": 0.45 user global settings and
 1 **Loading Application Data** (`critical: true`, `failureText`). Everything that builds the
 desktop (0.46 start menu layout, 0.5 desktop settings, 0.55 icons, …) stays in the startup
 window.
@@ -336,7 +336,7 @@ window.
 - A critical step that throws (`appInitSteps` rethrows `loadOptions` failures while
   `wsClient.isLogonInitPhase()`, instead of its old confirmation dialog) leaves the logon
   dialog on its status line (marquee paused) and opens a Windows message box over it
-  (`public/scripts/comp/bootMessageBox.js`: error icon, "MeletonFX could not load your
+  (`public/scripts/comp/bootMessageBox.js`: error icon, "Melaton could not load your
   application data.", "DETAIL - <reason>", centred 75×23 **Retry** / **Restart**). Retry =
   `retryLogonInitSteps` (the steps again, then the normal handoff); Restart =
   `restartClientNavigate`, a full restart through `/launch`. `_canCompletePreStartupHandoff`
@@ -454,7 +454,7 @@ shows its plain dial line, never the server's "Starting Dreamscape…" stage.
    locked. The dialog shows "Waiting for server…", the new server's boot stage and
    progress, the dial beats, or the password form if the new server wants a login.
 3. On reconnect `onopen` runs `setActiveWorkspace` and every refresh callback first,
-   then `_completePreStartupHandoff` shows "Preparing MeletonFX…" for a second and calls
+   then `_completePreStartupHandoff` shows "Preparing Melaton…" for a second and calls
    `_resumeSuspendedSession()` → `desktopBoot.resume()` *before* the logon dialog closes,
    so the dialog, the cover and the Classic theme all go under the black cut below; the
    desktop returns as it was.
