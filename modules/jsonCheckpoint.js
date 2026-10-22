@@ -52,6 +52,8 @@ class JSONCheckpointManager {
         this.minCheckpointAgeMs = Math.max(0, Number(minCheckpointAgeMs) || 0);
         this.lastCheckpointTime = 0;
         this.isDirty = false;
+        // { validationCallback, size, mtimeMs } of the last validated write (see createCheckpoint)
+        this._lastValidatedWrite = null;
         
         // Cache for file hashes and metadata
         this._cache = {
@@ -306,6 +308,24 @@ class JSONCheckpointManager {
     }
 
     /**
+     * True when the current file is unchanged (size + mtime) since saveWithCheckpoint wrote
+     * it after validating the same data with this callback in memory.
+     * @private
+     */
+    _currentFileIsValidatedWrite(validationCallback) {
+        const written = this._lastValidatedWrite;
+        if (!written || written.validationCallback !== validationCallback) {
+            return false;
+        }
+        try {
+            const stats = fs.statSync(this.filePath);
+            return stats.size === written.size && stats.mtimeMs === written.mtimeMs;
+        } catch (_err) {
+            return false;
+        }
+    }
+
+    /**
      * Create a checkpoint of the current file
      * Only creates checkpoint if current file differs from the last checkpoint
      * @param {Object} options - Options for checkpoint creation
@@ -326,8 +346,18 @@ class JSONCheckpointManager {
                 return false;
             }
 
-            // Validate before creating checkpoint if callback provided
-            if (validationCallback) {
+            // Min-age gate first: a too-young checkpoint is skipped whatever the validation says
+            if (this.minCheckpointAgeMs > 0 && !force) {
+                const cachedMtime = this._cache.latestCheckpoint.mtime;
+                const referenceTime = this.lastCheckpointTime || (cachedMtime ? cachedMtime.getTime() : 0);
+                if (referenceTime && Date.now() - referenceTime < this.minCheckpointAgeMs) {
+                    return false;
+                }
+            }
+
+            // Validate before creating checkpoint if callback provided. Skipped when the file
+            // on disk is exactly what saveWithCheckpoint wrote after validating it in memory.
+            if (validationCallback && !this._currentFileIsValidatedWrite(validationCallback)) {
                 const validation = this.validateCheckpoint(this.filePath, validationCallback);
                 if (!validation.valid) {
                     if (skipIfInvalid) {
@@ -336,14 +366,6 @@ class JSONCheckpointManager {
                     } else {
                         console.warn(`⚠️ Checkpoint validation warning: ${validation.error} (creating anyway)`);
                     }
-                }
-            }
-
-            if (this.minCheckpointAgeMs > 0 && !force) {
-                const cachedMtime = this._cache.latestCheckpoint.mtime;
-                const referenceTime = this.lastCheckpointTime || (cachedMtime ? cachedMtime.getTime() : 0);
-                if (referenceTime && Date.now() - referenceTime < this.minCheckpointAgeMs) {
-                    return false;
                 }
             }
 
@@ -465,6 +487,7 @@ class JSONCheckpointManager {
             }
 
             // Write the new data
+            this._lastValidatedWrite = null;
             fs.writeFileSync(this.filePath, jsonData, 'utf8');
 
             // Update cache with new file hash
@@ -474,9 +497,15 @@ class JSONCheckpointManager {
             this._cache.currentFile.mtime = stats.mtime;
             this.markClean();
 
-            // Verify the file was written correctly
-            const savedData = fs.readFileSync(this.filePath, 'utf8');
-            const parsedData = JSON.parse(savedData);
+            // Verify the write by size (the string was produced by JSON.stringify, so it
+            // parses; a short write is what a re-read would have caught)
+            const expectedSize = Buffer.byteLength(jsonData, 'utf8');
+            if (stats.size !== expectedSize) {
+                throw new Error(`Short write to ${this.filePath}: ${stats.size} of ${expectedSize} bytes`);
+            }
+            if (validationCallback && typeof validationCallback === 'function') {
+                this._lastValidatedWrite = { validationCallback, size: stats.size, mtimeMs: stats.mtimeMs };
+            }
 
             console.log(`✅ Data saved successfully to ${this.filePath}`);
             return true;
