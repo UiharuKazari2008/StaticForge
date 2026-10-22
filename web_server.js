@@ -293,6 +293,7 @@ runtimeAssetService.init({
     broadcastManifest: async (options = {}) => {
         const silent = options.silent === true;
         const updateMessage = options.message || 'Runtime assets recompiled';
+        invalidateServiceWorkerManifest();
         const files = buildServiceWorkerCacheManifest();
         const plumbing = globalResources.getDataPlumbing();
         plumbing.publish('ws:broadcast:serviceWorkerCacheUpdate', {
@@ -879,6 +880,7 @@ async function initializeCacheData(force = false) {
         );
         const cacheData = globalResources.getGlobalCacheData();
         globalResources.logger.bootSubStep(`Cached ${cacheData.length} assets`);
+        invalidateServiceWorkerManifest();
         agentAssetBundle.invalidate();
         // The agent zip stays lazy. The installer pack is a separate on-disk zip of this
         // manifest so Copying can download one stream. It builds in the background: the
@@ -903,8 +905,47 @@ function resolveLoginSpritePath() {
     return null;
 }
 
-// Build service worker cache manifest (same payload as OPTIONS /)
+// The manifest is memoised: rebuilding it stats every row (installManifestFilter) and hashes
+// fflate + the login sheet, and OPTIONS / plus /agent/assets* ask for it on every call.
+// Keyed on the cache data array (replaced by initializeCacheData), the site-access flag and
+// the stat of the two files hashed here; a short TTL picks up rows deleted between rebuilds.
+// Callers must treat the returned array as read-only.
+const SW_MANIFEST_TTL_MS = 60 * 1000;
+let swManifestMemo = null;
+function invalidateServiceWorkerManifest() {
+    swManifestMemo = null;
+}
+function fileStampKey(filePath) {
+    if (!filePath) return '-';
+    try {
+        const st = fs.statSync(filePath);
+        return `${filePath}:${st.size}:${st.mtimeMs}`;
+    } catch (_) {
+        return `${filePath}:missing`;
+    }
+}
 function buildServiceWorkerCacheManifest() {
+    const source = globalResources.getGlobalCacheData();
+    const key = [
+        Array.isArray(source) ? source.length : -1,
+        siteAccessPublic.readSiteAccessSecure(globalResources).configured ? 1 : 0,
+        fileStampKey(resolveLoginSpritePath()),
+        fileStampKey(path.resolve(__dirname, 'public', 'scripts', 'vendor', 'fflate.js'))
+    ].join('|');
+    const now = Date.now();
+    if (swManifestMemo
+        && swManifestMemo.source === source
+        && swManifestMemo.key === key
+        && now - swManifestMemo.at < SW_MANIFEST_TTL_MS) {
+        return swManifestMemo.manifest;
+    }
+    const manifest = buildServiceWorkerCacheManifestUncached();
+    swManifestMemo = { source, key, at: now, manifest };
+    return manifest;
+}
+
+// Build service worker cache manifest (same payload as OPTIONS /)
+function buildServiceWorkerCacheManifestUncached() {
     const routeFiles = [
         { url: '/', name: '/index.html' },
         { url: '/app', name: '/app.html' },
@@ -2272,10 +2313,16 @@ function startInstallPackRebuild() {
 // The manifest is computed per request, but the pack is only rebuilt on a runtime
 // compile. /.login.jpg is regenerated hourly with random images, so its hash moved
 // under a built pack and every install failed with pack-hash. Rebuild on demand.
+const installPackHashes = new WeakMap();
 function refreshInstallPackIfStale() {
     const pack = meletonInstallPack.status();
     if (pack.building || installPackRefresh) return true;
-    const want = meletonInstallPack.hashManifest(buildServiceWorkerCacheManifest());
+    const manifest = buildServiceWorkerCacheManifest();
+    let want = installPackHashes.get(manifest);
+    if (!want) {
+        want = meletonInstallPack.hashManifest(manifest);
+        installPackHashes.set(manifest, want);
+    }
     if (pack.ready && pack.hash === want) return false;
     startInstallPackRebuild();
     return true;
@@ -2363,7 +2410,17 @@ app.options('/', (req, res) => {
     }
 });
 
+const swManifestDigests = new WeakMap();
 function serviceWorkerManifestDigest(manifest) {
+    if (manifest && typeof manifest === 'object' && swManifestDigests.has(manifest)) {
+        return swManifestDigests.get(manifest);
+    }
+    const digest = serviceWorkerManifestDigestUncached(manifest);
+    if (manifest && typeof manifest === 'object') swManifestDigests.set(manifest, digest);
+    return digest;
+}
+
+function serviceWorkerManifestDigestUncached(manifest) {
     const rows = (Array.isArray(manifest) ? manifest : [])
         .map((file) => `${file.url || ''}\t${file.hash || ''}`)
         .sort();
