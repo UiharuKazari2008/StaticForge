@@ -372,8 +372,8 @@ function winlogonPowerQuiet(label, job) {
 
 /**
  * What has to finish before the browser lets go, started as the screen goes dark. Pending
- * desktop saves and the log off request never stop the shutdown; a failed server restart
- * post does (the caller shows why).
+ * desktop saves never stop the shutdown; a failed log off or server restart does (the
+ * caller shows why), since /launch would boot straight back in or against the old server.
  */
 function startWinlogonPowerWork(kind, onCommit) {
     bypassConfirmation = true;
@@ -392,7 +392,9 @@ function startWinlogonPowerWork(kind, onCommit) {
     ];
     if (kind === 'logoff') {
         // handleLogout: public/scripts/comp/connectionManager.js (stays put; /launch is next)
-        jobs.push(winlogonPowerQuiet('Log off', () => handleLogout({ redirect: false })));
+        jobs.push(Promise.resolve().then(() => handleLogout({ redirect: false })).then((ok) => {
+            if (!ok) throw new Error('Could not log off. You are still signed in.');
+        }));
     }
     if (kind === 'server' && typeof onCommit === 'function') {
         jobs.push(Promise.resolve().then(onCommit));
@@ -402,10 +404,10 @@ function startWinlogonPowerWork(kind, onCommit) {
 
 /**
  * The dark screen (dark: the fade to black): WINLOGON_POWER_BLACK_MS once it is black, longer
- * only while the work is still running, never past WINLOGON_POWER_BLACK_MAX_MS. Throws if
- * the work failed.
+ * only while the work is still running, never past maxMs (Infinity: until the work settles,
+ * for a server restart whose onCommit carries its own timeouts). Throws if the work failed.
  */
-async function lingerWinlogonPowerBlack(work, dark) {
+async function lingerWinlogonPowerBlack(work, dark, maxMs = WINLOGON_POWER_BLACK_MAX_MS) {
     let failure = null;
     let done = false;
     const settled = work.then(() => { done = true; }, (error) => {
@@ -414,10 +416,24 @@ async function lingerWinlogonPowerBlack(work, dark) {
     });
     await dark;
     await winlogonDelay(WINLOGON_POWER_BLACK_MS);
-    if (!done) {
-        await Promise.race([settled, winlogonDelay(WINLOGON_POWER_BLACK_MAX_MS - WINLOGON_POWER_BLACK_MS)]);
+    if (!done && Number.isFinite(maxMs)) {
+        await Promise.race([settled, winlogonDelay(maxMs - WINLOGON_POWER_BLACK_MS)]);
+    } else if (!done) {
+        await settled;
     }
     if (failure) throw failure;
+}
+
+/**
+ * Shut down and log off end the session: the Director's pagehide reopen flag
+ * (DIRECTOR_REOPEN_KEY, public/scripts/comp/director.js) must not carry through /launch,
+ * which never reads it, into the next logon. Added at the exit, so it runs after the
+ * Director's own pagehide save. Restart keeps it (a restart reopens the window).
+ */
+function forgetDirectorReopen() {
+    window.addEventListener('pagehide', () => {
+        try { sessionStorage.removeItem('staticforge_director_reopen'); } catch (_) { /* storage blocked */ }
+    }, { once: true });
 }
 
 /** Narrow mode has no Welcome screen: the old direct exits. */
@@ -479,7 +495,9 @@ async function runWinlogonPower(kind, options) {
         await fadeShutdownCover(false);
         await winlogonDelay(WINLOGON_TEXT_HOLD_MS);
         const work = startWinlogonPowerWork(kind, opts.onCommit);
-        await lingerWinlogonPowerBlack(work, fadeShutdownCover(true));
+        await lingerWinlogonPowerBlack(work, fadeShutdownCover(true),
+            kind === 'server' ? Infinity : WINLOGON_POWER_BLACK_MAX_MS);
+        if (kind === 'shutdown' || kind === 'logoff') forgetDirectorReopen();
         // restartClientNavigate: public/scripts/comp/modalUtils.js (desktop: /launch)
         restartClientNavigate();
         return true;

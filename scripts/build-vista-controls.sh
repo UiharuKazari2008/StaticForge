@@ -7,7 +7,7 @@
 # on the Vista VM (Segoe UI 9 pt, 96 DPI).
 #
 #   515  BUTTON PUSHBUTTON   22x23 x6  normal, hot, pressed, disabled, defaulted, defaulted (pulse)
-#   519  COMBOBOX READONLY   20x21 x4  normal, hot, pressed, disabled
+#   524  COMBOBOX READONLY   11x21 x4  normal, hot, pressed, disabled
 #   520  COMBOBOX glyph      10x19 x4  normal (= hot = pressed), disabled
 #        (+ combo-*-fill.png: each face's centre column, rows 3-17, for <select>)
 #   514  BUTTON GROUPBOX      5x6      slices 2 2 3 2, no fill (white line below the bottom edge)
@@ -21,6 +21,10 @@
 #   642  TRACKBAR TRACK        5x4
 #   622  PROGRESS BAR         19x14
 #   626  PROGRESS FILL        51x14    (627 error red, 628 paused yellow)
+#
+# Not built here: checkbox.png / radio.png (IMAGE_508 / 516, cut for Remote Access Properties) and
+# spin-{up,down}-{normal,hot}.png, cropped 14x9 from the VM's 96 DPI up-down control (the
+# theme's SPIN bitmaps are drawn rotated and stretched at that size).
 #
 # Get the bitmaps: `C:\agent\dumpres.exe C:\Windows\Resources\Themes\Aero\aero.msstyles <dir> 1`
 # on the VM (docs/vista-vm-agent.md), then copy the IMAGE_*.png files into one folder.
@@ -64,12 +68,12 @@ whole() {
 }
 
 frames 515 6 button normal hot pressed disabled default default-pulse
-frames 519 4 combo normal hot pressed disabled
+frames 524 4 combo normal hot pressed disabled
 frames 520 4 combo-glyph normal - - disabled
 # a <select> cannot carry a pseudo-element for the glyph and a border-image fill paints over the
 # background, so selects take the face's centre as a background slice under an edge-only border image
 for state in normal hot pressed disabled; do
-    convert "$OUT/combo-$state.png" -crop 1x15+10+3 +repage -strip "PNG32:$OUT/combo-$state-fill.png"
+    convert "$OUT/combo-$state.png" -crop 1x15+5+3 +repage -strip "PNG32:$OUT/combo-$state-fill.png"
 done
 whole 514 groupbox
 frames 523 4 edit normal hot focus disabled

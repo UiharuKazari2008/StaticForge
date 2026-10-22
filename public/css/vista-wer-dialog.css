@@ -110,6 +110,9 @@ body.desktop-mode:not(.windows-classic-theme) .modal.program-fault-dialog[data-v
     padding: 0 14px;
     line-height: 19px;
     white-space: nowrap;
+    /* these boxes are the visible face; Vista's button art keeps a 1 px clear margin
+       (vista-glass-controls.css), so it is drawn 1 px out */
+    --vista-button-outset: 1px;
 }
 
 /* shown without the window manager (programFaults.js, when the shell fault broke openModal) */

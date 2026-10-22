@@ -19,6 +19,8 @@ const ALLOWED = new Set([
     'public/css/director.css',          // nested header repeats the popped-out rules (double id, documented)
     'public/css/virtual-keyboard.css',  // floating keyboard: relative drag header, no caption controls
     'public/css/image-prompt-inspector.css', // user-select / cursor on the caption of a selectable window
+    'public/css/launch-games.css',      // Setup's games page (/launch-games.html): Vista Basic frames, no desktop chrome loaded (#609)
+    'public/css/desktop-apps/vista-jezzball.css', // JezzBall's Windows 3.x caption under Vista (#610)
 ]);
 const COLOUR_PROPS = /^(background(-color|-image)?|border(-(top|right|bottom|left))?(-color)?|box-shadow|color|text-shadow|filter|backdrop-filter|-webkit-backdrop-filter|opacity)$/;
 

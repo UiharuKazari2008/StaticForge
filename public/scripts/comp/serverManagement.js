@@ -156,12 +156,15 @@ const serverManagement = {
 
         try {
             // The Welcome screen shows "Shutting down..." before PM2 is posted.
-            // runWinlogonPower: public/scripts/comp/winlogonPower.js
+            // runWinlogonPower: public/scripts/comp/winlogonPower.js (the screen stays dark
+            // until onCommit settles: the old process gone and the new one answering)
             const went = await runWinlogonPower('server', {
                 onCommit: async () => {
                     if (options.onStatus) {
                         options.onStatus('Preparing DSS restart...');
                     }
+                    // fetchServerStatusForRestart, serverStartFromStatus: public/scripts/comp/modalUtils.js
+                    const oldStart = serverStartFromStatus(await fetchServerStatusForRestart());
                     await this.postPm2Action('/pm2/restart', { broom });
                     if (options.onStatus) {
                         options.onStatus('DSS restarting - waiting for disconnect...');
@@ -176,7 +179,17 @@ const serverManagement = {
                         throw err;
                     }
                     if (options.onStatus) {
-                        options.onStatus('Server disconnected - restarting application...');
+                        options.onStatus('Server disconnected - waiting for DSS to come back...');
+                    }
+                    // waitForServerReturn: public/scripts/comp/modalUtils.js
+                    if (!(await waitForServerReturn(oldStart, { timeoutMs: 180000 }))) {
+                        if (options.onStatus) {
+                            options.onStatus('DSS did not come back online');
+                        }
+                        throw new Error('DreamScape Server did not come back online');
+                    }
+                    if (options.onStatus) {
+                        options.onStatus('DSS is back - restarting application...');
                     }
                 }
             });

@@ -43,12 +43,24 @@ assert.strictEqual(dlu(13, 45, 200, 10), 'left:20px;top:73px;width:300px;height:
 assert.strictEqual(dlu(6, 6, 240, 121), 'left:9px;top:10px;width:360px;height:196px;', 'group box edges');
 
 // tray: legacy "not always shown" list migrates; Vista's default is Hide when inactive
-const tray = vm.createContext({ localStorage: global.localStorage, document: { getElementById: () => null, querySelector: () => null }, Date, JSON, Set, Map, setTimeout, clearTimeout });
-vm.runInContext(read('public/scripts/comp/trayRegistry.js'), tray);
+const trayContext = () => {
+    const c = vm.createContext({ localStorage: global.localStorage, document: { getElementById: () => null, querySelector: () => null }, Date, JSON, Set, Map, setTimeout, clearTimeout });
+    vm.runInContext(read('public/scripts/comp/trayRegistry.js'), c);
+    return c;
+};
+let tray = trayContext();
 assert.strictEqual(vm.runInContext("trayIconBehavior('dovecoteTrayIcon')", tray), 'inactive');
 store['desktop-tray-overflow-icons'] = JSON.stringify(['searchIndexingIndicator']);
+tray = trayContext();
 assert.strictEqual(vm.runInContext("trayIconBehavior('searchIndexingIndicator')", tray), 'hide');
 assert.strictEqual(vm.runInContext("trayIconBehavior('dovecoteTrayIcon')", tray), 'show');
+// the saved behaviours are read once, not once per icon per sync (the review's tray finding)
+let trayReads = 0;
+const countingStorage = { getItem: (k) => { trayReads += 1; return global.localStorage.getItem(k); }, setItem: global.localStorage.setItem };
+const tray2 = vm.createContext({ localStorage: countingStorage, document: { getElementById: () => null, querySelector: () => null }, Date, JSON, Set, Map, setTimeout, clearTimeout });
+vm.runInContext(read('public/scripts/comp/trayRegistry.js'), tray2);
+for (let i = 0; i < 20; i++) vm.runInContext("trayIconBehavior('dovecoteTrayIcon')", tray2);
+assert.ok(trayReads <= 3, `tray behaviours read ${trayReads} times`);
 
 // wiring
 const html = read('public/app.html');
@@ -123,7 +135,8 @@ const vt = read('public/css/vista-taskbar.css');
 assert.ok(vt.includes('.taskbar-start:not(:has(> .taskbar-start-button.orb)) + .taskbar-quick-launch') && vt.includes('padding: 0 0 0 3px;'), 'Quick Launch spacing after a text Start button, icons 3 px in');
 
 // the Start button lives on the Taskbar tab; Orb greys out Logo and Text
-assert.ok(tp.includes("group(6, 131, 240, 66, 'Start button')") && tp.includes("c.querySelector('#tbp-sb-text').disabled = orb;"));
+// the Start button group moved down under the taskbar Opacity slider (2026-10-21)
+assert.ok(tp.includes("group(6, 142, 240, 58, 'Start button')") && tp.includes("c.querySelector('#tbp-sb-text').disabled = orb;"));
 assert.ok(!tp.includes("node('Start button',"), 'no longer in Customize Start Menu');
 
 // Recent Items: per workspace, documents only
@@ -155,4 +168,175 @@ assert.ok(!tp.includes("cl.removeAttribute('id')") && !tp.includes("glyph.remove
 const tpc = read('public/css/taskbar-properties.css');
 assert.ok(tpc.includes('.tbp-list-row select.tbp-list-select') && tpc.includes('overflow-x: hidden;'));
 
-console.log('test-taskbar-properties: ok');
+// the previews draw like the taskbar: its colours and size, not the dialog's Tahoma 11 px
+const tpc2 = read('public/css/taskbar-properties.css');
+assert.ok(tpc2.includes(':is(button, input, select, label, span, div):not(.tbp-preview *)'), "the dialog's font stays out of the previews");
+assert.ok(tp.includes('function barLook()') && tpc2.includes('var(--tbp-tray-color, #ccc)'));
+
+assert.ok(!tp.includes('modal hidden on-top tbp-window'), 'Properties is not always on top');
+
+// ---- a small DOM for what needs the taskbar element (review fixes, 2026-10-21) ----------------
+function fakeDom() {
+    class El {
+        constructor(tag) {
+            this.tagName = String(tag).toUpperCase();
+            this.children = [];
+            this.parentNode = null;
+            this.dataset = {};
+            this.attrs = {};
+            this.listeners = {};
+            this.id = '';
+            this.title = '';
+            const cls = new Set();
+            this.classList = {
+                contains: (c) => cls.has(c),
+                add: (...c) => c.forEach((x) => cls.add(x)),
+                remove: (...c) => c.forEach((x) => cls.delete(x)),
+                toggle: (c, on) => { const v = on === undefined ? !cls.has(c) : !!on; if (v) cls.add(c); else cls.delete(c); return v; }
+            };
+            Object.defineProperty(this, 'className', { get: () => Array.from(cls).join(' '), set: (v) => { cls.clear(); String(v).split(/\s+/).filter(Boolean).forEach((x) => cls.add(x)); } });
+            const props = {};
+            this.style = { setProperty: (k, v) => { props[k] = v; }, removeProperty: (k) => { delete props[k]; }, getPropertyValue: (k) => props[k] || '' };
+        }
+        set textContent(v) { this.children.forEach((c) => { c.parentNode = null; }); this.children = []; this._text = v; }
+        get textContent() { return this._text || ''; }
+        appendChild(c) { c.parentNode = this; this.children.push(c); return c; }
+        insertBefore(c, ref) { c.parentNode = this; const i = this.children.indexOf(ref); if (i < 0) this.children.push(c); else this.children.splice(i, 0, c); return c; }
+        setAttribute(k, v) { this.attrs[k] = String(v); }
+        removeAttribute(k) { delete this.attrs[k]; }
+        addEventListener(t, fn) { (this.listeners[t] = this.listeners[t] || []).push(fn); }
+        matches() { return false; }
+        contains(n) { for (let x = n; x; x = x.parentNode) if (x === this) return true; return false; }
+        querySelector() { return null; }
+        querySelectorAll() { return []; }
+        walk(fn) { fn(this); this.children.forEach((c) => c.walk(fn)); }
+    }
+    const tb = new El('div');
+    tb.id = 'desktopTaskbar';
+    const band = new El('div');
+    band.id = 'taskbarWindows';
+    tb.appendChild(band);
+    const timers = [];
+    const ctx = {
+        localStorage: (() => { const st = {}; return { getItem: (k) => (k in st ? st[k] : null), setItem: (k, v) => { st[k] = String(v); }, removeItem: (k) => { delete st[k]; }, key: (i) => Object.keys(st)[i], get length() { return Object.keys(st).length; } }; })(),
+        CustomEvent: global.CustomEvent,
+        dispatchEvent: () => true,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        setTimeout: (fn) => { timers.push(fn); return timers.length; },
+        clearTimeout: () => {},
+        requestAnimationFrame: () => 0,
+        JSON, Math, Number, String, Array, Object, Set, Map, Date, Promise, console,
+        refits: 0,
+        known: new Set(),
+        document: {
+            readyState: 'complete',
+            getElementById: (id) => { let hit = null; tb.walk((n) => { if (!hit && n.id === id) hit = n; }); return hit; },
+            createElement: (t) => new El(t),
+            addEventListener: () => {},
+            querySelector: () => null,
+            querySelectorAll: () => []
+        }
+    };
+    ctx.window = ctx;
+    ctx.refitMaximizedModals = () => { ctx.refits += 1; };
+    ctx.syncRootStateFlags = () => {};
+    ctx.findStartMenuLaunchableById = (id) => (ctx.known.has(id) ? { launchId: id, text: id, imageIcon: `${id}.png` } : null);
+    vm.createContext(ctx);
+    vm.runInContext(read('public/scripts/comp/taskbarSettings.js'), ctx);
+    return { ctx, tb, timers, ts: ctx.taskbarSettings, bar: () => ctx.document.getElementById('taskbarQuickLaunch') };
+}
+
+// Opacity: clamped to 20-100; the slider previews on the taskbar without saving; Cancel puts it back
+{
+    assert.strictEqual(ts.normalize({ opacity: 5 }).opacity, 20);
+    assert.strictEqual(ts.normalize({ opacity: 150 }).opacity, 100);
+    assert.strictEqual(ts.normalize({ opacity: 'x' }).opacity, 100);
+    assert.strictEqual(ts.normalize({ opacity: 57.6 }).opacity, 58);
+    const { ctx, tb, ts: t2 } = fakeDom();
+    t2.previewOpacity(40);
+    assert.ok(tb.classList.contains('taskbar-custom-opacity'));
+    assert.strictEqual(tb.style.getPropertyValue('--taskbar-opacity'), '0.4');
+    assert.strictEqual(t2.get().opacity, 100, 'a preview is not saved');
+    vm.runInContext(read('public/scripts/comp/taskbarProperties.js'), ctx);
+    ctx.taskbarProperties._test.revertOpacityPreview();
+    assert.ok(!tb.classList.contains('taskbar-custom-opacity'), 'Cancel puts the saved opacity back');
+    assert.strictEqual(tb.style.getPropertyValue('--taskbar-opacity'), '');
+    t2.set({ opacity: 10 });
+    assert.strictEqual(tb.style.getPropertyValue('--taskbar-opacity'), '0.2', 'the slider floor is 20 %');
+    ctx.taskbarProperties._test.revertOpacityPreview();
+    assert.strictEqual(tb.style.getPropertyValue('--taskbar-opacity'), '0.2', 'an applied opacity stays');
+    assert.ok(tp.includes('revertOpacityPreview();\n        const modal = dlg.modal;'), 'closing the sheet reverts the preview');
+    const glass = read('public/css/aero-glass.css');
+    assert.ok(glass.includes('html.disable-blur body:not(.has-active-maximized-window) .desktop-taskbar.taskbar-custom-opacity::after'),
+        'a maximized window keeps the taskbar solid under Aero Basic too');
+
+    // auto-hide on or off re-fits maximised windows to the new work area
+    t2.set({ autoHide: true });
+    assert.strictEqual(ctx.refits, 1);
+    t2.set({ locked: false });
+    assert.strictEqual(ctx.refits, 1, 'only when auto-hide changes');
+    t2.set({ autoHide: false });
+    assert.strictEqual(ctx.refits, 2);
+}
+
+// Apply sends only what the dialog changed: a Lock or Quick Launch change made meanwhile stays
+{
+    const corePatch = global.taskbarProperties._test.corePatch;
+    const saved = { ...ts.normalize({}), places: { games: false } };
+    const pending = JSON.parse(JSON.stringify(saved));
+    pending.autoHide = true;
+    pending.places = { help: false };
+    assert.deepStrictEqual(corePatch(pending, saved), { autoHide: true, places: { games: true, help: false } });
+    assert.deepStrictEqual(corePatch(saved, JSON.parse(JSON.stringify(saved))), {});
+    ts.set({ locked: true, quickLaunchItems: ['show-desktop'] });
+    ts.set({ locked: false, quickLaunchItems: ['show-desktop', 'calc'] }); // the taskbar menu and Add to Quick Launch
+    ts.set(corePatch({ ...saved, autoHide: true }, saved));
+    assert.strictEqual(ts.get().locked, false);
+    assert.deepStrictEqual(ts.get().quickLaunchItems, ['show-desktop', 'calc']);
+    assert.ok(tp.includes("root.addEventListener('taskbarsettingschange', onSettingsChange)"), 'the open dialog follows outside changes');
+}
+
+// Quick Launch: a launchId that never resolves stops retrying and shows as a deletable broken shortcut
+{
+    const { ctx, timers, ts: t3, bar } = fakeDom();
+    ctx.known.add('calc');
+    t3.set({ quickLaunchItems: ['show-desktop', 'calc', 'gone-app'] });
+    assert.deepStrictEqual(bar().children.map((b) => b.dataset.quickLaunch), ['show-desktop', 'calc'], 'not found yet: left out while waiting');
+    let rounds = 0;
+    while (timers.length && rounds < 50) { timers.shift()(); rounds += 1; }
+    assert.ok(rounds <= 12, `retries stop (${rounds} rounds)`);
+    const broken = bar().children.find((b) => b.dataset.quickLaunch === 'gone-app');
+    assert.ok(broken && broken.dataset.missing === 'true' && broken.dataset.contextMenu === 'vista-quick-launch-item', 'a broken shortcut you can delete');
+    assert.ok(broken.children[0].src.endsWith('/vista-taskbar/program-16.png'), "Vista's generic program icon");
+    t3.removeQuickLaunch('gone-app');
+    assert.deepStrictEqual(bar().children.map((b) => b.dataset.quickLaunch), ['show-desktop', 'calc']);
+    assert.deepStrictEqual(size('program-16.png'), [16, 16]);
+    assert.deepStrictEqual(size('program-32.png'), [32, 32]);
+}
+
+// Recent Items: Privacy off clears every workspace; a reopened item does not come back twice
+{
+    global.activeWorkspace = 'ws-a';
+    ri.clear();
+    ri.add({ kind: 'file', key: 'user-file:7', title: 'a.txt' });
+    ri.registerOpener('page', async () => { ri.add({ kind: 'page', key: 'new-session', title: 'Same page', data: { url: 'u' } }); });
+    ri.add({ kind: 'page', key: 'old-session', title: 'Same page', data: { url: 'u' } });
+    return ri.open(ri.list()[0]).then(() => {
+        assert.deepStrictEqual(ri.list().map((e) => e.key), ['page:new-session', 'file:user-file:7'], 'the new browser session replaces the reopened entry');
+        const src = read('public/scripts/comp/recentItems.js');
+        assert.ok(src.includes("key: `${item.targetKind}:${id}`"), 'a file is keyed by itself, not the folder it was opened from');
+        global.activeWorkspace = 'ws-b';
+        ri.add({ kind: 'file', key: 'b', title: 'b' });
+        store.removeItem = (k) => { delete store[k]; };
+        global.localStorage.removeItem = store.removeItem;
+        global.localStorage.key = (i) => Object.keys(store)[i];
+        Object.defineProperty(global.localStorage, 'length', { get: () => Object.keys(store).length, configurable: true });
+        ts.set({ recentFiles: false });
+        assert.deepStrictEqual(ri.list(), []);
+        assert.ok(!Object.keys(store).some((k) => k.startsWith('recentItems:')), 'Privacy off clears every workspace');
+        ts.set({ recentFiles: true });
+        assert.ok(mu.includes("container.querySelectorAll('[data-click-menu]').forEach((el) => contextMenu.detachClickMenuFromElement(el));"), 'the Start menu frees its old click menus');
+        console.log('test-taskbar-properties: ok');
+    });
+}

@@ -1381,23 +1381,49 @@ body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-di
     box-shadow: none;
     filter: none;
     opacity: 1;
+    transition: none;
 }
 body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *)[type="radio"] + label::before {
     background-image: url("/static_images/vista-controls/radio.png");
 }
 body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]) + label::after {
-    content: none;
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 13px;
+    height: 13px;
+    margin: auto 0;
+    background: url("/static_images/vista-controls/checkbox.png") 0 -13px / 13px auto no-repeat;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.5s linear;
+}
+body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *)[type="radio"] + label::after {
+    left: calc(var(--w7-rd-left) * -1);
+    bottom: auto;
+    margin: 0;
+    background-image: url("/static_images/vista-controls/radio.png");
 }
 body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]) + label {
     filter: none;
     opacity: 1;
 }
-body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]) + label:hover::before { background-position-y: -13px; }
-body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]) + label:active::before { background-position-y: -26px; }
 body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):checked + label::before { background-position-y: -52px; }
-body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):checked + label:hover::before { background-position-y: -65px; }
-body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):checked + label:active::before { background-position-y: -78px; }
 body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *)[type="checkbox"]:indeterminate + label::before { background-position-y: -104px; }
+/* hot and pressed are the ::after layer over the box: hot fades in fast and out slowly, as push
+   buttons do; pressed is instant */
+body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]) + label:hover::after { opacity: 1; transition-duration: 0.1s; }
+body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):checked + label::after { background-position-y: -65px; }
+body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *)[type="checkbox"]:indeterminate + label::after { background-position-y: -117px; }
+body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]) + label:active::after { background-position-y: -26px; opacity: 1; transition: none; }
+body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):checked + label:active::after { background-position-y: -78px; }
+body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *)[type="checkbox"]:indeterminate + label:active::after { background-position-y: -130px; }
+body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):disabled + label::after { content: none; }
 body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):disabled + label:is(*, :hover, :active)::before { background-position-y: -39px; }
 body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):checked:disabled + label:is(*, :hover, :active)::before { background-position-y: -91px; }
 body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):disabled + label {
@@ -1407,7 +1433,7 @@ body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-di
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):not(.win7 input:is([type="checkbox"], [type="radio"]):has(+ label)) {
     appearance: none;
     -webkit-appearance: none;
-    position: static;
+    position: relative;
     flex: none;
     width: 13px;
     height: 13px;
@@ -1424,14 +1450,28 @@ body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="lig
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *)[type="radio"]:not(.win7 input[type="radio"]:has(+ label)) {
     background-image: url("/static_images/vista-controls/radio.png");
 }
-body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):not(.win7 input:is([type="checkbox"], [type="radio"]):has(+ label)):is(:hover, label:hover > *) { background-position-y: -13px; }
-body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):not(.win7 input:is([type="checkbox"], [type="radio"]):has(+ label)):is(:active, label:active > *) { background-position-y: -26px; }
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):not(.win7 input:is([type="checkbox"], [type="radio"]):has(+ label)):checked { background-position-y: -52px; }
-body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):not(.win7 input:is([type="checkbox"], [type="radio"]):has(+ label)):checked:is(:hover, label:hover > *) { background-position-y: -65px; }
-body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):not(.win7 input:is([type="checkbox"], [type="radio"]):has(+ label)):checked:is(:active, label:active > *) { background-position-y: -78px; }
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *)[type="checkbox"]:not(.win7 input[type="checkbox"]:has(+ label)):indeterminate { background-position-y: -104px; }
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):not(.win7 input:is([type="checkbox"], [type="radio"]):has(+ label)):disabled { background-position-y: -39px; }
 body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):not(.win7 input:is([type="checkbox"], [type="radio"]):has(+ label)):checked:disabled { background-position-y: -91px; }
+/* hot and pressed: an ::after layer over the input, fading like the labelled boxes above */
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):not(.win7 input:is([type="checkbox"], [type="radio"]):has(+ label))::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: url("/static_images/vista-controls/checkbox.png") 0 -13px / 13px auto no-repeat;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.5s linear;
+}
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *)[type="radio"]:not(.win7 input[type="radio"]:has(+ label))::after { background-image: url("/static_images/vista-controls/radio.png"); }
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):not(.win7 input:is([type="checkbox"], [type="radio"]):has(+ label)):is(:hover, label:hover > *)::after { opacity: 1; transition-duration: 0.1s; }
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):not(.win7 input:is([type="checkbox"], [type="radio"]):has(+ label)):checked::after { background-position-y: -65px; }
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *)[type="checkbox"]:not(.win7 input[type="checkbox"]:has(+ label)):indeterminate::after { background-position-y: -117px; }
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):not(.win7 input:is([type="checkbox"], [type="radio"]):has(+ label)):is(:active, label:active > *)::after { background-position-y: -26px; opacity: 1; transition: none; }
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):not(.win7 input:is([type="checkbox"], [type="radio"]):has(+ label)):checked:is(:active, label:active > *)::after { background-position-y: -78px; }
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *)[type="checkbox"]:not(.win7 input[type="checkbox"]:has(+ label)):indeterminate:is(:active, label:active > *)::after { background-position-y: -130px; }
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):not(.win7 input:is([type="checkbox"], [type="radio"]):has(+ label)):disabled::after { content: none; }
 
 /* Track bars (input range): TRACKBAR THUMBBOTTOM IMAGE_790 (11x19: normal, hot, pressed, focused,
    disabled) on the 4 px TRACK IMAGE_642 groove. */

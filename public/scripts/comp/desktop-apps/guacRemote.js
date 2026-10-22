@@ -999,6 +999,31 @@ function buildDesktopGuacPinBar(modal) {
     return { hit: hit, bar: bar };
 }
 
+/**
+ * Remote Desktop Connection's Options > Display (remoteDesktopConnection.js). Guacamole sizes the
+ * remote desktop from its frame when it connects, so the window is sized round a frame of
+ * display.width x display.height (as much of it as the work area holds) before the frame loads;
+ * display.fullScreen covers the screen, the session window's own full screen.
+ */
+function applyDesktopGuacDisplay(modal, body, display) {
+    if (display.fullScreen) {
+        toggleDesktopGuacCover(modal);
+        return;
+    }
+    // getModalWorkAreaBounds / setModalPositionFromViewportRect: public/scripts/comp/modalUtils.js
+    const area = getModalWorkAreaBounds();
+    const width = Math.min(area.width, display.width + modal.offsetWidth - body.clientWidth);
+    const height = Math.min(area.height, display.height + modal.offsetHeight - body.clientHeight);
+    modal.dataset.windowMaxWidth = String(Math.max(width, parseInt(modal.dataset.windowMaxWidth, 10) || 0));
+    modal.dataset.windowMaxHeight = String(Math.max(height, parseInt(modal.dataset.windowMaxHeight, 10) || 0));
+    setModalPositionFromViewportRect(modal, {
+        left: area.left + Math.round((area.width - width) / 2),
+        top: area.top + Math.round((area.height - height) / 2),
+        width,
+        height
+    });
+}
+
 function openDesktopGuacFrame(opts) {
     const existing = guacSessionModals.get(opts.key);
     if (existing) {
@@ -1062,6 +1087,7 @@ function openDesktopGuacFrame(opts) {
     modal.appendChild(content);
     document.body.appendChild(modal);
     showDesktopGuacModal(modal);
+    if (opts.display) applyDesktopGuacDisplay(modal, body, opts.display);
 
     // opts.url: a session URL already in hand (Remote Desktop Connection's quick connect)
     const loading = opts.url

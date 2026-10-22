@@ -3800,10 +3800,17 @@ const omegasearchDsapDriver = {
         this._syncFrameToolbar();
     },
 
-    /** "Show in photo frame" only exists when a Sidebar Slide Show opened this search (frame= in the URL). */
+    /** "Show in photo frame" only exists when a Sidebar Slide Show opened this search (frame= in the URL);
+        frame=screensaver is the Photos screen saver's Search... (personalizationDialogs.js): its button saves. */
     _syncFrameToolbar() {
         const state = this._state;
         this._els.frameToolbar?.classList.toggle('hidden', !(state?.frameId && state.view === 'gallery' && state.total > 0));
+        const btn = this._els.frameToolbar?.querySelector('#omegaFrameSaveBtn');
+        if (btn) {
+            btn.innerHTML = state?.frameId === 'screensaver'
+                ? '<i class="fas fa-save"></i> Save for the screen saver'
+                : '<i class="fas fa-image"></i> Show in photo frame';
+        }
     },
 
     _saveToPhotoFrame() {
@@ -3818,6 +3825,15 @@ const omegasearchDsapDriver = {
             blockOptions: { defaultMatchMode: blockOptions.defaultMatchMode || 'substring' },
             label: (state.blocks || []).map(omegasearchDsapFormatBlockLabel).filter(Boolean).join(', ')
         };
+        if (state.frameId === 'screensaver') {
+            // personalizationDialogs.setPhotoSearch: public/scripts/comp/personalizationDialogs.js
+            const dialogs = window.personalizationDialogs;
+            const saved = !!(dialogs && dialogs.setPhotoSearch(search, state.total));
+            showGlassToast(saved ? 'success' : 'error', 'Image Search',
+                saved ? `The Photos screen saver now shows ${state.total} matching pictures` : 'The screen saver settings are not open',
+                false, 3000, `<i class="fas fa-${saved ? 'save' : 'exclamation-circle'}"></i>`);
+            return;
+        }
         // vsbSetFrameSearch: public/scripts/comp/vistaSidebar.js
         const ok = vsbSetFrameSearch(state.frameId, search);
         // showGlassToast: public/scripts/comp/toastManager.js

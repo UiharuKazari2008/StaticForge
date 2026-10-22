@@ -28,6 +28,8 @@
  *   powerButton     what the Start menu's power button does: 'shutdown' | 'restart' | 'logoff'
  *   lockButton      what the button beside it does: 'lock' | 'logoff'
  *   ticker          the Toolbars tab's Status toolbar (the connection ticker)
+ *   opacity         20-100 %: how solid the taskbar's glass is (Yukimi 2026-10-21; Taskbar tab's
+ *                   Opacity slider); 100 is the glass as it always was (aero-glass.css)
  *   quickLaunchItems
  *                   Quick Launch's shortcuts in order: 'show-desktop', 'switch-windows', or any
  *                   Start menu launchId; added with the Start menu's "Add to Quick Launch",
@@ -63,6 +65,7 @@
         programsIconSize: 'small',
         powerButton: 'shutdown',
         lockButton: 'lock',
+        opacity: 100,
         quickLaunchItems: ['show-desktop', 'switch-windows', 'encyclopedia', 'media-player'],
         places: {}
     });
@@ -98,6 +101,8 @@
         }
         const n = Number(raw.recentProgramCount);
         if (Number.isFinite(n)) out.recentProgramCount = Math.max(0, Math.min(30, Math.round(n)));
+        const op = Number(raw.opacity);
+        if (Number.isFinite(op)) out.opacity = Math.max(20, Math.min(100, Math.round(op)));
         if (raw.places && typeof raw.places === 'object') {
             Object.keys(raw.places).forEach((id) => {
                 if (raw.places[id] === false) out.places[id] = false;
@@ -171,6 +176,7 @@
             if (start.dataset.programsSize !== settings.programsIconSize) start.dataset.programsSize = settings.programsIconSize;
         }
         setAutoHide(settings.autoHide);
+        applyOpacity(settings.opacity);
         if (!settings.thumbnails) hideThumb(true);
         // traySyncOverflow: public/scripts/comp/trayRegistry.js
         callGlobal('traySyncOverflow');
@@ -179,6 +185,16 @@
         try {
             root.dispatchEvent(new CustomEvent('taskbarsettingschange', { detail: get() }));
         } catch (_) { /* old browsers */ }
+    }
+
+    /** The glass's opacity (aero-glass.css .taskbar-custom-opacity); the dialog previews with it too. */
+    function applyOpacity(percent) {
+        const tb = taskbar();
+        if (!tb) return;
+        const v = Math.max(20, Math.min(100, Math.round(Number(percent) || 100)));
+        toggle(tb, 'taskbar-custom-opacity', v < 100);
+        if (v < 100) tb.style.setProperty('--taskbar-opacity', String(v / 100));
+        else tb.style.removeProperty('--taskbar-opacity');
     }
 
     // ---- Start button width ----------------------------------------------------------------------
@@ -222,6 +238,10 @@
         if (tb && tb.matches(':hover')) return true;
         if (typeof contextMenu !== 'undefined' && contextMenu && contextMenu.isOpen && contextMenu.currentTarget
             && tb && tb.contains(contextMenu.currentTarget)) return true;
+        // the clock's flyout (taskbarClock.js) and a window preview over a button
+        const clock = root.taskbarClockFlyout;
+        if (clock && typeof clock.isOpen === 'function' && clock.isOpen()) return true;
+        if (thumb && !thumb.classList.contains('hidden') && thumb.matches(':hover')) return true;
         return false;
     }
 
@@ -248,6 +268,7 @@
     function setAutoHide(on) {
         const tb = taskbar();
         if (!tb) return;
+        const changed = tb.classList.contains('taskbar-autohide') !== on;
         toggle(tb, 'taskbar-autohide', on);
         if (!autoHideWired) {
             autoHideWired = true;
@@ -269,8 +290,10 @@
             if (autoHideTimer) clearTimeout(autoHideTimer);
             autoHideTimer = 0;
         }
-        // the work area grows by the bar's height (modalUtils.js computeModalWorkAreaBounds)
+        // the work area grows by the bar's height (modalUtils.js computeModalWorkAreaBounds):
+        // maximised windows take the new one (refitMaximizedModals, modalUtils.js)
         callGlobal('syncRootStateFlags');
+        if (changed) callGlobal('refitMaximizedModals');
     }
 
     // ---- keep on top ---------------------------------------------------------------------------
@@ -339,28 +362,45 @@
     function runQuickLaunch(id) {
         const shell = QUICK_LAUNCH_SHELL[id];
         if (shell) shell.run();
+        else if (!callGlobal('findStartMenuLaunchableById', id)) brokenQuickLaunch(id);
         else launchApp(id);
     }
 
-    /** Quick Launch's buttons from the list (rebuilt when the list changes; the Start menu items
-     *  load after this file, so a launchId that is not there yet is tried again later). */
+    // the Start menu items load after this file: a launchId not found yet is looked for again
+    // every 3 s, ten times; after that it is a shortcut whose program is gone
+    const QUICK_LAUNCH_RETRY_MS = 3000;
+    const QUICK_LAUNCH_RETRIES = 10;
+    let quickLaunchRetries = 0;
+    let quickLaunchRetryTimer = 0;
+
+    /** A shortcut whose program is gone: Vista's generic program icon, still deletable. */
+    function brokenQuickLaunchEntry(id) {
+        return { id, title: id, icon: `${ART}/program-16.png`, icon2x: `${ART}/program-32.png`, missing: true };
+    }
+
+    /** Quick Launch's buttons from the list (rebuilt when the list changes). */
     function renderQuickLaunch(bar) {
         const key = settings.quickLaunchItems.join('|');
-        if (bar.dataset.items === key && !bar.querySelector('[data-pending]')) return;
-        bar.dataset.items = key;
-        bar.textContent = '';
+        if (bar.dataset.items === key) return;
+        const giveUp = quickLaunchRetries >= QUICK_LAUNCH_RETRIES;
         let pending = false;
-        settings.quickLaunchItems.forEach((id) => {
+        const entries = settings.quickLaunchItems.map((id) => {
             const entry = quickLaunchEntry(id);
-            if (!entry) {
-                pending = true;
-                return;
-            }
+            if (entry) return entry;
+            if (giveUp) return brokenQuickLaunchEntry(id);
+            pending = true;
+            return null;
+        }).filter(Boolean);
+        // a list still waiting on the Start menu is not marked done, so the retry rebuilds it
+        bar.dataset.items = pending ? '' : key;
+        bar.textContent = '';
+        entries.forEach((entry) => {
             const b = doc.createElement('button');
             b.type = 'button';
             b.className = 'taskbar-quick-launch-btn';
-            b.dataset.quickLaunch = id;
+            b.dataset.quickLaunch = entry.id;
             b.dataset.contextMenu = 'vista-quick-launch-item';
+            if (entry.missing) b.dataset.missing = 'true';
             b.title = entry.title;
             b.setAttribute('aria-label', entry.title);
             if (entry.fa) {
@@ -380,13 +420,29 @@
             }
             bar.appendChild(b);
         });
-        if (pending && !renderQuickLaunch.retry) {
-            renderQuickLaunch.retry = setTimeout(() => {
-                renderQuickLaunch.retry = 0;
-                bar.dataset.items = '';
+        if (pending && !quickLaunchRetryTimer) {
+            quickLaunchRetryTimer = setTimeout(() => {
+                quickLaunchRetryTimer = 0;
+                quickLaunchRetries += 1;
                 renderQuickLaunch(bar);
-            }, 3000);
+            }, QUICK_LAUNCH_RETRY_MS);
         }
+    }
+
+    /** Vista's "Problem with Shortcut": the program is gone; offer to delete the shortcut. */
+    async function brokenQuickLaunch(id) {
+        // showConfirmationDialog: public/scripts/comp/confirmationDialog.js
+        if (typeof showConfirmationDialog !== 'function') return;
+        const yes = await showConfirmationDialog(
+            `The item '${id}' that this shortcut refers to has been changed or moved, so this shortcut will no longer work properly. Do you want to delete this shortcut?`,
+            [
+                { text: 'Yes', value: true, className: 'btn-standard primary' },
+                { text: 'No', value: false, className: 'btn-standard' }
+            ],
+            null,
+            { title: 'Problem with Shortcut' }
+        );
+        if (yes) removeQuickLaunch(id);
     }
 
     function hasQuickLaunch(id) {
@@ -796,6 +852,7 @@
         get,
         set,
         apply,
+        previewOpacity: applyOpacity,
         normalize,
         openProperties,
         toggleShowDesktop,

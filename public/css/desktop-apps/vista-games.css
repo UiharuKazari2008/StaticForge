@@ -199,7 +199,7 @@ body.desktop-mode:not(.windows-classic-theme) .modal.vista-game-dialog[data-vist
     background: #fff;
     border: 1px solid #828790;
     outline: none;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 .vista-game-listbox-item {
@@ -250,7 +250,7 @@ body.desktop-mode:not(.windows-classic-theme) .modal.vista-game-dialog[data-vist
     border: 1px solid transparent;
     border-radius: 3px;
     color: #000;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 .vista-game-listview-item img {
@@ -327,7 +327,7 @@ body .modal.vista-game-dialog > .modal-content button.vista-task-link {
     color: #151c55;
     text-align: left;
     text-shadow: none;
-    cursor: default;
+    cursor: var(--c-default);
     box-sizing: border-box;
 }
 
@@ -437,12 +437,6 @@ body .modal.vista-game-dialog > .modal-content button.vista-task-link:is(.defaul
     margin-top: 13px;
     padding-right: 6px;
     line-height: 13px;
-}
-
-.vista-game-about-banner {
-    height: 64px;
-    margin: 0 -12px 8px;
-    background: url("/static_images/vista-games/ui/about-banner.png") no-repeat left top;
 }
 
 .vista-game-about-row {

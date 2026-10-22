@@ -109,7 +109,14 @@ function sandbox({ blockers = [], open = [], logout, onDesktopFlush, pending = f
             hasPendingDesktopChanges: () => pending,
             flushPendingDesktopLayout: () => { log.push(`flush@${now}`); return onDesktopFlush ? onDesktopFlush() : Promise.resolve(); }
         },
-        notepadManager: { notepads: new Map(blockers.map((m, i) => [i, { hasUnsavedChanges: true, element: m }])) }
+        notepadManager: { notepads: new Map(blockers.map((m, i) => [i, { hasUnsavedChanges: true, element: m }])) },
+        listeners: {},
+        addEventListener(type, fn) { (this.listeners[type] = this.listeners[type] || []).push(fn); },
+        sessionStorage: {
+            items: new Map([['staticforge_director_reopen', '{"persona":"xi"}']]),
+            getItem(key) { return this.items.has(key) ? this.items.get(key) : null; },
+            removeItem(key) { this.items.delete(key); }
+        }
     };
     ctx.window = ctx;
     vm.createContext(ctx);
@@ -195,6 +202,26 @@ const launchAt = (log) => {
     await s.advance(30000);
     assert.strictEqual(launchAt(s.log) - darkAt(s.log), s.ctx.WINLOGON_POWER_BLACK_MAX_MS, 'logoff: capped linger');
 
+    // ...and a failed log off brings the desktop back with the reason, no /launch signed in
+    s = sandbox({ logout: () => Promise.resolve(false) });
+    run = s.ctx.runWinlogonPower('logoff');
+    run.catch(() => {});
+    await s.advance(20000);
+    await assert.rejects(run, /still signed in/);
+    assert.ok(s.log.includes('hide'), 'logoff failure: Welcome screen hidden again');
+    assert.strictEqual(launchAt(s.log), null, 'logoff failure: no /launch');
+
+    // Shut down and log off drop the Director's reopen flag at pagehide; restart keeps it
+    const pagehide = (sb) => (sb.ctx.listeners.pagehide || []).forEach((fn) => fn());
+    for (const kind of ['shutdown', 'logoff', 'restart']) {
+        s = sandbox();
+        run = s.ctx.runWinlogonPower(kind);
+        await s.advance(20000);
+        pagehide(s);
+        assert.strictEqual(s.ctx.sessionStorage.getItem('staticforge_director_reopen') === null,
+            kind !== 'restart', `${kind}: Director reopen flag ${kind === 'restart' ? 'kept' : 'dropped'}`);
+    }
+
     // Pending desktop saves are flushed in the dark
     s = sandbox({ pending: true, onDesktopFlush: () => new Promise((r) => setTimeout(r, 0)) });
     let flushDone;
@@ -220,11 +247,27 @@ const launchAt = (log) => {
     await assert.rejects(run, /pm2 down/);
     assert.ok(s.log.includes('hide'), 'Welcome screen hidden again');
     assert.strictEqual(launchAt(s.log), null);
-    // ...a slow disconnect still leaves at the cap (the /launch boot waits for the server)
+    // ...a slow restart has no cap: dark until the new server answers (/launch on the old
+    // process builds a stale pack), however long that takes
     s = sandbox();
-    run = s.ctx.runWinlogonPower('server', { onCommit: () => new Promise(() => {}) });
-    await s.advance(30000);
-    assert.strictEqual(launchAt(s.log) - darkAt(s.log), s.ctx.WINLOGON_POWER_BLACK_MAX_MS);
+    let serverBack;
+    run = s.ctx.runWinlogonPower('server', { onCommit: () => new Promise((r) => { serverBack = r; }) });
+    await s.advance(60000);
+    assert.strictEqual(launchAt(s.log), null, 'server: still dark while the old server is up');
+    const backAt = s.time();
+    serverBack();
+    await s.advance(10);
+    assert.strictEqual(launchAt(s.log), backAt, 'server: /launch once the new server answers');
+    // ...and one that never comes back (onCommit's own timeout) is an error, not a /launch
+    s = sandbox();
+    let serverFail;
+    run = s.ctx.runWinlogonPower('server', { onCommit: () => new Promise((_, no) => { serverFail = no; }) });
+    run.catch(() => {});
+    await s.advance(60000);
+    serverFail(new Error('DreamScape Server did not come back online'));
+    await s.advance(10);
+    await assert.rejects(run, /did not come back/);
+    assert.strictEqual(launchAt(s.log), null);
 
     // Still-running screen: every program, the blockers first with the reason
     const doc0 = fakeDocument();

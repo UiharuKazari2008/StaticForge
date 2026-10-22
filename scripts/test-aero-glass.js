@@ -43,11 +43,13 @@ class Element {
     toBlob(cb, type, quality) { if (this._taint) throw new Error('SecurityError: tainted canvas'); cb({ type, quality, size: 1 }); }
 }
 const modals = [];
+const contrastSurfaces = [];
 const document = {
     documentElement: new Element('html'),
     body: new Element('body'),
     createElement: (t) => new Element(t),
     querySelectorAll: (sel) => {
+        if (sel === '[data-aero-contrast]') return contrastSurfaces;
         assert.strictEqual(sel, '.modal:not(.hidden):not(.hidden-alt)');
         return modals.filter((m) => !m.classList.contains('hidden') && !m.classList.contains('hidden-alt'));
     },
@@ -90,7 +92,11 @@ if (typeof global.CustomEvent !== 'function') {
     global.CustomEvent = class CustomEvent { constructor(type, init) { this.type = type; this.detail = init && init.detail; } };
 }
 global.document = document; global.window = window; global.localStorage = localStorage; global.Image = Image;
-global.getComputedStyle = (el) => ({ getPropertyValue: (k) => el.computedVars[k] || el.style.getPropertyValue(k) || '' });
+global.getComputedStyle = (el) => ({
+    getPropertyValue: (k) => el.computedVars[k] || el.style.getPropertyValue(k) || '',
+    backgroundColor: el.computedVars.backgroundColor || 'rgba(0, 0, 0, 0)',
+    backgroundImage: el.computedVars.backgroundImage || 'none'
+});
 
 const api = require('../public/scripts/comp/aeroGlass.js');
 const T = api._test;
@@ -262,6 +268,53 @@ const near = (a, b, eps = 0.05) => assert.ok(Math.abs(a - b) <= eps, `${a} !≈ 
     m._aeroX = undefined;
     assert.strictEqual(api.syncModal(m), true);
     assert.notStrictEqual(m.style.getPropertyValue('--aero-x'), '');
+
+    // ---- surface contrast: light / dark glyphs from the glass under the bar ----
+    assert.deepStrictEqual(T.parseCssColor('rgb(255, 0, 51)'), [1, 0, 0.2, 1]);
+    assert.deepStrictEqual(T.parseCssColor('rgba(0, 0, 0, 0.5)'), [0, 0, 0, 0.5]);
+    near(T.parseCssColor('color(srgb 0.337815 0.565692 0.553802 / 0.667059)')[3], 0.667, 0.001);
+    assert.deepStrictEqual(T.parseCssColor('transparent'), [0, 0, 0, 0]);
+    assert.strictEqual(T.parseCssColor('#fff'), null);
+    assert.deepStrictEqual(
+        T.splitCssLayers('linear-gradient(rgba(1, 2, 3, 0.1) 0px, rgba(4, 5, 6, 0.2) 38%), url("blob:x,y")'),
+        ['linear-gradient(rgba(1, 2, 3, 0.1) 0px, rgba(4, 5, 6, 0.2) 38%)', 'url("blob:x,y")']
+    );
+    const flat = T.gradientMeanColor('linear-gradient(rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.5))');
+    near(flat[0], 1, 0.001); near(flat[3], 0.5, 0.001);
+    const accentRest = [179, 255, 250].map((v) => (v / 255) * 0.8); // resting glyph of a teal workspace
+    // inactive frame tint over a bright sunset wallpaper (the reported case): dark glyphs
+    assert.strictEqual(T.pickBackdrop([0.54, 0.63, 0.55], undefined, accentRest), 'light');
+    // the same frame over a night wallpaper keeps the light glyphs
+    assert.strictEqual(T.pickBackdrop([0.06, 0.12, 0.12], undefined, accentRest), 'dark');
+    // hysteresis: a backdrop where both read about the same keeps whatever it had
+    const mid = [0.65, 0.65, 0.65];
+    assert.strictEqual(T.pickBackdrop(mid, 'light', [1, 1, 1]), 'light');
+    assert.strictEqual(T.pickBackdrop(mid, 'dark', [1, 1, 1]), 'dark');
+
+    // whole surface: background-color, the wallpaper copy, the tint gradient on top
+    api.setMode('frosted');
+    T.state.imageWidth = 1920; T.state.imageHeight = 1112; T.state.position = { x: 0.5, y: 0.5 };
+    const px = (r, g, b) => [r, g, b, 255];
+    // 2x1 sample: left half bright, right half dark
+    T.state.wallpaperSample = { width: 2, height: 1, data: Uint8ClampedArray.from([...px(245, 200, 150), ...px(10, 15, 30)]) };
+    const bar = new Element('div');
+    bar.attributes['data-aero-contrast'] = '';
+    bar.computedVars = {
+        backgroundColor: 'rgba(6, 121, 115, 0.75)',
+        backgroundImage: 'linear-gradient(rgba(255, 255, 255, 0.08) 0px, rgba(0, 0, 0, 0) 60%), linear-gradient(color(srgb 0.337815 0.565692 0.553802 / 0.667059), color(srgb 0.337815 0.565692 0.553802 / 0.667059)), url("blob:wall")',
+        '--text-accent-tinted': 'rgb(179, 255, 250)'
+    };
+    contrastSurfaces.push(bar);
+    bar.rect = { left: 40, top: 1000, width: 350, height: 50 };
+    assert.strictEqual(api.syncContrast(), 1);
+    assert.strictEqual(bar.dataset.backdrop, 'light', 'pale glass over the bright half: dark glyphs');
+    bar.rect = { left: 1500, top: 1000, width: 350, height: 50 };
+    api.syncContrast();
+    assert.strictEqual(bar.dataset.backdrop, 'dark', 'over the dark half: light glyphs again');
+    bar.rect = { left: 0, top: 0, width: 0, height: 0 };
+    assert.strictEqual(api.syncContrast(), 0, 'a hidden bar keeps its last answer');
+    assert.strictEqual(bar.dataset.backdrop, 'dark');
+    contrastSurfaces.length = 0;
 
     console.log('✅ test-aero-glass: all assertions passed');
 })().catch((err) => {

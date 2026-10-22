@@ -595,6 +595,63 @@
             await waitKey(null);
         }
 
+        function drawBootPinPrompt(entry) {
+            bios.state = 'bootpin';
+            screen.mode = 'text';
+            screen.clear(C.black, C.grey);
+            const w = 44;
+            const h = 7;
+            const x = Math.floor((COLS - w) / 2);
+            const y = 8;
+            screen.box(x, y, w, h, C.black, C.white);
+            screen.shadow(x, y, w, h);
+            screen.put(x + 2, y + 1, 'Password on boot', C.black, C.white);
+            screen.put(x + 2, y + 3, 'Enter PIN:', C.black, C.white);
+            const mask = '*'.repeat((entry || '').length).padEnd(12, ' ');
+            screen.put(x + 14, y + 3, mask, C.white, C.black);
+            if (bios.bootPinError) {
+                screen.put(x + 2, y + 5, bios.bootPinError.slice(0, w - 4), C.red, C.white);
+            }
+            render();
+        }
+
+        async function promptBootPinLogin() {
+            bios.bootPinError = '';
+            let entry = '';
+            drawBootPinPrompt(entry);
+            return new Promise((resolve) => {
+                bios.bootPin = {
+                    entry,
+                    resolve,
+                    async submit(pin) {
+                        try {
+                            const res = await fetch('/', {
+                                method: 'POST',
+                                credentials: 'include',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ action: 'login', data: { pin } })
+                            });
+                            const json = await res.json();
+                            if (res.ok && json && json.success) {
+                                try { localStorage.setItem('userType', json.userType || 'admin'); } catch (_e) { /* ignore */ }
+                                bios.bootPin = null;
+                                bios.bootPinError = '';
+                                resolve(true);
+                                return;
+                            }
+                            bios.bootPinError = 'Incorrect password';
+                            bios.bootPin.entry = '';
+                            drawBootPinPrompt('');
+                        } catch (_err) {
+                            bios.bootPinError = 'Login failed';
+                            bios.bootPin.entry = '';
+                            drawBootPinPrompt('');
+                        }
+                    }
+                };
+            });
+        }
+
         /**
          * Runs the POST. opts.hasOs: Melaton is installed (the Hard Drive boots); a function
          * is asked once opts.tasks have run (the bar shows them). Resolves { device, via } with
@@ -616,6 +673,13 @@
                     await env.sleep(50);
                 }
                 bios.work = work.results();
+                const needBootPin = cmos.pwBoot === 'Enabled'
+                    || (typeof opts.requireBootPin === 'function' && opts.requireBootPin());
+                if (needBootPin) {
+                    const bootPinOk = await promptBootPinLogin();
+                    if (bootPinOk === 'cancelled') return 'cancelled';
+                    if (!bootPinOk) continue;
+                }
                 opts.hasOs = typeof opts.hasOsAfter === 'function' ? !!(await opts.hasOsAfter(work.results())) : opts.hasOs;
                 if (bios.request === 'setup') {
                     const outcome = await runSetup();
@@ -1252,6 +1316,28 @@
             if (bios.state === 'setup') return setupKey(key, ch);
             if (bios.state === 'bootmenu') return menuKey(key);
             if (bios.state === 'cdprompt' || bios.state === 'halt') return offerKey(key);
+            if (bios.state === 'bootpin' && bios.bootPin) {
+                if (key === 'Escape') {
+                    bios.bootPin = null;
+                    bios.bootPinError = '';
+                    if (bios.bootPin.resolve) bios.bootPin.resolve('cancelled');
+                    return true;
+                }
+                if (key === 'Enter') {
+                    bios.bootPin.submit(bios.bootPin.entry || '');
+                    return true;
+                }
+                if (key === 'Backspace') {
+                    bios.bootPin.entry = (bios.bootPin.entry || '').slice(0, -1);
+                    drawBootPinPrompt(bios.bootPin.entry);
+                    return true;
+                }
+                if (ch && ch.length === 1 && /[ -~]/.test(ch) && (bios.bootPin.entry || '').length < 64) {
+                    bios.bootPin.entry = (bios.bootPin.entry || '') + ch;
+                    drawBootPinPrompt(bios.bootPin.entry);
+                }
+                return true;
+            }
             return false;
         }
 

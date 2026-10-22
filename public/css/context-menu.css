@@ -289,42 +289,32 @@ span.context-menu-item-state {
     color: var(--text-muted);
 }
 
-/* Opening / closing animation */
+/* Opening / closing animation: opacity only. The menu keeps its final size from its first
+   frame; animating padding here grew it, then snapped it back to the theme's padding. */
 @keyframes contextMenuFadeIn {
     0% {
         opacity: 0;
-        padding-block: 0.1875em;
     }
 
     100% {
         opacity: 1;
-        padding-block: 0.25em;
     }
 }
 
 @keyframes contextMenuFadeOut {
     0% {
         opacity: 1;
-        padding-block: 0.25em;
     }
 
     100% {
         opacity: 0;
-        padding-block: 0.1875em;
     }
 }
 
+/* The scrollbar of a long menu stays put while it fades: hiding it here changed the menu's width. */
 .context-menu-opening,
 .context-menu-closing {
-    overflow: hidden;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
     pointer-events: none;
-}
-
-.context-menu-opening::-webkit-scrollbar,
-.context-menu-closing::-webkit-scrollbar {
-    display: none;
 }
 
 .context-menu-opening {

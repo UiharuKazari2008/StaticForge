@@ -10040,7 +10040,8 @@ function syncServiceWorkerImageCacheRules() {
                 favoriteUrls,
                 lockedPreviewUrls,
                 {
-                    maxEntries: 5000,
+                    // the same 20000 as sw.js IMAGE_CACHE_POLICY; this message overrides it
+                    maxEntries: 20000,
                     maxSizeBytes: 2 * 1024 * 1024 * 1024,
                     maxIdleMs: 7 * 24 * 60 * 60 * 1000
                 }

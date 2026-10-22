@@ -94,7 +94,7 @@ assert.ok(css.includes(`${G} #unifiedUploadModal:not([data-wizard-page="1"]) .vi
 assert.ok(css.includes(`${G} #unifiedUploadModal[data-wizard-page="3"] > .modal-content {\n    display: grid;`) && css.includes('"actions actions";'), 'page 3: the grid with the footer along the bottom');
 assert.ok(css.includes(`${G} #unifiedUploadModal > .modal-content .gallery-move-actions {\n    grid-area: actions;\n    display: flex !important;`) && css.includes('gap: 7px;\n    margin: 0;\n    padding: 11px;\n    background: #f0f0f0;\n    border: 0;\n    border-top: 1px solid #dfdfdf;'), 'footer: always shown, #f0f0f0 under the etched line, 75x23 buttons 7 px apart 11 px from the edge');
 assert.ok(css.includes('.gallery-move-actions > #unifiedUploadConfirmBtn {\n    order: 4;') && css.includes('.gallery-move-actions > #unifiedUploadCancelBtn {\n    order: 5;'), '[Upload] [Cancel] at the right');
-assert.ok(read('public/css/vista-dialogs.css').includes('animation: vista-default-pulse 1s ease infinite alternate;'), "the default button's glow comes from vista-dialogs.css");
+assert.ok(read('public/css/vista-glass-controls.css').includes('animation: vista-button-default-pulse 2.016s infinite;'), "the default button's glow is the shared push button's (vista-glass-controls.css)");
 for (const src of [css, js, block]) assert.ok(!/[^\x00-\x7f]/.test(src), 'keyboard characters only');
 assert.ok(!/motion/i.test(block) && !/motion/i.test(js), 'no motion in the markup');
 console.log('test-import-aero-wizard: ok');

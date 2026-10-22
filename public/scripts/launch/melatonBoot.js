@@ -180,6 +180,22 @@
         } catch (_) { /* /app keeps the previous copy until its own /status */ }
     }
 
+    function rememberSiteAccess(env, data) {
+        if (!env.localStorage || !data || !data.siteAccess) return;
+        try {
+            if (data.siteAccess.configured) env.localStorage.setItem('dreamscapeSiteGate', '1');
+            else env.localStorage.removeItem('dreamscapeSiteGate');
+        } catch (_) { /* ignore */ }
+    }
+
+    function isSiteGateActive(env) {
+        try {
+            return !!(env.localStorage && env.localStorage.getItem('dreamscapeSiteGate') === '1');
+        } catch (_) {
+            return false;
+        }
+    }
+
     async function probeStatus(env) {
         if (env.navigator && env.navigator.onLine === false) return { kind: 'offline' };
         try {
@@ -472,7 +488,15 @@
                 { id: 'resume', run: async () => readSetupResume(env) || (ctl.bootMode !== 'restore' && env.engine && env.engine.readState(env) ? { resume: 'install' } : null) },
                 // the network card's init: the first word from the server, but a hung server does not hold the POST
                 { id: 'server', run: () => Promise.race([
-                    probeStatus(env).then((probe) => { ctl.lastProbe = probe; if (probe.kind === 'json') { ctl.serverStatus = probe.data; rememberVistaLogon(env, probe.data); } return probe; }),
+                    probeStatus(env).then((probe) => {
+                        ctl.lastProbe = probe;
+                        if (probe.kind === 'json') {
+                            ctl.serverStatus = probe.data;
+                            rememberVistaLogon(env, probe.data);
+                            rememberSiteAccess(env, probe.data);
+                        }
+                        return probe;
+                    }),
                     env.sleep(config.biosProbeMs).then(() => null)
                 ]) },
                 // the manifest digest check, real work the boot needs next; a slow server shows on the bar
@@ -490,7 +514,12 @@
                 ctl.biosWork = results;
                 return { device: hasOsAfter(results) ? 'hdd' : 'cdrom', via: 'none' };
             }
-            const outcome = await bios.post({ tasks, hasOsAfter, run: { cancelled: () => run !== ctl.runId } });
+            const outcome = await bios.post({
+                tasks,
+                hasOsAfter,
+                run: { cancelled: () => run !== ctl.runId },
+                requireBootPin: () => !!(ctl.serverStatus && ctl.serverStatus.siteAccess && ctl.serverStatus.siteAccess.configured)
+            });
             if (outcome === 'cancelled' || run !== ctl.runId) return 'cancelled';
             ctl.biosWork = bios.work || {};
             return outcome;
@@ -572,6 +601,7 @@
                     busySince = null;
                     ctl.serverStatus = probe.data;
                     rememberVistaLogon(env, probe.data);
+                    rememberSiteAccess(env, probe.data);
                     if (probe.data.isReady) break;
                 } else if (probe.kind === 'timeout') {
                     if (busySince == null) busySince = env.now();
@@ -599,6 +629,10 @@
             if (rest > 0) await env.sleep(rest);
             if (run !== ctl.runId) return 'cancelled';
             if (session === 'login') {
+                if (isSiteGateActive(env)) {
+                    await handOff();
+                    return run === ctl.runId ? 'teal' : 'cancelled';
+                }
                 env.location.replace('/');
                 return 'login';
             }

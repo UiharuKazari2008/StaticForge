@@ -608,6 +608,23 @@ class ContextMenuController {
         return true;
     }
 
+    // Whole pixels: round the measured box up (min-width / min-height) so the menu, and the
+    // left / top worked out from it, never sit on a fraction of a pixel.
+    _snapMenuBox(el) {
+        this._clearMenuSnap(el);
+        const rect = el.getBoundingClientRect();
+        const width = Math.ceil(rect.width - 0.01);
+        const height = Math.ceil(rect.height - 0.01);
+        if (width > rect.width) el.style.minWidth = `${width}px`;
+        if (height > rect.height) el.style.minHeight = `${height}px`;
+        return { width, height };
+    }
+
+    _clearMenuSnap(el) {
+        el.style.minWidth = '';
+        el.style.minHeight = '';
+    }
+
     _fitClickMenuToViewport(menu, viewportHeight) {
         if (!menu || this.activeMenuTrigger !== 'click') return;
         menu.style.removeProperty('max-height');
@@ -623,9 +640,10 @@ class ContextMenuController {
         const menu = this.menu;
         menu.classList.remove('hidden');
         menu.style.opacity = '0';
+        this._clearMenuSnap(menu);
         this._fitClickMenuToViewport(menu, window.innerHeight);
 
-        const menuRect = menu.getBoundingClientRect();
+        const menuRect = this._snapMenuBox(menu);
         const menuWidth = menuRect.width;
         const menuHeight = menuRect.height > 0 ? menuRect.height : 350;
         const viewportWidth = window.innerWidth;
@@ -658,8 +676,8 @@ class ContextMenuController {
 
         menu.className = menu.className.replace(/position-\w+/g, '');
         menu.classList.add(`position-${positioning.vertical}`, `position-${positioning.horizontal}`);
-        menu.style.left = `${positioning.x}px`;
-        menu.style.top = `${positioning.y}px`;
+        menu.style.left = `${Math.round(positioning.x)}px`;
+        menu.style.top = `${Math.round(positioning.y)}px`;
         menu.style.bottom = '';
         menu.style.opacity = '';
     }
@@ -2260,6 +2278,7 @@ class ContextMenuController {
             // CSS will handle centering
             menu.style.left = '';
             menu.style.top = '';
+            this._clearMenuSnap(menu);
             this._fitClickMenuToViewport(menu, window.innerHeight);
             this._playContextMenuOpenAnimation(menu);
             return;
@@ -2285,10 +2304,11 @@ class ContextMenuController {
         menu.style.left = '-9999px';
         menu.style.top = '-9999px';
         menu.style.opacity = '0';
+        this._clearMenuSnap(menu);
         this._fitClickMenuToViewport(menu, viewportHeight);
 
         // Force layout calculation to get real dimensions
-        const menuRect = menu.getBoundingClientRect();
+        const menuRect = this._snapMenuBox(menu);
         const menuWidth = menuRect.width;
         const actualHeight = menuRect.height;
         const menuHeight = actualHeight > 0 ? actualHeight : 350; // Fallback
@@ -2325,8 +2345,8 @@ class ContextMenuController {
         menu.classList.add(`position-${positioning.vertical}`, `position-${positioning.horizontal}`);
 
         // Apply final positioning
-        menu.style.left = `${positioning.x}px`;
-        menu.style.top = `${positioning.y}px`;
+        menu.style.left = `${Math.round(positioning.x)}px`;
+        menu.style.top = `${Math.round(positioning.y)}px`;
         menu.style.bottom = '';
 
         menu.style.opacity = '';
@@ -3821,7 +3841,7 @@ class ContextMenuController {
         document.body.appendChild(submenu);
 
         // Force layout calculation to get real dimensions
-        const submenuRect = submenu.getBoundingClientRect();
+        const submenuRect = this._snapMenuBox(submenu);
         const submenuWidth = submenuRect.width;
         const submenuHeight = submenuRect.height;
 
@@ -3887,8 +3907,8 @@ class ContextMenuController {
         }
 
         // Position submenu with correct coordinates and add direction class
-        submenu.style.left = `${submenuX}px`;
-        submenu.style.top = `${submenuY}px`;
+        submenu.style.left = `${Math.round(submenuX)}px`;
+        submenu.style.top = `${Math.round(submenuY)}px`;
         submenu.classList.add(`submenu-${submenuDirection}`);
 
         // Make submenu visible

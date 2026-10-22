@@ -26,7 +26,7 @@ assert.ok(parse('h:0').error);
 const uri = (body) => bridge.quickConnectUri(body).uri;
 assert.strictEqual(uri({ protocol: 'rdp', host: 'Ruiko.nyti.ne.jp', username: 'DOM\\yk', password: 'p@ss:/' }),
     'rdp://yk:p%40ss%3A%2F@Ruiko.nyti.ne.jp/?ignore-cert=true&security=any&domain=DOM');
-assert.strictEqual(uri({ protocol: 'ssh', host: '[fe80::1]', port: 2222 }), 'ssh://[fe80::1]:2222/');
+assert.strictEqual(uri({ protocol: 'ssh', host: '[2001:db8::5]', port: 2222 }), 'ssh://[2001:db8::5]:2222/');
 assert.strictEqual(uri({ protocol: 'vnc', host: '10.0.0.5', port: 5903, password: 'x' }), 'vnc://:x@10.0.0.5:5903/');
 assert.strictEqual(bridge.quickConnectUri({ protocol: 'vnc', host: '10.0.0.5', port: 5903 }).name, '10.0.0.5:5903');
 for (const [body, code] of [
@@ -38,5 +38,34 @@ for (const [body, code] of [
 ]) {
     assert.throws(() => bridge.quickConnectUri(body), (err) => err.status === 400 && err.code === code);
 }
+
+// guacd dials from Komaki: its loopback, link-local, unspecified and multicast are refused; the LAN is not
+for (const host of ['127.0.0.1', '127.8.0.1', 'localhost', 'LOCALHOST.', 'a.localhost', '169.254.169.254',
+    '0.0.0.0', '[::1]', '::', 'fe80::1', '::ffff:127.0.0.1', '224.0.0.1', '255.255.255.255']) {
+    assert.throws(() => bridge.quickConnectUri({ protocol: 'rdp', host: host }),
+        (err) => err.status === 403 && err.code === 'blocked', host);
+}
+for (const host of ['192.168.100.243', '10.0.0.5', 'Ruiko.nyti.ne.jp', '2001:db8::5', '172.16.0.1']) {
+    assert.ok(!bridge.remoteNameBlocked(host), host);
+}
+
+// The Guacamole frame proxy passes reads, the token check and tunnels, nothing else
+const allowed = bridge.guacProxyAllowed;
+assert.ok(allowed('GET', '/'));
+assert.ok(allowed('GET', '/api/session/data/mysql/connectionGroups/ROOT/tree'));
+assert.ok(allowed('POST', '/api/tokens'));
+assert.ok(allowed('POST', '/tunnel'));
+assert.ok(allowed('PUT', '/api/session/tunnels/abc/streams/0/f.txt'));
+assert.ok(!allowed('POST', '/api/session/ext/quickconnect/create'));
+assert.ok(!allowed('GET', '/api/session/ext/quickconnect/create'));
+assert.ok(!allowed('POST', '/api/session/%65xt/quickconnect/create'));
+assert.ok(!allowed('POST', '/api/session/EXT/quickconnect/create'));
+assert.ok(!allowed('POST', '/api/session;x=1/ext/quickconnect/create'));
+assert.ok(!allowed('POST', '/api/session/tunnels/../ext/quickconnect/create'));
+assert.ok(!allowed('POST', '/api//session/ext/quickconnect/create'));
+assert.ok(!allowed('POST', '/api/session/data/mysql/connections'));
+assert.ok(!allowed('PUT', '/api/session/data/mysql/self/password'));
+assert.ok(!allowed('DELETE', '/api/tokens/abc'));
+assert.ok(!allowed('GET', '/api/%zz'));
 
 console.log('remote desktop connection: ok');

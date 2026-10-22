@@ -89,7 +89,7 @@ body.melaton-games .hidden {
 }
 
 /* the page itself */
-html:has(> body.melaton-games),
+html.melaton-games-root,
 body.melaton-games {
     width: 1024px;
     height: 768px;

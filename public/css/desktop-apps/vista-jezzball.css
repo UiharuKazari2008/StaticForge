@@ -439,7 +439,7 @@ html body :is(#vistaJezzballModal, .jz-classic).modal > .modal-content {
     line-height: 17px;
     text-align: left;
     white-space: nowrap;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 #vistaJezzballModal:not(.active-window) .jz-menu-title {
@@ -460,7 +460,7 @@ html body :is(#vistaJezzballModal, .jz-classic).modal > .modal-content {
     background: #f0f0f0;
     color: #000;
     font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
-    cursor: default;
+    cursor: var(--c-default);
     user-select: none;
     -webkit-user-select: none;
     animation: jz-menu-fade 0.18s linear;
@@ -584,7 +584,7 @@ html body :is(#vistaJezzballModal, .jz-classic).modal > .modal-content {
         inset -2px -2px 0 #a0a0a0,
         inset 2px 2px 0 #ffffff;
     color: #000;
-    cursor: default;
+    cursor: var(--c-default);
     outline: none;
 }
 
@@ -843,13 +843,13 @@ html body :is(#vistaJezzballModal, .jz-classic).modal > .modal-content.jz-msgbox
 .jz-help-popupbox .jz-help-jump {
     color: #008000;
     text-decoration: underline;
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 #vistaJezzballHelp .jz-help-popup {
     color: #008000;
     text-decoration: underline dotted;
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 .jz-help-popupbox {

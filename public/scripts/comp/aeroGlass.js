@@ -19,7 +19,11 @@
  *
  * Hooks: modalUtils.js calls aeroGlass.syncModal(modal) from setModalOffsetPx,
  * settleModalPixelAnchor and openModal; workspaceUtils.js calls refreshWallpaper() when
- * the inline wallpaper changes; `workspaceChanged` covers the stylesheet-driven case.
+ * the inline wallpaper changes; `workspaceChanged` covers the stylesheet-driven case;
+ * desktopPersonalization.js calls refreshContrast() when the window colour changes.
+ *
+ * Surfaces marked [data-aero-contrast] get data-backdrop="light" | "dark" from the glass
+ * under them (see "surface contrast" below), so their glyphs stay readable.
  * Yozora #400.
  */
 (function () {
@@ -39,7 +43,13 @@
         jpegQuality: 0.86,
         revokeDelayMs: 2000,        // old blob URL lives long enough for the swap to paint
         resizeDebounceMs: 120,
-        wallpaperRefreshDebounceMs: 60
+        wallpaperRefreshDebounceMs: 60,
+        contrastDebounceMs: 100,
+        contrastSampleWidth: 96,    // the wallpaper copy kept for [data-aero-contrast] averaging
+        contrastLightGlyph: [1, 1, 1],          // fallback when --text-accent-tinted can't be read
+        contrastRestDarken: 0.2,                // resting bar glyphs are 20 % darker (vista-glass-controls.css)
+        contrastDarkGlyph: [0.08, 0.14, 0.2],   // hsl(210 43% 14%), vista-glass-controls.css
+        contrastHysteresisLc: 5
     };
 
     const doc = typeof document !== 'undefined' ? document : null;
@@ -60,6 +70,9 @@
         failedUrl: null,
         resizeTimer: null,
         refreshTimer: null,
+        contrastTimer: null,
+        colorCtx: null,
+        wallpaperSample: null,      // { width, height, data } of the blurred frame copy
         initialized: false
     };
 
@@ -271,8 +284,10 @@
                 el._aeroSurfaceObserved = true;
                 new ResizeObserver(() => syncSurfaces(modal)).observe(el);
             }
+            if (el.hasAttribute('data-aero-contrast')) observeContrastModal(modal);
             count += 1;
         });
+        if (count) scheduleContrast();
         return count;
     }
 
@@ -283,6 +298,218 @@
             if (syncModal(modal)) count += 1;
         });
         return count;
+    }
+
+    // ---------- surface contrast ----------
+    // [data-aero-contrast] surfaces (the Workspaces bar) get data-backdrop="light" | "dark"
+    // from the glass actually painted under them: their computed background (frame colour,
+    // tint, sheen) over the frosted wallpaper copy at their spot. An inactive frame over a
+    // bright wallpaper turns pale, and the light glyphs vanish; CSS then draws dark ones
+    // (vista-glass-controls.css). Live has no wallpaper copy, so there it is the colour alone.
+
+    /** Computed colour string (rgb(), rgba(), color(srgb …)) to [r, g, b, a], channels 0–1. */
+    function parseCssColor(value) {
+        if (typeof value !== 'string') return null;
+        const text = value.trim();
+        if (text === 'transparent') return [0, 0, 0, 0];
+        let m = text.match(/^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:\s*[,/]\s*([\d.]+)(%?))?\s*\)$/i);
+        if (m) {
+            const a = m[4] === undefined ? 1 : parseFloat(m[4]) / (m[5] ? 100 : 1);
+            return [parseFloat(m[1]) / 255, parseFloat(m[2]) / 255, parseFloat(m[3]) / 255, a];
+        }
+        m = text.match(/^color\(\s*srgb\s+([-\d.e]+)\s+([-\d.e]+)\s+([-\d.e]+)(?:\s*\/\s*([\d.]+)(%?))?\s*\)$/i);
+        if (m) {
+            const a = m[4] === undefined ? 1 : parseFloat(m[4]) / (m[5] ? 100 : 1);
+            return [m[1], m[2], m[3]].map((v) => Math.min(1, Math.max(0, parseFloat(v)))).concat(a);
+        }
+        return null;
+    }
+
+    /** Comma-separated background layers, ignoring commas inside parentheses. */
+    function splitCssLayers(value) {
+        const layers = [];
+        let depth = 0;
+        let start = 0;
+        const text = String(value || '');
+        for (let i = 0; i < text.length; i += 1) {
+            const ch = text[i];
+            if (ch === '(') depth += 1;
+            else if (ch === ')') depth -= 1;
+            else if (ch === ',' && depth === 0) {
+                layers.push(text.slice(start, i).trim());
+                start = i + 1;
+            }
+        }
+        const last = text.slice(start).trim();
+        if (last) layers.push(last);
+        return layers;
+    }
+
+    /** A gradient layer as one flat colour: the mean of its stops (premultiplied). */
+    function gradientMeanColor(layer) {
+        const stops = (layer.match(/rgba?\([^)]*\)|color\(srgb[^)]*\)|transparent/gi) || [])
+            .map(parseCssColor)
+            .filter(Boolean);
+        if (!stops.length) return null;
+        const sum = [0, 0, 0, 0];
+        stops.forEach(([r, g, b, a]) => {
+            sum[0] += r * a; sum[1] += g * a; sum[2] += b * a; sum[3] += a;
+        });
+        const a = sum[3] / stops.length;
+        if (!(sum[3] > 0)) return [0, 0, 0, 0];
+        return [sum[0] / sum[3], sum[1] / sum[3], sum[2] / sum[3], a];
+    }
+
+    function compositeOver(base, layer) {
+        if (!layer) return base;
+        const a = layer[3];
+        return [0, 1, 2].map((i) => layer[i] * a + base[i] * (1 - a));
+    }
+
+    /** APCA-W3 0.0.98G Lc magnitude of a glyph colour on a backdrop colour (sRGB 0–1). */
+    function apcaContrast(text, background) {
+        const screenY = (c) => {
+            const y = 0.2126729 * Math.pow(c[0], 2.4) + 0.7151522 * Math.pow(c[1], 2.4) + 0.0721750 * Math.pow(c[2], 2.4);
+            return y < 0.022 ? y + Math.pow(0.022 - y, 1.414) : y;
+        };
+        const txt = screenY(text);
+        const bg = screenY(background);
+        if (bg > txt) {
+            const s = (Math.pow(bg, 0.56) - Math.pow(txt, 0.57)) * 1.14;
+            return s < 0.1 ? 0 : (s - 0.027) * 100;
+        }
+        const s = (Math.pow(bg, 0.65) - Math.pow(txt, 0.62)) * 1.14;
+        return s > -0.1 ? 0 : -(s + 0.027) * 100;
+    }
+
+    /**
+     * "light" when dark glyphs read clearly better on this backdrop than the light ones. The
+     * current state holds until the other side wins by the hysteresis margin, so a backdrop
+     * near the middle does not flip back and forth as the window moves.
+     */
+    function pickBackdrop(rgb, current, lightGlyph) {
+        const light = apcaContrast(lightGlyph || config.contrastLightGlyph, rgb);
+        const dark = apcaContrast(config.contrastDarkGlyph, rgb);
+        if (current === 'light') return light > dark + config.contrastHysteresisLc ? 'dark' : 'light';
+        return dark > light + config.contrastHysteresisLc ? 'light' : 'dark';
+    }
+
+    /** Any CSS colour (hex, hsl(), a var's token string …) to [r, g, b, a] via a canvas fillStyle round trip. */
+    function resolveCssColor(value) {
+        const direct = parseCssColor(value);
+        if (direct) return direct;
+        if (!doc || !value) return null;
+        try {
+            if (!state.colorCtx) state.colorCtx = doc.createElement('canvas').getContext('2d');
+            const ctx = state.colorCtx;
+            if (!ctx) return null;
+            ctx.fillStyle = '#010203';
+            ctx.fillStyle = String(value).trim();
+            const out = String(ctx.fillStyle);
+            if (out === '#010203') return null; // not understood
+            const hex = out.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+            if (hex) return [1, 2, 3].map((i) => parseInt(hex[i], 16) / 255).concat(1);
+            return parseCssColor(out);
+        } catch (_) {
+            return null;
+        }
+    }
+
+    /** The light glyph the bar draws at rest: the workspace accent, a shade darker. */
+    function restingLightGlyph(el) {
+        let accent = null;
+        try { accent = resolveCssColor(getComputedStyle(el).getPropertyValue('--text-accent-tinted')); } catch (_) { /* detached */ }
+        if (!accent) return config.contrastLightGlyph;
+        return accent.slice(0, 3).map((v) => v * (1 - config.contrastRestDarken));
+    }
+
+    /** A small copy of the blurred frame wallpaper for averaging (null where the canvas can't be read). */
+    function readWallpaperSample(canvas) {
+        try {
+            const width = Math.min(config.contrastSampleWidth, canvas.width);
+            const height = Math.max(1, Math.round(canvas.height * (width / canvas.width)));
+            const small = doc.createElement('canvas');
+            small.width = width;
+            small.height = height;
+            const ctx = small.getContext('2d', { willReadFrequently: true });
+            if (!ctx || typeof ctx.getImageData !== 'function') return null;
+            ctx.imageSmoothingEnabled = true;
+            ctx.drawImage(canvas, 0, 0, width, height);
+            return { width, height, data: ctx.getImageData(0, 0, width, height).data };
+        } catch (_) {
+            return null; // tainted canvas: the wallpaper layer is then left out
+        }
+    }
+
+    /** Mean wallpaper colour under a viewport rect, as the frosted layer paints it (cover geometry). */
+    function wallpaperMeanUnder(rect) {
+        const sample = state.wallpaperSample;
+        if (!sample || !win) return null;
+        const geo = computeCoverGeometry(state.imageWidth, state.imageHeight, win.innerWidth, win.innerHeight, state.position);
+        if (!geo) return null;
+        const toX = (x) => ((x - geo.x) / geo.width) * sample.width;
+        const toY = (y) => ((y - geo.y) / geo.height) * sample.height;
+        const x0 = Math.max(0, Math.min(sample.width - 1, Math.floor(toX(rect.left))));
+        const y0 = Math.max(0, Math.min(sample.height - 1, Math.floor(toY(rect.top))));
+        const x1 = Math.max(x0 + 1, Math.min(sample.width, Math.ceil(toX(rect.left + rect.width))));
+        const y1 = Math.max(y0 + 1, Math.min(sample.height, Math.ceil(toY(rect.top + rect.height))));
+        const sum = [0, 0, 0];
+        let n = 0;
+        for (let y = y0; y < y1; y += 1) {
+            for (let x = x0; x < x1; x += 1) {
+                const i = (y * sample.width + x) * 4;
+                sum[0] += sample.data[i]; sum[1] += sample.data[i + 1]; sum[2] += sample.data[i + 2];
+                n += 1;
+            }
+        }
+        return n ? sum.map((v) => v / n / 255) : null;
+    }
+
+    /** The glass colour under a surface: background-color, the wallpaper copy, then the gradient layers top-most last. */
+    function surfaceBackdrop(el) {
+        const rect = el.getBoundingClientRect();
+        if (!(rect.width > 0) || !(rect.height > 0)) return null;
+        const cs = getComputedStyle(el);
+        let rgb = compositeOver([0, 0, 0], parseCssColor(cs.backgroundColor));
+        const layers = splitCssLayers(cs.backgroundImage === 'none' ? '' : cs.backgroundImage);
+        for (let i = layers.length - 1; i >= 0; i -= 1) {
+            const layer = layers[i];
+            if (/^url\(/i.test(layer)) {
+                const wall = state.mode === 'frosted' ? wallpaperMeanUnder(rect) : null;
+                if (wall) rgb = wall;
+            } else if (/gradient\(/i.test(layer)) {
+                rgb = compositeOver(rgb, gradientMeanColor(layer));
+            }
+        }
+        return rgb;
+    }
+
+    function syncContrast() {
+        if (!doc || typeof getComputedStyle !== 'function') return 0;
+        let count = 0;
+        doc.querySelectorAll('[data-aero-contrast]').forEach((el) => {
+            const rgb = surfaceBackdrop(el);
+            if (!rgb) return; // hidden: keep the last answer for when it shows again
+            const next = pickBackdrop(rgb, el.dataset.backdrop, restingLightGlyph(el));
+            if (el.dataset.backdrop !== next) el.dataset.backdrop = next;
+            count += 1;
+        });
+        return count;
+    }
+
+    function scheduleContrast() {
+        clearTimeout(state.contrastTimer);
+        state.contrastTimer = setTimeout(() => {
+            state.contrastTimer = null;
+            syncContrast();
+        }, config.contrastDebounceMs);
+    }
+
+    /** Focus moves the frame between the active and inactive tint: watch the window's class. */
+    function observeContrastModal(modal) {
+        if (!modal || modal._aeroContrastObserved || typeof MutationObserver !== 'function') return;
+        modal._aeroContrastObserved = true;
+        new MutationObserver(scheduleContrast).observe(modal, { attributes: true, attributeFilter: ['class'] });
     }
 
     // ---------- frosted wallpaper ----------
@@ -422,9 +649,11 @@
         if ('imageSmoothingQuality' in sourceCtx) sourceCtx.imageSmoothingQuality = 'high';
         drawClampedSource(sourceCtx, img, width, height, pad);
 
-        const blob = await canvasToBlob(blurInto(source, width, height, pad, blur));
+        const frame = blurInto(source, width, height, pad, blur);
+        const sample = readWallpaperSample(frame);
+        const blob = await canvasToBlob(frame);
         const blobLight = await canvasToBlob(blurInto(source, width, height, pad, lightBlur));
-        return { blob, blobLight, width: nw, height: nh };
+        return { blob, blobLight, sample, width: nw, height: nh };
     }
 
     function revokeLater(url) {
@@ -460,8 +689,10 @@
         state.blobLightUrl = null;
         state.imageWidth = 0;
         state.imageHeight = 0;
+        state.wallpaperSample = null;
         revokeLater(previous);
         revokeLater(previousLight);
+        scheduleContrast();
     }
 
     async function ensureFrosted(options = {}) {
@@ -509,6 +740,7 @@
             state.blobLightUrl = nextLightUrl;
             state.imageWidth = result.width;
             state.imageHeight = result.height;
+            state.wallpaperSample = result.sample || null;
             state.failedUrl = null;
             root.style.setProperty('--aero-wallpaper', `url("${nextUrl}")`);
             root.style.setProperty('--aero-wallpaper-light', `url("${nextLightUrl}")`);
@@ -557,8 +789,9 @@
                 win.addEventListener('resize', handleResize);
             }
             if (typeof doc.addEventListener === 'function') {
-                doc.addEventListener('workspaceChanged', () => scheduleWallpaperRefresh(false));
-                doc.addEventListener('workspaceSwitchComplete', () => scheduleWallpaperRefresh(false));
+                // the frame colour follows the workspace even when the wallpaper stays
+                doc.addEventListener('workspaceChanged', () => { scheduleWallpaperRefresh(false); scheduleContrast(); });
+                doc.addEventListener('workspaceSwitchComplete', () => { scheduleWallpaperRefresh(false); scheduleContrast(); });
             }
         }
         if (state.mode !== mode) {
@@ -582,6 +815,8 @@
         syncAllModals,
         refreshWallpaper: () => scheduleWallpaperRefresh(false),
         rebuildWallpaper: () => ensureFrosted({ force: true }),
+        refreshContrast: scheduleContrast,
+        syncContrast,
         _test: {
             config,
             state,
@@ -591,7 +826,14 @@
             computeCoverGeometry,
             computeModalOrigin,
             readStoredMode,
-            ensureFrosted
+            ensureFrosted,
+            parseCssColor,
+            splitCssLayers,
+            gradientMeanColor,
+            apcaContrast,
+            pickBackdrop,
+            resolveCssColor,
+            surfaceBackdrop
         }
     };
 

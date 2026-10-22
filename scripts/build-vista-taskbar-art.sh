@@ -12,6 +12,7 @@
 #   explorer.exe BITMAP 145-153 (335x34): the Taskbar tab's preview strips (reference only)
 #   imageres.dll icon index 104: Show desktop; explorer.exe icon index 18: Switch between windows
 #     (the Quick Launch shortcuts' IconLocation), 16 and 32 px, straight alpha (vm.sh icon)
+#   shell32.dll icon index 2: the generic program icon a shortcut shows when its target is gone
 #   timedate.cpl PNGFILE 5000/5001: the clock flyout's 128 px face and its gloss; icon 0 the
 #     calendar of the clock's tooltip (32 px), straight alpha
 #
@@ -42,6 +43,8 @@ cp "$SRC/ir104-16.png" "$OUT/show-desktop-16.png"
 cp "$SRC/ir104-32.png" "$OUT/show-desktop-32.png"
 cp "$SRC/sw-16.png" "$OUT/switch-windows-16.png"
 cp "$SRC/sw-32.png" "$OUT/switch-windows-32.png"
+cp "$SRC/sh2-16.png" "$OUT/program-16.png"
+cp "$SRC/sh2-32.png" "$OUT/program-32.png"
 cp "$SRC/PNGFILE_5000.png" "$OUT/clock-face.png"
 cp "$SRC/PNGFILE_5001.png" "$OUT/clock-gloss.png"
 cp "$SRC/cal-32.png" "$OUT/calendar-32.png"

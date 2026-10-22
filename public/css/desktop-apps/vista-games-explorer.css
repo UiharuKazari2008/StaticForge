@@ -81,7 +81,7 @@ body.desktop-mode #vistaGamesExplorerModal > .modal-content.gx-content,
     color: #fff;
     font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
     white-space: nowrap;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 .vista-games-explorer .gx-commandbar button.gx-command img {
@@ -201,7 +201,7 @@ body.desktop-mode #vistaGamesExplorerModal > .modal-content.gx-content,
     box-sizing: border-box;
     border: 1px solid transparent;
     border-radius: 3px;
-    cursor: default;
+    cursor: var(--c-default);
 }
 
 .vista-games-explorer .gx-item img {
@@ -300,7 +300,7 @@ body.desktop-mode #vistaGamesExplorerModal > .modal-content.gx-content,
 .vista-games-explorer .gx-link-u {
     color: #0066cc;
     text-decoration: underline;
-    cursor: pointer;
+    cursor: var(--c-pointer);
 }
 
 .vista-games-explorer .gx-rating-row {
@@ -387,3 +387,141 @@ body.desktop-mode #vistaGamesExplorerModal > .modal-content.gx-content,
 .vista-games-explorer .gx-k2 {
     padding-left: 14px;
 }
+
+/* ---- Options: "Set up Games folder options" (gamesExplorer.js showOptions), placed by the VM's
+   (~/.cache/vista-vm/games-ref/gx-options.png, 556 x 362 client): the white page with the 32 px
+   icon and 12 pt main instruction, 9 pt Segoe UI on 15 px lines, the options in a #ccc rounded
+   box (gameux's resbmp 114), DirectUI's 66 x 21 buttons, the #f0f0f0 footer under a #dfdfdf line.
+   Positions are the VM's, in client pixels. ---- */
+
+body.desktop-mode .modal.vista-gx-options > .modal-content.vista-game-dialog-client {
+    background: #fff;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 15px;
+}
+
+.vista-gx-options .gxo-page > *,
+.vista-gx-options .gxo-group > *,
+.vista-gx-options .gxo-footer > * {
+    position: absolute;
+    margin: 0;
+}
+
+.vista-gx-options .gxo-page {
+    position: absolute;
+    inset: 0 0 41px 0;
+    background: #fff;
+}
+
+.vista-gx-options .gxo-icon {
+    left: 10px;
+    top: 10px;
+    width: 32px;
+    height: 32px;
+}
+
+.vista-gx-options .gxo-instruction {
+    left: 52px;
+    top: 10px;
+    color: #003399;
+    font: 12pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 21px;
+    white-space: nowrap;
+}
+
+.vista-gx-options .gxo-text {
+    left: 54px;
+    top: 46px;
+    width: 492px;
+}
+
+.vista-gx-options .gxo-label {
+    left: 54px;
+    top: 84px;
+}
+
+.vista-gx-options .gxo-group {
+    left: 52px;
+    top: 112px;
+    width: 494px;
+    height: 124px;
+    box-sizing: border-box;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+}
+
+/* inside the box's 1 px border: check boxes 9 px in, 30 px apart; the buttons 7 px apart */
+body.desktop-mode .vista-gx-options .gxo-group > .vista-game-choice {
+    left: 8px;
+    height: 15px;
+}
+
+.vista-gx-options .gxo-group > .gxo-check:nth-child(1) { top: 9px; }
+.vista-gx-options .gxo-group > .gxo-check:nth-child(2) { top: 39px; }
+
+body.desktop-mode .modal.vista-gx-options .win7.vista-game-dialog-client .vista-game-choice > input + label {
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 15px;
+}
+
+/* DirectUI's check box text: 4 px after the box, a pixel higher than 7.css puts it */
+body.desktop-mode .modal.vista-gx-options .win7.vista-game-dialog-client .vista-game-choice > input + label::before {
+    margin-right: 2px;
+}
+
+.vista-gx-options .gxo-check label > span {
+    position: relative;
+    top: -1px;
+}
+
+body.desktop-mode .modal.vista-gx-options > .modal-content button.vista-game-button {
+    width: 66px;
+    height: 21px;
+    padding: 0 4px;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 19px;
+}
+
+body.desktop-mode .modal.vista-gx-options > .modal-content button.gxo-push {
+    left: 9px;
+    width: 106px;
+}
+
+.vista-gx-options .gxo-group > .gxo-push:nth-of-type(1) { top: 69px; }
+.vista-gx-options .gxo-group > .gxo-push:nth-of-type(2) { top: 97px; }
+
+.vista-gx-options .gxo-privacy {
+    left: 54px;
+    top: 246px;
+}
+
+/* a DirectUI link: Vista's #0066cc, underlined on hover */
+body.desktop-mode .modal.vista-gx-options > .modal-content button.gxo-link {
+    all: unset;
+    position: absolute;
+    left: 54px;
+    top: 261px;
+    color: #0066cc;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 15px;
+    cursor: var(--c-pointer);
+}
+
+body.desktop-mode .modal.vista-gx-options > .modal-content button.gxo-link:hover {
+    text-decoration: underline;
+}
+
+body.desktop-mode .modal.vista-gx-options > .modal-content button.gxo-link:focus-visible {
+    outline: 1px dotted #000;
+}
+
+.vista-gx-options .gxo-footer {
+    position: absolute;
+    inset: auto 0 0 0;
+    height: 40px;
+    background: #f0f0f0;
+    border-top: 1px solid #dfdfdf;
+}
+
+.vista-gx-options .gxo-footer > button:nth-child(1) { left: 405px; top: 8px; }
+.vista-gx-options .gxo-footer > button:nth-child(2) { left: 479px; top: 8px; }

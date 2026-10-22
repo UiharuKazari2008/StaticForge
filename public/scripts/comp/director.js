@@ -277,6 +277,21 @@ const DIRECTOR_XI_QUICK_STARTS = [
 
 const DIRECTOR_REOPEN_KEY = 'staticforge_director_reopen';
 
+// Taken once when the page loads, before logon. A page that unloads before the
+// Director starts (logon screen, Welcome, installer bounce) never had the window
+// open, so the flag must not carry on into the session after it.
+function takeDirectorReopenState() {
+    let raw = null;
+    try {
+        raw = sessionStorage.getItem(DIRECTOR_REOPEN_KEY);
+        sessionStorage.removeItem(DIRECTOR_REOPEN_KEY);
+    } catch (_) {
+        return null;
+    }
+    try { return raw ? JSON.parse(raw) : null; } catch (_) { return null; }
+}
+let directorReopenAtLoad = takeDirectorReopenState();
+
 const DIRECTOR_WELCOME_QUIPS = [
     'What are we making?',
     'Tell me the picture you want.',
@@ -2612,9 +2627,9 @@ class Director {
     }
 
     takeReopenState() {
-        const raw = sessionStorage.getItem(DIRECTOR_REOPEN_KEY);
-        sessionStorage.removeItem(DIRECTOR_REOPEN_KEY);
-        try { return raw ? JSON.parse(raw) : null; } catch (_) { return null; }
+        const saved = directorReopenAtLoad;
+        directorReopenAtLoad = null;
+        return saved;
     }
 
     // Runs on the first director status, once Xi is known to be on or off.
@@ -2632,6 +2647,10 @@ class Director {
     // Close hides the window only. The agent keeps running and the session stays loaded.
     closeDirectorWindow() {
         if (!this.directorWindow) return;
+        // Closed now, not only at pagehide: a reopen still waiting for the first
+        // status must not bring it back, and a short session leaves no stale flag
+        this._reopenAfterReload = null;
+        try { sessionStorage.removeItem(DIRECTOR_REOPEN_KEY); } catch (_) { /* storage blocked */ }
         // closeModal: public/scripts/comp/modalUtils.js
         closeModal(this.directorWindow);
         this.mountDirectorInStudio();

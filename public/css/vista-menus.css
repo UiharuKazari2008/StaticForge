@@ -39,6 +39,13 @@ body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-s
     line-height: 1.6;
 }
 
+/* Opening: Vista's menu fade blends the menu in at its final size, linearly over about 175 ms
+   (measured on the Vista VM: 169x187 from the first visible frame, opaque by ~185 ms). */
+body.desktop-mode :is(.context-menu.context-menu-opening, .context-menu-submenu) {
+    animation-duration: 175ms;
+    animation-timing-function: linear;
+}
+
 /* The icon gutter: each item carries its own piece (a 26 px icon box, the etched line right
    after it), so the line runs down the items and never through an icon row, a grid or a
    section title, and every icon sits in the middle of the gutter. */
@@ -50,8 +57,19 @@ body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-s
     border-radius: 3px;
     color: #000;
     font-size: 13px;
+    /* 13 px x 1.6 = 20.8 px, rounded up so every row starts on a whole pixel */
+    line-height: 21px;
     font-weight: 400;
     gap: 8px;
+}
+
+/* submenu labels set their own 1.4 (18.2 px) and subtext 0.75em x 1.4 (13.65 px): rounded up */
+body.desktop-mode:not(.windows-classic-theme) .context-menu-submenu .context-menu-item-text {
+    line-height: 19px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-submenu) .context-menu-item-subtext {
+    line-height: 14px;
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-submenu) .context-menu-item::before {
@@ -150,6 +168,17 @@ body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-s
     height: auto;
     box-shadow: none;
     border-bottom: 1px solid hsl(0 0% 0% / 15%);
+}
+
+/* Whole pixels in both themes: section titles are 0.65em x 1.6 (16.64 px) + 0.2em, separator
+   names 0.6em x 1 (9.6 px); rounded up to 17 + 2 and 10 px */
+body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-section-title {
+    padding-bottom: 2px;
+    line-height: 17px;
+}
+
+body.desktop-mode :is(.context-menu, .context-menu-submenu) .context-menu-separator-name {
+    line-height: 10px;
 }
 
 body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-submenu) :is(.context-menu-section-title, .context-menu-separator-name) {
@@ -261,10 +290,21 @@ body.windows-classic-theme :is(.context-menu, .context-menu-submenu) .context-me
     border-radius: 0;
     color: var(--MenuText);
     font-size: 11px;
+    /* 11 px x 1.4 = 15.4 px, rounded up to a whole pixel */
+    line-height: 16px;
     font-weight: 400;
     font-variation-settings: normal;
     gap: 4px;
     transition: none;
+}
+
+/* submenu labels (1.4 = 15.4 px) and subtext (0.75em x 1.4 = 11.55 px), rounded up */
+body.windows-classic-theme .context-menu-submenu .context-menu-item-text {
+    line-height: 16px;
+}
+
+body.windows-classic-theme :is(.context-menu, .context-menu-submenu) .context-menu-item-subtext {
+    line-height: 12px;
 }
 
 body.windows-classic-theme :is(.context-menu, .context-menu-submenu) .context-menu-item > :is(i, img):first-child {

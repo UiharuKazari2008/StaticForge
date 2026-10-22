@@ -1724,16 +1724,6 @@ html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModa
 }
 
 /* the piece and window state pick the face; the paint rule below reads these */
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls:has(> .close-btn, > .modal-close) > button,
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button {
-    --caption-face-piece: mid;
-}
-
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls:has(> .close-btn, > .modal-close) > :first-child:not(:last-child),
-html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))) .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown:first-child:not(:last-child) > button {
-    --caption-face-piece: left;
-}
-
 html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))).active-window .modal-window-controls:has(> .close-btn, > .modal-close) > *,
 html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))).active-window .modal-window-controls:has(> .close-btn, > .modal-close) > .custom-dropdown > button {
     --caption-face-normal: url("/static_images/window-controls/faces/mid-active-normal.png");

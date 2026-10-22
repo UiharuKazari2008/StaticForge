@@ -112,15 +112,47 @@
         });
     }
 
+    // A download that gives up when the server goes quiet (no answer, or no bytes, for IDLE_MS):
+    // Completing installation waits on these. Resolves to the bytes, or rejects.
+    const IDLE_MS = 15000;
+    const UPGRADE_MAX_MS = 60000;
+    function fetchIdle(url) {
+        const ctl = new AbortController();
+        let timer = 0;
+        const poke = () => {
+            clearTimeout(timer);
+            timer = setTimeout(() => ctl.abort(), IDLE_MS);
+        };
+        poke();
+        return (async () => {
+            const res = await root.fetch(url, { cache: 'no-store', signal: ctl.signal });
+            if (!res.ok || !res.body) throw new Error('HTTP ' + res.status);
+            const reader = res.body.getReader();
+            const chunks = [];
+            let got = 0;
+            for (;;) {
+                poke();
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunks.push(value);
+                got += value.byteLength;
+            }
+            const bytes = new Uint8Array(got);
+            let at = 0;
+            chunks.forEach((c) => { bytes.set(c, at); at += c.byteLength; });
+            return { bytes, type: res.headers.get('content-type') };
+        })().finally(() => clearTimeout(timer));
+    }
+
     // A game's full files in one request (<id>.full.zip, scripts/build-vista-games-media.js)
     // over the rows that are still lighter copies. Returns the urls it replaced.
     async function upgradeGame(cache, game, urls) {
         const lib = await loadFflate();
         if (!lib) return [];
-        // no-store: sw.js hands it to the network without its cache lookups
-        const res = await root.fetch('/static_images/vista-games/media/' + game + '.full.zip', { cache: 'no-store' });
-        if (!res.ok) return [];
-        const files = lib.unzipSync(new Uint8Array(await res.arrayBuffer()));
+        // sw.js leaves the media folder to the network (GAME_MEDIA_PREFIX); no-store keeps the
+        // browser's own cache out of it too
+        const { bytes } = await fetchIdle('/static_images/vista-games/media/' + game + '.full.zip');
+        const files = lib.unzipSync(bytes);
         const meta = JSON.parse(lib.strFromU8(files['pack.json']));
         const want = new Set(urls);
         const done = [];
@@ -144,9 +176,8 @@
         if (!row || !row.headers.get('x-media-lite')) return true;
         await cache.delete(url);
         try {
-            const res = await root.fetch(url, { cache: 'no-store' });
-            if (!res.ok) throw new Error('HTTP ' + res.status);
-            await store(cache, url, await res.arrayBuffer(), res.headers.get('content-type') || row.headers.get('content-type'));
+            const got = await fetchIdle(url);
+            await store(cache, url, got.bytes, got.type || row.headers.get('content-type'));
             return true;
         } catch (_) {
             await cache.put(url, row);
@@ -171,13 +202,18 @@
             done += n;
             if (onProgress) onProgress(done / urls.length);
         };
+        // Setup waits on this step: past UPGRADE_MAX_MS what is left stays a lighter copy, which
+        // sw.js replaces once the desktop opens the game (revalidateGameAsset)
+        const deadline = Date.now() + UPGRADE_MAX_MS;
         for (const [game, list] of byGame) {
+            if (Date.now() > deadline) break;
             let replaced = [];
             if (game) replaced = await upgradeGame(cache, game, list).catch(() => []);
             replaced.forEach((url) => { delete map[url]; });
             tick(replaced.length);
             // what the game's zip did not cover, one by one
             for (const url of list.filter((u) => map[u])) {
+                if (Date.now() > deadline) break;
                 if (await upgradeOne(cache, url).catch(() => false)) delete map[url];
                 tick(1);
             }

@@ -411,7 +411,7 @@ body.desktop-mode:not(.windows-classic-theme) .taskbar-window-group.group-menu-o
     font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
     line-height: 15px;
     white-space: nowrap;
-    cursor: default;
+    cursor: var(--c-default);
     pointer-events: none;
 }
 
@@ -503,7 +503,7 @@ body.desktop-mode:not(.windows-classic-theme) .taskbar-clock {
     font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
     font-variation-settings: normal;
     line-height: 16px;
-    cursor: default;
+    cursor: var(--c-default);
     white-space: nowrap;
 }
 

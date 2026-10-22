@@ -176,6 +176,7 @@ function dsapSmfBuildDreamscapeHomeHtml() {
         { url: 'dsap://pantry.dyna.dreamscape.jp/status', label: 'Pantry', icon: 'fas fa-cake-candles', desc: 'Cake ledger, work pile, and breakfast before/after' },
         { url: 'dsap://zanzou.dyna.dreamscape.jp/', label: 'Zanzou', icon: 'fas fa-clone', desc: 'Afterimages. Keep the shot, scrap the ghosts.' },
         { url: 'dsap://mcp.dreamscape.jp/', label: 'MCP Connector', icon: 'fas fa-plug', desc: 'Grok custom connector URLs, OAuth, and Enshutsuka project instructions' },
+        { url: 'dsap://site.dreamscape.jp/', label: 'Site Homepage', icon: 'fas fa-globe', desc: 'Install the public cover site and access phrase for the gate', admin: true },
         { url: 'dsap://exchange.dreamscape.jp/', label: 'Exchange Server', icon: 'fas fa-building-columns', desc: 'Mailboxes, aliases, toggles, and the LANTIS relay for dream.737.jp.net', admin: true },
     ];
 

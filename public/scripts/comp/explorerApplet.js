@@ -2638,19 +2638,14 @@ class ExplorerApplet {
     updateViewsLabel() {
         const btn = document.getElementById('explorerViewsDropdownBtn');
         if (!btn) return;
-        const icon = btn.querySelector('i.fas:not(.naxt-dataset-chevron)');
+        const icon = btn.querySelector('.explorer-command-icon');
         if (!icon) return;
-        const viewIcons = {
-            'icons-xl': 'fa-th',
-            'icons-lg': 'fa-th-large',
-            'icons-md': 'fa-th',
-            'icons-sm': 'fa-grip',
-            list: 'fa-list',
-            details: 'fa-bars'
-        };
-        icon.className = `fas ${viewIcons[this.viewMode] || 'fa-th-large'}`;
-        const cfg = EXPLORER_VIEW_MODES[this.viewMode];
-        btn.title = cfg ? cfg.label : this.viewMode;
+        // Vista's Views icon is the current view's (shell32 bitmaps 607-613, the dark command bar set)
+        const mode = EXPLORER_VIEW_MODES[this.viewMode] ? this.viewMode : 'icons-lg';
+        const src = `/static_images/vista-explorer/views-${mode}.png`;
+        if (icon.getAttribute('src') === src) return;
+        icon.src = src;
+        icon.srcset = `${src} 1x, /static_images/vista-explorer/views-${mode}@2x.png 2x`;
     }
 
     bindElements() {

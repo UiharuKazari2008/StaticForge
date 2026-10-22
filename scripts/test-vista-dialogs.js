@@ -43,9 +43,10 @@ assert.ok(js.includes("attributeFilter: ['class']"), 'dialogs are re-read when t
 // the look
 assert.ok(css.includes(`${G} .modal[data-vista-dialog] > .modal-content {`) && css.includes('background: #f0f0f0;') && css.includes('font: 9pt "Segoe UI"'), 'light client, Segoe UI 9pt');
 assert.ok(css.includes(`${G} .modal[data-vista-dialog="message"] .modal-window-title-main > :is(i:first-child, .icon-fa, .icon-image) {\n    display: none;`), 'message boxes hide the caption icon');
-assert.ok(css.includes('background: linear-gradient(#f2f2f2 45%, #ebebeb 45%, #cfcfcf);\n    border: 1px solid #8e8f8f;'), "7.css's standard button face");
-assert.ok(css.includes('animation: vista-default-pulse 1s ease infinite alternate;'), "the default button's glow");
-assert.ok(css.includes('animation-name: vista-default-pulse-in;') && !/animation:\s*pulse-anim/.test(css), "the glow cross-fades two layers by opacity (box-shadow animations run on the main thread)");
+// buttons, text boxes and drop-downs take the shared bitmap faces (vista-glass-controls.css); this sheet sets metrics only
+const shared = fs.readFileSync(path.join(ROOT, 'public/css/vista-glass-controls.css'), 'utf8');
+assert.ok(!css.includes('background: linear-gradient(#f2f2f2 45%, #ebebeb 45%, #cfcfcf);') && !/\bborder: 1px solid( #[0-9a-f]+)?;/.test(css.split('/* ---- the footer row')[0].split('/* ---- text boxes and lists')[1] || ''), 'no own 7.css faces: a border shorthand would reset the shared border-image');
+assert.ok(shared.includes('.modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary') && shared.includes('animation: vista-button-default-pulse 2.016s infinite;'), "the shared push button face and the VM's stepped default pulse");
 assert.ok(css.includes('.vista-dialog-footer {\n    display: flex;\n    flex-wrap: wrap;\n    justify-content: flex-end;\n    align-items: center;\n    gap: 8px;\n    margin: 0;\n    padding: 12px 8px 11px 11px;\n    background: #f0f0f0;'), 'footer: buttons right-aligned, 8 px apart, 8 px from the edge, 12 px above and 11 below');
 assert.ok(css.includes('min-width: 88px;\n    min-height: 26px;'), 'message box buttons are 88x26');
 assert.ok(css.includes('grid-template-columns: 32px minmax(0, 1fr);\n    column-gap: 9px;') && css.includes('padding: 27px 25px 25px;'), 'icon 32 px, 25 px in, 27 px down, text 9 px to its right');
@@ -58,5 +59,5 @@ for (const icon of ['question', 'warning', 'error', 'info']) {
 }
 assert.ok(css.includes('#confirmationDialog[data-vista-dialog="task"] > .modal-content {') && css.includes('#creditCostDialog[data-vista-dialog] .credit-cost-header {') && css.includes('color: #003399;'), "task dialogs with Vista's blue main instruction");
 assert.ok(css.includes('.modal[data-vista-dialog="form"] > .modal-content {\n    padding: 11px;\n    background: #f0f0f0;'), 'form dialogs: property sheet, 11 px margins');
-assert.ok(css.includes('height: 23px;\n    min-height: 23px;\n    padding: 2px 4px;\n    background: #fff;') && css.includes('border-color: #abadb3 #dbdfe6 #e3e9ef #e2e3ea;'), "text boxes at Vista's 23 px with 7.css's edge");
+assert.ok(css.includes('height: 23px;\n    min-height: 23px;\n    padding: 2px 4px;\n    border-width: 1px;'), "text boxes at Vista's 23 px, the shared EDIT face");
 console.log('test-vista-dialogs: ok');

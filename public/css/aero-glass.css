@@ -424,3 +424,19 @@ html[data-glass="basic"] .taskbar-start-button {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
 }
+
+/* Taskbar Properties' Opacity (taskbarSettings.js opacity, 20-100 %): the glass layer fades by
+   that much, so more of the desktop shows through; the buttons keep full strength. A maximized
+   window still turns the taskbar solid (kept out of these, so Aero Basic's html.disable-blur
+   rule cannot outrank it). */
+html body:not(.has-active-maximized-window) .desktop-taskbar.taskbar-custom-opacity::after {
+    opacity: calc(0.85 * var(--taskbar-opacity, 1));
+}
+
+html.disable-blur body:not(.has-active-maximized-window) .desktop-taskbar.taskbar-custom-opacity::after {
+    opacity: var(--taskbar-opacity, 1);
+}
+
+html .desktop-taskbar.taskbar-custom-opacity::before {
+    opacity: calc(0.5 * var(--taskbar-opacity, 1));
+}

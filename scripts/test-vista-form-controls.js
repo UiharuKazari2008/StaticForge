@@ -1,23 +1,41 @@
 #!/usr/bin/env node
 // Vista text boxes everywhere (Yukimi 2026-10-13): the default input / textarea / select look in
-// desktop mode is 7.css's, except .hover-show (the custom apps' reveal-on-hover controls), Studio,
-// .win7 content and the Classic theme. Run: node scripts/test-vista-form-controls.js
+// desktop mode is Vista's own (aero.msstyles EDIT / COMBOBOX faces, scripts/build-vista-controls.sh,
+// 2026-10-21), except .hover-show (the custom apps' reveal-on-hover controls), Studio, the chrome
+// toolbars and the Classic theme; .win7 content takes the faces but keeps its own font.
+// Run: node scripts/test-vista-form-controls.js
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const css = fs.readFileSync(path.join(__dirname, '..', 'public/css/vista-glass-controls.css'), 'utf8');
-const rules = css.split('}').map((r) => r.trim()).filter((r) => r.includes('Vista text boxes everywhere') || /^body\.desktop-mode:not\(\.windows-classic-theme\) (:is\(input|select)/.test(r));
+const rules = css.split('}').map((r) => r.trim()).filter((r) => /^body\.desktop-mode:not\(\.windows-classic-theme\) (:is\(input|select)/.test(r) || /\*\/\s*body\.desktop-mode:not\(\.windows-classic-theme\) (:is\(input|select)/.test(r));
 assert.ok(rules.length >= 9, 'the text box, placeholder, hover, focus, disabled and select rules are there');
 for (const r of rules.filter((x) => x.includes('{'))) {
-    assert.ok(r.includes(':not(.hover-show)'), `hover-show stays custom: ${r.slice(0, 80)}`);
-    assert.ok(r.includes(':not(.win7 *)') && r.includes(':not([id="manualModal"] *)') && r.includes(':not(.modal-window-title-toolbar *)'), `7.css content, Studio and the chrome toolbars keep theirs: ${r.slice(0, 80)}`);
+    assert.ok((r.includes(':not(.hover-show)') || r.includes(':not(.hover-show:not(.modal[data-vista-dialog] *))')), `hover-show stays custom: ${r.slice(0, 80)}`);
+    assert.ok(r.includes(':not([id="manualModal"] *)') && r.includes(':not(.modal-window-title-toolbar *)'), `Studio and the chrome toolbars keep theirs: ${r.slice(0, 80)}`);
+    if (r.includes('font-family')) assert.ok(r.includes(':not(.win7 *)'), `.win7 content keeps its font: ${r.slice(0, 80)}`);
 }
-const box = rules.find((r) => r.includes('border-color: #abadb3 #dbdfe6 #e3e9ef #e2e3ea'));
-assert.ok(box && box.includes('background: #fff') && box.includes('border-radius: 2px'), "7.css's text box edge and fill");
-assert.ok(rules.some((r) => r.includes(':hover:not(:disabled)') && r.includes('#5794bf')), 'hover edge');
-assert.ok(rules.some((r) => r.includes(':focus') && r.includes('#3d7bad')), 'focus edge');
-assert.ok(rules.some((r) => r.includes(':disabled') && r.includes('#838383')), 'disabled');
-assert.ok(rules.some((r) => r.startsWith('body.desktop-mode:not(.windows-classic-theme) select:not([multiple])') && r.includes('data:image/svg+xml')), "7.css's select arrow");
+const face = (state) => `url("/static_images/vista-controls/${state}.png")`;
+const box = rules.find((r) => r.includes(`--vista-edit-face: ${face('edit-normal')}`));
+assert.ok(box && box.includes('border-image: var(--vista-edit-face) 2 fill / 2px stretch') && box.includes('background: #fff'), "Vista's text box face, 9-sliced 2 px");
+assert.ok(rules.some((r) => r.includes(':hover:not(:disabled)') && r.includes(face('edit-hot'))), 'hover face');
+assert.ok(rules.some((r) => r.includes(':focus') && r.includes(face('edit-focus'))), 'focus face');
+assert.ok(rules.some((r) => r.includes(':disabled') && r.includes(face('edit-disabled')) && r.includes('#f4f4f4')), 'disabled');
+assert.ok(rules.some((r) => r.includes('select:not([multiple])') && r.includes(face('combo-normal')) && r.includes(face('combo-glyph-normal'))), "Vista's drop-down list face and glyph");
+for (const f of ['edit-normal', 'edit-hot', 'edit-focus', 'edit-disabled', 'combo-normal', 'combo-normal-fill', 'combo-glyph-normal', 'button-normal', 'button-hot', 'button-pressed', 'button-disabled', 'button-default', 'button-default-pulse']) {
+    assert.ok(fs.existsSync(path.join(__dirname, '..', 'public/static_images/vista-controls', f + '.png')), `${f}.png is built`);
+}
+// push buttons: Vista's face for the shared classes in Windows-look clients, not on chrome / orbs
+const btn = css.split('}').map((r) => r.trim()).find((r) => r.includes('--vista-button-face: url("/static_images/vista-controls/button-normal.png")'));
+assert.ok(btn && btn.includes('button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning') && btn.includes('border-image: var(--vista-button-face) 4 fill / 4px / var(--vista-button-outset, 0) stretch'), 'push button face');
+assert.ok(btn.includes(':not(.round-button, .close-btn, .custom-dropdown-btn') && btn.includes(":not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *, [role=\"toolbar\"] *, .explorer-actions-header *, .dovecote-command-bar *"), 'orbs, caption buttons and chrome toolbars keep theirs');
+assert.ok(btn.includes('.cpl-wu-button, .tbp-button, :not([class])') && css.includes('.tbp-client button.tbp-button:not(#_) {\n    --vista-button-outset: 1px;'), 'the property sheets and Remote Desktop Connection take the face (73x21 boxes)');
+// the default moves with the focus and pulses as the VM's: 16 steps of 63 ms each way
+assert.ok(css.includes(':is(:focus, :is(.btn-primary, [data-dialog-primary="1"], .primary):not(.modal:has(button:focus'), 'a focused push button takes the default');
+assert.ok(css.includes('animation: vista-button-default-pulse 2.016s infinite;') && css.includes('50% { opacity: 1; animation-timing-function: steps(16, jump-end); }'), 'stepped 2.016 s pulse');
+// the open list (base-select): Vista's frame, rows and highlight; no highlight on the closed part while open
+assert.ok(css.includes('@supports (appearance: base-select) {') && css.includes('border: 1px solid #646464;') && css.includes('option::checkmark {') && css.includes('line-height: 13px;'), "Vista's drop-down list");
+assert.ok(css.includes(':focus:not(:disabled):not(:is(:open)) {\n    --vista-combo-text'), 'the text loses its highlight while the list is open');
 // the app's own hover-show rules are untouched
 const app = fs.readFileSync(path.join(__dirname, '..', 'public/css/app.css'), 'utf8');
 assert.ok(app.includes('.form-control.hover-show,') && app.includes(':not(.hover-show) > .form-control:hover:not(:disabled)'), 'app.css hover-show rules intact');
