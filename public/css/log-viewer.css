@@ -845,3 +845,14 @@ body.desktop-mode:not(.windows-classic-theme) #logViewerModal.modal .modal-windo
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
+/* Vista: the connection figures read as a status bar's words ("Sent: 12"), not glyphs (cursor
+   rule vista-icons-not-fa) */
+body.desktop-mode:not(.windows-classic-theme) #logViewerModal .log-viewer-conn-stat > i {
+    display: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #logViewerModal .log-viewer-conn-stat[title="Packets sent"]::before { content: "Sent:"; }
+body.desktop-mode:not(.windows-classic-theme) #logViewerModal .log-viewer-conn-stat[title="Packets received"]::before { content: "Received:"; }
+body.desktop-mode:not(.windows-classic-theme) #logViewerModal .log-viewer-conn-stat[title="Ping"]::before { content: "Ping:"; }
+body.desktop-mode:not(.windows-classic-theme) #logViewerModal .log-viewer-conn-stat[title="Ping variation"]::before { content: "Variation:"; }

@@ -122,6 +122,15 @@ body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal
     text-shadow: none;
 }
 
+/* ---- field labels: sentence case as Vista writes them (the app's labels are upper case) ---- */
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content :is(.form-group, .form-row) > label {
+    font-size: 9pt;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: normal;
+}
+
 /* ---- the footer row: buttons right-aligned on #f0f0f0 ---- */
 
 body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content .vista-dialog-footer {
@@ -490,4 +499,83 @@ body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog="form"] >
     border: 1px solid #d5dfe5;
     border-radius: 3px;
     box-shadow: none;
+}
+
+/* ---- Update Preset: the on / off indicators are Vista check boxes (vista-controls/checkbox.png,
+   13 px a state) labelled from their titles; presetManager.js still flips data-state ---- */
+
+body.desktop-mode:not(.windows-classic-theme) #updatePresetModal[data-vista-dialog] .form-group-row:has(> button.indicator) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 16px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #updatePresetModal[data-vista-dialog] .form-group-row > .divider {
+    display: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #updatePresetModal[data-vista-dialog] button.indicator {
+    --vista-button-face: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    width: auto;
+    min-width: 0;
+    height: 17px;
+    min-height: 0;
+    padding: 0;
+    background: none;
+    border: 0;
+    border-image: none;
+    box-shadow: none;
+    color: #000;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 15px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #updatePresetModal[data-vista-dialog] button.indicator > i {
+    display: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #updatePresetModal[data-vista-dialog] button.indicator::before {
+    content: '';
+    position: static;
+    flex: none;
+    width: 13px;
+    height: 13px;
+    margin: 0;
+    border: 0;
+    border-image: none;
+    background: url("/static_images/vista-controls/checkbox.png") 0 0 / 13px auto no-repeat;
+    opacity: 1;
+    transition: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #updatePresetModal[data-vista-dialog] button.indicator::after {
+    content: attr(title);
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    border: 0;
+    border-image: none;
+    background: none;
+    outline: none;
+    opacity: 1;
+    white-space: nowrap;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #updatePresetModal[data-vista-dialog] button.indicator:hover::before { background-position-y: -13px; }
+body.desktop-mode:not(.windows-classic-theme) #updatePresetModal[data-vista-dialog] button.indicator:active::before { background-position-y: -26px; }
+body.desktop-mode:not(.windows-classic-theme) #updatePresetModal[data-vista-dialog] button.indicator[data-state="on"]::before { background-position-y: -52px; }
+body.desktop-mode:not(.windows-classic-theme) #updatePresetModal[data-vista-dialog] button.indicator[data-state="on"]:hover::before { background-position-y: -65px; }
+body.desktop-mode:not(.windows-classic-theme) #updatePresetModal[data-vista-dialog] button.indicator[data-state="on"]:active::before { background-position-y: -78px; }
+
+body.desktop-mode:not(.windows-classic-theme) #updatePresetModal[data-vista-dialog] button.indicator:focus-visible {
+    outline: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #updatePresetModal[data-vista-dialog] button.indicator:focus-visible::after {
+    outline: 1px dotted #000;
 }

@@ -21,6 +21,11 @@
  * credit cost) are caught by a body observer; each dialog is re-read when it opens, since the
  * confirmation dialog changes its icon and content per call.
  *
+ * Push buttons are text only on Vista, and so are most command bar commands: when a light window
+ * opens, a push button or command bar button that has a Font Awesome glyph and a label gets
+ * .vista-text-button and vista-glass-controls.css hides the glyph (icon-only buttons keep theirs
+ * until they get Vista art; a command with Vista's own icon paints it on the <i> per window).
+ *
  * ownerCenter(event): where a Vista dialog opens, the centre of the window the click came from
  * (confirmationDialog.js uses it instead of the click point on the desktop).
  */
@@ -182,6 +187,26 @@
         for (const el of Array.from(tagged)) if (!el.isConnected) untag(el);
     }
 
+    const PUSH_BUTTON = 'button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn):not(.close-btn, .round-button, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, [role="tab"], [role="menuitem"])';
+
+    function markTextButtons(modal) {
+        if (!isVista() || !modal || !modal.matches('.modal[data-window-client="light"], .modal[data-vista-dialog]')) return;
+        for (const btn of modal.querySelectorAll(`${PUSH_BUTTON}, .explorer-actions-header button.explorer-command-btn`)) {
+            if (btn.closest('.modal-window-title, .modal-window-controls, .modal-window-title-toolbar')) continue;
+            const glyph = btn.querySelector(':scope > i[class*="fa-"]');
+            if (glyph && btn.textContent.trim()) btn.classList.add('vista-text-button');
+        }
+    }
+
+    function onLifecycle(ev) {
+        const d = ev.detail;
+        if (!d || d.type !== 'opened' || !d.id) return;
+        const modal = doc.getElementById(d.id);
+        markTextButtons(modal);
+        // windows that build their buttons in their open handler
+        setTimeout(() => markTextButtons(modal), 250);
+    }
+
     /** The centre of the window a click came from, for placing a dialog over its owner. */
     function ownerCenter(event) {
         if (!isVista()) return null;
@@ -210,9 +235,10 @@
             if (hit) apply();
         });
         bodyObserver.observe(doc.body, { childList: true, attributes: true, attributeFilter: ['class'] });
+        doc.addEventListener('staticforge:modal-lifecycle', onLifecycle);
     }
 
-    const api = { apply, ownerCenter, isVista, MESSAGE_IDS, FORM_IDS, TASK_IDS };
+    const api = { apply, ownerCenter, isVista, markTextButtons, MESSAGE_IDS, FORM_IDS, TASK_IDS };
     if (root) {
         root.vistaDialogs = api;
         if (doc && doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', init);

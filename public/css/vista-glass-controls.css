@@ -125,6 +125,45 @@ body:not(.windows-classic-theme) .gallery-toggle-group .gallery-toggle-slider::b
     pointer-events: none;
 }
 
+/* Light glass under the bar (aeroGlass.js sets data-backdrop on [data-aero-contrast] from the
+   wallpaper copy and tint actually under it, e.g. an inactive frame over a bright wallpaper):
+   dark glyphs, as Vista draws on a light frame. The selected toggle keeps its own colours. */
+body:not(.windows-classic-theme) .main-menu-bar-outer[data-backdrop="light"] {
+    --bar-glyph-dark: hsl(210 43% 14%);
+}
+
+body:not(.windows-classic-theme) .main-menu-bar-outer[data-backdrop="light"] button:not(.round-button):not(.gallery-toggle-btn) {
+    color: var(--bar-glyph-dark);
+}
+
+body:not(.windows-classic-theme) .main-menu-bar-outer[data-backdrop="light"] .gallery-toggle-group .gallery-toggle-btn:not(.active) {
+    color: var(--bar-glyph-dark);
+    opacity: 0.7;
+}
+
+/* the toggle well turns light too, or the dark glyphs sit in smoked glass: a pale sunken face
+   with a soft inner shadow. #main-menu-bar outranks the :is(…, #manualModal) well rule. */
+body:not(.windows-classic-theme) #main-menu-bar .main-menu-bar-outer[data-backdrop="light"] .gallery-toggle-group {
+    background: hsl(0 0% 100% / 32%);
+    border-color: hsl(210 25% 25% / 50%);
+    box-shadow: inset 0 1px 2px hsl(0 0% 0% / 22%), 0 1px 0 hsl(0 0% 100% / 45%);
+}
+
+body:not(.windows-classic-theme) #main-menu-bar .main-menu-bar-outer[data-backdrop="light"] .gallery-toggle-group:hover:not(:disabled) {
+    background: hsl(0 0% 100% / 42%);
+}
+
+/* the same hover steps as the light glyphs: group hover lifts them, a hovered one is full */
+@media (hover: hover) {
+    body:not(.windows-classic-theme) .main-menu-bar-outer[data-backdrop="light"] .gallery-toggle-group:hover:not(:disabled) .gallery-toggle-btn:not(.active) {
+        opacity: 0.8;
+    }
+
+    body:not(.windows-classic-theme) .main-menu-bar-outer[data-backdrop="light"] .gallery-toggle-group .gallery-toggle-btn:not(.active):hover:not(:disabled) {
+        opacity: 1;
+    }
+}
+
 /* ---------- round buttons ----------
    All the glass is one ::before layer over the button's base colour: the frame tint and
    sheen (like the workspace page jumps; danger and wide pills such as Generate keep their own
@@ -301,25 +340,28 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
    all round. The bitmap carries Vista's 1 px transparent margin, so a 75x23 button paints a 73x21
    face exactly where the VM does (WinForms test form with native styles, pixel diff 0 on the face).
    Where: every Windows-look client (light windows, Vista dialogs, .win7 content) for the app's
-   button classes and unclassed buttons, plus .btn-standard anywhere on the desktop. Vista has one
+   button classes, the Control Panel's .cpl-wu-button and unclassed buttons, plus .btn-standard anywhere on the desktop. Vista has one
    push button: primary, danger and warning are the same face; .btn-primary (and a dialog's
    data-dialog-primary / .primary) is the default button: the blue frame, pulsing while its window
    is active; a focused button takes the default frame too, and its dotted focus rectangle 3 px in.
    Hot fades in fast and out slowly, pressed is instant. The hot and pulse frames are ::before /
    ::after layers that cross-fade by opacity (compositor only).
-   Not: caption buttons and window chrome toolbars, Explorer command bars, round buttons (orbs),
+   A button whose box was sized as the visible face (7.css drew the face to the box's edge) sets
+   --vista-button-outset: 1px so the face keeps those pixels (the WER dialog's 21 px buttons).
+   Not: caption buttons and window chrome toolbars, command bars (any [role=toolbar], Explorer /
+   Windows Mail / Nax / Director bars: their buttons draw their own icons on ::before), round buttons (orbs),
    toolbar / hover-show / toggle-group buttons, the drop-down triggers (combo box rules below), tabs.
    Custom apps on dark glass (Studio and its tool windows) keep their own buttons. */
-body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *) {
+body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, .cpl-wu-button, .tbp-button, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *, [role="toolbar"] *, .explorer-actions-header *, .dovecote-command-bar *, .naxt-command-bar *, .director-window-command-bar *) {
     --vista-button-face: url("/static_images/vista-controls/button-normal.png");
     position: relative;
     z-index: 0;
     box-sizing: border-box;
-    min-height: 23px;
-    padding: 0 10px;
+    min-height: calc(23px - 2 * var(--vista-button-outset, 0px));
+    padding: 0 8px;
     background: none;
     border: 1px solid transparent;
-    border-image: var(--vista-button-face) 4 fill / 4px stretch;
+    border-image: var(--vista-button-face) 4 fill / 4px / var(--vista-button-outset, 0) stretch;
     border-radius: 0;
     box-shadow: none;
     color: #000;
@@ -335,9 +377,18 @@ body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client=
     opacity: 1;
 }
 
+/* the property sheets (Taskbar, Remote Access, Personalization) and Remote Desktop Connection size
+   their buttons as the face (73x21 in a 75x23 rect) and keep the sheet's font; #_ outranks the
+   shared rule's long selector */
+body.desktop-mode:not(.windows-classic-theme) .tbp-client button.tbp-button:not(#_) {
+    --vista-button-outset: 1px;
+    padding: 0 4px;
+    font: inherit;
+}
+
 /* the hot face (::before) and the default pulse (::after) */
-body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *)::before,
-body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *)::after {
+body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, .cpl-wu-button, .tbp-button, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *, [role="toolbar"] *, .explorer-actions-header *, .dovecote-command-bar *, .naxt-command-bar *, .director-window-command-bar *)::before,
+body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, .cpl-wu-button, .tbp-button, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *, [role="toolbar"] *, .explorer-actions-header *, .dovecote-command-bar *, .naxt-command-bar *, .director-window-command-bar *)::after {
     content: '';
     position: absolute;
     inset: -1px;
@@ -349,7 +400,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client=
     padding: 0;
     background: none;
     border: 4px solid transparent;
-    border-image: url("/static_images/vista-controls/button-hot.png") 4 fill / 4px stretch;
+    border-image: url("/static_images/vista-controls/button-hot.png") 4 fill / 4px / var(--vista-button-outset, 0) stretch;
     border-radius: 0;
     box-shadow: none;
     opacity: 0;
@@ -358,76 +409,156 @@ body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client=
     animation: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *)::after {
+body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, .cpl-wu-button, .tbp-button, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *, [role="toolbar"] *, .explorer-actions-header *, .dovecote-command-bar *, .naxt-command-bar *, .director-window-command-bar *)::after {
     border-image-source: url("/static_images/vista-controls/button-default-pulse.png");
     transition: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *) i {
+body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, .cpl-wu-button, .tbp-button, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *, [role="toolbar"] *, .explorer-actions-header *, .dovecote-command-bar *, .naxt-command-bar *, .director-window-command-bar *) i {
     color: #2b5797;
     text-shadow: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button.btn-danger):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *) i {
+/* Vista push buttons and command bar commands carry no glyph: vistaDialogs.js marks the ones
+   with a label (a command with Vista's own icon paints it on the <i> in its window's sheet) */
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) button.vista-text-button > i[class*="fa-"] {
+    display: none;
+}
+
+/* icon-only buttons with a Vista counterpart get Explorer's art: Delete (the red X), Properties
+   (edit), Save, Refresh */
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] button:not(.vista-text-button) > i:is(.fa-trash, .fa-trash-can, .fa-edit, .fa-pen-to-square, .fa-save, .fa-floppy-disk, .fa-sync, .fa-rotate, .fa-arrows-rotate) {
+    display: block;
+    width: 16px;
+    height: 16px;
+    background: url("/static_images/vista-cmdbar/delete.png") no-repeat center / 16px 16px;
+    font-size: 0;
+    color: transparent;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] button:not(.vista-text-button) > i:is(.fa-edit, .fa-pen-to-square) { background-image: url("/static_images/vista-cmdbar/properties.png"); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] button:not(.vista-text-button) > i:is(.fa-save, .fa-floppy-disk) { background-image: url("/static_images/vista-cmdbar/save.png"); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] button:not(.vista-text-button) > i:is(.fa-sync, .fa-rotate, .fa-arrows-rotate) { background-image: url("/static_images/vista-cmdbar/refresh.png"); }
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] button:not(.vista-text-button) > i:is(.fa-trash, .fa-trash-can, .fa-edit, .fa-pen-to-square, .fa-save, .fa-floppy-disk, .fa-sync, .fa-rotate, .fa-arrows-rotate)::before {
+    content: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] button:disabled:not(.vista-text-button) > i:is(.fa-trash, .fa-trash-can, .fa-edit, .fa-pen-to-square, .fa-save, .fa-floppy-disk, .fa-sync, .fa-rotate, .fa-arrows-rotate) {
+    filter: grayscale(1);
+    opacity: 0.5;
+}
+
+/* a label only the Vista desktop shows (an icon-only button elsewhere gets words on Vista) */
+.vista-label {
+    display: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog]) .vista-label {
+    display: inline;
+}
+
+/* the search boxes' magnifier: Explorer's search box glyph */
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] :is(.text-replacement-search, .config-editor-search-row, .character-db-search-row) > i:is(.fa-search, .fa-magnifying-glass) {
+    width: 13px;
+    height: 13px;
+    background: url("/static_images/vista-start/search-glyph.png") no-repeat center / 13px 13px;
+    font-size: 0;
+    opacity: 1;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] :is(.text-replacement-search, .config-editor-search-row, .character-db-search-row) > i:is(.fa-search, .fa-magnifying-glass)::before {
+    content: none;
+}
+
+/* page back / forward: Explorer's travel arrows (vista-cmdbar back / forward) */
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .pagination-btn > i:is(.fa-chevron-left, .fa-chevron-right) {
+    display: block;
+    width: 16px;
+    height: 16px;
+    background: url("/static_images/vista-cmdbar/back.png") no-repeat center / 16px 16px;
+    font-size: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .pagination-btn > i.fa-chevron-right {
+    background-image: url("/static_images/vista-cmdbar/forward.png");
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .pagination-btn:disabled > i.fa-chevron-left {
+    background-image: url("/static_images/vista-cmdbar/back-disabled.png");
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .pagination-btn:disabled > i.fa-chevron-right {
+    background-image: url("/static_images/vista-cmdbar/forward-disabled.png");
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .pagination-btn > i:is(.fa-chevron-left, .fa-chevron-right)::before {
+    content: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button.btn-danger):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *, [role="toolbar"] *, .explorer-actions-header *, .dovecote-command-bar *, .naxt-command-bar *, .director-window-command-bar *) i {
     color: #c42b1c;
 }
 
-/* default: the primary button, or the focused one */
-body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, [data-dialog-primary="1"], .primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, :not([class])):is(.btn-primary, [data-dialog-primary="1"], .primary, :focus-visible), button.btn-standard:is(.primary, :focus-visible)):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *):not(:disabled) {
+/* default: the focused push button, else the dialog's primary one (Vista moves the default with the focus) */
+body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, [data-dialog-primary="1"], .primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, .cpl-wu-button, .tbp-button, :not([class])):is(:focus, :is(.btn-primary, [data-dialog-primary="1"], .primary):not(.modal:has(button:focus:is(.btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, .cpl-wu-button, .tbp-button, :not([class])):not(.btn-primary, [data-dialog-primary="1"], .primary, [role="tab"], [role="menuitem"], .round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn)) *)), button.btn-standard:is(:focus, .primary:not(.modal:has(button:focus:is(.btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, .cpl-wu-button, .tbp-button, :not([class])):not(.btn-primary, [data-dialog-primary="1"], .primary, [role="tab"], [role="menuitem"], .round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn)) *))):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *, [role="toolbar"] *, .explorer-actions-header *, .dovecote-command-bar *, .naxt-command-bar *, .director-window-command-bar *):not(:disabled) {
     --vista-button-face: url("/static_images/vista-controls/button-default.png");
 }
 
-/* it pulses only while its window is the active one (the cross-fade runs on the compositor) */
-body.desktop-mode:not(.windows-classic-theme) .modal.active-window :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, [data-dialog-primary="1"], .primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, :not([class])):is(.btn-primary, [data-dialog-primary="1"], .primary, :focus-visible), button.btn-standard:is(.primary, :focus-visible)):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *):not(:disabled):not(:active)::after {
-    animation: vista-button-default-pulse 1s ease-in-out infinite alternate;
+/* it pulses only while its window is the active one (the cross-fade runs on the compositor), and not
+   under the mouse (hot wins). Measured on the VM (a native BS_DEFPUSHBUTTON): the glow frame fades in
+   over 16 steps of 63 ms, then out over 16 more, linear: a 2.016 s cycle */
+body.desktop-mode:not(.windows-classic-theme) .modal.active-window :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, [data-dialog-primary="1"], .primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, .cpl-wu-button, .tbp-button, :not([class])):is(:focus, :is(.btn-primary, [data-dialog-primary="1"], .primary):not(.modal:has(button:focus:is(.btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, .cpl-wu-button, .tbp-button, :not([class])):not(.btn-primary, [data-dialog-primary="1"], .primary, [role="tab"], [role="menuitem"], .round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn)) *)), button.btn-standard:is(:focus, .primary:not(.modal:has(button:focus:is(.btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, .cpl-wu-button, .tbp-button, :not([class])):not(.btn-primary, [data-dialog-primary="1"], .primary, [role="tab"], [role="menuitem"], .round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn)) *))):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *, [role="toolbar"] *, .explorer-actions-header *, .dovecote-command-bar *, .naxt-command-bar *, .director-window-command-bar *):not(:disabled):not(:active):not(:hover)::after {
+    animation: vista-button-default-pulse 2.016s infinite;
 }
 
 @keyframes vista-button-default-pulse {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    0% { opacity: 0; animation-timing-function: steps(16, jump-end); }
+    50% { opacity: 1; animation-timing-function: steps(16, jump-end); }
+    100% { opacity: 0; }
 }
 
-body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *):focus-visible {
+body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, .cpl-wu-button, .tbp-button, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *, [role="toolbar"] *, .explorer-actions-header *, .dovecote-command-bar *, .naxt-command-bar *, .director-window-command-bar *):focus-visible {
     outline: 1px dotted #000;
     outline-offset: -4px;
 }
 
 @media (hover: hover) {
-    body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *):hover:not(:disabled) {
+    body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, .cpl-wu-button, .tbp-button, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *, [role="toolbar"] *, .explorer-actions-header *, .dovecote-command-bar *, .naxt-command-bar *, .director-window-command-bar *):hover:not(:disabled) {
         background: none;
         border-color: transparent;
         box-shadow: none;
         color: #000;
     }
 
-    body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *):hover:not(:disabled)::before {
+    body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, .cpl-wu-button, .tbp-button, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *, [role="toolbar"] *, .explorer-actions-header *, .dovecote-command-bar *, .naxt-command-bar *, .director-window-command-bar *):hover:not(:disabled)::before {
         opacity: 1;
         transition-duration: 0.1s;
     }
 }
 
 /* pressed (and latched app buttons): Vista's sunken face, no fade */
-body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *):is(:active, .active, [data-state="on"], [aria-pressed="true"]):not(:disabled) {
+body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, .cpl-wu-button, .tbp-button, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *, [role="toolbar"] *, .explorer-actions-header *, .dovecote-command-bar *, .naxt-command-bar *, .director-window-command-bar *):is(:active, .active, [data-state="on"], [aria-pressed="true"]):not(:disabled) {
     --vista-button-face: url("/static_images/vista-controls/button-pressed.png");
     background: none;
     box-shadow: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *):is(:active, .active, [data-state="on"], [aria-pressed="true"]):not(:disabled):is(*, :hover)::before {
+body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, .cpl-wu-button, .tbp-button, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *, [role="toolbar"] *, .explorer-actions-header *, .dovecote-command-bar *, .naxt-command-bar *, .director-window-command-bar *):is(:active, .active, [data-state="on"], [aria-pressed="true"]):not(:disabled):is(*, :hover)::before {
     opacity: 0;
     transition: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *):disabled {
+body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, .cpl-wu-button, .tbp-button, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *, [role="toolbar"] *, .explorer-actions-header *, .dovecote-command-bar *, .naxt-command-bar *, .director-window-command-bar *):disabled {
     --vista-button-face: url("/static_images/vista-controls/button-disabled.png");
     background: none;
     box-shadow: none;
     color: #838383;
-    cursor: default;
+    cursor: var(--c-default, default);
     opacity: 1;
 }
 
-body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *):disabled i {
+body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, .cpl-wu-button, .tbp-button, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *, [role="toolbar"] *, .explorer-actions-header *, .dovecote-command-bar *, .naxt-command-bar *, .director-window-command-bar *):disabled i {
     color: inherit;
     opacity: 0.6;
 }
@@ -921,88 +1052,545 @@ body:not(.windows-classic-theme) :is(.custom-dropdown-badge, .image-prompt-inspe
 
 
 
-/* ---------- Vista text boxes everywhere (Yukimi 2026-10-13: "default is vista styles everywhere
-   unless its a custom app with custom controls mix"). 7.css's text box: white, the grey edge
-   darker at the top, 2px corners, the blue edge on hover / focus, grey when disabled. The app's
-   own sizing (padding, min-height) stays so rows keep their layout. `.hover-show` inputs are the
-   custom apps' reveal-on-hover controls and keep their rules; Studio (#manualModal) keeps its
-   own control mix; the window chrome toolbars (.modal-window-title-toolbar: address and search
-   boxes) draw their own Vista boxes; .win7 content already has 7.css; Classic draws its own.
-   Prompt boxes (.prompt-textarea) keep the prompt font: their emphasis overlay mirrors it.
-   Notepad and Notion pages (.notepad-textarea) and the Sidebar note (.vsb-notes-text) are a
-   borderless page, not a text box.
-   Only form elements: .form-control on a div (the Control Panel's breadcrumb box, readouts) is not
-   a text box. No #id inside :not() here: it would lift these rules over every app's own #id
-   rules. ---------- */
-body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, :is(input, textarea).form-control):not(.hover-show):not(.win7 *):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not(.prompt-textarea, .character-prompt-textarea, .notepad-textarea, .vsb-notes-text):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button) {
+/* ---------- Vista common controls: text boxes, combo boxes, check boxes and radio buttons, track
+   bars, progress bars, tabs, group boxes (2026-10-21) ----------
+   Vista's own theme art like the push buttons above (scripts/build-vista-controls.sh,
+   static_images/vista-controls/), matched against the VM's WinForms test form.
+
+   Text boxes (Yukimi 2026-10-13: "default is vista styles everywhere unless its a custom app with
+   custom controls mix"): EDIT border IMAGE_523, a 5x5 9-slice (2 px) that is 7.css's edge colours
+   plus Vista's inner corner pixels; hot and focused are the blue frames, disabled the grey one on
+   #f4f4f4. The app's own sizing (padding, min-height) stays so rows keep their layout.
+   `.hover-show` inputs are the custom apps' reveal-on-hover controls and keep their rules (in Vista
+   dialogs they are plain text boxes and take the face); Studio
+   (#manualModal) keeps its own control mix; the window chrome toolbars (.modal-window-title-toolbar:
+   address and search boxes) draw their own Vista boxes; Classic draws its own. Prompt boxes
+   (.prompt-textarea) keep the prompt font: their emphasis overlay mirrors it. Notepad and Notion
+   pages (.notepad-textarea) and the Sidebar note (.vsb-notes-text) are a borderless page, not a
+   text box. Only form elements: .form-control on a div (the Control Panel's breadcrumb box,
+   readouts) is not a text box. No #id inside :not() here: it would lift these rules over every
+   app's own #id rules. .win7 content (the property sheets measured in Tahoma) takes the face but
+   keeps its font. ---------- */
+body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, :is(input, textarea).form-control):not(.hover-show:not(.modal[data-vista-dialog] *)):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not(.prompt-textarea, .character-prompt-textarea, .notepad-textarea, .vsb-notes-text):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button) {
+    --vista-edit-face: url("/static_images/vista-controls/edit-normal.png");
     background: #fff;
-    border: 1px solid;
-    border-color: #abadb3 #dbdfe6 #e3e9ef #e2e3ea;
-    border-radius: 2px;
+    border-style: solid;
+    border-color: transparent;
+    border-image: var(--vista-edit-face) 2 fill / 2px stretch;
+    border-radius: 0;
     box-shadow: none;
     color: #000;
-    font-family: "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
     text-shadow: none;
-    transition: border-color .5s;
+    transition: none;
 }
-body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, :is(input, textarea).form-control):not(.hover-show):not(.win7 *):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not(.prompt-textarea, .character-prompt-textarea, .notepad-textarea, .vsb-notes-text):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button)::placeholder {
+body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, :is(input, textarea).form-control):not(.hover-show:not(.modal[data-vista-dialog] *)):not(.win7 *):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not(.prompt-textarea, .character-prompt-textarea, .notepad-textarea, .vsb-notes-text):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button) {
+    font-family: "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+}
+body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, :is(input, textarea).form-control):not(.hover-show:not(.modal[data-vista-dialog] *)):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not(.prompt-textarea, .character-prompt-textarea, .notepad-textarea, .vsb-notes-text):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button)::placeholder {
     color: #777;
 }
-body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, :is(input, textarea).form-control):not(.hover-show):not(.win7 *):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not(.prompt-textarea, .character-prompt-textarea, .notepad-textarea, .vsb-notes-text):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button):hover:not(:disabled) {
+body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, :is(input, textarea).form-control):not(.hover-show:not(.modal[data-vista-dialog] *)):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not(.prompt-textarea, .character-prompt-textarea, .notepad-textarea, .vsb-notes-text):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button):hover:not(:disabled) {
+    --vista-edit-face: url("/static_images/vista-controls/edit-hot.png");
     background: #fff;
-    border-color: #5794bf #b7d5ea #c7e2f1 #c5daed;
     box-shadow: none;
-    transition: border-color .3s;
 }
-body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, :is(input, textarea).form-control):not(.hover-show):not(.win7 *):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not(.prompt-textarea, .character-prompt-textarea, .notepad-textarea, .vsb-notes-text):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button):is(:focus, :active, :focus-visible) {
+body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, :is(input, textarea).form-control):not(.hover-show:not(.modal[data-vista-dialog] *)):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not(.prompt-textarea, .character-prompt-textarea, .notepad-textarea, .vsb-notes-text):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button):is(:focus, :focus-visible):not(:disabled) {
+    --vista-edit-face: url("/static_images/vista-controls/edit-focus.png");
     background: #fff;
-    border-color: #3d7bad #a4c9e3 #b7d9ed #b5cfe7;
     box-shadow: none;
     outline: none;
 }
-body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, :is(input, textarea).form-control):not(.hover-show):not(.win7 *):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not(.prompt-textarea, .character-prompt-textarea, .notepad-textarea, .vsb-notes-text):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button):disabled {
-    background: #f0f0f0;
-    border-color: #afafaf;
-    box-shadow: inset 0 0 0 1px #fff;
-    color: #838383;
+body.desktop-mode:not(.windows-classic-theme) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, :is(input, textarea).form-control):not(.hover-show:not(.modal[data-vista-dialog] *)):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not(.prompt-textarea, .character-prompt-textarea, .notepad-textarea, .vsb-notes-text):not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], button):disabled {
+    background: #f4f4f4;
+    border-image: url("/static_images/vista-controls/edit-disabled.png") 1 / 1px stretch;
+    box-shadow: none;
+    color: #6d6d6d;
     opacity: 1;
 }
 
-/* native selects: 7.css's drop-down button face with its arrow */
-body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not(.win7 *):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment) {
+/* in Windows-look clients the text is Segoe UI 9 pt like the VM's (emphasis-manager.css sizes every
+   .modal-content input 1rem); the Tahoma property sheets (.tbp-client) size their own */
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) :is(input:is([type="text"], [type="number"], [type="password"], [type="search"], [type="url"], [type="email"], [type="tel"], :not([type])), textarea, select):not(.hover-show, .prompt-textarea, .character-prompt-textarea, .notepad-textarea, .vsb-notes-text, .toolbar-input-segment):not(.tbp-client *, .modal-window-title-toolbar *) {
+    font-size: 9pt;
+}
+
+/* Spin boxes (number inputs): Vista's up-down pair inside the box, each half 14x9 with its own
+   arrow, 2 px in from the box's edge (cut from the VM's spin control at 96 DPI: spin-*.png; the
+   theme's SPIN bitmaps are drawn rotated at that size). Chrome's spinner is one element and does not
+   say which half is under the pointer, so hover lights both halves and there is no pressed half. */
+/* app.css's appearance: none on inputs drops Chrome's spinner element altogether */
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input[type="number"]:not(.hover-show, .toolbar-input-segment):not(.tbp-client *, .modal-window-title-toolbar *) {
+    appearance: auto;
+    -webkit-appearance: auto;
+}
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input[type="number"]:not(.hover-show, .toolbar-input-segment):not(.tbp-client *, .modal-window-title-toolbar *)::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    appearance: none;
+    display: block;
+    align-self: center;
+    width: 14px;
+    height: 18px;
+    margin: -2px -2px 0 2px;
+    background: url("/static_images/vista-controls/spin-up-normal.png") top / 14px 9px no-repeat, url("/static_images/vista-controls/spin-down-normal.png") bottom / 14px 9px no-repeat;
+    opacity: 1;
+    cursor: var(--c-default, default);
+}
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input[type="number"]:not(.hover-show, .toolbar-input-segment):not(.tbp-client *, .modal-window-title-toolbar *)::-webkit-inner-spin-button:hover {
+    background-image: url("/static_images/vista-controls/spin-up-hot.png"), url("/static_images/vista-controls/spin-down-hot.png");
+}
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input[type="number"]:not(.hover-show, .toolbar-input-segment):not(.tbp-client *, .modal-window-title-toolbar *):disabled::-webkit-inner-spin-button {
+    opacity: 0.5;
+}
+
+/* Combo boxes (drop-down lists): COMBOBOX READONLY IMAGE_524, 9-sliced 3 px, with the black glyph
+   (IMAGE_520) 4 px from the right edge, centred; the VM's 150x23 list draws the face over the whole
+   rect. Hot lights the whole face; pressed while the list is open (the text then loses its
+   highlight); focused, Vista highlights the text in the selection blue. A <select> cannot hold a pseudo-element and a border-image fill
+   paints over the background, so its face is an edge-only border image over the face's centre
+   column (combo-*-fill.png) and the glyph as backgrounds. */
+body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment) {
+    --vista-combo-face: url("/static_images/vista-controls/combo-normal.png");
+    --vista-combo-fill: url("/static_images/vista-controls/combo-normal-fill.png");
+    --vista-combo-glyph: url("/static_images/vista-controls/combo-glyph-normal.png");
+    --vista-combo-text: none;
     appearance: none;
     -webkit-appearance: none;
-    background: url("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTciIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHBhdGggZD0iTTExIDZINHYxaDF2MWgxdjFoMXYxaDFWOWgxVjhoMVY3aDFWNloiIGZpbGw9IiMwMDAiLz48L3N2Zz4="), linear-gradient(#f2f2f2 45%, #ebebeb 45%, #cfcfcf);
-    background-position: 100%;
-    background-repeat: no-repeat;
-    border: 1px solid #8e8f8f;
-    border-radius: 3px;
-    box-shadow: inset 0 0 0 1px #fffc;
-    color: #222;
-    font-family: "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
-    padding-right: 30px;
+    background: var(--vista-combo-glyph) right 4px center / 10px 19px no-repeat border-box, var(--vista-combo-text) 3px 3px / calc(100% - 23px) calc(100% - 6px) no-repeat border-box, var(--vista-combo-fill) 3px 3px / calc(100% - 6px) calc(100% - 6px) no-repeat border-box;
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-image: var(--vista-combo-face) 3 / 3px stretch;
+    border-radius: 0;
+    box-shadow: none;
+    color: #000;
+    padding-right: 18px;
     text-shadow: none;
+    transition: none;
 }
-body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not(.win7 *):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not(:disabled):hover {
-    background-image: url("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTciIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHBhdGggZD0iTTExIDZINHYxaDF2MWgxdjFoMXYxaDFWOWgxVjhoMVY3aDFWNloiIGZpbGw9IiMwMDAiLz48L3N2Zz4="), linear-gradient(#eaf6fd 45%, #bee6fd 0, #a7d9f5);
-    border-color: #3c7fb1;
+body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not(.win7 *):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment) {
+    font-family: "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
 }
-body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not(.win7 *):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not(:disabled):focus {
-    box-shadow: inset 0 0 0 2px #98d1ef;
-    outline: 1px dotted #000;
-    outline-offset: -4px;
+body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):focus:not(:disabled):not(:is(:open)) {
+    --vista-combo-text: linear-gradient(#3399ff, #3399ff);
+    color: #fff;
+    outline: none;
+    box-shadow: none;
 }
-body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not(.win7 *):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):disabled {
-    background-image: url("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTciIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHBhdGggZD0iTTExIDZINHYxaDF2MWgxdjFoMXYxaDFWOWgxVjhoMVY3aDFWNloiIGZpbGw9IiMwMDAiLz48L3N2Zz4="), linear-gradient(#f4f4f4, #f4f4f4);
-    border-color: #adb2b5;
-    color: #838383;
+body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):focus:not(:disabled) option {
+    color: #000;
+}
+body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):hover:not(:disabled) {
+    --vista-combo-face: url("/static_images/vista-controls/combo-hot.png");
+    --vista-combo-fill: url("/static_images/vista-controls/combo-hot-fill.png");
+}
+body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):is(:active, :open):not(:disabled) {
+    --vista-combo-face: url("/static_images/vista-controls/combo-pressed.png");
+    --vista-combo-fill: url("/static_images/vista-controls/combo-pressed-fill.png");
+}
+body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):disabled {
+    --vista-combo-face: url("/static_images/vista-controls/combo-disabled.png");
+    --vista-combo-fill: url("/static_images/vista-controls/combo-disabled-fill.png");
+    --vista-combo-glyph: url("/static_images/vista-controls/combo-glyph-disabled.png");
+    color: #6d6d6d;
     opacity: 1;
 }
-body.desktop-mode:not(.windows-classic-theme) select[multiple]:not(.hover-show):not(.win7 *):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment) {
+/* The open list, through Chrome's customizable <select> (base-select; older browsers keep the
+   native popup). Measured on the VM's 237 px DropDownList: the list is as wide as the combo and
+   directly under it, a 1 px #646464 frame round white, 15 px rows (Segoe UI 9 pt) with the text 2 px in, the
+   hot / keyboard row #3399ff with white text, no check marks, at most 30 rows, and the
+   CS_DROPSHADOW soft 4 px shadow right and below. */
+@supports (appearance: base-select) {
+    body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment),
+    body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment)::picker(select) {
+        appearance: base-select;
+    }
+    /* base-select's own box defaults (padding, gap, minimum height) step back to the native
+       select's, at zero specificity so each app's select sizes still apply */
+    :where(body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment)) {
+        align-items: center;
+        gap: 0;
+        min-block-size: 0;
+        padding-block: 0;
+        padding-inline: 0;
+    }
+    body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment)::picker-icon {
+        display: none;
+    }
+    body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment)::picker(select) {
+        box-sizing: border-box;
+        min-width: anchor-size(width);
+        max-height: calc(30 * 15px + 2px);
+        margin: 0;
+        padding: 0;
+        background: #fff;
+        border: 1px solid #646464;
+        border-radius: 0;
+        box-shadow: 1px 1px rgba(0, 0, 0, 0.17), 2px 2px rgba(0, 0, 0, 0.195), 3px 3px rgba(0, 0, 0, 0.12), 4px 4px rgba(0, 0, 0, 0.055);
+        color: #000;
+        font: inherit;
+        transition: none;
+    }
+    body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment) option {
+        display: block;
+        min-height: 0;
+        min-inline-size: 0;
+        margin: 0;
+        padding: 0 2px;
+        background: #fff;
+        border: 0;
+        border-radius: 0;
+        color: #000;
+        font: inherit;
+        line-height: 15px;
+        white-space: nowrap;
+        outline: none;
+        cursor: var(--c-default, default);
+    }
+    /* rows follow the font as on the VM: 15 px for Segoe UI 9 pt, 13 px for the property sheets'
+       Tahoma / MS Sans Serif 8 pt (Taskbar, Remote Access, Remote Desktop Connection) */
+    body.desktop-mode:not(.windows-classic-theme) .tbp-client select:not([multiple]):not(.hover-show):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment) option {
+        line-height: 13px;
+    }
+    body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment) option::checkmark {
+        display: none;
+    }
+    /* one highlighted row: the one under the mouse, else the keyboard's, else the selected one */
+    body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment) option:hover:not(:disabled),
+    body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not(:has(option:hover)) option:focus:not(:disabled),
+    body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment):not(:has(option:hover, option:focus)) option:checked:not(:disabled) {
+        background: #3399ff;
+        color: #fff;
+    }
+    body.desktop-mode:not(.windows-classic-theme) select:not([multiple]):not(.hover-show):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment) option:disabled {
+        color: #6d6d6d;
+    }
+}
+body.desktop-mode:not(.windows-classic-theme) select[multiple]:not(.hover-show):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment) {
     background: #fff;
-    border: 1px solid #c0c1cd;
+    border: 1px solid #828790;
+    border-radius: 0;
     color: #000;
+}
+body.desktop-mode:not(.windows-classic-theme) select[multiple]:not(.hover-show):not(.win7 *):not([id="manualModal"] *):not(.modal-window-title-toolbar *):not(.toolbar-input-segment) {
     font-family: "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+}
+
+/* The app's drop-down buttons (custom-dropdown-btn, click-menu pickers, the Control Panel's
+   cpl-db-combo) in Windows-look clients
+   are the same combo box: the face as a border image, the glyph on ::after. Not: the custom apps'
+   hover-show pickers (not in Vista dialogs) and their indicator lamps (credit-cost Scale / Speed draw on ::after), the
+   Visual Index pickers on its dark command bar. */
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) :is(.custom-dropdown-btn, .cpl-db-combo):not(.modal-window-title-toolbar *, .toolbar-input-segment, .hover-show:not(.modal[data-vista-dialog] *), .indicator, .gallery-jump-index-controls *) {
+    --vista-combo-face: url("/static_images/vista-controls/combo-normal.png");
+    position: relative;
+    z-index: 0;
+    box-sizing: border-box;
+    min-height: 23px;
+    padding: 0 20px 0 4px;
+    justify-content: flex-start;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    background: none;
+    border: 1px solid transparent;
+    border-image: var(--vista-combo-face) 3 fill / 3px stretch;
+    border-radius: 0;
+    box-shadow: none;
+    color: #000;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    font-weight: 400;
+    font-variation-settings: normal;
+    letter-spacing: normal;
+    text-shadow: none;
+    opacity: 1;
+    transform: none;
+    transition: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) :is(.custom-dropdown-btn, .cpl-db-combo):not(.modal-window-title-toolbar *, .toolbar-input-segment, .hover-show:not(.modal[data-vista-dialog] *), .indicator, .gallery-jump-index-controls *)::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 4px;
+    bottom: 0;
+    left: auto;
+    width: 10px;
+    height: auto;
+    margin: 0;
+    background: url("/static_images/vista-controls/combo-glyph-normal.png") center / 10px 19px no-repeat;
+    border: 0;
+    box-shadow: none;
+    opacity: 1;
+    transform: none;
+    pointer-events: none;
+}
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) :is(.custom-dropdown-btn, .cpl-db-combo):not(.modal-window-title-toolbar *, .toolbar-input-segment, .hover-show:not(.modal[data-vista-dialog] *), .indicator, .gallery-jump-index-controls *) :is(span, i) {
+    color: #000;
+    text-shadow: none;
+}
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) :is(.custom-dropdown-btn, .cpl-db-combo):not(.modal-window-title-toolbar *, .toolbar-input-segment, .hover-show:not(.modal[data-vista-dialog] *), .indicator, .gallery-jump-index-controls *):is(:hover, :focus-visible):not(:disabled) {
+    --vista-combo-face: url("/static_images/vista-controls/combo-hot.png");
+    background: none;
+    box-shadow: none;
+    color: #000;
+}
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) :is(.custom-dropdown-btn, .cpl-db-combo):not(.modal-window-title-toolbar *, .toolbar-input-segment, .hover-show:not(.modal[data-vista-dialog] *), .indicator, .gallery-jump-index-controls *):is(:active, .active, .context-open):not(:disabled) {
+    --vista-combo-face: url("/static_images/vista-controls/combo-pressed.png");
+    background: none;
+    box-shadow: none;
+}
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) :is(.custom-dropdown-btn, .cpl-db-combo):not(.modal-window-title-toolbar *, .toolbar-input-segment, .hover-show:not(.modal[data-vista-dialog] *), .indicator, .gallery-jump-index-controls *):disabled {
+    --vista-combo-face: url("/static_images/vista-controls/combo-disabled.png");
+    color: #6d6d6d;
+}
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) :is(.custom-dropdown-btn, .cpl-db-combo):not(.modal-window-title-toolbar *, .toolbar-input-segment, .hover-show:not(.modal[data-vista-dialog] *), .indicator, .gallery-jump-index-controls *):disabled::after {
+    background-image: url("/static_images/vista-controls/combo-glyph-disabled.png");
+}
+
+/* Check boxes and radio buttons: BUTTON CHECKBOX IMAGE_508 / RADIOBUTTON IMAGE_516 (13 px frames:
+   unchecked normal / hot / pressed / disabled, then checked, then mixed), the copies the Remote
+   Access session cut (checkbox.png, radio.png). 7.css's markup (.win7: the input hidden, the box as
+   the label's ::before) takes the sprite on ::before; a bare input anywhere else in a Windows-look
+   client is drawn on the input itself. Vista puts the text 16 px after the box's left edge. The games
+   and their options dialog and the Calculator keep the metrics they measured themselves. */
+body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]) + label::before {
+    width: 13px;
+    height: 13px;
+    margin-right: 3px;
+    background: url("/static_images/vista-controls/checkbox.png") 0 0 / 13px auto no-repeat;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    filter: none;
+    opacity: 1;
+}
+body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *)[type="radio"] + label::before {
+    background-image: url("/static_images/vista-controls/radio.png");
+}
+body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]) + label::after {
+    content: none;
+}
+body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]) + label {
+    filter: none;
+    opacity: 1;
+}
+body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]) + label:hover::before { background-position-y: -13px; }
+body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]) + label:active::before { background-position-y: -26px; }
+body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):checked + label::before { background-position-y: -52px; }
+body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):checked + label:hover::before { background-position-y: -65px; }
+body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):checked + label:active::before { background-position-y: -78px; }
+body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *)[type="checkbox"]:indeterminate + label::before { background-position-y: -104px; }
+body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):disabled + label:is(*, :hover, :active)::before { background-position-y: -39px; }
+body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):checked:disabled + label:is(*, :hover, :active)::before { background-position-y: -91px; }
+body.desktop-mode:not(.windows-classic-theme) .win7 input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):disabled + label {
+    color: #6d6d6d;
+}
+
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):not(.win7 input:is([type="checkbox"], [type="radio"]):has(+ label)) {
+    appearance: none;
+    -webkit-appearance: none;
+    position: static;
+    flex: none;
+    width: 13px;
+    height: 13px;
+    margin: 0 3px 0 0;
+    padding: 0;
+    background: url("/static_images/vista-controls/checkbox.png") 0 0 / 13px auto no-repeat;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    outline-offset: 1px;
+    opacity: 1;
+    vertical-align: -2px;
+}
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *)[type="radio"]:not(.win7 input[type="radio"]:has(+ label)) {
+    background-image: url("/static_images/vista-controls/radio.png");
+}
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):not(.win7 input:is([type="checkbox"], [type="radio"]):has(+ label)):is(:hover, label:hover > *) { background-position-y: -13px; }
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):not(.win7 input:is([type="checkbox"], [type="radio"]):has(+ label)):is(:active, label:active > *) { background-position-y: -26px; }
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):not(.win7 input:is([type="checkbox"], [type="radio"]):has(+ label)):checked { background-position-y: -52px; }
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):not(.win7 input:is([type="checkbox"], [type="radio"]):has(+ label)):checked:is(:hover, label:hover > *) { background-position-y: -65px; }
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):not(.win7 input:is([type="checkbox"], [type="radio"]):has(+ label)):checked:is(:active, label:active > *) { background-position-y: -78px; }
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *)[type="checkbox"]:not(.win7 input[type="checkbox"]:has(+ label)):indeterminate { background-position-y: -104px; }
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):not(.win7 input:is([type="checkbox"], [type="radio"]):has(+ label)):disabled { background-position-y: -39px; }
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input:not(:is(.vista-game-dialog, .vista-game-dialog-client, .vista-gx-options, [id="desktopCalculatorModal"]) *):is([type="checkbox"], [type="radio"]):not(.win7 input:is([type="checkbox"], [type="radio"]):has(+ label)):checked:disabled { background-position-y: -91px; }
+
+/* Track bars (input range): TRACKBAR THUMBBOTTOM IMAGE_790 (11x19: normal, hot, pressed, focused,
+   disabled) on the 4 px TRACK IMAGE_642 groove. */
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input[type="range"]:not(.win7 .is-vertical > input, .hover-show) {
+    appearance: none;
+    -webkit-appearance: none;
+    height: 22px;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+}
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input[type="range"]:not(.win7 .is-vertical > input, .hover-show)::-webkit-slider-runnable-track {
+    box-sizing: border-box;
+    height: 4px;
+    background: none;
+    border: 2px solid transparent;
+    border-image: url("/static_images/vista-controls/trackbar-track.png") 2 fill / 2px stretch;
+    border-radius: 0;
+    box-shadow: none;
+}
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input[type="range"]:not(.win7 .is-vertical > input, .hover-show)::-webkit-slider-thumb {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 11px;
+    height: 19px;
+    margin-top: -9px;
+    background: url("/static_images/vista-controls/trackbar-thumb.png") 0 0 / 11px 95px no-repeat;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    filter: none;
+    transform: none;
+}
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input[type="range"]:not(.win7 .is-vertical > input, .hover-show):focus-visible::-webkit-slider-thumb { background-position-y: -57px; }
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input[type="range"]:not(.win7 .is-vertical > input, .hover-show)::-webkit-slider-thumb:hover { background-position-y: -19px; }
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input[type="range"]:not(.win7 .is-vertical > input, .hover-show):active::-webkit-slider-thumb { background-position-y: -38px; }
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input[type="range"]:not(.win7 .is-vertical > input, .hover-show):disabled::-webkit-slider-thumb { background-position-y: -76px; }
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) input[type="range"]:not(.win7 .is-vertical > input, .hover-show):focus-visible {
+    outline: 1px dotted #000;
+    outline-offset: 0;
+}
+
+/* Progress bars: PROGRESS BAR IMAGE_622 stretched over the rect, FILL IMAGE_626 (red 627 on error,
+   yellow 628 paused) over the same height from the bar's left edge, 9-sliced 8 px at the ends.
+   Covers <progress> and 7.css's [role=progressbar] > div (startup and Windows Update dialogs). */
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) progress,
+body.desktop-mode:not(.windows-classic-theme) .win7 [role="progressbar"]:not(.log-viewer-metric-bar) {
+    appearance: none;
+    -webkit-appearance: none;
+    box-sizing: border-box;
+    min-height: 15px;
+    padding: 0;
+    background: none;
+    border: 1px solid transparent;
+    border-image: url("/static_images/vista-controls/progress-bar.png") 7 4 6 4 fill / 7px 4px 6px 4px stretch;
+    border-radius: 0;
+    box-shadow: none;
+}
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) progress::-webkit-progress-bar {
+    background: none;
+}
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) progress::-webkit-progress-value,
+body.desktop-mode:not(.windows-classic-theme) .win7 [role="progressbar"]:not(.log-viewer-metric-bar) > div {
+    background: none;
+    border: 0 solid transparent;
+    border-image: url("/static_images/vista-controls/progress-fill.png") 0 8 fill / 0 8px stretch;
+    border-radius: 0;
+    box-shadow: none;
+}
+body.desktop-mode:not(.windows-classic-theme) .win7 [role="progressbar"]:not(.log-viewer-metric-bar) > div {
+    position: relative;
+    height: auto;
+    margin: -1px;
+    min-height: 15px;
+    border-width: 0 8px;
+    box-sizing: border-box;
+    max-width: calc(100% + 2px);
+}
+body.desktop-mode:not(.windows-classic-theme) .win7 [role="progressbar"].error:not(.log-viewer-metric-bar) > div {
+    border-image-source: url("/static_images/vista-controls/progress-fill-error.png");
+}
+body.desktop-mode:not(.windows-classic-theme) .win7 [role="progressbar"].paused:not(.log-viewer-metric-bar) > div {
+    border-image-source: url("/static_images/vista-controls/progress-fill-paused.png");
+}
+
+/* Tabs: TAB TABITEM IMAGE_726 (normal, hot, disabled; LEFTEDGE 727 for the first) and the selected
+   TOPTABITEM 730 / 731, two pixels taller and open at the bottom onto the PANE IMAGE_725 (1 px
+   #898c95 edge, white, with Vista's white line outside on the right and bottom). For 7.css's tab
+   markup and the VPN status dialog's tab; the property sheets that build their own (Taskbar,
+   Remote Access) keep theirs. */
+/* the strip starts 2 px in from the pane's left edge (the selected tab grows 2 px either side) */
+body.desktop-mode:not(.windows-classic-theme) .win7 menu[role="tablist"] {
+    align-items: flex-end;
+    margin: 0;
+    padding: 0 0 0 2px;
+}
+body.desktop-mode:not(.windows-classic-theme) .vpn-tabs {
+    align-items: flex-end;
+    padding-left: 10px;
+}
+/* VM: an unselected tab is 20 px tall above the pane's top line, the selected one 23 px from 2 px
+   higher, down over that line */
+body.desktop-mode:not(.windows-classic-theme) :is(.win7 menu[role="tablist"] > :is(button, li, [role="tab"]), .vpn-tabs > .vpn-tab) {
+    position: relative;
+    z-index: 1;
+    box-sizing: border-box;
+    min-width: 0;
+    min-height: 0;
+    height: auto;
+    margin: 0 -1px 0 0;
+    padding: 2px 6px 2px;
+    background: none;
+    border: 1px solid transparent;
+    border-bottom: 0;
+    border-image: url("/static_images/vista-controls/tab-normal.png") 2 2 0 2 fill / 2px 2px 0 2px stretch;
+    border-radius: 0;
+    box-shadow: none;
+    color: #000;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 15px;
+    text-shadow: none;
+    top: 0;
+}
+body.desktop-mode:not(.windows-classic-theme) :is(.win7 menu[role="tablist"] > :is(button, li, [role="tab"]), .vpn-tabs > .vpn-tab):first-child {
+    border-image-source: url("/static_images/vista-controls/tab-left-normal.png");
+}
+body.desktop-mode:not(.windows-classic-theme) :is(.win7 menu[role="tablist"] > :is(button, li, [role="tab"]), .vpn-tabs > .vpn-tab):hover:not([aria-selected="true"], .active, :disabled) {
+    border-image-source: url("/static_images/vista-controls/tab-hot.png");
+}
+body.desktop-mode:not(.windows-classic-theme) :is(.win7 menu[role="tablist"] > :is(button, li, [role="tab"]), .vpn-tabs > .vpn-tab):first-child:hover:not([aria-selected="true"], .active, :disabled) {
+    border-image-source: url("/static_images/vista-controls/tab-left-hot.png");
+}
+body.desktop-mode:not(.windows-classic-theme) :is(.win7 menu[role="tablist"] > :is(button, li, [role="tab"]), .vpn-tabs > .vpn-tab):is([aria-selected="true"], .active) {
+    z-index: 2;
+    margin: 0 -3px -1px -2px;
+    padding: 3px 8px 4px;
+    border-image-source: url("/static_images/vista-controls/tab-top-selected.png");
+}
+body.desktop-mode:not(.windows-classic-theme) :is(.win7 menu[role="tablist"] > :is(button, li, [role="tab"]), .vpn-tabs > .vpn-tab):is([aria-selected="true"], .active):first-child {
+    border-image-source: url("/static_images/vista-controls/tab-top-left-selected.png");
+}
+body.desktop-mode:not(.windows-classic-theme) :is(.win7 menu[role="tablist"] > :is(button, li, [role="tab"]), .vpn-tabs > .vpn-tab)::before,
+body.desktop-mode:not(.windows-classic-theme) :is(.win7 menu[role="tablist"] > :is(button, li, [role="tab"]), .vpn-tabs > .vpn-tab)::after {
+    content: none;
+}
+/* the property sheets that draw their own pane and groups (Taskbar, Remote Access) keep them */
+body.desktop-mode:not(.windows-classic-theme) :is(.win7 [role="tabpanel"], .vpn-tab-page):not(.tbp-client *, .rap-window *) {
+    background: none;
+    border: 1px solid transparent;
+    border-right-width: 3px;
+    border-bottom-width: 2px;
+    border-image: url("/static_images/vista-controls/tab-pane.png") 1 3 2 1 fill / 1px 3px 2px 1px stretch;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+/* Group boxes: BUTTON GROUPBOX IMAGE_514, #d5dfe5 with the white line inside it on the top, left
+   and right and outside it below, 2 px corners (slices 2 2 3 2, no fill). */
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) fieldset:not(.tbp-client *, .rap-window *, .vista-game-dialog *, .vista-game-dialog-client *, .vista-gx-options *, [id="desktopCalculatorModal"] *) {
+    border: 2px solid transparent;
+    border-bottom-width: 3px;
+    border-image: url("/static_images/vista-controls/groupbox.png") 2 2 3 2 / 2px 2px 3px 2px stretch;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+/* Links (SysLink in a dialog): Vista's hot-light blue, underlined. Only bare anchors: the app's
+   styled links (Control Panel task links, buttons made of <a>) keep theirs. */
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) a[href]:not([class]) {
+    color: #0066cc;
+    text-decoration: underline;
+    text-shadow: none;
+}
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) a[href]:not([class]):focus-visible {
+    outline: 1px dotted #000;
+    outline-offset: 0;
 }
 
 

@@ -408,3 +408,36 @@ body:not(.windows-classic-theme) .image-prompt-inspector-json[data-window-client
         height: calc(100vh - 20px);
     }
 }
+
+/* Vista: no Font Awesome (cursor rule vista-icons-not-fa). The command bar is text only except
+   Open, which shows Photo Gallery's icon as Explorer's Preview button does; the find bar's
+   arrows become IE's "Previous" / "Next" words; headings and badges drop their glyphs. */
+body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector .explorer-command-btn > i[class*="fa-"],
+body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector :is(.image-prompt-inspector-section-title, .forgedata-badge, .meta-value) > i[class*="fa-"] {
+    display: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector .explorer-command-btn[data-inspector-action="view-image"] > i.fa-image {
+    display: block;
+    width: 16px;
+    height: 16px;
+    margin-right: 5px;
+    background: url("/static_images/vista-cmdbar/photo-gallery.png") no-repeat center / 16px 16px;
+    font-size: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector .explorer-command-btn[data-inspector-action="view-image"] > i.fa-image::before {
+    content: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector .explorer-command-btn[data-inspector-action="find-prev"]::after {
+    content: "Previous";
+}
+
+body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector .explorer-command-btn[data-inspector-action="find-next"]::after {
+    content: "Next";
+}
+
+body.desktop-mode:not(.windows-classic-theme) .image-prompt-inspector .explorer-command-btn[data-inspector-action="find-close"]::after {
+    content: "Close";
+}

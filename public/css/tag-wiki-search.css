@@ -2169,3 +2169,8 @@
     width: 1050px;
     height: 750px;
 }
+
+/* Vista: the empty / loading state is words only (cursor rule vista-icons-not-fa) */
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .tag-wiki-empty-state > i[class*="fa-"] {
+    display: none;
+}

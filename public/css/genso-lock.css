@@ -1255,3 +1255,17 @@ body:not(.windows-classic-theme) #textReplacementLockModal[data-window-client="l
     background: linear-gradient(#f6fafe, #e3effd);
     border-color: #7da2ce;
 }
+
+/* Vista: Refresh carries Explorer's refresh icon (vista-cmdbar/refresh.png, shell32 238); the
+   other commands are text only (vistaDialogs.js .vista-text-button) */
+body.desktop-mode:not(.windows-classic-theme) #textReplacementLockModal #refreshInspectorTextReplacementsBtn > i.fa-rotate {
+    display: block;
+    width: 16px;
+    height: 16px;
+    background: url("/static_images/vista-cmdbar/refresh.png") no-repeat center / 16px 16px;
+    font-size: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #textReplacementLockModal #refreshInspectorTextReplacementsBtn > i.fa-rotate::before {
+    content: none;
+}

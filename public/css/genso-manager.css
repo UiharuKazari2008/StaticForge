@@ -773,6 +773,20 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] .text-replac
     color: #0a72b5;
 }
 
+/* Vista: the kind reads as a word in the grey of Explorer's details ("Random" for a list the
+   expander picks from, "Text" for one value), not a glyph (cursor rule vista-icons-not-fa) */
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .text-replacement-type:has(> i:is(.fa-dice, .fa-input-text)) {
+    color: #6d6d6d;
+    font-size: 9pt;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .text-replacement-type > i:is(.fa-dice, .fa-input-text) {
+    display: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .text-replacement-type:has(> i.fa-dice)::after { content: "Random"; }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .text-replacement-type:has(> i.fa-input-text)::after { content: "Text"; }
+
 body:not(.windows-classic-theme) .modal[data-window-client="light"] .text-replacement-value-display {
     padding: 3px 6px;
     background: #fff;

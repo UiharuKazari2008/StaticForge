@@ -481,6 +481,20 @@ body.desktop-mode:not(.windows-classic-theme) #notebookModal[data-window-client=
     color: #2b5797;
 }
 
+/* Save carries Vista's save icon (vista-cmdbar/save.png, shell32 258); New and the workspace
+   menu are text only (vistaDialogs.js .vista-text-button) */
+body.desktop-mode:not(.windows-classic-theme) #notebookModal[data-window-client="light"] #notebookSaveBtn > i.fa-save {
+    display: block;
+    width: 16px;
+    height: 16px;
+    background: url("/static_images/vista-cmdbar/save.png") no-repeat center / 16px 16px;
+    font-size: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #notebookModal[data-window-client="light"] #notebookSaveBtn > i.fa-save::before {
+    content: none;
+}
+
 body.desktop-mode:not(.windows-classic-theme) #notebookModal[data-window-client="light"] .explorer-command-glyph {
     background: #000;
     filter: none;
