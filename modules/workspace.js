@@ -1570,6 +1570,9 @@ class WorkspaceManager {
                 `${baseName}_upscaled${ext}`
             ];
             for (const candidate of candidates) {
+                // Already in the set (usually the moved file itself, or a sibling
+                // checked for an earlier file): adding again is a no-op, skip the stat.
+                if (allFilesToMove.has(candidate)) continue;
                 if (memoryFiles.has(candidate)
                     || fs.existsSync(path.join(this.IMAGES_DIR, candidate))) {
                     allFilesToMove.add(candidate);

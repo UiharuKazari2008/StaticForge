@@ -431,6 +431,70 @@ async function testSuggestionContextCounts() {
     await metadataDb.closeDatabase();
 }
 
+// Finding 7: sibling expansion skips stats for names already in the set; same output.
+async function testExpandRelated(scratch) {
+    const PngMetadata = require('../modules/pngMetadata');
+    const png = new PngMetadata();
+    const WorkspaceManager = require('../modules/workspace');
+    const OldWorkspaceManager = loadOld('modules/workspace.js');
+    const imagesDir = fs.existsSync(IMAGES_DIR) ? IMAGES_DIR : path.join(scratch, 'images-missing');
+    const names = fs.existsSync(IMAGES_DIR) ? fs.readdirSync(IMAGES_DIR).filter((n) => /\.(png|jpg|jpeg)$/i.test(n)).slice(0, 3000) : [];
+    names.push('nope_1.png', 'x.webp', '', null);
+    const self = { globalResources: { getPngMetadata: () => png }, IMAGES_DIR: imagesDir };
+    const workspaces = { a: { files: names.slice(0, 50) }, b: { files: [] } };
+    const realExists = fs.existsSync;
+    let calls = 0;
+    fs.existsSync = (p) => { calls++; return realExists(p); };
+    try {
+        calls = 0;
+        const a = OldWorkspaceManager.prototype._expandRelatedGalleryFilenames.call(self, names, workspaces);
+        const oldCalls = calls;
+        calls = 0;
+        const b = WorkspaceManager.prototype._expandRelatedGalleryFilenames.call(self, names, workspaces);
+        assert.deepStrictEqual(b, a, 'expanded set differs');
+        console.log(`  _expandRelatedGalleryFilenames: ${names.length} names -> ${a.length}; existsSync ${oldCalls} -> ${calls}`);
+    } finally {
+        fs.existsSync = realExists;
+    }
+}
+
+// Finding 8: workspace CSS hash memoized by stat signature; rewrites are picked up.
+async function testWorkspaceCssHash(scratch) {
+    const root = path.join(scratch, 'cssroot');
+    fs.rmSync(root, { recursive: true, force: true });
+    const svc = require('../modules/workspaceCssService');
+    const oldSvc = loadOld('modules/workspaceCssService.js');
+    const compiled = svc.getCompiledPath(root);
+    const source = svc.getSourceCachePath(root);
+    const check = (label) => assert.strictEqual(svc.resolveSourceHash(root), oldSvc.resolveSourceHash(root), label);
+    check('no files');
+    fs.mkdirSync(path.dirname(source), { recursive: true });
+    fs.writeFileSync(source, 'a{}');
+    check('source only');
+    fs.writeFileSync(source, 'b{}');
+    check('source rewritten');
+    fs.mkdirSync(path.dirname(compiled), { recursive: true });
+    fs.writeFileSync(compiled, '/* no header */\nx{}');
+    check('compiled without header');
+    const real = '/home/kanmi/staticforge/.cache/runtime-assets/css/workspaces.css';
+    const header = fs.existsSync(real) ? fs.readFileSync(real, 'utf8').split('\n')[0] : null;
+    if (header) {
+        fs.writeFileSync(compiled + '.tmp', `${header}\nx{}`);
+        fs.renameSync(compiled + '.tmp', compiled);
+        check('compiled with header');
+        assert.ok(svc.resolveSourceHash(root), 'header hash');
+        const t0 = process.hrtime.bigint();
+        for (let i = 0; i < 2000; i++) oldSvc.resolveSourceHash(root);
+        const t1 = process.hrtime.bigint();
+        for (let i = 0; i < 2000; i++) svc.resolveSourceHash(root);
+        const t2 = process.hrtime.bigint();
+        console.log(`  resolveSourceHash x2000: old ${Number(t1 - t0) / 1e6 | 0} ms -> new ${Number(t2 - t1) / 1e6 | 0} ms`);
+    }
+    fs.rmSync(compiled);
+    check('compiled removed');
+    console.log('  workspace CSS hash memo: OK');
+}
+
 async function main() {
     fs.mkdirSync(SCRATCH, { recursive: true });
     console.log('vfs db batching (finding 9):');
@@ -443,6 +507,10 @@ async function main() {
     await testExploreCache(SCRATCH);
     console.log('tag suggestion context counts (finding 4):');
     await testSuggestionContextCounts();
+    console.log('related gallery filenames (finding 7):');
+    await testExpandRelated(SCRATCH);
+    console.log('workspace CSS hash (finding 8):');
+    await testWorkspaceCssHash(SCRATCH);
     console.log('upload helpers (finding 6):');
     await testUploadHelpers(SCRATCH);
     console.log('test-perf-c-vfs: OK');

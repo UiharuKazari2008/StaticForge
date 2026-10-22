@@ -46,6 +46,7 @@ function init(options = {}) {
     buildHeader = options.buildHeader || null;
     atomicWrite = options.atomicWrite || null;
     onCompiledCallback = options.onCompiled || null;
+    sourceHashMemo.clear();
     if (projectRoot) {
         hydrateLastSourceHashFromDisk(projectRoot);
     }
@@ -117,6 +118,35 @@ function getClientCssHash(root) {
     }
 }
 
+// workspace_list and every client update asked for this hash with an open+read of the
+// compiled header (#620). Keep the hash per file, keyed by a stat signature: compiles
+// here and external precompiles both rewrite the file, and a rewrite changes the stat.
+const sourceHashMemo = new Map();
+
+function fileStatSignature(filePath) {
+    try {
+        const st = fs.statSync(filePath);
+        return `${st.ino}:${st.size}:${st.mtimeMs}`;
+    } catch (_) {
+        return null;
+    }
+}
+
+function memoizedFileHash(filePath, compute) {
+    const sig = fileStatSignature(filePath);
+    if (!sig) {
+        sourceHashMemo.delete(filePath);
+        return { exists: false, hash: null };
+    }
+    const hit = sourceHashMemo.get(filePath);
+    if (hit && hit.sig === sig) {
+        return { exists: true, hash: hit.hash };
+    }
+    const hash = compute();
+    sourceHashMemo.set(filePath, { sig, hash });
+    return { exists: true, hash };
+}
+
 function resolveSourceHash(root) {
     const targetRoot = root || projectRoot;
     if (!targetRoot) {
@@ -124,19 +154,27 @@ function resolveSourceHash(root) {
     }
 
     const compiledPath = getCompiledPath(targetRoot);
-    if (compiledPath && fs.existsSync(compiledPath)) {
-        const fromHeader = runtimeAssetCompiler.readExistingSourceHash(compiledPath);
+    if (compiledPath) {
+        const { hash: fromHeader } = memoizedFileHash(
+            compiledPath,
+            () => runtimeAssetCompiler.readExistingSourceHash(compiledPath)
+        );
         if (fromHeader) {
             return fromHeader;
         }
     }
 
     const sourceCachePath = getSourceCachePath(targetRoot);
-    if (sourceCachePath && fs.existsSync(sourceCachePath)) {
-        const source = fs.readFileSync(sourceCachePath, 'utf8');
-        return typeof hashSource === 'function'
-            ? hashSource(source)
-            : crypto.createHash('sha256').update(source).digest('hex');
+    if (sourceCachePath) {
+        const { exists, hash } = memoizedFileHash(sourceCachePath, () => {
+            const source = fs.readFileSync(sourceCachePath, 'utf8');
+            return typeof hashSource === 'function'
+                ? hashSource(source)
+                : crypto.createHash('sha256').update(source).digest('hex');
+        });
+        if (exists) {
+            return hash;
+        }
     }
 
     return null;
