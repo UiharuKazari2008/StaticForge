@@ -450,16 +450,16 @@ function memoryStorage() {
     const bigBuilt = await pack.rebuild({ outputDir: bigOut, manifest: bigManifest, resolveFile: (file) => path.join(bigDir, file.url.slice(1)) });
     const bigZip = fs.readFileSync(path.join(bigOut, 'pack.zip'));
     const bigCaches = memoryCache([]);
-    // The real 172 MB pack (2.8k entries) overflows on one push; it is too big
-    // for a unit test, so pin the slicing instead.
-    let maxPush = 0;
-    class SpyUnzip extends fflate.Unzip {
-        push(chunk, final) {
-            maxPush = Math.max(maxPush, chunk.length);
-            return super.push(chunk, final);
+    // Expanding reads the central directory (unzipSync) and inflates only the entries it
+    // needs, in batches; count what each call is asked to inflate.
+    const inflated = [];
+    const spyFflate = Object.assign({}, fflate, {
+        unzipSync(bytes, opts) {
+            const out = fflate.unzipSync(bytes, opts);
+            inflated.push(Object.keys(out).length);
+            return out;
         }
-    }
-    const spyFflate = Object.assign({}, fflate, { Unzip: SpyUnzip });
+    });
     const benv = {
         location: { origin: ORIGIN },
         caches: bigCaches,
@@ -478,7 +478,23 @@ function memoryStorage() {
     assert.strictEqual(bigExpand.ok, true, bigExpand.error || 'big expand');
     assert.deepStrictEqual(bigExpand.missing, []);
     assert.strictEqual(bigExpand.stored, 3000, 'every file of a 3k-entry pack lands');
-    assert.ok(maxPush > 0 && maxPush <= 64 * 1024, `Unzip.push is fed in slices (max ${maxPush})`);
+    assert.strictEqual(inflated[0], 1, 'pack.json is read on its own');
+    assert.strictEqual(inflated.slice(1).reduce((a, b) => a + b, 0), 3000, 'then every needed entry once');
+
+    // Upgrade: the cache holds every file but two, one of them under an old ?sha= row.
+    // Only those two are inflated, and the old row for that path is purged.
+    const upCaches = memoryCache(bigManifest.slice(2).map((file) => ({ url: file.url, hash: file.hash })).concat([
+        { url: bigManifest[0].url + '?sha=old', hash: 'old' }
+    ]));
+    inflated.length = 0;
+    const upEnv = { ...benv, caches: upCaches };
+    assert.strictEqual((await engine.copyPack(upEnv, bigManifest, {})).ok, true);
+    const upExpand = await engine.expandPack(upEnv, bigManifest, {});
+    assert.strictEqual(upExpand.ok, true, upExpand.error || 'upgrade expand');
+    assert.strictEqual(upExpand.stored, 2, 'an upgrade stores only the files that differ');
+    assert.deepStrictEqual(inflated, [1, 2], 'and inflates only those entries');
+    assert.ok(!upCaches.store.has(new URL(bigManifest[0].url + '?sha=old', ORIGIN).href), 'the old row for the path is purged');
+    assert.strictEqual(upCaches.store.get(new URL(bigManifest[0].url, ORIGIN).href).hash, bigManifest[0].hash);
 
     // A stale pack answers 503 while the server rebuilds it; copyPack waits, then copies.
     let calls503 = 0;

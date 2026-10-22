@@ -54,7 +54,11 @@
         packReadyWaitMs: 180000,
         manifestTimeoutMs: 30000,
         readyTimeoutMs: 20000,
-        controllerTimeoutMs: 6000
+        controllerTimeoutMs: 6000,
+        // Cache Storage reads and writes in flight at once while Expanding
+        cacheConcurrency: 16,
+        // Expanding inflates the entries it needs this many bytes at a time, then stores them
+        expandBatchBytes: 32 * 1024 * 1024
     };
 
     function timeoutSignal(ms) {
@@ -117,23 +121,49 @@
         return path.startsWith('/protected/') || path.startsWith('/private/');
     }
 
+    /** Cache rows by path. One cache.keys() per phase: listing ~3k rows per file written made Expanding quadratic. */
+    async function indexCacheKeys(cache, origin) {
+        const byPath = new Map();
+        (await cache.keys()).forEach((request) => {
+            const path = normalizePath(request.url, origin);
+            if (!byPath.has(path)) byPath.set(path, []);
+            byPath.get(path).push(request);
+        });
+        return byPath;
+    }
+
+    /** task(item, i) for every item, at most limit running at once. The first failure stops the rest. */
+    async function eachLimited(items, limit, task) {
+        let next = 0;
+        const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+            while (next < items.length) {
+                const i = next++;
+                try {
+                    await task(items[i], i);
+                } catch (err) {
+                    next = items.length;
+                    throw err;
+                }
+            }
+        });
+        await Promise.all(workers);
+    }
+
+    async function staleFiles(cache, list, origin, siblings) {
+        const stale = new Array(list.length);
+        await eachLimited(list, config.cacheConcurrency, async (file, i) => {
+            stale[i] = !(await cachedHashMatches(cache, file, origin, siblings));
+        });
+        return list.filter((_, i) => stale[i]);
+    }
+
     /** The manifest files whose cached copy is missing or has another hash. */
     async function filesNeedingUpdate(env, files) {
         const list = (files || []).filter((file) => !isAuthGatedManifestFile(file));
         if (!env.caches) return list.slice();
         const cache = await env.caches.open(STATIC_CACHE);
         const origin = env.location && env.location.origin;
-        const siblings = new Map();
-        (await cache.keys()).forEach((request) => {
-            const path = normalizePath(request.url, origin);
-            if (!siblings.has(path)) siblings.set(path, []);
-            siblings.get(path).push(request);
-        });
-        const out = [];
-        for (const file of list) {
-            if (!(await cachedHashMatches(cache, file, origin, siblings))) out.push(file);
-        }
-        return out;
+        return staleFiles(cache, list, origin, await indexCacheKeys(cache, origin));
     }
 
     function totalBytes(files) {
@@ -213,8 +243,15 @@
         return out;
     }
 
-    async function purgeCachePath(cache, url, origin) {
+    /** index: indexCacheKeys() rows, kept current here. Without one, the whole cache is listed. */
+    async function purgeCachePath(cache, url, origin, index = null) {
         const path = normalizePath(url, origin);
+        if (index) {
+            const rows = index.get(path) || [];
+            index.delete(path);
+            await Promise.all(rows.map((request) => cache.delete(request)));
+            return;
+        }
         const keys = await cache.keys();
         await Promise.all(keys.map((request) => {
             if (normalizePath(request.url, origin) === path) return cache.delete(request);
@@ -222,8 +259,8 @@
         }));
     }
 
-    async function putHashed(cache, file, bytes, origin) {
-        await purgeCachePath(cache, file.url, origin);
+    async function putHashed(cache, file, bytes, origin, index = null) {
+        await purgeCachePath(cache, file.url, origin, index);
         const headers = new Headers();
         headers.set('content-type', contentType(file.url));
         headers.set('content-length', String(bytes.byteLength));
@@ -231,6 +268,7 @@
         headers.set('etag', `"${file.hash}"`);
         headers.set('cache-control', SAVED_CACHE_CONTROL);
         await cache.put(file.url, new Response(bytes, { status: 200, headers }));
+        if (index) index.set(normalizePath(file.url, origin), [file.url]);
     }
 
     /** Body hash matches (file.body, the bytes the pack carried, else the manifest hash), and the stored headers name the manifest hash and the right type. Rewrites headers when the body is already right. */
@@ -566,92 +604,78 @@
         }
     }
 
-    function unzipEntries(fflateLib, bytes, onEntry) {
-        return new Promise((resolve, reject) => {
-            const unzip = new fflateLib.Unzip();
-            unzip.register(fflateLib.UnzipInflate);
-            let chain = Promise.resolve();
-            unzip.onfile = (file) => {
-                const chunks = [];
-                file.ondata = (err, data, final) => {
-                    if (err) {
-                        reject(err);
-                        return;
-                    }
-                    if (data && data.length) chunks.push(data);
-                    if (final) {
-                        const name = file.name;
-                        const payload = concatChunks(chunks);
-                        chain = chain.then(() => onEntry(name, payload));
-                    }
-                };
-                file.start();
-            };
-            try {
-                // fflate 0.8 Unzip.push recurses once per entry it finds in the
-                // buffer; one push of the whole pack (~2.8k files) overflows the
-                // stack. Feed it in slices so each push only sees a few entries.
-                const step = 64 * 1024;
-                if (!bytes.length) unzip.push(bytes, true);
-                for (let at = 0; at < bytes.length; at += step) {
-                    const end = Math.min(at + step, bytes.length);
-                    unzip.push(bytes.subarray(at, end), end >= bytes.length);
-                }
-            } catch (err) {
-                reject(err);
-                return;
-            }
-            chain.then(resolve, reject);
-        });
+    /** pack.json rows by zip entry name. */
+    function readPackListing(fflateLib, bytes) {
+        const meta = fflateLib.unzipSync(bytes, { filter: (entry) => entry.name === 'pack.json' })['pack.json'];
+        if (!meta) throw new Error('no-pack-listing');
+        const rows = JSON.parse(new TextDecoder().decode(meta)).files || [];
+        return new Map(rows.map((row) => [row.entry, row]));
     }
 
     /**
      * Expanding: manifest vs the local cache. Extract and store only mismatches.
      * Returns { ok, missing } (urls that were needed and did not land).
+     * unzipSync reads the central directory and inflates only the entries asked for, a
+     * batch at a time; fflate's streaming Unzip walked the whole pack, ~10x slower.
      */
     async function expandPack(env, manifest, { onProgress = null } = {}) {
         const lib = await loadFflate(env);
-        if (!lib || typeof lib.Unzip !== 'function') return { ok: false, missing: [], error: 'no-unzip' };
+        if (!lib || typeof lib.unzipSync !== 'function') return { ok: false, missing: [], error: 'no-unzip' };
         if (!installPack || !installPack.bytes) return { ok: false, missing: [], error: 'no-pack' };
-        const files = Array.isArray(manifest) ? manifest : [];
-        const needed = await filesNeedingUpdate(env, files);
+        const files = (Array.isArray(manifest) ? manifest : []).filter((file) => !isAuthGatedManifestFile(file));
+        const cache = env.caches ? await env.caches.open(STATIC_CACHE) : null;
+        const origin = env.location && env.location.origin;
+        const index = cache ? await indexCacheKeys(cache, origin) : null;
+        const needed = cache ? await staleFiles(cache, files, origin, index) : files;
         if (!needed.length) {
             installPack.stored = [];
             installPack.bytes = null;
             if (onProgress) onProgress({ fraction: 1 });
             return { ok: true, missing: [], stored: 0 };
         }
-        if (!env.caches) return { ok: false, missing: needed.map((file) => file.url), error: 'no-cache-storage' };
-        const cache = await env.caches.open(STATIC_CACHE);
-        const origin = env.location && env.location.origin;
+        if (!cache) return { ok: false, missing: needed.map((file) => file.url), error: 'no-cache-storage' };
         const neededByUrl = new Map(needed.map((file) => [file.url, file]));
-        const listing = new Map();
-        let packMeta = null;
         const stored = [];
         const seen = new Set();
         try {
-            await unzipEntries(lib, installPack.bytes, async (name, payload) => {
-                if (name === 'pack.json') {
-                    packMeta = JSON.parse(new TextDecoder().decode(payload));
-                    (packMeta.files || []).forEach((row) => listing.set(row.entry, row));
-                    return;
-                }
-                const row = listing.get(name);
-                const file = row && neededByUrl.get(row.url);
+            const listing = readPackListing(lib, installPack.bytes);
+            const batches = [];
+            let batch = null;
+            listing.forEach((row, entry) => {
+                const file = neededByUrl.get(row.url);
                 if (!file || row.hash !== file.hash) return;
-                // pack.json names the bytes the server zipped (body). A payload that does not
-                // match them did not arrive intact. The manifest hash is not always a body
-                // hash (the workspace stylesheet is hashed by its source), so the post-write
-                // check in installGroup compares against the body hash where there is one
-                if (row.body) {
-                    const got = await sha256Hex(payload);
-                    if (got !== row.body) return;
+                if (!batch || batch.bytes >= config.expandBatchBytes) {
+                    batch = { names: new Set(), bytes: 0 };
+                    batches.push(batch);
                 }
-                await putHashed(cache, file, payload, origin);
-                stored.push(row.body ? { ...file, body: row.body } : file);
-                seen.add(file.url);
-                if (onProgress) onProgress({ fraction: seen.size / needed.length });
+                batch.names.add(entry);
+                batch.bytes += Number(file.size) || 64 * 1024;
             });
+            for (const { names } of batches) {
+                const entries = lib.unzipSync(installPack.bytes, { filter: (entry) => names.has(entry.name) });
+                // Rows for one path are purged and written in order; paths run in parallel
+                const byPath = new Map();
+                Object.keys(entries).forEach((name) => {
+                    const row = listing.get(name);
+                    const path = normalizePath(row.url, origin);
+                    if (!byPath.has(path)) byPath.set(path, []);
+                    byPath.get(path).push({ row, payload: entries[name] });
+                });
+                await eachLimited([...byPath.values()], config.cacheConcurrency, async (group) => {
+                    for (const { row, payload } of group) {
+                        const file = neededByUrl.get(row.url);
+                        // pack.json names the bytes the server zipped (body). A payload that does not
+                        // match them did not arrive intact. The manifest hash is not always a body
+                        // hash (the workspace stylesheet is hashed by its source), so the post-write
+                        // check in installGroup compares against the body hash where there is one
+                        if (row.body && (await sha256Hex(payload)) !== row.body) continue;
+                        await putHashed(cache, file, payload, origin, index);
+                        stored.push(row.body ? { ...file, body: row.body } : file);
+                        seen.add(file.url);
+                        if (onProgress) onProgress({ fraction: seen.size / needed.length });
+                    }
+                });
+            }
         } catch (err) {
             return { ok: false, missing: needed.map((file) => file.url), error: (err && err.message) || 'unzip' };
         }
