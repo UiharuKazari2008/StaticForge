@@ -151,6 +151,54 @@ body:not(.windows-classic-theme) .modal.wpg-viewer[data-window-client="light"] >
     background-position: -32px 0 !important;
 }
 
+/* Glancewell's command group: lightbox.js layoutGlancewellToolbar centres it in the band or lines
+   it up after Back; the commands that do not fit fold under » (more.png 12x19 frames, its ink
+   636-644 px into the VM's 700 px window, the glass face around it like any command) */
+.wpg-glancewell .wpg-toolbar .wpg-icon {
+    margin-right: 2px;
+}
+
+.wpg-glancewell .wpg-toolbar .wpg-drop {
+    margin-left: 8px;
+}
+
+/* per-command spacing to the VM's ink (File 148, ▾ 195, Fix 223, Info 287, Print 353, ▾ 408,
+   E-mail 435, Burn 518, ▾ 571 at 700 px): no padding after a ▾, our "Fix" / "E-mail" render
+   narrower than ClearType's */
+.wpg-glancewell .wpg-toolbar button.wpg-cmd.has-menu { padding-right: 0; }
+.wpg-glancewell .wpg-toolbar button.wpg-cmd[data-gw="fix"] { padding-right: 6px; }
+.wpg-glancewell .wpg-toolbar button.wpg-cmd[data-gw="email"] { padding-right: 4px; }
+
+.wpg-glancewell .wpg-toolbar .wpg-cmds {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: flex;
+    align-items: flex-start;
+    height: 36px;
+}
+
+.wpg-glancewell .wpg-toolbar .wpg-cmds > .wpg-overflow,
+.wpg-glancewell .wpg-toolbar .wpg-more[hidden] {
+    display: none;
+}
+
+.wpg-viewer .wpg-toolbar button.wpg-more {
+    position: absolute;
+    right: 34px;
+    top: 0;
+    width: 22px;
+    margin-top: 2px;
+    border: solid transparent;
+    border-width: 0 5px;
+    background: url("/static_images/vista-photo-gallery/more.png") -12px 8px / 48px 19px no-repeat;
+}
+
+.wpg-viewer .wpg-toolbar button.wpg-more:is(:hover, :focus-visible, .context-open) {
+    border-image: url("/static_images/vista-photo-gallery/toolbar-hot.png") 5 fill / 5px stretch;
+    background-position: -24px 8px;
+}
+
 /* ---- the picture and the Info pane ---- */
 
 .wpg-viewer .wpg-main {
