@@ -17,7 +17,7 @@
  * It reads /proc, the run records, and the snapshot file. It never matches
  * command-line text, and it skips its own pid and every ancestor, so the
  * checker (or the ssh/bash that runs it) can never count as a live turn.
- * checkIdle() stays synchronous (cursorDirector.updateAgentClis reads it).
+ * checkIdle() and xiRuns() stay synchronous (cursorDirector.updateAgentClis reads xiRuns).
  *
  * Usage: node scripts/director-idle-check.js [--json] [--gen-window=120]
  * Exit: 0 idle, 1 busy, 2 could not decide (e.g. Dreamscape pid unknown).
@@ -101,7 +101,13 @@ function readInProcess({ busyFile, home, procRoot, serverPid, now }) {
     return { reasons, status };
 }
 
-function xiRuns({ procRoot, xiRunsDir, skip }) {
+// Defaults match checkIdle, so cursorDirector.updateAgentClis can ask for Xi runs
+// alone without the images/ walk, the /proc scan for Wren, and the snapshot read.
+function xiRuns(opts = {}) {
+    const home = opts.home || os.homedir();
+    const procRoot = opts.procRoot || '/proc';
+    const xiRunsDir = opts.xiRunsDir || path.join(home, '.cache', 'dreamscape-xi', 'runs');
+    const skip = opts.skip || selfAndAncestors(procRoot, opts.selfPid || process.pid);
     let names = [];
     try { names = fs.readdirSync(xiRunsDir); } catch (_) { return []; }
     const live = [];
@@ -167,7 +173,7 @@ function checkIdle(opts = {}) {
     const serverPid = opts.serverPid !== undefined ? opts.serverPid
         : readServerPid(opts.pm2Home || process.env.PM2_HOME || path.join(home, '.pm2'));
     const skip = selfAndAncestors(procRoot, opts.selfPid || process.pid);
-    const xi = xiRuns({ procRoot, xiRunsDir: opts.xiRunsDir || path.join(home, '.cache', 'dreamscape-xi', 'runs'), skip });
+    const xi = xiRuns({ home, procRoot, xiRunsDir: opts.xiRunsDir, skip });
     const wren = wrenSandboxes({ procRoot, serverPid, skip });
     const images = recentImages(opts.imagesDir || path.join(root, 'images'), now - genWindowSec * 1000);
     const inProcess = readInProcess({
@@ -201,7 +207,7 @@ function checkIdle(opts = {}) {
     };
 }
 
-module.exports = { checkIdle, selfAndAncestors, procStat, descendantsOf, AGENT_COMMS };
+module.exports = { checkIdle, xiRuns, selfAndAncestors, procStat, descendantsOf, AGENT_COMMS };
 
 if (require.main === module) {
     const json = process.argv.includes('--json');

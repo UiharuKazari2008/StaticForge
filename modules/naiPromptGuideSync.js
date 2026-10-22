@@ -99,6 +99,7 @@ async function syncNaiPromptGuide(cacheDir, options = {}) {
     const branch = options.branch || DEFAULT_BRANCH;
     const token = readGitToken();
     fs.mkdirSync(cacheDir, { recursive: true });
+    pageListCache.delete(dest);
 
     const hasGit = fs.existsSync(path.join(dest, '.git'));
     if (!hasGit) {
@@ -150,9 +151,49 @@ function compareGroups(a, b) {
     return String(a).localeCompare(String(b));
 }
 
+// The page list walks the clone and reads every page for its title. get_session_state
+// (full/catalog) and get_prompt_guide ask for it on every call, so it is kept until the
+// clone moves: HEAD, the ref, the git index (reset --hard rewrites it) or the root dir
+// change, or syncNaiPromptGuide runs. Stamps from the last second are not trusted.
+const PAGE_LIST_SETTLE_MS = 1000;
+const pageListCache = new Map();
+
+function pageListStamp(dest) {
+    const gitDir = path.join(dest, '.git');
+    let head = '';
+    try { head = fs.readFileSync(path.join(gitDir, 'HEAD'), 'utf8').trim(); } catch (_) { /* no HEAD */ }
+    const files = [dest, path.join(gitDir, 'index'), path.join(gitDir, 'packed-refs')];
+    if (head.startsWith('ref: ')) files.push(path.join(gitDir, head.slice(5).trim()));
+    let newest = 0;
+    const parts = files.map((file) => {
+        try {
+            const st = fs.statSync(file);
+            newest = Math.max(newest, st.mtimeMs);
+            return `${st.mtimeMs}:${st.size}:${st.ino}`;
+        } catch (_) {
+            return '-';
+        }
+    });
+    return { key: `${head}|${parts.join('|')}`, settled: Date.now() - newest > PAGE_LIST_SETTLE_MS };
+}
+
+function copyPageList(pages) {
+    return pages.map((row) => ({ ...row }));
+}
+
 function listPromptGuidePages(cacheDir) {
     const dest = getPromptGuideDir(cacheDir);
     if (!fs.existsSync(dest)) return [];
+    const stamp = pageListStamp(dest);
+    const cached = pageListCache.get(dest);
+    if (cached && cached.key === stamp.key) return copyPageList(cached.pages);
+    const pages = walkPromptGuidePages(dest);
+    if (stamp.settled) pageListCache.set(dest, { key: stamp.key, pages: copyPageList(pages) });
+    else pageListCache.delete(dest);
+    return pages;
+}
+
+function walkPromptGuidePages(dest) {
     const pages = [];
     const walk = (rel) => {
         const abs = rel ? path.join(dest, rel) : dest;
