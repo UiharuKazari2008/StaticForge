@@ -1076,7 +1076,6 @@
                     paintId = requestAnimationFrame(paint);
                 }
             }
-            if (logo) logo.addEventListener('load', arm);
             new MutationObserver(arm).observe(screen, { attributes: true, attributeFilter: ['data-screen'] });
             arm();
         })();
