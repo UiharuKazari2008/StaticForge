@@ -196,6 +196,7 @@ function createStore(options = {}) {
     return { dir, upsert, read, list, fileFor };
 }
 
+// JULES: Enforce authentication middleware on all fault report routes
 function mountProgramFaultReports(app, authMiddleware, options = {}) {
     const store = options.store || createStore(options);
     const auth = authMiddleware || ((req, res, next) => next());

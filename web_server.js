@@ -1878,8 +1878,6 @@ app.use((req, res, next) => {
         '/spellcheck',
         '/vibe',
         '/vibe/images',
-        // modules/programFaultReports.js: stacks up to 16 KB per post, kept in data/fault-reports
-        '/api/fault-reports',
     ];
     if (skippedPaths.some(path => req.path.startsWith(path))) {
         return next();
