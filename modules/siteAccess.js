@@ -38,7 +38,8 @@ function generatePepper() {
 }
 
 function readSiteAccessSecure(globalResources) {
-    const siteAccess = globalResources.getSecureConfig({ path: 'siteAccess', clone: true }) || {};
+    // Read-only (fields copied into a new object below), so no clone per request
+    const siteAccess = globalResources.getSecureConfig({ path: 'siteAccess' }) || {};
     const pepper = siteAccess.pepper;
     const hash = normalizeAccessHash(siteAccess.hash);
     const homepage = typeof siteAccess.homepage === 'string' ? siteAccess.homepage.trim() : '';
