@@ -245,6 +245,41 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title
     border-color: #3c7fb1;
 }
 
+/* « : the crumbs folded off the left (explorerVistaChrome.js layoutBreadcrumb). VM: two 2px chevrons,
+   8x5, 3px after the icon; the next crumb's text 9px after them */
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .explorer-crumb-overflow {
+    position: relative;
+    flex: none;
+    width: 14px;
+    min-width: 0;
+    height: 20px;
+    min-height: 0;
+    padding: 0;
+    margin: 0;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    box-shadow: none;
+    cursor: var(--c-default);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .explorer-crumb-overflow::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 6px;
+    width: 8px;
+    height: 5px;
+    background: #000;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 5'%3E%3Cpath d='M2 0h2v1H3v1H2v1h1v1h1v1H2V4H1V3H0V2h1V1h1zM6 0h2v1H7v1H6v1h1v1h1v1H6V4H5V3H4V2h1V1h1z'/%3E%3C/svg%3E") no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 5'%3E%3Cpath d='M2 0h2v1H3v1H2v1h1v1h1v1H2V4H1V3H0V2h1V1h1zM6 0h2v1H7v1H6v1h1v1h1v1H6V4H5V3H4V2h1V1h1z'/%3E%3C/svg%3E") no-repeat;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .explorer-crumb-overflow:hover {
+    background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
+    border-color: #3c7fb1;
+}
+
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(#explorerAddressBar, #explorerSearchBar),
 body.desktop-mode:not(.windows-classic-theme) #desktopGuacModal #desktopGuacSearch {
     height: 20px;
@@ -917,6 +952,110 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-status-sp
     color: #2b5797;
 }
 
+/* ---- Computer (explorerComputerView.js), from the VM's Computer window in Tiles view ----
+   "Hard Disk Drives (1)" in #003399, 13px in, a 1px #b0bfde rule from 7px after it to 25px before
+   the right edge (where Vista's collapse chevron sits) through the text's middle; the 219x50 tile
+   7px in and 21px under the heading; the drive bar is aero.msstyles PROGRESS (IMAGE 622) with the
+   partial fill (IMAGE 629), red (627) under 10% free like Vista; "free of" in grey. */
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-computer-view {
+    background: #fcfcfc;
+    color: #000;
+    font: 12px var(--ex-font);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-computer-group-head {
+    display: flex;
+    align-items: center;
+    height: 16px;
+    margin: 2px 25px 0 13px;
+    color: #003399;
+    font: 12px/16px var(--ex-font);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-computer-group-head::after {
+    content: '';
+    flex: 1 1 auto;
+    height: 1px;
+    margin-left: 7px;
+    background: #b0bfde;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-computer-tiles {
+    padding: 5px 0 0 7px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-computer-tile {
+    border-radius: 3px;
+}
+
+@media (hover: hover) {
+    body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-computer-tile:hover {
+        background: linear-gradient(#fafbfd, #ebf3fd);
+        border-color: #b8d6fb;
+    }
+}
+
+/* selected (VM: #b6e6fb edge, #ebf7fd to #c6e8fa, a light line inside) */
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-computer-tile.is-selected,
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-computer-tile.is-selected:hover {
+    background: linear-gradient(#ebf7fd, #c6e8fa);
+    border-color: #b6e6fb;
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 40%);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-computer-tile .explorer-drive-bar {
+    margin-top: 2px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-computer-tile-free {
+    color: #6d6d6d;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-drive-bar {
+    border-color: transparent;
+    border-image: url("/static_images/vista-controls/progress-bar.png") 7 4 6 4 fill / 7px 4px 6px 4px stretch;
+}
+
+/* the fill's art carries a clear row above and below: it spans the frame's edge rows */
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-drive-bar-fill {
+    top: -1px;
+    bottom: -1px;
+    background: url("/static_images/vista-controls/progress-fill-partial.png") 0 0 / 100% 100% no-repeat;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-drive-bar.is-full .explorer-drive-bar-fill {
+    background-image: url("/static_images/vista-controls/progress-fill-error.png");
+}
+
+/* the details pane in Computer: Vista's grid, name / label: value / label: value on the first line,
+   the other pairs under the first (VM: labels right-aligned, 6px after the name, values 4px after) */
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-details-grid {
+    display: grid;
+    grid-template-columns: repeat(5, auto);
+    justify-content: start;
+    align-items: center;
+    column-gap: 4px;
+    row-gap: 3px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-details-grid > .explorer-details-name {
+    margin-right: 2px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-details-grid > .explorer-details-label {
+    min-width: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-details-grid .explorer-drive-bar {
+    width: 133px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-details-shell-icon {
+    width: 64px;
+    height: 64px;
+}
+
 /* ---------- Control Panel as Vista's Control Panel (an Explorer window) ----------
    The caption: Explorer's orbs in the gutter, the translucent breadcrumb box with refresh inside,
    the search box, no icon or title. The task pane: Vista's (the VM's Windows Update / Control
@@ -1188,6 +1327,23 @@ body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire
     background-position: 0 -81px;
     filter: none;
     opacity: 1;
+}
+
+/* a disabled orb stays the disabled orb under the pointer (Explorer, Control Panel, Games, Save
+   folder, Grimoire): the glass toolbar's .toolbar-input-segment:disabled:hover rules (!important,
+   app.css) put a translucent disc with an inset shadow at 70% in place of the art, a blank orb */
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(#explorerBackBtn, #explorerForwardBtn):is(:disabled, .disabled):hover,
+body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal) .modal-window-title-toolbar :is(.cpl-back, .cpl-forward):is(:disabled, .disabled):hover,
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar :is(:is(#tagWikiSearchBackBtn, [data-grimoire-part="tagWikiSearchBackBtn"]), :is(#tagWikiSearchForwardBtn, [data-grimoire-part="tagWikiSearchForwardBtn"])):is(:disabled, .disabled):hover {
+    background: url('/static_images/vista-explorer/nav-back.png') no-repeat 0 -81px !important;
+    box-shadow: none !important;
+    filter: none !important;
+    opacity: 1 !important;
+}
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar #explorerForwardBtn:is(:disabled, .disabled):hover,
+body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal) .modal-window-title-toolbar .cpl-forward:is(:disabled, .disabled):hover,
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar :is(#tagWikiSearchForwardBtn, [data-grimoire-part="tagWikiSearchForwardBtn"]):is(:disabled, .disabled):hover {
+    background-image: url('/static_images/vista-explorer/nav-forward.png') !important;
 }
 
 /* Recent Pages ▾ is IE7's own, not Explorer's: ieframe.dll TRAVEL_BACKGROUND (76x29 per state:
@@ -2526,6 +2682,17 @@ body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire
 body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) :is(.grimoire-ie-tab:not(.is-active), .grimoire-ie-tabtools > button, .grimoire-ie-tabstrip > .grimoire-ie-newtab):hover::before {
     border-image-source: url('/static_images/vista-ie/tab-hot.png');
 }
+/* hot new-tab stub: IE7 shows ieframe.dll icon index 58 (blank page, orange sparkle), centred, 6px down
+   (VM: 30x26 stub at 869,167, icon at 876,173); the stub is empty otherwise */
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tabstrip > .grimoire-ie-newtab:hover::after {
+    content: '';
+    position: absolute;
+    top: 6px;
+    left: calc(50% - 8px);
+    width: 16px;
+    height: 16px;
+    background: url('/static_images/vista-ie/new-tab.png') no-repeat;
+}
 body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tabtools > button:is(:active, .is-pressed)::before {
     border-image-source: url('/static_images/vista-ie/tab-pressed.png');
 }
@@ -2727,8 +2894,15 @@ body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, #vi
     position: relative;
     z-index: 1;
 }
-body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(.explorer-address-group, .button-group:has(> #explorerSearchBar)).explorer-address-group > #explorerRefreshBtn {
+/* the parts laid over the box keep their places and layers (the rule above made the crumbs and the ▾
+   flow items: the crumbs got half the box, cut off, and the ▾ sat against refresh) */
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(.explorer-address-group, .button-group:has(> #explorerSearchBar)).explorer-address-group > :is(#explorerRefreshBtn, #explorerAddressDropBtn) {
     position: absolute;
+    z-index: 3;
+}
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(.explorer-address-group, .button-group:has(> #explorerSearchBar)).explorer-address-group > #explorerBreadcrumb {
+    position: absolute;
+    z-index: 2;
 }
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(.explorer-address-group, .button-group:has(> #explorerSearchBar)).explorer-address-group::before,
 body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal) .modal-window-title-toolbar :is(.cpl-address-group, .button-group:has(> .cpl-search)).cpl-address-group::before,

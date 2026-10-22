@@ -44,6 +44,20 @@ const {
 } = require('./accountSubscriptionSnapshot');
 const notesDatabase = require('./notesDatabase');
 const vfsDatabase = require('./vfsDatabase');
+
+// statfs f_type magic numbers (linux/magic.h) for the system disk's "File system" line
+const STATFS_TYPE_NAMES = {
+    0xEF53: 'ext4',
+    0x9123683E: 'Btrfs',
+    0x58465342: 'XFS',
+    0x2FC12FC1: 'ZFS',
+    0xF2F52010: 'F2FS',
+    0x01021994: 'tmpfs',
+    0x6969: 'NFS',
+    0xFF534D42: 'CIFS',
+    0x65735546: 'FUSE',
+    0x794C7630: 'overlay'
+};
 const TagAutofillSearch = require('./tagAutofillSearch');
 const logger = require('./logger');
 const { WebSocketServer } = require('./websocket');
@@ -1689,6 +1703,12 @@ class GlobalResources {
                 diskInfo.total = formatBytes(totalBytes);
                 diskInfo.used = formatBytes(usedBytes);
                 diskInfo.free = formatBytes(freeBytes);
+                // Cartograph's Computer (public/scripts/comp/explorerComputerView.js): the drive bar
+                // and Vista's "File system" line
+                diskInfo.totalBytes = totalBytes;
+                diskInfo.usedBytes = usedBytes;
+                diskInfo.freeBytes = freeBytes;
+                diskInfo.fileSystem = STATFS_TYPE_NAMES[stats.type] || null;
             } catch (diskError) {
                 // Disk space calculation failed, keep N/A values
                 console.warn('Failed to get disk space information:', diskError.message);

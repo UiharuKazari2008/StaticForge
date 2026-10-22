@@ -56,6 +56,8 @@
                 upload: $('explorerUploadCmd'),
                 download: $('explorerDownloadCmd'),
                 replace: $('explorerReplaceCmd'),
+                systemProperties: $('explorerSystemPropertiesCmd'),
+                controlPanel: $('explorerControlPanelCmd'),
                 help: $('explorerHelpBtn'),
                 favorites: $('explorerFavoriteLinks'),
                 folders: $('explorerFolders'),
@@ -74,6 +76,8 @@
             const e = this.el;
             if (e.breadcrumb) {
                 e.breadcrumb.addEventListener('click', (ev) => {
+                    // « opens its menu (layoutBreadcrumb), not the typed address
+                    if (ev.target.closest('.explorer-crumb-overflow')) return;
                     const crumb = ev.target.closest('[data-crumb-path]');
                     if (crumb) {
                         ev.stopPropagation();
@@ -103,6 +107,17 @@
             if (e.upload) e.upload.addEventListener('click', () => proxy('explorerUploadBtn'));
             if (e.download) e.download.addEventListener('click', () => proxy('explorerDownloadBtn'));
             if (e.replace) e.replace.addEventListener('click', () => proxy('explorerReplaceBtn'));
+            // Computer's commands: Control Panel > System, Control Panel (melatonControlPanel.js, cplSystem.js)
+            const controlPanel = (page) => {
+                const loader = root.featureLoader;
+                const ready = loader && typeof loader.loadFeature === 'function' ? loader.loadFeature('control_panel') : Promise.resolve();
+                Promise.resolve(ready).then(() => {
+                    if (page === 'system' && root.cplSystem) root.cplSystem.open();
+                    else if (root.melatonControlPanel) root.melatonControlPanel.open(page);
+                }).catch((err) => console.error('Control Panel', err));
+            };
+            if (e.systemProperties) e.systemProperties.addEventListener('click', () => controlPanel('system'));
+            if (e.controlPanel) e.controlPanel.addEventListener('click', () => controlPanel('home'));
             if (e.help) {
                 e.help.addEventListener('click', () => {
                     if (typeof root.openGrimoireApplet === 'function') root.openGrimoireApplet();
@@ -272,22 +287,88 @@
             if (this.el.addressGroup) this.el.addressGroup.classList.remove('is-editing');
         }
 
-        /** displayPath has one label per path segment (explorerApplet _fallbackDisplayPath / stats). */
+        /** displayPath has one label per path segment (explorerApplet _fallbackDisplayPath / stats).
+            Vista's trail starts at Computer: Computer ▸ Cartograph (C:) ▸ Workspaces ▸ … */
         renderBreadcrumb(displayPath) {
             const host = this.el.breadcrumb;
             if (!host) return;
-            const parts = String(this.app.currentPath || '/').split('/').filter(Boolean);
-            const labels = String(displayPath || '/').split('/').filter(Boolean);
-            const crumbs = [{ label: 'Cartograph', path: '/' }];
-            parts.forEach((part, i) => {
-                crumbs.push({ label: labels[i] || part, path: '/' + parts.slice(0, i + 1).join('/') });
-            });
+            const computer = typeof root.ExplorerComputerView === 'function' && !!this.app.computer;
+            const atComputer = computer && root.ExplorerComputerView.isPath(this.app.currentPath);
+            const crumbs = computer ? [{ label: 'Computer', path: root.ExplorerComputerView.PATH }] : [];
+            if (!atComputer) {
+                const parts = String(this.app.currentPath || '/').split('/').filter(Boolean);
+                const labels = String(displayPath || '/').split('/').filter(Boolean);
+                crumbs.push({ label: computer ? 'Cartograph (C:)' : 'Cartograph', path: '/' });
+                parts.forEach((part, i) => {
+                    crumbs.push({ label: labels[i] || part, path: '/' + parts.slice(0, i + 1).join('/') });
+                });
+            }
             crumbs.forEach((c) => this.labels.set(c.path, c.label));
-            host.innerHTML = `<img class="explorer-crumb-icon" src="${ART}/crumb-folder.png" alt="">`
-                + crumbs.map((c) => `<span class="explorer-crumb-sep" aria-hidden="true"></span><button type="button" class="explorer-crumb" data-crumb-path="${esc(c.path)}">${esc(c.label)}</button>`).join('')
-                // Vista ends the trail with an arrow too
-                + '<span class="explorer-crumb-sep" aria-hidden="true"></span>';
+            this.crumbs = crumbs;
+            // the place's own icon: Computer, the drive, or a folder
+            const current = this.app.currentPath;
+            this.crumbIcon = atComputer ? 'computer-16.png' : (current === '/' && computer ? 'drive-system-16.png' : 'crumb-folder.png');
+            this.layoutBreadcrumb();
+            this.watchBreadcrumbWidth();
             this.highlightFavorite();
+        }
+
+        /** Vista drops the trailing ▸ first, then folds crumbs from the left into « (a menu of them). */
+        layoutBreadcrumb() {
+            const host = this.el.breadcrumb;
+            const crumbs = this.crumbs || [];
+            if (!host) return;
+            const cm = typeof root.contextMenu !== 'undefined' ? root.contextMenu : null;
+            const oldOverflow = host.querySelector('.explorer-crumb-overflow');
+            if (oldOverflow && cm) cm.detachClickMenuFromElement(oldOverflow);
+            const sep = '<span class="explorer-crumb-sep" aria-hidden="true"></span>';
+            const crumb = (c) => `<button type="button" class="explorer-crumb" data-crumb-path="${esc(c.path)}">${esc(c.label)}</button>`;
+            const draw = (folded, trailing) => {
+                const shown = crumbs.slice(folded);
+                host.innerHTML = `<img class="explorer-crumb-icon" src="${ART}/${this.crumbIcon || 'crumb-folder.png'}" alt="">`
+                    + (folded ? '<button type="button" class="explorer-crumb-overflow" title="Previous locations" aria-label="Previous locations"></button>' : '')
+                    + shown.map((c, i) => (folded && i === 0 ? '' : sep) + crumb(c)).join('')
+                    + (trailing ? sep : '');
+            };
+            const fits = () => host.scrollWidth <= host.clientWidth;
+            draw(0, true);
+            // hidden (address being typed, window closed): nothing to measure
+            if (!host.clientWidth || fits()) {
+                this.foldedCrumbs = 0;
+                return;
+            }
+            draw(0, false);
+            let folded = 0;
+            while (!fits() && folded < crumbs.length - 1) {
+                folded += 1;
+                draw(folded, false);
+            }
+            this.foldedCrumbs = folded;
+            const overflow = host.querySelector('.explorer-crumb-overflow');
+            if (overflow && cm) {
+                // the folded places, nearest first
+                const items = crumbs.slice(0, folded).reverse().map((c) => ({ text: c.label, action: `p:${c.path}`, icon: 'fas fa-folder' }));
+                cm.attachClickMenuToElement(overflow, {
+                    sections: [{ type: 'list', items }],
+                    onAction: (action) => {
+                        if (action.startsWith('p:')) this.app.navigateTo(action.slice(2));
+                    }
+                });
+            }
+        }
+
+        /** The trail refits when the window (and so the box) changes width. */
+        watchBreadcrumbWidth() {
+            const host = this.el.breadcrumb;
+            if (this._crumbObserver || !host || typeof root.ResizeObserver !== 'function') return;
+            let lastWidth = host.clientWidth;
+            this._crumbObserver = new root.ResizeObserver(() => {
+                const w = host.clientWidth;
+                if (w === lastWidth) return;
+                lastWidth = w;
+                this.layoutBreadcrumb();
+            });
+            this._crumbObserver.observe(host);
         }
 
         // ---- command bar ----
@@ -335,6 +416,9 @@
             shown(this.el.upload, 'explorerUploadBtn');
             shown(this.el.download, 'explorerDownloadBtn');
             shown(this.el.replace, 'explorerReplaceBtn');
+            const atComputer = typeof this.app._isComputerPath === 'function' && this.app._isComputerPath();
+            if (this.el.systemProperties) this.el.systemProperties.classList.toggle('hidden', !atComputer);
+            if (this.el.controlPanel) this.el.controlPanel.classList.toggle('hidden', !atComputer);
         }
 
         // ---- navigation pane ----

@@ -21,6 +21,7 @@
 #   642  TRACKBAR TRACK        5x4
 #   622  PROGRESS BAR         19x14
 #   626  PROGRESS FILL        51x14    (627 error red, 628 paused yellow)
+#   629  PROGRESS FILL       125x14    partial (teal): Computer's drive bars
 #
 # Not built here: checkbox.png / radio.png (IMAGE_508 / 516, cut for Remote Access Properties) and
 # spin-{up,down}-{normal,hot}.png, cropped 14x9 from the VM's 96 DPI up-down control (the
@@ -88,5 +89,6 @@ whole 622 progress-bar
 whole 626 progress-fill
 whole 627 progress-fill-error
 whole 628 progress-fill-paused
+whole 629 progress-fill-partial
 
 echo "wrote $(ls "$OUT" | wc -l) files to $OUT"

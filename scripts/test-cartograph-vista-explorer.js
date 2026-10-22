@@ -148,4 +148,69 @@ const liveCss = fs.readFileSync(path.join(__dirname, '..', 'public/css/vista-exp
 assert.ok(liveCss.includes('.explorer-item-type-icon.explorer-live-folder:is(') && liveCss.includes("url('/static_images/vista-icons/explorer/folder-back-96.png')") && liveCss.includes("url('/static_images/vista-icons/explorer/folder-front-96.png')") && liveCss.includes('folder-front-48.png') && liveCss.includes('folder-front-256.png'), 'live folder uses the extract that matches the box');
 assert.ok(liveCss.includes("--ex-icon-lg: url('/static_images/vista-icons/explorer/folder-96.png')") && !liveCss.includes("256.png') 2x"), 'large is the 96 extract and hidpi does not swap in the 256');
 for (const n of ['folder-back-256', 'folder-back-96', 'folder-back-48', 'folder-front-256', 'folder-front-96', 'folder-front-48', 'folder-96', 'folder-48', 'folder-16']) assert.ok(fs.existsSync(path.join(__dirname, '..', `public/static_images/vista-icons/explorer/${n}.png`)), n);
+// Computer (2026-10-22): the trail starts at Computer, C: is the Cartograph root, sizes as Vista
+// prints them, the address box's parts stay laid over it, the command bar has Vista's icons
+require('../public/scripts/comp/explorerComputerView.js');
+const Computer = globalThis.ExplorerComputerView;
+const { parseSize, formatSize, diskFacts, hostFacts } = Computer._test;
+assert.strictEqual(Computer.PATH, 'Computer');
+assert.ok(Computer.isPath('Computer') && !Computer.isPath('/Computer') && !Computer.isPath('/'), 'Computer is outside the VFS paths');
+assert.ok(Computer.matchesInput(' computer ') && !Computer.matchesInput('/Computer'), 'typing Computer goes there');
+assert.strictEqual(parseSize('63.90 GB'), Math.round(63.9 * 1024 ** 3));
+assert.strictEqual(parseSize('N/A'), 0);
+assert.strictEqual(formatSize(38.1 * 1024 ** 3 + 5e7), '38.1 GB', 'three digits, truncated');
+assert.strictEqual(formatSize(932.4 * 1024 ** 3), '932 GB');
+assert.strictEqual(formatSize(1.815 * 1024 ** 4), '1.81 TB');
+const disk = diskFacts({ disk: { total: '63.90 GB', free: '38.10 GB', used: '25.80 GB' } });
+assert.ok(Math.abs(disk.usedFraction - 25.8 / 63.9) < 0.001 && !disk.full, 'an older server: the bar from the text sizes');
+assert.strictEqual(diskFacts({ disk: { totalBytes: 1000, freeBytes: 50, fileSystem: 'ext4' } }).full, true, 'red under 10% free');
+assert.strictEqual(diskFacts({ disk: { totalBytes: 1000, freeBytes: 50, fileSystem: 'ext4' } }).fileSystem, 'ext4');
+assert.strictEqual(diskFacts({ disk: { total: 'N/A' } }), null);
+assert.deepStrictEqual(hostFacts({ host: { hostname: 'ruiko', cpuModel: 'AMD Ryzen 7', totalMemBytes: 4 * 1024 ** 3 } }), { name: 'RUIKO', processor: 'AMD Ryzen 7', memory: '4.00 GB' });
+
+function crumbHost() {
+    return { innerHTML: '', clientWidth: 0, scrollWidth: 0, querySelector: () => null };
+}
+const trailApp = { currentPath: '/Workspaces/default', computer: {} };
+const trail = chromeFor(trailApp);
+trail.el = { breadcrumb: crumbHost() };
+trail.highlightFavorite = () => {};
+trail.renderBreadcrumb('/Workspaces/Default');
+assert.deepStrictEqual(trail.crumbs.map((x) => x.label), ['Computer', 'Cartograph (C:)', 'Workspaces', 'Default']);
+assert.deepStrictEqual(trail.crumbs.map((x) => x.path), ['Computer', '/', '/Workspaces', '/Workspaces/default']);
+assert.ok(trail.el.breadcrumb.innerHTML.includes('crumb-folder.png') && !trail.el.breadcrumb.innerHTML.includes('explorer-crumb-overflow'), 'a hidden box shows every crumb');
+trailApp.currentPath = '/';
+trail.renderBreadcrumb('/');
+assert.ok(trail.el.breadcrumb.innerHTML.includes('drive-system-16.png'), 'the drive shows its own icon');
+trailApp.currentPath = 'Computer';
+trail.renderBreadcrumb('Computer');
+assert.deepStrictEqual(trail.crumbs.map((x) => x.label), ['Computer']);
+assert.ok(trail.el.breadcrumb.innerHTML.includes('computer-16.png'));
+// folding: a box that fits two crumbs' worth
+const narrow = crumbHost();
+narrow.clientWidth = 100;
+Object.defineProperty(narrow, 'scrollWidth', { get() { return (narrow.innerHTML.match(/class="explorer-crumb"/g) || []).length * 60; } });
+trail.el.breadcrumb = narrow;
+trailApp.currentPath = '/Workspaces/default';
+trail.renderBreadcrumb('/Workspaces/Default');
+assert.strictEqual(trail.foldedCrumbs, 3, 'crumbs fold from the left until the rest fits');
+assert.ok(narrow.innerHTML.includes('explorer-crumb-overflow') && narrow.innerHTML.includes('>Default<') && !narrow.innerHTML.includes('>Computer<'));
+
+const css2 = read('public/css/vista-explorer.css');
+assert.ok(/\.explorer-address-group > #explorerBreadcrumb \{\s*position: absolute;\s*z-index: 2;/.test(css2), 'the crumbs stay laid over the box (not a flow item cut to half its width)');
+assert.ok(/\.explorer-address-group > :is\(#explorerRefreshBtn, #explorerAddressDropBtn\) \{\s*position: absolute;/.test(css2), 'the ▾ keeps its place left of refresh');
+assert.ok(css2.includes('progress-fill-partial.png') && css2.includes('.explorer-computer-tile.is-selected'));
+const html2 = read('public/app.html');
+for (const name of ['upload', 'download', 'replace', 'system-properties', 'control-panel']) {
+    assert.ok(html2.includes(`/static_images/vista-cmdbar/${name}.png`), `${name} has Vista's icon`);
+    assert.ok(fs.existsSync(path.join(ROOT, `public/static_images/vista-cmdbar/${name}.png`)), `${name}.png`);
+}
+for (const f of ['computer-16', 'computer-64', 'drive-system-16', 'drive-system-48', 'drive-system-64']) {
+    assert.ok(fs.existsSync(path.join(ROOT, `public/static_images/vista-explorer/${f}.png`)), f);
+}
+assert.ok(read('public/scripts/comp/featureLoader.js').includes("'scripts/comp/explorerComputerView.js', 'scripts/comp/fileOperationProgress.js', 'scripts/comp/explorerApplet.js'"), 'loaded before the applet');
+assert.ok(read('public/scripts/comp/desktopShortcuts.js').includes("openExplorerApplet('Computer')"), "the desktop's Computer opens Computer");
+const gr = read('modules/globalResources.js');
+assert.ok(gr.includes('diskInfo.totalBytes = totalBytes;') && gr.includes('diskInfo.fileSystem = STATFS_TYPE_NAMES[stats.type] || null;'), 'the server sends the disk in bytes');
+
 console.log('test-cartograph-vista-explorer: ok');

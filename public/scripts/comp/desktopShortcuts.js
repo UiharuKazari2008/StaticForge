@@ -2327,6 +2327,11 @@ class DesktopShortcutsManager {
             });
             return;
         }
+        // Computer opens Cartograph's Computer above the drives (explorerComputerView.js EXPLORER_COMPUTER_PATH)
+        if (key === 'computer') {
+            openExplorerApplet('Computer');
+            return;
+        }
         const navPath = shortcut?.data?.navPath;
         if (!navPath) return;
         openExplorerApplet(navPath);
