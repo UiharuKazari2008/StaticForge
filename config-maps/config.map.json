@@ -1399,6 +1399,16 @@
     {
       "path": [
         "mailGateway",
+        "recoveryRelayPeers"
+      ],
+      "type": "array",
+      "itemsType": "string",
+      "label": "Catch-all Recovery Relay IPs",
+      "description": "IPs that may recover catch-all mail from X-Original-To to an active mailbox. Hold only the LANTIS relay IP (192.168.255.1). Empty by default, which disables recovery. Not the inbound allowFrom list."
+    },
+    {
+      "path": [
+        "mailGateway",
         "inbound",
         "maxConnections"
       ],
@@ -1664,7 +1674,7 @@
       "type": "string",
       "label": "Original-To Header",
       "editorType": "input",
-      "description": "Default X-Original-To. Only the topmost instance above the relay Received is stored and shown (Originally to). When that stamp is missing, intake stores the accepted envelope recipient. Catch-all recovery may use that trusted stamp only (never To/Cc), only for a real active mailbox, and only from the relay IP; spam and forged mail stay on Tsubame."
+      "description": "Default X-Original-To. Only the topmost instance above the relay Received is stored and shown (Originally to). When that stamp is missing, intake stores the accepted envelope recipient. Catch-all recovery may use that trusted stamp only (never To/Cc), only for a real active mailbox, and only when the peer is in mailGateway.recoveryRelayPeers (empty disables recovery); spam and forged mail stay on Tsubame."
     },
     {
       "path": [

@@ -97,12 +97,12 @@ function redact(text) {
 function lookupActiveMailbox(owner) {
     try {
         const exchange = require('./mailExchange');
-        if (typeof exchange.isDirectoryReady === 'function' && !exchange.isDirectoryReady()) {
-            return true;
+        if (typeof exchange.isDirectoryReady !== 'function' || !exchange.isDirectoryReady()) {
+            return false;
         }
-        return exchange.isActiveMailbox(owner);
+        return exchange.isActiveMailbox(owner) === true;
     } catch (_err) {
-        return true;
+        return false;
     }
 }
 
@@ -111,17 +111,22 @@ function lmtpStatusForRcpt(rcpt, results, deliverTo) {
     (results || []).forEach((item) => {
         if (item && item.owner) byOwner.set(item.owner, item);
     });
-    if (byOwner.has(rcpt.owner)) return byOwner.get(rcpt.owner);
+    if (rcpt && byOwner.has(rcpt.owner)) return byOwner.get(rcpt.owner);
     const remapped = (deliverTo || []).filter((row) => row.via === 'recovered' || row.via === 'divert');
     for (let i = 0; i < remapped.length; i++) {
         const status = byOwner.get(remapped[i].owner);
         if (status) return status;
     }
-    return { ok: true, owner: rcpt.owner };
+    return {
+        ok: false,
+        owner: rcpt && rcpt.owner,
+        error: new Error('Temporary failure: no delivery result for recipient')
+    };
 }
 
 function handleInboundConnection(plainSocket, options) {
     const allowFrom = options.allowFrom;
+    const recoveryRelayPeers = options.recoveryRelayPeers;
     const mapping = options.mapping;
     const deliver = options.deliver;
     const spamConfig = options.spam;
@@ -407,7 +412,7 @@ function handleInboundConnection(plainSocket, options) {
                 spam: spamMark.spam,
                 forgedOurs: spamMark.forgedOurs,
                 peer,
-                relayPeers: allowFrom,
+                relayPeers: recoveryRelayPeers,
                 isActiveMailbox: lookupActiveMailbox
             });
             deliverTo = recovered.recipients;
@@ -566,5 +571,7 @@ module.exports = {
     DEFAULT_IDLE_TIMEOUT_MS,
     DEFAULT_SESSION_TIMEOUT_MS,
     CrlfBuffer,
-    handleInboundConnection
+    handleInboundConnection,
+    lookupActiveMailbox,
+    lmtpStatusForRcpt
 };

@@ -1268,7 +1268,17 @@ async function setToggles(actor, patch = {}) {
         }
     }
     writeToggles(next);
-    applyMailboxToggleRows(patch.mailboxes);
+    if (patch.relay === false) {
+        if (isExchangeAdmin(admin)) {
+            applyMailboxToggleRows(patch.mailboxes);
+            console.warn('[mail-exchange] local-only mailbox toggle write (relay:false)', admin);
+            audit(admin, 'set_toggles_local_rows', 'mailboxes', true, 'relay:false');
+        } else {
+            console.warn('[mail-exchange] skipped mailbox toggle write: relay:false requires admin');
+        }
+    } else {
+        applyMailboxToggleRows(patch.mailboxes);
+    }
     audit(admin, 'set_toggles', 'global', true, `inbound=${next.inbound} outbound=${next.outbound}`);
     if (relayResult.ok && relayResult.data && typeof relayResult.data === 'object') {
         return { toggles: next, relay: relayResult, relayToggles: relayResult.data };

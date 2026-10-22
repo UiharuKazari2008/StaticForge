@@ -283,25 +283,14 @@ function describeRecipientResolution(address, mapping) {
     return { owners, via, local, envelope };
 }
 
-function collectHeaderCandidateAddresses({ originalTo, to, cc } = {}) {
-    const out = [];
-    const take = (raw) => {
-        const email = normalizeEmail(raw);
-        if (email && email.includes('@') && !out.includes(email)) out.push(email);
-    };
-    if (originalTo) take(originalTo);
-    (Array.isArray(to) ? to : []).forEach(take);
-    (Array.isArray(cc) ? cc : []).forEach(take);
-    return out;
-}
-
 /**
  * Trusted-relay catch-all recovery. LANTIS may rewrite an unknown (to it)
  * envelope to mailroom.ops. Recover only from the relay's own top-block
  * X-Original-To, only to a real active mailbox (never a list or alias),
- * and only when this function itself sees the peer as a configured relay
- * IP. To/Cc are sender-controlled and are ignored. Spam and
- * LANTIS_FORGED_OURS stay on the catch-all.
+ * and only when this function itself sees the peer in recoveryRelayPeers.
+ * That list is empty by default, which disables recovery. To/Cc are
+ * sender-controlled and are ignored. Spam and LANTIS_FORGED_OURS stay
+ * on the catch-all.
  */
 function envelopeLocal(envelope) {
     const parts = splitLocalDomain(envelope || '');
@@ -769,7 +758,6 @@ module.exports = {
     isCatchallLocal,
     publicEnvelope,
     describeRecipientResolution,
-    collectHeaderCandidateAddresses,
     recoverCatchallDelivery,
     resolveStoredOriginalTo,
     toMailbox,

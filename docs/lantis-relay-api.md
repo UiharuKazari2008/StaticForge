@@ -252,7 +252,8 @@ Dreamscape still PUTs after every mailbox, address, alias, or list change
 the endpoint is approved. The client **fails soft** (`RELAY_ENDPOINT_MISSING`)
 and **logs**; local Exchange/intake stay up. Intake recovery still files
 trusted catch-all mail whose relay `X-Original-To` names an active mailbox
-(never To/Cc, lists, or aliases; peer must be the relay IP).
+(never To/Cc, lists, or aliases; peer must be in `mailGateway.recoveryRelayPeers`,
+which is empty by default and disables recovery).
 
 LANTIS SMTP already accepts **any** `@dream.737.jp.net` address. Addresses
 that are **not** in the Postfix `virtual_known` rewrite map are rewritten

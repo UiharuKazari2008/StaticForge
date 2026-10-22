@@ -1138,6 +1138,11 @@ function testResolveConfigDefaults() {
     assert.strictEqual(cfg.spam.flagHeader, 'X-Spam-Flag');
     assert.strictEqual(cfg.spam.reportHeader, 'X-Spam-Report');
     assert.strictEqual(cfg.spam.originalToHeader, 'X-Original-To');
+    assert.deepStrictEqual(cfg.recoveryRelayPeers, []);
+    assert.deepStrictEqual(gateway.DEFAULT_RECOVERY_RELAY_PEERS, []);
+    gateway.setTestOverrides({ config: { recoveryRelayPeers: ['192.168.255.1'] } });
+    assert.deepStrictEqual(gateway.resolveConfig().recoveryRelayPeers, ['192.168.255.1']);
+    gateway.setTestOverrides({ config: {} });
     assert.strictEqual(cfg.spam.authservId, 'mx.dream.737.jp.net');
     assert.strictEqual(cfg.inbound.tls.certPath, '');
     assert.strictEqual(cfg.inbound.tls.keyPath, '');
@@ -2226,15 +2231,53 @@ function testRecipientResolutionHelpers() {
     assert.strictEqual(inactiveKept.recovered, false);
     assert.strictEqual(inactiveKept.reason, 'inactive');
     assert.strictEqual(inactiveKept.recipients[0].owner, 'tsubame');
+
+    const emptyPeers = addresses.recoverCatchallDelivery({
+        recipients: catchallRcpt,
+        originalTo: 'ivory.studio@dream.737.jp.net',
+        mapping: map,
+        peer: '192.168.255.1',
+        relayPeers: []
+    });
+    assert.strictEqual(emptyPeers.recovered, false);
+    assert.strictEqual(emptyPeers.reason, 'not-relay');
+
+    assert.strictEqual(inboundMod.lookupActiveMailbox('ivory'), false);
+    assert.strictEqual(inboundMod.lookupActiveMailbox('yukimi'), false);
+
+    const exchange = require('../modules/mailExchange');
+    const origReady = exchange.isDirectoryReady;
+    const origActive = exchange.isActiveMailbox;
+    try {
+        exchange.isDirectoryReady = () => { throw new Error('directory boom'); };
+        assert.strictEqual(inboundMod.lookupActiveMailbox('ivory'), false);
+        exchange.isDirectoryReady = () => true;
+        exchange.isActiveMailbox = () => { throw new Error('lookup boom'); };
+        assert.strictEqual(inboundMod.lookupActiveMailbox('ivory'), false);
+    } finally {
+        exchange.isDirectoryReady = origReady;
+        exchange.isActiveMailbox = origActive;
+    }
+
+    const missingLmtp = inboundMod.lmtpStatusForRcpt({ owner: 'menma' }, [], []);
+    assert.strictEqual(missingLmtp.ok, false);
+    assert.match(String(missingLmtp.error && missingLmtp.error.message), /no delivery result/i);
+    const remappedLmtp = inboundMod.lmtpStatusForRcpt(
+        { owner: 'tsubame' },
+        [{ owner: 'ivory', ok: true }],
+        [{ owner: 'ivory', via: 'recovered' }]
+    );
+    assert.strictEqual(remappedLmtp.ok, true);
 }
 
-async function smtpDeliverOnce({ rcpt, headers, extra }) {
+async function smtpDeliverOnce({ rcpt, headers, extra, recoveryRelayPeers }) {
     const logs = [];
     const delivered = [];
     const inbound = await gateway.startInbound({
         port: 0,
         bind: '127.0.0.1',
         allowFrom: ['127.0.0.1'],
+        recoveryRelayPeers,
         mapping: mapping(),
         log: (line) => logs.push(String(line)),
         deliver: async (msg) => { delivered.push(msg); }
@@ -2274,33 +2317,53 @@ async function testEnvelopeOriginalToAndRecipientLog() {
 }
 
 async function testCatchallRecoveryToActiveMailbox() {
-    const recovered = await smtpDeliverOnce({
-        rcpt: 'mailroom.ops@dream.737.jp.net',
-        headers: [
-            'X-Original-To: <ivory.studio@dream.737.jp.net>',
-            'From: alice@example.com',
-            'To: forged-to@dream.737.jp.net',
-            'Cc: ivory.studio@dream.737.jp.net',
-            'Subject: recover-ham'
-        ].join('\r\n')
-    });
-    assert.strictEqual(recovered.delivered.length, 1);
-    assert.strictEqual(recovered.delivered[0].toOwner, 'ivory');
-    assert.strictEqual(recovered.delivered[0].originalTo, 'ivory.studio@dream.737.jp.net');
-    assert.ok(recovered.logs.some((line) => /RCPT mailroom\.ops@dream\.737\.jp\.net -> tsubame \(catchall\)/.test(line)));
-    assert.ok(recovered.logs.some((line) => /recovered catch-all -> ivory/.test(line)));
+    const { resetForTests } = require('../modules/mailExchangeDatabase');
+    const exchange = require('../modules/mailExchange');
+    const exDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mail-gw-ex-'));
+    assert.strictEqual(resetForTests(exDir), true);
+    const recoverHeaders = [
+        'X-Original-To: <ivory.studio@dream.737.jp.net>',
+        'From: alice@example.com',
+        'To: forged-to@dream.737.jp.net',
+        'Cc: ivory.studio@dream.737.jp.net',
+        'Subject: recover-ham'
+    ].join('\r\n');
+    try {
+        assert.strictEqual(inboundMod.lookupActiveMailbox('ivory'), true);
+        const recovered = await smtpDeliverOnce({
+            rcpt: 'mailroom.ops@dream.737.jp.net',
+            recoveryRelayPeers: ['127.0.0.1'],
+            headers: recoverHeaders
+        });
+        assert.strictEqual(recovered.delivered.length, 1);
+        assert.strictEqual(recovered.delivered[0].toOwner, 'ivory');
+        assert.strictEqual(recovered.delivered[0].originalTo, 'ivory.studio@dream.737.jp.net');
+        assert.ok(recovered.logs.some((line) => /RCPT mailroom\.ops@dream\.737\.jp\.net -> tsubame \(catchall\)/.test(line)));
+        assert.ok(recovered.logs.some((line) => /recovered catch-all -> ivory/.test(line)));
 
-    const toOnly = await smtpDeliverOnce({
-        rcpt: 'mailroom.ops@dream.737.jp.net',
-        headers: [
-            'From: alice@example.com',
-            'To: ivory.studio@dream.737.jp.net',
-            'Cc: menma.dev@dream.737.jp.net',
-            'Subject: forged-headers'
-        ].join('\r\n')
-    });
-    assert.strictEqual(toOnly.delivered[0].toOwner, 'tsubame');
-    assert.ok(!toOnly.logs.some((line) => /recovered catch-all/.test(line)));
+        const disabledByConfig = await smtpDeliverOnce({
+            rcpt: 'mailroom.ops@dream.737.jp.net',
+            headers: recoverHeaders
+        });
+        assert.strictEqual(disabledByConfig.delivered[0].toOwner, 'tsubame');
+        assert.ok(!disabledByConfig.logs.some((line) => /recovered catch-all/.test(line)));
+
+        const toOnly = await smtpDeliverOnce({
+            rcpt: 'mailroom.ops@dream.737.jp.net',
+            recoveryRelayPeers: ['127.0.0.1'],
+            headers: [
+                'From: alice@example.com',
+                'To: ivory.studio@dream.737.jp.net',
+                'Cc: menma.dev@dream.737.jp.net',
+                'Subject: forged-headers'
+            ].join('\r\n')
+        });
+        assert.strictEqual(toOnly.delivered[0].toOwner, 'tsubame');
+        assert.ok(!toOnly.logs.some((line) => /recovered catch-all/.test(line)));
+    } finally {
+        exchange.resetTestConfig();
+        try { require('../modules/mailExchangeDatabase').close(); } catch (_err) { /* ignore */ }
+    }
 }
 
 async function testLmtpPerRcptStatus() {

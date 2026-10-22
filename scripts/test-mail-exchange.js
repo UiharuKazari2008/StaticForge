@@ -361,17 +361,39 @@ async function testRelayMockAndClient() {
         });
         assert.strictEqual(exchange.getMailboxRecord('sala').outboundEnabled, true);
 
-        const localPatch = await exchange.setToggles('yukimi', {
-            outbound: false,
-            mailboxes: { ivory: { inbound: false } },
-            confirm: true,
-            relay: false
-        });
+        const localWarnings = [];
+        const origLocalWarn = console.warn;
+        console.warn = (...args) => { localWarnings.push(args.map(String).join(' ')); };
+        let localPatch;
+        try {
+            localPatch = await exchange.setToggles('yukimi', {
+                outbound: false,
+                mailboxes: { ivory: { inbound: false } },
+                confirm: true,
+                relay: false
+            });
+        } finally {
+            console.warn = origLocalWarn;
+        }
         assert.strictEqual(localPatch.toggles.inbound, true);
         assert.strictEqual(localPatch.toggles.outbound, false);
         assert.strictEqual(localPatch.toggles.mailboxes.ivory.inbound, false);
         assert.strictEqual(localPatch.relay.skipped, true);
         assert.strictEqual(exchange.getMailboxRecord('ivory').inboundEnabled, false);
+        assert.ok(localWarnings.some((line) => line.includes('local-only mailbox toggle write (relay:false)')));
+        assert.ok(exchange.listAudit({ limit: 40 }).some((row) => (
+            row.action === 'set_toggles_local_rows' && row.actor === 'yukimi' && row.success === 1
+        )));
+        await assert.rejects(
+            () => exchange.setToggles('ivory', {
+                mailboxes: { sala: { outbound: false } },
+                confirm: true,
+                relay: false
+            }),
+            /admin/i
+        );
+        assert.strictEqual(exchange.getMailboxRecord('sala').outboundEnabled, true);
+
         await exchange.setToggles('yukimi', {
             mailboxes: { ivory: { inbound: true } },
             confirm: true,
