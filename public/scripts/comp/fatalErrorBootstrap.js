@@ -268,7 +268,7 @@
         if (!errorRegistry.length) {
             listEl.innerHTML = (
                 '<div class="dreamscape-app-error-empty">' +
-                '<i class="fas fa-check-circle"></i>' +
+                '<img src="/static_images/vista-icons/info-32.png" alt="" draggable="false">' +
                 '<p>No application errors recorded.</p>' +
                 '</div>'
             );
@@ -282,7 +282,7 @@
             var detail = entry.detail;
             html += (
                 '<button type="button" class="dreamscape-app-error-card" data-error-id="' + entry.id + '">' +
-                '<div class="dreamscape-app-error-card-icon"><i class="fas fa-triangle-exclamation"></i></div>' +
+                '<div class="dreamscape-app-error-card-icon"><img src="/static_images/vista-icons/error-32.png" alt="" draggable="false"></div>' +
                 '<div class="dreamscape-app-error-card-body">' +
                 '<div class="dreamscape-app-error-card-title">' + escapeHtml(summarizeError(detail)) + '</div>' +
                 '<div class="dreamscape-app-error-card-meta">' + escapeHtml(detail.fileLine || '(unknown location)') + '</div>' +

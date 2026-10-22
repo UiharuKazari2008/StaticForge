@@ -34,7 +34,7 @@
     padding: 0;
 }
 
-.dreamscape-app-error-toolbar {
+body:is(:not(.desktop-mode), .windows-classic-theme) .dreamscape-app-error-toolbar {
     display: flex;
     justify-content: flex-end;
     align-items: center;
@@ -287,12 +287,63 @@ body.windows-classic-theme .dreamscape-connectivity-icon {
     color: var(--WindowText);
 }
 
-#dreamscapeConnectivityErrorTemplate,
-#dreamscapeConnectivityErrorWindow {
+body:is(:not(.desktop-mode), .windows-classic-theme) :is(#dreamscapeConnectivityErrorTemplate, #dreamscapeConnectivityErrorWindow) {
     width: 420px;
     height: 180px;
     min-width: 320px;
     min-height: 160px;
+}
+
+/* Vista: an error MessageBox (vista-dialogs.css "message" layout: white over the grey footer,
+   88x26 buttons), measured like the confirmation dialog: the 32 px error icon 25 px in and 27 px
+   down, the text 9 px to its right with its first line on the icon's centre line; Details sits at
+   the left of the button row. */
+body.desktop-mode:not(.windows-classic-theme) .dreamscape-connectivity-error-window[data-vista-dialog="message"] {
+    width: auto;
+    height: auto;
+    min-width: 340px;
+    max-width: min(520px, calc(100vw - 40px));
+    min-height: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .dreamscape-connectivity-error-window[data-vista-dialog="message"] > .modal-content > .dreamscape-connectivity-message-row {
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr);
+    column-gap: 9px;
+    align-items: start;
+    min-height: 84px;
+    box-sizing: border-box;
+    padding: 27px 25px 25px;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 15px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .dreamscape-connectivity-error-window[data-vista-dialog="message"] > .modal-content > .dreamscape-connectivity-message-row::before {
+    content: "";
+    width: 32px;
+    height: 32px;
+    background: url("/static_images/vista-icons/msgbox-error-32.png") no-repeat center / 32px 32px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .dreamscape-connectivity-error-window[data-vista-dialog="message"] .vista-dialog-text {
+    padding-top: 8px;
+    overflow-wrap: anywhere;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .dreamscape-connectivity-error-window[data-vista-dialog="message"] :is(.dreamscape-connectivity-headline, .dreamscape-connectivity-summary) {
+    margin: 0 0 15px;
+    color: #000;
+    font: inherit;
+    text-align: left;
+    opacity: 1;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .dreamscape-connectivity-error-window[data-vista-dialog="message"] .dreamscape-connectivity-summary {
+    margin-bottom: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .dreamscape-connectivity-error-window[data-vista-dialog="message"] .vista-dialog-footer > .dreamscape-connectivity-details-btn {
+    margin-right: auto;
 }
 
 #dreamscapeConnectivityErrorOverlay {
@@ -318,4 +369,132 @@ body.windows-classic-theme .dreamscape-connectivity-icon {
     border-radius: var(--border-radius-md);
     padding: 1.25rem 1.5rem;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+}
+
+/* Vista: Spectator is a light Explorer-style window: the command bar (vista-explorer.css), the
+   errors as list rows with Vista's hot / selection tints and the shell's 32 px error icon, the
+   detail window as a white page over the grey button strip with 88x26 push buttons. */
+body.desktop-mode:not(.windows-classic-theme) :is(#dreamscapeAppErrorModal, .dreamscape-app-error-window) .dreamscape-app-error-modal-content {
+    background: #fff;
+    color: #000;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #dreamscapeAppErrorModal .dreamscape-app-error-list-scroll {
+    padding: 4px 2px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #dreamscapeAppErrorModal .dreamscape-app-error-list {
+    gap: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #dreamscapeAppErrorModal .dreamscape-app-error-card {
+    gap: 6px;
+    padding: 3px 4px;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    box-shadow: none;
+    font: inherit;
+    transition: none;
+}
+
+@media (hover: hover) {
+    body.desktop-mode:not(.windows-classic-theme) #dreamscapeAppErrorModal .dreamscape-app-error-card:hover {
+        background: linear-gradient(#fafbfd, #ebf3fd);
+        border-color: #b8d6fb;
+    }
+}
+
+body.desktop-mode:not(.windows-classic-theme) #dreamscapeAppErrorModal .dreamscape-app-error-card:is(:focus-visible, :active) {
+    background: linear-gradient(#f6fbfd, #eff8fd 45%, #d7effc 55%, #d5effc 92%, #e7f5fd);
+    border-color: #99defd;
+    outline: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #dreamscapeAppErrorModal .dreamscape-app-error-card-icon {
+    width: 32px;
+    height: 32px;
+    background: none;
+    border: 0;
+    border-radius: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #dreamscapeAppErrorModal .dreamscape-app-error-card-icon img,
+body.desktop-mode:not(.windows-classic-theme) #dreamscapeAppErrorModal .dreamscape-app-error-empty img {
+    width: 32px;
+    height: 32px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #dreamscapeAppErrorModal .dreamscape-app-error-card-title {
+    margin-bottom: 0;
+    font-weight: 400;
+    color: #000;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #dreamscapeAppErrorModal :is(.dreamscape-app-error-card-meta, .dreamscape-app-error-card-time) {
+    margin-top: 0;
+    font-size: inherit;
+    font-family: inherit;
+    color: #6d6d6d;
+    opacity: 1;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #dreamscapeAppErrorModal .dreamscape-app-error-empty {
+    gap: 8px;
+    padding: 24px 12px;
+    color: #6d6d6d;
+    opacity: 1;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #dreamscapeAppErrorModal .dreamscape-app-error-empty p {
+    margin: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .dreamscape-app-error-window .dreamscape-app-error-scroll {
+    padding: 12px 12px 10px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .dreamscape-app-error-window .dreamscape-app-error-lead {
+    color: #000;
+    font-size: inherit;
+    text-align: left;
+    opacity: 1;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .dreamscape-app-error-window .dreamscape-app-error-dl {
+    grid-template-columns: 80px minmax(0, 1fr);
+    gap: 6px 8px;
+    font-size: inherit;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .dreamscape-app-error-window :is(.dreamscape-app-error-dl dt, .dreamscape-app-error-stack-label) {
+    font-weight: 400;
+    font-size: inherit;
+    text-transform: none;
+    letter-spacing: 0;
+    opacity: 1;
+}
+
+/* the value boxes are read-only edits: the sunken Vista edit border on white */
+body.desktop-mode:not(.windows-classic-theme) .dreamscape-app-error-window .dreamscape-app-error-pre {
+    font: 9pt Consolas, "Lucida Console", monospace;
+    line-height: 14px;
+    color: #000;
+    background: #fff;
+    border: 1px solid;
+    border-color: #abadb3 #dbdfe6 #e3e9ef #e2e3ea;
+    border-radius: 0;
+    padding: 2px 4px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .dreamscape-app-error-window .dreamscape-app-error-window-footer {
+    display: flex;
+    padding: 10px 12px 11px;
+    background: #f0f0f0;
+    border-top: 1px solid #dfdfdf;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .dreamscape-app-error-window .dreamscape-app-error-actions {
+    gap: 6px;
 }
