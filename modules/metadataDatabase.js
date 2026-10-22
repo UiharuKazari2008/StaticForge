@@ -5452,9 +5452,13 @@ async function findGalleryWorkspaceItemIndex(workspaceId, viewType = 'images', f
         return -1;
     }
 
+    // Rows before this one in the listing order (sort_mtime DESC, base DESC); rows tied on
+    // sort_mtime with a greater base come first too (#623).
     let countSql = `SELECT COUNT(*) AS count FROM ${GALLERY_ITEMS_TABLE}
-                    WHERE workspace_id = ? AND bucket = ? AND sort_mtime > ?`;
-    const countParams = [workspaceId, bucket, row.sort_mtime || 0];
+                    WHERE workspace_id = ? AND bucket = ?
+                      AND (sort_mtime > ? OR (sort_mtime = ? AND base > ?))`;
+    const rowMtime = row.sort_mtime || 0;
+    const countParams = [workspaceId, bucket, rowMtime, rowMtime, row.base];
     if (viewType === 'upscaled') {
         countSql += ' AND in_upscaled_view = 1';
     }

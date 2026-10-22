@@ -333,6 +333,76 @@ sections.imageMetadataStat = async function imageMetadataStat() {
     console.log(`  getImageMetadata hot hit (1024x1024 PNG): old ${timings.old.toFixed(3)} ms/call, new ${timings.new.toFixed(3)} ms/call`);
 };
 
+// Finding 4 + #623: indexed locate in findGalleryWorkspaceItemIndex; tie-aware rank.
+sections.galleryLocate = async function galleryLocate() {
+    if (!haveDbCopy()) return;
+    const src = await openSqlite(DB_COPY);
+    const items = await src.all(`
+        SELECT workspace_id, bucket, base, original, upscaled, sort_mtime, in_upscaled_view
+        FROM gallery_workspace_items WHERE bucket IN ('files', 'scraps')
+        ORDER BY workspace_id, bucket, sort_mtime DESC, base DESC
+    `);
+    await src.close();
+    // Ground truth: position in the paginated listing order (sort_mtime DESC, base DESC).
+    const rank = new Map();
+    const counters = new Map();
+    const upCounters = new Map();
+    for (const it of items) {
+        const k = `${it.workspace_id}\0${it.bucket}`;
+        const n = counters.get(k) || 0;
+        counters.set(k, n + 1);
+        rank.set(`${k}\0images\0${it.base}`, n);
+        if (it.in_upscaled_view) {
+            const u = upCounters.get(k) || 0;
+            upCounters.set(k, u + 1);
+            rank.set(`${k}\0upscaled\0${it.base}`, u);
+        }
+    }
+    // Every 97th row plus every row that shares sort_mtime with a neighbour (the #623 case).
+    const sample = items.filter((it, i) => i % 97 === 0
+        || (i > 0 && items[i - 1].sort_mtime === it.sort_mtime && items[i - 1].workspace_id === it.workspace_id && items[i - 1].bucket === it.bucket)
+        || (i + 1 < items.length && items[i + 1].sort_mtime === it.sort_mtime && items[i + 1].workspace_id === it.workspace_id && items[i + 1].bucket === it.bucket));
+    const probes = [];
+    for (const it of sample) {
+        const viewType = it.bucket === 'scraps' ? 'scraps' : 'images';
+        const name = it.original || it.upscaled || `${it.base}.png`;
+        probes.push({ ws: it.workspace_id, viewType, name, key: `${it.workspace_id}\0${it.bucket}\0images\0${it.base}` });
+        if (it.upscaled && it.bucket === 'files' && it.in_upscaled_view) {
+            probes.push({ ws: it.workspace_id, viewType: 'upscaled', name: it.upscaled, key: `${it.workspace_id}\0${it.bucket}\0upscaled\0${it.base}` });
+        }
+    }
+    probes.push({ ws: items[0].workspace_id, viewType: 'images', name: 'does-not-exist.png', key: null });
+
+    const mod = require('../modules/metadataDatabase');
+    assert.strictEqual(await mod.initializeDatabase(path.dirname(DB_COPY), new PngMetadata(null)), true);
+    const old = requireOldModule('modules/metadataDatabase.js');
+    assert.strictEqual(await old.initializeDatabase(path.dirname(DB_COPY), new PngMetadata(null)), true);
+    let tOld = 0;
+    let tNew = 0;
+    let sameAsOld = 0;
+    let tieFixed = 0;
+    for (const p of probes) {
+        let t0 = process.hrtime.bigint();
+        const a = await old.findGalleryWorkspaceItemIndex(p.ws, p.viewType, p.name);
+        tOld += Number(process.hrtime.bigint() - t0) / 1e6;
+        t0 = process.hrtime.bigint();
+        const b = await mod.findGalleryWorkspaceItemIndex(p.ws, p.viewType, p.name);
+        tNew += Number(process.hrtime.bigint() - t0) / 1e6;
+        const truth = p.key == null ? -1 : rank.get(p.key);
+        assert.strictEqual(b, truth, `rank for ${p.name} (${p.viewType}) must match listing order`);
+        if (a === b) sameAsOld += 1;
+        else {
+            // Only allowed difference: old ignored rows tied on sort_mtime (#623).
+            assert.ok(a < b, `old rank ${a} vs new ${b}: old must only undercount ties`);
+            tieFixed += 1;
+        }
+    }
+    await old.closeDatabase();
+    await mod.closeDatabase();
+    console.log(`  galleryLocate: ${probes.length} probes, ${sameAsOld} same as old, ${tieFixed} tie ranks fixed (#623); ` +
+        `old ${(tOld / probes.length).toFixed(2)} ms, new ${(tNew / probes.length).toFixed(2)} ms per call`);
+};
+
 async function main() {
     const wanted = process.argv.slice(2);
     const names = wanted.length ? wanted : Object.keys(sections);
