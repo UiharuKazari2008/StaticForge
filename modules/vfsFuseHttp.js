@@ -55,13 +55,23 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
+const { md5HexAsync, writeFileIfMissing } = require('./vfsPerfHelpers');
 
 const LIST_HARD_LIMIT = 100000;
 const LIST_DEFAULT_LIMIT = 1000;
 const WRITE_MAX_BYTES = 100 * 1024 * 1024;
 const CONTENT_HASH_PATTERN = /^[a-f0-9]{16,128}$/i;
 const READABLE_KINDS = new Set(['user-file', 'system-file', 'image', 'scrap', 'note']);
+
+// FUSE lookups re-resolved every ancestor folder by listing it (#620). Resolved folder
+// chains are kept briefly; any vfs_updated broadcast clears them (invalidateFuseLookupCache).
+const DIR_CACHE_TTL_MS = 2000;
+const DIR_CACHE_MAX = 2000;
+const dirPathCache = new Map();
+
+function invalidateFuseLookupCache() {
+    dirPathCache.clear();
+}
 
 function registerVfsFuseRoutes(app, { vfsPath, authMiddleware, globalResources }) {
     const vfs = () => globalResources.getVfsManager();
@@ -129,6 +139,7 @@ function registerVfsFuseRoutes(app, { vfsPath, authMiddleware, globalResources }
     }
 
     function broadcastVfsUpdated(pathHint) {
+        invalidateFuseLookupCache();
         try {
             globalResources.getWebSocketServer().broadcast({
                 type: 'vfs_updated',
@@ -139,6 +150,8 @@ function registerVfsFuseRoutes(app, { vfsPath, authMiddleware, globalResources }
     }
 
     async function findChild(dirPath, name) {
+        const direct = await vfs().findGalleryChildByName(dirPath, name);
+        if (direct !== undefined) return direct;
         const result = await vfs().listDirectory(dirPath, {
             offset: 0,
             limit: LIST_HARD_LIMIT,
@@ -152,10 +165,23 @@ function registerVfsFuseRoutes(app, { vfsPath, authMiddleware, globalResources }
 
     async function resolveDirPath(segments) {
         let canonical = '/';
-        for (const segment of segments) {
-            const item = await findChild(canonical, segment);
+        let start = 0;
+        const now = Date.now();
+        // Resume from the longest recently resolved prefix.
+        for (let i = segments.length; i > 0; i--) {
+            const hit = dirPathCache.get(segments.slice(0, i).join('/'));
+            if (hit && now - hit.at < DIR_CACHE_TTL_MS) {
+                canonical = hit.canonical;
+                start = i;
+                break;
+            }
+        }
+        for (let i = start; i < segments.length; i++) {
+            const item = await findChild(canonical, segments[i]);
             if (!item || item.kind !== 'folder' || !item.navPath) return null;
             canonical = item.navPath;
+            if (dirPathCache.size >= DIR_CACHE_MAX) dirPathCache.clear();
+            dirPathCache.set(segments.slice(0, i + 1).join('/'), { canonical, at: Date.now() });
         }
         return canonical;
     }
@@ -401,11 +427,9 @@ function registerVfsFuseRoutes(app, { vfsPath, authMiddleware, globalResources }
                     const mimeType = declaredMime && declaredMime !== 'application/octet-stream'
                         ? declaredMime
                         : (file.mime_type || 'application/octet-stream');
-                    const hash = crypto.createHash('md5').update(buffer).digest('hex');
+                    const hash = await md5HexAsync(buffer);
                     const blobPath = vfs().getFileBlobPath(hash);
-                    if (!fs.existsSync(blobPath)) {
-                        fs.writeFileSync(blobPath, buffer);
-                    }
+                    await writeFileIfMissing(blobPath, buffer);
                     const updated = await vfsDb().updateUserFile(file.id, {
                         content_hash: hash,
                         mime_type: mimeType,
@@ -532,4 +556,4 @@ function registerVfsFuseRoutes(app, { vfsPath, authMiddleware, globalResources }
     });
 }
 
-module.exports = { registerVfsFuseRoutes };
+module.exports = { registerVfsFuseRoutes, invalidateFuseLookupCache };
