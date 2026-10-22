@@ -127,10 +127,10 @@
     };
 
     const ENTRIES = [
-        { id: 'melaton', label: 'Dreamscape Melaton' },
-        { id: 'restore', label: 'Dreamscape Melaton (via System Restore)' },
-        { id: 'safe', label: 'Dreamscape Melaton (Safe Mode with Networking)' },
-        { id: 'recovery', label: 'Melaton Recovery' }
+        { id: 'melaton', label: 'Xyridian Meleton' },
+        { id: 'restore', label: 'Xyridian Meleton (via System Restore)' },
+        { id: 'safe', label: 'Xyridian Meleton (Safe Mode with Networking)' },
+        { id: 'recovery', label: 'Meleton Recovery' }
     ];
 
     const INFO = {
@@ -1726,7 +1726,7 @@
                             : ' ')
                     ];
                     if (data.info) nodes.push(el(doc, 'p', 'melaton-boot-info', `Info: ${data.info}`));
-                    textEl.replaceChildren(textScreen(doc, 'Melaton Boot Manager', nodes, [['ENTER=Choose', 'choose']]));
+                    textEl.replaceChildren(textScreen(doc, 'Meleton Boot Manager', nodes, [['ENTER=Choose', 'choose']]));
                 } else {
                     textEl.replaceChildren();
                 }

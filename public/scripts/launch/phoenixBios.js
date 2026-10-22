@@ -79,7 +79,7 @@
         '<F10> saves the configuration and exits.',
         '',
         'The boot order on the Boot menu decides what starts: the',
-        'Hard Drive is Dreamscape Melaton once it is installed and',
+        'Hard Drive is Xyridian Meleton once it is installed and',
         'the CD-ROM Drive is the MeletonFX installation media.'
     ];
 

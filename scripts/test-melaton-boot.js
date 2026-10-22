@@ -53,6 +53,7 @@ function harness(statusAnswers, opts = {}) {
         window: opts.window || {},
         engine: opts.engine || null,
         games: opts.games || null,
+        caches: opts.caches || undefined,
         fetch: async (url, init) => {
             t.fetches.push(url);
             if (url === '/app') {
@@ -117,10 +118,10 @@ const flush = () => new Promise((r) => setImmediate(r));
     assert.strictEqual(h.t.last().data.info, boot.INFO.unreachable);
     assert.strictEqual(h.t.last().data.countdown, boot.config.countdownSec);
     assert.deepStrictEqual(h.t.last().data.entries.map((e) => e.label), [
-        'Dreamscape Melaton',
-        'Dreamscape Melaton (via System Restore)',
-        'Dreamscape Melaton (Safe Mode with Networking)',
-        'Melaton Recovery'
+        'Xyridian Meleton',
+        'Xyridian Meleton (via System Restore)',
+        'Xyridian Meleton (Safe Mode with Networking)',
+        'Meleton Recovery'
     ]);
 
     h = harness([timeoutErr()]);
@@ -150,7 +151,7 @@ const flush = () => new Promise((r) => setImmediate(r));
     h.t.tick();
     await flush();
     assert.deepStrictEqual(h.t.screens(), ['menu', 'black', 'bios', 'black', 'boot', 'black', 'menu'],
-        'at 0: Dreamscape Melaton starts (black → boot screen), fails again → menu');
+        'at 0: Xyridian Meleton starts (black → boot screen), fails again → menu');
     assert.strictEqual(h.t.intervals.size, 1, 'the old countdown is gone, a fresh one runs');
     assert.strictEqual(h.t.last().data.countdown, boot.config.countdownSec);
 
@@ -371,6 +372,40 @@ const flush = () => new Promise((r) => setImmediate(r));
     h = harness([json(true)], { fresh: true, engine: { ...mediaEngine(), readRecord: () => null, check: async () => { const all = Array.from({ length: 60 }, (_, i) => ({ url: `/g${i}.js`, hash: `g${i}`, size: 100 })); return { files: all, bytes: 6000, manifest: all }; } } });
     assert.strictEqual(await h.ctl.runChecks(), 'reboot');
     assert.ok(h.t.renders.filter((r) => r.screen === 'install').every((r) => r.data.page === 'install'), 'straight to the checklist');
+
+    // no record and no installed bit, but a static cache the app would start from (a device the
+    // worker filled before the record existed): that is an installation, the Hard Drive boots
+    {
+        const rows = Array.from({ length: 60 }, (_, i) => ({ url: `/c${i}.js` }));
+        const filled = { has: async (n) => n === 'static-cache-v1', open: async () => ({ keys: async () => rows }) };
+        h = harness([json(true)], { fresh: true, caches: filled, engine: { ...mediaEngine(), readRecord: () => null, check: async () => ({ files: [], bytes: 0, manifest: rows }) } });
+        assert.strictEqual(await h.ctl.runChecks(), 'teal', 'a filled static cache counts as installed');
+        assert.ok(!h.t.screens().includes('loading') && !h.t.screens().includes('install'), 'no media boot, no install');
+        // the worker's own cache name wins when the engine declares one
+        const named = { has: async (n) => n === 'static-cache-v9', open: async () => ({ keys: async () => rows }) };
+        h = harness([json(true)], { fresh: true, caches: named, engine: { ...mediaEngine(), STATIC_CACHE: 'static-cache-v9', readRecord: () => null, check: async () => ({ files: [], bytes: 0, manifest: rows }) } });
+        assert.strictEqual(await h.ctl.runChecks(), 'teal', 'the engine names the cache');
+        // too few rows is a half-filled cache: the media boots
+        const thin = { has: async () => true, open: async () => ({ keys: async () => rows.slice(0, 10) }) };
+        h = harness([json(true)], { fresh: true, caches: thin, engine: { ...mediaEngine(), readRecord: () => null, check: async () => ({ files: rows, bytes: 6000, manifest: rows }) } });
+        assert.strictEqual(await h.ctl.runChecks(), 'reboot', 'ten rows are not an installation');
+        assert.ok(h.t.screens().includes('install'));
+    }
+
+    // Setup's keys: Enter and Escape are the controller's, everything else reaches the page
+    h = harness([...Array(7).fill(networkErr()), json(true)], { fresh: true, engine: { ...mediaEngine(), readRecord: () => null, check: async () => { const all = Array.from({ length: 60 }, (_, i) => ({ url: `/g${i}.js`, hash: `g${i}`, size: 100 })); return { files: all, bytes: 6000, manifest: all }; } } });
+    await h.ctl.runChecks();
+    {
+        h.ctl.handlePointer('choose', 3, 'mouse');
+        for (let i = 0; i < 1200 && h.ctl.screen !== 'install'; i++) await flush();
+        assert.strictEqual(h.ctl.screen, 'install');
+        assert.strictEqual(h.ctl.handleKey('a', 'a'), false, 'a character is the product key field\'s, not swallowed');
+        assert.strictEqual(h.ctl.handleKey('Tab', null), false, 'Tab moves between the controls');
+        assert.strictEqual(h.ctl.handleKey(' ', ' '), false, 'Space toggles the license checkbox');
+        assert.strictEqual(h.ctl.handleKey('v', 'v'), false, 'Ctrl+V pastes');
+        assert.strictEqual(h.ctl.handleKey('Enter', null), true, 'Enter is Next');
+        assert.strictEqual(h.ctl.handleKey('Escape', null), true, 'Escape is the close box');
+    }
 
     // Recovery on a blank device: the pages, no Upgrade, Install, the empty disk has no partition to format
     h = harness([...Array(7).fill(networkErr()), json(true)], { fresh: true, engine: { ...mediaEngine(), readRecord: () => null, check: async () => { const all = Array.from({ length: 60 }, (_, i) => ({ url: `/g${i}.js`, hash: `g${i}`, size: 100 })); return { files: all, bytes: 6000, manifest: all }; } } });

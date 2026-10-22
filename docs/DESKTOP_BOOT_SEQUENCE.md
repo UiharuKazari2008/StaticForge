@@ -45,7 +45,7 @@ straight on to `/app`.
 | setup | Windows Setup on the aurora, page by page as Vista's installer (measured on the VM): the language page and Install now in the Windows Classic frame Setup has before any theme (3-D edge, the #0A246A → #A6CAF0 caption, the aurora inside); then the Aero Basic wizard frame (white at 40 % over the aurora, the back button, the 41 px caption, a #F8F8F8 page with a #F0F0F0 footer) for **Type your product key** (a configured NovelAI key shows starred in a disabled field and the page moves on after 2 s; none at all, the initial server setup, takes the key and stores it through `POST /install/product-key`), **Please read the license terms** (the README from `GET /install/license.txt`, the checkbox unlocks Next), **Which type of installation do you want?** (**Upgrade**, only over an existing installation: the record or the installed bit the desktop's last boot step sets, forgets the manifest digest, checks everything and installs what differs; **Custom (advanced)**, or **Install** when nothing is installed), **Where do you want to install MeletonFX?** (the disk from `navigator.storage.estimate()`; Drive options (advanced) → **Format** = the clean install under a progress box: Cache Storage, the worker, storage, databases, with the CMOS kept), then **Setup is restarting...** with a 10 s countdown and Restart now; the window closes, the aurora stays `installLingerMs` (2 s), black for `rebootBlackMs` (3 s), `/launch`. The next POST finds no installation and `localStorage.melatonSetup.resume = install`, boots the media and goes straight to **Installing MeletonFX...** with the server's current installer. Vista's strip (1 Collecting information / 2 Installing MeletonFX) runs along the screen bottom from the key page on. The Games toolbar only appears once the checklist runs. Previews: `setup`, `setup-start`, `setup-key`, `setup-key-entry`, `setup-license`, `setup-type`, `setup-type-fresh`, `setup-where`, `setup-where-options`, `setup-format`, `setup-formatting`, `setup-cancel`, `setup-restart`. |
 | boot | Vista's boot screen drawn at 640×480 inside a 1024×768 VGA frame (`.melaton-vga`). `fitMelatonVga()` stretches that frame to the window with plain scale numbers (Chrome drops `scale(calc(100vw / 1024px))`) until the panel is past 2:1 or 1:2; outside that it keeps 4:3 and the rest stays black. The boot drawing is a 640x480 bitmap, nearest-neighbor stretched to the window, so the logo, bar, and copyright stay chunky and still readable. Sizes in stage pixels as measured from the stock Vista boot screen: two-tone bar frame at x 257–378, y 353–363 (#737373 / #424242), 120×9 interior, a cluster of six 2 px stripes with 2 px gaps (rows #F1F5E1 ×2, #A3B16E ×2, #4D5622 ×5) sliding across in 2 px steps (`--melaton-sweep` 2 s per pass, the one estimated value), "© Dreamscape" centred at y 389–400. The Enso takes the Windows 7 logo's place: 84 px, centred at y 205. Shown at least `minBootMs` (2.5 s). F8 is listened for in the document head (capture phase) so it can interrupt before the boot script finishes loading, and opens the menu immediately (no black hold, no countdown). |
 | teal | Success: cut to black for `modeSwitchMs` (1.5 s, Windows switching graphics modes), then `sessionStorage` `dreamscapeLaunchHandoff=teal` + `dreamscapeBootTealHoldUntil` (now + 2 s) and `location.replace('/app')`, which opens on teal. `app.html` puts up a teal `#launchHandoff` (removed without a fade) and sets `window.dreamscapeTealHoldUntil`; `websocket.js` holds the logon dialog (and "Preparing MeletonFX…") until then while startup runs underneath. |
-| menu | Failure: cut to black, then the Boot Manager text screen ("Melaton Boot Manager"): **Dreamscape Melaton** (retry: black → the POST → boot screen → checks), **Dreamscape Melaton (via System Restore)** (same boot, updates skipped, including a resumed install), **Dreamscape Melaton (Safe Mode with Networking)** (updates still run; `sessionStorage.melatonSafeMode=1` so `/app` stays in the same 1024×768 VGA frame), and **Melaton Recovery**, which boots the installation media (loading, then Setup's pages; Setup asks the rest, nothing is wiped until Format). A 10 s countdown to the highlighted entry, an `Info:` line with the reason (`media` when the installation media could not be read), `ENTER=Choose`. ↑/↓/Enter; any key or press stops the countdown; a tap chooses. F8 on the POST or the boot screen opens this menu with no countdown. |
+| menu | Failure: cut to black, then the Boot Manager text screen ("Meleton Boot Manager"): **Xyridian Meleton** (retry: black → the POST → boot screen → checks), **Xyridian Meleton (via System Restore)** (same boot, updates skipped, including a resumed install), **Xyridian Meleton (Safe Mode with Networking)** (updates still run; `sessionStorage.melatonSafeMode=1` so `/app` stays in the same 1024×768 VGA frame), and **Meleton Recovery**, which boots the installation media (loading, then Setup's pages; Setup asks the rest, nothing is wiped until Format). A 10 s countdown to the highlighted entry, an `Info:` line with the reason (`media` when the installation media could not be read), `ENTER=Choose`. ↑/↓/Enter; any key or press stops the countdown; a tap chooses. F8 on the POST or the boot screen opens this menu with no countdown. |
 
 Checks under the boot screen (`runChecks`):
 
@@ -79,8 +79,9 @@ against `static-cache-v1` with the same rule as `serviceWorkerManager.getFilesNe
   marquee keeps running, then the handoff.
 - **More than 20, or an install a reload interrupted** (`localStorage.melatonInstall`): cut to
   black, the loading bar (the worker and Setup's own files), and **Install MeletonFX** unattended,
-  straight to the checklist (no wizard: the wizard is what the boot menu's Melaton Recovery and a
-  device with nothing installed get), Windows Setup on the plain aurora
+  straight to the checklist (no wizard: a device with nothing installed, a resumed install and a
+  large update all install unattended; Setup's pages are only what the boot menu's Melaton
+  Recovery gets), Windows Setup on the plain aurora
   (`#melatonInstall`, `css/launch-install.css`). "Installing MeletonFX...", the checklist and
   two-step strip (1 Collecting information, 2 Installing MeletonFX), each line doing real work:
   - Copying MeletonFX files: one zip. Up to 120 files, the client `POST`s that list and the server
@@ -160,9 +161,15 @@ signal, and every path (Restart, Shut Down, Log Off, Restart Server) then goes t
 on the desktop (reload / close / logout in narrow mode). The black lasts 2.5 s
 (`WINLOGON_POWER_BLACK_MS`). The work that has to finish runs in the dark and holds it
 longer only while it is still running, never past 8 s (`WINLOGON_POWER_BLACK_MAX_MS`): pending
-desktop layout saves, the logout request (`handleLogout({ redirect: false })`; `/launch`
-then boots to the logon page), and Restart Server's PM2 post and disconnect wait. A failed
-PM2 post brings the desktop back with a toast.
+desktop layout saves and the logout request (`handleLogout({ redirect: false })`; `/launch`
+then boots to the logon page). A refused logout brings the desktop back with a toast instead
+of booting straight back in signed in. Restart Server has no cap: it stays dark through the
+PM2 post, the disconnect (`waitForServerDisconnect`, 2 min) and the new process answering
+`/status` with a different start time than the old one (`waitForServerReturn`, 3 min), since
+`/launch` booted against the old process would build a stale install pack. A failed post or a
+server that never comes back brings the desktop back with a toast. Shut Down and Log Off also
+drop the Director's reopen flag at pagehide (`/launch` never reads it, so it would carry into
+the next logon); Restart keeps it.
 
 The still-running list is winsrv.dll dialog 20 (Segoe UI 10 pt, 266x224 DLU, rows are
 dialogs 21 / 22), measured on the Vista VM: the desktop at 12 %, the dialog centred in the
@@ -176,7 +183,7 @@ underline shows once Alt is pressed.
 | Path | Behaviour |
 |------|-----------|
 | Start menu **Restart**, **Shut Down**, **Log Off** | still-running list if needed, then the Welcome screen, then the action |
-| Start menu **Restart Server** | confirm, then the same screen, then `POST /pm2/restart`, then `/launch` |
+| Start menu **Restart Server** | confirm, then the same screen, then `POST /pm2/restart`, dark until the new server answers, then `/launch` |
 | Update **Restart**, service-worker activate, agent `restart_client`, refresh confirm | the same Welcome screen. No in-place reload |
 | Spectator error window **Restart** / **Exit** | the same path |
 
