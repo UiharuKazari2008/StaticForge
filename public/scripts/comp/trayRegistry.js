@@ -191,7 +191,10 @@ function trayPopupCatalog() {
 
 /** The icons Customize Notification Icons lists (the system icons have their own checkboxes). */
 function trayIconCatalog() {
-    return TRAY_ICON_CATALOG.filter((row) => !TRAY_SYSTEM_ICON_IDS.includes(row.id) && document.getElementById(row.id));
+    // the Vista look folds network latency into the network icon (vista-glass-controls.css)
+    const vista = !document.body.classList.contains('windows-classic-theme');
+    return TRAY_ICON_CATALOG.filter((row) => !TRAY_SYSTEM_ICON_IDS.includes(row.id) && document.getElementById(row.id)
+        && !(vista && row.id === 'pingWarningIndicator'));
 }
 
 function trayNotePopup(id, label) {

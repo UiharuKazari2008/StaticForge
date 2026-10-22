@@ -674,10 +674,10 @@ body.desktop-mode:not(.windows-classic-theme) #modemTrayIconGlyph.fa-sync-alt {
 /* The network icon is the last tray icon and carries everything the WebSocket indicator
    showed (Yukimi): its arrows' traffic lights a screen (WebSocket burst, HTTP pulse or a live
    stream: sending lights the front screen, receiving the back one; Vista lights one at a time),
-   a slow ping shows Vista's limited connectivity, the ping is in its tooltip and the old click
-   is "Network activity" in its menu. The indicator stays in the DOM (websocket.js drives it)
-   but is not shown on the desktop. */
-body.desktop-mode:not(.windows-classic-theme) #taskbarWebsocketIndicator {
+   a slow ping or a latency warning shows Vista's limited connectivity, the ping and the warning
+   are in its tooltip and the old click is "Network activity" in its menu. The WebSocket and
+   latency indicators stay in the DOM (websocket.js drives them) but are not shown on the desktop. */
+body.desktop-mode:not(.windows-classic-theme) :is(#taskbarWebsocketIndicator, #pingWarningIndicator) {
     display: none !important;
 }
 
