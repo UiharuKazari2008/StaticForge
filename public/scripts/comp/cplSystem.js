@@ -30,11 +30,11 @@
     const ART = '/static_images/vista-cpl';
     // Vista's OEMInformation (HKLM\...\CurrentVersion\OEMInformation): the machine's maker, the
     // System section's Manufacturer / Model and its 120 x 120 logo, and the "<maker> support" section.
-    // 555-01xx is the range set aside for fiction.
+    // The phone number spells the maker on a keypad: 997 434 26 = XYR IDI AN.
     const OEM = Object.freeze({
         manufacturer: 'Xyridian Corporation',
         model: 'Xyridian Lumina XR7',
-        phone: '1-800-555-0199',
+        phone: '+1 (997) 434-2600',
         hours: '24 hours a day, 7 days a week',
         logo: '/static_images/xyridian/xyridian-oem-system.png'
     });
