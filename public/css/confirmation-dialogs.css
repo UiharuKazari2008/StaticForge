@@ -604,6 +604,10 @@ body.desktop-mode:not(.windows-classic-theme) #confirmationDialog.studio-change-
     gap: 8px;
 }
 
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog.studio-change-dialog-modal[data-vista-dialog] :is(.studio-change-lead, .studio-change-hint) {
+    text-align: left;
+}
+
 body.desktop-mode:not(.windows-classic-theme) #confirmationDialog.studio-change-dialog-modal[data-vista-dialog] .studio-change-lead {
     color: #003399;
     font-size: 12pt;
