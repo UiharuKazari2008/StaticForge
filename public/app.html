@@ -6946,10 +6946,12 @@ Examples:
         </div>
     </div>
 
-    <!-- Tag Wiki Window Template (will be cloned for multiple instances) -->
+    <!-- Tag Wiki Window Template (will be cloned for multiple instances). Vista: a light window,
+         its navigation in Explorer's command bar (vista-explorer.css); the caption keeps
+         Minimize, the work-area Maximize (modalUtils.js) and Close -->
     <div id="tagWikiWindowTemplate" class="modal hidden transient resizeable-window wiki-page-viewer-modal"
         data-window-max-width="1800" data-window-max-height="1200" data-window-min-width="800"
-        data-window-min-height="600">
+        data-window-min-height="600" data-window-client="light">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fa-regular fa-globe icon-fa"></i>
@@ -6959,26 +6961,28 @@ Examples:
         </div>
         <div class="modal-focus-overlay"></div>
         <div class="modal-window-controls">
-            <button type="button" class="btn-secondary btn-small wiki-window-back-btn" title="Back">
-                <i class="fas fa-chevron-left"></i>
-            </button>
-            <button type="button" class="btn-secondary btn-small wiki-window-forward-btn" title="Forward">
-                <i class="fas fa-chevron-right"></i>
-            </button>
-            <button type="button" class="btn-secondary btn-small wiki-window-home-btn" title="Home">
-                <i class="fas fa-home"></i>
-            </button>
             <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
                 <i class="fa-regular fa-window-minimize"></i>
-            </button>
-            <button type="button" class="btn-secondary btn-small wiki-window-maximize-btn" title="Maximize">
-                <i class="fa-regular fa-window-maximize"></i>
             </button>
             <button type="button" class="btn-danger close-btn btn-small wiki-window-close-btn" title="Close">
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
         <div class="modal-content tag-wiki-search-content dark">
+            <div class="explorer-actions-header wiki-window-command-bar" role="toolbar">
+                <div class="explorer-command-set">
+                    <button type="button" class="btn-secondary btn-small explorer-command-btn wiki-window-back-btn"
+                        title="Back"><i class="fas fa-chevron-left"></i>Back</button>
+                    <button type="button" class="btn-secondary btn-small explorer-command-btn wiki-window-forward-btn"
+                        title="Forward"><i class="fas fa-chevron-right"></i>Forward</button>
+                    <button type="button" class="btn-secondary btn-small explorer-command-btn wiki-window-home-btn"
+                        title="Home"><i class="fas fa-home"></i>Home</button>
+                </div>
+                <div class="explorer-command-set">
+                    <button type="button" class="btn-secondary btn-small explorer-command-btn wiki-window-maximize-btn"
+                        title="Open in Grimoire"><i class="fas fa-up-right-from-square"></i>Open in Grimoire</button>
+                </div>
+            </div>
             <div class="tag-wiki-search-body">
                 <div class="tag-wiki-search-display form-section-scroll selectable">
                     <div class="tag-wiki-display-content wiki-window-display">
@@ -8574,12 +8578,13 @@ Examples:
         </div>
     </div>
 
-    <!-- Runes: checkpoint management -->
+    <!-- Runes: checkpoint management. Vista: a light window, its commands in Explorer's command bar
+         (vista-explorer.css) acting on the selected checkpoint (configEditorApplet.js) -->
     <div id="configEditorCheckpointsModal" class="modal hidden resizeable-window tool-window on-top"
         data-parent-modal-id="configEditorModal" data-window-position-mode="cascade-parent"
         data-window-content-anchor="top" data-window-cascade-align="top" data-window-default-width="560"
         data-window-default-height="480" data-window-max-width="720" data-window-max-height="640"
-        data-window-min-width="480" data-window-min-height="320">
+        data-window-min-width="480" data-window-min-height="320" data-window-client="light">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-clock-rotate-left icon-fa"></i>
@@ -8587,16 +8592,28 @@ Examples:
             </div>
         </div>
         <div class="modal-window-controls">
-            <button type="button" id="configEditorCheckpointsCreateBtn" class="btn-secondary btn-small"
-                title="Create checkpoint">
-                <i class="fas fa-camera"></i>
-            </button>
             <button type="button" id="closeConfigEditorCheckpointsBtn" class="btn-danger close-btn btn-small"
                 title="Close">
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content modal-padding config-editor-checkpoints-modal-content dark">
+        <div class="modal-content config-editor-checkpoints-modal-content dark">
+            <div class="explorer-actions-header config-editor-checkpoints-command-bar" role="toolbar">
+                <div class="explorer-command-set">
+                    <button type="button" id="configEditorCheckpointsCreateBtn"
+                        class="btn-secondary btn-small explorer-command-btn" title="Create checkpoint"><i
+                            class="fas fa-camera"></i>Create Checkpoint</button>
+                    <button type="button" id="configEditorCheckpointsRestoreBtn"
+                        class="btn-secondary btn-small explorer-command-btn" title="Restore the selected checkpoint"
+                        disabled><i class="fas fa-rotate-left"></i>Restore</button>
+                    <button type="button" id="configEditorCheckpointsDetailBtn"
+                        class="btn-secondary btn-small explorer-command-btn" title="Details of the selected checkpoint"
+                        disabled><i class="fas fa-circle-info"></i>Details</button>
+                    <button type="button" id="configEditorCheckpointsDeleteBtn"
+                        class="btn-secondary btn-small explorer-command-btn" title="Delete the selected checkpoint"
+                        disabled><i class="fas fa-trash"></i>Delete</button>
+                </div>
+            </div>
             <div class="modal-body config-editor-checkpoints-modal-body">
                 <div class="config-editor-checkpoints-scroll-shell scrollbar-padding" data-custom-scrollbar
                     data-scrollable-wrapper-class="config-editor-checkpoints-scrollable">

@@ -704,8 +704,11 @@ body.desktop-mode #configEditorModal.modal:not(.minimised):not(.maximised) {
 }
 
 #configEditorCheckpointsModal .config-editor-checkpoints-modal-body {
+    display: flex;
     flex: 1;
+    flex-direction: column;
     min-height: 0;
+    padding: var(--spacing-md);
     overflow: hidden;
 }
 
@@ -727,13 +730,21 @@ body.desktop-mode #configEditorModal.modal:not(.minimised):not(.maximised) {
     gap: var(--spacing-xs);
 }
 
+/* a list box: the command bar acts on the selected row (configEditorApplet.js selectCheckpoint) */
 #configEditorCheckpointsModal .config-editor-checkpoint-row {
     display: flex;
     align-items: center;
     gap: var(--spacing-sm);
     padding: var(--spacing-xs) var(--spacing-sm);
+    border: 1px solid transparent;
     border-radius: var(--border-radius-sm);
     background: rgba(255, 255, 255, 0.04);
+    cursor: var(--c-default);
+}
+
+#configEditorCheckpointsModal .config-editor-checkpoint-row.selected {
+    background: var(--glass-layer-4);
+    border-color: var(--glass-border-3);
 }
 
 #configEditorCheckpointsModal .config-editor-checkpoint-main {
@@ -748,12 +759,6 @@ body.desktop-mode #configEditorModal.modal:not(.minimised):not(.maximised) {
 #configEditorCheckpointsModal .config-editor-checkpoint-meta {
     font-size: 0.8em;
     opacity: 0.75;
-}
-
-#configEditorCheckpointsModal .config-editor-checkpoint-actions {
-    display: flex;
-    gap: 4px;
-    flex-shrink: 0;
 }
 
 #configEditorCheckpointsModal .config-editor-checkpoints-empty,
@@ -894,3 +899,51 @@ body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-
     font-size: 9pt;
 }
 
+
+/* Vista desktop: Config Checkpoints is a light window (data-window-client="light"), Explorer's
+   command bar on top (vista-explorer.css), the checkpoints in a white list box with Vista's
+   hot and selected item boxes (as Character DB), Runes' status bar at the foot */
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .config-editor-checkpoints-scroll-shell {
+    background: #fff;
+    border: 1px solid #828790;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .config-editor-checkpoints-list {
+    gap: 0;
+    padding: 2px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .config-editor-checkpoint-row {
+    padding: 3px 6px;
+    background: none;
+    border-radius: 3px;
+    color: #000;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .config-editor-checkpoint-row:hover {
+    background: linear-gradient(#fafbfd, #ebf3fd);
+    border-color: #b8d6fb;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .config-editor-checkpoint-row.selected {
+    background: linear-gradient(#dcebfc, #c1dbfc);
+    border-color: #7da2ce;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .config-editor-checkpoint-label {
+    font-weight: 400;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .config-editor-checkpoint-meta {
+    color: #6d6d6d;
+    opacity: 1;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .config-editor-status-bar {
+    background: #f0f0f0;
+    color: #000;
+    opacity: 1;
+    border-top: 1px solid #fff;
+    box-shadow: inset 0 1px 0 #d0d0d0;
+    font-size: 9pt;
+}

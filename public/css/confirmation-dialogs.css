@@ -456,15 +456,28 @@
 }
 
 .studio-change-lead,
-.studio-change-hint,
-.studio-change-toolbar {
+.studio-change-hint {
     flex: 0 0 auto;
 }
 
-.studio-change-toolbar {
+/* the command bar (Add to Desktop, Select all / none): Explorer's bar on a light client
+   (vista-explorer.css); a plain button row when the dialog is not one (Classic) */
+#confirmationDialog.studio-change-dialog-modal > .modal-content > .studio-change-command-bar {
+    flex: 0 0 auto;
+}
+
+#confirmationDialog.studio-change-dialog-modal:not([data-window-client="light"]) .studio-change-command-bar {
+    margin-bottom: var(--spacing-sm);
+}
+
+#confirmationDialog.studio-change-dialog-modal:not([data-window-client="light"]) .studio-change-command-bar .explorer-command-set {
     display: flex;
-    gap: var(--spacing-xs);
     flex-wrap: wrap;
+    gap: var(--spacing-xs);
+}
+
+#confirmationDialog.studio-change-dialog-modal:not([data-window-client="light"]) .studio-change-command-bar .explorer-command-btn > i {
+    margin-right: 5px;
 }
 
 .studio-change-scroll-shell {

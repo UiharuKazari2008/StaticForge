@@ -343,6 +343,20 @@ class ConfigEditorApplet {
         if (checkpointsCreateBtn) {
             checkpointsCreateBtn.addEventListener('click', () => this.requestCreateCheckpoint());
         }
+        // the command bar's Restore / Details / Delete act on the selected row
+        this.checkpointsSelectedId = null;
+        this.checkpointsRestoreBtn = document.getElementById('configEditorCheckpointsRestoreBtn');
+        this.checkpointsDetailBtn = document.getElementById('configEditorCheckpointsDetailBtn');
+        this.checkpointsDeleteBtn = document.getElementById('configEditorCheckpointsDeleteBtn');
+        this.checkpointsRestoreBtn?.addEventListener('click', () => {
+            if (this.checkpointsSelectedId) this.requestRestoreCheckpoint(this.checkpointsSelectedId);
+        });
+        this.checkpointsDetailBtn?.addEventListener('click', () => {
+            if (this.checkpointsSelectedId) this.showCheckpointDetail(this.checkpointsSelectedId);
+        });
+        this.checkpointsDeleteBtn?.addEventListener('click', () => {
+            if (this.checkpointsSelectedId) this.requestDeleteCheckpoint(this.checkpointsSelectedId);
+        });
         const closeCheckpointsBtn = document.getElementById('closeConfigEditorCheckpointsBtn');
         if (closeCheckpointsBtn) {
             closeCheckpointsBtn.addEventListener('click', () => this.closeCheckpointsModal());
@@ -3437,6 +3451,7 @@ class ConfigEditorApplet {
                 ? `No checkpoints for ${scopeLabel} yet.`
                 : 'No checkpoints yet. Create one before major changes.';
             this.checkpointsListEl.innerHTML = `<div class="config-editor-checkpoints-empty">${configEditorEscapeHtml(emptyMsg)}</div>`;
+            this.selectCheckpoint(null);
             return;
         }
         this.checkpointsListEl.innerHTML = checkpoints.map((cp) => {
@@ -3446,36 +3461,45 @@ class ConfigEditorApplet {
             const absoluteTime = this.formatCheckpointTimestamp(cp.createdAt);
             const relativeTime = this.formatCheckpointRelativeTime(cp.createdAt);
             const meta = `<span title="${configEditorEscapeHtml(absoluteTime)}">${configEditorEscapeHtml(relativeTime)}</span> · ${configEditorEscapeHtml(cp.scopeSummary || '')} · ${this.formatBytes(cp.totalSizeBytes || 0)}`;
-            const deleteBtn = cp.kind === 'config-file' ? '' : `
-                    <button type="button" class="btn-danger btn-small config-editor-cp-delete" data-id="${configEditorEscapeHtml(cp.id)}" title="Delete">
-                        <i class="fas fa-trash"></i>
-                    </button>`;
-            const detailBtn = cp.kind === 'config-file' ? '' : `
-                    <button type="button" class="btn-secondary btn-small config-editor-cp-detail" data-id="${configEditorEscapeHtml(cp.id)}" title="Details">
-                        <i class="fas fa-circle-info"></i>
-                    </button>`;
-            return `<div class="config-editor-checkpoint-row" data-checkpoint-id="${configEditorEscapeHtml(cp.id)}">
+            return `<div class="config-editor-checkpoint-row" role="option" tabindex="-1" aria-selected="false" data-checkpoint-id="${configEditorEscapeHtml(cp.id)}">
                 <div class="config-editor-checkpoint-main">
                     <div class="config-editor-checkpoint-label">${label}</div>
                     <div class="config-editor-checkpoint-meta">${meta}</div>
                 </div>
-                <div class="config-editor-checkpoint-actions">
-                    <button type="button" class="btn-secondary btn-small config-editor-cp-restore" data-id="${configEditorEscapeHtml(cp.id)}" title="Restore">
-                        <i class="fas fa-rotate-left"></i>
-                    </button>${detailBtn}${deleteBtn}
-                </div>
             </div>`;
         }).join('');
 
-        this.checkpointsListEl.querySelectorAll('.config-editor-cp-restore').forEach((btn) => {
-            btn.addEventListener('click', () => this.requestRestoreCheckpoint(btn.dataset.id));
+        // a list box: click selects, double-click opens Details (Restore for auto-saved files)
+        this.checkpointsListEl.querySelectorAll('.config-editor-checkpoint-row').forEach((row) => {
+            const id = row.dataset.checkpointId;
+            row.addEventListener('click', () => this.selectCheckpoint(id));
+            row.addEventListener('dblclick', () => {
+                this.selectCheckpoint(id);
+                const cp = this.checkpointsCache.find((c) => c.id === id);
+                if (cp && cp.kind === 'config-file') this.requestRestoreCheckpoint(id);
+                else this.showCheckpointDetail(id);
+            });
         });
-        this.checkpointsListEl.querySelectorAll('.config-editor-cp-detail').forEach((btn) => {
-            btn.addEventListener('click', () => this.showCheckpointDetail(btn.dataset.id));
+        const keep = checkpoints.some((cp) => cp.id === this.checkpointsSelectedId) ? this.checkpointsSelectedId : null;
+        this.selectCheckpoint(keep);
+    }
+
+    /** Select a checkpoint row (null clears) and enable the command bar buttons that apply to it. */
+    selectCheckpoint(checkpointId) {
+        this.checkpointsSelectedId = checkpointId || null;
+        this.checkpointsListEl?.querySelectorAll('.config-editor-checkpoint-row').forEach((row) => {
+            const on = row.dataset.checkpointId === this.checkpointsSelectedId;
+            row.classList.toggle('selected', on);
+            row.setAttribute('aria-selected', on ? 'true' : 'false');
         });
-        this.checkpointsListEl.querySelectorAll('.config-editor-cp-delete').forEach((btn) => {
-            btn.addEventListener('click', () => this.requestDeleteCheckpoint(btn.dataset.id));
-        });
+        const cp = this.checkpointsSelectedId
+            ? (this.checkpointsCache || []).find((c) => c.id === this.checkpointsSelectedId)
+            : null;
+        // auto-saved config files can be restored only (no details, no delete)
+        const bundle = !!cp && cp.kind !== 'config-file';
+        if (this.checkpointsRestoreBtn) this.checkpointsRestoreBtn.disabled = !cp;
+        if (this.checkpointsDetailBtn) this.checkpointsDetailBtn.disabled = !bundle;
+        if (this.checkpointsDeleteBtn) this.checkpointsDeleteBtn.disabled = !bundle;
     }
 
     async loadCheckpointsList() {
@@ -3497,6 +3521,7 @@ class ConfigEditorApplet {
         } catch (err) {
             console.error('config_editor_checkpoints_list:', err);
             this.checkpointsListEl.innerHTML = '<div class="config-editor-checkpoints-empty config-editor-error">Failed to load checkpoints</div>';
+            this.selectCheckpoint(null);
         }
     }
 

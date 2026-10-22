@@ -17,8 +17,8 @@
     min-height: 420px;
 }
 
-/* Popups have no navigation, like Chrome's popup windows */
-[id^="wikiWindow_"][data-alchemy-popup="1"] :is(.wiki-window-back-btn, .wiki-window-forward-btn, .wiki-window-home-btn, .wiki-window-maximize-btn) {
+/* Popups have no navigation, like Chrome's popup windows: no command bar */
+[id^="wikiWindow_"][data-alchemy-popup="1"] :is(.wiki-window-command-bar, .wiki-window-back-btn, .wiki-window-forward-btn, .wiki-window-home-btn, .wiki-window-maximize-btn) {
     display: none;
 }
 

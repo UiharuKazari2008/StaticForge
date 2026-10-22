@@ -1719,10 +1719,6 @@ function renderStudioChangeDialogHtml(ops, options) {
         <div class="studio-change-dialog">
             ${title}
             ${hint}
-            <div class="studio-change-toolbar">
-                <button type="button" class="btn-secondary btn-small" data-studio-change="all">Select all</button>
-                <button type="button" class="btn-secondary btn-small" data-studio-change="none">Select none</button>
-            </div>
             <div class="studio-change-scroll-shell scrollbar-padding" data-custom-scrollbar data-scrollable-wrapper-class="studio-change-scrollable">
                 <div class="studio-change-scroll-inner">
                     ${sections || empty}
@@ -1753,31 +1749,41 @@ function setStudioChangeRowState(row, on) {
 
 function cleanupStudioChangeWindowControls(dialog) {
     if (!dialog) return;
-    dialog.querySelectorAll('.studio-change-window-btn').forEach((el) => el.remove());
+    dialog.querySelectorAll('.studio-change-window-btn, .studio-change-command-bar').forEach((el) => el.remove());
     dialog.classList.remove(STUDIO_CHANGE_DIALOG_CLASS);
 }
 
+/**
+ * The caption gets Minimize beside Close; Add to Desktop and the selection buttons sit in
+ * Explorer's command bar (vista-explorer.css) at the top of the client. The shared
+ * confirmation dialog loses both again in cleanupStudioChangeWindowControls.
+ */
 function wireStudioChangeWindowControls(dialog, ops, signal, options) {
     cleanupStudioChangeWindowControls(dialog);
     dialog.classList.add(STUDIO_CHANGE_DIALOG_CLASS);
     const controls = dialog.querySelector('.modal-window-controls');
     const closeBtn = controls && controls.querySelector('.close-btn');
-    if (!controls || !closeBtn) return;
-
-    const desktopBtn = document.createElement('button');
-    desktopBtn.type = 'button';
-    desktopBtn.className = 'btn-secondary btn-small studio-change-window-btn';
-    desktopBtn.title = 'Add to Desktop';
-    desktopBtn.innerHTML = '<i class="fas fa-arrow-down-left"></i>';
+    const content = dialog.querySelector(':scope > .modal-content');
+    if (!controls || !closeBtn || !content) return;
 
     const minBtn = document.createElement('button');
     minBtn.type = 'button';
     minBtn.className = 'btn-secondary minimize-btn btn-small studio-change-window-btn';
     minBtn.title = 'Minimize';
     minBtn.innerHTML = '<i class="fa-regular fa-window-minimize"></i>';
-
-    controls.insertBefore(desktopBtn, closeBtn);
     controls.insertBefore(minBtn, closeBtn);
+
+    const bar = document.createElement('div');
+    bar.className = 'explorer-actions-header studio-change-command-bar';
+    bar.setAttribute('role', 'toolbar');
+    bar.innerHTML = `
+        <div class="explorer-command-set">
+            <button type="button" class="btn-secondary btn-small explorer-command-btn studio-change-desktop-btn" title="Add to Desktop"><i class="fas fa-arrow-down-left"></i>Add to Desktop</button>
+            <button type="button" class="btn-secondary btn-small explorer-command-btn" data-studio-change="all" title="Select all"><i class="fas fa-check-double"></i>Select all</button>
+            <button type="button" class="btn-secondary btn-small explorer-command-btn" data-studio-change="none" title="Select none"><i class="far fa-square"></i>Select none</button>
+        </div>`;
+    content.insertBefore(bar, content.firstChild);
+    const desktopBtn = bar.querySelector('.studio-change-desktop-btn');
 
     const opts = signal ? { signal } : undefined;
     desktopBtn.addEventListener('click', (e) => {
