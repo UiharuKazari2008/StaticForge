@@ -2388,7 +2388,7 @@ async function runCliUpdate(name, bin, args) {
 async function updateAgentClis(gr) {
     if (!autoUpdateClisEnabled(gr)) return [{ name: 'all', skipped: 'disabled in config' }];
     try {
-        const live = require('../scripts/director-idle-check').checkIdle().xi;
+        const live = require('../scripts/director-idle-check').xiRuns();
         if (live.length) return [{ name: 'all', skipped: `Xi turn running (pid ${live[0].pid})` }];
     } catch (_) { /* no idle check: update anyway, a live process keeps its old binary */ }
     const jobs = [];
