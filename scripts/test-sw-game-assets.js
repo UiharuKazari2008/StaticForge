@@ -32,7 +32,7 @@ function world(opts) {
     const headers = (h) => ({ get: (n) => (h || {})[n.toLowerCase()] || null });
     const ctx = {
         Date, Map, Promise, URL, console,
-        STATIC_CACHE: 'static-cache-v1',
+        STATIC_CACHE: 'static-cache-v2',
         self: { clients: { matchAll: async () => (opts.clients || []).map((u) => ({ url: 'http://x' + u })) } },
         caches: { open: async () => cache },
         fetch: async (url, init) => {

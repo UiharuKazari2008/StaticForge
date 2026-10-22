@@ -70,7 +70,7 @@ design mode never wipes and nothing navigates. Tests: `npm run test:melaton-boot
 After `/launch` confirms the session it checks for updates under the boot screen
 (`public/scripts/launch/updateEngine.js`): it makes sure `/sw.js` is registered and controls the
 page (the worker claims clients on activate), fetches the manifest (`OPTIONS /`) and diffs it
-against `static-cache-v1` with the same rule as `serviceWorkerManager.getFilesNeedingUpdate`
+against `static-cache-v2` with the same rule as `serviceWorkerManager.getFilesNeedingUpdate`
 (`x-file-hash` per path, `/` ↔ `/index.html`, Vary / `?sha=` siblings).
 
 - **Nothing to do**, no controlling worker, or no manifest (runtime compile 503): the normal
@@ -90,7 +90,7 @@ against `static-cache-v1` with the same rule as `serviceWorkerManager.getFilesNe
     text, stored for images and fonts). Progress is bytes received. 60 s without a chunk = stalled.
     The pack hash must match the files that were packed. The aurora shows alone for `installArriveMs`
     (1 s) before the setup window opens.
-  - Expanding Melaton files: the manifest compared to `static-cache-v1`. Only files whose hash
+  - Expanding Melaton files: the manifest compared to `static-cache-v2`. Only files whose hash
     does not match are extracted and stored. A few that do not land (≤ max(10, 10 %)) do not fail
     the install; they are remembered in `melatonInstallRecord.stragglers` so later boots never
     reopen Setup for them.

@@ -12,7 +12,7 @@
  *   holdRestart(opts)     Setup finished while a game is open: the toolbar closes, a message box
  *                         behind the games offers Restart now; resolves on the click
  *   upgradeLite(onProgress)  Completing installation: the lighter copies a game came off the
- *                         media with (x-media-lite rows in static-cache-v1, listed under
+ *                         media with (x-media-lite rows in static-cache-v2, listed under
  *                         localStorage melatonGamesLite) are replaced with the full files, one
  *                         <id>.full.zip per game
  */
@@ -20,7 +20,7 @@
     'use strict';
 
     const doc = root.document;
-    const STATIC_CACHE = 'static-cache-v1';     // sw.js STATIC_CACHE
+    const STATIC_CACHE = 'static-cache-v2';     // sw.js STATIC_CACHE
     const LITE_KEY = 'melatonGamesLite';        // launchGamesHost.js unpackMedia
     let frame = null;
     let ready = null;

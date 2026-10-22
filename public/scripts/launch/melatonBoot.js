@@ -32,11 +32,13 @@
  *            Melaton Recovery boots the installation media: loading → Setup.
  *   updates  after the session check, under the boot screen (updateEngine.js): the worker's
  *            cache diffed against the server manifest. Up to 20 files download silently behind
- *            the marquee, then the handoff. If that quiet download does not finish the cache,
- *            the worker is not controlling the page, or the set is larger (or an install a
- *            reload interrupted), the installer: when the POST's manifest check already shows
- *            that, "loading files" runs first and the boot screen after it; found only now, cut
- *            to black, loading files, the boot screen again, then the installer. A missed file list
+ *            the marquee, then the handoff. A larger set (or an install a reload interrupted)
+ *            opens the installer. The BIOS bar waits for the POST's manifest
+ *            check, so the update is usually known there: "loading files" runs first and the
+ *            boot screen after it. Found only now, a restart into the media (BIOS, loading files,
+ *            boot screen, installer). A small update (up to 20 files) never opens Setup: what the
+ *            quiet download does not store comes in the installer's pack behind the boot screen,
+ *            and what is still not right then becomes stragglers. A missed file list
  *            stays on the boot screen until it arrives. The installer writes the cache
  *            itself, so a missing controlling worker must not leave for /app.
  *   install  Windows Setup in Vista Basic on the aurora: "Install Melaton", Installing
@@ -67,6 +69,8 @@
         tealHoldMs: 2000,
         recoverStepMs: 350,     // each recovery line stays at least this long
         installStepMs: 900,     // each installer checklist line stays at least this long
+        installTargetMs: 180000, // a new install's checklist (Copying → Completing) takes about this long
+        installTickMs: 500,     // a paced line that is waiting for its share still moves its percent
         installTolerance: 10,   // files still missing after Expanding that do not fail the install
         installArriveMs: 1000,  // aurora alone before the setup window opens
         installLingerMs: 2000,  // after the installer window closes: the aurora alone this long
@@ -79,6 +83,10 @@
         loadingBarCells: 76,    // the loading bar is 76 character cells (912 px / 12 px Lucida Console)
         loadingBarCellPx: 12,
         biosProbeMs: 1500,      // the POST waits at most this long for the server's first answer
+        // the POST's manifest check: the BIOS bar waits for it (hashing a full cache takes seconds).
+        // An update it misses is found under the boot screen, which costs a restart (loading files
+        // never follows the boot screen); this cap is only for a check that hangs.
+        biosManifestMs: 60000,
         biosBlackMs: 700        // black between the POST and whatever boots (the video mode switch)
     };
     const INSTALLED_KEY = 'melatonInstalled';   // set by the desktop's last boot step (desktopBoot.js finish)
@@ -341,7 +349,7 @@
         if (hasInstallRecord(env)) return true;
         try {
             if (!env.caches) return false;
-            const name = (env.engine && env.engine.STATIC_CACHE) || 'static-cache-v1';
+            const name = (env.engine && env.engine.STATIC_CACHE) || 'static-cache-v2';
             if (!(await env.caches.has(name))) return false;
             const cache = await env.caches.open(name);
             const keys = await cache.keys();
@@ -482,12 +490,13 @@
             ctl.biosF8 = false;
             show('bios');
             const tasks = [
-                { id: 'disk', run: async () => { ctl.disk = await diskFacts(env); return ctl.disk; } },
-                { id: 'os', run: () => hasOsOnDisk(env) },
+                // weights: each task's jump on the Starting bar (uneven, as a real POST's steps)
+                { id: 'disk', weight: 2, run: async () => { ctl.disk = await diskFacts(env); return ctl.disk; } },
+                { id: 'os', weight: 3, run: () => hasOsOnDisk(env) },
                 // an install a reload interrupted boots the media again; System Restore drops it (bootDisk) instead
-                { id: 'resume', run: async () => readSetupResume(env) || (ctl.bootMode !== 'restore' && env.engine && env.engine.readState(env) ? { resume: 'install' } : null) },
+                { id: 'resume', weight: 1, run: async () => readSetupResume(env) || (ctl.bootMode !== 'restore' && env.engine && env.engine.readState(env) ? { resume: 'install' } : null) },
                 // the network card's init: the first word from the server, but a hung server does not hold the POST
-                { id: 'server', run: () => Promise.race([
+                { id: 'server', weight: 2, run: () => Promise.race([
                     probeStatus(env).then((probe) => {
                         ctl.lastProbe = probe;
                         if (probe.kind === 'json') {
@@ -499,10 +508,10 @@
                     }),
                     env.sleep(config.biosProbeMs).then(() => null)
                 ]) },
-                // the manifest digest check, real work the boot needs next; a slow server shows on the bar
-                { id: 'manifest', run: () => Promise.race([
+                // the manifest digest check, real work the boot needs next; a slow check shows on the bar
+                { id: 'manifest', weight: 4, run: () => Promise.race([
                     env.engine && typeof env.engine.check === 'function' ? env.engine.check(env).catch(() => null) : Promise.resolve(null),
-                    env.sleep(config.biosProbeMs * 2).then(() => null)
+                    env.sleep(config.biosManifestMs).then(() => null)
                 ]) }
             ];
             const hasOsAfter = (results) => !!results.os && !results.resume;
@@ -514,11 +523,16 @@
                 ctl.biosWork = results;
                 return { device: hasOsAfter(results) ? 'hdd' : 'cdrom', via: 'none' };
             }
+            const gateConfigured = !!(ctl.serverStatus && ctl.serverStatus.siteAccess && ctl.serverStatus.siteAccess.configured);
+            let bootSessionState = 'unknown';
+            if (gateConfigured) {
+                bootSessionState = await checkSession(env);
+            }
             const outcome = await bios.post({
                 tasks,
                 hasOsAfter,
                 run: { cancelled: () => run !== ctl.runId },
-                requireBootPin: () => !!(ctl.serverStatus && ctl.serverStatus.siteAccess && ctl.serverStatus.siteAccess.configured)
+                requireBootPin: () => gateConfigured && bootSessionState === 'login'
             });
             if (outcome === 'cancelled' || run !== ctl.runId) return 'cancelled';
             ctl.biosWork = bios.work || {};
@@ -682,39 +696,73 @@
                 if (resumed) engine.writeState(env, null);
                 return 'handoff';
             }
-            // The installer uses fetch and Cache Storage. It does not need a controlling
-            // worker. The quiet path does, so a missing worker opens Setup instead.
-            if (workerOk && !engine.needsInstaller(env, found.files)) {
-                const downloaded = await engine.download(env, found.files, { silent: true });
-                if (downloaded && downloaded.ok === false) {
-                    return installFromDisk(found, run);
-                }
-                if (typeof engine.verify === 'function') {
-                    const still = await engine.verify(env, found.files);
-                    if (still && still.length) {
-                        return installFromDisk({ ...found, files: still, bytes: 0 }, run);
+            // A small update never opens Setup: it lands behind the boot screen before the
+            // handoff. The worker's quiet download first; what that did not store (no controlling
+            // worker, a download job already running for other files, a failed fetch) comes in
+            // the installer's own pack. What is still not right after that (a 404, a body the
+            // server's manifest does not match) the installer could not fix either: stragglers.
+            if (!engine.needsInstaller(env, found.files)) {
+                let left = found.files;
+                if (workerOk) {
+                    const downloaded = await engine.download(env, found.files, { silent: true });
+                    if (run !== ctl.runId) return 'cancelled';
+                    if (!downloaded || downloaded.ok !== false) {
+                        left = typeof engine.verify === 'function' ? (await engine.verify(env, found.files)) || [] : [];
                     }
                 }
+                if (left.length) left = await quietPack(found, left, run);
+                if (run !== ctl.runId) return 'cancelled';
+                if (left.length) keepAsStragglers(left);
                 return 'handoff';
             }
             return installFromDisk(found, run);
         }
 
         /**
-         * A large update: the checklist. Foreseen at the POST, its loading bar already ran before
-         * this boot screen; found only now, loading files and then the boot screen again come first,
-         * so "loading files" never follows the boot screen straight into Setup.
+         * The files of a small update the worker did not store, in the installer's own pack
+         * (POST /install/meletonfx.zip with just those files: the worker does not answer it from
+         * its cache), expanded and checked with no window. Resolves the files still not right.
+         */
+        async function quietPack(found, files, run) {
+            const engine = env.engine;
+            if (typeof engine.copyPack !== 'function' || typeof engine.expandPack !== 'function') return files;
+            const manifest = found.manifest || found.files;
+            const copied = await engine.copyPack(env, manifest, { subset: files });
+            if (run !== ctl.runId || !copied || !copied.ok) return files;
+            const expanded = await engine.expandPack(env, manifest);
+            if (run !== ctl.runId || !expanded || !expanded.ok) return files;
+            const bad = new Set((expanded.missing || []).concat(copied.absent || []));
+            for (const group of ['features', 'updates']) {
+                if (typeof engine.installGroup !== 'function') break;
+                const written = await engine.installGroup(env, group);
+                if (run !== ctl.runId || !written || !written.ok) return files;
+                (written.mismatched || []).forEach((url) => bad.add(url));
+            }
+            return files.filter((file) => bad.has(file.url));
+        }
+
+        function keepAsStragglers(files) {
+            const engine = env.engine;
+            if (!engine || typeof engine.readRecord !== 'function' || typeof engine.writeRecord !== 'function') return;
+            const record = engine.readRecord(env) || {};
+            const urls = (record.stragglers || []).concat(files.map((file) => file.url || file));
+            engine.writeRecord(env, { ...record, stragglers: urls.filter((url, i, all) => url && all.indexOf(url) === i) });
+        }
+
+        /**
+         * A large update: the checklist. A boot only ever runs BIOS → loading files → boot screen →
+         * Setup (or the logon), so loading files never follows the boot screen. Foreseen at the
+         * POST, its loading bar already ran before this boot screen; found only now, restart into
+         * the installation media (Setup's resume flag), whose POST runs them in that order.
          */
         async function installFromDisk(found, run) {
+            if (!ctl.installerLoaded) {
+                writeSetupResume(env, { resume: 'install', at: env.now() });
+                await rebootCut();
+                return 'restart';
+            }
             await cutToBlack();
             if (run !== ctl.runId) return 'cancelled';
-            if (!ctl.installerLoaded) {
-                const loaded = await loadingScreen(run, { steps: ['worker', 'assets'], found });
-                if (loaded !== 'ok') return loaded;
-                ctl.installerLoaded = true;
-                const booted = await bootScreenAfterLoading(run);
-                if (booted !== 'ok') return booted;
-            }
             return install(found, run);
         }
 
@@ -870,6 +918,9 @@
          * from Melaton Recovery (opts.wizard) it walks the pages, so Upgrade is offered.
          */
         async function bootMedia(run, opts = {}) {
+            // the resume flag is spent as soon as the media boots: left set until Setup (a reload
+            // during loading files), it sent every later boot through the installer, however small
+            if (!opts.wizard) writeSetupResume(env, null);
             if (ctl.screen !== 'black') await cutToBlack();
             if (run !== ctl.runId) return 'cancelled';
             const loaded = await loadingScreen(run);
@@ -879,10 +930,7 @@
             const booted = await bootScreenAfterLoading(run);
             if (booted !== 'ok') return booted;
             const found = ctl.setupFound || { files: [], bytes: 0 };
-            if (!opts.wizard) {
-                writeSetupResume(env, null);
-                return install(found, run);
-            }
+            if (!opts.wizard) return install(found, run);
             const hasOs = await hasOsOnDisk(env);
             if (run !== ctl.runId) return 'cancelled';
             const status = ctl.serverStatus || {};
@@ -1202,14 +1250,47 @@
             show('install', installData());
         }
 
-        // a game coming off the installation media (launchGames.js): Setup waits for it
+        // a game coming off the installation media (launchGames.js): Setup waits for it, and
+        // that wait does not count against a paced install
         async function gamesGate() {
-            if (env.games) await env.games.gate();
+            if (!env.games) return;
+            const from = env.now();
+            await env.games.gate();
+            const pace = ctl.install && ctl.install.pace;
+            if (pace) pace.held += env.now() - from;
         }
 
-        async function stepAtLeast(started) {
-            const rest = config.installStepMs - (env.now() - started);
-            if (rest > 0) await env.sleep(rest);
+        // A new install is paced to installTargetMs: each line ends at its share of that time
+        // (INSTALL_STEPS weights, so the strip moves at one speed) and the engine spreads its
+        // work over the share instead of racing through it. 0 = not paced, or already late.
+        function paceDeadline(id) {
+            const pace = ctl.install && ctl.install.pace;
+            if (!pace) return 0;
+            let through = 0;
+            for (const step of INSTALL_STEPS) {
+                through += step.weight;
+                if (step.id === id) break;
+            }
+            return pace.origin + pace.held + config.installTargetMs * through;
+        }
+
+        /** The engine's pace option for a line: always gentle, with the time left of its share. */
+        function paceFor(id) {
+            const due = paceDeadline(id);
+            return { budgetMs: due ? Math.max(0, due - env.now()) : 0 };
+        }
+
+        async function stepAtLeast(started, id, run) {
+            const until = Math.max(started + config.installStepMs, paceDeadline(id));
+            const step = ctl.install.steps.find((s) => s.id === id);
+            const from = env.now();
+            const fromFraction = step && typeof step.fraction === 'number' ? step.fraction : null;
+            while (env.now() < until && run === ctl.runId) {
+                await env.sleep(Math.min(config.installTickMs, until - env.now()));
+                if (fromFraction !== null && run === ctl.runId && until > from) {
+                    setStep(id, 'active', fromFraction + (1 - fromFraction) * Math.min(1, (env.now() - from) / (until - from)));
+                }
+            }
         }
 
         function installFailed(reason, detail) {
@@ -1236,7 +1317,9 @@
                 overall: 0,
                 phase: opts.keepWindow ? 'installing' : 'arrive',
                 error: null,
-                resumed
+                resumed,
+                // set when Copying starts; an upgrade runs gently but is not stretched
+                pace: null
             };
             show('install', installData());
             if (!opts.keepWindow) {
@@ -1249,12 +1332,14 @@
             if (env.games) env.games.show();
 
             const manifest = found.manifest || found.files;
+            if (!upgrade && !nothing) ctl.install.pace = { origin: env.now(), held: 0 };
 
             // 1 Copying: one compressed pack, by bytes received. A short list is its own zip.
             let started = env.now();
             setStep('copy', 'active', 0);
             const copied = nothing ? { ok: true, absent: [] } : await engine.copyPack(env, manifest, {
                 subset: found.files,
+                pace: paceFor('copy'),
                 onProgress: (p) => { if (run === ctl.runId) setStep('copy', 'active', p.fraction); }
             });
             if (run !== ctl.runId) return 'cancelled';
@@ -1262,7 +1347,8 @@
                 const kind = copied.stalled ? 'stalled' : (copied.error === 'pack-hash' ? 'mismatch' : 'download');
                 return installFailed(kind, copied.error || null);
             }
-            await stepAtLeast(started);
+            await stepAtLeast(started, 'copy', run);
+            if (run !== ctl.runId) return 'cancelled';
             setStep('copy', 'done');
 
             // 2 Expanding: manifest vs the cache, store only the files that differ
@@ -1271,6 +1357,7 @@
             started = env.now();
             setStep('expand', 'active', 0);
             const expanded = nothing ? { ok: true, missing: [] } : await engine.expandPack(env, manifest, {
+                pace: paceFor('expand'),
                 onProgress: (p) => { if (run === ctl.runId) setStep('expand', 'active', p.fraction); }
             });
             if (run !== ctl.runId) return 'cancelled';
@@ -1291,7 +1378,8 @@
             const prior = (expanded.missing || []).filter((url) => !requested.has(url) && !absent.has(url));
             let missing = (expanded.missing || []).filter((url) => requested.has(url) && !absent.has(url));
             if (tooMany(missing)) return installFailed('verify', detailFor(missing));
-            await stepAtLeast(started);
+            await stepAtLeast(started, 'expand', run);
+            if (run !== ctl.runId) return 'cancelled';
             setStep('expand', 'done');
 
             // 3 Installing features: code and markup that were written, then a post-write hash check
@@ -1300,13 +1388,15 @@
             started = env.now();
             setStep('features', 'active', 0);
             const features = await engine.installGroup(env, 'features', {
+                pace: paceFor('features'),
                 onProgress: (p) => { if (run === ctl.runId) setStep('features', 'active', p.fraction); }
             });
             if (run !== ctl.runId) return 'cancelled';
             if (!features.ok) return installFailed('verify', features.error || null);
             missing = missing.concat(features.mismatched || []);
             if (tooMany(missing)) return installFailed('verify', detailFor(missing));
-            await stepAtLeast(started);
+            await stepAtLeast(started, 'features', run);
+            if (run !== ctl.runId) return 'cancelled';
             setStep('features', 'done');
 
             // 4 Installing updates: the other group, same post-write check
@@ -1315,13 +1405,15 @@
             started = env.now();
             setStep('updates', 'active', 0);
             const updates = await engine.installGroup(env, 'updates', {
+                pace: paceFor('updates'),
                 onProgress: (p) => { if (run === ctl.runId) setStep('updates', 'active', p.fraction); }
             });
             if (run !== ctl.runId) return 'cancelled';
             if (!updates.ok) return installFailed('verify', updates.error || null);
             missing = missing.concat(updates.mismatched || []);
             if (tooMany(missing)) return installFailed('verify', detailFor(missing));
-            await stepAtLeast(started);
+            await stepAtLeast(started, 'updates', run);
+            if (run !== ctl.runId) return 'cancelled';
             setStep('updates', 'done');
             ctl.install.stragglers = missing.concat(prior, Array.from(absent)).filter((url, i, all) => all.indexOf(url) === i);
 
@@ -1351,7 +1443,8 @@
                 env.sessionStorage.setItem('melatonInstallRebootAt', String(env.now()));
             } catch (_) { /* best effort */ }
             engine.writeState(env, null);
-            await stepAtLeast(started);
+            await stepAtLeast(started, 'complete', run);
+            if (run !== ctl.runId) return 'cancelled';
             setStep('complete', 'done');
 
             // The window closes, a few seconds on the bare aurora, black, reboot. A game still

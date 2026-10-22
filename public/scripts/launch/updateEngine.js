@@ -3,7 +3,7 @@
  * boot screen on /launch, and the installer's real work.
  *
  *   check(env)            server manifest (OPTIONS /) diffed against the service worker's
- *                         static-cache-v1 (same rule as serviceWorkerManager.getFilesNeedingUpdate:
+ *                         static-cache-v2 (same rule as serviceWorkerManager.getFilesNeedingUpdate:
  *                         x-file-hash per path, Vary / ?sha= siblings count) → { files, bytes } or
  *                         { skipped: reason } when updates cannot be checked here
  *   ensureWorker(env)     registers /sw.js if needed and waits until it controls this page (it
@@ -25,7 +25,13 @@
 (function (root) {
     'use strict';
 
-    const STATIC_CACHE = 'static-cache-v1';
+    // sw.js STATIC_CACHE: the names must match. sw.js moved to v2 (1a867b2) while the pages
+    // kept v1, so every worker download landed in a cache no check read and the same files
+    // came back as updates on every start (scripts/test-update-engine.js compares them).
+    // v1 stays on disk until sw.js next changes (its activate drops other names). Not deleted
+    // here: /app's old serviceWorkerManager.js, still served from the cache by path until the
+    // update lands, reads v1, and with v1 gone it asked the worker for every file again.
+    const STATIC_CACHE = 'static-cache-v2';
     const STATE_KEY = 'melatonInstall';
     const RECORD_KEY = 'melatonInstallRecord';
     const PACK_URL = '/install/meletonfx.zip';
@@ -58,7 +64,11 @@
         // Cache Storage reads and writes in flight at once while Expanding
         cacheConcurrency: 16,
         // Expanding inflates the entries it needs this many bytes at a time, then stores them
-        expandBatchBytes: 32 * 1024 * 1024
+        expandBatchBytes: 32 * 1024 * 1024,
+        // Setup passes { pace } (its own time per line): fewer writes at once, smaller batches,
+        // so the games and the window stay smooth while the work is spread over the line
+        gentleConcurrency: 2,
+        gentleBatchBytes: 8 * 1024 * 1024
     };
 
     function timeoutSignal(ms) {
@@ -115,10 +125,16 @@
         return false;
     }
 
+    // sw.js isAuthGatedStaticPath: never stored in the static cache, so never an update. By
+    // path too: a manifest snapshot written before it kept `auth` had lost the flag, and the
+    // shell pages then counted as missing on every start.
+    const SHELL_PATHS = new Set(['/', '/app', '/launch', '/index.html', '/manifest.json']);
+
     function isAuthGatedManifestFile(file) {
         if (file && file.auth === true) return true;
         const path = normalizePath(file && file.url, '');
-        return path.startsWith('/protected/') || path.startsWith('/private/');
+        // /graphify-out/: served behind sign-in (installManifestFilter.js flags it after a restart)
+        return SHELL_PATHS.has(path) || path.startsWith('/protected/') || path.startsWith('/private/') || path.startsWith('/graphify-out/');
     }
 
     /** Cache rows by path. One cache.keys() per phase: listing ~3k rows per file written made Expanding quadratic. */
@@ -130,6 +146,21 @@
             byPath.get(path).push(request);
         });
         return byPath;
+    }
+
+    /**
+     * Spreads one phase over pace.budgetMs: after each piece of work, wait while progress is
+     * ahead of the clock. No budget (or a phase already late) does not wait.
+     */
+    function makePacer(env, pace) {
+        const clock = () => (typeof env.now === 'function' ? env.now() : Date.now());
+        const started = clock();
+        const budget = Math.max(0, Number(pace && pace.budgetMs) || 0);
+        return async (fraction) => {
+            if (!budget) return;
+            const rest = started + budget * Math.min(1, fraction) - clock();
+            if (rest > 0) await env.sleep(rest);
+        };
     }
 
     /** task(item, i) for every item, at most limit running at once. The first failure stops the rest. */
@@ -149,9 +180,9 @@
         await Promise.all(workers);
     }
 
-    async function staleFiles(cache, list, origin, siblings) {
+    async function staleFiles(cache, list, origin, siblings, limit = config.cacheConcurrency) {
         const stale = new Array(list.length);
-        await eachLimited(list, config.cacheConcurrency, async (file, i) => {
+        await eachLimited(list, limit, async (file, i) => {
             stale[i] = !(await cachedHashMatches(cache, file, origin, siblings));
         });
         return list.filter((_, i) => stale[i]);
@@ -322,8 +353,9 @@
     function writeManifestSnapshot(env, manifest) {
         try {
             if (!env.localStorage || !Array.isArray(manifest) || !manifest.length) return;
+            // auth stays: without it the shell pages count as updates on every 304 boot
             const rows = manifest.filter((file) => file && file.url && file.hash)
-                .map((file) => ({ url: file.url, hash: file.hash }));
+                .map((file) => (file.auth === true ? { url: file.url, hash: file.hash, auth: true } : { url: file.url, hash: file.hash }));
             if (!rows.length) return;
             env.localStorage.setItem(MANIFEST_SNAPSHOT_KEY, JSON.stringify(rows));
         } catch (_) { /* next check fetches the full list */ }
@@ -437,6 +469,7 @@
             let lastProgress = env.now();
             let completed = 0;
             let settled = false;
+            let started = false;
             const report = (n, file) => {
                 completed = Math.max(completed, Math.min(n, files.length));
                 const doneBytes = sizes.slice(0, completed).reduce((a, b) => a + b, 0);
@@ -455,8 +488,15 @@
                 if (!data || typeof data.type !== 'string') return;
                 switch (data.type) {
                     case 'STATIC_CACHE_STARTED':
-                    case 'STATIC_CACHE_ALREADY_IN_PROGRESS':
+                        started = true;
                         lastProgress = env.now();
+                        break;
+                    case 'STATIC_CACHE_ALREADY_IN_PROGRESS':
+                        // The worker is busy with another page's job (/app's, say) and dropped
+                        // this list: its COMPLETE is not about these files. Waiting for it held
+                        // the boot screen up to stallMs. Before this job started, give up now.
+                        if (!started) finish({ ok: false, stalled: false, busy: true });
+                        else lastProgress = env.now();
                         break;
                     case 'STATIC_CACHE_PROGRESS':
                         lastProgress = env.now();
@@ -520,7 +560,7 @@
         });
     }
 
-    async function readStream(env, res, onProgress) {
+    async function readStream(env, res, onProgress, paceAt = null) {
         const total = Number(res.headers.get('content-length')) || 0;
         if (!res.body || typeof res.body.getReader !== 'function') {
             const buf = new Uint8Array(await res.arrayBuffer());
@@ -528,6 +568,9 @@
             return buf;
         }
         const reader = res.body.getReader();
+        // Content-Length known: one buffer filled as chunks arrive (a chunk list joined at the
+        // end held the pack twice over, ~360 MB at the peak)
+        let into = total > 0 ? new Uint8Array(total) : null;
         const chunks = [];
         let received = 0;
         while (true) {
@@ -543,10 +586,19 @@
                 throw error;
             }
             if (raced.value.done) break;
-            chunks.push(raced.value.value);
-            received += raced.value.value.byteLength;
+            const chunk = raced.value.value;
+            if (into && received + chunk.byteLength > into.byteLength) {
+                // longer than its Content-Length: keep what landed and fall back to the list
+                chunks.push(into.subarray(0, received));
+                into = null;
+            }
+            if (into) into.set(chunk, received);
+            else chunks.push(chunk);
+            received += chunk.byteLength;
             if (onProgress) onProgress({ fraction: total > 0 ? received / total : 0, received, total });
+            if (paceAt && total > 0) await paceAt(received / total);
         }
+        if (into) return received === into.byteLength ? into : into.slice(0, received);
         return concatChunks(chunks);
     }
 
@@ -555,8 +607,9 @@
      * files. A longer list, or a 413, downloads the full pack from asset recreation.
      * The pack hash must match the manifest rows this boot already fetched.
      */
-    async function copyPack(env, manifest, { onProgress = null, subset = null } = {}) {
+    async function copyPack(env, manifest, { onProgress = null, subset = null, pace = null } = {}) {
         installPack = null;
+        const paceAt = pace ? makePacer(env, pace) : null;
         const wanted = Array.isArray(subset) ? subset.filter((file) => file && file.url && file.hash) : [];
         const useSubset = wanted.length > 0 && wanted.length <= config.subsetMax;
         try {
@@ -590,7 +643,7 @@
             }
             const bytes = await readStream(env, res, (progress) => {
                 if (onProgress) onProgress({ fraction: progress.fraction, received: progress.received, total: progress.total });
-            });
+            }, paceAt);
             const expected = await hashManifest(expectedSource);
             const got = (res.headers.get('x-pack-hash') || '').toLowerCase();
             if (!got || got !== expected) {
@@ -618,7 +671,10 @@
      * unzipSync reads the central directory and inflates only the entries asked for, a
      * batch at a time; fflate's streaming Unzip walked the whole pack, ~10x slower.
      */
-    async function expandPack(env, manifest, { onProgress = null } = {}) {
+    async function expandPack(env, manifest, { onProgress = null, pace = null } = {}) {
+        const paceAt = pace ? makePacer(env, pace) : null;
+        const limit = pace ? config.gentleConcurrency : config.cacheConcurrency;
+        const batchBytes = pace ? config.gentleBatchBytes : config.expandBatchBytes;
         const lib = await loadFflate(env);
         if (!lib || typeof lib.unzipSync !== 'function') return { ok: false, missing: [], error: 'no-unzip' };
         if (!installPack || !installPack.bytes) return { ok: false, missing: [], error: 'no-pack' };
@@ -626,7 +682,7 @@
         const cache = env.caches ? await env.caches.open(STATIC_CACHE) : null;
         const origin = env.location && env.location.origin;
         const index = cache ? await indexCacheKeys(cache, origin) : null;
-        const needed = cache ? await staleFiles(cache, files, origin, index) : files;
+        const needed = cache ? await staleFiles(cache, files, origin, index, limit) : files;
         if (!needed.length) {
             installPack.stored = [];
             installPack.bytes = null;
@@ -637,6 +693,7 @@
         const neededByUrl = new Map(needed.map((file) => [file.url, file]));
         const stored = [];
         const seen = new Set();
+        let handled = 0;
         try {
             const listing = readPackListing(lib, installPack.bytes);
             const batches = [];
@@ -644,7 +701,7 @@
             listing.forEach((row, entry) => {
                 const file = neededByUrl.get(row.url);
                 if (!file || row.hash !== file.hash) return;
-                if (!batch || batch.bytes >= config.expandBatchBytes) {
+                if (!batch || batch.bytes >= batchBytes) {
                     batch = { names: new Set(), bytes: 0 };
                     batches.push(batch);
                 }
@@ -661,9 +718,11 @@
                     if (!byPath.has(path)) byPath.set(path, []);
                     byPath.get(path).push({ row, payload: entries[name] });
                 });
-                await eachLimited([...byPath.values()], config.cacheConcurrency, async (group) => {
+                await eachLimited([...byPath.values()], limit, async (group) => {
                     for (const { row, payload } of group) {
                         const file = neededByUrl.get(row.url);
+                        handled += 1;
+                        if (paceAt) await paceAt(handled / needed.length);
                         // pack.json names the bytes the server zipped (body). A payload that does not
                         // match them did not arrive intact. The manifest hash is not always a body
                         // hash (the workspace stylesheet is hashed by its source), so the post-write
@@ -691,7 +750,8 @@
      * wrote still matches the manifest hash, and rewrite headers when the body is right
      * but the stored type or hash header is not.
      */
-    async function installGroup(env, group, { onProgress = null } = {}) {
+    async function installGroup(env, group, { onProgress = null, pace = null } = {}) {
+        const paceAt = pace ? makePacer(env, pace) : null;
         const stored = (installPack && installPack.stored) || [];
         const files = stored.filter((file) => fileGroup(file) === group);
         if (!files.length) {
@@ -711,6 +771,7 @@
             }
             if (!ok) mismatched.push(files[i].url);
             if (onProgress) onProgress({ fraction: (i + 1) / files.length });
+            if (paceAt) await paceAt((i + 1) / files.length);
         }
         return { ok: true, mismatched };
     }

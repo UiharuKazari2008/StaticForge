@@ -46,7 +46,10 @@
         cdPromptMs: 5000,      // "Press any key to boot from CD or DVD..."
         pxeMs: 2600,           // the network boot agent's text before it gives up
         enteringMs: 400,       // "Entering SETUP..." stays this long before the utility opens
-        barRatePerMs: 1 / 1400 // the Starting bar never fills faster than once per 1.4 s
+        // the Starting bar does not count up: it stands still and jumps when a POST step is done,
+        // at least this long after the jump before it (uneven, like a real POST), so instant
+        // work still reads as separate jumps
+        barStepGapsMs: [340, 520, 220, 430, 290]
     };
 
     const KEYBAR = {
@@ -423,8 +426,9 @@
 
         /**
          * The Starting bar shows the POST's real work (opts.tasks: the disk probe, the cache
-         * scan, the first word from the server...), one step per finished task plus a slow
-         * crawl inside the running one, and never finishes before splashMs so it can be read.
+         * scan, the first word from the server...): it jumps by a finished task's share (its
+         * weight) and stands still while a task runs. It never finishes before splashMs so it
+         * can be read.
          */
         async function splash(run, work) {
             bios.state = 'splash';
@@ -463,23 +467,29 @@
                 }
                 state.finished = true;
             })();
+            const gaps = config.barStepGapsMs;
+            const weights = list.map((task) => (Number(task.weight) > 0 ? Number(task.weight) : 1));
+            const totalWeight = weights.reduce((a, b) => a + b, 0);
             return {
                 done: () => state.finished,
                 results: () => state.results,
                 progress: (elapsed) => {
-                    // the real work: each finished task is its share of the bar, the running one
-                    // creeps through its share while it takes its time. The bar only ever moves
-                    // toward that at config.barRatePerMs, so instant tasks still read as work
-                    // and a slow server visibly holds it
-                    if (!list.length) return Math.min(1, elapsed / config.splashMs);
-                    const share = 1 / list.length;
-                    const running = state.finished ? 0 : Math.min(0.85, (env.now() - state.startedAt) / config.splashMs) * share;
-                    const target = state.finished ? 1 : Math.min(1, state.done * share + running);
+                    // No tasks: the same jumps on the clock, one per gap, full by splashMs
+                    if (!list.length) {
+                        let at = 0;
+                        let steps = 0;
+                        while (steps < gaps.length && elapsed >= (at += gaps[steps])) steps += 1;
+                        return elapsed >= config.splashMs ? 1 : steps / (gaps.length + 1);
+                    }
+                    // one jump per finished task, each at least its gap after the last; a slow
+                    // task holds the bar where it is
                     const now = env.now();
-                    const allowed = state.shown + (now - state.shownAt) * config.barRatePerMs;
-                    state.shown = Math.min(target, allowed);
-                    state.shownAt = now;
-                    return state.shown;
+                    if (state.shown < state.done && now - state.shownAt >= gaps[state.shown % gaps.length]) {
+                        state.shown += 1;
+                        state.shownAt = now;
+                    }
+                    if (state.shown >= list.length) return 1;
+                    return weights.slice(0, state.shown).reduce((a, b) => a + b, 0) / totalWeight;
                 }
             };
         }

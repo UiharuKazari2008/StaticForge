@@ -45,6 +45,7 @@ function harness(statusAnswers, opts = {}) {
         clearInterval: (id) => { t.intervals.delete(id); },
         navigator: { onLine: opts.offline ? false : true },
         sessionStorage: {
+            getItem: (k) => (k in t.storage ? t.storage[k] : null),
             setItem: (k, v) => { t.storage[k] = v; },
             removeItem: (k) => { delete t.storage[k]; }
         },
@@ -377,7 +378,7 @@ const flush = () => new Promise((r) => setImmediate(r));
     // worker filled before the record existed): that is an installation, the Hard Drive boots
     {
         const rows = Array.from({ length: 60 }, (_, i) => ({ url: `/c${i}.js` }));
-        const filled = { has: async (n) => n === 'static-cache-v1', open: async () => ({ keys: async () => rows }) };
+        const filled = { has: async (n) => n === 'static-cache-v2', open: async () => ({ keys: async () => rows }) };
         h = harness([json(true)], { fresh: true, caches: filled, engine: { ...mediaEngine(), readRecord: () => null, check: async () => ({ files: [], bytes: 0, manifest: rows }) } });
         assert.strictEqual(await h.ctl.runChecks(), 'teal', 'a filled static cache counts as installed');
         assert.ok(!h.t.screens().includes('loading') && !h.t.screens().includes('install'), 'no media boot, no install');
@@ -484,14 +485,14 @@ const flush = () => new Promise((r) => setImmediate(r));
         assert.strictEqual(sc.filter((n) => n === 'boot').length, 1, 'foreseen: one boot screen');
         assert.ok(loadingThenBoot(sc) && sc.indexOf('install') > sc.lastIndexOf('boot'), 'foreseen: loading, boot screen, Setup');
         void runP;
-        // found only under the boot screen (the POST had no list): loading, then the boot screen again, then Setup
+        // found only under the boot screen (the POST had no list): no loading bar after it, a
+        // restart into the media instead, whose POST runs loading, boot screen, Setup
         o = harness([json(true)], { engine: orderEngine([{ failed: true }, { files: big, bytes: 5000 }]) });
-        runP = o.ctl.runChecks();
-        for (let i = 0; i < 400 && o.ctl.screen !== 'install'; i++) await flush();
+        assert.strictEqual(await o.ctl.runChecks(), 'restart');
         sc = o.t.screens();
-        assert.ok(loadingThenBoot(sc), 'unforeseen: every loading bar is followed by the boot screen');
-        assert.ok(sc.indexOf('install') > sc.lastIndexOf('boot') && sc.lastIndexOf('boot') > sc.lastIndexOf('loading'), 'unforeseen: loading, boot screen, Setup');
-        void runP;
+        assert.ok(!sc.includes('loading') && !sc.includes('install'), 'unforeseen: no loading files and no Setup after the boot screen');
+        assert.deepStrictEqual(o.t.replaced, ['/launch'], 'unforeseen: restarts');
+        assert.strictEqual(JSON.parse(o.t.local[boot.SETUP_RESUME_KEY] || 'null').resume, 'install', 'unforeseen: the restart boots the media into the installer');
     }
 
     // the media cannot be read: the boot menu says so
@@ -633,23 +634,51 @@ const flush = () => new Promise((r) => setImmediate(r));
     assert.deepStrictEqual(u.calls, ['check', 'check', 'download:5:silent']);
     assert.ok(!u.t.screens().includes('install'), 'no installer for a small update');
 
-    // a quiet download that does not land opens the installer instead of the boot menu
-    u = await runWith({ checks: [{ files: files(5), bytes: 500 }], download: () => ({ ok: false, errors: ['no-worker'] }) });
-    assert.strictEqual(u.result, 'error');
-    assert.ok(u.t.screens().includes('install'), 'a failed quiet download enters the installer');
-    assert.ok(!u.t.screens().includes('menu'), 'a failed quiet download is not the boot menu');
+    const resumeFlag = (hh) => JSON.parse(hh.t.local[boot.SETUP_RESUME_KEY] || 'null');
+    // a small update never opens Setup. A quiet download that does not land: the installer's
+    // pack for just those files, behind the boot screen, then the handoff
+    u = await runWith({ checks: [{ files: files(5), bytes: 500 }], download: () => ({ ok: false, errors: ['no-worker'] }), copyPack: () => ({ ok: true }) });
+    assert.strictEqual(u.result, 'teal');
+    assert.deepStrictEqual(u.calls, ['check', 'check', 'download:5:silent', 'copyPack', 'subset:5', 'expandPack', 'group:features', 'group:updates'], 'the quiet pack takes what the worker did not');
+    assert.deepStrictEqual(u.t.replaced, ['/app'], 'no restart into the installer');
+    assert.ok(!u.t.screens().some((n) => n === 'install' || n === 'loading' || n === 'menu'), 'no Setup, no loading bar, no boot menu');
+
+    // no controlling worker: a small update comes in the quiet pack too
+    u = await runWith({ worker: false, checks: [{ files: files(4), bytes: 400 }] });
+    assert.strictEqual(u.result, 'teal');
+    assert.deepStrictEqual(u.calls.slice(2), ['copyPack', 'subset:4', 'expandPack', 'group:features', 'group:updates']);
+
+    // what neither could store (a 404, a body the manifest does not match) becomes stragglers
+    {
+        const left = files(3);
+        const fe = fakeEngine({ checks: [{ files: [], bytes: 0 }, { files: left, bytes: 300 }], download: () => ({ ok: true, errors: [] }), verify: () => left, prior: { files: 50, stragglers: ['/old.js'] } });
+        const hh = harness([json(true)], { engine: fe.engine });
+        assert.strictEqual(await hh.ctl.runChecks(), 'teal', 'leftovers hand off');
+        assert.deepStrictEqual(hh.t.replaced, ['/app'], 'no restart into the installer');
+        assert.deepStrictEqual(fe.store.record.stragglers, ['/old.js', '/f0.js', '/f1.js', '/f2.js'], 'leftovers join the stragglers');
+    }
+
+    // a resume flag is spent when the media boots: a reload during loading files must not leave it
+    {
+        const hh = harness([json(true)], { local: { [boot.SETUP_RESUME_KEY]: JSON.stringify({ resume: 'install', at: 1 }) }, engine: { ...mediaEngine(), readRecord: () => null, check: async () => new Promise(() => {}) } });
+        void hh.ctl.runChecks();
+        for (let i = 0; i < 200 && hh.ctl.screen !== 'loading'; i++) await flush();
+        assert.strictEqual(hh.ctl.screen, 'loading');
+        assert.ok(!(boot.SETUP_RESUME_KEY in hh.t.local), 'the flag is gone while loading files runs');
+        hh.ctl.runId += 1;
+    }
 
     // one missed file list is retried into the installer; a list that never arrives
     // stays on the boot screen until the busy budget, and does not open /app
     // (the first answer is the POST's, missed there too, so the boot screen's own retry runs)
     u = await runWith({ checks: [{ failed: true }, { failed: true }, { files: files(50), bytes: 5000 }] });
-    assert.strictEqual(u.result, 'reboot');
+    assert.strictEqual(u.result, 'restart');
     assert.deepStrictEqual(u.calls.slice(0, 3), ['check', 'check', 'check'], 'the boot screen asked again');
-    assert.ok(u.t.screens().includes('install'), 'a retried file list still enters the installer');
+    assert.strictEqual(resumeFlag(u).resume, 'install', 'a retried file list still restarts into the installer');
     u = await runWith({ checks: [{ skipped: 'no-manifest' }, { skipped: 'no-manifest' }, { files: files(50), bytes: 5000 }] });
-    assert.strictEqual(u.result, 'reboot');
-    assert.ok(u.t.screens().includes('install'), 'a compile skip must not hand off before the file list');
-    assert.ok(!u.t.replaced.includes('/app'));
+    assert.strictEqual(u.result, 'restart');
+    assert.strictEqual(resumeFlag(u).resume, 'install', 'a compile skip must not hand off before the file list');
+    assert.deepStrictEqual(u.t.replaced, ['/launch']);
     u = await runWith({ checks: [{ failed: true }] });
     assert.strictEqual(u.result, 'menu');
     assert.ok(u.t.now >= boot.config.busyTimeoutMs, 'a missed file list keeps the boot screen until the busy budget');
@@ -693,6 +722,9 @@ const flush = () => new Promise((r) => setImmediate(r));
             holdRestart: (o) => { log.push('hold:' + (o.upgrade ? 'upgrade' : 'install')); return Promise.resolve('restart'); },
             upgradeLite: (onProgress) => { log.push('lite'); onProgress(1); return Promise.resolve({ replaced: 1, left: 0 }); }
         });
+        // timing below compares a new install with an upgrade: leave the pacing out of it
+        const target = boot.config.installTargetMs;
+        boot.config.installTargetMs = 0;
         u = await runWith({ checks: [{ files: files(50), bytes: 5000 }] }, { games: games(true) });
         assert.strictEqual(u.result, 'reboot');
         assert.deepStrictEqual(log, ['show', 'gate', 'gate', 'gate', 'gate', 'lite', 'hold:install', 'close'], 'toolbar, a gate before each later step, the light copies replaced, the held restart');
@@ -705,6 +737,54 @@ const flush = () => new Promise((r) => setImmediate(r));
         assert.ok(!log.some((l) => l.startsWith('hold')), 'no game open: the usual linger and reboot');
         assert.strictEqual(log[log.length - 1], 'close');
         assert.ok(u.t.now - heldAt >= boot.config.installLingerMs, 'held: Restart now instead of the linger');
+        boot.config.installTargetMs = target;
+    }
+
+    // A new install is paced to installTargetMs: each line ends at its share, the engine gets
+    // the time left of that share, and a game holding Setup does not count. An upgrade runs
+    // gently (a pace option with no budget) and is not stretched.
+    {
+        const paces = [];
+        const ends = {};
+        const fe = fakeEngine({ checks: [{ files: files(50), bytes: 5000 }] });
+        ['copyPack', 'expandPack', 'installGroup'].forEach((name) => {
+            const inner = fe.engine[name];
+            fe.engine[name] = async (...args) => {
+                paces.push(args[args.length - 1].pace);
+                return inner(...args);
+            };
+        });
+        const gateMs = 20000;
+        let gates = 0;
+        const hh = harness([json(true)], {
+            engine: fe.engine,
+            games: {
+                show() {}, hide() {}, close() {}, busy: () => false,
+                gate: async () => { gates += 1; if (gates === 1) hh.t.now += gateMs; },
+                upgradeLite: async () => ({ replaced: 0, left: 0 })
+            }
+        });
+        const origShow = hh.t.renders.push.bind(hh.t.renders);
+        hh.t.renders.push = (r) => {
+            if (r.screen === 'install') r.data.steps.forEach((step) => { if (step.state === 'done' && !(step.id in ends)) ends[step.id] = hh.t.now; });
+            return origShow(r);
+        };
+        assert.strictEqual(await hh.ctl.runChecks(), 'reboot');
+        const target = boot.config.installTargetMs;
+        const start = ends.copy - target * 0.8;
+        assert.ok(paces[0].budgetMs > target * 0.79 && paces[0].budgetMs <= target * 0.8, `Copying gets its share (${paces[0].budgetMs})`);
+        assert.ok(Math.abs(ends.expand - start - gateMs - target * 0.88) < 1000, 'Expanding ends at its share, after the game held Setup');
+        assert.ok(Math.abs(ends.complete - start - gateMs - target) < 1000, `the checklist takes the target (${ends.complete - start - gateMs})`);
+        assert.ok(paces.every((pace) => pace && typeof pace.budgetMs === 'number'), 'every engine phase is gentle');
+
+        const fu = fakeEngine({ checks: [{ files: files(50), bytes: 5000 }], prior: { files: 10 } });
+        const upPaces = [];
+        const innerExpand = fu.engine.expandPack;
+        fu.engine.expandPack = async (...args) => { upPaces.push(args[2].pace); return innerExpand(...args); };
+        const hu = harness([json(true)], { engine: fu.engine });
+        assert.strictEqual(await hu.ctl.runChecks(), 'reboot');
+        assert.deepStrictEqual(upPaces, [{ budgetMs: 0 }], 'an upgrade is gentle, not stretched');
+        assert.ok(hu.t.now < target / 2, `an upgrade is not paced to the target (${hu.t.now})`);
     }
 
     // the pack stalls: a Vista Basic message box; Retry stays in Setup and finishes

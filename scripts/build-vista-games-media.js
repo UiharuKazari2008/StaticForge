@@ -3,7 +3,7 @@
  * The "installation media" for the games Setup offers while it runs (/launch, Yozora #609):
  * one zip per game at public/static_images/vista-games/media/<id>.zip, so a game opened from
  * Setup's Games toolbar arrives in one request (public/scripts/launch/launchGamesHost.js unpacks
- * it into the service worker's static-cache-v1, where the game's requests then find it).
+ * it into the service worker's static-cache-v2, where the game's requests then find it).
  *
  * Each zip holds the game's feature scripts and styles (featureLoader.js FEATURE_MANIFEST, with
  * their depends), its art packs at 1x (Setup draws the games at 1x inside its 1024 x 768 frame;

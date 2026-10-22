@@ -1034,10 +1034,21 @@
             if (!screen || !out) return;
             var sx = out.getContext('2d');
             var paintId = 0;
+            // Vista's boot screen comes up from black (the frame and the copyright) over about a
+            // second; the marquee waits for that and then slides in from the left. Both count from
+            // the first frame of this boot screen, so a busy main thread holds them together.
+            var FADE_MS = 1000;
+            var shownAt = null;
             // no logo: Vista's boot screen is the bar and the copyright on black
             function paint(now) {
                 paintId = 0;
-                if (screen.getAttribute('data-screen') !== 'boot') return;
+                if (screen.getAttribute('data-screen') !== 'boot') {
+                    shownAt = null;
+                    return;
+                }
+                now = now || 0;
+                if (shownAt === null) shownAt = now;
+                var elapsed = now - shownAt;
                 sx.imageSmoothingEnabled = false;
                 sx.fillStyle = '#000';
                 sx.fillRect(0, 0, 640, 480);
@@ -1047,28 +1058,36 @@
                 sx.fillRect(257, 358, 122, 6);
                 sx.fillStyle = '#000';
                 sx.fillRect(258, 354, 120, 9);
-                var step = Math.floor(((now || 0) % 2000) / 2000 * 72);
-                var x0 = 258 - 22 + step * (142 / 72);
-                sx.save();
-                sx.beginPath();
-                sx.rect(258, 354, 120, 9);
-                sx.clip();
-                var stripe;
-                for (stripe = 0; stripe < 6; stripe++) {
-                    var bx = Math.round(x0 + stripe * 4);
-                    sx.fillStyle = '#F1F5E1';
-                    sx.fillRect(bx, 354, 2, 2);
-                    sx.fillStyle = '#A3B16E';
-                    sx.fillRect(bx, 356, 2, 2);
-                    sx.fillStyle = '#4D5622';
-                    sx.fillRect(bx, 358, 2, 5);
+                if (elapsed >= FADE_MS) {
+                    var step = Math.floor(((elapsed - FADE_MS) % 2000) / 2000 * 72);
+                    var x0 = 258 - 22 + step * (142 / 72);
+                    sx.save();
+                    sx.beginPath();
+                    sx.rect(258, 354, 120, 9);
+                    sx.clip();
+                    var stripe;
+                    for (stripe = 0; stripe < 6; stripe++) {
+                        var bx = Math.round(x0 + stripe * 4);
+                        sx.fillStyle = '#F1F5E1';
+                        sx.fillRect(bx, 354, 2, 2);
+                        sx.fillStyle = '#A3B16E';
+                        sx.fillRect(bx, 356, 2, 2);
+                        sx.fillStyle = '#4D5622';
+                        sx.fillRect(bx, 358, 2, 5);
+                    }
+                    sx.restore();
                 }
-                sx.restore();
                 sx.fillStyle = '#fff';
                 sx.font = '12px "Segoe UI", Tahoma, Arial, sans-serif';
                 sx.textAlign = 'center';
                 sx.textBaseline = 'top';
                 sx.fillText('\u00A9 Xyridian Corporation', 320, 389);
+                // the fade (ease-out); the marquee is not drawn until it is done
+                var fade = Math.min(1, elapsed / FADE_MS);
+                if (fade < 1) {
+                    sx.fillStyle = 'rgba(0,0,0,' + Math.pow(1 - fade, 2) + ')';
+                    sx.fillRect(0, 0, 640, 480);
+                }
                 paintId = requestAnimationFrame(paint);
             }
             function arm() {
