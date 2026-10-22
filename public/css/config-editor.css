@@ -341,111 +341,12 @@ body.desktop-mode #configEditorModal.modal:not(.minimised):not(.maximised) {
     opacity: 0.9;
 }
 
-#configEditorValueModal .config-editor-value-field-wrap {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    min-width: 0;
-}
-
-#configEditorValueModal .config-editor-value-scroll-inner {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    min-height: 0;
-}
-
-#configEditorValueModal .config-editor-value-field-wrap .form-control {
-    width: 100%;
-    min-width: 0;
-}
-
-#configEditorValueModal #configEditorValueTextarea {
-    flex: 0 0 auto;
-    min-height: 120px;
-    resize: none;
-    font-family: var(--font-mono);
-}
-
-#configEditorValueModal .config-editor-value-prompt-wrap {
-    flex: 1 1 auto;
-    display: flex;
-    flex-direction: column;
-    min-height: 120px;
-    min-width: 0;
-}
-
-#configEditorValueModal .config-editor-value-prompt-wrap .character-prompt-textarea-container {
-    flex: 0 0 auto;
-    display: flex;
-    flex-direction: column;
-    min-height: 120px;
-}
-
-#configEditorValueModal .config-editor-value-prompt-wrap .character-prompt-textarea {
-    flex: 0 0 auto;
-    min-height: 120px;
-    resize: none;
-}
-
-#configEditorValueModal .config-editor-secret-input {
-    font-family: var(--font-mono);
-    width: 100%;
-}
-
-#configEditorValueModal .config-editor-value-modal-content {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-}
-
-#configEditorValueModal.value-modal-multiline .config-editor-value-modal-content {
-    flex: 1;
-}
-
-#configEditorValueModal.value-modal-input-mode .config-editor-value-modal-body,
-#configEditorValueModal.value-modal-input-mode .config-editor-value-scroll-shell {
-    flex: 0 0 auto;
-}
-
-#configEditorValueModal.value-modal-input-mode .resize-handle.n,
-#configEditorValueModal.value-modal-input-mode .resize-handle.s,
-#configEditorValueModal.value-modal-input-mode .resize-handle.nw,
-#configEditorValueModal.value-modal-input-mode .resize-handle.ne,
-#configEditorValueModal.value-modal-input-mode .resize-handle.sw,
-#configEditorValueModal.value-modal-input-mode .resize-handle.se {
-    display: none;
-}
-
 #configEditorModal .config-editor-col-type {
     width: 12%;
     opacity: 0.75;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-}
-
-#configEditorValueModal .config-editor-value-modal-body {
-    flex: 1;
-    min-height: 0;
-    overflow: hidden;
-}
-
-#configEditorValueModal .config-editor-value-scroll-shell {
-    flex: 1;
-    min-height: 0;
-    overflow: hidden;
-}
-
-#configEditorValueModal .config-editor-value-scrollable {
-    height: 100%;
-    overflow: auto;
-    padding: 2px 4px 4px 0;
-}
-
-#configEditorValueModal .config-editor-value-scroll-inner {
-    min-height: 0;
 }
 
 #configEditorModal .config-editor-values-table {
@@ -530,7 +431,6 @@ body.desktop-mode #configEditorModal.modal:not(.minimised):not(.maximised) {
     white-space: nowrap;
 }
 
-#configEditorValueModal .config-editor-value-enum-btn,
 .config-editor-add-type-btn {
     width: 100%;
     min-width: 0;
@@ -946,4 +846,319 @@ body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .con
     border-top: 1px solid #fff;
     box-shadow: inset 0 1px 0 #d0d0d0;
     font-size: 9pt;
+}
+
+/* ---- Edit Value (#configEditorValueModal): the Registry Editor's edit dialogs 1:1, measured on the
+   Vista VM at 96 dpi (2026-10-21; regedit.exe.mui dialogs 102, 111 / 117 and 114). They are MS Shell
+   Dlg 8 dialogs, so Tahoma 11 px and 6x13 dialog units (x = DLU*1.5, y = DLU*13/8); no caption
+   icon, a #f0f0f0 client. Client coordinates:
+     Edit String        378x137  "Value name:" 9,10; its read-only box 9,28 360x20 (#f0f0f0 inside the
+                        edit frame); "Value data:" 9,57; the data box 9,75 360x20; OK / Cancel 75x23
+                        at 213,104 / 294,104
+     Edit DWORD / QWORD 329x167  name box 311 wide; data box 9,75 138x20; the Base group's frame
+                        158..319 x 63..119 (its text 9 px in), the radio buttons' boxes at 172,77 /
+                        172,97 with the text 16 px after the box; OK / Cancel at 162,132 / 245,132
+     Edit Multi-String  348x289  name box 330 wide; "Value data:" 9,54; the data box 9,72 330x179
+                        with both scroll bars; OK / Cancel at 180,257 / 264,257
+   The faces (edit, push button, radio, group box, drop-down list) are the shared Vista common
+   controls (vista-glass-controls.css). Runes' extras: an enum or a boolean is a drop-down list in
+   the data row, a prompt keeps Studio's prompt box in the multi-string rect, and Convert to Array /
+   String is a push button at the left of the button row. ---- */
+
+#configEditorValueModal {
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    height: auto;
+    min-height: 0;
+}
+
+#configEditorValueModal > .modal-content.cev-client {
+    position: relative;
+    box-sizing: border-box;
+    width: 378px;
+    height: 137px;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: #f0f0f0;
+    color: #000;
+    font: 11px Tahoma, "Segoe UI", sans-serif;
+    line-height: 13px;
+    text-align: left;
+    user-select: none;
+}
+
+#configEditorValueModal[data-cev-layout="dword"] > .modal-content.cev-client {
+    width: 329px;
+    height: 167px;
+}
+
+#configEditorValueModal[data-cev-layout="multi"] > .modal-content.cev-client {
+    width: 348px;
+    height: 289px;
+}
+
+#configEditorValueModal .cev-client :is(label, legend, span, button, input, textarea) {
+    font-family: Tahoma, "Segoe UI", sans-serif;
+    font-size: 11px;
+    text-shadow: none;
+}
+
+#configEditorValueModal .cev-client u {
+    text-decoration: none;
+}
+
+#configEditorValueModal.cev-cues .cev-client u {
+    text-decoration: underline;
+}
+
+#configEditorValueModal .cev-label {
+    position: absolute;
+    left: 9px;
+    margin: 0;
+    padding: 0;
+    color: #000;
+    line-height: 13px;
+    white-space: nowrap;
+    cursor: default;
+}
+
+/* Chrome draws Tahoma's line 1 px lower than GDI: the statics sit 1 px above their template rect */
+#configEditorValueModal .cev-name-label {
+    top: 9px;
+}
+
+#configEditorValueModal .cev-data-label {
+    top: 56px;
+}
+
+#configEditorValueModal[data-cev-layout="multi"] .cev-data-label {
+    top: 53px;
+}
+
+/* the boxes: the shared edit face; the value name is read-only (#f0f0f0 inside the frame) */
+#configEditorValueModal .cev-client :is(.cev-name, .cev-field:is(input, textarea)) {
+    position: absolute;
+    box-sizing: border-box;
+    min-height: 0;
+    margin: 0;
+    /* the text 3 px in from the frame and on the VM's baseline */
+    padding: 0 1px 3px;
+    border-width: 2px;
+    color: #000;
+    line-height: 13px;
+    user-select: text;
+}
+
+#configEditorValueModal .cev-client :is(.cev-name, .cev-field:is(input, textarea))::selection {
+    background: #3399ff;
+    color: #fff;
+}
+
+#configEditorValueModal .cev-client .cev-name {
+    left: 9px;
+    top: 28px;
+    width: 360px;
+    height: 20px;
+    background: #f0f0f0;
+    border-image-slice: 2;
+}
+
+#configEditorValueModal[data-cev-layout="dword"] .cev-client .cev-name {
+    width: 311px;
+}
+
+#configEditorValueModal[data-cev-layout="multi"] .cev-client .cev-name {
+    width: 330px;
+}
+
+#configEditorValueModal .cev-data {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+#configEditorValueModal .cev-data > * {
+    pointer-events: auto;
+}
+
+#configEditorValueModal .cev-client .cev-field:is(input) {
+    left: 9px;
+    top: 75px;
+    width: 360px;
+    height: 20px;
+}
+
+#configEditorValueModal[data-cev-layout="dword"] .cev-client .cev-field:is(input) {
+    width: 138px;
+}
+
+#configEditorValueModal .cev-client .config-editor-secret-input {
+    font-family: Tahoma, "Segoe UI", sans-serif;
+}
+
+#configEditorValueModal .cev-client textarea.cev-multi,
+#configEditorValueModal .cev-client .config-editor-value-prompt-wrap {
+    position: absolute;
+    left: 9px;
+    top: 72px;
+    width: 330px;
+    height: 179px;
+}
+
+#configEditorValueModal .cev-client textarea.cev-multi {
+    padding: 1px 2px;
+    overflow: scroll;
+    resize: none;
+    white-space: pre;
+    line-height: 13px;
+}
+
+#configEditorValueModal .cev-client .config-editor-value-prompt-wrap .character-prompt-textarea-container {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+}
+
+#configEditorValueModal .cev-client .config-editor-value-prompt-wrap .character-prompt-textarea {
+    height: 100%;
+    min-height: 0;
+    resize: none;
+}
+
+/* an enum or a boolean: Vista's drop-down list, 21 px, in the data row */
+#configEditorValueModal .cev-client .cev-combo {
+    position: absolute;
+    left: 9px;
+    top: 75px;
+    box-sizing: border-box;
+    width: 360px;
+    height: 21px;
+    min-height: 0;
+    margin: 0;
+    padding: 0 22px 0 4px;
+    justify-content: flex-start;
+    color: #000;
+    text-align: left;
+    line-height: 15px;
+}
+
+#configEditorValueModal .cev-client .cev-combo > span {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* ---- the Base group (Edit DWORD / QWORD only) ---- */
+
+#configEditorValueModal .cev-base {
+    display: none;
+}
+
+#configEditorValueModal[data-cev-layout="dword"] .cev-client .cev-base {
+    display: block;
+    position: absolute;
+    left: 158px;
+    top: 63px;
+    box-sizing: border-box;
+    width: 162px;
+    height: 57px;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+}
+
+#configEditorValueModal .cev-base > legend {
+    position: absolute;
+    left: 5px;
+    top: -9px;
+    margin: 0;
+    padding: 0 2px;
+    background: #f0f0f0;
+    color: #000;
+    line-height: 13px;
+}
+
+/* the box 1 px under the control's top (the template's 16 px rect), the text line on the rect's top */
+#configEditorValueModal .cev-radio {
+    position: absolute;
+    left: 13px;
+    display: flex;
+    align-items: flex-start;
+    height: 16px;
+    line-height: 13px;
+    margin: 0;
+    padding: 0;
+    color: #000;
+    white-space: nowrap;
+    cursor: default;
+}
+
+#configEditorValueModal .cev-radio:first-of-type {
+    top: 10px;
+}
+
+#configEditorValueModal .cev-radio:last-of-type {
+    top: 31px;
+}
+
+#configEditorValueModal .cev-radio > input[type="radio"] {
+    margin: 1px 2px 0 0;
+}
+
+#configEditorValueModal .cev-radio:has(> input:disabled) {
+    color: #6d6d6d;
+}
+
+/* ---- buttons ---- */
+
+#configEditorValueModal .cev-client .cev-button {
+    position: absolute;
+    top: 104px;
+    box-sizing: border-box;
+    width: 75px;
+    min-width: 75px;
+    height: 23px;
+    min-height: 0;
+    margin: 0;
+    padding: 0 6px 2px;
+    line-height: 19px;
+}
+
+#configEditorValueModal .cev-client .cev-ok {
+    left: 213px;
+}
+
+#configEditorValueModal .cev-client .cev-cancel {
+    left: 294px;
+}
+
+#configEditorValueModal .cev-client .cev-convert {
+    left: 9px;
+    width: auto;
+}
+
+#configEditorValueModal[data-cev-layout="dword"] .cev-client .cev-button {
+    top: 132px;
+}
+
+#configEditorValueModal[data-cev-layout="dword"] .cev-client .cev-ok {
+    left: 162px;
+}
+
+#configEditorValueModal[data-cev-layout="dword"] .cev-client .cev-cancel {
+    left: 245px;
+}
+
+#configEditorValueModal[data-cev-layout="multi"] .cev-client .cev-button {
+    top: 257px;
+}
+
+#configEditorValueModal[data-cev-layout="multi"] .cev-client .cev-ok {
+    left: 180px;
+}
+
+#configEditorValueModal[data-cev-layout="multi"] .cev-client .cev-cancel {
+    left: 264px;
 }

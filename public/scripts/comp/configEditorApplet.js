@@ -80,30 +80,24 @@ function configEditorResolveEditorType(stub, effectiveVal, effectiveType) {
     return 'input';
 }
 
-const CONFIG_EDITOR_VALUE_MODAL_SIZES = {
-    multiline: {
-        width: 640,
-        height: 240,
-        minWidth: 400,
-        minHeight: 200,
-        maxWidth: 640,
-        maxHeight: 720
-    },
-    compact: {
-        width: 500,
-        height: 135,
-        minWidth: 400,
-        minHeight: 135,
-        maxWidth: 900,
-        maxHeight: 135
-    }
-};
+/**
+ * Which Registry Editor edit dialog a value opens in (#configEditorValueModal, config-editor.css):
+ * multi (Edit Multi-String) for arrays, JSON, prompts and long text; dword (Edit DWORD / QWORD Value,
+ * with its Base group) for numbers; string (Edit String) for the rest.
+ */
+function configEditorValueDialogLayout({ rawJsonMode, effectiveType, editorType } = {}) {
+    if (rawJsonMode) return 'multi';
+    if (effectiveType === 'array') return 'multi';
+    if (editorType === 'prompt' || editorType === 'textarea') return 'multi';
+    if (effectiveType === 'number') return 'dword';
+    return 'string';
+}
 
-function configEditorValueModalLayoutMode({ rawJsonMode, effectiveType, editorType } = {}) {
-    if (rawJsonMode) return 'multiline';
-    if (effectiveType === 'array') return 'multiline';
-    if (editorType === 'prompt' || editorType === 'textarea') return 'multiline';
-    return 'compact';
+/** regedit's caption for a number: DWORD for 32-bit integers, QWORD for wider ones. */
+function configEditorNumberCaption(value) {
+    const n = Number(value);
+    if (Number.isInteger(n) && Math.abs(n) > 0xffffffff) return 'Edit QWORD (64-bit) Value';
+    return 'Edit DWORD (32-bit) Value';
 }
 
 function configEditorParsePathKey(pathKey) {
@@ -267,7 +261,6 @@ class ConfigEditorApplet {
         this.checkpointsCache = [];
         this.treeScrollShell = null;
         this.valuesScrollShell = null;
-        this.valueScrollShell = null;
         this.checkpointsScrollShell = null;
         this.loadValuesToken = 0;
         this.editorBusyDepth = 0;
@@ -309,7 +302,6 @@ class ConfigEditorApplet {
         this._initWired = true;
 
         this.valueModal = document.getElementById('configEditorValueModal');
-        this.valueScrollShell = this.valueModal?.querySelector('.config-editor-value-scroll-shell');
         this.treePanel = this.modal.querySelector('.config-editor-tree-panel');
         this.treeScrollShell = this.modal.querySelector('.config-editor-tree-scroll-shell');
         this.valuesPanel = this.modal.querySelector('.config-editor-values-panel');
@@ -386,12 +378,20 @@ class ConfigEditorApplet {
         if (valueConvertBtn) {
             valueConvertBtn.addEventListener('click', () => this.convertValueEditorType());
         }
-        const valueBoolToggle = document.getElementById('configEditorValueBoolToggle');
-        if (valueBoolToggle) {
-            valueBoolToggle.addEventListener('click', () => {
-                const on = valueBoolToggle.getAttribute('data-state') !== 'on';
-                valueBoolToggle.setAttribute('data-state', on ? 'on' : 'off');
-                valueBoolToggle.textContent = on ? 'true' : 'false';
+        // Base: switching Hexadecimal / Decimal rewrites the number in the new base, as regedit does
+        ['configEditorValueBaseHex', 'configEditorValueBaseDec'].forEach((id) => {
+            const radio = document.getElementById(id);
+            if (radio) radio.addEventListener('change', () => this.setValueNumberBase(Number(radio.value)));
+        });
+        if (this.valueModal) {
+            // Enter in a one-line box presses the default button (OK); Alt shows the access keys
+            this.valueModal.addEventListener('keydown', (e) => {
+                if (e.key === 'Alt') this.valueModal.classList.add('cev-cues');
+                if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.altKey) return;
+                const t = e.target;
+                if (!t || t.tagName !== 'INPUT' || t.type === 'radio') return;
+                e.preventDefault();
+                this.applyValueFromEditor();
             });
         }
 
@@ -751,14 +751,12 @@ class ConfigEditorApplet {
         return this.configList.find((c) => c.id === configId)?.label || configId;
     }
 
-    setValueModalTitle(configId, keyName, typeLabel, { readOnly = false } = {}) {
+    /** regedit's caption for the dialog and the value's name in the read-only Value name box. */
+    setValueModalTitle(keyName, caption) {
         const titleEl = document.getElementById('configEditorValueModalTitle');
-        if (!titleEl) return;
-        const verb = readOnly ? 'View' : 'Modify';
-        const cfgLabel = this.getConfigLabel(configId);
-        let title = `${verb} ${keyName} [${cfgLabel}]`;
-        if (typeLabel) title += ` · ${typeLabel}`;
-        titleEl.textContent = title;
+        if (titleEl) titleEl.textContent = caption;
+        const nameEl = document.getElementById('configEditorValueName');
+        if (nameEl) nameEl.value = keyName == null ? '' : String(keyName);
     }
 
     setValueEditorApplyState(enabled) {
@@ -774,143 +772,13 @@ class ConfigEditorApplet {
         this.setValueEditorApplyState(true);
     }
 
-    applyValueModalLayout(mode) {
-        const modal = this.valueModal;
-        if (!modal) return;
-
-        const spec = CONFIG_EDITOR_VALUE_MODAL_SIZES[mode] || CONFIG_EDITOR_VALUE_MODAL_SIZES.compact;
-        const isMultiline = mode === 'multiline';
-        modal.classList.toggle('value-modal-multiline', isMultiline);
-        modal.classList.toggle('value-modal-input-mode', !isMultiline);
-
-        modal.dataset.windowDefaultWidth = String(spec.width);
-        modal.dataset.windowDefaultHeight = String(spec.height);
-        modal.dataset.windowMinWidth = String(spec.minWidth);
-        modal.dataset.windowMinHeight = String(spec.minHeight);
-        modal.dataset.windowMaxWidth = String(spec.maxWidth);
-        modal.dataset.windowMaxHeight = String(spec.maxHeight);
-
-        if (modal.classList.contains('hidden')) {
-            modal.style.width = `${spec.width}px`;
-            modal.style.height = `${spec.height}px`;
-            return;
-        }
-
-        // setModalSizePreservingCenter: public/scripts/comp/modalUtils.js
-        setModalSizePreservingCenter(modal, spec.width, spec.height);
-    }
-
-    getValueModalMultilineFieldHeight() {
-        const promptTa = document.getElementById('configEditorValuePromptTextarea');
-        if (this.isValuePromptEditorVisible() && promptTa) {
-            const container = promptTa.closest('.character-prompt-textarea-container');
-            if (container) {
-                return container.offsetHeight + 3; // 3px for border
-            }
-            const inline = parseInt(promptTa.style.height, 10);
-            return (Number.isFinite(inline) && inline > 0) ? inline : promptTa.offsetHeight;
-        }
-
-        const plainTa = document.getElementById('configEditorValueTextarea');
-        if (plainTa && !plainTa.classList.contains('hidden')) {
-            const inline = parseInt(plainTa.style.height, 10);
-            if (Number.isFinite(inline) && inline > 0) return inline;
-            return plainTa.scrollHeight || plainTa.offsetHeight;
-        }
-
-        const fieldWrap = document.getElementById('configEditorValueFieldWrap');
-        return fieldWrap ? fieldWrap.scrollHeight : 0;
-    }
-
-    scheduleValueModalHeightSync() {
-        if (this._valueModalHeightSyncRafId) return;
-        // ResizeObserver delivers after sync layout; defer measure → apply to next frame.
-        this._valueModalHeightSyncRafId = requestAnimationFrame(() => {
-            this._valueModalHeightSyncRafId = requestAnimationFrame(() => {
-                this._valueModalHeightSyncRafId = null;
-                this.syncValueModalHeightToContent();
-            });
-        });
-    }
-
-    _pauseValuePromptResizeObserver() {
-        if (this._valuePromptResizeObserver) {
-            this._valuePromptResizeObserver.disconnect();
-        }
-    }
-
-    _resumeValuePromptResizeObserver() {
-        const el = this._valuePromptResizeObservedEl;
-        if (this._valuePromptResizeObserver && el && this.isValuePromptEditorVisible()) {
-            this._valuePromptResizeObserver.observe(el);
-        }
-    }
-
-    syncValueModalHeightToContent() {
-        const modal = this.valueModal;
-        if (!modal || modal.classList.contains('hidden')) return;
-        if (!modal.classList.contains('value-modal-multiline')) return;
-        if (this._isSyncingValueModalHeight) return;
-
-        const spec = CONFIG_EDITOR_VALUE_MODAL_SIZES.multiline;
-        const body = modal.querySelector('.config-editor-value-modal-body');
-        if (!body) return;
-
-        const promptTa = document.getElementById('configEditorValuePromptTextarea');
-        if (this.isValuePromptEditorVisible() && promptTa) {
-            const container = promptTa.closest('.character-prompt-textarea-container');
-            if (container) {
-                // syncPromptTextareaContainerMeasurements: public/scripts/comp/utilities.js
-                syncPromptTextareaContainerMeasurements(container);
-            }
-        }
-
-        const fieldHeight = this.getValueModalMultilineFieldHeight();
-        if (!fieldHeight) return;
-
-        const chromeHeight = modal.offsetHeight - body.clientHeight;
-        let nextHeight = chromeHeight + fieldHeight;
-        nextHeight = Math.max(spec.height, spec.minHeight, Math.min(spec.maxHeight, nextHeight));
-
-        const currentWidth = Math.round(modal.getBoundingClientRect().width) || spec.width;
-        if (Math.abs(modal.offsetHeight - nextHeight) < 1) return;
-
-        this._isSyncingValueModalHeight = true;
-        this._pauseValuePromptResizeObserver();
-
-        // setModalSizePreservingCenter: public/scripts/comp/modalUtils.js
-        setModalSizePreservingCenter(modal, currentWidth, nextHeight);
-
-        requestAnimationFrame(() => {
-            this._isSyncingValueModalHeight = false;
-            this._resumeValuePromptResizeObserver();
-        });
-    }
-
-    layoutValueModalMultilineContent() {
-        const promptTa = document.getElementById('configEditorValuePromptTextarea');
-        const plainTa = document.getElementById('configEditorValueTextarea');
-
-        if (this.isValuePromptEditorVisible() && promptTa) {
-            // autoResizeTextarea: public/scripts/comp/utilities.js
-            autoResizeTextarea(promptTa, 120);
-        } else if (plainTa && !plainTa.classList.contains('hidden')) {
-            autoResizeTextarea(plainTa, 120);
-        }
-
-        this.scheduleValueModalHeightSync();
-    }
-
-    ensureValueMultilineTextareaWired() {
-        if (this._valueMultilineTextareaWired) return;
-        const ta = document.getElementById('configEditorValueTextarea');
-        if (!ta) return;
-        // addTextareaInputSideEffect, autoResizeTextarea: public/scripts/comp/textareaUtils.js, utilities.js
-        addTextareaInputSideEffect(ta, () => {
-            autoResizeTextarea(ta, 120);
-            this.scheduleValueModalHeightSync();
-        }, 'valueModalMultilineResize');
-        this._valueMultilineTextareaWired = true;
+    /** One of regedit's dialogs: string | dword | multi (fixed sizes in config-editor.css). */
+    applyValueModalLayout(layout) {
+        if (!this.valueModal) return;
+        this.valueModal.dataset.cevLayout = layout;
+        this.valueModal.classList.remove('cev-cues');
+        const base = document.getElementById('configEditorValueBase');
+        if (base) base.disabled = layout !== 'dword';
     }
 
     ensureValuePromptTextareaWired() {
@@ -919,22 +787,6 @@ class ConfigEditorApplet {
         if (!ta) return;
         // setupEditableTextarea: public/scripts/comp/textareaUtils.js
         setupEditableTextarea(ta);
-        // addTextareaInputSideEffect, autoResizeTextarea: public/scripts/comp/textareaUtils.js, utilities.js
-        addTextareaInputSideEffect(ta, () => {
-            autoResizeTextarea(ta, 120);
-            this.scheduleValueModalHeightSync();
-        }, 'valueModalPromptResize');
-
-        if (typeof ResizeObserver !== 'undefined') {
-            const container = ta.closest('.character-prompt-textarea-container') || ta;
-            this._valuePromptResizeObservedEl = container;
-            this._valuePromptResizeObserver = new ResizeObserver(() => {
-                if (!this.isValuePromptEditorVisible()) return;
-                this.scheduleValueModalHeightSync();
-            });
-            this._valuePromptResizeObserver.observe(container);
-        }
-
         this._valuePromptTextareaWired = true;
     }
 
@@ -1520,7 +1372,6 @@ class ConfigEditorApplet {
         if (!window.customScrollbar) return;
         if (this.treeScrollShell) window.customScrollbar.forceReinit(this.treeScrollShell);
         if (this.valuesScrollShell) window.customScrollbar.forceReinit(this.valuesScrollShell);
-        if (this.valueScrollShell) window.customScrollbar.forceReinit(this.valueScrollShell);
         if (this.checkpointsScrollShell) window.customScrollbar.forceReinit(this.checkpointsScrollShell);
     }
 
@@ -2381,7 +2232,7 @@ class ConfigEditorApplet {
         const child = this.editTarget?.child;
         const hidden = document.getElementById('configEditorValueEnumHidden');
         const current = hidden?.value ?? '';
-        const values = child?.enum?.length ? child.enum : [];
+        const values = this.valueEnumChoices || (child?.enum?.length ? child.enum : []);
         const items = values.map((v) => {
             const raw = v === null ? 'null' : String(v);
             return {
@@ -2393,7 +2244,7 @@ class ConfigEditorApplet {
                 }
             };
         });
-        if (child?.enumAllowCustom) {
+        if (child?.enumAllowCustom && !this.valueEnumChoices) {
             items.push({ text: 'Custom…', action: 'config-editor-value-enum-custom' });
         }
         this.valueModalEnumClickMenuConfig.sections[0].items = items;
@@ -2445,15 +2296,28 @@ class ConfigEditorApplet {
             'configEditorValueSecret',
             'configEditorValueTextarea',
             'configEditorValuePromptWrap',
-            'configEditorValueBoolToggle',
             'configEditorValueEnumBtn'
         ];
+        this.valueEnumChoices = null;
         ids.forEach((id) => {
             const el = document.getElementById(id);
             if (el) el.classList.add('hidden');
         });
         const convertBtn = document.getElementById('configEditorValueConvertBtn');
         if (convertBtn) convertBtn.classList.add('hidden');
+    }
+
+    /** Edit DWORD's Base: rewrite the number in the box in base 16 or 10. */
+    setValueNumberBase(base) {
+        const el = document.getElementById('configEditorValueNumber');
+        const from = this.valueNumberBase || 10;
+        this.valueNumberBase = base;
+        if (!el || from === base) return;
+        const raw = el.value.trim();
+        if (!raw) return;
+        const num = from === 16 ? parseInt(raw, 16) : Number(raw);
+        if (!Number.isInteger(num)) return;
+        el.value = base === 16 ? num.toString(16) : String(num);
     }
 
     async resolvePathValue(configId, path) {
@@ -2500,9 +2364,6 @@ class ConfigEditorApplet {
             return;
         }
         const readOnly = !this.isConfigEditorAdmin();
-        const typeLabel = value === null ? 'null'
-            : Array.isArray(value) ? 'array'
-                : typeof value;
         this.editTarget = {
             configId,
             path: path.slice(),
@@ -2510,7 +2371,7 @@ class ConfigEditorApplet {
             readOnly,
             keyName
         };
-        this.setValueModalTitle(configId, keyName, `${typeLabel} · JSON`, { readOnly });
+        this.setValueModalTitle(keyName, 'Edit Multi-String');
         this.hideAllValueEditorFields();
         this.resetValueEditorFieldClasses();
         const ta = document.getElementById('configEditorValueTextarea');
@@ -2519,15 +2380,9 @@ class ConfigEditorApplet {
         ta.readOnly = readOnly;
         ta.value = JSON.stringify(value, null, 2);
         this.setValueEditorApplyState(!readOnly);
-        this.applyValueModalLayout('multiline');
+        this.applyValueModalLayout('multi');
         openModal(this.valueModal);
-        this.ensureValueMultilineTextareaWired();
-        setTimeout(() => {
-            this.applyValueModalLayout('multiline');
-            this.layoutValueModalMultilineContent();
-            this.reinitScrollbars();
-            ta.focus();
-        }, 80);
+        setTimeout(() => ta.focus(), 80);
     }
 
     async openValueEditor(configId, child) {
@@ -2537,7 +2392,6 @@ class ConfigEditorApplet {
         const effectiveVal = this.getEffectiveValue(configId, child.path, child.value);
         const effectiveType = this.getEffectiveChildType(child, effectiveVal);
         const keyName = child.label || child.key || 'value';
-        this.setValueModalTitle(configId, keyName, effectiveType || child.type || 'auto');
 
         this.hideAllValueEditorFields();
         this.resetValueEditorFieldClasses();
@@ -2548,9 +2402,7 @@ class ConfigEditorApplet {
             if (multiType) {
                 convertBtn.classList.remove('hidden');
                 const toArray = effectiveType === 'string';
-                convertBtn.innerHTML = toArray
-                    ? '<i class="fas fa-list"></i> Convert to array'
-                    : '<i class="fas fa-font"></i> Convert to string';
+                convertBtn.textContent = toArray ? 'Convert to Array' : 'Convert to String';
                 convertBtn.dataset.convertTo = toArray ? 'array' : 'string';
             } else {
                 convertBtn.classList.add('hidden');
@@ -2558,19 +2410,12 @@ class ConfigEditorApplet {
         }
 
         const editorType = configEditorResolveEditorType(child, effectiveVal, effectiveType);
-        const layoutMode = configEditorValueModalLayoutMode({ effectiveType, editorType });
-        this.applyValueModalLayout(layoutMode);
+        const layout = configEditorValueDialogLayout({ effectiveType, editorType });
+        const caption = layout === 'multi' ? 'Edit Multi-String'
+            : layout === 'dword' ? configEditorNumberCaption(effectiveVal) : 'Edit String';
+        this.setValueModalTitle(keyName, caption);
+        this.applyValueModalLayout(layout);
         openModal(this.valueModal);
-        if (layoutMode === 'multiline') {
-            this.ensureValueMultilineTextareaWired();
-        }
-        setTimeout(() => {
-            this.applyValueModalLayout(layoutMode);
-            if (layoutMode === 'multiline') {
-                this.layoutValueModalMultilineContent();
-            }
-            this.reinitScrollbars();
-        }, 80);
 
         if (configEditorIsSecret(child)) {
             const el = document.getElementById('configEditorValueSecret');
@@ -2596,29 +2441,42 @@ class ConfigEditorApplet {
             el.disabled = false;
             el.focus();
         } else if (effectiveType === 'boolean') {
-            const btn = document.getElementById('configEditorValueBoolToggle');
-            if (!btn) return;
-            btn.classList.remove('hidden');
-            const on = effectiveVal === true || effectiveVal === 'true';
-            btn.setAttribute('data-state', on ? 'on' : 'off');
-            btn.textContent = on ? 'true' : 'false';
+            // true / false in the drop-down list (the enum's click menu, configEditorValueChoices)
+            const enumBtn = document.getElementById('configEditorValueEnumBtn');
+            if (!enumBtn) return;
+            enumBtn.classList.remove('hidden');
+            this.setEnumEditorValue([true, false], effectiveVal === true || effectiveVal === 'true');
+            enumBtn.focus();
         } else if (effectiveType === 'number') {
             const el = document.getElementById('configEditorValueNumber');
             if (!el) return;
             el.classList.remove('hidden');
-            el.value = effectiveVal != null && effectiveVal !== '' ? String(effectiveVal) : '';
+            const num = effectiveVal != null && effectiveVal !== '' ? Number(effectiveVal) : null;
+            // Hexadecimal only for whole numbers; Runes' numbers are decimal by default
+            const hex = document.getElementById('configEditorValueBaseHex');
+            const dec = document.getElementById('configEditorValueBaseDec');
+            if (hex) hex.disabled = num !== null && !Number.isInteger(num);
+            if (dec) dec.checked = true;
+            this.valueNumberBase = 10;
+            el.value = num === null || Number.isNaN(num) ? (effectiveVal == null ? '' : String(effectiveVal)) : String(num);
             el.focus();
+            el.select();
         } else if (effectiveType === 'array') {
             const el = document.getElementById('configEditorValueTextarea');
             if (!el) return;
             el.classList.remove('hidden');
-            el.value = JSON.stringify(Array.isArray(effectiveVal) ? effectiveVal : [], null, 2);
+            const arr = Array.isArray(effectiveVal) ? effectiveVal : [];
+            // a list of one-line strings reads like regedit's REG_MULTI_SZ: one string per line
+            this.valueArrayAsLines = arr.every((v) => typeof v === 'string' && !v.includes('\n'));
+            el.value = this.valueArrayAsLines ? arr.join('\n') : JSON.stringify(arr, null, 2);
             el.focus();
+            el.select();
         } else if (child.enum?.length) {
             const enumBtn = document.getElementById('configEditorValueEnumBtn');
             if (!enumBtn) return;
             enumBtn.classList.remove('hidden');
             this.setEnumEditorValue(child.enum, effectiveVal);
+            enumBtn.focus();
         } else if (editorType === 'prompt') {
             const wrap = document.getElementById('configEditorValuePromptWrap');
             const el = document.getElementById('configEditorValuePromptTextarea');
@@ -2636,12 +2494,15 @@ class ConfigEditorApplet {
             el.classList.remove('hidden');
             el.value = effectiveVal != null ? String(effectiveVal) : '';
             el.focus();
+            el.select();
         } else {
             const el = document.getElementById('configEditorValueInput');
             if (!el) return;
             el.classList.remove('hidden');
             el.value = effectiveVal != null ? configEditorFormatDisplayValue(effectiveVal) : '';
+            // regedit opens with the data selected
             el.focus();
+            el.select();
         }
     }
 
@@ -2702,6 +2563,7 @@ class ConfigEditorApplet {
     }
 
     setEnumEditorValue(enumValues, effectiveVal) {
+        this.valueEnumChoices = enumValues === this.editTarget?.child?.enum ? null : enumValues;
         const selectedEl = document.getElementById('configEditorValueEnumSelected');
         const hidden = document.getElementById('configEditorValueEnumHidden');
         if (!selectedEl || !hidden) return;
@@ -2737,13 +2599,15 @@ class ConfigEditorApplet {
         const effectiveVal = this.getEffectiveValue(target.configId, child.path, child.value);
         const effectiveType = this.getEffectiveChildType(child, effectiveVal);
         if (effectiveType === 'boolean') {
-            const btn = document.getElementById('configEditorValueBoolToggle');
-            return btn?.getAttribute('data-state') === 'on';
+            return document.getElementById('configEditorValueEnumHidden')?.value === 'true';
         }
         if (effectiveType === 'number') {
             const el = document.getElementById('configEditorValueNumber');
-            if (!el || el.value === '') return '';
-            return Number(el.value);
+            const raw = (el?.value ?? '').trim();
+            if (!raw) return '';
+            const num = this.valueNumberBase === 16 ? parseInt(raw, 16) : Number(raw);
+            if (Number.isNaN(num)) throw new Error('Invalid number');
+            return num;
         }
         if (this.isValuePromptEditorVisible()) {
             const promptTa = document.getElementById('configEditorValuePromptTextarea');
@@ -2758,6 +2622,8 @@ class ConfigEditorApplet {
         const ta = document.getElementById('configEditorValueTextarea');
         if (ta && !ta.classList.contains('hidden')) {
             if (effectiveType === 'array') {
+                // regedit drops the empty strings of a multi-string
+                if (this.valueArrayAsLines) return ta.value.split('\n').map((line) => line.replace(/\r$/, '')).filter(Boolean);
                 const raw = ta.value.trim();
                 if (!raw) return [];
                 try {

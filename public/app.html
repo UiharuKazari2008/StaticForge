@@ -253,8 +253,8 @@
         media="screen and (device-width: 1024px) and (device-height: 768px) and (-webkit-device-pixel-ratio: 2)"
         href="/static_images/apple-splash-2048x1536.png">
 
-    <!-- Vista's own Segoe UI (public/css/vista-fonts.css): the shell's face, fetched before first paint -->
-    <link rel="preload" href="/dist/fonts/vista/segoeui.woff2" as="font" type="font/woff2" crossorigin="anonymous">
+    <!-- Vista's own Segoe UI (public/css/vista-fonts.css): the shell's face, fetched before first paint (signed in; before that it falls back) -->
+    <link rel="preload" href="/protected/fonts/vista/segoeui.woff2" as="font" type="font/woff2" crossorigin="anonymous">
     <link rel="stylesheet" href="/css/vista-fonts.css">
     <link rel="stylesheet" href="/css/fonts.css">
     <link rel="stylesheet" href="/dist/fontawesome/css/all.min.css">
@@ -5546,7 +5546,7 @@ Examples:
                                 class="explorer-command-glyph" aria-hidden="true"></span></button>
                         <button type="button" id="explorerViewsDropdownBtn" class="btn-secondary btn-small explorer-command-btn has-menu"
                             title="Change your view.">
-                            <img class="explorer-command-icon" src="/static_images/vista-explorer/views.png" alt="">Views<span
+                            <img class="explorer-command-icon" src="/static_images/vista-explorer/views-icons-lg.png" srcset="/static_images/vista-explorer/views-icons-lg.png 1x, /static_images/vista-explorer/views-icons-lg@2x.png 2x" alt="">Views<span
                                 class="explorer-command-glyph" aria-hidden="true"></span>
                         </button>
                         <button type="button" id="explorerUploadCmd" class="explorer-command-btn"
@@ -8491,16 +8491,17 @@ Examples:
         </div>
     </div>
 
-    <!-- Runes: edit value (tool window) -->
-    <div id="configEditorValueModal" class="modal hidden resizeable-window tool-window on-top"
+    <!-- Runes: edit value. Vista's Registry Editor edit dialogs (regedit.exe.mui 102 Edit String,
+         111 / 117 Edit DWORD / QWORD Value, 114 Edit Multi-String): data-cev-layout picks one
+         (configEditorApplet.js), config-editor.css places the controls -->
+    <div id="configEditorValueModal" class="modal hidden" role="dialog" aria-labelledby="configEditorValueModalTitle"
         data-parent-modal-id="configEditorModal" data-window-position-mode="cascade-parent"
-        data-window-content-anchor="top" data-window-cascade-align="top" data-window-default-width="640"
-        data-window-default-height="240" data-window-max-width="640" data-window-max-height="720"
-        data-window-min-width="400" data-window-min-height="200">
+        data-window-content-anchor="top" data-window-cascade-align="top" data-window-fixed-size="true"
+        data-window-no-maximize="true" data-window-client="light" data-vista-dialog="regedit"
+        data-caption-icon="none" data-cev-layout="string">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
-                <i class="fas fa-pen-to-square icon-fa"></i>
-                <span id="configEditorValueModalTitle">Edit Value</span>
+                <span id="configEditorValueModalTitle">Edit String</span>
             </div>
         </div>
         <div class="modal-window-controls">
@@ -8508,77 +8509,68 @@ Examples:
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content modal-padding config-editor-value-modal-content dark">
-            <div class="modal-body config-editor-value-modal-body">
-                <div class="config-editor-value-scroll-shell scrollbar-padding" data-custom-scrollbar
-                    data-scrollable-wrapper-class="config-editor-value-scrollable">
-                    <div class="config-editor-value-scroll-inner">
-                        <div id="configEditorValueFieldWrap" class="config-editor-value-field-wrap">
-                            <input type="text" id="configEditorValueInput"
-                                class="form-control hover-show colored hidden">
-                            <input type="number" id="configEditorValueNumber"
-                                class="form-control hover-show colored hidden">
-                            <input type="text" id="configEditorValueSecret"
-                                class="form-control colored config-editor-secret-input hidden" autocomplete="off"
-                                spellcheck="false" placeholder="Enter new value (unchanged if empty)">
-                            <textarea id="configEditorValueTextarea" class="form-control hover-show colored hidden"
-                                rows="4" spellcheck="false"></textarea>
-                            <div id="configEditorValuePromptWrap" class="config-editor-value-prompt-wrap hidden">
-                                <div class="character-prompt-textarea-container">
-                                    <div class="character-prompt-textarea-background"></div>
-                                    <textarea id="configEditorValuePromptTextarea"
-                                        class="form-control character-prompt-textarea prompt-textarea" rows="6"
-                                        autocapitalize="false" autocorrect="false" spellcheck="false"
-                                        data-ms-editor="false"></textarea>
-                                    <div class="prompt-textarea-toolbar hidden">
-                                        <div class="toolbar-left">
-                                            <span class="token-count">0 tokens</span>
-                                        </div>
-                                        <div class="toolbar-right">
-                                            <button type="button" class="btn-secondary btn-small toolbar-btn indicator"
-                                                data-action="autofill" data-state="off"
-                                                title="Toggle SmartText Autofill">
-                                                <i class="fas fa-lightbulb-slash"></i>
-                                            </button>
-                                            <button type="button" class="btn-secondary btn-small toolbar-btn"
-                                                data-action="emphasis" title="Emphasis">
-                                                <i class="fas fa-dial"></i>
-                                            </button>
-                                            <button type="button" class="btn-secondary btn-small toolbar-btn"
-                                                data-action="quick-access" title="Quick Access">
-                                                <i class="fas fa-book-font"></i>
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
+        <div class="modal-content config-editor-value-modal-content cev-client">
+            <label class="cev-label cev-name-label" for="configEditorValueName">Value <u>n</u>ame:</label>
+            <input type="text" id="configEditorValueName" class="cev-name" readonly spellcheck="false" autocomplete="off">
+            <label class="cev-label cev-data-label" id="configEditorValueDataLabel"><u>V</u>alue data:</label>
+            <div id="configEditorValueFieldWrap" class="config-editor-value-field-wrap cev-data">
+                <input type="text" id="configEditorValueInput" class="cev-field hidden" spellcheck="false" autocomplete="off"
+                    aria-labelledby="configEditorValueDataLabel">
+                <input type="text" id="configEditorValueNumber" class="cev-field hidden" spellcheck="false" autocomplete="off"
+                    inputmode="decimal" aria-labelledby="configEditorValueDataLabel">
+                <input type="text" id="configEditorValueSecret" class="cev-field config-editor-secret-input hidden"
+                    autocomplete="off" spellcheck="false" placeholder="Enter new value (unchanged if empty)"
+                    aria-labelledby="configEditorValueDataLabel">
+                <textarea id="configEditorValueTextarea" class="cev-field cev-multi hidden" spellcheck="false"
+                    wrap="off" aria-labelledby="configEditorValueDataLabel"></textarea>
+                <div id="configEditorValuePromptWrap" class="config-editor-value-prompt-wrap hidden">
+                    <div class="character-prompt-textarea-container">
+                        <div class="character-prompt-textarea-background"></div>
+                        <textarea id="configEditorValuePromptTextarea"
+                            class="form-control character-prompt-textarea prompt-textarea" rows="6"
+                            autocapitalize="false" autocorrect="false" spellcheck="false"
+                            data-ms-editor="false"></textarea>
+                        <div class="prompt-textarea-toolbar hidden">
+                            <div class="toolbar-left">
+                                <span class="token-count">0 tokens</span>
                             </div>
-                            <button type="button" id="configEditorValueBoolToggle"
-                                class="btn-secondary toggle-btn hidden" data-state="off">false</button>
-                            <button type="button" id="configEditorValueEnumBtn"
-                                class="btn-secondary hover-show colored hidden config-editor-value-enum-btn">
-                                <span id="configEditorValueEnumSelected"></span>
-                            </button>
-                            <input type="hidden" id="configEditorValueEnumHidden" value="">
+                            <div class="toolbar-right">
+                                <button type="button" class="btn-secondary btn-small toolbar-btn indicator"
+                                    data-action="autofill" data-state="off"
+                                    title="Toggle SmartText Autofill">
+                                    <i class="fas fa-lightbulb-slash"></i>
+                                </button>
+                                <button type="button" class="btn-secondary btn-small toolbar-btn"
+                                    data-action="emphasis" title="Emphasis">
+                                    <i class="fas fa-dial"></i>
+                                </button>
+                                <button type="button" class="btn-secondary btn-small toolbar-btn"
+                                    data-action="quick-access" title="Quick Access">
+                                    <i class="fas fa-book-font"></i>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
+                <!-- an enum or a boolean: a drop-down list (the click menu keeps the enum's Custom...) -->
+                <button type="button" id="configEditorValueEnumBtn" class="cpl-db-combo cev-field cev-combo hidden"
+                    aria-labelledby="configEditorValueDataLabel">
+                    <span id="configEditorValueEnumSelected"></span>
+                </button>
+                <input type="hidden" id="configEditorValueEnumHidden" value="">
             </div>
-            <div class="modal-footer">
-                <div class="modal-footer-left">
-                    <button type="button" id="configEditorValueConvertBtn" class="btn-secondary btn-small hidden"
-                        title="Convert value type"></button>
-                </div>
-                <div class="modal-footer-right">
-                    <div class="modal-actions btn-group">
-                        <button type="button" id="configEditorValueApplyBtn" class="btn-primary">
-                            <i class="fas fa-check"></i> Apply
-                        </button>
-                        <button type="button" id="configEditorValueCancelBtn" class="btn-secondary">
-                            Cancel
-                        </button>
-                    </div>
-                </div>
-            </div>
+            <fieldset class="cev-base" id="configEditorValueBase">
+                <legend>Base</legend>
+                <label class="cev-radio"><input type="radio" name="configEditorValueBase" id="configEditorValueBaseHex"
+                        value="16"><u>H</u>exadecimal</label>
+                <label class="cev-radio"><input type="radio" name="configEditorValueBase" id="configEditorValueBaseDec"
+                        value="10" checked><u>D</u>ecimal</label>
+            </fieldset>
+            <button type="button" id="configEditorValueConvertBtn" class="btn-standard cev-button cev-convert hidden"
+                title="Convert value type"></button>
+            <button type="button" id="configEditorValueApplyBtn" class="btn-standard cev-button cev-ok"
+                data-dialog-primary="1">OK</button>
+            <button type="button" id="configEditorValueCancelBtn" class="btn-standard cev-button cev-cancel">Cancel</button>
         </div>
     </div>
 
