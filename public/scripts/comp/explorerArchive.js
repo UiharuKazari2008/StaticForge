@@ -608,6 +608,8 @@
             $('.sz-current').textContent = d.current || '';
             const fill = $('.sz-progress-fill');
             fill.style.width = `${pct}%`;
+            // the fill's 8 px end caps would show a stub at 0%
+            fill.style.visibility = pct > 0 ? 'visible' : 'hidden';
             $('.sz-progress').setAttribute('aria-valuenow', String(pct));
             const list = $('.sz-list');
             const msgs = Array.isArray(d.messages) ? d.messages : [];
