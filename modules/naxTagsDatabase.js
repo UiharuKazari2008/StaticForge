@@ -36,6 +36,50 @@ const NAX_FAVORITE_MERGE_GROUPS = [
 
 let db = null;
 
+// Prepared statements by SQL text, for the open connection only.
+const STMT_CACHE_MAX = 300;
+const stmtCache = new Map();
+let stmtCacheDb = null;
+
+function prepareCached(d, sql) {
+    if (stmtCacheDb !== d) {
+        stmtCache.clear();
+        stmtCacheDb = d;
+    }
+    let stmt = stmtCache.get(sql);
+    if (!stmt) {
+        stmt = d.prepare(sql);
+        if (stmtCache.size >= STMT_CACHE_MAX) stmtCache.clear();
+        stmtCache.set(sql, stmt);
+    }
+    return stmt;
+}
+
+// Changes when any connection commits (data_version) or this one writes (total_changes).
+const DB_GENERATION_SQL = 'SELECT total_changes() AS t, (SELECT data_version FROM pragma_data_version) AS v';
+
+function dbGeneration(d) {
+    const row = prepareCached(d, DB_GENERATION_SQL).get();
+    return `${row.v}:${row.t}`;
+}
+
+// queryTags totals and the gallery list, valid for one dbGeneration.
+const TOTAL_CACHE_MAX = 500;
+const totalCache = new Map();
+let totalCacheDb = null;
+let totalCacheGen = null;
+let galleriesCache = null;
+
+function syncReadCaches(d) {
+    const gen = dbGeneration(d);
+    if (totalCacheDb !== d || totalCacheGen !== gen) {
+        totalCache.clear();
+        galleriesCache = null;
+        totalCacheDb = d;
+        totalCacheGen = gen;
+    }
+}
+
 function ensureCacheDir() {
     const dir = path.dirname(DB_PATH);
     if (!fs.existsSync(dir)) {
@@ -73,6 +117,8 @@ function migrateSchema(d) {
     if (!cols.some((c) => c.name === 'hidden_mark')) {
         d.exec('ALTER TABLE nax_tags ADD COLUMN hidden_mark INTEGER NOT NULL DEFAULT 0');
     }
+    // queryTags sort=score (the default) reads one gallery's rows in score order.
+    d.exec('CREATE INDEX IF NOT EXISTS idx_nax_tags_gallery_score ON nax_tags(gallery_slug, score)');
 }
 
 const NAX_ANY_RESOLVE_TAG_LIMIT = 100;
@@ -118,7 +164,7 @@ function getSlugsInMergeGroupFor(slug, d) {
     for (const group of NAX_FAVORITE_MERGE_GROUPS) {
         if (group.includes(slug)) {
             return group.filter((s) => {
-                const row = database.prepare('SELECT 1 AS ok FROM nax_galleries WHERE slug = ?').get(s);
+                const row = prepareCached(database, 'SELECT 1 AS ok FROM nax_galleries WHERE slug = ?').get(s);
                 return !!row;
             });
         }
@@ -234,17 +280,22 @@ function mapTagRow(r) {
 function getGalleries() {
     const d = getDb();
     if (!d) return [];
-    return d.prepare(`
-        SELECT slug, title, version, description, tag_count
-        FROM nax_galleries
-        ORDER BY
-            CASE
-                WHEN version LIKE '%v5%' THEN 0
-                WHEN version LIKE '%4.5%' THEN 1
-                ELSE 2
-            END,
-            title COLLATE NOCASE
-    `).all();
+    syncReadCaches(d);
+    if (!galleriesCache) {
+        galleriesCache = prepareCached(d, `
+            SELECT slug, title, version, description, tag_count
+            FROM nax_galleries
+            ORDER BY
+                CASE
+                    WHEN version LIKE '%v5%' THEN 0
+                    WHEN version LIKE '%4.5%' THEN 1
+                    ELSE 2
+                END,
+                title COLLATE NOCASE
+        `).all();
+    }
+    // Callers may decorate rows; hand out copies.
+    return galleriesCache.map((row) => ({ ...row }));
 }
 
 function slugExists(slug) {
@@ -288,7 +339,7 @@ function findExactCharacterTag(raw) {
 function getTagRow(gallerySlug, tag) {
     const d = getDb();
     if (!d) return null;
-    const row = d.prepare(`
+    const row = prepareCached(d, `
         SELECT id, gallery_slug AS gallerySlug, tag, filename, upvotes, downvotes, score,
                favorite, try_mark AS tryMark, hidden_mark AS hiddenMark, export_index AS exportIndex, is_custom AS isCustom
         FROM nax_tags WHERE gallery_slug = ? AND tag = ?
@@ -445,10 +496,18 @@ function queryTags(opts) {
         sourceParams = params.concat(missingUnion.params);
     }
 
-    const totalRow = d.prepare(`SELECT COUNT(*) AS c FROM (${sourceSql})`).get(...sourceParams);
-    const total = totalRow ? totalRow.c : 0;
+    // The total only changes on a write; paging and re-sorting the same filter reuse it.
+    syncReadCaches(d);
+    const totalKey = `${sourceSql}\0${JSON.stringify(sourceParams)}`;
+    let total = totalCache.get(totalKey);
+    if (total === undefined) {
+        const totalRow = prepareCached(d, `SELECT COUNT(*) AS c FROM (${sourceSql})`).get(...sourceParams);
+        total = totalRow ? totalRow.c : 0;
+        if (totalCache.size >= TOTAL_CACHE_MAX) totalCache.clear();
+        totalCache.set(totalKey, total);
+    }
 
-    const rows = d.prepare(`
+    const rows = prepareCached(d, `
         SELECT id, gallery_slug AS gallerySlug, tag, filename, upvotes, downvotes, score,
                favorite, try_mark AS tryMark, hidden_mark AS hiddenMark, export_index AS exportIndex,
                is_custom AS isCustom, missing
@@ -508,7 +567,7 @@ function buildMissingTagUnion(d, gallerySlug, markFilter, query, bounds) {
     if (mark === 'favorites') markSql = 'favorite = 1';
     else if (mark === 'try') markSql = 'try_mark = 1';
 
-    const maxRow = d.prepare(
+    const maxRow = prepareCached(d,
         'SELECT COALESCE(MAX(export_index), -1) AS m FROM nax_tags WHERE gallery_slug = ?'
     ).get(gallerySlug);
     const nextExport = (maxRow && maxRow.m != null ? maxRow.m : -1) + 1;
@@ -787,6 +846,11 @@ function deleteCustomTag(gallerySlug, tag) {
 }
 
 function closeDb() {
+    stmtCache.clear();
+    stmtCacheDb = null;
+    totalCache.clear();
+    totalCacheDb = null;
+    galleriesCache = null;
     if (db) {
         try {
             db.close();
@@ -989,9 +1053,20 @@ function findArtistPreview(tagName) {
         'danbooru-artist-tags-v4',
         'artists-v4.5'
     ]);
+    if (!slugs.length) return null;
+    const d = getDb();
+    if (!d) return null;
+    // One lookup for every slug x variant; the first hit in slug, then variant, order wins.
+    const rows = prepareCached(d, `
+        SELECT gallery_slug AS gallerySlug, tag, filename
+        FROM nax_tags
+        WHERE gallery_slug IN (${slugs.map(() => '?').join(', ')})
+          AND tag IN (${variants.map(() => '?').join(', ')})
+    `).all(...slugs, ...variants);
+    const byKey = new Map(rows.map((row) => [`${row.gallerySlug}\0${row.tag}`, row]));
     for (const slug of slugs) {
         for (const variant of variants) {
-            const row = getTagRow(slug, variant);
+            const row = byKey.get(`${slug}\0${variant}`);
             if (row && row.filename) {
                 return { gallerySlug: row.gallerySlug, filename: row.filename, tag: row.tag };
             }
