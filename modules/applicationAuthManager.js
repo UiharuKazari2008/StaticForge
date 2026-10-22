@@ -340,6 +340,7 @@ function normalizeScopes(scopes) {
     return normalized.filter((s) => AVAILABLE_SCOPES_ID_SET.has(s));
 }
 
+// JULES: Optimize scopesForReplace by reusing top-level AVAILABLE_SCOPES_ID_SET and using a local Set for O(1) deduplication
 /** Replace a key's scope list. Empty is an error. Universal collapses the rest. */
 function scopesForReplace(scopes) {
     if (!Array.isArray(scopes)) {
@@ -349,10 +350,11 @@ function scopesForReplace(scopes) {
     }
     const cleaned = scopes.map((s) => String(s).trim()).filter(Boolean);
     if (cleaned.includes('universal')) return ['universal'];
-    const allowed = new Set(AVAILABLE_SCOPES.map((s) => s.id));
     const next = [];
+    const seen = new Set();
     for (const scope of cleaned) {
-        if (!allowed.has(scope) || next.includes(scope)) continue;
+        if (!AVAILABLE_SCOPES_ID_SET.has(scope) || seen.has(scope)) continue;
+        seen.add(scope);
         next.push(scope);
     }
     if (!next.length) {
@@ -1455,6 +1457,7 @@ module.exports = {
     AVAILABLE_SCOPES,
     SCOPE_WS_PACKETS,
     normalizeScopes,
+    scopesForReplace,
     getPacketScopes,
     scopesAllowPacket,
     isApplicationKeyFormat,
