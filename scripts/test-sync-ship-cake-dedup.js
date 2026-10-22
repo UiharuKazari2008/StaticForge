@@ -133,6 +133,7 @@ async function runTest() {
         get: async (sql, params) => {
             if (sql.includes('SELECT value FROM system_settings')) return { value: '1' };
             if (sql.includes("key = 'imported_at'")) return { value: 'yes' };
+            if (sql.includes('cake_pantry_meta')) return { value: '1' };
             return undefined;
         },
         all: async (sql, params) => {
@@ -213,6 +214,7 @@ async function runFetchRetryTest() {
         get: async (sql) => {
             if (sql.includes('SELECT value FROM system_settings')) return { value: '1' };
             if (sql.includes("key = 'imported_at'")) return { value: 'yes' };
+            if (sql.includes('cake_pantry_meta')) return { value: '1' };
             return undefined;
         },
         all: async (sql) => {
