@@ -4357,7 +4357,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
             );
         }
 
-        // Trace: store full buildOptions output (no sanitization per user request)
+        // Trace: store full buildOptions output (tracing.js swaps base64 blobs of 4 KB+ for a length marker)
         try {
             if (body.requestId) {
                 __runtimeGr.getTracing().addEvent(body.requestId, {
@@ -5278,7 +5278,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                 await __runtimeGr.getMetadataDatabase().addReceiptMetadata(name, __runtimeGr.getPath('images'), upscaledReceiptData, upscaledForgeData, { buffer: finalBuffer });
                 await recordReplicationGalleryJournal(upscaledName, targetWorkspaceId, updatedScaledBuffer);
 
-                const upscaledPreviewResult = await generateMobilePreviews(path.join(__runtimeGr.getPath('images'), upscaledName), upscaledBaseName);
+                const upscaledPreviewResult = await generateMobilePreviews(path.join(__runtimeGr.getPath('images'), upscaledName), __runtimeGr.getPngMetadata().getBaseName(upscaledName));
                 await storePreviewBlurhash(__runtimeGr, upscaledName, upscaledPreviewResult);
 
                 const plumbing = __runtimeGr.getDataPlumbing();
