@@ -381,6 +381,9 @@ class ExplorerApplet {
     }
 
     buildEmptyContextMenuSections() {
+        if (typeof explorerArchive !== 'undefined' && explorerArchive.isArchivePath(this.currentPath)) {
+            return explorerArchive.emptyMenuSections();
+        }
         if (this._isTrashPath(this.currentPath)) {
             return [{
                 type: 'list',
@@ -1039,6 +1042,8 @@ class ExplorerApplet {
         if (this._isComputerPath(vfsPath)) return false;
         const normalized = (vfsPath || '/').replace(/\/+$/, '') || '/';
         if (this._isTrashPath(normalized)) return false;
+        // inside an archive (vfsArchive.js): read-only
+        if (normalized.includes('/~archive.')) return false;
         if (normalized === '/') return true;
         const parts = normalized.split('/').filter(Boolean);
         if (parts[0] === 'System') return false;
@@ -2057,6 +2062,10 @@ class ExplorerApplet {
 
     buildContextMenuSections(item) {
         if (!item) return this.buildEmptyContextMenuSections();
+        // inside an archive: Open, Extract files..., Download, Copy (explorerArchive.js)
+        if (typeof explorerArchive !== 'undefined' && explorerArchive.isEntry(item)) {
+            return explorerArchive.entryMenuSections(this, item);
+        }
 
         if (item.isTrashItem) {
             return [{
@@ -2143,6 +2152,13 @@ class ExplorerApplet {
                     action: 'explorer-open'
                 }]
             });
+        }
+
+        // 7-Zip ▸ under Open, as 7-Zip's shell extension adds it on the Vista VM (explorerArchive.js)
+        const sevenZip = typeof explorerArchive !== 'undefined' ? explorerArchive.contextMenuEntry(this, item) : null;
+        if (sevenZip) {
+            if (showOpenSection) sections[sections.length - 1].items.push(sevenZip);
+            else sections.push({ type: 'list', items: [sevenZip] });
         }
 
         if (!multi && item.targetKind === 'note') {
@@ -2298,6 +2314,12 @@ class ExplorerApplet {
 
         const item = this._contextMenuTarget;
         const workspaceId = this.getWorkspaceIdFromPath();
+
+        // 7-Zip's menu and archive entries: public/scripts/comp/explorerArchive.js
+        if (action.startsWith('explorer-7z-') && typeof explorerArchive !== 'undefined') {
+            await explorerArchive.handleAction(action, item, this);
+            return;
+        }
 
         if (!action.startsWith('explorer-')) {
             if (item?.shortcutType === 'image') {
@@ -4385,6 +4407,18 @@ class ExplorerApplet {
             return;
         }
 
+        // an archive opens as a folder; its files open from inside it (explorerArchive.js)
+        if (typeof explorerArchive !== 'undefined') {
+            if (explorerArchive.isEntry(item)) {
+                await explorerArchive.openEntry(this, item);
+                return;
+            }
+            if (explorerArchive.isArchiveFileItem(item)) {
+                await explorerArchive.openArchive(this, item);
+                return;
+            }
+        }
+
         // Recent Items (public/scripts/comp/recentItems.js): a file opened here, by this workspace
         if (window.recentItems) window.recentItems.noteExplorerItem(item, this.currentPath);
 
@@ -4462,6 +4496,8 @@ class ExplorerApplet {
         const canCutCopy = hasSel && sel.every(i => this._canCutCopyItem(i));
         const canRename = single && this._canRenameItem(sel[0]);
         const canFile = single && sel[0].targetKind === 'user-file' && !this._isUserFileLinkItem(sel[0]);
+        // archive entries download (extract and download) and copy (a paste extracts), nothing else
+        const archiveEntries = hasSel && sel.every(i => i.targetKind === 'archive-entry');
         const canWrite = this._isWritableFolderPath(this.currentPath);
         const isWsList = this._isWorkspacesListPath();
 
@@ -4471,15 +4507,16 @@ class ExplorerApplet {
             btn.classList.toggle('disabled', !on);
         };
         set(this.el.cutBtn, canCutCopy);
-        set(this.el.copyBtn, canCutCopy);
+        set(this.el.copyBtn, canCutCopy || archiveEntries);
         set(this.el.pasteBtn, !!this.clipboard && canWrite);
         set(this.el.renameBtn, canRename);
-        set(this.el.downloadBtn, canFile);
+        set(this.el.downloadBtn, canFile || archiveEntries);
         set(this.el.replaceBtn, canFile);
-        set(this.el.deleteBtn, hasSel);
+        set(this.el.deleteBtn, hasSel && !archiveEntries);
         set(this.el.newFolderBtn, isWsList || canWrite);
         this.updateWorkspacesListToolbar();
         if (this.vista) this.vista.syncCommands();
+        if (typeof explorerArchive !== 'undefined') explorerArchive.syncCommands(this);
         // notifyKeyboardOverlayContextChanged: public/scripts/comp/modalKeyboardRegistry.js
         notifyKeyboardOverlayContextChanged();
     }
@@ -4512,6 +4549,10 @@ class ExplorerApplet {
 
     copySelection() {
         const sel = this.grid?.getSelectedItems() || [];
+        if (sel.length && typeof explorerArchive !== 'undefined' && sel.every(i => explorerArchive.isEntry(i))) {
+            explorerArchive.copyEntries(this, sel);
+            return;
+        }
         if (!sel.length || !sel.every(i => this._canCutCopyItem(i))) return;
         this.clipboard = { operation: 'copy', items: this._itemRefs(sel), sourcePath: this.currentPath };
         this.updateToolbarState(sel);
@@ -4622,6 +4663,10 @@ class ExplorerApplet {
 
     async deliverItemsToPath(dragItems, navPath, operation = 'cut', options = {}) {
         if (!dragItems?.length || !navPath) return true;
+        // copied / dragged out of an archive: extracted there (explorerArchive.js)
+        if (typeof explorerArchive !== 'undefined' && explorerArchive.isEntryRefs(dragItems)) {
+            return explorerArchive.deliverEntries(this, dragItems, navPath, options.sourcePath ?? this.clipboard?.sourcePath ?? this.currentPath);
+        }
         if (this._isReadOnlyUser()) {
             showGlassToast('warning', 'Explorer', 'Not available in read-only mode', false, 4000);
             return false;
@@ -4896,10 +4941,18 @@ class ExplorerApplet {
 
     async downloadSelection() {
         const sel = this.grid?.getSelectedItems() || [];
+        if (sel.length && typeof explorerArchive !== 'undefined' && sel.every(i => explorerArchive.isEntry(i))) {
+            await explorerArchive.downloadEntries(this, sel);
+            return;
+        }
         for (const item of sel) await this.downloadSelectionItem(item);
     }
 
     async downloadSelectionItem(item) {
+        if (typeof explorerArchive !== 'undefined' && explorerArchive.isEntry(item)) {
+            await explorerArchive.downloadEntries(this, [item]);
+            return;
+        }
         if (item.targetKind !== 'user-file') return;
         const resp = await vfsClient.downloadFile(item.targetId);
         if (resp.downloadUrl) {
@@ -5079,6 +5132,8 @@ class ExplorerApplet {
         const permanent = options.permanent === true;
         const sel = this.grid?.getSelectedItems() || [];
         if (!sel.length) return;
+        // an archive's contents are read-only here (vfsArchive.js)
+        if (sel.some(i => i.targetKind === 'archive-entry')) return;
 
         if (this._isTrashPath(this.currentPath)) {
             const confirmed = typeof showConfirmationDialog === 'function'

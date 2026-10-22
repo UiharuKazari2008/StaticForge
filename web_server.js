@@ -3034,6 +3034,15 @@ app.get('/traces/:id', authMiddleware, adminOnlyMiddleware, (req, res) => {
         }
     });
 
+    // modules/vfsArchive.js — 7-Zip: one archive entry streamed, a packed selection downloaded
+    require('./modules/vfsArchive').registerArchiveRoutes(app, {
+        vfsPath,
+        authMiddleware,
+        globalResources,
+        buildVfsSession,
+        workspaceExists
+    });
+
     // modules/vfsFuseHttp.js — `${vfsPath}/fs/...` VFS API for a Linux FUSE client
     require('./modules/vfsFuseHttp').registerVfsFuseRoutes(app, {
         vfsPath,

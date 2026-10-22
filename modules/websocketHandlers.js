@@ -523,6 +523,9 @@ class WebSocketMessageHandlers {
             'vfs_permanently_delete',
             'vfs_convert_reference_to_file',
             'vfs_convert_file_to_reference',
+            // 7-Zip (12-vfsArchiveHandler.js): extract and create write VFS files
+            'vfs_archive_extract',
+            'vfs_archive_create',
             'desktop_create_empty_folder',
             'desktop_update_shortcut_folders',
             'desktop_create_folder_from_selection',

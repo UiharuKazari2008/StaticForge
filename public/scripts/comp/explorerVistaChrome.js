@@ -33,7 +33,14 @@
         html: 'HTML Document', htm: 'HTML Document', css: 'Cascading Style Sheet Document',
         js: 'JScript Script File', pdf: 'PDF Document', zip: 'Compressed (zipped) Folder',
         mp3: 'MP3 Format Sound', wav: 'Wave Sound', ogg: 'OGG File', mp4: 'MP4 Video', webm: 'WebM Video',
-        mov: 'QuickTime Movie', gifv: 'GIF Video'
+        mov: 'QuickTime Movie', gifv: 'GIF Video',
+        // 7-Zip's own names for the formats it is associated with ("7z Archive"; zip stays Vista's)
+        '7z': '7z Archive', rar: 'rar Archive', tar: 'tar Archive', gz: 'gz Archive', tgz: 'tgz Archive',
+        bz2: 'bz2 Archive', tbz: 'tbz Archive', tbz2: 'tbz2 Archive', xz: 'xz Archive', txz: 'txz Archive',
+        lzma: 'lzma Archive', zst: 'zst Archive', z: 'z Archive', cab: 'cab Archive', iso: 'iso Archive',
+        wim: 'wim Archive', arj: 'arj Archive', lzh: 'lzh Archive', lha: 'lha Archive', cpio: 'cpio Archive',
+        rpm: 'rpm Archive', deb: 'deb Archive', dmg: 'dmg Archive', xar: 'xar Archive', vhd: 'vhd Archive',
+        squashfs: 'squashfs Archive', '001': '001 Archive'
     };
 
     function esc(text) {
