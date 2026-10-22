@@ -3832,8 +3832,6 @@ function wireManualDropdownSetup() {
 
     manualSelectedWorkspace = activeWorkspace;
     updateManualWorkspaceDisplay();
-    // initializeManualSelectionDropdown: public/scripts/comp/textReplacementManager.js
-    initializeManualSelectionDropdown();
     updatePresetLoadSaveState();
     updateManualPresetPlaceholder();
 }

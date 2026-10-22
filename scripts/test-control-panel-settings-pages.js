@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Personalization and Global Settings live in Control Panel (Yozora #445, Yukimi 2026-10-12): the
-// desktop settings forms (#desktopSettingsLayout) are hosted by two Control Panel pages that move
-// the live DOM in on mount and back out on unmount, and the forms take Vista's light controls there.
+// Personalization and Global Settings live in Control Panel (Yozora #445, Yukimi 2026-10-12). The
+// old settings window and its forms (#desktopSettingsModal) are gone (2026-10-22): Personalization
+// is Vista's hub (cplPersonalization.js) and Keyboard is a page of its own with one check box.
 // Run: node scripts/test-control-panel-settings-pages.js
 const assert = require('assert');
 const fs = require('fs');
@@ -26,30 +26,30 @@ const ids = cpl._test.items.map((i) => i.id);
 for (const id of ['personalization', 'appearance', 'sound', 'taskbar', 'keyboard']) assert.ok(ids.includes(id), `${id} is listed`);
 assert.ok(!ids.includes('global-settings'), 'the Global Settings item is gone');
 assert.ok(!ids.includes('mouse'), 'pointer schemes were dropped');
-for (const id of ['appearance', 'sound', 'keyboard']) {
-    assert.ok(String(cpl._test.items.find((i) => i.id === id).open).includes(`navigate('${id}')`), `${id} opens its own page`);
-}
+// Personalization is Vista's hub (cplPersonalization.js, 2026-10-21): Window Color and Appearance
+// opens its page there, Sound opens Vista's Sound dialog (personalizationDialogs.js)
+assert.ok(String(cpl._test.items.find((i) => i.id === 'keyboard').open).includes("navigate('keyboard')"), 'keyboard opens its own page');
+assert.ok(String(cpl._test.items.find((i) => i.id === 'appearance').open).includes("'window-color'"), 'Window Color and Appearance opens its Personalization page');
+assert.ok(String(cpl._test.items.find((i) => i.id === 'sound').open).includes('personalizationDialogs.openSound()'), 'Sound opens the Sound dialog');
 // Taskbar and Start Menu opens Vista's Properties dialog (public/scripts/comp/taskbarProperties.js)
 assert.ok(String(cpl._test.items.find((i) => i.id === 'taskbar').open).includes("taskbarSettings.openProperties('taskbar')"), 'Taskbar and Start Menu opens its Properties dialog');
 assert.ok(!/openDesktopSettingsModal/.test(String(cpl._test.items.find((i) => i.id === 'personalization').open)), 'Personalization navigates instead of opening the old window');
 
 // wiring in modalUtils.js / app.html / CSS
 const js = read('public/scripts/comp/modalUtils.js');
-assert.ok(js.includes("cpl.registerPage('personalization'") && /GLOBAL_PAGES\.forEach\(\(\[id, name, heading, intro\]\) => \{\s*cpl\.registerPage\(id/.test(js), 'the pages are registered');
-for (const id of ['appearance', 'sound', 'keyboard']) assert.ok(js.includes(`['${id}', `), `${id} page`);
+assert.ok(!js.includes("cpl.registerPage('personalization'"), 'the hub is cplPersonalization.js\'s page');
+assert.ok(read('public/scripts/comp/cplPersonalization.js').includes("c.registerPage('personalization'"), 'the hub is registered');
+// Theme is a dialog, the glass and live dragging live on Window Color and Appearance (2026-10-21)
+assert.ok(!js.includes("cpl.registerPage('theme'") && read('public/scripts/comp/personalizationDialogs.js').includes('function openTheme()'), 'Theme Settings is a dialog');
+assert.ok(js.includes("cpl.registerPage('keyboard'") && js.includes('id="cplVirtualKeyboardCheck"'), 'Keyboard is its own page with the check box');
+assert.ok(js.includes('setDesktopVirtualKeyboardEnabled(check.checked)'), 'the check box saves as it changes');
+assert.ok(!js.includes("['sound', ") && !js.includes("['appearance', "), 'no Sound or Appearance Settings page');
+assert.ok(read('public/scripts/comp/cplPersonalization.js').includes('Show window contents while dragging'), 'live dragging on Window Color and Appearance');
 assert.ok(!js.includes("['taskbar', 'Taskbar and Start Menu'"), 'no Taskbar and Start Menu page: the item opens the Properties dialog');
-assert.ok(js.includes("mountDesktopSettingsInControlPanel(main, 'global', id)"), 'each global page mounts its group');
-assert.ok(/offGroup\(section\)/.test(js) && js.includes('section.dataset.desktopSettingsGroup !== desktopSettingsActiveGroup'), 'the scope switch hides the other groups');
-assert.ok(js.includes("cpl.open(scope === 'global' ? 'appearance' : 'personalization')"), 'openDesktopSettingsModal opens the page');
+assert.ok(js.includes("cpl.open(scope === 'global' ? 'window-color' : 'personalization')"), 'openDesktopSettingsModal opens the page');
 const html = read('public/app.html');
-const groups = [...html.matchAll(/data-desktop-settings-scope="global" data-desktop-settings-group="([a-z]+)"/g)].map((m) => m[1]);
-assert.deepStrictEqual(groups, ['appearance', 'appearance', 'sound', 'taskbar', 'taskbar', 'taskbar', 'keyboard'], 'every global section has its group');
-assert.ok(/const layout = document\.getElementById\('desktopSettingsLayout'\) \|\| modal;/.test(js), 'the scope switch works wherever the forms are');
-assert.ok((js.match(/finishDesktopSettingsDialog\(\);/g) || []).length >= 5, 'saving / removing the wallpaper only closes the window when it is the one showing');
-assert.ok(read('public/app.html').includes('<div id="desktopSettingsLayout" class="desktop-settings-layout">'), 'the forms have their id');
-const css = read('public/css/desktop-settings.css');
-assert.ok(!/#desktopSettingsModal(?![\w-])(?![^{]*cpl-settings-host)/.test(css.replace(/:is\(#desktopSettingsModal, #melatonControlPanelModal \.cpl-settings-host\)/g, '')), 'every settings rule reaches the Control Panel host');
-assert.ok(css.includes('#melatonControlPanelModal .cpl-settings-host .gallery-toggle-group'), 'the light Vista controls are there');
+assert.ok(!html.includes('id="desktopSettingsModal"') && !html.includes('id="desktopSettingsLayout"'), 'the old settings window is gone');
+assert.ok(!js.includes('mountDesktopSettingsInControlPanel') && !js.includes('prepareDesktopSettingsForm'), 'and its form code');
 
 const mcp = read('public/scripts/comp/melatonControlPanel.js');
 assert.ok(/unmountPage\(\);\s*const main = el\('\.cpl-main'\);/.test(mcp), 'pages unmount before every re-render');
@@ -58,14 +58,12 @@ assert.ok(/function close\(\) \{\s*stopTimers\(\);\s*unmountPage\(\);/.test(mcp)
 // featureLoader loads Control Panel long after DOMContentLoaded: it registers modalUtils.js's pages itself
 const registered = [];
 globalThis.registerDesktopSettingsControlPanelPages = () => registered.push('desktop-settings');
-globalThis.registerRemoteAccessControlPanelPage = () => registered.push('remote-access');
 delete require.cache[require.resolve('../public/scripts/comp/melatonControlPanel.js')];
 require('../public/scripts/comp/melatonControlPanel.js');
 delete globalThis.registerDesktopSettingsControlPanelPages;
-delete globalThis.registerRemoteAccessControlPanelPage;
-assert.deepStrictEqual(registered, ['desktop-settings', 'remote-access'], 'the pages exist when Control Panel is opened first');
+assert.deepStrictEqual(registered, ['desktop-settings'], 'the Keyboard page exists when Control Panel is opened first');
 
-assert.ok(html.includes('id="desktopSettingsUseAppImageIcon"') && html.includes('Use Application Image Icon when available'), 'Taskbar and Start Menu has the application image icon checkbox');
+assert.ok(read('public/scripts/comp/taskbarProperties.js').includes('useApplicationImageIcon'), 'Taskbar and Start Menu Properties has the application image icon option');
 assert.ok(js.includes('useApplicationImageIcon') && js.includes("classList.toggle('use-app-image-icons'"), 'the checkbox is saved and applied on the taskbar');
 const shell = read('public/css/desktop-shell.css');
 assert.ok(shell.includes('body.desktop-mode:is(.use-app-image-icons, .taskbar-orb) .taskbar-window-item .icon-image'), 'the checkbox uses the same taskbar picture as the Orb');

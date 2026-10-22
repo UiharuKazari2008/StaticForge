@@ -1416,8 +1416,7 @@
 
     function syncPriorityClientControls() {
         const on = isPriorityClientRegistered();
-        const btn = document.getElementById('remoteAccessPriorityClientBtn');
-        if (btn) btn.dataset.state = on ? 'on' : 'off';
+        // Remote Access Properties' Priority Client box follows this event (remoteAccessProperties.js)
         document.dispatchEvent(new CustomEvent('agentPriorityClientChanged', { detail: { registered: on, state: priorityClientState } }));
     }
 
@@ -1425,18 +1424,6 @@
         window.setAgentPriorityClient = setAgentPriorityClient;
         window.isAgentPriorityClient = isPriorityClientRegistered;
         window.getAgentPriorityClientState = () => ({ ...priorityClientState, registered: isPriorityClientRegistered() });
-        const wireRemoteAccessToggle = () => {
-            const btn = document.getElementById('remoteAccessPriorityClientBtn');
-            if (!btn || btn.dataset.priorityWired === 'true') return;
-            btn.dataset.priorityWired = 'true';
-            btn.addEventListener('click', (e) => {
-                e.preventDefault();
-                setAgentPriorityClient(!isPriorityClientRegistered());
-            });
-            syncPriorityClientControls();
-        };
-        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wireRemoteAccessToggle);
-        else wireRemoteAccessToggle();
         const hookConnected = () => {
             if (!window.wsClient || typeof window.wsClient.on !== 'function') return false;
             window.wsClient.on('connected', announcePriorityClient);

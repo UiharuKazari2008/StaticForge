@@ -34,7 +34,6 @@ function mcpLaunchShouldLeaveOnTop(modal) {
 // Bootstrap / connection overlays — never shown as taskbar window buttons
 const TASKBAR_SYSTEM_MODAL_IDS = new Set([
     'windowsStartupModal',
-    'windowsUpdateModal',
     'connectionDialModal',
     'domainConnectModal',
     'desktopPreStartupModal',
@@ -1483,7 +1482,6 @@ const ESCAPE_CLOSE_MODAL_IDS = new Set([
     'datasetTagToolbar',
     'galleryJumpIndexTool',
     'metadataDialog',
-    'textReplacementManualSelectionModal',
     'textReplacementLockModal',
     'createTextReplacementModal',
     'createRequestBodyReplacementModal',
@@ -1496,10 +1494,7 @@ const ESCAPE_CLOSE_MODAL_IDS = new Set([
     'timeDateModal',
     'weatherLocationModal',
     'connectionDialModal',
-    'naxVibesEncodingPickerModal',
     'naxtCustomTagModal',
-    'vibeManagerDeleteModal',
-    'vibeManagerMoveModal',
     'bulkChangePresetModal',
     'vfsImportChoiceModal',
     'openNoteModal',
@@ -2548,7 +2543,7 @@ function setActiveWindow(modalId) {
             // Regular window - remove active-window class from all modals (including tool windows)
             // But preserve active-window class on on-top modals
             document.querySelectorAll('.modal').forEach(m => {
-                if (m.id === 'windowsStartupModal' || m.id === 'windowsUpdateModal' || m.id === 'connectionDialModal') return;
+                if (m.id === 'windowsStartupModal' || m.id === 'connectionDialModal') return;
                 // Don't remove active-window from on-top modals
                 if (!m.classList.contains('on-top')) {
                     m.classList.remove('active-window');
@@ -5384,7 +5379,6 @@ const MODAL_APPLICATION_ICONS = {
     directorFeedbackModal: 'director.png',
     directorWindow: 'director.png',
     vibeEncodingModal: 'ref.png',
-    vibeManagerDeleteModal: 'ref.png',
     // windows of their own that are built in script (startMenuOrganizer.js, remoteAccessProperties.js,
     // agentClientUpdateDialog.js, mainframeExceptionDialog.js, vfsSystemOpenRouter.js)
     desktopEmotionModal: 'emotion.png',
@@ -5614,7 +5608,7 @@ function isModalActiveForTaskbar(modal) {
 }
 
 function getNonRootTaskbarWindowEntries() {
-    const rootWindowIds = new Set(['galleryWindow', 'manualModal', 'windowsStartupModal', 'windowsUpdateModal', 'connectionDialModal']);
+    const rootWindowIds = new Set(['galleryWindow', 'manualModal', 'windowsStartupModal', 'connectionDialModal']);
     const openModals = getOpenTaskbarModals()
         .filter((modal) => !rootWindowIds.has(modal.id));
 
@@ -8451,7 +8445,6 @@ async function addAppletToDesktop(appletItem) {
 // Desktop Wallpaper Management
 function initializeDesktopWallpaper() {
     setupDesktopContextMenu();
-    wireRemoteAccessSettingsModal();
 }
 
 // Save wallpaper to workspace (server will broadcast update)
@@ -8487,11 +8480,6 @@ async function setDesktopWallpaper(wallpaperPath, wallpaperPosition = 'center ce
         };
         await wsClient.updateWorkspaceSettings(currentWorkspace, settings);
     }
-}
-
-// Clear wallpaper from workspace
-async function clearDesktopWallpaper() {
-    await setDesktopWallpaper(null);
 }
 
 // Precache wallpaper: delete old cache entry and load new one
@@ -8543,9 +8531,6 @@ async function uploadCustomWallpaper(file) {
 
                 // Update the wallpaper state to use the custom wallpaper
                 desktopSettingsState.wallpaperUrl = wallpaperUrl;
-
-                // Update preview after precaching so user can position it before saving
-                updateDesktopSettingsPreview();
 
                 updateGlassToastComplete(toastId, {
                     type: 'success',
@@ -8693,16 +8678,6 @@ function getStartMenuButtonPresetGroups() {
     return groups;
 }
 
-function getStartMenuButtonPresetLabel(preset, customText = '') {
-    const normalized = normalizeStartMenuButtonPresetClient(preset);
-    if (normalized === 'custom') {
-        const trimmed = typeof customText === 'string' ? customText.trim() : '';
-        return trimmed ? `Custom Text (${trimmed})` : 'Custom Text';
-    }
-    const meta = START_MENU_BUTTON_PRESET_META[normalized];
-    return `"${meta.group}" — ${meta.label} (${meta.text})`;
-}
-
 function resolveStartMenuButtonDisplayText(preset, customText = '') {
     const normalized = normalizeStartMenuButtonPresetClient(preset);
     if (normalized === 'custom') {
@@ -8802,24 +8777,6 @@ function applyUseApplicationImageIcon(enabled) {
 }
 applyUseApplicationImageIcon(desktopSettingsGlobalState.useApplicationImageIcon);
 
-function syncDesktopSettingsUseApplicationImageIconUI() {
-    const input = document.getElementById('desktopSettingsUseAppImageIcon');
-    if (!input) return;
-    input.checked = desktopSettingsGlobalState.useApplicationImageIcon === true;
-}
-
-let desktopSettingsUseAppImageIconWired = false;
-
-function setupDesktopSettingsUseApplicationImageIcon() {
-    if (desktopSettingsUseAppImageIconWired) return;
-    const input = document.getElementById('desktopSettingsUseAppImageIcon');
-    if (!input) return;
-    input.addEventListener('change', () => {
-        desktopSettingsGlobalState.useApplicationImageIcon = input.checked === true;
-    });
-    desktopSettingsUseAppImageIconWired = true;
-}
-
 function resolveWorkspaceWallpaperUrl(wallpaperPath) {
     if (!wallpaperPath || typeof wallpaperPath !== 'string') {
         return null;
@@ -8844,373 +8801,8 @@ function resolveWorkspaceWallpaperUrl(wallpaperPath) {
     }
 }
 
-function getStartMenuButtonPreviewWallpaperStyle() {
-    const wallpaperEl = document.getElementById('desktopWallpaper');
-    if (wallpaperEl) {
-        const computed = getComputedStyle(wallpaperEl);
-        if (computed.backgroundImage && computed.backgroundImage !== 'none') {
-            return {
-                backgroundImage: computed.backgroundImage,
-                backgroundPosition: computed.backgroundPosition || 'center center',
-                backgroundSize: computed.backgroundSize || 'cover',
-                backgroundColor: computed.backgroundColor || '#0a1a2a'
-            };
-        }
-    }
-
-    const bodyStyle = getComputedStyle(document.body);
-    let backgroundImage = bodyStyle.getPropertyValue('--desktop-wallpaper').trim();
-    let backgroundPosition = bodyStyle.getPropertyValue('--desktop-wallpaper-position').trim() || 'center center';
-    const backgroundColor = bodyStyle.getPropertyValue('--workspace-background-color').trim() || '#0a1a2a';
-
-    if ((!backgroundImage || backgroundImage === 'none') && typeof workspaces === 'object' && workspaces) {
-        const workspaceId = (typeof activeWorkspace !== 'undefined' ? activeWorkspace : null)
-            || document.body.getAttribute('data-workspace')
-            || 'default';
-        const workspace = workspaces[workspaceId];
-        const wallpaperUrl = workspace && resolveWorkspaceWallpaperUrl(workspace.wallpaper);
-        if (wallpaperUrl) {
-            backgroundImage = `url("${wallpaperUrl}")`;
-            backgroundPosition = workspace.wallpaperPosition || 'center';
-        }
-    }
-
-    return {
-        backgroundImage: backgroundImage || 'none',
-        backgroundPosition,
-        backgroundSize: 'cover',
-        backgroundColor
-    };
-}
-
-function getDesktopSettingsStartMenuPreviewDisplayText() {
-    const pref = readDesktopSettingsStartMenuButtonPreference();
-    return resolveStartMenuButtonDisplayText(pref.preset, pref.customText);
-}
-
-function updateDesktopSettingsStartMenuTextPreview() {
-    const wallpaper = document.getElementById('desktopSettingsStartMenuPreviewWallpaper');
-    const previewText = document.getElementById('desktopSettingsStartMenuPreviewText');
-    const previewBtn = document.getElementById('desktopSettingsStartMenuPreviewBtn');
-    const pref = readDesktopSettingsStartMenuButtonPreference();
-    if (wallpaper) {
-        const wallpaperStyle = getStartMenuButtonPreviewWallpaperStyle();
-        wallpaper.style.backgroundImage = wallpaperStyle.backgroundImage;
-        wallpaper.style.backgroundPosition = wallpaperStyle.backgroundPosition;
-        wallpaper.style.backgroundSize = wallpaperStyle.backgroundSize || 'cover';
-        wallpaper.style.backgroundColor = wallpaperStyle.backgroundColor;
-    }
-    if (previewText) {
-        syncStartMenuButtonTextElement(previewText, pref.preset, pref.customText);
-    }
-    applyStartMenuButtonStyleToElement(previewBtn, pref.style);
-    applyStartMenuButtonLogoToElement(previewBtn, pref.logo);
-}
-
-function syncDesktopSettingsStartMenuCustomTextVisibility() {
-    const group = document.getElementById('desktopSettingsStartMenuCustomTextGroup');
-    const input = document.getElementById('desktopSettingsStartMenuCustomTextInput');
-    const pref = readDesktopSettingsStartMenuButtonPreference();
-    const isCustom = pref.preset === 'custom';
-    if (group) {
-        group.classList.toggle('hidden', !isCustom);
-    }
-    if (input && document.activeElement !== input) {
-        input.value = pref.customText || '';
-    }
-}
-
-function syncDesktopSettingsStartMenuTextUI() {
-    const selectedEl = document.getElementById('desktopSettingsStartMenuTextSelected');
-    const hidden = document.getElementById('desktopSettingsStartMenuTextHidden');
-    const pref = readDesktopSettingsStartMenuButtonPreference();
-    if (selectedEl) {
-        selectedEl.textContent = getStartMenuButtonPresetLabel(pref.preset, pref.customText);
-    }
-    if (hidden) {
-        hidden.value = pref.preset;
-    }
-    syncDesktopSettingsStartMenuCustomTextVisibility();
-    syncDesktopSettingsStartMenuStyleUI();
-    syncDesktopSettingsStartMenuLogoUI();
-    updateDesktopSettingsStartMenuTextPreview();
-}
-
-function syncDesktopSettingsStartMenuStyleUI() {
-    const toggle = document.getElementById('desktopSettingsStartMenuStyleToggle');
-    const pref = readDesktopSettingsStartMenuButtonPreference();
-    if (!toggle) return;
-    toggle.setAttribute('data-active', pref.style);
-    toggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
-        btn.classList.toggle('active', btn.dataset.style === pref.style);
-    });
-}
-
-function setupDesktopSettingsStartMenuStyleToggle() {
-    if (desktopSettingsStartMenuStyleWired) {
-        return;
-    }
-
-    const toggle = document.getElementById('desktopSettingsStartMenuStyleToggle');
-    if (!toggle) return;
-
-    toggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
-        btn.addEventListener('click', (e) => {
-            e.preventDefault();
-            const style = btn.dataset.style;
-            if (!style) return;
-            desktopSettingsGlobalState.startMenuButtonStyle = normalizeStartMenuButtonStyleClient(style);
-            syncDesktopSettingsStartMenuStyleUI();
-            updateDesktopSettingsStartMenuTextPreview();
-        });
-    });
-
-    desktopSettingsStartMenuStyleWired = true;
-}
-
-function syncDesktopSettingsStartMenuLogoUI() {
-    const toggle = document.getElementById('desktopSettingsStartMenuLogoToggle');
-    const pref = readDesktopSettingsStartMenuButtonPreference();
-    if (!toggle) return;
-    toggle.setAttribute('data-active', pref.logo);
-    toggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
-        btn.classList.toggle('active', btn.dataset.logo === pref.logo);
-    });
-}
-
-function setupDesktopSettingsStartMenuLogoToggle() {
-    if (desktopSettingsStartMenuLogoWired) return;
-    const toggle = document.getElementById('desktopSettingsStartMenuLogoToggle');
-    if (!toggle) return;
-    toggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
-        btn.addEventListener('click', (e) => {
-            e.preventDefault();
-            const logo = btn.dataset.logo;
-            if (!logo) return;
-            desktopSettingsGlobalState.startMenuButtonLogo = normalizeStartMenuButtonLogoClient(logo);
-            syncDesktopSettingsStartMenuLogoUI();
-            updateDesktopSettingsStartMenuTextPreview();
-        });
-    });
-    desktopSettingsStartMenuLogoWired = true;
-}
-
-// Personalize → Window Glass. Client-only preference applied at once (public/scripts/comp/aeroGlass.js)
-let desktopSettingsGlassModeWired = false;
-
-function syncDesktopSettingsGlassModeUI() {
-    const toggle = document.getElementById('desktopSettingsGlassModeToggle');
-    if (!toggle || !window.aeroGlass) return;
-    const mode = window.aeroGlass.getMode();
-    toggle.setAttribute('data-active', mode);
-    toggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
-        btn.classList.toggle('active', btn.dataset.glassMode === mode);
-    });
-}
-
-function setupDesktopSettingsGlassModeToggle() {
-    if (desktopSettingsGlassModeWired) {
-        return;
-    }
-    const toggle = document.getElementById('desktopSettingsGlassModeToggle');
-    if (!toggle) return;
-
-    toggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
-        btn.addEventListener('click', (e) => {
-            e.preventDefault();
-            const mode = btn.dataset.glassMode;
-            if (!mode || !window.aeroGlass) return;
-            window.aeroGlass.setMode(mode);
-            syncDesktopSettingsGlassModeUI();
-        });
-    });
-    document.addEventListener('aeroGlassModeChanged', syncDesktopSettingsGlassModeUI);
-    syncDesktopSettingsGlassModeUI();
-    desktopSettingsGlassModeWired = true;
-}
-
-function trayCustomizeRow(id, label, checked, onChange) {
-    const row = document.createElement('div');
-    const box = document.createElement('input');
-    box.type = 'checkbox';
-    box.id = id;
-    box.checked = checked;
-    const lab = document.createElement('label');
-    lab.htmlFor = id;
-    lab.textContent = label;
-    box.addEventListener('change', () => onChange(box.checked));
-    row.appendChild(box);
-    row.appendChild(lab);
-    return row;
-}
-
-function renderTrayCustomizeLists() {
-    const popups = document.getElementById('desktopSettingsTrayPopupList');
-    const icons = document.getElementById('desktopSettingsTrayIconList');
-    if (popups) {
-        popups.textContent = '';
-        trayPopupCatalog().forEach((row) => {
-            popups.appendChild(trayCustomizeRow(
-                'trayPopupHide-' + row.id,
-                row.label,
-                trayPopupHidden(row.id),
-                (on) => traySetPopupHidden(row.id, on)
-            ));
-        });
-    }
-    if (icons) {
-        icons.textContent = '';
-        trayIconCatalog().forEach((row) => {
-            icons.appendChild(trayCustomizeRow(
-                'trayIconOverflow-' + row.id,
-                row.label,
-                trayIconOverflow(row.id),
-                (on) => traySetIconOverflow(row.id, on)
-            ));
-        });
-    }
-}
-
-function showTrayCustomizePage(which) {
-    const home = document.querySelector('#melatonControlPanelModal .start-menu-text-setting, .start-menu-text-setting');
-    const popups = document.getElementById('desktopSettingsTrayPopupsPage');
-    const icons = document.getElementById('desktopSettingsTrayIconsPage');
-    if (home) home.classList.toggle('hidden', which !== 'home');
-    if (popups) popups.classList.toggle('hidden', which !== 'popups');
-    if (icons) icons.classList.toggle('hidden', which !== 'icons');
-    if (which !== 'home') renderTrayCustomizeLists();
-}
-
-let desktopSettingsTrayCustomizeWired = false;
-
-function setupDesktopSettingsTrayCustomize() {
-    if (desktopSettingsTrayCustomizeWired) return;
-    const timeBtn = document.getElementById('desktopSettingsTrayPopupTimeBtn');
-    const timeLabel = document.getElementById('desktopSettingsTrayPopupTimeSelected');
-    const popupsLink = document.getElementById('desktopSettingsTrayPopupsLink');
-    const iconsLink = document.getElementById('desktopSettingsTrayIconsLink');
-    if (!timeBtn || !popupsLink || !iconsLink) return;
-    desktopSettingsTrayCustomizeWired = true;
-
-    const syncTime = () => {
-        if (timeLabel) timeLabel.textContent = trayPopupTimeLabel(trayMinPopupMs());
-    };
-    syncTime();
-    // contextMenu.attachPickerMenu: public/scripts/comp/contextMenu.js
-    contextMenu.attachPickerMenu(timeBtn, {
-        items: () => trayPopupTimeChoices(),
-        value: () => String(trayMinPopupMs()),
-        onSelect: (value) => {
-            traySetMinPopupMs(value);
-            syncTime();
-        }
-    });
-    popupsLink.addEventListener('click', () => showTrayCustomizePage('popups'));
-    iconsLink.addEventListener('click', () => showTrayCustomizePage('icons'));
-    const popupsBack = document.getElementById('desktopSettingsTrayPopupsBack');
-    const iconsBack = document.getElementById('desktopSettingsTrayIconsBack');
-    if (popupsBack) popupsBack.addEventListener('click', () => showTrayCustomizePage('home'));
-    if (iconsBack) iconsBack.addEventListener('click', () => showTrayCustomizePage('home'));
-}
-
-function setupDesktopSettingsStartMenuTextDropdown() {
-    if (desktopSettingsStartMenuTextWired) {
-        return;
-    }
-
-    const container = document.getElementById('desktopSettingsStartMenuTextDropdown');
-    const btn = document.getElementById('desktopSettingsStartMenuTextBtn');
-    const menu = document.getElementById('desktopSettingsStartMenuTextMenu');
-    const selectedEl = document.getElementById('desktopSettingsStartMenuTextSelected');
-    const hidden = document.getElementById('desktopSettingsStartMenuTextHidden');
-    const customInput = document.getElementById('desktopSettingsStartMenuCustomTextInput');
-    if (!container || !btn || !menu || !selectedEl || !hidden) return;
-
-    const groups = getStartMenuButtonPresetGroups();
-
-    const applyPresetSelection = (preset, customText) => {
-        const normalized = normalizeStartMenuButtonPresetClient(preset);
-        desktopSettingsGlobalState.startMenuButtonPreset = normalized;
-        desktopSettingsGlobalState.startMenuButtonCustomText = typeof customText === 'string'
-            ? customText.trim().slice(0, 24)
-            : '';
-        hidden.value = normalized;
-        selectedEl.textContent = getStartMenuButtonPresetLabel(
-            normalized,
-            desktopSettingsGlobalState.startMenuButtonCustomText
-        );
-        syncDesktopSettingsStartMenuCustomTextVisibility();
-        updateDesktopSettingsStartMenuTextPreview();
-    };
-
-    const pickerItems = () => {
-        const items = [];
-        groups.forEach((group) => {
-            items.push({ separator: true, text: group.group });
-            group.options.forEach((opt) => items.push({ value: opt.value, text: opt.label }));
-        });
-        return items;
-    };
-
-    // contextMenu.attachPickerMenu: public/scripts/comp/contextMenu.js
-    contextMenu.attachPickerMenu(btn, {
-        maxHeight: true,
-        items: pickerItems,
-        value: () => readDesktopSettingsStartMenuButtonPreference().preset,
-        onSelect: (value) => {
-            if (value === 'custom') {
-                applyPresetSelection('custom', desktopSettingsGlobalState.startMenuButtonCustomText || '');
-                if (customInput) {
-                    customInput.focus();
-                    customInput.select();
-                }
-                return;
-            }
-            applyPresetSelection(value, '');
-        }
-    });
-
-    if (customInput) {
-        customInput.addEventListener('input', () => {
-            desktopSettingsGlobalState.startMenuButtonCustomText = customInput.value.slice(0, 24);
-            selectedEl.textContent = getStartMenuButtonPresetLabel(
-                'custom',
-                desktopSettingsGlobalState.startMenuButtonCustomText
-            );
-            updateDesktopSettingsStartMenuTextPreview();
-        });
-    }
-
-    desktopSettingsStartMenuTextWired = true;
-}
-
-let desktopSettingsActiveScope = 'workspace';
-// a Control Panel page shows one group of the global sections (data-desktop-settings-group)
-let desktopSettingsActiveGroup = null;
-let desktopSettingsScopeHandlersWired = false;
-let desktopSettingsDropdownsWired = false;
-let desktopSettingsStartMenuTextWired = false;
-let desktopSettingsStartMenuStyleWired = false;
-let desktopSettingsStartMenuLogoWired = false;
-let desktopSettingsModalScopeWired = false;
 let desktopSettingsPersistedStartMenuButton = { preset: 'start-ja', customText: '', style: 'workspace', logo: 'dreamscape' };
 let desktopSettingsPersistedUseApplicationImageIcon = false;
-
-// Alignment options for dropdowns
-const ALIGNMENT_OPTIONS = {
-    horizontal: [
-        { value: 'left', label: 'Left' },
-        { value: 'center', label: 'Center' },
-        { value: 'right', label: 'Right' },
-        { value: 'custom', label: 'Manual' }
-    ],
-    vertical: [
-        { value: 'top', label: 'Top' },
-        { value: 'center', label: 'Center' },
-        { value: 'bottom', label: 'Bottom' },
-        { value: 'custom', label: 'Manual' }
-    ]
-};
 
 function setupDesktopContextMenu() {
     const desktopIcons = document.getElementById('desktopIcons');
@@ -9308,42 +8900,6 @@ function setupDesktopContextMenu() {
     }
 }
 
-function getDesktopSettingsActiveScope() {
-    return desktopSettingsActiveScope === 'global' ? 'global' : 'workspace';
-}
-
-function setDesktopSettingsScope(scope) {
-    const nextScope = scope === 'global' ? 'global' : 'workspace';
-    desktopSettingsActiveScope = nextScope;
-
-    const modal = document.getElementById('desktopSettingsModal');
-    if (!modal) return;
-
-    const toggle = document.getElementById('desktopSettingsScopeToggle');
-    if (toggle) {
-        toggle.setAttribute('data-active', nextScope);
-        toggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
-            btn.classList.toggle('active', btn.dataset.scope === nextScope);
-        });
-    }
-
-    // the layout lives in this window or in a Control Panel page (Personalization, Global Settings)
-    const layout = document.getElementById('desktopSettingsLayout') || modal;
-    // a Control Panel page shows one group (data-desktop-settings-group) of its scope's sections
-    const offGroup = (section) => !!desktopSettingsActiveGroup
-        && section.dataset.desktopSettingsScope === nextScope
-        && section.dataset.desktopSettingsGroup !== desktopSettingsActiveGroup;
-    layout.querySelectorAll('[data-desktop-settings-scope]').forEach((section) => {
-        if (section.id === 'desktopSettingsNotificationBridgeSection') {
-            const bridgeVisible = typeof isAndroidNotificationBridgeDetected === 'function'
-                && isAndroidNotificationBridgeDetected();
-            section.classList.toggle('hidden', nextScope !== 'global' || !bridgeVisible || offGroup(section));
-            return;
-        }
-        section.classList.toggle('hidden', section.dataset.desktopSettingsScope !== nextScope || offGroup(section));
-    });
-}
-
 function readDesktopSettingsAutoLaunchPreference() {
     // shouldAutoLaunchWorkspace — public/scripts/comp/galleryView.js
     if (typeof shouldAutoLaunchWorkspace === 'function') {
@@ -9354,17 +8910,6 @@ function readDesktopSettingsAutoLaunchPreference() {
     } catch (e) {
         return true;
     }
-}
-
-function updateDesktopSettingsGlobalToggleUI(btn, on) {
-    if (!btn) return;
-    btn.dataset.state = on ? 'on' : 'off';
-}
-
-function updateDesktopSettingsAutoLaunchToggleUI(autoLaunch) {
-    const btn = document.getElementById('desktopSettingsAutoLaunchWorkspaceBtn');
-    if (!btn) return;
-    updateDesktopSettingsGlobalToggleUI(btn, autoLaunch !== false);
 }
 
 function readDesktopSettingsLiveWindowRepositioningPreference() {
@@ -9391,18 +8936,6 @@ function readDesktopSettingsVirtualKeyboardPreference() {
     }
 }
 
-function updateDesktopSettingsVirtualKeyboardToggleUI(enabled) {
-    const btn = document.getElementById('desktopSettingsVirtualKeyboardBtn');
-    if (!btn) return;
-    updateDesktopSettingsGlobalToggleUI(btn, enabled === true);
-}
-
-function updateDesktopSettingsSoundsToggleUI(enabled) {
-    const btn = document.getElementById('desktopSettingsSoundsBtn');
-    if (!btn) return;
-    updateDesktopSettingsGlobalToggleUI(btn, enabled !== false);
-}
-
 function readDesktopSettingsNotificationBridgeEnabledPreference() {
     // readNotificationBridgeEnabledPreference — public/scripts/comp/toastManager.js
     if (typeof readNotificationBridgeEnabledPreference === 'function') {
@@ -9419,35 +8952,10 @@ function readDesktopSettingsBypassNotificationBridgeDesktopPreference() {
     return false;
 }
 
-function updateDesktopSettingsNotificationBridgeEnabledToggleUI(enabled) {
-    const btn = document.getElementById('desktopSettingsNotificationBridgeEnabledBtn');
-    if (!btn) return;
-    updateDesktopSettingsGlobalToggleUI(btn, enabled !== false);
-}
-
-function updateDesktopSettingsBypassNotificationBridgeDesktopToggleUI(bypass) {
-    const btn = document.getElementById('desktopSettingsBypassNotificationBridgeDesktopBtn');
-    if (!btn) return;
-    updateDesktopSettingsGlobalToggleUI(btn, bypass === true);
-}
-
-function syncDesktopSettingsNotificationBridgeToggleUI() {
-    updateDesktopSettingsNotificationBridgeEnabledToggleUI(desktopSettingsGlobalState.notificationBridgeEnabled);
-    updateDesktopSettingsBypassNotificationBridgeDesktopToggleUI(
-        desktopSettingsGlobalState.bypassNotificationBridgeInDesktopMode
-    );
-}
-
 function shouldExitDesktopOnWorkspaceMaximise() {
     // Maximizing the workspace window stays in desktop mode so it keeps behaving like a window
     // (Yukimi, #403). Leaving desktop mode is the explicit Melaton Desktop toggle only.
     return false;
-}
-
-function updateDesktopSettingsExitDesktopOnWorkspaceMaximiseToggleUI(enabled) {
-    const btn = document.getElementById('desktopSettingsExitDesktopOnWorkspaceMaximiseBtn');
-    if (!btn) return;
-    updateDesktopSettingsGlobalToggleUI(btn, enabled === true);
 }
 
 function updateGalleryMaximizeButtonIcon() {
@@ -9467,13 +8975,6 @@ function updateGalleryMaximizeButtonIcon() {
         icon.className = 'fa-regular fa-window-maximize';
         btn.title = 'Maximize';
     }
-}
-
-function updateDesktopSettingsLiveWindowRepositioningToggleUI(previewModeEnabled) {
-    const btn = document.getElementById('desktopSettingsLiveWindowRepositioningBtn');
-    if (!btn) return;
-    // Stored value is preview mode; toggle ON means live repositioning (direct drag).
-    updateDesktopSettingsGlobalToggleUI(btn, previewModeEnabled !== true);
 }
 
 function setLiveWindowRepositioningEnabled(enabled) {
@@ -9521,346 +9022,43 @@ function isLiveWindowRepositioningEnabled() {
     return desktopSettingsGlobalState.liveWindowRepositioning === true;
 }
 
-function setupDesktopSettingsScopeToggle() {
-    if (desktopSettingsScopeHandlersWired) {
-        return;
-    }
-
-    const toggle = document.getElementById('desktopSettingsScopeToggle');
-    if (!toggle) return;
-
-    toggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
-        btn.addEventListener('click', (e) => {
-            e.preventDefault();
-            const scope = btn.dataset.scope;
-            if (scope) {
-                setDesktopSettingsScope(scope);
-            }
-        });
-    });
-
-    const autoLaunchBtn = document.getElementById('desktopSettingsAutoLaunchWorkspaceBtn');
-    if (autoLaunchBtn) {
-        autoLaunchBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            const nextOn = autoLaunchBtn.dataset.state !== 'on';
-            desktopSettingsGlobalState.autoLaunchWorkspace = nextOn;
-            updateDesktopSettingsAutoLaunchToggleUI(nextOn);
-        });
-    }
-
-    const liveWindowRepositioningBtn = document.getElementById('desktopSettingsLiveWindowRepositioningBtn');
-    if (liveWindowRepositioningBtn) {
-        liveWindowRepositioningBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            const nextLiveOn = liveWindowRepositioningBtn.dataset.state !== 'on';
-            desktopSettingsGlobalState.liveWindowRepositioning = !nextLiveOn;
-            updateDesktopSettingsLiveWindowRepositioningToggleUI(desktopSettingsGlobalState.liveWindowRepositioning);
-        });
-    }
-
-    const exitDesktopOnWorkspaceMaximiseBtn = document.getElementById('desktopSettingsExitDesktopOnWorkspaceMaximiseBtn');
-    if (exitDesktopOnWorkspaceMaximiseBtn) {
-        exitDesktopOnWorkspaceMaximiseBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            const nextOn = exitDesktopOnWorkspaceMaximiseBtn.dataset.state !== 'on';
-            desktopSettingsGlobalState.exitDesktopOnWorkspaceMaximise = nextOn;
-            updateDesktopSettingsExitDesktopOnWorkspaceMaximiseToggleUI(nextOn);
-        });
-    }
-
-    const soundsBtn = document.getElementById('desktopSettingsSoundsBtn');
-    if (soundsBtn) {
-        soundsBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            const nextOn = soundsBtn.dataset.state !== 'on';
-            // desktopSounds.setEnabled: public/scripts/comp/desktopSounds.js
-            desktopSounds.setEnabled(nextOn);
-            updateDesktopSettingsSoundsToggleUI(desktopSounds.isEnabled());
-        });
-    }
-
-    const virtualKeyboardBtn = document.getElementById('desktopSettingsVirtualKeyboardBtn');
-    if (virtualKeyboardBtn) {
-        virtualKeyboardBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            const nextOn = virtualKeyboardBtn.dataset.state !== 'on';
-            desktopSettingsGlobalState.virtualKeyboardEnabled = nextOn;
-            updateDesktopSettingsVirtualKeyboardToggleUI(nextOn);
-            try {
-                localStorage.setItem('virtualKeyboardEnabled', nextOn ? 'true' : 'false');
-            } catch (err) {
-                /* */
-            }
-            // setVirtualKeyboardEnabled: public/scripts/comp/virtualKeyboard.js
-            if (typeof setVirtualKeyboardEnabled === 'function') {
-                setVirtualKeyboardEnabled(nextOn);
-            }
-        });
-    }
-
-    const notificationBridgeEnabledBtn = document.getElementById('desktopSettingsNotificationBridgeEnabledBtn');
-    if (notificationBridgeEnabledBtn) {
-        notificationBridgeEnabledBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            const nextOn = notificationBridgeEnabledBtn.dataset.state !== 'on';
-            desktopSettingsGlobalState.notificationBridgeEnabled = nextOn;
-            updateDesktopSettingsNotificationBridgeEnabledToggleUI(nextOn);
-        });
-    }
-
-    const bypassNotificationBridgeDesktopBtn = document.getElementById('desktopSettingsBypassNotificationBridgeDesktopBtn');
-    if (bypassNotificationBridgeDesktopBtn) {
-        bypassNotificationBridgeDesktopBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            const nextOn = bypassNotificationBridgeDesktopBtn.dataset.state !== 'on';
-            desktopSettingsGlobalState.bypassNotificationBridgeInDesktopMode = nextOn;
-            updateDesktopSettingsBypassNotificationBridgeDesktopToggleUI(nextOn);
-        });
-    }
-
-    desktopSettingsScopeHandlersWired = true;
-}
-
-// Open Desktop Settings Modal with optional wallpaper path (format: "type:id")
 /**
- * Personalization (this workspace) and Global Settings (every workspace) are Control Panel pages
- * (Yukimi, 2026-10-12: "move personalise into control panel and move global settings into a new
- * page"). The forms are still the #desktopSettingsModal layout: the pages host it
- * (registerDesktopSettingsControlPanelPages), so every handler below keeps working. Without
- * Control Panel the window opens as before.
- * @param {string|null} wallpaperPath a wallpaper to preview (file:… / cache:…)
+ * Personalization (this workspace) and the global look are Control Panel pages: Personalization's
+ * hub (cplPersonalization.js), Desktop Background (cplDesktopBackground.js), Window Color.
+ * @param {string|null} wallpaperPath a picture to select on Desktop Background (file:… / cache:…)
  * @param {'workspace'|'global'} [scope]
  */
-let desktopSettingsPendingWallpaper = null;
-
 async function openDesktopSettingsModal(wallpaperPath = null, scope = 'workspace') {
     await featureLoader.loadFeature('control_panel');
     registerDesktopSettingsControlPanelPages();
     const cpl = window.melatonControlPanel;
-    if (cpl && cpl.registerPage && document.getElementById('desktopSettingsLayout')) {
-        // "Set as desktop background" opens Desktop Background with the picture selected
-        // (cplDesktopBackground.js); otherwise Personalization's hub (cplPersonalization.js)
-        if (wallpaperPath && window.cplDesktopBackground && typeof window.cplDesktopBackground.openWith === 'function') {
-            cpl.open('personalization');
-            window.cplDesktopBackground.openWith(wallpaperPath);
-            return;
-        }
-        desktopSettingsPendingWallpaper = wallpaperPath;
-        cpl.open(scope === 'global' ? 'window-color' : 'personalization');
+    if (!cpl || typeof cpl.open !== 'function') return;
+    // "Set as desktop background" opens Desktop Background with the picture selected
+    if (wallpaperPath && window.cplDesktopBackground && typeof window.cplDesktopBackground.openWith === 'function') {
+        cpl.open('personalization');
+        window.cplDesktopBackground.openWith(wallpaperPath);
         return;
     }
-    const modal = document.getElementById('desktopSettingsModal');
-    if (!modal) {
-        console.error('Desktop settings modal not found');
-        return;
-    }
-    await prepareDesktopSettingsForm(wallpaperPath);
-    setDesktopSettingsScope(scope === 'global' ? 'global' : 'workspace');
-    openModal(modal);
+    cpl.open(scope === 'global' ? 'window-color' : 'personalization');
 }
 
-/** Fill the settings forms from the workspace and the global preferences. */
-async function prepareDesktopSettingsForm(wallpaperPath = null) {
-    const modal = document.getElementById('desktopSettingsModal');
-    if (!modal) return;
-
-    const currentWorkspace = (typeof activeWorkspace !== 'undefined' ? activeWorkspace : null) || window.currentWorkspace || 'default';
-    const workspace = workspaces[currentWorkspace];
-
-    // Copy workspace settings to temp state
-    if (workspace) {
-        desktopSettingsState.name = workspace.name || '';
-        desktopSettingsState.color = workspace.color || '#102040';
-        desktopSettingsState.backgroundColor = workspace.backgroundColor || '#0a1a2a';
-        desktopSettingsState.primaryFont = workspace.primaryFont || null;
-        desktopSettingsState.textareaFont = workspace.textareaFont || null;
-    }
-
-    // Populate form from temp state
-    const nameInput = document.getElementById('desktopSettingsWorkspaceName');
-    const colorInput = document.getElementById('desktopSettingsWorkspaceColor');
-    const bgColorInput = document.getElementById('desktopSettingsWorkspaceBackground');
-
-    if (nameInput) nameInput.value = desktopSettingsState.name;
-    if (colorInput) colorInput.value = desktopSettingsState.color;
-    if (bgColorInput) bgColorInput.value = desktopSettingsState.backgroundColor;
-
-    // Set font dropdown labels from temp state
-    const primaryFontSelected = document.getElementById('desktopSettingsPrimaryFontSelected');
-    const textareaFontSelected = document.getElementById('desktopSettingsTextareaFontSelected');
-    if (primaryFontSelected) {
-        if (typeof AVAILABLE_PRIMARY_FONTS !== 'undefined') {
-            const font = AVAILABLE_PRIMARY_FONTS.find(f => f.value === desktopSettingsState.primaryFont) || AVAILABLE_PRIMARY_FONTS[0];
-            primaryFontSelected.textContent = font.label;
-            primaryFontSelected.style.fontFamily = font.value ? `'${font.value}', sans-serif` : (font.fontFamily || 'var(--font-primary)');
-        } else {
-            primaryFontSelected.textContent = desktopSettingsState.primaryFont || 'Default';
-        }
-    }
-    if (textareaFontSelected) {
-        if (typeof AVAILABLE_TEXTAREA_FONTS !== 'undefined') {
-            const font = AVAILABLE_TEXTAREA_FONTS.find(f => f.value === desktopSettingsState.textareaFont) || AVAILABLE_TEXTAREA_FONTS[0];
-            textareaFontSelected.textContent = font.label;
-            textareaFontSelected.style.fontFamily = font.value ? `'${font.value}', monospace` : (font.fontFamily || 'var(--font-mono)');
-        } else {
-            textareaFontSelected.textContent = desktopSettingsState.textareaFont || 'Default';
-        }
-    }
-
-    // Initialize state
-    let pathToUse = wallpaperPath;
-    if (!pathToUse && workspace && workspace.wallpaper) {
-        // Editing existing wallpaper
-        pathToUse = workspace.wallpaper;
-    }
-
-    // Convert path to URL
-    if (pathToUse) {
-        const [type, ...idParts] = pathToUse.split(':');
-        const id = idParts.join(':'); // Rejoin in case the ID contains colons (e.g., URLs)
-        switch (type) {
-            case 'file':
-                desktopSettingsState.wallpaperUrl = localGalleryImageUrl(id);
-                break;
-            case 'cache':
-                desktopSettingsState.wallpaperUrl = localCacheUploadUrl(id);
-                break;
-            case 'cache-preview':
-                desktopSettingsState.wallpaperUrl = localCachePreviewUrl(id);
-                break;
-            case 'vibe':
-                desktopSettingsState.wallpaperUrl = `/cache/vibe/${id}`;
-                break;
-            case 'wallpaper':
-                desktopSettingsState.wallpaperUrl = localCacheWallpaperUrl(id);
-                break;
-            case 'url':
-                desktopSettingsState.wallpaperUrl = id; // Use the custom URL directly
-                break;
-            default:
-                desktopSettingsState.wallpaperUrl = null;
-        }
-    } else {
-        // No wallpaper set
-        desktopSettingsState.wallpaperUrl = null;
-    }
-
-    // Parse existing position (no workspace yet, e.g. right after a reconnect: the default)
-    if (workspace && workspace.wallpaperPosition) {
-        const position = workspace.wallpaperPosition || 'center center';
-        parseWallpaperPosition(position);
-    } else {
-        // Default position
-        desktopSettingsState.horizontalAlign = 'center';
-        desktopSettingsState.verticalAlign = 'center';
-        desktopSettingsState.customHorizontal = 50;
-        desktopSettingsState.customVertical = 50;
-    }
-
-    desktopSettingsGlobalState.autoLaunchWorkspace = readDesktopSettingsAutoLaunchPreference();
-    updateDesktopSettingsAutoLaunchToggleUI(desktopSettingsGlobalState.autoLaunchWorkspace);
-    desktopSettingsGlobalState.liveWindowRepositioning = readDesktopSettingsLiveWindowRepositioningPreference();
-    updateDesktopSettingsLiveWindowRepositioningToggleUI(desktopSettingsGlobalState.liveWindowRepositioning);
-    setLiveWindowRepositioningEnabled(desktopSettingsGlobalState.liveWindowRepositioning);
-    desktopSettingsGlobalState.exitDesktopOnWorkspaceMaximise = readDesktopSettingsExitDesktopOnWorkspaceMaximisePreference();
-    updateDesktopSettingsExitDesktopOnWorkspaceMaximiseToggleUI(desktopSettingsGlobalState.exitDesktopOnWorkspaceMaximise);
-    desktopSettingsGlobalState.virtualKeyboardEnabled = readDesktopSettingsVirtualKeyboardPreference();
-    updateDesktopSettingsVirtualKeyboardToggleUI(desktopSettingsGlobalState.virtualKeyboardEnabled);
-    // desktopSounds.isEnabled: public/scripts/comp/desktopSounds.js
-    updateDesktopSettingsSoundsToggleUI(desktopSounds.isEnabled());
-    // syncImageGenerationSettingsUI: public/scripts/comp/imageGenerationSettings.js
-    syncImageGenerationSettingsUI();
-    if (typeof isAndroidNotificationBridgeDetected === 'function' && isAndroidNotificationBridgeDetected()) {
-        desktopSettingsGlobalState.notificationBridgeEnabled = readDesktopSettingsNotificationBridgeEnabledPreference();
-        desktopSettingsGlobalState.bypassNotificationBridgeInDesktopMode =
-            readDesktopSettingsBypassNotificationBridgeDesktopPreference();
-        syncDesktopSettingsNotificationBridgeToggleUI();
-    }
-    const startMenuPref = readDesktopSettingsStartMenuButtonPreference();
-    desktopSettingsPersistedStartMenuButton = {
-        preset: startMenuPref.preset,
-        customText: startMenuPref.customText,
-        style: startMenuPref.style,
-        logo: startMenuPref.logo
-    };
-    desktopSettingsGlobalState.startMenuButtonPreset = startMenuPref.preset;
-    desktopSettingsGlobalState.startMenuButtonCustomText = startMenuPref.customText;
-    desktopSettingsGlobalState.startMenuButtonStyle = startMenuPref.style;
-    desktopSettingsGlobalState.startMenuButtonLogo = startMenuPref.logo;
-    desktopSettingsPersistedUseApplicationImageIcon = desktopSettingsGlobalState.useApplicationImageIcon === true;
-    syncDesktopSettingsUseApplicationImageIconUI();
-    syncDesktopSettingsStartMenuTextUI();
-    setDesktopSettingsScope('workspace');
-
-    // Initialize dropdowns and button handlers
-    initializeDesktopSettingsModal();
-
-    // Update preview
-    updateDesktopSettingsPreview();
-}
-
-// ---- the Control Panel pages that host the settings forms ----
+// ---- Control Panel's Keyboard page ----
 
 let desktopSettingsCplRegistered = false;
 
-/** Close the settings window if it is the one showing. In Control Panel, Save returns to the previous page. */
-function finishDesktopSettingsDialog() {
-    const modal = document.getElementById('desktopSettingsModal');
-    if (modal && !modal.classList.contains('hidden')) {
-        closeModal(modal);
-        return;
+/** Control Panel's Keyboard page: the virtual keyboard switch (a Vista check box, saved as it is
+ *  changed). The other settings moved to Personalization's pages (cplPersonalization.js). */
+function setDesktopVirtualKeyboardEnabled(enabled) {
+    desktopSettingsGlobalState.virtualKeyboardEnabled = enabled;
+    try {
+        localStorage.setItem('virtualKeyboardEnabled', enabled ? 'true' : 'false');
+    } catch (err) {
+        /* */
     }
-    const cpl = window.melatonControlPanel;
-    const host = document.querySelector('#melatonControlPanelModal .cpl-settings-host');
-    const layout = document.getElementById('desktopSettingsLayout');
-    // goBack: public/scripts/comp/melatonControlPanel.js
-    if (cpl && cpl.isOpen() && host && layout && host.contains(layout)) {
-        cpl.goBack();
+    // setVirtualKeyboardEnabled: public/scripts/comp/virtualKeyboard.js
+    if (typeof setVirtualKeyboardEnabled === 'function') {
+        setVirtualKeyboardEnabled(enabled);
     }
-}
-
-function mountDesktopSettingsInControlPanel(main, scope, group = null) {
-    const layout = document.getElementById('desktopSettingsLayout');
-    const host = main.querySelector('.cpl-settings-host');
-    if (!layout || !host) return;
-    desktopSettingsActiveGroup = group;
-    host.appendChild(layout);
-    showTrayCustomizePage('home');
-    const wallpaper = desktopSettingsPendingWallpaper;
-    desktopSettingsPendingWallpaper = null;
-    prepareDesktopSettingsForm(wallpaper).then(() => setDesktopSettingsScope(scope));
-    setDesktopSettingsScope(scope);
-    const save = main.querySelector('.cpl-settings-save');
-    if (save) {
-        save.addEventListener('click', async () => {
-            setDesktopSettingsScope(scope);
-            await saveDesktopSettings();
-        });
-    }
-}
-
-/** Put the forms back in their (hidden) window so nothing is lost when the page goes away. */
-function unmountDesktopSettingsFromControlPanel() {
-    desktopSettingsActiveGroup = null;
-    const layout = document.getElementById('desktopSettingsLayout');
-    const modal = document.getElementById('desktopSettingsModal');
-    const content = modal && modal.querySelector('.modal-content');
-    if (!layout || !content || content.contains(layout)) return;
-    const footer = content.querySelector('.desktop-settings-footer');
-    content.insertBefore(layout, footer || null);
-}
-
-function desktopSettingsPageBody(heading, intro) {
-    return `
-        <div class="cpl-settings-page">
-            <h1 class="cpl-page-title">${escapeHtml(heading)}</h1>
-            <p class="cpl-intro">${escapeHtml(intro)}</p>
-            <div class="cpl-settings-host"></div>
-            <div class="cpl-settings-actions">
-                <button type="button" class="btn-secondary cpl-settings-save"><span>Save changes</span></button>
-            </div>
-        </div>`;
 }
 
 function registerDesktopSettingsControlPanelPages() {
@@ -9868,33 +9066,32 @@ function registerDesktopSettingsControlPanelPages() {
     const cpl = window.melatonControlPanel;
     if (!cpl || typeof cpl.registerPage !== 'function') return;
     desktopSettingsCplRegistered = true;
-    const tasks = (others) => `
-        <div class="cpl-task-group">
-            <h3 class="cpl-task-heading">Tasks</h3>
-            <ul class="cpl-task-list">${others.map(([label, arg]) => cpl.taskLinkHtml(label, 'nav', arg)).join('')}</ul>
-        </div>
-        <div class="cpl-task-group cpl-task-group--see-also">
-            <h3 class="cpl-task-heading">See also</h3>
-            <ul class="cpl-task-list">${cpl.taskLinkHtml('Taskbar and Start Menu', 'item', 'taskbar')}${cpl.taskLinkHtml('Remote Access', 'item', 'remote-access')}</ul>
-        </div>`;
-    // Personalization is a hub of Vista's pages and dialogs (cplPersonalization.js, Yukimi
-    // 2026-10-21): the wallpaper's position is on Desktop Background (cplDesktopBackground.js), the
-    // glass and live dragging on Window Color and Appearance, the name, colours and fonts in Theme
-    // Settings and the sounds in the Sound dialog (personalizationDialogs.js). Keyboard still mounts
-    // its group of the global settings forms here.
-    const GLOBAL_PAGES = [
-        ['keyboard', 'Keyboard', 'Input', 'The virtual keyboard on touch devices.']
-    ];
-    const siblings = (id) => [['Personalization', 'personalization']]
-        .concat(GLOBAL_PAGES.filter(([other]) => other !== id).map(([other, name]) => [name, other]));
-    GLOBAL_PAGES.forEach(([id, name, heading, intro]) => {
-        cpl.registerPage(id, {
-            title: () => name,
-            tasks: () => tasks(siblings(id)),
-            body: () => desktopSettingsPageBody(heading, intro),
-            mount: (main) => mountDesktopSettingsInControlPanel(main, 'global', id),
-            unmount: unmountDesktopSettingsFromControlPanel
-        });
+    cpl.registerPage('keyboard', {
+        title: () => 'Keyboard',
+        tasks: () => `
+            <div class="cpl-task-group">
+                <h3 class="cpl-task-heading">Tasks</h3>
+                <ul class="cpl-task-list">${cpl.taskLinkHtml('Personalization', 'nav', 'personalization')}</ul>
+            </div>
+            <div class="cpl-task-group cpl-task-group--see-also">
+                <h3 class="cpl-task-heading">See also</h3>
+                <ul class="cpl-task-list">${cpl.taskLinkHtml('Taskbar and Start Menu', 'item', 'taskbar')}${cpl.taskLinkHtml('Remote Access', 'item', 'remote-access')}</ul>
+            </div>`,
+        body: () => `
+            <div class="cpl-mail-page">
+                <h1 class="cpl-page-title">Input</h1>
+                <p>Choose how you type on touch devices.</p>
+                <div class="cpl-mail-options">
+                    <div><input type="checkbox" id="cplVirtualKeyboardCheck"><label for="cplVirtualKeyboardCheck">Use the virtual keyboard instead of the system one</label></div>
+                </div>
+                <p class="cpl-intro">Docked at the bottom on mobile; a floating window on the desktop.</p>
+            </div>`,
+        mount: (main) => {
+            const check = main.querySelector('#cplVirtualKeyboardCheck');
+            if (!check) return;
+            check.checked = readDesktopSettingsVirtualKeyboardPreference();
+            check.addEventListener('change', () => setDesktopVirtualKeyboardEnabled(check.checked));
+        }
     });
 }
 
@@ -9924,24 +9121,9 @@ function parseWallpaperPosition(position) {
     }
 }
 
-// Get CSS background-position value from current state
-function getBackgroundPositionValue() {
-    const horizontal = desktopSettingsState.horizontalAlign === 'custom'
-        ? `${desktopSettingsState.customHorizontal}%`
-        : desktopSettingsState.horizontalAlign;
-
-    const vertical = desktopSettingsState.verticalAlign === 'custom'
-        ? `${desktopSettingsState.customVertical}%`
-        : desktopSettingsState.verticalAlign;
-
-    return `${horizontal} ${vertical}`;
-}
-
-// Update the preview
 // Stock wallpapers (public/static_images/wallpapers, Yozora #424). A workspace with no
 // wallpaper shows the default through the --desktop-wallpaper-default fallback (desktop-shell.css);
 // picking "default" clears the workspace's own wallpaper.
-const DEFAULT_DESKTOP_WALLPAPER_URL = '/static_images/wallpapers/aurora.webp';
 const STOCK_DESKTOP_WALLPAPERS = [
     { name: 'Melaton Aurora (default)', url: null },
     { name: 'Aurora', url: '/static_images/wallpapers/aurora-plain.webp' },
@@ -9949,419 +9131,6 @@ const STOCK_DESKTOP_WALLPAPERS = [
     { name: 'Dusk Aurora', url: '/static_images/wallpapers/aurora-dusk.webp' },
     { name: 'Emerald Aurora', url: '/static_images/wallpapers/aurora-emerald.webp' }
 ];
-
-function updateDesktopSettingsPreview() {
-    const preview = document.getElementById('desktopSettingsPreview');
-    if (!preview) {
-        console.warn('Desktop settings preview element not found');
-        return;
-    }
-
-    const position = getBackgroundPositionValue();
-
-    if (desktopSettingsState.wallpaperUrl) {
-        preview.style.backgroundImage = `url('${desktopSettingsState.wallpaperUrl}')`;
-        preview.style.backgroundPosition = position;
-    } else {
-        // No wallpaper of its own: the workspace shows the default (as the desktop does)
-        preview.style.backgroundImage = `url('${DEFAULT_DESKTOP_WALLPAPER_URL}')`;
-        preview.style.backgroundPosition = 'center center';
-    }
-}
-
-/** Personalize → Select: a click menu with Upload and Stock ▸ the stock wallpapers. */
-function buildWallpaperSelectMenuConfig(uploadInput) {
-    return {
-        position: 'anchor',
-        anchorAlign: 'start',
-        sections: [{
-            type: 'list',
-            items: [
-                { icon: 'fas fa-upload', text: 'Upload...', action: 'desktop-wallpaper-upload' },
-                {
-                    icon: 'fas fa-images',
-                    text: 'Stock',
-                    optionsfn: () => STOCK_DESKTOP_WALLPAPERS.map((wallpaper) => ({
-                        icon: 'fas fa-image',
-                        text: wallpaper.name,
-                        action: 'desktop-wallpaper-stock',
-                        stockUrl: wallpaper.url,
-                        highlighted: (desktopSettingsState.wallpaperUrl || null) === wallpaper.url
-                    }))
-                }
-            ]
-        }],
-        onAction(action, target, item) {
-            if (action === 'desktop-wallpaper-upload') {
-                uploadInput.click();
-                return;
-            }
-            if (action === 'desktop-wallpaper-stock') {
-                desktopSettingsState.wallpaperUrl = item && item.stockUrl ? item.stockUrl : null;
-                updateDesktopSettingsPreview();
-            }
-        }
-    };
-}
-
-// Initialize modal (dropdowns and button handlers)
-function wireDesktopSettingsModalListenerScope() {
-    if (desktopSettingsModalScopeWired) return;
-    const modal = document.getElementById('desktopSettingsModal');
-    if (!modal) return;
-    desktopSettingsModalScopeWired = true;
-    // attachModalListeners, closeAllDropdownsInRoot — modalListenerScope.js, dropdown.js
-    attachModalListeners(modal, (signal) => {
-        signal.addEventListener('abort', () => {
-            closeAllDropdownsInRoot(modal);
-        }, { once: true });
-    });
-}
-
-function handleDesktopSettingsModalKeydown(e) {
-    const modal = document.getElementById('desktopSettingsModal');
-    if (!modal || modal.classList.contains('hidden')) return;
-
-    if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
-        e.preventDefault();
-        e.stopPropagation();
-        saveDesktopSettings();
-        return true;
-    }
-}
-
-let desktopSettingsKeyboardWired = false;
-
-function wireDesktopSettingsKeyboard() {
-    if (desktopSettingsKeyboardWired) return;
-    desktopSettingsKeyboardWired = true;
-    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
-    registerKeyboardListener({
-        id: 'desktopSettingsModal.keydown',
-        handler: handleDesktopSettingsModalKeydown,
-        type: 'whenFocused',
-        modalId: 'desktopSettingsModal',
-        priority: 78,
-        critical: true,
-        showInOverlay: false
-    });
-    registerModalOverlayEntries('desktopSettingsModal', 'Settings', [
-        { id: 'overlay.desktopSettings.save', label: 'Save settings', keys: 'Ctrl+S', icon: 'fas fa-save' },
-        { id: 'overlay.desktopSettings.close', label: 'Close', keys: 'Alt+Q', icon: 'fas fa-times' }
-    ]);
-}
-
-function initializeDesktopSettingsModal() {
-    wireDesktopSettingsModalListenerScope();
-    wireDesktopSettingsKeyboard();
-    setupDesktopSettingsScopeToggle();
-
-    // Setup dropdowns
-    setupDesktopSettingsDropdowns();
-    setupDesktopSettingsStartMenuTextDropdown();
-    setupDesktopSettingsTrayCustomize();
-    setupDesktopSettingsStartMenuStyleToggle();
-    setupDesktopSettingsStartMenuLogoToggle();
-    setupDesktopSettingsUseApplicationImageIcon();
-    setupDesktopSettingsGlassModeToggle();
-
-    // Setup button handlers
-    setupDesktopSettingsButtonHandlers();
-}
-
-// Initialize dropdowns
-function setupDesktopSettingsDropdowns() {
-    if (desktopSettingsDropdownsWired) {
-        return;
-    }
-
-    // Horizontal dropdown
-    const horizBtn = document.getElementById('desktopSettingsHorizontalBtn');
-    const horizSlider = document.getElementById('desktopSettingsHorizontalSlider');
-    const horizValue = document.getElementById('desktopSettingsHorizontalValue');
-
-    if (horizBtn) {
-        // contextMenu.attachPickerMenu: public/scripts/comp/contextMenu.js
-        contextMenu.attachPickerMenu(horizBtn, {
-            items: () => ALIGNMENT_OPTIONS.horizontal.map((opt) => ({ value: opt.value, text: opt.label })),
-            value: () => desktopSettingsState.horizontalAlign,
-            onSelect: (value) => {
-                desktopSettingsState.horizontalAlign = value;
-                updateAlignmentUI('horizontal');
-                updateDesktopSettingsPreview();
-            }
-        });
-    }
-
-    // Vertical dropdown
-    const vertBtn = document.getElementById('desktopSettingsVerticalBtn');
-    const vertSlider = document.getElementById('desktopSettingsVerticalSlider');
-    const vertValue = document.getElementById('desktopSettingsVerticalValue');
-
-    if (vertBtn) {
-        // contextMenu.attachPickerMenu: public/scripts/comp/contextMenu.js
-        contextMenu.attachPickerMenu(vertBtn, {
-            items: () => ALIGNMENT_OPTIONS.vertical.map((opt) => ({ value: opt.value, text: opt.label })),
-            value: () => desktopSettingsState.verticalAlign,
-            onSelect: (value) => {
-                desktopSettingsState.verticalAlign = value;
-                updateAlignmentUI('vertical');
-                updateDesktopSettingsPreview();
-            }
-        });
-    }
-
-    // Horizontal slider events
-    if (horizSlider) {
-        horizSlider.value = desktopSettingsState.customHorizontal;
-        if (horizValue) {
-            horizValue.textContent = `${desktopSettingsState.customHorizontal}%`;
-        }
-
-        // Remove old listeners by cloning
-        const newHorizSlider = horizSlider.cloneNode(true);
-        horizSlider.parentNode.replaceChild(newHorizSlider, horizSlider);
-
-        newHorizSlider.addEventListener('input', (e) => {
-            const value = parseInt(e.target.value);
-            desktopSettingsState.customHorizontal = value;
-            const valueSpan = document.getElementById('desktopSettingsHorizontalValue');
-            if (valueSpan) {
-                valueSpan.textContent = `${value}%`;
-            }
-            updateDesktopSettingsPreview();
-        });
-    }
-
-    // Vertical slider events
-    if (vertSlider) {
-        vertSlider.value = desktopSettingsState.customVertical;
-        if (vertValue) {
-            vertValue.textContent = `${desktopSettingsState.customVertical}%`;
-        }
-
-        // Remove old listeners by cloning
-        const newVertSlider = vertSlider.cloneNode(true);
-        vertSlider.parentNode.replaceChild(newVertSlider, vertSlider);
-
-        newVertSlider.addEventListener('input', (e) => {
-            const value = parseInt(e.target.value);
-            desktopSettingsState.customVertical = value;
-            const valueSpan = document.getElementById('desktopSettingsVerticalValue');
-            if (valueSpan) {
-                valueSpan.textContent = `${value}%`;
-            }
-            updateDesktopSettingsPreview();
-        });
-    }
-
-    // Update UI based on current state
-    updateAlignmentUI('horizontal');
-    updateAlignmentUI('vertical');
-
-    // Font pickers: the app's context menu (contextMenu.attachPickerMenu), so the list floats
-    // above the window and is never clipped by it (Yukimi 2026-10-21); each name in its own font
-    wireDesktopSettingsFontPicker('Primary', () => (typeof AVAILABLE_PRIMARY_FONTS !== 'undefined' ? AVAILABLE_PRIMARY_FONTS : []),
-        'primaryFont', 'sans-serif', 'var(--font-primary)');
-    wireDesktopSettingsFontPicker('Textarea', () => (typeof AVAILABLE_TEXTAREA_FONTS !== 'undefined' ? AVAILABLE_TEXTAREA_FONTS : []),
-        'textareaFont', 'monospace', 'var(--font-mono)');
-
-    desktopSettingsDropdownsWired = true;
-}
-
-/**
- * A font picker on the settings forms: the button shows the choice in its own face; the list is
- * a context-menu picker (radio marks, one row per font, drawn in that font).
- * @param {'Primary'|'Textarea'} which  the element ids' infix (desktopSettings<which>Font*)
- */
-function wireDesktopSettingsFontPicker(which, fonts, stateKey, generic, fallbackVar) {
-    const btn = document.getElementById(`desktopSettings${which}FontBtn`);
-    const selected = document.getElementById(`desktopSettings${which}FontSelected`);
-    if (!btn || !selected) return;
-    const face = (font) => (font.value ? `'${font.value}', ${generic}` : (font.fontFamily || fallbackVar));
-    // contextMenu.attachPickerMenu: public/scripts/comp/contextMenu.js
-    contextMenu.attachPickerMenu(btn, {
-        maxHeight: true,
-        items: () => fonts().map((font) => ({
-            value: font.value || '',
-            text: font.label,
-            // the menu's own text markup (contextMenu.js), with the font's face
-            content: () => {
-                const box = document.createElement('div');
-                box.className = 'context-menu-item-text-container';
-                const span = document.createElement('span');
-                span.className = 'context-menu-item-text';
-                span.textContent = font.label;
-                span.style.fontFamily = face(font);
-                box.appendChild(span);
-                return box;
-            }
-        })),
-        value: () => desktopSettingsState[stateKey] || '',
-        onSelect: (value) => {
-            const font = fonts().find((f) => (f.value || '') === value);
-            if (!font) return;
-            desktopSettingsState[stateKey] = font.value || null;
-            selected.textContent = font.label;
-            selected.style.fontFamily = face(font);
-        }
-    });
-}
-
-// Update alignment UI (selected text and slider visibility)
-function updateAlignmentUI(axis) {
-    if (axis === 'horizontal') {
-        const selectedSpan = document.getElementById('desktopSettingsHorizontalSelected');
-        const sliderContainer = document.getElementById('desktopSettingsHorizontalSliderContainer');
-        const value = desktopSettingsState.horizontalAlign;
-
-        const option = ALIGNMENT_OPTIONS.horizontal.find(opt => opt.value === value);
-        if (selectedSpan && option) {
-            selectedSpan.textContent = option.label;
-        }
-
-        if (sliderContainer) {
-            if (value === 'custom') {
-                sliderContainer.classList.remove('hidden');
-            } else {
-                sliderContainer.classList.add('hidden');
-            }
-        }
-    } else {
-        const selectedSpan = document.getElementById('desktopSettingsVerticalSelected');
-        const sliderContainer = document.getElementById('desktopSettingsVerticalSliderContainer');
-        const value = desktopSettingsState.verticalAlign;
-
-        const option = ALIGNMENT_OPTIONS.vertical.find(opt => opt.value === value);
-        if (selectedSpan && option) {
-            selectedSpan.textContent = option.label;
-        }
-
-        if (sliderContainer) {
-            if (value === 'custom') {
-                sliderContainer.classList.remove('hidden');
-            } else {
-                sliderContainer.classList.add('hidden');
-            }
-        }
-    }
-}
-
-// Setup button event handlers (direct handlers, not context menu)
-function setupDesktopSettingsButtonHandlers() {
-    // Reset button
-    const resetBtn = document.getElementById('desktopSettingsResetBtn');
-    if (resetBtn) {
-        // Remove existing listeners by cloning
-        const newResetBtn = resetBtn.cloneNode(true);
-        resetBtn.parentNode.replaceChild(newResetBtn, resetBtn);
-
-        newResetBtn.addEventListener('click', () => {
-            desktopSettingsState.horizontalAlign = 'center';
-            desktopSettingsState.verticalAlign = 'center';
-            desktopSettingsState.customHorizontal = 50;
-            desktopSettingsState.customVertical = 50;
-
-            // Update sliders
-            const horizSlider = document.getElementById('desktopSettingsHorizontalSlider');
-            const vertSlider = document.getElementById('desktopSettingsVerticalSlider');
-            const horizValue = document.getElementById('desktopSettingsHorizontalValue');
-            const vertValue = document.getElementById('desktopSettingsVerticalValue');
-
-            if (horizSlider) horizSlider.value = 50;
-            if (vertSlider) vertSlider.value = 50;
-            if (horizValue) horizValue.textContent = '50%';
-            if (vertValue) vertValue.textContent = '50%';
-
-            updateAlignmentUI('horizontal');
-            updateAlignmentUI('vertical');
-            updateDesktopSettingsPreview();
-        });
-    }
-
-    // Remove button
-    const removeBtn = document.getElementById('desktopSettingsRemoveBtn');
-    if (removeBtn) {
-        // Remove existing listeners by cloning
-        const newRemoveBtn = removeBtn.cloneNode(true);
-        removeBtn.parentNode.replaceChild(newRemoveBtn, removeBtn);
-
-        newRemoveBtn.addEventListener('click', async () => {
-            await clearDesktopWallpaper();
-            finishDesktopSettingsDialog();
-        });
-    }
-
-    // Save button
-    const saveBtn = document.getElementById('desktopSettingsSaveBtn');
-    if (saveBtn) {
-        // Remove existing listeners by cloning
-        const newSaveBtn = saveBtn.cloneNode(true);
-        saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
-
-        newSaveBtn.addEventListener('click', async () => {
-            await saveDesktopSettings();
-        });
-    }
-
-    // Close button
-    const closeBtn = document.getElementById('closeDesktopSettingsBtn');
-    if (closeBtn) {
-        // Remove existing listeners by cloning
-        const newCloseBtn = closeBtn.cloneNode(true);
-        closeBtn.parentNode.replaceChild(newCloseBtn, closeBtn);
-
-        newCloseBtn.addEventListener('click', () => {
-            const modal = document.getElementById('desktopSettingsModal');
-            closeModal(modal);
-        });
-    }
-
-    // Wallpaper upload button and file input
-    const uploadBtn = document.getElementById('desktopSettingsWallpaperUploadBtn');
-    const uploadInput = document.getElementById('desktopSettingsWallpaperUpload');
-
-    if (uploadBtn && uploadInput) {
-        // Remove existing listeners by cloning
-        const newUploadBtn = uploadBtn.cloneNode(true);
-        uploadBtn.parentNode.replaceChild(newUploadBtn, uploadBtn);
-
-        const newUploadInput = uploadInput.cloneNode(true);
-        uploadInput.parentNode.replaceChild(newUploadInput, uploadInput);
-
-        // Select: Control Panel's Desktop Background page (Vista's picker, cplDesktopBackground.js);
-        // without Control Panel, the Upload / Stock click menu (contextMenu.js)
-        if (window.cplDesktopBackground && window.melatonControlPanel) {
-            newUploadBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                window.cplDesktopBackground.open();
-            });
-        } else {
-            contextMenu.attachClickMenuToElement(newUploadBtn, buildWallpaperSelectMenuConfig(newUploadInput));
-        }
-
-        newUploadInput.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            if (!file.type.startsWith('image/')) {
-                showGlassToast('error', 'Invalid File', 'Please select an image file', false, 3000, '<i class="fas fa-exclamation-triangle"></i>');
-                return;
-            }
-
-            await uploadCustomWallpaper(file);
-        });
-    }
-}
-
-// Save desktop settings (workspace or global scope)
-async function saveDesktopSettings() {
-    if (getDesktopSettingsActiveScope() === 'global') {
-        await saveDesktopGlobalSettings();
-        return;
-    }
-    await saveDesktopWorkspaceSettings();
-}
 
 function normalizeNaxtElevatePinsClient(value) {
     if (value === true || value === 'true') return 1;
@@ -10377,7 +9146,6 @@ let remoteAccessSettingsState = {
     minPrintsPerTurn: 1,
     maxPrintsPerTurn: 8
 };
-let remoteAccessSettingsWired = false;
 
 function normalizeRemoteAccessGenerationMethodClient(raw) {
     const value = String(raw || '').toLowerCase().replace(/[\s_-]+/g, '');
@@ -10417,185 +9185,19 @@ function applyRemoteAccessSettingsToState(settings) {
     };
 }
 
-function syncRemoteAccessSettingsUI() {
-    const methodToggle = document.getElementById('remoteAccessDefaultGenerationToggle');
-    if (methodToggle) {
-        methodToggle.setAttribute('data-active', remoteAccessSettingsState.defaultGenerationMethod);
-        methodToggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
-            btn.classList.toggle('active', btn.dataset.method === remoteAccessSettingsState.defaultGenerationMethod);
-        });
-    }
-    const autoBtn = document.getElementById('remoteAccessAutoGenerateBtn');
-    if (autoBtn) {
-        autoBtn.dataset.state = remoteAccessSettingsState.autoGenerate ? 'on' : 'off';
-    }
-    const openToggle = document.getElementById('remoteAccessOpenGeneratedToggle');
-    if (openToggle) {
-        openToggle.setAttribute('data-active', remoteAccessSettingsState.openGeneratedImages);
-        openToggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
-            btn.classList.toggle('active', btn.dataset.open === remoteAccessSettingsState.openGeneratedImages);
-        });
-    }
-    const maxPrints = document.getElementById('remoteAccessMaxPrints');
-    if (maxPrints) maxPrints.value = String(remoteAccessSettingsState.maxPrintsPerTurn);
-    const minPrints = document.getElementById('remoteAccessMinPrints');
-    if (minPrints) minPrints.value = String(remoteAccessSettingsState.minPrintsPerTurn);
-}
-
 async function persistRemoteAccessSettingsPatch(patch) {
     applyRemoteAccessSettingsToState({ ...remoteAccessSettingsState, ...patch });
-    syncRemoteAccessSettingsUI();
     await persistUserGlobalSettingsPatch({ remoteAccess: { ...remoteAccessSettingsState } });
 }
 
-function wireRemoteAccessSettingsModal() {
-    if (remoteAccessSettingsWired) return;
-    const modal = document.getElementById('remoteAccessSettingsModal');
-    if (!modal) return;
-    remoteAccessSettingsWired = true;
-    const methodToggle = document.getElementById('remoteAccessDefaultGenerationToggle');
-    if (methodToggle) {
-        methodToggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
-            btn.addEventListener('click', (e) => {
-                e.preventDefault();
-                const method = normalizeRemoteAccessGenerationMethodClient(btn.dataset.method);
-                void persistRemoteAccessSettingsPatch({ defaultGenerationMethod: method });
-            });
-        });
-    }
-    const autoBtn = document.getElementById('remoteAccessAutoGenerateBtn');
-    if (autoBtn) {
-        autoBtn.addEventListener('click', () => {
-            void persistRemoteAccessSettingsPatch({
-                autoGenerate: remoteAccessSettingsState.autoGenerate !== true
-            });
-        });
-    }
-    const openToggle = document.getElementById('remoteAccessOpenGeneratedToggle');
-    if (openToggle) {
-        openToggle.querySelectorAll('.gallery-toggle-btn').forEach((btn) => {
-            btn.addEventListener('click', (e) => {
-                e.preventDefault();
-                const open = normalizeRemoteAccessOpenGeneratedClient(btn.dataset.open);
-                void persistRemoteAccessSettingsPatch({ openGeneratedImages: open });
-            });
-        });
-    }
-    const wirePrints = (id, key) => {
-        const input = document.getElementById(id);
-        if (!input) return;
-        const commit = () => {
-            const value = normalizeRemoteAccessPrintsClient(input.value, remoteAccessSettingsState[key]);
-            input.value = String(value);
-            void persistRemoteAccessSettingsPatch({ [key]: value });
-        };
-        input.addEventListener('change', commit);
-        input.addEventListener('wheel', (event) => {
-            // Only a real wheel over the open Remote Access window saves; agent run_client_js probes dispatch synthetic wheels.
-            if (!event.isTrusted || modal.classList.contains('hidden') || modal.classList.contains('hidden-alt')) return;
-            event.preventDefault();
-            const dir = event.deltaY < 0 ? 1 : -1;
-            const next = normalizeRemoteAccessPrintsClient((Number(input.value) || 1) + dir, remoteAccessSettingsState[key]);
-            input.value = String(next);
-            void persistRemoteAccessSettingsPatch({ [key]: next });
-        }, { passive: false });
-    };
-    wirePrints('remoteAccessMaxPrints', 'maxPrintsPerTurn');
-    wirePrints('remoteAccessMinPrints', 'minPrintsPerTurn');
-    const closeBtn = document.getElementById('closeRemoteAccessSettingsBtn');
-    if (closeBtn) {
-        closeBtn.addEventListener('click', () => {
-            closeModal(modal);
-        });
-    }
-    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
-    registerKeyboardListener({
-        id: 'remoteAccessSettingsModal.keydown',
-        handler: () => false,
-        type: 'whenFocused',
-        modalId: 'remoteAccessSettingsModal',
-        priority: 78,
-        critical: true,
-        showInOverlay: false
-    });
-    registerModalOverlayEntries('remoteAccessSettingsModal', 'Remote Access', [
-        { id: 'overlay.remoteAccess.close', label: 'Close', keys: 'Alt+Q', icon: 'fas fa-times' }
-    ]);
-}
-
-/**
- * Remote Access opens Remote Access Properties (remoteAccessProperties.js, in Control Panel's
- * bundle), Vista's System Properties > Remote tab; then the Control Panel page, then the old window.
- */
+/** Remote Access opens Remote Access Properties (remoteAccessProperties.js, in Control Panel's
+ *  bundle), Vista's System Properties > Remote tab. */
 async function openRemoteAccessSettingsModal() {
     await featureLoader.loadFeature('control_panel');
     if (window.remoteAccessProperties && typeof window.remoteAccessProperties.open === 'function') {
         window.remoteAccessProperties.open();
-        return;
     }
-    const cpl = window.melatonControlPanel;
-    if (cpl && typeof cpl.open === 'function' && registerRemoteAccessControlPanelPage()) {
-        cpl.open('remote-access');
-        return;
-    }
-    const modal = document.getElementById('remoteAccessSettingsModal');
-    if (!modal) return;
-    wireRemoteAccessSettingsModal();
-    const settings = await loadUserGlobalSettingsFromServer();
-    if (settings && settings.remoteAccess) {
-        applyRemoteAccessSettingsToState(settings.remoteAccess);
-    }
-    syncRemoteAccessSettingsUI();
-    openModal(modal);
 }
-
-let remoteAccessCplRegistered = false;
-
-/**
- * Control Panel's Remote Access page (Yukimi 2026-10-13): hosts the live #remoteAccessSettingsLayout
- * like Personalization hosts the desktop settings forms; every change saves as it is made.
- */
-function registerRemoteAccessControlPanelPage() {
-    if (remoteAccessCplRegistered) return true;
-    const cpl = window.melatonControlPanel;
-    if (!cpl || typeof cpl.registerPage !== 'function') return false;
-    remoteAccessCplRegistered = true;
-    cpl.registerPage('remote-access', {
-        title: () => 'Remote Access',
-        tasks: () => `
-            <div class="cpl-task-group cpl-task-group--see-also">
-                <h3 class="cpl-task-heading">See also</h3>
-                <ul class="cpl-task-list">
-                    ${cpl.taskLinkHtml('Network and Server Center', 'nav', 'network')}
-                    ${cpl.taskLinkHtml('Taskbar and Start Menu', 'item', 'taskbar')}
-                </ul>
-            </div>`,
-        body: () => `
-            <div class="cpl-settings-page">
-                <h1 class="cpl-page-title">Choose how agents work on this computer</h1>
-                <p class="cpl-intro">How Claude Code, Cursor and other MCP apps generate, and where their prints open. Changes are saved as you make them.</p>
-                <div class="cpl-settings-host"></div>
-            </div>`,
-        mount: async (main) => {
-            const layout = document.getElementById('remoteAccessSettingsLayout');
-            const host = main.querySelector('.cpl-settings-host');
-            if (!layout || !host) return;
-            host.appendChild(layout);
-            wireRemoteAccessSettingsModal();
-            syncRemoteAccessSettingsUI();
-            const settings = await loadUserGlobalSettingsFromServer();
-            if (settings && settings.remoteAccess) applyRemoteAccessSettingsToState(settings.remoteAccess);
-            syncRemoteAccessSettingsUI();
-        },
-        unmount: () => {
-            const layout = document.getElementById('remoteAccessSettingsLayout');
-            const content = document.querySelector('#remoteAccessSettingsModal > .modal-content');
-            if (layout && content && !content.contains(layout)) content.appendChild(layout);
-        }
-    });
-    return true;
-}
-// melatonControlPanel.js also calls this when featureLoader loads it (Control Panel's own item)
 
 function buildUserGlobalSettingsSnapshotFromClient() {
     let elevatePins = 0;
@@ -10725,7 +9327,6 @@ function applyUserGlobalSettingsToClient(settings) {
             desktopSettingsGlobalState.useApplicationImageIcon = desktop.useApplicationImageIcon;
             desktopSettingsPersistedUseApplicationImageIcon = desktop.useApplicationImageIcon;
             applyUseApplicationImageIcon(desktop.useApplicationImageIcon);
-            syncDesktopSettingsUseApplicationImageIconUI();
         }
         if (Array.isArray(desktop.startMenuPinned)) {
             applyStartMenuPinnedLaunchIds(desktop.startMenuPinned);
@@ -10757,7 +9358,6 @@ function applyUserGlobalSettingsToClient(settings) {
 
     if (settings.remoteAccess && typeof settings.remoteAccess === 'object') {
         applyRemoteAccessSettingsToState(settings.remoteAccess);
-        syncRemoteAccessSettingsUI();
     }
 
     if (settings.imageGeneration && typeof settings.imageGeneration === 'object') {
@@ -10814,226 +9414,6 @@ async function persistUserGlobalSettingsPatch(patch) {
         throw e;
     }
 }
-
-async function saveDesktopGlobalSettings() {
-    const autoLaunch = desktopSettingsGlobalState.autoLaunchWorkspace !== false;
-    const liveWindowRepositioning = desktopSettingsGlobalState.liveWindowRepositioning === true;
-    const exitDesktopOnWorkspaceMaximise = desktopSettingsGlobalState.exitDesktopOnWorkspaceMaximise === true;
-    const notificationBridgeEnabled = desktopSettingsGlobalState.notificationBridgeEnabled !== false;
-    const bypassNotificationBridgeInDesktopMode =
-        desktopSettingsGlobalState.bypassNotificationBridgeInDesktopMode === true;
-    const previousAutoLaunch = readDesktopSettingsAutoLaunchPreference();
-    const previousLiveWindowRepositioning = readDesktopSettingsLiveWindowRepositioningPreference();
-    const previousExitDesktopOnWorkspaceMaximise = readDesktopSettingsExitDesktopOnWorkspaceMaximisePreference();
-    const previousNotificationBridgeEnabled = readDesktopSettingsNotificationBridgeEnabledPreference();
-    const previousBypassNotificationBridgeInDesktopMode =
-        readDesktopSettingsBypassNotificationBridgeDesktopPreference();
-    const startMenuButton = readDesktopSettingsStartMenuButtonPreference();
-    const previousStartMenuButton = desktopSettingsPersistedStartMenuButton;
-    const useApplicationImageIcon = desktopSettingsGlobalState.useApplicationImageIcon === true;
-    const bridgeDetected = typeof isAndroidNotificationBridgeDetected === 'function'
-        && isAndroidNotificationBridgeDetected();
-
-    if (startMenuButton.preset === 'custom' && !startMenuButton.customText) {
-        showGlassToast('warning', null, 'Enter custom start button text before saving', false, 3000, '<i class="fa-light fa-exclamation-triangle"></i>');
-        const customInput = document.getElementById('desktopSettingsStartMenuCustomTextInput');
-        if (customInput) {
-            customInput.focus();
-        }
-        return;
-    }
-
-    if (autoLaunch === previousAutoLaunch
-        && liveWindowRepositioning === previousLiveWindowRepositioning
-        && exitDesktopOnWorkspaceMaximise === previousExitDesktopOnWorkspaceMaximise
-        && startMenuButton.preset === previousStartMenuButton.preset
-        && startMenuButton.customText === previousStartMenuButton.customText
-        && startMenuButton.style === previousStartMenuButton.style
-        && startMenuButton.logo === normalizeStartMenuButtonLogoClient(previousStartMenuButton.logo)
-        && useApplicationImageIcon === desktopSettingsPersistedUseApplicationImageIcon
-        && (!bridgeDetected
-            || (notificationBridgeEnabled === previousNotificationBridgeEnabled
-                && bypassNotificationBridgeInDesktopMode === previousBypassNotificationBridgeInDesktopMode))) {
-        finishDesktopSettingsDialog();
-        showGlassToast('info', null, 'No changes to save', false, 2000, '<i class="fa-light fa-info-circle"></i>');
-        return;
-    }
-
-    const desktopPatch = {
-        autoLaunchWorkspace: autoLaunch,
-        liveWindowRepositioning,
-        exitDesktopOnWorkspaceMaximise,
-        useApplicationImageIcon,
-        startMenuButton
-    };
-    if (bridgeDetected) {
-        desktopPatch.notificationBridgeEnabled = notificationBridgeEnabled;
-        desktopPatch.bypassNotificationBridgeInDesktopMode = bypassNotificationBridgeInDesktopMode;
-    }
-
-    try {
-        await persistUserGlobalSettingsPatch({ desktop: desktopPatch });
-        desktopSettingsPersistedStartMenuButton = {
-            preset: startMenuButton.preset,
-            customText: startMenuButton.customText,
-            style: startMenuButton.style,
-            logo: startMenuButton.logo
-        };
-        desktopSettingsPersistedUseApplicationImageIcon = useApplicationImageIcon;
-        applyStartMenuButtonAppearanceToTaskbar(
-            startMenuButton.preset,
-            startMenuButton.customText,
-            startMenuButton.style,
-            startMenuButton.logo
-        );
-        if (bridgeDetected && typeof applyNotificationBridgePreferences === 'function') {
-            applyNotificationBridgePreferences(notificationBridgeEnabled, bypassNotificationBridgeInDesktopMode);
-        }
-    } catch (e) {
-        console.error('Failed to save desktop global settings:', e);
-        showGlassToast('error', 'Save Failed', 'Could not save startup settings', false, 4000, '<i class="fa-light fa-exclamation-triangle"></i>');
-        return;
-    }
-
-    finishDesktopSettingsDialog();
-    showGlassToast('success', null, 'Global Settings Saved', false, 3000, '<i class="fa-light fa-check"></i>');
-}
-
-async function saveDesktopWorkspaceSettings() {
-    const currentWorkspace = (typeof activeWorkspace !== 'undefined' ? activeWorkspace : null) || window.currentWorkspace || 'default';
-    const workspace = workspaces[currentWorkspace];
-
-    if (!workspace) {
-        console.error('Current workspace not found');
-        return;
-    }
-
-    // Get workspace settings from form and temp state
-    const nameInput = document.getElementById('desktopSettingsWorkspaceName');
-    const colorInput = document.getElementById('desktopSettingsWorkspaceColor');
-    const bgColorInput = document.getElementById('desktopSettingsWorkspaceBackground');
-
-    const newName = nameInput ? nameInput.value.trim() : desktopSettingsState.name;
-    const newColor = colorInput ? colorInput.value : desktopSettingsState.color;
-    const newBgColor = bgColorInput ? bgColorInput.value : desktopSettingsState.backgroundColor;
-    const newPrimaryFont = desktopSettingsState.primaryFont; // From temp state
-    const newTextareaFont = desktopSettingsState.textareaFont; // From temp state
-
-    // Get the current wallpaper path from workspace
-    const currentWallpaperPath = workspace.wallpaper || null;
-    const currentPosition = workspace.wallpaperPosition || 'center center';
-
-    // Get the new wallpaper path in the correct format (type:id)
-    let newWallpaperPath = null;
-
-    // Convert URL to wallpaper path format if wallpaper is set
-    if (desktopSettingsState.wallpaperUrl) {
-        const url = desktopSettingsState.wallpaperUrl;
-        if (url.startsWith('/cache/upload/')) {
-            newWallpaperPath = `cache:${decodeURIComponent(url.replace('/cache/upload/', ''))}`;
-        } else if (url.startsWith('/cache/preview/')) {
-            newWallpaperPath = `cache-preview:${decodeURIComponent(url.replace('/cache/preview/', ''))}`;
-        } else if (url.startsWith('/cache/vibe/')) {
-            newWallpaperPath = `vibe:${decodeURIComponent(url.replace('/cache/vibe/', ''))}`;
-        } else if (url.startsWith('/cache/wallpapers/')) {
-            const workspaceId = decodeURIComponent(url.replace('/cache/wallpapers/', '')).replace(/\.png$/i, '');
-            newWallpaperPath = `wallpaper:${workspaceId}`;
-        } else if (url.startsWith('/images/')) {
-            newWallpaperPath = `file:${decodeURIComponent(url.replace('/images/', ''))}`;
-        } else if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('//')) {
-            // Custom URL (external or protocol-relative)
-            newWallpaperPath = `url:${url}`;
-        } else {
-            // Unknown format, treat as custom URL
-            newWallpaperPath = `url:${url}`;
-        }
-    }
-
-    const newPosition = getBackgroundPositionValue();
-
-    // Determine what changed
-    const nameChanged = newName !== workspace.name;
-    const colorChanged = newColor !== workspace.color;
-    const bgColorChanged = newBgColor !== workspace.backgroundColor;
-    const primaryFontChanged = newPrimaryFont !== (workspace.primaryFont || null);
-    const textareaFontChanged = newTextareaFont !== (workspace.textareaFont || null);
-    const wallpaperChanged = currentWallpaperPath !== newWallpaperPath;
-    const positionChanged = currentPosition !== newPosition;
-
-    // Only update if something changed
-    if (!nameChanged && !colorChanged && !bgColorChanged && !primaryFontChanged && !textareaFontChanged && !wallpaperChanged && !positionChanged) {
-        finishDesktopSettingsDialog();
-        showGlassToast('info', null, 'No changes to save', false, 2000, '<i class="fa-light fa-info-circle"></i>');
-        return;
-    }
-
-    // Build settings object with only changed values
-    const settings = {};
-
-    if (nameChanged) {
-        settings.name = newName;
-    }
-    if (colorChanged) {
-        settings.color = newColor;
-    }
-    if (bgColorChanged) {
-        settings.backgroundColor = newBgColor;
-    }
-    if (primaryFontChanged) {
-        settings.primaryFont = newPrimaryFont;
-    }
-    if (textareaFontChanged) {
-        settings.textareaFont = newTextareaFont;
-    }
-
-    if (wallpaperChanged) {
-        settings.wallpaper = newWallpaperPath;
-        // If wallpaper is being cleared, also clear position
-        if (!newWallpaperPath) {
-            settings.wallpaperPosition = null;
-        } else if (positionChanged) {
-            settings.wallpaperPosition = newPosition;
-        }
-    } else if (positionChanged) {
-        settings.wallpaperPosition = newPosition;
-    }
-
-    // Save via WebSocket (server will broadcast workspace_updated to all clients including this one)
-    try {
-        if (wsClient && wsClient.isConnected()) {
-            await wsClient.updateWorkspaceSettings(currentWorkspace, settings);
-        }
-
-        finishDesktopSettingsDialog();
-
-        // Show appropriate message based on what changed
-        const changes = [];
-        if (nameChanged) changes.push('name');
-        if (colorChanged || bgColorChanged) changes.push('colors');
-        if (primaryFontChanged || textareaFontChanged) changes.push('fonts');
-        if (wallpaperChanged) changes.push('wallpaper');
-        if (positionChanged) changes.push('position');
-
-        let message = 'Settings Saved';
-        if (changes.length === 1) {
-            if (changes[0] === 'wallpaper' && !newWallpaperPath) {
-                message = 'Wallpaper Cleared';
-            } else {
-                message = `${changes[0].charAt(0).toUpperCase() + changes[0].slice(1)} Updated`;
-            }
-        } else if (changes.length > 1) {
-            message = `${changes.length} Settings Updated`;
-        }
-
-        showGlassToast('success', null, message, false, 3000, '<i class="fa-light fa-check"></i>');
-    } catch (error) {
-        console.error('Error saving workspace settings:', error);
-        // Server will not broadcast workspace_updated on error, so workspace object remains unchanged
-        // Show error message and keep modal open
-        showGlassToast('error', 'Save Failed', error.message || 'Failed to save settings', false, 4000, '<i class="fa-light fa-exclamation-triangle"></i>');
-    }
-}
-
 
 async function updateWallpaperPosition(position) {
     const currentWorkspace = (typeof activeWorkspace !== 'undefined' ? activeWorkspace : null) || window.currentWorkspace || 'default';

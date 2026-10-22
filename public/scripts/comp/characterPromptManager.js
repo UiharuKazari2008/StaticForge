@@ -330,63 +330,6 @@ function wirePositionDialogKeyboard() {
     ]);
 }
 
-function handleCharacterDataConfirmKeydown(e) {
-    const modal = document.getElementById('characterDataConfirmModal');
-    if (!modal || modal.classList.contains('hidden')) return;
-
-    if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopPropagation();
-        const closeBtn = document.getElementById('cancelGenerationBtn');
-        if (closeBtn && !closeBtn.disabled) closeBtn.click();
-        else closeModal(modal);
-        return true;
-    }
-
-    if (modalKeyboardHandleActionDigits(e, modal, '.modal-actions')) {
-        return true;
-    }
-
-    if (e.key === 'Enter') {
-        return modalKeyboardTriggerPrimaryEnter(e, modal, '.modal-actions .btn-primary:not(:disabled)');
-    }
-}
-
-let characterDataConfirmKeyboardWired = false;
-
-function characterDataConfirmOverlayDigitsValid() {
-    const modal = document.getElementById('characterDataConfirmModal');
-    if (!modal || modal.classList.contains('hidden')) return false;
-    const buttons = modal.querySelectorAll('.modal-actions button:not(:disabled)');
-    return buttons.length >= 2;
-}
-
-function characterDataConfirmOverlayEnterValid() {
-    const modal = document.getElementById('characterDataConfirmModal');
-    if (!modal || modal.classList.contains('hidden')) return false;
-    return !!modal.querySelector('.modal-actions .btn-primary:not(:disabled)');
-}
-
-function wireCharacterDataConfirmKeyboard() {
-    if (characterDataConfirmKeyboardWired) return;
-    characterDataConfirmKeyboardWired = true;
-    // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
-    registerKeyboardListener({
-        id: 'characterDataConfirmModal.keydown',
-        handler: handleCharacterDataConfirmKeydown,
-        type: 'whenFocused',
-        modalId: 'characterDataConfirmModal',
-        priority: 82,
-        critical: true,
-        showInOverlay: false
-    });
-    registerModalOverlayEntries('characterDataConfirmModal', 'Dialog', [
-        { id: 'overlay.characterDataConfirm.escape', label: 'Cancel', keys: 'Esc', icon: 'fas fa-times' },
-        { id: 'overlay.characterDataConfirm.enter', label: 'Remove data', keys: 'Enter', icon: 'fas fa-check', overlayValid: characterDataConfirmOverlayEnterValid },
-        { id: 'overlay.characterDataConfirm.digits', label: 'Choose option', keys: '1–9', icon: 'fas fa-list-ol', overlayValid: characterDataConfirmOverlayDigitsValid }
-    ]);
-}
-
 function attachCharacterPromptPositionDialogListeners(signal) {
     const cancelPositionBtn = document.getElementById('cancelPositionBtn');
     const confirmPositionBtn = document.getElementById('confirmPositionBtn');
@@ -448,7 +391,6 @@ function initCharacterPromptListenerScope() {
 function wireCharacterPromptManager() {
     initCharacterPromptListenerScope();
     wirePositionDialogKeyboard();
-    wireCharacterDataConfirmKeyboard();
 }
 
 if (typeof wsClient !== 'undefined' && wsClient.registerInitStep) {

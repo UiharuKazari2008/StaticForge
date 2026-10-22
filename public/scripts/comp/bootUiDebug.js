@@ -49,8 +49,6 @@ function bootUiDebugIsBootLive() {
     if (!bootUiDebug.splashDismissed || !bootUiDebug.galleryReady) return true;
     if (document.body.classList.contains('windows-startup')) return true;
     if (document.body.classList.contains('initializing')) return true;
-    const updateModal = document.getElementById('windowsUpdateModal');
-    if (updateModal && !updateModal.classList.contains('hidden')) return true;
     const preStartup = document.getElementById('desktopPreStartupModal');
     if (preStartup && !preStartup.classList.contains('hidden')) return true;
     const splash = document.getElementById('windowsStartupModal');
@@ -61,8 +59,6 @@ function bootUiDebugIsBootLive() {
 }
 
 function bootUiDebugDetectStage() {
-    const updateModal = document.getElementById('windowsUpdateModal');
-    if (updateModal && !updateModal.classList.contains('hidden')) return 'system-update';
     const preStartup = document.getElementById('desktopPreStartupModal');
     if (preStartup && !preStartup.classList.contains('hidden')) return 'pre-startup';
     const splash = document.getElementById('windowsStartupModal');
@@ -117,10 +113,6 @@ function bootUiDebugFlushHeldUpdate() {
     const held = bootUiDebug._heldUpdate;
     bootUiDebug._heldUpdate = null;
     if (!held || !wsClient) return;
-    if (held.kind === 'update-modal') {
-        wsClient.updateWindowsUpdateModal(held.message, held.progress);
-        return;
-    }
     if (held.kind === 'pre-startup') {
         wsClient._setConnectionBeat(wsClient.connectionUi.beat || 'negotiation', { message: held.message });
     }

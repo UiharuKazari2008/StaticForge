@@ -4240,10 +4240,6 @@ div#bulkMoveToWorkspaceModal:not(.hidden) {
 }
 
 
-#textReplacementManualSelectionModal {
-    width: 350px;
-}
-
 .time-date-modal-content {
     padding: var(--spacing-md);
 }

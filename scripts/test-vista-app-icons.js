@@ -41,7 +41,9 @@ const modalUtils = read('public/scripts/comp/modalUtils.js');
 const launch = (id, icon) => assert.match(modalUtils, new RegExp(`launchId: '${id}'[^\\n]*imageIcon: '${icon}\\.png'`), `${id} -> ${icon}`);
 launch('explorer', 'vista-explorer');
 launch('encyclopedia', 'vista-iexplore');
-launch('remote-desktop', 'vista-remote-desktop');
+// mstsc's icon went to Remote Desktop Connection; the Manager keeps the app's own (Yukimi 2026-10-21)
+launch('remote-desktop-connection', 'vista-remote-desktop');
+launch('remote-desktop', 'remote_desktop');
 launch('dovecote', 'vista-mail');
 launch('run', 'vista-run');
 launch('config-editor', 'vista-regedit');
@@ -57,7 +59,8 @@ launch('bracket-generation', 'vista-phasewalker');
 launch('alarm', 'vista-date-time');
 assert.match(modalUtils, /launchId: 'alarm'[^\n]*text: 'Alarm Clock'/, 'Alarm and Pomodoro are one app');
 assert.match(modalUtils, /launchId: 'pomodoro'[^\n]*startMenu: false, appMenu: false/, 'the Pomodoro launcher is kept for old shortcuts only');
-assert.match(modalUtils, /id: 'workspaces', text: 'Workspaces', imageIcon: 'planet\.png'/, 'Workspaces keeps the planet');
+// Workspaces, Teleport and Remote Access left the places column (Yukimi 2026-10-21); Teleport stays in the power menu
+assert.ok(!/id: 'workspaces', text: 'Workspaces'/.test(modalUtils) && !/id: 'remote-access', text: 'Remote Access'/.test(modalUtils), 'not in the places column');
 // the custom apps keep theirs
 launch('director', 'director');
 launch('naxt', 'test_tube');
@@ -82,9 +85,7 @@ windowIcon('dreamscapeAppErrorModal', 'vista-event-viewer'); // Spectator
 windowIcon('tokenDisplayModal', 'vista-calculator');
 windowIcon('tagWikiSearchModal', 'vista-iexplore');
 windowIcon('configEditorModal', 'vista-regedit');
-windowIcon('desktopSettingsModal', 'vista-personalization');
 windowIcon('notebookModal', 'vista-journal');
-windowIcon('personaSettingsModal', 'vista-user-accounts');
 windowIcon('imageViewerModalTemplate', 'vista-photo-viewer');
 windowIcon('tagWikiWindowTemplate', 'vista-wordpad-document');
 windowIcon('imageBiasAdjustmentModal', 'vista-snipping-tool');

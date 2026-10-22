@@ -1,15 +1,8 @@
-// WebSocket Requests Modal
-// Displays active and previous WebSocket requests
+// WebSocket requests: the active and previous requests listed in Periscope's tasks sidebar
+// (logViewerApplet.js setRenderTarget). The old Task Manager window is gone.
 
 class WebSocketRequestsModal {
     constructor() {
-        this.modal = document.getElementById('websocketRequestsModal');
-        this.activeRequestsList = document.getElementById('activeRequestsList');
-        this.previousRequestsList = document.getElementById('previousRequestsList');
-        this.activeRequestsCount = document.getElementById('activeRequestsCount');
-        this.previousRequestsCount = document.getElementById('previousRequestsCount');
-        this.activeRequestsEmptyState = document.getElementById('activeRequestsEmptyState');
-        this.previousRequestsEmptyState = document.getElementById('previousRequestsEmptyState');
         this.connectionStatusBadge = null;
         this.connectionStatusValue = null;
         this.connectionSecurityIcon = null;
@@ -18,16 +11,11 @@ class WebSocketRequestsModal {
         this.connectionRttValue = null;
         this.connectionVariabilityValue = null;
         this.serviceWorkerIcon = null;
-        this.updateInterval = null;
         this.isUpdating = false;
         this.lastActiveHash = null;
         this.lastPreviousHash = null;
         this.renderTarget = null;
-        this._domReady = false;
-        this._modalListenerScopeRegistered = false;
         this._activeRequestDomById = new Map();
-        
-        this.init();
     }
 
     setRenderTarget(target) {
@@ -43,112 +31,15 @@ class WebSocketRequestsModal {
     }
 
     _getLists() {
-        if (this.renderTarget) {
-            return {
-                activeList: this.renderTarget.activeList,
-                previousList: this.renderTarget.previousList,
-                activeCount: this.renderTarget.activeCount || null,
-                previousCount: this.renderTarget.previousCount || null,
-                activeEmpty: this.renderTarget.activeEmpty || null,
-                previousEmpty: this.renderTarget.previousEmpty || null
-            };
-        }
+        const t = this.renderTarget || {};
         return {
-            activeList: this.activeRequestsList,
-            previousList: this.previousRequestsList,
-            activeCount: this.activeRequestsCount,
-            previousCount: this.previousRequestsCount,
-            activeEmpty: this.activeRequestsEmptyState,
-            previousEmpty: this.previousRequestsEmptyState
+            activeList: t.activeList || null,
+            previousList: t.previousList || null,
+            activeCount: t.activeCount || null,
+            previousCount: t.previousCount || null,
+            activeEmpty: t.activeEmpty || null,
+            previousEmpty: t.previousEmpty || null
         };
-    }
-
-    init() {
-        if (!this.modal) {
-            console.warn('WebSocket Requests Modal not found');
-            return;
-        }
-        this._domReady = true;
-    }
-
-    registerModalListenerScope() {
-        if (!this.modal || this._modalListenerScopeRegistered) return;
-        this._modalListenerScopeRegistered = true;
-        // attachModalListeners: public/scripts/comp/modalListenerScope.js
-        attachModalListeners(this.modal, (signal) => {
-            const closeBtn = document.getElementById('closeWebsocketRequestsModalBtn');
-            if (closeBtn) {
-                closeBtn.addEventListener('click', () => {
-                    this.close();
-                }, { signal });
-            }
-            this.update();
-            this.startAutoUpdate();
-            signal.addEventListener('abort', () => {
-                this.stopAutoUpdate();
-            });
-        });
-    }
-
-    open() {
-        if (!this.modal) return;
-        // Update immediately before opening
-        this.update();
-        if (typeof openModal === 'function') {
-            openModal(this.modal);
-        } else {
-            this.modal.classList.remove('hidden');
-        }
-        // Start auto-update
-        this.startAutoUpdate();
-        // Refresh websocket indicators to pick up the traffic arrows
-        if (window.wsClient && typeof window.wsClient.refreshWebSocketIndicators === 'function') {
-            window.wsClient.refreshWebSocketIndicators();
-        }
-    }
-
-    close() {
-        if (!this.modal) return;
-        if (typeof closeModal === 'function') {
-            closeModal(this.modal);
-        } else {
-            this.modal.classList.add('hidden');
-        }
-    }
-
-    startAutoUpdate() {
-        // Stop any existing interval first
-        this.stopAutoUpdate();
-        
-        // Only start if modal is actually visible
-        if (!this.modal || this.modal.classList.contains('hidden')) {
-            return;
-        }
-        
-        // Update every 2000ms (2 seconds) while modal is open - reduced frequency
-        this.updateInterval = setInterval(() => {
-            // Double-check modal is still visible before updating
-            if (this.modal && !this.modal.classList.contains('hidden')) {
-                this.update();
-            } else {
-                this.stopAutoUpdate();
-            }
-        }, 2000);
-    }
-
-    stopAutoUpdate() {
-        if (this.updateInterval) {
-            clearInterval(this.updateInterval);
-            this.updateInterval = null;
-        }
-        if (this.observerTimeout) {
-            cancelAnimationFrame(this.observerTimeout);
-            this.observerTimeout = null;
-        }
-    }
-
-    teardown() {
-        this.stopAutoUpdate();
     }
 
     update(force) {
@@ -156,17 +47,12 @@ class WebSocketRequestsModal {
         if (this.isUpdating) {
             return;
         }
-        
-        const usingSidebar = !!this.renderTarget;
-        if (!usingSidebar && (!this.modal || this.modal.classList.contains('hidden'))) {
+        if (!this.renderTarget || (!force && !this.renderTarget.activeList)) {
             return;
         }
-        if (!force && usingSidebar && !this.renderTarget.activeList) {
-            return;
-        }
-        
+
         this.isUpdating = true;
-        
+
         try {
             if (!window.wsClient) {
                 this.renderEmpty();
@@ -175,7 +61,7 @@ class WebSocketRequestsModal {
 
             // Get active requests (filter out ping)
             const activeRequests = this.getActiveRequests();
-            
+
             // Get previous requests (filter out ping)
             const previousRequests = this.getPreviousRequests();
 
@@ -614,31 +500,14 @@ class WebSocketRequestsModal {
     }
 
     renderEmpty() {
-        // Show empty states
-        if (this.activeRequestsEmptyState) {
-            this.activeRequestsEmptyState.classList.remove('hidden');
-        }
-        if (this.previousRequestsEmptyState) {
-            this.previousRequestsEmptyState.classList.remove('hidden');
-        }
-        
-        // Clear request items
-        if (this.activeRequestsList) {
-            const existingItems = this.activeRequestsList.querySelectorAll('.request-item');
-            existingItems.forEach(item => item.remove());
-        }
-        if (this.previousRequestsList) {
-            const existingItems = this.previousRequestsList.querySelectorAll('.request-item');
-            existingItems.forEach(item => item.remove());
-        }
-        
-        // Update counts
-        if (this.activeRequestsCount) {
-            this.activeRequestsCount.textContent = '0';
-        }
-        if (this.previousRequestsCount) {
-            this.previousRequestsCount.textContent = '0';
-        }
+        const { activeList, previousList, activeCount, previousCount, activeEmpty, previousEmpty } = this._getLists();
+        if (activeEmpty) activeEmpty.classList.remove('hidden');
+        if (previousEmpty) previousEmpty.classList.remove('hidden');
+        [activeList, previousList].forEach((list) => {
+            if (list) list.querySelectorAll('.request-item').forEach((item) => item.remove());
+        });
+        if (activeCount) activeCount.textContent = '0';
+        if (previousCount) previousCount.textContent = '0';
     }
 
     escapeHtml(text) {
@@ -648,16 +517,13 @@ class WebSocketRequestsModal {
     }
 }
 
-// Initialize the modal manager
+// One instance, created when this file loads (Periscope / log_viewer)
 let websocketRequestsModal = null;
 
 function initWebSocketRequestsModal() {
     if (!websocketRequestsModal) {
         websocketRequestsModal = new WebSocketRequestsModal();
     }
-    websocketRequestsModal.registerModalListenerScope();
 }
 
-// Former boot step 480 (WebSocket requests modal listener scope). Runs once, on first load
-// of this file (Periscope / log_viewer), including when the document is already ready.
 initWebSocketRequestsModal();

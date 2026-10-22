@@ -154,7 +154,7 @@
         image: '/static_images/app_icons/64/vista-remote-desktop.webp',
         description: 'Choose how agents deliver and open images on this computer.',
         // Remote Access Properties (remoteAccessProperties.js), as Vista opens System Properties' Remote tab
-        open: () => (root.remoteAccessProperties ? root.remoteAccessProperties.open() : navigate('remote-access'))
+        open: () => { if (root.remoteAccessProperties) root.remoteAccessProperties.open(); }
     });
     registerItem({
         id: 'system',
@@ -1147,7 +1147,6 @@
     if (root) root.melatonControlPanel = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     // featureLoader brings this file in long after DOMContentLoaded, so the pages modalUtils.js
-    // hosts (Personalization, the Global Settings items, Remote Access) register here
+    // hosts (Personalization, the Global Settings items) register here
     callGlobal('registerDesktopSettingsControlPanelPages');
-    callGlobal('registerRemoteAccessControlPanelPage');
 })(typeof window !== 'undefined' ? window : globalThis);

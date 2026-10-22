@@ -738,10 +738,6 @@
     font-size: 14px;
 }
 
-#vibeManagerDeleteModal {
-    width: 350px;
-}
-
 .queue-status {
     font-weight: bold;
     color: var(--text-secondary);

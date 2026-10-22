@@ -95,26 +95,10 @@ class ChatSystem {
             this.autoResizeTextarea(e.target);
         });
         
-        // Persona settings modal events
-        document.getElementById('closePersonaSettingsBtn')?.addEventListener('click', () => this.closePersonaSettingsModal());
-        document.getElementById('savePersonaSettingsBtn')?.addEventListener('click', () => this.savePersonaSettings());
-        document.getElementById('personaProfilePhoto')?.addEventListener('change', (e) => this.handleProfilePhotoUpload(e));
-        document.getElementById('personaProfilePhotoPreview')?.addEventListener('click', () => {
-            document.getElementById('personaProfilePhoto').click();
-        });
-        
-        // Persona settings button
-        document.getElementById('personaSettingsBtn')?.addEventListener('click', () => this.openPersonaSettingsModal());
-
         wireChatVerbosityPicker({
             btnId: 'chatVerbosityBtn',
             selectedId: 'chatVerbositySelected',
             hiddenId: 'chatVerbosityHidden'
-        });
-        wireChatVerbosityPicker({
-            btnId: 'personaDefaultVerbosityBtn',
-            selectedId: 'personaDefaultVerbositySelected',
-            hiddenId: 'personaDefaultVerbosityHidden'
         });
 
         this.wireKeyboardOverlayEntries();
@@ -135,31 +119,8 @@ class ChatSystem {
             overlayOnly: true,
             priority: -10
         });
-        registerKeyboardListener({
-            id: 'personaSettingsModal.keydown',
-            handler: (e) => {
-                const modal = document.getElementById('personaSettingsModal');
-                if (!modal || modal.classList.contains('hidden')) return;
-
-                if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    this.savePersonaSettings();
-                    return true;
-                }
-            },
-            type: 'whenFocused',
-            modalId: 'personaSettingsModal',
-            priority: 78,
-            critical: true,
-            showInOverlay: false
-        });
         registerModalOverlayEntries('chatInterfaceModal', 'Chat', [
             { id: 'overlay.chatInterfaceModal.close', label: 'Close', keys: 'Alt+Q', icon: 'fas fa-times' }
-        ]);
-        registerModalOverlayEntries('personaSettingsModal', 'Chat', [
-            { id: 'overlay.personaSettings.save', label: 'Save', keys: 'Ctrl+S', icon: 'fas fa-save' },
-            { id: 'overlay.personaSettings.close', label: 'Close', keys: 'Alt+Q', icon: 'fas fa-times' }
         ]);
     }
 
@@ -207,7 +168,6 @@ class ChatSystem {
             const response = await window.wsClient.getPersonaSettings();
             if (response && response.success) {
                 this.personaSettings = response.settings || {};
-                this.populatePersonaSettingsForm();
             } else {
                 console.warn('⚠️ Failed to load persona settings: response was not successful');
                 // Initialize with empty settings
@@ -217,20 +177,6 @@ class ChatSystem {
             console.error('❌ Failed to load persona settings:', error);
             // Initialize with empty settings instead of leaving it null
             this.personaSettings = {};
-        }
-    }
-
-    populatePersonaSettingsForm() {
-        if (!this.personaSettings) return;
-        
-        document.getElementById('personaUserName').value = this.personaSettings.user_name || '';
-        document.getElementById('personaBackstory').value = this.personaSettings.backstory || '';
-        setChatVerbosityField('personaDefaultVerbosityHidden', 'personaDefaultVerbositySelected', this.personaSettings.default_verbosity || 3);
-        
-        // Set profile photo if exists
-        if (this.personaSettings.profile_photo_base64) {
-            const preview = document.getElementById('personaProfilePhotoPreview');
-            preview.innerHTML = `<img src="data:image/jpeg;base64,${this.personaSettings.profile_photo_base64}" alt="Profile Photo">`;
         }
     }
 
@@ -1232,63 +1178,6 @@ class ChatSystem {
                 sentinel.classList.remove('loading');
             }
         }
-    }
-
-    openPersonaSettingsModal() {
-        if (typeof openLinkXiPersonaDsap === 'function') {
-            openLinkXiPersonaDsap();
-            return;
-        }
-        const modal = document.getElementById('personaSettingsModal');
-        openModal(modal);
-    }
-
-    closePersonaSettingsModal() {
-        const modal = document.getElementById('personaSettingsModal');
-        closeModal(modal);
-    }
-
-    async savePersonaSettings() {
-        const settings = {
-            user_name: document.getElementById('personaUserName').value,
-            backstory: document.getElementById('personaBackstory').value,
-            default_verbosity: parseInt(document.getElementById('personaDefaultVerbosityHidden').value, 10) || 3,
-            profile_photo_base64: this.personaSettings?.profile_photo_base64 || ''
-        };
-        
-        try {
-            const response = await window.wsClient.savePersonaSettings(settings);
-            if (response.success) {
-                this.personaSettings = settings;
-                this.closePersonaSettingsModal();
-                if (window.showToast) {
-                    window.showToast('Persona settings saved successfully', 'success');
-                }
-            } else {
-                throw new Error(response.message || 'Failed to save settings');
-            }
-        } catch (error) {
-            console.error('Failed to save persona settings:', error);
-            if (window.showToast) {
-                window.showToast('Failed to save settings: ' + error.message, 'error');
-            }
-        }
-    }
-
-    handleProfilePhotoUpload(event) {
-        const file = event.target.files[0];
-        if (!file) return;
-        
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const base64 = e.target.result.split(',')[1]; // Remove data:image/jpeg;base64, prefix
-            this.personaSettings = this.personaSettings || {};
-            this.personaSettings.profile_photo_base64 = base64;
-            
-            const preview = document.getElementById('personaProfilePhotoPreview');
-            preview.innerHTML = `<img src="${e.target.result}" alt="Profile Photo">`;
-        };
-        reader.readAsDataURL(file);
     }
 
     async deleteChat() {

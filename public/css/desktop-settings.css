@@ -1,8 +1,7 @@
 /* The forms are hosted by Control Panel's Personalization / Global Settings pages too
    (modalUtils.js registerDesktopSettingsControlPanelPages): every rule reaches both. */
 /* Desktop settings modal */
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host),
-#remoteAccessSettingsModal {
+:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) {
     width: 550px;
     max-height: 90vh;
 }
@@ -94,9 +93,10 @@
     min-width: 0;
 }
 
+/* 7.css paints a hover face on a .win7 button's ::before; the combos have no use for it (the
+   push buttons' ::before is Vista's hot face, vista-glass-controls.css) */
 #melatonControlPanelModal .wallpaper-controls .cpl-db-combo::before,
-#melatonControlPanelModal .cpl-db-page .cpl-db-combo::before,
-#melatonControlPanelModal .desktop-settings-actions .cpl-wu-button::before {
+#melatonControlPanelModal .cpl-db-page .cpl-db-combo::before {
     content: none;
 }
 
@@ -148,38 +148,32 @@
     gap: var(--spacing-md);
 }
 
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-scope-toggle,
-#remoteAccessSettingsModal .desktop-settings-scope-toggle {
+:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-scope-toggle {
     grid-template-columns: 1fr 1fr;
     min-width: 11rem;
 }
 
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-scope-toggle .gallery-toggle-slider,
-#remoteAccessSettingsModal .desktop-settings-scope-toggle .gallery-toggle-slider {
+:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-scope-toggle .gallery-toggle-slider {
     width: calc(50% - 2px);
 }
 
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-scope-toggle[data-active="global"] .gallery-toggle-slider,
-#remoteAccessSettingsModal .desktop-settings-scope-toggle[data-active="studio"] .gallery-toggle-slider {
+:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-scope-toggle[data-active="global"] .gallery-toggle-slider {
     transform: translateX(calc(100% + 1px));
 }
 
 :is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-start-menu-style-toggle,
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-glass-mode-toggle,
-#remoteAccessSettingsModal .desktop-settings-start-menu-style-toggle {
+:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-glass-mode-toggle {
     grid-template-columns: 1fr 1fr 1fr;
 }
 
 :is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-start-menu-style-toggle .gallery-toggle-slider,
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-glass-mode-toggle .gallery-toggle-slider,
-#remoteAccessSettingsModal .desktop-settings-start-menu-style-toggle .gallery-toggle-slider {
+:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-glass-mode-toggle .gallery-toggle-slider {
     width: calc(calc(100% / 3) - 2px);
 }
 
 :is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-start-menu-style-toggle[data-active="workspace"] .gallery-toggle-slider,
 :is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-start-menu-style-toggle[data-active="vista"] .gallery-toggle-slider,
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-glass-mode-toggle[data-active="live"] .gallery-toggle-slider,
-#remoteAccessSettingsModal .desktop-settings-start-menu-style-toggle[data-active="lumen"] .gallery-toggle-slider {
+:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-glass-mode-toggle[data-active="live"] .gallery-toggle-slider {
     transform: translateX(calc(100% + 1px));
 }
 
@@ -187,50 +181,6 @@
 :is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-start-menu-style-toggle[data-active="dreamscape"] .gallery-toggle-slider,
 :is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-glass-mode-toggle[data-active="basic"] .gallery-toggle-slider {
     transform: translateX(calc(200% + 2px));
-}
-
-#remoteAccessSettingsModal #remoteAccessDefaultGenerationToggle.gallery-toggle-group {
-    grid-template-columns: 1fr 1fr 1fr;
-}
-
-#remoteAccessSettingsModal #remoteAccessDefaultGenerationToggle .gallery-toggle-slider {
-    width: calc(100% / 3 - 2px);
-}
-
-#remoteAccessSettingsModal #remoteAccessDefaultGenerationToggle[data-active="detached"] .gallery-toggle-slider {
-    transform: none;
-}
-
-#remoteAccessSettingsModal #remoteAccessDefaultGenerationToggle[data-active="studio"] .gallery-toggle-slider {
-    transform: translateX(calc(100% + 1px));
-}
-
-#remoteAccessSettingsModal #remoteAccessDefaultGenerationToggle[data-active="auto"] .gallery-toggle-slider {
-    transform: translateX(calc(200% + 2px));
-}
-
-#remoteAccessSettingsModal #remoteAccessOpenGeneratedToggle.gallery-toggle-group {
-    grid-template-columns: 1fr 1fr 1fr 1fr;
-}
-
-#remoteAccessSettingsModal #remoteAccessOpenGeneratedToggle .gallery-toggle-slider {
-    width: calc(100% / 4 - 2px);
-}
-
-#remoteAccessSettingsModal #remoteAccessOpenGeneratedToggle[data-active="ledge"] .gallery-toggle-slider {
-    transform: none;
-}
-
-#remoteAccessSettingsModal #remoteAccessOpenGeneratedToggle[data-active="lumen"] .gallery-toggle-slider {
-    transform: translateX(calc(100% + 1px));
-}
-
-#remoteAccessSettingsModal #remoteAccessOpenGeneratedToggle[data-active="glancewell"] .gallery-toggle-slider {
-    transform: translateX(calc(200% + 2px));
-}
-
-#remoteAccessSettingsModal #remoteAccessOpenGeneratedToggle[data-active="disabled"] .gallery-toggle-slider {
-    transform: translateX(calc(300% + 3px));
 }
 
 :is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-start-menu-style-toggle .gallery-toggle-btn .tab-text,
@@ -273,8 +223,7 @@
     line-height: 1.3;
 }
 
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-global-toggle,
-#remoteAccessSettingsModal .desktop-settings-global-toggle {
+:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-global-toggle {
     min-width: 44px;
     width: 44px;
     height: 44px;
@@ -282,8 +231,7 @@
     flex-shrink: 0;
 }
 
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-hint,
-#remoteAccessSettingsModal .desktop-settings-hint {
+:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-hint {
     margin: var(--spacing-xs) 0 0;
     font-size: 0.78rem;
     line-height: 1.35;
@@ -605,26 +553,12 @@
     font-size: 12px;
 }
 
-/* text boxes: Vista's (light grey edge, darker top) with the blue hover / focus edge */
+/* text boxes, buttons and combo boxes: Vista's own faces from the shared rules in
+   vista-glass-controls.css ("Vista common controls"); this host only sets their font and sizes */
 #melatonControlPanelModal .cpl-settings-host :is(input[type="text"], input[type="number"], input:not([type]), textarea, .form-control) {
-    background: #fff;
-    border: 1px solid;
-    border-color: #abadb3 #dbdfe6 #e3e9ef #e2e3ea;
-    border-radius: 2px;
-    box-shadow: none;
-    color: #000;
     font-family: var(--cpl-font, 'Segoe UI', sans-serif);
     font-size: 12px;
     opacity: 1;
-}
-
-#melatonControlPanelModal .cpl-settings-host :is(input[type="text"], input[type="number"], input:not([type]), textarea, .form-control):hover {
-    border-color: #5794bf #b7d5ea #c7e2f1 #c5daed;
-}
-
-#melatonControlPanelModal .cpl-settings-host :is(input[type="text"], input[type="number"], input:not([type]), textarea, .form-control):focus {
-    border-color: #3d7bad #a4c9e3 #b7d9ed #b5cfe7;
-    outline: none;
 }
 
 #melatonControlPanelModal .cpl-settings-host ::placeholder {
@@ -632,48 +566,10 @@
     font-style: italic;
 }
 
-/* buttons and combo boxes: Vista's standard light button (7.css) */
-#melatonControlPanelModal .cpl-settings-host :is(button.btn-secondary, button.btn-primary, button.btn-danger, .custom-dropdown-btn),
-#melatonControlPanelModal .cpl-settings-actions .cpl-settings-save {
-    background: linear-gradient(#f2f2f2 45%, #ebebeb 45%, #cfcfcf);
-    border: 1px solid #8e8f8f;
-    border-radius: 3px;
-    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 80%);
-    color: #222;
-    font-family: var(--cpl-font, 'Segoe UI', sans-serif);
-    font-weight: 400;
-    font-variation-settings: normal;
-    text-shadow: none;
-    opacity: 1;
-    transition: border-color 0.3s, background 0.3s;
-}
-
-@media (hover: hover) {
-    #melatonControlPanelModal .cpl-settings-host :is(button.btn-secondary, button.btn-primary, button.btn-danger, .custom-dropdown-btn):hover:not(:disabled),
-    #melatonControlPanelModal .cpl-settings-actions .cpl-settings-save:hover {
-        background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
-        border-color: #3c7fb1;
-    }
-}
-
-#melatonControlPanelModal .cpl-settings-host :is(button.btn-secondary, button.btn-primary, button.btn-danger, .custom-dropdown-btn):is(:active, .active, [data-state="on"]):not(:disabled) {
-    background: linear-gradient(#e5f4fc, #c4e5f6 30% 50%, #98d1ef 50%, #68b3db);
-    border-color: #6d91ab;
-    box-shadow: inset 1px 1px 0 #0003, inset -1px 1px 0 #0001;
-}
-
-#melatonControlPanelModal .cpl-settings-host :is(button, .custom-dropdown-btn) i {
-    color: #2b5797;
-}
-
-#melatonControlPanelModal .cpl-settings-host button.btn-danger i {
-    color: #c4281c;
-}
-
-/* combo boxes keep the arrow on the right */
+/* combo boxes keep the text on the left, the glyph on the right (Vista's 23 px) */
 #melatonControlPanelModal .cpl-settings-host .custom-dropdown-btn {
     justify-content: space-between;
-    min-height: 24px;
+    min-height: 23px;
     padding: 2px 6px;
 }
 
@@ -713,7 +609,7 @@
 
 #melatonControlPanelModal .cpl-settings-actions .cpl-settings-save {
     min-width: 90px;
-    min-height: 24px;
+    min-height: 23px;
     padding: 0 14px;
 }
 
@@ -722,15 +618,3 @@
     padding-right: 20px;
 }
 
-/* Vista's combo box arrow */
-#melatonControlPanelModal .cpl-settings-host .custom-dropdown-btn::after {
-    content: '';
-    position: absolute;
-    right: 7px;
-    top: 50%;
-    margin-top: -2px;
-    border: 4px solid transparent;
-    border-top: 4px solid #3a3a3a;
-    border-bottom: 0;
-    pointer-events: none;
-}

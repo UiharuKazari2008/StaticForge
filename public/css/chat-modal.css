@@ -899,11 +899,3 @@ body:not(.windows-classic-theme) #chatInterfaceModal[data-window-client="light"]
     font-size: 9pt;
 }
 
-body:not(.windows-classic-theme) #personaSettingsModal[data-window-client="light"] .profile-photo-preview {
-    background: #fff;
-    border: 1px dashed #abadb3;
-}
-
-body:not(.windows-classic-theme) #personaSettingsModal[data-window-client="light"] :is(.profile-photo-preview i, .profile-photo-preview span) {
-    color: #6d6d6d;
-}

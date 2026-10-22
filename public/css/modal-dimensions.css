@@ -30,11 +30,6 @@
     height: 720px;
 }
 
-#personaSettingsModal {
-    width: 400px;
-}
-
-#windowsUpdateModal,
 #agentClientUpdateDialog {
     width: 475px;
 }

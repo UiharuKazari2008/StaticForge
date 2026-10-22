@@ -25,12 +25,6 @@ const vibeEncodingConfirmText = document.getElementById('vibeEncodingConfirmText
 const vibeEncodingUploadSection = document.getElementById('vibeEncodingUploadSection');
 const vibeEncodingReferenceSection = document.getElementById('vibeEncodingReferenceSection');
 const vibeEncodingReferencePreview = document.getElementById('vibeEncodingReferencePreview');
-const closeVibeManagerMoveModalBtn = document.getElementById('vibeManagerMoveCancelBtn');
-const closeVibeManagerDeleteModalBtn = document.getElementById('closeVibeManagerDeleteBtn');
-const vibeManagerDeleteConfirmBtn = document.getElementById('vibeManagerDeleteConfirmBtn');
-const vibeManagerMoveCancelBtn = document.getElementById('vibeManagerMoveCancelBtn');
-const vibeManagerMoveConfirmBtn = document.getElementById('vibeManagerMoveConfirmBtn');
-const vibeManagerMoveBtn = document.getElementById('vibeManagerMoveBtn');
 const manualImg2ImgGroup = document.getElementById('manualImg2ImgGroup');
 const cacheManagerWorkspaceDropdown = document.getElementById('cacheManagerWorkspaceDropdown');
 const cacheManagerWorkspaceDropdownBtn = document.getElementById('cacheManagerWorkspaceDropdownBtn');
@@ -43,11 +37,8 @@ const cacheManagerProgressText = document.getElementById('cacheManagerProgressTe
 const vibeManagerFromReferenceModal = document.getElementById('vibeManagerFromReferenceModal');
 const vibeManagerFromReferencePreview = document.getElementById('vibeManagerFromReferencePreview');
 const vibeManagerFromReferenceModelSelected = document.getElementById('vibeManagerFromReferenceModelSelected');
-const vibeManagerDeleteModal = document.getElementById('vibeManagerDeleteModal');
-const vibeManagerMoveModal = document.getElementById('vibeManagerMoveModal');
 const vibeManagerGallery = document.getElementById('vibeManagerGallery');
 const vibeManagerLoading = document.getElementById('vibeManagerLoading');
-const vibeManagerMoveCount = document.getElementById('vibeManagerMoveCount');
 const closeUnifiedUploadBtn = document.getElementById('closeUnifiedUploadBtn');
 const unifiedUploadCancelBtn = document.getElementById('unifiedUploadCancelBtn');
 const unifiedUploadOpenInEditorBtn = document.getElementById('unifiedUploadOpenInEditorBtn');
@@ -431,7 +422,6 @@ let cacheManagerImages = [];
 let cacheManagerCurrentWorkspace = 'default';
 let cacheManagerShowAllReferences = false;
 let vibeManagerImages = [];
-let vibeManagerMoveTargetImage = null;
 let vibeManagerSelectedImages = new Set();
 
 async function showCacheBrowser() {
@@ -5242,222 +5232,6 @@ function createVibeManagerGalleryItem(vibeImage) {
     return item;
 }
 
-function showVibeManagerDeleteModal() {
-    if (vibeManagerSelectedImages.size === 0) {
-        showError('No vibe images selected');
-        return;
-    }
-
-    // Populate the delete items list
-    const deleteItemsList = document.getElementById('vibeManagerDeleteItemsList');
-    if (!deleteItemsList) {
-        console.error('Delete items list not found');
-        return;
-    }
-
-    deleteItemsList.innerHTML = '';
-
-    // Add selected vibe images and their encodings to the list
-    vibeManagerSelectedImages.forEach(vibeId => {
-        const vibe = vibeManagerImages.find(v => v.id === vibeId);
-        if (!vibe) return;
-
-        // Create vibe item container
-        const vibeItem = document.createElement('div');
-        vibeItem.className = 'vibe-delete-item';
-        vibeItem.dataset.vibeId = vibeId;
-        vibeItem.dataset.type = 'vibe';
-        vibeItem.innerHTML = `
-            <div class="vibe-delete-item-content">
-                <div class="vibe-delete-item-info">
-                    <div class="vibe-badge vibe-only">Entire Vibe</div>
-                </div>
-            </div>
-        `;
-        
-        // Add click handler to toggle all encodings for this vibe
-        vibeItem.addEventListener('click', () => {
-            const isSelected = vibeItem.classList.contains('selected');
-            vibeItem.classList.toggle('selected');
-            
-            // Toggle all encodings for this vibe
-            const encodingItems = deleteItemsList.querySelectorAll(`[data-vibe-id="${vibeId}"][data-type="encoding"]`);
-            encodingItems.forEach(encodingItem => {
-                if (isSelected) {
-                    encodingItem.classList.remove('selected');
-                } else {
-                    encodingItem.classList.add('selected');
-                }
-            });
-        });
-        
-        deleteItemsList.appendChild(vibeItem);
-
-        // Add individual encodings for this vibe
-        if (vibe.encodings && Array.isArray(vibe.encodings)) {
-            vibe.encodings.forEach(encoding => {
-                const encodingItem = document.createElement('div');
-                encodingItem.className = 'vibe-delete-item';
-                encodingItem.dataset.vibeId = vibeId;
-                encodingItem.dataset.model = encoding.model;
-                encodingItem.dataset.informationExtraction = encoding.informationExtraction;
-                encodingItem.dataset.type = 'encoding';
-                encodingItem.innerHTML = `
-                    <div class="vibe-delete-item-content">
-                        <div class="vibe-delete-item-name">${(encoding.informationExtraction * 100).toFixed(0)}% IE</div>
-                        <div class="vibe-badge">${window.modelNames[encoding.model] || encoding.model}</div>
-                    </div>
-                `;
-                
-                // Add click handler to toggle selection
-                encodingItem.addEventListener('click', () => {
-                    encodingItem.classList.toggle('selected');
-                });
-                
-                deleteItemsList.appendChild(encodingItem);
-            });
-        }
-    });
-
-    if (vibeManagerDeleteModal) {
-        openModal(vibeManagerDeleteModal);
-    }
-}
-
-function hideVibeManagerDeleteModal() {
-    if (vibeManagerDeleteModal) {
-        closeModal(vibeManagerDeleteModal);
-    }
-}
-
-let vibeManagerMoveExcludeWorkspaceId = null;
-
-function setVibeManagerMoveTargetValue(workspaceId) {
-    const hidden = document.getElementById('vibeManagerMoveTargetHidden');
-    const selected = document.getElementById('vibeManagerMoveTargetSelected');
-    if (!hidden || !selected) return;
-    const ws = Object.values(workspaces).find((w) => w.id === workspaceId);
-    hidden.value = workspaceId || '';
-    selected.textContent = ws?.name || 'Select workspace...';
-}
-
-function renderVibeManagerMoveTargetDropdown(selectedVal) {
-    const menu = document.getElementById('vibeManagerMoveTargetMenu');
-    const btn = document.getElementById('vibeManagerMoveTargetBtn');
-    const hidden = document.getElementById('vibeManagerMoveTargetHidden');
-    if (!menu || !btn || !hidden) return;
-
-    const items = Object.values(workspaces)
-        .filter((w) => w.id !== vibeManagerMoveExcludeWorkspaceId)
-        .map((w) => ({ value: w.id, name: w.name }));
-
-    // renderSimpleDropdown: public/scripts/comp/manualDropdownManager.js
-    renderSimpleDropdown(
-        menu,
-        items,
-        'value',
-        'name',
-        (value) => setVibeManagerMoveTargetValue(value),
-        () => closeDropdown(menu, btn), // closeDropdown: public/scripts/comp/dropdown.js
-        selectedVal || hidden.value,
-        { preventFocusTransfer: true }
-    );
-}
-
-function wireVibeManagerMoveTargetDropdown() {
-    const container = document.getElementById('vibeManagerMoveTargetDropdown');
-    const btn = document.getElementById('vibeManagerMoveTargetBtn');
-    const menu = document.getElementById('vibeManagerMoveTargetMenu');
-    const hidden = document.getElementById('vibeManagerMoveTargetHidden');
-    if (!container || !btn || !menu || !hidden) return;
-    if (container.dataset.wired === '1') return;
-    container.dataset.wired = '1';
-
-    // setupDropdown: public/scripts/comp/dropdown.js
-    setupDropdown(container, btn, menu, renderVibeManagerMoveTargetDropdown, () => hidden.value, { preventFocusTransfer: true });
-}
-
-function showVibeManagerMoveModal() {
-    if (!vibeManagerMoveModal) return;
-
-    if (!vibeManagerMoveTargetImage) {
-        showError('No vibe image selected for move');
-        return;
-    }
-
-    vibeManagerMoveExcludeWorkspaceId = cacheManagerCurrentWorkspace;
-    wireVibeManagerMoveTargetDropdown();
-
-    const targets = Object.values(workspaces).filter((w) => w.id !== cacheManagerCurrentWorkspace);
-    if (targets.length) {
-        setVibeManagerMoveTargetValue(targets[0].id);
-    } else {
-        setVibeManagerMoveTargetValue('');
-    }
-
-    openModal(vibeManagerMoveModal);
-}
-
-async function moveVibeManagerImages() {
-    const hidden = document.getElementById('vibeManagerMoveTargetHidden');
-    if (!hidden || !hidden.value) {
-        showError('Please select a target workspace');
-        return;
-    }
-
-    if (!vibeManagerMoveTargetImage) {
-        showError('No vibe image selected for move');
-        return;
-    }
-
-    const targetWorkspace = hidden.value;
-    const vibeImage = vibeManagerMoveTargetImage;
-
-    try {
-        const response = await wsClient.moveVibeImage(vibeImage.id, targetWorkspace, cacheManagerCurrentWorkspace);
-
-        if (response.success) {
-            showGlassToast('success', null, 'Vibe image moved successfully');
-
-            hideVibeManagerMoveModal();
-            if (!cacheBrowserContainer.classList.contains('hidden')) {
-                await loadCacheManagerImages();
-            } else {
-                await loadCacheImages();
-            }
-            await refreshReferenceBrowserIfOpen();
-            
-            // Ensure reference manager is refreshed after vibe operation
-            await refreshReferenceManagerAfterVibeOperation();
-        } else {
-            throw new Error(`Failed to move vibe image: ${response.message}`);
-        }
-    } catch (error) {
-        console.error('Error moving vibe image:', error);
-        showError('Failed to move vibe image');
-    }
-}
-
-function hideVibeManagerMoveModal() {
-    if (vibeManagerMoveModal) {
-        closeModal(vibeManagerMoveModal);
-    }
-}
-
-async function moveVibeManagerImage(vibeImage) {
-    try {
-        // Show workspace selection modal
-        showVibeManagerMoveModal();
-        
-        // Store the vibe image for reference during move
-        vibeManagerMoveTargetImage = vibeImage;
-        
-    } catch (error) {
-        console.error('Error setting up move for vibe manager image:', error);
-        showError('Failed to set up move operation');
-    }
-}
-
 async function deleteBaseImage(cacheImage) {
     try {
         const response = await wsClient.deleteReference(cacheImage.hash, cacheManagerCurrentWorkspace);
@@ -5500,113 +5274,6 @@ async function deleteVibeImage(vibeImage) {
     } catch (error) {
         console.error('Error deleting vibe image:', error);
         throw error;
-    }
-}
-
-async function handleVibeManagerDeleteConfirm() {
-    try {
-        const deleteItemsList = document.getElementById('vibeManagerDeleteItemsList');
-        if (!deleteItemsList) {
-            showError('Delete items list not found');
-            return;
-        }
-
-        // Get selected items
-        const selectedVibes = new Set();
-        const selectedEncodings = new Map(); // vibeId -> array of encoding indices
-
-        // Find selected vibe items (entire vibes)
-        const selectedVibeItems = deleteItemsList.querySelectorAll('.vibe-delete-item[data-type="vibe"].selected');
-        selectedVibeItems.forEach(item => {
-            selectedVibes.add(item.dataset.vibeId);
-        });
-
-        // Find selected encoding items
-        const selectedEncodingItems = deleteItemsList.querySelectorAll('.vibe-delete-item[data-type="encoding"].selected');
-        selectedEncodingItems.forEach(item => {
-            const vibeId = item.dataset.vibeId;
-            const model = item.dataset.model;
-            const informationExtraction = parseFloat(item.dataset.informationExtraction);
-            
-            if (!selectedEncodings.has(vibeId)) {
-                selectedEncodings.set(vibeId, []);
-            }
-            
-            // Find the encoding index in the vibe
-            const vibe = vibeManagerImages.find(v => v.id === vibeId);
-            if (vibe && vibe.encodings) {
-                const encodingIndex = vibe.encodings.findIndex(enc => 
-                    enc.model === model && enc.informationExtraction === informationExtraction
-                );
-                if (encodingIndex !== -1) {
-                    selectedEncodings.get(vibeId).push(encodingIndex);
-                }
-            }
-        });
-
-        // Process deletions
-        let deletedCount = 0;
-
-        // Delete entire vibes
-        for (const vibeId of selectedVibes) {
-            const vibe = vibeManagerImages.find(v => v.id === vibeId);
-            if (vibe) {
-                try {
-                    const response = await wsClient.deleteVibeImage(vibeId, cacheManagerCurrentWorkspace);
-                    if (response.success) {
-                        deletedCount++;
-                    }
-                } catch (error) {
-                    console.error(`Failed to delete vibe ${vibeId}:`, error);
-                }
-            }
-        }
-
-        // Delete specific encodings
-        for (const [vibeId, encodingIndices] of selectedEncodings) {
-            if (selectedVibes.has(vibeId)) continue; // Skip if entire vibe is being deleted
-            
-            const vibe = vibeManagerImages.find(v => v.id === vibeId);
-            if (vibe && vibe.encodings) {
-                const encodingsToDelete = encodingIndices.map(index => vibe.encodings[index]).filter(Boolean);
-                if (encodingsToDelete.length > 0) {
-                    try {
-                        const response = await wsClient.deleteVibeEncodings(vibeId, encodingsToDelete, cacheManagerCurrentWorkspace);
-                        if (response.success) {
-                            deletedCount += encodingsToDelete.length;
-                        }
-                    } catch (error) {
-                        console.error(`Failed to delete encodings from vibe ${vibeId}:`, error);
-                    }
-                }
-            }
-        }
-
-        // Refresh the display
-        if (!cacheBrowserContainer.classList.contains('hidden')) {
-            await loadCacheManagerImages();
-        } else {
-            await loadCacheImages();
-        }
-        displayVibeManagerImages();
-        await refreshReferenceBrowserIfOpen();
-        
-        // Ensure reference manager is refreshed after vibe operation
-        await refreshReferenceManagerAfterVibeOperation();
-        
-        // Show success message
-        if (deletedCount > 0) {
-            showGlassToast('success', null, `Deleted ${deletedCount} item(s)`);
-        } else {
-            showGlassToast('warning', null, 'No items were deleted');
-        }
-
-        // Close the modal
-        hideVibeManagerDeleteModal();
-        
-    } catch (error) {
-        console.error('Error handling vibe manager delete confirm:', error);
-        showError('Failed to delete selected items');
     }
 }
 
@@ -7321,20 +6988,6 @@ function initializeCacheManager() {
             updateUnifiedUploadImportMetadataVisibility();
         });
     }
-
-    // Vibe Manager bulk action controls
-
-    if (vibeManagerMoveBtn) vibeManagerMoveBtn.addEventListener('click', showVibeManagerMoveModal);
-
-    // Vibe Manager delete modal controls
-
-    if (closeVibeManagerDeleteModalBtn) closeVibeManagerDeleteModalBtn.addEventListener('click', hideVibeManagerDeleteModal);
-    if (vibeManagerDeleteConfirmBtn) vibeManagerDeleteConfirmBtn.addEventListener('click', handleVibeManagerDeleteConfirm);
-    // Vibe Manager move modal controls
-
-    if (closeVibeManagerMoveModalBtn) closeVibeManagerMoveModalBtn.addEventListener('click', hideVibeManagerMoveModal);
-    if (vibeManagerMoveCancelBtn) vibeManagerMoveCancelBtn.addEventListener('click', hideVibeManagerMoveModal);
-    if (vibeManagerMoveConfirmBtn) vibeManagerMoveConfirmBtn.addEventListener('click', moveVibeManagerImages);
 
     if (cacheBrowserModeSelector) {
         const modeButtons = cacheBrowserModeSelector.querySelectorAll('.mode-slider-btn');

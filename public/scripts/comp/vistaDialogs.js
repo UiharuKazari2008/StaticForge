@@ -30,12 +30,12 @@
     const doc = typeof document !== 'undefined' ? document : null;
 
     const MESSAGE_IDS = ['confirmationDialog', 'creditCostDialog', 'agentClientUpdateDialog', 'biasAdjustmentConfirmDialog',
-        'characterDataConfirmModal', 'baseImageChangeAlertModal', 'imageBiasMaskAlertModal', 'dovecoteNewMailModal'];
+        'baseImageChangeAlertModal', 'imageBiasMaskAlertModal', 'dovecoteNewMailModal'];
     const FORM_IDS = ['positionDialog', 'createTextReplacementModal', 'createRequestBodyReplacementModal', 'updatePresetModal',
-        'workspaceEditModal', 'workspaceDumpModal', 'unifiedUploadModal', 'vibeEncodingModal', 'vibeManagerDeleteModal',
-        'vibeManagerMoveModal', 'bulkChangePresetModal', 'cacheMetadataModal', 'timeDateModal', 'weatherLocationModal',
-        'tokenDisplayModal', 'naxVibesEncodingPickerModal', 'naxtCustomTagModal', 'textReplacementManualSelectionModal',
-        'vfsImportChoiceModal', 'directorFeedbackModal', 'compiledPromptModal', 'chatModal', 'personaSettingsModal', 'updateNoteModal'];
+        'workspaceEditModal', 'workspaceDumpModal', 'unifiedUploadModal', 'vibeEncodingModal',
+        'bulkChangePresetModal', 'cacheMetadataModal', 'timeDateModal', 'weatherLocationModal',
+        'tokenDisplayModal', 'naxtCustomTagModal',
+        'vfsImportChoiceModal', 'directorFeedbackModal', 'compiledPromptModal', 'chatModal', 'updateNoteModal'];
     // forms with Studio's prompt boxes: no 7.css on the client (its textarea and button rules would
     // move the text off the emphasis overlay and restyle the prompt toolbar)
     const PROMPT_IDS = ['createTextReplacementModal', 'createRequestBodyReplacementModal', 'cacheMetadataModal'];

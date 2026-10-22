@@ -180,7 +180,6 @@ class ServiceWorkerManager {
         this.updateToastId = null;
         this.checkingToastId = null;
         this.runtimeCompileNotifyId = null;
-        this.initUpdateModalActive = false;
         this.timeoutToastId = null;
         this.stallToastId = null;
         this.stallRetryButtonsWired = false;
@@ -785,53 +784,6 @@ class ServiceWorkerManager {
 
     queueCacheUpdateUntilBoot(files, silent, cacheOptions) {
         this._pendingCacheUpdateQueue.push({ files, silent, cacheOptions });
-    }
-
-    _showInitUpdateModal(message, progress = 0) {
-        if (this._isBeforeDesktop()) return;
-        if (!this._isPreStartupUpdatePhase() || !window.wsClient) return;
-        this.initUpdateModalActive = true;
-        window.wsClient.showWindowsUpdateModal(message, progress);
-    }
-
-    _updateInitUpdateModal(message, progress) {
-        if (!this.initUpdateModalActive || !window.wsClient) return;
-        // bootUiDebug.holdsUi: public/scripts/comp/bootUiDebug.js
-        if (window.bootUiDebug && window.bootUiDebug.holdsUi()) {
-            window.bootUiDebug.holdUpdate({ kind: 'update-modal', message, progress });
-            return;
-        }
-        window.wsClient.updateWindowsUpdateModal(message, progress);
-    }
-
-    _showInitUpdateRestartPrompt(message) {
-        if (!this.initUpdateModalActive || !window.wsClient) return;
-        this._setPreStartupUpdateStageMessage('Updates ready — restart required');
-        window.wsClient.showWindowsUpdateRestartPrompt(message);
-    }
-
-    _hideInitUpdateModal() {
-        if (!window.wsClient) return;
-        this.initUpdateModalActive = false;
-        window.wsClient.hideWindowsUpdateModal();
-        window.wsClient.setUpdateModalCallbacks(null, null, null);
-    }
-
-    _waitForInitUpdateUserChoice() {
-        return new Promise((resolve) => {
-            if (!window.wsClient) {
-                resolve({ action: 'later', success: true });
-                return;
-            }
-            window.wsClient.setUpdateModalCallbacks(
-                null,
-                () => this.forceRestart(),
-                () => {
-                    this._hideInitUpdateModal();
-                    resolve({ action: 'later', success: true });
-                }
-            );
-        });
     }
 
     _setPreStartupUpdateStageMessage(message) {
@@ -2239,18 +2191,12 @@ class ServiceWorkerManager {
             }
             this.tripPendingUpdateFuse(filesCount);
             this.trayPopup.dismissedUntilComplete = false;
-            if (this.initUpdateModalActive) {
-                return;
-            }
             this._scheduleUpdateCompleteToast('apply');
             return;
         }
 
         this.tripPendingUpdateFuse(filesCount);
         this.trayPopup.dismissedUntilComplete = false;
-        if (this.initUpdateModalActive) {
-            return;
-        }
         this._scheduleUpdateCompleteToast('restart');
     }
 
@@ -2548,15 +2494,6 @@ class ServiceWorkerManager {
         this.updateProgress = progress;
 
         if (this._isBeforeDesktop()) {
-            return;
-        }
-
-        if (this.initUpdateModalActive && window.wsClient) {
-            const { completed, total } = this.lastUpdateCounts;
-            const message = total > 0
-                ? `Downloading updates (${completed}/${total})...`
-                : 'Downloading updates...';
-            window.wsClient.updateWindowsUpdateModal(message, progress);
             return;
         }
 
@@ -2931,10 +2868,6 @@ class ServiceWorkerManager {
                     });
                 }
                 if (filesCount > 0) {
-                    if (this.initUpdateModalActive) {
-                        this.tripPendingUpdateFuse(this._resolvePendingUpdateFilesCount(event.data));
-                        break;
-                    }
                     this._processStaticCacheComplete(event.data);
                 } else {
                     console.log('Download completed but no files were downloaded');
@@ -2958,8 +2891,8 @@ class ServiceWorkerManager {
                     this.updateProgress = progress;
                     this.updateProgressToast(progress);
                     
-                    // Show update toast if not already shown (skip during pre-startup init modal)
-                    if (!this.updateToastId && !this.initUpdateModalActive) {
+                    // Show update toast if not already shown
+                    if (!this.updateToastId) {
                         this.showUpdateToast([{url: '...', hash: '...'}]);
                     }
                     
@@ -3834,63 +3767,30 @@ class ServiceWorkerManager {
 
         } catch (error) {
             console.error('❌ Error during update check:', error);
-            if (this.initUpdateModalActive) {
-                this._hideInitUpdateModal();
-            }
             this.initialCheckDone = true;
             // The boot gate decides. A failed check must not look like an empty update list.
             return { success: false };
         }
     }
 
-    // Download updates with integrated progress for initialization
+    // Download updates during initialization (no dialog: /launch owns the large-update progress)
     async downloadUpdatesForInit(files, options = {}) {
         const silent = options.silent === true || this._isBeforeDesktop();
-        const useInitModal = !silent && this._isPreStartupUpdatePhase();
 
-        const onProgress = ({ completed, total, progress }) => {
+        const onProgress = ({ completed, total }) => {
             this.lastUpdateCounts = { completed, total };
-            if (useInitModal) {
-                this._updateInitUpdateModal(
-                    total > 0 ? `Downloading updates (${completed}/${total})...` : 'Downloading updates...',
-                    progress
-                );
-            }
         };
 
-        if (useInitModal) {
-            this._showInitUpdateModal(`Downloading ${files.length} updates...`, 0);
-            window.wsClient.setUpdateModalCallbacks(
-                () => {
-                    if (this._attachDownloadSkipHandler) {
-                        this._attachDownloadSkipHandler();
-                    }
-                },
-                () => this.forceRestart(),
-                null
-            );
-        } else if (!silent && this._isDesktopTrayMode()) {
+        if (!silent && this._isDesktopTrayMode()) {
             this.showUpdateToast(files);
         }
 
-        const result = await this.attachToDownloadProgress({
-            files,
-            onProgress,
-            allowSkip: useInitModal,
-            onSkip: () => {
-                if (useInitModal) {
-                    this._hideInitUpdateModal();
-                }
-            }
-        });
+        const result = await this.attachToDownloadProgress({ files, onProgress, allowSkip: false });
 
         if (result.success && result.filesDownloaded > 0 && !result.hasErrors) {
             const stillPending = await this.getFilesNeedingUpdate(files);
             if (stillPending.length > 0) {
                 console.warn(`Downloaded updates but ${stillPending.length} files still mismatch; not restarting`);
-                if (useInitModal) {
-                    this._hideInitUpdateModal();
-                }
                 return {
                     success: false,
                     filesDownloaded: result.filesDownloaded,
@@ -3904,25 +3804,14 @@ class ServiceWorkerManager {
                 && this.isCssOnlyAutoApplyEnabled();
 
             if (canApplyWithoutRestart) {
-                if (useInitModal) {
-                    this._hideInitUpdateModal();
-                }
                 await this.applyStaticCacheUpdate(files);
                 return { success: true, filesDownloaded: result.filesDownloaded, userChoice: 'apply' };
             }
 
             // Boot init downloads: script updates must reload to execute — same as a finished install.
-            if (useInitModal) {
-                this._updateInitUpdateModal('Restarting Dreamscape...', 100);
-                this._setPreStartupUpdateStageMessage('Restarting Dreamscape...');
-            }
             await new Promise((resolve) => setTimeout(resolve, 500));
             this.forceRestart();
             return { success: true, filesDownloaded: result.filesDownloaded, userChoice: 'restart' };
-        }
-
-        if (useInitModal && result.userChoice !== 'restart') {
-            this._hideInitUpdateModal();
         }
 
         if (result.stalled) {
@@ -4368,7 +4257,6 @@ class ServiceWorkerManager {
         } catch (_) { /* best effort */ }
         this._clearLegacyInstallWizardSession();
         this._launchRedirectStarted = true;
-        this._hideInitUpdateModal();
         // wsClient.haltStartupForInstallReload: public/scripts/websocket.js
         if (window.wsClient && typeof window.wsClient.haltStartupForInstallReload === 'function') {
             window.wsClient.haltStartupForInstallReload();
