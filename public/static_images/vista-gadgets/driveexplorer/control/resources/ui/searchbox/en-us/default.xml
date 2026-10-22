@@ -1,0 +1,29 @@
+<manifest>
+  <locale lang="en-US">
+    <ClearButton>
+      <ToolTip>Clear</ToolTip>
+    </ClearButton>
+    <SearchButton>
+      <ToolTip>Search</ToolTip>
+    </SearchButton>
+    <TextBox>
+      <Text>Search</Text>
+      <ToolTip>Search</ToolTip>
+      <Style>
+        <Padding>3px 3px 0px 3px</Padding>
+      </Style>
+    </TextBox>
+    <SearchBoxStatus>
+      <Text>Searching...</Text>
+      <Style>
+        <Padding>2px</Padding>
+      </Style>
+    </SearchBoxStatus>
+    <NoResultsFound>
+      <Text>No Results Found</Text>
+      <Style>
+        <Padding>5px</Padding>
+      </Style>
+    </NoResultsFound>
+  </locale>
+</manifest>

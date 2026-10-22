@@ -1,0 +1,96 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns:t="urn:schemas-microsoft-com:time">
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+
+<!--<meta http-equiv="X-UA-Compatible" content="IE=edge" />-->
+<meta http-equiv="X-UA-Compatible" content="IE=5" />
+
+
+<style>
+body {
+  margin: 0px;
+  width: 130px;
+  height: 130px;
+  overflow:hidden;
+}
+
+.CPU_bar {
+  position:absolute; width:130px; height:8px;
+  border-style:solid; border-width:1px; border-color:black;
+  background-color:#81858A;
+}
+
+.CPU_bar_content {
+  position:absolute; top:0px; left:0px; height:6px; overflow:hidden
+}
+
+.CPU_bar_up {
+  position:absolute; top:0px; left:0px; width:100%; height:3px;
+  background-color:#51C6E2;
+}
+
+.CPU_bar_down {
+  position:absolute; top:3px; left:0px; width:100%; height:3px;
+  background-color:#0A809B;
+}
+
+.Filter_option {
+  background-color:white;
+  padding:3px;
+  border-color:black; border-width:1px; border-style:solid;
+  cursor:pointer;
+  filter:progid:DXImageTransform.Microsoft.Alpha(opacity=75);
+  visibility:hidden;
+}
+</style>
+
+<script type="text/jscript" language="jscript" src="js/core.js"></script>
+<script type="text/jscript" language="jscript" src="js/seq.js"></script>
+<script type="text/jscript" language="jscript" src="js/wmi.js"></script>
+<script type="text/jscript" language="jscript" src="js/img_cache.js"></script>
+<script type="text/jscript" language="jscript" src="js/shell_folder.js"></script>
+<script type="text/jscript" language="jscript" src="js/dragdrop.js"></script>
+
+<script type="text/jscript" language="jscript" src="_SA.js"></script>
+
+<SCRIPT Language="JScript" FOR="WMP_player" EVENT = "OpenStateChange(NewState)">
+if (self.WMP)
+  WMP.OpenStateChange(NewState)
+</SCRIPT>
+
+<SCRIPT Language="JScript" FOR="WMP_player" EVENT = "PlayStateChange(NewState)">
+if (self.WMP)
+  WMP.PlayStateChange(NewState)
+</SCRIPT>
+
+<STYLE>
+.time {behavior: url(#default#time2);}
+</STYLE>
+<?IMPORT namespace="t" implementation="#default#time2">
+
+</head>
+<body onload="init()">
+
+<g:background id="BG" style="position:absolute; top:0px; left:0px; background-color:transparent;" ></g:background>
+
+<div id="LBG_dummy" style="position:absolute; top:0px; left:0px; background-color:black; display:none"></div>
+
+<div id="Lmain_obj" style="position:absolute; top:0px; left:0px">
+ <div id="L_EV_content" style="position:absolute; top:0px; left:0px"></div>
+ <div id="Lmain_animation" style="position:absolute; top:0px; left:0px"></div>
+ <div id="L_EV_content2" style="position:absolute; top:0px; left:0px; z-index:99"></div>
+</div>
+
+<div id="LCPU_main" class="CPU_bar" style="visibility:hidden">
+ <div id="LCPU_main_content" class="CPU_bar_content">
+  <div id="LCPU_main_up" class="CPU_bar_up"></div>
+  <div id="LCPU_main_down" class="CPU_bar_down"></div>
+ </div>
+</div>
+
+<div id="Ldebug" style="position:absolute; top:0px; left:0px; color:black; font-size:xx-small; visibility:hidden; background-color:white; padding:3px; border-color:black; border-width:1px; border-style:solid; z-index:99"></div>
+
+</body>
+</html>

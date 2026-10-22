@@ -310,6 +310,121 @@
    "id": "lottery",
    "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/LotteryNumberPicker0.3.gadget",
    "group": "tools"
+  },
+  {
+   "id": "allcpu",
+   "src": "src2/msi-gadgets/Gadgets/All_CPU_Meter.gadget",
+   "group": "system"
+  },
+  {
+   "id": "networkmeter",
+   "src": "src2/msi-gadgets/Gadgets/Network_Meter_V8.4.gadget",
+   "group": "system"
+  },
+  {
+   "id": "drivesmeter",
+   "src": "src2/msi-gadgets/Gadgets/Drives_Meter.gadget",
+   "group": "system"
+  },
+  {
+   "id": "topfive",
+   "src": "src2/msi-gadgets/Gadgets/TopFive10.gadget",
+   "group": "system"
+  },
+  {
+   "id": "driveinfo",
+   "src": "src2/msi-gadgets/Gadgets/DriveInfo.gadget",
+   "group": "system"
+  },
+  {
+   "id": "uptime",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/Uptime.gadget",
+   "group": "system"
+  },
+  {
+   "id": "freediscspace",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/FreeDiscSpace.gadget",
+   "group": "system"
+  },
+  {
+   "id": "istatcombo",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/iStat combo.gadget",
+   "group": "system"
+  },
+  {
+   "id": "istatcpu",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/iStat cpu.gadget",
+   "group": "system"
+  },
+  {
+   "id": "istatmemory",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/iStat memory.gadget",
+   "group": "system"
+  },
+  {
+   "id": "sysanimator",
+   "src": "src/sysani/AT_SystemAnimator_v4610.gadget",
+   "group": "system",
+   "extras": [
+    {
+     "zip": "src/sysani/sys_ani_haruhi_suzumiya.zip",
+     "to": "packs"
+    },
+    {
+     "zip": "src/sysani/sys_ani_k_on.zip",
+     "to": "packs"
+    },
+    {
+     "zip": "src/sysani/sys_ani_lucky_star.zip",
+     "to": "packs"
+    },
+    {
+     "zip": "src/sysani/sys_ani_others.zip",
+     "to": "packs"
+    },
+    {
+     "zip": "src/sysani/sys_ani_vocaloids.zip",
+     "to": "packs"
+    }
+   ]
+  },
+  {
+   "id": "polaroid",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/Polaroidv1.7.1.1.gadget",
+   "group": "system"
+  },
+  {
+   "id": "driveexplorer",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/DriveExplorer.gadget",
+   "group": "system"
+  },
+  {
+   "id": "scribble",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/scribble.gadget",
+   "group": "system"
+  },
+  {
+   "id": "inknotes",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/InkNotes.gadget",
+   "group": "system"
+  },
+  {
+   "id": "linksbar",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/Links Bar.gadget",
+   "group": "system"
+  },
+  {
+   "id": "usgs",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/USGS RSS Feed.gadget",
+   "group": "system",
+   "web": [
+    "earthquake.usgs.gov"
+   ]
+  },
+  {
+   "id": "fullsun",
+   "src": "src/vistazip/FullSun.gadget",
+   "group": "system"
   }
  ]
 }

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+    <name>Uptime</name>
+    <namespace>Computer Uptime.Gadget</namespace>
+    <version>1.0.0.1</version>
+    <author name="Kristan M. Kenney">
+      <info url="www.longhornblogs.com" text="LonghornBlogs.com" />
+      <logo src="icon.png" />
+    </author>
+    <copyright>&#169; 2005 - 2006</copyright>
+    <description>Displays how long it has been since you last restarted your computer.</description>
+  <icons>
+    <icon height="64" width="64" src="icon.png" />
+  </icons>
+
+  <hosts>
+        <host name="sidebar">
+            <base type="HTML" apiVersion="1.0.0" src="Uptime.html" />
+            <permissions>full</permissions>
+            <platform minPlatformVersion="0.3" />
+			<defaultImage src="drag.png"/>
+        </host>
+    </hosts>
+</gadget>

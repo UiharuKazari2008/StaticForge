@@ -1,0 +1,245 @@
+#mainBody
+{
+    margin: 0;
+	border: 0;
+	padding: 0;
+	
+    color: Black;
+	width:130px;
+	height:130px;
+
+	background: black url("Background.png") 0 0 no-repeat;
+}
+#pickerBody
+{
+    margin: 5px;
+    color: #cc0000;
+	width:430px; height:365px;
+	border: 0px;
+	background: #111 url("PickerBackground.png") 0 0 no-repeat;
+}
+.SidebarMovie
+{
+	position: absolute;
+	left: 3px;
+	top: 3px;
+	width: 122px;
+	height: 122px;
+	border: none;
+	display: none;
+}
+.SidebarImage
+{
+	position: absolute;
+	left: 3px;
+	top: 3px;
+	width: 122px;
+	height: 122px;
+	border: none;
+	/* filter:alpha(Opacity=100, FinishOpacity=0, Style=2, StartX=100, StartY=0, FinishX=100, FinishY=0); */
+}
+#pickerHeader
+{
+	position: absolute;
+	left: 5px;
+	top: 5px;
+	width: 224px;
+	height: 20px;
+	border: none;
+}
+
+#pickerToggleMovie
+{
+	position: absolute;
+	left: 229px;
+	top: 5px;
+	width: 32px;
+	height: 20px;
+	border: none;
+	background: url("VideoButton.png") 0 0 no-repeat;
+	cursor: pointer;
+}
+
+#pickerToggleMovie:hover
+{
+	background-position: 0 -20px;
+}
+
+#pickerLargeView
+{
+	position: absolute;
+	left: 5px;
+	top: 30px;
+	width: 256px;
+	height: 256px;
+	border: none;
+}
+
+#pickerMovie
+{
+	position: absolute;
+	left: 5px;
+	top: 30px;
+	width: 256px;
+	height: 310px;
+	display: none;
+}
+
+#pickerDescription
+{
+	position: absolute;
+	left: 5px;
+	top: 296px;
+	width: 256px;
+	height: 54px;
+	color: White;
+	font-size: 80%;
+	vertical-align: bottom;
+	text-align: center;
+}
+
+#pickerDescription a
+{
+	color: white;
+	text-decoration: none;
+}
+
+#pickerDescription a:hover
+{
+	text-decoration: underline;
+}
+
+.detectorDescription
+{
+	font-size: 90%;
+	display: none;
+}
+
+.exploreDescription
+{
+	font-size: 80%;
+	padding-top: 5px;
+}
+
+#pickerList
+{
+	position: absolute;
+	left: 265px;
+	top: 5px;
+}
+
+#pickerList a
+{
+	width: 160px;
+	height: 42px;
+	text-decoration: none;
+	color: White;
+	display: block;
+	margin: 0 0;
+	padding: 0 0 0 0;
+	vertical-align: middle;
+	font-size: 80%;
+}
+
+#pickerList a:hover
+{
+	color: Orange;
+}
+
+#pickerList img
+{
+	width: 38px;
+	height: 38px;
+	vertical-align: middle;
+	border: none;
+	margin: 1px 4px 0 2px;
+}
+
+.SelectedDetector
+{
+	background: url("SelectedBackground.png") 0 0 no-repeat;
+}
+
+#WobbleLink
+{
+	position: absolute;
+	top: 346px;
+	left: 0;
+	width: 100%;
+	height: 15px;
+	text-align: center;
+	color: white;
+	z-index: 20;
+}
+#WobbleLink a
+{
+	text-decoration: none;
+	color: white;
+}
+#Wobblelink a:hover
+{
+	text-decoration: underline;
+}
+
+#settingsBody
+{
+	margin: 0;
+	width: 300px;
+	height: 280px;
+	font-size: 18px;
+}
+.SunImage
+{
+	position: absolute;
+	left: 4px;
+	top: 4px;
+	width: 122px;
+	height: 122px;
+	border: none;
+	display: none;
+}
+.SunMovie
+{
+	position: absolute;
+	left: 4px;
+	top: 4px;
+	width: 122px;
+	height: 122px;
+	display: block;
+}
+.settingLabel
+{
+	font-size: 100%;
+	font-weight: bold;
+	margin-bottom: 0.25em;
+}
+.settingGroup
+{
+	margin-left: 1em;
+	margin-bottom: 1em;
+	font-size: 90%;
+}
+.settingAbout
+{
+}
+.settingProductName
+{
+	font-size: 100%;
+	font-weight: bold;
+	margin-bottom: 0.25em;
+}
+.settingProductAuthor
+{
+	margin-left: 1em;
+	font-size: 90%;
+}
+.settingCopyright
+{
+	margin-left: 1em;
+	font-size: 80%;
+}
+.settingLink
+{
+	margin-left: 1em;
+	font-size: 80%;
+}

@@ -1,0 +1,27 @@
+/*
+//---------------------------------------------
+//  THIS CODE IS NOT APPROVED FOR USE IN/ON ANY OTHER UI ELEMENT OR PRODUCT COMPONENT.  
+//  Copyright (c) 2006 Microsoft Corporation.  All rights reserved.
+// ----------------------------------------------
+*/
+body
+{
+    width: 278px;
+    height: 310px;
+    font-family: Segoe UI, Tahoma, Sans-Serif;
+    margin: 0px;
+}
+#settingsButtonTable
+{
+    font-size: 12px;
+}
+#currentIndex
+{
+     width: 15px;
+     text-align: center;
+}
+#maxIndex
+{
+     width: 15px;
+     text-align: center;
+}

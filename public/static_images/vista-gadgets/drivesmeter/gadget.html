@@ -1,0 +1,193 @@
+<!--//
+////////////////////////////////////////////////////////////////////////////////
+//
+//  Copyright © 2013 addgadgets.com  All rights reserved.
+//
+//  http://addgadgets.com/
+//
+////////////////////////////////////////////////////////////////////////////////
+//-->
+<html xmlns:v="urn:schemas-microsoft-com:vml">
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+
+<title>Drive Meter</title>
+<link rel="stylesheet" href="gadget.css">
+<script type="text/javascript" language="javascript" src="gadget.js"></script>
+<style>
+v\:* { behavior: url(#default#VML); }
+</style>
+</head>
+<body onLoad="onLoad()" ondblclick="dblclick();">
+	<g:background id="background"></g:background>
+    <OBJECT ID="Player" height="0" width="0" CLASSID="CLSID:6BF52A52-394A-11d3-B153-00C04F79FAA6">
+	<PARAM name="autoStart" value="False">
+	<PARAM name="uiMode" value="invisible">
+	</OBJECT>
+
+	<div id="backgc" style="position:absolute;"></div>
+	<div><img id="blackwhite" src="images/blackwhite.png" style="position:absolute;"/></div>
+	<img id="driveIcon" src="images/drive.png" style="position:absolute;cursor:pointer;" onClick="show_flyout();">
+	<div id="drive" style="color:#ffffff; font-weight: bold; position:absolute;cursor:pointer;" onClick="show_flyout();">Drives Meter</div>
+	<div id="iconAlert" style="position:absolute;cursor:pointer;" OnClick="clickAlert()"></div>
+
+	<div id="sDrive1" style="position:absolute;"></div>
+	<div id="sdriveVolume1" style="position:absolute; text-overflow:ellipsis; overflow:hidden;">EMPTY</div>
+	<img id="ejectImg1" src="eject.png" style="position:absolute;cursor:pointer;visibility:hidden;" title="Eject" onClick="ejectDrive1();">
+	<div id="sDrivePrec1" style="position:absolute;">0%</div>
+	<div id="sdriveUsed1" style="position:absolute;">Used:</div>
+	<div id="sdriveFree1" style="position:absolute;">Free:</div>
+	<div id="sdriveTotal1" style="position:absolute;">Total:</div>
+	<img id="usedBlackBar1" src="images/barblack.png" style="position:absolute;">
+    <hr id="sdriveBar1" style="position:absolute;">
+	<img id="usedTopBar1" src="images/bartop.png" style="position:absolute;">
+	<img id="arrowup1" src="arrow_up_green.png" style="position:absolute;">
+	<img id="arrowdown1" src="arrow_down_yellow.png" style="position:absolute;">
+	<div id="diskRead1" style="position:absolute;">0.000B/s</div>
+	<div id="diskWrite1" style="position:absolute;">0.000B/s</div>
+	<div id="hr1" style="position:absolute;"></div>
+
+	<div id="sDrive2" style="position:absolute;"></div>
+	<div id="sDriveVolume2" style="position:absolute; text-overflow:ellipsis; overflow:hidden;">EMPTY</div>
+	<img id="ejectImg2" src="eject.png" style="position:absolute;cursor:pointer;visibility:hidden;" title="Eject" onClick="ejectDrive2();">
+	<div id="sDrivePrec2" style="position:absolute;">0%</div>
+	<div id="sDriveUsed2" style="position:absolute;">Used:</div>
+	<div id="sDriveFree2" style="position:absolute;">Free:</div>
+	<div id="sDriveTotal2" style="position:absolute;">Total:</div>
+	<img id="usedBlackBar2" src="images/barblack.png" style="position:absolute;">
+    <hr id="sDriveBar2" style="position:absolute;">
+	<img id="usedTopBar2" src="images/bartop.png" style="position:absolute;">
+	<img id="arrowup2" src="arrow_up_green.png" style="position:absolute;">
+	<img id="arrowdown2" src="arrow_down_yellow.png" style="position:absolute;">
+	<div id="diskRead2" style="position:absolute;">0.000B/s</div>
+	<div id="diskWrite2" style="position:absolute;">0.000B/s</div>
+	<div id="hr2" style="position:absolute;"></div>
+
+	<div id="sDrive3" style="position:absolute;"></div>
+	<div id="sDriveVolume3" style="position:absolute; text-overflow:ellipsis; overflow:hidden;">EMPTY</div>
+	<img id="ejectImg3" src="eject.png" style="position:absolute;cursor:pointer;visibility:hidden;" title="Eject" onClick="ejectDrive3();">
+	<div id="sDrivePrec3" style="position:absolute;">0%</div>
+	<div id="sDriveUsed3" style="position:absolute;">Used:</div>
+	<div id="sDriveFree3" style="position:absolute;">Free:</div>
+	<div id="sDriveTotal3" style="position:absolute;">Total:</div>
+	<img id="usedBlackBar3" src="images/barblack.png" style="position:absolute;">
+    <hr id="sDriveBar3" style="position:absolute;">
+	<img id="usedTopBar3" src="images/bartop.png" style="position:absolute;">
+	<img id="arrowup3" src="arrow_up_green.png" style="position:absolute;">
+	<img id="arrowdown3" src="arrow_down_yellow.png" style="position:absolute;">
+	<div id="diskRead3" style="position:absolute;">0.000B/s</div>
+	<div id="diskWrite3" style="position:absolute;">0.000B/s</div>
+	<div id="hr3" style="position:absolute;"></div>
+
+	<div id="sDrive4" style="position:absolute;"></div>
+	<div id="sDriveVolume4" style="position:absolute; text-overflow:ellipsis; overflow:hidden;">EMPTY</div>
+	<img id="ejectImg4" src="eject.png" style="position:absolute;cursor:pointer;visibility:hidden;" title="Eject" onClick="ejectDrive4();">
+	<div id="sDrivePrec4" style="position:absolute;">0%</div>
+	<div id="sDriveUsed4" style="position:absolute;">Used:</div>
+	<div id="sDriveFree4" style="position:absolute;">Free:</div>
+	<div id="sDriveTotal4" style="position:absolute;">Total:</div>
+	<img id="usedBlackBar4" src="images/barblack.png" style="position:absolute;">
+    <hr id="sDriveBar4" style="position:absolute;">
+	<img id="usedTopBar4" src="images/bartop.png" style="position:absolute;">
+	<img id="arrowup4" src="arrow_up_green.png" style="position:absolute;">
+	<img id="arrowdown4" src="arrow_down_yellow.png" style="position:absolute;">
+	<div id="diskRead4" style="position:absolute;">0.000B/s</div>
+	<div id="diskWrite4" style="position:absolute;">0.000B/s</div>
+	<div id="hr4" style="position:absolute;"></div>
+
+	<div id="sDrive5" style="position:absolute;"></div>
+	<div id="sDriveVolume5" style="position:absolute; text-overflow:ellipsis; overflow:hidden;">EMPTY</div>
+	<img id="ejectImg5" src="eject.png" style="position:absolute;cursor:pointer;visibility:hidden;" title="Eject" onClick="ejectDrive5();">
+	<div id="sDrivePrec5" style="position:absolute;">0%</div>
+	<div id="sDriveUsed5" style="position:absolute;">Used:</div>
+	<div id="sDriveFree5" style="position:absolute;">Free:</div>
+	<div id="sDriveTotal5" style="position:absolute;">Total:</div>
+	<img id="usedBlackBar5" src="images/barblack.png" style="position:absolute;">
+    <hr id="sDriveBar5" style="position:absolute;">
+	<img id="usedTopBar5" src="images/bartop.png" style="position:absolute;">
+	<img id="arrowup5" src="arrow_up_green.png" style="position:absolute;">
+	<img id="arrowdown5" src="arrow_down_yellow.png" style="position:absolute;">
+	<div id="diskRead5" style="position:absolute;">0.000B/s</div>
+	<div id="diskWrite5" style="position:absolute;">0.000B/s</div>
+	<div id="hr5" style="position:absolute;"></div>
+
+	<div id="sDrive6" style="position:absolute;"></div>
+	<div id="sDriveVolume6" style="position:absolute; text-overflow:ellipsis; overflow:hidden;">EMPTY</div>
+	<img id="ejectImg6" src="eject.png" style="position:absolute;cursor:pointer;visibility:hidden;" title="Eject" onClick="ejectDrive6();">
+	<div id="sDrivePrec6" style="position:absolute;">0%</div>
+	<div id="sDriveUsed6" style="position:absolute;">Used:</div>
+	<div id="sDriveFree6" style="position:absolute;">Free:</div>
+	<div id="sDriveTotal6" style="position:absolute;">Total:</div>
+	<img id="usedBlackBar6" src="images/barblack.png" style="position:absolute;">
+    <hr id="sDriveBar6" style="position:absolute;">
+	<img id="usedTopBar6" src="images/bartop.png" style="position:absolute;">
+	<img id="arrowup6" src="arrow_up_green.png" style="position:absolute;">
+	<img id="arrowdown6" src="arrow_down_yellow.png" style="position:absolute;">
+	<div id="diskRead6" style="position:absolute;">0.000B/s</div>
+	<div id="diskWrite6" style="position:absolute;">0.000B/s</div>
+	<div id="hr6" style="position:absolute;"></div>
+
+	<div id="sDrive7" style="position:absolute;"></div>
+	<div id="sDriveVolume7" style="position:absolute; text-overflow:ellipsis; overflow:hidden;">EMPTY</div>
+	<img id="ejectImg7" src="eject.png" style="position:absolute;cursor:pointer;visibility:hidden;" title="Eject" onClick="ejectDrive7();">
+	<div id="sDrivePrec7" style="position:absolute;">0%</div>
+	<div id="sDriveUsed7" style="position:absolute;">Used:</div>
+	<div id="sDriveFree7" style="position:absolute;">Free:</div>
+	<div id="sDriveTotal7" style="position:absolute;">Total:</div>
+	<img id="usedBlackBar7" src="images/barblack.png" style="position:absolute;">
+    <hr id="sDriveBar7" style="position:absolute;">
+	<img id="usedTopBar7" src="images/bartop.png" style="position:absolute;">
+	<img id="arrowup7" src="arrow_up_green.png" style="position:absolute;">
+	<img id="arrowdown7" src="arrow_down_yellow.png" style="position:absolute;">
+	<div id="diskRead7" style="position:absolute;">0.000B/s</div>
+	<div id="diskWrite7" style="position:absolute;">0.000B/s</div>
+	<div id="hr7" style="position:absolute;"></div>
+
+	<div id="sDrive8" style="position:absolute;"></div>
+	<div id="sDriveVolume8" style="position:absolute; text-overflow:ellipsis; overflow:hidden;">EMPTY</div>
+	<img id="ejectImg8" src="eject.png" style="position:absolute;cursor:pointer;visibility:hidden;" title="Eject" onClick="ejectDrive8();">
+	<div id="sDrivePrec8" style="position:absolute;">0%</div>
+	<div id="sDriveUsed8" style="position:absolute;">Used:</div>
+	<div id="sDriveFree8" style="position:absolute;">Free:</div>
+	<div id="sDriveTotal8" style="position:absolute;">Total:</div>
+	<img id="usedBlackBar8" src="images/barblack.png" style="position:absolute;">
+    <hr id="sDriveBar8" style="position:absolute;">
+	<img id="usedTopBar8" src="images/bartop.png" style="position:absolute;">
+	<img id="arrowup8" src="arrow_up_green.png" style="position:absolute;">
+	<img id="arrowdown8" src="arrow_down_yellow.png" style="position:absolute;">
+	<div id="diskRead8" style="position:absolute;">0.000B/s</div>
+	<div id="diskWrite8" style="position:absolute;">0.000B/s</div>
+	<div id="hr8" style="position:absolute;"></div>
+    <!--
+        v:shape is replaced with g:shape in the following. This fixes display issues when high-dpi is selected.
+        This works only with 8GadgetPack Version 30 and higher.
+    -->
+	<g:shape id="linesx" style="position:absolute;" filled="false" strokecolor="#2F4F4F" strokeweight="1pt" coordorigin="0 0" coordsize="116 100"path=" m 8,100 l 8,0  m 18,100 l 18,0  m 28,100 l 28,0  m 38,100 l 38,0  m 48,100 l 48,0  m 58,100 l 58,0  m 68,100 l 68,0  m 78,100 l 78,0  m 88,100 l 88,0  m 98,100 l 98,0  m 108,100 l 108,0 "></g:shape>
+	<g:shape id="linesy" style="position:absolute;" filled="false" strokecolor="#2F4F4F" strokeweight="1pt" coordorigin="0 0" coordsize="116 100" path=" m 0,20 l 115,20  m 0,40 l 115,40  m 0,60 l 115,60  m 0,80 l 115,80" ></g:shape>
+	<g:shape id="pergraph8" style="position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="pergraph7" style="position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="pergraph6" style="position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="pergraph5" style="position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="pergraph4" style="position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="pergraph3" style="position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="pergraph2" style="position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="pergraph1" style="position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="writegraph8" style='position:absolute;' filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 30"></g:shape>
+	<g:shape id="readgraph8" style='position:absolute;' filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 30"></g:shape>
+	<g:shape id="writegraph7" style='position:absolute;' filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 30"></g:shape>
+	<g:shape id="readgraph7" style='position:absolute;' filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 30"></g:shape>
+	<g:shape id="writegraph6" style='position:absolute;' filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 30"></g:shape>
+	<g:shape id="readgraph6" style='position:absolute;' filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 30"></g:shape>
+	<g:shape id="writegraph5" style='position:absolute;' filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 30"></g:shape>
+	<g:shape id="readgraph5" style='position:absolute;' filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 30"></g:shape>
+	<g:shape id="writegraph4" style='position:absolute;' filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 30"></g:shape>
+	<g:shape id="readgraph4" style='position:absolute;' filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 30"></g:shape>
+	<g:shape id="writegraph3" style='position:absolute;' filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 30"></g:shape>
+	<g:shape id="readgraph3" style='position:absolute;' filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 30"></g:shape>
+	<g:shape id="writegraph2" style='position:absolute;' filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 30"></g:shape>
+	<g:shape id="readgraph2" style='position:absolute;' filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 30"></g:shape>
+	<g:shape id="writegraph1" style='position:absolute;' filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 30"></g:shape>
+	<g:shape id="readgraph1" style='position:absolute;' filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 30"></g:shape>
+	<g:shape id="border" style="position:absolute;" filled="false" strokecolor="#778899" strokeweight="1pt" coordorigin="0 0" coordsize="110 100" path="m 0,96 l 109,96 l 109,0 l 0,0 l 0,96" ></g:shape>
+	<div id=newUpdate style="position:absolute; color:#87CEFA;"></div>
+</body>
+</html>

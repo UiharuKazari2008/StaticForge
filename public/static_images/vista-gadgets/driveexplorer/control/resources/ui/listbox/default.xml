@@ -1,0 +1,15 @@
+<manifest>
+  <resource type="Image" relativePath="../shared/" extension="png">
+    <Image name="SelectedItemBg" width="1" height="20" />
+    <Image name="SelectedItemLeft" width="3" height="20" />
+    <Image name="SelectedItemRight" width="3" height="20" />
+  </resource>
+  <resource type="Control" name="ScrollBar" relativePath="../scrollbar/small/">
+    <VScrollBar>
+      <Width type="UInt32">9</Width>
+    </VScrollBar>
+    <HScrollBar>
+      <Height type="UInt32">9</Height>
+    </HScrollBar>
+  </resource>
+</manifest>

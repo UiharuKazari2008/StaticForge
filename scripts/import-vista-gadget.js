@@ -115,11 +115,19 @@ function patchPage(html) {
     let out = html.replace(/<meta[^>]+charset\s*=\s*["']?[\w-]+["']?[^>]*>/gi, '');
     out = out.replace(/<meta[^>]+http-equiv\s*=\s*["']?content-type["']?[^>]*>/gi, '');
     // <g:background ... /> is a void tag to IE's XML namespaces; to the HTML parser it stays open and swallows the page
-    out = out.replace(/<(g:(?:background|image|text))\b([^>]*?)\/\s*>/gi, '<$1$2></$1>');
+    out = out.replace(/<((?:g|v):[a-z]+)\b([^>]*?)\/\s*>/gi, '<$1$2></$1>');
     const tags = '<meta charset="utf-8">' + HEAD_TAGS;
     if (/<head[^>]*>/i.test(out)) return out.replace(/<head[^>]*>/i, (m) => m + tags);
     if (/<html[^>]*>/i.test(out)) return out.replace(/<html[^>]*>/i, (m) => m + '<head>' + tags + '</head>');
     return tags + out;
+}
+
+/** Root-absolute url(/x), src="/x" and href="/x" (not //host) resolve inside the gadget's folder. */
+function rootPaths(text, id) {
+    const base = `${WEB_ROOT}/${id}/`;
+    return text
+        .replace(/url\(\s*(['"]?)\/(?!\/|static_images\/vista-gadgets\/|scripts\/comp\/sidebar-gadgets\/)/gi, (_m, q) => `url(${q}${base}`)
+        .replace(/\b(src|href)\s*=\s*(['"])\/(?!\/|static_images\/vista-gadgets\/|scripts\/comp\/sidebar-gadgets\/)/gi, (_m, attr, q) => `${attr}=${q}${base}`);
 }
 
 function xmlText(xml, tag) {
@@ -158,10 +166,14 @@ function importOne(entry, opts) {
         const manifestKey = keys.includes(locale + 'gadget.xml') ? locale + 'gadget.xml' : 'gadget.xml';
         const xml = decodeText(fs.readFileSync(path.join(root, lowered.get(manifestKey))));
         const baseSrc = (xmlAttr(xml, 'base', 'src') || 'gadget.html').replace(/\\/g, '/').toLowerCase();
-        const pageDir = keys.includes(locale + baseSrc) ? locale : '';
+        // the page sits beside gadget.xml, or in en-US / another locale folder when the manifest is at the root
+        const pageDir = [locale, '', 'en-us/', ...keys.filter((k) => /^[a-z]{2}-[a-z]{2}\/gadget\.xml$/.test(k)).map((k) => k.replace('gadget.xml', '')),
+            ...keys.filter((k) => k.endsWith('/' + baseSrc) && k.split('/').length === 2).map((k) => k.replace(baseSrc, ''))]
+            .find((d) => keys.includes(d + baseSrc)) || '';
         const iconSrc = (xmlAttr(xml, 'icon', 'src') || '').replace(/\\/g, '/').toLowerCase();
         const iconKey = [pageDir + iconSrc, iconSrc, locale + iconSrc].find((k) => k && lowered.has(k)) || '';
         let usesSettings = false;
+        let usesShellFs = false;
         if (!opts.dry) {
             fs.rmSync(out, { recursive: true, force: true });
             fs.mkdirSync(out, { recursive: true });
@@ -172,13 +184,33 @@ function importOne(entry, opts) {
             let body = fs.readFileSync(path.join(root, rel));
             if (TEXT_EXT.has(ext)) {
                 let text = decodeText(body);
+                // "/images/x.png" meant the gadget's root to the Sidebar: point it at the package
+                if (ext === '.css' || PAGE_EXT.has(ext)) text = rootPaths(text, entry.id);
                 if (/settingsUI/.test(text)) usesSettings = true;
+                if (/itemFromPath|SHFolder|chooseFolder/.test(text)) usesShellFs = true;
                 if (PAGE_EXT.has(ext)) text = patchPage(text);
                 body = Buffer.from(text, 'utf8');
             }
             if (!opts.dry) {
                 fs.mkdirSync(path.dirname(dest), { recursive: true });
                 fs.writeFileSync(dest, body);
+            }
+        }
+        // extras: archives that belong in the gadget's folder (System Animator's animation packs)
+        for (const extra of opts.dry ? [] : (entry.extras || [])) {
+            const xtmp = fs.mkdtempSync(path.join(os.tmpdir(), 'vgadget-x-'));
+            try {
+                unpack(path.resolve(opts.root, extra.zip), xtmp);
+                for (const rel of walk(xtmp)) {
+                    const key = rel.split(path.sep).join('/').toLowerCase();
+                    const dest = path.join(out, ...(extra.to || '').toLowerCase().split('/').filter(Boolean), ...key.split('/'));
+                    fs.mkdirSync(path.dirname(dest), { recursive: true });
+                    let body = fs.readFileSync(path.join(xtmp, rel));
+                    if (TEXT_EXT.has(path.extname(key))) body = Buffer.from(decodeText(body), 'utf8');
+                    fs.writeFileSync(dest, body);
+                }
+            } finally {
+                fs.rmSync(xtmp, { recursive: true, force: true });
             }
         }
         const patchDir = path.join(PATCHES, entry.id);
@@ -217,9 +249,13 @@ function importOne(entry, opts) {
             copyright: rehold(entry.copyright || copyright),
             url: !oem && /^https?:\/\//i.test(site) ? site : '',
             settings: entry.settings != null ? !!entry.settings : usesSettings,
+            // the page browses its own folders (System.Shell.itemFromPath): the host loads the file list first
+            ...(usesShellFs ? { fs: true } : {}),
             group: entry.group || 'other',
             size: installed.reduce((n, [, size]) => n + size, 0),
-            ...(entry.host ? { host: entry.host } : {})
+            ...(entry.host ? { host: entry.host } : {}),
+            // hosts whose text the gadget may fetch through /gadget-proxy (modules/vistaGadgetProxy.js)
+            ...(Array.isArray(entry.web) && entry.web.length ? { web: entry.web } : {})
         };
     } finally {
         fs.rmSync(tmp, { recursive: true, force: true });

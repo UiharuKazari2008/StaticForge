@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<gadget>
+	<name>Links Bar</name>
+	<version>1.0</version>
+	<hosts>
+		<host name="sidebar">
+			<base type="HTML" src="main.htm" />
+			<permissions>full</permissions>
+			<platform minPlatformVersion="1.0" />			
+		</host>
+	</hosts>
+	<!-- optional -->
+	<author>Muj Beg</author>
+        <copyright>&#169; 2007</copyright>
+	<icons>
+        	<icon width="45" height="48" src="Icon.png" />
+	</icons>
+
+
+	<description>Displays a list of links and/or shortcuts.
+	Each instance can be named, and show items from the folder you assign to it. Use to display sets of internet links, program shortcuts etc.</description>
+	
+</gadget>

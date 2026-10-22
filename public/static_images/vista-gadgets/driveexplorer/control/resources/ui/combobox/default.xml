@@ -1,0 +1,24 @@
+<manifest>
+  <resource type="Image" extension="png">
+    <Image name="DropDownArrow" width="20" height="21" rtl="Reverse">
+      <State index="0">Rest</State>
+      <State index="1">Hover</State>
+      <State index="2">Pressed</State>
+    </Image>
+  </resource>
+  <resource type="Image" relativePath="../shared/" extension="png">
+    <Image name="SelectedItemBg" width="1" height="20" />
+    <Image name="SelectedItemLeft" width="3" height="20" />
+    <Image name="SelectedItemRight" width="3" height="20" />
+  </resource>
+  <resource type="Image" relativePath="../shared/" extension="png">
+    <Image name="TextBoxBg" width="1" height="21" />
+    <Image name="TextBoxLeft" width="2" height="21" />
+    <Image name="TextBoxRight" width="2" height="21" />
+  </resource>
+  <resource type="Control" name="ScrollBar" relativePath="../scrollbar/small/">
+    <VScrollBar>
+      <Width type="UInt32">9</Width>
+    </VScrollBar>
+  </resource>
+</manifest>

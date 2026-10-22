@@ -1,0 +1,507 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist SYSTEM "file://localhost/System/Library/DTDs/PropertyList.dtd">
+<plist version="0.9">
+<dict>
+	<key>title</key>
+	<string>高良 みゆき</string>
+	<key>author</key>
+	<string>sun</string>
+	<key>version</key>
+	<string>05-17-2009</string>
+	<key>web site</key>
+	<string>http://www.solaris-computers.com</string>
+	<key>parts</key>
+	<array>
+		<dict>
+			<key>filename</key>
+			<string>base.png</string>
+			<key>pos x</key>
+			<integer>0</integer>
+			<key>pos y</key>
+			<integer>0</integer>
+		</dict>
+		<dict>
+			<key>filename</key>
+			<string>drop1.png</string>
+			<key>pos x</key>
+			<integer>0</integer>
+			<key>pos y</key>
+			<integer>0</integer>
+		</dict>
+		<dict>
+			<key>filename</key>
+			<string>drop2.png</string>
+			<key>pos x</key>
+			<integer>0</integer>
+			<key>pos y</key>
+			<integer>0</integer>
+		</dict>
+		<dict>
+			<key>filename</key>
+			<string>blush.png</string>
+			<key>pos x</key>
+			<integer>0</integer>
+			<key>pos y</key>
+			<integer>0</integer>
+		</dict>
+		<dict>
+			<key>filename</key>
+			<string>kage.png</string>
+			<key>pos x</key>
+			<integer>0</integer>
+			<key>pos y</key>
+			<integer>0</integer>
+		</dict>
+		<dict>
+			<key>filename</key>
+			<string>naku.png</string>
+			<key>pos x</key>
+			<integer>0</integer>
+			<key>pos y</key>
+			<integer>0</integer>
+		</dict>
+		<dict>
+			<key>filename</key>
+			<string>eye1.png</string>
+			<key>pos x</key>
+			<integer>0</integer>
+			<key>pos y</key>
+			<integer>0</integer>
+		</dict>
+		<dict>
+			<key>filename</key>
+			<string>eye2.png</string>
+			<key>pos x</key>
+			<integer>0</integer>
+			<key>pos y</key>
+			<integer>0</integer>
+		</dict>
+		<dict>
+			<key>filename</key>
+			<string>eye3.png</string>
+			<key>pos x</key>
+			<integer>0</integer>
+			<key>pos y</key>
+			<integer>0</integer>
+		</dict>
+		<dict>
+			<key>filename</key>
+			<string>eye4.png</string>
+			<key>pos x</key>
+			<integer>0</integer>
+			<key>pos y</key>
+			<integer>0</integer>
+		</dict>
+		<dict>
+			<key>filename</key>
+			<string>eye5.png</string>
+			<key>pos x</key>
+			<integer>0</integer>
+			<key>pos y</key>
+			<integer>0</integer>
+		</dict>
+		<dict>
+			<key>filename</key>
+			<string>mou1.png</string>
+			<key>pos x</key>
+			<integer>0</integer>
+			<key>pos y</key>
+			<integer>0</integer>
+		</dict>
+		<dict>
+			<key>filename</key>
+			<string>mou2.png</string>
+			<key>pos x</key>
+			<integer>0</integer>
+			<key>pos y</key>
+			<integer>0</integer>
+		</dict>
+		<dict>
+			<key>filename</key>
+			<string>mou3.png</string>
+			<key>pos x</key>
+			<integer>0</integer>
+			<key>pos y</key>
+			<integer>0</integer>
+		</dict>
+		<dict>
+			<key>filename</key>
+			<string>mou4.png</string>
+			<key>pos x</key>
+			<integer>0</integer>
+			<key>pos y</key>
+			<integer>0</integer>
+		</dict>
+		<dict>
+			<key>filename</key>
+			<string>mou5.png</string>
+			<key>pos x</key>
+			<integer>0</integer>
+			<key>pos y</key>
+			<integer>0</integer>
+		</dict>
+		<dict>
+			<key>filename</key>
+			<string>mayu1.png</string>
+			<key>pos x</key>
+			<integer>0</integer>
+			<key>pos y</key>
+			<integer>0</integer>
+		</dict>
+		<dict>
+			<key>filename</key>
+			<string>mayu2.png</string>
+			<key>pos x</key>
+			<integer>0</integer>
+			<key>pos y</key>
+			<integer>0</integer>
+		</dict>
+		<dict>
+			<key>filename</key>
+			<string>mayu3.png</string>
+			<key>pos x</key>
+			<integer>0</integer>
+			<key>pos y</key>
+			<integer>0</integer>
+		</dict>
+		<dict>
+			<key>filename</key>
+			<string>ude.png</string>
+			<key>pos x</key>
+			<integer>0</integer>
+			<key>pos y</key>
+			<integer>0</integer>
+		</dict>
+		<dict>
+			<key>filename</key>
+			<string>megane.png</string>
+			<key>pos x</key>
+			<integer>0</integer>
+			<key>pos y</key>
+			<integer>0</integer>
+		</dict>
+		<dict>
+			<key>filename</key>
+			<string>flag.png</string>
+			<key>pos x</key>
+			<integer>0</integer>
+			<key>pos y</key>
+			<integer>0</integer>
+		</dict>
+		<dict>
+			<key>filename</key>
+			<string>flag2.png</string>
+			<key>pos x</key>
+			<integer>0</integer>
+			<key>pos y</key>
+			<integer>0</integer>
+		</dict>
+	</array>
+	<key>pattern</key>
+	<array>
+		<array>
+			<array>
+				<integer>0</integer>
+				<integer>6</integer>
+				<integer>11</integer>
+				<integer>16</integer>
+				<integer>20</integer>
+			</array>
+			<array>
+				<integer>0</integer>
+				<integer>6</integer>
+				<integer>12</integer>
+				<integer>16</integer>
+				<integer>20</integer>
+			</array>
+			<array>
+				<integer>0</integer>
+				<integer>6</integer>
+				<integer>12</integer>
+				<integer>16</integer>
+				<integer>20</integer>
+			</array>
+			<array>
+				<integer>0</integer>
+				<integer>7</integer>
+				<integer>12</integer>
+				<integer>17</integer>
+				<integer>20</integer>
+			</array>
+			<array>
+				<integer>0</integer>
+				<integer>7</integer>
+				<integer>13</integer>
+				<integer>17</integer>
+				<integer>20</integer>
+			</array>
+			<array>
+				<integer>0</integer>
+				<integer>6</integer>
+				<integer>14</integer>
+				<integer>18</integer>
+				<integer>20</integer>
+			</array>
+			<array>
+				<integer>0</integer>
+				<integer>3</integer>
+				<integer>6</integer>
+				<integer>14</integer>
+				<integer>18</integer>
+				<integer>20</integer>
+			</array>
+			<array>
+				<integer>0</integer>
+				<integer>3</integer>
+				<integer>8</integer>
+				<integer>14</integer>
+				<integer>18</integer>
+				<integer>20</integer>
+			</array>
+			<array>
+				<integer>0</integer>
+				<integer>4</integer>
+				<integer>9</integer>
+				<integer>15</integer>
+				<integer>18</integer>
+				<integer>20</integer>
+			</array>
+			<array>
+				<integer>0</integer>
+				<integer>4</integer>
+				<integer>10</integer>
+				<integer>15</integer>
+				<integer>18</integer>
+				<integer>20</integer>
+			</array>
+			<array>
+				<integer>0</integer>
+				<integer>2</integer>
+				<integer>4</integer>
+				<integer>5</integer>
+				<integer>10</integer>
+				<integer>15</integer>
+				<integer>18</integer>
+				<integer>20</integer>
+			</array>
+		</array>
+		<array>
+			<array>
+				<integer>0</integer>
+				<integer>6</integer>
+				<integer>11</integer>
+				<integer>16</integer>
+				<integer>20</integer>
+				<integer>19</integer>
+			</array>
+			<array>
+				<integer>0</integer>
+				<integer>6</integer>
+				<integer>12</integer>
+				<integer>16</integer>
+				<integer>20</integer>
+				<integer>19</integer>
+			</array>
+			<array>
+				<integer>0</integer>
+				<integer>6</integer>
+				<integer>12</integer>
+				<integer>16</integer>
+				<integer>20</integer>
+				<integer>19</integer>
+			</array>
+			<array>
+				<integer>0</integer>
+				<integer>7</integer>
+				<integer>12</integer>
+				<integer>17</integer>
+				<integer>20</integer>
+				<integer>19</integer>
+			</array>
+			<array>
+				<integer>0</integer>
+				<integer>7</integer>
+				<integer>13</integer>
+				<integer>17</integer>
+				<integer>20</integer>
+				<integer>19</integer>
+			</array>
+			<array>
+				<integer>0</integer>
+				<integer>6</integer>
+				<integer>14</integer>
+				<integer>18</integer>
+				<integer>20</integer>
+				<integer>19</integer>
+			</array>
+			<array>
+				<integer>0</integer>
+				<integer>3</integer>
+				<integer>6</integer>
+				<integer>14</integer>
+				<integer>18</integer>
+				<integer>20</integer>
+				<integer>19</integer>
+			</array>
+			<array>
+				<integer>0</integer>
+				<integer>3</integer>
+				<integer>8</integer>
+				<integer>14</integer>
+				<integer>18</integer>
+				<integer>20</integer>
+				<integer>19</integer>
+			</array>
+			<array>
+				<integer>0</integer>
+				<integer>4</integer>
+				<integer>9</integer>
+				<integer>15</integer>
+				<integer>18</integer>
+				<integer>20</integer>
+				<integer>19</integer>
+			</array>
+			<array>
+				<integer>0</integer>
+				<integer>4</integer>
+				<integer>10</integer>
+				<integer>15</integer>
+				<integer>18</integer>
+				<integer>20</integer>
+				<integer>19</integer>
+			</array>
+			<array>
+				<integer>0</integer>
+				<integer>2</integer>
+				<integer>4</integer>
+				<integer>5</integer>
+				<integer>10</integer>
+				<integer>15</integer>
+				<integer>18</integer>
+				<integer>20</integer>
+				<integer>19</integer>
+			</array>
+		</array>
+
+		<array>
+			<array>
+				<integer>0</integer>
+				<integer>6</integer>
+				<integer>11</integer>
+				<integer>16</integer>
+				<integer>20</integer>
+				<integer>19</integer>
+				<integer>1</integer>
+			</array>
+			<array>
+				<integer>0</integer>
+				<integer>6</integer>
+				<integer>12</integer>
+				<integer>16</integer>
+				<integer>20</integer>
+				<integer>19</integer>
+				<integer>1</integer>
+			</array>
+			<array>
+				<integer>0</integer>
+				<integer>6</integer>
+				<integer>12</integer>
+				<integer>16</integer>
+				<integer>20</integer>
+				<integer>19</integer>
+				<integer>1</integer>
+			</array>
+			<array>
+				<integer>0</integer>
+				<integer>7</integer>
+				<integer>12</integer>
+				<integer>17</integer>
+				<integer>20</integer>
+				<integer>19</integer>
+				<integer>1</integer>
+			</array>
+			<array>
+				<integer>0</integer>
+				<integer>7</integer>
+				<integer>13</integer>
+				<integer>17</integer>
+				<integer>20</integer>
+				<integer>19</integer>
+				<integer>1</integer>
+			</array>
+			<array>
+				<integer>0</integer>
+				<integer>6</integer>
+				<integer>14</integer>
+				<integer>18</integer>
+				<integer>20</integer>
+				<integer>19</integer>
+				<integer>1</integer>
+			</array>
+			<array>
+				<integer>0</integer>
+				<integer>3</integer>
+				<integer>6</integer>
+				<integer>14</integer>
+				<integer>18</integer>
+				<integer>20</integer>
+				<integer>19</integer>
+				<integer>1</integer>
+			</array>
+			<array>
+				<integer>0</integer>
+				<integer>3</integer>
+				<integer>8</integer>
+				<integer>14</integer>
+				<integer>18</integer>
+				<integer>20</integer>
+				<integer>19</integer>
+				<integer>1</integer>
+			</array>
+			<array>
+				<integer>0</integer>
+				<integer>4</integer>
+				<integer>9</integer>
+				<integer>15</integer>
+				<integer>18</integer>
+				<integer>20</integer>
+				<integer>19</integer>
+				<integer>1</integer>
+			</array>
+			<array>
+				<integer>0</integer>
+				<integer>1</integer>
+				<integer>4</integer>
+				<integer>10</integer>
+				<integer>15</integer>
+				<integer>18</integer>
+				<integer>20</integer>
+				<integer>19</integer>
+			</array>
+			<array>
+				<integer>0</integer>
+				<integer>2</integer>
+				<integer>4</integer>
+				<integer>5</integer>
+				<integer>10</integer>
+				<integer>15</integer>
+				<integer>18</integer>
+				<integer>20</integer>
+				<integer>19</integer>
+			</array>
+		</array>
+	</array>
+	<key>markers</key>
+	<array>
+		<integer>21</integer>
+		<integer>22</integer>
+	</array>
+	<key>title pattern</key>
+	<array>
+		<integer>0</integer>
+		<integer>6</integer>
+		<integer>12</integer>
+		<integer>20</integer>
+	</array>
+</dict>
+</plist>

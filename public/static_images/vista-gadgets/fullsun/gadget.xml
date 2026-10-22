@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+    <name>Full Sun</name>
+    <namespace>JohnStephen.org</namespace>
+    <version>2.2</version>
+    <author name="John Stephen">
+    </author>
+    <copyright>2007 - 2010</copyright>
+    <description>Displays live images of the sun from the SOHO satellite</description>
+	<icons>
+		<icon height="64" width="64" src="Icon.png"/>
+	</icons>
+    <hosts>
+        <host name="sidebar">
+            <base type="HTML" apiVersion="1.0.0" src="FullSun.html"/>
+            <permissions>full</permissions>
+            <platform minPlatformVersion="0.3"/>
+        </host>
+    </hosts>
+</gadget>

@@ -1,0 +1,18 @@
+<html>
+	<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+		
+		<meta http-equiv="MSThemeCompatible" CONTENT="yes"/>
+		<title>Full Sun</title>
+		<link href="FullSun.css" type="text/css" rel="stylesheet"/>
+		<script language="javascript" src="FullSun.js" type="text/javascript"></script>
+	</head>
+	<body id="mainBody" onload="FullSun_OnLoad()" onclick="FullSun_ShowPicker()">
+			<object id="SunMovie" class="SidebarMovie" classid="CLSID:6BF52A52-394A-11d3-B153-00C04F79FAA6" type="video/mpeg">
+				<param name="URL" value=""/>
+				<param name="AutoStart" value="true"/>
+				<param name="uiMode" value="none"/>
+				<param name="PlayCount" value="9999"/>
+			</object>
+			<img id="SunImage" class="SidebarImage" src="Loading.gif" alt="Current image from SOHO" onclick="FullSun_ShowPicker()"/>
+	</body>
+</html>

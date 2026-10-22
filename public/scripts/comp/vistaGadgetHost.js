@@ -186,13 +186,13 @@ const vghSystem = function (ctx) {
             execute: (target) => vghOpenUrl(ctx.frame.contentWindow || window, target),
             chooseFile: () => null,
             chooseFolder: () => null,
-            itemFromPath: () => null,
+            itemFromPath: (p) => vghItemFromPath(ctx, p),
             itemFromFileDrop: () => null,
             knownFolder: () => null,
             knownFolderPath: () => '',
             RecycleBin: { fileCount: 0, folderCount: 0, sizeUsed: 0, emptyAll: () => {}, showRecycleSettings: () => {} },
-            drive: () => null,
-            Drive: { list: [] }
+            drive: (letter) => vghDrive(ctx, letter),
+            get Drive() { return { list: vghSysUse(ctx).disks.map((d) => d.letter.charAt(0)) }; }
         },
         Machine: vghMachine(ctx),
         Network: { Wireless: { signalStrength: 0, ssid: '', connected: false } },
@@ -205,42 +205,344 @@ const vghSystem = function (ctx) {
     return ctx.system;
 };
 
+// ---------------------------------------------------------------- the machine (server figures, WMI)
+
 /**
- * System.Machine from the server's figures (sidebar_host_metrics, the CPU Meter's source):
- * Dreamscape's machine is the server, so CPU and memory are the host's.
+ * Gadgets read "this computer": here that is Dreamscape's server, as the CPU Meter shows it.
+ * One poll (sidebar_system_info, modules/sidebarSystemInfo.js) feeds every gadget that asked, once
+ * a second while the tab is visible, and stops when none is left. Reads are synchronous in
+ * JScript, so they answer from the last sample.
  */
-const vghMachine = function (ctx) {
-    const metrics = { cpu: 0, ram: 0 };
-    const poll = () => {
-        if (ctx.inst.destroyed) return;
-        // sidebar_host_metrics: modules/ws/handlers/290-sidebarHandler.js
-        wsClient.sendMessage('sidebar_host_metrics', {}, false).then((data) => {
-            if (data) Object.assign(metrics, { cpu: Number(data.cpu) || 0, ram: Number(data.ram) || 0 });
-        }).catch(() => {});
-    };
-    let polling = null;
-    const live = () => {
-        if (!polling) {
-            poll();
-            polling = setInterval(poll, 2000);
-            ctx.timers.push(polling);
+const VGH_SYS = { data: null, users: new Set(), timer: null, acc: { disk: new Map(), proc: new Map(), idle: 0, at: 0 } };
+const VGH_SYS_EMPTY = {
+    cpu: { name: 'Processor', mhz: 0, cores: [0], total: 0 },
+    memory: { totalBytes: 0, freeBytes: 0 },
+    uptimeSec: 0, disks: [], network: [], processes: [], at: 0
+};
+
+/** Raw (cumulative) perf counters from the sampled rates: bytes and 100 ns busy ticks keep adding up. */
+const vghSysAccumulate = function (data) {
+    const acc = VGH_SYS.acc;
+    const dt = acc.at ? Math.max(0, (data.at - acc.at) / 1000) : 0;
+    acc.at = data.at;
+    data.disks.forEach((d) => {
+        const a = acc.disk.get(d.letter) || { rd: 0, wr: 0, busy: 0 };
+        a.rd += d.readBps * dt;
+        a.wr += d.writeBps * dt;
+        a.busy += (d.busy / 100) * dt * 1e7;
+        acc.disk.set(d.letter, a);
+    });
+    data.processes.forEach((p) => {
+        const a = acc.proc.get(p.pid) || 0;
+        acc.proc.set(p.pid, a + (p.cpu / 100) * dt * 1e7);
+    });
+    // the System Idle Process: every core's unused time
+    acc.idle += ((100 - data.cpu.total) / 100) * data.cpu.cores.length * dt * 1e7;
+    if (acc.proc.size > 500) acc.proc.clear();
+};
+
+const vghSysTick = function () {
+    if (!VGH_SYS.users.size) {
+        clearInterval(VGH_SYS.timer);
+        VGH_SYS.timer = null;
+        return;
+    }
+    if (document.hidden) return;
+    // sidebar_system_info: modules/ws/handlers/290-sidebarHandler.js
+    wsClient.sendMessage('sidebar_system_info', {}, false).then((data) => {
+        if (!data || !data.cpu) return;
+        vghSysAccumulate(data);
+        VGH_SYS.data = data;
+    }).catch(() => {});
+};
+
+/** The latest sample; starts the poll for this gadget (vghDestroy stops it). */
+const vghSysUse = function (ctx) {
+    if (!VGH_SYS.users.has(ctx)) {
+        VGH_SYS.users.add(ctx);
+        if (!VGH_SYS.timer) {
+            vghSysTick();
+            VGH_SYS.timer = setInterval(vghSysTick, 1000);
         }
-    };
-    const totalMemory = 16384;
+    }
+    return VGH_SYS.data || VGH_SYS_EMPTY;
+};
+
+const vghMachine = function (ctx) {
+    const sys = () => vghSysUse(ctx);
     return {
         get CPUs() {
-            live();
-            const cpu = { usagePercentage: metrics.cpu, name: 'Server CPU' };
-            return { count: 1, item: () => cpu };
+            const cores = sys().cpu.cores;
+            const list = cores.map((pct, i) => ({ usagePercentage: pct, name: `CPU ${i}` }));
+            return { count: list.length, item: (i) => list[i] || list[0] };
         },
-        get totalMemory() { return totalMemory; },
-        get availableMemory() { live(); return Math.round(totalMemory * (100 - metrics.ram) / 100); },
+        // megabytes, as Vista gives them
+        get totalMemory() { return Math.round(sys().memory.totalBytes / 1048576); },
+        get availableMemory() { return Math.round(sys().memory.freeBytes / 1048576); },
         get processorArchitecture() { return 'x64'; },
         PowerStatus: { isBatteryPresent: false, isPowerLineConnected: true, isBatteryCharging: false, batteryPercentRemaining: 100, batteryCapacityRemaining: 0, batteryCapacityTotal: 0, timeRemaining: -1, powerLineStatusChanged: null },
         PowerStatusChanged: null
     };
 };
 
+/** System.Shell.drive("C"): the server's disks, lettered from C: (the root). */
+const vghDrive = function (ctx, letter) {
+    const id = String(letter || '').charAt(0).toUpperCase() + ':';
+    const d = vghSysUse(ctx).disks.find((x) => x.letter === id);
+    if (!d) return null;
+    // freeSpace and totalSize in megabytes, as Vista's System.Shell.Drive gives them
+    return { name: id, path: id + '\\', driveType: 3, isReady: true, volumeLabel: d.label, fileSystem: 'NTFS', freeSpace: Math.floor(d.freeBytes / 1048576), totalSize: Math.floor(d.totalBytes / 1048576) };
+};
+
+// ---------------------------------------------------------------- the gadget's own folders (System.Shell items)
+
+/**
+ * System.Shell.itemFromPath over the gadget's package (<id>/__install.json): its folders and
+ * files as Shell items, so a gadget can list its own pictures (System Animator's animations).
+ * Paths are System.Gadget.path + "\\images\\..." as the gadget builds them; looked up without case.
+ */
+const VGH_FS = new Map(); // entry.id -> Promise of { dirs: Map(rel -> { dirs: Set, files: Map(name -> size) }) }
+
+const vghFsLoad = function (entry) {
+    if (!VGH_FS.has(entry.id)) {
+        VGH_FS.set(entry.id, fetch(`${entry.path}/__install.json`).then((r) => (r.ok ? r.json() : [])).then((list) => {
+            const dirs = new Map([['', { dirs: new Set(), files: new Map() }]]);
+            const dir = (rel) => {
+                if (!dirs.has(rel)) {
+                    dirs.set(rel, { dirs: new Set(), files: new Map() });
+                    const up = rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : '';
+                    dir(up).dirs.add(rel.slice(rel.lastIndexOf('/') + 1));
+                }
+                return dirs.get(rel);
+            };
+            const base = entry.path.toLowerCase() + '/';
+            list.forEach(([url, size]) => {
+                const rel = String(url).toLowerCase().startsWith(base) ? String(url).slice(base.length) : '';
+                if (!rel) return;
+                const cut = rel.lastIndexOf('/');
+                dir(cut < 0 ? '' : rel.slice(0, cut)).files.set(rel.slice(cut + 1), Number(size) || 0);
+            });
+            return { dirs };
+        }).catch(() => ({ dirs: new Map() })));
+    }
+    return VGH_FS.get(entry.id);
+};
+
+/** "/static_images/vista-gadgets/x\\images\\a" or "file:///..." -> "images/a" inside the gadget, or null. */
+const vghFsRel = function (ctx, raw) {
+    let p = String(raw == null ? '' : raw).replace(/\\/g, '/').replace(/^file:\/+/i, '/');
+    try { p = decodeURIComponent(p); } catch (_e) { /* as given */ }
+    p = p.toLowerCase().replace(/\/+$/, '');
+    const root = ctx.entry.path.toLowerCase();
+    if (p === root) return '';
+    if (!p.startsWith(root + '/')) return null;
+    return p.slice(root.length + 1).split('/').filter((x) => x && x !== '.').join('/');
+};
+
+const vghShellItem = function (ctx, rel, isFolder, size) {
+    const name = rel ? rel.slice(rel.lastIndexOf('/') + 1) : ctx.entry.id;
+    const path = ctx.entry.path + (rel ? '\\' + rel.replace(/\//g, '\\') : '');
+    const ext = !isFolder && name.includes('.') ? name.slice(name.lastIndexOf('.') + 1).toUpperCase() : '';
+    const item = {
+        name, path, isFolder, isFileSystem: true, isLink: false, link: null,
+        size: isFolder ? 0 : size, type: isFolder ? 'File Folder' : `${ext} File`, modifyDate: new Date(0),
+        metadata: () => ''
+    };
+    if (isFolder) {
+        Object.defineProperty(item, 'SHFolder', {
+            get: () => {
+                const d = ctx.fs && ctx.fs.dirs.get(rel);
+                const list = d ? [...[...d.dirs].sort().map((n) => vghShellItem(ctx, rel ? `${rel}/${n}` : n, true, 0)),
+                    ...[...d.files].sort((a, b) => a[0].localeCompare(b[0])).map(([n, sz]) => vghShellItem(ctx, rel ? `${rel}/${n}` : n, false, sz))] : [];
+                return { Items: { count: list.length, item: (i) => list[i] || null }, Self: item, parse: () => item };
+            }
+        });
+    }
+    return item;
+};
+
+const vghItemFromPath = function (ctx, raw) {
+    const rel = vghFsRel(ctx, raw);
+    if (rel === null || !ctx.fs) return null;
+    if (ctx.fs.dirs.has(rel)) return vghShellItem(ctx, rel, true, 0);
+    const cut = rel.lastIndexOf('/');
+    const d = ctx.fs.dirs.get(cut < 0 ? '' : rel.slice(0, cut));
+    const name = rel.slice(cut + 1);
+    return d && d.files.has(name) ? vghShellItem(ctx, rel, false, d.files.get(name)) : null;
+};
+
+const vghWmiDate = function (ms) {
+    const d = new Date(ms);
+    const p = (n, w = 2) => String(n).padStart(w, '0');
+    const off = -d.getTimezoneOffset();
+    return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.000000${off >= 0 ? '+' : '-'}${p(Math.abs(off), 3)}`;
+};
+
+// uint64 properties come to JScript as strings; everything else as numbers / strings / VBArrays
+const vghU64 = (n) => String(Math.max(0, Math.round(Number(n) || 0)));
+
+/** The WMI classes gadgets query, as rows from the latest sample. */
+const vghWmiRows = function (cls, d) {
+    const now = d.at || Date.now();
+    const ts = vghU64(now * 1e4);
+    const freq = '10000000';
+    const vendor = /amd/i.test(d.cpu.name) ? 'AuthenticAMD' : (/intel/i.test(d.cpu.name) ? 'GenuineIntel' : '');
+    const disks = d.disks;
+    const nets = d.network;
+    switch (cls) {
+        case 'win32_processor':
+            return [{
+                Name: d.cpu.name, Caption: 'x64 Family Processor', Description: d.cpu.name, Manufacturer: vendor, DeviceID: 'CPU0',
+                LoadPercentage: d.cpu.total, NumberOfCores: d.cpu.cores.length, NumberOfLogicalProcessors: d.cpu.cores.length,
+                CurrentClockSpeed: d.cpu.mhz, MaxClockSpeed: d.cpu.mhz, ExtClock: 100, L2CacheSize: 0, L3CacheSize: 0,
+                AddressWidth: 64, DataWidth: 64, Architecture: 9, ProcessorId: '', SocketDesignation: 'CPU 1', Status: 'OK'
+            }];
+        case 'win32_perfformatteddata_perfos_processor':
+            return d.cpu.cores.map((pct, i) => ({ Name: String(i), PercentProcessorTime: vghU64(pct), PercentIdleTime: vghU64(100 - pct) }))
+                .concat([{ Name: '_Total', PercentProcessorTime: vghU64(d.cpu.total), PercentIdleTime: vghU64(100 - d.cpu.total) }]);
+        case 'win32_operatingsystem':
+            return [{
+                Caption: 'Melaton Desktop', Name: 'Melaton Desktop', Version: '6.0.6002', BuildNumber: '6002', CSDVersion: 'Service Pack 2',
+                ServicePackMajorVersion: 2, OSArchitecture: '64-bit', Manufacturer: 'Xyridian Corporation', CSName: 'MELATON',
+                LastBootUpTime: vghWmiDate(now - d.uptimeSec * 1000), LocalDateTime: vghWmiDate(now), InstallDate: vghWmiDate(now - d.uptimeSec * 1000),
+                TotalVisibleMemorySize: vghU64(d.memory.totalBytes / 1024), FreePhysicalMemory: vghU64(d.memory.freeBytes / 1024),
+                TotalVirtualMemorySize: vghU64(d.memory.totalBytes / 512), FreeVirtualMemory: vghU64(d.memory.freeBytes / 512),
+                NumberOfProcesses: d.processes.length
+            }];
+        case 'win32_perfformatteddata_perfos_system':
+        case 'win32_perfrawdata_perfos_system':
+            return [{ SystemUpTime: vghU64(d.uptimeSec), Processes: d.processes.length, Threads: 0, Timestamp_Object: ts, Frequency_Object: freq }];
+        case 'win32_perfformatteddata_perfos_memory':
+            return [{ AvailableBytes: vghU64(d.memory.freeBytes), AvailableMBytes: vghU64(d.memory.freeBytes / 1048576), CommittedBytes: vghU64(d.memory.totalBytes - d.memory.freeBytes), PercentCommittedBytesInUse: vghU64((1 - d.memory.freeBytes / (d.memory.totalBytes || 1)) * 100) }];
+        case 'win32_computersystem':
+            return [{ Name: 'MELATON', Caption: 'MELATON', Manufacturer: 'Xyridian Corporation', Model: 'Dreamscape', SystemType: 'x64-based PC', TotalPhysicalMemory: vghU64(d.memory.totalBytes), NumberOfProcessors: 1, NumberOfLogicalProcessors: d.cpu.cores.length, UserName: '', Domain: 'WORKGROUP' }];
+        case 'win32_bios':
+            return [{ Manufacturer: 'Phoenix Technologies LTD', Name: 'PhoenixBIOS 4.0 Release 6.0', Version: 'PTLTD - 6040000', SMBIOSBIOSVersion: '6.00', ReleaseDate: '20061102000000.000000+000', SerialNumber: '' }];
+        case 'win32_baseboard':
+            return [{ Manufacturer: 'Xyridian Corporation', Product: 'Dreamscape', Version: '1.0', SerialNumber: '' }];
+        case 'win32_logicaldisk':
+            return disks.map((x) => ({ DeviceID: x.letter, Name: x.letter, Caption: x.letter, VolumeName: x.label, Description: 'Local Fixed Disk', DriveType: 3, MediaType: 12, FileSystem: 'NTFS', Size: vghU64(x.totalBytes), FreeSpace: vghU64(x.freeBytes) }));
+        case 'win32_diskdrive':
+            return disks.slice(0, 1).map((x, i) => ({ Index: i, Model: 'Xyridian NVMe Disk', Caption: 'Xyridian NVMe Disk', InterfaceType: 'IDE', MediaType: 'Fixed hard disk media', Size: vghU64(x.totalBytes), Status: 'OK' }));
+        case 'win32_perfformatteddata_perfdisk_logicaldisk':
+            return disks.map((x) => ({
+                Name: x.letter, DiskReadBytesPersec: vghU64(x.readBps), DiskWriteBytesPersec: vghU64(x.writeBps), DiskBytesPersec: vghU64(x.readBps + x.writeBps),
+                PercentDiskTime: vghU64(x.busy), PercentIdleTime: vghU64(100 - x.busy), PercentFreeSpace: Math.round(x.freeBytes / (x.totalBytes || 1) * 100), FreeMegabytes: Math.round(x.freeBytes / 1048576)
+            }));
+        case 'win32_perfrawdata_perfdisk_logicaldisk':
+            return disks.map((x) => {
+                const a = VGH_SYS.acc.disk.get(x.letter) || { rd: 0, wr: 0, busy: 0 };
+                return {
+                    Name: x.letter, DiskReadBytesPersec: vghU64(a.rd), DiskWriteBytesPersec: vghU64(a.wr), DiskBytesPersec: vghU64(a.rd + a.wr),
+                    PercentDiskTime: vghU64(a.busy), PercentFreeSpace: Math.round(x.freeBytes / (x.totalBytes || 1) * 100), FreeMegabytes: Math.round(x.freeBytes / 1048576),
+                    Timestamp_Sys100NS: ts, Frequency_Sys100NS: freq, Timestamp_PerfTime: ts, Frequency_PerfTime: freq
+                };
+            });
+        case 'win32_networkadapter':
+            return nets.map((n, i) => ({ Index: i, DeviceID: String(i), Name: `Xyridian Gigabit Ethernet (${n.name})`, ProductName: 'Xyridian Gigabit Ethernet', NetConnectionID: i ? `Local Area Connection ${i + 1}` : 'Local Area Connection', AdapterType: 'Ethernet 802.3', MACAddress: n.mac.toUpperCase(), Speed: vghU64(n.speedBps), NetEnabled: true, NetConnectionStatus: 2, PhysicalAdapter: true }));
+        case 'win32_networkadapterconfiguration':
+            return nets.map((n, i) => ({ Index: i, Description: `Xyridian Gigabit Ethernet (${n.name})`, Caption: `Xyridian Gigabit Ethernet (${n.name})`, IPEnabled: true, DHCPEnabled: true, IPAddress: vghVBArray([n.ip]), IPSubnet: vghVBArray(['255.255.255.0']), DefaultIPGateway: vghVBArray([]), DNSServerSearchOrder: vghVBArray([]), MACAddress: n.mac.toUpperCase() }));
+        case 'win32_perfformatteddata_tcpip_networkinterface':
+            return nets.map((n) => ({ Name: `Xyridian Gigabit Ethernet (${n.name})`, BytesReceivedPersec: vghU64(n.rxBps), BytesSentPersec: vghU64(n.txBps), BytesTotalPersec: vghU64(n.rxBps + n.txBps), CurrentBandwidth: vghU64(n.speedBps) }));
+        case 'win32_perfrawdata_tcpip_networkinterface':
+            return nets.map((n) => ({ Name: `Xyridian Gigabit Ethernet (${n.name})`, BytesReceivedPersec: vghU64(n.rxBytes), BytesSentPersec: vghU64(n.txBytes), BytesTotalPersec: vghU64(n.rxBytes + n.txBytes), CurrentBandwidth: vghU64(n.speedBps), Timestamp_Sys100NS: ts, Frequency_Sys100NS: freq, Timestamp_PerfTime: ts, Frequency_PerfTime: freq }));
+        case 'win32_process':
+            return [{ Name: 'System Idle Process', Caption: 'System Idle Process', ProcessId: 0, Handle: '0', WorkingSetSize: '0', PageFileUsage: 0, KernelModeTime: vghU64(VGH_SYS.acc.idle), UserModeTime: '0', ExecutablePath: '', ThreadCount: d.cpu.cores.length }].concat(d.processes.map((p) => ({ Name: `${p.name}.exe`, Caption: `${p.name}.exe`, ProcessId: p.pid, Handle: String(p.pid), WorkingSetSize: vghU64(p.memBytes), PageFileUsage: Math.round(p.memBytes / 1024), KernelModeTime: vghU64(VGH_SYS.acc.proc.get(p.pid) || 0), UserModeTime: '0', ExecutablePath: '', ThreadCount: 1 })));
+        case 'win32_perfformatteddata_perfproc_process':
+            return [{ Name: '_Total', IDProcess: 0, PercentProcessorTime: vghU64(d.cpu.total * d.cpu.cores.length), WorkingSet: vghU64(d.memory.totalBytes - d.memory.freeBytes) },
+                { Name: 'Idle', IDProcess: 0, PercentProcessorTime: vghU64((100 - d.cpu.total) * d.cpu.cores.length), WorkingSet: '0' }]
+                .concat(d.processes.map((p) => ({ Name: p.name, IDProcess: p.pid, PercentProcessorTime: vghU64(p.cpu), WorkingSet: vghU64(p.memBytes), WorkingSetPrivate: vghU64(p.memBytes) })));
+        case 'win32_perfrawdata_perfproc_process':
+            return d.processes.map((p) => ({ Name: p.name, IDProcess: p.pid, PercentProcessorTime: vghU64(VGH_SYS.acc.proc.get(p.pid) || 0), WorkingSet: vghU64(p.memBytes), Timestamp_Sys100NS: ts, Frequency_Sys100NS: freq }));
+        case 'win32_videocontroller':
+            return [{ Name: 'Xyridian Display Adapter', Caption: 'Xyridian Display Adapter', AdapterRAM: 268435456, DriverVersion: '7.0.0.0', CurrentHorizontalResolution: screen.width, CurrentVerticalResolution: screen.height, Status: 'OK' }];
+        default:
+            return [];
+    }
+};
+
+/** A VBScript SAFEARRAY as JScript sees it: new VBArray(x).toArray() */
+const vghVBArray = function (list) {
+    const a = list.slice();
+    return { __vbarray: a, toArray: () => a.slice(), getItem: (i) => a[i], ubound: () => a.length - 1, lbound: () => 0, dimensions: () => 1 };
+};
+
+/** WMI properties are case-insensitive; JScript names them as it likes (objItem.loadPercentage). */
+const vghWmiObject = function (row) {
+    const keys = new Map(Object.keys(row).map((k) => [k.toLowerCase(), k]));
+    return new Proxy(row, {
+        get(target, prop) {
+            if (typeof prop !== 'string') return target[prop];
+            if (prop in target) return target[prop];
+            const k = keys.get(prop.toLowerCase());
+            return k ? target[k] : undefined;
+        }
+    });
+};
+
+/** WHERE with ANDed comparisons: Name = 'C:', Name <> '_Total', IPEnabled = True, Name LIKE '%eth%'. */
+const vghWmiFilter = function (where) {
+    if (!where) return () => true;
+    const terms = where.split(/\s+AND\s+/i).map((t) => {
+        const m = /^\s*\(?\s*([A-Za-z_][\w]*)\s*(=|<>|!=|>=|<=|>|<|LIKE)\s*(?:'([^']*)'|"([^"]*)"|(\S+?))\s*\)?\s*$/i.exec(t);
+        if (!m) return () => true;
+        const prop = m[1].toLowerCase();
+        const op = m[2].toUpperCase();
+        const raw = m[3] !== undefined ? m[3] : (m[4] !== undefined ? m[4] : m[5]);
+        const want = /^true$/i.test(raw) ? true : (/^false$/i.test(raw) ? false : raw);
+        return (row) => {
+            const k = Object.keys(row).find((x) => x.toLowerCase() === prop);
+            const v = k ? row[k] : undefined;
+            const a = typeof v === 'string' ? v.toLowerCase() : v;
+            const b = typeof want === 'string' ? want.toLowerCase() : want;
+            switch (op) {
+                case '=': return typeof b === 'boolean' ? !!v === b : String(a) === String(b);
+                case '<>': case '!=': return String(a) !== String(b);
+                case '>': return Number(v) > Number(want);
+                case '<': return Number(v) < Number(want);
+                case '>=': return Number(v) >= Number(want);
+                case '<=': return Number(v) <= Number(want);
+                case 'LIKE': return new RegExp('^' + String(b).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*').replace(/_/g, '.') + '$', 'i').test(String(v));
+                default: return true;
+            }
+        };
+    });
+    return (row) => terms.every((t) => t(row));
+};
+
+/** SWbemObjectSet: an array the shim's Enumerator walks, with Count and ItemIndex. */
+const vghWmiSet = function (rows) {
+    const list = rows.map(vghWmiObject);
+    list.Count = list.length;
+    list.ItemIndex = (i) => list[i];
+    return list;
+};
+
+/** GetObject("winmgmts:...") / SWbemLocator.ConnectServer(): an SWbemServices over the server's figures. */
+const vghWmi = function (win, moniker) {
+    let frame = null;
+    try { frame = win.frameElement; } catch (_e) { return null; }
+    const hit = frame && VGH_FRAMES.get(frame);
+    if (!hit) return null;
+    const ctx = hit.ctx;
+    const ns = /root\\?\\?(\w+)\s*$/i.exec(String(moniker || ''));
+    const cimv2 = !ns || /cimv2/i.test(ns[1]);
+    const query = (cls, where) => vghWmiSet(cimv2 ? vghWmiRows(String(cls).toLowerCase(), vghSysUse(ctx)).filter(vghWmiFilter(where)) : []);
+    return {
+        ExecQuery(sql) {
+            const m = /^\s*SELECT\s+[\s\S]+?\s+FROM\s+(\w+)(?:\s+WHERE\s+([\s\S]+))?$/i.exec(String(sql || ''));
+            return m ? query(m[1], m[2]) : vghWmiSet([]);
+        },
+        InstancesOf: (cls) => query(cls, ''),
+        Get(path) {
+            const m = /^(\w+)(?:\.(\w+)\s*=\s*["']?([^"']*)["']?)?$/.exec(String(path || ''));
+            if (!m) return null;
+            const rows = query(m[1], m[2] ? `${m[2]} = '${m[3]}'` : '');
+            return rows[0] || null;
+        },
+        Security_: { ImpersonationLevel: 3 }
+    };
+};
 const vghPaintBackground = function (ctx, value) {
     const win = ctx.frame && ctx.frame.contentWindow;
     const body = win && win.document.body;
@@ -493,7 +795,23 @@ const vghMount = function (inst) {
             resolve();
         });
     });
-    ctx.frame.src = entry.page;
+    // a gadget that reads the machine or lists its folders starts with them in hand (those reads are synchronous)
+    const needs = [];
+    if (entry.fs) needs.push(vghFsLoad(entry).then((fs) => { ctx.fs = fs; }));
+    if (entry.group === 'system' && !VGH_SYS.data) {
+        vghSysUse(ctx);
+        needs.push(new Promise((resolve) => {
+            let tries = 0;
+            const wait = () => {
+                if (VGH_SYS.data || inst.destroyed || ++tries > 20) resolve();
+                else ctx.timers.push(setTimeout(wait, 100));
+            };
+            wait();
+        }));
+    }
+    Promise.all(needs).then(() => {
+        if (!inst.destroyed) ctx.frame.src = entry.page;
+    });
     return ctx.loaded;
 };
 
@@ -601,6 +919,7 @@ const vghDestroy = function (inst) {
     const ctx = vghCtx(inst);
     if (!ctx) return;
     ctx.timers.forEach((t) => { clearTimeout(t); clearInterval(t); });
+    VGH_SYS.users.delete(ctx);
     clearTimeout(ctx.fitTimer);
     if (ctx.resizeObserver) ctx.resizeObserver.disconnect();
     if (vsb.flyout && vsb.flyout.vgh === ctx) vsbCloseFlyout();
@@ -717,6 +1036,6 @@ const vghError = function (win, message, file, line) {
     }
 };
 
-window.vistaGadgetHost = { install: vghInstall, attach: vghAttach, mount: vghMount, apply: vghApply, destroy: vghDestroy, form: vghForm, error: vghError, notice: vghNotice };
+window.vistaGadgetHost = { wmi: vghWmi, install: vghInstall, attach: vghAttach, mount: vghMount, apply: vghApply, destroy: vghDestroy, form: vghForm, error: vghError, notice: vghNotice };
 // gadgetShim.js reaches the host as parent.vsbGadgetHost
 window.vsbGadgetHost = window.vistaGadgetHost;

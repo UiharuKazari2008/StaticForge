@@ -1,6 +1,7 @@
 const wsPacketRegistry = require('../wsPacketRegistry');
 const sidebarGadgets = require('../../sidebarGadgets');
 const searchHandler = require('./70-searchHandler');
+const sidebarSystemInfo = require('../../sidebarSystemInfo');
 
 // Windows Sidebar gadgets (modules/sidebarGadgets.js, client public/scripts/comp/vistaSidebar.js).
 // Administrators only: the state carries Notes text and the Mail gadget reads Yukimi's inbox.
@@ -107,6 +108,16 @@ async function handleHostMetrics(handlersCtx, ws, message, clientInfo) {
     }
 }
 
+/** Hosted gadgets' machine (Yozora #629): the server's cores, memory, disks, network and processes. */
+async function handleSystemInfo(handlersCtx, ws, message, clientInfo) {
+    if (!requireAdmin(handlersCtx, ws, message, clientInfo)) return;
+    try {
+        reply(handlersCtx, ws, message, await sidebarSystemInfo.getSystemInfo());
+    } catch (error) {
+        handlersCtx.sendError(ws, 'Failed to read the system', error.message, message.requestId);
+    }
+}
+
 async function handleFx(handlersCtx, ws, message, clientInfo) {
     if (!requireAdmin(handlersCtx, ws, message, clientInfo)) return;
     try {
@@ -149,6 +160,7 @@ function registerPackets(handlersCtx) {
     reg('sidebar_random_image', handleRandomImage);
     reg('sidebar_weather', handleWeather);
     reg('sidebar_host_metrics', handleHostMetrics);
+    reg('sidebar_system_info', handleSystemInfo);
     reg('sidebar_fx', handleFx);
     reg('sidebar_quotes', handleQuotes);
     reg('sidebar_feed', handleFeed);

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<gadget>
+  <name>Drive Explorer</name>
+  <namespace><!--_locComment_text="{Locked}"-->microsoft.windows</namespace>
+  <version><!--_locComment_text="{Locked}"-->1.0.0.0</version>
+  <author name="Microsoft Corporation">
+    <info url="http://go.microsoft.com/fwlink/?LinkId=55696" text="gallery.microsoft.com" />
+  </author>
+  <copyright><!--_locComment_text="{Locked}"-->© 2006</copyright>
+  <description>Browse your hard drive.</description>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="driveExplorer.html"/>
+      <permissions><!--_locComment_text="{Locked}"-->Full</permissions>
+      <platform minPlatformVersion="1.0"/>
+      <defaultImage src="images/task_normal_blue.png"/>
+    </host>
+  </hosts>
+</gadget>

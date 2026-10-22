@@ -1,0 +1,54 @@
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+//  THIS CODE IS NOT APPROVED FOR USE IN/ON ANY OTHER UI ELEMENT OR PRODUCT COMPONENT.
+//  Copyright (c) 2006 Microsoft Corporation.  All rights reserved.
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+<html>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+<title>Drive Explorer</title>
+<meta http-equiv="MSThemeCompatible" CONTENT="yes" />
+
+<style type="text/css">
+
+body
+{
+    width: 278px;
+    height: 70px;
+    margin: 0px;
+}
+
+</style>
+<script src="js/driveExplorer.js" language="javascript" type="text/javascript"></script>
+<script type="text/javascript">
+
+System.Gadget.onSettingsClosing = settingsClosing;
+
+</script>
+</head>
+<body onload="loadSettings()">
+<div style="text-align:center">
+<table cellspacing="0" cellpadding="1" border="0">
+    <tr>
+        <td style="height:70px">
+            <table cellspacing="0" cellpadding="1" border="0" style="font-family: Segoe UI, Tahoma, Sans-Serif;font-size: 11px;">
+                <tr>
+                    <td><select id="driveExplorerDrives"></select></td>
+                    <td><input type="button" value=" ... " onclick="openShellFolder()" /></td>
+                    <td><input type="button" value="Remove" onclick="removeFolder()" /></td>
+                </tr>
+                <tr>
+                    <td colspan="3" style="text-align:center;padding-top:10px">
+                        <input type="radio" name="driveExplorerStyle" value="gray" checked="checked" /> Gray
+                        <input type="radio" name="driveExplorerStyle" value="blue" /> Blue
+                    </td>
+                </tr>
+            </table>
+        </td>
+    </tr>
+</table>
+</div>
+</body>
+</html>

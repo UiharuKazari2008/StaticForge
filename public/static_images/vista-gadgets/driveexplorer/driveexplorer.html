@@ -1,0 +1,172 @@
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+//  THIS CODE IS NOT APPROVED FOR USE IN/ON ANY OTHER UI ELEMENT OR PRODUCT COMPONENT.
+//  Copyright (c) 2006 Microsoft Corporation.  All rights reserved.
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+<html>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+<title>Drive Explorer</title>
+<meta http-equiv="MSThemeCompatible" content="yes" />
+
+<link href="css/driveExplorer.css" rel="stylesheet" type="text/css" />
+<script src="control/framework.js" language="javascript" type="text/javascript"></script>
+<script src="js/driveExplorer.js" language="javascript" type="text/javascript"></script>
+<script language="javascript" type="text/javascript">
+
+__System.UseXMLHTTP = false;
+
+__System.Import("System.Controls.UI.TreeView");
+__System.Import("System.Controls.UI.Components.Font");
+__System.Import("System.Controls.UI.Components.Enumerations");
+__System.Import("System.Controls.UI.ComboBox");
+__System.Import("System.Controls.UI.Components.Span");
+
+System.Gadget.Flyout.file = "flyout.html";
+System.Gadget.settingsUI = "settings.html";
+System.Gadget.onSettingsClosed = loadFolders;
+
+function loadGadget()
+{
+    driveExplorerComboBox = new ComboBox("control/resources/ui/combobox/small/");
+    driveExplorerComboBox.PageID = "driveExplorerSearch";
+    driveExplorerComboBox.Width = 117;
+    driveExplorerComboBox.DropDownWidth = 117;
+    driveExplorerComboBox.DropDownHeight = 100;
+    driveExplorerComboBox.IntegralHeight = true;
+    driveExplorerComboBox.AutoCompleteSource = __System.Controls.UI.Components.AutoCompleteSource.ListItems;
+    driveExplorerComboBox.AutoCompleteMode = __System.Controls.UI.Components.AutoCompleteMode.SuggestAppend;
+    driveExplorerComboBox.SelectedPadding = "0px 0px 0px 2px";
+    driveExplorerComboBox.ForeColor = "#000000";
+    driveExplorerComboBox.BackColor = "#FFFFFF";
+    driveExplorerComboBox.Font = new __System.Controls.UI.Components.Font("Segoe UI, Tahoma", 9, __System.Controls.UI.Components.FontStyle.Regular);
+    driveExplorerComboBox.ValueMember = "Text";
+    
+    driveExplorerComboBox.Resizer.Grip = new __System.Controls.UI.Components.Span();
+    driveExplorerComboBox.Resizer.Grip.Src = "control/resources/ui/shared/SmallGripRest.png";
+    
+    driveExplorerTreeView = new TreeView({
+        ScrollBar: "control/resources/ui/scrollbar/small/"
+    });
+    
+    driveExplorerTreeView.PageID = "driveExplorer";
+    driveExplorerTreeView.Width = 118;
+    driveExplorerTreeView.Height = 116;
+    driveExplorerTreeView.Indent = 14;
+    driveExplorerTreeView.Top = 3;
+    driveExplorerTreeView.Bottom = 3;
+    driveExplorerTreeView.ImageList.ImageSize.set(13, 16);
+    driveExplorerTreeView.ImageList.Images.Add("images/folder.png");
+    driveExplorerTreeView.ImageIndex = 0;
+    driveExplorerTreeView.SelectedImageIndex = 0;
+    driveExplorerTreeView.TextPadding = 3;
+    driveExplorerTreeView.Font = new __System.Controls.UI.Components.Font("Segoe UI, Tahoma", 11, __System.Controls.UI.Components.FontStyle.Regular);
+    
+    driveExplorerTreeView.OnBeforeExpand = function(node)
+    {
+        var folder = getFolder(node.Tag);
+        
+        if (folder != null)
+        {
+            driveExplorerComboBox.Items.Clear();
+            
+            var nodeCount = node.GetNodeCount();
+            
+            var items = folder.SHFolder.Items;
+            
+            for (var i = 0; i < items.count; i++)
+            {
+                if (items.item(i).isFolder)
+                {
+                    if (nodeCount == 0)
+                    {
+                        node.Nodes.Add(items.item(i).name);
+                        node.Nodes[node.GetNodeCount() - 1].Parent = node;
+                        node.Nodes[node.GetNodeCount() - 1].HasNodes = hasFolders(items.item(i).path);
+                        node.Nodes[node.GetNodeCount() - 1].Tag = items.item(i).path;
+                    }
+                    
+                    driveExplorerComboBox.Items.Add(items.item(i).path);
+                }
+            }
+            
+            setComboBoxPath(node.Tag);
+        }
+    }
+    
+    driveExplorerTreeView.OnAfterSelect = function(node)
+    {
+        if (flyoutNode == node)
+        {
+            System.Gadget.Flyout.show = false;
+            flyoutNode = null;
+        }
+        else
+        {
+            openFlyout(node.Tag);
+            flyoutNode = node;
+        }
+        
+        setComboBoxPath(node.Tag);
+    }
+    
+    driveExplorerComboBox.OnKeyPress = function(comboBox, evt)
+    {
+        var searchText = document.getElementById(driveExplorerComboBox.ControlName.get() + "$TextBox").value + (evt != null ? String.fromCharCode(evt.keyCode) : "");
+        
+        if (isPathAvailable(searchText))
+        {
+            driveExplorerComboBox.Items.Clear();
+            
+            var folder = getFolder(searchText);
+            
+            if (folder == null && searchText.indexOf("\\") != -1 && searchText.charAt(searchText.length - 1) != "\\")
+            {
+                folder = getFolder(searchText.substring(0, searchText.lastIndexOf("\\") + 1));  
+            }
+            
+            if (folder != null)
+            {
+                var items = folder.SHFolder.Items;
+                
+                for (var i = 0; i < items.count; i++)
+                {
+                    if (items.item(i).isFolder)
+                    {
+                        driveExplorerComboBox.Items.Add(items.item(i).path);
+                    }
+                }
+            }
+        }
+    }
+    
+    driveExplorerComboBox.OnSelectedItemChanged = function(comboBox)
+    {
+        var node = expandNodes(comboBox.SelectedValue);
+        
+        if (node != null)
+        {
+            node.EnsureVisible();
+        }
+        
+        openFlyout(comboBox.SelectedValue);
+    }
+    
+    driveExplorerComboBox.Load();
+    driveExplorerComboBox.SelectedIndex = -1;
+    driveExplorerComboBox.SelectedItem = null;
+    driveExplorerComboBox.SelectedValue = null;
+    
+    loadFolders();
+}
+</script>
+</head>
+<body onload="loadPage()">
+
+<div id="driveExplorerSearch"></div>
+<div id="driveExplorer"></div>
+
+</body>
+</html>

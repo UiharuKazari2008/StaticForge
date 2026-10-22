@@ -120,6 +120,27 @@
             get: function () { return this.defaultView; }
         });
     }
+    // IE let a page keep document.getElementById in a variable and call it bare (var O = document.getElementById)
+    ['getElementsByTagName', 'getElementsByName', 'createElement'].forEach(function (name) {
+        var orig = Document.prototype[name];
+        Document.prototype[name] = function () {
+            return orig.apply(this instanceof Document ? this : document, arguments);
+        };
+    });
+    // and IE 7's getElementById ignored case and matched name= too (sDrive1 for 'sdrive1')
+    var byId = Document.prototype.getElementById;
+    Document.prototype.getElementById = function (id) {
+        var doc = this instanceof Document ? this : document;
+        var hit = byId.call(doc, id);
+        if (hit || id == null || id === '') return hit;
+        var q = String(id).replace(/["\\]/g, '\\$&');
+        try {
+            return doc.querySelector('[id="' + q + '" i]') || doc.querySelector('[name="' + q + '" i]');
+        } catch (_e) {
+            return null;
+        }
+    };
+
     // IE's document.all(name, index): the index-th element with that id or name (Chrome takes one argument)
     var allDesc = Object.getOwnPropertyDescriptor(Document.prototype, 'all');
     if (allDesc && allDesc.get && allDesc.configurable && typeof Proxy === 'function') {
@@ -149,6 +170,39 @@
             }
         });
     }
+    // MSXML's node.text and node.xml (an XML element has no HTML .text of its own)
+    if (!('text' in Element.prototype)) {
+        Object.defineProperty(Element.prototype, 'text', {
+            configurable: true,
+            get: function () { return this.textContent; },
+            set: function (v) { this.textContent = v; }
+        });
+    }
+    if (!('xml' in Node.prototype)) {
+        Object.defineProperty(Node.prototype, 'xml', {
+            configurable: true,
+            get: function () { return new XMLSerializer().serializeToString(this); }
+        });
+    }
+    // element.all (IE): the element's descendants, with tags(name)
+    if (!('all' in Element.prototype)) {
+        Object.defineProperty(Element.prototype, 'all', {
+            configurable: true,
+            get: function () {
+                var list = this.getElementsByTagName('*');
+                var el = this;
+                return new Proxy(list, {
+                    get: function (t, key) {
+                        if (key === 'tags') return function (tag) { return el.getElementsByTagName(tag); };
+                        if (key === 'item') return function (i) { return typeof i === 'number' ? t[i] : (t.namedItem(i)); };
+                        var v = t[key];
+                        if (v === undefined && typeof key === 'string' && isNaN(Number(key))) v = t.namedItem(key);
+                        return typeof v === 'function' ? v.bind(t) : v;
+                    }
+                });
+            }
+        });
+    }
     if (!Element.prototype.setCapture) {
         Element.prototype.setCapture = function () {};
         Element.prototype.releaseCapture = function () {};
@@ -170,6 +224,81 @@
         });
     }
 
+    // ------------------------------------------------------------ the web (modules/vistaGadgetProxy.js)
+
+    // A gadget's page loads only from Dreamscape (its CSP): remote XML and pictures come through the
+    // server's proxy, synchronous XMLHttpRequests included
+    var PROXY = '/gadget-proxy?url=';
+    function proxied(raw) {
+        var s = String(raw == null ? '' : raw).replace(/\\/g, '/');
+        // file:/// paths into a gadget package (from System.Shell items' paths): served here
+        var local = /^file:\/+(static_images\/vista-gadgets\/.*)$/i.exec(s);
+        if (local) return '/' + local[1];
+        if (!/^https?:\/\//i.test(s)) return null;
+        try {
+            if (new URL(s).origin === location.origin) return null;
+        } catch (_e) {
+            return null;
+        }
+        return PROXY + encodeURIComponent(s);
+    }
+    var xhrOpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function (method, url) {
+        var args = Array.prototype.slice.call(arguments);
+        var via = proxied(url);
+        if (via) args[1] = via;
+        return xhrOpen.apply(this, args);
+    };
+    var imgSrc = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+    if (imgSrc && imgSrc.set) {
+        Object.defineProperty(HTMLImageElement.prototype, 'src', {
+            configurable: true,
+            get: imgSrc.get,
+            set: function (v) { imgSrc.set.call(this, proxied(v) || v); }
+        });
+    }
+    // scripts never come from the web, but a gadget's own file:/// paths do load
+    function localOnly(raw) {
+        var via = proxied(raw);
+        return via && via.charAt(0) === '/' && via.indexOf(PROXY) !== 0 ? via : null;
+    }
+    var scriptSrc = Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype, 'src');
+    if (scriptSrc && scriptSrc.set) {
+        Object.defineProperty(HTMLScriptElement.prototype, 'src', {
+            configurable: true,
+            get: scriptSrc.get,
+            set: function (v) { scriptSrc.set.call(this, localOnly(v) || v); }
+        });
+    }
+    var setAttr = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function (name, value) {
+        if (String(name).toLowerCase() === 'src') {
+            var via = this.tagName === 'IMG' ? proxied(value) : (this.tagName === 'SCRIPT' ? localOnly(value) : null);
+            if (via) return setAttr.call(this, name, via);
+        }
+        return setAttr.call(this, name, value);
+    };
+    // document.write('<script src="file:///...">'): the gadget's own files, by URL
+    ['write', 'writeln'].forEach(function (name) {
+        var orig = Document.prototype[name];
+        Document.prototype[name] = function () {
+            var args = Array.prototype.map.call(arguments, function (html) {
+                return String(html).replace(/((?:src|href)\s*=\s*["']?)file:\/+(static_images\/vista-gadgets\/)/gi, '$1/$2');
+            });
+            return orig.apply(this, args);
+        };
+    });
+
+    // <img src="http://..."> in the page's own markup
+    function proxyImages(root) {
+        var imgs = root.getElementsByTagName ? root.getElementsByTagName('img') : [];
+        for (var i = 0; i < imgs.length; i++) {
+            var via = proxied(imgs[i].getAttribute('src'));
+            if (via) setAttr.call(imgs[i], 'src', via);
+        }
+    }
+    document.addEventListener('DOMContentLoaded', function () { proxyImages(document); });
+
     // ------------------------------------------------------------ ActiveX
 
     function speak(text) {
@@ -189,7 +318,9 @@
     XmlDom.prototype._set = function (doc) {
         this._doc = doc;
         var bad = !doc || doc.getElementsByTagName('parsererror').length;
-        this.parseError = { errorCode: bad ? 1 : 0, reason: bad ? 'parse error' : '' };
+        // IE's parseError coerces to its errorCode: xmlDoc.parseError != "0"
+        var code = bad ? 1 : 0;
+        this.parseError = { errorCode: code, reason: bad ? 'parse error' : '', valueOf: function () { return code; }, toString: function () { return String(code); } };
         this.documentElement = bad ? null : doc.documentElement;
         this.xml = bad ? '' : new XMLSerializer().serializeToString(doc);
         return !bad;
@@ -255,10 +386,64 @@
         this.close = function () { audio.pause(); audio.src = ''; };
     }
 
+    // JScript's Enumerator over WMI sets (vistaGadgetHost.js vghWmiSet), arrays and FSO collections
+    function Enumerator(collection) {
+        var list = [];
+        if (collection && typeof collection.length === 'number') list = collection;
+        else if (collection && typeof collection.Count === 'number' && collection.Item) {
+            for (var i = 0; i < collection.Count; i++) list.push(collection.Item(i));
+        }
+        this._list = list;
+        this._i = 0;
+    }
+    Enumerator.prototype.atEnd = function () { return this._i >= this._list.length; };
+    Enumerator.prototype.item = function () { return this._list[this._i]; };
+    Enumerator.prototype.moveNext = function () { this._i += 1; };
+    Enumerator.prototype.moveFirst = function () { this._i = 0; };
+    if (!window.Enumerator) window.Enumerator = Enumerator;
+
+    // VBArray(x).toArray(): WMI's array properties (IPAddress ...) arrive already wrapped
+    function VBArray(value) {
+        if (!(this instanceof VBArray)) return new VBArray(value);
+        this._a = value && value.__vbarray ? value.__vbarray : (Array.isArray(value) ? value : []);
+    }
+    VBArray.prototype.toArray = function () { return this._a.slice(); };
+    VBArray.prototype.getItem = function (i) { return this._a[i]; };
+    VBArray.prototype.ubound = function () { return this._a.length - 1; };
+    VBArray.prototype.lbound = function () { return 0; };
+    VBArray.prototype.dimensions = function () { return 1; };
+    if (!window.VBArray) window.VBArray = VBArray;
+
+    // GetObject("winmgmts:..."): WMI over the server's figures
+    if (!window.GetObject) {
+        window.GetObject = function (moniker) {
+            var svc = host && host.wmi ? host.wmi(window, moniker) : null;
+            if (!svc) throw new Error('Automation server can\'t create object');
+            return svc;
+        };
+    }
+
     function ActiveXObject(progId) {
         var id = String(progId || '').toLowerCase();
         if (/xmldom|domdocument/.test(id)) return new XmlDom();
         if (/xmlhttp/.test(id)) return new XMLHttpRequest();
+        if (id === 'shell.application') {
+            // Explorer's automation: folders hold nothing here; ShellExecute of a web address opens Alchemy
+            var noItem = { Name: '', Path: '', InvokeVerb: function () {}, Verbs: function () { return { Count: 0 }; } };
+            var noFolder = { Self: noItem, Title: '', ParseName: function () { return noItem; }, Items: function () { return { Count: 0, Item: function () { return null; } }; } };
+            return {
+                NameSpace: function () { return noFolder; },
+                ShellExecute: function (file) { if (system.Shell && /^https?:/i.test(String(file))) system.Shell.execute(file); },
+                Open: function () {}, Explore: function () {}, MinimizeAll: function () {}, UndoMinimizeALL: function () {},
+                Windows: function () { return { Count: 0, Item: function () { return null; } }; }
+            };
+        }
+        if (id === 'wbemscripting.swbemlocator') {
+            return {
+                ConnectServer: function (_server, ns) { return window.GetObject('winmgmts:\\\\.\\' + (ns || 'root\\cimv2')); },
+                Security_: { ImpersonationLevel: 3 }
+            };
+        }
         if (id === 'sapi.spvoice') return { Speak: speak, speak: speak, Volume: 100, Rate: 0 };
         if (id === 'wmplayer.ocx' || id === 'wmplayer.ocx.7') return new MediaPlayer();
         if (id === 'wscript.shell') {
@@ -271,7 +456,30 @@
             };
         }
         if (id === 'scripting.filesystemobject') {
+            // drives are the server's (System.Shell.drive); files never exist
+            var fsoDrive = function (letter) {
+                var d = system.Shell && system.Shell.drive ? system.Shell.drive(letter) : null;
+                if (!d) return null;
+                return {
+                    DriveLetter: d.name.charAt(0), Path: d.name, RootFolder: { Path: d.path }, DriveType: 2, IsReady: true,
+                    // FileSystemObject counts bytes; System.Shell.drive megabytes
+                    TotalSize: d.totalSize * 1048576, FreeSpace: d.freeSpace * 1048576, AvailableSpace: d.freeSpace * 1048576,
+                    VolumeName: d.volumeLabel, FileSystem: d.fileSystem, SerialNumber: 0, ShareName: ''
+                };
+            };
+            var fsoDrives = function () {
+                var letters = system.Shell && system.Shell.Drive ? system.Shell.Drive.list : [];
+                var list = [];
+                for (var i = 0; i < letters.length; i++) { var d = fsoDrive(letters[i]); if (d) list.push(d); }
+                list.Count = list.length;
+                list.Item = function (key) { return typeof key === 'number' ? list[key] : fsoDrive(String(key)); };
+                return list;
+            };
             return {
+                get Drives() { return fsoDrives(); },
+                GetDrive: function (spec) { var d = fsoDrive(String(spec)); if (!d) throw new Error('Drive not found'); return d; },
+                DriveExists: function (spec) { return !!fsoDrive(String(spec)); },
+                GetDriveName: function (p) { var m = /^([a-z]:)/i.exec(String(p)); return m ? m[1] : ''; },
                 FileExists: function () { return false; },
                 FolderExists: function () { return false; },
                 GetSpecialFolder: function () { return { Path: '' }; },
@@ -406,8 +614,69 @@
         if (opacity !== null && opacity !== '') el.style.opacity = String(Number(opacity) / 100);
     }
 
+    // VML shapes (<v:shape>, and 8GadgetPack's <g:shape>): path in coordsize units, drawn as SVG
+    var SVGNS = 'http://www.w3.org/2000/svg';
+    function isShape(el) {
+        return el && /^(v|g):(shape|polyline|line|rect|roundrect|oval)$/.test(el.localName);
+    }
+    function vmlPathToSvg(path) {
+        return String(path || '').replace(/([a-z]+)/gi, function (cmd) {
+            switch (cmd.toLowerCase()) {
+                case 'm': return ' M ';
+                case 'l': return ' L ';
+                case 'c': return ' C ';
+                case 't': return ' m ';
+                case 'r': return ' l ';
+                case 'v': return ' c ';
+                case 'x': return ' Z ';
+                case 'e': case 'nf': case 'ns': return ' ';
+                default: return ' ';
+            }
+        });
+    }
+    function lengthPx(v) {
+        var n = parseFloat(v);
+        if (isNaN(n)) return 1;
+        return /pt$/i.test(String(v)) ? n * 4 / 3 : n;
+    }
+    function paintShape(el) {
+        var size = (el.getAttribute('coordsize') || '1000 1000').split(/[\s,]+/).map(Number);
+        var origin = (el.getAttribute('coordorigin') || '0 0').split(/[\s,]+/).map(Number);
+        if (!el.style.position) el.style.position = 'absolute';
+        el.style.display = 'block';
+        var svg = el.__svg;
+        if (!svg) {
+            svg = document.createElementNS(SVGNS, 'svg');
+            svg.setAttribute('preserveAspectRatio', 'none');
+            svg.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;overflow:visible;pointer-events:none';
+            svg.appendChild(document.createElementNS(SVGNS, 'path'));
+            el.appendChild(svg);
+            el.__svg = svg;
+        }
+        svg.setAttribute('viewBox', (origin[0] || 0) + ' ' + (origin[1] || 0) + ' ' + (size[0] || 1000) + ' ' + (size[1] || 1000));
+        var shape = svg.firstChild;
+        var stroked = String(el.getAttribute('stroked') || 'true').toLowerCase() !== 'false';
+        var filled = String(el.getAttribute('filled') || 'true').toLowerCase() !== 'false';
+        shape.setAttribute('d', vmlPathToSvg(el.getAttribute('path')));
+        shape.setAttribute('stroke', stroked ? (el.getAttribute('strokecolor') || 'black') : 'none');
+        shape.setAttribute('stroke-width', String(lengthPx(el.getAttribute('strokeweight') || '0.75pt')));
+        shape.setAttribute('vector-effect', 'non-scaling-stroke');
+        shape.setAttribute('fill', filled ? (el.getAttribute('fillcolor') || 'white') : 'none');
+    }
+    var U0 = window.HTMLUnknownElement && HTMLUnknownElement.prototype;
+    if (U0) {
+        ['path', 'strokecolor', 'fillcolor', 'strokeweight', 'filled', 'stroked', 'coordsize', 'coordorigin'].forEach(function (name) {
+            Object.defineProperty(U0, name, {
+                configurable: true,
+                get: function () { return this.getAttribute(name) || ''; },
+                set: function (v) { setAttr.call(this, name, String(v)); if (isShape(this)) paintShape(this); }
+            });
+        });
+    }
+
     function paintG(el) {
-        if (isG(el, 'background')) paintBackground(el);
+        if (isShape(el)) paintShape(el);
+        else if (isG(el, 'background')) paintBackground(el);
         else if (isG(el, 'image')) paintImage(el);
         else if (isG(el, 'text')) {
             el.style.position = el.style.position || 'absolute';
@@ -440,7 +709,7 @@
     }
 
     function paintAll() {
-        ['g:background', 'g:image', 'g:text'].forEach(function (tag) {
+        ['g:background', 'g:image', 'g:text', 'g:shape', 'v:shape', 'v:polyline', 'v:line'].forEach(function (tag) {
             var list = document.getElementsByTagName(tag);
             for (var i = 0; i < list.length; i++) paintG(list[i]);
         });

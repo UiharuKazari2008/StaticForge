@@ -671,6 +671,7 @@ async function getFeed(url) {
 }
 
 module.exports = {
+    assertPublicHttps,
     GADGET_TYPES,
     hostedGadgetIds,
     sanitizeHostedSettings,

@@ -1,0 +1,44 @@
+<manifest>
+  <resource type="Image" extension="png">
+    <Image name="SelectedItemBg" width="1" height="19">
+      <State index="0"></State>
+      <State index="1">Hover</State>
+    </Image>
+    <Image name="SelectedItemLeft" width="3" height="19">
+      <State index="0"></State>
+      <State index="1">Hover</State>
+    </Image>
+    <Image name="SelectedItemRight" width="3" height="19">
+      <State index="0"></State>
+      <State index="1">Hover</State>
+    </Image>
+    <Image name="UnselectedItemBg" width="1" height="19">
+      <State index="1">Hover</State>
+    </Image>
+    <Image name="UnselectedItemLeft" width="3" height="19">
+      <State index="1">Hover</State>
+    </Image>
+    <Image name="UnselectedItemRight" width="3" height="19">
+      <State index="1">Hover</State>
+    </Image>
+    <Image name="NonFocusItemBg" width="1" height="19" />
+    <Image name="NonFocusItemLeft" width="3" height="19" />
+    <Image name="NonFocusItemRight" width="3" height="19" />
+    <Image name="Plus" width="9" height="9" rtl="Reverse">
+      <State index="0">Rest</State>
+      <State index="1">Hover</State>
+    </Image>
+    <Image name="Minus" width="9" height="9" rtl="Reverse">
+      <State index="0">Rest</State>
+      <State index="1">Hover</State>
+    </Image>
+  </resource>
+  <resource type="Control" name="ScrollBar">
+    <VScrollBar>
+      <Width type="UInt32">17</Width>
+    </VScrollBar>
+    <HScrollBar>
+      <Height type="UInt32">17</Height>
+    </HScrollBar>
+  </resource>
+</manifest>

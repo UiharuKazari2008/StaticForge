@@ -1,0 +1,107 @@
+<html>
+  <head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+    <style>
+       body{ 
+         width:300px;
+         height:155px;
+         margin:0px;
+       }
+       
+       .settings {
+       	border-collapse:collapse;
+       }
+       
+       .settings td{
+       	font-family:"Microsoft YaHei";
+       	font-size:12;
+       }
+    </style>
+    <script language="javascript" type="text/javascript">
+		System.Gadget.onSettingsClosing = SettingsClosing;
+		
+		function SettingsClosing(event) {
+		 	if (event.closeAction == event.Action.commit) {
+				System.Gadget.Settings.write("Caption", eCaption.value);
+				System.Gadget.Settings.write("imageBorder", parseInt(eimageBorder.value)+6);
+				System.Gadget.Settings.write("textBorder", etextBorder.value);
+				System.Gadget.Settings.write("textFont", etextFont.value);
+				System.Gadget.Settings.write("textFontSize", etextFontSize.value);
+				System.Gadget.Settings.write("textFontColour", etextFontColour.value);
+				System.Gadget.Settings.write("blurBorder", eblurBorder.value);
+			}
+		
+			event.cancel = false;
+		}
+		
+		function init() {
+			eCaption.value = System.Gadget.Settings.read("Caption");
+			eimageBorder.value = System.Gadget.Settings.read("imageBorder")-6;
+			etextBorder.value = System.Gadget.Settings.read("textBorder");
+			etextFont.value = System.Gadget.Settings.read("textFont");
+			etextFontSize.value = System.Gadget.Settings.read("textFontSize");
+			etextFontColour.value = System.Gadget.Settings.read("textFontColour");
+			eblurBorder.value = System.Gadget.Settings.read("blurBorder");
+		}
+    </script>
+  </head>
+  <body onload="init()">
+  	<table class="settings">
+  		<tr>
+  			<td style="text-align:right;">Caption:</td>
+  			<td><input type="text" id="eCaption" title="Image Caption" style="width:200px;"></td>
+  		</tr>
+  		<tr>
+  			<td style="text-align:right;">Border:</td>
+  			<td><input type="text" id="eimageBorder" title="Border Around Image" size=3></td>
+  		</tr>
+  		<tr>
+  			<td style="text-align:right;">Caption Border:</td>
+  			<td><input type="text" id="etextBorder" title="Gap between image and Caption" size=3></td>
+  		</tr>
+  		<tr>
+  			<td style="text-align:right;">Font:</td>
+  			<td><select id="etextFont" title="Caption Font">
+  				<option value="Arial">Arial</option>
+  				<option value="Arial Black">Arial Black</option>
+  				<option value="Comic Sans MS">Comic Sans MS</option>
+  				<option value="Georgia">Georgia</option>
+  				<option value="Times New Roman">Times New Roman</option>
+  				<option value="Trebuchet MS">Trebuchet MS</option>
+  				<option value="Segoe UI">Segoe UI</option>
+  				<option value="Verdana">Verdana</option>
+  				</select>
+  			
+				<select id="etextFontSize" title="Caption Font Size">
+  				<option value="6">6</option>
+  				<option value="8">8</option>
+  				<option value="10">10</option>
+  				<option value="12">12</option>
+  				<option value="14">14</option>
+  				<option value="16">16</option>
+  				<option value="18">18</option>
+  				<option value="20">20</option>
+  				<option value="22">22</option>
+  				<option value="24">24</option>
+  				</select>
+  			</td>
+  		</tr>
+  		<tr>
+  			<td style="text-align:right;">Font Colour:</td>
+  			<td><input id="etextFontColour" title="Caption colour eg. rgb(30,30,30) / Black / #aa2233" size=14>
+  			</td>
+  		</tr>
+  		<tr>
+  			<td style="text-align:right;">Outer Shadow:</td>
+  			<td><select id="eblurBorder" title="The dark shadow around the Gadget">
+  				<option value="5">5</option>
+  				<option value="10">10</option>
+  				<option value="15">15</option>
+  				<option value="20">20</option>
+  				<option value="25">25</option>
+  				<option value="30">30</option>
+  				</select>
+  			</td>
+  		</tr>
+  	</table>
+  </body>
+</html>

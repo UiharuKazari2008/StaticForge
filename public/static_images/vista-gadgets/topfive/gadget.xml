@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<gadget>
+  <name>Top Five</name>
+  <namespace>topfive</namespace>
+  <version>1.0</version>
+  <author name="Orbmu2k">
+    <info url="http://blog.orbmu2k.de" text="Orbmu2k Blog" />
+    <logo src="usage48.png" />
+  </author>
+  <copyright>© 2008 by Orbmu2k</copyright>
+  <description>Shows the Top 5 processes by current Memory or CPU load</description>
+  <icons>
+    <icon height="48" width="48" src="t5_scr.png" />
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0.0" src="gadget.html" />
+      <permissions>Full</permissions>
+      <platform minPlatformVersion="1.0" />
+      <defaultImage src="t5_scr.png" />
+      <autoscaleDPI>true</autoscaleDPI>
+    </host>
+  </hosts>
+</gadget>

@@ -72,6 +72,7 @@ const accountPictures = require('./modules/accountPictures');
 const { handleStatusStream } = require('./modules/statusStream');
 const desktopSoundsStatic = require('./modules/desktopSoundsStatic');
 const vistaGadgetStatic = require('./modules/vistaGadgetStatic');
+const vistaGadgetProxy = require('./modules/vistaGadgetProxy');
 const installManifestFilter = require('./modules/installManifestFilter');
 const { browserRequest } = require('./modules/browserHttp');
 const { mountGrimoireBrowserBridge } = require('./modules/grimoireBrowserBridge');
@@ -4380,6 +4381,12 @@ async function handleAdminUnixSocketMessage(message, socket) {
 
         // Sidebar gadget packages: lowercase paths, locale folder then gadget root (Yozora #629)
         app.use(vistaGadgetStatic.WEB_PREFIX, vistaGadgetStatic.middleware(__dirname));
+        // their remote XML and pictures, admins only (modules/vistaGadgetProxy.js)
+        app.get('/gadget-proxy', authMiddleware, (req, res) => {
+            vistaGadgetProxy.handle(req, res).catch((err) => {
+                if (!res.headersSent) res.status(500).json({ success: false, error: err.message });
+            });
+        });
 
         // graphify-out holds an internal cache (stat-index.json) that lists absolute server
         // paths, sizes and mtimes for the whole tree. Auth before any bytes leave the host.
