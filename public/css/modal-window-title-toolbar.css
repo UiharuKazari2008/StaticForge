@@ -1383,21 +1383,21 @@ body:not(.desktop-mode) .modal .modal-window-controls .modal-maximize-auto {
    is any window with data-window-frame="flush" (aero-glass.css then sees no inset, 0).
    .window-has-caption = has a direct .modal-window-title child (scripts/comp/rootStateFlags.js; a
    :has(> .modal-window-title) here cost ~20 ms per DOM change inside any big open window). */
-body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):where(:not(#manualModal:not(.windowed), #photoSwipeWindow, #virtualKeyboardModal, [data-window-frame="flush"])) {
+body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):where(:not(#manualModal:not(.windowed), #photoSwipeWindow:not(.windowed), #virtualKeyboardModal, [data-window-frame="flush"])) {
     --window-frame-inset: 7px;
     padding-left: var(--window-frame-inset);
     padding-right: var(--window-frame-inset);
     padding-bottom: var(--window-frame-inset);
 }
 
-body.desktop-mode:not(.windows-classic-theme) .modal.modal-maximized:where(.window-has-caption):where(:not(#manualModal:not(.windowed), #photoSwipeWindow, #virtualKeyboardModal, [data-window-frame="flush"])) {
+body.desktop-mode:not(.windows-classic-theme) .modal.modal-maximized:where(.window-has-caption):where(:not(#manualModal:not(.windowed), #photoSwipeWindow:not(.windowed), #virtualKeyboardModal, [data-window-frame="flush"])) {
     --window-frame-inset: 0px;
 }
 
 /* The client edge: light outside, dark inside, in the 2 px just outside the client box.
    Under the window's children (z-index -1, after the frame paint in ::before), so the
    caption band covers its top edge and only the sides and bottom show. */
-body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):where(:not(#manualModal:not(.windowed), #photoSwipeWindow, #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized)::after {
+body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):where(:not(#manualModal:not(.windowed), #photoSwipeWindow:not(.windowed), #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized)::after {
     content: '';
     position: absolute;
     z-index: -1;
@@ -1440,14 +1440,14 @@ body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):
     --vista-ctl-fold: linear-gradient(hsl(0 0% 100% / 32%), hsl(0 0% 100% / 19%) calc(var(--window-caption-edge) - 1px), hsl(0 0% 0% / 12%) var(--window-caption-edge), hsl(0 0% 0% / 12%) 75%, hsl(0 0% 100% / 28%));
 }
 
-body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):where(:not(#manualModal:not(.windowed), #photoSwipeWindow, #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-window-title {
+body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):where(:not(#manualModal:not(.windowed), #photoSwipeWindow:not(.windowed), #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-window-title {
     left: 0;
     width: 100%;
     border-bottom-color: transparent;
     box-shadow: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):where(:not(#manualModal:not(.windowed), #photoSwipeWindow, #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-window-title::before {
+body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):where(:not(#manualModal:not(.windowed), #photoSwipeWindow:not(.windowed), #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-window-title::before {
     content: '';
     position: absolute;
     z-index: -1;
@@ -1462,13 +1462,13 @@ body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):
     opacity: 0.55;
 }
 
-body.desktop-mode:not(.windows-classic-theme) .modal:not(.active-window):where(.window-has-caption):where(:not(#manualModal:not(.windowed), #photoSwipeWindow, #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-window-title::before {
+body.desktop-mode:not(.windows-classic-theme) .modal:not(.active-window):where(.window-has-caption):where(:not(#manualModal:not(.windowed), #photoSwipeWindow:not(.windowed), #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-window-title::before {
     opacity: 0;
 }
 
 /* Client top edge, continuing the side lines of .modal::after: light at the caption's
    second-to-last row, dark on its last row, both over the client width */
-body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):where(:not(#manualModal:not(.windowed), #photoSwipeWindow, #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-window-title::after {
+body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):where(:not(#manualModal:not(.windowed), #photoSwipeWindow:not(.windowed), #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-window-title::after {
     content: '';
     position: absolute;
     pointer-events: none;
@@ -1511,8 +1511,8 @@ body.desktop-mode:not(.windows-classic-theme) #manualModal.windowed:not(.modal-m
 }
 
 /* The client area is square inside the frame (Vista) */
-body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):where(:not(#manualModal:not(.windowed), #photoSwipeWindow, #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-content,
-body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):where(:not(#manualModal:not(.windowed), #photoSwipeWindow, #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-body {
+body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):where(:not(#manualModal:not(.windowed), #photoSwipeWindow:not(.windowed), #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-content,
+body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):where(:not(#manualModal:not(.windowed), #photoSwipeWindow:not(.windowed), #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-body {
     border-radius: 0;
 }
 

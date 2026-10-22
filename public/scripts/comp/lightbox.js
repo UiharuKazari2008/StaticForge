@@ -714,13 +714,15 @@ function resetGlancewellSlideShowShell() {
 
 /**
  * Lumen's slide show (Windows Photo Viewer's is the same basic show and menu): the gallery from the
- * picture on, full screen at once; Exit / Esc closes it and onExit(filename) gets the picture it
+ * picture on (the gallery window's list, or Lumen's own { dataSource, index }), full screen at once; Exit / Esc closes it and onExit(filename) gets the picture it
  * stopped on (ImageViewer.playSlideShow: public/scripts/comp/imageViewer.js).
  */
 async function playSlideShowFromLumen(input, onExit) {
     glancewellShow.lumenStart = { onExit };
     try {
-        await showLightbox(input);
+        // Lumen's own list ({ dataSource, index }) when the gallery window has not loaded the picture
+        if (input && Array.isArray(input.dataSource)) await openStandalonePhotoSwipe(input.dataSource, input.index);
+        else await showLightbox(input);
     } catch (err) {
         glancewellShow.lumenStart = null;
         throw err;

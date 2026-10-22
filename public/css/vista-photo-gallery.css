@@ -35,6 +35,13 @@ body:not(.windows-classic-theme) .modal.wpg-viewer[data-window-client="light"] >
     background: transparent;
 }
 
+/* The foot is frame glass extended into the client (Vista's DwmExtendFrameIntoClientArea, as
+   Media Player's transport): --window-frame-bottom (aero-glass.css) keeps frosted / basic's client
+   shade off it and closes the client edge above it. */
+.modal.wpg-viewer:not(.wpg-slideshow) {
+    --window-frame-bottom: 57px;
+}
+
 /* ---- the command band ---- */
 
 .wpg-viewer .wpg-toolbar {
@@ -377,9 +384,10 @@ body.windows-classic-theme .wpg-viewer .wpg-main .image-container {
    pictures on #eef3fa, PhotoSwipe's own bars and arrows hidden: the band and the pill drive it);
    full screen (not .windowed) is the slide show without the frame. ---- */
 
-/* inside the frame like any client (the shell's own rule pads the caption only) */
+/* inside the frame like any client (the shell's own rule pads the caption only); the inset is
+   the Vista frame's (modal-window-title-toolbar.css), 0 when maximized */
 body.desktop-mode #photoSwipeWindow.wpg-glancewell.windowed {
-    padding: 27px 7px 7px;
+    padding: 27px var(--window-frame-inset, 7px) var(--window-frame-inset, 7px);
 }
 
 body.desktop-mode #photoSwipeWindow.wpg-glancewell.windowed .wpg-main {

@@ -270,6 +270,46 @@ async function renderPhotoGalleryInfoPane(pane, source) {
     }
 }
 
+/**
+ * Lumen's pictures to step through when the gallery window has not loaded them (Lumen opened from
+ * the desktop, a shortcut, MCP...): the workspace's light gallery list (loadGalleryChunk:
+ * public/scripts/comp/galleryView.js), newest first, fetched once a minute per workspace.
+ */
+const lumenGalleryListCache = { workspace: null, at: 0, rows: null, pending: null };
+
+function lumenGalleryList() {
+    const workspace = (typeof activeWorkspace !== 'undefined' && activeWorkspace) || 'default';
+    const cache = lumenGalleryListCache;
+    if (cache.workspace === workspace) {
+        if (cache.rows && Date.now() - cache.at < 60000) return Promise.resolve(cache.rows);
+        if (cache.pending) return cache.pending;
+    }
+    cache.workspace = workspace;
+    cache.pending = (async () => {
+        // the first call reads the total, the second takes the whole list in one block
+        const head = await loadGalleryChunk('images', 0, 0);
+        const all = await loadGalleryChunk('images', 0, Math.max(head.total || 0, 1));
+        cache.rows = all.chunk;
+        cache.at = Date.now();
+        return cache.rows;
+    })().finally(() => { cache.pending = null; });
+    return cache.pending;
+}
+
+/** PhotoSwipe slides for a list of gallery rows (Lumen's slide show and Open > Glancewell). */
+function lumenSlidesFromRows(rows) {
+    return rows.map((row) => {
+        const name = row.upscaled || row.original || row.filename;
+        return {
+            // resolveGalleryFullImageUrl / localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+            src: resolveGalleryFullImageUrl(row) || localGalleryImageUrl(name),
+            width: Number(row.width) || 1024,
+            height: Number(row.height) || 1024,
+            filename: row.filename || name
+        };
+    });
+}
+
 class ImageViewer {
     constructor(id, element, imageSrc, title, metadata, manager) {
         this.id = id;
@@ -727,6 +767,7 @@ class ImageViewer {
 
         // Toolbar buttons
         this.setupToolbarButtons();
+        void this.loadGalleryRows();
 
         // Image interaction
         if (imgElement) {
@@ -882,13 +923,41 @@ class ImageViewer {
         btn.title = actual ? 'Fit to window (Ctrl+0)' : 'Actual size (Ctrl+Alt+0)';
     }
 
-    /** The gallery's pictures around this one (galleryView.js allImages), for Previous / Next. */
+    /**
+     * The pictures Lumen steps through and where this one is in them: the gallery window's loaded
+     * list (galleryView.js allImages) when it holds this picture, else Lumen's own copy of the
+     * workspace's list (lumenGalleryList, loaded by loadGalleryRows).
+     */
+    galleryPlace(name = this.getImageFilename()) {
+        if (!name) return null;
+        const find = (list) => (Array.isArray(list)
+            ? list.findIndex((img) => img && (img.filename === name || img.original === name || img.upscaled === name))
+            : -1);
+        if (typeof allImages !== 'undefined') {
+            const index = find(allImages);
+            if (index >= 0) return { list: allImages, index };
+        }
+        const index = find(this.galleryRows);
+        return index >= 0 ? { list: this.galleryRows, index } : null;
+    }
+
+    /** The gallery's pictures around this one, for Previous / Next. */
     galleryNeighbor(step) {
-        const name = this.getImageFilename();
-        if (!name || typeof allImages === 'undefined' || !Array.isArray(allImages)) return null;
-        const index = allImages.findIndex((img) => img && (img.filename === name || img.original === name || img.upscaled === name));
-        if (index < 0) return null;
-        return allImages[index + step] || null;
+        const place = this.galleryPlace();
+        return place ? place.list[place.index + step] || null : null;
+    }
+
+    /** Lumen's own list when the gallery window has not loaded this picture. */
+    async loadGalleryRows() {
+        if (!this.getImageFilename() || typeof loadGalleryChunk !== 'function') return;
+        if (this.galleryPlace() && this.galleryPlace().list !== this.galleryRows) return;
+        try {
+            this.galleryRows = await lumenGalleryList();
+        } catch (err) {
+            console.warn('Lumen: gallery list unavailable:', err && err.message);
+            return;
+        }
+        this.syncStepButtons();
     }
 
     syncStepButtons() {
@@ -908,6 +977,9 @@ class ImageViewer {
         const next = this.galleryNeighbor(1) || this.galleryNeighbor(-1);
         // moveToScraps: public/scripts/comp/galleryView.js (true once scrapped)
         if (typeof moveToScraps !== 'function' || !(await moveToScraps(this.metadata))) return;
+        // Lumen's own list drops it too (the gallery window's list updates itself)
+        const place = this.galleryPlace();
+        if (place && place.list === this.galleryRows) this.galleryRows.splice(place.index, 1);
         if (next) this.showGalleryImage(next);
         else this.close();
     }
@@ -1663,15 +1735,18 @@ class ImageViewer {
         }
         const filename = this.getImageFilename();
         const onExit = (name) => {
-            const image = name && name !== this.getImageFilename() && typeof findImageByFilename === 'function'
-                ? findImageByFilename(name)
-                : null;
-            if (image) this.showGalleryImage(image);
+            const place = name && name !== this.getImageFilename() ? this.galleryPlace(name) : null;
+            if (place) this.showGalleryImage(place.list[place.index]);
             // bringModalToFront: public/scripts/comp/modalUtils.js
             if (this.element && !this.element.classList.contains('hidden')) bringModalToFront(this.element);
         };
-        if (filename) {
+        const place = this.galleryPlace();
+        if (place && typeof allImages !== 'undefined' && place.list === allImages) {
             await playSlideShowFromLumen({ filename }, onExit);
+            return;
+        }
+        if (place) {
+            await playSlideShowFromLumen({ dataSource: lumenSlidesFromRows(place.list), index: place.index }, onExit);
             return;
         }
         const imgElement = this.element.querySelector(`#imageViewerImage_${this.id}`);
@@ -1686,8 +1761,12 @@ class ImageViewer {
         // Use existing lightbox functionality
         if (typeof showLightbox === 'function') {
             const filename = this.getImageFilename();
-            // If we have metadata with a filename, use that to find the image in the gallery
-            if (filename) {
+            const place = this.galleryPlace();
+            // a picture the gallery window has not loaded: Glancewell over Lumen's own list
+            // (openStandalonePhotoSwipe: public/scripts/comp/lightbox.js)
+            if (place && place.list === this.galleryRows && typeof openStandalonePhotoSwipe === 'function') {
+                void openStandalonePhotoSwipe(lumenSlidesFromRows(place.list), place.index);
+            } else if (filename) {
                 showLightbox({ filename });
             } else {
                 // Standalone image - use URL mode
