@@ -3994,7 +3994,7 @@
                     <button type="button" id="brushShapeBtn" class="btn-secondary btn-small explorer-command-btn"
                         title="Toggle Brush Shape (F3)"><i class="fas fa-square"></i><span>Shape</span></button>
                     <label class="brush-size-control command-bar-field" for="brushSize" title="Brush Size">
-                        <span>Size</span>
+                        <span>Size:</span>
                         <input type="number" id="brushSize" class="form-control" min="1" max="20" value="3">
                     </label>
                 </div>
@@ -7741,7 +7741,7 @@ Examples:
             <div id="desktopSettingsLayout" class="desktop-settings-layout">
                 <div class="desktop-settings-controls scrollbar-padding" data-custom-scrollbar>
                     <!-- Workspace Settings Section -->
-                    <div class="settings-section" data-desktop-settings-scope="workspace">
+                    <div class="settings-section" data-desktop-settings-scope="workspace" data-desktop-settings-group="theme">
                         <h3 class="section-header"><i class="fas fa-planet-ringed"></i> Workspace</h3>
                         <div class="form-row">
                             <div class="form-group">
@@ -7786,10 +7786,10 @@ Examples:
                     </div>
 
                     <!-- Separator -->
-                    <div class="form-section-separator" data-desktop-settings-scope="workspace"></div>
+                    <div class="form-section-separator" data-desktop-settings-scope="workspace" data-desktop-settings-group="wallpaper"></div>
 
                     <!-- Wallpaper Section -->
-                    <div class="settings-section" data-desktop-settings-scope="workspace">
+                    <div class="settings-section" data-desktop-settings-scope="workspace" data-desktop-settings-group="wallpaper">
                         <h3 class="section-header"><i class="fas fa-image"></i> Wallpaper</h3>
 
                         <!-- Two-column layout: Preview (left) and Controls (right) -->

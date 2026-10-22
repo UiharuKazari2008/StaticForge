@@ -1375,7 +1375,7 @@ body.editor-open .gallery-container {
 
 /* the white client fills the frame (the content's own 1200px cap left glass beside it) */
 body.desktop-mode :is(#maskEditorDialog, #imageBiasAdjustmentModal) > .modal-content {
-    width: auto;
+    width: 100%;
     max-width: none;
 }
 
