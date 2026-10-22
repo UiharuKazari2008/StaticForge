@@ -6191,7 +6191,7 @@ Examples:
     </div>
 
     <!-- Spellbook Generation Modal -->
-    <div id="spellbookGenerationModal" class="modal hidden">
+    <div id="spellbookGenerationModal" class="modal hidden" data-window-client="light">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-hat-wizard icon-fa"></i>
@@ -6420,19 +6420,19 @@ Examples:
                                 </button>
                                 <button type="button" id="spellbookClearPresetBtn" class="btn-secondary hidden"
                                     title="Clear preset selection">
-                                    <i class="fas fa-times"></i>
+                                    <i class="fas fa-times"></i><span class="vista-label">Clear</span>
                                 </button>
                                 <!-- Editor Button -->
                                 <button type="button" id="spellbookEditorBtn" class="btn-secondary" disabled
                                     title="Create a masterpiece!">
-                                    <i class="fa-solid fa-compass-drafting"></i>
+                                    <i class="fa-solid fa-compass-drafting"></i><span class="vista-label">Edit...</span>
                                 </button>
                             </div>
                             <div id="spellbookCustomPresetDropdownMenu" class="custom-dropdown-menu hidden"></div>
                             <input type="hidden" id="presetSelect" value="">
                         </div>
                         <!-- Generate Button -->
-                        <button type="button" id="spellbookGenerateBtn" class="btn-primary" disabled>
+                        <button type="button" id="spellbookGenerateBtn" class="btn-primary" data-dialog-primary="1" disabled>
                             <i class="fas fa-wand-sparkles"></i>
                         </button>
                     </div>

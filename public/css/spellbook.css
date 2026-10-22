@@ -300,3 +300,163 @@ div#spellbookCustomPresetDropdown {
 }
 
 /* Block container specific styles for spellbook - use existing block styles */
+
+/* ---- Vista desktop: Spellcaster in the light client (an update, not a copy of a Vista app):
+   the picture stage stays dark like Photo Gallery's slide show so the stars and confetti still
+   read; the spell picker wears the shared combo box face, Clear / Edit... / Cast are push
+   buttons (vista-label words; Cast's word rides on its <i>, which spellbookModal.js swaps for a
+   spinner and back), the picture's buttons are Photo Gallery's dark-band buttons with Vista
+   art where Vista has it ---- */
+
+body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal > .modal-content {
+    padding: 8px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal .spellbook-preview-image-container {
+    border: 1px solid;
+    border-color: #828790 #d5dbe1 #d5dbe1 #828790;
+    border-radius: 0;
+    background: #000;
+    box-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal :is(.spellbook-blur-background, .spellbook-preview-image, .spellbook-block-container.block-container) {
+    border-radius: 0;
+}
+
+/* the picture's buttons: 28 px, bare until hot, then Photo Gallery's toolbar hot face */
+body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal .spellbook-overlay-buttons .round-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    background: none;
+    border: 5px solid transparent;
+    border-image: none;
+    border-radius: 0;
+    box-shadow: none;
+    color: #fff;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal .spellbook-overlay-buttons .round-button:is(:hover, :focus-visible):not(:disabled) {
+    border-image: url("/static_images/vista-photo-gallery/toolbar-hot.png") 5 fill / 5px stretch;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal .spellbook-overlay-buttons .round-button:active:not(:disabled) {
+    filter: brightness(0.85);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal .spellbook-overlay-buttons .round-button > i {
+    font-size: 14px;
+}
+
+/* Save (Explorer's), Copy (Photo Gallery's, PhotoLibraryResources PNG 14053), Planet (its app
+   icon); Expand Canvas and Upscale keep their glyphs: Vista has no such command */
+body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal :is(#spellbookDownloadBtn, #spellbookCopyBtn, #spellbookGoToWorkspaceBtn) > i {
+    width: 16px;
+    height: 16px;
+    background: url("/static_images/vista-cmdbar/save.png") no-repeat center / 16px 16px;
+    font-size: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal #spellbookCopyBtn > i { background-image: url("/static_images/vista-cmdbar/copy.png"); }
+body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal #spellbookGoToWorkspaceBtn > i { background-image: url("/static_images/app_icons/24/planet.webp"); }
+
+body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal :is(#spellbookDownloadBtn, #spellbookCopyBtn, #spellbookGoToWorkspaceBtn) > i::before {
+    content: none;
+}
+
+/* the controls row */
+body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal .spellbook-controls-container {
+    gap: 6px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal .spellbook-controls-container .button-group {
+    gap: 6px;
+    background: none;
+    border: 0;
+    box-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal #spellbookCustomPresetDropdownBtn {
+    --vista-combo-face: url("/static_images/vista-controls/combo-normal.png");
+    position: relative;
+    box-sizing: border-box;
+    height: 23px;
+    min-height: 23px;
+    padding: 0 20px 0 4px;
+    background: none;
+    border: 1px solid transparent;
+    border-image: var(--vista-combo-face) 3 fill / 3px stretch;
+    border-radius: 0;
+    box-shadow: none;
+    color: #000;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    text-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal #spellbookCustomPresetDropdownBtn:is(:hover, :focus-visible):not(:disabled) {
+    --vista-combo-face: url("/static_images/vista-controls/combo-hot.png");
+}
+
+body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal #spellbookCustomPresetDropdownBtn:is(:active, .active, .context-open):not(:disabled) {
+    --vista-combo-face: url("/static_images/vista-controls/combo-pressed.png");
+}
+
+body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal #spellbookCustomPresetDropdownBtn::before {
+    content: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal #spellbookCustomPresetDropdownBtn::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 4px;
+    bottom: 0;
+    left: auto;
+    width: 10px;
+    height: auto;
+    margin: 0;
+    background: url("/static_images/vista-controls/combo-glyph-normal.png") center / 10px 19px no-repeat;
+    border: 0;
+    border-image: none;
+    box-shadow: none;
+    opacity: 1;
+    pointer-events: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal #spellbookCustomPresetSelected {
+    color: #000;
+    font: inherit;
+    text-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal #spellbookCustomPresetSelected > i {
+    display: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal .spellbook-controls-container :is(#spellbookClearPresetBtn, #spellbookEditorBtn, #spellbookGenerateBtn) {
+    flex: none;
+    min-width: 75px;
+}
+
+/* Cast: the word on the <i> (fa-wand-sparkles / nai-sparkles; the spinner while it casts) */
+body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal #spellbookGenerateBtn > i {
+    font-size: 0;
+    animation: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal #spellbookGenerateBtn > i::before {
+    content: "Cast";
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal #spellbookGenerateBtn > i.fa-spin::before {
+    content: "Casting...";
+}

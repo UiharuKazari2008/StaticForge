@@ -284,3 +284,163 @@
 #expansionCompiledPromptDialog .prompt-textarea-container {
     min-height: 12rem;
 }
+
+/* ---- Vista desktop (Inspector, Compiled Prompt): Vista's art or words instead of glyphs (cursor
+   rule vista-icons-not-fa). The sky is the Sidebar Weather gadget's MSN sky icons
+   (vista-sidebar/weather/<code>.png, 42x34; codes as vistaSidebar.js VSB_SKY_CODES); the readings
+   say what they are; the expand chevron is Explorer's expando; glyphs beside a label go. ---- */
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.wi {
+    display: block;
+    width: 42px;
+    height: 34px;
+    background: url("/static_images/vista-sidebar/weather/32.png") no-repeat center / 42px 34px;
+    font-size: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.wi::before {
+    content: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.wi-night-clear { background-image: url("/static_images/vista-sidebar/weather/31.png"); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.wi-day-sunny-overcast { background-image: url("/static_images/vista-sidebar/weather/34.png"); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i:is(.wi-night-alt-partly-cloudy, .wi-night-alt-cloudy) { background-image: url("/static_images/vista-sidebar/weather/29.png"); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.wi-day-cloudy { background-image: url("/static_images/vista-sidebar/weather/30.png"); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.wi-cloudy { background-image: url("/static_images/vista-sidebar/weather/26.png"); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.wi-fog { background-image: url("/static_images/vista-sidebar/weather/20.png"); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.wi-snow { background-image: url("/static_images/vista-sidebar/weather/16.png"); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.wi-day-showers { background-image: url("/static_images/vista-sidebar/weather/39.png"); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.wi-night-alt-showers { background-image: url("/static_images/vista-sidebar/weather/45.png"); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i:is(.wi-day-rain, .wi-night-alt-rain) { background-image: url("/static_images/vista-sidebar/weather/12.png"); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.wi-day-snow { background-image: url("/static_images/vista-sidebar/weather/41.png"); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.wi-night-alt-snow { background-image: url("/static_images/vista-sidebar/weather/46.png"); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.wi-day-storm-showers { background-image: url("/static_images/vista-sidebar/weather/38.png"); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i.wi-night-alt-storm-showers { background-image: url("/static_images/vista-sidebar/weather/47.png"); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-condition-icon > i:is(.wi-day-thunderstorm, .wi-night-alt-thunderstorm) { background-image: url("/static_images/vista-sidebar/weather/4.png"); }
+
+/* readings: words in place of the droplet / wind / cloud / eye glyphs */
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] :is(.weather-condition-detail, .weather-quick-indicator-label) > i:is(.fa-droplet, .fa-wind, .fa-cloud, .fa-eye) {
+    margin-right: 4px;
+    color: inherit;
+    font: inherit;
+    font-family: inherit;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] :is(.weather-condition-detail, .weather-quick-indicator-label) > i.fa-droplet::before { content: "Humidity"; }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] :is(.weather-condition-detail, .weather-quick-indicator-label) > i.fa-wind::before { content: "Wind"; }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] :is(.weather-condition-detail, .weather-quick-indicator-label) > i.fa-cloud::before { content: "Clouds"; }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] :is(.weather-condition-detail, .weather-quick-indicator-label) > i.fa-eye::before { content: "Visibility"; }
+
+/* glyphs that sit beside their own label: UV (its text says UV), the period details (Lighting,
+   Atmosphere, Decorations ...), the place, the season / region badges, the section titles */
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] :is(.weather-quick-indicator-label > i.fa-sun, .period-detail > i, .period-location > i, .period-season-badge > i, .dynamic-replacements-section-header .section-title > i, .compiled-prompt-label > i) {
+    display: none;
+}
+
+/* the expand chevron: Explorer's expando, up when open */
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .period-title > i.period-expand-icon {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    margin-left: 4px;
+    vertical-align: middle;
+    background: url("/static_images/vista-file-dialog/expando-down.png") no-repeat center / 20px 20px;
+    font-size: 0;
+    transform: none;
+    transition: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .period-title > i.period-expand-icon.expanded {
+    background-image: url("/static_images/vista-file-dialog/expando-up.png");
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .period-title > i.period-expand-icon::before {
+    content: none;
+}
+
+/* Cache Valid: MMC's green check (mmc.exe bitmap 138, frame 0) */
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .text-replacement-expiration-banner > i.fa-circle-check {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    background: url("/static_images/vista-icons/check-16.png") no-repeat center / 16px 16px;
+    font-size: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .text-replacement-expiration-banner > i.fa-circle-check::before {
+    content: none;
+}
+
+/* the weather card is the Sidebar Weather gadget's blue face (vista-sidebar/weather/BLUE-base.png,
+   9-sliced; its own soft shadow is in the art) in place of the seasonal glass, white Segoe UI on it */
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-main-card:is(*, [class*="season-"]) {
+    padding: 8px 10px;
+    background: none;
+    border: 14px solid transparent;
+    border-image: url("/static_images/vista-sidebar/weather/BLUE-base.png") 14 fill / 14px stretch;
+    border-radius: 0;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    color: #fff;
+    font-family: "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+    transition: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-main-card :is(.weather-feels-like, .weather-condition-details, .weather-quick-indicator-label) {
+    color: #e4f1fb;
+    opacity: 1;
+}
+
+/* the UV / Clouds / Visibility readings run along the foot of the card, under the temperature and
+   the condition, instead of floating over them */
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-main-card:has(> .weather-card-header) {
+    flex-wrap: wrap;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-main-card > .weather-card-header {
+    position: static;
+    flex: 1 0 100%;
+    justify-content: flex-start;
+    margin-top: 8px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-main-card .weather-quick-indicators {
+    flex-direction: row;
+    gap: 16px;
+    width: 100%;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .weather-main-card .weather-quick-indicator {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+/* the section header: Explorer's group header (dark blue text over a thin line), not the thick
+   accent bar; the cache banner: plain black text when valid, IE's yellow information bar when it
+   has expired (the shell's warning icon comes from vista-glass-controls.css) */
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .dynamic-replacements-section-header {
+    border-bottom: 1px solid #c4d3e6;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .dynamic-replacements-section-header .section-title {
+    color: #1e3287;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .text-replacement-expiration-banner.valid :is(.expiration-status, .expiration-time) {
+    color: #000;
+    opacity: 1;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .text-replacement-expiration-banner.expired {
+    background: #ffffe1;
+    border: 1px solid #aca899;
+    border-radius: 0;
+    color: #000;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] .text-replacement-expiration-banner.expired :is(.expiration-status, .expiration-time) {
+    color: #000;
+    opacity: 1;
+}
