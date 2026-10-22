@@ -127,7 +127,55 @@ function handleAnchor(node) {
     node.setAttribute('rel', 'noopener noreferrer');
 }
 
-function walk(node, counts, opts) {
+// Bare web addresses in mail text (https://..., www....) become links, so every format
+// (plain text, markdown, HTML) gets clickable URLs. Text already inside an <a> stays as it is.
+const BARE_URL_PATTERN = /\b(?:https?:\/\/|www\.)[^\s<>"]+/gi;
+const URL_CLOSERS = { ')': '(', ']': '[', '}': '{' };
+
+function escapeHtmlText(text) {
+    return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function countChar(text, ch) {
+    return text.split(ch).length - 1;
+}
+
+// Sentence punctuation after an address stays text; a closing bracket only belongs to the
+// address when the address opened it (wiki-style "Foo_(bar)").
+function trimBareUrl(raw) {
+    let url = raw;
+    for (;;) {
+        const before = url;
+        url = url.replace(/[.,;:!?'*~_]+$/, '');
+        const last = url.slice(-1);
+        if (URL_CLOSERS[last] && countChar(url, last) > countChar(url, URL_CLOSERS[last])) url = url.slice(0, -1);
+        if (url === before) return url;
+    }
+}
+
+/** Returns the nodes that replace this text node: itself, or text split around new <a> links. */
+function linkifyText(textNode) {
+    const text = textNode.text;
+    const parts = [];
+    let last = 0;
+    for (const match of text.matchAll(BARE_URL_PATTERN)) {
+        const label = trimBareUrl(match[0]);
+        const href = /^www\./i.test(label) ? 'https://' + label : label;
+        const url = parseUrl(href);
+        if (!url || (url.protocol !== 'http:' && url.protocol !== 'https:') || !url.hostname.includes('.')) continue;
+        parts.push(escapeHtmlText(text.slice(last, match.index)));
+        parts.push(`<a href="${escapeHtmlText(href).replace(/"/g, '&quot;')}">${escapeHtmlText(label)}</a>`);
+        last = match.index + label.length;
+    }
+    if (!parts.length) return [textNode];
+    parts.push(escapeHtmlText(text.slice(last)));
+    return parse(parts.join('')).childNodes.map((node) => {
+        if (node.nodeType === NodeType.ELEMENT_NODE) handleAnchor(node);
+        return node;
+    });
+}
+
+function walk(node, counts, opts, inLink) {
     const next = [];
     for (const child of node.childNodes.slice()) {
         if (child.nodeType === NodeType.COMMENT_NODE) {
@@ -135,7 +183,8 @@ function walk(node, counts, opts) {
             continue;
         }
         if (child.nodeType === NodeType.TEXT_NODE) {
-            next.push(child);
+            if (inLink) next.push(child);
+            else next.push(...linkifyText(child));
             continue;
         }
         if (child.nodeType !== NodeType.ELEMENT_NODE) continue;
@@ -145,7 +194,7 @@ function walk(node, counts, opts) {
             bump(counts, `tagsDropped:${tag}`);
             continue;
         }
-        walk(child, counts, opts);
+        walk(child, counts, opts, inLink || tag === 'a');
         if (!ALLOWED_TAGS[tag]) {
             bump(counts, 'tagsUnwrapped');
             next.push(...child.childNodes);

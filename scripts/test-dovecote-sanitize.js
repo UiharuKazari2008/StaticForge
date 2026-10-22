@@ -73,6 +73,27 @@ function main() {
     assert.ok(!htmlRendered.html.includes('<script'));
     assert.ok(htmlRendered.html.includes('<p>ok</p>'));
 
+    // Bare web addresses become links in every format; trailing punctuation stays text.
+    const bare = renderMailBody({ body: 'See https://example.com/a?x=1&y=2. Or www.example.org, and (https://en.wikipedia.org/wiki/Foo_(bar)).', format: 'text' });
+    assert.ok(bare.html.includes('<a href="https://example.com/a?x=1&amp;y=2" title="https://example.com/a?x=1&y=2" target="_blank" rel="noopener noreferrer">https://example.com/a?x=1&amp;y=2</a>. Or'), bare.html);
+    assert.ok(bare.html.includes('<a href="https://www.example.org"'), 'www. gets https://');
+    assert.ok(bare.html.includes('>www.example.org</a>, and'), bare.html);
+    assert.ok(bare.html.includes('>https://en.wikipedia.org/wiki/Foo_(bar)</a>).'), bare.html);
+
+    const mdBare = renderMailBody({ body: 'Read **https://example.com/md** and [named](https://example.com/n)', format: 'md' });
+    assert.ok(mdBare.html.includes('<strong><a href="https://example.com/md"'), mdBare.html);
+    assert.strictEqual((mdBare.html.match(/<a /g) || []).length, 2, 'text inside an existing link is not linked again');
+
+    const htmlBare = sanitizeHtml('<p>Go to https://example.com/h</p><a href="https://example.com/x">https://example.com/x</a>');
+    assert.strictEqual((htmlBare.html.match(/<a /g) || []).length, 2, htmlBare.html);
+
+    // Only real web addresses: no javascript:, no bare scheme, escaped markup stays escaped.
+    const noLink = renderMailBody({ body: 'javascript:alert(1) http://x <script>https://example.com/"onmouseover=x</script> www.', format: 'text' });
+    assert.ok(!/javascript:alert\(1\)<\/a>/.test(noLink.html));
+    assert.ok(!noLink.html.includes('<script'), noLink.html);
+    assert.ok(!noLink.html.includes('" onmouseover'), noLink.html);
+    assert.ok(!/<a [^>]*>(http:\/\/x|www\.)<\/a>/.test(noLink.html), noLink.html);
+
     console.log('dovecote sanitize/markdown tests passed');
 }
 
