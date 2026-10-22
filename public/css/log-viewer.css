@@ -18,7 +18,7 @@
 /* Caption command buttons: 7.css push buttons (public/css/7.scoped.css), compact so
    icon buttons stay icon-sized. Beats the flat caption rule in vista-explorer.css
    by adding #logViewerModal to that selector. */
-body.desktop-mode:not(.windows-classic-theme) #logViewerModal.modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger):not(.button-group:has(.form-control, input:not([type="hidden"])) *) {
+body.desktop-mode:not(.windows-classic-theme) #logViewerModal.modal:not(#explorerModal, :is(#tagWikiSearchModal, .grimoire-window), #melatonControlPanelModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger):not(.button-group:has(.form-control, input:not([type="hidden"])) *) {
     height: 23px;
     min-height: 23px;
     min-width: 23px;
@@ -32,14 +32,14 @@ body.desktop-mode:not(.windows-classic-theme) #logViewerModal.modal:not(#explore
     text-shadow: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #logViewerModal.modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger):not(.button-group:has(.form-control, input:not([type="hidden"])) *):hover:not(:disabled) {
+body.desktop-mode:not(.windows-classic-theme) #logViewerModal.modal:not(#explorerModal, :is(#tagWikiSearchModal, .grimoire-window), #melatonControlPanelModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger):not(.button-group:has(.form-control, input:not([type="hidden"])) *):hover:not(:disabled) {
     background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
     border-color: #3c7fb1;
     box-shadow: inset 0 0 0 1px #fffc;
     color: #1e395b;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #logViewerModal.modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger):not(.button-group:has(.form-control, input:not([type="hidden"])) *):is(:active:not(:disabled), [data-state="on"], [data-state="open"], .active, .context-open, [aria-expanded="true"], [aria-pressed="true"]) {
+body.desktop-mode:not(.windows-classic-theme) #logViewerModal.modal:not(#explorerModal, :is(#tagWikiSearchModal, .grimoire-window), #melatonControlPanelModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger):not(.button-group:has(.form-control, input:not([type="hidden"])) *):is(:active:not(:disabled), [data-state="on"], [data-state="open"], .active, .context-open, [aria-expanded="true"], [aria-pressed="true"]) {
     background: linear-gradient(#e5f4fc, #c4e5f6 30% 50%, #98d1ef 50%, #68b3db);
     border-color: #2c628b;
     box-shadow: inset 1px 1px 0 #0003;

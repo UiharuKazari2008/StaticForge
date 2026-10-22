@@ -1686,12 +1686,12 @@ html[data-glass="live"] body.desktop-mode:not(.windows-classic-theme) .modal:not
 /* Caption icon and title: Vista draws the 16 px icon 8 px in from the window edge and the title
    5 px after it (29 px in); with no icon the title starts at 8 px. Ours: an 18 px icon at 13 px,
    the title at 37 px. The import wizard (Back orb first) and IE7's caption place their own. */
-body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):where(:not(#manualModal:not(.windowed), #photoSwipeWindow, #virtualKeyboardModal, #unifiedUploadModal, #tagWikiSearchModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-window-title > .modal-window-title-main {
+body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):where(:not(#manualModal:not(.windowed), #photoSwipeWindow, #virtualKeyboardModal, #unifiedUploadModal, :is(#tagWikiSearchModal, .grimoire-window), [data-window-frame="flush"])):not(.modal-maximized) > .modal-window-title > .modal-window-title-main {
     margin-left: -5px;
     gap: 5px;
 }
 
-body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):where(:not(#manualModal:not(.windowed), #photoSwipeWindow, #virtualKeyboardModal, #unifiedUploadModal, #tagWikiSearchModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-window-title > .modal-window-title-main > .icon-image {
+body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):where(:not(#manualModal:not(.windowed), #photoSwipeWindow, #virtualKeyboardModal, #unifiedUploadModal, :is(#tagWikiSearchModal, .grimoire-window), [data-window-frame="flush"])):not(.modal-maximized) > .modal-window-title > .modal-window-title-main > .icon-image {
     width: 16px;
     height: 16px;
 }

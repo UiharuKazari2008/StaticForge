@@ -40,6 +40,10 @@ Close with the tab's x (on the tab on show, from two tabs on), a middle click, C
 
 The Grimoire home page ends with Perform Alchemy!, which takes its tab to Alchemy's home.
 
+### Several windows
+
+Page > New Window (Ctrl+N) opens another full Grimoire window, IE7 chrome and tabs included, with the page on show; Open in new window in the Alchemy menu opens one on the link (Yozora #615, `TagWikiSearchModal.openNewWindow`). A later window is built from app.html's window markup as served (fetched once, because the window on the page carries run-time chrome, scrollbars and resize handles): ids get a `__w<n>` suffix and keep their name in `data-grimoire-part`, which `part()` and the CSS read. Every Grimoire window rule is written `:is(#tagWikiSearchModal, .grimoire-window)` and the parts it styles `:is(#id, [data-grimoire-part="id"])`, which keeps id specificity, so the first window's cascade is unchanged. Searches, shortcuts and outside links go to the window used last (`grimoireActiveWindow`); an Alchemy page's messages, popups and new tabs go to its own window (`grimoireWindowOf`), and typed keys go to the focused one. At the session cap the window used longest ago frees a background tab first. Closing a later window ends its tabs' sessions and removes it; the first window stays in the page for the next opening.
+
 ## Profile, extensions, and branding
 
 Chromium keeps one persistent profile at `ALCHEMY_PROFILE_DIR` (default `~/.local/share/dreamscape/alchemy-profile`, created 0700). Cookies, site logins, Cloudflare clearance, and extension logins survive a restart. Treat it as a secret: keep it outside the repo and out of any backup that leaves the host. Anyone with Dreamscape admin can drive Alchemy, so set an auto-lock timeout in 1Password.

@@ -1125,17 +1125,17 @@ body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .cpl-tas
    (ieframe.dll and the VM). The pages keep their own look, as in a browser. The Alchemy load fill
    (grimoireRemoteBrowser.js grimoireShowLoadProgress) runs pale blue in the address box. */
 
-body:not(.desktop-mode) #tagWikiSearchModal :is(.grimoire-recent-pages-btn, .grimoire-ie-seg, .grimoire-ie-search, .grimoire-ie-tabrow, .grimoire-ie-status),
-body.windows-classic-theme #tagWikiSearchModal :is(.grimoire-recent-pages-btn, .grimoire-ie-seg, .grimoire-ie-search, .grimoire-ie-tabrow, .grimoire-ie-status) {
+body:not(.desktop-mode) :is(#tagWikiSearchModal, .grimoire-window) :is(.grimoire-recent-pages-btn, .grimoire-ie-seg, .grimoire-ie-search, .grimoire-ie-tabrow, .grimoire-ie-status),
+body.windows-classic-theme :is(#tagWikiSearchModal, .grimoire-window) :is(.grimoire-recent-pages-btn, .grimoire-ie-seg, .grimoire-ie-search, .grimoire-ie-tabrow, .grimoire-ie-status) {
     display: none !important;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) {
     --ie-font: 'Segoe UI', 'Noto Sans', sans-serif;
 }
 
 /* the travel band: the same orbs, gutter and Recent Pages ▾ as Explorer */
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-travel {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar .grimoire-travel {
     flex: none;
     gap: 0;
     padding: 0;
@@ -1150,7 +1150,7 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-
     box-shadow: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar :is(#tagWikiSearchBackBtn, #tagWikiSearchForwardBtn) {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar :is(:is(#tagWikiSearchBackBtn, [data-grimoire-part="tagWikiSearchBackBtn"]), :is(#tagWikiSearchForwardBtn, [data-grimoire-part="tagWikiSearchForwardBtn"])) {
     width: 29px;
     min-width: 29px;
     height: 27px;
@@ -1165,26 +1165,26 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-
     transition: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar #tagWikiSearchForwardBtn {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar :is(#tagWikiSearchForwardBtn, [data-grimoire-part="tagWikiSearchForwardBtn"]) {
     margin-left: -1px;
     background-image: url('/static_images/vista-explorer/nav-forward.png');
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar :is(#tagWikiSearchBackBtn, #tagWikiSearchForwardBtn) i {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar :is(:is(#tagWikiSearchBackBtn, [data-grimoire-part="tagWikiSearchBackBtn"]), :is(#tagWikiSearchForwardBtn, [data-grimoire-part="tagWikiSearchForwardBtn"])) i {
     display: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar :is(#tagWikiSearchBackBtn, #tagWikiSearchForwardBtn):hover:not(:disabled) {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar :is(:is(#tagWikiSearchBackBtn, [data-grimoire-part="tagWikiSearchBackBtn"]), :is(#tagWikiSearchForwardBtn, [data-grimoire-part="tagWikiSearchForwardBtn"])):hover:not(:disabled) {
     background-position: 0 -27px;
     filter: none;
     box-shadow: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar :is(#tagWikiSearchBackBtn, #tagWikiSearchForwardBtn):active:not(:disabled) {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar :is(:is(#tagWikiSearchBackBtn, [data-grimoire-part="tagWikiSearchBackBtn"]), :is(#tagWikiSearchForwardBtn, [data-grimoire-part="tagWikiSearchForwardBtn"])):active:not(:disabled) {
     background-position: 0 -54px;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar :is(#tagWikiSearchBackBtn, #tagWikiSearchForwardBtn):is(:disabled, .disabled) {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar :is(:is(#tagWikiSearchBackBtn, [data-grimoire-part="tagWikiSearchBackBtn"]), :is(#tagWikiSearchForwardBtn, [data-grimoire-part="tagWikiSearchForwardBtn"])):is(:disabled, .disabled) {
     background-position: 0 -81px;
     filter: none;
     opacity: 1;
@@ -1195,7 +1195,7 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-
    recent-pages.png: normal, hot, pressed, disabled). VM: the frame sits at (9,30), so the ▾ is a
    solid 7px triangle centred on x=74 with its top on y=43 (grey #99a4ad with no history, blue
    with it), 3px right of Explorer's; the address box keeps its place */
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-recent-pages-btn {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar .grimoire-recent-pages-btn {
     flex: none;
     width: 20px;
     min-width: 20px;
@@ -1209,20 +1209,20 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-
     box-shadow: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-recent-pages-btn:hover {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar .grimoire-recent-pages-btn:hover {
     background-position: 0 -29px;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-recent-pages-btn:is(:active, [data-state="open"], .is-open) {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar .grimoire-recent-pages-btn:is(:active, [data-state="open"], .is-open) {
     background-position: 0 -58px;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-recent-pages-btn.is-disabled {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar .grimoire-recent-pages-btn.is-disabled {
     background-position: 0 -87px;
 }
 
 /* the address box: 24px, Explorer's translucent box, then ▾ | refresh | stop inside the same frame */
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar.wiki-address-bar {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) :is(#grimoireAddressBar, [data-grimoire-part="grimoireAddressBar"]).wiki-address-bar {
     height: 24px;
     min-height: 24px;
     background: var(--vista-box-fill, linear-gradient(#e3ebf3, #eaf1f8 25%, #eaf1f8 75%, #e7eff6));
@@ -1233,7 +1233,7 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddre
     box-shadow: inset 0 1px 0 hsl(0 0% 100% / 88%), inset 1px 0 0 hsl(0 0% 100% / 88%), inset 0 -1px 0 hsl(0 0% 100% / 88%);
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-seg {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar .grimoire-ie-seg {
     position: relative;
     flex: none;
     align-self: center;
@@ -1253,55 +1253,55 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-
     background-repeat: no-repeat;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-drop {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar .grimoire-ie-drop {
     width: 17px;
     box-shadow: inset 0 1px 0 hsl(0 0% 100% / 88%), inset 0 -1px 0 hsl(0 0% 100% / 88%);
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-drop::before {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar .grimoire-ie-drop::before {
     content: '';
     position: absolute;
     inset: 0;
     background: url('/static_images/vista-ie/drop.png') no-repeat center;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar :is(.grimoire-ie-refresh, .grimoire-ie-stop)::before {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar :is(.grimoire-ie-refresh, .grimoire-ie-stop)::before {
     content: '';
     position: absolute;
     inset: 0 0 0 1px;
     background: no-repeat center;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-refresh::before {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar .grimoire-ie-refresh::before {
     background-image: url('/static_images/vista-ie/refresh.png');
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-stop {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar .grimoire-ie-stop {
     border-right-width: 1px;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-stop::before {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar .grimoire-ie-stop::before {
     background-image: url('/static_images/vista-ie/stop.png');
 }
 
 /* IE keeps the red X showing when idle */
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-stop:disabled {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar .grimoire-ie-stop:disabled {
     opacity: 1;
     cursor: var(--c-default);
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-seg:hover:not(:disabled) {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar .grimoire-ie-seg:hover:not(:disabled) {
     background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
     box-shadow: inset 0 0 0 1px #3c7fb1, inset 0 0 0 2px hsl(0 0% 100% / 55%);
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-seg:active:not(:disabled) {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar .grimoire-ie-seg:active:not(:disabled) {
     background: linear-gradient(#e5f4fc, #c4e5f6 30% 50%, #98d1ef 50%, #68b3db);
     box-shadow: inset 0 0 0 1px #2c628b;
 }
 
 /* the search box, 6px on, IE's 247px */
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-search {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar .grimoire-ie-search {
     flex: 0 1 247px;
     display: flex;
     align-items: center;
@@ -1315,7 +1315,7 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-
     box-sizing: border-box;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-search input {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar .grimoire-ie-search input {
     flex: 1;
     min-width: 0;
     height: 20px;
@@ -1327,12 +1327,12 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-
     font: 12px var(--ie-font);
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-search input::placeholder {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar .grimoire-ie-search input::placeholder {
     color: #6d6d6d;
     font-style: italic;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-search-go {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar .grimoire-ie-search-go {
     flex: none;
     width: 24px;
     min-width: 0;
@@ -1345,47 +1345,47 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-
     box-shadow: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-display-layer {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) :is(#grimoireAddressBar, [data-grimoire-part="grimoireAddressBar"]) .address-display-layer {
     padding: 0 6px;
     color: #000;
     font-family: var(--ie-font);
     font-size: 12px;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-display-layer .address-mode-icon {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) :is(#grimoireAddressBar, [data-grimoire-part="grimoireAddressBar"]) .address-display-layer .address-mode-icon {
     color: #2b5797;
 }
 
 /* the page's icon, as IE shows it: IE's page for the web, the Grimoire's book for its own pages (applets too), a document for rdf */
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-mode-icon:is(.fa-globe, .fa-book, .fa-file-alt, .fa-puzzle-piece) {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) :is(#grimoireAddressBar, [data-grimoire-part="grimoireAddressBar"]) .address-mode-icon:is(.fa-globe, .fa-book, .fa-file-alt, .fa-puzzle-piece) {
     flex: none;
     width: 16px;
     height: 16px;
     background: no-repeat center / 16px 16px;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-mode-icon:is(.fa-globe, .fa-book, .fa-file-alt, .fa-puzzle-piece)::before {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) :is(#grimoireAddressBar, [data-grimoire-part="grimoireAddressBar"]) .address-mode-icon:is(.fa-globe, .fa-book, .fa-file-alt, .fa-puzzle-piece)::before {
     content: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-mode-icon.fa-globe {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) :is(#grimoireAddressBar, [data-grimoire-part="grimoireAddressBar"]) .address-mode-icon.fa-globe {
     background-image: url('/static_images/vista-ie/page-ie.png');
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-mode-icon:is(.fa-book, .fa-puzzle-piece) {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) :is(#grimoireAddressBar, [data-grimoire-part="grimoireAddressBar"]) .address-mode-icon:is(.fa-book, .fa-puzzle-piece) {
     background-image: url('/static_images/app_icons/32/books.webp');
     background-image: image-set(url('/static_images/app_icons/16/books.webp') 1x, url('/static_images/app_icons/32/books.webp') 2x);
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-mode-icon.fa-file-alt {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) :is(#grimoireAddressBar, [data-grimoire-part="grimoireAddressBar"]) .address-mode-icon.fa-file-alt {
     background-image: url('/static_images/vista-icons/explorer/file-16.png');
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-display-layer:hover {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) :is(#grimoireAddressBar, [data-grimoire-part="grimoireAddressBar"]) .address-display-layer:hover {
     background: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-edit-layer :is(.form-control, input) {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) :is(#grimoireAddressBar, [data-grimoire-part="grimoireAddressBar"]) .address-edit-layer :is(.form-control, input) {
     min-height: 22px;
     height: 22px;
     background: transparent;
@@ -1397,24 +1397,24 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddre
     text-shadow: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-edit-layer input::placeholder {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) :is(#grimoireAddressBar, [data-grimoire-part="grimoireAddressBar"]) .address-edit-layer input::placeholder {
     color: #6d6d6d;
     font-style: italic;
 }
 
 /* the old in-box refresh: the segment after the box does it now */
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar .address-edit-layer #tagWikiSearchRefreshBtn {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) :is(#grimoireAddressBar, [data-grimoire-part="grimoireAddressBar"]) .address-edit-layer :is(#tagWikiSearchRefreshBtn, [data-grimoire-part="tagWikiSearchRefreshBtn"]) {
     display: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar::before {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) :is(#grimoireAddressBar, [data-grimoire-part="grimoireAddressBar"])::before {
     background: hsl(210 90% 82% / 70%);
     box-shadow: none;
 }
 
 /* ---- the tab row: IE's light bar (VM: #5b6a7a top, white line, #fefeff to #e3e8f4, #cfd7eb,
    #d0d7ec to #e9ecfa, #8b919f bottom; then the page frame #edf3fe, #b7c8f6, #a0a0a0) ---- */
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabrow {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tabrow {
     position: relative;
     z-index: 1;
     display: flex;
@@ -1433,7 +1433,7 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-t
     font: 12px var(--ie-font);
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-fav {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-fav {
     align-self: center;
     width: 26px;
     min-width: 0;
@@ -1447,24 +1447,24 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-f
     box-shadow: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-fav img {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-fav img {
     display: block;
     width: 16px;
     height: 16px;
     margin: auto;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-fav:disabled {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-fav:disabled {
     opacity: 1;
     cursor: var(--c-default);
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-fav:disabled img {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-fav:disabled img {
     filter: grayscale(1);
     opacity: 0.5;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabs {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tabs {
     display: flex;
     flex: 1 1 auto;
     align-items: flex-end;
@@ -1475,7 +1475,7 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-t
 
 /* the tab: 3px down, #9196a2 top, #8b919f sides with a #f5faff inner line, #fcfdfd to #e7f5fb then
    #cfe7fa to #b9d3fb, open at the bottom into the page frame */
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tab {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tab {
     display: flex;
     flex: 0 1 299px;
     align-items: center;
@@ -1494,14 +1494,14 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-t
     overflow: hidden;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tab-icon {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tab-icon {
     flex: none;
     width: 16px;
     height: 16px;
 }
 
 /* loading: IE7's ring (ieframe.dll bitmap 624, 18 frames) in place of the page icon */
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tab.is-loading .grimoire-ie-tab-icon {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tab.is-loading .grimoire-ie-tab-icon {
     object-position: -9999px 0;
     background: url('/static_images/vista-ie/loading.png') no-repeat 0 0 / 288px 16px;
     animation: grimoire-ie-ring 0.9s steps(18) infinite;
@@ -1513,14 +1513,14 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-t
     }
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tab-title {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tab-title {
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
 }
 
 /* the new-tab stub: 29px, 5px down, the bar's own gradient */
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-newtab {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-newtab {
     flex: none;
     width: 30px;
     min-width: 0;
@@ -1536,7 +1536,7 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-n
     box-shadow: inset 1px 0 0 #f0f3f9, inset -1px 0 0 #f0f3f9;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-newtab:hover {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-newtab:hover {
     background: linear-gradient(#fdfeff, #eaf6fd 9px, #d5ecfb 9px, #c2e2f9);
 }
 
@@ -1544,7 +1544,7 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-n
    top, #9096a4 sides, #a1a3ae bottom, a white inner line, gloss to #e1e4ed then #c1c7d8 to #e1e6f5).
    Home, Feeds and Print are split buttons: the button (icon 9px in, 30px) and its ▾ (15px) light
    together with a line between them; the splits sit edge to edge (VM: Home 705-749, Feeds from 750) */
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-commands {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-commands {
     display: flex;
     flex: none;
     align-self: flex-start;
@@ -1554,7 +1554,7 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-c
     margin: 1px 0 0 8px;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal :is(.grimoire-ie-commands > :is(button, .btn-secondary), .grimoire-ie-split > :is(button, .btn-secondary)) {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) :is(.grimoire-ie-commands > :is(button, .btn-secondary), .grimoire-ie-split > :is(button, .btn-secondary)) {
     display: inline-flex;
     align-items: center;
     gap: 4px;
@@ -1573,27 +1573,27 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal :is(.grimoire-
     filter: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal :is(.grimoire-ie-commands > :is(button, .btn-secondary):hover:not(:disabled), .grimoire-ie-split:hover > :is(button, .btn-secondary):not(:disabled)) {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) :is(.grimoire-ie-commands > :is(button, .btn-secondary):hover:not(:disabled), .grimoire-ie-split:hover > :is(button, .btn-secondary):not(:disabled)) {
     background: linear-gradient(#fefeff, #fbfbfc 1px, #e1e4ed 11px, #d1d5df 11px, #c1c7d8 12px, #c6cdde 15px, #e1e6f5 calc(100% - 1px), #f1f3fb);
     border-color: #b1b1b2 #9096a4 #a1a3ae;
     box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 55%);
     color: #000;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal :is(.grimoire-ie-commands > :is(button, .btn-secondary), .grimoire-ie-split > :is(button, .btn-secondary)):is(:active, .active):not(:disabled) {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) :is(.grimoire-ie-commands > :is(button, .btn-secondary), .grimoire-ie-split > :is(button, .btn-secondary)):is(:active, .active):not(:disabled) {
     background: linear-gradient(#e4e7ee, #d3d8e2 11px, #b9c1d4 11px, #bcc4d7);
     border-color: #8a8f9a #7a8090 #858a97;
     box-shadow: inset 0 1px 2px hsl(220 20% 30% / 35%);
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-split {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-split {
     display: inline-flex;
     flex: none;
     align-items: center;
     height: 28px;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-split > .grimoire-ie-split-main {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-split > .grimoire-ie-split-main {
     justify-content: flex-start;
     width: 30px;
     min-width: 30px;
@@ -1601,7 +1601,7 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-s
     border-radius: 2px 0 0 2px;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-split > .grimoire-ie-split-drop {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-split > .grimoire-ie-split-drop {
     justify-content: center;
     width: 15px;
     min-width: 15px;
@@ -1610,45 +1610,45 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-s
     border-radius: 0 2px 2px 0;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-split > .grimoire-ie-split-drop .grimoire-ie-cmd-drop {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-split > .grimoire-ie-split-drop .grimoire-ie-cmd-drop {
     margin: 0;
 }
 
 /* a split with no feature behind it right now (Feeds on a page without feeds): IE7's grey icon and ▾ */
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-split > button:disabled {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-split > button:disabled {
     opacity: 1;
     cursor: var(--c-default);
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-split > button:disabled img {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-split > button:disabled img {
     filter: grayscale(1) brightness(1.08); /* VM: the body #929292-#999999, its rim #646464, the symbol white */
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-split > button:disabled .grimoire-ie-cmd-drop {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-split > button:disabled .grimoire-ie-cmd-drop {
     border-top-color: #9a9a9a;
 }
 
 /* the split toggle lives in Page ▾ here */
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-commands > #tagWikiSearchRightToggleBtn {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-commands > :is(#tagWikiSearchRightToggleBtn, [data-grimoire-part="tagWikiSearchRightToggleBtn"]) {
     display: none !important;
 }
 
 /* IE always shows Tools ▾ (grimoire-browser.css keeps the caption's site menu to Alchemy pages) */
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-commands > #grimoireAddressSiteBtn {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-commands > :is(#grimoireAddressSiteBtn, [data-grimoire-part="grimoireAddressSiteBtn"]) {
     display: inline-flex;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-commands img {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-commands img {
     width: 16px;
     height: 16px;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-commands i {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-commands i {
     color: #3d5a7a;
     font-size: 13px;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-cmd-drop {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-cmd-drop {
     width: 0;
     height: 0;
     margin-left: 2px;
@@ -1658,7 +1658,7 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-c
 }
 
 /* the search box's ▾ (search providers), after the magnifier like IE7's */
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-search-drop {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar .grimoire-ie-search-drop {
     flex: none;
     width: 16px;
     min-width: 0;
@@ -1670,7 +1670,7 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-
     box-shadow: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-search-drop::before {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar .grimoire-ie-search-drop::before {
     content: '';
     display: block;
     width: 0;
@@ -1681,12 +1681,12 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-
     border-bottom: 0;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-search-drop:hover::before {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar .grimoire-ie-search-drop:hover::before {
     border-top-color: #1c5180;
 }
 
 /* zoom: Grimoire pages scale with the pane's zoom (grimoireIeChrome.js applyZoom); Alchemy zooms itself */
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .tag-wiki-display-content > :not(iframe) {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .tag-wiki-display-content > :not(iframe) {
     zoom: var(--grimoire-ie-zoom, 1);
 }
 
@@ -1729,18 +1729,18 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .tag-wiki-disp
 }
 
 /* ---- the page and the status bar ---- */
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-content.tag-wiki-search-content {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-content.tag-wiki-search-content {
     display: flex;
     flex-direction: column;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-content.tag-wiki-search-content > .tag-wiki-panels-wrap {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-content.tag-wiki-search-content > .tag-wiki-panels-wrap {
     flex: 1 1 auto;
     min-height: 0;
 }
 
 /* VM: #919191 over a white line, #f1eded, etched cells, the zone with its globe, a size grip */
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-status {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-status {
     display: flex;
     flex: none;
     align-items: stretch;
@@ -1753,7 +1753,7 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-s
     font: 12px var(--ie-font);
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-status > span {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-status > span {
     display: flex;
     align-items: center;
     gap: 5px;
@@ -1761,33 +1761,33 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-s
     white-space: nowrap;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-status-text {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-status-text {
     flex: 1 1 auto;
     min-width: 0;
     overflow: hidden;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal :is(.grimoire-ie-status-cell, .grimoire-ie-status-zone) {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) :is(.grimoire-ie-status-cell, .grimoire-ie-status-zone) {
     border-left: 1px solid #c9c4c4;
     box-shadow: inset 1px 0 0 #fff;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-status-cell {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-status-cell {
     width: 120px;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-status-zone {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-status-zone {
     flex: none;
     min-width: 250px;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-status-zone img {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-status-zone img {
     width: 16px;
     height: 16px;
 }
 
 /* the zoom cell (VM: 87px from its etched edge, the magnifier 12px in, "100%", the ▾ 9px from the end) */
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-status > .grimoire-ie-status-zoom {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-status > .grimoire-ie-status-zoom {
     flex: none;
     gap: 0;
     width: 87px;
@@ -1797,7 +1797,7 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-s
     box-sizing: border-box;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-status-zoom > button {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-status-zoom > button {
     display: flex;
     align-items: center;
     height: 100%;
@@ -1813,30 +1813,30 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-s
     text-shadow: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-zoom-btn {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-zoom-btn {
     flex: 1 1 auto;
     gap: 3px;
     padding: 0 0 0 11px;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-zoom-btn img {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-zoom-btn img {
     width: 16px;
     height: 16px;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-zoom-drop {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-zoom-drop {
     flex: none;
     justify-content: center;
     width: 22px;
     padding: 0 6px 0 0;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-status-zoom > button:hover {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-status-zoom > button:hover {
     background: linear-gradient(#fbfbfc, #e1e4ed 50%, #d1d5df 50%, #e1e6f5);
     box-shadow: inset 0 0 0 1px #b6b9c2;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-status-grip {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-status-grip {
     width: 14px;
     padding: 0 !important;
     background:
@@ -2164,7 +2164,7 @@ body:not(.windows-classic-theme) #explorerModal :is(.explorer-item-icon-box-sm, 
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .button-group:has(> #explorerSearchBar),
 body.desktop-mode:not(.windows-classic-theme) #desktopGuacModal .desktop-guac-search,
 body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal) .modal-window-title-toolbar .button-group:has(> .cpl-search),
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar :is(.grimoire-ie-search, #grimoireAddressBar.wiki-address-bar, .grimoire-ie-seg) {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar :is(.grimoire-ie-search, :is(#grimoireAddressBar, [data-grimoire-part="grimoireAddressBar"]).wiki-address-bar, .grimoire-ie-seg) {
     --vista-box-fill: linear-gradient(#ebf2f9, #f2f8fe 25%, #f3f8fd 75%, #eef5fb);
     --vista-box-edge: #53585e;
     --vista-box-edge-bottom: #aab5c0;
@@ -2172,25 +2172,25 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-
 
 /* IE7 with the address focused (VM): the edge turns blue, the text is selected; the page icon and the
    ▾ | refresh | stop stay where they are */
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar #grimoireAddressBar.wiki-address-bar:is(.edit-active, :focus-within) {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar :is(#grimoireAddressBar, [data-grimoire-part="grimoireAddressBar"]).wiki-address-bar:is(.edit-active, :focus-within) {
     --vista-box-edge: #3d7bad;
     --vista-box-edge-bottom: #b7d9ed;
     box-shadow: inset 0 1px 0 #b5cfe7, inset 1px 0 0 #b5cfe7, inset 0 -1px 0 #e0eef8;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar.wiki-address-bar.edit-active .address-display-layer {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) :is(#grimoireAddressBar, [data-grimoire-part="grimoireAddressBar"]).wiki-address-bar.edit-active .address-display-layer {
     display: flex;
     width: 28px;
     padding: 0 0 0 6px;
     z-index: 4;
     pointer-events: none;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar.wiki-address-bar.edit-active .address-display-layer .address-path {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) :is(#grimoireAddressBar, [data-grimoire-part="grimoireAddressBar"]).wiki-address-bar.edit-active .address-display-layer .address-path {
     display: none;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar.wiki-address-bar.edit-active .address-edit-layer :is(.form-control, input) {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) :is(#grimoireAddressBar, [data-grimoire-part="grimoireAddressBar"]).wiki-address-bar.edit-active .address-edit-layer :is(.form-control, input) {
     padding-left: 28px;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddressBar.wiki-address-bar.edit-active .address-edit-layer input::selection {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) :is(#grimoireAddressBar, [data-grimoire-part="grimoireAddressBar"]).wiki-address-bar.edit-active .address-edit-layer input::selection {
     background: #3399ff;
     color: #fff;
 }
@@ -2201,7 +2201,7 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal #grimoireAddre
    toggles that are on sit pressed, a drop-down's chevron is Vista's small ▾, and a group that
    holds a text box is Vista's search box with the button segments inside it. Cartograph,
    Grimoire, Control Panel, Director and Media Player draw their own. ---------- */
-body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger):not(.button-group:has(.form-control, input:not([type="hidden"])) *) {
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, :is(#tagWikiSearchModal, .grimoire-window), #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger):not(.button-group:has(.form-control, input:not([type="hidden"])) *) {
     height: 24px;
     min-height: 24px;
     min-width: 24px;
@@ -2218,7 +2218,7 @@ body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWik
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
 }
-body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger) i {
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, :is(#tagWikiSearchModal, .grimoire-window), #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger) i {
     font-size: 14px;
     line-height: 1;
     color: inherit;
@@ -2226,7 +2226,7 @@ body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWik
     opacity: 1;
 }
 /* a drop-down's chevron: Vista's ▾ */
-body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger) i:is(.fa-chevron-down, .fa-caret-down, .naxt-dataset-chevron) {
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, :is(#tagWikiSearchModal, .grimoire-window), #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger) i:is(.fa-chevron-down, .fa-caret-down, .naxt-dataset-chevron) {
     width: 7px;
     height: 4px;
     font-size: 0;
@@ -2234,10 +2234,10 @@ body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWik
     background: #000;
     clip-path: polygon(0 0, 100% 0, 50% 100%);
 }
-body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger) i:is(.fa-chevron-down, .fa-caret-down, .naxt-dataset-chevron)::before {
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, :is(#tagWikiSearchModal, .grimoire-window), #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger) i:is(.fa-chevron-down, .fa-caret-down, .naxt-dataset-chevron)::before {
     content: none;
 }
-body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar .button-group:not(:has(.form-control, input:not([type="hidden"]))) {
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, :is(#tagWikiSearchModal, .grimoire-window), #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar .button-group:not(:has(.form-control, input:not([type="hidden"]))) {
     gap: 0;
     padding: 0;
     background: none;
@@ -2246,28 +2246,28 @@ body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWik
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
 }
-body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger):not(.button-group:has(.form-control, input:not([type="hidden"])) *):hover:not(:disabled) {
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, :is(#tagWikiSearchModal, .grimoire-window), #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger):not(.button-group:has(.form-control, input:not([type="hidden"])) *):hover:not(:disabled) {
     background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
     border-color: #3c7fb1;
     box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 60%);
     color: #1e395b;
 }
-body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger):not(.button-group:has(.form-control, input:not([type="hidden"])) *):is(:active:not(:disabled), [data-state="on"], [data-state="open"], .active, .context-open, [aria-expanded="true"], [aria-pressed="true"]) {
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, :is(#tagWikiSearchModal, .grimoire-window), #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger):not(.button-group:has(.form-control, input:not([type="hidden"])) *):is(:active:not(:disabled), [data-state="on"], [data-state="open"], .active, .context-open, [aria-expanded="true"], [aria-pressed="true"]) {
     background: linear-gradient(#e5f4fc, #c4e5f6 30% 50%, #98d1ef 50%, #68b3db);
     border-color: #2c628b;
     box-shadow: inset 1px 1px 0 hsl(0 0% 0% / 20%);
     color: #1e395b;
 }
-body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger):not(.button-group:has(.form-control, input:not([type="hidden"])) *):disabled {
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, :is(#tagWikiSearchModal, .grimoire-window), #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger):not(.button-group:has(.form-control, input:not([type="hidden"])) *):disabled {
     color: #8a96a3;
     opacity: 1;
 }
-body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger)::before,
-body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger)::after {
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, :is(#tagWikiSearchModal, .grimoire-window), #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger)::before,
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, :is(#tagWikiSearchModal, .grimoire-window), #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar [class^="btn-"]:not(.btn-primary, .btn-danger)::after {
     content: none;
 }
 /* a group with a text box: Vista's search box; the segments (dataset ▾, go) sit inside the frame */
-body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) {
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, :is(#tagWikiSearchModal, .grimoire-window), #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) {
     align-self: center;
     height: 24px;
     min-height: 24px;
@@ -2280,7 +2280,7 @@ body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWik
     box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 88%), 0 0 0 1px hsl(0 0% 100% / 16%);
     box-sizing: border-box;
 }
-body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) :is(.form-control, input:not([type="hidden"])) {
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, :is(#tagWikiSearchModal, .grimoire-window), #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) :is(.form-control, input:not([type="hidden"])) {
     height: 20px;
     min-height: 0;
     margin: 1px 0;
@@ -2293,11 +2293,11 @@ body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWik
     font: 12px "Segoe UI", "Noto Sans", sans-serif;
     text-shadow: none;
 }
-body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) input::placeholder {
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, :is(#tagWikiSearchModal, .grimoire-window), #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) input::placeholder {
     color: #6d6d6d;
     font-style: italic;
 }
-body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) > [class^="btn-"] {
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, :is(#tagWikiSearchModal, .grimoire-window), #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) > [class^="btn-"] {
     height: 22px;
     min-height: 0;
     min-width: 22px;
@@ -2310,10 +2310,10 @@ body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWik
     text-shadow: none;
     filter: none;
 }
-body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) > [class^="btn-"]:first-child {
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, :is(#tagWikiSearchModal, .grimoire-window), #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) > [class^="btn-"]:first-child {
     box-shadow: inset -1px 0 0 #6c6c6c;
 }
-body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWikiSearchModal, #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) > [class^="btn-"]:hover:not(:disabled) {
+body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, :is(#tagWikiSearchModal, .grimoire-window), #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal, #directorWindow, #desktopMediaPlayer, #desktopMediaPlayerUrl) .modal-window-title-toolbar .button-group:has(.form-control, input:not([type="hidden"])) > [class^="btn-"]:hover:not(:disabled) {
     background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
     box-shadow: inset 0 0 0 1px #3c7fb1;
 }
@@ -2326,14 +2326,14 @@ body.desktop-mode:not(.windows-classic-theme) .modal:not(#explorerModal, #tagWik
    right after the orbs and the box right after it. Explorer and Control Panel carry no caption
    icon or title; IE7 shows the page icon at (9,9) and the title after it. Explorer's command bar is
    31px with its dark bottom line; IE's tab row sits 2px below the client edge. ---------- */
-body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonControlPanelModal, #tagWikiSearchModal, #vistaGamesExplorerModal, #studioSaveFolderModal).modal.toolbar-visible:not(.modal-maximized) {
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonControlPanelModal, :is(#tagWikiSearchModal, .grimoire-window), #vistaGamesExplorerModal, #studioSaveFolderModal).modal.toolbar-visible:not(.modal-maximized) {
     --modal-title-chrome-height: 62px;
 }
-body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonControlPanelModal, #tagWikiSearchModal, #vistaGamesExplorerModal, #studioSaveFolderModal).modal.toolbar-visible:not(.modal-maximized) .modal-window-title {
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonControlPanelModal, :is(#tagWikiSearchModal, .grimoire-window), #vistaGamesExplorerModal, #studioSaveFolderModal).modal.toolbar-visible:not(.modal-maximized) .modal-window-title {
     height: 63px;
     min-height: 63px;
 }
-body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonControlPanelModal, #tagWikiSearchModal, #vistaGamesExplorerModal, #studioSaveFolderModal).modal.toolbar-visible .modal-window-title-toolbar {
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonControlPanelModal, :is(#tagWikiSearchModal, .grimoire-window), #vistaGamesExplorerModal, #studioSaveFolderModal).modal.toolbar-visible .modal-window-title-toolbar {
     position: absolute;
     top: 28px;
     left: 8px;
@@ -2347,7 +2347,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonContro
     overflow: visible;
 }
 /* the orbs' band at the toolbar's left, Recent Pages ▾ over the gutter's last 4px, the box after it */
-body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonControlPanelModal, #tagWikiSearchModal, #vistaGamesExplorerModal, #studioSaveFolderModal) .modal-window-title-toolbar :is(.naxt-nav-group, .grimoire-travel) {
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonControlPanelModal, :is(#tagWikiSearchModal, .grimoire-window), #vistaGamesExplorerModal, #studioSaveFolderModal) .modal-window-title-toolbar :is(.naxt-nav-group, .grimoire-travel) {
     margin: 0;
 }
 body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal) .modal-window-title-toolbar .explorer-recent-pages-btn {
@@ -2361,19 +2361,19 @@ body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, #vi
     min-width: 80px;
     margin: 4px 0 0 1px;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar #grimoireAddressBar.wiki-address-bar {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar :is(#grimoireAddressBar, [data-grimoire-part="grimoireAddressBar"]).wiki-address-bar {
     flex: 1 1 0px;
     align-self: flex-start;
     min-width: 80px;
     margin: 3px 0 0 7px;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-seg {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar .grimoire-ie-seg {
     align-self: flex-start;
     margin: 3px 0 0;
 }
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar .button-group:has(#explorerSearchBar),
 body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal) .modal-window-title-toolbar .button-group:has(> .cpl-search),
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-search {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar .grimoire-ie-search {
     flex: 0 0 238px;
     width: 238px;
     min-width: 0;
@@ -2381,7 +2381,7 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-
     align-self: flex-start;
     margin: 4px 0 0 6px;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar .grimoire-ie-search {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar .grimoire-ie-search {
     margin-top: 3px;
 }
 body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal) .modal-window-title-toolbar .cpl-search {
@@ -2390,15 +2390,15 @@ body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, #vi
 /* the caption glass is one smooth wash (VM column x=400: brightest near y=7, darkest near y=29); the
    mid-caption line of the other windows (--window-caption-edge) is not in Vista's Explorer, and the
    toolbar draws nothing of its own */
-body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonControlPanelModal, #tagWikiSearchModal, #vistaGamesExplorerModal, #studioSaveFolderModal).modal.toolbar-visible .modal-window-title {
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonControlPanelModal, :is(#tagWikiSearchModal, .grimoire-window), #vistaGamesExplorerModal, #studioSaveFolderModal).modal.toolbar-visible .modal-window-title {
     background: linear-gradient(180deg, hsl(0 0% 100% / 24%), hsl(0 0% 100% / 30%) 12%, hsl(0 0% 100% / 20%) 46%, hsl(0 0% 100% / 24%));
 }
-body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonControlPanelModal, #tagWikiSearchModal, #vistaGamesExplorerModal, #studioSaveFolderModal).modal.toolbar-visible .modal-window-title-toolbar {
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonControlPanelModal, :is(#tagWikiSearchModal, .grimoire-window), #vistaGamesExplorerModal, #studioSaveFolderModal).modal.toolbar-visible .modal-window-title-toolbar {
     background: none;
     border: 0;
     box-shadow: none;
 }
-body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonControlPanelModal, #tagWikiSearchModal, #vistaGamesExplorerModal, #studioSaveFolderModal).modal.toolbar-visible .modal-window-title-main {
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonControlPanelModal, :is(#tagWikiSearchModal, .grimoire-window), #vistaGamesExplorerModal, #studioSaveFolderModal).modal.toolbar-visible .modal-window-title-main {
     border: 0;
     box-shadow: none;
     background: none;
@@ -2407,7 +2407,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonContro
 body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal).modal.toolbar-visible .modal-window-title-main {
     visibility: hidden;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal.modal.toolbar-visible .modal-window-title-main {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window).modal.toolbar-visible .modal-window-title-main {
     position: absolute;
     top: 0;
     left: 0;
@@ -2421,16 +2421,16 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal.modal.toolbar-
     font: 12px var(--ie-font, "Segoe UI", sans-serif);
     text-shadow: 0 0 10px #fff, 0 0 6px #fff, 0 0 3px #fff;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal.modal.toolbar-visible .modal-window-title-main > .icon-image {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window).modal.toolbar-visible .modal-window-title-main > .icon-image {
     display: block;
     width: 16px;
     height: 16px;
     margin: 0;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal.modal.toolbar-visible .modal-window-title-main > .icon-fa {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window).modal.toolbar-visible .modal-window-title-main > .icon-fa {
     display: none;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal.modal.toolbar-visible .modal-window-title-main > span {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window).modal.toolbar-visible .modal-window-title-main > span {
     line-height: 16px;
 }
 /* Explorer's command bar: 31px with its dark bottom line (VM rows 63-93). IE's tab row is the band
@@ -2442,23 +2442,23 @@ body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal .explorer-actio
     box-sizing: border-box;
     border-top: 0; /* the client edge is the line above it */
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabrow {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tabrow {
     height: 31px;
     margin-top: 0;
     margin-bottom: 5px;
     border-top: 0;
     box-shadow: 0 1px 0 #edf3fe, 0 2px 0 #b7c8f6, 0 3px 0 #b7c8f6, 0 4px 0 #a0a0a0, 0 5px 0 #696969;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tab {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tab {
     height: 25px;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tab.is-active {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tab.is-active {
     height: 30px;
     margin-bottom: -2px;
     border-top-color: #91969e;
 }
 /* the first tab 78px in (VM), after the star and the add-favorite */
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabs {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tabs {
     margin-left: 6px;
 }
 
@@ -2472,7 +2472,7 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-t
    gradient by repeating rows (12, 16 and 21 of 9-21), so tab*.png are those 26 rows as drawn. The strip takes the row's free space (the tabs keep
    their own widths, the new-tab stub follows the last) and runs 2px past the row so the raised tab
    can cover the row's bottom line while the strip clips tabs that do not fit. */
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabstrip {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tabstrip {
     display: flex;
     flex: 1 1 auto;
     align-items: flex-end;
@@ -2481,26 +2481,26 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-t
     margin-bottom: -2px;
     overflow: hidden;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabrow.has-many-tabs .grimoire-ie-tab {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tabrow.has-many-tabs .grimoire-ie-tab {
     flex: 0 1 180px;
     min-width: 65px;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tab + .grimoire-ie-tab {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tab + .grimoire-ie-tab {
     margin-left: -1px;
 }
 /* the new-tab stub rides at the end of the strip, right after the last tab */
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabstrip > .grimoire-ie-newtab {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tabstrip > .grimoire-ie-newtab {
     margin-bottom: 2px;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tab.is-active {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tab.is-active {
     position: relative;
     z-index: 1;
     margin-bottom: 0;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tab:not(.is-active),
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabtools > button,
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabstrip > .grimoire-ie-newtab,
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabstrip > .grimoire-ie-newtab:hover {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tab:not(.is-active),
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tabtools > button,
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tabstrip > .grimoire-ie-newtab,
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tabstrip > .grimoire-ie-newtab:hover {
     position: relative;
     isolation: isolate;
     height: 26px;
@@ -2510,11 +2510,11 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-t
     border-radius: 0;
     box-shadow: none;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tab:not(.is-active) {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tab:not(.is-active) {
     padding: 1px 4px 0;
     cursor: var(--c-default);
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal :is(.grimoire-ie-tab:not(.is-active), .grimoire-ie-tabtools > button, .grimoire-ie-tabstrip > .grimoire-ie-newtab)::before {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) :is(.grimoire-ie-tab:not(.is-active), .grimoire-ie-tabtools > button, .grimoire-ie-tabstrip > .grimoire-ie-newtab)::before {
     content: '';
     position: absolute;
     inset: 0;
@@ -2523,25 +2523,25 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal :is(.grimoire-
     border-width: 0 4px;
     border-image: url('/static_images/vista-ie/tab.png') 0 4 fill / 0 4px stretch;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal :is(.grimoire-ie-tab:not(.is-active), .grimoire-ie-tabtools > button, .grimoire-ie-tabstrip > .grimoire-ie-newtab):hover::before {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) :is(.grimoire-ie-tab:not(.is-active), .grimoire-ie-tabtools > button, .grimoire-ie-tabstrip > .grimoire-ie-newtab):hover::before {
     border-image-source: url('/static_images/vista-ie/tab-hot.png');
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabtools > button:is(:active, .is-pressed)::before {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tabtools > button:is(:active, .is-pressed)::before {
     border-image-source: url('/static_images/vista-ie/tab-pressed.png');
 }
 
 /* Quick Tabs: ieframe.dll 691 4px in, 7px down; Tab List ▾: IE's 5-3-1 triangle 5px in, 12px down */
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabtools {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tabtools {
     display: flex;
     flex: none;
     align-items: flex-end;
     align-self: stretch;
     margin: 0 0 0 1px;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabtools[hidden] {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tabtools[hidden] {
     display: none;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabtools > button {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tabtools > button {
     display: block;
     flex: none;
     min-width: 0;
@@ -2549,21 +2549,21 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-t
     margin-bottom: 0;
     padding: 0;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-quicktabs {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-quicktabs {
     width: 24px;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-quicktabs img {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-quicktabs img {
     position: absolute;
     left: 4px;
     top: 7px;
     width: 15px;
     height: 13px;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tablist {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tablist {
     width: 16px;
     margin-left: -1px;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tablist .grimoire-ie-cmd-drop {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tablist .grimoire-ie-cmd-drop {
     position: absolute;
     left: 5px;
     top: 12px;
@@ -2577,23 +2577,23 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-t
         linear-gradient(#000, #000) 1px 1px / 3px 1px no-repeat,
         linear-gradient(#000, #000) 2px 2px / 1px 1px no-repeat;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabtools:not([hidden]) + .grimoire-ie-tabstrip {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tabtools:not([hidden]) + .grimoire-ie-tabstrip {
     margin-left: -1px;
 }
 
 /* the close button: only on the tab on show, only with two tabs or more (ieframe.dll 634 / 635 hot /
    636 pressed, 17x16, 3px in from the tab's right edge, 7px down) */
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tab-title {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tab-title {
     flex: 1 1 auto;
     min-width: 0;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tab-close {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tab-close {
     display: none;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabrow.has-many-tabs .grimoire-ie-tab.is-active {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tabrow.has-many-tabs .grimoire-ie-tab.is-active {
     padding-right: 3px;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabrow.has-many-tabs .grimoire-ie-tab.is-active .grimoire-ie-tab-close {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tabrow.has-many-tabs .grimoire-ie-tab.is-active .grimoire-ie-tab-close {
     display: block;
     flex: none;
     align-self: flex-start;
@@ -2608,10 +2608,10 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-t
     border-radius: 0;
     box-shadow: none;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tab-close:hover {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tab-close:hover {
     background-image: url('/static_images/vista-ie/tab-close-hot.png');
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tab-close:active {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tab-close:active {
     background-image: url('/static_images/vista-ie/tab-close-pressed.png');
 }
 
@@ -2620,7 +2620,7 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-t
    307 x 186 grid: the title (Segoe UI 9pt) over a 229 x 148 picture of the page (#706963 edge, a
    #888 inner line on the left and top, a 16px shadow to the right and below), the close button over
    the picture's right end. Hover: #ecf4f9 with an #aebcbf edge, 16px round the picture. */
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-quickview {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-quickview {
     position: absolute;
     inset: 0;
     z-index: 5;
@@ -2630,7 +2630,7 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-q
     color: #000;
     font: 12px var(--ie-font);
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-quickpanel {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-quickpanel {
     display: grid;
     grid-template-columns: repeat(auto-fill, 307px);
     grid-auto-rows: 186px;
@@ -2646,18 +2646,18 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-q
     box-sizing: border-box;
     overflow-y: auto;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-quicktile {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-quicktile {
     position: relative;
     width: 262px;
     height: 185px;
     box-sizing: border-box;
     border: 1px solid transparent;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-quicktile:hover {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-quicktile:hover {
     background: #ecf4f9;
     border-color: #aebcbf;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-quicktile-title {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-quicktile-title {
     position: absolute;
     left: 17px;
     right: 36px;
@@ -2667,7 +2667,7 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-q
     text-overflow: ellipsis;
     line-height: 16px;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-quicktile-close {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-quicktile-close {
     position: absolute;
     left: 226px;
     top: -1px;
@@ -2681,13 +2681,13 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-q
     border-radius: 0;
     box-shadow: none;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-quicktile-close:hover {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-quicktile-close:hover {
     background-image: url('/static_images/vista-ie/tab-close-hot.png');
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-quicktile-close:active {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-quicktile-close:active {
     background-image: url('/static_images/vista-ie/tab-close-pressed.png');
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-quicktile-shot {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-quicktile-shot {
     position: absolute;
     left: 15px;
     top: 20px;
@@ -2699,14 +2699,14 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-q
     box-shadow: inset 1px 1px 0 #888, 6px 6px 10px -2px rgb(70 72 80 / 45%);
     box-sizing: border-box;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-quicktile-shot img {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-quicktile-shot img {
     display: block;
     width: 100%;
     height: 100%;
     object-fit: cover;
     object-position: top left;
 }
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-quicktile-page {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-quicktile-page {
     transform-origin: 0 0;
     overflow: hidden;
     pointer-events: none;
@@ -2718,7 +2718,7 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-q
    it fades out, and only then (`.vista-load-reset`, no transition) goes back to 0 for the next load. */
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(.explorer-address-group, .button-group:has(> #explorerSearchBar)).explorer-address-group,
 body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal) .modal-window-title-toolbar :is(.cpl-address-group, .button-group:has(> .cpl-search)).cpl-address-group,
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar #grimoireAddressBar.wiki-address-bar {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar :is(#grimoireAddressBar, [data-grimoire-part="grimoireAddressBar"]).wiki-address-bar {
     position: relative;
     isolation: isolate;
 }
@@ -2732,7 +2732,7 @@ body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title
 }
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(.explorer-address-group, .button-group:has(> #explorerSearchBar)).explorer-address-group::before,
 body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal) .modal-window-title-toolbar :is(.cpl-address-group, .button-group:has(> .cpl-search)).cpl-address-group::before,
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar #grimoireAddressBar.wiki-address-bar::before {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar :is(#grimoireAddressBar, [data-grimoire-part="grimoireAddressBar"]).wiki-address-bar::before {
     content: '';
     display: block;
     position: absolute;
@@ -2750,12 +2750,12 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-
 }
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(.explorer-address-group, .button-group:has(> #explorerSearchBar)).explorer-address-group[data-vista-loading]::before,
 body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal) .modal-window-title-toolbar :is(.cpl-address-group, .button-group:has(> .cpl-search)).cpl-address-group[data-vista-loading]::before,
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar #grimoireAddressBar.wiki-address-bar[data-alchemy-loading]::before {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar :is(#grimoireAddressBar, [data-grimoire-part="grimoireAddressBar"]).wiki-address-bar[data-alchemy-loading]::before {
     opacity: 1;
 }
 body.desktop-mode:not(.windows-classic-theme) #explorerModal .modal-window-title-toolbar :is(.explorer-address-group, .button-group:has(> #explorerSearchBar)).explorer-address-group.vista-load-reset::before,
 body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, #vistaGamesExplorerModal, #studioSaveFolderModal) .modal-window-title-toolbar :is(.cpl-address-group, .button-group:has(> .cpl-search)).cpl-address-group.vista-load-reset::before,
-body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .modal-window-title-toolbar #grimoireAddressBar.wiki-address-bar.vista-load-reset::before {
+body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .modal-window-title-toolbar :is(#grimoireAddressBar, [data-grimoire-part="grimoireAddressBar"]).wiki-address-bar.vista-load-reset::before {
     transition: none;
 }
 

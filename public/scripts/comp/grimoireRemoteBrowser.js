@@ -224,15 +224,35 @@ function grimoireWebMode(url) {
     return 'http';
 }
 
+// Every full Grimoire window (#615; grimoireAllWindows: public/scripts/comp/tagWikiSearchModal.js).
+function grimoireFullWindows() {
+    if (typeof grimoireAllWindows === 'function') return grimoireAllWindows();
+    return tagWikiSearchModal ? [tagWikiSearchModal] : [];
+}
+
+// The full Grimoire window that holds a shell (grimoireWindowOf: public/scripts/comp/tagWikiSearchModal.js).
+function grimoireHostOf(shell) {
+    if (typeof grimoireWindowOf === 'function') return grimoireWindowOf(shell);
+    return tagWikiSearchModal;
+}
+
+// The Grimoire window with the keyboard: the one holding the focus, else the active window (mainActiveWindowId:
+// public/scripts/comp/modalUtils.js) when it is a Grimoire window.
+function grimoireFocusWindow() {
+    const node = document.activeElement;
+    let modal = node && node.closest ? node.closest('.modal') : null;
+    if (!modal && mainActiveWindowId) modal = document.getElementById(mainActiveWindowId);
+    return modal ? grimoireFullWindows().find((win) => win.modal === modal) || null : null;
+}
+
 function grimoireRemoteShells() {
-    const host = tagWikiSearchModal;
     const shells = [];
-    if (host) {
+    grimoireFullWindows().forEach((host) => {
         shells.push(host);
         if (host.rightPane) shells.push(host.rightPane);
         // tabs in the background keep their frames (grimoireTabs.js)
         if (host.tabs) host.tabs.backgroundShells().forEach((shell) => shells.push(shell));
-    }
+    });
     // wikiWindowManager: public/scripts/comp/tagWikiSearchModal.js
     if (wikiWindowManager && wikiWindowManager.windows) {
         wikiWindowManager.windows.forEach((win) => shells.push(win));
@@ -241,17 +261,17 @@ function grimoireRemoteShells() {
 }
 
 function grimoireRemoteFromMessage(event) {
-    const host = tagWikiSearchModal;
-    if (!host) return null;
     const shells = grimoireRemoteShells();
     for (let i = 0; i < shells.length; i++) {
         const frame = grimoireRemoteFrame(shells[i]);
         if (frame && event.source === frame.contentWindow) {
             const shell = shells[i];
             const standalone = !!(shell.modal && shell.modal.classList.contains('wiki-page-viewer-modal'));
-            // tab: set when the frame belongs to a tab in the background (grimoireTabs.js)
-            const tab = host.tabs ? host.tabs.backgroundTabOf(shell) : null;
-            return { host: standalone ? shell : host, shell, frame, tab };
+            // host: the full window that holds the frame (#615); tab: set when it is in one of its background tabs (grimoireTabs.js)
+            const host = standalone ? shell : grimoireHostOf(shell);
+            if (!host) return null;
+            const tab = !standalone && host.tabs ? host.tabs.backgroundTabOf(shell) : null;
+            return { host, shell, frame, tab };
         }
     }
     return null;
@@ -331,7 +351,7 @@ function grimoireShowLoadProgress(found, value) {
 // Wiki pages have no byte progress. Hold the same fill at 50% until the page arrives.
 // Returns a function that completes the bar. No-op when this shell is not the active Grimoire window.
 function grimoireBeginWikiLoad(shell) {
-    const host = (typeof tagWikiSearchModal !== 'undefined') ? tagWikiSearchModal : null;
+    const host = grimoireHostOf(shell);
     if (!host || !host.addressBar || !shell) return function () {};
     if (host.modal && host.modal.dataset.alchemy === '1') return function () {};
     const active = host.activePane && host.activePane !== host ? host.activePane : host;
@@ -595,7 +615,10 @@ function grimoireRemoteMenuAction(found, action, data) {
         return;
     }
     if (action === 'open-window') {
-        grimoireOpenStandaloneWindow(data.href || grimoireShellWebUrl(shell));
+        const target = data.href || grimoireShellWebUrl(shell);
+        // from a full Grimoire window with the tab strip: another full window (#615); else a standalone Alchemy window
+        if (found.host.tabs && found.host.tabs.available()) TagWikiSearchModal.openNewWindow({ url: target });
+        else grimoireOpenStandaloneWindow(target);
         return;
     }
     if (action === 'open-tab') {
@@ -662,7 +685,7 @@ function grimoireShowRemoteMenu(found, data) {
         items.push({ text: 'Copy link', icon: 'fas fa-link', action: 'copy-link' });
         items.push({ text: 'Open link', icon: 'fas fa-external-link-alt', action: 'open-link' });
         // IE7's Open in New Tab has no icon
-        if (found.host === tagWikiSearchModal && found.host.tabs && found.host.tabs.available()) items.push({ text: 'Open link in new tab', action: 'open-tab' });
+        if (found.host.tabs && found.host.tabs.available()) items.push({ text: 'Open link in new tab', action: 'open-tab' });
         if (!src) items.push({ text: 'Download', icon: 'fas fa-download', action: 'download-link' });
     }
     if (src) {
@@ -882,7 +905,8 @@ function grimoireBackgroundRemoteMessage(found, data) {
 
 // ---- tabs (grimoireTabs.js) ----
 
-// Ctrl+T new tab, Ctrl+W / Ctrl+F4 close it, Ctrl+Tab / Ctrl+Shift+Tab next / previous, Ctrl+Q Quick Tabs (IE7's keys).
+// Ctrl+T new tab, Ctrl+W / Ctrl+F4 close it, Ctrl+Tab / Ctrl+Shift+Tab next / previous, Ctrl+Q Quick Tabs,
+// Ctrl+N a new window (IE7's keys).
 function grimoireTabShortcut(ev) {
     const mod = (ev.ctrlKey || ev.metaKey) && !ev.altKey;
     if (!mod) return '';
@@ -891,14 +915,20 @@ function grimoireTabShortcut(ev) {
     if (ev.key === 't' || ev.key === 'T') return 'new-tab';
     if (ev.key === 'w' || ev.key === 'W' || ev.key === 'F4') return 'close-tab';
     if (ev.key === 'q' || ev.key === 'Q') return 'quick-tabs';
+    if (ev.key === 'n' || ev.key === 'N') return 'new-window';
     return '';
 }
 
-function grimoireRunTabCommand(command) {
-    // tagWikiSearchModal: public/scripts/comp/tagWikiSearchModal.js
-    const host = tagWikiSearchModal;
+// win: the window the keys came from (its frame's window, or the focused one)
+function grimoireRunTabCommand(command, win) {
+    const host = win || grimoireFocusWindow() || (typeof grimoireActiveWindow === 'function' ? grimoireActiveWindow() : tagWikiSearchModal);
     const tabs = host && host.tabs;
     if (!tabs || !tabs.available()) return false;
+    if (command === 'new-window') {
+        // tagWikiSearchModal.js openPageInNewWindow (#615)
+        host.openPageInNewWindow();
+        return true;
+    }
     if (command === 'quick-tabs') {
         if (host.ieChrome) host.ieChrome.toggleQuickTabs();
         return true;
@@ -913,12 +943,12 @@ function grimoireRunTabCommand(command) {
     return true;
 }
 
-// A page's new tab or window opens as a tab in the main Grimoire window, next to the tab it came from.
+// A page's new tab or window opens as a tab in its Grimoire window, next to the tab it came from.
 // From a standalone Alchemy window, or without the tab strip, it is a window as before (grimoireOpenStandaloneWindow).
 function grimoireOpenTab(found, url, session) {
-    const host = tagWikiSearchModal;
+    const host = found ? found.host : grimoireActiveWindow();
     const tabs = host && host.tabs;
-    if (!tabs || !tabs.available() || (found && found.host !== host)) return false;
+    if (!tabs || !tabs.available()) return false;
     tabs.open({ url, session, afterActive: true });
     return true;
 }
@@ -986,7 +1016,7 @@ function grimoireBindRemoteBrowserMessages() {
         if (found.tab && grimoireBackgroundRemoteMessage(found, data)) return;
         // the viewer has focus, so the tab keys reach it instead of the window (services/grimoire-browser/viewer.html)
         if (data.type === 'grimoire-browser-shortcut') {
-            if (found.host === tagWikiSearchModal) grimoireRunTabCommand(data.command);
+            if (found.host.tabs) grimoireRunTabCommand(data.command, found.host);
             return;
         }
         if (data.type === 'grimoire-browser-navigating' || data.type === 'grimoire-browser-location' || data.type === 'grimoire-browser-navigation-failed') {
@@ -1105,8 +1135,7 @@ function grimoireBindRemoteBrowserMessages() {
 }
 
 function grimoireAddressFieldFocused() {
-    // tagWikiSearchModal: public/scripts/comp/tagWikiSearchModal.js
-    const host = tagWikiSearchModal;
+    const host = grimoireFocusWindow();
     const bar = host && host.addressBar;
     if (!bar || !bar.classList.contains('edit-active')) return false;
     const node = document.activeElement;
@@ -1120,11 +1149,11 @@ function grimoireAddressFieldFocused() {
 
 function grimoireForwardRemoteKey(ev) {
     if (ev.defaultPrevented || grimoireAddressFieldFocused()) return;
-    // the tab keys belong to the window (tagWikiSearchModal.js _handleGrimoireKeydown)
-    if (grimoireTabShortcut(ev) && tagWikiSearchModal && tagWikiSearchModal.tabs && tagWikiSearchModal.tabs.available()) return;
-    // tagWikiSearchModal: public/scripts/comp/tagWikiSearchModal.js
-    const host = tagWikiSearchModal;
+    // keys go to the Alchemy page of the Grimoire window that has them (#615)
+    const host = grimoireFocusWindow();
     if (!host) return;
+    // the tab keys belong to the window (tagWikiSearchModal.js _handleGrimoireKeydown)
+    if (grimoireTabShortcut(ev) && host.tabs && host.tabs.available()) return;
     const shell = host.activePane && host.activePane !== host ? host.activePane : host;
     const frame = grimoireRemoteFrame(shell);
     if (!frame || !frame.contentWindow || !shell._grimoireRemoteSessionId) return;
@@ -1223,10 +1252,11 @@ function grimoireOnlineWikiUrls(tagName) {
     };
 }
 
-async function grimoireShowSiteMenu(ev) {
+// win: the Grimoire window whose Tools button was clicked (#615)
+async function grimoireShowSiteMenu(ev, win) {
     // tagWikiSearchModal / contextMenu: public/scripts/comp/tagWikiSearchModal.js, contextMenu.js
-    const host = tagWikiSearchModal;
-    const button = document.getElementById('grimoireAddressSiteBtn');
+    const host = win || grimoireFocusWindow() || tagWikiSearchModal;
+    const button = host && host.part ? host.part('grimoireAddressSiteBtn') : null;
     if (!host || !button || !contextMenu) return;
     const shell = host.activePane && host.activePane !== host ? host.activePane : host;
     const editing = host.addressBar && host.addressBar.classList.contains('edit-active');
@@ -1338,7 +1368,9 @@ function grimoireCloseRemoteBrowser(shell) {
     shell._grimoireRemoteSessionId = '';
     shell._grimoireRemoteViewQuery = '';
     if (grimoireAudioShell === shell) grimoireAudioShell = null;
-    const bar = tagWikiSearchModal && tagWikiSearchModal.addressBar;
+    // the load fill of the window showing this page (#615)
+    const owner = grimoireHostOf(shell);
+    const bar = owner && (owner === shell || owner.activePane === shell) ? owner.addressBar : null;
     if (bar) bar.removeAttribute('data-alchemy-loading');
     const frame = grimoireRemoteFrame(shell);
     if (frame) frame.remove();
@@ -1358,7 +1390,7 @@ function grimoireCloseRemoteBrowser(shell) {
 function grimoireRemoteBrowserReload(shell) {
     const frame = grimoireRemoteFrame(shell);
     if (!frame || !frame.contentWindow || !shell._grimoireRemoteSessionId) return false;
-    const host = tagWikiSearchModal;
+    const host = grimoireHostOf(shell);
     if (host) grimoireStartNavigationSpinner(host, shell && shell.history && shell.history[shell.historyIndex] && shell.history[shell.historyIndex].url, true);
     frame.contentWindow.postMessage({ type: 'grimoire-browser-reload' }, '*');
     return true;
@@ -1428,7 +1460,7 @@ function grimoireShowRemoteTabPage(shell, state, url) {
             return;
         }
         const again = grimoireNormalizeWebUrl(url);
-        const host = shell.modal && shell.modal.classList.contains('wiki-page-viewer-modal') ? shell : tagWikiSearchModal;
+        const host = shell.modal && shell.modal.classList.contains('wiki-page-viewer-modal') ? shell : grimoireHostOf(shell);
         if (again) grimoireOpenRemoteBrowser(shell, again, { host: host || shell, skipHistory: true });
     });
     home.addEventListener('click', () => {
@@ -1518,9 +1550,17 @@ async function grimoireOpenRemoteBrowser(shell, url, options) {
         let response;
         try {
             response = await create();
-            // the service's session cap: a background tab gives its session up (grimoireTabs.js freeSession)
-            const tabs = tagWikiSearchModal && tagWikiSearchModal.tabs;
-            if (response.status === 429 && !opts.popup && tabs && await tabs.freeSession()) response = await create();
+            // the service's session cap: a background tab gives its session up (grimoireTabs.js freeSession),
+            // the window used longest ago first (#615)
+            if (response.status === 429 && !opts.popup) {
+                const windows = grimoireFullWindows().filter((win) => win.tabs).sort((a, b) => (a.lastActive || 0) - (b.lastActive || 0));
+                for (const win of windows) {
+                    if (await win.tabs.freeSession()) {
+                        response = await create();
+                        break;
+                    }
+                }
+            }
         } catch (e) {
             grimoireShowBrowserUnavailable(host, shell, webUrl);
             return;
