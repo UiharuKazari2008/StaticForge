@@ -51,9 +51,10 @@ function makeFakeGlobalResources() {
 }
 
 /** NAI-like PNG: RGBA pixels + tEXt Comment/Source/Software. */
-async function makeNaiLikePng(pm, { width = 96, height = 64, seed = 1234 } = {}) {
+async function makeNaiLikePng(pm, { width = 96, height = 64, seed = 1234, noise = false } = {}) {
     const raw = Buffer.alloc(width * height * 4);
-    for (let i = 0; i < raw.length; i++) raw[i] = (i * 31 + seed) & 0xff;
+    if (noise) crypto.randomFillSync(raw);
+    else for (let i = 0; i < raw.length; i++) raw[i] = (i * 31 + seed) & 0xff;
     for (let i = 3; i < raw.length; i += 4) raw[i] = 255;
     let png = await sharp(raw, { raw: { width, height, channels: 4 } }).png().toBuffer();
     const comment = {
@@ -286,6 +287,50 @@ sections.forge624 = async function forge624() {
 
     await metadataDb.closeDatabase?.();
     console.log('  forge624: ok (no history entry, signature verifies, DB metadata unchanged, buffer path equal)');
+};
+
+// Finding 3: getImageMetadata validates with size+mtime first, hashes (streamed) only on mismatch.
+sections.imageMetadataStat = async function imageMetadataStat() {
+    const gr = makeFakeGlobalResources();
+    const pm = new PngMetadata(gr);
+    const timings = {};
+    for (const variant of ['old', 'new']) {
+        const mod = variant === 'old'
+            ? requireOldModule('modules/metadataDatabase.js')
+            : require('../modules/metadataDatabase');
+        const dir = makeWorkDir(`image-meta-${variant}`);
+        const imagesDir = path.join(dir, 'images');
+        fs.mkdirSync(imagesDir, { recursive: true });
+        assert.strictEqual(await mod.initializeDatabase(path.join(dir, 'db'), pm), true);
+        const png = await makeNaiLikePng(pm, { width: 1024, height: 1024, noise: true });
+        const file = path.join(imagesDir, 'a.png');
+        fs.writeFileSync(file, png);
+        const first = await mod.getImageMetadata('a.png', imagesDir);
+        assert.ok(first && first.width === 1024);
+        const N = 200;
+        const t0 = process.hrtime.bigint();
+        for (let i = 0; i < N; i++) {
+            const again = await mod.getImageMetadata('a.png', imagesDir);
+            assert.strictEqual(again.md5, first.md5);
+        }
+        timings[variant] = Number(process.hrtime.bigint() - t0) / 1e6 / N;
+
+        // Touch only: same bytes, new mtime -> still the cached row (MD5 fallback).
+        const later = new Date(Date.now() + 5000);
+        fs.utimesSync(file, later, later);
+        assert.strictEqual((await mod.getImageMetadata('a.png', imagesDir)).md5, first.md5);
+        // Different bytes, same size, new mtime -> rebuilt.
+        const changed = Buffer.from(png);
+        changed[changed.length - 20] ^= 0xff;
+        fs.writeFileSync(file, changed);
+        const rebuilt = await mod.getImageMetadata('a.png', imagesDir);
+        assert.strictEqual(rebuilt.md5, crypto.createHash('md5').update(changed).digest('hex'));
+        // Missing file -> null.
+        fs.unlinkSync(file);
+        assert.strictEqual(await mod.getImageMetadata('a.png', imagesDir), null);
+        await mod.closeDatabase();
+    }
+    console.log(`  getImageMetadata hot hit (1024x1024 PNG): old ${timings.old.toFixed(3)} ms/call, new ${timings.new.toFixed(3)} ms/call`);
 };
 
 async function main() {

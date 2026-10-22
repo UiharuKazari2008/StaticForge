@@ -1241,21 +1241,28 @@ async function getImageMetadata(filename, imagesDir) {
             throw new Error('Database not initialized');
         }
 
-        const hot = metadataWriteQueue.getHotImage(filename);
-        if (hot) {
-            const filePath = path.join(imagesDir, filename);
-            if (fs.existsSync(filePath)) {
-                const currentMD5 = generateMD5(filePath);
-                if (currentMD5 === hot.md5) {
-                    return hot;
-                }
+        const filePath = path.join(imagesDir, filename);
+        const stats = await statOrNull(filePath);
+        // md5 of the current file, computed (streamed) at most once and only when size/mtime differ
+        let currentMD5;
+        const fileMatches = async (record) => {
+            if (!record || !stats) return false;
+            if (Number(record.size) === stats.size && Number(record.mtime) === stats.mtime.valueOf()) {
+                return true;
             }
+            if (currentMD5 === undefined) {
+                currentMD5 = await generateMD5Async(filePath);
+            }
+            return currentMD5 === record.md5;
+        };
+
+        const hot = metadataWriteQueue.getHotImage(filename);
+        if (hot && await fileMatches(hot)) {
+            return hot;
         }
 
-        const filePath = path.join(imagesDir, filename);
-
         // Check if file exists
-        if (!fs.existsSync(filePath)) {
+        if (!stats) {
             console.warn(`⚠️ File not found: ${filePath}`);
             return null;
         }
@@ -1264,9 +1271,8 @@ async function getImageMetadata(filename, imagesDir) {
         const existing = await db.get('SELECT * FROM images WHERE filename = ?', [filename]);
 
         if (existing) {
-            // Verify the cached MD5 matches the current file
-            const currentMD5 = generateMD5(filePath);
-            if (currentMD5 === existing.md5) {
+            // Verify the cached row still describes the current file (size+mtime, else MD5)
+            if (await fileMatches(existing)) {
                 const receipts = await db.all('SELECT receipt_data FROM receipts WHERE image_id = ? ORDER BY timestamp', [existing.id]);
                 return formatDbImageRow(existing, receipts);
             }
