@@ -206,6 +206,7 @@ const TOOL_RATE_GROUPS = {
     exchange_signatures: 'write',
     exchange_toggles: 'write',
     exchange_status: 'free',
+    exchange_resync_recipients: 'write',
     exchange_spam: 'mail'
 };
 

@@ -8,7 +8,7 @@
  *   the Games toolbar (bottom right): Minesweeper, the card games, Block Drop, Brick Breaker,
  *     JezzBall. A click loads the game "from the installation media": one zip
  *     (/static_images/vista-games/media/<id>.zip, scripts/build-vista-games-media.js) unpacked
- *     into the service worker's static-cache-v1, under a small progress dialog, while Setup waits
+ *     into the service worker's static-cache-v2, under a small progress dialog, while Setup waits
  *     (gate()); then the game opens at the top left.
  *   holdRestart({ upgrade })  Setup finished under an open game: the toolbar closes (no new game
  *     now), minimized games come back, and a message box behind the games offers Restart now;
@@ -47,7 +47,7 @@
     ];
     const SCRIPTS = ['/scripts/comp/contextMenu.js', '/scripts/comp/featureLoader.js'];
     const MEDIA = (id, ext) => '/static_images/vista-games/media/' + id + (ext || '.zip');
-    const STATIC_CACHE = 'static-cache-v1';     // sw.js STATIC_CACHE
+    const STATIC_CACHE = 'static-cache-v2';     // sw.js STATIC_CACHE
     // lighter copies written from the media, url -> { hash (the full file's), game }; Setup's last step
     // swaps them for the full files (launchGames.js upgradeLite)
     const LITE_KEY = 'melatonGamesLite';
@@ -131,7 +131,7 @@
         try { root.localStorage.setItem(LITE_KEY, JSON.stringify(map)); } catch (_) { /* best effort */ }
     }
 
-    // any cache the service worker keeps (an earlier full copy may sit outside static-cache-v1)
+    // any cache the service worker keeps (an earlier full copy may sit outside static-cache-v2)
     async function have(url) {
         const hit = await root.caches.match(url, { ignoreVary: true });
         return !!(hit && hit.ok);
@@ -156,7 +156,7 @@
         return missing;
     }
 
-    // The zip's files into static-cache-v1, rows as the installer writes them (updateEngine.js
+    // The zip's files into static-cache-v2, rows as the installer writes them (updateEngine.js
     // putHashed), so sw.js answers the game's requests from them. Only the files the cache
     // lacks: a full copy already there always wins. A lighter copy carries x-media-lite (the
     // full file's hash) and is listed for Setup to replace.

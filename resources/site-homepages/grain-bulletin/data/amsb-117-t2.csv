@@ -1,0 +1,8 @@
+meter_model,checks,within_tolerance,pct_within,mean_error_pp,sd_pp
+"Xyridian GM-420",328,317,96.6,0.03,0.24
+"Xyridian GM-310",193,179,92.7,0.08,0.28
+"Hadley Ostrander HO-90",298,284,95.3,0.00,0.25
+"Pellow FM-2",158,147,93.0,0.06,0.29
+"Corvane Model 74",112,96,85.7,-0.01,0.37
+"Other models",106,90,84.9,0.10,0.32
+"All models",1195,1113,93.1,0.04,0.28

@@ -535,7 +535,9 @@ async function compileOneFileBody(projectRoot, abs, rel, options, webPath) {
     if (!options.force) {
         const existingHash = await readExistingSourceHashAsync(compiledPath);
         if (existingHash === sourceHash) {
-            if (!runtimeAssetMemory.lookup(webPath)) {
+            // a compile from another process (scripts/precompile-runtime-assets.js) leaves the
+            // disk current and this process's copy old: reload it, or the old build stays served
+            if (runtimeAssetMemory.headerSourceHash(webPath) !== sourceHash) {
                 await runtimeAssetMemory.rememberAbs(compiledPath, webPath);
             }
             return { status: 'skipped', rel, webPath, source, sourceHash };

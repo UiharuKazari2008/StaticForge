@@ -1288,37 +1288,34 @@ class ExplorerApplet {
         );
         if (!confirmed) return;
 
+        const moving = items.filter(i => this._owningWorkspaceId(i) !== workspaceId);
+        const first = moving[0];
+        const progress = this._beginProgress('move', moving,
+            first ? this._imagePlacePath(this._owningWorkspaceId(first), first.targetKind === 'scrap') : null,
+            this._imagePlacePath(workspaceId, first?.targetKind === 'scrap'));
         try {
-        const groups = this._groupExplorerImagesByWorkspace(items);
-        let moved = 0;
-        for (const [sourceId, group] of groups) {
-            if (sourceId === workspaceId) continue;
-            if (group.files.length) {
-                const response = await wsClient.moveFilesToWorkspace(group.files, workspaceId, sourceId, 'files');
+            const moved = await this._eachImageBatch(progress, moving, async (sourceId, bucket, filenames) => {
+                const response = await wsClient.moveFilesToWorkspace(filenames, workspaceId, sourceId, bucket);
                 if (!response?.success) throw new Error(response?.message || 'Move failed');
-                moved += group.files.length;
+            });
+            if (!progress && moved) {
+                showGlassToast(
+                    'success',
+                    'Moved',
+                    itemCount === 1 ? `Image moved to ${workspaceName}` : `${moved} image(s) moved to ${workspaceName}`,
+                    false,
+                    3000,
+                    '<i class="mdi mdi-1-5 mdi-folder-move"></i>'
+                );
             }
-            if (group.scraps.length) {
-                const response = await wsClient.moveFilesToWorkspace(group.scraps, workspaceId, sourceId, 'scraps');
-                if (!response?.success) throw new Error(response?.message || 'Move failed');
-                moved += group.scraps.length;
-            }
+        } catch (err) {
+            showGlassToast('error', 'Explorer', err.message || 'Move failed', false, 5000);
+        } finally {
+            if (progress) progress.finish();
         }
-
-        showGlassToast(
-            'success',
-            'Moved',
-            itemCount === 1 ? `Image moved to ${workspaceName}` : `${moved} image(s) moved to ${workspaceName}`,
-            false,
-            3000,
-            '<i class="mdi mdi-1-5 mdi-folder-move"></i>'
-        );
         this._refreshGalleryIfOwningActive(items);
         this._refreshGalleryIfOwningActive([{ workspaceId }]);
         await this.softRefresh();
-        } catch (err) {
-            showGlassToast('error', 'Explorer', err.message || 'Move failed', false, 5000);
-        }
     }
 
     _getExplorerReferenceMoveOptions(item) {
@@ -1366,40 +1363,50 @@ class ExplorerApplet {
         );
         if (!confirmed) return;
 
+        const progress = this._beginProgress('move', [item],
+            `/Workspaces/${sourceWorkspace}/References`, `/Workspaces/${targetWorkspace}/References`);
         try {
-            let response;
-            if (cacheImage.isStandalone) {
-                if (cacheImage.vibes && cacheImage.vibes.length > 0) {
-                    response = await wsClient.moveVibeImage(cacheImage.vibes[0].id, targetWorkspace, sourceWorkspace);
+            const moveReference = async () => {
+                let response;
+                if (cacheImage.isStandalone) {
+                    if (cacheImage.vibes && cacheImage.vibes.length > 0) {
+                        response = await wsClient.moveVibeImage(cacheImage.vibes[0].id, targetWorkspace, sourceWorkspace);
+                    } else {
+                        throw new Error('Standalone image has no vibe data');
+                    }
                 } else {
-                    throw new Error('Standalone image has no vibe data');
+                    response = await wsClient.moveReferences([cacheImage.hash], targetWorkspace, sourceWorkspace);
+                    if (response.success && cacheImage.hasVibes) {
+                        const vibeMovePromises = [];
+                        for (const vibe of cacheImage.vibes) {
+                            if (vibe.type === 'cache') {
+                                vibeMovePromises.push(
+                                    wsClient.moveVibeImage(vibe.id, targetWorkspace, sourceWorkspace)
+                                );
+                            }
+                        }
+                        if (vibeMovePromises.length > 0) {
+                            try {
+                                await Promise.all(vibeMovePromises);
+                            } catch (vibeError) {
+                                console.warn('Some vibe images failed to move:', vibeError);
+                            }
+                        }
+                    }
                 }
+
+                if (!response?.success) {
+                    throw new Error(response?.message || 'Move failed');
+                }
+            };
+            if (progress) {
+                const r = await progress.attempt(this._progressItem(item), moveReference);
+                progress.done(this._progressItem(item));
+                if (!r.ok) return;
             } else {
-                response = await wsClient.moveReferences([cacheImage.hash], targetWorkspace, sourceWorkspace);
-                if (response.success && cacheImage.hasVibes) {
-                    const vibeMovePromises = [];
-                    for (const vibe of cacheImage.vibes) {
-                        if (vibe.type === 'cache') {
-                            vibeMovePromises.push(
-                                wsClient.moveVibeImage(vibe.id, targetWorkspace, sourceWorkspace)
-                            );
-                        }
-                    }
-                    if (vibeMovePromises.length > 0) {
-                        try {
-                            await Promise.all(vibeMovePromises);
-                        } catch (vibeError) {
-                            console.warn('Some vibe images failed to move:', vibeError);
-                        }
-                    }
-                }
+                await moveReference();
+                showGlassToast('success', 'Moved', `Reference moved to ${workspaceName}`, false, 3000, '<i class="mdi mdi-1-5 mdi-folder-move"></i>');
             }
-
-            if (!response?.success) {
-                throw new Error(response?.message || 'Move failed');
-            }
-
-            showGlassToast('success', 'Moved', `Reference moved to ${workspaceName}`, false, 3000, '<i class="mdi mdi-1-5 mdi-folder-move"></i>');
             if (typeof refreshReferenceBrowserIfOpen === 'function') await refreshReferenceBrowserIfOpen();
             if (typeof refreshReferenceManagerAfterVibeOperation === 'function') {
                 await refreshReferenceManagerAfterVibeOperation();
@@ -1408,6 +1415,8 @@ class ExplorerApplet {
             await this.softRefresh();
         } catch (err) {
             showGlassToast('error', 'Explorer', err.message || 'Move failed', false, 5000);
+        } finally {
+            if (progress) progress.finish();
         }
     }
 
@@ -1578,9 +1587,22 @@ class ExplorerApplet {
                 createReferenceFromImage(image);
                 break;
             case 'scrap': {
-                if (item.targetKind === 'scrap') {
-                    await wsClient.removeScrap(owningWorkspaceId, filename);
-                    showGlassToast('success', null, 'Image removed from scraps', undefined, undefined, '<i class="nai-dot-reset"></i>');
+                // Pictures <-> Scraps is a move (Vista's progress dialog; the toast off the desktop)
+                const toScraps = item.targetKind !== 'scrap';
+                const scrapMove = async (fn) => {
+                    const progress = this._beginProgress('move', [item],
+                        this._imagePlacePath(owningWorkspaceId, !toScraps), this._imagePlacePath(owningWorkspaceId, toScraps));
+                    try {
+                        await this._eachWithProgress(progress, [item], fn);
+                    } finally {
+                        if (progress) progress.finish();
+                    }
+                    return !!progress;
+                };
+                if (!toScraps) {
+                    if (!await scrapMove(() => wsClient.removeScrap(owningWorkspaceId, filename))) {
+                        showGlassToast('success', null, 'Image removed from scraps', undefined, undefined, '<i class="nai-dot-reset"></i>');
+                    }
                 } else {
                     const confirmed = await showConfirmationDialog(
                         'Are you sure you want to move this image to scraps?',
@@ -1591,8 +1613,9 @@ class ExplorerApplet {
                         event
                     );
                     if (!confirmed) return true;
-                    await wsClient.addScrap(owningWorkspaceId, filename);
-                    showGlassToast('success', null, 'Image Scraped', false, 3000, '<i class="fas fa-bin-bottles-recycle"></i>');
+                    if (!await scrapMove(() => wsClient.addScrap(owningWorkspaceId, filename))) {
+                        showGlassToast('success', null, 'Image Scraped', false, 3000, '<i class="fas fa-bin-bottles-recycle"></i>');
+                    }
                 }
                 needsRefresh = true;
                 if (this._isOwningWorkspaceActive(owningWorkspaceId) && typeof loadGallery === 'function') {
@@ -1660,8 +1683,6 @@ class ExplorerApplet {
         }
 
         const images = items.map((entry) => this._resolveGalleryImage(entry)).filter(Boolean);
-        const filenames = items.map((entry) => this._explorerResolvedFilename(entry)).filter(Boolean);
-        const groups = this._groupExplorerImagesByWorkspace(items);
         const count = items.length;
 
         try {
@@ -1736,12 +1757,28 @@ class ExplorerApplet {
                         event
                     );
                     if (!confirmed) return;
-                    const responseData = await wsClient.sendToSequenziaBulk(filenames);
-                    const successful = responseData?.successful ?? filenames.length;
-                    const failed = responseData?.failed || 0;
-                    let toastMessage = responseData?.message || `Successfully sent ${successful} image(s) to Sequenzia`;
-                    if (failed > 0) toastMessage += ` (${failed} failed)`;
-                    showGlassToast('success', null, toastMessage, false, 5000, '<i class="fas fa-share"></i>');
+                    const first = items[0];
+                    const progress = this._beginProgress('move', items,
+                        this._imagePlacePath(this._owningWorkspaceId(first), first?.targetKind === 'scrap'),
+                        { name: 'Sequenzia', path: '' });
+                    let successful = 0;
+                    let failed = 0;
+                    let serverMessage = null;
+                    try {
+                        await this._eachImageBatch(progress, items, async (_wsId, _bucket, names) => {
+                            const responseData = await wsClient.sendToSequenziaBulk(names);
+                            successful += responseData?.successful ?? names.length;
+                            failed += responseData?.failed || 0;
+                            serverMessage = responseData?.message || serverMessage;
+                        });
+                    } finally {
+                        if (progress) progress.finish();
+                    }
+                    if (!progress) {
+                        let toastMessage = serverMessage || `Successfully sent ${successful} image(s) to Sequenzia`;
+                        if (failed > 0) toastMessage += ` (${failed} failed)`;
+                        showGlassToast('success', null, toastMessage, false, 5000, '<i class="fas fa-share"></i>');
+                    }
                     this._refreshGalleryIfOwningActive(items);
                     await this.softRefresh();
                     return;
@@ -1759,27 +1796,35 @@ class ExplorerApplet {
                         );
                         if (!confirmed) return;
                     }
+                    // Pictures -> Scraps (or back): a move in Vista's progress dialog
+                    const moving = items.filter((entry) => (entry.targetKind === 'scrap') === allScraps);
+                    const first = moving[0];
+                    const wsOfFirst = first ? this._owningWorkspaceId(first) : null;
+                    const progress = this._beginProgress('move', moving,
+                        this._imagePlacePath(wsOfFirst, allScraps), this._imagePlacePath(wsOfFirst, !allScraps));
                     let acted = 0;
-                    for (const [wsId, group] of groups) {
-                        if (allScraps) {
-                            if (!group.scraps.length) continue;
-                            const responseData = await wsClient.removeScrapBulk(wsId, group.scraps);
-                            acted += responseData?.removedCount ?? group.scraps.length;
-                        } else if (group.files.length) {
-                            const responseData = await wsClient.addScrapBulk(wsId, group.files);
-                            acted += responseData?.addedCount ?? group.files.length;
-                        }
+                    try {
+                        acted = await this._eachImageBatch(progress, moving, async (wsId, _bucket, names) => {
+                            const responseData = allScraps
+                                ? await wsClient.removeScrapBulk(wsId, names)
+                                : await wsClient.addScrapBulk(wsId, names);
+                            return (allScraps ? responseData?.removedCount : responseData?.addedCount) ?? names.length;
+                        });
+                    } finally {
+                        if (progress) progress.finish();
                     }
-                    showGlassToast(
-                        'success',
-                        null,
-                        allScraps
-                            ? `Restored ${acted} image(s) from scraps`
-                            : `Successfully moved ${acted} image(s) to scraps`,
-                        false,
-                        5000,
-                        allScraps ? '<i class="nai-dot-reset"></i>' : '<i class="fas fa-bin-bottles-recycle"></i>'
-                    );
+                    if (!progress) {
+                        showGlassToast(
+                            'success',
+                            null,
+                            allScraps
+                                ? `Restored ${acted} image(s) from scraps`
+                                : `Successfully moved ${acted} image(s) to scraps`,
+                            false,
+                            5000,
+                            allScraps ? '<i class="nai-dot-reset"></i>' : '<i class="fas fa-bin-bottles-recycle"></i>'
+                        );
+                    }
                     this._refreshGalleryIfOwningActive(items);
                     await this.softRefresh();
                     return;
@@ -1833,12 +1878,27 @@ class ExplorerApplet {
                         event
                     );
                     if (!confirmed) return;
-                    const responseData = await wsClient.deleteImagesBulk(filenames);
-                    const successful = responseData?.successful ?? filenames.length;
-                    const failed = responseData?.failed || 0;
-                    let toastMessage = responseData?.message || `Successfully removed ${successful} image(s)`;
-                    if (failed > 0) toastMessage += ` (${failed} failed)`;
-                    showGlassToast('success', null, toastMessage, false, 5000, '<i class="fas fa-trash"></i>');
+                    const first = items[0];
+                    const progress = this._beginProgress('delete', items,
+                        this._imagePlacePath(this._owningWorkspaceId(first), first?.targetKind === 'scrap'), null);
+                    let successful = 0;
+                    let failed = 0;
+                    let serverMessage = null;
+                    try {
+                        await this._eachImageBatch(progress, items, async (_wsId, _bucket, names) => {
+                            const responseData = await wsClient.deleteImagesBulk(names);
+                            successful += responseData?.successful ?? names.length;
+                            failed += responseData?.failed || 0;
+                            serverMessage = responseData?.message || serverMessage;
+                        });
+                    } finally {
+                        if (progress) progress.finish();
+                    }
+                    if (!progress) {
+                        let toastMessage = serverMessage || `Successfully removed ${successful} image(s)`;
+                        if (failed > 0) toastMessage += ` (${failed} failed)`;
+                        showGlassToast('success', null, toastMessage, false, 5000, '<i class="fas fa-trash"></i>');
+                    }
                     this._refreshGalleryIfOwningActive(items);
                     await this.softRefresh();
                     return;
@@ -3238,7 +3298,7 @@ class ExplorerApplet {
         return null;
     }
 
-    async _deliverToDesktop(items, navPath, operation) {
+    async _deliverToDesktop(items, navPath, operation, progress = null) {
         const folderId = this._getDesktopFolderIdFromPath(navPath);
         const folderShortcut = folderId ? { id: folderId, data: { vfsFolderId: folderId } } : null;
         const resolved = items.map(ref => this.items.find(i => i.id === ref.id) || ref);
@@ -3256,30 +3316,48 @@ class ExplorerApplet {
             i.targetKind === 'user-file' && !this._isVfsVirtualEntry(i)
         );
 
+        // each item (or one request for a group) under the progress dialog: counted as it lands, a
+        // failure asks Try Again / Skip / Cancel there; after Cancel the rest do nothing
+        const step = async (group, fn) => {
+            if (!group.length) return;
+            if (!progress) {
+                await fn();
+                return;
+            }
+            if (!progress.next()) return;
+            const info = group.map(i => this._progressItem(i));
+            await progress.attempt(info, fn);
+            progress.doneAll(info);
+        };
+
         const newShortcutIds = [];
         for (const item of nativeVirtual) {
-            const created = await this._createDesktopShortcutFromItem(item);
-            if (created?.id) newShortcutIds.push(created.id);
+            await step([item], async () => {
+                const created = await this._createDesktopShortcutFromItem(item);
+                if (created?.id) newShortcutIds.push(created.id);
+            });
         }
 
         for (const item of vfsVirtualEntries) {
-            if (this._isVirtualSurfaceItem(item)) {
-                const created = await this._createDesktopShortcutFromItem(item);
-                if (created?.id) newShortcutIds.push(created.id);
-            } else if (this._isUserFileLinkItem(item) && operation === 'cut') {
-                await vfsClient.deleteEntry(item.id);
-                await vfsClient.moveItems([{
-                    id: item.targetId,
-                    name: item.name,
-                    kind: item.kind,
-                    targetKind: 'user-file',
-                    targetId: item.targetId,
-                    workspaceId: item.workspaceId
-                }], this._resolveVfsPathForUserFiles(navPath));
-            }
-            if (operation === 'cut' && this._isVirtualSurfaceItem(item)) {
-                await vfsClient.deleteEntry(item.id);
-            }
+            await step([item], async () => {
+                if (this._isVirtualSurfaceItem(item)) {
+                    const created = await this._createDesktopShortcutFromItem(item);
+                    if (created?.id) newShortcutIds.push(created.id);
+                } else if (this._isUserFileLinkItem(item) && operation === 'cut') {
+                    await vfsClient.deleteEntry(item.id);
+                    await vfsClient.moveItems([{
+                        id: item.targetId,
+                        name: item.name,
+                        kind: item.kind,
+                        targetKind: 'user-file',
+                        targetId: item.targetId,
+                        workspaceId: item.workspaceId
+                    }], this._resolveVfsPathForUserFiles(navPath));
+                }
+                if (operation === 'cut' && this._isVirtualSurfaceItem(item)) {
+                    await vfsClient.deleteEntry(item.id);
+                }
+            });
         }
 
         if (folderShortcut && newShortcutIds.length) {
@@ -3289,7 +3367,7 @@ class ExplorerApplet {
         if (storedOrLiveShortcuts.length) {
             const refs = this._itemRefs(storedOrLiveShortcuts);
             if (operation === 'cut') {
-                await vfsClient.moveItems(refs, navPath);
+                await step(storedOrLiveShortcuts, () => vfsClient.moveItems(refs, navPath));
             } else {
                 const stored = storedOrLiveShortcuts.filter(i => this._isStoredShortcutItem(i));
                 const live = storedOrLiveShortcuts.filter(i => this._isLiveDesktopShortcutItem(i));
@@ -3302,24 +3380,26 @@ class ExplorerApplet {
                         if (!mode) return;
                         copyOptions.userFileCopyMode = mode;
                     }
-                    await vfsClient.copyItems(this._itemRefs(stored), navPath, copyOptions);
+                    await step(stored, () => vfsClient.copyItems(this._itemRefs(stored), navPath, copyOptions));
                 }
                 if (liveFolders.length) {
                     let copyOptions = {};
                     const mode = await this._resolveUserFileCopyMode(this._itemRefs(liveFolders), liveFolders);
                     if (!mode) return;
                     copyOptions.userFileCopyMode = mode;
-                    await vfsClient.copyItems(this._itemRefs(liveFolders), navPath, copyOptions);
+                    await step(liveFolders, () => vfsClient.copyItems(this._itemRefs(liveFolders), navPath, copyOptions));
                 }
                 const newIds = [];
                 for (const item of liveOther) {
-                    const sc = this._shortcutFromItem(item);
-                    const created = await desktopShortcuts.addShortcut({
-                        name: sc.name,
-                        type: sc.type,
-                        data: { ...sc.data }
+                    await step([item], async () => {
+                        const sc = this._shortcutFromItem(item);
+                        const created = await desktopShortcuts.addShortcut({
+                            name: sc.name,
+                            type: sc.type,
+                            data: { ...sc.data }
+                        });
+                        if (created?.id) newIds.push(created.id);
                     });
-                    if (created?.id) newIds.push(created.id);
                 }
                 if (folderShortcut && newIds.length) {
                     await desktopShortcuts.assignShortcutsToFolder(newIds, folderShortcut);
@@ -3331,8 +3411,9 @@ class ExplorerApplet {
             const refs = this._itemRefs(userFiles);
             const vfsPath = this._resolveVfsPathForUserFiles(navPath);
             const onDesktopRoot = this._isDesktopDestination(navPath) && !this._getDesktopFolderIdFromPath(navPath);
-            if (operation === 'cut') await vfsClient.moveItems(refs, vfsPath);
-            else await vfsClient.copyItems(refs, vfsPath);
+            await step(userFiles, () => (operation === 'cut'
+                ? vfsClient.moveItems(refs, vfsPath)
+                : vfsClient.copyItems(refs, vfsPath)));
             if (onDesktopRoot) {
                 showGlassToast('info', 'Explorer',
                     'Files were placed in the workspace home folder. The desktop surface shows shortcuts only.',
@@ -3346,13 +3427,13 @@ class ExplorerApplet {
         if (vfsFolders.length) {
             const refs = this._itemRefs(vfsFolders);
             if (operation === 'cut') {
-                await vfsClient.moveItems(refs, navPath);
+                await step(vfsFolders, () => vfsClient.moveItems(refs, navPath));
             } else {
                 let copyOptions = {};
                 const mode = await this._resolveUserFileCopyMode(refs, vfsFolders);
                 if (!mode) return;
                 copyOptions.userFileCopyMode = mode;
-                await vfsClient.copyItems(refs, navPath, copyOptions);
+                await step(vfsFolders, () => vfsClient.copyItems(refs, navPath, copyOptions));
             }
         }
     }
@@ -4427,8 +4508,13 @@ class ExplorerApplet {
             this._statusHint = `Uploading ${files.length} file(s)…`;
             this.renderStatusText();
         }
+        // a drop from the computer is a copy into the folder (Vista shows "Copying"); References and
+        // Notes ask what each file becomes over the dialog, as Vista asks over it; the Desktop folder
+        // takes no files (vfsImportRouter says so)
+        const folder = vfsImportRouter._parsePath(vfsPath).systemFolder;
+        const progress = folder === 'Desktop' ? null : this._beginProgress('copy', files, null, vfsPath);
         try {
-            await vfsImportRouter.routeFilesToPath(vfsPath, files);
+            await this._eachWithProgress(progress, files, (file) => vfsImportRouter.routeFilesToPath(vfsPath, [file]));
             if (showPlaceholders) {
                 await this.softRefresh();
             }
@@ -4436,6 +4522,7 @@ class ExplorerApplet {
             this._statusHint = err.message || 'Upload failed';
             this.renderStatusText();
         } finally {
+            if (progress) progress.finish();
             if (showPlaceholders) {
                 this._removeUploadPlaceholders(placeholderIds);
             } else {
@@ -4481,11 +4568,17 @@ class ExplorerApplet {
         const touchDesktop = this._touchesDesktop(navPath, dragItems);
         if (touchDesktop) this._markExplorerDesktopChange();
         this._setBusyState('paste');
+        let progress = null;
+        let moved = dragItems;
         try {
             if (this._isDesktopDestination(navPath)) {
-                await this._deliverToDesktop(dragItems, navPath, operation);
+                progress = this._beginProgress(operation === 'cut' ? 'move' : 'copy', dragItems, sourcePath, navPath);
+                await this._deliverToDesktop(dragItems, navPath, operation, progress);
             } else if (operation === 'cut') {
-                await vfsClient.moveItems(this._itemRefs(dragItems), navPath);
+                // one item per request, so Vista's progress dialog can follow (and Cancel can stop) the move
+                progress = this._beginProgress('move', dragItems, sourcePath, navPath);
+                moved = await this._eachWithProgress(progress, dragItems,
+                    (item) => vfsClient.moveItems(this._itemRefs([item]), navPath));
             } else {
                 const refs = this._itemRefs(dragItems);
                 let copyOptions = {};
@@ -4496,7 +4589,9 @@ class ExplorerApplet {
                     if (!mode) return false;
                     copyOptions.userFileCopyMode = mode;
                 }
-                await vfsClient.copyItems(refs, navPath, copyOptions);
+                progress = this._beginProgress('copy', dragItems, sourcePath, navPath);
+                await this._eachWithProgress(progress, dragItems,
+                    (item) => vfsClient.copyItems(this._itemRefs([item]), navPath, copyOptions));
             }
 
             if (touchDesktop) this._refreshDesktop();
@@ -4511,7 +4606,7 @@ class ExplorerApplet {
             if (navPath === this.currentPath) {
                 await this.softRefresh();
             } else if (fromHere && operation === 'cut') {
-                const movedIds = new Set(dragItems.map(i => i.id));
+                const movedIds = new Set(moved.map(i => i.id));
                 this.items = this.items.filter(i => !movedIds.has(i.id));
                 this.loadedOffset = this._serverItemCount();
                 if (this.grid) this.grid.replaceItems(this.items);
@@ -4526,8 +4621,128 @@ class ExplorerApplet {
             showGlassToast('error', 'Explorer', err.message || 'Move failed', false, 5000);
             return false;
         } finally {
+            if (progress) progress.finish();
             await this._restoreStatusAfterOperation();
         }
+    }
+
+    /**
+     * Vista's progress dialog for a transfer (fileOperationProgress.js), up as the operation starts;
+     * null off the desktop (no dialog: the callers' toasts speak instead). A place is a VFS path or
+     * { name, path }.
+     */
+    _beginProgress(op, items, sourcePath, destPath) {
+        if (typeof fileOperationProgress === 'undefined' || !fileOperationProgress.available()) return null;
+        const progress = fileOperationProgress.begin({
+            op,
+            items: (items || []).map(i => this._progressItem(i)),
+            from: this._progressPlace(sourcePath),
+            to: this._progressPlace(destPath)
+        });
+        // a folder's path carries its id: the server names it as the address bar does
+        for (const [which, path] of [['from', sourcePath], ['to', destPath]]) {
+            if (!path || typeof path !== 'string' || path === this.currentPath) continue;
+            vfsClient.getPathStats(path).then((resp) => {
+                const stats = resp?.stats || resp;
+                if (stats?.displayName) progress.setPlace(which, { name: stats.displayName, path: stats.displayPath || path });
+            }).catch(() => {});
+        }
+        return progress;
+    }
+
+    /** Name and size for the dialog: a clipboard / drag ref carries no size, the listed item does. */
+    _progressItem(item) {
+        const listed = item && item.id !== undefined ? this.items.find(i => i.id === item.id) : null;
+        const src = listed || item || {};
+        return { name: src.name, size: Number(src.size) || 0 };
+    }
+
+    /** "<b>Desktop</b> (/Workspaces/Main/Desktop)": a folder as the address bar names it. */
+    _progressPlace(path) {
+        if (!path) return null;
+        if (typeof path === 'object') return path;
+        const stats = path === this.currentPath ? this._pathStats : null;
+        return {
+            name: stats?.displayName || this._fallbackDisplayName(path),
+            path: stats?.displayPath || this._fallbackDisplayPath(path)
+        };
+    }
+
+    /**
+     * fn(item) for each item in turn under the progress dialog: a failure asks Try Again / Skip /
+     * Cancel there, Cancel stops before the next item. Without the dialog a failure toasts
+     * failText (or rethrows when there is none). Resolves the items done.
+     */
+    async _eachWithProgress(progress, items, fn, failText) {
+        const done = [];
+        for (const item of items) {
+            if (progress && !progress.next()) break;
+            if (progress) {
+                const r = await progress.attempt(this._progressItem(item), () => fn(item));
+                if (r.ok) done.push(item);
+                progress.done(this._progressItem(item));
+                continue;
+            }
+            try {
+                await fn(item);
+                done.push(item);
+            } catch (err) {
+                if (!failText) throw err;
+                showGlassToast('error', 'Explorer', err.message || failText, false, 5000);
+            }
+        }
+        return done;
+    }
+
+    /** "/Workspaces/<id>/Pictures" or ".../Scraps": where a gallery image lives, for the dialog. */
+    _imagePlacePath(wsId, scraps) {
+        return wsId ? `/Workspaces/${wsId}/${scraps ? 'Scraps' : 'Pictures'}` : null;
+    }
+
+    /**
+     * fn(wsId, bucket, filenames) over gallery images grouped by owning workspace and kind ('files'
+     * / 'scraps'), in chunks so the progress dialog moves and Cancel stops between them; fn may
+     * return how many it acted on. Failures as _eachWithProgress. Resolves the count acted on.
+     */
+    async _eachImageBatch(progress, items, fn, failText) {
+        const batches = new Map();
+        for (const entry of items || []) {
+            const filename = this._explorerResolvedFilename(entry);
+            if (!filename) continue;
+            const wsId = this._owningWorkspaceId(entry);
+            const bucket = entry.targetKind === 'scrap' ? 'scraps' : 'files';
+            const key = `${wsId}\n${bucket}`;
+            if (!batches.has(key)) batches.set(key, { wsId, bucket, entries: [], filenames: [] });
+            batches.get(key).entries.push(entry);
+            batches.get(key).filenames.push(filename);
+        }
+        // fileOperationProgress.batches: as many requests as the dialog needs to move, no more
+        const size = Math.max(1, Math.ceil((items || []).length / 20));
+        let acted = 0;
+        for (const b of batches.values()) {
+            for (let i = 0; i < b.filenames.length; i += size) {
+                if (progress && !progress.next()) return acted;
+                const filenames = b.filenames.slice(i, i + size);
+                const info = b.entries.slice(i, i + size).map(e => this._progressItem(e));
+                const call = async () => {
+                    const n = await fn(b.wsId, b.bucket, filenames);
+                    return typeof n === 'number' ? n : filenames.length;
+                };
+                if (progress) {
+                    const r = await progress.attempt(info, call);
+                    if (r.ok) acted += r.value;
+                    progress.doneAll(info);
+                    continue;
+                }
+                try {
+                    acted += await call();
+                } catch (err) {
+                    if (!failText) throw err;
+                    showGlassToast('error', 'Explorer', err.message || failText, false, 5000);
+                }
+            }
+        }
+        return acted;
     }
 
     async moveItemsToPath(dragItems, navPath) {
@@ -4593,13 +4808,19 @@ class ExplorerApplet {
             const file = input.files?.[0];
             input.remove();
             if (!file) return;
+            // an upload over the file: Copying, as Vista copies a file over another
+            const progress = this._beginProgress('copy', [file], null, this.currentPath);
             try {
-                const base64 = await fileToBase64(file);
-                await vfsClient.replaceFile(item.targetId, base64, file.type || item.mimeType);
+                const done = await this._eachWithProgress(progress, [file], async () => {
+                    const base64 = await fileToBase64(file);
+                    await vfsClient.replaceFile(item.targetId, base64, file.type || item.mimeType);
+                });
                 await this.softRefresh();
-                showGlassToast('success', 'Explorer', 'File replaced', false, 3000);
+                if (done.length && !progress) showGlassToast('success', 'Explorer', 'File replaced', false, 3000);
             } catch (err) {
                 showGlassToast('error', 'Explorer', err.message || 'Replace failed', false, 5000);
+            } finally {
+                if (progress) progress.finish();
             }
         });
         document.body.appendChild(input);
@@ -4682,17 +4903,17 @@ class ExplorerApplet {
         const trashItems = sel.filter(i => i.isTrashItem);
         if (!trashItems.length) return;
 
+        // restoring moves the items back out of Trash (Vista: "Moving")
+        const progress = this._beginProgress('move', trashItems, this.currentPath, null);
         let restored = 0;
-        for (const trashItem of trashItems) {
-            try {
-                const trashId = trashItem.trashItemId || trashItem.id;
-                await vfsClient.restoreFromTrash(trashId);
-                restored += 1;
-            } catch (err) {
-                showGlassToast('error', 'Explorer', err.message || 'Restore failed', false, 5000);
-            }
+        try {
+            restored = (await this._eachWithProgress(progress, trashItems,
+                (trashItem) => vfsClient.restoreFromTrash(trashItem.trashItemId || trashItem.id),
+                'Restore failed')).length;
+        } finally {
+            if (progress) progress.finish();
         }
-        if (restored) {
+        if (restored && !progress) {
             showGlassToast(
                 'success',
                 'Explorer',
@@ -4701,6 +4922,8 @@ class ExplorerApplet {
                 4000,
                 '<i class="fas fa-rotate-left"></i>'
             );
+        }
+        if (restored) {
             if (typeof loadGallery === 'function') loadGallery(true);
             await this.softRefresh();
         }
@@ -4722,21 +4945,42 @@ class ExplorerApplet {
             )
             : true;
         if (!confirmed) return;
+        // one request for the lot: the dialog counts what Trash holds (listed when it is not the
+        // open folder) and fills when the server answers
+        let trashed = this._isTrashPath(this.currentPath) ? this.items.filter(i => i.isTrashItem) : null;
+        if (!trashed) {
+            try {
+                const listing = await vfsClient.listDirectory(`/Workspaces/${wsId}/Trash`, { limit: 10000 });
+                trashed = (listing?.items || []).filter(i => i.isTrashItem !== false);
+            } catch (_) {
+                trashed = [];
+            }
+        }
+        const progress = this._beginProgress('delete', trashed, `/Workspaces/${wsId}/Trash`, null);
         try {
-            const resp = await vfsClient.emptyTrash(wsId);
-            const count = resp?.count || 0;
-            showGlassToast(
-                'success',
-                'Explorer',
-                count ? `Emptied Trash (${count} item(s) deleted)` : 'Trash is already empty',
-                false,
-                4000,
-                this._trashToastIcon()
-            );
+            const empty = () => vfsClient.emptyTrash(wsId);
+            if (progress) {
+                const r = await progress.attempt(trashed.map(i => this._progressItem(i)), empty);
+                progress.doneAll(trashed.map(i => this._progressItem(i)));
+                if (!r.ok) return;
+            } else {
+                const resp = await empty();
+                const count = resp?.count || 0;
+                showGlassToast(
+                    'success',
+                    'Explorer',
+                    count ? `Emptied Trash (${count} item(s) deleted)` : 'Trash is already empty',
+                    false,
+                    4000,
+                    this._trashToastIcon()
+                );
+            }
             if (typeof loadGallery === 'function') loadGallery(true);
             await this.softRefresh();
         } catch (err) {
             showGlassToast('error', 'Explorer', err.message || 'Empty Trash failed', false, 5000);
+        } finally {
+            if (progress) progress.finish();
         }
     }
 
@@ -4760,33 +5004,33 @@ class ExplorerApplet {
                 : true;
             if (!confirmed) return;
 
+            const trashSel = sel.filter(i => i.isTrashItem);
+            const progress = this._beginProgress('delete', trashSel, this.currentPath, null);
             let deleted = 0;
-            for (const item of sel) {
-                if (!item.isTrashItem) continue;
-                try {
-                    await vfsClient.permanentlyDelete([{
-                        id: item.id,
-                        trashItemId: item.trashItemId || item.id,
-                        isTrashItem: true,
-                        targetKind: item.targetKind,
-                        targetId: item.targetId,
-                        name: item.name,
-                        workspaceId: item.workspaceId
-                    }], this.currentPath);
-                    deleted += 1;
-                } catch (err) {
-                    showGlassToast('error', 'Explorer', err.message || 'Delete failed', false, 5000);
-                }
+            try {
+                deleted = (await this._eachWithProgress(progress, trashSel, (item) => vfsClient.permanentlyDelete([{
+                    id: item.id,
+                    trashItemId: item.trashItemId || item.id,
+                    isTrashItem: true,
+                    targetKind: item.targetKind,
+                    targetId: item.targetId,
+                    name: item.name,
+                    workspaceId: item.workspaceId
+                }], this.currentPath), 'Delete failed')).length;
+            } finally {
+                if (progress) progress.finish();
             }
             if (deleted) {
-                showGlassToast(
-                    'success',
-                    'Explorer',
-                    deleted === 1 ? `"${sel[0].name}" permanently deleted` : `${deleted} item(s) permanently deleted`,
-                    false,
-                    4000,
-                    '<i class="fas fa-trash"></i>'
-                );
+                if (!progress) {
+                    showGlassToast(
+                        'success',
+                        'Explorer',
+                        deleted === 1 ? `"${sel[0].name}" permanently deleted` : `${deleted} item(s) permanently deleted`,
+                        false,
+                        4000,
+                        '<i class="fas fa-trash"></i>'
+                    );
+                }
                 if (typeof loadGallery === 'function') loadGallery(true);
                 await this.softRefresh();
             }
@@ -4817,25 +5061,29 @@ class ExplorerApplet {
         // Delete key (no Shift): remove shortcut links only — never trash underlying files
         if (fromKeyboard && !permanent && shortcutItems.length && !folderItems.length && !trashableItems.length) {
             let desktopTouched = false;
-            for (const item of shortcutItems) {
-                try {
+            const progress = this._beginProgress('delete', shortcutItems, this.currentPath, null);
+            let removed = [];
+            try {
+                removed = await this._eachWithProgress(progress, shortcutItems, async (item) => {
                     await this._removeShortcutItem(item);
                     if (this._isLiveDesktopShortcutItem(item)) desktopTouched = true;
-                } catch (err) {
-                    showGlassToast('error', 'Explorer', err.message || 'Remove shortcut failed', false, 5000);
-                }
+                }, 'Remove shortcut failed');
+            } finally {
+                if (progress) progress.finish();
             }
             if (desktopTouched) this._refreshDesktop();
-            showGlassToast(
-                'success',
-                'Explorer',
-                shortcutItems.length === 1
-                    ? `Shortcut "${shortcutItems[0].name}" removed`
-                    : `${shortcutItems.length} shortcut(s) removed`,
-                false,
-                4000,
-                '<i class="fas fa-unlink"></i>'
-            );
+            if (removed.length && !progress) {
+                showGlassToast(
+                    'success',
+                    'Explorer',
+                    removed.length === 1
+                        ? `Shortcut "${removed[0].name}" removed`
+                        : `${removed.length} shortcut(s) removed`,
+                    false,
+                    4000,
+                    '<i class="fas fa-unlink"></i>'
+                );
+            }
             await this.softRefresh();
             return;
         }
@@ -4918,98 +5166,93 @@ class ExplorerApplet {
         let skipped = 0;
         let galleryTouched = false;
 
-        for (const item of sel) {
-            if (item.protected || item.system) {
-                skipped += 1;
-                continue;
-            }
-            if (this._isFolderShortcutItem(item)) {
-                try {
-                    if (typeof desktopShortcuts !== 'undefined') {
-                        await desktopShortcuts.deleteFolderShortcut(item.id);
-                    } else {
-                        await this._permanentlyDeleteExplorerItem(item);
-                    }
-                    if (this._isLiveDesktopShortcutItem(item)) desktopTouched = true;
-                    deleted += 1;
-                } catch (err) {
-                    showGlassToast('error', 'Explorer', err.message || 'Delete folder failed', false, 5000);
-                    skipped += 1;
-                }
-                continue;
-            }
-            if (!permanent && this._shouldRemoveShortcutOnly(item)) {
-                try {
-                    await this._removeShortcutItem(item);
-                    if (this._isLiveDesktopShortcutItem(item)) desktopTouched = true;
-                    shortcutsRemoved += 1;
-                } catch (err) {
-                    showGlassToast('error', 'Explorer', err.message || 'Remove shortcut failed', false, 5000);
-                    skipped += 1;
-                }
-                continue;
-            }
-            if (!permanent && this._canMoveToTrash(item)) {
-                try {
-                    await vfsClient.moveToTrash(this._itemRefs([item]), this.currentPath);
-                    trashed += 1;
-                    if (['image', 'scrap'].includes(item.targetKind)) galleryTouched = true;
-                } catch (err) {
-                    showGlassToast('error', 'Explorer', err.message || 'Move to Trash failed', false, 5000);
-                    skipped += 1;
-                }
-                continue;
-            }
-            try {
-                const touch = await this._permanentlyDeleteExplorerItem(item);
-                deleted += 1;
-                if (touch === 'desktop') desktopTouched = true;
-                if (touch === 'gallery') galleryTouched = true;
-            } catch (err) {
-                showGlassToast('error', 'Explorer', err.message || 'Delete failed', false, 5000);
-                skipped += 1;
-            }
-        }
-
-        const acted = deleted + trashed + shortcutsRemoved;
-        if (skipped && !acted) {
+        // protected and system items stay (Vista leaves them out of the operation)
+        const deletable = sel.filter(i => !i.protected && !i.system);
+        skipped += sel.length - deletable.length;
+        if (!deletable.length) {
             showGlassToast('warning', 'Explorer', 'The selected items cannot be deleted from here.', false, 4000);
             return;
         }
-        if (skipped && acted) {
-            showGlassToast('warning', 'Explorer', `${skipped} item(s) could not be deleted.`, false, 4000);
+        // Vista's progress dialog: Recycling when the Delete key moves items to Trash, Deleting otherwise
+        const progress = this._beginProgress(permanent || !trashableItems.length ? 'delete' : 'recycle', deletable, this.currentPath, null);
+        const deleteOne = async (item) => {
+            if (this._isFolderShortcutItem(item)) {
+                if (typeof desktopShortcuts !== 'undefined') {
+                    await desktopShortcuts.deleteFolderShortcut(item.id);
+                } else {
+                    await this._permanentlyDeleteExplorerItem(item);
+                }
+                if (this._isLiveDesktopShortcutItem(item)) desktopTouched = true;
+                deleted += 1;
+                return;
+            }
+            if (!permanent && this._shouldRemoveShortcutOnly(item)) {
+                await this._removeShortcutItem(item);
+                if (this._isLiveDesktopShortcutItem(item)) desktopTouched = true;
+                shortcutsRemoved += 1;
+                removedShortcuts.push(item);
+                return;
+            }
+            if (!permanent && this._canMoveToTrash(item)) {
+                await vfsClient.moveToTrash(this._itemRefs([item]), this.currentPath);
+                trashed += 1;
+                if (['image', 'scrap'].includes(item.targetKind)) galleryTouched = true;
+                return;
+            }
+            const touch = await this._permanentlyDeleteExplorerItem(item);
+            deleted += 1;
+            if (touch === 'desktop') desktopTouched = true;
+            if (touch === 'gallery') galleryTouched = true;
+        };
+        const removedShortcuts = [];
+        try {
+            const done = await this._eachWithProgress(progress, deletable, deleteOne, 'Delete failed');
+            if (!progress) skipped += deletable.length - done.length;
+        } finally {
+            if (progress) progress.finish();
         }
-        if (trashed) {
-            showGlassToast(
-                'success',
-                'Explorer',
-                trashed === 1 ? 'Moved 1 item to Trash' : `Moved ${trashed} item(s) to Trash`,
-                false,
-                4000,
-                this._trashToastIcon()
-            );
+
+        const acted = deleted + trashed + shortcutsRemoved;
+        if (skipped && !acted && !progress) {
+            showGlassToast('warning', 'Explorer', 'The selected items cannot be deleted from here.', false, 4000);
+            return;
         }
-        if (shortcutsRemoved) {
-            showGlassToast(
-                'success',
-                'Explorer',
-                shortcutsRemoved === 1
-                    ? `Shortcut "${shortcutItems[0]?.name || 'item'}" removed`
-                    : `${shortcutsRemoved} shortcut(s) removed`,
-                false,
-                4000,
-                '<i class="fas fa-unlink"></i>'
-            );
-        }
-        if (deleted && permanent) {
-            showGlassToast(
-                'success',
-                'Explorer',
-                deleted === 1 ? 'Item permanently deleted' : `${deleted} item(s) permanently deleted`,
-                false,
-                4000,
-                '<i class="fas fa-trash"></i>'
-            );
+        if (!progress) {
+            if (skipped && acted) {
+                showGlassToast('warning', 'Explorer', `${skipped} item(s) could not be deleted.`, false, 4000);
+            }
+            if (trashed) {
+                showGlassToast(
+                    'success',
+                    'Explorer',
+                    trashed === 1 ? 'Moved 1 item to Trash' : `Moved ${trashed} item(s) to Trash`,
+                    false,
+                    4000,
+                    this._trashToastIcon()
+                );
+            }
+            if (shortcutsRemoved) {
+                showGlassToast(
+                    'success',
+                    'Explorer',
+                    shortcutsRemoved === 1
+                        ? `Shortcut "${removedShortcuts[0]?.name || 'item'}" removed`
+                        : `${shortcutsRemoved} shortcut(s) removed`,
+                    false,
+                    4000,
+                    '<i class="fas fa-unlink"></i>'
+                );
+            }
+            if (deleted && permanent) {
+                showGlassToast(
+                    'success',
+                    'Explorer',
+                    deleted === 1 ? 'Item permanently deleted' : `${deleted} item(s) permanently deleted`,
+                    false,
+                    4000,
+                    '<i class="fas fa-trash"></i>'
+                );
+            }
         }
         if (desktopTouched) this._refreshDesktop();
         if (galleryTouched && typeof loadGallery === 'function') loadGallery(true);

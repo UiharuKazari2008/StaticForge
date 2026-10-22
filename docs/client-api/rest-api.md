@@ -1073,7 +1073,7 @@ Writes require `confirm: true`. Soft-delete also requires `confirmText: "DELETE"
 | Method | Path | Notes |
 |--------|------|-------|
 | GET | `/mail-exchange/mailboxes` | List mailboxes |
-| GET | `/mail-exchange/mailboxes/:owner` | Get one mailbox plus extra intake addresses |
+| GET | `/mail-exchange/mailboxes/:owner` | Get one mailbox plus extra intake addresses. Stored `inboundEnabled` / `outboundEnabled`; `relayInboundEnabled` / `relayOutboundEnabled` only if LANTIS differs |
 | POST | `/mail-exchange/mailboxes` | Create `{ owner, dept, displayName?, confirm }` — live immediately |
 | PATCH | `/mail-exchange/mailboxes/:owner` | `{ displayName?, dept?, newOwner?, confirm }` |
 | POST | `/mail-exchange/mailboxes/:owner/disable` | `{ enabled, confirm }` |
@@ -1091,8 +1091,9 @@ Writes require `confirm: true`. Soft-delete also requires `confirmText: "DELETE"
 | GET | `/mail-exchange/signatures/:owner` | |
 | PUT | `/mail-exchange/signatures/:owner` | Sanitized HTML |
 | GET | `/mail-exchange/toggles` | Global + per-mailbox + per-service |
-| PUT | `/mail-exchange/toggles` | PATCH-like. PUTs LANTIS first (admin token + `actor`, not `confirm`); local store writes only on relay success. Relay `400`: `UNKNOWN_MAILBOX` / `UNKNOWN_SERVICE` / `BAD_BODY` / `ACTOR_REQUIRED` |
+| PUT | `/mail-exchange/toggles` | PATCH-like. PUTs LANTIS first (admin token + `actor`, not `confirm`); local store writes only on relay success. Per-mailbox inbound/outbound also writes the `exchange_mailbox` row. Relay `400`: `UNKNOWN_MAILBOX` / `UNKNOWN_SERVICE` / `BAD_BODY` / `ACTOR_REQUIRED` |
 | GET | `/mail-exchange/status` | Intake + relay dashboard (degrades if LANTIS is down) |
+| POST | `/mail-exchange/recipients/resync` | Replace LANTIS `virtual_known` with the full active mailbox/alias/list set. `{ confirm }`. `PUT /v1/recipients` is pending — `404` fails soft and is logged |
 | GET | `/mail-exchange/spam` | Tsubame: all mailboxes. Yukimi: her Spam only |
 | POST | `/mail-exchange/spam/move` | Rescue/purge via mailroom tools |
 | GET | `/mail-exchange/mailboxes/:owner/notify-forward` | `{ mailbox, address }` |

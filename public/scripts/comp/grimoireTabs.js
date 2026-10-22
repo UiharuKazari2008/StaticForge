@@ -47,7 +47,7 @@
             const wrap = area ? area.closest('.tag-wiki-search-display') : null;
             this.wrapClass = wrap ? wrap.className : 'tag-wiki-search-display form-section-scroll selectable';
             this.areaClass = area ? area.className : 'tag-wiki-display-content';
-            const rightArea = document.getElementById('tagWikiSearchRightDisplay');
+            const rightArea = typeof host.part === 'function' ? host.part('tagWikiSearchRightDisplay') : document.getElementById('tagWikiSearchRightDisplay');
             const first = this.makeTab(area, wrap);
             first.rightArea = rightArea;
             first.rightWrap = rightArea ? rightArea.closest('.tag-wiki-search-display') : null;
@@ -416,15 +416,15 @@
     }
 
     /**
-     * Searches, desktop shortcuts and links from other apps open as a new tab in the Grimoire window
-     * instead of a window of their own (Yukimi, 2026-10-22). target: { address } (any Grimoire address or
+     * Searches, desktop shortcuts and links from other apps open as a new tab in the Grimoire window used
+     * last (#615) instead of a window of their own (Yukimi, 2026-10-22). target: { address } (any Grimoire address or
      * web URL), { url, session } (Alchemy), or { tag } (a wiki page). A closed window opens and its tab takes
      * the page. Without the tab strip (classic theme, no desktop) it returns false and the caller keeps its
      * old way. Explicit "Open in New Window" commands do not come here.
      */
     function grimoireOpenInTab(target) {
-        // tagWikiSearchModal: public/scripts/comp/tagWikiSearchModal.js
-        const host = root.tagWikiSearchModal;
+        // the window used last (#615; grimoireActiveWindow: public/scripts/comp/tagWikiSearchModal.js)
+        const host = typeof root.grimoireActiveWindow === 'function' ? root.grimoireActiveWindow() : root.tagWikiSearchModal;
         const chrome = host && host.ieChrome;
         if (!host || !host.modal || !host.tabs || !chrome || !chrome.isOn()) return false;
         const o = Object.assign({}, target);

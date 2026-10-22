@@ -5,6 +5,7 @@ const path = require('path');
 const { realClientIp, trustedProxiesFromResources } = require('./clientAddress');
 const siteAccess = require('./siteAccess');
 const siteHomepage = require('./siteHomepageStorage');
+const siteHomepagePreview = require('./siteHomepagePreview');
 
 const DOOR_FAIL_WINDOW_MS = 60 * 60 * 1000;
 const DOOR_FAIL_MAX = 10;
@@ -66,6 +67,9 @@ function isSiteGateExempt(req, globalResources) {
     if (method === 'POST' && p === '/') return true;
     if (method === 'GET' && p === '/sw.js') return true;
 
+    // Admin DSAP iframe preview (auth on route; still needs gate skip)
+    if (p.startsWith('/site-homepage-preview/')) return true;
+
     return false;
 }
 
@@ -89,7 +93,7 @@ function serveHomepage404(siteDir, res) {
     return true;
 }
 
-function handleDoorPost(req, res, globalResources, cfg, siteDir, doorMeta) {
+function handleDoorPost(req, res, globalResources, cfg, siteDir, doorMeta, q) {
     const ip = clientRealIp(req, globalResources);
     if (recordDoorFailure(ip)) {
         const noResult = siteHomepage.resolveSiteFile(siteDir, doorMeta.noResultPath);
@@ -101,11 +105,22 @@ function handleDoorPost(req, res, globalResources, cfg, siteDir, doorMeta) {
         return;
     }
 
-    const q = req.body && (req.body.q != null ? String(req.body.q) : '');
-    const candidate = siteAccess.computeAccessHash(cfg.pepper, q);
+    q = q != null ? String(q) : '';
+    const phrase = siteAccess.normalizeAccessPhrase(q);
+    if (q && !phrase) {
+        const noResult = siteHomepage.resolveSiteFile(siteDir, doorMeta.noResultPath);
+        if (noResult.kind === 'file') {
+            sendHomepageFile(res, noResult, 200);
+        } else {
+            serveHomepage404(siteDir, res);
+        }
+        return;
+    }
+    const candidate = siteAccess.computeAccessHash(cfg.pepper, phrase || '');
     if (candidate && siteAccess.validateAccessToken(candidate, cfg)) {
         resetDoorFailures(ip);
         siteAccess.setDskCookie(req, res, cfg.hash);
+        // Passphrase stays in POST body only; the stored access hash may go in the URL.
         res.redirect(303, `/launch?k=${encodeURIComponent(cfg.hash)}`);
         return;
     }
@@ -131,6 +146,14 @@ function createSiteGateMiddleware(globalResources, projectRoot) {
             return next();
         }
 
+        // Authenticated Dreamscape session bypasses the cover (gate runs after express-session).
+        if (req.session && req.session.authenticated === true) {
+            if (cfg.hash) {
+                siteAccess.setDskCookie(req, res, cfg.hash);
+            }
+            return next();
+        }
+
         let token = siteAccess.parseAccessTokenFromRequest(req);
         if (token && siteAccess.validateAccessToken(token, cfg)) {
             siteAccess.setDskCookie(req, res, cfg.hash);
@@ -146,9 +169,9 @@ function createSiteGateMiddleware(globalResources, projectRoot) {
             return next();
         }
 
-        const siteDir = siteHomepage.installedDir(projectRoot, cfg.homepage);
-        if (!fs.existsSync(siteDir)) {
-            res.status(503).type('text/plain').send('Site homepage is not installed');
+        const siteDir = siteHomepage.coverSiteDir(projectRoot, cfg.homepage);
+        if (!siteDir || !fs.existsSync(siteDir)) {
+            res.status(503).type('text/plain').send('Cover site folder missing (resources/site-homepages/' + cfg.homepage + ')');
             return;
         }
 
@@ -156,8 +179,9 @@ function createSiteGateMiddleware(globalResources, projectRoot) {
         const urlPath = (req.path || '/').split('?')[0] || '/';
         const doorMeta = siteHomepage.readDoorMeta(siteDir);
 
-        if (method === 'POST' && urlPath === doorMeta.postPath) {
-            handleDoorPost(req, res, globalResources, cfg, siteDir, doorMeta);
+        const doorPhrase = siteHomepage.extractDoorPhrase(req, doorMeta);
+        if (doorPhrase !== undefined) {
+            handleDoorPost(req, res, globalResources, cfg, siteDir, doorMeta, doorPhrase);
             return;
         }
 
@@ -257,34 +281,57 @@ function attachSiteGateWebUpgrade(server, globalResources, sessionStore, session
     });
 }
 
-function mountSiteHomepagePreview(app, globalResources, projectRoot, authMiddleware) {
-    app.get('/site-homepage-preview/:slug/*', authMiddleware, (req, res, next) => {
-        if (req.userType !== 'admin' && !(req.session && req.session.userType === 'admin')) {
-            return res.status(403).json({ error: 'Admin access required' });
-        }
+function siteHomepagePreviewAccess(globalResources) {
+    return function siteHomepagePreviewAccessMiddleware(req, res, next) {
         const slug = req.params.slug;
         if (!siteHomepage.isSafeSlug(slug)) {
             return res.status(400).json({ error: 'Invalid slug' });
         }
-        const tail = req.params[0] || 'index.html';
-        const siteDir = siteHomepage.installedDir(projectRoot, slug);
-        if (!fs.existsSync(siteDir)) {
-            const avail = path.join(siteHomepage.availableDir(projectRoot), slug);
-            if (!fs.existsSync(avail)) {
-                return res.status(404).json({ error: 'Homepage not found' });
-            }
-            siteHomepage.installHomepage(projectRoot, slug);
+        if (siteHomepagePreview.requestIsAdminPreview(req)) {
+            return next();
         }
-        const urlPath = '/' + tail.replace(/^\/+/, '');
-        const resolved = siteHomepage.resolveSiteFile(siteHomepage.installedDir(projectRoot, slug), urlPath);
-        if (resolved.kind === 'file') {
-            return sendHomepageFile(res, resolved, 200);
+        const sessionVal = siteHomepagePreview.parseSprevCookie(req);
+        if (siteHomepagePreview.verifyPreviewSession(globalResources, slug, sessionVal)) {
+            return next();
         }
-        if (resolved.kind === '404') {
-            return sendHomepageFile(res, resolved, 404);
+        const ticket = req.query && req.query.t != null ? String(req.query.t) : '';
+        if (ticket && siteHomepagePreview.verifyPreviewTicket(globalResources, slug, ticket)) {
+            siteHomepagePreview.setPreviewSessionCookie(req, res, globalResources, slug);
+            return next();
         }
-        return next();
-    });
+        return res.status(403).type('text/plain; charset=utf-8').send('Preview access required');
+    };
+}
+
+function serveSiteHomepagePreviewFile(req, res, projectRoot, next) {
+    const slug = req.params.slug;
+    if (!siteHomepage.isSafeSlug(slug)) {
+        return res.status(400).json({ error: 'Invalid slug' });
+    }
+    const hit = siteHomepage.resolvePreviewSiteDir(projectRoot, slug);
+    if (!hit) {
+        return res.status(404).json({ error: 'Homepage not found' });
+    }
+    const tail = req.params[0];
+    const urlPath = tail ? '/' + String(tail).replace(/^\/+/, '') : '/';
+    const resolved = siteHomepage.resolveSiteFile(hit.siteDir, urlPath);
+    if (resolved.kind === 'file') {
+        return sendHomepageFile(res, resolved, 200);
+    }
+    if (resolved.kind === '404') {
+        return sendHomepageFile(res, resolved, 404);
+    }
+    return next();
+}
+
+function mountSiteHomepagePreview(app, globalResources, projectRoot) {
+    const root = projectRoot || path.join(__dirname, '..');
+    const access = siteHomepagePreviewAccess(globalResources);
+    const handler = (req, res, next) => serveSiteHomepagePreviewFile(req, res, root, next);
+    // No authMiddleware: Alchemy's server-side Chromium has no Dreamscape session cookie.
+    // Admin mints a short-lived ?t= ticket over WS; follow-up assets use the sprev cookie.
+    app.get('/site-homepage-preview/:slug', access, handler);
+    app.get('/site-homepage-preview/:slug/*', access, handler);
 }
 
 function buildDreamscapeManifestJson(accessHash, staticManifest) {

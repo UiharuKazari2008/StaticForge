@@ -20,6 +20,7 @@ const DEFAULT_INBOUND_PORT = 2525;
 // vlan10 source toward 192.168.255.1. Do not listen on 0.0.0.0; override inbound.bind if this host uses another NIC.
 const DEFAULT_INBOUND_BIND = '192.168.200.101';
 const DEFAULT_ALLOW_FROM = Object.freeze(['192.168.255.1']);
+const DEFAULT_RECOVERY_RELAY_PEERS = Object.freeze([]);
 const DEFAULT_MAX_CONNECTIONS = 16;
 const DEFAULT_OUTBOUND_HOST = '192.168.255.1';
 const DEFAULT_STARTTLS_PORT = 587;
@@ -93,6 +94,11 @@ function getSecurePassword() {
     }
 }
 
+function cleanPeerList(value) {
+    if (!Array.isArray(value)) return [];
+    return value.map((item) => String(item || '').trim()).filter(Boolean);
+}
+
 function resolveConfig(extra) {
     const raw = Object.assign({}, getConfigSource(), extra || {});
     const inboundCfg = raw.inbound && typeof raw.inbound === 'object' ? raw.inbound : {};
@@ -156,6 +162,7 @@ function resolveConfig(extra) {
                 : inbound.DEFAULT_MAX_DATA_BYTES,
             tls: resolveInboundTlsConfig(inboundCfg.tls)
         },
+        recoveryRelayPeers: cleanPeerList(raw.recoveryRelayPeers),
         spam: spam.resolveSpamConfig(raw.spam),
         outbound: {
             host: outbound.host ? String(outbound.host) : DEFAULT_OUTBOUND_HOST,
@@ -610,6 +617,9 @@ function startInbound(options) {
     const cfg = resolveConfig(options && options.config);
     const frozenMapping = options && options.mapping;
     const allowFrom = (options && options.allowFrom) || cfg.inbound.allowFrom;
+    const recoveryRelayPeers = options && Object.prototype.hasOwnProperty.call(options, 'recoveryRelayPeers')
+        ? cleanPeerList(options.recoveryRelayPeers)
+        : cfg.recoveryRelayPeers;
     const port = options && options.port != null ? options.port : cfg.inbound.port;
     const bind = (options && options.bind) || cfg.inbound.bind;
     const deliver = options && options.deliver;
@@ -624,6 +634,7 @@ function startInbound(options) {
     }
     const sessionOpts = {
         allowFrom,
+        recoveryRelayPeers,
         get mapping() {
             return frozenMapping || resolveConfig(options && options.config).mapping;
         },
@@ -634,7 +645,8 @@ function startInbound(options) {
         maxCommandLine: options && options.maxCommandLine,
         maxDataLine: options && options.maxDataLine,
         spam: (options && options.spam) || cfg.spam,
-        tls: tlsContext
+        tls: tlsContext,
+        log: (options && options.log) || ((message) => logInfo(message))
     };
 
     return new Promise((resolve, reject) => {
@@ -729,6 +741,7 @@ module.exports = {
     DEFAULT_INBOUND_PORT,
     DEFAULT_INBOUND_BIND,
     DEFAULT_ALLOW_FROM,
+    DEFAULT_RECOVERY_RELAY_PEERS,
     DEFAULT_MAX_CONNECTIONS,
     DEFAULT_TLS_SERVERNAME,
     DEFAULT_AUTH_USER,

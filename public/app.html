@@ -1046,10 +1046,18 @@
         </div>
         <div class="wpg-toolbar" role="toolbar">
             <button type="button" class="wpg-back" data-gw="gallery" title="Back to the gallery"><span class="wpg-back-orb" aria-hidden="true"></span>Back To Gallery</button>
-            <button type="button" class="wpg-cmd has-menu" data-gw="file" title="File"><span class="wpg-icon" style="--wpg-art: url('/static_images/vista-photo-gallery/file.png')"></span>File<span class="wpg-drop" aria-hidden="true"></span></button>
-            <button type="button" class="wpg-cmd" data-gw="fix" title="Fix: edit in DreamStudio"><span class="wpg-icon" style="--wpg-art: url('/static_images/vista-photo-gallery/fix.png')"></span>Fix</button>
-            <button type="button" class="wpg-cmd" data-gw="info" title="Show or hide the Info pane" aria-pressed="false"><span class="wpg-icon" style="--wpg-art: url('/static_images/vista-photo-gallery/info.png')"></span>Info</button>
-            <button type="button" class="wpg-cmd" data-gw="lumen" title="Open in Lumen"><span class="wpg-icon" style="--wpg-art: url('/static_images/vista-photo-gallery/open.png')"></span>Open</button>
+            <!-- Photo Gallery's commands: centred in the band when they fit, else after Back with the rest under » (lightbox.js layoutGlancewellToolbar) -->
+            <div class="wpg-cmds">
+                <button type="button" class="wpg-cmd has-menu" data-gw="file" title="File"><span class="wpg-icon" style="--wpg-art: url('/static_images/vista-photo-gallery/file.png')"></span>File<span class="wpg-drop" aria-hidden="true"></span></button>
+                <button type="button" class="wpg-cmd" data-gw="fix" title="Edit in DreamStudio"><span class="wpg-icon" style="--wpg-art: url('/static_images/vista-photo-gallery/fix.png')"></span>Edit</button>
+                <button type="button" class="wpg-cmd" data-gw="info" title="Show or hide the Info pane" aria-pressed="false"><span class="wpg-icon" style="--wpg-art: url('/static_images/vista-photo-gallery/info.png')"></span>Info</button>
+                <button type="button" class="wpg-cmd has-menu" data-gw="print" title="Print: make new pictures from this one"><span class="wpg-icon" style="--wpg-art: url('/static_images/vista-photo-gallery/print.png')"></span>Print<span class="wpg-drop" aria-hidden="true"></span></button>
+                <button type="button" class="wpg-cmd" data-gw="email" title="E-mail: send this picture to Wren"><span class="wpg-icon" style="--wpg-art: url('/static_images/vista-photo-gallery/email.png')"></span>E-mail</button>
+                <button type="button" class="wpg-cmd has-menu" data-gw="burn" title="Burn: keep this picture"><span class="wpg-icon" style="--wpg-art: url('/static_images/vista-photo-gallery/burn.png')"></span>Burn<span class="wpg-drop" aria-hidden="true"></span></button>
+                <button type="button" class="wpg-cmd" data-gw="movie" title="Make a Movie: animate this picture"><span class="wpg-icon" style="--wpg-art: url('/static_images/vista-photo-gallery/movie.png')"></span>Make a Movie</button>
+                <button type="button" class="wpg-cmd has-menu" data-gw="open" title="Open"><span class="wpg-icon" style="--wpg-art: url('/static_images/vista-photo-gallery/open.png')"></span>Open<span class="wpg-drop" aria-hidden="true"></span></button>
+            </div>
+            <button type="button" class="wpg-more" data-gw="more" title="Display additional commands" hidden></button>
             <button type="button" class="wpg-help" data-gw="help" title="Help"></button>
         </div>
         <div class="wpg-main">
@@ -6554,10 +6562,11 @@ Examples:
     </div>
 
     <!-- Image Viewer Modal Template (will be cloned for multiple instances) -->
-    <!-- Lumen: Vista's Windows Photo Gallery viewer (PhotoLibraryResources.dll art, vista-photo-gallery.css):
-         the black command band, the picture over #eef3fa with the Info pane (the generation parameters),
-         the control pill on the glass at the foot; logic in imageViewer.js -->
-    <div id="imageViewerModalTemplate" class="modal hidden transient image-viewer-modal resizeable-window wpg-viewer"
+    <!-- Lumen: Windows 7's Windows Photo Viewer (PhotoViewer.dll art; Glancewell is Vista's Photo Gallery
+         viewer): the light command bar (File, Print, E-mail, Burn, Open, Help), the picture over #eef3fa,
+         the control pill on the glass at the foot (Photo Viewer kept Photo Gallery's pill art unchanged);
+         vista-photo-gallery.css, logic in imageViewer.js -->
+    <div id="imageViewerModalTemplate" class="modal hidden transient image-viewer-modal resizeable-window wpg-viewer wpv-viewer"
         data-window-client="light"
         data-window-max-width="1600" data-window-max-height="1200" data-window-min-width="460"
         data-window-min-height="340">
@@ -6582,14 +6591,13 @@ Examples:
             </button>
         </div>
         <div class="modal-content image-viewer-content wpg-client">
-            <div class="wpg-toolbar" role="toolbar">
-                <button type="button" class="wpg-back" data-wpg="gallery" title="Back to the gallery"><span class="wpg-back-orb" aria-hidden="true"></span>Back To Gallery</button>
-                <button type="button" class="wpg-cmd has-menu" data-wpg="file" title="File"><span class="wpg-icon" style="--wpg-art: url('/static_images/vista-photo-gallery/file.png')"></span>File<span class="wpg-drop" aria-hidden="true"></span></button>
-                <button type="button" class="wpg-cmd" data-wpg="fix" title="Fix: edit in DreamStudio"><span class="wpg-icon" style="--wpg-art: url('/static_images/vista-photo-gallery/fix.png')"></span>Fix</button>
-                <button type="button" class="wpg-cmd" data-wpg="info" title="Show or hide the Info pane" aria-pressed="false"><span class="wpg-icon" style="--wpg-art: url('/static_images/vista-photo-gallery/info.png')"></span>Info</button>
-                <button type="button" class="wpg-cmd has-menu" data-wpg="print" title="Print: generate from this picture"><span class="wpg-icon" style="--wpg-art: url('/static_images/vista-photo-gallery/print.png')"></span>Print<span class="wpg-drop" aria-hidden="true"></span></button>
-                <button type="button" class="wpg-cmd has-menu" data-wpg="open" title="Open"><span class="wpg-icon" style="--wpg-art: url('/static_images/vista-photo-gallery/open.png')"></span>Open<span class="wpg-drop" aria-hidden="true"></span></button>
-                <button type="button" class="wpg-help" data-wpg="help" title="Help"></button>
+            <div class="wpv-cmdbar" role="toolbar">
+                <button type="button" class="wpv-cmd has-menu" data-wpv="file" title="File">File<span class="wpv-drop" aria-hidden="true"></span></button>
+                <button type="button" class="wpv-cmd has-menu" data-wpv="print" title="Print: make new pictures from this one">Print<span class="wpv-drop" aria-hidden="true"></span></button>
+                <button type="button" class="wpv-cmd" data-wpv="email" title="E-mail: send this picture to Wren">E-mail</button>
+                <button type="button" class="wpv-cmd has-menu" data-wpv="burn" title="Burn: keep this picture">Burn<span class="wpv-drop" aria-hidden="true"></span></button>
+                <button type="button" class="wpv-cmd has-menu" data-wpv="open" title="Open">Open<span class="wpv-drop" aria-hidden="true"></span></button>
+                <button type="button" class="wpv-help" data-wpv="help" title="Help"></button>
             </div>
             <div class="wpg-main">
                 <div class="image-viewer-body">
@@ -6611,29 +6619,18 @@ Examples:
                         <img id="imageViewerImage" src="" alt="Image" class="viewer-image hidden">
                     </div>
                 </div>
-                <aside class="wpg-info hidden" aria-label="Info">
-                    <button type="button" class="wpg-info-close" data-wpg="info-close" title="Close the Info pane"></button>
-                    <div class="wpg-info-thumb"><img class="wpg-info-thumb-img" alt=""></div>
-                    <div class="wpg-info-name"></div>
-                    <div class="wpg-info-line wpg-info-date"></div>
-                    <div class="wpg-info-line wpg-info-size"></div>
-                    <div class="wpg-info-sep"></div>
-                    <dl class="wpg-info-params"></dl>
-                    <div class="wpg-info-sep"></div>
-                    <div class="wpg-info-prompt"></div>
-                </aside>
             </div>
             <div class="wpg-controls">
                 <div class="wpg-pill">
-                    <button type="button" class="wpg-ctl wpg-zoom" id="zoomInBtn" data-wpg="zoom" title="Change the display size"></button>
-                    <button type="button" class="wpg-ctl wpg-fit" id="actualSizeBtn" data-wpg="fit" title="Actual size"></button>
-                    <button type="button" class="wpg-ctl wpg-prev" data-wpg="previous" title="Previous (Left Arrow)" disabled></button>
-                    <button type="button" class="wpg-ctl wpg-show" id="openInLightboxBtn" data-wpg="slideshow" title="Play Slide Show (F11)"></button>
-                    <button type="button" class="wpg-ctl wpg-next" data-wpg="next" title="Next (Right Arrow)" disabled></button>
-                    <button type="button" class="wpg-ctl wpg-rotl" data-wpg="rotate-left" title="Rotate Counterclockwise (Ctrl+,)"></button>
-                    <button type="button" class="wpg-ctl wpg-rotr" data-wpg="rotate-right" title="Rotate Clockwise (Ctrl+.)"></button>
+                    <button type="button" class="wpg-ctl wpg-zoom" id="zoomInBtn" data-wpv="zoom" title="Change the display size"></button>
+                    <button type="button" class="wpg-ctl wpg-fit" id="actualSizeBtn" data-wpv="fit" title="Actual size (Ctrl+Alt+0)"></button>
+                    <button type="button" class="wpg-ctl wpg-prev" data-wpv="previous" title="Previous (Left arrow)" disabled></button>
+                    <button type="button" class="wpg-ctl wpg-show" id="openInLightboxBtn" data-wpv="slideshow" title="Play slide show (F11)"></button>
+                    <button type="button" class="wpg-ctl wpg-next" data-wpv="next" title="Next (Right arrow)" disabled></button>
+                    <button type="button" class="wpg-ctl wpg-rotl" data-wpv="rotate-left" title="Rotate counterclockwise (Ctrl+,)"></button>
+                    <button type="button" class="wpg-ctl wpg-rotr" data-wpv="rotate-right" title="Rotate clockwise (Ctrl+.)"></button>
                     <span class="wpg-sep" aria-hidden="true"></span>
-                    <button type="button" class="wpg-ctl wpg-delete" data-wpg="delete" title="Delete (Del)"></button>
+                    <button type="button" class="wpg-ctl wpg-delete" data-wpv="delete" title="Delete (Del)"></button>
                 </div>
                 <span class="zoom-level" id="zoomLevel" hidden>100%</span>
             </div>

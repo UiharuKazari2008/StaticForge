@@ -1,0 +1,68 @@
+{
+  "slug": "acr-facilities",
+  "title": "Facilities Booking System - Academy City Research",
+  "lang": "en",
+  "pages": [
+    {
+      "file": "index.html",
+      "purpose": "Internal-network-only notice, booking reference lookup (door), Dreamscape Seminar Room maintenance notice"
+    },
+    {
+      "file": "booking.html",
+      "purpose": "Door results: booking not found / only viewable from the internal network, form again"
+    },
+    {
+      "file": "offsite.html",
+      "purpose": "Working off-site: connect to the staff remote access service first"
+    },
+    {
+      "file": "intranet-only.html",
+      "purpose": "Target of intranet links: page only available on the internal network"
+    },
+    {
+      "file": "acceptable-use.html",
+      "purpose": "Acceptable use policy FAC-POL-012 v2.1, with PDF download"
+    },
+    {
+      "file": "help.html",
+      "purpose": "Facilities Help Desk: hours, internal extensions, report-a-problem form"
+    },
+    {
+      "file": "help-sent.html",
+      "purpose": "Help desk form confirmation"
+    },
+    {
+      "file": "404.html",
+      "purpose": "Page not found in site style"
+    }
+  ],
+  "door": {
+    "page": "index.html",
+    "action": "booking.html",
+    "field": "q",
+    "label": "Existing booking reference:"
+  },
+  "notFound": "404.html",
+  "downloads": [
+    "fac-pol-012.pdf"
+  ],
+  "assets": [
+    "style.css"
+  ],
+  "references": {
+    "Dreamscape": "index.html - planned maintenance notice: 'Dreamscape Seminar Room (XB-2.14)' closed 9-13 Nov 2026 for an AV upgrade",
+    "Xyridian": "index.html - same notice: the room is in the 'Xyridian Building'",
+    "Academy City Research": "every page - header right ('Academy City Research') and footer copyright; index.html body text; fac-pol-012.pdf header",
+    "Yukimi Kazari": "index.html - signatory of the maintenance notice (Facilities Systems); help.html - Facilities Systems contact, ext. 4177"
+  },
+  "phone": {
+    "number": "+1 (997) 434-2600",
+    "where": "help.html (help desk hours table: 'From outside the network: +1 (997) 434-2600, ext. 4410'); offsite.html (changing a booking you cannot reach). Staff lines stay internal extensions: help desk 4410, duty officer 4400, Yukimi Kazari 4177"
+  },
+  "academyCity": [
+    "index.html - maintenance notice: 'Xyridian Building, School District 18'",
+    "help.html - 'Pool vehicle trips outside Academy City': District 11 gate pass, at least 3 working days ahead",
+    "acceptable-use.html + fac-pol-012.pdf section 4 - District 11 gate pass for trips outside Academy City",
+    "acceptable-use.html + fac-pol-012.pdf section 5 - AV loans suspended during the Daihaseisai (19 to 25 September)"
+  ]
+}

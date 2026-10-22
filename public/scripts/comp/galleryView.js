@@ -8688,55 +8688,18 @@ async function handleMoveToWorkspace(image, workspaceId, workspaceName) {
 
     if (confirmed) {
         try {
-            // Show loading toast
-            const toastId = showGlassToast('info', 'Moving Image', `Moving image to ${workspaceName}...`, true, false, '<i class="mdi mdi-1-5 mdi-folder-move"></i>');
-
-            // Move the image using WebSocket
-            if (window.wsClient && window.wsClient.isConnected()) {
-                // Determine move type based on current gallery view
-                const isScrapsView = currentGalleryView === 'scraps';
-                const isPinnedView = currentGalleryView === 'pinned';
-                let moveType = 'files';
-                if (isScrapsView) {
-                    moveType = 'scraps';
-                } else if (isPinnedView) {
-                    moveType = 'pinned';
-                }
-
-                const response = await window.wsClient.moveFilesToWorkspace([filename], workspaceId, activeWorkspace, moveType);
-
-                if (response.success) {
-                    // Update loading toast to success
-                    updateGlassToastProgress(toastId, 100);
-                    updateGlassToastComplete(toastId, {
-                        type: 'success',
-                        title: 'Image Moved',
-                        message: `Image moved to ${workspaceName}`,
-                        icon: '<i class="fas fa-folder-open"></i>',
-                        showProgress: false,
-                        timeout: 5000
-                    });
-
-                    // Remove the image from current view
-                    removeImageFromGallery(image);
-                } else {
-                    throw new Error(response.error || 'Failed to move image');
-                }
-            } else {
+            if (!window.wsClient || !window.wsClient.isConnected()) {
                 throw new Error('WebSocket not connected');
+            }
+            // moveGalleryImagesToWorkspace: public/scripts/comp/galleryToolbar.js (Vista's progress
+            // dialog on the desktop, a progress toast off it)
+            if (await moveGalleryImagesToWorkspace([filename], workspaceId)) {
+                // Remove the image from current view
+                removeImageFromGallery(image);
             }
         } catch (error) {
             console.error('Error moving image to workspace:', error);
-            // Update loading toast to error
-            updateGlassToastProgress(toastId, 100);
-            updateGlassToastComplete(toastId, {
-                type: 'error',
-                title: 'Move Failed',
-                message: `Failed to move image to ${workspaceName}: ${error.message}`,
-                icon: '<i class="fas fa-exclamation-triangle"></i>',
-                showProgress: false,
-                timeout: 5000
-            });
+            showGlassToast('error', 'Move Failed', `Failed to move image to ${workspaceName}: ${error.message}`, false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
         }
     }
 }
@@ -8877,92 +8840,40 @@ async function handleMoveWorkspaceAction(subItem, target) {
         ) : true;
 
         if (confirmed) {
-            let toastId = null;
             try {
-                // Show loading toast
-                toastId = showGlassToast('info', 'Moving Images', `Moving ${itemCount} ${itemCount === 1 ? 'image' : 'images'} to ${workspaceName}...`, true, false, '<i class="mdi mdi-1-5 mdi-folder-move"></i>');
-
-                // Move the images using WebSocket
-                if (window.wsClient && window.wsClient.isConnected()) {
-                    // Determine move type based on current gallery view
-                    const isScrapsView = currentGalleryView === 'scraps';
-                    const isPinnedView = currentGalleryView === 'pinned';
-                    let moveType = 'files';
-                    if (isScrapsView) {
-                        moveType = 'scraps';
-                    } else if (isPinnedView) {
-                        moveType = 'pinned';
-                    }
-
-                    // Get current workspace
-                    let currentWorkspaceId = 'default';
-                    if (typeof activeWorkspace !== 'undefined') {
-                        currentWorkspaceId = activeWorkspace;
-                    } else if (window.activeWorkspace) {
-                        currentWorkspaceId = window.activeWorkspace;
-                    } else if (getActiveWorkspace) {
-                        currentWorkspaceId = getActiveWorkspace();
-                    }
-
-                    // Extract filenames from images for WebSocket call
-                    const filenamesToMove = imagesToMove.map(img => img.filename || img.original || img.upscaled).filter(f => f);
-                    const response = await window.wsClient.moveFilesToWorkspace(filenamesToMove, workspaceId, currentWorkspaceId, moveType);
-
-                    if (response.success) {
-                        // Update loading toast to success
-                        if (toastId) {
-                            updateGlassToastProgress(toastId, 100);
-                            updateGlassToastComplete(toastId, {
-                                type: 'success',
-                                title: itemCount === 1 ? 'Image Moved' : 'Images Moved',
-                                message: `${itemCount} ${itemCount === 1 ? 'image' : 'images'} moved to ${workspaceName}`,
-                                icon: '<i class="fas fa-folder-open"></i>',
-                                showProgress: false,
-                                timeout: 5000
-                            });
-                        }
-
-                        // Remove the images from current view
-                        if (imagesToMove.length > 0) {
-                            removeMultipleImagesFromGallery(imagesToMove);
-                        }
-
-                        // Clear selection after move (only for bulk operations)
-                        if (isBulkOperation) {
-                            clearSelection();
-                        }
-
-                        // If the manual preview is showing a moved image, resume at the next available item
-                        if (!isBulkOperation && window.currentManualPreviewImage) {
-                            const previewFilename = window.currentManualPreviewImage.filename || window.currentManualPreviewImage.original || window.currentManualPreviewImage.upscaled;
-                            const movedFilenames = imagesToMove.map(img => img && (img.filename || img.original || img.upscaled)).filter(Boolean);
-                            if (previewFilename && movedFilenames.includes(previewFilename)) {
-                                // resumeManualPreviewAfterRemoval: public/scripts/comp/manualPreviewManager.js
-                                await resumeManualPreviewAfterRemoval(window.currentManualPreviewIndex ?? 0);
-                            }
-                        }
-                    } else {
-                        throw new Error(response.error || 'Failed to move images');
-                    }
-                } else {
+                if (!window.wsClient || !window.wsClient.isConnected()) {
                     throw new Error('WebSocket not connected');
+                }
+                // Extract filenames from images for the move
+                const filenamesToMove = imagesToMove.map(img => img.filename || img.original || img.upscaled).filter(f => f);
+                // moveGalleryImagesToWorkspace: public/scripts/comp/galleryToolbar.js (Vista's progress
+                // dialog on the desktop, a progress toast off it); resolves how many moved
+                const moved = await moveGalleryImagesToWorkspace(filenamesToMove, workspaceId);
+
+                // Remove the images from current view (all of them, or reload when some were skipped)
+                if (moved === filenamesToMove.length && imagesToMove.length > 0) {
+                    removeMultipleImagesFromGallery(imagesToMove);
+                } else if (moved > 0) {
+                    switchGalleryView(currentGalleryView, true);
+                }
+
+                // Clear selection after move (only for bulk operations)
+                if (isBulkOperation) {
+                    clearSelection();
+                }
+
+                // If the manual preview is showing a moved image, resume at the next available item
+                if (moved > 0 && !isBulkOperation && window.currentManualPreviewImage) {
+                    const previewFilename = window.currentManualPreviewImage.filename || window.currentManualPreviewImage.original || window.currentManualPreviewImage.upscaled;
+                    const movedFilenames = imagesToMove.map(img => img && (img.filename || img.original || img.upscaled)).filter(Boolean);
+                    if (previewFilename && movedFilenames.includes(previewFilename)) {
+                        // resumeManualPreviewAfterRemoval: public/scripts/comp/manualPreviewManager.js
+                        await resumeManualPreviewAfterRemoval(window.currentManualPreviewIndex ?? 0);
+                    }
                 }
             } catch (error) {
                 console.error('Error moving images to workspace:', error);
-                // Update loading toast to error
-                if (toastId) {
-                    updateGlassToastProgress(toastId, 100);
-                    updateGlassToastComplete(toastId, {
-                        type: 'error',
-                        title: 'Move Failed',
-                        message: `Failed to move images to ${workspaceName}: ${error.message}`,
-                        icon: '<i class="fas fa-exclamation-triangle"></i>',
-                        showProgress: false,
-                        timeout: 5000
-                    });
-                } else {
-                    showError(`Failed to move images to ${workspaceName}: ${error.message}`);
-                }
+                showError(`Failed to move images to ${workspaceName}: ${error.message}`);
             }
         }
     }
@@ -9644,6 +9555,23 @@ function findTrueImageIndexInGallery(filename) {
     return -1;
 }
 
+/**
+ * One image Pictures <-> Scraps: a move in Vista's progress dialog on the desktop (galleryTransfer,
+ * public/scripts/comp/bulkOperationsManager.js), where a failure asks; off it the call, which throws.
+ * Resolves { done, shown }.
+ */
+async function galleryScrapTransfer(filename, toScraps) {
+    if (!window.wsClient || !window.wsClient.isConnected()) {
+        throw new Error('WebSocket not connected');
+    }
+    return galleryTransfer('move', [filename],
+        galleryTransferPlace(activeWorkspace, toScraps ? 'Pictures' : 'Scraps'),
+        galleryTransferPlace(activeWorkspace, toScraps ? 'Scraps' : 'Pictures'),
+        ([name]) => (toScraps
+            ? window.wsClient.addScrap(activeWorkspace, name)
+            : window.wsClient.removeScrap(activeWorkspace, name)));
+}
+
 async function moveToScraps(image) {
     try {
         const filename = image.filename || image.original || image.upscaled;
@@ -9652,21 +9580,9 @@ async function moveToScraps(image) {
             return false;
         }
 
-        // Use WebSocket API if available, otherwise fall back to HTTP
-        if (window.wsClient && window.wsClient.isConnected()) {
-            try {
-                await window.wsClient.addScrap(activeWorkspace, filename);
-            } catch (wsError) {
-                showError('Failed to move to scraps: ' + wsError.message);
-                throw new Error('Failed to move to scraps');
-            }
-        } else {
-            console.error('Move to scraps failed: WebSocket not connected');
-            showError('Failed to move to scraps: WebSocket not connected');
-            return false;
-        }
-
-        showGlassToast('success', null, 'Image Scraped', false, 3000, '<i class="fas fa-bin-bottles-recycle"></i>');
+        const transfer = await galleryScrapTransfer(filename, true);
+        if (!transfer.done) return false;
+        if (!transfer.shown) showGlassToast('success', null, 'Image Scraped', false, 3000, '<i class="fas fa-bin-bottles-recycle"></i>');
 
         // If currently viewing scraps, reload them
         switchGalleryView(currentGalleryView, true);
@@ -9700,21 +9616,9 @@ async function moveImageToScrapsDirect(filename, event = null) {
             return;
         }
 
-        // Use WebSocket API if available, otherwise fall back to HTTP
-        if (window.wsClient && window.wsClient.isConnected()) {
-            try {
-                await window.wsClient.addScrap(activeWorkspace, filename);
-            } catch (wsError) {
-                showError('Failed to move to scraps: ' + wsError.message);
-                throw new Error('Failed to move to scraps');
-            }
-        } else {
-            console.error('WebSocket not connected for moving to scraps');
-            showError('Failed to move to scraps: WebSocket not connected');
-            return;
-        }
-
-        showGlassToast('success', null, 'Image Scraped', false, 3000, '<i class="fas fa-bin-bottles-recycle"></i>');
+        const transfer = await galleryScrapTransfer(filename, true);
+        if (!transfer.done) return;
+        if (!transfer.shown) showGlassToast('success', null, 'Image Scraped', false, 3000, '<i class="fas fa-bin-bottles-recycle"></i>');
 
         // Remove image from current gallery view locally (only if not viewing scraps)
         if (currentGalleryView !== 'scraps' && typeof removeImageFromGallery === 'function') {
@@ -9752,17 +9656,13 @@ async function moveManualPreviewToScraps() {
             return;
         }
 
-        // Use WebSocket API
-        if (!window.wsClient || !window.wsClient.isConnected()) {
-            throw new Error('WebSocket not connected');
-        }
-
-        await window.wsClient.addScrap(activeWorkspace, filename);
+        const transfer = await galleryScrapTransfer(filename, true);
+        if (!transfer.done) return;
 
         // Resume the preview at the boundary-correct next available image
         // resumeManualPreviewAfterRemoval: public/scripts/comp/manualPreviewManager.js
         await resumeManualPreviewAfterRemoval(window.currentManualPreviewIndex ?? 0);
-        showGlassToast('success', null, 'Image scrapped', undefined, undefined, '<i class="fas fa-bin-bottles-recycle"></i>');
+        if (!transfer.shown) showGlassToast('success', null, 'Image scrapped', undefined, undefined, '<i class="fas fa-bin-bottles-recycle"></i>');
 
         // Refresh gallery after processing is complete
         loadGallery(true);
@@ -9784,14 +9684,9 @@ async function removeFromScraps(image) {
             return;
         }
 
-        // Use WebSocket API
-        if (!window.wsClient || !window.wsClient.isConnected()) {
-            throw new Error('WebSocket not connected');
-        }
-
-        await window.wsClient.removeScrap(activeWorkspace, filename);
-
-        showGlassToast('success', null, 'Image removed from scraps', undefined, undefined, '<i class="nai-dot-reset"></i>');
+        const transfer = await galleryScrapTransfer(filename, false);
+        if (!transfer.done) return;
+        if (!transfer.shown) showGlassToast('success', null, 'Image removed from scraps', undefined, undefined, '<i class="nai-dot-reset"></i>');
 
         // Remove image from current gallery view locally (only if viewing scraps)
         if (currentGalleryView === 'scraps' && typeof removeImageFromGallery === 'function') {
@@ -10318,19 +10213,25 @@ async function deleteImage(image, event = null) {
 
         let deleted = false;
         try {
-            const result = await window.wsClient.deleteImagesBulk([filenameToDelete]);
+            // galleryTransfer: public/scripts/comp/bulkOperationsManager.js (Vista's progress dialog
+            // on the desktop; a failure asks there instead of throwing)
+            const transfer = await galleryTransfer('delete', [filenameToDelete],
+                galleryTransferPlace(activeWorkspace, galleryViewFolder(currentGalleryView)), null,
+                async (names) => {
+                    const answer = await window.wsClient.deleteImagesBulk(names);
+                    if (!(answer && answer.successful > 0)) throw new Error('Delete failed');
+                    return answer;
+                });
 
-            if (result.successful > 0) {
+            if (transfer.done > 0) {
                 deleted = true;
-                showGlassToast('success', null, 'Image deleted!', false, 5000, '<i class="fas fa-trash"></i>');
+                if (!transfer.shown) showGlassToast('success', null, 'Image deleted!', false, 5000, '<i class="fas fa-trash"></i>');
 
                 // Close lightbox
                 hideLightbox();
 
                 // Remove image from gallery and add placeholder
                 removeImageFromGallery(image);
-            } else {
-                throw new Error('Delete failed');
             }
         } finally {
             releaseGalleryImageLoads(holdNames);

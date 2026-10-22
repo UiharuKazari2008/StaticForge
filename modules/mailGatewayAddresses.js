@@ -247,6 +247,105 @@ function expandRecipients(address, mapping) {
     return [];
 }
 
+function isCatchallLocal(local) {
+    return String(local || '').trim().toLowerCase() === MAILROOM_CATCHALL;
+}
+
+function publicEnvelope(local, mapping) {
+    const part = String(local || '').trim().toLowerCase();
+    if (!part) return '';
+    return `${part}@${publicGatewayDomain(mapping)}`;
+}
+
+/**
+ * How one envelope address resolved: mailbox / alias / list / catchall /
+ * postmaster / unknown. owners is the Dovecote mailbox list expandRecipients
+ * would accept. via is for logs and catch-all recovery — never from headers.
+ */
+function describeRecipientResolution(address, mapping) {
+    const parts = splitLocalDomain(address);
+    if (!parts || !mapping) {
+        return { owners: [], via: 'unknown', local: '', envelope: '' };
+    }
+    const local = parts.local;
+    const envelope = `${local}@${parts.domain}`;
+    if (domainForCompare(parts.domain) !== publicGatewayDomain(mapping)) {
+        return { owners: [], via: 'foreign', local, envelope };
+    }
+    let via = 'unknown';
+    if (isCatchallLocal(local)) via = 'catchall';
+    else if (mapping.mailboxes && mapping.mailboxes[local]) via = 'mailbox';
+    else if (mapping.lists && mapping.lists[local]) via = 'list';
+    else if (mapping.aliases && mapping.aliases[local]) via = 'alias';
+    else if (local === 'postmaster') via = 'postmaster';
+    const owners = expandRecipients(address, mapping);
+    if (!owners.length) return { owners, via: 'unknown', local, envelope };
+    return { owners, via, local, envelope };
+}
+
+/**
+ * Trusted-relay catch-all recovery. LANTIS may rewrite an unknown (to it)
+ * envelope to mailroom.ops. Recover only from the relay's own top-block
+ * X-Original-To, only to a real active mailbox (never a list or alias),
+ * and only when this function itself sees the peer in recoveryRelayPeers.
+ * That list is empty by default, which disables recovery. To/Cc are
+ * sender-controlled and are ignored. Spam and LANTIS_FORGED_OURS stay
+ * on the catch-all.
+ */
+function envelopeLocal(envelope) {
+    const parts = splitLocalDomain(envelope || '');
+    return parts ? parts.local : '';
+}
+
+function isCatchallRecord(row) {
+    return !!(row && (row.via === 'catchall' || isCatchallLocal(envelopeLocal(row.envelope))));
+}
+
+function recoverCatchallDelivery({
+    recipients,
+    originalTo,
+    mapping,
+    spam,
+    forgedOurs,
+    peer,
+    relayPeers,
+    isActiveMailbox
+} = {}) {
+    const current = Array.isArray(recipients) ? recipients.slice() : [];
+    if (spam) return { recipients: current, recovered: false, reason: 'spam' };
+    if (forgedOurs) return { recipients: current, recovered: false, reason: 'forged' };
+    if (!isAllowedPeer(peer, relayPeers)) {
+        return { recipients: current, recovered: false, reason: 'not-relay' };
+    }
+    if (!current.some(isCatchallRecord)) {
+        return { recipients: current, recovered: false, reason: 'not-catchall' };
+    }
+    const info = describeRecipientResolution(originalTo, mapping);
+    if (info.via !== 'mailbox' || info.owners.length !== 1) {
+        return { recipients: current, recovered: false, reason: 'not-mailbox' };
+    }
+    const owner = info.owners[0];
+    if (typeof isActiveMailbox === 'function' && !isActiveMailbox(owner)) {
+        return { recipients: current, recovered: false, reason: 'inactive' };
+    }
+    const recovered = { owner, envelope: info.envelope, via: 'recovered' };
+    const kept = current.filter((row) => !isCatchallRecord(row));
+    if (!kept.some((item) => item.owner === owner)) kept.push(recovered);
+    return {
+        recipients: kept,
+        recovered: true,
+        reason: 'original-to-mailbox',
+        recoveredTo: [owner]
+    };
+}
+
+function resolveStoredOriginalTo(stamped, envelope) {
+    const stamp = stamped ? String(stamped).trim() : '';
+    if (stamp) return stamp;
+    const accepted = envelope ? String(envelope).trim() : '';
+    return accepted || null;
+}
+
 function resolvePostmasterMailbox(mapping) {
     if (mapping && mapping.mailboxes && mapping.mailboxes.postmaster) {
         return mapping.mailboxes.postmaster;
@@ -656,6 +755,11 @@ module.exports = {
     createMapping,
     expandLocal,
     expandRecipients,
+    isCatchallLocal,
+    publicEnvelope,
+    describeRecipientResolution,
+    recoverCatchallDelivery,
+    resolveStoredOriginalTo,
     toMailbox,
     resolvePostmasterMailbox,
     toExternal,

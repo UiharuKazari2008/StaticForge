@@ -58,7 +58,7 @@ const handleListMailboxes = wrap(async () => ({
 }));
 
 const handleGetMailbox = wrap(async (_actor, message) => {
-    const mailbox = exchange.publicMailboxView(exchange.getMailboxRecord(message.owner));
+    const mailbox = await exchange.mailboxViewWithRelay(message.owner);
     if (!mailbox) throw new exchange.MailExchangeError('Unknown mailbox', 'UNKNOWN_MAILBOX');
     return { mailbox };
 });
@@ -182,6 +182,10 @@ const handleSetToggles = wrap(async (actor, message) => (
 
 const handleDashboard = wrap(async () => exchange.dashboard());
 
+const handleResyncRecipients = wrap(async (actor, message) => (
+    exchange.resyncRecipients(actor, { confirm: message.confirm === true })
+));
+
 const handleListSpam = wrap(async (actor, message) => (
     exchange.listSpamOverview(actor, { limit: message.limit })
 ));
@@ -228,6 +232,7 @@ function registerPackets(handlersCtx) {
     reg('exchange_get_toggles', handleGetToggles);
     reg('exchange_set_toggles', handleSetToggles, DESTRUCTIVE);
     reg('exchange_dashboard', handleDashboard);
+    reg('exchange_resync_recipients', handleResyncRecipients, DESTRUCTIVE);
     reg('exchange_list_spam', handleListSpam);
     reg('exchange_spam_move', handleSpamMove, DESTRUCTIVE);
     reg('exchange_audit', handleAudit);

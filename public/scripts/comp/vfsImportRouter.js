@@ -1,5 +1,11 @@
 // Explorer import routing — public/scripts/comp/vfsImportRouter.js
 
+/** On the desktop Explorer's uploads run under Vista's progress dialog (fileOperationProgress.js),
+ *  which shows each file go in and asks about a failure: no toast per file there. */
+function vfsImportUnderProgress() {
+    return typeof fileOperationProgress !== 'undefined' && fileOperationProgress.available();
+}
+
 const vfsImportRouter = {
     async routeFilesToPath(vfsPath, files) {
         const parsed = this._parsePath(vfsPath);
@@ -49,13 +55,14 @@ const vfsImportRouter = {
         const base64 = await fileToBase64(file);
         const batchInfo = { currentIndex: 0, totalCount: 1 };
         const resp = await wsClient.uploadWorkspaceImage(base64, workspaceId, file.name, batchInfo);
-        if (resp.success && asScrap && resp.filename) {
+        if (!resp.success) throw new Error(resp.message || resp.error || `Could not import ${file.name}`);
+        if (asScrap && resp.filename) {
             await wsClient.addScrap(workspaceId, resp.filename);
         }
-        if (resp.success) {
+        if (!vfsImportUnderProgress()) {
             showGlassToast('success', null, asScrap ? 'Imported to Scraps' : 'Imported to Pictures', false, 3000);
-            if (typeof loadGallery === 'function') loadGallery(true);
         }
+        if (typeof loadGallery === 'function') loadGallery(true);
     },
 
     async _importToReferences(workspaceId, file, mime) {
@@ -99,7 +106,7 @@ const vfsImportRouter = {
             const notepadManager = await loadNotepadManager();
             if (notepadManager) {
                 await notepadManager.createNote(noteName, text);
-                showGlassToast('success', null, 'Created note from file', false, 3000);
+                if (!vfsImportUnderProgress()) showGlassToast('success', null, 'Created note from file', false, 3000);
             }
         } else if (choice === 'file') {
             await this._fallbackToHome(workspaceId, file, 'Notes');
@@ -110,7 +117,7 @@ const vfsImportRouter = {
         const base64 = await fileToBase64(file);
         const tags = precise ? ['characterOnly'] : [];
         await wsClient.uploadReference(base64, workspaceId, null, null, null, null, tags);
-        showGlassToast('success', null, 'Reference imported', false, 3000);
+        if (!vfsImportUnderProgress()) showGlassToast('success', null, 'Reference imported', false, 3000);
     },
 
     async _importVibeFile(workspaceId, file) {
@@ -119,11 +126,13 @@ const vfsImportRouter = {
         try {
             jsonData = JSON.parse(text);
         } catch (_err) {
+            // the progress dialog asks about it (Interrupted Action)
+            if (vfsImportUnderProgress()) throw new Error('Invalid vibe JSON file');
             showGlassToast('error', 'Import Failed', 'Invalid vibe JSON file', false, 5000);
             return;
         }
         await wsClient.sendMessage('import_vibe_bundle', { workspaceId, jsonData, filename: file.name });
-        showGlassToast('success', null, 'Vibe imported', false, 3000);
+        if (!vfsImportUnderProgress()) showGlassToast('success', null, 'Vibe imported', false, 3000);
     },
 
     async _fallbackToHome(workspaceId, file, folderName) {

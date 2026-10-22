@@ -47,7 +47,7 @@ function registerRoutes(app, { authMiddleware }) {
         mailboxes: exchange.listMailboxRecords().map(exchange.publicMailboxView)
     })));
     app.get('/mail-exchange/mailboxes/:owner', authMiddleware, gated(async (_actor, req) => {
-        const mailbox = exchange.publicMailboxView(exchange.getMailboxRecord(req.params.owner));
+        const mailbox = await exchange.mailboxViewWithRelay(req.params.owner);
         if (!mailbox) throw new exchange.MailExchangeError('Unknown mailbox', 'UNKNOWN_MAILBOX');
         return { mailbox };
     }));
@@ -107,6 +107,9 @@ function registerRoutes(app, { authMiddleware }) {
         exchange.setToggles(actor, req.body || {})
     )));
     app.get('/mail-exchange/status', authMiddleware, gated(async () => exchange.dashboard()));
+    app.post('/mail-exchange/recipients/resync', authMiddleware, json, gated(async (actor, req) => (
+        exchange.resyncRecipients(actor, req.body || {})
+    )));
     app.get('/mail-exchange/spam', authMiddleware, gated(async (actor, req) => (
         exchange.listSpamOverview(actor, { limit: req.query.limit })
     )));

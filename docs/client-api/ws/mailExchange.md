@@ -19,7 +19,7 @@ Destructive packets need `confirm: true`. Soft-delete also needs `confirmText: "
 | Request type | Typical response | Auth | Notes |
 |---|---|---|---|
 | `exchange_list_mailboxes` | `exchange_list_mailboxes_response` | exchange admin | `{ mailboxes: [...] }` |
-| `exchange_get_mailbox` | `exchange_get_mailbox_response` | exchange admin | `{ owner }` → `{ mailbox }` including extra intake addresses |
+| `exchange_get_mailbox` | `exchange_get_mailbox_response` | exchange admin | `{ owner }` → `{ mailbox }` including extra intake addresses and stored `inboundEnabled` / `outboundEnabled`. If LANTIS reports a different inbound/outbound, `relayInboundEnabled` / `relayOutboundEnabled` are included |
 | `exchange_create_mailbox` | `exchange_create_mailbox_response` | exchange admin / destructive | `{ owner, dept, displayName?, confirm }` → `{ mailbox }` mapped to `name.dept@dream.737.jp.net`. Live immediately |
 | `exchange_update_mailbox` | `exchange_update_mailbox_response` | exchange admin / destructive | `{ owner, displayName?, dept?, newOwner?, confirm }` |
 | `exchange_disable_mailbox` | `exchange_disable_mailbox_response` | exchange admin / destructive | `{ owner, enabled, confirm }` |
@@ -37,13 +37,14 @@ Destructive packets need `confirm: true`. Soft-delete also needs `confirmText: "
 | `exchange_get_signature` | `exchange_get_signature_response` | exchange admin | `{ owner }` → `{ owner, html, address }` |
 | `exchange_set_signature` | `exchange_set_signature_response` | exchange admin / destructive | HTML sanitized; appended to outbound |
 | `exchange_get_toggles` | `exchange_get_toggles_response` | exchange admin | `{ toggles: { inbound, outbound, mailboxes, services } }` |
-| `exchange_set_toggles` | `exchange_set_toggles_response` | exchange admin / destructive | `PUT /v1/toggles` first (admin token + `actor`, no `confirm` on the wire). Local store is written only after the relay accepts. Relay `400` codes `UNKNOWN_MAILBOX` / `UNKNOWN_SERVICE` / `BAD_BODY` / `ACTOR_REQUIRED` come back on `relay` with a friendly message |
+| `exchange_set_toggles` | `exchange_set_toggles_response` | exchange admin / destructive | `PUT /v1/toggles` first (admin token + `actor`, no `confirm` on the wire). Local store is written only after the relay accepts. Per-mailbox inbound/outbound also writes through to that `exchange_mailbox` row. Relay `400` codes `UNKNOWN_MAILBOX` / `UNKNOWN_SERVICE` / `BAD_BODY` / `ACTOR_REQUIRED` come back on `relay` with a friendly message |
 | `exchange_dashboard` | `exchange_dashboard_response` | exchange admin | Intake listener, Postfix, queue, filters, OCI senders+DKIM, WireGuard, blocklists, rejects. `degraded` when the relay is down |
+| `exchange_resync_recipients` | `exchange_resync_recipients_response` | exchange admin / destructive | Replace LANTIS `virtual_known` with the full active mailbox/alias/list set (`PUT /v1/recipients`). Endpoint is pending approval — `404` fails soft and is logged (`RELAY_ENDPOINT_MISSING`). `{ confirm }` |
 | `exchange_list_spam` | `exchange_list_spam_response` | exchange admin | Tsubame: all mailboxes. Yukimi/Sala: Yukimi Spam-only |
 | `exchange_spam_move` | `exchange_spam_move_response` | exchange admin / destructive | Rescue/purge via mailroom tools; never Yukimi |
 | `exchange_audit` | `exchange_audit_response` | exchange admin | `{ audit: [{ ts, actor, action, target, detail, success }] }` |
 
 HTTP surface: [rest-api.md — Dreamscape Exchange Server](../rest-api.md#dreamscape-exchange-server).
-MCP tools (`role: exchange`, scope `sfapp_mail_exchange`): `exchange_list_mailboxes`, `exchange_get_mailbox`, `exchange_create_mailbox`, `exchange_update_mailbox`, `exchange_disable_mailbox`, `exchange_delete_mailbox`, `exchange_add_address`, `exchange_remove_address`, `exchange_mailbox_key`, `exchange_aliases`, `exchange_signatures`, `exchange_toggles`, `exchange_status`, `exchange_spam`, `exchange_set_mailbox_notify_forward`, `exchange_get_mailbox_notify_forward`, `exchange_clear_mailbox_notify_forward`.
+MCP tools (`role: exchange`, scope `sfapp_mail_exchange`): `exchange_list_mailboxes`, `exchange_get_mailbox`, `exchange_create_mailbox`, `exchange_update_mailbox`, `exchange_disable_mailbox`, `exchange_delete_mailbox`, `exchange_add_address`, `exchange_remove_address`, `exchange_mailbox_key`, `exchange_aliases`, `exchange_signatures`, `exchange_toggles`, `exchange_status`, `exchange_resync_recipients`, `exchange_spam`, `exchange_set_mailbox_notify_forward`, `exchange_get_mailbox_notify_forward`, `exchange_clear_mailbox_notify_forward`.
 
 Per-mailbox notify-forward (own-mailbox MCP + `/dovecote/mailbox/notify-forward`, admin variants above): [rest-api.md — Dovecote mailbox notify-forward](../rest-api.md#dovecote-mailbox-notify-forward). Inbox delivery emits `mailbox_new_mail`; the dispatcher consumes that event stream.

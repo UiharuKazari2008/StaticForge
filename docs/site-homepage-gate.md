@@ -2,8 +2,8 @@
 
 When **Site Homepage** is installed (Control Panel → Site Homepage, `dsap://site.dreamscape.jp/`), unauthenticated visitors see a static **cover site** instead of Dreamscape. Access to the real app requires:
 
-1. **Cover phrase** (lookup form field `q`, POST `/lookup`) → sets httpOnly cookie **`dsk`** (the access hash).
-2. **Dreamscape PIN** at **Phoenix BIOS** (forced when the gate is on) or in-app **Vista logon / Connect / PIN modal** after boot.
+1. **Cover phrase** (lookup form field `q`, **POST** body only to the site's door action from `manifest.json`) → on success, **`dsk`** cookie plus redirect to **`/launch?k=<access-hash>`**. The plaintext phrase must never appear in a URL, query string, or referrer; the **access hash** may (`?k=`, PWA `start_url`, bookmarks).
+2. **Dreamscape PIN** at **Phoenix BIOS** (only when the gate is on and there is no valid **`connect.sid`**) or in-app **Vista logon / Connect / PIN modal** after boot.
 
 The legacy **PIN page** (`public/index.html` at `/`) is not used when the gate is configured.
 
@@ -11,10 +11,11 @@ The legacy **PIN page** (`public/index.html` at `/`) is not used when the gate i
 
 | Piece | Module / route |
 | --- | --- |
-| Gate middleware | `modules/siteGate.js` (first after `cookieParser` + urlencoded) |
+| Gate middleware | `modules/siteGate.js` (after `express-session` + approved-IP auto-login; honors **`connect.sid`** and refreshes **`dsk`**) |
 | Access hash | `modules/siteAccess.js` → `secure.config.json` → `siteAccess.pepper`, `siteAccess.hash`, `siteAccess.homepage` |
-| Cover files | `.cache/site-homepage/<slug>/` (installed from `resources/site-homepages/`) |
-| Admin WS | `get_site_homepage`, `set_site_homepage`, `clear_site_homepage`, `get_site_homepage_preview` |
+| Cover files | `resources/site-homepages/<slug>/` (static; `secure.config.json` `siteAccess.homepage` picks the active slug) |
+| Admin WS | `get_site_homepage`, `set_site_homepage`, `clear_site_homepage` |
+| Admin preview (Alchemy) | `mint_site_homepage_preview_url` WS -> `grimoireOpenStandaloneWindow(origin + path)` (same as a desktop web shortcut; not `openGrimoireUrl` / main Grimoire `navigate`); `GET /site-homepage-preview/:slug/*` with `?t=` then `sprev` cookie |
 | Public status | `OPTIONS /status` → `siteAccess: { configured, homepage }` |
 | Login sprite | `modules/loginSpriteSheet.js` → 1×1 black JPEG when gate on |
 | PIN storage | `modules/pinAuth.js` (scrypt); login regenerates session id (`web_server.js`) |
@@ -24,7 +25,7 @@ The legacy **PIN page** (`public/index.html` at `/`) is not used when the gate i
 - `/agent*`, replication sync/assets/maintenance, MCP/Apocrypha UUID mounts, `.well-known/oauth-*`
 - `OPTIONS /status`, `POST /` (login/logout/ping), `GET /sw.js`
 
-Everything else (including `OPTIONS /` manifest, `/app`, `/launch`, APIs) needs a valid **`dsk`**, **`X-Dreamscape-Access`**, or `?k=` on GET (sets cookie).
+Everything else (including `OPTIONS /` manifest, `/app`, `/launch`, APIs) needs a valid **`connect.sid`**, **`dsk`**, **`X-Dreamscape-Access`**, or `?k=` on GET (sets cookie). Successful PIN login also sets **`dsk`** while the gate is on.
 
 ### Logout
 
@@ -38,7 +39,7 @@ Everything else (including `OPTIONS /` manifest, `/app`, `/launch`, APIs) needs 
 
 When set:
 
-- Boot skips redirect to `/`; BIOS PIN is required; session miss → `/app` (not PIN page).
+- Boot skips redirect to `/`; BIOS PIN only when **`OPTIONS /app`** says login required; session miss → `/app` (not PIN page).
 - Service worker skips **login-critical** precache (`serviceWorkerManager.js`).
 - Shell routes (`/`, `/app`, `/launch`, `/manifest.json`) are network-only (`public/sw.js`, cache `static-cache-v2`).
 
@@ -56,6 +57,7 @@ With a valid token, `GET /manifest.json` returns JSON with `id: "/?app=dreamscap
 
 ```bash
 node scripts/test-pin-auth.js
+node scripts/test-site-homepage-preview.js
 ```
 
 Manual: gate on → no token → cover on `/` and `/app`; phrase → `/launch` → BIOS PIN → desktop; log off → cover; rotate phrase → old `dsk` invalid.

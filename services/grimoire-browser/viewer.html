@@ -799,6 +799,7 @@
       else if (!ev.shiftKey && (ev.key === 't' || ev.key === 'T')) tabCommand = 'new-tab';
       else if (!ev.shiftKey && (ev.key === 'w' || ev.key === 'W' || ev.key === 'F4')) tabCommand = 'close-tab';
       else if (!ev.shiftKey && (ev.key === 'q' || ev.key === 'Q')) tabCommand = 'quick-tabs';
+      else if (!ev.shiftKey && (ev.key === 'n' || ev.key === 'N')) tabCommand = 'new-window';
     }
     if (tabCommand) {
       ev.preventDefault();

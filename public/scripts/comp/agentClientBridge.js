@@ -376,7 +376,7 @@
         const id = modal && modal.id ? String(modal.id) : '';
         if (id === 'galleryWindow') return 'gallery';
         if (id === 'manualModal') return 'studio';
-        if (id === 'tagWikiSearchModal') return 'grimoire';
+        if (id === 'tagWikiSearchModal' || (modal.classList && modal.classList.contains('grimoire-window'))) return 'grimoire';
         if (id === 'photoSwipeWindow') return 'glancewell';
         if (id.indexOf('imageViewer_') === 0) return 'lumen';
         const ident = modal && modal.dataset ? String(modal.dataset.windowIdentifier || '') : '';

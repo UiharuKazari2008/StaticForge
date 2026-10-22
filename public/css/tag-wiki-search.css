@@ -25,9 +25,9 @@
     box-shadow: none;
 }
 
-#tagWikiSearchModal .tag-wiki-results-panel-header-row #tagWikiSearchSourceDropdownMenu,
-#tagWikiSearchModal .tag-wiki-results-panel-header-row #tagWikiSearchFilterDropdownMenu,
-#tagWikiSearchModal .tag-wiki-results-panel-header-row #tagWikiSearchTypeDropdownMenu {
+:is(#tagWikiSearchModal, .grimoire-window) .tag-wiki-results-panel-header-row #tagWikiSearchSourceDropdownMenu,
+:is(#tagWikiSearchModal, .grimoire-window) .tag-wiki-results-panel-header-row #tagWikiSearchFilterDropdownMenu,
+:is(#tagWikiSearchModal, .grimoire-window) .tag-wiki-results-panel-header-row #tagWikiSearchTypeDropdownMenu {
     z-index: var(--z-dropdown);
 }
 
@@ -47,19 +47,19 @@
     position: relative;
 }
 
-#tagWikiSearchModal.modal-maximized .tag-wiki-panels-wrap {
+:is(#tagWikiSearchModal, .grimoire-window).modal-maximized .tag-wiki-panels-wrap {
     gap: 0;
 }
 
 /* Split mode: force strict 50/50 panels (no content-driven "resizing").
    Works for both maximized and wide-enough non-max split.
    The divider (with swap btn) stays in the middle. */
-#tagWikiSearchModal.tag-wiki-split-active .tag-wiki-panels-wrap {
+:is(#tagWikiSearchModal, .grimoire-window).tag-wiki-split-active .tag-wiki-panels-wrap {
     display: flex;
     align-items: stretch;
 }
 
-#tagWikiSearchModal.tag-wiki-split-active .tag-wiki-split-pane-left {
+:is(#tagWikiSearchModal, .grimoire-window).tag-wiki-split-active .tag-wiki-split-pane-left {
     flex: none;
     width: calc(50% - 1px);
     min-width: 0;
@@ -69,7 +69,7 @@
     overflow: hidden;
 }
 
-#tagWikiSearchModal.tag-wiki-split-active .tag-wiki-split-pane-right {
+:is(#tagWikiSearchModal, .grimoire-window).tag-wiki-split-active .tag-wiki-split-pane-right {
     display: flex;
     flex-direction: column;
     flex: none;
@@ -81,15 +81,15 @@
 }
 
 /* Ensure the display content fills the fixed 50% pane in split mode */
-#tagWikiSearchModal.tag-wiki-split-active .tag-wiki-split-pane-left .tag-wiki-search-display,
-#tagWikiSearchModal.tag-wiki-split-active .tag-wiki-split-pane-right .tag-wiki-search-display {
+:is(#tagWikiSearchModal, .grimoire-window).tag-wiki-split-active .tag-wiki-split-pane-left .tag-wiki-search-display,
+:is(#tagWikiSearchModal, .grimoire-window).tag-wiki-split-active .tag-wiki-split-pane-right .tag-wiki-search-display {
     flex: 1 1 auto;
     min-height: 0;
     width: 100%;
     height: 100%;
 }
 
-#tagWikiSearchModal.tag-wiki-split-active .tag-wiki-split-divider {
+:is(#tagWikiSearchModal, .grimoire-window).tag-wiki-split-active .tag-wiki-split-divider {
     display: block;
 }
 
@@ -125,11 +125,11 @@
     cursor: var(--c-default);
 }
 
-#tagWikiSearchModal.tag-wiki-results-overlay-open .tag-wiki-results-overlay-backdrop:not(.hidden) {
+:is(#tagWikiSearchModal, .grimoire-window).tag-wiki-results-overlay-open .tag-wiki-results-overlay-backdrop:not(.hidden) {
     display: block;
 }
 
-#tagWikiSearchModal.tag-wiki-results-overlay-open .tag-wiki-search-results-panel {
+:is(#tagWikiSearchModal, .grimoire-window).tag-wiki-results-overlay-open .tag-wiki-search-results-panel {
     position: absolute;
     top: 0;
     left: 0;
@@ -146,7 +146,7 @@
     background: var(--glass-layer-dark-menu);
 }
 
-#tagWikiSearchModal.tag-wiki-results-overlay-open .tag-wiki-search-body.results-sidebar-collapsed .tag-wiki-search-results-panel {
+:is(#tagWikiSearchModal, .grimoire-window).tag-wiki-results-overlay-open .tag-wiki-search-body.results-sidebar-collapsed .tag-wiki-search-results-panel {
     flex: none;
     min-width: 0;
     max-width: none;
@@ -779,7 +779,7 @@
 /* Grimoire document sheet. Home, search, loading, errors, lookup, and articles
    share this light palette. Applets ([data-dsap]) and the remote page (iframe)
    keep their own colors. The scrollbar thumb still uses --glass-layer-5. */
-#tagWikiSearchModal .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)),
+:is(#tagWikiSearchModal, .grimoire-window) .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)),
 .wiki-page-viewer-modal .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)) {
     background: #fff;
     color: #1a1a1a;
@@ -831,43 +831,43 @@
     --btn-hover-border-primary: #c45100;
 }
 
-#tagWikiSearchModal .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)) .tag-wiki-page,
+:is(#tagWikiSearchModal, .grimoire-window) .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)) .tag-wiki-page,
 .wiki-page-viewer-modal .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)) .tag-wiki-page {
     color: #1a1a1a;
     background: #fff;
 }
 
-#tagWikiSearchModal .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)) .btn-secondary:hover:not(:disabled),
+:is(#tagWikiSearchModal, .grimoire-window) .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)) .btn-secondary:hover:not(:disabled),
 .wiki-page-viewer-modal .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)) .btn-secondary:hover:not(:disabled) {
     color: #1a1a1a;
     background: #e4e4e4;
     border-color: #b5b5b5;
 }
 
-#tagWikiSearchModal .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)) .btn-primary,
+:is(#tagWikiSearchModal, .grimoire-window) .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)) .btn-primary,
 .wiki-page-viewer-modal .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)) .btn-primary {
     color: #fff;
 }
 
-#tagWikiSearchModal .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)) .btn-primary:hover:not(:disabled),
+:is(#tagWikiSearchModal, .grimoire-window) .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)) .btn-primary:hover:not(:disabled),
 .wiki-page-viewer-modal .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)) .btn-primary:hover:not(:disabled) {
     color: #fff;
 }
 
-#tagWikiSearchModal .tag-wiki-search-display:not(:has([data-dsap])) .tag-wiki-page :is(details, details.tag-wiki-expand-section),
+:is(#tagWikiSearchModal, .grimoire-window) .tag-wiki-search-display:not(:has([data-dsap])) .tag-wiki-page :is(details, details.tag-wiki-expand-section),
 .wiki-page-viewer-modal .tag-wiki-search-display:not(:has([data-dsap])) .tag-wiki-page :is(details, details.tag-wiki-expand-section) {
     background-color: #f7f7fb;
     border-color: #d0d4dc;
 }
 
-#tagWikiSearchModal .tag-wiki-search-display:not(:has([data-dsap])) .tag-wiki-page .spoiler,
+:is(#tagWikiSearchModal, .grimoire-window) .tag-wiki-search-display:not(:has([data-dsap])) .tag-wiki-page .spoiler,
 .wiki-page-viewer-modal .tag-wiki-search-display:not(:has([data-dsap])) .tag-wiki-page .spoiler {
     background: #111;
     color: #111;
     border-color: #111;
 }
 
-#tagWikiSearchModal .tag-wiki-search-display:not(:has([data-dsap])) .tag-wiki-page .spoiler:hover,
+:is(#tagWikiSearchModal, .grimoire-window) .tag-wiki-search-display:not(:has([data-dsap])) .tag-wiki-page .spoiler:hover,
 .wiki-page-viewer-modal .tag-wiki-search-display:not(:has([data-dsap])) .tag-wiki-page .spoiler:hover {
     background: #111;
     color: #fff;
@@ -875,7 +875,7 @@
 }
 
 /* Offline NovelAI docs (rdf://docs.novelai.jp): navy page, white type, yellow accent. */
-#tagWikiSearchModal .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)):has([data-grimoire-site="novelai"]),
+:is(#tagWikiSearchModal, .grimoire-window) .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)):has([data-grimoire-site="novelai"]),
 .wiki-page-viewer-modal .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)):has([data-grimoire-site="novelai"]) {
     background: #13152c;
     color: #fff;
@@ -924,30 +924,30 @@
     --btn-hover-border-primary: #f8f010;
 }
 
-#tagWikiSearchModal .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)):has([data-grimoire-site="novelai"]) .tag-wiki-page,
+:is(#tagWikiSearchModal, .grimoire-window) .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)):has([data-grimoire-site="novelai"]) .tag-wiki-page,
 .wiki-page-viewer-modal .tag-wiki-search-display:not(:has([data-dsap])):not(:has(> .tag-wiki-display-content > iframe)):not(:has(.scrollable-content > .tag-wiki-display-content > iframe)):has([data-grimoire-site="novelai"]) .tag-wiki-page {
     background: #13152c;
     color: #fff;
 }
 
-#tagWikiSearchModal [data-grimoire-site="novelai"] :is(a, .wiki-static-link, .wiki-static-index-link),
+:is(#tagWikiSearchModal, .grimoire-window) [data-grimoire-site="novelai"] :is(a, .wiki-static-link, .wiki-static-index-link),
 .wiki-page-viewer-modal [data-grimoire-site="novelai"] :is(a, .wiki-static-link, .wiki-static-index-link) {
     color: #f8f010;
 }
 
-#tagWikiSearchModal [data-grimoire-site="novelai"] :is(a, .wiki-static-link, .wiki-static-index-link):hover,
+:is(#tagWikiSearchModal, .grimoire-window) [data-grimoire-site="novelai"] :is(a, .wiki-static-link, .wiki-static-index-link):hover,
 .wiki-page-viewer-modal [data-grimoire-site="novelai"] :is(a, .wiki-static-link, .wiki-static-index-link):hover {
     color: #fff36a;
 }
 
-#tagWikiSearchModal .tag-wiki-search-display:not(:has([data-dsap])) [data-grimoire-site="novelai"] :is(details, details.tag-wiki-expand-section),
+:is(#tagWikiSearchModal, .grimoire-window) .tag-wiki-search-display:not(:has([data-dsap])) [data-grimoire-site="novelai"] :is(details, details.tag-wiki-expand-section),
 .wiki-page-viewer-modal .tag-wiki-search-display:not(:has([data-dsap])) [data-grimoire-site="novelai"] :is(details, details.tag-wiki-expand-section) {
     background-color: #1c1f3d;
     border-color: #3a3d5c;
     color: #fff;
 }
 
-#tagWikiSearchModal .tag-wiki-search-display:has([data-grimoire-site="novelai"]) .btn-primary,
+:is(#tagWikiSearchModal, .grimoire-window) .tag-wiki-search-display:has([data-grimoire-site="novelai"]) .btn-primary,
 .wiki-page-viewer-modal .tag-wiki-search-display:has([data-grimoire-site="novelai"]) .btn-primary {
     color: #13152c;
     background: #f8f010;
@@ -2071,9 +2071,9 @@
 }
 
 /* The pill is the box. Desktop text fields would paint their own bevel inside it. */
-#tagWikiSearchModal :is(.google-large-input, .search-page-input),
-#tagWikiSearchModal :is(.google-large-input, .search-page-input):hover,
-#tagWikiSearchModal :is(.google-large-input, .search-page-input):focus,
+:is(#tagWikiSearchModal, .grimoire-window) :is(.google-large-input, .search-page-input),
+:is(#tagWikiSearchModal, .grimoire-window) :is(.google-large-input, .search-page-input):hover,
+:is(#tagWikiSearchModal, .grimoire-window) :is(.google-large-input, .search-page-input):focus,
 .wiki-page-viewer-modal :is(.google-large-input, .search-page-input),
 .wiki-page-viewer-modal :is(.google-large-input, .search-page-input):hover,
 .wiki-page-viewer-modal :is(.google-large-input, .search-page-input):focus {
@@ -2203,7 +2203,7 @@
     }
 }
 
-#tagWikiSearchModal {
+:is(#tagWikiSearchModal, .grimoire-window) {
     width: 1050px;
     height: 750px;
 }

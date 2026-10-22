@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Request copies - Service retired</title>
+<link rel="stylesheet" href="style.css">
+</head><body>
+<div class="c">
+<p class="o"><a href="index.html">Xyridian Sample Registry</a> - retired service</p>
+<h1>Request copies of archived records</h1>
+<p>Use this form to request copies of records transferred from the Xyridian Sample Registry. Fields marked * are required. If you prefer, you can post the <a href="files/xsr-request-form.pdf">printable form</a> (PDF, 37 KB) instead.</p>
+<form class="f" action="request-received.html" method="get">
+<label for="nm">Full name *</label>
+<input type="text" id="nm" name="name" required maxlength="80">
+<label for="org">Organisation or research group</label>
+<input type="text" id="org" name="org" maxlength="120">
+<label for="addr">Postal address for our reply *</label>
+<textarea id="addr" name="address" rows="3" required maxlength="300"></textarea>
+<label for="un">Former XSR username</label>
+<input type="text" id="un" name="username" maxlength="40">
+<label for="refs">Record reference(s) *</label>
+<textarea id="refs" name="refs" rows="3" required maxlength="600"></textarea>
+<p class="hint">One reference per line, in the form XSR-YYYY-NNNNN. If you do not know the reference, give the depositing group and approximate year.</p>
+<label for="rel">Your connection to the records *</label>
+<select id="rel" name="relation" required>
+<option value="depositor">I deposited the records</option>
+<option value="agent">I am acting for the depositing group</option>
+<option value="other">Other (please explain below)</option>
+</select>
+<label>Format of copies</label>
+<div class="r"><input type="radio" id="fe" name="format" value="electronic" checked><label for="fe">Electronic (PDF)</label><input type="radio" id="fp" name="format" value="paper"><label for="fp">Paper</label></div>
+<label for="det">Further details</label>
+<textarea id="det" name="details" rows="4" maxlength="1000"></textarea>
+<div class="ck"><input type="checkbox" id="dec" name="declaration" value="yes" required> <label for="dec">I confirm that the information I have given is correct and that I am entitled to request these records. *</label></div>
+<p class="hint">If you did not have an XSR account, we will write to you asking for proof of identity before your request can proceed. See the <a href="privacy.html">privacy notice</a> for how this information is used.</p>
+<p><button type="submit">Submit request</button></p>
+</form>
+<div class="s">Ref: RDS-0351 | This notice will remain in place until 31 March 2027.<br><a href="index.html">Notice</a> | <a href="requests.html">Requesting copies</a> | <a href="collections.html">Collections</a> | <a href="retention.html">Retention</a> | <a href="privacy.html">Privacy</a></div>
+</div>
+</body></html>

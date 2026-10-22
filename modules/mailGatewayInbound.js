@@ -94,8 +94,39 @@ function redact(text) {
     return String(text || '').replace(/AUTH\s+\S+\s+\S+/gi, 'AUTH [redacted]');
 }
 
+function lookupActiveMailbox(owner) {
+    try {
+        const exchange = require('./mailExchange');
+        if (typeof exchange.isDirectoryReady !== 'function' || !exchange.isDirectoryReady()) {
+            return false;
+        }
+        return exchange.isActiveMailbox(owner) === true;
+    } catch (_err) {
+        return false;
+    }
+}
+
+function lmtpStatusForRcpt(rcpt, results, deliverTo) {
+    const byOwner = new Map();
+    (results || []).forEach((item) => {
+        if (item && item.owner) byOwner.set(item.owner, item);
+    });
+    if (rcpt && byOwner.has(rcpt.owner)) return byOwner.get(rcpt.owner);
+    const remapped = (deliverTo || []).filter((row) => row.via === 'recovered' || row.via === 'divert');
+    for (let i = 0; i < remapped.length; i++) {
+        const status = byOwner.get(remapped[i].owner);
+        if (status) return status;
+    }
+    return {
+        ok: false,
+        owner: rcpt && rcpt.owner,
+        error: new Error('Temporary failure: no delivery result for recipient')
+    };
+}
+
 function handleInboundConnection(plainSocket, options) {
     const allowFrom = options.allowFrom;
+    const recoveryRelayPeers = options.recoveryRelayPeers;
     const mapping = options.mapping;
     const deliver = options.deliver;
     const spamConfig = options.spam;
@@ -106,6 +137,7 @@ function handleInboundConnection(plainSocket, options) {
     const idleTimeoutMs = options.idleTimeoutMs || DEFAULT_IDLE_TIMEOUT_MS;
     const sessionTimeoutMs = options.sessionTimeoutMs || DEFAULT_SESSION_TIMEOUT_MS;
     const peer = addresses.normalizePeerAddress(plainSocket.remoteAddress);
+    const log = options.log || ((message) => console.log(message));
 
     if (!addresses.isAllowedPeer(peer, allowFrom)) {
         smtpWrite(plainSocket, '554 5.7.1 Connection refused');
@@ -262,9 +294,9 @@ function handleInboundConnection(plainSocket, options) {
             }
             const match = command.match(/TO:\s*<([^>]+)>/i);
             const addr = match ? match[1] : '';
-            let owners = [];
+            let resolved;
             try {
-                owners = addresses.expandRecipients(addr, mapping);
+                resolved = addresses.describeRecipientResolution(addr, mapping);
             } catch (err) {
                 if (err && err.code === 'ALIAS_LOOP') {
                     reply(`550 5.1.1 <${addr}>: Recipient address rejected: Alias loop`);
@@ -272,7 +304,9 @@ function handleInboundConnection(plainSocket, options) {
                 }
                 throw err;
             }
+            const owners = resolved.owners;
             if (!owners.length) {
+                log(`[mail-gateway] RCPT ${resolved.envelope || addr} -> (none) (unknown)`);
                 reply(`550 5.1.1 <${addr}>: Recipient address rejected: User unknown`);
                 return;
             }
@@ -288,12 +322,19 @@ function handleInboundConnection(plainSocket, options) {
             } catch (_err) {
                 owners.forEach((owner) => accepted.push(owner));
             }
+            log(`[mail-gateway] RCPT ${resolved.envelope || addr} -> ${owners.join(',')} (${resolved.via})${denied ? `; denied: ${denied}` : ''}`);
             if (!accepted.length) {
                 reply(`550 5.7.1 <${addr}>: Recipient address rejected: ${denied || 'Inbound disabled'}`);
                 return;
             }
             accepted.forEach((owner) => {
-                if (!recipients.includes(owner)) recipients.push(owner);
+                if (!recipients.some((row) => row.owner === owner)) {
+                    recipients.push({
+                        owner,
+                        envelope: resolved.envelope || addresses.normalizeEmail(addr),
+                        via: resolved.via
+                    });
+                }
             });
             reply('250 2.1.5 OK');
         } else if (verb === 'DATA') {
@@ -335,7 +376,7 @@ function handleInboundConnection(plainSocket, options) {
         const headerEnd = raw.indexOf('\r\n\r\n');
         const headerBlock = headerEnd === -1 ? raw : raw.slice(0, headerEnd);
         const spamMark = spam.isInboundSpam(headerBlock, spamConfig);
-        const originalTo = spam.trustedOriginalTo(headerBlock, spamConfig);
+        const stampedOriginalTo = spam.trustedOriginalTo(headerBlock, spamConfig);
         const fromCheck = addresses.validateFromHeader(parsed.headers.from, mapping);
         if (!fromCheck.ok) {
             reply(`${fromCheck.code} ${fromCheck.message}`);
@@ -355,10 +396,38 @@ function handleInboundConnection(plainSocket, options) {
         // spoofs arrive with a foreign or null envelope, or are flagged
         // LANTIS_FORGED_OURS / trusted SPF/DKIM/DMARC fail by the relay.
         const divertOwnDomain = ownDomainFrom && !alignedOwnSender(mailFrom, spamMark, mapping);
-        const deliverTo = divertOwnDomain
-            ? [addresses.resolvePostmasterMailbox(mapping)]
-            : recipients;
-        const jobs = deliverTo.map((owner) => Promise.resolve().then(() => {
+        const acceptedRecipients = recipients.slice();
+        let deliverTo = acceptedRecipients;
+        if (divertOwnDomain) {
+            deliverTo = [{
+                owner: addresses.resolvePostmasterMailbox(mapping),
+                envelope: stampedOriginalTo || (acceptedRecipients[0] && acceptedRecipients[0].envelope) || '',
+                via: 'divert'
+            }];
+        } else {
+            const recovered = addresses.recoverCatchallDelivery({
+                recipients: acceptedRecipients,
+                originalTo: stampedOriginalTo,
+                mapping,
+                spam: spamMark.spam,
+                forgedOurs: spamMark.forgedOurs,
+                peer,
+                relayPeers: recoveryRelayPeers,
+                isActiveMailbox: lookupActiveMailbox
+            });
+            deliverTo = recovered.recipients;
+            if (recovered.recovered) {
+                log(`[mail-gateway] recovered catch-all -> ${recovered.recoveredTo.join(',')} (${recovered.reason})`);
+            }
+        }
+        const jobs = deliverTo.map((rcpt) => Promise.resolve().then(() => {
+            const owner = rcpt.owner;
+            const acceptedEnvelope = (
+                acceptedRecipients.find((row) => row.owner === owner)
+                || acceptedRecipients[0]
+                || rcpt
+            ).envelope;
+            const originalTo = addresses.resolveStoredOriginalTo(stampedOriginalTo, acceptedEnvelope);
             if (!deliver) return { owner, ok: true };
             return Promise.resolve(deliver({
                 fromAddress: mailFrom,
@@ -380,20 +449,18 @@ function handleInboundConnection(plainSocket, options) {
                 notifyLoop: require('./dovecoteMailboxNotify').isNotifyLoopHeader(parsed.headers),
                 headers: parsed.headers
             })).then(() => ({ owner, ok: true }));
-        }).catch((err) => ({ owner, ok: false, error: err })));
+        }).catch((err) => ({ owner: rcpt.owner, ok: false, error: err })));
 
         busy = true;
         Promise.all(jobs).then((results) => {
             if (mode === 'lmtp') {
-                // RFC 2033: one reply per accepted RCPT. An own-domain From is
-                // diverted to a single postmaster copy, so every original RCPT
-                // gets that copy's status (never fewer replies than RCPTs).
-                const perRcpt = divertOwnDomain
-                    ? recipients.map(() => Object.assign({}, results[0], { owner: results[0].owner }))
-                    : results;
-                perRcpt.forEach((item) => {
-                    if (item.ok) reply(`250 2.1.5 ${item.owner} OK`);
-                    else reply(`451 4.3.0 ${item.owner} ${redact(item.error.message)}`);
+                // RFC 2033: one reply per accepted RCPT. One failure must
+                // not 451 the others — the relay retries every 451 and
+                // would duplicate the successes.
+                acceptedRecipients.forEach((rcpt) => {
+                    const status = lmtpStatusForRcpt(rcpt, results, deliverTo);
+                    if (status.ok) reply(`250 2.1.5 ${rcpt.owner} OK`);
+                    else reply(`451 4.3.0 ${rcpt.owner} ${redact(status.error && status.error.message)}`);
                 });
             } else if (results.every((item) => item.ok)) {
                 reply('250 2.0.0 Message accepted');
@@ -504,5 +571,7 @@ module.exports = {
     DEFAULT_IDLE_TIMEOUT_MS,
     DEFAULT_SESSION_TIMEOUT_MS,
     CrlfBuffer,
-    handleInboundConnection
+    handleInboundConnection,
+    lookupActiveMailbox,
+    lmtpStatusForRcpt
 };

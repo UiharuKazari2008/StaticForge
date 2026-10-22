@@ -106,6 +106,9 @@ function isAuthGatedWebPath(webPath) {
     if (pathOnly.startsWith('/protected/') || pathOnly.startsWith('/private/')) return true;
     if (pathOnly === '/manifest.json') return true;
     if (pathOnly === '/' || pathOnly === '/app' || pathOnly === '/launch' || pathOnly === '/index.html') return true;
+    // web_server.js serves public/graphify-out behind authMiddleware: unflagged, the worker
+    // refused the row (Cache-Control: blocked) and every client counted it as an update each start
+    if (pathOnly.startsWith('/graphify-out/')) return true;
     return false;
 }
 

@@ -486,41 +486,59 @@ async function hideGalleryMoveModal() {
     }
 }
 
+/** The move type for the open gallery view (files / scraps / pinned). */
+function galleryMoveType() {
+    if (currentGalleryView === 'scraps') return 'scraps';
+    if (currentGalleryView === 'pinned') return 'pinned';
+    return 'files';
+}
+
+/**
+ * Moves images to another workspace: Vista's progress dialog on the desktop (galleryTransfer,
+ * public/scripts/comp/bulkOperationsManager.js), a progress toast off it. Resolves how many moved
+ * (fewer than asked when the dialog's Skip or Cancel left some).
+ */
+async function moveGalleryImagesToWorkspace(filenames, targetWorkspaceId) {
+    const moveType = galleryMoveType();
+    const sourceWorkspace = activeWorkspace || 'default';
+    const folder = galleryViewFolder(currentGalleryView);
+    const dialog = typeof fileOperationProgress !== 'undefined' && fileOperationProgress.available();
+    const one = filenames.length === 1;
+    const toastId = dialog ? null : showGlassToast('info', one ? 'Moving Image' : 'Moving Images',
+        one ? 'Moving image to selected workspace...' : `Moving ${filenames.length} images to selected workspace...`,
+        true, false, '<i class="mdi mdi-1-5 mdi-folder-move"></i>');
+    try {
+        const transfer = await galleryTransfer('move', filenames,
+            galleryTransferPlace(sourceWorkspace, folder), galleryTransferPlace(targetWorkspaceId, folder),
+            async (names) => {
+                const response = await wsClient.moveFilesToWorkspace(names, targetWorkspaceId, sourceWorkspace, moveType);
+                if (!response?.success) throw new Error(response?.message || (one ? 'Failed to move image' : 'Failed to move images'));
+                return response;
+            });
+        if (toastId) {
+            updateGlassToastComplete(toastId, {
+                type: 'success',
+                title: one ? 'Image Moved' : 'Images Moved',
+                message: one ? 'Image moved successfully to the selected workspace' : `${filenames.length} images moved successfully to the selected workspace`,
+                showProgress: false
+            });
+        }
+        return transfer.done;
+    } catch (error) {
+        if (toastId) removeGlassToast(toastId);
+        throw error;
+    }
+}
+
 // Execute the actual move operation
 async function executeGalleryMove(filename, targetWorkspaceId) {
     try {
-        // Show loading toast
-        const toastId = showGlassToast('info', 'Moving Image', 'Moving image to selected workspace...', true, false, '<i class="mdi mdi-1-5 mdi-folder-move"></i>');
-        
-        // Move the image using WebSocket
-        // Determine move type based on current gallery view
-        const isScrapsView = currentGalleryView === 'scraps';
-        const isPinnedView = currentGalleryView === 'pinned';
-        let moveType = 'files';
-        if (isScrapsView) {
-            moveType = 'scraps';
-        } else if (isPinnedView) {
-            moveType = 'pinned';
+        const moved = await moveGalleryImagesToWorkspace([filename], targetWorkspaceId);
+        hideGalleryMoveModal();
+        // Refresh gallery to reflect the change
+        if (moved && typeof requestGallery === 'function') {
+            requestGallery();
         }
-        const response = await wsClient.moveFilesToWorkspace([filename], targetWorkspaceId, activeWorkspace || 'default', moveType);
-        
-        if (response.success) {
-            updateGlassToastComplete(toastId, {
-                type: 'success',
-                title: 'Image Moved',
-                message: 'Image moved successfully to the selected workspace',
-                showProgress: false
-            });
-            hideGalleryMoveModal();
-            
-            // Refresh gallery to reflect the change
-            if (typeof requestGallery === 'function') {
-                requestGallery();
-            }
-        } else {
-            throw new Error(response.message || 'Failed to move image');
-        }
-        
     } catch (error) {
         console.error('Error moving gallery image:', error);
         showError('Failed to move image: ' + error.message);
@@ -532,48 +550,23 @@ async function executeGalleryMove(filename, targetWorkspaceId) {
 async function executeGalleryMoveMultiple(targetWorkspaceId) {
     try {
         const selectedImages = Array.from(galleryMoveSelectedImages);
-        
+
         if (selectedImages.length === 0) {
             showError('No images selected for move');
             return;
         }
-        
-        // Show loading toast
-        const toastId = showGlassToast('info', 'Moving Images', `Moving ${selectedImages.length} images to selected workspace...`, true, false, '<i class="mdi mdi-1-5 mdi-folder-move"></i>');
-        
-        // Move the images using WebSocket
-        // Determine move type based on current gallery view
-        const isScrapsView = currentGalleryView === 'scraps';
-        const isPinnedView = currentGalleryView === 'pinned';
-        let moveType = 'files';
-        if (isScrapsView) {
-            moveType = 'scraps';
-        } else if (isPinnedView) {
-            moveType = 'pinned';
+
+        const moved = await moveGalleryImagesToWorkspace(selectedImages, targetWorkspaceId);
+        hideGalleryMoveModal();
+
+        // Clear selection in both the modal and the main gallery view
+        galleryMoveSelectedImages.clear();
+        clearSelection();
+
+        // Refresh gallery to reflect the change
+        if (moved && typeof requestGallery === 'function') {
+            requestGallery();
         }
-        const response = await wsClient.moveFilesToWorkspace(selectedImages, targetWorkspaceId, activeWorkspace || 'default', moveType);
-        
-        if (response.success) {
-            updateGlassToastComplete(toastId, {
-                type: 'success',
-                title: 'Images Moved',
-                message: `${selectedImages.length} images moved successfully to the selected workspace`,
-                showProgress: false
-            });
-            hideGalleryMoveModal();
-            
-            // Clear selection in both the modal and the main gallery view
-            galleryMoveSelectedImages.clear();
-            clearSelection();
-            
-            // Refresh gallery to reflect the change
-            if (typeof requestGallery === 'function') {
-                requestGallery();
-            }
-        } else {
-            throw new Error(response.message || 'Failed to move images');
-        }
-        
     } catch (error) {
         console.error('Error moving gallery images:', error);
         showError('Failed to move images: ' + error.message);

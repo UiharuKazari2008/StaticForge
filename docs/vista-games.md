@@ -148,7 +148,7 @@ Minesweeper, Solitaire, Spider Solitaire, FreeCell, Hearts, Block Drop, Brick Br
   `media/<id>.json` lists the game's files, and only when the cache lacks one does the page
   fetch `media/<id>.zip`. The zip carries 1x art and sound in lighter copies (WebP q70, palette
   PNG, AAC 48 kbps, Opus 40 kbps). Only the missing files are written into the service worker's
-  `static-cache-v1`; a copy already cached (full or light) is used as it is. A small progress
+  `static-cache-v2`; a copy already cached (full or light) is used as it is. A small progress
   dialog shows meanwhile, and Setup waits between its steps (`gate()`) until the game has
   loaded, at most 60 s from the click. A download that sends nothing for 15 s is dropped and
   the game loads file by file instead. The service worker leaves `media/` to the network

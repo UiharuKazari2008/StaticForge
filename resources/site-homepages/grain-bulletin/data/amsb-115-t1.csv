@@ -1,0 +1,8 @@
+grain_type,checks,within_tolerance,pct_within,mean_error_pp,sd_pp,q3_2025_pct_within
+"Hard red winter wheat",242,228,94.2,0.06,0.27,94.1
+"Soft white wheat",133,125,94.0,-0.10,0.25,91.3
+"Barley (malting)",136,121,89.0,0.09,0.34,91.1
+"Corn, yellow dent",403,381,94.5,-0.03,0.27,90.7
+"Oats",77,66,85.7,0.12,0.43,82.6
+"Sorghum",245,231,94.3,0.04,0.27,93.2
+"All grains",1236,1152,93.2,0.02,0.29,91.4

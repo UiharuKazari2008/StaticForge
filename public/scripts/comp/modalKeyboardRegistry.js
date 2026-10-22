@@ -559,6 +559,15 @@ function installKeyboardListenerDevPatch() {
     };
 }
 
+/** Drop a listener registerKeyboardListener added (a window that goes for good, e.g. a later Grimoire window). */
+function unregisterKeyboardListener(id) {
+    const entry = keyboardListenerRegistry.get(id);
+    if (!entry) return false;
+    unindexKeyboardListenerEntry(entry);
+    keyboardListenerRegistry.delete(id);
+    return true;
+}
+
 function registerKeyboardListener(options) {
     if (!options || !options.id) {
         console.warn('[keyboardRegistry] registerKeyboardListener requires id');

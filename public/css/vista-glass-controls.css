@@ -1656,7 +1656,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="lig
    missing when it's over a dark background"). Vista: a dark line on the outside (VM: (36,46,57) at
    the top, (25,30,34) on the shadow side) and a near-white line just inside it ((247,249,250)). Ours
    was a 30% white border with a 17% highlight. ---------- */
-body.desktop-mode:not(.windows-classic-theme) .modal:not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow):not(#virtualKeyboardModal) {
+body.desktop-mode:not(.windows-classic-theme) .modal:not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal) {
     border-color: hsl(210 24% 14% / 82%);
     /* 2026-10-21 pass, measured against Notepad on the VM at the same screen spot over the same
        wallpaper. Corners: 6 px at the top, 5 px at the bottom (ours were 8). Inner line: the
@@ -1672,26 +1672,26 @@ body.desktop-mode:not(.windows-classic-theme) .modal:not(.modal-maximized):not(#
     box-shadow: var(--window-frame-shadow);
 }
 
-body.desktop-mode:not(.windows-classic-theme) .modal:not(.active-window):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow):not(#virtualKeyboardModal) {
+body.desktop-mode:not(.windows-classic-theme) .modal:not(.active-window):not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal) {
     --aero-frame-highlight: inset 0 0 0 1px hsl(0 0% 100% / 66%);
     --window-frame-shadow: 1px 1px 7px 0 hsl(0 0% 0% / 88%), 1px 1px 8px -2px hsl(0 0% 0% / 24%);
 }
 
 /* Live glass has no ::before frame paint (aero-glass.css), so the inner line rides on the
    window's own box-shadow, which still carried app.css's 17 % white ring */
-html[data-glass="live"] body.desktop-mode:not(.windows-classic-theme) .modal:not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow):not(#virtualKeyboardModal) {
+html[data-glass="live"] body.desktop-mode:not(.windows-classic-theme) .modal:not(.modal-maximized):not(#manualModal:not(.windowed)):not(#photoSwipeWindow:not(.windowed)):not(#virtualKeyboardModal) {
     box-shadow: var(--window-frame-shadow), var(--aero-frame-highlight);
 }
 
 /* Caption icon and title: Vista draws the 16 px icon 8 px in from the window edge and the title
    5 px after it (29 px in); with no icon the title starts at 8 px. Ours: an 18 px icon at 13 px,
    the title at 37 px. The import wizard (Back orb first) and IE7's caption place their own. */
-body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):where(:not(#manualModal:not(.windowed), #photoSwipeWindow, #virtualKeyboardModal, #unifiedUploadModal, #tagWikiSearchModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-window-title > .modal-window-title-main {
+body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):where(:not(#manualModal:not(.windowed), #photoSwipeWindow:not(.windowed), #virtualKeyboardModal, #unifiedUploadModal, :is(#tagWikiSearchModal, .grimoire-window), [data-window-frame="flush"])):not(.modal-maximized) > .modal-window-title > .modal-window-title-main {
     margin-left: -5px;
     gap: 5px;
 }
 
-body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):where(:not(#manualModal:not(.windowed), #photoSwipeWindow, #virtualKeyboardModal, #unifiedUploadModal, #tagWikiSearchModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-window-title > .modal-window-title-main > .icon-image {
+body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):where(:not(#manualModal:not(.windowed), #photoSwipeWindow:not(.windowed), #virtualKeyboardModal, #unifiedUploadModal, :is(#tagWikiSearchModal, .grimoire-window), [data-window-frame="flush"])):not(.modal-maximized) > .modal-window-title > .modal-window-title-main > .icon-image {
     width: 16px;
     height: 16px;
 }
@@ -1699,7 +1699,7 @@ body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):
 /* Caption buttons: Vista hangs the cluster with its right edge on the client edge's dark line
    (7 px in from the window edge on the 8 px frame) and the face's white hairline one column
    further out; ours sat 14 px in */
-body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):where(:not(#manualModal:not(.windowed), #photoSwipeWindow, #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-window-controls {
+body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):where(:not(#manualModal:not(.windowed), #photoSwipeWindow:not(.windowed), #virtualKeyboardModal, [data-window-frame="flush"])):not(.modal-maximized) > .modal-window-controls {
     right: calc(var(--window-frame-inset) - 2px);
 }
 
