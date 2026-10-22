@@ -136,15 +136,43 @@ async function recordEntry({
     return result.lastID;
 }
 
-async function recordGallerySave(filename, { workspaceId = null, imagesDir = null } = {}) {
+/** Streamed sha256 off the event loop; null when the file is missing or unreadable. */
+function sha256FileAsync(filePath) {
+    return new Promise((resolve) => {
+        const hash = crypto.createHash('sha256');
+        const stream = fs.createReadStream(filePath);
+        stream.on('data', (chunk) => hash.update(chunk));
+        stream.on('error', () => resolve(null));
+        stream.on('end', () => resolve(hash.digest('hex')));
+    });
+}
+
+/** Replication on (or REPLICATION_CHANGELOG_RECORD_STANDALONE=1); same rule as the changelog. */
+function isReplicationRecording() {
+    if (!globalResourcesRef || !globalResourcesRef.getSecureConfig) return false;
+    const secure = globalResourcesRef.getSecureConfig();
+    // modules/replicationChangelog.js
+    const { shouldRecordRawConfig } = require('./replicationChangelog');
+    return shouldRecordRawConfig(secure && secure.replication ? secure.replication : null);
+}
+
+/**
+ * buffer: PNG bytes the caller just wrote (hashed in memory, no re-read).
+ * Standalone nodes keep the journal row (user cargo export lists it) but skip the checksum:
+ * nothing reads it without a replica, and hashing meant a full read of every saved PNG.
+ */
+async function recordGallerySave(filename, { workspaceId = null, imagesDir = null, buffer = null } = {}) {
     if (!filename) return null;
     let checksum = null;
-    if (imagesDir) {
-        const digest = sha256File(path.join(imagesDir, filename));
-        checksum = digest && typeof digest.then === 'function' ? await digest : digest;
-    } else if (globalResourcesRef) {
-        const digest = sha256File(path.join(globalResourcesRef.getPath('images'), filename));
-        checksum = digest && typeof digest.then === 'function' ? await digest : digest;
+    if (await ensureReady() && isReplicationRecording()) {
+        if (Buffer.isBuffer(buffer)) {
+            checksum = crypto.createHash('sha256').update(buffer).digest('hex');
+        } else {
+            const dir = imagesDir || (globalResourcesRef ? globalResourcesRef.getPath('images') : null);
+            if (dir) {
+                checksum = await sha256FileAsync(path.join(dir, filename));
+            }
+        }
     }
     return recordEntry({
         kind: 'gallery-image',
