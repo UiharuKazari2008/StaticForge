@@ -72,6 +72,27 @@ function stringifyNaiStyle(obj) {
     return '{' + parts.join(', ') + '}';
 }
 
+// CRC-32 (PNG) lookup table, built once instead of on every calculateCRC call.
+const CRC32_TABLE = (() => {
+    const table = new Uint32Array(256);
+    for (let i = 0; i < 256; i++) {
+        let c = i;
+        for (let j = 0; j < 8; j++) {
+            c = ((c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1));
+        }
+        table[i] = c >>> 0;
+    }
+    return table;
+})();
+
+/** Uint8Array view over a Buffer / typed array without copying (new Uint8Array(buffer) copies). */
+function asUint8View(buffer) {
+    if (buffer instanceof Uint8Array) {
+        return new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+    }
+    return new Uint8Array(buffer);
+}
+
 class PngMetadata {
     constructor(globalResources) {
         this.globalResources = globalResources;
@@ -340,7 +361,8 @@ class PngMetadata {
 
     // Helper: Extract PNG chunks
     extractChunks(buffer) {
-        const data = new Uint8Array(buffer);
+        // Views, not copies: chunk payloads (IDAT included) are only read by readMetadata
+        const data = asUint8View(buffer);
         if (!this.isValidPngHeader(data)) {
             throw new Error('Invalid .png file header');
         }
@@ -349,13 +371,13 @@ class PngMetadata {
         while (idx < data.length) {
             const length = this.readUint32(data, idx) + 4;
             idx += 4;
-            const name = String.fromCharCode(...data.slice(idx, idx + 4));
+            const name = String.fromCharCode(data[idx], data[idx + 1], data[idx + 2], data[idx + 3]);
             idx += 4;
             if (name === 'IEND') {
                 chunks.push({ name, data: new Uint8Array(0) });
                 break;
             }
-            const chunkData = data.slice(idx, idx + length - 4);
+            const chunkData = data.subarray(idx, idx + length - 4);
             idx += length;
             chunks.push({ name, data: chunkData });
         }
@@ -399,19 +421,19 @@ class PngMetadata {
     // Helper: Insert text chunk into PNG
     insertTextChunk(imageBuffer, keyword, text) {
     try {
-        const data = new Uint8Array(imageBuffer);
+        const data = asUint8View(imageBuffer);
         let commentStart = -1;
         let commentEnd = -1;
         let iendPos = -1;
         let idx = 8;
         while (idx < data.length - 4) {
             const length = this.readUint32(data, idx);
-            const name = String.fromCharCode(...data.slice(idx + 4, idx + 8));
+            const name = String.fromCharCode(data[idx + 4], data[idx + 5], data[idx + 6], data[idx + 7]);
             if (name === 'tEXt') {
-                const chunkData = data.slice(idx + 8, idx + 8 + length);
+                const chunkData = data.subarray(idx + 8, idx + 8 + length);
                 const keywordStart = chunkData.indexOf(0);
                 if (keywordStart !== -1) {
-                    const chunkKeyword = new TextDecoder().decode(chunkData.slice(0, keywordStart));
+                    const chunkKeyword = new TextDecoder().decode(chunkData.subarray(0, keywordStart));
                     if (chunkKeyword === keyword) {
                         commentStart = idx;
                         commentEnd = idx + 4 + 4 + length + 4;
@@ -441,28 +463,29 @@ class PngMetadata {
         fullChunk[3] = chunkLength & 0xFF;
         fullChunk.set(typeBytes, 4);
         fullChunk.set(chunkData, 8);
-        const crc = this.calculateCRC(fullChunk.slice(4, 8 + chunkLength));
+        const crc = this.calculateCRC(fullChunk.subarray(4, 8 + chunkLength));
         fullChunk[8 + chunkLength] = (crc >>> 24) & 0xFF;
         fullChunk[8 + chunkLength + 1] = (crc >>> 16) & 0xFF;
         fullChunk[8 + chunkLength + 2] = (crc >>> 8) & 0xFF;
         fullChunk[8 + chunkLength + 3] = crc & 0xFF;
         let newBuffer;
         if (commentStart !== -1) {
-            const beforeComment = data.slice(0, commentStart);
-            const afterComment = data.slice(commentEnd);
+            const beforeComment = data.subarray(0, commentStart);
+            const afterComment = data.subarray(commentEnd);
             newBuffer = new Uint8Array(beforeComment.length + fullChunk.length + afterComment.length);
             newBuffer.set(beforeComment, 0);
             newBuffer.set(fullChunk, beforeComment.length);
             newBuffer.set(afterComment, beforeComment.length + fullChunk.length);
         } else {
-            const beforeIend = data.slice(0, iendPos);
-            const afterIend = data.slice(iendPos);
+            const beforeIend = data.subarray(0, iendPos);
+            const afterIend = data.subarray(iendPos);
             newBuffer = new Uint8Array(beforeIend.length + fullChunk.length + afterIend.length);
             newBuffer.set(beforeIend, 0);
             newBuffer.set(fullChunk, beforeIend.length);
             newBuffer.set(afterIend, beforeIend.length + fullChunk.length);
         }
-        let out = Buffer.from(newBuffer);
+        // Wrap the freshly built array (no second full copy)
+        let out = Buffer.from(newBuffer.buffer, newBuffer.byteOffset, newBuffer.byteLength);
         // Any Comment write also sets Explore-aligned Title (covers generate/copy/upscale/strip rebuilds)
         if (keyword === 'Comment') {
             out = this.insertTextChunk(out, 'Title', STANDARD_PNG_TITLE);
@@ -477,14 +500,7 @@ class PngMetadata {
     // Helper: Calculate CRC32
     calculateCRC(data) {
         let crc = 0xFFFFFFFF;
-        const table = [];
-        for (let i = 0; i < 256; i++) {
-            let c = i;
-            for (let j = 0; j < 8; j++) {
-                c = ((c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1));
-            }
-            table[i] = c;
-        }
+        const table = CRC32_TABLE;
         for (let i = 0; i < data.length; i++) {
             crc = table[(crc ^ data[i]) & 0xFF] ^ (crc >>> 8);
         }
@@ -513,10 +529,10 @@ class PngMetadata {
         return Buffer.concat(outChunks);
     }
 
-    // Helper: Extract NovelAI metadata from PNG
-    async extractNovelAIMetadata(filePath) {
+    // Helper: Extract NovelAI metadata from PNG (preloadedBuffer: bytes of filePath when the caller has them)
+    async extractNovelAIMetadata(filePath, preloadedBuffer = null) {
         try {
-            const buffer = fs.readFileSync(filePath);
+            const buffer = Buffer.isBuffer(preloadedBuffer) ? preloadedBuffer : await fs.promises.readFile(filePath);
             const metadata = await this.readAnyMetadata(buffer);
             const sourceEncoding = metadata._encoding || null;
         
@@ -549,7 +565,7 @@ class PngMetadata {
                 
                 if (fs.existsSync(originalPath)) {
                     try {
-                        const originalBuffer = fs.readFileSync(originalPath);
+                        const originalBuffer = await fs.promises.readFile(originalPath);
                         const originalMetadata = await this.readAnyMetadata(originalBuffer);
                         if (originalMetadata.tEXt && originalMetadata.tEXt.Comment) {
                             _metadata = JSON.parse(originalMetadata.tEXt.Comment);

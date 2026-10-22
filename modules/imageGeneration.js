@@ -43,13 +43,14 @@ function img2imgNumber(fallback, ...values) {
 }
 
 // modules/replicationJournal.js
-async function recordReplicationGalleryJournal(filename, workspaceId) {
+async function recordReplicationGalleryJournal(filename, workspaceId, buffer = null) {
     if (!filename) return;
     try {
         const replicationJournal = require('./replicationJournal');
         await replicationJournal.recordGallerySave(filename, {
             workspaceId: workspaceId || null,
-            imagesDir: __runtimeGr ? __runtimeGr.getPath('images') : null
+            imagesDir: __runtimeGr ? __runtimeGr.getPath('images') : null,
+            buffer
         });
     } catch (_err) {
         // Journal not initialized yet
@@ -767,7 +768,7 @@ async function convertCharacterReferenceToBase64(charaReference) {
                     console.warn(`⚠️ Character reference cache image not found: ${identifier}`);
                     return null;
                 }
-                imageBuffer = fs.readFileSync(cachedImagePath);
+                imageBuffer = await fs.promises.readFile(cachedImagePath);
                 break;
             case 'file':
                 const filePath = path.join(__runtimeGr.getPath('images'), identifier);
@@ -775,7 +776,7 @@ async function convertCharacterReferenceToBase64(charaReference) {
                     console.warn(`⚠️ Character reference file not found: ${identifier}`);
                     return null;
                 }
-                imageBuffer = fs.readFileSync(filePath);
+                imageBuffer = await fs.promises.readFile(filePath);
                 break;
             default:
                 console.warn(`⚠️ Unsupported character reference type: ${type}`);
@@ -937,7 +938,7 @@ async function generatePresetSourceImage(globalResources, presetName, seed, reso
     // Check if cached image exists
     if (fs.existsSync(cachePath)) {
         try {
-            const cachedBuffer = fs.readFileSync(cachePath);
+            const cachedBuffer = await fs.promises.readFile(cachePath);
             return {
                 buffer: cachedBuffer,
                 seed: seed,
@@ -1010,7 +1011,7 @@ async function generatePresetSourceImage(globalResources, presetName, seed, reso
 
     // Save to cache without metadata
     try {
-        fs.writeFileSync(cachePath, result.buffer);
+        await fs.promises.writeFile(cachePath, result.buffer);
     } catch (error) {
         console.warn(`⚠️ Failed to cache preset source image ${cacheFilename}: ${error.message}`);
         // Continue without caching - this is not critical
@@ -2991,7 +2992,7 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                         }
 
                         const previewFilePath = path.join(dynGenPreviewDir, `${previewHash}.png`);
-                        fs.writeFileSync(previewFilePath, previewResult.buffer);
+                        await fs.promises.writeFile(previewFilePath, previewResult.buffer);
                         console.log(`💾 Saved preview to cache: ${previewHash}.png`);
 
                         // Store only the hash in dynamic_generation for the actual generation
@@ -3880,12 +3881,12 @@ const buildOptions = async (globalResources, body, preset = null, queryParams = 
                 case 'cache':
                     const cachedImagePath = path.join(__runtimeGr.getPath('uploadCache'), imageIdentifier);
                     if (!fs.existsSync(cachedImagePath)) throw new Error(`Cached image not found: ${imageIdentifier}`);
-                    imageBuffer = fs.readFileSync(cachedImagePath);
+                    imageBuffer = await fs.promises.readFile(cachedImagePath);
                     break;
                 case 'file':
                     const filePath = path.join(__runtimeGr.getPath('images'), imageIdentifier);
                     if (!fs.existsSync(filePath)) throw new Error(`Image not found: ${imageIdentifier}`);
-                    imageBuffer = fs.readFileSync(filePath);
+                    imageBuffer = await fs.promises.readFile(filePath);
                     break;
                 case 'data': // For new uploads from client, not yet cached.
                     imageBuffer = Buffer.from(imageIdentifier, 'base64');
@@ -4526,7 +4527,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
         const candidatePath = path.join(__runtimeGr.getPath('images'), lastApiGenerationRecord.filename);
         if (fs.existsSync(candidatePath)) {
             __runtimeGr.getLogger().normal(`⚡ Reusing identical generation result for existing image: ${lastApiGenerationRecord.filename}`);
-            const existingBuffer = fs.readFileSync(candidatePath);
+            const existingBuffer = await fs.promises.readFile(candidatePath);
             const targetWorkspaceId = workspaceId || __runtimeGr.getWorkspaceManager().getActiveWorkspace(req?.session?.id);
 
             sendStageOrGenerationComplete(ws, handler, opts, {
@@ -5129,7 +5130,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
         }
 
         if (shouldSave) {
-            fs.writeFileSync(path.join(__runtimeGr.getPath('images'), name), finalBuffer);
+            await fs.promises.writeFile(path.join(__runtimeGr.getPath('images'), name), finalBuffer);
             try {
                 const { stashRow } = require('./pktSideStore');
                 const snap = pullSurface(opts);
@@ -5149,8 +5150,9 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                 creditType: creditUsage.usageType,
                 date: Date.now().valueOf()
             } : null;
-            await __runtimeGr.getMetadataDatabase().addReceiptMetadata(name, __runtimeGr.getPath('images'), generationReceiptData, forgeData);
-            await recordReplicationGalleryJournal(name, targetWorkspaceId);
+            // finalBuffer already carries forgeData (finalizeWithForgeData / stage attest); do not merge it into the file again (#624)
+            await __runtimeGr.getMetadataDatabase().addReceiptMetadata(name, __runtimeGr.getPath('images'), generationReceiptData, forgeData, { forgeDataEmbedded: true, buffer: finalBuffer });
+            await recordReplicationGalleryJournal(name, targetWorkspaceId, finalBuffer);
 
             // Send progress update indicating preview generation is starting
             if (ws && handler) {
@@ -5259,7 +5261,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
             const upscaledName = name.replace('.png', '_upscaled.png');
 
             if (shouldSave) {
-                fs.writeFileSync(path.join(__runtimeGr.getPath('images'), upscaledName), updatedScaledBuffer);
+                await fs.promises.writeFile(path.join(__runtimeGr.getPath('images'), upscaledName), updatedScaledBuffer);
                 console.log(`💾 Saved: ${upscaledName}`);
 
                 // Add upscaled file to workspace
@@ -5272,9 +5274,9 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                     creditType: upscaleCreditUsage.usageType,
                     date: Date.now().valueOf()
                 };
-                // Attach receipt to parent image instead of upscaled image
-                await __runtimeGr.getMetadataDatabase().addReceiptMetadata(name, __runtimeGr.getPath('images'), upscaledReceiptData, upscaledForgeData);
-                await recordReplicationGalleryJournal(upscaledName, targetWorkspaceId);
+                // Attach receipt to parent image instead of upscaled image (parent bytes on disk are finalBuffer)
+                await __runtimeGr.getMetadataDatabase().addReceiptMetadata(name, __runtimeGr.getPath('images'), upscaledReceiptData, upscaledForgeData, { buffer: finalBuffer });
+                await recordReplicationGalleryJournal(upscaledName, targetWorkspaceId, updatedScaledBuffer);
 
                 const upscaledPreviewResult = await generateMobilePreviews(path.join(__runtimeGr.getPath('images'), upscaledName), upscaledBaseName);
                 await storePreviewBlurhash(__runtimeGr, upscaledName, upscaledPreviewResult);
@@ -7759,8 +7761,8 @@ async function previewExpandImagePrompt(
         throw new Error('Source image not found');
     }
 
-    const originalImageBuffer = fs.readFileSync(filePath);
-    const sourceImageBuffer = sourceFilePath ? fs.readFileSync(sourceFilePath) : originalImageBuffer;
+    const originalImageBuffer = await fs.promises.readFile(filePath);
+    const sourceImageBuffer = sourceFilePath ? await fs.promises.readFile(sourceFilePath) : originalImageBuffer;
 
     let originalPrompt = '';
     let originalUc = '';
@@ -7851,8 +7853,8 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
             throw new Error('Source image not found');
         }
 
-        const originalImageBuffer = fs.readFileSync(filePath);
-        const sourceImageBuffer = sourceFilePath ? fs.readFileSync(sourceFilePath) : originalImageBuffer;
+        const originalImageBuffer = await fs.promises.readFile(filePath);
+        const sourceImageBuffer = sourceFilePath ? await fs.promises.readFile(sourceFilePath) : originalImageBuffer;
         const originalDims = await getImageDimensions(originalImageBuffer);
         console.log(`📐 Original dimensions: ${originalDims.width}x${originalDims.height}`);
 
@@ -8143,7 +8145,7 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
         console.log(`💾 Attempting to save: ${expandedFilename} at ${expandedPath}`);
         console.log(`📊 Buffer size: ${expandedBuffer.length} bytes`);
 
-        fs.writeFileSync(expandedPath, expandedBuffer);
+        await fs.promises.writeFile(expandedPath, expandedBuffer);
 
         // Verify file was written
         if (fs.existsSync(expandedPath)) {
@@ -8160,7 +8162,7 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
         if (targetWorkspaceId) {
             __runtimeGr.getWorkspaceManager().addToWorkspaceArray('files', expandedFilename, targetWorkspaceId);
             console.log(`✅ Added to workspace: ${expandedFilename} -> ${targetWorkspaceId}`);
-            await recordReplicationGalleryJournal(expandedFilename, targetWorkspaceId);
+            await recordReplicationGalleryJournal(expandedFilename, targetWorkspaceId, expandedBuffer);
         } else {
             console.warn(`⚠️ No workspace ID available, file not added to workspace`);
         }
@@ -8187,7 +8189,7 @@ async function expandImage(globalResources, filename, resolution, imageBias, ups
         try {
             const metadataDatabase = __runtimeGr.getMetadataDatabase();
             const imagesDir = __runtimeGr.getPath('images');
-            const dbRow = await metadataDatabase.addReceiptMetadata(expandedFilename, imagesDir, null, null);
+            const dbRow = await metadataDatabase.addReceiptMetadata(expandedFilename, imagesDir, null, null, { buffer: expandedBuffer });
             const pngMeta = (dbRow?.metadata && typeof dbRow.metadata === 'object') ? dbRow.metadata : {};
             responseMetadata = await __runtimeGr.getPngMetadata().extractRelevantFields({
                 ...pngMeta,
@@ -8227,7 +8229,7 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
             throw new Error('Image not found');
         }
 
-        const imageBuffer = fs.readFileSync(filePath);
+        const imageBuffer = await fs.promises.readFile(filePath);
         const metadata = __runtimeGr.getPngMetadata().readMetadata(imageBuffer);
 
         // 2. Validate expansion metadata exists
@@ -8262,7 +8264,7 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
         if (!fs.existsSync(sourceFilePath)) {
             throw new Error(`Source image not found: ${expansion_source}`);
         }
-        const sourceImageBuffer = fs.readFileSync(sourceFilePath);
+        const sourceImageBuffer = await fs.promises.readFile(sourceFilePath);
 
         // Get source image dimensions
         const originalDims = await getImageDimensions(sourceImageBuffer);
@@ -8480,7 +8482,7 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
         const expandedPath = path.join(__runtimeGr.getPath('images'), expandedFilename);
 
         console.log(`💾 Saving: ${expandedFilename}`);
-        fs.writeFileSync(expandedPath, expandedBuffer);
+        await fs.promises.writeFile(expandedPath, expandedBuffer);
 
         if (fs.existsSync(expandedPath)) {
             const stats = fs.statSync(expandedPath);
@@ -8492,7 +8494,7 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
         if (targetWorkspaceId) {
             __runtimeGr.getWorkspaceManager().addToWorkspaceArray('files', expandedFilename, targetWorkspaceId);
             console.log(`✅ Added to workspace: ${expandedFilename}`);
-            await recordReplicationGalleryJournal(expandedFilename, targetWorkspaceId);
+            await recordReplicationGalleryJournal(expandedFilename, targetWorkspaceId, expandedBuffer);
         }
 
         // Generate preview
@@ -8517,7 +8519,7 @@ async function rerollExpandedImage(globalResources, filename, overrideParams = {
         try {
             const metadataDatabase = __runtimeGr.getMetadataDatabase();
             const imagesDir = __runtimeGr.getPath('images');
-            const dbRow = await metadataDatabase.addReceiptMetadata(expandedFilename, imagesDir, null, null);
+            const dbRow = await metadataDatabase.addReceiptMetadata(expandedFilename, imagesDir, null, null, { buffer: expandedBuffer });
             const pngMeta = (dbRow?.metadata && typeof dbRow.metadata === 'object') ? dbRow.metadata : {};
             responseMetadata = await __runtimeGr.getPngMetadata().extractRelevantFields({
                 ...pngMeta,
@@ -8822,7 +8824,7 @@ async function enhanceImage(globalResources, filename, scale, sessionId, workspa
         throw new Error('Image not found');
     }
 
-    const sourceBuffer = fs.readFileSync(filePath);
+    const sourceBuffer = await fs.promises.readFile(filePath);
     const sourceMetadata = __runtimeGr.getPngMetadata().readMetadata(sourceBuffer);
     if (!sourceMetadata?.tEXt?.Comment) {
         throw new Error('Enhance requires generation metadata');
