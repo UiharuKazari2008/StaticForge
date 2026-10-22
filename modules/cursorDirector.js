@@ -333,6 +333,15 @@ function writeJsonFile(file, value) {
     try { fs.chmodSync(file, 0o600); } catch (_) { /* written */ }
 }
 
+// Project files are rewritten on every full prepare. Same bytes: leave the file
+// (and its mtime) alone. mode: chmod after, written or not, like the old writes.
+function writeTextIfChanged(file, text, mode) {
+    let current = null;
+    try { current = fs.readFileSync(file, 'utf8'); } catch (_) { /* new */ }
+    if (current !== text) fs.writeFileSync(file, text);
+    if (mode) fs.chmodSync(file, mode);
+}
+
 function fileMtimeMs(file) {
     try { return fs.statSync(file).mtimeMs; } catch (_) { return 0; }
 }
@@ -424,6 +433,8 @@ function installUnrestrictedCli(configDir) {
 function noteCursorLoginFailure(text) {
     if (!LOGIN_FAILURE.test(String(text || ''))) return false;
     lastCursorLogin = { ok: false, reason: 'expired' };
+    // The next prepare re-reads the login (syncCursorCliLogin), as it did on every packet.
+    invalidateProjectPrepare();
     return true;
 }
 
@@ -1392,6 +1403,11 @@ function sessionContext(chat) {
 // synchronously. An index.json that still has messages inline (the old format)
 // loads as-is and moves out on the first flush.
 const INDEX_FLUSH_MS = 500;
+// The 2 s draft saves of a streaming turn only touch that chat's last message, but
+// each one rewrote the whole messages file (up to 4.2 MB). Draft-only changes are
+// written at most every DRAFT_FLUSH_MS; the turn-end save and any other write
+// flush them at once, as do exit and SIGINT/SIGTERM.
+const DRAFT_FLUSH_MS = 10000;
 const indexStores = new Map();
 
 function fileStamp(file) {
@@ -1431,6 +1447,8 @@ function loadIndexStore(indexPath) {
         indexDirty: false,
         dirty: new Set(),
         removed: new Set(),
+        drafts: new Map(),
+        draftTimer: null,
         flushing: null,
         inflight: null,
         timer: null
@@ -1459,7 +1477,7 @@ function indexStore(indexPath) {
     const store = indexStores.get(indexPath);
     if (!store) return loadIndexStore(indexPath);
     // Nothing pending: pick up an index.json changed outside this process.
-    if (!store.indexDirty && !store.flushing && fileStamp(indexPath) !== store.stamp) return loadIndexStore(indexPath);
+    if (!store.indexDirty && !store.flushing && !store.drafts.size && fileStamp(indexPath) !== store.stamp) return loadIndexStore(indexPath);
     return store;
 }
 
@@ -1487,23 +1505,59 @@ function sameMessages(a, b) {
     return true;
 }
 
-function writeIndex(indexPath, index) {
+// options.draft: an in-flight turn's periodic save. Its message changes wait in
+// store.drafts (see DRAFT_FLUSH_MS); every other write flushes pending drafts too.
+function writeIndex(indexPath, index, options) {
+    const draft = !!(options && options.draft);
     const store = indexStore(indexPath);
     const next = copyIndex(index);
     const before = new Map(store.index.chats.map((chat) => [chat.id, chat]));
+    const now = Date.now();
     next.chats.forEach((chat) => {
         const prev = before.get(chat.id);
         before.delete(chat.id);
         store.removed.delete(chat.id);
-        if (!prev || !sameMessages(prev.messages, chat.messages)) store.dirty.add(chat.id);
+        if (prev && sameMessages(prev.messages, chat.messages)) return;
+        if (!draft || !prev || store.dirty.has(chat.id)) {
+            store.dirty.add(chat.id);
+            return;
+        }
+        const since = store.drafts.get(chat.id);
+        if (since !== undefined && now - since >= DRAFT_FLUSH_MS) {
+            store.drafts.delete(chat.id);
+            store.dirty.add(chat.id);
+        } else if (since === undefined) {
+            store.drafts.set(chat.id, now);
+        }
     });
     before.forEach((_chat, id) => {
         store.dirty.delete(id);
+        store.drafts.delete(id);
         store.removed.add(id);
     });
+    if (!draft) promoteDrafts(store);
+    else if (store.drafts.size && !store.draftTimer) {
+        store.draftTimer = setTimeout(() => {
+            store.draftTimer = null;
+            promoteDrafts(store);
+            if (store.indexDirty) scheduleIndexFlush(store);
+        }, DRAFT_FLUSH_MS);
+        if (typeof store.draftTimer.unref === 'function') store.draftTimer.unref();
+    }
     store.index = next;
     store.indexDirty = true;
     scheduleIndexFlush(store);
+}
+
+function promoteDrafts(store) {
+    if (!store.drafts.size) return;
+    store.drafts.forEach((_since, id) => store.dirty.add(id));
+    store.drafts.clear();
+    store.indexDirty = true;
+    if (store.draftTimer) {
+        clearTimeout(store.draftTimer);
+        store.draftTimer = null;
+    }
 }
 
 function scheduleIndexFlush(store) {
@@ -1570,8 +1624,9 @@ function flushIndexStore(store) {
 // Exit path: write whatever is pending, including a batch an unfinished async flush was writing.
 function flushIndexStoresSync() {
     indexStores.forEach((store) => {
-        if (!store.indexDirty && !store.inflight) return;
+        if (!store.indexDirty && !store.inflight && !store.drafts.size) return;
         try {
+            promoteDrafts(store);
             const dirty = new Set([...(store.inflight ? store.inflight.dirty : []), ...store.dirty]);
             const removed = new Set([...(store.inflight ? store.inflight.removed : []), ...store.removed]);
             const snap = indexSnapshot(store, dirty, removed);
@@ -2041,24 +2096,28 @@ function ensureDirectorUv(paths) {
     copyToolIfChanged(path.join(hostBin, 'uvx'), path.join(bin, 'uvx'));
 }
 
-function ensureDirectorPython(paths) {
+async function ensureDirectorPython(paths) {
     const uv = path.join(paths.home, '.local', 'bin', 'uv');
     if (!fs.existsSync(uv)) return;
     const pyRoot = path.join(paths.home, '.local', 'share', 'uv', 'python');
     try {
         if (fs.existsSync(pyRoot) && fs.readdirSync(pyRoot).some((name) => name.includes('3.12'))) return;
     } catch (_) { /* install */ }
-    const result = spawnSync(uv, ['python', 'install', '3.12'], {
-        encoding: 'utf8',
-        timeout: 180000,
-        env: {
-            ...process.env,
-            HOME: paths.home,
-            PATH: `${path.dirname(uv)}:${process.env.PATH || ''}`
-        }
+    // Async: the install downloads Python and could hold the event loop for minutes.
+    const result = await new Promise((resolve) => {
+        execFile(uv, ['python', 'install', '3.12'], {
+            encoding: 'utf8',
+            timeout: 180000,
+            maxBuffer: 16 * 1024 * 1024,
+            env: {
+                ...process.env,
+                HOME: paths.home,
+                PATH: `${path.dirname(uv)}:${process.env.PATH || ''}`
+            }
+        }, (error, stdout, stderr) => resolve({ error, stdout, stderr }));
     });
-    if (result.status !== 0) {
-        console.error(`Director Python 3.12 install failed: ${(result.stderr || result.stdout || '').trim()}`);
+    if (result.error) {
+        console.error(`Director Python 3.12 install failed: ${(result.stderr || result.stdout || result.error.message || '').trim()}`);
     }
 }
 
@@ -2095,6 +2154,7 @@ async function ensureDirectorBrowser() {
         'about:blank'
     ], { detached: true, stdio: 'ignore' });
     browserChild = child;
+    child.on('exit', () => { browserCheckedAt = 0; });
     child.unref();
     for (let i = 0; i < 20; i++) {
         if (await directorBrowserReady()) return;
@@ -2113,10 +2173,10 @@ function writeProjectFiles(paths, mcpUrl, appKey, readonlyPaths) {
 
     // The full prompt lives once, in the alwaysApply rule. AGENTS.md only points
     // at it so the agent is not handed the same text twice per turn.
-    fs.writeFileSync(path.join(paths.workspace, 'AGENTS.md'), `# ${PROJECT_NAME}\n\nStanding orders are in .cursor/rules/dreamscape-director.mdc. Do not repeat them.\n`);
+    writeTextIfChanged(path.join(paths.workspace, 'AGENTS.md'), `# ${PROJECT_NAME}\n\nStanding orders are in .cursor/rules/dreamscape-director.mdc. Do not repeat them.\n`);
     // Rewritten on every prepare (boot / computer start), so existing Wren homes
     // pick up rule changes on the next start, not only on first creation.
-    fs.writeFileSync(path.join(rulesDir, 'dreamscape-director.mdc'), [
+    writeTextIfChanged(path.join(rulesDir, 'dreamscape-director.mdc'), [
         '---',
         `description: ${PROJECT_NAME}`,
         'alwaysApply: true',
@@ -2134,11 +2194,11 @@ function writeProjectFiles(paths, mcpUrl, appKey, readonlyPaths) {
         additionalReadwritePaths: [JAIL_WORKSPACE, `${JAIL_HOME}/.cache`, `${JAIL_HOME}/.local`, '/tmp'],
         additionalReadonlyPaths: readonlyPaths.concat([jailPlaywrightDir()])
     };
-    fs.writeFileSync(path.join(cursorDir, 'sandbox.json'), JSON.stringify(sandbox, null, 2));
+    writeTextIfChanged(path.join(cursorDir, 'sandbox.json'), JSON.stringify(sandbox, null, 2));
     // Project cli.json is strict and only accepts `permissions`. approvalMode,
     // autoAcceptWebSearch, and sandbox stay on the jail user config. Extra keys
     // make the CLI refuse to start, so `models` returns nothing.
-    fs.writeFileSync(path.join(cursorDir, 'cli.json'), JSON.stringify({
+    writeTextIfChanged(path.join(cursorDir, 'cli.json'), JSON.stringify({
         permissions: DIRECTOR_CLI_OVERLAY.permissions
     }, null, 2));
 
@@ -2165,14 +2225,13 @@ function writeProjectFiles(paths, mcpUrl, appKey, readonlyPaths) {
         };
     }
     const mcpFile = { mcpServers };
-    fs.writeFileSync(path.join(cursorDir, 'mcp.json'), JSON.stringify(mcpFile, null, 2));
-    fs.chmodSync(path.join(cursorDir, 'mcp.json'), 0o600);
+    writeTextIfChanged(path.join(cursorDir, 'mcp.json'), JSON.stringify(mcpFile, null, 2), 0o600);
     // Claude CLI engines: CLAUDE.md imports Wren's rules without the shared rulebook,
     // which the MCP initialize already sends (#433); the MCP servers go through
     // --strict-mcp-config so no project .mcp.json approval is needed.
     fs.mkdirSync(path.join(paths.workspace, '.claude'), { recursive: true });
-    fs.writeFileSync(path.join(paths.workspace, '.claude', 'wren-rules.md'), `${claudeProjectPrompt()}\n`);
-    fs.writeFileSync(path.join(paths.workspace, 'CLAUDE.md'), `# ${PROJECT_NAME}\n\n@.claude/wren-rules.md\n`);
+    writeTextIfChanged(path.join(paths.workspace, '.claude', 'wren-rules.md'), `${claudeProjectPrompt()}\n`);
+    writeTextIfChanged(path.join(paths.workspace, 'CLAUDE.md'), `# ${PROJECT_NAME}\n\n@.claude/wren-rules.md\n`);
     const claudeServers = {};
     Object.keys(mcpServers).forEach((name) => {
         const server = mcpServers[name];
@@ -2180,21 +2239,19 @@ function writeProjectFiles(paths, mcpUrl, appKey, readonlyPaths) {
     });
     fs.mkdirSync(path.join(paths.home, '.dreamscape'), { recursive: true });
     const claudeMcp = path.join(paths.home, '.dreamscape', 'claude-mcp.json');
-    fs.writeFileSync(claudeMcp, JSON.stringify({ mcpServers: claudeServers }, null, 2));
-    fs.chmodSync(claudeMcp, 0o600);
+    writeTextIfChanged(claudeMcp, JSON.stringify({ mcpServers: claudeServers }, null, 2), 0o600);
     // ~/.cursor/mcp.json is the file in the computer home. The workspace copy
     // is the project one Cursor also loads. Both name the mounted server socket.
     const homeCursor = path.join(paths.home, '.cursor');
     fs.mkdirSync(homeCursor, { recursive: true });
     const homeMcp = path.join(homeCursor, 'mcp.json');
-    fs.writeFileSync(homeMcp, JSON.stringify(mcpFile, null, 2));
-    fs.chmodSync(homeMcp, 0o600);
+    writeTextIfChanged(homeMcp, JSON.stringify(mcpFile, null, 2), 0o600);
     fs.mkdirSync(path.join(paths.home, '.dreamscape'), { recursive: true });
-    fs.writeFileSync(path.join(paths.home, '.dreamscape', 'server.json'), JSON.stringify({
+    writeTextIfChanged(path.join(paths.home, '.dreamscape', 'server.json'), JSON.stringify({
         socket: `${JAIL_HOME}/.dreamscape/server.sock`,
         hostSocket: '/tmp/staticforge_mcp.sock'
     }, null, 2));
-    fs.writeFileSync(path.join(paths.workspace, '.cursorignore'), [
+    writeTextIfChanged(path.join(paths.workspace, '.cursorignore'), [
         'browser-profile/',
         '.cursor/mcp.json',
         ''
@@ -2234,7 +2291,7 @@ function writeMcpApprovals(paths) {
     });
     const dest = path.join(cursorProjectDir(paths.home, JAIL_WORKSPACE), 'mcp-approvals.json');
     fs.mkdirSync(path.dirname(dest), { recursive: true });
-    fs.writeFileSync(dest, JSON.stringify(ids, null, 2));
+    writeTextIfChanged(dest, JSON.stringify(ids, null, 2));
 }
 
 // MCP_SCOPES grows over time. A stored key minted before a scope existed keeps
@@ -2299,10 +2356,96 @@ async function ensureAppKey(gr, keyPath, appName = PROJECT_NAME) {
     return created.key;
 }
 
-async function ensureProject(gr) {
+// ---- Prepare memo ----
+// ensureProject runs on every Director WS packet and every Rentan/Quips turn. The
+// full prepare (about a dozen file writes, mkdirs, readdirs, a CDP probe, maybe a
+// uv install) now runs only when an input changed (#620). prepareStampKey lists
+// every input: each file and directory it reads or writes (stamped, so an edit
+// from inside the jail counts), the MCP URL and key, the gallery mounts and the
+// active Wren account. Computer stop, Cleanup, Reinstall and a login failure drop
+// the memo outright. The app key check, activity, wake and the jail argv stay per
+// call. The browser probe runs at most every BROWSER_RECHECK_MS on a memo hit.
+const BROWSER_RECHECK_MS = 30 * 1000;
+let projectPrepare = null;
+let projectPrepareRun = null;
+let browserCheckedAt = 0;
+
+function invalidateProjectPrepare() {
+    projectPrepare = null;
+}
+
+function prepareStamp(file) {
+    try {
+        const st = fs.lstatSync(file);
+        if (st.isDirectory()) return `d${st.ino}`;
+        return `${st.isSymbolicLink() ? 'l' : 'f'}${st.ino}:${st.size}:${st.mtimeMs}:${st.ctimeMs}`;
+    } catch (_) {
+        return '-';
+    }
+}
+
+function prepareStampKey(gr, paths, mcpUrl, appKey) {
+    const cursorAccountAuthStore = require('./cursorAccountAuthStore');
+    const accountId = cursorAccountAuthStore.getActiveAccountId('wren');
+    const accountDir = cursorAccountAuthStore.getAccountDir(accountId);
+    const jailConfig = path.join(paths.home, '.config', 'cursor');
+    const hostBin = path.join(os.homedir(), '.local', 'bin');
+    const jailBin = path.join(paths.home, '.local', 'bin');
+    const cursorDir = path.join(paths.workspace, '.cursor');
+    const hostMounts = [
+        require('./runtimeDataPaths').getApocryphaDir(),
+        gr.getPath('images'),
+        gr.getPath('previews'),
+        gr.getPath('uploadCache'),
+        gr.getPath('previewCache')
+    ];
+    const files = [
+        // migrateDirectorHome, migrateLegacyWorkspace
+        path.join(gr.getPath('cache'), 'dreamscape-director'),
+        path.join(paths.root, 'workspace'),
+        // ensureComputerTree and syncCursorCliLogin
+        paths.chats, paths.vfs, path.join(paths.home, 'tmp'), jailBin,
+        path.join(paths.home, '.cache'), path.join(paths.home, '.config'),
+        path.join(paths.home, '.cursor'), path.join(paths.home, '.dreamscape'), paths.workspace,
+        path.join(process.cwd(), 'secure.config.json'),
+        path.join(process.cwd(), 'config', 'secureConfig.json'),
+        accountDir,
+        ...['auth.json', 'cli-config.json', 'statsig-cache.json'].map((name) => path.join(accountDir, name)),
+        jailConfig,
+        ...['auth.json', 'cli-config.json', 'statsig-cache.json'].map((name) => path.join(jailConfig, name)),
+        // ensureDirectorUv, ensureDirectorPython
+        path.join(hostBin, 'uv'), path.join(hostBin, 'uvx'), path.join(jailBin, 'uv'), path.join(jailBin, 'uvx'),
+        path.join(paths.home, '.local', 'share', 'uv', 'python'),
+        // seedPromptGuideWork
+        paths.promptGuideWork, path.join(paths.promptGuideWork, '.git'), path.join(docubaseDir(gr), '.git'),
+        // jailMounts: host paths and their mount points
+        ...hostMounts,
+        ...['chats', 'knowledge/prompt-guide', 'vfs', 'knowledge/apocrypha', 'images', 'previews', 'references', 'reference-previews']
+            .map((inJail) => path.join(paths.workspace, inJail)),
+        // writeProjectFiles
+        playwrightBrowsersDir(),
+        path.join(paths.workspace, '.git'), path.join(paths.workspace, '.gitignore'),
+        cursorDir, path.join(cursorDir, 'rules'), path.join(cursorDir, 'rules', 'dreamscape-director.mdc'),
+        path.join(paths.workspace, 'knowledge'), path.join(paths.workspace, 'browser-profile'),
+        path.join(paths.workspace, 'AGENTS.md'), path.join(cursorDir, 'sandbox.json'), path.join(cursorDir, 'cli.json'),
+        path.join(cursorDir, 'mcp.json'), path.join(paths.workspace, '.claude'),
+        path.join(paths.workspace, '.claude', 'wren-rules.md'), path.join(paths.workspace, 'CLAUDE.md'),
+        path.join(paths.home, '.dreamscape', 'claude-mcp.json'), path.join(paths.home, '.cursor', 'mcp.json'),
+        path.join(paths.home, '.dreamscape', 'server.json'), path.join(paths.workspace, '.cursorignore'),
+        path.join(cursorProjectDir(paths.home, JAIL_WORKSPACE), 'mcp-approvals.json')
+    ];
+    // ms-playwright gains a folder per browser build; findPlaywrightChrome reads it.
+    let browsers = '';
+    try { browsers = fs.readdirSync(playwrightBrowsersDir()).sort().join(','); } catch (_) { /* none */ }
+    return JSON.stringify([mcpUrl, appKey, accountId, hostMounts, browsers, files.map(prepareStamp)]);
+}
+
+async function ensureProject(gr, options) {
     noteDirectorActivity();
     wakeDirectorComputer();
     armIdleShutdown(gr);
+    // Cleanup / Reinstall in progress: wait, as packets used to wait behind the sync walk.
+    if (computerMaintenance && !(options && options.maintenance)) await computerMaintenance;
     const bwrapBin = requireBwrap();
     const agentBin = findAgent();
     if (!agentBin) {
@@ -2310,14 +2453,48 @@ async function ensureProject(gr) {
         error.code = 'CURSOR_MISSING';
         throw error;
     }
+    // A full prepare already running (boot, or the first packet after a change):
+    // wait for it and reuse its memo instead of running a second one beside it.
+    if (projectPrepareRun) await projectPrepareRun.catch(() => {});
+    const memo = projectPrepare;
+    if (memo && !computerStopped) {
+        const paths = layout();
+        const uuid = gr.getMcpPathUuid();
+        if (uuid) {
+            const appKey = await ensureAppKey(gr, paths.keyPath);
+            const port = gr.getConfig({ path: 'port' }) || 9220;
+            const mcpUrl = `http://127.0.0.1:${port}/${uuid}/mcp`;
+            if (projectPrepare === memo && prepareStampKey(gr, paths, mcpUrl, appKey) === memo.key) {
+                if (Date.now() - browserCheckedAt > BROWSER_RECHECK_MS) {
+                    await ensureDirectorBrowser();
+                    browserCheckedAt = Date.now();
+                }
+                lastPrepare = { ready: true, code: null };
+                return { agentBin, paths, jail: buildJail(bwrapBin, agentBin, paths, memo.mounts) };
+            }
+        }
+    }
+    const run = prepareProjectFull(gr, bwrapBin, agentBin);
+    projectPrepareRun = run;
+    try {
+        return await run;
+    } finally {
+        if (projectPrepareRun === run) projectPrepareRun = null;
+    }
+}
+
+async function prepareProjectFull(gr, bwrapBin, agentBin) {
     migrateDirectorHome(gr);
     const paths = layout();
     migrateLegacyWorkspace(paths);
     ensureComputerTree(paths);
     ensureDirectorUv(paths);
-    ensureDirectorPython(paths);
+    await ensureDirectorPython(paths);
     await ensureDirectorBrowser();
-    seedPromptGuideWork(gr, paths);
+    browserCheckedAt = Date.now();
+    // Only a missing clone waits its turn behind a running prompt-guide step (a fetch can take seconds).
+    if (fs.existsSync(path.join(paths.promptGuideWork, '.git'))) await seedPromptGuideWork(gr, paths);
+    else await inPromptGuideQueue(() => seedPromptGuideWork(gr, paths));
     const appKey = await ensureAppKey(gr, paths.keyPath);
     const port = gr.getConfig({ path: 'port' }) || 9220;
     const uuid = gr.getMcpPathUuid();
@@ -2328,7 +2505,10 @@ async function ensureProject(gr) {
     const mounts = jailMounts(gr, paths);
     writeProjectFiles(paths, mcpUrl, appKey, mounts.readonly);
     lastPrepare = { ready: true, code: null };
-    return { agentBin, paths, jail: buildJail(bwrapBin, agentBin, paths, mounts) };
+    const jail = buildJail(bwrapBin, agentBin, paths, mounts);
+    // Stamped after the writes, so the next packet compares against what is on disk now.
+    projectPrepare = { key: prepareStampKey(gr, paths, mcpUrl, appKey), mounts };
+    return { agentBin, paths, jail };
 }
 
 // ---- Boot-time CLI updates ----
@@ -2461,16 +2641,38 @@ async function prepareDirector(gr, options = {}) {
     }
 }
 
+// Async, same { ok, status, stdout, stderr } as the old spawnSync: git fetch and
+// push reach the network and held the event loop for seconds (#620). A non-zero
+// exit is not an error here (stderr carries git's text); a spawn failure or an
+// overflowing stdout is, with status null like spawnSync.
 function git(args, cwd, env) {
-    const result = spawnSync('git', args, {
-        cwd,
-        encoding: 'utf8',
-        maxBuffer: 64 * 1024 * 1024,
-        env: { ...process.env, GIT_TERMINAL_PROMPT: '0', ...(env || {}) }
+    return new Promise((resolve) => {
+        execFile('git', args, {
+            cwd,
+            encoding: 'utf8',
+            maxBuffer: 64 * 1024 * 1024,
+            env: { ...process.env, GIT_TERMINAL_PROMPT: '0', ...(env || {}) }
+        }, (error, stdout, stderr) => {
+            const exited = !error || typeof error.code === 'number';
+            const status = !error ? 0 : (exited ? error.code : null);
+            resolve({
+                ok: status === 0,
+                status,
+                stdout: stdout || '',
+                stderr: redactGit(stderr || (!exited && error ? error.message : ''))
+            });
+        });
     });
-    const stdout = result.stdout || '';
-    const stderr = redactGit(result.stderr || (result.error ? result.error.message : ''));
-    return { ok: result.status === 0, status: result.status, stdout, stderr };
+}
+
+// The prompt-guide steps share one work clone and Docubase's .git. They used to be
+// synchronous, so they never overlapped; now that git is async they run one at a time.
+let promptGuideQueue = Promise.resolve();
+
+function inPromptGuideQueue(fn) {
+    const next = promptGuideQueue.then(fn, fn);
+    promptGuideQueue = next.then(() => {}, () => {});
+    return next;
 }
 
 function redactGit(text) {
@@ -2514,7 +2716,7 @@ function dirIsEmpty(dir) {
 
 // The writable guide clone. Seeded from the Docubase cache only while empty, so
 // uncommitted agent edits are never reset.
-function seedPromptGuideWork(gr, paths) {
+async function seedPromptGuideWork(gr, paths) {
     const work = paths.promptGuideWork;
     if (fs.existsSync(path.join(work, '.git'))) return { ok: true, seeded: false };
     if (fs.existsSync(work) && !dirIsEmpty(work)) return { ok: true, seeded: false, dirty: true };
@@ -2525,38 +2727,42 @@ function seedPromptGuideWork(gr, paths) {
     }
     fs.mkdirSync(path.dirname(work), { recursive: true });
     fs.rmSync(work, { recursive: true, force: true });
-    const clone = git(['clone', source, work], paths.root);
+    const clone = await git(['clone', source, work], paths.root);
     if (!clone.ok) {
         fs.mkdirSync(work, { recursive: true });
         return { ok: false, error: clone.stderr || 'clone failed' };
     }
-    git(['config', 'user.name', PROJECT_NAME], work);
-    git(['config', 'user.email', 'director@dreamscape.local'], work);
+    await git(['config', 'user.name', PROJECT_NAME], work);
+    await git(['config', 'user.email', 'director@dreamscape.local'], work);
     return { ok: true, seeded: true };
 }
 
-function promptGuideBase(gr, work) {
+async function promptGuideBase(gr, work) {
     const source = docubaseDir(gr);
-    git(['fetch', '--force', 'origin', 'main'], work);
-    const remote = git(['rev-parse', '--verify', 'origin/main'], work);
+    await git(['fetch', '--force', 'origin', 'main'], work);
+    const remote = await git(['rev-parse', '--verify', 'origin/main'], work);
     if (remote.ok) return { ref: 'origin/main', sha: remote.stdout.trim(), source };
-    const head = git(['rev-parse', '--verify', 'HEAD'], work);
+    const head = await git(['rev-parse', '--verify', 'HEAD'], work);
     return { ref: 'HEAD', sha: head.ok ? head.stdout.trim() : '', source };
 }
 
 function promptGuideDiff(gr) {
+    return inPromptGuideQueue(() => promptGuideDiffNow(gr));
+}
+
+async function promptGuideDiffNow(gr) {
     const paths = layout();
     const work = paths.promptGuideWork;
     if (!fs.existsSync(path.join(work, '.git'))) {
-        const seeded = seedPromptGuideWork(gr, paths);
+        const seeded = await seedPromptGuideWork(gr, paths);
         if (!seeded.ok) throw new Error(seeded.error || 'Prompt guide work clone is missing');
     }
-    const base = promptGuideBase(gr, work);
+    const base = await promptGuideBase(gr, work);
     // intent-to-add so new files show up in the diff without staging content
-    git(['add', '-A', '-N', '.'], work);
-    const diff = git(['diff', '--no-color', base.ref, '--'], work);
+    await git(['add', '-A', '-N', '.'], work);
+    const diff = await git(['diff', '--no-color', base.ref, '--'], work);
     if (!diff.ok && !diff.stdout) throw new Error(diff.stderr || 'git diff failed');
-    const names = git(['diff', '--name-only', base.ref, '--'], work);
+    const names = await git(['diff', '--name-only', base.ref, '--'], work);
     const text = diff.stdout || '';
     return {
         base: base.ref,
@@ -2568,14 +2774,14 @@ function promptGuideDiff(gr) {
     };
 }
 
-function promptGuideBranchRef(gr) {
+async function promptGuideBranchRef(gr) {
     const gitDir = docubaseGitDir(gr);
-    const head = git(['--git-dir', gitDir, 'rev-parse', '--verify', PROMPT_GUIDE_BRANCH], docubaseDir(gr));
+    const head = await git(['--git-dir', gitDir, 'rev-parse', '--verify', PROMPT_GUIDE_BRANCH], docubaseDir(gr));
     if (head.ok) return head.stdout.trim();
-    const base = git(['--git-dir', gitDir, 'rev-parse', '--verify', 'origin/main'], docubaseDir(gr));
+    const base = await git(['--git-dir', gitDir, 'rev-parse', '--verify', 'origin/main'], docubaseDir(gr));
     const from = base.ok ? base.stdout.trim() : '';
     if (!from) return '';
-    const made = git(['--git-dir', gitDir, 'branch', PROMPT_GUIDE_BRANCH, from], docubaseDir(gr));
+    const made = await git(['--git-dir', gitDir, 'branch', PROMPT_GUIDE_BRANCH, from], docubaseDir(gr));
     if (!made.ok) throw new Error(made.stderr || 'could not create director-draft');
     return from;
 }
@@ -2584,24 +2790,28 @@ function promptGuideBranchRef(gr) {
 // Objects and a side index live in Docubase's .git, so syncNaiPromptGuide's
 // reset --hard / clean -fd on the served working tree cannot touch them.
 function promptGuideExtract(gr) {
+    return inPromptGuideQueue(() => promptGuideExtractNow(gr));
+}
+
+async function promptGuideExtractNow(gr) {
     const paths = layout();
     const work = paths.promptGuideWork;
     if (!fs.existsSync(path.join(work, '.git'))) throw new Error('Prompt guide work clone is missing');
     const gitDir = docubaseGitDir(gr);
     if (!fs.existsSync(gitDir)) throw new Error('Docubase clone is not on disk yet');
-    const parent = promptGuideBranchRef(gr);
+    const parent = await promptGuideBranchRef(gr);
     if (!parent) throw new Error('Docubase has no origin/main to branch from');
     const indexFile = path.join(gitDir, PROMPT_GUIDE_INDEX);
     fs.rmSync(indexFile, { force: true });
     const env = { GIT_INDEX_FILE: indexFile, GIT_DIR: gitDir, GIT_WORK_TREE: work };
-    const added = git(['add', '-A', '.'], work, env);
+    const added = await git(['add', '-A', '.'], work, env);
     if (!added.ok) throw new Error(added.stderr || 'could not stage the work clone');
-    const tree = git(['write-tree'], work, env);
+    const tree = await git(['write-tree'], work, env);
     if (!tree.ok) throw new Error(tree.stderr || 'write-tree failed');
     const treeSha = tree.stdout.trim();
-    const parentTree = git(['--git-dir', gitDir, 'rev-parse', `${parent}^{tree}`], docubaseDir(gr));
+    const parentTree = await git(['--git-dir', gitDir, 'rev-parse', `${parent}^{tree}`], docubaseDir(gr));
     const changed = !parentTree.ok || parentTree.stdout.trim() !== treeSha;
-    const names = git(['--git-dir', gitDir, 'diff', '--name-only', parent, treeSha], docubaseDir(gr));
+    const names = await git(['--git-dir', gitDir, 'diff', '--name-only', parent, treeSha], docubaseDir(gr));
     const files = (names.stdout || '').split('\n').map((row) => row.trim()).filter(Boolean);
     const pending = { tree: treeSha, parent, branch: PROMPT_GUIDE_BRANCH, files, extractedAt: new Date().toISOString() };
     fs.writeFileSync(path.join(gitDir, PROMPT_GUIDE_PENDING), JSON.stringify(pending, null, 2));
@@ -2617,18 +2827,22 @@ function readPromptGuidePending(gr) {
 }
 
 function promptGuideCommit(gr, message) {
+    return inPromptGuideQueue(() => promptGuideCommitNow(gr, message));
+}
+
+async function promptGuideCommitNow(gr, message) {
     const text = String(message || '').trim();
     if (!text) throw new Error('A commit message is required');
     const gitDir = docubaseGitDir(gr);
     const pending = readPromptGuidePending(gr);
     if (!pending || !pending.tree) throw new Error('Extract the prompt guide changes first');
-    const head = git(['--git-dir', gitDir, 'rev-parse', '--verify', PROMPT_GUIDE_BRANCH], docubaseDir(gr));
+    const head = await git(['--git-dir', gitDir, 'rev-parse', '--verify', PROMPT_GUIDE_BRANCH], docubaseDir(gr));
     const parent = head.ok ? head.stdout.trim() : pending.parent;
-    const parentTree = git(['--git-dir', gitDir, 'rev-parse', `${parent}^{tree}`], docubaseDir(gr));
+    const parentTree = await git(['--git-dir', gitDir, 'rev-parse', `${parent}^{tree}`], docubaseDir(gr));
     if (parentTree.ok && parentTree.stdout.trim() === pending.tree) {
         throw new Error('director-draft already matches the extracted tree');
     }
-    const commit = git(['--git-dir', gitDir, 'commit-tree', pending.tree, '-p', parent, '-m', text], docubaseDir(gr), {
+    const commit = await git(['--git-dir', gitDir, 'commit-tree', pending.tree, '-p', parent, '-m', text], docubaseDir(gr), {
         GIT_AUTHOR_NAME: PROJECT_NAME,
         GIT_AUTHOR_EMAIL: 'director@dreamscape.local',
         GIT_COMMITTER_NAME: PROJECT_NAME,
@@ -2636,29 +2850,37 @@ function promptGuideCommit(gr, message) {
     });
     if (!commit.ok) throw new Error(commit.stderr || 'commit-tree failed');
     const sha = commit.stdout.trim();
-    const update = git(['--git-dir', gitDir, 'update-ref', `refs/heads/${PROMPT_GUIDE_BRANCH}`, sha, parent], docubaseDir(gr));
+    const update = await git(['--git-dir', gitDir, 'update-ref', `refs/heads/${PROMPT_GUIDE_BRANCH}`, sha, parent], docubaseDir(gr));
     if (!update.ok) throw new Error(update.stderr || 'update-ref failed');
     fs.rmSync(path.join(gitDir, PROMPT_GUIDE_PENDING), { force: true });
     return { commit: sha, branch: PROMPT_GUIDE_BRANCH, files: pending.files || [], message: text };
 }
 
 function promptGuidePush(gr) {
+    return inPromptGuideQueue(() => promptGuidePushNow(gr));
+}
+
+async function promptGuidePushNow(gr) {
     const gitDir = docubaseGitDir(gr);
-    const head = git(['--git-dir', gitDir, 'rev-parse', '--verify', PROMPT_GUIDE_BRANCH], docubaseDir(gr));
+    const head = await git(['--git-dir', gitDir, 'rev-parse', '--verify', PROMPT_GUIDE_BRANCH], docubaseDir(gr));
     if (!head.ok) throw new Error('There is no director-draft branch to push');
     const token = promptGuideToken();
     const args = ['--git-dir', gitDir];
     if (token) args.push('-c', `http.extraHeader=Authorization: token ${token}`);
     args.push('push', 'origin', `refs/heads/${PROMPT_GUIDE_BRANCH}:refs/heads/${PROMPT_GUIDE_BRANCH}`);
-    const push = git(args, docubaseDir(gr));
+    const push = await git(args, docubaseDir(gr));
     if (!push.ok) throw new Error(push.stderr || 'push failed');
     return { branch: PROMPT_GUIDE_BRANCH, commit: head.stdout.trim(), output: redactGit(push.stderr || push.stdout).slice(0, 2000) };
 }
 
 function promptGuideState(gr) {
+    return inPromptGuideQueue(() => promptGuideStateNow(gr));
+}
+
+async function promptGuideStateNow(gr) {
     const paths = layout();
     const pending = readPromptGuidePending(gr);
-    const head = git(['--git-dir', docubaseGitDir(gr), 'rev-parse', '--verify', PROMPT_GUIDE_BRANCH], docubaseDir(gr));
+    const head = await git(['--git-dir', docubaseGitDir(gr), 'rev-parse', '--verify', PROMPT_GUIDE_BRANCH], docubaseDir(gr));
     return {
         work: paths.promptGuideWork,
         cloned: fs.existsSync(path.join(paths.promptGuideWork, '.git')),
@@ -2667,35 +2889,44 @@ function promptGuideState(gr) {
     };
 }
 
-function dirSize(dir) {
+// Async walk (computer/ is ~30k entries, 3 GB). marks: optional Map of directory
+// path -> bytes, filled in for any of those directories met on the way, so one walk
+// gives a subtree's total too.
+async function dirSize(dir, marks) {
     let total = 0;
     let entries;
     try {
-        entries = fs.readdirSync(dir, { withFileTypes: true });
+        entries = await fs.promises.readdir(dir, { withFileTypes: true });
     } catch (_) {
         return 0;
     }
+    const files = [];
     for (const entry of entries) {
         const full = path.join(dir, entry.name);
         if (entry.isSymbolicLink()) continue;
         if (entry.isDirectory()) {
-            total += dirSize(full);
+            const sub = await dirSize(full, marks);
+            if (marks && marks.has(full)) marks.set(full, sub);
+            total += sub;
             continue;
         }
-        try {
-            total += fs.statSync(full).size;
-        } catch (_) { /* vanished */ }
+        files.push(full);
     }
+    const sizes = await Promise.all(files.map((full) => fs.promises.stat(full).then((st) => st.size, () => 0)));
+    sizes.forEach((size) => { total += size; });
     return total;
 }
 
 // computer/ only. The kept tree (index.json, key, chats/, prompt-guide-work/,
 // vfs/) lives beside it and the bind mounts are empty directories on the host.
-function computerSize() {
+// One walk: home/ is inside computer/.
+async function computerSize() {
     const paths = layout();
+    const marks = new Map([[paths.home, 0]]);
+    const bytes = await dirSize(paths.computer, marks);
     return {
-        bytes: dirSize(paths.computer),
-        home: dirSize(paths.home),
+        bytes,
+        home: marks.get(paths.home),
         path: paths.computer
     };
 }
@@ -2842,6 +3073,7 @@ function shutdownIdleDirector(reason) {
     }
     abortAllRuns();
     computerStopped = true;
+    invalidateProjectPrepare();
     lastPrepare = {
         ready: false,
         code: 'DIRECTOR_IDLE_SHUTDOWN',
@@ -2962,28 +3194,28 @@ function broadcastDirectorStatus(gr) {
     }).catch(() => { /* status is best effort */ });
 }
 
-function removeAndCount(target) {
+async function removeAndCount(target) {
     let freed = 0;
     try {
-        const stat = fs.lstatSync(target);
-        freed = stat.isDirectory() ? dirSize(target) : stat.size;
+        const stat = await fs.promises.lstat(target);
+        freed = stat.isDirectory() ? await dirSize(target) : stat.size;
     } catch (_) {
         return 0;
     }
     try {
-        fs.rmSync(target, { recursive: true, force: true });
+        await fs.promises.rm(target, { recursive: true, force: true });
     } catch (_) {
         return 0;
     }
     return freed;
 }
 
-function sweepJunk(dir, depth) {
+async function sweepJunk(dir, depth) {
     let freed = 0;
     if (depth > 8) return freed;
     let entries;
     try {
-        entries = fs.readdirSync(dir, { withFileTypes: true });
+        entries = await fs.promises.readdir(dir, { withFileTypes: true });
     } catch (_) {
         return freed;
     }
@@ -2992,31 +3224,49 @@ function sweepJunk(dir, depth) {
         if (entry.isSymbolicLink()) continue;
         if (entry.isDirectory()) {
             if (CLEANUP_NAME_DIRS.includes(entry.name)) {
-                freed += removeAndCount(full);
+                freed += await removeAndCount(full);
                 continue;
             }
-            freed += sweepJunk(full, depth + 1);
+            freed += await sweepJunk(full, depth + 1);
             continue;
         }
-        if (CLEANUP_FILE_RE.test(entry.name)) freed += removeAndCount(full);
+        if (CLEANUP_FILE_RE.test(entry.name)) freed += await removeAndCount(full);
     }
     return freed;
+}
+
+// Cleanup and Reinstall are async now. A prepare (every Director packet, and so
+// every turn start) waits for one in progress, the way it used to wait behind the
+// synchronous walk, so no turn starts on a half-removed computer.
+let computerMaintenance = null;
+
+function underComputerMaintenance(fn) {
+    const run = (computerMaintenance || Promise.resolve()).then(fn, fn);
+    const settled = run.then(() => {}, () => {});
+    computerMaintenance = settled;
+    settled.then(() => {
+        if (computerMaintenance === settled) computerMaintenance = null;
+    });
+    return run;
 }
 
 // Temp and caches inside computer/ only. Installed tools, chats, knowledge
 // mounts, prompt-guide-work/ and the vfs mount are left alone.
 function cleanupComputer() {
-    const paths = layout();
-    let freed = 0;
-    CLEANUP_DIRS.forEach((rel) => {
-        const target = path.join(paths.home, rel);
-        if (!insideDir(paths.computer, target)) return;
-        freed += removeAndCount(target);
+    return underComputerMaintenance(async () => {
+        const paths = layout();
+        let freed = 0;
+        for (const rel of CLEANUP_DIRS) {
+            const target = path.join(paths.home, rel);
+            if (!insideDir(paths.computer, target)) continue;
+            freed += await removeAndCount(target);
+        }
+        freed += await sweepJunk(paths.home, 0);
+        freed += await sweepJunk(path.join(paths.workspace, 'browser-profile'), 0);
+        invalidateProjectPrepare();
+        ensureComputerTree(paths);
+        return { freed, size: await dirSize(paths.computer) };
     });
-    freed += sweepJunk(paths.home, 0);
-    freed += sweepJunk(path.join(paths.workspace, 'browser-profile'), 0);
-    ensureComputerTree(paths);
-    return { freed, size: dirSize(paths.computer) };
 }
 
 function abortAllRuns() {
@@ -3030,12 +3280,17 @@ function abortAllRuns() {
 // Deletes computer/ and rebuilds it. index.json, key, chats/ and
 // prompt-guide-work/ survive; the Cursor-side chat state does not, so sessions
 // are marked for transcript replay on their next turn.
-async function reinstallComputer(gr) {
+function reinstallComputer(gr) {
+    return underComputerMaintenance(() => reinstallComputerNow(gr));
+}
+
+async function reinstallComputerNow(gr) {
     const paths = layout();
-    const before = dirSize(paths.computer);
+    const before = await dirSize(paths.computer);
     const aborted = abortAllRuns();
     if (!insideDir(paths.root, paths.computer)) throw new Error('Dreamspace path is not valid');
-    fs.rmSync(paths.computer, { recursive: true, force: true });
+    invalidateProjectPrepare();
+    await fs.promises.rm(paths.computer, { recursive: true, force: true });
     await enqueue(async () => {
         const index = readIndex(paths.indexPath);
         index.chats.forEach((chat) => {
@@ -3044,8 +3299,8 @@ async function reinstallComputer(gr) {
         });
         writeIndex(paths.indexPath, index);
     });
-    await ensureProject(gr);
-    return { removed: before, aborted, size: dirSize(paths.computer) };
+    await ensureProject(gr, { maintenance: true });
+    return { removed: before, aborted, size: await dirSize(paths.computer) };
 }
 
 // Every agent process goes through bwrap. There is no host fallback.
@@ -3363,14 +3618,54 @@ const TOOL_BODIES_MAX_BYTES = 25 * 1024 * 1024;
 
 const SESSION_PAYLOAD_DISK_MAX = 64 * 1024 * 1024;
 
-function payloadFolderBytes(folder) {
-    let total = 0;
+// Per payloads/ folder: the file names already decided (on disk, written, or
+// refused for the budget) and the bytes on disk. The folder is listed once, then
+// kept up to date here, so a 2 s draft save no longer runs mkdir + exists per row
+// and a readdir + stat of every file per new payload (#620). The write of a new
+// body stays synchronous, once per payload.
+const payloadFolders = new Map();
+
+function payloadFolderState(folder) {
+    let state = payloadFolders.get(folder);
+    if (state) return state;
+    state = { decided: new Set(), bytes: 0, made: false };
     try {
         fs.readdirSync(folder).forEach((name) => {
-            try { total += fs.statSync(path.join(folder, name)).size; } catch (_err) { /* gone */ }
+            state.decided.add(name);
+            try { state.bytes += fs.statSync(path.join(folder, name)).size; } catch (_err) { /* gone */ }
         });
+        state.made = true;
     } catch (_err) { /* no folder yet */ }
-    return total;
+    payloadFolders.set(folder, state);
+    // One entry per session folder; an evicted one is listed again on its next save.
+    if (payloadFolders.size > 200) payloadFolders.delete(payloadFolders.keys().next().value);
+    return state;
+}
+
+function persistToolBody(folder, payloadId, body) {
+    try {
+        const state = payloadFolderState(folder);
+        const name = `${safeName(payloadId)}.json`;
+        if (state.decided.has(name)) return;
+        const text = JSON.stringify(body);
+        // Bodies can be 512 KiB each now; stop persisting a session past its disk budget.
+        // The folder only grows, so a refused body stays refused, as it did before.
+        state.decided.add(name);
+        if (state.bytes + text.length > SESSION_PAYLOAD_DISK_MAX) return;
+        try {
+            if (!state.made) {
+                fs.mkdirSync(folder, { recursive: true });
+                state.made = true;
+            }
+            fs.writeFileSync(path.join(folder, name), text);
+        } catch (err) {
+            // Try again on the next save, as the old exists check did.
+            state.decided.delete(name);
+            state.made = false;
+            throw err;
+        }
+        state.bytes += Buffer.byteLength(text);
+    } catch (_err) { /* the live copy still answers the glasses button */ }
 }
 
 function parkToolBodies(sessionId, rows, persistDir) {
@@ -3402,16 +3697,7 @@ function parkToolBodies(sessionId, rows, persistDir) {
             }
         }
         if (!persistDir) return;
-        try {
-            const folder = path.join(persistDir, 'payloads');
-            fs.mkdirSync(folder, { recursive: true });
-            const file = path.join(folder, `${safeName(row.payloadId)}.json`);
-            if (!fs.existsSync(file)) {
-                const text = JSON.stringify(body);
-                // Bodies can be 512 KiB each now; stop persisting a session past its disk budget.
-                if (payloadFolderBytes(folder) + text.length <= SESSION_PAYLOAD_DISK_MAX) fs.writeFileSync(file, text);
-            }
-        } catch (_err) { /* the live copy still answers the glasses button */ }
+        persistToolBody(path.join(persistDir, 'payloads'), row.payloadId, body);
     });
 }
 
@@ -3931,6 +4217,9 @@ function runClaudeTurn(cjail, run, prompt, onText, marker, limits) {
     }, onText, marker, limits);
 }
 
+const STDERR_HEAD_MAX = 64 * 1024;
+const STDERR_TAIL_MAX = 64 * 1024;
+
 function runAgentTurn(engine, onText, marker, limits) {
     const consumeStreamLine = engine.consume;
     return new Promise((resolve, reject) => {
@@ -3951,7 +4240,8 @@ function runAgentTurn(engine, onText, marker, limits) {
         }
         const state = { text: '', tool: '', error: null, finished: false, rows: [], live: null, context: null, keepToolBodies: true };
         let buffer = '';
-        let stderr = '';
+        let stderrHead = '';
+        let stderrTail = '';
         let lastEmit = 0;
         const emit = () => {
             onText({
@@ -3974,7 +4264,15 @@ function runAgentTurn(engine, onText, marker, limits) {
                 emit();
             }
         });
-        child.stderr.on('data', (buf) => { stderr += buf.toString(); });
+        // Capped: the head feeds the error text (first 800 chars), the tail keeps a
+        // late usage-limit line for USAGE_LIMIT_FAILURE. A chatty agent no longer
+        // grows one string for the whole turn.
+        child.stderr.on('data', (buf) => {
+            const text = buf.toString();
+            const room = Math.max(0, STDERR_HEAD_MAX - stderrHead.length);
+            if (room) stderrHead += text.slice(0, room);
+            if (text.length > room) stderrTail = `${stderrTail}${text.slice(room)}`.slice(-STDERR_TAIL_MAX);
+        });
         let settled = false;
         let lastActivity = Date.now();
         const startedAt = lastActivity;
@@ -4032,6 +4330,7 @@ function runAgentTurn(engine, onText, marker, limits) {
                 reject(error);
                 return;
             }
+            const stderr = `${stderrHead}${stderrTail}`;
             if (code !== 0 && (!state.text || USAGE_LIMIT_FAILURE.test(stderr))) {
                 const error = new Error((stderr || `${engine.label} exited ${code}`).trim().slice(0, 800));
                 error.rows = state.rows.slice();
@@ -4523,7 +4822,8 @@ function recycleChat(chat) {
 }
 
 // Delete the Cursor resume store for one chat id. The next turn cannot reload it.
-function removeCursorChatStore(cursorId) {
+// Async walk and rm; the nuke handler awaits it before it answers.
+async function removeCursorChatStore(cursorId) {
     const id = String(cursorId || '').trim();
     if (!CHAT_ID_LINE.test(id)) return;
     const home = layout().home;
@@ -4531,25 +4831,25 @@ function removeCursorChatStore(cursorId) {
         path.join(home, '.config', 'cursor', 'chats'),
         path.join(home, '.cursor', 'projects')
     ];
-    const visit = (dir, depth) => {
+    const visit = async (dir, depth) => {
         if (depth > 8) return;
         let entries;
         try {
-            entries = fs.readdirSync(dir, { withFileTypes: true });
+            entries = await fs.promises.readdir(dir, { withFileTypes: true });
         } catch (_) {
             return;
         }
-        entries.forEach((entry) => {
-            if (!entry.isDirectory() || entry.isSymbolicLink()) return;
+        for (const entry of entries) {
+            if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
             const full = path.join(dir, entry.name);
             if (entry.name === id) {
-                fs.rmSync(full, { recursive: true, force: true });
-                return;
+                await fs.promises.rm(full, { recursive: true, force: true });
+                continue;
             }
-            visit(full, depth + 1);
-        });
+            await visit(full, depth + 1);
+        }
     };
-    roots.forEach((root) => visit(root, 0));
+    for (const root of roots) await visit(root, 0);
 }
 
 // print_studio / generate_image / an apply that generates all land in the gallery folder,
@@ -5117,14 +5417,15 @@ async function handleDirectorNukeSession(handler, ws, message) {
             handler.sendError(ws, 'Session not found', 'SESSION_NOT_FOUND', message.requestId);
             return;
         }
-        removeCursorChatStore(nuked.cursorId);
+        await removeCursorChatStore(nuked.cursorId);
         sendOk(handler, ws, 'director_nuke_session_response', message.requestId, { sessionId });
     } catch (error) {
         handler.sendError(ws, error.message || 'Failed to nuke the session', error.code || 'DIRECTOR_ERROR', message.requestId);
     }
 }
 
-async function saveDirectorTrace(paths, sessionId, rows, text, messageId, round) {
+// draft: the periodic save of a turn still streaming (writeIndex options.draft).
+async function saveDirectorTrace(paths, sessionId, rows, text, messageId, round, draft) {
     const id = messageId || crypto.randomUUID();
     const list = Array.isArray(rows) ? rows : [];
     parkToolBodies(sessionId, list, path.join(paths.chats, safeName(sessionId)));
@@ -5156,7 +5457,7 @@ async function saveDirectorTrace(paths, sessionId, rows, text, messageId, round)
         } else {
             chat.messages.push(assistant);
         }
-        writeIndex(paths.indexPath, index);
+        writeIndex(paths.indexPath, index, { draft: draft === true });
     });
     return assistant;
 }
@@ -5487,7 +5788,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
         draftId = prepared.draftId;
         let persistTimer = null;
         let pendingTrace = { rows: [], text: '' };
-        const flushDraft = (rows, text) => saveDirectorTrace(paths, sessionId, rows, text, draftId, prepared.round);
+        const flushDraft = (rows, text, draft) => saveDirectorTrace(paths, sessionId, rows, text, draftId, prepared.round, draft);
         const stopBrowserWatch = watchBrowserPreviews(paths, sessionId, (filename) => {
             sendBrowserPreview(handler, ws, wsServer, sessionId, filename);
         });
@@ -5504,7 +5805,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo, wsSer
                 if (!persistTimer) {
                     persistTimer = setTimeout(() => {
                         persistTimer = null;
-                        flushDraft(pendingTrace.rows, pendingTrace.text).catch(() => {});
+                        flushDraft(pendingTrace.rows, pendingTrace.text, true).catch(() => {});
                     }, 2000);
                 }
             };
@@ -6341,8 +6642,8 @@ async function handleDirectorComputerSize(handler, ws, message) {
         const gr = handler.globalResources;
         await ensureProject(gr);
         sendOk(handler, ws, 'director_computer_size_response', message.requestId, {
-            ...computerSize(),
-            promptGuide: promptGuideState(gr)
+            ...(await computerSize()),
+            promptGuide: await promptGuideState(gr)
         });
     } catch (error) {
         handler.sendError(ws, error.message || 'Failed to measure Dreamspace', error.code || 'DIRECTOR_ERROR', message.requestId);
@@ -6356,7 +6657,7 @@ async function handleDirectorCleanup(handler, ws, message) {
             handler.sendError(ws, 'Director is still working. Stop the turn first.', 'DIRECTOR_BUSY', message.requestId);
             return;
         }
-        const cleaned = cleanupComputer();
+        const cleaned = await cleanupComputer();
         sendOk(handler, ws, 'director_cleanup_response', message.requestId, cleaned);
     } catch (error) {
         handler.sendError(ws, error.message || 'Failed to clean Dreamspace', error.code || 'DIRECTOR_ERROR', message.requestId);
@@ -6381,7 +6682,7 @@ async function handleDirectorPromptGuideDiff(handler, ws, message) {
     try {
         const gr = handler.globalResources;
         await ensureProject(gr);
-        sendOk(handler, ws, 'director_prompt_guide_diff_response', message.requestId, promptGuideDiff(gr));
+        sendOk(handler, ws, 'director_prompt_guide_diff_response', message.requestId, await promptGuideDiff(gr));
     } catch (error) {
         handler.sendError(ws, error.message || 'Failed to diff the prompt guide', error.code || 'DIRECTOR_ERROR', message.requestId);
     }
@@ -6391,7 +6692,7 @@ async function handleDirectorPromptGuideExtract(handler, ws, message) {
     try {
         const gr = handler.globalResources;
         await ensureProject(gr);
-        const extracted = promptGuideExtract(gr);
+        const extracted = await promptGuideExtract(gr);
         const count = extracted.files.length;
         sendOk(handler, ws, 'director_prompt_guide_extract_response', message.requestId, {
             ...extracted,
@@ -6406,7 +6707,7 @@ async function handleDirectorPromptGuideExtract(handler, ws, message) {
 
 async function handleDirectorPromptGuideCommit(handler, ws, message) {
     try {
-        const committed = promptGuideCommit(handler.globalResources, message.message);
+        const committed = await promptGuideCommit(handler.globalResources, message.message);
         sendOk(handler, ws, 'director_prompt_guide_commit_response', message.requestId, {
             ...committed,
             sha: committed.commit,
@@ -6420,7 +6721,7 @@ async function handleDirectorPromptGuideCommit(handler, ws, message) {
 
 async function handleDirectorPromptGuidePush(handler, ws, message) {
     try {
-        const pushed = promptGuidePush(handler.globalResources);
+        const pushed = await promptGuidePush(handler.globalResources);
         sendOk(handler, ws, 'director_prompt_guide_push_response', message.requestId, {
             ...pushed,
             message: `Pushed ${pushed.branch} (${pushed.commit.slice(0, 8)})`
@@ -6960,6 +7261,8 @@ module.exports = {
         RUN_IDLE_MS, RUN_HARD_MS, DYNAGEN_IDLE_MS, DYNAGEN_HARD_MS, RENTAN_REVIEW_HARD_MS,
         readIdleShutdownMinutes, noteDirectorActivity, tickIdleShutdown, wakeDirectorComputer, shutdownIdleDirector,
         rentanReviewInstructions,
+        readIndex, writeIndex, peekIndex, saveDirectorTrace, runAgentTurn, git, dirSize, computerSize,
+        invalidateProjectPrepare, prepareState: () => projectPrepare, DRAFT_FLUSH_MS,
         setBrowserChild: (child) => { browserChild = child; },
         idleShutdownState: () => ({ computerStopped, lastDirectorActivityAt, code: lastPrepare && lastPrepare.code })
     }

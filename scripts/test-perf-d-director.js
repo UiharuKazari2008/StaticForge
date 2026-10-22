@@ -4,6 +4,7 @@
 // or ~/.cache/dreamscape-director: it writes there.
 // Optional: PERF_XI_INDEX=<copy of a real Xi index.json> and
 // PERF_WREN_DIR=<copy of a real Director dir with index.json + messages/>.
+// PERF_SIZE_DIR=<a big tree to walk read-only for the dirSize timing>.
 'use strict';
 
 const assert = require('assert');
@@ -15,6 +16,8 @@ const { spawnSync } = require('child_process');
 
 const scratch = fs.mkdtempSync(path.join(process.env.PERF_SCRATCH || os.tmpdir(), 'perf-d-director-'));
 process.env.HOME = scratch;
+process.env.DREAMSCAPE_CURSOR_ACCOUNTS_DIR = path.join(scratch, 'cursor-accounts');
+process.env.APOCRYPHA_DATA_DIR = path.join(scratch, 'apocrypha');
 assert.strictEqual(os.homedir(), scratch, 'HOME override must reach os.homedir()');
 
 const director = require('../modules/cursorDirector');
@@ -213,7 +216,390 @@ async function testProjectRules() {
     time('new readProjectCursorRules (cached)', () => xi._test.readProjectCursorRules(ws));
 }
 
-const tests = [testXiIndexStore, testMarkToolDiffs, testProjectRules];
+// ---- Wren (cursorDirector) ----
+const d = director._test;
+
+function oldPayloadFolderBytes(folder) {
+    let total = 0;
+    try {
+        fs.readdirSync(folder).forEach((name) => {
+            try { total += fs.statSync(path.join(folder, name)).size; } catch (_err) { /* gone */ }
+        });
+    } catch (_err) { /* no folder yet */ }
+    return total;
+}
+
+// The persist half of the old parkToolBodies, byte for byte.
+function oldPersist(persistDir, rows) {
+    rows.forEach((row) => {
+        if (!row || row.type !== 'tool') return;
+        const args = row.args ? String(row.args) : '';
+        const result = row.result ? String(row.result) : '';
+        if (!args && !result) return;
+        const body = { args, result, name: row.name || '', label: row.label || '', detail: row.detail || '' };
+        const folder = path.join(persistDir, 'payloads');
+        fs.mkdirSync(folder, { recursive: true });
+        const file = path.join(folder, `${d.safeName(row.payloadId)}.json`);
+        if (!fs.existsSync(file)) {
+            const text = JSON.stringify(body);
+            if (oldPayloadFolderBytes(folder) + text.length <= d.SESSION_PAYLOAD_DISK_MAX) fs.writeFileSync(file, text);
+        }
+    });
+}
+
+function listFiles(dir) {
+    const out = {};
+    const walk = (rel) => {
+        let entries = [];
+        try { entries = fs.readdirSync(path.join(dir, rel), { withFileTypes: true }); } catch (_) { return; }
+        entries.forEach((entry) => {
+            const sub = rel ? `${rel}/${entry.name}` : entry.name;
+            if (entry.isDirectory()) walk(sub);
+            else if (entry.isFile()) out[sub] = fs.readFileSync(path.join(dir, sub), 'utf8');
+        });
+    };
+    walk('');
+    return out;
+}
+
+async function testParkToolBodies() {
+    console.log('Wren parkToolBodies');
+    const rows = Array.from({ length: 300 }, (_, i) => ({
+        type: 'tool',
+        name: 'Shell',
+        label: 'Shell',
+        detail: `cmd ${i}`,
+        args: `{"command":"${'a'.repeat(200 + i)}"}`,
+        result: i % 7 ? 'r'.repeat(2000 + i) : '',
+        payloadId: `p${String(i).padStart(4, '0')}`
+    }));
+    // Folders that already hold 638 payloads, like the live session in the scan.
+    const seed = (dir) => {
+        const folder = path.join(dir, 'payloads');
+        fs.mkdirSync(folder, { recursive: true });
+        for (let i = 0; i < 638; i++) fs.writeFileSync(path.join(folder, `old${i}.json`), 'x'.repeat(4000));
+    };
+    const oldDir = path.join(scratch, 'park-old');
+    const newDir = path.join(scratch, 'park-new');
+    seed(oldDir);
+    seed(newDir);
+    const first = rows.slice(0, 200);
+    oldPersist(oldDir, first);
+    d.parkToolBodies('perf-park', first, newDir);
+    oldPersist(oldDir, rows);
+    d.parkToolBodies('perf-park', rows, newDir);
+    assert.deepStrictEqual(listFiles(path.join(newDir, 'payloads')), listFiles(path.join(oldDir, 'payloads')), 'same payload files and bodies');
+    // Budget: a folder near the cap refuses the same bodies.
+    const capOld = path.join(scratch, 'cap-old');
+    const capNew = path.join(scratch, 'cap-new');
+    [capOld, capNew].forEach((dir) => {
+        fs.mkdirSync(path.join(dir, 'payloads'), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'payloads', 'big.json'), Buffer.alloc(d.SESSION_PAYLOAD_DISK_MAX - 30000));
+    });
+    oldPersist(capOld, rows);
+    d.parkToolBodies('perf-cap', rows, capNew);
+    assert.deepStrictEqual(Object.keys(listFiles(path.join(capNew, 'payloads'))).sort(), Object.keys(listFiles(path.join(capOld, 'payloads'))).sort(), 'same bodies refused at the budget');
+    const more = rows.map((row, i) => ({ ...row, payloadId: `q${i}` }));
+    let n = 0;
+    time('old persist, 2 s save of 300 rows (6 new)', () => {
+        const batch = rows.concat(more.slice(n, n + 6));
+        n += 6;
+        oldPersist(oldDir, batch);
+    }, 10);
+    n = 0;
+    time('new parkToolBodies, 2 s save of 300 rows (6 new)', () => {
+        const batch = rows.concat(more.slice(n, n + 6));
+        n += 6;
+        d.parkToolBodies('perf-park', batch, newDir);
+    }, 10);
+}
+
+function seedWren() {
+    const paths = director.layout();
+    assert.ok(paths.root.startsWith(scratch), 'Director layout is under the scratch HOME');
+    fs.mkdirSync(path.join(paths.root, 'messages'), { recursive: true });
+    const src = process.env.PERF_WREN_DIR;
+    if (src) {
+        fs.copyFileSync(path.join(src, 'index.json'), paths.indexPath);
+        fs.readdirSync(path.join(src, 'messages')).forEach((name) => fs.copyFileSync(path.join(src, 'messages', name), path.join(paths.root, 'messages', name)));
+    } else {
+        const chats = [];
+        for (let c = 0; c < 10; c++) {
+            const id = `dirc_${crypto.randomBytes(8).toString('hex')}`;
+            const messages = Array.from({ length: 200 }, (_, m) => ({ id: crypto.randomUUID(), role: m % 2 ? 'assistant' : 'user', content: 'm'.repeat(c === 0 ? 20000 : 500) }));
+            fs.writeFileSync(path.join(paths.root, 'messages', `${id}.json`), JSON.stringify(messages));
+            chats.push({ id, name: `chat ${c}`, created_at: new Date().toISOString() });
+        }
+        fs.writeFileSync(paths.indexPath, JSON.stringify({ chats }));
+    }
+    const sized = fs.readdirSync(path.join(paths.root, 'messages'))
+        .map((name) => ({ name, size: fs.statSync(path.join(paths.root, 'messages', name)).size }))
+        .sort((a, b) => b.size - a.size);
+    const bigId = sized[0].name.replace(/\.json$/, '');
+    return { paths, bigId, messagesFile: path.join(paths.root, 'messages', sized[0].name) };
+}
+
+async function testWrenDraftSaves() {
+    console.log('Wren draft saves');
+    const { paths, bigId, messagesFile } = seedWren();
+    const chat = d.peekIndex(paths.indexPath).chats.find((item) => item.id === bigId);
+    assert.ok(chat && Array.isArray(chat.messages), 'big chat loads with its messages');
+    const count = chat.messages.length;
+    const rows = [{ type: 'assistant', text: 'thinking about it' }];
+    const draftId = 'perf-draft-0001';
+    await d.saveDirectorTrace(paths, bigId, rows, 'partial', draftId, null, true);
+    assert.strictEqual(d.peekIndex(paths.indexPath).chats.find((item) => item.id === bigId).messages.length, count + 1, 'draft is in memory at once');
+    await sleep(800);
+    assert.ok(!fs.readFileSync(messagesFile, 'utf8').includes(draftId), 'a draft-only change waits for DRAFT_FLUSH_MS');
+    const onDiskIndex = JSON.parse(fs.readFileSync(paths.indexPath, 'utf8'));
+    assert.ok(onDiskIndex.chats.every((item) => !item.messages), 'index.json keeps the split format');
+    await d.saveDirectorTrace(paths, bigId, rows.concat([{ type: 'assistant', text: 'done' }]), 'final answer', draftId, null);
+    await sleep(800);
+    const saved = JSON.parse(fs.readFileSync(messagesFile, 'utf8'));
+    assert.strictEqual(saved.length, count + 1, 'the turn-end save writes the chat');
+    assert.strictEqual(saved[saved.length - 1].data.Description, 'final answer', 'final text on disk');
+    assert.deepStrictEqual(saved, JSON.parse(JSON.stringify(d.peekIndex(paths.indexPath).chats.find((item) => item.id === bigId).messages)), 'disk matches memory');
+
+    // Drafts alone are flushed after DRAFT_FLUSH_MS.
+    const lateId = 'perf-draft-0002';
+    await d.saveDirectorTrace(paths, bigId, rows, 'late partial', lateId, null, true);
+    await sleep(d.DRAFT_FLUSH_MS + 900);
+    assert.ok(fs.readFileSync(messagesFile, 'utf8').includes(lateId), 'a lone draft lands after DRAFT_FLUSH_MS');
+
+    // Exit flush writes a pending draft.
+    const childScript = `
+        process.env.HOME = ${JSON.stringify(scratch)};
+        const director = require(${JSON.stringify(path.resolve(__dirname, '../modules/cursorDirector'))});
+        const paths = director.layout();
+        director._test.saveDirectorTrace(paths, ${JSON.stringify(bigId)}, [{ type: 'assistant', text: 'x' }], 'exit partial', 'perf-draft-exit', null, true)
+            .then(() => process.exit(0));
+    `;
+    const child = spawnSync(process.execPath, ['-e', childScript], { encoding: 'utf8', env: { ...process.env, HOME: scratch } });
+    assert.strictEqual(child.status, 0, child.stderr);
+    assert.ok(fs.readFileSync(messagesFile, 'utf8').includes('perf-draft-exit'), 'exit flush wrote the pending draft');
+
+    const big = d.peekIndex(paths.indexPath).chats.find((item) => item.id === bigId).messages;
+    console.log(`  big chat: ${big.length} messages, ${(fs.statSync(messagesFile).size / 1048576).toFixed(1)} MB`);
+    time('old cost per 2 s draft save: stringify the big chat', () => JSON.stringify(big), 10);
+    time('readIndex copy (unchanged, per read/write)', () => d.readIndex(paths.indexPath), 20);
+}
+
+function oldGit(args, cwd, env) {
+    const result = spawnSync('git', args, {
+        cwd,
+        encoding: 'utf8',
+        maxBuffer: 64 * 1024 * 1024,
+        env: { ...process.env, GIT_TERMINAL_PROMPT: '0', ...(env || {}) }
+    });
+    const stdout = result.stdout || '';
+    const redact = (text) => String(text || '').replace(/token\s+\S+/gi, 'token ***').replace(/https:\/\/[^@\s]+@/g, 'https://***@');
+    const stderr = redact(result.stderr || (result.error ? result.error.message : ''));
+    return { ok: result.status === 0, status: result.status, stdout, stderr };
+}
+
+async function testGitAsync() {
+    console.log('Wren git() async');
+    const repo = path.join(scratch, 'git-repo');
+    fs.mkdirSync(repo, { recursive: true });
+    const cases = [
+        [['init', '-q', '-b', 'main'], repo],
+        [['rev-parse', '--verify', 'HEAD'], repo],
+        [['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'one'], repo],
+        [['rev-parse', '--verify', 'HEAD'], repo],
+        [['log', '--format=%s'], repo],
+        [['diff', '--no-color', 'HEAD', '--'], repo],
+        [['not-a-command'], repo],
+        [['rev-parse', '--verify', 'nope'], repo]
+    ];
+    for (const [args, cwd] of cases) {
+        const fresh = await d.git(args, cwd);
+        const old = oldGit(args, cwd);
+        if (args[0] === 'init') continue;
+        assert.deepStrictEqual(fresh, old, `same result for git ${args.join(' ')}`);
+    }
+    const missing = await d.git(['status'], path.join(scratch, 'no-such-dir'));
+    const oldMissing = oldGit(['status'], path.join(scratch, 'no-such-dir'));
+    assert.strictEqual(missing.ok, oldMissing.ok, 'missing cwd: ok matches');
+    assert.strictEqual(missing.status, oldMissing.status, 'missing cwd: status null like spawnSync');
+    assert.ok(missing.stderr, 'missing cwd: the spawn error is in stderr');
+    // The loop keeps turning while git runs.
+    let ticks = 0;
+    const timer = setInterval(() => { ticks += 1; }, 1);
+    await d.git(['-c', 'core.pager=cat', 'log', '--format=%H'], repo);
+    await Promise.all(Array.from({ length: 8 }, () => d.git(['rev-parse', 'HEAD'], repo)));
+    clearInterval(timer);
+    assert.ok(ticks > 0, 'event loop ran during git');
+}
+
+function oldDirSize(dir) {
+    let total = 0;
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return 0; }
+    for (const entry of entries) {
+        const full = path.join(dir, entry.name);
+        if (entry.isSymbolicLink()) continue;
+        if (entry.isDirectory()) {
+            total += oldDirSize(full);
+            continue;
+        }
+        try { total += fs.statSync(full).size; } catch (_) { /* vanished */ }
+    }
+    return total;
+}
+
+async function testDirSize() {
+    console.log('Wren dirSize / computerSize');
+    const paths = director.layout();
+    const tree = paths.computer;
+    for (let i = 0; i < 20; i++) {
+        const dir = path.join(tree, i % 2 ? 'home' : 'workspace', `d${i}`, 'deep', String(i));
+        fs.mkdirSync(dir, { recursive: true });
+        for (let j = 0; j < 30; j++) fs.writeFileSync(path.join(dir, `f${j}`), 'z'.repeat(i * 100 + j));
+    }
+    fs.symlinkSync('/usr', path.join(tree, 'home', 'link-to-usr'));
+    fs.symlinkSync(path.join(tree, 'workspace'), path.join(tree, 'home', 'loop'));
+    assert.strictEqual(await d.dirSize(tree), oldDirSize(tree), 'dirSize matches');
+    assert.deepStrictEqual(await d.computerSize(), { bytes: oldDirSize(paths.computer), home: oldDirSize(paths.home), path: paths.computer }, 'computerSize matches, one walk');
+    const big = process.env.PERF_SIZE_DIR;
+    if (big) {
+        let start = process.hrtime.bigint();
+        const oldBig = oldDirSize(big);
+        const oldMs = ms(start);
+        let lag = 0;
+        let last = Date.now();
+        const timer = setInterval(() => {
+            const now = Date.now();
+            lag = Math.max(lag, now - last);
+            last = now;
+        }, 5);
+        start = process.hrtime.bigint();
+        const marks = new Map([[path.join(big, 'home'), 0]]);
+        const newBig = await d.dirSize(big, marks);
+        const newMs = ms(start);
+        clearInterval(timer);
+        assert.strictEqual(newBig, oldBig, 'same total on the big tree');
+        assert.strictEqual(marks.get(path.join(big, 'home')), oldDirSize(path.join(big, 'home')), 'same home total on the big tree');
+        console.log(`  ${big}: old sync walk ${oldMs.toFixed(0)} ms (loop blocked), new async walk ${newMs.toFixed(0)} ms, worst loop gap ${lag} ms`);
+    }
+}
+
+async function testStderrCap() {
+    console.log('Wren runAgentTurn stderr cap');
+    const { spawn } = require('child_process');
+    const script = `
+        const chunk = 'e'.repeat(64 * 1024) + '\\n';
+        for (let i = 0; i < 64; i++) process.stderr.write(chunk);
+        process.stderr.write('Error: you hit your usage limit\\n');
+        process.stdout.write('{"type":"text"}\\n');
+        process.exitCode = 3;
+    `;
+    const engine = {
+        label: 'Test',
+        spawn: () => spawn(process.execPath, ['-e', script], { stdio: ['ignore', 'pipe', 'pipe'] }),
+        consume: (_line, state) => { state.text = 'some reply'; }
+    };
+    const error = await d.runAgentTurn(engine, () => {}, null, { pollMs: 1000 }).then(() => null, (err) => err);
+    assert.ok(error, 'non-zero exit with a usage-limit line late in 4 MB of stderr still fails the turn');
+    const full = `${'e'.repeat(64 * 1024)}\n`.repeat(64);
+    assert.strictEqual(error.message, full.trim().slice(0, 800), 'error text is the first 800 chars, as before');
+}
+
+async function testEnsureProjectMemo() {
+    console.log('Wren ensureProject memo');
+    let uuid = 'perf-uuid-1';
+    const dirs = {};
+    ['cache', 'images', 'previews', 'uploadCache', 'previewCache'].forEach((name) => {
+        dirs[name] = path.join(scratch, 'gr', name);
+        fs.mkdirSync(dirs[name], { recursive: true });
+    });
+    let validations = 0;
+    const gr = {
+        getPath: (name) => dirs[name],
+        getConfig: (opts) => (opts && opts.path === 'port' ? 9220 : {}),
+        getMcpPathUuid: () => uuid,
+        getWebSocketServer: () => null,
+        getApplicationAuthManager: () => ({
+            validateApplicationKey: async () => { validations += 1; return { valid: true, scopes: ['universal'] }; },
+            createApplicationKey: async () => ({ key: 'dsak_perf_key' })
+        })
+    };
+    const first = await director.ensureProject(gr);
+    const paths = director.layout();
+    assert.ok(paths.computer.startsWith(scratch), 'prepare writes under the scratch HOME');
+    assert.ok(d.prepareState(), 'a full prepare stores the memo');
+    const stampAll = () => {
+        const out = {};
+        const walk = (dir) => {
+            let entries = [];
+            try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return; }
+            entries.forEach((entry) => {
+                const full = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                    if (entry.name !== '.git') walk(full);
+                } else if (entry.isFile()) {
+                    out[full] = `${fs.statSync(full).mtimeMs}:${fs.readFileSync(full, 'utf8')}`;
+                }
+            });
+        };
+        walk(paths.computer);
+        return out;
+    };
+    const before = stampAll();
+    const second = await director.ensureProject(gr);
+    assert.deepStrictEqual(second.jail, first.jail, 'memo hit returns the same jail');
+    assert.deepStrictEqual(stampAll(), before, 'memo hit writes nothing');
+    assert.strictEqual(validations, 1, 'the app key is still checked on a memo hit (the first call minted it)');
+
+    // A full prepare from scratch state gives the same tree and jail.
+    d.invalidateProjectPrepare();
+    const third = await director.ensureProject(gr);
+    assert.deepStrictEqual(third.jail, first.jail, 'full prepare: same jail');
+    const after = stampAll();
+    Object.keys(before).forEach((file) => assert.strictEqual(after[file].replace(/^[^:]*:/, ''), before[file].replace(/^[^:]*:/, ''), `same content ${file}`));
+
+    // An edit from inside the jail is put back on the next packet, as before.
+    const agents = path.join(paths.workspace, 'AGENTS.md');
+    const agentsText = fs.readFileSync(agents, 'utf8');
+    fs.writeFileSync(agents, 'edited by the agent');
+    await director.ensureProject(gr);
+    assert.strictEqual(fs.readFileSync(agents, 'utf8'), agentsText, 'edited project file restored');
+    fs.unlinkSync(path.join(paths.workspace, '.cursor', 'mcp.json'));
+    await director.ensureProject(gr);
+    assert.ok(fs.existsSync(path.join(paths.workspace, '.cursor', 'mcp.json')), 'deleted mcp.json rewritten');
+
+    // A new MCP path uuid reaches mcp.json.
+    uuid = 'perf-uuid-2';
+    await director.ensureProject(gr);
+    assert.ok(fs.readFileSync(path.join(paths.workspace, '.cursor', 'mcp.json'), 'utf8').includes('perf-uuid-2'), 'uuid change rewrites mcp.json');
+
+    // Computer stop drops the memo.
+    d.shutdownIdleDirector('perf test');
+    assert.strictEqual(d.prepareState(), null, 'idle shutdown drops the memo');
+    await director.ensureProject(gr);
+    assert.ok(d.prepareState(), 'next packet prepares again');
+
+    // Cleanup runs under the maintenance gate and reports like before.
+    const cleaned = await director.cleanupComputer();
+    assert.strictEqual(cleaned.size, oldDirSize(paths.computer), 'cleanup size matches the old walk');
+
+    let start = process.hrtime.bigint();
+    for (let i = 0; i < 5; i++) {
+        d.invalidateProjectPrepare();
+        await director.ensureProject(gr);
+    }
+    const fullEach = ms(start) / 5;
+    await director.ensureProject(gr);
+    start = process.hrtime.bigint();
+    for (let i = 0; i < 20; i++) await director.ensureProject(gr);
+    const hitEach = ms(start) / 20;
+    console.log(`  full prepare ${fullEach.toFixed(2)} ms, memo hit ${hitEach.toFixed(2)} ms (wall, includes the awaited key check)`);
+    assert.ok(hitEach < fullEach, 'memo hit is cheaper');
+}
+
+const tests = [
+    testXiIndexStore, testMarkToolDiffs, testProjectRules,
+    testParkToolBodies, testWrenDraftSaves, testGitAsync, testDirSize, testStderrCap, testEnsureProjectMemo
+];
 
 (async () => {
     try {
