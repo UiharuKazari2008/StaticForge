@@ -2306,6 +2306,33 @@ body.windows-classic-theme #melatonControlPanelModal .cpl-tasks {
     margin-right: 22px;
 }
 
+/* a selected gallery photo's credit under the list: title, photographer, license, source */
+#melatonControlPanelModal .cpl-db-credit {
+    flex: none;
+    min-height: 15px;
+    margin: 6px 22px 0;
+    overflow: hidden;
+    color: #5b5b5b;
+    font: 12px var(--cpl-font);
+    line-height: 15px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+#melatonControlPanelModal .cpl-db-credit-title {
+    color: #000;
+}
+
+#melatonControlPanelModal .cpl-db-credit a {
+    color: var(--cpl-link);
+    text-decoration: none;
+}
+
+#melatonControlPanelModal .cpl-db-credit a:hover {
+    color: var(--cpl-link-hover);
+    text-decoration: underline;
+}
+
 #melatonControlPanelModal .cpl-db-footer {
     display: flex;
     flex: none;
