@@ -2872,9 +2872,9 @@ app.get('/traces', authMiddleware, adminOnlyMiddleware, (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'traces.html'));
 });
 // Traces API
-app.get('/traces/list', authMiddleware, adminOnlyMiddleware, (req, res) => {
+app.get('/traces/list', authMiddleware, adminOnlyMiddleware, async (req, res) => {
     try {
-        const list = globalResources.getTracing().listTraces();
+        const list = await globalResources.getTracing().listTraces();
         console.log(`📋 listTraces() returned ${list.length} traces`);
         res.json({ success: true, traces: list });
     } catch (e) {
