@@ -18,6 +18,8 @@ class ImageViewerManager {
 
     // Create a new image viewer instance
     createViewer(imageSrc, title = 'Image', metadata = {}) {
+        // Recent Items (public/scripts/comp/recentItems.js): a picture opened in Lumen
+        if (window.recentItems) window.recentItems.notePicture(imageSrc, title, metadata);
         const viewerId = `imageViewer_${this.nextId++}`;
         const viewerElement = this.template.cloneNode(true);
         viewerElement.id = viewerId;

@@ -3449,6 +3449,8 @@ async function openManualModalWithContent(content = null, event = null) {
             }
             window.currentEditMetadata = loadMetadata;
             window.currentEditImage = loadImage;
+            // Recent Items (public/scripts/comp/recentItems.js): an image loaded into Studio
+            if (loadImage && window.recentItems) window.recentItems.noteStudioImage(loadImage);
         } else {
             window.currentEditMetadata = null;
             window.currentEditImage = null;

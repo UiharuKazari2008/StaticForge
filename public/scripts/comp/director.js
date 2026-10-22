@@ -3718,6 +3718,8 @@ class Director {
     
     async showSessionChat(session, options) {
         this._pendingWorkspaceToken = null;
+        // Recent Items (public/scripts/comp/recentItems.js): a Director session opened
+        if (session && window.recentItems) window.recentItems.noteDirectorSession(session);
         if (this.currentSession && this.currentSession !== session && Array.isArray(this.currentSession.messages)) {
             assignTrimmedDirectorSessionMessages(this.currentSession, this.currentSession.messages);
             const prevIdx = this.directorSessions.findIndex(s => s.id === this.currentSession.id);

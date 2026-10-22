@@ -4244,6 +4244,9 @@ class ExplorerApplet {
             return;
         }
 
+        // Recent Items (public/scripts/comp/recentItems.js): a file opened here, by this workspace
+        if (window.recentItems) window.recentItems.noteExplorerItem(item, this.currentPath);
+
         const openLabel = item.name || 'item';
         this._setBusyState('open', openLabel);
         if (this.grid) this.grid.setOpeningItemId(item.id);

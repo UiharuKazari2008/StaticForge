@@ -2248,11 +2248,19 @@ class DesktopShortcutsManager {
 
     // Get applet context menu
     getAppletContextMenu(shortcut) {
+        const launchId = shortcut && shortcut.data && shortcut.data.launchId;
+        // a program shortcut can go to Quick Launch (public/scripts/comp/taskbarSettings.js)
+        const quickLaunch = launchId && window.taskbarSettings ? [{
+            icon: 'fas fa-bolt',
+            text: window.taskbarSettings.hasQuickLaunch(launchId) ? 'Already in Quick Launch' : 'Add to Quick Launch',
+            action: 'add-to-quick-launch',
+            disabled: window.taskbarSettings.hasQuickLaunch(launchId)
+        }, { separator: true }] : [];
         return {
             sections: [
                 {
                     type: 'list',
-                    items: this.getShortcutManagementMenuItems(false)
+                    items: quickLaunch.concat(this.getShortcutManagementMenuItems(false))
                 }
             ]
         };
@@ -4088,6 +4096,10 @@ document.addEventListener('contextMenuAction', async (event) => {
 
         case 'create-folder-from-selection':
             await desktopShortcuts.createFolderFromSelection();
+            break;
+
+        case 'add-to-quick-launch':
+            if (window.taskbarSettings && shortcut.data && shortcut.data.launchId) window.taskbarSettings.addQuickLaunch(shortcut.data.launchId);
             break;
 
         case 'rename-shortcut':

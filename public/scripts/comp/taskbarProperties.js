@@ -15,10 +15,11 @@
  * Sub-dialogs (Customize...) write into the pending copy on their own OK, as Vista's do.
  *
  * Besides Vista's settings the dialog carries ours, as Vista-style controls in the fitting place:
- *   Taskbar tab          "Taskbar buttons": program pictures on taskbar buttons
- *   Start Menu tab       Customize Start Menu: the Start button's style, text and Windows logo,
- *                        "Open the workspace at startup", which places the menu shows, how many
- *                        recent programs
+ *   Taskbar tab          "Start button": its style, Windows logo and text (Logo and Text grey
+ *                        out for the Orb); program pictures on taskbar buttons
+ *   Start Menu tab       Customize Start Menu: the Start menu and All Programs icon sizes, which
+ *                        places the menu shows, "Open the workspace at startup", how many recent
+ *                        programs, and what the power and lock buttons do
  *   Notification Area    "Notifications": the shortest time a notification stays, and Customize
  *                        Notifications (which notifications to hide; the Notification Bridge
  *                        where an Android host is attached)
@@ -162,9 +163,44 @@
             ${check('group', 13, 84, 200, '<u>G</u>roup similar taskbar buttons', 'group')}
             ${check('quicklaunch', 13, 97, 200, 'Show <u>Q</u>uick Launch', 'quickLaunch')}
             ${check('thumbs', 13, 110, 200, '<u>S</u>how window previews (thumbnails)', 'thumbnails')}
-            ${group(6, 133, 240, 30, 'Taskbar buttons')}
-            ${check('appicons', 13, 147, 224, 'Show program <u>p</u>ictures on taskbar buttons', 'x:useAppImageIcon')}
+            ${group(6, 131, 240, 66, 'Start button')}
+            ${text(13, 146, 26, 8, 'St<u>y</u>le:')}
+            <select class="tbp-ctl tbp-select" id="tbp-sb-style" style="${dlu(40, 144, 86, 12)}" aria-label="Start button style">
+                <option value="orb">Orb</option><option value="luna">Media Center</option><option value="workspace">Workspace</option>
+            </select>
+            ${text(132, 146, 22, 8, 'L<u>o</u>go:', 'tbp-sb-dep')}
+            <select class="tbp-ctl tbp-select" id="tbp-sb-logo" style="${dlu(156, 144, 83, 12)}" aria-label="Windows logo">
+                <option value="royal">Royal</option><option value="vista">Vista</option><option value="dreamscape">Dreamscape</option>
+            </select>
+            ${text(13, 163, 26, 8, 'Te<u>x</u>t:', 'tbp-sb-dep')}
+            <select class="tbp-ctl tbp-select" id="tbp-sb-text" style="${dlu(40, 161, 110, 12)}" aria-label="Start button text">${startTextOptions()}</select>
+            <input type="text" class="tbp-ctl tbp-edit" id="tbp-sb-custom" maxlength="24" style="${dlu(154, 161, 85, 12)}" placeholder="Custom text" aria-label="Custom start button text">
+            ${check('appicons', 13, 179, 224, 'Show program <u>p</u>ictures on taskbar buttons', 'x:useAppImageIcon')}
             ${link(7, 200, 238, 'How do I customize the taskbar?', 'help-taskbar')}`;
+    }
+
+    function startTextOptions() {
+        const groups = typeof getStartMenuButtonPresetGroups !== 'undefined' ? getStartMenuButtonPresetGroups() : [];
+        return groups.map((gr) => `<optgroup label="${esc(gr.group)}">${gr.options.map((o) => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('')}</optgroup>`).join('');
+    }
+
+    /** The Start button controls follow the pending style: Orb has its own flag and no text, so
+     *  Logo, Text and the custom text grey out; the custom text only takes typing for Custom Text. */
+    function syncStartButtonControls() {
+        const c = dlg.content;
+        const sb = dlg.pending.startButton;
+        const style = c.querySelector('#tbp-sb-style');
+        if (!style) return;
+        style.value = sb.style;
+        c.querySelector('#tbp-sb-logo').value = sb.logo;
+        c.querySelector('#tbp-sb-text').value = sb.preset;
+        const custom = c.querySelector('#tbp-sb-custom');
+        if (document.activeElement !== custom) custom.value = sb.customText || '';
+        const orb = sb.style === 'orb';
+        c.querySelector('#tbp-sb-logo').disabled = orb;
+        c.querySelector('#tbp-sb-text').disabled = orb;
+        custom.disabled = orb || sb.preset !== 'custom';
+        c.querySelectorAll('.tbp-sb-dep').forEach((el) => el.classList.toggle('is-disabled', orb));
     }
 
     function pageStartMenu() {
@@ -237,8 +273,13 @@
         const buttons = c.group
             ? item(explorer, 'Cartograph', ' taskbar-window-group') + item(notes, 'Untitled - Notion')
             : item(explorer, 'Documents') + item(explorer, 'Pictures') + item(explorer, 'Music');
-        const ql = ['show-desktop-16.png', 'switch-windows-16.png'].map((f) => `<span class="taskbar-quick-launch-btn"><img src="${ART}/${f}" alt="" width="16" height="16"></span>`).join('')
-            + ['vista-iexplore', 'media_player'].map((n) => `<span class="taskbar-quick-launch-btn"><img src="/static_images/app_icons/16/${n}.webp" alt="" width="16" height="16"></span>`).join('');
+        // the real Quick Launch list (taskbarSettings.js quickLaunchItems)
+        const ts = root.taskbarSettings;
+        const ql = (ts ? c.quickLaunchItems || [] : [])
+            .map((id) => ts.quickLaunchEntry(id))
+            .filter(Boolean)
+            .map((e) => `<span class="taskbar-quick-launch-btn">${e.fa ? `<i class="${esc(e.fa)}"></i>` : `<img src="${esc(e.icon)}" alt="" width="16" height="16">`}</span>`)
+            .join('');
         const startCls = `taskbar-start-button${isOrb ? ' orb' : sb.style === 'luna' ? ' luna' : ''}`;
         host.innerHTML = `
             <div class="${cls.join(' ')}" aria-hidden="true">
@@ -324,6 +365,7 @@
         if (vista) vista.checked = true;
         const sel = content.querySelector('#tbp-mintime');
         if (sel) sel.value = String(dlg.pending.trayMinMs);
+        syncStartButtonControls();
         renderPreviews();
     }
 
@@ -494,6 +536,7 @@
         close.addEventListener('click', () => cancel());
         content.addEventListener('click', onClick);
         content.addEventListener('change', onChange);
+        content.addEventListener('input', onInput);
         modal.addEventListener('keydown', onKey);
         return { modal, content };
     }
@@ -533,7 +576,21 @@
         } else if (t.id === 'tbp-mintime') {
             dlg.pending.trayMinMs = Number(t.value);
             setDirty(true);
+        } else if (t.id === 'tbp-sb-style' || t.id === 'tbp-sb-logo' || t.id === 'tbp-sb-text') {
+            const key = { 'tbp-sb-style': 'style', 'tbp-sb-logo': 'logo', 'tbp-sb-text': 'preset' }[t.id];
+            dlg.pending.startButton = { ...dlg.pending.startButton, [key]: t.value };
+            syncStartButtonControls();
+            if (key === 'preset' && t.value === 'custom') dlg.content.querySelector('#tbp-sb-custom').focus();
+            setDirty(true);
+            renderPreviews();
         }
+    }
+
+    function onInput(ev) {
+        if (ev.target.id !== 'tbp-sb-custom') return;
+        dlg.pending.startButton = { ...dlg.pending.startButton, customText: ev.target.value.slice(0, 24) };
+        setDirty(true);
+        renderPreviews();
     }
 
     function onClick(ev) {
@@ -547,7 +604,7 @@
         switch (b.dataset.action) {
             case 'ok': ok(); break;
             case 'cancel': cancel(); break;
-            case 'apply': void applyPending(); break;
+            case 'apply': if (startButtonValid()) void applyPending(); break;
             case 'customize-start': openCustomizeStart(); break;
             case 'customize-icons': openCustomizeIcons(); break;
             case 'customize-popups': openCustomizePopups(); break;
@@ -576,7 +633,18 @@
         }
     }
 
+    /** Custom Text needs text, as the old settings page asked. */
+    function startButtonValid() {
+        const sb = dlg.pending.startButton;
+        if (sb.style === 'orb' || sb.preset !== 'custom' || (sb.customText || '').trim()) return true;
+        selectTab('taskbar');
+        const custom = dlg.content.querySelector('#tbp-sb-custom');
+        if (custom) custom.focus();
+        return false;
+    }
+
     async function ok() {
+        if (!startButtonValid()) return;
         if (dlg.dirty) await applyPending();
         finish();
     }
@@ -789,7 +857,6 @@
     // "Show on Start menu") the Start button's text
     function openCustomizeStart() {
         const p = dlg.pending;
-        const sb = { ...p.startButton };
         const places = (typeof getStartMenuPlacesAll === 'function' ? getStartMenuPlacesAll() : [])
             .filter((pl) => !pl.separator && pl.id !== 'user' && pl.id !== 'recent');
         let n = 0;
@@ -814,25 +881,9 @@
                 radioRow('progsize', 'small', 'Small icons', p.core.programsIconSize === 'small')
                 + radioRow('progsize', 'medium', 'Medium icons', p.core.programsIconSize === 'medium')
                 + radioRow('progsize', 'large', 'Large icons', p.core.programsIconSize === 'large'))
-            + node('Start button',
-                radioRow('style', 'orb', 'Orb', sb.style === 'orb')
-                + radioRow('style', 'luna', 'Media Center', sb.style === 'luna')
-                + radioRow('style', 'workspace', 'Workspace', sb.style === 'workspace'))
-            + node('Start button logo',
-                radioRow('logo', 'royal', 'Royal', sb.logo === 'royal')
-                + radioRow('logo', 'vista', 'Vista', sb.logo === 'vista')
-                + radioRow('logo', 'dreamscape', 'Dreamscape', sb.logo === 'dreamscape'))
             + shownPlaces
-            + node('Power button',
-                radioRow('powerbtn', 'shutdown', 'Shut down', p.core.powerButton === 'shutdown')
-                + radioRow('powerbtn', 'restart', 'Restart', p.core.powerButton === 'restart')
-                + radioRow('powerbtn', 'logoff', 'Log off', p.core.powerButton === 'logoff'))
-            + node('Lock button',
-                radioRow('lockbtn', 'lock', 'Lock', p.core.lockButton === 'lock')
-                + radioRow('lockbtn', 'logoff', 'Log off', p.core.lockButton === 'logoff'))
             + checkRow('tbp-cs-autolaunch', '1', 'Open the workspace at startup', p.autoLaunch);
-        const groups = (typeof getStartMenuButtonPresetGroups !== 'undefined') ? getStartMenuButtonPresetGroups() : [];
-        const options = groups.map((gr) => `<optgroup label="${esc(gr.group)}">${gr.options.map((o) => `<option value="${esc(o.value)}"${o.value === sb.preset ? ' selected' : ''}>${esc(o.label)}</option>`).join('')}</optgroup>`).join('');
+        const choice = (options, value) => options.map(([v, label]) => `<option value="${v}"${v === value ? ' selected' : ''}>${label}</option>`).join('');
         const html = `
             ${text(7, 7, 238, 16, 'You can customize how links, icons, and menus look and behave on the Start menu.')}
             <div class="tbp-ctl tbp-tree" style="${dlu(7, 26, 238, 124)}" role="tree">${tree}</div>
@@ -844,24 +895,17 @@
                 <span class="tbp-spin tbp-spin-down" data-action="cs-down" aria-hidden="true"></span>
             </span>
             ${button(7, 183, 80, 14, 'Use <u>D</u>efault Settings', 'cs-default')}
-            ${group(7, 199, 238, 56, 'Start button text')}
-            ${text(14, 213, 82, 10, '<u>T</u>ext:')}
-            <select class="tbp-ctl tbp-select tbp-cs-preset" style="${dlu(98, 211, 140, 12)}">${options}</select>
-            ${text(14, 230, 82, 10, 'C<u>u</u>stom text:', 'tbp-cs-custom-label')}
-            <input type="text" class="tbp-ctl tbp-edit tbp-cs-custom" maxlength="24" style="${dlu(98, 228, 140, 12)}" value="${esc(sb.customText)}" aria-label="Custom text">
+            ${group(7, 199, 238, 56, 'Power buttons')}
+            ${text(14, 213, 82, 10, '<u>P</u>ower button:')}
+            <select class="tbp-ctl tbp-select tbp-cs-power" style="${dlu(98, 211, 140, 12)}" aria-label="Power button">${choice([['shutdown', 'Shut down'], ['restart', 'Restart'], ['logoff', 'Log off']], p.core.powerButton)}</select>
+            ${text(14, 230, 82, 10, '<u>L</u>ock button:')}
+            <select class="tbp-ctl tbp-select tbp-cs-lock" style="${dlu(98, 228, 140, 12)}" aria-label="Lock button">${choice([['lock', 'Lock'], ['logoff', 'Log off']], p.core.lockButton)}</select>
             ${okCancel(131, 195, 257)}`;
         const sub = openSub('taskbarPropertiesStart', 'Customize Start Menu', 'tbp-start', html, (content) => {
             const val = (name) => {
                 const r = content.querySelector(`input[name="tbp-cs-${name}"]:checked`);
                 return r ? r.value : null;
             };
-            const preset = content.querySelector('.tbp-cs-preset').value;
-            const custom = content.querySelector('.tbp-cs-custom').value.trim().slice(0, 24);
-            if (preset === 'custom' && !custom) {
-                content.querySelector('.tbp-cs-custom').focus();
-                return false;
-            }
-            p.startButton = { preset, customText: custom, style: val('style') || sb.style, logo: val('logo') || sb.logo };
             places.forEach((pl) => {
                 p.core.places[pl.id] = val(`place-${pl.id}`) === 'none' ? false : true;
             });
@@ -871,19 +915,12 @@
             if (auto) p.autoLaunch = auto.checked;
             p.core.startIconSize = val('startsize') || p.core.startIconSize;
             p.core.programsIconSize = val('progsize') || p.core.programsIconSize;
-            p.core.powerButton = val('powerbtn') || p.core.powerButton;
-            p.core.lockButton = val('lockbtn') || p.core.lockButton;
+            p.core.powerButton = content.querySelector('.tbp-cs-power').value;
+            p.core.lockButton = content.querySelector('.tbp-cs-lock').value;
             return true;
         });
         if (!sub) return;
         const c = sub.content;
-        const syncCustom = () => {
-            const on = c.querySelector('.tbp-cs-preset').value === 'custom';
-            c.querySelector('.tbp-cs-custom').disabled = !on;
-            c.querySelector('.tbp-cs-custom-label').classList.toggle('is-disabled', !on);
-        };
-        syncCustom();
-        c.querySelector('.tbp-cs-preset').addEventListener('change', syncCustom);
         const count = c.querySelector('.tbp-cs-count');
         const step = (d) => {
             const v = Number(count.value) || 0;
@@ -929,8 +966,8 @@
                 const pick = (name, value) => { const r = c.querySelector(`input[name="tbp-cs-${name}"][value="${value}"]`); if (r) r.checked = true; };
                 pick('startsize', d.startIconSize || 'large');
                 pick('progsize', d.programsIconSize || 'small');
-                pick('powerbtn', d.powerButton || 'shutdown');
-                pick('lockbtn', d.lockButton || 'lock');
+                c.querySelector('.tbp-cs-power').value = d.powerButton || 'shutdown';
+                c.querySelector('.tbp-cs-lock').value = d.lockButton || 'lock';
 
             }
         });

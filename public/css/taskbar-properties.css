@@ -639,3 +639,10 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-star
 body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-client :is(input:disabled + label, input:disabled + label span, .tbp-static.is-disabled, .is-disabled) {
     color: #6d6d6d;
 }
+
+/* controls placed by dialog units stay where they are put: the light client's and 7.css's select
+   rules make combo boxes position: relative, which dropped them into the text flow */
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-client :is(select, input, button).tbp-ctl {
+    position: absolute;
+    margin: 0;
+}

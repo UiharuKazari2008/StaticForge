@@ -110,4 +110,38 @@ const tp = read('public/scripts/comp/taskbarProperties.js');
 assert.ok(/closeWindow\(sub\.modal\)\.then\(\(\) => \{[\s\S]*?bringModalToFront', owner\)/.test(tp), 'the owner is raised only after the dialog has closed');
 assert.ok(!/closeWindow\(sub\.modal\);\s*callGlobal\('openModal', dlg\.modal\)/.test(tp));
 
+// Quick Launch: an editable list
+assert.deepStrictEqual(ts.DEFAULTS.quickLaunchItems, ['show-desktop', 'switch-windows', 'encyclopedia', 'media-player']);
+assert.deepStrictEqual(ts.normalize({ quickLaunchItems: ['a', 'a', 'bad id!', 'b'] }).quickLaunchItems, ['a', 'b'], 'unique, safe ids');
+assert.strictEqual(ts.addQuickLaunch('studio'), true);
+assert.strictEqual(ts.addQuickLaunch('studio'), false, 'once');
+assert.ok(ts.hasQuickLaunch('studio'));
+assert.strictEqual(ts.removeQuickLaunch('studio'), true);
+assert.ok(!ts.hasQuickLaunch('studio'));
+assert.ok(mu.includes("action: 'add-to-quick-launch'") && read('public/scripts/comp/desktopShortcuts.js').includes("case 'add-to-quick-launch':"), 'Add to Quick Launch on Start menu items and desktop shortcuts');
+const vt = read('public/css/vista-taskbar.css');
+assert.ok(vt.includes('.taskbar-start:not(:has(> .taskbar-start-button.orb)) + .taskbar-quick-launch') && vt.includes('padding: 0 0 0 3px;'), 'Quick Launch spacing after a text Start button, icons 3 px in');
+
+// the Start button lives on the Taskbar tab; Orb greys out Logo and Text
+assert.ok(tp.includes("group(6, 131, 240, 66, 'Start button')") && tp.includes("c.querySelector('#tbp-sb-text').disabled = orb;"));
+assert.ok(!tp.includes("node('Start button',"), 'no longer in Customize Start Menu');
+
+// Recent Items: per workspace, documents only
+global.activeWorkspace = 'ws-a';
+const ri = require('../public/scripts/comp/recentItems.js');
+ri.clear();
+ri.add({ kind: 'page', key: 'session-1', title: 'Page one', data: { url: 'a' } });
+ri.add({ kind: 'page', key: 'session-1', title: 'Page two', data: { url: 'b' } });
+ri.add({ kind: 'file', key: '/x.txt', title: 'x.txt' });
+assert.deepStrictEqual(ri.list().map((e) => e.title), ['x.txt', 'Page two'], 'a browser session keeps one entry, its last page');
+global.activeWorkspace = 'ws-b';
+assert.strictEqual(ri.list().length, 0, 'per workspace');
+global.activeWorkspace = 'ws-a';
+for (let i = 0; i < 20; i++) ri.add({ kind: 'file', key: `/f${i}`, title: `f${i}` });
+assert.strictEqual(ri.list().length, 15, "Vista's 15");
+ts.set({ recentFiles: false });
+assert.strictEqual(ri.add({ kind: 'file', key: '/no', title: 'no' }), false, 'Privacy off: nothing is recorded');
+ts.set({ recentFiles: true });
+assert.ok(!mu.includes('function getStartMenuRecentItems'), 'Recent Items are not programs');
+
 console.log('test-taskbar-properties: ok');

@@ -91,18 +91,25 @@ body.desktop-mode:not(.windows-classic-theme) .taskbar-quick-launch {
     padding: 0;
 }
 
+/* Vista leaves 16 px between the orb's disc and the first icon (disc to x 48, icon at 65): the
+   Media Center and workspace buttons keep that gap after their own edge */
+body.desktop-mode:not(.windows-classic-theme) .taskbar-start:not(:has(> .taskbar-start-button.orb)) + .taskbar-quick-launch {
+    margin-left: 13px;
+}
+
 body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar.taskbar-no-quick-launch .taskbar-quick-launch {
     display: none;
 }
 
+/* 23 px apart, the icon 3 px in (Vista: buttons from 62, icons at 65, 88, 111, 134) */
 body.desktop-mode:not(.windows-classic-theme) .taskbar-quick-launch-btn {
     position: relative;
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     width: 23px;
     height: 26px;
-    padding: 0;
+    padding: 0 0 0 3px;
     margin: 0;
     border: 0;
     border-radius: 0;

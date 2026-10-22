@@ -3528,6 +3528,8 @@ class GrimoireSplitPane extends WikiDisplayBase {
     }
 
     addToHistory(entry) {
+        // Recent Items (public/scripts/comp/recentItems.js): wiki and DSAP pages (web pages: grimoireRemoteBrowser.js, with their title)
+        if (entry && entry.type !== 'web' && window.recentItems) window.recentItems.notePage(this, entry);
         if (this.historyIndex < this.history.length - 1) {
             this.history = this.history.slice(0, this.historyIndex + 1);
         }
@@ -4057,6 +4059,8 @@ class WikiWindowInstance extends WikiDisplayBase {
     }
     
     addToHistory(entry) {
+        // Recent Items (public/scripts/comp/recentItems.js): wiki and DSAP pages (web pages: grimoireRemoteBrowser.js, with their title)
+        if (entry && entry.type !== 'web' && window.recentItems) window.recentItems.notePage(this, entry);
         if (this.historyIndex < this.history.length - 1) {
             this.history = this.history.slice(0, this.historyIndex + 1);
         }
@@ -4372,6 +4376,8 @@ class WikiWindowInstance extends WikiDisplayBase {
     }
     
     close() {
+        // the next opening is a new browser session in Recent Items (recentItems.js)
+        delete this._recentItemsKey;
         // grimoireCloseRemoteBrowser: public/scripts/comp/grimoireRemoteBrowser.js
         grimoireCloseRemoteBrowser(this);
         const finish = () => {
@@ -6363,6 +6369,8 @@ class TagWikiSearchModal extends WikiDisplayBase {
     }
     
     async close() {
+        // the next opening is a new browser session in Recent Items (recentItems.js), its panes too
+        [this, this.leftPane, this.rightPane, this.activePane].forEach((pane) => { if (pane) delete pane._recentItemsKey; });
         if (!this.modal) return;
 
         const rightHasState = this.rightPane && !this.rightPane.isBlank();
@@ -7432,6 +7440,8 @@ class TagWikiSearchModal extends WikiDisplayBase {
     }
     
     addToHistory(entry) {
+        // Recent Items (public/scripts/comp/recentItems.js): wiki and DSAP pages (web pages: grimoireRemoteBrowser.js, with their title)
+        if (entry && entry.type !== 'web' && window.recentItems) window.recentItems.notePage(this, entry);
         // Remove any entries after current index
         if (this.historyIndex < this.history.length - 1) {
             this.history = this.history.slice(0, this.historyIndex + 1);

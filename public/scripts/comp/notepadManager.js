@@ -512,6 +512,8 @@ class NotepadManager {
             }
 
             const note = response.note;
+            // Recent Items (public/scripts/comp/recentItems.js): a note opened
+            if (window.recentItems) window.recentItems.noteNote(note);
 
             // Create new instance
             const notepadId = `notepad_${this.nextId++}`;

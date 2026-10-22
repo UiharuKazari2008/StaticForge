@@ -28,6 +28,10 @@
  *   powerButton     what the Start menu's power button does: 'shutdown' | 'restart' | 'logoff'
  *   lockButton      what the button beside it does: 'lock' | 'logoff'
  *   ticker          the Toolbars tab's Status toolbar (the connection ticker)
+ *   quickLaunchItems
+ *                   Quick Launch's shortcuts in order: 'show-desktop', 'switch-windows', or any
+ *                   Start menu launchId; added with the Start menu's "Add to Quick Launch",
+ *                   removed with Delete on the icon's right-click menu
  *
  * Also here: the Quick Launch toolbar, the taskbar's and the Start button's right-click menus,
  * and the window previews over taskbar buttons. Art: public/static_images/vista-taskbar/
@@ -59,6 +63,7 @@
         programsIconSize: 'small',
         powerButton: 'shutdown',
         lockButton: 'lock',
+        quickLaunchItems: ['show-desktop', 'switch-windows', 'encyclopedia', 'media-player'],
         places: {}
     });
 
@@ -86,6 +91,11 @@
         Object.keys(CHOICES).forEach((k) => {
             if (CHOICES[k].includes(raw[k])) out[k] = raw[k];
         });
+        if (Array.isArray(raw.quickLaunchItems)) {
+            out.quickLaunchItems = raw.quickLaunchItems
+                .filter((id, i, all) => typeof id === 'string' && /^[\w:.-]{1,80}$/.test(id) && all.indexOf(id) === i)
+                .slice(0, 40);
+        }
         const n = Number(raw.recentProgramCount);
         if (Number.isFinite(n)) out.recentProgramCount = Math.max(0, Math.min(30, Math.round(n)));
         if (raw.places && typeof raw.places === 'object') {
@@ -108,7 +118,7 @@
     let settings = read();
 
     function get() {
-        return { ...settings, places: { ...settings.places } };
+        return { ...settings, places: { ...settings.places }, quickLaunchItems: settings.quickLaunchItems.slice() };
     }
 
     function set(patch) {
@@ -169,6 +179,34 @@
         try {
             root.dispatchEvent(new CustomEvent('taskbarsettingschange', { detail: get() }));
         } catch (_) { /* old browsers */ }
+    }
+
+    // ---- Start button width ----------------------------------------------------------------------
+
+    /** The text styles size to their label, which lands on a fraction of a pixel and pushed Quick
+     *  Launch and the buttons after it onto half pixels (blurry icons): round the width up. */
+    let snapping = false;
+    function snapStartButton() {
+        const btn = doc && doc.getElementById('taskbarStartBtn');
+        if (!btn || snapping) return;
+        snapping = true;
+        btn.style.removeProperty('width');
+        if (!btn.classList.contains('orb')) {
+            const w = btn.getBoundingClientRect().width;
+            if (w && Math.abs(w - Math.round(w)) > 0.01) btn.style.width = `${Math.ceil(w)}px`;
+        }
+        snapping = false;
+    }
+
+    function watchStartButton() {
+        const btn = doc && doc.getElementById('taskbarStartBtn');
+        if (!btn || typeof MutationObserver !== 'function' || btn.dataset.snapWatch === '1') return;
+        btn.dataset.snapWatch = '1';
+        // style, text and logo changes (applyStartMenuButtonAppearanceToTaskbar, modalUtils.js)
+        new MutationObserver(() => requestAnimationFrame(snapStartButton))
+            .observe(btn, { attributes: true, attributeFilter: ['class', 'src'], childList: true, characterData: true, subtree: true });
+        if (doc.fonts && doc.fonts.ready) doc.fonts.ready.then(snapStartButton).catch(() => {});
+        snapStartButton();
     }
 
     // ---- auto-hide -----------------------------------------------------------------------------
@@ -252,59 +290,120 @@
 
     let showDesktopWindows = null;
 
-    const QUICK_LAUNCH = [
-        { id: 'show-desktop', title: 'Show desktop', icon: `${ART}/show-desktop-16.png`, icon2x: `${ART}/show-desktop-32.png`, run: () => toggleShowDesktop() },
-        { id: 'switch-windows', title: 'Switch between windows', icon: `${ART}/switch-windows-16.png`, icon2x: `${ART}/switch-windows-32.png`, run: () => openWindowSwitcher() },
-        { id: 'encyclopedia', title: 'Grimoire', appIcon: 'vista-iexplore.png' },
-        { id: 'media-player', title: 'Media Player', appIcon: 'media_player.png' }
-    ];
+    // the two shell shortcuts Vista puts in Quick Launch; anything else is a Start menu launchId
+    const QUICK_LAUNCH_SHELL = {
+        'show-desktop': { title: 'Show desktop', icon: `${ART}/show-desktop-16.png`, icon2x: `${ART}/show-desktop-32.png`, run: () => toggleShowDesktop() },
+        'switch-windows': { title: 'Switch between windows', icon: `${ART}/switch-windows-16.png`, icon2x: `${ART}/switch-windows-32.png`, run: () => openWindowSwitcher() }
+    };
 
     function appIconSrc(name, px) {
         // resolveAppIconPath: public/scripts/comp/modalUtils.js (the server's sized webp)
         return callGlobal('resolveAppIconPath', name, px) || `/static_images/app_icons/${px}/${name.replace(/\.png$/, '.webp')}`;
     }
 
+    /** One Quick Launch shortcut: its title, picture and what a click does (null: gone from the system). */
+    function quickLaunchEntry(id) {
+        if (QUICK_LAUNCH_SHELL[id]) return { id, ...QUICK_LAUNCH_SHELL[id] };
+        // findStartMenuLaunchableById / startMenuLabel: public/scripts/comp/modalUtils.js
+        const item = callGlobal('findStartMenuLaunchableById', id);
+        if (!item) return null;
+        const title = callGlobal('startMenuLabel', item) || item.text || id;
+        if (item.imageIcon) return { id, title, icon: appIconSrc(item.imageIcon, 16), icon2x: appIconSrc(item.imageIcon, 32) };
+        return { id, title, fa: item.icon || 'fas fa-window' };
+    }
+
     function ensureQuickLaunch() {
         if (!doc) return null;
         let bar = doc.getElementById('taskbarQuickLaunch');
-        if (bar) return bar;
-        const tb = taskbar();
-        const band = doc.getElementById('taskbarWindows');
-        if (!tb || !band) return null;
-        bar = doc.createElement('div');
-        bar.id = 'taskbarQuickLaunch';
-        bar.className = 'taskbar-quick-launch';
-        bar.setAttribute('role', 'toolbar');
-        bar.setAttribute('aria-label', 'Quick Launch');
-        QUICK_LAUNCH.forEach((entry) => {
+        if (!bar) {
+            const tb = taskbar();
+            const band = doc.getElementById('taskbarWindows');
+            if (!tb || !band) return null;
+            bar = doc.createElement('div');
+            bar.id = 'taskbarQuickLaunch';
+            bar.className = 'taskbar-quick-launch';
+            bar.setAttribute('role', 'toolbar');
+            bar.setAttribute('aria-label', 'Quick Launch');
+            bar.addEventListener('click', (ev) => {
+                const b = ev.target.closest('.taskbar-quick-launch-btn');
+                if (!b) return;
+                ev.stopPropagation();
+                runQuickLaunch(b.dataset.quickLaunch);
+            });
+            tb.insertBefore(bar, band);
+        }
+        renderQuickLaunch(bar);
+        return bar;
+    }
+
+    function runQuickLaunch(id) {
+        const shell = QUICK_LAUNCH_SHELL[id];
+        if (shell) shell.run();
+        else launchApp(id);
+    }
+
+    /** Quick Launch's buttons from the list (rebuilt when the list changes; the Start menu items
+     *  load after this file, so a launchId that is not there yet is tried again later). */
+    function renderQuickLaunch(bar) {
+        const key = settings.quickLaunchItems.join('|');
+        if (bar.dataset.items === key && !bar.querySelector('[data-pending]')) return;
+        bar.dataset.items = key;
+        bar.textContent = '';
+        let pending = false;
+        settings.quickLaunchItems.forEach((id) => {
+            const entry = quickLaunchEntry(id);
+            if (!entry) {
+                pending = true;
+                return;
+            }
             const b = doc.createElement('button');
             b.type = 'button';
             b.className = 'taskbar-quick-launch-btn';
-            b.dataset.quickLaunch = entry.id;
+            b.dataset.quickLaunch = id;
+            b.dataset.contextMenu = 'vista-quick-launch-item';
             b.title = entry.title;
             b.setAttribute('aria-label', entry.title);
-            const img = doc.createElement('img');
-            img.alt = '';
-            img.draggable = false;
-            img.width = 16;
-            img.height = 16;
-            if (entry.appIcon) {
-                img.src = appIconSrc(entry.appIcon, 16);
-                img.srcset = `${appIconSrc(entry.appIcon, 16)} 1x, ${appIconSrc(entry.appIcon, 32)} 2x`;
+            if (entry.fa) {
+                const i = doc.createElement('i');
+                i.className = entry.fa;
+                i.setAttribute('aria-hidden', 'true');
+                b.appendChild(i);
             } else {
+                const img = doc.createElement('img');
+                img.alt = '';
+                img.draggable = false;
+                img.width = 16;
+                img.height = 16;
                 img.src = entry.icon;
                 img.srcset = `${entry.icon} 1x, ${entry.icon2x} 2x`;
+                b.appendChild(img);
             }
-            b.appendChild(img);
-            b.addEventListener('click', (ev) => {
-                ev.stopPropagation();
-                if (entry.run) entry.run();
-                else launchApp(entry.id);
-            });
             bar.appendChild(b);
         });
-        tb.insertBefore(bar, band);
-        return bar;
+        if (pending && !renderQuickLaunch.retry) {
+            renderQuickLaunch.retry = setTimeout(() => {
+                renderQuickLaunch.retry = 0;
+                bar.dataset.items = '';
+                renderQuickLaunch(bar);
+            }, 3000);
+        }
+    }
+
+    function hasQuickLaunch(id) {
+        return settings.quickLaunchItems.includes(id);
+    }
+
+    /** The Start menu's "Add to Quick Launch": appended at the end, as Vista drops new shortcuts. */
+    function addQuickLaunch(id) {
+        if (!id || hasQuickLaunch(id)) return false;
+        set({ quickLaunchItems: settings.quickLaunchItems.concat([id]) });
+        return true;
+    }
+
+    function removeQuickLaunch(id) {
+        if (!hasQuickLaunch(id)) return false;
+        set({ quickLaunchItems: settings.quickLaunchItems.filter((x) => x !== id) });
+        return true;
     }
 
     function launchApp(launchId) {
@@ -487,6 +586,23 @@
                 } else if (action === 'start-explore') callGlobal('openExplorerApplet');
             }
         };
+        // a Quick Launch shortcut: Open, and Delete takes it off the toolbar
+        contextMenu.configs['vista-quick-launch-item'] = {
+            sections: [{
+                type: 'list',
+                items: [
+                    { text: 'Open', action: 'ql-open' },
+                    { separator: true },
+                    { text: 'Delete', action: 'ql-delete' }
+                ]
+            }],
+            onAction: (action, target) => {
+                const b = target && target.closest ? target.closest('.taskbar-quick-launch-btn') : null;
+                if (!b) return;
+                if (action === 'ql-open') runQuickLaunch(b.dataset.quickLaunch);
+                else if (action === 'ql-delete') removeQuickLaunch(b.dataset.quickLaunch);
+            }
+        };
         tb.dataset.contextMenu = 'vista-taskbar';
         start.dataset.contextMenu = 'vista-start-button';
         return true;
@@ -651,6 +767,7 @@
     function init() {
         if (!doc || !taskbar()) return;
         apply();
+        watchStartButton();
         wireRaise();
         wireThumbs();
         if (!wireMenus()) {
@@ -670,7 +787,11 @@
         openProperties,
         toggleShowDesktop,
         arrangeWindows,
-        _test: { read, snapshot, stripIds, QUICK_LAUNCH, STORAGE_KEY }
+        hasQuickLaunch,
+        addQuickLaunch,
+        removeQuickLaunch,
+        quickLaunchEntry,
+        _test: { read, snapshot, stripIds, QUICK_LAUNCH_SHELL, STORAGE_KEY }
     };
     root.taskbarSettings = api;
 

@@ -161,7 +161,17 @@
     border: 1px solid;
     border-color: #263730 #071418 #0a1a21 #16262a;
     border-radius: 7px 7px 0 0;
-    background: rgba(255, 255, 255, 0.5);
+    /* the glass itself is the desktop's (aero-glass.css --aero-sheen / --aero-wedges /
+       --aero-streaks / --aero-shade, the 7.css texture every window carries), lifted for the
+       light WinPE tint: the sheen across the top, the bright corner wedges, the 54deg
+       reflection bands, the faint side brightening */
+    background-color: rgba(255, 255, 255, 0.5);
+    background-image:
+        linear-gradient(180deg, hsl(0 0% 100% / 38%) 0, hsl(0 0% 100% / 14%) 38%, hsl(0 0% 0% / 0%) 60%, hsl(0 0% 0% / 8%) 100%),
+        linear-gradient(135deg, hsl(0 0% 100% / 22%) 70px, transparent 100px),
+        linear-gradient(225deg, hsl(0 0% 100% / 22%) 70px, transparent 100px),
+        linear-gradient(54deg, #0002 0 4%, #6661 6% 6%, #0002 8% 10%, #0002 15% 16%, #aaa1 17% 18%, #0002 23% 24%, #bbb2 25% 26%, #0002 31% 33%, #0002 34% 34.5%, #bbb2 36% 40%, #0002 41% 41.5%, #bbb2 44% 45%, #bbb2 46% 47%, #0002 48% 49%, #0002 50% 50.5%, #0002 56% 56.5%, #bbb2 57% 63%, #0002 67% 69%, #bbb2 69.5% 70%, #0002 73.5% 74%, #bbb2 74.5% 79%, #0002 80% 84%, #aaa2 85% 86%, #0002 87%, #bbb1 90%),
+        linear-gradient(to right, hsl(0 0% 100% / 12%), hsl(0 0% 0% / 5%), hsl(0 0% 100% / 8%));
     box-shadow: inset 1px 1px #eef4f1, inset -1px -1px #19bdd6;
 }
 
@@ -213,7 +223,7 @@
     height: 25px;
     border-radius: 50%;
     background: url('/static_images/vista-defender/back.png') 0 0 / 26px 25px no-repeat;
-    box-shadow: 0 0 0 1px rgba(70, 90, 100, 0.45), 0 0 0 2px rgba(255, 255, 255, 0.45);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.6), 0 0 0 2px rgba(60, 80, 90, 0.3);
 }
 
 #melatonInstall .mi-title-back:hover:not(:disabled) {
@@ -243,21 +253,35 @@
 #melatonInstall[data-page="where"] .mi-window > .mi-title > .mi-title-close,
 #melatonInstall[data-page="restart"] .mi-window > .mi-title > .mi-title-close,
 #melatonInstall[data-page="install"] .mi-window > .mi-title > .mi-title-close {
-    /* the wizard's close button, the VM's own pixels (42 x 19), in the recessed gutter the
-       frame's top edge has for it (a darker rounded track, 1 px outline) */
+    /* the wizard's close button: the desktop's own DWM caption face for a lone Close
+       (static_images/window-controls/faces/single-active-*.png, cut from aero.msstyles by
+       scripts/build-vista-caption-glyphs.sh), 44 x 18 from the row under the top edge, the same
+       9-slice modal-window-title-toolbar.css uses; hot and pressed faces on hover and press */
     position: absolute;
     right: 5px;
-    top: -1px;
-    width: 42px;
-    height: 19px;
-    flex-basis: 42px;
+    top: 0;
+    width: 44px;
+    height: 18px;
+    flex-basis: 44px;
+    box-sizing: border-box;
     margin: 0;
-    border: 0;
-    border-radius: 0 0 5px 5px;
-    background: rgba(255, 255, 255, 0.28) url('/static_images/vista-setup/wizard-close.png') 0 0 / 42px 19px no-repeat;
-    box-shadow: 0 0 0 1px rgba(28, 44, 38, 0.65), 0 0 0 2px rgba(255, 255, 255, 0.35);
+    padding: 0;
+    border: 0 solid transparent;
+    border-width: 0 5px;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    border-image: url('/static_images/window-controls/faces/single-active-normal.png') 0 5 fill / 0 5px / 0 stretch;
     font-size: 0;
     color: transparent;
+}
+
+#melatonInstall .mi-window > .mi-title > .mi-title-close:hover {
+    border-image-source: url('/static_images/window-controls/faces/single-active-hot.png');
+}
+
+#melatonInstall .mi-window > .mi-title > .mi-title-close:active {
+    border-image-source: url('/static_images/window-controls/faces/single-active-pressed.png');
 }
 
 #melatonInstall[data-page="key"] .mi-window > .mi-title > .mi-title-close::before,
@@ -266,7 +290,17 @@
 #melatonInstall[data-page="where"] .mi-window > .mi-title > .mi-title-close::before,
 #melatonInstall[data-page="restart"] .mi-window > .mi-title > .mi-title-close::before,
 #melatonInstall[data-page="install"] .mi-window > .mi-title > .mi-title-close::before {
-    content: none;
+    /* the X the faces leave to the window: white with a dark edge, 5 px above the foot as the app places it */
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: 4px;
+    width: 10px;
+    height: 9px;
+    margin-left: -5px;
+    border: 0;
+    box-shadow: none;
+    background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='9'><path d='M1.5 1.5l7 6M8.5 1.5l-7 6' stroke='%23000' stroke-width='3.2' stroke-linecap='round' opacity='.55'/><path d='M1.5 1.5l7 6M8.5 1.5l-7 6' stroke='%23fff' stroke-width='1.8' stroke-linecap='round'/></svg>") center / 10px 9px no-repeat;
 }
 
 /* the client area: a 1 px dark edge (#283638) with a 1 px light halo outside it */
@@ -440,39 +474,8 @@
     outline: 1px dotted #000;
 }
 
-/* the license box's scrollbar as the VM draws it: 16 px, grey 3-D arrow buttons, dithered track */
-.mi-license-text::-webkit-scrollbar {
-    width: 16px;
-}
-
-.mi-license-text::-webkit-scrollbar-track {
-    background: #fff url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFUlEQVQIW2P8////fwYGBgZGEAEBAAD+AgEB2N9KZgAAAABJRU5ErkJggg==") repeat;
-    background-color: #d4d0c8;
-}
-
-.mi-license-text::-webkit-scrollbar-thumb {
-    background: #d4d0c8;
-    border: 1px solid;
-    border-color: #fff #404040 #404040 #fff;
-    box-shadow: inset -1px -1px #808080, inset 1px 1px #d4d0c8;
-}
-
-.mi-license-text::-webkit-scrollbar-button:single-button {
-    display: block;
-    height: 16px;
-    background: #d4d0c8 center / 7px 4px no-repeat;
-    border: 1px solid;
-    border-color: #fff #404040 #404040 #fff;
-    box-shadow: inset -1px -1px #808080;
-}
-
-.mi-license-text::-webkit-scrollbar-button:single-button:vertical:decrement {
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='7' height='4'><path d='M0 4h7L3.5 0z' fill='%23000'/></svg>");
-}
-
-.mi-license-text::-webkit-scrollbar-button:single-button:vertical:increment {
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='7' height='4'><path d='M0 0h7L3.5 4z' fill='%23000'/></svg>");
-}
+/* the license box scrolls with the desktop's Vista scrollbar (css/vista-scrollbars.css, which
+   keys on body.desktop-mode; melatonBoot.js sets that class on a desktop start) */
 
 /* ---- media pages: the logo, the fields, Install now ---- */
 
@@ -575,6 +578,13 @@
 .mi-dropdown-list li.selected {
     background: #3399ff;
     color: #fff;
+}
+
+/* while the list is open the highlight is on its entry, not on the box */
+.mi-fields .mi-field:first-child .mi-dropdown--open .mi-dropdown-value {
+    outline: none;
+    background: none;
+    color: #000;
 }
 
 .mi-dropdown i {
@@ -794,7 +804,8 @@
     padding: 8px 8px;
     border: 1px solid #abadb3;
     background: #fff;
-    overflow: auto;
+    overflow: hidden scroll;
+    overflow-wrap: anywhere;
     white-space: pre-wrap;
     font: 12px/15px 'Segoe UI', Tahoma, 'Noto Sans', sans-serif;
     color: #000;
@@ -835,11 +846,11 @@
     flex: 0 0 62px;
     width: 62px;
     height: 58px;
-    background: url('/static_images/vista-setup/type-upgrade.png') center / contain no-repeat;
+    background: url('/static_images/vista-setup/type-upgrade.png?v=2') center / contain no-repeat;
 }
 
 .mi-option-icon--custom {
-    background-image: url('/static_images/vista-setup/type-custom.png');
+    background-image: url('/static_images/vista-setup/type-custom.png?v=2');
 }
 
 .mi-option-text {

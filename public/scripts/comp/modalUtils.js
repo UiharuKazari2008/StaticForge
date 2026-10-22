@@ -7426,7 +7426,6 @@ function initializeStartMenu() {
 const START_MENU_ACTIVITY_KEY = 'startMenuActivity';
 const START_MENU_ACTIVITY_MAX = 40;
 const START_MENU_FREQUENT_LIMIT = 8;
-const START_MENU_RECENT_LIMIT = 12;
 // The most used list until the launch history fills it (Vista ships a starting list too)
 const START_MENU_DEFAULT_FREQUENT = ['director', 'bracket-generation', 'encyclopedia', 'spellbook', 'reference', 'chat'];
 // The domain logon's account (workstationLock.js); its name can be changed in User Accounts
@@ -7457,7 +7456,7 @@ function byStartMenuLabel(a, b) {
     return startMenuLabel(a).localeCompare(startMenuLabel(b));
 }
 
-// ---- launch history: the most used list and Recent Items (this browser only) ----
+// ---- launch history: the most used list (this browser only; Recent Items are documents, recentItems.js) ----
 
 function readStartMenuActivity() {
     try {
@@ -7479,7 +7478,7 @@ function writeStartMenuActivity(activity) {
     } catch (_) { /* the history is a convenience */ }
 }
 
-/** Count a launch (start menu, Start Search, Run) for the most used list and Recent Items. */
+/** Count a launch (start menu, Start Search, Run) for the most used list. */
 function recordStartMenuLaunch(launchId) {
     if (!launchId) return;
     const activity = readStartMenuActivity();
@@ -7495,12 +7494,6 @@ function hideStartMenuFrequentItem(launchId) {
     activity[launchId] = { ...(activity[launchId] || {}), n: 0, hidden: true };
     writeStartMenuActivity(activity);
     if (startMenuView === 'home') renderStartMenuList();
-}
-
-function clearStartMenuRecentItems() {
-    const activity = readStartMenuActivity();
-    Object.keys(activity).forEach((id) => { activity[id] = { ...activity[id], t: 0 }; });
-    writeStartMenuActivity(activity);
 }
 
 function isStartMenuItemLaunchable(item) {
@@ -7540,16 +7533,6 @@ function getStartMenuFrequentItems() {
         .forEach(add);
     START_MENU_DEFAULT_FREQUENT.forEach(add);
     return out;
-}
-
-function getStartMenuRecentItems() {
-    const activity = readStartMenuActivity();
-    return Object.keys(activity)
-        .filter((id) => (activity[id].t || 0) > 0)
-        .sort((a, b) => activity[b].t - activity[a].t)
-        .map((id) => findStartMenuLaunchableById(id))
-        .filter(isStartMenuListedItem)
-        .slice(0, START_MENU_RECENT_LIMIT);
 }
 
 /** Launch a row's app; launchId rows count toward the history (Start Search results count in Run's execute). */
@@ -7975,14 +7958,21 @@ function startMenuPlaceShown(place) {
     return prefs.places[place.id] !== false;
 }
 
-/** Recent Items: a click menu of the latest launches, rebuilt as the pointer reaches it. */
+/** Recent Items: this workspace's recently opened documents (public/scripts/comp/recentItems.js:
+ *  Cartograph files, browser sessions' pages, Studio images, Director sessions, notes), rebuilt as
+ *  the pointer reaches it. Programs live in the most used list, not here. */
 function attachStartMenuRecentItemsMenu(row) {
     if (typeof contextMenu === 'undefined' || !contextMenu) return;
     const refresh = () => {
-        const recent = getStartMenuRecentItems();
-        const byId = new Map(recent.map((item) => [item.launchId, item]));
+        const store = window.recentItems;
+        const recent = store ? store.list() : [];
+        const byKey = new Map(recent.map((entry) => [entry.key, entry]));
         const items = recent.length
-            ? recent.map((item) => ({ icon: item.icon, text: startMenuLabel(item), action: `recent:${item.launchId}` }))
+            ? recent.map((entry) => ({
+                icon: entry.icon || recentItemIconClass(entry.kind),
+                text: entry.title,
+                action: `recent:${entry.key}`
+            }))
             : [{ text: '(Empty)', disabled: true }];
         contextMenu.detachClickMenuFromElement(row);
         contextMenu.attachClickMenuToElement(row, {
@@ -7992,11 +7982,14 @@ function attachStartMenuRecentItemsMenu(row) {
             }],
             onAction: (action) => {
                 if (action === 'clear-recent') {
-                    clearStartMenuRecentItems();
+                    if (store) store.clear();
                     return;
                 }
-                const item = byId.get(String(action).slice('recent:'.length));
-                if (item) launchStartMenuItem(item);
+                const entry = byKey.get(String(action).slice('recent:'.length));
+                if (entry && store) {
+                    closeStartMenu();
+                    void store.open(entry);
+                }
             }
         });
     };
@@ -8004,6 +7997,19 @@ function attachStartMenuRecentItemsMenu(row) {
     row.addEventListener('pointerdown', refresh, true);
     row.addEventListener('focus', refresh);
     refresh();
+}
+
+/** A Recent Items row's glyph by what it is (the menu draws Font Awesome glyphs). */
+function recentItemIconClass(kind) {
+    switch (kind) {
+        case 'page': return 'fas fa-globe';
+        case 'studio': return 'fas fa-compass-drafting';
+        case 'director': return 'fas fa-clapperboard';
+        case 'note': return 'fas fa-note-sticky';
+        case 'picture': return 'fas fa-image';
+        case 'folder': return 'fas fa-folder';
+        default: return 'fas fa-file';
+    }
 }
 
 function renderStartMenuPlaces() {
@@ -8295,6 +8301,18 @@ function attachStartMenuItemContextMenu(element, item) {
                                 ctxItem.text = 'Already on Desktop';
                             }
                         }
+                    },
+                    {
+                        // Vista's Start menu: a program goes to Quick Launch (public/scripts/comp/taskbarSettings.js)
+                        icon: 'fas fa-bolt',
+                        text: 'Add to Quick Launch',
+                        action: 'add-to-quick-launch',
+                        hidden: () => !window.taskbarSettings || isStartMenuPlanetLaunchId(item.launchId),
+                        loadfn: (ctxItem) => {
+                            const already = !!(window.taskbarSettings && window.taskbarSettings.hasQuickLaunch(item.launchId));
+                            ctxItem.disabled = already;
+                            ctxItem.text = already ? 'Already in Quick Launch' : 'Add to Quick Launch';
+                        }
                     }
                 ]
             }
@@ -8318,6 +8336,10 @@ function attachStartMenuItemContextMenu(element, item) {
             }
             if (action === 'add-to-desktop') {
                 await addAppletToDesktop(item);
+                return;
+            }
+            if (action === 'add-to-quick-launch' && window.taskbarSettings) {
+                window.taskbarSettings.addQuickLaunch(item.launchId);
             }
         }
     };

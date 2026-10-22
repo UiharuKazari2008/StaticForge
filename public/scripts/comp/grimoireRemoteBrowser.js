@@ -743,6 +743,8 @@ function grimoireApplyRemoteLocation(found, data) {
         return;
     }
     shell._grimoireRemoteTitle = data.title || '';
+    // Recent Items (public/scripts/comp/recentItems.js): the page this browser session is on now (one entry per session)
+    if (!data.navigating && data.url && window.recentItems) window.recentItems.notePage(shell, { type: 'web', url: data.url, title: data.title });
     if (data.url && host.setAddress) {
         const force = host.activePane !== host;
         host.setAddress({ displayUrl: data.url, mode: grimoireWebMode(data.url) }, { force: force });

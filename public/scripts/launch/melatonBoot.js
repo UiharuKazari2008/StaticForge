@@ -796,9 +796,11 @@
             const hasOs = await hasOsOnDisk(env);
             if (run !== ctl.runId) return 'cancelled';
             const status = ctl.serverStatus || {};
-            // Upgrade only over an existing installation (the record, the desktop's installed bit,
-            // or a static cache the app already runs from)
-            const upgradeAllowed = hasOs;
+            // Upgrade only over an existing installation: the record, the desktop's installed bit,
+            // a static cache the app already runs from, or a manifest diff that found most files
+            // already here (the cache scan can miss on a device that stores by full url)
+            const diffSaysInstalled = !!(found && Array.isArray(found.manifest) && found.manifest.length > 50 && found.files.length < found.manifest.length / 2);
+            const upgradeAllowed = hasOs || diffSaysInstalled;
             ctl.setup = { page: 'language', hasOs, upgradeAllowed, driveOptions: false, formatted: false, msgbox: null, countdown: null, found, keyConfigured: status.novelaiKeyConfigured !== false, license: null, licenseAccepted: false };
             show('install', { ...setupData(), phase: 'arrive' });
             await env.sleep(config.installArriveMs);
@@ -1753,6 +1755,8 @@
         };
         const ctl = createController(env, createDomView(doc));
         win.melatonBoot = Object.assign(win.melatonBoot || {}, { controller: ctl, preview: ctl.preview });
+        // the desktop's Vista scrollbars (css/vista-scrollbars.css) key on this class
+        if (doc.body) doc.body.classList.add('desktop-mode');
 
         // Keys the document head caught before this script loaded (F2 / Esc / F12 during the POST)
         const early = Array.isArray(globalThis.melatonBiosKeys) ? globalThis.melatonBiosKeys.splice(0) : [];
