@@ -93,20 +93,44 @@ function loadArchivedIssue(slug) {
     }
 }
 
+// Every page view lists the archive; parse each archive file once per (size, mtime).
+const archiveRowCache = new Map(); // name -> { size, mtimeMs, row }
+
 function listArchivedIssues() {
     const archiveDir = getApocryphaArchiveDir();
     if (!fs.existsSync(archiveDir)) return [];
     const rows = [];
+    const seen = new Set();
     for (const name of fs.readdirSync(archiveDir)) {
         if (!name.endsWith('.json')) continue;
         const slug = name.slice(0, -5);
-        const data = loadArchivedIssue(slug);
-        if (!data) continue;
-        rows.push({
-            slug: safeIssueSlug(slug),
-            issueLabel: data.issueLabel || slug,
-            kicker: data.kicker || null
-        });
+        let st = null;
+        try {
+            st = fs.statSync(path.join(archiveDir, name));
+        } catch (_err) {
+            st = null;
+        }
+        const key = archiveDir + path.sep + name;
+        seen.add(key);
+        const cached = archiveRowCache.get(key);
+        let row;
+        if (st && cached && cached.size === st.size && cached.mtimeMs === st.mtimeMs) {
+            row = cached.row;
+        } else {
+            const data = loadArchivedIssue(slug);
+            row = data ? {
+                slug: safeIssueSlug(slug),
+                issueLabel: data.issueLabel || slug,
+                kicker: data.kicker || null
+            } : null;
+            if (st) archiveRowCache.set(key, { size: st.size, mtimeMs: st.mtimeMs, row });
+            else archiveRowCache.delete(key);
+        }
+        if (!row) continue;
+        rows.push({ ...row });
+    }
+    for (const key of Array.from(archiveRowCache.keys())) {
+        if (!seen.has(key)) archiveRowCache.delete(key);
     }
     rows.sort((a, b) => String(b.kicker || b.slug).localeCompare(String(a.kicker || a.slug)));
     return rows;
@@ -129,14 +153,32 @@ function archiveLiveIssue(live) {
     return slug;
 }
 
+// current.json parsed once per (path, size, mtime); callers get their own copy (publish merges into it).
+let currentDataCache = null;
+
 function getApocryphaData() {
     try {
         const filePath = getApocryphaFilePath();
-        if (fs.existsSync(filePath)) {
+        let st = null;
+        try {
+            st = fs.statSync(filePath);
+        } catch (_err) {
+            st = null;
+        }
+        if (st) {
+            if (currentDataCache
+                && currentDataCache.filePath === filePath
+                && currentDataCache.size === st.size
+                && currentDataCache.mtimeMs === st.mtimeMs) {
+                return structuredClone(currentDataCache.data);
+            }
             const raw = fs.readFileSync(filePath, 'utf8');
-            return JSON.parse(raw);
+            const data = JSON.parse(raw);
+            currentDataCache = { filePath, size: st.size, mtimeMs: st.mtimeMs, data };
+            return structuredClone(data);
         }
     } catch (e) {
+        currentDataCache = null;
         console.error('[apocrypha] failed to read/parse current.json:', e.message);
     }
     return null;
@@ -151,6 +193,7 @@ function writeApocryphaData(data) {
     }
     fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf8');
     fs.renameSync(tmpPath, filePath);
+    currentDataCache = null;
 }
 
 function sectionIdOf(sec) {
