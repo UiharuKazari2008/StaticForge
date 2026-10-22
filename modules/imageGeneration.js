@@ -5149,7 +5149,8 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                 creditType: creditUsage.usageType,
                 date: Date.now().valueOf()
             } : null;
-            await __runtimeGr.getMetadataDatabase().addReceiptMetadata(name, __runtimeGr.getPath('images'), generationReceiptData, forgeData);
+            // finalBuffer already carries forgeData (finalizeWithForgeData / stage attest); do not merge it into the file again (#624)
+            await __runtimeGr.getMetadataDatabase().addReceiptMetadata(name, __runtimeGr.getPath('images'), generationReceiptData, forgeData, { forgeDataEmbedded: true });
             await recordReplicationGalleryJournal(name, targetWorkspaceId);
 
             // Send progress update indicating preview generation is starting

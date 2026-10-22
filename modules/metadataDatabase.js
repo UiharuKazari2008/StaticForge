@@ -2544,8 +2544,11 @@ async function getMultipleMetadata(filenames) {
 /**
  * Update metadata for an image (e.g., after generation).
  * Stages data in the hot cache immediately; SQL writes go through the FIFO queue.
+ * options.forgeDataEmbedded: forgeData is already in the PNG on disk (finalizeWithForgeData
+ * signed it), so only the in-memory row is merged. Re-merging into the file pushed a
+ * spurious forge_data.history entry and broke forge_signed_hash (#624).
  */
-async function addReceiptMetadata(filename, imagesDir, receiptData = null, forgeData = null) {
+async function addReceiptMetadata(filename, imagesDir, receiptData = null, forgeData = null, options = {}) {
     if (!dbInitialized || !db) {
         throw new Error('Database not initialized');
     }
@@ -2574,7 +2577,14 @@ async function addReceiptMetadata(filename, imagesDir, receiptData = null, forge
 
     if (forgeData) {
         const filePath = path.join(imagesDir, filename);
-        if (fs.existsSync(filePath)) {
+        if (options.forgeDataEmbedded) {
+            metadata.md5 = generateMD5(filePath) || metadata.md5;
+            if (fs.existsSync(filePath)) {
+                const stats = fs.statSync(filePath);
+                metadata.mtime = stats.mtime.valueOf();
+                metadata.size = stats.size;
+            }
+        } else if (fs.existsSync(filePath)) {
             const imageBuffer = fs.readFileSync(filePath);
             const updatedBuffer = _pngMetadata.updateMetadata(imageBuffer, forgeData);
             fs.writeFileSync(filePath, updatedBuffer);
