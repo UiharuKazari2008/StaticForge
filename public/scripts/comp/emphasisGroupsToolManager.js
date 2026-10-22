@@ -4920,6 +4920,9 @@ class EmphasisGroupsToolManager {
 
         const windowKey = buildEmphasisGroupsWindowKey(textarea);
         element.dataset.windowIdentifier = windowKey;
+        // caption and taskbar image: the window it opened from (ensureModalApplicationIcon, modalUtils.js)
+        const ownerModal = textarea.closest('.modal');
+        if (ownerModal && ownerModal.id) element.dataset.iconOwnerId = ownerModal.id;
         // transientWindowsWithPositions: public/scripts/comp/modalUtils.js
         if (typeof transientWindowsWithPositions !== 'undefined' && transientWindowsWithPositions?.add) {
             transientWindowsWithPositions.add(windowKey);

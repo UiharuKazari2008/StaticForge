@@ -194,15 +194,16 @@ const doveHasModifierSelect = function (ev) {
     return !!(ev && (ev.ctrlKey || ev.metaKey));
 };
 
-// Shared title bar builder for the compose and reader windows (ensureDesktopDovecoteModal
-// builds its own inline, since it also carries the main toolbar).
+// Shared title bar builder for the compose, reader and attachment windows (ensureDesktopDovecoteModal
+// builds its own inline, since it also carries the main toolbar). Their caption and taskbar image
+// is Dovecote's: data-icon-owner-id -> ensureModalApplicationIcon (modalUtils.js) on openModal.
 const doveBuildWindowTitle = function (text, iconClass) {
     const title = document.createElement('div');
     title.className = 'modal-window-title';
     const titleMain = document.createElement('div');
     titleMain.className = 'modal-window-title-main';
     const titleIcon = document.createElement('i');
-    titleIcon.className = iconClass;
+    titleIcon.className = iconClass + ' icon-fa';
     titleIcon.setAttribute('aria-hidden', 'true');
     const titleText = document.createElement('span');
     titleText.textContent = text;
@@ -216,9 +217,10 @@ const doveBuildWindowTitle = function (text, iconClass) {
 const doveSetWindowTitle = function (modal, text, iconClass) {
     const titleText = modal.querySelector('.modal-window-title-main span');
     const titleIcon = modal.querySelector('.modal-window-title-main i');
-    if (titleText.textContent === text && titleIcon.className === iconClass) return;
+    const iconClassName = iconClass + ' icon-fa';
+    if (titleText.textContent === text && titleIcon.className === iconClassName) return;
     titleText.textContent = text;
-    titleIcon.className = iconClass;
+    titleIcon.className = iconClassName;
     // debouncedUpdateTaskbarWindows: public/scripts/comp/modalUtils.js
     debouncedUpdateTaskbarWindows();
 };
@@ -2042,6 +2044,7 @@ const doveOpenAttachmentViewer = function (att, base64, kind) {
         if (objectUrl) URL.revokeObjectURL(objectUrl);
         modal.remove();
     };
+    modal.dataset.iconOwnerId = DESKTOP_DOVECOTE_MODAL_ID;
     modal.appendChild(doveBuildWindowTitle(name, doveAttachmentIcon(kind)));
     modal.appendChild(document.createElement('div')).className = 'modal-focus-overlay';
     modal.appendChild(doveBuildWindowControls(modal, close));
@@ -2562,6 +2565,7 @@ const doveBuildComposeWindow = function (key, initial) {
         doveComposeWindows.delete(key);
         modal.remove();
     };
+    modal.dataset.iconOwnerId = DESKTOP_DOVECOTE_MODAL_ID;
     modal.appendChild(doveBuildWindowTitle(doveComposeWindowTitle(initial.mode), 'fas fa-pen-to-square'));
     modal.appendChild(document.createElement('div')).className = 'modal-focus-overlay';
     modal.appendChild(doveBuildWindowControls(modal, closeCompose));
@@ -2794,6 +2798,7 @@ const doveBuildReaderWindow = function (key) {
         modal.remove();
     };
     const toolbar = doveBuildReaderToolbar(getMail);
+    modal.dataset.iconOwnerId = DESKTOP_DOVECOTE_MODAL_ID;
     modal.appendChild(doveBuildWindowTitle('Message', 'fas fa-envelope-open'));
     modal.appendChild(document.createElement('div')).className = 'modal-focus-overlay';
     modal.appendChild(doveBuildWindowControls(modal, closeReader));

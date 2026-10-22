@@ -5373,7 +5373,9 @@ const MODAL_APPLICATION_ICONS = {
     remoteAccessPropertiesDialog: 'vista-remote-access.png',
     agentClientUpdateDialog: 'vista-windows-update.png',
     mainframeExceptionDialog: 'vista-system.png',
-    vfsSystemTextViewerModal: 'vista-explorer.png'
+    vfsSystemTextViewerModal: 'vista-explorer.png',
+    // owners of script-built windows that can open before the owner is built (dovecote.js)
+    desktopDovecoteModal: 'vista-mail.png'
 };
 
 /** The window this one belongs to, for its icon: the linked parent, else the owner it names. */
@@ -5403,7 +5405,11 @@ function resolveInheritedAppIcon(modal) {
     while (ownerId && !seen.has(ownerId)) {
         seen.add(ownerId);
         const owner = document.getElementById(ownerId);
-        if (!owner) break;
+        // an owner that is not built yet (Dovecote's compose from the tray) still has its map entry
+        if (!owner) {
+            if (MODAL_APPLICATION_ICONS[ownerId]) return MODAL_APPLICATION_ICONS[ownerId];
+            break;
+        }
         const img = owner.querySelector(':scope > .modal-window-title > .modal-window-title-main > img.icon-image');
         if (img) return appIconRefFromImg(img);
         if (owner.dataset.taskbarIcon) return owner.dataset.taskbarIcon;
@@ -6400,7 +6406,7 @@ const startMenuLaunchables = [
     { launchId: 'notebook', icon: 'fas fa-notebook', imageIcon: 'vista-journal.png', text: 'Notion', appMenu: true, action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('notepad'); } window.notepadManager.openNotebook(); }, rightAction: { icon: 'fas fa-sticky-note', tooltip: 'New Note', action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('notepad'); } window.notepadManager.handleNewNote(); } } },
     { launchId: 'chat', icon: 'fas fa-messages', imageIcon: 'vista-messenger.png', text: 'Chat', appMenu: true, action: async () => { if (window.featureLoader) { await window.featureLoader.loadFeature('chat'); } window.chatSystem.showAllChats(); } },
     { launchId: 'explorer', icon: 'fas fa-folder-open', imageIcon: 'vista-explorer.png', text: 'Cartograph', appMenu: true, action: () => { openExplorerApplet(); } },
-    { launchId: 'remote-desktop', icon: 'fas fa-satellite-dish', imageIcon: 'vista-remote-desktop.png', text: 'Remote Desktop Manager', appMenu: true, action: async () => { await featureLoader.loadFeature('remote_desktop'); /* public/scripts/comp/desktop-apps/guacRemote.js */ openDesktopGuac(); } },
+    { launchId: 'remote-desktop', icon: 'fas fa-satellite-dish', imageIcon: 'remote_desktop.png', text: 'Remote Desktop Manager', appMenu: true, action: async () => { await featureLoader.loadFeature('remote_desktop'); /* public/scripts/comp/desktop-apps/guacRemote.js */ openDesktopGuac(); } },
     // Remote Desktop Connection (mstsc.exe, whose icon this is): quick connections through Guacamole
     { launchId: 'remote-desktop-connection', icon: 'fas fa-desktop', imageIcon: 'vista-remote-desktop.png', text: 'Remote Desktop Connection', appMenu: true, action: async () => { await featureLoader.loadFeature('remote_desktop_connection'); /* public/scripts/comp/desktop-apps/remoteDesktopConnection.js */ remoteDesktopConnection.open(); } },
     { launchId: 'dovecote', icon: 'fas fa-envelope', imageIcon: 'vista-mail.png', text: 'Dovecote', appMenu: true, action: () => { /* public/scripts/comp/desktop-apps/dovecote.js */ openDesktopDovecote(); } },
@@ -7438,6 +7444,8 @@ function startMenuUserName() {
     return window.meletonAccountName ? window.meletonAccountName() : START_MENU_USER_NAME;
 }
 const START_MENU_ART = '/static_images/vista-start';
+// Help and Support opens the project's page (public)
+const START_MENU_HELP_URL = 'https://yozora.bluesteel.737.jp.net/DreamScape/StaticForge';
 
 let startMenuView = 'home'; // 'home' | 'programs' | 'search'
 const startMenuOpenFolders = new Set();
@@ -7938,8 +7946,6 @@ function getStartMenuPlacesAll() {
         { id: 'cartograph', text: 'Cartograph', imageIcon: 'vista-explorer.png', action: launch('explorer') },
         { id: 'gallery', text: 'Gallery', imageIcon: 'art.png', desktopOnly: true, action: launch('workspace') },
         { id: 'notion', text: 'Notion', imageIcon: 'vista-journal.png', action: launch('notebook') },
-        { id: 'workspaces', text: 'Workspaces', imageIcon: 'planet.png', action: () => showWorkspaceManagementModal() },
-        { id: 'teleport', text: 'Teleport', imageIcon: 'vista-teleport.png', desktopOnly: true, action: launch('planet-switcher') },
         // Vista's Games place: the Games Explorer (public/scripts/comp/desktop-apps/vista-games/gamesExplorer.js)
         { id: 'games', text: 'Games', imageIcon: 'vista-games.png', desktopOnly: true, action: launch('games-explorer') },
         { separator: true },
@@ -7947,8 +7953,8 @@ function getStartMenuPlacesAll() {
         { id: 'network', text: 'Network and Server Center', image: '/static_images/melaton/net-globe.png', action: controlPanel('network') },
         { separator: true },
         { id: 'control-panel', text: 'Control Panel', imageIcon: 'vista-control-panel.png', action: controlPanel('home') },
-        { id: 'remote-access', text: 'Remote Access', imageIcon: 'vista-remote-desktop.png', action: () => openRemoteAccessSettingsModal() },
-        { id: 'help', text: 'Help and Support', imageIcon: 'vista-help.png', action: () => openGrimoireApplet() },
+        // Help and Support: the project's page on Yozora, in Alchemy (openGrimoireUrl: featureLoader.js)
+        { id: 'help', text: 'Help and Support', imageIcon: 'vista-help.png', action: () => openGrimoireUrl(START_MENU_HELP_URL) },
     ].filter((place) => !(place.desktopOnly && !desktop));
 }
 
@@ -9258,7 +9264,9 @@ function setDesktopSettingsScope(scope) {
 
     // the layout lives in this window or in a Control Panel page (Personalization, Global Settings)
     const layout = document.getElementById('desktopSettingsLayout') || modal;
-    const offGroup = (section) => nextScope === 'global' && !!desktopSettingsActiveGroup
+    // a Control Panel page shows one group (data-desktop-settings-group) of its scope's sections
+    const offGroup = (section) => !!desktopSettingsActiveGroup
+        && section.dataset.desktopSettingsScope === nextScope
         && section.dataset.desktopSettingsGroup !== desktopSettingsActiveGroup;
     layout.querySelectorAll('[data-desktop-settings-scope]').forEach((section) => {
         if (section.id === 'desktopSettingsNotificationBridgeSection') {
@@ -9566,8 +9574,15 @@ async function openDesktopSettingsModal(wallpaperPath = null, scope = 'workspace
     registerDesktopSettingsControlPanelPages();
     const cpl = window.melatonControlPanel;
     if (cpl && cpl.registerPage && document.getElementById('desktopSettingsLayout')) {
+        // "Set as desktop background" opens Desktop Background with the picture selected
+        // (cplDesktopBackground.js); otherwise Personalization's hub (cplPersonalization.js)
+        if (wallpaperPath && window.cplDesktopBackground && typeof window.cplDesktopBackground.openWith === 'function') {
+            cpl.open('personalization');
+            window.cplDesktopBackground.openWith(wallpaperPath);
+            return;
+        }
         desktopSettingsPendingWallpaper = wallpaperPath;
-        cpl.open(scope === 'global' ? 'appearance' : 'personalization');
+        cpl.open(scope === 'global' ? 'window-color' : 'personalization');
         return;
     }
     const modal = document.getElementById('desktopSettingsModal');
@@ -9793,30 +9808,20 @@ function registerDesktopSettingsControlPanelPages() {
             <h3 class="cpl-task-heading">Tasks</h3>
             <ul class="cpl-task-list">${others.map(([label, arg]) => cpl.taskLinkHtml(label, 'nav', arg)).join('')}</ul>
         </div>
-        <div class="cpl-task-group">
+        <div class="cpl-task-group cpl-task-group--see-also">
             <h3 class="cpl-task-heading">See also</h3>
             <ul class="cpl-task-list">${cpl.taskLinkHtml('Taskbar and Start Menu', 'item', 'taskbar')}${cpl.taskLinkHtml('Remote Access', 'item', 'remote-access')}</ul>
         </div>`;
-    // Global Settings split into Vista's own Control Panel items (Yukimi 2026-10-13): each page
-    // mounts the shared forms with one data-desktop-settings-group of the global sections.
+    // Personalization is a hub of Vista's pages and dialogs (cplPersonalization.js, Yukimi
+    // 2026-10-21): the wallpaper's position is on Desktop Background (cplDesktopBackground.js), the
+    // glass and live dragging on Window Color and Appearance, the name, colours and fonts in Theme
+    // Settings and the sounds in the Sound dialog (personalizationDialogs.js). Keyboard still mounts
+    // its group of the global settings forms here.
     const GLOBAL_PAGES = [
-        ['appearance', 'Window Color and Appearance', 'Windows and their glass',
-            'How windows move and resize, and the frame glass: frosted, live or basic.'],
-        ['sound', 'Sound', 'Program sounds',
-            'Windows Vista sounds for dialogs, errors, lock, logon, shutdown, navigation and the planet switcher.'],
-        ['keyboard', 'Keyboard', 'Input',
-            'The virtual keyboard on touch devices.']
+        ['keyboard', 'Keyboard', 'Input', 'The virtual keyboard on touch devices.']
     ];
     const siblings = (id) => [['Personalization', 'personalization']]
         .concat(GLOBAL_PAGES.filter(([other]) => other !== id).map(([other, name]) => [name, other]));
-    cpl.registerPage('personalization', {
-        title: () => 'Personalization',
-        tasks: () => tasks(siblings('personalization')),
-        body: () => desktopSettingsPageBody('Personalize this workspace',
-            "Change the workspace's name and colours, its fonts, and its desktop background."),
-        mount: (main) => mountDesktopSettingsInControlPanel(main, 'workspace'),
-        unmount: unmountDesktopSettingsFromControlPanel
-    });
     GLOBAL_PAGES.forEach(([id, name, heading, intro]) => {
         cpl.registerPage(id, {
             title: () => name,
@@ -10089,109 +10094,53 @@ function setupDesktopSettingsDropdowns() {
     updateAlignmentUI('horizontal');
     updateAlignmentUI('vertical');
 
-    // Primary font dropdown
-    const primaryFontContainer = document.getElementById('desktopSettingsPrimaryFontDropdown');
-    const primaryFontBtn = document.getElementById('desktopSettingsPrimaryFontBtn');
-    const primaryFontMenu = document.getElementById('desktopSettingsPrimaryFontMenu');
-    const primaryFontSelected = document.getElementById('desktopSettingsPrimaryFontSelected');
-
-    if (primaryFontContainer && primaryFontBtn && primaryFontMenu && primaryFontSelected) {
-        const renderPrimaryFontMenu = (selectedVal = '') => {
-            primaryFontMenu.innerHTML = '';
-
-            if (typeof AVAILABLE_PRIMARY_FONTS !== 'undefined') {
-                AVAILABLE_PRIMARY_FONTS.forEach(font => {
-                    const option = document.createElement('div');
-                    option.className = 'custom-dropdown-item';
-                    option.textContent = font.label;
-                    option.dataset.value = font.value;
-                    option.style.fontFamily = font.value ? `'${font.value}', sans-serif` : (font.fontFamily || 'var(--font-primary)');
-
-                    if (font.value === selectedVal) {
-                        option.classList.add('selected');
-                    }
-
-                    option.addEventListener('click', () => {
-                        // Update temp state, not workspace directly
-                        desktopSettingsState.primaryFont = font.value || null;
-                        primaryFontSelected.textContent = font.label;
-                        primaryFontSelected.style.fontFamily = font.value ? `'${font.value}', sans-serif` : (font.fontFamily || 'var(--font-primary)');
-                        closeDropdown(primaryFontMenu, primaryFontBtn);
-                    });
-
-                    primaryFontMenu.appendChild(option);
-                });
-            }
-        };
-
-        setupDropdown(
-            primaryFontContainer,
-            primaryFontBtn,
-            primaryFontMenu,
-            () => {
-                // Use temp state
-                const selected = desktopSettingsState.primaryFont || '';
-                renderPrimaryFontMenu(selected);
-            },
-            () => {
-                // Use temp state
-                return desktopSettingsState.primaryFont || '';
-            }
-        );
-    }
-
-    // Textarea font dropdown
-    const textareaFontContainer = document.getElementById('desktopSettingsTextareaFontDropdown');
-    const textareaFontBtn = document.getElementById('desktopSettingsTextareaFontBtn');
-    const textareaFontMenu = document.getElementById('desktopSettingsTextareaFontMenu');
-    const textareaFontSelected = document.getElementById('desktopSettingsTextareaFontSelected');
-
-    if (textareaFontContainer && textareaFontBtn && textareaFontMenu && textareaFontSelected) {
-        const renderTextareaFontMenu = (selectedVal = '') => {
-            textareaFontMenu.innerHTML = '';
-
-            if (typeof AVAILABLE_TEXTAREA_FONTS !== 'undefined') {
-                AVAILABLE_TEXTAREA_FONTS.forEach(font => {
-                    const option = document.createElement('div');
-                    option.className = 'custom-dropdown-item';
-                    option.textContent = font.label;
-                    option.dataset.value = font.value;
-                    option.style.fontFamily = font.value ? `'${font.value}', monospace` : (font.fontFamily || 'var(--font-mono)');
-
-                    if (font.value === selectedVal) {
-                        option.classList.add('selected');
-                    }
-
-                    option.addEventListener('click', () => {
-                        // Update temp state, not workspace directly
-                        desktopSettingsState.textareaFont = font.value || null;
-                        textareaFontSelected.textContent = font.label;
-                        textareaFontSelected.style.fontFamily = font.value ? `'${font.value}', monospace` : (font.fontFamily || 'var(--font-mono)');
-                        closeDropdown(textareaFontMenu, textareaFontBtn);
-                    });
-
-                    textareaFontMenu.appendChild(option);
-                });
-            }
-        };
-
-        setupDropdown(
-            textareaFontContainer,
-            textareaFontBtn,
-            textareaFontMenu,
-            () => {
-                // Use temp state
-                const selected = desktopSettingsState.textareaFont || '';
-                renderTextareaFontMenu(selected);
-            },
-            () => {
-                // Use temp state
-                return desktopSettingsState.textareaFont || '';
-            }
-        );
-    }
+    // Font pickers: the app's context menu (contextMenu.attachPickerMenu), so the list floats
+    // above the window and is never clipped by it (Yukimi 2026-10-21); each name in its own font
+    wireDesktopSettingsFontPicker('Primary', () => (typeof AVAILABLE_PRIMARY_FONTS !== 'undefined' ? AVAILABLE_PRIMARY_FONTS : []),
+        'primaryFont', 'sans-serif', 'var(--font-primary)');
+    wireDesktopSettingsFontPicker('Textarea', () => (typeof AVAILABLE_TEXTAREA_FONTS !== 'undefined' ? AVAILABLE_TEXTAREA_FONTS : []),
+        'textareaFont', 'monospace', 'var(--font-mono)');
 
     desktopSettingsDropdownsWired = true;
+}
+
+/**
+ * A font picker on the settings forms: the button shows the choice in its own face; the list is
+ * a context-menu picker (radio marks, one row per font, drawn in that font).
+ * @param {'Primary'|'Textarea'} which  the element ids' infix (desktopSettings<which>Font*)
+ */
+function wireDesktopSettingsFontPicker(which, fonts, stateKey, generic, fallbackVar) {
+    const btn = document.getElementById(`desktopSettings${which}FontBtn`);
+    const selected = document.getElementById(`desktopSettings${which}FontSelected`);
+    if (!btn || !selected) return;
+    const face = (font) => (font.value ? `'${font.value}', ${generic}` : (font.fontFamily || fallbackVar));
+    // contextMenu.attachPickerMenu: public/scripts/comp/contextMenu.js
+    contextMenu.attachPickerMenu(btn, {
+        maxHeight: true,
+        items: () => fonts().map((font) => ({
+            value: font.value || '',
+            text: font.label,
+            // the menu's own text markup (contextMenu.js), with the font's face
+            content: () => {
+                const box = document.createElement('div');
+                box.className = 'context-menu-item-text-container';
+                const span = document.createElement('span');
+                span.className = 'context-menu-item-text';
+                span.textContent = font.label;
+                span.style.fontFamily = face(font);
+                box.appendChild(span);
+                return box;
+            }
+        })),
+        value: () => desktopSettingsState[stateKey] || '',
+        onSelect: (value) => {
+            const font = fonts().find((f) => (f.value || '') === value);
+            if (!font) return;
+            desktopSettingsState[stateKey] = font.value || null;
+            selected.textContent = font.label;
+            selected.style.fontFamily = face(font);
+        }
+    });
 }
 
 // Update alignment UI (selected text and slider visibility)
