@@ -470,3 +470,108 @@ body.desktop-mode #photoSwipeWindow.wpg-glancewell.wpg-slideshow.wpg-pointer-idl
 body.desktop-mode #photoSwipeWindow.wpg-glancewell.wpg-slideshow #photoSwipeMount .pswp .pswp__bg {
     opacity: 1 !important;
 }
+
+/* ---- Lumen (#imageViewerModalTemplate.wpv-viewer): Windows 7's Windows Photo Viewer, 1:1 with
+   Yukimi's capture on Ruiko (Oct 22 2026; PhotoViewer.dll 10.0.26100, the Win7 viewer). Photo
+   Viewer kept Photo Gallery's pill art byte for byte (PhotoViewer.dll PNG 4000-4179 = the files
+   above), so the foot and the picture are shared; what is its own is the light command bar:
+     29 px: a white top line, #f2faff to #e3eefa over 12 px, flat #d8e6f1, a #a0afc7 edge and a
+       #d4e4fc line under it; text-only commands in Segoe UI 9 pt (File 18 px in, the ink 9 px
+       down), a 7x4 ▾ after the menus; Help (16x16) 10 px from the right, 4 px down
+     no Back To Gallery, no Fix or Info: Properties (File) shows the generation parameters ---- */
+
+.wpv-viewer .wpv-cmdbar {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+    flex: none;
+    box-sizing: border-box;
+    height: 29px;
+    padding: 0 0 2px 6px;
+    overflow: hidden;
+    background: linear-gradient(to bottom,
+        #fbfdff 0 1px, #f2faff 1px, #e3eefa 13px, #d8e6f1 13px, #d8e6f1 24px, #d9e7f4 27px,
+        #a0afc7 27px 28px, #d4e4fc 28px 29px);
+}
+
+.wpv-viewer .wpv-cmdbar button {
+    display: inline-flex;
+    align-items: center;
+    flex: none;
+    box-sizing: border-box;
+    height: 25px;
+    min-height: 0;
+    min-width: 0;
+    margin: 1px 0 0;
+    padding: 0 6px 0 11px;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    box-shadow: none;
+    color: #000;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 15px;
+    text-shadow: none;
+    white-space: nowrap;
+    cursor: default;
+}
+
+.wpv-viewer .wpv-cmdbar button.wpv-cmd {
+    margin-right: 2px;
+}
+
+/* the hot and pressed command: Windows 7's command bar glass */
+.wpv-viewer .wpv-cmdbar button.wpv-cmd:is(:hover, :focus-visible, .context-open) {
+    border-color: #7da2ce;
+    background: linear-gradient(to bottom, #fafcfe, #e9f2fb 50%, #d6e6f8 50%, #e2eefb);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7);
+}
+
+.wpv-viewer .wpv-cmdbar button.wpv-cmd:active,
+.wpv-viewer .wpv-cmdbar button.wpv-cmd.context-open {
+    border-color: #6a8db8;
+    background: linear-gradient(to bottom, #e0ebf8, #cfdff2 50%, #bcd3ee 50%, #c9dcf2);
+    box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.15);
+}
+
+.wpv-viewer .wpv-drop {
+    flex: none;
+    width: 7px;
+    height: 4px;
+    margin: 1px 0 0 12px;
+    background: #000;
+    clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+/* the capture's uneven spacing, per command (ink at File 19, ▾ 52, Print 79, ▾ 115, E-mail 143,
+   Burn 205, ▾ 241, Open 264, ▾ 304 from the client's left) */
+.wpv-viewer .wpv-cmdbar [data-wpv="file"] { padding-right: 4px; }
+.wpv-viewer .wpv-cmdbar [data-wpv="file"] .wpv-drop { margin-left: 16px; }
+.wpv-viewer .wpv-cmdbar [data-wpv="email"] { padding-right: 14px; }
+.wpv-viewer .wpv-cmdbar [data-wpv="burn"] { padding-right: 0; }
+.wpv-viewer .wpv-cmdbar [data-wpv="open"] .wpv-drop { margin-left: 11px; }
+
+.wpv-viewer .wpv-cmdbar button.wpv-help {
+    position: absolute;
+    right: 10px;
+    top: 4px;
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: url("/static_images/vista-photo-gallery/help.png") -16px 0 / 64px 16px no-repeat;
+}
+
+.wpv-viewer .wpv-cmdbar button.wpv-help:hover {
+    background-position: -32px 0;
+}
+
+.wpv-viewer .wpv-cmdbar button.wpv-help:active {
+    background-position: -48px 0;
+}
+
+/* Photo Viewer's pill sits 15 px down the 57 px foot (Photo Gallery's 16) */
+.wpv-viewer .wpg-pill {
+    top: 15px;
+}
