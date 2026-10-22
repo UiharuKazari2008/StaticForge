@@ -2037,12 +2037,75 @@ img.loading {
     margin-bottom: 0;
 }
 
-#stageResultsReview .gallery-item-overlay,
-.ledge-desk .gallery-item-overlay {
+#stageResultsReview .gallery-item-overlay {
     opacity: 1;
     justify-content: flex-end;
     background: linear-gradient(to top, rgba(0, 0, 0, 0.72), transparent 55%);
     pointer-events: none;
+}
+
+/* Ledge in the Workspace window's design (Yukimi, Oct 22 2026; References did the same, #474):
+   the body is the window glass, square tiles edge to edge with the frame-coloured 2px borders,
+   the caption and note over a tile only on hover (as #galleryWindow), and the floating glass bar
+   bottom-left: "Ledge • <name>" over Save. */
+body:not(.windows-classic-theme) .ledge-desk {
+    --window-body-bg: transparent;
+}
+
+.ledge-desk > .modal-content.dark {
+    background: transparent;
+}
+
+.ledge-desk .modal-body {
+    position: relative;
+}
+
+.ledge-desk .stage-results-scrollable {
+    padding: 0;
+}
+
+.ledge-desk .gallery {
+    padding-bottom: var(--spacing-xxl);
+}
+
+.ledge-desk .gallery-item {
+    border-color: var(--glass-layer-dark-menu);
+}
+
+.ledge-desk .gallery-item.selected {
+    border-color: #ff9e75;
+}
+
+.ledge-desk .gallery-item-overlay {
+    justify-content: flex-end;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.72), transparent 55%);
+    pointer-events: none;
+}
+
+.ledge-desk .ledge-menu-bar {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    margin: var(--spacing-lg);
+    z-index: var(--z-layer-4);
+}
+
+.ledge-desk .ledge-menu-bar::after {
+    top: calc(-1 * calc(var(--spacing-lg) + 50%));
+    left: calc(-1 * var(--spacing-lg));
+    width: calc(150% + calc(2 * var(--spacing-lg)));
+    height: calc(150% + calc(2 * var(--spacing-lg)));
+}
+
+/* one backdrop on the window already (app.css .modal.windowed .main-menu-bar-outer) */
+.ledge-desk .main-menu-bar-outer {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+
+.ledge-desk .ledge-menu-dot {
+    font-size: 0.35rem;
+    padding-top: 0.15rem;
 }
 
 #stageResultsReview .gallery-actions,
