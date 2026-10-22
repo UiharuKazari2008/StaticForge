@@ -310,15 +310,18 @@ async function testRelayMockAndClient() {
 
         const beforeRelayFirst = exchange.getToggles();
         assert.strictEqual(beforeRelayFirst.outbound, true);
+        assert.strictEqual(exchange.getMailboxRecord('sala').outboundEnabled, true);
         const relayRejected = await exchange.setToggles('yukimi', {
             outbound: false,
-            mailboxes: { nova: { inbound: false } },
+            mailboxes: { nova: { outbound: false }, sala: { outbound: false } },
             confirm: true
         });
         assert.strictEqual(relayRejected.relay.ok, false);
         assert.strictEqual(relayRejected.relay.code, 'UNKNOWN_MAILBOX');
         assert.strictEqual(relayRejected.toggles.outbound, true);
         assert.strictEqual(exchange.getToggles().outbound, true);
+        assert.ok(!exchange.getToggles().mailboxes || !exchange.getToggles().mailboxes.sala);
+        assert.strictEqual(exchange.getMailboxRecord('sala').outboundEnabled, true);
 
         const relayAccepted = await exchange.setToggles('yukimi', {
             outbound: false,
@@ -902,6 +905,68 @@ function testTokensStayServerSide() {
     assert.doesNotMatch(uiSrc, /relayReadToken|relayAdminToken|MAIL_EXCHANGE_RELAY_/);
 }
 
+function testRelayRecipientsOmitDisabledDeleted() {
+    const created = exchange.createMailbox('sala', {
+        owner: 'ghostbox',
+        dept: 'ops',
+        confirm: true
+    });
+    assert.strictEqual(created.owner, 'ghostbox');
+    assert.ok(exchange.listRelayRecipients().some((row) => (
+        row.local === 'ghostbox.ops' && row.mailbox === 'ghostbox'
+    )));
+    exchange.disableMailbox('sala', { owner: 'ghostbox', enabled: false, confirm: true });
+    assert.ok(!exchange.listRelayRecipients().some((row) => row.local === 'ghostbox.ops'));
+    assert.ok(!exchange.listRelayRecipients().some((row) => row.mailbox === 'ghostbox'));
+    exchange.disableMailbox('sala', { owner: 'ghostbox', enabled: true, confirm: true });
+    assert.ok(exchange.listRelayRecipients().some((row) => row.local === 'ghostbox.ops'));
+    exchange.deleteMailbox('yukimi', { owner: 'ghostbox', confirm: true, confirmText: 'DELETE' });
+    assert.ok(!exchange.listRelayRecipients().some((row) => row.local === 'ghostbox.ops'));
+    assert.ok(!exchange.listRelayRecipients().some((row) => row.mailbox === 'ghostbox'));
+}
+
+async function testRecipientPushSerialized() {
+    const mock = await startMockRelay();
+    relayClient.setTestOverrides({
+        config: { relay: { baseUrl: mock.baseUrl, timeoutMs: 2000 } },
+        readToken: mock.readToken,
+        adminToken: mock.adminToken
+    });
+    try {
+        mock.state.recipientsDelayMs = 40;
+        mock.state.maxRecipientsInFlight = 0;
+        mock.state.recipientPuts = [];
+        exchange.createMailbox('sala', { owner: 'seriala', dept: 'ops', confirm: true });
+        const first = exchange.waitForRecipientPush();
+        exchange.createMailbox('sala', { owner: 'serialb', dept: 'ops', confirm: true });
+        const second = exchange.waitForRecipientPush();
+        await first;
+        await second;
+        assert.ok(mock.state.maxRecipientsInFlight <= 1);
+        const lastLocals = (mock.state.lastRecipientsBody.recipients || []).map((row) => row.local);
+        assert.ok(lastLocals.includes('seriala.ops'));
+        assert.ok(lastLocals.includes('serialb.ops'));
+        const puts = mock.state.recipientPuts || [];
+        assert.ok(puts.length >= 1);
+        const laterLacksNewer = puts.some((put, idx) => (
+            idx > 0
+            && puts[idx - 1].locals.includes('serialb.ops')
+            && !put.locals.includes('serialb.ops')
+        ));
+        assert.strictEqual(laterLacksNewer, false);
+    } finally {
+        try {
+            exchange.deleteMailbox('yukimi', { owner: 'seriala', confirm: true, confirmText: 'DELETE' });
+        } catch (_err) { /* ignore */ }
+        try {
+            exchange.deleteMailbox('yukimi', { owner: 'serialb', confirm: true, confirmText: 'DELETE' });
+        } catch (_err) { /* ignore */ }
+        await exchange.waitForRecipientPush();
+        relayClient.resetForTests();
+        await mock.close();
+    }
+}
+
 async function main() {
     testTokensStayServerSide();
     await testRelayMockAndClient();
@@ -912,6 +977,8 @@ async function main() {
     testSeedIdempotentAndOverlay();
     await testLiveCreateAndAddress();
     testRecipientPushSurfaces();
+    testRelayRecipientsOmitDisabledDeleted();
+    await testRecipientPushSerialized();
     console.log('test-mail-exchange: ok');
 }
 

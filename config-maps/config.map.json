@@ -1664,7 +1664,7 @@
       "type": "string",
       "label": "Original-To Header",
       "editorType": "input",
-      "description": "Default X-Original-To. Only the topmost instance above the relay Received is stored and shown (Originally to). When that stamp is missing, intake stores the accepted envelope recipient. Catch-all recovery may use the trusted stamp (and To/Cc) to find an active mailbox; spam and forged mail stay on Tsubame."
+      "description": "Default X-Original-To. Only the topmost instance above the relay Received is stored and shown (Originally to). When that stamp is missing, intake stores the accepted envelope recipient. Catch-all recovery may use that trusted stamp only (never To/Cc), only for a real active mailbox, and only from the relay IP; spam and forged mail stay on Tsubame."
     },
     {
       "path": [

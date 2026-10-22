@@ -40,6 +40,7 @@ class MailExchangeError extends Error {
 let testConfig = null;
 let directoryGeneration = 0;
 let recipientPushPending = Promise.resolve(null);
+let recipientPushSeq = 0;
 
 function setTestConfig(config) {
     testConfig = config || null;
@@ -50,6 +51,7 @@ function resetTestConfig() {
     testConfig = null;
     invalidateDirectory();
     recipientPushPending = Promise.resolve(null);
+    recipientPushSeq = 0;
 }
 
 function isDirectoryReady() {
@@ -132,14 +134,25 @@ async function pushRecipientsToRelay({ actor } = {}) {
     return next;
 }
 
-function notifyRecipientChange(actor) {
-    invalidateDirectory();
+function enqueueRecipientPush(actor, { force } = {}) {
     const name = canonicalizeAdmin(actor) || String(actor || 'unknown');
-    recipientPushPending = pushRecipientsToRelay({ actor: name }).catch((err) => {
+    const seq = ++recipientPushSeq;
+    const run = recipientPushPending.catch(() => {}).then(() => {
+        if (!force && seq !== recipientPushSeq) {
+            return { ok: true, skipped: true, code: 'SUPERSEDED', seq };
+        }
+        return pushRecipientsToRelay({ actor: name });
+    }).catch((err) => {
         console.warn('[mail-exchange] recipient push failed:', err && err.message);
         return { ok: false, skipped: true, code: 'RELAY_UNREACHABLE', error: err && err.message };
     });
-    return recipientPushPending;
+    recipientPushPending = run;
+    return run;
+}
+
+function notifyRecipientChange(actor) {
+    invalidateDirectory();
+    return enqueueRecipientPush(actor);
 }
 
 function waitForRecipientPush() {
@@ -150,7 +163,7 @@ async function resyncRecipients(actor, { confirm } = {}) {
     const admin = requireExchangeAdmin(actor, 'resync_recipients', 'recipients');
     requireEnabled(admin, 'resync_recipients', 'recipients');
     requireConfirm(confirm, 'resync_recipients');
-    const result = await pushRecipientsToRelay({ actor: admin });
+    const result = await enqueueRecipientPush(admin, { force: true });
     audit(
         admin,
         'resync_recipients',

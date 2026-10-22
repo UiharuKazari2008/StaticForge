@@ -2133,20 +2133,24 @@ function testRecipientResolutionHelpers() {
     assert.strictEqual(addresses.resolveStoredOriginalTo('lost.dept@dream.737.jp.net', 'mailroom.ops@dream.737.jp.net'), 'lost.dept@dream.737.jp.net');
 
     const catchallRcpt = [{ owner: 'tsubame', envelope: 'mailroom.ops@dream.737.jp.net', via: 'catchall' }];
+    const relayed = { peer: '192.168.255.1', relayPeers: ['192.168.255.1'] };
     const recovered = addresses.recoverCatchallDelivery({
         recipients: catchallRcpt,
-        headerAddresses: ['ivory.studio@dream.737.jp.net'],
-        mapping: map
+        originalTo: 'ivory.studio@dream.737.jp.net',
+        mapping: map,
+        ...relayed
     });
     assert.strictEqual(recovered.recovered, true);
     assert.deepStrictEqual(recovered.recoveredTo, ['ivory']);
     assert.strictEqual(recovered.recipients[0].owner, 'ivory');
+    assert.strictEqual(recovered.reason, 'original-to-mailbox');
 
     const spamKept = addresses.recoverCatchallDelivery({
         recipients: catchallRcpt,
-        headerAddresses: ['ivory.studio@dream.737.jp.net'],
+        originalTo: 'ivory.studio@dream.737.jp.net',
         mapping: map,
-        spam: true
+        spam: true,
+        ...relayed
     });
     assert.strictEqual(spamKept.recovered, false);
     assert.strictEqual(spamKept.reason, 'spam');
@@ -2154,20 +2158,74 @@ function testRecipientResolutionHelpers() {
 
     const forgedKept = addresses.recoverCatchallDelivery({
         recipients: catchallRcpt,
-        headerAddresses: ['ivory.studio@dream.737.jp.net'],
+        originalTo: 'ivory.studio@dream.737.jp.net',
         mapping: map,
-        forgedOurs: true
+        forgedOurs: true,
+        ...relayed
     });
     assert.strictEqual(forgedKept.recovered, false);
     assert.strictEqual(forgedKept.reason, 'forged');
 
     const unknownKept = addresses.recoverCatchallDelivery({
         recipients: catchallRcpt,
-        headerAddresses: ['lost.dept@dream.737.jp.net'],
-        mapping: map
+        originalTo: 'lost.dept@dream.737.jp.net',
+        mapping: map,
+        ...relayed
     });
     assert.strictEqual(unknownKept.recovered, false);
-    assert.strictEqual(unknownKept.reason, 'no-active-mailbox');
+    assert.strictEqual(unknownKept.reason, 'not-mailbox');
+
+    const notRelay = addresses.recoverCatchallDelivery({
+        recipients: catchallRcpt,
+        originalTo: 'ivory.studio@dream.737.jp.net',
+        mapping: map,
+        peer: '10.0.0.9',
+        relayPeers: ['192.168.255.1']
+    });
+    assert.strictEqual(notRelay.recovered, false);
+    assert.strictEqual(notRelay.reason, 'not-relay');
+
+    const noStamp = addresses.recoverCatchallDelivery({
+        recipients: catchallRcpt,
+        originalTo: null,
+        mapping: map,
+        ...relayed
+    });
+    assert.strictEqual(noStamp.recovered, false);
+    assert.strictEqual(noStamp.reason, 'not-mailbox');
+
+    const withFanout = addresses.createMapping({
+        mailboxes: addresses.DEFAULT_MAILBOXES,
+        aliases: { helpdesk: 'tsubame' },
+        lists: { 'ops-all': ['yukimi', 'sala'] }
+    });
+    const aliasKept = addresses.recoverCatchallDelivery({
+        recipients: catchallRcpt,
+        originalTo: 'helpdesk@dream.737.jp.net',
+        mapping: withFanout,
+        ...relayed
+    });
+    assert.strictEqual(aliasKept.recovered, false);
+    assert.strictEqual(aliasKept.reason, 'not-mailbox');
+    const listKept = addresses.recoverCatchallDelivery({
+        recipients: catchallRcpt,
+        originalTo: 'ops-all@dream.737.jp.net',
+        mapping: withFanout,
+        ...relayed
+    });
+    assert.strictEqual(listKept.recovered, false);
+    assert.strictEqual(listKept.reason, 'not-mailbox');
+
+    const inactiveKept = addresses.recoverCatchallDelivery({
+        recipients: catchallRcpt,
+        originalTo: 'ivory.studio@dream.737.jp.net',
+        mapping: map,
+        isActiveMailbox: (owner) => owner !== 'ivory',
+        ...relayed
+    });
+    assert.strictEqual(inactiveKept.recovered, false);
+    assert.strictEqual(inactiveKept.reason, 'inactive');
+    assert.strictEqual(inactiveKept.recipients[0].owner, 'tsubame');
 }
 
 async function smtpDeliverOnce({ rcpt, headers, extra }) {
@@ -2216,25 +2274,82 @@ async function testEnvelopeOriginalToAndRecipientLog() {
 }
 
 async function testCatchallRecoveryToActiveMailbox() {
-    const { delivered, logs } = await smtpDeliverOnce({
+    const recovered = await smtpDeliverOnce({
+        rcpt: 'mailroom.ops@dream.737.jp.net',
+        headers: [
+            'X-Original-To: <ivory.studio@dream.737.jp.net>',
+            'From: alice@example.com',
+            'To: forged-to@dream.737.jp.net',
+            'Cc: ivory.studio@dream.737.jp.net',
+            'Subject: recover-ham'
+        ].join('\r\n')
+    });
+    assert.strictEqual(recovered.delivered.length, 1);
+    assert.strictEqual(recovered.delivered[0].toOwner, 'ivory');
+    assert.strictEqual(recovered.delivered[0].originalTo, 'ivory.studio@dream.737.jp.net');
+    assert.ok(recovered.logs.some((line) => /RCPT mailroom\.ops@dream\.737\.jp\.net -> tsubame \(catchall\)/.test(line)));
+    assert.ok(recovered.logs.some((line) => /recovered catch-all -> ivory/.test(line)));
+
+    const toOnly = await smtpDeliverOnce({
         rcpt: 'mailroom.ops@dream.737.jp.net',
         headers: [
             'From: alice@example.com',
             'To: ivory.studio@dream.737.jp.net',
-            'Subject: recover-ham'
+            'Cc: menma.dev@dream.737.jp.net',
+            'Subject: forged-headers'
         ].join('\r\n')
     });
-    assert.strictEqual(delivered.length, 1);
-    assert.strictEqual(delivered[0].toOwner, 'ivory');
-    assert.strictEqual(delivered[0].originalTo, 'mailroom.ops@dream.737.jp.net');
-    assert.ok(logs.some((line) => /RCPT mailroom\.ops@dream\.737\.jp\.net -> tsubame \(catchall\)/.test(line)));
-    assert.ok(logs.some((line) => /recovered catch-all -> ivory/.test(line)));
+    assert.strictEqual(toOnly.delivered[0].toOwner, 'tsubame');
+    assert.ok(!toOnly.logs.some((line) => /recovered catch-all/.test(line)));
+}
+
+async function testLmtpPerRcptStatus() {
+    const delivered = [];
+    const inbound = await gateway.startInbound({
+        port: 0,
+        bind: '127.0.0.1',
+        allowFrom: ['127.0.0.1'],
+        mapping: mapping(),
+        deliver: async (msg) => {
+            if (msg.toOwner === 'menma') throw new Error('menma store failed');
+            delivered.push(msg);
+        }
+    });
+    try {
+        const socket = await connectSmtp(inbound.port);
+        const reader = createLineReader(socket);
+        await expectCode(reader, 220);
+        socket.write('LHLO lantis\r\n');
+        await expectCode(reader, 250);
+        socket.write('MAIL FROM:<alice@example.com>\r\n');
+        await expectCode(reader, 250);
+        socket.write('RCPT TO:<menma.dev@dream.737.jp.net>\r\n');
+        await expectCode(reader, 250);
+        socket.write('RCPT TO:<ivory.studio@dream.737.jp.net>\r\n');
+        await expectCode(reader, 250);
+        socket.write('DATA\r\n');
+        await expectCode(reader, 354);
+        socket.write('From: alice@example.com\r\nTo: menma.dev@dream.737.jp.net, ivory.studio@dream.737.jp.net\r\nSubject: split\r\n\r\nbody\r\n.\r\n');
+        const first = await readReply(reader);
+        const second = await readReply(reader);
+        assert.strictEqual(first.code, 451);
+        assert.match(first.text, /menma/);
+        assert.strictEqual(second.code, 250);
+        assert.match(second.text, /ivory/);
+        socket.write('QUIT\r\n');
+        await readReply(reader);
+        socket.end();
+    } finally {
+        await inbound.close();
+    }
+    assert.deepStrictEqual(delivered.map((m) => m.toOwner), ['ivory']);
 }
 
 async function testCatchallSpamAndForgedStayOnTsubame() {
     const spam = await smtpDeliverOnce({
         rcpt: 'mailroom.ops@dream.737.jp.net',
         headers: [
+            'X-Original-To: <ivory.studio@dream.737.jp.net>',
             'X-Spam-Flag: YES',
             'From: alice@example.com',
             'To: ivory.studio@dream.737.jp.net',
@@ -2247,6 +2362,7 @@ async function testCatchallSpamAndForgedStayOnTsubame() {
     const forged = await smtpDeliverOnce({
         rcpt: 'mailroom.ops@dream.737.jp.net',
         headers: [
+            'X-Original-To: <ivory.studio@dream.737.jp.net>',
             'X-Spam-Status: No, score=0.1 required=5.0 tests=LANTIS_FORGED_OURS',
             'From: alice@example.com',
             'To: ivory.studio@dream.737.jp.net',
@@ -2646,6 +2762,7 @@ async function main() {
     await testEnvelopeOriginalToAndRecipientLog();
     await testCatchallRecoveryToActiveMailbox();
     await testCatchallSpamAndForgedStayOnTsubame();
+    await testLmtpPerRcptStatus();
     await testMixedSendRoutes();
     await testOwnDomainFromToPostmaster();
     await testOutboundKeepsOurDomainInternal();

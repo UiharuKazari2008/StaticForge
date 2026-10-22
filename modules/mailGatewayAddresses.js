@@ -297,8 +297,11 @@ function collectHeaderCandidateAddresses({ originalTo, to, cc } = {}) {
 
 /**
  * Trusted-relay catch-all recovery. LANTIS may rewrite an unknown (to it)
- * envelope to mailroom.ops. If the headers name an active mailbox, deliver
- * there instead of Tsubame. Spam and LANTIS_FORGED_OURS stay on the catch-all.
+ * envelope to mailroom.ops. Recover only from the relay's own top-block
+ * X-Original-To, only to a real active mailbox (never a list or alias),
+ * and only when this function itself sees the peer as a configured relay
+ * IP. To/Cc are sender-controlled and are ignored. Spam and
+ * LANTIS_FORGED_OURS stay on the catch-all.
  */
 function envelopeLocal(envelope) {
     const parts = splitLocalDomain(envelope || '');
@@ -309,33 +312,41 @@ function isCatchallRecord(row) {
     return !!(row && (row.via === 'catchall' || isCatchallLocal(envelopeLocal(row.envelope))));
 }
 
-function recoverCatchallDelivery({ recipients, headerAddresses, mapping, spam, forgedOurs } = {}) {
+function recoverCatchallDelivery({
+    recipients,
+    originalTo,
+    mapping,
+    spam,
+    forgedOurs,
+    peer,
+    relayPeers,
+    isActiveMailbox
+} = {}) {
     const current = Array.isArray(recipients) ? recipients.slice() : [];
     if (spam) return { recipients: current, recovered: false, reason: 'spam' };
     if (forgedOurs) return { recipients: current, recovered: false, reason: 'forged' };
+    if (!isAllowedPeer(peer, relayPeers)) {
+        return { recipients: current, recovered: false, reason: 'not-relay' };
+    }
     if (!current.some(isCatchallRecord)) {
         return { recipients: current, recovered: false, reason: 'not-catchall' };
     }
-    const recovered = [];
-    (headerAddresses || []).forEach((addr) => {
-        const info = describeRecipientResolution(addr, mapping);
-        if (!info.owners.length || info.via === 'catchall' || info.via === 'unknown' || info.via === 'foreign') return;
-        info.owners.forEach((owner) => {
-            if (!recovered.some((row) => row.owner === owner)) {
-                recovered.push({ owner, envelope: info.envelope, via: 'recovered' });
-            }
-        });
-    });
-    if (!recovered.length) return { recipients: current, recovered: false, reason: 'no-active-mailbox' };
+    const info = describeRecipientResolution(originalTo, mapping);
+    if (info.via !== 'mailbox' || info.owners.length !== 1) {
+        return { recipients: current, recovered: false, reason: 'not-mailbox' };
+    }
+    const owner = info.owners[0];
+    if (typeof isActiveMailbox === 'function' && !isActiveMailbox(owner)) {
+        return { recipients: current, recovered: false, reason: 'inactive' };
+    }
+    const recovered = { owner, envelope: info.envelope, via: 'recovered' };
     const kept = current.filter((row) => !isCatchallRecord(row));
-    recovered.forEach((row) => {
-        if (!kept.some((item) => item.owner === row.owner)) kept.push(row);
-    });
+    if (!kept.some((item) => item.owner === owner)) kept.push(recovered);
     return {
         recipients: kept,
         recovered: true,
-        reason: 'header-mailbox',
-        recoveredTo: recovered.map((row) => row.owner)
+        reason: 'original-to-mailbox',
+        recoveredTo: [owner]
     };
 }
 

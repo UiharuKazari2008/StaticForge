@@ -94,6 +94,32 @@ function redact(text) {
     return String(text || '').replace(/AUTH\s+\S+\s+\S+/gi, 'AUTH [redacted]');
 }
 
+function lookupActiveMailbox(owner) {
+    try {
+        const exchange = require('./mailExchange');
+        if (typeof exchange.isDirectoryReady === 'function' && !exchange.isDirectoryReady()) {
+            return true;
+        }
+        return exchange.isActiveMailbox(owner);
+    } catch (_err) {
+        return true;
+    }
+}
+
+function lmtpStatusForRcpt(rcpt, results, deliverTo) {
+    const byOwner = new Map();
+    (results || []).forEach((item) => {
+        if (item && item.owner) byOwner.set(item.owner, item);
+    });
+    if (byOwner.has(rcpt.owner)) return byOwner.get(rcpt.owner);
+    const remapped = (deliverTo || []).filter((row) => row.via === 'recovered' || row.via === 'divert');
+    for (let i = 0; i < remapped.length; i++) {
+        const status = byOwner.get(remapped[i].owner);
+        if (status) return status;
+    }
+    return { ok: true, owner: rcpt.owner };
+}
+
 function handleInboundConnection(plainSocket, options) {
     const allowFrom = options.allowFrom;
     const mapping = options.mapping;
@@ -374,17 +400,15 @@ function handleInboundConnection(plainSocket, options) {
                 via: 'divert'
             }];
         } else {
-            const headerAddresses = addresses.collectHeaderCandidateAddresses({
-                originalTo: stampedOriginalTo,
-                to,
-                cc
-            });
             const recovered = addresses.recoverCatchallDelivery({
                 recipients: acceptedRecipients,
-                headerAddresses,
+                originalTo: stampedOriginalTo,
                 mapping,
                 spam: spamMark.spam,
-                forgedOurs: spamMark.forgedOurs
+                forgedOurs: spamMark.forgedOurs,
+                peer,
+                relayPeers: allowFrom,
+                isActiveMailbox: lookupActiveMailbox
             });
             deliverTo = recovered.recipients;
             if (recovered.recovered) {
@@ -425,11 +449,11 @@ function handleInboundConnection(plainSocket, options) {
         busy = true;
         Promise.all(jobs).then((results) => {
             if (mode === 'lmtp') {
-                // RFC 2033: one reply per accepted RCPT. Divert / catch-all
-                // recovery may change who is stored; every original RCPT still
-                // gets a status (never fewer replies than RCPTs).
-                const status = results.find((item) => !item.ok) || results[0] || { ok: true, owner: 'ok' };
+                // RFC 2033: one reply per accepted RCPT. One failure must
+                // not 451 the others — the relay retries every 451 and
+                // would duplicate the successes.
                 acceptedRecipients.forEach((rcpt) => {
+                    const status = lmtpStatusForRcpt(rcpt, results, deliverTo);
                     if (status.ok) reply(`250 2.1.5 ${rcpt.owner} OK`);
                     else reply(`451 4.3.0 ${rcpt.owner} ${redact(status.error && status.error.message)}`);
                 });
