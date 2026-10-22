@@ -172,20 +172,73 @@ function collect(options) {
     };
 }
 
-function writeSnapshot(status) {
-    if (!snapshotPath) return;
+// One async write in flight; a write asked for meanwhile runs after it with the newest
+// status. An unchanged status (ignoring the top-level at) is skipped unless the file is
+// SNAPSHOT_MAX_SKIP_MS old: scripts/director-idle-check.js calls a snapshot older than
+// 10 s stale (SNAPSHOT_MAX_AGE_MS there), so `at` must keep moving while idle.
+const SNAPSHOT_MAX_SKIP_MS = 4000;
+let snapshotDirReady = null;
+let lastStatusJson = null;
+let lastWriteAt = 0;
+let writeInFlight = null;
+let queuedStatusJson = null;
+let queuedWaiters = [];
+
+async function writeSnapshotFile(statusJson) {
+    const target = snapshotPath;
+    if (!target) return;
+    if (snapshotDirReady !== target) {
+        await fs.promises.mkdir(path.dirname(target), { recursive: true });
+        snapshotDirReady = target;
+    }
+    const at = Date.now();
+    // Same text as JSON.stringify({ pid, port, at, status }).
+    const body = `{"pid":${process.pid},"port":${JSON.stringify(listenPort)},"at":${at},"status":${statusJson}}`;
+    const tmp = `${target}.${process.pid}.tmp`;
     try {
-        fs.mkdirSync(path.dirname(snapshotPath), { recursive: true });
-        const body = JSON.stringify({
-            pid: process.pid,
-            port: listenPort,
-            at: Date.now(),
-            status: status || collect()
+        await fs.promises.writeFile(tmp, body, { mode: 0o600 });
+        await fs.promises.rename(tmp, target);
+    } catch (err) {
+        if (err && err.code === 'ENOENT') snapshotDirReady = null;
+        throw err;
+    }
+    lastStatusJson = statusJson;
+    lastWriteAt = at;
+}
+
+function runSnapshotWrite(statusJson) {
+    writeInFlight = writeSnapshotFile(statusJson)
+        .catch(() => { /* snapshot is best-effort */ })
+        .then(() => {
+            writeInFlight = null;
+            if (queuedStatusJson !== null) {
+                const next = queuedStatusJson;
+                const waiters = queuedWaiters;
+                queuedStatusJson = null;
+                queuedWaiters = [];
+                runSnapshotWrite(next).then(() => waiters.forEach((fn) => fn()));
+            }
         });
-        const tmp = `${snapshotPath}.${process.pid}.tmp`;
-        fs.writeFileSync(tmp, body, { mode: 0o600 });
-        fs.renameSync(tmp, snapshotPath);
-    } catch (_err) { /* snapshot is best-effort */ }
+    return writeInFlight;
+}
+
+function writeSnapshot(status, options) {
+    if (!snapshotPath) return Promise.resolve();
+    let statusJson;
+    try {
+        statusJson = JSON.stringify(status || collect());
+    } catch (_err) {
+        return Promise.resolve();
+    }
+    const force = !!(options && options.force);
+    if (writeInFlight) {
+        queuedStatusJson = statusJson;
+        return new Promise((resolve) => queuedWaiters.push(resolve));
+    }
+    if (!force && statusJson === lastStatusJson && Date.now() - lastWriteAt < SNAPSHOT_MAX_SKIP_MS) {
+        return Promise.resolve();
+    }
+    return runSnapshotWrite(statusJson);
 }
 
 function scheduleSnapshot() {
@@ -208,10 +261,12 @@ function startLoopback(options) {
             const url = String(req.url || '').split('?')[0];
             if (req.method === 'GET' && (url === '/busy' || url === '/')) {
                 const status = collect(opts.collect);
-                writeSnapshot(status);
                 const text = JSON.stringify(status);
-                res.writeHead(200, { 'content-type': 'application/json', 'content-length': Buffer.byteLength(text) });
-                res.end(text);
+                // Answer once the file matches, as the synchronous write used to.
+                writeSnapshot(status, { force: true }).then(() => {
+                    res.writeHead(200, { 'content-type': 'application/json', 'content-length': Buffer.byteLength(text) });
+                    res.end(text);
+                });
                 return;
             }
             res.writeHead(404, { 'content-type': 'application/json' });
@@ -278,6 +333,9 @@ function resetForTests() {
     httpSeq = 0;
     stopLoopback();
     snapshotPath = null;
+    snapshotDirReady = null;
+    lastStatusJson = null;
+    lastWriteAt = 0;
 }
 
 function readSnapshot(file, home) {
