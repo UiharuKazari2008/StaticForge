@@ -1,0 +1,360 @@
+/* Lumen (and Glancewell) as Vista's Windows Photo Gallery, 1:1 with the Vista VM (Photo Gallery's
+   viewer at 700x560, 96 dpi, 2026-10-22). Art: PhotoLibraryResources.dll PNGs, four frames across
+   (0 disabled, 1 normal, 2 hot, 3 pressed), in public/static_images/vista-photo-gallery/.
+   Client coordinates of the viewer:
+     the command band 0..35: a black glossy band (toolbar-band.png, one column of the VM's);
+       Back To Gallery's orb (30x29) at 5,2, then the commands: a 24x19 icon frame, the label in white
+       Segoe UI 9 pt, a white ▾ for the menus; a hot command has the glass face (toolbar-hot.png,
+       9-sliced 5 px) 30 px tall at y 2; Help (16x16 frames) 13 px from the right at y 8
+     the picture on #eef3fa, the Info pane 203 px wide at the right (a #dce4ef / white / #c8cfd7
+       edge, #cfdae7 fading to #eef3fa): the thumbnail, the name and details in Vista's link blue,
+       the generation parameters, the prompt
+     the foot 57 px on the window's glass: the control pill 405x33 centred 16 px down (caps 16 px,
+       a 5 px middle), its buttons at +26 zoom (37x25), +84 fit / actual size (27x25), +129 previous
+       (51x25), +180 the slide show orb (44x48, 9 px above the pill), +224 next, +287 / +320 rotate
+       (25x25), the separator (3x21) at +355, +366 delete; the buttons 3 px under the pill's top. */
+
+.wpg-viewer > .modal-content.wpg-client {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: transparent;
+    color: #000;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    text-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+
+/* ---- the command band ---- */
+
+.wpg-viewer .wpg-toolbar {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    flex: none;
+    height: 36px;
+    padding: 0 0 0 5px;
+    overflow: hidden;
+    background: url("/static_images/vista-photo-gallery/toolbar-band.png") repeat-x 0 0 / 1px 36px;
+}
+
+.wpg-viewer .wpg-toolbar button {
+    display: inline-flex;
+    align-items: center;
+    flex: none;
+    box-sizing: border-box;
+    height: 30px;
+    min-height: 0;
+    min-width: 0;
+    margin: 2px 0 0;
+    padding: 0;
+    background: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    color: #fff;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 15px;
+    text-shadow: none;
+    white-space: nowrap;
+    cursor: default;
+}
+
+.wpg-viewer .wpg-toolbar button.wpg-back {
+    gap: 3px;
+    height: 29px;
+    margin-right: 6px;
+    padding: 0 4px 0 0;
+}
+
+.wpg-viewer .wpg-back-orb {
+    flex: none;
+    width: 30px;
+    height: 29px;
+    background: url("/static_images/vista-photo-gallery/back.png") -30px 0 / 120px 29px no-repeat;
+}
+
+.wpg-viewer .wpg-back:hover .wpg-back-orb {
+    background-position: -60px 0;
+}
+
+.wpg-viewer .wpg-back:active .wpg-back-orb {
+    background-position: -90px 0;
+}
+
+/* a command: the hot face's 5 px caps as the border, the icon 7 px in */
+.wpg-viewer .wpg-toolbar button.wpg-cmd {
+    margin-right: 5px;
+    border: solid transparent;
+    border-width: 0 5px;
+    padding: 0 3px 0 2px;
+}
+
+.wpg-viewer .wpg-toolbar button.wpg-cmd:is(:hover, :focus-visible, .context-open) {
+    border-image: url("/static_images/vista-photo-gallery/toolbar-hot.png") 5 fill / 5px stretch;
+}
+
+.wpg-viewer .wpg-toolbar button.wpg-cmd[aria-pressed="true"] {
+    border-image: url("/static_images/vista-photo-gallery/toolbar-hot.png") 5 fill / 5px stretch;
+}
+
+/* the icon frame 8 px under the face's top (VM) */
+.wpg-viewer .wpg-icon {
+    flex: none;
+    align-self: flex-start;
+    width: 24px;
+    height: 19px;
+    margin: 8px 3px 0 0;
+    background: var(--wpg-art) -24px 0 / 96px 19px no-repeat;
+}
+
+.wpg-viewer .wpg-cmd:hover .wpg-icon {
+    background-position: -48px 0;
+}
+
+.wpg-viewer .wpg-drop {
+    flex: none;
+    width: 7px;
+    height: 4px;
+    margin-left: 5px;
+    background: #fff;
+    clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+.wpg-viewer .wpg-help {
+    position: absolute;
+    right: 13px;
+    top: 6px;
+    width: 16px;
+    height: 16px !important;
+    background: url("/static_images/vista-photo-gallery/help.png") -16px 0 / 64px 16px no-repeat !important;
+}
+
+.wpg-viewer .wpg-help:hover {
+    background-position: -32px 0 !important;
+}
+
+/* ---- the picture and the Info pane ---- */
+
+.wpg-viewer .wpg-main {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    background: #eef3fa;
+}
+
+.wpg-viewer .wpg-main > .image-viewer-body {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    background: #eef3fa;
+}
+
+.wpg-viewer .wpg-main .image-container {
+    background: #eef3fa;
+}
+
+.wpg-viewer .wpg-main .image-viewer-blur-background {
+    display: none;
+}
+
+.wpg-viewer .wpg-info {
+    position: relative;
+    flex: 0 0 203px;
+    box-sizing: border-box;
+    min-height: 0;
+    padding: 30px 12px 12px 14px;
+    overflow-y: auto;
+    background: linear-gradient(#cfdae7, #eef3fa 240px);
+    box-shadow: -3px 0 0 #dce4ef, -2px 0 0 #fff, -1px 0 0 #c8cfd7;
+    margin-left: 3px;
+    color: #000;
+    user-select: text;
+}
+
+.wpg-viewer .wpg-info.hidden {
+    display: none;
+}
+
+.wpg-viewer .wpg-info-close {
+    position: absolute;
+    right: 9px;
+    top: 9px;
+    width: 12px;
+    height: 12px;
+    padding: 0;
+    background: none;
+    border: 0;
+    cursor: default;
+}
+
+.wpg-viewer .wpg-info-close::before,
+.wpg-viewer .wpg-info-close::after {
+    content: '';
+    position: absolute;
+    left: 1px;
+    top: 5px;
+    width: 10px;
+    height: 2px;
+    background: #8a8f96;
+    transform: rotate(45deg);
+}
+
+.wpg-viewer .wpg-info-close::after {
+    transform: rotate(-45deg);
+}
+
+.wpg-viewer .wpg-info-close:hover::before,
+.wpg-viewer .wpg-info-close:hover::after {
+    background: #3a3f46;
+}
+
+/* the thumbnail: a white mat, a soft shadow and Vista's reflection */
+.wpg-viewer .wpg-info-thumb {
+    display: flex;
+    justify-content: center;
+    margin: 18px 0 2px;
+}
+
+.wpg-viewer .wpg-info-thumb-img {
+    display: block;
+    max-width: 64px;
+    max-height: 64px;
+    border: 3px solid #fff;
+    box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.25);
+    -webkit-box-reflect: below 1px linear-gradient(transparent 60%, rgba(255, 255, 255, 0.35));
+    background: #fff;
+}
+
+.wpg-viewer :is(.wpg-info-name, .wpg-info-line) {
+    color: #1e5fbf;
+    line-height: 22px;
+    text-align: center;
+    overflow-wrap: anywhere;
+}
+
+.wpg-viewer .wpg-info-sep {
+    height: 1px;
+    margin: 8px -4px 8px -6px;
+    background: linear-gradient(to right, transparent, #d7e0eb 15%, #d7e0eb 85%, transparent);
+    box-shadow: 0 1px 0 #f7f9fc;
+}
+
+.wpg-viewer .wpg-info-params {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 3px 8px;
+    margin: 0;
+    line-height: 15px;
+}
+
+.wpg-viewer .wpg-info-params dt {
+    color: #5c6b7f;
+    white-space: nowrap;
+}
+
+.wpg-viewer .wpg-info-params dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.wpg-viewer .wpg-info-prompt {
+    line-height: 15px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.wpg-viewer .wpg-info-prompt h4 {
+    margin: 0 0 3px;
+    color: #5c6b7f;
+    font: inherit;
+}
+
+.wpg-viewer .wpg-info-prompt p {
+    margin: 0 0 10px;
+    color: #000;
+    font: inherit;
+}
+
+.wpg-viewer .wpg-info :is(dd, .wpg-info-prompt) {
+    color: #000;
+}
+
+/* ---- the foot: the control pill on the glass ---- */
+
+.wpg-viewer .wpg-controls {
+    position: relative;
+    flex: none;
+    height: 57px;
+    background: transparent;
+}
+
+.wpg-viewer .wpg-pill {
+    position: absolute;
+    left: calc(50% - 202px);
+    top: 16px;
+    width: 405px;
+    height: 33px;
+    background:
+        url("/static_images/vista-photo-gallery/pill-left.png") left top / 16px 33px no-repeat,
+        url("/static_images/vista-photo-gallery/pill-right.png") right top / 16px 33px no-repeat,
+        url("/static_images/vista-photo-gallery/pill-middle.png") 16px 0 / calc(100% - 32px) 33px no-repeat;
+}
+
+.wpg-viewer .wpg-ctl {
+    position: absolute;
+    top: 3px;
+    height: 25px;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    background: var(--wpg-art) calc(var(--wpg-w) * -1) 0 / calc(var(--wpg-w) * 4) 100% no-repeat;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    cursor: default;
+}
+
+.wpg-viewer .wpg-ctl:hover:not(:disabled) {
+    background-position-x: calc(var(--wpg-w) * -2);
+}
+
+.wpg-viewer .wpg-ctl:active:not(:disabled),
+.wpg-viewer .wpg-ctl.context-open {
+    background-position-x: calc(var(--wpg-w) * -3);
+}
+
+.wpg-viewer .wpg-ctl:disabled {
+    background-position-x: 0;
+}
+
+.wpg-viewer .wpg-zoom { --wpg-art: url("/static_images/vista-photo-gallery/zoom.png"); --wpg-w: 37px; left: 26px; width: 37px; }
+.wpg-viewer .wpg-fit { --wpg-art: url("/static_images/vista-photo-gallery/actual-size.png"); --wpg-w: 27px; left: 84px; width: 27px; }
+.wpg-viewer .wpg-fit.is-actual { --wpg-art: url("/static_images/vista-photo-gallery/fit.png"); }
+.wpg-viewer .wpg-prev { --wpg-art: url("/static_images/vista-photo-gallery/previous.png"); --wpg-w: 51px; left: 129px; width: 51px; }
+.wpg-viewer .wpg-next { --wpg-art: url("/static_images/vista-photo-gallery/next.png"); --wpg-w: 51px; left: 224px; width: 51px; }
+.wpg-viewer .wpg-show { --wpg-art: url("/static_images/vista-photo-gallery/slideshow.png"); --wpg-w: 44px; left: 180px; top: -9px; width: 44px; height: 48px; z-index: 1; }
+.wpg-viewer .wpg-rotl { --wpg-art: url("/static_images/vista-photo-gallery/rotate-left.png"); --wpg-w: 25px; left: 287px; width: 25px; }
+.wpg-viewer .wpg-rotr { --wpg-art: url("/static_images/vista-photo-gallery/rotate-right.png"); --wpg-w: 25px; left: 320px; width: 25px; }
+.wpg-viewer .wpg-delete { --wpg-art: url("/static_images/vista-photo-gallery/delete.png"); --wpg-w: 25px; left: 366px; width: 25px; }
+
+.wpg-viewer .wpg-sep {
+    position: absolute;
+    left: 355px;
+    top: 6px;
+    width: 3px;
+    height: 21px;
+    background: url("/static_images/vista-photo-gallery/separator.png") 0 0 / 3px 21px no-repeat;
+}
+
+/* Classic: the same layout in the Classic colours */
+body.windows-classic-theme .wpg-viewer .wpg-main,
+body.windows-classic-theme .wpg-viewer .wpg-main .image-container {
+    background: #fff;
+}

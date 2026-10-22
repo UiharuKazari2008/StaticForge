@@ -390,6 +390,7 @@
     <link rel="stylesheet" href="/css/vista-menus.css">
     <link rel="stylesheet" href="/css/vista-explorer.css">
     <link rel="stylesheet" href="/css/vista-file-dialog.css">
+    <link rel="stylesheet" href="/css/vista-photo-gallery.css">
     <link rel="stylesheet" href="/css/desktop-icon-view.css">
     <link rel="stylesheet" href="/css/vista-scrollbars.css">
     <link rel="stylesheet" href="/css/vista-dialogs.css">
@@ -6516,9 +6517,13 @@ Examples:
     </div>
 
     <!-- Image Viewer Modal Template (will be cloned for multiple instances) -->
-    <div id="imageViewerModalTemplate" class="modal hidden transient image-viewer-modal resizeable-window"
-        data-window-max-width="1600" data-window-max-height="1200" data-window-min-width="400"
-        data-window-min-height="300">
+    <!-- Lumen: Vista's Windows Photo Gallery viewer (PhotoLibraryResources.dll art, vista-photo-gallery.css):
+         the black command band, the picture over #eef3fa with the Info pane (the generation parameters),
+         the control pill on the glass at the foot; logic in imageViewer.js -->
+    <div id="imageViewerModalTemplate" class="modal hidden transient image-viewer-modal resizeable-window wpg-viewer"
+        data-window-client="light"
+        data-window-max-width="1600" data-window-max-height="1200" data-window-min-width="460"
+        data-window-min-height="340">
 
         <div class="modal-window-title">
             <div class="modal-window-title-main">
@@ -6539,47 +6544,61 @@ Examples:
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content image-viewer-content dark">
-            <div class="image-viewer-body">
-                <div class="image-container">
-                    <div class="image-viewer-blur-background"></div>
-                    <div id="imageViewerNavigationLoading" class="manual-preview-navigation-loading hidden">
-                        <div class="manual-preview-navigation-loading-content">
-                            <div class="manual-preview-navigation-loading-icon mdi mdi-1-5 mdi-image-sync"></div>
-                            <div id="imageViewerNavigationProgress" class="manual-preview-navigation-progress hidden">
-                                <p id="imageViewerNavigationProgressLabel"
-                                    class="manual-preview-navigation-progress-label">Downloading…</p>
-                                <div class="manual-preview-navigation-progress-bar">
-                                    <div id="imageViewerNavigationProgressFill"
-                                        class="manual-preview-navigation-progress-fill"></div>
+        <div class="modal-content image-viewer-content wpg-client">
+            <div class="wpg-toolbar" role="toolbar">
+                <button type="button" class="wpg-back" data-wpg="gallery" title="Back to the gallery"><span class="wpg-back-orb" aria-hidden="true"></span>Back To Gallery</button>
+                <button type="button" class="wpg-cmd has-menu" data-wpg="file" title="File"><span class="wpg-icon" style="--wpg-art: url('/static_images/vista-photo-gallery/file.png')"></span>File<span class="wpg-drop" aria-hidden="true"></span></button>
+                <button type="button" class="wpg-cmd" data-wpg="fix" title="Fix: edit in DreamStudio"><span class="wpg-icon" style="--wpg-art: url('/static_images/vista-photo-gallery/fix.png')"></span>Fix</button>
+                <button type="button" class="wpg-cmd" data-wpg="info" title="Show or hide the Info pane" aria-pressed="false"><span class="wpg-icon" style="--wpg-art: url('/static_images/vista-photo-gallery/info.png')"></span>Info</button>
+                <button type="button" class="wpg-cmd has-menu" data-wpg="print" title="Print: generate from this picture"><span class="wpg-icon" style="--wpg-art: url('/static_images/vista-photo-gallery/print.png')"></span>Print<span class="wpg-drop" aria-hidden="true"></span></button>
+                <button type="button" class="wpg-cmd has-menu" data-wpg="open" title="Open"><span class="wpg-icon" style="--wpg-art: url('/static_images/vista-photo-gallery/open.png')"></span>Open<span class="wpg-drop" aria-hidden="true"></span></button>
+                <button type="button" class="wpg-help" data-wpg="help" title="Help"></button>
+            </div>
+            <div class="wpg-main">
+                <div class="image-viewer-body">
+                    <div class="image-container">
+                        <div class="image-viewer-blur-background"></div>
+                        <div id="imageViewerNavigationLoading" class="manual-preview-navigation-loading hidden">
+                            <div class="manual-preview-navigation-loading-content">
+                                <div class="manual-preview-navigation-loading-icon mdi mdi-1-5 mdi-image-sync"></div>
+                                <div id="imageViewerNavigationProgress" class="manual-preview-navigation-progress hidden">
+                                    <p id="imageViewerNavigationProgressLabel"
+                                        class="manual-preview-navigation-progress-label">Downloading…</p>
+                                    <div class="manual-preview-navigation-progress-bar">
+                                        <div id="imageViewerNavigationProgressFill"
+                                            class="manual-preview-navigation-progress-fill"></div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
+                        <img id="imageViewerImage" src="" alt="Image" class="viewer-image hidden">
                     </div>
-                    <img id="imageViewerImage" src="" alt="Image" class="viewer-image hidden">
                 </div>
+                <aside class="wpg-info hidden" aria-label="Info">
+                    <button type="button" class="wpg-info-close" data-wpg="info-close" title="Close the Info pane"></button>
+                    <div class="wpg-info-thumb"><img class="wpg-info-thumb-img" alt=""></div>
+                    <div class="wpg-info-name"></div>
+                    <div class="wpg-info-line wpg-info-date"></div>
+                    <div class="wpg-info-line wpg-info-size"></div>
+                    <div class="wpg-info-sep"></div>
+                    <dl class="wpg-info-params"></dl>
+                    <div class="wpg-info-sep"></div>
+                    <div class="wpg-info-prompt"></div>
+                </aside>
             </div>
-            <div class="image-viewer-toolbar">
-                <button type="button" class="btn-secondary toolbar-btn btn-small" id="zoomOutBtn" title="Zoom Out">
-                    <i class="fas fa-search-minus"></i>
-                </button>
-                <span class="zoom-level" id="zoomLevel">100%</span>
-                <button type="button" class="btn-secondary toolbar-btn btn-small" id="zoomInBtn" title="Zoom In">
-                    <i class="fas fa-search-plus"></i>
-                </button>
-                <button type="button" class="btn-secondary toolbar-btn btn-small" id="fitToScreenBtn"
-                    title="Scale to View">
-                    <i class="fas fa-expand"></i>
-                </button>
-                <button type="button" class="btn-secondary toolbar-btn btn-small" id="actualSizeBtn"
-                    title="1:1 Actual Size">
-                    <i class="fas fa-compress"></i>
-                </button>
-                <div class="toolbar-divider"></div>
-                <button type="button" class="btn-secondary toolbar-btn btn-small" id="openInLightboxBtn"
-                    title="Full Screen">
-                    <i class="fas fa-expand-arrows-alt"></i>
-                </button>
+            <div class="wpg-controls">
+                <div class="wpg-pill">
+                    <button type="button" class="wpg-ctl wpg-zoom" id="zoomInBtn" data-wpg="zoom" title="Change the display size"></button>
+                    <button type="button" class="wpg-ctl wpg-fit" id="actualSizeBtn" data-wpg="fit" title="Actual size"></button>
+                    <button type="button" class="wpg-ctl wpg-prev" data-wpg="previous" title="Previous (Left Arrow)" disabled></button>
+                    <button type="button" class="wpg-ctl wpg-show" id="openInLightboxBtn" data-wpg="slideshow" title="Play Slide Show (F11)"></button>
+                    <button type="button" class="wpg-ctl wpg-next" data-wpg="next" title="Next (Right Arrow)" disabled></button>
+                    <button type="button" class="wpg-ctl wpg-rotl" data-wpg="rotate-left" title="Rotate Counterclockwise (Ctrl+,)"></button>
+                    <button type="button" class="wpg-ctl wpg-rotr" data-wpg="rotate-right" title="Rotate Clockwise (Ctrl+.)"></button>
+                    <span class="wpg-sep" aria-hidden="true"></span>
+                    <button type="button" class="wpg-ctl wpg-delete" data-wpg="delete" title="Delete (Del)"></button>
+                </div>
+                <span class="zoom-level" id="zoomLevel" hidden>100%</span>
             </div>
         </div>
     </div>

@@ -218,6 +218,8 @@ class ImageViewer {
         this.dragStartPanY = 0;
         this._loadGeneration = 0;
         this._trackedBlobUrl = null;
+        // the view's rotation (Photo Gallery's Rotate buttons turn the picture on screen, not the file)
+        this.rotation = 0;
 
         this.wireBoundHandlers();
         this.init();
@@ -261,6 +263,25 @@ class ImageViewer {
             document.addEventListener('contextMenuAction', this.boundContextMenuHandler, { signal });
         });
 
+        // Photo Gallery: Left / Right step through the gallery
+        registerKeyboardListener({
+            id: `imageViewer.step.${this.id}`,
+            type: 'whenFocused',
+            modalId: this.id,
+            priority: 40,
+            showInOverlay: false,
+            handler: (e) => {
+                if (e.altKey || e.ctrlKey || e.metaKey) return;
+                const tag = e.target && e.target.tagName;
+                if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+                if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+                const step = e.key === 'ArrowLeft' ? -1 : 1;
+                if (!this.galleryNeighbor(step)) return;
+                e.preventDefault();
+                this.step(step);
+                return true;
+            }
+        });
         registerKeyboardListener({
             id: `imageViewer.overlayClose.${this.id}`,
             type: 'whenFocused',
@@ -275,11 +296,7 @@ class ImageViewer {
     }
 
     init() {
-        // Set title with "Lumen [name]" format
-        const titleElement = this.element.querySelector(`#imageViewerTitle_${this.id}`);
-        if (titleElement) {
-            titleElement.textContent = `Lumen [${this.title}]`;
-        }
+        this.updateTitle();
 
         this.wireModalListenerScope();
         openModal(this.element);
@@ -658,20 +675,233 @@ class ImageViewer {
         }
     }
 
-    setupToolbarButtons() {
-        const zoomInBtn = this.element.querySelector(`#zoomInBtn_${this.id}`);
-        const zoomOutBtn = this.element.querySelector(`#zoomOutBtn_${this.id}`);
-        const fitToScreenBtn = this.element.querySelector(`#fitToScreenBtn_${this.id}`);
-        const actualSizeBtn = this.element.querySelector(`#actualSizeBtn_${this.id}`);
-        const openInLightboxBtn = this.element.querySelector(`#openInLightboxBtn_${this.id}`);
+    /** "Forest - Lumen", as Photo Gallery names its viewer window. */
+    updateTitle() {
+        const titleElement = this.element.querySelector(`#imageViewerTitle_${this.id}`);
+        // the name without its extension, as Photo Gallery shows it
+        if (titleElement) titleElement.textContent = `${String(this.title || '').replace(/\.[a-z0-9]{2,5}$/i, '')} - Lumen`;
+    }
 
-        // Zoom controls
-        if (zoomInBtn) zoomInBtn.addEventListener('click', () => this.zoomIn());
-        if (zoomOutBtn) zoomOutBtn.addEventListener('click', () => this.zoomOut());
-        if (fitToScreenBtn) fitToScreenBtn.addEventListener('click', () => this.fitToScreen());
-        if (actualSizeBtn) actualSizeBtn.addEventListener('click', () => this.actualSize());
-        if (openInLightboxBtn) openInLightboxBtn.addEventListener('click', () => this.openInLightbox());
+    /**
+     * Photo Gallery's command band and control pill (app.html #imageViewerModalTemplate,
+     * vista-photo-gallery.css). The File / Print / Open menus send the context menu's own actions
+     * (handleContextMenuAction); the pill zooms, toggles actual size / fit, steps through the
+     * gallery, plays the slide show (Glancewell), rotates the view and deletes (to Scraps).
+     */
+    setupToolbarButtons() {
+        const q = (sel) => this.element.querySelector(sel);
+        const on = (key, fn) => {
+            const btn = q(`[data-wpg="${key}"]`);
+            if (btn) btn.addEventListener('click', (e) => fn(e, btn));
+        };
+        on('gallery', () => this.jumpToInWorkspace());
+        on('fix', () => this.openInCreator());
+        on('info', () => this.toggleInfoPane());
+        on('info-close', () => this.toggleInfoPane(false));
+        on('help', () => {
+            if (typeof openGrimoireApplet === 'function') openGrimoireApplet();
+        });
+        on('fit', () => this.toggleActualSize());
+        on('slideshow', () => this.openInLightbox());
+        on('previous', () => this.step(-1));
+        on('next', () => this.step(1));
+        on('rotate-left', () => this.rotate(-90));
+        on('rotate-right', () => this.rotate(90));
+        on('delete', () => this.scrap());
+
+        if (typeof contextMenu !== 'undefined' && contextMenu) {
+            const menu = (key, items) => {
+                const btn = q(`[data-wpg="${key}"]`);
+                if (btn) contextMenu.attachClickMenuToElement(btn, { sections: [{ type: 'list', items }] });
+            };
+            const gallery = !!this.getImageFilename();
+            menu('file', [
+                { text: 'Copy', action: 'image-viewer-copy' },
+                { text: 'Save a Copy...', action: 'image-viewer-download' },
+                { separator: true },
+                { text: 'Set as Desktop Background', action: 'image-viewer-set-wallpaper', disabled: !gallery },
+                { text: 'Add to Desktop', action: 'image-viewer-desktop-shortcut', disabled: !gallery },
+                { text: 'New Reference', action: 'image-viewer-create-reference' },
+                { separator: true },
+                { text: 'Properties', action: 'image-viewer-inspect-prompts' },
+                { separator: true },
+                { text: 'Delete Permanently', action: 'image-viewer-incinerate', disabled: !gallery }
+            ]);
+            // Dreamscape's prints are generations: Print makes new pictures from this one
+            menu('print', [
+                { text: 'Reroll', action: 'image-viewer-reroll' },
+                { text: 'Enhance...', action: 'image-viewer-enhance' },
+                { text: 'Upscale', action: 'image-viewer-upscale', disabled: !!(this.metadata && this.metadata.upscaled) },
+                { text: 'Expand Canvas...', action: 'image-viewer-expand' },
+                { text: 'Create Animation', action: 'image-viewer-animate' }
+            ]);
+            menu('open', [
+                { text: 'DreamStudio', action: 'image-viewer-creator' },
+                { text: 'Glancewell', action: 'image-viewer-slideshow' },
+                { text: 'Gallery', action: 'image-viewer-jump-workspace', disabled: !gallery }
+            ]);
+            const zoom = q('[data-wpg="zoom"]');
+            if (zoom) {
+                contextMenu.attachClickMenuToElement(zoom, {
+                    sections: [{
+                        type: 'list',
+                        items: [
+                            { text: 'Zoom In', action: 'wpg-zoom-in' },
+                            { text: 'Zoom Out', action: 'wpg-zoom-out' },
+                            { separator: true },
+                            { text: 'Actual Size', action: 'wpg-actual' },
+                            { text: 'Fit to Window', action: 'wpg-fit' }
+                        ]
+                    }],
+                    onAction: (action) => {
+                        if (action === 'wpg-zoom-in') this.zoomIn();
+                        else if (action === 'wpg-zoom-out') this.zoomOut();
+                        else if (action === 'wpg-actual') this.actualSize();
+                        else if (action === 'wpg-fit') this.fitToScreen();
+                    }
+                });
+            }
+        }
+        this.syncStepButtons();
         // Work-area maximize: .modal-work-area-maximize → openModal wireModalMaximizeButton
+    }
+
+    // ---- Photo Gallery's pill: actual size / fit, previous / next, rotate ----
+
+    toggleActualSize() {
+        if (this.zoomLevel > 1.001) this.fitToScreen();
+        else this.actualSize();
+    }
+
+    syncFitButton() {
+        const btn = this.element.querySelector('[data-wpg="fit"]');
+        if (!btn) return;
+        const actual = this.zoomLevel > 1.001;
+        btn.classList.toggle('is-actual', actual);
+        btn.title = actual ? 'Fit to Window' : 'Actual Size';
+    }
+
+    /** The gallery's pictures around this one (galleryView.js allImages), for Previous / Next. */
+    galleryNeighbor(step) {
+        const name = this.getImageFilename();
+        if (!name || typeof allImages === 'undefined' || !Array.isArray(allImages)) return null;
+        const index = allImages.findIndex((img) => img && (img.filename === name || img.original === name || img.upscaled === name));
+        if (index < 0) return null;
+        return allImages[index + step] || null;
+    }
+
+    syncStepButtons() {
+        const prev = this.element.querySelector('[data-wpg="previous"]');
+        const next = this.element.querySelector('[data-wpg="next"]');
+        if (prev) prev.disabled = !this.galleryNeighbor(-1);
+        if (next) next.disabled = !this.galleryNeighbor(1);
+    }
+
+    step(direction) {
+        const image = this.galleryNeighbor(direction);
+        if (!image) return;
+        const hasFile = !!(image.filename || image.original || image.upscaled);
+        // resolveGalleryFullImageUrl / localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
+        this.imageSrc = (image.url && (!image.url.startsWith('blob:') || !hasFile))
+            ? image.url
+            : (resolveGalleryFullImageUrl(image)
+                || localGalleryImageUrl(image.upscaled || image.original || image.filename)
+                || image.url);
+        this.metadata = image;
+        this.title = image.filename || image.base || 'Gallery Image';
+        this.rotation = 0;
+        this.updateTitle();
+        this.syncStepButtons();
+        this.loadImage();
+        if (this.infoOpen) this.renderInfoPane();
+    }
+
+    rotate(degrees) {
+        this.rotation = ((this.rotation + degrees) % 360 + 360) % 360;
+        this.updateImageTransform();
+    }
+
+    // ---- the Info pane: the picture's details and its generation parameters ----
+
+    toggleInfoPane(force) {
+        const pane = this.element.querySelector('.wpg-info');
+        const btn = this.element.querySelector('[data-wpg="info"]');
+        if (!pane) return;
+        this.infoOpen = typeof force === 'boolean' ? force : !this.infoOpen;
+        pane.classList.toggle('hidden', !this.infoOpen);
+        if (btn) btn.setAttribute('aria-pressed', this.infoOpen ? 'true' : 'false');
+        if (this.infoOpen) this.renderInfoPane();
+    }
+
+    async renderInfoPane() {
+        const pane = this.element.querySelector('.wpg-info');
+        if (!pane) return;
+        const token = (this._infoToken = (this._infoToken || 0) + 1);
+        const set = (sel, text) => {
+            const el = pane.querySelector(sel);
+            if (el) el.textContent = text || '';
+        };
+        const img = this.element.querySelector(`#imageViewerImage_${this.id}`);
+        const thumb = pane.querySelector('.wpg-info-thumb-img');
+        if (thumb) thumb.src = this.imageSrc || '';
+        set('.wpg-info-name', this.title);
+        // the full metadata (prompts, seed ...) comes from the Properties loader when the record lacks it
+        let meta = this.metadata || {};
+        try {
+            if (typeof featureLoader !== 'undefined') await featureLoader.loadFeature('image_prompt_inspector');
+            // imagePromptInspectorManager.resolveMetadata: public/scripts/comp/imagePromptInspector.js
+            if (typeof imagePromptInspectorManager !== 'undefined' && imagePromptInspectorManager.resolveMetadata) {
+                meta = { ...meta, ...(await imagePromptInspectorManager.resolveMetadata(this.metadata || {})) };
+            }
+        } catch (_err) { /* the record's own fields */ }
+        if (token !== this._infoToken) return;
+        const forge = meta.forge_data || {};
+        const pick = (...vals) => vals.find((v) => v !== undefined && v !== null && v !== '');
+        const when = pick(meta.timestamp, meta.created_at, meta.createdAt, meta.date, forge.timestamp);
+        const date = when ? new Date(typeof when === 'number' && when < 1e12 ? when * 1000 : when) : null;
+        set('.wpg-info-date', date && !Number.isNaN(date.getTime())
+            ? `${date.toLocaleDateString()}   ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+            : '');
+        const w = pick(meta.width, img && img.naturalWidth);
+        const h = pick(meta.height, img && img.naturalHeight);
+        set('.wpg-info-size', w && h ? `${w} x ${h}` : '');
+        const params = [
+            ['Model', pick(meta.model_display, meta.model, forge.model)],
+            ['Seed', pick(meta.seed, forge.seed)],
+            ['Steps', pick(meta.steps, forge.steps)],
+            ['Guidance', pick(meta.scale, meta.guidance, forge.scale)],
+            ['Rescale', pick(meta.cfg_rescale, meta.rescale, forge.cfg_rescale)],
+            ['Sampler', pick(meta.sampler, forge.sampler)],
+            ['Noise', pick(meta.noise_schedule, meta.noiseScheduler, forge.noise_schedule)],
+            ['Strength', pick(meta.strength, forge.strength)],
+            ['Preset', pick(meta.preset, meta.presetName, forge.preset)]
+        ].filter(([, v]) => v !== undefined);
+        const dl = pane.querySelector('.wpg-info-params');
+        if (dl) {
+            dl.innerHTML = '';
+            params.forEach(([k, v]) => {
+                const dt = document.createElement('dt');
+                dt.textContent = k;
+                const dd = document.createElement('dd');
+                dd.textContent = String(v);
+                dl.append(dt, dd);
+            });
+        }
+        const prompt = pick(meta.input_prompt, meta.prompt, forge.input_prompt, forge.prompt);
+        const uc = pick(meta.input_uc, meta.uc, meta.negative_prompt, forge.input_uc, forge.uc);
+        const promptHost = pane.querySelector('.wpg-info-prompt');
+        if (promptHost) {
+            promptHost.innerHTML = '';
+            [['Prompt', prompt], ['Undesired content', uc]].forEach(([label, text]) => {
+                if (!text) return;
+                const h4 = document.createElement('h4');
+                h4.textContent = label;
+                const para = document.createElement('p');
+                para.textContent = String(text);
+                promptHost.append(h4, para);
+            });
+            if (!prompt && !uc && !params.length) promptHost.textContent = 'No generation parameters.';
+        }
     }
 
     setupContextMenu() {
@@ -931,6 +1161,9 @@ class ImageViewer {
         switch (action) {
             case 'image-viewer-copy':
                 this.copyToClipboard();
+                break;
+            case 'image-viewer-slideshow':
+                this.openInLightbox();
                 break;
             case 'image-viewer-download':
                 this.download();
@@ -1238,7 +1471,7 @@ class ImageViewer {
     updateImageTransform() {
         const imgElement = this.element.querySelector(`#imageViewerImage_${this.id}`);
         if (imgElement) {
-            imgElement.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${this.zoomLevel})`;
+            imgElement.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${this.zoomLevel}) rotate(${this.rotation || 0}deg)`;
         }
     }
 
@@ -1256,6 +1489,7 @@ class ImageViewer {
     }
 
     updateZoomDisplay() {
+        this.syncFitButton();
         const zoomElement = this.element.querySelector(`#zoomLevel_${this.id}`);
         if (zoomElement) {
             // Calculate actual zoom percentage relative to 1:1 size
