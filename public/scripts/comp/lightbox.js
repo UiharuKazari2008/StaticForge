@@ -950,14 +950,14 @@ function onGlancewellKeydown(e) {
     }
 }
 
-// ---- the command band: Photo Gallery's File, Fix, Info, Print, E-mail, Burn, Make a Movie, Open.
+// ---- the command band: Photo Gallery's File, Fix (named Edit), Info, Print, E-mail, Burn, Make a Movie, Open.
 // They carry what the old PhotoSwipe hover bar had (download, copy, pin, recast, reroll with edit,
 // persona, expand, upscale, scraps, destroy) plus Lumen's actions. Vista centres the group in the
 // band when it fits and otherwise lines it up after Back with the commands that do not fit under »
 // (the menu lists them, menus as submenus). ----
 
 const GLANCEWELL_COMMAND_LABELS = {
-    file: 'File', fix: 'Fix', info: 'Info', print: 'Print', email: 'E-mail', burn: 'Burn', movie: 'Make a Movie', open: 'Open'
+    file: 'File', fix: 'Edit', info: 'Info', print: 'Print', email: 'E-mail', burn: 'Burn', movie: 'Make a Movie', open: 'Open'
 };
 
 /** A menu command's rows for the current picture (the band's menus and the » submenus). */

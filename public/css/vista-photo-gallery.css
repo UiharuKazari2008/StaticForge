@@ -163,10 +163,9 @@ body:not(.windows-classic-theme) .modal.wpg-viewer[data-window-client="light"] >
 }
 
 /* per-command spacing to the VM's ink (File 148, ▾ 195, Fix 223, Info 287, Print 353, ▾ 408,
-   E-mail 435, Burn 518, ▾ 571 at 700 px): no padding after a ▾, our "Fix" / "E-mail" render
-   narrower than ClearType's */
+   E-mail 435, Burn 518, ▾ 571 at 700 px): no padding after a ▾, our "E-mail" renders narrower than
+   ClearType's. Vista's Fix is named Edit here (Yukimi), so the commands after it follow its width */
 .wpg-glancewell .wpg-toolbar button.wpg-cmd.has-menu { padding-right: 0; }
-.wpg-glancewell .wpg-toolbar button.wpg-cmd[data-gw="fix"] { padding-right: 6px; }
 .wpg-glancewell .wpg-toolbar button.wpg-cmd[data-gw="email"] { padding-right: 4px; }
 
 .wpg-glancewell .wpg-toolbar .wpg-cmds {
