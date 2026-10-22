@@ -59,7 +59,7 @@ async function testXiIndexStore() {
     const paths = xi._test.layout();
     assert.ok(paths.indexPath.startsWith(scratch), 'Xi layout is under the scratch HOME');
     fs.mkdirSync(paths.root, { recursive: true });
-    const original = sampleXiIndex();
+    const original = JSON.parse(JSON.stringify(sampleXiIndex()));
     const text = JSON.stringify(original);
     fs.writeFileSync(paths.indexPath, text);
     // Let the file settle so its stamp is not the one being written right now.
