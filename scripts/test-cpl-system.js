@@ -60,9 +60,9 @@ assert.strictEqual(t.deviceText({ hardwareConcurrency: 8, deviceMemory: 8 }), '8
 assert.strictEqual(t.deviceText({ hardwareConcurrency: 1, deviceMemory: 2 }), '1 logical processor, 2 GB of memory');
 
 // the edition from the shared version source (About Windows), the build when there is no service pack
-assert.deepStrictEqual(t.edition({ fullName: 'Melaton Desktop', edition: '2026 R7', copyright: 'Copyright © 2026 Academy City Research P.S.R.  All rights reserved.', servicePack: '', build: '7bbd242' }), {
+assert.deepStrictEqual(t.edition({ fullName: 'Melaton Desktop', edition: '2026 R7', copyright: 'Copyright © 2026 Xyridian Corporation.  All rights reserved.', servicePack: '', build: '7bbd242' }), {
     name: 'Melaton Desktop 2026 R7',
-    copyright: 'Copyright © 2026 Academy City Research P.S.R.  All rights reserved.',
+    copyright: 'Copyright © 2026 Xyridian Corporation.  All rights reserved.',
     servicePack: 'Build 7bbd242'
 });
 assert.strictEqual(t.edition({ servicePack: 'Service Pack 26Q4 abcd1234' }, null).servicePack, 'Service Pack 26Q4 abcd1234');

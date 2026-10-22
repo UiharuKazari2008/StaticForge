@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the About Melaton banner (winver.exe's "About Windows" brand strip): Vista's 413x72
-# banner gradient with the Melaton mark, "Melaton" and "2026 R7" centred where Vista has the
+# banner gradient with the Melaton mark, "Melaton" and "2026 R7" (R7 in orange) centred where Vista has the
 # flag, "Windows Vista" and "Ultimate", and the small copyright at bottom right; plus the 413x5
 # orange rule under it. #aboutMelatoninModal (public/css/about-melaton.css) draws both.
 #
@@ -33,7 +33,9 @@ MARK=34; MARK_TOP=19
 NAME_PT=28; EDITION_PT=20; BASELINE=48; NAME_KERNING=-0.6
 GAP_MARK=6; GAP_RUNS=6
 COPY_PT=8; COPY_RIGHT=406; COPY_BASELINE=67
-NAME="Melaton"; EDITION="2026 R7"; COPYRIGHT="© 2026 Academy City Research P.S.R."
+NAME="Melaton"; EDITION_YEAR="2026"; EDITION_REL="R7"; EDITION="$EDITION_YEAR $EDITION_REL"
+COPYRIGHT="© 2026 Xyridian Corporation"
+REL_FILL="#F88800"   # the release in the Xyridian logo's star orange
 
 command -v convert >/dev/null || { echo "ImageMagick (convert) is required" >&2; exit 1; }
 
@@ -58,6 +60,8 @@ width_of() { # font pt text [kerning]
 }
 name_w=$(width_of "$SEGOE" "$NAME_PT" "$NAME" "$NAME_KERNING")
 edition_w=$(width_of "$LIGHT" "$EDITION_PT" "$EDITION")
+# the release starts where "2026 " ends: the whole run's advance less the release's own
+rel_off=$(( edition_w - $(width_of "$LIGHT" "$EDITION_PT" "$EDITION_REL") ))
 copy_w=$(width_of "$TAHOMA" "$COPY_PT" "$COPYRIGHT")
 content=$(( MARK + GAP_MARK + name_w + GAP_RUNS + edition_w ))
 left=$(( (W - content) / 2 ))
@@ -71,7 +75,8 @@ convert "$BRD/2_101.bmp" -crop "${W}x1+0+0" +repage -scale "${W}x${H}!" \
        -resize "${MARK}x${MARK}" \) -geometry "+${left}+${MARK_TOP}" -composite \
     -density 72 \
     -font "$SEGOE" -pointsize "$NAME_PT" -kerning "$NAME_KERNING" -fill white -annotate "+${name_x}+${BASELINE}" "$NAME" \
-    -kerning 0 -font "$LIGHT" -pointsize "$EDITION_PT" -fill white -annotate "+${edition_x}+${BASELINE}" "$EDITION" \
+    -kerning 0 -font "$LIGHT" -pointsize "$EDITION_PT" -fill white -annotate "+${edition_x}+${BASELINE}" "$EDITION_YEAR" \
+    -fill "$REL_FILL" -annotate "+$(( edition_x + rel_off ))+${BASELINE}" "$EDITION_REL" \
     -font "$TAHOMA" -pointsize "$COPY_PT" -fill white -annotate "+${copy_x}+${COPY_BASELINE}" "$COPYRIGHT" \
     -define png:color-type=2 "PNG24:$OUT/banner.png"
 convert "$BRD/2_111.bmp" -define png:color-type=2 "PNG24:$OUT/banner-rule.png"

@@ -11390,8 +11390,8 @@ const MELETON_VERSION_DEFAULTS = Object.freeze({
     version: '2026 R7',
     servicePack: '',
     copyrightYear: '2026',
-    copyrightHolder: 'Academy City Research P.S.R.',
-    copyright: 'Copyright \u00a9 2026 Academy City Research P.S.R.  All rights reserved.',
+    copyrightHolder: 'Xyridian Corporation',
+    copyright: 'Copyright \u00a9 2026 Xyridian Corporation.  All rights reserved.',
     organization: 'Dreamscape'
 });
 

@@ -21,7 +21,7 @@
     margin: 0;
 }
 
-/* Vista's two spaces after a sentence ("P.S.R.  All rights reserved.") */
+/* Vista's two spaces after a sentence ("Corporation.  All rights reserved.") */
 #melatonControlPanelModal .cpl-sys-line {
     white-space: pre-wrap;
 }
