@@ -9649,7 +9649,7 @@ async function moveToScraps(image) {
         const filename = image.filename || image.original || image.upscaled;
         if (!filename) {
             showError('No filename available for this image');
-            return;
+            return false;
         }
 
         // Use WebSocket API if available, otherwise fall back to HTTP
@@ -9661,19 +9661,21 @@ async function moveToScraps(image) {
                 throw new Error('Failed to move to scraps');
             }
         } else {
-            console.error('Move to scraps failed:', error);
-            showError(`Failed to move to scraps: ${error.error}`);
-            return;
+            console.error('Move to scraps failed: WebSocket not connected');
+            showError('Failed to move to scraps: WebSocket not connected');
+            return false;
         }
 
         showGlassToast('success', null, 'Image Scraped', false, 3000, '<i class="fas fa-bin-bottles-recycle"></i>');
 
         // If currently viewing scraps, reload them
         switchGalleryView(currentGalleryView, true);
+        return true;
     } catch (error) {
         console.error('Error moving to scraps:', error);
         showError('Failed to move image to scraps');
     }
+    return false;
 }
 
 // Direct function to move image to scraps by filename (used by gallery context menu)
@@ -10283,7 +10285,7 @@ async function deleteImage(image, event = null) {
     );
 
     if (!confirmed) {
-        return;
+        return false;
     }
 
     try {
@@ -10337,10 +10339,12 @@ async function deleteImage(image, event = null) {
             }
         }
 
+        return deleted;
     } catch (error) {
         console.error('Delete error:', error);
         showError('Failed to delete image: ' + error.message);
     }
+    return false;
 }
 
 // Add context menu event listener

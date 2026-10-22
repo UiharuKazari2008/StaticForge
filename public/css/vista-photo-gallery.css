@@ -241,6 +241,11 @@
     overflow-wrap: anywhere;
 }
 
+/* the date and the time sit apart, as in Vista ("4/25/2005   12:00 AM") */
+.wpg-viewer .wpg-info-line {
+    white-space: pre-wrap;
+}
+
 .wpg-viewer .wpg-info-sep {
     height: 1px;
     margin: 8px -4px 8px -6px;
@@ -364,7 +369,7 @@ body.windows-classic-theme .wpg-viewer .wpg-main .image-container {
 
 /* ---- Glancewell (#photoSwipeWindow): windowed it is the same viewer around PhotoSwipe (the
    pictures on #eef3fa, PhotoSwipe's own bars and arrows hidden: the band and the pill drive it);
-   full screen (not .windowed) it stays the slide show without the frame. ---- */
+   full screen (not .windowed) is the slide show without the frame. ---- */
 
 /* inside the frame like any client (the shell's own rule pads the caption only) */
 body.desktop-mode #photoSwipeWindow.wpg-glancewell.windowed {
@@ -398,4 +403,70 @@ body.desktop-mode #photoSwipeWindow.wpg-glancewell:not(.windowed) :is(.wpg-toolb
 body.desktop-mode #photoSwipeWindow.wpg-glancewell:not(.windowed) .wpg-main {
     flex: 1 1 auto;
     min-height: 0;
+}
+
+/* Glancewell's zoom popup: Vista's "Change the display size" slider over the zoom button (VM: 32x103,
+   #646464 edge, #f0f0f0 face, a soft shadow right and down; the channel's four columns 13 px in from
+   11 px down for 80 px; the right-pointing thumb 20x11, 6 px in; lightbox.js positions it) */
+body.desktop-mode #photoSwipeWindow.wpg-glancewell .wpg-zoom-pop {
+    position: absolute;
+    z-index: 5;
+    box-sizing: border-box;
+    width: 32px;
+    height: 103px;
+    background: #f0f0f0;
+    border: 1px solid #646464;
+    box-shadow: 2px 2px 3px rgba(0, 0, 0, 0.3);
+    touch-action: none;
+}
+
+body.desktop-mode #photoSwipeWindow.wpg-glancewell .wpg-zoom-pop.hidden {
+    display: none;
+}
+
+body.desktop-mode #photoSwipeWindow.wpg-glancewell .wpg-zoom-channel {
+    position: absolute;
+    left: 12px;
+    top: 10px;
+    width: 4px;
+    height: 80px;
+    background: linear-gradient(to right, #b0b0b0 1px, #e7eaea 1px 3px, #fdfdfd 3px);
+    box-shadow: inset 0 1px 0 #9b9c9c;
+}
+
+body.desktop-mode #photoSwipeWindow.wpg-glancewell .wpg-zoom-thumb {
+    position: absolute;
+    left: 5px;
+    width: 20px;
+    height: 11px;
+    background: url("/static_images/vista-photo-gallery/zoom-thumb.png") 0 0 / 20px 11px no-repeat;
+    pointer-events: none;
+}
+
+/* Glancewell's slide show: Vista's basic slide show, the picture fitted on black, no chrome; the
+   pointer hides while idle (lightbox.js playGlancewellSlideShow) */
+body.desktop-mode #photoSwipeWindow.wpg-glancewell.wpg-slideshow {
+    background: #000 !important;
+}
+
+body.desktop-mode #photoSwipeWindow.wpg-glancewell.wpg-slideshow #photoSwipeMount .pswp {
+    --pswp-bg: #000;
+    --pswp-placeholder-bg: #000;
+}
+
+body.desktop-mode #photoSwipeWindow.wpg-glancewell.wpg-slideshow #photoSwipeMount .pswp :is(.pswp__top-bar, .pswp__button--arrow, .pswp__counter, .pswp__custom-bottom-bar, .pswp__shell-restore-strip) {
+    display: none !important;
+}
+
+body.desktop-mode #photoSwipeWindow.wpg-glancewell.wpg-slideshow #photoSwipeMount .pswp :is(.pswp__img, .pswp__zoom-wrap, .pswp__item) {
+    cursor: default !important;
+}
+
+body.desktop-mode #photoSwipeWindow.wpg-glancewell.wpg-slideshow.wpg-pointer-idle,
+body.desktop-mode #photoSwipeWindow.wpg-glancewell.wpg-slideshow.wpg-pointer-idle * {
+    cursor: none !important;
+}
+
+body.desktop-mode #photoSwipeWindow.wpg-glancewell.wpg-slideshow #photoSwipeMount .pswp .pswp__bg {
+    opacity: 1 !important;
 }

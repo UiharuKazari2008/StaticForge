@@ -196,7 +196,7 @@ class ImageViewerManager {
  * the date and size, the generation parameters and the prompts. The full metadata comes from the
  * Properties loader (imagePromptInspector.js) when the record lacks it.
  * @param {Element} pane the .wpg-info element
- * @param {{metadata: object, src: string, title: string, img: HTMLImageElement|null}} source
+ * @param {{metadata: object, src: string, title: string, img: HTMLImageElement|null, when?: number, sizeText?: string}} source
  */
 async function renderPhotoGalleryInfoPane(pane, source) {
     if (!pane) return;
@@ -221,14 +221,16 @@ async function renderPhotoGalleryInfoPane(pane, source) {
     if (token !== pane._wpgToken) return;
     const forge = meta.forge_data || {};
     const pick = (...vals) => vals.find((v) => v !== undefined && v !== null && v !== '');
-    const when = pick(meta.timestamp, meta.created_at, meta.createdAt, meta.date, forge.timestamp);
+    const when = pick(meta.timestamp, meta.created_at, meta.createdAt, meta.date, forge.timestamp, meta.mtime, source.when);
     const date = when ? new Date(typeof when === 'number' && when < 1e12 ? when * 1000 : when) : null;
     set('.wpg-info-date', date && !Number.isNaN(date.getTime())
         ? `${date.toLocaleDateString()}   ${date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
         : '');
     const w = pick(meta.width, img && img.naturalWidth);
     const h = pick(meta.height, img && img.naturalHeight);
-    set('.wpg-info-size', w && h ? `${w} x ${h}` : '');
+    // Vista's "648 KB (1024 x 768)"
+    const dims = w && h ? `${w} x ${h}` : '';
+    set('.wpg-info-size', source.sizeText ? (dims ? `${source.sizeText} (${dims})` : source.sizeText) : dims);
     const params = [
         ['Model', pick(meta.model_display, meta.model, forge.model)],
         ['Seed', pick(meta.seed, forge.seed)],
