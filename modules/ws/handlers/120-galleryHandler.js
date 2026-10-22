@@ -1579,24 +1579,31 @@ async function handleUpdateImagePresetBulk(handlers, ws, message, clientInfo, ws
                     continue;
                 }
 
-                // Update the preset name in the metadata
-                if (!metadata.forge_data) {
-                    metadata.forge_data = {};
-                }
-
+                let updatedImageBuffer = null;
                 if (presetName === null || presetName === '') {
-                    // Remove preset name
-                    delete metadata.forge_data.preset_name;
+                    // Remove preset name. readMetadata has no forge_data (it lives in the Comment
+                    // JSON) and updateMetadata keeps an existing preset_name, so edit the Comment (#622).
+                    let comment = null;
+                    try {
+                        comment = metadata.tEXt?.Comment ? JSON.parse(metadata.tEXt.Comment) : null;
+                    } catch (_) {
+                        comment = null;
+                    }
+                    if (comment?.forge_data && Object.prototype.hasOwnProperty.call(comment.forge_data, 'preset_name')) {
+                        delete comment.forge_data.preset_name;
+                        updatedImageBuffer = handlers.globalResources.getPngMetadata()
+                            .insertTextChunk(imageBuffer, 'Comment', JSON.stringify(comment));
+                    }
                 } else {
                     // Set new preset name
-                    metadata.forge_data.preset_name = presetName;
+                    updatedImageBuffer = handlers.globalResources.getPngMetadata()
+                        .updateMetadata(imageBuffer, { preset_name: presetName });
                 }
 
-                // Update the image with new metadata
-                const updatedImageBuffer = handlers.globalResources.getPngMetadata().updateMetadata(imageBuffer, metadata.forge_data);
-
-                // Write the updated image back to disk
-                await fs.promises.writeFile(filePath, updatedImageBuffer);
+                // Write the updated image back to disk (nothing to remove: file unchanged)
+                if (updatedImageBuffer) {
+                    await fs.promises.writeFile(filePath, updatedImageBuffer);
+                }
 
                 results.push({ filename, presetName: presetName || 'removed' });
                 console.log(`✏️ Updated preset name for ${filename}: ${presetName || 'removed'}`);

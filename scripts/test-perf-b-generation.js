@@ -468,6 +468,39 @@ sections.previewHash = async function previewHash() {
         `match; PNG reads ${oldMs.toFixed(0)} ms -> resolver ${newMs.toFixed(0)} ms`);
 };
 
+// #622: bulk "remove preset name" must remove forge_data.preset_name; set keeps working.
+sections.preset622 = async function preset622() {
+    const pm = new PngMetadata(null);
+    const dir = makeWorkDir('preset622');
+    const base = await makeNaiLikePng(pm);
+    const withPreset = pm.updateMetadata(base, { generation_type: 'generated', preset_name: 'Old Preset' });
+    fs.writeFileSync(path.join(dir, 'a.png'), withPreset);
+    fs.writeFileSync(path.join(dir, 'b.png'), withPreset);
+    fs.writeFileSync(path.join(dir, 'c.png'), base);
+    const sent = [];
+    const handlers = {
+        sendToClient: (_ws, msg) => sent.push(msg),
+        sendError: (_ws, msg) => { throw new Error(msg); },
+        globalResources: { getPath: () => dir, getPngMetadata: () => pm }
+    };
+    const galleryHandler = require('../modules/ws/handlers/120-galleryHandler');
+    const wsPacketRegistry = require('../modules/ws/wsPacketRegistry');
+    galleryHandler.registerPackets(handlers);
+    const handle = wsPacketRegistry.getWsPacketHandler('update_image_preset_bulk');
+    const run = (message) => handle({ handlers, ws: {}, message, clientInfo: {}, wsServer: { broadcast() {} } });
+
+    await run({ type: 'update_image_preset_bulk', requestId: 'r1', filenames: ['a.png', 'c.png'], presetName: '' });
+    const a = readForgeData(pm, fs.readFileSync(path.join(dir, 'a.png')));
+    assert.ok(!('preset_name' in a), 'remove must drop preset_name');
+    assert.strictEqual(a.generation_type, 'generated', 'other forge_data kept');
+    assert.ok(fs.readFileSync(path.join(dir, 'c.png')).equals(base), 'no preset to remove: file unchanged');
+    assert.strictEqual(sent[0].data.updatedCount, 2);
+
+    await run({ type: 'update_image_preset_bulk', requestId: 'r2', filenames: ['b.png'], presetName: 'New Preset' });
+    assert.strictEqual(readForgeData(pm, fs.readFileSync(path.join(dir, 'b.png'))).preset_name, 'New Preset');
+    console.log('  preset622: ok (remove drops preset_name, set still sets it)');
+};
+
 async function main() {
     const wanted = process.argv.slice(2);
     const names = wanted.length ? wanted : Object.keys(sections);
