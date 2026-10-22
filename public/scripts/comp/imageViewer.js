@@ -352,16 +352,17 @@ class ImageViewer {
             handler: (e) => {
                 const tag = e.target && e.target.tagName;
                 if (tag === 'INPUT' || tag === 'TEXTAREA' || e.metaKey) return;
-                // Photo Viewer's keys: Del, Ctrl+, / Ctrl+. rotate, Ctrl+0 fit, Ctrl+Alt+0 actual size
+                // Photo Viewer's keys: Del, F11 slide show, Ctrl+, / Ctrl+. rotate, Ctrl+0 fit, Ctrl+Alt+0 actual size
                 const key = e.ctrlKey && e.altKey && e.key === '0' ? 'actual'
                     : e.ctrlKey && !e.altKey ? { ',': 'rotl', '.': 'rotr', 0: 'fit' }[e.key]
-                        : !e.ctrlKey && !e.altKey && e.key === 'Delete' ? 'delete' : null;
+                        : !e.ctrlKey && !e.altKey ? { Delete: 'delete', F11: 'show' }[e.key] : null;
                 if (key) {
                     e.preventDefault();
                     if (key === 'actual') this.actualSize();
                     else if (key === 'fit') this.fitToScreen();
                     else if (key === 'rotl') this.rotate(-90);
                     else if (key === 'rotr') this.rotate(90);
+                    else if (key === 'show') void this.playSlideShow();
                     else if (this.getImageFilename()) void this.deleteAndAdvance();
                     return true;
                 }
@@ -779,7 +780,7 @@ class ImageViewer {
      * File (copies, wallpaper, Properties = the generation parameters, delete, Exit), Print (Dreamscape's
      * prints are generations: new pictures from this one), E-mail (send it to Wren), Burn (keep it:
      * pin, desktop, reference), Open (DreamStudio, Glancewell, the gallery, a chat). The pill zooms,
-     * toggles actual size / fit, steps through the gallery, plays the slide show, rotates and deletes.
+     * toggles actual size / fit, steps through the gallery, plays Photo Viewer's slide show, rotates and deletes.
      */
     setupToolbarButtons() {
         const q = (sel) => this.element.querySelector(sel);
@@ -796,7 +797,7 @@ class ImageViewer {
             if (typeof openGrimoireApplet === 'function') openGrimoireApplet();
         });
         on('fit', () => this.toggleActualSize());
-        on('slideshow', () => this.openInLightbox());
+        on('slideshow', () => void this.playSlideShow());
         on('previous', () => this.step(-1));
         on('next', () => this.step(1));
         on('rotate-left', () => this.rotate(-90));
@@ -1649,6 +1650,36 @@ class ImageViewer {
         };
 
         this.element.addEventListener('modalResized', this.boundResizeHandler);
+    }
+
+    /**
+     * Photo Viewer's slide show: the gallery from this picture on, full screen; Esc / Exit comes back
+     * here on the picture the show stopped on (playSlideShowFromLumen: public/scripts/comp/lightbox.js).
+     */
+    async playSlideShow() {
+        if (typeof playSlideShowFromLumen !== 'function') {
+            this.openInLightbox();
+            return;
+        }
+        const filename = this.getImageFilename();
+        const onExit = (name) => {
+            const image = name && name !== this.getImageFilename() && typeof findImageByFilename === 'function'
+                ? findImageByFilename(name)
+                : null;
+            if (image) this.showGalleryImage(image);
+            // bringModalToFront: public/scripts/comp/modalUtils.js
+            if (this.element && !this.element.classList.contains('hidden')) bringModalToFront(this.element);
+        };
+        if (filename) {
+            await playSlideShowFromLumen({ filename }, onExit);
+            return;
+        }
+        const imgElement = this.element.querySelector(`#imageViewerImage_${this.id}`);
+        await playSlideShowFromLumen({
+            url: this.imageSrc,
+            width: imgElement ? (imgElement.naturalWidth || 1024) : 1024,
+            height: imgElement ? (imgElement.naturalHeight || 1024) : 1024
+        }, onExit);
     }
 
     openInLightbox() {

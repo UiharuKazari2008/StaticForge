@@ -370,6 +370,7 @@ function wirePhotoSwipeShellControlsOnce() {
     document.addEventListener('staticforge:modal-lifecycle', (e) => {
         if (!e.detail || e.detail.type !== 'closed' || e.detail.id !== shell.id) return;
         exitGlancewellSlideShow();
+        resetGlancewellSlideShowShell();
         const pswp = getActivePhotoSwipe();
         if (pswp) pswp.close();
     });
@@ -383,6 +384,12 @@ function preparePhotoSwipeDesktopShellBeforeOpen() {
     shell.classList.add('windowed');
     wirePhotoSwipeShellControlsOnce();
     openModal(shell);
+    // Lumen's slide show paints full screen from the first frame (no Glancewell window first)
+    if (glancewellShow.lumenStart) {
+        glancewellShow.savedStyle = shell.getAttribute('style');
+        shell.classList.add('wpg-slideshow');
+        shell.classList.remove('windowed');
+    }
     ensureModalEdgesWithinWorkArea(shell);
     updatePhotoSwipeMaximizeButtonIcon();
     requestAnimationFrame(() => syncPhotoSwipeShellRestoreStripVisibility());
@@ -450,7 +457,10 @@ const glancewellShow = {
     idleTimer: null,
     savedStyle: null,
     savedOptions: null,
-    menuConfigId: null
+    menuConfigId: null,
+    // Lumen's show (playSlideShowFromLumen): opens straight into the show, closes on Exit
+    lumenStart: null,
+    lumenExit: null
 };
 
 /** The current slide's picture: { filename, metadata, src } (both open paths' slide shapes). */
@@ -689,6 +699,34 @@ function playGlancewellSlideShow() {
     scheduleGlancewellSlide();
 }
 
+/** After a show closed with the window (Lumen's): back to the window's own layout for the next open. */
+function resetGlancewellSlideShowShell() {
+    const shell = getPhotoSwipeShell();
+    if (!shell || !shell.classList.contains('wpg-slideshow')) return;
+    const mount = getPhotoSwipeMount();
+    if (mount) mount.removeAttribute('data-context-menu');
+    shell.removeEventListener('pointermove', onGlancewellSlideShowPointerMove);
+    shell.classList.remove('wpg-slideshow', 'wpg-pointer-idle');
+    shell.classList.add('windowed');
+    if (glancewellShow.savedStyle != null) shell.setAttribute('style', glancewellShow.savedStyle);
+    glancewellShow.savedStyle = null;
+}
+
+/**
+ * Lumen's slide show (Windows Photo Viewer's is the same basic show and menu): the gallery from the
+ * picture on, full screen at once; Exit / Esc closes it and onExit(filename) gets the picture it
+ * stopped on (ImageViewer.playSlideShow: public/scripts/comp/imageViewer.js).
+ */
+async function playSlideShowFromLumen(input, onExit) {
+    glancewellShow.lumenStart = { onExit };
+    try {
+        await showLightbox(input);
+    } catch (err) {
+        glancewellShow.lumenStart = null;
+        throw err;
+    }
+}
+
 /** The slide show's picture fills the screen (letterboxed on black). */
 function fillGlancewellSlideShowSlide(p) {
     const s = p && p.currSlide;
@@ -698,6 +736,23 @@ function fillGlancewellSlideShowSlide(p) {
 
 function exitGlancewellSlideShow() {
     if (!glancewellShow.on) return;
+    // Lumen's show closes on Exit and hands Lumen the picture it stopped on
+    if (glancewellShow.lumenExit) {
+        const onExit = glancewellShow.lumenExit;
+        glancewellShow.lumenExit = null;
+        glancewellShow.on = false;
+        glancewellShow.playing = false;
+        clearTimeout(glancewellShow.timer);
+        clearTimeout(glancewellShow.idleTimer);
+        const pic = glancewellCurrentPicture();
+        const p = getActivePhotoSwipe();
+        if (p) {
+            p.options.showHideAnimationType = 'none';
+            p.close();
+        }
+        try { onExit(pic.filename); } catch (err) { console.error('Lumen slide show exit:', err); }
+        return;
+    }
     glancewellShow.on = false;
     glancewellShow.playing = false;
     clearTimeout(glancewellShow.timer);
@@ -981,7 +1036,15 @@ function attachGlancewellChrome(pswp) {
     if (!pswp || !document.body.classList.contains('desktop-mode')) return;
     wireGlancewellChromeOnce();
     pswp.on('change', () => syncGlancewellChrome());
-    pswp.on('afterInit', () => syncGlancewellChrome());
+    pswp.on('afterInit', () => {
+        syncGlancewellChrome();
+        const start = glancewellShow.lumenStart;
+        if (start) {
+            glancewellShow.lumenStart = null;
+            playGlancewellSlideShow();
+            glancewellShow.lumenExit = start.onExit;
+        }
+    });
     pswp.on('zoomPanUpdate', () => syncGlancewellZoomChrome());
     pswp.on('close', () => {
         exitGlancewellSlideShow();
@@ -1862,6 +1925,7 @@ window.wsClient.registerInitStep(36, 'Initializing PhotoSwipe Lightbox', async (
 
 // Make functions globally available for compatibility
 window.showLightbox = showLightbox;
+window.playSlideShowFromLumen = playSlideShowFromLumen;
 window.hideLightbox = hideLightbox;
 window.navigateLightbox = navigateLightbox;
 window.updateLightboxControls = updateLightboxControls;
