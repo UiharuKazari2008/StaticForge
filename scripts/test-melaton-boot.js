@@ -426,6 +426,25 @@ const flush = () => new Promise((r) => setImmediate(r));
         await run;
     }
 
+    // the BIOS boots the CD-ROM over an installation (the CD prompt, the boot menu): the pages with Upgrade
+    {
+        const cdBios = { createBios: () => ({ work: { os: true, resume: null }, post: async () => ({ device: 'cdrom', via: 'prompt' }) }) };
+        h = harness([json(true)], { bios: cdBios, engine: mediaEngine() });
+        const run = h.ctl.runChecks();
+        for (let i = 0; i < 1200 && !(h.ctl.screen === 'install' && h.ctl.setup && h.ctl.setup.page === 'language'); i++) await flush();
+        assert.strictEqual(h.ctl.install, null, 'no unattended install over a full installation');
+        assert.strictEqual(h.t.last().data.page, 'language', 'Setup starts at its first page');
+        assert.strictEqual(h.ctl.setup.upgradeAllowed, true, 'Upgrade is offered');
+        h.ctl.runId += 1;
+        await run;
+        // nothing on the disk: the same CD boot installs unattended
+        const blankBios = { createBios: () => ({ work: { os: false, resume: null }, post: async () => ({ device: 'cdrom', via: 'order' }) }) };
+        h = harness([json(true)], { fresh: true, bios: blankBios, engine: { ...mediaEngine(), readRecord: () => null } });
+        await h.ctl.runChecks();
+        const pages = h.t.renders.filter((r) => r.screen === 'install').map((r) => r.data.page);
+        assert.ok(pages.length && pages.every((p) => p === 'install'), 'a blank disk goes straight to Installing Melaton');
+    }
+
     // the product key page takes a key when the server has none, and stores it
     h = harness([...Array(7).fill(networkErr()), json(true, { novelaiKeyConfigured: false })], { engine: mediaEngine(), productKey: 'pst-abc' });
     await h.ctl.runChecks();
@@ -589,7 +608,7 @@ const flush = () => new Promise((r) => setImmediate(r));
         h = harness([json(true)], { engine: fe.engine });
         h.ctl.bootMode = 'restore';
         assert.strictEqual(await h.ctl.runChecks(), 'teal');
-        assert.deepStrictEqual(fe.calls, [], 'restore does not check or copy');
+        assert.deepStrictEqual(fe.calls, ['check'], "restore copies nothing: only the POST's digest check");
         assert.strictEqual(fe.store.state, null, 'a resumed install is dropped');
         assert.deepStrictEqual(h.t.replaced, ['/app']);
         assert.ok(!('melatonSafeMode' in h.t.storage));
@@ -599,19 +618,19 @@ const flush = () => new Promise((r) => setImmediate(r));
         h = harness([json(true)], { engine: fe.engine });
         h.ctl.bootMode = 'safe';
         assert.strictEqual(await h.ctl.runChecks(), 'teal');
-        assert.deepStrictEqual(fe.calls, ['check'], 'safe mode still applies updates');
+        assert.deepStrictEqual(fe.calls, ['check', 'check'], 'safe mode still applies updates (the POST, then the boot screen)');
         assert.strictEqual(h.t.storage.melatonSafeMode, '1');
     }
 
     // nothing to update: straight to teal
     let u = await runWith({ checks: [{ files: [], bytes: 0 }] });
     assert.strictEqual(u.result, 'teal');
-    assert.deepStrictEqual(u.calls, ['check'], 'checked, nothing downloaded');
+    assert.deepStrictEqual(u.calls, ['check', 'check'], 'checked at the POST and on the boot screen, nothing downloaded');
 
     // a few files: silently behind the boot screen, then teal
     u = await runWith({ checks: [{ files: files(5), bytes: 500 }] });
     assert.strictEqual(u.result, 'teal');
-    assert.deepStrictEqual(u.calls, ['check', 'download:5:silent']);
+    assert.deepStrictEqual(u.calls, ['check', 'check', 'download:5:silent']);
     assert.ok(!u.t.screens().includes('install'), 'no installer for a small update');
 
     // a quiet download that does not land opens the installer instead of the boot menu
@@ -636,13 +655,13 @@ const flush = () => new Promise((r) => setImmediate(r));
     assert.strictEqual(u.t.last().data.info, boot.INFO.cache);
 
     // no controlling worker: Setup still runs. Leaving for /app was the retry dialog.
-    u = await runWith({ worker: false, checks: [{ files: files(50), bytes: 5000 }, { files: [], bytes: 0 }] });
+    u = await runWith({ worker: false, checks: [{ files: files(50), bytes: 5000 }] });
     assert.strictEqual(u.result, 'reboot');
     assert.ok(u.t.screens().includes('install'), 'a missing worker still enters the installer');
     assert.ok(!u.t.replaced.includes('/app'), 'a missing worker must not leave for /app');
 
     // a large update: black, Setup, the checklist, linger, black, reboot /launch
-    u = await runWith({ checks: [{ files: files(50), bytes: 5000 }, { files: [], bytes: 0 }] });
+    u = await runWith({ checks: [{ files: files(50), bytes: 5000 }] });
     assert.strictEqual(u.result, 'reboot');
     assert.deepStrictEqual(u.t.screens(), ['bios', 'black', 'loading', 'black', 'boot', 'black', 'install', 'black'], 'POST → black → the loading bar → black → boot → black → Setup → black (the POST foresaw the update)');
     assert.deepStrictEqual(u.t.replaced, ['/launch'], 'reboots into /launch, not /app');
@@ -654,7 +673,7 @@ const flush = () => new Promise((r) => setImmediate(r));
     assert.ok(Math.abs(lastInstall.overall - 1) < 1e-9, 'second bar full');
     assert.strictEqual(u.store.state, null, 'install state cleared');
     assert.strictEqual(u.store.record.files, 50);
-    assert.deepStrictEqual(u.calls, ['check', 'copyPack', 'subset:50', 'expandPack', 'group:features', 'group:updates'], 'the installer copies one pack, then expands and checks each group');
+    assert.deepStrictEqual(u.calls, ['check', 'check', 'copyPack', 'subset:50', 'expandPack', 'group:features', 'group:updates'], 'checked at the POST and on the boot screen; the installer copies one pack, then expands and checks each group');
     assert.ok(installs.some((r) => r.data.phase === 'arrive'), 'aurora alone before the setup window');
     assert.ok(u.t.now >= boot.config.installLingerMs + boot.config.installArriveMs + 5 * boot.config.installStepMs, 'arrive, each line readable, then the linger');
 
@@ -672,14 +691,14 @@ const flush = () => new Promise((r) => setImmediate(r));
             holdRestart: (o) => { log.push('hold:' + (o.upgrade ? 'upgrade' : 'install')); return Promise.resolve('restart'); },
             upgradeLite: (onProgress) => { log.push('lite'); onProgress(1); return Promise.resolve({ replaced: 1, left: 0 }); }
         });
-        u = await runWith({ checks: [{ files: files(50), bytes: 5000 }, { files: [], bytes: 0 }] }, { games: games(true) });
+        u = await runWith({ checks: [{ files: files(50), bytes: 5000 }] }, { games: games(true) });
         assert.strictEqual(u.result, 'reboot');
         assert.deepStrictEqual(log, ['show', 'gate', 'gate', 'gate', 'gate', 'lite', 'hold:install', 'close'], 'toolbar, a gate before each later step, the light copies replaced, the held restart');
         assert.deepStrictEqual(u.t.replaced, ['/launch'], 'Restart now reboots /launch');
         const heldAt = u.t.now;
 
         log.length = 0;
-        u = await runWith({ checks: [{ files: files(50), bytes: 5000 }, { files: [], bytes: 0 }], prior: { files: 10 } }, { games: games(false) });
+        u = await runWith({ checks: [{ files: files(50), bytes: 5000 }], prior: { files: 10 } }, { games: games(false) });
         assert.strictEqual(u.result, 'reboot');
         assert.ok(!log.some((l) => l.startsWith('hold')), 'no game open: the usual linger and reboot');
         assert.strictEqual(log[log.length - 1], 'close');
@@ -712,7 +731,7 @@ const flush = () => new Promise((r) => setImmediate(r));
     assert.strictEqual(u.store.state, null);
 
     // a few files the worker will not keep do not stop the install; they are remembered
-    u = await runWith({ checks: [{ files: files(50), bytes: 5000 }, { files: [], bytes: 0 }], verify: (list) => list.slice(0, 3) });
+    u = await runWith({ checks: [{ files: files(50), bytes: 5000 }], verify: (list) => list.slice(0, 3) });
     assert.strictEqual(u.result, 'reboot');
     assert.deepStrictEqual(u.store.record.stragglers, ['/f0.js', '/f1.js', '/f2.js']);
     assert.ok(!u.calls.includes('download:3'), 'stragglers stay in the pack result; they are not fetched again one by one');
@@ -724,7 +743,7 @@ const flush = () => new Promise((r) => setImmediate(r));
     // (a subset pack never carries them), but only the install's own list counts; they stay recorded
     const old = Array.from({ length: 12 }, (_, i) => `/old${i}.js`);
     u = await runWith({
-        checks: [{ files: files(5), bytes: 500 }, { files: [], bytes: 0 }],
+        checks: [{ files: files(50), bytes: 5000 }],
         expand: () => ({ ok: true, missing: old.concat(['/f1.js']) })
     });
     assert.strictEqual(u.result, 'reboot', 'files outside the install list never fail it');

@@ -468,7 +468,8 @@
             const tasks = [
                 { id: 'disk', run: async () => { ctl.disk = await diskFacts(env); return ctl.disk; } },
                 { id: 'os', run: () => hasOsOnDisk(env) },
-                { id: 'resume', run: async () => readSetupResume(env) || (env.engine && env.engine.readState(env) ? { resume: 'install' } : null) },
+                // an install a reload interrupted boots the media again; System Restore drops it (bootDisk) instead
+                { id: 'resume', run: async () => readSetupResume(env) || (ctl.bootMode !== 'restore' && env.engine && env.engine.readState(env) ? { resume: 'install' } : null) },
                 // the network card's init: the first word from the server, but a hung server does not hold the POST
                 { id: 'server', run: () => Promise.race([
                     probeStatus(env).then((probe) => { ctl.lastProbe = probe; if (probe.kind === 'json') { ctl.serverStatus = probe.data; rememberVistaLogon(env, probe.data); } return probe; }),
@@ -517,7 +518,12 @@
             show('black');
             await env.sleep(config.biosBlackMs);
             if (run !== ctl.runId) return 'cancelled';
-            if (device.device === 'cdrom') return bootMedia(run);
+            if (device.device === 'cdrom') {
+                // the DVD over an installed disk (the CD prompt, the boot menu, CD-ROM first in the
+                // boot order) walks Setup's pages, Upgrade among them; nothing installed stays unattended
+                const work = ctl.biosWork || {};
+                return bootMedia(run, { wizard: !!work.os && !work.resume });
+            }
             return bootDisk(run);
         }
 
@@ -824,10 +830,10 @@
         }
 
         /**
-         * The CD-ROM Drive: loading bar, then Setup. Booted by the BIOS (nothing installed, a
+         * The CD-ROM Drive: loading bar, then Setup. Booted by the BIOS with nothing installed (a
          * format just happened, an install a reload interrupted) it installs unattended, straight
-         * to the checklist with the current files. Only Melaton Recovery from the boot menu
-         * (opts.wizard) walks the pages.
+         * to the checklist with the current files. Over an installation (the BIOS's CD boot) and
+         * from Melaton Recovery (opts.wizard) it walks the pages, so Upgrade is offered.
          */
         async function bootMedia(run, opts = {}) {
             if (ctl.screen !== 'black') await cutToBlack();
