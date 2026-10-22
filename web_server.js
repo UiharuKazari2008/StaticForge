@@ -1949,6 +1949,75 @@ function redactLoggedSecret(key, value) {
     return value;
 }
 
+// Bodies run up to 100 MB (base64 images), so the log line is built by a bounded walk:
+// redacted like the JSON.stringify(body, redactLoggedSecret) it replaces, long strings
+// clipped, and the whole line cut at LOGGED_BODY_MAX_CHARS with the request size noted.
+const LOGGED_BODY_MAX_CHARS = 2048;
+const LOGGED_BODY_STRING_MAX = 256;
+function formatLoggedBody(body, approxBytes) {
+    let out = '';
+    let truncated = false;
+    const seen = new Set();
+    const emit = (text) => {
+        if (truncated) return false;
+        if (out.length + text.length > LOGGED_BODY_MAX_CHARS) {
+            out += text.slice(0, LOGGED_BODY_MAX_CHARS - out.length);
+            truncated = true;
+            return false;
+        }
+        out += text;
+        return true;
+    };
+    const walk = (key, raw) => {
+        let value = raw;
+        if (value && typeof value === 'object' && typeof value.toJSON === 'function') value = value.toJSON(key);
+        if (typeof value === 'string' && value.length > LOGGED_BODY_STRING_MAX) {
+            const clipped = redactLoggedSecret(key, value.slice(0, 4096));
+            if (clipped === '***') return emit('"***"');
+            return emit(`${JSON.stringify(clipped.slice(0, LOGGED_BODY_STRING_MAX))}...(${value.length} chars)`);
+        }
+        value = redactLoggedSecret(key, value);
+        if (value === null || typeof value !== 'object') {
+            const text = JSON.stringify(value);
+            return emit(text === undefined ? 'null' : text);
+        }
+        if (seen.has(value)) return emit('"[Circular]"');
+        seen.add(value);
+        let ok;
+        if (Array.isArray(value)) {
+            ok = emit('[');
+            for (let i = 0; ok && i < value.length; i++) {
+                if (i > 0 && !emit(',')) { ok = false; break; }
+                ok = walk(String(i), value[i]);
+            }
+            ok = ok && emit(']');
+        } else {
+            ok = emit('{');
+            let first = true;
+            for (const k of Object.keys(value)) {
+                const v = value[k];
+                if (v === undefined || typeof v === 'function' || typeof v === 'symbol') continue;
+                if (!first && !emit(',')) { ok = false; break; }
+                first = false;
+                if (!emit(`${JSON.stringify(k)}:`)) { ok = false; break; }
+                if (!walk(k, v)) { ok = false; break; }
+            }
+            ok = ok && emit('}');
+        }
+        seen.delete(value);
+        return ok;
+    };
+    walk('', body);
+    if (truncated) {
+        const size = Number(approxBytes) > 0 ? `, ~${Math.ceil(Number(approxBytes) / 1024)} KB` : '';
+        const keys = body && typeof body === 'object' && !Array.isArray(body)
+            ? `, keys: ${Object.keys(body).slice(0, 40).join(', ')}`
+            : '';
+        out += `... (truncated${size}${keys})`;
+    }
+    return out;
+}
+
 // Logger // NOTE: Everything above this is not logged!
 app.use((req, res, next) => {
     const skippedPaths = [
@@ -2011,7 +2080,7 @@ app.use((req, res, next) => {
         console.log(`   Query: ${JSON.stringify(queryParams)}`);
     }
     if (req.body && Object.keys(req.body).length > 0) {
-        console.log(`   Body: ${JSON.stringify(req.body, redactLoggedSecret)}`);
+        console.log(`   Body: ${formatLoggedBody(req.body, req.get('content-length'))}`);
     }
     
     let completionLogged = false;
