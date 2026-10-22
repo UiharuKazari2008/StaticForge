@@ -466,6 +466,11 @@
                 { id: 'server', run: () => Promise.race([
                     probeStatus(env).then((probe) => { ctl.lastProbe = probe; if (probe.kind === 'json') { ctl.serverStatus = probe.data; rememberVistaLogon(env, probe.data); } return probe; }),
                     env.sleep(config.biosProbeMs).then(() => null)
+                ]) },
+                // the manifest digest check, real work the boot needs next; a slow server shows on the bar
+                { id: 'manifest', run: () => Promise.race([
+                    env.engine && typeof env.engine.check === 'function' ? env.engine.check(env).catch(() => null) : Promise.resolve(null),
+                    env.sleep(config.biosProbeMs * 2).then(() => null)
                 ]) }
             ];
             const hasOsAfter = (results) => !!results.os && !results.resume;
@@ -506,7 +511,8 @@
             show('black');
             await env.sleep(config.biosBlackMs);
             if (run !== ctl.runId) return 'cancelled';
-            if (device.device === 'cdrom') return bootMedia(run, { resume: resume ? resume.resume : null });
+            void resume;
+            if (device.device === 'cdrom') return bootMedia(run);
             return bootDisk(run);
         }
 
@@ -778,8 +784,10 @@
         }
 
         /**
-         * The CD-ROM Drive: loading bar, then Setup. A resume (a format just happened, or an
-         * install a reload interrupted) goes straight to the checklist with the current files.
+         * The CD-ROM Drive: loading bar, then Setup. Booted by the BIOS (nothing installed, a
+         * format just happened, an install a reload interrupted) it installs unattended, straight
+         * to the checklist with the current files. Only Melaton Recovery from the boot menu
+         * (opts.wizard) walks the pages.
          */
         async function bootMedia(run, opts = {}) {
             if (ctl.screen !== 'black') await cutToBlack();
@@ -789,7 +797,7 @@
             await cutToBlack();
             if (run !== ctl.runId) return 'cancelled';
             const found = ctl.setupFound || { files: [], bytes: 0 };
-            if (opts.resume === 'install') {
+            if (!opts.wizard) {
                 writeSetupResume(env, null);
                 return install(found, run);
             }
@@ -1325,9 +1333,9 @@
                 ctl.bootMode = entry.id === 'melaton' ? 'normal' : entry.id;
                 return retry();
             }
-            // Melaton Recovery: the installation media, Setup asks the rest
+            // Melaton Recovery: the installation media with Setup's pages (the only attended install)
             const run = ++ctl.runId;
-            return bootMedia(run);
+            return bootMedia(run, { wizard: true });
         }
 
         /** Keyboard: returns true when the key was used. ch is the printable character, if any. */
@@ -1355,7 +1363,8 @@
                     }
                     if (key === 'Escape') { setupAction('setup-close'); return true; }
                     if (key === 'Enter') {
-                        const defaults = { language: 'setup-next', start: 'setup-install', key: 'setup-next', license: 'setup-next', type: s.upgradeAllowed ? 'setup-upgrade' : 'setup-custom', where: 'setup-next', restart: 'setup-restart-now' };
+                        // no default on the type page: Upgrade or Install is a click, never Enter
+                        const defaults = { language: 'setup-next', start: 'setup-install', key: 'setup-next', license: 'setup-next', where: 'setup-next', restart: 'setup-restart-now' };
                         const blocked = (s.page === 'key' && (s.keyBusy || s.keyConfigured !== false)) || (s.page === 'license' && !s.licenseAccepted);
                         if (defaults[s.page] && !blocked) setupAction(defaults[s.page]);
                         return true;

@@ -42,91 +42,19 @@ body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog="message"
     display: none;
 }
 
-/* ---- buttons: 7.css's standard button over the app's glass classes ---- */
+/* ---- buttons: Vista's push button face and states are the shared rules in
+   vista-glass-controls.css ("Vista common controls"); dialogs add the metrics: at least 75x23,
+   the label on one 21 px line ---- */
 
 body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content button:is(.btn, .btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard):not(.close-btn):not(.custom-dropdown-btn):not(.round-button):not(.hover-show):not(.toolbar-btn) {
-    position: relative;
-    z-index: 0;
     min-width: 75px;
     min-height: 23px;
     height: auto;
     padding: 0 12px;
-    background: linear-gradient(#f2f2f2 45%, #ebebeb 45%, #cfcfcf);
-    border: 1px solid #8e8f8f;
-    border-radius: 3px;
-    box-shadow: inset 0 0 0 1px #fffc;
-    color: #000;
-    text-shadow: none;
-    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
-    font-weight: 400;
-    font-variation-settings: normal;
     line-height: 21px;
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-    transition: border-color 0.3s, background 0.3s;
 }
 
-body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content button:is(.btn, .btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard):not(.close-btn):not(.custom-dropdown-btn):not(.round-button):not(.hover-show):not(.toolbar-btn)::before,
-body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content button:is(.btn, .btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard):not(.close-btn):not(.custom-dropdown-btn):not(.round-button):not(.hover-show):not(.toolbar-btn)::after {
-    content: none;
-}
-
-body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content button:is(.btn, .btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard):not(.close-btn):not(.custom-dropdown-btn):not(.round-button):not(.hover-show):not(.toolbar-btn) i {
-    color: inherit;
-    text-shadow: none;
-}
-
-@media (hover: hover) {
-    body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content button:is(.btn, .btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard):not(.close-btn):not(.custom-dropdown-btn):not(.round-button):not(.hover-show):not(.toolbar-btn):hover:not(:disabled) {
-        background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
-        border-color: #3c7fb1;
-        box-shadow: inset 0 0 0 1px #fffc;
-        color: #000;
-    }
-}
-
-body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content button:is(.btn, .btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard):not(.close-btn):not(.custom-dropdown-btn):not(.round-button):not(.hover-show):not(.toolbar-btn):active:not(:disabled) {
-    background: linear-gradient(#e5f4fc, #c4e5f6 30% 50%, #98d1ef 50%, #68b3db);
-    border-color: #6d91ab;
-    box-shadow: inset 1px 1px 0 #0003, inset -1px 1px 0 #0001;
-}
-
-body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content button:is(.btn, .btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard):not(.close-btn):not(.custom-dropdown-btn):not(.round-button):not(.hover-show):not(.toolbar-btn):disabled {
-    background: #f4f4f4;
-    border-color: #adb2b5;
-    color: #838383;
-    opacity: 1;
-}
-
-/* the default button: Vista's pulsing blue glow (7.css pulse-anim: inset 0 0 3px 1px <-> 0 0 1px 1px
-   #34deffdd). Each end of the pulse is its own layer and the two cross-fade by opacity, which runs
-   on the compositor; animating box-shadow ticked the main thread every frame while a dialog was up.
-   The glow replaces the button's own inner shadow in every state, as the animation did. */
-body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content button:is([data-dialog-primary="1"], .primary, .btn-primary):not(.close-btn):not(.custom-dropdown-btn):not(.round-button):not(.hover-show):not(.toolbar-btn):not(:disabled) {
-    border-color: #5586a3;
-    box-shadow: none !important;
-}
-
-body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content button:is([data-dialog-primary="1"], .primary, .btn-primary):not(.close-btn):not(.custom-dropdown-btn):not(.round-button):not(.hover-show):not(.toolbar-btn):not(:disabled)::before,
-body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content button:is([data-dialog-primary="1"], .primary, .btn-primary):not(.close-btn):not(.custom-dropdown-btn):not(.round-button):not(.hover-show):not(.toolbar-btn):not(:disabled)::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    border-radius: 2px;
-    pointer-events: none;
-    animation: vista-default-pulse 1s ease infinite alternate;
-}
-
-body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content button:is([data-dialog-primary="1"], .primary, .btn-primary):not(.close-btn):not(.custom-dropdown-btn):not(.round-button):not(.hover-show):not(.toolbar-btn):not(:disabled)::before {
-    box-shadow: inset 0 0 3px 1px #34deffdd;
-}
-
-body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content button:is([data-dialog-primary="1"], .primary, .btn-primary):not(.close-btn):not(.custom-dropdown-btn):not(.round-button):not(.hover-show):not(.toolbar-btn):not(:disabled)::after {
-    box-shadow: inset 0 0 1px 1px #34deffdd;
-    animation-name: vista-default-pulse-in;
-}
-
+/* the old default-button glow pulse; About MeletonFX (about-melaton.css) still runs it */
 @keyframes vista-default-pulse {
     from {
         opacity: 1;
@@ -144,18 +72,6 @@ body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal
 
     to {
         opacity: 1;
-    }
-}
-
-body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content button:is(.btn, .btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard):not(.close-btn):focus-visible {
-    box-shadow: inset 0 0 0 2px #98d1ef;
-    outline: 1px dotted #000;
-    outline-offset: -4px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal-content button {
-        animation: none;
     }
 }
 

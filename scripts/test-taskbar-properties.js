@@ -144,4 +144,15 @@ assert.strictEqual(ri.add({ kind: 'file', key: '/no', title: 'no' }), false, 'Pr
 ts.set({ recentFiles: true });
 assert.ok(!mu.includes('function getStartMenuRecentItems'), 'Recent Items are not programs');
 
+// the preview bar keeps each style's own height (no stretched art); copies keep ids for their styles
+assert.ok(tp.includes('const PREVIEW_BAR_HEIGHTS = { orb: 31, luna: 33, workspace: 35 };'));
+const tsrc = read('public/scripts/comp/taskbarSettings.js');
+assert.ok(tsrc.includes('function stripLiveAttributes(node)') && !tsrc.includes("removeAttribute('id')"), 'thumbnails keep ids');
+assert.ok(vt.includes('margin: 6px 0 0;'), 'the group count sits on the label line');
+
+// tray icon copies keep their ids (their Vista pictures are #id rules); the list's combo is pinned
+assert.ok(!tp.includes("cl.removeAttribute('id')") && !tp.includes("glyph.removeAttribute('id')"));
+const tpc = read('public/css/taskbar-properties.css');
+assert.ok(tpc.includes('.tbp-list-row select.tbp-list-select') && tpc.includes('overflow-x: hidden;'));
+
 console.log('test-taskbar-properties: ok');

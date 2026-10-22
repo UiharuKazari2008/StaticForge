@@ -1,0 +1,282 @@
+/* Remote Desktop Connection (public/scripts/comp/desktop-apps/remoteDesktopConnection.js):
+   Vista's mstsc.exe, measured on the Vista Aero VM (2026-10-21). Controls are Taskbar Properties'
+   (taskbar-properties.css, tbp-*); this file has what differs:
+     main window (mstsc.exe.mui 15001, 270 x 134 DLU): client 405x218; the banner is bitmaps
+       675 | 676 | 677 (90 + 109 + 206 = 405 px, 67 tall) over the 405x5 rule 625
+     Which connection (laid out on 13030): client 405 wide, rows 18 DLU apart
+     Remote Desktop Disconnected (15003) and Windows Security (credui.dll) */
+
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.rdc-main {
+    width: 405px;
+    height: 218px;
+}
+
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.rdc-chooser {
+    width: 405px;
+}
+
+.rdc-client .rdc-banner {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 405px;
+    height: 67px;
+    background:
+        url('/static_images/vista-mstsc/banner-left.png') 0 0 no-repeat,
+        url('/static_images/vista-mstsc/banner-right.png') 199px 0 no-repeat,
+        url('/static_images/vista-mstsc/banner-tile.png') 90px 0 no-repeat;
+}
+
+.rdc-client .rdc-banner-line {
+    position: absolute;
+    left: 0;
+    top: 67px;
+    width: 405px;
+    height: 5px;
+    background: url('/static_images/vista-mstsc/banner-line.png') 0 0 no-repeat;
+}
+
+/* mstsc.exe.mui strings 1201-1206: "Remote Desktop" Tahoma 20, "Connection" Tahoma 24 bold */
+.rdc-client .rdc-banner-text {
+    position: absolute;
+    left: 91px;
+    top: 10px;
+    display: flex;
+    flex-direction: column;
+    color: #fff;
+    white-space: nowrap;
+}
+
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.rdc-client .rdc-banner-text span.rdc-banner-small {
+    font: 20px/22px Tahoma, sans-serif;
+}
+
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.rdc-client .rdc-banner-text span.rdc-banner-big {
+    font: bold 24px/26px Tahoma, sans-serif;
+}
+
+/* ---- the Computer box: an editable combo (ComboBoxEx32, CBS_DROPDOWN) ---- */
+
+.rdc-client .rdc-combo {
+    height: 21px;
+}
+
+.rdc-client .rdc-combo-edit {
+    position: absolute;
+    inset: 0;
+    box-sizing: border-box;
+    width: 100%;
+    height: 21px;
+    min-height: 0;
+    margin: 0;
+    padding: 1px 20px 1px 3px;
+    border: 1px solid #abadb3;
+    border-top-color: #abadb3;
+    border-radius: 0;
+    background: #fff;
+    box-shadow: none;
+    color: #000;
+    outline: none;
+}
+
+.rdc-client .rdc-combo:hover .rdc-combo-edit,
+.rdc-client .rdc-combo-edit:focus {
+    border-color: #3c7fb1;
+}
+
+.rdc-client .rdc-combo-drop {
+    position: absolute;
+    top: 1px;
+    right: 1px;
+    bottom: 1px;
+    width: 17px;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+.rdc-client .rdc-combo-drop::before,
+.rdc-client .rdc-combo-drop::after {
+    content: none;
+}
+
+.rdc-client .rdc-combo:hover .rdc-combo-drop {
+    border-color: #3c7fb1;
+    background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
+}
+
+/* the 7 x 4 glyph Vista draws in a combo's drop button */
+.rdc-client .rdc-combo-drop {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4'%3E%3Cpath d='M0 0h7L3.5 4z' fill='%23000'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: center;
+}
+
+.rdc-client .rdc-combo:hover .rdc-combo-drop {
+    background:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4'%3E%3Cpath d='M0 0h7L3.5 4z' fill='%23000'/%3E%3C/svg%3E") center no-repeat,
+        linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
+}
+
+.rdc-client .rdc-combo-list {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 21px;
+    z-index: 2;
+    max-height: 197px;
+    overflow-y: auto;
+    border: 1px solid #000;
+    background: #fff;
+}
+
+.rdc-client .rdc-combo-list[hidden] {
+    display: none;
+}
+
+.rdc-client .rdc-combo-row {
+    height: 15px;
+    padding: 0 3px;
+    line-height: 15px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.rdc-client .rdc-combo-row:hover,
+.rdc-client .rdc-combo-row.is-selected {
+    background: #3399ff;
+    color: #fff;
+}
+
+.rdc-client .rdc-cred-frame .tbp-group-label {
+    display: none;
+}
+
+.rdc-main-window.rdc-busy .rdc-client {
+    cursor: progress;
+}
+
+/* ---- Which connection ---- */
+
+.rdc-client .rdc-choice-icon {
+    background: url('/static_images/app_icons/32/vista-remote-desktop.webp') center / 32px 32px no-repeat;
+}
+
+.rdc-client .rdc-choice {
+    align-items: center;
+}
+
+/* ---- Remote Desktop Disconnected ---- */
+
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.rdc-error {
+    width: 380px;
+    padding: 15px 11px 0 52px;
+    background: #fff;
+}
+
+.rdc-client.rdc-error .rdc-error-icon {
+    position: absolute;
+    left: 11px;
+    top: 15px;
+    width: 32px;
+    height: 32px;
+    background: url('/static_images/vista-icons/msgbox-error-32.png') 0 0 / 32px 32px no-repeat;
+}
+
+.rdc-client.rdc-error .rdc-error-text {
+    position: static;
+    min-height: 32px;
+    padding-bottom: 20px;
+    white-space: normal;
+}
+
+.rdc-client.rdc-error .rdc-error-buttons {
+    display: flex;
+    justify-content: flex-end;
+    margin: 0 -11px 0 -52px;
+    padding: 10px 11px;
+    border-top: 1px solid #dfdfdf;
+    background: #f0f0f0;
+}
+
+.rdc-client.rdc-error .rdc-error-ok {
+    width: 75px;
+    height: 23px;
+}
+
+/* ---- Windows Security ---- */
+
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.rdc-cred {
+    width: 456px;
+    background: #fff;
+}
+
+.rdc-client.rdc-cred .rdc-cred-body {
+    padding: 14px 22px 18px;
+}
+
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.rdc-cred .rdc-cred-heading {
+    color: #003399;
+    font: 16px/21px "Segoe UI", Tahoma, sans-serif;
+}
+
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.rdc-cred :is(.rdc-cred-text, .rdc-cred-note, input) {
+    font: 12px/15px "Segoe UI", Tahoma, sans-serif;
+}
+
+.rdc-client.rdc-cred .rdc-cred-text {
+    margin-top: 6px;
+}
+
+.rdc-client.rdc-cred .rdc-cred-tile {
+    display: flex;
+    gap: 12px;
+    margin-top: 14px;
+    padding: 8px;
+    border: 1px solid #cce4f7;
+    border-radius: 3px;
+    background: #f5faff;
+}
+
+.rdc-client.rdc-cred .rdc-cred-picture {
+    flex: 0 0 auto;
+    width: 48px;
+    height: 48px;
+    background: url('/static_images/app_icons/48/vista-key.webp') center / 48px 48px no-repeat;
+}
+
+.rdc-client.rdc-cred .rdc-cred-fields {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.rdc-client.rdc-cred input.tbp-edit {
+    width: 220px;
+    height: 23px;
+}
+
+.rdc-client.rdc-cred .rdc-cred-note {
+    color: #5a5a5a;
+}
+
+.rdc-client.rdc-cred .rdc-cred-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 7px;
+    padding: 10px 11px;
+    border-top: 1px solid #dfdfdf;
+    background: #f0f0f0;
+}
+
+.rdc-client.rdc-cred .rdc-cred-button {
+    width: 75px;
+    height: 23px;
+}

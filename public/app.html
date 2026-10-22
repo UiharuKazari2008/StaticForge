@@ -3964,8 +3964,9 @@
         </div>
     </div>
 
-    <!-- Mask Editor Dialog Modal -->
-    <div id="maskEditorDialog" class="modal resizeable-window hidden">
+    <!-- Mask Editor Dialog Modal. Vista: a light window, every control on Explorer's command bar
+         (vista-explorer.css; the rest in mask-editor.css) -->
+    <div id="maskEditorDialog" class="modal resizeable-window hidden" data-window-client="light">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="nai-inpaint icon-fa"></i>
@@ -3974,15 +3975,6 @@
             </div>
         </div>
         <div class="modal-window-controls">
-            <button type="button" id="maskNegativeBtn" class="btn-secondary" title="Negative (Invert Mask)">
-                <i class="fas fa-adjust"></i>
-            </button>
-            <button type="button" id="clearMaskBtn" class="btn-secondary" title="Clear Mask">
-                <i class="fas fa-empty-set"></i>
-            </button>
-            <button type="button" id="deleteMaskBtn" class="btn-danger btn-small" title="Delete Mask">
-                <i class="fas fa-trash"></i>
-            </button>
             <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
                 <i class="fa-regular fa-window-minimize"></i>
             </button>
@@ -3990,28 +3982,35 @@
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content modal-padding mask-editor-content dark">
+        <div class="modal-content mask-editor-content dark">
+            <div class="explorer-actions-header" role="toolbar">
+                <div class="explorer-command-set">
+                    <button type="button" id="saveMaskBtn" class="btn-secondary btn-small explorer-command-btn"
+                        title="Save Mask (Ctrl+S)"><i class="nai-save"></i><span>Save</span></button>
+                    <button type="button" id="maskBrushBtn" class="btn-secondary btn-small explorer-command-btn"
+                        data-state="on" title="Brush Tool (F1)"><i class="nai-pen"></i><span>Brush</span></button>
+                    <button type="button" id="maskEraserBtn" class="btn-secondary btn-small explorer-command-btn"
+                        data-state="off" title="Eraser Tool (F2)"><i class="nai-eraser"></i><span>Eraser</span></button>
+                    <button type="button" id="brushShapeBtn" class="btn-secondary btn-small explorer-command-btn"
+                        title="Toggle Brush Shape (F3)"><i class="fas fa-square"></i><span>Shape</span></button>
+                    <label class="brush-size-control command-bar-field" for="brushSize" title="Brush Size">
+                        <span>Size</span>
+                        <input type="number" id="brushSize" class="form-control" min="1" max="20" value="3">
+                    </label>
+                </div>
+                <div class="explorer-command-set">
+                    <button type="button" id="maskNegativeBtn" class="btn-secondary btn-small explorer-command-btn"
+                        title="Negative (Invert Mask) (F5)"><i class="fas fa-adjust"></i><span>Invert</span></button>
+                    <button type="button" id="clearMaskBtn" class="btn-secondary btn-small explorer-command-btn"
+                        title="Clear Mask (F4)"><i class="fas fa-empty-set"></i><span>Clear</span></button>
+                    <button type="button" id="deleteMaskBtn" class="btn-secondary btn-small explorer-command-btn"
+                        title="Delete Mask (F6)"><i class="fas fa-trash"></i><span>Delete</span></button>
+                </div>
+            </div>
             <div class="modal-body">
-                <div class="mask-editor-tools">
-                    <button type="button" id="maskBrushBtn" class="btn-secondary indicator" data-state="on"
-                        title="Brush Tool">
-                        <i class="nai-pen"></i> Brush
-                    </button>
-                    <button type="button" id="maskEraserBtn" class="btn-secondary indicator" data-state="off"
-                        title="Eraser Tool">
-                        <i class="nai-eraser"></i> Eraser
-                    </button>
-                    <button type="button" id="brushShapeBtn" class="btn-secondary" title="Toggle Brush Shape">
-                        <i class="fas fa-square"></i>
-                    </button>
-                    <div class="brush-size-control">
-                        <input type="number" id="brushSize" class="form-control hover-show colored" min="1" max="20"
-                            value="3" style="width: 50px;">
-                    </div>
-                    <div class="mask-editor-hint">
-                        <i class="fas fa-info-circle"></i> Use one connected region. Don't pepper nearby micro-masks.
-                        (ght901 sparse-inpaint)
-                    </div>
+                <div class="mask-editor-hint">
+                    <i class="fas fa-info-circle"></i> Use one connected region. Don't pepper nearby micro-masks.
+                    (ght901 sparse-inpaint)
                 </div>
                 <div class="mask-editor-canvas-container">
                     <div class="mask-editor-canvas-inner" id="maskEditorCanvasInner">
@@ -4020,15 +4019,12 @@
                     </div>
                 </div>
             </div>
-            <div class="modal-footer">
-                <button type="button" id="saveMaskBtn" class="btn-primary"><span>Save</span> <i
-                        class="nai-save"></i></button>
-            </div>
         </div>
     </div>
 
-    <!-- Image Bias Adjustment Modal -->
-    <div id="imageBiasAdjustmentModal" class="modal resizeable-window hidden">
+    <!-- Image Bias Adjustment Modal. Vista: a light window, every control on Explorer's command bar
+         (vista-explorer.css; the rest in mask-editor.css) -->
+    <div id="imageBiasAdjustmentModal" class="modal resizeable-window hidden" data-window-client="light">
         <div class="modal-focus-overlay"></div>
         <div class="modal-window-title">
             <div class="modal-window-title-main">
@@ -4038,9 +4034,6 @@
             </div>
         </div>
         <div class="modal-window-controls">
-            <button type="button" id="biasResetBtn" class="btn-secondary" title="Reset Bias">
-                <i class="nai-reload"></i>
-            </button>
             <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
                 <i class="fa-regular fa-window-minimize"></i>
             </button>
@@ -4048,54 +4041,44 @@
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content modal-padding image-bias-adjustment-content dark">
-            <div class="modal-body">
-                <!-- Bias Controls Section -->
-                <div class="bias-controls-section main-controls">
-                    <div class="bias-controls-grid">
-                        <div class="bias-control-group">
-                            <label for="biasX">X Position</label>
-                            <input type="number" id="biasX" class="form-control hover-show colored" min="0" max="2048"
-                                step="1" value="0">
-                        </div>
-                        <div class="bias-control-group">
-                            <label for="biasY">Y Position</label>
-                            <input type="number" id="biasY" class="form-control hover-show colored" min="0" max="2048"
-                                step="1" value="0">
-                        </div>
-                        <div class="bias-control-group">
-                            <label for="biasScale">Scale</label>
-                            <input type="number" id="biasScale" class="form-control hover-show colored" min="0.1"
-                                max="3.0" step="0.01" value="1.0">
-                        </div>
-                        <div class="bias-control-group">
-                            <label for="biasRotate">Rotate</label>
-                            <input type="number" id="biasRotate" class="form-control hover-show colored" min="-180"
-                                max="180" step="1" value="0">
-                        </div>
-                        <div class="bias-control-group">
-                            <label>&nbsp;</label>
-                            <div style="display: flex; gap: 8px; align-items: center; margin-right: auto;">
-                                <div class="custom-dropdown" id="imageBiasPresetDropdown">
-                                    <button type="button" class="btn-secondary" id="imageBiasPresetBtn">
-                                        <span class="mask-bias-label">Preset</span>
-                                    </button>
-                                    <div class="custom-dropdown-menu hidden" id="imageBiasPresetMenu"></div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="bias-control-group" style="margin-left: auto;">
-                            <label>&nbsp;</label>
-                            <div style="display: flex; gap: 8px; align-items: center;">
-                                <button type="button" id="previewToggleBtn" class="btn-secondary indicator"
-                                    data-state="on">
-                                    <i class="fas fa-image"></i> Preview
-                                </button>
-                            </div>
-                        </div>
+        <div class="modal-content image-bias-adjustment-content dark">
+            <div class="explorer-actions-header" role="toolbar">
+                <div class="explorer-command-set">
+                    <button type="button" id="saveBiasAdjustmentBtn" class="btn-secondary btn-small explorer-command-btn"
+                        title="Save (Enter)"><i class="nai-save"></i><span>Save</span></button>
+                    <label class="command-bar-field" for="biasX" title="X Position">
+                        <span>X:</span>
+                        <input type="number" id="biasX" class="form-control" min="0" max="2048" step="1" value="0">
+                    </label>
+                    <label class="command-bar-field" for="biasY" title="Y Position">
+                        <span>Y:</span>
+                        <input type="number" id="biasY" class="form-control" min="0" max="2048" step="1" value="0">
+                    </label>
+                    <label class="command-bar-field" for="biasScale" title="Scale">
+                        <span>Scale:</span>
+                        <input type="number" id="biasScale" class="form-control" min="0.1" max="3.0" step="0.01"
+                            value="1.0">
+                    </label>
+                    <label class="command-bar-field" for="biasRotate" title="Rotate">
+                        <span>Rotate:</span>
+                        <input type="number" id="biasRotate" class="form-control" min="-180" max="180" step="1"
+                            value="0">
+                    </label>
+                    <div class="custom-dropdown" id="imageBiasPresetDropdown">
+                        <button type="button" class="btn-secondary btn-small explorer-command-btn has-menu"
+                            id="imageBiasPresetBtn" title="Preset"><span class="mask-bias-label">Preset</span><span
+                                class="explorer-command-glyph" aria-hidden="true"></span></button>
+                        <div class="custom-dropdown-menu hidden" id="imageBiasPresetMenu"></div>
                     </div>
                 </div>
-
+                <div class="explorer-command-set">
+                    <button type="button" id="previewToggleBtn" class="btn-secondary btn-small explorer-command-btn"
+                        data-state="on" title="Client Preview"><i class="fas fa-image"></i><span>Preview</span></button>
+                    <button type="button" id="biasResetBtn" class="btn-secondary btn-small explorer-command-btn"
+                        title="Reset Bias (Ctrl+R)"><i class="nai-reload"></i><span>Reset</span></button>
+                </div>
+            </div>
+            <div class="modal-body">
                 <!-- Image Preview Section -->
                 <div class="image-preview-section">
                     <div class="image-preview-container" id="imagePreviewContainer">
@@ -4108,10 +4091,6 @@
                         <img id="clientPreviewImage" src="" alt="Client Preview" class="client-preview-image hidden">
                     </div>
                 </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" id="saveBiasAdjustmentBtn" class="btn-primary"><span>Save</span> <i
-                        class="nai-save"></i></button>
             </div>
         </div>
     </div>
@@ -6972,15 +6951,15 @@ Examples:
             <div class="explorer-actions-header wiki-window-command-bar" role="toolbar">
                 <div class="explorer-command-set">
                     <button type="button" class="btn-secondary btn-small explorer-command-btn wiki-window-back-btn"
-                        title="Back"><i class="fas fa-chevron-left"></i>Back</button>
+                        title="Back"><img class="explorer-command-icon" src="/static_images/vista-cmdbar/back.png" alt="">Back</button>
                     <button type="button" class="btn-secondary btn-small explorer-command-btn wiki-window-forward-btn"
-                        title="Forward"><i class="fas fa-chevron-right"></i>Forward</button>
+                        title="Forward"><img class="explorer-command-icon" src="/static_images/vista-cmdbar/forward.png" alt="">Forward</button>
                     <button type="button" class="btn-secondary btn-small explorer-command-btn wiki-window-home-btn"
-                        title="Home"><i class="fas fa-home"></i>Home</button>
+                        title="Home"><img class="explorer-command-icon" src="/static_images/vista-ie/home.png" alt="">Home</button>
                 </div>
                 <div class="explorer-command-set">
                     <button type="button" class="btn-secondary btn-small explorer-command-btn wiki-window-maximize-btn"
-                        title="Open in Grimoire"><i class="fas fa-up-right-from-square"></i>Open in Grimoire</button>
+                        title="Open in Grimoire"><img class="explorer-command-icon" src="/static_images/vista-ie/page-ie.png" alt="">Open in Grimoire</button>
                 </div>
             </div>
             <div class="tag-wiki-search-body">
@@ -8601,17 +8580,17 @@ Examples:
             <div class="explorer-actions-header config-editor-checkpoints-command-bar" role="toolbar">
                 <div class="explorer-command-set">
                     <button type="button" id="configEditorCheckpointsCreateBtn"
-                        class="btn-secondary btn-small explorer-command-btn" title="Create checkpoint"><i
-                            class="fas fa-camera"></i>Create Checkpoint</button>
+                        class="btn-secondary btn-small explorer-command-btn" title="Create checkpoint"><img
+                            class="explorer-command-icon" src="/static_images/vista-cmdbar/restore-point.png" alt="">Create Checkpoint</button>
                     <button type="button" id="configEditorCheckpointsRestoreBtn"
                         class="btn-secondary btn-small explorer-command-btn" title="Restore the selected checkpoint"
-                        disabled><i class="fas fa-rotate-left"></i>Restore</button>
+                        disabled><img class="explorer-command-icon" src="/static_images/vista-cmdbar/restore.png" alt="">Restore</button>
                     <button type="button" id="configEditorCheckpointsDetailBtn"
-                        class="btn-secondary btn-small explorer-command-btn" title="Details of the selected checkpoint"
-                        disabled><i class="fas fa-circle-info"></i>Details</button>
+                        class="btn-secondary btn-small explorer-command-btn" title="Properties of the selected checkpoint"
+                        disabled><img class="explorer-command-icon" src="/static_images/vista-cmdbar/properties.png" alt="">Properties</button>
                     <button type="button" id="configEditorCheckpointsDeleteBtn"
                         class="btn-secondary btn-small explorer-command-btn" title="Delete the selected checkpoint"
-                        disabled><i class="fas fa-trash"></i>Delete</button>
+                        disabled><img class="explorer-command-icon" src="/static_images/vista-cmdbar/delete.png" alt="">Delete</button>
                 </div>
             </div>
             <div class="modal-body config-editor-checkpoints-modal-body">
@@ -8968,6 +8947,8 @@ Examples:
     <script src="scripts/comp/errorDisplay.js"></script>
     <script src="scripts/comp/themePreferences.js"></script>
     <script src="scripts/comp/aeroGlass.js"></script>
+    <script src="scripts/comp/desktopPersonalization.js"></script>
+    <script src="scripts/comp/screenSaver.js"></script>
     <script src="scripts/comp/appBootstrap.js"></script>
     <script src="scripts/comp/balanceDisplay.js"></script>
     <script src="scripts/comp/dynamicGenerationOverrides.js"></script>

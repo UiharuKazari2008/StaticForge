@@ -2085,129 +2085,241 @@ html[data-glass="basic"] #startMenu.start-menu {
     transition-timing-function: ease;
 }
 
-/* Vista "still running" list (winsrv.dll, captured on the Vista VM). 88% black over the desktop.
+/* Vista "still running" list: winsrv.dll dialog 20 (Segoe UI 10 pt: 1 DLU = 1.75 x 2.125 px)
+   and its row dialogs 21 / 22, measured on the Vista VM. The desktop at 12 %, the dialog
+   centred in the work area. Every child grows the dialog by the list height; the rest of
+   the dialog is 295 px. Button, rule and busy art are winsrv.dll bitmaps 528-544.
    Above the fatal page and the Welcome screen so Restart from either can still be gated. */
 .winlogon-block {
     position: fixed;
     inset: 0;
     z-index: 2147483200;
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
     box-sizing: border-box;
-    padding: 48px 24px 72px;
+    padding-bottom: var(--taskbar-height, 0px);
     background: rgba(0, 0, 0, 0.88);
     color: #fff;
     font-family: 'Segoe UI', 'Noto Sans', sans-serif;
+    font-weight: 400;
+    cursor: default;
+    user-select: none;
 }
 
 .winlogon-block[hidden] {
     display: none;
 }
 
-.winlogon-block-title {
-    width: 440px;
-    max-width: 100%;
-    font-size: 18px;
-    line-height: 24px;
-    text-align: center;
+.winlogon-block-dialog {
+    position: relative;
+    width: 466px;
+    padding: 43px 0 42px;
 }
 
+.winlogon-block-title {
+    position: relative;
+    top: 1px;
+    height: 30px;
+    overflow: hidden;
+    font-size: 21px;
+    line-height: normal;
+    text-align: center;
+    white-space: nowrap;
+}
+
+/* bitmap 528 (50x3, white, faded ends): its middle row, each 24 px fade squeezed into the
+   first and last 7 px of the dialog and the flat centre stretched between them */
 .winlogon-block-rule {
-    width: 440px;
-    max-width: 100%;
     height: 1px;
-    margin: 14px 0 16px;
-    background: rgba(255, 255, 255, 0.45);
+    margin-top: 25px;
+    border-style: solid;
+    border-width: 0 7px;
+    border-image: url('/static_images/vista-shutdown/rule.png') 1 24 fill / 0 7px stretch;
 }
 
 .winlogon-block-list {
-    width: 440px;
-    max-width: 100%;
-    max-height: 320px;
-    overflow: auto;
+    width: 466px;
+    max-height: calc(100vh - var(--taskbar-height, 0px) - 295px - 24px);
+    margin-top: 12px;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+.winlogon-block-list + .winlogon-block-rule {
+    margin-top: 12px;
 }
 
 .winlogon-block-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    margin: 0 0 14px;
+    position: relative;
+    width: 448px;
+    height: 62px;
+}
+
+.winlogon-block-row.blocking {
+    height: 83px;
 }
 
 .winlogon-block-icon {
-    flex: 0 0 32px;
+    position: absolute;
+    left: 0;
+    top: 17px;
     width: 32px;
     height: 32px;
 }
 
 .winlogon-block-icon img,
 .winlogon-block-icon i {
+    display: block;
     width: 32px;
     height: 32px;
-    font-size: 28px;
+    font-size: 26px;
     line-height: 32px;
     text-align: center;
+    object-fit: contain;
 }
 
-.winlogon-block-text {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
+.winlogon-block-name,
+.winlogon-block-reason {
+    position: absolute;
+    left: 40px;
+    width: 399px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 
 .winlogon-block-name {
-    font-size: 15px;
-    line-height: 18px;
+    top: 19px;
+    height: 21px;
+    font-size: 16px;
+    line-height: 21px;
+}
+
+.winlogon-block-row.blocking .winlogon-block-name {
+    top: 11px;
 }
 
 .winlogon-block-reason {
-    margin-top: 2px;
-    color: #d1893b;
-    font-size: 12px;
-    line-height: 16px;
+    top: 36px;
+    height: 36px;
+    color: #ffcc99;
+    font-size: 13.333px;
+    line-height: 17px;
+    white-space: normal;
 }
 
 .winlogon-block-footer {
-    width: 440px;
-    max-width: 100%;
-    margin-top: 8px;
-    font-size: 15px;
-    line-height: 20px;
+    height: 64px;
+    margin-top: 18px;
+    font-size: 16px;
+    line-height: 21px;
     text-align: center;
     white-space: pre-line;
 }
 
 .winlogon-block-actions {
-    display: flex;
-    gap: 10px;
-    margin-top: 18px;
+    position: relative;
+    height: 28px;
+    margin-top: 19px;
 }
 
 .winlogon-block-actions button {
-    min-width: 108px;
-    height: 25px;
-    padding: 0 14px 1px;
-    border: 1px solid rgba(0, 0, 0, 0.65);
-    border-radius: 3px;
+    position: absolute;
+    top: 0;
+    height: 28px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
     color: #fff;
-    font: 12px 'Segoe UI', 'Noto Sans', sans-serif;
-    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.45);
-    cursor: var(--c-pointer);
+    font: 13px/28px 'Segoe UI', 'Noto Sans', sans-serif;
+    text-align: center;
+    white-space: nowrap;
+    cursor: default;
+    outline: none;
+    isolation: isolate;
+}
+
+/* 17 px caps, the centre column stretched (as the VM draws them) */
+.winlogon-block-actions button::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-style: solid;
+    z-index: -1;
+    border-width: 0 17px;
+    border-image: var(--winlogon-button-art) 0 17 fill / 0 17px stretch;
 }
 
 .winlogon-block-go {
-    background: linear-gradient(#e45a58, #c21722 48%, #8d0c12);
+    left: 109px;
+    width: 140px;
+    --winlogon-button-art: url('/static_images/vista-shutdown/restart-normal.png');
+}
+
+.winlogon-block-go:hover {
+    --winlogon-button-art: url('/static_images/vista-shutdown/restart-hot.png');
+}
+
+.winlogon-block-go:focus {
+    --winlogon-button-art: url('/static_images/vista-shutdown/restart-focus.png');
+}
+
+.winlogon-block-go:focus:hover {
+    --winlogon-button-art: url('/static_images/vista-shutdown/restart-focus-hot.png');
+}
+
+.winlogon-block-go:active {
+    --winlogon-button-art: url('/static_images/vista-shutdown/restart-pressed.png');
 }
 
 .winlogon-block-cancel {
-    background: linear-gradient(#7eb0e4, #3f7fc4 48%, #2d649f);
+    left: 263px;
+    width: 88px;
+    --winlogon-button-art: url('/static_images/vista-shutdown/cancel-normal.png');
 }
 
-.winlogon-block-actions button:focus-visible {
-    outline: 1px dotted #fff;
-    outline-offset: 2px;
+.winlogon-block-cancel:hover {
+    --winlogon-button-art: url('/static_images/vista-shutdown/cancel-hot.png');
+}
+
+.winlogon-block-cancel:focus {
+    --winlogon-button-art: url('/static_images/vista-shutdown/cancel-focus.png');
+}
+
+.winlogon-block-cancel:focus:hover {
+    --winlogon-button-art: url('/static_images/vista-shutdown/cancel-focus-hot.png');
+}
+
+.winlogon-block-cancel:active {
+    --winlogon-button-art: url('/static_images/vista-shutdown/cancel-pressed.png');
+}
+
+/* bitmap 544: drawn still, it does not turn */
+.winlogon-block-busy {
+    position: absolute;
+    left: 5px;
+    top: 5px;
+    width: 18px;
+    height: 18px;
+    background: url('/static_images/vista-shutdown/busy.png') no-repeat;
+}
+
+/* centred in the part right of the busy mark */
+.winlogon-block-label {
+    position: absolute;
+    left: 23px;
+    right: 0;
+    top: 0;
+}
+
+.winlogon-block-label u {
+    text-decoration: none;
+}
+
+.winlogon-block-cues .winlogon-block-label u {
+    text-decoration: underline;
 }
 
 /* Start menu organizer (public/scripts/comp/desktop-apps/startMenuOrganizer.js) */

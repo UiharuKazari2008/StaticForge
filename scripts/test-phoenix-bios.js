@@ -235,7 +235,8 @@ function harness(opts = {}) {
         const seen = [];
         for (let i = 0; i < 400; i++) { await h.flush(); seen.push(h.bios.screen.splash.progress); }
         assert.ok(Math.max(...seen) < 1, 'the bar waits for the task that is still running');
-        assert.ok(Math.max(...seen) >= 0.9, 'it fills steadily and holds just short of full');
+        assert.ok(Math.max(...seen) >= 0.5, 'the finished task is its share of the bar');
+        assert.ok(Math.max(...seen) < 0.95, 'the running task never completes its share by itself');
         assert.ok(seen[0] < 0.4, 'it starts near empty even when the first tasks are instant');
         assert.ok(seen.every((v, i) => i === 0 || v >= seen[i - 1]), 'the bar never moves back');
         assert.ok(B.splashBarCells(0.5) === 33 && B.splashBarCells(0.999) === 65, 'the bar fills in whole cells');

@@ -39,6 +39,9 @@
         { id: 'notification', label: 'Notification Area' },
         { id: 'toolbars', label: 'Toolbars' }
     ];
+    // the taskbar's height for each Start button style (desktop-shell.css body.taskbar-orb /
+    // body.taskbar-luna / body.desktop-mode)
+    const PREVIEW_BAR_HEIGHTS = { orb: 31, luna: 33, workspace: 35 };
     const BEHAVIOR_LABELS = { inactive: 'Hide when inactive', hide: 'Hide', show: 'Show' };
 
     // dialog units -> px as the VM draws controls (MS Shell Dlg 8 at 96 dpi: 6 x 13 base units):
@@ -281,8 +284,11 @@
             .map((e) => `<span class="taskbar-quick-launch-btn">${e.fa ? `<i class="${esc(e.fa)}"></i>` : `<img src="${esc(e.icon)}" alt="" width="16" height="16">`}</span>`)
             .join('');
         const startCls = `taskbar-start-button${isOrb ? ' orb' : sb.style === 'luna' ? ' luna' : ''}`;
+        // the bar at the height this style gives it, so its art is not stretched; bottom-aligned
+        // in the 34 px strip, so the orb overhangs it as it does the screen's edge
+        const barH = PREVIEW_BAR_HEIGHTS[sb.style] || PREVIEW_BAR_HEIGHTS.workspace;
         host.innerHTML = `
-            <div class="${cls.join(' ')}" aria-hidden="true">
+            <div class="${cls.join(' ')}" aria-hidden="true" style="--taskbar-height:${barH}px;height:${barH}px;top:${34 - barH}px">
                 <div class="taskbar-start"><span class="${startCls}">
                     <span class="taskbar-start-button-orb-frame${isOrb ? '' : ' hidden'}"></span>
                     ${isOrb ? '' : `<img src="${esc(logoUrl)}" alt="" class="taskbar-start-button-logo${sb.logo === 'royal' ? ' is-royal' : sb.logo === 'vista' ? ' is-vista' : ''}">
@@ -314,10 +320,11 @@
         const sys = [];
         if (c.network) { const n = doc.getElementById('modemTrayIcon'); if (n && !n.classList.contains('hidden')) sys.push(n); }
         if (c.volume) { const v = doc.getElementById('volumeTrayIcon'); if (v && !v.classList.contains('hidden')) sys.push(v); }
+        // Copies keep their ids: the Vista pictures (network, volume, the update shield ...) are
+        // drawn by #id rules (vista-glass-controls.css). The dialog comes after the taskbar in
+        // <body>, so a lookup by id still finds the real icon first.
         const copy = (el) => {
             const cl = el.cloneNode(true);
-            cl.removeAttribute('id');
-            cl.querySelectorAll('[id]').forEach((n) => n.removeAttribute('id'));
             cl.classList.remove('tray-overflow', 'tray-boot-in');
             cl.removeAttribute('title');
             return cl.outerHTML;
@@ -735,8 +742,7 @@
             const live = doc.getElementById(r.id);
             const glyph = live ? live.cloneNode(true) : null;
             if (glyph) {
-                glyph.removeAttribute('id');
-                glyph.querySelectorAll('[id]').forEach((n) => n.removeAttribute('id'));
+                // ids kept: the tray's Vista pictures come from #id rules (see renderTrayPreview)
                 glyph.className = `${glyph.className} tbp-list-glyph`.replace(/\b(hidden|tray-overflow|tray-boot-in)\b/g, '');
                 glyph.removeAttribute('title');
             }

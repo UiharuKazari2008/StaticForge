@@ -16,7 +16,12 @@ function syncAuthLocalStorageFromServer(payload) {
     }
 }
 
-async function handleLogout() {
+/**
+ * options.redirect: where to go once the server has ended the session (default '/'); false
+ * stays on the page (Log Off, winlogonPower.js, goes to /launch itself). Resolves true on success.
+ */
+async function handleLogout(options = {}) {
+    const redirect = options.redirect === undefined ? '/' : options.redirect;
     try {
         const response = await fetchWithAuth('/', {
             method: 'POST',
@@ -45,12 +50,14 @@ async function handleLogout() {
                 console.warn('⚠️ Failed to clear some localStorage keys or disconnect services:', error);
             }
 
-            window.location.href = '/';
-        } else {
-            showError('Logout failed');
+            if (redirect) window.location.href = redirect;
+            return true;
         }
+        if (redirect) showError('Logout failed');
+        return false;
     } catch (error) {
         // Already redirected on 401
+        return false;
     }
 }
 

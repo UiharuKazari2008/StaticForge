@@ -1362,3 +1362,111 @@ body.editor-open .gallery-container {
     justify-content: space-between;
 }
 
+
+/* ---- Vista: Mask Editor and Image Bias as light windows ----
+   Yukimi: these two get Vista's white styling and a control bar with all of the window's
+   controls; the caption keeps only Minimize / Maximize / Close. app.html: data-window-client="light"
+   (vista-glass-controls.css), the controls on Explorer's command bar (.explorer-actions-header,
+   vista-explorer.css) as the first row of the client, the canvas / preview in a white well
+   under it (the list box of the #485 windows, genso-manager.css). */
+:is(#maskEditorDialog, #imageBiasAdjustmentModal) > .modal-content {
+    padding: 0;
+}
+
+/* the white client fills the frame (the content's own 1200px cap left glass beside it) */
+body.desktop-mode :is(#maskEditorDialog, #imageBiasAdjustmentModal) > .modal-content {
+    width: auto;
+    max-width: none;
+}
+
+:is(#maskEditorDialog, #imageBiasAdjustmentModal) > .modal-content > .modal-body {
+    gap: var(--spacing-sm);
+    padding: var(--spacing-md);
+}
+
+/* the Preset menu drops out of the bar */
+:is(#maskEditorDialog, #imageBiasAdjustmentModal) > .modal-content > .explorer-actions-header {
+    overflow: visible;
+}
+
+body:not(.desktop-mode) :is(#maskEditorDialog, #imageBiasAdjustmentModal) > .modal-content > .explorer-actions-header {
+    flex-wrap: wrap;
+}
+
+/* a labelled number box on the bar: Size, X, Y, Scale, Rotate */
+.command-bar-field {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin: 0 4px;
+    white-space: nowrap;
+}
+
+.command-bar-field > input {
+    width: 58px;
+}
+
+#maskEditorDialog .command-bar-field > input {
+    width: 46px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) :is(#maskEditorDialog, #imageBiasAdjustmentModal) .explorer-actions-header .command-bar-field > span {
+    color: #fff;
+    font: 12px 'Segoe UI', 'Noto Sans', sans-serif;
+    text-shadow: 0 0 6px hsl(200 80% 10% / 90%), 0 1px 1px hsl(200 80% 10% / 70%);
+}
+
+/* Vista's text box (7.css values) */
+body.desktop-mode:not(.windows-classic-theme) :is(#maskEditorDialog, #imageBiasAdjustmentModal) .explorer-actions-header .command-bar-field > input.form-control {
+    height: 21px;
+    min-height: 0;
+    padding: 0 3px;
+    background: #fff;
+    border: 1px solid;
+    border-color: #abadb3 #dbdfe6 #e3e9ef #e2e3ea;
+    border-radius: 2px;
+    box-shadow: none;
+    color: #000;
+    font: 12px 'Segoe UI', 'Noto Sans', sans-serif;
+    text-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    transition: border-color 0.5s;
+}
+
+body.desktop-mode:not(.windows-classic-theme) :is(#maskEditorDialog, #imageBiasAdjustmentModal) .explorer-actions-header .command-bar-field > input.form-control:hover {
+    border-color: #5794bf #b7d5ea #c7e2f1 #c5daed;
+    transition: border-color 0.3s;
+}
+
+body.desktop-mode:not(.windows-classic-theme) :is(#maskEditorDialog, #imageBiasAdjustmentModal) .explorer-actions-header .command-bar-field > input.form-control:focus {
+    border-color: #3d7bad #a4c9e3 #b7d9ed #b5cfe7;
+    outline: none;
+}
+
+/* the white well: the #485 list box (#fff in #828790) */
+body:not(.windows-classic-theme) #maskEditorDialog .mask-editor-canvas-container,
+body:not(.windows-classic-theme) #imageBiasAdjustmentModal .image-preview-container {
+    background: #fff;
+    border: 1px solid #828790;
+    border-radius: 0;
+}
+
+body:not(.windows-classic-theme) #maskEditorDialog .mask-editor-canvas-inner {
+    border-radius: 0;
+}
+
+body:not(.windows-classic-theme) #imageBiasAdjustmentModal .target-area-border {
+    border-color: hsl(0 0% 0% / 55%);
+    border-radius: 0;
+}
+
+#maskEditorDialog .mask-editor-hint {
+    flex: none;
+    margin-left: 0;
+}
+
+body:not(.windows-classic-theme) #maskEditorDialog .mask-editor-hint {
+    color: #6d6d6d;
+    font-size: 9pt;
+}

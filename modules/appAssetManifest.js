@@ -39,6 +39,7 @@ const LAUNCH_GROUPS = {
     chat: { features: ['chat'], windows: ['chat*'] },
     explorer: { features: ['explorer'], windows: ['explorerModal'] },
     'remote-desktop': { apps: ['guacRemote', 'guacFrameMirror'], windows: ['desktopGuac*'] },
+    'remote-desktop-connection': { apps: ['remoteDesktopConnection'], windows: ['remoteDesktopConnection*'] },
     dovecote: { apps: ['dovecote'], windows: ['desktopDovecote*', 'dovecote*'] },
     'planet-switcher': { features: ['planet_switcher'], windows: ['planetSwitcher*'] },
     run: { features: ['run'], windows: ['runModal'] }

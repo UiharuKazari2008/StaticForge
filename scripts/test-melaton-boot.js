@@ -210,7 +210,7 @@ const flush = () => new Promise((r) => setImmediate(r));
         const bios = require('../public/scripts/launch/phoenixBios.js');
         h = harness([json(true)], { bios, yieldSleep: true });
         const run = h.ctl.runChecks();
-        for (let i = 0; i < 3; i++) await flush();
+        await flush();
         assert.strictEqual(h.ctl.screen, 'bios', 'the POST is the first screen');
         assert.strictEqual(h.ctl.bios.state, 'splash');
         assert.strictEqual(await run, 'teal');
@@ -220,7 +220,7 @@ const flush = () => new Promise((r) => setImmediate(r));
         // F8 during the POST: the Boot Manager right after it
         h = harness([json(true)], { bios, yieldSleep: true });
         const run2 = h.ctl.runChecks();
-        for (let i = 0; i < 3; i++) await flush();
+        await flush();
         assert.strictEqual(h.ctl.handleKey('F8'), true);
         assert.strictEqual(await run2, 'menu');
         assert.strictEqual(h.t.last().data.countdown, null);
@@ -229,7 +229,7 @@ const flush = () => new Promise((r) => setImmediate(r));
         // F2 goes to the BIOS, which owns the keys until it exits
         h = harness([json(true)], { bios, yieldSleep: true });
         const run3 = h.ctl.runChecks();
-        for (let i = 0; i < 3; i++) await flush();
+        await flush();
         assert.strictEqual(h.ctl.handleKey('F2'), true);
         for (let i = 0; i < 400 && h.ctl.bios.state !== 'setup'; i++) await flush();
         assert.strictEqual(h.ctl.bios.state, 'setup');
@@ -366,15 +366,24 @@ const flush = () => new Promise((r) => setImmediate(r));
         assert.ok(!h.t.renders.slice(before).some((r) => r.screen === 'install' && r.data.phase === 'arrive'), 'no second arrive: the window stays');
     }
 
-    // nothing installed: no Upgrade, Custom reads Install; the empty disk has no partition to format
+    // nothing installed: the BIOS boots the media and it installs unattended, no pages
     // (a blank device's diff lists every manifest file; an empty list would mean it is all there)
     h = harness([json(true)], { fresh: true, engine: { ...mediaEngine(), readRecord: () => null, check: async () => { const all = Array.from({ length: 60 }, (_, i) => ({ url: `/g${i}.js`, hash: `g${i}`, size: 100 })); return { files: all, bytes: 6000, manifest: all }; } } });
+    assert.strictEqual(await h.ctl.runChecks(), 'reboot');
+    assert.ok(h.t.renders.filter((r) => r.screen === 'install').every((r) => r.data.page === 'install'), 'straight to the checklist');
+
+    // Recovery on a blank device: the pages, no Upgrade, Install, the empty disk has no partition to format
+    h = harness([...Array(7).fill(networkErr()), json(true)], { fresh: true, engine: { ...mediaEngine(), readRecord: () => null, check: async () => { const all = Array.from({ length: 60 }, (_, i) => ({ url: `/g${i}.js`, hash: `g${i}`, size: 100 })); return { files: all, bytes: 6000, manifest: all }; } } });
+    await h.ctl.runChecks();
     {
-        const run = h.ctl.runChecks();
+        const run = h.ctl.handlePointer('choose', 3, 'mouse');
         for (let i = 0; i < 1200 && h.ctl.screen !== 'install'; i++) await flush();
         assert.strictEqual(h.ctl.screen, 'install');
         assert.strictEqual(h.t.last().data.page, 'language');
         h.ctl.setup.page = 'type';
+        assert.strictEqual(h.ctl.handleKey('Enter'), true);
+        assert.strictEqual(h.ctl.setup.page, 'type', 'Enter picks nothing on the type page');
+        assert.strictEqual(h.ctl.install, null, 'and starts no install');
         h.ctl.setupAction('setup-custom');
         assert.strictEqual(h.t.last().data.upgradeAllowed, false);
         assert.strictEqual(h.t.last().data.disk[0].name, 'Disk 0 Unallocated Space');

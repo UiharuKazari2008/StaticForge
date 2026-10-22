@@ -18,14 +18,15 @@ HTTP routes defined in `web_server.js` and static middleware. Default base: `htt
 6. [Preset & generation (HTTP)](#preset--generation-http)
 7. [Admin: pending queue](#admin-pending-queue)
 8. [Traces](#traces)
-9. [Dreamscape Exchange Server](#dreamscape-exchange-server)
-10. [Admin log viewer (UUID path)](#admin-log-viewer-uuid-path)
-11. [Public MCP / Grok connector (UUID path)](#public-mcp--grok-connector-uuid-path)
-12. [VFS (UUID path)](#vfs-uuid-path)
-13. [Android background notification](#android-background-notification)
-14. [Miscellaneous](#miscellaneous)
-15. [Replication](#replication)
-16. [Static files (public/)](#static-files-public)
+9. [Remote Desktop (Guacamole)](#remote-desktop-guacamole)
+10. [Dreamscape Exchange Server](#dreamscape-exchange-server)
+11. [Admin log viewer (UUID path)](#admin-log-viewer-uuid-path)
+12. [Public MCP / Grok connector (UUID path)](#public-mcp--grok-connector-uuid-path)
+13. [VFS (UUID path)](#vfs-uuid-path)
+14. [Android background notification](#android-background-notification)
+15. [Miscellaneous](#miscellaneous)
+16. [Replication](#replication)
+17. [Static files (public/)](#static-files-public)
 
 ---
 
@@ -912,6 +913,35 @@ MCP tools (own mailbox): `set_mailbox_notify_forward`, `get_mailbox_notify_forwa
 | DELETE | `/mail-exchange/mailboxes/:owner/notify-forward` | Exchange admin `{ confirm }` |
 
 WebSocket: `dovecote_subscribe_mailbox_new_mail` / `dovecote_unsubscribe_mailbox_new_mail` → push `mailbox_new_mail` `{ mailbox, id, from, subject, receivedAt, dropped }`. Over the per-socket cap the next event is dropped and the first drop in a window sends `mailbox_new_mail_rate_limited` `{ mailbox, dropped }`; the next delivered event includes the dropped count.
+
+---
+
+## Remote Desktop (Guacamole)
+
+Handler: `modules/guacRemoteBridge.js`, mounted by `mountGuacRemoteBridge`. Every route uses `authMiddleware`. Dreamscape signs in to Komaki's Apache Guacamole with one shared account and keeps one token (an extra login revokes the token that open session frames hold). Remote Desktop Manager (`public/scripts/comp/desktop-apps/guacRemote.js`) lists that account's connections. Remote Desktop Connection (`public/scripts/comp/desktop-apps/remoteDesktopConnection.js`) opens temporary quick connections.
+
+| Method | Path | Notes |
+|--------|------|--------|
+| GET | `/api/desktop-guac/connections` | `{ ok, connections[], groups[], groupOptions[] }`: the connection tree as `{ id, name, protocol, parentId, groupName, previewAt }` rows |
+| POST | `/api/desktop-guac/connections` | `{ name, protocol, parentIdentifier, parameters: { hostname, port, username, password } }` → `{ ok, id }`. Needs Guacamole's "Create new connections" permission on the shared account (it has none today, so this returns Guacamole's permission error) |
+| GET | `/api/desktop-guac/session/:id` | `{ ok, url }`: Guacamole's client route for a catalog connection, token in the hash |
+| GET | `/api/desktop-guac/home` | `{ ok, url }`: Guacamole's home page |
+| GET / POST | `/api/desktop-guac/preview/:id` | Last-frame JPEG of a catalog connection (POST body `image/jpeg`, 2 MB max) |
+| POST | `/api/desktop-guac/download` | Raw body (80 MB max), headers `x-filename`, `x-workspace-id`: saves a session download into that workspace's Downloads folder |
+| GET | `/api/desktop-guac/quick/status` | `{ ok, available }`. `available` is true when the Guacamole token lists the `quickconnect` data source, meaning guacamole-auth-quickconnect is installed on the gateway |
+| POST | `/api/desktop-guac/quick` | `{ host, port?, protocol: "rdp" \| "ssh" \| "vnc", username?, password?, domain? }` → `{ ok, id, name, protocol, url }`. See below |
+| * | `/api/desktop-guac/web/*` | Same-origin proxy of Guacamole's web app, including the `websocket-tunnel` upgrade. The session cookie is required on the upgrade |
+
+### `POST /api/desktop-guac/quick`
+
+Creates a temporary connection through Guacamole's quickconnect extension (`POST {guacamole}/api/session/ext/quickconnect/create` with a `rdp://`, `ssh://` or `vnc://` URI). The connection lives only in the shared token's `quickconnect` data source. Nothing is saved in Guacamole or in Dreamscape. The client opens `url` in Remote Desktop Manager's session window.
+
+- `host`: a DNS name, IPv4, or IPv6 address (brackets optional). `port`: 1 to 65535, or omitted for the protocol's default.
+- RDP: `DOMAIN\user` in `username` is split into `domain`. Certificates are not checked (`ignore-cert=true`, `security=any`).
+- The caller chooses the protocol. Dreamscape does not check which protocols the host offers.
+- Errors are `{ ok: false, code, error }`. `code` is one of: `protocol`, `blank` or `invalid` (400); `unavailable` (501: the quickconnect extension is not installed); `refused` (502: Guacamole refused the URI); `gateway` (Guacamole unreachable or login failed).
+
+Komaki needs `guacamole-auth-quickconnect-1.5.5.jar` (matching Guacamole 1.5.5) in `GUACAMOLE_HOME/extensions`. Recommended in `guacamole.properties`: `quickconnect-allowed-parameters: hostname, port, username, password, domain, security, ignore-cert`.
 
 ---
 

@@ -73,7 +73,9 @@ const RUN_APP_ALIAS_GROUPS = [
     { aliases: ['rules', 'director'], launchIds: ['rules'] },
     { aliases: ['persona', 'character', 'linkxi'], launchIds: ['chat-persona'] },
     { aliases: ['api', 'keys', 'keychain', 'credentials'], launchIds: ['keychain'] },
-    { aliases: ['preset manager', 'manage presets'], launchIds: ['presets'] }
+    { aliases: ['preset manager', 'manage presets'], launchIds: ['presets'] },
+    { aliases: ['mstsc', 'rdp', 'remote desktop connection', 'ssh', 'vnc', 'quick connect'], launchIds: ['remote-desktop-connection'] },
+    { aliases: ['guacamole', 'guac', 'remote desktop manager', 'connections'], launchIds: ['remote-desktop'] }
 ];
 
 const RUN_PREFIX_STRIPS = [

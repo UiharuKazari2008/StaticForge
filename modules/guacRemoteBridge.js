@@ -24,6 +24,7 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const https = require('https');
+const net = require('net');
 const express = require('express');
 
 const expressRawJpeg = express.raw({ type: 'image/jpeg', limit: '2mb' });
@@ -132,6 +133,8 @@ async function loginAt(origin, username, password) {
     return {
         token: data.authToken,
         dataSource: String(data.dataSource),
+        // "quickconnect" is here once Komaki has guacamole-auth-quickconnect (Remote Desktop Connection)
+        dataSources: Array.isArray(data.availableDataSources) ? data.availableDataSources.map(String) : [],
         origin: origin,
         catalog: new Map(),
         checked: Date.now()
@@ -367,6 +370,108 @@ async function saveGuacDownload(workspaceId, filename, buffer) {
         wsServer.broadcast({ type: 'vfs_updated', data: { path: folderPath }, timestamp: new Date().toISOString() });
     }
     return { ok: true, name: name, path: folderPath, fileId: file && file.id };
+}
+
+// ---- Remote Desktop Connection (quick connect) --------------------------------------------
+// public/scripts/comp/desktop-apps/remoteDesktopConnection.js. Sessions are Guacamole's
+// quickconnect extension (guacamole-auth-quickconnect 1.5.5 on Komaki): a rdp:// / ssh:// /
+// vnc:// URI becomes a temporary connection in the "quickconnect" data source of our token,
+// so nothing is stored in Guacamole or here. The protocol is the one the user chose.
+
+const QUICK_DATA_SOURCE = 'quickconnect';
+const QUICK_PROTOCOLS = new Set(['rdp', 'ssh', 'vnc']);
+const QUICK_HOST_RE = /^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*\.?$/;
+
+function quickFail(status, message, code) {
+    const err = fail(status, message);
+    err.code = code;
+    return err;
+}
+
+async function quickConnectStatus() {
+    const auth = await ensureAuth(false);
+    return { ok: true, available: (auth.dataSources || []).includes(QUICK_DATA_SOURCE) };
+}
+
+function quickConnectUri(body) {
+    const protocol = String(body && body.protocol || '').toLowerCase();
+    if (!QUICK_PROTOCOLS.has(protocol)) throw quickFail(400, 'Choose RDP, SSH or VNC.', 'protocol');
+    let host = String(body && body.host || '').trim();
+    const v6 = /^\[([0-9A-Fa-f:.]+)\]$/.exec(host);
+    if (v6) host = v6[1];
+    if (!host) throw quickFail(400, 'The computer name field is blank. Enter a remote computer name.', 'blank');
+    if (!net.isIP(host) && !QUICK_HOST_RE.test(host)) {
+        throw quickFail(400, 'The specified computer name contains invalid characters.', 'invalid');
+    }
+    const port = body && body.port ? Number(body.port) : 0;
+    if (port && (!Number.isInteger(port) || port < 1 || port > 65535)) {
+        throw quickFail(400, 'The remote computer name is not valid. Enter a valid remote computer name.', 'invalid');
+    }
+    let username = String(body && body.username || '');
+    let domain = String(body && body.domain || '');
+    // DOMAIN\user, as Windows Security takes it
+    const slash = username.indexOf('\\');
+    if (protocol === 'rdp' && slash > 0 && !domain) {
+        domain = username.slice(0, slash);
+        username = username.slice(slash + 1);
+    }
+    const password = String(body && body.password || '');
+    const userInfo = username || password
+        ? encodeURIComponent(username) + (password ? ':' + encodeURIComponent(password) : '') + '@'
+        : '';
+    const query = new URLSearchParams();
+    if (protocol === 'rdp') {
+        query.set('ignore-cert', 'true');
+        query.set('security', 'any');
+        if (domain) query.set('domain', domain);
+    }
+    const hostPart = net.isIPv6(host) ? '[' + host + ']' : host;
+    const qs = query.toString();
+    return {
+        protocol: protocol,
+        name: hostPart + (port ? ':' + port : ''),
+        uri: protocol + '://' + userInfo + hostPart + (port ? ':' + port : '') + '/' + (qs ? '?' + qs : '')
+    };
+}
+
+async function createQuickConnection(body) {
+    const target = quickConnectUri(body);
+    let auth = await ensureAuth(false);
+    if (!(auth.dataSources || []).includes(QUICK_DATA_SOURCE)) {
+        throw quickFail(501, 'Quick connect is not available on the Remote Desktop Gateway.', 'unavailable');
+    }
+    const post = (current) => fetch(current.origin + '/api/session/ext/' + QUICK_DATA_SOURCE + '/create', {
+        method: 'POST',
+        headers: { 'Guacamole-Token': current.token, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ uri: target.uri }),
+        signal: AbortSignal.timeout(12000)
+    });
+    let response;
+    try {
+        response = await post(auth);
+        if (response.status === 403) {
+            authCache = null;
+            auth = await ensureAuth(true);
+            response = await post(auth);
+        }
+    } catch (err) {
+        if (err && err.status) throw err;
+        throw fail(502, 'Guacamole at ' + hostOf(auth.origin) + ' is unreachable');
+    }
+    const data = await response.json().catch(() => null);
+    if (!response.ok || !data || data.identifier === undefined) {
+        throw quickFail(response.status === 404 ? 501 : 502,
+            (data && data.message) || 'The Remote Desktop Gateway refused the connection.',
+            response.status === 404 ? 'unavailable' : 'refused');
+    }
+    const clientId = Buffer.from([String(data.identifier), 'c', QUICK_DATA_SOURCE].join('\0')).toString('base64url');
+    return {
+        ok: true,
+        id: String(data.identifier),
+        name: target.name,
+        protocol: target.protocol,
+        url: GUAC_WEB_PATH + '/#/client/' + clientId + '?token=' + encodeURIComponent(auth.token)
+    };
 }
 
 const GUAC_WEB_PATH = '/api/desktop-guac/web';
@@ -621,6 +726,22 @@ function mountGuacRemoteBridge(app, authMiddleware) {
         }
     });
 
+    app.get('/api/desktop-guac/quick/status', authMiddleware, async (req, res) => {
+        try {
+            res.json(await quickConnectStatus());
+        } catch (err) {
+            res.status(err.status || 502).json({ ok: false, error: err.message || 'Guacamole is unavailable' });
+        }
+    });
+
+    app.post('/api/desktop-guac/quick', authMiddleware, async (req, res) => {
+        try {
+            res.json(await createQuickConnection(req.body || {}));
+        } catch (err) {
+            res.status(err.status || 502).json({ ok: false, code: err.code || 'gateway', error: err.message || 'Quick connect failed' });
+        }
+    });
+
     app.get(GUAC_WEB_PATH + '/' + GUAC_FRAME_SCRIPT_NAME, authMiddleware, (req, res) => {
         res.set('Cache-Control', 'no-cache');
         res.sendFile(GUAC_FRAME_SCRIPT_FILE);
@@ -635,5 +756,6 @@ module.exports = {
     listGuacConnections,
     readGuacConfig,
     flattenGuacTree,
-    guacIdOk
+    guacIdOk,
+    quickConnectUri
 };

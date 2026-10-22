@@ -173,7 +173,20 @@
         return id ? String(id) : '';
     }
 
+    // Remote Desktop Connection's temporary sessions (data source "quickconnect") reuse small ids
+    // that also name Komaki's saved connections, so they keep no preview.
+    function quickConnectRoute() {
+        const m = /^#\/client\/([^/?]+)/.exec(window.location.hash || '');
+        if (!m) return false;
+        try {
+            return atob(m[1].replace(/-/g, '+').replace(/_/g, '/')).split('\0')[2] === 'quickconnect';
+        } catch (_) {
+            return false;
+        }
+    }
+
     function capturePreview() {
+        if (quickConnectRoute()) return;
         const scope = clientScope();
         const managed = scope && scope.focusedClient;
         const client = managed && managed.client;

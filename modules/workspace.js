@@ -38,6 +38,49 @@ function normalizeWorkspaceNicknames(raw) {
     return out.slice(0, 24);
 }
 
+/**
+ * Personalization (desktopPersonalization.js): window colour, intensity, transparency, sound
+ * events and the screen saver. Kept to the shapes and ranges the client uses.
+ */
+const PERSONALIZATION_COLORS = new Set(['clear', 'workspace', 'default', 'graphite', 'blue', 'teal', 'red', 'orange', 'pink', 'frost', 'custom']);
+const PERSONALIZATION_SAVERS = new Set(['none', 'aurora', 'blank', 'bubbles', 'focus', 'logo', 'mystify', 'photos', 'ribbons']);
+
+function personalizationInt(value, lo, hi, fallback) {
+    const n = Number(value);
+    return Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.round(n))) : fallback;
+}
+
+function normalizeWorkspacePersonalization(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const cc = raw.customColor && typeof raw.customColor === 'object' ? raw.customColor : {};
+    const ss = raw.screenSaver && typeof raw.screenSaver === 'object' ? raw.screenSaver : {};
+    const sounds = {};
+    if (raw.sounds && typeof raw.sounds === 'object') {
+        Object.keys(raw.sounds).slice(0, 64).forEach((key) => {
+            const value = raw.sounds[key];
+            if (typeof value === 'string' && /^[\w .-]{1,80}$/.test(key) && value.length <= 120) sounds[key] = value;
+        });
+    }
+    return {
+        windowColor: PERSONALIZATION_COLORS.has(raw.windowColor) ? raw.windowColor : 'clear',
+        customColor: {
+            h: personalizationInt(cc.h, 0, 359, 210),
+            s: personalizationInt(cc.s, 0, 100, 60),
+            b: personalizationInt(cc.b, 0, 100, 80)
+        },
+        intensity: personalizationInt(raw.intensity, 10, 85, 30),
+        transparency: raw.transparency !== false,
+        soundScheme: raw.soundScheme === 'none' ? 'none' : 'default',
+        sounds,
+        startupSound: raw.startupSound !== false,
+        screenSaver: {
+            id: PERSONALIZATION_SAVERS.has(ss.id) ? ss.id : 'none',
+            wait: personalizationInt(ss.wait, 1, 9999, 10),
+            resumeLogon: ss.resumeLogon === true
+        }
+    };
+}
+
 function nextDesktopGridPosition(shortcuts) {
     const used = new Set();
     (Array.isArray(shortcuts) ? shortcuts : []).forEach((shortcut) => {
@@ -480,6 +523,9 @@ class WorkspaceManager {
         }
         if (typeof settings.nicknames !== 'undefined') {
             updates.nicknames = this.normalizeWorkspaceNicknames(settings.nicknames);
+        }
+        if (typeof settings.personalization !== 'undefined') {
+            updates.personalization = normalizeWorkspacePersonalization(settings.personalization);
         }
 
         // Merge all updates at once (fluent API - use array notation for workspace ID)

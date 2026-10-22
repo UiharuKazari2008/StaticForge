@@ -10,8 +10,12 @@ const WINLOGON_FADE_OUT_MS = 900;
 const WINLOGON_BLACK_HOLD_MS = 250;
 const WINLOGON_FADE_IN_MS = 800;
 const WINLOGON_TEXT_HOLD_MS = 700;
-// a restart goes dark for a few seconds before the BIOS POSTs again on /launch (#611)
-const WINLOGON_RESTART_BLACK_MS = 3000;
+// Then every path goes dark, like the monitor losing its signal, before /launch POSTs
+// again. The work that has to finish (the log off request, pending desktop saves, the
+// server restart) runs in the dark: it stays dark past the usual few seconds only while
+// that work is still running, and never past the cap.
+const WINLOGON_POWER_BLACK_MS = 2500;
+const WINLOGON_POWER_BLACK_MAX_MS = 8000;
 
 const WINLOGON_POWER_COPY = {
     restart: {
@@ -89,11 +93,21 @@ function winlogonBlockerIcon(modal) {
     return null;
 }
 
-function winlogonBlockerFromModal(modal) {
-    return {
-        name: winlogonBlockerName(modal),
-        icon: winlogonBlockerIcon(modal)
-    };
+function winlogonProgramFromModal(modal, blocking) {
+    // getModalTitle / getModalIcons / getIconHTML: public/scripts/comp/modalUtils.js (the taskbar's own)
+    let name = typeof getModalTitle === 'function' ? String(getModalTitle(modal) || '').trim() : '';
+    if (!name) name = winlogonBlockerName(modal);
+    let icon = null;
+    if (typeof getModalIcons === 'function' && typeof getIconHTML === 'function') {
+        const icons = getModalIcons(modal) || {};
+        if (icons.icon || icons.imageIcon) {
+            const holder = document.createElement('span');
+            holder.innerHTML = getIconHTML(icons.icon, icons.imageIcon, '', 32);
+            // dual markup is <i class="icon-fa"> + <img>: the desktop draws the image
+            icon = holder.querySelector('img') || holder.firstElementChild;
+        }
+    }
+    return { modal, name, icon: icon || winlogonBlockerIcon(modal), blocking: !!blocking };
 }
 
 /** Studio open, or a Notepad with unsaved changes. Those gate logoff. */
@@ -104,7 +118,7 @@ function collectLogoffBlockers() {
         if (!winlogonModalOpen(modal) || seen.has(modal)) return;
         if (modal.id && LOGOFF_SKIP_IDS[modal.id]) return;
         seen.add(modal);
-        items.push(winlogonBlockerFromModal(modal));
+        items.push(winlogonProgramFromModal(modal, true));
     };
 
     add(document.getElementById('manualModal'));
@@ -120,21 +134,62 @@ function collectLogoffBlockers() {
     return items;
 }
 
+/**
+ * Vista lists every program that still has a window, not only the ones that block: the
+ * blockers first (with the orange reason), then the rest front to back, minimised last.
+ */
+function collectWinlogonPrograms(blockers) {
+    const items = blockers.slice();
+    const seen = new Set(blockers.map((item) => item.modal));
+    // getOpenTaskbarModals / windowUsageStack: public/scripts/comp/modalUtils.js
+    const open = typeof getOpenTaskbarModals === 'function' ? getOpenTaskbarModals() : [];
+    const usage = typeof windowUsageStack !== 'undefined' && Array.isArray(windowUsageStack) ? windowUsageStack : [];
+    const depth = (modal) => Number(modal.style && modal.style.zIndex) || 0;
+    const others = open.filter((modal) => modal && !seen.has(modal) && !(modal.id && LOGOFF_SKIP_IDS[modal.id]));
+    others.sort((a, b) => {
+        const aMin = a.classList.contains('minimised') ? 1 : 0;
+        const bMin = b.classList.contains('minimised') ? 1 : 0;
+        if (aMin !== bMin) return aMin - bMin;
+        return (depth(b) - depth(a)) || (usage.lastIndexOf(b) - usage.lastIndexOf(a));
+    });
+    others.forEach((modal) => items.push(winlogonProgramFromModal(modal, false)));
+    return items;
+}
+
+function winlogonBlockEl(tag, className, id) {
+    const el = document.createElement(tag);
+    if (className) el.className = className;
+    if (id) el.id = id;
+    return el;
+}
+
+// winsrv.dll dialog 20 (Segoe UI 10 pt, 266x224 DLU) with row dialogs 21 / 22 under it.
 function ensureWinlogonBlock() {
     let root = document.getElementById('winlogonBlock');
     if (root) return root;
-    root = document.createElement('div');
-    root.id = 'winlogonBlock';
-    root.className = 'winlogon-block';
+    root = winlogonBlockEl('div', 'winlogon-block', 'winlogonBlock');
     root.hidden = true;
-    root.innerHTML = '<div class="winlogon-block-title" id="winlogonBlockTitle"></div>'
-        + '<div class="winlogon-block-rule"></div>'
-        + '<div class="winlogon-block-list" id="winlogonBlockList"></div>'
-        + '<div class="winlogon-block-footer" id="winlogonBlockFooter"></div>'
-        + '<div class="winlogon-block-actions">'
-        + '<button type="button" class="winlogon-block-go" id="winlogonBlockGo"></button>'
-        + '<button type="button" class="winlogon-block-cancel" id="winlogonBlockCancel">Cancel</button>'
-        + '</div>';
+    const dialog = winlogonBlockEl('div', 'winlogon-block-dialog');
+    dialog.setAttribute('role', 'alertdialog');
+    dialog.setAttribute('aria-labelledby', 'winlogonBlockTitle');
+    dialog.setAttribute('aria-describedby', 'winlogonBlockFooter');
+    const actions = winlogonBlockEl('div', 'winlogon-block-actions');
+    const go = winlogonBlockEl('button', 'winlogon-block-go', 'winlogonBlockGo');
+    go.type = 'button';
+    go.appendChild(winlogonBlockEl('span', 'winlogon-block-busy'));
+    go.appendChild(winlogonBlockEl('span', 'winlogon-block-label', 'winlogonBlockGoLabel'));
+    const cancel = winlogonBlockEl('button', 'winlogon-block-cancel', 'winlogonBlockCancel');
+    cancel.type = 'button';
+    cancel.textContent = 'Cancel';
+    actions.appendChild(go);
+    actions.appendChild(cancel);
+    dialog.appendChild(winlogonBlockEl('div', 'winlogon-block-title', 'winlogonBlockTitle'));
+    dialog.appendChild(winlogonBlockEl('div', 'winlogon-block-rule'));
+    dialog.appendChild(winlogonBlockEl('div', 'winlogon-block-list', 'winlogonBlockList'));
+    dialog.appendChild(winlogonBlockEl('div', 'winlogon-block-rule'));
+    dialog.appendChild(winlogonBlockEl('div', 'winlogon-block-footer', 'winlogonBlockFooter'));
+    dialog.appendChild(actions);
+    root.appendChild(dialog);
     document.body.appendChild(root);
     return root;
 }
@@ -145,13 +200,13 @@ function fillWinlogonBlock(kind, items) {
     const title = document.getElementById('winlogonBlockTitle');
     const list = document.getElementById('winlogonBlockList');
     const footer = document.getElementById('winlogonBlockFooter');
-    const go = document.getElementById('winlogonBlockGo');
+    const label = document.getElementById('winlogonBlockGoLabel');
     title.textContent = 'The following programs are still running:';
     footer.textContent = copy.footer;
-    go.textContent = '';
-    const label = document.createElement('span');
+    label.textContent = '';
     const accel = copy.accel;
     const action = copy.action;
+    // The underline only shows once Alt is pressed (Vista hides keyboard cues by default).
     if (accel && action.charAt(0).toUpperCase() === accel) {
         const mark = document.createElement('u');
         mark.textContent = action.charAt(0);
@@ -160,36 +215,46 @@ function fillWinlogonBlock(kind, items) {
     } else {
         label.textContent = action;
     }
-    go.appendChild(label);
-    go.accessKey = accel ? accel.toLowerCase() : '';
+    root.classList.remove('winlogon-block-cues');
     list.textContent = '';
     items.forEach((item) => {
-        const row = document.createElement('div');
-        row.className = 'winlogon-block-row';
-        const icon = document.createElement('span');
-        icon.className = 'winlogon-block-icon';
+        const row = winlogonBlockEl('div', item.blocking ? 'winlogon-block-row blocking' : 'winlogon-block-row');
+        const icon = winlogonBlockEl('span', 'winlogon-block-icon');
         if (item.icon) icon.appendChild(item.icon);
-        const text = document.createElement('span');
-        text.className = 'winlogon-block-text';
-        const name = document.createElement('span');
-        name.className = 'winlogon-block-name';
+        const name = winlogonBlockEl('span', 'winlogon-block-name');
         name.textContent = item.name;
-        const reason = document.createElement('span');
-        reason.className = 'winlogon-block-reason';
-        reason.textContent = copy.reason;
-        text.appendChild(name);
-        text.appendChild(reason);
         row.appendChild(icon);
-        row.appendChild(text);
+        row.appendChild(name);
+        if (item.blocking) {
+            const reason = winlogonBlockEl('span', 'winlogon-block-reason');
+            reason.textContent = copy.reason;
+            row.appendChild(reason);
+        }
         list.appendChild(row);
     });
     return root;
 }
 
-function askWinlogonBlock(kind, items) {
+const WINLOGON_BLOCK_ART = ['restart', 'cancel'].reduce((list, name) => list.concat(
+    ['normal', 'hot', 'pressed', 'focus', 'focus-hot'].map((state) => `${name}-${state}.png`)
+), ['busy.png', 'rule.png']).map((file) => `/static_images/vista-shutdown/${file}`);
+
+/** The screen comes up whole, as Vista's does: its bitmaps are decoded first (briefly). */
+function preloadWinlogonBlockArt() {
+    const loads = WINLOGON_BLOCK_ART.map((src) => {
+        const img = new Image();
+        img.src = src;
+        return typeof img.decode === 'function' ? img.decode().catch(() => null) : null;
+    });
+    return Promise.race([Promise.all(loads), winlogonDelay(400)]);
+}
+
+async function askWinlogonBlock(kind, items) {
+    await preloadWinlogonBlockArt();
     const root = fillWinlogonBlock(kind, items);
     const go = document.getElementById('winlogonBlockGo');
     const cancel = document.getElementById('winlogonBlockCancel');
+    const accel = (winlogonPowerCopy(kind).accel || '').toLowerCase();
     root.hidden = false;
     return new Promise((resolve) => {
         let settled = false;
@@ -205,10 +270,18 @@ function askWinlogonBlock(kind, items) {
         const onGo = () => finish(true);
         const onCancel = () => finish(false);
         const onKey = (event) => {
+            if (event.key === 'Alt') root.classList.add('winlogon-block-cues');
             if (event.key === 'Escape') {
                 event.preventDefault();
                 finish(false);
             } else if (event.key === 'Enter') {
+                // Enter presses the focused button; Restart now has the focus at first
+                event.preventDefault();
+                finish(document.activeElement !== cancel);
+            } else if (event.key === 'Tab') {
+                event.preventDefault();
+                (document.activeElement === go ? cancel : go).focus();
+            } else if (event.altKey && accel && String(event.key).toLowerCase() === accel) {
                 event.preventDefault();
                 finish(true);
             }
@@ -291,6 +364,63 @@ function hideWinlogonPowerScreen() {
     if (window.wsClient) window.wsClient.winlogonPowerText = '';
 }
 
+function winlogonPowerQuiet(label, job) {
+    return Promise.resolve().then(job).catch((error) => {
+        console.warn(`⚠️ ${label} did not finish before the power screen:`, error);
+    });
+}
+
+/**
+ * What has to finish before the browser lets go, started as the screen goes dark. Pending
+ * desktop saves and the log off request never stop the shutdown; a failed server restart
+ * post does (the caller shows why).
+ */
+function startWinlogonPowerWork(kind, onCommit) {
+    bypassConfirmation = true;
+    // suppressWebSocketReconnectForReload: public/scripts/comp/modalUtils.js
+    suppressWebSocketReconnectForReload();
+    const jobs = [
+        // desktopShortcuts.flushPendingDesktopLayout: public/scripts/comp/desktopShortcuts.js
+        winlogonPowerQuiet('Desktop layout save', () => {
+            const shortcuts = window.desktopShortcuts;
+            if (shortcuts && typeof shortcuts.hasPendingDesktopChanges === 'function'
+                && shortcuts.hasPendingDesktopChanges()) {
+                return shortcuts.flushPendingDesktopLayout();
+            }
+            return null;
+        })
+    ];
+    if (kind === 'logoff') {
+        // handleLogout: public/scripts/comp/connectionManager.js (stays put; /launch is next)
+        jobs.push(winlogonPowerQuiet('Log off', () => handleLogout({ redirect: false })));
+    }
+    if (kind === 'server' && typeof onCommit === 'function') {
+        jobs.push(Promise.resolve().then(onCommit));
+    }
+    return Promise.all(jobs);
+}
+
+/**
+ * The dark screen (dark: the fade to black): WINLOGON_POWER_BLACK_MS once it is black, longer
+ * only while the work is still running, never past WINLOGON_POWER_BLACK_MAX_MS. Throws if
+ * the work failed.
+ */
+async function lingerWinlogonPowerBlack(work, dark) {
+    let failure = null;
+    let done = false;
+    const settled = work.then(() => { done = true; }, (error) => {
+        failure = error || new Error('Power work failed');
+        done = true;
+    });
+    await dark;
+    await winlogonDelay(WINLOGON_POWER_BLACK_MS);
+    if (!done) {
+        await Promise.race([settled, winlogonDelay(WINLOGON_POWER_BLACK_MAX_MS - WINLOGON_POWER_BLACK_MS)]);
+    }
+    if (failure) throw failure;
+}
+
+/** Narrow mode has no Welcome screen: the old direct exits. */
 function commitWinlogonPower(kind, onCommit) {
     bypassConfirmation = true;
     // suppressWebSocketReconnectForReload: public/scripts/comp/modalUtils.js
@@ -301,7 +431,7 @@ function commitWinlogonPower(kind, onCommit) {
             return;
         }
         if (kind === 'logoff') {
-            // handleLogout: public/scripts/app.js
+            // handleLogout: public/scripts/comp/connectionManager.js
             handleLogout();
             return;
         }
@@ -317,8 +447,9 @@ function commitWinlogonPower(kind, onCommit) {
 
 /**
  * kind: 'restart' | 'shutdown' | 'logoff' | 'server'
- * options.onCommit runs once "Shutting down..." is on the Welcome screen (server restart
- * posts PM2 from there). Resolves false when the still-running list is cancelled.
+ * options.onCommit runs once "Shutting down..." has gone dark (server restart posts PM2
+ * from there). Resolves false when the still-running list is cancelled. On the desktop
+ * every kind ends on /launch; after a log off its boot lands on the logon page.
  */
 async function runWinlogonPower(kind, options) {
     if (winlogonPowerRunning) return false;
@@ -332,7 +463,7 @@ async function runWinlogonPower(kind, options) {
     try {
         const blockers = collectLogoffBlockers();
         if (blockers.length) {
-            const accepted = await askWinlogonBlock(kind, blockers);
+            const accepted = await askWinlogonBlock(kind, collectWinlogonPrograms(blockers));
             if (!accepted) {
                 winlogonPowerRunning = false;
                 return false;
@@ -347,13 +478,10 @@ async function runWinlogonPower(kind, options) {
         showWinlogonPowerScreen(copy.screen);
         await fadeShutdownCover(false);
         await winlogonDelay(WINLOGON_TEXT_HOLD_MS);
-        if (kind === 'restart') {
-            // "Restarting..." goes black and stays black, like the monitor losing its signal
-            await fadeShutdownCover(true);
-            await winlogonDelay(WINLOGON_RESTART_BLACK_MS);
-        }
-        await commitWinlogonPower(kind, opts.onCommit);
-        if (kind === 'shutdown' || kind === 'logoff') winlogonPowerRunning = false;
+        const work = startWinlogonPowerWork(kind, opts.onCommit);
+        await lingerWinlogonPowerBlack(work, fadeShutdownCover(true));
+        // restartClientNavigate: public/scripts/comp/modalUtils.js (desktop: /launch)
+        restartClientNavigate();
         return true;
     } catch (error) {
         hideWinlogonPowerScreen();

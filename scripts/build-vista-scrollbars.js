@@ -56,8 +56,9 @@ const SCOPE = `${ROOT_SCOPE} :not(html):not(.has-custom-scrollbar):not(.scrollab
 // but are Vista applications and show the native bar instead on the desktop (Yukimi 2026-10-14:
 // Periscope's overlay was restyled to imitate a Windows bar and read as neither): the overlay is
 // hidden and the inner .scrollable-content scroller gets the same rules.
-// Reference Manager and Dovecote (Yukimi 2026-10-14, #474 / #473: "use the vista scrollbar")
-const NATIVE_HOSTS = ['#logViewerModal', '#cacheManagerModal', '#desktopDovecoteModal'];
+// Reference Manager and Dovecote (Yukimi 2026-10-14, #474 / #473: "use the vista scrollbar"),
+// Config Checkpoints' list box and Apply Studio Change's list (Yukimi 2026-10-21)
+const NATIVE_HOSTS = ['#logViewerModal', '#cacheManagerModal', '#desktopDovecoteModal', '#configEditorCheckpointsModal', '#confirmationDialog .studio-change-dialog'];
 // one selector per host, never :is(): Chrome drops scrollbar part rules (thumb, button, track with
 // :vertical / :start ...) whose selector wraps the host in :is(), while the bare ::-webkit-scrollbar
 // rule still matches (seen 2026-10-14, Chromium 1x headless and the desktop tab)

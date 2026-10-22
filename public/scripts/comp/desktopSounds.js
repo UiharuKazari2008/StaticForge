@@ -12,6 +12,10 @@
  * critical-stop (exception window / hard WS drop), uac (Client Update).
  * No min/max, no ambient.
  *
+ * Each workspace can give an event its own sound or (None), or pick No Sounds, in Personalize >
+ * Sounds (desktopPersonalization.js soundFile; the Sound dialog, personalizationDialogs.js).
+ * The startup sound (the logon sound when the desktop comes up) has its own check box there.
+ *
  * Test: scripts/test-desktop-sounds.js. Yozora #436, #437.
  */
 (function () {
@@ -42,6 +46,25 @@
         'critical-stop': 'Windows Critical Stop.wav',
         uac: 'Windows User Account Control.wav'
     };
+
+    // the WAVs the server hands out (modules/desktopSoundsStatic.js ALLOWED_FILES): the Sounds list
+    const FILES = [
+        'Windows Balloon.wav',
+        'Windows Critical Stop.wav',
+        'Windows Default.wav',
+        'Windows Ding.wav',
+        'Windows Error.wav',
+        'Windows Exclamation.wav',
+        'Windows Hardware Fail.wav',
+        'Windows Logoff Sound.wav',
+        'Windows Logon Sound.wav',
+        'Windows Navigation Start.wav',
+        'Windows Notify.wav',
+        'Windows Print complete.wav',
+        'Windows Recycle.wav',
+        'Windows Shutdown.wav',
+        'Windows User Account Control.wav'
+    ];
 
     const PRINT_REQUEST_TYPES = [
         'generate_image',
@@ -92,6 +115,20 @@
     function soundUrl(eventId) {
         const file = eventFile(eventId);
         return file ? BASE + encodeURIComponent(file) : null;
+    }
+
+    /** The file an event plays in this workspace: its own pick, '' for none, else the scheme's. */
+    function resolveFile(eventId, startup) {
+        const id = normalizeEvent(eventId);
+        if (!id) return null;
+        const pers = win && win.desktopPersonalization;
+        if (pers && typeof pers.soundFile === 'function') {
+            if (startup && pers.soundFile('logon-startup') === '') return '';
+            const own = pers.soundFile(id);
+            if (own === '') return '';
+            if (typeof own === 'string' && FILES.indexOf(own) !== -1) return own;
+        }
+        return SCHEME[id];
     }
 
     function readEnabled(storage) {
@@ -152,10 +189,11 @@
         prefetch();
     }
 
-    function loadBuffer(eventId) {
-        const id = normalizeEvent(eventId);
-        const url = soundUrl(id);
-        if (!id || !url) return Promise.resolve(null);
+    /** Decoded audio by file name (several events share one WAV). */
+    function loadBuffer(file) {
+        if (!file || FILES.indexOf(file) === -1) return Promise.resolve(null);
+        const id = file;
+        const url = BASE + encodeURIComponent(file);
         if (state.buffers[id]) return Promise.resolve(state.buffers[id]);
         if (state.inflight[id]) return state.inflight[id];
         const ctx = getContext();
@@ -181,7 +219,8 @@
     function prefetch() {
         if (!state.enabled || !isDesktopNow()) return;
         Object.keys(SCHEME).forEach((id) => {
-            loadBuffer(id);
+            const file = resolveFile(id);
+            if (file) loadBuffer(file);
         });
     }
 
@@ -217,11 +256,20 @@
         });
     }
 
-    function play(eventId) {
+    function play(eventId, options) {
         const id = normalizeEvent(eventId);
         if (!id || !state.enabled || !isDesktopNow()) return Promise.resolve(false);
+        const file = resolveFile(id, options && options.startup);
+        if (!file) return Promise.resolve(false);
         unlock();
-        return loadBuffer(id).then((buffer) => playBuffer(buffer));
+        return loadBuffer(file).then((buffer) => playBuffer(buffer));
+    }
+
+    /** The Sound dialog's Test: one file, even while the scheme or the event is silent. */
+    function playFile(file) {
+        if (!file || FILES.indexOf(file) === -1) return Promise.resolve(false);
+        unlock();
+        return loadBuffer(file).then((buffer) => playBuffer(buffer));
     }
 
     function bootIconEvent(icon) {
@@ -257,8 +305,9 @@
 
     function onDocumentEvent(ev) {
         if (!ev || !ev.detail) return;
-        const id = ev.detail.stage === 'done' ? 'logon' : ev.detail.event;
-        if (id) play(id);
+        const startup = ev.detail.stage === 'done';
+        const id = startup ? 'logon' : ev.detail.event;
+        if (id) play(id, { startup });
     }
 
     function bind() {
@@ -269,7 +318,7 @@
         doc.addEventListener('pointerdown', unlockOnce, { capture: true, passive: true });
         doc.addEventListener('keydown', unlockOnce, { capture: true });
         doc.addEventListener('desktopBootStage', (ev) => {
-            if (ev && ev.detail && ev.detail.stage === 'done') play('logon');
+            if (ev && ev.detail && ev.detail.stage === 'done') play('logon', { startup: true });
         });
         doc.addEventListener('desktopWorkstationLocked', () => play('lock'));
         doc.addEventListener('desktopWorkstationUnlocked', () => play('unlock'));
@@ -283,6 +332,7 @@
     const api = {
         STORAGE_KEY,
         SCHEME,
+        FILES,
         PRINT_REQUEST_TYPES,
         SHUTDOWN_WAIT_MAX_MS,
         normalizeEvent,
@@ -299,6 +349,8 @@
         isEnabled,
         setEnabled,
         play,
+        playFile,
+        resolveFile,
         unlock,
         prefetch,
         bind,

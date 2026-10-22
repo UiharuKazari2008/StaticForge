@@ -100,6 +100,8 @@ class WorkspaceWebSocketHandlers {
                 wallpaper: workspace.wallpaper || null,
                 wallpaperPosition: workspace.wallpaperPosition || null,
                 nicknames: Array.isArray(workspace.nicknames) ? workspace.nicknames : [],
+                // window colour, sounds, screen saver (desktopPersonalization.js)
+                personalization: workspace.personalization && typeof workspace.personalization === 'object' ? workspace.personalization : null,
                 sort: workspace.sort || 0, // Include sort field
                 fileCount,
                 presetCount: Array.isArray(workspace.presets) ? workspace.presets.length : 0,

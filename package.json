@@ -153,6 +153,7 @@
     "test:melaton-boot": "node scripts/test-melaton-boot.js",
     "test:phoenix-bios": "node scripts/test-phoenix-bios.js",
     "test:melaton-restart": "node scripts/test-melaton-restart.js",
+    "test:winlogon-power": "node scripts/test-winlogon-power.js",
     "test:melaton-network": "node scripts/test-melaton-network.js",
     "test:status-stream": "node scripts/test-status-stream.js",
     "test:update-engine": "node scripts/test-update-engine.js",

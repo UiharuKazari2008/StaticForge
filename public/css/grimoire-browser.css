@@ -17,6 +17,16 @@
     min-height: 420px;
 }
 
+/* the command bar's Back / Forward: IE7's travel arrows (ieframe.dll bitmap 288), pale when there is
+   nowhere to go */
+.wiki-window-command-bar .wiki-window-back-btn:disabled > .explorer-command-icon {
+    content: url('/static_images/vista-cmdbar/back-disabled.png');
+}
+
+.wiki-window-command-bar .wiki-window-forward-btn:disabled > .explorer-command-icon {
+    content: url('/static_images/vista-cmdbar/forward-disabled.png');
+}
+
 /* Popups have no navigation, like Chrome's popup windows: no command bar */
 [id^="wikiWindow_"][data-alchemy-popup="1"] :is(.wiki-window-command-bar, .wiki-window-back-btn, .wiki-window-forward-btn, .wiki-window-home-btn, .wiki-window-maximize-btn) {
     display: none;

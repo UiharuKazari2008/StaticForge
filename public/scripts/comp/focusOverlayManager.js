@@ -216,14 +216,20 @@ function wireFocusOverlayListeners() {
     if (focusOverlay) {
         let focusTimeout;
 
-        const showFocusOverlay = () => {
+        // force: the screen saver's own 'focus' choice (screenSaver.js), on idle or Preview
+        const showFocusOverlay = (force = false) => {
             // Check if focus cover is enabled via toggle button
-            if (!focusCoverEnabled) {
+            if (!focusCoverEnabled && force !== true) {
                 return; // Don't show overlay if disabled
             }
             // Skip during boot — window blur/visibility flicker before prefs load
             if (document.body.classList.contains('initializing') ||
                 document.body.classList.contains('boot-from-launch')) {
+                return;
+            }
+            // The screen saver replaces the focus cover when the workspace has one (Personalize >
+            // Screen Saver); screenSaver.showForFocusLoss: public/scripts/comp/screenSaver.js
+            if (force !== true && window.screenSaver && window.screenSaver.showForFocusLoss()) {
                 return;
             }
 
@@ -236,6 +242,7 @@ function wireFocusOverlayListeners() {
             if (androidFocusLockActive) {
                 return; // Android biometric lock keeps overlay active until explicitly unlocked
             }
+            if (window.screenSaver) window.screenSaver.hideForFocusReturn();
             focusOverlay.classList.remove('active');
             clearFocusStarField(); // Clear focus stars when overlay disappears
             // Delay releasing pointer events to prevent accidental interactions during fade-out
@@ -246,6 +253,7 @@ function wireFocusOverlayListeners() {
 
         focusOverlayDismissFromKeyboard = hideFocusOverlay;
         wireFocusOverlayKeyboardListener();
+        window.focusCover = { show: showFocusOverlay, hide: hideFocusOverlay };
 
         const showFocusOverlayWithKeydown = () => {
             showFocusOverlay();

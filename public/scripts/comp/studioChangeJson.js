@@ -1778,9 +1778,9 @@ function wireStudioChangeWindowControls(dialog, ops, signal, options) {
     bar.setAttribute('role', 'toolbar');
     bar.innerHTML = `
         <div class="explorer-command-set">
-            <button type="button" class="btn-secondary btn-small explorer-command-btn studio-change-desktop-btn" title="Add to Desktop"><i class="fas fa-arrow-down-left"></i>Add to Desktop</button>
-            <button type="button" class="btn-secondary btn-small explorer-command-btn" data-studio-change="all" title="Select all"><i class="fas fa-check-double"></i>Select all</button>
-            <button type="button" class="btn-secondary btn-small explorer-command-btn" data-studio-change="none" title="Select none"><i class="far fa-square"></i>Select none</button>
+            <button type="button" class="btn-secondary btn-small explorer-command-btn studio-change-desktop-btn" title="Add to Desktop"><img class="explorer-command-icon" src="/static_images/vista-explorer/fav-desktop.png" alt="">Add to Desktop</button>
+            <button type="button" class="btn-secondary btn-small explorer-command-btn" data-studio-change="all" title="Select all"><img class="explorer-command-icon" src="/static_images/vista-cmdbar/select-all.png" alt="">Select all</button>
+            <button type="button" class="btn-secondary btn-small explorer-command-btn" data-studio-change="none" title="Select none"><img class="explorer-command-icon" src="/static_images/vista-cmdbar/select-none.png" alt="">Select none</button>
         </div>`;
     content.insertBefore(bar, content.firstChild);
     const desktopBtn = bar.querySelector('.studio-change-desktop-btn');
@@ -2521,7 +2521,7 @@ async function showStudioChangeDialog(ops, options) {
         buttons,
         null,
         {
-            title: options.dialogTitle || 'Apply studio change',
+            title: options.dialogTitle || 'Apply Studio Change',
             icon: options.icon || 'fas fa-brackets-curly',
             width: 560,
             showCloseButton: true,
@@ -2551,7 +2551,7 @@ async function applyStudioChangePayload(payload, options) {
         restoreStudioDatasetSelectionUnlessChanged(datasetSnapshot, payload);
         const ops = buildOpsFromPayload(payload);
         const result = await showStudioChangeDialog(ops, {
-            dialogTitle: payload.title ? `Apply: ${payload.title}` : 'Apply studio change',
+            dialogTitle: payload.title ? `Apply: ${payload.title}` : 'Apply Studio Change',
             title: payload.title || '',
             saveTitle: payload.title || '',
             emptyMessage: 'This change JSON has nothing to apply.'
@@ -2658,7 +2658,7 @@ async function openStudioChangeExportDialog() {
         }
         const ops = buildExportOpsFromStudio();
         const result = await showStudioChangeDialog(ops, {
-            dialogTitle: 'Copy change JSON',
+            dialogTitle: 'Copy Change JSON',
             saveTitle: 'Studio Change',
             emptyMessage: 'Studio has nothing to export yet.',
             icon: 'fas fa-brackets-curly',

@@ -45,7 +45,8 @@
         diagMemoryMs: 900,     // the extended-memory count
         cdPromptMs: 5000,      // "Press any key to boot from CD or DVD..."
         pxeMs: 2600,           // the network boot agent's text before it gives up
-        enteringMs: 400        // "Entering SETUP..." stays this long before the utility opens
+        enteringMs: 400,       // "Entering SETUP..." stays this long before the utility opens
+        barRatePerMs: 1 / 1400 // the Starting bar never fills faster than once per 1.4 s
     };
 
     const KEYBAR = {
@@ -437,7 +438,7 @@
                 const progress = work ? work.progress(elapsed) : Math.min(1, elapsed / config.splashMs);
                 screen.splash = { progress, prompt: postPrompt() };
                 render();
-                if (elapsed >= config.splashMs && (!work || work.done())) break;
+                if (elapsed >= config.splashMs && (!work || (work.done() && progress >= 1))) break;
                 await env.sleep(50);
             }
             screen.splash = { progress: 1, prompt: postPrompt() };
@@ -449,7 +450,7 @@
         /** Runs opts.tasks ({ id, run }) in order; progress(elapsed) is what the bar shows. */
         function startWork(tasks) {
             const list = Array.isArray(tasks) ? tasks.filter((t) => t && typeof t.run === 'function') : [];
-            const state = { done: 0, startedAt: env.now(), results: {}, finished: list.length === 0 };
+            const state = { done: 0, startedAt: env.now(), results: {}, finished: list.length === 0, shown: 0, shownAt: env.now() };
             (async () => {
                 for (const task of list) {
                     state.startedAt = env.now();
@@ -466,11 +467,19 @@
                 done: () => state.finished,
                 results: () => state.results,
                 progress: (elapsed) => {
-                    // a steady fill over splashMs, from empty; the tasks only hold it back:
-                    // while one is still running the bar stops just short of full
-                    const byTime = Math.min(1, elapsed / config.splashMs);
-                    if (!list.length) return byTime;
-                    return Math.min(byTime, state.finished ? 1 : 0.95);
+                    // the real work: each finished task is its share of the bar, the running one
+                    // creeps through its share while it takes its time. The bar only ever moves
+                    // toward that at config.barRatePerMs, so instant tasks still read as work
+                    // and a slow server visibly holds it
+                    if (!list.length) return Math.min(1, elapsed / config.splashMs);
+                    const share = 1 / list.length;
+                    const running = state.finished ? 0 : Math.min(0.85, (env.now() - state.startedAt) / config.splashMs) * share;
+                    const target = state.finished ? 1 : Math.min(1, state.done * share + running);
+                    const now = env.now();
+                    const allowed = state.shown + (now - state.shownAt) * config.barRatePerMs;
+                    state.shown = Math.min(target, allowed);
+                    state.shownAt = now;
+                    return state.shown;
                 }
             };
         }

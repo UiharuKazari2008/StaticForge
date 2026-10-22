@@ -178,58 +178,76 @@ body.desktop-mode:not(.windows-classic-theme) :not(html):not(.has-custom-scrollb
    takes the same parts (NATIVE_HOSTS in the script) */
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .has-custom-scrollbar > .custom-scrollbar,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .has-custom-scrollbar > .custom-scrollbar,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .has-custom-scrollbar > .custom-scrollbar {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .has-custom-scrollbar > .custom-scrollbar,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .has-custom-scrollbar > .custom-scrollbar,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .has-custom-scrollbar > .custom-scrollbar {
     display: none;
 }
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content {
     scrollbar-width: auto;
     scrollbar-color: auto;
 }
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content::-webkit-scrollbar,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content::-webkit-scrollbar,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar {
     display: block;
 }
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content::-webkit-scrollbar,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content::-webkit-scrollbar,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar {
     width: 17px;
     background: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABEAAAABCAYAAAA4u0VhAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGYktHRAD/AP8A/6C9p5MAAAAHdElNRQfqCg4DOQDdps41AAAALklEQVQI12XIsQ0AQQgEsRmE6L9PGtiMS196hzbJ7S7dzcxQVXyp3B3q71WS8AAfvQy/JJ9MowAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyNi0xMC0xNFQwMzo1NToyOSswMDowMLWUyZYAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjYtMTAtMTRUMDM6NTU6MjkrMDA6MDDEyXEqAAAAKHRFWHRkYXRlOnRpbWVzdGFtcAAyMDI2LTEwLTE0VDAzOjU3OjAwKzAwOjAwQJTCZgAAAABJRU5ErkJggg==") repeat-y;
 }
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content::-webkit-scrollbar:horizontal,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content::-webkit-scrollbar:horizontal,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar:horizontal {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar:horizontal,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar:horizontal,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar:horizontal {
     height: 17px;
     background: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAARCAIAAACToVFFAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGYktHRAD/AP8A/6C9p5MAAAAHdElNRQfqCg4EBys1kDqNAAAAEGNhTnYAAAABAAAAAQAAAAAAAAAAmdvqagAAACpJREFUCNeFw8ENADAIA7FwhP3nZIPw6wi1ZCVhd7HNzNDdSPoGqCru7gF7dQjc9hn8kAAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyNi0xMC0xNFQwNDowNzo0MyswMDowMN9a5XgAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjYtMTAtMTRUMDQ6MDc6NDMrMDA6MDCuB13EAAAAKHRFWHRkYXRlOnRpbWVzdGFtcAAyMDI2LTEwLTE0VDA0OjA3OjQzKzAwOjAw+RJ8GwAAAABJRU5ErkJggg==") repeat-x;
 }
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content::-webkit-scrollbar-corner,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content::-webkit-scrollbar-corner,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-corner {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-corner,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-corner,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-corner {
     background: #f0f0f0;
 }
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content::-webkit-scrollbar-track:vertical,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content::-webkit-scrollbar-track:vertical,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-track:vertical {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-track:vertical,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-track:vertical,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-track:vertical {
     background: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABEAAAABCAYAAAA4u0VhAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGYktHRAD/AP8A/6C9p5MAAAAHdElNRQfqCg4DOQDdps41AAAALklEQVQI12XIsQ0AQQgEsRmE6L9PGtiMS196hzbJ7S7dzcxQVXyp3B3q71WS8AAfvQy/JJ9MowAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyNi0xMC0xNFQwMzo1NToyOSswMDowMLWUyZYAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjYtMTAtMTRUMDM6NTU6MjkrMDA6MDDEyXEqAAAAKHRFWHRkYXRlOnRpbWVzdGFtcAAyMDI2LTEwLTE0VDAzOjU3OjAwKzAwOjAwQJTCZgAAAABJRU5ErkJggg==") repeat-y;
 }
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content::-webkit-scrollbar-track:horizontal,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content::-webkit-scrollbar-track:horizontal,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-track:horizontal {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-track:horizontal,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-track:horizontal,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-track:horizontal {
     background: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAARCAIAAACToVFFAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGYktHRAD/AP8A/6C9p5MAAAAHdElNRQfqCg4EBys1kDqNAAAAEGNhTnYAAAABAAAAAQAAAAAAAAAAmdvqagAAACpJREFUCNeFw8ENADAIA7FwhP3nZIPw6wi1ZCVhd7HNzNDdSPoGqCru7gF7dQjc9hn8kAAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyNi0xMC0xNFQwNDowNzo0MyswMDowMN9a5XgAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjYtMTAtMTRUMDQ6MDc6NDMrMDA6MDCuB13EAAAAKHRFWHRkYXRlOnRpbWVzdGFtcAAyMDI2LTEwLTE0VDA0OjA3OjQzKzAwOjAw+RJ8GwAAAABJRU5ErkJggg==") repeat-x;
 }
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content::-webkit-scrollbar-button,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content::-webkit-scrollbar-button,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-button,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-button {
     width: 17px;
     height: 17px;
     background-repeat: no-repeat;
@@ -247,113 +265,155 @@ body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-con
 body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:vertical:start:increment,
 body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:vertical:end:decrement,
 body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:horizontal:start:increment,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:horizontal:end:decrement {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:horizontal:end:decrement,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-button:vertical:start:increment,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-button:vertical:end:decrement,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-button:horizontal:start:increment,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-button:horizontal:end:decrement,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-button:vertical:start:increment,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-button:vertical:end:decrement,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-button:horizontal:start:increment,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-button:horizontal:end:decrement {
     display: none;
 }
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content::-webkit-scrollbar-button:vertical:start,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content::-webkit-scrollbar-button:vertical:start,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:vertical:start {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:vertical:start,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-button:vertical:start,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-button:vertical:start {
     background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA0AAAANCAQAAADY4iz3AAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAACYktHRAD/h4/MvwAAAAd0SU1FB+oKDgM2Io9ekx4AAABkSURBVBjTY2CgH2BE5vw3Y1BjuMV4CsJjQpXQW8yg9t8MTft/s/8xcv9N/0f//x8DkWRE6FBarMFgwCDM8IuhMpbhFuMpmFRM2GIlBjUGQQZOBg6G7wyesYxLkHShmA93DBUBADMEHVlNKVbtAAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDI2LTEwLTE0VDAzOjU0OjM0KzAwOjAw9yvD9gAAACV0RVh0ZGF0ZTptb2RpZnkAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMIZ2e0oAAAAodEVYdGRhdGU6dGltZXN0YW1wADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDDRY1qVAAAAAElFTkSuQmCC"), url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABEAAAARCAAAAAAeBhgmAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAACYktHRAD/h4/MvwAAAAd0SU1FB+oKDgM2Io9ekx4AAAAhSURBVBjTY/zxmoWNiYGBgfE/IwMDAyPjDyYGdDAqggwApdcEDChF/O4AAAAldEVYdGRhdGU6Y3JlYXRlADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDD3K8P2AAAAJXRFWHRkYXRlOm1vZGlmeQAyMDI2LTEwLTE0VDAzOjU0OjM0KzAwOjAwhnZ7SgAAACh0RVh0ZGF0ZTp0aW1lc3RhbXAAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMNFjWpUAAAAASUVORK5CYII=");
     background-position: center top 1px, center;
 }
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content::-webkit-scrollbar-button:vertical:start:hover,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content::-webkit-scrollbar-button:vertical:start:hover,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:vertical:start:hover {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:vertical:start:hover,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-button:vertical:start:hover,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-button:vertical:start:hover {
     background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA0AAAANCAMAAABFNRROAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAA8UExURQAAAP///////xE4TAwmNBRCWyJxmw0pORxbfC6Xz0ym1kKh1CBqkS2Uy2ez3IDA4o/H5ZvN6I3G5f///3euagkAAAADdFJOUwA2XBG3SHQAAAABYktHRAH/Ai3eAAAAB3RJTUUH6goOAzYij16THgAAADRJREFUCNdjYKAIMDIxInOYEVxGJhZWNhiXkYmdg5OLG8pl4uHl4xcQFGKCykEAI/G2MgAAOfoA0xasJNoAAAAldEVYdGRhdGU6Y3JlYXRlADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDD3K8P2AAAAJXRFWHRkYXRlOm1vZGlmeQAyMDI2LTEwLTE0VDAzOjU0OjM0KzAwOjAwhnZ7SgAAACh0RVh0ZGF0ZTp0aW1lc3RhbXAAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMNFjWpUAAAAASUVORK5CYII="), url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABEAAAARCAMAAAAMs7fIAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAC6UExURfj4+OPj4+fn5+3t7e/v7/Dw8PHx8fLy8urq6q7D02mavzx/sV2TvKfC1t/q8v7///3+//v9/vr8/tXi61mPuO74/en2/eP0/Mbn+cXn+bni+KbX8efq7OLy/Nzw+7Xg96ja9Z/O6N/h49bu+6nb9qTV75zK49vd35vJ4t7x/NXt+tPr96DQ6ZjG3v39/9Ts+NHn9M/l8pTA2GGVvOPr8fT19vDw8u7v8LvK1Ud7oqa/0VyQt6K6zP///0lXlo4AAAABYktHRD3QbVFZAAAAB3RJTUUH6goOAzYij16THgAAAIhJREFUGNPF0O0agTAYgOFRkYYi2nxNNa2YMF8Tzv+4vJXr4gx6ft4/H4RabcOELNOCOl0boZ6Df/UHIM7Q9aBR2difgGB3GhBCKKWz+WKJS/GCFWNsDYVRXAthnPMNlIi0Scm+st1JKRNon9dyOJ6UUkKILD9Xcrne7lrrtOpRgDxffzeKt/0BE/scByQHPw4AAAAldEVYdGRhdGU6Y3JlYXRlADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDD3K8P2AAAAJXRFWHRkYXRlOm1vZGlmeQAyMDI2LTEwLTE0VDAzOjU0OjM0KzAwOjAwhnZ7SgAAACh0RVh0ZGF0ZTp0aW1lc3RhbXAAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMNFjWpUAAAAASUVORK5CYII=");
     background-position: center top 1px, center;
 }
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content::-webkit-scrollbar-button:vertical:start:active,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content::-webkit-scrollbar-button:vertical:start:active,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:vertical:start:active {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:vertical:start:active,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-button:vertical:start:active,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-button:vertical:start:active {
     background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA0AAAANCAMAAABFNRROAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAA8UExURQAAAP///////xIuPQ0fKRY3SCVefA4iLR5LYzJ9pVCQskWJrSNYdDF7ommgvYKwyJG5z53B1I+4zv///3PZm4QAAAADdFJOUwA2XBG3SHQAAAABYktHRAH/Ai3eAAAAB3RJTUUH6goOAzYij16THgAAADRJREFUCNdjYKAIMDIxInOYEVxGJhZWNhiXkYmdg5OLG8pl4uHl4xcQFGKCykEAI/G2MgAAOfoA0xasJNoAAAAldEVYdGRhdGU6Y3JlYXRlADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDD3K8P2AAAAJXRFWHRkYXRlOm1vZGlmeQAyMDI2LTEwLTE0VDAzOjU0OjM0KzAwOjAwhnZ7SgAAACh0RVh0ZGF0ZTp0aW1lc3RhbXAAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMNFjWpUAAAAASUVORK5CYII="), url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABEAAAARCAMAAAAMs7fIAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAADPUExURfj4+OPj4+fn5+3t7e/v7/Dw8PHx8fLy8urq6qO3x09+ohhZikB0nJiyxsze6e75/er3/ef2/NPv+tPu+szs+r3m+J3J3zxwmN3z+9Pv+8rs+Z/c9Z7b9YrU823G66fT5sbq+bvm+Lrl+IPR8m/J72i+4qHL3bDh96/h92/K8GzE6Wa63Z7H2cnr+Wa53OP0/L7n+K/h9q3e82nA5GS22Nrx+67f9Kvb76rZ7GKx00V4nr3Z6M7n8cvi7Mng6ouzyStehJmxw0BymaK6zP///2A+EuwAAAABYktHRET5tJjBAAAAB3RJTUUH6goOAzYij16THgAAAJRJREFUGNO90NkagUAYgOFBkUJN1mZsjS1NwghjS7j/e/IrD67Ad/gefgjl8gUFUhUVKpY0hMq68a1SBdFrpoUxtm273mi22iCG2XEIIZTSbq8/MF5iOUOXsRE0nkxTwcSded4c8nnwFub9TRYfCTNZrtZCCB/aRJlsd3spJec8jA6pHE/nSxzHQdo1Abndf24kD+0JrmwfgjhzaOsAAAAldEVYdGRhdGU6Y3JlYXRlADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDD3K8P2AAAAJXRFWHRkYXRlOm1vZGlmeQAyMDI2LTEwLTE0VDAzOjU0OjM0KzAwOjAwhnZ7SgAAACh0RVh0ZGF0ZTp0aW1lc3RhbXAAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMNFjWpUAAAAASUVORK5CYII=");
     background-position: center top 1px, center;
 }
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content::-webkit-scrollbar-button:vertical:start:disabled,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content::-webkit-scrollbar-button:vertical:start:disabled,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:vertical:start:disabled {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:vertical:start:disabled,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-button:vertical:start:disabled,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-button:vertical:start:disabled {
     background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA0AAAANCAQAAADY4iz3AAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAACYktHRAD/h4/MvwAAAAd0SU1FB+oKDgM2Io9ekx4AAABfSURBVBjTY2CgH2BE5jw2Y1BjuCV7CsJjQpWYsZhB7bEZmtRjMwa1CYtZGNbDJRkREpMWizBIMHAy/GWwiWW4JXsKpkttzWJtBi0GKQYxBlmGO4sZ1FB0oTgP7hgqAgA1oRiGFDDexwAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMPcrw/YAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDCGdntKAAAAKHRFWHRkYXRlOnRpbWVzdGFtcAAyMDI2LTEwLTE0VDAzOjU0OjM0KzAwOjAw0WNalQAAAABJRU5ErkJggg=="), url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABEAAAARCAAAAAAeBhgmAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAACYktHRAD/h4/MvwAAAAd0SU1FB+oKDgM2Io9ekx4AAAAhSURBVBjTY/zxmoWNiYGBgfE/IwMDAyPjDyYGdDAqggwApdcEDChF/O4AAAAldEVYdGRhdGU6Y3JlYXRlADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDD3K8P2AAAAJXRFWHRkYXRlOm1vZGlmeQAyMDI2LTEwLTE0VDAzOjU0OjM0KzAwOjAwhnZ7SgAAACh0RVh0ZGF0ZTp0aW1lc3RhbXAAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMNFjWpUAAAAASUVORK5CYII=");
     background-position: center top 1px, center;
 }
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content::-webkit-scrollbar-button:vertical:end,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content::-webkit-scrollbar-button:vertical:end,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:vertical:end {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:vertical:end,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-button:vertical:end,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-button:vertical:end {
     background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA0AAAANCAQAAADY4iz3AAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAACYktHRAD/h4/MvwAAAAd0SU1FB+oKDgM2Io9ekx4AAABkSURBVBjTY2CgH2CEUP/NGNRQxG8xnmKBMtUMF39lYGBgZhBh0GJQYyiOZTiFpCtsMReDFIMOgxSDQyzDLcZTcBP+m/2PKf2/8v+Z//9j/puhWfvf7H/MGiQJRlRJBjUUo6gLABhHH8olw0tGAAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDI2LTEwLTE0VDAzOjU0OjM0KzAwOjAw9yvD9gAAACV0RVh0ZGF0ZTptb2RpZnkAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMIZ2e0oAAAAodEVYdGRhdGU6dGltZXN0YW1wADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDDRY1qVAAAAAElFTkSuQmCC"), url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABEAAAARCAAAAAAeBhgmAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAACYktHRAD/h4/MvwAAAAd0SU1FB+oKDgM2Io9ekx4AAABFSURBVBjTzc8xDoAwDATBXcfi//+kR+lIEREcXoDL0Z1Otp95BOAtoD343t8kQQXwlaYroCS0KAIJE+anVKHIKjxy7esD/38GLpdlwMsAAAAldEVYdGRhdGU6Y3JlYXRlADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDD3K8P2AAAAJXRFWHRkYXRlOm1vZGlmeQAyMDI2LTEwLTE0VDAzOjU0OjM0KzAwOjAwhnZ7SgAAACh0RVh0ZGF0ZTp0aW1lc3RhbXAAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMNFjWpUAAAAASUVORK5CYII=");
 }
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content::-webkit-scrollbar-button:vertical:end:hover,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content::-webkit-scrollbar-button:vertical:end:hover,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:vertical:end:hover {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:vertical:end:hover,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-button:vertical:end:hover,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-button:vertical:end:hover {
     background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA0AAAANCAMAAABFNRROAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAA5UExURQAAAP///////xI8Ug4uPw8yRRdLZyd/r0ym1iBqkSR2oi6Xz3K535vN6CySyHm94K/X7X6/4f///wiWdGQAAAADdFJOUwA2XBG3SHQAAAABYktHRAH/Ai3eAAAAB3RJTUUH6goOAzYij16THgAAADVJREFUCNdjYCAfMDJBACOYx8TMwsLKxs7BBJXj5OLm4YXKAbl8/AIwDogriOCAuIzE2woCAEODAMXMvlJuAAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDI2LTEwLTE0VDAzOjU0OjM0KzAwOjAw9yvD9gAAACV0RVh0ZGF0ZTptb2RpZnkAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMIZ2e0oAAAAodEVYdGRhdGU6dGltZXN0YW1wADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDDRY1qVAAAAAElFTkSuQmCC"), url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABEAAAARCAMAAAAMs7fIAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAC0UExURfj4+Ka/0WKWvTx/sWSYv7DI2urq6mGVvOXt9f7///3+//v9/vr8/s/e6V6Sue74/ej2/eP0/Mbn+cXn+bni+KbX8efq7OHy/Nzw+7Xg96ja9Z/O6N/h49bu+6nb9qTV75zK49vd35vJ4t7x/NXt+tPr96DQ6ZjG3v39/9Ts+NHn9M/l8pTA2OPr8fT19vDw8u7v8LvK1Ud7olyQt+Pj4+fn5+3t7e/v7/Dw8PHx8fLy8v///wLcTcEAAAABYktHRDs5DvRsAAAAB3RJTUUH6goOAzYij16THgAAAIhJREFUGNPF0FkWgiAYQGGMcmoSyqKBRIu0sCIbtPa/sH7Uc2oHfY/38SJkdfBXt2cj5LieD/rGYDiCgr1xQAihlE6m4Qyb4gdzxtgCLFfrphDGOd+ASMT/LElbtjspZQT2aVOyw1EpJYRI0rwuzul80VrHtWsBxbr93CjMjfvjWYKqrMDrbX8A2k4YTLiYtlQAAAAldEVYdGRhdGU6Y3JlYXRlADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDD3K8P2AAAAJXRFWHRkYXRlOm1vZGlmeQAyMDI2LTEwLTE0VDAzOjU0OjM0KzAwOjAwhnZ7SgAAACh0RVh0ZGF0ZTp0aW1lc3RhbXAAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMNFjWpUAAAAASUVORK5CYII=");
 }
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content::-webkit-scrollbar-button:vertical:end:active,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content::-webkit-scrollbar-button:vertical:end:active,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:vertical:end:active {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:vertical:end:active,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-button:vertical:end:active,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-button:vertical:end:active {
     background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA0AAAANCAMAAABFNRROAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAA5UExURQAAAP///////xQyQQ8mMhEqNxk+Uippi1CQsiNYdCdigTJ9pXWnwp3B1DB5n3ysxbDN3IGvyP///zqAra4AAAADdFJOUwA2XBG3SHQAAAABYktHRAH/Ai3eAAAAB3RJTUUH6goOAzYij16THgAAADVJREFUCNdjYCAfMDJBACOYx8TMwsLKxs7BBJXj5OLm4YXKAbl8/AIwDogriOCAuIzE2woCAEODAMXMvlJuAAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDI2LTEwLTE0VDAzOjU0OjM0KzAwOjAw9yvD9gAAACV0RVh0ZGF0ZTptb2RpZnkAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMIZ2e0oAAAAodEVYdGRhdGU6dGltZXN0YW1wADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDDRY1qVAAAAAElFTkSuQmCC"), url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABEAAAARCAMAAAAMs7fIAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAADJUExURfj4+Jmxw0Z5nxhZikl7oaK6zOrq6kV4ntTk7u/5/ev4/en3/dPv+tPu+szs+rzm+JrF3EJ1m+D0/Nbw+87t+p/c9Z7b9YrU823G66fT5srr+cDo+cDn+YPR8m/J72i+4qHL3bbk97Xk92/K8GzE6Wa63Z7H2c3t+ma53OX1/cPp+bXj97Th9GnA5GS22N3z+7Ti9bLe8LDc7WKx08Db6dLp88/l7c3j64uzyStehEBzmePj4+fn5+3t7e/v7/Dw8PHx8fLy8v///2bFOBkAAAABYktHREIQ1z30AAAAB3RJTUUH6goOAzYij16THgAAAJRJREFUGNO90NkagUAYgOHJUGqyNtnKliZhhLEkS3H/N+Vv8uAKfIfv4YeQUsLfyhUVIa2qG4QQ0zRr9UazBYL1tkUptW270+31cS6GNXBcdwiNxhMphDpTz5tBPgve4np/k/lHwkIWyxXn3IfWUSGb7U4IwRgLo70U7XA8xXEcyM4JiHL5uZHkN663ewplaQY9nuoLtD8cG/UOFkAAAAAldEVYdGRhdGU6Y3JlYXRlADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDD3K8P2AAAAJXRFWHRkYXRlOm1vZGlmeQAyMDI2LTEwLTE0VDAzOjU0OjM0KzAwOjAwhnZ7SgAAACh0RVh0ZGF0ZTp0aW1lc3RhbXAAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMNFjWpUAAAAASUVORK5CYII=");
 }
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content::-webkit-scrollbar-button:vertical:end:disabled,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content::-webkit-scrollbar-button:vertical:end:disabled,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:vertical:end:disabled {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:vertical:end:disabled,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-button:vertical:end:disabled,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-button:vertical:end:disabled {
     background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA0AAAANCAQAAADY4iz3AAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAACYktHRAD/h4/MvwAAAAd0SU1FB+oKDgM2Io9ekx4AAABmSURBVBjTY2CgH2CEUI/NGNRQxG/JnmKBMtVmLv7FwMDAxMDFIMogzGAZy3AKSdfqxawMvAxiDLwMCrEMt2RhUhDJ3YulGIQYJGMZbsmeQjH+sdnjmF3/H8c8NkNxBpJj0HVQDwAACDAaYvE1Q88AAAAldEVYdGRhdGU6Y3JlYXRlADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDD3K8P2AAAAJXRFWHRkYXRlOm1vZGlmeQAyMDI2LTEwLTE0VDAzOjU0OjM0KzAwOjAwhnZ7SgAAACh0RVh0ZGF0ZTp0aW1lc3RhbXAAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMNFjWpUAAAAASUVORK5CYII="), url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABEAAAARCAAAAAAeBhgmAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAACYktHRAD/h4/MvwAAAAd0SU1FB+oKDgM2Io9ekx4AAABFSURBVBjTzc8xDoAwDATBXcfi//+kR+lIEREcXoDL0Z1Otp95BOAtoD343t8kQQXwlaYroCS0KAIJE+anVKHIKjxy7esD/38GLpdlwMsAAAAldEVYdGRhdGU6Y3JlYXRlADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDD3K8P2AAAAJXRFWHRkYXRlOm1vZGlmeQAyMDI2LTEwLTE0VDAzOjU0OjM0KzAwOjAwhnZ7SgAAACh0RVh0ZGF0ZTp0aW1lc3RhbXAAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMNFjWpUAAAAASUVORK5CYII=");
 }
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content::-webkit-scrollbar-button:horizontal:start,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content::-webkit-scrollbar-button:horizontal:start,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:horizontal:start {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:horizontal:start,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-button:horizontal:start,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-button:horizontal:start {
     background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA0AAAANCAQAAADY4iz3AAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAACYktHRAD/h4/MvwAAAAd0SU1FB+oKDgM2Io9ekx4AAABiSURBVBjTY2AgBzAic/6bMagx3GI8BeExoUqELWZQg/GZkCWUFishmcGEkJBfrIHQgqRLTW+xOIMBgyAWqVuXYtUYhBk4MaUYTzHcWhL7i4EDuz/+m/2P2fb/fwwR/iIPAACuEBoYnpx7jgAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMPcrw/YAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDCGdntKAAAAKHRFWHRkYXRlOnRpbWVzdGFtcAAyMDI2LTEwLTE0VDAzOjU0OjM0KzAwOjAw0WNalQAAAABJRU5ErkJggg=="), url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABEAAAARCAAAAAAeBhgmAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAACYktHRAD/h4/MvwAAAAd0SU1FB+oKDgM2Io9ekx4AAAAySURBVBjTY/zBgAZYnqFw/zMwsLBgqGHFUMPEwMDAwPgfIciErmnQibAwE/YFyx90XQCHjAgX3pX+KQAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMPcrw/YAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDCGdntKAAAAKHRFWHRkYXRlOnRpbWVzdGFtcAAyMDI2LTEwLTE0VDAzOjU0OjM0KzAwOjAw0WNalQAAAABJRU5ErkJggg==");
 }
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content::-webkit-scrollbar-button:horizontal:start:hover,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content::-webkit-scrollbar-button:horizontal:start:hover,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:horizontal:start:hover {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:horizontal:start:hover,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-button:horizontal:start:hover,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-button:horizontal:start:hover {
     background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA0AAAANCAMAAABFNRROAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAA8UExURQAAAP///////yBqkQ0pOS2UywwmNBxbfGez3BE4TBRCWy6Xz4DA4iJxm0ym1o/H5UKh1JvN6I3G5f///01TMAEAAAADdFJOUwA2XBG3SHQAAAABYktHRAH/Ai3eAAAAB3RJTUUH6goOAzYij16THgAAADVJREFUCNdjYCAIGJkYkTnMTEgcFlYmBIeNnQPOY+Lk4uZBkuPl40fWJyDIhGymEBMu+7ADAET7ANPyw9uTAAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDI2LTEwLTE0VDAzOjU0OjM0KzAwOjAw9yvD9gAAACV0RVh0ZGF0ZTptb2RpZnkAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMIZ2e0oAAAAodEVYdGRhdGU6dGltZXN0YW1wADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDDRY1qVAAAAAElFTkSuQmCC"), url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABEAAAARCAMAAAAMs7fIAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAC6UExURfj4+OLi4qW+0GGVvDx/saa/0efn52KWveXt9f7///3+//39/+Pr8VyQt+zs7O74/ej2/eP0/N7x/NTs+PT19jRume/v7+Hy/Nzw+9Xt+tHn9PDw8tbu+9Pr98/l8u7v8Pv9/sbn+bXg96nb9qTV75zK49vd38Xn+ZvJ4rni+Kja9aDQ6ZjG3vr8/qbX8Z/O6JTA2PDw8GSYv8/e6efq7N/h47vK1Ud7ovLy8rDI2l6SuXWOoOrq6v///0Q4VzcAAAABYktHRD3QbVFZAAAAB3RJTUUH6goOAzYij16THgAAAHpJREFUGNNjYMAAjEzMLEiAmZWBjZ2DkwsOuHl4GfhYOPkFBKFASFhElEGMhUtAXAIKJKWkwSKCEjJQICsnT6yIgqKSMhSoqKoRLaKOENGAiGhqqUCBtg5YRFdPXxUCNHQMgCKGRsYmpmpwYGbOYGFpJYoEzK0ZbNABAAgVHkaqtbUBAAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDI2LTEwLTE0VDAzOjU0OjM0KzAwOjAw9yvD9gAAACV0RVh0ZGF0ZTptb2RpZnkAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMIZ2e0oAAAAodEVYdGRhdGU6dGltZXN0YW1wADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDDRY1qVAAAAAElFTkSuQmCC");
 }
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content::-webkit-scrollbar-button:horizontal:start:active,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content::-webkit-scrollbar-button:horizontal:start:active,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:horizontal:start:active {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:horizontal:start:active,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-button:horizontal:start:active,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-button:horizontal:start:active {
     background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA0AAAANCAMAAABFNRROAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAA8UExURQAAAP///////yNYdA4iLTF7og0fKR5LY2mgvRIuPRY3SDJ9pYKwyCVefFCQspG5z0WJrZ3B1I+4zv///6GzGx4AAAADdFJOUwA2XBG3SHQAAAABYktHRAH/Ai3eAAAAB3RJTUUH6goOAzYij16THgAAADVJREFUCNdjYCAIGJkYkTnMTEgcFlYmBIeNnQPOY+Lk4uZBkuPl40fWJyDIhGymEBMu+7ADAET7ANPyw9uTAAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDI2LTEwLTE0VDAzOjU0OjM0KzAwOjAw9yvD9gAAACV0RVh0ZGF0ZTptb2RpZnkAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMIZ2e0oAAAAodEVYdGRhdGU6dGltZXN0YW1wADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDDRY1qVAAAAAElFTkSuQmCC"), url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABEAAAARCAMAAAAMs7fIAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAADMUExURfj4+OLi4piwwkV4nhhZipmxw+fn50Z5n9Lj7e75/er3/ef2/OP0/Nrx+73Z6EBzmezs7N3z+9Lv+8rs+cnr+b7n+K7f9M7n8e/v78bq+bvm+Lrl+K/h9qvb78vi7LDh96/h963e86rZ7Mng6tPv+p/c9YPR8m/K8GzE6Wa63Z7H2dPu+p7b9Wa53Mzs+orU82/J72nA5GS22Lzm+G3G62i+4mKx0/Dw8Eh7oZrF3KfT5qHL3YuzyStehPLy8qK6zEJ1m2iAkurq6v///07DczsAAAABYktHRENn0A1iAAAAB3RJTUUH6goOAzYij16THgAAAIZJREFUGNNjYMAAjEzMLEiAmZWBjZ2Dk4sbCnh4+fgZBFg4BYWEIUBEVEychUGChUtIUkoaAmRk5UAi3MJS8goQoKikDBGRViAkoqKqpg4FGppaxIpo6yBEdMEievoGGlBgaAQWMTYx1YQAXSMzoIi5haWVtRYc2Ngy2Nk7IPvd1pHBCR0AAP3lIAcsZrxCAAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDI2LTEwLTE0VDAzOjU0OjM0KzAwOjAw9yvD9gAAACV0RVh0ZGF0ZTptb2RpZnkAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMIZ2e0oAAAAodEVYdGRhdGU6dGltZXN0YW1wADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDDRY1qVAAAAAElFTkSuQmCC");
 }
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content::-webkit-scrollbar-button:horizontal:start:disabled,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content::-webkit-scrollbar-button:horizontal:start:disabled,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:horizontal:start:disabled {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:horizontal:start:disabled,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-button:horizontal:start:disabled,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-button:horizontal:start:disabled {
     background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA0AAAANCAQAAADY4iz3AAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAACYktHRAD/h4/MvwAAAAd0SU1FB+oKDgM2Io9ekx4AAABiSURBVBjTY2AgBzAicx6bMagx3JI9BeExoUqsWcygBuMzIUtMWiyIZAYTQmLCYhEGYUwpBrUZi3kYJBg4sEjdyogVZuBkYMWUkj3FcCsw9i8DCxZdDLKnGG7ZxP4mzl/kAQA2ehf1/hvHLAAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMPcrw/YAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDCGdntKAAAAKHRFWHRkYXRlOnRpbWVzdGFtcAAyMDI2LTEwLTE0VDAzOjU0OjM0KzAwOjAw0WNalQAAAABJRU5ErkJggg=="), url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABEAAAARCAAAAAAeBhgmAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAACYktHRAD/h4/MvwAAAAd0SU1FB+oKDgM2Io9ekx4AAAA0SURBVBjTY/zBgAr+sLxkYGBgYEQSYmHBEGFD4jAyMDAwsDChq2FiQAeDTYSFiQiRn+giAIjyBBqmZt3JAAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDI2LTEwLTE0VDAzOjU0OjM0KzAwOjAw9yvD9gAAACV0RVh0ZGF0ZTptb2RpZnkAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMIZ2e0oAAAAodEVYdGRhdGU6dGltZXN0YW1wADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDDRY1qVAAAAAElFTkSuQmCC");
 }
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content::-webkit-scrollbar-button:horizontal:end,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content::-webkit-scrollbar-button:horizontal:end,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:horizontal:end {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:horizontal:end,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-button:horizontal:end,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-button:horizontal:end {
     background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA0AAAANCAQAAADY4iz3AAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAACYktHRAD/h4/MvwAAAAd0SU1FB+oKDgM2Io9ekx4AAABlSURBVBjTY2AgBzDCGP/NGNQYbjGeQkgxwVlqhosZ1P6bYZNi+MoQhiLJhGw6F0MZkiSSFDODFIMJw9rFDGoQPgtCSoRBh0GZwTiW4RaGLi0GKQbjWIQrkaTUGBxikZ2Px1/kAQCciRak4wzmUAAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMPcrw/YAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDCGdntKAAAAKHRFWHRkYXRlOnRpbWVzdGFtcAAyMDI2LTEwLTE0VDAzOjU0OjM0KzAwOjAw0WNalQAAAABJRU5ErkJggg=="), url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABEAAAARCAAAAAAeBhgmAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAACYktHRAD/h4/MvwAAAAd0SU1FB+oKDgM2Io9ekx4AAABFSURBVBjTzc7BDYAwDATB3YtF/23SAIIfD0shSgX4Ob6z7M02dQK4Sk1JxkiuOnojaCJUZkY7uh/+ndRH9tOLoAj17K0Xd6wEMzG7pIgAAAAldEVYdGRhdGU6Y3JlYXRlADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDD3K8P2AAAAJXRFWHRkYXRlOm1vZGlmeQAyMDI2LTEwLTE0VDAzOjU0OjM0KzAwOjAwhnZ7SgAAACh0RVh0ZGF0ZTp0aW1lc3RhbXAAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMNFjWpUAAAAASUVORK5CYII=");
 }
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content::-webkit-scrollbar-button:horizontal:end:hover,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content::-webkit-scrollbar-button:horizontal:end:hover,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:horizontal:end:hover {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:horizontal:end:hover,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-button:horizontal:end:hover,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-button:horizontal:end:hover {
     background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA0AAAANCAMAAABFNRROAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAA5UExURQAAAP///////xI8Ug4uPyBqkSR2oiySyA8yRS6Xz3m94H6/4RdLZ3K536/X7Sd/r5vN6Eym1v///6022/4AAAADdFJOUwA2XBG3SHQAAAABYktHRAH/Ai3eAAAAB3RJTUUH6goOAzYij16THgAAADdJREFUCNdjYCAAGJkYkXhMzMhcJhZWJC4TCxs7gsvEwcnFzQTn8fDyIcnxCyDrE0Q2E9U+HAAAQIoAxem00rUAAAAldEVYdGRhdGU6Y3JlYXRlADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDD3K8P2AAAAJXRFWHRkYXRlOm1vZGlmeQAyMDI2LTEwLTE0VDAzOjU0OjM0KzAwOjAwhnZ7SgAAACh0RVh0ZGF0ZTp0aW1lc3RhbXAAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMNFjWpUAAAAASUVORK5CYII="), url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABEAAAARCAMAAAAMs7fIAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAACiUExURfj4+KO7zmCUuzx/sfT09OXt9f7///3+//39/+Pr8VuPtu74/ej2/eP0/N7x/NTs+PT19jRumeHy/Nzw+9Xt+tHn9PDw8tbu+9Pr98/l8u7v8Pv9/sbn+bXg96nb9qTV75zK49vd38Xn+ZvJ4rni+Kja9aDQ6ZjG3vr8/qbX8Z/O6JTA2GeZvsjZ5ufq7N/h47vK1Ud7orDG12KUuerq6v///6ikLJEAAAABYktHRDXettlrAAAAB3RJTUUH6goOAzYij16THgAAAHdJREFUGNNjYMAAjEzMSICJkYWBiZWNHQ44OLlYGJjZuHl4oYCPX0AQKMLOIyQMBSKiYmARXmFxKJCQlCJWRFpGVg4K5BUUiRZRQogoQ0RUVOWhQE0dLKKhqaUAAcrq2iARHV09fUU4MDBkYTAyFkQChkC/m6ADAFt2GGkkm9OlAAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDI2LTEwLTE0VDAzOjU0OjM0KzAwOjAw9yvD9gAAACV0RVh0ZGF0ZTptb2RpZnkAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMIZ2e0oAAAAodEVYdGRhdGU6dGltZXN0YW1wADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDDRY1qVAAAAAElFTkSuQmCC");
 }
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content::-webkit-scrollbar-button:horizontal:end:active,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content::-webkit-scrollbar-button:horizontal:end:active,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:horizontal:end:active {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:horizontal:end:active,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-button:horizontal:end:active,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-button:horizontal:end:active {
     background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA0AAAANCAMAAABFNRROAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAA5UExURQAAAP///////xQyQQ8mMiNYdCdigTB5nxEqNzJ9pXysxYGvyBk+UnWnwrDN3Cppi53B1FCQsv///6CfJOMAAAADdFJOUwA2XBG3SHQAAAABYktHRAH/Ai3eAAAAB3RJTUUH6goOAzYij16THgAAADdJREFUCNdjYCAAGJkYkXhMzMhcJhZWJC4TCxs7gsvEwcnFzQTn8fDyIcnxCyDrE0Q2E9U+HAAAQIoAxem00rUAAAAldEVYdGRhdGU6Y3JlYXRlADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDD3K8P2AAAAJXRFWHRkYXRlOm1vZGlmeQAyMDI2LTEwLTE0VDAzOjU0OjM0KzAwOjAwhnZ7SgAAACh0RVh0ZGF0ZTp0aW1lc3RhbXAAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMNFjWpUAAAAASUVORK5CYII="), url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABEAAAARCAMAAAAMs7fIAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAC3UExURfj4+Jatv0R3nRhZivT09NLj7e75/er3/ef2/OP0/Nrx+73Z6D9ymN3z+9Lv+8rs+cnr+b7n+K7f9M7n8cbq+bvm+Lrl+K/h9qvb78vi7LDh96/h963e86rZ7Mng6tPv+p/c9YPR8m/K8GzE6Wa63Z7H2dLu+p7b9Wa53Mzs+orU82/J72nA5GS22Lzm+G3G62i+4mKx0019oZXA2KfT5qHL3YuzyStdg6S6ykh4nCtehOrq6v///2k9zJ0AAAABYktHRDynamHPAAAAB3RJTUUH6goOAzYij16THgAAAINJREFUGNNjYMAAjEzMSICJkYWBiZWNnQMKOLm4eVgYmNl4+fghQEBQSJgZKMLOJyIqBgHiEpIgEQ5+USlpCJCRlYOIiEkTEpFXUFSCAmUVVWJF1NQRIhpgEU0tbWUo0NEFi+jpG6hAgIauIUjEyNjEVBUOzMxZGCwskf1uBfS7NToAAFm4Glt05brtAAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDI2LTEwLTE0VDAzOjU0OjM0KzAwOjAw9yvD9gAAACV0RVh0ZGF0ZTptb2RpZnkAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMIZ2e0oAAAAodEVYdGRhdGU6dGltZXN0YW1wADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDDRY1qVAAAAAElFTkSuQmCC");
 }
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content::-webkit-scrollbar-button:horizontal:end:disabled,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content::-webkit-scrollbar-button:horizontal:end:disabled,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:horizontal:end:disabled {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-button:horizontal:end:disabled,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-button:horizontal:end:disabled,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-button:horizontal:end:disabled {
     background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA0AAAANCAQAAADY4iz3AAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAACYktHRAD/h4/MvwAAAAd0SU1FB+oKDgM2Io9ekx4AAABlSURBVBjTY2AgBzDCGI/NGNQYbsmeQkgxwVlqMxczqD02wybF8IthNYokE7LprAy7kSSZkA3gZZBiuL6YQQ3CZ0FIcTGIMQgxSMYy3MLQJcrAyyAZi3AlkpQwg0IssvPx+Is8AAD6IRbS0LHstwAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMPcrw/YAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDCGdntKAAAAKHRFWHRkYXRlOnRpbWVzdGFtcAAyMDI2LTEwLTE0VDAzOjU0OjM0KzAwOjAw0WNalQAAAABJRU5ErkJggg=="), url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABEAAAARCAAAAAAeBhgmAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAACYktHRAD/h4/MvwAAAAd0SU1FB+oKDgM2Io9ekx4AAABFSURBVBjTzc7LDYBADAPRGW9E/23SAIIbh4jfVkCOL3YUd6apFfAjxUXJGMlWS28ETYTKndGOzod/J/WQ/fRLUIQ65tYJd60EM3VZd+sAAAAldEVYdGRhdGU6Y3JlYXRlADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDD3K8P2AAAAJXRFWHRkYXRlOm1vZGlmeQAyMDI2LTEwLTE0VDAzOjU0OjM0KzAwOjAwhnZ7SgAAACh0RVh0ZGF0ZTp0aW1lc3RhbXAAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMNFjWpUAAAAASUVORK5CYII=");
 }
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content::-webkit-scrollbar-thumb,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content::-webkit-scrollbar-thumb,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-thumb {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-thumb,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-thumb,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-thumb {
     border-style: solid;
     border-color: transparent;
     border-image-repeat: stretch;
@@ -365,7 +425,9 @@ body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content::-webkit-scrollbar-thumb:vertical,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content::-webkit-scrollbar-thumb:vertical,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-thumb:vertical {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-thumb:vertical,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-thumb:vertical,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-thumb:vertical {
     border-width: 4px 0;
     border-image-slice: 4 0;
     border-image-width: 4px 0;
@@ -373,7 +435,9 @@ body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content::-webkit-scrollbar-thumb:horizontal,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content::-webkit-scrollbar-thumb:horizontal,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-thumb:horizontal {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-thumb:horizontal,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-thumb:horizontal,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-thumb:horizontal {
     border-width: 0 5px 0 4px;
     border-image-slice: 0 5 0 4;
     border-image-width: 0 5px 0 4px;
@@ -381,49 +445,63 @@ body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content::-webkit-scrollbar-thumb:disabled,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content::-webkit-scrollbar-thumb:disabled,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-thumb:disabled {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-thumb:disabled,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-thumb:disabled,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-thumb:disabled {
     border-image: none;
     background: none;
 }
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content::-webkit-scrollbar-thumb:vertical,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content::-webkit-scrollbar-thumb:vertical,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-thumb:vertical {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-thumb:vertical,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-thumb:vertical,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-thumb:vertical {
     border-image-source: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABEAAAAUCAYAAABroNZJAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGYktHRAD/AP8A/6C9p5MAAAAHdElNRQfqCg4EAQjBrex5AAABF0lEQVQ4y+2TsWoCQRCGvz1sIhhXCyvBxofw/fENLIPFdQa5cElQl8vO/CkO1zNVijQBf5hmZvhmt/hCSkm73Y66rmmahp8JISCJEMJdP8bIer1muVwyAqjrms1mw3w+L0uSAEgp4Q6SIwkzo+s62vad/f7lBjkejwXQLzouRy7O54SZYe5YNi7pwsfHJ3H6zOH1ANBDhpfd/a667oucM+bWQy4JN8fMyqtHw39Kwl0FYOZky+R8LUMuJJWjABV/kAfkAfnHkKsTV3ckx20opOHqDR/mzmIz7401KyLm3FuczcpsKF+BzGYz2rZlMplQVRUgqgqkivH4CTNHCLkX+Ol0Ik7jDbJardhutzRvDb9NnEYWiwUA3+2A+Pt28gtaAAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDI2LTEwLTE0VDAzOjU1OjI5KzAwOjAwtZTJlgAAACV0RVh0ZGF0ZTptb2RpZnkAMjAyNi0xMC0xNFQwMzo1NToyOSswMDowMMTJcSoAAAAodEVYdGRhdGU6dGltZXN0YW1wADIwMjYtMTAtMTRUMDQ6MDE6MDgrMDA6MDByQVZcAAAAAElFTkSuQmCC");
     background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAkAAAAKCAMAAABR24SMAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAABLUExURfT09fPz8/Hx8ufn6eTk5uLi5N/f4tPT1vb29zs6OmNiYnh3d5GQkLCvr9vb3mZlZaGgoLGxsb29vcrKyoKBgb6+vsfHx9HR0f///91QcXcAAAABYktHRBibaYUeAAAAB3RJTUUH6goOBAIqP+D+XgAAADJJREFUCNdjYGBgZGJmYWVjZ+Dg5OLm5ubh5WPg4BcQFBQUEuZjIENWhFdUVFRMHEkWAJ/dA1eSA45qAAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDI2LTEwLTE0VDA0OjAyOjE4KzAwOjAwc5R0ogAAACV0RVh0ZGF0ZTptb2RpZnkAMjAyNi0xMC0xNFQwNDowMjoxOCswMDowMALJzB4AAAAodEVYdGRhdGU6dGltZXN0YW1wADIwMjYtMTAtMTRUMDQ6MDI6NDIrMDA6MDC5TLzrAAAAAElFTkSuQmCC"), url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABEAAAABCAYAAAA4u0VhAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGYktHRAD/AP8A/6C9p5MAAAAHdElNRQfqCg4DODt1thZQAAAAQklEQVQI1wXBwRGAIBAEwTEAi+TkS2okY2k6+gPcvbN7G2Nk753WGpmJHdgmIrCD533RJyQhmbUWc05K2bnuk3pUfj/5Kr+WSh/dAAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDI2LTEwLTE0VDAzOjU1OjI5KzAwOjAwtZTJlgAAACV0RVh0ZGF0ZTptb2RpZnkAMjAyNi0xMC0xNFQwMzo1NToyOSswMDowMMTJcSoAAAAodEVYdGRhdGU6dGltZXN0YW1wADIwMjYtMTAtMTRUMDM6NTY6NTkrMDA6MDByLuLvAAAAAElFTkSuQmCC");
 }
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content::-webkit-scrollbar-thumb:horizontal,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content::-webkit-scrollbar-thumb:horizontal,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-thumb:horizontal {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-thumb:horizontal,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-thumb:horizontal,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-thumb:horizontal {
     border-image-source: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABIAAAARCAYAAADQWvz5AAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGYktHRAD/AP8A/6C9p5MAAAAHdElNRQfqCg4EAQjBrex5AAABNklEQVQ4y62U22rCQBRFV+KgRSxNQPDNJ//Dj/fRjxDyKNSo1SaN59KHxGsrRnDDwDBs1uxz5hKVZem8QGE+n5NlGXmeAxBF0ZXB3U/rx/ml0jRlPB4TsixjOp2SJMm/xkfK85zZbEbYbDakaYqZNwmujfcSuTtmymDwzm63I9QGAMfM7qa6XTZzRIw4jojjmHCkqxpm9WgjM0dNgbqnodkPc38O1Pg7cecMcge3ZxMZboZ7fAYVRUFRFFTVARFpDTqI0O+/XSaqe6SqiGhrkIpg6regGtI2kZqhorjb30Qi8lRpInK6fwFAVJs+lacdHoPqKuwyUfVTsd1+YaZYm2fidRXujjenHIbDIavVJ0nygaq2TnTUfv9Nr9cjTCYTFosF6/X6KcBR3W6X0WhEtFwuX/If/QJ2Sgs6XfolCgAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyNi0xMC0xNFQwMzo1NToyOSswMDowMLWUyZYAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjYtMTAtMTRUMDM6NTU6MjkrMDA6MDDEyXEqAAAAKHRFWHRkYXRlOnRpbWVzdGFtcAAyMDI2LTEwLTE0VDA0OjAxOjA4KzAwOjAwckFWXAAAAABJRU5ErkJggg==");
     background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAJCAMAAAA8eE0hAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAABLUExURfLy8/T09Ts6OmZlZYKBgfHx8mNiYqGgoLCvr/Dw8Hh3d7Gxsb6+vuTk5eHh497e4JGQkL29vcfHx9zc3srKytHR0c/P0tjY2////1JpbC4AAAABYktHRBibaYUeAAAAB3RJTUUH6goOAzceuSre2AAAAD5JREFUCNctwgkOgCAQBMFGRYHlUFH5/09NJlQKnJthWXUDvx8aPDGZ5khJprlQk2mutPPSu9HDo2/nG2P+AXjSA8ZQfO1oAAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDI2LTEwLTE0VDAzOjU0OjM0KzAwOjAw9yvD9gAAACV0RVh0ZGF0ZTptb2RpZnkAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMIZ2e0oAAAAodEVYdGRhdGU6dGltZXN0YW1wADIwMjYtMTAtMTRUMDM6NTU6MzArMDA6MDDK7hW4AAAAAElFTkSuQmCC"), url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAARCAYAAAAcw8YSAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGYktHRAD/AP8A/6C9p5MAAAAHdElNRQfqCg4DODt1thZQAAAARklEQVQI1y3IsQ3AMAgEwNcPkGR/iZ0ij0HhFDQYYUjj5oqDuzdFBDCzZjfAqg1mbrCqDnN+5zLzEBGgrwU+9wWO8QKq2j889i9xfqLb5QAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyNi0xMC0xNFQwMzo1NToyOSswMDowMLWUyZYAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjYtMTAtMTRUMDM6NTU6MjkrMDA6MDDEyXEqAAAAKHRFWHRkYXRlOnRpbWVzdGFtcAAyMDI2LTEwLTE0VDAzOjU2OjU5KzAwOjAwci7i7wAAAABJRU5ErkJggg==");
 }
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content::-webkit-scrollbar-thumb:vertical:hover,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content::-webkit-scrollbar-thumb:vertical:hover,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-thumb:vertical:hover {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-thumb:vertical:hover,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-thumb:vertical:hover,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-thumb:vertical:hover {
     border-image-source: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABEAAAAUCAYAAABroNZJAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGYktHRAD/AP8A/6C9p5MAAAAHdElNRQfqCg4EAQjBrex5AAABNUlEQVQ4y+2Uu0oDURCGv+jKQgwiCQrBRgRBLERbOws7n0HwMXwNwUewtRdSa2kZonjBGyQYFZNNds9lxiKwm4MiKS38YeAwzHzDDPynlKapnl60aDRfuWr3mVRr9Tn2NpfYXpmHNE314Lihz91ERVW9hGG9fAvjRC9v27p/dKadTkcjgOtOQr1a5iMTjIAVzSc+9nz+VqBvlW6SsVObpnnzAGwR5QUKRiBzGkDeMwnW6BkhGw5JhzbPReMFVkYAM9bXtxpAnDV4Z3HO5bmpiS/5i/4h/5C/DVENrRB6x0PmFZHCudZkQYOzBu8dUPoBojCwDm8dIoUD06T4qFQV7x3OGCAOIauLs7y8fbJcnsFFgmgBqdQcoUpAzH13QLUSF5Dd9QUOT85p3T1NfJdqJWajNhr2BbwPyZtaNL9eAAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDI2LTEwLTE0VDAzOjU1OjI5KzAwOjAwtZTJlgAAACV0RVh0ZGF0ZTptb2RpZnkAMjAyNi0xMC0xNFQwMzo1NToyOSswMDowMMTJcSoAAAAodEVYdGRhdGU6dGltZXN0YW1wADIwMjYtMTAtMTRUMDQ6MDE6MDgrMDA6MDByQVZcAAAAAElFTkSuQmCC");
     background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAkAAAAKCAMAAABR24SMAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAABLUExURcTo+cLo+ZHX84DM7Mrr+khsfFCAmFWLpz+EpESRtWCnyo/S7lGBmmGiwniwzWKoynKz0oS+2leRrnavzIm71XS00oG82I/F3v///7a3M0YAAAABYktHRBibaYUeAAAAB3RJTUUH6goOBAIqP+D+XgAAADBJREFUCNdjYGBkZGQCAmYGFlY2dg4OTi5uBhYeXj5+fgFBbgYyZIWERURFxcSRZAF13QKOVrQcPQAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyNi0xMC0xNFQwNDowMjoxOCswMDowMHOUdKIAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjYtMTAtMTRUMDQ6MDI6MTgrMDA6MDACycweAAAAKHRFWHRkYXRlOnRpbWVzdGFtcAAyMDI2LTEwLTE0VDA0OjAyOjQyKzAwOjAwuUy86wAAAABJRU5ErkJggg=="), url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABEAAAABCAYAAAA4u0VhAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGYktHRAD/AP8A/6C9p5MAAAAHdElNRQfqCg4DODt1thZQAAAAPklEQVQI12P88ePHf5f2nQwH6/0Ynn37y/Dzz3+GX/8Y4ODy298MyOD3r58MP75+YbAX/sMQNWkPw9ZqfwYAMA8bvwJzYgAAAAAldEVYdGRhdGU6Y3JlYXRlADIwMjYtMTAtMTRUMDM6NTU6MjkrMDA6MDC1lMmWAAAAJXRFWHRkYXRlOm1vZGlmeQAyMDI2LTEwLTE0VDAzOjU1OjI5KzAwOjAwxMlxKgAAACh0RVh0ZGF0ZTp0aW1lc3RhbXAAMjAyNi0xMC0xNFQwMzo1Njo1OSswMDowMHIu4u8AAAAASUVORK5CYII=");
 }
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content::-webkit-scrollbar-thumb:horizontal:hover,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content::-webkit-scrollbar-thumb:horizontal:hover,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-thumb:horizontal:hover {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-thumb:horizontal:hover,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-thumb:horizontal:hover,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-thumb:horizontal:hover {
     border-image-source: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABIAAAARCAYAAADQWvz5AAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGYktHRAD/AP8A/6C9p5MAAAAHdElNRQfqCg4EAQjBrex5AAABIklEQVQ4y82UvUoDURBGz8pqSDCFLhZaWQgW4kOIj2HjG9n4FjZikUasBMsUFkokYjAIkrCoJNns/ZuxWEjaa9jCgSnnzHzfMJOUZanUEOnV/RN3vZz+uFgJcLDT4vQwg/PLW/3IZyqqGuSPGVSH4x89u+ho2h8X7G63+DaCFXASp9QFKJxnv7VO721ICqAKVsB4jQaZoATn8alUHi06SAWxEueNSEBEEK0K1urYWK2gFEBUGU4CX0aYukizraGcTdnM/D+VtgCtcieqy6rF+qdOmVjBOxsF8c4SggeSJUgV8pnBzOcE76ImCcHjrQUaFehor0339ZOTbINy7vDeRwpLgAaDvCBrN0muH571pvvO48tgJZOzdpPjrUAyGo1q+Ue/MzfYJa4QYc8AAAAldEVYdGRhdGU6Y3JlYXRlADIwMjYtMTAtMTRUMDM6NTU6MjkrMDA6MDC1lMmWAAAAJXRFWHRkYXRlOm1vZGlmeQAyMDI2LTEwLTE0VDAzOjU1OjI5KzAwOjAwxMlxKgAAACh0RVh0ZGF0ZTp0aW1lc3RhbXAAMjAyNi0xMC0xNFQwNDowMTowOCswMDowMHJBVlwAAAAASUVORK5CYII=");
     background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAJCAMAAAA8eE0hAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAA2UExURcLo+Rs9UC9qijyIsS5nhk6n2Gu23jd9o22334bD5JHX80OXxYTC5JfL6JzO6anV7IDM7P///zqWQE0AAAABYktHRBHitT26AAAAB3RJTUUH6goOAzceuSre2AAAADZJREFUCNdVxkESwBAQRNEWYWiE+5/WVJeF/HqLD1yFR6LvmyT7WpEK0IpU/rZ1Gb75k0ks8thIrQJQiJJjaQAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMPcrw/YAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDCGdntKAAAAKHRFWHRkYXRlOnRpbWVzdGFtcAAyMDI2LTEwLTE0VDAzOjU1OjMwKzAwOjAwyu4VuAAAAABJRU5ErkJggg=="), url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAARCAYAAAAcw8YSAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGYktHRAD/AP8A/6C9p5MAAAAHdElNRQfqCg4DODt1thZQAAAATUlEQVQI103HuwmAQBRFwcNtwVbMTazHNqzBUqzDHgwWzFx5+31GgsnAYGaued2hdXedT0OpOsodBB/HVf4FUMkJWbzRNFQYl80JIfgL4P4hE2CWG6kAAAAldEVYdGRhdGU6Y3JlYXRlADIwMjYtMTAtMTRUMDM6NTU6MjkrMDA6MDC1lMmWAAAAJXRFWHRkYXRlOm1vZGlmeQAyMDI2LTEwLTE0VDAzOjU1OjI5KzAwOjAwxMlxKgAAACh0RVh0ZGF0ZTp0aW1lc3RhbXAAMjAyNi0xMC0xNFQwMzo1Njo1OSswMDowMHIu4u8AAAAASUVORK5CYII=");
 }
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content::-webkit-scrollbar-thumb:vertical:active,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content::-webkit-scrollbar-thumb:vertical:active,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-thumb:vertical:active {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-thumb:vertical:active,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-thumb:vertical:active,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-thumb:vertical:active {
     border-image-source: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABEAAAAUCAYAAABroNZJAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGYktHRAD/AP8A/6C9p5MAAAAHdElNRQfqCg4EAQjBrex5AAABSElEQVQ4y+3TvUoDQRDA8X+iSREwFjFYBCIErETQTgWxtbSw8R18CN/A1lJ7hbRWlgpWKoig+EGCiJ4mkeTcu92dtQhmPdKcYJnpdpn97eywk1FKuYPjc47O7rh8fCNtLNam2VqbY32hyjjA4ektu9sbVMqTGAfifPKrsn7hIBJox8L9Q5P9+olHrp4CKuVJOtoRGoeyXrloaW84CCKh8alYKRa4brYA+giAcRAaR1cLoe3fCtDs2cQzAmXR6os45/EBIg6UdYQWQiM/BkEkCcTqGDEaa8xgLzvUMTcoInVk/5g/QkbI/yCpf6pLZvoBlP4A9ozgxA+djaPEAWs0Yg2QGUaUCJ3IIEYjv5A47CYqEGsQrYF8EpmfmaLx8kG1WMCOWUT85C5NGJKRAfK8B21Kudgjm8uz7OzVuXnupG5mKRezWisC8A0Y36sqT2SonQAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyNi0xMC0xNFQwMzo1NToyOSswMDowMLWUyZYAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjYtMTAtMTRUMDM6NTU6MjkrMDA6MDDEyXEqAAAAKHRFWHRkYXRlOnRpbWVzdGFtcAAyMDI2LTEwLTE0VDA0OjAxOjA4KzAwOjAwckFWXAAAAABJRU5ErkJggg==");
     background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAkAAAAKBAMAAACUK2mNAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAtUExURcnq+qPd9YvQ7hUwPh9HXRpAVSFTbjJ8pCBQajiBp1uXt3Snwo+4zsjo+f///yxEikQAAAABYktHRA5vvTBPAAAAB3RJTUUH6goOBAIqP+D+XgAAACNJREFUCNdjYGAQFFRgYHYNTRdg4Ji1ao8AAwPD3buERYC6AI8JDb1Lub3tAAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDI2LTEwLTE0VDA0OjAyOjE4KzAwOjAwc5R0ogAAACV0RVh0ZGF0ZTptb2RpZnkAMjAyNi0xMC0xNFQwNDowMjoxOCswMDowMALJzB4AAAAodEVYdGRhdGU6dGltZXN0YW1wADIwMjYtMTAtMTRUMDQ6MDI6NDIrMDA6MDC5TLzrAAAAAElFTkSuQmCC"), url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABEAAAABCAYAAAA4u0VhAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGYktHRAD/AP8A/6C9p5MAAAAHdElNRQfqCg4DOQDdps41AAAAQElEQVQI12P88ePHf4XESQwX5xUzPP32l+HTr/8MX//+Y4CBXc9+MiCDv79+Mvz69oXBgvcPQ9WkjQyXJiYwAABOnxy/tXdkmQAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyNi0xMC0xNFQwMzo1NToyOSswMDowMLWUyZYAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjYtMTAtMTRUMDM6NTU6MjkrMDA6MDDEyXEqAAAAKHRFWHRkYXRlOnRpbWVzdGFtcAAyMDI2LTEwLTE0VDAzOjU3OjAwKzAwOjAwQJTCZgAAAABJRU5ErkJggg==");
 }
 
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .scrollable-content::-webkit-scrollbar-thumb:horizontal:active,
 body.desktop-mode:not(.windows-classic-theme) #cacheManagerModal .scrollable-content::-webkit-scrollbar-thumb:horizontal:active,
-body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-thumb:horizontal:active {
+body.desktop-mode:not(.windows-classic-theme) #desktopDovecoteModal .scrollable-content::-webkit-scrollbar-thumb:horizontal:active,
+body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .scrollable-content::-webkit-scrollbar-thumb:horizontal:active,
+body.desktop-mode:not(.windows-classic-theme) #confirmationDialog .studio-change-dialog .scrollable-content::-webkit-scrollbar-thumb:horizontal:active {
     border-image-source: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABIAAAARCAYAAADQWvz5AAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGYktHRAD/AP8A/6C9p5MAAAAHdElNRQfqCg4EAQjBrex5AAABL0lEQVQ4y82UPUoDQRhA34YxkCIhsBBBgqDYCLaKiN5BbLyEp/AA9jZW1sFG8ACCkEohTSyCJoISdjWG7O7szp/FYqXFEFP4wXTDm3mv+AIppWMBIy6u7+h0B/SG8VyArdWQo511RKc74OzkkHaribZgnN8HtYXMOEZvMafnV4jeMKbdajJVjlQ7pPEDJdrxmWtWGjX6r1PENz3VjpmypNpPKdEWXUgM5cMCSh1pHKmBxFgvkLMGAGvL+5W5Cv8yCwMJgCi3PHwoXhJDlPupmSKnSGfs1vU/VasAOFeePzcqbNkpkgajCr9GWv0ETQrLaCpRMsN6gqzRWKWgXi1B2xvL9B+f2AsbZEEGNV+ZAKgSRxNCkSOODza5vLnl/vl9rjbhUsH+Wp1gPB4vZB99AR5lntqe6au1AAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDI2LTEwLTE0VDAzOjU1OjI5KzAwOjAwtZTJlgAAACV0RVh0ZGF0ZTptb2RpZnkAMjAyNi0xMC0xNFQwMzo1NToyOSswMDowMMTJcSoAAAAodEVYdGRhdGU6dGltZXN0YW1wADIwMjYtMTAtMTRUMDQ6MDE6MDgrMDA6MDByQVZcAAAAAElFTkSuQmCC");
     background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAJCAMAAAA8eE0hAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAA2UExURcnq+hMvPSBQailniB9OZziBp1iVtiZffVuXt3aow6Pd9S5zl3Snwoq1y4+4zp/C1YvQ7v///z2k3rUAAAABYktHRBHitT26AAAAB3RJTUUH6goOAzceuSre2AAAADZJREFUCNdVxkESwBAQRNEWYWiE+5/WVJeF/HqLD1yFR6LvmyT7WpEK0IpU/rZ1Gb75k0ks8thIrQJQiJJjaQAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyNi0xMC0xNFQwMzo1NDozNCswMDowMPcrw/YAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjYtMTAtMTRUMDM6NTQ6MzQrMDA6MDCGdntKAAAAKHRFWHRkYXRlOnRpbWVzdGFtcAAyMDI2LTEwLTE0VDAzOjU1OjMwKzAwOjAwyu4VuAAAAABJRU5ErkJggg=="), url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAARCAYAAAAcw8YSAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGYktHRAD/AP8A/6C9p5MAAAAHdElNRQfqCg4DOQDdps41AAAAS0lEQVQI103MsQ2AMAwF0dMfgJpRWIWVGImBiJQSFHAiHFNAQXPSaw4zC8Z5CdJ5h9LV0d4CFe8I+LJu9U8AeauolQNNg/Necs7xACZ5Ie567QDWAAAAJXRFWHRkYXRlOmNyZWF0ZQAyMDI2LTEwLTE0VDAzOjU1OjI5KzAwOjAwtZTJlgAAACV0RVh0ZGF0ZTptb2RpZnkAMjAyNi0xMC0xNFQwMzo1NToyOSswMDowMMTJcSoAAAAodEVYdGRhdGU6dGltZXN0YW1wADIwMjYtMTAtMTRUMDM6NTc6MDArMDA6MDBAlMJmAAAAAElFTkSuQmCC");
 }

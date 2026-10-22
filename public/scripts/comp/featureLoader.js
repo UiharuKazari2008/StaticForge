@@ -109,6 +109,12 @@ const FEATURE_MANIFEST = {
     remote_desktop: {
         scripts: ['scripts/comp/desktop-apps/guacRemote.js']
     },
+    // Remote Desktop Connection: Vista's mstsc dialog; sessions open in remote_desktop's window
+    remote_desktop_connection: {
+        depends: ['remote_desktop'],
+        styles: ['css/taskbar-properties.css', 'css/desktop-apps/remoteDesktopConnection.css'],
+        scripts: ['scripts/comp/desktop-apps/remoteDesktopConnection.js']
+    },
     emotion: {
         styles: ['css/desktop-apps/emotion.css'],
         scripts: ['scripts/comp/desktop-apps/emotion.js']

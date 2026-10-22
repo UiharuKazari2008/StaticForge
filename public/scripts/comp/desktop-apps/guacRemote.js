@@ -1,4 +1,4 @@
-// MeletonFX remote desktop.
+// Remote Desktop Manager (MeletonFX).
 // List window reads Komaki's Guacamole catalog through /api/desktop-guac/connections
 // (connection groups, last-frame previews from .cache/guac-previews).
 // Choosing a row opens a separate modal with Komaki's native Guacamole client in an
@@ -285,7 +285,7 @@ function ensureDesktopGuacListModal() {
     body.appendChild(status);
     body.appendChild(list);
     content.appendChild(body);
-    modal.appendChild(desktopGuacTitle('Remote Desktop', DESKTOP_GUAC_APP_FA_ICON));
+    modal.appendChild(desktopGuacTitle('Remote Desktop Manager', DESKTOP_GUAC_APP_FA_ICON));
     modal.appendChild(document.createElement('div')).className = 'modal-focus-overlay';
     modal.appendChild(desktopGuacControls(modal, null, null));
     modal.appendChild(content);
@@ -677,7 +677,7 @@ function openDesktopGuacHome() {
         key: DESKTOP_GUAC_HOME_KEY,
         modalId: 'desktopGuacHome',
         windowIdentifier: 'desktopGuacHome',
-        title: 'Remote Desktop',
+        title: 'Remote Desktop Manager',
         iconClass: DESKTOP_GUAC_APP_FA_ICON,
         endpoint: '/api/desktop-guac/home'
     });
@@ -688,8 +688,10 @@ function desktopGuacRouteConnection(hash) {
     const match = /^#\/client\/([^/?]+)/.exec(hash || '');
     if (!match) return null;
     try {
-        const id = atob(match[1].replace(/-/g, '+').replace(/_/g, '/')).split('\0')[0];
-        return guacCatalog.get(id) || { id: id, name: '', protocol: '' };
+        const parts = atob(match[1].replace(/-/g, '+').replace(/_/g, '/')).split('\0');
+        // Remote Desktop Connection's quickconnect ids overlap the catalog's
+        if (parts[2] === 'quickconnect') return { id: parts[0], name: '', protocol: '', quick: true };
+        return guacCatalog.get(parts[0]) || { id: parts[0], name: '', protocol: '' };
     } catch (_) {
         return null;
     }
@@ -703,7 +705,8 @@ function trackDesktopGuacFrame(modal, frame, fallbackTitle) {
     const sync = () => {
         const conn = desktopGuacRouteConnection(frameWindow.location.hash);
         const text = frameDocument.title || (conn && conn.name) || fallbackTitle;
-        if (conn) setDesktopGuacTitle(modal, text, GUAC_PROTOCOL_ICONS[conn.protocol] || 'fas fa-desktop');
+        const protocol = (conn && conn.protocol) || frame.dataset.protocol || '';
+        if (conn) setDesktopGuacTitle(modal, text, GUAC_PROTOCOL_ICONS[protocol] || 'fas fa-desktop');
         else setDesktopGuacTitle(modal, text, DESKTOP_GUAC_APP_FA_ICON);
     };
     new MutationObserver(sync).observe(frameDocument.head, { childList: true, subtree: true, characterData: true });
@@ -1021,7 +1024,11 @@ function openDesktopGuacFrame(opts) {
     document.body.appendChild(modal);
     showDesktopGuacModal(modal);
 
-    fetch(opts.endpoint, { credentials: 'same-origin' })
+    // opts.url: a session URL already in hand (Remote Desktop Connection's quick connect)
+    const loading = opts.url
+        ? Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, url: opts.url }) })
+        : fetch(opts.endpoint, { credentials: 'same-origin' });
+    loading
         .then((response) => response.json().catch(() => null).then((payload) => {
             if (guacSessionModals.get(opts.key) !== modal) return;
             if (!response.ok || !payload || !payload.url) {

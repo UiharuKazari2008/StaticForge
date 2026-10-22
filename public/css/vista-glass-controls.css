@@ -294,66 +294,148 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
     font-variation-settings: normal;
 }
 
-/* The light app windows of #485 keep the app's own controls (prompt boxes and their toolbar
-   strip need the app's metrics, so no .win7 on them): their buttons take Vista's standard
-   button face (7.css values, as vista-dialogs.css), not the dark glass. The command bar,
-   prompt toolbar strips and caption buttons have their own rules. */
-body.desktop-mode:not(.windows-classic-theme) :is(#textReplacementManagerModal, #favoritesManagerModal, #requestBodyReplacementsModal, #presetManagerModal, #textReplacementLockModal, #characterDbModal, #chatInterfaceModal) > .modal-content button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning):not(.explorer-command-btn, .toolbar-btn, .close-btn, .custom-dropdown-btn, .round-button, .hover-show) {
+/* ---------- Vista common controls: push buttons (Yukimi 2026-10-21: "the primary and such buttons
+   ... 1:1 vista") ----------
+   Vista's own faces: aero.msstyles BUTTON PUSHBUTTON (IMAGE_515, 22x23, six states) cut by
+   scripts/build-vista-controls.sh into static_images/vista-controls/button-*.png and 9-sliced 4 px
+   all round. The bitmap carries Vista's 1 px transparent margin, so a 75x23 button paints a 73x21
+   face exactly where the VM does (WinForms test form with native styles, pixel diff 0 on the face).
+   Where: every Windows-look client (light windows, Vista dialogs, .win7 content) for the app's
+   button classes and unclassed buttons, plus .btn-standard anywhere on the desktop. Vista has one
+   push button: primary, danger and warning are the same face; .btn-primary (and a dialog's
+   data-dialog-primary / .primary) is the default button: the blue frame, pulsing while its window
+   is active; a focused button takes the default frame too, and its dotted focus rectangle 3 px in.
+   Hot fades in fast and out slowly, pressed is instant. The hot and pulse frames are ::before /
+   ::after layers that cross-fade by opacity (compositor only).
+   Not: caption buttons and window chrome toolbars, Explorer command bars, round buttons (orbs),
+   toolbar / hover-show / toggle-group buttons, the drop-down triggers (combo box rules below), tabs.
+   Custom apps on dark glass (Studio and its tool windows) keep their own buttons. */
+body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *) {
+    --vista-button-face: url("/static_images/vista-controls/button-normal.png");
+    position: relative;
+    z-index: 0;
+    box-sizing: border-box;
     min-height: 23px;
-    padding: 0 8px;
-    background: linear-gradient(#f2f2f2 45%, #ebebeb 45%, #cfcfcf);
-    border: 1px solid #8e8f8f;
-    border-radius: 3px;
-    box-shadow: inset 0 0 0 1px #fffc;
+    padding: 0 10px;
+    background: none;
+    border: 1px solid transparent;
+    border-image: var(--vista-button-face) 4 fill / 4px stretch;
+    border-radius: 0;
+    box-shadow: none;
     color: #000;
-    text-shadow: none;
     font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
     font-weight: 400;
     font-variation-settings: normal;
+    letter-spacing: normal;
+    text-shadow: none;
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
-    transition: border-color 0.3s, background 0.3s;
+    transform: none;
+    transition: none;
+    opacity: 1;
 }
 
-body.desktop-mode:not(.windows-classic-theme) :is(#textReplacementManagerModal, #favoritesManagerModal, #requestBodyReplacementsModal, #presetManagerModal, #textReplacementLockModal, #characterDbModal, #chatInterfaceModal) > .modal-content button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning):not(.explorer-command-btn, .toolbar-btn, .close-btn, .custom-dropdown-btn, .round-button, .hover-show)::before {
-    content: none;
+/* the hot face (::before) and the default pulse (::after) */
+body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *)::before,
+body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *)::after {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    z-index: -1;
+    box-sizing: border-box;
+    width: auto;
+    height: auto;
+    margin: 0;
+    padding: 0;
+    background: none;
+    border: 4px solid transparent;
+    border-image: url("/static_images/vista-controls/button-hot.png") 4 fill / 4px stretch;
+    border-radius: 0;
+    box-shadow: none;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.5s linear;
+    animation: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) :is(#textReplacementManagerModal, #favoritesManagerModal, #requestBodyReplacementsModal, #presetManagerModal, #textReplacementLockModal, #characterDbModal, #chatInterfaceModal) > .modal-content button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning):not(.explorer-command-btn, .toolbar-btn, .close-btn, .custom-dropdown-btn, .round-button, .hover-show) i {
+body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *)::after {
+    border-image-source: url("/static_images/vista-controls/button-default-pulse.png");
+    transition: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *) i {
     color: #2b5797;
     text-shadow: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) :is(#textReplacementManagerModal, #favoritesManagerModal, #requestBodyReplacementsModal, #presetManagerModal, #textReplacementLockModal, #characterDbModal, #chatInterfaceModal) > .modal-content button.btn-danger:not(.explorer-command-btn, .toolbar-btn, .close-btn, .custom-dropdown-btn, .round-button, .hover-show) i {
+body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button.btn-danger):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *) i {
     color: #c42b1c;
 }
 
+/* default: the primary button, or the focused one */
+body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, [data-dialog-primary="1"], .primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, :not([class])):is(.btn-primary, [data-dialog-primary="1"], .primary, :focus-visible), button.btn-standard:is(.primary, :focus-visible)):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *):not(:disabled) {
+    --vista-button-face: url("/static_images/vista-controls/button-default.png");
+}
+
+/* it pulses only while its window is the active one (the cross-fade runs on the compositor) */
+body.desktop-mode:not(.windows-classic-theme) .modal.active-window :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, [data-dialog-primary="1"], .primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, :not([class])):is(.btn-primary, [data-dialog-primary="1"], .primary, :focus-visible), button.btn-standard:is(.primary, :focus-visible)):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *):not(:disabled):not(:active)::after {
+    animation: vista-button-default-pulse 1s ease-in-out infinite alternate;
+}
+
+@keyframes vista-button-default-pulse {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *):focus-visible {
+    outline: 1px dotted #000;
+    outline-offset: -4px;
+}
+
 @media (hover: hover) {
-    body.desktop-mode:not(.windows-classic-theme) :is(#textReplacementManagerModal, #favoritesManagerModal, #requestBodyReplacementsModal, #presetManagerModal, #textReplacementLockModal, #characterDbModal, #chatInterfaceModal) > .modal-content button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning):not(.explorer-command-btn, .toolbar-btn, .close-btn, .custom-dropdown-btn, .round-button, .hover-show):hover:not(:disabled) {
-        background: linear-gradient(#eaf6fd 45%, #bee6fd 45%, #a7d9f5);
-        border-color: #3c7fb1;
-        box-shadow: inset 0 0 0 1px #fffc;
+    body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *):hover:not(:disabled) {
+        background: none;
+        border-color: transparent;
+        box-shadow: none;
         color: #000;
+    }
+
+    body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *):hover:not(:disabled)::before {
+        opacity: 1;
+        transition-duration: 0.1s;
     }
 }
 
-body.desktop-mode:not(.windows-classic-theme) :is(#textReplacementManagerModal, #favoritesManagerModal, #requestBodyReplacementsModal, #presetManagerModal, #textReplacementLockModal, #characterDbModal, #chatInterfaceModal) > .modal-content button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning):not(.explorer-command-btn, .toolbar-btn, .close-btn, .custom-dropdown-btn, .round-button, .hover-show):is(:active, .active, [data-state="on"]):not(:disabled) {
-    background: linear-gradient(#e5f4fc, #c4e5f6 30% 50%, #98d1ef 50%, #68b3db);
-    border-color: #6d91ab;
-    box-shadow: inset 1px 1px 0 #0003, inset -1px 1px 0 #0001;
+/* pressed (and latched app buttons): Vista's sunken face, no fade */
+body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *):is(:active, .active, [data-state="on"], [aria-pressed="true"]):not(:disabled) {
+    --vista-button-face: url("/static_images/vista-controls/button-pressed.png");
+    background: none;
+    box-shadow: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) :is(#textReplacementManagerModal, #favoritesManagerModal, #requestBodyReplacementsModal, #presetManagerModal, #textReplacementLockModal, #characterDbModal, #chatInterfaceModal) > .modal-content button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning):not(.explorer-command-btn, .toolbar-btn, .close-btn, .custom-dropdown-btn, .round-button, .hover-show):disabled {
-    background: #f4f4f4;
-    border-color: #adb2b5;
+body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *):is(:active, .active, [data-state="on"], [aria-pressed="true"]):not(:disabled):is(*, :hover)::before {
+    opacity: 0;
+    transition: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *):disabled {
+    --vista-button-face: url("/static_images/vista-controls/button-disabled.png");
+    background: none;
+    box-shadow: none;
     color: #838383;
+    cursor: default;
     opacity: 1;
 }
 
-body.desktop-mode:not(.windows-classic-theme) :is(#textReplacementManagerModal, #favoritesManagerModal, #requestBodyReplacementsModal, #presetManagerModal, #textReplacementLockModal, #characterDbModal, #chatInterfaceModal) > .modal-content button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning):not(.explorer-command-btn, .toolbar-btn, .close-btn, .custom-dropdown-btn, .round-button, .hover-show):focus-visible {
-    box-shadow: inset 0 0 0 2px #98d1ef;
-    outline: 1px dotted #000;
-    outline-offset: -4px;
+body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button:is(.btn-primary, .btn-secondary, .btn-danger, .btn-warning, .btn-standard, .btn, :not([class])), button.btn-standard):not(.round-button, .close-btn, .custom-dropdown-btn, .hover-show, .toolbar-btn, .explorer-command-btn, .gallery-toggle-btn, .mode-slider-btn, [role="tab"], [role="menuitem"]):not(.modal-window-title *, .modal-window-title-toolbar *, .modal-window-controls *):disabled i {
+    color: inherit;
+    opacity: 0.6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    body.desktop-mode:not(.windows-classic-theme) :is(:is(.modal[data-window-client="light"], .modal[data-vista-dialog], .win7) button, button.btn-standard)::after {
+        animation: none !important;
+    }
 }
 
 /* ---------- tray icons: Vista's own (ripped from the VM, static_images/vista-icons/) ----------

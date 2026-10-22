@@ -1915,6 +1915,14 @@ html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModa
     box-shadow: 0 0 4px rgb(var(--lit) / 80%);
 }
 
+/* an indicator with a text label (Text Expander's Extend) takes the label's width; the right
+   padding keeps the label clear of the lamp in the lower right corner */
+html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button.indicator:has(> span) {
+    gap: 4px;
+    width: auto;
+    padding: 0 8px 0 6px;
+}
+
 /* widths and glyph places for the window buttons (border 5 px + padding = the VM offset) */
 html body.desktop-mode:not(.windows-classic-theme) .modal:not(:where(#manualModal:not(.windowed))):is(.active-window, :not(.active-window)) .modal-window-controls:has(> .close-btn, > .modal-close) > button:is(.minimize-btn, .modal-work-area-maximize, .close-btn, .modal-close, [id="restoreManualBtn"], [id="maximizeGalleryBtn"], [id="maximizePhotoSwipeBtn"]):has(> i:is(.fa-window-minimize, .fa-window-maximize, .fa-window-restore, .fa-xmark-large)) {
     justify-content: flex-start;

@@ -628,21 +628,24 @@
         return span ? span.textContent : '';
     }
 
-    function stripIds(node) {
+    /** What a copy must not carry: a radio button's name would join (and uncheck) the real
+     *  window's group, labels and autofocus act on the page. Ids stay: every app styles its window
+     *  by them (Director's dark panes, Studio's layout); the preview sits last in <body>, so a
+     *  getElementById / querySelector still finds the real window first. */
+    function stripLiveAttributes(node) {
         if (node.nodeType !== 1) return;
-        node.removeAttribute('id');
-        node.removeAttribute('name');
-        node.removeAttribute('for');
-        node.removeAttribute('autofocus');
-        node.querySelectorAll('[id], [name], [for], [autofocus]').forEach((el) => {
-            el.removeAttribute('id');
+        const strip = (el) => {
             el.removeAttribute('name');
             el.removeAttribute('for');
             el.removeAttribute('autofocus');
-        });
+            el.removeAttribute('tabindex');
+        };
+        strip(node);
+        node.querySelectorAll('[name], [for], [autofocus], [tabindex]').forEach(strip);
     }
 
-    /** A still of the window: a clone with no ids (no lookup can land in it), canvases copied. */
+    /** A still of the window: a clone with its ids (for its styles) but no form or focus ties,
+     *  canvases copied. */
     function snapshot(modal, box) {
         if (!modal || modal.getElementsByTagName('*').length > THUMB_MAX_NODES) return null;
         const minimised = modal.classList.contains('minimised');
@@ -663,13 +666,21 @@
             } catch (_) { /* tainted or WebGL */ }
         });
         clone.querySelectorAll('video, audio, iframe, script').forEach((el) => el.remove());
-        stripIds(clone);
+        stripLiveAttributes(clone);
         clone.classList.remove('minimised', 'minimising', 'active-window', 'entering', 'leaving');
         clone.classList.add('taskbar-thumb-clone');
         clone.setAttribute('aria-hidden', 'true');
         clone.setAttribute('inert', '');
         const scale = Math.min(box.w / w, box.h / h);
-        clone.style.cssText += `;position:absolute;left:0;top:0;width:${w}px;height:${h}px;margin:0;transform:scale(${scale});transform-origin:0 0;translate:none;inset:auto;pointer-events:none;animation:none;transition:none;opacity:1;visibility:visible;`;
+        // the copy's geometry beats the window's own rules (maximized windows and some apps size
+        // themselves with !important), or the preview grows past its box
+        const fixed = {
+            position: 'absolute', inset: 'auto', left: '0px', top: '0px', right: 'auto', bottom: 'auto',
+            width: `${w}px`, height: `${h}px`, 'min-width': '0px', 'min-height': '0px', 'max-width': 'none', 'max-height': 'none',
+            margin: '0px', transform: `scale(${scale})`, 'transform-origin': '0 0', translate: 'none', scale: 'none', rotate: 'none',
+            zoom: '1', 'pointer-events': 'none', animation: 'none', transition: 'none', opacity: '1', visibility: 'visible'
+        };
+        Object.keys(fixed).forEach((prop) => clone.style.setProperty(prop, fixed[prop], 'important'));
         const holder = doc.createElement('div');
         holder.className = 'taskbar-thumb-still';
         holder.style.width = `${Math.round(w * scale)}px`;
@@ -699,6 +710,8 @@
         const modal = modalFor(item);
         if (!modal) return;
         const el = ensureThumb();
+        // last in <body> before the copy goes in: lookups by id find the real window first
+        if (el !== doc.body.lastElementChild) doc.body.appendChild(el);
         const title = titleOf(modal, item);
         el.querySelector('.taskbar-thumb-title').textContent = title;
         const body = el.querySelector('.taskbar-thumb-body');
@@ -791,7 +804,7 @@
         addQuickLaunch,
         removeQuickLaunch,
         quickLaunchEntry,
-        _test: { read, snapshot, stripIds, QUICK_LAUNCH_SHELL, STORAGE_KEY }
+        _test: { read, snapshot, stripLiveAttributes, QUICK_LAUNCH_SHELL, STORAGE_KEY }
     };
     root.taskbarSettings = api;
 

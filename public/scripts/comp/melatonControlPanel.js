@@ -15,7 +15,8 @@
  *
  *   melatonControlPanel.open(page = 'home')    'home' | 'network'
  *   melatonControlPanel.registerItem({ id, name, icon, image, description, open })
- *   melatonControlPanel.registerPage(id, { title(), tasks(), body(), mount(main)?, unmount()? })
+ *   melatonControlPanel.registerPage(id, { title(), tasks(), body(), mount(main)?, unmount()?, parent? })
+ *       parent: the page a subpage sits under, shown between Control Panel and it in the address
  *       a page that hosts live DOM (Personalization, Global Settings: the desktop settings forms,
  *       modalUtils.js) moves it in on mount and back out on unmount, before every re-render and
  *       when the window closes, so the forms keep their handlers
@@ -112,24 +113,25 @@
         id: 'personalization',
         name: 'Personalization',
         image: '/static_images/app_icons/64/vista-personalization.webp',
-        description: "Change this workspace's name, colours, fonts and desktop background.",
+        description: 'Personalize appearance and sounds: window colour, desktop background, screen saver, sounds and theme.',
         open: () => navigate('personalization')
     });
-    // Global Settings as Vista's own items (pages registered in modalUtils.js
-    // registerDesktopSettingsControlPanelPages, one group of the global sections each)
+    // Personalization's own pages and dialogs (cplPersonalization.js); Appearance Settings and
+    // Keyboard host one group of the global settings forms each (modalUtils.js)
     registerItem({
         id: 'appearance',
         name: 'Window Color and Appearance',
         image: '/static_images/app_icons/64/vista-appearance.webp',
-        description: 'How windows move and resize, and the frame glass for every workspace.',
-        open: () => navigate('appearance')
+        description: 'Fine tune the color and style of your windows.',
+        open: () => navigate(pages['window-color'] ? 'window-color' : 'appearance')
     });
     registerItem({
         id: 'sound',
         name: 'Sound',
         image: '/static_images/app_icons/64/vista-sound.webp',
-        description: 'Turn the Windows Vista program sounds on or off.',
-        open: () => navigate('sound')
+        description: 'Change which sounds are heard for each event, or turn them off.',
+        // Vista opens the Sound dialog's Sounds tab (personalizationDialogs.js)
+        open: () => (root.personalizationDialogs ? root.personalizationDialogs.openSound() : navigate('sound'))
     });
     registerItem({
         id: 'taskbar',
@@ -434,6 +436,14 @@
         crumbs.push('<span class="cpl-crumb-sep" aria-hidden="true">&#9656;</span>');
         crumbs.push(`<button type="button" class="cpl-crumb" data-cpl-action="nav" data-cpl-arg="home">Control Panel</button>`);
         if (current !== 'home') {
+            // a subpage (parent: its page id) shows the trail through it, as Vista's
+            // Control Panel > Personalization > Window Color and Appearance
+            const trail = [];
+            for (let id = page.parent; id && pages[id] && id !== 'home' && !trail.includes(id); id = pages[id].parent) trail.unshift(id);
+            trail.forEach((id) => {
+                crumbs.push('<span class="cpl-crumb-sep" aria-hidden="true">&#9656;</span>');
+                crumbs.push(`<button type="button" class="cpl-crumb" data-cpl-action="nav" data-cpl-arg="${esc(id)}">${esc(pages[id].title())}</button>`);
+            });
             crumbs.push('<span class="cpl-crumb-sep" aria-hidden="true">&#9656;</span>');
             crumbs.push(`<button type="button" class="cpl-crumb" data-cpl-action="nav" data-cpl-arg="${esc(current)}">${esc(page.title())}</button>`);
         }

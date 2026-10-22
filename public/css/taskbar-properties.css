@@ -429,6 +429,7 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-star
 
 .tbp-client .tbp-list-body {
     flex: 1;
+    overflow-x: hidden;
     overflow-y: auto;
 }
 
@@ -482,6 +483,12 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-star
     overflow: hidden;
 }
 
+/* the tray icon itself, in the 16 px column: its counts, alert marks and status dots stay on the
+   taskbar (the Mail count drew a second icon's worth of badge) */
+.tbp-client .tbp-list-glyph :is([class*="badge"], .wallet-tray-alert, .workspace-save-status-dot) {
+    display: none !important;
+}
+
 /* the tray icon itself, scaled into the 16 px column */
 .tbp-client .tbp-list-glyph {
     display: flex !important;
@@ -498,18 +505,25 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-star
 
 .tbp-client .tbp-list-behavior {
     position: relative;
+    align-self: stretch;
+    display: flex;
+    align-items: center;
     padding: 0 6px;
 }
 
 .tbp-client .tbp-list-select {
     display: none;
     position: absolute;
-    left: 0;
+    /* over the 18 px row, a little taller as Vista's in-place combo is */
+    left: 2px;
     top: -2px;
-    width: 120px;
-    height: 20px;
+    box-sizing: border-box;
+    width: 121px;
+    height: 22px;
+    min-width: 0;
     min-height: 0;
     font: inherit;
+    z-index: 1;
 }
 
 .tbp-client .tbp-list-row.is-editing .tbp-list-select {
@@ -527,7 +541,8 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-star
     background: #fff;
 }
 
-/* our taskbar, filling the strip as Vista's preview bitmaps do (34 px; the orb's top is cut off) */
+/* our taskbar at the pending Start button style's own height (taskbarProperties.js sets it inline:
+   31 / 33 / 35 px), bottom-aligned in Vista's 34 px strip; the notification area's strip keeps 34 */
 .tbp-client .tbp-preview .desktop-taskbar.tbp-preview-bar {
     --taskbar-height: 34px;
     position: absolute;
@@ -642,7 +657,8 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-clie
 
 /* controls placed by dialog units stay where they are put: the light client's and 7.css's select
    rules make combo boxes position: relative, which dropped them into the text flow */
-body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-client :is(select, input, button).tbp-ctl {
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-client :is(select, input, button).tbp-ctl,
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-client .tbp-list-row select.tbp-list-select {
     position: absolute;
     margin: 0;
 }

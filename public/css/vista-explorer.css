@@ -404,8 +404,14 @@ body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, .modal[data-wi
     white-space: nowrap;
 }
 
-:where(.modal[data-window-client="light"]) .explorer-actions-header:where(:not(.naxt-search-header)) .explorer-command-btn > i {
+:where(.modal[data-window-client="light"]) .explorer-actions-header:where(:not(.naxt-search-header)) .explorer-command-btn > :is(i, .explorer-command-icon) {
     margin-right: 5px;
+}
+
+:where(.modal[data-window-client="light"]) .explorer-actions-header:where(:not(.naxt-search-header)) .explorer-command-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
 }
 
 /* the latched toggle's tint layer would show through Explorer's pressed box */
