@@ -7890,28 +7890,52 @@ async function getPromptTermStatsForFilenames(filenames, options = {}) {
                 tag,
                 original_tag,
                 COUNT(DISTINCT filename) AS occurrenceCount,
-                AVG(ABS(weight)) AS avgWeight
+                SUM(ABS(weight)) AS absWeightSum,
+                COUNT(weight) AS weightCount
             FROM search_tags
             WHERE filename IN (${filePlaceholders})
               AND source IN (${sourcePlaceholders})
             GROUP BY tag, original_tag
         `, [...chunk, ...sources]);
 
+        // Chunks hold disjoint filenames: sum per (tag, original_tag) across chunks (#621; the
+        // per-chunk maximum undercounted any tag spread over more than 400 files).
         for (const row of rows) {
-            const key = row.tag;
+            const key = `${row.tag}\0${row.original_tag}`;
             const existing = aggregate.get(key);
-            if (!existing || row.occurrenceCount > existing.occurrenceCount) {
+            if (!existing) {
                 aggregate.set(key, {
                     tag: row.tag,
                     originalTag: row.original_tag,
-                    occurrenceCount: row.occurrenceCount,
-                    avgWeight: row.avgWeight || 0
+                    occurrenceCount: row.occurrenceCount || 0,
+                    absWeightSum: row.absWeightSum || 0,
+                    weightCount: row.weightCount || 0
                 });
+            } else {
+                existing.occurrenceCount += row.occurrenceCount || 0;
+                existing.absWeightSum += row.absWeightSum || 0;
+                existing.weightCount += row.weightCount || 0;
             }
         }
     }
 
-    return [...aggregate.values()]
+    // One entry per tag: the original_tag spelling with the most files (first seen on ties),
+    // as the single-chunk result picked it.
+    const byTag = new Map();
+    for (const entry of aggregate.values()) {
+        const existing = byTag.get(entry.tag);
+        if (!existing || entry.occurrenceCount > existing.occurrenceCount) {
+            byTag.set(entry.tag, entry);
+        }
+    }
+
+    return [...byTag.values()]
+        .map((entry) => ({
+            tag: entry.tag,
+            originalTag: entry.originalTag,
+            occurrenceCount: entry.occurrenceCount,
+            avgWeight: entry.weightCount > 0 ? (entry.absWeightSum / entry.weightCount) : 0
+        }))
         .sort((a, b) => {
             if (b.occurrenceCount !== a.occurrenceCount) {
                 return b.occurrenceCount - a.occurrenceCount;
