@@ -449,6 +449,24 @@ body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"]
     opacity: 0.5;
 }
 
+/* status glyphs in a light client: the shell's 16 px warning / information / error icons */
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content i:is(.fa-exclamation-triangle, .fa-triangle-exclamation, .fa-info-circle, .fa-circle-info, .fa-circle-xmark, .fa-times-circle):not(.vista-text-button > i) {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    vertical-align: -3px;
+    background: url("/static_images/vista-icons/warning-16.png") no-repeat center / 16px 16px;
+    font-size: 0;
+    color: transparent;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content i:is(.fa-info-circle, .fa-circle-info):not(.vista-text-button > i) { background-image: url("/static_images/vista-icons/info-16.png"); }
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content i:is(.fa-circle-xmark, .fa-times-circle):not(.vista-text-button > i) { background-image: url("/static_images/vista-icons/error-16.png"); }
+
+body.desktop-mode:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content i:is(.fa-exclamation-triangle, .fa-triangle-exclamation, .fa-info-circle, .fa-circle-info, .fa-circle-xmark, .fa-times-circle):not(.vista-text-button > i)::before {
+    content: none;
+}
+
 /* a label only the Vista desktop shows (an icon-only button elsewhere gets words on Vista) */
 .vista-label {
     display: none;

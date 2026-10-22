@@ -856,3 +856,25 @@ body.desktop-mode:not(.windows-classic-theme) #logViewerModal .log-viewer-conn-s
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .log-viewer-conn-stat[title="Packets received"]::before { content: "Received:"; }
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .log-viewer-conn-stat[title="Ping"]::before { content: "Ping:"; }
 body.desktop-mode:not(.windows-classic-theme) #logViewerModal .log-viewer-conn-stat[title="Ping variation"]::before { content: "Variation:"; }
+
+/* Vista: the toolbar's glyphs. Pause / Resume / Scroll to End are words (no Vista icon for them;
+   logViewerApplet.js still swaps fa-pause / fa-play, the word follows the class); the tasks
+   toggle is Event Viewer's Show/Hide Action Pane (mmc.exe bitmap 202, index 17). */
+body.desktop-mode:not(.windows-classic-theme) #logViewerModal :is(#logViewerPauseBtn, #logViewerScrollBottomBtn) > i::before {
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #logViewerModal #logViewerPauseBtn > i.fa-pause::before { content: "Pause"; }
+body.desktop-mode:not(.windows-classic-theme) #logViewerModal #logViewerPauseBtn > i.fa-play::before { content: "Resume"; }
+body.desktop-mode:not(.windows-classic-theme) #logViewerModal #logViewerScrollBottomBtn > i.fa-arrow-down::before { content: "Scroll to End"; }
+
+body.desktop-mode:not(.windows-classic-theme) #logViewerModal #logViewerTasksToggleBtn > i {
+    width: 16px;
+    height: 16px;
+    background: url("/static_images/vista-cmdbar/action-pane.png") no-repeat center / 16px 16px;
+    font-size: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #logViewerModal #logViewerTasksToggleBtn > i::before {
+    content: none;
+}
