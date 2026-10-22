@@ -67,3 +67,26 @@ Every packet is admin only. A non-admin session gets `type: "error"` with code `
 | `weather` | `unit` (`F`, `C`), `feelsLike` (apparent temperature for current, today and forecast), `hidePlace`, `placeAlt` (shown instead of the place when hidden: `none`, `hilo`, `rain` = today's chance %, `condition`, `uv` = today's peak with its level) |
 
 Mail reads Dovecote with the existing `dovecote_list_mail` / `dovecote_list_mailboxes` packets (`modules/ws/handlers/250-dovecoteHandler.js`).
+
+## Hosted gadgets
+
+Yozora #629. Real Sidebar gadgets run from their own files: `scripts/import-vista-gadget.js` unpacks each
+`.gadget` listed in `scripts/assets/vista-gadgets/gadgets.json` into `public/static_images/vista-gadgets/<id>/`
+(lowercase paths, UTF-8, `gadgetShim.js` and a same-origin CSP first in every page, fixes from
+`scripts/assets/vista-gadgets/patches/<id>/`) and lists it in `public/static_images/vista-gadgets/catalog.json`.
+`vistaSidebar.js` adds each catalog entry to the gallery; `vistaGadgetHost.js` (feature `vista_gadget_host`)
+runs it in an iframe and gives it the Sidebar's object model.
+
+- The state filter accepts every catalog id as a gadget `type` (re-read when the catalog changes). Its
+  `settings` are `{ store: { key: string | number | boolean } }`: the gadget's `System.Gadget.Settings`,
+  at most 64 keys, 4096 characters a value, 16 KB a gadget.
+- Catalog entry: `id`, `title`, `version`, `author` (Microsoft reads Xyridian), `desc`, `icon`, `page`, `path`
+  (`System.Gadget.path`), `logo`, `copyright`, `url`, `settings` (has a settings page), `group`, `size`, and
+  when they apply `fs` (lists its own folders: the host loads `<id>/__install.json` first), `picture`
+  (`System.Gadget.picture`: a workspace picture, "New Picture" on its menu), `web` (hosts `/gadget-proxy`
+  fetches text from for it).
+- The first time a gadget is added it is downloaded under the file progress dialog ("Downloading"), file by
+  file from `<id>/__install.json`; `localStorage` `vgh.installed` remembers the version.
+- `System.Machine`, `System.Shell.drive` (megabytes) and WMI (`GetObject("winmgmts:...")`) answer from
+  `sidebar_system_info`; FileSystemObject text files are kept per gadget in `localStorage` (`vgh.file.<id>.<name>`).
+

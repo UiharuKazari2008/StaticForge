@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<gadget>
+  <name>Google Translator</name>
+  <namespace>loris.guida</namespace>
+  <version>1.0.0.0</version>
+  <author name="Loris Guida">
+	<logo src="logo_sm.png"/>
+  </author>
+  <description>Google Translator - results are displayed in the browser. Default language and translation supported through settings</description>
+<copyright>2006</copyright> 
+ <icons>
+    <icon height="48" width="48" src="logo_sm.gif"/>
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="html" apiVersion="1.0.0" src="translate.html"/>
+      <permissions>full</permissions>
+      <platform minPlatformVersion="1.0"/>
+      <defaultImage src="logo_sm.png"/>
+    </host>
+  </hosts>
+</gadget>

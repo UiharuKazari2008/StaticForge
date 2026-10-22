@@ -40,6 +40,11 @@ if (String(imageRotation) == "") {
 	System.Gadget.Settings.write("Caption", caption);
 	System.Gadget.Settings.write("blurBorder", blurBorder);
 }
+// (Yozora #629) nothing dropped yet: a picture from the workspace, as the Slide Show shows
+if ((!image || image == "images/blank.jpg") && System.Gadget.picture) {
+	image = System.Gadget.picture;
+	if (!caption || caption == "drag/drop image") caption = System.Gadget.pictureCaption || "";
+}
 
 
 
@@ -75,7 +80,7 @@ function fileDragDropped() {
 function getImageSize() {
 	try{
 		var img = new Image();
-		img.src = "file://"+image;
+		img.src = image; // (Yozora #629) a URL here, not a file path
 		if (img.width+img.height > 0)
 		{
 			if (img.width > img.height) {

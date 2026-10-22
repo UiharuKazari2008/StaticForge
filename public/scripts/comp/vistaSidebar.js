@@ -192,7 +192,8 @@ const vsbHostedDef = (entry) => ({
     },
     apply: (inst) => vsbHostCall('apply', inst),
     destroy: (inst) => vsbHostCall('destroy', inst),
-    form: entry.settings ? vsbHostedForm : null
+    form: entry.settings ? vsbHostedForm : null,
+    menu: entry.picture ? [{ text: 'New Picture', action: 'vsb-hosted-picture' }] : undefined
 });
 
 /** public/static_images/vista-gadgets/catalog.json (scripts/import-vista-gadget.js) into VSB_GADGETS, once. */
@@ -3273,6 +3274,7 @@ const vsbHandleMenuAction = function (action, inst, event, item) {
         case 'vsb-mail-refresh': vsbMailRefresh(inst); break;
         case 'vsb-refresh': if (inst.refresh) inst.refresh(); break;
         case 'vsb-puzzle-new': vsbPuzzleNewPicture(inst); break;
+        case 'vsb-hosted-picture': vsbHostCall('newPicture', inst); break;
         case 'vsb-slide-next': vsbSlideStep(inst, 1); break;
         case 'vsb-slide-prev': vsbSlideStep(inst, -1); break;
         case 'vsb-slide-goto':

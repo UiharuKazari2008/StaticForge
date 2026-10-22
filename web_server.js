@@ -4387,6 +4387,12 @@ async function handleAdminUnixSocketMessage(message, socket) {
                 if (!res.headersSent) res.status(500).json({ success: false, error: err.message });
             });
         });
+        // and their radio stations' audio (modules/vistaGadgetProxy.js handleStream)
+        app.get('/gadget-stream', authMiddleware, (req, res) => {
+            vistaGadgetProxy.handleStream(req, res).catch(() => {
+                if (!res.headersSent) res.status(500).end();
+            });
+        });
 
         // graphify-out holds an internal cache (stat-index.json) that lists absolute server
         // paths, sizes and mtimes for the whole tree. Auth before any bytes leave the host.

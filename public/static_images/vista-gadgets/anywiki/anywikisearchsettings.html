@@ -1,0 +1,95 @@
+<html>
+
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+	<style>
+	body {
+	width: 225px;
+	height: 210px;
+}
+</style>
+<script>
+	function SettingsClosing(event)
+	{
+		if (event.closeAction == event.Action.commit) {
+			wikiURL = AnyWikiSettings.URL.value;
+			wikiType = AnyWikiSettings.Type.value;
+			displayName = AnyWikiSettings.Display.value;
+			imgURL = AnyWikiSettings.ImageURL.value;
+			if (wikiURL.indexOf("http://") != 0) {
+				debug.innerText = "Proper URL is in the form http://*/.";
+				event.cancel = true;
+				return;
+			}
+			if (wikiURL.charAt(wikiURL.length - 1) != "/") {
+				debug.innerText = "Proper URL is in the form http://*/.";
+				event.cancel = true;
+				return;
+			}
+			System.Gadget.Settings.writeString("wikiURL", wikiURL);
+			System.Gadget.Settings.writeString("wikiType", wikiType);
+			System.Gadget.Settings.writeString("displayName", displayName);					
+			System.Gadget.Settings.writeString("imageURL", imgURL);
+		}
+				
+		event.cancel = false;
+	}
+
+	function init() {
+// 		System.Gadget.document.parentWindow.debug.innerText = "Hello";
+
+		var wikiType = System.Gadget.Settings.readString("wikiType");
+		var wikiURL = System.Gadget.Settings.readString("wikiURL");
+		var displayName = System.Gadget.Settings.readString("displayName");
+		var imgURL = System.Gadget.Settings.readString("imageURL");
+		
+		if (wikiURL.length > 0)
+			AnyWikiSettings.URL.value = wikiURL;
+		if (wikiType.length > 0)
+			AnyWikiSettings.Type.value = wikiType;
+		if (displayName.length > 0)
+			AnyWikiSettings.Display.value = displayName;
+		if (imgURL.length > 0)
+			AnyWikiSettings.ImageURL.value = imgURL;
+			
+			
+		System.Gadget.onSettingsClosing = SettingsClosing;
+				
+	}
+	
+	function onTypeChange() {
+	}
+</script>
+<title>AnyWiki Search Settings</title>
+
+</head>
+
+<body onload="init();">
+
+	<strong>URL</strong>
+<br>
+<form id="AnyWikiSettings">
+	<input name="URL" type="text" style="width: 200px" value="http://en.wikipedia.org/"> <br>
+	<strong>Display Name</strong>
+<br>
+	
+	<input name="Display" type="text" style="width: 200px" maxlength="14">
+<br>
+	<strong>Image URL</strong>
+<br>
+
+	<input name="ImageURL" type="text" style="width: 200px">
+<br>
+	<strong>Wiki Type<br></strong>
+
+	<select name="Type" style="height: 22px" onchange="onTypeChange();">
+	<option value="MediaWiki">mediaWiki (e.g. wikipedia.org)</option>
+	<option value="CodePlex">CodePlex Project Wiki</option>
+	<option value="FlexWiki">FlexWiki (e.g. flexWiki.com)</option>
+	<option value="SharepointWiki">Sharepoint Wiki</option>	
+	<option value="Wikispaces">Wikispaces.com</option>
+ 	</select><br>
+	<span id="debug"></span>
+</form>	
+</body>
+
+</html>

@@ -312,6 +312,8 @@ function stopLoopback() {
 function attachExpress(app) {
     if (!app || typeof app.use !== 'function') return;
     app.use((req, res, next) => {
+        // a Sidebar radio's stream (vistaGadgetProxy.js) runs for hours and just reconnects: not busy
+        if (req.path === '/gadget-stream') return next();
         const id = beginHttp(req);
         let ended = false;
         const done = () => {

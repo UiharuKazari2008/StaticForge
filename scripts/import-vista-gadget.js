@@ -251,6 +251,8 @@ function importOne(entry, opts) {
             settings: entry.settings != null ? !!entry.settings : usesSettings,
             // the page browses its own folders (System.Shell.itemFromPath): the host loads the file list first
             ...(usesShellFs ? { fs: true } : {}),
+            // shows a workspace picture until one is dropped on it (System.Gadget.picture, vistaGadgetHost.js)
+            ...(entry.picture ? { picture: true } : {}),
             group: entry.group || 'other',
             size: installed.reduce((n, [, size]) => n + size, 0),
             ...(entry.host ? { host: entry.host } : {}),
@@ -270,6 +272,13 @@ function main() {
     let failed = 0;
     for (const entry of config.gadgets) {
         if (opts.only && !opts.only.has(entry.id)) continue;
+        // skip: kept in the list (its source and why) but not in the gallery; its files go
+        if (entry.skip) {
+            if (!opts.dry) fs.rmSync(path.join(OUT_ROOT, entry.id), { recursive: true, force: true });
+            byId.delete(entry.id);
+            console.log(`skip ${entry.id.padEnd(18)} ${entry.skip}`);
+            continue;
+        }
         try {
             const item = importOne(entry, opts);
             byId.set(entry.id, item);
@@ -280,7 +289,7 @@ function main() {
         }
     }
     // catalog order follows the config
-    const order = config.gadgets.map((g) => g.id);
+    const order = config.gadgets.filter((g) => !g.skip).map((g) => g.id);
     catalog.gadgets = order.filter((id) => byId.has(id)).map((id) => byId.get(id));
     if (!opts.dry) fs.writeFileSync(CATALOG, JSON.stringify(catalog, null, 1) + '\n');
     if (failed) process.exitCode = 1;

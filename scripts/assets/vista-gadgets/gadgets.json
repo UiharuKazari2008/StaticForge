@@ -391,12 +391,14 @@
   {
    "id": "polaroid",
    "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/Polaroidv1.7.1.1.gadget",
-   "group": "system"
+   "group": "system",
+   "picture": true
   },
   {
    "id": "driveexplorer",
    "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/DriveExplorer.gadget",
-   "group": "system"
+   "group": "system",
+   "skip": "needs System.Shell folders over the VFS"
   },
   {
    "id": "scribble",
@@ -406,12 +408,14 @@
   {
    "id": "inknotes",
    "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/InkNotes.gadget",
-   "group": "system"
+   "group": "system",
+   "skip": "needs the Tablet PC InkPicture control (ink strokes, ISF save) emulated"
   },
   {
    "id": "linksbar",
    "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/Links Bar.gadget",
-   "group": "system"
+   "group": "system",
+   "skip": "needs System.Shell folders over desktop shortcuts"
   },
   {
    "id": "usgs",
@@ -425,6 +429,118 @@
    "id": "fullsun",
    "src": "src/vistazip/FullSun.gadget",
    "group": "system"
+  },
+  {
+   "id": "googlesearch",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/gsearch.gadget",
+   "group": "search"
+  },
+  {
+   "id": "wikisearch",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/wikipedia-1.gadget",
+   "group": "search",
+   "author": "Xyridian Technology Center Paris"
+  },
+  {
+   "id": "anywiki",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/AnyWikiSearch.gadget",
+   "group": "search"
+  },
+  {
+   "id": "imdbsearch",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/Imdb.gadget",
+   "group": "search"
+  },
+  {
+   "id": "amazonsearch",
+   "src": "src/top7/amazon_search.gadget",
+   "group": "search"
+  },
+  {
+   "id": "ebaysearch",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/ebay_com.gadget",
+   "group": "search"
+  },
+  {
+   "id": "youtubesearch",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/youtubesearch.gadget",
+   "group": "search"
+  },
+  {
+   "id": "yahoosearch",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/yahoosearch.gadget",
+   "group": "search"
+  },
+  {
+   "id": "discogs",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/Discogs.gadget",
+   "group": "search"
+  },
+  {
+   "id": "translator",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/translator.GADGET",
+   "group": "search"
+  },
+  {
+   "id": "freedictionary",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/TheFreeDictionary.gadget",
+   "group": "search"
+  },
+  {
+   "id": "wordreference",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/wordref.gadget",
+   "group": "search",
+   "author": "Xyridian Technology Center Paris"
+  },
+  {
+   "id": "mydictionary",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/MyDictionary 1.3.0.0.gadget",
+   "group": "search"
+  },
+  {
+   "id": "multibar",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/MultiBar.gadget",
+   "group": "search"
+  },
+  {
+   "id": "multisearcher",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/Multisearcher.gadget",
+   "group": "search"
+  },
+  {
+   "id": "supersearch",
+   "src": "src/top7/Super_Search_Bar_V4.2.gadget",
+   "group": "search",
+   "skip": "obfuscated script (AddGadget packer); gadget pages share Dreamscape origin"
+  },
+  {
+   "id": "flickrsearch",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/flickr.gadget",
+   "group": "search"
+  },
+  {
+   "id": "phpsearch",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/php_search.gadget",
+   "group": "search"
+  },
+  {
+   "id": "gamefaqs",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/GameFAQsSearchGadgetV1.gadget",
+   "group": "search"
+  },
+  {
+   "id": "googlebar",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/Google-bar.gadget",
+   "group": "search"
+  },
+  {
+   "id": "onlineradio",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/OnlineRadio2.gadget",
+   "group": "media",
+   "web": [
+    "radio-browser.info"
+   ],
+   "title": "Online Radio"
   }
  ]
 }

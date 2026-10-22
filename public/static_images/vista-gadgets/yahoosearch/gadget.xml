@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+	<name>Yahoo Search</name>
+	<namespace>J.K</namespace>
+	<version>1.0.0.1</version>
+	<author name="JKlassen">
+		<info url="www.yahoo.com" />
+	</author>
+	<copyright>&#169; 2007</copyright>
+	<description>Yahoo Search for Sidebar!</description>
+	<icons>
+		<icon width="130" height="67" src="google.jpg" />
+	</icons>
+	<hosts>
+		<host name="sidebar">
+			<base type="HTML" apiVersion="1.0.0" src="yahoosearch.html" />
+			<permissions>Full</permissions>
+			<platform minPlatformVersion="1.0" />
+		</host>
+	</hosts>
+</gadget>

@@ -159,6 +159,9 @@ const vghSystem = function (ctx) {
         SideShow: { enabled: false }
     };
     Object.defineProperty(gadget, 'docked', { get: () => !!inst.g.docked });
+    // Dreamscape's own: a workspace picture for gadgets that show one (catalog "picture": Polaroid)
+    Object.defineProperty(gadget, 'picture', { get: () => (ctx.picture && ctx.picture.url) || '' });
+    Object.defineProperty(gadget, 'pictureCaption', { get: () => (ctx.picture && ctx.picture.caption) || '' });
     Object.defineProperty(gadget, 'visible', { get: () => !inst.destroyed && vsbIsShown(inst) });
     Object.defineProperty(gadget, 'document', { get: () => (ctx.frame && ctx.frame.contentDocument) || null });
     Object.defineProperty(gadget.Sidebar, 'dockSide', { get: () => (vsb.state && vsb.state.side === 'left' ? 'Left' : 'Right') });
@@ -381,6 +384,9 @@ const vghWmiDate = function (ms) {
 // uint64 properties come to JScript as strings; everything else as numbers / strings / VBArrays
 const vghU64 = (n) => String(Math.max(0, Math.round(Number(n) || 0)));
 
+// one adapter name in every class; no parentheses, which perf counter instance names write as [ ]
+const vghNicName = (i) => (i ? `Xyridian Gigabit Ethernet ${i + 1}` : 'Xyridian Gigabit Ethernet');
+
 /** The WMI classes gadgets query, as rows from the latest sample. */
 const vghWmiRows = function (cls, d) {
     const now = d.at || Date.now();
@@ -439,13 +445,13 @@ const vghWmiRows = function (cls, d) {
                 };
             });
         case 'win32_networkadapter':
-            return nets.map((n, i) => ({ Index: i, DeviceID: String(i), Name: `Xyridian Gigabit Ethernet (${n.name})`, ProductName: 'Xyridian Gigabit Ethernet', NetConnectionID: i ? `Local Area Connection ${i + 1}` : 'Local Area Connection', AdapterType: 'Ethernet 802.3', MACAddress: n.mac.toUpperCase(), Speed: vghU64(n.speedBps), NetEnabled: true, NetConnectionStatus: 2, PhysicalAdapter: true }));
+            return nets.map((n, i) => ({ Index: i, DeviceID: String(i), Name: vghNicName(i), ProductName: 'Xyridian Gigabit Ethernet', NetConnectionID: i ? `Local Area Connection ${i + 1}` : 'Local Area Connection', AdapterType: 'Ethernet 802.3', MACAddress: n.mac.toUpperCase(), Speed: vghU64(n.speedBps), NetEnabled: true, NetConnectionStatus: 2, PhysicalAdapter: true }));
         case 'win32_networkadapterconfiguration':
-            return nets.map((n, i) => ({ Index: i, Description: `Xyridian Gigabit Ethernet (${n.name})`, Caption: `Xyridian Gigabit Ethernet (${n.name})`, IPEnabled: true, DHCPEnabled: true, IPAddress: vghVBArray([n.ip]), IPSubnet: vghVBArray(['255.255.255.0']), DefaultIPGateway: vghVBArray([]), DNSServerSearchOrder: vghVBArray([]), MACAddress: n.mac.toUpperCase() }));
+            return nets.map((n, i) => ({ Index: i, Description: vghNicName(i), Caption: vghNicName(i), IPEnabled: true, DHCPEnabled: true, IPAddress: vghVBArray([n.ip]), IPSubnet: vghVBArray(['255.255.255.0']), DefaultIPGateway: vghVBArray([]), DNSServerSearchOrder: vghVBArray([]), MACAddress: n.mac.toUpperCase() }));
         case 'win32_perfformatteddata_tcpip_networkinterface':
-            return nets.map((n) => ({ Name: `Xyridian Gigabit Ethernet (${n.name})`, BytesReceivedPersec: vghU64(n.rxBps), BytesSentPersec: vghU64(n.txBps), BytesTotalPersec: vghU64(n.rxBps + n.txBps), CurrentBandwidth: vghU64(n.speedBps) }));
+            return nets.map((n, i) => ({ Name: vghNicName(i), BytesReceivedPersec: vghU64(n.rxBps), BytesSentPersec: vghU64(n.txBps), BytesTotalPersec: vghU64(n.rxBps + n.txBps), CurrentBandwidth: vghU64(n.speedBps) }));
         case 'win32_perfrawdata_tcpip_networkinterface':
-            return nets.map((n) => ({ Name: `Xyridian Gigabit Ethernet (${n.name})`, BytesReceivedPersec: vghU64(n.rxBytes), BytesSentPersec: vghU64(n.txBytes), BytesTotalPersec: vghU64(n.rxBytes + n.txBytes), CurrentBandwidth: vghU64(n.speedBps), Timestamp_Sys100NS: ts, Frequency_Sys100NS: freq, Timestamp_PerfTime: ts, Frequency_PerfTime: freq }));
+            return nets.map((n, i) => ({ Name: vghNicName(i), BytesReceivedPersec: vghU64(n.rxBytes), BytesSentPersec: vghU64(n.txBytes), BytesTotalPersec: vghU64(n.rxBytes + n.txBytes), CurrentBandwidth: vghU64(n.speedBps), Timestamp_Sys100NS: ts, Frequency_Sys100NS: freq, Timestamp_PerfTime: ts, Frequency_PerfTime: freq }));
         case 'win32_process':
             return [{ Name: 'System Idle Process', Caption: 'System Idle Process', ProcessId: 0, Handle: '0', WorkingSetSize: '0', PageFileUsage: 0, KernelModeTime: vghU64(VGH_SYS.acc.idle), UserModeTime: '0', ExecutablePath: '', ThreadCount: d.cpu.cores.length }].concat(d.processes.map((p) => ({ Name: `${p.name}.exe`, Caption: `${p.name}.exe`, ProcessId: p.pid, Handle: String(p.pid), WorkingSetSize: vghU64(p.memBytes), PageFileUsage: Math.round(p.memBytes / 1024), KernelModeTime: vghU64(VGH_SYS.acc.proc.get(p.pid) || 0), UserModeTime: '0', ExecutablePath: '', ThreadCount: 1 })));
         case 'win32_perfformatteddata_perfproc_process':
@@ -516,6 +522,23 @@ const vghWmiSet = function (rows) {
     list.Count = list.length;
     list.ItemIndex = (i) => list[i];
     return list;
+};
+
+/** Network Meter's NetLib (NICGadget.NetworkInformation, a .NET COM DLL) over the same sample. */
+const vghNetLib = function (win) {
+    let frame = null;
+    try { frame = win.frameElement; } catch (_e) { return null; }
+    const hit = frame && VGH_FRAMES.get(frame);
+    if (!hit) return null;
+    const nets = () => vghSysUse(hit.ctx).network;
+    return {
+        // the last interface index: callers loop n = 0 .. Initialize()
+        Initialize: () => nets().length - 1,
+        Description: (n) => (nets()[n] ? vghNicName(n) : ''),
+        BytesReceived: (n) => (nets()[n] ? nets()[n].rxBytes : 0),
+        BytesSent: (n) => (nets()[n] ? nets()[n].txBytes : 0),
+        Speed: (n) => (nets()[n] ? nets()[n].speedBps : 0)
+    };
 };
 
 /** GetObject("winmgmts:...") / SWbemLocator.ConnectServer(): an SWbemServices over the server's figures. */
@@ -632,11 +655,14 @@ const vghMeasure = function (win) {
     const px = (v) => parseFloat(v) || 0;
     let w = body.offsetWidth + px(cs.marginLeft) + px(cs.marginRight);
     let h = body.offsetHeight + px(cs.marginTop) + px(cs.marginBottom);
-    const bgs = doc.getElementsByTagName('g:background');
-    for (let i = 0; i < bgs.length; i++) {
-        const r = bgs[i].getBoundingClientRect();
-        w = Math.max(w, r.right);
-        h = Math.max(h, r.bottom);
+    // the Sidebar's window is the body's size and clips its background; a body with no size takes the background's
+    if (w < 8 || h < 8) {
+        const bgs = doc.getElementsByTagName('g:background');
+        for (let i = 0; i < bgs.length; i++) {
+            const r = bgs[i].getBoundingClientRect();
+            w = Math.max(w, r.right);
+            h = Math.max(h, r.bottom);
+        }
     }
     return { w: Math.max(1, Math.ceil(w)), h: Math.max(1, Math.ceil(h)) };
 };
@@ -772,6 +798,28 @@ const vghLastSize = function (ctx) {
     return { w: 130, h: ctx.inst.g.docked ? 100 : 130 };
 };
 
+/** A random picture of this workspace (sidebar_random_image, the Slide Show's), kept on the gadget. */
+const vghPicture = function (ctx) {
+    // vsbFetchImage / vsbWorkspaceImageUrl: public/scripts/comp/vistaSidebar.js
+    return vsbFetchImage('images').then((data) => {
+        const item = data && data.item;
+        ctx.picture = item ? { url: vsbWorkspaceImageUrl(item), caption: '' } : null;
+    }).catch(() => { ctx.picture = null; });
+};
+
+/** "New Picture" on a picture gadget's menu: another workspace picture, the page drawn again. */
+const vghNewPicture = function (inst) {
+    const ctx = vghCtx(inst);
+    if (!ctx) return;
+    vghPicture(ctx).then(() => {
+        const store = vghStore(inst);
+        store.Image = '';
+        store.Caption = '';
+        if (vsb.state && vsb.state.gadgets.includes(inst.g)) vsbQueueSave();
+        try { ctx.frame.contentWindow.location.reload(); } catch (_e) { /* gone */ }
+    });
+};
+
 const vghMount = function (inst) {
     if (inst.destroyed || inst.vgh) return;
     const entry = inst.def.hosted;
@@ -798,6 +846,7 @@ const vghMount = function (inst) {
     // a gadget that reads the machine or lists its folders starts with them in hand (those reads are synchronous)
     const needs = [];
     if (entry.fs) needs.push(vghFsLoad(entry).then((fs) => { ctx.fs = fs; }));
+    if (entry.picture) needs.push(vghPicture(ctx));
     if (entry.group === 'system' && !VGH_SYS.data) {
         vghSysUse(ctx);
         needs.push(new Promise((resolve) => {
@@ -1005,6 +1054,36 @@ const vghForm = {
     }
 };
 
+/**
+ * FileSystemObject text files (Scribble's scribble.sav, meters' data files): kept per gadget
+ * instance in this browser's localStorage, not in the Sidebar state (64 KB for every gadget).
+ */
+const VGH_FILE_MAX = 256 * 1024;
+const vghFileStore = function (win) {
+    let frame = null;
+    try { frame = win.frameElement; } catch (_e) { return null; }
+    const hit = frame && VGH_FRAMES.get(frame);
+    if (!hit) return null;
+    const prefix = `vgh.file.${hit.ctx.inst.g.id}.`;
+    const key = (name) => prefix + String(name || '').replace(/\\/g, '/').split('/').pop().toLowerCase();
+    return {
+        read(name) {
+            try { return localStorage.getItem(key(name)); } catch (_e) { return null; }
+        },
+        write(name, text) {
+            try {
+                localStorage.setItem(key(name), String(text).slice(0, VGH_FILE_MAX));
+                return true;
+            } catch (_e) {
+                return false;
+            }
+        },
+        remove(name) {
+            try { localStorage.removeItem(key(name)); } catch (_e) { /* storage off */ }
+        }
+    };
+};
+
 /** alert() / confirm() from a gadget page: the Sidebar's message box, which the page does not wait for. */
 const vghNotice = function (win, text) {
     let frame = null;
@@ -1036,6 +1115,6 @@ const vghError = function (win, message, file, line) {
     }
 };
 
-window.vistaGadgetHost = { wmi: vghWmi, install: vghInstall, attach: vghAttach, mount: vghMount, apply: vghApply, destroy: vghDestroy, form: vghForm, error: vghError, notice: vghNotice };
+window.vistaGadgetHost = { netlib: vghNetLib, newPicture: vghNewPicture, files: vghFileStore, wmi: vghWmi, install: vghInstall, attach: vghAttach, mount: vghMount, apply: vghApply, destroy: vghDestroy, form: vghForm, error: vghError, notice: vghNotice };
 // gadgetShim.js reaches the host as parent.vsbGadgetHost
 window.vsbGadgetHost = window.vistaGadgetHost;

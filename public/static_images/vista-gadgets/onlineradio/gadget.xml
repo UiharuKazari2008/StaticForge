@@ -1,0 +1,21 @@
+<gadget>
+  <name>Online Radio</name>
+  <namespace>Oldieman.Gadgets</namespace>
+  <version>1.0.0.0</version>
+  <author name="Oldieman">
+    <info url="www.oldieman.com" />
+    <logo src="logo.png" />
+  </author>
+  <copyright>&#169; 2007</copyright>
+  <description>Online Radio Gadget</description>
+  <icons>
+
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="radio.html" />
+      <permissions>Full</permissions>
+      <platform minPlatformVersion="1.0" />
+    </host>
+  </hosts>
+</gadget>

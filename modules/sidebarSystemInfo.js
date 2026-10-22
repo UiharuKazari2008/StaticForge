@@ -209,6 +209,7 @@ function sample() {
 async function getSystemInfo() {
     if (current && Date.now() - currentAt < SAMPLE_MS) return current;
     if (!sampling) {
+        // cleared after the assignment: an async body with no await finishes before it would be assigned
         sampling = (async () => {
             if (!prev) {
                 sample();
@@ -216,9 +217,8 @@ async function getSystemInfo() {
             }
             current = sample();
             currentAt = Date.now();
-            sampling = null;
             return current;
-        })();
+        })().finally(() => { sampling = null; });
     }
     return sampling;
 }

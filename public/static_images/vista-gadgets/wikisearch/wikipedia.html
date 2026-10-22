@@ -1,0 +1,72 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" >
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+    <title>Wikipedia Search</title>
+    
+    <!--<link rel="shortcut icon" href="http://en.wikipedia.org/favicon.ico" />-->
+    <style type="text/css" media="screen">/*<![CDATA[*/ @import "css/main.css"; /*]]>*/</style>
+    <link rel="stylesheet" type="text/css" media="print" href="css/commonPrint.css"/>
+    <style type="text/css">
+    body
+    {
+        background: #ffffff;    
+        width: 130px;
+        height: 58px;
+        border: 1px solid #aaaaaa;
+        margin: 0px;
+        padding: 0px;
+    }
+    </style>
+    <script type="text/javascript">
+	    function body_onload() {
+	        LoadSettings();
+	    }
+	    
+        System.Gadget.settingsUI = "settings.html";
+        System.Gadget.onSettingsClosed = SettingsClosed;
+        function SettingsClosed() {
+            LoadSettings();
+        }
+        
+        function LoadSettings() {
+            var languageSetting = System.Gadget.Settings.read("language");
+            if (languageSetting == "") {
+                languageSetting = "en";
+            }
+            var languageElement = document.getElementById("language");
+            languageElement.value = languageSetting;
+            var flagElement = document.getElementById("flagImage");
+            switch (languageSetting) {
+                case "en": flagElement.src = "images/en.jpg"; break;
+                case "de": flagElement.src = "images/de.jpg"; break;
+                case "fr": flagElement.src = "images/fr.jpg"; break;
+                case "pl": flagElement.src = "images/pl.jpg"; break;
+                case "ja": flagElement.src = "images/jp.jpg"; break;
+                case "nl": flagElement.src = "images/nl.jpg"; break;
+                case "it": flagElement.src = "images/it.jpg"; break;
+                case "sv": flagElement.src = "images/sv.jpg"; break;
+                case "pt": flagElement.src = "images/pt.jpg"; break;
+                case "es": flagElement.src = "images/es.jpg"; break;
+                case "ru": flagElement.src = "images/ru.jpg"; break;
+                default: 
+                    languageElement.value = "en";
+                    flagElement.src = "images/en.jpg"; break;
+            }
+        }
+</script>
+</head>
+<body onload="body_onload()">
+<div class="portlet" id="Div1" style="text-align: center; vertical-align: middle; margin: 0px; padding: 0px; width: 98%;">
+<img src="images/wikipedia.bmp" alt="Wikipedia" />
+<img src="images/en.jpg" alt="flag" id="flagImage" name="flagImage" width="17px" height="12px" />
+<form action="http://www.wikipedia.org/search-redirect.php" id="Form1">
+<fieldset style="border: 1px solid #aaaaaa; background-color: #f9f9f9; padding: 2px;  margin: 0px; width: auto;">
+<input type="text" name="search" size="12" id="Text1" style="vertical-align: top; padding: 0em; margin: 0; font-size: 1.2em;" />
+<div style="display: none"><input type="text" id="language" name="language" /></div>
+<input type="submit" name="go" value=">" class="searchButton" style="vertical-align: top; padding: 0; margin: 0; font-size: 1.2em;" />
+<input type="hidden" name="go" value="Go" /> 
+</fieldset>
+</form>
+</div>
+</body>
+</html>

@@ -114,6 +114,13 @@
             get: function () { return window.getComputedStyle(this); }
         });
     }
+    // IE's runtimeStyle: the element's style here
+    if (!('runtimeStyle' in Element.prototype)) {
+        Object.defineProperty(Element.prototype, 'runtimeStyle', {
+            configurable: true,
+            get: function () { return this.style; }
+        });
+    }
     if (!('parentWindow' in Document.prototype)) {
         Object.defineProperty(Document.prototype, 'parentWindow', {
             configurable: true,
@@ -231,6 +238,9 @@
     var PROXY = '/gadget-proxy?url=';
     function proxied(raw) {
         var s = String(raw == null ? '' : raw).replace(/\\/g, '/');
+        // "/wrong.png" set from script meant the gadget's root to the Sidebar
+        // (Dreamscape's own picture routes stay: System.Gadget.picture is a /previews/ address)
+        if (/^\/(?!\/|static_images\/|gadget-proxy|gadget-stream|scripts\/|sounds\/|previews\/|cache\/|naxCache\/)/.test(s) && system.Gadget && system.Gadget.path) return system.Gadget.path + s;
         // file:/// paths into a gadget package (from System.Shell items' paths): served here
         var local = /^file:\/+(static_images\/vista-gadgets\/.*)$/i.exec(s);
         if (local) return '/' + local[1];
@@ -299,6 +309,28 @@
     }
     document.addEventListener('DOMContentLoaded', function () { proxyImages(document); });
 
+    // A web page framed in the gadget (IMDB's results flyout): Alchemy shows it instead, the flyout closes
+    function webFrames(node) {
+        var frames = node.tagName === 'IFRAME' ? [node] : (node.getElementsByTagName ? node.getElementsByTagName('iframe') : []);
+        for (var i = 0; i < frames.length; i++) {
+            var src = frames[i].getAttribute('src') || '';
+            if (!/^https?:\/\//i.test(src)) continue;
+            try { if (new URL(src).origin === location.origin) continue; } catch (_e) { continue; }
+            setAttr.call(frames[i], 'src', 'about:blank');
+            if (system.Shell && system.Shell.execute) system.Shell.execute(src);
+            try {
+                if (system.Gadget.document !== document && system.Gadget.Flyout) system.Gadget.Flyout.show = false;
+            } catch (_e) { /* not a flyout */ }
+        }
+    }
+    new MutationObserver(function (records) {
+        for (var r = 0; r < records.length; r++) {
+            for (var n = 0; n < records[r].addedNodes.length; n++) {
+                if (records[r].addedNodes[n].nodeType === 1) webFrames(records[r].addedNodes[n]);
+            }
+        }
+    }).observe(document.documentElement, { childList: true, subtree: true });
+
     // ------------------------------------------------------------ ActiveX
 
     function speak(text) {
@@ -354,15 +386,50 @@
     };
     XmlDom.prototype.setProperty = function () {};
 
-    /** WMPlayer.OCX over an <audio>: URL, controls.play / stop / pause, settings.volume / mute, playState. */
+    /**
+     * Windows Media Player (WMPlayer.OCX and <object classid="6BF52A52-...">) over an <audio>:
+     * URL, controls, settings, playState, status, and its StatusChange / PlayStateChange events.
+     * A station on the web plays through the server's relay (/gadget-stream).
+     */
+    var STREAM = '/gadget-stream?url=';
+    function mediaUrl(raw) {
+        var s = String(raw == null ? '' : raw).replace(/\\/g, '/').trim();
+        if (/^(mms|rtsp|mmsh?):\/\//i.test(s)) s = s.replace(/^[a-z]+:/i, 'http:');
+        if (/^https?:\/\//i.test(s)) {
+            try { if (new URL(s).origin === location.origin) return s; } catch (_e) { return ''; }
+            return STREAM + encodeURIComponent(s);
+        }
+        return s;
+    }
     function MediaPlayer() {
         var audio = new Audio();
         var self = this;
+        var handlers = {};
+        var state = 0;
+        var status = '';
+        var url = '';
         this._audio = audio;
+        var fire = function (name, arg) {
+            (handlers[name] || []).forEach(function (fn) { try { fn(arg); } catch (_e) { /* the gadget's */ } });
+        };
+        var setState = function (n, text) {
+            state = n;
+            status = text;
+            fire('PlayStateChange', n);
+            fire('StatusChange');
+        };
+        audio.addEventListener('loadstart', function () { if (url) setState(9, 'Connecting...'); });
+        audio.addEventListener('waiting', function () { setState(6, 'Buffering...'); });
+        audio.addEventListener('playing', function () { setState(3, 'Playing'); });
+        audio.addEventListener('pause', function () { if (state !== 1) setState(2, 'Paused'); });
+        audio.addEventListener('ended', function () { setState(8, 'Media ended'); });
+        audio.addEventListener('error', function () { if (url) setState(10, 'The station could not be played'); });
+        this.on = function (name, fn) { (handlers[name] = handlers[name] || []).push(fn); };
         this.controls = {
-            play: function () { audio.play().catch(function () {}); },
-            stop: function () { audio.pause(); audio.currentTime = 0; },
+            play: function () { if (audio.src) audio.play().catch(function () {}); },
+            stop: function () { audio.pause(); try { audio.currentTime = 0; } catch (_e) { /* a stream */ } setState(1, 'Stopped'); },
             pause: function () { audio.pause(); },
+            isAvailable: function () { return true; },
             get currentPosition() { return audio.currentTime; },
             set currentPosition(v) { audio.currentTime = Number(v) || 0; }
         };
@@ -374,17 +441,58 @@
             autoStart: true
         };
         Object.defineProperty(this, 'URL', {
-            get: function () { return audio.src; },
+            get: function () { return url; },
             set: function (v) {
-                audio.src = String(v || '').replace(/\\/g, '/');
-                if (self.settings.autoStart && v) audio.play().catch(function () {});
+                url = String(v || '');
+                audio.src = mediaUrl(url);
+                if (self.settings.autoStart && url) audio.play().catch(function () {});
             }
         });
-        Object.defineProperty(this, 'playState', {
-            get: function () { return audio.paused ? (audio.currentTime ? 2 : 1) : 3; }
-        });
-        this.close = function () { audio.pause(); audio.src = ''; };
+        Object.defineProperty(this, 'playState', { get: function () { return state; } });
+        Object.defineProperty(this, 'status', { get: function () { return status; } });
+        Object.defineProperty(this, 'currentMedia', { get: function () { return { name: url.split('/').pop(), duration: audio.duration || 0, durationString: '' }; } });
+        this.uiMode = 'none';
+        this.close = function () { audio.pause(); audio.removeAttribute('src'); setState(1, 'Stopped'); };
     }
+
+    // <object classid="CLSID:6BF52A52-..."> (Windows Media Player) and its <script for=id event="...">
+    function upgradeMediaObjects() {
+        var objs = document.getElementsByTagName('object');
+        for (var i = 0; i < objs.length; i++) {
+            var obj = objs[i];
+            var cls = String(obj.getAttribute('classid') || '') + ' ' + String(obj.getAttribute('type') || '');
+            if (obj.__wmp || !/6BF52A52|22D6F312|x-ms-wmp|x-mplayer2/i.test(cls)) continue;
+            var player = new MediaPlayer();
+            obj.__wmp = player;
+            ['URL', 'controls', 'settings', 'playState', 'status', 'currentMedia', 'close', 'uiMode'].forEach(function (k) {
+                Object.defineProperty(obj, k, {
+                    configurable: true,
+                    get: function () { return this.__wmp[k]; },
+                    set: function (v) { this.__wmp[k] = v; }
+                });
+            });
+            obj.attachEvent = function (name, fn) { this.__wmp.on(String(name).replace(/^on/i, ''), fn); return true; };
+            var params = obj.getElementsByTagName('param');
+            for (var p = 0; p < params.length; p++) {
+                var n = String(params[p].getAttribute('name') || '').toLowerCase();
+                var v = params[p].getAttribute('value');
+                if (n === 'autostart') player.settings.autoStart = !/^(false|0)$/i.test(v);
+                if (n === 'volume') player.settings.volume = v;
+            }
+            var scripts = obj.id ? document.querySelectorAll('script[for="' + obj.id + '"]') : [];
+            for (var sIdx = 0; sIdx < scripts.length; sIdx++) {
+                var m = /^\s*(\w+)\s*\(([^)]*)\)/.exec(scripts[sIdx].getAttribute('event') || '');
+                if (!m) continue;
+                try {
+                    player.on(m[1], new Function(m[2], scripts[sIdx].text));
+                } catch (_e) { /* not JScript */ }
+            }
+            for (var q = 0; q < params.length; q++) {
+                if (String(params[q].getAttribute('name') || '').toLowerCase() === 'url' && params[q].getAttribute('value')) player.URL = params[q].getAttribute('value');
+            }
+        }
+    }
+    document.addEventListener('DOMContentLoaded', upgradeMediaObjects);
 
     // JScript's Enumerator over WMI sets (vistaGadgetHost.js vghWmiSet), arrays and FSO collections
     function Enumerator(collection) {
@@ -438,6 +546,7 @@
                 Windows: function () { return { Count: 0, Item: function () { return null; } }; }
             };
         }
+        if (id === 'nicgadget.networkinformation' && host && host.netlib) return host.netlib(window);
         if (id === 'wbemscripting.swbemlocator') {
             return {
                 ConnectServer: function (_server, ns) { return window.GetObject('winmgmts:\\\\.\\' + (ns || 'root\\cimv2')); },
@@ -475,12 +584,64 @@
                 list.Item = function (key) { return typeof key === 'number' ? list[key] : fsoDrive(String(key)); };
                 return list;
             };
+            // text files: this gadget's own (localStorage through the host), else its package's copy
+            var files = host && host.files ? host.files(window) : null;
+            var packaged = function (fn) {
+                try {
+                    var xhr = new XMLHttpRequest();
+                    xhr.open('GET', String(fn).replace(/\\/g, '/').replace(/^file:\/+/i, '/'), false);
+                    xhr.send();
+                    return xhr.status === 200 ? xhr.responseText : null;
+                } catch (_e) {
+                    return null;
+                }
+            };
+            var reader = function (text) {
+                var lines = String(text).split(/\r?\n/);
+                var at = 0;
+                return {
+                    get AtEndOfStream() { return at >= lines.length || (at === lines.length - 1 && lines[at] === ''); },
+                    ReadLine: function () { return at < lines.length ? lines[at++] : ''; },
+                    ReadAll: function () { at = lines.length; return String(text); },
+                    Read: function (n) { var rest = lines.slice(at).join('\r\n'); at = lines.length; return rest.slice(0, n); },
+                    SkipLine: function () { at++; },
+                    Close: function () {}
+                };
+            };
+            var writer = function (fn, start) {
+                var buf = start || '';
+                var save = function () { if (files) files.write(fn, buf); };
+                return {
+                    Write: function (t) { buf += String(t); save(); },
+                    WriteLine: function (t) { buf += (t === undefined ? '' : String(t)) + '\r\n'; save(); },
+                    WriteBlankLines: function (n) { for (var i = 0; i < n; i++) buf += '\r\n'; save(); },
+                    Close: save
+                };
+            };
+            var readText = function (fn) {
+                var mine = files ? files.read(fn) : null;
+                return mine !== null && mine !== undefined ? mine : packaged(fn);
+            };
             return {
+                OpenTextFile: function (fn, mode) {
+                    if (mode === 2) return writer(fn, '');
+                    if (mode === 8) return writer(fn, readText(fn) || '');
+                    var text = readText(fn);
+                    if (text === null) throw new Error('File not found');
+                    return reader(text);
+                },
+                CreateTextFile: function (fn) { return writer(fn, ''); },
+                FileExists: function (fn) { return readText(fn) !== null; },
+                DeleteFile: function (fn) { if (files) files.remove(fn); },
+                GetFile: function (fn) { var t = readText(fn); if (t === null) throw new Error('File not found'); return { Name: String(fn).split(/[\\\/]/).pop(), Path: String(fn), Size: t.length, DateLastModified: new Date() }; },
+                GetFileName: function (p) { return String(p).split(/[\\\/]/).pop(); },
+                GetParentFolderName: function (p) { var s = String(p); var i = Math.max(s.lastIndexOf('\\'), s.lastIndexOf('/')); return i < 0 ? '' : s.slice(0, i); },
+                GetExtensionName: function (p) { var n = String(p).split(/[\\\/]/).pop(); return n.indexOf('.') < 0 ? '' : n.slice(n.lastIndexOf('.') + 1); },
+                CreateFolder: function () {},
                 get Drives() { return fsoDrives(); },
                 GetDrive: function (spec) { var d = fsoDrive(String(spec)); if (!d) throw new Error('Drive not found'); return d; },
                 DriveExists: function (spec) { return !!fsoDrive(String(spec)); },
                 GetDriveName: function (p) { var m = /^([a-z]:)/i.exec(String(p)); return m ? m[1] : ''; },
-                FileExists: function () { return false; },
                 FolderExists: function () { return false; },
                 GetSpecialFolder: function () { return { Path: '' }; },
                 BuildPath: function (a, b) { return String(a) + '\\' + String(b); }
@@ -508,29 +669,46 @@
     }
 
     /** An image of a g:background: an <img> with the Sidebar's g:image properties. */
+    // Sidebar's softEdge: the image fades out over that many pixels at every edge
+    function softEdgeMask(el, edge) {
+        var e = Number(edge) || 0;
+        var mask = e ? 'linear-gradient(to right, transparent, #000 ' + e + 'px, #000 calc(100% - ' + e + 'px), transparent), '
+            + 'linear-gradient(to bottom, transparent, #000 ' + e + 'px, #000 calc(100% - ' + e + 'px), transparent)' : '';
+        el.style.maskImage = el.style.webkitMaskImage = mask;
+        el.style.maskComposite = e ? 'intersect' : '';
+        el.style.webkitMaskComposite = e ? 'source-in' : '';
+    }
+
     function gImage(parent, src, left, top) {
         var img = document.createElement('img');
         img.alt = '';
         img.draggable = false;
         img.style.position = 'absolute';
-        img.style.left = px(left);
-        img.style.top = px(top);
         img.style.pointerEvents = 'none';
-        var state = { left: Number(left) || 0, top: Number(top) || 0, opacity: 100, rotation: 0, blur: 0, brightness: 0 };
+        var state = { left: Number(left) || 0, top: Number(top) || 0, width: 0, height: 0, opacity: 100, rotation: 0, blur: 0, brightness: 0, softEdge: 0 };
+        // Sidebar sizes an image object about its centre: the picture's own box stays put
         var paint = function () {
-            img.style.left = px(state.left);
-            img.style.top = px(state.top);
+            var nw = img.naturalWidth || 0;
+            var nh = img.naturalHeight || 0;
+            var w = state.width || nw;
+            var h = state.height || nh;
+            img.style.width = w ? w + 'px' : '';
+            img.style.height = h ? h + 'px' : '';
+            img.style.left = px(state.left + (state.width && nw ? (nw - w) / 2 : 0));
+            img.style.top = px(state.top + (state.height && nh ? (nh - h) / 2 : 0));
             img.style.opacity = String(state.opacity / 100);
+            img.style.transformOrigin = '50% 50%';
             img.style.transform = state.rotation ? 'rotate(' + state.rotation + 'deg)' : '';
             var f = [];
             if (state.blur) f.push('blur(' + state.blur + 'px)');
             if (state.brightness) f.push('brightness(' + (1 + state.brightness / 100) + ')');
             img.style.filter = f.join(' ');
+            softEdgeMask(img, state.softEdge);
         };
-        ['left', 'top', 'opacity', 'rotation', 'blur', 'brightness'].forEach(function (k) {
+        ['left', 'top', 'width', 'height', 'opacity', 'rotation', 'blur', 'brightness', 'softEdge'].forEach(function (k) {
             Object.defineProperty(img, k, {
                 configurable: true,
-                get: function () { return state[k]; },
+                get: function () { return k === 'width' ? (state.width || img.naturalWidth) : (k === 'height' ? (state.height || img.naturalHeight) : state[k]); },
                 set: function (v) { state[k] = Number(v) || 0; paint(); }
             });
         });
@@ -538,6 +716,7 @@
         img.addShadow = function (color, radius, alpha, dx, dy) {
             img.style.filter = (img.style.filter || '') + ' drop-shadow(' + px(dx) + ' ' + px(dy) + ' ' + px(radius) + ' ' + (color || 'black') + ')';
         };
+        img.addEventListener('load', paint);
         img.src = gUrl(src);
         parent.appendChild(img);
         paint();
@@ -599,6 +778,8 @@
     function paintImage(el) {
         var url = gUrl(el.getAttribute('src'));
         el.style.display = 'inline-block';
+        // VML images are placed by left / top, out of the flow
+        if (el.localName === 'v:image' && !el.style.position) el.style.position = 'absolute';
         el.style.backgroundImage = url ? 'url("' + url + '")' : '';
         el.style.backgroundRepeat = 'no-repeat';
         el.style.backgroundSize = '100% 100%';
@@ -674,10 +855,39 @@
         });
     }
 
+    // a VML / g: image's own transform: rotation about its centre, softEdge as a feathered blur
+    function paintTransform(el) {
+        var rot = Number(el.__rotation) || 0;
+        el.style.transformOrigin = '50% 50%';
+        el.style.transform = rot ? 'rotate(' + rot + 'deg)' : '';
+        softEdgeMask(el, el.__softEdge);
+    }
+    // VML <v:textpath string=...> inside a <v:shape>: the text along the path's line, centred
+    function paintTextPath(tp) {
+        var shape = tp.parentNode;
+        if (!shape) return;
+        var span = shape.__text;
+        if (!span) {
+            span = document.createElement('span');
+            span.style.cssText = 'position:absolute;left:50%;bottom:0;white-space:nowrap;pointer-events:none;transform-origin:50% 50%';
+            shape.appendChild(span);
+            shape.__text = span;
+        }
+        span.textContent = tp.__string || tp.getAttribute('string') || '';
+        span.style.font = tp.style.font || '';
+        var fill = shape.getElementsByTagName('v:fill')[0];
+        span.style.color = (fill && (fill.__color || fill.getAttribute('color'))) || '#000';
+        var path = shape.getElementsByTagName('v:path')[0];
+        var m = path && /l\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)/i.exec(path.__v || path.getAttribute('v') || '');
+        var angle = m ? Math.atan2(Number(m[2]), Number(m[1])) * 180 / Math.PI : 0;
+        span.style.transform = 'translateX(-50%) rotate(' + angle + 'deg)';
+    }
+
     function paintG(el) {
         if (isShape(el)) paintShape(el);
         else if (isG(el, 'background')) paintBackground(el);
-        else if (isG(el, 'image')) paintImage(el);
+        else if (isG(el, 'image') || el.localName === 'v:image') { paintImage(el); paintTransform(el); }
+        else if (el.localName === 'v:textpath') paintTextPath(el);
         else if (isG(el, 'text')) {
             el.style.position = el.style.position || 'absolute';
             el.style.whiteSpace = 'nowrap';
@@ -696,6 +906,37 @@
             get: function () { var o = this.getAttribute('opacity'); return o === null || o === '' ? 100 : Number(o); },
             set: function (v) { this.setAttribute('opacity', String(v)); paintG(this); }
         });
+        // image properties on <g:image> / <v:image> elements themselves
+        ['rotation', 'softEdge', 'blur', 'brightness'].forEach(function (name) {
+            Object.defineProperty(U, name, {
+                configurable: true,
+                get: function () { return this['__' + name] || 0; },
+                set: function (v) { this['__' + name] = Number(v) || 0; paintTransform(this); }
+            });
+        });
+        ['width', 'height'].forEach(function (name) {
+            Object.defineProperty(U, name, {
+                configurable: true,
+                get: function () { return name === 'width' ? this.offsetWidth : this.offsetHeight; },
+                set: function (v) { this.style[name] = (Number(v) || 0) + 'px'; }
+            });
+        });
+        // VML: v:textpath.string, v:path.v, v:fill.color
+        Object.defineProperty(U, 'string', {
+            configurable: true,
+            get: function () { return this.__string || ''; },
+            set: function (v) { this.__string = String(v); paintTextPath(this); }
+        });
+        Object.defineProperty(U, 'v', {
+            configurable: true,
+            get: function () { return this.__v || ''; },
+            set: function (v) { this.__v = String(v); var tp = this.parentNode && this.parentNode.getElementsByTagName('v:textpath')[0]; if (tp) paintTextPath(tp); }
+        });
+        Object.defineProperty(U, 'color', {
+            configurable: true,
+            get: function () { return this.__color || this.getAttribute('color') || ''; },
+            set: function (v) { this.__color = String(v); var tp = this.parentNode && this.parentNode.getElementsByTagName('v:textpath')[0]; if (tp) paintTextPath(tp); }
+        });
         U.addImageObject = function (src, left, top) {
             if (!this.style.backgroundImage && this.getAttribute('src')) paintG(this);
             return gImage(this, src, left, top);
@@ -709,11 +950,22 @@
     }
 
     function paintAll() {
-        ['g:background', 'g:image', 'g:text', 'g:shape', 'v:shape', 'v:polyline', 'v:line'].forEach(function (tag) {
+        ['g:background', 'g:image', 'g:text', 'g:shape', 'v:shape', 'v:polyline', 'v:line', 'v:image'].forEach(function (tag) {
             var list = document.getElementsByTagName(tag);
             for (var i = 0; i < list.length; i++) paintG(list[i]);
         });
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', paintAll);
     else paintAll();
+
+    // #FF00FF was the Sidebar's transparency key for a gadget's window: a magenta background is no background
+    function keyMagenta() {
+        var els = [document.documentElement, document.body].concat(Array.prototype.slice.call(document.body ? document.body.getElementsByTagName('*') : [], 0, 400));
+        for (var i = 0; i < els.length; i++) {
+            var el = els[i];
+            if (el && window.getComputedStyle(el).backgroundColor === 'rgb(255, 0, 255)') el.style.backgroundColor = 'transparent';
+        }
+    }
+    document.addEventListener('DOMContentLoaded', keyMagenta);
+    window.addEventListener('load', keyMagenta);
 }());

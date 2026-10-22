@@ -1,0 +1,22 @@
+<html>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+<script type="text/javascript" src="Google.js"></script>
+<script type="text/javascript">
+function go()
+{
+	if(TEXT.checked) {window.open('http://www.google.com/search?q='+query.value,'window');}
+	else {window.open('http://images.google.com/images?q='+query.value,'window');}
+	query.value="";
+	TEXT.checked=true;
+}
+</script>
+</head>
+<body style="width:130px;height:120px;font-family:Tahoma;font-size:7pt;">
+<img src="small.png" />&nbsp;&nbsp;Search<br />
+<input type="text" size="14" maxlength="30" id="query" /><br />
+<div style="font-size:9pt;"><input type="radio" id="TEXT" name="searchtype" value="TEXT" checked="checked" />Text
+<input type="radio" id="IMAGE" name="searchtype" value="IMAGE" /> Image</div>
+<input type="submit" value="Go" id="go" name="go" onclick="go()" />
+&nbsp;&nbsp;&nbsp;<a href="http://www.google.com" target="_blank" ><img height="25px" border="0" src="logo.png" /></a>
+</body>
+</html>

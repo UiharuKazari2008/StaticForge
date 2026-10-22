@@ -1,0 +1,58 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" >
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+    <title>Wikipedia Search Settings</title>
+    
+    <link rel="stylesheet" type="text/css" media="print" href="css/styleext.css"/>
+    <style type="text/css">
+    body
+    {
+        background: #918CE3;    
+        width: 250px;
+        height: 75px;
+        border: 1px solid #aaaaaa;
+    }
+    </style>
+    <script type="text/javascript">	
+	function body_onload() {
+		var setting = System.Gadget.Settings.read("language");
+		if (setting != "")
+		{			
+			var languageElement = document.getElementById("language");
+			language.value = setting;
+		}
+	}
+
+	function SaveSettings() {
+	    var languageElement = document.getElementById("language");
+		var setting = languageElement.value;
+		System.Gadget.Settings.write("language", setting);
+	}
+	
+    System.Gadget.onSettingsClosing = SettingsClosing;		  
+	function SettingsClosing(event)	{
+ 		if (event.closeAction == event.Action.commit) { 
+		    SaveSettings();
+        }
+		event.cancel = false;
+	}
+	</script>
+</head>
+<body onload="body_onload()">
+<fieldset style="border: 1px solid #aaaaaa; background-color: #f9f9f9; padding: 0.7em; width: auto; margin-top: 0.5em;">
+Choose a dictionary:&nbsp;<select name="language" id="language" style="vertical-align: top; padding: 0; margin: 0 0.4em;" >
+	<option value="enfr" selected="selected">English-French</option>
+	<option value="fren">French-English</option>
+	<option value="enes">English-Spanish</option>
+	<option value="esen">Spanish-English</option>
+	<option value="enit">English-Italian</option>
+	<option value="iten">Italian-English</option>
+	<!--<option value="enen">English definition</option>-->
+	<option value="esfr">Español-Français</option>
+	<option value="fres">Français-Español</option>
+	<option value="espt">Español-Português</option>
+	<option value="ptes">Português-Español</option>
+</select>
+</fieldset>
+</body>
+</html>

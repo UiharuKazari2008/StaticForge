@@ -12,9 +12,14 @@
  *
  * Feeds that are gone are rebuilt from their successors (LEGACY_FEEDS), with no markup in them.
  */
+const dns = require('dns');
 const fs = require('fs');
+const http = require('http');
+const https = require('https');
+const net = require('net');
 const path = require('path');
 const sidebarGadgets = require('./sidebarGadgets');
+const { isPrivateOrLocalIP } = require('./dynamicGenerationHandlers');
 
 const MAX_BYTES = 4 * 1024 * 1024;
 const TTL_MS = 5 * 60 * 1000;
@@ -173,4 +178,127 @@ async function handle(req, res) {
     res.end(hit.body);
 }
 
-module.exports = { handle };
+// ---------------------------------------------------------------- /gadget-stream (radio)
+
+const STREAM_TYPE_RE = /^(audio\/[\w.+-]+|application\/ogg|application\/octet-stream|video\/mp2t)\b/i;
+const PLAYLIST_RE = /^(audio\/(x-)?mpegurl|application\/(x-|vnd\.apple\.)?mpegurl|audio\/x-scpls|application\/pls\+xml|video\/x-ms-asf|audio\/x-ms-wax|video\/x-ms-wvx|text\/plain)\b/i;
+const MAX_STREAMS = 4;
+let streams = 0;
+
+const blocked = (ip) => !ip || ip === '::' || isPrivateOrLocalIP(String(ip).replace(/^::ffff:/i, ''));
+
+/** dns.lookup that answers only public addresses: the address connected to is the one checked. */
+function publicLookup(hostname, options, callback) {
+    const cb = typeof options === 'function' ? options : callback;
+    dns.lookup(hostname, { all: true }, (err, addrs) => {
+        if (err) return cb(err);
+        const ok = (addrs || []).filter((a) => !blocked(a.address));
+        if (!ok.length || ok.length !== addrs.length) return cb(new Error('Private address'));
+        if (options && typeof options === 'object' && options.all) return cb(null, ok);
+        return cb(null, ok[0].address, ok[0].family);
+    });
+}
+
+function streamRequest(raw, hops) {
+    return new Promise((resolve, reject) => {
+        let url;
+        try {
+            url = new URL(raw);
+        } catch (_e) {
+            reject(new Error('Bad address'));
+            return;
+        }
+        if (!/^https?:$/.test(url.protocol) || url.username || url.password) return reject(new Error('Bad address'));
+        const host = url.hostname.replace(/^\[|\]$/g, '');
+        if (net.isIP(host) ? blocked(host) : (!host.includes('.') || /\.(local|internal)$/i.test(host) || host === 'localhost')) return reject(new Error('Not public'));
+        const lib = url.protocol === 'https:' ? https : http;
+        const req = lib.get(url, { lookup: publicLookup, timeout: 10000, headers: { 'User-Agent': 'Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.0)', 'Icy-MetaData': '0' } }, (up) => {
+            if (up.statusCode >= 300 && up.statusCode < 400 && up.headers.location && hops < 5) {
+                up.resume();
+                resolve(streamRequest(new URL(up.headers.location, url).href, hops + 1));
+                return;
+            }
+            resolve({ up, req, url });
+        });
+        req.on('timeout', () => req.destroy(new Error('Timed out')));
+        req.on('error', reject);
+    });
+}
+
+/** The first stream address of an M3U / PLS / ASX playlist. */
+function playlistTarget(text, base) {
+    const m = /(?:^|\n)\s*(?:File\d+=)?(https?:\/\/[^\s"<]+)/i.exec(text) || /<ref\s+href\s*=\s*"([^"]+)"/i.exec(text);
+    if (!m) return null;
+    try { return new URL(m[1].replace(/&amp;/g, '&'), base).href; } catch (_e) { return null; }
+}
+
+/**
+ * GET /gadget-stream?url=: a radio station's audio, relayed so an http stream plays on the https
+ * desktop and the gadget page's CSP (media from this origin only) holds. Admins only; public
+ * hosts only (every connection's address checked); audio types only, playlists (M3U / PLS /
+ * ASX, up to 64 KB) followed to their first stream; at most four at a time. Not counted as busy
+ * by modules/busyStatus.js: a radio reconnects after a restart.
+ */
+async function handleStream(req, res) {
+    if (req.userType !== 'admin' && req.userType !== 'dev_admin') {
+        res.status(403).json({ success: false, error: 'Admin access required' });
+        return;
+    }
+    const raw = typeof req.query.url === 'string' ? req.query.url : '';
+    if (!raw || raw.length > 2048 || !/^https?:\/\//i.test(raw)) {
+        res.status(400).json({ success: false, error: 'url must be an http(s) address' });
+        return;
+    }
+    if (streams >= MAX_STREAMS) {
+        res.status(429).json({ success: false, error: 'Too many streams' });
+        return;
+    }
+    streams += 1;
+    let upstream = null;
+    const release = () => {
+        if (upstream) upstream.destroy();
+        upstream = null;
+    };
+    res.on('close', release);
+    try {
+        let target = raw;
+        for (let depth = 0; depth < 3; depth++) {
+            const { up, req: upReq } = await streamRequest(target, 0);
+            upstream = upReq;
+            const type = String(up.headers['content-type'] || '').split(';')[0].trim();
+            if (up.statusCode !== 200) throw new Error(`Station answered ${up.statusCode}`);
+            if (PLAYLIST_RE.test(type) || /\.(m3u8?|pls|asx|wax)(\?|$)/i.test(target)) {
+                let text = '';
+                for await (const chunk of up) {
+                    text += chunk.toString('utf8');
+                    if (text.length > 65536) break;
+                }
+                release();
+                const next = playlistTarget(text, target);
+                if (!next) throw new Error('Empty playlist');
+                target = next;
+                continue;
+            }
+            if (!STREAM_TYPE_RE.test(type)) throw new Error('Not an audio stream');
+            if (res.writableEnded || res.destroyed) return;
+            res.status(200);
+            res.setHeader('Content-Type', type);
+            res.setHeader('Cache-Control', 'no-store');
+            res.setHeader('X-Content-Type-Options', 'nosniff');
+            res.setHeader('Content-Security-Policy', 'sandbox');
+            up.on('error', () => res.destroy());
+            up.pipe(res);
+            await new Promise((resolve) => res.on('close', resolve));
+            return;
+        }
+        throw new Error('Playlist too deep');
+    } catch (err) {
+        if (!res.headersSent) res.status(502).json({ success: false, error: err.message });
+        else res.destroy();
+    } finally {
+        streams -= 1;
+        release();
+    }
+}
+
+module.exports = { handle, handleStream };

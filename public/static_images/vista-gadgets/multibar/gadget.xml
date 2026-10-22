@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+	<name>Multi-Search Bar</name>
+	<version>1.0</version>
+	<author name="Claton Hendricks">
+		<logo src="logo.png" />
+	</author>
+	<copyright>Search-Bar Dt:01/15/2006</copyright>
+	<description>Search on Multiple Search Engines</description>
+	<icons>
+		<icon height="60" width="60" src="icon.png" />
+	</icons>
+	<hosts>
+		<host name="sidebar">
+			<base type="HTML" apiVersion="1.0.0" src="MultiBar.html" />
+			<permissions>full</permissions>
+			<platform minPlatformVersion="0.3" />
+		</host>
+	</hosts>
+</gadget>

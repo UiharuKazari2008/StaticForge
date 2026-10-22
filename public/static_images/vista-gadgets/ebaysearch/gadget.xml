@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+    <name>eBay.com Searchbar</name>
+    <namespace>Example7.Me</namespace>
+    <version>2.0</version>
+    <author name="Markus Mayer">
+        <info url="http://multimedia.life-is-more.at" />
+    </author>
+    <copyright>2007</copyright>
+    <description>eBay.com Searchbar</description>
+    	<icons>
+		<icon src="preview.gif" />
+	</icons>
+    <hosts>
+        <host name="sidebar">
+            <base type="HTML" apiVersion="1.0.0" src="ebay.html" />
+            <permissions>full</permissions>
+            <platform minPlatformVersion="0.3" />
+        </host>
+    </hosts>
+</gadget>

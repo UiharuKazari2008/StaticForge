@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+   <name>Google Search</name>
+   <namespace>egrplayaz@gmail.com</namespace>
+   <version>1.2.1</version>
+   <author name="Ed Roesch">
+     <info url="egrplayaz@gmail.com" />
+	 <logo src="author.jpg"/>
+   </author>
+   <copyright>&#169; 2007</copyright>
+   <description>Google search integrated into your sidebar. Can search web, images, and video. Simple to use.</description>
+   <icons>
+     <icon height="48" width="48" src="logo.png" />
+   </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="google.html" />
+      <permissions>Full</permissions>
+      <platform minPlatformVersion="1.0" />
+    </host>
+  </hosts>
+</gadget>

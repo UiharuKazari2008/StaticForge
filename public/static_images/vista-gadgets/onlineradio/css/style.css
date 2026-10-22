@@ -1,0 +1,54 @@
+body
+{
+	font-family: Calibri, Tahoma, Arial, Verdana;
+	font-size: 10px;
+	font-weight: normal;
+ 	width:130px;
+ 	height:180px;
+ 	margin-left: 0px;
+	margin-top: 0px;
+	margin-right: 0px;
+	margin-bottom: 0px;
+}
+#gadgetContent
+{
+	width: 130px;
+	top: 0px;
+	text-align: center;
+	font-family: Calibri, Tahoma;
+	font-size: 10pt;
+	position: absolute;
+}
+#background
+{
+	width: 130px;
+	height: 180px;
+	position: absolute;
+	z-index: -1;
+}
+.lblTitle {
+	font-family: Calibri;
+	font-weight: bold;
+	font-size: 14px;
+	background-color:ActiveBorder;
+	width: 130px;
+}
+
+td 
+{
+	font-size: 9px; font-family: Verdana,Tahoma,Arial;
+	text-align: left;
+} 
+
+select 
+{ 
+	font-size: 7pt; 
+	font-family: Calibri, Verdana,Tahoma,Arial;
+	width: 130px; 
+}
+div
+{
+	font-family: Calibri;
+	font-size: 9px;
+	color: Navy;
+}

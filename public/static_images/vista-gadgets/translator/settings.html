@@ -1,0 +1,95 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" >
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+    <title>Google</title>
+    
+    <style type="text/css" media="screen">/*<![CDATA[*/ @import "css/main.css"; /*]]>*/</style>
+    <link rel="stylesheet" type="text/css" media="print" href="css/commonPrint.css"/>
+    <style type="text/css">
+    body
+    {
+        background: #ffffff;    
+        width: 250px;
+        height: 150px;
+        border: 1px solid #aaaaaa;
+    }
+    </style>
+    <script type="text/javascript">	
+	function body_onload() {
+		var setting = System.Gadget.Settings.read("language");
+		if (setting != "")
+		{			
+			var languageElement = document.getElementById("language");
+			languageElement.value = setting;
+		}
+		var settingTr = System.Gadget.Settings.read("translation");
+		if (settingTr != "")
+		{
+			var trElement = document.getElementById("translation");
+			trElement.value = settingTr;
+		}
+	}
+
+	function SaveSettings() {
+	    var languageElement = document.getElementById("language");
+		var setting = languageElement.value;
+		System.Gadget.Settings.write("language", setting);
+	    		
+    	    var trElement = document.getElementById("translation");
+		var settingTr = trElement.value;
+		System.Gadget.Settings.write("translation", settingTr);
+	}
+	
+    System.Gadget.onSettingsClosing = SettingsClosing;		  
+	function SettingsClosing(event)	{
+ 		if (event.closeAction == event.Action.commit) { 
+		    SaveSettings();
+        }
+		event.cancel = false;
+	}
+	</script>
+</head>
+<body onload="body_onload()">
+<fieldset style="border: 1px solid #aaaaaa; background-color: #f9f9f9; padding: 0.7em; width: auto; margin-top: 0.5em;">
+Select default language:<select name="language" id="language" style="vertical-align: top; padding: 0; margin: 0 0.4em;" >
+<option value="de" lang="de" xml:lang="de">Deutsch</option>
+<option value="en" lang="en" xml:lang="en" selected="selected">English</option>
+<option value="es" lang="es" xml:lang="es">Español</option>
+<option value="fr" lang="fr" xml:lang="fr">Français</option>
+<option value="it" lang="it" xml:lang="it">Italiano</option>
+<option value="nl" lang="nl" xml:lang="nl">Nederlands</option>
+<option value="ja" lang="ja" xml:lang="ja">日本語</option>
+<option value="pl" lang="pl" xml:lang="pl">Polski</option>
+<option value="pt" lang="pt" xml:lang="pt">Português</option>
+<option value="ru" lang="ru" xml:lang="ru">Русский</option>
+<option value="sv" lang="sv" xml:lang="sv">Svenska</option>
+</select>
+</fieldset>
+<fieldset style="border: 1px solid #aaaaaa; background-color: #f9f9f9; padding: 0.7em; width: auto; margin-top: 0.5em;">
+Select default translation:<select name="translation" id="translation" style="vertical-align: top; padding: 0; margin: 0 0.4em;" >
+<option value="ar|en">Arabic to English</option>
+<option value="zh-CN|en">Chinese to English</option>
+<option value="en|ar" class="line-above">English to Arabic</option>
+<option value="en|zh-CN">English to Chinese</option>
+<option value="en|fr">English to French</option>
+<option value="en|de">English to German</option>
+<option value="en|it">English to Italian</option>
+<option value="en|ja">English to Japanese</option>
+<option value="en|ko">English to Korean</option>
+<option value="en|pt">English to Portuguese</option>
+<option value="en|ru">English to Russian</option>
+<option value="en|es">English to Spanish</option>
+<option value="fr|en">French to English</option>
+<option value="fr|de">French to German</option>
+<option value="de|en">German to English</option>
+<option value="de|fr">German to French</option>
+<option value="it|en" class="line-above">Italian to English</option>
+<option value="ja|en">Japanese to English</option>
+<option value="ko|en">Korean to English</option>
+<option value="pt|en">Portuguese to English</option>
+<option value="ru|en">Russian to English</option>
+<option value="es|en" selected>Spanish to English</option>
+</select>
+</fieldset>
+</body>
+</html>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+    <name>AnyWiki Search</name>
+    <namespace>AnyWiki Search</namespace>
+    <version>1.0</version>
+    <author name="James Brundage">
+    </author>
+    <copyright>2007</copyright>
+    <description>Searches a user-defined wiki (default en.wikipedia.org).
+	Opens results in Internet Explorer.</description>
+    <icons>
+     <icon height="50" width="100" src="AnyWiki.PNG" />
+    </icons>
+
+
+    <hosts>
+        <host name="sidebar">
+            <base type="HTML" apiVersion="1.0.0" src="AnyWikiSearch.html" />
+            <permissions>full</permissions>
+            <platform minPlatformVersion="1.0" />
+        </host>
+    </hosts>
+</gadget>

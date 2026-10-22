@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+    <name>Flickr Photo Search</name>
+    <namespace></namespace>
+    <version>1.1</version>
+    <author name="Christoph Polatzky">
+        <info url="http://www.polatzky.de" />
+    </author>
+    <copyright>2007</copyright>
+    <description>Flickr Photo Search</description>
+    	<icons>
+		<icon src="preview.png" />
+	</icons>
+    <hosts>
+        <host name="sidebar">
+            <base type="HTML" apiVersion="1.0.0" src="flickr.html" />
+            <permissions>full</permissions>
+            <platform minPlatformVersion="0.3" />
+        </host>
+    </hosts>
+</gadget>

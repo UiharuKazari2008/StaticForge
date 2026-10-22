@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<gadget>
+  <name>TheFreeDictionary</name>
+  <version>1.0.0.0</version>
+  <author name="George A. Deffner">
+    <info url="" text=""/>
+    <logo src="logo.png"/>
+  </author>
+  <copyright>2007</copyright>
+  <description>A quick definition lookup from thefreedictionary.com.</description>
+   <icons>
+	<icon height="16" width="16" src="dictionary.ico"/>
+    </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="html" apiVersion="1.0.0" src="Dictionary.html"/>
+      <permissions>full</permissions>
+      <platform minPlatformVersion="1.0"/>
+      <defaultImage src=""/>
+    </host>
+  </hosts>
+</gadget>
