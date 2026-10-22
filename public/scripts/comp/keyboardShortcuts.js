@@ -12,6 +12,8 @@ let windowSwitcherOverlay = null;
 let windowSwitcherWindows = [];
 let windowSwitcherSelectedIndex = 0;
 let windowSwitcherIconsBuiltFor = null;
+// the modifier whose release picks the window: 'Control' (Ctrl+Tab), 'Alt' or 'Meta' (Alt+Tab, Win+Tab)
+let windowSwitcherHoldKey = null;
 let ctrlKeyPressed = false;
 
 let runAppletLastAltUpTime = 0;
@@ -990,37 +992,28 @@ function handleKeyDown(event) {
         }
     }
 
-    // Handle CTRL+TAB for window switcher (only in desktop mode)
-    if (window.isDesktop && event.ctrlKey && event.key === 'Tab' && !event.shiftKey) {
+    // Switch windows while a modifier is held (desktop mode): Ctrl+Tab, and in the installed app,
+    // which gets the system keys too, Vista's Alt+Tab and Win+Tab. Shift steps back.
+    const switcherHoldKey = window.isDesktop && event.key === 'Tab' ? windowSwitcherHoldKeyFor(event) : null;
+    if (switcherHoldKey) {
         event.preventDefault();
         event.stopPropagation();
-        
+        if (switcherHoldKey === 'Alt') {
+            // Tab makes the held Alt a combo: no Alt overlay, and not a tap of the double-Alt Run
+            suppressAltOverlayUntilRelease = true;
+            hideShortcutsOverlay();
+        }
         if (!windowSwitcherActive) {
             startWindowSwitcher();
-            // Force navigation to next window to ensure it's selected
-            if (windowSwitcherWindows.length > 1) {
-                navigateWindowSwitcher(1);
+            if (windowSwitcherActive) windowSwitcherHoldKey = switcherHoldKey;
+            // Ctrl+Shift+Tab starts on this window; Alt/Win+Shift+Tab go straight to the last one
+            if (windowSwitcherWindows.length > 1 && !(event.shiftKey && switcherHoldKey === 'Control')) {
+                navigateWindowSwitcher(event.shiftKey ? -1 : 1);
             }
         } else {
-            // Navigate to next window
-            navigateWindowSwitcher(1);
+            navigateWindowSwitcher(event.shiftKey ? -1 : 1);
         }
-        ctrlKeyPressed = true;
-        return;
-    }
-    
-    // Handle CTRL+SHIFT+TAB for reverse navigation (only in desktop mode)
-    if (window.isDesktop && event.ctrlKey && event.key === 'Tab' && event.shiftKey) {
-        event.preventDefault();
-        event.stopPropagation();
-        
-        if (!windowSwitcherActive) {
-            startWindowSwitcher();
-        } else {
-            // Navigate to previous window
-            navigateWindowSwitcher(-1);
-        }
-        ctrlKeyPressed = true;
+        ctrlKeyPressed = switcherHoldKey === 'Control';
         return;
     }
     
@@ -1031,7 +1024,15 @@ function handleKeyDown(event) {
         shouldHandleBracketGenShortcuts
     } = shortcutContextFlags;
     
-    if (windowSwitcherActive) return;
+    if (windowSwitcherActive) {
+        // Esc puts the switcher away and stays on this window
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            event.stopPropagation();
+            stopWindowSwitcher();
+        }
+        return;
+    }
 
     // Handle Alt key press — universal overlay from keyboard registry
     if (event.key === 'Alt') {
@@ -1470,15 +1471,19 @@ function handleKeyDown(event) {
 
 // Handle key up events
 function handleKeyUp(event) {
+    const switcherRelease = windowSwitcherActive && event.key === windowSwitcherHoldKey;
     if (event.key === 'Alt') {
         activeAltKeyCodes.delete(event.code || 'AltLeft');
         if (activeAltKeyCodes.size === 0) {
+            const altWasCombo = switcherRelease || suppressAltOverlayUntilRelease;
             suppressAltOverlayUntilRelease = false;
             altKeyPressed = false;
             hideShortcutsOverlay();
 
             // Double-tap Alt opens Run applet (runApplet: public/scripts/comp/runApplet.js)
-            if (!event.ctrlKey && !event.shiftKey && !event.metaKey) {
+            if (altWasCombo) {
+                runAppletLastAltUpTime = 0;
+            } else if (!event.ctrlKey && !event.shiftKey && !event.metaKey) {
                 const now = Date.now();
                 if (runAppletLastAltUpTime && now - runAppletLastAltUpTime < RUN_APPLET_DOUBLE_ALT_MS) {
                     runAppletLastAltUpTime = 0;
@@ -1492,12 +1497,20 @@ function handleKeyUp(event) {
         }
     }
 
-    // Handle CTRL release for window switcher
-    if (event.key === 'Control' && windowSwitcherActive) {
+    // Releasing the held Ctrl, Alt or Windows key picks the window
+    if (switcherRelease) {
         activateSelectedWindow();
         stopWindowSwitcher();
         ctrlKeyPressed = false;
     }
+}
+
+/** Which held modifier makes this Tab a window switch: Ctrl, Alt or the Windows key (not Cmd on a Mac). */
+function windowSwitcherHoldKeyFor(event) {
+    if (event.ctrlKey) return 'Control';
+    if (event.altKey && !event.metaKey) return 'Alt';
+    if (event.metaKey && !event.altKey && !/Mac|iPhone|iPad/.test(navigator.platform || '')) return 'Meta';
+    return null;
 }
 
 // Start window switcher
@@ -1636,6 +1649,7 @@ function hideWindowSwitcher() {
 // Stop window switcher
 function stopWindowSwitcher() {
     windowSwitcherActive = false;
+    windowSwitcherHoldKey = null;
     windowSwitcherWindows = [];
     windowSwitcherSelectedIndex = 0;
     windowSwitcherIconsBuiltFor = null;
