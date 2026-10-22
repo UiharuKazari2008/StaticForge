@@ -1513,7 +1513,7 @@ class VfsManager {
             }
             case 'References': {
                 const refDb = this.globalResources.getReferenceMetadataDatabase();
-                const { cacheFiles: cacheFilesMap, vibes: vibeRowsMap } = refDb.getWorkspaceReferencesAndVibesWithData(workspaceId);
+                const { cacheFiles: cacheFilesMap, vibes: vibeRowsMap } = refDb.getWorkspaceReferencesAndVibesWithData(workspaceId, { encodingPresence: true });
                 const items = [];
                 for (const hash in cacheFilesMap) {
                     if (trashedTargets.has(`reference:${hash}`)) continue;

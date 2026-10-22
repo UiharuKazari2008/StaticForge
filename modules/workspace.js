@@ -1084,7 +1084,7 @@ class WorkspaceManager {
 
         if (workspaceId) {
             // Get cache files for specific workspace from database
-            const { cacheFiles } = refDb.getWorkspaceReferencesAndVibesWithData(workspaceId);
+            const cacheFiles = refDb.getWorkspaceReferencesWithData(workspaceId) || {};
             for (const hash in cacheFiles) {
                 files.add(hash);
             }
