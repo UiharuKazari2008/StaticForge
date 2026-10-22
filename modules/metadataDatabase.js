@@ -7157,7 +7157,6 @@ async function getBlockPromptUsages(blocks, filenamesFilter = null, options = {}
     const { limit = 120 } = options;
     const promptSources = getPromptSourceFilter(options);
     const sourcePlaceholders = promptSources.map(() => '?').join(',');
-    const sourceClause = ` AND source IN (${sourcePlaceholders})`;
     const sourceParams = promptSources;
 
     if (normalizedBlocks.length === 0) {
@@ -7183,35 +7182,76 @@ async function getBlockPromptUsages(blocks, filenamesFilter = null, options = {}
         }
     };
 
+    // One query per term and table over all filenames (json_each), grouped by the old
+    // 400-name chunk index so counts, samples and insertion order match the chunked loop.
+    // The old per-chunk queries let SQLite drive from idx_search_tags_tag / *_source, i.e.
+    // one pass over every matching row per 400 files. Here LIKE terms drive from the
+    // filenames (idx_search_tags_filename_source); a word-mode tag (tag = ?) drives from the
+    // tag index once, probing a materialized filename list.
+    const readDb = await getReadOnlyDatabase();
+    const readHandle = readDb || db;
+    const filenamesJson = JSON.stringify(filenamesFilter);
+    const qualifiedSourceClause = ` AND t.source IN (${sourcePlaceholders})`;
+    const groupRowsByChunk = (rows) => {
+        const byChunk = new Map();
+        for (const row of rows || []) {
+            const chunk = Number(row.chunk) || 0;
+            if (!byChunk.has(chunk)) byChunk.set(chunk, []);
+            byChunk.get(chunk).push(row);
+        }
+        return byChunk;
+    };
+
     for (const block of normalizedBlocks) {
         const matchMode = block.matchMode || 'substring';
         const blockLabel = block.terms.join(block.mode === 'or' || block.orWithinBlock ? ' OR ' : ' ');
         for (const term of block.terms || []) {
             const tagMatch = matchMode === 'word'
-                ? omegasearchFilters.buildTermMatchSql('tag', term, 'word')
-                : omegasearchFilters.buildTermMatchSql('tag', term, matchMode);
+                ? omegasearchFilters.buildTermMatchSql('t.tag', term, 'word')
+                : omegasearchFilters.buildTermMatchSql('t.tag', term, matchMode);
             const textMatch = matchMode === 'word'
-                ? omegasearchFilters.buildFullTextWordMatchSql('text_content', term)
-                : omegasearchFilters.buildTermMatchSql('text_content', term, matchMode);
+                ? omegasearchFilters.buildFullTextWordMatchSql('t.text_content', term)
+                : omegasearchFilters.buildTermMatchSql('t.text_content', term, matchMode);
 
-            for (let i = 0; i < filenamesFilter.length; i += chunkSize) {
-                const chunk = filenamesFilter.slice(i, i + chunkSize);
-                const filePlaceholders = chunk.map(() => '?').join(',');
+            const tagFrom = matchMode === 'word'
+                ? `WITH f AS MATERIALIZED (SELECT value AS name, key / ${chunkSize} AS chunk FROM json_each(?))
+                   SELECT f.chunk AS chunk,`
+                : `SELECT j.key / ${chunkSize} AS chunk,`;
+            const tagJoin = matchMode === 'word'
+                ? 'FROM f INNER JOIN search_tags t ON t.filename = f.name'
+                : 'FROM json_each(?) j INNER JOIN search_tags t ON t.filename = j.value';
+            const tagRowsByChunk = groupRowsByChunk(await readHandle.all(`
+                ${tagFrom}
+                    t.source AS source,
+                    t.character AS character,
+                    t.original_tag AS displayText,
+                    COUNT(DISTINCT t.filename) AS fileCount,
+                    MIN(t.filename) AS sampleFilename
+                ${tagJoin}
+                WHERE ${tagMatch.clause}${qualifiedSourceClause}
+                GROUP BY chunk, t.source, t.character, t.original_tag
+                ORDER BY chunk, t.source, t.character, t.original_tag
+            `, [filenamesJson, ...tagMatch.params, ...sourceParams]));
 
-                const tagRows = await db.all(`
-                    SELECT
-                        source,
-                        character,
-                        original_tag AS displayText,
-                        COUNT(DISTINCT filename) AS fileCount,
-                        MIN(filename) AS sampleFilename
-                    FROM search_tags
-                    WHERE filename IN (${filePlaceholders})
-                      AND ${tagMatch.clause}${sourceClause}
-                    GROUP BY source, character, original_tag
-                `, [...chunk, ...tagMatch.params, ...sourceParams]);
+            const textRowsByChunk = groupRowsByChunk(await readHandle.all(`
+                SELECT
+                    j.key / ${chunkSize} AS chunk,
+                    t.source AS source,
+                    t.character AS character,
+                    t.original_text AS displayText,
+                    t.text_type AS textType,
+                    COUNT(DISTINCT t.filename) AS fileCount,
+                    MIN(t.filename) AS sampleFilename
+                FROM json_each(?) j
+                INNER JOIN search_fulltext t ON t.filename = j.value
+                WHERE ${textMatch.clause}${qualifiedSourceClause}
+                GROUP BY chunk, t.source, t.character, t.original_text, t.text_type
+                ORDER BY chunk, t.source, t.character, t.original_text, t.text_type
+            `, [filenamesJson, ...textMatch.params, ...sourceParams]));
 
-                for (const row of tagRows) {
+            const chunkCount = Math.ceil(filenamesFilter.length / chunkSize);
+            for (let chunk = 0; chunk < chunkCount; chunk += 1) {
+                for (const row of tagRowsByChunk.get(chunk) || []) {
                     const displayText = row.displayText || term;
                     const key = `${blockLabel}\0${row.source || 'prompt'}\0${row.character || ''}\0tag\0${displayText.toLowerCase()}`;
                     bumpUsage(key, {
@@ -7225,21 +7265,7 @@ async function getBlockPromptUsages(blocks, filenamesFilter = null, options = {}
                     }, row.fileCount || 0);
                 }
 
-                const textRows = await db.all(`
-                    SELECT
-                        source,
-                        character,
-                        original_text AS displayText,
-                        text_type AS textType,
-                        COUNT(DISTINCT filename) AS fileCount,
-                        MIN(filename) AS sampleFilename
-                    FROM search_fulltext
-                    WHERE filename IN (${filePlaceholders})
-                      AND ${textMatch.clause}${sourceClause}
-                    GROUP BY source, character, original_text, text_type
-                `, [...chunk, ...textMatch.params, ...sourceParams]);
-
-                for (const row of textRows) {
+                for (const row of textRowsByChunk.get(chunk) || []) {
                     const displayText = row.displayText || term;
                     const key = `${blockLabel}\0${row.source || 'prompt'}\0${row.character || ''}\0text\0${(row.textType || 'full_text')}\0${displayText.toLowerCase()}`;
                     bumpUsage(key, {
@@ -7505,9 +7531,14 @@ async function getTagSuggestionsFromDatabase(query, filenamesFilter = null, limi
             );
         });
 
+        // Score once per suggestion (the comparator used to recompute both scores per compare)
+        const rankScores = new Map();
+        for (const suggestion of ranked) {
+            rankScores.set(suggestion, computeTagSuggestionRankScore(suggestion, rankingCorpusFileCount));
+        }
         ranked.sort((a, b) => {
-            const scoreA = computeTagSuggestionRankScore(a, rankingCorpusFileCount);
-            const scoreB = computeTagSuggestionRankScore(b, rankingCorpusFileCount);
+            const scoreA = rankScores.get(a);
+            const scoreB = rankScores.get(b);
             if (scoreB !== scoreA) return scoreB - scoreA;
             if (b.occurrenceCount !== a.occurrenceCount) {
                 return b.occurrenceCount - a.occurrenceCount;
@@ -8118,31 +8149,44 @@ async function listSimilarImageGroupsForWorkspace(workspaceId, options = {}) {
         }
     }
 
+    // Items for every listed group in one windowed query per kind (was one query per group).
+    const readDb = await getReadOnlyDatabase();
+    const readHandle = readDb || db;
+    const fetchGroupItems = async (groupColumn, groupIds) => {
+        const byGroup = new Map();
+        if (!groupIds.length) return byGroup;
+        const rows = await readHandle.all(`
+            SELECT group_id, filename, seed, mtime, width, height
+            FROM (
+                SELECT f.${groupColumn} AS group_id, f.filename, f.seed, f.mtime, f.width, f.height,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY f.${groupColumn}
+                           ORDER BY COALESCE(f.mtime, 0) DESC, f.filename ASC
+                       ) AS rn
+                FROM image_search_facets f
+                INNER JOIN ${GALLERY_OWNERSHIP_TABLE} o
+                    ON o.filename = f.filename
+                WHERE o.workspace_id = ?
+                  AND o.bucket = 'files'
+                  AND f.${groupColumn} IN (${groupIds.map(() => '?').join(',')})
+            )
+            WHERE rn <= ?
+            ORDER BY group_id, rn
+        `, [wsId, ...groupIds, itemLimit]);
+        for (const item of rows || []) {
+            if (!byGroup.has(item.group_id)) byGroup.set(item.group_id, []);
+            byGroup.get(item.group_id).push(item);
+        }
+        return byGroup;
+    };
+    const seedItems = await fetchGroupItems('consecutive_seed_group_id',
+        combined.filter((row) => row.kind !== 'refine').map((row) => row.groupId));
+    const refineItems = await fetchGroupItems('refine_group_id',
+        combined.filter((row) => row.kind === 'refine').map((row) => row.groupId));
+
     const groups = [];
     for (const row of combined) {
-        const items = row.kind === 'refine'
-            ? await db.all(`
-                SELECT f.filename, f.seed, f.mtime, f.width, f.height
-                FROM image_search_facets f
-                INNER JOIN ${GALLERY_OWNERSHIP_TABLE} o
-                    ON o.filename = f.filename
-                WHERE o.workspace_id = ?
-                  AND o.bucket = 'files'
-                  AND f.refine_group_id = ?
-                ORDER BY COALESCE(f.mtime, 0) DESC, f.filename ASC
-                LIMIT ?
-            `, [wsId, row.groupId, itemLimit])
-            : await db.all(`
-                SELECT f.filename, f.seed, f.mtime, f.width, f.height
-                FROM image_search_facets f
-                INNER JOIN ${GALLERY_OWNERSHIP_TABLE} o
-                    ON o.filename = f.filename
-                WHERE o.workspace_id = ?
-                  AND o.bucket = 'files'
-                  AND f.consecutive_seed_group_id = ?
-                ORDER BY COALESCE(f.mtime, 0) DESC, f.filename ASC
-                LIMIT ?
-            `, [wsId, row.groupId, itemLimit]);
+        const items = (row.kind === 'refine' ? refineItems : seedItems).get(row.groupId) || [];
 
         groups.push({
             groupId: row.groupId,

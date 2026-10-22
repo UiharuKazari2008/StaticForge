@@ -501,6 +501,287 @@ sections.preset622 = async function preset622() {
     console.log('  preset622: ok (remove drops preset_name, set still sets it)');
 };
 
+// Finding 7: PNG chunk helpers use views + a hoisted CRC table; output must be byte-identical.
+sections.pngChunks = async function pngChunks() {
+    const OldPng = requireOldModule('modules/pngMetadata.js');
+    const oldPm = new OldPng(null);
+    const newPm = new PngMetadata(null);
+    const buffers = [];
+    buffers.push(await makeNaiLikePng(newPm));
+    buffers.push(await makeNaiLikePng(newPm, { width: 1024, height: 1024, noise: true }));
+    const liveImages = process.env.PERF_IMAGES_DIR || '/home/kanmi/staticforge/images';
+    if (fs.existsSync(liveImages)) {
+        const names = fs.readdirSync(liveImages).filter((f) => f.endsWith('.png'));
+        for (let i = 0; i < names.length && buffers.length < 42; i += Math.max(1, Math.floor(names.length / 40))) {
+            buffers.push(fs.readFileSync(path.join(liveImages, names[i])));
+        }
+    }
+    // A Buffer that is a slice of a larger allocation (byteOffset != 0).
+    const padded = Buffer.alloc(buffers[0].length + 7);
+    buffers[0].copy(padded, 7);
+    buffers.push(padded.subarray(7));
+
+    const forge = { generation_type: 'generated', date_generated: 1700000000000, preset_name: 'x', input_prompt: 'a, b' };
+    for (const buf of buffers) {
+        assert.deepStrictEqual(newPm.readMetadata(buf), oldPm.readMetadata(buf), 'readMetadata');
+        for (const [kw, text] of [['Comment', '{"prompt":"p é ☃"}'], ['Source', 'NovelAI'], ['Zeta', 'new keyword']]) {
+            const a = oldPm.insertTextChunk(buf, kw, text);
+            const b = newPm.insertTextChunk(buf, kw, text);
+            assert.ok(Buffer.isBuffer(b) && a.equals(b), `insertTextChunk ${kw} byte-identical`);
+        }
+        assert.ok(oldPm.updateMetadata(buf, forge).equals(newPm.updateMetadata(buf, forge)), 'updateMetadata byte-identical');
+        assert.ok(oldPm.stripPngTextChunks(buf).equals(newPm.stripPngTextChunks(buf)), 'strip byte-identical');
+    }
+    for (let i = 0; i < 50; i++) {
+        const data = crypto.randomBytes(1 + (i * 977) % 70000);
+        assert.strictEqual(newPm.calculateCRC(data), oldPm.calculateCRC(data), 'CRC');
+    }
+    assert.strictEqual(newPm.calculateCRC(Buffer.from('IEND')), 0xAE426082, 'IEND CRC');
+
+    const big = buffers[1];
+    const bench = (pm) => {
+        const t0 = process.hrtime.bigint();
+        for (let i = 0; i < 30; i++) {
+            pm.readMetadata(big);
+            pm.insertTextChunk(big, 'Comment', '{"prompt":"bench"}');
+        }
+        return Number(process.hrtime.bigint() - t0) / 1e6 / 30;
+    };
+    const oldMs = bench(oldPm);
+    const newMs = bench(newPm);
+    console.log(`  pngChunks: ${buffers.length} PNGs byte-identical; readMetadata+insertTextChunk(Comment) on ${(big.length / 1e6).toFixed(1)} MB: ` +
+        `old ${oldMs.toFixed(2)} ms, new ${newMs.toFixed(2)} ms`);
+};
+
+/**
+ * Pull one method out of modules/globalResources.js (requiring the singleton boots far too much
+ * for a unit test) and bind it to a stub `this`.
+ */
+function loadGlobalResourcesMethod(name, source = null) {
+    const src = source || fs.readFileSync(path.join(__dirname, '..', 'modules', 'globalResources.js'), 'utf8');
+    const re = new RegExp(`\\n    (async )?${name}\\(`);
+    const m = re.exec(src);
+    assert.ok(m, `method ${name} not found`);
+    const start = m.index + 5;
+    const bodyStart = src.indexOf('{', src.indexOf(')', start));
+    let depth = 0;
+    let end = bodyStart;
+    for (; end < src.length; end++) {
+        if (src[end] === '{') depth++;
+        else if (src[end] === '}' && --depth === 0) break;
+    }
+    const text = src.slice(start, end + 1);
+    const asFn = text.startsWith('async ') ? `async function ${text.slice(6)}` : `function ${text}`;
+    // eslint-disable-next-line no-new-func
+    return new Function('require', 'path', `return ${asFn};`)(require, path);
+}
+
+// Finding 9: login sprite pick, in-flight guard, async known-bad-paths save.
+sections.globalResources = async function globalResourcesSection() {
+    const dir = makeWorkDir('gr');
+    const imagesDir = path.join(dir, 'images');
+    fs.mkdirSync(imagesDir);
+    for (let i = 0; i < 300; i++) fs.writeFileSync(path.join(imagesDir, `img${i}.${i % 3 === 0 ? 'jpg' : 'png'}`), '');
+    fs.writeFileSync(path.join(imagesDir, 'notes.txt'), '');
+    const stub = { getPath: (k) => (k === 'images' ? imagesDir : path.join(dir, 'known_bad_paths.json')) };
+
+    const pick = loadGlobalResourcesMethod('getRandomWorkspaceImages').bind(stub);
+    const twenty = await pick(20);
+    assert.strictEqual(twenty.length, 20);
+    assert.strictEqual(new Set(twenty.map((x) => x.filename)).size, 20, 'no duplicates');
+    assert.ok(twenty.every((x) => /\.(png|jpg)$/.test(x.filename) && x.path === path.join(imagesDir, x.filename)));
+    assert.strictEqual((await pick()).length, 300, 'no limit: all images');
+    // Uniformity: each image's chance to be in a pick of 20 is 20/300.
+    const hits = new Map();
+    const rounds = 3000;
+    for (let r = 0; r < rounds; r++) for (const x of await pick(20)) hits.set(x.filename, (hits.get(x.filename) || 0) + 1);
+    const expected = rounds * 20 / 300;
+    const worst = Math.max(...[...hits.values()].map((v) => Math.abs(v - expected) / expected));
+    assert.ok(worst < 0.35, `pick should be near uniform (worst deviation ${worst.toFixed(2)})`);
+    const missing = loadGlobalResourcesMethod('getRandomWorkspaceImages').bind({ getPath: () => path.join(dir, 'nope') });
+    assert.deepStrictEqual(await missing(20), []);
+
+    // In-flight guard: concurrent calls share one generation.
+    let runs = 0;
+    const guardStub = {
+        _generateLoginSpriteSheet: async () => { runs++; await new Promise((r) => setTimeout(r, 50)); }
+    };
+    const gen = loadGlobalResourcesMethod('generateLoginSpriteSheet').bind(guardStub);
+    await Promise.all([gen(), gen(), gen()]);
+    assert.strictEqual(runs, 1, 'one sprite generation in flight');
+    await gen();
+    assert.strictEqual(runs, 2, 'guard released after completion');
+
+    // saveKnownBadPaths: async writes land in call order; sync flush still works.
+    const badStub = { getPath: stub.getPath, knownBadPaths: new Map() };
+    const save = loadGlobalResourcesMethod('saveKnownBadPaths').bind(badStub);
+    const writes = [];
+    for (let i = 0; i < 5; i++) {
+        badStub.knownBadPaths.set(`/probe${i}`, { firstSeen: i, lastSeen: i, hits: 1 });
+        writes.push(save());
+    }
+    await Promise.all(writes);
+    const file = path.join(dir, 'known_bad_paths.json');
+    assert.strictEqual(Object.keys(JSON.parse(fs.readFileSync(file, 'utf8')).paths).length, 5, 'newest snapshot on disk');
+    badStub.knownBadPaths.set('/probe5', { firstSeen: 5, lastSeen: 5, hits: 1 });
+    save(50000, { sync: true });
+    assert.strictEqual(Object.keys(JSON.parse(fs.readFileSync(file, 'utf8')).paths).length, 6, 'sync flush');
+    badStub.knownBadPaths.set('/probe6', { firstSeen: 6, lastSeen: 6, hits: 1 });
+    await save(3);
+    assert.deepStrictEqual(Object.keys(JSON.parse(fs.readFileSync(file, 'utf8')).paths).sort(), ['/probe4', '/probe5', '/probe6'], 'maxPaths keeps newest');
+    assert.ok(!fs.readdirSync(dir).some((f) => f.endsWith('.tmp')), 'no temp files left');
+    console.log('  globalResources: uniform pick of 20, one sprite generation in flight, ordered async saves');
+};
+
+async function timed(fn) {
+    const t0 = process.hrtime.bigint();
+    const value = await fn();
+    return { value, ms: Number(process.hrtime.bigint() - t0) / 1e6 };
+}
+
+// Finding 6: batched omegasearch usages, suggestion scoring/samples, similar groups.
+sections.batchedQueries = async function batchedQueries() {
+    if (!haveDbCopy()) return;
+    const src = await openSqlite(DB_COPY);
+    const wsRows = await src.all(`
+        SELECT workspace_id, COUNT(*) AS n FROM gallery_workspace_ownership
+        WHERE bucket = 'files' GROUP BY workspace_id ORDER BY n DESC
+    `);
+    const bigWs = wsRows[0].workspace_id;
+    const midWs = wsRows[Math.min(3, wsRows.length - 1)].workspace_id;
+    const bigFiles = (await src.all(
+        `SELECT filename FROM gallery_workspace_ownership WHERE workspace_id = ? AND bucket = 'files' ORDER BY rowid`, [bigWs]
+    )).map((r) => r.filename);
+    await src.close();
+
+    const mod = require('../modules/metadataDatabase');
+    assert.strictEqual(await mod.initializeDatabase(path.dirname(DB_COPY), new PngMetadata(null)), true);
+    const old = requireOldModule('modules/metadataDatabase.js');
+    assert.strictEqual(await old.initializeDatabase(path.dirname(DB_COPY), new PngMetadata(null)), true);
+
+    // Old/new comparisons use a 3000-file slice (8 chunks): the old usage queries need minutes
+    // on the full workspace (~183 s for two substring terms over 19k files).
+    const someFiles = bigFiles.slice(0, Number(process.env.PERF_USAGE_FILES || 3000));
+    const cases = [
+        ['getBlockPromptUsages substring', (m) => m.getBlockPromptUsages(['blue hair', 'smile'], someFiles)],
+        ['getBlockPromptUsages word', (m) => m.getBlockPromptUsages([{ terms: ['1girl', 'solo'], matchMode: 'word' }], someFiles)],
+        ['getBlockPromptUsages word rare', (m) => m.getBlockPromptUsages([{ terms: ['lighthouse'], matchMode: 'word' }], someFiles)],
+        ['getBlockPromptUsages input', (m) => m.getBlockPromptUsages(['hair'], someFiles, { promptSource: 'input' })],
+        ['getTagSuggestions hair', (m) => m.getTagSuggestionsFromDatabase('hair', null, 20, { workspaceScope: { workspaceIds: [bigWs] } })],
+        ['getTagSuggestions empty', (m) => m.getTagSuggestionsFromDatabase('', null, 20, { workspaceScope: { workspaceIds: [midWs] } })],
+        ['listSimilarImageGroups big', (m) => m.listSimilarImageGroupsForWorkspace(bigWs, { groupLimit: 100, itemLimit: 24 })],
+        ['listSimilarImageGroups mid', (m) => m.listSimilarImageGroupsForWorkspace(midWs, {})]
+    ];
+    for (const [label, run] of cases) {
+        const a = await timed(() => run(old));
+        const b = await timed(() => run(mod));
+        assert.deepStrictEqual(b.value, a.value, `${label}: result differs`);
+        const size = Array.isArray(b.value) ? b.value.length : (b.value.groups || []).length;
+        console.log(`  ${label}: equal (${size} rows); old ${a.ms.toFixed(0)} ms, new ${b.ms.toFixed(0)} ms`);
+    }
+    for (const [label, blocks] of [['substring', ['blue hair', 'smile']], ['word', [{ terms: ['1girl', 'solo'], matchMode: 'word' }]]]) {
+        const b = await timed(() => mod.getBlockPromptUsages(blocks, bigFiles));
+        console.log(`  getBlockPromptUsages ${label} over ${bigFiles.length} files (new only): ${b.ms.toFixed(0)} ms`);
+    }
+    await old.closeDatabase();
+    await mod.closeDatabase();
+};
+
+// Finding 6 (suggestions): batched sample-file query must pick the same 5 files per tag.
+sections.suggestSamples = async function suggestSamples() {
+    if (!haveDbCopy()) return;
+    const src = await openSqlite(DB_COPY);
+    const wsIds = (await src.all(`
+        SELECT workspace_id FROM gallery_workspace_ownership WHERE bucket = 'files'
+        GROUP BY workspace_id ORDER BY COUNT(*) DESC LIMIT 4
+    `)).map((r) => r.workspace_id);
+    const someFiles = (await src.all(`SELECT filename FROM images ORDER BY id DESC LIMIT 1500`)).map((r) => r.filename);
+    await src.close();
+    const mod = require('../modules/metadataDatabase');
+    assert.strictEqual(await mod.initializeDatabase(path.dirname(DB_COPY), new PngMetadata(null)), true);
+    const old = requireOldModule('modules/metadataDatabase.js');
+    assert.strictEqual(await old.initializeDatabase(path.dirname(DB_COPY), new PngMetadata(null)), true);
+    let tOld = 0;
+    let tNew = 0;
+    let n = 0;
+    let sampled = 0;
+    const queries = ['hair', 'eyes', 'smile', 'dress', 'girl', 'breasts', 'looking', ''];
+    for (const ws of wsIds) {
+        for (const q of queries) {
+            const opts = { workspaceScope: { workspaceIds: [ws] } };
+            const a = await timed(() => old.getTagSuggestionsFromDatabase(q, null, 20, opts));
+            const b = await timed(() => mod.getTagSuggestionsFromDatabase(q, null, 20, opts));
+            assert.deepStrictEqual(b.value, a.value, `suggestions '${q}' in ${ws}`);
+            tOld += a.ms;
+            tNew += b.ms;
+            n += 1;
+            sampled += b.value.filter((s) => s.type === 'tag').length;
+        }
+    }
+    for (const q of ['hair', '']) {
+        const a = await old.getTagSuggestionsFromDatabase(q, someFiles, 20, {});
+        const b = await mod.getTagSuggestionsFromDatabase(q, someFiles, 20, {});
+        assert.deepStrictEqual(b, a, `suggestions '${q}' with filename list`);
+    }
+    await old.closeDatabase();
+    await mod.closeDatabase();
+    console.log(`  suggestSamples: ${n} workspace queries + 2 list queries equal (${sampled} tag sample sets); ` +
+        `old ${(tOld / n).toFixed(0)} ms, new ${(tNew / n).toFixed(0)} ms per query`);
+};
+
+// #621: getPromptTermStatsForFilenames sums across 400-file chunks.
+sections.termStats621 = async function termStats621() {
+    if (!haveDbCopy()) return;
+    const src = await openSqlite(DB_COPY);
+    const ws = (await src.get(`
+        SELECT workspace_id FROM gallery_workspace_ownership WHERE bucket = 'files'
+        GROUP BY workspace_id ORDER BY COUNT(*) DESC LIMIT 1
+    `)).workspace_id;
+    const files = (await src.all(
+        `SELECT filename FROM gallery_workspace_ownership WHERE workspace_id = ? AND bucket = 'files' ORDER BY rowid LIMIT 3000`, [ws]
+    )).map((r) => r.filename);
+    const sources = ['prompt', 'character_prompt', 'v4_character_caption'];
+    // Ground truth: one unchunked aggregate over every file.
+    const truthRows = await src.all(`
+        SELECT t.tag, t.original_tag, COUNT(DISTINCT t.filename) AS n, AVG(ABS(t.weight)) AS w
+        FROM json_each(?) j INNER JOIN search_tags t ON t.filename = j.value
+        WHERE t.source IN (?, ?, ?)
+        GROUP BY t.tag, t.original_tag
+    `, [JSON.stringify(files), ...sources]);
+    await src.close();
+    const truth = new Map();
+    for (const r of truthRows) {
+        const cur = truth.get(r.tag);
+        if (!cur || r.n > cur.n) truth.set(r.tag, r);
+    }
+
+    const mod = require('../modules/metadataDatabase');
+    assert.strictEqual(await mod.initializeDatabase(path.dirname(DB_COPY), new PngMetadata(null)), true);
+    const old = requireOldModule('modules/metadataDatabase.js');
+    assert.strictEqual(await old.initializeDatabase(path.dirname(DB_COPY), new PngMetadata(null)), true);
+
+    // <= 400 files (one chunk): identical to the old result.
+    const small = files.slice(0, 350);
+    assert.deepStrictEqual(await mod.getPromptTermStatsForFilenames(small, { limit: 500 }),
+        await old.getPromptTermStatsForFilenames(small, { limit: 500 }), 'single chunk unchanged');
+
+    const fixed = await mod.getPromptTermStatsForFilenames(files, { limit: 100000 });
+    const before = await old.getPromptTermStatsForFilenames(files, { limit: 100000 });
+    assert.strictEqual(fixed.length, truth.size);
+    for (const row of fixed) {
+        const t = truth.get(row.tag);
+        assert.ok(t, `tag ${row.tag}`);
+        assert.strictEqual(row.occurrenceCount, t.n, `count for ${row.tag}`);
+        assert.ok(Math.abs(row.avgWeight - (t.w || 0)) < 1e-9, `avgWeight for ${row.tag}`);
+    }
+    const top = fixed[0];
+    const oldTop = before.find((r) => r.tag === top.tag);
+    await old.closeDatabase();
+    await mod.closeDatabase();
+    console.log(`  termStats621: ${files.length} files, ${fixed.length} tags match the unchunked counts; ` +
+        `top tag '${top.tag}' ${top.occurrenceCount} files (old said ${oldTop ? oldTop.occurrenceCount : 'n/a'})`);
+};
+
 async function main() {
     const wanted = process.argv.slice(2);
     const names = wanted.length ? wanted : Object.keys(sections);
