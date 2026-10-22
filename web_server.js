@@ -78,7 +78,14 @@ const { mountGuacRemoteBridge, attachGuacWebUpgrade } = require('./modules/guacR
 const { getQwenTokenizerDefinition } = require('./modules/qwenTokenizerAssetCache');
 const { SUBSCRIPTION_USAGE_POLL_MS } = require('./modules/opusUsage');
 const { realClientIp, trustedProxiesFromResources } = require('./modules/clientAddress');
+const { verifyPin, hashPin, isHashed: isHashedPin } = require('./modules/pinAuth');
 const { createApprovedIpAutoLoginMiddleware } = require('./modules/approvedIpAccess');
+const {
+    createSiteGateMiddleware,
+    attachSiteGateWebUpgrade,
+    registerDynamicManifestRoute
+} = require('./modules/siteGate');
+const siteAccessPublic = require('./modules/siteAccess');
 
 let runtimeCompileComplete = false;
 
@@ -951,6 +958,7 @@ function buildServiceWorkerCacheManifest() {
             !splashOrScreenshotPattern.test(file.path) &&
             !unrelatedFilePattern.test(file.path)
         )
+        .filter(file => file.path !== '/manifest.json')
         .map(file => ({
             url: file.path,
             hash: file.hash || file.md5,
@@ -970,9 +978,18 @@ function buildServiceWorkerCacheManifest() {
         });
     }
 
-    return installManifestFilter.markAuthGatedEntries(
+    const manifest = installManifestFilter.markAuthGatedEntries(
         installManifestFilter.filterExistingManifestEntries(__dirname, entries)
     );
+    if (siteAccessPublic.readSiteAccessSecure(globalResources).configured) {
+        const loginOnlyUrls = new Set(['/css/login_new.css', '/scripts/login.js']);
+        for (const entry of manifest) {
+            if (loginOnlyUrls.has(entry.url)) {
+                entry.auth = true;
+            }
+        }
+    }
+    return manifest;
 }
 
 // path → manifest hash, rebuilt when the cache data is replaced (X-File-Hash on served files)
@@ -1234,6 +1251,12 @@ async function refreshBalance(force = false) {
 
 const { app, server } = globalResources.initializeExpressApp(null, null, { server: earlyHttpServer });
 
+app.disable('x-powered-by');
+app.use(cookieParser());
+app.use(express.urlencoded({ extended: true, limit: '100mb' }));
+app.use(createSiteGateMiddleware(globalResources, __dirname));
+registerDynamicManifestRoute(app, globalResources, path.join(__dirname, 'public', 'manifest.json'));
+
 // Security and performance middleware
 app.use(helmet({
     contentSecurityPolicy: false, // Disable CSP for development
@@ -1356,8 +1379,6 @@ app.use(compression({
 app.use('/install/product-key', express.json({ limit: '4kb' }));
 // Body parsing middleware with optimized limits
 app.use(express.json({limit: '100mb'}));
-app.use(express.urlencoded({ extended: true, limit: '100mb' }));
-app.use(cookieParser());
 
 const sessionStore = globalResources.initializeSessionStore();
 const sessionSecret = globalResources.getSecureConfig({ path: 'sessionSecret' });
@@ -1764,7 +1785,7 @@ app.get('/internal/*', (req, res) => {
         res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
-app.use('/temp', express.static(path.join(cacheDir, 'tempDownload'), {
+app.use('/temp', authMiddleware, express.static(path.join(cacheDir, 'tempDownload'), {
     maxAge: '10s', // Cache static assets for 10 seconds
     etag: true, // Enable ETags for cache validation
     lastModified: true, // Enable Last-Modified headers
@@ -1934,7 +1955,7 @@ app.use((req, res, next) => {
         hour12: false
     });
     
-    const realIP = req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || req.ip || req.connection.remoteAddress;
+    const realIP = getRealIP(req);
     const queryParams = { ...req.query };
     delete queryParams.auth;
     delete queryParams.loginKey;
@@ -2366,7 +2387,8 @@ function publicStatusExtras(req) {
         runtimeAutoRecompile: getRuntimeAutoRecompileConfig(),
         // Melaton Setup's product key page (#611): a configured NovelAI key shows starred out
         // and the page moves on by itself; none at all (initial server setup) asks for one
-        novelaiKeyConfigured: novelaiKeyConfigured()
+        novelaiKeyConfigured: novelaiKeyConfigured(),
+        siteAccess: siteAccessPublic.publicSiteAccessStatus(globalResources)
     };
 }
 
@@ -2429,22 +2451,37 @@ app.get('/logon-picture', (req, res) => {
 });
 
 // Boot-critical static assets — available as soon as HTTP listens (before full static middleware)
-for (const bootPath of ['/sw.js', '/manifest.json']) {
-    app.get(bootPath, async (req, res, next) => {
-        try {
-            const filePath = path.join(__dirname, 'public', bootPath.slice(1));
-            if (!await statOrNull(filePath)) {
-                return next();
-            }
-            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
-            res.sendFile(filePath);
-        } catch (err) {
-            next(err);
+app.get('/sw.js', async (req, res, next) => {
+    try {
+        const filePath = path.join(__dirname, 'public', 'sw.js');
+        if (!await statOrNull(filePath)) {
+            return next();
         }
-    });
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
+        res.sendFile(filePath);
+    } catch (err) {
+        next(err);
+    }
+});
+
+function redirectGateTokenHolderToLaunch(req, res) {
+    const k = req.query && req.query.k != null && req.query.k !== ''
+        ? `?k=${encodeURIComponent(String(req.query.k))}`
+        : '';
+    return res.redirect(302, `/launch${k}`);
 }
 
 app.get('/', (req, res) => {
+    if (siteAccessPublic.readSiteAccessSecure(globalResources).configured) {
+        return redirectGateTokenHolderToLaunch(req, res);
+    }
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.get('/index.html', (req, res) => {
+    if (siteAccessPublic.readSiteAccessSecure(globalResources).configured) {
+        return redirectGateTokenHolderToLaunch(req, res);
+    }
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 app.get('/agent', devAuthMiddleware, (req, res) => {
@@ -2521,38 +2558,53 @@ app.post('/', serverReadinessMiddleware, express.json(), (req, res) => {
                 return res.status(400).json({ error: 'PIN code is required' });
             }
             
-            const realIP = req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || req.ip || req.connection.remoteAddress;
+            const realIP = getRealIP(req);
             
             const config = globalResources.getConfig();
             const secureConfig = globalResources.getSecureConfig();
-            if (pin === secureConfig.loginPin) {
+            const adminMatch = verifyPin(pin, secureConfig.loginPin);
+            const readOnlyMatch = !adminMatch && verifyPin(pin, secureConfig.readOnlyPin);
+            if (readOnlyMatch && config.userPinLoginEnabled === false) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'User PIN login is disabled. Admin PIN required.',
+                    code: 'USER_PIN_DISABLED'
+                });
+            }
+            if (adminMatch || readOnlyMatch) {
+                const userType = adminMatch ? 'admin' : 'readonly';
                 // Clear any failed login attempts on successful login
                 globalResources.unblockIP(realIP);
-                
-                req.session.authenticated = true;
-                req.session.userType = 'admin';
-                res.json({
-                    success: true,
-                    message: 'Login successful',
-                    userType: 'admin',
-                    logViewerPathUuid: globalResources.getLogViewerPathUuid(),
-                    vfsPathUuid: globalResources.getVfsPathUuid()
-                });
-            } else if (pin === secureConfig.readOnlyPin) {
-                if (config.userPinLoginEnabled === false) {
-                    return res.status(403).json({
-                        success: false,
-                        error: 'User PIN login is disabled. Admin PIN required.',
-                        code: 'USER_PIN_DISABLED'
-                    });
+
+                // Opportunistically migrate a legacy plaintext PIN to a salted hash.
+                try {
+                    const storedKey = adminMatch ? 'loginPin' : 'readOnlyPin';
+                    if (!isHashedPin(secureConfig[storedKey])) {
+                        globalResources.modifyConfig('secureConfig').assign(storedKey, hashPin(pin));
+                    }
+                } catch (e) {
+                    console.warn('PIN hash upgrade skipped:', e.message);
                 }
 
-                // Clear any failed login attempts on successful login
-                globalResources.unblockIP(realIP);
-                
-                req.session.authenticated = true;
-                req.session.userType = 'readonly';
-                res.json({ success: true, message: 'Login successful', userType: 'readonly', vfsPathUuid: globalResources.getVfsPathUuid() });
+                // Regenerate the session id on login to prevent session fixation.
+                return req.session.regenerate((regenErr) => {
+                    if (regenErr) {
+                        console.error('Session regenerate failed on login:', regenErr);
+                        return res.status(500).json({ success: false, error: 'Login failed' });
+                    }
+                    req.session.authenticated = true;
+                    req.session.userType = userType;
+                    req.session.save((saveErr) => {
+                        if (saveErr) {
+                            console.error('Session save failed on login:', saveErr);
+                            return res.status(500).json({ success: false, error: 'Login failed' });
+                        }
+                        const payload = userType === 'admin'
+                            ? { success: true, message: 'Login successful', userType: 'admin', logViewerPathUuid: globalResources.getLogViewerPathUuid(), vfsPathUuid: globalResources.getVfsPathUuid() }
+                            : { success: true, message: 'Login successful', userType: 'readonly', vfsPathUuid: globalResources.getVfsPathUuid() };
+                        res.json(payload);
+                    });
+                });
             } else {
                 // Skip tracking failed login attempts for private IP addresses
                 if (!isPrivateIP(realIP)) {
@@ -2588,6 +2640,7 @@ app.post('/', serverReadinessMiddleware, express.json(), (req, res) => {
         case 'logout':
             req.session.destroy(() => {
                 res.clearCookie('connect.sid');
+                siteAccessPublic.clearDskCookie(res);
                 res.json({ success: true, message: 'Logged out successfully' });
             });
             break;
@@ -2597,7 +2650,7 @@ app.post('/', serverReadinessMiddleware, express.json(), (req, res) => {
             
             // Process telemetry data if provided
             if (data && typeof data === 'object') {
-                const realIP = req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || req.ip || req.connection.remoteAddress;
+                const realIP = getRealIP(req);
                 const eventType = data.eventType === 'app' ? 'app' : 'login';
                 const screen = data.screen || {};
 
@@ -4130,6 +4183,7 @@ async function handleAdminUnixSocketMessage(message, socket) {
     await globalResources.logger.bootStep('WebSocket Server', async () => {
         updateServerStage('websocket_init');
         const { wsServer } = globalResources.initializeWebSocketServer();
+        attachSiteGateWebUpgrade(server, globalResources, sessionStore, sessionSecret);
         attachGuacWebUpgrade(server, sessionMiddleware);
         serverStartupStatus.setCapability('websocket', true);
 
@@ -4178,6 +4232,20 @@ async function handleAdminUnixSocketMessage(message, socket) {
             desktopSoundsStatic.sendSound(req, res, __dirname);
         });
 
+        // graphify-out holds an internal cache (stat-index.json) that lists absolute server
+        // paths, sizes and mtimes for the whole tree. Auth before any bytes leave the host.
+        const graphifyPublicDir = path.join(__dirname, 'public', 'graphify-out');
+        if (fs.existsSync(graphifyPublicDir)) {
+            app.use('/graphify-out', authMiddleware, express.static(graphifyPublicDir, {
+                fallthrough: false,
+                maxAge: '10s'
+            }));
+        } else {
+            app.use('/graphify-out', authMiddleware, (_req, res) => {
+                res.status(404).json({ success: false, error: 'Not found', code: 'NOT_FOUND' });
+            });
+        }
+
         // Serve static files from public directory (after routes to avoid conflicts).
         // A missing file must fall through to the 404 handler, not surface as ENOENT.
         app.use(express.static('public', {
@@ -4208,7 +4276,12 @@ async function handleAdminUnixSocketMessage(message, socket) {
             }
             const missing = err.code === 'ENOENT' || err.code === 'ENOTDIR' || err.status === 404 || err.statusCode === 404;
             if (!missing) {
-                return next(err);
+                console.error('Unhandled route error:', err.message);
+                return res.status(500).json({
+                    success: false,
+                    error: 'Internal server error',
+                    code: 'INTERNAL_ERROR'
+                });
             }
             res.status(404).json({
                 success: false,
