@@ -1805,7 +1805,8 @@ async function syncShipCake(accountId, params) {
     }
 
 
-    const GITEA_BASE = 'https://yozora.bluesteel.737.jp.net/api/v1/repos/DreamScape/StaticForge';
+    const GITEA_BASE = process.env.YOZORA_GITEA_BASE || 'https://yozora.bluesteel.737.jp.net/api/v1/repos/DreamScape/StaticForge';
+    const GITEA_HEADERS = { 'User-Agent': 'Dreamscape-CakePantry/1.0', 'Accept': 'application/json' };
 
     let sinceTime = params.since;
     if (!sinceTime) {
@@ -1822,8 +1823,15 @@ async function syncShipCake(accountId, params) {
     let fetchError = null;
     for (let attempt = 1; attempt <= 2; attempt++) {
         try {
-            const res = await fetch(`${GITEA_BASE}/issues?state=closed&limit=50`);
-            issues = await res.json();
+            const res = await fetch(`${GITEA_BASE}/issues?state=closed&limit=50`, { headers: GITEA_HEADERS });
+            try {
+                issues = await res.json();
+            } catch (parseErr) {
+                throw new Error(`Gitea issues HTTP ${res.status}: ${parseErr.message}`);
+            }
+            if (!res.ok || !Array.isArray(issues)) {
+                throw new Error(`Gitea issues HTTP ${res.status}`);
+            }
             fetchError = null;
             break;
         } catch (e) {
@@ -1895,9 +1903,9 @@ async function syncShipCake(accountId, params) {
             let fetchError = null;
             for (let attempt = 1; attempt <= 2; attempt++) {
                 try {
-                    const prRes = await fetch(`${GITEA_BASE}/pulls/${issue.number}`);
+                    const prRes = await fetch(`${GITEA_BASE}/pulls/${issue.number}`, { headers: GITEA_HEADERS });
                     pr = await prRes.json();
-                    const commitsRes = await fetch(`${GITEA_BASE}/pulls/${issue.number}/commits`);
+                    const commitsRes = await fetch(`${GITEA_BASE}/pulls/${issue.number}/commits`, { headers: GITEA_HEADERS });
                     commits = await commitsRes.json();
                     fetchError = null;
                     break;
