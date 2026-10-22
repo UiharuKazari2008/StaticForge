@@ -29,6 +29,12 @@
     backdrop-filter: none;
 }
 
+/* the foot is the window's glass: no light client face behind it (vista-glass-controls.css paints
+   light clients #f0f0f0; the band and the picture area paint their own) */
+body:not(.windows-classic-theme) .modal.wpg-viewer[data-window-client="light"] > .modal-content.wpg-client {
+    background: transparent;
+}
+
 /* ---- the command band ---- */
 
 .wpg-viewer .wpg-toolbar {
