@@ -1,9 +1,16 @@
 // Request form presented by MCP request_form (modules/requestForm.js).
-// Inline in the Director chat when that chat asked, otherwise #requestFormWindow.
+// Inline in the Director chat when that chat asked, otherwise #requestFormWindow (on the Vista
+// desktop a property-sheet dialog: check boxes, drop-down lists, OK-style button first).
+
+function requestFormVista() {
+    return document.body.classList.contains('desktop-mode') && !document.body.classList.contains('windows-classic-theme');
+}
 
 function requestFormFieldValue(row) {
     const type = row.dataset.type;
     if (type === 'bool') {
+        const check = row.querySelector('input[type="checkbox"]');
+        if (check) return check.checked;
         const button = row.querySelector('button');
         return !!(button && button.dataset.state === 'on');
     }
@@ -62,15 +69,27 @@ function requestFormOptions(data) {
     }).filter(Boolean);
 }
 
-function requestFormSelect(data) {
+function requestFormSelect(data, vista) {
     const options = requestFormOptions(data);
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'btn-secondary';
+    button.className = vista ? 'custom-dropdown-btn' : 'btn-secondary';
     const initial = options.find((option) => data.default != null && String(data.default) === option.value) || options[0];
     button.dataset.value = initial ? initial.value : '';
     button.textContent = initial ? initial.label : 'Choose';
     if (!contextMenu) return button;
+    if (vista) {
+        // the drop-down list as the Vista dialogs' combos open it (personalizationDialogs.js wireCombo)
+        contextMenu.attachPickerMenu(button, {
+            items: () => options.map((option) => ({ value: option.value, text: option.label })),
+            value: () => button.dataset.value,
+            onSelect: (value, item) => {
+                button.dataset.value = value;
+                button.textContent = (item && item.text) || value;
+            }
+        });
+        return button;
+    }
     const config = {
         position: 'anchor',
         anchorAlign: 'start',
@@ -93,8 +112,17 @@ function requestFormSelect(data) {
     return button;
 }
 
-function requestFormBuildControl(field) {
+function requestFormBuildControl(field, vista) {
     const data = field.data || {};
+    if (field.type === 'bool' && vista) {
+        const label = document.createElement('label');
+        label.className = 'request-form-check';
+        const check = document.createElement('input');
+        check.type = 'checkbox';
+        check.checked = data.default === true;
+        label.append(check, document.createTextNode(field.label));
+        return label;
+    }
     if (field.type === 'bool') {
         const button = document.createElement('button');
         button.type = 'button';
@@ -109,7 +137,7 @@ function requestFormBuildControl(field) {
         return button;
     }
     if (field.type === 'select') {
-        return requestFormSelect(data);
+        return requestFormSelect(data, vista);
     }
     if (field.type === 'int' || field.type === 'number') {
         const input = document.createElement('input');
@@ -175,6 +203,7 @@ function requestFormBuildControl(field) {
 
 function renderRequestForm(host, spec, onDone, footer) {
     host.replaceChildren();
+    const vista = !!footer && requestFormVista();
     (spec.fields || []).forEach((field) => {
         const group = document.createElement('div');
         group.className = 'form-group';
@@ -182,16 +211,21 @@ function renderRequestForm(host, spec, onDone, footer) {
         group.dataset.type = field.type;
         group.dataset.label = field.label;
         group.dataset.required = field.data && field.data.required ? '1' : '';
-        const label = document.createElement('label');
-        label.textContent = field.label;
-        group.appendChild(label);
+        if (!(vista && field.type === 'bool')) {
+            const label = document.createElement('label');
+            label.textContent = field.label;
+            group.appendChild(label);
+        }
         if (field.sub) {
             const sub = document.createElement('p');
             sub.className = 'desktop-settings-hint';
             sub.textContent = field.sub;
             group.appendChild(sub);
         }
-        group.appendChild(requestFormBuildControl(field));
+        const control = requestFormBuildControl(field, vista);
+        // a Vista check box carries its own label; the hint goes under it
+        if (vista && field.type === 'bool') group.prepend(control);
+        else group.appendChild(control);
         host.appendChild(group);
     });
     const cancel = document.createElement('button');
@@ -222,8 +256,14 @@ function renderRequestForm(host, spec, onDone, footer) {
         left.className = 'modal-footer-left';
         const right = document.createElement('div');
         right.className = 'modal-footer-right';
-        left.appendChild(cancel);
-        right.appendChild(send);
+        if (vista) {
+            // Vista: the buttons right-aligned, the default one first
+            send.dataset.dialogPrimary = '1';
+            right.append(send, cancel);
+        } else {
+            left.appendChild(cancel);
+            right.appendChild(send);
+        }
         footer.append(left, right);
         return;
     }

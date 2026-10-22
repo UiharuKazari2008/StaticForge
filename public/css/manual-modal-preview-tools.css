@@ -2074,6 +2074,82 @@ img.loading {
     gap: var(--spacing-md);
 }
 
+/* Vista: a property-sheet form (vista-dialogs.css "form"): 11 px margins, the labels above
+   their boxes, check boxes carrying their own label, the hint under the control */
+body.desktop-mode:not(.windows-classic-theme) #requestFormWindow[data-vista-dialog] > .modal-content {
+    padding: 0;
+}
+
+/* the fields sit in the body, or in the custom scrollbar's content box when it wrapped them
+   (a re-render replaces the wrapper) */
+body.desktop-mode:not(.windows-classic-theme) #requestFormWindow[data-vista-dialog] .modal-body {
+    gap: 10px;
+    padding: 11px 11px 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #requestFormWindow[data-vista-dialog] .modal-body > .scrollable-content {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #requestFormWindow[data-vista-dialog] .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #requestFormWindow[data-vista-dialog] .form-group > label:not(.request-form-check) {
+    margin: 0;
+    color: #000;
+    font: inherit;
+    text-transform: none;
+    letter-spacing: normal;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #requestFormWindow[data-vista-dialog] .request-form-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    width: fit-content;
+    margin: 0;
+    color: #000;
+    font: inherit;
+    text-transform: none;
+    letter-spacing: normal;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #requestFormWindow[data-vista-dialog] .desktop-settings-hint {
+    margin: 0;
+    color: #6d6d6d;
+    font: inherit;
+    text-align: start;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #requestFormWindow[data-vista-dialog] .request-form-check + .desktop-settings-hint {
+    padding-left: 18px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #requestFormWindow[data-vista-dialog] .form-group[data-type="select"] > .custom-dropdown-btn {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: 23px;
+    text-align: start;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #requestFormWindow[data-vista-dialog] .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #requestFormWindow[data-vista-dialog] .modal-footer .modal-footer-right {
+    display: flex;
+    gap: 8px;
+}
+
 /* request_form select (window and inline Director form): long options wrap */
 .form-group[data-type="select"] > .btn-secondary {
     white-space: normal;

@@ -35,10 +35,11 @@
         'workspaceEditModal', 'workspaceDumpModal', 'unifiedUploadModal', 'vibeEncodingModal',
         'bulkChangePresetModal', 'cacheMetadataModal', 'timeDateModal', 'weatherLocationModal',
         'tokenDisplayModal', 'naxtCustomTagModal',
-        'vfsImportChoiceModal', 'directorFeedbackModal', 'compiledPromptModal', 'chatModal', 'updateNoteModal'];
+        'vfsImportChoiceModal', 'directorFeedbackModal', 'compiledPromptModal', 'chatModal', 'updateNoteModal',
+        'requestFormWindow'];
     // forms with Studio's prompt boxes: no 7.css on the client (its textarea and button rules would
     // move the text off the emphasis overlay and restyle the prompt toolbar)
-    const PROMPT_IDS = ['createTextReplacementModal', 'createRequestBodyReplacementModal', 'cacheMetadataModal'];
+    const PROMPT_IDS = ['createTextReplacementModal', 'createRequestBodyReplacementModal', 'cacheMetadataModal', 'requestFormWindow'];
     // name prompts laid out as the input dialog (a task dialog)
     const TASK_IDS = ['studioSaveNameModal'];
     const ALL_IDS = MESSAGE_IDS.concat(FORM_IDS, TASK_IDS);
