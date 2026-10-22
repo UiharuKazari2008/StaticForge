@@ -9,10 +9,15 @@ const path = require('path');
 const LOG_FILENAME = 'runtime-minify.log';
 const MAX_ENTRIES = 5000;
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+// Prune once the file passes PRUNE_AT_BYTES, down to PRUNE_TO_BYTES, so a file full of
+// fresh lines is not rewritten again on the very next append.
+const PRUNE_AT_BYTES = 512 * 1024;
+const PRUNE_TO_BYTES = 256 * 1024;
 
 let logsDir = null;
 let broadcastCallback = null;
 let entryBuffer = [];
+let preparedDir = null;
 
 function init(options = {}) {
     logsDir = options.logsDir || null;
@@ -40,7 +45,7 @@ function pruneLogFile(filePath) {
     if (!filePath || !fs.existsSync(filePath)) return;
     try {
         const stats = fs.statSync(filePath);
-        if (stats.size < 512 * 1024) return;
+        if (stats.size < PRUNE_AT_BYTES) return;
 
         const content = fs.readFileSync(filePath, 'utf8');
         const lines = content.split('\n').filter(Boolean);
@@ -58,7 +63,16 @@ function pruneLogFile(filePath) {
             kept.push(line);
         }
 
-        const trimmed = kept.length > MAX_ENTRIES ? kept.slice(-MAX_ENTRIES) : kept;
+        let trimmed = kept.length > MAX_ENTRIES ? kept.slice(-MAX_ENTRIES) : kept;
+        let bytes = 0;
+        let start = trimmed.length;
+        while (start > 0) {
+            const lineBytes = Buffer.byteLength(trimmed[start - 1], 'utf8') + 1;
+            if (bytes + lineBytes > PRUNE_TO_BYTES) break;
+            bytes += lineBytes;
+            start--;
+        }
+        if (start > 0) trimmed = trimmed.slice(start);
         fs.writeFileSync(filePath, `${trimmed.join('\n')}\n`, 'utf8');
     } catch (err) {
         console.warn('[RuntimeCompileLog] prune failed:', err.message);
@@ -87,11 +101,16 @@ function appendEntries(entries, options = {}) {
 
     if (filePath) {
         try {
-            fs.mkdirSync(path.dirname(filePath), { recursive: true });
+            const dir = path.dirname(filePath);
+            if (preparedDir !== dir) {
+                fs.mkdirSync(dir, { recursive: true });
+                preparedDir = dir;
+            }
             const text = `${normalized.map(formatLogLine).join('\n')}\n`;
             fs.appendFileSync(filePath, text, 'utf8');
             pruneLogFile(filePath);
         } catch (err) {
+            preparedDir = null;
             console.warn('[RuntimeCompileLog] write failed:', err.message);
         }
     }
