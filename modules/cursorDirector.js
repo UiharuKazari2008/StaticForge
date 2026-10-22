@@ -1591,6 +1591,17 @@ function flushIndexStoresSync() {
             console.error(`Director index exit flush failed: ${error.message}`);
         }
     });
+    exitFlushers.forEach((flush) => {
+        try { flush(); } catch (error) { console.error(`Director exit flush failed: ${error.message}`); }
+    });
+}
+
+// Other in-memory stores (Xi's index) flush on the same exit and signal hooks, so
+// the signal handler's "alone, then exit" check still sees one listener.
+const exitFlushers = [];
+
+function onExitFlush(flush) {
+    if (typeof flush === 'function' && !exitFlushers.includes(flush)) exitFlushers.push(flush);
 }
 
 // Flush on the signal too, in case the graceful shutdown is killed before it exits.
@@ -6904,6 +6915,7 @@ module.exports = {
     findBwrap,
     findClaude,
     ensureProject,
+    onExitFlush,
     prepareDirector,
     updateDirectorClis,
     syncCursorCliLogin,
