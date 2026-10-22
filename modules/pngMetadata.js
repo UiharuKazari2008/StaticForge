@@ -513,10 +513,10 @@ class PngMetadata {
         return Buffer.concat(outChunks);
     }
 
-    // Helper: Extract NovelAI metadata from PNG
-    async extractNovelAIMetadata(filePath) {
+    // Helper: Extract NovelAI metadata from PNG (preloadedBuffer: bytes of filePath when the caller has them)
+    async extractNovelAIMetadata(filePath, preloadedBuffer = null) {
         try {
-            const buffer = fs.readFileSync(filePath);
+            const buffer = Buffer.isBuffer(preloadedBuffer) ? preloadedBuffer : await fs.promises.readFile(filePath);
             const metadata = await this.readAnyMetadata(buffer);
             const sourceEncoding = metadata._encoding || null;
         
@@ -549,7 +549,7 @@ class PngMetadata {
                 
                 if (fs.existsSync(originalPath)) {
                     try {
-                        const originalBuffer = fs.readFileSync(originalPath);
+                        const originalBuffer = await fs.promises.readFile(originalPath);
                         const originalMetadata = await this.readAnyMetadata(originalBuffer);
                         if (originalMetadata.tEXt && originalMetadata.tEXt.Comment) {
                             _metadata = JSON.parse(originalMetadata.tEXt.Comment);

@@ -43,13 +43,14 @@ function img2imgNumber(fallback, ...values) {
 }
 
 // modules/replicationJournal.js
-async function recordReplicationGalleryJournal(filename, workspaceId) {
+async function recordReplicationGalleryJournal(filename, workspaceId, buffer = null) {
     if (!filename) return;
     try {
         const replicationJournal = require('./replicationJournal');
         await replicationJournal.recordGallerySave(filename, {
             workspaceId: workspaceId || null,
-            imagesDir: __runtimeGr ? __runtimeGr.getPath('images') : null
+            imagesDir: __runtimeGr ? __runtimeGr.getPath('images') : null,
+            buffer
         });
     } catch (_err) {
         // Journal not initialized yet
@@ -5129,7 +5130,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
         }
 
         if (shouldSave) {
-            fs.writeFileSync(path.join(__runtimeGr.getPath('images'), name), finalBuffer);
+            await fs.promises.writeFile(path.join(__runtimeGr.getPath('images'), name), finalBuffer);
             try {
                 const { stashRow } = require('./pktSideStore');
                 const snap = pullSurface(opts);
@@ -5150,8 +5151,8 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                 date: Date.now().valueOf()
             } : null;
             // finalBuffer already carries forgeData (finalizeWithForgeData / stage attest); do not merge it into the file again (#624)
-            await __runtimeGr.getMetadataDatabase().addReceiptMetadata(name, __runtimeGr.getPath('images'), generationReceiptData, forgeData, { forgeDataEmbedded: true });
-            await recordReplicationGalleryJournal(name, targetWorkspaceId);
+            await __runtimeGr.getMetadataDatabase().addReceiptMetadata(name, __runtimeGr.getPath('images'), generationReceiptData, forgeData, { forgeDataEmbedded: true, buffer: finalBuffer });
+            await recordReplicationGalleryJournal(name, targetWorkspaceId, finalBuffer);
 
             // Send progress update indicating preview generation is starting
             if (ws && handler) {
@@ -5260,7 +5261,7 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
             const upscaledName = name.replace('.png', '_upscaled.png');
 
             if (shouldSave) {
-                fs.writeFileSync(path.join(__runtimeGr.getPath('images'), upscaledName), updatedScaledBuffer);
+                await fs.promises.writeFile(path.join(__runtimeGr.getPath('images'), upscaledName), updatedScaledBuffer);
                 console.log(`💾 Saved: ${upscaledName}`);
 
                 // Add upscaled file to workspace
@@ -5273,9 +5274,9 @@ async function handleGeneration(globalResources, opts, returnImage = false, pres
                     creditType: upscaleCreditUsage.usageType,
                     date: Date.now().valueOf()
                 };
-                // Attach receipt to parent image instead of upscaled image
-                await __runtimeGr.getMetadataDatabase().addReceiptMetadata(name, __runtimeGr.getPath('images'), upscaledReceiptData, upscaledForgeData);
-                await recordReplicationGalleryJournal(upscaledName, targetWorkspaceId);
+                // Attach receipt to parent image instead of upscaled image (parent bytes on disk are finalBuffer)
+                await __runtimeGr.getMetadataDatabase().addReceiptMetadata(name, __runtimeGr.getPath('images'), upscaledReceiptData, upscaledForgeData, { buffer: finalBuffer });
+                await recordReplicationGalleryJournal(upscaledName, targetWorkspaceId, updatedScaledBuffer);
 
                 const upscaledPreviewResult = await generateMobilePreviews(path.join(__runtimeGr.getPath('images'), upscaledName), upscaledBaseName);
                 await storePreviewBlurhash(__runtimeGr, upscaledName, upscaledPreviewResult);

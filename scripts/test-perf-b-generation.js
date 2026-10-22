@@ -127,8 +127,24 @@ sections.forge624 = async function forge624() {
     assert.ok(row.width === 96 && row.height === 64, 'dimensions from buffer');
     const oldRow = await metadataDb.getImageMetadata('old.png', imagesDir);
     assert.deepStrictEqual(row.metadata, oldRow.metadata, 'DB metadata JSON identical to the legacy path');
+
+    // Upscale-branch shape (forgeData not embedded, parent rewritten): buffer path == file path.
+    const upForge = { upscale_ratio: 4, upscaled_at: 1700000000000, generation_type: 'upscaled', upscaler_provider: 'local' };
+    fs.writeFileSync(path.join(imagesDir, 'pa.png'), finalBuffer);
+    fs.writeFileSync(path.join(imagesDir, 'pb.png'), finalBuffer);
+    const ra = await metadataDb.addReceiptMetadata('pa.png', imagesDir, { type: 'upscaling', cost: 0, date: 1 }, upForge);
+    const rb = await metadataDb.addReceiptMetadata('pb.png', imagesDir, { type: 'upscaling', cost: 0, date: 1 }, upForge, { buffer: finalBuffer });
+    const da = fs.readFileSync(path.join(imagesDir, 'pa.png'));
+    const db = fs.readFileSync(path.join(imagesDir, 'pb.png'));
+    assert.ok(da.equals(db), 'buffer path writes the same parent bytes');
+    assert.strictEqual(ra.md5, rb.md5);
+    assert.strictEqual(rb.md5, crypto.createHash('md5').update(db).digest('hex'));
+    assert.strictEqual(ra.size, rb.size);
+    assert.deepStrictEqual(ra.metadata, rb.metadata);
+    assert.deepStrictEqual(ra.receipt, rb.receipt);
+
     await metadataDb.closeDatabase?.();
-    console.log('  forge624: ok (no history entry, signature verifies, DB metadata unchanged)');
+    console.log('  forge624: ok (no history entry, signature verifies, DB metadata unchanged, buffer path equal)');
 };
 
 async function main() {

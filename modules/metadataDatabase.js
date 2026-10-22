@@ -751,8 +751,38 @@ function generateMD5(filePath) {
     }
 }
 
+function md5OfBuffer(buffer) {
+    return crypto.createHash('md5').update(buffer).digest('hex');
+}
+
+/** Streamed MD5 (no full-file read on the event loop); null on error like generateMD5. */
+function generateMD5Async(filePath) {
+    return new Promise((resolve) => {
+        const hash = crypto.createHash('md5');
+        const stream = fs.createReadStream(filePath);
+        stream.on('data', (chunk) => hash.update(chunk));
+        stream.on('error', (error) => {
+            console.error(`❌ Error generating MD5 for ${filePath}:`, error.message);
+            resolve(null);
+        });
+        stream.on('end', () => resolve(hash.digest('hex')));
+    });
+}
+
+async function statOrNull(filePath) {
+    try {
+        return await fs.promises.stat(filePath);
+    } catch (_) {
+        return null;
+    }
+}
+
+async function fileExists(filePath) {
+    return (await statOrNull(filePath)) !== null;
+}
+
 /**
- * Extract image metadata using Sharp
+ * Extract image metadata using Sharp (file path or in-memory buffer)
  */
 async function extractImageMetadata(filePath) {
     try {
@@ -769,7 +799,7 @@ async function extractImageMetadata(filePath) {
             hasAlpha: metadata.hasAlpha
         };
     } catch (error) {
-        console.error(`❌ Error extracting metadata for ${filePath}:`, error.message);
+        console.error(`❌ Error extracting metadata for ${Buffer.isBuffer(filePath) ? 'buffer' : filePath}:`, error.message);
         return null;
     }
 }
@@ -976,22 +1006,32 @@ async function backfillMissingBlurhashes(options = {}) {
 /**
  * Build image metadata from disk without touching SQL.
  */
-async function buildImageMetadataFromFile(filename, imagesDir, existingReceipts = []) {
+async function buildImageMetadataFromFile(filename, imagesDir, existingReceipts = [], options = {}) {
     const filePath = path.join(imagesDir, filename);
-    if (!fs.existsSync(filePath)) {
+    const stats = await statOrNull(filePath);
+    if (!stats) {
         return null;
     }
 
-    const stats = fs.statSync(filePath);
-    const md5 = generateMD5(filePath);
-    const imageMetadata = await extractImageMetadata(filePath);
+    // One read serves md5, Sharp dimensions and the PNG text chunks (caller may pass the bytes).
+    let fileBuffer = Buffer.isBuffer(options.buffer) ? options.buffer : null;
+    if (!fileBuffer) {
+        try {
+            fileBuffer = await fs.promises.readFile(filePath);
+        } catch (error) {
+            console.error(`❌ Error generating MD5 for ${filePath}:`, error.message);
+            return null;
+        }
+    }
+    const md5 = md5OfBuffer(fileBuffer);
+    const imageMetadata = await extractImageMetadata(fileBuffer);
     if (!imageMetadata) {
         return null;
     }
 
     let extractedMetadata = {};
     try {
-        extractedMetadata = await _pngMetadata.extractNovelAIMetadata(filePath) || {};
+        extractedMetadata = await _pngMetadata.extractNovelAIMetadata(filePath, fileBuffer) || {};
     } catch (error) {
         console.error(`❌ Error extracting PNG metadata for ${filename}:`, error.message);
     }
@@ -2553,22 +2593,30 @@ async function addReceiptMetadata(filename, imagesDir, receiptData = null, forge
         throw new Error('Database not initialized');
     }
 
+    // options.buffer: the PNG bytes the caller just wrote to imagesDir/filename. md5, size and
+    // dimensions come from it instead of re-reading the file.
+    const fileBuffer = Buffer.isBuffer(options.buffer) ? options.buffer : null;
+    const filePath = path.join(imagesDir, filename);
     let metadata = metadataWriteQueue.getHotImage(filename);
 
     if (!metadata) {
-        const filePath = path.join(imagesDir, filename);
         const existing = await db.get('SELECT * FROM images WHERE filename = ?', [filename]);
-        if (existing && fs.existsSync(filePath) && generateMD5(filePath) === existing.md5) {
-            const receipts = await db.all(
-                'SELECT receipt_data FROM receipts WHERE image_id = ? ORDER BY timestamp',
-                [existing.id]
-            );
-            metadata = formatDbImageRow(existing, receipts);
+        if (existing) {
+            const currentMD5 = fileBuffer
+                ? md5OfBuffer(fileBuffer)
+                : (await fileExists(filePath) ? await generateMD5Async(filePath) : null);
+            if (currentMD5 && currentMD5 === existing.md5) {
+                const receipts = await db.all(
+                    'SELECT receipt_data FROM receipts WHERE image_id = ? ORDER BY timestamp',
+                    [existing.id]
+                );
+                metadata = formatDbImageRow(existing, receipts);
+            }
         }
     }
 
     if (!metadata) {
-        metadata = await buildImageMetadataFromFile(filename, imagesDir, []);
+        metadata = await buildImageMetadataFromFile(filename, imagesDir, [], { buffer: fileBuffer });
     }
 
     if (!metadata) {
@@ -2576,22 +2624,28 @@ async function addReceiptMetadata(filename, imagesDir, receiptData = null, forge
     }
 
     if (forgeData) {
-        const filePath = path.join(imagesDir, filename);
         if (options.forgeDataEmbedded) {
-            metadata.md5 = generateMD5(filePath) || metadata.md5;
-            if (fs.existsSync(filePath)) {
-                const stats = fs.statSync(filePath);
+            const stats = await statOrNull(filePath);
+            if (fileBuffer) {
+                metadata.md5 = md5OfBuffer(fileBuffer);
+            } else if (stats) {
+                metadata.md5 = (await generateMD5Async(filePath)) || metadata.md5;
+            }
+            if (stats) {
                 metadata.mtime = stats.mtime.valueOf();
                 metadata.size = stats.size;
             }
-        } else if (fs.existsSync(filePath)) {
-            const imageBuffer = fs.readFileSync(filePath);
-            const updatedBuffer = _pngMetadata.updateMetadata(imageBuffer, forgeData);
-            fs.writeFileSync(filePath, updatedBuffer);
-            metadata.md5 = generateMD5(filePath);
-            const stats = fs.statSync(filePath);
-            metadata.mtime = stats.mtime.valueOf();
-            metadata.size = stats.size;
+        } else {
+            const imageBuffer = fileBuffer
+                || (await fileExists(filePath) ? await fs.promises.readFile(filePath) : null);
+            if (imageBuffer) {
+                const updatedBuffer = _pngMetadata.updateMetadata(imageBuffer, forgeData);
+                await fs.promises.writeFile(filePath, updatedBuffer);
+                metadata.md5 = md5OfBuffer(updatedBuffer);
+                const stats = await fs.promises.stat(filePath);
+                metadata.mtime = stats.mtime.valueOf();
+                metadata.size = stats.size;
+            }
         }
         applyForgeDataToMetadata(metadata, forgeData);
     }
