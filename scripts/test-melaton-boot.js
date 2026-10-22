@@ -641,10 +641,12 @@ const flush = () => new Promise((r) => setImmediate(r));
 
     // one missed file list is retried into the installer; a list that never arrives
     // stays on the boot screen until the busy budget, and does not open /app
-    u = await runWith({ checks: [{ failed: true }, { files: files(50), bytes: 5000 }, { files: [], bytes: 0 }] });
+    // (the first answer is the POST's, missed there too, so the boot screen's own retry runs)
+    u = await runWith({ checks: [{ failed: true }, { failed: true }, { files: files(50), bytes: 5000 }] });
     assert.strictEqual(u.result, 'reboot');
+    assert.deepStrictEqual(u.calls.slice(0, 3), ['check', 'check', 'check'], 'the boot screen asked again');
     assert.ok(u.t.screens().includes('install'), 'a retried file list still enters the installer');
-    u = await runWith({ checks: [{ skipped: 'no-manifest' }, { files: files(50), bytes: 5000 }, { files: [], bytes: 0 }] });
+    u = await runWith({ checks: [{ skipped: 'no-manifest' }, { skipped: 'no-manifest' }, { files: files(50), bytes: 5000 }] });
     assert.strictEqual(u.result, 'reboot');
     assert.ok(u.t.screens().includes('install'), 'a compile skip must not hand off before the file list');
     assert.ok(!u.t.replaced.includes('/app'));
@@ -749,10 +751,12 @@ const flush = () => new Promise((r) => setImmediate(r));
     assert.strictEqual(u.result, 'reboot', 'files outside the install list never fail it');
     assert.deepStrictEqual(u.store.record.stragglers, ['/f1.js'].concat(old));
 
-    // a reload mid-install goes back into Setup even for a few files
-    u = await runWith({ resume: true, checks: [{ files: files(3), bytes: 300 }, { files: [], bytes: 0 }] });
+    // a reload mid-install goes back into Setup even for a few files: the POST reads the
+    // interrupted install and boots the media, which installs them unattended
+    u = await runWith({ resume: true, checks: [{ files: files(3), bytes: 300 }] });
     assert.strictEqual(u.result, 'reboot');
     assert.ok(u.t.screens().includes('install'));
+    assert.ok(u.calls.includes('copyPack') && u.store.record.files === 3, 'the few files are installed, not skipped');
 
     // design previews of the installer
     h = harness([json(true)], { designMode: true });
