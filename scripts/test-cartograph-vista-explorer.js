@@ -148,12 +148,13 @@ const liveCss = fs.readFileSync(path.join(__dirname, '..', 'public/css/vista-exp
 assert.ok(liveCss.includes('.explorer-item-type-icon.explorer-live-folder:is(') && liveCss.includes("url('/static_images/vista-icons/explorer/folder-back-96.png')") && liveCss.includes("url('/static_images/vista-icons/explorer/folder-front-96.png')") && liveCss.includes('folder-front-48.png') && liveCss.includes('folder-front-256.png'), 'live folder uses the extract that matches the box');
 assert.ok(liveCss.includes("--ex-icon-lg: url('/static_images/vista-icons/explorer/folder-96.png')") && !liveCss.includes("256.png') 2x"), 'large is the 96 extract and hidpi does not swap in the 256');
 for (const n of ['folder-back-256', 'folder-back-96', 'folder-back-48', 'folder-front-256', 'folder-front-96', 'folder-front-48', 'folder-96', 'folder-48', 'folder-16']) assert.ok(fs.existsSync(path.join(__dirname, '..', `public/static_images/vista-icons/explorer/${n}.png`)), n);
-// Computer (2026-10-22): the trail starts at Computer, C: is the Cartograph root, sizes as Vista
-// prints them, the address box's parts stay laid over it, the command bar has Vista's icons
+// Computer (2026-10-22): the trail starts at Computer, C: (Local Disk) is the Cartograph root, sizes
+// as Vista prints them, the address box's parts stay laid over it, the command bar has Vista's icons
 require('../public/scripts/comp/explorerComputerView.js');
 const Computer = globalThis.ExplorerComputerView;
 const { parseSize, formatSize, diskFacts, hostFacts } = Computer._test;
 assert.strictEqual(Computer.PATH, 'Computer');
+assert.strictEqual(Computer.ROOT_NAME, 'Local Disk (C:)', 'Vista names the system drive Local Disk');
 assert.ok(Computer.isPath('Computer') && !Computer.isPath('/Computer') && !Computer.isPath('/'), 'Computer is outside the VFS paths');
 assert.ok(Computer.matchesInput(' computer ') && !Computer.matchesInput('/Computer'), 'typing Computer goes there');
 assert.strictEqual(parseSize('63.90 GB'), Math.round(63.9 * 1024 ** 3));
@@ -176,7 +177,7 @@ const trail = chromeFor(trailApp);
 trail.el = { breadcrumb: crumbHost() };
 trail.highlightFavorite = () => {};
 trail.renderBreadcrumb('/Workspaces/Default');
-assert.deepStrictEqual(trail.crumbs.map((x) => x.label), ['Computer', 'Cartograph (C:)', 'Workspaces', 'Default']);
+assert.deepStrictEqual(trail.crumbs.map((x) => x.label), ['Computer', 'Local Disk (C:)', 'Workspaces', 'Default']);
 assert.deepStrictEqual(trail.crumbs.map((x) => x.path), ['Computer', '/', '/Workspaces', '/Workspaces/default']);
 assert.ok(trail.el.breadcrumb.innerHTML.includes('crumb-folder.png') && !trail.el.breadcrumb.innerHTML.includes('explorer-crumb-overflow'), 'a hidden box shows every crumb');
 trailApp.currentPath = '/';
@@ -199,7 +200,16 @@ assert.ok(narrow.innerHTML.includes('explorer-crumb-overflow') && narrow.innerHT
 const css2 = read('public/css/vista-explorer.css');
 assert.ok(/\.explorer-address-group > #explorerBreadcrumb \{\s*position: absolute;\s*z-index: 2;/.test(css2), 'the crumbs stay laid over the box (not a flow item cut to half its width)');
 assert.ok(/\.explorer-address-group > :is\(#explorerRefreshBtn, #explorerAddressDropBtn\) \{\s*position: absolute;/.test(css2), 'the ▾ keeps its place left of refresh');
-assert.ok(css2.includes('progress-fill-partial.png') && css2.includes('.explorer-computer-tile.is-selected'));
+assert.ok(css2.includes('.explorer-computer-tile.is-selected') && css2.includes('drive-bar-track.png') && css2.includes('drive-bar-fill.png') && css2.includes('drive-bar-fill-error.png'), "the drive bar is Vista's track and fill");
+assert.ok(/\.explorer-drive-bar-fill \{\s*left: -1px;\s*top: -1px;\s*bottom: -1px;\s*width: calc\(var\(--used, 0\) \* \(100% \+ 2px\)\);/.test(css2), 'the fill spans the whole bar, frame included');
+assert.ok(css2.includes('#explorerModal.explorer-in-computer .explorer-details-header {\n    grid-template-columns: 78px 80px 80px 85px;'), "Computer's column widths");
+assert.ok(/\.explorer-computer-group-head \{[^}]*gap: 0;[^}]*margin: 2px 9px 0 13px;/.test(css2) && css2.includes('.explorer-computer-group-toggle {'), 'the heading rule runs to the chevron');
+const exCss = read('public/css/explorer.css');
+assert.ok(exCss.includes('#explorerModal.explorer-in-computer #explorerGridHost {') && !exCss.includes(':is(#explorerGridHost, #explorerDetailsHeader)'), 'Computer keeps the column headers');
+assert.ok(read('public/scripts/comp/explorerComputerView.js').includes("{ label: 'Free Space' }") && read('public/scripts/comp/explorerComputerView.js').includes('style="--used:'), "Computer's columns, the bar's used fraction");
+for (const f of ['drive-bar-track', 'drive-bar-fill', 'drive-bar-fill-error']) {
+    assert.ok(fs.existsSync(path.join(ROOT, `public/static_images/vista-controls/${f}.png`)), f);
+}
 const html2 = read('public/app.html');
 for (const name of ['upload', 'download', 'replace', 'system-properties', 'control-panel']) {
     assert.ok(html2.includes(`/static_images/vista-cmdbar/${name}.png`), `${name} has Vista's icon`);
