@@ -33,7 +33,9 @@
  *   quickLaunchItems
  *                   Quick Launch's shortcuts in order: 'show-desktop', 'switch-windows', or any
  *                   Start menu launchId; added with the Start menu's "Add to Quick Launch",
- *                   removed with Delete on the icon's right-click menu
+ *                   removed with Delete on the icon's right-click menu, reordered by dragging,
+ *                   and the deleted defaults put back with Restore Default Items (the icon's menu,
+ *                   the taskbar's Toolbars menu, the Properties' Toolbars tab)
  *
  * Also here: the Quick Launch toolbar, the taskbar's and the Start button's right-click menus,
  * and the window previews over taskbar buttons. Art: public/static_images/vista-taskbar/
@@ -353,6 +355,11 @@
                 ev.stopPropagation();
                 runQuickLaunch(b.dataset.quickLaunch);
             });
+            wireQuickLaunchDrag(bar);
+            bar.addEventListener('pointerover', (ev) => {
+                const b = ev.target.closest('[data-quick-launch="switch-windows"]');
+                if (b && !b.contains(ev.relatedTarget)) prewarmFlip3d();
+            });
             tb.insertBefore(bar, band);
         }
         renderQuickLaunch(bar);
@@ -462,6 +469,154 @@
         return true;
     }
 
+    /** The list with `id` dropped into gap `gap` (0 = before the first, length = after the last),
+     *  the gaps counted in the list as it is before the move. */
+    function reorderList(list, id, gap) {
+        const from = list.indexOf(id);
+        if (from < 0) return list.slice();
+        const to = Math.max(0, Math.min(list.length, Math.round(gap)));
+        const out = list.filter((x) => x !== id);
+        out.splice(to > from ? to - 1 : to, 0, id);
+        return out;
+    }
+
+    /** Quick Launch's drag and drop: the shortcut moves to gap `gap`; false when it stays put. */
+    function moveQuickLaunch(id, gap) {
+        const next = reorderList(settings.quickLaunchItems, id, gap);
+        if (next.join('|') === settings.quickLaunchItems.join('|')) return false;
+        set({ quickLaunchItems: next });
+        return true;
+    }
+
+    /** The default shortcuts (DEFAULTS.quickLaunchItems) the user has deleted. */
+    function missingQuickLaunchDefaults(list = settings.quickLaunchItems) {
+        return DEFAULTS.quickLaunchItems.filter((id) => !list.includes(id));
+    }
+
+    /** The list with each missing default back beside the default that comes before it (or first),
+     *  the user's own shortcuts and order kept. */
+    function mergeQuickLaunchDefaults(list) {
+        const out = list.slice();
+        DEFAULTS.quickLaunchItems.forEach((id, i) => {
+            if (out.includes(id)) return;
+            let at = 0;
+            for (let j = i - 1; j >= 0; j--) {
+                const k = out.indexOf(DEFAULTS.quickLaunchItems[j]);
+                if (k >= 0) { at = k + 1; break; }
+            }
+            out.splice(at, 0, id);
+        });
+        return out;
+    }
+
+    /** "Restore Default Items": Show desktop, Switch between windows and the other defaults come back. */
+    function restoreQuickLaunchDefaults() {
+        if (!missingQuickLaunchDefaults().length) return false;
+        set({ quickLaunch: true, quickLaunchItems: mergeQuickLaunchDefaults(settings.quickLaunchItems) });
+        return true;
+    }
+
+    // ---- Quick Launch drag and drop ------------------------------------------------------------
+    // Vista's toolbar insert mark: a black 2 px I-beam the taskbar's full height with 6 px and 4 px
+    // serifs at both ends, its stem on the left edge of the button the drop goes before (VM,
+    // 2026-10-22); the dragged icon follows the pointer at the grab offset, half see-through, on
+    // the hot button face. The drag starts past Windows' 4 px SM_CXDRAG; Esc cancels.
+
+    const QL_DRAG_PX = 4;
+    let qlDrag = null;
+
+    /** The gap (0..n) the pointer at clientX falls in: before the first button whose middle it is left of. */
+    function quickLaunchGapAt(bar, clientX) {
+        const btns = Array.from(bar.querySelectorAll('.taskbar-quick-launch-btn'));
+        for (let i = 0; i < btns.length; i++) {
+            const r = btns[i].getBoundingClientRect();
+            if (clientX < r.left + r.width / 2) return i;
+        }
+        return btns.length;
+    }
+
+    function quickLaunchGapX(bar, gap) {
+        const btns = bar.querySelectorAll('.taskbar-quick-launch-btn');
+        const br = bar.getBoundingClientRect();
+        if (!btns.length) return 0;
+        if (gap < btns.length) return Math.round(btns[gap].getBoundingClientRect().left - br.left);
+        return Math.round(btns[btns.length - 1].getBoundingClientRect().right - br.left);
+    }
+
+    function wireQuickLaunchDrag(bar) {
+        bar.addEventListener('pointerdown', (ev) => {
+            if (ev.button !== 0 || qlDrag) return;
+            const b = ev.target.closest('.taskbar-quick-launch-btn');
+            if (!b) return;
+            const r = b.getBoundingClientRect();
+            qlDrag = { bar, btn: b, id: b.dataset.quickLaunch, pointerId: ev.pointerId, x0: ev.clientX, y0: ev.clientY, dx: ev.clientX - r.left, dy: ev.clientY - r.top, on: false, gap: -1, ghost: null, mark: null };
+        });
+        bar.addEventListener('pointermove', onQuickLaunchDragMove);
+        bar.addEventListener('pointerup', (ev) => endQuickLaunchDrag(ev, true));
+        bar.addEventListener('pointercancel', (ev) => endQuickLaunchDrag(ev, false));
+        bar.addEventListener('lostpointercapture', (ev) => { if (qlDrag && qlDrag.on) endQuickLaunchDrag(ev, false); });
+        // the click after a drop is not a launch
+        bar.addEventListener('click', (ev) => {
+            if (bar.dataset.dragJustEnded !== '1') return;
+            delete bar.dataset.dragJustEnded;
+            ev.stopImmediatePropagation();
+            ev.preventDefault();
+        }, true);
+    }
+
+    function onQuickLaunchDragMove(ev) {
+        const d = qlDrag;
+        if (!d || ev.pointerId !== d.pointerId) return;
+        if (!d.on) {
+            if (Math.abs(ev.clientX - d.x0) <= QL_DRAG_PX && Math.abs(ev.clientY - d.y0) <= QL_DRAG_PX) return;
+            d.on = true;
+            try { d.bar.setPointerCapture(d.pointerId); } catch (_) { /* gone */ }
+            hideThumb(true);
+            d.ghost = d.btn.cloneNode(true);
+            d.ghost.className = 'taskbar-quick-launch-btn taskbar-quick-launch-ghost';
+            d.ghost.removeAttribute('title');
+            d.ghost.setAttribute('aria-hidden', 'true');
+            doc.body.appendChild(d.ghost);
+            d.mark = doc.createElement('div');
+            d.mark.className = 'taskbar-quick-launch-insert';
+            d.mark.hidden = true;
+            d.bar.appendChild(d.mark);
+            d.bar.classList.add('is-dragging');
+            doc.addEventListener('keydown', onQuickLaunchDragKey, true);
+        }
+        d.ghost.style.transform = `translate(${Math.round(ev.clientX - d.dx)}px, ${Math.round(ev.clientY - d.dy)}px)`;
+        // over the toolbar (the taskbar's height, a button's width either side): an insert mark
+        const tb = taskbar();
+        const br = d.bar.getBoundingClientRect();
+        const tr = tb ? tb.getBoundingClientRect() : br;
+        const over = ev.clientY >= tr.top && ev.clientY <= tr.bottom && ev.clientX >= br.left - 23 && ev.clientX <= br.right + 23;
+        d.gap = over ? quickLaunchGapAt(d.bar, ev.clientX) : -1;
+        d.mark.hidden = d.gap < 0;
+        if (d.gap >= 0) d.mark.style.left = `${quickLaunchGapX(d.bar, d.gap) - 2}px`;
+    }
+
+    function onQuickLaunchDragKey(ev) {
+        if (ev.key !== 'Escape' || !qlDrag) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        endQuickLaunchDrag(null, false);
+    }
+
+    function endQuickLaunchDrag(ev, drop) {
+        const d = qlDrag;
+        if (!d || (ev && ev.pointerId !== d.pointerId)) return;
+        qlDrag = null;
+        if (!d.on) return;
+        doc.removeEventListener('keydown', onQuickLaunchDragKey, true);
+        try { d.bar.releasePointerCapture(d.pointerId); } catch (_) { /* released */ }
+        if (d.ghost) d.ghost.remove();
+        if (d.mark) d.mark.remove();
+        d.bar.classList.remove('is-dragging');
+        d.bar.dataset.dragJustEnded = '1';
+        setTimeout(() => { delete d.bar.dataset.dragJustEnded; }, 0);
+        if (drop && d.gap >= 0) moveQuickLaunch(d.id, d.gap);
+    }
+
     function launchApp(launchId) {
         // findStartMenuLaunchableById / launchStartMenuItem: public/scripts/comp/modalUtils.js
         const item = callGlobal('findStartMenuLaunchableById', launchId);
@@ -492,7 +647,37 @@
     }
 
     /** Switch between windows: the Ctrl+Tab switcher (keyboardShortcuts.js), held open until a pick. */
+    let flip3dFailed = false;
+
+    /** Vista's Switch between windows is Flip 3D (flip3d.js, a lazy feature), open until a click,
+     *  Enter or Esc; without WebGL the window switcher. */
     function openWindowSwitcher() {
+        const flip = () => !!(root.flip3d && root.flip3d.open('sticky'));
+        if (!flip3dFailed && root.flip3d) {
+            if (flip()) return;
+            flip3dFailed = true;
+        } else if (!flip3dFailed && typeof featureLoader !== 'undefined') {
+            featureLoader.loadFeature('flip3d').then(() => {
+                if (flip()) return;
+                flip3dFailed = true;
+                openClassicSwitcher();
+            }).catch(() => {
+                flip3dFailed = true;
+                openClassicSwitcher();
+            });
+            return;
+        }
+        openClassicSwitcher();
+    }
+
+    /** Resting on Switch between windows: Flip 3D copies the windows that changed ahead. */
+    function prewarmFlip3d() {
+        if (flip3dFailed) return;
+        if (root.flip3d) root.flip3d.prewarm();
+        else if (typeof featureLoader !== 'undefined') featureLoader.loadFeature('flip3d').then(() => root.flip3d && root.flip3d.prewarm()).catch(() => {});
+    }
+
+    function openClassicSwitcher() {
         if (typeof startWindowSwitcher !== 'function') return;
         startWindowSwitcher();
         if (typeof windowSwitcherActive !== 'undefined' && !windowSwitcherActive) return;
@@ -595,7 +780,9 @@
                             text: 'Toolbars',
                             submenu: [
                                 { text: 'Quick Launch', action: 'tb-toolbar-quick-launch', checked: s.quickLaunch, indicatorMark: 'check', showIndicator: true },
-                                { text: 'Status', action: 'tb-toolbar-ticker', checked: s.ticker, indicatorMark: 'check', showIndicator: true }
+                                { text: 'Status', action: 'tb-toolbar-ticker', checked: s.ticker, indicatorMark: 'check', showIndicator: true },
+                                { separator: true },
+                                { text: 'Restore Quick Launch Items', action: 'tb-ql-restore', disabled: !missingQuickLaunchDefaults().length }
                             ]
                         },
                         { separator: true },
@@ -613,6 +800,7 @@
                 switch (action) {
                     case 'tb-toolbar-quick-launch': set({ quickLaunch: !settings.quickLaunch }); break;
                     case 'tb-toolbar-ticker': set({ ticker: !settings.ticker }); break;
+                    case 'tb-ql-restore': restoreQuickLaunchDefaults(); break;
                     case 'tb-cascade': arrangeWindows('cascade'); break;
                     case 'tb-stacked': arrangeWindows('stacked'); break;
                     case 'tb-side': arrangeWindows('side'); break;
@@ -642,17 +830,27 @@
                 } else if (action === 'start-explore') callGlobal('openExplorerApplet');
             }
         };
-        // a Quick Launch shortcut: Open, and Delete takes it off the toolbar
+        // a Quick Launch shortcut: Open, Delete takes it off the toolbar, and Restore Default Items
+        // brings back the deleted defaults (Show desktop, Switch between windows...)
         contextMenu.configs['vista-quick-launch-item'] = {
             sections: [{
                 type: 'list',
-                items: [
-                    { text: 'Open', action: 'ql-open' },
-                    { separator: true },
-                    { text: 'Delete', action: 'ql-delete' }
-                ]
+                items: [],
+                initfn: (section) => {
+                    section.items = [
+                        { text: 'Open', action: 'ql-open' },
+                        { separator: true },
+                        { text: 'Delete', action: 'ql-delete' },
+                        { separator: true },
+                        { text: 'Restore Default Items', action: 'ql-restore', disabled: !missingQuickLaunchDefaults().length }
+                    ];
+                }
             }],
             onAction: (action, target) => {
+                if (action === 'ql-restore') {
+                    restoreQuickLaunchDefaults();
+                    return;
+                }
                 const b = target && target.closest ? target.closest('.taskbar-quick-launch-btn') : null;
                 if (!b) return;
                 if (action === 'ql-open') runQuickLaunch(b.dataset.quickLaunch);
@@ -860,8 +1058,12 @@
         hasQuickLaunch,
         addQuickLaunch,
         removeQuickLaunch,
+        moveQuickLaunch,
+        missingQuickLaunchDefaults,
+        mergeQuickLaunchDefaults,
+        restoreQuickLaunchDefaults,
         quickLaunchEntry,
-        _test: { read, snapshot, stripLiveAttributes, QUICK_LAUNCH_SHELL, STORAGE_KEY }
+        _test: { read, snapshot, stripLiveAttributes, reorderList, QUICK_LAUNCH_SHELL, STORAGE_KEY }
     };
     root.taskbarSettings = api;
 

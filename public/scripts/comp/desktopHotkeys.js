@@ -54,6 +54,8 @@
 
     /** Ctrl/Alt/Win+Tab is switching windows (keyboardShortcuts.js); Ctrl+Esc then is not Start. */
     function windowSwitcherOpen() {
+        // flip3d.js: Win+Tab's Flip 3D
+        if (root.flip3d && root.flip3d.isOpen()) return true;
         return typeof windowSwitcherActive !== 'undefined' && windowSwitcherActive === true;
     }
 

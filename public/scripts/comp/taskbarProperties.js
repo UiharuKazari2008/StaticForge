@@ -251,7 +251,8 @@
             <div class="tbp-ctl tbp-tree" style="${dlu(7, 20, 236, 160)}" role="tree">
                 <div class="tbp-tree-row" role="treeitem"><input type="checkbox" id="tbp-tb-quicklaunch" data-key="quickLaunch"><label for="tbp-tb-quicklaunch">Quick Launch</label></div>
                 <div class="tbp-tree-row" role="treeitem"><input type="checkbox" id="tbp-tb-ticker" data-key="ticker"><label for="tbp-tb-ticker">Status</label></div>
-            </div>`;
+            </div>
+            ${button(133, 186, 110, 14, '<u>R</u>estore Quick Launch Items', 'ql-restore')}`;
     }
 
     // ---- previews ------------------------------------------------------------------------------
@@ -393,6 +394,8 @@
             op.value = String(dlg.pending.core.opacity || 100);
             content.querySelector('.tbp-opacity-value').textContent = `${op.value}%`;
         }
+        const qlRestore = content.querySelector('[data-action="ql-restore"]');
+        if (qlRestore && root.taskbarSettings) qlRestore.disabled = !root.taskbarSettings.missingQuickLaunchDefaults(dlg.pending.core.quickLaunchItems || []).length;
         syncStartButtonControls();
         renderPreviews();
     }
@@ -692,6 +695,7 @@
             case 'customize-start': openCustomizeStart(); break;
             case 'customize-icons': openCustomizeIcons(); break;
             case 'customize-popups': openCustomizePopups(); break;
+            case 'ql-restore': restoreQuickLaunchPending(); break;
             case 'help-taskbar':
             case 'help-start':
                 // Help and Support is the Grimoire (modalUtils.js start menu places)
@@ -699,6 +703,18 @@
                 break;
             default: break;
         }
+    }
+
+    /** The Toolbars tab's Restore Quick Launch Items: the deleted defaults go back into the pending
+     *  list (taskbarSettings.js mergeQuickLaunchDefaults), shown on, saved with Apply / OK. */
+    function restoreQuickLaunchPending() {
+        const ts = root.taskbarSettings;
+        if (!ts) return;
+        const c = dlg.pending.core;
+        c.quickLaunchItems = ts.mergeQuickLaunchDefaults(c.quickLaunchItems || []);
+        c.quickLaunch = true;
+        setDirty(true);
+        syncControls();
     }
 
     function onKey(ev) {

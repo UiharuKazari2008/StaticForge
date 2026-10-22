@@ -57,7 +57,7 @@ const FEATURE_MANIFEST = {
     },
     grimoire: {
         styles: ['css/tag-wiki-search.css'],
-        scripts: ['scripts/comp/grimoireRemoteBrowser.js', 'scripts/comp/grimoireIeChrome.js', 'scripts/comp/grimoireTabs.js', 'scripts/comp/tagWikiSearchModal.js']
+        scripts: ['scripts/comp/grimoireRemoteBrowser.js', 'scripts/comp/grimoireIeChrome.js', 'scripts/comp/grimoireTabs.js', 'scripts/comp/tagWikiSearchModal.js', 'scripts/comp/grimoireHistoryDsap.js']
     },
     character_search: {
         depends: ['grimoire'],
@@ -224,6 +224,11 @@ const FEATURE_MANIFEST = {
     mail_options: {
         styles: ['css/taskbar-properties.css', 'css/mail-options.css'],
         scripts: ['scripts/comp/mailOptions.js']
+    },
+    // Windows Flip 3D, Vista's Win+Tab (keyboardShortcuts.js, taskbarSettings.js Quick Launch)
+    flip3d: {
+        styles: ['css/flip3d.css'],
+        scripts: ['scripts/comp/flip3d.js']
     },
     // Taskbar and Start Menu Properties (public/scripts/comp/taskbarSettings.js openProperties)
     taskbar_properties: {
