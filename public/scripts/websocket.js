@@ -3292,6 +3292,12 @@ class WebSocketClient {
         if (typeof data.useVistaLogon === 'boolean') {
             this._setVistaLogon(data.useVistaLogon, data.logonPicture);
         }
+        if (data.siteAccess && typeof data.siteAccess === 'object') {
+            try {
+                if (data.siteAccess.configured) localStorage.setItem('dreamscapeSiteGate', '1');
+                else localStorage.removeItem('dreamscapeSiteGate');
+            } catch (_) { /* ignore */ }
+        }
         this.serverStartupStatusOk = true;
         this.serverStartupReady = data.isReady === true;
 
@@ -5710,7 +5716,12 @@ class WebSocketClient {
                 console.error('❌ PIN modal error:', error);
             });
         } else {
-            // Fallback: redirect to login page
+            try {
+                if (localStorage.getItem('dreamscapeSiteGate') === '1') {
+                    location.href = '/app';
+                    return;
+                }
+            } catch (_) { /* ignore */ }
             location.href = '/';
         }
     }

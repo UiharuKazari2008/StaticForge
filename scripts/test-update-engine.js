@@ -297,6 +297,32 @@ function memoryStorage() {
     assert.strictEqual(packJson.files.find((row) => row.url === '/w.css').body, crypto.createHash('sha256').update(cssBody).digest('hex'), 'pack.json carries the body hash of each entry');
     assert.strictEqual(packJson.files.find((row) => row.url === '/a.js').body, packManifest[0].hash);
 
+    // /protected rows (the Vista fonts, the tokenizers) stay out of the pre-sign-in pack; the hash
+    // still covers the whole manifest, as the client computes it
+    fs.mkdirSync(path.join(tmp, 'protected'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, 'protected', 'f.woff2'), pngBody);
+    const gatedManifest = packManifest.concat([
+        { url: '/protected/f.woff2', hash: packManifest[1].hash, size: pngBody.length, auth: true }
+    ]);
+    const gatedOut = path.join(tmp, 'gated');
+    const gated = await pack.rebuild({ outputDir: gatedOut, manifest: gatedManifest, resolveFile: (file) => path.join(tmp, file.url.slice(1)) });
+    assert.strictEqual(gated.count, 3, 'the auth-gated row is not packed');
+    assert.strictEqual(gated.skipped, 0, 'and is not reported as skipped');
+    assert.strictEqual(gated.hash, pack.hashManifest(gatedManifest));
+    const gatedNames = Object.keys(fflate.unzipSync(new Uint8Array(fs.readFileSync(path.join(gatedOut, 'pack.zip')))));
+    assert.ok(!gatedNames.some((name) => name.includes('protected')), 'no /protected file in the zip');
+    const gatedSubset = await pack.buildSubset({ manifest: gatedManifest.slice(3), resolveFile: (file) => path.join(tmp, file.url.slice(1)) });
+    assert.strictEqual(gatedSubset.count, 0, 'a subset request cannot pull /protected files either');
+    gatedSubset.cleanup();
+    // a pack written before auth rows were left out is rebuilt even with the same hash
+    const metaFile = path.join(gatedOut, 'pack-meta.json');
+    const oldMeta = JSON.parse(fs.readFileSync(metaFile, 'utf8'));
+    delete oldMeta.authExcluded;
+    fs.writeFileSync(metaFile, JSON.stringify(oldMeta));
+    const regated = await pack.rebuild({ outputDir: gatedOut, manifest: gatedManifest, resolveFile: (file) => path.join(tmp, file.url.slice(1)) });
+    assert.strictEqual(regated.rebuilt, true, 'an old pack with auth rows is rebuilt');
+    pack.init({ outputDir: outDir });
+
     function memoryCache(rows) {
         const store = new Map();
         rows.forEach((row) => {

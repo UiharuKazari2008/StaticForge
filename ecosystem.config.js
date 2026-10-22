@@ -32,7 +32,8 @@ module.exports = {
         // Cap glibc arenas (Oct 4 mem investigation: ~1.46GB across ~103 arenas).
         // Do NOT add max_memory_restart / cron_restart / watch.
         env: {
-            MALLOC_ARENA_MAX: "2"
+            MALLOC_ARENA_MAX: "2",
+            NODE_ENV: "production"
         }
     }, {
         name: 'grimoire-browser',

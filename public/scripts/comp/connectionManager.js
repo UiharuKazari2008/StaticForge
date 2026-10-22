@@ -14,6 +14,47 @@ function syncAuthLocalStorageFromServer(payload) {
     if (payload.vfsPathUuid && typeof bootstrapVfsPathUuidFromOptions === 'function') {
         bootstrapVfsPathUuidFromOptions(payload);
     }
+    if (payload.authenticated === false) {
+        vistaWebFontsSawSignedOut = true;
+    } else if (payload.userType) {
+        refreshVistaWebFontsAfterLogon();
+    }
+}
+
+// The Vista fonts (public/css/vista-fonts.css) are served from /protected/: a face that loaded
+// while this page was signed out fell back to the client's own copy or Selawik. Once signed in,
+// fetch those faces again; a face added from script wins over the CSS one.
+const VISTA_WEB_FONT_PATH = '/protected/fonts/vista/';
+let vistaWebFontsSawSignedOut = false;
+
+function refreshVistaWebFontsAfterLogon() {
+    if (!vistaWebFontsSawSignedOut) return;
+    vistaWebFontsSawSignedOut = false;
+    if (typeof document === 'undefined' || !document.fonts || typeof FontFace !== 'function') return;
+    const loaded = new Set();
+    document.fonts.forEach((face) => {
+        if (face.status === 'loaded') loaded.add(`${face.family.replace(/["']/g, '')}|${face.weight}|${face.style}`);
+    });
+    for (const sheet of document.styleSheets) {
+        let rules;
+        try { rules = sheet.cssRules; } catch (_) { continue; }
+        for (const rule of rules) {
+            if (!(rule instanceof CSSFontFaceRule)) continue;
+            const src = rule.style.getPropertyValue('src');
+            const match = src.match(/url\(["']?([^"')]+)["']?\)/);
+            if (!match || match[1].indexOf(VISTA_WEB_FONT_PATH) === -1) continue;
+            const family = rule.style.getPropertyValue('font-family').replace(/["']/g, '').trim();
+            const weight = rule.style.getPropertyValue('font-weight') || '400';
+            const style = rule.style.getPropertyValue('font-style') || 'normal';
+            if (!loaded.has(`${family}|${weight}|${style}`)) continue;
+            const descriptors = { weight, style, display: 'swap' };
+            const range = rule.style.getPropertyValue('unicode-range');
+            if (range) descriptors.unicodeRange = range;
+            new FontFace(family, `url("${match[1]}") format("woff2")`, descriptors).load()
+                .then((face) => { document.fonts.add(face); })
+                .catch(() => { /* still signed out: the fallback stays */ });
+        }
+    }
 }
 
 /**
@@ -196,6 +237,16 @@ async function ensureSessionValid() {
     } catch (error) {
         // User cancelled or other error
         console.error('Session validation error:', error);
+        try {
+            if (localStorage.getItem('dreamscapeSiteGate') === '1') {
+                if (typeof showPinModal === 'function') {
+                    await showPinModal();
+                    return true;
+                }
+                window.location.href = '/app';
+                return false;
+            }
+        } catch (_) { /* ignore */ }
         window.location.href = '/';
         return false;
     }

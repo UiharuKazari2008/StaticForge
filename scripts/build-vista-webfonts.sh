@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
-# Builds the Windows Vista web fonts (public/dist/fonts/vista/*.woff2) that public/css/vista-fonts.css
+# Builds the Windows Vista web fonts (public/protected/fonts/vista/*.woff2) that public/css/vista-fonts.css
 # declares under their Windows family names (Segoe UI, Tahoma, Consolas, Meiryo ...), so the desktop
 # draws Vista's own font versions on every client instead of whatever the OS has.
 #
 # Source: C:\Windows\Fonts on the Vista VM (~/.config/vista-vm/vm.sh), bundled with makecab and
 # unpacked with 7z. Conversion: fontTools + brotli in a venv under ~/.cache/vista-vm/fonttools-venv;
 # a .ttc keeps its first face (Cambria, not Cambria Math; Meiryo, not Meiryo Italic). Glyphs and
-# hinting are kept whole. Only the woff2 files are committed.
+# hinting are kept whole. They are Microsoft's files, so they live under /protected/ (signed-in
+# sessions only, never in the install pack); the CSS falls back to local() and Selawik before sign-in.
 #
 # Usage: bash scripts/build-vista-webfonts.sh [outdir]
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-OUT="${1:-$ROOT/public/dist/fonts/vista}"
+OUT="${1:-$ROOT/public/protected/fonts/vista}"
 VM="$HOME/.config/vista-vm/vm.sh"
 CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/vista-vm"
 VENV="$CACHE/fonttools-venv"

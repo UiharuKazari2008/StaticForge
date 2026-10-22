@@ -14,7 +14,7 @@ if (workbox) {
 const { strategies, expiration, cacheableResponse } = workbox;
 
 // Cache names
-const STATIC_CACHE = 'static-cache-v1';
+const STATIC_CACHE = 'static-cache-v2';
 const DYNAMIC_CACHE = 'dynamic-cache-v1';
 const INTERNAL_CACHE = 'internal-cache-v1';
 const IMAGE_CACHE = 'image-cache-v1';
@@ -98,7 +98,14 @@ async function matchStrategyCache(cacheName, request) {
 // read a copy stored while someone was signed in. web_server.js isProtectedResource
 function isAuthGatedStaticPath(pathname) {
   if (!pathname || typeof pathname !== 'string') return false;
-  return pathname.startsWith('/protected/') || pathname.startsWith('/private/');
+  if (pathname.startsWith('/protected/') || pathname.startsWith('/private/')) return true;
+  if (pathname === '/' || pathname === '/app' || pathname === '/launch' || pathname === '/index.html') return true;
+  if (pathname === '/manifest.json') return true;
+  return false;
+}
+
+function isGateSensitiveShellPath(pathname) {
+  return pathname === '/' || pathname === '/app' || pathname === '/launch' || pathname === '/index.html' || pathname === '/manifest.json';
 }
 
 function isAuthGatedManifestFile(file) {
@@ -925,6 +932,91 @@ const internalStrategy = {
   }
 };
 
+// The Vista games' files (Yozora #609) load on demand and stay out of the update manifest
+// (web_server.js onDemandGameAsset), so nothing told a client its cached copy was old. A hit is
+// served, then checked against the server's X-File-Hash (a HEAD, once per file every 10 minutes
+// per worker); a different hash fetches the file again for the next load. Setup's lighter copies
+// (x-media-lite, launchGamesHost.js) differ from the server's hash too and are replaced the same
+// way, except while Setup is open: its last step swaps them (launchGames.js upgradeLite). Setup's
+// media zips (GAME_MEDIA_PREFIX) are read once and unpacked, so the worker leaves them alone.
+const GAME_ASSET_PREFIX = '/static_images/vista-games/';
+const GAME_MEDIA_PREFIX = '/static_images/vista-games/media/';
+const GAME_REVALIDATE_MS = 10 * 60 * 1000;
+const gameAssetChecked = new Map();
+const gameAssetQueue = [];
+let gameAssetActive = 0;
+
+async function setupWindowOpen() {
+  const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  return clients.some((client) => {
+    try {
+      const pathname = new URL(client.url).pathname;
+      return pathname === '/launch' || pathname === '/launch-games.html';
+    } catch (_err) {
+      return false;
+    }
+  });
+}
+
+async function checkGameAsset(job) {
+  if (await setupWindowOpen()) {
+    gameAssetChecked.delete(job.pathname);
+    return;
+  }
+  const head = await fetch(job.pathname, { method: 'HEAD', cache: 'no-store' });
+  const hash = head.ok ? head.headers.get('x-file-hash') : null;
+  if (!hash || hash === job.hash) {
+    return;
+  }
+  const fresh = await fetch(job.pathname, { cache: 'no-store' });
+  if (!fresh.ok || fresh.headers.get('x-file-hash') !== hash) {
+    return;
+  }
+  const cache = await caches.open(STATIC_CACHE);
+  await cache.put(job.pathname, fresh);
+}
+
+function pumpGameAssetQueue() {
+  while (gameAssetActive < 3 && gameAssetQueue.length) {
+    const job = gameAssetQueue.shift();
+    gameAssetActive += 1;
+    checkGameAsset(job)
+      .catch(() => { gameAssetChecked.delete(job.pathname); })
+      .finally(() => {
+        gameAssetActive -= 1;
+        job.resolve();
+        pumpGameAssetQueue();
+      });
+  }
+}
+
+function revalidateGameAsset(pathname, cached) {
+  const last = gameAssetChecked.get(pathname);
+  if (last && Date.now() - last < GAME_REVALIDATE_MS) {
+    return Promise.resolve();
+  }
+  gameAssetChecked.set(pathname, Date.now());
+  return new Promise((resolve) => {
+    gameAssetQueue.push({ pathname, hash: cached.headers.get('x-file-hash') || '', resolve });
+    pumpGameAssetQueue();
+  });
+}
+
+// zips an earlier worker kept (about 27 MB a client): Setup unpacks them, nothing reads them again
+async function dropCachedGameMedia() {
+  const cache = await caches.open(STATIC_CACHE);
+  const keys = await cache.keys();
+  await Promise.all(keys
+    .filter((request) => {
+      try {
+        return new URL(request.url).pathname.startsWith(GAME_MEDIA_PREFIX);
+      } catch (_err) {
+        return false;
+      }
+    })
+    .map((request) => cache.delete(request, { ignoreVary: true })));
+}
+
 // Custom strategy wrapper to add cache-busting headers and emit network events
 function createCacheBustingStrategy(strategy, cacheName) {
   return {
@@ -1003,6 +1095,10 @@ workbox.routing.registerRoute(
     if (isLogViewerApiRequest(url) || isGrimoireBrowserRequest(url) || isDesktopGuacRequest(url)) {
       return false;
     }
+    // Setup's game media: read once and unpacked into this cache (launchGamesHost.js)
+    if (url.pathname.startsWith(GAME_MEDIA_PREFIX)) {
+      return false;
+    }
     // Always handle requests that start with /
     return url.pathname.startsWith('/');
   },
@@ -1020,55 +1116,30 @@ workbox.routing.registerRoute(
         response = await internalStrategy.handle(event);
       }
       // Handle route-based paths (/, /app) with custom caching
-      else if (url.pathname === '/' || url.pathname === '/app' || url.pathname === '/index.html') {
-        const cache = await caches.open(STATIC_CACHE);
-        
-        // Determine the route path and endpoint
+      else if (isGateSensitiveShellPath(url.pathname) || url.pathname === '/launch') {
         const routePath = url.pathname === '/index.html' ? '/' : url.pathname;
         const endpoint = routePath;
-        const bypassRouteCache = request.headers.get('X-SW-Bypass-Cache') === '1';
-        
-        // Try to serve from cache first (skip when CACHE_STATIC_FILES needs a fresh network fetch)
-        const cachedResponse = bypassRouteCache ? null : await cache.match(routePath);
-        if (cachedResponse) {
-          response = addCacheBustingHeaders(cachedResponse, 'text/html; charset=utf-8');
-        } else {
-          // If not cached, fetch from server endpoint and cache
-          try {
-            const fetchResponse = await fetch(endpoint, {
-              cache: 'no-store',
-              headers: {
-                'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-                'Pragma': 'no-cache',
-                'Expires': '0'
-              }
-            });
-            
-            if (fetchResponse.ok && fetchResponse.status >= 200 && fetchResponse.status < 300 && shouldCacheResponse(fetchResponse)) {
-              // Keep original server headers in storage; cache-busting is only for fetch mode.
-              const responseWithHeaders = new Response(fetchResponse.body, {
-                status: fetchResponse.status,
-                statusText: fetchResponse.statusText,
-                headers: fetchResponse.headers
-              });
-              
-              // Cache at route path
-              await cache.put(routePath, responseWithHeaders);
-              response = addCacheBustingHeaders(responseWithHeaders, 'text/html; charset=utf-8');
-            } else {
-              response = fetchResponse;
+        try {
+          response = await fetch(endpoint, {
+            cache: 'no-store',
+            credentials: 'include',
+            headers: {
+              'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+              'Pragma': 'no-cache',
+              'Expires': '0',
+              'X-SW-Bypass-Cache': '1'
             }
-            notifyClientsOfNetworkActivity('receive', {
-              url: request.url,
-              method: request.method,
-              status: response.status,
-              fromNetwork: true,
-              timestamp: Date.now()
-            });
-          } catch (error) {
-            console.error(`Failed to fetch from ${endpoint} endpoint:`, error);
-            throw error;
-          }
+          });
+          notifyClientsOfNetworkActivity('receive', {
+            url: request.url,
+            method: request.method,
+            status: response.status,
+            fromNetwork: true,
+            timestamp: Date.now()
+          });
+        } catch (error) {
+          console.error(`Failed to fetch from ${endpoint} endpoint:`, error);
+          throw error;
         }
       }
       // Workspace wallpapers: stored until the assignment changes, then dropped.
@@ -1108,6 +1179,9 @@ workbox.routing.registerRoute(
         const shellHit = await matchStaticShell(url.pathname);
         if (shellHit) {
           response = respondWithSavedAsset(request, shellHit);
+          if (url.pathname.startsWith(GAME_ASSET_PREFIX) && event.event) {
+            event.event.waitUntil(revalidateGameAsset(url.pathname, shellHit));
+          }
         } else {
           response = await createCacheBustingStrategy(staticStrategy, STATIC_CACHE).handle(event);
         }
@@ -2150,6 +2224,7 @@ self.addEventListener('activate', (event) => {
       );
     }).then(async () => {
       await dropUnhashedStaticSiblings();
+      await dropCachedGameMedia();
       await caches.open(STATIC_CACHE).then((cache) => cache.delete('/sw.js'));
       await enforceImageCachePolicy();
       await self.clients.claim();

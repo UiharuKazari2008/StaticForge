@@ -1,13 +1,23 @@
 /* Windows Vista's fonts as web fonts (scripts/build-vista-webfonts.sh, from the Vista VM's
    C:\Windows\Fonts). Each face is declared under its Windows family name, so every stack that
-   already names 'Segoe UI', Tahoma, Consolas ... draws Vista's own version on every client,
-   Windows included (a newer local Segoe UI has other metrics). The faces download only when a
-   page uses them; Meiryo (Vista's Japanese UI face, 3.5 MB per weight) only for Japanese text.
+   already names 'Segoe UI', Tahoma, Consolas ... draws Vista's own version, Windows included (a
+   newer local Segoe UI has other metrics). A face downloads only when a page uses it; Meiryo
+   (Vista's Japanese UI face, 3.5 MB per weight) only for Japanese text.
+
+   The files are Microsoft's, so they sit under /protected/ (web_server.js isProtectedResource:
+   signed-in sessions only; the service worker and the install pack never store them). Before
+   sign-in (the login page, the logon dialog, Setup) that first source answers 403 and the face
+   falls back to the client's own copy (local()), and Segoe UI then to Selawik, Microsoft's
+   Segoe-metric open font (OFL, public/dist/fonts/selawik). After a logon on the page
+   (connectionManager.js refreshVistaWebFontsAfterLogon) the faces that fell back are fetched again.
    --font-system (app.css) is the shell's stack; the workspace font pickers list these too. */
 
 @font-face {
     font-family: 'Segoe UI';
-    src: url('/dist/fonts/vista/segoeui.woff2') format('woff2');
+    src: url('/protected/fonts/vista/segoeui.woff2') format('woff2'),
+         local('Segoe UI'),
+         local('SegoeUI'),
+         url('/dist/fonts/selawik/selawk.woff2') format('woff2');
     font-weight: 400;
     font-style: normal;
     font-display: swap;
@@ -15,7 +25,10 @@
 
 @font-face {
     font-family: 'Segoe UI';
-    src: url('/dist/fonts/vista/segoeuib.woff2') format('woff2');
+    src: url('/protected/fonts/vista/segoeuib.woff2') format('woff2'),
+         local('Segoe UI Bold'),
+         local('SegoeUI-Bold'),
+         url('/dist/fonts/selawik/selawkb.woff2') format('woff2');
     font-weight: 700;
     font-style: normal;
     font-display: swap;
@@ -23,7 +36,9 @@
 
 @font-face {
     font-family: 'Segoe UI';
-    src: url('/dist/fonts/vista/segoeuii.woff2') format('woff2');
+    src: url('/protected/fonts/vista/segoeuii.woff2') format('woff2'),
+         local('Segoe UI Italic'),
+         local('SegoeUI-Italic');
     font-weight: 400;
     font-style: italic;
     font-display: swap;
@@ -31,7 +46,9 @@
 
 @font-face {
     font-family: 'Segoe UI';
-    src: url('/dist/fonts/vista/segoeuiz.woff2') format('woff2');
+    src: url('/protected/fonts/vista/segoeuiz.woff2') format('woff2'),
+         local('Segoe UI Bold Italic'),
+         local('SegoeUI-BoldItalic');
     font-weight: 700;
     font-style: italic;
     font-display: swap;
@@ -39,7 +56,8 @@
 
 @font-face {
     font-family: 'Tahoma';
-    src: url('/dist/fonts/vista/tahoma.woff2') format('woff2');
+    src: url('/protected/fonts/vista/tahoma.woff2') format('woff2'),
+         local('Tahoma');
     font-weight: 400;
     font-style: normal;
     font-display: swap;
@@ -47,7 +65,9 @@
 
 @font-face {
     font-family: 'Tahoma';
-    src: url('/dist/fonts/vista/tahomabd.woff2') format('woff2');
+    src: url('/protected/fonts/vista/tahomabd.woff2') format('woff2'),
+         local('Tahoma Bold'),
+         local('Tahoma-Bold');
     font-weight: 700;
     font-style: normal;
     font-display: swap;
@@ -55,7 +75,8 @@
 
 @font-face {
     font-family: 'Verdana';
-    src: url('/dist/fonts/vista/verdana.woff2') format('woff2');
+    src: url('/protected/fonts/vista/verdana.woff2') format('woff2'),
+         local('Verdana');
     font-weight: 400;
     font-style: normal;
     font-display: swap;
@@ -63,7 +84,9 @@
 
 @font-face {
     font-family: 'Verdana';
-    src: url('/dist/fonts/vista/verdanab.woff2') format('woff2');
+    src: url('/protected/fonts/vista/verdanab.woff2') format('woff2'),
+         local('Verdana Bold'),
+         local('Verdana-Bold');
     font-weight: 700;
     font-style: normal;
     font-display: swap;
@@ -71,7 +94,9 @@
 
 @font-face {
     font-family: 'Verdana';
-    src: url('/dist/fonts/vista/verdanai.woff2') format('woff2');
+    src: url('/protected/fonts/vista/verdanai.woff2') format('woff2'),
+         local('Verdana Italic'),
+         local('Verdana-Italic');
     font-weight: 400;
     font-style: italic;
     font-display: swap;
@@ -79,7 +104,9 @@
 
 @font-face {
     font-family: 'Verdana';
-    src: url('/dist/fonts/vista/verdanaz.woff2') format('woff2');
+    src: url('/protected/fonts/vista/verdanaz.woff2') format('woff2'),
+         local('Verdana Bold Italic'),
+         local('Verdana-BoldItalic');
     font-weight: 700;
     font-style: italic;
     font-display: swap;
@@ -87,7 +114,9 @@
 
 @font-face {
     font-family: 'Microsoft Sans Serif';
-    src: url('/dist/fonts/vista/micross.woff2') format('woff2');
+    src: url('/protected/fonts/vista/micross.woff2') format('woff2'),
+         local('Microsoft Sans Serif'),
+         local('MicrosoftSansSerif');
     font-weight: 400;
     font-style: normal;
     font-display: swap;
@@ -95,7 +124,8 @@
 
 @font-face {
     font-family: 'Consolas';
-    src: url('/dist/fonts/vista/consola.woff2') format('woff2');
+    src: url('/protected/fonts/vista/consola.woff2') format('woff2'),
+         local('Consolas');
     font-weight: 400;
     font-style: normal;
     font-display: swap;
@@ -103,7 +133,9 @@
 
 @font-face {
     font-family: 'Consolas';
-    src: url('/dist/fonts/vista/consolab.woff2') format('woff2');
+    src: url('/protected/fonts/vista/consolab.woff2') format('woff2'),
+         local('Consolas Bold'),
+         local('Consolas-Bold');
     font-weight: 700;
     font-style: normal;
     font-display: swap;
@@ -111,7 +143,9 @@
 
 @font-face {
     font-family: 'Consolas';
-    src: url('/dist/fonts/vista/consolai.woff2') format('woff2');
+    src: url('/protected/fonts/vista/consolai.woff2') format('woff2'),
+         local('Consolas Italic'),
+         local('Consolas-Italic');
     font-weight: 400;
     font-style: italic;
     font-display: swap;
@@ -119,7 +153,9 @@
 
 @font-face {
     font-family: 'Consolas';
-    src: url('/dist/fonts/vista/consolaz.woff2') format('woff2');
+    src: url('/protected/fonts/vista/consolaz.woff2') format('woff2'),
+         local('Consolas Bold Italic'),
+         local('Consolas-BoldItalic');
     font-weight: 700;
     font-style: italic;
     font-display: swap;
@@ -127,7 +163,9 @@
 
 @font-face {
     font-family: 'Lucida Console';
-    src: url('/dist/fonts/vista/lucon.woff2') format('woff2');
+    src: url('/protected/fonts/vista/lucon.woff2') format('woff2'),
+         local('Lucida Console'),
+         local('LucidaConsole');
     font-weight: 400;
     font-style: normal;
     font-display: swap;
@@ -135,7 +173,8 @@
 
 @font-face {
     font-family: 'Meiryo';
-    src: url('/dist/fonts/vista/meiryo.woff2') format('woff2');
+    src: url('/protected/fonts/vista/meiryo.woff2') format('woff2'),
+         local('Meiryo');
     font-weight: 400;
     font-style: normal;
     font-display: swap;
@@ -144,7 +183,9 @@
 
 @font-face {
     font-family: 'Meiryo';
-    src: url('/dist/fonts/vista/meiryob.woff2') format('woff2');
+    src: url('/protected/fonts/vista/meiryob.woff2') format('woff2'),
+         local('Meiryo Bold'),
+         local('Meiryo-Bold');
     font-weight: 700;
     font-style: normal;
     font-display: swap;
@@ -153,7 +194,8 @@
 
 @font-face {
     font-family: 'Calibri';
-    src: url('/dist/fonts/vista/calibri.woff2') format('woff2');
+    src: url('/protected/fonts/vista/calibri.woff2') format('woff2'),
+         local('Calibri');
     font-weight: 400;
     font-style: normal;
     font-display: swap;
@@ -161,7 +203,9 @@
 
 @font-face {
     font-family: 'Calibri';
-    src: url('/dist/fonts/vista/calibrib.woff2') format('woff2');
+    src: url('/protected/fonts/vista/calibrib.woff2') format('woff2'),
+         local('Calibri Bold'),
+         local('Calibri-Bold');
     font-weight: 700;
     font-style: normal;
     font-display: swap;
@@ -169,7 +213,9 @@
 
 @font-face {
     font-family: 'Calibri';
-    src: url('/dist/fonts/vista/calibrii.woff2') format('woff2');
+    src: url('/protected/fonts/vista/calibrii.woff2') format('woff2'),
+         local('Calibri Italic'),
+         local('Calibri-Italic');
     font-weight: 400;
     font-style: italic;
     font-display: swap;
@@ -177,7 +223,9 @@
 
 @font-face {
     font-family: 'Calibri';
-    src: url('/dist/fonts/vista/calibriz.woff2') format('woff2');
+    src: url('/protected/fonts/vista/calibriz.woff2') format('woff2'),
+         local('Calibri Bold Italic'),
+         local('Calibri-BoldItalic');
     font-weight: 700;
     font-style: italic;
     font-display: swap;
@@ -185,7 +233,8 @@
 
 @font-face {
     font-family: 'Cambria';
-    src: url('/dist/fonts/vista/cambria.woff2') format('woff2');
+    src: url('/protected/fonts/vista/cambria.woff2') format('woff2'),
+         local('Cambria');
     font-weight: 400;
     font-style: normal;
     font-display: swap;
@@ -193,7 +242,9 @@
 
 @font-face {
     font-family: 'Cambria';
-    src: url('/dist/fonts/vista/cambriab.woff2') format('woff2');
+    src: url('/protected/fonts/vista/cambriab.woff2') format('woff2'),
+         local('Cambria Bold'),
+         local('Cambria-Bold');
     font-weight: 700;
     font-style: normal;
     font-display: swap;
@@ -201,7 +252,9 @@
 
 @font-face {
     font-family: 'Cambria';
-    src: url('/dist/fonts/vista/cambriai.woff2') format('woff2');
+    src: url('/protected/fonts/vista/cambriai.woff2') format('woff2'),
+         local('Cambria Italic'),
+         local('Cambria-Italic');
     font-weight: 400;
     font-style: italic;
     font-display: swap;
@@ -209,7 +262,9 @@
 
 @font-face {
     font-family: 'Cambria';
-    src: url('/dist/fonts/vista/cambriaz.woff2') format('woff2');
+    src: url('/protected/fonts/vista/cambriaz.woff2') format('woff2'),
+         local('Cambria Bold Italic'),
+         local('Cambria-BoldItalic');
     font-weight: 700;
     font-style: italic;
     font-display: swap;
@@ -217,7 +272,8 @@
 
 @font-face {
     font-family: 'Candara';
-    src: url('/dist/fonts/vista/candara.woff2') format('woff2');
+    src: url('/protected/fonts/vista/candara.woff2') format('woff2'),
+         local('Candara');
     font-weight: 400;
     font-style: normal;
     font-display: swap;
@@ -225,7 +281,9 @@
 
 @font-face {
     font-family: 'Candara';
-    src: url('/dist/fonts/vista/candarab.woff2') format('woff2');
+    src: url('/protected/fonts/vista/candarab.woff2') format('woff2'),
+         local('Candara Bold'),
+         local('Candara-Bold');
     font-weight: 700;
     font-style: normal;
     font-display: swap;
@@ -233,7 +291,9 @@
 
 @font-face {
     font-family: 'Candara';
-    src: url('/dist/fonts/vista/candarai.woff2') format('woff2');
+    src: url('/protected/fonts/vista/candarai.woff2') format('woff2'),
+         local('Candara Italic'),
+         local('Candara-Italic');
     font-weight: 400;
     font-style: italic;
     font-display: swap;
@@ -241,7 +301,9 @@
 
 @font-face {
     font-family: 'Candara';
-    src: url('/dist/fonts/vista/candaraz.woff2') format('woff2');
+    src: url('/protected/fonts/vista/candaraz.woff2') format('woff2'),
+         local('Candara Bold Italic'),
+         local('Candara-BoldItalic');
     font-weight: 700;
     font-style: italic;
     font-display: swap;
@@ -249,7 +311,8 @@
 
 @font-face {
     font-family: 'Constantia';
-    src: url('/dist/fonts/vista/constan.woff2') format('woff2');
+    src: url('/protected/fonts/vista/constan.woff2') format('woff2'),
+         local('Constantia');
     font-weight: 400;
     font-style: normal;
     font-display: swap;
@@ -257,7 +320,9 @@
 
 @font-face {
     font-family: 'Constantia';
-    src: url('/dist/fonts/vista/constanb.woff2') format('woff2');
+    src: url('/protected/fonts/vista/constanb.woff2') format('woff2'),
+         local('Constantia Bold'),
+         local('Constantia-Bold');
     font-weight: 700;
     font-style: normal;
     font-display: swap;
@@ -265,7 +330,9 @@
 
 @font-face {
     font-family: 'Constantia';
-    src: url('/dist/fonts/vista/constani.woff2') format('woff2');
+    src: url('/protected/fonts/vista/constani.woff2') format('woff2'),
+         local('Constantia Italic'),
+         local('Constantia-Italic');
     font-weight: 400;
     font-style: italic;
     font-display: swap;
@@ -273,7 +340,9 @@
 
 @font-face {
     font-family: 'Constantia';
-    src: url('/dist/fonts/vista/constanz.woff2') format('woff2');
+    src: url('/protected/fonts/vista/constanz.woff2') format('woff2'),
+         local('Constantia Bold Italic'),
+         local('Constantia-BoldItalic');
     font-weight: 700;
     font-style: italic;
     font-display: swap;
@@ -281,7 +350,8 @@
 
 @font-face {
     font-family: 'Corbel';
-    src: url('/dist/fonts/vista/corbel.woff2') format('woff2');
+    src: url('/protected/fonts/vista/corbel.woff2') format('woff2'),
+         local('Corbel');
     font-weight: 400;
     font-style: normal;
     font-display: swap;
@@ -289,7 +359,9 @@
 
 @font-face {
     font-family: 'Corbel';
-    src: url('/dist/fonts/vista/corbelb.woff2') format('woff2');
+    src: url('/protected/fonts/vista/corbelb.woff2') format('woff2'),
+         local('Corbel Bold'),
+         local('Corbel-Bold');
     font-weight: 700;
     font-style: normal;
     font-display: swap;
@@ -297,7 +369,9 @@
 
 @font-face {
     font-family: 'Corbel';
-    src: url('/dist/fonts/vista/corbeli.woff2') format('woff2');
+    src: url('/protected/fonts/vista/corbeli.woff2') format('woff2'),
+         local('Corbel Italic'),
+         local('Corbel-Italic');
     font-weight: 400;
     font-style: italic;
     font-display: swap;
@@ -305,7 +379,9 @@
 
 @font-face {
     font-family: 'Corbel';
-    src: url('/dist/fonts/vista/corbelz.woff2') format('woff2');
+    src: url('/protected/fonts/vista/corbelz.woff2') format('woff2'),
+         local('Corbel Bold Italic'),
+         local('Corbel-BoldItalic');
     font-weight: 700;
     font-style: italic;
     font-display: swap;
@@ -313,7 +389,9 @@
 
 @font-face {
     font-family: 'Segoe Print';
-    src: url('/dist/fonts/vista/segoepr.woff2') format('woff2');
+    src: url('/protected/fonts/vista/segoepr.woff2') format('woff2'),
+         local('Segoe Print'),
+         local('SegoePrint');
     font-weight: 400;
     font-style: normal;
     font-display: swap;
@@ -321,7 +399,9 @@
 
 @font-face {
     font-family: 'Segoe Print';
-    src: url('/dist/fonts/vista/segoeprb.woff2') format('woff2');
+    src: url('/protected/fonts/vista/segoeprb.woff2') format('woff2'),
+         local('Segoe Print Bold'),
+         local('SegoePrint-Bold');
     font-weight: 700;
     font-style: normal;
     font-display: swap;
@@ -329,7 +409,9 @@
 
 @font-face {
     font-family: 'Segoe Script';
-    src: url('/dist/fonts/vista/segoesc.woff2') format('woff2');
+    src: url('/protected/fonts/vista/segoesc.woff2') format('woff2'),
+         local('Segoe Script'),
+         local('SegoeScript');
     font-weight: 400;
     font-style: normal;
     font-display: swap;
@@ -337,7 +419,9 @@
 
 @font-face {
     font-family: 'Segoe Script';
-    src: url('/dist/fonts/vista/segoescb.woff2') format('woff2');
+    src: url('/protected/fonts/vista/segoescb.woff2') format('woff2'),
+         local('Segoe Script Bold'),
+         local('SegoeScript-Bold');
     font-weight: 700;
     font-style: normal;
     font-display: swap;
@@ -345,7 +429,9 @@
 
 @font-face {
     font-family: 'Arial';
-    src: url('/dist/fonts/vista/arial.woff2') format('woff2');
+    src: url('/protected/fonts/vista/arial.woff2') format('woff2'),
+         local('Arial'),
+         local('ArialMT');
     font-weight: 400;
     font-style: normal;
     font-display: swap;
@@ -353,7 +439,9 @@
 
 @font-face {
     font-family: 'Arial';
-    src: url('/dist/fonts/vista/arialbd.woff2') format('woff2');
+    src: url('/protected/fonts/vista/arialbd.woff2') format('woff2'),
+         local('Arial Bold'),
+         local('Arial-BoldMT');
     font-weight: 700;
     font-style: normal;
     font-display: swap;
@@ -361,7 +449,9 @@
 
 @font-face {
     font-family: 'Arial';
-    src: url('/dist/fonts/vista/ariali.woff2') format('woff2');
+    src: url('/protected/fonts/vista/ariali.woff2') format('woff2'),
+         local('Arial Italic'),
+         local('Arial-ItalicMT');
     font-weight: 400;
     font-style: italic;
     font-display: swap;
@@ -369,7 +459,9 @@
 
 @font-face {
     font-family: 'Arial';
-    src: url('/dist/fonts/vista/arialbi.woff2') format('woff2');
+    src: url('/protected/fonts/vista/arialbi.woff2') format('woff2'),
+         local('Arial Bold Italic'),
+         local('Arial-BoldItalicMT');
     font-weight: 700;
     font-style: italic;
     font-display: swap;
@@ -377,7 +469,9 @@
 
 @font-face {
     font-family: 'Arial Black';
-    src: url('/dist/fonts/vista/ariblk.woff2') format('woff2');
+    src: url('/protected/fonts/vista/ariblk.woff2') format('woff2'),
+         local('Arial Black'),
+         local('Arial-Black');
     font-weight: 900;
     font-style: normal;
     font-display: swap;
@@ -385,7 +479,9 @@
 
 @font-face {
     font-family: 'Times New Roman';
-    src: url('/dist/fonts/vista/times.woff2') format('woff2');
+    src: url('/protected/fonts/vista/times.woff2') format('woff2'),
+         local('Times New Roman'),
+         local('TimesNewRomanPSMT');
     font-weight: 400;
     font-style: normal;
     font-display: swap;
@@ -393,7 +489,9 @@
 
 @font-face {
     font-family: 'Times New Roman';
-    src: url('/dist/fonts/vista/timesbd.woff2') format('woff2');
+    src: url('/protected/fonts/vista/timesbd.woff2') format('woff2'),
+         local('Times New Roman Bold'),
+         local('TimesNewRomanPS-BoldMT');
     font-weight: 700;
     font-style: normal;
     font-display: swap;
@@ -401,7 +499,9 @@
 
 @font-face {
     font-family: 'Times New Roman';
-    src: url('/dist/fonts/vista/timesi.woff2') format('woff2');
+    src: url('/protected/fonts/vista/timesi.woff2') format('woff2'),
+         local('Times New Roman Italic'),
+         local('TimesNewRomanPS-ItalicMT');
     font-weight: 400;
     font-style: italic;
     font-display: swap;
@@ -409,7 +509,9 @@
 
 @font-face {
     font-family: 'Times New Roman';
-    src: url('/dist/fonts/vista/timesbi.woff2') format('woff2');
+    src: url('/protected/fonts/vista/timesbi.woff2') format('woff2'),
+         local('Times New Roman Bold Italic'),
+         local('TimesNewRomanPS-BoldItalicMT');
     font-weight: 700;
     font-style: italic;
     font-display: swap;
@@ -417,7 +519,9 @@
 
 @font-face {
     font-family: 'Courier New';
-    src: url('/dist/fonts/vista/cour.woff2') format('woff2');
+    src: url('/protected/fonts/vista/cour.woff2') format('woff2'),
+         local('Courier New'),
+         local('CourierNewPSMT');
     font-weight: 400;
     font-style: normal;
     font-display: swap;
@@ -425,7 +529,9 @@
 
 @font-face {
     font-family: 'Courier New';
-    src: url('/dist/fonts/vista/courbd.woff2') format('woff2');
+    src: url('/protected/fonts/vista/courbd.woff2') format('woff2'),
+         local('Courier New Bold'),
+         local('CourierNewPS-BoldMT');
     font-weight: 700;
     font-style: normal;
     font-display: swap;
@@ -433,7 +539,9 @@
 
 @font-face {
     font-family: 'Courier New';
-    src: url('/dist/fonts/vista/couri.woff2') format('woff2');
+    src: url('/protected/fonts/vista/couri.woff2') format('woff2'),
+         local('Courier New Italic'),
+         local('CourierNewPS-ItalicMT');
     font-weight: 400;
     font-style: italic;
     font-display: swap;
@@ -441,7 +549,9 @@
 
 @font-face {
     font-family: 'Courier New';
-    src: url('/dist/fonts/vista/courbi.woff2') format('woff2');
+    src: url('/protected/fonts/vista/courbi.woff2') format('woff2'),
+         local('Courier New Bold Italic'),
+         local('CourierNewPS-BoldItalicMT');
     font-weight: 700;
     font-style: italic;
     font-display: swap;
@@ -449,7 +559,8 @@
 
 @font-face {
     font-family: 'Georgia';
-    src: url('/dist/fonts/vista/georgia.woff2') format('woff2');
+    src: url('/protected/fonts/vista/georgia.woff2') format('woff2'),
+         local('Georgia');
     font-weight: 400;
     font-style: normal;
     font-display: swap;
@@ -457,7 +568,9 @@
 
 @font-face {
     font-family: 'Georgia';
-    src: url('/dist/fonts/vista/georgiab.woff2') format('woff2');
+    src: url('/protected/fonts/vista/georgiab.woff2') format('woff2'),
+         local('Georgia Bold'),
+         local('Georgia-Bold');
     font-weight: 700;
     font-style: normal;
     font-display: swap;
@@ -465,7 +578,9 @@
 
 @font-face {
     font-family: 'Georgia';
-    src: url('/dist/fonts/vista/georgiai.woff2') format('woff2');
+    src: url('/protected/fonts/vista/georgiai.woff2') format('woff2'),
+         local('Georgia Italic'),
+         local('Georgia-Italic');
     font-weight: 400;
     font-style: italic;
     font-display: swap;
@@ -473,7 +588,9 @@
 
 @font-face {
     font-family: 'Georgia';
-    src: url('/dist/fonts/vista/georgiaz.woff2') format('woff2');
+    src: url('/protected/fonts/vista/georgiaz.woff2') format('woff2'),
+         local('Georgia Bold Italic'),
+         local('Georgia-BoldItalic');
     font-weight: 700;
     font-style: italic;
     font-display: swap;
@@ -481,7 +598,9 @@
 
 @font-face {
     font-family: 'Palatino Linotype';
-    src: url('/dist/fonts/vista/pala.woff2') format('woff2');
+    src: url('/protected/fonts/vista/pala.woff2') format('woff2'),
+         local('Palatino Linotype'),
+         local('PalatinoLinotype-Roman');
     font-weight: 400;
     font-style: normal;
     font-display: swap;
@@ -489,7 +608,9 @@
 
 @font-face {
     font-family: 'Palatino Linotype';
-    src: url('/dist/fonts/vista/palab.woff2') format('woff2');
+    src: url('/protected/fonts/vista/palab.woff2') format('woff2'),
+         local('Palatino Linotype Bold'),
+         local('PalatinoLinotype-Bold');
     font-weight: 700;
     font-style: normal;
     font-display: swap;
@@ -497,7 +618,9 @@
 
 @font-face {
     font-family: 'Palatino Linotype';
-    src: url('/dist/fonts/vista/palai.woff2') format('woff2');
+    src: url('/protected/fonts/vista/palai.woff2') format('woff2'),
+         local('Palatino Linotype Italic'),
+         local('PalatinoLinotype-Italic');
     font-weight: 400;
     font-style: italic;
     font-display: swap;
@@ -505,7 +628,9 @@
 
 @font-face {
     font-family: 'Palatino Linotype';
-    src: url('/dist/fonts/vista/palabi.woff2') format('woff2');
+    src: url('/protected/fonts/vista/palabi.woff2') format('woff2'),
+         local('Palatino Linotype Bold Italic'),
+         local('PalatinoLinotype-BoldItalic');
     font-weight: 700;
     font-style: italic;
     font-display: swap;
@@ -513,7 +638,9 @@
 
 @font-face {
     font-family: 'Trebuchet MS';
-    src: url('/dist/fonts/vista/trebuc.woff2') format('woff2');
+    src: url('/protected/fonts/vista/trebuc.woff2') format('woff2'),
+         local('Trebuchet MS'),
+         local('TrebuchetMS');
     font-weight: 400;
     font-style: normal;
     font-display: swap;
@@ -521,7 +648,9 @@
 
 @font-face {
     font-family: 'Trebuchet MS';
-    src: url('/dist/fonts/vista/trebucbd.woff2') format('woff2');
+    src: url('/protected/fonts/vista/trebucbd.woff2') format('woff2'),
+         local('Trebuchet MS Bold'),
+         local('TrebuchetMS-Bold');
     font-weight: 700;
     font-style: normal;
     font-display: swap;
@@ -529,7 +658,9 @@
 
 @font-face {
     font-family: 'Trebuchet MS';
-    src: url('/dist/fonts/vista/trebucit.woff2') format('woff2');
+    src: url('/protected/fonts/vista/trebucit.woff2') format('woff2'),
+         local('Trebuchet MS Italic'),
+         local('TrebuchetMS-Italic');
     font-weight: 400;
     font-style: italic;
     font-display: swap;
@@ -537,7 +668,9 @@
 
 @font-face {
     font-family: 'Trebuchet MS';
-    src: url('/dist/fonts/vista/trebucbi.woff2') format('woff2');
+    src: url('/protected/fonts/vista/trebucbi.woff2') format('woff2'),
+         local('Trebuchet MS Bold Italic'),
+         local('Trebuchet-BoldItalic');
     font-weight: 700;
     font-style: italic;
     font-display: swap;
@@ -545,7 +678,9 @@
 
 @font-face {
     font-family: 'Comic Sans MS';
-    src: url('/dist/fonts/vista/comic.woff2') format('woff2');
+    src: url('/protected/fonts/vista/comic.woff2') format('woff2'),
+         local('Comic Sans MS'),
+         local('ComicSansMS');
     font-weight: 400;
     font-style: normal;
     font-display: swap;
@@ -553,7 +688,9 @@
 
 @font-face {
     font-family: 'Comic Sans MS';
-    src: url('/dist/fonts/vista/comicbd.woff2') format('woff2');
+    src: url('/protected/fonts/vista/comicbd.woff2') format('woff2'),
+         local('Comic Sans MS Bold'),
+         local('ComicSansMS-Bold');
     font-weight: 700;
     font-style: normal;
     font-display: swap;
@@ -561,7 +698,8 @@
 
 @font-face {
     font-family: 'Impact';
-    src: url('/dist/fonts/vista/impact.woff2') format('woff2');
+    src: url('/protected/fonts/vista/impact.woff2') format('woff2'),
+         local('Impact');
     font-weight: 400;
     font-style: normal;
     font-display: swap;

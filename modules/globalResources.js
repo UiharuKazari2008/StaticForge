@@ -4466,8 +4466,21 @@ class GlobalResources {
         const spritePath = path.join(cacheDir, 'login_array.jpg');
 
         try {
+            const siteAccess = require('./siteAccess');
+            const loginSpriteSheet = require('./loginSpriteSheet');
+            if (siteAccess.readSiteAccessSecure(this).configured) {
+                if (!loginSpriteSheet.isGatePlaceholderFile(spritePath)) {
+                    await loginSpriteSheet.writeGatePlaceholderSprite(spritePath);
+                    console.log('✓ Login sprite sheet: 1x1 gate placeholder (cover site enabled)');
+                }
+                return;
+            }
+        } catch (_) { /* fall through to gallery sheet */ }
+
+        try {
+            const loginSpriteSheet = require('./loginSpriteSheet');
             // Check if sprite sheet exists and is less than 1 hour old
-            if (fs.existsSync(spritePath)) {
+            if (fs.existsSync(spritePath) && !loginSpriteSheet.isGatePlaceholderFile(spritePath)) {
                 const stats = fs.statSync(spritePath);
                 const ageInHours = (Date.now() - stats.mtime.getTime()) / (1000 * 60 * 60);
                 if (ageInHours < 1) {

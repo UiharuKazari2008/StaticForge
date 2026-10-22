@@ -1121,7 +1121,8 @@
                         stage: data.stage,
                         stageMessage: data.stageMessage,
                         progressPercent: data.progressPercent,
-                        uptime: data.uptime
+                        uptime: data.uptime,
+                        siteAccess: data.siteAccess || null
                     };
                 } else {
                     return null;
@@ -1259,11 +1260,15 @@
             }
         }
 
-        function redirectToHome() {
+        function redirectToHome(siteGateConfigured) {
             if (typeof dreamscapeDesignModeActive !== 'undefined' && dreamscapeDesignModeActive) {
                 return;
             }
-            // Use replace to avoid back button issues and prevent white flash
+            // Site gate: PIN is at BIOS boot or in-app logon, not the legacy / login page.
+            if (siteGateConfigured) {
+                redirectToApp();
+                return;
+            }
             window.location.replace('/');
         }
 
@@ -1329,7 +1334,12 @@
                 setTimeout(redirectToApp, 500);
             } else {
                 // Session invalid
-                setTimeout(redirectToHome, 500);
+                const gateOn = readiness && readiness.siteAccess && readiness.siteAccess.configured;
+                try {
+                    if (gateOn) localStorage.setItem('dreamscapeSiteGate', '1');
+                    else localStorage.removeItem('dreamscapeSiteGate');
+                } catch (e) { /* ignore */ }
+                setTimeout(function () { redirectToHome(gateOn); }, 500);
             }
 
             validationInProgress = false;

@@ -4,6 +4,8 @@ HTTP routes defined in `web_server.js` and static middleware. Default base: `htt
 
 **Authentication:** Unless noted, routes use `authMiddleware` — session cookie, `X-Dreamscape-Login-Key`, or `Authorization: Bearer <loginKey>` (`?auth=` still works; `?loginKey=` is rejected). An approved client IP can sign the web UI in with no PIN. See [authentication.md](./authentication.md).
 
+When **Site Homepage** access gate is configured, most routes also require a valid **`dsk`** cookie (cover phrase), **`X-Dreamscape-Access`**, or `?k=` on GET before login. Exemptions and client behavior: [site-homepage-gate.md](../site-homepage-gate.md).
+
 **Cache headers:** Auth middleware forces no-store on protected JSON routes. Image routes use longer cache (see each route).
 
 ---
@@ -35,7 +37,9 @@ HTTP routes defined in `web_server.js` and static middleware. Default base: `htt
 
 ### `GET /`
 
-Serves login page (`public/index.html`). **No auth.**
+Serves login page (`public/index.html`) when the site gate is off. **No auth** (gate off).
+
+With the **Site Homepage** gate on, `/` serves the installed cover site (or redirects holders of a valid access token to `/launch`). See [site-homepage-gate.md](../site-homepage-gate.md).
 
 ### `GET /.login.jpg`
 
@@ -48,7 +52,7 @@ Multi-action JSON endpoint. Body: `{ "action": string, "data": object }`.
 | Action | Auth | Description |
 |--------|------|-------------|
 | `login` | No | PIN login — [authentication.md](./authentication.md) |
-| `logout` | Session | Destroy session |
+| `logout` | Session | Destroy session; clears **`dsk`** when site gate is on |
 | `ping` | No | Session probe + optional telemetry |
 
 **Invalid action:** 400 `{ "success": false, "error": "Invalid action" }`
@@ -514,9 +518,12 @@ during that `dev_admin` session may use a 120-second private HTTP cache after
   "useVistaLogon": false,
   "logonPicture": null,
   "logonName": "Administrator",
-  "novelaiKeyConfigured": true
+  "novelaiKeyConfigured": true,
+  "siteAccess": { "configured": false, "homepage": null }
 }
 ```
+
+`siteAccess.configured` is `true` when a cover phrase is set; `siteAccess.homepage` is the installed slug (e.g. `catalog-search`) or `null`. Clients set `localStorage.dreamscapeSiteGate` from this. **No auth** even when the gate is on.
 
 Use before login if server may still be compiling runtime assets.
 
@@ -592,7 +599,9 @@ configured. **413** body over 4 KB. **500** the key could not be stored.
 
 ### `OPTIONS /`
 
-**No auth.** Returns service worker static file manifest via `buildServiceWorkerCacheManifest()`.
+Returns service worker static file manifest via `buildServiceWorkerCacheManifest()`.
+
+**No auth** when the site gate is off. When the gate is on, requires a valid **`dsk`** / access header / `?k=` (same as other gated routes) so the manifest is not world-readable. **`OPTIONS /status`** stays exempt. See [site-homepage-gate.md](../site-homepage-gate.md).
 
 **503** when `runtimeCompileComplete === false`:
 
@@ -1393,7 +1402,7 @@ Default port **9221** — `modules/replicationPeerServer.js`. Token auth; `REPL_
 
 Runtime assets may be transparently served from `.cache/runtime-assets/` at normal `/css/` and `/scripts/` URLs when not in dev mode.
 
-**Auth:** Static files generally **unauthenticated** except routes registered before static middleware with auth.
+**Auth:** Static files generally **unauthenticated** except routes registered before static middleware with auth. **`GET /graphify-out/*`** requires session auth (dedicated mount in `web_server.js`; not served anonymously from `public/`).
 
 **Cache-Control:** default is no-store. A request whose query contains `sha`
 (`?sha=<hash>`) is `public, max-age=31536000, immutable`. Unversioned URLs stay
@@ -1421,6 +1430,6 @@ stays no-store when `?agent=1`.
 | Download image bytes | Generate, gallery list, metadata |
 | Preset webhook `/preset/:uuid` | Interactive UI sync |
 | Log SSE stream | Real-time gallery/workspace updates |
-| SW manifest `OPTIONS /` | Everything else |
+| SW manifest `OPTIONS /` (needs `dsk` when site gate on) | Everything else |
 
 Most app features require WebSocket for parity.

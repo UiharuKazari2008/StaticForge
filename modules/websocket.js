@@ -470,6 +470,28 @@ class WebSocketServer {
         }
     }
 
+    // Verify an express-session signed-cookie value: base64(HMAC-SHA256(value, secret)) with
+    // trailing '=' padding stripped, as cookie-signature produces. Timing-safe, and tolerant of
+    // a rotated/array secret (compare against each configured secret).
+    verifyCookieSignature(value, providedSig) {
+        if (!value || !providedSig) return false;
+        let secrets = this.globalResources.getSecureConfig({ path: 'sessionSecret' });
+        if (!secrets) return false;
+        if (!Array.isArray(secrets)) secrets = [secrets];
+        const provided = Buffer.from(providedSig);
+        for (const secret of secrets) {
+            if (!secret) continue;
+            const expected = crypto.createHmac('sha256', secret).update(value).digest('base64')
+                .replace(/=+$/, '');
+            const expectedBuf = Buffer.from(expected);
+            if (expectedBuf.length === provided.length &&
+                crypto.timingSafeEqual(expectedBuf, provided)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     async extractSession(req) {
         // Parse cookies to get session ID
         const cookies = req.headers.cookie;
@@ -485,15 +507,24 @@ class WebSocketServer {
         const encodedSessionId = sessionCookie.split('=')[1];
         if (!encodedSessionId) return null;
 
-        // Decode the session ID (remove URL encoding and session prefix)
+        // Decode the signed session cookie and VERIFY its signature before trusting the id.
+        // express-session signs with cookie-signature: cookie = "s:" + id + "." + base64(HMAC-SHA256(id, secret)).
+        // Stripping the signature without checking it (the previous behaviour) let anyone present an
+        // arbitrary session id. We recompute the HMAC and timing-safe compare it.
         let sessionId;
         try {
-            // URL decode the session ID
             const decoded = decodeURIComponent(encodedSessionId);
-            // Remove the session prefix (e.g., "s:" from "s:sessionId.signature")
-            sessionId = decoded.replace(/^s:/, '');
-            // Remove the signature part (everything after the dot)
-            sessionId = sessionId.split('.')[0];
+            if (!decoded.startsWith('s:')) return null; // unsigned cookie: reject
+            const body = decoded.slice(2);
+            const dot = body.lastIndexOf('.');
+            if (dot <= 0) return null;
+            const id = body.slice(0, dot);
+            const providedSig = body.slice(dot + 1);
+            if (!this.verifyCookieSignature(id, providedSig)) {
+                console.warn('🔒 WebSocket rejected: session cookie signature invalid');
+                return null;
+            }
+            sessionId = id;
         } catch (error) {
             console.error('❌ Failed to decode session ID:', error);
             return null;

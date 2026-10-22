@@ -95,6 +95,16 @@ const LOGIN_CRITICAL_PREFIXES = [
     '/static_images/apple-touch-icon'
 ];
 
+const SITE_GATE_LS_KEY = 'dreamscapeSiteGate';
+
+function isSiteGateLocalFlag() {
+    try {
+        return localStorage.getItem(SITE_GATE_LS_KEY) === '1';
+    } catch (_) {
+        return false;
+    }
+}
+
 // Same keys as public/scripts/launch/updateEngine.js (melatonInstall / melatonInstallRecord).
 const MELATON_INSTALL_STATE_KEY = 'melatonInstall';
 // Parallel cache lookups in getFilesNeedingUpdate (the boot update check)
@@ -580,6 +590,9 @@ class ServiceWorkerManager {
 
     filterLoginCriticalFiles(files) {
         if (!Array.isArray(files)) {
+            return [];
+        }
+        if (isSiteGateLocalFlag()) {
             return [];
         }
         return files.filter((file) => file && this._isLoginCriticalPath(file.url));
@@ -4426,6 +4439,12 @@ class ServiceWorkerManager {
         if (this.loginBootComplete) {
             return;
         }
+        if (isSiteGateLocalFlag()) {
+            this.loginBootComplete = true;
+            this._clearLoginBootSession();
+            this._resolveLoginBootComplete();
+            return;
+        }
         this._loginBootOrchestrating = true;
         try {
             if (this._readLoginBootSession()?.active) {
@@ -4487,6 +4506,9 @@ class ServiceWorkerManager {
     }
 
     async checkLoginCriticalUpdates() {
+        if (isSiteGateLocalFlag()) {
+            return { success: true, filesDownloaded: 0 };
+        }
         try {
             const manifest = await this._fetchManifest();
             const criticalFiles = this.filterLoginCriticalFiles(manifest);

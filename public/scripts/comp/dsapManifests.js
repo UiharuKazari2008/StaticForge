@@ -381,6 +381,31 @@ function registerDsapManifests() {
         }
     });
 
+    const SITE_HOMEPAGE_DSAP_URL = 'site.dreamscape.jp';
+    registerDsap({
+        url: SITE_HOMEPAGE_DSAP_URL,
+        aliases: [
+            `dsap://${SITE_HOMEPAGE_DSAP_URL}`,
+            `dsap://${SITE_HOMEPAGE_DSAP_URL}/`
+        ],
+        type: 'dsap',
+        title: 'Site Homepage',
+        assets: {
+            scripts: ['scripts/comp/siteHomepageDsapApplet.js']
+        },
+        menuEntry: {
+            launchId: 'site-homepage',
+            icon: 'fas fa-globe',
+            text: 'Site Homepage',
+            appMenu: true,
+            startMenu: false,
+            adminOnly: true,
+            launch() {
+                openDsapInGrimoire(`dsap://${SITE_HOMEPAGE_DSAP_URL}/`);
+            }
+        }
+    });
+
     const MCP_DSAP_MANIFEST_URL = 'mcp.dreamscape.jp';
     registerDsap({
         url: MCP_DSAP_MANIFEST_URL,

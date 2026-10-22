@@ -6,6 +6,7 @@
 
 const crypto = require('crypto');
 const { AVAILABLE_SCOPES } = require('./applicationAuthManager');
+const { verifyPin } = require('./pinAuth');
 
 const CONSENT_COOKIE_NAME = 'mcp_oauth_consent';
 const CONSENT_SESSION_TTL_MS = 5 * 60 * 1000;
@@ -97,8 +98,9 @@ function verifyConsentPin(pin, globalResources) {
     const userEnabled = config.userPinLoginEnabled !== false;
     const presented = String(pin || '');
 
-    const adminOk = credentialsMatch(presented, adminPin || TIMING_PAD) && adminPin.length > 0;
-    const userOk = credentialsMatch(presented, userPin || TIMING_PAD) && userEnabled && userPin.length > 0;
+    // verifyPin handles both legacy plaintext and salted-hash stored PINs, constant-time.
+    const adminOk = adminPin.length > 0 && verifyPin(presented, adminPin);
+    const userOk = userPin.length > 0 && userEnabled && verifyPin(presented, userPin);
     if (adminOk) return { ok: true, userType: 'admin' };
     if (userOk) return { ok: true, userType: 'readonly' };
     return { ok: false };

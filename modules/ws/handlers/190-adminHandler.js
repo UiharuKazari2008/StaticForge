@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const wsPacketRegistry = require('../wsPacketRegistry');
 const accountPictures = require('../../accountPictures');
+const { hashPin, isPinConfigured } = require('../../pinAuth');
 const {
     normalizeApprovedIpEntries,
     matchApprovedIp,
@@ -10,6 +11,7 @@ const {
 } = require('../../approvedIpAccess');
 
 const ADMIN_DESTRUCTIVE = { destructive: true };
+const { registerSiteHomepagePackets } = require('../../siteHomepageAdmin');
 
 async function handleGetRateLimitingStats(handlersCtx, ws, message, clientInfo, wsServer) {
     try {
@@ -526,8 +528,8 @@ async function handleGetPinSettings(handlersCtx, ws, message, clientInfo, wsServ
                 success: true,
                 userPinLoginEnabled: config.userPinLoginEnabled !== false,
                 useVistaLogon: config.useVistaLogon === true,
-                adminPinConfigured: !!(secureConfig.loginPin && String(secureConfig.loginPin).length > 0),
-                userPinConfigured: !!(secureConfig.readOnlyPin && String(secureConfig.readOnlyPin).length > 0)
+                adminPinConfigured: isPinConfigured(secureConfig.loginPin),
+                userPinConfigured: isPinConfigured(secureConfig.readOnlyPin)
             },
             timestamp: new Date().toISOString()
         });
@@ -551,7 +553,7 @@ async function handleSetAdminPin(handlersCtx, ws, message, clientInfo, wsServer)
         }
 
         const trimmed = pin.trim();
-        handlersCtx.globalResources.modifyConfig('secureConfig').assign('loginPin', trimmed);
+        handlersCtx.globalResources.modifyConfig('secureConfig').assign('loginPin', hashPin(trimmed));
 
         console.log(`🔐 Admin PIN updated by session ${clientInfo.sessionId}`);
 
@@ -584,7 +586,7 @@ async function handleSetUserPin(handlersCtx, ws, message, clientInfo, wsServer) 
         }
 
         const trimmed = pin.trim();
-        handlersCtx.globalResources.modifyConfig('secureConfig').assign('readOnlyPin', trimmed);
+        handlersCtx.globalResources.modifyConfig('secureConfig').assign('readOnlyPin', hashPin(trimmed));
 
         console.log(`🔐 User PIN updated by session ${clientInfo.sessionId}`);
 
@@ -1788,6 +1790,8 @@ function registerPackets(handlersCtx) {
     reg('logout_cursor_account_profile', handleLogoutCursorAccountProfile, ADMIN_DESTRUCTIVE);
     reg('delete_cursor_account', handleDeleteCursorAccount, ADMIN_DESTRUCTIVE);
     reg('set_cursor_account_api_key', handleSetCursorAccountApiKey, ADMIN_DESTRUCTIVE);
+
+    registerSiteHomepagePackets(handlersCtx, reg, ADMIN_DESTRUCTIVE);
 }
 
 module.exports = {

@@ -103,7 +103,10 @@ function filterExistingManifestEntries(projectRoot, entries) {
 
 function isAuthGatedWebPath(webPath) {
     const pathOnly = String(webPath || '').split('?')[0].split('#')[0];
-    return pathOnly.startsWith('/protected/') || pathOnly.startsWith('/private/');
+    if (pathOnly.startsWith('/protected/') || pathOnly.startsWith('/private/')) return true;
+    if (pathOnly === '/manifest.json') return true;
+    if (pathOnly === '/' || pathOnly === '/app' || pathOnly === '/launch' || pathOnly === '/index.html') return true;
+    return false;
 }
 
 // Logged-out clients must not treat these as ordinary precache rows.
