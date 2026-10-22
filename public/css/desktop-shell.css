@@ -205,6 +205,19 @@ body.desktop-mode #photoSwipeWindow.photo-swipe-window:not(.windowed):not(.hidde
     color: var(--text-primary);
 }
 
+/* the Melaton flower (static_images/melaton) in the text colour, in place of the icon-font glyph */
+.gallery-melatonin-backdrop i.ri-contrast-2-fill {
+    width: 1em;
+    height: 1em;
+    background: currentColor;
+    -webkit-mask: url('/static_images/melaton/melaton-white-256.png') center / contain no-repeat;
+    mask: url('/static_images/melaton/melaton-white-256.png') center / contain no-repeat;
+}
+
+.gallery-melatonin-backdrop i.ri-contrast-2-fill::before {
+    content: none;
+}
+
 .gallery-melatonin-backdrop .start-menu-brand-text {
     writing-mode: horizontal-tb;
     text-orientation: mixed;
@@ -2503,7 +2516,10 @@ body.desktop-mode #manualModal #windowListEditorBtn {
     background-repeat: no-repeat;
     z-index: -1;
     opacity: 0;
-    transition: opacity 0.5s ease-in-out, background-image 0.5s ease-in-out;
+    /* No background-image transition: Vista cuts to the new picture once it is decoded
+       (measured on the VM: old frame until ~0.1 s, new from ~0.2 s, nothing in between).
+       workspaceUtils.js applyDesktopWallpaperInline holds the old picture until then. */
+    transition: opacity 0.5s ease-in-out;
     pointer-events: none;
     /* Allow right-click on wallpaper for context menu */
 }

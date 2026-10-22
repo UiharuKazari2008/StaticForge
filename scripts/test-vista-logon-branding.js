@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Vista logon branding (Yozora #495): the Welcome screen's bottom-centre strip is the Dreamscape
-// mark + "Dreamscape" in Segoe UI + "2026 R7" in the light weight (Server 2008 R2 style), built by
+// Vista logon branding (Yozora #495): the Welcome screen's bottom-centre strip is the Melaton
+// flower + "Melaton" in Segoe UI + "2026 R7" in the light weight, R7 in orange (Server 2008 R2 style), built by
 // scripts/build-vista-logon-branding.sh into the slot the Windows flag + "Windows Vista" used.
 // Run: node scripts/test-vista-logon-branding.js
 const assert = require('assert');
@@ -17,9 +17,10 @@ assert.ok(css.includes("url('/static_images/vista-logon/branding.png') center bo
 assert.ok(css.includes('scripts/build-vista-logon-branding.sh'), 'the sheet names the build script');
 
 // the build: two runs, regular then light, plus the mark; keyboard characters only
-assert.ok(build.includes('"Dreamscape"') && build.includes('"2026 R7"'), 'the two runs');
+assert.ok(build.includes('NAME="Melaton"') && build.includes('VERSION_YEAR="2026"') && build.includes('VERSION_REL="R7"'), 'the OS name, then the version with its release');
+assert.ok(build.includes('REL_FILL="#F88800"'), 'the release in the Xyridian orange');
 assert.ok(build.includes('segoeui.ttf') && build.includes('selawkl.ttf'), 'Segoe UI Regular for the name, Selawik Light for the version');
-assert.ok(build.includes('logo_icon.png'), 'the Dreamscape mark replaces the flag');
+assert.ok(build.includes('melaton/melaton-glass.png') && !build.includes('logo_icon.png'), 'the Melaton flower replaces the flag (the Enso is Dreamscape\'s)');
 assert.ok(!/[\u2013\u2014\u2018\u2019\u201c\u201d\u2026\u00d7]/.test(build), 'keyboard characters only');
 
 // the strip itself: a 400x50 PNG with alpha, ink spanning most of the width

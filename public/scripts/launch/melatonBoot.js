@@ -91,6 +91,7 @@
         '/static_images/wallpapers/aurora-plain.webp',
         '/static_images/vista-logon/basic-close.png',
         '/static_images/logo_icon.png',
+        '/static_images/melaton/melaton-glass-256.png',
         '/static_images/vista-icons/msgbox-warning-32.png',
         '/static_images/vista-icons/msgbox-question-32.png',
         '/protected/fflate.js',

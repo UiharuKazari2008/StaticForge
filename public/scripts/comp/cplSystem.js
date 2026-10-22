@@ -6,11 +6,14 @@
  *   Windows edition     the product, copyright and service pack (or build) from the shared version
  *                       source (window.getMeletonVersionInfo / loadMeletonVersionInfo, modalUtils.js),
  *                       the edition logo on the right (shellbrd.dll bitmap 1050)
- *   System              Rating: this browser session's Melaton Experience Index (experienceIndex.js:
+ *   System              Manufacturer and Model (the OEM, Xyridian) with its logo on the right;
+ *                       Rating: this browser session's Melaton Experience Index (experienceIndex.js:
  *                       performance and supported features, the base score is the lowest subscore);
  *                       the server host from get_system_info: processor and rated clock, memory,
  *                       system type = the server's architecture (host.* from modules/globalResources.js
  *                       refreshSystemInfoCache)
+ *   Xyridian support    the OEM's phone number, hours and website, as Vista shows OEMInformation
+ *                       (measured on the VM with the registry values set); Online support opens Help
  *   Computer name...    the host name, the full name the client reaches it by, the workspace as the
  *                       description and the domain (Change settings = Customize network)
  *   Session             this client: who is signed in, the browser, the device (navigator) and the
@@ -25,6 +28,16 @@
     'use strict';
 
     const ART = '/static_images/vista-cpl';
+    // Vista's OEMInformation (HKLM\...\CurrentVersion\OEMInformation): the machine's maker, the
+    // System section's Manufacturer / Model and its 120 x 120 logo, and the "<maker> support" section.
+    // 555-01xx is the range set aside for fiction.
+    const OEM = Object.freeze({
+        manufacturer: 'Xyridian Corporation',
+        model: 'Xyridian Lumina XR7',
+        phone: '1-800-555-0199',
+        hours: '24 hours a day, 7 days a week',
+        logo: '/static_images/xyridian/xyridian-oem-system.png'
+    });
     let registered = false;
     let main = null;
     let versionInfo = null;
@@ -282,7 +295,7 @@
 
         const editionBody = `
             <div class="cpl-sys-edition">
-                <img class="cpl-sys-logo" src="${ART}/system-logo.png" alt="" draggable="false">
+                <img class="cpl-sys-logo" src="/static_images/melaton/melaton-orb-system.png" alt="" draggable="false">
                 <div class="cpl-sys-edition-text">
                     <p class="cpl-sys-line">${esc(ed.name)}</p>
                     ${ed.copyright ? `<p class="cpl-sys-line">${esc(ed.copyright)}</p>` : ''}
@@ -292,6 +305,9 @@
 
         const systemBody = `
             <div class="cpl-sys-rows cpl-sys-rows--system">
+                <img class="cpl-sys-oem-logo" src="${OEM.logo}" alt="${esc(OEM.manufacturer)}" draggable="false">
+                ${row('Manufacturer:', esc(OEM.manufacturer))}
+                ${row('Model:', esc(OEM.model))}
                 <div class="cpl-sys-row cpl-sys-row--rating">
                     <span class="cpl-sys-label">Rating:</span>
                     <span class="cpl-sys-value cpl-sys-rating">${ratingHtml()}</span>
@@ -299,6 +315,13 @@
                 ${row('Processor:', host.processor ? `${esc(host.processor)}${host.clock ? `<span class="cpl-sys-clock">${esc(host.clock)}</span>` : ''}` : value(''))}
                 ${row('Memory (RAM):', value(host.memory))}
                 ${row('System type:', value(host.type))}
+            </div>`;
+
+        const supportBody = `
+            <div class="cpl-sys-rows cpl-sys-rows--support">
+                ${row('Phone number:', esc(OEM.phone))}
+                ${row('Support hours:', esc(OEM.hours))}
+                ${row('Website:', '<button type="button" class="cpl-link" data-cpl-sys="support">Online support</button>')}
             </div>`;
 
         const computerBody = `
@@ -336,6 +359,7 @@
             <h1 class="cpl-sys-title">View basic information about your computer</h1>
             ${section('Windows edition', editionBody, 'cpl-sys-section--edition')}
             ${section('System', systemBody)}
+            ${section(`${OEM.manufacturer} support`, supportBody)}
             ${section('Computer name, domain, and workgroup settings', computerBody)}
             ${section('Session', sessionBody)}
             ${section('Windows activation', activationBody)}`;
@@ -376,8 +400,9 @@
             modal.addEventListener('click', (ev) => {
                 const b = ev.target.closest('[data-cpl-sys]');
                 if (!b || !modal.contains(b)) return;
-                // openGrimoireApplet: public/scripts/comp/modalUtils.js (Start menu Help and Support)
-                if (b.dataset.cplSys === 'help' && typeof root.openGrimoireApplet === 'function') root.openGrimoireApplet();
+                // openGrimoireApplet: public/scripts/comp/modalUtils.js (Start menu Help and Support);
+                // the OEM's Online support goes there too (there is no Xyridian site to open)
+                if ((b.dataset.cplSys === 'help' || b.dataset.cplSys === 'support') && typeof root.openGrimoireApplet === 'function') root.openGrimoireApplet();
             });
         }
     }
@@ -440,6 +465,7 @@
             browserText,
             deviceText,
             edition,
+            OEM,
             render: (v, sys, r) => { versionInfo = v; systemInfo = sys; loadFailed = false; rating = r || null; ratingFailed = false; return pageHtml(); }
         }
     };

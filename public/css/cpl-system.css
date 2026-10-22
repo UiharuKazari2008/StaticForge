@@ -120,6 +120,21 @@
     padding-bottom: 7px;
 }
 
+/* the OEM's rows (VM with OEMInformation set): the support rows step 15 + 7 like System's */
+#melatonControlPanelModal .cpl-sys-rows--support .cpl-sys-row {
+    padding-bottom: 7px;
+}
+
+/* the OEM logo: 120 x 120, flush with the content's right edge, its top on the first System row */
+#melatonControlPanelModal .cpl-sys-oem-logo {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 120px;
+    height: 120px;
+    object-fit: contain;
+}
+
 #melatonControlPanelModal .cpl-sys-label {
     flex: 0 0 150px;
 }

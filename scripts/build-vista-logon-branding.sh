@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the Welcome screen's branding strip (Yozora #495): the ring mark, then
+# Builds the Welcome screen's branding strip (Yozora #495): the Melaton flower, then
 # "Melaton" (the OS) in Segoe UI and "2026 R7" in the light weight (R7 in orange), white on transparent, the way
 # Windows Server 2008 R2 sets its edition light next to the product name. desktop-boot.css draws
 # it under the logon at center bottom 23px, 400x50 (body.vista-logon #desktopPreStartupModal).
@@ -14,7 +14,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="${1:-$ROOT/public/static_images/vista-logon/branding.png}"
-LOGO="$ROOT/public/static_images/logo_icon.png"
+LOGO="$ROOT/public/static_images/melaton/melaton-glass.png"   # the Melaton flower (the Enso is Dreamscape's)
 CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/selawik"
 SEGOE="${SEGOE_UI_TTF:-$HOME/.local/share/fonts/segoeui.ttf}"
 LIGHT="$CACHE/selawkl.ttf"

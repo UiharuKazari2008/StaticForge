@@ -107,7 +107,18 @@ order.forEach((text) => {
 assert.ok(html.includes('Test CPU<span class="cpl-sys-clock">3.00 GHz</span>'));
 assert.ok(html.includes('8.00 GB') && html.includes('64-bit Operating System') && html.includes('Build abc1234'));
 assert.ok(html.includes('dream&lt;scape') && !html.includes('dream<scape'), 'host names are escaped');
-assert.ok(html.includes('system-logo.png') && html.includes('wei-rated.png'));
+assert.ok(html.includes('melaton/melaton-orb-system.png') && !html.includes('system-logo.png') && html.includes('wei-rated.png'), 'the Melaton orb, not the Windows one');
+// the OEM (Vista's OEMInformation): Manufacturer / Model lead System, the logo beside them, then '<maker> support'
+assert.strictEqual(t.OEM.manufacturer, 'Xyridian Corporation');
+assert.ok(html.indexOf('Manufacturer:') < html.indexOf('Model:') && html.indexOf('Model:') < html.indexOf('Rating:'), 'Manufacturer, Model, then Rating');
+assert.ok(html.includes(`<span class="cpl-sys-value">${t.OEM.model}</span>`) && t.OEM.model.indexOf('Melaton') === -1, 'the model is hardware, not the OS');
+assert.ok(html.includes('class="cpl-sys-oem-logo" src="/static_images/xyridian/xyridian-oem-system.png"'), 'the OEM logo');
+{
+    const sup = html.indexOf('Xyridian Corporation support');
+    assert.ok(sup > html.indexOf('System type:') && sup < html.indexOf('Computer name:'), 'the support section sits between System and Computer name');
+    assert.ok(html.indexOf('Phone number:') > sup && html.includes(t.OEM.phone) && html.includes('Support hours:') && html.includes(t.OEM.hours), 'phone and hours');
+    assert.ok(/Website:<\/span><span class="cpl-sys-value"><button type="button" class="cpl-link" data-cpl-sys="support">Online support<\/button>/.test(html), 'Website: Online support');
+}
 assert.ok(html.includes('<span class="cpl-sys-wei-num">4.8</span>') && html.includes('Melaton Experience Index</span>'), 'the base score on the badge');
 assert.ok(html.includes('Primary hard disk: Not rated') && html.includes('Gaming graphics: 5.0'), 'the subscores in the tooltip');
 assert.ok(html.includes('data-cpl-action="customize"'), 'Change settings is Customize network');

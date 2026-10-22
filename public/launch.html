@@ -295,6 +295,7 @@
 
     <!-- Preload critical resources -->
     <link rel="preload" href="/static_images/logo_icon.png" as="image">
+    <link rel="preload" href="/static_images/melaton/melaton-glass-256.png" as="image">
     <link rel="preload" href="/dist/fonts/MozillaHeadline-VariableFont_wdth,wght.ttf" as="font" type="font/ttf"
         crossorigin="anonymous">
     <link rel="preload" href="/protected/fonts/vista/segoeui.woff2" as="font" type="font/woff2" crossorigin="anonymous">
@@ -801,7 +802,7 @@
         <!-- 640x480 stage scaled to fit: Vista's boot screen geometry (launch-boot.css) -->
         <div class="melaton-boot-screen">
             <div class="melaton-boot-stage">
-                <img class="melaton-boot-enso" src="/static_images/logo_icon.png" alt="" draggable="false">
+                <img class="melaton-boot-enso" src="/static_images/melaton/melaton-glass-256.png" alt="" draggable="false">
                 <div class="melaton-boot-bar" role="progressbar" aria-label="Starting Melaton">
                     <div class="melaton-boot-bar-track">
                         <div class="melaton-boot-bar-cluster"><i></i><i></i><i></i><i></i><i></i><i></i></div>
@@ -1037,8 +1038,8 @@
             var logo = document.querySelector('.melaton-boot-enso');
             var logoBitmap = null;
             var paintId = 0;
-            // The 731 px logo, area-resampled once to its 88 px boot size: point sampling it
-            // in paint() drops whole pixels and leaves a ragged ring.
+            // The 256 px Melaton flower, area-resampled once to its 88 px boot size: point sampling it
+            // in paint() drops whole pixels and leaves ragged petals.
             function bootLogoBitmap() {
                 if (logoBitmap) return logoBitmap;
                 if (!logo || !logo.complete || !logo.naturalWidth) return null;

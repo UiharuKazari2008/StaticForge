@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the About Melaton banner (winver.exe's "About Windows" brand strip): Vista's 413x72
-# banner gradient with the Melaton mark, "Melaton" and "2026 R7" (R7 in orange) centred where Vista has the
+# banner gradient with the Melaton flower, "Melaton" and "2026 R7" (R7 in orange) centred where Vista has the
 # flag, "Windows Vista" and "Ultimate", and the small copyright at bottom right; plus the 413x5
 # orange rule under it. #aboutMelatoninModal (public/css/about-melaton.css) draws both.
 #
@@ -22,8 +22,7 @@ FONTS="$CACHE/fonts"
 SEGOE="${SEGOE_UI_TTF:-$HOME/.local/share/fonts/segoeui.ttf}"
 LIGHT="${XDG_CACHE_HOME:-$HOME/.cache}/selawik/selawkl.ttf"
 TAHOMA="$FONTS/tahoma.ttf"
-MARK_FONT="$ROOT/public/dist/remixicon/remixicon.ttf"
-MARK_GLYPH=$'\uebd3'   # ri-contrast-2-fill, the Melaton mark (Start menu, Workspace backdrop)
+MARK_IMG="$ROOT/public/static_images/melaton/melaton-glass.png"   # the Melaton flower
 
 # Geometry from Vista's banner (px): flag box 77,16 48x38; "Windows Vista" 28px on baseline 48;
 # "Ultimate" 20px light on the same baseline; copyright right edge 406, baseline 67. The group
@@ -71,8 +70,7 @@ copy_x=$(( COPY_RIGHT - copy_w ))
 
 mkdir -p "$OUT"
 convert "$BRD/2_101.bmp" -crop "${W}x1+0+0" +repage -scale "${W}x${H}!" \
-    \( -density 72 -background none -fill white -font "$MARK_FONT" -pointsize "$MARK" label:"$MARK_GLYPH" -trim +repage \
-       -resize "${MARK}x${MARK}" \) -geometry "+${left}+${MARK_TOP}" -composite \
+    \( "$MARK_IMG" -trim +repage -resize "${MARK}x${MARK}" \) -geometry "+${left}+${MARK_TOP}" -composite \
     -density 72 \
     -font "$SEGOE" -pointsize "$NAME_PT" -kerning "$NAME_KERNING" -fill white -annotate "+${name_x}+${BASELINE}" "$NAME" \
     -kerning 0 -font "$LIGHT" -pointsize "$EDITION_PT" -fill white -annotate "+${edition_x}+${BASELINE}" "$EDITION_YEAR" \

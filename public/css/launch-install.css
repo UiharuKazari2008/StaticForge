@@ -124,7 +124,7 @@
     width: 16px;
     height: 16px;
     margin-right: 5px;
-    background: url('/static_images/logo_icon.png') center / 16px 16px no-repeat;
+    background: url('/static_images/melaton/melaton-glass-256.png') center / 16px 16px no-repeat;
 }
 
 #miTitle {
@@ -492,10 +492,11 @@
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
 }
 
+/* the Melaton flower beside "Xyridian Melaton" (the Enso is Dreamscape's) */
 .mi-logo-enso {
     width: 84px;
     height: 84px;
-    background: url('/static_images/logo_icon.png') center / contain no-repeat;
+    background: url('/static_images/melaton/melaton-glass-256.png') center / contain no-repeat;
     filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
 }
 
