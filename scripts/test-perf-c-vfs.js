@@ -385,6 +385,52 @@ async function testExploreCache(scratch) {
     console.log('  thumbExtById / normalizeResult / memoryCache bound / async page writes: OK');
 }
 
+// Finding 4: one context search + per-suggestion checks inside it equals one full
+// omegasearch per suggestion. Runs on a metadata.db copy (initializeDatabase may migrate it).
+async function testSuggestionContextCounts() {
+    if (!fs.existsSync(METADATA_DB)) {
+        console.log('  suggestions: skipped (no metadata.db copy)');
+        return;
+    }
+    const metadataDb = require('../modules/metadataDatabase');
+    assert.strictEqual(await metadataDb.initializeDatabase(path.dirname(METADATA_DB)), true, 'metadata copy init');
+    const { countSuggestionContextMatches } = require('../modules/ws/handlers/70-searchHandler');
+    const ro = openRo(METADATA_DB);
+    const [ws] = await ro.all(`SELECT workspace_id, COUNT(*) AS n FROM gallery_workspace_ownership
+        WHERE bucket = 'files' GROUP BY workspace_id ORDER BY n DESC LIMIT 1 OFFSET 2`);
+    await ro.close();
+    const workspaceScope = { workspaceIds: [ws.workspace_id], bucket: 'files' };
+
+    const oldCounts = async (contextTags, suggestions) => {
+        const out = [];
+        for (const suggestion of suggestions) {
+            const contextQuery = [...contextTags, suggestion.originalTag || suggestion.tag].join(',');
+            const rows = await metadataDb.searchFilesInDatabase(contextQuery, null, 'images', { workspaceScope });
+            out.push(rows.length);
+        }
+        return out;
+    };
+
+    const scenarios = [
+        ['b', ['1girl']],
+        ['th', ['1girl', 'solo']],
+        ['s', ['masterpiece|no text']],
+        ['c', ['huge thighs', 'overweight', 'deep skin']],
+        ['a', ['zz-no-such-tag-zz']],
+        ['m', ['', 'solo']]
+    ];
+    for (const [query, contextTags] of scenarios) {
+        const suggestions = await metadataDb.getTagSuggestionsFromDatabase(query, null, 40, { workspaceScope });
+        suggestions.push({ tag: 'solo' }, { tag: '1girl,solo' }, { tag: '' });
+        const a = await measure(() => oldCounts(contextTags, suggestions));
+        const b = await measure(() => countSuggestionContextMatches(metadataDb, contextTags, suggestions, null, 'images', workspaceScope));
+        assert.deepStrictEqual(b.result, a.result, `counts differ for ${JSON.stringify(contextTags)} / ${query}`);
+        const hits = a.result.filter((n) => n > 0).length;
+        console.log(`  context ${JSON.stringify(contextTags)} x${suggestions.length} suggestions (${hits} nonzero, max ${Math.max(...a.result)}): old ${a.ms} ms -> new ${b.ms} ms`);
+    }
+    await metadataDb.closeDatabase();
+}
+
 async function main() {
     fs.mkdirSync(SCRATCH, { recursive: true });
     console.log('vfs db batching (finding 9):');
@@ -395,6 +441,8 @@ async function main() {
     await testDirSizes(SCRATCH);
     console.log('explore cache (finding 3):');
     await testExploreCache(SCRATCH);
+    console.log('tag suggestion context counts (finding 4):');
+    await testSuggestionContextCounts();
     console.log('upload helpers (finding 6):');
     await testUploadHelpers(SCRATCH);
     console.log('test-perf-c-vfs: OK');

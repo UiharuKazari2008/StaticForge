@@ -769,6 +769,51 @@ async function handleRebuildAllIndexes(handlers, ws, message, clientInfo, wsServ
         }
     }
 
+// Omegasearch blocks are comma pieces intersected independently, so the files matching
+// "context,...,suggestion" are the context matches that also match the suggestion's blocks.
+// Search the context once, then test each suggestion only inside that set.
+const CONTEXT_COUNT_CHUNK = 5000;
+
+async function countSuggestionContextMatches(metadataDb, contextTags, suggestions, workspaceFiles, viewType, workspaceScope) {
+    const oldStyleCount = async (suggestion) => {
+        const contextQuery = [...contextTags, suggestion.originalTag || suggestion.tag].join(',');
+        const rows = await metadataDb.searchFilesInDatabase(contextQuery, workspaceFiles, viewType, { workspaceScope });
+        return rows.length;
+    };
+    const contextBlocks = metadataDb.normalizeSearchBlocks([...contextTags].join(','));
+    if (!contextBlocks.length) {
+        const counts = [];
+        for (const suggestion of suggestions) counts.push(await oldStyleCount(suggestion));
+        return counts;
+    }
+
+    const contextRows = await metadataDb.searchFilesWithBlocks(contextBlocks, workspaceFiles, viewType, { workspaceScope });
+    const contextFiles = [...new Set(contextRows.map((row) => row.filename))];
+    const counts = [];
+    for (const suggestion of suggestions) {
+        if (!contextFiles.length) {
+            counts.push(0);
+            continue;
+        }
+        const suggestionBlocks = metadataDb.normalizeSearchBlocks([suggestion.originalTag || suggestion.tag].join(','));
+        if (!suggestionBlocks.length) {
+            counts.push(contextFiles.length);
+            continue;
+        }
+        // No workspaceScope: the filename list is the scope (context files are already in it).
+        let count = 0;
+        for (let i = 0; i < contextFiles.length; i += CONTEXT_COUNT_CHUNK) {
+            const chunk = contextFiles.slice(i, i + CONTEXT_COUNT_CHUNK);
+            const rows = await metadataDb.searchFilesWithBlocks(suggestionBlocks, chunk, viewType, {
+                skipSearchIndexWait: true
+            });
+            count += rows.length;
+        }
+        counts.push(count);
+    }
+    return counts;
+}
+
 async function getTagSuggestions(handlers, query, viewType, sessionId, limit = 20, contextTags = []) {
         try {
             const { files: workspaceFiles, workspaceScope } = await resolveActiveSearchScope(
@@ -806,19 +851,18 @@ async function getTagSuggestions(handlers, query, viewType, sessionId, limit = 2
                     rankingCorpusSize = await metadataDb.countWorkspaceCorpusFiles(workspaceScope);
                 }
                 
-                // For each suggestion, find files that match both the suggestion and context tags
-                for (const suggestion of suggestions) {
-                    let contextScore = 0;
-                    
-                    // Query database for files that match both this suggestion and context tags
-                    const contextQuery = [...contextTags, suggestion.originalTag || suggestion.tag].join(',');
-                    const contextMatchingFiles = await metadataDb.searchFilesInDatabase(
-                        contextQuery,
-                        workspaceFiles,
-                        viewType,
-                        { workspaceScope }
-                    );
-                    contextScore = contextMatchingFiles.length;
+                // Files matching both the context tags and each suggestion (one context search, #620)
+                const contextScores = await countSuggestionContextMatches(
+                    metadataDb,
+                    contextTags,
+                    suggestions,
+                    workspaceFiles,
+                    viewType,
+                    workspaceScope
+                );
+                for (let i = 0; i < suggestions.length; i++) {
+                    const suggestion = suggestions[i];
+                    const contextScore = contextScores[i];
 
                     // Boost score for context-relevant suggestions (base rank matches non-context suggestions)
                     suggestion.contextScore = contextScore;
@@ -1362,4 +1406,4 @@ function registerPackets(handlersCtx) {
     regFn('get_dataset_tags_for_path', handleGetDatasetTagsForPath);
 }
 
-module.exports = { registerPackets, cleanupSearchCache, omegasearchMatchFilenames };
+module.exports = { registerPackets, cleanupSearchCache, omegasearchMatchFilenames, countSuggestionContextMatches };
