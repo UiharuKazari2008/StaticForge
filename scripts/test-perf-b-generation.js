@@ -524,7 +524,7 @@ sections.pngChunks = async function pngChunks() {
     const forge = { generation_type: 'generated', date_generated: 1700000000000, preset_name: 'x', input_prompt: 'a, b' };
     for (const buf of buffers) {
         assert.deepStrictEqual(newPm.readMetadata(buf), oldPm.readMetadata(buf), 'readMetadata');
-        for (const [kw, text] of [['Comment', '{"prompt":"p é ☃"}'], ['Source', 'NovelAI'], ['Zeta', 'new keyword']]) {
+        for (const [kw, text] of [['Comment', '{"prompt":"p \u00e9 \u2603"}'], ['Source', 'NovelAI'], ['Zeta', 'new keyword']]) {
             const a = oldPm.insertTextChunk(buf, kw, text);
             const b = newPm.insertTextChunk(buf, kw, text);
             assert.ok(Buffer.isBuffer(b) && a.equals(b), `insertTextChunk ${kw} byte-identical`);
