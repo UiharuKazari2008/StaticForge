@@ -751,6 +751,20 @@ function generateMD5(filePath) {
     }
 }
 
+
+/**
+ * Generate MD5 hash for a file (async)
+ */
+async function generateMD5Async(filePath) {
+    try {
+        const fileBuffer = await fs.promises.readFile(filePath);
+        return crypto.createHash('md5').update(fileBuffer).digest('hex');
+    } catch (error) {
+        console.error(`❌ Error generating MD5 for ${filePath}:`, error.message);
+        return null;
+    }
+}
+
 /**
  * Extract image metadata using Sharp
  */
@@ -2555,7 +2569,16 @@ async function addReceiptMetadata(filename, imagesDir, receiptData = null, forge
     if (!metadata) {
         const filePath = path.join(imagesDir, filename);
         const existing = await db.get('SELECT * FROM images WHERE filename = ?', [filename]);
-        if (existing && fs.existsSync(filePath) && generateMD5(filePath) === existing.md5) {
+        let matches = false;
+        if (existing) {
+            try {
+                await fs.promises.access(filePath);
+                if ((await generateMD5Async(filePath)) === existing.md5) {
+                    matches = true;
+                }
+            } catch (_) {}
+        }
+        if (matches) {
             const receipts = await db.all(
                 'SELECT receipt_data FROM receipts WHERE image_id = ? ORDER BY timestamp',
                 [existing.id]
@@ -2574,12 +2597,17 @@ async function addReceiptMetadata(filename, imagesDir, receiptData = null, forge
 
     if (forgeData) {
         const filePath = path.join(imagesDir, filename);
-        if (fs.existsSync(filePath)) {
-            const imageBuffer = fs.readFileSync(filePath);
+        let exists = false;
+        try {
+            await fs.promises.access(filePath);
+            exists = true;
+        } catch (_) {}
+        if (exists) {
+            const imageBuffer = await fs.promises.readFile(filePath);
             const updatedBuffer = _pngMetadata.updateMetadata(imageBuffer, forgeData);
-            fs.writeFileSync(filePath, updatedBuffer);
-            metadata.md5 = generateMD5(filePath);
-            const stats = fs.statSync(filePath);
+            await fs.promises.writeFile(filePath, updatedBuffer);
+            metadata.md5 = crypto.createHash('md5').update(updatedBuffer).digest('hex');
+            const stats = await fs.promises.stat(filePath);
             metadata.mtime = stats.mtime.valueOf();
             metadata.size = stats.size;
         }
