@@ -208,7 +208,8 @@ for (const name of ['upload', 'download', 'replace', 'system-properties', 'contr
 for (const f of ['computer-16', 'computer-64', 'drive-system-16', 'drive-system-48', 'drive-system-64']) {
     assert.ok(fs.existsSync(path.join(ROOT, `public/static_images/vista-explorer/${f}.png`)), f);
 }
-assert.ok(read('public/scripts/comp/featureLoader.js').includes("'scripts/comp/explorerComputerView.js', 'scripts/comp/fileOperationProgress.js', 'scripts/comp/explorerApplet.js'"), 'loaded before the applet');
+// explorerArchive.js (7-Zip) may sit between fileOperationProgress.js and the applet
+assert.ok(/'scripts\/comp\/explorerComputerView\.js', 'scripts\/comp\/fileOperationProgress\.js', (?:'[^']+', )*'scripts\/comp\/explorerApplet\.js'/.test(read('public/scripts/comp/featureLoader.js')), 'loaded before the applet');
 assert.ok(read('public/scripts/comp/desktopShortcuts.js').includes("openExplorerApplet('Computer')"), "the desktop's Computer opens Computer");
 const gr = read('modules/globalResources.js');
 assert.ok(gr.includes('diskInfo.totalBytes = totalBytes;') && gr.includes('diskInfo.fileSystem = STATFS_TYPE_NAMES[stats.type] || null;'), 'the server sends the disk in bytes');
