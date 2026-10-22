@@ -328,6 +328,36 @@ async function testRelayMockAndClient() {
         assert.strictEqual(relayAccepted.toggles.outbound, false);
         assert.strictEqual(exchange.getToggles().outbound, false);
 
+        assert.strictEqual(exchange.getMailboxRecord('sala').outboundEnabled, true);
+        const salaToggle = await exchange.setToggles('yukimi', {
+            mailboxes: { sala: { outbound: false } },
+            confirm: true
+        });
+        assert.strictEqual(salaToggle.relay.ok, true);
+        assert.strictEqual(exchange.getMailboxRecord('sala').outboundEnabled, false);
+        assert.strictEqual(exchange.getMailboxRecord('sala').inboundEnabled, true);
+        const salaGot = textOf(await handleExchangeTool(reqFor('Tsubame'), 'exchange_get_mailbox', { owner: 'sala' }));
+        assert.strictEqual(salaGot.mailbox.outboundEnabled, false);
+        assert.strictEqual(salaGot.mailbox.inboundEnabled, true);
+        assert.ok(!Object.prototype.hasOwnProperty.call(salaGot.mailbox, 'relayOutboundEnabled'));
+
+        const relayOnly = await relayClient.putToggles(
+            { mailboxes: { sala: { outbound: true } } },
+            { actor: 'yukimi', confirm: true }
+        );
+        assert.strictEqual(relayOnly.ok, true);
+        assert.strictEqual(exchange.getMailboxRecord('sala').outboundEnabled, false);
+        const mismatched = textOf(await handleExchangeTool(reqFor('Tsubame'), 'exchange_get_mailbox', { owner: 'sala' }));
+        assert.strictEqual(mismatched.mailbox.outboundEnabled, false);
+        assert.strictEqual(mismatched.mailbox.relayOutboundEnabled, true);
+        assert.ok(!Object.prototype.hasOwnProperty.call(mismatched.mailbox, 'relayInboundEnabled'));
+
+        await exchange.setToggles('yukimi', {
+            mailboxes: { sala: { outbound: true } },
+            confirm: true
+        });
+        assert.strictEqual(exchange.getMailboxRecord('sala').outboundEnabled, true);
+
         const localPatch = await exchange.setToggles('yukimi', {
             outbound: false,
             mailboxes: { ivory: { inbound: false } },
@@ -338,6 +368,13 @@ async function testRelayMockAndClient() {
         assert.strictEqual(localPatch.toggles.outbound, false);
         assert.strictEqual(localPatch.toggles.mailboxes.ivory.inbound, false);
         assert.strictEqual(localPatch.relay.skipped, true);
+        assert.strictEqual(exchange.getMailboxRecord('ivory').inboundEnabled, false);
+        await exchange.setToggles('yukimi', {
+            mailboxes: { ivory: { inbound: true } },
+            confirm: true,
+            relay: false
+        });
+        assert.strictEqual(exchange.getMailboxRecord('ivory').inboundEnabled, true);
     } finally {
         relayClient.resetForTests();
         await mock.close();
@@ -814,6 +851,9 @@ function testRecipientPushSurfaces() {
     const mcpSrc = fs.readFileSync(path.join(__dirname, '..', 'modules/mailExchangeMcp.js'), 'utf8');
     const wsDoc = fs.readFileSync(path.join(__dirname, '..', 'docs/client-api/ws/mailExchange.md'), 'utf8');
     const restDoc = fs.readFileSync(path.join(__dirname, '..', 'docs/client-api/rest-api.md'), 'utf8');
+    assert.match(handlerSrc, /mailboxViewWithRelay/);
+    assert.match(httpSrc, /mailboxViewWithRelay/);
+    assert.match(mcpSrc, /mailboxViewWithRelay/);
     assert.match(handlerSrc, /exchange_resync_recipients/);
     assert.match(httpSrc, /\/mail-exchange\/recipients\/resync/);
     assert.match(mcpSrc, /exchange_resync_recipients/);

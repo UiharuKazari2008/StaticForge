@@ -58,7 +58,7 @@ const handleListMailboxes = wrap(async () => ({
 }));
 
 const handleGetMailbox = wrap(async (_actor, message) => {
-    const mailbox = exchange.publicMailboxView(exchange.getMailboxRecord(message.owner));
+    const mailbox = await exchange.mailboxViewWithRelay(message.owner);
     if (!mailbox) throw new exchange.MailExchangeError('Unknown mailbox', 'UNKNOWN_MAILBOX');
     return { mailbox };
 });

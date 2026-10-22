@@ -47,7 +47,7 @@ function registerRoutes(app, { authMiddleware }) {
         mailboxes: exchange.listMailboxRecords().map(exchange.publicMailboxView)
     })));
     app.get('/mail-exchange/mailboxes/:owner', authMiddleware, gated(async (_actor, req) => {
-        const mailbox = exchange.publicMailboxView(exchange.getMailboxRecord(req.params.owner));
+        const mailbox = await exchange.mailboxViewWithRelay(req.params.owner);
         if (!mailbox) throw new exchange.MailExchangeError('Unknown mailbox', 'UNKNOWN_MAILBOX');
         return { mailbox };
     }));

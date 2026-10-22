@@ -1183,6 +1183,53 @@ function pickRelayTogglePatch(patch) {
     return body;
 }
 
+function applyMailboxToggleRows(mailboxesPatch) {
+    if (!isReady() || !mailboxesPatch || typeof mailboxesPatch !== 'object' || Array.isArray(mailboxesPatch)) {
+        return;
+    }
+    Object.entries(mailboxesPatch).forEach(([rawKey, value]) => {
+        if (value === null || !value || typeof value !== 'object' || Array.isArray(value)) return;
+        const owner = normalizeOwner(rawKey);
+        if (!owner) return;
+        const rec = getMailboxRecord(owner);
+        if (!rec || rec.deleted) return;
+        const extra = {};
+        if (Object.prototype.hasOwnProperty.call(value, 'inbound') && typeof value.inbound === 'boolean') {
+            extra.inbound_enabled = value.inbound ? 1 : 0;
+        }
+        if (Object.prototype.hasOwnProperty.call(value, 'outbound') && typeof value.outbound === 'boolean') {
+            extra.outbound_enabled = value.outbound ? 1 : 0;
+        }
+        if (!Object.keys(extra).length) return;
+        ensureMailboxRow(owner, extra);
+    });
+}
+
+function effectiveRelayMailboxFlag(relayData, owner, flag) {
+    const box = relayData && relayData.mailboxes && relayData.mailboxes[owner];
+    if (box && typeof box[flag] === 'boolean') return box[flag];
+    if (relayData && typeof relayData[flag] === 'boolean') return relayData[flag];
+    return true;
+}
+
+async function mailboxViewWithRelay(owner) {
+    const rec = getMailboxRecord(owner);
+    if (!rec) return null;
+    const mailbox = publicMailboxView(rec);
+    try {
+        const client = require('./lantisRelayClient');
+        const relay = await client.getToggles();
+        if (!relay.ok || !relay.data) return mailbox;
+        const relayInbound = effectiveRelayMailboxFlag(relay.data, rec.owner, 'inbound');
+        const relayOutbound = effectiveRelayMailboxFlag(relay.data, rec.owner, 'outbound');
+        if (relayInbound !== mailbox.inboundEnabled) mailbox.relayInboundEnabled = relayInbound;
+        if (relayOutbound !== mailbox.outboundEnabled) mailbox.relayOutboundEnabled = relayOutbound;
+    } catch (_err) {
+        return mailbox;
+    }
+    return mailbox;
+}
+
 async function setToggles(actor, patch = {}) {
     const admin = requireExchangeAdmin(actor, 'set_toggles', 'global');
     requireEnabled(admin, 'set_toggles', 'global');
@@ -1208,6 +1255,7 @@ async function setToggles(actor, patch = {}) {
         }
     }
     writeToggles(next);
+    applyMailboxToggleRows(patch.mailboxes);
     audit(admin, 'set_toggles', 'global', true, `inbound=${next.inbound} outbound=${next.outbound}`);
     if (relayResult.ok && relayResult.data && typeof relayResult.data === 'object') {
         return { toggles: next, relay: relayResult, relayToggles: relayResult.data };
@@ -1401,7 +1449,7 @@ function adminClearMailboxNotifyForward(actor, { owner, confirm } = {}) {
 
 function publicMailboxView(row) {
     if (!row) return null;
-    return {
+    const view = {
         owner: row.owner,
         localPart: row.localPart,
         address: row.address,
@@ -1416,6 +1464,9 @@ function publicMailboxView(row) {
         hasKey: row.hasKey,
         addresses: Array.isArray(row.addresses) ? row.addresses : listAddressRows(row.owner)
     };
+    if (typeof row.relayInboundEnabled === 'boolean') view.relayInboundEnabled = row.relayInboundEnabled;
+    if (typeof row.relayOutboundEnabled === 'boolean') view.relayOutboundEnabled = row.relayOutboundEnabled;
+    return view;
 }
 
 module.exports = {
@@ -1449,6 +1500,7 @@ module.exports = {
     listAudit,
     listMailboxRecords,
     getMailboxRecord,
+    mailboxViewWithRelay,
     listActiveOwners,
     listDirectoryOwners,
     omitDisabledMailboxes,

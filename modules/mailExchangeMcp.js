@@ -24,7 +24,7 @@ const TOOLS = [
         core: true,
         role: 'exchange',
         scope: SCOPE,
-        description: 'Exchange admin only. Get one mailbox, its public address, and extra intake aliases. Tsubame (mailroom) is the intended operator.',
+        description: 'Exchange admin only. Get one mailbox, its public address, extra intake aliases, and stored inboundEnabled/outboundEnabled. If LANTIS reports a different inbound/outbound for that mailbox, relayInboundEnabled / relayOutboundEnabled are included. Tsubame (mailroom) is the intended operator.',
         inputSchema: {
             type: 'object',
             additionalProperties: false,
@@ -201,7 +201,7 @@ const TOOLS = [
         core: true,
         role: 'exchange',
         scope: SCOPE,
-        description: 'Exchange admin only. Get or set external inbound/outbound toggles (global, per mailbox, per service e.g. Yozora). Writes require confirm:true (Dreamscape-side). The LANTIS PUT is PATCH-like (omit = unchanged, null deletes a mailbox/service key) and includes actor only — not confirm. Relay 400s: UNKNOWN_MAILBOX, UNKNOWN_SERVICE, BAD_BODY, ACTOR_REQUIRED.',
+        description: 'Exchange admin only. Get or set external inbound/outbound toggles (global, per mailbox, per service e.g. Yozora). Writes require confirm:true (Dreamscape-side). Per-mailbox inbound/outbound also writes through to that exchange_mailbox row in the same operation. The LANTIS PUT is PATCH-like (omit = unchanged, null deletes a mailbox/service key) and includes actor only — not confirm. Relay 400s: UNKNOWN_MAILBOX, UNKNOWN_SERVICE, BAD_BODY, ACTOR_REQUIRED.',
         inputSchema: {
             type: 'object',
             additionalProperties: false,
@@ -352,7 +352,7 @@ async function handleExchangeTool(req, name, input = {}) {
             });
         }
         if (name === 'exchange_get_mailbox') {
-            const mailbox = exchange.publicMailboxView(exchange.getMailboxRecord(input.owner));
+            const mailbox = await exchange.mailboxViewWithRelay(input.owner);
             if (!mailbox) {
                 throw new exchange.MailExchangeError('Unknown mailbox', 'UNKNOWN_MAILBOX');
             }
