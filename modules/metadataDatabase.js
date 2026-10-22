@@ -413,6 +413,9 @@ async function createTables() {
         CREATE INDEX IF NOT EXISTS idx_gwi_workspace_bucket_sort ON gallery_workspace_items (workspace_id, bucket, sort_mtime DESC);
         CREATE INDEX IF NOT EXISTS idx_gwi_workspace_bucket_sort_base ON gallery_workspace_items (workspace_id, bucket, sort_mtime DESC, base DESC);
         CREATE INDEX IF NOT EXISTS idx_gwi_upscaled_view ON gallery_workspace_items (workspace_id, bucket, in_upscaled_view, sort_mtime DESC);
+        CREATE INDEX IF NOT EXISTS idx_gwi_original ON gallery_workspace_items (original);
+        CREATE INDEX IF NOT EXISTS idx_gwi_upscaled ON gallery_workspace_items (upscaled);
+        CREATE INDEX IF NOT EXISTS idx_images_upscaled_view ON images (filename) WHERE upscaled IS NOT NULL AND upscaled != 0 AND upscaled != '';
         CREATE INDEX IF NOT EXISTS idx_gwp_workspace ON gallery_workspace_pins (workspace_id, pin_order, pinned_at);
         CREATE INDEX IF NOT EXISTS idx_gwbm_workspace_view ON ${GALLERY_BLOCK_META_TABLE} (workspace_id, view_type, block_offset);
         CREATE INDEX IF NOT EXISTS idx_prompt_text_lane ON image_prompt_text (lane);
@@ -5424,14 +5427,25 @@ async function findGalleryWorkspaceItemIndex(workspaceId, viewType = 'images', f
 
     const bucket = viewTypeToGalleryBucket(viewType);
     const base = getGalleryBaseName(filename);
-    let locateSql = `SELECT sort_mtime FROM ${GALLERY_ITEMS_TABLE}
-                     WHERE workspace_id = ? AND bucket = ?
-                       AND (original = ? OR upscaled = ? OR base = ?)`;
-    const locateParams = [workspaceId, bucket, filename, filename, base];
-    if (viewType === 'upscaled') {
-        locateSql += ' AND in_upscaled_view = 1';
-    }
-    locateSql += ' LIMIT 1';
+    // One indexed probe per match column (base = PK, original / upscaled = idx_gwi_*); the
+    // old OR form scanned the whole workspace. Same row: newest by sort_mtime, base.
+    // Unary + keeps the planner on idx_gwi_original / idx_gwi_upscaled.
+    const viewFilter = viewType === 'upscaled' ? ' AND in_upscaled_view = 1' : '';
+    const locateSql = `SELECT sort_mtime, base FROM (
+            SELECT sort_mtime, base FROM ${GALLERY_ITEMS_TABLE}
+            WHERE workspace_id = ? AND bucket = ? AND base = ?${viewFilter}
+            UNION ALL
+            SELECT sort_mtime, base FROM ${GALLERY_ITEMS_TABLE}
+            WHERE original = ? AND +workspace_id = ? AND +bucket = ?${viewFilter}
+            UNION ALL
+            SELECT sort_mtime, base FROM ${GALLERY_ITEMS_TABLE}
+            WHERE upscaled = ? AND +workspace_id = ? AND +bucket = ?${viewFilter}
+        ) ORDER BY sort_mtime DESC, base DESC LIMIT 1`;
+    const locateParams = [
+        workspaceId, bucket, base,
+        filename, workspaceId, bucket,
+        filename, workspaceId, bucket
+    ];
 
     const row = await db.get(locateSql, locateParams);
     if (!row) {
