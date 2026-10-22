@@ -1646,6 +1646,12 @@ class WikiDisplayBase {
         <h4 class="dreamwiki-recent-heading">Recently visited</h4>
         <div class="dreamwiki-recent-list tag-cloud">${recentRows}</div>
     </div>
+    <div class="dreamwiki-alchemy-cta">
+        <div class="dreamwiki-home-border-dotted"></div>
+        <button type="button" class="btn-secondary dreamwiki-alchemy-btn" data-action="perform-alchemy">
+            <img src="${resolveAppIconPath('alchemy.png', 24)}" srcset="${resolveAppIconPath('alchemy.png', 24)} 1x, ${resolveAppIconPath('alchemy.png', 48)} 2x" alt=""> Perform Alchemy!
+        </button>
+    </div>
 </div>`;
 
         this.bindDreamWikiHomepageEvents();
@@ -1750,6 +1756,14 @@ class WikiDisplayBase {
         if (apocryphaBtn) {
             apocryphaBtn.addEventListener('click', () => {
                 this.navigate('rdf://apocrypha.737.jp.net/');
+            });
+        }
+
+        // Perform Alchemy!: this tab goes to Alchemy's home (ALCHEMY_HOME_URL: public/scripts/comp/featureLoader.js)
+        const alchemyBtn = this.displayArea.querySelector('[data-action="perform-alchemy"]');
+        if (alchemyBtn) {
+            alchemyBtn.addEventListener('click', () => {
+                this.navigate(typeof ALCHEMY_HOME_URL === 'string' ? ALCHEMY_HOME_URL : 'https://www.bing.com/');
             });
         }
 
@@ -4045,6 +4059,11 @@ class WikiWindowInstance extends WikiDisplayBase {
             }
         }
 
+        // grimoireOpenCurrentPageInNewWindow: public/scripts/comp/grimoireRemoteBrowser.js
+        if (typeof grimoireOpenCurrentPageInNewWindow === 'function' && grimoireOpenCurrentPageInNewWindow(this)) {
+            return;
+        }
+
         if (!this.displayArea) return;
         
         const currentContent = this.getCurrentPageContent();
@@ -4536,6 +4555,8 @@ class TagWikiSearchModal extends WikiDisplayBase {
         this.setupSplitModeListeners();
         this.setupContextMenu();
         // updateSearchControlsVisibility no longer needed (no old header controls to toggle)
+        // tabs, each a Grimoire or an Alchemy page: public/scripts/comp/grimoireTabs.js (#451)
+        if (typeof GrimoireTabs === 'function') this.tabs = new GrimoireTabs(this);
         // IE7's chrome on the Vista desktop: public/scripts/comp/grimoireIeChrome.js (#448)
         if (typeof GrimoireIeChrome === 'function') this.ieChrome = new GrimoireIeChrome(this);
     }
@@ -4776,10 +4797,11 @@ class TagWikiSearchModal extends WikiDisplayBase {
         this.rightPaneEl.classList.remove('hidden');
         this.splitDividerEl.classList.remove('hidden');
         if (!this.rightPane) {
+            // each tab has its own right pane (public/scripts/comp/grimoireTabs.js)
             this.rightPane = new GrimoireSplitPane({
-                displayArea: document.getElementById('tagWikiSearchRightDisplay')
+                displayArea: this.tabs ? this.tabs.activeRightArea() : document.getElementById('tagWikiSearchRightDisplay')
             });
-            const saved = this.loadRightPaneStateFromStorage();
+            const saved = (!this.tabs || this.tabs.restoresSavedRightPane()) ? this.loadRightPaneStateFromStorage() : null;
             if (saved && saved.blank !== true) {
                 this.rightPane.applyState(saved);
             } else {
@@ -4906,7 +4928,8 @@ class TagWikiSearchModal extends WikiDisplayBase {
         const pane = this.activePane;
         let addr = pane._currentAddress || pane.currentAddress;
         if (addr && addr.displayUrl) {
-            this.setAddress({ displayUrl: addr.displayUrl, mode: addr.mode }, { force: true });
+            // the full address keeps its scheme (edtx:// would come back as the mode's dsap:// from the bare path)
+            this.setAddress({ displayUrl: addr.fullUrl || addr.displayUrl, mode: addr.mode }, { force: true });
         } else {
             // Fallback derivation from the pane's current state / history
             const derived = this._getDerivedDisplayUrlForPane(pane);
@@ -5423,6 +5446,14 @@ class TagWikiSearchModal extends WikiDisplayBase {
 
         const inAddressEdit = this.addressBar && this.addressBar.classList.contains('edit-active');
         const isEditable = isGrimoireEditableShortcutTarget(e.target);
+
+        // grimoireTabShortcut: public/scripts/comp/grimoireRemoteBrowser.js (Alchemy's viewer sends the same keys)
+        const tabCommand = this.tabs && this.tabs.available() ? grimoireTabShortcut(e) : '';
+        if (tabCommand) {
+            e.preventDefault();
+            grimoireRunTabCommand(tabCommand);
+            return true;
+        }
 
         if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === 'l' || e.key === 'L')) {
             e.preventDefault();
@@ -6188,6 +6219,9 @@ class TagWikiSearchModal extends WikiDisplayBase {
         if (artist.isArtistSearch) term = artist.remainder.replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
         if (!term) return;
 
+        // a search from elsewhere is a new tab (grimoireOpenInTab: public/scripts/comp/grimoireTabs.js)
+        if (grimoireOpenInTab({ address: 'edtx://en.grimoire.jp/search?q=' + encodeURIComponent(term) })) return;
+
         const wasMinimised = this.modal.classList.contains('minimised');
         const wasHidden = this.modal.classList.contains('hidden') || this.modal.classList.contains('hidden-alt');
 
@@ -6246,6 +6280,20 @@ class TagWikiSearchModal extends WikiDisplayBase {
             title: tag.title || trimmed,
             name: tag.name || this.resolveBooruWikiTagName(tag)
         };
+
+        // With the tab strip the page opens as a new tab (grimoireOpenInTab: public/scripts/comp/grimoireTabs.js).
+        // The lookup comes first so callers still hear false (and search instead) when there is no article.
+        if (this.tabs && this.ieChrome && this.ieChrome.isOn()) {
+            try {
+                const found = await this.getTagWikiPage(tag, { force: !!options.force, quiet: true });
+                if (!this.hasWikiPageContent(found)) return false;
+                if (typeof hideCharacterAutocomplete === 'function') hideCharacterAutocomplete();
+                return grimoireOpenInTab({ tag: initialTag.title });
+            } catch (err) {
+                console.error('openStandaloneWikiIfDirectMatch:', err);
+                return false;
+            }
+        }
 
         // Instant open from global page cache (shared with other wiki windows)
         if (!options.force) {
@@ -6405,6 +6453,8 @@ class TagWikiSearchModal extends WikiDisplayBase {
             }
         }
 
+        // the other tabs close with the window, and every tab's Alchemy session ends (grimoireTabs.js)
+        if (this.tabs) this.tabs.resetForWindowClose();
         this.exitSplitMode();
         this.teardownSplitModeListeners();
         closeModal(this.modal).then(() => {
@@ -7387,6 +7437,11 @@ class TagWikiSearchModal extends WikiDisplayBase {
                 openDsapInStandaloneWindow(this._dsapState.url, { historyToCopy });
                 return;
             }
+        }
+
+        // grimoireOpenCurrentPageInNewWindow: public/scripts/comp/grimoireRemoteBrowser.js
+        if (typeof grimoireOpenCurrentPageInNewWindow === 'function' && grimoireOpenCurrentPageInNewWindow(this)) {
+            return;
         }
         
         if (!wikiWindowManager) {

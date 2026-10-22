@@ -1477,7 +1477,7 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-t
    #cfe7fa to #b9d3fb, open at the bottom into the page frame */
 body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tab {
     display: flex;
-    flex: 0 1 298px;
+    flex: 0 1 299px;
     align-items: center;
     gap: 4px;
     min-width: 80px;
@@ -2460,6 +2460,256 @@ body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-t
 /* the first tab 78px in (VM), after the star and the add-favorite */
 body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabs {
     margin-left: 6px;
+}
+
+/* ---- several tabs (#451, grimoireTabs.js; VM: IE7 with 1, 2, 3, 4, 7 and 13 tabs) ----
+   One tab is 299px and has no close button. From two tabs on, Quick Tabs (24px) and Tab List ▾
+   (16px) come first at x 79, the tabs share their 1px edges, each at most 180px and shrinking to
+   share the strip (4 tabs: 138, 7: 79) down to about 65px, and the new-tab stub follows the last.
+   The tab on show keeps the raised face above; the others are ieframe.dll bitmap 630 (the row's
+   own gradient with an edge, 4px down, 26px tall, standing on the row's bottom line; 631 hot), and
+   so are the Quick Tabs and Tab List buttons and the new-tab stub. IE stretches the bitmap's lower
+   gradient by repeating rows (12, 16 and 21 of 9-21), so tab*.png are those 26 rows as drawn. The strip takes the row's free space (the tabs keep
+   their own widths, the new-tab stub follows the last) and runs 2px past the row so the raised tab
+   can cover the row's bottom line while the strip clips tabs that do not fit. */
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabstrip {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: flex-end;
+    min-width: 0;
+    height: calc(100% + 2px);
+    margin-bottom: -2px;
+    overflow: hidden;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabrow.has-many-tabs .grimoire-ie-tab {
+    flex: 0 1 180px;
+    min-width: 65px;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tab + .grimoire-ie-tab {
+    margin-left: -1px;
+}
+/* the new-tab stub rides at the end of the strip, right after the last tab */
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabstrip > .grimoire-ie-newtab {
+    margin-bottom: 2px;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tab.is-active {
+    position: relative;
+    z-index: 1;
+    margin-bottom: 0;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tab:not(.is-active),
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabtools > button,
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabstrip > .grimoire-ie-newtab,
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabstrip > .grimoire-ie-newtab:hover {
+    position: relative;
+    isolation: isolate;
+    height: 26px;
+    margin-bottom: 2px;
+    background: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tab:not(.is-active) {
+    padding: 1px 4px 0;
+    cursor: var(--c-default);
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal :is(.grimoire-ie-tab:not(.is-active), .grimoire-ie-tabtools > button, .grimoire-ie-tabstrip > .grimoire-ie-newtab)::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-style: solid;
+    border-width: 0 4px;
+    border-image: url('/static_images/vista-ie/tab.png') 0 4 fill / 0 4px stretch;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal :is(.grimoire-ie-tab:not(.is-active), .grimoire-ie-tabtools > button, .grimoire-ie-tabstrip > .grimoire-ie-newtab):hover::before {
+    border-image-source: url('/static_images/vista-ie/tab-hot.png');
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabtools > button:is(:active, .is-pressed)::before {
+    border-image-source: url('/static_images/vista-ie/tab-pressed.png');
+}
+
+/* Quick Tabs: ieframe.dll 691 4px in, 7px down; Tab List ▾: IE's 5-3-1 triangle 5px in, 12px down */
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabtools {
+    display: flex;
+    flex: none;
+    align-items: flex-end;
+    align-self: stretch;
+    margin: 0 0 0 1px;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabtools[hidden] {
+    display: none;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabtools > button {
+    display: block;
+    flex: none;
+    min-width: 0;
+    min-height: 0;
+    margin-bottom: 0;
+    padding: 0;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-quicktabs {
+    width: 24px;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-quicktabs img {
+    position: absolute;
+    left: 4px;
+    top: 7px;
+    width: 15px;
+    height: 13px;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tablist {
+    width: 16px;
+    margin-left: -1px;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tablist .grimoire-ie-cmd-drop {
+    position: absolute;
+    left: 5px;
+    top: 12px;
+    width: 5px;
+    height: 3px;
+    margin: 0;
+    border: 0;
+    /* whole pixels, rows of 5, 3 and 1 (a border triangle would blur its edges) */
+    background:
+        linear-gradient(#000, #000) 0 0 / 5px 1px no-repeat,
+        linear-gradient(#000, #000) 1px 1px / 3px 1px no-repeat,
+        linear-gradient(#000, #000) 2px 2px / 1px 1px no-repeat;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabtools:not([hidden]) + .grimoire-ie-tabstrip {
+    margin-left: -1px;
+}
+
+/* the close button: only on the tab on show, only with two tabs or more (ieframe.dll 634 / 635 hot /
+   636 pressed, 17x16, 3px in from the tab's right edge, 7px down) */
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tab-title {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tab-close {
+    display: none;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabrow.has-many-tabs .grimoire-ie-tab.is-active {
+    padding-right: 3px;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tabrow.has-many-tabs .grimoire-ie-tab.is-active .grimoire-ie-tab-close {
+    display: block;
+    flex: none;
+    align-self: flex-start;
+    width: 17px;
+    min-width: 0;
+    height: 16px;
+    min-height: 0;
+    margin: 6px 0 0;
+    padding: 0;
+    background: url('/static_images/vista-ie/tab-close.png') no-repeat;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tab-close:hover {
+    background-image: url('/static_images/vista-ie/tab-close-hot.png');
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-tab-close:active {
+    background-image: url('/static_images/vista-ie/tab-close-pressed.png');
+}
+
+/* ---- Quick Tabs (Ctrl+Q; VM with 2, 3, 5 and 9 tabs): over the page, 10px in, a rounded panel
+   (#abaeb8 edge darkening to #797e8d at the bottom, a light inner line, #f1f2f5) with the tabs on a
+   307 x 186 grid: the title (Segoe UI 9pt) over a 229 x 148 picture of the page (#706963 edge, a
+   #888 inner line on the left and top, a 16px shadow to the right and below), the close button over
+   the picture's right end. Hover: #ecf4f9 with an #aebcbf edge, 16px round the picture. */
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-quickview {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    padding: 10px;
+    background: linear-gradient(#fff, #e1e4eb);
+    box-sizing: border-box;
+    color: #000;
+    font: 12px var(--ie-font);
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-quickpanel {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, 307px);
+    grid-auto-rows: 186px;
+    justify-content: start;
+    align-content: start;
+    height: 100%;
+    padding: 10px 0 0 32px;
+    background: #f1f2f5;
+    border: 1px solid #abaeb8;
+    border-bottom-color: #797e8d;
+    border-radius: 9px;
+    box-shadow: inset 1px 1px 0 #f9fafb, inset 2px 2px 0 #f6f6f8, 0 2px 4px rgb(80 86 100 / 35%);
+    box-sizing: border-box;
+    overflow-y: auto;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-quicktile {
+    position: relative;
+    width: 262px;
+    height: 185px;
+    box-sizing: border-box;
+    border: 1px solid transparent;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-quicktile:hover {
+    background: #ecf4f9;
+    border-color: #aebcbf;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-quicktile-title {
+    position: absolute;
+    left: 17px;
+    right: 36px;
+    top: 1px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    line-height: 16px;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-quicktile-close {
+    position: absolute;
+    left: 226px;
+    top: -1px;
+    width: 17px;
+    min-width: 0;
+    height: 16px;
+    min-height: 0;
+    padding: 0;
+    background: url('/static_images/vista-ie/tab-close.png') no-repeat;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-quicktile-close:hover {
+    background-image: url('/static_images/vista-ie/tab-close-hot.png');
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-quicktile-close:active {
+    background-image: url('/static_images/vista-ie/tab-close-pressed.png');
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-quicktile-shot {
+    position: absolute;
+    left: 15px;
+    top: 20px;
+    width: 229px;
+    height: 148px;
+    overflow: hidden;
+    background: #fff;
+    border: 1px solid #706963;
+    box-shadow: inset 1px 1px 0 #888, 6px 6px 10px -2px rgb(70 72 80 / 45%);
+    box-sizing: border-box;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-quicktile-shot img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: top left;
+}
+body.desktop-mode:not(.windows-classic-theme) #tagWikiSearchModal .grimoire-ie-quicktile-page {
+    transform-origin: 0 0;
+    overflow: hidden;
+    pointer-events: none;
 }
 /* Vista's address-bar progress: a green fill across the box while the page comes in
    (--vista-load from explorerApplet.js / melatonControlPanel.js; Grimoire's --alchemy-load from

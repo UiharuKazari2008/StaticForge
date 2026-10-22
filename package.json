@@ -167,6 +167,7 @@
     "test:control-panel-settings-pages": "node scripts/test-control-panel-settings-pages.js",
     "test:cartograph-vista-explorer": "node scripts/test-cartograph-vista-explorer.js",
     "test:grimoire-ie-chrome": "node scripts/test-grimoire-ie-chrome.js",
+    "test:grimoire-tabs": "node scripts/test-grimoire-tabs.js",
     "test:control-panel-vista-pages": "node scripts/test-control-panel-vista-pages.js",
     "test:vista-scrollbars": "node scripts/test-vista-scrollbars.js",
     "test:vista-dialogs": "node scripts/test-vista-dialogs.js",

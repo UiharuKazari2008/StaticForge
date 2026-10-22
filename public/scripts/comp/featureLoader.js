@@ -57,16 +57,16 @@ const FEATURE_MANIFEST = {
     },
     grimoire: {
         styles: ['css/tag-wiki-search.css'],
-        scripts: ['scripts/comp/grimoireRemoteBrowser.js', 'scripts/comp/grimoireIeChrome.js', 'scripts/comp/tagWikiSearchModal.js']
+        scripts: ['scripts/comp/grimoireRemoteBrowser.js', 'scripts/comp/grimoireIeChrome.js', 'scripts/comp/grimoireTabs.js', 'scripts/comp/tagWikiSearchModal.js']
     },
     character_search: {
         depends: ['grimoire'],
         scripts: ['scripts/comp/characterSearchModal.js']
     },
     explorer: {
-        styles: ['css/explorer.css'],
+        styles: ['css/explorer.css', 'css/vista-file-progress.css'],
         // vfsClient / vfsVirtualGrid / routers stay sync — desktop + inbound use them without Cartograph
-        scripts: ['scripts/comp/explorerVistaChrome.js', 'scripts/comp/explorerApplet.js']
+        scripts: ['scripts/comp/explorerVistaChrome.js', 'scripts/comp/fileOperationProgress.js', 'scripts/comp/explorerApplet.js']
     },
     naxt: {
         styles: ['css/naxt-shell.css', 'css/spellbook.css', 'css/vista-atelier.css'],
@@ -383,6 +383,9 @@ async function loadNotepadManager() {
 
 async function openGrimoireApplet(initialQuery) {
     await featureLoader.loadFeature('grimoire');
+    // a search from elsewhere is a new tab (grimoireOpenInTab: public/scripts/comp/grimoireTabs.js)
+    const query = String(initialQuery || '').trim();
+    if (query && grimoireOpenInTab({ address: 'edtx://en.grimoire.jp/search?q=' + encodeURIComponent(query) })) return;
     tagWikiSearchModal.open(initialQuery || '');
 }
 
@@ -392,8 +395,19 @@ const ALCHEMY_HOME_URL = 'https://www.bing.com/';
 // http(s) lands in Alchemy, Grimoire's remote browser (TagWikiSearchModal.navigate)
 async function openGrimoireUrl(url) {
     await featureLoader.loadFeature('grimoire');
+    // a new tab in the Grimoire window (grimoireOpenInTab: public/scripts/comp/grimoireTabs.js)
+    if (grimoireOpenInTab({ address: url })) return;
     tagWikiSearchModal.open('', { skipInitialHome: true });
     tagWikiSearchModal.navigate(url);
+}
+
+// New standalone Alchemy window (wikiWindowManager), not the main Grimoire tab.
+// grimoireOpenStandaloneWindow: public/scripts/comp/grimoireRemoteBrowser.js
+async function openGrimoireStandaloneUrl(url, windowTitle) {
+    await featureLoader.loadFeature('grimoire');
+    // a tab in the Grimoire window when it has the tab strip (grimoireOpenInTab: public/scripts/comp/grimoireTabs.js)
+    if (grimoireOpenInTab({ url })) return;
+    grimoireOpenStandaloneWindow(url, null, windowTitle);
 }
 
 // Start a Vista game by id (minesweeper, solitaire ...): its feature, then the game's open()

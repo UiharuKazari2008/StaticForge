@@ -1177,6 +1177,9 @@ async function openDsapInGrimoire(url, options = {}) {
         return;
     }
 
+    // a new tab in the Grimoire window (grimoireOpenInTab: public/scripts/comp/grimoireTabs.js)
+    if (grimoireOpenInTab({ address: targetUrl })) return;
+
     const modal = tagWikiSearchModal;
     if (!modal) return;
 
@@ -1208,6 +1211,8 @@ async function openDsapInStandaloneWindow(url, options = {}) {
         await openDsapInGrimoire(targetUrl);
         return;
     }
+    // with the tab strip an applet opens as a tab, not a window (grimoireOpenInTab: public/scripts/comp/grimoireTabs.js)
+    if (grimoireOpenInTab({ address: targetUrl })) return;
 
     // wikiWindowManager.createDsapWindow: public/scripts/comp/tagWikiSearchModal.js
     if (typeof wikiWindowManager !== 'undefined' && wikiWindowManager && wikiWindowManager.createDsapWindow) {

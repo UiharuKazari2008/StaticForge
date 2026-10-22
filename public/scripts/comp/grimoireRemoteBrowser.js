@@ -230,6 +230,8 @@ function grimoireRemoteShells() {
     if (host) {
         shells.push(host);
         if (host.rightPane) shells.push(host.rightPane);
+        // tabs in the background keep their frames (grimoireTabs.js)
+        if (host.tabs) host.tabs.backgroundShells().forEach((shell) => shells.push(shell));
     }
     // wikiWindowManager: public/scripts/comp/tagWikiSearchModal.js
     if (wikiWindowManager && wikiWindowManager.windows) {
@@ -247,7 +249,9 @@ function grimoireRemoteFromMessage(event) {
         if (frame && event.source === frame.contentWindow) {
             const shell = shells[i];
             const standalone = !!(shell.modal && shell.modal.classList.contains('wiki-page-viewer-modal'));
-            return { host: standalone ? shell : host, shell, frame };
+            // tab: set when the frame belongs to a tab in the background (grimoireTabs.js)
+            const tab = host.tabs ? host.tabs.backgroundTabOf(shell) : null;
+            return { host: standalone ? shell : host, shell, frame, tab };
         }
     }
     return null;
@@ -594,6 +598,10 @@ function grimoireRemoteMenuAction(found, action, data) {
         grimoireOpenStandaloneWindow(data.href || grimoireShellWebUrl(shell));
         return;
     }
+    if (action === 'open-tab') {
+        if (!grimoireOpenTab(found, data.href)) grimoireOpenStandaloneWindow(data.href);
+        return;
+    }
     if (action === 'add-to-desktop') {
         grimoireAddRemotePageToDesktop(shell).catch(() => {
             showGlassToast('error', null, 'Failed to add shortcut', false, 4000);
@@ -653,6 +661,8 @@ function grimoireShowRemoteMenu(found, data) {
     if (href) {
         items.push({ text: 'Copy link', icon: 'fas fa-link', action: 'copy-link' });
         items.push({ text: 'Open link', icon: 'fas fa-external-link-alt', action: 'open-link' });
+        // IE7's Open in New Tab has no icon
+        if (found.host === tagWikiSearchModal && found.host.tabs && found.host.tabs.available()) items.push({ text: 'Open link in new tab', action: 'open-tab' });
         if (!src) items.push({ text: 'Download', icon: 'fas fa-download', action: 'download-link' });
     }
     if (src) {
@@ -745,6 +755,7 @@ function grimoireApplyRemoteLocation(found, data) {
     shell._grimoireRemoteTitle = data.title || '';
     // Recent Items (public/scripts/comp/recentItems.js): the page this browser session is on now (one entry per session)
     if (!data.navigating && data.url && window.recentItems) window.recentItems.notePage(shell, { type: 'web', url: data.url, title: data.title });
+    grimoireTitleWebEntry(shell, data);
     if (data.url && host.setAddress) {
         const force = host.activePane !== host;
         host.setAddress({ displayUrl: data.url, mode: grimoireWebMode(data.url) }, { force: force });
@@ -760,6 +771,163 @@ function grimoireApplyRemoteLocation(found, data) {
         if (!grimoireFollowRemoteHistory(shell, data.url)) shell.addToHistory({ type: 'web', url: data.url, title: data.title || data.url });
         if (host.updateNavigationButtons) host.updateNavigationButtons();
     }
+    // the tab strip shows the new title (grimoireTabs.js -> grimoireIeChrome.js)
+    if (host.tabs) host.tabs.emit();
+}
+
+// The page's title arrives after its address: the history entry (and so the tab, Recent Pages and the back menu) follows it.
+function grimoireTitleWebEntry(shell, data) {
+    const top = shell.history && shell.history[shell.historyIndex];
+    if (!data.navigating && data.title && top && top.type === 'web' && top.url === data.url) top.title = data.title;
+}
+
+function grimoirePushWebEntry(shell, entry) {
+    // addToHistory: public/scripts/comp/tagWikiSearchModal.js; a background tab's state object has none
+    if (typeof shell.addToHistory === 'function') {
+        shell.addToHistory(entry);
+        return;
+    }
+    shell.history = (shell.history || []).slice(0, (shell.historyIndex || 0) + 1);
+    shell.history.push(entry);
+    shell.historyIndex = shell.history.length - 1;
+    // capTagWikiHistoryEntries: public/scripts/comp/tagWikiSearchModal.js
+    const capped = capTagWikiHistoryEntries(shell.history, shell.historyIndex);
+    shell.history = capped.history;
+    shell.historyIndex = capped.historyIndex;
+}
+
+// A frame in a background tab (grimoireTabs.js): its address, title, history and loading ring go to that tab only.
+// Downloads and popups fall through to the usual handling; a page dialog brings its tab forward; anything that
+// needs the page on screen waits for the tab. Returns true when the message was handled here.
+function grimoireBackgroundRemoteMessage(found, data) {
+    const tabs = found.host.tabs;
+    const tab = found.tab;
+    const shell = found.shell;
+    const type = data.type;
+    if (type === 'grimoire-browser-download-progress' || type === 'grimoire-browser-download' || type === 'grimoire-browser-popup') return false;
+    if (type === 'grimoire-browser-navigating' || type === 'grimoire-browser-location' || type === 'grimoire-browser-navigation-failed') {
+        const shown = tabs.paneOf(tab) === shell;
+        if (type === 'grimoire-browser-navigation-failed' || !data.navigating) {
+            if (shown) tab.loading = false;
+        } else if (shown) {
+            tab.loading = true;
+        }
+        if (type !== 'grimoire-browser-navigation-failed') {
+            shell._grimoireRemoteTitle = data.title || '';
+            if (!data.navigating && data.url && window.recentItems) window.recentItems.notePage(shell, { type: 'web', url: data.url, title: data.title });
+            if (data.url) {
+                const mode = grimoireWebMode(data.url);
+                shell.currentAddress = { fullUrl: data.url, displayPath: data.url, mode };
+                shell._currentAddress = { displayUrl: data.url, fullUrl: data.url, mode };
+            }
+            const top = shell.history && shell.history[shell.historyIndex];
+            if (!data.navigating && data.url && (!top || top.type !== 'web' || top.url !== data.url)) {
+                if (!grimoireFollowRemoteHistory(shell, data.url)) grimoirePushWebEntry(shell, { type: 'web', url: data.url, title: data.title || data.url });
+            }
+            grimoireTitleWebEntry(shell, data);
+        }
+        tabs.emit();
+        return true;
+    }
+    if (type === 'grimoire-browser-scroll') {
+        shell._alchemyScroll = { y: Number(data.y) || 0, height: Number(data.height) || 0, view: Number(data.view) || 0 };
+        return true;
+    }
+    if (type === 'grimoire-browser-history-intent') {
+        shell._alchemyHistoryDir = data.dir === 1 ? 1 : -1;
+        shell._alchemyHistoryAt = Date.now();
+        return true;
+    }
+    if (type === 'grimoire-browser-feeds') {
+        // the same list grimoireIeChrome.js frameMessage keeps for the tab on show
+        shell._grimoireIeFeeds = (Array.isArray(data.feeds) ? data.feeds : [])
+            .filter((feed) => feed && /^https?:\/\//i.test(feed.href || ''))
+            .map((feed) => ({ href: String(feed.href), title: String(feed.title || '') }));
+        return true;
+    }
+    if (type === 'grimoire-browser-ready') {
+        shell._grimoireIeFeeds = [];
+        shell._grimoireIeZoomSent = false;
+        grimoireSyncAudio();
+        return true;
+    }
+    if (type === 'grimoire-browser-status') {
+        tabs.holdStatus(tab, shell, data.state || 'failed', data.url || '');
+        return true;
+    }
+    if (type === 'grimoire-browser-reopen') {
+        // the browser restarted: the session is gone, and the page reconnects when its tab is shown (grimoireTabs.js resume)
+        grimoireCloseRemoteBrowser(shell);
+        tabs.emit();
+        return true;
+    }
+    if (type === 'grimoire-browser-closed') {
+        shell._grimoireRemoteSessionId = '';
+        if (shell === tab.state) tabs.close(tab);
+        return true;
+    }
+    if (type === 'grimoire-browser-dialog' && data.id && shell._grimoireDialogId !== data.id) {
+        // IE brings a tab with a page dialog forward; the page's state moves into the window with it
+        const side = tabs.sideOf(tab, shell);
+        tabs.activate(tab);
+        const host = found.host;
+        const live = side === 'right' && host.rightPane ? host.rightPane : host;
+        live._grimoireDialogId = data.id;
+        grimoireShowRemoteDialog({ host, shell: live, frame: found.frame }, data);
+        return true;
+    }
+    // menus, selects, focus, clipboard, progress, print: they come from a page on screen
+    return true;
+}
+
+// ---- tabs (grimoireTabs.js) ----
+
+// Ctrl+T new tab, Ctrl+W / Ctrl+F4 close it, Ctrl+Tab / Ctrl+Shift+Tab next / previous, Ctrl+Q Quick Tabs (IE7's keys).
+function grimoireTabShortcut(ev) {
+    const mod = (ev.ctrlKey || ev.metaKey) && !ev.altKey;
+    if (!mod) return '';
+    if (ev.key === 'Tab') return ev.shiftKey ? 'prev-tab' : 'next-tab';
+    if (ev.shiftKey) return '';
+    if (ev.key === 't' || ev.key === 'T') return 'new-tab';
+    if (ev.key === 'w' || ev.key === 'W' || ev.key === 'F4') return 'close-tab';
+    if (ev.key === 'q' || ev.key === 'Q') return 'quick-tabs';
+    return '';
+}
+
+function grimoireRunTabCommand(command) {
+    // tagWikiSearchModal: public/scripts/comp/tagWikiSearchModal.js
+    const host = tagWikiSearchModal;
+    const tabs = host && host.tabs;
+    if (!tabs || !tabs.available()) return false;
+    if (command === 'quick-tabs') {
+        if (host.ieChrome) host.ieChrome.toggleQuickTabs();
+        return true;
+    }
+    // grimoireIeChrome.js: a tab command leaves Quick Tabs
+    if (host.ieChrome) host.ieChrome.toggleQuickTabs(false);
+    if (command === 'new-tab') tabs.open();
+    else if (command === 'close-tab') tabs.close();
+    else if (command === 'next-tab') tabs.step(1);
+    else if (command === 'prev-tab') tabs.step(-1);
+    else return false;
+    return true;
+}
+
+// A page's new tab or window opens as a tab in the main Grimoire window, next to the tab it came from.
+// From a standalone Alchemy window, or without the tab strip, it is a window as before (grimoireOpenStandaloneWindow).
+function grimoireOpenTab(found, url, session) {
+    const host = tagWikiSearchModal;
+    const tabs = host && host.tabs;
+    if (!tabs || !tabs.available() || (found && found.host !== host)) return false;
+    tabs.open({ url, session, afterActive: true });
+    return true;
+}
+
+// The Alchemy audio player follows its page when a tab switch moves the page between the window and a tab's state.
+function grimoireRetargetAudio(from, to) {
+    if (!from || grimoireAudioShell !== from) return;
+    grimoireAudioShell = to || null;
+    grimoireSyncAudio();
 }
 
 // Remote pages pick their own dialog text, so it is always escaped before the dialog renders it.
@@ -815,6 +983,12 @@ function grimoireBindRemoteBrowserMessages() {
         if (!data || typeof data.type !== 'string') return;
         const found = grimoireRemoteFromMessage(event);
         if (!found) return;
+        if (found.tab && grimoireBackgroundRemoteMessage(found, data)) return;
+        // the viewer has focus, so the tab keys reach it instead of the window (services/grimoire-browser/viewer.html)
+        if (data.type === 'grimoire-browser-shortcut') {
+            if (found.host === tagWikiSearchModal) grimoireRunTabCommand(data.command);
+            return;
+        }
         if (data.type === 'grimoire-browser-navigating' || data.type === 'grimoire-browser-location' || data.type === 'grimoire-browser-navigation-failed') {
             grimoireApplyRemoteLocation(found, data);
             return;
@@ -886,17 +1060,22 @@ function grimoireBindRemoteBrowserMessages() {
             return;
         }
         if (data.type === 'grimoire-browser-popup') {
-            grimoireOpenStandaloneWindow(data.url, data.sessionId && data.viewerToken ? {
+            const session = data.sessionId && data.viewerToken ? {
                 tab: !!data.tab,
                 sessionId: data.sessionId,
                 viewUrl: '/api/grimoire-browser/view/' + encodeURIComponent(data.sessionId) + '?t=' + encodeURIComponent(data.viewerToken)
-            } : null);
+            } : null;
+            // target=_blank and an extension's own page open a tab; a sign-in popup that keeps window.opener stays a small window
+            if ((!session || session.tab) && grimoireOpenTab(found, data.url, session)) return;
+            grimoireOpenStandaloneWindow(data.url, session);
             return;
         }
         if (data.type === 'grimoire-browser-closed') {
             found.shell._grimoireRemoteSessionId = '';
             // WikiWindowInstance.close: public/scripts/comp/tagWikiSearchModal.js (popups are always standalone windows)
             if (found.shell.manager) found.shell.close();
+            // a tab whose page closed itself goes, unless it is the window's last
+            else if (found.shell === found.host && found.host.tabs && found.host.tabs.count() > 1) found.host.tabs.close();
             return;
         }
         if (data.type === 'grimoire-browser-dialog' && data.id && found.shell._grimoireDialogId !== data.id) {
@@ -941,6 +1120,8 @@ function grimoireAddressFieldFocused() {
 
 function grimoireForwardRemoteKey(ev) {
     if (ev.defaultPrevented || grimoireAddressFieldFocused()) return;
+    // the tab keys belong to the window (tagWikiSearchModal.js _handleGrimoireKeydown)
+    if (grimoireTabShortcut(ev) && tagWikiSearchModal && tagWikiSearchModal.tabs && tagWikiSearchModal.tabs.available()) return;
     // tagWikiSearchModal: public/scripts/comp/tagWikiSearchModal.js
     const host = tagWikiSearchModal;
     if (!host) return;
@@ -1165,8 +1346,9 @@ function grimoireCloseRemoteBrowser(shell) {
     if (scrollbar) scrollbar.remove();
     shell._alchemyScroll = null;
     grimoireSyncAudio();
-    if (!id) return;
-    fetch('/api/grimoire-browser/sessions/' + encodeURIComponent(id), {
+    if (!id) return Promise.resolve();
+    // resolves once the service has let the session go (grimoireTabs.js freeSession waits for it)
+    return fetch('/api/grimoire-browser/sessions/' + encodeURIComponent(id), {
         method: 'DELETE',
         credentials: 'same-origin',
         keepalive: true
@@ -1256,12 +1438,20 @@ function grimoireShowRemoteTabPage(shell, state, url) {
 }
 
 // popup: true for a small window with a new session (extension popup), or { sessionId, viewUrl, tab } to stream a page that is already open (server adoptPopup; tab = an extension's own page, normal size).
-function grimoireOpenStandaloneWindow(url, popup) {
+/** Same as Alchemy context menu "Open in new window" (open-window). */
+function grimoireOpenCurrentPageInNewWindow(shell) {
+    const url = grimoireShellWebUrl(shell);
+    if (!url) return false;
+    grimoireOpenStandaloneWindow(url);
+    return true;
+}
+
+function grimoireOpenStandaloneWindow(url, popup, windowTitle) {
     const webUrl = grimoireNormalizeWebUrl(url);
     const session = popup && popup.sessionId ? popup : null;
     // wikiWindowManager: public/scripts/comp/tagWikiSearchModal.js
     if ((!webUrl && !session) || !wikiWindowManager) return;
-    const label = webUrl || 'Alchemy';
+    const label = (typeof windowTitle === 'string' && windowTitle.trim()) ? windowTitle.trim() : (webUrl || 'Alchemy');
     const small = !!popup && !popup.tab;
     const win = wikiWindowManager.createWindow(null, { title: label, name: small ? 'alchemy-popup' : label }, null,
         small ? { alchemyPopup: '1', windowMinWidth: '360', windowMinHeight: '420' } : null);
@@ -1314,19 +1504,23 @@ async function grimoireOpenRemoteBrowser(shell, url, options) {
 
     let payload = opts.session;
     if (!payload) {
+        const create = () => fetch('/api/grimoire-browser/sessions', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                url: webUrl,
+                width: Math.max(320, shell.displayArea.clientWidth || 1280),
+                height: Math.max(240, shell.displayArea.clientHeight || 800),
+                popup: !!opts.popup
+            })
+        });
         let response;
         try {
-            response = await fetch('/api/grimoire-browser/sessions', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    url: webUrl,
-                    width: Math.max(320, shell.displayArea.clientWidth || 1280),
-                    height: Math.max(240, shell.displayArea.clientHeight || 800),
-                    popup: !!opts.popup
-                })
-            });
+            response = await create();
+            // the service's session cap: a background tab gives its session up (grimoireTabs.js freeSession)
+            const tabs = tagWikiSearchModal && tagWikiSearchModal.tabs;
+            if (response.status === 429 && !opts.popup && tabs && await tabs.freeSession()) response = await create();
         } catch (e) {
             grimoireShowBrowserUnavailable(host, shell, webUrl);
             return;

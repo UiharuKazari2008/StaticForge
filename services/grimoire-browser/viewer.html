@@ -792,6 +792,19 @@
       historyGo(ev.key === 'ArrowRight' || ev.key === 'BrowserForward' ? 1 : -1);
       return;
     }
+    // Grimoire's tab keys (public/scripts/comp/grimoireRemoteBrowser.js grimoireTabShortcut): the window switches tabs
+    var tabCommand = '';
+    if (mod && !ev.altKey) {
+      if (ev.key === 'Tab') tabCommand = ev.shiftKey ? 'prev-tab' : 'next-tab';
+      else if (!ev.shiftKey && (ev.key === 't' || ev.key === 'T')) tabCommand = 'new-tab';
+      else if (!ev.shiftKey && (ev.key === 'w' || ev.key === 'W' || ev.key === 'F4')) tabCommand = 'close-tab';
+      else if (!ev.shiftKey && (ev.key === 'q' || ev.key === 'Q')) tabCommand = 'quick-tabs';
+    }
+    if (tabCommand) {
+      ev.preventDefault();
+      postParent({ type: 'grimoire-browser-shortcut', command: tabCommand });
+      return;
+    }
     ev.preventDefault();
     send(keyPayload(ev, 'down'));
   });

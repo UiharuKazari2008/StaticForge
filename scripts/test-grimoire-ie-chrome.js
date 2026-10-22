@@ -42,7 +42,7 @@ host.activePane = host;
 assert.strictEqual(c.shell(), host, 'no split: the window itself');
 
 // wiring
-assert.ok(read('public/scripts/comp/featureLoader.js').includes("'scripts/comp/grimoireRemoteBrowser.js', 'scripts/comp/grimoireIeChrome.js', 'scripts/comp/tagWikiSearchModal.js'"), 'loads before the window');
+assert.ok(read('public/scripts/comp/featureLoader.js').includes("'scripts/comp/grimoireRemoteBrowser.js', 'scripts/comp/grimoireIeChrome.js', 'scripts/comp/grimoireTabs.js', 'scripts/comp/tagWikiSearchModal.js'"), 'loads before the window');
 assert.ok(read('public/scripts/comp/tagWikiSearchModal.js').includes('this.ieChrome = new GrimoireIeChrome(this)'), 'the window builds it');
 const css = read('public/css/vista-explorer.css');
 for (const sel of ['.grimoire-travel', '.grimoire-ie-seg', '.grimoire-ie-search', '.grimoire-ie-tabrow', '.grimoire-ie-tab', '.grimoire-ie-newtab', '.grimoire-ie-commands', '.grimoire-ie-status']) {

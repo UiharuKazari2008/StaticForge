@@ -2834,6 +2834,10 @@ class DesktopShortcutsManager {
             // public/scripts/comp/featureLoader.js — wikiWindowManager in tagWikiSearchModal.js
             await featureLoader.loadFeature('grimoire');
 
+            // a tab in the Grimoire window at the page's address (grimoireOpenInTab: public/scripts/comp/grimoireTabs.js)
+            const address = siteId === 'novelai' ? `rdf://docs.novelai.jp/${pageId}` : `edtx://en.grimoire.jp/docs/${siteId}/${pageId}`;
+            if (grimoireOpenInTab({ address })) return;
+
             if (!wsClient || !wsClient.isConnected()) {
                 showGlassToast('error', 'Error', 'WebSocket not connected', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');
                 return;
@@ -2895,7 +2899,8 @@ class DesktopShortcutsManager {
         }
         // public/scripts/comp/featureLoader.js; grimoireOpenStandaloneWindow: public/scripts/comp/grimoireRemoteBrowser.js
         await featureLoader.loadFeature('grimoire');
-        grimoireOpenStandaloneWindow(url);
+        // a tab in the Grimoire window (grimoireOpenInTab: public/scripts/comp/grimoireTabs.js), else its own window
+        if (!grimoireOpenInTab({ url })) grimoireOpenStandaloneWindow(url);
     }
 
     // Get wiki page context menu

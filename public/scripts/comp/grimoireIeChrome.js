@@ -135,9 +135,9 @@
             this.tabRow.innerHTML = `
                 <button type="button" id="grimoireFavoritesBtn" class="grimoire-ie-fav" title="Favorites" aria-label="Favorites"><img src="${ART}/favorites.png" alt=""></button>
                 <button type="button" id="grimoireAddFavoriteBtn" class="grimoire-ie-fav" title="Add to Favorites" aria-label="Add to Favorites"><img src="${ART}/favorites-add.png" alt=""></button>
-                <div class="grimoire-ie-tabs" role="tablist">
-                    <div class="grimoire-ie-tab is-active" role="tab" aria-selected="true"><img class="grimoire-ie-tab-icon" alt=""><span class="grimoire-ie-tab-title"></span></div>
-                    <button type="button" class="grimoire-ie-newtab" title="Open in New Window" aria-label="Open in New Window"></button>
+                <div class="grimoire-ie-tabs">
+                    <span class="grimoire-ie-tabtools" hidden><button type="button" class="grimoire-ie-quicktabs" title="Quick Tabs (Ctrl+Q)" aria-label="Quick Tabs"><img src="${ART}/quick-tabs.png" alt=""></button><button type="button" class="grimoire-ie-tablist" title="Tab List" aria-label="Tab List"><span class="grimoire-ie-cmd-drop" aria-hidden="true"></span></button></span>
+                    <div class="grimoire-ie-tabstrip" role="tablist"><button type="button" class="grimoire-ie-newtab" title="New Tab (Ctrl+T)" aria-label="New Tab (Ctrl+T)"></button></div>
                 </div>
                 <div class="grimoire-ie-commands">
                     <span class="grimoire-ie-split grimoire-ie-split-home"><button type="button" id="grimoireHomeDropBtn" class="grimoire-ie-split-drop" title="Home Page Options" aria-label="Home Page Options"><span class="grimoire-ie-cmd-drop" aria-hidden="true"></span></button></span>
@@ -147,8 +147,12 @@
                 </div>`;
             this.favBtn = this.tabRow.querySelector('#grimoireFavoritesBtn');
             this.addFavBtn = this.tabRow.querySelector('#grimoireAddFavoriteBtn');
-            this.tabIcon = this.tabRow.querySelector('.grimoire-ie-tab-icon');
-            this.tabTitle = this.tabRow.querySelector('.grimoire-ie-tab-title');
+            this.tabStrip = this.tabRow.querySelector('.grimoire-ie-tabstrip');
+            this.tabTools = this.tabRow.querySelector('.grimoire-ie-tabtools');
+            this.quickTabsBtn = this.tabRow.querySelector('.grimoire-ie-quicktabs');
+            this.tabListBtn = this.tabRow.querySelector('.grimoire-ie-tablist');
+            this.tabEls = new Map(); // tab id -> its strip element (renderTabs)
+            this.renderTabs();
             this.newTab = this.tabRow.querySelector('.grimoire-ie-newtab');
             this.commands = this.tabRow.querySelector('.grimoire-ie-commands');
             this.pageBtn = this.tabRow.querySelector('#grimoirePageBtn');
@@ -250,10 +254,7 @@
             });
             this.stop.addEventListener('click', () => this.stopLoading());
             this.addFavBtn.addEventListener('click', () => this.toggleFavorite());
-            this.newTab.addEventListener('click', () => {
-                const shell = this.shell();
-                if (shell && typeof shell.openInNewWindow === 'function') shell.openInNewWindow();
-            });
+            this.wireTabs();
             const runSearch = () => {
                 const q = this.searchInput.value.trim();
                 if (!q) return;
@@ -725,18 +726,314 @@
             if (bar) bar.removeAttribute('data-alchemy-loading');
         }
 
+        // ---- tabs (grimoireTabs.js) ----
+
+        /** The window's tabs; without the tab module, the window itself as its one tab. */
+        tabList() {
+            const tabs = this.host.tabs;
+            return tabs ? tabs.list() : [{ id: 0 }];
+        }
+
+        tabById(id) {
+            return this.tabList().find((tab) => String(tab.id) === String(id)) || null;
+        }
+
+        tabOfEvent(ev) {
+            const el = ev && ev.target && ev.target.closest ? ev.target.closest('.grimoire-ie-tab') : null;
+            return el ? this.tabById(el.dataset.tabId) : null;
+        }
+
+        /** The tab on show speaks for its active pane, as the address bar does. */
+        activeTabInfo() {
+            const shell = this.shell();
+            const entry = shell && shell.history ? shell.history[shell.historyIndex] : null;
+            return {
+                title: entry ? this.entryLabel(entry, shell.historyIndex) : 'Grimoire',
+                icon: pageFavicon(entry),
+                loading: this.isLoading()
+            };
+        }
+
+        backgroundTabInfo(tab) {
+            const pane = this.host.tabs.paneOf(tab) || {};
+            const entry = pane.history ? pane.history[pane.historyIndex] : null;
+            const label = entry && typeof this.host.getHistoryEntryDisplayText === 'function'
+                ? this.host.getHistoryEntryDisplayText(entry, pane.historyIndex)
+                : 'Grimoire';
+            return { title: label, icon: pageFavicon(entry), loading: !!tab.loading };
+        }
+
+        makeTabEl(tab) {
+            const el = document.createElement('div');
+            el.className = 'grimoire-ie-tab';
+            el.setAttribute('role', 'tab');
+            el.dataset.tabId = String(tab.id);
+            el.innerHTML = '<img class="grimoire-ie-tab-icon" alt=""><span class="grimoire-ie-tab-title"></span>'
+                + '<button type="button" class="grimoire-ie-tab-close" title="Close Tab (Ctrl+W)" aria-label="Close Tab"></button>';
+            return el;
+        }
+
+        /** IE7's strip: every tab in order, the one on show raised with its close button; Quick Tabs and Tab List ▾ from two tabs on. */
+        renderTabs() {
+            if (!this.tabStrip) return;
+            const tabs = this.host.tabs;
+            const list = this.tabList();
+            const seen = new Set();
+            list.forEach((tab, i) => {
+                let el = this.tabEls.get(tab.id);
+                if (!el) {
+                    el = this.makeTabEl(tab);
+                    this.tabEls.set(tab.id, el);
+                }
+                seen.add(tab.id);
+                const active = tabs ? tabs.isActive(tab) : true;
+                const info = active ? this.activeTabInfo() : this.backgroundTabInfo(tab);
+                const titleEl = el.querySelector('.grimoire-ie-tab-title');
+                const iconEl = el.querySelector('.grimoire-ie-tab-icon');
+                if (titleEl.textContent !== info.title) titleEl.textContent = info.title;
+                if (iconEl.getAttribute('src') !== info.icon) iconEl.setAttribute('src', info.icon);
+                el.title = info.title;
+                el.classList.toggle('is-active', active);
+                el.classList.toggle('is-loading', info.loading);
+                el.setAttribute('aria-selected', active ? 'true' : 'false');
+                if (active) {
+                    this.tabTitle = titleEl;
+                    this.tabIcon = iconEl;
+                }
+                if (this.tabStrip.children[i] !== el) this.tabStrip.insertBefore(el, this.tabStrip.children[i] || null);
+            });
+            this.tabEls.forEach((el, id) => {
+                if (seen.has(id)) return;
+                el.remove();
+                this.tabEls.delete(id);
+            });
+            const many = list.length > 1;
+            if (this.tabTools.hidden === many) this.tabTools.hidden = !many;
+            // a tab opened or closed under Quick Tabs: the grid follows
+            if (this.isQuickTabsOpen() && this.quickCount !== list.length) this.toggleQuickTabs(many);
+            this.tabRow.classList.toggle('has-many-tabs', many);
+            // tabs past the strip's end: the one on show scrolls into it
+            const current = this.tabStrip.querySelector('.grimoire-ie-tab.is-active');
+            if (current) {
+                const strip = this.tabStrip;
+                if (current.offsetLeft < strip.scrollLeft) strip.scrollLeft = current.offsetLeft;
+                else if (current.offsetLeft + current.offsetWidth > strip.scrollLeft + strip.clientWidth) strip.scrollLeft = current.offsetLeft + current.offsetWidth - strip.clientWidth;
+            }
+        }
+
+        wireTabs() {
+            const tabs = this.host.tabs;
+            if (!tabs) {
+                // no tab module: the stub opens the page in a new window, as before #451
+                this.newTab.addEventListener('click', () => {
+                    const shell = this.shell();
+                    if (shell && typeof shell.openInNewWindow === 'function') shell.openInNewWindow();
+                });
+                return;
+            }
+            tabs.onChange(() => this.sync());
+            this.newTab.addEventListener('click', () => {
+                this.toggleQuickTabs(false);
+                tabs.open();
+            });
+            this.tabStrip.addEventListener('click', (ev) => {
+                const tab = this.tabOfEvent(ev);
+                if (!tab) return;
+                this.toggleQuickTabs(false);
+                if (ev.target.closest('.grimoire-ie-tab-close')) tabs.close(tab);
+                else tabs.activate(tab);
+            });
+            // middle click closes a tab (no autoscroll circle)
+            this.tabStrip.addEventListener('mousedown', (ev) => {
+                if (ev.button === 1) ev.preventDefault();
+            });
+            this.tabStrip.addEventListener('auxclick', (ev) => {
+                const tab = ev.button === 1 ? this.tabOfEvent(ev) : null;
+                if (!tab) return;
+                ev.preventDefault();
+                tabs.close(tab);
+            });
+            // a double click on the row's empty space opens a tab
+            this.tabRow.addEventListener('dblclick', (ev) => {
+                const t = ev.target;
+                if (t === this.tabRow || t.classList.contains('grimoire-ie-tabs') || t === this.tabStrip) tabs.open();
+            });
+            const cm = root.contextMenu;
+            if (!cm) return;
+            const listConfig = {
+                sections: [{ type: 'list', items: [] }],
+                onAction: (action, target, item) => {
+                    const tab = item && this.tabById(item.tabId);
+                    if (action === 'tab-show' && tab) tabs.activate(tab);
+                }
+            };
+            const fillList = () => {
+                listConfig.sections[0].items = tabs.list().map((tab) => ({
+                    text: (tabs.isActive(tab) ? this.activeTabInfo() : this.backgroundTabInfo(tab)).title,
+                    action: 'tab-show',
+                    tabId: tab.id,
+                    indicatorStyle: 'dot',
+                    checked: tabs.isActive(tab)
+                }));
+                cm.detachClickMenuFromElement(this.tabListBtn);
+                cm.attachClickMenuToElement(this.tabListBtn, listConfig);
+            };
+            this.tabListBtn.addEventListener('pointerdown', fillList, true);
+            this.tabListBtn.addEventListener('focus', fillList);
+            fillList();
+            this.quickTabsBtn.addEventListener('click', () => this.toggleQuickTabs());
+
+            // IE7's tab menu (VM): Close, Close Other Tabs | Refresh, Refresh All | New Tab
+            let menuTab = null;
+            const tabMenu = {
+                sections: [{ type: 'list', items: [] }],
+                beforeShow: (event) => {
+                    menuTab = this.tabOfEvent(event) || null;
+                    const one = tabs.count() < 2;
+                    tabMenu.sections[0].items = [
+                        { text: 'Close', action: 'tab-close', disabled: !menuTab },
+                        { text: 'Close Other Tabs', action: 'tab-close-others', disabled: !menuTab || one },
+                        { separator: true },
+                        { text: 'Refresh', action: 'tab-refresh', disabled: !menuTab },
+                        { text: 'Refresh All', action: 'tab-refresh-all' },
+                        { separator: true },
+                        { text: 'New Tab', action: 'tab-new' }
+                    ];
+                },
+                onAction: (action) => {
+                    if (action === 'tab-new') tabs.open();
+                    else if (action === 'tab-refresh-all') this.refreshTabs(tabs.list());
+                    else if (!menuTab) return;
+                    else if (action === 'tab-close') tabs.close(menuTab);
+                    else if (action === 'tab-close-others') tabs.closeOthers(menuTab);
+                    else if (action === 'tab-refresh') this.refreshTabs([menuTab]);
+                }
+            };
+            tabMenu.beforeShow(null);
+            cm.attachToElement(this.tabStrip, tabMenu);
+        }
+
+        // ---- Quick Tabs (Ctrl+Q): every tab as a thumbnail over the page, IE7's grid ----
+
+        isQuickTabsOpen() {
+            return !!(this.quickView && this.quickView.isConnected);
+        }
+
+        toggleQuickTabs(force) {
+            const open = force === undefined ? !this.isQuickTabsOpen() : force;
+            if (this.quickView) this.quickView.remove();
+            this.quickView = null;
+            this.quickTabsBtn.classList.remove('is-pressed');
+            if (this.onQuickKey) document.removeEventListener('keydown', this.onQuickKey, true);
+            const tabs = this.host.tabs;
+            const wrap = this.modal.querySelector('.tag-wiki-panels-wrap');
+            if (!open || !tabs || tabs.count() < 2 || !wrap) return;
+            const view = document.createElement('div');
+            view.className = 'grimoire-ie-quickview';
+            const panel = document.createElement('div');
+            panel.className = 'grimoire-ie-quickpanel';
+            view.appendChild(panel);
+            const ref = this.host.displayArea;
+            const refWidth = Math.max(320, (ref && ref.clientWidth) || 800);
+            tabs.list().forEach((tab) => panel.appendChild(this.quickTile(tab, refWidth)));
+            view.addEventListener('click', (ev) => {
+                const tile = ev.target.closest('.grimoire-ie-quicktile');
+                const tab = tile ? this.tabById(tile.dataset.tabId) : null;
+                if (!tab) return;
+                if (ev.target.closest('.grimoire-ie-quicktile-close')) {
+                    tabs.close(tab);
+                    this.toggleQuickTabs(tabs.count() > 1);
+                    return;
+                }
+                this.toggleQuickTabs(false);
+                tabs.activate(tab);
+            });
+            wrap.appendChild(view);
+            this.quickView = view;
+            this.quickCount = tabs.count();
+            this.quickTabsBtn.classList.add('is-pressed');
+            this.onQuickKey = (ev) => {
+                if (ev.key !== 'Escape') return;
+                ev.preventDefault();
+                ev.stopPropagation();
+                this.toggleQuickTabs(false);
+            };
+            document.addEventListener('keydown', this.onQuickKey, true);
+        }
+
+        /** One tile: the title, the close button and a picture of the page (Alchemy's last frame, or the Grimoire page scaled down). */
+        quickTile(tab, refWidth) {
+            const tabs = this.host.tabs;
+            const active = tabs.isActive(tab);
+            const info = active ? this.activeTabInfo() : this.backgroundTabInfo(tab);
+            const tile = document.createElement('div');
+            tile.className = 'grimoire-ie-quicktile';
+            tile.dataset.tabId = String(tab.id);
+            tile.title = info.title;
+            const title = document.createElement('span');
+            title.className = 'grimoire-ie-quicktile-title';
+            title.textContent = info.title;
+            const close = button('', 'grimoire-ie-quicktile-close', 'Close Tab');
+            const shot = document.createElement('div');
+            shot.className = 'grimoire-ie-quicktile-shot';
+            tile.append(title, close, shot);
+
+            const pane = tabs.paneOf(tab);
+            const top = pane && pane.history ? pane.history[pane.historyIndex] : null;
+            // an Alchemy page: its last frame (grimoireTabs.js frameSnapshot), or the one kept when its session was given up
+            const picture = pane && pane._grimoireRemoteSessionId ? tabs.frameSnapshot(pane) : (top && top.type === 'web' ? tab.snapshot || '' : '');
+            if (picture || (top && top.type === 'web')) {
+                if (picture) {
+                    const img = document.createElement('img');
+                    img.alt = '';
+                    img.src = picture;
+                    shot.appendChild(img);
+                }
+                return tile;
+            }
+            const area = pane && pane.displayArea;
+            if (!area) return tile;
+            const scale = 227 / refWidth;
+            const page = document.createElement('div');
+            page.className = 'tag-wiki-search-display grimoire-ie-quicktile-page';
+            page.style.width = refWidth + 'px';
+            page.style.height = Math.ceil(146 / scale) + 'px';
+            page.style.transform = `scale(${scale})`;
+            const copy = area.cloneNode(true);
+            copy.querySelectorAll('iframe, script, video, audio').forEach((el) => el.remove());
+            [copy, ...copy.querySelectorAll('[id]')].forEach((el) => el.removeAttribute('id'));
+            page.appendChild(copy);
+            shot.appendChild(page);
+            return tile;
+        }
+
+        /** Refresh: the tab on show through the window's refresh; a background Alchemy page reloads in place;
+         *  a background Grimoire page is shown and refreshed (its page is drawn in the window). */
+        refreshTabs(list) {
+            const tabs = this.host.tabs;
+            let showAndRefresh = null;
+            list.forEach((tab) => {
+                if (tabs.isActive(tab)) return;
+                const pane = tabs.paneOf(tab);
+                const frame = pane && pane._grimoireRemoteSessionId && typeof root.grimoireRemoteFrame === 'function' ? root.grimoireRemoteFrame(pane) : null;
+                if (frame && frame.contentWindow) frame.contentWindow.postMessage({ type: 'grimoire-browser-reload' }, '*');
+                else if (list.length === 1) showAndRefresh = tab;
+            });
+            if (showAndRefresh) tabs.activate(showAndRefresh);
+            if (showAndRefresh || list.some((tab) => tabs.isActive(tab))) {
+                if (this.host.refreshBtn) this.host.refreshBtn.click();
+            }
+        }
+
         // ---- state ----
 
         sync() {
             const shell = this.shell();
-            if (!shell || !this.tabTitle) return;
+            if (!shell || !this.tabStrip) return;
             const entry = shell.history ? shell.history[shell.historyIndex] : null;
             const web = !!(entry && entry.type === 'web');
-            const title = entry ? this.entryLabel(entry, shell.historyIndex) : 'Grimoire';
-            if (this.tabTitle.textContent !== title) this.tabTitle.textContent = title;
-            const icon = pageFavicon(entry);
-            if (this.tabIcon.getAttribute('src') !== icon) this.tabIcon.setAttribute('src', icon);
-            this.tabTitle.parentElement.title = title;
+            const title = this.activeTabInfo().title;
+            this.renderTabs();
             // IE's caption: "<page> - Windows Internet Explorer"; here "<page> - Grimoire"
             if (this.captionLabel) {
                 const caption = this.isOn() && entry && entry.type !== 'home' ? `${title} - Grimoire` : 'Grimoire';
@@ -744,7 +1041,6 @@
             }
 
             const loading = this.isLoading();
-            this.tabTitle.parentElement.classList.toggle('is-loading', loading);
             this.stop.disabled = !loading;
             if (!this.printing) this.statusText.textContent = loading ? 'Waiting for page…' : 'Done';
 

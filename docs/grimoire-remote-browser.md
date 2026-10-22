@@ -10,7 +10,7 @@ The viewer times a ping on the same path as the picture and reports that round t
 
 Mouse moves collapse to the latest point. A press and release stay in order on one queue, and a click is applied ahead of any move that has not started, so a slow link cannot deliver the release before the press or bury the click under a trail of moves.
 
-A page that stops answering, crashes, or loses the stream is replaced by the Grimoire error page, with Reload and Home. A site that opens a new tab or window without an opener (`target="_blank"`, Ctrl-click, middle-click, `noopener`) opens a standalone Grimoire window on that address. The extra Chrome page is closed.
+A page that stops answering, crashes, or loses the stream is replaced by the Grimoire error page, with Reload and Home. A site that opens a new tab or window without an opener (`target="_blank"`, Ctrl-click, middle-click, `noopener`) opens a new tab in the Grimoire window on that address (see Tabs); from a standalone Alchemy window, or without the tab strip, it opens a standalone Grimoire window as before. The extra Chrome page is closed.
 
 A popup that keeps `window.opener` (OAuth and sign-in windows from `window.open`) stays open in Chromium. The service adopts it as a popup session (`adoptPopup`, `parentId` = the opener's session) and sends the opener's viewers `popup` with `sessionId` and `viewerToken`; the client streams it in a small standalone Alchemy window (`data-alchemy-popup`, 420x680) without creating a new session. When the popup calls `window.close()` the session ends, the service sends `closed`, and the window closes. Closing the window closes the popup page; closing the opener closes its popups. Pages an extension opens itself (sign-in, onboarding) are adopted the same way and open as a normal-size window (`tab`) for the most recently used viewer; one that opens before any viewer is attached (1Password's install welcome opens at launch) waits for the next viewer. Popup sessions have their own cap (`MAX_SESSIONS`).
 
@@ -27,6 +27,18 @@ When only part of the page changes, the service compares it with the previous pi
 guacd is the Guacamole proxy. Its region updates come from VNC or RDP damage events, so Chrome would have to render into an X display, then a VNC server, then guacd, which encodes the image a second time. That extra hop costs more delay than it saves. The rectangles here are taken from the screencast Chrome already produced.
 
 The picture is a JPEG from Chrome’s own `Page.startScreencast` (the same path DevTools uses). PNG is larger. WebP and H.264 are not part of that API. [Browservice](https://github.com/ttalvitie/browservice) renders with CEF and also ships a full JPEG or PNG of the window on each change, aimed at old browsers. Cloning it would mean keeping a CEF build. It would not move keys or clicks any better than the DevTools stream we already have.
+
+## Tabs
+
+The main Grimoire window holds several tabs (Yozora #451, `public/scripts/comp/grimoireTabs.js`). Each tab is a Grimoire page or an Alchemy page with its own history, address, zoom, feeds and right split pane, and a tab goes from one kind to the other like a window does. Every tab keeps its own display area, so an Alchemy frame stays connected while its tab is in the background; the window's page state (`PAGE_KEYS`) moves in and out of `tagWikiSearchModal` on a switch. Split view itself is the window's.
+
+A background Alchemy frame updates only its tab: address, title, history and the loading ring (`grimoireBackgroundRemoteMessage`). A page dialog brings its tab forward; a failed page or a browser restart shows when the tab is shown again. The service caps sessions (`MAX_SESSIONS`, 429): the background tab used longest ago gives its session up, keeps its address and last frame, and reconnects when shown.
+
+New tabs come from the new-tab stub, Ctrl+T, a double click on the empty strip, a page's `target="_blank"` or an extension's own page, and Open link in new tab in the Alchemy menu (Open in new window stays a window, as do sign-in popups that keep `window.opener`). Searches, desktop shortcuts (web pages, wiki pages, documentation, applets) and links from other apps (`openGrimoireUrl`, `openSearchForTerm`, `openStandaloneWikiIfDirectMatch`, `openDsapInGrimoire`) open as a new tab through `grimoireOpenInTab`; a closed window opens and its tab takes the page. Without the IE7 tab strip (classic theme, no desktop) they keep their old windows.
+
+Close with the tab's x (on the tab on show, from two tabs on), a middle click, Ctrl+W or Ctrl+F4; closing the last tab closes the window, and closing the window ends every tab's Alchemy session. Ctrl+Tab / Ctrl+Shift+Tab step through the tabs and Ctrl+Q opens Quick Tabs (every tab as a picture; Alchemy pages from the viewer's canvas). The viewer hands these keys to the window while an Alchemy page has focus (`grimoire-browser-shortcut`). The tab menu is IE7's: Close, Close Other Tabs, Refresh, Refresh All, New Tab. The strip, the close button, Quick Tabs and Tab List ▾ are IE7's art from `ieframe.dll` (`public/static_images/vista-ie/tab*.png`, `quick-tabs.png`).
+
+The Grimoire home page ends with Perform Alchemy!, which takes its tab to Alchemy's home.
 
 ## Profile, extensions, and branding
 
@@ -100,7 +112,7 @@ In Grimoire, enter `https://example.com`, a bare site such as `bing.com` (common
 
 Drag selects text in the remote page. Ctrl/Cmd+C copies that selection, and Ctrl/Cmd+V pastes the local clipboard into the page. Right-click opens the Grimoire menu: Copy, Paste (on a text field; the field is focused so the paste lands there), Copy link, Open link, Copy image, Save image, Download, Open in new window (the link, else the page), and Add to Desktop. Save image, Download, and any file the page itself downloads go into a Downloads folder in the active workspace's VFS (`/Workspaces/<id>/Downloads`, a normal folder made on first use), not the device's downloads: `POST /api/grimoire-browser/sessions/:id/save` with `{ download: <guid> }` or `{ url }`, plus `filename` and `workspaceId`. A toast has Show, which opens the folder in Explorer. While the remote page downloads, a toast shows the name, bytes so far, and a progress bar (service `download-progress`, at most 4 a second), then Saving to Downloads, then the saved toast. A resource is read by the remote page, so an image from another site that does not allow CORS fails with Download failed (open it in its own window and save from there). Copy image still uses the browser.
 
-Add to Desktop creates a `web-page` shortcut (`data.url`, `data.title`, `data.icon`) that opens a standalone Alchemy window. `GET /api/grimoire-browser/sessions/:id/page-icon` asks the service for icon candidates (`/sessions/:id/page-info`: manifest / `apple-touch-icon` / sized `link[rel=icon]` 48px and up, then `og:image`, then small icons, then `/favicon.ico`); an extension's own page puts its largest manifest icon first, fetches them in the page until one is an image, and saves it as `.cache/site-icons/<sha1>.<ext>` (served from `/cache`).
+Add to Desktop creates a `web-page` shortcut (`data.url`, `data.title`, `data.icon`) that opens a new tab in the Grimoire window (a standalone Alchemy window without the tab strip). `GET /api/grimoire-browser/sessions/:id/page-icon` asks the service for icon candidates (`/sessions/:id/page-info`: manifest / `apple-touch-icon` / sized `link[rel=icon]` 48px and up, then `og:image`, then small icons, then `/favicon.ico`); an extension's own page puts its largest manifest icon first, fetches them in the page until one is an image, and saves it as `.cache/site-icons/<sha1>.<ext>` (served from `/cache`).
 
 Failure, not-responding, and unavailable pages use the Alchemy name and atom icon and never mention a remote browser or the service.
 
@@ -129,4 +141,6 @@ The address bar follows the remote page, including redirects, and the loading sp
 node scripts/test-grimoire-browser.js
 ```
 
-That starts the service, clicks a local page through the stream, copies a selection, types into the page, saves an image, receives a download, opens `chrome://version`, follows a `chrome://` link, loads `https://example.com`, and checks the Dreamscape bridge returns a same-origin view URL.
+`node scripts/test-grimoire-tabs.js` checks the tab state swap, background frames, the session cap and closing.
+
+The browser check starts the service, clicks a local page through the stream, copies a selection, types into the page, saves an image, receives a download, opens `chrome://version`, follows a `chrome://` link, loads `https://example.com`, and checks the Dreamscape bridge returns a same-origin view URL.
