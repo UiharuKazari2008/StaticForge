@@ -14,6 +14,89 @@ const {
     REPLICATION_TRACKED_CONFIG_TYPES
 } = require('./replication/replicationContracts');
 
+// _getReactiveConfig: min interval between mtime checks per config type
+const REACTIVE_STAT_INTERVAL_MS = 1000;
+
+// workspaceDesktop.windowPositions: per-image viewer keys kept (newest by update order)
+const IMAGE_VIEWER_POSITION_PREFIX = 'imageViewer:';
+const IMAGE_VIEWER_POSITION_CAP = 100;
+const IMAGE_VIEWER_TOMBSTONE_CAP = 4096;
+// More unknown imageViewer entries than this in one save is a stale client map, not new windows
+const IMAGE_VIEWER_FRESH_BATCH_MAX = 10;
+
+/**
+ * Merge incoming window positions into the stored map and cap imageViewer:* keys.
+ * Non-imageViewer keys merge exactly as a plain spread. imageViewer keys are kept in
+ * update order (a new or changed entry moves to the end) and the oldest beyond the cap
+ * are dropped. Clients send their full map every save, so an evicted entry re-sent
+ * unchanged is ignored (tombstones), and a batch of many unknown entries (a stale map
+ * re-sent after a restart cleared the tombstones) is treated as oldest instead of newest.
+ * @param {Object} existing - Stored windowPositions (not modified)
+ * @param {Object} incoming - Positions from the client
+ * @param {Map} [tombstones] - key -> JSON of evicted entries (updated in place)
+ * @param {number} [cap]
+ * @returns {Object} New windowPositions object
+ */
+function mergeWindowPositionsWithImageViewerCap(existing, incoming, tombstones = null, cap = IMAGE_VIEWER_POSITION_CAP) {
+    const merged = { ...(existing && typeof existing === 'object' ? existing : {}) };
+    const unknown = [];
+    for (const [key, value] of Object.entries(incoming || {})) {
+        if (!key.startsWith(IMAGE_VIEWER_POSITION_PREFIX)) {
+            merged[key] = value;
+            continue;
+        }
+        const valueJson = JSON.stringify(value);
+        if (Object.prototype.hasOwnProperty.call(merged, key)) {
+            if (JSON.stringify(merged[key]) !== valueJson) {
+                delete merged[key];
+                merged[key] = value;
+            }
+            continue;
+        }
+        if (tombstones && tombstones.get(key) === valueJson) {
+            continue;
+        }
+        unknown.push([key, value, valueJson]);
+    }
+
+    const stale = unknown.length > Math.min(cap, IMAGE_VIEWER_FRESH_BATCH_MAX);
+    if (!stale) {
+        unknown.forEach(([key, value]) => {
+            merged[key] = value;
+            if (tombstones) tombstones.delete(key);
+        });
+    }
+
+    const viewerKeys = Object.keys(merged).filter((key) => key.startsWith(IMAGE_VIEWER_POSITION_PREFIX));
+    let excess = viewerKeys.length + (stale ? unknown.length : 0) - cap;
+    const evict = (key, valueJson) => {
+        if (!tombstones) return;
+        tombstones.delete(key);
+        tombstones.set(key, valueJson);
+        while (tombstones.size > IMAGE_VIEWER_TOMBSTONE_CAP) {
+            tombstones.delete(tombstones.keys().next().value);
+        }
+    };
+    if (stale) {
+        // Stale entries rank oldest; any that still fit go after the stored ones
+        unknown.forEach(([key, value, valueJson]) => {
+            if (excess > 0) {
+                excess--;
+                evict(key, valueJson);
+            } else {
+                merged[key] = value;
+                if (tombstones) tombstones.delete(key);
+            }
+        });
+    }
+    for (let i = 0; i < viewerKeys.length && excess > 0; i++, excess--) {
+        const key = viewerKeys[i];
+        evict(key, JSON.stringify(merged[key]));
+        delete merged[key];
+    }
+    return merged;
+}
+
 /**
  * Fluent API for config modifications
  * Provides type-safe, chainable methods for common config operations
@@ -506,7 +589,8 @@ class ConfigManager {
                 pendingSaveStartTime: 0,
                 pendingSaveData: null,
                 pendingSaveOptions: null,
-                lastWriteTime: 0
+                lastWriteTime: 0,
+                lastStatAt: 0
             };
         }
     }
@@ -1457,9 +1541,21 @@ class ConfigManager {
             throw new Error(`Unknown config type: ${configType}`);
         }
         
-        // Check if file was modified
-        if (fs.existsSync(configInfo.path)) {
-            const stats = fs.statSync(configInfo.path);
+        // Check if file was modified. Stat at most once per REACTIVE_STAT_INTERVAL_MS per
+        // config: writes made by this module update cache/lastSaved immediately, so only
+        // external edits wait (up to ~1 s) to be picked up.
+        let stats = null;
+        const now = Date.now();
+        if (!configInfo.cache || !configInfo.lastStatAt || now - configInfo.lastStatAt >= REACTIVE_STAT_INTERVAL_MS) {
+            try {
+                stats = fs.statSync(configInfo.path);
+            } catch (_statError) {
+                // ENOENT (or any stat error, as existsSync did): serve the cache
+                stats = null;
+            }
+            configInfo.lastStatAt = now;
+        }
+        if (stats) {
             const lastModified = stats.mtime.getTime();
             
             // Reload if file changed or not cached
@@ -2330,17 +2426,18 @@ class ConfigManager {
             throw new Error('partialPositions must be an object');
         }
 
-        let nextConfig;
-        if (configInfo.pendingSaveData) {
-            nextConfig = JSON.parse(JSON.stringify(configInfo.pendingSaveData));
-        } else {
-            nextConfig = JSON.parse(JSON.stringify(this._getReactiveConfig(configType)));
+        // Shallow copy: only windowPositions changes, the rest of the (large) desktop
+        // config is shared with the current cache / pending payload.
+        const baseConfig = configInfo.pendingSaveData || this._getReactiveConfig(configType) || {};
+        const nextConfig = { ...baseConfig };
+        if (!this._imageViewerPositionTombstones) {
+            this._imageViewerPositionTombstones = new Map();
         }
-
-        nextConfig.windowPositions = {
-            ...(nextConfig.windowPositions || {}),
-            ...partialPositions
-        };
+        nextConfig.windowPositions = mergeWindowPositionsWithImageViewerCap(
+            baseConfig.windowPositions,
+            partialPositions,
+            this._imageViewerPositionTombstones
+        );
 
         return this.saveConfig(configType, nextConfig);
     }
@@ -2419,6 +2516,8 @@ class ConfigManager {
 module.exports = {
     GlobalCheckpointManager,
     ConfigManager,
-    ConfigModifier
+    ConfigModifier,
+    mergeWindowPositionsWithImageViewerCap,
+    IMAGE_VIEWER_POSITION_CAP
 };
 
