@@ -1,15 +1,18 @@
 #!/usr/bin/env node
 // Windows Flip 3D (public/scripts/comp/flip3d.js): the stack against the Vista VM capture, the
-// slot cycling, the CSS rule index's selector handling, and the no-WebGL fallback.
+// slot cycling and the no-WebGL fallback; and the window pictures it shares with the taskbar
+// previews (windowCapture.js): the CSS rule index's selector handling.
 // Run: node scripts/test-flip3d.js
 'use strict';
 
 const assert = require('assert');
 
 global.window = global;
+require('../public/scripts/comp/windowCapture.js');
 require('../public/scripts/comp/flip3d.js');
 const f = global.flip3d;
 const T = f._test;
+const C = global.windowCapture._test;
 
 // ---- the stack: the VM's Flip 3D at 1920x1200 (2026-10-22 capture, ~/.cache/vista-vm/flip3d) ----
 // the front window (Computer, 900x600) and the fourth and fifth (Bing 1000x700, Garden 1463x934),
@@ -69,30 +72,30 @@ const quad = [[0, 0], [10, 0], [10, 10], [0, 10]];
 assert.ok(T.insideQuad(quad, 5, 5));
 assert.ok(!T.insideQuad(quad, 11, 5));
 
-// ---- the CSS rule index ----
-assert.deepStrictEqual(T.splitSelectors('a .b, body .m:where(:not(#x:not(.w), #y, [d="1,2"])) > .c, d'),
+// ---- windowCapture.js: the CSS rule index ----
+assert.deepStrictEqual(C.splitSelectors('a .b, body .m:where(:not(#x:not(.w), #y, [d="1,2"])) > .c, d'),
     ['a .b', 'body .m:where(:not(#x:not(.w), #y, [d="1,2"])) > .c', 'd'], 'commas inside :not() and [attr] stay');
-assert.strictEqual(T.stateOnly('.btn:hover'), true, 'a hover look never shows in a picture');
-assert.strictEqual(T.stateOnly('.list:focus-within .row'), true);
-assert.strictEqual(T.stateOnly('.btn:not(:hover)'), false, 'not hovered is every picture');
-assert.strictEqual(T.stateOnly('.btn:disabled'), false);
-assert.strictEqual(T.rightmostKey('body.desktop-mode .modal:where(:not(#a, #b)) > .modal-window-controls'), '.modal-window-controls');
-assert.strictEqual(T.rightmostKey('.modal:where(.a):where(:not(#m:not(.w), #p))'), '.modal', 'ids inside :not() are not keys');
-assert.strictEqual(T.rightmostKey('div#foo.bar'), '#foo');
-assert.strictEqual(T.rightmostKey('ul > li'), 'li');
-assert.strictEqual(T.rightmostKey(':is(.a, .b)'), '*');
-assert.strictEqual(T.rightmostKey('.w-1\\/2'), '*', 'escapes go to the catch-all');
-assert.strictEqual(T.testSelector('.a::before'), '.a');
-assert.strictEqual(T.testSelector('.a:hover > '), '.a >*', 'a dangling combinator gets a target');
-assert.strictEqual(T.absolutize('src: url("../webfonts/fa.woff2") format("woff2")', 'http://h/dist/fa/css/all.css'),
+assert.strictEqual(C.stateOnly('.btn:hover'), true, 'a hover look never shows in a picture');
+assert.strictEqual(C.stateOnly('.list:focus-within .row'), true);
+assert.strictEqual(C.stateOnly('.btn:not(:hover)'), false, 'not hovered is every picture');
+assert.strictEqual(C.stateOnly('.btn:disabled'), false);
+assert.strictEqual(C.rightmostKey('body.desktop-mode .modal:where(:not(#a, #b)) > .modal-window-controls'), '.modal-window-controls');
+assert.strictEqual(C.rightmostKey('.modal:where(.a):where(:not(#m:not(.w), #p))'), '.modal', 'ids inside :not() are not keys');
+assert.strictEqual(C.rightmostKey('div#foo.bar'), '#foo');
+assert.strictEqual(C.rightmostKey('ul > li'), 'li');
+assert.strictEqual(C.rightmostKey(':is(.a, .b)'), '*');
+assert.strictEqual(C.rightmostKey('.w-1\\/2'), '*', 'escapes go to the catch-all');
+assert.strictEqual(C.testSelector('.a::before'), '.a');
+assert.strictEqual(C.testSelector('.a:hover > '), '.a >*', 'a dangling combinator gets a target');
+assert.strictEqual(C.absolutize('src: url("../webfonts/fa.woff2") format("woff2")', 'http://h/dist/fa/css/all.css'),
     'src: url("/dist/fa/webfonts/fa.woff2") format("woff2")', 'url()s are relative to their sheet');
-assert.strictEqual(T.absolutize('url(/a.png) url(data:x)', 'http://h/css/x.css'), 'url(/a.png) url(data:x)');
-assert.strictEqual(T.flattenImageSets('a{background:image-set("a.png" 1x, "b.png" 2x)}'), 'a{background:url("a.png")}');
-assert.strictEqual(T.flattenImageSets('b{x:-webkit-image-set(url(c.png) 1x, url(d.png) 2x) y}'), 'b{x:url("c.png") y}');
-assert.strictEqual(T.weightClass('400'), 'n');
-assert.strictEqual(T.weightClass('600'), 's');
-assert.strictEqual(T.weightClass('bold'), 'b');
-assert.strictEqual(T.weightClass('300'), 'l');
+assert.strictEqual(C.absolutize('url(/a.png) url(data:x)', 'http://h/css/x.css'), 'url(/a.png) url(data:x)');
+assert.strictEqual(C.flattenImageSets('a{background:image-set("a.png" 1x, "b.png" 2x)}'), 'a{background:url("a.png")}');
+assert.strictEqual(C.flattenImageSets('b{x:-webkit-image-set(url(c.png) 1x, url(d.png) 2x) y}'), 'b{x:url("c.png") y}');
+assert.strictEqual(C.weightClass('400'), 'n');
+assert.strictEqual(C.weightClass('600'), 's');
+assert.strictEqual(C.weightClass('bold'), 'b');
+assert.strictEqual(C.weightClass('300'), 'l');
 
 // ---- no DOM / no WebGL: open() says so, and the callers fall back to the window switcher ----
 assert.strictEqual(f.open('sticky'), false);

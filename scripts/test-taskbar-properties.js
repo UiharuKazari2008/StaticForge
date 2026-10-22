@@ -188,7 +188,11 @@ assert.ok(!mu.includes('function getStartMenuRecentItems'), 'Recent Items are no
 // the preview bar keeps each style's own height (no stretched art); copies keep ids for their styles
 assert.ok(tp.includes('const PREVIEW_BAR_HEIGHTS = { orb: 31, luna: 33, workspace: 35 };'));
 const tsrc = read('public/scripts/comp/taskbarSettings.js');
-assert.ok(tsrc.includes('function stripLiveAttributes(node)') && !tsrc.includes("removeAttribute('id')"), 'thumbnails keep ids');
+// window previews are windowCapture.js pictures (shared with Flip 3D), warmed as the pointer
+// reaches a button; the copies keep their ids, as every app styles its window by them
+const wcsrc = read('public/scripts/comp/windowCapture.js');
+assert.ok(tsrc.includes("loadFeature('window_capture')") && tsrc.includes('warmThumb(item);'), 'previews use the window pictures');
+assert.ok(!tsrc.includes('function snapshot(') && !wcsrc.includes("removeAttribute('id')"), 'no DOM-clone previews; copies keep ids');
 assert.ok(vt.includes('margin: 6px 0 0;'), 'the group count sits on the label line');
 
 // tray icon copies keep their ids (their Vista pictures are #id rules); the list's combo is pinned

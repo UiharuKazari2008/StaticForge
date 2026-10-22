@@ -225,8 +225,13 @@ const FEATURE_MANIFEST = {
         styles: ['css/taskbar-properties.css', 'css/mail-options.css'],
         scripts: ['scripts/comp/mailOptions.js']
     },
+    // window pictures for Flip 3D and the taskbar's window previews (taskbarSettings.js)
+    window_capture: {
+        scripts: ['scripts/comp/windowCapture.js']
+    },
     // Windows Flip 3D, Vista's Win+Tab (keyboardShortcuts.js, taskbarSettings.js Quick Launch)
     flip3d: {
+        depends: ['window_capture'],
         styles: ['css/flip3d.css'],
         scripts: ['scripts/comp/flip3d.js']
     },

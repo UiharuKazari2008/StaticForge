@@ -83,7 +83,6 @@
     const BOOLEAN_KEYS = Object.keys(DEFAULTS).filter((k) => typeof DEFAULTS[k] === 'boolean');
     const AUTOHIDE_LEAVE_MS = 500;
     const THUMB_DELAY_MS = 400;
-    const THUMB_MAX_NODES = 2500;
 
     function normalize(raw) {
         const out = { ...DEFAULTS, places: {} };
@@ -882,65 +881,89 @@
         return span ? span.textContent : '';
     }
 
-    /** What a copy must not carry: a radio button's name would join (and uncheck) the real
-     *  window's group, labels and autofocus act on the page. Ids stay: every app styles its window
-     *  by them (Director's dark panes, Studio's layout); the preview sits last in <body>, so a
-     *  getElementById / querySelector still finds the real window first. */
-    function stripLiveAttributes(node) {
-        if (node.nodeType !== 1) return;
-        const strip = (el) => {
-            el.removeAttribute('name');
-            el.removeAttribute('for');
-            el.removeAttribute('autofocus');
-            el.removeAttribute('tabindex');
-        };
-        strip(node);
-        node.querySelectorAll('[name], [for], [autofocus], [tabindex]').forEach(strip);
+    const THUMB_BOX = Object.freeze({ w: 200, h: 120 });
+    // while a preview is up it follows its window: a changed window is copied again at most
+    // this often, live canvases and videos are drawn in again at the faster rate
+    const THUMB_RECOPY_MS = 1000;
+    const THUMB_LIVE_MS = 500;
+    let thumbLiveTimer = 0;
+    let thumbHeld = null;
+
+    /** windowCapture.js (a lazy feature, shared with Flip 3D): a promise of it, null when it
+     *  cannot load. */
+    function windowCapture() {
+        if (root.windowCapture) return Promise.resolve(root.windowCapture);
+        if (typeof featureLoader === 'undefined') return Promise.resolve(null);
+        return featureLoader.loadFeature('window_capture').then(() => root.windowCapture || null).catch(() => null);
     }
 
-    /** A still of the window: a clone with its ids (for its styles) but no form or focus ties,
-     *  canvases copied. */
-    function snapshot(modal, box) {
-        if (!modal || modal.getElementsByTagName('*').length > THUMB_MAX_NODES) return null;
-        const minimised = modal.classList.contains('minimised');
-        const rect = modal.getBoundingClientRect();
-        const w = minimised ? (parseFloat(modal.style.width) || modal.offsetWidth) : rect.width;
-        const h = minimised ? (parseFloat(modal.style.height) || modal.offsetHeight) : rect.height;
-        if (!w || !h) return null;
-        const clone = modal.cloneNode(true);
-        const srcCanvases = modal.querySelectorAll('canvas');
-        const dstCanvases = clone.querySelectorAll('canvas');
-        dstCanvases.forEach((c, i) => {
-            const s = srcCanvases[i];
-            if (!s || !s.width || !s.height) return;
-            try {
-                c.width = s.width;
-                c.height = s.height;
-                c.getContext('2d').drawImage(s, 0, 0);
-            } catch (_) { /* tainted or WebGL */ }
+    /** The pointer reached a button: its window is copied during the hover delay. */
+    function warmThumb(item) {
+        const modal = modalFor(item);
+        if (!modal || !settings.thumbnails) return;
+        windowCapture().then((wc) => { if (wc) wc.capture(modal); });
+    }
+
+    /** The window's picture fitted to the preview box (a canvas at the screen's density). */
+    function thumbStill(wc, pic) {
+        const src = wc.composite(pic);
+        const rimPx = wc.RIM;
+        const scale = Math.min(THUMB_BOX.w / pic.w, THUMB_BOX.h / pic.h);
+        const w = Math.max(1, Math.round(pic.w * scale));
+        const h = Math.max(1, Math.round(pic.h * scale));
+        const dpr = Math.min(2, root.devicePixelRatio || 1);
+        const c = doc.createElement('canvas');
+        c.className = 'taskbar-thumb-still';
+        c.width = Math.round(w * dpr);
+        c.height = Math.round(h * dpr);
+        c.style.width = `${w}px`;
+        c.style.height = `${h}px`;
+        const g = c.getContext('2d');
+        g.imageSmoothingQuality = 'high';
+        g.drawImage(src, rimPx, rimPx, src.width - 2 * rimPx, src.height - 2 * rimPx, 0, 0, c.width, c.height);
+        return c;
+    }
+
+    /** Vista's preview of a window with no picture yet: its icon. */
+    function thumbIcon(item, body) {
+        const icon = item.querySelector('img.icon-image, i');
+        if (icon) body.appendChild(icon.cloneNode(true));
+        body.classList.add('is-icon');
+    }
+
+    function setThumbBody(item, content) {
+        const body = thumb.querySelector('.taskbar-thumb-body');
+        body.textContent = '';
+        body.classList.remove('is-icon');
+        if (content) body.appendChild(content);
+        else thumbIcon(item, body);
+        placeThumb(item);
+    }
+
+    /** Keeps the preview up to date while it shows: a new copy when the window changed, the
+     *  live canvases / videos drawn in again. */
+    function followThumb(item, modal) {
+        if (thumbLiveTimer) clearTimeout(thumbLiveTimer);
+        thumbLiveTimer = 0;
+        windowCapture().then(async (wc) => {
+            if (!wc || thumbFor !== item) return;
+            if (thumbHeld !== modal) {
+                if (thumbHeld) wc.hold([thumbHeld], false);
+                wc.hold([modal]);
+                thumbHeld = modal;
+            }
+            let pic = wc.cached(modal);
+            if (!pic || !wc.fresh(modal)) {
+                pic = await wc.capture(modal);
+                if (thumbFor !== item) return;
+                if (pic) setThumbBody(item, thumbStill(wc, pic));
+            } else if (pic.overlays.length) setThumbBody(item, thumbStill(wc, pic));
+            const live = pic && pic.overlays.length;
+            thumbLiveTimer = setTimeout(() => {
+                thumbLiveTimer = 0;
+                if (thumbFor === item) followThumb(item, modal);
+            }, live ? THUMB_LIVE_MS : THUMB_RECOPY_MS);
         });
-        clone.querySelectorAll('video, audio, iframe, script').forEach((el) => el.remove());
-        stripLiveAttributes(clone);
-        clone.classList.remove('minimised', 'minimising', 'active-window', 'entering', 'leaving');
-        clone.classList.add('taskbar-thumb-clone');
-        clone.setAttribute('aria-hidden', 'true');
-        clone.setAttribute('inert', '');
-        const scale = Math.min(box.w / w, box.h / h);
-        // the copy's geometry beats the window's own rules (maximized windows and some apps size
-        // themselves with !important), or the preview grows past its box
-        const fixed = {
-            position: 'absolute', inset: 'auto', left: '0px', top: '0px', right: 'auto', bottom: 'auto',
-            width: `${w}px`, height: `${h}px`, 'min-width': '0px', 'min-height': '0px', 'max-width': 'none', 'max-height': 'none',
-            margin: '0px', transform: `scale(${scale})`, 'transform-origin': '0 0', translate: 'none', scale: 'none', rotate: 'none',
-            zoom: '1', 'pointer-events': 'none', animation: 'none', transition: 'none', opacity: '1', visibility: 'visible'
-        };
-        Object.keys(fixed).forEach((prop) => clone.style.setProperty(prop, fixed[prop], 'important'));
-        const holder = doc.createElement('div');
-        holder.className = 'taskbar-thumb-still';
-        holder.style.width = `${Math.round(w * scale)}px`;
-        holder.style.height = `${Math.round(h * scale)}px`;
-        holder.appendChild(clone);
-        return holder;
     }
 
     function ensureThumb() {
@@ -970,20 +993,25 @@
         el.querySelector('.taskbar-thumb-title').textContent = title;
         const body = el.querySelector('.taskbar-thumb-body');
         body.textContent = '';
+        body.classList.remove('is-icon');
         const withPreview = settings.thumbnails;
         el.classList.toggle('is-tooltip', !withPreview);
-        if (withPreview) {
-            const still = snapshot(modal, { w: 200, h: 120 });
-            if (still) body.appendChild(still);
-            else {
-                // too large to copy: the window's icon, as Vista draws a window with no picture
-                const icon = item.querySelector('img.icon-image, i');
-                if (icon) body.appendChild(icon.cloneNode(true));
-                body.classList.add('is-icon');
-            }
-        }
         thumbFor = item;
         el.classList.remove('hidden');
+        if (withPreview) {
+            // the window's picture (windowCapture.js): the last one at once, a new one when it
+            // changed; none yet, its icon until the copy is done
+            const wc = root.windowCapture;
+            const pic = wc && wc.cached(modal);
+            setThumbBody(item, pic ? thumbStill(wc, pic) : null);
+            followThumb(item, modal);
+        } else placeThumb(item);
+    }
+
+    /** Over its button, centred, inside the screen, just above the taskbar. */
+    function placeThumb(item) {
+        const el = thumb;
+        if (!el || !item.isConnected) return;
         const r = item.getBoundingClientRect();
         const tbRect = taskbar().getBoundingClientRect();
         const w = el.offsetWidth;
@@ -999,6 +1027,10 @@
         const done = () => {
             thumbHideTimer = 0;
             thumbFor = null;
+            if (thumbLiveTimer) clearTimeout(thumbLiveTimer);
+            thumbLiveTimer = 0;
+            if (thumbHeld && root.windowCapture) root.windowCapture.hold([thumbHeld], false);
+            thumbHeld = null;
             if (!thumb) return;
             thumb.classList.add('hidden');
             thumb.querySelector('.taskbar-thumb-body').textContent = '';
@@ -1018,12 +1050,20 @@
             if (thumbHideTimer) clearTimeout(thumbHideTimer);
             thumbHideTimer = 0;
             if (thumbTimer) clearTimeout(thumbTimer);
+            warmThumb(item);
             // already showing one: move straight over, as Vista does
             const delay = thumbFor ? 0 : THUMB_DELAY_MS;
             thumbTimer = setTimeout(() => {
                 thumbTimer = 0;
                 if (item.isConnected && item.matches(':hover')) showThumb(item);
             }, delay);
+        });
+        // entering the buttons: the windows that changed are copied in idle moments, so moving
+        // along them finds their pictures ready
+        band.addEventListener('pointerenter', (ev) => {
+            if (ev.pointerType === 'touch' || !settings.thumbnails) return;
+            const wins = Array.from(band.querySelectorAll('.taskbar-window-item[data-modal-id]')).map(modalFor).filter(Boolean);
+            windowCapture().then((wc) => { if (wc) wc.prewarm(wins, () => !band.matches(':hover')); });
         });
         band.addEventListener('pointerleave', () => hideThumb());
         band.addEventListener('pointerdown', () => hideThumb(true), true);
@@ -1063,7 +1103,7 @@
         mergeQuickLaunchDefaults,
         restoreQuickLaunchDefaults,
         quickLaunchEntry,
-        _test: { read, snapshot, stripLiveAttributes, reorderList, QUICK_LAUNCH_SHELL, STORAGE_KEY }
+        _test: { read, reorderList, QUICK_LAUNCH_SHELL, STORAGE_KEY }
     };
     root.taskbarSettings = api;
 
