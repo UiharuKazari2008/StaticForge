@@ -4307,18 +4307,14 @@ async function handleAdminUnixSocketMessage(message, socket) {
         }, SUBSCRIPTION_USAGE_POLL_MS);
         globalResources.registerTimer('cacheRefresh', 'interval', () => initializeCacheData(), CACHE_REFRESH_INTERVAL);
         setTimeout(() => {
-            try {
-                runCacheDirExpiry(globalResources);
-            } catch (err) {
+            runCacheDirExpiry(globalResources).catch((err) => {
                 globalResources.logger.warn('Cache dir expiry failed:', err.message);
-            }
+            });
         }, FIRST_RUN_DELAY_MS);
         globalResources.registerTimer('cacheDirExpiry', 'interval', () => {
-            try {
-                runCacheDirExpiry(globalResources);
-            } catch (err) {
+            runCacheDirExpiry(globalResources).catch((err) => {
                 globalResources.logger.warn('Cache dir expiry failed:', err.message);
-            }
+            });
         }, CLEANUP_INTERVAL_MS);
         globalResources.registerTimer('securityCleanup', 'interval', () => cleanupSecurityData(), SECURITY_CONFIG.CLEANUP_INTERVAL_MS);
         globalResources.registerTimer('retrievedRequestsCleanup', 'interval', () => cleanupRetrievedRequests(), 5 * 60 * 1000);

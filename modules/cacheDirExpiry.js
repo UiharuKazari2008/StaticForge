@@ -1,4 +1,4 @@
-const fs = require('fs');
+const fsp = require('fs').promises;
 const path = require('path');
 
 const DEFAULT_TRACES_MAX_AGE_DAYS = 14;
@@ -24,17 +24,14 @@ function getDynGenPreviewMaxAgeMs() {
  * Remove trace JSON files and matching attachment dirs older than maxAgeMs.
  * Then remove orphan attachment dirs whose mtime is past cutoff and whose sibling .json is missing or also old.
  */
-function expireTracesDir(tracesDir, maxAgeMs) {
+async function expireTracesDir(tracesDir, maxAgeMs) {
     let jsonRemoved = 0;
     let dirsRemoved = 0;
-    if (!fs.existsSync(tracesDir)) {
-        return { jsonRemoved, dirsRemoved };
-    }
 
     const cutoff = Date.now() - maxAgeMs;
     let entries;
     try {
-        entries = fs.readdirSync(tracesDir, { withFileTypes: true });
+        entries = await fsp.readdir(tracesDir, { withFileTypes: true });
     } catch (e) {
         return { jsonRemoved, dirsRemoved };
     }
@@ -44,22 +41,20 @@ function expireTracesDir(tracesDir, maxAgeMs) {
         const full = path.join(tracesDir, ent.name);
         let st;
         try {
-            st = fs.statSync(full);
+            st = await fsp.stat(full);
         } catch {
             continue;
         }
         if (st.mtimeMs >= cutoff) continue;
         try {
-            fs.unlinkSync(full);
+            await fsp.unlink(full);
             jsonRemoved++;
             const base = ent.name.replace(/\.json$/, '');
             const dirPath = path.join(tracesDir, base);
-            if (fs.existsSync(dirPath)) {
-                const dst = fs.statSync(dirPath);
-                if (dst.isDirectory()) {
-                    fs.rmSync(dirPath, { recursive: true, force: true });
-                    dirsRemoved++;
-                }
+            const dst = await fsp.stat(dirPath).catch(() => null);
+            if (dst && dst.isDirectory()) {
+                await fsp.rm(dirPath, { recursive: true, force: true });
+                dirsRemoved++;
             }
         } catch {
             // best-effort
@@ -68,7 +63,7 @@ function expireTracesDir(tracesDir, maxAgeMs) {
 
     let entries2;
     try {
-        entries2 = fs.readdirSync(tracesDir, { withFileTypes: true });
+        entries2 = await fsp.readdir(tracesDir, { withFileTypes: true });
     } catch {
         return { jsonRemoved, dirsRemoved };
     }
@@ -79,24 +74,29 @@ function expireTracesDir(tracesDir, maxAgeMs) {
         const jsonPath = path.join(tracesDir, `${ent.name}.json`);
         let dirSt;
         try {
-            dirSt = fs.statSync(full);
+            dirSt = await fsp.stat(full);
         } catch {
             continue;
         }
         if (dirSt.mtimeMs >= cutoff) continue;
 
-        if (fs.existsSync(jsonPath)) {
+        let jst = null;
+        try {
+            jst = await fsp.stat(jsonPath);
+        } catch {
+            jst = null;
+        }
+        if (jst) {
             try {
-                const jst = fs.statSync(jsonPath);
                 if (jst.mtimeMs >= cutoff) continue;
-                fs.unlinkSync(jsonPath);
+                await fsp.unlink(jsonPath);
                 jsonRemoved++;
             } catch {
                 continue;
             }
         }
         try {
-            fs.rmSync(full, { recursive: true, force: true });
+            await fsp.rm(full, { recursive: true, force: true });
             dirsRemoved++;
         } catch {
             // best-effort
@@ -106,15 +106,12 @@ function expireTracesDir(tracesDir, maxAgeMs) {
     return { jsonRemoved, dirsRemoved };
 }
 
-function expireDynGenPreviewDir(dynGenDir, maxAgeMs) {
+async function expireDynGenPreviewDir(dynGenDir, maxAgeMs) {
     let removed = 0;
-    if (!fs.existsSync(dynGenDir)) {
-        return removed;
-    }
     const cutoff = Date.now() - maxAgeMs;
     let names;
     try {
-        names = fs.readdirSync(dynGenDir);
+        names = await fsp.readdir(dynGenDir);
     } catch {
         return removed;
     }
@@ -123,13 +120,13 @@ function expireDynGenPreviewDir(dynGenDir, maxAgeMs) {
         const full = path.join(dynGenDir, name);
         let st;
         try {
-            st = fs.statSync(full);
+            st = await fsp.stat(full);
         } catch {
             continue;
         }
         if (!st.isFile() || st.mtimeMs >= cutoff) continue;
         try {
-            fs.unlinkSync(full);
+            await fsp.unlink(full);
             removed++;
         } catch {
             // best-effort
@@ -140,9 +137,9 @@ function expireDynGenPreviewDir(dynGenDir, maxAgeMs) {
 
 /**
  * @param {import('./globalResources')} globalResources
- * @returns {{ tracesJson: number, traceDirs: number, dynGenPng: number }}
+ * @returns {Promise<{ tracesJson: number, traceDirs: number, dynGenPng: number }>}
  */
-function runCacheDirExpiry(globalResources) {
+async function runCacheDirExpiry(globalResources) {
     if (process.env.STATICFORGE_CACHE_EXPIRY_DISABLED === '1' || process.env.STATICFORGE_CACHE_EXPIRY_DISABLED === 'true') {
         return { tracesJson: 0, traceDirs: 0, dynGenPng: 0 };
     }
@@ -151,8 +148,8 @@ function runCacheDirExpiry(globalResources) {
     const tracesDir = path.join(cacheDir, 'traces');
     const dynGenDir = path.join(cacheDir, 'dynGenPreview');
 
-    const { jsonRemoved, dirsRemoved } = expireTracesDir(tracesDir, getTracesMaxAgeMs());
-    const dynGenPng = expireDynGenPreviewDir(dynGenDir, getDynGenPreviewMaxAgeMs());
+    const { jsonRemoved, dirsRemoved } = await expireTracesDir(tracesDir, getTracesMaxAgeMs());
+    const dynGenPng = await expireDynGenPreviewDir(dynGenDir, getDynGenPreviewMaxAgeMs());
 
     const total = jsonRemoved + dirsRemoved + dynGenPng;
     if (total > 0) {
