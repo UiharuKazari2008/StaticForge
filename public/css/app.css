@@ -3634,6 +3634,12 @@ body.desktop-mode .modal[data-window-content-anchor="top"] {
     transform: translateZ(0) translate(calc(-50% + var(--modal-drag-x, 0px)), var(--modal-drag-y, 0px)) scale(1);
 }
 
+/* Pixel-settled drag (modalUtils.js anchorModalForPixelDrag): whole-pixel left/top plus a
+   whole-pixel translate, so a moving window never lands on a subpixel. */
+.modal.modal-pixel-settled[data-dragging="true"]:not(.opening):not(.closing):not(.minimising):not(.unminimising) {
+    transform: translateZ(0) translate(var(--modal-drag-x, 0px), var(--modal-drag-y, 0px));
+}
+
 .modal[data-resizing="true"] {
     will-change: width, height, left, top;
 }

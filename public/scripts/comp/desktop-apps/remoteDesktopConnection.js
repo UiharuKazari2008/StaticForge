@@ -21,6 +21,12 @@
  * it and is inert.
  *
  * Errors use mstsc's "Remote Desktop Disconnected" box (dialog 15003) and its own strings.
+ * While a connection is being made the coloured rule under the banner scrolls (recorded on the VM).
+ *
+ * Session windows (guacRemote.js, any Remote Desktop window) end the way mstsc's do (Yukimi
+ * 2026-10-22): a lost connection greys the session under mstscax.dll's Reconnecting panel
+ * (dialog 13420, "Connection attempt: n of 20"), and an ended one shows Remote Desktop
+ * Disconnected with the mstscax.dll.mui string for Guacamole's status code, then closes.
  * Styles: public/css/desktop-apps/remoteDesktopConnection.css on Taskbar Properties' Vista
  * controls (public/css/taskbar-properties.css, tbp-*).
  */
@@ -73,8 +79,25 @@
         noUser: 'None specified',
         fullScreen: 'Full Screen'
     };
+    // mstscax.dll.mui: a session that ends (string ids in the comments) and the Reconnecting panel
+    const SESSION_TEXT = {
+        ended: 'Your Remote Desktop session has ended, possibly for one of the following reasons:\n\nThe administrator has ended the session.\nAn error occurred while the connection was being established.\nA network problem occurred.\n\nFor help solving the problem, see "Troubleshoot Remote Desktop problems" in Help and Support.', // 13600
+        security: 'Because of a security error, the client could not connect to the remote computer. Verify that you are logged on to the network, and then try connecting again.', // 13602
+        notFound: 'This computer can\'t connect to the remote computer.\n\nRemote Desktop cannot find the remote computer. Type the computer name or IP address again, and then try connecting. If the problem continues, contact the owner of the remote computer or your network administrator.', // 13603
+        network: 'This computer can\'t connect to the remote computer.\n\nThe connection was lost due to a network error. Try connecting again. If the problem continues, contact your network administrator or technical support.', // 13605
+        timeout: 'This computer can\'t connect to the remote computer.\n\nThe two computers couldn\'t connect in the amount of time allotted. Try connecting again. If the problem continues, contact your network administrator or technical support.', // 13614
+        lost: 'Your Remote Desktop session has ended.\n\nThe connection to the remote computer was lost, possibly due to network connectivity problems. Try connecting to the remote computer again. If the problem continues, contact your network administrator or technical support.', // 13615
+        admin: 'Your Remote Desktop session has ended.\n\nYour network administrator might have ended the connection. Try connecting again, or contact technical support for assistance.', // 13616
+        another: 'Your Remote Desktop session has ended.\n\nAnother user connected to the remote computer, so your connection was lost. Try connecting again, or contact technical support for assistance.', // 13617
+        idle: 'The remote session was ended because the idle timeout limit was reached. This limit is set by the server administrator or by network policies.', // 13619
+        reconnecting: 'Reconnecting',
+        reconnectText: 'The connection has been lost. Attempting to reconnect to your session...',
+        attempt: (n, max) => `Connection attempt: ${n} of ${max}`
+    };
+    // mstsc's AutoReconnect Max Retries default
+    const RECONNECT_MAX = 20;
 
-    let main = null; // { modal, content, input, list, protocol, user, busy, expanded, tab, size }
+    let main = null; // { modal, content, input, list, protocol, user, busy, abort, expanded, tab, size }
 
     function esc(v) {
         return String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -275,11 +298,12 @@
         });
     }
 
-    function showWindow(modal, owner) {
+    /** onScreen: centred on the screen instead of over its owner. */
+    function showWindow(modal, owner, onScreen) {
         if (owner && owner.id) modal.dataset.iconOwnerId = owner.id;
         callGlobal('openModal', modal);
         modal.classList.remove('hidden');
-        centre(modal, owner);
+        centre(modal, onScreen ? null : owner);
     }
 
     function closeWindow(modal) {
@@ -301,10 +325,14 @@
 
     // ---- a modal sub-dialog (Windows Security, Disconnected) -------- ----------------------------
 
-    /** Resolves with the button's data-result, or null for Cancel / Esc / the close box. */
-    function subDialog(id, title, cls, html, setup) {
+    /**
+     * Resolves with the button's data-result, or null for Cancel / Esc / the close box.
+     * ownerModal: the window it belongs to (mstsc's main window when left out); a box owned by a
+     * session window opens in the middle of the screen, as mstsc's does.
+     */
+    function subDialog(id, title, cls, html, setup, ownerModal) {
         return new Promise((resolve) => {
-            const owner = main && main.modal;
+            const owner = ownerModal || (main && main.modal);
             const { modal, content, close } = makeWindow(id, title, cls);
             content.innerHTML = html;
             if (owner) owner.setAttribute('inert', '');
@@ -336,7 +364,7 @@
                     if (primary && !primary.disabled) primary.click();
                 }
             });
-            showWindow(modal, owner);
+            showWindow(modal, owner, !!ownerModal);
             if (setup && setup.ready) setup.ready(content);
             const focus = content.querySelector('[autofocus]') || content.querySelector('[data-default]');
             if (focus) root.requestAnimationFrame(() => focus.focus());
@@ -344,7 +372,7 @@
     }
 
     /** "Remote Desktop Disconnected" (mstsc.exe.mui 15003): error icon, text, OK. */
-    function showError(message) {
+    function showError(message, ownerModal) {
         const html = `
             <div class="rdc-error-body">
                 <div class="rdc-error-icon" aria-hidden="true"></div>
@@ -359,7 +387,7 @@
                 if (result === 'help') callGlobal('openGrimoireApplet');
                 return result;
             }
-        });
+        }, ownerModal);
     }
 
     /** The domain credui names under the edits: one typed as DOMAIN\\user, else the computer's own
@@ -674,7 +702,10 @@
             const b = ev.target.closest('[data-action]');
             if (!b || b.disabled) return;
             if (b.dataset.action === 'connect') void connect();
-            else if (b.dataset.action === 'cancel') closeMain();
+            else if (b.dataset.action === 'cancel') {
+                if (main.busy) cancelConnect();
+                else closeMain();
+            }
             else if (b.dataset.action === 'help') callGlobal('openGrimoireApplet');
             else if (b.dataset.action === 'options') setExpanded(!main.expanded);
         });
@@ -799,6 +830,7 @@
         if (ev.key === 'Escape') {
             ev.preventDefault();
             if (!main.list.hidden) toggleList(false);
+            else if (main.busy) cancelConnect();
             else closeMain();
         } else if (ev.key === 'Enter' && !ev.target.matches('button')) {
             ev.preventDefault();
@@ -834,16 +866,25 @@
         }
     }
 
+    /** mstsc while connecting: only Cancel stays live (the VM greys Computer, Connect, Help, Options). */
     function setBusy(on) {
         if (!main) return;
         main.busy = on;
-        main.content.querySelectorAll('[data-action="connect"], #rdcComputer, #rdcProtocol').forEach((n) => { n.disabled = on; });
+        main.content.querySelectorAll('[data-action="connect"], [data-action="help"], [data-action="options"], #rdcComputer, #rdcProtocol, .rdc-combo-drop').forEach((n) => { n.disabled = on; });
+        main.content.querySelectorAll('label[for="rdcComputer"], label[for="rdcProtocol"]').forEach((n) => n.classList.toggle('is-disabled', on));
         main.modal.classList.toggle('rdc-busy', on);
+        if (on) toggleList(false);
     }
 
-    async function postJson(url, body) {
+    /** The banner's rule scrolls while the network is being asked; it rests otherwise. */
+    function setConnecting(on) {
+        if (main) main.content.classList.toggle('rdc-connecting', !!on);
+    }
+
+    async function postJson(url, body, signal) {
         const response = await fetch(url, {
             method: body ? 'POST' : 'GET',
+            signal: signal,
             credentials: 'same-origin',
             headers: body ? { 'Content-Type': 'application/json' } : undefined,
             body: body ? JSON.stringify(body) : undefined
@@ -864,33 +905,53 @@
         target.protocol = target.protocol || main.protocol.value;
         // the General tab's User name fills Windows Security's first box
         target.username = main.user.value.trim();
-        // after an attempt mstsc's Cancel reads Close
-        main.content.querySelector('.rdc-cancel').textContent = 'Close';
+        main.content.querySelector('.rdc-cancel').textContent = 'Cancel';
+        const abort = new AbortController();
+        main.abort = abort;
+        main.content.querySelector('.rdc-cancel').focus();
         setBusy(true);
         try {
-            if (await quickConnect(target)) {
+            if (await quickConnect(target, abort.signal, true)) {
                 remember(typed, target.protocol);
                 // kept like mstsc keeps it in Default.rdp
                 writeSetting(USER_KEY, target.username);
-                closeMain();
+                if (main) {
+                    main.abort = null;
+                    closeMain();
+                }
             }
         } finally {
+            setConnecting(false);
             setBusy(false);
+            if (main && main.abort === abort) {
+                main.abort = null;
+                // after an attempt mstsc's Cancel reads Close
+                main.content.querySelector('.rdc-cancel').textContent = 'Close';
+            }
         }
+    }
+
+    /** Cancel while connecting stops the attempt and keeps the window, as mstsc's does. */
+    function cancelConnect() {
+        if (main && main.abort) main.abort.abort();
     }
 
     /**
      * Gateway check, Windows Security, POST /api/desktop-guac/quick, then the session window.
      * Shared by Connect and the desktop shortcuts the session bar makes (connectTo).
      */
-    async function quickConnect(target) {
+    async function quickConnect(target, signal, untilConnected) {
+        const cancelled = () => !!(signal && signal.aborted);
         // quick connect needs Guacamole's quickconnect extension on the gateway
         let status;
+        setConnecting(true);
         try {
-            status = await postJson('/api/desktop-guac/quick/status');
+            status = await postJson('/api/desktop-guac/quick/status', null, signal);
         } catch (_) {
             status = null;
         }
+        setConnecting(false);
+        if (cancelled()) return false;
         if (status && status.response.status === 403) {
             await showError(TEXT.denied);
             return false;
@@ -904,8 +965,9 @@
             return false;
         }
         const creds = await askCredentials(target);
-        if (!creds) return false;
+        if (!creds || cancelled()) return false;
         let result;
+        setConnecting(true);
         try {
             result = await postJson('/api/desktop-guac/quick', {
                 host: target.host,
@@ -913,11 +975,15 @@
                 protocol: target.protocol,
                 username: creds.username,
                 password: creds.password
-            });
+            }, signal);
         } catch (_) {
+            setConnecting(false);
+            if (cancelled()) return false;
             await showError(TEXT.noServer);
             return false;
         }
+        setConnecting(false);
+        if (cancelled()) return false;
         const p = result.payload;
         if (!result.response.ok || !p.ok || !p.url) {
             // modules/guacRemoteBridge.js codes; a 403 without one is the full-sign-in check
@@ -926,8 +992,17 @@
             await showError(known.includes(code) ? TEXT[code] : code === 'gateway' ? TEXT.noServer : TEXT.generic);
             return false;
         }
-        openSession(p, target);
-        return true;
+        const session = openSession(p, target);
+        if (!untilConnected) return true;
+        // mstsc's window stays, rule scrolling, until the session is up; a session that fails first
+        // has said so in its own Remote Desktop Disconnected box and closed
+        if (main) callGlobal('bringModalToFront', main.modal);
+        setConnecting(true);
+        if (signal) signal.addEventListener('abort', session.close, { once: true });
+        const connected = await session.connected;
+        if (signal) signal.removeEventListener('abort', session.close);
+        setConnecting(false);
+        return connected;
     }
 
     /** A desktop shortcut's saved computer ({ host, port, protocol }); credentials are asked again. */
@@ -944,14 +1019,24 @@
         return quickConnect(target);
     }
 
-    /** The session opens in Remote Desktop Manager's session window (guacRemote.js). */
+    /**
+     * The session opens in Remote Desktop Manager's session window (guacRemote.js).
+     * Returns { connected: Promise<boolean> (false when it ends first), close() }.
+     */
     function openSession(p, target) {
         const proto = PROTOCOLS.find((x) => x.id === target.protocol) || PROTOCOLS[0];
         const key = 'quick:' + target.protocol + ':' + p.name.toLowerCase();
+        const modalId = 'desktopGuacSession_quick_' + key.replace(/[^A-Za-z0-9_-]/g, '_');
         const size = readDisplay();
+        // that computer's window is already open: openDesktopGuacFrame only brings it forward
+        const open = !!doc.getElementById(modalId);
+        let settle = null;
+        const connected = new Promise((resolve) => { settle = resolve; });
+        if (open) settle(true);
         callGlobal('openDesktopGuacFrame', {
             key: key,
-            modalId: 'desktopGuacSession_quick_' + key.replace(/[^A-Za-z0-9_-]/g, '_'),
+            modalId: modalId,
+            onState: open ? null : (state) => settle(state === 'connected'),
             windowIdentifier: 'desktopGuacSession',
             title: p.name + ' - Remote Desktop',
             iconClass: proto.icon,
@@ -967,10 +1052,20 @@
                 data: { quick: { host: target.host, port: target.port || 0, protocol: target.protocol }, protocol: target.protocol }
             }
         });
+        return {
+            connected,
+            close() {
+                const modal = doc.getElementById(modalId);
+                const close = modal && modal.querySelector('.modal-window-controls .close-btn');
+                if (close) close.click();
+            }
+        };
     }
 
     function closeMain() {
         if (!main) return;
+        // closing mid-attempt ends the attempt too (and the session window it opened)
+        if (main.abort) main.abort.abort();
         const modal = main.modal;
         main = null;
         closeWindow(modal);
@@ -999,9 +1094,75 @@
         });
     }
 
+    // ---- session windows (guacRemote.js) -------------------------------------------------------
+
+    // Guacamole.Status.Code values a lost session tries again on (Guacamole's tunnel set)
+    const RECONNECTABLE = new Set([0x0200, 0x0202, 0x0203, 0x0207, 0x0208, 0x0308]);
+
+    /** mstsc's words for a session that ended with Guacamole status code `code` (null: unknown). */
+    function sessionEndText(code, wasConnected) {
+        switch (code) {
+            case 0x0200:
+            case 0x0203: return wasConnected ? SESSION_TEXT.lost : SESSION_TEXT.network;
+            case 0x0202:
+            case 0x0308: return wasConnected ? SESSION_TEXT.lost : SESSION_TEXT.timeout;
+            case 0x0207: return wasConnected ? SESSION_TEXT.lost : SESSION_TEXT.notFound;
+            case 0x0208: return wasConnected ? SESSION_TEXT.lost : TEXT.generic;
+            case 0x0201:
+            case 0x031D: return TEXT.busy;
+            case 0x0209: return SESSION_TEXT.another;
+            case 0x020A: return SESSION_TEXT.idle;
+            case 0x020B: return SESSION_TEXT.admin;
+            case 0x0301: return SESSION_TEXT.security;
+            case 0x0303: return TEXT.blocked;
+            default: return wasConnected ? SESSION_TEXT.ended : TEXT.generic;
+        }
+    }
+
+    /** Remote Desktop Disconnected for a session window; resolves when it is answered. */
+    function sessionDisconnected(sessionModal, code, wasConnected) {
+        return showError(sessionEndText(code, wasConnected), sessionModal);
+    }
+
+    /**
+     * The Reconnecting panel (mstscax.dll.mui 13420) in a session window, which greys under it.
+     * Returns { update(attempt), close() }; Cancel calls onCancel.
+     */
+    function sessionReconnecting(sessionModal, onCancel) {
+        const panel = el('div', 'rdc-reconnect win7');
+        panel.setAttribute('role', 'alertdialog');
+        panel.setAttribute('aria-label', SESSION_TEXT.reconnecting);
+        panel.innerHTML = `
+            <div class="rdc-reconnect-title">${SESSION_TEXT.reconnecting}</div>
+            <div class="rdc-reconnect-logo" aria-hidden="true"></div>
+            <div class="rdc-reconnect-icon" aria-hidden="true"></div>
+            <div class="rdc-reconnect-text">${esc(SESSION_TEXT.reconnectText)}</div>
+            <div class="rdc-reconnect-attempt" aria-live="polite"></div>
+            <button type="button" class="rdc-reconnect-cancel">Cancel</button>`;
+        const attempt = panel.querySelector('.rdc-reconnect-attempt');
+        panel.querySelector('button').addEventListener('click', () => {
+            if (onCancel) onCancel();
+        });
+        sessionModal.classList.add('rdc-dimmed');
+        sessionModal.appendChild(panel);
+        return {
+            update(n) {
+                attempt.textContent = SESSION_TEXT.attempt(n, RECONNECT_MAX);
+            },
+            close() {
+                panel.remove();
+                sessionModal.classList.remove('rdc-dimmed');
+            }
+        };
+    }
+
     const api = {
         open,
         connectTo,
+        reconnectMax: RECONNECT_MAX,
+        reconnectable: (code) => RECONNECTABLE.has(code),
+        sessionDisconnected,
+        sessionReconnecting,
         isOpen: () => !!main,
         _test: { parseComputer, readHistory, askCredentials, showError }
     };

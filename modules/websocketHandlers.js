@@ -28,6 +28,21 @@ const path = require('path');
 const crypto = require('crypto');
 const workspaceCssService = require('./workspaceCssService');
 
+// Dovecote Express's Mail Options > Signatures (public/scripts/comp/mailOptions.js): the signature
+// added at the bottom of new messages and replies, and Windows Mail's two signature check boxes.
+// Keep MAIL_SIGNATURE_MAX in sync with DOVE_SIGNATURE_MAX in public/scripts/comp/desktop-apps/dovecote.js.
+const MAIL_SIGNATURE_MAX = 4000;
+function normalizeMailSettings(raw) {
+    const base = raw && typeof raw === 'object' ? raw : {};
+    return {
+        signature: typeof base.signature === 'string'
+            ? base.signature.replace(/\r\n?/g, '\n').slice(0, MAIL_SIGNATURE_MAX)
+            : '',
+        signatureOutgoing: base.signatureOutgoing !== false,
+        signatureSkipReplies: base.signatureSkipReplies === true
+    };
+}
+
 /*
  * WebSocket Response Format Standards for Workspace Operations:
  * 
@@ -503,6 +518,9 @@ class WebSocketMessageHandlers {
             'vfs_permanently_delete',
             'vfs_convert_reference_to_file',
             'vfs_convert_file_to_reference',
+            // 7-Zip (12-vfsArchiveHandler.js): extract and create write VFS files
+            'vfs_archive_extract',
+            'vfs_archive_create',
             'desktop_create_empty_folder',
             'desktop_update_shortcut_folders',
             'desktop_create_folder_from_selection',
@@ -637,7 +655,8 @@ class WebSocketMessageHandlers {
             autofillSearch: normalizeAutofillSearchSettings(base.autofillSearch),
             remoteAccess: normalizeRemoteAccessSettings(base.remoteAccess),
             imageGeneration: normalizeImageGenerationSettings(base.imageGeneration),
-            alchemy: normalizeAlchemySettings(base.alchemy)
+            alchemy: normalizeAlchemySettings(base.alchemy),
+            mail: normalizeMailSettings(base.mail)
         };
     }
 
@@ -704,6 +723,9 @@ class WebSocketMessageHandlers {
         }
         if (patch.alchemy && typeof patch.alchemy === 'object') {
             out.alchemy = mergeAlchemySettingsPatch(out.alchemy, patch.alchemy);
+        }
+        if (patch.mail && typeof patch.mail === 'object') {
+            out.mail = normalizeMailSettings({ ...out.mail, ...patch.mail });
         }
         return out;
     }

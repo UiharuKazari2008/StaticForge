@@ -49,6 +49,8 @@
                         className: status.className || '',
                         title: status.title ? strings[status.title] : '',
                         text: status.text ? strings[status.text.key] : '',
+                        // CLIENT.ERROR_TUNNEL_308 etc.: guacRemote.js reads the status code from it
+                        key: status.text ? status.text.key : '',
                         countdown: '',
                         actions: actions.map((action) => ({
                             label: strings[action.name],

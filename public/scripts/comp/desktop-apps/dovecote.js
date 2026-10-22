@@ -9,6 +9,8 @@
 // Layout and mobile breakpoint: public/css/desktop-apps/dovecote.css
 
 const DESKTOP_DOVECOTE_MODAL_ID = 'desktopDovecoteModal';
+// The main window's caption name, as Outlook Express's (doveRenderWindowTitle)
+const DOVE_APP_TITLE = 'Dovecote Express';
 const DESKTOP_DOVECOTE_HUMAN_OWNER = 'yukimi';
 
 const DESKTOP_DOVECOTE_FOLDERS = [
@@ -30,8 +32,138 @@ const DOVE_COMMUNITIES_LABEL = 'Dreamscape Communities';
 const DOVE_MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const DOVE_MAX_TOTAL_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
+// ---- Mail options (Tools > Options..., public/scripts/comp/mailOptions.js; Control Panel's Mail
+// item opens the same dialog) -----------------------------------------------------------------
+// "Play sound" and "Show a notification" stay on this computer (localStorage, the keys cplMail.js
+// used). The signature is the user's own: userGlobalSettings.mail on the server
+// (modules/websocketHandlers.js normalizeUserGlobalSettings), with a copy here so a compose window
+// has it at once. A save the server could not keep (it predates the field) stays pendingSync and
+// goes up again when the server's settings next arrive (doveApplyServerMailSettings).
+const DOVE_SOUND_KEY = 'dovecote-mail-sound';
+const DOVE_NOTIFY_KEY = 'dovecote-mail-dialog';
+const DOVE_SIGNATURE_KEY = 'dovecote-mail-signature';
+const DOVE_SIGNATURE_MAX = 4000;
+
+const doveLocalStore = function () {
+    try {
+        return window.localStorage || null;
+    } catch (_) {
+        return null;
+    }
+};
+
+const doveReadFlag = function (key) {
+    try {
+        const store = doveLocalStore();
+        return !store || store.getItem(key) !== 'off';
+    } catch (_) {
+        return true;
+    }
+};
+
+const doveWriteFlag = function (key, on) {
+    try {
+        const store = doveLocalStore();
+        if (store) store.setItem(key, on ? 'on' : 'off');
+    } catch (_) { /* quota / private mode */ }
+};
+
+// Windows Mail's Signatures tab: "Add signatures to all outgoing messages" (on here, so a saved
+// signature is used) and "Don't add signatures to Replies and Forwards" (off).
+const doveNormalizeSignatureSettings = function (raw) {
+    const base = raw && typeof raw === 'object' ? raw : {};
+    return {
+        signature: typeof base.signature === 'string' ? base.signature.replace(/\r\n?/g, '\n').slice(0, DOVE_SIGNATURE_MAX) : '',
+        signatureOutgoing: base.signatureOutgoing !== false,
+        signatureSkipReplies: base.signatureSkipReplies === true
+    };
+};
+
+const doveReadLocalSignature = function () {
+    try {
+        const store = doveLocalStore();
+        const text = store && store.getItem(DOVE_SIGNATURE_KEY);
+        return text ? JSON.parse(text) : null;
+    } catch (_) {
+        return null;
+    }
+};
+
+const doveWriteLocalSignature = function (settings, pendingSync) {
+    try {
+        const store = doveLocalStore();
+        if (store) store.setItem(DOVE_SIGNATURE_KEY, JSON.stringify(Object.assign({}, settings, { pendingSync: !!pendingSync })));
+    } catch (_) { /* quota / private mode */ }
+};
+
+let doveSignatureSettings = doveNormalizeSignatureSettings(doveReadLocalSignature());
+
+// Resolves true once the server has kept it, false while only this computer has it.
+const doveSaveSignatureSettings = async function (patch) {
+    const next = doveNormalizeSignatureSettings(Object.assign({}, doveSignatureSettings, patch));
+    doveSignatureSettings = next;
+    doveWriteLocalSignature(next, true);
+    if (typeof wsClient === 'undefined' || !wsClient || !wsClient.isConnected || !wsClient.isConnected()) return false;
+    try {
+        // update_user_global_settings: modules/ws/handlers/200-userSettingsHandler.js
+        const result = await wsClient.sendMessage('update_user_global_settings', { settings: { mail: next } }, false);
+        const kept = !!(result && result.settings && result.settings.mail);
+        if (kept && doveSignatureSettings === next) doveWriteLocalSignature(next, false);
+        return kept;
+    } catch (err) {
+        console.error('Dovecote signature save failed:', err);
+        return false;
+    }
+};
+
+// applyUserGlobalSettingsToClient (public/scripts/comp/modalUtils.js) hands over the server's copy.
+const doveApplyServerMailSettings = function (mail) {
+    if (!mail || typeof mail !== 'object') return;
+    const local = doveReadLocalSignature();
+    if (local && local.pendingSync) {
+        doveSaveSignatureSettings(local);
+        return;
+    }
+    doveSignatureSettings = doveNormalizeSignatureSettings(mail);
+    doveWriteLocalSignature(doveSignatureSettings, false);
+};
+
+// The signature goes under what the user writes, after a blank line: at the bottom of a new message
+// or a reply, and above a forwarded message's text (which is quoted under it).
+const doveWithSignature = function (mode, body) {
+    const opts = doveSignatureSettings;
+    const signature = opts.signature.replace(/\s+$/, '');
+    if (!signature.trim() || !opts.signatureOutgoing) return body || '';
+    if (mode !== 'create' && opts.signatureSkipReplies) return body || '';
+    if (mode === 'forward') return '\n\n' + signature + (body ? '\n\n' + body : '');
+    return (body || '') + '\n\n' + signature;
+};
+
+const doveMailOptions = {
+    soundOn: () => doveReadFlag(DOVE_SOUND_KEY),
+    notifyOn: () => doveReadFlag(DOVE_NOTIFY_KEY),
+    setSound: (on) => doveWriteFlag(DOVE_SOUND_KEY, on),
+    setNotify: (on) => doveWriteFlag(DOVE_NOTIFY_KEY, on),
+    signature: () => Object.assign({}, doveSignatureSettings),
+    saveSignature: doveSaveSignatureSettings,
+    applyServer: doveApplyServerMailSettings,
+    SIGNATURE_MAX: DOVE_SIGNATURE_MAX
+};
+window.dovecoteMailSettings = doveMailOptions;
+
+// Tools > Options... and Control Panel's Mail item: Mail Options (lazy feature mail_options,
+// public/scripts/comp/featureLoader.js)
+const doveOpenMailOptions = function (tab) {
+    if (!window.featureLoader) return;
+    featureLoader.loadFeature('mail_options')
+        .then(() => { if (window.mailOptions) mailOptions.open(tab); })
+        .catch((err) => doveShowError((err && err.message) || 'Could not open Mail Options'));
+};
+window.openDovecoteMailOptions = doveOpenMailOptions;
+
 // { folder, sortKey, sortDir, viewAsOwner, mail: [], selectedId, selectedIds, mailboxes: [],
-//   bodyView, searchText, mobileMessageOpen, nextCursor, hasMore, folderTotal, folderUnread }
+//   bodyView, searchText, mobileMessageOpen, nextCursor, hasMore, folderTotal, folderUnread,
+//   countsKey (doveCountsKey of the folder those counts belong to) }
 const desktopDovecote = {
     loaded: false,
     folder: 'inbox',
@@ -48,6 +180,7 @@ const desktopDovecote = {
     inboxUnread: 0,
     folderTotal: 0,
     folderUnread: 0,
+    countsKey: null,
     nextCursor: null,
     hasMore: false,
     loadingMore: false,
@@ -118,11 +251,18 @@ const doveFormatAddressList = function (value) {
     const list = Array.isArray(value) ? value : String(value || '').split(',');
     return list.map((name) => doveDisplayAddress(String(name).trim())).filter(Boolean).join(', ');
 };
+// The sender as the reading pane shows it: the From header's name (fromLabel) unless the gateway
+// flagged it as impersonating one of ours, else the address. The message list's From column too.
+const doveSenderText = function (mail) {
+    if (!mail) return '';
+    return mail.fromLabel && !mail.labelSuspicious ? mail.fromLabel : doveDisplayAddress(mail.from);
+};
 const DOVE_ROUTE_TOOLTIP = {
     internal: 'Internal and trusted. Delivered inside the Dreamscape network and never left it.',
     inbound: 'Arrived from the internet through the mail gateway.',
     outbound: 'Sent to the internet through the mail gateway.'
 };
+const DOVE_SIGNED_TOOLTIP = 'Digitally signed: sent inside the Dreamscape network.';
 const doveNormalizeRoute = function (route) {
     return route === 'inbound' || route === 'outbound' ? route : 'internal';
 };
@@ -259,7 +399,7 @@ const ensureDesktopDovecoteModal = function () {
     modal.dataset.windowMaxWidth = '1400';
     modal.dataset.windowMaxHeight = '1000';
 
-    // Caption: Windows Mail's icon and "<Folder> - Dovecote" (doveRenderFolderButton); the
+    // Caption: Windows Mail's icon and "<Folder> - Dovecote Express" (doveRenderWindowTitle); the
     // toolbar lives in the client, as in Windows Mail (#473).
     const title = document.createElement('div');
     title.className = 'modal-window-title';
@@ -273,7 +413,7 @@ const ensureDesktopDovecoteModal = function () {
     titleImage.alt = '';
     titleImage.src = '/static_images/app_icons/48/vista-mail.webp';
     const titleText = document.createElement('span');
-    titleText.textContent = 'Inbox - Dovecote';
+    titleText.textContent = 'Inbox - ' + DOVE_APP_TITLE;
     titleMain.appendChild(titleIcon);
     titleMain.appendChild(titleImage);
     titleMain.appendChild(titleText);
@@ -517,10 +657,7 @@ const doveRunMenuAction = function (item) {
         case 'sort': doveSetSort(item.doveSortKey); return;
         case 'folder': doveOpenTreeFolder(desktopDovecote.viewAsOwner || DESKTOP_DOVECOTE_HUMAN_OWNER, item.doveFolderId); return;
         case 'html': doveSetBodyView(desktopDovecote.bodyView === 'rendered' ? 'raw' : 'rendered'); return;
-        case 'options':
-            // cplMail.open: public/scripts/comp/cplMail.js — Control Panel Mail
-            if (window.cplMail) cplMail.open();
-            return;
+        case 'options': doveOpenMailOptions(); return;
         case 'forward': doveForwardSelected(item.doveOwner); return;
         case 'selectAll': doveSelectAllVisible(); return;
         default: doveDispatchAction(item.doveMenu);
@@ -752,14 +889,23 @@ const doveRenderFolderButton = function () {
     doveRenderFolderTree();
 };
 
-// Windows Mail's caption: "Inbox - Windows Mail"; a bot mailbox adds its name.
+// The folder whose counts desktopDovecote.folderTotal / folderUnread hold (doveApplyListPage):
+// the caption leaves the count off while a newly picked folder is still loading.
+const doveCountsKey = function () {
+    return (desktopDovecote.viewAsOwner || DESKTOP_DOVECOTE_HUMAN_OWNER) + '/' + desktopDovecote.folder;
+};
+
+// The caption (Yukimi, Oct 22 2026): "Inbox (3) - Dovecote Express" with the open folder's unread
+// count, "Inbox - Dovecote Express" when nothing in it is unread; a bot mailbox adds its name.
 const doveRenderWindowTitle = function () {
     const el = desktopDovecoteEls && desktopDovecoteEls.titleText;
     const folder = DESKTOP_DOVECOTE_FOLDERS.find((f) => f.id === desktopDovecote.folder);
     if (!el || !folder) return;
     const owner = desktopDovecote.viewAsOwner;
     const box = owner && desktopDovecote.mailboxes.find((b) => b.owner === owner);
-    const text = folder.label + (owner ? ' - ' + ((box && box.label) || owner) : '') + ' - Dovecote';
+    const unread = desktopDovecote.countsKey === doveCountsKey() ? (desktopDovecote.folderUnread || 0) : 0;
+    const text = folder.label + (unread > 0 ? ' (' + unread + ')' : '')
+        + (owner ? ' - ' + ((box && box.label) || owner) : '') + ' - ' + DOVE_APP_TITLE;
     if (el.textContent === text) return;
     el.textContent = text;
     // debouncedUpdateTaskbarWindows: public/scripts/comp/modalUtils.js
@@ -1011,10 +1157,8 @@ const doveMarkMailIds = async function (ids, patch, options) {
                     desktopDovecote.selectedMail.read = patch.read;
                 }
             });
-            if (desktopDovecote.folder === 'inbox' || !desktopDovecote.viewAsOwner) {
-                desktopDovecote.folderUnread = Math.max(0, (desktopDovecote.folderUnread || 0) + unreadDelta);
-                if (!desktopDovecote.viewAsOwner) doveRenderInboxBadge(desktopDovecote.folderUnread);
-            }
+            desktopDovecote.folderUnread = Math.max(0, (desktopDovecote.folderUnread || 0) + unreadDelta);
+            if (desktopDovecote.folder === 'inbox' && !desktopDovecote.viewAsOwner) doveRenderInboxBadge(desktopDovecote.folderUnread);
             doveRenderMessageList();
             return;
         }
@@ -1126,27 +1270,25 @@ const doveBuildMainPane = function () {
     return pane;
 };
 
-// Rendered/Raw toggle (#6): one .button-group (public/css/gallery-core.css) in the header
-// tools column (doveBuildOeHeader), under the Safe shield badge.
-// Wired with its own click listener rather than relying on doveHandleBodyClick's
-// modal-wide delegation, so it can't double-fire the way toolbar action buttons do.
+// Render toggle (#6, Yukimi Oct 22 2026: one button, not an HTML / Raw pair): pressed shows the
+// sanitized HTML, released shows the message source as plain text. In the header tools column
+// (doveBuildOeHeader), under the Safe shield badge. Wired with its own click listener rather than
+// doveHandleBodyClick's modal-wide delegation, so it can't double-fire like toolbar buttons did.
 const doveBuildBodyViewToggle = function (onChange) {
-    const viewGroup = document.createElement('div');
-    viewGroup.className = 'button-group dovecote-body-view-toggle';
-    const renderedBtn = doveCreateButton('btn-secondary btn-small btn-toggle', 'Rendered', 'fas fa-eye');
-    renderedBtn.dataset.doveBodyView = 'rendered';
-    renderedBtn.dataset.state = 'on';
-    const rawBtn = doveCreateButton('btn-secondary btn-small btn-toggle', 'Raw', 'fas fa-file-lines');
-    rawBtn.dataset.doveBodyView = 'raw';
-    rawBtn.dataset.state = 'off';
-    viewGroup.appendChild(renderedBtn);
-    viewGroup.appendChild(rawBtn);
-    viewGroup.addEventListener('click', (ev) => {
-        const btn = ev.target.closest('[data-dove-body-view]');
-        if (!btn) return;
-        (onChange || doveSetBodyView)(btn.dataset.doveBodyView);
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn-secondary btn-small dovecote-body-view-toggle';
+    button.textContent = 'Render';
+    button.title = 'Render the message as HTML (off shows its source as plain text)';
+    doveApplyViewToggle(button, 'rendered');
+    button.addEventListener('click', () => {
+        (onChange || doveSetBodyView)(button.getAttribute('aria-pressed') === 'true' ? 'raw' : 'rendered');
     });
-    return viewGroup;
+    return button;
+};
+
+const doveApplyViewToggle = function (button, view) {
+    button.setAttribute('aria-pressed', view === 'rendered' ? 'true' : 'false');
 };
 
 // Sanitized-HTML indicator: compact shield badge; the stripped-content summary lives in its tooltip.
@@ -1236,9 +1378,8 @@ const doveBuildOeHeader = function (options) {
 };
 
 const doveSetViewToggleState = function (root, view) {
-    root.querySelectorAll('[data-dove-body-view]').forEach((btn) => {
-        btn.dataset.state = btn.dataset.doveBodyView === view ? 'on' : 'off';
-    });
+    if (root.matches('.dovecote-body-view-toggle')) doveApplyViewToggle(root, view);
+    root.querySelectorAll('.dovecote-body-view-toggle').forEach((btn) => doveApplyViewToggle(btn, view));
 };
 
 const doveBuildPreviewPane = function () {
@@ -1444,6 +1585,7 @@ const doveApplyListPage = function (result, append) {
     desktopDovecote.hasMore = !!(result && result.hasMore);
     if (result && result.total != null) desktopDovecote.folderTotal = result.total;
     if (result && result.unread != null) desktopDovecote.folderUnread = result.unread;
+    if (!append) desktopDovecote.countsKey = doveCountsKey();
 };
 
 const doveLoadFolder = async function (folder, options) {
@@ -1540,9 +1682,7 @@ const doveSetMobileMessageOpen = function (open) {
 const doveSetBodyView = function (view) {
     desktopDovecote.bodyView = view;
     // Lives in the preview pane header now (#6), not the toolbar — query the whole modal.
-    desktopDovecoteEls.modal.querySelectorAll('[data-dove-body-view]').forEach((btn) => {
-        btn.dataset.state = btn.dataset.doveBodyView === view ? 'on' : 'off';
-    });
+    doveSetViewToggleState(desktopDovecoteEls.modal, view);
     doveRenderPreviewBody();
 };
 
@@ -1555,14 +1695,17 @@ const doveFilteredSortedMail = function () {
         list = list.filter((m) => (
             (m.subject || '').toLowerCase().includes(query)
             || doveDisplayAddress(m.from).toLowerCase().includes(query)
+            || doveSenderText(m).toLowerCase().includes(query)
             || (m.snippet || '').toLowerCase().includes(query)
         ));
     }
     const key = desktopDovecote.sortKey;
     const dir = desktopDovecote.sortDir === 'asc' ? 1 : -1;
+    // From sorts by what the column shows (doveSenderText), not the stored address
+    const sortValue = (mail) => (key === 'from' ? doveSenderText(mail) : (mail[key] || '')).toString().toLowerCase();
     return list.slice().sort((a, b) => {
-        const av = (a[key] || '').toString().toLowerCase();
-        const bv = (b[key] || '').toString().toLowerCase();
+        const av = sortValue(a);
+        const bv = sortValue(b);
         if (av < bv) return -1 * dir;
         if (av > bv) return 1 * dir;
         return 0;
@@ -1592,9 +1735,14 @@ const doveRenderMessageList = function () {
         row.dataset.doveMailId = mail.id;
         if (!mail.read) row.classList.add('unread');
         if (doveSelectedIdSet().has(String(mail.id))) row.classList.add('selected');
+        // Internal mail never left the Dreamscape network: its envelope is Windows Mail's digitally
+        // signed one (the red seal, list-16.png 12 / 15, dovecote.css), as if it carried a signature.
+        const signed = doveNormalizeRoute(mail.route) === 'internal';
+        if (signed) row.classList.add('signed');
 
         const unreadCell = document.createElement('span');
         unreadCell.className = 'dovecote-col-unread';
+        if (signed) unreadCell.title = DOVE_SIGNED_TOOLTIP;
         if (desktopDovecote.folder === 'sent') {
             // Read receipt (#2): a sent message shows a check once the recipient has opened it.
             if (mail.readByRecipient) {
@@ -1609,6 +1757,11 @@ const doveRenderMessageList = function () {
             dot.className = 'fas fa-circle';
             dot.setAttribute('aria-hidden', 'true');
             unreadCell.appendChild(dot);
+        } else if (signed) {
+            const seal = document.createElement('i');
+            seal.className = 'fas fa-certificate dovecote-signed-mark';
+            seal.setAttribute('aria-hidden', 'true');
+            unreadCell.appendChild(seal);
         }
 
         const attachCell = document.createElement('span');
@@ -1627,7 +1780,7 @@ const doveRenderMessageList = function () {
 
         const fromCell = document.createElement('span');
         fromCell.className = 'dovecote-col-from';
-        fromCell.textContent = doveDisplayAddress(mail.from);
+        fromCell.textContent = doveSenderText(mail);
 
         const subjectCell = document.createElement('span');
         subjectCell.className = 'dovecote-col-subject';
@@ -1692,6 +1845,7 @@ const doveRenderStatusCounts = function () {
     }
     if (selected > 1) text += ' · ' + selected + ' selected';
     desktopDovecoteEls.statusCounts.textContent = text;
+    doveRenderWindowTitle();
 };
 
 // ---- Selection + preview ----------------------------------------------------
@@ -1732,9 +1886,7 @@ const doveOpenSelected = async function (id) {
         const found = desktopDovecote.mail.find((m) => String(m.id) === String(id));
         if (found && !found.read) {
             found.read = true;
-            if (desktopDovecote.folder === 'inbox') {
-                desktopDovecote.folderUnread = Math.max(0, (desktopDovecote.folderUnread || 1) - 1);
-            }
+            desktopDovecote.folderUnread = Math.max(0, (desktopDovecote.folderUnread || 1) - 1);
         }
         doveRenderMessageList();
         doveRenderInboxBadgeFromState();
@@ -1879,10 +2031,7 @@ const doveRenderPreviewBody = function () {
 // imagesBar, attachmentsBar, bodyWrap }. ----------------------------------------------------------------
 
 const doveRenderOeHeaderInto = function (els, mail) {
-    const showLabel = mail && mail.fromLabel && !mail.labelSuspicious;
-    els.oeFrom.textContent = mail
-        ? (showLabel ? mail.fromLabel : doveDisplayAddress(mail.from))
-        : '';
+    els.oeFrom.textContent = doveSenderText(mail);
     els.oeTo.textContent = mail ? doveFormatAddressList(mail.to) : '';
     if (els.oeOriginalTo) els.oeOriginalTo.textContent = mail && mail.originalTo ? mail.originalTo : '';
     if (els.oeCc) els.oeCc.textContent = mail ? doveFormatAddressList(mail.cc) : '';
@@ -2266,7 +2415,9 @@ const doveWireFrameLinks = function (iframe) {
         const doc = iframe.contentDocument;
         if (!doc || doc.__doveLinksWired) return;
         doc.__doveLinksWired = true;
-        doc.addEventListener('click', (ev) => {
+        // middle-click too: the sandbox's allow-popups would otherwise open a browser tab
+        const onClick = (ev) => {
+            if (ev.button !== 0 && ev.button !== 1) return;
             const anchor = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
             if (!anchor) return;
             let url;
@@ -2276,7 +2427,9 @@ const doveWireFrameLinks = function (iframe) {
             if (typeof openGrimoireUrl !== 'function') return;
             ev.preventDefault();
             openGrimoireUrl(url.href).catch(() => window.open(url.href, '_blank', 'noopener'));
-        });
+        };
+        doc.addEventListener('click', onClick);
+        doc.addEventListener('auxclick', onClick);
     };
     iframe.addEventListener('load', wire);
 };
@@ -2541,7 +2694,7 @@ const doveOpenComposeWindow = function (initial) {
         doveShowWindow(existing);
         return;
     }
-    const modal = doveBuildComposeWindow(key, initial);
+    const modal = doveBuildComposeWindow(key, Object.assign({}, initial, { body: doveWithSignature(initial.mode, initial.body) }));
     doveComposeWindows.set(key, modal);
     document.body.appendChild(modal);
     doveShowWindow(modal);
@@ -2621,6 +2774,8 @@ const doveBuildComposeWindow = function (key, initial) {
     const bodyTextarea = document.createElement('textarea');
     bodyTextarea.className = 'form-control dovecote-compose-body';
     bodyTextarea.value = initial.body;
+    // the caret starts above the signature, not after it
+    if (typeof bodyTextarea.setSelectionRange === 'function') bodyTextarea.setSelectionRange(0, 0);
     body.appendChild(bodyTextarea);
 
     // Attachments (#3): picked files are read client-side to base64 (fileToBase64:
@@ -2749,6 +2904,8 @@ const doveBuildReaderToolbar = function (getMail) {
     spamBtn.dataset.doveReaderAction = 'spam';
     const notSpamBtn = doveCreateCommand('notSpam', 'Not spam', 'fas fa-inbox');
     notSpamBtn.dataset.doveReaderAction = 'notSpam';
+    // Only one of the two shows, by where the message is (doveRenderReaderToolbarState)
+    notSpamBtn.classList.add('hidden');
 
     [replyBtn, replyAllBtn, forwardBtn, null, toggleReadBtn, deleteBtn, archiveBtn, spamBtn, notSpamBtn].forEach((btn) => {
         if (!btn) {
@@ -2881,7 +3038,10 @@ const doveLoadReaderMail = async function (state, id, options) {
         if (state.closed) return;
         state.mail = result && result.mail;
         const found = desktopDovecote.mail.find((m) => String(m.id) === String(id));
-        if (found) found.read = true;
+        if (found && !found.read) {
+            found.read = true;
+            desktopDovecote.folderUnread = Math.max(0, (desktopDovecote.folderUnread || 1) - 1);
+        }
         doveRenderMessageList();
         doveRenderInboxBadgeFromState();
         doveRenderToolbarState();
@@ -2922,11 +3082,17 @@ const doveRenderReaderBody = function (state) {
 
 // Read-only admin view (desktopDovecote.viewAsOwner) disables mutating actions the same
 // way the main toolbar does — called again by doveSwitchMailbox below when it changes.
+// Move to Spam and Not spam follow the message: Not spam only for one in Spam, Move to Spam otherwise.
 const doveRenderReaderToolbarState = function (state) {
     const readOnly = !!desktopDovecote.viewAsOwner;
     state.modal.querySelectorAll('[data-dove-mutating="true"]').forEach((btn) => {
         btn.disabled = readOnly;
     });
+    const inSpam = !!(state.mail && state.mail.folder === 'spam');
+    const spamBtn = state.modal.querySelector('[data-dove-reader-action="spam"]');
+    const notSpamBtn = state.modal.querySelector('[data-dove-reader-action="notSpam"]');
+    if (spamBtn) spamBtn.classList.toggle('hidden', inSpam);
+    if (notSpamBtn) notSpamBtn.classList.toggle('hidden', !inSpam);
 };
 
 const doveDispatchReaderAction = function (state, action) {
@@ -3156,7 +3322,7 @@ const doveShowNewMail = async function (count) {
         if (token !== doveNewMailToken) return;
         const mail = result && result.mail && result.mail[0];
         if (!mail) return;
-        if (window.cplMail && !window.cplMail.dialogOn()) return;
+        if (!doveMailOptions.notifyOn()) return;
         const from = doveDisplayAddress(mail.from) || '';
         const subject = mail.subject || '(no subject)';
         const body = count > 1
@@ -3222,13 +3388,12 @@ const dovePlayNewMailAlert = function (count) {
     if (!doveTrayRegistered || (typeof isDesktopTrayBootPending === 'function' && isDesktopTrayBootPending())) {
         return;
     }
-    // cplMail: public/scripts/comp/cplMail.js — Windows Mail's "Play sound when new messages arrive"
-    const mailSettings = window.cplMail;
-    if (!mailSettings || mailSettings.soundOn()) {
+    // Mail Options' "Play sound when new messages arrive" / "Show a notification ..." (doveMailOptions)
+    if (doveMailOptions.soundOn()) {
         // desktopSounds.play: public/scripts/comp/desktopSounds.js
         desktopSounds.play('notify');
     }
-    if (!mailSettings || mailSettings.dialogOn()) doveShowNewMail(count);
+    if (doveMailOptions.notifyOn()) doveShowNewMail(count);
 };
 
 // options: { reveal } — same two-phase boot convention as updateFixedCreditsIndicator
@@ -3250,8 +3415,7 @@ const doveApplyTrayBadge = function (unread, options) {
         badge.classList.remove('hidden');
         icon.title = 'Dovecote — ' + unread + ' unread';
         if (reveal && !doveHasAnnouncedMail) {
-            const mailSettings = window.cplMail;
-            if (!mailSettings || mailSettings.dialogOn()) doveShowUnreadBalloon(unread);
+            if (doveMailOptions.notifyOn()) doveShowUnreadBalloon(unread);
             doveHasAnnouncedMail = true;
         }
     } else {

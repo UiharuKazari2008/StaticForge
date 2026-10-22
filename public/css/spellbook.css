@@ -305,10 +305,14 @@ div#spellbookCustomPresetDropdown {
    the picture stage stays dark like Photo Gallery's slide show so the stars and confetti still
    read; the spell picker wears the shared combo box face, Clear / Edit... / Cast are push
    buttons (vista-label words; Cast's word rides on its <i>, which spellbookModal.js swaps for a
-   spinner and back), the picture's buttons are Photo Gallery's dark-band buttons with Vista
-   art where Vista has it ---- */
+   spinner and back), the picture's commands sit on the light windows' command bar under the
+   client edge ---- */
 
 body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal > .modal-content {
+    padding: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal > .modal-content > .modal-body {
     padding: 8px;
 }
 
@@ -324,52 +328,11 @@ body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal :is(.spe
     border-radius: 0;
 }
 
-/* the picture's buttons: 28 px, bare until hot, then Photo Gallery's toolbar hot face */
-body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal .spellbook-overlay-buttons .round-button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    min-width: 0;
-    min-height: 0;
-    padding: 0;
-    background: none;
-    border: 5px solid transparent;
-    border-image: none;
-    border-radius: 0;
-    box-shadow: none;
-    color: #fff;
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal .spellbook-overlay-buttons .round-button:is(:hover, :focus-visible):not(:disabled) {
-    border-image: url("/static_images/vista-photo-gallery/toolbar-hot.png") 5 fill / 5px stretch;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal .spellbook-overlay-buttons .round-button:active:not(:disabled) {
-    filter: brightness(0.85);
-}
-
-body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal .spellbook-overlay-buttons .round-button > i {
-    font-size: 14px;
-}
-
-/* Save (Explorer's), Copy (Photo Gallery's, PhotoLibraryResources PNG 14053), Planet (its app
-   icon); Expand Canvas and Upscale keep their glyphs: Vista has no such command */
-body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal :is(#spellbookDownloadBtn, #spellbookCopyBtn, #spellbookGoToWorkspaceBtn) > i {
-    width: 16px;
-    height: 16px;
-    background: url("/static_images/vista-cmdbar/save.png") no-repeat center / 16px 16px;
-    font-size: 0;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal #spellbookCopyBtn > i { background-image: url("/static_images/vista-cmdbar/copy.png"); }
-body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal #spellbookGoToWorkspaceBtn > i { background-image: url("/static_images/app_icons/24/planet.webp"); }
-
-body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal :is(#spellbookDownloadBtn, #spellbookCopyBtn, #spellbookGoToWorkspaceBtn) > i::before {
-    content: none;
+/* Photo Gallery's viewer glyphs keep their own size (20x20, 19x17) rather than a blurred 16 px */
+body.desktop-mode:not(.windows-classic-theme) #spellbookGenerationModal .spellbook-command-bar :is(#spellbookExpandBtn, #spellbookUpscaleBtn) > .explorer-command-icon {
+    width: auto;
+    height: auto;
+    margin-block: -2px;
 }
 
 /* the controls row */

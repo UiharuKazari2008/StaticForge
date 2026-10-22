@@ -288,8 +288,8 @@ function clampModalViewportRect(left, top, width, height, edgeMarginPx, options 
     }
 
     return {
-        left: roundToDevicePixel(newLeft),
-        top: roundToDevicePixel(newTop)
+        left: roundCssPixel(newLeft),
+        top: roundCssPixel(newTop)
     };
 }
 
@@ -1373,14 +1373,15 @@ function refreshModalLayoutAfterSizeChange(modal) {
     applyRefresh();
 }
 
+/** Nudge the offsets so the window's left/top land on whole CSS pixels (never a subpixel). */
 function snapModalOffsetsToDevicePixels(modal) {
     if (!modal || modal.classList.contains('modal-pixel-settled')) {
         return;
     }
 
     const rect = modal.getBoundingClientRect();
-    const targetLeft = roundToDevicePixel(rect.left);
-    const targetTop = roundToDevicePixel(rect.top);
+    const targetLeft = roundCssPixel(rect.left);
+    const targetTop = roundCssPixel(rect.top);
     const deltaX = targetLeft - rect.left;
     const deltaY = targetTop - rect.top;
 
@@ -1437,8 +1438,8 @@ function settleModalPixelAnchor(modal) {
     void modal.offsetHeight;
 
     const rect = modal.getBoundingClientRect();
-    modal.style.setProperty('--modal-pixel-left', `${roundToDevicePixel(rect.left)}px`);
-    modal.style.setProperty('--modal-pixel-top', `${roundToDevicePixel(rect.top)}px`);
+    modal.style.setProperty('--modal-pixel-left', `${roundCssPixel(rect.left)}px`);
+    modal.style.setProperty('--modal-pixel-top', `${roundCssPixel(rect.top)}px`);
     modal.classList.add('modal-pixel-settled');
     // Fresh work-area fractions for the viewport re-layout (a maximized rect is never a normal geometry)
     if (!isModalMaximized(modal) && typeof windowGeometry !== 'undefined' && windowGeometry) {
@@ -1629,12 +1630,56 @@ function flushModalInteractionVisual() {
     }
 }
 
-function applyModalDragTransform(modal, dragX, dragY) {
-    if (!modal) {
+/**
+ * Window drag frame: the pixel-settled window sits on whole-pixel left/top and moves by a
+ * whole-pixel translate (app.css), so it is never painted on a subpixel. Runs once per frame
+ * and writes only when the whole-pixel delta changed.
+ */
+function applyModalDragFrame() {
+    const s = activeModalInteraction;
+    if (!s || s.type !== 'drag') return;
+    s.rafId = 0;
+    const dx = s.dragX;
+    const dy = s.dragY;
+    if (dx === s.appliedDragX && dy === s.appliedDragY) return;
+    s.appliedDragX = dx;
+    s.appliedDragY = dy;
+    if (s.livePreview) {
+        updateWindowFrameRect({ left: s.startLeft + dx, top: s.startTop + dy, width: s.width, height: s.height });
         return;
     }
-    modal.style.setProperty('--modal-drag-x', `${roundCssPixel(dragX)}px`);
-    modal.style.setProperty('--modal-drag-y', `${roundCssPixel(dragY)}px`);
+    s.modal.style.setProperty('--modal-drag-x', `${dx}px`);
+    s.modal.style.setProperty('--modal-drag-y', `${dy}px`);
+}
+
+/**
+ * Put a window on the pixel-settled anchor for a drag: whole-pixel left/top. Returns false
+ * when it cannot be settled (the corner-anchored boot splash); that window keeps offset mode.
+ */
+function anchorModalForPixelDrag(modal) {
+    if (isModalMaximized(modal)) {
+        restoreModalFromMaximize(modal);
+    }
+    if (modal.id !== 'windowsStartupModal' && !modal.classList.contains('modal-pixel-settled')) {
+        clearModalPixelAnchor(modal);
+        settleModalPixelAnchor(modal);
+    }
+    if (modal.id === 'windowsStartupModal' || !modal.classList.contains('modal-pixel-settled')) {
+        prepareModalForDragOrResize(modal);
+        return false;
+    }
+    return true;
+}
+
+/** Whole-pixel drag origin; rewrites a settled anchor stored on a fraction (older device-pixel snaps). */
+function readModalPixelDragOrigin(modal, rect) {
+    const left = roundCssPixel(rect.left);
+    const top = roundCssPixel(rect.top);
+    if (left !== rect.left || top !== rect.top) {
+        modal.style.setProperty('--modal-pixel-left', `${left}px`);
+        modal.style.setProperty('--modal-pixel-top', `${top}px`);
+    }
+    return { left, top };
 }
 
 function clearModalDragTransform(modal) {
@@ -2139,8 +2184,8 @@ function setModalPositionFromViewportRect(modal, rect, options = {}) {
     const height = roundCssPixel(Math.max(minHeight, Math.min(rect.height, maxHeight)));
     const restoreClamp = options.allowPartialBottomOverflow ? { allowPartialBottomOverflow: true } : {};
     const clamped = clampModalViewportRect(rect.left, rect.top, width, height, null, restoreClamp);
-    const left = roundToDevicePixel(clamped.left);
-    const top = roundToDevicePixel(clamped.top);
+    const left = roundCssPixel(clamped.left);
+    const top = roundCssPixel(clamped.top);
 
     modal.style.width = `${width}px`;
     modal.style.height = `${height}px`;
@@ -2760,9 +2805,7 @@ function handleModalDragStart(e) {
 
     // A maximized window stays maximized until the pointer moves (a double-click must not restore it twice)
     const pendingMaximizeRestore = isModalMaximized(modal);
-    if (!pendingMaximizeRestore) {
-        prepareModalForDragOrResize(modal);
-    }
+    const pixelAnchored = !pendingMaximizeRestore && anchorModalForPixelDrag(modal);
 
     // Get coordinates from touch or mouse event
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -2781,6 +2824,9 @@ function handleModalDragStart(e) {
     modal.setAttribute('data-modal-start-offset-y', modalStartOffsetY);
 
     const modalRect = modal.getBoundingClientRect();
+    const origin = pixelAnchored
+        ? readModalPixelDragOrigin(modal, modalRect)
+        : { left: roundCssPixel(modalRect.left), top: roundCssPixel(modalRect.top) };
     modalTrueInsetCacheValid = false;
     const trueInsetTop = getModalTrueInsetTop();
     const livePreview = isLiveWindowRepositioningEnabled();
@@ -2789,6 +2835,13 @@ function handleModalDragStart(e) {
         type: 'drag',
         modal,
         livePreview,
+        pixelAnchored,
+        startLeft: origin.left,
+        startTop: origin.top,
+        dragX: 0,
+        dragY: 0,
+        appliedDragX: 0,
+        appliedDragY: 0,
         trueInsetTop,
         workArea: computeModalWorkAreaBounds(trueInsetTop),
         desktopTopBias: getDesktopModalTopBias(),
@@ -2850,12 +2903,21 @@ function restoreMaximizedModalUnderPointer(session, clientX, clientY) {
         width: restored.width,
         height: restored.height
     }, { allowPartialBottomOverflow: true });
-    prepareModalForDragOrResize(modal);
+    session.pixelAnchored = anchorModalForPixelDrag(modal);
 
     const computedStyle = getComputedStyle(modal);
     const offsetX = parseFloat(computedStyle.getPropertyValue('--modal-offset-x') || '0');
     const offsetY = parseFloat(computedStyle.getPropertyValue('--modal-offset-y') || '0');
     const rect = modal.getBoundingClientRect();
+    const origin = session.pixelAnchored
+        ? readModalPixelDragOrigin(modal, rect)
+        : { left: roundCssPixel(rect.left), top: roundCssPixel(rect.top) };
+    session.startLeft = origin.left;
+    session.startTop = origin.top;
+    session.dragX = 0;
+    session.dragY = 0;
+    session.appliedDragX = 0;
+    session.appliedDragY = 0;
     session.startX = clientX;
     session.startY = clientY;
     session.startOffsetX = offsetX;
@@ -2905,29 +2967,62 @@ function handleModalDrag(e, draggedModal) {
     session.previewOffsetX = clamped.offsetX;
     session.previewOffsetY = clamped.offsetY;
 
+    // Whole-pixel move only; offsets commit on mouseup. Subpixel pointer moves that round to
+    // the same pixel (high-DPI, high-poll mice, a clamped edge) schedule nothing.
+    const dragX = roundCssPixel(clamped.offsetX - session.startOffsetX);
+    const dragY = roundCssPixel(clamped.offsetY - session.startOffsetY);
+    session.dragX = dragX;
+    session.dragY = dragY;
+    if (!session.rafId && (dragX !== session.appliedDragX || dragY !== session.appliedDragY)) {
+        session.rafId = requestAnimationFrame(applyModalDragFrame);
+    }
+}
+
+/**
+ * Drag release on the pixel anchor: the window stays on the whole pixel the last frame put it
+ * on, and the offsets are rebuilt from that rect (revertModalToOffsetAnchor maths).
+ */
+function commitPixelAnchoredModalDrag(session) {
+    const modal = session.modal;
+    const left = session.startLeft + session.dragX;
+    const top = session.startTop + session.dragY;
+    const offsetX = (left + session.width / 2) - (session.containerWidth / 2);
+    const offsetY = session.topAnchored
+        ? top - session.trueInsetTop
+        : (top + session.height / 2) - (session.containerHeight / 2) - (0.5 * session.trueInsetTop) + session.desktopTopBias;
+
     if (session.livePreview) {
-        scheduleModalInteractionVisual(() => {
-            const s = activeModalInteraction;
-            if (!s || s.type !== 'drag') return;
-            const left = (s.containerWidth / 2) + s.previewOffsetX - (s.width / 2);
-            const top = s.topAnchored
-                ? s.trueInsetTop + s.previewOffsetY
-                : (s.containerHeight / 2) + s.previewOffsetY + (0.5 * s.trueInsetTop) - s.desktopTopBias - (s.height / 2);
-            updateWindowFrameRect({ left, top, width: s.width, height: s.height });
-        });
-        return;
+        hideWindowFrame();
+        modal.removeAttribute('data-preview-offset-x');
+        modal.removeAttribute('data-preview-offset-y');
     }
 
-    // Live window drag: compositor translate only; offsets commit on mouseup
-    scheduleModalInteractionVisual(() => {
-        const s = activeModalInteraction;
-        if (!s || s.type !== 'drag') return;
-        applyModalDragTransform(
-            s.modal,
-            s.previewOffsetX - s.startOffsetX,
-            s.previewOffsetY - s.startOffsetY
-        );
-    });
+    activeModalInteraction = null;
+    modal.style.setProperty('--modal-offset-x', `${roundCssOffset(offsetX)}px`);
+    modal.style.setProperty('--modal-offset-y', `${roundCssOffset(offsetY)}px`);
+    modal.style.setProperty('--modal-pixel-left', `${left}px`);
+    modal.style.setProperty('--modal-pixel-top', `${top}px`);
+    clearModalDragTransform(modal);
+    modal.removeAttribute('data-dragging');
+    setWindowInteractionPaintLock(false);
+    modal.removeAttribute('data-drag-start-x');
+    modal.removeAttribute('data-drag-start-y');
+    modal.removeAttribute('data-modal-start-offset-x');
+    modal.removeAttribute('data-modal-start-offset-y');
+    // Geometry edges + frosted origin for the new spot
+    settleModalPixelAnchor(modal);
+
+    updateBackdropVisibility();
+    saveModalPositionAfterDrag(modal);
+}
+
+function saveModalPositionAfterDrag(modal) {
+    const isTransient = modal.classList.contains('transient');
+    if (windowRestoresPosition(modal)
+        && (!isTransient || (modal.dataset.windowIdentifier && transientWindowsWithPositions.has(modal.dataset.windowIdentifier)))
+        && !modal.classList.contains('modal-maximized')) {
+        debouncedSaveWindowPositions();
+    }
 }
 
 function handleModalDragEnd(e, draggedModal) {
@@ -2955,6 +3050,11 @@ function handleModalDragEnd(e, draggedModal) {
         draggedModal.removeAttribute('data-modal-start-offset-x');
         draggedModal.removeAttribute('data-modal-start-offset-y');
         updateBackdropVisibility();
+        return;
+    }
+
+    if (session && session.pixelAnchored) {
+        commitPixelAnchoredModalDrag(session);
         return;
     }
 
@@ -2995,13 +3095,7 @@ function handleModalDragEnd(e, draggedModal) {
     setModalOffsetPx(draggedModal, offsetX, offsetY, { snap: true, settle: true });
 
     updateBackdropVisibility();
-
-    const isTransient = draggedModal.classList.contains('transient');
-    if (windowRestoresPosition(draggedModal)
-        && (!isTransient || (draggedModal.dataset.windowIdentifier && transientWindowsWithPositions.has(draggedModal.dataset.windowIdentifier)))
-        && !draggedModal.classList.contains('modal-maximized')) {
-        debouncedSaveWindowPositions();
-    }
+    saveModalPositionAfterDrag(draggedModal);
 }
 
 function handleModalResizeStart(e) {
@@ -9363,6 +9457,11 @@ function applyUserGlobalSettingsToClient(settings) {
     if (settings.imageGeneration && typeof settings.imageGeneration === 'object') {
         // applyImageGenerationSettingsToClient: public/scripts/comp/imageGenerationSettings.js
         applyImageGenerationSettingsToClient(settings.imageGeneration);
+    }
+
+    if (settings.mail && typeof settings.mail === 'object' && window.dovecoteMailSettings) {
+        // Dovecote Express's signature (Mail Options): public/scripts/comp/desktop-apps/dovecote.js
+        window.dovecoteMailSettings.applyServer(settings.mail);
     }
 }
 

@@ -790,3 +790,82 @@
     width: 100%;
     justify-content: flex-start;
 }
+
+/* Cartograph's Computer (explorerComputerView.js) in place of the grid and the details header */
+#explorerModal .explorer-computer-view {
+    display: none;
+}
+
+#explorerModal.explorer-in-computer .explorer-computer-view {
+    display: block;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    outline: none;
+}
+
+#explorerModal.explorer-in-computer :is(#explorerGridHost, #explorerDetailsHeader) {
+    display: none !important;
+}
+
+#explorerModal .explorer-computer-group-head {
+    margin: 0;
+    font: inherit;
+}
+
+#explorerModal .explorer-computer-tiles {
+    display: flex;
+    flex-wrap: wrap;
+}
+
+#explorerModal .explorer-computer-tile {
+    position: relative;
+    box-sizing: border-box;
+    width: 219px;
+    height: 50px;
+    border: 1px solid transparent;
+    cursor: var(--c-default, default);
+}
+
+#explorerModal .explorer-computer-tile-icon {
+    position: absolute;
+    left: 1px;
+    top: 0;
+    width: 48px;
+    height: 48px;
+}
+
+#explorerModal .explorer-computer-tile-text {
+    position: absolute;
+    left: 54px;
+    right: 4px;
+    top: -1px;
+}
+
+#explorerModal :is(.explorer-computer-tile-name, .explorer-computer-tile-free) {
+    overflow: hidden;
+    line-height: 16px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#explorerModal .explorer-drive-bar {
+    position: relative;
+    display: block;
+    box-sizing: border-box;
+    width: 157px;
+    height: 13px;
+    border: 1px solid #b2b2b2;
+}
+
+#explorerModal .explorer-drive-bar-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    background: #2ea4c8;
+}
+
+#explorerModal .explorer-drive-bar.is-full .explorer-drive-bar-fill {
+    background: #d24c4c;
+}

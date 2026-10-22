@@ -64,9 +64,13 @@ const FEATURE_MANIFEST = {
         scripts: ['scripts/comp/characterSearchModal.js']
     },
     explorer: {
-        styles: ['css/explorer.css', 'css/vista-file-progress.css'],
+        styles: ['css/explorer.css', 'css/vista-file-progress.css', 'css/vista-7zip.css'],
         // vfsClient / vfsVirtualGrid / routers stay sync — desktop + inbound use them without Cartograph
-        scripts: ['scripts/comp/explorerVistaChrome.js', 'scripts/comp/fileOperationProgress.js', 'scripts/comp/explorerApplet.js']
+        scripts: ['scripts/comp/explorerVistaChrome.js', 'scripts/comp/explorerComputerView.js', 'scripts/comp/fileOperationProgress.js', 'scripts/comp/explorerArchive.js', 'scripts/comp/explorerApplet.js']
+    },
+    // 7-Zip's dialogs and progress window (explorerArchive.js): Taskbar Properties' Vista controls (tbp-*)
+    seven_zip_dialogs: {
+        styles: ['css/taskbar-properties.css']
     },
     naxt: {
         styles: ['css/naxt-shell.css', 'css/spellbook.css', 'css/vista-atelier.css'],
@@ -214,6 +218,12 @@ const FEATURE_MANIFEST = {
     desktop_icon_dialogs: {
         styles: ['css/taskbar-properties.css', 'css/desktop-icon-dialogs.css'],
         scripts: ['scripts/comp/desktopIconDialogs.js']
+    },
+    // Dovecote Express's Tools > Options (and Control Panel's Mail item): drawn with Taskbar
+    // Properties' Vista controls (tbp-*); desktop-apps/dovecote.js openDovecoteMailOptions
+    mail_options: {
+        styles: ['css/taskbar-properties.css', 'css/mail-options.css'],
+        scripts: ['scripts/comp/mailOptions.js']
     },
     // Taskbar and Start Menu Properties (public/scripts/comp/taskbarSettings.js openProperties)
     taskbar_properties: {
@@ -400,6 +410,38 @@ async function openGrimoireUrl(url) {
     tagWikiSearchModal.open('', { skipInitialHome: true });
     tagWikiSearchModal.navigate(url);
 }
+
+// A web link from anywhere in the app opens as an Alchemy tab instead of a browser tab.
+// Same-origin and non-web URLs, and a Grimoire that will not load, keep the browser's new tab.
+// Sign-in flows that need the user's own browser cookies (NovelAI Explore, Cursor login) call open() directly.
+function openWebUrl(url) {
+    let parsed = null;
+    try { parsed = new URL(url, location.href); } catch (_) { /* not a URL */ }
+    if (!parsed || (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || parsed.origin === location.origin) {
+        open(url, '_blank', 'noopener,noreferrer');
+        return Promise.resolve();
+    }
+    return openGrimoireUrl(parsed.href).catch(() => {
+        open(parsed.href, '_blank', 'noopener,noreferrer');
+    });
+}
+
+// Every web <a> in the app (Grimoire articles, references, applets) goes through openWebUrl on a
+// left or middle click. Handlers that own their links (Grimoire search links, the DSAP leave dialog,
+// Director chat) preventDefault first. Ctrl/Shift/Alt/Meta-click and data-browser-tab keep the browser.
+function catchWebLinkClick(e) {
+    if (e.defaultPrevented || e.ctrlKey || e.shiftKey || e.altKey || e.metaKey) return;
+    if (e.button !== 0 && e.button !== 1) return;
+    const link = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+    if (!link || link.hasAttribute('download') || link.hasAttribute('data-browser-tab')) return;
+    let url;
+    try { url = new URL(link.href); } catch (_) { return; }
+    if ((url.protocol !== 'http:' && url.protocol !== 'https:') || url.origin === location.origin) return;
+    e.preventDefault();
+    void openWebUrl(url.href);
+}
+document.addEventListener('click', catchWebLinkClick);
+document.addEventListener('auxclick', catchWebLinkClick);
 
 // New standalone Alchemy window (wikiWindowManager), not the main Grimoire tab.
 // grimoireOpenStandaloneWindow: public/scripts/comp/grimoireRemoteBrowser.js

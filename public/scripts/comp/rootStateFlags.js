@@ -21,7 +21,7 @@
  * .gallery.has-context-open-item,
  * .gallery-container-wrapper.has-context-open-item | :has(.gallery-item.context-open)
  * .desktop-taskbar.net-send / net-recv   | set from websocket.js _syncTaskbarNetFlags (not observed)
- * .desktop-taskbar.net-limited           | .desktop-taskbar:has(#taskbarWsStatus.ping-response-wait)
+ * .desktop-taskbar.net-limited           | .desktop-taskbar:has(#taskbarWsStatus:is(.ping-response-wait, .ping-warning))
  * .modal.window-has-caption              | .modal:has(> .modal-window-title)   (CSS uses it inside :where(), same specificity)
  * .manual-preview-container.has-workspace-overlay | :has(.manual-preview-workspace-overlay:not(.hidden))
  * .manual-preview-content.has-quickstart-placeholder | :has(#manualPreviewPlaceholder.has-quickstart:not(.hidden))
@@ -44,7 +44,7 @@
         { host: 'body', className: 'taskbar-orb', selector: '#desktopTaskbar .taskbar-start-button.orb', watch: ['taskbar-start-button'] },
         { host: 'body', className: 'taskbar-luna', selector: '#desktopTaskbar .taskbar-start-button.luna', watch: ['taskbar-start-button'] },
         { host: '.gallery, .gallery-container-wrapper', className: 'has-context-open-item', selector: '.gallery-item.context-open', watch: ['context-open', 'gallery', 'gallery-container-wrapper'] },
-        { host: '.desktop-taskbar', className: 'net-limited', selector: '#taskbarWsStatus.ping-response-wait', watch: ['ping-response-wait', 'desktop-taskbar'] },
+        { host: '.desktop-taskbar', className: 'net-limited', selector: '#taskbarWsStatus:is(.ping-response-wait, .ping-warning)', watch: ['ping-response-wait', 'ping-warning', 'desktop-taskbar'] },
         { host: '.modal', className: 'window-has-caption', selector: ':scope > .modal-window-title', watch: ['modal-window-title', 'modal'] },
         { host: '.manual-preview-container', className: 'has-workspace-overlay', selector: '.manual-preview-workspace-overlay:not(.hidden)', watch: ['manual-preview-workspace-overlay', 'manual-preview-container'] },
         { host: '.manual-preview-content', className: 'has-quickstart-placeholder', selector: '#manualPreviewPlaceholder.has-quickstart:not(.hidden)', watch: ['has-quickstart', 'manual-preview-content'] },

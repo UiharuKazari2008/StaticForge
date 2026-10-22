@@ -161,6 +161,8 @@ class ExplorerApplet {
         this.setupExplorerContextMenu();
         // Vista's Explorer chrome: breadcrumb, command bar, navigation and details panes (#449)
         if (typeof ExplorerVistaChrome === 'function') this.vista = new ExplorerVistaChrome(this);
+        // Computer above the drives (explorerComputerView.js): EXPLORER_COMPUTER_PATH, not the VFS
+        if (typeof ExplorerComputerView === 'function') this.computer = new ExplorerComputerView(this);
 
         this.ensureExplorerGrid();
 
@@ -379,6 +381,9 @@ class ExplorerApplet {
     }
 
     buildEmptyContextMenuSections() {
+        if (typeof explorerArchive !== 'undefined' && explorerArchive.isArchivePath(this.currentPath)) {
+            return explorerArchive.emptyMenuSections();
+        }
         if (this._isTrashPath(this.currentPath)) {
             return [{
                 type: 'list',
@@ -1034,8 +1039,11 @@ class ExplorerApplet {
 
     _isWritableFolderPath(vfsPath) {
         const WORKSPACE_SYSTEM = ['Desktop', 'Pictures', 'References', 'Notes', 'Scraps', 'Trash'];
+        if (this._isComputerPath(vfsPath)) return false;
         const normalized = (vfsPath || '/').replace(/\/+$/, '') || '/';
         if (this._isTrashPath(normalized)) return false;
+        // inside an archive (vfsArchive.js): read-only
+        if (normalized.includes('/~archive.')) return false;
         if (normalized === '/') return true;
         const parts = normalized.split('/').filter(Boolean);
         if (parts[0] === 'System') return false;
@@ -2054,6 +2062,10 @@ class ExplorerApplet {
 
     buildContextMenuSections(item) {
         if (!item) return this.buildEmptyContextMenuSections();
+        // inside an archive: Open, Extract files..., Download, Copy (explorerArchive.js)
+        if (typeof explorerArchive !== 'undefined' && explorerArchive.isEntry(item)) {
+            return explorerArchive.entryMenuSections(this, item);
+        }
 
         if (item.isTrashItem) {
             return [{
@@ -2140,6 +2152,13 @@ class ExplorerApplet {
                     action: 'explorer-open'
                 }]
             });
+        }
+
+        // 7-Zip ▸ under Open, as 7-Zip's shell extension adds it on the Vista VM (explorerArchive.js)
+        const sevenZip = typeof explorerArchive !== 'undefined' ? explorerArchive.contextMenuEntry(this, item) : null;
+        if (sevenZip) {
+            if (showOpenSection) sections[sections.length - 1].items.push(sevenZip);
+            else sections.push({ type: 'list', items: [sevenZip] });
         }
 
         if (!multi && item.targetKind === 'note') {
@@ -2295,6 +2314,12 @@ class ExplorerApplet {
 
         const item = this._contextMenuTarget;
         const workspaceId = this.getWorkspaceIdFromPath();
+
+        // 7-Zip's menu and archive entries: public/scripts/comp/explorerArchive.js
+        if (action.startsWith('explorer-7z-') && typeof explorerArchive !== 'undefined') {
+            await explorerArchive.handleAction(action, item, this);
+            return;
+        }
 
         if (!action.startsWith('explorer-')) {
             if (item?.shortcutType === 'image') {
@@ -2754,6 +2779,10 @@ class ExplorerApplet {
                 this.navigateTo('/');
                 return;
             }
+            if (this.computer && ExplorerComputerView.matchesInput(input)) {
+                this.navigateTo(ExplorerComputerView.PATH);
+                return;
+            }
             try {
                 const resolved = await vfsClient.resolvePath(input);
                 this.navigateTo(resolved);
@@ -2934,6 +2963,8 @@ class ExplorerApplet {
 
     resolveNavigationPath(item) {
         if (!item) return null;
+        // the desktop's Computer icon (Desktop Icon Settings) opens Computer, not the root
+        if (this.computer && (item.shortcutData || item.data || {}).desktopIcon === 'computer') return ExplorerComputerView.PATH;
         if (item.navPath) return item.navPath;
 
         if (item.targetKind === 'workspace') {
@@ -3506,7 +3537,12 @@ class ExplorerApplet {
     }
 
     async softRefresh() {
-        if (this._loading || !wsClient?.isConnected()) return;
+        if (this._loading) return;
+        if (this._syncComputerView()) {
+            await this.computer.show({ reload: true });
+            return;
+        }
+        if (!wsClient?.isConnected()) return;
         const pathForRequest = this.currentPath;
         const token = this._navToken;
         const placeholders = this._getUploadPlaceholders();
@@ -3636,8 +3672,33 @@ class ExplorerApplet {
         if (this.modal) closeModal(this.modal);
     }
 
+    /** Computer (explorerComputerView.js): the place above Cartograph (C:), outside the VFS. */
+    _isComputerPath(path) {
+        return !!this.computer && typeof ExplorerComputerView === 'function' && ExplorerComputerView.isPath(path ?? this.currentPath);
+    }
+
+    /** Shows Computer in place of the grid (or the grid again); true when Computer is on screen. */
+    _syncComputerView() {
+        const on = this._isComputerPath();
+        if (this.modal) this.modal.classList.toggle('explorer-in-computer', on);
+        if (on) {
+            this.items = [];
+            this.totalCount = 0;
+            this.hasMore = false;
+            this._pathStats = null;
+            this._emptyMessage = null;
+            if (this.grid) this.grid.resetItems([]);
+        }
+        return on;
+    }
+
     async navigateTo(path) {
-        const normalized = (path.startsWith('/') ? path : `/${path}`).replace(/\/+$/, '') || '/';
+        if (this.computer && (ExplorerComputerView.isPath(path) || ExplorerComputerView.matchesInput(path))) {
+            path = ExplorerComputerView.PATH;
+        }
+        const normalized = this._isComputerPath(path)
+            ? path
+            : (path.startsWith('/') ? path : `/${path}`).replace(/\/+$/, '') || '/';
         if (this._loading) return;
         if (normalized === this.currentPath) {
             await this.softRefresh();
@@ -3695,14 +3756,24 @@ class ExplorerApplet {
     }
 
     goUp() {
-        if (this._loading) return;
+        if (this._loading || this._isComputerPath()) return;
         const parts = this.currentPath.split('/').filter(Boolean);
-        if (parts.length === 0) return;
+        if (parts.length === 0) {
+            // Vista: up from a drive is Computer
+            if (this.computer) this.navigateTo(ExplorerComputerView.PATH);
+            return;
+        }
         parts.pop();
         this.navigateTo(parts.length ? '/' + parts.join('/') : '/');
     }
 
     async refresh(navToken) {
+        if (this._syncComputerView()) {
+            this.updateLocationLabels(null);
+            this.updateToolbarState([]);
+            await this.computer.show();
+            return;
+        }
         if (!wsClient?.isConnected()) return;
         const pathForRequest = this.currentPath;
         const token = navToken != null ? navToken : this._navToken;
@@ -3758,7 +3829,7 @@ class ExplorerApplet {
     }
 
     async loadMore() {
-        if (this._loadingMore || !this.hasMore) return;
+        if (this._loadingMore || !this.hasMore || this._isComputerPath()) return;
         this._loadingMore = true;
         if (this.grid) this.grid.setLoadingMore(true);
         this._statusHint = 'Loading more items…';
@@ -3856,6 +3927,12 @@ class ExplorerApplet {
     }
 
     renderStatusText(selected) {
+        if (this._isComputerPath()) {
+            if (this.el.statusSpinner) this.el.statusSpinner.classList.add('hidden');
+            if (this.el.statusText) this.el.statusText.textContent = this.computer.statusText();
+            if (this.vista) this.computer.renderDetails();
+            return;
+        }
         this._renderStatusText(selected);
         if (this.vista) {
             const sel = selected || (this.grid ? this.grid.getSelectedItems() : []);
@@ -3917,10 +3994,14 @@ class ExplorerApplet {
         if (this.el.addressBar && document.activeElement !== this.el.addressBar) {
             this.el.addressBar.value = displayPath;
         }
+        // Vista greys an orb with nowhere to go (and Recent Pages ▾ when both are, vista-explorer.css)
+        if (this.el.backBtn) this.el.backBtn.disabled = this.historyIndex <= 0;
+        if (this.el.forwardBtn) this.el.forwardBtn.disabled = this.historyIndex >= this.history.length - 1;
         if (this.vista) this.vista.renderBreadcrumb(displayPath);
     }
 
     _fallbackDisplayName(path) {
+        if (this._isComputerPath(path)) return 'Computer';
         if (!path || path === '/') return 'Root';
         const parts = path.split('/').filter(Boolean);
         if (parts[0] === 'Workspaces' && parts.length >= 3) {
@@ -3942,6 +4023,7 @@ class ExplorerApplet {
     }
 
     _fallbackDisplayPath(path) {
+        if (this._isComputerPath(path)) return 'Computer';
         if (!path || path === '/') return '/';
         const parts = path.split('/').filter(Boolean);
         if (parts[0] === 'System') {
@@ -3970,6 +4052,11 @@ class ExplorerApplet {
     }
 
     async updateStatusBar() {
+        if (this._isComputerPath()) {
+            this.updateLocationLabels(null);
+            this.renderStatusText();
+            return;
+        }
         try {
             const resp = await vfsClient.getPathStats(this.currentPath);
             this._pathStats = resp?.stats || resp;
@@ -4320,6 +4407,18 @@ class ExplorerApplet {
             return;
         }
 
+        // an archive opens as a folder; its files open from inside it (explorerArchive.js)
+        if (typeof explorerArchive !== 'undefined') {
+            if (explorerArchive.isEntry(item)) {
+                await explorerArchive.openEntry(this, item);
+                return;
+            }
+            if (explorerArchive.isArchiveFileItem(item)) {
+                await explorerArchive.openArchive(this, item);
+                return;
+            }
+        }
+
         // Recent Items (public/scripts/comp/recentItems.js): a file opened here, by this workspace
         if (window.recentItems) window.recentItems.noteExplorerItem(item, this.currentPath);
 
@@ -4386,7 +4485,7 @@ class ExplorerApplet {
             }
         }
         if (uploadBtn) {
-            uploadBtn.classList.toggle('hidden', isWsList);
+            uploadBtn.classList.toggle('hidden', isWsList || this._isComputerPath());
         }
     }
 
@@ -4397,6 +4496,8 @@ class ExplorerApplet {
         const canCutCopy = hasSel && sel.every(i => this._canCutCopyItem(i));
         const canRename = single && this._canRenameItem(sel[0]);
         const canFile = single && sel[0].targetKind === 'user-file' && !this._isUserFileLinkItem(sel[0]);
+        // archive entries download (extract and download) and copy (a paste extracts), nothing else
+        const archiveEntries = hasSel && sel.every(i => i.targetKind === 'archive-entry');
         const canWrite = this._isWritableFolderPath(this.currentPath);
         const isWsList = this._isWorkspacesListPath();
 
@@ -4406,15 +4507,16 @@ class ExplorerApplet {
             btn.classList.toggle('disabled', !on);
         };
         set(this.el.cutBtn, canCutCopy);
-        set(this.el.copyBtn, canCutCopy);
+        set(this.el.copyBtn, canCutCopy || archiveEntries);
         set(this.el.pasteBtn, !!this.clipboard && canWrite);
         set(this.el.renameBtn, canRename);
-        set(this.el.downloadBtn, canFile);
+        set(this.el.downloadBtn, canFile || archiveEntries);
         set(this.el.replaceBtn, canFile);
-        set(this.el.deleteBtn, hasSel);
+        set(this.el.deleteBtn, hasSel && !archiveEntries);
         set(this.el.newFolderBtn, isWsList || canWrite);
         this.updateWorkspacesListToolbar();
         if (this.vista) this.vista.syncCommands();
+        if (typeof explorerArchive !== 'undefined') explorerArchive.syncCommands(this);
         // notifyKeyboardOverlayContextChanged: public/scripts/comp/modalKeyboardRegistry.js
         notifyKeyboardOverlayContextChanged();
     }
@@ -4447,6 +4549,10 @@ class ExplorerApplet {
 
     copySelection() {
         const sel = this.grid?.getSelectedItems() || [];
+        if (sel.length && typeof explorerArchive !== 'undefined' && sel.every(i => explorerArchive.isEntry(i))) {
+            explorerArchive.copyEntries(this, sel);
+            return;
+        }
         if (!sel.length || !sel.every(i => this._canCutCopyItem(i))) return;
         this.clipboard = { operation: 'copy', items: this._itemRefs(sel), sourcePath: this.currentPath };
         this.updateToolbarState(sel);
@@ -4512,7 +4618,8 @@ class ExplorerApplet {
         // Notes ask what each file becomes over the dialog, as Vista asks over it; the Desktop folder
         // takes no files (vfsImportRouter says so)
         const folder = vfsImportRouter._parsePath(vfsPath).systemFolder;
-        const progress = folder === 'Desktop' ? null : this._beginProgress('copy', files, null, vfsPath);
+        // Vista's own "Uploading": files from this computer go up to the server
+        const progress = folder === 'Desktop' ? null : this._beginProgress('copy', files, null, vfsPath, 'Uploading');
         try {
             await this._eachWithProgress(progress, files, (file) => vfsImportRouter.routeFilesToPath(vfsPath, [file]));
             if (showPlaceholders) {
@@ -4556,6 +4663,10 @@ class ExplorerApplet {
 
     async deliverItemsToPath(dragItems, navPath, operation = 'cut', options = {}) {
         if (!dragItems?.length || !navPath) return true;
+        // copied / dragged out of an archive: extracted there (explorerArchive.js)
+        if (typeof explorerArchive !== 'undefined' && explorerArchive.isEntryRefs(dragItems)) {
+            return explorerArchive.deliverEntries(this, dragItems, navPath, options.sourcePath ?? this.clipboard?.sourcePath ?? this.currentPath);
+        }
         if (this._isReadOnlyUser()) {
             showGlassToast('warning', 'Explorer', 'Not available in read-only mode', false, 4000);
             return false;
@@ -4629,12 +4740,13 @@ class ExplorerApplet {
     /**
      * Vista's progress dialog for a transfer (fileOperationProgress.js), up as the operation starts;
      * null off the desktop (no dialog: the callers' toasts speak instead). A place is a VFS path or
-     * { name, path }.
+     * { name, path }; verb: the header's verb when it is not the operation's ("Uploading").
      */
-    _beginProgress(op, items, sourcePath, destPath) {
+    _beginProgress(op, items, sourcePath, destPath, verb) {
         if (typeof fileOperationProgress === 'undefined' || !fileOperationProgress.available()) return null;
         const progress = fileOperationProgress.begin({
             op,
+            verb,
             items: (items || []).map(i => this._progressItem(i)),
             from: this._progressPlace(sourcePath),
             to: this._progressPlace(destPath)
@@ -4808,8 +4920,8 @@ class ExplorerApplet {
             const file = input.files?.[0];
             input.remove();
             if (!file) return;
-            // an upload over the file: Copying, as Vista copies a file over another
-            const progress = this._beginProgress('copy', [file], null, this.currentPath);
+            // an upload over the file: Uploading, as Vista says for files going up
+            const progress = this._beginProgress('copy', [file], null, this.currentPath, 'Uploading');
             try {
                 const done = await this._eachWithProgress(progress, [file], async () => {
                     const base64 = await fileToBase64(file);
@@ -4829,10 +4941,18 @@ class ExplorerApplet {
 
     async downloadSelection() {
         const sel = this.grid?.getSelectedItems() || [];
+        if (sel.length && typeof explorerArchive !== 'undefined' && sel.every(i => explorerArchive.isEntry(i))) {
+            await explorerArchive.downloadEntries(this, sel);
+            return;
+        }
         for (const item of sel) await this.downloadSelectionItem(item);
     }
 
     async downloadSelectionItem(item) {
+        if (typeof explorerArchive !== 'undefined' && explorerArchive.isEntry(item)) {
+            await explorerArchive.downloadEntries(this, [item]);
+            return;
+        }
         if (item.targetKind !== 'user-file') return;
         const resp = await vfsClient.downloadFile(item.targetId);
         if (resp.downloadUrl) {
@@ -4841,6 +4961,29 @@ class ExplorerApplet {
             a.download = item.name;
             a.click();
         }
+    }
+
+    /** A file in a folder as this window lists it (fileId: the VFS file id), or null. */
+    async _findFileInFolder(folderPath, fileId) {
+        const result = await vfsClient.listDirectory(folderPath, { limit: 10000 });
+        return (result?.items || []).find(i => i.targetKind === 'user-file' && String(i.targetId) === String(fileId)) || null;
+    }
+
+    /** A file opened as a double-click here opens it, without the window (Download complete: Open). */
+    async openFileInFolder(folderPath, fileId) {
+        const item = await this._findFileInFolder(folderPath, fileId);
+        if (item) await this.openItem(item);
+    }
+
+    /** The folder with the file selected (Download complete: Open Folder). */
+    async showFileInFolder(folderPath, fileId) {
+        await this.open(folderPath);
+        const item = this.items.find(i => i.targetKind === 'user-file' && String(i.targetId) === String(fileId));
+        if (!item || !this.grid) return;
+        this.grid.selectedIds.clear();
+        this.grid.selectedIds.add(item.id);
+        this.grid._updateSelectionClasses();
+        this.grid.onSelectionChange(this.grid.getSelectedItems());
     }
 
     async _permanentlyDeleteExplorerItem(item) {
@@ -4989,6 +5132,8 @@ class ExplorerApplet {
         const permanent = options.permanent === true;
         const sel = this.grid?.getSelectedItems() || [];
         if (!sel.length) return;
+        // an archive's contents are read-only here (vfsArchive.js)
+        if (sel.some(i => i.targetKind === 'archive-entry')) return;
 
         if (this._isTrashPath(this.currentPath)) {
             const confirmed = typeof showConfirmationDialog === 'function'

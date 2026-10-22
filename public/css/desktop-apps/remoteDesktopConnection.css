@@ -216,7 +216,17 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-clie
     top: 67px;
     width: 405px;
     height: 5px;
-    background: url('/static_images/vista-mstsc/banner-line.png') 0 0 no-repeat;
+    background: url('/static_images/vista-mstsc/banner-line.png') 0 0 repeat-x;
+}
+
+/* While a connection is being made the rule scrolls right as a loop, 5 px every 31.25 ms (a 30 ms
+   timer on Vista's 15.625 ms tick; recorded on the VM, 160 px/s), and snaps back to rest after */
+.rdc-client.rdc-connecting .rdc-banner-line {
+    animation: rdc-banner-marquee 2531.25ms steps(81, end) infinite;
+}
+
+@keyframes rdc-banner-marquee {
+    to { background-position-x: 405px; }
 }
 
 .rdc-client .rdc-banner-text span {
@@ -267,9 +277,17 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.rdc-clie
     opacity: 1;
 }
 
-#remoteDesktopConnectionModal .rdc-client .rdc-combo:hover .rdc-combo-edit,
+#remoteDesktopConnectionModal .rdc-client .rdc-combo:hover .rdc-combo-edit:enabled,
 #remoteDesktopConnectionModal .rdc-client .rdc-combo-edit:focus {
     border-color: #5c93bc #a4c9e3 #b7d9ed #a4c9e3;
+}
+
+/* disabled while connecting, as on the VM: grey frame, the edit's 213 x 13 field greyed 4,5 in */
+#remoteDesktopConnectionModal .rdc-client .rdc-combo-edit:disabled {
+    border-color: #afafaf;
+    background: #fff linear-gradient(#f0f0f0, #f0f0f0) 3px 4px / 213px 13px no-repeat;
+    color: #6d6d6d;
+    -webkit-text-fill-color: #6d6d6d;
 }
 
 body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.rdc-client .rdc-combo-drop {
@@ -288,6 +306,12 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.rdc-clie
     /* the 7 x 4 glyph Vista draws in a combo's drop button: 11 px in from the combo's right edge,
        10 px down, no antialiasing */
     background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4' shape-rendering='crispEdges'%3E%3Cpath d='M0 0h7v1h-1v1h-1v1h-1v1h-1v-1h-1v-1h-1v-1h-1z' fill='%23000'/%3E%3C/svg%3E") 5px 8px no-repeat;
+}
+
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.rdc-client .rdc-combo-drop:disabled,
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.rdc-client .rdc-combo:hover .rdc-combo-drop:disabled {
+    border-color: transparent;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4' shape-rendering='crispEdges'%3E%3Cpath d='M0 0h7v1h-1v1h-1v1h-1v1h-1v-1h-1v-1h-1v-1h-1z' fill='%23afafaf'/%3E%3C/svg%3E") 5px 8px no-repeat;
 }
 
 body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.rdc-client .rdc-combo-drop::before,
@@ -510,4 +534,89 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.rdc-clie
     width: 73px;
     height: 21px;
     margin: 0;
+}
+
+/* ---- Reconnecting (mstscax.dll.mui dialog 13420 on bitmap 104, 313x198), centred in a
+   session window that has lost its connection; the session greys while it shows.
+   Template DLUs mapped with MS Shell Dlg 8's 6x13 units. The flag slot holds the Melaton logo. ---- */
+
+.modal.rdc-dimmed .modal-body > iframe {
+    filter: grayscale(1);
+}
+
+.rdc-reconnect {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    z-index: 5;
+    width: 313px;
+    height: 198px;
+    margin: -99px 0 0 -157px;
+    background: url('/static_images/vista-mstsc/reconnect-panel.png') 0 0 no-repeat;
+    color: #fff;
+    font: 11px/13px 'Microsoft Sans Serif', Tahoma, sans-serif;
+    cursor: default;
+    user-select: none;
+}
+
+.rdc-reconnect > * {
+    position: absolute;
+    box-sizing: border-box;
+}
+
+/* .win7 gives Cancel 7.css's push button face; the text stays white on the panel */
+.rdc-reconnect > div {
+    color: #fff;
+}
+
+/* owner-drawn in "Franklin Gothic" 24 (mstscax.dll.mui strings), vertically centred in 42 px */
+.rdc-reconnect .rdc-reconnect-title {
+    left: 11px;
+    top: 0;
+    width: 243px;
+    height: 42px;
+    font: 24px/42px 'Franklin Gothic Medium', 'Franklin Gothic', 'Arial Narrow', sans-serif;
+    white-space: nowrap;
+}
+
+.rdc-reconnect .rdc-reconnect-logo {
+    left: 272px;
+    top: 5px;
+    width: 32px;
+    height: 32px;
+    background: url('/static_images/vista-mstsc/reconnect-logo.png') 0 0 / 32px 32px no-repeat;
+}
+
+.rdc-reconnect .rdc-reconnect-icon {
+    left: 23px;
+    top: 62px;
+    width: 64px;
+    height: 64px;
+    background: url('/static_images/vista-mstsc/reconnect-icon.png') 0 0 no-repeat;
+}
+
+.rdc-reconnect .rdc-reconnect-text {
+    left: 102px;
+    top: 63px;
+    width: 203px;
+    height: 33px;
+}
+
+.rdc-reconnect .rdc-reconnect-attempt {
+    left: 102px;
+    top: 98px;
+    width: 203px;
+    height: 65px;
+}
+
+.modal .rdc-reconnect button.rdc-reconnect-cancel {
+    left: 242px;
+    top: 167px;
+    width: 60px;
+    height: 20px;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    font: 11px 'Microsoft Sans Serif', Tahoma, sans-serif;
 }

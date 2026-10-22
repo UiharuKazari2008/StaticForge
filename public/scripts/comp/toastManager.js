@@ -66,6 +66,84 @@ let nextButtonId = 1;
  */
 const vibeEncodingProgressIntervals = new Map();
 
+// ── Vista progress dialogs ───────────────────────────────────────────────────
+// On the desktop a toast with a progress bar is Vista's progress dialog instead (task() in
+// public/scripts/comp/fileOperationProgress.js): its title is the header ("Upscaling Image"), its
+// message the status line, its bar the bar, a Cancel / Stop button the dialog's Cancel. Done, it
+// closes as Vista's does; an error, or result buttons (Open, View ...), keep it up in its complete
+// state with Close. No toast is drawn for it. toastId -> { op, titled }
+const progressDialogToasts = new Map();
+
+function _progressDialogsAvailable() {
+    return typeof fileOperationProgress !== 'undefined' && typeof fileOperationProgress.task === 'function'
+        && fileOperationProgress.available();
+}
+
+/** The toast button that stops the work (Cancel / Stop / Abort), or null. */
+function _progressDialogCancelButton(buttons) {
+    return (Array.isArray(buttons) ? buttons : [])
+        .find(b => b && typeof b.onClick === 'function' && /^(cancel|stop|abort)\b/i.test(String(b.text || '').trim())) || null;
+}
+
+// Connection and startup status are not work under way: the desktop has the connection dial and
+// the startup window for them (websocket.js), so these stay as they are
+const PROGRESS_DIALOG_EXCLUDED_TITLES = new Set(['Connecting', 'Connected', 'Connection Error', 'Connection Warning', 'Dreamscape']);
+
+function _openProgressDialogForToast(toastId, title, message, buttons) {
+    if (!_progressDialogsAvailable() || PROGRESS_DIALOG_EXCLUDED_TITLES.has(title)) return false;
+    const cancel = _progressDialogCancelButton(buttons);
+    let op;
+    try {
+        op = fileOperationProgress.task({
+            title: title || message || '',
+            line: title ? (message || '') : '',
+            onCancel: cancel ? () => cancel.onClick(toastId) : null
+        });
+    } catch (error) {
+        console.error('Progress dialog:', error);
+        return false;
+    }
+    if (!op.shown) return false;
+    progressDialogToasts.set(toastId, { op, titled: !!title });
+    return true;
+}
+
+/** A new title / message for a running dialog. */
+function _updateProgressDialog(entry, title, message) {
+    if (entry.titled) {
+        if (title) entry.op.setHeader(title);
+        if (message !== undefined && message !== null) entry.op.setLine(message);
+    } else if (message) {
+        entry.op.setHeader(message);
+    }
+}
+
+/**
+ * The work is over: the dialog closes, or (an error or warning, or buttons to act on the result)
+ * stays in its complete state with the title, the message, those buttons and Close.
+ */
+function _endProgressDialog(toastId, { type, title, message, buttons } = {}) {
+    const entry = progressDialogToasts.get(toastId);
+    progressDialogToasts.delete(toastId);
+    if (!entry) return;
+    const op = entry.op;
+    const results = (Array.isArray(buttons) ? buttons : [])
+        .filter(b => b && b.text && typeof b.onClick === 'function' && !_progressDialogCancelButton([b]));
+    if (type !== 'error' && type !== 'warning' && !results.length) {
+        op.finish();
+        return;
+    }
+    op.complete({
+        header: title || message || op.header,
+        lines: title && message ? [[String(message)]] : [],
+        buttons: results.map((b, i) => ({ text: b.text, value: i, primary: i === 0 }))
+            .concat([{ text: 'Close', value: 'close', primary: !results.length }])
+    }).then((answer) => {
+        const button = results[answer];
+        if (button) button.onClick(toastId);
+    }).catch((error) => console.error('Progress dialog:', error));
+}
+
 // ============================================================================
 // ANDROID NOTIFICATION BRIDGE
 // ============================================================================
@@ -328,7 +406,9 @@ function _isDesktopPopupWiredToast(type, title, showProgress = false) {
 
 function _getDesktopPopupAnchorForTitle(title) {
     if (title === 'High Latency Detected') {
-        return document.getElementById('pingWarningIndicator');
+        // the Vista look shows latency on the network icon (limited globe), not its own icon
+        const classic = document.body.classList.contains('windows-classic-theme');
+        return (!classic && document.getElementById('modemTrayIcon')) || document.getElementById('pingWarningIndicator');
     }
     if (title === 'Generation Complete') {
         return document.getElementById('imageGenerationIndicator');
@@ -587,6 +667,11 @@ function showGlassToast(type, title, message, showProgress = false, timeout = 50
         timeoutId: null
     });
 
+    // the desktop: Vista's progress dialog in place of a progress toast
+    if (showProgress && _openProgressDialogForToast(toastId, title, message, buttons)) {
+        return toastId;
+    }
+
     if (!buttons && _promoteToastToDesktopPopupIfWired(toastId, type, title, message, showProgress, resolvedTimeout, customIcon)) {
         return toastId;
     }
@@ -624,6 +709,12 @@ function showGlassToast(type, title, message, showProgress = false, timeout = 50
  * updateGlassToast(toastId, 'success', 'Complete!', 'Operation finished');
  */
 function updateGlassToast(toastId, type, title, message, customIcon = null) {
+    const dialog = progressDialogToasts.get(toastId);
+    if (dialog) {
+        if (type === 'success' || type === 'error' || type === 'warning') _endProgressDialog(toastId, { type, title, message });
+        else _updateProgressDialog(dialog, title, message);
+        return;
+    }
     // Update stored data regardless of render path
     const stored = activeToasts.get(toastId);
     if (stored) {
@@ -699,6 +790,11 @@ const ANDROID_DISMISS_DEFER_MS = 400;
  * removeGlassToast(toastId);
  */
 function removeGlassToast(toastId) {
+    const dialog = progressDialogToasts.get(toastId);
+    if (dialog) {
+        progressDialogToasts.delete(toastId);
+        dialog.op.finish();
+    }
     const stored = activeToasts.get(toastId);
     if (stored?.nativeRouted && !_isInAppOnlyToast(toastId)) {
         const elapsed = Date.now() - (stored.createdAt || 0);
@@ -803,6 +899,11 @@ function createToastContainer() {
  * updateGlassToastProgress(toastId, 50); // 50% complete
  */
 function updateGlassToastProgress(toastId, progress) {
+    const dialog = progressDialogToasts.get(toastId);
+    if (dialog) {
+        dialog.op.setPercent(progress);
+        return;
+    }
     const clampedProgress = Math.min(progress, 100);
     const stored = activeToasts.get(toastId);
 
@@ -831,6 +932,11 @@ function updateGlassToastProgress(toastId, progress) {
  * @param {string} message - New message text
  */
 function updateGlassToastMessage(toastId, message) {
+    const dialog = progressDialogToasts.get(toastId);
+    if (dialog) {
+        _updateProgressDialog(dialog, null, message);
+        return;
+    }
     const stored = activeToasts.get(toastId);
 
     // Persist the updated message so subsequent reads (e.g. _getAndroidActionsJson) are fresh
@@ -1042,6 +1148,7 @@ function getToolIconAndBackground(toolName, toolState = 'completed') {
  * @param {string} phase - Current phase (optional, to detect tool execution)
  */
 function updateGlassToastReasoning(toastId, reasoning, toolName = null, phase = null) {
+    if (progressDialogToasts.has(toastId)) return;
     const toolState = window._lastToolState || 'completed';
 
     _androidNotifyToast(toastId, 'updateNotificationReasoning', _toastNumericId(toastId), toolName ?? '', reasoning ?? '', toolState);
@@ -1134,6 +1241,7 @@ function updateGlassToastReasoning(toastId, reasoning, toolName = null, phase = 
  * @param {string} imageData - Base64 image data
  */
 function updateGlassToastImagePreview(toastId, imageData) {
+    if (progressDialogToasts.has(toastId)) return;
     _androidNotifyToast(toastId, 'updateNotificationImagePreview', _toastNumericId(toastId), imageData ?? '');
 
     const toast = document.getElementById(toastId);
@@ -1199,7 +1307,7 @@ function updateGlassToastImagePreview(toastId, imageData) {
  * @param {string} toastId - Toast ID
  */
 function clearGlassToastImagePreview(toastId) {
-    if (!toastId) return;
+    if (!toastId || progressDialogToasts.has(toastId)) return;
     _androidNotifyToast(toastId, 'updateNotificationImagePreview', _toastNumericId(toastId), '');
 
     const toast = document.getElementById(toastId);
@@ -1281,6 +1389,12 @@ function generateButtonsHtml(buttons, toastId) {
  * ]);
  */
 function updateGlassToastButtons(toastId, buttons) {
+    const dialog = progressDialogToasts.get(toastId);
+    if (dialog) {
+        const cancel = _progressDialogCancelButton(buttons);
+        if (cancel) dialog.op.setOnCancel(() => cancel.onClick(toastId));
+        return;
+    }
     const stored = activeToasts.get(toastId);
     if (stored) {
         stored.buttons = buttons;
@@ -1358,6 +1472,25 @@ function updateGlassToastComplete(toastId, options = {}) {
         showProgress = null,
         timeout = null
     } = options;
+
+    const dialog = progressDialogToasts.get(toastId);
+    if (dialog) {
+        const ending = showProgress === false || type === 'success' || type === 'error' || type === 'warning';
+        if (!ending) {
+            _updateProgressDialog(dialog, title, message);
+            if (buttons !== undefined) updateGlassToastButtons(toastId, buttons);
+            return;
+        }
+        const popupTitle = title ?? activeToasts.get(toastId)?.title;
+        if (!(Array.isArray(buttons) && buttons.length) && _isDesktopPopupWiredToast(type, popupTitle, false)) {
+            // Generation Complete and the like: the dialog closes, the tray balloon below says it
+            progressDialogToasts.delete(toastId);
+            dialog.op.finish();
+        } else {
+            _endProgressDialog(toastId, { type, title, message, buttons });
+            return;
+        }
+    }
 
     const storedBefore = activeToasts.get(toastId);
     const resolvedType = type ?? storedBefore?.type;

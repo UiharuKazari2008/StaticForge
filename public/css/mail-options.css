@@ -1,0 +1,51 @@
+/* Mail Options (public/scripts/comp/mailOptions.js): Windows Mail's Options sheet with Dovecote
+   Express's General and Signatures tabs. The controls, tabs, pane and buttons are Taskbar
+   Properties' (taskbar-properties.css, tbp-*); this file has only what differs:
+     the sheet's client 404x436, as System Properties' (remote-access-properties.css): the pane
+     390x372 at 6,27, OK / Cancel / Apply 75x23 at y 406, x 161 / 242 / 323 */
+
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.mo-sheet {
+    width: 404px;
+    height: 436px;
+}
+
+.mo-sheet .tbp-pane {
+    width: 390px;
+    height: 372px;
+}
+
+.mo-sheet .tbp-footer {
+    left: 162px;
+    top: 407px;
+}
+
+/* the program's 32 px picture beside each group's options */
+.tbp-client img.mo-icon {
+    width: 32px;
+    height: 32px;
+    pointer-events: none;
+}
+
+/* Edit Signature: a Vista multi-line edit (#abadb3 top edge, #e2e3ea / #dbdfe6 / #e3e9ef sides) */
+.tbp-client textarea.mo-signature {
+    box-sizing: border-box;
+    min-height: 0;
+    padding: 1px 3px;
+    resize: none;
+    overflow-y: auto;
+    border: 1px solid;
+    border-color: #abadb3 #dbdfe6 #e3e9ef #e2e3ea;
+    border-radius: 0;
+    background: #fff;
+    color: #000;
+    font: 11px Tahoma, "Segoe UI", sans-serif;
+    line-height: 13px;
+    white-space: pre-wrap;
+    user-select: text;
+    outline: none;
+}
+
+.tbp-client textarea.mo-signature:hover,
+.tbp-client textarea.mo-signature:focus {
+    border-color: #3d7bad #b5cfe7 #b7d9ed #a4c9e3;
+}

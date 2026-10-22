@@ -44,6 +44,15 @@ class VfsManager {
         this._systemProvider = new VfsSystemProvider(globalResources);
     }
 
+    /** 7-Zip archives: browsing one as a folder, extract, create (modules/vfsArchive.js). */
+    getArchive() {
+        if (!this._archive) {
+            const { VfsArchive } = require('./vfsArchive');
+            this._archive = new VfsArchive(this);
+        }
+        return this._archive;
+    }
+
     getSystemProvider() {
         return this._systemProvider;
     }
@@ -70,6 +79,11 @@ class VfsManager {
             return { type: 'root', path: '/' };
         }
         const parts = normalized.split('/').filter(Boolean);
+        // inside an archive: <folder path>/~archive.<fileId>/<entry segments> (modules/vfsArchive.js)
+        const archive = this.getArchive().splitArchivePath(normalized);
+        if (archive) {
+            return { type: 'archive', path: normalized, ...archive };
+        }
         if (parts[0] === 'System') {
             return { type: 'system', path: normalized, systemId: VFS_SYSTEM_IDS.SYSTEM };
         }
@@ -791,6 +805,8 @@ class VfsManager {
 
     makeFileItem(file, extra = {}) {
         const isImage = (file.mime_type || '').startsWith('image/');
+        // an archive 7-Zip opens: Explorer browses into it (explorerArchive.js), with its format's icon
+        const archiveFormat = this.getArchive().archiveFormatForName(file.original_name);
         return {
             id: file.id,
             name: file.original_name,
@@ -798,7 +814,8 @@ class VfsManager {
             targetKind: 'user-file',
             targetId: file.id,
             mimeType: file.mime_type,
-            icon: isImage ? 'fas fa-file-image' : 'fas fa-file',
+            icon: archiveFormat ? `fas fa-file-zipper ex-archive-${archiveFormat}` : (isImage ? 'fas fa-file-image' : 'fas fa-file'),
+            ...(archiveFormat ? { archiveFormat } : {}),
             system: false,
             protected: false,
             importable: false,
@@ -815,6 +832,9 @@ class VfsManager {
         }
         if (parsed.type === 'system') {
             throw new Error(`Cannot ${actionLabel} the System folder`);
+        }
+        if (parsed.type === 'archive') {
+            throw new Error(`Cannot ${actionLabel} a compressed folder. Extract its files first.`);
         }
     }
 
@@ -1269,6 +1289,9 @@ class VfsManager {
             search = ''
         } = options;
 
+        if (this.getArchive().isArchivePath(vfsPath)) {
+            return this.getArchive().listDirectory(vfsPath, options);
+        }
         const resolvedPath = await this.resolvePathInput(vfsPath || '/');
         const parsed = this.parsePath(resolvedPath);
         let items = [];
@@ -1899,6 +1922,9 @@ class VfsManager {
 
     async getPathDisplayInfo(vfsPath) {
         const normalized = this.normalizePath(vfsPath);
+        if (this.getArchive().isArchivePath(normalized)) {
+            return this.getArchive().getPathDisplayInfo(normalized);
+        }
         const wm = this.globalResources.getWorkspaceManager();
         const segments = [];
 
@@ -2077,6 +2103,7 @@ class VfsManager {
         if (!trimmed || trimmed === '/') return '/';
 
         const normalized = this.normalizePath(trimmed);
+        if (this.getArchive().isArchivePath(normalized)) return normalized;
         if (normalized.split('/').filter(Boolean)[0] === 'System') {
             return await this._assertSystemPathListable(normalized);
         }
@@ -2343,6 +2370,9 @@ class VfsManager {
     }
 
     async getPathStats(vfsPath) {
+        if (this.getArchive().isArchivePath(vfsPath)) {
+            return this.getArchive().getPathStats(vfsPath);
+        }
         const resolvedPath = await this.resolvePathInput(vfsPath || '/');
         const normalized = this.normalizePath(resolvedPath);
         const cached = this._pathStatsCache.get(normalized);
@@ -2736,7 +2766,42 @@ class VfsManager {
         };
     }
 
-    async saveUserFileBuffer(buffer, { originalName, mimeType, scope, workspaceId, folderId, overwrite = false }) {
+    async saveUserFileBuffer(buffer, options) {
+        const hash = await md5HexAsync(buffer);
+        return this._storeUserFile({
+            hash,
+            size: buffer.length,
+            writeBlob: async (blobPath) => writeFileIfMissing(blobPath, buffer),
+            previewInput: buffer
+        }, options);
+    }
+
+    /**
+     * saveUserFileBuffer for a file on disk (modules/vfsArchive.js: extracted entries, new archives):
+     * hashed as a stream and hard-linked into userFiles when the volume allows, so a large file is
+     * never held in memory.
+     */
+    async saveUserFileFromPath(filePath, options) {
+        const hash = await new Promise((resolve, reject) => {
+            const h = crypto.createHash('md5');
+            fs.createReadStream(filePath).on('error', reject).on('data', (c) => h.update(c)).on('end', () => resolve(h.digest('hex')));
+        });
+        const { size } = await fs.promises.stat(filePath);
+        return this._storeUserFile({
+            hash,
+            size,
+            writeBlob: async (blobPath) => {
+                try {
+                    await fs.promises.link(filePath, blobPath);
+                } catch (_) {
+                    await fs.promises.copyFile(filePath, blobPath);
+                }
+            },
+            previewInput: filePath
+        }, options);
+    }
+
+    async _storeUserFile({ hash, size, writeBlob, previewInput }, { originalName, mimeType, scope, workspaceId, folderId, overwrite = false }) {
         const storedFolderId = folderId || null;
         const storedWorkspaceId = scope === 'workspace' ? workspaceId : null;
         if (scope === 'workspace') {
@@ -2749,11 +2814,13 @@ class VfsManager {
             const folder = await vfsDatabase.getFolderById(storedFolderId);
             if (!folder || folder.trashed_at) throw new Error(`Folder not found: ${storedFolderId}`);
         }
-        const hash = await md5HexAsync(buffer);
         const userFilesPath = this.globalResources.getPath('userFiles');
         await fs.promises.mkdir(userFilesPath, { recursive: true });
         const blobPath = path.join(userFilesPath, hash);
-        await writeFileIfMissing(blobPath, buffer);
+        const blobExists = await fs.promises.access(blobPath).then(() => true, () => false);
+        if (!blobExists) {
+            await writeBlob(blobPath);
+        }
         let previewPath = null;
         if ((mimeType || '').startsWith('image/')) {
             try {
@@ -2761,7 +2828,7 @@ class VfsManager {
                 const previewDir = path.join(userFilesPath, 'previews');
                 await fs.promises.mkdir(previewDir, { recursive: true });
                 const previewFile = path.join(previewDir, `${hash}.webp`);
-                await sharp(buffer).resize(512, 512, { fit: 'inside' }).webp().toFile(previewFile);
+                await sharp(previewInput).resize(512, 512, { fit: 'inside' }).webp().toFile(previewFile);
                 previewPath = `${hash}.webp`;
             } catch (_) { /* preview optional */ }
         }
@@ -2782,7 +2849,7 @@ class VfsManager {
                     original_name: name,
                     content_hash: hash,
                     mime_type: storedMime,
-                    size: buffer.length,
+                    size,
                     preview_path: previewPath
                 });
                 for (const extra of matches.slice(1)) {
@@ -2799,7 +2866,7 @@ class VfsManager {
             contentHash: hash,
             originalName: name,
             mimeType: storedMime,
-            size: buffer.length,
+            size,
             scope,
             workspaceId: storedWorkspaceId,
             folderId: storedFolderId,
@@ -3237,6 +3304,9 @@ class VfsManager {
     }
 
     buildItemPreviewUrl(item, vfsPathUuid) {
+        if (item.archivePreviewUrl) {
+            return item.archivePreviewUrl;
+        }
         if (item.previewDataUrl) {
             return item.previewDataUrl;
         }

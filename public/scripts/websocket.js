@@ -1623,6 +1623,8 @@ class WebSocketClient {
             if (uptimeMs > 0) title += `\nDuration: ${this.formatConnectionUptime(uptimeMs)}`;
             // the network icon carries what the WebSocket status dot showed (hidden on the desktop)
             if (this.currentRtt !== null && this.currentRtt !== undefined) title += `\nPing: ${Math.round(this.currentRtt)} ms`;
+            // the latency warning the old latency tray icon carried
+            if (this.shouldShowPingWarning()) title += `\n${this.getPingWarningReason()}`;
         } else if (this.connectionPhase === 'failed') {
             iconClass = 'fas fa-link-slash';
             title = 'Not connected\nError connecting to domain controller';
@@ -3065,6 +3067,9 @@ class WebSocketClient {
         const reveal = options.reveal !== false
             && !(window.isDesktop && typeof window.isDesktopTrayBootPending === 'function' && window.isDesktopTrayBootPending());
         const shouldShow = this.shouldShowPingWarning();
+        // the network icon shows Vista's limited globe for it (rootStateFlags.js net-limited);
+        // the Vista look hides this icon (vista-glass-controls.css)
+        this._setPingWarningFlag(shouldShow);
 
         if (shouldShow && reveal) {
             warningIcon.classList.remove('hidden');
@@ -3120,6 +3125,14 @@ class WebSocketClient {
             }
         }
         this._wasPingWarning = shouldShow;
+    }
+
+    _setPingWarningFlag(on) {
+        const status = document.getElementById('taskbarWsStatus');
+        if (!status || status.classList.contains('ping-warning') === !!on) return;
+        status.classList.toggle('ping-warning', !!on);
+        this._syncTaskbarNetFlags();
+        this._updateModemTrayIcon();
     }
 
     flushDeferredPingTrayNotification() {
@@ -9411,6 +9424,7 @@ class WebSocketClient {
                 }
             });
             // Hide ping warning when not connected
+            this._setPingWarningFlag(false);
             const warningIcon = document.getElementById('pingWarningIndicator');
             if (warningIcon) {
                 if (typeof setClassIfChanged === 'function') {
@@ -9770,7 +9784,7 @@ class WebSocketClient {
         window.setDesktopTaskbarNetFlags({
             send: upOn,
             recv: downOn,
-            limited: !!(status && status.classList.contains('ping-response-wait'))
+            limited: !!(status && (status.classList.contains('ping-response-wait') || status.classList.contains('ping-warning')))
         });
     }
 

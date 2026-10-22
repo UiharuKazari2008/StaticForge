@@ -127,7 +127,10 @@ function main() {
     assert.match(fs.readFileSync(path.join(__dirname, '..', 'public/css/desktop-apps/dovecote.css'), 'utf8'), /data-dove-field="cc"/);
     assert.match(dovecoteJs, /'dovecote-oe-header-tools'/);
     assert.doesNotMatch(dovecoteJs, /dovecote-body-tools/);
-    assert.match(dovecoteJs, /'button-group dovecote-body-view-toggle'/);
+    // one Render push button (aria-pressed), not a Rendered / Raw pair (Yukimi, Oct 22 2026)
+    assert.match(dovecoteJs, /'btn-secondary btn-small dovecote-body-view-toggle'/);
+    assert.match(dovecoteJs, /button\.textContent = 'Render'/);
+    assert.doesNotMatch(dovecoteJs, /'button-group dovecote-body-view-toggle'/);
     assert.match(dovecoteJs, /const doveBuildSanitizedBadge = function/);
     assert.doesNotMatch(dovecoteJs, /doveBuildToolbar[\s\S]{0,2000}data-dove-body-view/);
 
