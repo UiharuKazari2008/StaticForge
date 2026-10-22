@@ -145,6 +145,9 @@ class MetadataCache {
         if (workspaceCache.has(filename)) {
             const entry = workspaceCache.get(filename);
             entry.lastAccessed = Date.now();
+            // Map order is recency order: move the hit to the end.
+            workspaceCache.delete(filename);
+            workspaceCache.set(filename, entry);
             return entry.metadata;
         }
         return null;
@@ -153,21 +156,13 @@ class MetadataCache {
     // Set metadata in cache
     set(workspaceId, filename, metadata) {
         const workspaceCache = this.getWorkspaceCache(workspaceId);
-        
-        // If cache is full, remove least recently used
-        if (workspaceCache.size >= this.maxSize && !workspaceCache.has(filename)) {
-            // Find least recently used
-            let lruKey = null;
-            let lruTime = Infinity;
-            for (const [key, entry] of workspaceCache.entries()) {
-                if (entry.lastAccessed < lruTime) {
-                    lruTime = entry.lastAccessed;
-                    lruKey = key;
-                }
-            }
-            if (lruKey) {
-                workspaceCache.delete(lruKey);
-            }
+
+        if (workspaceCache.has(filename)) {
+            workspaceCache.delete(filename);
+        } else if (workspaceCache.size >= this.maxSize) {
+            // Cache is full: the first key is the least recently used
+            const lruKey = workspaceCache.keys().next().value;
+            workspaceCache.delete(lruKey);
         }
 
         workspaceCache.set(filename, {
@@ -1337,9 +1332,8 @@ class WebSocketMessageHandlers {
         if (!filename) return null;
         try {
             const filePath = path.join(this.globalResources.getPath('images'), filename);
-            if (fs.existsSync(filePath)) {
-                return fs.statSync(filePath).size;
-            }
+            // One stat; a missing file throws ENOENT and lands on null like the old existsSync check.
+            return fs.statSync(filePath).size;
         } catch (_) { /* ignore */ }
         return null;
     }

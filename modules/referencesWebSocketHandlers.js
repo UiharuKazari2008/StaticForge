@@ -507,7 +507,7 @@ class ReferencesWebSocketHandlers {
                 const allWorkspaceIds = Object.keys(workspaces);
 
                 // Optimized: Get both cache files and vibes with data in a single call (parallel queries)
-                const { cacheFiles: cacheFilesMap, vibes: vibesMap } = refDb.getWorkspaceReferencesAndVibesWithData(allWorkspaceIds);
+                const { cacheFiles: cacheFilesMap, vibes: vibesMap } = refDb.getWorkspaceReferencesAndVibesWithData(allWorkspaceIds, { encodingPresence: true });
 
                 // Build cache files array
                 for (const hash in cacheFilesMap) {
@@ -592,7 +592,7 @@ class ReferencesWebSocketHandlers {
 
             } else {
                 // Optimized: Get both cache files and vibes with data in a single call (parallel queries)
-                const { cacheFiles: cacheFilesMap, vibes: vibesMap } = refDb.getWorkspaceReferencesAndVibesWithData(workspaceId);
+                const { cacheFiles: cacheFilesMap, vibes: vibesMap } = refDb.getWorkspaceReferencesAndVibesWithData(workspaceId, { encodingPresence: true });
 
                 for (const hash in cacheFilesMap) {
                     const fileData = cacheFilesMap[hash];
@@ -1044,7 +1044,7 @@ class ReferencesWebSocketHandlers {
 
             // Check if the reference exists
             const refDb = this.globalResources.getReferenceMetadataDatabase();
-            const { cacheFiles } = refDb.getWorkspaceReferencesAndVibesWithData(workspaceId);
+            const cacheFiles = refDb.getWorkspaceReferencesWithData(workspaceId);
             if (!cacheFiles[hash]) {
                 this.handlers.sendError(ws, 'Reference not found', `Reference with hash '${hash}' not found in workspace`, message.requestId);
                 return;

@@ -370,7 +370,7 @@ function publicAddress(local) {
     return `${local}@${PUBLIC_DOMAIN}`;
 }
 
-function mailboxRowToView(row, shippedLocal) {
+function mailboxRowToView(row, shippedLocal, addressRows) {
     const local = row && row.local_part ? row.local_part : shippedLocal;
     return {
         owner: row.owner,
@@ -387,7 +387,40 @@ function mailboxRowToView(row, shippedLocal) {
         hasKey: false,
         createdAt: row.created_at || null,
         updatedAt: row.updated_at || null,
-        addresses: listAddressRows(row.owner)
+        addresses: addressRows || listAddressRows(row.owner)
+    };
+}
+
+// One directory record. shippedLocals is the shipped local-parts for this owner, in shipped order.
+function buildMailboxRecord(owner, shipped, shippedLocals, row, hasKey, addressRows) {
+    const shippedLocal = owner === HUMAN_OWNER && shipped[YUKIMI_LOCAL]
+        ? YUKIMI_LOCAL
+        : (owner === TSUBAME_OWNER && shipped[TSUBAME_LOCAL]
+            ? TSUBAME_LOCAL
+            : (shippedLocals[0] || null));
+    if (row && row.deleted_at) {
+        return Object.assign(mailboxRowToView(row, shippedLocal, addressRows), { hasKey });
+    }
+    if (row) {
+        return Object.assign(mailboxRowToView(row, shippedLocal || row.local_part, addressRows), { hasKey });
+    }
+    if (!shippedLocal) return null;
+    return {
+        owner,
+        localPart: shippedLocal,
+        address: publicAddress(shippedLocal),
+        dept: shippedLocal.includes('.') ? shippedLocal.split('.').slice(1).join('.') : null,
+        displayName: owner === TSUBAME_OWNER ? 'Tsubame (Mailroom)' : owner,
+        kind: seedOwnerKind(owner),
+        enabled: true,
+        deleted: false,
+        inboundEnabled: true,
+        outboundEnabled: true,
+        hasSignature: false,
+        hasKey,
+        createdAt: null,
+        updatedAt: null,
+        addresses: addressRows || listAddressRows(owner)
     };
 }
 
@@ -402,48 +435,52 @@ function listMailboxRecords() {
         'SELECT mailbox FROM exchange_key WHERE revoked_at IS NULL'
     ).all();
     const keyed = new Set(keyRows.map((row) => row.mailbox));
+    const localsByOwner = new Map();
+    Object.keys(shipped).forEach((local) => {
+        const list = localsByOwner.get(shipped[local]);
+        if (list) list.push(local);
+        else localsByOwner.set(shipped[local], [local]);
+    });
+    // One address query for the whole directory; per-owner order matches listAddressRows(owner).
+    const allAddresses = listAddressRows(null);
+    const addressesByOwner = new Map();
+    allAddresses.forEach((entry) => {
+        const list = addressesByOwner.get(entry.owner);
+        if (list) list.push(entry);
+        else addressesByOwner.set(entry.owner, [entry]);
+    });
+    const addressesFor = (owner) => {
+        const name = owner ? normalizeOwner(owner) : null;
+        const list = name ? (addressesByOwner.get(name) || []) : allAddresses;
+        return list.map((entry) => Object.assign({}, entry));
+    };
     const out = [];
     for (const owner of owners) {
-        const row = byOwner.get(owner);
-        const shippedLocals = Object.keys(shipped).filter((local) => shipped[local] === owner);
-        const shippedLocal = owner === HUMAN_OWNER && shipped[YUKIMI_LOCAL]
-            ? YUKIMI_LOCAL
-            : (owner === TSUBAME_OWNER && shipped[TSUBAME_LOCAL]
-                ? TSUBAME_LOCAL
-                : (shippedLocals[0] || null));
-        if (row && row.deleted_at) {
-            out.push(Object.assign(mailboxRowToView(row, shippedLocal), { hasKey: keyed.has(owner) }));
-            continue;
-        }
-        if (row) {
-            out.push(Object.assign(mailboxRowToView(row, shippedLocal || row.local_part), { hasKey: keyed.has(owner) }));
-            continue;
-        }
-        if (!shippedLocal) continue;
-        out.push({
+        const rec = buildMailboxRecord(
             owner,
-            localPart: shippedLocal,
-            address: publicAddress(shippedLocal),
-            dept: shippedLocal.includes('.') ? shippedLocal.split('.').slice(1).join('.') : null,
-            displayName: owner === TSUBAME_OWNER ? 'Tsubame (Mailroom)' : owner,
-            kind: seedOwnerKind(owner),
-            enabled: true,
-            deleted: false,
-            inboundEnabled: true,
-            outboundEnabled: true,
-            hasSignature: false,
-            hasKey: keyed.has(owner),
-            createdAt: null,
-            updatedAt: null,
-            addresses: listAddressRows(owner)
-        });
+            shipped,
+            localsByOwner.get(owner) || [],
+            byOwner.get(owner),
+            keyed.has(owner),
+            addressesFor(owner)
+        );
+        if (rec) out.push(rec);
     }
     return out.sort((a, b) => a.owner.localeCompare(b.owner));
 }
 
+// Same record listMailboxRecords() would return for this owner, without building the directory.
 function getMailboxRecord(owner) {
+    requireReady();
     const wanted = canonicalizeAdmin(owner);
-    return listMailboxRecords().find((row) => row.owner === wanted) || null;
+    const shipped = shippedMailboxes();
+    const row = getDb().prepare('SELECT * FROM exchange_mailbox WHERE owner = ?').get(wanted);
+    const shippedLocals = Object.keys(shipped).filter((local) => shipped[local] === wanted);
+    if (!row && !shippedLocals.length) return null;
+    const keyRow = getDb().prepare(
+        'SELECT 1 AS ok FROM exchange_key WHERE mailbox = ? AND revoked_at IS NULL'
+    ).get(wanted);
+    return buildMailboxRecord(wanted, shipped, shippedLocals, row, !!keyRow, null);
 }
 
 function isActiveMailbox(owner) {

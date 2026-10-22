@@ -3454,6 +3454,38 @@ function compareNaxItems(a, b, sort, invert) {
     return cmp;
 }
 
+// Same order as localeCompare(b, undefined, { sensitivity: 'base' }), without building a collator per call.
+const NAX_TAG_COLLATOR = new Intl.Collator(undefined, { sensitivity: 'base' });
+
+// compareNaxItems order with each item's keys read once (decorate, sort, undecorate). Stable like Array#sort.
+function sortNaxItems(items, sort, invert) {
+    const keyed = items.map((item) => ({
+        item,
+        tag: String(item.tag || ''),
+        exportIndex: Number(item.exportIndex) || 0,
+        ratio: sort === 'ratio' ? naxVoteRatio(item) : 0,
+        score: Number(item.score) || 0,
+        upvotes: Number(item.upvotes) || 0
+    }));
+    keyed.sort((a, b) => {
+        let cmp = 0;
+        if (sort === 'name') {
+            cmp = NAX_TAG_COLLATOR.compare(a.tag, b.tag);
+        } else if (sort === 'date') {
+            cmp = a.exportIndex - b.exportIndex;
+        } else if (sort === 'ratio') {
+            cmp = b.ratio - a.ratio;
+        } else if (sort !== 'random') {
+            cmp = b.score - a.score;
+            if (cmp === 0) cmp = b.upvotes - a.upvotes;
+        }
+        if (invert) cmp = -cmp;
+        if (cmp === 0) cmp = NAX_TAG_COLLATOR.compare(a.tag, b.tag);
+        return cmp;
+    });
+    return keyed.map((entry) => entry.item);
+}
+
 function mapNaxSearchItem(nax, item) {
     const prompt = typeof nax.formatTagForPrompt === 'function'
         ? nax.formatTagForPrompt(item.tag, item.gallerySlug)
@@ -3618,10 +3650,8 @@ function searchNaxTags(nax, input) {
         total += Number(page && page.total) || 0;
         if (page && Array.isArray(page.items)) merged.push(...page.items);
     }
-    if (sort !== 'random') {
-        merged.sort((a, b) => compareNaxItems(a, b, sort, invert));
-    }
-    const sliced = merged.slice(offset, offset + limit);
+    const ordered = sort !== 'random' ? sortNaxItems(merged, sort, invert) : merged;
+    const sliced = ordered.slice(offset, offset + limit);
     const items = sliced.map((item) => mapNaxSearchItem(nax, item));
     const kind = src.gallerySlug || src.gallery || src.slug
         ? null
@@ -6527,12 +6557,43 @@ function applyJobPendingResult(job, workspaceId) {
     }, true);
 }
 
+// savedPrintStat with fs.promises.stat, for the 700 ms print wait loop.
+async function savedPrintStatAsync(globalResources, filename, sinceMs) {
+    let resolved;
+    try {
+        resolved = resolveGalleryImagePath(globalResources, filename);
+    } catch (_err) {
+        return null;
+    }
+    let st;
+    try {
+        st = await fs.promises.stat(resolved.filePath);
+    } catch (_err) {
+        return null;
+    }
+    if (!st.isFile() || st.size < 64) return null;
+    const bornMs = st.birthtimeMs > 0 ? st.birthtimeMs : st.mtimeMs;
+    if (sinceMs && bornMs + 5000 < sinceMs) return null;
+    return { size: st.size };
+}
+
+// isApplyJobOwnPrint with an async stat.
+async function isApplyJobOwnPrintAsync(globalResources, job, filename) {
+    const safe = sanitizeGalleryFilename(filename);
+    if (!job || !safe) return false;
+    if (safe === job.filenameBefore || safe === job.filenameOpenBefore) return false;
+    const since = Number(job.createdAt) || 0;
+    const namedMs = galleryFilenameBornMs(safe);
+    if (namedMs != null && namedMs + APPLY_PRINT_BIRTH_SLACK_MS < since) return false;
+    return !!(await savedPrintStatAsync(globalResources, safe, namedMs == null ? since : 0));
+}
+
 async function waitForSavedStudioPrint(globalResources, req, job, deadlineMs) {
     let seen = null;
     while (Date.now() < deadlineMs && job.status === 'running') {
         const latest = await latestGalleryFilename(globalResources, req, job.workspaceId);
-        const stat = latest && isApplyJobOwnPrint(globalResources, job, latest)
-            ? savedPrintStat(globalResources, latest, 0)
+        const stat = latest && await isApplyJobOwnPrintAsync(globalResources, job, latest)
+            ? await savedPrintStatAsync(globalResources, latest, 0)
             : null;
         seen = stat ? { filename: latest, size: stat.size } : null;
         if (job.status === 'completed') break;
@@ -10219,6 +10280,7 @@ module.exports = {
         searchNaxTags,
         listNaxGalleries,
         compareNaxItems,
+        sortNaxItems,
         mapNaxSearchItem,
         collectSessionState,
         maybeOpenGeneratedInLumen,
