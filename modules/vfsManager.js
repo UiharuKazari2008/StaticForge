@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 const vfsDatabase = require('./vfsDatabase');
+const { statNamesInDir, md5HexAsync, writeFileIfMissing } = require('./vfsPerfHelpers');
 const {
     VfsSystemProvider,
     getSystemSegmentDisplayLabel,
@@ -211,11 +211,7 @@ class VfsManager {
         const surfaceFolder = folders.find(f => this._isHiddenSurfaceFolder(f));
         if (!surfaceFolder) return [];
         const entries = await vfsDatabase.getEntriesByFolder(surfaceFolder.id);
-        const items = [];
-        for (const e of entries) {
-            items.push(await this._hydrateEntry(e, { workspaceId }));
-        }
-        return items;
+        return this._hydrateEntries(entries, { workspaceId });
     }
 
     _entryToItem(entry, extra = {}) {
@@ -305,11 +301,35 @@ class VfsManager {
     }
 
     async _hydrateEntry(entry, extra = {}) {
+        const file = this._entryNeedsUserFile(entry)
+            ? await vfsDatabase.getUserFileById(entry.target_id)
+            : null;
+        return this._hydrateEntryWithFile(entry, extra, file);
+    }
+
+    _entryNeedsUserFile(entry) {
+        if (entry.target_kind === 'desktop-shortcut' && entry.entry_meta) return false;
+        return entry.target_kind === 'user-file';
+    }
+
+    // Same items as _hydrateEntry per entry, with one batched user_files read.
+    async _hydrateEntries(entries, extra = {}) {
+        const list = entries || [];
+        const ids = list.filter(e => this._entryNeedsUserFile(e)).map(e => e.target_id);
+        const files = ids.length ? await vfsDatabase.getUserFilesByIds(ids) : [];
+        const fileById = new Map(files.map(f => [f.id, f]));
+        return list.map(e => this._hydrateEntryWithFile(
+            e,
+            extra,
+            this._entryNeedsUserFile(e) ? (fileById.get(e.target_id) || null) : null
+        ));
+    }
+
+    _hydrateEntryWithFile(entry, extra, file) {
         if (entry.target_kind === 'desktop-shortcut' && entry.entry_meta) {
             return this._entryToItem(entry, extra);
         }
         if (entry.target_kind === 'user-file') {
-            const file = await vfsDatabase.getUserFileById(entry.target_id);
             if (file) {
                 const fileItem = this.makeFileItem(file, { workspaceId: extra.workspaceId });
                 return {
@@ -613,29 +633,35 @@ class VfsManager {
         return !!(sourceWsId && targetWsId && sourceWsId !== targetWsId);
     }
 
-    async _folderTreeHasUserFiles(folderId) {
-        const folder = await vfsDatabase.getFolderById(folderId);
-        if (!folder) return false;
-
-        const files = await vfsDatabase.getUserFilesByLocation(folder.scope, folder.workspace_id, folderId);
-        if (files.length > 0) return true;
-
-        const entries = await vfsDatabase.getEntriesByFolder(folderId);
-        if (entries.some(e => e.target_kind === 'user-file')) return true;
-
-        const childIds = await vfsDatabase.getChildFolderIds(folderId);
-        for (const childId of childIds) {
-            if (await this._folderTreeHasUserFiles(childId)) return true;
-        }
-        return false;
-    }
-
+    // Batched tree check: one CTE for descendants, then IN reads for folders, files, entries.
     async folderTreeHasUserFiles(folderIds) {
         const ids = [...new Set((folderIds || []).filter(Boolean))];
-        for (const folderId of ids) {
-            if (await this._folderTreeHasUserFiles(folderId)) return true;
+        if (!ids.length) return false;
+        const roots = await vfsDatabase.getFoldersByIds(ids);
+        if (!roots.length) return false;
+        const treeIds = new Set(roots.map(f => f.id));
+        for (const root of roots) {
+            for (const id of await vfsDatabase.collectDescendantFolderIds(root.id)) treeIds.add(id);
         }
-        return false;
+        const allIds = [...treeIds];
+        const folders = await vfsDatabase.getFoldersByIds(allIds);
+        const folderById = new Map(folders.map(f => [f.id, f]));
+
+        // Same filter as getUserFilesByLocation(folder.scope, folder.workspace_id, folder.id).
+        const files = await vfsDatabase.getUserFilesInFoldersIncludingTrashed(allIds);
+        for (const file of files) {
+            if (file.trashed_at != null) continue;
+            const folder = folderById.get(file.folder_id);
+            if (!folder) continue;
+            if (folder.scope === 'root') {
+                if (file.scope === 'root') return true;
+            } else if (file.scope === 'workspace' && folder.workspace_id != null && file.workspace_id === folder.workspace_id) {
+                return true;
+            }
+        }
+
+        const entries = await vfsDatabase.getEntriesByFolderIds(allIds);
+        return entries.some(e => e.target_kind === 'user-file' && folderById.has(e.folder_id));
     }
 
     async _transferFolderShortcutCrossWorkspace(ref, targetPath, location, wm, targetWsId, {
@@ -1348,7 +1374,13 @@ class VfsManager {
                 throw new Error(`Unsupported path type: ${parsed.type}`);
         }
 
-        items = await this._enrichListItemsMetadata(items, parsed);
+        // Pictures/Scraps items already carry their stat size, and enrichment only fills
+        // sizes that are 0 and adds labels, so sort and slice first and enrich the page.
+        const enrichPageOnly = parsed.type === 'system-folder'
+            && (parsed.systemName === 'Pictures' || parsed.systemName === 'Scraps');
+        if (!enrichPageOnly) {
+            items = await this._enrichListItemsMetadata(items, parsed);
+        }
 
         // Pictures/Scraps already applied omegasearch plus filename match.
         if (!parsed.skipNameFilter) {
@@ -1364,6 +1396,9 @@ class VfsManager {
         const totalCount = items.length;
         totalSizeBytes = totalSizeBytes || items.reduce((s, i) => s + (i.size || 0), 0);
         const page = this.paginateItems(items, offset, limit);
+        if (enrichPageOnly) {
+            page.items = await this._enrichListItemsMetadata(page.items, parsed);
+        }
 
         return {
             path: parsed.path,
@@ -1453,17 +1488,10 @@ class VfsManager {
                     filenames = await this._filterWorkspaceGalleryFilenames(workspaceId, 'files', filenames, search);
                     parsed.skipNameFilter = true;
                 }
+                // Async stat (images.size/mtime drift from the files after metadata rewrites).
+                const statMap = await statNamesInDir(imagesPath, filenames);
                 return filenames.map(filename => {
-                    let size = 0;
-                    let mtime = null;
-                    try {
-                        const fp = path.join(imagesPath, filename);
-                        if (fs.existsSync(fp)) {
-                            const st = fs.statSync(fp);
-                            size = st.size;
-                            mtime = Math.floor(st.mtimeMs / 1000);
-                        }
-                    } catch (_) { /* skip */ }
+                    const { size, mtime } = statMap.get(filename) || { size: 0, mtime: null };
                     return {
                         id: `img-${filename}`,
                         name: filename,
@@ -1568,17 +1596,9 @@ class VfsManager {
                 }
                 const pinnedSet = await this._listPinnedFilenameSet(workspaceId);
                 const imagesPath = this.globalResources.getPath('images');
+                const statMap = await statNamesInDir(imagesPath, scraps);
                 return scraps.map(filename => {
-                    let size = 0;
-                    let mtime = null;
-                    try {
-                        const fp = path.join(imagesPath, filename);
-                        if (fs.existsSync(fp)) {
-                            const st = fs.statSync(fp);
-                            size = st.size;
-                            mtime = Math.floor(st.mtimeMs / 1000);
-                        }
-                    } catch (_) { /* skip */ }
+                    const { size, mtime } = statMap.get(filename) || { size: 0, mtime: null };
                     return {
                         id: `scrap-${filename}`,
                         name: filename,
@@ -1601,6 +1621,63 @@ class VfsManager {
             default:
                 return [];
         }
+    }
+
+    /**
+     * Name lookup in Pictures/Scraps for FUSE (#620): the item listDirectory(dirPath,
+     * { search: name }) would match by exact then case-insensitive name, built for that
+     * one file instead of searching and statting the whole gallery.
+     * Returns null when nothing matches, undefined when the caller must list instead.
+     */
+    async findGalleryChildByName(dirPath, name) {
+        const resolvedPath = await this.resolvePathInput(dirPath || '/');
+        const parsed = this.parsePath(resolvedPath);
+        if (parsed.type !== 'system-folder') return undefined;
+        const { workspaceId, systemName } = parsed;
+        if (systemName !== 'Pictures' && systemName !== 'Scraps') return undefined;
+        const ws = this.globalResources.getWorkspaceManager().getWorkspaces()[workspaceId];
+        if (!ws) throw new Error('Workspace not found');
+
+        const isScraps = systemName === 'Scraps';
+        const trashedTargets = await vfsDatabase.getTrashedTargetIdSet(
+            workspaceId,
+            ['image', 'scrap', 'reference', 'vibe', 'note']
+        );
+        const trashKind = isScraps ? 'scrap' : 'image';
+        const filenames = (await this._readWorkspaceGalleryFilenames(workspaceId, isScraps ? 'scraps' : 'files'))
+            .filter(f => !trashedTargets.has(`${trashKind}:${f}`));
+
+        let filename = filenames.includes(name) ? name : null;
+        if (!filename) {
+            const lower = String(name).toLowerCase();
+            const ci = [...new Set(filenames.filter(f => String(f).toLowerCase() === lower))];
+            if (ci.length > 1) return undefined;
+            if (!ci.length) return null;
+            filename = ci[0];
+        }
+
+        const pinnedSet = await this._listPinnedFilenameSet(workspaceId);
+        const statMap = await statNamesInDir(this.globalResources.getPath('images'), [filename]);
+        const { size, mtime } = statMap.get(filename);
+        const item = {
+            id: `${isScraps ? 'scrap' : 'img'}-${filename}`,
+            name: filename,
+            kind: 'file',
+            targetKind: trashKind,
+            targetId: filename,
+            mimeType: 'image/png',
+            icon: isScraps ? 'fas fa-bin-recycle' : 'fas fa-file-image',
+            system: false,
+            protected: false,
+            importable: false,
+            size,
+            modifiedAt: mtime,
+            previewImageFilename: filename,
+            workspaceId,
+            isPinned: pinnedSet.has(filename)
+        };
+        const [enriched] = await this._enrichListItemsMetadata([item], parsed);
+        return enriched;
     }
 
     _shortcutToItem(shortcut, workspaceId = null) {
@@ -1764,9 +1841,7 @@ class VfsManager {
             ...inFolder.map(s => this._shortcutToItem(s, parsed.workspaceId))
         ];
 
-        for (const entry of entries) {
-            items.push(await this._hydrateEntry(entry, { workspaceId: parsed.workspaceId }));
-        }
+        items.push(...await this._hydrateEntries(entries, { workspaceId: parsed.workspaceId }));
 
         return items;
     }
@@ -1788,9 +1863,7 @@ class VfsManager {
             ...files.map(f => this.makeFileItem(f, { workspaceId: folder.workspace_id }))
         ];
 
-        for (const entry of entries) {
-            items.push(await this._hydrateEntry(entry, { workspaceId: folder.workspace_id }));
-        }
+        items.push(...await this._hydrateEntries(entries, { workspaceId: folder.workspace_id }));
 
         return items;
     }
@@ -1936,7 +2009,8 @@ class VfsManager {
         const normalized = this._normalizeSystemPath(vfsPath);
         if (normalized === '/System') return normalized;
         const segments = this._getSystemPathSegments({ path: normalized });
-        await this._systemProvider.listDirectory(segments);
+        // Validate only; listing Cache/Director here walked the folder sizes again.
+        await this._systemProvider.assertListable(segments);
         return normalized;
     }
 
@@ -2675,21 +2749,17 @@ class VfsManager {
             const folder = await vfsDatabase.getFolderById(storedFolderId);
             if (!folder || folder.trashed_at) throw new Error(`Folder not found: ${storedFolderId}`);
         }
-        const hash = crypto.createHash('md5').update(buffer).digest('hex');
+        const hash = await md5HexAsync(buffer);
         const userFilesPath = this.globalResources.getPath('userFiles');
-        if (!fs.existsSync(userFilesPath)) {
-            fs.mkdirSync(userFilesPath, { recursive: true });
-        }
+        await fs.promises.mkdir(userFilesPath, { recursive: true });
         const blobPath = path.join(userFilesPath, hash);
-        if (!fs.existsSync(blobPath)) {
-            fs.writeFileSync(blobPath, buffer);
-        }
+        await writeFileIfMissing(blobPath, buffer);
         let previewPath = null;
         if ((mimeType || '').startsWith('image/')) {
             try {
                 const sharp = require('sharp');
                 const previewDir = path.join(userFilesPath, 'previews');
-                if (!fs.existsSync(previewDir)) fs.mkdirSync(previewDir, { recursive: true });
+                await fs.promises.mkdir(previewDir, { recursive: true });
                 const previewFile = path.join(previewDir, `${hash}.webp`);
                 await sharp(buffer).resize(512, 512, { fit: 'inside' }).webp().toFile(previewFile);
                 previewPath = `${hash}.webp`;

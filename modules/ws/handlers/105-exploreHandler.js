@@ -238,7 +238,7 @@ async function handleEnsureNovelaiExploreImage(handler, ws, message, clientInfo,
         });
         let post = null;
         if (typeof explore.getExplorePostFromCache === 'function') {
-            post = explore.getExplorePostFromCache(message.id);
+            post = await explore.getExplorePostFromCache(message.id);
         }
         handler.sendToClient(ws, {
             type: 'ensure_novelai_explore_image_response',
