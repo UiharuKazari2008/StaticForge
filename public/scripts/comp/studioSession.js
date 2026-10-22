@@ -17,8 +17,11 @@ const studioSaveNameState = {
 const studioSaveFolderState = {
     path: '/',
     items: [],
-    viewMode: 'icons-lg',
+    viewMode: 'details',
     grid: null,
+    history: [],
+    historyIndex: -1,
+    expandedHeight: 0,
     navToken: 0,
     wired: false,
     mode: 'save',
@@ -513,21 +516,135 @@ function studioSaveFolderOverwrite(name) {
     return { overwriteEntryId: match.id };
 }
 
+// ---- the Save As / Open dialog: Vista's common file dialog (app.html #studioSaveFolderModal,
+// vista-file-dialog.css). An Explorer view: Back / Forward and the crumbs, Search (filters the
+// folder), Organize / Views / New Folder, Favorite Links, the Details list; File name (its ▾ lists
+// suggested names) and the type; Hide Folders folds it to the compact form (remembered). ----
+
+const STUDIO_SAVE_FOLDER_COLLAPSED_KEY = 'studioSaveFolderCollapsed';
+const STUDIO_SAVE_FOLDER_VIEWS = [
+    ['icons-xl', 'Extra Large Icons'],
+    ['icons-lg', 'Large Icons'],
+    ['icons-md', 'Medium Icons'],
+    ['icons-sm', 'Small Icons'],
+    ['list', 'List'],
+    ['details', 'Details']
+];
+
+/** Cartograph's Vista helpers (type names, dates, row metrics) while the Vista chrome is on;
+ *  ExplorerVistaChrome's methods only need the applet, so Cartograph need not have been opened. */
+function studioSaveFolderVista() {
+    const Chrome = window.ExplorerVistaChrome;
+    if (!Chrome) return null;
+    const proto = Chrome.prototype;
+    let explorer = null;
+    try {
+        // initializeExplorerApplet: public/scripts/comp/explorerApplet.js
+        explorer = initializeExplorerApplet();
+    } catch (_err) { /* type names fall back to the server's */ }
+    const ctx = { app: explorer || {} };
+    if (!proto.isOn.call(ctx)) return null;
+    return {
+        typeLabel: (item) => proto.typeLabel.call(ctx, item),
+        formatDate: (ts) => proto.formatDate.call(ctx, ts),
+        modeMetrics: (mode) => proto.modeMetrics.call(ctx, mode)
+    };
+}
+
 function studioSaveFolderSetView(mode) {
     studioSaveFolderState.viewMode = mode;
     if (studioSaveFolderState.grid) studioSaveFolderState.grid.setViewMode(mode);
-    const iconsBtn = document.getElementById('studioSaveFolderIconsBtn');
-    const listBtn = document.getElementById('studioSaveFolderListBtn');
-    if (iconsBtn) iconsBtn.classList.toggle('active', mode !== 'list');
-    if (listBtn) listBtn.classList.toggle('active', mode === 'list');
+    const pane = document.querySelector('#studioSaveFolderModal .explorer-view-pane');
+    if (pane) pane.dataset.view = mode === 'details' ? 'details' : (mode === 'list' ? 'list' : 'icons');
+    const icon = document.querySelector('#studioSaveFolderViewsBtn .explorer-command-icon');
+    if (icon) {
+        // the Views button shows the current view's icon (as Cartograph's does)
+        const art = mode === 'details' ? 'views-details' : 'views-icons-lg';
+        icon.src = `/static_images/vista-explorer/${art}.png`;
+        icon.srcset = `/static_images/vista-explorer/${art}.png 1x, /static_images/vista-explorer/${art}@2x.png 2x`;
+    }
 }
 
-async function studioSaveFolderNavigate(path) {
+/** The folder's items, filtered by the Search box. */
+function studioSaveFolderShowItems() {
+    const search = document.getElementById('studioSaveFolderSearch');
+    const q = search ? search.value.trim().toLowerCase() : '';
+    const items = q
+        ? studioSaveFolderState.items.filter((item) => String(item.name || '').toLowerCase().includes(q))
+        : studioSaveFolderState.items;
+    if (studioSaveFolderState.grid) studioSaveFolderState.grid.resetItems(items);
+}
+
+/** The crumbs: the folder icon, then one crumb per folder (the display names where known). */
+function studioSaveFolderRenderCrumbs(displayPath) {
+    const host = document.getElementById('studioSaveFolderCrumbs');
+    if (!host) return;
+    const parts = studioSaveFolderState.path.split('/').filter(Boolean);
+    const labels = String(displayPath || '').split('/').filter(Boolean);
+    const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+    let html = '<i class="fas fa-folder cpl-address-icon" aria-hidden="true"></i>';
+    html += '<span class="cpl-crumb-sep" aria-hidden="true">&#9656;</span>';
+    html += '<button type="button" class="cpl-crumb" data-crumb-path="/">Cartograph</button>';
+    parts.forEach((part, i) => {
+        const label = labels.length === parts.length ? labels[i] : part;
+        const path = `/${parts.slice(0, i + 1).join('/')}`;
+        html += '<span class="cpl-crumb-sep" aria-hidden="true">&#9656;</span>';
+        html += `<button type="button" class="cpl-crumb" data-crumb-path="${esc(path)}">${esc(label)}</button>`;
+    });
+    host.innerHTML = html;
+}
+
+function studioSaveFolderSyncTravel() {
+    const back = document.getElementById('studioSaveFolderBackBtn');
+    const forward = document.getElementById('studioSaveFolderForwardBtn');
+    const h = studioSaveFolderState.history || [];
+    const i = studioSaveFolderState.historyIndex == null ? -1 : studioSaveFolderState.historyIndex;
+    if (back) back.disabled = i <= 0;
+    if (forward) forward.disabled = i < 0 || i >= h.length - 1;
+}
+
+/** Favorite Links: Cartograph's (this workspace's folders, Workspaces, Library). */
+function studioSaveFolderRenderLinks() {
+    const host = document.getElementById('studioSaveFolderLinks');
+    if (!host) return;
+    const ws = typeof activeWorkspace !== 'undefined' && activeWorkspace ? activeWorkspace : null;
+    const links = [];
+    if (ws) {
+        links.push(['Desktop', `/Workspaces/${ws}/Desktop`, 'fav-desktop.png']);
+        links.push(['Pictures', `/Workspaces/${ws}/Pictures`, 'fav-pictures.png']);
+        links.push(['References', `/Workspaces/${ws}/References`, 'fav-searches.png']);
+        links.push(['Notes', `/Workspaces/${ws}/Notes`, 'fav-documents.png']);
+    }
+    links.push(['Workspaces', '/Workspaces', 'fav-public.png']);
+    links.push(['Library', '/System/Cache', 'fav-recent.png']);
+    host.innerHTML = links.map(([label, path, icon]) => `
+        <li><button type="button" class="explorer-favorite-link" data-path="${path}" title="${label}">
+            <img src="/static_images/vista-explorer/${icon}" alt=""><span>${label}</span></button></li>`).join('');
+    studioSaveFolderSyncLinks();
+}
+
+function studioSaveFolderSyncLinks() {
+    document.querySelectorAll('#studioSaveFolderLinks .explorer-favorite-link').forEach((b) => {
+        b.classList.toggle('is-current', b.dataset.path === studioSaveFolderState.path);
+    });
+}
+
+/** Go to a folder; history: false for Back / Forward and Refresh. */
+async function studioSaveFolderNavigate(path, options = {}) {
     const token = ++studioSaveFolderState.navToken;
     const target = path || '/';
+    if (options.history !== false && target !== studioSaveFolderState.history?.[studioSaveFolderState.historyIndex]) {
+        const h = (studioSaveFolderState.history || []).slice(0, (studioSaveFolderState.historyIndex ?? -1) + 1);
+        h.push(target);
+        studioSaveFolderState.history = h;
+        studioSaveFolderState.historyIndex = h.length - 1;
+    }
     studioSaveFolderState.path = target;
-    const address = document.getElementById('studioSaveFolderPath');
-    if (address && document.activeElement !== address) address.value = target;
+    studioSaveFolderSyncTravel();
+    studioSaveFolderSyncLinks();
+    studioSaveFolderRenderCrumbs(null);
+    const search = document.getElementById('studioSaveFolderSearch');
+    if (search && !options.keepSearch) search.value = '';
     if (!wsClient || !wsClient.isConnected()) return;
     try {
         const result = await vfsClient.listDirectory(target, {
@@ -538,16 +655,24 @@ async function studioSaveFolderNavigate(path) {
         });
         if (token !== studioSaveFolderState.navToken) return;
         studioSaveFolderState.items = result && result.items ? result.items : [];
-        if (studioSaveFolderState.grid) studioSaveFolderState.grid.resetItems(studioSaveFolderState.items);
+        studioSaveFolderShowItems();
         try {
             const stats = await vfsClient.getPathStats(target);
             if (token !== studioSaveFolderState.navToken) return;
             const displayPath = stats && (stats.displayPath || (stats.stats && stats.stats.displayPath));
-            if (displayPath && address && document.activeElement !== address) address.value = displayPath;
-        } catch (_err) { /* keep raw path */ }
+            if (displayPath) studioSaveFolderRenderCrumbs(displayPath);
+        } catch (_err) { /* keep the raw crumbs */ }
     } catch (err) {
-        showGlassToast('error', 'Save As', err.message || 'Failed to open folder', false, 4000, '<i class="fas fa-folder"></i>');
+        showGlassToast('error', studioSaveFolderTitleText(), err.message || 'Failed to open folder', false, 4000, '<i class="fas fa-folder"></i>');
     }
+}
+
+function studioSaveFolderGo(step) {
+    const h = studioSaveFolderState.history || [];
+    const next = (studioSaveFolderState.historyIndex ?? -1) + step;
+    if (next < 0 || next >= h.length) return;
+    studioSaveFolderState.historyIndex = next;
+    studioSaveFolderNavigate(h[next], { history: false });
 }
 
 function studioSaveFolderPopulateIcon(box, item) {
@@ -562,6 +687,64 @@ function studioSaveFolderPopulateIcon(box, item) {
     }
 }
 
+/** New Folder: "New Folder", "New Folder (2)" ... in the current folder. */
+async function studioSaveFolderNewFolder() {
+    const taken = new Set(studioSaveFolderState.items.map((item) => String(item.name || '').toLowerCase()));
+    let name = 'New Folder';
+    for (let n = 2; taken.has(name.toLowerCase()) && n < 100; n += 1) name = `New Folder (${n})`;
+    try {
+        await vfsClient.createFolder(studioSaveFolderState.path, name);
+        await studioSaveFolderNavigate(studioSaveFolderState.path, { history: false });
+    } catch (err) {
+        showGlassToast('error', studioSaveFolderTitleText(), err.message || 'Could not create the folder', false, 4000);
+    }
+}
+
+/** The type list: what this dialog saves or opens. */
+function studioSaveFolderTypeLabel() {
+    const mode = studioSaveFolderState.mode;
+    const accept = studioSaveFolderAcceptType();
+    if (accept === 'bracket-generation') return 'Phasewalker Files';
+    if (mode === 'open-gallery') return 'Pictures';
+    if (mode === 'open-vfs') return 'All Studio Files';
+    return 'Studio Sessions';
+}
+
+function studioSaveFolderTitleText() {
+    const title = document.getElementById('studioSaveFolderTitle');
+    return (title && title.textContent) || 'Save As';
+}
+
+/** Hide Folders / Browse Folders: the compact form is the travel band, the name and type, the buttons. */
+function studioSaveFolderSetCollapsed(collapsed, options = {}) {
+    const modal = document.getElementById('studioSaveFolderModal');
+    const btn = document.getElementById('studioSaveFolderFoldersBtn');
+    if (!modal) return;
+    const open = !modal.classList.contains('hidden');
+    if (collapsed && !modal.classList.contains('fd-collapsed') && open) {
+        studioSaveFolderState.expandedHeight = modal.getBoundingClientRect().height;
+    }
+    modal.classList.toggle('fd-collapsed', !!collapsed);
+    if (btn) {
+        btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        const label = btn.querySelector('.fd-expando-label');
+        if (label) label.textContent = collapsed ? 'Browse Folders' : 'Hide Folders';
+    }
+    if (options.remember !== false) {
+        try { localStorage.setItem(STUDIO_SAVE_FOLDER_COLLAPSED_KEY, collapsed ? '1' : '0'); } catch (_err) { /* session only */ }
+    }
+    if (!open) return;
+    // Vista's compact Save As is 175 px tall; expanding restores the height it had
+    const width = modal.getBoundingClientRect().width;
+    const height = collapsed ? 175 : (studioSaveFolderState.expandedHeight || 435);
+    // setModalSizePreservingCenter: public/scripts/comp/modalUtils.js
+    if (typeof setModalSizePreservingCenter === 'function') setModalSizePreservingCenter(modal, width, height);
+}
+
+function studioSaveFolderSavedCollapsed() {
+    try { return localStorage.getItem(STUDIO_SAVE_FOLDER_COLLAPSED_KEY) === '1'; } catch (_err) { return false; }
+}
+
 function wireStudioSaveFolderDialog() {
     if (studioSaveFolderState.wired) return;
     const modal = document.getElementById('studioSaveFolderModal');
@@ -569,9 +752,13 @@ function wireStudioSaveFolderDialog() {
     if (!modal || !host) return;
     studioSaveFolderState.wired = true;
 
+    const vista = () => studioSaveFolderVista();
     studioSaveFolderState.grid = new VfsVirtualGrid(host, {
         viewMode: studioSaveFolderState.viewMode,
         populateIconBox: (box, item) => studioSaveFolderPopulateIcon(box, item),
+        formatTypeLabel: (item) => (vista() ? vista().typeLabel(item) : null),
+        formatDate: (ts) => (vista() ? vista().formatDate(ts) : null),
+        modeOverrides: (viewMode) => (vista() ? vista().modeMetrics(viewMode) : null),
         onItemOpen: (item) => {
             if (studioSaveFolderState.mode !== 'save') {
                 void studioOpenFolderItem(item);
@@ -589,62 +776,92 @@ function wireStudioSaveFolderDialog() {
         },
         onSelectionChange: (selected) => {
             studioSaveFolderState.selected = selected || [];
-            if (studioSaveFolderState.mode !== 'save') return;
-            const item = studioSaveFolderState.selected.find((row) => studioSaveFolderSameType(row));
+            const item = studioSaveFolderState.selected.find((row) => studioSaveFolderState.mode === 'save'
+                ? studioSaveFolderSameType(row)
+                : !studioSaveFolderNavPath(row, studioSaveFolderState.path));
             if (!item) return;
             const input = document.getElementById('studioSaveFolderName');
             if (input) input.value = item.name || '';
         }
     });
 
-    const pathInput = document.getElementById('studioSaveFolderPath');
-    const upBtn = document.getElementById('studioSaveFolderUpBtn');
-    const iconsBtn = document.getElementById('studioSaveFolderIconsBtn');
-    const listBtn = document.getElementById('studioSaveFolderListBtn');
-    const autoBtn = document.getElementById('studioSaveFolderAutoBtn');
-    const cancelBtn = document.getElementById('studioSaveFolderCancelBtn');
-    const saveBtn = document.getElementById('studioSaveFolderSaveBtn');
-    const closeBtn = document.getElementById('closeStudioSaveFolderBtn');
-    const nameInput = document.getElementById('studioSaveFolderName');
+    const $ = (id) => document.getElementById(id);
+    const nameInput = $('studioSaveFolderName');
+    const address = $('studioSaveFolderPath');
+    const addressGroup = modal.querySelector('.fd-address-group');
+    const crumbs = $('studioSaveFolderCrumbs');
 
-    if (upBtn) {
-        upBtn.addEventListener('click', () => {
-            const parts = studioSaveFolderState.path.split('/').filter(Boolean);
-            if (!parts.length) return;
-            parts.pop();
-            studioSaveFolderNavigate(parts.length ? `/${parts.join('/')}` : '/');
+    $('studioSaveFolderBackBtn')?.addEventListener('click', () => studioSaveFolderGo(-1));
+    $('studioSaveFolderForwardBtn')?.addEventListener('click', () => studioSaveFolderGo(1));
+    $('studioSaveFolderRefreshBtn')?.addEventListener('click', () => studioSaveFolderNavigate(studioSaveFolderState.path, { history: false, keepSearch: true }));
+
+    // the crumbs navigate; a click on the empty part of the box types a path
+    const leaveAddress = () => {
+        if (addressGroup) addressGroup.classList.remove('is-typing');
+        if (address) address.classList.add('hidden');
+    };
+    if (crumbs) {
+        crumbs.addEventListener('click', (e) => {
+            const crumb = e.target.closest('[data-crumb-path]');
+            if (crumb) {
+                studioSaveFolderNavigate(crumb.dataset.crumbPath);
+                return;
+            }
+            if (!address || !addressGroup) return;
+            address.value = studioSaveFolderState.path;
+            addressGroup.classList.add('is-typing');
+            address.classList.remove('hidden');
+            address.focus();
+            address.select();
         });
     }
-    if (pathInput) {
-        pathInput.addEventListener('keydown', async (e) => {
+    if (address) {
+        address.addEventListener('blur', leaveAddress);
+        address.addEventListener('keydown', async (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                address.blur();
+                return;
+            }
             if (e.key !== 'Enter') return;
             e.preventDefault();
-            const typed = pathInput.value.trim() || '/';
+            const typed = address.value.trim() || '/';
             let resolved = typed;
             try {
                 resolved = await vfsClient.resolvePath(typed);
             } catch (_err) { /* use typed */ }
+            address.blur();
             studioSaveFolderNavigate(resolved || typed);
         });
     }
-    if (iconsBtn) iconsBtn.addEventListener('click', () => studioSaveFolderSetView('icons-lg'));
-    if (listBtn) listBtn.addEventListener('click', () => studioSaveFolderSetView('list'));
-    if (autoBtn) {
-        autoBtn.addEventListener('click', async () => {
-            if (!nameInput) return;
-            const names = await studioSaveCollectNames('folder');
-            nameInput.value = studioSaveSuggestName(names);
-            nameInput.focus();
-        });
-    }
-    if (cancelBtn) cancelBtn.addEventListener('click', () => closeModal(modal));
-    if (closeBtn) closeBtn.addEventListener('click', () => closeModal(modal));
-    if (saveBtn) {
-        saveBtn.addEventListener('click', () => {
-            if (studioSaveFolderState.mode === 'save') studioSaveFolderConfirm();
-            else studioSaveFolderOpenSelected();
-        });
-    }
+
+    const search = $('studioSaveFolderSearch');
+    if (search) search.addEventListener('input', () => studioSaveFolderShowItems());
+
+    $('studioSaveFolderLinks')?.addEventListener('click', (e) => {
+        const link = e.target.closest('[data-path]');
+        if (link) studioSaveFolderNavigate(link.dataset.path);
+    });
+
+    $('studioSaveFolderNewFolderBtn')?.addEventListener('click', () => studioSaveFolderNewFolder());
+    // Help: Grimoire, as Cartograph's (openGrimoireApplet: public/scripts/comp/featureLoader.js)
+    $('studioSaveFolderHelpBtn')?.addEventListener('click', () => {
+        if (typeof openGrimoireApplet === 'function') openGrimoireApplet();
+    });
+    $('studioSaveFolderFoldersBtn')?.addEventListener('click', () => {
+        studioSaveFolderSetCollapsed(!modal.classList.contains('fd-collapsed'));
+    });
+    $('studioSaveFolderCancelBtn')?.addEventListener('click', () => closeModal(modal));
+    $('closeStudioSaveFolderBtn')?.addEventListener('click', () => closeModal(modal));
+    $('studioSaveFolderSaveBtn')?.addEventListener('click', () => {
+        if (studioSaveFolderState.mode === 'save') studioSaveFolderConfirm();
+        else studioSaveFolderOpenSelected();
+    });
+    // Alt shows the access keys
+    modal.addEventListener('keydown', (e) => {
+        if (e.key === 'Alt') modal.classList.add('fd-cues');
+    });
     if (nameInput) {
         nameInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
@@ -658,20 +875,72 @@ function wireStudioSaveFolderDialog() {
             }
         });
     }
+
     if (contextMenu) {
-        const workspaceBtn = document.getElementById('studioSaveFolderWorkspaceBtn');
-        if (workspaceBtn) {
-            contextMenu.attachClickMenuToElement(workspaceBtn, {
+        // Organize: Vista's file dialog has New Folder at the top and Close at the bottom
+        const organize = $('studioSaveFolderOrganizeBtn');
+        if (organize) {
+            contextMenu.attachClickMenuToElement(organize, {
+                sections: [{
+                    type: 'list',
+                    items: [
+                        { text: 'New Folder', action: 'fd-new-folder' },
+                        { separator: true },
+                        { text: 'Close', action: 'fd-close' }
+                    ]
+                }],
+                onAction: (action) => {
+                    if (action === 'fd-new-folder') studioSaveFolderNewFolder();
+                    else if (action === 'fd-close') closeModal(modal);
+                }
+            });
+        }
+        const views = $('studioSaveFolderViewsBtn');
+        if (views) {
+            contextMenu.attachClickMenuToElement(views, {
                 sections: [{
                     type: 'list',
                     initfn: function (section) {
-                        section.items = studioSaveWorkspaceMenuItems();
+                        section.items = STUDIO_SAVE_FOLDER_VIEWS.map(([mode, text]) => ({
+                            text,
+                            action: `fd-view:${mode}`,
+                            highlighted: mode === studioSaveFolderState.viewMode
+                        }));
                     }
                 }],
-                onAction: function (action, _target, item) {
-                    if (action === 'studio-save-workspace' && item && item.workspaceId) {
-                        studioOpenGalleryWorkspace(item.workspaceId);
+                onAction: (action) => {
+                    if (action.startsWith('fd-view:')) studioSaveFolderSetView(action.slice(8));
+                }
+            });
+        }
+        // File name ▾: the suggested name and the same kind of file in this folder
+        const drop = $('studioSaveFolderNameDrop');
+        if (drop) {
+            contextMenu.attachClickMenuToElement(drop, {
+                sections: [{
+                    type: 'list',
+                    initfn: function (section) {
+                        const names = [];
+                        const host = studioSaveFolderState.host;
+                        if (studioSaveFolderState.mode === 'save') {
+                            names.push(host && typeof host.suggestName === 'function'
+                                ? host.suggestName()
+                                : studioSaveSuggestName(studioSaveFolderState.items.map((item) => item.name)));
+                        }
+                        studioSaveFolderState.items.forEach((item) => {
+                            const fits = studioSaveFolderState.mode === 'save'
+                                ? studioSaveFolderSameType(item)
+                                : !studioSaveFolderNavPath(item, studioSaveFolderState.path);
+                            if (fits && item.name && !names.includes(item.name)) names.push(item.name);
+                        });
+                        section.items = names.filter(Boolean).slice(0, 12).map((text) => ({ text, action: 'fd-name', fdName: text }));
                     }
+                }],
+                onAction: (action, _target, item) => {
+                    if (action !== 'fd-name' || !item || !nameInput) return;
+                    nameInput.value = item.fdName;
+                    nameInput.focus();
+                    nameInput.select();
                 }
             });
         }
@@ -680,23 +949,33 @@ function wireStudioSaveFolderDialog() {
 
 function studioSaveFolderApplyChrome(mode) {
     studioSaveFolderState.mode = mode || 'save';
+    const modal = document.getElementById('studioSaveFolderModal');
     const title = document.getElementById('studioSaveFolderTitle');
     const saveBtn = document.getElementById('studioSaveFolderSaveBtn');
-    const nameInput = document.getElementById('studioSaveFolderName');
-    const autoBtn = document.getElementById('studioSaveFolderAutoBtn');
-    const workspaceBtn = document.getElementById('studioSaveFolderWorkspaceBtn');
+    const nameLabel = document.querySelector('#studioSaveFolderModal .fd-name-label');
+    const typeSelect = document.getElementById('studioSaveFolderType');
     const openMode = studioSaveFolderState.mode !== 'save';
     const hostTitle = studioSaveFolderState.host && studioSaveFolderState.host.title;
-    if (title) {
-        title.textContent = hostTitle
-            || (studioSaveFolderState.mode === 'open-gallery'
-                ? 'Open Gallery Image'
-                : (studioSaveFolderState.mode === 'open-vfs' ? 'Open VFS File' : 'Save As'));
+    if (modal) modal.dataset.fileDialogMode = openMode ? 'open' : 'save';
+    if (title) title.textContent = hostTitle || (openMode ? 'Open' : 'Save As');
+    if (saveBtn) saveBtn.innerHTML = openMode ? '<u>O</u>pen' : '<u>S</u>ave';
+    if (nameLabel) nameLabel.innerHTML = 'File <u>n</u>ame:';
+    if (typeSelect) {
+        typeSelect.innerHTML = '';
+        const option = document.createElement('option');
+        option.textContent = studioSaveFolderTypeLabel();
+        typeSelect.appendChild(option);
     }
-    if (saveBtn) saveBtn.textContent = openMode ? 'Open' : 'Save';
-    if (nameInput) nameInput.classList.toggle('hidden', openMode);
-    if (autoBtn) autoBtn.classList.toggle('hidden', openMode);
-    if (workspaceBtn) workspaceBtn.classList.toggle('hidden', studioSaveFolderState.mode !== 'open-gallery');
+    // the caption shows the owner's icon (Studio, or Phasewalker for its files)
+    const ownerId = studioSaveFolderAcceptType() === 'bracket-generation' ? 'bracketGenerationModal' : 'manualModal';
+    const ownerIcon = document.querySelector(`#${ownerId} .modal-window-title-main img.icon-image`);
+    const icon = document.querySelector('#studioSaveFolderModal .modal-window-title-main img.icon-image');
+    if (icon && ownerIcon) {
+        icon.src = ownerIcon.getAttribute('src');
+        const srcset = ownerIcon.getAttribute('srcset');
+        if (srcset) icon.setAttribute('srcset', srcset);
+    }
+    if (modal) modal.dataset.iconOwnerId = ownerId;
 }
 
 async function openStudioSaveFolderDialog() {
@@ -711,23 +990,32 @@ async function studioOpenFolderDialog(mode, options = {}) {
     const nameInput = document.getElementById('studioSaveFolderName');
     if (!modal) return;
     studioSaveFolderState.host = options.host || null;
+    studioSaveFolderState.history = [];
+    studioSaveFolderState.historyIndex = -1;
     studioSaveFolderApplyChrome(mode);
-    if (nameInput && mode === 'save') {
+    if (nameInput) {
         const suggest = studioSaveFolderState.host && studioSaveFolderState.host.suggestName;
-        nameInput.value = typeof suggest === 'function' ? suggest() : studioSessionPresetName();
+        nameInput.value = mode === 'save' ? (typeof suggest === 'function' ? suggest() : studioSessionPresetName()) : '';
     }
-    studioSaveFolderSetView(studioSaveFolderState.viewMode || 'icons-lg');
+    modal.classList.remove('fd-cues');
+    studioSaveFolderRenderLinks();
+    studioSaveFolderSetView(studioSaveFolderState.viewMode || 'details');
+    // only Save As folds; Open is always the Explorer view
+    studioSaveFolderSetCollapsed(mode === 'save' && studioSaveFolderSavedCollapsed(), { remember: false });
     const workspaceId = (typeof activeWorkspace !== 'undefined' && activeWorkspace) ? activeWorkspace : '';
     let start = options.startPath || '/';
     if (!options.startPath) {
         if (mode === 'open-gallery' && workspaceId) start = `/Workspaces/${workspaceId}/Pictures`;
         else if (mode === 'save' && workspaceId) start = `/Workspaces/${workspaceId}`;
     }
-    studioOpenFolderSyncWorkspaceDot(workspaceId);
     openModal(modal);
     bringModalToFront(modal);
+    if (modal.classList.contains('fd-collapsed')) studioSaveFolderSetCollapsed(true, { remember: false });
     await studioSaveFolderNavigate(start);
-    if (nameInput && mode === 'save') nameInput.focus();
+    if (nameInput) {
+        nameInput.focus();
+        nameInput.select();
+    }
 }
 
 async function studioSaveFolderConfirm() {
@@ -765,22 +1053,6 @@ async function studioSaveFolderConfirm() {
     if (saved) closeModal(modal);
 }
 
-function studioOpenFolderSyncWorkspaceDot(workspaceId) {
-    const ws = (typeof workspaces !== 'undefined' && workspaces) ? workspaces[workspaceId] : null;
-    const dot = document.getElementById('studioSaveFolderWorkspaceDot');
-    const btn = document.getElementById('studioSaveFolderWorkspaceBtn');
-    const color = (ws && ws.color) || '#102040';
-    const label = (ws && ws.name) || workspaceId || 'Workspace';
-    if (dot) dot.style.backgroundColor = color;
-    if (btn) btn.title = label;
-}
-
-function studioOpenGalleryWorkspace(workspaceId) {
-    if (!workspaceId) return;
-    studioOpenFolderSyncWorkspaceDot(workspaceId);
-    studioSaveFolderNavigate(`/Workspaces/${workspaceId}/Pictures`);
-}
-
 function studioSaveFolderOpenSelected() {
     const selected = studioSaveFolderState.selected || [];
     const item = selected[0];
@@ -809,8 +1081,6 @@ async function studioOpenFolderItem(item) {
     const nav = studioSaveFolderNavPath(item, studioSaveFolderState.path);
     if (nav) {
         studioSaveFolderNavigate(nav);
-        const parts = nav.split('/').filter(Boolean);
-        if (parts[0] === 'Workspaces' && parts[1]) studioOpenFolderSyncWorkspaceDot(parts[1]);
         return;
     }
     const host = studioSaveFolderState.host;

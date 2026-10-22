@@ -6,19 +6,6 @@
     min-height: 500px;
 }
 
-#studioSaveFolderModal {
-    width: 720px;
-    height: 520px;
-    min-width: 520px;
-    min-height: 420px;
-}
-
-#studioSaveFolderModal .explorer-statusbar > .form-control {
-    flex: 1;
-    min-width: 0;
-    height: 32px;
-}
-
 #studioSaveNameModal {
     width: min(420px, 92vw);
 }
@@ -265,8 +252,7 @@
     min-width: 6rem;
 }
 
-#explorerModal .modal-window-title-toolbar .explorer-address-bar,
-#studioSaveFolderModal .modal-window-title-toolbar .explorer-address-bar {
+#explorerModal .modal-window-title-toolbar .explorer-address-bar {
     font-family: var(--font-mono);
     font-size: 0.8125rem;
 }
@@ -340,8 +326,7 @@
     outline-offset: -4px;
 }
 
-#explorerModal .explorer-statusbar,
-#studioSaveFolderModal .explorer-statusbar {
+#explorerModal .explorer-statusbar {
     display: flex;
     align-items: center;
     gap: var(--spacing-sm);
@@ -374,8 +359,7 @@
     flex-shrink: 0;
 }
 
-#explorerModal .explorer-view-toggle.active,
-#studioSaveFolderModal .explorer-view-toggle.active {
+#explorerModal .explorer-view-toggle.active {
     background: rgba(135, 206, 250, 0.25);
 }
 

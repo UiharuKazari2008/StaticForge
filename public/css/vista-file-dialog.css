@@ -1,0 +1,404 @@
+/* Save As / Open (#studioSaveFolderModal, studioSession.js): Vista's common file dialog, 1:1 with the
+   Vista VM's (Notepad's Save As and Open at 96 dpi, 2026-10-22). It is an Explorer view: the travel
+   band, the command bar (Organize, Views, New Folder), Favorite Links and the Details list are
+   Explorer's own rules (vista-explorer.css lists this window next to Cartograph, Control Panel and
+   Games). This sheet is the rest. Window 610x435 by default (resizable); client coordinates from
+   the window's left edge + 8 and the top + 63:
+     the command bar 0..30, the panes from 31, the nav pane 158 + its 1 px line;
+     Save As: the panes end at 252; the bottom from 253: a #9db4c2 line and an 8 px fade to #f0f0f0;
+       "File name:" / "Save as type:" right-aligned to 116, the boxes from 125 to 5 px short of the
+       right edge, 23 px tall at +10 / +35; Hide Folders (the expando glyph, its label 24 px in) at
+       10,+78 (92x19 when hot); Save / Cancel 75x23 at +78, 102 / 15 px from the right
+     Open: the panes end at 295; the bottom from 296: "File name:" to 156, its box 164..405 (22 px),
+       the file type list 162 px wide 15 px from the right (21 px) at +8; Open / Cancel at +35
+     Hide Folders folds the dialog to its compact form: no command bar, no panes, 610x175.
+   Segoe UI 9 pt; the caption keeps the owner's icon and the dialog's title. */
+
+body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal.modal.toolbar-visible .modal-window-title-main {
+    visibility: visible;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-window-title-main > :is(.icon-image, .icon-fa) {
+    visibility: visible;
+}
+
+/* the caption row keeps the icon and title (the band below it is the toolbar) */
+body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal.modal.toolbar-visible .modal-window-title-main {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 28px;
+    min-height: 28px;
+    margin: 0;
+}
+
+/* the search box is narrower than Explorer's (VM: 198 px, 6 px after the address box) */
+body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-window-title-toolbar .button-group:has(> .cpl-search) {
+    flex: 0 0 198px;
+    width: 198px;
+    max-width: 198px;
+}
+
+/* the address: Cartograph's icon, the crumbs, the history ▾ at the right end */
+body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-window-title-toolbar .cpl-address {
+    display: flex;
+    align-items: center;
+    /* long paths stay in the box; the history ▾ sits in its right margin */
+    overflow: clip;
+    overflow-clip-margin: 24px;
+    cursor: text;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-window-title-toolbar .cpl-address-icon {
+    flex: none;
+    background: url("/static_images/vista-explorer/crumb-folder.png") no-repeat center / 16px 16px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-window-title-toolbar .cpl-crumb-sep {
+    flex: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-window-title-toolbar .cpl-crumb {
+    flex: none;
+    cursor: default;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-window-title-toolbar .cpl-crumb:not(:hover) {
+    background: transparent;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-window-title-toolbar .cpl-address::after {
+    content: '';
+    flex: none;
+    width: 7px;
+    height: 4px;
+    margin: 0 -19px 0 auto;
+    background: #000;
+    clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+/* typing a path: the box takes the crumbs' place */
+body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-window-title-toolbar .fd-address-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 20px;
+    min-height: 0;
+    margin-right: 24px;
+    padding: 0 4px;
+    background: #fff;
+    border: 0;
+    box-shadow: none;
+    color: #000;
+    font: 12px "Segoe UI", "Noto Sans", sans-serif;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-window-title-toolbar .fd-address-group.is-typing .cpl-address {
+    display: none;
+}
+
+/* ---- the client ---- */
+
+#studioSaveFolderModal > .modal-content.fd-client {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: #f0f0f0;
+    color: #000;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 15px;
+    text-shadow: none;
+}
+
+/* the command bar's row: the commands, Help at the right end (Cartograph's layout, explorer.css) */
+#studioSaveFolderModal .fd-commandbar .naxt-search-controls {
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    width: 100%;
+    min-width: 0;
+}
+
+#studioSaveFolderModal .fd-commandbar .explorer-toolbar-right {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+#studioSaveFolderModal .fd-main {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+#studioSaveFolderModal .explorer-folders-bar {
+    pointer-events: none;
+}
+
+#studioSaveFolderModal .explorer-view-pane:not([data-view="details"]) .explorer-details-header {
+    display: none;
+}
+
+/* ---- the bottom: name, type, Hide Folders, the buttons ---- */
+
+#studioSaveFolderModal .fd-bottom {
+    position: relative;
+    flex: none;
+    box-sizing: border-box;
+    height: 111px;
+    background: linear-gradient(#c6cfd9, #e7e9eb 4px, #f0f0f0 8px);
+    border-top: 1px solid #9db4c2;
+}
+
+#studioSaveFolderModal .fd-label {
+    position: absolute;
+    right: calc(100% - 117px);
+    margin: 0;
+    padding: 0;
+    color: #000;
+    white-space: nowrap;
+    cursor: default;
+}
+
+#studioSaveFolderModal .fd-name-label {
+    top: 13px;
+}
+
+#studioSaveFolderModal .fd-type-label {
+    top: 38px;
+}
+
+#studioSaveFolderModal u {
+    text-decoration: none;
+}
+
+#studioSaveFolderModal.fd-cues u {
+    text-decoration: underline;
+}
+
+/* File name: Vista's editable combo box (the edit face; the ▾ lists suggested names) */
+#studioSaveFolderModal .fd-name-combo {
+    position: absolute;
+    left: 125px;
+    right: 5px;
+    top: 9px;
+    height: 23px;
+}
+
+#studioSaveFolderModal .fd-name-combo > input {
+    position: absolute;
+    inset: 0;
+    box-sizing: border-box;
+    width: 100%;
+    height: 23px;
+    min-height: 0;
+    margin: 0;
+    padding: 0 19px 0 3px;
+    border-width: 1px;
+    background-color: #fff;
+    color: #000;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 21px;
+}
+
+#studioSaveFolderModal .fd-name-combo > input::selection {
+    background: #3399ff;
+    color: #fff;
+}
+
+#studioSaveFolderModal .fd-name-combo:hover > input:not(:focus) {
+    --vista-edit-face: url("/static_images/vista-controls/edit-hot.png");
+}
+
+#studioSaveFolderModal .fd-name-drop {
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: 17px;
+    height: 23px;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    background: url("/static_images/vista-controls/combo-glyph-normal.png") 3px 2px / 10px 19px no-repeat;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    cursor: default;
+}
+
+#studioSaveFolderModal .fd-name-drop:hover {
+    background: url("/static_images/vista-controls/combo-dropbtn-hot.png") 0 0 / 17px 23px no-repeat;
+}
+
+#studioSaveFolderModal .fd-name-drop:is(:active, .context-open) {
+    background: url("/static_images/vista-controls/combo-dropbtn-pressed.png") 0 0 / 17px 23px no-repeat;
+}
+
+/* Save as type: a drop-down list (the shared combo face) */
+#studioSaveFolderModal .fd-type {
+    position: absolute;
+    left: 125px;
+    right: 5px;
+    top: 34px;
+    box-sizing: border-box;
+    width: auto;
+    height: 23px;
+    min-height: 0;
+    margin: 0;
+    color: #000;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    white-space: nowrap;
+}
+
+/* Hide Folders / Browse Folders: the expando glyph and its label, a grey frame when hot */
+#studioSaveFolderModal .fd-expando {
+    position: absolute;
+    left: 10px;
+    top: 77px;
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+    height: 19px;
+    min-height: 0;
+    min-width: 0;
+    margin: 0;
+    padding: 0 6px 0 23px;
+    background: url("/static_images/vista-file-dialog/expando-up.png") -1px -1px / 20px 20px no-repeat;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    box-shadow: none;
+    color: #000;
+    font: 9pt "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    line-height: 15px;
+    cursor: default;
+}
+
+#studioSaveFolderModal .fd-expando:hover {
+    background:
+        url("/static_images/vista-file-dialog/expando-up.png") -2px -2px / 20px 20px no-repeat,
+        linear-gradient(#fbfbfb, #f2f2f2 3px, #f0f0f0 60%, #e9e9e9);
+    border-color: #a8a8a8;
+}
+
+#studioSaveFolderModal .fd-expando:focus-visible {
+    outline: 1px dotted #000;
+    outline-offset: -3px;
+}
+
+#studioSaveFolderModal .fd-expando-glyph {
+    display: none;
+}
+
+#studioSaveFolderModal .fd-button {
+    position: absolute;
+    top: 77px;
+    box-sizing: border-box;
+    width: 75px;
+    min-width: 75px;
+    height: 23px;
+    min-height: 0;
+    margin: 0;
+    padding: 0 6px;
+    line-height: 21px;
+}
+
+#studioSaveFolderModal .fd-save {
+    right: 102px;
+}
+
+#studioSaveFolderModal .fd-cancel {
+    right: 15px;
+}
+
+/* ---- the compact form (Browse Folders): the travel band, the name and type, the buttons ---- */
+
+/* (Explorer's shared pane rules would show the panes again) */
+#studioSaveFolderModal.fd-collapsed :is(.fd-commandbar, .fd-main) {
+    display: none !important;
+}
+
+/* VM: the boxes at 5 / 30, the labels at 9 / 34, Browse Folders and the buttons at 71 */
+#studioSaveFolderModal.fd-collapsed .fd-name-combo {
+    top: 5px;
+}
+
+#studioSaveFolderModal.fd-collapsed .fd-type {
+    top: 30px;
+}
+
+#studioSaveFolderModal.fd-collapsed .fd-name-label {
+    top: 9px;
+}
+
+#studioSaveFolderModal.fd-collapsed .fd-type-label {
+    top: 34px;
+}
+
+#studioSaveFolderModal.fd-collapsed :is(.fd-expando, .fd-button) {
+    top: 71px;
+}
+
+#studioSaveFolderModal.fd-collapsed .fd-bottom {
+    flex: 1 1 auto;
+    height: auto;
+    background: #f0f0f0;
+    border-top: 0;
+}
+
+#studioSaveFolderModal.fd-collapsed .fd-expando {
+    background-image: url("/static_images/vista-file-dialog/expando-down.png");
+}
+
+#studioSaveFolderModal.fd-collapsed .fd-expando:hover {
+    background-image:
+        url("/static_images/vista-file-dialog/expando-down.png"),
+        linear-gradient(#fbfbfb, #f2f2f2 3px, #f0f0f0 60%, #e9e9e9);
+}
+
+/* ---- Open: the name and the file types on one row, no Hide Folders ---- */
+
+#studioSaveFolderModal[data-file-dialog-mode="open"] .fd-bottom {
+    height: 68px;
+}
+
+#studioSaveFolderModal[data-file-dialog-mode="open"] :is(.fd-expando, .fd-type-label) {
+    display: none;
+}
+
+#studioSaveFolderModal[data-file-dialog-mode="open"] .fd-name-label {
+    top: 10px;
+    right: calc(100% - 157px);
+}
+
+#studioSaveFolderModal[data-file-dialog-mode="open"] .fd-name-combo {
+    left: 164px;
+    right: 189px;
+    top: 7px;
+    height: 22px;
+}
+
+#studioSaveFolderModal[data-file-dialog-mode="open"] .fd-name-combo > input,
+#studioSaveFolderModal[data-file-dialog-mode="open"] .fd-name-drop {
+    height: 22px;
+}
+
+#studioSaveFolderModal[data-file-dialog-mode="open"] .fd-type {
+    left: auto;
+    right: 15px;
+    top: 7px;
+    width: 162px;
+    height: 21px;
+}
+
+#studioSaveFolderModal[data-file-dialog-mode="open"] .fd-button {
+    top: 34px;
+}
+
+/* off the Vista desktop (Classic, or the app outside desktop mode) the same layout in grey */
+body.windows-classic-theme #studioSaveFolderModal .fd-bottom {
+    background: var(--ButtonFace, #d4d0c8);
+    border-top-color: var(--ButtonShadow, #808080);
+}

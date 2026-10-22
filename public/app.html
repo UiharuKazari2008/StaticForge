@@ -389,6 +389,7 @@
     <link rel="stylesheet" href="/css/vista-director.css">
     <link rel="stylesheet" href="/css/vista-menus.css">
     <link rel="stylesheet" href="/css/vista-explorer.css">
+    <link rel="stylesheet" href="/css/vista-file-dialog.css">
     <link rel="stylesheet" href="/css/desktop-icon-view.css">
     <link rel="stylesheet" href="/css/vista-scrollbars.css">
     <link rel="stylesheet" href="/css/vista-dialogs.css">
@@ -5675,30 +5676,38 @@ Examples:
         </div>
     </div>
 
-    <div id="studioSaveFolderModal" class="modal toolbar-visible resizeable-window hidden"
-        data-window-identifier="studio-save-folder" data-window-min-width="520" data-window-min-height="420"
-        data-window-default-width="720" data-window-default-height="520">
+    <!-- Save As / Open: Vista's common file dialog (an Explorer view, the expanded "Browse Folders"
+         form; Hide Folders folds it to the compact form). Travel band and panes are Explorer's
+         (vista-explorer.css lists this window with Control Panel / Games and Cartograph), the rest is
+         vista-file-dialog.css; logic in studioSession.js -->
+    <div id="studioSaveFolderModal" class="modal toolbar-visible resizeable-window hidden file-dialog"
+        data-window-identifier="studio-save-folder" data-window-client="light" data-vista-dialog="file"
+        data-file-dialog-mode="save" data-window-no-maximize="true"
+        data-window-min-width="430" data-window-min-height="380"
+        data-window-default-width="610" data-window-default-height="435">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fa-regular fa-folder-open icon-fa"></i>
+                <img src="/static_images/app_icons/24/studio.webp" srcset="/static_images/app_icons/24/studio.webp 1x, /static_images/app_icons/48/studio.webp 2x" alt="" class="icon-image" />
                 <span id="studioSaveFolderTitle">Save As</span>
             </div>
             <div class="modal-window-title-toolbar">
-                <button type="button" id="studioSaveFolderUpBtn" class="btn-secondary" title="Up">
-                    <i class="fas fa-arrow-up"></i>
-                </button>
-                <button type="button" id="studioSaveFolderWorkspaceBtn" class="btn-secondary hidden" title="Workspace">
-                    <span id="studioSaveFolderWorkspaceDot" class="workspace-color-indicator"></span>
-                </button>
-                <div class="button-group">
-                    <input type="text" id="studioSaveFolderPath"
-                        class="form-control colored explorer-address-bar toolbar-input-segment" placeholder="/"
-                        spellcheck="false" autocapitalize="false" autocorrect="false">
+                <div class="button-group naxt-nav-group">
+                    <button type="button" id="studioSaveFolderBackBtn" class="btn-secondary toolbar-input-segment cpl-back" title="Back" disabled><i class="fas fa-arrow-left"></i></button>
+                    <button type="button" id="studioSaveFolderForwardBtn" class="btn-secondary toolbar-input-segment cpl-forward" title="Forward" disabled><i class="fas fa-arrow-right"></i></button>
+                    <button type="button" class="btn-secondary toolbar-input-segment explorer-recent-pages-btn cpl-recent" title="Recent Pages" aria-label="Recent Pages" disabled></button>
                 </div>
-                <button type="button" id="studioSaveFolderIconsBtn" class="btn-secondary explorer-view-toggle active"
-                    title="Icons"><i class="fas fa-th-large"></i></button>
-                <button type="button" id="studioSaveFolderListBtn" class="btn-secondary explorer-view-toggle"
-                    title="List"><i class="fas fa-list"></i></button>
+                <div class="button-group cpl-address-group fd-address-group">
+                    <!-- the crumbs; a click on the empty part types a path in the box under them -->
+                    <div id="studioSaveFolderCrumbs" class="form-control colored toolbar-input-segment cpl-address" role="navigation" aria-label="Address"></div>
+                    <input type="text" id="studioSaveFolderPath" class="form-control colored toolbar-input-segment fd-address-input hidden"
+                        spellcheck="false" autocapitalize="false" autocorrect="false" aria-label="Address">
+                    <button type="button" id="studioSaveFolderRefreshBtn" class="btn-secondary toolbar-input-segment cpl-refresh" title="Refresh"><i class="fas fa-sync"></i></button>
+                </div>
+                <div class="button-group">
+                    <input type="text" id="studioSaveFolderSearch" class="form-control colored toolbar-input-segment cpl-search" placeholder="Search"
+                        spellcheck="false" autocapitalize="off" autocorrect="off">
+                </div>
             </div>
         </div>
         <div class="modal-focus-overlay"></div>
@@ -5707,14 +5716,65 @@ Examples:
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content naxt-modal-content dark">
-            <div id="studioSaveFolderGrid" class="explorer-grid-host"></div>
-            <div class="explorer-statusbar">
-                <input type="text" id="studioSaveFolderName" class="form-control hover-show colored"
-                    placeholder="Name" spellcheck="false" autocapitalize="false" autocorrect="false">
-                <button type="button" id="studioSaveFolderAutoBtn" class="btn-secondary">Auto</button>
-                <button type="button" id="studioSaveFolderCancelBtn" class="btn-secondary">Cancel</button>
-                <button type="button" id="studioSaveFolderSaveBtn" class="btn-primary">Save</button>
+        <div class="modal-content fd-client">
+            <div class="explorer-actions-header naxt-search-header fd-commandbar">
+                <div class="naxt-search-controls">
+                <div class="explorer-command-set">
+                    <button type="button" id="studioSaveFolderOrganizeBtn" class="explorer-command-btn has-menu"
+                        title="Organize this folder's contents."><img class="explorer-command-icon"
+                            src="/static_images/vista-explorer/organize.png" alt="">Organize<span
+                            class="explorer-command-glyph" aria-hidden="true"></span></button>
+                    <button type="button" id="studioSaveFolderViewsBtn" class="explorer-command-btn has-menu"
+                        title="Change your view."><img class="explorer-command-icon"
+                            src="/static_images/vista-explorer/views-icons-lg.png" srcset="/static_images/vista-explorer/views-icons-lg.png 1x, /static_images/vista-explorer/views-icons-lg@2x.png 2x" alt="">Views<span
+                            class="explorer-command-glyph" aria-hidden="true"></span></button>
+                    <button type="button" id="studioSaveFolderNewFolderBtn" class="explorer-command-btn"
+                        title="Create a new, empty folder."><img class="explorer-command-icon"
+                            src="/static_images/vista-file-dialog/new-folder.png" alt="">New Folder</button>
+                </div>
+                <div class="explorer-toolbar-right">
+                    <button type="button" id="studioSaveFolderHelpBtn" class="explorer-help-btn" title="Get help">
+                        <img src="/static_images/vista-explorer/help-16.png" srcset="/static_images/vista-explorer/help-16.png 1x, /static_images/vista-explorer/help-16@2x.png 2x" alt="">
+                    </button>
+                </div>
+                </div>
+            </div>
+            <div class="explorer-main fd-main">
+                <aside class="explorer-nav-pane">
+                    <div class="explorer-favorites">
+                        <div class="explorer-nav-heading">Favorite Links</div>
+                        <ul id="studioSaveFolderLinks" class="explorer-favorite-links"></ul>
+                    </div>
+                    <div class="explorer-folders">
+                        <button type="button" class="explorer-folders-bar" tabindex="-1" aria-expanded="false">
+                            <span>Folders</span><span class="explorer-folders-chevron" aria-hidden="true"></span>
+                        </button>
+                    </div>
+                </aside>
+                <div class="explorer-view-pane" data-view="details">
+                    <div class="explorer-details-header" aria-hidden="true">
+                        <span class="explorer-details-col-icon" aria-hidden="true"></span>
+                        <span class="explorer-details-sort-col active"><span class="explorer-details-col-label">Name</span></span>
+                        <span class="explorer-details-sort-col"><span class="explorer-details-col-label">Date modified</span></span>
+                        <span class="explorer-details-sort-col"><span class="explorer-details-col-label">Type</span></span>
+                        <span class="explorer-details-sort-col"><span class="explorer-details-col-label">Size</span></span>
+                    </div>
+                    <div id="studioSaveFolderGrid" class="explorer-grid-host"></div>
+                </div>
+            </div>
+            <div class="fd-bottom">
+                <label class="fd-label fd-name-label" for="studioSaveFolderName">File <u>n</u>ame:</label>
+                <div class="fd-name-combo">
+                    <input type="text" id="studioSaveFolderName" spellcheck="false" autocapitalize="false" autocorrect="false" autocomplete="off">
+                    <button type="button" id="studioSaveFolderNameDrop" class="fd-name-drop" tabindex="-1" aria-label="Suggested names"></button>
+                </div>
+                <label class="fd-label fd-type-label" for="studioSaveFolderType">Save as <u>t</u>ype:</label>
+                <select id="studioSaveFolderType" class="fd-type"></select>
+                <button type="button" id="studioSaveFolderFoldersBtn" class="fd-expando" aria-expanded="true">
+                    <span class="fd-expando-glyph" aria-hidden="true"></span><span class="fd-expando-label">Hide Folders</span>
+                </button>
+                <button type="button" id="studioSaveFolderSaveBtn" class="btn-standard fd-button fd-save" data-dialog-primary="1"><u>S</u>ave</button>
+                <button type="button" id="studioSaveFolderCancelBtn" class="btn-standard fd-button fd-cancel">Cancel</button>
             </div>
         </div>
     </div>
