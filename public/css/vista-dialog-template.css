@@ -342,3 +342,9 @@ body.desktop-mode .modal.vdt-window[data-vista-dialog] > .modal-content.vdt-clie
     padding: 2px;
     overflow: auto;
 }
+
+/* a control the template or the dialog hides stays hidden: the sheets' own display rules
+   (.tbp-check { display: block }) would otherwise outrank [hidden] */
+.vdt-client [hidden] {
+    display: none !important;
+}

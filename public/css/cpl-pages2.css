@@ -359,14 +359,14 @@
 
 /* ---- folder pages: Explorer's panes inside Control Panel ---- */
 
-#melatonControlPanelModal[data-page-kind="folder"] .cpl-content {
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal[data-page-kind="folder"] .cpl-content {
     display: grid;
     grid-template-columns: 200px 1fr;
     grid-template-rows: 31px 1fr 22px;
     grid-template-areas: "bar bar" "nav list" "status status";
 }
 
-#melatonControlPanelModal[data-page-kind="folder"] .cpl-tasks {
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal[data-page-kind="folder"] .cpl-tasks {
     grid-area: nav;
     padding: 0;
     background: #fff;
@@ -374,22 +374,22 @@
     color: #000;
 }
 
-#melatonControlPanelModal[data-page-kind="folder"] .cpl-main {
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal[data-page-kind="folder"] .cpl-main {
     display: contents;
 }
 
-#melatonControlPanelModal[data-page-kind="folder"] .cpl-fbar {
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal[data-page-kind="folder"] .cpl-fbar {
     grid-area: bar;
     margin: 0;
 }
 
-#melatonControlPanelModal[data-page-kind="folder"] .cpl-flist {
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal[data-page-kind="folder"] .cpl-flist {
     grid-area: list;
     overflow: auto;
     background: #fff;
 }
 
-#melatonControlPanelModal[data-page-kind="folder"] .cpl-fstatus {
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal[data-page-kind="folder"] .cpl-fstatus {
     grid-area: status;
     display: flex;
     align-items: center;

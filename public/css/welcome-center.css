@@ -1,0 +1,156 @@
+/* Welcome Center (public/scripts/comp/welcomeCenter.js; Yozora #632): Vista's details band over
+   the task grids, in the Control Panel frame with no task pane. */
+
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal[data-page-kind="welcome"] .cpl-tasks {
+    display: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal[data-page-kind="welcome"] .cpl-main {
+    padding: 0;
+    background: #fff;
+}
+
+#melatonControlPanelModal .wc-page {
+    color: #000;
+    font: 12px/15px var(--cpl-font);
+}
+
+#melatonControlPanelModal .wc-band {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    min-height: 118px;
+    padding: 14px 18px 12px;
+    border-bottom: 1px solid #d5dfe5;
+    background: linear-gradient(#fdfeff, #eaf1f9);
+}
+
+#melatonControlPanelModal .wc-band-logo {
+    width: 96px;
+    height: 92px;
+    flex: 0 0 96px;
+}
+
+#melatonControlPanelModal .wc-band-icon {
+    width: 48px;
+    height: 48px;
+    flex: 0 0 48px;
+    margin: 6px 24px 0 24px;
+}
+
+#melatonControlPanelModal .wc-band-text h2 {
+    margin: 0 0 4px;
+    color: #1e3287;
+    font: 16px/21px var(--cpl-font);
+}
+
+#melatonControlPanelModal .wc-band-text p {
+    margin: 0 0 8px;
+    max-width: 480px;
+}
+
+#melatonControlPanelModal .wc-facts {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 2px 10px;
+}
+
+#melatonControlPanelModal .wc-facts > span:nth-child(odd) {
+    color: #4d4d4d;
+}
+
+#melatonControlPanelModal .wc-na {
+    color: #8d8d8d;
+}
+
+#melatonControlPanelModal .wc-band-open {
+    position: absolute;
+    right: 18px;
+    bottom: 10px;
+}
+
+#melatonControlPanelModal .wc-section {
+    padding: 12px 18px 4px;
+}
+
+#melatonControlPanelModal .wc-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+#melatonControlPanelModal .wc-head h3 {
+    margin: 0;
+    color: #1e3287;
+    font: 12px/15px var(--cpl-font);
+    font-weight: bold;
+}
+
+#melatonControlPanelModal .wc-head::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: #d5dfe5;
+    order: 1;
+}
+
+#melatonControlPanelModal .wc-head .cpl-vlink {
+    order: 2;
+}
+
+#melatonControlPanelModal .wc-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 2px 8px;
+}
+
+#melatonControlPanelModal .wc-task {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    min-height: 0;
+    height: 42px;
+    margin: 0;
+    padding: 0 6px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: none;
+    box-shadow: none;
+    color: #000;
+    font: 12px/15px var(--cpl-font);
+    text-align: left;
+    cursor: var(--c-default);
+}
+
+#melatonControlPanelModal .wc-task::before,
+#melatonControlPanelModal .wc-task::after {
+    content: none;
+}
+
+#melatonControlPanelModal .wc-task img {
+    width: 32px;
+    height: 32px;
+    flex: 0 0 32px;
+}
+
+@media (hover: hover) {
+    #melatonControlPanelModal .wc-task:hover {
+        border-color: #b8d6fb;
+        background: linear-gradient(#fafbfd, #ebf3fd);
+    }
+}
+
+#melatonControlPanelModal .wc-task.is-selected {
+    border-color: #99defd;
+    background: linear-gradient(#f6fbfd, #eff8fd 45%, #d7effc 55%, #d5effc 92%, #e7f5fd);
+}
+
+#melatonControlPanelModal .wc-foot {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 10px 18px 14px;
+}

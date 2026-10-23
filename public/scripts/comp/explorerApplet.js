@@ -4452,7 +4452,10 @@ class ExplorerApplet {
             if (item.targetKind === 'user-file') {
                 // a program the desktop has a port of runs it (vfsPrograms.js: SoraTan.exe)
                 if (window.vfsPrograms && await window.vfsPrograms.open(item)) return;
-                if ((item.mimeType || '').startsWith('text/')) {
+                // a text document opens in Notepad (Default Programs' association, notepadVista.js)
+                if (await this.openInNotepad(item)) {
+                    return;
+                } else if ((item.mimeType || '').startsWith('text/')) {
                     await this.downloadSelectionItem(item);
                 } else if ((item.mimeType || '').startsWith('image/') && item.previewUrl) {
                     openImageInViewer(item.previewUrl, item.name, {});
@@ -4464,6 +4467,21 @@ class ExplorerApplet {
             this._setBusyState(null);
             if (this.grid) this.grid.setOpeningItemId(null);
         }
+    }
+
+    /** Text files open in Notepad unless Default Programs gave their type to another program. */
+    async openInNotepad(item) {
+        const ext = ((item.name || '').match(/\.[a-z0-9]+$/i) || [''])[0].toLowerCase();
+        const reg = window.melatonRegistry;
+        const assoc = reg ? reg.get('HKCU\\Software\\Xyridian\\Melaton\\CurrentVersion\\Explorer\\FileExts', ext, '') : '';
+        if (assoc && assoc !== 'notepad') return false;
+        const looksText = /^text\//.test(item.mimeType || '') || /json|xml|javascript/.test(item.mimeType || '')
+            || /\.(txt|log|ini|inf|cfg|conf|json|md|csv|tsv|xml|html?|css|js|ts|py|sh|bat|cmd|yml|yaml|srt|nfo)$/i.test(item.name || '');
+        if (!looksText) return false;
+        await loadNotepadManager();
+        if (!window.notepadVista) return false;
+        await window.notepadVista.openFile(item, this.currentPath);
+        return true;
     }
 
     onSelectionChange(selected) {
