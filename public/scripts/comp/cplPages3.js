@@ -42,15 +42,108 @@
     }
     handlers['*'].fav = () => callGlobal('openExplorerApplet');
 
+    // ---- Sort By: Organize's submenu and the column headers, for every folder page --------------
+
+    const sortState = {};
+
+    /** A cell's sort key: sizes and dates by their amount, other text A to Z. */
+    function sortKey(v) {
+        const s = String(v == null ? '' : v).trim();
+        const size = s.match(/^([\d.,]+)\s*(bytes|KB|MB|GB)$/i);
+        if (size) return parseFloat(size[1].replace(/,/g, '')) * { bytes: 1, kb: 1024, mb: 1048576, gb: 1073741824 }[size[2].toLowerCase()];
+        if (/\d{1,2}\/\d{1,2}\/\d{4}/.test(s)) { const t = Date.parse(s.replace(/(\d)(AM|PM)/i, '$1 $2')); if (!Number.isNaN(t)) return t; }
+        return s.toLowerCase();
+    }
+
+    /** The rows in the page's chosen order (by one column, either way). */
+    function sortRows(page, rows, cellOf) {
+        const st = sortState[page];
+        if (!st) return rows;
+        const dir = st.direction === 'desc' ? -1 : 1;
+        return rows.slice().sort((a, b) => {
+            const x = sortKey(cellOf(a, st.col));
+            const y = sortKey(cellOf(b, st.col));
+            if (typeof x === 'number' && typeof y === 'number') return (x - y) * dir;
+            return String(x).localeCompare(String(y), undefined, { numeric: true }) * dir;
+        });
+    }
+
+    /** The headers' sorted mark: Vista's little arrow over the sorted column. */
+    function headMark(page, i) {
+        const st = sortState[page];
+        return st && st.col === i ? ` is-sorted is-${st.direction}` : '';
+    }
+
+    const pageColumns = {};
+
+    // the Organize menu: Sort By (contextMenu.js vistaSortByMenu) and the page's own commands
+    function organizeMenu(page) {
+        const cols = pageColumns[page] || ['Name'];
+        const st = sortState[page] || { col: -1, direction: 'asc' };
+        const items = [];
+        if (root.vistaSortByMenu) items.push(root.vistaSortByMenu(cols.map((t, i) => [String(i), t]), String(st.col), st.direction, 'cpl-sort'));
+        const extra = handlers[page] && typeof handlers[page].organizeItems === 'function' ? handlers[page].organizeItems() : [];
+        if (extra.length) items.push({ separator: true }, ...extra);
+        return items;
+    }
+
+    function organizeAction(page, action) {
+        const st = sortState[page] || { col: -1, direction: 'asc' };
+        const next = root.vistaSortByApply && root.vistaSortByApply(action, 'cpl-sort', { field: String(st.col), direction: st.direction });
+        if (next) {
+            const cols = pageColumns[page] || [];
+            const col = Number(next.field);
+            // a new column starts in its own order: dates and sizes newest / largest first
+            const fresh = col !== st.col;
+            const direction = fresh ? (/date|size|installed/i.test(cols[col] || '') ? 'desc' : 'asc') : next.direction;
+            sortState[page] = { col, direction };
+            rerender();
+            return;
+        }
+        const h = handlers[page];
+        if (action.startsWith('cpl-org:') && h && typeof h[action.slice(8)] === 'function') h[action.slice(8)]();
+    }
+
+    if (doc) {
+        // the Organize buttons are drawn with the page: their menu is attached as the pointer comes
+        doc.addEventListener('pointerdown', (ev) => {
+            const btn = ev.target.closest && ev.target.closest('#melatonControlPanelModal [data-cpl-vpage="organize"]');
+            if (!btn || !root.contextMenu) return;
+            const page = CP() && CP().currentPage();
+            root.contextMenu.detachClickMenuFromElement(btn);
+            root.contextMenu.attachClickMenuToElement(btn, {
+                sections: [{ type: 'list', initfn: (section) => { section.items = organizeMenu(page); } }],
+                onAction: (action) => organizeAction(page, action)
+            });
+        }, true);
+    }
+
+    // a column header: sort by it; again turns the order round
+    handlers['*'].sortcol = (t) => {
+        const page = CP() && CP().currentPage();
+        const col = Number(t.dataset.col);
+        const st = sortState[page];
+        const cols = pageColumns[page] || [];
+        sortState[page] = st && st.col === col
+            ? { col, direction: st.direction === 'asc' ? 'desc' : 'asc' }
+            : { col, direction: /date|size|installed/i.test(cols[col] || '') ? 'desc' : 'asc' };
+        rerender();
+    };
+
+    root.cplSort = { sortRows, headMark, columns: (page, cols) => { pageColumns[page] = cols; } };
+
     /** The command bar and a details list; rows: { id, icon, cells: [...] }. */
     function folder(commands, cols, rows, opts = {}) {
+        const page = CP() && CP().currentPage();
+        pageColumns[page] = cols.map((c) => c.t);
+        rows = sortRows(page, rows, (r, i) => r.cells[i]);
         const bar = `<div class="cpl-fbar" role="toolbar">
             <button type="button" class="cpl-fbar-btn" data-cpl-vpage="organize"><img src="${FAV}/organize.png" alt="">Organize<span class="cpl-fbar-glyph"></span></button>
             <button type="button" class="cpl-fbar-btn" data-cpl-vpage="views"><img src="${FAV}/views-details.png" alt="">Views<span class="cpl-fbar-glyph"></span></button>
             ${commands.map((c) => `<button type="button" class="cpl-fbar-btn" data-cpl-vpage="${esc(c.v)}">${c.icon ? `<img src="${esc(c.icon)}" alt="">` : ''}${esc(c.t)}</button>`).join('')}
             <button type="button" class="cpl-fbar-help" data-cpl-vpage="help" data-topic="${esc(opts.topic || 'control-panel')}"><img src="${FAV}/help-16.png" alt=""></button>
         </div>`;
-        const head = `<div class="cpl-flist-head">${cols.map((c) => `<span style="width:${c.w}px">${esc(c.t)}</span>`).join('')}<span class="cpl-flist-rest"></span></div>`;
+        const head = `<div class="cpl-flist-head">${cols.map((c, i) => `<span class="cpl-flist-col${headMark(page, i)}" data-cpl-vpage="sortcol" data-col="${i}" style="width:${c.w}px">${esc(c.t)}</span>`).join('')}<span class="cpl-flist-rest"></span></div>`;
         const body = opts.icons
             ? `<div class="cpl-flist-icons">${rows.map((r) => `<div class="cpl-ficon${r.id === opts.sel ? ' is-selected' : ''}" data-cpl-vpage="pick" data-id="${esc(r.id)}" tabindex="0"><img src="${esc(r.icon)}" alt="" onerror="this.style.visibility='hidden'"><span><b>${esc(r.cells[0])}</b>${r.cells.slice(1).map((c) => `<br>${esc(c)}`).join('')}</span>${r.check ? '<i class="cpl-ficon-check"></i>' : ''}</div>`).join('')}</div>`
             : `<div class="cpl-flist-rows">${rows.map((r) => `<div class="cpl-frow${r.id === opts.sel ? ' is-selected' : ''}" data-cpl-vpage="pick" data-id="${esc(r.id)}" tabindex="0">${r.cells.map((c, i) => `<span style="width:${cols[i] ? cols[i].w : 100}px">${i === 0 ? `<img src="${esc(r.icon)}" alt="" onerror="this.style.visibility='hidden'">` : ''}${esc(c)}</span>`).join('')}</div>`).join('')}</div>`;
@@ -217,7 +310,11 @@
         async add() {
             msg('Melaton prints through your browser. Use "Print with this browser" to print, or set it as the default printer.', 'Add Printer');
         },
-        async organize() {
+        organize() {},
+        organizeItems() {
+            return [{ text: 'Set as Default Printer', action: 'cpl-org:setDefault', disabled: !handlers.printers.sel }];
+        },
+        async setDefault() {
             const id = handlers.printers.sel;
             if (!id || !R()) return;
             await R().set(PRINT, { Device: id });

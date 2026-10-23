@@ -4012,6 +4012,44 @@ function menuSectionsFromItems(items) {
     return sections.length ? sections : [{ type: 'list', items: [] }];
 }
 
+/**
+ * Vista's Sort By submenu, the same in every Organize menu and folder right-click (Cartograph,
+ * the Open / Save dialogs, Control Panel folders, Games): the columns as radio items, then
+ * Ascending / Descending. columns [[field, label]]; actions `${prefix}:field:<field>` and
+ * `${prefix}:dir:<asc|desc>`; vistaSortByApply(action, prefix, { field, direction }) is the new
+ * { field, direction } (a new column starts in its own natural order), or null for another action.
+ */
+function vistaSortByMenu(columns, field, direction, prefix) {
+    return {
+        text: 'Sort By',
+        hasSubmenu: true,
+        submenu: [
+            ...columns.map(([f, label]) => ({ text: label, action: `${prefix}:field:${f}`, showIndicator: true, indicatorMark: 'radio', checked: f === field })),
+            { separator: true },
+            { text: 'Ascending', action: `${prefix}:dir:asc`, showIndicator: true, indicatorMark: 'radio', checked: direction !== 'desc' },
+            { text: 'Descending', action: `${prefix}:dir:desc`, showIndicator: true, indicatorMark: 'radio', checked: direction === 'desc' }
+        ]
+    };
+}
+
+// dates and sizes read newest / largest first, names A to Z (Vista)
+const VISTA_SORT_DESC_FIRST = /^(date|size|modified|lastPlayed|installed|rating)/i;
+
+function vistaSortByApply(action, prefix, current) {
+    if (typeof action !== 'string' || !action.startsWith(`${prefix}:`)) return null;
+    const [, kind, value] = action.split(':');
+    const cur = current || {};
+    if (kind === 'dir') return { field: cur.field, direction: value === 'desc' ? 'desc' : 'asc' };
+    if (kind === 'field') {
+        if (value === cur.field) return { field: value, direction: cur.direction || 'asc' };
+        return { field: value, direction: VISTA_SORT_DESC_FIRST.test(value) ? 'desc' : 'asc' };
+    }
+    return null;
+}
+
+window.vistaSortByMenu = vistaSortByMenu;
+window.vistaSortByApply = vistaSortByApply;
+
 // Export for module usage
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = ContextMenuController;

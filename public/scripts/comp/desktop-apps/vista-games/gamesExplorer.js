@@ -74,6 +74,9 @@
 
     let gx = null;
 
+    // the details columns and Sort By's fields: the game's GDF values (the version, publisher ...)
+    const GX_COLUMNS = [['name', 'Name'], ['lastPlayed', 'Last played'], ['version', 'Product version'], ['publisher', 'Publisher'], ['developer', 'Developer'], ['rating', 'Rating'], ['genre', 'Genre']];
+
     class GamesExplorer {
         constructor() {
             this.games = [];
@@ -127,9 +130,13 @@
             const body = el('div', 'gx-body');
             const list = el('div', 'gx-list');
             const header = el('div', 'gx-columns');
-            ['Name', 'Last played', 'Product version', 'Publisher', 'Developer', 'Rating'].forEach((h, i) => {
-                const c = el('div', 'gx-column' + (i === 0 ? ' sorted' : ''), h);
+            // a click sorts by the column (again: the other way), like Organize > Sort By
+            this.columnEls = GX_COLUMNS.map(([field, h]) => {
+                const c = el('div', 'gx-column', h);
+                c.dataset.sortField = field;
+                c.addEventListener('click', () => this.sortBy(field, this.sort.field === field && this.sort.direction === 'asc' ? 'desc' : 'asc'));
                 header.appendChild(c);
+                return c;
             });
             header.appendChild(el('div', 'gx-column-more', '»'));
             this.grid = el('div', 'gx-grid');
@@ -192,11 +199,25 @@
             });
         }
 
+        sortBy(field, direction) {
+            this.sort = { field, direction: direction === 'desc' ? 'desc' : 'asc' };
+            this.renderGrid(this.filter || '');
+        }
+
         renderGrid(filter) {
+            this.filter = filter;
             this.grid.textContent = '';
             this.grid.dataset.view = this.view;
             const size = this.view === 'medium' ? 48 : 96;
-            this.games.filter((g) => !filter || g.name.toLowerCase().includes(filter)).forEach((g) => {
+            const st = this.sort || (this.sort = { field: 'name', direction: 'asc' });
+            (this.columnEls || []).forEach((c) => {
+                c.classList.toggle('sorted', c.dataset.sortField === st.field);
+                c.classList.toggle('is-desc', c.dataset.sortField === st.field && st.direction === 'desc');
+            });
+            const key = (g) => String((st.field === 'name' ? g.name : g[st.field]) || '').toLowerCase();
+            const dir = st.direction === 'desc' ? -1 : 1;
+            this.games.filter((g) => !filter || g.name.toLowerCase().includes(filter))
+                .sort((a, b) => key(a).localeCompare(key(b), undefined, { numeric: true }) * dir || a.name.localeCompare(b.name)).forEach((g) => {
                 const item = el('div', 'gx-item' + (this.selected && this.selected.id === g.id ? ' selected' : ''));
                 item.dataset.id = g.id;
                 // the GDF description is the item's infotip
@@ -250,8 +271,15 @@
             this.commandBar.textContent = '';
             const g = this.selected;
             this.commandButton('Organize', VISTA_ART + 'organize.png', {
-                menu: () => [{ text: 'Layout', disabled: true }, { separator: true }, { text: 'Properties', action: 'properties', disabled: !g }],
-                onAction: () => {}
+                menu: () => [
+                    // Sort By (contextMenu.js vistaSortByMenu), the same as every Organize menu
+                    ...(root.vistaSortByMenu ? [root.vistaSortByMenu(GX_COLUMNS, this.sort.field, this.sort.direction, 'gx-sort'), { separator: true }] : []),
+                    { text: 'Layout', disabled: true }, { separator: true }, { text: 'Properties', action: 'properties', disabled: !g }
+                ],
+                onAction: (action) => {
+                    const next = root.vistaSortByApply && root.vistaSortByApply(action, 'gx-sort', this.sort);
+                    if (next) this.sortBy(next.field, next.direction);
+                }
             });
             this.commandButton('Views', VISTA_ART + 'views.png', {
                 menu: () => [

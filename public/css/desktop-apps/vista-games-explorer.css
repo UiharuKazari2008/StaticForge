@@ -525,3 +525,17 @@ body.desktop-mode .modal.vista-gx-options > .modal-content button.gxo-link:focus
 
 .vista-gx-options .gxo-footer > button:nth-child(1) { left: 405px; top: 8px; }
 .vista-gx-options .gxo-footer > button:nth-child(2) { left: 479px; top: 8px; }
+
+/* Sort By descending: the column's arrow points down */
+.vista-games-explorer .gx-column.sorted.is-desc::before {
+    border-top: 3px solid #607a96;
+    border-bottom: 0;
+}
+
+.vista-games-explorer .gx-column[data-sort-field] {
+    cursor: var(--c-default, default);
+}
+
+.vista-games-explorer .gx-column[data-sort-field]:hover:not(.sorted) {
+    background: linear-gradient(#f3f8fb, #e6f1f8);
+}

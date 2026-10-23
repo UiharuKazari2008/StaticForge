@@ -808,3 +808,36 @@ body.desktop-mode .modal.dm-window > .modal-content.dm-client {
     margin: 0;
     border: 0;
 }
+
+/* Sort By (cplPages3.js cplSort): the sorted column uses Vista's sorted header face and arrow */
+#melatonControlPanelModal .cpl-flist-head > .cpl-flist-col,
+#melatonControlPanelModal .cpl-vtable tr.is-head td.cpl-flist-col {
+    position: relative;
+    cursor: var(--c-default, default);
+}
+
+#melatonControlPanelModal .cpl-flist-head > .cpl-flist-col:hover {
+    border-image-source: url('/static_images/vista-controls/header-item-hot.png');
+}
+
+#melatonControlPanelModal .cpl-flist-head > .cpl-flist-col.is-sorted {
+    border-image-source: url('/static_images/vista-controls/header-item-sorted.png');
+}
+
+#melatonControlPanelModal .cpl-vtable tr.is-head td.cpl-flist-col.is-sorted {
+    background: linear-gradient(#f2f9fc, #f2f9fc 50%, #e1f1f9 51%, #d8ecf6);
+}
+
+#melatonControlPanelModal :is(.cpl-flist-head > .cpl-flist-col, .cpl-vtable tr.is-head td.cpl-flist-col).is-sorted::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: calc(50% - 6px);
+    width: 13px;
+    height: 5px;
+    background: url('/static_images/vista-controls/header-sort-arrow.png') 0 0 no-repeat;
+}
+
+#melatonControlPanelModal :is(.cpl-flist-head > .cpl-flist-col, .cpl-vtable tr.is-head td.cpl-flist-col).is-sorted.is-desc::before {
+    background-position: 0 -5px;
+}

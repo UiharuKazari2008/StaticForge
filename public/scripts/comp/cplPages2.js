@@ -217,13 +217,18 @@
             const arg = CP() && CP().pageArg('programs');
             if (arg === 'updates') setTimeout(() => nav('programs-updates'), 0);
             else if (arg === 'features') setTimeout(() => handlers.programs.features(), 0);
-            const list = programs();
+            // Organize > Sort By and the headers (cplPages3.js cplSort)
+            const S = root.cplSort;
+            const PCOLS = ['Name', 'Publisher', 'Installed On', 'Size'];
+            if (S) S.columns('programs', PCOLS);
+            const installed = new Date().toLocaleDateString('en-US');
+            const list = S ? S.sortRows('programs', programs(), (p, i) => [p.name, p.publisher, installed, ''][i]) : programs();
             const sel = handlers.programs.sel;
             return `<div class="cpl-vpage cpl-vwide cpl-pf">${help('programs')}
                 <h1 class="cpl-vtitle">Uninstall or change a program</h1>
                 <p class="cpl-vtext">To uninstall a program, select it from the list and then click "Uninstall", "Change", or "Repair".</p>
                 <div class="cpl-pf-bar"><button type="button" class="cpl-pf-cmd" data-cpl-vpage="organize">Organize</button><button type="button" class="cpl-pf-cmd" data-cpl-vpage="views">Views</button>${sel ? '<button type="button" class="cpl-pf-cmd" data-cpl-vpage="uninstall">Uninstall</button>' : ''}</div>
-                <table class="cpl-vtable cpl-pf-table"><tr class="is-head"><td>Name</td><td>Publisher</td><td>Installed On</td><td>Size</td></tr>
+                <table class="cpl-vtable cpl-pf-table"><tr class="is-head">${PCOLS.map((t, i) => `<td class="cpl-flist-col${S ? S.headMark('programs', i) : ''}" data-cpl-vpage="sortcol" data-col="${i}">${t}</td>`).join('')}</tr>
                 ${list.map((p) => `<tr class="${p.id === sel ? 'is-selected' : ''}" data-cpl-vpage="pick" data-prog="${esc(p.id)}"><td><img src="${esc(p.icon)}" alt="" onerror="this.style.visibility='hidden'">${esc(p.name)}</td><td>${esc(p.publisher)}</td><td>${esc(new Date().toLocaleDateString('en-US'))}</td><td></td></tr>`).join('')}
                 </table>
                 <p class="cpl-vtext cpl-pf-foot">Currently installed programs &nbsp; ${list.length} programs installed</p>

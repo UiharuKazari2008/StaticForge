@@ -647,11 +647,13 @@ async function studioSaveFolderNavigate(path, options = {}) {
     if (search && !options.keepSearch) search.value = '';
     if (!wsClient || !wsClient.isConnected()) return;
     try {
+        // the order Cartograph uses (its headers, Organize > Sort By), and the dialog's own changes to it
+        const sort = studioSaveFolderSort();
         const result = await vfsClient.listDirectory(target, {
             offset: 0,
             limit: 300,
-            sortField: 'name',
-            sortDirection: 'asc'
+            sortField: sort.field,
+            sortDirection: sort.direction
         });
         if (token !== studioSaveFolderState.navToken) return;
         studioSaveFolderState.items = result && result.items ? result.items : [];
@@ -665,6 +667,46 @@ async function studioSaveFolderNavigate(path, options = {}) {
     } catch (err) {
         showGlassToast('error', studioSaveFolderTitleText(), err.message || 'Failed to open folder', false, 4000, '<i class="fas fa-folder"></i>');
     }
+}
+
+/** The folder's order: shared with Cartograph (localStorage explorerSortField / explorerSortDirection). */
+function studioSaveFolderSort() {
+    let field = 'name';
+    let direction = 'asc';
+    try {
+        field = localStorage.getItem('explorerSortField') || 'name';
+        direction = localStorage.getItem('explorerSortDirection') || 'asc';
+    } catch (_err) { /* the default order */ }
+    // the workspace list's own order means nothing in a file dialog
+    if (!['name', 'date', 'type', 'size'].includes(field)) field = 'name';
+    return { field, direction: direction === 'desc' ? 'desc' : 'asc' };
+}
+
+function studioSaveFolderApplySort(field, direction) {
+    try {
+        localStorage.setItem('explorerSortField', field);
+        localStorage.setItem('explorerSortDirection', direction === 'desc' ? 'desc' : 'asc');
+    } catch (_err) { /* this dialog only */ }
+    studioSaveFolderSyncSortHeader();
+    studioSaveFolderNavigate(studioSaveFolderState.path, { history: false, keepSearch: true });
+}
+
+/** The column headers show which one sorts, and which way (as Cartograph's do). */
+function studioSaveFolderSyncSortHeader() {
+    const sort = studioSaveFolderSort();
+    document.querySelectorAll('#studioSaveFolderModal .explorer-details-header [data-sort-field]').forEach((col) => {
+        const active = col.dataset.sortField === sort.field;
+        col.classList.toggle('active', active);
+        const icon = col.querySelector('.explorer-details-sort-icon');
+        if (icon) icon.className = `explorer-details-sort-icon fas ${active ? (sort.direction === 'asc' ? 'fa-sort-up' : 'fa-sort-down') : 'fa-sort'}`;
+    });
+}
+
+function studioSaveFolderSortByItem() {
+    const sort = studioSaveFolderSort();
+    return window.vistaSortByMenu
+        ? window.vistaSortByMenu([['name', 'Name'], ['date', 'Date modified'], ['type', 'Type'], ['size', 'Size']], sort.field, sort.direction, 'fd-sort')
+        : null;
 }
 
 function studioSaveFolderGo(step) {
@@ -885,18 +927,33 @@ function wireStudioSaveFolderDialog() {
             contextMenu.attachClickMenuToElement(organize, {
                 sections: [{
                     type: 'list',
-                    items: [
-                        { text: 'New Folder', action: 'fd-new-folder' },
-                        { separator: true },
-                        { text: 'Close', action: 'fd-close' }
-                    ]
+                    initfn: function (section) {
+                        const sortBy = studioSaveFolderSortByItem();
+                        section.items = [
+                            { text: 'New Folder', action: 'fd-new-folder' },
+                            { separator: true },
+                            ...(sortBy ? [sortBy, { separator: true }] : []),
+                            { text: 'Close', action: 'fd-close' }
+                        ];
+                    }
                 }],
                 onAction: (action) => {
+                    const next = window.vistaSortByApply && window.vistaSortByApply(action, 'fd-sort', studioSaveFolderSort());
+                    if (next) { studioSaveFolderApplySort(next.field, next.direction); return; }
                     if (action === 'fd-new-folder') studioSaveFolderNewFolder();
                     else if (action === 'fd-close') closeModal(modal);
                 }
             });
         }
+        // the column headers: a click sorts by that column, again turns the order round
+        modal.querySelectorAll('.explorer-details-header [data-sort-field]').forEach((col) => {
+            col.addEventListener('click', () => {
+                const sort = studioSaveFolderSort();
+                const field = col.dataset.sortField;
+                studioSaveFolderApplySort(field, sort.field === field && sort.direction === 'asc' ? 'desc' : 'asc');
+            });
+        });
+        studioSaveFolderSyncSortHeader();
         const views = $('studioSaveFolderViewsBtn');
         if (views) {
             contextMenu.attachClickMenuToElement(views, {

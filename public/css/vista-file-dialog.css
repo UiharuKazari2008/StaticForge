@@ -22,11 +22,12 @@ body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal .modal-wind
     visibility: visible;
 }
 
-/* the caption row keeps the icon and title (the band below it is the toolbar) */
+/* the caption row keeps the icon and title (the band below it is the toolbar); the icon 8 px in
+   from the window's edge, where every other caption has it (it sat at 1 px) */
 body.desktop-mode:not(.windows-classic-theme) #studioSaveFolderModal.modal.toolbar-visible .modal-window-title-main {
     position: absolute;
     top: 0;
-    left: 0;
+    left: 7px;
     height: 28px;
     min-height: 28px;
     margin: 0;

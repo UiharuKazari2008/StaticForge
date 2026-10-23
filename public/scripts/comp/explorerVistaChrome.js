@@ -6,7 +6,7 @@
  *                   a crumb navigates, a click on the empty part of the box types a path, the
  *                   box's ▾ lists the places visited; the ▾ after the orbs is Recent Pages
  *                   (the back / forward history, the current page checked)
- *   command bar     Organize ▾ (New Folder, Cut, Copy, Paste, Rename, Delete), Views ▾ and the
+ *   command bar     Organize ▾ (New Folder, Sort By, Cut, Copy, Paste, Rename, Delete), Views ▾ and the
  *                   contextual Upload / Download / Replace; the old icon buttons stay hidden in
  *                   the markup and do the work (their disabled state drives the menu)
  *   navigation pane Favorite Links (this workspace's Desktop / Pictures / References / Notes,
@@ -397,6 +397,8 @@
             const entries = [
                 { id: 'explorerNewFolderBtn', text: isWsList ? 'New Workspace' : 'New Folder', icon: 'fas fa-folder-plus' },
                 { separator: true },
+                { sortBy: true },
+                { separator: true },
                 { id: 'explorerCutBtn', text: 'Cut', icon: 'fas fa-cut' },
                 { id: 'explorerCopyBtn', text: 'Copy', icon: 'fas fa-copy' },
                 { id: 'explorerPasteBtn', text: 'Paste', icon: 'fas fa-paste' },
@@ -408,9 +410,15 @@
             cm.attachClickMenuToElement(btn, {
                 sections: [{
                     type: 'list',
-                    items: entries.map((it) => (it.separator ? { separator: true } : { icon: it.icon, text: it.text, action: it.id, disabled: !live(it.id) }))
+                    items: entries.map((it) => {
+                        if (it.separator) return { separator: true };
+                        // Sort By (contextMenu.js vistaSortByMenu, explorerApplet.js applySort)
+                        if (it.sortBy) return this.app.sortByMenuItem ? this.app.sortByMenuItem() : { separator: true };
+                        return { icon: it.icon, text: it.text, action: it.id, disabled: !live(it.id) };
+                    })
                 }],
                 onAction: (action) => {
+                    if (this.app.handleSortAction && this.app.handleSortAction(action)) return;
                     const b = document.getElementById(action);
                     if (b && !b.disabled) b.click();
                 }

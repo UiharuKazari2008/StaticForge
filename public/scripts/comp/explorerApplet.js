@@ -295,17 +295,41 @@ class ExplorerApplet {
 
     toggleSortByField(field) {
         if (!field) return;
-        if (this.sortField === field) {
-            this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
-        } else {
-            this.sortField = field;
-            this.sortDirection = 'asc';
-        }
+        if (this.sortField === field) this.applySort(field, this.sortDirection === 'asc' ? 'desc' : 'asc');
+        else this.applySort(field, 'asc');
+    }
+
+    /** The folder's order (headers, Sort menu, Organize > Sort By, right-click > Sort By); remembered. */
+    applySort(field, direction) {
+        if (!field) return;
+        this.sortField = field;
+        this.sortDirection = direction === 'desc' ? 'desc' : 'asc';
         localStorage.setItem('explorerSortField', this.sortField);
         localStorage.setItem('explorerSortDirection', this.sortDirection);
         this.updateSortLabel();
         this.updateDetailsHeaderSort();
         this.navigateTo(this.currentPath);
+    }
+
+    /** Sort By's columns here: the workspace list sorts by its own order or by name. */
+    sortByColumns() {
+        if (this._isWorkspacesListPath()) return [['workspaceOrder', 'Workspace order'], ['name', 'Name']];
+        return [['name', 'Name'], ['date', 'Date modified'], ['type', 'Type'], ['size', 'Size']];
+    }
+
+    /** Organize's and the folder right-click's Sort By (contextMenu.js vistaSortByMenu). */
+    sortByMenuItem() {
+        return window.vistaSortByMenu
+            ? window.vistaSortByMenu(this.sortByColumns(), this.sortField, this.sortDirection, 'explorer-sort')
+            : null;
+    }
+
+    /** An explorer-sort:* action; true when it was one. */
+    handleSortAction(action) {
+        const next = window.vistaSortByApply && window.vistaSortByApply(action, 'explorer-sort', { field: this.sortField, direction: this.sortDirection });
+        if (!next) return false;
+        this.applySort(next.field, next.direction);
+        return true;
     }
 
     updateDetailsHeaderVisibility() {
@@ -405,7 +429,9 @@ class ExplorerApplet {
                 }]
             }];
         }
+        const sortBy = this.sortByMenuItem();
         const items = [
+            ...(sortBy ? [sortBy, { separator: true }] : []),
             { icon: 'fas fa-folder-plus', text: 'New Folder', action: 'explorer-new-folder' },
             { icon: 'fas fa-upload', text: 'Upload', action: 'explorer-upload' }
         ];
@@ -2314,6 +2340,7 @@ class ExplorerApplet {
         if (target?.closest?.('.desktop-shortcut')) return;
         if (!target?.closest?.('#explorerGridHost, #explorerModal')) return;
 
+        if (this.handleSortAction(action)) return;
         const item = this._contextMenuTarget;
         const workspaceId = this.getWorkspaceIdFromPath();
 
@@ -2657,13 +2684,7 @@ class ExplorerApplet {
             sections: [{ type: 'list', items: [] }],
             onAction: (action, target, item) => {
                 if (action !== 'select-explorer-sort' || !item.sortValue) return;
-                applet.sortField = item.sortField;
-                applet.sortDirection = item.sortDirection;
-                localStorage.setItem('explorerSortField', applet.sortField);
-                localStorage.setItem('explorerSortDirection', applet.sortDirection);
-                applet.updateSortLabel();
-                applet.updateDetailsHeaderSort();
-                applet.navigateTo(applet.currentPath);
+                applet.applySort(item.sortField, item.sortDirection);
             }
         };
     }
