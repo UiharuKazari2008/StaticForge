@@ -397,7 +397,7 @@ class WikiDisplayBase {
     
     setupLinkContextMenu(link) {
         // Setup context menu for a tag wiki link using existing context menu system
-        if (!link || !contextMenu) return;
+        if (!link || typeof contextMenu === 'undefined' || !contextMenu) return;
         
         const tagName = link.dataset.tagName;
         if (!tagName) return;
@@ -1240,7 +1240,7 @@ class WikiDisplayBase {
     }
 
     attachWikiDisplayContextMenu() {
-        if (!this.displayArea || !contextMenu) return;
+        if (!this.displayArea || typeof contextMenu === 'undefined' || !contextMenu) return;
 
         const self = this;
         const displayMenuConfig = {
@@ -3398,7 +3398,7 @@ class WikiDisplayBase {
     }
     
     setupBackButtonContextMenu() {
-        if (!this.backBtn || !contextMenu) return;
+        if (!this.backBtn || typeof contextMenu === 'undefined' || !contextMenu) return;
         
         // Store reference to update menu dynamically
         this.backMenuConfig = {
@@ -3426,7 +3426,7 @@ class WikiDisplayBase {
     }
     
     setupForwardButtonContextMenu() {
-        if (!this.forwardBtn || !contextMenu) return;
+        if (!this.forwardBtn || typeof contextMenu === 'undefined' || !contextMenu) return;
         
         // Store reference to update menu dynamically
         this.forwardMenuConfig = {
@@ -5614,7 +5614,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
 
     _notifyGrimoireKeyboardOverlayContextChanged() {
         // notifyKeyboardOverlayContextChanged: public/scripts/comp/modalKeyboardRegistry.js
-        notifyKeyboardOverlayContextChanged();
+        if (typeof notifyKeyboardOverlayContextChanged === 'function') notifyKeyboardOverlayContextChanged();
     }
 
     // --- Layered pseudo-browser address bar controller ---
@@ -6817,7 +6817,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
 
             // Gear for search options on the pure homepage (same as results page)
             const homeGear = this.displayArea.querySelector('.search-gear');
-            if (homeGear && contextMenu && typeof contextMenu.attachClickMenuToElement === 'function') {
+            if (homeGear && typeof contextMenu !== 'undefined' && contextMenu && typeof contextMenu.attachClickMenuToElement === 'function') {
                 const cfg = this.showSearchControlsContextMenu(homeGear, true /* returnOnly */);
                 if (cfg) {
                     contextMenu.attachClickMenuToElement(homeGear, cfg);
@@ -6952,7 +6952,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
         // Placed immediately to the left of the "Search" go button as requested.
         // Attach *before* any user click so the context system's mousedown/click listeners see [data-click-menu] and open the menu on the gear click.
         const gear = this.displayArea.querySelector('.search-gear');
-        if (gear && contextMenu && typeof contextMenu.attachClickMenuToElement === 'function') {
+        if (gear && typeof contextMenu !== 'undefined' && contextMenu && typeof contextMenu.attachClickMenuToElement === 'function') {
             // Build fresh config (with current toggle states) and attach for click-to-open.
             // The show function now returns the config (and attaches only if anchor passed).
             const cfg = this.showSearchControlsContextMenu(gear, true /* returnOnly */);
@@ -7014,7 +7014,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
     }
 
     showSearchControlsContextMenu(anchorEl, returnOnly = false) {
-        if (!contextMenu && !returnOnly) return null;
+        if ((typeof contextMenu === 'undefined' || !contextMenu) && !returnOnly) return null;
 
         const config = {
             position: 'anchor',
@@ -7711,7 +7711,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
         }
         
         // Update back button context menu
-        if (this.backMenuConfig && contextMenu && this.backBtn) {
+        if (this.backMenuConfig && typeof contextMenu !== 'undefined' && contextMenu && this.backBtn) {
             const backItems = [];
             const isStandalone = this.isStandaloneWindow();
             
@@ -7748,7 +7748,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
         }
         
         // Update forward button context menu
-        if (this.forwardMenuConfig && contextMenu && this.forwardBtn) {
+        if (this.forwardMenuConfig && typeof contextMenu !== 'undefined' && contextMenu && this.forwardBtn) {
             const forwardItems = [];
             const isStandalone = this.isStandaloneWindow();
             
