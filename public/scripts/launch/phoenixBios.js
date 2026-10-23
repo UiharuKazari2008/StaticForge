@@ -686,7 +686,7 @@
                             const res = await fetch('/', {
                                 method: 'POST',
                                 credentials: 'include',
-                                headers: { 'Content-Type': 'application/json' },
+                                headers: { 'Content-Type': 'application/json', 'X-Dreamscape-Client': 'melaton-bios' },
                                 body: JSON.stringify({ action: 'gateway', data: { password } })
                             });
                             const json = await res.json().catch(() => null);
@@ -726,7 +726,7 @@
                             const res = await fetch('/', {
                                 method: 'POST',
                                 credentials: 'include',
-                                headers: { 'Content-Type': 'application/json' },
+                                headers: { 'Content-Type': 'application/json', 'X-Dreamscape-Client': 'melaton-bios' },
                                 body: JSON.stringify({ action: 'login', data: { pin } })
                             });
                             const json = await res.json();

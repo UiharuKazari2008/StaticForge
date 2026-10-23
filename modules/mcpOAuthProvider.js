@@ -134,7 +134,10 @@ class McpOAuthProvider {
     }
 
     getMcpBaseUrl() {
-        const publicHost = this.globalResources.getConfig({ path: 'public_hostname' }) || 'localhost:9220';
+        // mcp_public_hostname: the connector's own host, so OAuth discovery never shows on the
+        // cover host (modules/siteGate.js onMcpHost). Unset: the app's public_hostname.
+        const publicHost = this.globalResources.getConfig({ path: 'mcp_public_hostname' })
+            || this.globalResources.getConfig({ path: 'public_hostname' }) || 'localhost:9220';
         const protocol = publicHost.startsWith('localhost') || publicHost.startsWith('127.0.0.1') ? 'http' : 'https';
         return `${protocol}://${publicHost}`;
     }

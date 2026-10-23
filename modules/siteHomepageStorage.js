@@ -66,23 +66,48 @@ function readDoorMeta(siteDir) {
     return { ...value };
 }
 
+/**
+ * The cover site's door, from manifest.json "door" (door.json still overrides the paths):
+ *   action      the endpoint the search form POSTs to (not a file, e.g. "cgi-bin/kensaku.cgi")
+ *   resultPage  the results page rendered for that POST, and for GET resultPage/action ?q=
+ *   records     { "<id>": "<html>" } entries the site itself lists: a real lookup finds them
+ * Older sites name a .html file as the action: then it is also the result page.
+ */
 function readDoorMetaUncached(siteDir) {
-    let postPath = '/lookup';
-    let noResultPath = 'noresult.html';
-    let actionPath = '/lookup';
+    let postPath = null;
+    let resultPage = 'noresult.html';
+    let field = 'q';
+    let records = {};
+    let forms = {};
 
     const manifestPath = path.join(siteDir, 'manifest.json');
     if (fs.existsSync(manifestPath)) {
         try {
             const meta = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-            if (meta && meta.door && typeof meta.door.action === 'string') {
-                const actionRel = meta.door.action.replace(/^\/+/, '').split('?')[0];
-                noResultPath = actionRel;
-                actionPath = '/' + actionRel;
-                postPath = actionPath;
+            const door = meta && meta.door;
+            if (door && typeof door.action === 'string') {
+                const actionRel = door.action.replace(/^\/+/, '').split('?')[0];
+                postPath = '/' + actionRel;
+                resultPage = typeof door.resultPage === 'string'
+                    ? door.resultPage.replace(/^\/+/, '').split('?')[0]
+                    : actionRel;
             }
-            if (meta && typeof meta.notFound === 'string') {
-                // used by resolveSiteFile 404 fallback name only when custom
+            if (door && typeof door.field === 'string' && /^[A-Za-z0-9_-]{1,32}$/.test(door.field)) {
+                field = door.field;
+            }
+            if (door && door.records && typeof door.records === 'object') {
+                for (const [key, html] of Object.entries(door.records)) {
+                    if (typeof html === 'string') records[normalizeDoorQuery(key)] = html;
+                }
+            }
+            // "forms": { "cgi-bin/formmail.cgi": "toiawase-kanryo.html" }: a contact form's POST
+            // endpoint and the page it answers with (a static file itself takes no POST)
+            if (meta && meta.forms && typeof meta.forms === 'object') {
+                for (const [endpoint, page] of Object.entries(meta.forms)) {
+                    if (typeof page === 'string') {
+                        forms['/' + endpoint.replace(/^\/+/, '').split('?')[0]] = page.replace(/^\/+/, '');
+                    }
+                }
             }
         } catch (_err) {
             // fall through
@@ -95,61 +120,143 @@ function readDoorMetaUncached(siteDir) {
             const meta = JSON.parse(fs.readFileSync(doorPath, 'utf8'));
             if (meta && typeof meta.postPath === 'string' && meta.postPath.startsWith('/')) {
                 postPath = meta.postPath.split('?')[0];
-                actionPath = postPath;
             }
             if (meta && typeof meta.noResultPath === 'string') {
-                noResultPath = meta.noResultPath.replace(/^\/+/, '');
+                resultPage = meta.noResultPath.replace(/^\/+/, '');
             }
         } catch (_err) {
             // keep defaults
         }
     }
 
-    return { postPath, noResultPath, actionPath };
+    return {
+        postPath: postPath || '/lookup',
+        actionPath: postPath || '/lookup',
+        noResultPath: resultPage,
+        resultPage,
+        field,
+        records,
+        forms
+    };
 }
 
-function extractDoorPhrase(req, doorMeta) {
+/** A lookup id as the records are keyed: NFKC (full-width digits), trimmed, upper case. */
+function normalizeDoorQuery(raw) {
+    if (raw == null) return '';
+    return String(raw).normalize('NFKC').trim().toUpperCase();
+}
+
+function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, (ch) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+}
+
+/**
+ * The result page for a lookup. Markers in the page:
+ *   <!--door:none-->…<!--/door:none-->  the "nothing found" block: replaced by the record that
+ *                                       matches, kept for a miss, dropped when there is no query
+ *   <!--door:q-->                       the query as typed (escaped)
+ */
+function renderDoorResult(html, doorMeta, query) {
+    const q = query == null ? '' : String(query);
+    const key = normalizeDoorQuery(q);
+    const record = key && doorMeta && doorMeta.records ? doorMeta.records[key] : null;
+    let out = html.replace(/<!--door:none-->([\s\S]*?)<!--\/door:none-->/g, (_m, none) => {
+        if (!key) return '';
+        return record != null ? record : none;
+    });
+    out = out.replace(/<!--door:q-->/g, escapeHtml(q));
+    return { html: out, found: record != null };
+}
+
+/** Requests the door answers: POST to its action (phrase or lookup), legacy POST /lookup. */
+function extractDoorPhrase(req, doorMeta, options = {}) {
     const method = (req.method || 'GET').toUpperCase();
     const urlPath = (req.path || '/').split('?')[0] || '/';
-    const actionPath = doorMeta.actionPath || doorMeta.postPath;
-
     if (method !== 'POST') {
         return undefined;
     }
-
-    if (urlPath === doorMeta.postPath || urlPath === actionPath || urlPath === '/lookup') {
-        return req.body && req.body.q != null ? String(req.body.q) : '';
+    const field = doorMeta.field || 'q';
+    const read = () => (req.body && req.body[field] != null ? String(req.body[field])
+        : (req.body && req.body.q != null ? String(req.body.q) : ''));
+    if (urlPath === doorMeta.postPath || urlPath === doorMeta.actionPath) {
+        return read();
     }
-
+    // /lookup is the old shared door every site answered: a probe that matched all of them.
+    // Only Dreamscape's own clients (options.clientKnock) still use it.
+    if (urlPath === '/lookup' && options.clientKnock) {
+        return read();
+    }
     return undefined;
 }
 
-function resolveSiteFile(siteDir, urlPath) {
-    const rel = urlPath === '/' ? 'index.html' : urlPath.replace(/^\/+/, '');
-    if (!rel || rel.includes('..') || rel.includes('\0')) {
-        return { kind: 'missing' };
+/** A request path as nginx resolves it: percent-decoded, no NUL, no dot segments. */
+function decodeSitePath(urlPath) {
+    let decoded = urlPath;
+    try {
+        decoded = decodeURIComponent(urlPath);
+    } catch (_err) {
+        return null;
     }
-    const base = path.basename(rel);
-    if (base === 'manifest.json' || base === 'door.json') {
-        return { kind: 'missing' };
-    }
-    const abs = path.resolve(siteDir, rel);
+    if (decoded.includes('\0') || decoded.includes('\\')) return null;
+    return decoded;
+}
+
+function isBlockedSiteName(rel) {
+    const base = path.basename(rel).toLowerCase();
+    return base === 'manifest.json' || base === 'door.json';
+}
+
+function notFoundOrMissing(siteDir, exists) {
+    const notFound = path.join(siteDir, '404.html');
+    return exists(notFound) ? { kind: '404', abs: notFound } : { kind: 'missing' };
+}
+
+/**
+ * kind: 'file' | '404' | 'missing' | 'redirect' (a directory without its slash: Location) |
+ * 'forbidden' (a directory without index.html, as nginx without autoindex).
+ */
+function resolveWith(siteDir, urlPath, stat) {
+    const exists = (abs) => !!stat(abs);
+    const decoded = decodeSitePath(urlPath || '/');
+    if (decoded == null) return notFoundOrMissing(siteDir, exists);
+    const trailing = decoded.length > 1 && decoded.endsWith('/');
+    const rel = decoded === '/' ? '' : decoded.replace(/^\/+/, '').replace(/\/+$/, '');
+    if (rel.split('/').some((seg) => seg === '..' || seg === '.')) return notFoundOrMissing(siteDir, exists);
+    if (rel && isBlockedSiteName(rel)) return notFoundOrMissing(siteDir, exists);
     const root = path.resolve(siteDir);
-    if (abs !== root && !abs.startsWith(root + path.sep)) {
-        return { kind: 'missing' };
-    }
-    if (fs.existsSync(abs) && fs.statSync(abs).isFile()) {
+    const abs = path.resolve(root, rel || '.');
+    if (abs !== root && !abs.startsWith(root + path.sep)) return notFoundOrMissing(siteDir, exists);
+    const st = stat(abs);
+    if (st && st.isSymbolicLink()) return notFoundOrMissing(siteDir, exists);
+    if (st && st.isFile()) {
+        // /index.html/ is a directory request on a static server: 404
+        if (trailing) return notFoundOrMissing(siteDir, exists);
         return { kind: 'file', abs, rel };
     }
-    const indexTry = path.join(abs, 'index.html');
-    if (fs.existsSync(indexTry) && fs.statSync(indexTry).isFile()) {
-        return { kind: 'file', abs: indexTry, rel: path.join(rel, 'index.html') };
+    if (st && st.isDirectory()) {
+        if (rel && !trailing) return { kind: 'redirect', location: decoded + '/' };
+        const indexTry = path.join(abs, 'index.html');
+        const ist = stat(indexTry);
+        if (ist && ist.isFile() && !ist.isSymbolicLink()) {
+            return { kind: 'file', abs: indexTry, rel: rel ? path.join(rel, 'index.html') : 'index.html' };
+        }
+        return { kind: 'forbidden' };
     }
-    const notFound = path.join(siteDir, '404.html');
-    if (fs.existsSync(notFound)) {
-        return { kind: '404', abs: notFound };
+    return notFoundOrMissing(siteDir, exists);
+}
+
+function lstatSync(abs) {
+    try {
+        return fs.lstatSync(abs);
+    } catch (_err) {
+        return null;
     }
-    return { kind: 'missing' };
+}
+
+function resolveSiteFile(siteDir, urlPath) {
+    return resolveWith(siteDir, urlPath, lstatSync);
 }
 
 async function isFileAsync(abs) {
@@ -169,33 +276,29 @@ async function existsAsync(abs) {
     }
 }
 
-// Same answers as resolveSiteFile, with async stats (site gate request path).
+// Same answers as resolveSiteFile (site gate request path)
 async function resolveSiteFileAsync(siteDir, urlPath) {
-    const rel = urlPath === '/' ? 'index.html' : urlPath.replace(/^\/+/, '');
-    if (!rel || rel.includes('..') || rel.includes('\0')) {
-        return { kind: 'missing' };
+    const cache = new Map();
+    const stats = [];
+    // Collect the paths resolveWith asks for, stat them asynchronously, then answer from that
+    const probe = (abs) => { stats.push(abs); return cache.has(abs) ? cache.get(abs) : undefined; };
+    for (let round = 0; round < 4; round++) {
+        stats.length = 0;
+        const result = resolveWith(siteDir, urlPath, (abs) => {
+            const hit = probe(abs);
+            return hit === undefined ? null : hit;
+        });
+        const missing = stats.filter((abs) => !cache.has(abs));
+        if (!missing.length) return result;
+        await Promise.all(missing.map(async (abs) => {
+            try {
+                cache.set(abs, await fs.promises.lstat(abs));
+            } catch (_err) {
+                cache.set(abs, null);
+            }
+        }));
     }
-    const base = path.basename(rel);
-    if (base === 'manifest.json' || base === 'door.json') {
-        return { kind: 'missing' };
-    }
-    const abs = path.resolve(siteDir, rel);
-    const root = path.resolve(siteDir);
-    if (abs !== root && !abs.startsWith(root + path.sep)) {
-        return { kind: 'missing' };
-    }
-    if (await isFileAsync(abs)) {
-        return { kind: 'file', abs, rel };
-    }
-    const indexTry = path.join(abs, 'index.html');
-    if (await isFileAsync(indexTry)) {
-        return { kind: 'file', abs: indexTry, rel: path.join(rel, 'index.html') };
-    }
-    const notFound = path.join(siteDir, '404.html');
-    if (await existsAsync(notFound)) {
-        return { kind: '404', abs: notFound };
-    }
-    return { kind: 'missing' };
+    return resolveWith(siteDir, urlPath, lstatSync);
 }
 
 function contentTypeForRel(rel) {
@@ -227,6 +330,8 @@ module.exports = {
     listAvailableSlugs,
     readDoorMeta,
     extractDoorPhrase,
+    renderDoorResult,
+    normalizeDoorQuery,
     resolveSiteFile,
     resolveSiteFileAsync,
     contentTypeForRel,

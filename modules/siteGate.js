@@ -48,27 +48,74 @@ function getApocryphaUuid(globalResources) {
     }
 }
 
+/**
+ * Dreamscape's own clients announce themselves: the X-Dreamscape-Client header (the BIOS, the
+ * launch page, DSApp-Kotlin / DSApp-Win), or DSApp-Win's DreamscapeShell/ user agent from
+ * before the header. A scanner sends neither, so the app endpoints below stay invisible to it.
+ */
+const CLIENT_HEADER = 'x-dreamscape-client';
+function hasClientKnock(req) {
+    const header = req.headers && req.headers[CLIENT_HEADER];
+    if (typeof header === 'string' && header.trim()) return true;
+    const ua = req.headers && req.headers['user-agent'];
+    return typeof ua === 'string' && ua.startsWith('DreamscapeShell/');
+}
+
+function isLoopbackRequest(req, globalResources) {
+    const { isLoopbackIp } = require('./clientAddress');
+    return isLoopbackIp(clientRealIp(req, globalResources));
+}
+
+/**
+ * The MCP connector's own hostname (config mcp_public_hostname, e.g. mcp.example.net). When it
+ * is set, OAuth discovery and the MCP mount answer only on that host: the cover host never
+ * shows them. Unset: on every host, as before.
+ */
+function mcpHostname(globalResources) {
+    try {
+        const host = globalResources.getConfig({ path: 'mcp_public_hostname' });
+        return typeof host === 'string' && host.trim() ? host.trim().toLowerCase() : null;
+    } catch (_err) {
+        return null;
+    }
+}
+
+function requestHost(req) {
+    const raw = (req.headers && (req.headers['x-forwarded-host'] || req.headers.host)) || '';
+    return String(raw).split(',')[0].trim().toLowerCase();
+}
+
+function onMcpHost(req, globalResources) {
+    const host = mcpHostname(globalResources);
+    if (!host) return true;
+    const got = requestHost(req);
+    return got === host || got.split(':')[0] === host.split(':')[0];
+}
+
 function isSiteGateExempt(req, globalResources) {
     const method = (req.method || 'GET').toUpperCase();
     const p = (req.path || '/').split('?')[0];
 
-    if (p === '/agent' || p.startsWith('/agent/')) return true;
+    // The local agent API answers loopback only; from anywhere else it is the cover
+    if (p === '/agent' || p.startsWith('/agent/')) return isLoopbackRequest(req, globalResources);
     // Partner instances carry their replication token, not the gate key. Without a token
     // that matches a configured one the routes stay behind the cover like everything else.
     if (p.startsWith('/replication/sync/') || p.startsWith('/replication/assets/') || p === '/replication/maintenance/ack') {
         return hasReplicationCredential(req, globalResources);
     }
-    if (p.startsWith('/.well-known/oauth')) return true;
+    if (p.startsWith('/.well-known/oauth')) return onMcpHost(req, globalResources);
 
     const mcpUuid = getMcpUuid(globalResources);
-    if (mcpUuid && (p === `/${mcpUuid}` || p.startsWith(`/${mcpUuid}/`))) return true;
+    if (mcpUuid && (p === `/${mcpUuid}` || p.startsWith(`/${mcpUuid}/`))) return onMcpHost(req, globalResources);
 
     const apUuid = getApocryphaUuid(globalResources);
     if (apUuid && (p === `/${apUuid}` || p.startsWith(`/${apUuid}/`))) return true;
 
-    if (method === 'OPTIONS' && p === '/status') return true;
-    if (method === 'POST' && p === '/') return true;
-    if (method === 'GET' && p === '/sw.js') return true;
+    // The app's own endpoints: for Dreamscape clients only (a valid key or a session passes
+    // the gate anyway). Anyone else gets what a static server would answer.
+    if (method === 'OPTIONS' && p === '/status') return hasClientKnock(req);
+    if (method === 'POST' && p === '/') return hasClientKnock(req);
+    if (method === 'GET' && p === '/sw.js') return hasClientKnock(req);
 
     // /site-homepage-preview is mounted ahead of the gate and answers only with its ticket or
     // preview cookie; anything else falls through to the cover (siteHomepagePreviewAccess).
@@ -146,6 +193,96 @@ function handleGatewayUnlock(req, res, globalResources) {
     return res.status(401).json({ success: false, error: 'Incorrect password', code: 'GATEWAY_DENIED' });
 }
 
+// Headers Helmet sets for the app. A static site behind nginx does not send these, so the cover
+// drops them (HSTS, nosniff and X-Frame-Options are common nginx config and stay).
+const APP_ONLY_HEADERS = [
+    'Cross-Origin-Opener-Policy', 'Cross-Origin-Resource-Policy', 'Origin-Agent-Cluster',
+    'Referrer-Policy', 'X-DNS-Prefetch-Control', 'X-Download-Options',
+    'X-Permitted-Cross-Domain-Policies', 'X-XSS-Protection', 'Content-Security-Policy',
+    'X-Response-Time', 'X-Powered-By'
+];
+
+function stripAppHeaders(res) {
+    for (const name of APP_ONLY_HEADERS) res.removeHeader(name);
+}
+
+// nginx's mime.types: text/html without a charset, no text/csv (default_type octet-stream)
+const NGINX_TYPES = {
+    '.html': 'text/html', '.htm': 'text/html', '.css': 'text/css', '.js': 'application/javascript',
+    '.json': 'application/json', '.txt': 'text/plain', '.xml': 'text/xml', '.png': 'image/png',
+    '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp',
+    '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.pdf': 'application/pdf',
+    '.woff2': 'font/woff2', '.woff': 'font/woff'
+};
+
+function nginxType(rel) {
+    return NGINX_TYPES[path.extname(rel || '').toLowerCase()] || 'application/octet-stream';
+}
+
+function nginxEtag(stat) {
+    return `"${Math.floor(stat.mtimeMs / 1000).toString(16)}-${stat.size.toString(16)}"`;
+}
+
+function nginxErrorPage(code, title) {
+    return `<html>\r\n<head><title>${code} ${title}</title></head>\r\n<body>\r\n<center><h1>${code} ${title}</h1></center>\r\n<hr><center>nginx</center>\r\n</body>\r\n</html>\r\n`;
+}
+
+/** nginx's own error page (405 for a method a static file does not take, 403 for a bare directory). */
+function sendNginxError(res, code) {
+    const title = { 403: 'Forbidden', 405: 'Not Allowed', 400: 'Bad Request' }[code] || 'Error';
+    stripAppHeaders(res);
+    const body = nginxErrorPage(code, title);
+    res.status(code);
+    res.setHeader('Content-Type', 'text/html');
+    res.setHeader('Content-Length', Buffer.byteLength(body));
+    res.end(body);
+}
+
+/**
+ * A cover file as nginx serves a static file: Last-Modified, an nginx ETag, Accept-Ranges,
+ * no Cache-Control, HEAD with the same headers, 304 on a matching conditional request.
+ * html (optional): a rendered body (the door's result page) sent in place of the file.
+ */
+async function sendCoverFile(req, res, resolved, statusCode, html) {
+    const code = statusCode || (resolved.kind === '404' ? 404 : 200);
+    let stat;
+    try {
+        stat = await fs.promises.stat(resolved.abs);
+    } catch (_err) {
+        return sendNginxError(res, 403);
+    }
+    stripAppHeaders(res);
+    const rel = resolved.rel || path.basename(resolved.abs);
+    res.status(code);
+    res.setHeader('Content-Type', nginxType(rel));
+    if (html != null) {
+        const body = Buffer.from(html, 'utf8');
+        res.setHeader('Content-Length', body.length);
+        if ((req.method || 'GET').toUpperCase() === 'HEAD') return res.end();
+        return res.end(body);
+    }
+    res.setHeader('Last-Modified', stat.mtime.toUTCString());
+    if (code === 200) {
+        const etag = nginxEtag(stat);
+        res.setHeader('ETag', etag);
+        res.setHeader('Accept-Ranges', 'bytes');
+        const inm = req.headers['if-none-match'];
+        const ims = req.headers['if-modified-since'];
+        const notModified = inm
+            ? inm.split(',').map((t) => t.trim()).includes(etag)
+            : (ims && Date.parse(ims) >= Math.floor(stat.mtimeMs / 1000) * 1000);
+        if (notModified) {
+            res.removeHeader('Content-Type');
+            res.status(304);
+            return res.end();
+        }
+    }
+    res.setHeader('Content-Length', stat.size);
+    if ((req.method || 'GET').toUpperCase() === 'HEAD') return res.end();
+    fs.createReadStream(resolved.abs).on('error', () => res.destroy()).pipe(res);
+}
+
+// Admin preview (Alchemy): the plain file, cover-style
 function sendHomepageFile(res, resolved, statusCode) {
     const code = statusCode || (resolved.kind === '404' ? 404 : 200);
     res.status(code);
@@ -156,55 +293,53 @@ function sendHomepageFile(res, resolved, statusCode) {
     res.sendFile(resolved.abs);
 }
 
-function serveHomepage404(siteDir, res) {
-    const resolved = siteHomepage.resolveSiteFile(siteDir, '/__gate_missing__');
-    if (resolved.kind === '404' || resolved.kind === 'file') {
-        sendHomepageFile(res, resolved, 404);
-        return true;
+async function serveHomepage404(req, siteDir, res) {
+    const resolved = await siteHomepage.resolveSiteFileAsync(siteDir, '/__gate_missing__');
+    if (resolved.kind === '404') {
+        return sendCoverFile(req, res, resolved, 404);
     }
-    res.status(404).type('text/html; charset=utf-8').end('<!DOCTYPE html><html><head><title>Not found</title></head><body><p>Not found</p></body></html>');
-    return true;
+    stripAppHeaders(res);
+    const body = nginxErrorPage(404, 'Not Found');
+    res.status(404).setHeader('Content-Type', 'text/html');
+    res.end(body);
 }
 
-function handleDoorPost(req, res, globalResources, cfg, siteDir, doorMeta, q) {
+/** The door's result page for a query: the matching listed record, or the site's "none found". */
+async function sendDoorResult(req, res, siteDir, doorMeta, query) {
+    const page = await siteHomepage.resolveSiteFileAsync(siteDir, '/' + doorMeta.resultPage);
+    if (page.kind !== 'file') return serveHomepage404(req, siteDir, res);
+    let html;
+    try {
+        html = await fs.promises.readFile(page.abs, 'utf8');
+    } catch (_err) {
+        return serveHomepage404(req, siteDir, res);
+    }
+    const rendered = siteHomepage.renderDoorResult(html, doorMeta, query);
+    return sendCoverFile(req, res, page, 200, rendered.html);
+}
+
+async function handleDoorPost(req, res, globalResources, cfg, siteDir, doorMeta, q) {
     const ip = clientRealIp(req, globalResources);
-    if (recordDoorFailure(ip)) {
-        const noResult = siteHomepage.resolveSiteFile(siteDir, doorMeta.noResultPath);
-        if (noResult.kind === 'file') {
-            sendHomepageFile(res, noResult, 200);
-        } else {
-            serveHomepage404(siteDir, res);
-        }
-        return;
-    }
-
     q = q != null ? String(q) : '';
-    const phrase = siteAccess.normalizeAccessPhrase(q);
-    if (q && !phrase) {
-        const noResult = siteHomepage.resolveSiteFile(siteDir, doorMeta.noResultPath);
-        if (noResult.kind === 'file') {
-            sendHomepageFile(res, noResult, 200);
-        } else {
-            serveHomepage404(siteDir, res);
+    // A listed record is an ordinary lookup: never a door failure, never the phrase
+    const isRecord = !!(doorMeta.records && doorMeta.records[siteHomepage.normalizeDoorQuery(q)] != null);
+    if (!isRecord && q) {
+        const locked = recordDoorFailure(ip);
+        const phrase = siteAccess.normalizeAccessPhrase(q);
+        if (!locked && phrase) {
+            const candidate = siteAccess.computeAccessHash(cfg.pepper, phrase);
+            if (candidate && siteAccess.validateAccessToken(candidate, cfg)) {
+                resetDoorFailures(ip);
+                siteAccess.setDskCookie(req, res, cfg.hash);
+                stripAppHeaders(res);
+                // Passphrase stays in POST body only; the stored access hash may go in the URL.
+                res.redirect(303, `/launch?k=${encodeURIComponent(cfg.hash)}`);
+                return;
+            }
+            console.log(`[siteGate] door failure from ${ip}`);
         }
-        return;
     }
-    const candidate = siteAccess.computeAccessHash(cfg.pepper, phrase || '');
-    if (candidate && siteAccess.validateAccessToken(candidate, cfg)) {
-        resetDoorFailures(ip);
-        siteAccess.setDskCookie(req, res, cfg.hash);
-        // Passphrase stays in POST body only; the stored access hash may go in the URL.
-        res.redirect(303, `/launch?k=${encodeURIComponent(cfg.hash)}`);
-        return;
-    }
-
-    console.log(`[siteGate] door failure from ${ip}`);
-    const noResult = siteHomepage.resolveSiteFile(siteDir, doorMeta.noResultPath);
-    if (noResult.kind === 'file') {
-        sendHomepageFile(res, noResult, 200);
-    } else {
-        serveHomepage404(siteDir, res);
-    }
+    return sendDoorResult(req, res, siteDir, doorMeta, q);
 }
 
 function createSiteGateMiddleware(globalResources, projectRoot) {
@@ -251,7 +386,7 @@ function createSiteGateMiddleware(globalResources, projectRoot) {
     };
 }
 
-// Gated (logged-out) requests: the cover site, with async stats on the request path.
+// Gated (logged-out) requests: the cover site, answered the way nginx serves a static site.
 async function serveCoverSite(req, res, globalResources, cfg, projectRoot) {
     const siteDir = siteHomepage.coverSiteDir(projectRoot, cfg.homepage);
     let siteDirExists = false;
@@ -264,7 +399,11 @@ async function serveCoverSite(req, res, globalResources, cfg, projectRoot) {
         }
     }
     if (!siteDirExists) {
-        res.status(503).type('text/plain').send('Cover site folder missing (resources/site-homepages/' + cfg.homepage + ')');
+        // nothing that names the folder: an empty server is a 404 like any other
+        console.error(`[siteGate] cover site folder missing: ${cfg.homepage}`);
+        stripAppHeaders(res);
+        res.status(404).setHeader('Content-Type', 'text/html');
+        res.end(nginxErrorPage(404, 'Not Found'));
         return;
     }
 
@@ -272,33 +411,60 @@ async function serveCoverSite(req, res, globalResources, cfg, projectRoot) {
     const urlPath = (req.path || '/').split('?')[0] || '/';
     const doorMeta = siteHomepage.readDoorMeta(siteDir);
 
-    const doorPhrase = siteHomepage.extractDoorPhrase(req, doorMeta);
+    const doorPhrase = siteHomepage.extractDoorPhrase(req, doorMeta, { clientKnock: hasClientKnock(req) });
     if (doorPhrase !== undefined) {
-        handleDoorPost(req, res, globalResources, cfg, siteDir, doorMeta, doorPhrase);
+        await handleDoorPost(req, res, globalResources, cfg, siteDir, doorMeta, doorPhrase);
         return;
     }
 
-    if (method === 'GET' || method === 'HEAD') {
-        const resolved = await siteHomepage.resolveSiteFileAsync(siteDir, urlPath);
-        if (resolved.kind === 'file') {
-            if (method === 'HEAD') {
-                res.status(200).end();
-                return;
-            }
-            sendHomepageFile(res, resolved, 200);
-            return;
-        }
-        if (resolved.kind === '404') {
-            if (method === 'HEAD') {
-                res.status(404).end();
-                return;
-            }
-            sendHomepageFile(res, resolved, 404);
-            return;
-        }
+    if (method !== 'GET' && method !== 'HEAD' && method !== 'POST') {
+        return sendNginxError(res, 405);
     }
 
-    serveHomepage404(siteDir, res);
+    // GET on the door's action or result page with ?q=: the public lookup (never the phrase)
+    if (method !== 'POST' && (urlPath === doorMeta.postPath || urlPath === '/' + doorMeta.resultPage)
+        && req.query && req.query[doorMeta.field || 'q'] != null) {
+        return sendDoorResult(req, res, siteDir, doorMeta, String(req.query[doorMeta.field || 'q']));
+    }
+    // The action endpoint without a query: the search page itself
+    if (method !== 'POST' && urlPath === doorMeta.postPath && doorMeta.postPath !== '/' + doorMeta.resultPage) {
+        return sendDoorResult(req, res, siteDir, doorMeta, '');
+    }
+
+    // A contact form's endpoint: its "sent" page, whatever was posted (nothing is kept)
+    if (method === 'POST' && doorMeta.forms && doorMeta.forms[urlPath]) {
+        const sent = await siteHomepage.resolveSiteFileAsync(siteDir, '/' + doorMeta.forms[urlPath]);
+        if (sent.kind === 'file') return sendCoverFile(req, res, sent, 200);
+    }
+
+    const resolved = await siteHomepage.resolveSiteFileAsync(siteDir, urlPath);
+    if (method === 'POST') {
+        // a static file takes no POST
+        if (resolved.kind === 'file' || resolved.kind === 'redirect' || resolved.kind === 'forbidden') {
+            return sendNginxError(res, 405);
+        }
+        return serveHomepage404(req, siteDir, res);
+    }
+    if (resolved.kind === 'file') return sendCoverFile(req, res, resolved, 200);
+    if (resolved.kind === 'redirect') {
+        stripAppHeaders(res);
+        const body = nginxErrorPage(301, 'Moved Permanently');
+        res.status(301).setHeader('Location', resolved.location);
+        res.setHeader('Content-Type', 'text/html');
+        return res.end(method === 'HEAD' ? undefined : body);
+    }
+    if (resolved.kind === 'forbidden') return sendNginxError(res, 403);
+    return serveHomepage404(req, siteDir, res);
+}
+
+// A refused WebSocket upgrade answers like a static server (404), not a dropped connection
+function refuseUpgrade(socket) {
+    const body = nginxErrorPage(404, 'Not Found');
+    try {
+        socket.end(`HTTP/1.1 404 Not Found\r\nContent-Type: text/html\r\nContent-Length: ${Buffer.byteLength(body)}\r\nConnection: close\r\n\r\n${body}`);
+    } catch (_err) {
+        socket.destroy();
+    }
 }
 
 function attachSiteGateWebUpgrade(server, globalResources, sessionStore, sessionSecret) {
@@ -352,7 +518,7 @@ function attachSiteGateWebUpgrade(server, globalResources, sessionStore, session
                                     if (!err && session && session.authenticated === true) {
                                         existing.forEach((listener) => listener.call(server, req, socket, head));
                                     } else {
-                                        socket.destroy();
+                                        refuseUpgrade(socket);
                                     }
                                 });
                                 return;
@@ -365,7 +531,7 @@ function attachSiteGateWebUpgrade(server, globalResources, sessionStore, session
             }
         }
 
-        socket.destroy();
+        refuseUpgrade(socket);
     });
 }
 
@@ -373,7 +539,7 @@ function siteHomepagePreviewAccess(globalResources) {
     return function siteHomepagePreviewAccessMiddleware(req, res, next) {
         const slug = req.params.slug;
         if (!siteHomepage.isSafeSlug(slug)) {
-            return res.status(400).json({ error: 'Invalid slug' });
+            return next('route');
         }
         if (siteHomepagePreview.requestIsAdminPreview(req)) {
             return next();
@@ -511,7 +677,10 @@ function registerDynamicManifestRoute(app, globalResources, publicManifestPath) 
             return res.json(buildDreamscapeManifestJson(hash, staticManifest));
         }
         if (cfg.configured && !(req.session && req.session.authenticated === true)) {
-            return res.json(buildCoverManifestJson(cfg, projectRootForManifest(publicManifestPath)));
+            const body = JSON.stringify(buildCoverManifestJson(cfg, projectRootForManifest(publicManifestPath)));
+            res.removeHeader('Cache-Control');
+            res.setHeader('Content-Type', 'application/json');
+            return res.end(body);
         }
         if (staticManifest) {
             return res.json(buildDreamscapeManifestJson(null, staticManifest));
@@ -527,6 +696,8 @@ module.exports = {
     registerDynamicManifestRoute,
     buildDreamscapeManifestJson,
     isSiteGateExempt,
+    hasClientKnock,
+    CLIENT_HEADER,
     gateStatusForRequest,
     handleGatewayUnlock,
     doorFailByIp

@@ -14,7 +14,8 @@ function resolveMcpPublicBaseUrl(globalResources) {
     let publicHost = 'localhost:9220';
     try {
         if (globalResources && globalResources.getConfig) {
-            publicHost = globalResources.getConfig({ path: 'public_hostname' }) || publicHost;
+            publicHost = globalResources.getConfig({ path: 'mcp_public_hostname' })
+                || globalResources.getConfig({ path: 'public_hostname' }) || publicHost;
         }
     } catch (_err) {
         publicHost = 'localhost:9220';

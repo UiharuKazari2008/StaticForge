@@ -212,6 +212,9 @@
             const res = await env.fetch('/status', {
                 method: 'OPTIONS',
                 cache: 'no-cache',
+                // the client knock: without a valid key the server answers /status only to
+                // Dreamscape's own clients (modules/siteGate.js hasClientKnock)
+                headers: { 'X-Dreamscape-Client': 'melaton-boot' },
                 signal: timeoutSignal(config.probeTimeoutMs)
             });
             if (!res.ok) return { kind: 'http', status: res.status };
