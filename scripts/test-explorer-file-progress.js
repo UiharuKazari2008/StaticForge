@@ -201,7 +201,7 @@ function app(items, currentPath = '/Workspaces/ws1/Pictures') {
     // the CSS and script load with the explorer feature, the script before the applet
     const loader = read('public/scripts/comp/featureLoader.js');
     assert.match(loader, /explorer:\s*\{[^}]*css\/vista-file-progress\.css/);
-    assert.match(loader, /'scripts\/comp\/fileOperationProgress\.js', 'scripts\/comp\/explorerApplet\.js'/);
+    assert.match(loader, /'scripts\/comp\/fileOperationProgress\.js',[^\]]*'scripts\/comp\/explorerApplet\.js'/);
 
     console.log('test-explorer-file-progress: ok');
 })().catch((err) => {

@@ -101,6 +101,16 @@ body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-s
     margin: 0 9px 0 6px;
 }
 
+/* a workspace dot inside a row's own content (workspace pickers, Move to...) sits in the icon column
+   too, where a first-child dot goes; the label keeps the text column */
+body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-submenu) .context-menu-item :not(.context-menu-item-value) > .workspace-color-indicator {
+    position: absolute;
+    top: 50%;
+    left: 6px;
+    margin: 0;
+    transform: translateY(-50%);
+}
+
 /* items without an icon start their text after the gutter, like Vista's */
 body.desktop-mode:not(.windows-classic-theme) :is(.context-menu, .context-menu-submenu) .context-menu-item:not(:has(> i:first-child, > .workspace-color-indicator:first-child, > img:first-child)) {
     /* icon box + its 2 px margin + the 8 px gap, so all text starts in one column */
@@ -305,6 +315,15 @@ body.windows-classic-theme .context-menu-submenu .context-menu-item-text {
 
 body.windows-classic-theme :is(.context-menu, .context-menu-submenu) .context-menu-item-subtext {
     line-height: 12px;
+}
+
+/* a workspace dot inside a row's own content sits in the icon column, level with a first-child dot */
+body.windows-classic-theme :is(.context-menu, .context-menu-submenu) .context-menu-item :not(.context-menu-item-value) > .workspace-color-indicator {
+    position: absolute;
+    top: 50%;
+    left: 6px;
+    margin: 0;
+    transform: translateY(-50%);
 }
 
 body.windows-classic-theme :is(.context-menu, .context-menu-submenu) .context-menu-item > :is(i, img):first-child {

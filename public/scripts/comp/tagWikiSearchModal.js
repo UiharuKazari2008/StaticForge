@@ -190,6 +190,8 @@ class WikiDisplayBase {
         if (!url) return;
         // Store for cross-pane address bar syncing when this pane is the active one
         this._currentAddress = { displayUrl: url, fullUrl: fullUrl || url, mode: mode || 'edtx' };
+        // History (grimoireHistoryDsap.js, #628)
+        if (window.grimoireHistoryLog) window.grimoireHistoryLog.noteAddress(this, fullUrl || url);
 
         // If this is a standalone wiki window instance, reflect the address in its title bar
         if (this.modal && this.modal.classList.contains('wiki-page-viewer-modal')) {
@@ -5768,6 +5770,8 @@ class TagWikiSearchModal extends WikiDisplayBase {
 
         this.currentAddress = { fullUrl, displayPath, mode };
         this._currentAddress = { displayUrl: displayPath, fullUrl, mode };
+        // History (grimoireHistoryDsap.js, #628): the main window's own page (panes note theirs)
+        if (window.grimoireHistoryLog && (this.activePane === this || !this.activePane)) window.grimoireHistoryLog.noteAddress(this, fullUrl);
 
         if (!updatingActiveLeft) {
             // Right pane is the active one; its own setAddress + notify will keep the bar in sync.

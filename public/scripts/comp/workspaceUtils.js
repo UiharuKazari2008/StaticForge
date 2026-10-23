@@ -25,6 +25,8 @@ let isWorkspaceSwitching = false; // Flag to prevent duplicate calls during work
 let workspaceStyleElement = null; // Global style element for all workspace styles
 let workspaceToastId = null; // ID of the workspace switching toast
 let workspaceProgressModal = null; // Progress modal for workspace switching
+// the desktop's switch: Vista's progress dialog (fileOperationProgress.js task), "Switching to <name>"
+let workspaceProgressTask = null;
 let workspaceProgressBarElement = null;
 let workspaceProgressTextElement = null;
 let workspaceProgressContainerElement = null;
@@ -1947,6 +1949,21 @@ function showWorkspaceProgressModal(workspaceName) {
         return;
     }
 
+    // Vista's progress dialog: "Switching to Main", the status under it, a marquee until the amount
+    // is known; a switch cannot be stopped halfway, so Close only shuts the window
+    if (typeof fileOperationProgress !== 'undefined' && fileOperationProgress.available()) {
+        if (workspaceProgressTask) workspaceProgressTask.finish();
+        // the switch's dialog takes the place of a gallery load's (galleryView.js), as the shared one did
+        if (typeof galleryProgressTask !== 'undefined' && galleryProgressTask) {
+            galleryProgressTask.finish();
+            galleryProgressTask = null;
+        }
+        workspaceProgressTask = fileOperationProgress.task({ title: `Switching to ${workspaceName}`, line: formatWorkspaceProgressStatusText(null) });
+        workspaceProgressTask.setMarquee(true);
+        workspaceProgressTask.determinate = false;
+        return;
+    }
+
     // Create progress modal using confirmation dialog
     const progressHtml = `
         <div style="text-align: left; display: flex; flex-direction: column; gap: 8px;">
@@ -2058,7 +2075,7 @@ function formatGalleryProgressStatusText(progress) {
     if (isGalleryBlockFetchPhase(progress)) {
         const detail = formatGalleryBlocksProgressLabel(progress);
         const suffix = detail ? ` (${detail})` : '';
-        return `Loading gallery${suffix}`;
+        return `Loading Gallery${suffix}`;
     }
     if (progress.suppressBlocks === true) {
         return 'Loading...';
@@ -2078,7 +2095,7 @@ function formatWorkspaceProgressStatusText(progress) {
     if (isGalleryBlockFetchPhase(progress)) {
         const detail = formatGalleryBlocksProgressLabel(progress);
         const suffix = detail ? ` (${detail})` : '';
-        return `Loading gallery${suffix}`;
+        return `Loading Gallery${suffix}`;
     }
     if (progress.suppressBlocks === true) {
         return 'Preparing...';
@@ -2122,6 +2139,16 @@ function updateWorkspaceProgress(progress) {
         window.planetSwitcher.updateProgress(progress);
         return;
     }
+    if (workspaceProgressTask) {
+        // once the amount is known the bar stays determinate, as the old dialog's did
+        if (!workspaceProgressTask.determinate && shouldGalleryProgressUseDeterminate(progress)) {
+            workspaceProgressTask.determinate = true;
+            workspaceProgressTask.setMarquee(false);
+        }
+        if (workspaceProgressTask.determinate) workspaceProgressTask.setPercent((Number(progress && progress.progress) || 0) * 100);
+        workspaceProgressTask.setLine(formatWorkspaceProgressStatusText(progress));
+        return;
+    }
     if (!workspaceProgressModal) return;
 
     const modeRef = { value: workspaceProgressModeSwitched };
@@ -2161,6 +2188,10 @@ function updateWorkspaceProgress(progress) {
 
 // Hide workspace progress modal
 function hideWorkspaceProgressModal() {
+    if (workspaceProgressTask) {
+        workspaceProgressTask.finish();
+        workspaceProgressTask = null;
+    }
     if (workspaceProgressModal) {
         hideConfirmationDialog();
         workspaceProgressModal = null;

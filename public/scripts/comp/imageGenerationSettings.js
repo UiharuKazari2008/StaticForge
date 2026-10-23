@@ -1433,7 +1433,7 @@ function getStudioEffortMenuItems() {
     ];
 }
 
-function studioParamScrubRow(param, label, iconClass) {
+function studioParamScrubRow(param, label) {
     const inputId = param === 'steps' ? 'manualSteps' : (param === 'guidance' ? 'manualGuidance' : 'manualRescale');
     const locked = () => studioMediumLocked(param);
     return {
@@ -1444,12 +1444,10 @@ function studioParamScrubRow(param, label, iconClass) {
             wrap.className = 'dataset-option-content';
             const left = document.createElement('div');
             left.className = 'dataset-option-left';
-            const icon = document.createElement('i');
-            icon.className = iconClass;
+            // no glyph: the label sits in the menu's text column like the other rows
             const name = document.createElement('span');
             name.className = 'dataset-name';
             name.textContent = label;
-            left.appendChild(icon);
             left.appendChild(name);
             const controls = document.createElement('div');
             controls.className = 'dataset-bias-controls';
@@ -2097,9 +2095,9 @@ function getStudioImageGenerationSettingsMenuConfig() {
                         disabled: studioEffortMenuDisabled,
                         tooltip: () => (studioEffortMenuDisabled() ? 'Effort is only available on V5 Full.' : '')
                     },
-                    studioParamScrubRow('steps', 'Steps', 'fas fa-shoe-prints'),
-                    studioParamScrubRow('guidance', 'Guidance', 'fas fa-compass'),
-                    studioParamScrubRow('rescale', 'Rescale', 'fas fa-arrows-left-right'),
+                    studioParamScrubRow('steps', 'Steps'),
+                    studioParamScrubRow('guidance', 'Guidance'),
+                    studioParamScrubRow('rescale', 'Rescale'),
                     {
                         icon: 'fas fa-shuffle',
                         text: 'Sampler',

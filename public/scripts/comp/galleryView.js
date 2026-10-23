@@ -293,6 +293,8 @@ const galleryToggleGroup = document.getElementById('galleryToggleGroup');
 
 // Gallery view switching progress modal
 let galleryProgressModal = null;
+// the desktop's gallery load: Vista's progress dialog (fileOperationProgress.js task), "Loading Gallery"
+let galleryProgressTask = null;
 let galleryProgressToastId = null;
 let galleryProgressBarElement = null;
 let galleryProgressTextElement = null;
@@ -1797,6 +1799,18 @@ function showGalleryDataProgressModal(viewType = 'images') {
         return;
     }
 
+    // Vista's progress dialog: "Loading Gallery", the status under it, a marquee until the amount is
+    // known; nothing can stop a load, so Close only shuts the window (the load goes on)
+    if (typeof fileOperationProgress !== 'undefined' && fileOperationProgress.available()) {
+        // a workspace switch's own dialog already follows this load (workspaceUtils.js
+        // workspaceProgressTask, fed by updateWorkspaceProgress): no second window over it
+        if (typeof workspaceProgressTask !== 'undefined' && workspaceProgressTask) return;
+        galleryProgressTask = fileOperationProgress.task({ title: `Loading ${viewName}`, line: formatGalleryProgressStatusText(null) });
+        galleryProgressTask.setMarquee(true);
+        galleryProgressTask.determinate = false;
+        return;
+    }
+
     const progressHtml = `
         <div style="text-align: left; display: flex; flex-direction: column; gap: 8px;">
             <div role="progressbar" class="marquee animate" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Gallery loading progress">
@@ -1852,7 +1866,7 @@ function showGalleryLoadingProgressModal() {
 
 function ensureGalleryLoadProgressVisible() {
     syncGalleryProgressDialogState();
-    if (galleryProgressModal || galleryProgressToastId) {
+    if (galleryProgressModal || galleryProgressToastId || galleryProgressTask) {
         if (galleryProgressModal && typeof positionConfirmationDialog === 'function') {
             const centerEvent = createGalleryWindowCenterEvent();
             if (centerEvent) {
@@ -1875,16 +1889,27 @@ function updateGalleryDataProgress(progress) {
     const terminal = isGalleryProgressTerminalPhase(progress);
     // workspaceSplash: public/scripts/comp/appSplash.js - the splash owns the progress while it is up (#468)
     if (workspaceSplash.isActive()) {
-        if (galleryProgressModal || galleryProgressToastId) hideGalleryProgressModal();
+        if (galleryProgressModal || galleryProgressToastId || galleryProgressTask) hideGalleryProgressModal();
         workspaceSplash.setProgress(progress);
         if (terminal) workspaceSplash.hide();
         return;
     }
-    if (!galleryProgressModal && !galleryProgressToastId) {
+    if (!galleryProgressModal && !galleryProgressToastId && !galleryProgressTask) {
         if (terminal || isGalleryWindowHidden()) {
             return;
         }
         ensureGalleryLoadProgressVisible();
+    }
+    if (galleryProgressTask) {
+        // once the amount is known the bar stays determinate, as the old dialog's did
+        if (!galleryProgressTask.determinate && shouldGalleryProgressUseDeterminate(progress)) {
+            galleryProgressTask.determinate = true;
+            galleryProgressTask.setMarquee(false);
+        }
+        if (galleryProgressTask.determinate) galleryProgressTask.setPercent((Number(progress.progress) || 0) * 100);
+        galleryProgressTask.setLine(formatGalleryProgressStatusText(progress));
+        if (terminal) hideGalleryProgressModal();
+        return;
     }
     if (!galleryProgressModal && !galleryProgressToastId) {
         return;
@@ -1948,6 +1973,10 @@ function hideGalleryProgressModal() {
     if (galleryProgressToastId) {
         removeGlassToast(galleryProgressToastId);
         galleryProgressToastId = null;
+    }
+    if (galleryProgressTask) {
+        galleryProgressTask.finish();
+        galleryProgressTask = null;
     }
 
     // Clear stored references and reset mode flag
@@ -2919,7 +2948,7 @@ function ensureRerollProgressToast() {
     if (progressToastId) return progressToastId;
     progressToastId = showGlassToast(
         'info',
-        'Rerolling Image',
+        'Recasting Image',
         'Generating new image...',
         true,
         false,

@@ -8519,6 +8519,7 @@ async function createDirectorSessionWithImage(cacheImage) {
 
 // Replace reference with last generated image
 async function replaceReferenceWithLastGenerated(cacheImage) {
+    let toastId = null;
     try {
         // Check if there's a current manual preview image
         if (!window.currentManualPreviewImage) {
@@ -8537,8 +8538,8 @@ async function replaceReferenceWithLastGenerated(cacheImage) {
         // Get current workspace
         const currentWorkspaceId = getCurrentWorkspaceId();
 
-        // Show loading state
-        showGlassToast('info', 'Replacing reference...', '', false);
+        // A progress toast: Vista's progress dialog on the desktop (toastManager.js)
+        toastId = showGlassToast('info', 'Replacing Reference', 'Replacing reference with the last generated image...', true, false);
 
         // Call websocket to replace the reference using the filename
         // The server will read the image from the images directory
@@ -8546,7 +8547,12 @@ async function replaceReferenceWithLastGenerated(cacheImage) {
 
         if (result.data && result.data.success) {
             // Show success message
-            showGlassToast('success', 'Reference replaced successfully', '', true);
+            updateGlassToastComplete(toastId, {
+                type: 'success',
+                title: 'Reference Replaced',
+                message: 'Reference replaced successfully',
+                showProgress: false
+            });
 
             // Refresh the cache browser to show the updated reference
             setTimeout(() => {
@@ -8558,7 +8564,16 @@ async function replaceReferenceWithLastGenerated(cacheImage) {
 
     } catch (error) {
         console.error('Error replacing reference:', error);
-        showError('Failed to replace reference: ' + error.message);
+        if (toastId) {
+            updateGlassToastComplete(toastId, {
+                type: 'error',
+                title: 'Replace Reference Failed',
+                message: 'Failed to replace reference: ' + error.message,
+                showProgress: false
+            });
+        } else {
+            showError('Failed to replace reference: ' + error.message);
+        }
     }
 }
 

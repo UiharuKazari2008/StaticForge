@@ -122,10 +122,13 @@ function _updateProgressDialog(entry, title, message) {
  * The work is over: the dialog closes, or (an error or warning, or buttons to act on the result)
  * stays in its complete state with the title, the message, those buttons and Close.
  */
-function _endProgressDialog(toastId, { type, title, message, buttons } = {}) {
+function _endProgressDialog(toastId, result = {}) {
     const entry = progressDialogToasts.get(toastId);
     progressDialogToasts.delete(toastId);
-    if (!entry) return;
+    if (entry) _endProgressDialogEntry(entry, toastId, result);
+}
+
+function _endProgressDialogEntry(entry, toastId, { type, title, message, buttons } = {}) {
     const op = entry.op;
     const results = (Array.isArray(buttons) ? buttons : [])
         .filter(b => b && b.text && typeof b.onClick === 'function' && !_progressDialogCancelButton([b]));
@@ -667,8 +670,14 @@ function showGlassToast(type, title, message, showProgress = false, timeout = 50
         timeoutId: null
     });
 
-    // the desktop: Vista's progress dialog in place of a progress toast
-    if (showProgress && _openProgressDialogForToast(toastId, title, message, buttons)) {
+    // the desktop: Vista's progress dialog in place of a progress toast, and the result of one
+    // that just ended in that dialog rather than beside it
+    if (showProgress && type === 'info' && _openProgressDialogForToast(toastId, title, message, buttons)) {
+        // a progress toast that was meant to dismiss itself: its dialog closes then too
+        if (resolvedTimeout !== false) _setToastDismissTimer(toastId, resolvedTimeout);
+        return toastId;
+    }
+    if (!showProgress && _takeProgressDialogResult(toastId, type, title, message, buttons)) {
         return toastId;
     }
 
@@ -789,11 +798,34 @@ const ANDROID_DISMISS_DEFER_MS = 400;
  * // Later...
  * removeGlassToast(toastId);
  */
+// A dialog whose toast was just removed: callers often remove the progress toast and then toast the
+// result ("Copied 3 images", "Rebuild Failed"). That result, in the same turn, ends the dialog
+// instead (an error stays up in it, a success closes it); otherwise it closes on the next one.
+let progressDialogEnding = null;
+
+function _takeProgressDialogResult(toastId, type, title, message, buttons) {
+    const ending = progressDialogEnding;
+    if (!ending || !(type === 'success' || type === 'error' || type === 'warning')) return false;
+    progressDialogEnding = null;
+    clearTimeout(ending.timer);
+    _endProgressDialogEntry(ending.entry, toastId, { type, title, message, buttons });
+    return true;
+}
+
 function removeGlassToast(toastId) {
     const dialog = progressDialogToasts.get(toastId);
     if (dialog) {
         progressDialogToasts.delete(toastId);
-        dialog.op.finish();
+        if (progressDialogEnding) {
+            clearTimeout(progressDialogEnding.timer);
+            progressDialogEnding.entry.op.finish();
+        }
+        const ending = { entry: dialog };
+        ending.timer = setTimeout(() => {
+            if (progressDialogEnding === ending) progressDialogEnding = null;
+            dialog.op.finish();
+        }, 0);
+        progressDialogEnding = ending;
     }
     const stored = activeToasts.get(toastId);
     if (stored?.nativeRouted && !_isInAppOnlyToast(toastId)) {
