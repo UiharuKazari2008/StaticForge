@@ -1,14 +1,25 @@
 /**
- * Welcome Center (Yozora #632): Vista's first-run hub (oobefldr.dll's folder, shown in the Control
- * Panel frame under System and Maintenance), Windows -> Melaton:
+ * Welcome Center (Yozora #632): Vista's oobefldr.dll folder, 1:1 from the VM (UIFILE 2 and 3, the
+ * task list XML 1, string table, bitmaps 100-107, shell32's FTR 201 flare), Windows -> Melaton and
+ * Microsoft -> Xyridian:
  *
- *   the details band   the edition, the copyright, Processor / Memory / Graphics / Computer name
- *                      (System's facts: cplSystem.js), "Show more details" (System)
- *   Get started with Melaton    the tasks, each with its own description in the band when chosen
- *                               and a link that opens it ("Show all N items" folds the rest away)
- *   Offers from Xyridian        the Dreamscape services
- *   Run at startup              HKCU\...\Welcome Center\RunAtStartup; when set, Welcome Center opens
- *                               once each logon (Vista's default is on; Melaton starts with it off)
+ *   the band (196 px)   bitmap 102 stretched, PreviewFlare on the right, then either
+ *                       the details: title band (bitmap 104) with the account picture (frame 103)
+ *                       and name, the computer picture, edition / processor / memory / graphics /
+ *                       computer name, "Show more details", and "welcome" (Segoe UI 56 pt) fading
+ *                       in after a long delay;
+ *                       or the selected task's preview: its 128 px picture, title, paragraphs and
+ *                       bullets, and its start link
+ *   the list            "1. Get started with Melaton (13)", "2. Offers from Xyridian (7)": 48 px
+ *                       items in 223 px columns, two rows until "Show all N items..."
+ *   the footer          Run at startup: HKCU\...\Welcome Center\RunAtStartup (Melaton starts with it
+ *                       off; Vista's default is on)
+ *
+ * Timing (VM recordings, window animation off): the band's text is there at once and the computer
+ * picture grows from its top-left corner; the flare is shell32 FTR 201 replayed from its own frames
+ * (flare.png: frame minus band, plus-lighter over it), ending on its resting lines; "welcome" fades
+ * to its 27% from 1.6 s to 3.0 s. A new selection drops the old content at once, fades the new in
+ * (DUI "fast") and grows its picture; the flare does not replay.
  *
  *   openWelcomeCenter()
  */
@@ -17,8 +28,12 @@
 
     const doc = typeof document !== 'undefined' ? document : null;
     const KEY = 'HKCU\\Software\\Xyridian\\Melaton\\CurrentVersion\\Welcome Center';
-    const ITEMS = '/static_images/vista-cpl/items';
-    const APP = '/static_images/app_icons/32';
+    const ART = '/static_images/vista-welcome';
+
+    // FTR 201, as recorded: frame i shows from FLARE_TIMES[i] ms after the band appears; the last
+    // frame is the flare at rest (its lines stay on the band)
+    const FLARE_TIMES = [0, 45, 98, 165, 197, 226, 294, 346, 389, 397, 450, 466, 512, 528, 579, 593, 671, 679, 718, 740, 795, 804, 844, 912, 954, 1005, 1055, 1162];
+    const FLARE_H = 192;
 
     function esc(v) {
         return String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -44,37 +59,171 @@
         return !!item;
     }
 
+    function icon(id, size) {
+        return `${ART}/task-${id}-${size}.png`;
+    }
+
+    // "Windows Vista Ultimate" lines name the edition (cplSystem.js)
+    function edition() {
+        return (facts && facts.edition) || 'Melaton';
+    }
+
+    // oobefldr.dll XML 1, the tasks Vista Ultimate shows on a workgroup PC, in sortPriority order
     const TASKS = [
-        { id: 'details', name: 'View computer details', icon: `${ITEMS}/system-32.png`, text: 'Use the System page to see your computer\'s processor, memory and Melaton edition, change its name, and check its Melaton Experience Index.', open: 'Show more details', run: () => cp().doAction('item:system') },
-        { id: 'transfer', name: 'Transfer files and settings', icon: `${APP}/vista-easy-transfer.webp`, text: 'Bring your pictures, prompts and files from another computer or archive into Melaton.', open: 'Open Melaton Easy Transfer', run: () => callGlobal('openVistaImportWizard') || launch('import') },
-        { id: 'users', name: 'Add new users', icon: `${ITEMS}/user-accounts-32.png`, text: 'Change the names and pictures of the two accounts that share this computer.', open: 'Open User Accounts', run: () => cp().doAction('item:user-accounts') },
-        { id: 'internet', name: 'Connect to the Internet', icon: `${ITEMS}/network-and-sharing-center-32.png`, text: 'Melaton reaches the Dreamscape server through its domain network. See the connection and the server\'s status.', open: 'Open Network and Server Center', run: () => cp().open('network') },
-        { id: 'studio', name: 'Get started with DreamStudio', icon: `${APP}/vista-photo-gallery.webp`, text: 'Write a prompt, choose a model and print your first image. DreamStudio is where Dreamscape makes pictures.', open: 'Open DreamStudio', run: () => launch('studio') },
-        { id: 'workspaces', name: 'Explore your Workspaces', icon: `${APP}/vista-folder.webp`, text: 'Every planet keeps its own gallery of prints. Teleport between them from the Start menu.', open: 'Open Workspaces', run: () => launch('workspace') },
-        { id: 'whatsnew', name: 'What\'s new in Melaton', icon: `${APP}/vista-help.webp`, text: 'Read about the changes in this build of Melaton in Melaton Update\'s history.', open: 'Show what\'s new', run: () => cp().doAction('page:update') },
-        { id: 'personalize', name: 'Personalize Melaton', icon: `${ITEMS}/personalization-32.png`, text: 'Change your desktop background, the color of your windows, your screen saver and your sounds.', open: 'Personalize Melaton', run: () => cp().doAction('item:personalization') },
-        { id: 'register', name: 'Register Melaton online', icon: `${ITEMS}/internet-options-32.png`, text: 'See the Melaton edition and the product ID of this computer.', open: 'Show registration', run: () => cp().doAction('item:system') },
-        { id: 'basics', name: 'Melaton Basics', icon: `${APP}/vista-help.webp`, text: 'Learn how to use the desktop, windows, the Start menu and Cartograph.', open: 'Open Help and Support', run: () => callGlobal('openHelpAndSupport', 'basics') },
-        { id: 'access', name: 'Ease of Access Center', icon: `${ITEMS}/ease-of-access-center-32.png`, text: 'Make the computer easier to see, hear and use: the On-Screen Keyboard, Narrator and High Contrast.', open: 'Open Ease of Access Center', run: () => cp().doAction('item:ease-of-access') },
-        { id: 'backup', name: 'Back Up and Restore Center', icon: `${ITEMS}/backup-and-restore-center-32.png`, text: 'Your files are kept on the Dreamscape server and its replicas. See the backups and restore from them.', open: 'Open Backup and Restore Center', run: () => cp().doAction('item:backup') },
-        { id: 'cpl', name: 'Control Panel', icon: `${APP}/vista-control-panel.webp`, text: 'Change the settings of Melaton and the programs that came with it.', open: 'Open Control Panel', run: () => cp().open('home') },
-        { id: 'demos', name: 'Melaton Demos', icon: `${APP}/vista-help.webp`, text: 'See how to print, browse and organize with short guides in the Grimoire.', open: 'Show Melaton Demos', run: () => callGlobal('openHelpAndSupport', 'demos') }
+        { id: 'details', name: 'View computer details', tip: 'View information about your computer including the model, manufacturer, processor, memory, and Melaton edition.', run: () => cp().doAction('item:system') },
+        {
+            id: 'transfer', name: 'Transfer files and settings', tip: 'Use Melaton Easy Transfer to move files and settings from one computer to another.',
+            title: 'Melaton Easy Transfer', start: 'Start Melaton Easy Transfer',
+            body: [['Transfer files and settings from one computer to another.'], ['You can transfer:'], ['User accounts', 1], ['Files and folders', 1], ['Program settings', 1], ['Internet settings and favorites', 1], ['E-mail settings, contacts, and messages', 1]],
+            run: () => callGlobal('openVistaImportWizard') || launch('import')
+        },
+        {
+            id: 'users', name: 'Add new users', tip: 'Add user accounts to your computer.',
+            title: 'Add new users', start: 'Add user accounts',
+            body: [['Each person using this computer can have a user account with personal settings.'], ['With user accounts you can:'], ['Help secure and protect your computer', 1], ['Customize settings for the time you spend on the computer', 1], ['Set up Parental Controls', 1]],
+            run: () => cp().doAction('item:user-accounts')
+        },
+        {
+            id: 'internet', name: 'Connect to the Internet', tip: 'Get assistance with setting up a connection to the Internet.',
+            title: 'Connect to the Internet', start: 'Connect to the Internet',
+            body: [['Follow the steps to set up an Internet connection.'], ['Have your Internet service provider (ISP) information ready before you start. If you don\'t have an ISP yet, the wizard can help you get one.']],
+            run: () => cp().open('network')
+        },
+        {
+            id: 'whatsnew', name: 'What\'s new in Melaton', tip: 'Discover new features that can help you be more productive, stay safe, and have fun.',
+            title: () => `What's new in ${edition()}`, start: 'See more new features',
+            body: [['Search from within folders', 1], ['Organize files in new ways', 1], ['Keep devices in sync', 1], ['Back up and encrypt files', 1], ['Fax and scan documents', 1], ['Start, join, and broadcast online meetings', 1], ['View, edit, and organize pictures', 1], ['Get mobile PC capabilities', 1], ['Use improved networking features', 1], ['Provide guidance with Parental Controls', 1]],
+            run: () => cp().doAction('page:update')
+        },
+        {
+            id: 'personalize', name: 'Personalize Melaton', tip: 'Change your desktop background, change your screen saver, and add another monitor.',
+            title: 'Personalize Melaton', start: 'Personalize Melaton',
+            body: [['Customize features-for example, you can:'], ['Change your desktop background', 1], ['Change your screen saver', 1], ['Add or change sounds', 1], ['Change fonts', 1]],
+            run: () => cp().doAction('item:personalization')
+        },
+        {
+            id: 'register', name: 'Register Melaton online', tip: 'Register Melaton online to get more value and benefits, including the latest tips and tools.',
+            title: 'Register Melaton', start: 'Register Melaton online',
+            body: [[() => `Register online to get the most out of ${edition()}.`]],
+            run: () => cp().doAction('item:system')
+        },
+        {
+            id: 'mediacenter', name: 'Melaton Media Center', tip: 'Set up Melaton Media Center so you can watch television and DVDs, listen to music, and experience the latest online entertainment.',
+            title: 'Set up Melaton Media Center', start: 'Set up Melaton Media Center',
+            body: [['With Melaton Media Center you can:'], ['Watch, pause, and record television', 1], ['Explore and listen to music', 1], ['View, edit, and share your photos', 1], ['Play DVDs and digital videos', 1]],
+            run: () => launch('media-player')
+        },
+        {
+            id: 'basics', name: 'Melaton Basics', tip: 'Learn the basics of using Melaton, including how to use the mouse and keyboard, and how to work with files and folders.',
+            title: 'Melaton Basics', start: 'Open Melaton Basics',
+            body: [['Learn how to:'], ['Use the mouse and keyboard', 1], ['Work with files and programs', 1], ['Use e-mail', 1], ['Connect to and explore the Internet', 1], ['Help keep your computer more secure', 1], ['Work with digital pictures', 1]],
+            run: () => callGlobal('openHelpAndSupport', 'basics')
+        },
+        {
+            id: 'access', name: 'Ease of Access Center', tip: 'Make your computer easier to see, hear, and use.',
+            title: 'Ease of Access Center', start: 'Open Ease of Access Center',
+            body: [['Make your computer easier to see, hear, and use. Adjust the visual display, use an input device, get recommendations for settings, and more.']],
+            run: () => cp().doAction('item:ease-of-access')
+        },
+        {
+            id: 'backup', name: 'Back Up and Restore Center', tip: 'Save copies of your files to a CD, DVD, hard disk, or USB flash drive.',
+            title: 'Back Up and Restore Center', start: 'Open Back Up and Restore Center',
+            body: [['Automatically save copies of your photos, music, and other files to a CD, DVD, hard disk, USB flash drive, or file server. Once a backup is set up, it runs on the schedule you choose.'], ['Or use CompletePC Backup to save a full image of your computer, which you can use to recover from a problem such as a hardware failure.']],
+            run: () => cp().doAction('item:backup')
+        },
+        {
+            id: 'demos', name: 'Melaton Demos', tip: 'Watch video demos to learn how to get started with Melaton.',
+            title: 'Melaton Demos', start: 'Open Melaton Demos',
+            body: [['Watch video demos to learn how to:'], ['Work with programs, files, and folders', 1], ['Use e-mail and the Internet', 1], ['Print documents', 1], ['Help keep your computer more secure', 1], ['Set up user accounts', 1], ['Solve problems using Help', 1]],
+            run: () => callGlobal('openHelpAndSupport', 'demos')
+        },
+        {
+            id: 'cpl', name: 'Control Panel', tip: 'Use Control Panel to add, remove, or change something on your computer.',
+            title: 'Control Panel', start: 'Open Control Panel',
+            body: [['Use Control Panel to change your computer\'s settings. To find what you\'re looking for, use the new Search box or click the links under each category.']],
+            run: () => cp().open('home')
+        }
     ];
 
+    // Vista's offers (Windows Live, Marketplace, support) lead to the Dreamscape services
     const OFFERS = [
-        { id: 'services', name: 'Dreamscape services', icon: '/static_images/vista-cpl/management-tools-32.png', text: 'Data Management, the Security Center and the other Dreamscape service pages.', open: 'Open the Dreamscape services', run: () => callGlobal('openDsapInGrimoire', 'dsap://dreamscape.jp/') },
-        { id: 'agora', name: 'Agora', icon: `${APP}/vista-iexplore.webp`, text: 'See what the NovelAI community is making, and bring their prompts into DreamStudio.', open: 'Open Agora', run: () => launch('agora') || launch('explore') },
-        { id: 'grimoire', name: 'The Grimoire', icon: `${APP}/vista-iexplore.webp`, text: 'The Dreamscape wiki: tags, artists and guides for writing prompts.', open: 'Open the Grimoire', run: () => callGlobal('openGrimoireApplet') }
+        {
+            id: 'live', name: 'Go online to learn about Melaton Live', tip: 'Learn about Melaton Live: an innovative set of products and services that brings your online world together.',
+            title: 'Melaton Live', start: 'Learn more online',
+            body: [['Melaton Live is an innovative set of services that brings your online world together. Finally, the information you need, the people you care about, and powerful protection-all at your fingertips.'], ['Go online to learn how Melaton Live products and services can help you:'], ['Find the information you\'re looking for, fast', 1], ['Connect and share with friends and family', 1], ['Protect your PC', 1]],
+            run: () => callGlobal('openDsapInGrimoire', 'dsap://dreamscape.jp/')
+        },
+        {
+            id: 'search', name: 'Go online to find it fast with Melaton Live', tip: 'Search your way. Get all the search tools you need in one place with Melaton Live.',
+            title: 'Find it fast with Melaton Live', start: 'Learn more online',
+            body: [['Search your way. Get all the search tools you need in one place. Find images quickly and get detailed maps and directions together with local business listings.']],
+            run: () => callGlobal('openGrimoireApplet')
+        },
+        {
+            id: 'onecare', name: 'Go online to help protect your PC with Melaton Live', tip: 'Help protect your PC and keep it running smoothly with Melaton Live.',
+            title: 'Help protect your PC with Melaton Live', start: 'Learn more online',
+            body: [['Help protect your PC and keep it running smoothly with an innovative set of products and services from Melaton Live. Spend less time worrying about your PC and more time connecting with the people, interests, and information you care about most.']],
+            run: () => callGlobal('openDsapInGrimoire', 'dsap://security.dreamscape.jp/')
+        },
+        {
+            id: 'market', name: 'Go online to Melaton Marketplace', tip: 'Go online to Melaton Marketplace to browse the large selection of software and hardware for your Melaton PC.',
+            title: 'Melaton Marketplace', start: 'Go online to Melaton Marketplace',
+            body: [['Melaton Marketplace makes it easy to try, buy, and download software. Browse the large selection of software and hardware at Melaton Marketplace and use the resources (reviews, compatibility information, and more) to find exactly what you want. Melaton Marketplace enables you to purchase and download your software in a secure environment.']],
+            run: () => callGlobal('openDsapInGrimoire', 'dsap://vibes.novelai.net')
+        },
+        {
+            id: 'share', name: 'Go online to connect and share with Melaton Live', tip: 'Connect with friends and express yourself with Melaton Live.',
+            title: 'Connect and share with Melaton Live', start: 'Learn more online',
+            body: [['Instantly connect with friends using text, voice, and video. Start your own blog in minutes and easily share photos. Get fast, simple e-mail. Everything works together smoothly. Communicate and share like never before with Melaton Live.']],
+            run: () => launch('dovecote')
+        },
+        {
+            id: 'protect', name: 'Go online to find more ways to help protect your PC', tip: 'Help protect your PC and keep it running smoothly.',
+            title: 'Find more ways to help protect your PC', start: 'Learn more online',
+            body: [['Help protect your PC from security threats. Go online to learn more and find a solution that meets your needs.']],
+            run: () => cp().doAction('item:security-center')
+        },
+        {
+            id: 'support', name: 'Sign up online for technical support', tip: 'Sign up to get technical assistance from Xyridian experts.',
+            title: 'Xyridian technical support', start: 'Sign up online for technical support',
+            body: [['Choose from a variety of technical support packages from Xyridian.'], ['Sign up online and connect with Xyridian experts who are ready to help you.']],
+            run: () => callGlobal('openHelpAndSupport')
+        }
     ];
 
-    const FOLDED = 6; // Vista shows the first row or two until "Show all N items"
+    const GROUPS = [
+        { id: 'tasks', title: 'Get started with Melaton', list: TASKS },
+        { id: 'offers', title: 'Offers from Xyridian', list: OFFERS }
+    ];
+
+    const COL_W = 223; // a cell and its gap, as the VM's 220 x 50 items sit
+    const ROWS_SHOWN = 2;
 
     let selected = null;
-    let showAllTasks = false;
-    let showAllOffers = false;
+    const expanded = {};
+    const collapsed = {};
     let facts = null;
+    let factsLoading = false;
+    let mounted = null; // { main, timers: [], raf, ro }
+
+    function findTask(id) {
+        return TASKS.concat(OFFERS).find((x) => x.id === id) || null;
+    }
+
+    function val(v) {
+        return typeof v === 'function' ? v() : v;
+    }
+
+    function formatMemory(mem) {
+        const m = /^([\d.]+)\s*(GB|MB)/i.exec(String(mem || ''));
+        if (!m) return mem ? `${mem} RAM` : '';
+        const gb = m[2].toUpperCase() === 'MB' ? Number(m[1]) / 1024 : Number(m[1]);
+        return `${gb.toFixed(2)} GB RAM`;
+    }
 
     async function loadFacts() {
+        if (facts || factsLoading) return;
+        factsLoading = true;
         let version = null;
         let sys = null;
         try {
@@ -84,104 +233,245 @@
             if (!sys && ws && ws.isConnected && ws.isConnected()) sys = await ws.sendMessage('get_system_info', {});
         } catch (_) { /* below */ }
         const T = root.cplSystem && root.cplSystem._test;
-        const ed = T ? T.edition(version, sys) : { name: 'Melaton', copyright: '' };
+        const ed = T ? T.edition(version, sys) : { name: 'Melaton' };
         const host = T && sys ? T.hostFacts(sys) : {};
         let gpu = '';
         try { gpu = root.melatonDeviceManager ? root.melatonDeviceManager.gpuName() : ''; } catch (_) { /* none */ }
-        facts = { edition: ed.name, copyright: ed.copyright, processor: host.processor || '', memory: host.memory || '', graphics: gpu, computer: host.hostname || '' };
-        const c = cp();
-        if (c && c.currentPage() === 'welcome-center') c.navigate('welcome-center', { replace: true });
+        facts = { edition: ed.name, processor: host.processor || '', memory: formatMemory(host.memory), graphics: gpu, computer: String(host.hostname || '').toUpperCase() };
+        factsLoading = false;
+        if (mounted && !selected) {
+            const box = mounted.main.querySelector('.wc-facts');
+            if (box) box.innerHTML = factsHtml();
+        }
     }
 
-    function band() {
-        if (selected) {
-            const t = TASKS.concat(OFFERS).find((x) => x.id === selected);
-            if (t) {
-                return `<div class="wc-band is-task">
-                    <img class="wc-band-icon" src="${esc(t.icon)}" alt="" onerror="this.style.visibility='hidden'">
-                    <div class="wc-band-text"><h2>${esc(t.name)}</h2><p>${esc(t.text)}</p></div>
-                    <button type="button" class="cpl-vlink wc-band-open" data-wc="run" data-id="${esc(t.id)}">${esc(t.open)}</button>
-                </div>`;
-            }
-        }
+    function factsHtml() {
         const f = facts || {};
-        const v = (x) => (x ? esc(x) : '<span class="wc-na">Checking...</span>');
-        return `<div class="wc-band">
-            <img class="wc-band-logo" src="/static_images/melaton/melaton-orb-system.png" alt="">
-            <div class="wc-band-text">
-                <h2>${esc(f.edition || 'Melaton')}</h2>
-                <p>${esc(f.copyright || '')}</p>
-                <div class="wc-facts">
-                    <span>Processor:</span><span>${v(f.processor)}</span>
-                    <span>Memory:</span><span>${v(f.memory)}</span>
-                    <span>Graphics:</span><span>${v(f.graphics)}</span>
-                    <span>Computer name:</span><span>${v(f.computer)}</span>
-                </div>
+        const lines = [f.edition || 'Melaton', f.processor, f.memory, f.graphics, f.computer ? `Computer Name: ${f.computer}` : ''];
+        return lines.map((l) => `<div class="wc-fact">${esc(l || '')}</div>`).join('');
+    }
+
+    function accountName() {
+        const a = root.meletonAccounts;
+        return a ? a.name() : '';
+    }
+
+    function accountPicture() {
+        const a = root.meletonAccounts;
+        return a ? a.pictureUrl() : '';
+    }
+
+    function detailsHtml() {
+        return `<div class="wc-band-content wc-details">
+            <div class="wc-titleband">
+                <span class="wc-userframe"><img class="wc-userpic" src="${esc(accountPicture())}" alt="" draggable="false" onerror="this.style.visibility='hidden'"></span>
+                <span class="wc-username">${esc(accountName())}</span>
             </div>
-            <button type="button" class="cpl-vlink wc-band-open" data-wc="run" data-id="details">Show more details</button>
+            <img class="wc-pic wc-computerpic" src="${icon('details', 128)}" alt="Computer" draggable="false">
+            <button type="button" class="wc-command wc-more" data-wc="more"><span class="wc-glyph"></span><span class="wc-command-text">Show more details</span></button>
+            <div class="wc-facts">${factsHtml()}</div>
         </div>`;
     }
 
-    function grid(list, all) {
-        const shown = all ? list : list.slice(0, FOLDED);
-        return `<div class="wc-grid">${shown.map((t) => `<button type="button" class="wc-task${t.id === selected ? ' is-selected' : ''}" data-wc="pick" data-id="${esc(t.id)}"><img src="${esc(t.icon)}" alt="" onerror="this.style.visibility='hidden'"><span>${esc(t.name)}</span></button>`).join('')}</div>`;
+    function previewHtml(t) {
+        const body = (t.body || []).map(([text, bullet]) => `<div class="wc-para${bullet ? ' is-bullet' : ''}">${esc(val(text))}</div>`).join('');
+        return `<div class="wc-band-content wc-preview">
+            <img class="wc-pic wc-previewpic" src="${icon(t.id, 128)}" alt="" draggable="false">
+            <div class="wc-preview-title">${esc(val(t.title))}</div>
+            <div class="wc-preview-main">${body}</div>
+            <button type="button" class="wc-command wc-start" data-wc="run" data-id="${esc(t.id)}"><span class="wc-glyph"></span><span class="wc-command-text">${esc(val(t.start))}</span></button>
+        </div>`;
     }
 
-    function section(title, list, all, flag) {
-        return `<div class="wc-section">
-            <div class="wc-head"><h3>${esc(title)}</h3>${list.length > FOLDED ? `<button type="button" class="cpl-vlink" data-wc="${flag}">${all ? `Show ${FOLDED} items` : `Show all ${list.length} items`}</button>` : ''}</div>
-            ${grid(list, all)}
+    function itemHtml(t) {
+        return `<div class="wc-item${t.id === selected ? ' is-selected' : ''}" role="option" tabindex="-1" data-wc="pick" data-id="${esc(t.id)}" title="${esc(t.tip)}">
+            <img src="${icon(t.id, 48)}" alt="" draggable="false"><span class="wc-item-label">${esc(t.name)}</span>
+        </div>`;
+    }
+
+    function groupHtml(g, n) {
+        return `<div class="wc-group${collapsed[g.id] ? ' is-collapsed' : ''}${expanded[g.id] ? ' is-expanded' : ''}" data-group="${g.id}">
+            <div class="wc-group-head"><span class="wc-group-title">${n}. ${esc(g.title)} (${g.list.length})</span><button type="button" class="wc-group-toggle" data-wc="collapse" aria-label="Collapse"></button></div>
+            <div class="wc-items">${g.list.map(itemHtml).join('')}</div>
+            <div class="wc-showall"><button type="button" class="wc-showall-link" data-wc="all">Show all ${g.list.length} items...</button></div>
         </div>`;
     }
 
     const page = {
-        parent: 'cat-system',
         kind: 'welcome',
         title: () => 'Welcome Center',
         tasks: () => '',
         body: () => {
-            if (!facts) void loadFacts();
+            void loadFacts();
+            const t = selected && selected !== 'details' ? findTask(selected) : null;
             return `<div class="wc-page">
-                ${band()}
-                ${section('Get started with Melaton', TASKS, showAllTasks, 'all-tasks')}
-                ${section('Offers from Xyridian', OFFERS, showAllOffers, 'all-offers')}
-                <div class="wc-foot"><input type="checkbox" id="wcRunAtStartup"${reg('RunAtStartup', false) ? ' checked' : ''}><label for="wcRunAtStartup">Run at startup (found in Control Panel System and Maintenance)</label></div>
+                <div class="wc-band">
+                    <div class="wc-band-bg"></div>
+                    <div class="wc-flare" aria-hidden="true"></div>
+                    <div class="wc-welcome" aria-hidden="true">welcome</div>
+                    <div class="wc-band-host">${t ? previewHtml(t) : detailsHtml()}</div>
+                </div>
+                <div class="wc-view" role="listbox">${GROUPS.map((g, i) => groupHtml(g, i + 1)).join('')}</div>
+                <div class="wc-foot"><input type="checkbox" id="wcRunAtStartup"${reg('RunAtStartup', false) ? ' checked' : ''}><label for="wcRunAtStartup">Run at startup (Welcome Center can be found in Control Panel, System and Maintenance)</label></div>
             </div>`;
+        },
+        mount: (main) => {
+            mounted = { main, timers: [], raf: 0, ro: null };
+            const view = main.querySelector('.wc-view');
+            if (view && typeof ResizeObserver === 'function') {
+                mounted.ro = new ResizeObserver(() => subset(main));
+                mounted.ro.observe(view);
+            }
+            subset(main);
+            playOpen(main);
+        },
+        unmount: () => {
+            stopAnimations();
+            if (mounted && mounted.ro) mounted.ro.disconnect();
+            mounted = null;
         }
     };
 
-    function rerender() {
-        const c = cp();
-        if (c && c.currentPage() === 'welcome-center') c.navigate('welcome-center', { replace: true });
+    /** Group subsetting: two rows of the columns that fit, then "Show all N items...". */
+    function subset(main) {
+        const view = main.querySelector('.wc-view');
+        if (!view) return;
+        const cols = Math.max(1, Math.floor((view.clientWidth - 6) / COL_W));
+        view.style.setProperty('--wc-cols', cols);
+        view.querySelectorAll('.wc-group').forEach((g) => {
+            const items = g.querySelectorAll('.wc-item');
+            const all = expanded[g.dataset.group] || items.length <= cols * ROWS_SHOWN;
+            items.forEach((it, i) => { it.hidden = !all && i >= cols * ROWS_SHOWN; });
+            g.classList.toggle('has-more', !all);
+        });
+    }
+
+    function stopAnimations() {
+        if (!mounted) return;
+        mounted.timers.forEach(clearTimeout);
+        mounted.timers = [];
+        if (mounted.raf) cancelAnimationFrame(mounted.raf);
+        mounted.raf = 0;
+    }
+
+    function reducedMotion() {
+        return !!(root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    }
+
+    /**
+     * The band's picture grows from its top-left corner and (details only) "welcome" fades in
+     * (VM: from 1.6 s to 3.0 s). On open the text is there at once; a new selection fades it in.
+     */
+    function animateContent(band, details, opening) {
+        const content = band.querySelector('.wc-band-content');
+        const pic = band.querySelector('.wc-pic');
+        const word = band.querySelector('.wc-welcome');
+        word.getAnimations().forEach((a) => a.cancel());
+        word.style.opacity = '0';
+        if (reducedMotion()) {
+            if (details) word.style.opacity = '';
+            return;
+        }
+        if (content && !opening) content.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300, easing: 'ease-in-out' });
+        if (pic) pic.animate([{ transform: 'scale(0.125)' }, { transform: 'none' }], { duration: 200, delay: opening ? 60 : 0, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', fill: 'backwards' });
+        if (details) {
+            word.animate([{ opacity: 0 }, { opacity: 0.267 }], { duration: 1400, delay: 1600, easing: 'ease-in-out', fill: 'forwards' })
+                .finished.then(() => { word.style.opacity = ''; }).catch(() => { /* cancelled */ });
+        }
+    }
+
+    function showFlareFrame(flare, i) {
+        flare.style.backgroundPosition = `0 ${-i * FLARE_H}px`;
+        flare.style.visibility = 'visible';
+    }
+
+    function playFlare(band) {
+        const flare = band.querySelector('.wc-flare');
+        if (!flare) return;
+        if (reducedMotion()) {
+            showFlareFrame(flare, FLARE_TIMES.length - 1);
+            return;
+        }
+        const start = performance.now();
+        let shown = -1;
+        const step = (now) => {
+            const t = now - start;
+            let i = shown < 0 ? 0 : shown;
+            while (i + 1 < FLARE_TIMES.length && FLARE_TIMES[i + 1] <= t) i += 1;
+            if (i !== shown) {
+                showFlareFrame(flare, i);
+                shown = i;
+            }
+            mounted.raf = i < FLARE_TIMES.length - 1 ? requestAnimationFrame(step) : 0;
+        };
+        mounted.raf = requestAnimationFrame(step);
+    }
+
+    function playOpen(main) {
+        const band = main.querySelector('.wc-band');
+        if (!band) return;
+        stopAnimations();
+        animateContent(band, !band.querySelector('.wc-preview'), true);
+        playFlare(band);
+    }
+
+    /** A new selection: Vista swaps the band's content in place (the flare does not replay). */
+    function select(id) {
+        if (selected === id) return;
+        selected = id;
+        if (!mounted) return;
+        const main = mounted.main;
+        main.querySelectorAll('.wc-item').forEach((it) => it.classList.toggle('is-selected', it.dataset.id === id));
+        const band = main.querySelector('.wc-band');
+        const host = band && band.querySelector('.wc-band-host');
+        if (!host) return;
+        const t = id && id !== 'details' ? findTask(id) : null;
+        host.innerHTML = t ? previewHtml(t) : detailsHtml();
+        animateContent(band, !t, false);
     }
 
     function wire() {
         if (!doc || wire.done) return;
         wire.done = true;
+        const inPage = (ev, sel) => ev.target.closest && ev.target.closest(`#melatonControlPanelModal .wc-page ${sel}`);
         doc.addEventListener('click', (ev) => {
-            const t = ev.target.closest && ev.target.closest('#melatonControlPanelModal [data-wc]');
-            if (!t) return;
+            if (!inPage(ev, '')) return;
+            const t = inPage(ev, '[data-wc]');
+            if (!t) {
+                if (inPage(ev, '.wc-view')) select(null);
+                return;
+            }
             ev.preventDefault();
             const what = t.dataset.wc;
-            if (what === 'pick') {
-                selected = selected === t.dataset.id ? null : t.dataset.id;
-                rerender();
-            } else if (what === 'run') {
-                const task = TASKS.concat(OFFERS).find((x) => x.id === t.dataset.id);
+            if (what === 'pick') select(t.dataset.id);
+            else if (what === 'run') {
+                const task = findTask(t.dataset.id);
                 if (task) task.run();
-            } else if (what === 'all-tasks') {
-                showAllTasks = !showAllTasks;
-                rerender();
-            } else if (what === 'all-offers') {
-                showAllOffers = !showAllOffers;
-                rerender();
+            } else if (what === 'more') {
+                cp().doAction('item:system');
+            } else if (what === 'all') {
+                const g = t.closest('.wc-group');
+                expanded[g.dataset.group] = true;
+                g.classList.add('is-expanded');
+                if (mounted) subset(mounted.main);
+            } else if (what === 'collapse') {
+                const g = t.closest('.wc-group');
+                collapsed[g.dataset.group] = !collapsed[g.dataset.group];
+                g.classList.toggle('is-collapsed', collapsed[g.dataset.group]);
             }
         });
-        // a double-click opens the task, as Vista's folder does
+        // a double-click or Enter opens the task, as Vista's folder does
         doc.addEventListener('dblclick', (ev) => {
-            const t = ev.target.closest && ev.target.closest('#melatonControlPanelModal .wc-task');
+            const t = inPage(ev, '.wc-item');
             if (!t) return;
-            const task = TASKS.concat(OFFERS).find((x) => x.id === t.dataset.id);
+            const task = findTask(t.dataset.id);
+            if (task) task.run();
+        });
+        doc.addEventListener('keydown', (ev) => {
+            if (ev.key !== 'Enter') return;
+            const t = inPage(ev, '.wc-item');
+            if (!t) return;
+            const task = findTask(t.dataset.id);
             if (task) task.run();
         });
         doc.addEventListener('change', (ev) => {

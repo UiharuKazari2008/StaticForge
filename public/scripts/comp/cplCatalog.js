@@ -352,7 +352,7 @@
         { id: 'taskbar', name: 'Taskbar and Start Menu', art: 'taskbar-and-start-menu', cats: ['appearance'], tip: 'Customize the Start menu and the taskbar, such as the types of items to be displayed and how they should appear.' },
         { id: 'text-to-speech', name: 'Text to Speech', art: 'text-to-speech', cats: ['hardware'], tip: 'Change text-to-speech settings.', open: 'dialog:text-to-speech' },
         { id: 'user-accounts', name: 'User Accounts', art: 'user-accounts', cats: ['users'], tip: 'Change user account settings and passwords for people who share this computer.' },
-        { id: 'welcome-center', name: 'Welcome Center', art: 'welcome-center', cats: ['system'], tip: 'Learn about your computer and get started with Melaton.', open: 'call:openWelcomeCenter' },
+        { id: 'welcome-center', name: 'Welcome Center', art: 'welcome-center', cats: ['system'], tip: 'Learn about Melaton features and start using them.', open: 'call:openWelcomeCenter' },
         { id: 'cardspace', name: 'Melaton CardSpace', art: 'cardspace', cats: ['users'], tip: 'Manage Information Cards that are used to log on to online services.', open: 'page:cardspace' },
         { id: 'windows-defender', name: 'Melaton Defender', art: 'defender', cats: ['programs', 'security'], tip: 'Scan for spyware and other potentially unwanted software.' },
         { id: 'firewall', name: 'Melaton Firewall', art: 'firewall', cats: ['network', 'security'], tip: 'Use a firewall to help prevent hackers or malicious software from gaining access to your computer.', open: 'page:firewall' },

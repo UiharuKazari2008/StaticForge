@@ -1,156 +1,429 @@
-/* Welcome Center (public/scripts/comp/welcomeCenter.js; Yozora #632): Vista's details band over
-   the task grids, in the Control Panel frame with no task pane. */
+/* Welcome Center (public/scripts/comp/welcomeCenter.js; Yozora #632), 1:1 from the VM's oobefldr.dll
+   folder at 1000 x 700: no task pane or command bar; the 196 px band, the list on #fcfcfc, and the
+   27 px white Run at startup row. Band art (vista-welcome/): band.png (bitmap 102, stretched over the
+   band), title-band.png (104, straight alpha, stretched over the top 40 px), user-frame.png (103),
+   glyph(-hot).png (aero IMAGE 512, the theme's command glyph), button-hot / -pressed / -focus.png (105-107, 5 px
+   nine-grids), flare.png (shell32 FTR 201 as 28 frames of added light, 612 x 192 each). Text in the
+   band is Segoe UI, white with DUI's shadow. */
 
 body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal[data-page-kind="welcome"] .cpl-tasks {
     display: none;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal[data-page-kind="welcome"] .cpl-main {
+#melatonControlPanelModal[data-page-kind="welcome"] .cpl-main {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     padding: 0;
-    background: #fff;
+    background: #fcfcfc;
 }
 
 #melatonControlPanelModal .wc-page {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
     color: #000;
-    font: 12px/15px var(--cpl-font);
+    font: 12px/15px 'Segoe UI', var(--cpl-font);
 }
+
+/* ---- the band ---- */
 
 #melatonControlPanelModal .wc-band {
     position: relative;
+    flex: none;
+    height: 196px;
+    overflow: hidden;
+    isolation: isolate;
+    color: #fff;
+    background: linear-gradient(90deg, rgb(4 80 130), rgb(17 101 132), rgb(28 121 132));
+    user-select: none;
+}
+
+#melatonControlPanelModal .wc-band-bg {
+    position: absolute;
+    inset: 0;
+    background: url("/static_images/vista-welcome/band.png") 0 0 / 100% 100% no-repeat;
+}
+
+/* PreviewFlare: layoutpos right, its frames add light (frame - band) */
+#melatonControlPanelModal .wc-flare {
+    position: absolute;
+    top: 1px;
+    right: 0;
+    z-index: 2;
+    width: 612px;
+    height: 192px;
+    background: url("/static_images/vista-welcome/flare.png") 0 0 / 612px auto no-repeat;
+    mix-blend-mode: plus-lighter;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+/* "welcome": Segoe UI 56 pt, rgb(220, 255, 240) at 27%, bottom right (padding -9rp / -17rp) */
+#melatonControlPanelModal .wc-welcome {
+    position: absolute;
+    right: 4px;
+    bottom: -16px;
+    z-index: 1;
+    color: rgb(220 255 240);
+    font: 75px/100px 'Segoe UI', var(--cpl-font);
+    opacity: 0.267;
+    pointer-events: none;
+}
+
+#melatonControlPanelModal .wc-band:has(.wc-preview) .wc-welcome {
+    display: none;
+}
+
+#melatonControlPanelModal .wc-band-host {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+}
+
+#melatonControlPanelModal .wc-band-content {
+    position: absolute;
+    inset: 0;
+    text-shadow: 1px 1px 2px rgb(0 0 0 / 50%);
+}
+
+#melatonControlPanelModal .wc-pic {
+    position: absolute;
+    width: 128px;
+    height: 128px;
+    transform-origin: 0 0;
+}
+
+/* details: title band, computer picture at (20, 30), facts from (160, 56) */
+#melatonControlPanelModal .wc-titleband {
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 0;
     display: flex;
-    align-items: flex-start;
-    gap: 16px;
-    min-height: 118px;
-    padding: 14px 18px 12px;
-    border-bottom: 1px solid #d5dfe5;
-    background: linear-gradient(#fdfeff, #eaf1f9);
+    align-items: center;
+    height: 40px;
+    background: url("/static_images/vista-welcome/title-band.png") 0 0 / 100% 100% no-repeat;
 }
 
-#melatonControlPanelModal .wc-band-logo {
-    width: 96px;
-    height: 92px;
-    flex: 0 0 96px;
+#melatonControlPanelModal .wc-userframe {
+    position: relative;
+    flex: none;
+    width: 40px;
+    height: 40px;
+    background: url("/static_images/vista-welcome/user-frame.png") no-repeat;
 }
 
-#melatonControlPanelModal .wc-band-icon {
-    width: 48px;
-    height: 48px;
-    flex: 0 0 48px;
-    margin: 6px 24px 0 24px;
+#melatonControlPanelModal .wc-userpic {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    width: 23px;
+    height: 23px;
 }
 
-#melatonControlPanelModal .wc-band-text h2 {
-    margin: 0 0 4px;
-    color: #1e3287;
-    font: 16px/21px var(--cpl-font);
+#melatonControlPanelModal .wc-username {
+    min-width: 0;
+    overflow: hidden;
+    padding-left: 3px;
+    margin-top: -2px;
+    font-size: 16px;
+    line-height: 21px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 
-#melatonControlPanelModal .wc-band-text p {
-    margin: 0 0 8px;
-    max-width: 480px;
+#melatonControlPanelModal .wc-computerpic {
+    top: 31px;
+    left: 20px;
 }
 
 #melatonControlPanelModal .wc-facts {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 2px 10px;
-}
-
-#melatonControlPanelModal .wc-facts > span:nth-child(odd) {
-    color: #4d4d4d;
-}
-
-#melatonControlPanelModal .wc-na {
-    color: #8d8d8d;
-}
-
-#melatonControlPanelModal .wc-band-open {
     position: absolute;
-    right: 18px;
-    bottom: 10px;
+    top: 56px;
+    left: 162px;
+    right: 200px;
 }
 
-#melatonControlPanelModal .wc-section {
-    padding: 12px 18px 4px;
+#melatonControlPanelModal .wc-fact {
+    margin-top: 2px;
+    overflow: hidden;
+    line-height: 15px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 
-#melatonControlPanelModal .wc-head {
+#melatonControlPanelModal .wc-fact:first-child {
+    margin-top: 0;
+}
+
+/* the command links: glyph 100 (hot 101), Segoe UI 12 pt, nine-grid hot / pressed backgrounds */
+#melatonControlPanelModal .wc-command {
+    position: absolute;
     display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 6px;
-}
-
-#melatonControlPanelModal .wc-head h3 {
-    margin: 0;
-    color: #1e3287;
-    font: 12px/15px var(--cpl-font);
-    font-weight: bold;
-}
-
-#melatonControlPanelModal .wc-head::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: #d5dfe5;
-    order: 1;
-}
-
-#melatonControlPanelModal .wc-head .cpl-vlink {
-    order: 2;
-}
-
-#melatonControlPanelModal .wc-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 2px 8px;
-}
-
-#melatonControlPanelModal .wc-task {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    align-items: flex-start;
     min-width: 0;
     min-height: 0;
-    height: 42px;
     margin: 0;
-    padding: 0 6px;
-    border: 1px solid transparent;
-    border-radius: 3px;
+    padding: 5px 6px 6px 5px;
+    border: 5px solid transparent;
+    border-width: 0;
+    border-radius: 0;
     background: none;
     box-shadow: none;
-    color: #000;
-    font: 12px/15px var(--cpl-font);
-    text-align: left;
-    cursor: var(--c-default);
+    color: #fff;
+    font: 16px/21px 'Segoe UI', var(--cpl-font);
+    text-shadow: inherit;
+    cursor: var(--c-pointer, pointer);
 }
 
-#melatonControlPanelModal .wc-task::before,
-#melatonControlPanelModal .wc-task::after {
+#melatonControlPanelModal .wc-command::before,
+#melatonControlPanelModal .wc-command::after {
     content: none;
 }
 
-#melatonControlPanelModal .wc-task img {
-    width: 32px;
-    height: 32px;
-    flex: 0 0 32px;
+@media (hover: hover) {
+    #melatonControlPanelModal .wc-command:hover {
+        padding: 0 1px 1px 0;
+        border-width: 5px;
+        border-image: url("/static_images/vista-welcome/button-hot.png") 5 fill / 5px stretch;
+    }
+}
+
+#melatonControlPanelModal .wc-command:active {
+    padding: 1px 0 0 1px;
+    border-width: 5px;
+    border-image: url("/static_images/vista-welcome/button-pressed.png") 5 fill / 5px stretch;
+}
+
+/* the theme's BP_COMMANDLINKGLYPH (aero IMAGE 512, 20 x 20 normal / hot), not oobefldr's own 100 */
+#melatonControlPanelModal .wc-glyph {
+    flex: none;
+    width: 20px;
+    height: 20px;
+    margin-top: 2px;
+    background: url("/static_images/vista-welcome/glyph.png") no-repeat;
+}
+
+#melatonControlPanelModal .wc-command:hover .wc-glyph {
+    background-image: url("/static_images/vista-welcome/glyph-hot.png");
+}
+
+#melatonControlPanelModal .wc-more {
+    top: 48px;
+    right: 7px;
+}
+
+/* preview: picture at (16, 32), title Segoe UI 16 pt at (158, 16), text under it, start link
+   bottom right */
+#melatonControlPanelModal .wc-previewpic {
+    top: 32px;
+    left: 16px;
+}
+
+#melatonControlPanelModal .wc-preview-title {
+    position: absolute;
+    top: 16px;
+    left: 162px;
+    right: 6px;
+    overflow: hidden;
+    font-size: 21px;
+    line-height: 28px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+#melatonControlPanelModal .wc-preview-main {
+    position: absolute;
+    top: 46px;
+    left: 163px;
+    right: 80px;
+    bottom: 40px;
+    overflow: hidden;
+}
+
+#melatonControlPanelModal .wc-para {
+    line-height: 15px;
+}
+
+#melatonControlPanelModal .wc-para.is-bullet {
+    padding-left: 8px;
+    text-indent: -8px;
+}
+
+#melatonControlPanelModal .wc-para.is-bullet::before {
+    content: '\2022';
+    display: inline-block;
+    width: 8px;
+    text-indent: 0;
+}
+
+#melatonControlPanelModal .wc-start {
+    right: 8px;
+    bottom: 9px;
+}
+
+/* ---- the list: Explorer's grouped Tiles-like view ---- */
+
+#melatonControlPanelModal .wc-view {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    background: #fcfcfc;
+    --wc-cols: 4;
+}
+
+#melatonControlPanelModal .wc-group-head {
+    display: flex;
+    align-items: flex-start;
+    height: 16px;
+    margin: 0 9px 0 9px;
+    color: #003399;
+    font: 12px/16px 'Segoe UI', var(--cpl-font);
+}
+
+#melatonControlPanelModal .wc-group-head::after {
+    content: '';
+    order: 1;
+    flex: 1 1 auto;
+    height: 1px;
+    margin: 8px 0 0 4px;
+    background: #d5ddec;
+}
+
+#melatonControlPanelModal .wc-group-toggle {
+    display: block;
+    order: 2;
+    flex: none;
+    width: 7px;
+    height: 5px;
+    min-width: 0;
+    min-height: 0;
+    margin: 6px 0 0 9px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='5' shape-rendering='crispEdges' fill='%23003399'%3E%3Cpath d='M3 0h1v1H3zM2 1h3v1H2zM1 2h5v1H1zM0 3h3v1H0zM4 3h3v1H4zM0 4h2v1H0zM5 4h2v1H5z'/%3E%3C/svg%3E") no-repeat;
+    box-shadow: none;
+    cursor: var(--c-default, default);
+}
+
+#melatonControlPanelModal .wc-group-toggle::before,
+#melatonControlPanelModal .wc-group-toggle::after {
+    content: none;
+}
+
+#melatonControlPanelModal .wc-group.is-collapsed .wc-group-toggle {
+    transform: scaleY(-1);
+}
+
+#melatonControlPanelModal .wc-group.is-collapsed :is(.wc-items, .wc-showall) {
+    display: none;
+}
+
+#melatonControlPanelModal .wc-items {
+    display: grid;
+    grid-template-columns: repeat(var(--wc-cols), 220px);
+    gap: 2px 3px;
+    padding: 5px 0 0 5px;
+}
+
+#melatonControlPanelModal .wc-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    height: 50px;
+    padding: 0 0 0 1px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    color: #000;
+    outline: none;
+    cursor: var(--c-default, default);
+}
+
+#melatonControlPanelModal .wc-item[hidden] {
+    display: none;
+}
+
+#melatonControlPanelModal .wc-item img {
+    flex: none;
+    width: 48px;
+    height: 48px;
+}
+
+#melatonControlPanelModal .wc-item-label {
+    display: -webkit-box;
+    min-width: 0;
+    overflow: hidden;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    margin-top: -2px;
+    line-height: 15px;
 }
 
 @media (hover: hover) {
-    #melatonControlPanelModal .wc-task:hover {
+    #melatonControlPanelModal .wc-item:hover {
         border-color: #b8d6fb;
         background: linear-gradient(#fafbfd, #ebf3fd);
     }
 }
 
-#melatonControlPanelModal .wc-task.is-selected {
-    border-color: #99defd;
-    background: linear-gradient(#f6fbfd, #eff8fd 45%, #d7effc 55%, #d5effc 92%, #e7f5fd);
+#melatonControlPanelModal .wc-item.is-selected,
+#melatonControlPanelModal .wc-item.is-selected:hover {
+    border-color: #b6e6fb;
+    background: linear-gradient(#f2f9fd, #c6e8fa);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 40%);
 }
+
+#melatonControlPanelModal .wc-showall {
+    display: none;
+    height: 35px;
+    padding: 0 0 0 13px;
+}
+
+#melatonControlPanelModal .wc-group.has-more .wc-showall {
+    display: block;
+}
+
+#melatonControlPanelModal .wc-showall-link {
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    color: #4465a2;
+    font: 12px/15px 'Segoe UI', var(--cpl-font);
+    text-decoration: underline;
+    cursor: var(--c-pointer, pointer);
+}
+
+#melatonControlPanelModal .wc-showall-link::before,
+#melatonControlPanelModal .wc-showall-link::after {
+    content: none;
+}
+
+#melatonControlPanelModal .wc-showall-link:hover {
+    color: #3399ff;
+}
+
+/* ---- Run at startup ---- */
 
 #melatonControlPanelModal .wc-foot {
     display: flex;
+    flex: none;
     align-items: center;
-    gap: 6px;
-    margin: 10px 18px 14px;
+    gap: 4px;
+    height: 27px;
+    padding: 0 20px 4px 7px;
+    background: #fff;
+}
+
+#melatonControlPanelModal .wc-foot label {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
