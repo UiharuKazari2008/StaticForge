@@ -83,6 +83,8 @@ const {
 } = require('./sessionWorkspacePairing');
 const { parseAutofillArtistSearchPrefix } = require('./autofillSearchSettings');
 const { readRemoteAccessSettings, clampTurnPrints } = require('./remoteAccessSettings');
+const alchemyOwnedTab = require('./alchemyOwnedTab');
+const discordChannelHistory = require('./discordChannelHistory');
 const {
     DEST_PATH_SCHEMA,
     pickDestPathInput,
@@ -3300,6 +3302,55 @@ const TOOL_DEFS = [
             properties: {
                 mailbox: { type: 'string', description: 'Target mailbox owner' },
                 id: { type: 'string', description: 'Message id in that mailbox\'s Spam folder' }
+            }
+        }
+    },
+    {
+        name: 'alchemy_browser',
+        core: true,
+        description: 'Drive the Alchemy-owned tab on the dedicated-agent-client Chromium (persistent host profile, CDP 127.0.0.1:9334). Ops: navigate, info, scroll, click, read_dom, read_text. Never touches the Dreamscape /app?agent=1 tab and does not launch another Chrome. Public http(s) sites only (no loopback/private hosts). Read-only on Discord: clicks there are refused. Needs the sfapp_alchemy_browser scope and an allowlisted key (Hoshino, Yukimi).',
+        scope: 'sfapp_alchemy_browser',
+        role: 'alchemy',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['op'],
+            properties: {
+                op: {
+                    type: 'string',
+                    enum: ['navigate', 'info', 'scroll', 'click', 'read_dom', 'read_text'],
+                    description: 'navigate needs url. scroll uses direction/amount/selector. click uses selector (or x,y off Discord). read_* uses selector and maxChars.'
+                },
+                url: { type: 'string', description: 'Public http(s) URL or about:blank for navigate' },
+                selector: { type: 'string' },
+                direction: { type: 'string', enum: ['up', 'down', 'left', 'right'] },
+                amount: { type: 'number', description: 'Scroll pixels. Default 800.' },
+                x: { type: 'number' },
+                y: { type: 'number' },
+                maxChars: { type: 'number', description: 'Cap for read_dom / read_text' }
+            }
+        }
+    },
+    {
+        name: 'read_discord_channel_history',
+        core: true,
+        description: 'Read-only Discord history from the Alchemy-owned tab after a message id or timestamp. Channels: #nai-diffusion-discussion, #nai-image-posting, #nsfw-generation, staff, unofficial names the signed-in session can already see, or a discord.com/channels URL. Returns id, author, timestamp, content, attachment URLs. Writes JSON to the host cache (and optional vfsPath). Never posts, reacts, replies, types, or reads DMs. Yukimi signs in once in that tab. Needs the sfapp_alchemy_browser scope and an allowlisted key (Hoshino, Yukimi).',
+        scope: 'sfapp_alchemy_browser',
+        role: 'alchemy',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['channel'],
+            properties: {
+                channel: { type: 'string', description: 'Channel name, #name, snowflake, or discord.com/channels/guild/channel[/message] URL' },
+                after: { type: 'string', description: 'Message id (17–22 digits) or timestamp (ISO / unix seconds / ms)' },
+                afterMessageId: { type: 'string' },
+                afterTimestamp: { type: 'string' },
+                limit: { type: 'number', description: 'Messages to return. Default 40, max 80.' },
+                writeHost: { type: 'boolean', description: 'Write JSON under ~/.cache/dreamscape-agent-client/discord-history. Default true.' },
+                hostPath: { type: 'string', description: 'Optional file under that discord-history folder' },
+                vfsPath: { type: 'string', description: 'Optional VFS destination path for the JSON' },
+                workspace: { type: 'string' }
             }
         }
     }
@@ -6766,7 +6817,8 @@ const ADVANCED_CORE_HINTS = [
     { test: (q) => /lookback|dsap:\/\/lookback/i.test(q), names: ['resolve_lookback'] },
     { test: (q) => /prompt guide|docubase|nai-prompt/i.test(q), names: ['get_prompt_guide'] },
     { test: (q) => /session_state|session snapshot|what.?s on (screen|studio)/i.test(q), names: ['get_session_state'] },
-    { test: (q) => /run_client_js|inspect_elements|update_client|restart_client|client browser|client js|html inspect|reattach/i.test(q), names: ['run_client_js', 'inspect_elements', 'update_client', 'restart_client'] }
+    { test: (q) => /run_client_js|inspect_elements|update_client|restart_client|client browser|client js|html inspect|reattach/i.test(q), names: ['run_client_js', 'inspect_elements', 'update_client', 'restart_client'] },
+    { test: (q) => /alchemy|owned tab|browser.?control|discord channel|channel.?history/i.test(q), names: ['alchemy_browser', 'read_discord_channel_history'] }
 ];
 
 function guessModelFromQuery(query) {
@@ -6812,6 +6864,10 @@ function listToolsForScopes(scopes, globalResources, options) {
             if (tool.role === 'exchange') {
                 const exchange = require('./mailExchange');
                 return exchange.isExchangeAdmin(owner) || exchange.isExchangeAdmin(options && options.actor);
+            }
+            if (tool.role === 'alchemy') {
+                return alchemyOwnedTab.isAlchemyBrowserOwner(owner)
+                    || alchemyOwnedTab.isAlchemyBrowserOwner(options && options.actor);
             }
             return false;
         })
@@ -9555,6 +9611,75 @@ async function callTool(globalResources, req, name, args) {
         }
     }
 
+    if (def.role === 'alchemy') {
+        // Identity gate on top of the scope: the owned tab carries Yukimi's Discord session.
+        let owner = null;
+        try {
+            owner = require('./dovecoteIdentity').resolveDovecoteOwnerFromReq(req);
+        } catch (_) {
+            owner = null;
+        }
+        const actor = require('./mailExchangeAuth').resolveMcpActor(req);
+        if (!alchemyOwnedTab.isAlchemyBrowserOwner(owner) && !alchemyOwnedTab.isAlchemyBrowserOwner(actor)) {
+            const err = new Error('This key is not allowed to drive the Alchemy-owned tab');
+            err.status = 403;
+            err.code = 'ALCHEMY_BROWSER_DENIED';
+            throw err;
+        }
+    }
+
+    if (name === 'alchemy_browser') {
+        try {
+            const result = await alchemyOwnedTab.runBrowserOp(input.op, input);
+            return mcpTextResult(result, !result.success);
+        } catch (error) {
+            return mcpTextResult({
+                success: false,
+                error: (error && error.message) || 'Alchemy browser op failed',
+                code: error && error.code ? error.code : 'ALCHEMY_BROWSER_FAILED'
+            }, true);
+        }
+    }
+
+    if (name === 'read_discord_channel_history') {
+        try {
+            const tab = await alchemyOwnedTab.getSharedTab();
+            const result = await discordChannelHistory.readHistory(tab, input);
+            if (result.success && input.vfsPath) {
+                try {
+                    const json = JSON.stringify({
+                        channel: result.channel,
+                        guildId: result.guildId,
+                        channelId: result.channelId,
+                        after: result.after,
+                        count: result.count,
+                        messages: result.messages
+                    }, null, 2);
+                    const vfs = await callTool(globalResources, req, 'vfs_write', {
+                        path: input.vfsPath,
+                        fileData: Buffer.from(json, 'utf8').toString('base64'),
+                        mimeType: 'application/json'
+                    });
+                    try {
+                        result.vfs = JSON.parse(vfs.content[0].text);
+                    } catch (_) {
+                        result.vfs = { success: !vfs.isError };
+                    }
+                } catch (vfsError) {
+                    result.vfs = { success: false, error: (vfsError && vfsError.message) || 'VFS write failed' };
+                }
+            }
+            return mcpTextResult(result, !result.success);
+        } catch (error) {
+            return mcpTextResult({
+                success: false,
+                error: (error && error.message) || 'Discord history read failed',
+                code: error && error.code ? error.code : 'DISCORD_HISTORY_FAILED',
+                readonly: true
+            }, true);
+        }
+    }
+
     if (require('./mailExchangeMcp').isExchangeTool(name)) {
         return require('./mailExchangeMcp').handleExchangeTool(req, name, input);
     }
@@ -10323,6 +10448,8 @@ module.exports = {
         refuseStudioOutsideWorkspace,
         resolveDirectorChatId,
         DIRECTOR_LONG_JOB_NOTICE,
+        alchemyOwnedTab,
+        discordChannelHistory,
         splitVfsPath,
         resolveDirectorSourcePath,
         readVfsMountState,
