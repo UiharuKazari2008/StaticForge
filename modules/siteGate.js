@@ -6,6 +6,7 @@ const { realClientIp, trustedProxiesFromResources } = require('./clientAddress')
 const siteAccess = require('./siteAccess');
 const siteHomepage = require('./siteHomepageStorage');
 const siteHomepagePreview = require('./siteHomepagePreview');
+const replicationTokenAuth = require('./replicationTokenAuth');
 
 const DOOR_FAIL_WINDOW_MS = 60 * 60 * 1000;
 const DOOR_FAIL_MAX = 10;
@@ -52,9 +53,11 @@ function isSiteGateExempt(req, globalResources) {
     const p = (req.path || '/').split('?')[0];
 
     if (p === '/agent' || p.startsWith('/agent/')) return true;
-    if (p.startsWith('/replication/sync/')) return true;
-    if (p.startsWith('/replication/assets/')) return true;
-    if (p === '/replication/maintenance/ack') return true;
+    // Partner instances carry their replication token, not the gate key. Without a token
+    // that matches a configured one the routes stay behind the cover like everything else.
+    if (p.startsWith('/replication/sync/') || p.startsWith('/replication/assets/') || p === '/replication/maintenance/ack') {
+        return hasReplicationCredential(req, globalResources);
+    }
     if (p.startsWith('/.well-known/oauth')) return true;
 
     const mcpUuid = getMcpUuid(globalResources);
@@ -67,10 +70,80 @@ function isSiteGateExempt(req, globalResources) {
     if (method === 'POST' && p === '/') return true;
     if (method === 'GET' && p === '/sw.js') return true;
 
-    // Admin DSAP iframe preview (auth on route; still needs gate skip)
-    if (p.startsWith('/site-homepage-preview/')) return true;
+    // /site-homepage-preview is mounted ahead of the gate and answers only with its ticket or
+    // preview cookie; anything else falls through to the cover (siteHomepagePreviewAccess).
 
     return false;
+}
+
+function hasReplicationCredential(req, globalResources) {
+    let config = null;
+    try {
+        config = globalResources.getReplicationService().getReplicationConfig();
+    } catch (_err) {
+        return false;
+    }
+    const { writeToken, readToken } = replicationTokenAuth.getTokens(config);
+    if (!writeToken && !readToken) return false;
+    const token = replicationTokenAuth.getReplicationTokenFromRequest(req);
+    if (!token) return false;
+    const t = String(token);
+    return t === writeToken || t === readToken;
+}
+
+/**
+ * The gate key a request presents, explicit first: the X-Dreamscape-Access header, then
+ * ?k=, then the dsk cookie. null when it presents none.
+ */
+function presentedAccessToken(req) {
+    const header = req.headers && req.headers[siteAccess.ACCESS_HEADER];
+    if (header != null && header !== '') return String(header);
+    if (req.query && req.query.k != null && req.query.k !== '') return String(req.query.k);
+    const cookie = (req.cookies && req.cookies[siteAccess.DSK_COOKIE])
+        || siteAccess.parseDskFromUpgradeRequest(req);
+    return cookie ? String(cookie) : null;
+}
+
+/**
+ * Gate state for OPTIONS /status. null when the gate is off. passed: a valid key or a signed-in
+ * session. hor (Hash OK Return): only when the request presented a key, whether that key is
+ * valid, so a PWA, an external app or the BIOS knows to ask for the Gateway Password.
+ */
+function gateStatusForRequest(req, globalResources) {
+    const cfg = siteAccess.readSiteAccessSecure(globalResources);
+    if (!cfg.configured) return null;
+    const presented = presentedAccessToken(req);
+    const hor = presented != null ? siteAccess.validateAccessToken(presented, cfg) : null;
+    const passed = hor === true || !!(req.session && req.session.authenticated === true);
+    return { configured: true, passed, hor, homepage: cfg.homepage };
+}
+
+/**
+ * POST / { action: 'gateway', data: { password } }: the BIOS Gateway Password. The cover
+ * site's door phrase, checked like the door (same failure window): sets the dsk cookie and
+ * answers the key, so an installed client with a stale key gets back in without the homepage.
+ */
+function handleGatewayUnlock(req, res, globalResources) {
+    const cfg = siteAccess.readSiteAccessSecure(globalResources);
+    if (!cfg.configured) {
+        return res.status(404).json({ success: false, error: 'Not found' });
+    }
+    const ip = clientRealIp(req, globalResources);
+    const row = doorFailByIp.get(ip);
+    if (row && Date.now() - row.windowStart <= DOOR_FAIL_WINDOW_MS && row.count >= DOOR_FAIL_MAX) {
+        return res.status(429).json({ success: false, error: 'Too many attempts', code: 'GATEWAY_LOCKED' });
+    }
+    const data = (req.body && req.body.data) || {};
+    const phrase = siteAccess.normalizeAccessPhrase(data.password);
+    const candidate = phrase ? siteAccess.computeAccessHash(cfg.pepper, phrase) : null;
+    if (candidate && siteAccess.validateAccessToken(candidate, cfg)) {
+        resetDoorFailures(ip);
+        siteAccess.setDskCookie(req, res, cfg.hash);
+        return res.json({ success: true, k: cfg.hash });
+    }
+    recordDoorFailure(ip);
+    console.log(`[siteGate] gateway password failure from ${ip}`);
+    return res.status(401).json({ success: false, error: 'Incorrect password', code: 'GATEWAY_DENIED' });
 }
 
 function sendHomepageFile(res, resolved, statusCode) {
@@ -238,12 +311,8 @@ function attachSiteGateWebUpgrade(server, globalResources, sessionStore, session
             return;
         }
 
-        const p = (req.url || '/').split('?')[0];
-        if (p.startsWith('/api/desktop-guac/web/')) {
-            existing.forEach((listener) => listener.call(server, req, socket, head));
-            return;
-        }
-
+        // /api/desktop-guac/web/ included: its own upgrade handler wants an admin session, and
+        // a session passes here as well
         const headerToken = req.headers && req.headers[siteAccess.ACCESS_HEADER];
         const dsk = siteAccess.parseDskFromUpgradeRequest(req);
         const token = siteAccess.normalizeAccessHash(headerToken) || dsk;
@@ -318,7 +387,8 @@ function siteHomepagePreviewAccess(globalResources) {
             siteHomepagePreview.setPreviewSessionCookie(req, res, globalResources, slug);
             return next();
         }
-        return res.status(403).type('text/plain; charset=utf-8').send('Preview access required');
+        // No ticket: as if the route did not exist (the gate's cover, or the 404 past it)
+        return next('route');
     };
 }
 
@@ -397,6 +467,36 @@ function readStaticManifestUncached(publicManifestPath) {
     }
 }
 
+function projectRootForManifest(publicManifestPath) {
+    // <root>/public/manifest.json
+    return path.resolve(path.dirname(publicManifestPath), '..');
+}
+
+/**
+ * Before gate 1: a plain web manifest in the cover site's name. No Dreamscape name, icons,
+ * screenshots or id, so an installed Dreamscape PWA (id /?app=dreamscape) never takes it.
+ */
+function buildCoverManifestJson(cfg, projectRoot) {
+    let title = '';
+    let lang = 'en';
+    try {
+        const siteDir = siteHomepage.coverSiteDir(projectRoot, cfg.homepage);
+        const meta = siteDir ? JSON.parse(fs.readFileSync(path.join(siteDir, 'manifest.json'), 'utf8')) : null;
+        if (meta && typeof meta.title === 'string') title = meta.title.trim();
+        if (meta && typeof meta.lang === 'string') lang = meta.lang.trim() || lang;
+    } catch (_err) { /* the plain fallback below */ }
+    const name = title || 'Home';
+    const shortName = name.split('|').pop().trim() || name;
+    return {
+        name,
+        short_name: shortName.slice(0, 24),
+        start_url: '/',
+        scope: '/',
+        display: 'browser',
+        lang
+    };
+}
+
 function registerDynamicManifestRoute(app, globalResources, publicManifestPath) {
     app.get('/manifest.json', (req, res) => {
         const cfg = siteAccess.readSiteAccessSecure(globalResources);
@@ -409,6 +509,9 @@ function registerDynamicManifestRoute(app, globalResources, publicManifestPath) 
         const staticManifest = readStaticManifest(publicManifestPath);
         if (hash) {
             return res.json(buildDreamscapeManifestJson(hash, staticManifest));
+        }
+        if (cfg.configured && !(req.session && req.session.authenticated === true)) {
+            return res.json(buildCoverManifestJson(cfg, projectRootForManifest(publicManifestPath)));
         }
         if (staticManifest) {
             return res.json(buildDreamscapeManifestJson(null, staticManifest));
@@ -424,5 +527,7 @@ module.exports = {
     registerDynamicManifestRoute,
     buildDreamscapeManifestJson,
     isSiteGateExempt,
+    gateStatusForRequest,
+    handleGatewayUnlock,
     doorFailByIp
 };

@@ -605,32 +605,85 @@
             await waitKey(null);
         }
 
+        // The open password box: bios.bootPin { title, label, entry, maxLength, submit, resolve }
         function drawBootPinPrompt(entry) {
             bios.state = 'bootpin';
             screen.mode = 'text';
             screen.clear(C.black, C.grey);
+            const box = bios.bootPin || {};
+            const label = box.label || 'Enter PIN:';
             const w = 44;
             const h = 7;
             const x = Math.floor((COLS - w) / 2);
             const y = 8;
+            const field = w - 4 - label.length - 2;
             screen.box(x, y, w, h, C.black, C.white);
             screen.shadow(x, y, w, h);
-            screen.put(x + 2, y + 1, 'Password on boot', C.black, C.white);
-            screen.put(x + 2, y + 3, 'Enter PIN:', C.black, C.white);
-            const mask = '*'.repeat((entry || '').length).padEnd(12, ' ');
-            screen.put(x + 14, y + 3, mask, C.white, C.black);
+            screen.put(x + 2, y + 1, box.title || 'Password on boot', C.black, C.white);
+            screen.put(x + 2, y + 3, label, C.black, C.white);
+            const stars = '*'.repeat(Math.min((entry || '').length, field));
+            screen.put(x + 4 + label.length, y + 3, stars.padEnd(field, ' '), C.white, C.black);
             if (bios.bootPinError) {
                 screen.put(x + 2, y + 5, bios.bootPinError.slice(0, w - 4), C.red, C.white);
             }
             render();
         }
 
+        /**
+         * "Gateway Password": the site gate's passphrase, before the PIN, when the server says
+         * this device's key is gone or stale (/status siteAccess.passed false). An installed
+         * device gets back in here instead of going through the homepage after a wipe.
+         * Resolves true, 'cancelled', or false never (it stays until a right answer or Esc).
+         */
+        async function promptGatewayPassword() {
+            bios.bootPinError = '';
+            return new Promise((resolve) => {
+                bios.bootPin = {
+                    title: 'Gateway Password',
+                    label: 'Enter password:',
+                    maxLength: 512,
+                    anyChar: true,
+                    entry: '',
+                    resolve,
+                    async submit(password) {
+                        const box = bios.bootPin;
+                        try {
+                            const res = await fetch('/', {
+                                method: 'POST',
+                                credentials: 'include',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ action: 'gateway', data: { password } })
+                            });
+                            const json = await res.json().catch(() => null);
+                            if (res.ok && json && json.success) {
+                                bios.bootPin = null;
+                                bios.bootPinError = '';
+                                resolve(true);
+                                return;
+                            }
+                            bios.bootPinError = res.status === 429 ? 'Too many attempts, try later' : 'Incorrect password';
+                        } catch (_err) {
+                            bios.bootPinError = 'Gateway not reachable';
+                        }
+                        if (bios.bootPin !== box) return;
+                        box.entry = '';
+                        drawBootPinPrompt('');
+                    }
+                };
+                drawBootPinPrompt('');
+            });
+        }
+
         async function promptBootPinLogin() {
             bios.bootPinError = '';
             let entry = '';
+            bios.bootPin = null;
             drawBootPinPrompt(entry);
             return new Promise((resolve) => {
                 bios.bootPin = {
+                    title: 'Password on boot',
+                    label: 'Enter PIN:',
+                    maxLength: 64,
                     entry,
                     resolve,
                     async submit(pin) {
@@ -683,6 +736,12 @@
                     await env.sleep(50);
                 }
                 bios.work = work.results();
+                // Gate 1 before the PIN: the Gateway Password when the key is stale or missing
+                if (typeof opts.requireGateway === 'function' && await opts.requireGateway()) {
+                    const gatewayOk = await promptGatewayPassword();
+                    if (gatewayOk === 'cancelled') return 'cancelled';
+                    if (typeof opts.onGateway === 'function') await opts.onGateway();
+                }
                 const needBootPin = cmos.pwBoot === 'Enabled'
                     || (typeof opts.requireBootPin === 'function' && !!(await opts.requireBootPin()));
                 if (needBootPin) {
@@ -1328,9 +1387,10 @@
             if (bios.state === 'cdprompt' || bios.state === 'halt') return offerKey(key);
             if (bios.state === 'bootpin' && bios.bootPin) {
                 if (key === 'Escape') {
+                    const box = bios.bootPin;
                     bios.bootPin = null;
                     bios.bootPinError = '';
-                    if (bios.bootPin.resolve) bios.bootPin.resolve('cancelled');
+                    if (box.resolve) box.resolve('cancelled');
                     return true;
                 }
                 if (key === 'Enter') {
@@ -1342,7 +1402,8 @@
                     drawBootPinPrompt(bios.bootPin.entry);
                     return true;
                 }
-                if (ch && ch.length === 1 && /[ -~]/.test(ch) && (bios.bootPin.entry || '').length < 64) {
+                const typed = ch && ch.length === 1 && (bios.bootPin.anyChar ? ch >= ' ' && ch !== '\x7f' : /[ -~]/.test(ch));
+                if (typed && (bios.bootPin.entry || '').length < (bios.bootPin.maxLength || 64)) {
                     bios.bootPin.entry = (bios.bootPin.entry || '') + ch;
                     drawBootPinPrompt(bios.bootPin.entry);
                 }

@@ -526,16 +526,24 @@
             // Asked after the POST tasks: the server task fills ctl.serverStatus. Read before
             // bios.post() it was still empty on a fresh device's first boot, so the gate looked
             // off and Setup ran without the PIN.
+            const freshStatus = async () => {
+                const probe = await probeStatus(env);
+                if (probe.kind !== 'json') return null;
+                ctl.lastProbe = probe;
+                ctl.serverStatus = probe.data;
+                rememberVistaLogon(env, probe.data);
+                rememberSiteAccess(env, probe.data);
+                return probe.data;
+            };
+            // Gate 1: the server answers siteAccess.passed false (and hor false for a stale key)
+            // to a device whose key is missing or no longer valid: the Gateway Password first.
+            const requireGateway = async () => {
+                const status = ctl.serverStatus || await freshStatus();
+                return !!(status && status.siteAccess && status.siteAccess.configured && status.siteAccess.passed === false);
+            };
             const requireBootPin = async () => {
                 let status = ctl.serverStatus;
-                if (!status) {
-                    const probe = await probeStatus(env);
-                    if (probe.kind === 'json') {
-                        status = ctl.serverStatus = probe.data;
-                        rememberVistaLogon(env, probe.data);
-                        rememberSiteAccess(env, probe.data);
-                    }
-                }
+                if (!status) status = await freshStatus();
                 const gateConfigured = status && status.siteAccess
                     ? !!status.siteAccess.configured
                     : isSiteGateActive(env);
@@ -546,6 +554,9 @@
                 tasks,
                 hasOsAfter,
                 run: { cancelled: () => run !== ctl.runId },
+                requireGateway,
+                // past the gate the server answers the full status (logon name, domain, key)
+                onGateway: freshStatus,
                 requireBootPin
             });
             if (outcome === 'cancelled' || run !== ctl.runId) return 'cancelled';

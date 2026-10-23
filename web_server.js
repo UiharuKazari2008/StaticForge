@@ -86,7 +86,9 @@ const {
     createSiteGateMiddleware,
     attachSiteGateWebUpgrade,
     registerDynamicManifestRoute,
-    mountSiteHomepagePreview
+    mountSiteHomepagePreview,
+    gateStatusForRequest,
+    handleGatewayUnlock
 } = require('./modules/siteGate');
 const siteAccessPublic = require('./modules/siteAccess');
 
@@ -2617,8 +2619,27 @@ app.get('/install/license.txt', (req, res) => {
         res.end(text);
     });
 });
+// Gate on and not passed: only what a boot needs to wait for the server and to know it must ask
+// for the Gateway Password. hor (Hash OK Return) is there whenever the request presented a key.
 app.options('/status', (req, res) => {
-    res.json(serverStartupStatus.getPublicStatus(publicStatusExtras(req)));
+    const gate = gateStatusForRequest(req, globalResources);
+    if (gate && !gate.passed) {
+        const status = serverStartupStatus.getPublicStatus();
+        const out = {
+            isReady: status.isReady,
+            stage: status.isReady ? 'ready' : 'starting',
+            progressPercent: status.progressPercent,
+            siteAccess: { configured: true, passed: false }
+        };
+        if (gate.hor !== null) out.hor = gate.hor;
+        return res.json(out);
+    }
+    const body = serverStartupStatus.getPublicStatus(publicStatusExtras(req));
+    if (gate) {
+        body.siteAccess = Object.assign({}, body.siteAccess, { passed: true });
+        if (gate.hor !== null) body.hor = gate.hor;
+    }
+    res.json(body);
 });
 // Live boot progress for clients waiting on a restart: NDJSON status lines, then "done" and the
 // end of the response; an up server answers "done" at once (modules/statusStream.js)
@@ -2737,6 +2758,9 @@ app.post('/', serverReadinessMiddleware, express.json(), (req, res) => {
     if (!action) { return res.status(400).json({ error: 'Action is required' }); }
     
     switch (action) {
+        case 'gateway':
+            // BIOS Gateway Password (modules/siteGate.js handleGatewayUnlock)
+            return handleGatewayUnlock(req, res, globalResources);
         case 'login':
             const { pin } = data || {};
             if (!pin) {
@@ -3399,6 +3423,8 @@ app.use('/traces/files', authMiddleware, adminOnlyMiddleware, (req, res, next) =
 }, express.static(globalResources.getTracing().tracesDir));
 app.get('/launch', async (req, res, next) => {
     try {
+        // public/sw.js keeps this page as the installed boot shell; the cover never carries it
+        res.setHeader('X-Melaton-Shell', 'launch');
         const sent = await sendRuntimeManagedAsset(req, res, '/launch.html', false);
         if (!sent) {
             next();

@@ -1161,6 +1161,39 @@ workbox.routing.registerRoute(
   }
 );
 
+// The installed boot shell: the last /launch the server sent past the gate (X-Melaton-Shell).
+// When the device's gate key is gone or stale the server answers the cover instead; this copy
+// then boots, and the BIOS asks for the Gateway Password (phoenixBios.js promptGatewayPassword)
+// rather than leaving the install for the homepage. Setup's format wipes it with every cache.
+const LAUNCH_SHELL_CACHE = 'melaton-launch-shell-v1';
+const LAUNCH_SHELL_KEY = '/launch';
+
+workbox.routing.registerRoute(
+  ({ url, request }) => request.mode === 'navigate' && url.origin === self.location.origin && url.pathname === '/launch',
+  async ({ request }) => {
+    let response = null;
+    try {
+      // a navigate-mode Request takes no init (TypeError), so as the browser asked
+      response = await fetch(request);
+    } catch (_err) {
+      response = null;
+    }
+    if (response && response.ok && response.headers.get('x-melaton-shell') === 'launch') {
+      try {
+        const cache = await caches.open(LAUNCH_SHELL_CACHE);
+        await cache.put(LAUNCH_SHELL_KEY, response.clone());
+      } catch (_err) { /* the page still boots from the network copy */ }
+      return response;
+    }
+    try {
+      const cache = await caches.open(LAUNCH_SHELL_CACHE);
+      const shell = await cache.match(LAUNCH_SHELL_KEY);
+      if (shell) return shell;
+    } catch (_err) { /* no shell: what the network said */ }
+    return response || Response.error();
+  }
+);
+
 // Unified route handler for all requests
 workbox.routing.registerRoute(
   ({ url, request }) => {
@@ -2310,7 +2343,8 @@ self.addEventListener('activate', (event) => {
               cacheName !== IMAGE_CACHE &&
               cacheName !== INTERNAL_CACHE &&
               cacheName !== WALLPAPER_CACHE &&
-              cacheName !== EXPLORER_PREVIEW_CACHE) {
+              cacheName !== EXPLORER_PREVIEW_CACHE &&
+              cacheName !== LAUNCH_SHELL_CACHE) {
             return caches.delete(cacheName);
           }
         })
