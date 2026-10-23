@@ -7,7 +7,7 @@
  *               Smudge, Dodge, Burn, Sponge), the tool's options box, the Tool Settings bar (size,
  *               opacity, hardness, tolerance, the selection mode, Contiguous, Sample All Layers), the
  *               canvas on the app workspace (#ababab) with its resize handles, the color box
- *               (Vista's 28 colors), the status bar (help, the cursor, the selection's size), and the
+ *               (paintColor.js: Photoshop's spectrum ramp and saved swatches), the status bar (help, the cursor, the selection's size), and the
  *               Layers window (paintLayers.js)
  *   documents   a PaintCore.Document (paintCore.js); files open from Cartograph (any picture) or
  *               the gallery, save as PNG / JPEG / BMP / WebP, or as a Melaton Paint image (.mpi:
@@ -177,7 +177,7 @@
                         <label>Hardness: <input type="range" class="mp-set-hardness" min="0" max="100" value="100"></label>
                         <label>Tolerance: <input type="range" class="mp-set-tolerance" min="0" max="100" value="32"></label>
                         <label class="mp-set-check"><input type="checkbox" class="mp-set-aa" checked><span>Antialiasing</span></label>
-                        <span class="mp-set-selmode" role="group" aria-label="Selection">${[['new', 'New Selection'], ['add', 'Add to Selection (Shift)'], ['subtract', 'Subtract from Selection (Alt)'], ['intersect', 'Intersect with Selection (Shift+Alt)']].map(([v, t], i) => `<button type="button" class="mp-selmode${v === 'new' ? ' is-on' : ''}" data-selmode="${v}" title="${t}" style="--x:${-i * 16}px"></button>`).join('')}</span>
+                        <span class="mp-set-selmode" role="group" aria-label="Selection">${[['new', 'New Selection'], ['add', 'Add to Selection (Shift)'], ['subtract', 'Subtract from Selection (Alt)'], ['intersect', 'Intersect with Selection (Shift+Alt)']].map(([v, t], i) => `<button type="button" class="mp-selmode${v === 'new' ? ' is-on' : ''}" data-selmode="${v}" title="${t}"><span class="mp-selmode-art" style="--x:${-i * 16}px"></span></button>`).join('')}</span>
                         <label class="mp-set-check mp-set-contig"><input type="checkbox" class="mp-set-contiguous" checked><span>Contiguous</span></label>
                         <label class="mp-set-check mp-set-sampleall"><input type="checkbox" class="mp-set-sample"><span>Sample All Layers</span></label>
                     </div>
@@ -198,10 +198,7 @@
                         </div>
                         <div class="mp-dock"></div>
                     </div>
-                    <div class="mp-colorbox">
-                        <div class="mp-swatch-box"><span class="mp-bg"></span><span class="mp-fg"></span><button type="button" class="mp-default-colors" title="Default Colors (D)"></button><button type="button" class="mp-swap-colors" title="Switch Colors (X)"></button></div>
-                        <div class="mp-palette">${PALETTE.map((c, i) => `<button type="button" class="mp-color" data-i="${i}" style="background:${c}"></button>`).join('')}</div>
-                    </div>
+                    <div class="mp-colorbox"></div>
                     <div class="mp-status"><span class="mp-status-text">${DEFAULT_STATUS}</span><span class="mp-status-pos"></span><span class="mp-status-size"></span></div>
                 </div>`;
             doc.body.appendChild(m);
@@ -215,6 +212,7 @@
             this.workspace = this.el('.mp-workspace');
             this.ants = this.el('.mp-ants');
             this.checker = this.makeChecker();
+            if (root.paintColor) root.paintColor.mount(this);
             this.wire();
             m.dataset.tool = this.tool;
             this.renderOptions();
@@ -359,19 +357,6 @@
                 if (o.dataset.opt === 'zoomLevel') this.setZoom(Number(v));
                 this.renderOptions();
             });
-            m.querySelector('.mp-palette').addEventListener('mousedown', (ev) => {
-                const b = ev.target.closest('.mp-color');
-                if (!b) return;
-                ev.preventDefault();
-                const c = b.style.background;
-                if (ev.button === 2) this.bg = hex(c); else this.fg = hex(c);
-                this.renderColors();
-            });
-            m.querySelector('.mp-palette').addEventListener('contextmenu', (ev) => ev.preventDefault());
-            m.querySelector('.mp-palette').addEventListener('dblclick', (ev) => {
-                const b = ev.target.closest('.mp-color');
-                if (b) void this.editColors(Number(b.dataset.i));
-            });
             const set = (cls, key, fmt) => {
                 const input = m.querySelector(cls);
                 input.addEventListener('input', () => {
@@ -390,9 +375,6 @@
                 const b = ev.target.closest('[data-selmode]');
                 if (b) this.setSelMode(b.dataset.selmode);
             });
-            m.querySelector('.mp-swap-colors').addEventListener('click', () => void this.action('swap-colors'));
-            m.querySelector('.mp-default-colors').addEventListener('click', () => void this.action('default-colors'));
-            m.querySelector('.mp-fg').addEventListener('dblclick', () => void this.action('edit-colors'));
             const view = this.overlay;
             view.addEventListener('pointerdown', (ev) => this.pointer('down', ev));
             view.addEventListener('pointermove', (ev) => this.pointer('move', ev));
@@ -947,7 +929,8 @@
         /** Delete / cut: the background color on the Background layer (Vista), transparency above it. */
         clearSelectionArea(l) {
             const s = this.doc.selection;
-            const isBackground = this.doc.layers.indexOf(l) === 0;
+            // a layer mask takes the background colour like the Background layer (Photoshop)
+            const isBackground = this.doc.layers.indexOf(l) === 0 || !!l.isMask;
             l.ctx.save();
             l.ctx.beginPath();
             if (s.path) {
@@ -1152,14 +1135,15 @@
             if (!bar) {
                 bar = doc.createElement('div');
                 bar.className = 'mp-textbar';
+                bar.setAttribute('role', 'toolbar');
                 const fonts = ['Arial', 'Comic Sans MS', 'Courier New', 'Georgia', 'Impact', 'Lucida Console', 'Segoe UI', 'Tahoma', 'Times New Roman', 'Trebuchet MS', 'Verdana'];
                 const f = this.textFont();
                 bar.innerHTML = `<div class="mp-textbar-cap">Fonts</div>
                     <select class="mp-tb-face">${fonts.map((n) => `<option${n === f.face ? ' selected' : ''}>${n}</option>`).join('')}</select>
                     <select class="mp-tb-size">${[8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72].map((n) => `<option${n === f.size ? ' selected' : ''}>${n}</option>`).join('')}</select>
-                    <button type="button" class="mp-tb-b${f.bold ? ' is-on' : ''}" data-tb="TextBold" style="--x:0px" title="Bold"></button>
-                    <button type="button" class="mp-tb-b${f.italic ? ' is-on' : ''}" data-tb="TextItalic" style="--x:-23px" title="Italic"></button>
-                    <button type="button" class="mp-tb-b${f.underline ? ' is-on' : ''}" data-tb="TextUnderline" style="--x:-46px" title="Underline"></button>`;
+                    <button type="button" class="mp-tb-b${f.bold ? ' is-on' : ''}" data-tb="TextBold" title="Bold"><span class="mp-tb-art" style="--x:0px"></span></button>
+                    <button type="button" class="mp-tb-b${f.italic ? ' is-on' : ''}" data-tb="TextItalic" title="Italic"><span class="mp-tb-art" style="--x:-16px"></span></button>
+                    <button type="button" class="mp-tb-b${f.underline ? ' is-on' : ''}" data-tb="TextUnderline" title="Underline"><span class="mp-tb-art" style="--x:-32px"></span></button>`;
                 this.el('.mp-workspace').appendChild(bar);
                 const apply = () => {
                     setReg({ TextFace: bar.querySelector('.mp-tb-face').value, TextSize: Number(bar.querySelector('.mp-tb-size').value) });
@@ -1273,9 +1257,18 @@
                 layers.push([l, img]);
             }
             this.doc.layers = [];
+            for (const [l] of layers) {
+                if (l.mask) l.maskImg = await loadImage(l.mask);
+            }
             layers.forEach(([l, img]) => {
                 const layer = this.doc.addLayer(l.name, { silent: true, at: this.doc.layers.length });
                 layer.ctx.drawImage(img, 0, 0);
+                if (l.maskImg) {
+                    const m = layer.addMask();
+                    m.ctx.drawImage(l.maskImg, 0, 0);
+                    m.enabled = l.maskOn !== false;
+                }
+                layer.styles = l.styles || null;
                 layer.visible = l.visible !== false;
                 layer.opacity = typeof l.opacity === 'number' ? l.opacity : 1;
                 layer.blend = l.blend || 'normal';
@@ -1333,7 +1326,10 @@
 
         async encode(type) {
             if (type === 'mpi') {
-                const layers = this.doc.layers.map((l) => ({ name: l.name, visible: l.visible, opacity: l.opacity, blend: l.blend, locked: l.locked, png: l.canvas.toDataURL('image/png') }));
+                const layers = this.doc.layers.map((l) => ({
+                    name: l.name, visible: l.visible, opacity: l.opacity, blend: l.blend, locked: l.locked, png: l.canvas.toDataURL('image/png'),
+                    mask: l.mask ? l.mask.canvas.toDataURL('image/png') : undefined, maskOn: l.mask ? l.mask.enabled : undefined, styles: l.styles || undefined
+                }));
                 return new Blob([JSON.stringify({ format: 'melaton-paint', version: 1, width: this.doc.width, height: this.doc.height, active: this.doc.active, layers })], { type: 'application/json' });
             }
             const flat = this.doc.flattened({ background: type === 'image/jpeg' || type === 'image/bmp' ? '#ffffff' : undefined });
@@ -1541,7 +1537,7 @@
                 case 'select': return P() ? P().selectMenu(this) : [];
                 case 'adjustments': return P() ? P().adjustMenu(this) : (root.paintLayers ? root.paintLayers.adjustMenu(this) : []);
                 case 'filter': return P() ? P().filterMenu(this) : [];
-                case 'colors': return [{ text: 'Edit Colors...', action: 'edit-colors' }];
+                case 'colors': return root.paintColor ? root.paintColor.menu(this) : [{ text: 'Edit Colors...', action: 'edit-colors' }];
                 case 'help': return [
                     { text: 'Help Topics', action: 'help' },
                     { separator: true },
@@ -1621,12 +1617,13 @@
                 case 'clear': this.clearImage(); return;
                 case 'crop': this.crop(); return;
                 case 'opaque': this.opt.transparent = !this.opt.transparent; this.renderOptions(); if (this.floating) this.drawFloating(); return;
-                case 'edit-colors': if (D) D.editColors(this); return;
+                case 'edit-colors': if (root.paintColor) root.paintColor.picker(this, 'fg'); else if (D) D.editColors(this); return;
                 case 'help': callGlobal('openHelpAndSupport', 'paint'); return;
                 case 'about': callGlobal('openAboutMelatoninModal', { program: 'Paint' }); return;
                 default:
                     if (root.paintLayers && root.paintLayers.action(this, a)) return;
                     if (P() && P().action(this, a)) return;
+                    if (root.paintColor && root.paintColor.action(this, a)) return;
                     break;
             }
         }
@@ -2018,7 +2015,7 @@
         down(p) {
             // the Background layer takes the background color (Vista); a layer above it goes transparent.
             // Right-drag is the Color Eraser: only the drawing color turns into the background color.
-            const upper = this.doc.active > 0;
+            const upper = this.doc.active > 0 && !this.doc.layer.isMask;
             if (this.right) {
                 if (!this.editable()) return;
                 this.colorErase = this.doc.beginStep('Color Eraser', this.doc.layer);

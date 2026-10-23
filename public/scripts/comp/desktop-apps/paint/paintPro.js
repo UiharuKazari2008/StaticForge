@@ -848,45 +848,61 @@
         if (!V()) return;
         const tpl = { t: title, w: 276, h: 0, f: ['MS Shell Dlg', 8], c: [] };
         let y = 8;
+        let X = 0;
+        let maxY = 0;
         const ids = [];
+        const colors = {};
         fields.forEach((f, i) => {
             const base = 100 + i * 10;
             ids.push(base);
-            if (f.type === 'slider') {
-                tpl.c.push([base, 'S', 7, y + 3, 68, 8, 0x50020000, `${f.label}:`, 0]);
-                tpl.c.push([base + 1, 'msctls_trackbar32', 76, y, 120, 16, 0x50010000, '', 0]);
-                tpl.c.push([base + 2, 'E', 200, y + 1, 30, 12, 0x50812080, '', 0]);
-                if (f.unit) tpl.c.push([base + 3, 'S', 233, y + 3, 38, 8, 0x50020000, f.unit, 0]);
+            if (f.type === 'column') {
+                // a new column to the right
+                maxY = Math.max(maxY, y);
+                y = 8;
+                X += 276;
+            } else if (f.type === 'slider') {
+                tpl.c.push([base, 'S', X + 7, y + 3, 68, 8, 0x50020000, `${f.label}:`, 0]);
+                tpl.c.push([base + 1, 'msctls_trackbar32', X + 76, y, 120, 16, 0x50010000, '', 0]);
+                tpl.c.push([base + 2, 'E', X + 200, y + 1, 30, 12, 0x50812080, '', 0]);
+                if (f.unit) tpl.c.push([base + 3, 'S', X + 233, y + 3, 38, 8, 0x50020000, f.unit, 0]);
                 y += 22;
             } else if (f.type === 'check') {
-                tpl.c.push([base + 1, 'B', 7, y, 200, 10, 0x50010003, f.label, 0]);
+                tpl.c.push([base + 1, 'B', X + 7, y, 200, 10, 0x50010003, f.label, 0]);
                 y += 14;
             } else if (f.type === 'heading') {
-                tpl.c.push([base, 'S', 7, y + 2, 200, 8, 0x50020000, f.label, 0]);
-                tpl.c.push([base + 1, 'S', 7 + f.label.length * 4 + 4, y + 6, 262 - f.label.length * 4, 1, 0x50000010, '', 0]);
+                tpl.c.push([base, 'S', X + 7, y + 2, 200, 8, 0x50020000, f.label, 0]);
+                tpl.c.push([base + 1, 'S', X + 7 + f.label.length * 4 + 4, y + 6, 262 - f.label.length * 4, 1, 0x50000010, '', 0]);
                 y += 13;
             } else if (f.type === 'combo') {
-                tpl.c.push([base, 'S', 7, y + 3, 68, 8, 0x50020000, `${f.label}:`, 0]);
-                tpl.c.push([base + 1, 'C', 76, y, 120, 100, 0x50210003, '', 0]);
+                tpl.c.push([base, 'S', X + 7, y + 3, 68, 8, 0x50020000, `${f.label}:`, 0]);
+                tpl.c.push([base + 1, 'C', X + 76, y, 120, 100, 0x50210003, '', 0]);
+                y += 18;
+            } else if (f.type === 'color') {
+                tpl.c.push([base, 'S', X + 7, y + 3, 68, 8, 0x50020000, `${f.label}:`, 0]);
+                tpl.c.push([base + 1, 'MpColorSwatch', X + 76, y, 36, 13, 0x50000000, '', 0]);
+                colors[i] = f.def;
                 y += 18;
             } else if (f.type === 'radio') {
-                tpl.c.push([base, 'S', 7, y + 1, 68, 8, 0x50020000, `${f.label}:`, 0]);
+                tpl.c.push([base, 'S', X + 7, y + 1, 68, 8, 0x50020000, `${f.label}:`, 0]);
                 f.options.forEach(([, text], k) => {
-                    tpl.c.push([base + 1 + k, 'B', 76 + k * 54, y, 52, 10, k ? 0x50010009 : 0x50030009, text, 0]);
+                    tpl.c.push([base + 1 + k, 'B', X + 76 + k * 54, y, 52, 10, k ? 0x50010009 : 0x50030009, text, 0]);
                 });
                 y += 14;
             }
         });
-        y += 4;
+        y = Math.max(y, maxY) + 4;
+        const right = X + 276;
+        tpl.w = right;
         tpl.c.push([90, 'B', 7, y + 2, 60, 10, 0x50010003, '&Preview', 0]);
-        tpl.c.push([1, 'B', 165, y, 50, 14, 0x50010001, 'OK', 0]);
-        tpl.c.push([2, 'B', 219, y, 50, 14, 0x50010000, 'Cancel', 0]);
+        tpl.c.push([1, 'B', right - 111, y, 50, 14, 0x50010001, 'OK', 0]);
+        tpl.c.push([2, 'B', right - 57, y, 50, 14, 0x50010000, 'Cancel', 0]);
         tpl.h = y + 21;
         const values = (ctx) => fields.map((f, i) => {
             const base = ids[i];
             if (f.type === 'slider') return Number(ctx.get(base + 1)) / (f.scale || 1);
             if (f.type === 'check') return !!ctx.get(base + 1);
-            if (f.type === 'heading') return null;
+            if (f.type === 'heading' || f.type === 'column') return null;
+            if (f.type === 'color') return colors[i];
             if (f.type === 'radio') return f.options[Math.max(0, f.options.findIndex((_, k) => ctx.get(base + 1 + k)))][0];
             return ctx.get(base + 1);
         });
@@ -926,6 +942,17 @@
                     } else if (f.type === 'combo') {
                         ctx.options(base + 1, f.options.map(([value, text]) => ({ value, text })), f.def);
                         ctx.on(base + 1, 'change', () => run(ctx));
+                    } else if (f.type === 'color') {
+                        const h = ctx.holder(base + 1);
+                        h.innerHTML = `<button type="button" class="mp-cf" title="Click to choose a color"><span style="background:${esc(colors[i])}"></span></button>`;
+                        h.querySelector('.mp-cf').addEventListener('click', () => {
+                            if (!root.paintColor) return;
+                            root.paintColor.picker(w, 'fg', {
+                                color: colors[i],
+                                title: `Select ${f.label} Color`,
+                                onPick(c) { colors[i] = c; h.querySelector('span').style.background = c; run(ctx); }
+                            });
+                        });
                     } else if (f.type === 'radio') {
                         f.options.forEach(([v], k) => {
                             ctx.set(base + 1 + k, v === f.def);
@@ -1739,6 +1766,107 @@
         panel.querySelector('.mp-info-sw').style.background = `rgb(${view[0]},${view[1]},${view[2]})`;
     }
 
+    // ---- layer masks and layer styles --------------------------------------------------------
+
+    function structural(w, label, fn) {
+        w.commitFloating();
+        w.finishText();
+        w.doc.snapshotStep(label, fn);
+        if (root.paintLayers) root.paintLayers.refresh(w);
+    }
+
+    /** Layer > Layer Mask > Reveal / Hide All, Reveal / Hide Selection. */
+    function addMask(w, how) {
+        const d = w.doc;
+        const l = d.activeLayer;
+        if (l.mask) return;
+        const s = d.selection;
+        structural(w, 'Add Layer Mask', () => {
+            const m = l.addMask(how === 'hide-all' || how === 'reveal-sel' ? '#000000' : '#ffffff');
+            if ((how === 'reveal-sel' || how === 'hide-sel') && s) {
+                const mask = maskOf(d, s);
+                const img = m.ctx.getImageData(0, 0, d.width, d.height);
+                for (let i = 0; i < mask.length; i += 1) {
+                    const v = how === 'reveal-sel' ? mask[i] : 255 - mask[i];
+                    img.data[i * 4] = v; img.data[i * 4 + 1] = v; img.data[i * 4 + 2] = v; img.data[i * 4 + 3] = 255;
+                }
+                m.ctx.putImageData(img, 0, 0);
+            }
+            d.editMask = true;
+            d.markDirty();
+        });
+        if (s) w.setSelection(null);
+        w.status('The layer mask is selected: black hides, white shows. Click the layer thumbnail to paint the layer.');
+    }
+
+    function applyMask(w) {
+        const d = w.doc;
+        const l = d.activeLayer;
+        if (!l.mask) return;
+        structural(w, 'Apply Layer Mask', () => {
+            const rendered = C().renderLayer({ canvas: l.canvas, mask: l.mask, styles: null }, { x: 0, y: 0, w: d.width, h: d.height });
+            l.ctx.clearRect(0, 0, d.width, d.height);
+            l.ctx.drawImage(rendered, 0, 0);
+            l.mask = null;
+            d.editMask = false;
+            d.markDirty();
+        });
+    }
+
+    const STYLE_DEFAULTS = {
+        shadow: { on: false, color: '#000000', opacity: 75, angle: 120, distance: 5, size: 5, blend: 'multiply' },
+        glow: { on: false, color: '#ffffbe', opacity: 75, size: 10, blend: 'screen' },
+        stroke: { on: false, color: '#000000', opacity: 100, size: 3, position: 'outside' }
+    };
+
+    /** Layer > Layer Style: Drop Shadow, Outer Glow and Stroke, live on the layer. */
+    function layerStyle(w) {
+        const d = w.doc;
+        const l = d.activeLayer;
+        if (w.proSession) { w.status('Finish the open dialog first.'); return; }
+        const before = l.styles ? JSON.parse(JSON.stringify(l.styles)) : null;
+        const cur = {};
+        Object.keys(STYLE_DEFAULTS).forEach((k) => { cur[k] = { ...STYLE_DEFAULTS[k], ...((before && before[k]) || {}) }; });
+        // a first style starts from the drawing colour for the stroke (Photoshop uses its own red)
+        if (!before) cur.stroke.color = w.fg;
+        const build = (v) => ({
+            shadow: { on: v[0], color: v[1], opacity: v[2], angle: v[3], distance: v[4], size: v[5], blend: 'multiply' },
+            glow: { on: v[6], color: v[7], opacity: v[8], size: v[9], blend: 'screen' },
+            stroke: { on: v[11], color: v[12], size: v[13], position: v[14], opacity: v[15] }
+        });
+        const live = (v) => { l.styles = build(v); d.markDirty(); };
+        w.proSession = { style: true };
+        fieldDialog(w, `Layer Style - ${l.name}`, [
+            { type: 'check', label: '&Drop Shadow', def: cur.shadow.on },
+            { type: 'color', label: 'Color', def: cur.shadow.color },
+            { type: 'slider', label: 'Opacity', min: 0, max: 100, def: cur.shadow.opacity, unit: '%' },
+            { type: 'slider', label: 'Angle', min: -180, max: 180, def: cur.shadow.angle, unit: '\u00b0' },
+            { type: 'slider', label: 'Distance', min: 0, max: 100, def: cur.shadow.distance, unit: 'px' },
+            { type: 'slider', label: 'Size', min: 0, max: 100, def: cur.shadow.size, unit: 'px' },
+            { type: 'check', label: 'Outer &Glow', def: cur.glow.on },
+            { type: 'color', label: 'Color', def: cur.glow.color },
+            { type: 'slider', label: 'Opacity', min: 0, max: 100, def: cur.glow.opacity, unit: '%' },
+            { type: 'slider', label: 'Size', min: 1, max: 100, def: cur.glow.size, unit: 'px' },
+            { type: 'column' },
+            { type: 'check', label: '&Stroke', def: cur.stroke.on },
+            { type: 'color', label: 'Color', def: cur.stroke.color },
+            { type: 'slider', label: 'Size', min: 1, max: 50, def: cur.stroke.size, unit: 'px' },
+            { type: 'radio', label: 'Position', options: [['outside', 'Outside'], ['inside', 'Inside']], def: cur.stroke.position },
+            { type: 'slider', label: 'Opacity', min: 0, max: 100, def: cur.stroke.opacity, unit: '%' }
+        ], {
+            heavy: true,
+            preview: live,
+            unpreview() { l.styles = before; d.markDirty(); },
+            ok(v) {
+                w.proSession = null;
+                const after = build(v);
+                l.styles = before;
+                structural(w, 'Layer Style', () => { l.styles = C().hasEffects({ styles: after }) ? after : null; });
+            },
+            cancel() { w.proSession = null; l.styles = before; d.markDirty(); }
+        });
+    }
+
     // ---- menus --------------------------------------------------------------------------------
 
     function selectMenu(w) {
@@ -1888,6 +2016,18 @@
                 S.commit();
                 return true;
             }
+            case 'mask-reveal-all': addMask(w, 'reveal-all'); return true;
+            case 'mask-hide-all': addMask(w, 'hide-all'); return true;
+            case 'mask-reveal-sel': addMask(w, 'reveal-sel'); return true;
+            case 'mask-hide-sel': addMask(w, 'hide-sel'); return true;
+            case 'mask-edit': if (d.activeLayer.mask) { d.editMask = !d.editMask; if (root.paintLayers) root.paintLayers.refresh(w); } return true;
+            case 'mask-toggle': if (d.activeLayer.mask) structural(w, d.activeLayer.mask.enabled ? 'Disable Layer Mask' : 'Enable Layer Mask', () => { d.activeLayer.mask.enabled = !d.activeLayer.mask.enabled; d.markDirty(); }); return true;
+            case 'mask-apply': applyMask(w); return true;
+            case 'mask-delete': if (d.activeLayer.mask) structural(w, 'Delete Layer Mask', () => { d.activeLayer.mask = null; d.editMask = false; d.markDirty(); }); return true;
+            case 'layer-style': layerStyle(w); return true;
+            case 'style-copy': w.styleClip = JSON.parse(JSON.stringify(d.activeLayer.styles)); return true;
+            case 'style-paste': if (w.styleClip) structural(w, 'Paste Layer Style', () => { d.activeLayer.styles = JSON.parse(JSON.stringify(w.styleClip)); d.markDirty(); }); return true;
+            case 'style-clear': structural(w, 'Clear Layer Style', () => { d.activeLayer.styles = null; d.markDirty(); }); return true;
             case 'pro-navigator': toggleNavigator(w); return true;
             case 'pro-info': toggleInfo(w); return true;
             default: return false;

@@ -55,7 +55,7 @@
             d.insertAdjacentHTML('afterbegin', `<div class="mp-panel mp-layers">
                 <div class="mp-panel-cap">Layers</div>
                 <div class="mp-layer-list" role="listbox" tabindex="0"></div>
-                <div class="mp-panel-bar">
+                <div class="mp-panel-bar" role="toolbar">
                     <button type="button" data-layer="add" title="Add New Layer"><img src="${CMD}/add.png" alt=""></button>
                     <button type="button" data-layer="delete" title="Delete Layer"><img src="${CMD}/delete.png" alt=""></button>
                     <button type="button" data-layer="duplicate" title="Duplicate Layer"><img src="${CMD}/copy.png" alt=""></button>
@@ -63,6 +63,8 @@
                     <button type="button" data-layer="up" title="Move Layer Up"><img src="${CMD}/move-up.png" alt=""></button>
                     <button type="button" data-layer="down" title="Move Layer Down"><img src="${CMD}/move-down.png" alt=""></button>
                     <button type="button" data-layer="properties" title="Layer Properties"><img src="${CMD}/properties.png" alt=""></button>
+                    <button type="button" data-layer="mask" title="Add Layer Mask"><img src="${CMD}/contrast.png" alt=""></button>
+                    <button type="button" data-layer="style" title="Layer Style"><img src="${CMD}/paint-ellipse.png" alt=""></button>
                 </div>
             </div>`);
             const panel = d.querySelector('.mp-layers');
@@ -73,6 +75,14 @@
                 const row = ev.target.closest('.mp-layer-row');
                 if (!row) return;
                 const i = Number(row.dataset.i);
+                const maskThumb = ev.target.closest('.mp-layer-mask');
+                if (maskThumb && ev.shiftKey) {
+                    const m = w.doc.layers[i].mask;
+                    m.enabled = !m.enabled;
+                    w.doc.markDirty();
+                    refresh(w);
+                    return;
+                }
                 if (vis) {
                     w.doc.layers[i].visible = !w.doc.layers[i].visible;
                     w.doc.markDirty();
@@ -81,11 +91,16 @@
                 }
                 w.commitFloating();
                 w.doc.active = i;
+                // the mask's thumbnail makes the mask what the tools paint (Photoshop)
+                w.doc.editMask = !!(maskThumb && w.doc.layers[i].mask);
                 refresh(w);
             });
             panel.addEventListener('dblclick', (ev) => {
                 const row = ev.target.closest('.mp-layer-row');
-                if (row) { w.doc.active = Number(row.dataset.i); properties(w); }
+                if (!row) return;
+                w.doc.active = Number(row.dataset.i);
+                if (ev.target.closest('.mp-layer-fx') && root.paintPro) root.paintPro.action(w, 'layer-style');
+                else properties(w);
             });
         }
         refresh(w);
@@ -113,9 +128,11 @@
         const list = d.querySelector('.mp-layer-list');
         if (list) {
             const rows = w.doc.layers.map((l, i) => ({ l, i })).reverse();
-            list.innerHTML = rows.map(({ l, i }) => `<div class="mp-layer-row${i === w.doc.active ? ' is-active' : ''}" data-i="${i}" role="option">
-                <canvas class="mp-layer-thumb" width="40" height="30" data-i="${i}"></canvas>
-                <span class="mp-layer-name">${esc(l.name)}${l.locked ? ' <i class="mp-layer-lock" title="Locked"></i>' : ''}</span>
+            const onMask = (i) => i === w.doc.active && w.doc.editMask && w.doc.layers[i].mask;
+            list.innerHTML = rows.map(({ l, i }) => `<div class="mp-layer-row${i === w.doc.active ? ' is-active' : ''}${l.mask ? ' has-mask' : ''}" data-i="${i}" role="option">
+                <canvas class="mp-layer-thumb${i === w.doc.active && !onMask(i) ? ' is-target' : ''}" width="40" height="30" data-i="${i}"></canvas>
+                ${l.mask ? `<canvas class="mp-layer-mask${onMask(i) ? ' is-target' : ''}${l.mask.enabled ? '' : ' is-off'}" width="40" height="30" data-i="${i}" title="Layer mask (Shift+click turns it off)"></canvas>` : ''}
+                <span class="mp-layer-name">${esc(l.name)}${l.locked ? ' <i class="mp-layer-lock" title="Locked"></i>' : ''}${C().hasEffects(l) ? ' <i class="mp-layer-fx" title="Layer Style (double-click)">fx</i>' : ''}</span>
                 <input type="checkbox" class="mp-layer-vis" title="Visible"${l.visible ? ' checked' : ''}>
             </div>`).join('');
             thumbs(w, true);
@@ -139,8 +156,10 @@
             w.thumbTimer = setTimeout(() => { w.thumbTimer = 0; thumbs(w, true); }, 250);
             return;
         }
-        list.querySelectorAll('.mp-layer-thumb').forEach((c) => {
-            const l = w.doc.layers[Number(c.dataset.i)];
+        list.querySelectorAll('.mp-layer-thumb, .mp-layer-mask').forEach((c) => {
+            const layer = w.doc.layers[Number(c.dataset.i)];
+            if (!layer) return;
+            const l = c.classList.contains('mp-layer-mask') ? layer.mask : layer;
             if (!l) return;
             const x = c.getContext('2d');
             const s = Math.min(c.width / w.doc.width, c.height / w.doc.height);
@@ -177,6 +196,25 @@
             { text: 'Move Layer Up', action: 'layer-up', disabled: d.active >= d.layers.length - 1 },
             { text: 'Move Layer Down', action: 'layer-down', disabled: d.active === 0 },
             { text: 'Flatten', subtext: 'Ctrl+Shift+E', action: 'layer-flatten', disabled: d.layers.length <= 1 },
+            { separator: true },
+            { text: 'Layer Mask', hasSubmenu: true, submenu: [
+                { text: 'Reveal All', action: 'mask-reveal-all', disabled: !!d.activeLayer.mask },
+                { text: 'Hide All', action: 'mask-hide-all', disabled: !!d.activeLayer.mask },
+                { text: 'Reveal Selection', action: 'mask-reveal-sel', disabled: !!d.activeLayer.mask || !d.selection },
+                { text: 'Hide Selection', action: 'mask-hide-sel', disabled: !!d.activeLayer.mask || !d.selection },
+                { separator: true },
+                { text: 'Edit Mask', action: 'mask-edit', showIndicator: true, checked: !!(d.editMask && d.activeLayer.mask), disabled: !d.activeLayer.mask },
+                { text: d.activeLayer.mask && !d.activeLayer.mask.enabled ? 'Enable' : 'Disable', action: 'mask-toggle', disabled: !d.activeLayer.mask },
+                { text: 'Apply', action: 'mask-apply', disabled: !d.activeLayer.mask },
+                { text: 'Delete', action: 'mask-delete', disabled: !d.activeLayer.mask }
+            ] },
+            { text: 'Layer Style', hasSubmenu: true, submenu: [
+                { text: 'Blending Options...', action: 'layer-style' },
+                { separator: true },
+                { text: 'Copy Layer Style', action: 'style-copy', disabled: !C().hasEffects(d.activeLayer) },
+                { text: 'Paste Layer Style', action: 'style-paste', disabled: !w.styleClip },
+                { text: 'Clear Layer Style', action: 'style-clear', disabled: !C().hasEffects(d.activeLayer) }
+            ] },
             { separator: true },
             { text: 'Layer Properties...', subtext: 'F4', action: 'layer-properties' }
         ];
@@ -236,6 +274,8 @@
             case 'layer-flip-v': flipLayer(w, false); return true;
             case 'layer-rotate': if (root.paintDialogs) root.paintDialogs.rotateLayer(w); return true;
             case 'layer-import': importLayer(w); return true;
+            case 'layer-mask': return root.paintPro ? root.paintPro.action(w, d.selection ? 'mask-reveal-sel' : 'mask-reveal-all') : true;
+            case 'layer-style': return root.paintPro ? root.paintPro.action(w, 'layer-style') : true;
             case 'adj-bw': w.adjust('Black and White', (r, g, b) => { const v = 0.299 * r + 0.587 * g + 0.114 * b; return [v, v, v]; }); return true;
             case 'adj-sepia': w.adjust('Sepia', (r, g, b) => [Math.min(255, 0.393 * r + 0.769 * g + 0.189 * b), Math.min(255, 0.349 * r + 0.686 * g + 0.168 * b), Math.min(255, 0.272 * r + 0.534 * g + 0.131 * b)]); return true;
             case 'adj-autolevel': autoLevel(w); return true;
@@ -345,7 +385,7 @@
     }
 
     function properties(w) {
-        const l = w.doc.layer;
+        const l = w.doc.activeLayer;
         if (!root.vistaDialogTemplate) return;
         const before = { name: l.name, visible: l.visible, opacity: l.opacity, blend: l.blend, locked: l.locked };
         const tpl = { t: 'Layer Properties', w: 210, h: 112, f: ['MS Shell Dlg', 8], c: [

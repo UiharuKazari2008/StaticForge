@@ -123,7 +123,8 @@ const FEATURE_MANIFEST = {
             'scripts/comp/desktop-apps/paint/paintApp.js',
             'scripts/comp/desktop-apps/paint/paintLayers.js',
             'scripts/comp/desktop-apps/paint/paintDialogs.js',
-            'scripts/comp/desktop-apps/paint/paintPro.js'
+            'scripts/comp/desktop-apps/paint/paintPro.js',
+            'scripts/comp/desktop-apps/paint/paintColor.js'
         ]
     },
     // SoraTan.exe from the VFS (vfsPrograms.js): Nanami's desktop toy

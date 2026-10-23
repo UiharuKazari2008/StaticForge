@@ -17,6 +17,10 @@
  *   doc.snapshotStep(label, fn)   a whole-document step (fn changes the document)
  *   doc.undo() / doc.redo() / doc.history / doc.historyIndex
  *   doc.composite(ctx, rect)      draw the visible layers into a view context
+ *   layer.mask { canvas, ctx, enabled, target }   a layer mask: white shows, black hides (its
+ *                                 luminance); doc.editMask makes doc.layer the mask's target, so
+ *                                 every tool and step paints the mask instead
+ *   layer.styles { shadow, glow, stroke }   effects drawn round the layer's (masked) pixels
  *   doc.flattened()               a canvas of the picture as saved
  *   PaintCore.floodFill(imageData, x, y, rgba, tolerance) -> dirty rect
  *   PaintCore.wandMask(imageData, x, y, tolerance) -> { mask: Uint8Array (0 / 255), rect }
@@ -80,7 +84,154 @@
             this.opacity = 1;
             this.blend = 'normal';
             this.locked = false;
+            this.mask = null;
+            this.styles = null;
         }
+
+        /** A layer mask, white (everything shows) or black (nothing does). */
+        addMask(fill = '#ffffff') {
+            const canvas = makeCanvas(this.canvas.width, this.canvas.height);
+            const ctx = ctxOf(canvas);
+            ctx.fillStyle = fill;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            this.setMaskCanvas(canvas);
+            return this.mask;
+        }
+
+        setMaskCanvas(canvas, enabled = true) {
+            const layer = this;
+            const ctx = ctxOf(canvas);
+            // what the tools paint when the mask is the target (doc.editMask)
+            const target = {
+                isMask: true, owner: layer, canvas, ctx,
+                get id() { return `m${layer.id}`; },
+                get name() { return `${layer.name} Mask`; },
+                get locked() { return layer.locked; },
+                visible: true, opacity: 1, blend: 'normal'
+            };
+            this.mask = { canvas, ctx, enabled, target };
+        }
+    }
+
+    function hasEffects(l) {
+        const s = l.styles;
+        return !!(s && ((s.shadow && s.shadow.on) || (s.glow && s.glow.on) || (s.stroke && s.stroke.on)));
+    }
+
+    function effectPad(l) {
+        const s = l.styles;
+        if (!hasEffects(l)) return 0;
+        let p = 0;
+        if (s.shadow && s.shadow.on) p = Math.max(p, s.shadow.distance + s.shadow.size * 2);
+        if (s.glow && s.glow.on) p = Math.max(p, s.glow.size * 2);
+        if (s.stroke && s.stroke.on) p = Math.max(p, s.stroke.size + 1);
+        return Math.ceil(p) + 2;
+    }
+
+    /** The layer's pixels over a rectangle, through its mask, with its effects (a canvas of r's size). */
+    function renderLayer(l, r) {
+        const out = makeCanvas(r.w, r.h);
+        const ox = ctxOf(out);
+        const pad = effectPad(l);
+        const W = l.canvas.width;
+        const H = l.canvas.height;
+        // the content, padded so a shadow from outside the rectangle reaches into it
+        const pr = clampRect({ x: r.x - pad, y: r.y - pad, w: r.w + 2 * pad, h: r.h + 2 * pad }, W, H) || r;
+        const c = makeCanvas(pr.w, pr.h);
+        const cx = ctxOf(c);
+        cx.drawImage(l.canvas, pr.x, pr.y, pr.w, pr.h, 0, 0, pr.w, pr.h);
+        if (l.mask && l.mask.enabled) {
+            const m = l.mask.ctx.getImageData(pr.x, pr.y, pr.w, pr.h);
+            const d = m.data;
+            for (let i = 0; i < d.length; i += 4) {
+                d[i + 3] = (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) * (d[i + 3] / 255);
+            }
+            const mc = makeCanvas(pr.w, pr.h);
+            ctxOf(mc).putImageData(m, 0, 0);
+            cx.globalCompositeOperation = 'destination-in';
+            cx.drawImage(mc, 0, 0);
+            cx.globalCompositeOperation = 'source-over';
+        }
+        const dx = pr.x - r.x;
+        const dy = pr.y - r.y;
+        const s = l.styles;
+        if (hasEffects(l)) {
+            const tint = (color) => {
+                const t = makeCanvas(pr.w, pr.h);
+                const tx = ctxOf(t);
+                tx.drawImage(c, 0, 0);
+                tx.globalCompositeOperation = 'source-in';
+                tx.fillStyle = color;
+                tx.fillRect(0, 0, pr.w, pr.h);
+                return t;
+            };
+            const FAR = 100000;
+            if (s.shadow && s.shadow.on) {
+                const a = (s.shadow.angle * Math.PI) / 180;
+                ox.save();
+                ox.globalAlpha = s.shadow.opacity / 100;
+                ox.globalCompositeOperation = BLENDS[s.shadow.blend] || 'multiply';
+                ox.shadowColor = s.shadow.color;
+                ox.shadowBlur = s.shadow.size;
+                // the shadow alone: the picture far off the canvas, its shadow thrown back
+                ox.shadowOffsetX = -Math.cos(a) * s.shadow.distance + FAR;
+                ox.shadowOffsetY = Math.sin(a) * s.shadow.distance;
+                ox.drawImage(c, dx - FAR, dy);
+                ox.restore();
+            }
+            if (s.glow && s.glow.on) {
+                ox.save();
+                ox.globalAlpha = s.glow.opacity / 100;
+                ox.globalCompositeOperation = BLENDS[s.glow.blend] || 'screen';
+                ox.shadowColor = s.glow.color;
+                ox.shadowBlur = s.glow.size;
+                ox.shadowOffsetX = FAR;
+                const tinted = tint(s.glow.color);
+                // twice: a glow is denser than one blurred shadow
+                ox.drawImage(tinted, dx - FAR, dy);
+                ox.drawImage(tinted, dx - FAR, dy);
+                ox.restore();
+            }
+            if (s.stroke && s.stroke.on) {
+                const t = tint(s.stroke.color);
+                const sk = makeCanvas(pr.w, pr.h);
+                const sx = ctxOf(sk);
+                const n = Math.max(8, Math.round(s.stroke.size * 4));
+                for (let ring = s.stroke.size; ring > 0; ring -= Math.max(1, s.stroke.size / 3)) {
+                    for (let i = 0; i < n; i += 1) {
+                        const a = (i / n) * Math.PI * 2;
+                        sx.drawImage(t, Math.cos(a) * ring, Math.sin(a) * ring);
+                    }
+                }
+                if (s.stroke.position === 'inside') {
+                    // inside: the band just within the edge
+                    sx.globalCompositeOperation = 'destination-out';
+                    sx.drawImage(c, 0, 0);
+                    sx.globalCompositeOperation = 'source-over';
+                }
+                ox.save();
+                ox.globalAlpha = s.stroke.opacity / 100;
+                if (s.stroke.position === 'inside') {
+                    // drawn over the content, kept inside it
+                    const inner = makeCanvas(pr.w, pr.h);
+                    const ix = ctxOf(inner);
+                    ix.fillStyle = s.stroke.color;
+                    ix.fillRect(0, 0, pr.w, pr.h);
+                    ix.globalCompositeOperation = 'destination-out';
+                    ix.drawImage(sk, 0, 0);
+                    ix.globalCompositeOperation = 'destination-in';
+                    ix.drawImage(c, 0, 0);
+                    ox.drawImage(c, dx, dy);
+                    ox.drawImage(inner, dx, dy);
+                    ox.restore();
+                    return out;
+                }
+                ox.drawImage(sk, dx, dy);
+                ox.restore();
+            }
+        }
+        ox.drawImage(c, dx, dy);
+        return out;
     }
 
     class Document {
@@ -112,7 +263,22 @@
         }
 
         get layer() {
+            const l = this.layers[this.active];
+            return this.editMask && l && l.mask ? l.mask.target : l;
+        }
+
+        /** The real layer under the active one (the mask's owner when the mask is the target). */
+        get activeLayer() {
             return this.layers[this.active];
+        }
+
+        /** A layer or a layer mask's target by id (history steps). */
+        target(id) {
+            for (const l of this.layers) {
+                if (l.id === id) return l;
+                if (l.mask && l.mask.target.id === id) return l.mask.target;
+            }
+            return null;
         }
 
         markDirty(rect) {
@@ -167,6 +333,12 @@
             copy.opacity = src.opacity;
             copy.blend = src.blend;
             copy.visible = src.visible;
+            if (src.mask) {
+                const mc = makeCanvas(this.width, this.height);
+                ctxOf(mc).drawImage(src.mask.canvas, 0, 0);
+                copy.setMaskCanvas(mc, src.mask.enabled);
+            }
+            copy.styles = src.styles ? JSON.parse(JSON.stringify(src.styles)) : null;
             this.layers.splice(i + 1, 0, copy);
             this.active = i + 1;
             this.markDirty();
@@ -181,7 +353,7 @@
             below.ctx.save();
             below.ctx.globalAlpha = top.opacity;
             below.ctx.globalCompositeOperation = BLENDS[top.blend] || 'source-over';
-            if (top.visible) below.ctx.drawImage(top.canvas, 0, 0);
+            if (top.visible) below.ctx.drawImage((top.mask && top.mask.enabled) || hasEffects(top) ? renderLayer(top, { x: 0, y: 0, w: this.width, h: this.height }) : top.canvas, 0, 0);
             below.ctx.restore();
             this.layers.splice(i, 1);
             this.active = i - 1;
@@ -217,7 +389,8 @@
                 if (!l.visible || l.opacity <= 0) return;
                 ctx.globalAlpha = l.opacity;
                 ctx.globalCompositeOperation = BLENDS[l.blend] || 'source-over';
-                ctx.drawImage(l.canvas, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
+                if ((l.mask && l.mask.enabled) || hasEffects(l)) ctx.drawImage(renderLayer(l, r), r.x, r.y);
+                else ctx.drawImage(l.canvas, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
                 // a stroke in progress (brush opacity) is drawn over its layer before the layers above
                 if (opts.overlay && opts.overlay.layerIndex === i) {
                     ctx.globalAlpha = l.opacity * (opts.overlay.alpha === undefined ? 1 : opts.overlay.alpha);
@@ -258,7 +431,7 @@
                 if (step) step.backup = null;
                 return;
             }
-            const l = this.layers.find((x) => x.id === step.layerId);
+            const l = this.target(step.layerId);
             if (!l) return;
             const r = step.rect;
             step.before = ctxOf(step.backup).getImageData(r.x, r.y, r.w, r.h);
@@ -283,9 +456,15 @@
                 const c = makeCanvas(this.width, this.height);
                 ctxOf(c).drawImage(l.canvas, 0, 0);
                 bytes += this.width * this.height * 4;
-                return { id: l.id, name: l.name, canvas: c, visible: l.visible, opacity: l.opacity, blend: l.blend, locked: l.locked };
+                let mask = null;
+                if (l.mask) {
+                    mask = makeCanvas(this.width, this.height);
+                    ctxOf(mask).drawImage(l.mask.canvas, 0, 0);
+                    bytes += this.width * this.height * 4;
+                }
+                return { id: l.id, name: l.name, canvas: c, visible: l.visible, opacity: l.opacity, blend: l.blend, locked: l.locked, mask, maskOn: l.mask ? l.mask.enabled : false, styles: l.styles ? JSON.parse(JSON.stringify(l.styles)) : null };
             });
-            return { width: this.width, height: this.height, active: this.active, layers, bytes };
+            return { width: this.width, height: this.height, active: this.active, editMask: !!this.editMask, layers, bytes };
         }
 
         restore(s) {
@@ -299,9 +478,16 @@
                 l.opacity = sl.opacity;
                 l.blend = sl.blend;
                 l.locked = sl.locked;
+                if (sl.mask) {
+                    const mc = makeCanvas(s.width, s.height);
+                    ctxOf(mc).drawImage(sl.mask, 0, 0);
+                    l.setMaskCanvas(mc, sl.maskOn);
+                }
+                l.styles = sl.styles ? JSON.parse(JSON.stringify(sl.styles)) : null;
                 return l;
             });
             this.active = Math.min(s.active, this.layers.length - 1);
+            this.editMask = !!(s.editMask && this.layers[this.active].mask);
             this.emit('resize');
             this.markDirty();
             this.emit('layers');
@@ -326,7 +512,7 @@
                 this.restore(step[which]);
                 return;
             }
-            const l = this.layers.find((x) => x.id === step.layerId);
+            const l = this.target(step.layerId);
             if (!l) return;
             l.ctx.putImageData(step[which], step.rect.x, step.rect.y);
             this.markDirty(step.rect);
@@ -376,6 +562,16 @@
                     }
                     l.canvas = c;
                     l.ctx = cx;
+                    if (l.mask) {
+                        // new canvas is shown (white) on the mask
+                        const mc = makeCanvas(w, h);
+                        const mx = ctxOf(mc);
+                        mx.fillStyle = '#fff';
+                        mx.fillRect(0, 0, w, h);
+                        if (opts.scale) mx.drawImage(l.mask.canvas, 0, 0, w, h);
+                        else mx.drawImage(l.mask.canvas, Math.round((w - this.width) * ax), Math.round((h - this.height) * ay));
+                        l.setMaskCanvas(mc, l.mask.enabled);
+                    }
                 });
                 this.width = w;
                 this.height = h;
@@ -391,6 +587,7 @@
                     const out = fn(l.canvas);
                     l.canvas = out;
                     l.ctx = ctxOf(out);
+                    if (l.mask) l.setMaskCanvas(fn(l.mask.canvas), l.mask.enabled);
                     size = [out.width, out.height];
                 });
                 if (size) { this.width = size[0]; this.height = size[1]; }
@@ -620,7 +817,7 @@
     }
 
     root.PaintCore = {
-        Document, Layer, BLENDS, makeCanvas, ctxOf, clampRect, union, rectAround,
+        Document, Layer, BLENDS, renderLayer, hasEffects, makeCanvas, ctxOf, clampRect, union, rectAround,
         parseColor, floodFill, wandMask, colorMask, replaceColor, convolve, mapPixels, rgbToHsl, hslToRgb, encodeBmp
     };
 })(typeof window !== 'undefined' ? window : globalThis);
