@@ -2483,6 +2483,20 @@ async function ensureProject(gr, options) {
     }
 }
 
+// Read-only packets (session list, one session, messages) need only the index.
+// After idle shutdown the full prepare starts Chromium and syncs the prompt guide,
+// which ran past the client's 10 s list timeout. Answer from the index and warm
+// the computer behind it; a first run with no index yet still waits for prepare.
+async function ensureIndexPaths(gr) {
+    const paths = layout();
+    if (!fs.existsSync(paths.indexPath)) return (await ensureProject(gr)).paths;
+    noteDirectorActivity();
+    armIdleShutdown(gr);
+    if (computerMaintenance) await computerMaintenance;
+    ensureProject(gr).catch(() => {});
+    return paths;
+}
+
 async function prepareProjectFull(gr, bwrapBin, agentBin) {
     migrateDirectorHome(gr);
     const paths = layout();
@@ -5105,7 +5119,7 @@ function xiConfigEnabled(gr) {
 async function handleDirectorGetSessions(handler, ws, message) {
     try {
         const gr = handler.globalResources;
-        const { paths } = await ensureProject(gr);
+        const paths = await ensureIndexPaths(gr);
         const index = await enqueue(async () => {
             const current = readIndex(paths.indexPath);
             if (archiveStaleChats(current)) writeIndex(paths.indexPath, current);
@@ -5214,7 +5228,7 @@ async function handleDirectorCreateSession(handler, ws, message, clientInfo, wsS
 
 async function handleDirectorGetSession(handler, ws, message) {
     try {
-        const { paths } = await ensureProject(handler.globalResources);
+        const paths = await ensureIndexPaths(handler.globalResources);
         const chat = await enqueue(async () => {
             const index = readIndex(paths.indexPath);
             const found = index.chats.find((item) => item.id === message.sessionId);
@@ -5240,7 +5254,7 @@ async function handleDirectorGetSession(handler, ws, message) {
 async function handleDirectorOpenWorkspace(handler, ws, message) {
     try {
         const gr = handler.globalResources;
-        const { paths } = await ensureProject(gr);
+        const paths = await ensureIndexPaths(gr);
         const workspaceId = message.workspaceId || null;
         const chat = await enqueue(async () => {
             const index = readIndex(paths.indexPath);
@@ -5286,7 +5300,7 @@ async function handleDirectorDeleteSession(handler, ws, message) {
 
 async function handleDirectorGetMessages(handler, ws, message) {
     try {
-        const { paths } = await ensureProject(handler.globalResources);
+        const paths = await ensureIndexPaths(handler.globalResources);
         const index = peekIndex(paths.indexPath);
         const chat = index.chats.find((item) => item.id === message.sessionId);
         if (!chat) {
