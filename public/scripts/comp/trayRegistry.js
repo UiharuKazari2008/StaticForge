@@ -11,7 +11,6 @@ const TRAY_ICON_CATALOG = [
     { id: 'naxtBagTrayIcon', label: 'Atelier Bag' },
     { id: 'dovecoteTrayIcon', label: 'Mail' },
     { id: 'vistaSidebarTrayIcon', label: 'Melaton Sidebar' },
-    { id: 'soraTanTrayIcon', label: 'SoraTan' },
     { id: 'searchIndexingIndicator', label: 'Search indexing' },
     { id: 'walletTrayIcon', label: 'Account Manager' },
     { id: 'workspaceTrayIcon', label: 'Workspace' },

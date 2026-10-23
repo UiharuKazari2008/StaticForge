@@ -1,12 +1,8 @@
-#!/usr/bin/env node
 /**
- * Import the SoraTan desktop toy (Nanami, SoraTan.exe 2009) for the web desktop (Yozora #633).
- *
- *   node scripts/import-soratan.js --src <SoraTan.iso | folder with nanami.sora and SoraTan.exe>
- *
- * Writes public/static_images/soratan/: nanami.png (the texture), nanami-scene.json (meshes, baked
- * vertex frames, clips) and soratan-16/32/48.png (the exe's icons). The runtime is
- * public/scripts/comp/desktop-apps/soraTan.js; the format notes are in docs/soratan.md.
+ * nanami.sora decoder: SoraTan's server half (apps/soratan/server/main.js) runs it on the .sora it
+ * finds next to SoraTan.exe, as the exe does (Yozora #633, #638). decodeSora(buffer) returns
+ * { scene, png }: the meshes, baked vertex frames and clips the client draws, and the texture.
+ * Format notes: docs/soratan.md.
  *
  * nanami.sora, as worked out from the file and SoraTan.exe's loader (S_Archive / S_Serializer):
  *   - chunks of [u32 0x6e39d92b][fourcc][u32 size][data]: CENT (entries), WIDE (directory, written
@@ -27,31 +23,11 @@
  *   - each mesh's position is in the editor timeline (Clip001); see the offsets below.
  * Only this file is known (the 2009 build, md5 below); other .sora files may lay out differently.
  */
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
 const crypto = require('crypto');
-const { execFileSync } = require('child_process');
-
-const REPO = path.resolve(__dirname, '..');
-const OUT = path.join(REPO, 'public/static_images/soratan');
 const KNOWN_SORA_MD5 = 'd67bdebdb4e869ffd81fd57a031fdb73'; // nanami.sora in SoraTan.iso (2009 build)
 
 const MAGIC = 0x6e39d92b;
 const CLIP_NAMES = ['Startup', 'Anime1', 'Anime2', 'DragL', 'DragR', 'A', 'E', 'I', 'O', 'U', '-', 'test mouth', 'M'];
-
-function arg(name) {
-    const i = process.argv.indexOf(name);
-    return i > 0 ? process.argv[i + 1] : null;
-}
-
-function sourceFiles(src) {
-    const st = fs.statSync(src);
-    if (st.isDirectory()) return { dir: src, cleanup: null };
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'soratan-'));
-    execFileSync('7z', ['x', '-y', `-o${dir}`, src], { stdio: 'ignore' });
-    return { dir, cleanup: dir };
-}
 
 function readChunks(buf) {
     const chunks = {};
@@ -210,107 +186,51 @@ function readMouthShapes(x, at) {
     });
 }
 
-function icoToPng(file, out) {
-    // one-image .ico: BITMAPINFOHEADER + 24/32-bit rows (bottom-up) + 1-bit AND mask
-    const { createCanvas } = require('canvas');
-    const b = fs.readFileSync(file);
-    const off = b.readUInt32LE(18);
-    const w = b.readInt32LE(off + 4);
-    const h = b.readInt32LE(off + 8) / 2;
-    const bpp = b.readUInt16LE(off + 14);
-    if (bpp !== 24 && bpp !== 32) throw new Error(`${file}: ${bpp} bpp`);
-    const px = off + b.readUInt32LE(off);
-    const row = Math.ceil((w * bpp / 8) / 4) * 4;
-    const maskRow = Math.ceil(w / 32) * 4;
-    const mask = px + row * h;
-    const c = createCanvas(w, h);
-    const ctx = c.getContext('2d');
-    const img = ctx.createImageData(w, h);
-    for (let y = 0; y < h; y++) {
-        for (let xx = 0; xx < w; xx++) {
-            const s = px + (h - 1 - y) * row + xx * (bpp / 8);
-            const m = (b[mask + (h - 1 - y) * maskRow + (xx >> 3)] >> (7 - (xx & 7))) & 1;
-            const d = (y * w + xx) * 4;
-            img.data[d] = b[s + 2]; img.data[d + 1] = b[s + 1]; img.data[d + 2] = b[s];
-            img.data[d + 3] = bpp === 32 ? b[s + 3] : (m ? 0 : 255);
-        }
-    }
-    ctx.putImageData(img, 0, 0);
-    fs.writeFileSync(out, c.toBuffer('image/png'));
+function decodeSora(buf) {
+    const md5 = crypto.createHash('md5').update(buf).digest('hex');
+    if (KNOWN_SORA_MD5 && md5 !== KNOWN_SORA_MD5) throw new Error(`nanami.sora md5 ${md5} is not the known build`);
+    const chunks = readChunks(buf);
+    const dirEntries = readDirectory(buf, chunks.WIDE);
+
+    const pngE = dirEntries['nanami.png'];
+    const png = entryBytes(buf, pngE, buf[pngE.offset] ^ 0x89);
+    if (png.toString('latin1', 1, 4) !== 'PNG') throw new Error('nanami.png did not decode');
+    const mainE = dirEntries.MainData;
+    const x = entryBytes(buf, mainE, buf[mainE.offset] ^ 0x02);
+    if (x.readUInt32LE(0) !== 2 || x.readUInt32LE(12) !== 0x1001) throw new Error('MainData did not decode');
+
+    // offsets inside MainData for this build (see the header comment); each read is validated
+    const meshes = [
+        readMesh(x, 'nanami', 0x78, 0x396, 48),
+        readMesh(x, '口', 0xa9aa, 0xab4c, 6),
+        readMesh(x, '本体', 0x14660, 0x14aa2, 66)
+    ];
+    meshes[1].shapes = readMouthShapes(x, 0xaa1c);
+    // where each mesh sits: the editor timeline (Clip001) keeps a position per mesh. Fitted against
+    // SoraTan.exe on the Vista VM: world = node + scale * (vertex + offset) - (0, 256). The nanami
+    // mesh (a second full figure) never shows in the toy, so it is kept but marked hidden.
+    [0x116438, 0x1164c4, 0x116560].forEach((at, i) => {
+        meshes[i].offset = [r2(x.readFloatLE(at)), r2(x.readFloatLE(at + 4))];
+    });
+    if (Math.abs(meshes[2].offset[0] - 94.04) > 0.01) throw new Error('Clip001 mesh positions moved');
+    meshes[0].hidden = true;
+    // Node01's rest transform (position, rotation wxyz, scale): what a clip without that track uses
+    const f3 = (at, n) => Array.from({ length: n }, (_, i) => Math.round(x.readFloatLE(at + i * 4) * 1e6) / 1e6);
+    const node = { position: f3(0x116310, 3), rotation: f3(0x11631c, 4), scale: f3(0x11632c, 3) };
+    if (Math.abs(node.scale[0] - 1.073223) > 1e-4) throw new Error('Node01 rest transform moved');
+    const clipsAt = x.indexOf(Buffer.from([0x02, 0x10, 0, 0, 0, 0, 0, 0]), 0x116700);
+    const clips = readClips(x, clipsAt);
+
+    const scene = {
+        version: 1,
+        source: { file: 'nanami.sora', md5 },
+        texture: 'nanami.png',
+        textureSize: 512,
+        node,
+        meshes,
+        clips
+    };
+    return { scene, png };
 }
 
-function main() {
-    const src = arg('--src');
-    if (!src) { console.error('usage: node scripts/import-soratan.js --src <SoraTan.iso | folder>'); process.exit(2); }
-    const { dir, cleanup } = sourceFiles(path.resolve(src.replace(/^~/, os.homedir())));
-    try {
-        const soraPath = path.join(dir, 'nanami.sora');
-        const buf = fs.readFileSync(soraPath);
-        const md5 = crypto.createHash('md5').update(buf).digest('hex');
-        if (KNOWN_SORA_MD5 && md5 !== KNOWN_SORA_MD5) throw new Error(`nanami.sora md5 ${md5} is not the known build`);
-        const chunks = readChunks(buf);
-        const dirEntries = readDirectory(buf, chunks.WIDE);
-
-        const pngE = dirEntries['nanami.png'];
-        const png = entryBytes(buf, pngE, buf[pngE.offset] ^ 0x89);
-        if (png.toString('latin1', 1, 4) !== 'PNG') throw new Error('nanami.png did not decode');
-        const mainE = dirEntries.MainData;
-        const x = entryBytes(buf, mainE, buf[mainE.offset] ^ 0x02);
-        if (x.readUInt32LE(0) !== 2 || x.readUInt32LE(12) !== 0x1001) throw new Error('MainData did not decode');
-
-        // offsets inside MainData for this build (see the header comment); each read is validated
-        const meshes = [
-            readMesh(x, 'nanami', 0x78, 0x396, 48),
-            readMesh(x, '口', 0xa9aa, 0xab4c, 6),
-            readMesh(x, '本体', 0x14660, 0x14aa2, 66)
-        ];
-        meshes[1].shapes = readMouthShapes(x, 0xaa1c);
-        // where each mesh sits: the editor timeline (Clip001) keeps a position per mesh. Fitted against
-        // SoraTan.exe on the Vista VM: world = node + scale * (vertex + offset) - (0, 256). The nanami
-        // mesh (a second full figure) never shows in the toy, so it is kept but marked hidden.
-        [0x116438, 0x1164c4, 0x116560].forEach((at, i) => {
-            meshes[i].offset = [r2(x.readFloatLE(at)), r2(x.readFloatLE(at + 4))];
-        });
-        if (Math.abs(meshes[2].offset[0] - 94.04) > 0.01) throw new Error('Clip001 mesh positions moved');
-        meshes[0].hidden = true;
-        // Node01's rest transform (position, rotation wxyz, scale): what a clip without that track uses
-        const f3 = (at, n) => Array.from({ length: n }, (_, i) => Math.round(x.readFloatLE(at + i * 4) * 1e6) / 1e6);
-        const node = { position: f3(0x116310, 3), rotation: f3(0x11631c, 4), scale: f3(0x11632c, 3) };
-        if (Math.abs(node.scale[0] - 1.073223) > 1e-4) throw new Error('Node01 rest transform moved');
-        const clipsAt = x.indexOf(Buffer.from([0x02, 0x10, 0, 0, 0, 0, 0, 0]), 0x116700);
-        const clips = readClips(x, clipsAt);
-
-        fs.mkdirSync(OUT, { recursive: true });
-        fs.writeFileSync(path.join(OUT, 'nanami.png'), png);
-        const scene = {
-            version: 1,
-            source: { file: 'nanami.sora', md5 },
-            texture: 'nanami.png',
-            textureSize: 512,
-            node,
-            meshes,
-            clips
-        };
-        fs.writeFileSync(path.join(OUT, 'nanami-scene.json'), JSON.stringify(scene));
-
-        // icons: SoraTan.exe RT_GROUP_ICON 128 = 48/32 face + 16 clover
-        const exe = path.join(dir, 'SoraTan.exe');
-        if (fs.existsSync(exe)) {
-            const rs = fs.mkdtempSync(path.join(os.tmpdir(), 'soratan-rsrc-'));
-            try {
-                execFileSync('7z', ['x', '-y', `-o${rs}`, exe, '.rsrc'], { stdio: 'ignore' });
-                const icoDir = path.join(rs, '.rsrc', '3076', 'ICON');
-                icoToPng(path.join(icoDir, '1.ico'), path.join(OUT, 'soratan-48.png'));
-                icoToPng(path.join(icoDir, '2.ico'), path.join(OUT, 'soratan-32.png'));
-                icoToPng(path.join(icoDir, '3.ico'), path.join(OUT, 'soratan-16.png'));
-            } finally {
-                fs.rmSync(rs, { recursive: true, force: true });
-            }
-        }
-        console.log(`nanami.sora ${md5}: ${meshes.map((m) => `${m.name} ${m.verts}v ${m.faces.length}q ${m.frames.length}f`).join(', ')}; ${clips.length} clips`);
-    } finally {
-        if (cleanup) fs.rmSync(cleanup, { recursive: true, force: true });
-    }
-}
-
-main();
+module.exports = { decodeSora, KNOWN_SORA_MD5 };

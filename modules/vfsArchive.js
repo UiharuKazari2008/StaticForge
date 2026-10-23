@@ -732,6 +732,41 @@ class VfsArchive {
         });
     }
 
+    /**
+     * One entry's bytes (Melaton apps read their data next to the launched file, Yozora #638).
+     * Throws NOT_FOUND for a missing entry and TOO_LARGE past maxBytes.
+     */
+    async readEntry(file, entryPath, maxBytes = 64 * 1024 * 1024) {
+        const info = await this.getInfo(file);
+        const node = info.byPath.get(cleanEntryPath(entryPath));
+        if (!node || node.isDir) throw archiveError('NOT_FOUND', `${entryPath} is not in the archive.`);
+        if (node.size > maxBytes) throw archiveError('TOO_LARGE', `${node.name} is too large.`);
+        const src = await this.sourcePath(file);
+        await this.streamGate.acquire();
+        try {
+            return await new Promise((resolve, reject) => {
+                const child = spawn(SEVEN_ZIP, ['e', '-so', '-bd', '-spd', this.passwordArg(this.cachedPassword(file.content_hash)), '--', src, node.path], { stdio: ['ignore', 'pipe', 'pipe'] });
+                const chunks = [];
+                let total = 0;
+                let errText = '';
+                child.stdout.on('data', (c) => {
+                    total += c.length;
+                    if (total > maxBytes) { try { child.kill('SIGKILL'); } catch (_) { /* gone */ } return; }
+                    chunks.push(c);
+                });
+                child.stderr.on('data', (c) => { errText += c.toString('utf8'); });
+                child.on('error', reject);
+                child.on('close', (code) => {
+                    if (total > maxBytes) reject(archiveError('TOO_LARGE', `${node.name} is too large.`));
+                    else if (code > 1) reject(archiveError(classifyError(errText), errText.trim() || 'Extraction failed'));
+                    else resolve(Buffer.concat(chunks));
+                });
+            });
+        } finally {
+            this.streamGate.release();
+        }
+    }
+
     // ---- packed downloads (GET /<vfs>/archive-download/<token>) --------------------------------
 
     registerDownload(filePath, name, cleanupDir) {

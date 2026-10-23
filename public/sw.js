@@ -1203,6 +1203,10 @@ workbox.routing.registerRoute(
       else if (url.pathname.startsWith(GADGET_ASSET_PREFIX)) {
         response = await handleGadgetAsset(request, url.pathname);
       }
+      // Melaton apps (modules/melatonApps/static.js, Yozora #638): the server's HTTP caching only
+      else if (url.pathname.startsWith('/melaton-apps/')) {
+        response = await fetch(request);
+      }
       else {
         const shellHit = await matchStaticShell(url.pathname);
         if (shellHit) {

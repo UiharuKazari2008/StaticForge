@@ -27,6 +27,12 @@ function getStore(handlers) {
     return storeSingleton;
 }
 
+/** Uninstall / disable ends the package's running apps (modules/melatonApps/runner.js, #638). */
+function stopRunningApps(id) {
+    const shared = require('../../melatonApps').getMelatonApps.peek();
+    if (shared) shared.runner.stopPackage(id);
+}
+
 function requireAdmin(handlers, ws, message, clientInfo) {
     if (clientInfo.userType !== 'admin') {
         handlers.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
@@ -132,6 +138,7 @@ async function handlePackageUninstall(handlers, ws, message, clientInfo, wsServe
         if (!id) {
             throw new MelatonPackageError('id is required', 'PACKAGE_ID');
         }
+        stopRunningApps(id);
         const result = getStore(handlers).uninstall(id);
         sendOk(wsServer, ws, 'package_uninstall_response', message.requestId, result);
         broadcastPackagesUpdated(wsServer, 'uninstall', { id });
@@ -150,6 +157,7 @@ async function handlePackageSetEnabled(handlers, ws, message, clientInfo, wsServ
         if (typeof message.enabled !== 'boolean') {
             throw new MelatonPackageError('enabled must be a boolean', 'PACKAGE_ENABLED');
         }
+        if (!message.enabled) stopRunningApps(id);
         const record = getStore(handlers).setEnabled(id, message.enabled);
         sendOk(wsServer, ws, 'package_set_enabled_response', message.requestId, { package: record });
         broadcastPackagesUpdated(wsServer, message.enabled ? 'enable' : 'disable', record);

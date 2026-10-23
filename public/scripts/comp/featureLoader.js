@@ -68,9 +68,9 @@ const FEATURE_MANIFEST = {
         scripts: ['scripts/comp/characterSearchModal.js']
     },
     explorer: {
-        styles: ['css/explorer.css', 'css/vista-file-progress.css', 'css/vista-7zip.css'],
+        styles: ['css/explorer.css', 'css/vista-file-progress.css', 'css/vista-7zip.css', 'css/melaton-apps.css'],
         // vfsClient / vfsVirtualGrid / routers stay sync — desktop + inbound use them without Cartograph
-        scripts: ['scripts/comp/explorerVistaChrome.js', 'scripts/comp/explorerComputerView.js', 'scripts/comp/fileOperationProgress.js', 'scripts/comp/vfsPrograms.js', 'scripts/comp/explorerArchive.js', 'scripts/comp/explorerApplet.js']
+        scripts: ['scripts/comp/explorerVistaChrome.js', 'scripts/comp/explorerComputerView.js', 'scripts/comp/fileOperationProgress.js', 'scripts/comp/melatonApps.js', 'scripts/comp/vfsPrograms.js', 'scripts/comp/explorerArchive.js', 'scripts/comp/explorerApplet.js']
     },
     // 7-Zip's dialogs and progress window (explorerArchive.js): Taskbar Properties' Vista controls (tbp-*)
     seven_zip_dialogs: {
@@ -128,11 +128,6 @@ const FEATURE_MANIFEST = {
             'scripts/comp/desktop-apps/paint/paintGsd.js',
             'scripts/comp/desktop-apps/paint/paintPsd.js'
         ]
-    },
-    // SoraTan.exe from the VFS (vfsPrograms.js): Nanami's desktop toy
-    soratan: {
-        styles: ['css/desktop-apps/soraTan.css'],
-        scripts: ['scripts/comp/desktop-apps/soraTan.js']
     },
     media_player: {
         styles: ['css/desktop-apps/mediaPlayer.css'],

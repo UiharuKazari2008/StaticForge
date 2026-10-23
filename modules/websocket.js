@@ -332,6 +332,8 @@ class WebSocketServer {
                     } catch (_err) {
                         // preferred-testing cleanup is optional
                     }
+                    // the tab's Melaton apps end with it (their session runners stop; services stay)
+                    require('./ws/handlers/245-melatonAppsHandler').onClientClosed(ws);
                 }
             });
 

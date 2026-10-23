@@ -4,17 +4,19 @@ Yozora #633. `SoraTan.exe` (2009, a Direct3D 9 desktop toy showing Nanami) runs 
 as a port: double-click it in Explorer, loose or inside `SoraTan.iso` in Downloads, and she stands
 on the desktop. Nothing of the exe runs; her art and motion are decoded from `nanami.sora`.
 
+Since #638 she is a Melaton app, the first system package ([client-api/melaton-apps.md](client-api/melaton-apps.md)):
+
 | Part | File |
 | --- | --- |
-| Importer (decode `.sora`, icons) | `scripts/import-soratan.js --src <SoraTan.iso or folder>` |
-| Decoded assets | `public/static_images/soratan/` (`nanami.png`, `nanami-scene.json`, `soratan-16/32/48.png`) |
-| Runtime | `public/scripts/comp/desktop-apps/soraTan.js`, `public/css/desktop-apps/soraTan.css` (feature `soratan`) |
-| VFS hook | `public/scripts/comp/vfsPrograms.js`: `explorerApplet.openItem` / `explorerArchive.openEntry` ask it first |
-| Tray icon | `app.html #soraTanTrayIcon`, `trayRegistry.js` |
-| Test | `node scripts/test-soratan.js` |
+| Package | `apps/soratan/` (`manifest.json`: `opens` SoraTan.exe, 999424 bytes; session runner) |
+| Server half | `apps/soratan/server/main.js` reads the `.sora` next to the exe (a random one if several, as the exe does) and decodes it with `server/decoder.js` |
+| Client half | `apps/soratan/client/soratan.js` (WebGL, overlay layer, tray icon, MENU 131) |
+| Icons | `apps/soratan/assets/soratan-16/32/48.png` (the exe's RT_GROUP_ICON 128) |
+| Test | `node scripts/test-soratan.js` (and `scripts/test-melaton-apps.js` for the runner) |
 
-`vfsPrograms.js` knows a program by file name and exact size (`SoraTan.exe`, 999424 bytes), so a
-renamed file or another build still downloads like any other file. Add more ports to its `PROGRAMS`.
+Nothing of the toy is in `public/` any more: the art and motion come from the user's own
+`nanami.sora` at launch. With no `.sora` next to the exe she answers as the exe does, "Load Sora
+file fail!". Exit (her menu or the tray's) ends her and her server process; so does closing the tab.
 
 ## nanami.sora
 

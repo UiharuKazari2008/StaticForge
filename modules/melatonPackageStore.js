@@ -1,11 +1,13 @@
 /**
- * Melaton package store — install .mapz / .msaz into .cache/packages.
- * Contract: docs/client-api/melaton-packages.md
- * WS: modules/ws/handlers/240-melatonPackageHandler.js
+ * Melaton package store — install .mapz / .msaz into .cache/packages, and unpack a .msaz to run it
+ * from the VFS (.cache/packages/.run/<sha256>/, Yozora #638).
+ * Contract: docs/client-api/melaton-packages.md, apps: docs/client-api/melaton-apps.md
+ * WS: modules/ws/handlers/240-melatonPackageHandler.js, 245-melatonAppsHandler.js
  */
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const AdmZip = require('adm-zip');
 
 const INDEX_VERSION = 1;
@@ -20,6 +22,12 @@ const START_MENU_LOCATIONS = new Set(['all-apps', 'tools']);
 const FORMATS = new Set(['mapz', 'msaz']);
 const TYPES = new Set(['dsap', 'native']);
 const LOAD_MODES = new Set(['onDemand', 'startup']);
+// server halves run in their own sandboxed process (modules/melatonApps/runner.js): one per launch
+// ('session', ended on close) or one per package that outlives its windows ('service')
+const RUNNERS = new Set(['session', 'service']);
+const MAX_OPENS = 32;
+const RUN_DIR = '.run';
+const DATA_DIR = '.data';
 
 /** Builtin Start / VFS launchIds — install must not steal these. */
 const RESERVED_LAUNCH_IDS = new Set([
@@ -110,7 +118,7 @@ function validateManifest(raw, options) {
         throw new MelatonPackageError('manifest.title is required (max 80)', 'PACKAGE_TITLE');
     }
 
-    const launchId = String(raw.launchId || '').trim();
+    const launchId = String(raw.launchId || (raw.format === 'msaz' ? id : '')).trim();
     if (!LAUNCH_ID_RE.test(launchId)) {
         throw new MelatonPackageError('manifest.launchId must match [a-z][a-z0-9-]{1,62}', 'PACKAGE_LAUNCH_ID');
     }
@@ -195,7 +203,28 @@ function validateManifest(raw, options) {
     const server = raw.server && typeof raw.server === 'object' ? raw.server : null;
     let serverEntry = '';
     let serverPackets = [];
-    if (server) {
+    let serverRunner = '';
+    let serverMemoryMB = 0;
+    // a runner server half (every .msaz; a .mapz that names server.runner) instead of v1 packets
+    const runnerMode = !!server && (format === 'msaz' || server.runner != null);
+    if (server && runnerMode) {
+        serverEntry = String(server.entry || '').trim();
+        if (!serverEntry) throw new MelatonPackageError('server.entry is required with a server half', 'PACKAGE_SERVER');
+        assertSafeRelPath(serverEntry);
+        serverRunner = String(server.runner || 'session').trim();
+        if (!RUNNERS.has(serverRunner)) {
+            throw new MelatonPackageError('server.runner must be session or service', 'PACKAGE_RUNNER');
+        }
+        if (server.packets != null) {
+            throw new MelatonPackageError('server.packets belongs to v1 packages; a runner talks over app_message', 'PACKAGE_PACKETS');
+        }
+        if (server.memoryMB != null) {
+            serverMemoryMB = Math.round(Number(server.memoryMB));
+            if (!Number.isFinite(serverMemoryMB) || serverMemoryMB < 16 || serverMemoryMB > 512) {
+                throw new MelatonPackageError('server.memoryMB must be 16..512', 'PACKAGE_MEMORY');
+            }
+        }
+    } else if (server) {
         if (server.entry) {
             serverEntry = String(server.entry).trim();
             assertSafeRelPath(serverEntry);
@@ -238,9 +267,37 @@ function validateManifest(raw, options) {
         surfaces,
         startMenuLocation,
         client: { entry: clientEntry, html: clientHtml },
-        server: serverEntry ? { entry: serverEntry, packets: serverPackets } : null,
-        load
+        server: !serverEntry ? null : (runnerMode
+            ? Object.assign({ entry: serverEntry, runner: serverRunner }, serverMemoryMB ? { memoryMB: serverMemoryMB } : {})
+            : { entry: serverEntry, packets: serverPackets }),
+        load,
+        publisher: String(raw.publisher || '').trim().slice(0, 80),
+        icon: validateIcon(raw.icon),
+        opens: validateOpens(raw.opens)
     };
+}
+
+function validateIcon(icon) {
+    if (icon == null || icon === '') return '';
+    const rel = assertSafeRelPath(String(icon).trim());
+    if (!/\.(png|webp|ico)$/i.test(rel)) throw new MelatonPackageError('icon must be a .png, .webp or .ico', 'PACKAGE_ICON');
+    return rel;
+}
+
+/** opens[]: VFS files the app runs for, by exact name (case-insensitive) and byte size. */
+function validateOpens(opens) {
+    if (opens == null) return [];
+    if (!Array.isArray(opens) || opens.length > MAX_OPENS) {
+        throw new MelatonPackageError(`opens must be a list of at most ${MAX_OPENS}`, 'PACKAGE_OPENS');
+    }
+    return opens.map((o) => {
+        const name = String(o && o.name || '').trim();
+        const size = Number(o && o.size);
+        if (!name || name.length > 128 || /[\\/]/.test(name) || !Number.isInteger(size) || size < 0) {
+            throw new MelatonPackageError('opens[] entries need a file name and an exact size', 'PACKAGE_OPENS');
+        }
+        return { name, size };
+    });
 }
 
 function inferFormatFromName(fileName) {
@@ -365,10 +422,7 @@ class MelatonPackageStore {
                 reservedPacketTypes: reservedPackets
             });
 
-            const clientEntry = path.join(staging, manifest.client.entry);
-            if (!fs.existsSync(clientEntry)) {
-                throw new MelatonPackageError(`Missing client.entry: ${manifest.client.entry}`, 'PACKAGE_CLIENT');
-            }
+            this._assertTree(staging, manifest);
 
             this._assertUnique(manifest, manifest.id);
 
@@ -403,6 +457,150 @@ class MelatonPackageStore {
             }
             throw err;
         }
+    }
+
+    /** Files a manifest names must be in the tree. */
+    _assertTree(dir, manifest) {
+        const need = [['client.entry', manifest.client.entry]];
+        if (manifest.server) need.push(['server.entry', manifest.server.entry]);
+        if (manifest.icon) need.push(['icon', manifest.icon]);
+        for (const [what, rel] of need) {
+            if (!fs.existsSync(path.join(dir, rel))) {
+                throw new MelatonPackageError(`Missing ${what}: ${rel}`, what === 'client.entry' ? 'PACKAGE_CLIENT' : 'PACKAGE_FILE');
+            }
+        }
+    }
+
+    get runRoot() {
+        return path.join(this.rootDir, RUN_DIR);
+    }
+
+    /** Per-package data dirs (the only place a server half may write). */
+    get dataRoot() {
+        return path.join(this.rootDir, DATA_DIR);
+    }
+
+    /**
+     * Unpack a .msaz to run it from the VFS: .cache/packages/.run/<sha256>/, shared by every launch
+     * of the same bytes. Returns { sha, dir, base, manifest } (base: the /cache path of the tree).
+     */
+    prepareRun(buffer) {
+        if (!Buffer.isBuffer(buffer)) throw new MelatonPackageError('Package bytes missing', 'PACKAGE_BYTES');
+        const sha = crypto.createHash('sha256').update(buffer).digest('hex');
+        const dir = path.join(this.runRoot, sha);
+        const readyMark = path.join(dir, '.melaton-run');
+        if (!fs.existsSync(readyMark)) {
+            const staging = path.join(this.runRoot, `.staging-${process.pid}-${Date.now()}`);
+            try {
+                this._extractZip(buffer, staging);
+                const raw = JSON.parse(fs.readFileSync(path.join(staging, 'manifest.json'), 'utf8'));
+                const manifest = validateManifest(raw, { expectedFormat: 'msaz' });
+                this._assertTree(staging, manifest);
+                fs.writeFileSync(path.join(staging, '.melaton-run'), new Date().toISOString());
+                rmrf(dir);
+                fs.renameSync(staging, dir);
+            } catch (err) {
+                rmrf(staging);
+                if (err instanceof SyntaxError) throw new MelatonPackageError('manifest.json is not valid JSON', 'PACKAGE_MANIFEST');
+                throw err;
+            }
+        }
+        const manifest = validateManifest(JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8')), { expectedFormat: 'msaz' });
+        try { fs.utimesSync(readyMark, new Date(), new Date()); } catch (_) { /* best effort */ }
+        return { sha, dir, base: `packages/${RUN_DIR}/${sha}`, manifest };
+    }
+
+    /** Drop run trees nobody launched for maxAgeMs, except the ones in use. */
+    sweepRuns(inUse, maxAgeMs) {
+        const keep = new Set(inUse || []);
+        const limit = Date.now() - (maxAgeMs == null ? 24 * 3600 * 1000 : maxAgeMs);
+        let removed = 0;
+        if (!fs.existsSync(this.runRoot)) return removed;
+        for (const name of fs.readdirSync(this.runRoot)) {
+            if (keep.has(name)) continue;
+            const dir = path.join(this.runRoot, name);
+            let at = 0;
+            try { at = fs.statSync(path.join(dir, '.melaton-run')).mtimeMs; } catch (_) { at = 0; }
+            if (at < limit) { rmrf(dir); removed++; }
+        }
+        return removed;
+    }
+
+    /** The enabled installed package whose opens[] lists this file (name case-insensitive, exact size). */
+    findOpener(name, size) {
+        const lower = String(name || '').toLowerCase();
+        const bytes = Number(size);
+        for (const row of this.list()) {
+            if (row.enabled === false) continue;
+            const opens = (row.manifest && row.manifest.opens) || [];
+            if (opens.some((o) => o.name.toLowerCase() === lower && o.size === bytes)) return row;
+        }
+        return null;
+    }
+
+    /**
+     * Install (or refresh) a package from an unpacked source tree, e.g. a system package shipped in
+     * the repo (apps/<id>/). Skips the copy when the tree is unchanged.
+     */
+    installFromDirectory(srcDir, options) {
+        const opts = options || {};
+        const src = path.resolve(srcDir);
+        const raw = JSON.parse(fs.readFileSync(path.join(src, 'manifest.json'), 'utf8'));
+        const manifest = validateManifest(raw, { reservedPacketTypes: this.getReservedPacketTypes() });
+        this._assertTree(src, manifest);
+        const files = [];
+        const walk = (rel) => {
+            for (const ent of fs.readdirSync(path.join(src, rel), { withFileTypes: true })) {
+                const r = rel ? `${rel}/${ent.name}` : ent.name;
+                if (ent.isDirectory()) walk(r);
+                else if (ent.isFile()) files.push(r);
+            }
+        };
+        walk('');
+        files.sort();
+        if (files.length > MAX_ZIP_FILES) throw new MelatonPackageError('Too many files', 'PACKAGE_TOO_MANY_FILES');
+        const hash = crypto.createHash('sha256');
+        for (const f of files) hash.update(f).update('\0').update(fs.readFileSync(path.join(src, f)));
+        const treeHash = hash.digest('hex');
+
+        const index = this.readIndex();
+        const previous = index.packages[manifest.id] || null;
+        const dest = path.join(this.rootDir, manifest.id);
+        if (previous && previous.treeHash === treeHash && fs.existsSync(dest)) return previous;
+        this._assertUnique(manifest, manifest.id);
+
+        const staging = path.join(this.rootDir, `.staging-${process.pid}-${Date.now()}`);
+        try {
+            for (const f of files) {
+                const to = path.join(staging, f);
+                fs.mkdirSync(path.dirname(to), { recursive: true });
+                fs.copyFileSync(path.join(src, f), to);
+            }
+            rmrf(dest);
+            fs.renameSync(staging, dest);
+        } catch (err) {
+            rmrf(staging);
+            throw err;
+        }
+        const now = new Date().toISOString();
+        const record = {
+            id: manifest.id,
+            version: manifest.version,
+            title: manifest.title,
+            launchId: manifest.launchId,
+            format: manifest.format,
+            type: manifest.type,
+            enabled: previous ? previous.enabled !== false : true,
+            installedAt: previous && previous.installedAt ? previous.installedAt : now,
+            updatedAt: now,
+            dir: `packages/${manifest.id}`,
+            system: !!opts.system,
+            treeHash,
+            manifest
+        };
+        index.packages[manifest.id] = record;
+        this._writeIndex(index);
+        return record;
     }
 
     setEnabled(id, enabled) {

@@ -654,6 +654,7 @@
 
     function canRelaunch(p) {
         if (!p || p.core) return false;
+        if (p.hooks) return typeof p.hooks.relaunch === 'function';
         const reg = p.window && p.window.id ? registered.get(p.window.id) : null;
         if (reg && typeof reg.relaunch === 'function') return true;
         // openVistaGame: public/scripts/comp/featureLoader.js
@@ -665,6 +666,8 @@
     /** Close the program's windows the way ending its process would: no "save?" prompts. */
     function terminate(p) {
         dead.set(p.key, now() + DEAD_GRACE_MS);
+        // a Melaton app (presentApp): its own end, windows, overlay and server half together
+        if (p.hooks && typeof p.hooks.terminate === 'function') return Promise.resolve().then(() => p.hooks.terminate()).catch(() => {});
         const win = liveWindow(p);
         if (!win) return Promise.resolve();
         const reg = registered.get(win.id);
@@ -698,6 +701,7 @@
     function relaunch(p) {
         const reg = p.window && p.window.id ? registered.get(p.window.id) : null;
         dead.delete(p.key);
+        if (p.hooks && typeof p.hooks.relaunch === 'function') return Promise.resolve().then(() => p.hooks.relaunch());
         if (reg && typeof reg.relaunch === 'function') return Promise.resolve().then(() => reg.relaunch());
         if (p.game) return Promise.resolve().then(() => root.openVistaGame(p.game));
         const d = launchableFor(p.launchId);
@@ -1066,6 +1070,24 @@
 
     let presenting = false;
 
+    /**
+     * A Melaton app's fault (public/scripts/comp/melatonApps.js): its server half crashed or hung, or
+     * its client code threw. app: { key, name, window?, terminate(), relaunch() }.
+     */
+    function presentApp(app, detail) {
+        if (!app || !app.key || !doc || !doc.body) return false;
+        const p = {
+            key: 'app:' + app.key,
+            name: app.name || app.key,
+            core: false,
+            window: app.window || null,
+            launchId: null,
+            game: null,
+            hooks: { terminate: app.terminate, relaunch: app.relaunch }
+        };
+        return presentProgram(p, Object.assign({ message: 'Error', reason: 'Error', stack: '' }, detail || {}));
+    }
+
     /** From fatalErrorBootstrap.js: true when this dialog took the fault (Spectator otherwise). */
     function present(detail, context) {
         if (presenting || !doc || !doc.body) return false;
@@ -1124,6 +1146,7 @@
 
     const api = {
         present,
+        presentApp,
         report,
         attribute,
         registerProgram,

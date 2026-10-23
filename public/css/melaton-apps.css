@@ -1,0 +1,15 @@
+/* Melaton apps (public/scripts/comp/melatonApps.js, Yozora #638). An app's overlay is a layer over
+   the windows and under the taskbar (the Start menu and taskbar sit at 2700+); it takes no pointer
+   input itself, the app's own elements in it opt in. */
+.melaton-app-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2600;
+    pointer-events: none;
+}
+
+.melaton-app-tray-icon img {
+    display: block;
+    width: 16px;
+    height: 16px;
+}

@@ -1,11 +1,11 @@
 /**
- * SoraTan: Nanami, the 2009 desktop toy (SoraTan.exe), on the web desktop (Yozora #633).
+ * SoraTan: Nanami, the 2009 desktop toy (SoraTan.exe), as a Melaton app (Yozora #633, #638).
  *
- * Double-clicking SoraTan.exe in Explorer (loose, or inside SoraTan.iso in Downloads) starts her:
- * explorerApplet.js / explorerArchive.js ask vfsPrograms.js, which lands here.
+ * The client half of apps/soratan (manifest opens[] SoraTan.exe): double-clicking SoraTan.exe in
+ * Explorer (loose, or inside SoraTan.iso in Downloads) launches the package (melatonApps.js); its
+ * server half (server/main.js) decodes the nanami.sora next to the exe and sends the scene here.
  *
- * The art and motion are the toy's own, decoded from nanami.sora by scripts/import-soratan.js into
- * /static_images/soratan/nanami-scene.json: meshes over one 512 x 512 texture (口 the mouth, 本体 the
+ * The art and motion are the toy's own: meshes over one 512 x 512 texture (口 the mouth, 本体 the
  * body; the nanami mesh never shows), baked vertex frames, and the clips Startup, Anime1, Anime2,
  * DragL, DragR plus the mouth shapes. Format notes: docs/soratan.md.
  *
@@ -23,10 +23,12 @@
  * She is drawn with WebGL; clicks only land on her pixels (alpha hit test), everything else passes
  * through to the desktop and windows.
  *
- * Depends on: contextMenu.js, trayIndicators.js (revealTrayIconElement)
+ * Package CSS is locked (#179), so her layer's styles are set inline (soraTanStyle).
+ * Depends on: melatonApps.js (the app context), contextMenu.js
  */
+(function () {
+'use strict';
 
-const SORATAN_BASE = '/static_images/soratan/';
 const SORATAN_STATE_KEY = 'soratan-state';
 const SORATAN_SIZES = [300, 500, 700, 900];
 const SORATAN_DEFAULT_SIZE = 500;
@@ -89,20 +91,20 @@ function soraTanSaveState() {
     } catch (_) { /* private mode */ }
 }
 
-async function soraTanLoadAssets() {
-    if (soraTan.scene) return;
-    const [scene, img] = await Promise.all([
-        fetch(SORATAN_BASE + 'nanami-scene.json').then((r) => {
-            if (!r.ok) throw new Error(`nanami-scene.json: ${r.status}`);
-            return r.json();
-        }),
-        new Promise((resolve, reject) => {
-            const im = new Image();
-            im.onload = () => resolve(im);
-            im.onerror = () => reject(new Error('nanami.png did not load'));
-            im.src = SORATAN_BASE + 'nanami.png';
-        })
-    ]);
+/** The scene from the server half: it decodes the .sora next to SoraTan.exe ({ op: 'scene' | 'error' }). */
+async function soraTanLoadAssets(app) {
+    const msg = await new Promise((resolve) => {
+        app.server.onMessage((m) => { if (m && (m.op === 'scene' || m.op === 'error')) resolve(m); });
+        app.server.send({ op: 'load' }).catch((err) => resolve({ op: 'error', caption: 'Error', text: err.message }));
+    });
+    if (msg.op === 'error') return msg;
+    const scene = msg.scene;
+    const img = await new Promise((resolve, reject) => {
+        const im = new Image();
+        im.onload = () => resolve(im);
+        im.onerror = () => reject(new Error('the texture did not decode'));
+        im.src = 'data:image/png;base64,' + msg.texture;
+    });
     const c = document.createElement('canvas');
     c.width = img.naturalWidth;
     c.height = img.naturalHeight;
@@ -112,6 +114,18 @@ async function soraTanLoadAssets() {
     soraTan.scene = scene;
     soraTan.texImage = img;
     soraTan.clips = Object.fromEntries(scene.clips.map((cl) => [cl.name, cl]));
+    return null;
+}
+
+/** Her layer's look from its state classes (no package stylesheet): hidden, shown (faded in), hot, dragging. */
+function soraTanStyle() {
+    const el = soraTan.root;
+    if (!el) return;
+    const c = el.classList;
+    el.style.display = c.contains('hidden') ? 'none' : 'block';
+    el.style.opacity = c.contains('is-shown') ? '1' : '0';
+    el.style.pointerEvents = c.contains('is-hot') || c.contains('is-dragging') ? 'auto' : 'none';
+    el.style.cursor = c.contains('is-dragging') ? `url('${soraTan.app.url('assets/soratan-16.png')}') 8 8, grabbing` : '';
 }
 
 // ---- WebGL --------------------------------------------------------------------------------------
@@ -403,23 +417,27 @@ function soraTanPlace() {
     el.style.top = soraTan.pos.y + 'px';
 }
 
-function soraTanBuild() {
+function soraTanBuild(app) {
     const root = document.createElement('div');
     root.id = 'soraTanToy';
     root.className = 'soratan-toy hidden';
+    Object.assign(root.style, { position: 'absolute', touchAction: 'none', userSelect: 'none', transition: `opacity ${SORATAN_FADE_MS}ms linear` });
     const canvas = document.createElement('canvas');
     canvas.className = 'soratan-canvas';
+    Object.assign(canvas.style, { display: 'block', width: '100%', height: '100%' });
     root.appendChild(canvas);
-    const icons = document.getElementById('desktopIcons');
-    if (icons && icons.parentNode) icons.parentNode.appendChild(root);
-    else document.body.appendChild(root);
+    // the app's layer over the windows, under the taskbar (melaton-apps.css)
+    app.overlay().appendChild(root);
     soraTan.root = root;
     soraTan.canvas = canvas;
+    new MutationObserver(soraTanStyle).observe(root, { attributes: true, attributeFilter: ['class'] });
+    soraTanStyle();
     if (!soraTanInitGl(canvas)) throw new Error('WebGL is not available');
 
-    root.addEventListener('pointerdown', soraTanOnPointerDown);
-    document.addEventListener('pointermove', soraTanOnPointerMove, { passive: true });
-    window.addEventListener('resize', () => { if (soraTan.running) soraTanPlace(); });
+    const signal = app.signal;
+    root.addEventListener('pointerdown', soraTanOnPointerDown, { signal });
+    document.addEventListener('pointermove', soraTanOnPointerMove, { passive: true, signal });
+    window.addEventListener('resize', () => { if (soraTan.running) soraTanPlace(); }, { signal });
     if (typeof contextMenu !== 'undefined' && contextMenu) contextMenu.attachToElement(root, soraTanMenuConfig());
 }
 
@@ -519,7 +537,8 @@ function soraTanAction(action, item) {
             soraTanSaveState();
             break;
         case 'soratan-exit':
-            closeSoraTan();
+            // the app ends: overlay, tray icon and the server half go with it (melatonApps.js)
+            if (soraTan.app) soraTan.app.exit();
             break;
         default:
             break;
@@ -567,50 +586,56 @@ function soraTanSetHidden(hidden) {
     soraTanSchedule();
 }
 
-function soraTanSyncTray() {
-    const icon = document.getElementById('soraTanTrayIcon');
-    if (!icon) return;
-    if (!soraTan.trayIcon) {
-        soraTan.trayIcon = icon;
-        icon.addEventListener('click', () => soraTanSetHidden(false));
-        if (typeof contextMenu !== 'undefined' && contextMenu) contextMenu.attachToElement(icon, soraTanMenuConfig());
-    }
-    if (soraTan.running) {
-        // revealTrayIconElement: public/scripts/comp/trayIndicators.js
-        if (icon.classList.contains('hidden') && typeof revealTrayIconElement === 'function') revealTrayIconElement(icon);
-        else icon.classList.remove('hidden');
-    } else {
-        icon.classList.add('hidden');
-    }
+/** The exe's tray clover: a click shows her, right-click is MENU 131. */
+function soraTanTray(app) {
+    app.tray({
+        title: 'SoraTan',
+        icon: app.url('assets/soratan-16.png'),
+        onClick: () => soraTanSetHidden(false),
+        menu: soraTanMenuConfig()
+    });
 }
 
-/** Start her (or show her again if she is hidden). */
-async function openSoraTan() {
-    if (soraTan.running) {
+function soraTanMessage(caption, text) {
+    if (typeof showConfirmationDialog !== 'function') return Promise.resolve();
+    return showConfirmationDialog(text, [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, {
+        title: caption, icon: 'fas fa-circle-xmark', showCloseButton: true
+    });
+}
+
+/** One SoraTan at a time (the exe's S_IPCMutex): a second launch shows the running one and ends. */
+async function start(app) {
+    if (soraTan.running && soraTan.app) {
         soraTanSetHidden(false);
+        app.exit();
+        return;
+    }
+    soraTan.app = app;
+    app.onExit(stop);
+    const failed = await soraTanLoadAssets(app);
+    if (failed) {
+        await soraTanMessage(failed.caption || 'Error', failed.text || 'Load Sora file fail!');
+        app.exit();
         return;
     }
     soraTanLoadState();
-    await soraTanLoadAssets();
-    if (!soraTan.root) soraTanBuild();
+    soraTanBuild(app);
     soraTan.running = true;
     soraTan.hidden = true;
     soraTanPlace();
-    soraTanSyncTray();
+    soraTanTray(app);
     soraTanSetHidden(false);
 }
 
-function closeSoraTan() {
+/** The app ended: her layer and tray icon are already gone with the overlay; reset for the next launch. */
+function stop() {
     soraTan.running = false;
     clearTimeout(soraTan.autoHideTimer);
     clearTimeout(soraTan.fadeTimer);
     if (soraTan.raf) cancelAnimationFrame(soraTan.raf);
-    soraTan.raf = 0;
-    soraTan.hidden = true;
-    if (soraTan.root) soraTan.root.classList.remove('is-shown', 'is-hot');
-    if (soraTan.root) soraTan.root.classList.add('hidden');
-    soraTanSyncTray();
+    if (soraTan.root && typeof contextMenu !== 'undefined' && contextMenu && contextMenu.detachFromElement) contextMenu.detachFromElement(soraTan.root);
+    Object.assign(soraTan, { raf: 0, hidden: false, root: null, canvas: null, gl: null, buffers: null, geometry: null, pose: null, lean: null, drag: null, scene: null, clips: null, texImage: null, texAlpha: null, pos: null, app: null });
 }
 
-window.openSoraTan = openSoraTan;
-window.closeSoraTan = closeSoraTan;
+melatonApps.define('soratan', start);
+})();

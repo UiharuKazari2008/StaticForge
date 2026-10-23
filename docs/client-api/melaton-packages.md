@@ -5,7 +5,7 @@ Installable Dreamscape software archives. Parent plan: Yozora #179. This documen
 | File | Role | On disk after install |
 |------|------|------------------------|
 | `.mapz` | Melaton Application Package | `.cache/packages/<id>/` |
-| `.msaz` | Melaton Standalone Application | Same tree once **installed**. Portable Run-from-VFS is #186. |
+| `.msaz` | Melaton Standalone Application | Runs from the VFS (`.cache/packages/.run/<sha256>/`) or installs like a `.mapz`. **v2 (#638)**: [melaton-apps.md](./melaton-apps.md) |
 
 Same zip body. The extension is placement (`format` in the manifest must match the filename when a name is provided).
 
@@ -35,8 +35,10 @@ Optional / defaulted:
 | `client.html` | `client/index.html` | Path only in v1; not opened by this slice |
 | `client.styles` | — | **Forbidden**. Rejected at install |
 | `url` / `aliases` / `surfaces` | — | Required `url` when `type` is `dsap`. `surfaces[]`: `controlPanel` \| `launcher` \| `domain` \| `shortcut` |
-| `server.entry` | — | Optional. If set, `server.packets[]` is required |
-| `server.packets[]` | — | Each name must be `pkg.<id>.<suffix>` and must not already be registered |
+| `server.entry` | — | Optional. v1 `.mapz`: with `server.packets[]`. `.msaz` (and a `.mapz` naming `server.runner`): a sandboxed runner, [melaton-apps.md](./melaton-apps.md) |
+| `server.packets[]` | — | v1 only. Each name must be `pkg.<id>.<suffix>` and must not already be registered |
+| `server.runner` / `server.memoryMB` | `session` / 96 | Runner packages: `session` (one process per launch, ended on close) or `service` (one per package, persistent) |
+| `icon` / `publisher` / `opens[]` | — | Runner packages: caption / taskbar icon, publisher line, VFS files the app opens (`{ name, size }`) |
 
 `type: native` cannot declare DSAP `surfaces`. Need both a Control Panel page and a tool window → two packages.
 
@@ -81,7 +83,9 @@ Class-allowlist scanning of markup is #181 (`docs/client-api/melaton-package-ui.
 
 Reinstalling the same `id` replaces the tree and keeps `installedAt` / `enabled`.
 
-Uninstall deletes the directory and the index row. Packets from `server.entry` are **not** unrequired — bounce after disable (#187).
+Uninstall deletes the directory and the index row, and stops the package's running apps (runner packages). v1 packets from `server.entry` are **not** unrequired — bounce after disable (#187).
+
+System packages ship unpacked in the repo under `apps/<id>/` and are installed with `system: true` (and a `treeHash`) the first time apps are used after a server start.
 
 ## Auth
 

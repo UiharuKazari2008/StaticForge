@@ -1938,6 +1938,10 @@ app.use('/cache', authMiddleware, (req, res, next) => {
     }
     next();
 }, express.static(cacheDir));
+// Melaton apps' client files (installed packages and .msaz run from the VFS, Yozora #638)
+app.use('/melaton-apps', authMiddleware, require('./modules/melatonApps/static').createMelatonAppStatic({
+    packagesRoot: path.join(cacheDir, 'packages')
+}));
 app.use('/private/wiki', authMiddleware, express.static(path.join(cacheDir, 'wiki'), {
     maxAge: '7d',
     etag: true,

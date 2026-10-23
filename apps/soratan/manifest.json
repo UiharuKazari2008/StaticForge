@@ -1,0 +1,13 @@
+{
+    "id": "soratan",
+    "version": "1.0.0.1",
+    "title": "SoraTan",
+    "format": "msaz",
+    "type": "native",
+    "icon": "assets/soratan-48.png",
+    "client": { "entry": "client/soratan.js" },
+    "server": { "entry": "server/main.js", "runner": "session", "memoryMB": 96 },
+    "opens": [
+        { "name": "SoraTan.exe", "size": 999424 }
+    ]
+}
