@@ -2145,6 +2145,8 @@
         return [
             { text: last ? `Last Filter (${last.label})` : 'Last Filter', subtext: 'Ctrl+Alt+F', action: 'pro-last-filter', disabled: !last },
             { separator: true },
+            { text: 'Liquify...', subtext: 'Shift+Ctrl+X', action: 'liquify', disabled: !root.paintWarp },
+            { separator: true },
             { text: 'Blur', hasSubmenu: true, submenu: [
                 { text: 'Blur', action: 'adj-blur' },
                 { text: 'Box Blur...', action: 'pro-box-blur' },

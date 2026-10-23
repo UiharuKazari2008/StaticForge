@@ -189,6 +189,11 @@
 
     function items(w) {
         if (w.xf) return { title: 'Free Transform', list: transformItems(w) };
+        if (w.warp) {
+            return { title: { distort: 'Distort', perspective: 'Perspective', warp: 'Warp', puppet: 'Puppet Warp' }[w.warp.kind], list: [
+                { k: 'label', text: w.warp.kind === 'puppet' ? 'Click to add a pin; Alt+click removes it' : 'Drag the points' }, SEP,
+                { k: 'btn', icon: art(12), title: 'Cancel (Esc)', action: 'escape' }, { k: 'btn', icon: art(11), title: 'Commit (Enter)', action: 'enter' }] };
+        }
         return { title: (root.melatonPaint.TOOLS.find((x) => x[0] === w.tool) || [])[1] || '', list: toolItems(w) };
     }
 

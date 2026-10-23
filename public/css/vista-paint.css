@@ -111,7 +111,7 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
 }
 
 .mp-client .mp-tool-art.is-extra {
-    background-image: url('/static_images/vista-paint/tools-extra.png?v=20');
+    background-image: url('/static_images/vista-paint/tools-extra.png?v=22');
 }
 
 .mp-client .mp-options {
@@ -2396,4 +2396,138 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
 
 .mp-client .mp-comps-art.is-update {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' shape-rendering='crispEdges'%3E%3Cpath fill='%23333' d='M5 2h6v1h1v1h1v2h-2V5h-1V4H6v1H5v1H4v4h1v1h1v1h4v-1h1v-1h2v2h-1v1h-1v1H5v-1H4v-1H3v-1H2V5h1V4h1V3h1z'/%3E%3Cpath fill='%23333' d='M11 6h4v4z'/%3E%3C/svg%3E");
+}
+
+/* mesh warps (#632) */
+.mp-client .mp-ants .mp-warp-mesh {
+    fill: none;
+    stroke: rgba(30, 30, 30, 0.55);
+    stroke-width: 1;
+}
+
+.mp-client .mp-ants .mp-warp-pin {
+    fill: #ffd400;
+    stroke: #000;
+    stroke-width: 1;
+}
+
+/* Filter > Liquify: its own window over Paint's body */
+.mp-client .mp-liquify {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    display: grid;
+    grid-template-columns: 34px 1fr 190px;
+    background: #f0f0f0;
+    font: 11px Tahoma, "Segoe UI", sans-serif;
+}
+
+.mp-client .mp-lq-tools {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: 4px;
+    border-right: 1px solid #c0c0c0;
+}
+
+.mp-window .win7.mp-client .mp-lq-tool:not(:disabled) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 25px;
+    min-width: 0;
+    height: 25px;
+    min-height: 0;
+    padding: 0;
+    border: 1px solid transparent;
+    border-image: none;
+    border-radius: 2px;
+    background: none;
+    box-shadow: none;
+}
+
+.mp-window .win7.mp-client .mp-lq-tool:hover {
+    border-color: #3c7fb1;
+    background: #e3f4fc;
+}
+
+.mp-window .win7.mp-client .mp-lq-tool.is-on {
+    border-color: #2c628b;
+    background: linear-gradient(#e5f4fc 45%, #c4e5f6 55%, #98d1ef);
+}
+
+.mp-client .mp-lq-tool::before,
+.mp-client .mp-lq-tool::after {
+    content: none;
+}
+
+.mp-client .mp-lq-art {
+    display: block;
+    width: 16px;
+    height: 16px;
+    background: url('/static_images/vista-paint/liquify-tools.png') calc(var(--i) * -16px) 0 no-repeat;
+}
+
+.mp-client .mp-lq-stage {
+    position: relative;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    background: #ababab;
+}
+
+.mp-client .mp-lq-stage canvas {
+    grid-area: 1 / 1;
+    background: transparent;
+}
+
+.mp-client .mp-lq-view {
+    background:
+        conic-gradient(#ccc 25%, #fff 0 50%, #ccc 0 75%, #fff 0) 0 0 / 16px 16px;
+    box-shadow: 0 0 0 1px #6a6a6a;
+}
+
+.mp-client .mp-lq-ring {
+    cursor: crosshair;
+}
+
+.mp-client .mp-lq-side {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+    border-left: 1px solid #c0c0c0;
+}
+
+.mp-client .mp-lq-side fieldset {
+    margin: 0;
+    padding: 4px 6px 6px;
+    border: 1px solid #d5dfe5;
+    border-radius: 3px;
+}
+
+.mp-client .mp-lq-side label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    margin: 3px 0;
+}
+
+.mp-client .mp-lq-side input[type=number] {
+    width: 56px;
+}
+
+.mp-client .mp-lq-side label.mp-lq-check {
+    justify-content: flex-start;
+}
+
+.mp-client .mp-lq-ok {
+    display: flex;
+    gap: 6px;
+    margin-top: auto;
+}
+
+.mp-client .mp-lq-ok button {
+    flex: 1;
 }

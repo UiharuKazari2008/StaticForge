@@ -69,14 +69,16 @@
         ['vtextmask', 'Vertical Type Mask', 'Makes a selection in the shape of vertical text.'],
         ['pen', 'Pen', 'Click to add corners, drag for curves; click the first point to close. Ctrl drags a point.'],
         ['pathselect', 'Path Selection', 'Drags a whole path or subpath.'],
-        ['directselect', 'Direct Selection', 'Drags one anchor point or handle of a path.']
+        ['directselect', 'Direct Selection', 'Drags one anchor point or handle of a path.'],
+        ['camove', 'Content-Aware Move', 'Drag a selection: it moves, and the picture fills where it was.'],
+        ['patch', 'Patch', 'Drag a selection onto good pixels: they patch it, matched to its colours.']
     ];
     const PATH_TOOLS = new Set(['pen', 'pathselect', 'directselect']);
     const VECTOR_BAR = new Set(['pen', 'pathselect', 'directselect', 'rect', 'ellipse', 'roundrect', 'line', 'move']);
     // Photoshop's tool keys; Shift with the key steps through its group
     const TOOL_KEYS = {
         v: ['move'], m: ['select', 'ellipseselect'], l: ['freeselect', 'polylasso'], w: ['wand'], c: ['crop'], i: ['picker'],
-        j: ['heal'], b: ['brush', 'pencil', 'airbrush'], s: ['clone'], e: ['eraser'], g: ['gradient', 'fill'], t: ['text', 'vtext', 'textmask', 'vtextmask'],
+        j: ['heal', 'patch', 'camove'], b: ['brush', 'pencil', 'airbrush'], s: ['clone'], e: ['eraser'], g: ['gradient', 'fill'], t: ['text', 'vtext', 'textmask', 'vtextmask'],
         u: ['rect', 'roundrect', 'ellipse', 'polygon', 'line', 'curve'], z: ['magnifier'], h: ['hand'], o: ['dodge', 'burn', 'sponge'], r: ['blur', 'smudge'],
         p: ['pen'], a: ['pathselect', 'directselect']
     };
@@ -674,6 +676,8 @@
         pointer(kind, ev) {
             const snap = (q) => (this.snapOn && SNAP_TOOLS.has(this.tool) && !this.xf ? this.snapPoint(q) : q);
             const p = snap(this.docPoint(ev));
+            // a mesh warp (Distort, Perspective, Warp, Puppet Warp) takes the pointer (paintWarp.js)
+            if (this.warp && root.paintWarp) { root.paintWarp.pointer(this, kind, ev, p); return; }
             // the Move tool drags a guide it is over (Photoshop); off the picture onto a ruler deletes it
             if (kind === 'down' && !this.xf && this.tool === 'move' && this.guidesShown && !this.guidesLocked && ev.button === 0) {
                 const g = this.guideAt(p);
@@ -761,7 +765,7 @@
                 else if (shift) {
                     action = {
                         n: 'layer-add', d: 'pro-reselect', i: 'pro-inverse', z: 'redo', j: 'layer-via-cut', e: 'layer-flatten',
-                        f: 'layer-flatten', u: 'adj-bw', g: 'group-ungroup', l: 'pro-auto-tone', b: 'pro-auto-color', delete: 'layer-delete', ';': 'snap', ':': 'snap'
+                        f: 'layer-flatten', u: 'adj-bw', x: 'liquify', g: 'group-ungroup', l: 'pro-auto-tone', b: 'pro-auto-color', delete: 'layer-delete', ';': 'snap', ':': 'snap'
                     }[k] || null;
                 } else {
                     action = {
@@ -1332,7 +1336,8 @@
                 html += this.handleMarks([...pts, ...mids]);
                 html += `<circle class="mp-xf-center" cx="${this.xf.cx * z}" cy="${this.xf.cy * z}" r="3"/>`;
             }
-            if (root.paintPath && !this.xf) html += root.paintPath.svg(this, z);
+            if (root.paintPath && !this.xf && !this.warp) html += root.paintPath.svg(this, z);
+            if (root.paintWarp && this.warp) html += root.paintWarp.svg(this, z);
             svg.innerHTML = html;
         }
 
@@ -2188,6 +2193,7 @@
                     { text: 'Select All', subtext: 'Ctrl+A', action: 'select-all' },
                     { separator: true },
                     { text: 'Fill...', subtext: 'Shift+F5', action: 'pro-fill' },
+                    { text: 'Content-Aware Fill', action: 'content-aware-fill', disabled: !this.doc.selection || !root.paintWarp },
                     { text: 'Stroke...', action: 'pro-stroke', disabled: !this.doc.selection },
                     { text: 'Define Brush Preset...', action: 'brush-define', disabled: !root.paintBrush },
                     { text: 'New Snapshot', action: 'history-snapshot', disabled: !root.paintComps },
@@ -2198,8 +2204,13 @@
                         { text: 'Flip Vertical', action: 'xf-flip-v' },
                         { text: 'Rotate 90\u00b0 Clockwise', action: 'xf-rot-cw' },
                         { text: 'Rotate 90\u00b0 Counter Clockwise', action: 'xf-rot-ccw' },
-                        { text: 'Rotate 180\u00b0', action: 'xf-rot-180' }
+                        { text: 'Rotate 180\u00b0', action: 'xf-rot-180' },
+                        { separator: true },
+                        { text: 'Distort', action: 'xf-distort', disabled: !root.paintWarp },
+                        { text: 'Perspective', action: 'xf-perspective', disabled: !root.paintWarp },
+                        { text: 'Warp', action: 'xf-warp', disabled: !root.paintWarp }
                     ] },
+                    { text: 'Puppet Warp', action: 'puppet-warp', disabled: !root.paintWarp },
                     { separator: true },
                     { text: 'Copy To...', action: 'copy-to', disabled: !sel },
                     { text: 'Paste From...', action: 'paste-from' }
@@ -2288,7 +2299,7 @@
                 case 'camera': await this.fromCamera(); return;
                 case 'print': this.print(); return;
                 case 'exit': await this.close(); return;
-                case 'undo': if (this.xf) { this.cancelTransform(); return; } this.commitFloating(); this.finishText(); this.doc.undo(); return;
+                case 'undo': if (this.xf) { this.cancelTransform(); return; } if (this.warp && root.paintWarp) { root.paintWarp.cancel(this); return; } this.commitFloating(); this.finishText(); this.doc.undo(); return;
                 case 'redo': this.doc.redo(); return;
                 case 'cut': await this.copySelection(true); return;
                 case 'copy': await this.copySelection(false); return;
@@ -2300,6 +2311,7 @@
                 case 'escape':
                     if (this.xf) { this.cancelTransform(); return; }
                     if (root.paintPath && root.paintPath.endPen(this)) return;
+                    if (root.paintWarp && root.paintWarp.cancel(this)) return;
                     if (this.text) { this.cancelText(); return; }
                     if (this.cropBox) { this.cropBox = null; this.drawAnts(); this.renderBar(); return; }
                     if (this.lasso) { this.lasso = null; this.selBase = null; this.setSelection(this.lassoBefore || null); return; }
@@ -2308,6 +2320,7 @@
                     return;
                 case 'enter':
                     if (this.xf) { this.commitTransform(); return; }
+                    if (root.paintWarp && root.paintWarp.commit(this)) return;
                     if (root.paintPath && root.paintPath.endPen(this)) return;
                     if (this.cropBox) { this.commitCrop(); return; }
                     if (this.lasso) { this.tools.polylasso.finish.call(this); return; }
@@ -2364,6 +2377,7 @@
                     if (root.paintSmart && root.paintSmart.action(this, a)) return;
                     if (root.paintPath && root.paintPath.action(this, a)) return;
                     if (root.paintComps && root.paintComps.action(this, a)) return;
+                    if (root.paintWarp && root.paintWarp.action(this, a)) return;
                     if (P() && P().action(this, a)) return;
                     if (root.paintColor && root.paintColor.action(this, a)) return;
                     break;
