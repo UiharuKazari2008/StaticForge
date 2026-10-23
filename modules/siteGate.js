@@ -142,6 +142,12 @@ function createSiteGateMiddleware(globalResources, projectRoot) {
             return next();
         }
 
+        // Past gate 1 (a valid access token): web_server.js securityMiddleware skips the
+        // instant block for these requests and the rate limits are looser.
+        let token = siteAccess.parseAccessTokenFromRequest(req);
+        const tokenValid = !!token && siteAccess.validateAccessToken(token, cfg);
+        req.siteGatePassed = tokenValid;
+
         if (isSiteGateExempt(req, globalResources)) {
             return next();
         }
@@ -154,8 +160,7 @@ function createSiteGateMiddleware(globalResources, projectRoot) {
             return next();
         }
 
-        let token = siteAccess.parseAccessTokenFromRequest(req);
-        if (token && siteAccess.validateAccessToken(token, cfg)) {
+        if (tokenValid) {
             siteAccess.setDskCookie(req, res, cfg.hash);
             const method = (req.method || 'GET').toUpperCase();
             const urlPath = (req.path || '/').split('?')[0] || '/';

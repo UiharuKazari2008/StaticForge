@@ -425,6 +425,11 @@ const SECURITY_CONFIG = {
     INVALID_URL_THRESHOLD: 5, // Block after 5 invalid URL attempts
     SCRAPING_ATTEMPT_THRESHOLD: 2, // Block after 3 scraping attempts
     BLOCK_DURATION_MS: 24 * 60 * 60 * 1000, // 24 hours
+
+    // Past gate 1 (site gate token, no PIN session yet): Setup and the logon fail many
+    // requests (401/403 before the PIN), so the failed-request limits are looser.
+    GATE_PASSED_RATE_LIMIT_MAX_REQUESTS: 1000,
+    GATE_PASSED_SLOW_DOWN_DELAY_AFTER: 200,
     
     // Cleanup intervals
     CLEANUP_INTERVAL_MS: 60 * 60 * 1000, // 1 hour
@@ -577,7 +582,29 @@ function isSuspiciousProbePath(url) {
     );
 }
 
+// Dreamscape's own files and routes. Scraper patterns match some of them (/protected,
+// /private, *.html), and a blocked bot asking for one taught it as a probe URL: then the
+// installer's /protected/fflate.js instantly blocked every new outside device (HTTP 403).
+const OWN_APP_PATH_PREFIXES = ['/protected/', '/private/', '/install/'];
+const publicRootDir = path.resolve(__dirname, 'public');
+function isOwnAppPath(url) {
+    const raw = String(url || '').split('?')[0];
+    let decoded = raw;
+    try { decoded = decodeURIComponent(raw); } catch (_) { /* keep raw */ }
+    const lower = decoded.toLowerCase();
+    if (OWN_APP_PATH_PREFIXES.some((prefix) => lower.startsWith(prefix))) return true;
+    if (!decoded.startsWith('/') || decoded.includes('\0')) return false;
+    const abs = path.resolve(publicRootDir, '.' + decoded);
+    if (!abs.startsWith(publicRootDir + path.sep)) return false;
+    try {
+        return fs.statSync(abs).isFile();
+    } catch (_) {
+        return false;
+    }
+}
+
 function recordBadPath(url) {
+    if (isOwnAppPath(url)) return;
     const normalized = normalizeBadPath(url);
     if (normalized) {
         globalResources.recordKnownBadPath(normalized);
@@ -723,6 +750,14 @@ function isProtectedResource(url) {
     return false;
 }
 
+// /protected files Setup needs once the site gate is passed (no PIN session yet).
+// req.siteGatePassed: modules/siteGate.js, only when the gate is configured.
+function isGatePassedSetupResource(req, url) {
+    if (req.siteGatePassed !== true) return false;
+    if (url.includes('..')) return false;
+    return url === '/protected/fflate.js' || url.startsWith('/protected/fonts/vista/');
+}
+
 // Security middleware
 function securityMiddleware(req, res, next) {
     // Skip security checks for authenticated users (session or application credentials)
@@ -766,8 +801,10 @@ function securityMiddleware(req, res, next) {
     const url = req.path;
     const userAgent = req.headers['user-agent'] || 'unknown';
     
-    // Skip IP blocking checks for private IP addresses
-    if (!isPrivateIP(ip)) {
+    // Skip IP blocking checks for private IP addresses, and past gate 1: the instant block
+    // and the blocked-IP answer are for requests that never passed the site gate.
+    const gatePassed = req.siteGatePassed === true;
+    if (!isPrivateIP(ip) && !gatePassed) {
         const normalizedPath = normalizeBadPath(url);
 
         // Public MCP OAuth discovery — never instant-block these paths
@@ -776,7 +813,7 @@ function securityMiddleware(req, res, next) {
         }
 
         // Known probe URL — instant block for new scrapers
-        if (globalResources.isKnownBadPath(normalizedPath)) {
+        if (globalResources.isKnownBadPath(normalizedPath) && !isOwnAppPath(url)) {
             const wasBlocked = globalResources.isIPBlocked(ip, SECURITY_CONFIG.BLOCK_DURATION_MS);
             if (!wasBlocked) {
                 blockIP(ip, `Known bad path (${normalizedPath})`, 1);
@@ -806,6 +843,12 @@ function securityMiddleware(req, res, next) {
         // Check if user is authenticated via session
         const isAuthenticated = req.session && req.session.authenticated;
 
+        // Past the site gate, Setup runs before the logon: it needs fflate for the pack and
+        // the Vista fonts it draws with (melatonBoot.js INSTALLER_ASSETS, vista-fonts.css).
+        if (!isAuthenticated && isGatePassedSetupResource(req, url)) {
+            return next();
+        }
+
         if (!isAuthenticated) {
             console.warn(`🚫 Unauthenticated access attempt to protected resource: ${ip} -> ${url}`);
             return res.status(403).json({
@@ -819,7 +862,7 @@ function securityMiddleware(req, res, next) {
     }
 
     // Check for scraping patterns (skip for private IPs)
-    if (!isPrivateIP(ip) && isScrapingPattern(url)) {
+    if (!isPrivateIP(ip) && !gatePassed && isScrapingPattern(url)) {
         console.log(`🕷️ Scraping pattern detected: ${ip} -> ${url}`);
 
         if (trackSuspiciousActivity(ip, url, userAgent)) {
@@ -843,8 +886,8 @@ function invalidURLHandler(req, res, next) {
 
     const ip = getRealIP(req);
 
-    // Skip invalid URL tracking for private IPs
-    if (!isPrivateIP(ip) && trackInvalidURL(ip, req.path)) {
+    // Skip invalid URL tracking for private IPs and past gate 1
+    if (!isPrivateIP(ip) && req.siteGatePassed !== true && trackInvalidURL(ip, req.path)) {
         console.log(`🚫 Blocked IP ${ip} for excessive invalid URL attempts`);
         return res.status(403).json({
             success: false,
@@ -1314,7 +1357,9 @@ app.use(helmet({
 // Rate limiting middleware
 const limiter = rateLimit({
     windowMs: SECURITY_CONFIG.RATE_LIMIT_WINDOW_MS,
-    max: SECURITY_CONFIG.RATE_LIMIT_MAX_REQUESTS,
+    max: (req) => (req.siteGatePassed === true
+        ? SECURITY_CONFIG.GATE_PASSED_RATE_LIMIT_MAX_REQUESTS
+        : SECURITY_CONFIG.RATE_LIMIT_MAX_REQUESTS),
     skipSuccessfulRequests: SECURITY_CONFIG.RATE_LIMIT_SKIP_SUCCESSFUL,
     keyGenerator: (req) => ipKeyGenerator(getRealIP(req)),
     skip: (req) => {
@@ -1357,7 +1402,9 @@ const limiter = rateLimit({
 // Slow down middleware
 const speedLimiter = slowDown({
     windowMs: SECURITY_CONFIG.SLOW_DOWN_WINDOW_MS,
-    delayAfter: SECURITY_CONFIG.SLOW_DOWN_DELAY_AFTER,
+    delayAfter: (req) => (req.siteGatePassed === true
+        ? SECURITY_CONFIG.GATE_PASSED_SLOW_DOWN_DELAY_AFTER
+        : SECURITY_CONFIG.SLOW_DOWN_DELAY_AFTER),
     delayMs: () => SECURITY_CONFIG.SLOW_DOWN_DELAY_MS, // Fixed: Use function instead of static value
     keyGenerator: (req) => ipKeyGenerator(getRealIP(req)),
     skipSuccessfulRequests: true,
