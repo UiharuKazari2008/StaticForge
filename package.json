@@ -117,6 +117,7 @@
     "test:custom-resolution": "node scripts/test-custom-resolution-legal.js",
     "test:wheel-tick-gate": "node scripts/test-wheel-tick-gate.js",
     "test:root-state-flags": "node scripts/test-root-state-flags.js",
+    "test:vista-fa-icons": "node scripts/test-vista-fa-icons.js",
     "test:program-faults": "node scripts/test-program-faults.js",
     "test:ping-dom-writes": "node scripts/test-ping-dom-writes.js",
     "test:mcp-facade": "node scripts/test-mcp-agent-facade.js",
