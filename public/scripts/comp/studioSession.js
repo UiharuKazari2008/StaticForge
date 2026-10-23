@@ -1025,18 +1025,16 @@ function studioSaveFolderApplyChrome(mode) {
         option.textContent = studioSaveFolderTypeLabel();
         typeSelect.appendChild(option);
     }
-    // the caption shows the owner's icon: the window that opened it, else Studio (Phasewalker for its files)
-    const ownerId = studioSaveFolderAcceptType() === 'bracket-generation'
-        ? 'bracketGenerationModal'
-        : (studioSaveFolderState.ownerId || 'manualModal');
-    const ownerIcon = document.querySelector(`#${ownerId} .modal-window-title-main img.icon-image`);
+    // the caption's own icon (Yukimi, Oct 23 2026): Open a folder, Save As a disk (shell32.dll 4 and
+    // 6 from the Vista VM, 16 px with its 32 px twin), the same whichever program asked
     const icon = document.querySelector('#studioSaveFolderModal .modal-window-title-main img.icon-image');
-    if (icon && ownerIcon) {
-        icon.src = ownerIcon.getAttribute('src');
-        const srcset = ownerIcon.getAttribute('srcset');
-        if (srcset) icon.setAttribute('srcset', srcset);
+    const art = `/static_images/vista-file-dialog/${openMode ? 'open' : 'save'}`;
+    if (icon) {
+        icon.src = `${art}-16.png`;
+        icon.setAttribute('srcset', `${art}-16.png 1x, ${art}-32.png 2x`);
     }
-    if (modal) modal.dataset.iconOwnerId = ownerId;
+    // its own icon, not an owner's: the taskbar button reads the caption's (modalUtils.js getModalIcons)
+    if (modal) delete modal.dataset.iconOwnerId;
 }
 
 /**
