@@ -63,6 +63,7 @@
                     <button type="button" data-layer="up" title="Move Layer Up"><img src="${CMD}/move-up.png" alt=""></button>
                     <button type="button" data-layer="down" title="Move Layer Down"><img src="${CMD}/move-down.png" alt=""></button>
                     <button type="button" data-layer="properties" title="Layer Properties"><img src="${CMD}/properties.png" alt=""></button>
+                    <button type="button" data-layer="group" title="Group Layer (Ctrl+G)"><img src="${CMD}/folder.png" alt=""></button>
                     <button type="button" data-layer="mask" title="Add Layer Mask"><img src="${CMD}/contrast.png" alt=""></button>
                     <button type="button" data-layer="style" title="Layer Style"><img src="${CMD}/paint-ellipse.png" alt=""></button>
                 </div>
@@ -71,6 +72,22 @@
             panel.addEventListener('click', (ev) => {
                 const b = ev.target.closest('[data-layer]');
                 if (b) { action(w, `layer-${b.dataset.layer}`); return; }
+                const grow = ev.target.closest('.mp-group-row');
+                if (grow) {
+                    const g = w.doc.group(Number(grow.dataset.g));
+                    if (!g) return;
+                    if (ev.target.closest('.mp-group-twisty')) g.collapsed = !g.collapsed;
+                    else if (ev.target.closest('.mp-group-vis')) { g.visible = !g.visible; w.doc.markDirty(); } else {
+                        // the group is selected; the tools paint its top layer
+                        w.activeGroup = g.id;
+                        const top = w.doc.layers.map((x, k) => [x, k]).filter(([x]) => x.groupId === g.id).pop();
+                        if (top) w.doc.active = top[1];
+                        w.doc.editMask = false;
+                    }
+                    refresh(w);
+                    return;
+                }
+                w.activeGroup = null;
                 const vis = ev.target.closest('.mp-layer-vis');
                 const row = ev.target.closest('.mp-layer-row');
                 if (!row) return;
@@ -96,6 +113,8 @@
                 refresh(w);
             });
             panel.addEventListener('dblclick', (ev) => {
+                const grow = ev.target.closest('.mp-group-row');
+                if (grow) { if (!ev.target.closest('.mp-group-twisty, .mp-group-vis')) groupProperties(w, Number(grow.dataset.g)); return; }
                 const row = ev.target.closest('.mp-layer-row');
                 if (!row) return;
                 w.doc.active = Number(row.dataset.i);
@@ -131,12 +150,28 @@
         if (list) {
             const rows = w.doc.layers.map((l, i) => ({ l, i })).reverse();
             const onMask = (i) => i === w.doc.active && w.doc.editMask && w.doc.layers[i].mask;
-            list.innerHTML = rows.map(({ l, i }) => `<div class="mp-layer-row${i === w.doc.active ? ' is-active' : ''}${l.mask ? ' has-mask' : ''}" data-i="${i}" role="option">
+            const doc0 = w.doc;
+            // a group's header goes above its top layer; its layers are indented, hidden when it is closed
+            const header = (g) => `<div class="mp-layer-row mp-group-row${w.activeGroup === g.id ? ' is-active' : ''}" data-g="${g.id}" role="option">
+                <button type="button" class="mp-group-twisty${g.collapsed ? ' is-closed' : ''}" title="${g.collapsed ? 'Expand' : 'Collapse'}"></button>
+                <span class="mp-group-icon"></span>
+                <span class="mp-layer-name">${esc(g.name)}</span>
+                <input type="checkbox" class="mp-group-vis" title="Visible"${g.visible ? ' checked' : ''}>
+            </div>`;
+            let lastGroup = null;
+            list.innerHTML = rows.map(({ l, i }) => {
+                const g = l.groupId ? doc0.group(l.groupId) : null;
+                let head = '';
+                if (g && g.id !== lastGroup) head = header(g);
+                lastGroup = g ? g.id : null;
+                const child = g ? ` is-child${g.collapsed ? ' is-hidden' : ''}` : '';
+                return `${head}<div class="mp-layer-row${i === w.doc.active && !w.activeGroup ? ' is-active' : ''}${l.mask ? ' has-mask' : ''}${child}" data-i="${i}" role="option">
                 ${l.adjust ? `<span class="mp-layer-thumb mp-layer-kind is-adjust" title="Adjustment layer (double-click to change)"></span>` : l.text ? `<span class="mp-layer-thumb mp-layer-kind is-text${i === w.doc.active && !onMask(i) ? ' is-target' : ''}" title="Type layer (double-click to edit)">T</span>` : `<canvas class="mp-layer-thumb${i === w.doc.active && !onMask(i) ? ' is-target' : ''}" width="40" height="30" data-i="${i}"></canvas>`}
                 ${l.mask ? `<canvas class="mp-layer-mask${onMask(i) ? ' is-target' : ''}${l.mask.enabled ? '' : ' is-off'}" width="40" height="30" data-i="${i}" title="Layer mask (Shift+click turns it off)"></canvas>` : ''}
                 <span class="mp-layer-name">${esc(l.name)}${l.locked ? ' <i class="mp-layer-lock" title="Locked"></i>' : ''}${C().hasEffects(l) ? ' <i class="mp-layer-fx" title="Layer Style (double-click)">fx</i>' : ''}</span>
                 <input type="checkbox" class="mp-layer-vis" title="Visible"${l.visible ? ' checked' : ''}>
-            </div>`).join('');
+            </div>`;
+            }).join('');
             thumbs(w, true);
         }
         const hist = d.querySelector('.mp-history-list');
@@ -187,6 +222,10 @@
             { text: 'New Adjustment Layer', hasSubmenu: true, submenu: root.paintPro ? root.paintPro.adjustLayerMenu() : [] },
             { text: 'Delete Layer', subtext: 'Ctrl+Shift+Del', action: 'layer-delete', disabled: d.layers.length <= 1 },
             { text: 'Duplicate Layer', action: 'layer-duplicate' },
+            { text: 'Group Layer', subtext: 'Ctrl+G', action: 'group-new', disabled: !!d.activeLayer.groupId },
+            { text: 'Ungroup Layers', subtext: 'Ctrl+Shift+G', action: 'group-ungroup', disabled: !d.activeLayer.groupId },
+            { text: 'Delete Group', action: 'group-delete', disabled: !d.activeLayer.groupId },
+            { text: 'Group Properties...', action: 'group-properties', disabled: !d.activeLayer.groupId },
             { text: 'Layer via Copy', subtext: 'Ctrl+J', action: 'layer-via-copy' },
             { text: 'Layer via Cut', subtext: 'Ctrl+Shift+J', action: 'layer-via-cut', disabled: !d.selection },
             { text: 'Merge Layer Down', subtext: 'Ctrl+E', action: 'layer-merge', disabled: d.active === 0 },
@@ -279,6 +318,21 @@
             case 'layer-rotate': if (root.paintDialogs) root.paintDialogs.rotateLayer(w); return true;
             case 'layer-import': importLayer(w); return true;
             case 'layer-rasterize': w.rasterizeType(); return true;
+            case 'layer-group': case 'group-new': if (!d.activeLayer.groupId) { structural(w, 'Group Layer', () => d.groupLayer(d.active)); w.activeGroup = d.activeLayer.groupId; refresh(w); } return true;
+            case 'group-ungroup': if (d.activeLayer.groupId) { const id = d.activeLayer.groupId; structural(w, 'Ungroup Layers', () => d.ungroup(id)); w.activeGroup = null; refresh(w); } return true;
+            case 'group-delete': if (d.activeLayer.groupId) {
+                const id = d.activeLayer.groupId;
+                if (d.layers.every((x) => x.groupId === id)) { w.status('A picture keeps at least one layer.'); return true; }
+                structural(w, 'Delete Group', () => {
+                    d.layers = d.layers.filter((x) => x.groupId !== id);
+                    d.active = Math.min(d.active, d.layers.length - 1);
+                    d.pruneGroups();
+                    d.markDirty();
+                });
+                w.activeGroup = null;
+                refresh(w);
+            } return true;
+            case 'group-properties': if (d.activeLayer.groupId) groupProperties(w, d.activeLayer.groupId); return true;
             case 'layer-mask': return root.paintPro ? root.paintPro.action(w, d.selection ? 'mask-reveal-sel' : 'mask-reveal-all') : true;
             case 'layer-style': return root.paintPro ? root.paintPro.action(w, 'layer-style') : true;
             case 'adj-bw': w.adjust('Black and White', (r, g, b) => { const v = 0.299 * r + 0.587 * g + 0.114 * b; return [v, v, v]; }); return true;
@@ -436,6 +490,56 @@
             },
             cancel() {
                 Object.assign(l, before);
+                w.doc.markDirty();
+            }
+        });
+    }
+
+    /** A group's name, visibility, opacity and blend mode (double-click its header). */
+    function groupProperties(w, id) {
+        const g = w.doc.group(id);
+        if (!g || !root.vistaDialogTemplate) return;
+        const before = { ...g };
+        const tpl = { t: 'Group Properties', w: 210, h: 100, f: ['MS Shell Dlg', 8], c: [
+            [-1, 'S', 7, 9, 40, 8, 0x50020000, '&Name:', 0],
+            [101, 'E', 50, 7, 153, 12, 0x50810080, '', 0],
+            [102, 'B', 50, 24, 80, 10, 0x50010003, '&Visible', 0],
+            [-1, 'S', 7, 42, 40, 8, 0x50020000, '&Mode:', 0],
+            [104, 'C', 50, 40, 153, 100, 0x50210003, '', 0],
+            [-1, 'S', 7, 61, 40, 8, 0x50020000, '&Opacity:', 0],
+            [105, 'msctls_trackbar32', 46, 58, 120, 16, 0x50010000, '', 0],
+            [106, 'E', 170, 59, 32, 12, 0x50812080, '', 0],
+            [1, 'B', 99, 82, 50, 14, 0x50010001, 'OK', 0],
+            [2, 'B', 153, 82, 50, 14, 0x50010000, 'Cancel', 0]
+        ] };
+        const live = (ctx) => {
+            g.visible = ctx.get(102);
+            g.blend = ctx.get(104);
+            g.opacity = Number(ctx.get(105)) / 255;
+            w.doc.markDirty();
+        };
+        root.vistaDialogTemplate.openDialog({
+            id: 'mpGroupProperties',
+            tpl,
+            owner: w.modal,
+            init(ctx) {
+                ctx.set(101, g.name);
+                ctx.set(102, g.visible);
+                ctx.options(104, Object.entries(BLEND_NAMES).map(([value, text]) => ({ value, text })), g.blend);
+                ctx.range(105, 0, 255, Math.round(g.opacity * 255), undefined, 0);
+                ctx.set(106, String(Math.round(g.opacity * 255)));
+                ctx.on(105, 'input', () => { ctx.set(106, String(ctx.get(105))); live(ctx); });
+                ctx.on(106, 'change', () => { ctx.set(105, Math.max(0, Math.min(255, Number(ctx.get(106)) || 0))); live(ctx); });
+                ctx.on(102, 'change', () => live(ctx));
+                ctx.on(104, 'change', () => live(ctx));
+            },
+            ok(ctx) {
+                const after = { name: String(ctx.get(101) || g.name).slice(0, 60), visible: ctx.get(102), opacity: Number(ctx.get(105)) / 255, blend: ctx.get(104) };
+                Object.assign(g, before);
+                structural(w, 'Group Properties', () => Object.assign(w.doc.group(id), after));
+            },
+            cancel() {
+                Object.assign(g, before);
                 w.doc.markDirty();
             }
         });
