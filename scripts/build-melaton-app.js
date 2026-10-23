@@ -41,7 +41,9 @@ const has = (name) => process.argv.includes(name);
 
 /** The package zip from a source tree: every file under src, manifest.json at the root. */
 function packZip(src) {
-    const manifest = validateManifest(JSON.parse(fs.readFileSync(path.join(src, 'manifest.json'), 'utf8')));
+    // sources built here are our own packages (apps/<id>), so they are trusted: a system package may
+    // ship its own stylesheets (#642)
+    const manifest = validateManifest(JSON.parse(fs.readFileSync(path.join(src, 'manifest.json'), 'utf8')), { trusted: true });
     const zip = new AdmZip();
     const walk = (rel) => {
         for (const ent of fs.readdirSync(path.join(src, rel), { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
