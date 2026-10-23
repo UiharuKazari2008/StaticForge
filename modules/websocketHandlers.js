@@ -1,4 +1,5 @@
 const melatonNetwork = require('./melatonNetwork');
+const { normalizeRegistry, mergeRegistryPatch } = require('./melatonRegistry');
 const { WebSocketServer } = require('./websocket');
 const VfsWebSocketHandlers = require('./vfsWebSocketHandlers');
 const {
@@ -656,7 +657,9 @@ class WebSocketMessageHandlers {
             remoteAccess: normalizeRemoteAccessSettings(base.remoteAccess),
             imageGeneration: normalizeImageGenerationSettings(base.imageGeneration),
             alchemy: normalizeAlchemySettings(base.alchemy),
-            mail: normalizeMailSettings(base.mail)
+            mail: normalizeMailSettings(base.mail),
+            // Control Panel settings with nothing else to drive (modules/melatonRegistry.js)
+            registry: normalizeRegistry(base.registry)
         };
     }
 
@@ -726,6 +729,9 @@ class WebSocketMessageHandlers {
         }
         if (patch.mail && typeof patch.mail === 'object') {
             out.mail = normalizeMailSettings({ ...out.mail, ...patch.mail });
+        }
+        if (patch.registry && typeof patch.registry === 'object') {
+            out.registry = mergeRegistryPatch(out.registry, patch.registry);
         }
         return out;
     }

@@ -1,0 +1,344 @@
+/* Vista dialog templates (public/scripts/comp/vistaDialogTemplate.js; Yozora #632): the controls
+   the property sheets in taskbar-properties.css had no rules for, as the Vista VM draws them:
+   a client edge is 1 px #828790 around white; a list box row is 13 px (Tahoma) / 15 px (Segoe),
+   selected #3399ff with white text; etched lines are #a0a0a0 over #fff; a plain dialog's client
+   is #f0f0f0 with its controls at the client's corner. */
+
+body.desktop-mode .modal.vdt-window[data-vista-dialog] > .modal-content.vdt-client {
+    position: relative;
+}
+
+.vdt-client.vdt-segoe :is(button, input, select, label, span, div, textarea) {
+    font-family: "Segoe UI", Tahoma, sans-serif !important;
+}
+
+.vdt-client .vdt-plain-page {
+    position: absolute;
+    inset: 0;
+}
+
+.vdt-client .vdt-static {
+    overflow: hidden;
+    overflow-wrap: break-word;
+}
+
+/* a static paints its background over the etched rule it labels (Date and Time's "Time zone") */
+.vdt-client .tbp-page .vdt-static {
+    z-index: 1;
+    background: #fff;
+}
+
+.vdt-client .vdt-plain-page .vdt-static {
+    z-index: 1;
+    background: #f0f0f0;
+}
+
+.vdt-client .vdt-static:empty {
+    background: none;
+}
+
+.vdt-client button.vdt-button {
+    white-space: nowrap;
+}
+
+.vdt-client .vdt-static.vdt-nowrap {
+    white-space: nowrap;
+}
+
+.vdt-client .vdt-sunken {
+    border: 1px solid #a0a0a0;
+    border-right-color: #fff;
+    border-bottom-color: #fff;
+    padding: 0 2px;
+}
+
+.vdt-client .vdt-check.vdt-multi {
+    white-space: normal;
+}
+
+.tbp-window .vdt-client .vdt-check.vdt-multi input + label,
+.vdt-client .vdt-check.vdt-multi label {
+    white-space: normal;
+}
+
+.vdt-client .vdt-edge {
+    border: 1px solid #828790;
+    background: #fff;
+}
+
+.vdt-client .vdt-etched-h {
+    border-top: 1px solid #a0a0a0;
+    border-bottom: 1px solid #fff;
+}
+
+.vdt-client .vdt-etched-v {
+    border-left: 1px solid #a0a0a0;
+    border-right: 1px solid #fff;
+}
+
+.vdt-client .vdt-frame-4 { background: #000; }
+.vdt-client .vdt-frame-5 { background: #808080; }
+.vdt-client .vdt-frame-6 { background: #fff; }
+.vdt-client .vdt-frame-7 { border: 1px solid #000; }
+.vdt-client .vdt-frame-8 { border: 1px solid #a0a0a0; }
+.vdt-client .vdt-frame-9 { border: 1px solid #fff; }
+.vdt-client .vdt-frame-18 {
+    border: 1px solid #a0a0a0;
+    box-shadow: inset 1px 1px 0 #fff, 1px 1px 0 #fff;
+}
+
+.vdt-client .vdt-image {
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-start;
+}
+
+.vdt-client .vdt-image img {
+    display: block;
+}
+
+.vdt-client textarea.vdt-textarea {
+    resize: none;
+    padding: 1px 3px;
+    font: inherit;
+    color: #000;
+    background: #fff;
+    border: 1px solid #abadb3;
+    outline: none;
+}
+
+.vdt-client textarea.vdt-textarea[readonly] {
+    background: #fff;
+}
+
+/* ---- list boxes and list views ---- */
+
+.vdt-client .vdt-listbox {
+    overflow-x: hidden;
+    overflow-y: auto;
+    outline: none;
+    cursor: var(--c-default);
+}
+
+.vdt-client .vdt-lb-row {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    height: 13px;
+    padding: 0 2px;
+    line-height: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.vdt-client.vdt-segoe .vdt-lb-row {
+    height: 15px;
+    line-height: 15px;
+}
+
+.vdt-client .vdt-lb-row img {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+}
+
+.vdt-client .vdt-lb-row.is-selected {
+    background: #3399ff;
+    color: #fff;
+}
+
+.vdt-client .vdt-listbox:not(:focus) .vdt-lb-row.is-selected {
+    background: #f0f0f0;
+    color: #000;
+}
+
+.vdt-client .vdt-listview {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    outline: none;
+}
+
+.vdt-client .vdt-lv-header {
+    display: flex;
+    flex: 0 0 auto;
+    height: 23px;
+    background: #fff;
+}
+
+.vdt-client .vdt-listview.no-header .vdt-lv-header,
+.vdt-client .vdt-listview:not(.is-report) .vdt-lv-header {
+    display: none;
+}
+
+.vdt-client .vdt-lv-col {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    height: 23px;
+    padding: 3px 6px 0;
+    border-image: url("/static_images/vista-controls/header-item-normal.png") 0 2 0 1 fill / 0 2px 0 1px stretch;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.vdt-client .vdt-lv-col:last-child {
+    flex: 1;
+}
+
+.vdt-client .vdt-lv-body {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+
+.vdt-client .vdt-lv-row {
+    display: flex;
+    align-items: center;
+    height: 17px;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    white-space: nowrap;
+}
+
+.vdt-client .vdt-lv-row > span {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    padding: 0 6px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.vdt-client .vdt-lv-row img {
+    width: 16px;
+    height: 16px;
+    margin: 0 3px 0 -2px;
+    vertical-align: -4px;
+}
+
+.vdt-client .vdt-lv-row.is-selected {
+    background: linear-gradient(#f6fbfd, #eff8fd 45%, #d7effc 55%, #d5effc 92%, #e7f5fd);
+    border-color: #99defd;
+}
+
+.vdt-client .vdt-listview:not(:focus-within) .vdt-lv-row.is-selected {
+    background: #f7f7f7;
+    border-color: #dedede;
+}
+
+.vdt-client .vdt-listview.is-icons .vdt-lv-body {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 2px;
+    padding: 2px;
+}
+
+.vdt-client .vdt-listview.is-icons .vdt-lv-row {
+    flex-direction: column;
+    width: 74px;
+    height: auto;
+    padding: 2px 0;
+    white-space: normal;
+    text-align: center;
+}
+
+.vdt-client .vdt-listview.is-icons .vdt-lv-row img {
+    width: 32px;
+    height: 32px;
+    margin: 0 0 2px;
+}
+
+/* ---- trackbars, up-downs, progress ---- */
+
+.vdt-client .vdt-trackbar {
+    display: flex;
+    align-items: flex-start;
+}
+
+.vdt-client .vdt-trackbar input[type="range"] {
+    width: 100%;
+    margin: 0;
+}
+
+.vdt-client .vdt-trackbar.is-vertical input[type="range"] {
+    writing-mode: vertical-lr;
+    direction: rtl;
+    width: auto;
+    height: 100%;
+}
+
+/* TBS_AUTOTICKS: a 1x4 #c4c4c4 tick at every stop, 4 px under the track's thumb travel (thumb 11 px) */
+.vdt-client .vdt-trackbar .vdt-tickmarks {
+    display: none;
+}
+
+.vdt-client .vdt-trackbar.vdt-ticks .vdt-tickmarks {
+    display: block;
+    position: absolute;
+    left: 13px;
+    right: 13px;
+    top: 22px;
+    height: 4px;
+    background: repeating-linear-gradient(90deg, #c4c4c4 0 1px, transparent 1px calc(100% / var(--vdt-ticks, 10)));
+    background-size: calc(100% + 1px) 100%;
+    pointer-events: none;
+}
+
+.vdt-client .vdt-updown {
+    position: absolute;
+}
+
+.vdt-client .vdt-updown .tbp-spin {
+    left: 0;
+    width: 15px;
+}
+
+.vdt-client input.vdt-edit.vdt-buddy {
+    padding-right: 19px;
+}
+
+.vdt-client .vdt-updown .vdt-up {
+    top: 0;
+}
+
+.vdt-client .vdt-updown .vdt-down {
+    bottom: 0;
+}
+
+.vdt-client .vdt-progress {
+    overflow: hidden;
+}
+
+.vdt-client .vdt-progress-fill {
+    height: 100%;
+    width: var(--vdt-progress, 0%);
+}
+
+.vdt-client .vdt-syslink {
+    white-space: normal;
+}
+
+.vdt-client .vdt-syslink .vdt-link {
+    text-decoration: none;
+}
+
+.vdt-client .vdt-syslink .vdt-link:hover {
+    text-decoration: underline;
+}
+
+.vdt-client .vdt-custom {
+    overflow: hidden;
+}
+
+.vdt-client .vdt-button img {
+    display: block;
+    margin: auto;
+}
+
+.vdt-client .vdt-richedit {
+    background: #fff;
+    border: 1px solid #828790;
+    padding: 2px;
+    overflow: auto;
+}

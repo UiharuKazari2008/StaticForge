@@ -1,0 +1,356 @@
+/* Control Panel Home, the category pages and Classic View (melatonControlPanel.js, cplCatalog.js;
+   Yozora #632), 1:1 with the Vista VM at 96 dpi (captures 2026-10-22):
+     task pane     200 px, Segoe UI 9 pt white; rows 15 px with 7 px between; the current one bold
+                   with a bullet 17 px left of the text; Home, then the categories 10 px lower, then
+                   Classic View 16 px lower
+     Category View two columns of categories; a 48 px icon at 13,22, its title (Segoe UI 12 pt,
+                   #006e12, 21 px line) 72 px in, the links (Segoe UI 9 pt, #0066cc, 17 px lines, 18 px
+                   with the UAC shield) under it, 18 px between categories
+     category page the same rows with a 32 px icon at 18,22 and the title 62 px in; the links in one
+                   wrapping run, a 1x14 #cfcfcf bar 11 px after each but the last
+     Classic View  a 23 px column header (Name, Category), then 48 px icons in 75 x 98 cells with the
+                   name centred under them on two lines */
+
+#melatonControlPanelModal .cpl-content {
+    --cpl-title: #006e12;
+    --cpl-link: #0066cc;
+    --cpl-link-hover: #3399ff;
+}
+
+/* ---- the task pane ---- */
+
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .cpl-tasks:has(> .cpl-nav) {
+    padding: 15px 8px 16px 29px;
+}
+
+#melatonControlPanelModal .cpl-nav {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font: 12px/15px var(--cpl-font);
+}
+
+/* a row is 15 px + 7 px; a wrapped name's row is 1 px shorter (36 px for two lines, as Vista
+   draws it), so melatonControlPanel.js marks it .is-wrapped after a render */
+#melatonControlPanelModal .cpl-nav > li {
+    position: relative;
+    margin: 0 0 7px;
+    line-height: 15px;
+}
+
+#melatonControlPanelModal .cpl-nav > li.is-wrapped {
+    margin-bottom: 6px;
+}
+
+#melatonControlPanelModal .cpl-nav-cats {
+    margin-top: 10px;
+}
+
+#melatonControlPanelModal .cpl-nav-cats + .cpl-nav-classic {
+    margin-top: 15px;
+}
+
+#melatonControlPanelModal .cpl-nav .cpl-link {
+    display: block;
+    font: 12px/15px var(--cpl-font);
+    text-align: left;
+}
+
+#melatonControlPanelModal .cpl-nav .cpl-nav-current {
+    font-weight: bold;
+    color: #fff;
+}
+
+#melatonControlPanelModal .cpl-nav .cpl-nav-current::before {
+    content: '';
+    position: absolute;
+    left: -16px;
+    top: 6px;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: #fff;
+}
+
+/* ---- links ---- */
+
+#melatonControlPanelModal .cpl-main :is(.cpl-cat, .cpl-task-item) .cpl-link {
+    display: inline-flex;
+    align-items: flex-start;
+    height: 17px;
+    color: var(--cpl-link);
+    font: 12px/17px var(--cpl-font);
+    white-space: nowrap;
+}
+
+#melatonControlPanelModal .cpl-main :is(.cpl-cat, .cpl-task-item) .cpl-link:has(> .cpl-shield) {
+    height: 18px;
+}
+
+#melatonControlPanelModal .cpl-main :is(.cpl-cat, .cpl-task-item) .cpl-link:hover {
+    color: var(--cpl-link-hover);
+    text-decoration: underline;
+}
+
+/* imageres.dll -78; it hangs 2 px left of the link column */
+#melatonControlPanelModal .cpl-shield {
+    width: 16px;
+    height: 16px;
+    margin: 1px 2px 0 -2px;
+    flex: 0 0 16px;
+}
+
+#melatonControlPanelModal :is(.cpl-cat-title, .cpl-task-item-title) {
+    display: block;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    min-width: 0;
+    min-height: 0;
+    height: 21px;
+    color: var(--cpl-title);
+    font: 16px/21px var(--cpl-font);
+    text-align: left;
+    white-space: nowrap;
+    cursor: var(--c-pointer);
+}
+
+#melatonControlPanelModal :is(.cpl-cat-title, .cpl-task-item-title)::before,
+#melatonControlPanelModal :is(.cpl-cat-title, .cpl-task-item-title)::after {
+    content: none;
+}
+
+#melatonControlPanelModal :is(.cpl-cat-title, .cpl-task-item-title):hover {
+    color: var(--cpl-title);
+    text-decoration: underline;
+}
+
+/* ---- Category View ---- */
+
+#melatonControlPanelModal .cpl-main:has(> .cpl-cat-home),
+#melatonControlPanelModal .cpl-main:has(> .cpl-task-items) {
+    padding: 0;
+}
+
+#melatonControlPanelModal .cpl-cat-home {
+    display: grid;
+    grid-template-columns: 381px 381px;
+    padding: 22px 0 18px 13px;
+}
+
+#melatonControlPanelModal .cpl-cat {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 18px;
+}
+
+#melatonControlPanelModal .cpl-cat-icon {
+    flex: 0 0 48px;
+    width: 48px;
+    height: 48px;
+    margin: 0 11px 0 0;
+}
+
+#melatonControlPanelModal .cpl-cat-link {
+    display: flex;
+}
+
+/* ---- category pages and search results ---- */
+
+#melatonControlPanelModal .cpl-task-items {
+    padding: 22px 18px 18px 19px;
+}
+
+#melatonControlPanelModal .cpl-task-item {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 18px;
+}
+
+#melatonControlPanelModal .cpl-task-item-icon {
+    flex: 0 0 32px;
+    width: 32px;
+    height: 32px;
+    margin: 0 11px 0 0;
+}
+
+#melatonControlPanelModal .cpl-task-item-text {
+    min-width: 0;
+}
+
+/* Vista wraps a run at about 600 px from the title's left, whatever the window's width */
+#melatonControlPanelModal .cpl-links {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    max-width: 600px;
+}
+
+#melatonControlPanelModal .cpl-links-cell {
+    display: inline-flex;
+    align-items: flex-start;
+}
+
+#melatonControlPanelModal .cpl-links-sep {
+    width: 1px;
+    height: 14px;
+    margin: 2px 11px 0;
+    background: #cfcfcf;
+}
+
+/* ---- Classic View ---- */
+
+#melatonControlPanelModal .cpl-main.cpl-main--classic {
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+#melatonControlPanelModal .cpl-classic {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    flex: 1;
+}
+
+#melatonControlPanelModal .cpl-classic-header {
+    display: flex;
+    flex: 0 0 23px;
+    height: 23px;
+    background: #fff;
+}
+
+#melatonControlPanelModal .cpl-classic-header .cpl-col {
+    position: relative;
+    flex: 0 0 auto;
+    width: 80px;
+    height: 23px;
+    margin: 0;
+    padding: 0 6px 2px;
+    border: 0;
+    border-radius: 0;
+    border-image: url("/static_images/vista-controls/header-item-normal.png") 0 2 0 1 fill / 0 2px 0 1px stretch;
+    background: none;
+    box-shadow: none;
+    min-width: 0;
+    min-height: 0;
+    color: #000;
+    font: 12px/15px var(--cpl-font);
+    text-align: left;
+    cursor: var(--c-default);
+}
+
+#melatonControlPanelModal .cpl-classic-header .cpl-col::before,
+#melatonControlPanelModal .cpl-classic-header .cpl-col::after {
+    content: none;
+}
+
+#melatonControlPanelModal .cpl-classic-header .cpl-col:hover {
+    border-image-source: url("/static_images/vista-controls/header-item-hot.png");
+}
+
+#melatonControlPanelModal .cpl-classic-header .cpl-col:active {
+    border-image-source: url("/static_images/vista-controls/header-item-pressed.png");
+}
+
+#melatonControlPanelModal .cpl-classic-header .cpl-col.is-sorted {
+    border-image-source: url("/static_images/vista-controls/header-item-sorted.png");
+}
+
+#melatonControlPanelModal .cpl-classic-header .cpl-col.is-sorted:hover {
+    border-image-source: url("/static_images/vista-controls/header-item-sorted-hot.png");
+}
+
+#melatonControlPanelModal .cpl-col-arrow {
+    position: absolute;
+    top: 0;
+    left: calc(50% - 6px);
+    width: 13px;
+    height: 5px;
+    background: url("/static_images/vista-controls/header-sort-arrow.png") 0 0 no-repeat;
+}
+
+#melatonControlPanelModal .cpl-col-arrow.is-down {
+    background-position: 0 -5px;
+}
+
+#melatonControlPanelModal .cpl-col-rest {
+    flex: 1;
+    height: 23px;
+    border-image: url("/static_images/vista-controls/header-item-normal.png") 0 0 0 1 fill / 0 0 0 1px stretch;
+}
+
+#melatonControlPanelModal .cpl-classic-grid {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, 75px);
+    grid-auto-rows: 98px;
+    align-content: start;
+    padding: 2px 0 0 5px;
+}
+
+/* the list view's Icons mode: the 48 px icon 12 px in and 1 px down in a 75 px cell (83 px tall for two lines), the name
+   under it on at most two 15 px lines (melatonControlPanel.js vistaIconLabel wraps and ellipsizes
+   it as Vista does) */
+#melatonControlPanelModal .cpl-icon {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    align-self: start;
+    box-sizing: border-box;
+    width: 75px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    outline: none;
+    cursor: var(--c-default);
+    user-select: none;
+}
+
+#melatonControlPanelModal .cpl-icon img {
+    width: 48px;
+    height: 48px;
+    flex: 0 0 48px;
+    margin-left: 11px;
+}
+
+#melatonControlPanelModal .cpl-icon-label {
+    display: block;
+    width: 100%;
+    margin-top: 3px;
+    color: #000;
+    font: 12px/15px var(--cpl-font);
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+@media (hover: hover) {
+    #melatonControlPanelModal .cpl-icon:hover {
+        background: linear-gradient(#fafbfd, #ebf3fd);
+        border-color: #b8d6fb;
+    }
+}
+
+#melatonControlPanelModal .cpl-icon.selected,
+#melatonControlPanelModal .cpl-icon.selected:hover {
+    background: linear-gradient(#f6fbfd, #eff8fd 45%, #d7effc 55%, #d5effc 92%, #e7f5fd);
+    border-color: #99defd;
+}
+
+#melatonControlPanelModal .cpl-icon:focus-visible {
+    outline: 1px dotted #000;
+    outline-offset: -3px;
+}
+
+/* the address bar's icon is the page's own (melatonControlPanel.js addressIcon), not the painted
+   Control Panel icon vista-explorer.css gives the Explorer-like windows */
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal .modal-window-title-toolbar .cpl-address-icon.cpl-address-img {
+    background: none;
+    object-fit: contain;
+}

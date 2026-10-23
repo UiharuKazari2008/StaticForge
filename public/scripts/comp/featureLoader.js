@@ -261,7 +261,7 @@ const FEATURE_MANIFEST = {
         // Remote Access Properties draws with Taskbar Properties' Vista controls (tbp-*)
         styles: ['css/desktop-settings.css', 'css/vista-defender.css', 'css/cpl-system.css',
             'css/taskbar-properties.css', 'css/remote-access-properties.css', 'css/cpl-personalization.css',
-            'css/cpl-catalog.css', 'css/cpl-dialogs.css', 'css/cpl-pages.css'],
+            'css/cpl-catalog.css', 'css/cpl-dialogs.css', 'css/cpl-pages.css', 'css/cpl-pages2.css'],
         scripts: [
             // Vista's items, categories and task links (Yozora #632), read by melatonControlPanel.js
             'scripts/comp/cplCatalog.js',
@@ -286,7 +286,8 @@ const FEATURE_MANIFEST = {
             'scripts/comp/cplDialogs2.js',
             'scripts/comp/cplPages.js',
             'scripts/comp/cplPages2.js',
-            'scripts/comp/cplPages3.js'
+            'scripts/comp/cplPages3.js',
+            'scripts/comp/cplDeviceManager.js'
         ]
     }
 };

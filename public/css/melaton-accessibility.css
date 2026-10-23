@@ -1,0 +1,30 @@
+/* Ease of Access Center's desktop-wide settings (public/scripts/comp/melatonAccessibility.js). */
+
+/* High Contrast: Vista's High Contrast Black, approximated over the whole desktop */
+html[data-access-high-contrast] body {
+    filter: invert(1) hue-rotate(180deg) contrast(1.25);
+}
+
+html[data-access-high-contrast] img,
+html[data-access-high-contrast] video,
+html[data-access-high-contrast] canvas {
+    filter: invert(1) hue-rotate(180deg);
+}
+
+html[data-access-thick-focus] :focus-visible {
+    outline: 3px dotted currentColor !important;
+    outline-offset: 0 !important;
+}
+
+html[data-access-no-animations] *,
+html[data-access-no-animations] *::before,
+html[data-access-no-animations] *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+}
+
+html[data-access-underline-keys] .tbp-client u,
+html[data-access-underline-keys] .vdt-client u {
+    text-decoration: underline !important;
+}

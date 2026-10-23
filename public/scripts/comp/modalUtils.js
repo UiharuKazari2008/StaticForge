@@ -9468,6 +9468,11 @@ function applyUserGlobalSettingsToClient(settings) {
         applyImageGenerationSettingsToClient(settings.imageGeneration);
     }
 
+    if (settings.registry && typeof settings.registry === 'object' && window.melatonRegistry) {
+        // Control Panel's registry values: public/scripts/comp/melatonRegistry.js
+        window.melatonRegistry.hydrate(settings.registry);
+    }
+
     if (settings.mail && typeof settings.mail === 'object' && window.dovecoteMailSettings) {
         // Dovecote Express's signature (Mail Options): public/scripts/comp/desktop-apps/dovecote.js
         window.dovecoteMailSettings.applyServer(settings.mail);
