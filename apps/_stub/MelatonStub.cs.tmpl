@@ -1,0 +1,35 @@
+// Melaton app EXE stub (Yozora #640). A Melaton app (.msaz) is appended to this program; the whole
+// file is both a valid Windows program and a valid zip. Run on a normal PC, it shows that it needs
+// Melaton OS and exits. On Melaton OS the desktop reads the appended package and runs the app.
+//
+// Built per app by scripts/build-melaton-app.js on the Vista VM:
+//   csc /nologo /target:winexe /win32icon:app.ico /win32manifest:app.manifest MelatonStub.cs
+// The build substitutes @@TITLE@@, @@PUBLISHER@@ and @@VERSION@@ before compiling, so the message
+// box caption, the version resource and the icon are the app's own.
+using System;
+using System.Runtime.InteropServices;
+
+[assembly: System.Reflection.AssemblyTitle("@@TITLE@@")]
+[assembly: System.Reflection.AssemblyProduct("@@TITLE@@")]
+[assembly: System.Reflection.AssemblyCompany("@@PUBLISHER@@")]
+[assembly: System.Reflection.AssemblyVersion("@@VERSION@@")]
+[assembly: System.Reflection.AssemblyFileVersion("@@VERSION@@")]
+
+static class MelatonStub
+{
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    static extern int MessageBoxW(IntPtr hWnd, string text, string caption, uint type);
+
+    const uint MB_ICONERROR = 0x10;
+    const uint MB_TOPMOST = 0x40000;
+
+    [STAThread]
+    static int Main()
+    {
+        MessageBoxW(IntPtr.Zero,
+            "This application can only run on Melaton OS.",
+            "@@TITLE@@",
+            MB_ICONERROR | MB_TOPMOST);
+        return 1;
+    }
+}

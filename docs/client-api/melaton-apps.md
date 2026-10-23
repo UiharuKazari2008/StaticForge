@@ -138,6 +138,38 @@ A `.msaz` is unpacked into `.cache/packages/.run/<sha256>/`. That tree is conten
 shared by every launch of the same bytes. Trees no running app uses are swept after a day.
 Installing (`package_install`) still copies a package into `.cache/packages/<id>/`.
 
+## EXE containers (#640)
+
+An app can be shipped as a real Windows program: a small PE32 stub with the `.msaz` appended.
+
+```
+[ PE32 stub (apps/_stub/MelatonStub.cs) ][ the package zip ]
+```
+
+On a normal PC the stub shows "This application can only run on Melaton OS." (a message box, the
+app's title as the caption) and exits. On Melaton OS the desktop reads the appended package and runs
+the app, exactly as a `.msaz` — the store slices the file to the overlay (`modules/melatonApps/
+exeContainer.js`), so launch, `opens[]` and install all accept an `.exe` that carries a package.
+7-Zip and other tools open the file through their self-extracting-archive handling.
+
+The app's icon lives in **both** the manifest (used on Melaton OS) and the stub's Win32 resources
+(so the file shows the app's icon on a normal PC), with the app's version and publisher in the
+stub's version resource. When a Melaton `.exe` is uploaded to the VFS, Explorer shows that icon
+(the uploader reads it from the appended package: `vfsManager._melatonExeIcon`).
+
+Build one with the app's icon, title and version compiled in:
+
+```
+node scripts/build-melaton-app.js apps/<id> --exe <out.exe>   # compiles the stub on the Vista VM
+node scripts/build-melaton-app.js apps/<id> --exe <out.exe> --stub <prebuilt.exe>   # no VM
+node scripts/build-melaton-app.js apps/<id> --zip <out.msaz>  # the plain package
+```
+
+The stub is a real compiled program (`csc /target:winexe /win32icon /win32manifest`, .NET 3.5 on the
+VM); nothing generates executable code. The container (`modules/melatonApps/exeContainer.js`) only
+joins and reads the two parts, and `modules/melatonApps/ico.js` builds the `.ico` from the icon
+images. Test: `node scripts/test-melaton-exe.js`.
+
 ## Not in v1
 
 - Network access for server halves (a host-brokered fetch with an allowlist, like `/gadget-proxy`).

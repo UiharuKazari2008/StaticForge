@@ -24,6 +24,7 @@ const wsPacketRegistry = require('../wsPacketRegistry');
 const { MelatonPackageError } = require('../../melatonPackageStore');
 const { MelatonAppError } = require('../../melatonApps/runner');
 const { getMelatonApps } = require('../../melatonApps');
+const { isMelatonExe } = require('../../melatonApps/exeContainer');
 
 const OWNER = { owner: 'melatonApps' };
 const MAX_PACKAGE_BYTES = 32 * 1024 * 1024;
@@ -144,6 +145,9 @@ function registerPackets(handlersCtx) {
     }
 
     const isMsaz = (name) => /\.msaz$/i.test(String(name || ''));
+    // a .msaz, or a Melaton app EXE (its package is appended to a Windows stub, #640). prepareRun
+    // slices the exe to its package, so either kind of bytes runs the same way.
+    const isPackageFile = (name, bytes) => isMsaz(name) || isMelatonExe(bytes);
 
     async function resolveLaunch(ctx, p) {
         if (p.packageId) {
@@ -154,9 +158,8 @@ function registerPackets(handlersCtx) {
         if (p.archiveFileId) {
             const file = await accessibleFile(ctx, p.archiveFileId);
             const { node, launch } = await archiveLaunch(file, p.entryPath);
-            if (isMsaz(node.name)) {
-                return { pkg: runPackage(await archive().readEntry(file, node.path, MAX_PACKAGE_BYTES)), launch };
-            }
+            const bytes = await archive().readEntry(file, node.path, MAX_PACKAGE_BYTES);
+            if (isPackageFile(node.name, bytes)) return { pkg: runPackage(bytes), launch };
             const pkg = opener(node.name, node.size);
             if (!pkg) throw new MelatonAppError(`No program opens ${node.name}.`, 'APP_NO_OPENER');
             return { pkg, launch };
@@ -164,7 +167,10 @@ function registerPackets(handlersCtx) {
         if (p.fileId) {
             const file = await accessibleFile(ctx, p.fileId);
             const launch = await folderLaunch(file);
-            if (isMsaz(file.original_name)) return { pkg: runPackage(readBlob(file, MAX_PACKAGE_BYTES)), launch };
+            // read the file only when it could be a package (a .msaz, or an exe small enough to hold one)
+            const couldBePackage = isMsaz(file.original_name) || (/\.exe$/i.test(file.original_name) && file.size <= MAX_PACKAGE_BYTES);
+            const bytes = couldBePackage ? readBlob(file, MAX_PACKAGE_BYTES) : null;
+            if (bytes && isPackageFile(file.original_name, bytes)) return { pkg: runPackage(bytes), launch };
             const pkg = opener(file.original_name, file.size);
             if (!pkg) throw new MelatonAppError(`No program opens ${file.original_name}.`, 'APP_NO_OPENER');
             return { pkg, launch };

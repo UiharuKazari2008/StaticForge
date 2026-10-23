@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const AdmZip = require('adm-zip');
+const { packageZipFromExe } = require('./melatonApps/exeContainer');
 
 const INDEX_VERSION = 1;
 const MAX_ZIP_BYTES = 32 * 1024 * 1024;
@@ -300,6 +301,15 @@ function validateOpens(opens) {
     });
 }
 
+/** A Melaton app EXE carries its package as the overlay; a plain zip is itself (Yozora #640). */
+function packageBytesOf(buffer) {
+    if (Buffer.isBuffer(buffer) && buffer.length > 2 && buffer.readUInt16LE(0) === 0x5a4d) {
+        const zip = packageZipFromExe(buffer);
+        if (zip) return zip;
+    }
+    return buffer;
+}
+
 function inferFormatFromName(fileName) {
     const lower = String(fileName || '').toLowerCase();
     if (lower.endsWith('.mapz')) return 'mapz';
@@ -415,7 +425,7 @@ class MelatonPackageStore {
         const staging = path.join(this.rootDir, `.staging-${process.pid}-${Date.now()}`);
         let manifestPath;
         try {
-            manifestPath = this._extractZip(buffer, staging);
+            manifestPath = this._extractZip(packageBytesOf(buffer), staging);
             const raw = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
             const manifest = validateManifest(raw, {
                 expectedFormat: opts.expectedFormat || '',
@@ -486,6 +496,7 @@ class MelatonPackageStore {
      */
     prepareRun(buffer) {
         if (!Buffer.isBuffer(buffer)) throw new MelatonPackageError('Package bytes missing', 'PACKAGE_BYTES');
+        buffer = packageBytesOf(buffer);
         const sha = crypto.createHash('sha256').update(buffer).digest('hex');
         const dir = path.join(this.runRoot, sha);
         const readyMark = path.join(dir, '.melaton-run');
@@ -644,6 +655,7 @@ module.exports = {
     validateManifest,
     normalizeDsapHost,
     inferFormatFromName,
+    packageBytesOf,
     createMelatonPackageStore,
     RESERVED_LAUNCH_IDS,
     RESERVED_DSAP_HOSTS,

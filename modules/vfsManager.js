@@ -2823,6 +2823,7 @@ class VfsManager {
             await writeBlob(blobPath);
         }
         let previewPath = null;
+        const name = originalName || 'file';
         if ((mimeType || '').startsWith('image/')) {
             try {
                 const sharp = require('sharp');
@@ -2832,8 +2833,19 @@ class VfsManager {
                 await sharp(previewInput).resize(512, 512, { fit: 'inside' }).webp().toFile(previewFile);
                 previewPath = `${hash}.webp`;
             } catch (_) { /* preview optional */ }
+        } else if (/\.exe$/i.test(name)) {
+            // a Melaton app EXE shows its app icon in Explorer (Yozora #640): pull the icon from the
+            // appended package and store it as the preview webp
+            try {
+                const previewFile = path.join(userFilesPath, 'previews', `${hash}.webp`);
+                const icon = await this._melatonExeIcon(blobPath);
+                if (icon) {
+                    await fs.promises.mkdir(path.dirname(previewFile), { recursive: true });
+                    await require('sharp')(icon).resize(256, 256, { fit: 'inside' }).webp().toFile(previewFile);
+                    previewPath = `${hash}.webp`;
+                }
+            } catch (_) { /* a normal Windows exe, or no icon: no preview */ }
         }
-        const name = originalName || 'file';
         const storedMime = mimeType || 'application/octet-stream';
         if (overwrite) {
             const existing = await vfsDatabase.getUserFilesByLocation(scope, storedWorkspaceId, storedFolderId);
@@ -2873,6 +2885,26 @@ class VfsManager {
             folderId: storedFolderId,
             previewPath
         });
+    }
+
+    /** The app icon of a Melaton app EXE (its package is appended to a Windows stub, Yozora #640). */
+    async _melatonExeIcon(blobPath) {
+        const { readExeHead, packageZipFromExe } = require('./melatonApps/exeContainer');
+        const head = await readExeHead(blobPath);
+        if (!head) return null;
+        const stat = await fs.promises.stat(blobPath);
+        if (stat.size - head.overlay > 48 * 1024 * 1024) return null;
+        const buf = await fs.promises.readFile(blobPath);
+        const zip = packageZipFromExe(buf);
+        if (!zip) return null;
+        const AdmZip = require('adm-zip');
+        const entries = new AdmZip(zip).getEntries();
+        const manifestEntry = entries.find((e) => e.entryName === 'manifest.json');
+        if (!manifestEntry) return null;
+        const manifest = JSON.parse(manifestEntry.getData().toString('utf8'));
+        if (!manifest.icon) return null;
+        const iconEntry = entries.find((e) => e.entryName === String(manifest.icon).replace(/^\/+/, ''));
+        return iconEntry ? iconEntry.getData() : null;
     }
 
     getFileBlobPath(contentHash) {
