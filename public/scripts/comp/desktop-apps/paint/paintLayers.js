@@ -139,8 +139,10 @@
         const cur = d.querySelector('.mp-history');
         if (cur) cur.remove();
         else {
-            d.insertAdjacentHTML('beforeend', '<div class="mp-panel mp-history"><div class="mp-panel-cap">History</div><div class="mp-history-list" role="listbox" tabindex="0"></div></div>');
+            d.insertAdjacentHTML('beforeend', `<div class="mp-panel mp-history"><div class="mp-panel-cap">History</div><div class="mp-history-list" role="listbox" tabindex="0"></div>${root.paintComps ? root.paintComps.historyBar() : ''}</div>`);
             d.querySelector('.mp-history').addEventListener('click', (ev) => {
+                // the snapshots over the steps, and the window's buttons (paintComps.js)
+                if (root.paintComps && root.paintComps.historyClick(w, ev)) return;
                 const row = ev.target.closest('.mp-history-row');
                 if (!row) return;
                 w.commitFloating();
@@ -187,7 +189,7 @@
         const hist = d.querySelector('.mp-history-list');
         if (hist) {
             const h = w.doc.history;
-            hist.innerHTML = `<div class="mp-history-row${w.doc.historyIndex === -1 ? ' is-active' : ''}" data-i="-1">Open Image</div>`
+            hist.innerHTML = (root.paintComps ? root.paintComps.historyRows(w) : '') + `<div class="mp-history-row${w.doc.historyIndex === -1 ? ' is-active' : ''}" data-i="-1">Open Image</div>`
                 + h.map((s, i) => `<div class="mp-history-row${i === w.doc.historyIndex ? ' is-active' : ''}${i > w.doc.historyIndex ? ' is-undone' : ''}" data-i="${i}">${esc(s.label)}</div>`).join('');
             const act = hist.querySelector('.is-active');
             if (act) act.scrollIntoView({ block: 'nearest' });

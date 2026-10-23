@@ -2190,6 +2190,7 @@
                     { text: 'Fill...', subtext: 'Shift+F5', action: 'pro-fill' },
                     { text: 'Stroke...', action: 'pro-stroke', disabled: !this.doc.selection },
                     { text: 'Define Brush Preset...', action: 'brush-define', disabled: !root.paintBrush },
+                    { text: 'New Snapshot', action: 'history-snapshot', disabled: !root.paintComps },
                     { separator: true },
                     { text: 'Free Transform', subtext: 'Ctrl+T', action: 'free-transform' },
                     { text: 'Transform', hasSubmenu: true, submenu: [
@@ -2220,6 +2221,7 @@
                     { text: 'New Guide...', action: 'guides-new' },
                     { text: 'Clear Guides', action: 'guides-clear', disabled: !this.doc.guides.length },
                     { text: 'Info', action: 'pro-info', showIndicator: true, checked: !!(P() && P().infoOpen(this)) },
+                    { text: 'Layer Comps', action: 'layer-comps', showIndicator: true, checked: !!(root.paintComps && root.paintComps.panelOpen(this)) },
                     { text: 'Paths', action: 'paths', showIndicator: true, checked: !!(root.paintPath && root.paintPath.panelOpen(this)) },
                     { text: 'Brushes', subtext: 'F5', action: 'brushes', showIndicator: true, checked: !!(root.paintBrush && root.paintBrush.panelOpen(this)) },
                     { text: 'Character', action: 'character', showIndicator: true, checked: !!(root.paintType && root.paintType.characterOpen(this)) },
@@ -2361,6 +2363,7 @@
                     if (root.paintLayers && root.paintLayers.action(this, a)) return;
                     if (root.paintSmart && root.paintSmart.action(this, a)) return;
                     if (root.paintPath && root.paintPath.action(this, a)) return;
+                    if (root.paintComps && root.paintComps.action(this, a)) return;
                     if (P() && P().action(this, a)) return;
                     if (root.paintColor && root.paintColor.action(this, a)) return;
                     break;

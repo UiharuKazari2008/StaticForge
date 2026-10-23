@@ -2300,7 +2300,7 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
     display: block;
     width: 16px;
     height: 16px;
-    background: url('/static_images/vista-paint/paths-panel.png') calc(var(--i) * -16px) 0 no-repeat;
+    background: url('/static_images/vista-paint/paths-panel.png?v=3') calc(var(--i) * -16px) 0 no-repeat;
 }
 
 /* a shape layer: Photoshop's vector badge, a pen-nib square */
@@ -2311,4 +2311,89 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
     margin-left: 3px;
     vertical-align: -2px;
     background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' shape-rendering='crispEdges'%3E%3Cpath fill='%23555' d='M0 0h11v11H0z'/%3E%3Cpath fill='%23fff' d='M1 1h9v9H1z'/%3E%3Cpath fill='%231a5fb4' d='M2 8 8 2h1v1L3 9H2z'/%3E%3C/svg%3E") no-repeat;
+}
+
+/* history snapshots (#632): over the steps, each with its picture */
+.mp-client .mp-history-row.is-snap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    border-bottom: 1px solid #d8d8d8;
+}
+
+.mp-client .mp-history-row.is-snap img {
+    width: 32px;
+    height: 24px;
+    border: 1px solid #a0a0a0;
+}
+
+.mp-client .mp-history-row.is-snap.is-picked {
+    background: #e8f1fb;
+}
+
+.mp-client .mp-history-bar {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1px;
+    padding: 2px;
+    border-top: 1px solid #c0c0c0;
+}
+
+/* layer comps */
+.mp-client .mp-comps {
+    flex: none;
+}
+
+.mp-client .mp-comps-list {
+    min-height: 40px;
+    max-height: 160px;
+    overflow-y: auto;
+    background: #fff;
+    font: 11px Tahoma, "Segoe UI", sans-serif;
+}
+
+.mp-client .mp-comps-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 22px;
+    padding: 0 4px;
+    cursor: var(--c-default, default);
+}
+
+.mp-client .mp-comps-row.is-active {
+    background: #cce4f7;
+}
+
+.mp-client .mp-comps-apply {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    border: 1px solid #a0a0a0;
+    background: #fff;
+}
+
+.mp-client .mp-comps-apply.is-on {
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' shape-rendering='crispEdges'%3E%3Cpath fill='%23333' d='M3 2h1v1h1v1h1v1h1v1h1v1H7v1H6v1H5v1H4v1H3z'/%3E%3C/svg%3E") center no-repeat #fff;
+}
+
+.mp-client .mp-comps-art {
+    display: block;
+    width: 16px;
+    height: 16px;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+.mp-client .mp-comps-art.is-prev {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' shape-rendering='crispEdges'%3E%3Cpath fill='%23333' d='M10 3h1v10h-1v-1H9v-1H8v-1H7V9H6V7h1V6h1V5h1V4h1z'/%3E%3C/svg%3E");
+}
+
+.mp-client .mp-comps-art.is-next {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' shape-rendering='crispEdges'%3E%3Cpath fill='%23333' d='M5 3h1v1h1v1h1v1h1v1h1v2H9v1H8v1H7v1H6v1H5z'/%3E%3C/svg%3E");
+}
+
+.mp-client .mp-comps-art.is-update {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' shape-rendering='crispEdges'%3E%3Cpath fill='%23333' d='M5 2h6v1h1v1h1v2h-2V5h-1V4H6v1H5v1H4v4h1v1h1v1h4v-1h1v-1h2v2h-1v1h-1v1H5v-1H4v-1H3v-1H2V5h1V4h1V3h1z'/%3E%3Cpath fill='%23333' d='M11 6h4v4z'/%3E%3C/svg%3E");
 }

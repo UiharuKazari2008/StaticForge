@@ -104,6 +104,9 @@
         const P = root.paintPro;
         const L = root.paintLayers;
         const has = (cls) => w.modal.classList.contains(cls);
+        // the History window's snapshots, each a whole document
+        const snapsOut = [];
+        for (const sn of d.snaps || []) snapsOut.push({ id: sn.id, name: sn.name, thumb: sn.thumb, paths: sn.paths || undefined, state: await snapshotOut(out, sn.state) });
         const manifest = {
             format: 'gsd', version: VERSION, generator: 'Melaton Paint', saved: new Date().toISOString(), name: w.name,
             blobs: out.blobs,
@@ -113,6 +116,8 @@
                 guides: JSON.parse(JSON.stringify(d.guides || [])),
                 paths: d.paths && d.paths.length ? JSON.parse(JSON.stringify(d.paths)) : undefined,
                 workPath: d.workPath ? JSON.parse(JSON.stringify(d.workPath)) : undefined,
+                comps: d.comps && d.comps.length ? JSON.parse(JSON.stringify(d.comps)) : undefined,
+                snaps: snapsOut.length ? snapsOut : undefined,
                 selection: await selectionOut(out, d, d.selection),
                 lastSelection: await selectionOut(out, d, w.lastSelection && w.lastSelection !== d.selection ? w.lastSelection : null)
             },
@@ -133,7 +138,7 @@
                 const steps = [];
                 for (const st of d.history) {
                     if (st.kind === 'snapshot') steps.push({ label: st.label, kind: 'snapshot', before: await snapshotOut(out, st.before), after: await snapshotOut(out, st.after) });
-                    else if (st.kind === 'paths') steps.push({ label: st.label, kind: 'paths', before: st.before, after: st.after });
+                    else if (st.kind === 'paths' || st.kind === 'props') steps.push({ label: st.label, kind: st.kind, before: st.before, after: st.after });
                     else {
                         steps.push({ label: st.label, kind: 'pixels', layerId: st.layerId, rect: st.rect, before: await out.rgba(st.before), after: await out.rgba(st.after),
                             smart: st.smart ? { before: await out.smart(st.smart.before), after: await out.smart(st.smart.after) } : undefined, vector: st.vector || undefined });
@@ -272,6 +277,9 @@
         d.guides = D.guides || [];
         d.paths = D.paths || [];
         d.workPath = D.workPath || null;
+        d.comps = D.comps || [];
+        d.snaps = [];
+        for (const sn of D.snaps || []) d.snaps.push({ id: sn.id, name: sn.name, thumb: sn.thumb, paths: sn.paths || null, state: await snapshotIn(state, sn.state) });
         d.active = Math.min(Math.max(0, D.active || 0), layers.length - 1);
         d.editMask = !!(D.editMask && layers[d.active] && layers[d.active].mask);
         d.selection = await selectionIn(state, W, H, D.selection);
@@ -282,8 +290,8 @@
         d.historyBytes = 0;
         if (m.history) {
             for (const st of m.history.steps) {
-                if (st.kind === 'paths') {
-                    d.history.push({ label: st.label, kind: 'paths', before: st.before, after: st.after, bytes: 2000 });
+                if (st.kind === 'paths' || st.kind === 'props') {
+                    d.history.push({ label: st.label, kind: st.kind, before: st.before, after: st.after, bytes: 2000 });
                 } else if (st.kind === 'snapshot') {
                     const before = await snapshotIn(state, st.before);
                     const after = await snapshotIn(state, st.after);

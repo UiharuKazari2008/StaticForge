@@ -788,6 +788,11 @@
                 if (root.paintPath) root.paintPath.applyState(this, step[which]);
                 return;
             }
+            // layer comps: visibility and appearance (paintComps.js)
+            if (step.kind === 'props') {
+                if (root.paintComps) root.paintComps.applyProps(this, step[which]);
+                return;
+            }
             const l = this.target(step.layerId);
             if (!l) return;
             l.ctx.putImageData(step[which], step.rect.x, step.rect.y);
