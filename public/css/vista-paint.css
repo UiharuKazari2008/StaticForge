@@ -2024,3 +2024,16 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
     color: #000;
     font: 10px/10px Tahoma, sans-serif;
 }
+
+.mp-fp-head {
+    padding: 4px 6px 2px;
+    border-top: 1px solid #e0e0e0;
+    background: #f4f4f4;
+    color: #555;
+    font: bold 11px Tahoma, "Segoe UI", sans-serif;
+    cursor: var(--c-default, default);
+}
+
+.mp-fp-head:first-child {
+    border-top: 0;
+}

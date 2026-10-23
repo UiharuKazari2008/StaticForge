@@ -8,7 +8,9 @@
  *                caps 'none' | 'all' | 'small', tracking (1/1000 em), leading (pt, 0 = auto),
  *                align 'left' | 'center' | 'right', vertical, aa 'smooth' | 'none', color, x, y }
  *
- *   paintType.fonts()                      the installed fonts (checked once)
+ *   paintType.fonts()                      Dreamscape's own fonts (every @font-face: css/fonts.css,
+ *                                          css/vista-fonts.css), then the computer's (checked once)
+ *   paintType.ensure(face)                 load a webfont's faces before it is drawn on a canvas
  *   paintType.fontPicker(w, el, get, set)   a font menu in el: each name in its own font
  *   paintType.stylePicker(w, el, get, set)  the weights and italic, each shown as it looks
  *   paintType.draw(ctx, t)                  the text into a canvas context; returns its box
@@ -56,16 +58,61 @@
         });
     }
 
+    // icon fonts and Character Map's probe are not for writing
+    const NOT_TEXT = /awesome|icons?\b|glyph|probe|symbol|emoji|webdings|wingdings/i;
+    let baked = null;
+
+    /** Dreamscape's @font-face families (loaded or not) and the faces each declares. */
+    function bakedFaces() {
+        if (baked) return baked;
+        baked = new Map();
+        if (doc.fonts && doc.fonts.forEach) {
+            doc.fonts.forEach((f) => {
+                const family = String(f.family).replace(/^["']|["']$/g, '');
+                if (!family || NOT_TEXT.test(family)) return;
+                if (!baked.has(family)) baked.set(family, []);
+                baked.get(family).push({ weight: String(f.weight || '400'), style: String(f.style || 'normal') });
+            });
+        }
+        return baked;
+    }
+
     function fonts() {
         if (!fontList) {
-            fontList = CANDIDATES.filter(available);
+            const own = Array.from(bakedFaces().keys()).sort((a, b) => a.localeCompare(b));
+            const system = CANDIDATES.filter((f) => !bakedFaces().has(f) && !NOT_TEXT.test(f) && available(f)).sort((a, b) => a.localeCompare(b));
+            fontList = own.concat(system);
+            fontList.own = new Set(own);
             if (!fontList.length) fontList = ['Arial', 'Times New Roman', 'Courier New'];
         }
         return fontList;
     }
 
+    function isOwn(face) { return bakedFaces().has(face); }
+
+    /** Load a webfont's faces (a canvas does not wait for them); resolves when they are there. */
+    function ensure(face) {
+        const faces = bakedFaces().get(face);
+        if (!faces || !doc.fonts || !doc.fonts.load) return Promise.resolve();
+        return Promise.all(faces.map((f) => {
+            const w = f.weight.split(' ')[0];
+            return doc.fonts.load(`${f.style === 'italic' ? 'italic ' : ''}${w} 16px "${face}"`).catch(() => null);
+        }));
+    }
+
     /** The weights a font draws differently (the others would only be the browser's fake bold). */
     function weightsOf(face) {
+        // a webfont says which weights it has (a variable one: a range)
+        const declared = bakedFaces().get(face);
+        if (declared) {
+            const have = new Set();
+            declared.forEach((f) => {
+                const [lo, hi] = f.weight.split(' ').map(Number);
+                WEIGHTS.forEach(([v]) => { if (v === lo || (hi && v >= lo && v <= hi)) have.add(v); });
+            });
+            if (!have.size) have.add(400);
+            return WEIGHTS.filter(([v]) => have.has(v));
+        }
         const x = mctx();
         const probe = 'Hamburgefonstiv';
         const w = {};
@@ -101,7 +148,9 @@
         const p = doc.createElement('div');
         p.className = 'mp-fp-popup';
         p.setAttribute('role', 'listbox');
-        p.innerHTML = rows.map((row, i) => `<div class="mp-fp-row${String(row.value) === String(current) ? ' is-on' : ''}" role="option" data-i="${i}" style="${row.style || ''}">${row.html}</div>`).join('');
+        p.innerHTML = rows.map((row, i) => (row.header
+            ? `<div class="mp-fp-head" role="presentation">${esc(row.header)}</div>`
+            : `<div class="mp-fp-row${String(row.value) === String(current) ? ' is-on' : ''}" role="option" data-i="${i}" style="${row.style || ''}">${row.html}</div>`)).join('');
         doc.body.appendChild(p);
         const below = innerHeight - r.bottom;
         p.style.left = `${Math.round(r.left)}px`;
@@ -109,7 +158,9 @@
         if (below < 260 && r.top > below) { p.style.bottom = `${Math.round(innerHeight - r.top)}px`; p.style.maxHeight = `${Math.round(r.top - 8)}px`; } else { p.style.top = `${Math.round(r.bottom)}px`; p.style.maxHeight = `${Math.round(Math.min(420, below - 8))}px`; }
         const on = p.querySelector('.is-on');
         if (on) on.scrollIntoView({ block: 'nearest' });
-        let hot = on ? Number(on.dataset.i) : 0;
+        const first = rows.findIndex((row) => !row.header);
+        let hot = on ? Number(on.dataset.i) : first;
+        const stepTo = (from, dir) => { let k = from + dir; while (k >= 0 && k < rows.length && rows[k].header) k += dir; return k >= 0 && k < rows.length ? k : from; };
         const mark = () => p.querySelectorAll('.mp-fp-row').forEach((e) => e.classList.toggle('is-hot', Number(e.dataset.i) === hot));
         p.addEventListener('pointermove', (ev) => { const e = ev.target.closest('.mp-fp-row'); if (e) { hot = Number(e.dataset.i); mark(); } });
         p.addEventListener('click', (ev) => {
@@ -122,13 +173,13 @@
         p.addEventListener('keydown', (ev) => {
             if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
                 ev.preventDefault();
-                hot = Math.max(0, Math.min(rows.length - 1, hot + (ev.key === 'ArrowDown' ? 1 : -1)));
+                hot = stepTo(hot, ev.key === 'ArrowDown' ? 1 : -1);
                 mark();
                 const e = p.querySelector(`[data-i="${hot}"]`);
                 if (e) e.scrollIntoView({ block: 'nearest' });
             } else if (ev.key === 'Enter') { ev.preventDefault(); closePopup(); choose(rows[hot].value); } else if (ev.key === 'Escape') { ev.preventDefault(); closePopup(); button.focus(); } else if (ev.key.length === 1) {
                 // a letter jumps to the first font starting with it
-                const k = rows.findIndex((row) => String(row.value).toLowerCase().startsWith(ev.key.toLowerCase()));
+                const k = rows.findIndex((row) => !row.header && String(row.value).toLowerCase().startsWith(ev.key.toLowerCase()));
                 if (k >= 0) { hot = k; mark(); p.querySelector(`[data-i="${k}"]`).scrollIntoView({ block: 'nearest' }); }
             }
         });
@@ -144,10 +195,17 @@
         b.addEventListener('mousedown', (ev) => { if (w.text) ev.preventDefault(); });
         b.addEventListener('click', () => {
             if (openPopup) { closePopup(); return; }
-            popup(b, fonts().map((f) => ({
+            const list = fonts();
+            const row = (f) => ({
                 value: f,
                 html: `<span class="mp-fp-name" style="font-family:'${esc(f)}'">${esc(f)}</span><span class="mp-fp-sample" style="font-family:'${esc(f)}'">Sample</span>`
-            })), get(), (v) => { set(v); });
+            });
+            const own = list.filter((f) => isOwn(f));
+            const system = list.filter((f) => !isOwn(f));
+            const rows = [];
+            if (own.length) rows.push({ header: 'Melaton fonts' }, ...own.map(row));
+            if (system.length) rows.push({ header: 'On this computer' }, ...system.map(row));
+            popup(b, rows, get(), (v) => { set(v); void ensure(v).then(() => { w.restyleText(); w.renderBar(); }); });
         });
     }
 
@@ -332,5 +390,5 @@
         });
     }
 
-    root.paintType = { fonts, weightsOf, styleName, fontPicker, stylePicker, draw, bounds, cssOf, fontOf, toggleCharacter, characterOpen, refresh, closePopup };
+    root.paintType = { fonts, ensure, isOwn, weightsOf, styleName, fontPicker, stylePicker, draw, bounds, cssOf, fontOf, toggleCharacter, characterOpen, refresh, closePopup };
 })(typeof window !== 'undefined' ? window : globalThis);

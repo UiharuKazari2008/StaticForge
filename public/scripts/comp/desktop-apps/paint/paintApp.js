@@ -762,6 +762,7 @@
         /** The options bar's font controls: the registry's text settings, and the box being typed in. */
         setTextFont(values) {
             setReg(values);
+            if (values.TextFace && root.paintType) void root.paintType.ensure(values.TextFace).then(() => this.restyleText());
             this.restyleText();
             this.renderBar();
             const bar = this.el('.mp-textbar');
@@ -1592,6 +1593,16 @@
         renderTextLayer(l) {
             l.ctx.clearRect(0, 0, this.doc.width, this.doc.height);
             root.paintType.draw(l.ctx, l.text);
+            // a Dreamscape webfont not loaded yet draws as its fallback: draw again when it comes
+            const font = root.paintType.fontOf(l.text, 16);
+            if (doc.fonts && doc.fonts.check && !doc.fonts.check(font)) {
+                void root.paintType.ensure(l.text.face).then(() => {
+                    if (!l.text || !doc.fonts.check(font)) return;
+                    l.ctx.clearRect(0, 0, this.doc.width, this.doc.height);
+                    root.paintType.draw(l.ctx, l.text);
+                    this.doc.markDirty();
+                });
+            }
         }
 
         /** The box round a type layer's text (for a click with the Text tool). */
