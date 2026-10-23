@@ -21,6 +21,9 @@
  *                                 luminance); doc.editMask makes doc.layer the mask's target, so
  *                                 every tool and step paints the mask instead
  *   layer.styles { shadow, glow, stroke }   effects drawn round the layer's (masked) pixels
+ *   doc.groups [{ id, name, visible, opacity, blend, collapsed }]; layer.groupId: a group's layers
+ *                                 sit next to each other and are composited together first
+ *   doc.guides [{ axis: 'h' | 'v', pos }]   ruler guides, in picture pixels
  *   doc.flattened()               a canvas of the picture as saved
  *   PaintCore.floodFill(imageData, x, y, rgba, tolerance) -> dirty rect
  *   PaintCore.wandMask(imageData, x, y, tolerance) -> { mask: Uint8Array (0 / 255), rect }
@@ -88,6 +91,7 @@
             this.styles = null;
             this.adjust = null; // { kind, params } for an adjustment layer
             this.text = null; // { content, face, size, bold, italic, underline, color, x, y } for a type layer
+            this.groupId = null;
         }
 
         /** A layer mask, white (everything shows) or black (nothing does). */
@@ -285,6 +289,8 @@
             this.listeners = new Set();
             this.dirty = null;
             this.selection = null; // { rect, mask (Uint8Array w*h of the rect) | null for a plain rectangle }
+            this.groups = [];
+            this.guides = [];
             const bg = this.addLayer('Background', { silent: true });
             if (opts.transparent !== true) {
                 bg.ctx.fillStyle = opts.background || '#ffffff';
@@ -338,6 +344,8 @@
         addLayer(name, opts = {}) {
             const layer = new Layer(this.width, this.height, name);
             const at = opts.at !== undefined ? opts.at : this.active + 1;
+            // a new layer over one in a group joins the group (Photoshop)
+            if (opts.at === undefined && this.layers[this.active]) layer.groupId = this.layers[this.active].groupId || null;
             this.layers.splice(Math.min(at, this.layers.length), 0, layer);
             if (!opts.silent) {
                 this.active = this.layers.indexOf(layer);
@@ -351,16 +359,73 @@
             if (this.layers.length <= 1) return;
             this.layers.splice(i, 1);
             this.active = Math.min(this.active, this.layers.length - 1);
+            this.pruneGroups();
             this.markDirty();
             this.emit('layers');
         }
 
+        group(id) {
+            return this.groups.find((g) => g.id === id) || null;
+        }
+
+        /** Groups without layers go. */
+        pruneGroups() {
+            this.groups = this.groups.filter((g) => this.layers.some((l) => l.groupId === g.id));
+        }
+
+        /**
+         * Move a layer one step. At its group's edge it first leaves the group; next to an open
+         * group it joins it; a closed group is stepped over whole (Photoshop's Layers panel).
+         */
         moveLayer(i, dir) {
+            const l = this.layers[i];
             const j = i + dir;
-            if (j < 0 || j >= this.layers.length) return;
-            const [l] = this.layers.splice(i, 1);
-            this.layers.splice(j, 0, l);
-            this.active = j;
+            if (j < 0 || j >= this.layers.length) {
+                if (l.groupId) { l.groupId = null; this.pruneGroups(); this.markDirty(); this.emit('layers'); }
+                return;
+            }
+            const n = this.layers[j];
+            if (l.groupId && n.groupId !== l.groupId) {
+                l.groupId = null;
+                this.pruneGroups();
+            } else if (!l.groupId && n.groupId) {
+                const g = this.group(n.groupId);
+                if (g && g.collapsed) {
+                    let k = j;
+                    while (k + dir >= 0 && k + dir < this.layers.length && this.layers[k + dir].groupId === n.groupId) k += dir;
+                    this.layers.splice(i, 1);
+                    const at = dir > 0 ? k : k;
+                    this.layers.splice(at, 0, l);
+                    this.active = at;
+                } else {
+                    this.layers.splice(i, 1);
+                    this.layers.splice(j, 0, l);
+                    l.groupId = n.groupId;
+                    this.active = j;
+                }
+            } else {
+                this.layers.splice(i, 1);
+                this.layers.splice(j, 0, l);
+                this.active = j;
+            }
+            this.markDirty();
+            this.emit('layers');
+        }
+
+        /** Put layer i in a new group; returns the group. */
+        groupLayer(i, name) {
+            const id = nextLayerId++;
+            const g = { id, name: name || `Group ${this.groups.length + 1}`, visible: true, opacity: 1, blend: 'normal', collapsed: false };
+            this.groups.push(g);
+            this.layers[i].groupId = id;
+            this.markDirty();
+            this.emit('layers');
+            return g;
+        }
+
+        ungroup(id) {
+            this.layers.forEach((l) => { if (l.groupId === id) l.groupId = null; });
+            this.pruneGroups();
             this.markDirty();
             this.emit('layers');
         }
@@ -379,6 +444,7 @@
             }
             copy.styles = src.styles ? JSON.parse(JSON.stringify(src.styles)) : null;
             copy.adjust = src.adjust ? JSON.parse(JSON.stringify(src.adjust)) : null;
+            copy.groupId = src.groupId;
             copy.text = src.text ? { ...src.text } : null;
             this.layers.splice(i + 1, 0, copy);
             this.active = i + 1;
@@ -415,6 +481,7 @@
             const layer = new Layer(this.width, this.height, 'Background');
             layer.ctx.drawImage(flat, 0, 0);
             this.layers = [layer];
+            this.groups = [];
             this.active = 0;
             this.markDirty();
             this.emit('layers');
@@ -434,42 +501,66 @@
                 ctx.fillStyle = opts.checker;
                 ctx.fillRect(r.x, r.y, r.w, r.h);
             }
-            // adjustment layers change what is under them, so the layers go to their own buffer
-            // (the checker underneath stays as it is)
-            const adjusting = this.layers.some((l) => l.adjust && l.visible);
-            let off = null;
-            let tx = ctx;
-            if (adjusting) {
-                off = makeCanvas(r.w, r.h);
-                tx = ctxOf(off);
-                tx.translate(-r.x, -r.y);
-            }
-            this.layers.forEach((l, i) => {
-                if (!l.visible || l.opacity <= 0) return;
-                if (l.adjust) {
-                    tx.save();
-                    tx.setTransform(1, 0, 0, 1, 0, 0);
-                    applyAdjustment(tx, l, { x: 0, y: 0, w: r.w, h: r.h }, r);
-                    tx.restore();
-                    return;
-                }
-                tx.globalAlpha = l.opacity;
-                tx.globalCompositeOperation = BLENDS[l.blend] || 'source-over';
-                if ((l.mask && l.mask.enabled) || hasEffects(l)) tx.drawImage(renderLayer(l, r), r.x, r.y);
-                else tx.drawImage(l.canvas, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
-                // a stroke in progress (brush opacity) is drawn over its layer before the layers above
-                if (opts.overlay && opts.overlay.layerIndex === i) {
-                    tx.globalAlpha = l.opacity * (opts.overlay.alpha === undefined ? 1 : opts.overlay.alpha);
-                    tx.globalCompositeOperation = opts.overlay.erase ? 'destination-out' : 'source-over';
-                    tx.drawImage(opts.overlay.canvas, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
-                }
-            });
-            if (off) {
-                ctx.globalAlpha = 1;
-                ctx.globalCompositeOperation = 'source-over';
-                ctx.drawImage(off, r.x, r.y);
-            }
+            // the layers go to their own buffer first: adjustment layers change what is under them
+            // and must not touch the checker
+            const off = makeCanvas(r.w, r.h);
+            const tx = ctxOf(off);
+            tx.translate(-r.x, -r.y);
+            this.compositeRun(tx, 0, this.layers.length, r, opts, false);
+            ctx.globalAlpha = 1;
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.drawImage(off, r.x, r.y);
             ctx.restore();
+        }
+
+        /** Layers from..to into tx (translated to r); a group's layers go to a buffer of their own. */
+        compositeRun(tx, from, to, r, opts, inGroup) {
+            for (let i = from; i < to;) {
+                const l = this.layers[i];
+                const g = !inGroup && l.groupId ? this.group(l.groupId) : null;
+                if (g) {
+                    let j = i;
+                    while (j < to && this.layers[j].groupId === l.groupId) j += 1;
+                    if (g.visible && g.opacity > 0) {
+                        const off = makeCanvas(r.w, r.h);
+                        const gx = ctxOf(off);
+                        gx.translate(-r.x, -r.y);
+                        this.compositeRun(gx, i, j, r, opts, true);
+                        tx.save();
+                        tx.globalAlpha = g.opacity;
+                        tx.globalCompositeOperation = BLENDS[g.blend] || 'source-over';
+                        tx.drawImage(off, r.x, r.y);
+                        tx.restore();
+                    }
+                    i = j;
+                    continue;
+                }
+                this.drawLayer(tx, l, i, r, opts);
+                i += 1;
+            }
+        }
+
+        drawLayer(tx, l, i, r, opts) {
+            if (!l.visible || l.opacity <= 0) return;
+            if (l.adjust) {
+                tx.save();
+                tx.setTransform(1, 0, 0, 1, 0, 0);
+                applyAdjustment(tx, l, { x: 0, y: 0, w: r.w, h: r.h }, r);
+                tx.restore();
+                return;
+            }
+            tx.globalAlpha = l.opacity;
+            tx.globalCompositeOperation = BLENDS[l.blend] || 'source-over';
+            if ((l.mask && l.mask.enabled) || hasEffects(l)) tx.drawImage(renderLayer(l, r), r.x, r.y);
+            else tx.drawImage(l.canvas, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
+            // a stroke in progress (brush opacity) is drawn over its layer before the layers above
+            if (opts.overlay && opts.overlay.layerIndex === i) {
+                tx.globalAlpha = l.opacity * (opts.overlay.alpha === undefined ? 1 : opts.overlay.alpha);
+                tx.globalCompositeOperation = opts.overlay.erase ? 'destination-out' : 'source-over';
+                tx.drawImage(opts.overlay.canvas, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
+            }
+            tx.globalAlpha = 1;
+            tx.globalCompositeOperation = 'source-over';
         }
 
         flattened(opts = {}) {
@@ -533,9 +624,9 @@
                     ctxOf(mask).drawImage(l.mask.canvas, 0, 0);
                     bytes += this.width * this.height * 4;
                 }
-                return { id: l.id, name: l.name, canvas: c, visible: l.visible, opacity: l.opacity, blend: l.blend, locked: l.locked, mask, maskOn: l.mask ? l.mask.enabled : false, styles: l.styles ? JSON.parse(JSON.stringify(l.styles)) : null, adjust: l.adjust ? JSON.parse(JSON.stringify(l.adjust)) : null, text: l.text ? { ...l.text } : null };
+                return { id: l.id, name: l.name, canvas: c, visible: l.visible, opacity: l.opacity, blend: l.blend, locked: l.locked, mask, maskOn: l.mask ? l.mask.enabled : false, styles: l.styles ? JSON.parse(JSON.stringify(l.styles)) : null, adjust: l.adjust ? JSON.parse(JSON.stringify(l.adjust)) : null, text: l.text ? { ...l.text } : null, groupId: l.groupId };
             });
-            return { width: this.width, height: this.height, active: this.active, editMask: !!this.editMask, layers, bytes };
+            return { width: this.width, height: this.height, active: this.active, editMask: !!this.editMask, layers, groups: JSON.parse(JSON.stringify(this.groups)), bytes };
         }
 
         restore(s) {
@@ -557,10 +648,12 @@
                 l.styles = sl.styles ? JSON.parse(JSON.stringify(sl.styles)) : null;
                 l.adjust = sl.adjust ? JSON.parse(JSON.stringify(sl.adjust)) : null;
                 l.text = sl.text ? { ...sl.text } : null;
+                l.groupId = sl.groupId || null;
                 return l;
             });
             this.active = Math.min(s.active, this.layers.length - 1);
             this.editMask = !!(s.editMask && this.layers[this.active].mask);
+            this.groups = s.groups ? JSON.parse(JSON.stringify(s.groups)) : [];
             this.emit('resize');
             this.markDirty();
             this.emit('layers');
@@ -891,6 +984,8 @@
     }
 
     root.PaintCore = {
+        /** Layer ids from a file: later layers must not take them. */
+        reserveIds(max) { if (max >= nextLayerId) nextLayerId = max + 1; },
         Document, Layer, BLENDS, renderLayer, hasEffects, adjusters, applyAdjustment, makeCanvas, ctxOf, clampRect, union, rectAround,
         parseColor, floodFill, wandMask, colorMask, replaceColor, convolve, mapPixels, rgbToHsl, hslToRgb, encodeBmp
     };

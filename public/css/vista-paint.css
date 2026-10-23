@@ -1390,3 +1390,95 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
     cursor: var(--c-ns-resize, ns-resize);
     touch-action: none;
 }
+
+/* ---- rulers and guides (View > Rulers, Ctrl+R) ---- */
+
+.mp-client .mp-viewport {
+    display: grid;
+    grid-template-columns: 0 minmax(0, 1fr);
+    grid-template-rows: 0 minmax(0, 1fr);
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+}
+
+.mp-window.mp-rulers .mp-viewport {
+    grid-template-columns: 17px minmax(0, 1fr);
+    grid-template-rows: 17px minmax(0, 1fr);
+}
+
+.mp-client .mp-viewport > .mp-workspace {
+    grid-column: 2;
+    grid-row: 2;
+    min-height: 0;
+}
+
+.mp-client .mp-ruler-corner {
+    grid-column: 1;
+    grid-row: 1;
+    border-right: 1px solid #a0a0a0;
+    border-bottom: 1px solid #a0a0a0;
+    background: #fff;
+}
+
+.mp-client .mp-ruler.is-h { grid-column: 2; grid-row: 1; cursor: var(--c-ns-resize, ns-resize); }
+.mp-client .mp-ruler.is-v { grid-column: 1; grid-row: 2; cursor: var(--c-ew-resize, ew-resize); }
+
+.mp-client .mp-ruler {
+    display: block;
+    overflow: hidden;
+    touch-action: none;
+}
+
+.mp-window:not(.mp-rulers) .mp-ruler,
+.mp-window:not(.mp-rulers) .mp-ruler-corner {
+    display: none;
+}
+
+.mp-client .mp-ants .mp-guide {
+    fill: #00e5ff;
+    stroke: none;
+    shape-rendering: crispEdges;
+}
+
+/* ---- layer groups in the Layers window ---- */
+
+.mp-client .mp-group-row {
+    grid-template-columns: 14px 20px 1fr 18px;
+    height: 24px;
+}
+
+.mp-client .mp-layer-row.is-child {
+    padding-left: 18px;
+}
+
+.mp-client .mp-layer-row.is-hidden {
+    display: none;
+}
+
+.mp-window .win7.mp-client .mp-group-twisty:not(:disabled) {
+    width: 14px;
+    height: 14px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-image: none;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4' shape-rendering='crispEdges'%3E%3Cpath fill='%23333' d='M0 0h7v1H0zM1 1h5v1H1zM2 2h3v1H2zM3 3h1v1H3z'/%3E%3C/svg%3E") center no-repeat;
+    box-shadow: none;
+}
+
+.mp-window .win7.mp-client .mp-group-twisty.is-closed:not(:disabled) {
+    transform: rotate(-90deg);
+}
+
+.mp-client .mp-group-twisty::before,
+.mp-client .mp-group-twisty::after {
+    content: none;
+}
+
+.mp-client .mp-group-icon {
+    width: 16px;
+    height: 16px;
+    background: url('/static_images/vista-cmdbar/folder.png') center / 16px 16px no-repeat;
+}

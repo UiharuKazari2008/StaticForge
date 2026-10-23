@@ -10,8 +10,9 @@
  *               (paintColor.js: Photoshop's spectrum ramp and saved swatches), the status bar (help, the cursor, the selection's size), and the
  *               Layers window (paintLayers.js)
  *   documents   a PaintCore.Document (paintCore.js); files open from Cartograph (any picture) or
- *               the gallery, save as PNG / JPEG / BMP / WebP, or as a Melaton Paint image (.mpi:
- *               every layer kept) in the VFS; Save to Gallery and Set as Desktop Background
+ *               the gallery, save as a Graphic Session Document (.gsd, paintGsd.js: the whole
+ *               session without loss, docs/paint-gsd-format.md), PNG / JPEG / BMP / WebP, or a
+ *               Melaton Paint image (.mpi) in the VFS; Save to Gallery and Set as Desktop Background
  *   dialogs     Vista's own templates (vistaDialogTemplate.js): Attributes, Flip and Rotate,
  *               Resize and Skew, Grid Settings (mspaint.exe.mui) and Edit Colors (comdlg32 CHOOSECOLOR)
  *   Photoshop   Free Transform (Ctrl+T), Photoshop's single-key tools (Shift cycles a group), X / D,
@@ -75,6 +76,9 @@
     const OUTLINE_TOOLS = new Set(['brush', 'eraser', 'airbrush', 'clone', 'blur', 'smudge', 'dodge', 'burn', 'sponge', 'heal']);
     const SELECT_TOOLS = new Set(['select', 'freeselect', 'ellipseselect', 'polylasso', 'wand', 'move']);
     const P = () => root.paintPro;
+    // tools whose points snap to guides and the picture's edges (View > Snap)
+    const SNAP_TOOLS = new Set(['select', 'ellipseselect', 'polylasso', 'crop', 'rect', 'ellipse', 'roundrect', 'line', 'gradient', 'text', 'polygon']);
+    const RULER = 17;
     const DEFAULT_STATUS = 'For Help, click Help Topics on the Help Menu.';
     let windowCount = 0;
 
@@ -140,13 +144,19 @@
                 selMode: 'new', contiguous: true, sampleAll: false
             };
             this.grid = false;
+            // Photoshop's View options: rulers, guides (shown, locked), snapping
+            this.rulers = !!reg('Rulers', false);
+            this.guidesShown = true;
+            this.guidesLocked = false;
+            this.snapOn = true;
             this.name = opts.name || 'Untitled';
             this.file = opts.file || null;
             this.dirtyDoc = false;
             this.floating = null;
             this.build();
             this.newDocument(reg('LastWidth', 800), reg('LastHeight', 600), { silent: true });
-            if (opts.image) void this.openUrl(opts.image, opts.name, opts.file);
+            if (opts.vfsFile) void this.openVfsFile(opts.vfsFile.id, opts.vfsFile.name, opts.vfsFile.path);
+            else if (opts.image) void this.openUrl(opts.image, opts.name, opts.file);
         }
 
         // ---- window ---------------------------------------------------------------------------
@@ -186,6 +196,8 @@
                             <div class="mp-tools" role="toolbar">${TOOLS.map(([id, name], i) => `<button type="button" class="mp-tool${id === this.tool ? ' is-on' : ''}" data-tool="${id}" title="${esc(name)}" style="--i:${i < 16 ? i : i - 16}"><span class="mp-tool-art${i >= 16 ? ' is-extra' : ''}"></span></button>`).join('')}</div>
                             <div class="mp-options"></div>
                         </div>
+                        <div class="mp-viewport">
+                        <div class="mp-ruler-corner"></div><canvas class="mp-ruler is-h"></canvas><canvas class="mp-ruler is-v"></canvas>
                         <div class="mp-workspace" tabindex="-1">
                             <div class="mp-stage">
                                 <canvas class="mp-view"></canvas>
@@ -195,6 +207,7 @@
                                 <span class="mp-handle is-e"></span><span class="mp-handle is-s"></span><span class="mp-handle is-se"></span>
                                 <span class="mp-brushcur" hidden></span>
                             </div>
+                        </div>
                         </div>
                         <div class="mp-dock"></div>
                     </div>
@@ -301,6 +314,150 @@
             if (old !== this.zoom) this.status(`Zoom: ${Math.round(this.zoom * 100)}%`);
             this.drawXf();
             if (P()) P().navBox(this);
+            this.drawRulers();
+        }
+
+        // ---- rulers, guides, snapping (Photoshop's View menu) --------------------------------------
+
+        /** Where picture x / y 0 is in the workspace's own pixels. */
+        stageOrigin() {
+            const ws = this.workspace.getBoundingClientRect();
+            const st = this.stage.getBoundingClientRect();
+            return { x: st.left - ws.left, y: st.top - ws.top };
+        }
+
+        /** The rulers: pixels at the zoom, ticks every 1/2/5 x 10^n, the pointer marked. */
+        drawRulers() {
+            if (!this.rulers) return;
+            const o = this.stageOrigin();
+            const z = this.zoom;
+            const steps = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000, 10000];
+            const major = steps.find((v) => v * z >= 50) || 10000;
+            let minor = major / (String(major).startsWith('25') ? 5 : 10);
+            if (minor * z < 4) minor = major / 2;
+            const draw = (canvas, horizontal) => {
+                const len = horizontal ? this.workspace.clientWidth : this.workspace.clientHeight;
+                const dpr = root.devicePixelRatio || 1;
+                const W = horizontal ? len : RULER;
+                const H = horizontal ? RULER : len;
+                canvas.width = Math.round(W * dpr);
+                canvas.height = Math.round(H * dpr);
+                canvas.style.width = `${W}px`;
+                canvas.style.height = `${H}px`;
+                const x = canvas.getContext('2d');
+                x.setTransform(dpr, 0, 0, dpr, 0, 0);
+                x.fillStyle = '#fff';
+                x.fillRect(0, 0, W, H);
+                x.fillStyle = '#000';
+                x.font = '9px Tahoma, sans-serif';
+                x.textBaseline = 'top';
+                // a tick across the ruler at `at`, `size` long from its inner edge
+                const tick = (at, size) => (horizontal ? x.fillRect(at, RULER - size, 1, size) : x.fillRect(RULER - size, at, size, 1));
+                const off = horizontal ? o.x : o.y;
+                const from = Math.floor(-off / z / minor) * minor;
+                const to = (len - off) / z;
+                for (let v = from; v <= to; v += minor) {
+                    const at = Math.floor(off + v * z);
+                    const isMajor = Math.abs(v / major - Math.round(v / major)) < 1e-6;
+                    tick(at, isMajor ? RULER : (Math.abs((v * 2) / major - Math.round((v * 2) / major)) < 1e-6 ? 7 : 4));
+                    if (!isMajor) continue;
+                    const label = String(Math.round(v));
+                    if (horizontal) x.fillText(label, at + 2, 1);
+                    // the vertical ruler stacks its digits (Photoshop)
+                    else label.split('').forEach((ch, k) => x.fillText(ch, 2, at + 2 + k * 9));
+                }
+                x.fillStyle = '#a0a0a0';
+                if (horizontal) x.fillRect(0, RULER - 1, W, 1); else x.fillRect(RULER - 1, 0, 1, H);
+                const lp = this.lastPointer;
+                if (lp) {
+                    x.fillStyle = '#000';
+                    const at = Math.floor(off + (horizontal ? lp.x : lp.y) * z);
+                    for (let k = 0; k < RULER; k += 2) (horizontal ? x.fillRect(at, k, 1, 1) : x.fillRect(k, at, 1, 1));
+                }
+            };
+            draw(this.el('.mp-ruler.is-h'), true);
+            draw(this.el('.mp-ruler.is-v'), false);
+        }
+
+        toggleRulers() {
+            this.rulers = !this.rulers;
+            setReg({ Rulers: this.rulers });
+            this.modal.classList.toggle('mp-rulers', this.rulers);
+            this.drawRulers();
+        }
+
+        /** Drag out of a ruler: a new guide, dropped on the picture's window. */
+        rulerDrag(ev, axis) {
+            if (!this.guidesShown) this.guidesShown = true;
+            ev.preventDefault();
+            const rc = ev.currentTarget;
+            rc.setPointerCapture(ev.pointerId);
+            const g = { axis, pos: 0 };
+            this.doc.guides.push(g);
+            const place = (e) => {
+                const p = this.docPoint(e);
+                g.pos = Math.round(axis === 'h' ? p.y : p.x);
+                this.drawAnts();
+                this.status(`${axis === 'h' ? 'Y' : 'X'}: ${g.pos} px`);
+            };
+            place(ev);
+            const move = (e) => place(e);
+            const up = (e) => {
+                rc.removeEventListener('pointermove', move);
+                rc.removeEventListener('pointerup', up);
+                const r = this.workspace.getBoundingClientRect();
+                const inside = e.clientX >= r.left && e.clientY >= r.top && e.clientX <= r.right && e.clientY <= r.bottom;
+                if (!inside) this.doc.guides.splice(this.doc.guides.indexOf(g), 1);
+                this.drawAnts();
+                this.status();
+            };
+            rc.addEventListener('pointermove', move);
+            rc.addEventListener('pointerup', up);
+        }
+
+        /** The guide within a few screen pixels of p, or -1. */
+        guideAt(p) {
+            const tol = 4 / this.zoom;
+            return this.doc.guides.findIndex((g) => Math.abs((g.axis === 'h' ? p.y : p.x) - g.pos) <= tol);
+        }
+
+        /** View > Snap: points within 6 screen pixels of a guide or the picture's edge go to it. */
+        snapPoint(p) {
+            const tol = 6 / this.zoom;
+            const xs = [0, this.doc.width];
+            const ys = [0, this.doc.height];
+            if (this.guidesShown) this.doc.guides.forEach((g) => (g.axis === 'h' ? ys : xs).push(g.pos));
+            const near = (v, list) => list.reduce((best, c) => (Math.abs(c - v) <= tol && (best === null || Math.abs(c - v) < Math.abs(best - v)) ? c : best), null);
+            const x = near(p.x, xs);
+            const y = near(p.y, ys);
+            return { x: x === null ? p.x : x, y: y === null ? p.y : y };
+        }
+
+        /** View > New Guide: a guide at an exact place. */
+        newGuideDialog() {
+            const V = root.vistaDialogTemplate;
+            if (!V) return;
+            const tpl = { t: 'New Guide', w: 170, h: 82, f: ['MS Shell Dlg', 8], c: [
+                [-1, 'B', 7, 7, 100, 42, 0x50000007, 'Orientation', 0],
+                [101, 'B', 14, 19, 80, 10, 0x50030009, '&Horizontal', 0],
+                [102, 'B', 14, 32, 80, 10, 0x50010009, '&Vertical', 0],
+                [-1, 'S', 7, 58, 34, 8, 0x50020000, '&Position:', 0],
+                [103, 'E', 44, 56, 40, 12, 0x50812080, '0', 0],
+                [-1, 'S', 87, 58, 14, 8, 0x50020000, 'px', 0],
+                [1, 'B', 113, 7, 50, 14, 0x50010001, 'OK', 0],
+                [2, 'B', 113, 25, 50, 14, 0x50010000, 'Cancel', 0]
+            ] };
+            V.openDialog({
+                id: 'mpNewGuide', tpl, owner: this.modal,
+                init: (ctx) => { ctx.set(102, true); },
+                ok: (ctx) => {
+                    const axis = ctx.get(101) ? 'h' : 'v';
+                    const pos = Math.round(Number(ctx.get(103)) || 0);
+                    this.doc.guides.push({ axis, pos });
+                    this.guidesShown = true;
+                    this.drawAnts();
+                }
+            });
         }
 
         /** View > Fit on Screen (Ctrl+0): the whole picture in the window. */
@@ -396,6 +553,10 @@
                 this.setZoom(this.zoom * (ev.deltaY < 0 ? 2 : 0.5), { x: p.x, y: p.y, cx: ev.clientX - r.left, cy: ev.clientY - r.top });
             }, { passive: false });
             m.addEventListener('keydown', (ev) => this.key(ev));
+            this.workspace.addEventListener('scroll', () => this.drawRulers(), { passive: true });
+            if (root.ResizeObserver) new ResizeObserver(() => this.drawRulers()).observe(this.workspace);
+            m.querySelectorAll('.mp-ruler').forEach((rc) => rc.addEventListener('pointerdown', (ev) => this.rulerDrag(ev, rc.classList.contains('is-h') ? 'h' : 'v')));
+            m.classList.toggle('mp-rulers', this.rulers);
             m.addEventListener('keyup', (ev) => {
                 if (ev.key === ' ' && this.spaceHand) { this.spaceHand = false; this.overlay.dataset.hand = ''; }
             });
@@ -410,11 +571,35 @@
         }
 
         pointer(kind, ev) {
-            const p = this.docPoint(ev);
+            const snap = (q) => (this.snapOn && SNAP_TOOLS.has(this.tool) && !this.xf ? this.snapPoint(q) : q);
+            const p = snap(this.docPoint(ev));
+            // the Move tool drags a guide it is over (Photoshop); off the picture onto a ruler deletes it
+            if (kind === 'down' && !this.xf && this.tool === 'move' && this.guidesShown && !this.guidesLocked && ev.button === 0) {
+                const g = this.guideAt(p);
+                if (g >= 0) { this.guideDrag = { i: g }; this.overlay.setPointerCapture(ev.pointerId); this.down = true; return; }
+            }
+            if (this.guideDrag) {
+                const g = this.doc.guides[this.guideDrag.i];
+                if (kind === 'move' && g) { g.pos = Math.round(g.axis === 'h' ? p.y : p.x); this.drawAnts(); this.status(`${g.axis === 'h' ? 'Y' : 'X'}: ${g.pos} px`); }
+                if (kind === 'up') {
+                    this.down = false;
+                    const r = this.workspace.getBoundingClientRect();
+                    if (g && (ev.clientX < r.left || ev.clientY < r.top)) this.doc.guides.splice(this.guideDrag.i, 1);
+                    this.guideDrag = null;
+                    this.drawAnts();
+                    this.status();
+                }
+                return;
+            }
+            if (kind === 'move' && this.tool === 'move' && !this.down && !this.xf) {
+                this.overlay.style.cursor = this.guidesShown && !this.guidesLocked && this.guideAt(p) >= 0
+                    ? (this.doc.guides[this.guideAt(p)].axis === 'h' ? 'ns-resize' : 'ew-resize') : '';
+            }
             if (kind === 'move') {
                 this.el('.mp-status-pos').textContent = p.x >= 0 && p.y >= 0 && p.x < this.doc.width && p.y < this.doc.height ? `${Math.floor(p.x)},${Math.floor(p.y)}` : '';
                 this.brushCursor(p);
                 if (P()) P().info(this, p);
+                if (this.rulers) this.drawRulers();
             }
             // Free Transform takes the pointer from every tool; Space pans (Photoshop)
             const t = this.xf ? this.tools.xform : (this.spaceHand || this.handDrag) && kind !== 'dbl' ? this.tools.hand : this.tools[this.tool];
@@ -428,7 +613,7 @@
                 if (t.down) t.down.call(this, p, ev);
             } else if (kind === 'move') {
                 const events = this.down && ev.getCoalescedEvents ? ev.getCoalescedEvents() : [ev];
-                if (t.move) events.forEach((e) => t.move.call(this, this.docPoint(e), e, this.down));
+                if (t.move) events.forEach((e) => t.move.call(this, snap(this.docPoint(e)), e, this.down));
             } else if (kind === 'up') {
                 if (!this.down) return;
                 this.down = false;
@@ -450,16 +635,18 @@
                 else if (alt && !shift && k === 'c') action = 'attributes';
                 else if (alt && !shift && k === 'i') action = 'stretch';
                 else if (alt && !shift && k === 'z') action = 'undo';
+                else if (alt && !shift && k === 'r') action = 'flip';
+                else if (alt && !shift && k === ';') action = 'guides-lock';
                 else if (alt) action = null;
                 else if (shift) {
                     action = {
                         n: 'layer-add', d: 'pro-reselect', i: 'pro-inverse', z: 'redo', j: 'layer-via-cut', e: 'layer-flatten',
-                        f: 'layer-flatten', u: 'adj-bw', g: 'adj-bw', l: 'pro-auto-tone', b: 'pro-auto-color', delete: 'layer-delete'
+                        f: 'layer-flatten', u: 'adj-bw', g: 'group-ungroup', l: 'pro-auto-tone', b: 'pro-auto-color', delete: 'layer-delete', ';': 'snap', ':': 'snap'
                     }[k] || null;
                 } else {
                     action = {
                         n: 'new', o: 'open', s: 'save', p: 'print', z: 'undo', y: 'redo', x: 'cut', c: 'copy', v: 'paste',
-                        a: 'select-all', d: 'pro-deselect', t: 'free-transform', r: 'flip', w: 'stretch', i: 'invert', g: 'grid', f: 'view-bitmap',
+                        a: 'select-all', d: 'pro-deselect', t: 'free-transform', r: 'rulers', w: 'stretch', i: 'invert', g: 'group-new', "'": 'grid', ';': 'guides-show', f: 'view-bitmap',
                         j: 'layer-via-copy', e: 'layer-merge', l: 'pro-levels', m: 'pro-curves', u: 'adj-hue', b: 'pro-color-balance',
                         0: 'zoom-fit', 1: 'zoom-actual', '=': 'zoom-in', '+': 'zoom-in', '-': 'zoom-out'
                     }[k] || null;
@@ -900,6 +1087,21 @@
                 html += `<rect class="mp-crop-edge" x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}"/>`;
                 html += this.handleMarks([[x0, y0], [(x0 + x1) / 2, y0], [x1, y0], [x1, (y0 + y1) / 2], [x1, y1], [(x0 + x1) / 2, y1], [x0, y1], [x0, (y0 + y1) / 2]]);
             }
+            if (this.guidesShown && this.doc.guides.length) {
+                // across the workspace round the picture too (Photoshop)
+                const far = Math.max(this.workspace.clientWidth, this.workspace.clientHeight) + 40;
+                const W2 = this.doc.width * z;
+                const H2 = this.doc.height * z;
+                // the window may sit at a fraction of a pixel: a guide lands on whole screen pixels
+                const box = this.ants.getBoundingClientRect();
+                const dpr = root.devicePixelRatio || 1;
+                const fx = (Math.round(box.left * dpr) - box.left * dpr) / dpr;
+                const fy = (Math.round(box.top * dpr) - box.top * dpr) / dpr;
+                const t = 1 / dpr;
+                html += this.doc.guides.map((g) => (g.axis === 'h'
+                    ? `<rect class="mp-guide" x="${-far}" y="${Math.round(g.pos * z) + fy}" width="${W2 + 2 * far}" height="${t}"/>`
+                    : `<rect class="mp-guide" x="${Math.round(g.pos * z) + fx}" y="${-far}" width="${t}" height="${H2 + 2 * far}"/>`)).join('');
+            }
             if (this.xf) {
                 const pts = this.xfCorners().map(([x, y]) => [x * z, y * z]);
                 html += `<path class="mp-xf-box" d="M${pts.map((q) => q.join(',')).join('L')}Z"/>`;
@@ -1335,6 +1537,27 @@
             }
         }
 
+        /** A VFS file: a Graphic Session Document, a Melaton Paint Image, or a picture. */
+        async openVfsFile(id, name, path) {
+            const res = await vfs().downloadFile(id);
+            const file = { id, name, path };
+            try {
+                if (/\.(gsd|mpi)$/i.test(name)) {
+                    const r = await fetch(res.downloadUrl, { credentials: 'same-origin' });
+                    const buf = await r.arrayBuffer();
+                    if (root.paintGsd && root.paintGsd.isGsd(buf)) {
+                        await root.paintGsd.apply(this, await root.paintGsd.decode(buf), { name, file });
+                        return;
+                    }
+                    await this.openMpi(new TextDecoder().decode(buf), name, file);
+                    return;
+                }
+                await this.openUrl(res.downloadUrl, name, file);
+            } catch (err) {
+                await this.message(`Paint cannot read ${name}.\n${(err && err.message) || ''}`);
+            }
+        }
+
         async openMpi(text, name, file) {
             const data = JSON.parse(text);
             this.newDocument(data.width, data.height, { file });
@@ -1394,16 +1617,11 @@
                     typeLabel: 'All Picture Files',
                     rejectMessage: 'Choose a picture',
                     acceptItem: (item) => !!item && (item.targetKind === 'image' || item.targetKind === 'scrap' || item.shortcutType === 'image'
-                        || (item.targetKind === 'user-file' && (/^image\//.test(item.mimeType || '') || /\.(png|jpe?g|gif|bmp|webp|mpi)$/i.test(item.name || '')))),
+                        || (item.targetKind === 'user-file' && (/^image\//.test(item.mimeType || '') || /\.(png|jpe?g|gif|bmp|webp|mpi|gsd)$/i.test(item.name || '')))),
                     async onOpen(item, folderPath) {
                         if (!await self.confirmDiscard()) return;
                         if (item.targetKind === 'user-file') {
-                            const res = await vfs().downloadFile(item.id);
-                            const file = { id: item.id, name: item.name, path: folderPath };
-                            if (/\.mpi$/i.test(item.name)) {
-                                const r = await fetch(res.downloadUrl, { credentials: 'same-origin' });
-                                await self.openMpi(await r.text(), item.name, file);
-                            } else await self.openUrl(res.downloadUrl, item.name, file);
+                            await self.openVfsFile(item.id, item.name, folderPath);
                         } else {
                             const name = item.previewImageFilename || item.targetId || (item.shortcutData && item.shortcutData.filename);
                             await self.openUrl(`/images/${encodeURIComponent(name)}`, item.name || name, null);
@@ -1414,6 +1632,7 @@
         }
 
         async encode(type) {
+            if (type === 'gsd') return root.paintGsd.encode(this);
             if (type === 'mpi') {
                 const layers = this.doc.layers.map((l) => ({
                     name: l.name, visible: l.visible, opacity: l.opacity, blend: l.blend, locked: l.locked, png: l.canvas.toDataURL('image/png'),
@@ -1429,7 +1648,20 @@
 
         typeFor(name) {
             const ext = (String(name).match(/\.([a-z0-9]+)$/i) || [])[1] || 'png';
-            return { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', bmp: 'image/bmp', webp: 'image/webp', mpi: 'mpi' }[ext.toLowerCase()] || 'image/png';
+            return { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', bmp: 'image/bmp', webp: 'image/webp', mpi: 'mpi', gsd: 'gsd' }[ext.toLowerCase()] || 'image/png';
+        }
+
+        mimeFor(type) {
+            if (type === 'gsd') return 'application/x-graphic-session';
+            if (type === 'mpi') return 'application/json';
+            return type;
+        }
+
+        /** Whether a flat picture file would lose anything (layers, masks, text, guides...). */
+        needsSession() {
+            const d = this.doc;
+            const l = d.layers[0];
+            return d.layers.length > 1 || !!(l.mask || l.styles || l.adjust || l.text) || d.guides.length > 0 || d.groups.length > 0;
         }
 
         async save() {
@@ -1439,7 +1671,7 @@
             try {
                 const type = this.typeFor(this.file.name);
                 const blob = await this.encode(type);
-                await vfs().replaceFile(this.file.id, await blobToBase64(blob), type === 'mpi' ? 'application/json' : type);
+                await vfs().replaceFile(this.file.id, await blobToBase64(blob), this.mimeFor(type));
                 this.dirtyDoc = false;
                 this.title();
                 return true;
@@ -1460,23 +1692,23 @@
                     startPath: (this.file && this.file.path) || (ws ? `/Workspaces/${ws}` : '/'),
                     host: {
                         title: 'Save As',
-                        typeLabel: 'PNG (*.png); JPEG (*.jpg); 24-bit Bitmap (*.bmp); WebP (*.webp); Melaton Paint Image, with layers (*.mpi)',
+                        typeLabel: 'Graphic Session Document, everything kept (*.gsd); PNG (*.png); JPEG (*.jpg); 24-bit Bitmap (*.bmp); WebP (*.webp); Melaton Paint Image (*.mpi)',
                         acceptType: 'user-file',
-                        suggestName: () => (self.file ? self.file.name : `${self.name === 'Untitled' ? 'untitled' : self.name}${self.doc.layers.length > 1 ? '.mpi' : '.png'}`),
+                        suggestName: () => (self.file ? self.file.name : `${self.name === 'Untitled' ? 'untitled' : self.name}${self.needsSession() ? '.gsd' : '.png'}`),
                         async onSave(info) {
                             let name = String(info.name || '').trim();
                             if (!name) return false;
-                            if (!/\.(png|jpe?g|bmp|webp|mpi)$/i.test(name)) name += '.png';
+                            if (!/\.(png|jpe?g|bmp|webp|mpi|gsd)$/i.test(name)) name += self.needsSession() ? '.gsd' : '.png';
                             const type = self.typeFor(name);
-                            if (type !== 'mpi' && self.doc.layers.length > 1) {
-                                const ok = await callGlobal('showConfirmationDialog', '<p>Saving in this format will flatten the image into one layer. Save anyway? To keep the layers, save as a Melaton Paint Image (*.mpi).</p>', [
+                            if (type !== 'mpi' && type !== 'gsd' && self.needsSession()) {
+                                const ok = await callGlobal('showConfirmationDialog', '<p>Saving in this format will flatten the image into one layer and drop its masks, text and guides. Save anyway? To keep everything, save as a Graphic Session Document (*.gsd).</p>', [
                                     { text: 'Flatten', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }
                                 ], null, { title: 'Paint', width: 400 });
                                 if (!ok) return false;
                             }
                             try {
                                 const blob = await self.encode(type);
-                                const res = await vfs().uploadFile(info.path || '/', await blobToBase64(blob), name, type === 'mpi' ? 'application/json' : type);
+                                const res = await vfs().uploadFile(info.path || '/', await blobToBase64(blob), name, self.mimeFor(type));
                                 const f = res && (res.file || res.entry || res);
                                 self.file = { id: (f && (f.id || f.fileId)) || null, name, path: info.path };
                                 self.name = name.replace(/\.[^.]+$/, '');
@@ -1595,6 +1827,13 @@
                     { text: 'Layers', subtext: 'F7', action: 'layers', showIndicator: true, checked: !!(root.paintLayers && root.paintLayers.isOpen(this)) },
                     { text: 'History', subtext: 'F8', action: 'history', showIndicator: true, checked: !!(root.paintLayers && root.paintLayers.historyOpen(this)) },
                     { text: 'Navigator', action: 'pro-navigator', showIndicator: true, checked: !!(P() && P().navOpen(this)) },
+                    { separator: true },
+                    { text: 'Rulers', subtext: 'Ctrl+R', action: 'rulers', showIndicator: true, checked: this.rulers },
+                    { text: 'Show Guides', subtext: 'Ctrl+;', action: 'guides-show', showIndicator: true, checked: this.guidesShown },
+                    { text: 'Lock Guides', subtext: 'Ctrl+Alt+;', action: 'guides-lock', showIndicator: true, checked: this.guidesLocked },
+                    { text: 'Snap', subtext: 'Ctrl+Shift+;', action: 'snap', showIndicator: true, checked: this.snapOn },
+                    { text: 'New Guide...', action: 'guides-new' },
+                    { text: 'Clear Guides', action: 'guides-clear', disabled: !this.doc.guides.length },
                     { text: 'Info', action: 'pro-info', showIndicator: true, checked: !!(P() && P().infoOpen(this)) },
                     { separator: true },
                     { text: 'Zoom', hasSubmenu: true, submenu: [
@@ -1607,13 +1846,13 @@
                         { text: 'Large Size', subtext: 'Ctrl+PgDn', action: 'zoom-large' },
                         { text: 'Custom...', action: 'zoom-custom' },
                         { separator: true },
-                        { text: 'Show Grid', subtext: 'Ctrl+G', action: 'grid', showIndicator: true, checked: this.grid, disabled: this.zoom < 4 },
+                        { text: 'Show Grid', subtext: "Ctrl+'", action: 'grid', showIndicator: true, checked: this.grid, disabled: this.zoom < 4 },
                         { text: 'Show Thumbnail', action: 'thumbnail', disabled: this.zoom <= 1 }
                     ] },
                     { text: 'View Bitmap', subtext: 'Ctrl+F', action: 'view-bitmap' }
                 ];
                 case 'image': return [
-                    { text: 'Flip/Rotate...', subtext: 'Ctrl+R', action: 'flip' },
+                    { text: 'Flip/Rotate...', subtext: 'Ctrl+Alt+R', action: 'flip' },
                     { text: 'Resize/Skew...', subtext: 'Ctrl+Alt+I', action: 'stretch' },
                     { text: 'Invert Colors', subtext: 'Ctrl+I', action: 'invert' },
                     { text: 'Attributes...', subtext: 'Ctrl+Alt+C', action: 'attributes' },
@@ -1676,6 +1915,12 @@
                     if (this.polygon && this.tools.polygon.finish) this.tools.polygon.finish.call(this);
                     return;
                 case 'free-transform': this.startTransform(); return;
+                case 'rulers': this.toggleRulers(); return;
+                case 'guides-show': this.guidesShown = !this.guidesShown; this.drawAnts(); return;
+                case 'guides-lock': this.guidesLocked = !this.guidesLocked; return;
+                case 'snap': this.snapOn = !this.snapOn; return;
+                case 'guides-new': this.newGuideDialog(); return;
+                case 'guides-clear': this.doc.guides = []; this.drawAnts(); return;
                 case 'xf-flip-h': case 'xf-flip-v': case 'xf-rot-cw': case 'xf-rot-ccw': case 'xf-rot-180': this.quickTransform(a); return;
                 case 'zoom-in': this.setZoom(this.zoom * 2); return;
                 case 'zoom-out': this.setZoom(this.zoom / 2); return;
