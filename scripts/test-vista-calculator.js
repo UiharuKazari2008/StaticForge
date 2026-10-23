@@ -41,8 +41,11 @@ assert.ok(js.includes("b.contains('desktop-mode') && !b.contains('windows-classi
 assert.ok(js.includes("attributeFilter: ['class']"), 'the structure follows body class changes');
 assert.ok(js.includes('DESKTOP_CALCULATOR_VISTA_WIDTHS = { standard: 270,'), "Standard is calc.exe's 270 px window");
 assert.ok(js.includes('modal.style.width = modal.dataset.windowDefaultWidth + \'px\';'), 'the fixed width is applied per mode');
-assert.ok(js.includes('const hug = content ? modal.offsetHeight - content.offsetHeight + content.scrollHeight : modal.offsetHeight;'), "the hug height is the client's real extent (the last key row included)");
-assert.ok(js.includes("const stretching = fixed ? '.modal-body, .form-col' :"), 'a fixed layout keeps its key sizes while measuring');
+// the window-hug measure is a shared helper now (desktop-apps/desktopAppWindow.js, #642)
+const appWindow = read('public/scripts/comp/desktop-apps/desktopAppWindow.js');
+assert.ok(appWindow.includes('const hug = content ? modal.offsetHeight - content.offsetHeight + content.scrollHeight : modal.offsetHeight;'), "the hug height is the client's real extent (the last key row included)");
+assert.ok(appWindow.includes("const stretching = fixed ? '.modal-body, .form-col' :"), 'a fixed layout keeps its key sizes while measuring');
+assert.ok(js.includes('desktopAppApplyContentHeight('), 'the calculator uses the shared window-hug helper');
 assert.ok(js.includes('openModal(modal);\n        // the fixed-size window re-measures once visible') && js.includes('if (desktopCalcEls.vista) calcRefitHeight();'), 'the window re-measures once it is visible');
 assert.ok(css.includes(`${G} #desktopCalculatorModal .modal-body {\n    flex: none;`), 'the client hugs the keypad');
 

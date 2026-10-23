@@ -152,7 +152,6 @@
         bracket_gen: 'bracket-generation',
         planet_switcher: 'planet-switcher',
         media_player: 'media-player',
-        alarm: 'alarm',
         remote_desktop: 'remote-desktop',
         remote_desktop_connection: 'remote-desktop-connection',
         emotion: 'emotion',
@@ -186,7 +185,7 @@
         characterDbModal: 'character-db',
         logViewerModal: 'event-viewer',
         melatonControlPanelModal: 'control-panel',
-        desktopTimerModal: 'alarm',
+        // desktopTimerModal registers itself (apps/alarm, #642: programFaults.registerProgram)
         // desktopCalculatorModal registers itself (apps/calculator, #642: programFaults.registerProgram)
         runModal: 'run'
     };

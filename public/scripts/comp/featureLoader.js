@@ -70,7 +70,7 @@ const FEATURE_MANIFEST = {
     explorer: {
         styles: ['css/explorer.css', 'css/vista-file-progress.css', 'css/vista-7zip.css', 'css/melaton-apps.css'],
         // vfsClient / vfsVirtualGrid / routers stay sync — desktop + inbound use them without Cartograph
-        scripts: ['scripts/comp/explorerVistaChrome.js', 'scripts/comp/explorerComputerView.js', 'scripts/comp/fileOperationProgress.js', 'scripts/comp/melatonApps.js', 'scripts/comp/vfsPrograms.js', 'scripts/comp/explorerArchive.js', 'scripts/comp/explorerApplet.js']
+        scripts: ['scripts/comp/explorerVistaChrome.js', 'scripts/comp/explorerComputerView.js', 'scripts/comp/fileOperationProgress.js', 'scripts/comp/vfsPrograms.js', 'scripts/comp/explorerArchive.js', 'scripts/comp/explorerApplet.js']
     },
     // 7-Zip's dialogs and progress window (explorerArchive.js): Taskbar Properties' Vista controls (tbp-*)
     seven_zip_dialogs: {
@@ -133,9 +133,8 @@ const FEATURE_MANIFEST = {
         styles: ['css/desktop-apps/mediaPlayer.css'],
         scripts: ['scripts/comp/desktop-apps/mediaPlayer.js']
     },
-    alarm: {
-        scripts: ['scripts/comp/desktop-apps/alarmPomodoro.js']
-    },
+    // Alarm Clock moved to a Melaton app package (apps/alarm, Yozora #642):
+    // melatonApps.launch({ packageId: 'alarm' }) (args { mode: 'pomodoro' } for the Pomodoro tab).
     remote_desktop: {
         scripts: ['scripts/comp/desktop-apps/guacRemote.js']
     },

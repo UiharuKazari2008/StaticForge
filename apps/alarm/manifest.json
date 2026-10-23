@@ -1,0 +1,11 @@
+{
+    "id": "alarm",
+    "version": "1.0.0",
+    "title": "Alarm Clock",
+    "publisher": "Xyridian",
+    "format": "msaz",
+    "type": "native",
+    "launchId": "alarm",
+    "icon": "assets/alarm.png",
+    "client": { "entry": "client/alarm.js" }
+}

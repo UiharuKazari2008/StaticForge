@@ -232,7 +232,8 @@ const manifest = (over) => Object.assign({
     assert.ok(read('modules/websocket.js').includes("require('./ws/handlers/245-melatonAppsHandler').onClientClosed(ws);"), 'a closed tab ends its apps');
     assert.ok(read('web_server.js').includes("app.use('/melaton-apps', authMiddleware,"), 'file route behind auth');
     assert.ok(read('public/sw.js').includes("url.pathname.startsWith('/melaton-apps/')"), 'the service worker passes app files through');
-    assert.ok(read('public/scripts/comp/featureLoader.js').includes("'scripts/comp/melatonApps.js', 'scripts/comp/vfsPrograms.js'"), 'client runtime loads with Explorer');
+    assert.ok(read('public/app.html').includes('scripts/comp/melatonApps.js'), 'the client runtime loads globally (built-in apps launch from the Start menu, #642)');
+    assert.ok(read('public/scripts/comp/featureLoader.js').includes("'scripts/comp/vfsPrograms.js', 'scripts/comp/explorerArchive.js'"), 'vfsPrograms still loads with Explorer');
     for (const f of ['modules/melatonApps/runner.js', 'modules/melatonApps/sandboxPreload.js', 'modules/melatonApps/sandboxBootstrap.js', 'modules/melatonApps/static.js', 'modules/ws/handlers/245-melatonAppsHandler.js', 'public/scripts/comp/melatonApps.js', 'public/scripts/comp/vfsPrograms.js', 'apps/soratan/client/soratan.js', 'apps/soratan/server/main.js']) {
         assert.ok(!/[–—‘’“”…×− ]/.test(read(f)), `${f}: keyboard characters only`);
     }

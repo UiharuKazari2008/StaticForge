@@ -651,3 +651,33 @@ function openDesktopPomodoro() {
     desktopTimerSelect('pomodoro');
     desktopUtilityReveal(modal);
 }
+
+// ---- Melaton app (Yozora #642) ------------------------------------------------------------------
+// Alarm Clock is a system package (apps/alarm) loaded on demand from /melaton-apps/alarm/. It holds
+// one window (desktopTimerModal) with an Alarm and a Pomodoro tab; the pomodoro launchable opens the
+// same package with args { mode: 'pomodoro' }. start(app) ties the singleton window to the instance.
+let alarmMelatonApp = null;
+
+function alarmStart(app) {
+    const mode = app.args && app.args.mode === 'pomodoro' ? 'pomodoro' : 'alarm';
+    if (mode === 'pomodoro') openDesktopPomodoro(); else openDesktopAlarm();
+    if (alarmMelatonApp) { app.exit(); return; } // already running: switched tab and focused it
+    alarmMelatonApp = app;
+    document.addEventListener('staticforge:modal-lifecycle', (e) => {
+        if (e && e.detail && e.detail.id === 'desktopTimerModal' && e.detail.type === 'closed') app.exit();
+    }, { signal: app.signal });
+    app.onExit(() => {
+        alarmMelatonApp = null;
+        const modal = document.getElementById('desktopTimerModal');
+        if (modal && !modal.classList.contains('hidden') && typeof closeModal === 'function') closeModal(modal);
+    });
+    if (window.programFaults && programFaults.registerProgram) {
+        programFaults.registerProgram('desktopTimerModal', {
+            name: 'Alarm Clock',
+            terminate: () => app.exit(),
+            relaunch: () => melatonApps.launch({ packageId: 'alarm' })
+        });
+    }
+}
+
+if (typeof melatonApps !== 'undefined') melatonApps.define('alarm', alarmStart);
