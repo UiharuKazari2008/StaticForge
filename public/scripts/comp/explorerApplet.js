@@ -1742,19 +1742,17 @@ class ExplorerApplet {
                     );
                     return;
                 }
-                case 'explorer-bulk-download':
-                    images.forEach((image) => downloadImage(image));
-                    if (images.length > 1) {
-                        showGlassToast(
-                            'success',
-                            null,
-                            `Downloading ${images.length} image(s)...`,
-                            false,
-                            3000,
-                            '<i class="fas fa-download"></i>'
-                        );
+                case 'explorer-bulk-download': {
+                    if (images.length === 1) {
+                        downloadImage(images[0]);
+                        return;
                     }
+                    // galleryDownloadImages: public/scripts/comp/bulkOperationsManager.js (Vista's dialog, "Downloading")
+                    const first = items[0];
+                    await galleryDownloadImages(images, this._progressPlace(
+                        this._imagePlacePath(this._owningWorkspaceId(first), first?.targetKind === 'scrap')));
                     return;
+                }
                 case 'explorer-bulk-sequenzia': {
                     const confirmed = await showConfirmationDialog(
                         `Are you sure you want to send ${count} selected image(s) to Sequenzia? This will move the images and delete them from the gallery.`,
@@ -4452,6 +4450,8 @@ class ExplorerApplet {
                 return;
             }
             if (item.targetKind === 'user-file') {
+                // a program the desktop has a port of runs it (vfsPrograms.js: SoraTan.exe)
+                if (window.vfsPrograms && await window.vfsPrograms.open(item)) return;
                 if ((item.mimeType || '').startsWith('text/')) {
                     await this.downloadSelectionItem(item);
                 } else if ((item.mimeType || '').startsWith('image/') && item.previewUrl) {

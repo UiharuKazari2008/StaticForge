@@ -66,7 +66,7 @@ const FEATURE_MANIFEST = {
     explorer: {
         styles: ['css/explorer.css', 'css/vista-file-progress.css', 'css/vista-7zip.css'],
         // vfsClient / vfsVirtualGrid / routers stay sync — desktop + inbound use them without Cartograph
-        scripts: ['scripts/comp/explorerVistaChrome.js', 'scripts/comp/explorerComputerView.js', 'scripts/comp/fileOperationProgress.js', 'scripts/comp/explorerArchive.js', 'scripts/comp/explorerApplet.js']
+        scripts: ['scripts/comp/explorerVistaChrome.js', 'scripts/comp/explorerComputerView.js', 'scripts/comp/fileOperationProgress.js', 'scripts/comp/vfsPrograms.js', 'scripts/comp/explorerArchive.js', 'scripts/comp/explorerApplet.js']
     },
     // 7-Zip's dialogs and progress window (explorerArchive.js): Taskbar Properties' Vista controls (tbp-*)
     seven_zip_dialogs: {
@@ -102,6 +102,11 @@ const FEATURE_MANIFEST = {
     calculator: {
         styles: ['css/vista-calculator.css'],
         scripts: ['scripts/comp/desktop-apps/calculator.js']
+    },
+    // SoraTan.exe from the VFS (vfsPrograms.js): Nanami's desktop toy
+    soratan: {
+        styles: ['css/desktop-apps/soraTan.css'],
+        scripts: ['scripts/comp/desktop-apps/soraTan.js']
     },
     media_player: {
         styles: ['css/desktop-apps/mediaPlayer.css'],
@@ -245,11 +250,21 @@ const FEATURE_MANIFEST = {
         styles: ['css/taskbar-properties.css'],
         scripts: ['scripts/comp/taskbarProperties.js']
     },
+    // Vista's own dialog templates and their renderer (Yozora #632): Control Panel's sheets,
+    // Notepad's and Paint's dialogs draw from these
+    vista_dialog_templates: {
+        styles: ['css/taskbar-properties.css', 'css/vista-dialog-template.css'],
+        scripts: ['scripts/comp/vistaDialogTemplates.js', 'scripts/comp/vistaDialogTemplate.js']
+    },
     control_panel: {
+        depends: ['vista_dialog_templates'],
         // Remote Access Properties draws with Taskbar Properties' Vista controls (tbp-*)
         styles: ['css/desktop-settings.css', 'css/vista-defender.css', 'css/cpl-system.css',
-            'css/taskbar-properties.css', 'css/remote-access-properties.css', 'css/cpl-personalization.css'],
+            'css/taskbar-properties.css', 'css/remote-access-properties.css', 'css/cpl-personalization.css',
+            'css/cpl-catalog.css', 'css/cpl-dialogs.css', 'css/cpl-pages.css'],
         scripts: [
+            // Vista's items, categories and task links (Yozora #632), read by melatonControlPanel.js
+            'scripts/comp/cplCatalog.js',
             'scripts/comp/melatonControlPanel.js',
             'scripts/comp/experienceIndex.js',
             'scripts/comp/cplSystem.js',
@@ -265,7 +280,13 @@ const FEATURE_MANIFEST = {
             'scripts/comp/cplDesktopBackground.js',
             // Personalization's hub and Window Color page, then the Screen Saver and Sound dialogs
             'scripts/comp/cplPersonalization.js',
-            'scripts/comp/personalizationDialogs.js'
+            'scripts/comp/personalizationDialogs.js',
+            // Vista's other items: the property sheets, then the pages (Yozora #632)
+            'scripts/comp/cplDialogs.js',
+            'scripts/comp/cplDialogs2.js',
+            'scripts/comp/cplPages.js',
+            'scripts/comp/cplPages2.js',
+            'scripts/comp/cplPages3.js'
         ]
     }
 };

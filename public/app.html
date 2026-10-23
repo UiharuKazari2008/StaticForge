@@ -384,6 +384,7 @@
     <link rel="stylesheet" href="/css/desktop-apps/dovecote.css">
     <!-- Terminal: global .hidden — must stay last in the stylesheet stack -->
     <link rel="stylesheet" href="/css/desktop-cursors.css">
+    <link rel="stylesheet" href="/css/melaton-accessibility.css">
     <link rel="stylesheet" href="/css/aero-glass.css">
     <link rel="stylesheet" href="/css/vista-glass-controls.css">
     <link rel="stylesheet" href="/css/vista-director.css">
@@ -7947,6 +7948,10 @@ Examples:
                 <div class="taskbar-tray-icon hidden" id="vistaSidebarTrayIcon" title="Melaton Sidebar">
                     <i class="fas fa-sidebar-flip"></i>
                 </div>
+                <!-- SoraTan, while she runs (desktop-apps/soraTan.js soraTanSyncTray); the exe's 16 px clover -->
+                <div class="taskbar-tray-icon soratan-tray-icon hidden" id="soraTanTrayIcon" title="SoraTan">
+                    <img src="/static_images/soratan/soratan-16.png" alt="" width="16" height="16">
+                </div>
                 <!-- Search Indexing Indicator -->
                 <div class="search-indexing-indicator taskbar-tray-icon hidden" id="searchIndexingIndicator"
                     title="No Status Available">
@@ -8021,6 +8026,12 @@ Examples:
     <script src="scripts/comp/popoverManager.js"></script>
     <script src="scripts/comp/contextMenu.js"></script>
     <script src="scripts/comp/windowGeometry.js"></script>
+    <!-- Melaton's registry: Control Panel settings kept in userGlobalSettings.registry (#632) -->
+    <script src="scripts/comp/melatonRegistry.js"></script>
+    <!-- Mouse Properties > Pointers: Vista's Aero cursor scheme from the registry -->
+    <script src="scripts/comp/melatonPointerScheme.js"></script>
+    <!-- Ease of Access Center: High Contrast, focus, animations, access keys, Narrator -->
+    <script src="scripts/comp/melatonAccessibility.js"></script>
     <script src="scripts/comp/modalUtils.js"></script>
     <!-- Taskbar and Start Menu Properties settings, Quick Launch, taskbar menus; the clock tooltip and flyout -->
     <!-- The two accounts' names and pictures (User Accounts), for every place that shows them -->
