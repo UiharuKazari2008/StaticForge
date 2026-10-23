@@ -727,7 +727,9 @@
                 }
                 return { id: l.id, name: l.name, canvas: c, visible: l.visible, opacity: l.opacity, blend: l.blend, locked: l.locked, mask, maskOn: l.mask ? l.mask.enabled : false, styles: l.styles ? JSON.parse(JSON.stringify(l.styles)) : null, adjust: l.adjust ? JSON.parse(JSON.stringify(l.adjust)) : null, text: l.text ? { ...l.text } : null, groupId: l.groupId, isBackground: !!l.isBackground, clip: !!l.clip, vector: l.vector ? JSON.parse(JSON.stringify(l.vector)) : null, smart: l.smart ? { src: l.smart.src, xf: { ...l.smart.xf }, filters: l.smart.filters.slice() } : null };
             });
-            return { width: this.width, height: this.height, active: this.active, editMask: !!this.editMask, layers, groups: JSON.parse(JSON.stringify(this.groups)), bytes };
+            // guides and paths are numbers on the canvas: a resize or crop moves them, so they come back too
+            const keep = { guides: this.guides || [], paths: this.paths || [], workPath: this.workPath || null };
+            return { width: this.width, height: this.height, active: this.active, editMask: !!this.editMask, layers, groups: JSON.parse(JSON.stringify(this.groups)), extras: JSON.parse(JSON.stringify(keep)), bytes };
         }
 
         restore(s) {
@@ -759,6 +761,7 @@
             this.active = Math.min(s.active, this.layers.length - 1);
             this.editMask = !!(s.editMask && this.layers[this.active].mask);
             this.groups = s.groups ? JSON.parse(JSON.stringify(s.groups)) : [];
+            if (s.extras) { const x = JSON.parse(JSON.stringify(s.extras)); this.guides = x.guides; this.paths = x.paths; this.workPath = x.workPath; }
             this.emit('resize');
             this.markDirty();
             this.emit('layers');
@@ -857,6 +860,24 @@
                         l.setMaskCanvas(mc, l.mask.enabled);
                     }
                 });
+                // what is kept as numbers moves (or scales) with the pixels: Smart Objects, shapes,
+                // type, guides and paths
+                const kx = opts.scale ? w / this.width : 1;
+                const ky = opts.scale ? h / this.height : 1;
+                const dx = opts.scale ? 0 : Math.round((w - this.width) * ax);
+                const dy = opts.scale ? 0 : Math.round((h - this.height) * ay);
+                const mapXY = (x, y) => [x * kx + dx, y * ky + dy];
+                const mapPath = (path) => (path ? path.subs : []).forEach((sub) => sub.pts.forEach((q) => {
+                    [q.x, q.y] = mapXY(q.x, q.y); [q.ix, q.iy] = mapXY(q.ix, q.iy); [q.ox, q.oy] = mapXY(q.ox, q.oy);
+                }));
+                this.layers.forEach((l) => {
+                    if (l.smart) { const t = l.smart.xf; [t.cx, t.cy] = mapXY(t.cx, t.cy); t.w *= kx; t.h *= ky; }
+                    if (l.vector) mapPath(l.vector.path);
+                    if (l.text && !opts.scale) { l.text.x += dx; l.text.y += dy; }
+                });
+                (this.guides || []).forEach((g) => { g.pos = g.axis === 'h' ? g.pos * ky + dy : g.pos * kx + dx; });
+                mapPath(this.workPath);
+                (this.paths || []).forEach((sp) => mapPath(sp.path));
                 this.width = w;
                 this.height = h;
                 this.selection = null;

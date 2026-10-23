@@ -71,13 +71,14 @@
         ['pathselect', 'Path Selection', 'Drags a whole path or subpath.'],
         ['directselect', 'Direct Selection', 'Drags one anchor point or handle of a path.'],
         ['camove', 'Content-Aware Move', 'Drag a selection: it moves, and the picture fills where it was.'],
-        ['patch', 'Patch', 'Drag a selection onto good pixels: they patch it, matched to its colours.']
+        ['patch', 'Patch', 'Drag a selection onto good pixels: they patch it, matched to its colours.'],
+        ['sampler', 'Color Sampler', 'Click to keep up to four points whose colours the Info window shows. Alt+click removes one.']
     ];
     const PATH_TOOLS = new Set(['pen', 'pathselect', 'directselect']);
     const VECTOR_BAR = new Set(['pen', 'pathselect', 'directselect', 'rect', 'ellipse', 'roundrect', 'line', 'move']);
     // Photoshop's tool keys; Shift with the key steps through its group
     const TOOL_KEYS = {
-        v: ['move'], m: ['select', 'ellipseselect'], l: ['freeselect', 'polylasso'], w: ['wand'], c: ['crop'], i: ['picker'],
+        v: ['move'], m: ['select', 'ellipseselect'], l: ['freeselect', 'polylasso'], w: ['wand'], c: ['crop'], i: ['picker', 'sampler'],
         j: ['heal', 'patch', 'camove'], b: ['brush', 'pencil', 'airbrush'], s: ['clone'], e: ['eraser'], g: ['gradient', 'fill'], t: ['text', 'vtext', 'textmask', 'vtextmask'],
         u: ['rect', 'roundrect', 'ellipse', 'polygon', 'line', 'curve'], z: ['magnifier'], h: ['hand'], o: ['dodge', 'burn', 'sponge'], r: ['blur', 'smudge'],
         p: ['pen'], a: ['pathselect', 'directselect']
@@ -253,6 +254,8 @@
         }
 
         makeChecker() {
+            // Edit > Preferences' size and colours (paintPrefs.js)
+            if (root.paintPrefs) return root.paintPrefs.checker(this);
             const c = C().makeCanvas(16, 16);
             const x = c.getContext('2d');
             x.fillStyle = '#ffffff'; x.fillRect(0, 0, 16, 16);
@@ -452,6 +455,7 @@
             const xs = [0, this.doc.width];
             const ys = [0, this.doc.height];
             if (this.guidesShown) this.doc.guides.forEach((g) => (g.axis === 'h' ? ys : xs).push(g.pos));
+            if (root.paintPrefs) root.paintPrefs.snap(this, p, xs, ys);
             const near = (v, list) => list.reduce((best, c) => (Math.abs(c - v) <= tol && (best === null || Math.abs(c - v) < Math.abs(best - v)) ? c : best), null);
             const x = near(p.x, xs);
             const y = near(p.y, ys);
@@ -568,6 +572,7 @@
                 const qm = this.doc.quickMask;
                 if (r) this.doc.composite(this.vctx, r, { checker: this.checker, overlay: qm ? null : this.strokeOverlay || null });
                 if (r && qm) this.drawQuickMask(r);
+                if (r && root.paintPrefs) root.paintPrefs.tick(this);
                 if (root.paintLayers) root.paintLayers.thumbs(this);
                 if (P()) P().navRefresh(this);
             });
@@ -760,6 +765,7 @@
                 else if (alt && !shift && k === 'z') action = 'undo';
                 else if (alt && !shift && k === 'r') action = 'flip';
                 else if (alt && !shift && k === 'g') action = 'layer-clip';
+                else if (alt && !shift && k === "'") action = 'doc-grid';
                 else if (alt && !shift && k === ';') action = 'guides-lock';
                 else if (alt) action = null;
                 else if (shift) {
@@ -769,7 +775,7 @@
                     }[k] || null;
                 } else {
                     action = {
-                        n: 'new', o: 'open', s: 'save', p: 'print', z: 'undo', y: 'redo', x: 'cut', c: 'copy', v: 'paste',
+                        n: 'new', o: 'open', s: 'save', k: 'preferences', p: 'print', z: 'undo', y: 'redo', x: 'cut', c: 'copy', v: 'paste',
                         a: 'select-all', d: 'pro-deselect', t: 'free-transform', r: 'rulers', w: 'stretch', i: 'invert', g: 'group-new', "'": 'grid', ';': 'guides-show', f: 'view-bitmap',
                         j: 'layer-via-copy', e: 'layer-merge', l: 'pro-levels', m: 'pro-curves', u: 'adj-hue', b: 'pro-color-balance',
                         0: 'zoom-fit', 1: 'zoom-actual', '=': 'zoom-in', '+': 'zoom-in', '-': 'zoom-out'
@@ -926,7 +932,9 @@
             const cur = this.el('.mp-brushcur');
             const at = p || this.lastPointer;
             const size = this.toolDiameter() * this.zoom;
-            if (!at || !OUTLINE_TOOLS.has(this.tool) || this.xf || this.spaceHand || size < 6) { cur.hidden = true; return; }
+            // Preferences' Precise cursor: the crosshair alone, no brush outline
+            const precise = this.modal.classList.contains('mp-precise-cursor');
+            if (!at || !OUTLINE_TOOLS.has(this.tool) || this.xf || this.spaceHand || size < 6 || precise) { cur.hidden = true; return; }
             cur.hidden = false;
             cur.classList.toggle('is-square', this.tool === 'eraser');
             cur.style.width = `${size}px`;
@@ -1337,6 +1345,7 @@
                 html += this.handleMarks([...pts, ...mids]);
                 html += `<circle class="mp-xf-center" cx="${this.xf.cx * z}" cy="${this.xf.cy * z}" r="3"/>`;
             }
+            if (root.paintPrefs) html += root.paintPrefs.svg(this, z);
             if (root.paintPath && !this.xf && !this.warp) html += root.paintPath.svg(this, z);
             if (root.paintWarp && this.warp) html += root.paintWarp.svg(this, z);
             svg.innerHTML = html;
@@ -2169,6 +2178,7 @@
                 case 'file': return [
                     { text: 'New', subtext: 'Ctrl+N', action: 'new' },
                     { text: 'Open...', subtext: 'Ctrl+O', action: 'open' },
+                    { text: 'Open Recent', hasSubmenu: true, disabled: !root.paintPrefs, submenu: root.paintPrefs ? root.paintPrefs.recentMenu() : [] },
                     { text: 'Open from Gallery...', action: 'open-gallery' },
                     { text: 'Place Embedded...', action: 'place-embedded', disabled: !root.paintSmart },
                     { text: 'Place from Gallery...', action: 'place-gallery', disabled: !root.paintGenerate },
@@ -2201,6 +2211,8 @@
                     { text: 'Stroke...', action: 'pro-stroke', disabled: !this.doc.selection },
                     { text: 'Define Brush Preset...', action: 'brush-define', disabled: !root.paintBrush },
                     { text: 'New Snapshot', action: 'history-snapshot', disabled: !root.paintComps },
+                    { separator: true },
+                    { text: 'Preferences...', subtext: 'Ctrl+K', action: 'preferences', disabled: !root.paintPrefs },
                     { separator: true },
                     { text: 'Free Transform', subtext: 'Ctrl+T', action: 'free-transform' },
                     { text: 'Transform', hasSubmenu: true, submenu: [
@@ -2253,6 +2265,7 @@
                         { text: 'Custom...', action: 'zoom-custom' },
                         { separator: true },
                         { text: 'Show Grid', subtext: "Ctrl+'", action: 'grid', showIndicator: true, checked: this.grid, disabled: this.zoom < 4 },
+                    { text: 'Show Document Grid', subtext: "Ctrl+Alt+'", action: 'doc-grid', showIndicator: true, checked: !!this.docGrid, disabled: !root.paintPrefs },
                         { text: 'Show Thumbnail', action: 'thumbnail', disabled: this.zoom <= 1 }
                     ] },
                     { text: 'View Bitmap', subtext: 'Ctrl+F', action: 'view-bitmap' }
@@ -2265,6 +2278,7 @@
                     { text: 'Clear Image', action: 'clear' },
                     { text: 'Crop to Selection', action: 'crop', disabled: !sel },
                     { text: 'Generative Expand...', action: 'generative-expand', disabled: !root.paintGenerate },
+                    { text: 'Canvas Size...', action: 'canvas-size', disabled: !root.paintPrefs },
                     { text: 'Trim Transparent Pixels', action: 'trim' },
                     { text: 'Duplicate...', action: 'duplicate' },
                     { text: 'Draw Opaque', action: 'opaque', showIndicator: true, checked: !this.opt.transparent }
@@ -2387,6 +2401,7 @@
                     if (root.paintWarp && root.paintWarp.action(this, a)) return;
                     if (root.paintActions && root.paintActions.action(this, a)) return;
                     if (root.paintGenerate && root.paintGenerate.action(this, a)) return;
+                    if (root.paintPrefs && root.paintPrefs.action(this, a)) return;
                     if (P() && P().action(this, a)) return;
                     if (root.paintColor && root.paintColor.action(this, a)) return;
                     break;

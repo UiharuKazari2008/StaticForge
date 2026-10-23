@@ -1436,7 +1436,7 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
 }
 
 .mp-client .mp-ants .mp-guide {
-    fill: #00e5ff;
+    fill: var(--mp-guide-color, #00e5ff);
     stroke: none;
     shape-rendering: crispEdges;
 }
@@ -2667,4 +2667,96 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
 .vdt-window .mp-gal-item.is-on {
     border-color: #7da2ce !important;
     background: #cce4f7 !important;
+}
+
+/* the document grid and color samplers (#632) */
+.mp-client .mp-ants .mp-docgrid {
+    fill: none;
+    stroke-width: 1;
+    opacity: 0.85;
+    shape-rendering: crispEdges;
+}
+
+.mp-client .mp-ants .mp-docgrid.is-minor {
+    stroke-dasharray: 2 2;
+    opacity: 0.5;
+}
+
+.mp-client .mp-ants .mp-sampler circle,
+.mp-client .mp-ants .mp-sampler path {
+    fill: none;
+    stroke: #000;
+    stroke-width: 1;
+}
+
+.mp-client .mp-ants .mp-sampler text {
+    fill: #000;
+    stroke: #fff;
+    stroke-width: 2px;
+    paint-order: stroke;
+    font: bold 10px Tahoma, sans-serif;
+}
+
+.mp-client .mp-info-samplers {
+    padding: 2px 6px 4px;
+    border-top: 1px solid #d0d0d0;
+    font: 11px Tahoma, "Segoe UI", sans-serif;
+}
+
+.mp-client .mp-info-samplers div {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    height: 16px;
+}
+
+.mp-client .mp-info-samplers .mp-info-sw {
+    width: 12px;
+    height: 12px;
+    border: 1px solid #808080;
+}
+
+.mp-window.mp-precise-cursor .mp-client .mp-overlay,
+.mp-window.mp-precise-cursor .mp-client .mp-overlay[data-tool] {
+    cursor: crosshair;
+}
+
+/* Canvas Size's anchor: nine buttons, Photoshop's arrows pointing away from the one chosen */
+.vdt-window .mp-anchor {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2px;
+    width: 100%;
+    height: 100%;
+}
+
+.vdt-window .mp-anchor button {
+    min-width: 0 !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    border: 1px solid #a0a0a0 !important;
+    border-image: none !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+}
+
+.vdt-window .mp-anchor button::before,
+.vdt-window .mp-anchor button::after {
+    content: none !important;
+}
+
+.vdt-window .mp-anchor button.is-dot {
+    background: radial-gradient(circle, #333 0 3px, #fff 3.5px) !important;
+}
+
+.vdt-window .mp-anchor button i {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.vdt-window .mp-anchor button.is-arrow i {
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12'%3E%3Cpath d='M2 6h7M6 3l3 3-3 3' fill='none' stroke='%23333' stroke-width='1.4'/%3E%3C/svg%3E") center no-repeat;
+    rotate: var(--r);
 }

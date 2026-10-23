@@ -87,7 +87,7 @@
     async function snapshotOut(out, s) {
         const layers = [];
         for (const sl of s.layers) layers.push(await layerOut(out, sl, sl.canvas, sl.mask, sl.maskOn));
-        return { width: s.width, height: s.height, active: s.active, editMask: !!s.editMask, groups: s.groups || [], layers };
+        return { width: s.width, height: s.height, active: s.active, editMask: !!s.editMask, groups: s.groups || [], extras: s.extras || undefined, layers };
     }
 
     async function encode(w, opts = {}) {
@@ -254,7 +254,7 @@
                 mask, maskOn: sl.mask ? sl.mask.enabled !== false : false, styles: sl.styles || null, adjust: sl.adjust || null, text: sl.text || null, groupId: sl.groupId || null, isBackground: !!sl.isBackground,
                 clip: !!sl.clip, smart: await smartIn(state, sl.smart), vector: sl.vector || null });
         }
-        return { width: s.width, height: s.height, active: s.active, editMask: !!s.editMask, groups: s.groups || [], layers, bytes };
+        return { width: s.width, height: s.height, active: s.active, editMask: !!s.editMask, groups: s.groups || [], extras: s.extras || undefined, layers, bytes };
     }
 
     /** Put a decoded document into a Paint window. */
