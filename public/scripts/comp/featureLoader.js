@@ -132,7 +132,8 @@ const FEATURE_MANIFEST = {
             'scripts/comp/desktop-apps/paint/paintPath.js',
             'scripts/comp/desktop-apps/paint/paintComps.js',
             'scripts/comp/desktop-apps/paint/paintWarp.js',
-            'scripts/comp/desktop-apps/paint/paintActions.js'
+            'scripts/comp/desktop-apps/paint/paintActions.js',
+            'scripts/comp/desktop-apps/paint/paintGenerate.js'
         ]
     },
     media_player: {

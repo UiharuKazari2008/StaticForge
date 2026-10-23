@@ -2171,6 +2171,7 @@
                     { text: 'Open...', subtext: 'Ctrl+O', action: 'open' },
                     { text: 'Open from Gallery...', action: 'open-gallery' },
                     { text: 'Place Embedded...', action: 'place-embedded', disabled: !root.paintSmart },
+                    { text: 'Place from Gallery...', action: 'place-gallery', disabled: !root.paintGenerate },
                     { text: 'Save', subtext: 'Ctrl+S', action: 'save' },
                     { text: 'Save As...', action: 'save-as' },
                     { text: 'Save to Gallery', action: 'save-gallery' },
@@ -2195,6 +2196,7 @@
                     { text: 'Select All', subtext: 'Ctrl+A', action: 'select-all' },
                     { separator: true },
                     { text: 'Fill...', subtext: 'Shift+F5', action: 'pro-fill' },
+                    { text: 'Generative Fill...', action: 'generative-fill', disabled: !root.paintGenerate },
                     { text: 'Content-Aware Fill', action: 'content-aware-fill', disabled: !this.doc.selection || !root.paintWarp },
                     { text: 'Stroke...', action: 'pro-stroke', disabled: !this.doc.selection },
                     { text: 'Define Brush Preset...', action: 'brush-define', disabled: !root.paintBrush },
@@ -2262,6 +2264,7 @@
                     { text: 'Attributes...', subtext: 'Ctrl+Alt+C', action: 'attributes' },
                     { text: 'Clear Image', action: 'clear' },
                     { text: 'Crop to Selection', action: 'crop', disabled: !sel },
+                    { text: 'Generative Expand...', action: 'generative-expand', disabled: !root.paintGenerate },
                     { text: 'Trim Transparent Pixels', action: 'trim' },
                     { text: 'Duplicate...', action: 'duplicate' },
                     { text: 'Draw Opaque', action: 'opaque', showIndicator: true, checked: !this.opt.transparent }
@@ -2383,6 +2386,7 @@
                     if (root.paintComps && root.paintComps.action(this, a)) return;
                     if (root.paintWarp && root.paintWarp.action(this, a)) return;
                     if (root.paintActions && root.paintActions.action(this, a)) return;
+                    if (root.paintGenerate && root.paintGenerate.action(this, a)) return;
                     if (P() && P().action(this, a)) return;
                     if (root.paintColor && root.paintColor.action(this, a)) return;
                     break;
