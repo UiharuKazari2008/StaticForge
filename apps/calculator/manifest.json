@@ -1,0 +1,14 @@
+{
+    "id": "calculator",
+    "version": "1.0.0",
+    "title": "Calculator",
+    "publisher": "Xyridian",
+    "format": "msaz",
+    "type": "native",
+    "launchId": "calculator",
+    "icon": "assets/calculator.png",
+    "client": {
+        "entry": "client/calculator.js",
+        "styles": ["assets/calculator.css"]
+    }
+}

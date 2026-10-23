@@ -187,6 +187,7 @@ function registerPackets(handlersCtx) {
             publisher: m.publisher || '',
             icon: m.icon ? `${pkg.base}${m.icon}` : '',
             clientEntry: `${pkg.base}${m.client.entry}`,
+            styles: (m.client.styles || []).map((s) => `${pkg.base}${s}`),
             base: pkg.base,
             runner: m.server ? m.server.runner : null
         };
@@ -217,6 +218,19 @@ function registerPackets(handlersCtx) {
             const p = payloadOf(ctx.message);
             const pkg = opener(p.name, p.size);
             reply(ctx, 'app_opener', { package: pkg ? { id: pkg.id, title: pkg.manifest.title } : null });
+        } catch (err) {
+            fail(ctx, err);
+        }
+    }, OWNER);
+
+    // describe an installed package (its client entry, styles, icon) without launching an instance:
+    // the client loads a built-in app's code on demand for its window-less entry points (#642)
+    wsPacketRegistry.registerWsPacket('app_describe', async (ctx) => {
+        try {
+            const p = payloadOf(ctx.message);
+            const row = apps().store.get(String(p.packageId || ''));
+            if (!row || row.enabled === false) throw new MelatonAppError('The program is not installed.', 'APP_NOT_INSTALLED');
+            reply(ctx, 'app_describe', { package: describe(installedPackage(row)) });
         } catch (err) {
             fail(ctx, err);
         }

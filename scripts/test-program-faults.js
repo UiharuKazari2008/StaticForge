@@ -155,13 +155,13 @@ global.FEATURE_MANIFEST = {
     vista_cards: { scripts: ['scripts/comp/desktop-apps/vista-games/cardEngine.js'] },
     vista_solitaire: { scripts: ['scripts/comp/desktop-apps/vista-games/solitaire.js'] },
     vista_minesweeper: { scripts: ['scripts/comp/desktop-apps/vista-games/minesweeper.js'] },
-    calculator: { scripts: ['scripts/comp/desktop-apps/calculator.js'] },
+    emotion: { scripts: ['scripts/comp/desktop-apps/emotion.js'] },
     media_player: { scripts: ['scripts/comp/desktop-apps/mediaPlayer.js'] },
     grimoire: { scripts: ['scripts/comp/grimoireRemoteBrowser.js', 'scripts/comp/tagWikiSearchModal.js'] }
 };
 const launchActions = [];
 global.collectStartMenuLaunchableDescriptors = () => [
-    { launchId: 'calculator', text: 'Calculator', action: () => { launchActions.push('calculator'); } },
+    { launchId: 'emotion', text: 'eMotion', action: () => { launchActions.push('emotion'); } },
     { launchId: 'director', text: 'Director', action: () => { launchActions.push('director'); } },
     { launchId: 'media-player', text: 'Media Player', action: () => { launchActions.push('media-player'); } },
     { launchId: 'game-solitaire', game: 'solitaire', text: 'Solitaire', action: () => {} },
@@ -220,7 +220,7 @@ assert.strictEqual(PF.classifyScript('/scripts/websocket.js'), 'core');
 assert.strictEqual(PF.classifyScript('/scripts/ws/wsInboundRegistry.js'), 'core');
 assert.deepStrictEqual(PF.classifyScript('/scripts/comp/director.js'), { launchId: 'director' });
 assert.deepStrictEqual(PF.classifyScript('/scripts/comp/desktop-apps/vista-games/solitaire.js'), { game: 'solitaire' });
-assert.deepStrictEqual(PF.classifyScript('/scripts/comp/desktop-apps/calculator.js'), { launchId: 'calculator' });
+assert.deepStrictEqual(PF.classifyScript('/scripts/comp/desktop-apps/emotion.js'), { launchId: 'emotion' });
 assert.deepStrictEqual(PF.classifyScript('/scripts/comp/tagWikiSearchModal.js'), { launchId: 'encyclopedia' });
 assert.strictEqual(PF.classifyScript('/scripts/comp/desktop-apps/vista-games/cardEngine.js'), 'lib', 'the card engine is shared');
 assert.strictEqual(PF.classifyScript('/scripts/comp/customScrollbar.js'), 'lib');
@@ -231,8 +231,8 @@ const solitaire = makeWindow('vistaSolitaireModal', 'Solitaire', { className: 'v
 solitaire.__vg = { modal: solitaire };
 const minesweeper = makeWindow('vistaMinesweeperModal', 'Minesweeper', { className: 'vista-game-window', data: { vistaGame: 'minesweeper' } });
 minesweeper.__vg = { modal: minesweeper };
-const calculator = makeWindow('calculatorModal', 'Calculator');
-PF.registerProgram('calculatorModal', { launchId: 'calculator' });
+const emotion = makeWindow('emotionModal', 'eMotion');
+PF.registerProgram('emotionModal', { launchId: 'emotion' });
 const lumen = makeWindow('imageViewerModal_3', 'Lumen - cat.png');
 const studio = makeWindow('manualModal', 'DreamStudio 2026 R7');
 const studioTool = makeWindow('positionDialog', 'Character Position', { data: { parentModalId: 'manualModal' } });
@@ -285,8 +285,8 @@ p = PF.attribute({ stack: stack(frame('comp/desktop-apps/mediaPlayer.js')), even
 assert.strictEqual(p.window, wmp);
 
 // the capture listener notes the window an input event targeted (cleared by a timer after the task)
-PF._noteEvent({ target: calculator.children[1].children[0] });
-assert.strictEqual(PF._eventContext.window, calculator);
+PF._noteEvent({ target: emotion.children[1].children[0] });
+assert.strictEqual(PF._eventContext.window, emotion);
 PF._noteEvent({ target: taskbarButton });
 assert.strictEqual(PF._eventContext.window, null);
 assert.strictEqual(PF._eventContext.shell, true);
@@ -315,7 +315,7 @@ const runReportUpdate = () => runTimers(10000, 3000);
 
 const text = (m) => m.querySelector('.program-fault-text').textContent;
 const heading = (m) => m.querySelector('.program-fault-heading').textContent;
-const othersOpen = () => !minesweeper.classList.contains('hidden') && !calculator.classList.contains('hidden') && !studio.classList.contains('hidden');
+const othersOpen = () => !minesweeper.classList.contains('hidden') && !emotion.classList.contains('hidden') && !studio.classList.contains('hidden');
 
 (async () => {
     calls.length = 0;
@@ -384,23 +384,23 @@ const othersOpen = () => !minesweeper.classList.contains('hidden') && !calculato
     // Cancel: on the checking page it moves on; on the restarting page the program stays closed
     calls.length = 0;
     launchActions.length = 0;
-    PF.present({ message: 'x', stack: stack(frame('comp/desktop-apps/calculator.js')) }, {});
+    PF.present({ message: 'x', stack: stack(frame('comp/desktop-apps/emotion.js')) }, {});
     m = dialogEl();
-    assert.strictEqual(heading(m), 'Calculator has stopped working');
+    assert.strictEqual(heading(m), 'eMotion has stopped working');
     press(m, 'Cancel');
     assert.strictEqual(m.dataset.faultPage, 'restarting', 'Cancel skips the check');
-    assert.strictEqual(heading(m), 'Calculator is restarting...');
+    assert.strictEqual(heading(m), 'eMotion is restarting...');
     assert.deepStrictEqual(buttons(m).map((b) => b.textContent), ['Cancel'], 'restarting: the program is already closed, nothing to continue');
     press(m, 'Cancel');
     runTimers();
     await flush(); await flush();
-    assert.ok(calls.some((c) => c[0] === 'closeModal' && c[1] === 'calculatorModal'), 'the Calculator was closed');
+    assert.ok(calls.some((c) => c[0] === 'closeModal' && c[1] === 'emotionModal'), 'the eMotion was closed');
     assert.deepStrictEqual(launchActions, [], 'and Cancel kept it from coming back');
     assert.strictEqual(PF.openDialogs().length, 0);
     assert.ok(!minesweeper.classList.contains('hidden') && !studio.classList.contains('hidden'));
 
     // a Start menu program restarts through its launcher
-    calculator.classList.remove('hidden');
+    emotion.classList.remove('hidden');
     PF.reset();
     PF.present({ message: 'x', stack: stack(frame('comp/director.js')) }, {});
     m = dialogEl();
@@ -512,7 +512,7 @@ const othersOpen = () => !minesweeper.classList.contains('hidden') && !calculato
     {
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fault-store-'));
         const st = createStore({ dir });
-        const base = { program: { key: 'launch:calculator', name: 'Calculator' }, errorName: 'TypeError', message: "Cannot read properties of undefined (reading 'x')", stack: 'TypeError: boom\n    at onKey (http://h/scripts/comp/desktop-apps/calculator.js?sha=1:10:20)' };
+        const base = { program: { key: 'launch:emotion', name: 'eMotion' }, errorName: 'TypeError', message: "Cannot read properties of undefined (reading 'x')", stack: 'TypeError: boom\n    at onKey (http://h/scripts/comp/desktop-apps/emotion.js?sha=1:10:20)' };
         const a = await st.upsert({ ...base, occurrenceId: 'o1', repeats: 1 });
         assert.match(a.id, /^fault_[0-9a-f]{12}$/);
         assert.ok(fs.existsSync(path.join(dir, a.id + '.json')), 'one JSON file per fault');
@@ -604,9 +604,9 @@ const othersOpen = () => !minesweeper.classList.contains('hidden') && !calculato
     // ---- reports: uploads and Copy Report ---------------------------------------------------
 
     PF.reset();
-    calculator.classList.remove('hidden');
+    emotion.classList.remove('hidden');
     net.posts = 0;
-    const calcError = { message: "Cannot read properties of undefined (reading 'value')", stack: "TypeError: Cannot read properties of undefined (reading 'value')\n" + frame('comp/desktop-apps/calculator.js', 'onKey'), timestamp: '2026-10-21T10:00:00.000Z' };
+    const calcError = { message: "Cannot read properties of undefined (reading 'value')", stack: "TypeError: Cannot read properties of undefined (reading 'value')\n" + frame('comp/desktop-apps/emotion.js', 'onKey'), timestamp: '2026-10-21T10:00:00.000Z' };
     PF.present(calcError, {});
     m = dialogEl();
     await settle();
@@ -614,11 +614,11 @@ const othersOpen = () => !minesweeper.classList.contains('hidden') && !calculato
     assert.strictEqual(rep.status, 'saved', 'the dialog\'s fault is upserted as it opens');
     assert.strictEqual(net.posts, 1);
     let onServer = await store.read(rep.id);
-    assert.strictEqual(onServer.program.name, 'Calculator');
+    assert.strictEqual(onServer.program.name, 'eMotion');
     assert.strictEqual(onServer.errorName, 'TypeError');
-    assert.match(onServer.latest.stack, /calculator\.js/);
-    assert.deepStrictEqual(onServer.latest.scripts, ['/scripts/comp/desktop-apps/calculator.js']);
-    assert.ok(onServer.latest.client.windows.some((w) => /Calculator/.test(w)), 'the open windows go with it');
+    assert.match(onServer.latest.stack, /emotion\.js/);
+    assert.deepStrictEqual(onServer.latest.scripts, ['/scripts/comp/desktop-apps/emotion.js']);
+    assert.ok(onServer.latest.client.windows.some((w) => /eMotion/.test(w)), 'the open windows go with it');
     PF.present(calcError, {});
     PF.present(calcError, {});
     runReportUpdate();
@@ -630,11 +630,11 @@ const othersOpen = () => !minesweeper.classList.contains('hidden') && !calculato
     copyButton(m).click();
     await settle(10);
     assert.match(net.clipboard, new RegExp(`^Dreamscape fault report ${rep.id} \\(saved on the server\\)\\n`));
-    assert.match(net.clipboard, /Calculator has stopped working/);
+    assert.match(net.clipboard, /eMotion has stopped working/);
     assert.match(net.clipboard, /Error: TypeError: Cannot read properties of undefined \(reading 'value'\)/);
     assert.match(net.clipboard, /Seen: 1 dialog\(s\), 3 fault\(s\)/);
     assert.match(net.clipboard, new RegExp(`data/fault-reports/${rep.id}\\.json`));
-    assert.match(net.clipboard, /\nIn: \/scripts\/comp\/desktop-apps\/calculator\.js:10:20\n/, 'where it threw, without the build query');
+    assert.match(net.clipboard, /\nIn: \/scripts\/comp\/desktop-apps\/emotion\.js:10:20\n/, 'where it threw, without the build query');
     assert.ok(!/Stack:/.test(net.clipboard), 'confirmed: the id is enough, no stack');
     if (process.env.SHOW_COPY) console.log("--- confirmed\n" + net.clipboard);
     assert.strictEqual(copyButton(m).textContent, 'Copied');
@@ -664,24 +664,24 @@ const othersOpen = () => !minesweeper.classList.contains('hidden') && !calculato
     press(m, 'Continue');
     await settle();
     assert.strictEqual(PF.openDialogs().length, 0, 'Continue closes the dialog');
-    assert.ok(!calculator.classList.contains('hidden'), 'and leaves the program running');
-    assert.ok(!calls.some((c) => c[1] === 'calculatorModal'), 'nothing is done to the Calculator');
+    assert.ok(!emotion.classList.contains('hidden'), 'and leaves the program running');
+    assert.ok(!calls.some((c) => c[1] === 'emotionModal'), 'nothing is done to the eMotion');
     assert.strictEqual((await store.read(rep.id)).recent[0].action, 'continue', 'the report says how the dialog ended');
     PF.present(calcError, {});
     assert.strictEqual(PF.openDialogs().length, 0, 'the same fault again is only counted');
     runReportUpdate();
     await settle();
     assert.strictEqual((await store.read(rep.id)).repeats, 4, '... and the count still reaches the server');
-    PF.present({ message: 'a different fault', stack: frame('comp/desktop-apps/calculator.js') }, {});
+    PF.present({ message: 'a different fault', stack: frame('comp/desktop-apps/emotion.js') }, {});
     assert.strictEqual(PF.openDialogs().length, 1, 'a different fault shows again');
     runTimers();
     m = dialogEl();
     press(m, 'Continue');
     await settle();
-    calculator.classList.add('hidden');
+    emotion.classList.add('hidden');
     PF.present(calcError, {});
     assert.strictEqual(PF.openDialogs().length, 1, 'once its window closed, a new run\'s fault shows again');
-    calculator.classList.remove('hidden');
+    emotion.classList.remove('hidden');
 
     // the upload fails: the dialog still works, Copy Report carries the full error
     PF.reset();
@@ -713,7 +713,7 @@ const othersOpen = () => !minesweeper.classList.contains('hidden') && !calculato
     win.getClientDesktopState = () => 'desktop';
 
     // a fault in the fault dialog's own code never loops back into it
-    assert.strictEqual(PF.present({ message: 'x', stack: stack(frame('comp/programFaults.js'), frame('comp/desktop-apps/calculator.js')) }, {}), false);
+    assert.strictEqual(PF.present({ message: 'x', stack: stack(frame('comp/programFaults.js'), frame('comp/desktop-apps/emotion.js')) }, {}), false);
 
     console.error = consoleError;
     console.log('test-program-faults: ok');

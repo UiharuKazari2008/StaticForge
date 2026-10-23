@@ -150,11 +150,22 @@ function validateManifest(raw, options) {
         throw new MelatonPackageError('cssPolicy must be locked until the store is opened', 'PACKAGE_CSS_POLICY');
     }
 
-    if (raw.client && raw.client.styles != null) {
-        throw new MelatonPackageError('client.styles is forbidden in v1', 'PACKAGE_CSS');
-    }
-
     const client = raw.client && typeof raw.client === 'object' ? raw.client : {};
+    // Package CSS stays locked for uploaded / third-party packages (#179). A system package (one we
+    // ship in apps/, installed with trusted: true) may declare its own stylesheets (#642).
+    let clientStyles = [];
+    if (client.styles != null) {
+        if (!opts.trusted) {
+            throw new MelatonPackageError('client.styles is only allowed for system packages', 'PACKAGE_CSS');
+        }
+        const list = Array.isArray(client.styles) ? client.styles : [client.styles];
+        if (list.length > 16) throw new MelatonPackageError('too many client.styles', 'PACKAGE_CSS');
+        clientStyles = list.map((rel) => {
+            const r = assertSafeRelPath(String(rel).trim());
+            if (!/\.css$/i.test(r)) throw new MelatonPackageError(`client.styles must be .css: ${r}`, 'PACKAGE_CSS');
+            return r;
+        });
+    }
     const clientEntry = String(client.entry || 'client/index.js').trim();
     const clientHtml = String(client.html || 'client/index.html').trim();
     assertSafeRelPath(clientEntry);
@@ -267,7 +278,7 @@ function validateManifest(raw, options) {
         aliases,
         surfaces,
         startMenuLocation,
-        client: { entry: clientEntry, html: clientHtml },
+        client: Object.assign({ entry: clientEntry, html: clientHtml }, clientStyles.length ? { styles: clientStyles } : {}),
         server: !serverEntry ? null : (runnerMode
             ? Object.assign({ entry: serverEntry, runner: serverRunner }, serverMemoryMB ? { memoryMB: serverMemoryMB } : {})
             : { entry: serverEntry, packets: serverPackets }),
@@ -474,6 +485,7 @@ class MelatonPackageStore {
         const need = [['client.entry', manifest.client.entry]];
         if (manifest.server) need.push(['server.entry', manifest.server.entry]);
         if (manifest.icon) need.push(['icon', manifest.icon]);
+        for (const style of manifest.client.styles || []) need.push(['client.styles', style]);
         for (const [what, rel] of need) {
             if (!fs.existsSync(path.join(dir, rel))) {
                 throw new MelatonPackageError(`Missing ${what}: ${rel}`, what === 'client.entry' ? 'PACKAGE_CLIENT' : 'PACKAGE_FILE');
@@ -557,7 +569,9 @@ class MelatonPackageStore {
         const opts = options || {};
         const src = path.resolve(srcDir);
         const raw = JSON.parse(fs.readFileSync(path.join(src, 'manifest.json'), 'utf8'));
-        const manifest = validateManifest(raw, { reservedPacketTypes: this.getReservedPacketTypes() });
+        // installFromDirectory ships our own packages (apps/<id>), so they are trusted: a system
+        // package may declare its own stylesheets (#642), unlike an uploaded one.
+        const manifest = validateManifest(raw, { reservedPacketTypes: this.getReservedPacketTypes(), trusted: opts.system !== false });
         this._assertTree(src, manifest);
         const files = [];
         const walk = (rel) => {

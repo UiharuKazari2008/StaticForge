@@ -8,21 +8,28 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
-const css = read('public/css/vista-calculator.css');
+// Calculator is a Melaton app package now (apps/calculator, Yozora #642)
+const css = read('apps/calculator/assets/calculator.css');
 const base = read('public/css/desktop-apps/desktopAppWindows.css');
-const js = read('public/scripts/comp/desktop-apps/calculator.js');
+const js = read('apps/calculator/client/calculator.js');
 const html = read('public/app.html');
 const G = 'body.desktop-mode:not(.windows-classic-theme)';
 
-// wiring
-const loader = read('public/scripts/comp/featureLoader.js');
-assert.ok(loader.includes("'css/vista-calculator.css'") && loader.includes("'scripts/comp/desktop-apps/calculator.js'"), 'calculator loads on open');
+// wiring: the package manifest, launched from the Start menu via melatonApps
+const manifest = JSON.parse(read('apps/calculator/manifest.json'));
+assert.strictEqual(manifest.launchId, 'calculator');
+assert.strictEqual(manifest.client.entry, 'client/calculator.js');
+assert.deepStrictEqual(manifest.client.styles, ['assets/calculator.css'], 'the calculator stylesheet ships with the package');
+assert.ok(js.includes("melatonApps.define('calculator', calcStart)"), 'registers as the calculator app');
+assert.ok(read('public/scripts/comp/modalUtils.js').includes("melatonApps.launch({ packageId: 'calculator' })"), 'Start menu launches the package');
+assert.ok(!read('public/scripts/comp/featureLoader.js').includes("scripts/comp/desktop-apps/calculator.js"), 'no longer a featureLoader feature');
+assert.ok(!fs.existsSync(path.join(ROOT, 'public/scripts/comp/desktop-apps/calculator.js')), 'moved out of the monolith');
 assert.ok(!html.includes('vista-calculator.css') && !html.includes('desktop-apps/calculator.js'), 'calculator is not on the boot page');
-assert.ok(fs.existsSync(path.join(ROOT, 'public/static_images/app_icons/vista-calculator.png')), 'calc.exe icon exists');
-assert.ok(js.includes("titleImage.src = '/static_images/app_icons/vista-calculator.webp'") && js.includes("titleIcon.className = 'fas fa-calculator icon-fa'"), 'caption: Font Awesome glyph plus the program icon');
+assert.ok(fs.existsSync(path.join(ROOT, 'apps/calculator/assets/calculator.png')), 'package icon exists');
+assert.ok(js.includes("titleImage.src = '/static_images/app_icons/48/vista-calculator.webp'") && js.includes("titleIcon.className = 'fas fa-calculator icon-fa'"), 'caption: Font Awesome glyph plus the program icon');
 
 // keyboard characters only in the new text (existing key labels are \u escapes)
-for (const [file, text] of [['vista-calculator.css', css], ['calculator.js', js], ['desktopAppWindows.css', base]]) {
+for (const [file, text] of [['calculator.css', css], ['calculator.js', js], ['desktopAppWindows.css', base]]) {
     assert.ok(!/[\u2013\u2014\u2018\u2019\u201c\u201d\u2026\u00d7\u2212\u00a0]/.test(text), `${file}: keyboard characters only`);
 }
 

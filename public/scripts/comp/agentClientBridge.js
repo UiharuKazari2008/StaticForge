@@ -1248,8 +1248,10 @@
             if (command === 'get_calculator' || command === 'set_calculator') {
                 // showAgentSessionTrayNotice: public/scripts/comp/mcpActivityClient.js
                 showAgentSessionTrayNotice('windows', data);
-                await featureLoader.loadFeature('calculator');
-                // readDesktopCalculatorForAgent / applyDesktopCalculatorAgentAction: public/scripts/comp/desktop-apps/calculator.js
+                // Calculator is a Melaton app package now (apps/calculator, #642): load its client
+                // code (defining the agent get/set functions) without opening a window.
+                await melatonApps.ensureLoaded('calculator');
+                // readDesktopCalculatorForAgent / applyDesktopCalculatorAgentAction: apps/calculator/client/calculator.js
                 replyAgentSessionResult(requestId, command === 'get_calculator'
                     ? readDesktopCalculatorForAgent(data)
                     : applyDesktopCalculatorAgentAction(data));

@@ -103,10 +103,8 @@ const FEATURE_MANIFEST = {
         styles: ['css/planet-switcher.css'],
         scripts: ['scripts/comp/planetSwitcher.js']
     },
-    calculator: {
-        styles: ['css/vista-calculator.css'],
-        scripts: ['scripts/comp/desktop-apps/calculator.js']
-    },
+    // Calculator moved to a Melaton app package (apps/calculator, Yozora #642): launch it with
+    // melatonApps.launch({ packageId: 'calculator' }), not featureLoader.
     // Character Map (Yozora #632): charmap.exe; its window is the .mui's own dialog template
     charmap: {
         depends: ['vista_dialog_templates'],

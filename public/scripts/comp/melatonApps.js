@@ -59,6 +59,15 @@
     function loadClient(pkg) {
         if (factories.has(pkg.base)) return Promise.resolve(factories.get(pkg.base));
         if (loading.has(pkg.base)) return loading.get(pkg.base);
+        // a system package may ship its own stylesheets (#642); add them once, before the client runs
+        for (const href of pkg.styles || []) {
+            if (document.querySelector(`link[data-melaton-app-style="${href}"]`)) continue;
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = href;
+            link.dataset.melatonAppStyle = href;
+            document.head.appendChild(link);
+        }
         const p = new Promise((resolve, reject) => {
             const s = document.createElement('script');
             s.src = pkg.clientEntry;
@@ -108,6 +117,8 @@
             publisher: pkg.publisher,
             icon: pkg.icon || '',
             launchFile: spec.entryPath ? spec.entryPath.split('/').pop() : null,
+            // launch-time arguments (not sent to the server): e.g. which mode a built-in app opens in
+            args: (spec && spec.args) || {},
             signal: ctl.signal,
             url: (rel) => pkg.base + String(rel || '').replace(/^\/+/, ''),
             server: {
@@ -296,6 +307,18 @@
         return app;
     }
 
+    /**
+     * Load a system package's client code (and its styles) without starting an instance, so its
+     * window-less entry points are available (e.g. the Calculator agent get/set, #642). Idempotent.
+     */
+    async function ensureLoaded(packageId) {
+        if (!wsReady()) throw new Error('Not connected');
+        const res = await root.wsClient.sendMessage('app_describe', { packageId }, false);
+        if (!res || !res.package) throw new Error(`${packageId} is not installed`);
+        await loadClient(res.package);
+        return res.package;
+    }
+
     /** The installed app that opens a VFS file by its name and size (opens[]), or null. */
     async function openerFor(name, size) {
         if (!wsReady()) return null;
@@ -331,5 +354,5 @@
         setTimeout(wire, 0);
     }
 
-    root.melatonApps = { launch, define, openerFor, running, errorCode };
+    root.melatonApps = { launch, define, ensureLoaded, openerFor, running, errorCode };
 })(window);

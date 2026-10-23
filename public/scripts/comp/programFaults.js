@@ -151,7 +151,6 @@
         naxt: 'naxt',
         bracket_gen: 'bracket-generation',
         planet_switcher: 'planet-switcher',
-        calculator: 'calculator',
         media_player: 'media-player',
         alarm: 'alarm',
         remote_desktop: 'remote-desktop',
@@ -188,7 +187,7 @@
         logViewerModal: 'event-viewer',
         melatonControlPanelModal: 'control-panel',
         desktopTimerModal: 'alarm',
-        desktopCalculatorModal: 'calculator',
+        // desktopCalculatorModal registers itself (apps/calculator, #642: programFaults.registerProgram)
         runModal: 'run'
     };
 

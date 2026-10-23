@@ -1849,3 +1849,36 @@ function applyDesktopCalculatorAgentAction(data) {
     reply.tapeCount = c.tape.length;
     return reply;
 }
+
+// ---- Melaton app (Yozora #642) ------------------------------------------------------------------
+// Calculator is a system package (apps/calculator) loaded on demand from /melaton-apps/calculator/.
+// It keeps its own window (desktopCalculatorModal) and the shared desktop globals (same-origin);
+// start(app) ties that singleton window to the app instance. The agent get/set path loads this code
+// through melatonApps.ensureLoaded('calculator').
+let calcMelatonApp = null;
+
+function calcStart(app) {
+    // open or focus the single Calculator window
+    openDesktopCalculator();
+    if (calcMelatonApp) { app.exit(); return; } // already running: focused it, drop this launch
+    calcMelatonApp = app;
+    // the window closing ends the app; ending the app closes the window
+    document.addEventListener('staticforge:modal-lifecycle', (e) => {
+        if (e && e.detail && e.detail.id === DESKTOP_CALCULATOR_MODAL_ID && e.detail.type === 'closed') app.exit();
+    }, { signal: app.signal });
+    app.onExit(() => {
+        calcMelatonApp = null;
+        const modal = document.getElementById(DESKTOP_CALCULATOR_MODAL_ID);
+        if (modal && !modal.classList.contains('hidden') && typeof closeModal === 'function') closeModal(modal);
+    });
+    // "<Calculator> has stopped working" + Restart (programFaults.js), replacing the old static maps
+    if (window.programFaults && programFaults.registerProgram) {
+        programFaults.registerProgram(DESKTOP_CALCULATOR_MODAL_ID, {
+            name: 'Calculator',
+            terminate: () => app.exit(),
+            relaunch: () => melatonApps.launch({ packageId: 'calculator' })
+        });
+    }
+}
+
+if (typeof melatonApps !== 'undefined') melatonApps.define('calculator', calcStart);
