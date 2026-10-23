@@ -92,7 +92,12 @@ async function main() {
         assert.strictEqual(scopeOf(name), scope);
         assert.ok(report.after.includes(scope), `${name} needs ${scope}`);
     });
-    const uncovered = [...new Set(tools.map((tool) => tool.scope))].filter((scope) => !report.after.includes(scope));
+    // sfapp_alchemy_browser is identity-gated (Hoshino/Yukimi drive Yukimi's signed-in tab),
+    // so Wren and Xi deliberately do not get it.
+    const IDENTITY_GATED = new Set(['sfapp_alchemy_browser']);
+    assert.ok(!report.after.includes('sfapp_alchemy_browser'), 'director keys never get the Alchemy browser scope');
+    const uncovered = [...new Set(tools.map((tool) => tool.scope))]
+        .filter((scope) => !IDENTITY_GATED.has(scope) && !report.after.includes(scope));
     assert.deepStrictEqual(uncovered, []);
 
     assert.strictEqual(scopesAllowPacket(report.before, 'link_memory_image'), true);

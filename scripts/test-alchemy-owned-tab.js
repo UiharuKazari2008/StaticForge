@@ -162,7 +162,7 @@ function fakeTab(options) {
     for (const bad of [
         'http://127.0.0.1:9220/api/session', 'http://localhost:9334/json/list', 'http://[::1]:9220/',
         'http://10.0.0.5/', 'http://192.168.1.1/', 'http://172.20.0.1/', 'http://169.254.169.254/latest/meta-data/',
-        'http://100.64.0.1/', 'http://0.0.0.0:9220/', 'http://[::ffff:127.0.0.1]/', 'http://[fd00::1]/',
+        'http://100.64.0.1/', 'http://0.0.0.0:9220/', 'http://[::ffff:127.0.0.1]/', 'http://[fd00::1]/', 'http://2130706433:9220/', 'http://0x7f.1/',
         'http://dreamscape/', 'http://printer.local/', 'http://router.lan/', 'https://user:pw@discord.com/',
         'file:///etc/passwd', 'javascript:alert(1)', 'about:srcdoc', 'view-source:https://discord.com/', 'chrome://settings'
     ]) {

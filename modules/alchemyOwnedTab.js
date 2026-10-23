@@ -172,6 +172,13 @@ function isPrivateAddress(address) {
         if (ip === '::' || ip === '::1') return true;
         const mapped = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
         if (mapped) return isPrivateAddress(mapped[1]);
+        const hex = ip.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);   // WHATWG URL form
+        if (hex) {
+            const hi = parseInt(hex[1], 16);
+            const lo = parseInt(hex[2], 16);
+            return isPrivateAddress([hi >> 8, hi & 255, lo >> 8, lo & 255].join('.'));
+        }
+        if (/^::ffff:/.test(ip)) return true;
         return /^(fc|fd|fe8|fe9|fea|feb|ff)/.test(ip);
     }
     return false;
