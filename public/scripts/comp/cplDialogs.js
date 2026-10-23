@@ -653,9 +653,9 @@
         tabs: { general: 'shell32:29959', view: 'shell32:29960', search: 'shell32:29961' },
         pages: [
             { key: 'shell32:29959', overrides: {
-                30109: { image: '/static_images/vista-dlg/fo-tasks.png' },
-                30110: { image: '/static_images/vista-dlg/fo-browse.png' },
-                30111: { image: '/static_images/vista-dlg/fo-click.png' } } },
+                30109: { image: '/static_images/vista-dlg/shell32-182.png' },
+                30110: { image: '/static_images/vista-dlg/shell32-184.png' },
+                30111: { image: '/static_images/vista-dlg/shell32-187.png' } } },
             { key: 'shell32:29960', overrides: { 30120: { html: '', cls: 'tbp-tree cpl-fo-tree' } } },
             { key: 'shell32:29961' }
         ],
@@ -677,10 +677,18 @@
             const fill = (defaults) => { tree.innerHTML = folderTree(folderValues(defaults)); };
             fill(false);
             tree.addEventListener('change', () => ctx.dirty());
+            // each group's picture follows its choice, as shell32 swaps icons 182-187
+            const picture = (id, icon) => {
+                const img = ctx.holder(id, 'shell32:29959').querySelector('img');
+                if (img) img.src = `/static_images/vista-dlg/shell32-${icon}.png`;
+            };
             const syncUnderline = () => {
                 const single = ctx.get(30102, 'shell32:29959');
                 ctx.enable(30104, single, 'shell32:29959');
                 ctx.enable(30105, single, 'shell32:29959');
+                picture(30109, ctx.get(30099, 'shell32:29959') ? 183 : 182);
+                picture(30110, ctx.get(30101, 'shell32:29959') ? 185 : 184);
+                picture(30111, single ? 186 : 187);
             };
             ctx.page('shell32:29959').addEventListener('change', syncUnderline);
             syncUnderline();

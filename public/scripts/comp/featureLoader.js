@@ -301,6 +301,8 @@ const FEATURE_MANIFEST = {
             // Vista's other items: the property sheets, then the pages (Yozora #632)
             'scripts/comp/cplDialogs.js',
             'scripts/comp/cplDialogs2.js',
+            // Internet Properties' own dialogs, driving Grimoire and Alchemy
+            'scripts/comp/cplInternetOptions.js',
             'scripts/comp/cplPages.js',
             'scripts/comp/cplPages2.js',
             'scripts/comp/cplPages3.js',

@@ -508,10 +508,10 @@
         return root.cplCatalog || { CATEGORIES: [], ITEMS: [], art: () => '', categoryArt: () => '' };
     }
 
-    /** Vista's RecentView: 1 Category View (the default), 0 Classic View. */
+    /** Vista's RecentView: 1 Category View, 0 Classic View (Melaton's default, Yukimi 2026-10-23). */
     function categoryView() {
         const reg = root.melatonRegistry;
-        return !reg || reg.get(VIEW_KEY, 'RecentView', 1) !== 0;
+        return !!reg && reg.get(VIEW_KEY, 'RecentView', 0) === 1;
     }
 
     function setView(category) {

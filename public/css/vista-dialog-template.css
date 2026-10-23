@@ -22,19 +22,24 @@ body.desktop-mode .modal.vdt-window[data-vista-dialog] > .modal-content.vdt-clie
     overflow-wrap: break-word;
 }
 
-/* a static paints its background over the etched rule it labels (Date and Time's "Time zone") */
-.vdt-client .tbp-page .vdt-static {
+/* a static's text paints its background over the etched rule it labels (Date and Time's "Time
+   zone"), but the rest of its rect stays clear: Tablet PC's "Right-handed" radio sits inside the
+   rect of the text above it */
+.vdt-client .vdt-static {
     z-index: 1;
+    pointer-events: none;
+}
+
+.vdt-client .vdt-static :is(button, a, input) {
+    pointer-events: auto;
+}
+
+.vdt-client .tbp-page .vdt-static > .vdt-st-text {
     background: #fff;
 }
 
-.vdt-client .vdt-plain-page .vdt-static {
-    z-index: 1;
+.vdt-client .vdt-plain-page .vdt-static > .vdt-st-text {
     background: #f0f0f0;
-}
-
-.vdt-client .vdt-static:empty {
-    background: none;
 }
 
 .vdt-client button.vdt-button {
@@ -261,11 +266,33 @@ body.desktop-mode .modal.vdt-window[data-vista-dialog] > .modal-content.vdt-clie
     margin: 0;
 }
 
-.vdt-client .vdt-trackbar.is-vertical input[type="range"] {
-    writing-mode: vertical-lr;
-    direction: rtl;
-    width: auto;
-    height: 100%;
+/* TBS_VERT: the horizontal bar in a box turned a quarter left about the control's centre */
+.vdt-client .vdt-trackbar.vdt-vertical .vdt-rot {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%) rotate(-90deg);
+}
+
+/* TBS_BOTH: the thumb sits in the middle of the control, ticks above and below it */
+.vdt-client .vdt-trackbar.vdt-both input[type="range"] {
+    margin-top: calc((var(--vdt-cross, 22px) - 22px) / 2);
+}
+
+body.desktop-mode:not(.windows-classic-theme) .vdt-client .vdt-trackbar.vdt-both input[type="range"]::-webkit-slider-thumb {
+    width: 6px;
+    background-image: url("/static_images/vista-controls/trackbar-thumb-both.png");
+    background-size: 6px 95px;
+}
+
+.vdt-client .vdt-trackbar.vdt-both.vdt-ticks .vdt-tickmarks {
+    left: 10px;
+    right: 10px;
+    top: calc((var(--vdt-cross, 22px) - 22px) / 2 + 22px);
+}
+
+.vdt-client .vdt-trackbar.vdt-both.vdt-ticks .vdt-tickmarks-top {
+    top: calc((var(--vdt-cross, 22px) - 22px) / 2 - 4px);
 }
 
 /* TBS_AUTOTICKS: a 1x4 #c4c4c4 tick at every stop, 4 px under the track's thumb travel (thumb 11 px) */
@@ -347,4 +374,17 @@ body.desktop-mode .modal.vdt-window[data-vista-dialog] > .modal-content.vdt-clie
    (.tbp-check { display: block }) would otherwise outrank [hidden] */
 .vdt-client [hidden] {
     display: none !important;
+}
+
+/* TCS_MULTILINE: vistaDialogTemplate.js places each tab of a sheet whose tabs need more than one row */
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-client .tbp-tabs.vdt-multirow {
+    display: block;
+    width: auto;
+    right: 10px;
+}
+
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-client .tbp-tabs.vdt-multirow > .tbp-tab {
+    position: absolute;
+    margin: 0;
+    text-align: center;
 }

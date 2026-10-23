@@ -219,3 +219,30 @@
     width: 100%;
     height: 100%;
 }
+
+/* Internet Properties > Colors (cplInternetOptions.js): each BS_OWNERDRAW swatch button is its
+   label, then a push-button face holding the colour */
+.vdt-client .cpl-inet-swatch {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    height: 100%;
+}
+
+.vdt-client .cpl-inet-swatch input[type="color"] {
+    box-sizing: border-box;
+    width: 40px;
+    height: 100%;
+    margin: 0;
+    padding: 2px 3px;
+    border: 1px solid #707070;
+    border-radius: 3px;
+    background: linear-gradient(#f2f2f2 45%, #ebebeb 45%, #cfcfcf);
+    outline: none;
+    box-shadow: none;
+}
+
+.vdt-client .cpl-inet-swatch input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+.vdt-client .cpl-inet-swatch input[type="color"]::-webkit-color-swatch { border: 1px solid #808080; border-radius: 0; }
+.vdt-client .cpl-inet-swatch input[type="color"]:disabled { opacity: .5; }

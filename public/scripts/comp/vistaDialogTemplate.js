@@ -37,6 +37,13 @@
     const WS_EX_CLIENTEDGE = 0x200;
     const WS_EX_STATICEDGE = 0x20000;
 
+    const SYSTEM_ICONS = {
+        '#32513': '/static_images/vista-icons/msgbox-error-32.png',
+        '#32514': '/static_images/vista-icons/msgbox-question-32.png',
+        '#32515': '/static_images/vista-icons/msgbox-warning-32.png',
+        '#32516': '/static_images/vista-icons/msgbox-info-32.png'
+    };
+
     function esc(v) {
         return String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
@@ -58,9 +65,10 @@
         return out.replace(/\t/g, ' ');
     }
 
-    /** SysLink text: <a>...</a> (and <a id="x">) become links; the rest is text. */
+    /** SysLink text: <a>...</a> (and <a id="x">) become links; the rest is text. A SysLink takes
+     *  "&" as an access key too ("&How do I customize Sidebar?"), drawn without the underline. */
     function linkText(text) {
-        return String(text || '').split(/(<a[^>]*>.*?<\/a>)/i).map((part) => {
+        return String(text || '').replace(/&(&?)/g, (m, lit) => (lit ? '\u0000' : '')).replace(/\u0000/g, '&').split(/(<a[^>]*>.*?<\/a>)/i).map((part) => {
             const m = /^<a([^>]*)>(.*?)<\/a>$/i.exec(part);
             if (!m) return esc(part);
             const idm = /id\s*=\s*"?([^"\s>]+)/i.exec(m[1]);
@@ -113,7 +121,7 @@
             if (o.skip) return;
             const r = rect(u, x, y, w, h);
             const visible = (st & WS_VISIBLE) !== 0 && !o.hidden;
-            const disabled = (st & WS_DISABLED) !== 0 || o.disabled === true;
+            const disabled = o.disabled === false ? false : (st & WS_DISABLED) !== 0 || o.disabled === true;
             const dataId = `data-vdt-id="${id}" data-vdt-index="${index}"`;
             const hid = visible ? '' : ' hidden';
             const dis = disabled ? ' disabled' : '';
@@ -156,9 +164,11 @@
                     const type = st & 0x1F;
                     const noPrefix = (st & 0x80) !== 0;
                     if (type === 3 || type === 0xE) {
-                        // "#104": the icon resource of the template's own module, ripped to vista-dlg/
-                        const src = o.image || (/^#\d+$/.test(t) && opts.module ? `/static_images/vista-dlg/${opts.module}-${t.slice(1)}.png` : '');
-                        out.push(`<div class="tbp-ctl vdt-image" style="${style(r)}" ${dataId}${hid}>${src ? `<img src="${esc(src)}" alt="" draggable="false">` : ''}</div>`);
+                        // "#104": the icon resource of the template's own module, ripped to vista-dlg/;
+                        // "#32513".."#32516" are user32's IDI_HAND / QUESTION / EXCLAMATION / ASTERISK
+                        const sys = SYSTEM_ICONS[t];
+                        const src = o.image || sys || (/^#\d+$/.test(t) && opts.module ? `/static_images/vista-dlg/${opts.module}-${t.slice(1)}.png` : '');
+                        out.push(`<div class="tbp-ctl vdt-image" style="${style(r)}" ${dataId}${hid}>${src ? `<img src="${esc(src)}" alt="" draggable="false" onerror="this.style.visibility='hidden'">` : ''}</div>`);
                     } else if (type === 0x10) {
                         out.push(`<div class="tbp-ctl vdt-etched-h" style="${style(r)}height:2px;" ${dataId}${hid}></div>`);
                     } else if (type === 0x11) {
@@ -169,7 +179,7 @@
                         const align = type === 1 ? 'center' : type === 2 ? 'right' : 'left';
                         const nowrap = type === 0xB || type === 0xC ? ' vdt-nowrap' : '';
                         const sunken = (st & 0x1000) || (ex & WS_EX_STATICEDGE) ? ' vdt-sunken' : '';
-                        out.push(`<div class="tbp-ctl tbp-static vdt-static${nowrap}${sunken}${disabled ? ' is-disabled' : ''}" style="${style(r)}text-align:${align};" ${dataId}${hid}>${label(t, noPrefix)}</div>`);
+                        out.push(`<div class="tbp-ctl tbp-static vdt-static${nowrap}${sunken}${disabled ? ' is-disabled' : ''}" style="${style(r)}text-align:${align};" ${dataId}${hid}>${t ? `<span class="vdt-st-text">${label(t, noPrefix)}</span>` : ''}</div>`);
                     }
                     break;
                 }
@@ -202,9 +212,15 @@
                     out.push(`<div class="tbp-ctl vdt-listbox vdt-edge" style="${style(r)}" ${dataId}${hid} tabindex="0" role="listbox"></div>`);
                     break;
                 case 'msctls_trackbar32': {
+                    // TBS_VERT draws the horizontal bar turned a quarter left (the minimum at the
+                    // bottom); TBS_BOTH has the flat 6x19 thumb (aero 789) with ticks on both sides
                     const vertical = (st & 2) !== 0;
+                    const both = (st & 8) !== 0 ? ' vdt-both' : '';
                     const ticks = (st & 1) && !(st & 0x10) ? ' vdt-ticks' : '';
-                    out.push(`<div class="tbp-ctl vdt-trackbar${vertical ? ' is-vertical' : ''}${ticks}" style="${style(r)}" ${dataId}${hid}><input type="range" id="${domId}" min="0" max="10" value="0"${dis}><span class="vdt-tickmarks"></span></div>`);
+                    const inner = `<input type="range" id="${domId}" min="0" max="10" value="0"${dis}><span class="vdt-tickmarks"></span>${both ? '<span class="vdt-tickmarks vdt-tickmarks-top"></span>' : ''}`;
+                    out.push(vertical
+                        ? `<div class="tbp-ctl vdt-trackbar vdt-vertical${both}${ticks}" style="${style(r)}" ${dataId}${hid}><div class="vdt-rot" style="width:${r.height}px;height:${r.width}px;--vdt-cross:${r.width}px">${inner}</div></div>`
+                        : `<div class="tbp-ctl vdt-trackbar${both}${ticks}" style="${style(r)}--vdt-cross:${r.height}px" ${dataId}${hid}>${inner}</div>`);
                     break;
                 }
                 case 'msctls_updown32': {
@@ -341,6 +357,10 @@
             text(id, text, key) {
                 const h = ctx.holder(id, key);
                 if (!h) return;
+                if (h.classList.contains('vdt-static')) {
+                    h.innerHTML = text ? `<span class="vdt-st-text">${esc(text)}</span>` : '';
+                    return;
+                }
                 const target = h.matches('button') ? h : (h.querySelector('label span') || h.querySelector('.tbp-group-label') || h);
                 target.textContent = text;
             },
@@ -419,6 +439,57 @@
         destroy(state.modal);
     }
 
+    // ---- multi-row tabs (TCS_MULTILINE: a sheet whose tabs do not fit one row) -------------------
+
+    const TAB_ROW = 18;
+    let measureCtx = null;
+
+    /** A tab's width at Tahoma 11 px: the label plus the 4 + 5 px padding and two borders. */
+    function tabWidth(text) {
+        if (!measureCtx) measureCtx = doc.createElement('canvas').getContext('2d');
+        measureCtx.font = '11px Tahoma';
+        return Math.ceil(measureCtx.measureText(String(text).replace(/&(.)/g, '$1')).width) + 11;
+    }
+
+    /** Tab indexes per row, top row first, each row filled in order to the row width. */
+    function tabRows(titles, width) {
+        const rows = [[]];
+        let used = 0;
+        titles.forEach((t, i) => {
+            const w = tabWidth(t);
+            if (used + w > width && rows[rows.length - 1].length) { rows.push([]); used = 0; }
+            rows[rows.length - 1].push({ i, w });
+            used += w;
+        });
+        return rows.map((r) => ({ tabs: r, width }));
+    }
+
+    /** Every row is stretched to the full width; the selected tab's row moves next to the pane. */
+    function placeTabRows(state, key) {
+        const tabs = [...state.content.querySelectorAll('.tbp-tab')];
+        const sel = tabs.findIndex((t) => t.dataset.vdtTab === key);
+        const order = state.rows.slice();
+        const at = order.findIndex((r) => r.tabs.some((t) => t.i === sel));
+        if (at >= 0) order.push(order.splice(at, 1)[0]);
+        const bar = state.content.querySelector('.tbp-tabs');
+        bar.classList.add('vdt-multirow');
+        bar.style.height = `${order.length * TAB_ROW}px`;
+        order.forEach((row, r) => {
+            const natural = row.tabs.reduce((n, t) => n + t.w, 0);
+            const spare = row.width - natural;
+            let x = 0;
+            row.tabs.forEach((t, k) => {
+                const w = t.w + Math.floor((spare * (k + 1)) / row.tabs.length) - Math.floor((spare * k) / row.tabs.length);
+                const el = tabs[t.i];
+                const on = t.i === sel;
+                el.style.left = `${x - (on ? 2 : 0)}px`;
+                el.style.width = `${w + (on ? 4 : 0)}px`;
+                el.style.top = `${r * TAB_ROW - (on ? 2 : 0)}px`;
+                x += w;
+            });
+        });
+    }
+
     function selectPage(state, key) {
         state.content.querySelectorAll('.tbp-tab').forEach((t) => {
             const on = t.dataset.vdtTab === key;
@@ -428,6 +499,7 @@
         });
         state.content.querySelectorAll('[data-vdt-page]').forEach((p) => { p.hidden = p.dataset.vdtPage !== key; });
         state.current = key;
+        if (state.rows) placeTabRows(state, key);
         if (typeof state.opts.pageShown === 'function') state.opts.pageShown(state.ctx, key);
     }
 
@@ -485,10 +557,15 @@
             return null;
         }
         const u = units(pages[0].tpl);
-        const pw = Math.max(...pages.map((p) => size(p.tpl).width));
-        const ph = Math.max(...pages.map((p) => size(p.tpl).height));
+        // comctl32 never makes a page smaller than PROP_SM_CXDLG x PROP_SM_CYDLG (212 x 188 DLU of
+        // MS Shell Dlg): Tablet PC Settings' 200 DLU pages sit in a 354 px window on the VM
+        const shell = units({ f: ['MS Shell Dlg', 8] });
+        const pw = Math.max(px(shell, 212, 'x'), ...pages.map((p) => size(p.tpl).width));
+        const ph = Math.max(px(shell, 188, 'y'), ...pages.map((p) => size(p.tpl).height));
+        const rows = tabRows(pages.map((p) => p.title || p.tpl.t), pw + 2);
+        const extra = (rows.length - 1) * TAB_ROW;
         const cw = pw + 20;
-        const ch = ph + 69;
+        const ch = ph + 69 + extra;
         const { modal, content } = makeWindow(opts.id, opts.title, { icon: opts.icon, segoe: u.segoe, help: opts.help });
         content.style.width = `${cw}px`;
         content.style.height = `${ch}px`;
@@ -496,13 +573,13 @@
         const bx = cw - 6 - 75;
         content.innerHTML = `
             <div class="tbp-tabs" role="tablist">${pages.map((p) => `<button type="button" class="tbp-tab" role="tab" data-vdt-tab="${esc(p.key)}">${label(p.title || p.tpl.t)}</button>`).join('')}</div>
-            <div class="tbp-pane" style="width:${pw + 6}px;height:${ph + 5}px;">
+            <div class="tbp-pane" style="width:${pw + 6}px;height:${ph + 5}px;${extra ? `top:${27 + extra}px;` : ''}">
                 ${pages.map((p) => `<div class="tbp-page vdt-page" role="tabpanel" data-vdt-page="${esc(p.key)}" hidden>${renderControls(p.tpl, `${opts.id}-${p.key.replace(/[^a-z0-9]/gi, '_')}`, { overrides: p.overrides, module: p.key.split(':')[0] })}</div>`).join('')}
             </div>
             <button type="button" class="tbp-ctl tbp-button tbp-footer-button vdt-footer" style="left:${bx - 162 + 1}px;top:${ch - 29}px;" data-vdt-action="ok" data-dialog-primary="1">OK</button>
             <button type="button" class="tbp-ctl tbp-button tbp-footer-button vdt-footer" style="left:${bx - 81 + 1}px;top:${ch - 29}px;" data-vdt-action="cancel">Cancel</button>
             ${opts.noApply ? '' : `<button type="button" class="tbp-ctl tbp-button tbp-footer-button vdt-footer" style="left:${bx + 1}px;top:${ch - 29}px;" data-vdt-action="apply" disabled><u>A</u>pply</button>`}`;
-        const state = { opts, modal, content, dirty: false, done: false, current: null };
+        const state = { opts, modal, content, dirty: false, done: false, current: null, rows: rows.length > 1 ? rows : null };
         state.ctx = makeCtx(state);
         const apply = async () => {
             if (typeof opts.apply === 'function') {

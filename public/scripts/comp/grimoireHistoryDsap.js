@@ -18,10 +18,21 @@
     const SETTLE_MS = 1200;
     const HISTORY_URL = 'dsap://history.grimoire.jp';
 
+    // Internet Properties > Browsing history > Settings: "Days to keep pages in history" (IE's
+    // Url History DaysToKeep, cplInternetOptions.js; 0 keeps none, the default 20)
+    const DAYS_KEY = 'HKCU\\Software\\Xyridian\\Melaton\\CurrentVersion\\Internet Settings\\Url History';
+
+    function daysToKeep() {
+        const reg = root.melatonRegistry;
+        const n = reg ? Number(reg.get(DAYS_KEY, 'DaysToKeep', 20)) : 20;
+        return Number.isFinite(n) ? Math.max(0, Math.min(999, n)) : 20;
+    }
+
     function load() {
         try {
             const list = JSON.parse(root.localStorage.getItem(KEY) || '[]');
-            return Array.isArray(list) ? list.filter((r) => r && r.url && r.at) : [];
+            const since = Date.now() - daysToKeep() * 86400000;
+            return Array.isArray(list) ? list.filter((r) => r && r.url && r.at && r.at >= since) : [];
         } catch (_) {
             return [];
         }
@@ -54,7 +65,7 @@
     }
 
     function add(url, title) {
-        if (!recordable(url)) return;
+        if (!recordable(url) || daysToKeep() === 0) return;
         const now = Date.now();
         const list = load();
         const at = list.findIndex((r) => r.url === url);

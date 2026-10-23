@@ -33,7 +33,7 @@
     }
 
     function grimoire(text) {
-        return String(text || '').replace(/Internet Explorer/g, 'Grimoire');
+        return String(text || '').replace(/(?:<u>I<\/u>|I)nternet Explorer/g, (m) => (m.startsWith('<u>') ? '<u>G</u>rimoire' : 'Grimoire'));
     }
 
     /** Hide Vista's run-time-only controls (policy notes, alternates) in a page's overrides. */
@@ -98,7 +98,7 @@
             ['Use smooth scrolling', 'SmoothScroll', true]] },
         { group: 'Multimedia', items: [
             ['Enable automatic image resizing', 'ImageResizing', true], ['Play animations in webpages*', 'PlayAnimations', true],
-            ['Play sounds in webpages', 'PlaySounds', true], ['Show image download placeholders', 'ShowPlaceholders', false],
+            ['Play sounds in webpages', '@audioEnabled', true], ['Show image download placeholders', 'ShowPlaceholders', false],
             ['Show pictures', 'ShowPictures', true]] },
         { group: 'Security', items: [
             ['Allow active content to run in files on My Computer*', 'LocalActive', false], ['Check for publisher\'s certificate revocation', 'CheckRevocation', true],
@@ -107,16 +107,33 @@
             ['Use SSL 3.0', 'SSL3', true], ['Use TLS 1.0', 'TLS10', true], ['Warn if changing between secure and not secure mode', 'WarnSecureChange', true]] }
     ];
 
-    function inetTree(values) {
+    // "@name" rows are Alchemy's own settings (userGlobalSettings.alchemy), the rest registry values
+    function inetTree(values, alchemy) {
         let n = 0;
-        return INET_ADVANCED.map((g) => [
+        const io = root.cplInternetOptions;
+        const value = (name, d) => {
+            if (name[0] === '@') return alchemy && alchemy[name.slice(1)] !== undefined ? !!alchemy[name.slice(1)] : d;
+            return Object.prototype.hasOwnProperty.call(values, name) ? values[name] : d;
+        };
+        const groups = INET_ADVANCED.map((g) => [
             `<div class="tbp-tree-row is-node"><span>${esc(g.group)}</span></div>`,
             ...g.items.map(([t, name, d]) => {
                 n += 1;
-                const on = Object.prototype.hasOwnProperty.call(values, name) ? values[name] : d;
-                return `<div class="tbp-tree-row is-child"><input type="checkbox" id="cpl-ia-${n}" data-ia="${name}"${on ? ' checked' : ''}><label for="cpl-ia-${n}">${esc(t)}</label></div>`;
+                return `<div class="tbp-tree-row is-child"><input type="checkbox" id="cpl-ia-${n}" data-ia="${name}"${value(name, d) ? ' checked' : ''}><label for="cpl-ia-${n}">${esc(t)}</label></div>`;
             })
-        ].join('')).join('');
+        ].join(''));
+        if (io && alchemy) {
+            // Alchemy, the remote browser: its picture quality and frame rates (grimoireRemoteBrowser.js Tools ▾)
+            groups.splice(1, 0, [`<div class="tbp-tree-row is-node"><span>Alchemy</span></div>`, ...io.ALCHEMY_ADVANCED.map((row) => {
+                n += 1;
+                if (row.check) return `<div class="tbp-tree-row is-child"><input type="checkbox" id="cpl-ia-${n}" data-ia="@${row.key}"${alchemy[row.key] ? ' checked' : ''}><label for="cpl-ia-${n}">${esc(row.check)}</label></div>`;
+                return [`<div class="tbp-tree-row is-child cpl-fo-sub"><img src="/static_images/vista-icons/explorer/folder-16.png" alt="" onerror="this.remove()"><span>${esc(row.sub)}</span></div>`, ...row.choices.map(([v, label]) => {
+                    n += 1;
+                    return `<div class="tbp-tree-row is-child cpl-fo-radio"><input type="radio" name="cpl-ia-${row.key}" id="cpl-ia-${n}" data-ia-radio="${row.key}" value="${v}"${Number(alchemy[row.key]) === v ? ' checked' : ''}><label for="cpl-ia-${n}">${esc(label)}</label></div>`;
+                })].join('');
+            })].join(''));
+        }
+        return groups.join('');
     }
 
     DIALOGS['internet-options'] = {
@@ -146,28 +163,42 @@
                 if (/Internet Explorer/.test(n.textContent)) n.innerHTML = grimoire(n.innerHTML);
             });
             // General: the home page tabs are Grimoire's home page
+            // General: the home page tabs are Grimoire's home page (userGlobalSettings.alchemy.homePage;
+            // empty is Grimoire's own start page, which "Use default" picks)
+            const io = root.cplInternetOptions;
             const home = ctx.el(1487, 'inetcpl:100');
             ctx.store.home = '';
-            if (typeof root.grimoireLoadAlchemySettings === 'function') {
-                root.grimoireLoadAlchemySettings().then((s) => {
+            ctx.store.alchemy = null;
+            const fillAdv = (values, alchemy) => { ctx.holder(1439, 'inetcpl:600').innerHTML = inetTree(values, alchemy); };
+            if (io) {
+                io.alchemySettings().then((s) => {
+                    ctx.store.alchemy = s;
                     ctx.store.home = (s && s.homePage) || '';
-                    if (home) home.value = ctx.store.home || 'about:blank';
+                    if (home) home.value = ctx.store.home || 'about:Home';
+                    fillAdv(R() ? R().getKey(`${KEY.inet}\\Advanced`) : {}, s);
                 }).catch(() => {});
             }
             ctx.on(1486, 'click', () => {
-                const tabs = root.grimoireTabs && root.grimoireTabs.activeUrl ? root.grimoireTabs.activeUrl() : '';
-                home.value = tabs || home.value;
-                ctx.dirty();
+                const url = io ? io.currentPage() : '';
+                if (url) { home.value = url; ctx.dirty(); }
             }, 'inetcpl:100');
-            ctx.on(1485, 'click', () => { home.value = 'dsap://dreamscape.jp/'; ctx.dirty(); }, 'inetcpl:100');
+            // Grimoire's own start page stands for both IE's default and its blank page
+            ctx.on(1485, 'click', () => { home.value = 'about:Home'; ctx.dirty(); }, 'inetcpl:100');
             ctx.on(404, 'click', () => { home.value = 'about:blank'; ctx.dirty(); }, 'inetcpl:100');
-            ctx.on(5501, 'click', () => {
-                callGlobal('showConfirmationDialog', 'Delete Grimoire\'s browsing history (pages you visited) on this computer?', [
-                    { text: 'Delete', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }
-                ], null, { title: 'Delete Browsing History' }).then((ok) => {
-                    if (ok && typeof root.grimoireClearHistory === 'function') root.grimoireClearHistory();
-                });
-            }, 'inetcpl:100');
+            const sub = (id, page, name) => ctx.on(id, 'click', () => { if (io) io.open[name](ctx.modal); }, page);
+            sub(5501, 'inetcpl:100', 'deleteHistory');
+            sub(1490, 'inetcpl:100', 'historySettings');
+            sub(5503, 'inetcpl:100', 'search');
+            sub(5505, 'inetcpl:100', 'tabs');
+            sub(1483, 'inetcpl:100', 'colors');
+            sub(1495, 'inetcpl:100', 'languages');
+            sub(1494, 'inetcpl:100', 'fonts');
+            sub(1496, 'inetcpl:100', 'accessibility');
+            sub(5319, 'inetcpl:5300', 'privacyAdvanced');
+            sub(5401, 'inetcpl:5300', 'popups');
+            sub(321, 'inetcpl:4454', 'autoComplete');
+            sub(771, 'inetcpl:4454', 'feeds');
+            sub(4865, 'inetcpl:300', 'addons');
             // Security: the zones list and the slider
             const lv = ctx.holder(1566, 'inetcpl:500');
             lv.classList.add('is-icons', 'cpl-zones');
@@ -230,25 +261,46 @@
             ctx.enable(5903, false, 'inetcpl:300');
             // Advanced
             const adv = ctx.holder(1439, 'inetcpl:600');
-            const fillAdv = (values) => { adv.innerHTML = inetTree(values); };
-            fillAdv(R() ? R().getKey(`${KEY.inet}\\Advanced`) : {});
+            fillAdv(R() ? R().getKey(`${KEY.inet}\\Advanced`) : {}, ctx.store.alchemy);
             adv.addEventListener('change', () => ctx.dirty());
-            ctx.on(1526, 'click', () => { fillAdv({}); ctx.dirty(); }, 'inetcpl:600');
-            ctx.on(6010, 'click', () => { fillAdv({}); ctx.dirty(); }, 'inetcpl:600');
+            // Restore advanced settings: every row to its default, Alchemy's included (it saves on Apply)
+            ctx.on(1526, 'click', () => { fillAdv({}, io ? io.ALCHEMY_DEFAULTS : null); ctx.dirty(); }, 'inetcpl:600');
+            ctx.on(6010, 'click', () => {
+                if (io) io.open.reset(ctx.modal, () => { ctx.store.alchemy = { ...io.ALCHEMY_DEFAULTS }; ctx.store.home = ''; home.value = 'about:Home'; fillAdv({}, ctx.store.alchemy); });
+            }, 'inetcpl:600');
             helpLinks(ctx, 'internet-options');
         },
         async apply(ctx) {
+            const io = root.cplInternetOptions;
             const home = ctx.get(1487, 'inetcpl:100');
-            const url = home === 'about:blank' ? '' : String(home || '').split(/\r?\n/)[0].trim();
-            if (url !== ctx.store.home && typeof root.grimoireSaveAlchemySettings === 'function') {
-                try { await root.grimoireSaveAlchemySettings({ homePage: url }); ctx.store.home = url; } catch (err) { console.error('Internet Properties: home page', err); }
+            const first = String(home || '').split(/\r?\n/)[0].trim();
+            const url = /^about:(blank|home)$/i.test(first) ? '' : first;
+            // Grimoire's settings: the home page and the Advanced rows marked "@"
+            const patch = {};
+            if (url !== ctx.store.home) patch.homePage = url;
+            const tree = ctx.holder(1439, 'inetcpl:600');
+            const was = ctx.store.alchemy || {};
+            tree.querySelectorAll('[data-ia^="@"]').forEach((i) => {
+                const k = i.dataset.ia.slice(1);
+                if (!!was[k] !== i.checked) patch[k] = i.checked;
+            });
+            tree.querySelectorAll('[data-ia-radio]:checked').forEach((i) => {
+                const k = i.dataset.iaRadio;
+                if (Number(was[k]) !== Number(i.value)) patch[k] = Number(i.value);
+            });
+            if (patch.minFps && patch.maxFps === undefined && patch.minFps > Number(was.maxFps)) patch.maxFps = patch.minFps;
+            if (io && Object.keys(patch).length) {
+                try {
+                    const saved = await io.saveAlchemy(patch);
+                    if (saved) { ctx.store.alchemy = { ...was, ...saved }; ctx.store.home = saved.homePage || ''; }
+                } catch (err) { console.error('Internet Properties: Grimoire settings', err); }
             }
             const r = R();
             if (!r) return;
             const zones = {};
             ZONES.forEach((z) => { zones[`Zone${z.id}Level`] = ctx.store.levels[z.id]; });
             const adv = {};
-            ctx.holder(1439, 'inetcpl:600').querySelectorAll('[data-ia]').forEach((i) => { adv[i.dataset.ia] = i.checked; });
+            tree.querySelectorAll('[data-ia]:not([data-ia^="@"])').forEach((i) => { adv[i.dataset.ia] = i.checked; });
             await Promise.all([
                 r.set(KEY.inetZones, zones),
                 r.set(KEY.inetPrivacy, { PrivacyLevel: ctx.store.privacy }),
@@ -513,6 +565,11 @@
                 key: 'p2pcollab:8000',
                 icon: itemIcon('people-near-me'),
                 owner,
+                // BS_OWNERDRAW buttons p2pcollab paints as links; 8006 is the white band behind the heading
+                overrides: {
+                    8012: { html: '<button type="button" class="tbp-link vdt-link">Read the full privacy statement online</button>', cls: 'tbp-link-row' },
+                    8009: { html: '<button type="button" class="tbp-link vdt-link">What is a trusted contact?</button>', cls: 'tbp-link-row' }
+                },
                 init(ctx) {
                     const accounts = root.meletonAccounts;
                     const user = (accounts && typeof accounts.displayName === 'function' && accounts.displayName()) || (root.localStorage && root.localStorage.getItem('username')) || 'User';
