@@ -57,21 +57,29 @@ function safeGalleryFilename(filename) {
 
 function cleanImageIds(value) {
     const list = Array.isArray(value) ? value : (value ? [value] : []);
+    const seen = new Set();
     const out = [];
     list.forEach((item) => {
         const name = safeGalleryFilename(typeof item === 'string' ? item : item && item.filename);
-        if (name && !out.includes(name)) out.push(name);
+        if (name && !seen.has(name)) {
+            seen.add(name);
+            out.push(name);
+        }
     });
     return out.slice(0, 32);
 }
 
 function cleanImageUrls(value) {
     const list = Array.isArray(value) ? value : (value ? [value] : []);
+    const seen = new Set();
     const out = [];
     list.forEach((item) => {
         const url = String(item || '').trim();
         if (!/^https?:\/\//i.test(url) || url.length > 500) return;
-        if (!out.includes(url)) out.push(url);
+        if (!seen.has(url)) {
+            seen.add(url);
+            out.push(url);
+        }
     });
     return out.slice(0, 32);
 }
