@@ -65,6 +65,7 @@
         return {
             id: l.id, name: l.name, visible: l.visible, opacity: l.opacity, blend: l.blend, locked: !!l.locked,
             groupId: l.groupId || null,
+            clip: !!l.clip,
             pixels: await out.canvas(canvas || l.canvas),
             mask: maskCanvas ? { pixels: await out.canvas(maskCanvas), enabled: maskOn !== false } : null,
             styles: l.styles || null,
@@ -186,6 +187,7 @@
         l.blend = sl.blend || 'normal';
         l.locked = !!sl.locked;
         l.groupId = sl.groupId || null;
+        l.clip = !!sl.clip;
         if (sl.mask) l.setMaskCanvas(await state.canvas(sl.mask.pixels), sl.mask.enabled !== false);
         l.styles = sl.styles || null;
         l.adjust = sl.adjust ? { kind: sl.adjust.kind, params: sl.adjust.params } : null;

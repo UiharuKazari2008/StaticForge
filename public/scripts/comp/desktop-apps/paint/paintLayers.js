@@ -106,6 +106,11 @@
                     refresh(w);
                     return;
                 }
+                if (ev.altKey && !maskThumb) {
+                    // Alt+click a layer: clip it to the one under it, or release it (Photoshop)
+                    action(w, 'layer-clip', i);
+                    return;
+                }
                 w.commitFloating();
                 w.doc.active = i;
                 // the mask's thumbnail makes the mask what the tools paint (Photoshop)
@@ -159,12 +164,15 @@
                 <input type="checkbox" class="mp-group-vis" title="Visible"${g.visible ? ' checked' : ''}>
             </div>`;
             let lastGroup = null;
+            // a clipped layer (and its base, whose name Photoshop underlines)
+            const clipped = (i) => i > 0 && doc0.layers[i].clip && doc0.layers[i - 1].groupId === doc0.layers[i].groupId;
+            const clipBase = (i) => !doc0.layers[i].clip && i + 1 < doc0.layers.length && clipped(i + 1);
             list.innerHTML = rows.map(({ l, i }) => {
                 const g = l.groupId ? doc0.group(l.groupId) : null;
                 let head = '';
                 if (g && g.id !== lastGroup) head = header(g);
                 lastGroup = g ? g.id : null;
-                const child = g ? ` is-child${g.collapsed ? ' is-hidden' : ''}` : '';
+                const child = (g ? ` is-child${g.collapsed ? ' is-hidden' : ''}` : '') + (clipped(i) ? ' is-clipped' : '') + (clipBase(i) ? ' is-clip-base' : '');
                 return `${head}<div class="mp-layer-row${i === w.doc.active && !w.activeGroup ? ' is-active' : ''}${l.mask ? ' has-mask' : ''}${child}" data-i="${i}" role="option">
                 ${l.adjust ? `<span class="mp-layer-thumb mp-layer-kind is-adjust" title="Adjustment layer (double-click to change)"></span>` : l.text ? `<span class="mp-layer-thumb mp-layer-kind is-text${i === w.doc.active && !onMask(i) ? ' is-target' : ''}" title="Type layer (double-click to edit)">T</span>` : `<canvas class="mp-layer-thumb${i === w.doc.active && !onMask(i) ? ' is-target' : ''}" width="40" height="30" data-i="${i}"></canvas>`}
                 ${l.mask ? `<canvas class="mp-layer-mask${onMask(i) ? ' is-target' : ''}${l.mask.enabled ? '' : ' is-off'}" width="40" height="30" data-i="${i}" title="Layer mask (Shift+click turns it off)"></canvas>` : ''}
@@ -229,6 +237,8 @@
             { text: 'Layer via Copy', subtext: 'Ctrl+J', action: 'layer-via-copy' },
             { text: 'Layer via Cut', subtext: 'Ctrl+Shift+J', action: 'layer-via-cut', disabled: !d.selection },
             { text: 'Merge Layer Down', subtext: 'Ctrl+E', action: 'layer-merge', disabled: d.active === 0 },
+            { separator: true },
+            { text: d.activeLayer.clip ? 'Release Clipping Mask' : 'Create Clipping Mask', subtext: 'Alt+Ctrl+G', action: 'layer-clip', disabled: d.active === 0 },
             { text: 'Import From File...', action: 'layer-import' },
             { separator: true },
             { text: 'Flip Horizontal', action: 'layer-flip-h' },
@@ -304,9 +314,16 @@
         w.doc.markDirty();
     }
 
-    function action(w, a) {
+    function action(w, a, at) {
         const d = w.doc;
         switch (a) {
+            case 'layer-clip': {
+                const i = at === undefined ? d.active : at;
+                const l = d.layers[i];
+                if (!l || i === 0) return true;
+                structural(w, l.clip ? 'Release Clipping Mask' : 'Create Clipping Mask', () => { l.clip = !l.clip; d.markDirty(); d.emit('layers'); });
+                return true;
+            }
             case 'layer-add': structural(w, 'Add Layer', () => { d.addLayer(`Layer ${d.layers.length + 1}`); }); return true;
             case 'layer-delete': if (d.layers.length > 1) structural(w, 'Delete Layer', () => d.removeLayer(d.active)); return true;
             case 'layer-duplicate': structural(w, 'Duplicate Layer', () => d.duplicateLayer(d.active)); return true;

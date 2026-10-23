@@ -259,7 +259,7 @@
         rec.str('8BIM');
         rec.str(BLEND_TO_PSD[what.blend] || 'norm');
         rec.u8(Math.round((what.opacity === undefined ? 1 : what.opacity) * 255));
-        rec.u8(0);
+        rec.u8(what.clip ? 1 : 0); // clipping: 1 clipped to the layer under it
         // flags: bit 1 hidden; a group's two records say their pixels mean nothing (bits 3 and 4)
         rec.u8((what.visible === false ? 2 : 0) | (what.section ? 0x18 : 0));
         rec.u8(0);
@@ -353,7 +353,7 @@
     }
 
     function layerItem(l, W, H, notes) {
-        const it = { name: l.name, l, blend: l.blend, opacity: l.opacity, visible: l.visible, locked: l.locked };
+        const it = { name: l.name, l, blend: l.blend, opacity: l.opacity, visible: l.visible, locked: l.locked, clip: !!l.clip };
         if (l.adjust) {
             it.adjust = l.adjust;
             if (l.mask) { it.mask = l.mask.canvas; it.maskOn = l.mask.enabled; }
@@ -665,7 +665,7 @@
             if (L.descriptorAdjustment) notes(st).add(`${L.name}: Photoshop's ${L.descriptorAdjustment} layer has no equivalent here; it came in empty.`);
             if (L.text) notes(st).add(`${L.name}: the text came in as pixels.`);
             if (L.effects) notes(st).add(`${L.name}: its layer style was not brought in.`);
-            if (L.clipping) notes(st).add(`${L.name}: clipping masks are not supported; it is a normal layer.`);
+            l.clip = !!L.clipping;
             if (L.blend && !PSD_TO_BLEND[L.blend]) notes(st).add(`${L.name}: blend mode ${L.blend.trim()} became Normal.`);
             // Photoshop's Background: the bottom layer by that name, with no transparency
             if (!layers.length && !stack.length && L.name === 'Background' && L.opacity === 1) {

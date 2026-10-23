@@ -2169,3 +2169,20 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
     min-width: 0;
     white-space: nowrap;
 }
+
+/* clipping masks: a clipped layer sits in, with Photoshop's bent arrow; its base is underlined */
+.mp-client .mp-layer-row.is-clipped {
+    padding-left: 18px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='9' shape-rendering='crispEdges'%3E%3Cpath fill='%23333' d='M1 0h1v6h4V4h1v1h1v1h1v1H8v1H7v1H6V7H1z'/%3E%3C/svg%3E");
+    background-position: 5px 50%;
+    background-repeat: no-repeat;
+}
+
+.mp-client .mp-layer-row.is-child.is-clipped {
+    padding-left: 34px;
+    background-position: 21px 50%;
+}
+
+.mp-client .mp-layer-row.is-clip-base .mp-layer-name {
+    text-decoration: underline;
+}

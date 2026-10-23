@@ -253,7 +253,7 @@
         }
 
         title() {
-            const t = `${this.name} - Paint`;
+            const t = `${this.name}${this.doc && this.doc.quickMask ? ' (Quick Mask)' : ''} - Paint`;
             this.el('.mp-title').textContent = t;
             this.modal.setAttribute('aria-label', t);
         }
@@ -474,6 +474,71 @@
             });
         }
 
+        /**
+         * Quick Mask (Q): the selection becomes a picture to paint, white selected and black not,
+         * shown as Photoshop's red film over what is not selected; Q again turns it back.
+         */
+        toggleQuickMask() {
+            const d = this.doc;
+            const P0 = P();
+            if (!P0) return;
+            this.finishText();
+            this.commitFloating();
+            const W = d.width;
+            const H = d.height;
+            if (!d.quickMask) {
+                const canvas = C().makeCanvas(W, H);
+                const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                const img = ctx.createImageData(W, H);
+                const m = d.selection ? P0.maskOf(d, d.selection) : null;
+                for (let i = 0; i < W * H; i += 1) {
+                    const v = m ? m[i] : 0;
+                    img.data[i * 4] = v; img.data[i * 4 + 1] = v; img.data[i * 4 + 2] = v; img.data[i * 4 + 3] = 255;
+                }
+                ctx.putImageData(img, 0, 0);
+                // nothing selected: nothing is masked yet (Photoshop's film starts clear)
+                if (!m) { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H); }
+                const target = { isMask: true, isQuick: true, owner: null, canvas, ctx, id: 'qm', name: 'Quick Mask', locked: false, visible: true, opacity: 1, blend: 'normal' };
+                d.quickMask = { canvas, ctx, target };
+                this.setSelection(null);
+                this.status('Quick Mask: paint black to mask, white to select. Press Q to turn it into a selection.');
+            } else {
+                const a = d.quickMask.ctx.getImageData(0, 0, W, H).data;
+                const m = new Uint8Array(W * H);
+                for (let i = 0; i < m.length; i += 1) m[i] = Math.round(0.299 * a[i * 4] + 0.587 * a[i * 4 + 1] + 0.114 * a[i * 4 + 2]);
+                d.quickMask = null;
+                const all = m.every((v) => v === 255);
+                this.setSelection(all ? { x: 0, y: 0, w: W, h: H } : P0.fromMask(m, W, H));
+                this.status();
+            }
+            d.markDirty();
+            this.title();
+            this.schedule();
+            if (root.paintLayers) root.paintLayers.refresh(this);
+        }
+
+        /** The red film over the masked parts of rect (the stroke being painted included). */
+        drawQuickMask(r) {
+            const qm = this.doc.quickMask;
+            const c = C().makeCanvas(r.w, r.h);
+            const x = c.getContext('2d', { willReadFrequently: true });
+            x.drawImage(qm.canvas, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h);
+            const o = this.strokeOverlay;
+            if (o) {
+                x.globalAlpha = o.alpha === undefined ? 1 : o.alpha;
+                x.globalCompositeOperation = o.erase ? 'destination-out' : 'source-over';
+                x.drawImage(o.canvas, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h);
+            }
+            const img = x.getImageData(0, 0, r.w, r.h);
+            const p = img.data;
+            for (let i = 0; i < p.length; i += 4) {
+                const v = (0.299 * p[i] + 0.587 * p[i + 1] + 0.114 * p[i + 2]) * (p[i + 3] / 255);
+                p[i] = 255; p[i + 1] = 0; p[i + 2] = 0; p[i + 3] = Math.round((255 - v) * 0.5);
+            }
+            x.putImageData(img, 0, 0);
+            this.vctx.drawImage(c, r.x, r.y);
+        }
+
         /** View > Fit on Screen (Ctrl+0): the whole picture in the window. */
         fitZoom() {
             const ws = this.workspace;
@@ -489,7 +554,9 @@
             this.raf = requestAnimationFrame(() => {
                 this.raf = 0;
                 const r = this.doc.takeDirty();
-                if (r) this.doc.composite(this.vctx, r, { checker: this.checker, overlay: this.strokeOverlay || null });
+                const qm = this.doc.quickMask;
+                if (r) this.doc.composite(this.vctx, r, { checker: this.checker, overlay: qm ? null : this.strokeOverlay || null });
+                if (r && qm) this.drawQuickMask(r);
                 if (root.paintLayers) root.paintLayers.thumbs(this);
                 if (P()) P().navRefresh(this);
             });
@@ -678,6 +745,7 @@
                 else if (alt && !shift && k === 'i') action = 'stretch';
                 else if (alt && !shift && k === 'z') action = 'undo';
                 else if (alt && !shift && k === 'r') action = 'flip';
+                else if (alt && !shift && k === 'g') action = 'layer-clip';
                 else if (alt && !shift && k === ';') action = 'guides-lock';
                 else if (alt) action = null;
                 else if (shift) {
@@ -730,7 +798,8 @@
                 const v = ev.key === '0' ? 100 : Number(ev.key) * 10;
                 this.opt.opacity = v;
                 this.updateBar();
-            } else if (k === 'x') action = 'swap-colors';
+            } else if (k === 'q' && !shift) action = 'quick-mask';
+            else if (k === 'x') action = 'swap-colors';
             else if (k === 'd') action = 'default-colors';
             else if (TOOL_KEYS[k]) {
                 const group = TOOL_KEYS[k];
@@ -2222,6 +2291,7 @@
                 case 'align-left': case 'align-hcenter': case 'align-right': case 'align-top': case 'align-vcenter': case 'align-bottom': this.alignLayer(a.slice(6)); return;
                 case 'rulers': this.toggleRulers(); return;
                 case 'character': if (root.paintType) root.paintType.toggleCharacter(this); return;
+                case 'quick-mask': this.toggleQuickMask(); return;
                 case 'brushes': if (root.paintBrush) root.paintBrush.togglePanel(this); return;
                 case 'brush-define': if (root.paintBrush) void root.paintBrush.definePreset(this); return;
                 case 'guides-show': this.guidesShown = !this.guidesShown; this.drawAnts(); return;

@@ -95,6 +95,7 @@
             this.isBackground = false;
             this.text = null; // { content, face, size, bold, italic, underline, color, x, y } for a type layer
             this.groupId = null;
+            this.clip = false; // clipped to the layer under it (Photoshop's clipping mask)
         }
 
         /** A layer mask, white (everything shows) or black (nothing does). */
@@ -314,6 +315,7 @@
 
         get layer() {
             const l = this.layers[this.active];
+            if (this.quickMask) return this.quickMask.target;
             return (this.editMask || (l && l.adjust)) && l && l.mask ? l.mask.target : l;
         }
 
@@ -324,6 +326,7 @@
 
         /** A layer or a layer mask's target by id (history steps). */
         target(id) {
+            if (this.quickMask && this.quickMask.target.id === id) return this.quickMask.target;
             for (const l of this.layers) {
                 if (l.id === id) return l;
                 if (l.mask && l.mask.target.id === id) return l.mask.target;
@@ -450,6 +453,7 @@
             copy.styles = src.styles ? JSON.parse(JSON.stringify(src.styles)) : null;
             copy.adjust = src.adjust ? JSON.parse(JSON.stringify(src.adjust)) : null;
             copy.groupId = src.groupId;
+            copy.clip = !!src.clip;
             copy.text = src.text ? { ...src.text } : null;
             this.layers.splice(i + 1, 0, copy);
             this.active = i + 1;
@@ -473,7 +477,21 @@
             below.ctx.save();
             below.ctx.globalAlpha = top.opacity;
             below.ctx.globalCompositeOperation = BLENDS[top.blend] || 'source-over';
-            if (top.visible) below.ctx.drawImage((top.mask && top.mask.enabled) || hasEffects(top) ? renderLayer(top, { x: 0, y: 0, w: this.width, h: this.height }) : top.canvas, 0, 0);
+            const src = (top.mask && top.mask.enabled) || hasEffects(top) ? renderLayer(top, { x: 0, y: 0, w: this.width, h: this.height }) : top.canvas;
+            if (top.visible && top.clip && !below.clip) {
+                // a clipped layer merges into its base only where the base has pixels
+                const cut = makeCanvas(this.width, this.height);
+                const cx = ctxOf(cut);
+                cx.drawImage(src, 0, 0);
+                cx.globalCompositeOperation = 'destination-in';
+                cx.drawImage(below.canvas, 0, 0);
+                const shape = makeCanvas(this.width, this.height);
+                ctxOf(shape).drawImage(below.canvas, 0, 0);
+                below.ctx.drawImage(cut, 0, 0);
+                below.ctx.globalAlpha = 1;
+                below.ctx.globalCompositeOperation = 'destination-in';
+                below.ctx.drawImage(shape, 0, 0);
+            } else if (top.visible) below.ctx.drawImage(src, 0, 0);
             below.ctx.restore();
             this.layers.splice(i, 1);
             this.active = i - 1;
@@ -557,12 +575,65 @@
                     i = j;
                     continue;
                 }
+                // a clipping mask: the layers clipped to this one show only where it has pixels;
+                // its opacity and blend mode are the whole clipping group's
+                let j = i + 1;
+                while (j < to && this.layers[j].clip && this.layers[j].groupId === l.groupId) j += 1;
+                if (j > i + 1 && !l.adjust) {
+                    this.drawClipped(tx, i, j, r, opts);
+                    i = j;
+                    continue;
+                }
                 this.drawLayer(tx, l, i, r, opts);
                 i += 1;
             }
         }
 
-        drawLayer(tx, l, i, r, opts) {
+        /** The base layer i with layers i+1..j-1 clipped to it. */
+        drawClipped(tx, i, j, r, opts) {
+            const base = this.layers[i];
+            if (!base.visible || base.opacity <= 0) return;
+            const off = makeCanvas(r.w, r.h);
+            const ox = ctxOf(off);
+            ox.translate(-r.x, -r.y);
+            this.drawLayer(ox, base, i, r, opts, true);
+            // the base's own pixels: what the clipped layers are cut to
+            const shape = makeCanvas(r.w, r.h);
+            ctxOf(shape).drawImage(off, 0, 0);
+            for (let k = i + 1; k < j; k += 1) {
+                const l = this.layers[k];
+                if (!l.visible || l.opacity <= 0) continue;
+                // an adjustment layer changes the base (and what is clipped under it) alone
+                if (l.adjust) { this.drawLayer(ox, l, k, r, opts); continue; }
+                const one = makeCanvas(r.w, r.h);
+                const lx = ctxOf(one);
+                lx.translate(-r.x, -r.y);
+                this.drawLayer(lx, l, k, r, opts, true);
+                lx.setTransform(1, 0, 0, 1, 0, 0);
+                lx.globalCompositeOperation = 'destination-in';
+                lx.drawImage(shape, 0, 0);
+                ox.save();
+                ox.setTransform(1, 0, 0, 1, 0, 0);
+                ox.globalAlpha = l.opacity;
+                ox.globalCompositeOperation = BLENDS[l.blend] || 'source-over';
+                ox.drawImage(one, 0, 0);
+                ox.restore();
+            }
+            // blending over a soft edge may raise the alpha: the group keeps the base's shape
+            ox.save();
+            ox.setTransform(1, 0, 0, 1, 0, 0);
+            ox.globalCompositeOperation = 'destination-in';
+            ox.drawImage(shape, 0, 0);
+            ox.restore();
+            tx.save();
+            tx.globalAlpha = base.opacity;
+            tx.globalCompositeOperation = BLENDS[base.blend] || 'source-over';
+            tx.drawImage(off, r.x, r.y);
+            tx.restore();
+        }
+
+        /** solo: the layer at full opacity in Normal (a clipping group applies the base's later). */
+        drawLayer(tx, l, i, r, opts, solo) {
             if (!l.visible || l.opacity <= 0) return;
             if (l.adjust) {
                 tx.save();
@@ -571,13 +642,14 @@
                 tx.restore();
                 return;
             }
-            tx.globalAlpha = l.opacity;
-            tx.globalCompositeOperation = BLENDS[l.blend] || 'source-over';
+            const op = solo ? 1 : l.opacity;
+            tx.globalAlpha = op;
+            tx.globalCompositeOperation = solo ? 'source-over' : BLENDS[l.blend] || 'source-over';
             if ((l.mask && l.mask.enabled) || hasEffects(l)) tx.drawImage(renderLayer(l, r), r.x, r.y);
             else tx.drawImage(l.canvas, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
             // a stroke in progress (brush opacity) is drawn over its layer before the layers above
             if (opts.overlay && opts.overlay.layerIndex === i) {
-                tx.globalAlpha = l.opacity * (opts.overlay.alpha === undefined ? 1 : opts.overlay.alpha);
+                tx.globalAlpha = op * (opts.overlay.alpha === undefined ? 1 : opts.overlay.alpha);
                 tx.globalCompositeOperation = opts.overlay.erase ? 'destination-out' : 'source-over';
                 tx.drawImage(opts.overlay.canvas, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
             }
@@ -646,7 +718,7 @@
                     ctxOf(mask).drawImage(l.mask.canvas, 0, 0);
                     bytes += this.width * this.height * 4;
                 }
-                return { id: l.id, name: l.name, canvas: c, visible: l.visible, opacity: l.opacity, blend: l.blend, locked: l.locked, mask, maskOn: l.mask ? l.mask.enabled : false, styles: l.styles ? JSON.parse(JSON.stringify(l.styles)) : null, adjust: l.adjust ? JSON.parse(JSON.stringify(l.adjust)) : null, text: l.text ? { ...l.text } : null, groupId: l.groupId, isBackground: !!l.isBackground };
+                return { id: l.id, name: l.name, canvas: c, visible: l.visible, opacity: l.opacity, blend: l.blend, locked: l.locked, mask, maskOn: l.mask ? l.mask.enabled : false, styles: l.styles ? JSON.parse(JSON.stringify(l.styles)) : null, adjust: l.adjust ? JSON.parse(JSON.stringify(l.adjust)) : null, text: l.text ? { ...l.text } : null, groupId: l.groupId, isBackground: !!l.isBackground, clip: !!l.clip };
             });
             return { width: this.width, height: this.height, active: this.active, editMask: !!this.editMask, layers, groups: JSON.parse(JSON.stringify(this.groups)), bytes };
         }
@@ -672,6 +744,7 @@
                 l.text = sl.text ? { ...sl.text } : null;
                 l.groupId = sl.groupId || null;
                 l.isBackground = !!sl.isBackground;
+                l.clip = !!sl.clip;
                 return l;
             });
             this.active = Math.min(s.active, this.layers.length - 1);

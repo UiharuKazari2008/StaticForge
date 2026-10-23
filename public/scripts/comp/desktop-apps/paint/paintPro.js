@@ -2084,6 +2084,8 @@
             { text: 'Reselect', subtext: 'Ctrl+Shift+D', action: 'pro-reselect', disabled: !w.lastSelection },
             { text: 'Inverse', subtext: 'Ctrl+Shift+I', action: 'pro-inverse', disabled: !w.doc.selection },
             { separator: true },
+            { text: 'Edit in Quick Mask Mode', subtext: 'Q', action: 'quick-mask', showIndicator: true, checked: !!w.doc.quickMask },
+            { separator: true },
             { text: 'Color Range...', action: 'pro-color-range' },
             { separator: true },
             { text: 'Modify', hasSubmenu: true, disabled: !w.doc.selection, submenu: [
