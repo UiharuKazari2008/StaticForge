@@ -69,7 +69,8 @@
             mask: maskCanvas ? { pixels: await out.canvas(maskCanvas), enabled: maskOn !== false } : null,
             styles: l.styles || null,
             adjust: l.adjust ? { kind: l.adjust.kind, params: l.adjust.params } : null,
-            text: l.text || null
+            text: l.text || null,
+            isBackground: !!l.isBackground
         };
     }
 
@@ -184,6 +185,7 @@
         l.styles = sl.styles || null;
         l.adjust = sl.adjust ? { kind: sl.adjust.kind, params: sl.adjust.params } : null;
         l.text = sl.text || null;
+        l.isBackground = !!sl.isBackground;
         return l;
     }
 
@@ -210,7 +212,7 @@
             let mask = null;
             if (sl.mask) { mask = await state.canvas(sl.mask.pixels); bytes += s.width * s.height * 4; }
             layers.push({ id: sl.id, name: sl.name, canvas: c, visible: sl.visible !== false, opacity: sl.opacity, blend: sl.blend, locked: !!sl.locked,
-                mask, maskOn: sl.mask ? sl.mask.enabled !== false : false, styles: sl.styles || null, adjust: sl.adjust || null, text: sl.text || null, groupId: sl.groupId || null });
+                mask, maskOn: sl.mask ? sl.mask.enabled !== false : false, styles: sl.styles || null, adjust: sl.adjust || null, text: sl.text || null, groupId: sl.groupId || null, isBackground: !!sl.isBackground });
         }
         return { width: s.width, height: s.height, active: s.active, editMask: !!s.editMask, groups: s.groups || [], layers, bytes };
     }

@@ -90,6 +90,9 @@
             this.mask = null;
             this.styles = null;
             this.adjust = null; // { kind, params } for an adjustment layer
+            // the Background layer: erasing and deleting give the background colour, not
+            // transparency (Layers > Layer from Background makes it a normal layer)
+            this.isBackground = false;
             this.text = null; // { content, face, size, bold, italic, underline, color, x, y } for a type layer
             this.groupId = null;
         }
@@ -291,8 +294,10 @@
             this.selection = null; // { rect, mask (Uint8Array w*h of the rect) | null for a plain rectangle }
             this.groups = [];
             this.guides = [];
-            const bg = this.addLayer('Background', { silent: true });
+            // a transparent document has no Background layer, only Layer 1 (Photoshop)
+            const bg = this.addLayer(opts.transparent === true ? 'Layer 1' : 'Background', { silent: true });
             if (opts.transparent !== true) {
+                bg.isBackground = true;
                 bg.ctx.fillStyle = opts.background || '#ffffff';
                 bg.ctx.fillRect(0, 0, width, height);
             }
@@ -477,9 +482,11 @@
         }
 
         flatten() {
+            const hadBackground = this.layers.some((l) => l.isBackground && l.visible);
             const flat = this.flattened();
-            const layer = new Layer(this.width, this.height, 'Background');
+            const layer = new Layer(this.width, this.height, hadBackground ? 'Background' : 'Layer 1');
             layer.ctx.drawImage(flat, 0, 0);
+            layer.isBackground = hadBackground;
             this.layers = [layer];
             this.groups = [];
             this.active = 0;
@@ -639,7 +646,7 @@
                     ctxOf(mask).drawImage(l.mask.canvas, 0, 0);
                     bytes += this.width * this.height * 4;
                 }
-                return { id: l.id, name: l.name, canvas: c, visible: l.visible, opacity: l.opacity, blend: l.blend, locked: l.locked, mask, maskOn: l.mask ? l.mask.enabled : false, styles: l.styles ? JSON.parse(JSON.stringify(l.styles)) : null, adjust: l.adjust ? JSON.parse(JSON.stringify(l.adjust)) : null, text: l.text ? { ...l.text } : null, groupId: l.groupId };
+                return { id: l.id, name: l.name, canvas: c, visible: l.visible, opacity: l.opacity, blend: l.blend, locked: l.locked, mask, maskOn: l.mask ? l.mask.enabled : false, styles: l.styles ? JSON.parse(JSON.stringify(l.styles)) : null, adjust: l.adjust ? JSON.parse(JSON.stringify(l.adjust)) : null, text: l.text ? { ...l.text } : null, groupId: l.groupId, isBackground: !!l.isBackground };
             });
             return { width: this.width, height: this.height, active: this.active, editMask: !!this.editMask, layers, groups: JSON.parse(JSON.stringify(this.groups)), bytes };
         }
@@ -664,6 +671,7 @@
                 l.adjust = sl.adjust ? JSON.parse(JSON.stringify(sl.adjust)) : null;
                 l.text = sl.text ? { ...sl.text } : null;
                 l.groupId = sl.groupId || null;
+                l.isBackground = !!sl.isBackground;
                 return l;
             });
             this.active = Math.min(s.active, this.layers.length - 1);
@@ -731,7 +739,7 @@
                 this.layers.forEach((l, i) => {
                     const c = makeCanvas(w, h);
                     const cx = ctxOf(c);
-                    if (i === 0 && opts.fill) {
+                    if (l.isBackground && opts.fill) {
                         cx.fillStyle = opts.fill;
                         cx.fillRect(0, 0, w, h);
                     }

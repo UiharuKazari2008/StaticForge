@@ -258,6 +258,8 @@
                 { text: 'Clear Layer Style', action: 'style-clear', disabled: !C().hasEffects(d.activeLayer) }
             ] },
             { text: 'Rasterize Type', action: 'layer-rasterize', disabled: !d.activeLayer.text },
+            { text: 'Layer from Background', action: 'layer-from-bg', disabled: !d.activeLayer.isBackground },
+            { text: 'Background from Layer', action: 'layer-to-bg', disabled: d.activeLayer.isBackground || d.layers.some((x) => x.isBackground) || !!d.activeLayer.adjust },
             { separator: true },
             { text: 'Layer Properties...', subtext: 'F4', action: 'layer-properties' }
         ];
@@ -318,6 +320,29 @@
             case 'layer-rotate': if (root.paintDialogs) root.paintDialogs.rotateLayer(w); return true;
             case 'layer-import': importLayer(w); return true;
             case 'layer-rasterize': w.rasterizeType(); return true;
+            // the Background layer becomes a normal one: erasing then gives transparency (Photoshop)
+            case 'layer-from-bg': if (d.activeLayer.isBackground) structural(w, 'Layer from Background', () => { const l = d.activeLayer; l.isBackground = false; if (l.name === 'Background') l.name = 'Layer 0'; }); return true;
+            case 'layer-to-bg': if (!d.layers.some((x) => x.isBackground)) structural(w, 'Background from Layer', () => {
+                const l = d.activeLayer;
+                d.layers.splice(d.active, 1);
+                d.layers.unshift(l);
+                d.active = 0;
+                l.groupId = null;
+                d.pruneGroups();
+                // its transparent pixels take the background colour
+                const c = C().makeCanvas(d.width, d.height);
+                const x = c.getContext('2d');
+                x.fillStyle = w.bg;
+                x.fillRect(0, 0, d.width, d.height);
+                x.drawImage(l.canvas, 0, 0);
+                l.ctx.clearRect(0, 0, d.width, d.height);
+                l.ctx.drawImage(c, 0, 0);
+                l.isBackground = true;
+                l.name = 'Background';
+                l.opacity = 1;
+                l.blend = 'normal';
+                d.markDirty();
+            }); return true;
             case 'layer-group': case 'group-new': if (!d.activeLayer.groupId) { structural(w, 'Group Layer', () => d.groupLayer(d.active)); w.activeGroup = d.activeLayer.groupId; refresh(w); } return true;
             case 'group-ungroup': if (d.activeLayer.groupId) { const id = d.activeLayer.groupId; structural(w, 'Ungroup Layers', () => d.ungroup(id)); w.activeGroup = null; refresh(w); } return true;
             case 'group-delete': if (d.activeLayer.groupId) {

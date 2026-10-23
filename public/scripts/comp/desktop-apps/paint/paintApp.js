@@ -257,7 +257,7 @@
         newDocument(w, h, opts = {}) {
             if (this.unsub) this.unsub();
             this.commitFloating();
-            this.doc = new (C().Document)(w, h, { background: '#ffffff' });
+            this.doc = new (C().Document)(w, h, { background: opts.background || '#ffffff', transparent: opts.transparent === true });
             this.unsub = this.doc.on((kind) => {
                 if (kind === 'dirty') this.schedule();
                 if (kind === 'resize') this.layout();
@@ -1147,7 +1147,7 @@
         clearSelectionArea(l) {
             const s = this.doc.selection;
             // a layer mask takes the background colour like the Background layer (Photoshop)
-            const isBackground = this.doc.layers.indexOf(l) === 0 || !!l.isMask;
+            const isBackground = !!l.isBackground || !!l.isMask;
             l.ctx.save();
             l.ctx.beginPath();
             if (s.path) {
@@ -1585,6 +1585,7 @@
                     m.enabled = l.maskOn !== false;
                 }
                 layer.styles = l.styles || null;
+                layer.isBackground = l.isBackground !== undefined ? !!l.isBackground : (this.doc.layers.length === 1 && l.name === 'Background');
                 layer.adjust = l.adjust || null;
                 layer.text = l.text || null;
                 layer.visible = l.visible !== false;
@@ -1648,7 +1649,7 @@
                 const layers = this.doc.layers.map((l) => ({
                     name: l.name, visible: l.visible, opacity: l.opacity, blend: l.blend, locked: l.locked, png: l.canvas.toDataURL('image/png'),
                     mask: l.mask ? l.mask.canvas.toDataURL('image/png') : undefined, maskOn: l.mask ? l.mask.enabled : undefined, styles: l.styles || undefined,
-                    adjust: l.adjust ? { kind: l.adjust.kind, params: l.adjust.params } : undefined, text: l.text || undefined
+                    adjust: l.adjust ? { kind: l.adjust.kind, params: l.adjust.params } : undefined, text: l.text || undefined, isBackground: l.isBackground || undefined
                 }));
                 return new Blob([JSON.stringify({ format: 'melaton-paint', version: 1, width: this.doc.width, height: this.doc.height, active: this.doc.active, layers })], { type: 'application/json' });
             }
@@ -1894,7 +1895,7 @@
             switch (a) {
                 case 'new':
                     if (!await this.confirmDiscard()) return;
-                    this.newDocument(this.doc.width, this.doc.height);
+                    this.newDialog();
                     return;
                 case 'open': if (await this.confirmDiscard()) this.openDialog('open-vfs'); return;
                 case 'open-gallery': if (await this.confirmDiscard()) this.openDialog('open-gallery'); return;
@@ -1974,6 +1975,34 @@
                     if (root.paintColor && root.paintColor.action(this, a)) return;
                     break;
             }
+        }
+
+        /** File > New: the size and the Background Contents (White, Background Color, Transparent). */
+        newDialog() {
+            const V = root.vistaDialogTemplate;
+            if (!V) { this.newDocument(this.doc.width, this.doc.height); return; }
+            const tpl = { t: 'New', w: 200, h: 92, f: ['MS Shell Dlg', 8], c: [
+                [-1, 'S', 7, 9, 50, 8, 0x50020000, '&Width:', 0], [101, 'E', 72, 7, 40, 12, 0x50812080, '', 0], [-1, 'S', 115, 9, 20, 8, 0x50020000, 'pixels', 0],
+                [-1, 'S', 7, 25, 50, 8, 0x50020000, '&Height:', 0], [102, 'E', 72, 23, 40, 12, 0x50812080, '', 0], [-1, 'S', 115, 25, 20, 8, 0x50020000, 'pixels', 0],
+                [-1, 'S', 7, 43, 64, 8, 0x50020000, 'Background &Contents:', 0], [103, 'C', 72, 41, 70, 100, 0x50210003, '', 0],
+                [1, 'B', 89, 72, 50, 14, 0x50010001, 'OK', 0],
+                [2, 'B', 143, 72, 50, 14, 0x50010000, 'Cancel', 0]
+            ] };
+            V.openDialog({
+                id: 'mpNewDialog', tpl, owner: this.modal,
+                init: (ctx) => {
+                    ctx.set(101, String(this.doc.width));
+                    ctx.set(102, String(this.doc.height));
+                    ctx.options(103, [{ value: 'white', text: 'White' }, { value: 'bg', text: 'Background Color' }, { value: 'transparent', text: 'Transparent' }], reg('NewContents', 'white'));
+                },
+                ok: (ctx) => {
+                    const w = Math.max(1, Math.min(16384, Math.round(Number(ctx.get(101)) || this.doc.width)));
+                    const h = Math.max(1, Math.min(16384, Math.round(Number(ctx.get(102)) || this.doc.height)));
+                    const contents = ctx.get(103);
+                    setReg({ NewContents: contents });
+                    this.newDocument(w, h, { transparent: contents === 'transparent', background: contents === 'bg' ? this.bg : '#ffffff' });
+                }
+            });
         }
 
         editColors(i) {
@@ -2256,7 +2285,7 @@
             if (!this.editable()) return;
             const r = { x: 0, y: 0, w: this.doc.width, h: this.doc.height };
             this.commitToLayer('Clear Image', (ctx) => {
-                if (this.doc.active === 0) { ctx.fillStyle = this.bg; ctx.fillRect(0, 0, r.w, r.h); } else ctx.clearRect(0, 0, r.w, r.h);
+                if (this.doc.layer.isBackground) { ctx.fillStyle = this.bg; ctx.fillRect(0, 0, r.w, r.h); } else ctx.clearRect(0, 0, r.w, r.h);
             }, r, { direct: true });
         }
 
@@ -2363,7 +2392,8 @@
         down(p) {
             // the Background layer takes the background color (Vista); a layer above it goes transparent.
             // Right-drag is the Color Eraser: only the drawing color turns into the background color.
-            const upper = this.doc.active > 0 && !this.doc.layer.isMask;
+            // the Background layer takes the background colour; any other layer goes transparent
+            const upper = !this.doc.layer.isBackground && !this.doc.layer.isMask;
             if (this.right) {
                 if (!this.editable()) return;
                 this.colorErase = this.doc.beginStep('Color Eraser', this.doc.layer);
@@ -2405,7 +2435,7 @@
             if (!down) return;
             if (this.colorErase) { T.eraser.colorDab.call(this, this.last, p); this.last = p; return; }
             if (!this.sctx) return;
-            this.growStroke(this.strokeDab(this.last.x, this.last.y, p.x, p.y, this.brushSize(), this.doc.active > 0 ? '#000' : this.bg));
+            this.growStroke(this.strokeDab(this.last.x, this.last.y, p.x, p.y, this.brushSize(), !this.doc.layer.isBackground && !this.doc.layer.isMask ? '#000' : this.bg));
             this.last = p;
         },
         up() {

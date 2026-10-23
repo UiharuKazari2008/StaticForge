@@ -659,12 +659,20 @@
             if (L.effects) notes(st).add(`${L.name}: its layer style was not brought in.`);
             if (L.clipping) notes(st).add(`${L.name}: clipping masks are not supported; it is a normal layer.`);
             if (L.blend && !PSD_TO_BLEND[L.blend]) notes(st).add(`${L.name}: blend mode ${L.blend.trim()} became Normal.`);
+            // Photoshop's Background: the bottom layer by that name, with no transparency
+            if (!layers.length && !stack.length && L.name === 'Background' && L.opacity === 1) {
+                const a = l.ctx.getImageData(0, 0, W, H).data;
+                let opaque = true;
+                for (let k = 3; k < a.length && opaque; k += 4) if (a[k] !== 255) opaque = false;
+                l.isBackground = opaque;
+            }
             layers.push(l);
             if (stack.length) stack[stack.length - 1].layers.push(l);
         }
         if (!layers.length && st.merged) {
             // a flat document: its merged picture is the Background
             const l = new (C().Layer)(W, H, 'Background');
+            l.isBackground = !(p[3] && !gray);
             const img = new ImageData(W, H);
             const p = st.merged;
             for (let i = 0; i < W * H; i += 1) {
