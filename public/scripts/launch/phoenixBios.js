@@ -684,7 +684,7 @@
                 }
                 bios.work = work.results();
                 const needBootPin = cmos.pwBoot === 'Enabled'
-                    || (typeof opts.requireBootPin === 'function' && opts.requireBootPin());
+                    || (typeof opts.requireBootPin === 'function' && !!(await opts.requireBootPin()));
                 if (needBootPin) {
                     const bootPinOk = await promptBootPinLogin();
                     if (bootPinOk === 'cancelled') return 'cancelled';

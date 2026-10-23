@@ -523,16 +523,30 @@
                 ctl.biosWork = results;
                 return { device: hasOsAfter(results) ? 'hdd' : 'cdrom', via: 'none' };
             }
-            const gateConfigured = !!(ctl.serverStatus && ctl.serverStatus.siteAccess && ctl.serverStatus.siteAccess.configured);
-            let bootSessionState = 'unknown';
-            if (gateConfigured) {
-                bootSessionState = await checkSession(env);
-            }
+            // Asked after the POST tasks: the server task fills ctl.serverStatus. Read before
+            // bios.post() it was still empty on a fresh device's first boot, so the gate looked
+            // off and Setup ran without the PIN.
+            const requireBootPin = async () => {
+                let status = ctl.serverStatus;
+                if (!status) {
+                    const probe = await probeStatus(env);
+                    if (probe.kind === 'json') {
+                        status = ctl.serverStatus = probe.data;
+                        rememberVistaLogon(env, probe.data);
+                        rememberSiteAccess(env, probe.data);
+                    }
+                }
+                const gateConfigured = status && status.siteAccess
+                    ? !!status.siteAccess.configured
+                    : isSiteGateActive(env);
+                if (!gateConfigured) return false;
+                return (await checkSession(env)) === 'login';
+            };
             const outcome = await bios.post({
                 tasks,
                 hasOsAfter,
                 run: { cancelled: () => run !== ctl.runId },
-                requireBootPin: () => gateConfigured && bootSessionState === 'login'
+                requireBootPin
             });
             if (outcome === 'cancelled' || run !== ctl.runId) return 'cancelled';
             ctl.biosWork = bios.work || {};
