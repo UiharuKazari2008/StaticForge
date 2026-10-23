@@ -44,10 +44,24 @@ A zip with `manifest.json` at the root:
 | `server` | Optional. `entry` exports `start(app)`. `runner`: `session` (default) or `service`. `memoryMB` 16..512 (default 96). No `packets`: a runner talks over `app_message`. |
 | `opens[]` | VFS files the app runs for, by exact name (case-insensitive) and byte size, at most 32. Only installed (or system) packages answer `opens`. |
 
-Package CSS stays locked (#179): no stylesheets, no `<style>`. An app sets the styles it needs
-inline, on top of the desktop's kit (`css/melaton-apps.css` gives the overlay layer and tray icon).
+Package CSS stays locked (#179) for uploaded / third-party packages: no stylesheets, no `<style>`;
+such an app sets the styles it needs inline, on top of the desktop's kit (`css/melaton-apps.css`
+gives the overlay layer and tray icon). A **system package** (one shipped in `apps/`, installed with
+`trusted: true`) may declare `client.styles` (an array of `.css` paths); the runtime adds them before
+the client runs (#642). The store rejects `client.styles` from an untrusted package.
 
 A `.mapz` may use the same `server.runner` fields instead of v1 `packets`.
+
+### Built-in apps as system packages (#642)
+
+Built-in desktop apps are being moved out of the monolith into `apps/<id>` packages (Calculator,
+Alarm Clock so far). They load on demand from `/melaton-apps/<id>/` and launch from the Start menu
+through `melatonApps.launch({ packageId })` instead of `featureLoader`. They are same-origin, so they
+keep their own window and the shared desktop globals; a thin `start(app)` ties their (singleton)
+window to the app instance and registers it with `programFaults`. `melatonApps.ensureLoaded(id)` and
+the `app_describe` packet load a package's client code (and styles) without opening a window, for
+window-less entry points (e.g. the Calculator agent get/set). The shared desktop-app window helper
+`desktop-apps/desktopAppWindow.js` and the `melatonApps.js` runtime load globally from `app.html`.
 
 ## Lifetime
 
