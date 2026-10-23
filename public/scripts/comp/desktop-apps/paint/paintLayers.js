@@ -572,20 +572,15 @@
 
     function importLayer(w) {
         if (typeof root.studioOpenFolderDialog !== 'function') return;
-        const v = root.vfsClient || (typeof vfsClient !== 'undefined' ? vfsClient : null); // eslint-disable-line no-undef
         void root.studioOpenFolderDialog('open-vfs', {
             host: {
                 title: 'Import From File',
                 rejectMessage: 'Choose a picture',
                 acceptItem: (item) => item && item.targetKind === 'user-file' && /^image\//.test(item.mimeType || ''),
                 async onOpen(item) {
-                    const res = await v.downloadFile(item.id);
-                    const img = await new Promise((resolve, reject) => {
-                        const i = new Image();
-                        i.onload = () => resolve(i);
-                        i.onerror = reject;
-                        i.src = res.downloadUrl;
-                    });
+                    // with the progress dialog: the download, then the picture read
+                    const img = await w.downloadPicture(item, 'Importing');
+                    if (!img) return;
                     structural(w, 'Import From File', () => {
                         const layer = w.doc.addLayer(item.name.replace(/\.[^.]+$/, ''));
                         layer.ctx.drawImage(img, 0, 0);

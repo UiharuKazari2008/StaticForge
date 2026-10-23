@@ -124,6 +124,16 @@
         });
     }
 
+    /** Bytes as Explorer writes them: 512 bytes, 12.4 KB, 3.21 MB. */
+    function sizeText(n) {
+        if (n < 1024) return `${n} bytes`;
+        const units = ['KB', 'MB', 'GB'];
+        let v = n / 1024;
+        let u = 0;
+        while (v >= 1000 && u < units.length - 1) { v /= 1024; u += 1; }
+        return `${v >= 100 ? Math.floor(v) : v >= 10 ? Math.floor(v * 10) / 10 : Math.floor(v * 100) / 100} ${units[u]}`;
+    }
+
     function hex(c) {
         const [r, g, b] = C().parseColor(c);
         return `#${[r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
@@ -141,7 +151,7 @@
             this.opt = {
                 lineWidth: 1, brush: 'round-2', eraser: 8, airbrush: 0, shape: 'outline', transparent: false,
                 zoomLevel: 4, size: 0, opacity: 100, hardness: 100, tolerance: 32, antialias: true, gradient: 'linear',
-                selMode: 'new', contiguous: true, sampleAll: false
+                selMode: 'new', contiguous: true, sampleAll: false, showControls: true, keepRatio: true
             };
             this.grid = false;
             // Photoshop's View options: rulers, guides (shown, locked), snapping
@@ -190,6 +200,8 @@
                         <span class="mp-set-selmode" role="group" aria-label="Selection">${[['new', 'New Selection'], ['add', 'Add to Selection (Shift)'], ['subtract', 'Subtract from Selection (Alt)'], ['intersect', 'Intersect with Selection (Shift+Alt)']].map(([v, t], i) => `<button type="button" class="mp-selmode${v === 'new' ? ' is-on' : ''}" data-selmode="${v}" title="${t}"><span class="mp-selmode-art" style="--x:${-i * 16}px"></span></button>`).join('')}</span>
                         <label class="mp-set-check mp-set-contig"><input type="checkbox" class="mp-set-contiguous" checked><span>Contiguous</span></label>
                         <label class="mp-set-check mp-set-sampleall"><input type="checkbox" class="mp-set-sample"><span>Sample All Layers</span></label>
+                        <label class="mp-set-check mp-set-controls" title="Handles round the layer, the selection or a pasted piece: drag one to resize"><input type="checkbox" class="mp-set-showctl" checked><span>Show Transform Controls</span></label>
+                        <label class="mp-set-check mp-set-ratio" title="Corner handles keep the shape; Shift does the other"><input type="checkbox" class="mp-set-keepratio" checked><span>Keep Proportions</span></label>
                     </div>
                     <div class="mp-body">
                         <div class="mp-toolbox">
@@ -209,6 +221,7 @@
                             </div>
                         </div>
                         </div>
+                        <div class="mp-dock-split" title="Drag to resize the panels"></div>
                         <div class="mp-dock"></div>
                     </div>
                     <div class="mp-colorbox"></div>
@@ -259,10 +272,14 @@
             this.commitFloating();
             this.doc = new (C().Document)(w, h, { background: opts.background || '#ffffff', transparent: opts.transparent === true });
             this.unsub = this.doc.on((kind) => {
-                if (kind === 'dirty') this.schedule();
+                if (kind === 'dirty') { this.schedule(); this.moveBoxStale = true; }
                 if (kind === 'resize') this.layout();
                 if (kind === 'changed') { this.dirtyDoc = true; }
-                if (kind === 'layers' || kind === 'history') this.emitPanels();
+                if (kind === 'layers' || kind === 'history') {
+                    this.emitPanels();
+                    // the Move tool's box follows undo, redo and another layer
+                    if (this.tool === 'move') { this.moveBoxStale = true; this.drawAnts(); }
+                }
             });
             this.layout();
             this.doc.markDirty();
@@ -528,6 +545,8 @@
             set('.mp-set-aa', 'antialias');
             set('.mp-set-contiguous', 'contiguous');
             set('.mp-set-sample', 'sampleAll');
+            set('.mp-set-showctl', 'showControls', () => this.drawAnts());
+            set('.mp-set-keepratio', 'keepRatio');
             m.querySelector('.mp-set-selmode').addEventListener('click', (ev) => {
                 const b = ev.target.closest('[data-selmode]');
                 if (b) this.setSelMode(b.dataset.selmode);
@@ -554,6 +573,31 @@
             }, { passive: false });
             m.addEventListener('keydown', (ev) => this.key(ev));
             this.workspace.addEventListener('scroll', () => this.drawRulers(), { passive: true });
+            // the panels' width: drag the divider (kept in the registry, DockWidth)
+            const dock = m.querySelector('.mp-dock');
+            const dw = Number(reg('DockWidth', 200));
+            if (dw) dock.style.flexBasis = `${dw}px`;
+            m.querySelector('.mp-dock-split').addEventListener('pointerdown', (ev) => {
+                ev.preventDefault();
+                const sp = ev.currentTarget;
+                sp.setPointerCapture(ev.pointerId);
+                const x0 = ev.clientX;
+                const w0 = dock.getBoundingClientRect().width;
+                const max = Math.max(200, m.querySelector('.mp-body').getBoundingClientRect().width - 260);
+                const move = (e) => {
+                    const w = Math.round(Math.max(150, Math.min(max, w0 + (x0 - e.clientX))));
+                    dock.style.flexBasis = `${w}px`;
+                    this.drawRulers();
+                    if (P()) P().navRefresh(this, true);
+                };
+                const up = () => {
+                    sp.removeEventListener('pointermove', move);
+                    sp.removeEventListener('pointerup', up);
+                    setReg({ DockWidth: Math.round(dock.getBoundingClientRect().width) });
+                };
+                sp.addEventListener('pointermove', move);
+                sp.addEventListener('pointerup', up);
+            });
             if (root.ResizeObserver) new ResizeObserver(() => this.drawRulers()).observe(this.workspace);
             m.querySelectorAll('.mp-ruler').forEach((rc) => rc.addEventListener('pointerdown', (ev) => this.rulerDrag(ev, rc.classList.contains('is-h') ? 'h' : 'v')));
             m.classList.toggle('mp-rulers', this.rulers);
@@ -577,6 +621,23 @@
             if (kind === 'down' && !this.xf && this.tool === 'move' && this.guidesShown && !this.guidesLocked && ev.button === 0) {
                 const g = this.guideAt(p);
                 if (g >= 0) { this.guideDrag = { i: g }; this.overlay.setPointerCapture(ev.pointerId); this.down = true; return; }
+            }
+            if (kind === 'down' && !this.xf && this.tool === 'move' && this.opt.showControls && ev.button === 0 && !this.spaceHand) {
+                const h = this.moveHandleAt(p);
+                if (h) {
+                    this.startTransform();
+                    if (this.xf) {
+                        this.overlay.setPointerCapture(ev.pointerId);
+                        this.down = true;
+                        this.right = false;
+                        this.xfDrag = { hit: { kind: 'scale', sx: h.sx, sy: h.sy }, start: p, from: { ...this.xf } };
+                        return;
+                    }
+                }
+            }
+            if (kind === 'move' && !this.down && !this.xf && this.tool === 'move' && this.opt.showControls) {
+                const h = this.moveHandleAt(p);
+                if (h) { this.overlay.style.cursor = this.handleCursor(h.sx, h.sy); return; }
             }
             if (this.guideDrag) {
                 const g = this.doc.guides[this.guideDrag.i];
@@ -773,6 +834,41 @@
             this.modal.dataset.tool = id;
             this.renderOptions();
             this.brushCursor();
+            this.drawAnts();
+        }
+
+        /** What the Move tool's handles go round: the floating piece, the selection, or the layer's pixels. */
+        moveBox() {
+            if (this.floating) return { x: Math.round(this.floating.x), y: Math.round(this.floating.y), w: this.floating.w, h: this.floating.h };
+            const s = this.doc.selection;
+            if (s) return { x: s.x, y: s.y, w: s.w, h: s.h };
+            if (this.moveBoxStale || !this.moveBoxCache || this.moveBoxLayer !== this.doc.layer) {
+                this.moveBoxCache = this.doc.layer.adjust ? null : this.layerBounds(this.doc.layer);
+                this.moveBoxLayer = this.doc.layer;
+                this.moveBoxStale = false;
+            }
+            return this.moveBoxCache;
+        }
+
+        /** The Move tool's handle under p: { sx, sy } (-1, 0, 1), or null. */
+        moveHandleAt(p) {
+            const b = this.moveBox();
+            if (!b) return null;
+            const tol = 5 / this.zoom;
+            const xs = [[-1, b.x], [0, b.x + b.w / 2], [1, b.x + b.w]];
+            const ys = [[-1, b.y], [0, b.y + b.h / 2], [1, b.y + b.h]];
+            for (const [sx, hx] of xs) {
+                for (const [sy, hy] of ys) {
+                    if (!sx && !sy) continue;
+                    if (Math.abs(p.x - hx) <= tol && Math.abs(p.y - hy) <= tol) return { sx, sy };
+                }
+            }
+            return null;
+        }
+
+        handleCursor(sx, sy) {
+            if (sx && sy) return sx === sy ? 'nwse-resize' : 'nesw-resize';
+            return sx ? 'ew-resize' : 'ns-resize';
         }
 
         renderOptions() {
@@ -1102,6 +1198,14 @@
                     ? `<rect class="mp-guide" x="${-far}" y="${Math.round(g.pos * z) + fy}" width="${W2 + 2 * far}" height="${t}"/>`
                     : `<rect class="mp-guide" x="${Math.round(g.pos * z) + fx}" y="${-far}" width="${t}" height="${H2 + 2 * far}"/>`)).join('');
             }
+            if (!this.xf && this.tool === 'move' && this.opt.showControls) {
+                const b = this.moveBox();
+                if (b) {
+                    const x0 = b.x * z; const y0 = b.y * z; const x1 = (b.x + b.w) * z; const y1 = (b.y + b.h) * z;
+                    html += `<rect class="mp-move-box" x="${Math.round(x0) + 0.5}" y="${Math.round(y0) + 0.5}" width="${Math.round(x1 - x0)}" height="${Math.round(y1 - y0)}"/>`;
+                    html += this.handleMarks([[x0, y0], [(x0 + x1) / 2, y0], [x1, y0], [x1, (y0 + y1) / 2], [x1, y1], [(x0 + x1) / 2, y1], [x0, y1], [x0, (y0 + y1) / 2]]);
+                }
+            }
             if (this.xf) {
                 const pts = this.xfCorners().map(([x, y]) => [x * z, y * z]);
                 html += `<path class="mp-xf-box" d="M${pts.map((q) => q.join(',')).join('L')}Z"/>`;
@@ -1262,27 +1366,33 @@
         }
 
         async paste() {
-            try {
-                const items = await navigator.clipboard.read();
-                for (const it of items) {
-                    const type = it.types.find((t) => t.startsWith('image/'));
-                    if (type) { await this.pasteBlob(await it.getType(type)); return; }
-                }
-            } catch (_) { /* fall back to Paint's own copy */ }
-            if (this.clipboard) this.pasteCanvas(this.clipboard);
+            const pasted = await this.withProgress('Pasting', async (p) => {
+                p.line('Reading the clipboard...');
+                p.marquee();
+                try {
+                    const items = await navigator.clipboard.read();
+                    for (const it of items) {
+                        const type = it.types.find((t) => t.startsWith('image/'));
+                        if (!type) continue;
+                        const blob = await it.getType(type);
+                        p.line(`Reading the picture (${sizeText(blob.size)})...`);
+                        p.percent(60);
+                        return this.decodePicture(await blob.arrayBuffer(), type);
+                    }
+                } catch (_) { /* fall back to Paint's own copy */ }
+                return this.clipboard || null;
+            });
+            if (pasted) this.pasteCanvas(pasted);
         }
 
         async pasteBlob(blob) {
             if (!blob) return;
-            const url = URL.createObjectURL(blob);
-            try {
-                const img = await loadImage(url);
-                const c = C().makeCanvas(img.naturalWidth, img.naturalHeight);
-                c.getContext('2d').drawImage(img, 0, 0);
-                this.pasteCanvas(c);
-            } finally {
-                URL.revokeObjectURL(url);
-            }
+            const c = await this.withProgress('Pasting', async (p) => {
+                p.line(`Reading the picture (${sizeText(blob.size)})...`);
+                p.percent(50);
+                return this.decodePicture(await blob.arrayBuffer(), blob.type);
+            });
+            if (c) this.pasteCanvas(c);
         }
 
         pasteCanvas(c) {
@@ -1291,7 +1401,8 @@
             if (c.width > this.doc.width || c.height > this.doc.height) {
                 this.doc.resizeCanvas(Math.max(c.width, this.doc.width), Math.max(c.height, this.doc.height), { fill: this.bg, label: 'Enlarge' });
             }
-            this.setTool('select');
+            // the Move tool: the pasted piece shows its resize handles at once
+            this.setTool('move');
             this.floatStep = this.doc.beginStep('Paste', this.doc.layer);
             const sx = Math.floor(this.workspace.scrollLeft / this.zoom);
             const sy = Math.floor(this.workspace.scrollTop / this.zoom);
@@ -1517,12 +1628,102 @@
             doc.addEventListener('pointerup', up);
         }
 
-        // ---- files ----------------------------------------------------------------------------
+        // ---- progress (Vista's progress dialog, fileOperationProgress.js) -----------------------
 
-        async openUrl(url, name, file) {
+        /**
+         * Work on a file under Vista's progress dialog: fn(p) with p.line(text), p.percent(0-100),
+         * p.marquee() while the amount is unknown (an upload is one message), p.check() to stop at
+         * Cancel (only when opts.cancellable), p.abort for a fetch. Resolves fn's value; null when
+         * cancelled. Without the desktop's dialog the work runs as it is.
+         */
+        async withProgress(title, fn, opts = {}) {
+            let api = root.fileOperationProgress;
+            if (!api && root.featureLoader) {
+                try { await root.featureLoader.loadFeature('explorer'); } catch (_) { /* no dialog then */ }
+                api = root.fileOperationProgress;
+            }
+            let cancelled = false;
+            const abort = opts.cancellable ? new AbortController() : null;
+            const op = api && api.available() ? api.task({
+                title, line: opts.line || '',
+                onCancel: opts.cancellable ? () => { cancelled = true; abort.abort(); } : undefined
+            }) : null;
+            const p = {
+                abort,
+                line: (t) => { if (op) op.setLine(t); },
+                percent: (v) => { if (op) { op.setMarquee(false); op.setPercent(v); } },
+                marquee: () => { if (op) op.setMarquee(true); },
+                get cancelled() { return cancelled; },
+                check: () => { if (cancelled) { const e = new Error('Cancelled'); e.paintCancelled = true; throw e; } },
+                // a part of the bar: part(a, b)(fraction) moves it between a and b percent
+                part: (a, b) => (f) => p.percent(a + (b - a) * Math.max(0, Math.min(1, f)))
+            };
+            this.busy = (this.busy || 0) + 1;
+            try {
+                return await fn(p);
+            } catch (err) {
+                if ((err && err.paintCancelled) || (err && err.name === 'AbortError')) return null;
+                throw err;
+            } finally {
+                this.busy -= 1;
+                if (op) op.finish();
+            }
+        }
+
+        /** A URL's bytes, the bar following them as they arrive. */
+        async fetchBytes(url, p, report) {
+            const r = await fetch(url, { credentials: 'same-origin', signal: p && p.abort ? p.abort.signal : undefined });
+            if (!r.ok) throw new Error(`The server answered ${r.status}.`);
+            const total = Number(r.headers.get('content-length')) || 0;
+            if (!r.body || !total || !r.body.getReader) {
+                if (p) p.marquee();
+                return r.arrayBuffer();
+            }
+            const reader = r.body.getReader();
+            const parts = [];
+            let got = 0;
+            for (;;) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                parts.push(value);
+                got += value.length;
+                if (report) report(got / total);
+                if (p) p.line(`${sizeText(got)} of ${sizeText(total)}`);
+            }
+            const out = new Uint8Array(got);
+            let at = 0;
+            parts.forEach((b) => { out.set(b, at); at += b.length; });
+            return out.buffer;
+        }
+
+        /** A picture's bytes to a canvas. */
+        async decodePicture(bytes, type) {
+            const url = URL.createObjectURL(new Blob([bytes], { type: type || '' }));
             try {
                 const img = await loadImage(url);
-                this.newDocument(img.naturalWidth, img.naturalHeight, { file });
+                const c = C().makeCanvas(img.naturalWidth, img.naturalHeight);
+                c.getContext('2d').drawImage(img, 0, 0);
+                return c;
+            } finally {
+                URL.revokeObjectURL(url);
+            }
+        }
+
+        // ---- files ----------------------------------------------------------------------------
+
+        async openUrl(url, name, file, progress) {
+            try {
+                const run = async (p) => {
+                    p.line('Downloading...');
+                    const bytes = await this.fetchBytes(url, p, p.part(0, 80));
+                    p.check();
+                    p.line('Reading the picture...');
+                    p.percent(90);
+                    return this.decodePicture(bytes);
+                };
+                const img = progress ? await run(progress) : await this.withProgress(`Opening ${name || 'picture'}`, run, { cancellable: true });
+                if (!img) return;
+                this.newDocument(img.width, img.height, { file });
                 this.doc.layer.ctx.drawImage(img, 0, 0);
                 this.doc.history = [];
                 this.doc.historyIndex = -1;
@@ -1539,29 +1740,35 @@
 
         /** A VFS file: a Graphic Session Document, a Melaton Paint Image, or a picture. */
         async openVfsFile(id, name, path) {
-            const res = await vfs().downloadFile(id);
             const file = { id, name, path };
+            let notes = [];
             try {
-                if (/\.psd$/i.test(name) && root.paintPsd) {
-                    const r = await fetch(res.downloadUrl, { credentials: 'same-origin' });
-                    const notes = await root.paintPsd.apply(this, await root.paintPsd.decode(await r.arrayBuffer()), { name, file });
-                    if (notes.length) await this.message(`Some parts of ${name} could not come in as they are:\n\n${notes.join('\n')}`);
-                    return;
-                }
-                if (/\.(gsd|mpi)$/i.test(name)) {
-                    const r = await fetch(res.downloadUrl, { credentials: 'same-origin' });
-                    const buf = await r.arrayBuffer();
-                    if (root.paintGsd && root.paintGsd.isGsd(buf)) {
-                        await root.paintGsd.apply(this, await root.paintGsd.decode(buf), { name, file });
+                await this.withProgress(`Opening ${name}`, async (p) => {
+                    p.line('Asking the server for the file...');
+                    p.marquee();
+                    const res = await vfs().downloadFile(id);
+                    p.check();
+                    if (!/\.(psd|gsd|mpi)$/i.test(name)) { await this.openUrl(res.downloadUrl, name, file, p); return; }
+                    p.line('Downloading...');
+                    const buf = await this.fetchBytes(res.downloadUrl, p, p.part(0, 55));
+                    p.check();
+                    const reading = (what) => (f, k, n) => { p.percent(55 + 45 * f); p.line(n ? `Reading ${what} ${k} of ${n}...` : `Reading ${what}...`); p.check(); };
+                    if (/\.psd$/i.test(name) && root.paintPsd) {
+                        notes = await root.paintPsd.apply(this, await root.paintPsd.decode(buf), { name, file }, reading('layer'));
                         return;
                     }
+                    if (root.paintGsd && root.paintGsd.isGsd(buf)) {
+                        await root.paintGsd.apply(this, await root.paintGsd.decode(buf), { name, file }, reading('part'));
+                        return;
+                    }
+                    p.line('Reading the layers...');
                     await this.openMpi(new TextDecoder().decode(buf), name, file);
-                    return;
-                }
-                await this.openUrl(res.downloadUrl, name, file);
+                }, { cancellable: true });
             } catch (err) {
                 await this.message(`Paint cannot read ${name}.\n${(err && err.message) || ''}`);
+                return;
             }
+            if (notes && notes.length) await this.message(`Some parts of ${name} could not come in as they are:\n\n${notes.join('\n')}`);
         }
 
         async openMpi(text, name, file) {
@@ -1638,10 +1845,10 @@
             });
         }
 
-        async encode(type) {
-            if (type === 'gsd') return root.paintGsd.encode(this);
+        async encode(type, onProgress) {
+            if (type === 'gsd') return root.paintGsd.encode(this, { onProgress });
             if (type === 'psd') {
-                const res = await root.paintPsd.encode(this);
+                const res = await root.paintPsd.encode(this, { onProgress });
                 this.psdNotes = res.notes;
                 return res.blob;
             }
@@ -1683,8 +1890,10 @@
             if (!this.file || !this.file.id) return this.saveAs();
             try {
                 const type = this.typeFor(this.file.name);
-                const blob = await this.encode(type);
-                await vfs().replaceFile(this.file.id, await blobToBase64(blob), this.mimeFor(type));
+                await this.withProgress(`Saving ${this.file.name}`, async (p) => {
+                    const blob = await this.encode(type, this.encodeProgress(p));
+                    await this.upload(p, blob, this.file.path, (data) => vfs().replaceFile(this.file.id, data, this.mimeFor(type)));
+                });
                 this.dirtyDoc = false;
                 this.title();
                 return true;
@@ -1720,8 +1929,10 @@
                                 if (!ok) return false;
                             }
                             try {
-                                const blob = await self.encode(type);
-                                const res = await vfs().uploadFile(info.path || '/', await blobToBase64(blob), name, self.mimeFor(type));
+                                const res = await self.withProgress(`Saving ${name}`, async (p) => {
+                                    const blob = await self.encode(type, self.encodeProgress(p));
+                                    return self.upload(p, blob, info.path, (data) => vfs().uploadFile(info.path || '/', data, name, self.mimeFor(type)));
+                                });
                                 const f = res && (res.file || res.entry || res);
                                 self.file = { id: (f && (f.id || f.fileId)) || null, name, path: info.path };
                                 self.name = name.replace(/\.[^.]+$/, '');
@@ -1745,13 +1956,16 @@
         async saveToGallery(thenWallpaper) {
             this.commitFloating();
             const ws = (typeof activeWorkspace !== 'undefined' && activeWorkspace) ? activeWorkspace : 'default'; // eslint-disable-line no-undef
-            const blob = await this.encode('image/png');
             try {
-                const res = await root.wsClient.uploadWorkspaceImage(await blobToBase64(blob), ws, `${this.name || 'untitled'}.png`, { currentIndex: 0, totalCount: 1 });
+                const res = await this.withProgress(`Saving ${this.name || 'untitled'}.png to the gallery`, async (p) => {
+                    const blob = await this.encode('image/png', this.encodeProgress(p));
+                    return this.upload(p, blob, 'the gallery', (data) => root.wsClient.uploadWorkspaceImage(data, ws, `${this.name || 'untitled'}.png`, { currentIndex: 0, totalCount: 1 }));
+                });
                 if (!res || res.success === false) throw new Error((res && res.error) || 'The gallery did not take the picture.');
                 const filename = res.filename || (res.image && res.image.filename);
+                // the progress dialog was the feedback; a toast only where it cannot show
                 if (thenWallpaper && filename) callGlobal('openDesktopSettingsModal', `file:${filename}`);
-                else callGlobal('showGlassToast', 'success', 'Paint', 'Saved to the gallery', false, 2500);
+                else if (!(root.fileOperationProgress && root.fileOperationProgress.available())) callGlobal('showGlassToast', 'success', 'Paint', 'Saved to the gallery', false, 2500);
             } catch (err) {
                 await this.message(`Paint cannot save to the gallery.\n${(err && err.message) || ''}`);
             }
@@ -1975,6 +2189,40 @@
                     if (root.paintColor && root.paintColor.action(this, a)) return;
                     break;
             }
+        }
+
+        /** The encoders' progress as the first 70% of a save's bar. */
+        encodeProgress(p) {
+            p.line('Preparing the picture...');
+            p.percent(2);
+            return (f, k, n) => { p.percent(70 * f); p.line(n ? `Preparing part ${k} of ${n}...` : 'Preparing the picture...'); };
+        }
+
+        /** The last part of a save: the bytes to the server, one message (its time is unknown). */
+        async upload(p, blob, where, send) {
+            p.line('Packing the file...');
+            p.percent(72);
+            const data = await blobToBase64(blob);
+            p.line(`Saving ${sizeText(blob.size)} to ${where && where !== '/' ? where : 'the server'}...`);
+            p.marquee();
+            const res = await send(data);
+            p.percent(100);
+            return res;
+        }
+
+        /** A VFS picture (Paste From, Import From File) with the dialog: its canvas, or null. */
+        downloadPicture(item, verb) {
+            return this.withProgress(`${verb} ${item.name}`, async (p) => {
+                p.line('Asking the server for the file...');
+                p.marquee();
+                const res = await vfs().downloadFile(item.id);
+                p.line('Downloading...');
+                const bytes = await this.fetchBytes(res.downloadUrl, p, p.part(0, 85));
+                p.check();
+                p.line('Reading the picture...');
+                p.percent(92);
+                return this.decodePicture(bytes, item.mimeType);
+            }, { cancellable: true });
         }
 
         /** File > New: the size and the Background Contents (White, Background Color, Transparent). */
@@ -2339,11 +2587,8 @@
                     rejectMessage: 'Choose a picture',
                     acceptItem: (item) => item && item.targetKind === 'user-file' && /^image\//.test(item.mimeType || ''),
                     async onOpen(item) {
-                        const res = await vfs().downloadFile(item.id);
-                        const img = await loadImage(res.downloadUrl);
-                        const c = C().makeCanvas(img.naturalWidth, img.naturalHeight);
-                        c.getContext('2d').drawImage(img, 0, 0);
-                        self.pasteCanvas(c);
+                        const c = await self.downloadPicture(item, 'Pasting');
+                        if (c) self.pasteCanvas(c);
                     }
                 }
             });
@@ -2863,6 +3108,8 @@
             }
             m.step.grow({ x: 0, y: 0, w: this.doc.width, h: this.doc.height });
             this.doc.commitStep(m.step);
+            this.moveBoxStale = true;
+            this.drawAnts();
         }
     };
 
@@ -3003,7 +3250,11 @@
                 const ay = fromCentre ? 0 : (-hit.sy * from.h) / 2;
                 let w = hit.sx ? Math.max(1, hit.sx * (lx - ax) * (fromCentre ? 2 : 1)) : from.w;
                 let h = hit.sy ? Math.max(1, hit.sy * (ly - ay) * (fromCentre ? 2 : 1)) : from.h;
-                if (ev && ev.shiftKey) {
+                // a corner keeps the shape when Keep Proportions is on, Shift does the other (Photoshop);
+                // an edge handle stretches freely, Shift keeps the shape
+                const shift = !!(ev && ev.shiftKey);
+                const uniform = hit.sx && hit.sy ? (this.opt.keepRatio !== false) !== shift : shift;
+                if (uniform) {
                     const k = hit.sx && hit.sy ? Math.max(w / from.w, h / from.h) : hit.sx ? w / from.w : h / from.h;
                     w = from.w * k;
                     h = from.h * k;

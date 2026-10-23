@@ -86,7 +86,11 @@
         const d = w.doc;
         const out = writer();
         const layers = [];
-        for (const l of d.layers) layers.push(await layerOut(out, l, l.canvas, l.mask && l.mask.canvas, l.mask ? l.mask.enabled : true));
+        // progress: each layer, then each history step, is one part
+        const parts = d.layers.length + (opts.history !== false ? d.history.length : 0);
+        let partNo = 0;
+        const tick = () => { partNo += 1; if (opts.onProgress) opts.onProgress(partNo / parts, partNo, parts); };
+        for (const l of d.layers) { layers.push(await layerOut(out, l, l.canvas, l.mask && l.mask.canvas, l.mask ? l.mask.enabled : true)); tick(); }
         const P = root.paintPro;
         const L = root.paintLayers;
         const has = (cls) => w.modal.classList.contains(cls);
@@ -118,6 +122,7 @@
                 for (const st of d.history) {
                     if (st.kind === 'snapshot') steps.push({ label: st.label, kind: 'snapshot', before: await snapshotOut(out, st.before), after: await snapshotOut(out, st.after) });
                     else steps.push({ label: st.label, kind: 'pixels', layerId: st.layerId, rect: st.rect, before: await out.rgba(st.before), after: await out.rgba(st.after) });
+                    tick();
                 }
                 manifest.history = { index: d.historyIndex, steps };
                 flags |= 1;
@@ -218,7 +223,7 @@
     }
 
     /** Put a decoded document into a Paint window. */
-    async function apply(w, state, info = {}) {
+    async function apply(w, state, info = {}, onProgress) {
         const m = state.manifest;
         const D = m.document;
         const W = D.width;
@@ -227,7 +232,10 @@
         const d = w.doc;
         const layers = [];
         let maxId = 0;
-        for (const sl of D.layers) { layers.push(await layerIn(state, W, H, sl)); maxId = Math.max(maxId, sl.id); }
+        const parts = D.layers.length + (m.history ? m.history.steps.length : 0);
+        let partNo = 0;
+        const tick = () => { partNo += 1; if (onProgress) onProgress(partNo / parts, partNo, parts); };
+        for (const sl of D.layers) { layers.push(await layerIn(state, W, H, sl)); maxId = Math.max(maxId, sl.id); tick(); }
         (D.groups || []).forEach((g) => { maxId = Math.max(maxId, g.id); });
         d.layers = layers;
         d.groups = D.groups || [];
@@ -253,6 +261,7 @@
                     d.history.push({ label: st.label, kind: 'pixels', layerId: st.layerId, rect: st.rect, before, after, bytes: st.rect.w * st.rect.h * 8 });
                 }
                 d.historyBytes += d.history[d.history.length - 1].bytes;
+                tick();
             }
             d.historyIndex = Math.min(m.history.index, d.history.length - 1);
         }

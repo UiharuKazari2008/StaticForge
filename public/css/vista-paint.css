@@ -1482,3 +1482,42 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
     height: 16px;
     background: url('/static_images/vista-cmdbar/folder.png') center / 16px 16px no-repeat;
 }
+
+/* ---- the panels' divider: drag to resize the Layers / History / Navigator side ---- */
+
+.mp-client .mp-dock-split {
+    display: none;
+    flex: 0 0 5px;
+    margin-left: -1px;
+    cursor: var(--c-col-resize, col-resize);
+    background: #f0f0f0;
+    touch-action: none;
+}
+
+.mp-window.mp-has-dock .mp-dock-split {
+    display: block;
+}
+
+.mp-client .mp-dock-split:hover,
+.mp-client .mp-dock-split:active {
+    background: linear-gradient(to right, #f0f0f0 1px, #c4e5f6 1px, #c4e5f6 4px, #f0f0f0 4px);
+}
+
+.mp-window.mp-has-dock .mp-dock {
+    min-width: 150px;
+    border-left: 0;
+}
+
+/* the Move tool's transform controls */
+.mp-client .mp-ants .mp-move-box {
+    fill: none;
+    stroke: #000;
+    stroke-width: 1;
+    stroke-dasharray: 2 2;
+    shape-rendering: crispEdges;
+}
+
+.mp-window:not([data-tool="move"]) .mp-set-controls,
+.mp-window:not([data-tool="move"]) .mp-set-ratio {
+    display: none;
+}

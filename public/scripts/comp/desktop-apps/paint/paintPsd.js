@@ -286,7 +286,7 @@
         channels.forEach(([, bytes]) => data.bytes(bytes));
     }
 
-    async function encode(w) {
+    async function encode(w, opts = {}) {
         w.commitFloating();
         w.finishText();
         const d = w.doc;
@@ -325,7 +325,12 @@
         }
         const records = new Out();
         const data = new Out();
-        items.forEach((it) => layerRecord(records, data, W, H, it, notes));
+        for (let k = 0; k < items.length; k += 1) {
+            layerRecord(records, data, W, H, items[k], notes);
+            if (opts.onProgress) opts.onProgress((k + 1) / (items.length + 1), k + 1, items.length + 1);
+            // let the progress dialog draw between layers
+            await new Promise((r) => setTimeout(r, 0));
+        }
         out.block(() => {
             out.block(() => {
                 out.i16(items.length);
@@ -616,7 +621,7 @@
     }
 
     /** Put a decoded PSD into a Paint window. */
-    async function apply(w, st, opts = {}) {
+    async function apply(w, st, opts = {}, onProgress) {
         const { W, H } = st;
         w.newDocument(W, H, { file: opts.file });
         const d = w.doc;
@@ -624,7 +629,10 @@
         const layers = [];
         const groups = [];
         const stack = []; // open groups, innermost last
+        let partNo = 0;
         for (const L of st.layers) {
+            partNo += 1;
+            if (onProgress) onProgress(partNo / st.layers.length, partNo, st.layers.length);
             if (L.section === 3) {
                 stack.push({ layers: [] });
                 continue;
