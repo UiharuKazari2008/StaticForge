@@ -214,23 +214,28 @@ function expandLocal(local, mapping, seen) {
         throw err;
     }
     walk.add(key);
-    if (mapping.mailboxes && mapping.mailboxes[key]) return [mapping.mailboxes[key]];
-    // A bare owner name ("menma") is a valid alias/list *target*, but not a
-    // public address by itself: only mapped local-parts accept RCPT.
-    if (walk.size > 1 && mapping.mailboxes && Object.values(mapping.mailboxes).includes(key)) return [key];
-    if (mapping.lists && mapping.lists[key]) {
+    let result = [];
+    if (mapping.mailboxes && mapping.mailboxes[key]) {
+        result = [mapping.mailboxes[key]];
+    } else if (walk.size > 1 && mapping.mailboxes && Object.values(mapping.mailboxes).includes(key)) {
+        result = [key];
+    } else if (mapping.lists && mapping.lists[key]) {
+        const ownersSet = new Set();
         const owners = [];
         mapping.lists[key].forEach((member) => {
-            expandLocal(member, mapping, new Set(walk)).forEach((owner) => {
-                if (!owners.includes(owner)) owners.push(owner);
+            expandLocal(member, mapping, walk).forEach((owner) => {
+                if (!ownersSet.has(owner)) {
+                    ownersSet.add(owner);
+                    owners.push(owner);
+                }
             });
         });
-        return owners;
+        result = owners;
+    } else if (mapping.aliases && mapping.aliases[key]) {
+        result = expandLocal(mapping.aliases[key], mapping, walk);
     }
-    if (mapping.aliases && mapping.aliases[key]) {
-        return expandLocal(mapping.aliases[key], mapping, walk);
-    }
-    return [];
+    walk.delete(key);
+    return result;
 }
 
 function expandRecipients(address, mapping) {
