@@ -6,8 +6,10 @@
  *               background colour), and the saved swatches (click: drawing colour, right-click:
  *               background colour, Alt+click: delete; + saves the drawing colour). The swatches are
  *               kept in the registry (Applets\Paint\Swatches) and shared by every Paint window.
- *   Color Picker  the saturation / brightness field for the hue, the hue bar, new / current, H S B,
- *               R G B and #hex, Add to Swatches. A click on a chip opens it.
+ *   Color Picker  the saturation / brightness field for the hue, the hue bar, the alpha bar, new /
+ *               current, H S B, R G B, A and #hex (8 digits with alpha), Add to Swatches. A click
+ *               on a chip opens it. Every colour may carry alpha (#rrggbbaa); the chips, swatches
+ *               and previews show it over a checkerboard.
  *
  *   paintColor.mount(w)   paintColor.picker(w, 'fg' | 'bg')   paintColor.menu(w)   paintColor.action(w, a)
  */
@@ -31,13 +33,24 @@
         return String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
 
-    function hex(r, g, b) {
-        return `#${[r, g, b].map((v) => clamp(Math.round(v), 0, 255).toString(16).padStart(2, '0')).join('')}`;
+    /** #rrggbb, or #rrggbbaa when the colour is not opaque. */
+    function hex(r, g, b, a = 255) {
+        const h = [r, g, b].map((v) => clamp(Math.round(v), 0, 255).toString(16).padStart(2, '0')).join('');
+        const A = clamp(Math.round(a), 0, 255);
+        return `#${h}${A < 255 ? A.toString(16).padStart(2, '0') : ''}`;
     }
 
     function rgbOf(css) {
-        const [r, g, b] = C().parseColor(css);
-        return [r, g, b];
+        return C().parseColor(css);
+    }
+
+    function alphaOf(css) {
+        return rgbOf(css)[3];
+    }
+
+    /** A CSS background showing a colour over the transparency checkerboard. */
+    function swatchBg(c) {
+        return `linear-gradient(${c}, ${c}), repeating-conic-gradient(#fff 0 25%, #c8c8c8 0 50%) 0 0 / 8px 8px`;
     }
 
     function rgbToHsv(r, g, b) {
@@ -71,7 +84,7 @@
         const raw = r ? r.get(KEY, 'Swatches', '') : '';
         try {
             const list = JSON.parse(raw || 'null');
-            if (Array.isArray(list)) return list.filter((c) => /^#[0-9a-f]{6}$/i.test(c));
+            if (Array.isArray(list)) return list.filter((c) => /^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(c));
         } catch (_) { /* a damaged value starts over */ }
         return DEFAULT_SWATCHES.slice();
     }
@@ -131,7 +144,8 @@
             const x = clamp(Math.floor(((ev.clientX - r.left) / r.width) * ramp.width), 0, ramp.width - 1);
             const y = clamp(Math.floor(((ev.clientY - r.top) / r.height) * ramp.height), 0, ramp.height - 1);
             const d = ramp.getContext('2d').getImageData(x, y, 1, 1).data;
-            if (bg) w.bg = hex(d[0], d[1], d[2]); else w.fg = hex(d[0], d[1], d[2]);
+            // the ramp picks the hue; the colour keeps its alpha
+            if (bg) w.bg = hex(d[0], d[1], d[2], alphaOf(w.bg)); else w.fg = hex(d[0], d[1], d[2], alphaOf(w.fg));
             w.renderColors();
         };
         ramp.addEventListener('pointerdown', (ev) => {
@@ -179,7 +193,7 @@
     function renderSwatches(w, list) {
         const el = w.modal && w.modal.querySelector('.mp-swatches');
         if (!el) return;
-        el.innerHTML = list.map((c) => `<button type="button" class="mp-sw-cell" data-c="${esc(c)}" style="background:${esc(c)}" title="${esc(c.toUpperCase())}" role="option"></button>`).join('');
+        el.innerHTML = list.map((c) => `<button type="button" class="mp-sw-cell" data-c="${esc(c)}" style="background:${swatchBg(esc(c))}" title="${esc(c.toUpperCase())}" role="option"></button>`).join('');
     }
 
     // ---- the Color Picker ----------------------------------------------------------------------
@@ -187,27 +201,31 @@
     function picker(w, which = 'fg', opts = {}) {
         if (!V()) return;
         const start = opts.color || (which === 'bg' ? w.bg : w.fg);
-        const [r0, g0, b0] = rgbOf(start);
+        const [r0, g0, b0, a0] = rgbOf(start);
         let [h, s, v] = rgbToHsv(r0, g0, b0);
-        const tpl = { t: opts.title || `Color Picker (${which === 'bg' ? 'Background' : 'Foreground'} Color)`, w: 330, h: 176, f: ['MS Shell Dlg', 8], c: [
+        let alpha = a0;
+        const X = 20; // the alpha bar's room
+        const tpl = { t: opts.title || `Color Picker (${which === 'bg' ? 'Background' : 'Foreground'} Color)`, w: 330 + X, h: 176, f: ['MS Shell Dlg', 8], c: [
             [110, 'MpPickField', 7, 7, 172, 158, 0x50000000, '', 0],
             [111, 'MpPickHue', 184, 7, 16, 158, 0x50000000, '', 0],
-            [-1, 'S', 207, 7, 44, 8, 0x50020001, 'new', 0],
-            [112, 'MpPickPreview', 207, 16, 44, 40, 0x50000000, '', 0],
-            [-1, 'S', 207, 58, 44, 8, 0x50020001, 'current', 0],
-            [1, 'B', 264, 7, 59, 14, 0x50010001, 'OK', 0],
-            [2, 'B', 264, 25, 59, 14, 0x50010000, 'Cancel', 0],
-            [130, 'B', 264, 43, 59, 14, 0x50010000, '&Add to Swatches', 0],
-            [-1, 'S', 207, 78, 10, 8, 0x50020000, '&H:', 0], [121, 'E', 219, 76, 28, 12, 0x50812080, '', 0], [-1, 'S', 249, 78, 8, 8, 0x50020000, '°', 0],
-            [-1, 'S', 207, 93, 10, 8, 0x50020000, '&S:', 0], [122, 'E', 219, 91, 28, 12, 0x50812080, '', 0], [-1, 'S', 249, 93, 8, 8, 0x50020000, '%', 0],
-            [-1, 'S', 207, 108, 10, 8, 0x50020000, '&B:', 0], [123, 'E', 219, 106, 28, 12, 0x50812080, '', 0], [-1, 'S', 249, 108, 8, 8, 0x50020000, '%', 0],
-            [-1, 'S', 266, 78, 10, 8, 0x50020000, '&R:', 0], [124, 'E', 278, 76, 28, 12, 0x50812080, '', 0],
-            [-1, 'S', 266, 93, 10, 8, 0x50020000, '&G:', 0], [125, 'E', 278, 91, 28, 12, 0x50812080, '', 0],
-            [-1, 'S', 266, 108, 10, 8, 0x50020000, 'B:', 0], [126, 'E', 278, 106, 28, 12, 0x50812080, '', 0],
-            [-1, 'S', 207, 129, 10, 8, 0x50020000, '#', 0], [127, 'E', 219, 127, 50, 12, 0x50810080, '', 0]
+            [-1, 'S', 207 + X, 7, 44, 8, 0x50020001, 'new', 0],
+            [113, 'MpPickAlpha', 184 + X, 7, 16, 158, 0x50000000, '', 0],
+            [112, 'MpPickPreview', 207 + X, 16, 44, 40, 0x50000000, '', 0],
+            [-1, 'S', 207 + X, 58, 44, 8, 0x50020001, 'current', 0],
+            [1, 'B', 264 + X, 7, 59, 14, 0x50010001, 'OK', 0],
+            [2, 'B', 264 + X, 25, 59, 14, 0x50010000, 'Cancel', 0],
+            [130, 'B', 264 + X, 43, 59, 14, 0x50010000, '&Add to Swatches', 0],
+            [-1, 'S', 207 + X, 78, 10, 8, 0x50020000, '&H:', 0], [121, 'E', 219 + X, 76, 28, 12, 0x50812080, '', 0], [-1, 'S', 249 + X, 78, 8, 8, 0x50020000, '\u00b0', 0],
+            [-1, 'S', 207 + X, 93, 10, 8, 0x50020000, '&S:', 0], [122, 'E', 219 + X, 91, 28, 12, 0x50812080, '', 0], [-1, 'S', 249 + X, 93, 8, 8, 0x50020000, '%', 0],
+            [-1, 'S', 207 + X, 108, 10, 8, 0x50020000, '&B:', 0], [123, 'E', 219 + X, 106, 28, 12, 0x50812080, '', 0], [-1, 'S', 249 + X, 108, 8, 8, 0x50020000, '%', 0],
+            [-1, 'S', 266 + X, 78, 10, 8, 0x50020000, '&R:', 0], [124, 'E', 278 + X, 76, 28, 12, 0x50812080, '', 0],
+            [-1, 'S', 266 + X, 93, 10, 8, 0x50020000, '&G:', 0], [125, 'E', 278 + X, 91, 28, 12, 0x50812080, '', 0],
+            [-1, 'S', 266 + X, 108, 10, 8, 0x50020000, 'B:', 0], [126, 'E', 278 + X, 106, 28, 12, 0x50812080, '', 0],
+            [-1, 'S', 207 + X, 123, 10, 8, 0x50020000, 'A&:', 0], [128, 'E', 219 + X, 121, 28, 12, 0x50812080, '', 0], [-1, 'S', 249 + X, 123, 8, 8, 0x50020000, '%', 0],
+            [-1, 'S', 207 + X, 141, 10, 8, 0x50020000, '#', 0], [127, 'E', 219 + X, 139, 56, 12, 0x50810080, '', 0]
         ] };
         let sync = () => {};
-        const current = () => hex(...hsvToRgb(h, s, v));
+        const current = () => hex(...hsvToRgb(h, s, v), alpha);
         V().openDialog({
             id: 'mpColorPicker',
             tpl,
@@ -221,7 +239,11 @@
                 const hueEl = ctx.holder(111);
                 hueEl.innerHTML = '<div class="mp-pk-hue"><i class="mp-pk-arrows"></i></div>';
                 const prev = ctx.holder(112);
-                prev.innerHTML = `<div class="mp-pk-new"></div><div class="mp-pk-old" style="background:${esc(start)}" title="Click to restore the current color"></div>`;
+                prev.innerHTML = `<div class="mp-pk-new"></div><div class="mp-pk-old" style="background:${swatchBg(esc(start))}" title="Click to restore the current color"></div>`;
+                const alphaEl = ctx.holder(113);
+                alphaEl.innerHTML = '<div class="mp-pk-alpha"><i class="mp-pk-arrows"></i></div>';
+                const abar = alphaEl.querySelector('.mp-pk-alpha');
+                const aarrows = alphaEl.querySelector('.mp-pk-arrows');
                 const area = field.querySelector('.mp-pk-field');
                 const ring = field.querySelector('.mp-pk-ring');
                 const bar = hueEl.querySelector('.mp-pk-hue');
@@ -233,11 +255,14 @@
                     ring.style.top = `${(1 - v) * 100}%`;
                     ring.classList.toggle('is-dark', v > 0.6 && s < 0.4);
                     arrows.style.top = `${(1 - h / 360) * 100}%`;
-                    prev.querySelector('.mp-pk-new').style.background = hex(r, g, b);
+                    abar.style.background = `linear-gradient(${hex(r, g, b)}, rgba(0, 0, 0, 0)), repeating-conic-gradient(#fff 0 25%, #c8c8c8 0 50%) 0 0 / 8px 8px`;
+                    aarrows.style.top = `${(1 - alpha / 255) * 100}%`;
+                    prev.querySelector('.mp-pk-new').style.background = swatchBg(hex(r, g, b, alpha));
                     const set = (id, val) => { if (skip !== id) ctx.set(id, String(val)); };
                     set(121, Math.round(h)); set(122, Math.round(s * 100)); set(123, Math.round(v * 100));
                     set(124, Math.round(r)); set(125, Math.round(g)); set(126, Math.round(b));
-                    set(127, hex(r, g, b).slice(1));
+                    set(128, Math.round((alpha / 255) * 100));
+                    set(127, hex(r, g, b, alpha).slice(1));
                 };
                 const drag = (el, fn) => el.addEventListener('pointerdown', (ev) => {
                     ev.preventDefault();
@@ -250,7 +275,8 @@
                 });
                 drag(area, (x, y) => { s = x; v = 1 - y; });
                 drag(bar, (x, y) => { h = (1 - y) * 360; if (h >= 360) h = 0; });
-                prev.querySelector('.mp-pk-old').addEventListener('click', () => { [h, s, v] = rgbToHsv(r0, g0, b0); sync(); });
+                drag(abar, (x, y) => { alpha = Math.round((1 - y) * 255); });
+                prev.querySelector('.mp-pk-old').addEventListener('click', () => { [h, s, v] = rgbToHsv(r0, g0, b0); alpha = a0; sync(); });
                 const num = (id, lo, hi) => clamp(Number(ctx.get(id)) || 0, lo, hi);
                 [121, 122, 123].forEach((id) => ctx.on(id, 'input', () => {
                     h = num(121, 0, 359); s = num(122, 0, 100) / 100; v = num(123, 0, 100) / 100;
@@ -260,10 +286,13 @@
                     [h, s, v] = rgbToHsv(num(124, 0, 255), num(125, 0, 255), num(126, 0, 255));
                     sync(id);
                 }));
+                ctx.on(128, 'input', () => { alpha = Math.round((num(128, 0, 100) / 100) * 255); sync(128); });
                 ctx.on(127, 'input', () => {
                     const t = String(ctx.get(127)).replace(/[^0-9a-f]/gi, '');
-                    if (t.length !== 6 && t.length !== 3) return;
-                    [h, s, v] = rgbToHsv(...rgbOf(`#${t}`));
+                    if (t.length !== 6 && t.length !== 3 && t.length !== 8) return;
+                    const c = rgbOf(`#${t}`);
+                    [h, s, v] = rgbToHsv(c[0], c[1], c[2]);
+                    if (t.length === 8) alpha = c[3];
                     sync(127);
                 });
                 sync();
@@ -304,5 +333,5 @@
         }
     }
 
-    root.paintColor = { mount, picker, menu, action, swatches, addSwatch, rgbToHsv, hsvToRgb, DEFAULT_SWATCHES };
+    root.paintColor = { mount, picker, menu, action, swatches, addSwatch, rgbToHsv, hsvToRgb, hex, alphaOf, swatchBg, DEFAULT_SWATCHES };
 })(typeof window !== 'undefined' ? window : globalThis);

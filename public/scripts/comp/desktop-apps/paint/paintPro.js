@@ -1059,14 +1059,15 @@
     const CHANNELS = [['rgb', 'RGB'], ['r', 'Red'], ['g', 'Green'], ['b', 'Blue']];
     const CHANNEL_COLOR = { rgb: '#000', r: '#c00', g: '#080', b: '#00c' };
 
-    function levels(w) {
-        const S = session(w, 'Levels');
+    function levels(w, layer) {
+        // layer: { params, preview(P), ok(P), cancel() } for an adjustment layer (no pixels change)
+        const S = layer ? wholePicture(w) : session(w, 'Levels');
         if (!S || !V()) return;
-        const mask = w.doc.selection ? maskOf(w.doc, w.doc.selection) : null;
+        const mask = !layer && w.doc.selection ? maskOf(w.doc, w.doc.selection) : null;
         const hists = {};
         CHANNELS.forEach(([c]) => { hists[c] = histogram(S.base, mask, S.info, c); });
         const P = {};
-        CHANNELS.forEach(([c]) => { P[c] = { inB: 0, gamma: 1, inW: 255, outB: 0, outW: 255 }; });
+        CHANNELS.forEach(([c]) => { P[c] = layer && layer.params ? { ...layer.params[c] } : { inB: 0, gamma: 1, inW: 255, outB: 0, outW: 255 }; });
         let ch = 'rgb';
         const tpl = { t: 'Levels', w: 262, h: 186, f: ['MS Shell Dlg', 8], c: [
             [-1, 'S', 7, 9, 30, 8, 0x50020000, 'C&hannel:', 0],
@@ -1093,7 +1094,8 @@
                 const b = levelsLut(P[c]);
                 return a.map((v) => b[v]);
             });
-            S.write(lutFilter(luts)(S.copy()));
+            if (layer) layer.preview(JSON.parse(JSON.stringify(P)));
+            else S.write(lutFilter(luts)(S.copy()));
         };
         const preview = (ctx) => {
             cancelAnimationFrame(raf);
@@ -1170,8 +1172,8 @@
                 ctx.on(90, 'change', () => preview(ctx));
                 draw(ctx);
             },
-            ok() { cancelAnimationFrame(raf); apply(); S.commit(); },
-            cancel() { cancelAnimationFrame(raf); S.cancel(); }
+            ok() { cancelAnimationFrame(raf); if (layer) { layer.ok(JSON.parse(JSON.stringify(P))); return; } apply(); S.commit(); },
+            cancel() { cancelAnimationFrame(raf); if (layer) { layer.cancel(); return; } S.cancel(); }
         });
     }
 
@@ -1208,14 +1210,15 @@
         return lut;
     }
 
-    function curves(w) {
-        const S = session(w, 'Curves');
+    function curves(w, layer) {
+        // layer: { params, preview(P), ok(P), cancel() } for an adjustment layer (no pixels change)
+        const S = layer ? wholePicture(w) : session(w, 'Curves');
         if (!S || !V()) return;
-        const mask = w.doc.selection ? maskOf(w.doc, w.doc.selection) : null;
+        const mask = !layer && w.doc.selection ? maskOf(w.doc, w.doc.selection) : null;
         const hists = {};
         CHANNELS.forEach(([c]) => { hists[c] = histogram(S.base, mask, S.info, c); });
         const P = {};
-        CHANNELS.forEach(([c]) => { P[c] = [[0, 0], [255, 255]]; });
+        CHANNELS.forEach(([c]) => { P[c] = layer && layer.params ? layer.params[c].map((q) => q.slice()) : [[0, 0], [255, 255]]; });
         let ch = 'rgb';
         let sel = -1;
         const tpl = { t: 'Curves', w: 262, h: 214, f: ['MS Shell Dlg', 8], c: [
@@ -1235,7 +1238,8 @@
         const apply = () => {
             const all = curveLut(P.rgb);
             const luts = ['r', 'g', 'b'].map((c) => { const l = curveLut(P[c]); return all.map((v) => l[v]); });
-            S.write(lutFilter(luts)(S.copy()));
+            if (layer) layer.preview(JSON.parse(JSON.stringify(P)));
+            else S.write(lutFilter(luts)(S.copy()));
         };
         const preview = (ctx) => {
             cancelAnimationFrame(raf);
@@ -1338,8 +1342,8 @@
                 ctx.on(90, 'change', () => preview(ctx));
                 draw(ctx);
             },
-            ok() { cancelAnimationFrame(raf); apply(); S.commit(); },
-            cancel() { cancelAnimationFrame(raf); S.cancel(); }
+            ok() { cancelAnimationFrame(raf); if (layer) { layer.ok(JSON.parse(JSON.stringify(P))); return; } apply(); S.commit(); },
+            cancel() { cancelAnimationFrame(raf); if (layer) { layer.cancel(); return; } S.cancel(); }
         });
     }
 
@@ -1348,70 +1352,6 @@
     function srgbToLin(v) { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }
     function linToSrgb(v) { v = Math.max(0, v); return 255 * (v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055); }
 
-    function exposure(w) {
-        filterDialog(w, 'Exposure', [
-            { type: 'slider', label: 'Exposure', min: -5, max: 5, def: 0, scale: 100 },
-            { type: 'slider', label: 'Offset', min: -0.5, max: 0.5, def: 0, scale: 1000 },
-            { type: 'slider', label: 'Gamma', min: 0.1, max: 3, def: 1, scale: 100 }
-        ], ([e, off, gam]) => {
-            const lut = new Uint8ClampedArray(256);
-            for (let v = 0; v < 256; v += 1) lut[v] = linToSrgb(Math.max(0, srgbToLin(v) * 2 ** e + off) ** (1 / gam));
-            return lutFilter([lut, lut, lut]);
-        }, { heavy: false });
-    }
-
-    function vibrance(w) {
-        filterDialog(w, 'Vibrance', [
-            { type: 'slider', label: 'Vibrance', min: -100, max: 100, def: 0 },
-            { type: 'slider', label: 'Saturation', min: -100, max: 100, def: 0 }
-        ], ([vib, sat]) => perPixel((r, g, b) => {
-            const mx = Math.max(r, g, b);
-            const avg = (r + g + b) / 3;
-            const amt = ((mx - avg) / 255) * (-vib / 100) * 3;
-            r += (mx - r) * amt; g += (mx - g) * amt; b += (mx - b) * amt;
-            const l = lum(r, g, b);
-            const k = 1 + sat / 100;
-            return [l + (r - l) * k, l + (g - l) * k, l + (b - l) * k];
-        }), { heavy: false });
-    }
-
-    /** Color Balance after GIMP's: each tone's weight for a channel value, then its shifts. */
-    function colorBalance(w) {
-        const wt = (v) => {
-            const a = 0.25; const b = 0.333; const sc = 0.7;
-            const s = clamp((v - b) / -a + 0.5, 0, 1) * sc;
-            const m = clamp((v - b) / a + 0.5, 0, 1) * clamp((v + b - 1) / -a + 0.5, 0, 1) * sc;
-            const h = clamp((v + b - 1) / a + 0.5, 0, 1) * sc;
-            return [s, m, h];
-        };
-        const tone = (name) => [
-            { type: 'heading', label: name },
-            { type: 'slider', label: 'Cyan / Red', min: -100, max: 100, def: 0 },
-            { type: 'slider', label: 'Magenta / Green', min: -100, max: 100, def: 0 },
-            { type: 'slider', label: 'Yellow / Blue', min: -100, max: 100, def: 0 }
-        ];
-        filterDialog(w, 'Color Balance', [...tone('Shadows'), ...tone('Midtones'), ...tone('Highlights'), { type: 'check', label: 'Preserve &Luminosity', def: true }], (vals) => {
-            // vals: heading, 3 shifts, per tone; then the check box
-            const shifts = [0, 1, 2].map((t) => vals.slice(t * 4 + 1, t * 4 + 4).map((v) => v / 100));
-            const keep = vals[12];
-            const tables = [0, 1, 2].map((c) => {
-                const lut = new Uint8ClampedArray(256);
-                for (let v = 0; v < 256; v += 1) {
-                    const ww = wt(v / 255);
-                    lut[v] = v + (shifts[0][c] * ww[0] + shifts[1][c] * ww[1] + shifts[2][c] * ww[2]) * 127;
-                }
-                return lut;
-            });
-            return perPixel((r, g, b) => {
-                const out = [tables[0][r], tables[1][g], tables[2][b]];
-                if (!keep) return out;
-                const before = C().rgbToHsl(r, g, b)[2];
-                const hsl = C().rgbToHsl(out[0], out[1], out[2]);
-                return C().hslToRgb(hsl[0], hsl[1], before);
-            });
-        }, { heavy: false });
-    }
-
     const PHOTO_FILTERS = [
         ['#ec8a00', 'Warming Filter (85)'], ['#fa9600', 'Warming Filter (LBA)'], ['#ebb113', 'Warming Filter (81)'],
         ['#006dff', 'Cooling Filter (80)'], ['#005dff', 'Cooling Filter (LBB)'], ['#00b5ff', 'Cooling Filter (82)'],
@@ -1419,43 +1359,186 @@
         ['#1d35ea', 'Blue'], ['#9b1dea', 'Violet'], ['#e31ca2', 'Magenta'], ['#ac7a33', 'Sepia'], ['#ff5d25', 'Deep Red']
     ];
 
-    function photoFilter(w) {
-        filterDialog(w, 'Photo Filter', [
-            { type: 'combo', label: 'Filter', options: PHOTO_FILTERS, def: '#ec8a00' },
-            { type: 'slider', label: 'Density', min: 1, max: 100, def: 25, unit: '%' },
-            { type: 'check', label: 'Preserve &Luminosity', def: true }
-        ], ([color, dens, keep]) => {
-            const [fr, fg, fb] = C().parseColor(color);
-            const k = dens / 100;
-            return perPixel((r, g, b) => {
-                const out = [r + (r * fr / 255 - r) * k, g + (g * fg / 255 - g) * k, b + (b * fb / 255 - b) * k];
-                if (!keep) return out;
-                const before = C().rgbToHsl(r, g, b)[2];
-                const hsl = C().rgbToHsl(out[0], out[1], out[2]);
-                return C().hslToRgb(hsl[0], hsl[1], before);
-            });
-        }, { heavy: false });
+    function keepLum(r, g, b, out) {
+        const before = C().rgbToHsl(r, g, b)[2];
+        const hsl = C().rgbToHsl(out[0], out[1], out[2]);
+        return C().hslToRgb(hsl[0], hsl[1], before);
     }
 
-    function gradientMap(w) {
-        const a = C().parseColor(w.fg);
-        const b = C().parseColor(w.bg);
-        filterDialog(w, 'Gradient Map', [
-            { type: 'check', label: '&Reverse', def: false },
-            { type: 'check', label: '&Dither', def: false }
-        ], ([rev, dither]) => {
-            const [c0, c1] = rev ? [b, a] : [a, b];
-            return perPixel((r, g, bl) => {
-                const t = clamp((lum(r, g, bl) + (dither ? Math.random() - 0.5 : 0)) / 255, 0, 1);
-                return [c0[0] + (c1[0] - c0[0]) * t, c0[1] + (c1[1] - c0[1]) * t, c0[2] + (c1[2] - c0[2]) * t];
-            });
-        }, { heavy: false });
+    // Color Balance after GIMP's: each tone's weight for a channel value
+    function balanceWeights(v) {
+        const a = 0.25; const b = 0.333; const sc = 0.7;
+        return [
+            clamp((v - b) / -a + 0.5, 0, 1) * sc,
+            clamp((v - b) / a + 0.5, 0, 1) * clamp((v + b - 1) / -a + 0.5, 0, 1) * sc,
+            clamp((v + b - 1) / a + 0.5, 0, 1) * sc
+        ];
     }
 
-    function threshold(w) {
-        filterDialog(w, 'Threshold', [{ type: 'slider', label: 'Threshold Level', min: 1, max: 255, def: 128 }],
-            ([t]) => perPixel((r, g, b) => { const v = lum(r, g, b) >= t ? 255 : 0; return [v, v, v]; }), { heavy: false });
+    const tone = (name, p, o) => [
+        { type: 'heading', label: name },
+        { type: 'slider', label: 'Cyan / Red', min: -100, max: 100, def: p ? p[o + 1] : 0 },
+        { type: 'slider', label: 'Magenta / Green', min: -100, max: 100, def: p ? p[o + 2] : 0 },
+        { type: 'slider', label: 'Yellow / Blue', min: -100, max: 100, def: p ? p[o + 3] : 0 }
+    ];
+
+    /**
+     * The adjustments a dialog of fields drives, the same for the pixels (Adjustments menu) and for
+     * an adjustment layer: fields(w, params?) and make(values) -> (ImageData) -> ImageData.
+     */
+    const ADJ = {
+        brightness: {
+            label: 'Brightness/Contrast',
+            fields: (w, p) => [
+                { type: 'slider', label: 'Brightness', min: -150, max: 150, def: p ? p[0] : 0 },
+                { type: 'slider', label: 'Contrast', min: -50, max: 100, def: p ? p[1] : 0 }
+            ],
+            make: ([br, ct]) => {
+                const f = (259 * (ct * 2.55 + 255)) / (255 * (259 - ct * 2.55));
+                return perPixel((r, g, b) => [f * (r - 128) + 128 + br, f * (g - 128) + 128 + br, f * (b - 128) + 128 + br]);
+            }
+        },
+        exposure: {
+            label: 'Exposure',
+            fields: (w, p) => [
+                { type: 'slider', label: 'Exposure', min: -5, max: 5, def: p ? p[0] : 0, scale: 100 },
+                { type: 'slider', label: 'Offset', min: -0.5, max: 0.5, def: p ? p[1] : 0, scale: 1000 },
+                { type: 'slider', label: 'Gamma', min: 0.1, max: 3, def: p ? p[2] : 1, scale: 100 }
+            ],
+            make: ([e, off, gam]) => {
+                const lut = new Uint8ClampedArray(256);
+                for (let v = 0; v < 256; v += 1) lut[v] = linToSrgb(Math.max(0, srgbToLin(v) * 2 ** e + off) ** (1 / gam));
+                return lutFilter([lut, lut, lut]);
+            }
+        },
+        vibrance: {
+            label: 'Vibrance',
+            fields: (w, p) => [
+                { type: 'slider', label: 'Vibrance', min: -100, max: 100, def: p ? p[0] : 0 },
+                { type: 'slider', label: 'Saturation', min: -100, max: 100, def: p ? p[1] : 0 }
+            ],
+            make: ([vib, sat]) => perPixel((r, g, b) => {
+                const mx = Math.max(r, g, b);
+                const avg = (r + g + b) / 3;
+                const amt = ((mx - avg) / 255) * (-vib / 100) * 3;
+                r += (mx - r) * amt; g += (mx - g) * amt; b += (mx - b) * amt;
+                const l = lum(r, g, b);
+                const k = 1 + sat / 100;
+                return [l + (r - l) * k, l + (g - l) * k, l + (b - l) * k];
+            })
+        },
+        hue: {
+            label: 'Hue/Saturation',
+            fields: (w, p) => [
+                { type: 'slider', label: 'Hue', min: -180, max: 180, def: p ? p[0] : 0 },
+                { type: 'slider', label: 'Saturation', min: -100, max: 100, def: p ? p[1] : 0 },
+                { type: 'slider', label: 'Lightness', min: -100, max: 100, def: p ? p[2] : 0 },
+                { type: 'check', label: 'C&olorize', def: p ? p[3] : false }
+            ],
+            make: ([h, sat, li, colorize]) => perPixel((r, g, b) => {
+                const hsl = C().rgbToHsl(r, g, b);
+                let hh = colorize ? ((h + 360) % 360) / 360 : (hsl[0] + h / 360) % 1;
+                if (hh < 0) hh += 1;
+                const ss = colorize ? clamp(0.25 + sat / 200, 0, 1) : clamp(hsl[1] * (1 + sat / 100), 0, 1);
+                const ll = li >= 0 ? hsl[2] + (1 - hsl[2]) * (li / 100) : hsl[2] * (1 + li / 100);
+                return C().hslToRgb(hh, ss, ll);
+            })
+        },
+        balance: {
+            label: 'Color Balance',
+            fields: (w, p) => [...tone('Shadows', p, 0), ...tone('Midtones', p, 4), ...tone('Highlights', p, 8), { type: 'check', label: 'Preserve &Luminosity', def: p ? p[12] : true }],
+            make: (vals) => {
+                const shifts = [0, 1, 2].map((t) => vals.slice(t * 4 + 1, t * 4 + 4).map((v) => (v || 0) / 100));
+                const tables = [0, 1, 2].map((c) => {
+                    const lut = new Uint8ClampedArray(256);
+                    for (let v = 0; v < 256; v += 1) {
+                        const ww = balanceWeights(v / 255);
+                        lut[v] = v + (shifts[0][c] * ww[0] + shifts[1][c] * ww[1] + shifts[2][c] * ww[2]) * 127;
+                    }
+                    return lut;
+                });
+                return perPixel((r, g, b) => {
+                    const out = [tables[0][r], tables[1][g], tables[2][b]];
+                    return vals[12] ? keepLum(r, g, b, out) : out;
+                });
+            }
+        },
+        bw: {
+            label: 'Black & White',
+            fields: (w, p) => [
+                { type: 'color', label: 'Tint', def: p ? p[0] : '#e0c090' },
+                { type: 'slider', label: 'Tint Amount', min: 0, max: 100, def: p ? p[1] : 0, unit: '%' }
+            ],
+            make: ([tint, amt]) => {
+                const [tr, tg, tb] = C().parseColor(tint || '#ffffff');
+                const k = (amt || 0) / 100;
+                return perPixel((r, g, b) => {
+                    const v = lum(r, g, b);
+                    return [v + (v * tr / 255 - v) * k, v + (v * tg / 255 - v) * k, v + (v * tb / 255 - v) * k];
+                });
+            }
+        },
+        photo: {
+            label: 'Photo Filter',
+            fields: (w, p) => [
+                { type: 'combo', label: 'Filter', options: PHOTO_FILTERS, def: p ? p[0] : '#ec8a00' },
+                { type: 'slider', label: 'Density', min: 1, max: 100, def: p ? p[1] : 25, unit: '%' },
+                { type: 'check', label: 'Preserve &Luminosity', def: p ? p[2] : true }
+            ],
+            make: ([color, dens, keep]) => {
+                const [fr, fg, fb] = C().parseColor(color);
+                const k = dens / 100;
+                return perPixel((r, g, b) => {
+                    const out = [r + (r * fr / 255 - r) * k, g + (g * fg / 255 - g) * k, b + (b * fb / 255 - b) * k];
+                    return keep ? keepLum(r, g, b, out) : out;
+                });
+            }
+        },
+        invert: { label: 'Invert', fields: null, make: () => perPixel((r, g, b) => [255 - r, 255 - g, 255 - b]) },
+        posterize: {
+            label: 'Posterize',
+            fields: (w, p) => [{ type: 'slider', label: 'Levels', min: 2, max: 255, def: p ? p[0] : 4 }],
+            make: ([n]) => {
+                const st = 255 / (n - 1);
+                return perPixel((r, g, b) => [Math.round(r / st) * st, Math.round(g / st) * st, Math.round(b / st) * st]);
+            }
+        },
+        threshold: {
+            label: 'Threshold',
+            fields: (w, p) => [{ type: 'slider', label: 'Threshold Level', min: 1, max: 255, def: p ? p[0] : 128 }],
+            make: ([t]) => perPixel((r, g, b) => { const v = lum(r, g, b) >= t ? 255 : 0; return [v, v, v]; })
+        },
+        gradmap: {
+            label: 'Gradient Map',
+            fields: (w, p) => [
+                { type: 'color', label: 'Shadows', def: p ? p[0] : w.fg },
+                { type: 'color', label: 'Highlights', def: p ? p[1] : w.bg },
+                { type: 'check', label: '&Reverse', def: p ? p[2] : false }
+            ],
+            make: ([from, to, rev]) => {
+                const a = C().parseColor(from);
+                const b = C().parseColor(to);
+                const [c0, c1] = rev ? [b, a] : [a, b];
+                return perPixel((r, g, bl) => {
+                    const t = clamp(lum(r, g, bl) / 255, 0, 1);
+                    return [c0[0] + (c1[0] - c0[0]) * t, c0[1] + (c1[1] - c0[1]) * t, c0[2] + (c1[2] - c0[2]) * t];
+                });
+            }
+        }
+    };
+
+    function adjustPixels(w, kind) {
+        const A = ADJ[kind];
+        if (!A.fields) { filterNow(w, A.label, A.make([])); return; }
+        filterDialog(w, A.label, A.fields(w), A.make, { heavy: false });
     }
+
+    const exposure = (w) => adjustPixels(w, 'exposure');
+    const vibrance = (w) => adjustPixels(w, 'vibrance');
+    const colorBalance = (w) => adjustPixels(w, 'balance');
+    const photoFilter = (w) => adjustPixels(w, 'photo');
+    const gradientMap = (w) => adjustPixels(w, 'gradmap');
+    const threshold = (w) => adjustPixels(w, 'threshold');
 
     function equalize(w) {
         const S = session(w, 'Equalize');
@@ -1560,10 +1643,10 @@
         const run = ([width, where, opacity]) => {
             const b = band(width, where);
             if (!b) { S.restore(); return; }
-            const [r, g, bl] = C().parseColor(w.fg);
+            const [r, g, bl, ca] = C().parseColor(w.fg);
             const out = S.copy();
             const o = out.data;
-            const a = opacity / 100;
+            const a = (opacity / 100) * (ca / 255);
             for (let y = 0; y < S.pr.h; y += 1) {
                 for (let x = 0; x < S.pr.w; x += 1) {
                     if (!b.mask[(S.pr.y + y) * d.width + S.pr.x + x]) continue;
@@ -1761,9 +1844,129 @@
         const view = w.vctx.getImageData(x, y, 1, 1).data;
         const [hh, ss, ll] = C().rgbToHsl(view[0], view[1], view[2]);
         set('r', view[0]); set('g', view[1]); set('b', view[2]);
-        set('h', `${Math.round(hh * 360)}°`); set('s', `${Math.round(ss * 100)}%`); set('l', `${Math.round(ll * 100)}%`);
+        set('h', `${Math.round(hh * 360)}\u00b0`); set('s', `${Math.round(ss * 100)}%`); set('l', `${Math.round(ll * 100)}%`);
         set('x', x); set('y', y); set('a', `${Math.round(px[3] / 2.55)}%`);
         panel.querySelector('.mp-info-sw').style.background = `rgb(${view[0]},${view[1]},${view[2]})`;
+    }
+
+    // ---- adjustment layers -----------------------------------------------------------------------
+
+    /** Levels / Curves on an adjustment layer: the histogram of the whole picture, nothing written. */
+    function wholePicture(w) {
+        const d = w.doc;
+        const base = d.flattened().getContext('2d').getImageData(0, 0, d.width, d.height);
+        return {
+            base, info: { x0: 0, y0: 0, rx: 0, ry: 0, rw: d.width, rh: d.height, W: d.width, H: d.height },
+            write() {}, restore() {}, commit() {}, cancel() {}, copy() { return base; }
+        };
+    }
+
+    function levelsFilter(P) {
+        const luts = ['r', 'g', 'b'].map((c) => { const a = levelsLut(P.rgb); const b = levelsLut(P[c]); return a.map((v) => b[v]); });
+        return lutFilter(luts);
+    }
+
+    function curvesFilter(P) {
+        const all = curveLut(P.rgb);
+        return lutFilter(['r', 'g', 'b'].map((c) => { const l = curveLut(P[c]); return all.map((v) => l[v]); }));
+    }
+
+    // what the compositor runs for an adjustment layer (PaintCore.adjusters); no params yet: nothing
+    function registerAdjusters() {
+        const reg = C() && C().adjusters;
+        if (!reg) return;
+        const none = (img) => img;
+        Object.keys(ADJ).forEach((k) => { reg[k] = (p) => (p || !ADJ[k].fields ? ADJ[k].make(p || []) : none); });
+        reg.levels = (P) => (P ? levelsFilter(P) : none);
+        reg.curves = (P) => (P ? curvesFilter(P) : none);
+    }
+
+    const ADJ_LAYERS = [
+        ['brightness', 'Brightness/Contrast...'], ['levels', 'Levels...'], ['curves', 'Curves...'], ['exposure', 'Exposure...'], null,
+        ['vibrance', 'Vibrance...'], ['hue', 'Hue/Saturation...'], ['balance', 'Color Balance...'], ['bw', 'Black & White...'], ['photo', 'Photo Filter...'], null,
+        ['invert', 'Invert'], ['posterize', 'Posterize...'], ['threshold', 'Threshold...'], ['gradmap', 'Gradient Map...']
+    ];
+    const ADJ_NAMES = { levels: 'Levels', curves: 'Curves' };
+
+    function adjustLayerMenu() {
+        return ADJ_LAYERS.map((e) => (e ? { text: e[1], action: `adjlayer-${e[0]}` } : { separator: true }));
+    }
+
+    /** The dialog of an adjustment layer: preview(params) live, then done(params) or cancelled(). */
+    function adjustLayerDialog(w, kind, params, preview, done, cancelled) {
+        if (kind === 'levels') { levels(w, { params, preview, ok: done, cancel: cancelled }); return; }
+        if (kind === 'curves') { curves(w, { params, preview, ok: done, cancel: cancelled }); return; }
+        const A = ADJ[kind];
+        if (!A.fields) { done([]); return; }
+        fieldDialog(w, A.label, A.fields(w, params), {
+            heavy: false,
+            preview,
+            unpreview() { preview(params); },
+            ok: done,
+            cancel: cancelled
+        });
+    }
+
+    /** Layers > New Adjustment Layer: above the active layer, its mask from the selection. */
+    function newAdjustmentLayer(w, kind) {
+        const d = w.doc;
+        if (w.proSession) { w.status('Finish the open dialog first.'); return; }
+        w.commitFloating();
+        w.finishText();
+        registerAdjusters();
+        const name = (ADJ[kind] && ADJ[kind].label) || ADJ_NAMES[kind];
+        if (!name) return;
+        const sel = d.selection;
+        const at = d.active + 1;
+        const n = d.layers.filter((x) => x.adjust && x.adjust.kind === kind).length;
+        const l = new (C().Layer)(d.width, d.height, `${name} ${n + 1}`);
+        l.adjust = { kind, params: null };
+        const m = l.addMask('#ffffff');
+        if (sel) {
+            const mask = maskOf(d, sel);
+            const img = m.ctx.getImageData(0, 0, d.width, d.height);
+            for (let i = 0; i < mask.length; i += 1) { img.data[i * 4] = mask[i]; img.data[i * 4 + 1] = mask[i]; img.data[i * 4 + 2] = mask[i]; }
+            m.ctx.putImageData(img, 0, 0);
+        }
+        // shown while its dialog is open, then added for real (one history step) on OK
+        const prevActive = d.active;
+        d.layers.splice(at, 0, l);
+        d.active = at;
+        d.markDirty();
+        if (root.paintLayers) root.paintLayers.refresh(w);
+        w.proSession = { adjust: true };
+        const drop = () => { d.layers.splice(d.layers.indexOf(l), 1); d.active = prevActive; };
+        adjustLayerDialog(w, kind, null, (p) => { l.adjust.params = p; d.markDirty(); }, (p) => {
+            w.proSession = null;
+            drop();
+            l.adjust.params = p;
+            structural(w, `New ${name} Layer`, () => { d.layers.splice(at, 0, l); d.active = at; d.editMask = false; d.markDirty(); });
+            if (sel) w.setSelection(null);
+        }, () => {
+            w.proSession = null;
+            drop();
+            d.markDirty();
+            if (root.paintLayers) root.paintLayers.refresh(w);
+        });
+    }
+
+    /** Double-click an adjustment layer: its dialog again. */
+    function editAdjustmentLayer(w) {
+        const d = w.doc;
+        const l = d.activeLayer;
+        if (!l.adjust || w.proSession) return;
+        registerAdjusters();
+        const before = l.adjust.params ? JSON.parse(JSON.stringify(l.adjust.params)) : null;
+        w.proSession = { adjust: true };
+        adjustLayerDialog(w, l.adjust.kind, before, (p) => { l.adjust.params = p; d.markDirty(); }, (p) => {
+            w.proSession = null;
+            l.adjust.params = before;
+            structural(w, `Edit ${l.name}`, () => { l.adjust.params = p; d.markDirty(); });
+        }, () => {
+            w.proSession = null;
+            l.adjust.params = before;
+            d.markDirty();
+        });
     }
 
     // ---- layer masks and layer styles --------------------------------------------------------
@@ -1989,18 +2192,18 @@
             case 'pro-auto-color': autoTone(w, true, 'Auto Color'); return true;
             case 'pro-gaussian': filterDialog(w, 'Gaussian Blur', [{ type: 'slider', label: 'Radius', min: 0.1, max: 100, def: 2, scale: 10, unit: 'pixels' }], ([r]) => (img) => gaussian(img, r), { pad: 120 }); return true;
             case 'pro-box-blur': filterDialog(w, 'Box Blur', [{ type: 'slider', label: 'Radius', min: 1, max: 100, def: 5, unit: 'pixels' }], ([r]) => (img) => boxBlur(img, r), { pad: 110 }); return true;
-            case 'pro-motion': filterDialog(w, 'Motion Blur', [{ type: 'slider', label: 'Angle', min: -90, max: 90, def: 0, unit: '°' }, { type: 'slider', label: 'Distance', min: 1, max: 200, def: 10, unit: 'pixels' }], ([ang, dist]) => (img) => motion(img, ang, dist), { pad: 200 }); return true;
+            case 'pro-motion': filterDialog(w, 'Motion Blur', [{ type: 'slider', label: 'Angle', min: -90, max: 90, def: 0, unit: '\u00b0' }, { type: 'slider', label: 'Distance', min: 1, max: 200, def: 10, unit: 'pixels' }], ([ang, dist]) => (img) => motion(img, ang, dist), { pad: 200 }); return true;
             case 'pro-unsharp': filterDialog(w, 'Unsharp Mask', [{ type: 'slider', label: 'Amount', min: 1, max: 500, def: 50, unit: '%' }, { type: 'slider', label: 'Radius', min: 0.1, max: 50, def: 1, scale: 10, unit: 'pixels' }, { type: 'slider', label: 'Threshold', min: 0, max: 255, def: 0, unit: 'levels' }], ([am, r, t]) => (img) => unsharp(img, am, r, t), { pad: 60 }); return true;
             case 'pro-high-pass': filterDialog(w, 'High Pass', [{ type: 'slider', label: 'Radius', min: 0.1, max: 100, def: 10, scale: 10, unit: 'pixels' }], ([r]) => (img) => highPass(img, r), { pad: 120 }); return true;
             case 'pro-noise': filterDialog(w, 'Add Noise', [{ type: 'slider', label: 'Amount', min: 1, max: 400, def: 12, scale: 10, unit: '%' }, { type: 'radio', label: 'Distribution', options: [['u', 'Uniform'], ['g', 'Gaussian']], def: 'g' }, { type: 'check', label: '&Monochromatic', def: false }], ([am, dist, mono]) => (img) => addNoise(img, am, dist === 'g', mono)); return true;
             case 'pro-median': filterDialog(w, 'Median', [{ type: 'slider', label: 'Radius', min: 1, max: 5, def: 1, unit: 'pixels' }], ([r]) => (img) => median(img, r), { pad: 6 }); return true;
             case 'pro-despeckle': filterNow(w, 'Despeckle', (img) => median(img, 1), 2); return true;
             case 'pro-mosaic': filterDialog(w, 'Mosaic', [{ type: 'slider', label: 'Cell Size', min: 2, max: 200, def: 10, unit: 'square' }], ([c]) => (img, inf) => mosaic(img, c, inf)); return true;
-            case 'pro-emboss': filterDialog(w, 'Emboss', [{ type: 'slider', label: 'Angle', min: -180, max: 180, def: 135, unit: '°' }, { type: 'slider', label: 'Height', min: 1, max: 10, def: 3, unit: 'pixels' }, { type: 'slider', label: 'Amount', min: 1, max: 500, def: 100, unit: '%' }], ([a2, h, am]) => (img) => emboss(img, a2, h, am), { pad: 12 }); return true;
+            case 'pro-emboss': filterDialog(w, 'Emboss', [{ type: 'slider', label: 'Angle', min: -180, max: 180, def: 135, unit: '\u00b0' }, { type: 'slider', label: 'Height', min: 1, max: 10, def: 3, unit: 'pixels' }, { type: 'slider', label: 'Amount', min: 1, max: 500, def: 100, unit: '%' }], ([a2, h, am]) => (img) => emboss(img, a2, h, am), { pad: 12 }); return true;
             case 'pro-find-edges': filterNow(w, 'Find Edges', findEdges, 2); return true;
             case 'pro-solarize': filterNow(w, 'Solarize', perPixel((r, g, b) => [r > 127 ? 255 - r : r, g > 127 ? 255 - g : g, b > 127 ? 255 - b : b])); return true;
             case 'pro-sharpen-more': filterNow(w, 'Sharpen More', (img) => convolve3(img, [-1, -1, -1, -1, 9, -1, -1, -1, -1], 1), 2); return true;
-            case 'pro-twirl': filterDialog(w, 'Twirl', [{ type: 'slider', label: 'Angle', min: -999, max: 999, def: 50, unit: '°' }], ([ang]) => (img, inf) => twirl(img, inf, ang)); return true;
+            case 'pro-twirl': filterDialog(w, 'Twirl', [{ type: 'slider', label: 'Angle', min: -999, max: 999, def: 50, unit: '\u00b0' }], ([ang]) => (img, inf) => twirl(img, inf, ang)); return true;
             case 'pro-pinch': filterDialog(w, 'Pinch', [{ type: 'slider', label: 'Amount', min: -100, max: 100, def: 50, unit: '%' }], ([am]) => (img, inf) => pinch(img, inf, am)); return true;
             case 'pro-clouds': {
                 const seed = Math.floor(Math.random() * 1e9);
@@ -2028,16 +2231,21 @@
             case 'style-copy': w.styleClip = JSON.parse(JSON.stringify(d.activeLayer.styles)); return true;
             case 'style-paste': if (w.styleClip) structural(w, 'Paste Layer Style', () => { d.activeLayer.styles = JSON.parse(JSON.stringify(w.styleClip)); d.markDirty(); }); return true;
             case 'style-clear': structural(w, 'Clear Layer Style', () => { d.activeLayer.styles = null; d.markDirty(); }); return true;
+            case 'adjlayer-edit': editAdjustmentLayer(w); return true;
             case 'pro-navigator': toggleNavigator(w); return true;
             case 'pro-info': toggleInfo(w); return true;
-            default: return false;
+            default:
+                if (a.startsWith('adjlayer-')) { newAdjustmentLayer(w, a.slice(9)); return true; }
+                return false;
         }
     }
+
+    registerAdjusters();
 
     root.paintPro = {
         maskOf, fromMask, combine, maskCanvas, outline, morph, feather, invert, heal,
         session, filterDialog, fieldDialog, gaussian, curveLut, levelsLut,
-        selectMenu, adjustMenu, filterMenu, action,
+        selectMenu, adjustMenu, filterMenu, adjustLayerMenu, registerAdjusters, action, ADJ,
         toggleNavigator, toggleInfo, navOpen, infoOpen, navRefresh, navBox, info
     };
 })(typeof window !== 'undefined' ? window : globalThis);

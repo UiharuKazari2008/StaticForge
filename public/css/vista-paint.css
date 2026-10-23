@@ -1327,3 +1327,66 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
     height: 100%;
     border: 1px solid #a0a0a0;
 }
+
+/* ---- adjustment and type layers in the Layers window ---- */
+
+.mp-client .mp-layer-kind {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 42px;
+    height: 32px;
+    border: 1px solid #a0a0a0;
+    background: #fff;
+}
+
+.mp-client .mp-layer-kind.is-adjust {
+    background: #fff url('/static_images/vista-cmdbar/contrast.png') center no-repeat;
+}
+
+.mp-client .mp-layer-kind.is-text {
+    font: bold 18px/1 "Times New Roman", serif;
+    color: #222;
+}
+
+/* the text toolbar's colour chip */
+.mp-window .win7.mp-client .mp-tb-color:not(:disabled) {
+    width: 23px;
+    height: 22px;
+    min-width: 0;
+    min-height: 0;
+    padding: 3px;
+    border: 1px solid transparent;
+    border-image: none;
+    border-radius: 2px;
+    background: none;
+    box-shadow: none;
+}
+
+.mp-client .mp-tb-color::before,
+.mp-client .mp-tb-color::after {
+    content: none;
+}
+
+.mp-client .mp-tb-color span {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 1px solid #707070;
+}
+
+.mp-window .win7.mp-client .mp-tb-color:hover {
+    border-color: #3c7fb1;
+}
+
+/* the Color Picker's alpha bar: the colour above, transparent below */
+.vdt-custom .mp-pk-alpha {
+    position: relative;
+    width: 18px;
+    height: 256px;
+    margin-left: 3px;
+    border: 1px solid #a0a0a0;
+    cursor: var(--c-ns-resize, ns-resize);
+    touch-action: none;
+}

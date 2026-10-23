@@ -99,8 +99,10 @@
                 const row = ev.target.closest('.mp-layer-row');
                 if (!row) return;
                 w.doc.active = Number(row.dataset.i);
+                const l = w.doc.activeLayer;
                 if (ev.target.closest('.mp-layer-fx') && root.paintPro) root.paintPro.action(w, 'layer-style');
-                else properties(w);
+                else if (l.adjust && root.paintPro && !ev.target.closest('.mp-layer-name')) root.paintPro.action(w, 'adjlayer-edit');
+                else if (l.text && !ev.target.closest('.mp-layer-name')) { w.setTool('text'); w.startText(null, l); } else properties(w);
             });
         }
         refresh(w);
@@ -130,7 +132,7 @@
             const rows = w.doc.layers.map((l, i) => ({ l, i })).reverse();
             const onMask = (i) => i === w.doc.active && w.doc.editMask && w.doc.layers[i].mask;
             list.innerHTML = rows.map(({ l, i }) => `<div class="mp-layer-row${i === w.doc.active ? ' is-active' : ''}${l.mask ? ' has-mask' : ''}" data-i="${i}" role="option">
-                <canvas class="mp-layer-thumb${i === w.doc.active && !onMask(i) ? ' is-target' : ''}" width="40" height="30" data-i="${i}"></canvas>
+                ${l.adjust ? `<span class="mp-layer-thumb mp-layer-kind is-adjust" title="Adjustment layer (double-click to change)"></span>` : l.text ? `<span class="mp-layer-thumb mp-layer-kind is-text${i === w.doc.active && !onMask(i) ? ' is-target' : ''}" title="Type layer (double-click to edit)">T</span>` : `<canvas class="mp-layer-thumb${i === w.doc.active && !onMask(i) ? ' is-target' : ''}" width="40" height="30" data-i="${i}"></canvas>`}
                 ${l.mask ? `<canvas class="mp-layer-mask${onMask(i) ? ' is-target' : ''}${l.mask.enabled ? '' : ' is-off'}" width="40" height="30" data-i="${i}" title="Layer mask (Shift+click turns it off)"></canvas>` : ''}
                 <span class="mp-layer-name">${esc(l.name)}${l.locked ? ' <i class="mp-layer-lock" title="Locked"></i>' : ''}${C().hasEffects(l) ? ' <i class="mp-layer-fx" title="Layer Style (double-click)">fx</i>' : ''}</span>
                 <input type="checkbox" class="mp-layer-vis" title="Visible"${l.visible ? ' checked' : ''}>
@@ -156,7 +158,7 @@
             w.thumbTimer = setTimeout(() => { w.thumbTimer = 0; thumbs(w, true); }, 250);
             return;
         }
-        list.querySelectorAll('.mp-layer-thumb, .mp-layer-mask').forEach((c) => {
+        list.querySelectorAll('canvas.mp-layer-thumb, canvas.mp-layer-mask').forEach((c) => {
             const layer = w.doc.layers[Number(c.dataset.i)];
             if (!layer) return;
             const l = c.classList.contains('mp-layer-mask') ? layer.mask : layer;
@@ -182,6 +184,7 @@
         const d = w.doc;
         return [
             { text: 'Add New Layer', subtext: 'Ctrl+Shift+N', action: 'layer-add' },
+            { text: 'New Adjustment Layer', hasSubmenu: true, submenu: root.paintPro ? root.paintPro.adjustLayerMenu() : [] },
             { text: 'Delete Layer', subtext: 'Ctrl+Shift+Del', action: 'layer-delete', disabled: d.layers.length <= 1 },
             { text: 'Duplicate Layer', action: 'layer-duplicate' },
             { text: 'Layer via Copy', subtext: 'Ctrl+J', action: 'layer-via-copy' },
@@ -215,6 +218,7 @@
                 { text: 'Paste Layer Style', action: 'style-paste', disabled: !w.styleClip },
                 { text: 'Clear Layer Style', action: 'style-clear', disabled: !C().hasEffects(d.activeLayer) }
             ] },
+            { text: 'Rasterize Type', action: 'layer-rasterize', disabled: !d.activeLayer.text },
             { separator: true },
             { text: 'Layer Properties...', subtext: 'F4', action: 'layer-properties' }
         ];
@@ -274,6 +278,7 @@
             case 'layer-flip-v': flipLayer(w, false); return true;
             case 'layer-rotate': if (root.paintDialogs) root.paintDialogs.rotateLayer(w); return true;
             case 'layer-import': importLayer(w); return true;
+            case 'layer-rasterize': w.rasterizeType(); return true;
             case 'layer-mask': return root.paintPro ? root.paintPro.action(w, d.selection ? 'mask-reveal-sel' : 'mask-reveal-all') : true;
             case 'layer-style': return root.paintPro ? root.paintPro.action(w, 'layer-style') : true;
             case 'adj-bw': w.adjust('Black and White', (r, g, b) => { const v = 0.299 * r + 0.587 * g + 0.114 * b; return [v, v, v]; }); return true;

@@ -86,6 +86,8 @@
             this.locked = false;
             this.mask = null;
             this.styles = null;
+            this.adjust = null; // { kind, params } for an adjustment layer
+            this.text = null; // { content, face, size, bold, italic, underline, color, x, y } for a type layer
         }
 
         /** A layer mask, white (everything shows) or black (nothing does). */
@@ -234,6 +236,43 @@
         return out;
     }
 
+    /**
+     * Adjustment layers: PaintCore.adjusters[kind](params) -> (ImageData) -> ImageData, filled in
+     * by paintPro.js. The layer changes the pixels under it through its mask, at its opacity.
+     */
+    const adjusters = {};
+
+    function adjustFn(l) {
+        const a = l.adjust;
+        const key = JSON.stringify(a.params);
+        if (a.cacheKey !== key || !a.cacheFn) {
+            const make = adjusters[a.kind];
+            Object.defineProperty(a, 'cacheFn', { value: make ? make(a.params) : null, writable: true, configurable: true, enumerable: false });
+            Object.defineProperty(a, 'cacheKey', { value: key, writable: true, configurable: true, enumerable: false });
+        }
+        return a.cacheFn;
+    }
+
+    /** Run a layer's adjustment over area (in ctx's pixels), the mask read at the picture's place. */
+    function applyAdjustment(ctx, l, area, place) {
+        const fn = adjustFn(l);
+        if (!fn) return;
+        const base = ctx.getImageData(area.x, area.y, area.w, area.h);
+        const out = fn(new ImageData(new Uint8ClampedArray(base.data), area.w, area.h), { x0: place.x, y0: place.y, rx: place.x, ry: place.y, rw: area.w, rh: area.h, W: l.canvas.width, H: l.canvas.height });
+        const m = l.mask && l.mask.enabled ? l.mask.ctx.getImageData(place.x, place.y, area.w, area.h).data : null;
+        const b = base.data;
+        const o = out.data;
+        const op = l.opacity;
+        for (let i = 0; i < b.length; i += 4) {
+            let k = op;
+            if (m) k *= ((0.299 * m[i] + 0.587 * m[i + 1] + 0.114 * m[i + 2]) / 255) * (m[i + 3] / 255);
+            if (k <= 0) continue;
+            // colour only: the alpha under the adjustment stays
+            b[i] += (o[i] - b[i]) * k; b[i + 1] += (o[i + 1] - b[i + 1]) * k; b[i + 2] += (o[i + 2] - b[i + 2]) * k;
+        }
+        ctx.putImageData(base, area.x, area.y);
+    }
+
     class Document {
         constructor(width, height, opts = {}) {
             this.width = width;
@@ -264,7 +303,7 @@
 
         get layer() {
             const l = this.layers[this.active];
-            return this.editMask && l && l.mask ? l.mask.target : l;
+            return (this.editMask || (l && l.adjust)) && l && l.mask ? l.mask.target : l;
         }
 
         /** The real layer under the active one (the mask's owner when the mask is the target). */
@@ -339,6 +378,8 @@
                 copy.setMaskCanvas(mc, src.mask.enabled);
             }
             copy.styles = src.styles ? JSON.parse(JSON.stringify(src.styles)) : null;
+            copy.adjust = src.adjust ? JSON.parse(JSON.stringify(src.adjust)) : null;
+            copy.text = src.text ? { ...src.text } : null;
             this.layers.splice(i + 1, 0, copy);
             this.active = i + 1;
             this.markDirty();
@@ -350,6 +391,14 @@
             if (i <= 0) return;
             const top = this.layers[i];
             const below = this.layers[i - 1];
+            if (top.adjust || below.adjust) {
+                if (top.adjust && !below.adjust && top.visible) applyAdjustment(below.ctx, top, { x: 0, y: 0, w: this.width, h: this.height }, { x: 0, y: 0 });
+                this.layers.splice(i, 1);
+                this.active = i - 1;
+                this.markDirty();
+                this.emit('layers');
+                return;
+            }
             below.ctx.save();
             below.ctx.globalAlpha = top.opacity;
             below.ctx.globalCompositeOperation = BLENDS[top.blend] || 'source-over';
@@ -385,19 +434,41 @@
                 ctx.fillStyle = opts.checker;
                 ctx.fillRect(r.x, r.y, r.w, r.h);
             }
+            // adjustment layers change what is under them, so the layers go to their own buffer
+            // (the checker underneath stays as it is)
+            const adjusting = this.layers.some((l) => l.adjust && l.visible);
+            let off = null;
+            let tx = ctx;
+            if (adjusting) {
+                off = makeCanvas(r.w, r.h);
+                tx = ctxOf(off);
+                tx.translate(-r.x, -r.y);
+            }
             this.layers.forEach((l, i) => {
                 if (!l.visible || l.opacity <= 0) return;
-                ctx.globalAlpha = l.opacity;
-                ctx.globalCompositeOperation = BLENDS[l.blend] || 'source-over';
-                if ((l.mask && l.mask.enabled) || hasEffects(l)) ctx.drawImage(renderLayer(l, r), r.x, r.y);
-                else ctx.drawImage(l.canvas, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
+                if (l.adjust) {
+                    tx.save();
+                    tx.setTransform(1, 0, 0, 1, 0, 0);
+                    applyAdjustment(tx, l, { x: 0, y: 0, w: r.w, h: r.h }, r);
+                    tx.restore();
+                    return;
+                }
+                tx.globalAlpha = l.opacity;
+                tx.globalCompositeOperation = BLENDS[l.blend] || 'source-over';
+                if ((l.mask && l.mask.enabled) || hasEffects(l)) tx.drawImage(renderLayer(l, r), r.x, r.y);
+                else tx.drawImage(l.canvas, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
                 // a stroke in progress (brush opacity) is drawn over its layer before the layers above
                 if (opts.overlay && opts.overlay.layerIndex === i) {
-                    ctx.globalAlpha = l.opacity * (opts.overlay.alpha === undefined ? 1 : opts.overlay.alpha);
-                    ctx.globalCompositeOperation = opts.overlay.erase ? 'destination-out' : 'source-over';
-                    ctx.drawImage(opts.overlay.canvas, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
+                    tx.globalAlpha = l.opacity * (opts.overlay.alpha === undefined ? 1 : opts.overlay.alpha);
+                    tx.globalCompositeOperation = opts.overlay.erase ? 'destination-out' : 'source-over';
+                    tx.drawImage(opts.overlay.canvas, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
                 }
             });
+            if (off) {
+                ctx.globalAlpha = 1;
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.drawImage(off, r.x, r.y);
+            }
             ctx.restore();
         }
 
@@ -462,7 +533,7 @@
                     ctxOf(mask).drawImage(l.mask.canvas, 0, 0);
                     bytes += this.width * this.height * 4;
                 }
-                return { id: l.id, name: l.name, canvas: c, visible: l.visible, opacity: l.opacity, blend: l.blend, locked: l.locked, mask, maskOn: l.mask ? l.mask.enabled : false, styles: l.styles ? JSON.parse(JSON.stringify(l.styles)) : null };
+                return { id: l.id, name: l.name, canvas: c, visible: l.visible, opacity: l.opacity, blend: l.blend, locked: l.locked, mask, maskOn: l.mask ? l.mask.enabled : false, styles: l.styles ? JSON.parse(JSON.stringify(l.styles)) : null, adjust: l.adjust ? JSON.parse(JSON.stringify(l.adjust)) : null, text: l.text ? { ...l.text } : null };
             });
             return { width: this.width, height: this.height, active: this.active, editMask: !!this.editMask, layers, bytes };
         }
@@ -484,6 +555,8 @@
                     l.setMaskCanvas(mc, sl.maskOn);
                 }
                 l.styles = sl.styles ? JSON.parse(JSON.stringify(sl.styles)) : null;
+                l.adjust = sl.adjust ? JSON.parse(JSON.stringify(sl.adjust)) : null;
+                l.text = sl.text ? { ...sl.text } : null;
                 return l;
             });
             this.active = Math.min(s.active, this.layers.length - 1);
@@ -588,6 +661,7 @@
                     l.canvas = out;
                     l.ctx = ctxOf(out);
                     if (l.mask) l.setMaskCanvas(fn(l.mask.canvas), l.mask.enabled);
+                    l.text = null;
                     size = [out.width, out.height];
                 });
                 if (size) { this.width = size[0]; this.height = size[1]; }
@@ -817,7 +891,7 @@
     }
 
     root.PaintCore = {
-        Document, Layer, BLENDS, renderLayer, hasEffects, makeCanvas, ctxOf, clampRect, union, rectAround,
+        Document, Layer, BLENDS, renderLayer, hasEffects, adjusters, applyAdjustment, makeCanvas, ctxOf, clampRect, union, rectAround,
         parseColor, floodFill, wandMask, colorMask, replaceColor, convolve, mapPixels, rgbToHsl, hslToRgb, encodeBmp
     };
 })(typeof window !== 'undefined' ? window : globalThis);

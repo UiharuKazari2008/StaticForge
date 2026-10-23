@@ -617,8 +617,16 @@
         }
 
         renderColors() {
-            this.el('.mp-fg').style.background = this.fg;
-            this.el('.mp-bg').style.background = this.bg;
+            // a colour with alpha shows over the checkerboard
+            const bg = (c) => (root.paintColor ? root.paintColor.swatchBg(c) : c);
+            this.el('.mp-fg').style.background = bg(this.fg);
+            this.el('.mp-bg').style.background = bg(this.bg);
+        }
+
+        /** A colour's alpha (0-1) and the colour without it. */
+        splitAlpha(color) {
+            const [r, g, b, a] = C().parseColor(color);
+            return { alpha: a / 255, opaque: `rgb(${r}, ${g}, ${b})` };
         }
 
         color(alt) {
@@ -638,6 +646,8 @@
             const l = this.doc.layer;
             if (l.locked) { this.status('This layer is locked.'); return false; }
             if (!l.visible) { this.status('This layer is hidden.'); return false; }
+            // painting on a type layer turns its text into pixels (Photoshop asks; Paint just says so)
+            if (l.text && this.tool !== 'move') this.rasterizeType(l);
             return true;
         }
 
@@ -657,7 +667,11 @@
             if (!this.editable()) return false;
             this.step = this.doc.beginStep(TOOLS.find((t) => t[0] === this.tool)[1], this.doc.layer);
             const buf = C().makeCanvas(this.doc.width, this.doc.height);
-            this.strokeOverlay = { canvas: buf, layerIndex: this.doc.active, alpha: this.opt.opacity / 100, erase: !!erase };
+            // a colour's alpha works like the opacity: the stroke is drawn solid and laid on at that
+            // alpha, so its overlapping dabs do not build up
+            const tint = this.tool === 'eraser' ? (erase ? null : this.bg) : (['brush', 'pencil', 'airbrush'].includes(this.tool) ? this.color() : null);
+            const ca = tint ? this.splitAlpha(tint).alpha : 1;
+            this.strokeOverlay = { canvas: buf, layerIndex: this.doc.active, alpha: (this.opt.opacity / 100) * ca, erase: !!erase };
             this.sctx = buf.getContext('2d');
             this.sctx.save();
             this.clipToSelection(this.sctx);
@@ -666,6 +680,7 @@
 
         strokeDab(x0, y0, x1, y1, size, color) {
             const ctx = this.sctx;
+            color = this.splitAlpha(color).opaque;
             const r = size / 2;
             const hard = this.opt.hardness / 100;
             ctx.strokeStyle = color;
@@ -964,6 +979,7 @@
         liftSelection(copy) {
             const s = this.doc.selection;
             if (!s || this.floating) return;
+            if (this.doc.layer.text) this.rasterizeType(this.doc.layer);
             this.floatStep = this.doc.beginStep(copy ? 'Copy' : 'Move', this.doc.layer);
             const c = this.selectionCanvas(!copy);
             this.floating = { canvas: c, x: s.x, y: s.y, w: s.w, h: s.h, from: { x: s.x, y: s.y, w: s.w, h: s.h } };
@@ -1104,25 +1120,35 @@
             this.doc.markDirty(s);
         }
 
-        // ---- text -----------------------------------------------------------------------------
+        // ---- text: type layers (Photoshop) ------------------------------------------------------
 
-        startText(p) {
+        /** Start a text box: a new type layer at p, or the type layer `layer` opened again. */
+        startText(p, layer) {
             this.finishText();
+            const t = layer && layer.text;
+            if (t) {
+                // the box shows the text in the layer's own font
+                setReg({ TextFace: t.face, TextSize: t.size, TextBold: t.bold, TextItalic: t.italic, TextUnderline: t.underline });
+                layer.visible = false;
+                this.doc.markDirty();
+            }
+            const at = t ? { x: t.x, y: t.y } : p;
             const box = doc.createElement('div');
             box.className = 'mp-textbox';
             box.contentEditable = 'true';
             box.spellcheck = false;
-            box.style.left = `${p.x * this.zoom}px`;
-            box.style.top = `${p.y * this.zoom}px`;
-            const f = this.textFont();
-            box.style.font = `${f.italic ? 'italic ' : ''}${f.bold ? 'bold ' : ''}${f.size * this.zoom * 96 / 72}px "${f.face}"`;
-            box.style.textDecoration = f.underline ? 'underline' : 'none';
-            box.style.color = this.fg;
-            box.style.background = this.opt.transparent ? 'transparent' : this.bg;
+            box.style.left = `${at.x * this.zoom}px`;
+            box.style.top = `${at.y * this.zoom}px`;
             this.stage.appendChild(box);
-            this.text = { box, x: p.x, y: p.y };
+            if (t) box.innerText = t.content;
+            this.text = { box, x: at.x, y: at.y, layer: layer || null, color: t ? t.color : this.fg };
+            this.restyleText();
             this.showTextBar(true);
-            setTimeout(() => box.focus(), 0);
+            setTimeout(() => {
+                box.focus();
+                const sel = root.getSelection && root.getSelection();
+                if (sel && t) { sel.selectAllChildren(box); }
+            }, 0);
         }
 
         textFont() {
@@ -1132,18 +1158,18 @@
         showTextBar(on) {
             let bar = this.el('.mp-textbar');
             if (!on) { if (bar) bar.hidden = true; return; }
+            const fonts = ['Arial', 'Comic Sans MS', 'Courier New', 'Georgia', 'Impact', 'Lucida Console', 'Segoe UI', 'Tahoma', 'Times New Roman', 'Trebuchet MS', 'Verdana'];
             if (!bar) {
                 bar = doc.createElement('div');
                 bar.className = 'mp-textbar';
                 bar.setAttribute('role', 'toolbar');
-                const fonts = ['Arial', 'Comic Sans MS', 'Courier New', 'Georgia', 'Impact', 'Lucida Console', 'Segoe UI', 'Tahoma', 'Times New Roman', 'Trebuchet MS', 'Verdana'];
-                const f = this.textFont();
                 bar.innerHTML = `<div class="mp-textbar-cap">Fonts</div>
-                    <select class="mp-tb-face">${fonts.map((n) => `<option${n === f.face ? ' selected' : ''}>${n}</option>`).join('')}</select>
-                    <select class="mp-tb-size">${[8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72].map((n) => `<option${n === f.size ? ' selected' : ''}>${n}</option>`).join('')}</select>
-                    <button type="button" class="mp-tb-b${f.bold ? ' is-on' : ''}" data-tb="TextBold" title="Bold"><span class="mp-tb-art" style="--x:0px"></span></button>
-                    <button type="button" class="mp-tb-b${f.italic ? ' is-on' : ''}" data-tb="TextItalic" title="Italic"><span class="mp-tb-art" style="--x:-16px"></span></button>
-                    <button type="button" class="mp-tb-b${f.underline ? ' is-on' : ''}" data-tb="TextUnderline" title="Underline"><span class="mp-tb-art" style="--x:-32px"></span></button>`;
+                    <select class="mp-tb-face">${fonts.map((n) => `<option>${n}</option>`).join('')}</select>
+                    <select class="mp-tb-size">${[6, 8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 60, 72, 96, 120, 144].map((n) => `<option>${n}</option>`).join('')}</select>
+                    <button type="button" class="mp-tb-b" data-tb="TextBold" title="Bold"><span class="mp-tb-art" style="--x:0px"></span></button>
+                    <button type="button" class="mp-tb-b" data-tb="TextItalic" title="Italic"><span class="mp-tb-art" style="--x:-16px"></span></button>
+                    <button type="button" class="mp-tb-b" data-tb="TextUnderline" title="Underline"><span class="mp-tb-art" style="--x:-32px"></span></button>
+                    <button type="button" class="mp-tb-color" title="Text Color"><span></span></button>`;
                 this.el('.mp-workspace').appendChild(bar);
                 const apply = () => {
                     setReg({ TextFace: bar.querySelector('.mp-tb-face').value, TextSize: Number(bar.querySelector('.mp-tb-size').value) });
@@ -1151,7 +1177,15 @@
                 };
                 bar.querySelector('.mp-tb-face').addEventListener('change', apply);
                 bar.querySelector('.mp-tb-size').addEventListener('change', apply);
+                // the bar keeps the text box's focus and selection
+                bar.addEventListener('mousedown', (ev) => { if (ev.target.closest('button')) ev.preventDefault(); });
                 bar.addEventListener('click', (ev) => {
+                    if (ev.target.closest('.mp-tb-color')) {
+                        if (!root.paintColor || !this.text) return;
+                        const t = this.text;
+                        root.paintColor.picker(this, 'fg', { color: t.color, title: 'Text Color', onPick: (c) => { t.color = c; this.restyleText(); if (t.box.isConnected) t.box.focus(); } });
+                        return;
+                    }
                     const b = ev.target.closest('[data-tb]');
                     if (!b) return;
                     b.classList.toggle('is-on');
@@ -1159,14 +1193,58 @@
                     setTimeout(() => this.restyleText(), 0);
                 });
             }
+            // the bar shows the font of the text being typed
+            const f = this.textFont();
+            bar.querySelector('.mp-tb-face').value = fonts.includes(f.face) ? f.face : 'Arial';
+            bar.querySelector('.mp-tb-size').value = String(f.size);
+            if (bar.querySelector('.mp-tb-size').value !== String(f.size)) {
+                bar.querySelector('.mp-tb-size').insertAdjacentHTML('beforeend', `<option>${f.size}</option>`);
+                bar.querySelector('.mp-tb-size').value = String(f.size);
+            }
+            bar.querySelector('[data-tb="TextBold"]').classList.toggle('is-on', !!f.bold);
+            bar.querySelector('[data-tb="TextItalic"]').classList.toggle('is-on', !!f.italic);
+            bar.querySelector('[data-tb="TextUnderline"]').classList.toggle('is-on', !!f.underline);
+            bar.querySelector('.mp-tb-color span').style.background = this.text ? this.text.color : this.fg;
             bar.hidden = false;
         }
 
         restyleText() {
             if (!this.text) return;
             const f = this.textFont();
-            this.text.box.style.font = `${f.italic ? 'italic ' : ''}${f.bold ? 'bold ' : ''}${f.size * this.zoom * 96 / 72}px "${f.face}"`;
-            this.text.box.style.textDecoration = f.underline ? 'underline' : 'none';
+            const box = this.text.box;
+            box.style.font = `${f.italic ? 'italic ' : ''}${f.bold ? 'bold ' : ''}${f.size * this.zoom * 96 / 72}px "${f.face}"`;
+            box.style.textDecoration = f.underline ? 'underline' : 'none';
+            box.style.color = this.text.color;
+            const chip = this.el('.mp-tb-color span');
+            if (chip) chip.style.background = this.text.color;
+        }
+
+        /** Draw a type layer's text into its pixels. */
+        renderTextLayer(l) {
+            const t = l.text;
+            l.ctx.clearRect(0, 0, this.doc.width, this.doc.height);
+            const lines = String(t.content).split('\n');
+            const px = t.size * 96 / 72;
+            l.ctx.save();
+            l.ctx.font = `${t.italic ? 'italic ' : ''}${t.bold ? 'bold ' : ''}${px}px "${t.face}"`;
+            l.ctx.fillStyle = t.color;
+            l.ctx.textBaseline = 'top';
+            const lh = Math.ceil(px * 1.2);
+            lines.forEach((line, i) => {
+                l.ctx.fillText(line, t.x + 2, t.y + 2 + i * lh);
+                if (t.underline) l.ctx.fillRect(t.x + 2, t.y + 2 + i * lh + px, l.ctx.measureText(line).width, Math.max(1, px / 14));
+            });
+            l.ctx.restore();
+        }
+
+        /** The box round a type layer's text (for a click with the Text tool). */
+        textBounds(l) {
+            const t = l.text;
+            const px = t.size * 96 / 72;
+            const lines = String(t.content).split('\n');
+            this.octx.font = `${t.italic ? 'italic ' : ''}${t.bold ? 'bold ' : ''}${px}px "${t.face}"`;
+            const w = Math.max(...lines.map((s) => this.octx.measureText(s).width)) + 4;
+            return { x: t.x, y: t.y, w, h: Math.ceil(px * 1.2) * lines.length + 4 };
         }
 
         finishText() {
@@ -1174,27 +1252,36 @@
             if (!t) return;
             this.text = null;
             this.showTextBar(false);
-            const lines = t.box.innerText.replace(/\n$/, '').split('\n');
-            const f = this.textFont();
-            const px = f.size * 96 / 72;
-            const font = `${f.italic ? 'italic ' : ''}${f.bold ? 'bold ' : ''}${px}px "${f.face}"`;
+            const content = t.box.innerText.replace(/\n$/, '');
             t.box.remove();
-            if (!lines.join('').trim()) return;
-            const measure = this.octx;
-            measure.font = font;
-            const w = Math.ceil(Math.max(...lines.map((l) => measure.measureText(l).width))) + 4;
-            const lh = Math.ceil(px * 1.2);
-            const rect = { x: t.x, y: t.y, w, h: lh * lines.length + 4 };
-            this.commitToLayer('Text', (ctx) => {
-                if (!this.opt.transparent) { ctx.fillStyle = this.bg; ctx.fillRect(rect.x, rect.y, rect.w, rect.h); }
-                ctx.font = font;
-                ctx.fillStyle = this.fg;
-                ctx.textBaseline = 'top';
-                lines.forEach((l, i) => {
-                    ctx.fillText(l, t.x + 2, t.y + 2 + i * lh);
-                    if (f.underline) ctx.fillRect(t.x + 2, t.y + 2 + i * lh + px, measure.measureText(l).width, Math.max(1, px / 14));
-                });
-            }, rect);
+            const f = this.textFont();
+            const props = { content, face: f.face, size: f.size, bold: !!f.bold, italic: !!f.italic, underline: !!f.underline, color: t.color, x: t.x, y: t.y };
+            const d = this.doc;
+            if (t.layer) {
+                const l = t.layer;
+                l.visible = true;
+                if (!content.trim()) { d.markDirty(); return; }
+                if (JSON.stringify(l.text) === JSON.stringify(props)) { d.markDirty(); return; }
+                d.snapshotStep('Edit Type Layer', () => { l.text = props; this.renderTextLayer(l); });
+                if (root.paintLayers) root.paintLayers.refresh(this);
+                return;
+            }
+            if (!content.trim()) return;
+            d.snapshotStep('Type Layer', () => {
+                const l = d.addLayer(content.split('\n')[0].slice(0, 30) || 'Text');
+                l.text = props;
+                this.renderTextLayer(l);
+                d.editMask = false;
+            });
+            if (root.paintLayers) root.paintLayers.refresh(this);
+        }
+
+        /** Layers > Rasterize Type: the text becomes plain pixels (a paint tool asks for it too). */
+        rasterizeType(l = this.doc.activeLayer) {
+            if (!l.text) return;
+            this.doc.snapshotStep('Rasterize Type', () => { l.text = null; });
+            if (root.paintLayers) root.paintLayers.refresh(this);
+            this.status('The type layer is now pixels.');
         }
 
         // ---- canvas resize handles ------------------------------------------------------------
@@ -1269,6 +1356,8 @@
                     m.enabled = l.maskOn !== false;
                 }
                 layer.styles = l.styles || null;
+                layer.adjust = l.adjust || null;
+                layer.text = l.text || null;
                 layer.visible = l.visible !== false;
                 layer.opacity = typeof l.opacity === 'number' ? l.opacity : 1;
                 layer.blend = l.blend || 'normal';
@@ -1328,7 +1417,8 @@
             if (type === 'mpi') {
                 const layers = this.doc.layers.map((l) => ({
                     name: l.name, visible: l.visible, opacity: l.opacity, blend: l.blend, locked: l.locked, png: l.canvas.toDataURL('image/png'),
-                    mask: l.mask ? l.mask.canvas.toDataURL('image/png') : undefined, maskOn: l.mask ? l.mask.enabled : undefined, styles: l.styles || undefined
+                    mask: l.mask ? l.mask.canvas.toDataURL('image/png') : undefined, maskOn: l.mask ? l.mask.enabled : undefined, styles: l.styles || undefined,
+                    adjust: l.adjust ? { kind: l.adjust.kind, params: l.adjust.params } : undefined, text: l.text || undefined
                 }));
                 return new Blob([JSON.stringify({ format: 'melaton-paint', version: 1, width: this.doc.width, height: this.doc.height, active: this.doc.active, layers })], { type: 'application/json' });
             }
@@ -2102,7 +2192,23 @@
             const rgba = C().parseColor(this.color());
             const mask = s && (s.mask || (P() && P().maskOf(this.doc, s)));
             const tol = this.opt.tolerance > 32 ? this.opt.tolerance - 32 : 0;
-            const rect = this.opt.contiguous ? C().floodFill(img, x, y, rgba, tol, mask) : C().replaceColor(img, x, y, rgba, tol, mask);
+            let rect;
+            if (rgba[3] < 255) {
+                // a see-through colour is laid over the area instead of replacing it
+                const res = this.opt.contiguous ? C().wandMask(img, x, y, tol) : C().colorMask(img, x, y, tol);
+                if (!res) return;
+                const d = img.data;
+                const a = rgba[3] / 255;
+                for (let i = 0; i < res.mask.length; i += 1) {
+                    if (!res.mask[i] || (mask && !mask[i])) continue;
+                    const o = i * 4;
+                    const ao = d[o + 3] / 255;
+                    const na = a + ao * (1 - a);
+                    d[o] = (rgba[0] * a + d[o] * ao * (1 - a)) / na; d[o + 1] = (rgba[1] * a + d[o + 1] * ao * (1 - a)) / na; d[o + 2] = (rgba[2] * a + d[o + 2] * ao * (1 - a)) / na;
+                    d[o + 3] = na * 255;
+                }
+                rect = res.rect;
+            } else rect = this.opt.contiguous ? C().floodFill(img, x, y, rgba, tol, mask) : C().replaceColor(img, x, y, rgba, tol, mask);
             if (!rect) return;
             l.ctx.putImageData(img, 0, 0, rect.x, rect.y, rect.w, rect.h);
             step.grow(rect);
@@ -2117,7 +2223,10 @@
             const y = Math.floor(p.y);
             if (x < 0 || y < 0 || x >= this.doc.width || y >= this.doc.height) return;
             const d = this.vctx.getImageData(x, y, 1, 1).data;
-            const c = `#${[d[0], d[1], d[2]].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+            // the picture's colour; with Sample All Layers off, the active layer's (and its alpha)
+            const l = this.doc.layer.ctx.getImageData(x, y, 1, 1).data;
+            const src = this.opt.sampleAll || this.doc.layer.isMask ? [d[0], d[1], d[2], 255] : (l[3] ? [l[0], l[1], l[2], l[3]] : [d[0], d[1], d[2], 255]);
+            const c = root.paintColor ? root.paintColor.hex(...src) : `#${[d[0], d[1], d[2]].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
             if (this.right) this.bg = c; else this.fg = c;
             this.renderColors();
         },
@@ -2138,7 +2247,17 @@
         down(p) {
             // the text box sits above the canvas, so a click that reaches here is outside it
             if (this.text) { this.finishText(); return; }
-            if (!this.editable()) return;
+            // a click on a type layer's text opens it again (the active layer first)
+            const d = this.doc;
+            const inside = (r) => p.x >= r.x && p.y >= r.y && p.x <= r.x + r.w && p.y <= r.y + r.h;
+            const hit = [d.activeLayer, ...d.layers.slice().reverse()].find((l) => l && l.text && l.visible && inside(this.textBounds(l)));
+            if (hit) {
+                d.active = d.layers.indexOf(hit);
+                d.editMask = false;
+                if (root.paintLayers) root.paintLayers.refresh(this);
+                this.startText(p, hit);
+                return;
+            }
             this.startText(p);
         }
     };
@@ -2443,6 +2562,17 @@
             const m = this.moveLayer;
             this.moveLayer = null;
             if (!m) return;
+            const l = this.doc.layer;
+            if (l.text) {
+                // a type layer moves its text, so it stays editable
+                const dx = Math.round(p.x - m.start.x);
+                const dy = Math.round(p.y - m.start.y);
+                l.ctx.clearRect(0, 0, this.doc.width, this.doc.height);
+                l.ctx.drawImage(m.snap, 0, 0);
+                m.step.backup = null;
+                if (dx || dy) this.doc.snapshotStep('Move', () => { l.text.x += dx; l.text.y += dy; this.renderTextLayer(l); });
+                return;
+            }
             m.step.grow({ x: 0, y: 0, w: this.doc.width, h: this.doc.height });
             this.doc.commitStep(m.step);
         }
