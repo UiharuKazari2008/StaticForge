@@ -1890,6 +1890,7 @@
             const self = this;
             const ws = (typeof activeWorkspace !== 'undefined' && activeWorkspace) ? activeWorkspace : ''; // eslint-disable-line no-undef
             void root.studioOpenFolderDialog(mode, {
+                owner: this.modal,
                 startPath: mode === 'open-gallery' && ws ? `/Workspaces/${ws}/Pictures` : (this.file && this.file.path) || (ws ? `/Workspaces/${ws}` : '/'),
                 host: {
                     title: 'Open',
@@ -1976,6 +1977,7 @@
             const ws = (typeof activeWorkspace !== 'undefined' && activeWorkspace) ? activeWorkspace : ''; // eslint-disable-line no-undef
             return new Promise((resolve) => {
                 void root.studioOpenFolderDialog('save', {
+                    owner: this.modal,
                     startPath: (this.file && this.file.path) || (ws ? `/Workspaces/${ws}` : '/'),
                     host: {
                         title: 'Save As',
@@ -2700,6 +2702,7 @@
             if (typeof root.studioOpenFolderDialog !== 'function') return;
             const self = this;
             void root.studioOpenFolderDialog('open-vfs', {
+                owner: this.modal,
                 host: {
                     title: 'Paste From',
                     rejectMessage: 'Choose a picture',

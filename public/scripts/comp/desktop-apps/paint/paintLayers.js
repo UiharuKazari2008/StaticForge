@@ -573,6 +573,7 @@
     function importLayer(w) {
         if (typeof root.studioOpenFolderDialog !== 'function') return;
         void root.studioOpenFolderDialog('open-vfs', {
+            owner: w.modal,
             host: {
                 title: 'Import From File',
                 rejectMessage: 'Choose a picture',

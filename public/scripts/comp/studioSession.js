@@ -1025,8 +1025,10 @@ function studioSaveFolderApplyChrome(mode) {
         option.textContent = studioSaveFolderTypeLabel();
         typeSelect.appendChild(option);
     }
-    // the caption shows the owner's icon (Studio, or Phasewalker for its files)
-    const ownerId = studioSaveFolderAcceptType() === 'bracket-generation' ? 'bracketGenerationModal' : 'manualModal';
+    // the caption shows the owner's icon: the window that opened it, else Studio (Phasewalker for its files)
+    const ownerId = studioSaveFolderAcceptType() === 'bracket-generation'
+        ? 'bracketGenerationModal'
+        : (studioSaveFolderState.ownerId || 'manualModal');
     const ownerIcon = document.querySelector(`#${ownerId} .modal-window-title-main img.icon-image`);
     const icon = document.querySelector('#studioSaveFolderModal .modal-window-title-main img.icon-image');
     if (icon && ownerIcon) {
@@ -1081,7 +1083,19 @@ async function openStudioSaveFolderDialog() {
     await studioOpenFolderDialog('save');
 }
 
+/** The window that opened the dialog: options.owner (an element or its id), else the active window. */
+function studioSaveFolderFindOwner(options) {
+    const given = options && options.owner;
+    const el = typeof given === 'string' ? document.getElementById(given) : given;
+    const pick = (m) => (m && m.id && m.id !== 'studioSaveFolderModal' && m.querySelector('.modal-window-title-main img.icon-image') ? m : null);
+    return pick(el) || pick(document.querySelector('.modal.active-window:not(.hidden)')) || null;
+}
+
 async function studioOpenFolderDialog(mode, options = {}) {
+    // the caption takes the icon of the window that asked (Paint, Notepad, Alchemy ...), found before
+    // the dialog itself becomes the active window
+    const owner = studioSaveFolderFindOwner(options);
+    studioSaveFolderState.ownerId = owner ? owner.id : null;
     // featureLoader.loadFeature: public/scripts/comp/featureLoader.js
     try { await featureLoader.loadFeature('explorer'); } catch (_err) { /* icon fallback */ }
     wireStudioSaveFolderDialog();
