@@ -55,6 +55,7 @@ const RUN_APP_ALIAS_GROUPS = [
     { aliases: ['alchemy', 'browser', 'web', 'internet', 'bing'], launchIds: ['alchemy'] },
     { aliases: ['notion', 'notes', 'notebook'], launchIds: ['notebook'] },
     { aliases: ['notepad', 'notepad.exe'], launchIds: ['notepad'] },
+    { aliases: ['mspaint', 'mspaint.exe', 'paint', 'pbrush'], launchIds: ['paint'] },
     { aliases: ['chat', 'girlfriend', 'friend', 'erp', 'roleplay', 'messages'], launchIds: ['chat'] },
     { aliases: ['atelier', 'naxt', 'naxt tag', 'tag lab'], launchIds: ['naxt'] },
     { aliases: ['agora', 'explore', 'explore gallery', 'image gallery', 'community gallery', 'novelai explore'], launchIds: ['explore-gallery'] },

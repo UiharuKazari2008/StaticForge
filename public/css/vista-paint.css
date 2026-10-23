@@ -1,0 +1,749 @@
+/* Paint (public/scripts/comp/desktop-apps/paint/; Yozora #632): Vista's mspaint.exe window with
+   layers. Tool art: mspaint.exe bitmap 859 (16 tools, 16x16, red key) and the drawn extras;
+   the app workspace is Vista's COLOR_APPWORKSPACE (#ababab). */
+
+body.desktop-mode .modal.mp-window > .modal-content.mp-client {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+    background: #f0f0f0;
+    color: #000;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    user-select: none;
+}
+
+.mp-client .mp-settings {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex: 0 0 26px;
+    padding: 0 6px;
+    border-bottom: 1px solid #d5d5d5;
+    font: 11px Tahoma, "Segoe UI", sans-serif;
+}
+
+.mp-window.mp-no-settings .mp-settings {
+    display: none;
+}
+
+.mp-client .mp-settings label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.mp-client .mp-settings input[type="number"] {
+    width: 48px;
+    height: 20px;
+    padding: 0 2px;
+    font: inherit;
+}
+
+.mp-client .mp-settings input[type="range"] {
+    width: 80px;
+}
+
+.mp-client .mp-set-opacity-v {
+    min-width: 32px;
+}
+
+.mp-client .mp-body {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+/* ---- the tool box ---- */
+
+.mp-client .mp-toolbox {
+    flex: 0 0 56px;
+    padding: 2px 3px;
+    border-right: 1px solid #d5d5d5;
+}
+
+.mp-window.mp-no-tools .mp-toolbox {
+    display: none;
+}
+
+.mp-client .mp-tools {
+    display: grid;
+    grid-template-columns: 25px 25px;
+    gap: 0;
+}
+
+.mp-client .mp-tool {
+    width: 25px;
+    height: 25px;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    background: none;
+    box-shadow: none;
+}
+
+.mp-client .mp-tool::before,
+.mp-client .mp-tool::after {
+    content: none;
+}
+
+.mp-client .mp-tool:hover {
+    border-color: #3c7fb1;
+    background: linear-gradient(#eaf6fd 45%, #bee6fd 55%, #a7d9f5);
+}
+
+.mp-client .mp-tool.is-on {
+    border-color: #2c628b;
+    background: linear-gradient(#e5f4fc 45%, #c4e5f6 55%, #98d1ef);
+    box-shadow: inset 1px 1px 0 rgba(0, 0, 0, 0.12);
+}
+
+.mp-client .mp-tool-art {
+    display: block;
+    width: 16px;
+    height: 16px;
+    margin: auto;
+    background: url('/static_images/vista-paint/tools.png') calc(var(--i) * -16px) 0 no-repeat;
+}
+
+.mp-client .mp-tool-art.is-extra {
+    background-image: url('/static_images/vista-paint/tools-extra.png');
+}
+
+.mp-client .mp-options {
+    width: 41px;
+    min-height: 66px;
+    margin: 6px auto 0;
+    padding: 2px;
+    border: 1px solid #a0a0a0;
+    border-right-color: #fff;
+    border-bottom-color: #fff;
+    background: #f0f0f0;
+}
+
+.mp-client .mp-opt-col,
+.mp-client .mp-opt-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.mp-client .mp-opt-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 12px);
+    gap: 1px;
+}
+
+.mp-client .mp-opt {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    min-height: 12px;
+    margin: 0;
+    padding: 1px;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    color: #000;
+    font: 11px Tahoma, sans-serif;
+}
+
+.mp-client .mp-opt::before,
+.mp-client .mp-opt::after {
+    content: none;
+}
+
+.mp-client .mp-opt.is-on {
+    background: #3399ff;
+    color: #fff;
+}
+
+.mp-client .mp-opt-col.is-text .mp-opt {
+    height: 14px;
+}
+
+.mp-client .mp-opt-art.is-opaque,
+.mp-client .mp-opt-art.is-transparent {
+    width: 34px;
+    height: 21px;
+    background: url('/static_images/vista-paint/select-opaque.png') 0 0 no-repeat;
+}
+
+.mp-client .mp-opt-art.is-transparent {
+    background-position: -36px 0;
+}
+
+.mp-client .mp-opt-art.is-air {
+    width: 22px;
+    height: 22px;
+    background: url('/static_images/vista-paint/airbrush-sizes.png') var(--x) 0 no-repeat;
+}
+
+.mp-client .mp-opt.is-on .mp-opt-art.is-air {
+    filter: invert(1);
+}
+
+.mp-client .mp-opt-square {
+    display: block;
+    background: #000;
+}
+
+.mp-client .mp-opt.is-on .mp-opt-square,
+.mp-client .mp-opt.is-on .mp-opt-line,
+.mp-client .mp-opt.is-on .mp-brush {
+    background: #fff;
+}
+
+.mp-client .mp-opt-line {
+    display: block;
+    width: 30px;
+    background: #000;
+}
+
+.mp-client .mp-opt-shape {
+    display: block;
+    width: 30px;
+    height: 12px;
+    border: 1px solid #000;
+}
+
+.mp-client .mp-opt-shape.is-both {
+    background: #808080;
+}
+
+.mp-client .mp-opt-shape.is-fill {
+    background: #808080;
+    border-color: #808080;
+}
+
+.mp-client .mp-brush {
+    display: block;
+    width: var(--s);
+    height: var(--s);
+    min-width: 1px;
+    min-height: 1px;
+    background: #000;
+}
+
+.mp-client .mp-brush.is-round {
+    border-radius: 50%;
+}
+
+.mp-client .mp-brush.is-slash,
+.mp-client .mp-brush.is-backslash {
+    width: 1px;
+    height: calc(var(--s) + 1px);
+    transform: rotate(45deg);
+}
+
+.mp-client .mp-brush.is-backslash {
+    transform: rotate(-45deg);
+}
+
+/* ---- the workspace and the canvas ---- */
+
+.mp-client .mp-workspace {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: auto;
+    background: #ababab;
+    outline: none;
+}
+
+.mp-client .mp-stage {
+    position: relative;
+    margin: 3px 12px 12px 3px;
+    box-shadow: none;
+}
+
+.mp-client .mp-stage canvas {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.mp-window.mp-pixelated .mp-stage canvas {
+    image-rendering: pixelated;
+}
+
+.mp-client .mp-overlay {
+    cursor: crosshair;
+    touch-action: none;
+}
+
+.mp-client .mp-overlay[data-tool="pencil"] { cursor: url('/static_images/vista-cursors/aero_pen.png') 0 15, crosshair; }
+.mp-client .mp-overlay[data-tool="select"],
+.mp-client .mp-overlay[data-tool="freeselect"],
+.mp-client .mp-overlay[data-tool="wand"] { cursor: crosshair; }
+.mp-client .mp-overlay[data-tool="move"] { cursor: move; }
+.mp-client .mp-overlay[data-tool="text"] { cursor: text; }
+.mp-client .mp-overlay[data-tool="magnifier"] { cursor: zoom-in; }
+
+.mp-client .mp-grid {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+        linear-gradient(to right, rgba(128, 128, 128, 0.6) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(128, 128, 128, 0.6) 1px, transparent 1px);
+}
+
+.mp-client .mp-grid[hidden] {
+    display: none;
+}
+
+.mp-client .mp-ants {
+    position: absolute;
+    left: 0;
+    top: 0;
+    pointer-events: none;
+    overflow: visible;
+}
+
+.mp-client .mp-ants path {
+    fill: none;
+    stroke-width: 1;
+    shape-rendering: crispEdges;
+}
+
+.mp-client .mp-ants .mp-ants-a {
+    stroke: #fff;
+}
+
+.mp-client .mp-ants .mp-ants-b {
+    stroke: #000;
+    stroke-dasharray: 4 4;
+    animation: mp-ants 0.6s linear infinite;
+}
+
+@keyframes mp-ants {
+    to { stroke-dashoffset: -8; }
+}
+
+.mp-client .mp-handle {
+    position: absolute;
+    width: 3px;
+    height: 3px;
+    background: #0a246a;
+    border: 1px solid #fff;
+    box-sizing: content-box;
+}
+
+.mp-client .mp-handle.is-e { right: -5px; top: calc(50% - 2px); cursor: ew-resize; }
+.mp-client .mp-handle.is-s { bottom: -5px; left: calc(50% - 2px); cursor: ns-resize; }
+.mp-client .mp-handle.is-se { right: -5px; bottom: -5px; cursor: nwse-resize; }
+
+.mp-client .mp-resize-ghost {
+    position: absolute;
+    left: 0;
+    top: 0;
+    border: 1px dotted #000;
+    pointer-events: none;
+}
+
+.mp-client .mp-textbox {
+    position: absolute;
+    min-width: 40px;
+    min-height: 1.2em;
+    padding: 1px;
+    border: 1px dashed #000;
+    outline: none;
+    white-space: pre;
+    line-height: 1.2;
+    cursor: text;
+}
+
+.mp-client .mp-textbar {
+    position: absolute;
+    right: 16px;
+    top: 8px;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    padding: 4px 6px 4px;
+    border: 1px solid #a0a0a0;
+    background: #f0f0f0;
+    box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+    z-index: 3;
+    font: 11px Tahoma, sans-serif;
+}
+
+.mp-client .mp-textbar[hidden] {
+    display: none;
+}
+
+.mp-client .mp-textbar-cap {
+    margin-right: 4px;
+    font-weight: bold;
+}
+
+.mp-client .mp-textbar select {
+    height: 21px;
+    font: inherit;
+}
+
+.mp-client .mp-tb-b {
+    width: 23px;
+    height: 22px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 1px solid transparent;
+    background: url('/static_images/vista-paint/text-toolbar.png') var(--x) center no-repeat;
+    box-shadow: none;
+}
+
+.mp-client .mp-tb-b::before,
+.mp-client .mp-tb-b::after {
+    content: none;
+}
+
+.mp-client .mp-tb-b.is-on {
+    border-color: #2c628b;
+    background-color: #c4e5f6;
+}
+
+/* ---- the color box and the status bar ---- */
+
+.mp-client .mp-colorbox {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 40px;
+    padding: 2px 4px;
+    border-top: 1px solid #d5d5d5;
+}
+
+.mp-window.mp-no-colors .mp-colorbox {
+    display: none;
+}
+
+.mp-client .mp-swatch-box {
+    position: relative;
+    width: 30px;
+    height: 32px;
+    border: 1px solid #a0a0a0;
+    border-right-color: #fff;
+    border-bottom-color: #fff;
+    background: #f0f0f0 repeating-conic-gradient(#fff 0 25%, #e0e0e0 0 50%) 0 0 / 2px 2px;
+}
+
+.mp-client .mp-fg,
+.mp-client .mp-bg {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    border: 1px solid #808080;
+    box-shadow: 1px 1px 0 #fff;
+}
+
+.mp-client .mp-fg { left: 4px; top: 4px; z-index: 1; }
+.mp-client .mp-bg { left: 11px; top: 12px; }
+
+.mp-client .mp-palette {
+    display: grid;
+    grid-template-columns: repeat(14, 16px);
+    grid-template-rows: 16px 16px;
+    gap: 0;
+}
+
+.mp-client .mp-color {
+    width: 16px;
+    height: 16px;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 1px solid #a0a0a0;
+    border-right-color: #fff;
+    border-bottom-color: #fff;
+    border-radius: 0;
+    box-shadow: inset 1px 1px 0 #696969;
+}
+
+.mp-client .mp-color::before,
+.mp-client .mp-color::after {
+    content: none;
+}
+
+.mp-client .mp-status {
+    display: grid;
+    grid-template-columns: 1fr 110px 110px;
+    flex: 0 0 22px;
+    border-top: 1px solid #d7d7d7;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+}
+
+.mp-window.mp-no-status .mp-status {
+    display: none;
+}
+
+.mp-client .mp-status > span {
+    display: flex;
+    align-items: center;
+    padding: 0 6px;
+    border-right: 1px solid #d7d7d7;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.mp-client .mp-status > span:last-child {
+    background: url('/static_images/vista-controls/sizegrip.png') no-repeat right 2px bottom 2px;
+}
+
+/* ---- the Layers and History windows (docked right) ---- */
+
+.mp-client .mp-dock {
+    display: none;
+    flex: 0 0 200px;
+    flex-direction: column;
+    gap: 4px;
+    padding: 4px;
+    border-left: 1px solid #d5d5d5;
+    background: #f0f0f0;
+}
+
+.mp-window.mp-has-dock .mp-dock {
+    display: flex;
+}
+
+.mp-client .mp-panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border: 1px solid #a0a0a0;
+    background: #fff;
+}
+
+.mp-client .mp-layers {
+    flex: 3 1 0;
+}
+
+.mp-client .mp-history {
+    flex: 2 1 0;
+}
+
+.mp-client .mp-panel-cap {
+    flex: 0 0 20px;
+    padding: 0 6px;
+    border-bottom: 1px solid #d5d5d5;
+    background: linear-gradient(#fdfdfd, #e9e9e9);
+    font: 12px/20px "Segoe UI", Tahoma, sans-serif;
+}
+
+.mp-client .mp-layer-list,
+.mp-client .mp-history-list {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    outline: none;
+}
+
+.mp-client .mp-layer-row {
+    display: grid;
+    grid-template-columns: 44px 1fr 18px;
+    align-items: center;
+    gap: 4px;
+    height: 36px;
+    padding: 0 3px;
+    border: 1px solid transparent;
+    cursor: var(--c-default);
+}
+
+.mp-client .mp-layer-row.is-active {
+    background: linear-gradient(#f6fbfd, #eff8fd 45%, #d7effc 55%, #d5effc 92%, #e7f5fd);
+    border-color: #99defd;
+}
+
+.mp-client .mp-layer-thumb {
+    border: 1px solid #a0a0a0;
+    background: repeating-conic-gradient(#fff 0 25%, #ddd 0 50%) 0 0 / 8px 8px;
+}
+
+.mp-client .mp-layer-name {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.mp-client .mp-layer-lock {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    vertical-align: -4px;
+    background: url('/static_images/vista-cmdbar/lock.png') no-repeat;
+}
+
+.mp-client .mp-panel-bar {
+    display: flex;
+    gap: 1px;
+    flex: 0 0 26px;
+    align-items: center;
+    padding: 0 2px;
+    border-top: 1px solid #d5d5d5;
+    background: #f0f0f0;
+}
+
+.mp-client .mp-panel-bar button {
+    width: 23px;
+    height: 22px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    background: none;
+    box-shadow: none;
+}
+
+.mp-client .mp-panel-bar button::before,
+.mp-client .mp-panel-bar button::after {
+    content: none;
+}
+
+.mp-client .mp-panel-bar button:hover {
+    border-color: #3c7fb1;
+    background: linear-gradient(#eaf6fd, #bee6fd);
+}
+
+.mp-client .mp-panel-bar img {
+    display: block;
+    width: 16px;
+    height: 16px;
+    margin: auto;
+}
+
+.mp-client .mp-history-row {
+    padding: 2px 8px;
+    white-space: nowrap;
+    cursor: var(--c-default);
+}
+
+.mp-client .mp-history-row.is-active {
+    background: #3399ff;
+    color: #fff;
+}
+
+.mp-client .mp-history-row.is-undone {
+    color: #8d8d8d;
+}
+
+.mp-client .mp-thumbnail {
+    position: absolute;
+    right: 12px;
+    bottom: 12px;
+    padding: 0 0 4px;
+    border: 1px solid #808080;
+    background: #f0f0f0;
+    box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.mp-client .mp-thumbnail-cap {
+    padding: 2px 6px;
+    background: linear-gradient(#fdfdfd, #e9e9e9);
+    font: 11px Tahoma, sans-serif;
+}
+
+.mp-client .mp-thumbnail canvas {
+    display: block;
+    margin: 4px 4px 0;
+}
+
+/* View Bitmap: the picture on the whole screen; any click or key closes it */
+.mp-viewbitmap {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+}
+
+.mp-viewbitmap img {
+    max-width: 100%;
+    max-height: 100%;
+    image-rendering: pixelated;
+}
+
+/* ---- Edit Colors ---- */
+
+.vdt-client .mp-cc-grid {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 3px 5px;
+    height: 100%;
+    padding: 1px 0;
+}
+
+.vdt-client .mp-cc-grid.is-custom {
+    grid-template-rows: repeat(2, 1fr);
+}
+
+.vdt-client .mp-cc-cell {
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 1px solid #808080;
+    border-right-color: #fff;
+    border-bottom-color: #fff;
+    border-radius: 0;
+    background: var(--c);
+    box-shadow: none;
+}
+
+.vdt-client .mp-cc-cell::before,
+.vdt-client .mp-cc-cell::after {
+    content: none;
+}
+
+.vdt-client .mp-cc-cell.is-on {
+    outline: 1px dotted #000;
+    outline-offset: 1px;
+}
+
+.vdt-client .mp-cc-spectrum,
+.vdt-client .mp-cc-lum {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 1px solid #a0a0a0;
+    box-sizing: border-box;
+    cursor: crosshair;
+}
+
+.vdt-client .mp-cc-cross {
+    position: absolute;
+    width: 19px;
+    height: 19px;
+    pointer-events: none;
+    background:
+        linear-gradient(#000, #000) center / 2px 7px no-repeat,
+        linear-gradient(#000, #000) center / 7px 2px no-repeat;
+}
+
+.vdt-client .mp-cc-arrow {
+    position: absolute;
+    right: -8px;
+    width: 0;
+    height: 0;
+    border: 4px solid transparent;
+    border-right-color: #000;
+    pointer-events: none;
+}
+
+.vdt-client .mp-cc-swatch {
+    width: 100%;
+    height: 100%;
+    border: 1px solid #a0a0a0;
+    box-sizing: border-box;
+}

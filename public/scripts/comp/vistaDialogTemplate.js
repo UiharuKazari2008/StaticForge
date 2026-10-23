@@ -122,12 +122,11 @@
             const domId = `${prefix}-${id >= 0 ? id : `x${index}`}`;
             const lowType = st & 0xF;
             const isRadio = cls === 'B' && (lowType === 4 || lowType === 9);
+            // radio buttons share a group until the next control with WS_GROUP (group boxes included)
             if (isRadio) {
                 if (!inRadios || (st & WS_GROUP)) radioGroup += 1;
                 inRadios = true;
-            } else if (cls === 'B' && lowType !== 7 && (st & WS_GROUP)) {
-                inRadios = false;
-            } else if (cls !== 'B' && (st & WS_GROUP)) {
+            } else if (st & WS_GROUP) {
                 inRadios = false;
             }
             if (o.html !== undefined) {

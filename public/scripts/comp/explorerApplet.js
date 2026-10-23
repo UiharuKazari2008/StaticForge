@@ -1195,6 +1195,10 @@ class ExplorerApplet {
             items.push({ icon: 'fas fa-paste', text: 'Paste', action: 'explorer-paste' });
         }
         if (item.targetKind === 'user-file' && !multi) {
+            // Vista's Edit verb for a picture opens it in Paint (desktop-apps/paint/paintApp.js)
+            if (/^image\/(png|jpe?g|bmp|webp|gif)$/i.test(item.mimeType || '')) {
+                items.push({ icon: 'fas fa-paintbrush', text: 'Edit', action: 'explorer-edit-paint' });
+            }
             items.push({ icon: 'fas fa-download', text: 'Download', action: 'explorer-download' });
         }
         return items;
@@ -2398,6 +2402,9 @@ class ExplorerApplet {
                     break;
                 case 'explorer-rename':
                     await this.renameSelection();
+                    break;
+                case 'explorer-edit-paint':
+                    if (item) void this.editInPaint(item);
                     break;
                 case 'explorer-download':
                     if (item) await this.downloadSelectionItem(item);
@@ -4467,6 +4474,12 @@ class ExplorerApplet {
             this._setBusyState(null);
             if (this.grid) this.grid.setOpeningItemId(null);
         }
+    }
+
+    async editInPaint(item) {
+        await featureLoader.loadFeature('paint');
+        const res = await vfsClient.downloadFile(item.targetId);
+        if (window.openMelatonPaint) window.openMelatonPaint({ image: res.downloadUrl, name: item.name, file: { id: item.targetId, name: item.name, path: this.currentPath } });
     }
 
     /** Text files open in Notepad unless Default Programs gave their type to another program. */

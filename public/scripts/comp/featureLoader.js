@@ -107,6 +107,18 @@ const FEATURE_MANIFEST = {
         styles: ['css/vista-calculator.css'],
         scripts: ['scripts/comp/desktop-apps/calculator.js']
     },
+    // Paint (Yozora #632): mspaint.exe with layers; its dialogs are Vista's own templates
+    paint: {
+        depends: ['vista_dialog_templates'],
+        // the menu bar is Notepad's (vista-atelier.css)
+        styles: ['css/vista-atelier.css', 'css/vista-paint.css'],
+        scripts: [
+            'scripts/comp/desktop-apps/paint/paintCore.js',
+            'scripts/comp/desktop-apps/paint/paintApp.js',
+            'scripts/comp/desktop-apps/paint/paintLayers.js',
+            'scripts/comp/desktop-apps/paint/paintDialogs.js'
+        ]
+    },
     // SoraTan.exe from the VFS (vfsPrograms.js): Nanami's desktop toy
     soratan: {
         styles: ['css/desktop-apps/soraTan.css'],
