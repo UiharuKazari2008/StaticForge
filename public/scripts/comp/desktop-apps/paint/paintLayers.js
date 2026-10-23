@@ -525,7 +525,7 @@
             init(ctx) {
                 ctx.set(101, g.name);
                 ctx.set(102, g.visible);
-                ctx.options(104, Object.entries(BLEND_NAMES).map(([value, text]) => ({ value, text })), g.blend);
+                ctx.options(104, [{ value: 'pass', text: 'Pass Through' }, ...Object.entries(BLEND_NAMES).map(([value, text]) => ({ value, text }))], g.blend);
                 ctx.range(105, 0, 255, Math.round(g.opacity * 255), undefined, 0);
                 ctx.set(106, String(Math.round(g.opacity * 255)));
                 ctx.on(105, 'input', () => { ctx.set(106, String(ctx.get(105))); live(ctx); });

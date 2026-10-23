@@ -4459,8 +4459,8 @@ class ExplorerApplet {
             if (item.targetKind === 'user-file') {
                 // a program the desktop has a port of runs it (vfsPrograms.js: SoraTan.exe)
                 if (window.vfsPrograms && await window.vfsPrograms.open(item)) return;
-                // Paint's own documents (Graphic Session Document, Melaton Paint Image) open in Paint
-                if (/\.(gsd|mpi)$/i.test(item.name || '')) {
+                // Paint's own documents (Graphic Session Document, Melaton Paint Image) and Photoshop's open in Paint
+                if (/\.(gsd|mpi|psd)$/i.test(item.name || '')) {
                     await featureLoader.loadFeature('paint');
                     if (window.openMelatonPaint) await window.openMelatonPaint({ vfsFile: { id: item.targetId, name: item.name, path: this.currentPath } });
                     return;
@@ -4484,7 +4484,7 @@ class ExplorerApplet {
 
     async editInPaint(item) {
         await featureLoader.loadFeature('paint');
-        if (/\.(gsd|mpi)$/i.test(item.name || '')) {
+        if (/\.(gsd|mpi|psd)$/i.test(item.name || '')) {
             if (window.openMelatonPaint) window.openMelatonPaint({ vfsFile: { id: item.targetId, name: item.name, path: this.currentPath } });
             return;
         }

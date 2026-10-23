@@ -1542,6 +1542,12 @@
             const res = await vfs().downloadFile(id);
             const file = { id, name, path };
             try {
+                if (/\.psd$/i.test(name) && root.paintPsd) {
+                    const r = await fetch(res.downloadUrl, { credentials: 'same-origin' });
+                    const notes = await root.paintPsd.apply(this, await root.paintPsd.decode(await r.arrayBuffer()), { name, file });
+                    if (notes.length) await this.message(`Some parts of ${name} could not come in as they are:\n\n${notes.join('\n')}`);
+                    return;
+                }
                 if (/\.(gsd|mpi)$/i.test(name)) {
                     const r = await fetch(res.downloadUrl, { credentials: 'same-origin' });
                     const buf = await r.arrayBuffer();
@@ -1617,7 +1623,7 @@
                     typeLabel: 'All Picture Files',
                     rejectMessage: 'Choose a picture',
                     acceptItem: (item) => !!item && (item.targetKind === 'image' || item.targetKind === 'scrap' || item.shortcutType === 'image'
-                        || (item.targetKind === 'user-file' && (/^image\//.test(item.mimeType || '') || /\.(png|jpe?g|gif|bmp|webp|mpi|gsd)$/i.test(item.name || '')))),
+                        || (item.targetKind === 'user-file' && (/^image\//.test(item.mimeType || '') || /\.(png|jpe?g|gif|bmp|webp|mpi|gsd|psd)$/i.test(item.name || '')))),
                     async onOpen(item, folderPath) {
                         if (!await self.confirmDiscard()) return;
                         if (item.targetKind === 'user-file') {
@@ -1633,6 +1639,11 @@
 
         async encode(type) {
             if (type === 'gsd') return root.paintGsd.encode(this);
+            if (type === 'psd') {
+                const res = await root.paintPsd.encode(this);
+                this.psdNotes = res.notes;
+                return res.blob;
+            }
             if (type === 'mpi') {
                 const layers = this.doc.layers.map((l) => ({
                     name: l.name, visible: l.visible, opacity: l.opacity, blend: l.blend, locked: l.locked, png: l.canvas.toDataURL('image/png'),
@@ -1648,11 +1659,12 @@
 
         typeFor(name) {
             const ext = (String(name).match(/\.([a-z0-9]+)$/i) || [])[1] || 'png';
-            return { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', bmp: 'image/bmp', webp: 'image/webp', mpi: 'mpi', gsd: 'gsd' }[ext.toLowerCase()] || 'image/png';
+            return { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', bmp: 'image/bmp', webp: 'image/webp', mpi: 'mpi', gsd: 'gsd', psd: 'psd' }[ext.toLowerCase()] || 'image/png';
         }
 
         mimeFor(type) {
             if (type === 'gsd') return 'application/x-graphic-session';
+            if (type === 'psd') return 'image/vnd.adobe.photoshop';
             if (type === 'mpi') return 'application/json';
             return type;
         }
@@ -1692,15 +1704,15 @@
                     startPath: (this.file && this.file.path) || (ws ? `/Workspaces/${ws}` : '/'),
                     host: {
                         title: 'Save As',
-                        typeLabel: 'Graphic Session Document, everything kept (*.gsd); PNG (*.png); JPEG (*.jpg); 24-bit Bitmap (*.bmp); WebP (*.webp); Melaton Paint Image (*.mpi)',
+                        typeLabel: 'Graphic Session Document, everything kept (*.gsd); Photoshop Document (*.psd); PNG (*.png); JPEG (*.jpg); 24-bit Bitmap (*.bmp); WebP (*.webp); Melaton Paint Image (*.mpi)',
                         acceptType: 'user-file',
                         suggestName: () => (self.file ? self.file.name : `${self.name === 'Untitled' ? 'untitled' : self.name}${self.needsSession() ? '.gsd' : '.png'}`),
                         async onSave(info) {
                             let name = String(info.name || '').trim();
                             if (!name) return false;
-                            if (!/\.(png|jpe?g|bmp|webp|mpi|gsd)$/i.test(name)) name += self.needsSession() ? '.gsd' : '.png';
+                            if (!/\.(png|jpe?g|bmp|webp|mpi|gsd|psd)$/i.test(name)) name += self.needsSession() ? '.gsd' : '.png';
                             const type = self.typeFor(name);
-                            if (type !== 'mpi' && type !== 'gsd' && self.needsSession()) {
+                            if (type !== 'mpi' && type !== 'gsd' && type !== 'psd' && self.needsSession()) {
                                 const ok = await callGlobal('showConfirmationDialog', '<p>Saving in this format will flatten the image into one layer and drop its masks, text and guides. Save anyway? To keep everything, save as a Graphic Session Document (*.gsd).</p>', [
                                     { text: 'Flatten', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }
                                 ], null, { title: 'Paint', width: 400 });
@@ -1714,6 +1726,7 @@
                                 self.name = name.replace(/\.[^.]+$/, '');
                                 self.dirtyDoc = false;
                                 self.title();
+                                if (type === 'psd' && self.psdNotes && self.psdNotes.length) void self.message(`Saved as a Photoshop document, with these changes:\n\n${self.psdNotes.join('\n')}`);
                                 resolve(true);
                                 return true;
                             } catch (err) {

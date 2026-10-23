@@ -415,7 +415,7 @@
         /** Put layer i in a new group; returns the group. */
         groupLayer(i, name) {
             const id = nextLayerId++;
-            const g = { id, name: name || `Group ${this.groups.length + 1}`, visible: true, opacity: 1, blend: 'normal', collapsed: false };
+            const g = { id, name: name || `Group ${this.groups.length + 1}`, visible: true, opacity: 1, blend: 'pass', collapsed: false };
             this.groups.push(g);
             this.layers[i].groupId = id;
             this.markDirty();
@@ -521,7 +521,22 @@
                 if (g) {
                     let j = i;
                     while (j < to && this.layers[j].groupId === l.groupId) j += 1;
-                    if (g.visible && g.opacity > 0) {
+                    if (g.visible && g.opacity > 0 && g.blend === 'pass') {
+                        // Pass Through (Photoshop's default): the layers blend with what is under the
+                        // group; its opacity fades the result back towards that
+                        if (g.opacity >= 1) this.compositeRun(tx, i, j, r, opts, true);
+                        else {
+                            const under = makeCanvas(r.w, r.h);
+                            const ux = ctxOf(under);
+                            ux.drawImage(tx.canvas, 0, 0);
+                            ux.translate(-r.x, -r.y);
+                            this.compositeRun(ux, i, j, r, opts, true);
+                            tx.save();
+                            tx.globalAlpha = g.opacity;
+                            tx.drawImage(under, r.x, r.y);
+                            tx.restore();
+                        }
+                    } else if (g.visible && g.opacity > 0) {
                         const off = makeCanvas(r.w, r.h);
                         const gx = ctxOf(off);
                         gx.translate(-r.x, -r.y);
