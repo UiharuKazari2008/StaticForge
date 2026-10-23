@@ -354,6 +354,48 @@ function harness(opts = {}) {
     h.bios.handleKey('Enter');
     await p;
 
+    // ---------- the PIN pad: taps type the PIN, ← deletes, OK submits; a wrong PIN clears ----------
+    {
+        h = harness();
+        const sent = [];
+        const realFetch = global.fetch;
+        global.fetch = async (url, init) => {
+            const body = JSON.parse(init.body);
+            sent.push({ url, pin: body.data.pin, client: init.headers['X-Dreamscape-Client'] });
+            const ok = body.data.pin === '1235';
+            return { ok, json: async () => (ok ? { success: true, userType: 'admin' } : { success: false }) };
+        };
+        global.localStorage = { setItem() {} };
+        let asked = 0;
+        p = h.bios.post({ hasOs: true, requireBootPin: async () => (asked++ === 0) });
+        await h.until(() => h.bios.state === 'bootpin');
+        assert.ok(h.bios.screen.find('Password on boot'), 'the PIN box');
+        const tap = (label) => {
+            const at = h.bios.screen.find('│' + ' '.repeat(Math.floor((9 - 2 - label.length) / 2)) + label);
+            assert.ok(at, `pad key ${label} drawn`);
+            h.bios.handlePointer(at.col + 4, at.row);
+        };
+        ['1', '2', '9'].forEach(tap);
+        tap('\u2190');
+        tap('3');
+        assert.ok(h.bios.screen.find('Enter PIN:  ***'), 'three stars after 1 2 9 ← 3');
+        tap('OK');
+        await h.until(() => sent.length === 1);
+        await h.settle();
+        assert.strictEqual(sent[0].pin, '123', 'the PIN typed on the pad');
+        assert.strictEqual(sent[0].client, 'melaton-bios', 'the BIOS knocks');
+        assert.ok(h.bios.screen.find('Incorrect password'), 'a wrong PIN says so');
+        assert.ok(h.bios.screen.find('Enter PIN:   '), 'and the entry is cleared');
+        h.bios.handlePointer(0, 0);
+        assert.strictEqual(h.bios.state, 'bootpin', 'a tap outside the keys does nothing');
+        ['1', '2', '3', '5'].forEach(tap);
+        h.bios.handleKey('Enter', '');
+        assert.deepStrictEqual(await p, { device: 'hdd', via: 'order' }, 'the right PIN boots');
+        assert.strictEqual(sent[1].pin, '1235', 'the keyboard Enter submits what the pad typed');
+        global.fetch = realFetch;
+        delete global.localStorage;
+    }
+
     console.log('test-phoenix-bios passed');
 })().catch((err) => {
     console.error('❌ test-phoenix-bios failed:', err);

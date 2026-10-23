@@ -640,17 +640,50 @@
             stopped = true;
         }
 
-        // The open password box: bios.bootPin { title, label, entry, maxLength, submit, resolve }
+        // The PIN pad under "Password on boot": three columns of text-mode keys, tap or click
+        const PIN_PAD = [
+            ['1', '1'], ['2', '2'], ['3', '3'],
+            ['4', '4'], ['5', '5'], ['6', '6'],
+            ['7', '7'], ['8', '8'], ['9', '9'],
+            ['\u2190', 'Backspace'], ['0', '0'], ['OK', 'Enter']
+        ];
+        const PIN_KEY_W = 9;
+        const PIN_KEY_H = 3;
+        const PIN_KEY_GAP = 2;
+
+        function drawPinPad(x, y, w) {
+            const span = PIN_KEY_W * 3 + PIN_KEY_GAP * 2;
+            const x0 = x + Math.floor((w - span) / 2);
+            bios.pinPad = PIN_PAD.map(([label, key], i) => {
+                const c = x0 + (i % 3) * (PIN_KEY_W + PIN_KEY_GAP);
+                const r = y + Math.floor(i / 3) * PIN_KEY_H;
+                const pressed = bios.pinPadPressed === key;
+                const fg = pressed ? C.white : C.black;
+                const bg = pressed ? C.blue : C.grey;
+                screen.box(c, r, PIN_KEY_W, PIN_KEY_H, fg, bg);
+                screen.put(c + Math.floor((PIN_KEY_W - label.length) / 2), r + 1, label, fg, bg);
+                return { col: c, row: r, key };
+            });
+        }
+
+        function pinPadKeyAt(col, row) {
+            const pad = bios.pinPad || [];
+            return pad.find((k) => col >= k.col && col < k.col + PIN_KEY_W && row >= k.row && row < k.row + PIN_KEY_H) || null;
+        }
+
+        // The open password box: bios.bootPin { title, label, entry, maxLength, pad, submit, resolve }
         function drawBootPinPrompt(entry) {
             bios.state = 'bootpin';
             screen.mode = 'text';
             screen.clear(C.black, C.grey);
             const box = bios.bootPin || {};
             const label = box.label || 'Enter PIN:';
+            const pad = box.pad === true;
             const w = 44;
-            const h = 7;
+            const h = pad ? 21 : 7;
             const x = Math.floor((COLS - w) / 2);
-            const y = 8;
+            const y = pad ? 1 : 8;
+            bios.pinPad = null;
             const field = w - 4 - label.length - 2;
             screen.box(x, y, w, h, C.black, C.white);
             screen.shadow(x, y, w, h);
@@ -658,8 +691,9 @@
             screen.put(x + 2, y + 3, label, C.black, C.white);
             const stars = '*'.repeat(Math.min((entry || '').length, field));
             screen.put(x + 4 + label.length, y + 3, stars.padEnd(field, ' '), C.white, C.black);
+            if (pad) drawPinPad(x, y + 5, w);
             if (bios.bootPinError) {
-                screen.put(x + 2, y + 5, bios.bootPinError.slice(0, w - 4), C.red, C.white);
+                screen.put(x + 2, y + (pad ? 18 : 5), bios.bootPinError.slice(0, w - 4), C.red, C.white);
             }
             render();
         }
@@ -713,12 +747,12 @@
             bios.bootPinError = '';
             let entry = '';
             bios.bootPin = null;
-            drawBootPinPrompt(entry);
             return new Promise((resolve) => {
                 bios.bootPin = {
                     title: 'Password on boot',
                     label: 'Enter PIN:',
                     maxLength: 64,
+                    pad: true,
                     entry,
                     resolve,
                     async submit(pin) {
@@ -747,6 +781,7 @@
                         }
                     }
                 };
+                drawBootPinPrompt(entry);
             });
         }
 
@@ -1464,6 +1499,20 @@
          * key: the nearest keyboard action. A tap on the selected item is Enter.
          */
         function handlePointer(col, row) {
+            if (bios.state === 'bootpin' && bios.bootPin) {
+                const hit = pinPadKeyAt(col, row);
+                if (!hit) return true;
+                // the key shows pressed for a moment, then acts like the keyboard's
+                bios.pinPadPressed = hit.key;
+                handleKey(hit.key, hit.key.length === 1 ? hit.key : '');
+                if (bios.state === 'bootpin' && bios.bootPin) drawBootPinPrompt(bios.bootPin.entry || '');
+                setTimeout(() => {
+                    if (bios.pinPadPressed !== hit.key) return;
+                    bios.pinPadPressed = null;
+                    if (bios.state === 'bootpin' && bios.bootPin) drawBootPinPrompt(bios.bootPin.entry || '');
+                }, 120);
+                return true;
+            }
             if (bios.state === 'bootmenu') {
                 const m = bios.menu;
                 const y = 8;
