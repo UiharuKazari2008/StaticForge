@@ -1,0 +1,279 @@
+/* Character Map (public/scripts/comp/desktop-apps/charmap/charmapApp.js; Yozora #632), measured on
+   the Vista VM: client 441 x 376 (Advanced view 441 x 478) on #f0f0f0; the grid 20 x 10 cells of
+   19 x 25 px from (28, 46), #646464 lines, glyphs 17 px; the selected cell's 2 px frame; a 17 px
+   scroll bar at x 412; the status bar a sunken panel (6, 354) to (433, 373); the magnifier a
+   72 x 54 white box (1 px edge, 3 px under and right) round the cell, its glyph 2.5x. The dialog
+   controls come from the template (vista-dialog-template.css). */
+
+#melatonCharmapModal .cm-client {
+    position: relative;
+    overflow: hidden;
+    padding: 0;
+    background: #f0f0f0;
+    user-select: none;
+}
+
+#melatonCharmapModal .vdt-plain-page {
+    position: absolute;
+    inset: 0;
+}
+
+/* ---- the Font combo: owner-drawn, the font type icon before the name ---- */
+
+#melatonCharmapModal .cm-font {
+    position: absolute;
+    inset: 0 0 auto;
+    display: flex;
+    align-items: center;
+    height: 21px;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0 0 0 4px;
+    border: 1px solid #abadb3;
+    border-radius: 0;
+    background: #fff;
+    box-shadow: none;
+    color: #000;
+    font: inherit;
+    text-align: left;
+    cursor: var(--c-default, default);
+}
+
+#melatonCharmapModal .cm-font::before,
+#melatonCharmapModal .cm-font::after {
+    content: none;
+}
+
+#melatonCharmapModal .cm-font:focus-visible .cm-font-name,
+#melatonCharmapModal .cm-font:focus .cm-font-name {
+    background: #3399ff;
+    color: #fff;
+}
+
+#melatonCharmapModal .cm-font-icon {
+    flex: none;
+    width: 20px;
+    height: 12px;
+    margin-right: 2px;
+    background: url("/static_images/vista-charmap/font-types.png") -40px 0 no-repeat;
+}
+
+#melatonCharmapModal .cm-font-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    padding: 1px 2px;
+    white-space: nowrap;
+}
+
+#melatonCharmapModal .cm-font-arrow {
+    flex: none;
+    width: 17px;
+    height: 19px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4' shape-rendering='crispEdges'%3E%3Cpath d='M0 0h7v1H0zM1 1h5v1H1zM2 2h3v1H2zM3 3h1v1H3z'/%3E%3C/svg%3E") center no-repeat;
+}
+
+#melatonCharmapModal .cm-font-list {
+    position: absolute;
+    z-index: 5;
+    max-height: 390px;
+    overflow-y: auto;
+    border: 1px solid #646464;
+    background: #fff;
+    box-shadow: 3px 3px 4px rgb(0 0 0 / 30%);
+}
+
+#melatonCharmapModal .cm-font-item {
+    display: flex;
+    align-items: center;
+    height: 13px;
+    padding: 0 2px;
+    white-space: nowrap;
+}
+
+#melatonCharmapModal .cm-font-item.is-hot {
+    background: #3399ff;
+    color: #fff;
+}
+
+#melatonCharmapModal .cm-font-item .cm-font-icon {
+    margin-right: 0;
+}
+
+/* ---- the grid ---- */
+
+#melatonCharmapModal .cm-grid {
+    position: absolute;
+    top: 46px;
+    left: 28px;
+    width: 381px;
+    height: 251px;
+    outline: none;
+    cursor: var(--c-default, default);
+}
+
+#melatonCharmapModal .cm-cells {
+    display: grid;
+    grid-template-columns: repeat(20, 19px);
+    grid-auto-rows: 25px;
+    box-sizing: border-box;
+    width: 381px;
+    height: 251px;
+    border-top: 1px solid #646464;
+    border-left: 1px solid #646464;
+    background: #fff;
+    color: #000;
+    font-size: 17px;
+    line-height: 24px;
+}
+
+/* an id rule: taskbar-properties.css gives every span of a dialog Tahoma 11 px */
+#melatonCharmapModal .cm-cell {
+    font-family: var(--cm-font, Arial), sans-serif;
+    font-size: 17px;
+    box-sizing: border-box;
+    overflow: hidden;
+    border-right: 1px solid #646464;
+    border-bottom: 1px solid #646464;
+    text-align: center;
+    white-space: pre;
+}
+
+/* the selected cell: a 2 px frame over its grid lines */
+#melatonCharmapModal .cm-selbox {
+    position: absolute;
+    width: 22px;
+    height: 28px;
+    box-sizing: border-box;
+    border: 2px solid #646464;
+    pointer-events: none;
+}
+
+#melatonCharmapModal .cm-selbox[hidden] {
+    display: none;
+}
+
+#melatonCharmapModal .cm-scroll {
+    position: absolute;
+    top: 46px;
+    left: 412px;
+    width: 17px;
+    height: 251px;
+    overflow-x: hidden;
+    overflow-y: scroll;
+}
+
+#melatonCharmapModal .cm-scroll-space {
+    width: 1px;
+}
+
+/* ---- the magnifier and its tip ---- */
+
+#melatonCharmapModal .cm-magnify {
+    position: absolute;
+    z-index: 4;
+    box-sizing: border-box;
+    width: 72px;
+    height: 54px;
+    margin: -27px 0 0 -36px;
+    border: solid #646464;
+    border-width: 1px 3px 3px 1px;
+    background: #fff;
+    color: #000;
+    font-size: 42px;
+    line-height: 50px;
+    text-align: center;
+    white-space: pre;
+    pointer-events: none;
+}
+
+#melatonCharmapModal .cm-tip {
+    position: absolute;
+    z-index: 5;
+    padding: 2px 6px 3px;
+    border: 1px solid #767676;
+    border-radius: 2px;
+    background: linear-gradient(#fff, #e4e5f0);
+    box-shadow: 1px 1px 2px rgb(0 0 0 / 25%);
+    color: #575757;
+    font: 9pt/15px "Segoe UI", var(--cpl-font, sans-serif);
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+/* ---- the status bar ---- */
+
+#melatonCharmapModal .cm-status {
+    position: absolute;
+    right: 8px;
+    bottom: 2px;
+    left: 6px;
+    display: flex;
+    box-sizing: border-box;
+    height: 20px;
+    padding: 0 6px 0 5px;
+    border: solid;
+    border-width: 1px 1px 1px 1px;
+    border-color: #a0a0a0 #fff #fff #a0a0a0;
+    line-height: 13px;
+}
+
+/* "Go to Unicode :" fills its 50 DLU slot to the colon on the VM; a hair wider here, it must not wrap */
+#melatonCharmapModal [data-vdt-id="700"],
+#melatonCharmapModal [data-vdt-id="700"] * {
+    overflow: visible;
+    white-space: nowrap;
+}
+
+/* charmap.exe moves Advanced view 3 px under its template slot (VM) */
+#melatonCharmapModal [data-vdt-id="119"] {
+    transform: translateY(3px);
+}
+
+#melatonCharmapModal .cm-status-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+#melatonCharmapModal .cm-status-key {
+    flex: none;
+}
+
+/* ---- Group By ---- */
+
+#melatonCharmapGroupBy .cm-gb-client {
+    width: 194px;
+    padding: 0;
+    background: #f0f0f0;
+}
+
+#melatonCharmapGroupBy .cm-gb-label {
+    padding: 4px 0 2px 5px;
+    color: #000;
+    font: 9pt/15px "Segoe UI", var(--cpl-font, sans-serif);
+}
+
+#melatonCharmapGroupBy .cm-gb-list {
+    height: 136px;
+    margin: 0 9px 10px 5px;
+    overflow-y: scroll;
+    border: 1px solid #828790;
+    background: #fff;
+    color: #000;
+    font: 9pt/15px "Segoe UI", var(--cpl-font, sans-serif);
+    outline: none;
+}
+
+#melatonCharmapGroupBy .cm-gb-item {
+    padding: 0 2px;
+    white-space: nowrap;
+}
+
+#melatonCharmapGroupBy .cm-gb-item.is-selected {
+    background: #3399ff;
+    color: #fff;
+}

@@ -107,6 +107,12 @@ const FEATURE_MANIFEST = {
         styles: ['css/vista-calculator.css'],
         scripts: ['scripts/comp/desktop-apps/calculator.js']
     },
+    // Character Map (Yozora #632): charmap.exe; its window is the .mui's own dialog template
+    charmap: {
+        depends: ['vista_dialog_templates'],
+        styles: ['css/vista-charmap.css'],
+        scripts: ['scripts/comp/desktop-apps/charmap/charmapApp.js']
+    },
     // Paint (Yozora #632): mspaint.exe with layers; its dialogs are Vista's own templates
     paint: {
         depends: ['vista_dialog_templates'],

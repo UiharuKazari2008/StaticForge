@@ -6620,6 +6620,8 @@ function buildToolsSubmenuItems() {
         { launchId: 'welcome-center', icon: 'fas fa-house', imageIcon: 'vista-welcome-center.png', text: 'Welcome Center', appMenuLocation: 'tools', action: () => { window.openWelcomeCenter(); } },
         // Accessories > Paint (Yozora #632; public/scripts/comp/desktop-apps/paint/paintApp.js)
         { launchId: 'paint', icon: 'fas fa-palette', imageIcon: 'vista-paint.png', text: 'Paint', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('paint'); window.openMelatonPaint(); } },
+        // Accessories > Character Map (Yozora #632; public/scripts/comp/desktop-apps/charmap/charmapApp.js)
+        { launchId: 'charmap', icon: 'fas fa-font', imageIcon: 'vista-charmap.png', text: 'Character Map', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('charmap'); window.openMelatonCharmap(); } },
         // Accessories > Notepad: a blank Untitled document (Yozora #632; public/scripts/comp/notepadVista.js)
         { launchId: 'notepad', icon: 'fas fa-file-lines', imageIcon: 'vista-notepad.png', text: 'Notepad', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('notepad'); window.notepadVista.openBlank(); } },
         { launchId: 'calculator', icon: 'fas fa-calculator', imageIcon: 'vista-calculator.png', text: 'Calculator', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('calculator'); /* public/scripts/comp/desktop-apps/calculator.js */ openDesktopCalculator(); } },
