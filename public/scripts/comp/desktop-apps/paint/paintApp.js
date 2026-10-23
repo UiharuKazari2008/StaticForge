@@ -151,7 +151,11 @@
             this.opt = {
                 lineWidth: 1, brush: 'round-2', eraser: 8, airbrush: 0, shape: 'outline', transparent: false,
                 zoomLevel: 4, size: 0, opacity: 100, hardness: 100, tolerance: 32, antialias: true, gradient: 'linear',
-                selMode: 'new', contiguous: true, sampleAll: false, showControls: true, keepRatio: true
+                selMode: 'new', contiguous: true, sampleAll: false, showControls: true, keepRatio: true,
+                // Photoshop's options bar (paintBar.js)
+                feather: 0, selStyle: 'normal', selW: 1, selH: 1, autoSelect: false, cropRatio: 'free', cropSwap: false,
+                paintMode: 'normal', gradReverse: false, radius: 16, cloneAligned: true, toneRange: 'midtones',
+                spongeMode: 'saturate', sampleSize: '1', zoomOut: false
             };
             this.grid = false;
             // Photoshop's View options: rulers, guides (shown, locked), snapping
@@ -191,18 +195,7 @@
                 </div>
                 <div class="modal-content win7 mp-client">
                     <div class="naxt-menubar mp-menubar" role="menubar">${['File', 'Edit', 'View', 'Image', 'Layers', 'Select', 'Adjustments', 'Filter', 'Colors', 'Help'].map((t) => `<button type="button" class="naxt-menu-title" data-mp-menu="${t.toLowerCase()}" role="menuitem">${t}</button>`).join('')}</div>
-                    <div class="mp-settings" role="toolbar">
-                        <label>Size: <input type="number" class="tbp-edit mp-set-size" min="0" max="500" value="0" title="0 uses the tool's own size"></label>
-                        <label>Opacity: <input type="range" class="mp-set-opacity" min="1" max="100" value="100"><span class="mp-set-opacity-v">100%</span></label>
-                        <label>Hardness: <input type="range" class="mp-set-hardness" min="0" max="100" value="100"></label>
-                        <label>Tolerance: <input type="range" class="mp-set-tolerance" min="0" max="100" value="32"></label>
-                        <label class="mp-set-check"><input type="checkbox" class="mp-set-aa" checked><span>Antialiasing</span></label>
-                        <span class="mp-set-selmode" role="group" aria-label="Selection">${[['new', 'New Selection'], ['add', 'Add to Selection (Shift)'], ['subtract', 'Subtract from Selection (Alt)'], ['intersect', 'Intersect with Selection (Shift+Alt)']].map(([v, t], i) => `<button type="button" class="mp-selmode${v === 'new' ? ' is-on' : ''}" data-selmode="${v}" title="${t}"><span class="mp-selmode-art" style="--x:${-i * 16}px"></span></button>`).join('')}</span>
-                        <label class="mp-set-check mp-set-contig"><input type="checkbox" class="mp-set-contiguous" checked><span>Contiguous</span></label>
-                        <label class="mp-set-check mp-set-sampleall"><input type="checkbox" class="mp-set-sample"><span>Sample All Layers</span></label>
-                        <label class="mp-set-check mp-set-controls" title="Handles round the layer, the selection or a pasted piece: drag one to resize"><input type="checkbox" class="mp-set-showctl" checked><span>Show Transform Controls</span></label>
-                        <label class="mp-set-check mp-set-ratio" title="Corner handles keep the shape; Shift does the other"><input type="checkbox" class="mp-set-keepratio" checked><span>Keep Proportions</span></label>
-                    </div>
+                    <div class="mp-settings" role="toolbar" aria-label="Options"></div>
                     <div class="mp-body">
                         <div class="mp-toolbox">
                             <div class="mp-tools" role="toolbar">${TOOLS.map(([id, name], i) => `<button type="button" class="mp-tool${id === this.tool ? ' is-on' : ''}" data-tool="${id}" title="${esc(name)}" style="--i:${i < 16 ? i : i - 16}"><span class="mp-tool-art${i >= 16 ? ' is-extra' : ''}"></span></button>`).join('')}</div>
@@ -242,6 +235,7 @@
             this.wire();
             m.dataset.tool = this.tool;
             this.renderOptions();
+            this.renderBar();
             this.renderColors();
             callGlobal('openModal', m);
             m.classList.remove('hidden');
@@ -531,26 +525,6 @@
                 if (o.dataset.opt === 'zoomLevel') this.setZoom(Number(v));
                 this.renderOptions();
             });
-            const set = (cls, key, fmt) => {
-                const input = m.querySelector(cls);
-                input.addEventListener('input', () => {
-                    this.opt[key] = input.type === 'checkbox' ? input.checked : Number(input.value);
-                    if (fmt) fmt(input.value);
-                });
-            };
-            set('.mp-set-size', 'size');
-            set('.mp-set-opacity', 'opacity', (v) => { m.querySelector('.mp-set-opacity-v').textContent = `${v}%`; });
-            set('.mp-set-hardness', 'hardness');
-            set('.mp-set-tolerance', 'tolerance');
-            set('.mp-set-aa', 'antialias');
-            set('.mp-set-contiguous', 'contiguous');
-            set('.mp-set-sample', 'sampleAll');
-            set('.mp-set-showctl', 'showControls', () => this.drawAnts());
-            set('.mp-set-keepratio', 'keepRatio');
-            m.querySelector('.mp-set-selmode').addEventListener('click', (ev) => {
-                const b = ev.target.closest('[data-selmode]');
-                if (b) this.setSelMode(b.dataset.selmode);
-            });
             const view = this.overlay;
             view.addEventListener('pointerdown', (ev) => this.pointer('down', ev));
             view.addEventListener('pointermove', (ev) => this.pointer('move', ev));
@@ -740,15 +714,14 @@
                 this.brushCursor(this.lastPointer);
             } else if (ev.key === '{' || ev.key === '}') {
                 this.opt.hardness = Math.max(0, Math.min(100, this.opt.hardness + (ev.key === '}' ? 25 : -25)));
-                this.el('.mp-set-hardness').value = String(this.opt.hardness);
+                this.updateBar();
             } else if (!ctrl && ev.key === '+') { this.opt.size = Math.min(500, (this.opt.size || this.brushSize()) + 1); this.syncSettings(); }
             else if (!ctrl && ev.key === '-') { this.opt.size = Math.max(1, (this.opt.size || this.brushSize()) - 1); this.syncSettings(); }
             else if (/^[0-9]$/.test(ev.key)) {
                 // Photoshop: 1 is 10%, 0 is 100%
                 const v = ev.key === '0' ? 100 : Number(ev.key) * 10;
                 this.opt.opacity = v;
-                this.el('.mp-set-opacity').value = String(v);
-                this.el('.mp-set-opacity-v').textContent = `${v}%`;
+                this.updateBar();
             } else if (k === 'x') action = 'swap-colors';
             else if (k === 'd') action = 'default-colors';
             else if (TOOL_KEYS[k]) {
@@ -766,12 +739,40 @@
         }
 
         syncSettings() {
-            this.el('.mp-set-size').value = String(this.opt.size);
+            this.updateBar();
+        }
+
+        /** The options bar for the tool (or the transform / crop under way): paintBar.js. */
+        renderBar() {
+            if (root.paintBar) root.paintBar.render(this);
+        }
+
+        updateBar() {
+            if (root.paintBar) root.paintBar.update(this);
         }
 
         setSelMode(mode) {
             this.opt.selMode = mode;
-            this.modal.querySelectorAll('.mp-selmode').forEach((b) => b.classList.toggle('is-on', b.dataset.selmode === mode));
+            this.updateBar();
+        }
+
+        /** The options bar's font controls: the registry's text settings, and the box being typed in. */
+        setTextFont(values) {
+            setReg(values);
+            this.restyleText();
+            const bar = this.el('.mp-textbar');
+            if (bar && !bar.hidden) this.showTextBar(true);
+        }
+
+        /** Esc / the bar's Cancel while typing: the text goes, a type layer opened again stays as it was. */
+        cancelText() {
+            const t = this.text;
+            if (!t) return;
+            this.text = null;
+            t.box.remove();
+            this.showTextBar(false);
+            if (t.layer) { t.layer.visible = true; this.doc.markDirty(); }
+            this.renderBar();
         }
 
         /** Shift adds, Alt subtracts, both intersect; else the mode chosen on the Tool Settings bar. */
@@ -789,10 +790,14 @@
             this.selBase = null;
             this.selModeNow = null;
             if (base && mode && mode !== 'new' && P()) {
-                this.setSelection(P().combine(this.doc, base, next && next.w >= 1 && next.h >= 1 ? next : null, mode));
+                let add = next && next.w >= 1 && next.h >= 1 ? next : null;
+                if (add && this.opt.feather > 0 && ['select', 'ellipseselect', 'freeselect', 'polylasso'].includes(this.tool)) add = P().feather(this.doc, add, this.opt.feather) || add;
+                this.setSelection(P().combine(this.doc, base, add, mode));
                 return;
             }
             if (next && (next.w < 1 || next.h < 1)) next = null;
+            // the options bar's Feather: soft edges for what was just made (Photoshop)
+            if (next && this.opt.feather > 0 && P() && ['select', 'ellipseselect', 'freeselect', 'polylasso'].includes(this.tool)) next = P().feather(this.doc, next, this.opt.feather) || next;
             this.setSelection(next);
         }
 
@@ -833,6 +838,7 @@
             this.overlay.dataset.tool = id;
             this.modal.dataset.tool = id;
             this.renderOptions();
+            this.renderBar();
             this.brushCursor();
             this.drawAnts();
         }
@@ -977,14 +983,16 @@
                 const dx = Math.abs(xe - x); const dy = -Math.abs(ye - y);
                 const sx = x < xe ? 1 : -1; const sy = y < ye ? 1 : -1;
                 let err = dx + dy;
+                const pw = this.tool === 'pencil' ? Math.max(1, Math.round(size)) : 1;
+                const po = Math.floor(pw / 2);
                 for (;;) {
-                    ctx.fillRect(x, y, 1, 1);
+                    ctx.fillRect(x - po, y - po, pw, pw);
                     if (x === xe && y === ye) break;
                     const e2 = 2 * err;
                     if (e2 >= dy) { err += dy; x += sx; }
                     if (e2 <= dx) { err += dx; y += sy; }
                 }
-                return C().union({ x: Math.min(x0, x1) - 1, y: Math.min(y0, y1) - 1, w: Math.abs(x1 - x0) + 3, h: Math.abs(y1 - y0) + 3 }, null);
+                return C().union({ x: Math.min(x0, x1) - 1 - po, y: Math.min(y0, y1) - 1 - po, w: Math.abs(x1 - x0) + 3 + pw, h: Math.abs(y1 - y0) + 3 + pw }, null);
             }
             if (shape === 'square' && this.tool === 'brush' || this.tool === 'eraser') {
                 const steps = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0)));
@@ -1033,7 +1041,7 @@
             this.maskBuffer(o.canvas);
             l.ctx.save();
             l.ctx.globalAlpha = o.alpha;
-            l.ctx.globalCompositeOperation = o.erase ? 'destination-out' : 'source-over';
+            l.ctx.globalCompositeOperation = o.erase ? 'destination-out' : (['brush', 'pencil'].includes(this.tool) ? C().BLENDS[this.opt.paintMode] || 'source-over' : 'source-over');
             l.ctx.drawImage(o.canvas, 0, 0);
             l.ctx.restore();
             this.strokeOverlay = null;
@@ -1092,7 +1100,7 @@
             const inset = this.opt.shape === 'fill' ? 0 : lw / 2;
             if (kind === 'rect') ctx.rect(x + inset, y + inset, Math.max(0, w - 2 * inset), Math.max(0, h - 2 * inset));
             else if (kind === 'ellipse') ctx.ellipse(x + w / 2, y + h / 2, Math.max(0, w / 2 - inset), Math.max(0, h / 2 - inset), 0, 0, Math.PI * 2);
-            else if (kind === 'roundrect') ctx.roundRect(x + inset, y + inset, Math.max(0, w - 2 * inset), Math.max(0, h - 2 * inset), Math.min(16, w / 4, h / 4));
+            else if (kind === 'roundrect') ctx.roundRect(x + inset, y + inset, Math.max(0, w - 2 * inset), Math.max(0, h - 2 * inset), Math.min(this.opt.radius === undefined ? 16 : this.opt.radius, w / 2, h / 2));
             if (this.opt.shape !== 'outline') ctx.fill();
             if (this.opt.shape !== 'fill') ctx.stroke();
         }
@@ -1456,7 +1464,8 @@
             if (t) box.innerText = t.content;
             this.text = { box, x: at.x, y: at.y, layer: layer || null, color: t ? t.color : this.fg };
             this.restyleText();
-            this.showTextBar(true);
+            if (this.modal.classList.contains('mp-no-settings')) this.showTextBar(true);
+            this.renderBar();
             setTimeout(() => {
                 box.focus();
                 const sel = root.getSelection && root.getSelection();
@@ -2131,7 +2140,8 @@
                 case 'paste-from': this.pasteFrom(); return;
                 case 'escape':
                     if (this.xf) { this.cancelTransform(); return; }
-                    if (this.cropBox) { this.cropBox = null; this.drawAnts(); return; }
+                    if (this.text) { this.cancelText(); return; }
+                    if (this.cropBox) { this.cropBox = null; this.drawAnts(); this.renderBar(); return; }
                     if (this.lasso) { this.lasso = null; this.selBase = null; this.setSelection(this.lassoBefore || null); return; }
                     this.cancelShape();
                     if (this.floating) this.commitFloating(); else this.setSelection(null);
@@ -2143,6 +2153,7 @@
                     if (this.polygon && this.tools.polygon.finish) this.tools.polygon.finish.call(this);
                     return;
                 case 'free-transform': this.startTransform(); return;
+                case 'align-left': case 'align-hcenter': case 'align-right': case 'align-top': case 'align-vcenter': case 'align-bottom': this.alignLayer(a.slice(6)); return;
                 case 'rulers': this.toggleRulers(); return;
                 case 'guides-show': this.guidesShown = !this.guidesShown; this.drawAnts(); return;
                 case 'guides-lock': this.guidesLocked = !this.guidesLocked; return;
@@ -2299,6 +2310,7 @@
             }
             this.xf = { src, cx: x + src.width / 2, cy: y + src.height / 2, w: src.width, h: src.height, angle: 0, flipX: 1, flipY: 1, step, from, x0: x, y0: y };
             this.doc.markDirty();
+            this.renderBar();
             this.drawXf();
             this.brushCursor();
         }
@@ -2354,6 +2366,7 @@
             if (deg > 180) deg -= 360;
             if (deg <= -180) deg += 360;
             this.status(`W: ${((t.w / t.src.width) * 100).toFixed(1)}%  H: ${((t.h / t.src.height) * 100).toFixed(1)}%  Angle: ${deg.toFixed(1)}\u00b0   Enter applies, Esc cancels.`);
+            this.updateBar();
             this.el('.mp-status-size').textContent = `${Math.round(t.w)}x${Math.round(t.h)}`;
         }
 
@@ -2402,6 +2415,7 @@
             this.drawAnts();
             this.status();
             this.sizeStatus();
+            this.renderBar();
         }
 
         cancelTransform() {
@@ -2428,6 +2442,7 @@
             this.drawAnts();
             this.status();
             this.sizeStatus();
+            this.renderBar();
         }
 
         /** Edit > Transform > Flip / Rotate: at once on the selection or the layer (Photoshop). */
@@ -2445,10 +2460,20 @@
 
         // ---- Crop tool ---------------------------------------------------------------------------
 
+        /** The crop's W / H from the options bar, or 0 for none. */
+        cropRatio() {
+            const r = this.opt.cropRatio;
+            if (!r || r === 'free') return 0;
+            let k = r === 'original' ? this.doc.width / this.doc.height : (() => { const [a, b] = r.split(':').map(Number); return a / b; })();
+            if (this.opt.cropSwap) k = 1 / k;
+            return k;
+        }
+
         commitCrop() {
             const c = this.cropBox;
             this.cropBox = null;
             this.drawAnts();
+            this.renderBar();
             if (!c) return;
             const r = { x: Math.round(c.x), y: Math.round(c.y), w: Math.round(c.w), h: Math.round(c.h) };
             if (r.w < 1 || r.h < 1) return;
@@ -2484,6 +2509,41 @@
                 layer.ctx.drawImage(piece, s.x, s.y);
             });
             this.setSelection(null);
+        }
+
+        /** The Move tool's Align buttons: the layer's pixels (or the floating piece) to the selection's edge, else the canvas's. */
+        alignLayer(how) {
+            const d = this.doc;
+            const target = d.selection ? { x: d.selection.x, y: d.selection.y, w: d.selection.w, h: d.selection.h } : { x: 0, y: 0, w: d.width, h: d.height };
+            const f = this.floating;
+            const b = f ? { x: f.x, y: f.y, w: f.w, h: f.h } : this.layerBounds(d.layer);
+            if (!b) return;
+            let dx = 0;
+            let dy = 0;
+            if (how === 'left') dx = target.x - b.x;
+            else if (how === 'right') dx = target.x + target.w - (b.x + b.w);
+            else if (how === 'hcenter') dx = Math.round(target.x + target.w / 2 - (b.x + b.w / 2));
+            else if (how === 'top') dy = target.y - b.y;
+            else if (how === 'bottom') dy = target.y + target.h - (b.y + b.h);
+            else dy = Math.round(target.y + target.h / 2 - (b.y + b.h / 2));
+            if (!dx && !dy) return;
+            if (f) { f.x += dx; f.y += dy; this.drawFloating(); return; }
+            if (!this.editable()) return;
+            const l = d.layer;
+            if (l.text) {
+                d.snapshotStep('Align', () => { l.text.x += dx; l.text.y += dy; this.renderTextLayer(l); });
+            } else {
+                const step = d.beginStep('Align', l);
+                const copy = C().makeCanvas(d.width, d.height);
+                copy.getContext('2d').drawImage(l.canvas, 0, 0);
+                l.ctx.clearRect(0, 0, d.width, d.height);
+                l.ctx.drawImage(copy, dx, dy);
+                step.grow({ x: 0, y: 0, w: d.width, h: d.height });
+                d.commitStep(step);
+            }
+            d.markDirty();
+            this.moveBoxStale = true;
+            this.drawAnts();
         }
 
         /** Image > Trim: crop away the transparent edges of the picture. */
@@ -2623,11 +2683,11 @@
         down(p) {
             if (!this.beginStroke(false)) return;
             this.last = p;
-            this.growStroke(this.strokeDab(p.x, p.y, p.x, p.y, this.tool === 'pencil' ? 1 : this.brushSize(), this.color()));
+            this.growStroke(this.strokeDab(p.x, p.y, p.x, p.y, this.tool === 'pencil' ? (this.opt.size > 0 ? this.opt.size : 1) : this.brushSize(), this.color()));
         },
         move(p, ev, down) {
             if (!down || !this.sctx) return;
-            this.growStroke(this.strokeDab(this.last.x, this.last.y, p.x, p.y, this.tool === 'pencil' ? 1 : this.brushSize(), this.color()));
+            this.growStroke(this.strokeDab(this.last.x, this.last.y, p.x, p.y, this.tool === 'pencil' ? (this.opt.size > 0 ? this.opt.size : 1) : this.brushSize(), this.color()));
             this.last = p;
         },
         up() { this.endStroke(); }
@@ -2723,6 +2783,8 @@
             const s = this.doc.selection;
             const step = this.doc.beginStep('Fill With Color', l);
             const rgba = C().parseColor(this.color());
+            // the options bar's Opacity works like the colour's alpha
+            rgba[3] = Math.round(rgba[3] * (this.opt.opacity / 100));
             const mask = s && (s.mask || (P() && P().maskOf(this.doc, s)));
             const tol = this.opt.tolerance > 32 ? this.opt.tolerance - 32 : 0;
             let rect;
@@ -2755,9 +2817,22 @@
             const x = Math.floor(p.x);
             const y = Math.floor(p.y);
             if (x < 0 || y < 0 || x >= this.doc.width || y >= this.doc.height) return;
-            const d = this.vctx.getImageData(x, y, 1, 1).data;
-            // the picture's colour; with Sample All Layers off, the active layer's (and its alpha)
-            const l = this.doc.layer.ctx.getImageData(x, y, 1, 1).data;
+            // Sample Size: the average of n x n pixels; Sample: the active layer (its alpha too) or all
+            const n = Number(this.opt.sampleSize) || 1;
+            const r0 = C().clampRect({ x: x - Math.floor(n / 2), y: y - Math.floor(n / 2), w: n, h: n }, this.doc.width, this.doc.height);
+            const avg = (ctx) => {
+                const a = ctx.getImageData(r0.x, r0.y, r0.w, r0.h).data;
+                const s = [0, 0, 0, 0];
+                let wsum = 0;
+                for (let i = 0; i < a.length; i += 4) {
+                    const al = a[i + 3];
+                    s[0] += a[i] * al; s[1] += a[i + 1] * al; s[2] += a[i + 2] * al; s[3] += al; wsum += al;
+                }
+                const k = a.length / 4;
+                return wsum ? [s[0] / wsum, s[1] / wsum, s[2] / wsum, s[3] / k] : [0, 0, 0, 0];
+            };
+            const d = avg(this.vctx);
+            const l = avg(this.doc.layer.ctx);
             const src = this.opt.sampleAll || this.doc.layer.isMask ? [d[0], d[1], d[2], 255] : (l[3] ? [l[0], l[1], l[2], l[3]] : [d[0], d[1], d[2], 255]);
             const c = root.paintColor ? root.paintColor.hex(...src) : `#${[d[0], d[1], d[2]].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
             if (this.right) this.bg = c; else this.fg = c;
@@ -2770,7 +2845,8 @@
         down(p, ev) {
             const r = this.workspace.getBoundingClientRect();
             const at = { x: p.x, y: p.y, cx: ev.clientX - r.left, cy: ev.clientY - r.top };
-            this.setZoom(this.right ? 1 : (this.zoom === 1 ? this.opt.zoomLevel || 4 : 1), at);
+            const out = (!!this.opt.zoomOut !== !!(ev && ev.altKey)) !== !!this.right;
+            this.setZoom(out ? this.zoom / 2 : this.zoom * 2, at);
             this.opt.zoomLevel = this.zoom;
             this.renderOptions();
         }
@@ -2963,6 +3039,20 @@
                 } else {
                     // Alt after the start draws from the centre (Photoshop)
                     this.sel.b = this.constrain(this.sel.a, p, ev, true);
+                    // the options bar's Style: Fixed Ratio keeps W:H, Fixed Size is W x H wherever it is dragged
+                    const st = this.opt.selStyle;
+                    if (st === 'ratio' || st === 'size') {
+                        const sx = p.x >= this.sel.a.x ? 1 : -1;
+                        const sy = p.y >= this.sel.a.y ? 1 : -1;
+                        let bw;
+                        let bh;
+                        if (st === 'size') { bw = this.opt.selW; bh = this.opt.selH; } else {
+                            const k = this.opt.selW / Math.max(1, this.opt.selH);
+                            bw = Math.max(Math.abs(p.x - this.sel.a.x), Math.abs(p.y - this.sel.a.y) * k);
+                            bh = bw / k;
+                        }
+                        this.sel.b = { x: this.sel.a.x + sx * bw, y: this.sel.a.y + sy * bh };
+                    }
                     let a = this.sel.a;
                     let b = this.sel.b;
                     if (ev && ev.altKey && this.selModeNow === 'new') { a = { x: 2 * a.x - b.x, y: 2 * a.y - b.y }; }
@@ -3075,6 +3165,20 @@
 
     T.move = {
         down(p, ev) {
+            // Auto-Select Layer: the top visible layer with a pixel under the pointer becomes the active one
+            if (this.opt.autoSelect && !this.doc.selection && !this.floating) {
+                const x = Math.floor(p.x);
+                const y = Math.floor(p.y);
+                const d = this.doc;
+                for (let i = d.layers.length - 1; i >= 0; i -= 1) {
+                    const l = d.layers[i];
+                    if (!l.visible || l.adjust || x < 0 || y < 0 || x >= d.width || y >= d.height) continue;
+                    if (l.ctx.getImageData(x, y, 1, 1).data[3] > 10) {
+                        if (i !== d.active) { d.active = i; d.editMask = false; if (root.paintLayers) root.paintLayers.refresh(this); this.moveBoxStale = true; }
+                        break;
+                    }
+                }
+            }
             if (this.doc.selection || this.floating) { T.select.down.call(this, p, ev); this.moveSel = true; return; }
             if (!this.editable()) return;
             const l = this.doc.layer;
@@ -3134,16 +3238,23 @@
             this.shape = null;
             this.clearOverlay();
             if (!s) return;
-            const c1 = this.right ? this.bg : this.fg;
-            const c2 = this.right ? this.fg : this.bg;
+            const flip = this.right !== !!this.opt.gradReverse;
+            const c1 = flip ? this.bg : this.fg;
+            const c2 = flip ? this.fg : this.bg;
             const sel = this.doc.selection;
             const rect = sel ? { x: sel.x, y: sel.y, w: sel.w, h: sel.h } : { x: 0, y: 0, w: this.doc.width, h: this.doc.height };
             this.commitToLayer('Gradient', (ctx) => {
-                const g = this.opt.gradient === 'radial'
-                    ? ctx.createRadialGradient(s.a.x, s.a.y, 0, s.a.x, s.a.y, Math.max(1, Math.hypot(s.b.x - s.a.x, s.b.y - s.a.y)))
-                    : ctx.createLinearGradient(s.a.x, s.a.y, s.b.x, s.b.y);
-                g.addColorStop(0, c1);
+                let g;
+                if (this.opt.gradient === 'radial') g = ctx.createRadialGradient(s.a.x, s.a.y, 0, s.a.x, s.a.y, Math.max(1, Math.hypot(s.b.x - s.a.x, s.b.y - s.a.y)));
+                else if (this.opt.gradient === 'reflected') {
+                    // the start is the middle: the gradient goes both ways from it
+                    g = ctx.createLinearGradient(2 * s.a.x - s.b.x, 2 * s.a.y - s.b.y, s.b.x, s.b.y);
+                    g.addColorStop(0, c2);
+                    g.addColorStop(0.5, c1);
+                } else g = ctx.createLinearGradient(s.a.x, s.a.y, s.b.x, s.b.y);
+                if (this.opt.gradient !== 'reflected') g.addColorStop(0, c1);
                 g.addColorStop(1, c2);
+                ctx.globalCompositeOperation = C().BLENDS[this.opt.paintMode] || 'source-over';
                 ctx.globalAlpha = this.opt.opacity / 100;
                 ctx.fillStyle = g;
                 ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
@@ -3160,7 +3271,12 @@
             }
             if (!this.cloneSrc) { this.status('Right-click to set where Clone Stamp copies from.'); return; }
             if (!this.beginStroke(false)) return;
-            this.cloneOffset = { x: this.cloneSrc.x - p.x, y: this.cloneSrc.y - p.y };
+            // Aligned: after the first stroke the source keeps its distance (Photoshop); otherwise
+            // every stroke starts from the source point again
+            if (!this.opt.cloneAligned || !this.cloneOffset || this.cloneOffsetFor !== this.cloneSrc) {
+                this.cloneOffset = { x: this.cloneSrc.x - p.x, y: this.cloneSrc.y - p.y };
+                this.cloneOffsetFor = this.cloneSrc;
+            }
             this.cloneSnap = C().makeCanvas(this.doc.width, this.doc.height);
             this.cloneSnap.getContext('2d').drawImage(this.doc.layer.canvas, 0, 0);
             this.last = p;
@@ -3320,16 +3436,26 @@
                 if (g.ex < 0) x0 = p.x; else if (g.ex > 0) x1 = p.x;
                 if (g.ey < 0) y0 = p.y; else if (g.ey > 0) y1 = p.y;
             }
+            // the options bar's Ratio: the box keeps W:H (the height follows the width)
+            const ratio = this.cropRatio();
+            if (ratio && !g.move) {
+                const wNow = Math.abs(x1 - x0);
+                const hWant = wNow / ratio;
+                if (g.fresh || g.ey > 0 || (!g.ey && g.ex)) { if (y1 >= y0) y1 = y0 + hWant; else y1 = y0 - hWant; } else y0 = y1 - hWant;
+            }
             x0 = Math.max(0, Math.round(Math.min(x0, x1))); x1 = Math.min(W, Math.round(Math.max(x0, x1)));
             y0 = Math.max(0, Math.round(Math.min(y0, y1))); y1 = Math.min(H, Math.round(Math.max(y0, y1)));
             this.cropBox = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
             this.el('.mp-status-size').textContent = `${x1 - x0}x${y1 - y0}`;
             this.drawAnts();
+            if (g.fresh && !this.cropBarShown) { this.cropBarShown = true; this.renderBar(); }
         },
         up() {
             this.cropDrag = null;
+            this.cropBarShown = false;
             if (this.cropBox && (this.cropBox.w < 2 || this.cropBox.h < 2)) this.cropBox = null;
             this.drawAnts();
+            this.renderBar();
             if (this.cropBox) this.status('Press Enter (or double-click) to crop; Esc cancels.');
         },
         dbl() { this.commitCrop(); }
@@ -3380,7 +3506,7 @@
                 const strength = this.opt.opacity / 100;
                 const hard = this.opt.hardness / 100;
                 const W = this.doc.width;
-                const sat = !this.right;
+                const sat = (this.opt.spongeMode !== 'desaturate') !== this.right;
                 const buf = this.smudgeBuf;
                 if (kind === 'smudge' && !buf) {
                     // the brush picks up the colours under its first dab
@@ -3419,7 +3545,8 @@
                                 const v = px[i + c];
                                 // the midtones move most (Photoshop's default range)
                                 const t = v / 255;
-                                const wgt = 0.35 + 2.6 * t * (1 - t);
+                                const range = this.opt.toneRange;
+                                const wgt = range === 'shadows' ? 1.4 * (1 - t) * (1 - t) + 0.1 : range === 'highlights' ? 1.4 * t * t + 0.1 : 0.35 + 2.6 * t * (1 - t);
                                 px[i + c] = kind === 'dodge' ? v + (255 - v) * k * wgt : v - v * k * wgt;
                             }
                         } else {

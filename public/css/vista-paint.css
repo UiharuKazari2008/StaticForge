@@ -1521,3 +1521,152 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
 .mp-window:not([data-tool="move"]) .mp-set-ratio {
     display: none;
 }
+
+/* ---- the options bar (paintBar.js): Photoshop's, the active tool's settings only ---- */
+
+.mp-client .mp-settings {
+    flex: 0 0 30px;
+    gap: 6px;
+    padding: 0 6px 0 4px;
+    overflow: hidden;
+    background: linear-gradient(#fbfbfb, #eeeeee);
+    white-space: nowrap;
+}
+
+.mp-client .mp-bar-tool {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 24px;
+    height: 24px;
+    border: 1px solid #b8b8b8;
+    border-radius: 2px;
+    background: linear-gradient(#fff, #e8e8e8);
+}
+
+.mp-client .mp-bar-tool .mp-tool-art {
+    margin: 0;
+}
+
+.mp-client .mp-bar-sep {
+    flex: none;
+    width: 2px;
+    height: 22px;
+    border-left: 1px solid #c8c8c8;
+    border-right: 1px solid #fff;
+}
+
+.mp-client .mp-bar-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    flex: none;
+}
+
+.mp-client .mp-bar-label,
+.mp-client .mp-bar-text,
+.mp-client .mp-bar-unit {
+    color: #000;
+}
+
+.mp-client .mp-bar-unit {
+    margin-left: -1px;
+    color: #444;
+}
+
+.mp-client .mp-bar-num {
+    width: 46px;
+    height: 20px;
+    padding: 0 2px;
+    font: inherit;
+}
+
+.mp-client .mp-bar-range {
+    width: 70px;
+}
+
+.mp-client .mp-bar-select {
+    height: 21px;
+    font: inherit;
+}
+
+.mp-client .mp-bar-check input {
+    margin: 0 2px 0 0;
+}
+
+.mp-client .mp-bar-seg {
+    display: inline-flex;
+    gap: 1px;
+    flex: none;
+}
+
+.mp-window .win7.mp-client .mp-settings .mp-bar-btn:not(:disabled) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 22px;
+    min-height: 0;
+    padding: 0 3px;
+    border: 1px solid transparent;
+    border-image: none;
+    border-radius: 2px;
+    background: none;
+    box-shadow: none;
+    color: #000;
+    font: 11px Tahoma, "Segoe UI", sans-serif;
+}
+
+.mp-window .win7.mp-client .mp-settings .mp-bar-btn.is-text:not(:disabled) {
+    padding: 0 6px;
+    border-color: #a0a0a0;
+    background: linear-gradient(#fdfdfd, #e5e5e5);
+}
+
+.mp-window .win7.mp-client .mp-settings .mp-bar-btn:hover {
+    border-color: #3c7fb1;
+    background: #e3f4fc;
+}
+
+.mp-window .win7.mp-client .mp-settings .mp-bar-btn.is-on {
+    border-color: #2c628b;
+    background: #c4e5f6;
+    box-shadow: inset 1px 1px 0 rgba(0, 0, 0, 0.12);
+}
+
+.mp-client .mp-bar-btn::before,
+.mp-client .mp-bar-btn::after {
+    content: none;
+}
+
+.mp-client .mp-bar-toggle {
+    width: 22px;
+    font-family: "Times New Roman", serif;
+    font-size: 13px;
+}
+
+.mp-client .mp-bar-art {
+    display: block;
+    width: 16px;
+    height: 16px;
+    background: url('/static_images/vista-paint/options-bar.png') 0 0 no-repeat;
+}
+
+.mp-client .mp-bar-check .mp-bar-art {
+    display: inline-block;
+    vertical-align: -4px;
+}
+
+.mp-client .mp-bar-color span {
+    display: block;
+    width: 18px;
+    height: 14px;
+    border: 1px solid #707070;
+}
+
+.mp-client .mp-bar-seg .mp-opt-shape {
+    display: block;
+    width: 18px;
+    height: 12px;
+}
