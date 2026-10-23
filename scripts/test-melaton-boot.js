@@ -239,6 +239,22 @@ const flush = () => new Promise((r) => setImmediate(r));
         h.ctl.handleKey('Enter');
         assert.strictEqual(await run3, 'teal');
 
+        // the server unreachable at the POST: the boot agent, Operating System not found, no boot
+        // screen; the server answering again reboots into a normal start
+        h = harness([networkErr(), networkErr(), networkErr(), json(true)], { bios, yieldSleep: true });
+        const runDown = h.ctl.runChecks();
+        for (let i = 0; i < 4000 && h.ctl.bios.state !== 'halt'; i++) await flush();
+        assert.strictEqual(h.ctl.bios.state, 'halt');
+        assert.ok(h.ctl.bios.screen.text(0).startsWith('Operating System not found'));
+        assert.deepStrictEqual(h.t.screens(), ['bios'], 'neither the boot screen nor the Boot Manager');
+        assert.strictEqual(await runDown, 'teal');
+        assert.deepStrictEqual(h.t.screens(), ['bios', 'black', 'boot', 'black']);
+
+        // a busy server (the probe timed out) is not a dead one: the boot screen waits for it
+        h = harness([timeoutErr(), json(true)], { bios, yieldSleep: true });
+        assert.strictEqual(await h.ctl.runChecks(), 'teal');
+        assert.ok(!h.t.screens().includes('menu'));
+
         // nothing installed: the Hard Drive is skipped and the installation media boots
         h = harness([json(true)], { bios, fresh: true, yieldSleep: true });
         const run4 = h.ctl.runChecks();

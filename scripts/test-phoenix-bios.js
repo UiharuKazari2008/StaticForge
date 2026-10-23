@@ -221,6 +221,44 @@ function harness(opts = {}) {
     assert.deepStrictEqual(await p, { device: 'hdd', via: 'order' });
     assert.ok(h.bios.screen.find('PXE-M0F: Exiting Intel Boot Agent.'), 'the agent gave up before the disk booted');
 
+    // ---------- no server at the POST: the boot agent gives up, Operating System not found ----------
+    {
+        h = harness();
+        let down = 'dhcp';
+        let pinAsked = false;
+        let back = null;
+        p = h.bios.post({
+            hasOs: true,
+            serverDown: async () => down,
+            requireBootPin: async () => { pinAsked = true; return false; },
+            serverBack: (stopped) => new Promise((r) => { back = () => r(!stopped()); })
+        });
+        await h.until(() => h.bios.state === 'pxe');
+        await h.until(() => h.bios.screen.find('PXE-E51: No DHCP or proxyDHCP offers were received.'), 4000);
+        assert.ok(/^DHCP\.+[|/\-\\]$/.test(h.row(4)), 'the DHCP spinner line stays');
+        await h.until(() => h.bios.state === 'halt');
+        assert.ok(!h.bios.screen.find('PXE-E51'), 'the halt clears the agent');
+        assert.strictEqual(h.row(0), 'Operating System not found');
+        assert.strictEqual(pinAsked, false, 'no PIN without a server');
+        await h.settle();
+        assert.strictEqual(h.bios.state, 'halt', 'it stays halted');
+        down = null;
+        back();
+        assert.deepStrictEqual(await p, { device: 'hdd', via: 'order' }, 'the server back: a reboot, then the disk');
+        assert.strictEqual(pinAsked, true, 'the PIN is asked again once there is a server');
+
+        // offline: the media test fails; a key reboots
+        h = harness();
+        down = 'media';
+        p = h.bios.post({ hasOs: false, serverDown: async () => down });
+        await h.until(() => h.bios.state === 'pxe');
+        await h.until(() => h.bios.screen.find('PXE-E61: Media test failure, check cable'));
+        await h.until(() => h.bios.state === 'halt');
+        down = null;
+        h.bios.handleKey('Enter');
+        assert.deepStrictEqual(await p, { device: 'cdrom', via: 'order' }, 'nothing installed boots the media once the network is back');
+    }
+
     // ---------- the POST's bar follows real work ----------
     {
         h = harness();

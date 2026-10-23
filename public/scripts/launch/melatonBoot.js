@@ -3,7 +3,9 @@
  *
  *   bios     Phoenix BIOS POST first (phoenixBios.js, #611): the logo splash with the Starting
  *            bar for ~2 s, F2 = Setup Utility, ESC = Boot Menu, F12 = network boot, F8 held
- *            for the Boot Manager. Its boot order decides what starts: the Hard Drive is
+ *            for the Boot Manager. No server at the POST (offline, unreachable): the network boot
+ *            agent and "Operating System not found" instead of the boot screen and the menu.
+ *            Its boot order decides what starts: the Hard Drive is
  *            Melaton when it is installed (an install record, or a populated static cache);
  *            the CD-ROM Drive is the installation media. A device with nothing installed falls
  *            through to the media like a real PC with the DVD in the drive.
@@ -550,9 +552,40 @@
                 if (!gateConfigured) return false;
                 return (await checkSession(env)) === 'login';
             };
+            // The network card's verdict: the POST's probe failed (an answer that is not /status
+            // too) and one more does: no gate, no PIN, the boot agent and "Operating System not
+            // found". A slow answer (timeout) is a busy server, left to the boot screen.
+            const pxeReason = (probe) => (!probe ? null
+                : probe.kind === 'offline' ? 'media'
+                    : probe.kind === 'network' ? 'dhcp'
+                        : probe.kind === 'http' ? 'tftp' : null);
+            const serverDown = async (results) => {
+                if (!pxeReason(results.server)) return null;
+                const again = await probeStatus(env);
+                if (run !== ctl.runId) return null;
+                ctl.lastProbe = again;
+                if (again.kind === 'json') {
+                    ctl.serverStatus = again.data;
+                    rememberVistaLogon(env, again.data);
+                    rememberSiteAccess(env, again.data);
+                }
+                return pxeReason(again);
+            };
+            // while it halts: the server answering again reboots, as the Boot Manager's countdown did
+            const serverBack = async (stopped) => {
+                for (;;) {
+                    await env.sleep(config.pollMs);
+                    if (stopped() || run !== ctl.runId) return false;
+                    const probe = await probeStatus(env);
+                    if (stopped() || run !== ctl.runId) return false;
+                    if (probe.kind === 'json') return true;
+                }
+            };
             const outcome = await bios.post({
                 tasks,
                 hasOsAfter,
+                serverDown,
+                serverBack,
                 run: { cancelled: () => run !== ctl.runId },
                 requireGateway,
                 // past the gate the server answers the full status (logon name, domain, key)
@@ -1628,10 +1661,10 @@
             if (ctl.setup && ctl.setup.countdownTimer) env.clearInterval(ctl.setup.countdownTimer);
             ctl.setup = null;
             ctl.install = null;
-            if (name === 'bios' || name === 'bios-setup' || name === 'bios-menu' || name === 'bios-diag') {
+            if (name === 'bios' || name === 'bios-setup' || name === 'bios-menu' || name === 'bios-diag' || name === 'bios-pxe') {
                 show('bios');
                 const bios = ensureBios();
-                if (bios) bios.preview({ bios: 'splash', 'bios-setup': 'setup', 'bios-menu': 'bootmenu', 'bios-diag': 'diag' }[name]);
+                if (bios) bios.preview({ bios: 'splash', 'bios-setup': 'setup', 'bios-menu': 'bootmenu', 'bios-diag': 'diag', 'bios-pxe': 'pxe' }[name]);
                 return undefined;
             }
             if (name === 'loading') return showLoading(0.62);

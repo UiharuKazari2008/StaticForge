@@ -18,6 +18,9 @@
  *   Boot order               the first device that can boot is started: Hard Drive is Melaton when
  *                            it is installed, CD-ROM Drive is the installation media (Setup), and
  *                            Removable Devices / Network fail over to the next one like hardware
+ *   No server                the POST's server probe failed (opts.serverDown): the Intel Boot
+ *                            Agent gives up (E61 offline, E51 unreachable, E53 a wrong answer),
+ *                            then "Operating System not found" until a key or the server reboots
  *   Boot-time Diagnostic     the text POST (memory count, drives) instead of the logo splash
  *   NumLock, passwords, ...  stored, never enforced: nothing here can lock a device out
  *
@@ -393,7 +396,8 @@
             if (paint) paint(screen, bios);
         }
 
-        function waitKey(ms) {
+        /** A key (or null after ms, or when `also` resolves first). */
+        function waitKey(ms, also) {
             return new Promise((resolve) => {
                 let done = false;
                 function finish(key) {
@@ -405,6 +409,7 @@
                 }
                 bios.keyWaiters.push(finish);
                 if (ms != null) env.sleep(ms).then(() => finish(null));
+                if (also) also.then(() => finish(null));
             });
         }
 
@@ -575,34 +580,64 @@
             return key != null;
         }
 
-        async function pxe() {
+        /**
+         * The Intel Boot Agent. reason: what the POST's network card found (opts.serverDown):
+         * 'media' no link (the device is offline), 'dhcp' nobody answered (the server is not
+         * reachable), anything else a server that answered with nothing to boot (E53, also
+         * F12 or Network in the boot order with the server up).
+         */
+        async function pxe(reason) {
             bios.state = 'pxe';
             screen.mode = 'text';
             screen.clear(C.black, C.grey);
-            const lines = [
-                'Intel(R) Boot Agent GE v1.3.15',
-                'Copyright (C) 1997-2026, Intel Corporation',
-                '',
-                'CLIENT MAC ADDR: 00 0C 29 4D 53 46  GUID: 564D4D45-4C45-544F-4E46-580000000000',
-                'PXE-E53: No boot filename received',
-                '',
-                'PXE-M0F: Exiting Intel Boot Agent.'
-            ];
-            for (let i = 0; i < lines.length; i++) {
-                screen.put(0, i, lines[i]);
+            const head = ['Intel(R) Boot Agent GE v1.3.15', 'Copyright (C) 1997-2026, Intel Corporation', ''];
+            const mac = 'CLIENT MAC ADDR: 00 0C 29 4D 53 46  GUID: 564D4D45-4C45-544F-4E46-580000000000';
+            let row = 0;
+            const line = async (text, ms) => {
+                screen.put(0, row++, text);
                 render();
-                await env.sleep(i === 3 ? config.pxeMs * 0.6 : config.diagStepMs);
+                await env.sleep(ms == null ? config.diagStepMs : ms);
+            };
+            for (const text of head) await line(text);
+            if (reason === 'media') {
+                await line('Initializing and establishing link...', config.pxeMs * 0.6);
+                await line('PXE-E61: Media test failure, check cable');
+            } else if (reason === 'dhcp') {
+                await line(mac);
+                // DHCP with the spinner the agent turns while it waits for an offer
+                const spin = '|/-\\';
+                const t0 = env.now();
+                for (let i = 0; env.now() - t0 < config.pxeMs; i++) {
+                    screen.put(0, row, 'DHCP' + '.'.repeat(Math.min(5, 1 + (i >> 2))) + spin[i % 4]);
+                    render();
+                    await env.sleep(90);
+                }
+                row++;
+                await line('PXE-E51: No DHCP or proxyDHCP offers were received.');
+            } else {
+                await line(mac, config.pxeMs * 0.6);
+                await line('PXE-E53: No boot filename received');
             }
-            await env.sleep(config.diagStepMs * 3);
+            await line('');
+            await line('PXE-M0F: Exiting Intel Boot Agent.', config.diagStepMs * 3);
         }
 
-        async function halt() {
+        /**
+         * "Operating System not found" until a key reboots. until(stopped): resolves true when
+         * the device should reboot by itself (the server is back); polled no longer once stopped().
+         */
+        async function halt(until) {
             bios.state = 'halt';
             screen.mode = 'text';
             screen.clear(C.black, C.grey);
             screen.put(0, 0, 'Operating System not found');
             render();
-            await waitKey(null);
+            let stopped = false;
+            const back = typeof until === 'function'
+                ? Promise.resolve(until(() => stopped)).then((ok) => (ok ? true : new Promise(() => {})))
+                : null;
+            await waitKey(null, back);
+            stopped = true;
         }
 
         // The open password box: bios.bootPin { title, label, entry, maxLength, submit, resolve }
@@ -736,14 +771,18 @@
                     await env.sleep(50);
                 }
                 bios.work = work.results();
+                // The network card found no server (opts.serverDown → a pxe() reason): no gate or
+                // PIN to ask it, nothing any device can boot; Setup and the Boot Menu still open
+                const down = typeof opts.serverDown === 'function' ? await opts.serverDown(bios.work) : null;
+                if (run && run.cancelled && run.cancelled()) return 'cancelled';
                 // Gate 1 before the PIN: the Gateway Password when the key is stale or missing
-                if (typeof opts.requireGateway === 'function' && await opts.requireGateway()) {
+                if (!down && typeof opts.requireGateway === 'function' && await opts.requireGateway()) {
                     const gatewayOk = await promptGatewayPassword();
                     if (gatewayOk === 'cancelled') return 'cancelled';
                     if (typeof opts.onGateway === 'function') await opts.onGateway();
                 }
-                const needBootPin = cmos.pwBoot === 'Enabled'
-                    || (typeof opts.requireBootPin === 'function' && !!(await opts.requireBootPin()));
+                const needBootPin = !down && (cmos.pwBoot === 'Enabled'
+                    || (typeof opts.requireBootPin === 'function' && !!(await opts.requireBootPin())));
                 if (needBootPin) {
                     const bootPinOk = await promptBootPinLogin();
                     if (bootPinOk === 'cancelled') return 'cancelled';
@@ -767,6 +806,14 @@
                     } else if (pick) {
                         order = [pick].concat(order.filter((d) => d !== pick));
                     }
+                }
+                if (down) {
+                    // the boot agent tries the network and gives up, then the POST has nothing left;
+                    // a key (or the server answering again, opts.serverBack) reboots
+                    await pxe(down);
+                    await halt(opts.serverBack);
+                    bios.request = null;
+                    continue;
                 }
                 const hddFirst = order.indexOf('hdd') < order.indexOf('cdrom');
                 for (const device of order) {
@@ -1524,6 +1571,10 @@
             }
             if (name === 'cdprompt') {
                 cdPrompt();
+                return;
+            }
+            if (name === 'pxe') {
+                pxe('dhcp').then(() => halt());
             }
         }
 
