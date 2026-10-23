@@ -363,18 +363,18 @@
             case 'adj-bw': w.adjust('Black and White', (r, g, b) => { const v = 0.299 * r + 0.587 * g + 0.114 * b; return [v, v, v]; }); return true;
             case 'adj-sepia': w.adjust('Sepia', (r, g, b) => [Math.min(255, 0.393 * r + 0.769 * g + 0.189 * b), Math.min(255, 0.349 * r + 0.686 * g + 0.168 * b), Math.min(255, 0.272 * r + 0.534 * g + 0.131 * b)]); return true;
             case 'adj-autolevel': autoLevel(w); return true;
-            case 'adj-brightness': adjustDialog(w, 'Brightness / Contrast', [['Brightness', -100, 100, 0], ['Contrast', -100, 100, 0]], ([b, c]) => {
+            case 'adj-brightness': if (root.paintPro) { root.paintPro.adjustPixels(w, 'brightness'); return true; } adjustDialog(w, 'Brightness / Contrast', [['Brightness', -100, 100, 0], ['Contrast', -100, 100, 0]], ([b, c]) => {
                 const f = (259 * (c * 2.55 + 255)) / (255 * (259 - c * 2.55));
                 return (r, g, bl) => [f * (r - 128) + 128 + b * 2.55, f * (g - 128) + 128 + b * 2.55, f * (bl - 128) + 128 + b * 2.55];
             }); return true;
-            case 'adj-hue': adjustDialog(w, 'Hue / Saturation', [['Hue', -180, 180, 0], ['Saturation', 0, 200, 100], ['Lightness', -100, 100, 0]], ([h, s, l]) => (r, g, b) => {
+            case 'adj-hue': if (root.paintPro) { root.paintPro.adjustPixels(w, 'hue'); return true; } adjustDialog(w, 'Hue / Saturation', [['Hue', -180, 180, 0], ['Saturation', 0, 200, 100], ['Lightness', -100, 100, 0]], ([h, s, l]) => (r, g, b) => {
                 const hsl = C().rgbToHsl(r, g, b);
                 let hh = (hsl[0] + h / 360) % 1;
                 if (hh < 0) hh += 1;
                 const ll = l >= 0 ? hsl[2] + (1 - hsl[2]) * (l / 100) : hsl[2] * (1 + l / 100);
                 return C().hslToRgb(hh, Math.min(1, hsl[1] * (s / 100)), ll);
             }); return true;
-            case 'adj-posterize': adjustDialog(w, 'Posterize', [['Levels', 2, 64, 16]], ([n]) => {
+            case 'adj-posterize': if (root.paintPro) { root.paintPro.adjustPixels(w, 'posterize'); return true; } adjustDialog(w, 'Posterize', [['Levels', 2, 64, 16]], ([n]) => {
                 const step = 255 / (n - 1);
                 return (r, g, b) => [Math.round(r / step) * step, Math.round(g / step) * step, Math.round(b / step) * step];
             }); return true;

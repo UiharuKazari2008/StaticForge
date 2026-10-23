@@ -1390,12 +1390,15 @@
         brightness: {
             label: 'Brightness/Contrast',
             fields: (w, p) => [
-                { type: 'slider', label: 'Brightness', min: -150, max: 150, def: p ? p[0] : 0 },
-                { type: 'slider', label: 'Contrast', min: -50, max: 100, def: p ? p[1] : 0 }
+                { type: 'slider', label: 'Brightness', min: -100, max: 100, def: p ? p[0] : 0 },
+                { type: 'slider', label: 'Contrast', min: -100, max: 99, def: p ? p[1] : 0 }
             ],
+            // Photoshop's (legacy) Brightness/Contrast, so a PSD looks the same: the brightness added,
+            // then a stretch round 127.5 (checked against Photoshop 2022 on Ruiko)
             make: ([br, ct]) => {
-                const f = (259 * (ct * 2.55 + 255)) / (255 * (259 - ct * 2.55));
-                return perPixel((r, g, b) => [f * (r - 128) + 128 + br, f * (g - 128) + 128 + br, f * (b - 128) + 128 + br]);
+                const k = ct > 0 ? 1 / (1 - Math.min(ct, 99.9) / 100) : 1 + ct / 100;
+                const f = (v) => 127.5 + (v + br - 127.5) * k;
+                return perPixel((r, g, b) => [f(r), f(g), f(b)]);
             }
         },
         exposure: {
@@ -1498,9 +1501,10 @@
         posterize: {
             label: 'Posterize',
             fields: (w, p) => [{ type: 'slider', label: 'Levels', min: 2, max: 255, def: p ? p[0] : 4 }],
+            // Photoshop's steps: floor(v * levels / 256), spread back over 0-255
             make: ([n]) => {
-                const st = 255 / (n - 1);
-                return perPixel((r, g, b) => [Math.round(r / st) * st, Math.round(g / st) * st, Math.round(b / st) * st]);
+                const f = (v) => Math.round((Math.min(n - 1, Math.floor((v * n) / 256)) * 255) / (n - 1));
+                return perPixel((r, g, b) => [f(r), f(g), f(b)]);
             }
         },
         threshold: {
@@ -2245,7 +2249,7 @@
     root.paintPro = {
         maskOf, fromMask, combine, maskCanvas, outline, morph, feather, invert, heal,
         session, filterDialog, fieldDialog, gaussian, curveLut, levelsLut,
-        selectMenu, adjustMenu, filterMenu, adjustLayerMenu, registerAdjusters, action, ADJ,
+        selectMenu, adjustMenu, filterMenu, adjustLayerMenu, registerAdjusters, adjustPixels, action, ADJ,
         toggleNavigator, toggleInfo, navOpen, infoOpen, navRefresh, navBox, info
     };
 })(typeof window !== 'undefined' ? window : globalThis);
