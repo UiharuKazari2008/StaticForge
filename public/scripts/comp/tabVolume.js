@@ -5,6 +5,13 @@
  * slider, speaker button, Mixer footer.
  *
  * localStorage desktop-tab-volume (0-100) and desktop-tab-muted (`1`).
+ *
+ * Apps with their own audio (Alchemy's remote browser, grimoireRemoteBrowser.js) join the flyout
+ * as a column of their own, as Vista's Volume Mixer lists applications beside the device, and add
+ * their options to the icon's right-click menu (Yozora #628): window.tabVolume.registerSource({
+ * id, label, icon, isActive(), getVolume(), setVolume(v, final), isMuted(), setMuted(m),
+ * menuItems(), onMenuAction(action, item) }). tabVolume.onChange(fn) hears the master level (an
+ * app scales its own stream by masterGain(), which an iframe's audio would otherwise escape).
  */
 (function () {
     const VOLUME_KEY = 'desktop-tab-volume';
@@ -13,6 +20,8 @@
     let level = 100;
     let muted = false;
     let flyout = null;
+    const sources = [];
+    const changeListeners = [];
 
     function masterGain() {
         if (muted || level <= 0) return 0;
@@ -124,8 +133,61 @@
         }
     }
 
+    function notifyChange() {
+        changeListeners.forEach((fn) => { try { fn(masterGain()); } catch (_err) { /* a listener failed */ } });
+    }
+
+    /** The app columns: one per registered source that has audio now. */
+    function paintSources() {
+        if (!flyout) return;
+        const host = flyout.querySelector('.volume-flyout-apps');
+        if (!host) return;
+        const live = sources.filter((src) => { try { return src.isActive(); } catch (_err) { return false; } });
+        flyout.classList.toggle('has-apps', live.length > 0);
+        host.hidden = !live.length;
+        const seen = new Set();
+        live.forEach((src) => {
+            seen.add(src.id);
+            let col = host.querySelector('.volume-flyout-column[data-source="' + src.id + '"]');
+            if (!col) {
+                col = document.createElement('div');
+                col.className = 'volume-flyout-column is-app';
+                col.dataset.source = src.id;
+                col.innerHTML = ''
+                    + '<img class="volume-flyout-app-icon" alt="" width="16" height="16">'
+                    + '<div class="volume-flyout-slider is-app win7"><div class="is-vertical">'
+                    + '<input type="range" class="volume-flyout-range" min="0" max="100" step="1">'
+                    + '</div></div>'
+                    + '<button type="button" class="volume-flyout-mute"></button>';
+                const range = col.querySelector('input');
+                range.addEventListener('input', () => src.setVolume(Number(range.value), false));
+                range.addEventListener('change', () => src.setVolume(Number(range.value), true));
+                col.querySelector('.volume-flyout-mute').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    Promise.resolve(src.setMuted(!src.isMuted())).then(paintSources);
+                });
+                host.appendChild(col);
+            }
+            const img = col.querySelector('.volume-flyout-app-icon');
+            if (src.icon && img.getAttribute('src') !== src.icon) img.setAttribute('src', src.icon);
+            img.title = src.label;
+            const appMuted = !!src.isMuted();
+            const range = col.querySelector('input');
+            range.setAttribute('aria-label', src.label + ' volume');
+            if (document.activeElement !== range) range.value = String(appMuted ? 0 : src.getVolume());
+            col.classList.toggle('is-muted', appMuted);
+            const btn = col.querySelector('.volume-flyout-mute');
+            btn.setAttribute('aria-label', 'Mute ' + src.label);
+            btn.title = (appMuted ? 'Unmute ' : 'Mute ') + src.label;
+        });
+        host.querySelectorAll('.volume-flyout-column[data-source]').forEach((col) => {
+            if (!seen.has(col.dataset.source)) col.remove();
+        });
+    }
+
     function paintFlyout() {
         if (!flyout) return;
+        paintSources();
         flyout.classList.toggle('is-muted', muted || level <= 0);
         const range = flyout.querySelector('.volume-flyout-range');
         if (range) range.value = String(muted ? 0 : level);
@@ -141,6 +203,7 @@
         applyMaster();
         paintIcon();
         paintFlyout();
+        notifyChange();
     }
 
     function setMuted(next) {
@@ -150,6 +213,7 @@
         applyMaster();
         paintIcon();
         paintFlyout();
+        notifyChange();
     }
 
     function ensureFlyout() {
@@ -158,12 +222,17 @@
         flyout.id = 'volumeFlyout';
         flyout.className = 'volume-flyout hidden';
         flyout.innerHTML = ''
+            + '<div class="volume-flyout-columns">'
+            + '<div class="volume-flyout-column is-device">'
             + '<div class="volume-flyout-slider win7">'
             + '<div class="is-vertical">'
             + '<input type="range" class="volume-flyout-range" min="0" max="100" step="1" aria-label="Volume">'
             + '</div>'
             + '</div>'
             + '<button type="button" class="volume-flyout-mute" aria-label="Mute"></button>'
+            + '</div>'
+            + '<div class="volume-flyout-apps" hidden></div>'
+            + '</div>'
             + '<div class="volume-flyout-mixer">Mixer</div>';
         document.body.appendChild(flyout);
 
@@ -181,7 +250,7 @@
             }
         });
 
-        flyout.querySelector('.volume-flyout-mute').addEventListener('click', (e) => {
+        flyout.querySelector('.is-device .volume-flyout-mute').addEventListener('click', (e) => {
             e.stopPropagation();
             setMuted(!muted);
         });
@@ -228,6 +297,41 @@
         else showFlyout();
     }
 
+    /** Right-click: Open Volume Mixer and Sounds as on Vista, then each app's own options. */
+    function showMenu(e) {
+        const icon = document.getElementById('volumeTrayIcon');
+        const cm = window.contextMenu;
+        if (!icon || !cm || typeof cm.attachToElement !== 'function') return;
+        const sections = [{
+            type: 'list',
+            items: [
+                { text: 'Open Volume Mixer', icon: 'fas fa-sliders', action: 'volume-mixer' },
+                { text: 'Sounds', icon: 'fas fa-music', action: 'volume-sounds' }
+            ]
+        }];
+        sources.forEach((src) => {
+            let items = [];
+            try { items = typeof src.menuItems === 'function' ? src.menuItems() : []; } catch (_err) { items = []; }
+            if (items && items.length) {
+                sections.push({ type: 'list', title: src.label, items: items.map((it) => Object.assign({}, it, { action: it.action ? 'volume-src:' + src.id + ':' + it.action : it.action })) });
+            }
+        });
+        cm.attachToElement(icon, {
+            sections,
+            onAction: (action, target, item) => {
+                if (action === 'volume-mixer') { showFlyout(); return; }
+                if (action === 'volume-sounds') {
+                    if (window.personalizationDialogs && typeof window.personalizationDialogs.openSound === 'function') window.personalizationDialogs.openSound();
+                    return;
+                }
+                const m = /^volume-src:([^:]+):(.*)$/.exec(String(action || ''));
+                const src = m && sources.find((s) => s.id === m[1]);
+                if (src && typeof src.onMenuAction === 'function') src.onMenuAction(m[2], item);
+            }
+        });
+        cm.showMenu(e, icon);
+    }
+
     function wireIcon() {
         const icon = document.getElementById('volumeTrayIcon');
         if (!icon || icon.dataset.volumeWired === '1') return;
@@ -237,8 +341,32 @@
             e.stopPropagation();
             toggleFlyout();
         });
+        icon.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            hideFlyout();
+            showMenu(e);
+        });
         paintIcon();
     }
+
+    window.tabVolume = {
+        masterGain,
+        registerSource(src) {
+            if (!src || !src.id || sources.some((s) => s.id === src.id)) return;
+            sources.push(src);
+            paintFlyout();
+        },
+        refresh() {
+            if (flyout && !flyout.classList.contains('hidden')) {
+                paintFlyout();
+                positionFlyout();
+            }
+        },
+        onChange(fn) {
+            if (typeof fn === 'function') changeListeners.push(fn);
+        }
+    };
 
     readStored();
     writeStored();

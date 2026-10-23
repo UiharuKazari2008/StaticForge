@@ -714,16 +714,21 @@
         }
 
         /** Add to Favorites: the web page on show joins the Alchemy bookmarks (again: leaves them). */
+        /** The address a favorite keeps: a web page's, or a Grimoire wiki page's own (#628). */
+        currentBookmarkUrl() {
+            return typeof root.grimoireShellBookmarkUrl === 'function' ? root.grimoireShellBookmarkUrl(this.shell(), this.host) : this.currentWebUrl();
+        }
+
         async toggleFavorite() {
-            const url = this.currentWebUrl();
+            const url = this.currentBookmarkUrl();
             if (!url || typeof root.grimoireSaveAlchemySettings !== 'function') return;
             await this.loadBookmarks();
             const shell = this.shell();
-            const top = shell && shell.history ? shell.history[shell.historyIndex] : null;
             const has = this.bookmarks.some((row) => row.url === url);
+            const title = typeof root.grimoireShellBookmarkTitle === 'function' ? root.grimoireShellBookmarkTitle(shell, url) : url;
             const next = has
                 ? this.bookmarks.filter((row) => row.url !== url)
-                : [{ url, title: (top && top.title) || url }].concat(this.bookmarks);
+                : [{ url, title }].concat(this.bookmarks);
             try {
                 await root.grimoireSaveAlchemySettings({ bookmarks: next });
                 this.bookmarks = next;
@@ -1076,7 +1081,8 @@
             const zoneArt = `${ART}/${web ? 'zone-internet' : 'zone-intranet'}.png`;
             if (this.zoneIcon && this.zoneIcon.getAttribute('src') !== zoneArt) this.zoneIcon.setAttribute('src', zoneArt);
 
-            const url = web ? this.currentWebUrl() : '';
+            // wiki pages are favorites too (#628)
+            const url = this.currentBookmarkUrl();
             this.addFavBtn.disabled = !url;
             const fav = !!url && this.bookmarks.some((row) => row.url === url);
             this.addFavBtn.title = fav ? 'Remove from Favorites' : 'Add to Favorites';
