@@ -782,6 +782,7 @@
                 }
             } else if (alt) {
                 if (ev.key === 'Backspace' || ev.key === 'Delete') action = 'fill-fg';
+                else if (ev.key === 'F9') action = 'actions';
             } else if (ev.key === 'F4') action = 'layer-properties';
             else if (ev.key === 'F7') action = 'layers';
             else if (ev.key === 'F8') action = 'history';
@@ -2174,6 +2175,7 @@
                     { text: 'Save As...', action: 'save-as' },
                     { text: 'Save to Gallery', action: 'save-gallery' },
                     { separator: true },
+                    { text: 'Automate', hasSubmenu: true, disabled: !root.paintActions, submenu: [{ text: 'Batch...', action: 'automate-batch' }] },
                     { text: 'From Scanner or Camera...', action: 'camera' },
                     { separator: true },
                     { text: 'Print...', subtext: 'Ctrl+P', action: 'print' },
@@ -2232,6 +2234,7 @@
                     { text: 'New Guide...', action: 'guides-new' },
                     { text: 'Clear Guides', action: 'guides-clear', disabled: !this.doc.guides.length },
                     { text: 'Info', action: 'pro-info', showIndicator: true, checked: !!(P() && P().infoOpen(this)) },
+                    { text: 'Actions', subtext: 'Alt+F9', action: 'actions', showIndicator: true, checked: !!(root.paintActions && root.paintActions.panelOpen(this)) },
                     { text: 'Layer Comps', action: 'layer-comps', showIndicator: true, checked: !!(root.paintComps && root.paintComps.panelOpen(this)) },
                     { text: 'Paths', action: 'paths', showIndicator: true, checked: !!(root.paintPath && root.paintPath.panelOpen(this)) },
                     { text: 'Brushes', subtext: 'F5', action: 'brushes', showIndicator: true, checked: !!(root.paintBrush && root.paintBrush.panelOpen(this)) },
@@ -2281,6 +2284,7 @@
             const D = root.paintDialogs;
             // the menu action a filter came from (a smart filter is kept by it)
             this.filterAction = a;
+            if (root.paintActions) root.paintActions.record(this, a);
             switch (a) {
                 case 'new':
                     if (!await this.confirmDiscard()) return;
@@ -2378,6 +2382,7 @@
                     if (root.paintPath && root.paintPath.action(this, a)) return;
                     if (root.paintComps && root.paintComps.action(this, a)) return;
                     if (root.paintWarp && root.paintWarp.action(this, a)) return;
+                    if (root.paintActions && root.paintActions.action(this, a)) return;
                     if (P() && P().action(this, a)) return;
                     if (root.paintColor && root.paintColor.action(this, a)) return;
                     break;

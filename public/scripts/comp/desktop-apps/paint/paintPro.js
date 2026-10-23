@@ -998,6 +998,7 @@
                 smartKeep(w, S, label, make, vals, opts.pad || 0);
                 S.commit();
                 w.lastFilter = { id: w.filterAction, label, make, vals, pad: opts.pad || 0 };
+                if (root.paintActions) root.paintActions.noteFilter(w, w.lastFilter);
             },
             cancel() { S.cancel(); }
         });
@@ -1011,6 +1012,7 @@
         smartKeep(w, S, label, () => fn, [], pad);
         S.commit();
         w.lastFilter = { id: w.filterAction, label, make: () => fn, vals: [], pad };
+        if (root.paintActions) root.paintActions.noteFilter(w, w.lastFilter);
     }
 
     // ---- Levels ------------------------------------------------------------------------------
