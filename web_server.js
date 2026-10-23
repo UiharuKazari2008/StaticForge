@@ -3215,18 +3215,32 @@ app.get('/traces/:id', authMiddleware, adminOnlyMiddleware, (req, res) => {
             if (!vfsDb().canSessionAccessVfsFile(buildVfsSession(req), file, { workspaceExists })) {
                 return denyVfsFileAccess(res, false);
             }
+            // Explorer's preview cache (sw.js EXPLORER_PREVIEW_CACHE) keys on ?v=, the same value as this ETag.
+            const version = require('./modules/vfsManager').userFilePreviewVersion(file);
+            if (version) {
+                const etag = `"${version}"`;
+                res.setHeader('ETag', etag);
+                res.setHeader('Cache-Control', 'private, max-age=604800');
+                if (req.headers['if-none-match'] === etag) return res.status(304).end();
+            }
             if (file.preview_path) {
                 const previewPath = globalResources.getVfsManager().getFilePreviewPath(file.preview_path);
-                if (previewPath && await statOrNull(previewPath)) {
+                const previewStat = previewPath ? await statOrNull(previewPath) : null;
+                if (previewStat) {
                     res.setHeader('Content-Type', 'image/webp');
+                    res.setHeader('Content-Length', String(previewStat.size));
                     return fs.createReadStream(previewPath).pipe(res);
                 }
             }
             const blobPath = globalResources.getVfsManager().getFileBlobPath(file.content_hash);
-            if ((file.mime_type || '').startsWith('image/') && await statOrNull(blobPath)) {
+            const blobStat = (file.mime_type || '').startsWith('image/') ? await statOrNull(blobPath) : null;
+            if (blobStat) {
                 res.setHeader('Content-Type', file.mime_type);
+                res.setHeader('Content-Length', String(blobStat.size));
                 return fs.createReadStream(blobPath).pipe(res);
             }
+            res.removeHeader('ETag');
+            res.removeHeader('Cache-Control');
             res.status(404).send('No preview');
         } catch (e) {
             res.status(500).send(e.message);

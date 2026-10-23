@@ -37,6 +37,13 @@ const ROOT_SYSTEM_FOLDERS = [
     { id: VFS_SYSTEM_IDS.WORKSPACES, name: 'Workspaces', icon: 'fas fa-planet-ringed' }
 ];
 
+// Same value the preview route sends as its ETag (web_server.js).
+function userFilePreviewVersion(file) {
+    const hash = String((file && file.content_hash) || '').slice(0, 16);
+    if (!hash) return null;
+    return `${hash}${file.preview_path ? 'p' : 'b'}`;
+}
+
 class VfsManager {
     constructor(globalResources) {
         this.globalResources = globalResources;
@@ -823,6 +830,7 @@ class VfsManager {
             size: file.size,
             modifiedAt: file.updated_at || file.created_at,
             previewFileId: file.preview_path ? file.id : (isImage ? file.id : null),
+            previewVersion: userFilePreviewVersion(file),
             ...extra
         };
     }
@@ -3324,7 +3332,9 @@ class VfsManager {
             return `/cache/preview/${item.previewHash}.webp`;
         }
         if (vfsPathUuid && item.previewFileId) {
-            return `/${vfsPathUuid}/previews/${item.previewFileId}`;
+            // ?v= keys Explorer's preview cache (sw.js): an overwrite or a later preview is a new entry
+            const v = item.previewVersion ? `?v=${encodeURIComponent(item.previewVersion)}` : '';
+            return `/${vfsPathUuid}/previews/${item.previewFileId}${v}`;
         }
         return null;
     }
@@ -3688,6 +3698,7 @@ class VfsManager {
 
 module.exports = {
     VfsManager,
+    userFilePreviewVersion,
     VFS_SYSTEM_IDS,
     ROOT_RESERVED_NAMES,
     WORKSPACE_RESERVED_NAMES,
