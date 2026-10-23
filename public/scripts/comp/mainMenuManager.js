@@ -1082,7 +1082,7 @@ function setupMainMenuContextMenus() {
                     cacheNames.push('image-cache-v1');
                     label = 'image cache';
                 } else if (action === 'sw-clear-cache-all') {
-                    cacheNames.push('static-cache-v2', 'static-cache-v1', 'dynamic-cache-v1', 'internal-cache-v1', 'image-cache-v1');
+                    cacheNames.push('static-cache-v2', 'static-cache-v1', 'dynamic-cache-v1', 'internal-cache-v1', 'image-cache-v1', 'explorer-preview-cache-v1');
                     label = 'all caches';
                 }
 

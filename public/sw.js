@@ -19,6 +19,15 @@ const DYNAMIC_CACHE = 'dynamic-cache-v1';
 const INTERNAL_CACHE = 'internal-cache-v1';
 const IMAGE_CACHE = 'image-cache-v1';
 const WALLPAPER_CACHE = 'wallpaper-cache-v1';
+// Explorer file previews (Yozora #643): /<vfs uuid>/previews/<fileId>?v=<version> and
+// /cache/preview/<hash>.webp. Its own limits, apart from the Gallery's IMAGE_CACHE.
+const EXPLORER_PREVIEW_CACHE = 'explorer-preview-cache-v1';
+const EXPLORER_PREVIEW_POLICY = {
+  maxEntries: 5000,
+  maxIdleSeconds: 14 * 24 * 60 * 60, // a hit restarts the clock
+  // Images with no generated preview come as the whole original; those stay network-only.
+  maxEntryBytes: 1024 * 1024
+};
 const IMAGE_METADATA_KEY = '/internal/sw-image-cache-metadata-v1';
 
 const IMAGE_CACHE_POLICY = {
@@ -360,6 +369,49 @@ const dynamicStrategy = new strategies.CacheFirst({
   ],
 });
 
+const EXPLORER_VFS_PREVIEW_PATH = /^\/[0-9a-f-]{36}\/previews\/[^/]+$/i;
+
+function isExplorerPreviewPath(pathname) {
+  return EXPLORER_VFS_PREVIEW_PATH.test(pathname) || pathname.startsWith('/cache/preview/');
+}
+
+const explorerPreviewStrategy = new strategies.CacheFirst({
+  cacheName: EXPLORER_PREVIEW_CACHE,
+  plugins: [
+    {
+      // VFS previews keep ?v= (the file's version); /cache/preview/ is content-addressed.
+      cacheKeyWillBeUsed: async ({ request }) => {
+        const keyUrl = new URL(request.url);
+        const v = EXPLORER_VFS_PREVIEW_PATH.test(keyUrl.pathname) ? keyUrl.searchParams.get('v') : null;
+        keyUrl.search = v ? `?v=${encodeURIComponent(v)}` : '';
+        keyUrl.hash = '';
+        return keyUrl.href;
+      }
+    },
+    {
+      // Unversioned VFS URLs (an old page) and login/error pages are never stored.
+      cacheWillUpdate: async ({ request, response }) => {
+        if (!response || response.status !== 200) return null;
+        if (!String(response.headers.get('content-type') || '').startsWith('image/')) return null;
+        const url = new URL(request.url);
+        if (EXPLORER_VFS_PREVIEW_PATH.test(url.pathname) && !url.searchParams.get('v')) return null;
+        const length = parseInt(response.headers.get('content-length') || '0', 10);
+        if (!(length > 0) || length > EXPLORER_PREVIEW_POLICY.maxEntryBytes) return null;
+        // The expiration plugin also refuses a hit whose Date is past maxAgeSeconds.
+        // Without Date only its last-used timestamp counts, so the limit is idle time.
+        const headers = new Headers(response.headers);
+        headers.delete('date');
+        return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+      }
+    },
+    new expiration.ExpirationPlugin({
+      maxEntries: EXPLORER_PREVIEW_POLICY.maxEntries,
+      maxAgeSeconds: EXPLORER_PREVIEW_POLICY.maxIdleSeconds,
+      purgeOnQuotaError: true
+    })
+  ]
+});
+
 // Image strategy - cache first with network fallback and immediate expiry
 const imageStrategy = null;
 
@@ -541,6 +593,10 @@ async function refreshWallpaperUrl(url, requestId) {
 }
 
 function isManagedImageCacheUrl(url) {
+  // VFS previews are Explorer's (EXPLORER_PREVIEW_CACHE), not the Gallery's
+  let pathname = String(url || '');
+  try { pathname = new URL(pathname, self.location.origin).pathname; } catch (_) { /* keep raw */ }
+  if (EXPLORER_VFS_PREVIEW_PATH.test(pathname)) return false;
   return url.includes('/previews/') || url.includes('/naxCache/');
 }
 
@@ -1169,6 +1225,10 @@ workbox.routing.registerRoute(
       // Workspace wallpapers: stored until the assignment changes, then dropped.
       else if (isWallpaperRequest(url)) {
         response = await handleWallpaperRequest(event);
+      }
+      // Explorer file previews: their own cache and limits (Yozora #643)
+      else if (isExplorerPreviewPath(url.pathname)) {
+        response = await explorerPreviewStrategy.handle(event);
       }
       // Handle previews with image strategy
       // Note: Image variants (like @blur.webp) are in the path, not query params,
@@ -2249,7 +2309,8 @@ self.addEventListener('activate', (event) => {
               cacheName !== DYNAMIC_CACHE && 
               cacheName !== IMAGE_CACHE &&
               cacheName !== INTERNAL_CACHE &&
-              cacheName !== WALLPAPER_CACHE) {
+              cacheName !== WALLPAPER_CACHE &&
+              cacheName !== EXPLORER_PREVIEW_CACHE) {
             return caches.delete(cacheName);
           }
         })
