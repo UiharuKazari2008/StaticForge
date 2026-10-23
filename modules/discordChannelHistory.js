@@ -65,8 +65,15 @@ function parseDiscordChannelUrl(raw) {
     const guildId = parts[1] || '';
     const channelId = parts[2] || '';
     const messageId = parts[3] || '';
-    if (!channelId) return null;
-    return { guildId, channelId, messageId, url: parsed.href };
+    // Guild channels only: never DMs (@me) or anything that is not a plain id.
+    const id = /^\d{16,22}$/;
+    if (!id.test(guildId) || !id.test(channelId) || (messageId && !id.test(messageId))) return null;
+    return {
+        guildId,
+        channelId,
+        messageId,
+        url: `https://discord.com/channels/${guildId}/${channelId}${messageId ? `/${messageId}` : ''}`
+    };
 }
 
 function findCatalogChannel(raw) {
@@ -75,8 +82,15 @@ function findCatalogChannel(raw) {
     return CHANNELS.find((row) => row.slug === key || row.names.some((name) => normalizeChannelKey(name) === key)) || null;
 }
 
+const SNOWFLAKE_RE = /^\d{16,22}$/;
+
 function resolveChannel(input) {
     const src = input && typeof input === 'object' && !Array.isArray(input) ? input : { channel: input };
+    for (const key of ['guildId', 'guild', 'messageId']) {
+        if (src[key] != null && src[key] !== '' && !SNOWFLAKE_RE.test(String(src[key]))) {
+            return { error: `${key} must be a Discord id (16-22 digits)` };
+        }
+    }
     const raw = String(src.channel || src.url || src.channelUrl || '').trim();
     if (!raw) {
         return { error: 'channel is required (name, #name, channel id, or discord.com/channels/... URL)' };

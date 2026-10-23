@@ -52,6 +52,11 @@ const DOVECOTE_BOT_KEY_TARGETS = Object.freeze([
 ]);
 
 const DOVECOTE_SCOPE = 'sfapp_dovecote';
+const ALCHEMY_BROWSER_SCOPE = 'sfapp_alchemy_browser';
+/** Keys that may drive the Alchemy-owned tab (Discord history for the prompting guide). */
+const ALCHEMY_BROWSER_KEY_TARGETS = Object.freeze([
+    { persona: 'hoshino', label: 'Hoshino' }
+]);
 const EXCHANGE_SCOPE = 'sfapp_mail_exchange';
 const EXCHANGE_ADMIN_KEY_TARGETS = Object.freeze([
     { persona: 'sala', label: 'Sala' },
@@ -187,10 +192,17 @@ async function widenDirectorApplicationKeys(manager) {
         [EXCHANGE_SCOPE],
         'mail_exchange_scope_migration'
     );
+    const alchemy = await widenLabeledApplicationKeys(
+        manager,
+        ALCHEMY_BROWSER_KEY_TARGETS,
+        [ALCHEMY_BROWSER_SCOPE],
+        'alchemy_browser_scope_migration'
+    );
     const tokens = await widenDovecoteOAuthAccessTokens(manager);
     return {
-        updated: director.updated + bots.updated + exchange.updated,
-        keys: director.keys.concat(bots.keys).concat(exchange.keys),
+        updated: director.updated + bots.updated + exchange.updated + alchemy.updated,
+        keys: director.keys.concat(bots.keys).concat(exchange.keys).concat(alchemy.keys),
+        alchemyBrowserUpdated: alchemy.updated,
         beforeScopes: LEGACY_DIRECTOR_SCOPES.slice(),
         afterScopes: DIRECTOR_MCP_SCOPES.slice(),
         directorUpdated: director.updated,
@@ -276,6 +288,8 @@ module.exports = {
     DOVECOTE_SCOPE,
     EXCHANGE_SCOPE,
     EXCHANGE_ADMIN_KEY_TARGETS,
+    ALCHEMY_BROWSER_SCOPE,
+    ALCHEMY_BROWSER_KEY_TARGETS,
     directorScopeReport,
     widenLabeledApplicationKeys,
     widenDirectorApplicationKeys,

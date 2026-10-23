@@ -3308,8 +3308,9 @@ const TOOL_DEFS = [
     {
         name: 'alchemy_browser',
         core: true,
-        description: 'Drive the Alchemy-owned tab on the dedicated-agent-client Chromium (persistent host profile, CDP 127.0.0.1:9334). Ops: navigate, info, scroll, click, read_dom, read_text. Never touches the Dreamscape /app?agent=1 tab and does not launch another Chrome. Discord compose/react/send clicks are refused.',
-        scope: 'generation',
+        description: 'Drive the Alchemy-owned tab on the dedicated-agent-client Chromium (persistent host profile, CDP 127.0.0.1:9334). Ops: navigate, info, scroll, click, read_dom, read_text. Never touches the Dreamscape /app?agent=1 tab and does not launch another Chrome. Public http(s) sites only (no loopback/private hosts). Read-only on Discord: clicks there are refused. Needs the sfapp_alchemy_browser scope and an allowlisted key (Hoshino, Yukimi).',
+        scope: 'sfapp_alchemy_browser',
+        role: 'alchemy',
         inputSchema: {
             type: 'object',
             additionalProperties: false,
@@ -3320,7 +3321,7 @@ const TOOL_DEFS = [
                     enum: ['navigate', 'info', 'scroll', 'click', 'read_dom', 'read_text'],
                     description: 'navigate needs url. scroll uses direction/amount/selector. click uses selector (or x,y off Discord). read_* uses selector and maxChars.'
                 },
-                url: { type: 'string', description: 'http(s) or about: URL for navigate' },
+                url: { type: 'string', description: 'Public http(s) URL or about:blank for navigate' },
                 selector: { type: 'string' },
                 direction: { type: 'string', enum: ['up', 'down', 'left', 'right'] },
                 amount: { type: 'number', description: 'Scroll pixels. Default 800.' },
@@ -3333,8 +3334,9 @@ const TOOL_DEFS = [
     {
         name: 'read_discord_channel_history',
         core: true,
-        description: 'Read-only Discord history from the Alchemy-owned tab after a message id or timestamp. Channels: #nai-diffusion-discussion, #nai-image-posting, #nsfw-generation, staff, unofficial names the signed-in session can already see, or a discord.com/channels URL. Returns id, author, timestamp, content, attachment URLs. Writes JSON to the host cache (and optional vfsPath). Never posts, reacts, replies, types, or DMs. Yukimi signs in once in that tab.',
-        scope: 'generation',
+        description: 'Read-only Discord history from the Alchemy-owned tab after a message id or timestamp. Channels: #nai-diffusion-discussion, #nai-image-posting, #nsfw-generation, staff, unofficial names the signed-in session can already see, or a discord.com/channels URL. Returns id, author, timestamp, content, attachment URLs. Writes JSON to the host cache (and optional vfsPath). Never posts, reacts, replies, types, or reads DMs. Yukimi signs in once in that tab. Needs the sfapp_alchemy_browser scope and an allowlisted key (Hoshino, Yukimi).',
+        scope: 'sfapp_alchemy_browser',
+        role: 'alchemy',
         inputSchema: {
             type: 'object',
             additionalProperties: false,
@@ -6863,6 +6865,10 @@ function listToolsForScopes(scopes, globalResources, options) {
                 const exchange = require('./mailExchange');
                 return exchange.isExchangeAdmin(owner) || exchange.isExchangeAdmin(options && options.actor);
             }
+            if (tool.role === 'alchemy') {
+                return alchemyOwnedTab.isAlchemyBrowserOwner(owner)
+                    || alchemyOwnedTab.isAlchemyBrowserOwner(options && options.actor);
+            }
             return false;
         })
         .map((tool) => serializeListedTool(tool, catalog));
@@ -9602,6 +9608,23 @@ async function callTool(globalResources, req, name, args) {
                 return mcpTextResult({ success: false, error: mailError.message, code: mailError.code }, true);
             }
             throw mailError;
+        }
+    }
+
+    if (def.role === 'alchemy') {
+        // Identity gate on top of the scope: the owned tab carries Yukimi's Discord session.
+        let owner = null;
+        try {
+            owner = require('./dovecoteIdentity').resolveDovecoteOwnerFromReq(req);
+        } catch (_) {
+            owner = null;
+        }
+        const actor = require('./mailExchangeAuth').resolveMcpActor(req);
+        if (!alchemyOwnedTab.isAlchemyBrowserOwner(owner) && !alchemyOwnedTab.isAlchemyBrowserOwner(actor)) {
+            const err = new Error('This key is not allowed to drive the Alchemy-owned tab');
+            err.status = 403;
+            err.code = 'ALCHEMY_BROWSER_DENIED';
+            throw err;
         }
     }
 

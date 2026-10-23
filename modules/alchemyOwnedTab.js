@@ -6,11 +6,17 @@
  * Scoped to one owned tab — never the Dreamscape /app?agent=1 priority tab.
  */
 
+const dns = require('dns');
 const fs = require('fs');
 const http = require('http');
+const net = require('net');
 const os = require('os');
 const path = require('path');
 const { URL } = require('url');
+
+// ws readyState values (the ws module is loaded lazily, so no global WebSocket here)
+const WS_CONNECTING = 0;
+const WS_OPEN = 1;
 
 function loadWebSocket() {
     return require('ws');
@@ -24,6 +30,16 @@ const DEFAULT_ACTION_GAP_MS = 700;
 const DEFAULT_NAV_TIMEOUT_MS = 45000;
 const STATE_DIR = path.join(os.homedir(), '.cache', 'dreamscape-agent-client');
 const STATE_FILE = path.join(STATE_DIR, 'alchemy-owned-tab.json');
+
+// Who may drive the owned tab. The tab holds Yukimi's signed-in Discord session, so this is
+// a named scope plus an identity allowlist (universal keys alone are not enough).
+const ALCHEMY_BROWSER_SCOPE = 'sfapp_alchemy_browser';
+const ALCHEMY_BROWSER_OWNERS = Object.freeze(['hoshino', 'yukimi']);
+
+function isAlchemyBrowserOwner(owner) {
+    const name = String(owner || '').trim().toLowerCase();
+    return !!name && ALCHEMY_BROWSER_OWNERS.includes(name);
+}
 
 const DISCORD_WRITE_SELECTOR_RE = new RegExp([
     'data-slate',
@@ -106,9 +122,10 @@ function isDreamscapeAgentTarget(target) {
     return !!(target && target.type === 'page' && isDreamscapeAgentUrl(target.url));
 }
 
-function isAlchemyOwnedTarget(target) {
+function isAlchemyOwnedTarget(target, ownedId) {
     if (!target || target.type !== 'page') return false;
     if (isDreamscapeAgentTarget(target)) return false;
+    if (ownedId && target.id === ownedId) return true;
     if (isAlchemyOwnedUrl(target.url)) return true;
     const title = String(target.title || '');
     return title === 'Alchemy owned' || title.indexOf('[Alchemy owned]') === 0;
@@ -119,18 +136,84 @@ function pickDreamscapeAgentTarget(targets) {
     return list.find(isDreamscapeAgentTarget) || null;
 }
 
-function pickAlchemyOwnedTarget(targets) {
+// Only the tab we opened: the id we recorded, else the marker URL/title. Never an arbitrary page.
+function pickAlchemyOwnedTarget(targets, ownedId) {
     const list = Array.isArray(targets) ? targets : [];
-    const marked = list.find(isAlchemyOwnedTarget);
-    if (marked) return marked;
-    const pages = list.filter((target) => target && target.type === 'page' && !isDreamscapeAgentTarget(target));
-    return pages[0] || null;
+    if (ownedId) {
+        const byId = list.find((target) => target && target.type === 'page' && target.id === ownedId
+            && !isDreamscapeAgentTarget(target));
+        if (byId) return byId;
+    }
+    return list.find((target) => isAlchemyOwnedTarget(target)) || null;
 }
 
 function isHttpOrBlank(url) {
     const parsed = parseUrlSafe(url);
     if (!parsed) return false;
     return parsed.protocol === 'http:' || parsed.protocol === 'https:' || parsed.protocol === 'about:';
+}
+
+// Navigation guard: the profile also holds the Dreamscape agent session (127.0.0.1:9220) and
+// the CDP port, so loopback, private, link-local and internal names are refused, before and
+// after DNS, and again on the URL the page actually lands on (redirects).
+function isPrivateAddress(address) {
+    const ip = String(address || '').replace(/^\[|\]$/g, '').toLowerCase();
+    if (net.isIPv4(ip)) {
+        const p = ip.split('.').map(Number);
+        return p[0] === 0 || p[0] === 10 || p[0] === 127
+            || (p[0] === 100 && p[1] >= 64 && p[1] <= 127)
+            || (p[0] === 169 && p[1] === 254)
+            || (p[0] === 172 && p[1] >= 16 && p[1] <= 31)
+            || (p[0] === 192 && p[1] === 168)
+            || (p[0] === 198 && (p[1] === 18 || p[1] === 19))
+            || p[0] >= 224;
+    }
+    if (net.isIPv6(ip)) {
+        if (ip === '::' || ip === '::1') return true;
+        const mapped = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+        if (mapped) return isPrivateAddress(mapped[1]);
+        return /^(fc|fd|fe8|fe9|fea|feb|ff)/.test(ip);
+    }
+    return false;
+}
+
+function isBlockedHostname(hostname) {
+    const host = String(hostname || '').replace(/^\[|\]$/g, '').replace(/\.$/, '').toLowerCase();
+    if (!host) return true;
+    if (net.isIP(host)) return isPrivateAddress(host);
+    if (!host.includes('.')) return true;
+    return host === 'localhost' || /\.(localhost|local|lan|internal|home|arpa)$/.test(host);
+}
+
+function blockedUrlReason(url) {
+    const parsed = parseUrlSafe(url);
+    if (!parsed) return 'invalid URL';
+    if (parsed.protocol === 'about:') return parsed.pathname === 'blank' ? '' : 'only about:blank is allowed';
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return 'only http(s) or about:blank';
+    if (parsed.username || parsed.password) return 'credentials in URL';
+    if (isBlockedHostname(parsed.hostname)) return 'loopback/private/internal host';
+    return '';
+}
+
+async function assertNavigableUrl(url, lookupFn) {
+    const refuse = (why) => {
+        const err = new Error(`Alchemy navigate refused (${why})`);
+        err.code = 'ALCHEMY_URL_REFUSED';
+        throw err;
+    };
+    const why = blockedUrlReason(url);
+    if (why) refuse(why);
+    const parsed = parseUrlSafe(url);
+    if (parsed.protocol === 'about:' || net.isIP(parsed.hostname.replace(/^\[|\]$/g, ''))) return;
+    const lookup = lookupFn || ((host) => dns.promises.lookup(host, { all: true, verbatim: true }));
+    let addrs;
+    try {
+        addrs = await lookup(parsed.hostname);
+    } catch (_) {
+        refuse('host does not resolve');
+    }
+    const list = (Array.isArray(addrs) ? addrs : [addrs]).map((a) => (a && a.address) || a);
+    if (!list.length || list.some(isPrivateAddress)) refuse('host resolves to a loopback/private address');
 }
 
 function isDiscordHost(url) {
@@ -184,7 +267,8 @@ class CdpConnection {
     constructor(webSocketUrl) {
         this.nextId = 1;
         this.pending = new Map();
-        this.socket = new loadWebSocket()(webSocketUrl);
+        const WS = loadWebSocket();
+        this.socket = new WS(webSocketUrl);
     }
 
     async open() {
@@ -229,7 +313,7 @@ class CdpConnection {
     }
 
     send(method, params, timeoutMs) {
-        if (this.socket.readyState !== WebSocket.OPEN) {
+        if (this.socket.readyState !== WS_OPEN) {
             return Promise.reject(new Error('CDP WebSocket is not open'));
         }
         const id = this.nextId++;
@@ -244,11 +328,11 @@ class CdpConnection {
     }
 
     isOpen() {
-        return this.socket.readyState === WebSocket.OPEN;
+        return this.socket.readyState === WS_OPEN;
     }
 
     close() {
-        if (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING) {
+        if (this.socket.readyState === WS_OPEN || this.socket.readyState === WS_CONNECTING) {
             this.socket.close();
         }
         this.rejectPending(new Error('CDP WebSocket closed'));
@@ -284,6 +368,7 @@ class AlchemyOwnedTab {
         });
         this.sleep = opts.sleep || sleep;
         this.readState = opts.readState || readState;
+        this.lookup = opts.lookup || null;
         this.writeState = opts.writeState || writeState;
         this.connection = null;
         this.target = null;
@@ -312,15 +397,8 @@ class AlchemyOwnedTab {
             err.cause = error;
             throw err;
         }
-        if (pickDreamscapeAgentTarget(targets) && !pickAlchemyOwnedTarget(targets)) {
-            try {
-                await this.createOwnedTarget();
-                targets = await this.listTargets();
-            } catch (_) {
-                // keep going; pickAlchemyOwnedTarget may still find a non-agent page
-            }
-        }
-        let target = pickAlchemyOwnedTarget(targets);
+        const saved = this.readState() || {};
+        let target = pickAlchemyOwnedTarget(targets, saved.targetId);
         if (!target) {
             target = await this.createOwnedTarget();
         }
@@ -338,6 +416,13 @@ class AlchemyOwnedTab {
         await this.connection.send('Page.enable');
         await this.connection.send('Runtime.enable');
         this.target = target;
+        if (target.id && target.id !== saved.targetId) {
+            try {
+                this.writeState({ ...saved, targetId: target.id, updatedAt: new Date().toISOString() });
+            } catch (_) {
+                // state is a hint for the supervisor; the connection already holds the right tab
+            }
+        }
         return this.info();
     }
 
@@ -378,11 +463,7 @@ class AlchemyOwnedTab {
     async navigate(url) {
         const targetUrl = String(url || '').trim();
         if (!targetUrl) throw new Error('url is required');
-        if (!isHttpOrBlank(targetUrl)) {
-            const err = new Error('Alchemy navigate only accepts http(s) or about: URLs');
-            err.code = 'ALCHEMY_URL_REFUSED';
-            throw err;
-        }
+        await assertNavigableUrl(targetUrl, this.lookup);
         await this.pacer.wait();
         await this.send('Page.navigate', { url: targetUrl }, DEFAULT_NAV_TIMEOUT_MS);
         const deadline = Date.now() + DEFAULT_NAV_TIMEOUT_MS;
@@ -397,7 +478,15 @@ class AlchemyOwnedTab {
             await this.sleep(200);
         }
         const info = await this.info();
+        const landed = blockedUrlReason(info.url);
+        if (landed) {
+            try { await this.send('Page.navigate', { url: ALCHEMY_BLANK_URL }, DEFAULT_NAV_TIMEOUT_MS); } catch (_) { /* best effort */ }
+            const err = new Error(`Alchemy navigate refused after redirect (${landed})`);
+            err.code = 'ALCHEMY_URL_REFUSED';
+            throw err;
+        }
         this.writeState({
+            ...(this.readState() || {}),
             url: info.url,
             title: info.title,
             updatedAt: new Date().toISOString()
@@ -435,16 +524,11 @@ class AlchemyOwnedTab {
         const y = opts.y != null ? Number(opts.y) : null;
         const info = await this.info();
         if (isDiscordHost(info.url)) {
-            if (selector && isDiscordWriteSelector(selector)) {
-                const err = new Error('Refused Discord write click (compose, react, reply, or send)');
-                err.code = 'DISCORD_WRITE_REFUSED';
-                throw err;
-            }
-            if (!selector && Number.isFinite(x) && Number.isFinite(y)) {
-                const err = new Error('Refused coordinate click on Discord; use a read-only selector or navigate by URL');
-                err.code = 'DISCORD_WRITE_REFUSED';
-                throw err;
-            }
+            // Read-only on Discord: no clicks at all (menus can delete, pin, join, block...).
+            // Move between channels with navigate or read_discord_channel_history instead.
+            const err = new Error('Refused click on Discord (read-only); navigate by channel URL instead');
+            err.code = 'DISCORD_WRITE_REFUSED';
+            throw err;
         }
         if (!selector && !(Number.isFinite(x) && Number.isFinite(y))) {
             throw new Error('click needs selector or x,y');
@@ -558,6 +642,13 @@ async function runBrowserOp(op, input, options) {
 }
 
 module.exports = {
+    ALCHEMY_BROWSER_SCOPE,
+    ALCHEMY_BROWSER_OWNERS,
+    isAlchemyBrowserOwner,
+    isPrivateAddress,
+    isBlockedHostname,
+    blockedUrlReason,
+    assertNavigableUrl,
     CDP_HOST,
     CDP_PORT,
     ALCHEMY_OWNED_HASH,
