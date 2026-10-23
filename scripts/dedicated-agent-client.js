@@ -7,6 +7,11 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const WebSocket = require('ws');
+const {
+    ALCHEMY_BLANK_URL,
+    isAlchemyOwnedTarget,
+    pickDreamscapeAgentTarget
+} = require('../modules/alchemyOwnedTab');
 
 const ROOT = path.resolve(__dirname, '..');
 const SERVER_ORIGIN = process.env.DREAMSCAPE_AGENT_SERVER || 'http://127.0.0.1:9220';
@@ -78,9 +83,21 @@ async function waitForCdp(timeoutMs = 30000) {
 
 async function getPageTarget() {
     const targets = await requestJson(`${CDP_ORIGIN}/json/list`);
-    const page = targets.find((target) => target.type === 'page');
+    const agent = pickDreamscapeAgentTarget(targets);
+    if (agent) return agent;
+    const page = (Array.isArray(targets) ? targets : []).find((target) => (
+        target && target.type === 'page' && !isAlchemyOwnedTarget(target)
+    ));
     if (page) return page;
     return requestJson(`${CDP_ORIGIN}/json/new?about%3Ablank`, { method: 'PUT' });
+}
+
+async function ensureAlchemyOwnedTab() {
+    const targets = await requestJson(`${CDP_ORIGIN}/json/list`);
+    if ((Array.isArray(targets) ? targets : []).some(isAlchemyOwnedTarget)) return;
+    const encoded = encodeURIComponent(ALCHEMY_BLANK_URL);
+    await requestJson(`${CDP_ORIGIN}/json/new?${encoded}`, { method: 'PUT' });
+    log('opened Alchemy-owned tab on the persistent Chromium profile');
 }
 
 class CdpConnection {
@@ -323,6 +340,11 @@ async function run() {
     await cdp.open();
     await authenticateAndOpenClient(cdp);
     await registerPriorityClient(cdp);
+    try {
+        await ensureAlchemyOwnedTab();
+    } catch (error) {
+        log(`Alchemy-owned tab was not created: ${error.message}`);
+    }
     await supervise(cdp);
 }
 
