@@ -41,6 +41,22 @@
     const SHAPE_FILL = { k: 'seg', key: 'shape', options: [['outline', 'Outline', '<span class="mp-opt-shape is-outline"></span>'], ['both', 'Outline and fill', '<span class="mp-opt-shape is-both"></span>'], ['fill', 'Fill', '<span class="mp-opt-shape is-fill"></span>']] };
     const WEIGHT = { k: 'num', key: 'lineWidth', label: 'Weight:', min: 1, max: 100, unit: 'px', set: (w, v) => { w.opt.lineWidth = v; w.opt.size = 0; } };
 
+    // Photoshop's tool mode for the shape tools: a shape layer, a path, or pixels (Vista's)
+    const SHAPE_MODE = { k: 'select', key: 'shapeMode', label: '', title: 'Pick tool mode', options: [['pixels', 'Pixels'], ['shape', 'Shape'], ['path', 'Path']] };
+
+    /** A shape layer's Fill and Stroke (when the active layer is one). */
+    function vectorItems(w) {
+        const l = w.doc && w.doc.activeLayer;
+        if (!l || !l.vector || !root.paintPath) return [];
+        const V = root.paintPath;
+        return [SEP,
+            { k: 'check', label: 'Fill:', title: 'Fill the shape', get: (ww) => !!ww.doc.activeLayer.vector.fill, set: (ww, v) => V.setVector(ww, (vec) => { vec.fill = v ? ww.fg : null; }, 'Change Fill') },
+            { k: 'color', title: 'Fill color', get: (ww) => ww.doc.activeLayer.vector.fill || '#ffffff00', set: (ww, c) => V.setVector(ww, (vec) => { vec.fill = c; }, 'Change Fill') },
+            { k: 'check', label: 'Stroke:', title: 'Stroke the shape', get: (ww) => !!ww.doc.activeLayer.vector.stroke, set: (ww, v) => V.setVector(ww, (vec) => { vec.stroke = v ? { color: ww.fg, width: Math.max(1, ww.brushSize()) } : null; }, 'Change Stroke') },
+            { k: 'color', title: 'Stroke color', get: (ww) => (ww.doc.activeLayer.vector.stroke || {}).color || '#ffffff00', set: (ww, c) => V.setVector(ww, (vec) => { vec.stroke = { width: 3, ...(vec.stroke || {}), color: c }; }, 'Change Stroke') },
+            { k: 'num', label: '', min: 0, max: 288, unit: 'px', title: 'Stroke width', get: (ww) => (ww.doc.activeLayer.vector.stroke || {}).width || 0, set: (ww, v) => V.setVector(ww, (vec) => { vec.stroke = v > 0 ? { color: ww.fg, ...(vec.stroke || {}), width: v } : null; }, 'Change Stroke') }];
+    }
+
     /** The items of a tool's bar. */
     function toolItems(w) {
         const t = w.tool;
@@ -108,12 +124,25 @@
                     { k: 'btn', label: 'Character', title: 'The Character window: leading, tracking, caps ...', action: 'character' },
                     ...(w.text ? [SEP, { k: 'btn', icon: art(12), title: 'Cancel (Esc)', run: (ww) => ww.cancelText() }, { k: 'btn', icon: art(11), title: 'Commit the text', run: (ww) => ww.finishText() }] : [])];
             }
-            case 'rect': case 'ellipse': case 'polygon':
+            case 'rect': case 'ellipse':
+                return [SHAPE_MODE, SEP, SHAPE_FILL, SEP, WEIGHT, OPACITY(), ...vectorItems(w)];
+            case 'polygon':
                 return [SHAPE_FILL, SEP, WEIGHT, OPACITY()];
             case 'roundrect':
-                return [SHAPE_FILL, SEP, WEIGHT, { k: 'num', key: 'radius', label: 'Radius:', min: 0, max: 500, unit: 'px' }, OPACITY()];
-            case 'line': case 'curve':
+                return [SHAPE_MODE, SEP, SHAPE_FILL, SEP, WEIGHT, { k: 'num', key: 'radius', label: 'Radius:', min: 0, max: 500, unit: 'px' }, OPACITY(), ...vectorItems(w)];
+            case 'line':
+                return [SHAPE_MODE, SEP, WEIGHT, SEP, OPACITY(), ...vectorItems(w)];
+            case 'curve':
                 return [WEIGHT, SEP, OPACITY()];
+            case 'pen':
+                return [{ k: 'select', key: 'penMode', label: '', title: 'Pick tool mode', options: [['path', 'Path'], ['shape', 'Shape']] }, SEP,
+                    { k: 'label', text: 'Make:' },
+                    { k: 'btn', label: 'Selection...', title: 'Load the path as a selection (Ctrl+Enter)', action: 'path-select' },
+                    { k: 'btn', label: 'Fill', title: 'Fill the path with the drawing color', action: 'path-fill' },
+                    { k: 'btn', label: 'Stroke', title: 'Stroke the path with the brush', action: 'path-stroke' }, ...vectorItems(w)];
+            case 'pathselect': case 'directselect':
+                return [{ k: 'btn', label: 'Selection...', title: 'Load the path as a selection (Ctrl+Enter)', action: 'path-select' },
+                    { k: 'btn', label: 'Paths', title: 'Show or hide the Paths window', action: 'paths' }, ...vectorItems(w)];
             case 'clone':
                 return [SIZE, HARD, SEP, OPACITY(), { k: 'check', key: 'cloneAligned', label: 'Aligned', title: 'Every stroke keeps the same distance to its source' }, ALL];
             case 'heal':

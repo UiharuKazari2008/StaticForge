@@ -111,7 +111,7 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
 }
 
 .mp-client .mp-tool-art.is-extra {
-    background-image: url('/static_images/vista-paint/tools-extra.png');
+    background-image: url('/static_images/vista-paint/tools-extra.png?v=20');
 }
 
 .mp-client .mp-options {
@@ -2195,4 +2195,120 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
     margin-left: 3px;
     vertical-align: -2px;
     background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='12' shape-rendering='crispEdges'%3E%3Cpath fill='%23fff' d='M1 1h6l3 3v7H1z'/%3E%3Cpath fill='%23555' d='M0 0h7v1H1v10h9V4h1v8H0zM7 0h1v1h1v1h1v1h1v1H7z'/%3E%3Cpath fill='%23555' d='M3 6h5v3H3z'/%3E%3C/svg%3E") no-repeat;
+}
+
+/* paths (#632): Photoshop's thin path line, square anchors, round handle knobs */
+.mp-client .mp-ants .mp-path {
+    fill: none;
+    stroke: #1a5fb4;
+    stroke-width: 1;
+}
+
+.mp-client .mp-ants .mp-path.is-rubber {
+    stroke-dasharray: 3 2;
+}
+
+.mp-client .mp-ants .mp-path-arm {
+    stroke: #1a5fb4;
+    stroke-width: 1;
+}
+
+.mp-client .mp-ants .mp-path-knob {
+    fill: #1a5fb4;
+}
+
+.mp-client .mp-ants .mp-path-anchor {
+    fill: #fff;
+    stroke: #1a5fb4;
+    stroke-width: 1;
+}
+
+.mp-client .mp-ants .mp-path-anchor.is-on {
+    fill: #1a5fb4;
+}
+
+.mp-client .mp-paths {
+    flex: none;
+}
+
+.mp-client .mp-paths-list {
+    min-height: 40px;
+    max-height: 160px;
+    overflow-y: auto;
+    background: #fff;
+    font: 11px Tahoma, "Segoe UI", sans-serif;
+}
+
+.mp-client .mp-paths-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 34px;
+    padding: 0 4px;
+    cursor: var(--c-default, default);
+}
+
+.mp-client .mp-paths-row.is-active {
+    background: #cce4f7;
+}
+
+.mp-client .mp-paths-row img {
+    width: 40px;
+    height: 30px;
+    border: 1px solid #a0a0a0;
+}
+
+.mp-client .mp-paths-row .is-italic {
+    font-style: italic;
+}
+
+.mp-client .mp-paths-bar {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1px;
+    padding: 2px;
+    border-top: 1px solid #c0c0c0;
+}
+
+.mp-window .win7.mp-client .mp-paths-btn:not(:disabled) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    min-width: 0;
+    height: 22px;
+    min-height: 0;
+    padding: 0;
+    border: 1px solid transparent;
+    border-image: none;
+    border-radius: 2px;
+    background: none;
+    box-shadow: none;
+}
+
+.mp-window .win7.mp-client .mp-paths-btn:hover {
+    border-color: #3c7fb1;
+    background: #e3f4fc;
+}
+
+.mp-client .mp-paths-btn::before,
+.mp-client .mp-paths-btn::after {
+    content: none;
+}
+
+.mp-client .mp-paths-art {
+    display: block;
+    width: 16px;
+    height: 16px;
+    background: url('/static_images/vista-paint/paths-panel.png') calc(var(--i) * -16px) 0 no-repeat;
+}
+
+/* a shape layer: Photoshop's vector badge, a pen-nib square */
+.mp-client .mp-layer-vec {
+    display: inline-block;
+    width: 11px;
+    height: 11px;
+    margin-left: 3px;
+    vertical-align: -2px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' shape-rendering='crispEdges'%3E%3Cpath fill='%23555' d='M0 0h11v11H0z'/%3E%3Cpath fill='%23fff' d='M1 1h9v9H1z'/%3E%3Cpath fill='%231a5fb4' d='M2 8 8 2h1v1L3 9H2z'/%3E%3C/svg%3E") no-repeat;
 }

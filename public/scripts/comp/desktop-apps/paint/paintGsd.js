@@ -74,6 +74,7 @@
             groupId: l.groupId || null,
             clip: !!l.clip,
             smart: l.smart ? await out.smart(l.smart) : null,
+            vector: l.vector || null,
             pixels: await out.canvas(canvas || l.canvas),
             mask: maskCanvas ? { pixels: await out.canvas(maskCanvas), enabled: maskOn !== false } : null,
             styles: l.styles || null,
@@ -110,6 +111,8 @@
                 width: d.width, height: d.height, active: d.active, editMask: !!d.editMask, layers,
                 groups: JSON.parse(JSON.stringify(d.groups || [])),
                 guides: JSON.parse(JSON.stringify(d.guides || [])),
+                paths: d.paths && d.paths.length ? JSON.parse(JSON.stringify(d.paths)) : undefined,
+                workPath: d.workPath ? JSON.parse(JSON.stringify(d.workPath)) : undefined,
                 selection: await selectionOut(out, d, d.selection),
                 lastSelection: await selectionOut(out, d, w.lastSelection && w.lastSelection !== d.selection ? w.lastSelection : null)
             },
@@ -130,9 +133,10 @@
                 const steps = [];
                 for (const st of d.history) {
                     if (st.kind === 'snapshot') steps.push({ label: st.label, kind: 'snapshot', before: await snapshotOut(out, st.before), after: await snapshotOut(out, st.after) });
+                    else if (st.kind === 'paths') steps.push({ label: st.label, kind: 'paths', before: st.before, after: st.after });
                     else {
                         steps.push({ label: st.label, kind: 'pixels', layerId: st.layerId, rect: st.rect, before: await out.rgba(st.before), after: await out.rgba(st.after),
-                            smart: st.smart ? { before: await out.smart(st.smart.before), after: await out.smart(st.smart.after) } : undefined });
+                            smart: st.smart ? { before: await out.smart(st.smart.before), after: await out.smart(st.smart.after) } : undefined, vector: st.vector || undefined });
                     }
                     tick();
                 }
@@ -200,6 +204,7 @@
         l.groupId = sl.groupId || null;
         l.clip = !!sl.clip;
         l.smart = await smartIn(state, sl.smart);
+        l.vector = sl.vector || null;
         if (sl.mask) l.setMaskCanvas(await state.canvas(sl.mask.pixels), sl.mask.enabled !== false);
         l.styles = sl.styles || null;
         l.adjust = sl.adjust ? { kind: sl.adjust.kind, params: sl.adjust.params } : null;
@@ -242,7 +247,7 @@
             if (sl.mask) { mask = await state.canvas(sl.mask.pixels); bytes += s.width * s.height * 4; }
             layers.push({ id: sl.id, name: sl.name, canvas: c, visible: sl.visible !== false, opacity: sl.opacity, blend: sl.blend, locked: !!sl.locked,
                 mask, maskOn: sl.mask ? sl.mask.enabled !== false : false, styles: sl.styles || null, adjust: sl.adjust || null, text: sl.text || null, groupId: sl.groupId || null, isBackground: !!sl.isBackground,
-                clip: !!sl.clip, smart: await smartIn(state, sl.smart) });
+                clip: !!sl.clip, smart: await smartIn(state, sl.smart), vector: sl.vector || null });
         }
         return { width: s.width, height: s.height, active: s.active, editMask: !!s.editMask, groups: s.groups || [], layers, bytes };
     }
@@ -265,6 +270,8 @@
         d.layers = layers;
         d.groups = D.groups || [];
         d.guides = D.guides || [];
+        d.paths = D.paths || [];
+        d.workPath = D.workPath || null;
         d.active = Math.min(Math.max(0, D.active || 0), layers.length - 1);
         d.editMask = !!(D.editMask && layers[d.active] && layers[d.active].mask);
         d.selection = await selectionIn(state, W, H, D.selection);
@@ -275,7 +282,9 @@
         d.historyBytes = 0;
         if (m.history) {
             for (const st of m.history.steps) {
-                if (st.kind === 'snapshot') {
+                if (st.kind === 'paths') {
+                    d.history.push({ label: st.label, kind: 'paths', before: st.before, after: st.after, bytes: 2000 });
+                } else if (st.kind === 'snapshot') {
                     const before = await snapshotIn(state, st.before);
                     const after = await snapshotIn(state, st.after);
                     st.before.layers.concat(st.after.layers).forEach((x) => { maxId = Math.max(maxId, x.id); });
@@ -284,7 +293,7 @@
                     const before = await state.image(st.before);
                     const after = await state.image(st.after);
                     const smart = st.smart ? { before: await smartIn(state, st.smart.before), after: await smartIn(state, st.smart.after) } : undefined;
-                    d.history.push({ label: st.label, kind: 'pixels', layerId: st.layerId, rect: st.rect, before, after, bytes: st.rect.w * st.rect.h * 8, smart });
+                    d.history.push({ label: st.label, kind: 'pixels', layerId: st.layerId, rect: st.rect, before, after, bytes: st.rect.w * st.rect.h * 8, smart, vector: st.vector || undefined });
                 }
                 d.historyBytes += d.history[d.history.length - 1].bytes;
                 tick();

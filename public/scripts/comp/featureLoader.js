@@ -128,7 +128,8 @@ const FEATURE_MANIFEST = {
             'scripts/comp/desktop-apps/paint/paintBar.js',
             'scripts/comp/desktop-apps/paint/paintType.js',
             'scripts/comp/desktop-apps/paint/paintBrush.js',
-            'scripts/comp/desktop-apps/paint/paintSmart.js'
+            'scripts/comp/desktop-apps/paint/paintSmart.js',
+            'scripts/comp/desktop-apps/paint/paintPath.js'
         ]
     },
     media_player: {

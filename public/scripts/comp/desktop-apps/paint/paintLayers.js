@@ -178,7 +178,7 @@
                 return `${head}<div class="mp-layer-row${i === w.doc.active && !w.activeGroup ? ' is-active' : ''}${l.mask ? ' has-mask' : ''}${child}" data-i="${i}" role="option">
                 ${l.adjust ? `<span class="mp-layer-thumb mp-layer-kind is-adjust" title="Adjustment layer (double-click to change)"></span>` : l.text ? `<span class="mp-layer-thumb mp-layer-kind is-text${i === w.doc.active && !onMask(i) ? ' is-target' : ''}" title="Type layer (double-click to edit)">T</span>` : `<canvas class="mp-layer-thumb${i === w.doc.active && !onMask(i) ? ' is-target' : ''}" width="40" height="30" data-i="${i}"></canvas>`}
                 ${l.mask ? `<canvas class="mp-layer-mask${onMask(i) ? ' is-target' : ''}${l.mask.enabled ? '' : ' is-off'}" width="40" height="30" data-i="${i}" title="Layer mask (Shift+click turns it off)"></canvas>` : ''}
-                <span class="mp-layer-name">${esc(l.name)}${l.locked ? ' <i class="mp-layer-lock" title="Locked"></i>' : ''}${C().hasEffects(l) ? ' <i class="mp-layer-fx" title="Layer Style (double-click)">fx</i>' : ''}${l.smart ? ` <i class="mp-layer-so" title="Smart Object (double-click the thumbnail to edit its contents)${l.smart.filters.length ? `. Smart filters: ${esc(l.smart.filters.map((f) => f.label).join(', '))}` : ''}"></i>` : ''}</span>
+                <span class="mp-layer-name">${esc(l.name)}${l.locked ? ' <i class="mp-layer-lock" title="Locked"></i>' : ''}${C().hasEffects(l) ? ' <i class="mp-layer-fx" title="Layer Style (double-click)">fx</i>' : ''}${l.vector ? ' <i class="mp-layer-vec" title="Shape layer (its path stays sharp; painting rasterizes it)"></i>' : ''}${l.smart ? ` <i class="mp-layer-so" title="Smart Object (double-click the thumbnail to edit its contents)${l.smart.filters.length ? `. Smart filters: ${esc(l.smart.filters.map((f) => f.label).join(', '))}` : ''}"></i>` : ''}</span>
                 <input type="checkbox" class="mp-layer-vis" title="Visible"${l.visible ? ' checked' : ''}>
             </div>`;
             }).join('');
@@ -271,6 +271,7 @@
             ] },
             { text: 'Smart Objects', hasSubmenu: true, submenu: root.paintSmart ? root.paintSmart.menu(w) : [] },
             { text: 'Rasterize Type', action: 'layer-rasterize', disabled: !d.activeLayer.text },
+            { text: 'Rasterize Shape', action: 'shape-rasterize', disabled: !d.activeLayer.vector },
             { text: 'Layer from Background', action: 'layer-from-bg', disabled: !d.activeLayer.isBackground },
             { text: 'Background from Layer', action: 'layer-to-bg', disabled: d.activeLayer.isBackground || d.layers.some((x) => x.isBackground) || !!d.activeLayer.adjust },
             { separator: true },

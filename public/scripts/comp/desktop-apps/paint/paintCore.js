@@ -97,6 +97,7 @@
             this.groupId = null;
             this.clip = false; // clipped to the layer under it (Photoshop's clipping mask)
             this.smart = null; // a Smart Object's source, transform and filters (paintSmart.js)
+            this.vector = null; // a shape layer's path, fill and stroke (paintPath.js)
         }
 
         /** A layer mask, white (everything shows) or black (nothing does). */
@@ -455,6 +456,7 @@
             copy.adjust = src.adjust ? JSON.parse(JSON.stringify(src.adjust)) : null;
             copy.groupId = src.groupId;
             copy.clip = !!src.clip;
+            copy.vector = src.vector ? JSON.parse(JSON.stringify(src.vector)) : null;
             copy.smart = src.smart ? { src: src.smart.src, xf: { ...src.smart.xf }, filters: src.smart.filters.slice() } : null;
             copy.text = src.text ? { ...src.text } : null;
             this.layers.splice(i + 1, 0, copy);
@@ -478,6 +480,7 @@
             }
             // what merges into a Smart Object makes it plain pixels
             below.smart = null;
+            below.vector = null;
             below.ctx.save();
             below.ctx.globalAlpha = top.opacity;
             below.ctx.globalCompositeOperation = BLENDS[top.blend] || 'source-over';
@@ -722,7 +725,7 @@
                     ctxOf(mask).drawImage(l.mask.canvas, 0, 0);
                     bytes += this.width * this.height * 4;
                 }
-                return { id: l.id, name: l.name, canvas: c, visible: l.visible, opacity: l.opacity, blend: l.blend, locked: l.locked, mask, maskOn: l.mask ? l.mask.enabled : false, styles: l.styles ? JSON.parse(JSON.stringify(l.styles)) : null, adjust: l.adjust ? JSON.parse(JSON.stringify(l.adjust)) : null, text: l.text ? { ...l.text } : null, groupId: l.groupId, isBackground: !!l.isBackground, clip: !!l.clip, smart: l.smart ? { src: l.smart.src, xf: { ...l.smart.xf }, filters: l.smart.filters.slice() } : null };
+                return { id: l.id, name: l.name, canvas: c, visible: l.visible, opacity: l.opacity, blend: l.blend, locked: l.locked, mask, maskOn: l.mask ? l.mask.enabled : false, styles: l.styles ? JSON.parse(JSON.stringify(l.styles)) : null, adjust: l.adjust ? JSON.parse(JSON.stringify(l.adjust)) : null, text: l.text ? { ...l.text } : null, groupId: l.groupId, isBackground: !!l.isBackground, clip: !!l.clip, vector: l.vector ? JSON.parse(JSON.stringify(l.vector)) : null, smart: l.smart ? { src: l.smart.src, xf: { ...l.smart.xf }, filters: l.smart.filters.slice() } : null };
             });
             return { width: this.width, height: this.height, active: this.active, editMask: !!this.editMask, layers, groups: JSON.parse(JSON.stringify(this.groups)), bytes };
         }
@@ -749,6 +752,7 @@
                 l.groupId = sl.groupId || null;
                 l.isBackground = !!sl.isBackground;
                 l.clip = !!sl.clip;
+                l.vector = sl.vector ? JSON.parse(JSON.stringify(sl.vector)) : null;
                 l.smart = sl.smart ? { src: sl.smart.src, xf: { ...sl.smart.xf }, filters: sl.smart.filters.slice() } : null;
                 return l;
             });
@@ -779,10 +783,16 @@
                 this.restore(step[which]);
                 return;
             }
+            // paths and shape layers (paintPath.js)
+            if (step.kind === 'paths') {
+                if (root.paintPath) root.paintPath.applyState(this, step[which]);
+                return;
+            }
             const l = this.target(step.layerId);
             if (!l) return;
             l.ctx.putImageData(step[which], step.rect.x, step.rect.y);
             // a Smart Object's source, transform and filters go back with its pixels
+            if (step.vector) l.vector = JSON.parse(JSON.stringify(step.vector[which]));
             if (step.smart) { const s = step.smart[which]; l.smart = s ? { src: s.src, xf: { ...s.xf }, filters: s.filters.slice() } : null; }
             this.markDirty(step.rect);
         }

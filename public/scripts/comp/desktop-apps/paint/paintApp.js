@@ -66,13 +66,19 @@
         ['sponge', 'Sponge', 'Saturates the colors under the brush; right-drag desaturates.'],
         ['vtext', 'Vertical Type', 'Inserts text written top to bottom.'],
         ['textmask', 'Horizontal Type Mask', 'Makes a selection in the shape of the text you type.'],
-        ['vtextmask', 'Vertical Type Mask', 'Makes a selection in the shape of vertical text.']
+        ['vtextmask', 'Vertical Type Mask', 'Makes a selection in the shape of vertical text.'],
+        ['pen', 'Pen', 'Click to add corners, drag for curves; click the first point to close. Ctrl drags a point.'],
+        ['pathselect', 'Path Selection', 'Drags a whole path or subpath.'],
+        ['directselect', 'Direct Selection', 'Drags one anchor point or handle of a path.']
     ];
+    const PATH_TOOLS = new Set(['pen', 'pathselect', 'directselect']);
+    const VECTOR_BAR = new Set(['pen', 'pathselect', 'directselect', 'rect', 'ellipse', 'roundrect', 'line', 'move']);
     // Photoshop's tool keys; Shift with the key steps through its group
     const TOOL_KEYS = {
         v: ['move'], m: ['select', 'ellipseselect'], l: ['freeselect', 'polylasso'], w: ['wand'], c: ['crop'], i: ['picker'],
         j: ['heal'], b: ['brush', 'pencil', 'airbrush'], s: ['clone'], e: ['eraser'], g: ['gradient', 'fill'], t: ['text', 'vtext', 'textmask', 'vtextmask'],
-        u: ['rect', 'roundrect', 'ellipse', 'polygon', 'line', 'curve'], z: ['magnifier'], h: ['hand'], o: ['dodge', 'burn', 'sponge'], r: ['blur', 'smudge']
+        u: ['rect', 'roundrect', 'ellipse', 'polygon', 'line', 'curve'], z: ['magnifier'], h: ['hand'], o: ['dodge', 'burn', 'sponge'], r: ['blur', 'smudge'],
+        p: ['pen'], a: ['pathselect', 'directselect']
     };
     // tools that paint with a round dab of their own size (the Size box, else this many pixels)
     const DAB_TOOLS = { clone: 15, blur: 20, smudge: 20, dodge: 30, burn: 30, sponge: 30, heal: 20 };
@@ -80,7 +86,7 @@
     const SELECT_TOOLS = new Set(['select', 'freeselect', 'ellipseselect', 'polylasso', 'wand', 'move']);
     const P = () => root.paintPro;
     // tools whose points snap to guides and the picture's edges (View > Snap)
-    const SNAP_TOOLS = new Set(['select', 'ellipseselect', 'polylasso', 'crop', 'rect', 'ellipse', 'roundrect', 'line', 'gradient', 'text', 'polygon']);
+    const SNAP_TOOLS = new Set(['select', 'ellipseselect', 'polylasso', 'crop', 'rect', 'ellipse', 'roundrect', 'line', 'gradient', 'text', 'polygon', 'pen']);
     const RULER = 17;
     const DEFAULT_STATUS = 'For Help, click Help Topics on the Help Menu.';
     let windowCount = 0;
@@ -153,7 +159,7 @@
             this.zoom = 1;
             this.opt = {
                 lineWidth: 1, brush: 'round-2', eraser: 8, airbrush: 0, shape: 'outline', transparent: false,
-                zoomLevel: 4, size: 0, opacity: 100, hardness: 100, tolerance: 32, antialias: true, gradient: 'linear',
+                zoomLevel: 4, size: 0, opacity: 100, penMode: 'path', shapeMode: 'pixels', hardness: 100, tolerance: 32, antialias: true, gradient: 'linear',
                 selMode: 'new', contiguous: true, sampleAll: false, showControls: true, keepRatio: true,
                 // Photoshop's options bar (paintBar.js)
                 feather: 0, selStyle: 'normal', selW: 1, selH: 1, autoSelect: false, cropRatio: 'free', cropSwap: false,
@@ -272,6 +278,9 @@
                 if (kind === 'dirty') { this.schedule(); this.moveBoxStale = true; }
                 if (kind === 'resize') this.layout();
                 if (kind === 'changed') { this.dirtyDoc = true; }
+                if (kind === 'paths' && root.paintPath) { root.paintPath.refreshPanel(this); this.drawAnts(); }
+                // a shape layer's Fill and Stroke sit in the shape tools' bar
+                if (kind === 'layers' && VECTOR_BAR.has(this.tool)) { this.renderBar(); if (root.paintPath) root.paintPath.refreshPanel(this); }
                 if (kind === 'layers' || kind === 'history') {
                     this.emitPanels();
                     // the Move tool's box follows undo, redo and another layer
@@ -739,7 +748,8 @@
             let action = null;
             if (ctrl) {
                 const code = ev.code;
-                if (shift && alt && k === 'l') action = 'adj-autolevel';
+                if (ev.key === 'Enter' && !shift && !alt) action = 'path-select';
+                else if (shift && alt && k === 'l') action = 'adj-autolevel';
                 else if (alt && !shift && k === 'f') action = 'pro-last-filter';
                 else if (alt && !shift && k === 'c') action = 'attributes';
                 else if (alt && !shift && k === 'i') action = 'stretch';
@@ -1035,6 +1045,7 @@
             if (l.locked) { this.status('This layer is locked.'); return false; }
             if (!l.visible) { this.status('This layer is hidden.'); return false; }
             if (l.smart && !keepSmart && this.tool !== 'move' && root.paintSmart) root.paintSmart.rasterize(this, l);
+            if (l.vector && !keepSmart && this.tool !== 'move' && !PATH_TOOLS.has(this.tool) && root.paintPath) root.paintPath.rasterize(this, l);
             // painting on a type layer turns its text into pixels (Photoshop asks; Paint just says so)
             if (l.text && this.tool !== 'move') this.rasterizeType(l);
             return true;
@@ -1321,6 +1332,7 @@
                 html += this.handleMarks([...pts, ...mids]);
                 html += `<circle class="mp-xf-center" cx="${this.xf.cx * z}" cy="${this.xf.cy * z}" r="3"/>`;
             }
+            if (root.paintPath && !this.xf) html += root.paintPath.svg(this, z);
             svg.innerHTML = html;
         }
 
@@ -2208,6 +2220,7 @@
                     { text: 'New Guide...', action: 'guides-new' },
                     { text: 'Clear Guides', action: 'guides-clear', disabled: !this.doc.guides.length },
                     { text: 'Info', action: 'pro-info', showIndicator: true, checked: !!(P() && P().infoOpen(this)) },
+                    { text: 'Paths', action: 'paths', showIndicator: true, checked: !!(root.paintPath && root.paintPath.panelOpen(this)) },
                     { text: 'Brushes', subtext: 'F5', action: 'brushes', showIndicator: true, checked: !!(root.paintBrush && root.paintBrush.panelOpen(this)) },
                     { text: 'Character', action: 'character', showIndicator: true, checked: !!(root.paintType && root.paintType.characterOpen(this)) },
                     { separator: true },
@@ -2284,6 +2297,7 @@
                 case 'paste-from': this.pasteFrom(); return;
                 case 'escape':
                     if (this.xf) { this.cancelTransform(); return; }
+                    if (root.paintPath && root.paintPath.endPen(this)) return;
                     if (this.text) { this.cancelText(); return; }
                     if (this.cropBox) { this.cropBox = null; this.drawAnts(); this.renderBar(); return; }
                     if (this.lasso) { this.lasso = null; this.selBase = null; this.setSelection(this.lassoBefore || null); return; }
@@ -2292,6 +2306,7 @@
                     return;
                 case 'enter':
                     if (this.xf) { this.commitTransform(); return; }
+                    if (root.paintPath && root.paintPath.endPen(this)) return;
                     if (this.cropBox) { this.commitCrop(); return; }
                     if (this.lasso) { this.tools.polylasso.finish.call(this); return; }
                     if (this.polygon && this.tools.polygon.finish) this.tools.polygon.finish.call(this);
@@ -2345,6 +2360,7 @@
                 default:
                     if (root.paintLayers && root.paintLayers.action(this, a)) return;
                     if (root.paintSmart && root.paintSmart.action(this, a)) return;
+                    if (root.paintPath && root.paintPath.action(this, a)) return;
                     if (P() && P().action(this, a)) return;
                     if (root.paintColor && root.paintColor.action(this, a)) return;
                     break;
@@ -2448,6 +2464,16 @@
                 x = s.x; y = s.y;
                 from = { selection: s };
                 this.doc.selection = null;
+            } else if (l.vector && root.paintPath) {
+                // a shape layer transforms its path (the box is the path's pixels)
+                const b = this.layerBounds(l);
+                if (!b) { this.status('The shape is empty.'); return; }
+                step = this.doc.beginStep('Free Transform', l);
+                src = C().makeCanvas(b.w, b.h);
+                src.getContext('2d').drawImage(l.canvas, b.x, b.y, b.w, b.h, 0, 0, b.w, b.h);
+                l.ctx.clearRect(0, 0, this.doc.width, this.doc.height);
+                x = b.x; y = b.y;
+                from = { vector: b };
             } else if (l.smart) {
                 // a Smart Object transforms its source, from where it last was
                 step = this.doc.beginStep('Free Transform', l);
@@ -2567,6 +2593,7 @@
             this.xf = null;
             const l = this.doc.layer;
             if (t.from && t.from.smart && l.smart && root.paintSmart) root.paintSmart.commitTransform(this, l, t);
+            else if (t.from && t.from.vector && l.vector && root.paintPath) root.paintPath.commitTransform(this, l, t);
             else this.drawXfInto(l.ctx, t);
             t.step.grow({ x: 0, y: 0, w: this.doc.width, h: this.doc.height });
             this.doc.commitStep(t.step);
@@ -3075,6 +3102,8 @@
                 this.shape = null;
                 this.clearOverlay();
                 if (!s || (s.a.x === s.b.x && s.a.y === s.b.y && kind !== 'line')) return;
+                // Photoshop's Shape and Path modes: a shape layer, or a path, not pixels
+                if (this.opt.shapeMode && this.opt.shapeMode !== 'pixels' && root.paintPath) { root.paintPath.fromShapeTool(this, kind, s); return; }
                 const lw = this.brushSize();
                 const rect = { x: Math.min(s.a.x, s.b.x) - lw, y: Math.min(s.a.y, s.b.y) - lw, w: Math.abs(s.b.x - s.a.x) + 2 * lw, h: Math.abs(s.b.y - s.a.y) + 2 * lw };
                 this.commitToLayer(TOOLS.find((t) => t[0] === this.tool)[1], (ctx) => {
@@ -3403,6 +3432,7 @@
             }
             m.step.grow({ x: 0, y: 0, w: this.doc.width, h: this.doc.height });
             if (l.smart && root.paintSmart) root.paintSmart.moved(this, l, m.step, Math.round(p.x - m.start.x), Math.round(p.y - m.start.y));
+            if (l.vector && root.paintPath) root.paintPath.moved(this, l, m.step, Math.round(p.x - m.start.x), Math.round(p.y - m.start.y));
             this.doc.commitStep(m.step);
             this.moveBoxStale = true;
             this.drawAnts();
