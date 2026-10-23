@@ -44,7 +44,14 @@
             blobs, parts,
             rgba(img) { return add(new Uint8Array(img.data.buffer, img.data.byteOffset, img.data.byteLength), { format: 'rgba8', width: img.width, height: img.height }); },
             canvas(c) { return this.rgba(c.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, c.width, c.height)); },
-            gray(bytes, width, height) { return add(bytes, { format: 'gray8', width, height }); }
+            gray(bytes, width, height) { return add(bytes, { format: 'gray8', width, height }); },
+            // a Smart Object's state; its source is written once however many steps share it
+            srcs: new Map(),
+            async smart(s) {
+                if (!s) return null;
+                if (!this.srcs.has(s.src)) this.srcs.set(s.src, await this.canvas(s.src));
+                return { src: this.srcs.get(s.src), xf: { ...s.xf }, filters: s.filters.map((f) => ({ id: f.id || null, label: f.label, vals: f.vals || [], pad: f.pad || 0, on: f.on !== false })) };
+            }
         };
     }
 
@@ -66,6 +73,7 @@
             id: l.id, name: l.name, visible: l.visible, opacity: l.opacity, blend: l.blend, locked: !!l.locked,
             groupId: l.groupId || null,
             clip: !!l.clip,
+            smart: l.smart ? await out.smart(l.smart) : null,
             pixels: await out.canvas(canvas || l.canvas),
             mask: maskCanvas ? { pixels: await out.canvas(maskCanvas), enabled: maskOn !== false } : null,
             styles: l.styles || null,
@@ -122,7 +130,10 @@
                 const steps = [];
                 for (const st of d.history) {
                     if (st.kind === 'snapshot') steps.push({ label: st.label, kind: 'snapshot', before: await snapshotOut(out, st.before), after: await snapshotOut(out, st.after) });
-                    else steps.push({ label: st.label, kind: 'pixels', layerId: st.layerId, rect: st.rect, before: await out.rgba(st.before), after: await out.rgba(st.after) });
+                    else {
+                        steps.push({ label: st.label, kind: 'pixels', layerId: st.layerId, rect: st.rect, before: await out.rgba(st.before), after: await out.rgba(st.after),
+                            smart: st.smart ? { before: await out.smart(st.smart.before), after: await out.smart(st.smart.after) } : undefined });
+                    }
                     tick();
                 }
                 manifest.history = { index: d.historyIndex, steps };
@@ -188,6 +199,7 @@
         l.locked = !!sl.locked;
         l.groupId = sl.groupId || null;
         l.clip = !!sl.clip;
+        l.smart = await smartIn(state, sl.smart);
         if (sl.mask) l.setMaskCanvas(await state.canvas(sl.mask.pixels), sl.mask.enabled !== false);
         l.styles = sl.styles || null;
         l.adjust = sl.adjust ? { kind: sl.adjust.kind, params: sl.adjust.params } : null;
@@ -209,6 +221,16 @@
         return o;
     }
 
+    /** A Smart Object's state read back (its filters find their makers in apply). */
+    const srcCache = new WeakMap();
+    async function smartIn(state, s) {
+        if (!s) return null;
+        if (!srcCache.has(state)) srcCache.set(state, new Map());
+        const cache = srcCache.get(state);
+        if (!cache.has(s.src)) cache.set(s.src, await state.canvas(s.src));
+        return { src: cache.get(s.src), xf: { ...s.xf }, filters: (s.filters || []).map((f) => ({ ...f })) };
+    }
+
     /** A snapshot for the history, in the shape PaintCore's Document.snapshot() makes. */
     async function snapshotIn(state, s) {
         const layers = [];
@@ -219,7 +241,8 @@
             let mask = null;
             if (sl.mask) { mask = await state.canvas(sl.mask.pixels); bytes += s.width * s.height * 4; }
             layers.push({ id: sl.id, name: sl.name, canvas: c, visible: sl.visible !== false, opacity: sl.opacity, blend: sl.blend, locked: !!sl.locked,
-                mask, maskOn: sl.mask ? sl.mask.enabled !== false : false, styles: sl.styles || null, adjust: sl.adjust || null, text: sl.text || null, groupId: sl.groupId || null, isBackground: !!sl.isBackground });
+                mask, maskOn: sl.mask ? sl.mask.enabled !== false : false, styles: sl.styles || null, adjust: sl.adjust || null, text: sl.text || null, groupId: sl.groupId || null, isBackground: !!sl.isBackground,
+                clip: !!sl.clip, smart: await smartIn(state, sl.smart) });
         }
         return { width: s.width, height: s.height, active: s.active, editMask: !!s.editMask, groups: s.groups || [], layers, bytes };
     }
@@ -260,7 +283,8 @@
                 } else {
                     const before = await state.image(st.before);
                     const after = await state.image(st.after);
-                    d.history.push({ label: st.label, kind: 'pixels', layerId: st.layerId, rect: st.rect, before, after, bytes: st.rect.w * st.rect.h * 8 });
+                    const smart = st.smart ? { before: await smartIn(state, st.smart.before), after: await smartIn(state, st.smart.after) } : undefined;
+                    d.history.push({ label: st.label, kind: 'pixels', layerId: st.layerId, rect: st.rect, before, after, bytes: st.rect.w * st.rect.h * 8, smart });
                 }
                 d.historyBytes += d.history[d.history.length - 1].bytes;
                 tick();
@@ -268,6 +292,15 @@
             d.historyIndex = Math.min(m.history.index, d.history.length - 1);
         }
         C().reserveIds(maxId);
+        // smart filters find their makers again (by the menu action each came from)
+        if (root.paintSmart) {
+            const fix = (sm) => { if (sm) root.paintSmart.restoreFilters(w, { smart: sm }, sm.filters); };
+            d.layers.forEach((l) => fix(l.smart));
+            d.history.forEach((st) => {
+                if (st.smart) { fix(st.smart.before); fix(st.smart.after); }
+                if (st.kind === 'snapshot') [st.before, st.after].forEach((sn) => sn.layers.forEach((x) => fix(x.smart)));
+            });
+        }
         // the window: tools, colours, view, panels
         const t = m.tools || {};
         if (t.options) Object.assign(w.opt, t.options);

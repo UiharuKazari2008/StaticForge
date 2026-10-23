@@ -338,7 +338,8 @@
         if (w.proSession) { w.status('Finish the open dialog first.'); return null; }
         w.commitFloating();
         w.finishText();
-        if (!w.editable()) return null;
+        // a filter on a whole Smart Object becomes a smart filter; anything else rasterizes it
+        if (!w.editable(!!opts.smart && !w.doc.selection)) return null;
         const d = w.doc;
         const r = opts.rect || areaOf(w);
         if (!r) return null;
@@ -381,6 +382,7 @@
                 l.ctx.putImageData(base, pr.x, pr.y);
                 d.markDirty(pr);
             },
+            step,
             commit() { d.commitStep(step); w.proSession = null; },
             cancel() { S.restore(); step.backup = null; w.proSession = null; }
         };
@@ -976,8 +978,16 @@
     }
 
     /** A filter with a dialog: make(values) -> (img, info) -> img. */
+    /** The filter as a smart filter when its layer is a Smart Object (and nothing is selected). */
+    function smartKeep(w, S, label, make, vals, pad) {
+        if (!S.l.smart || w.doc.selection || !root.paintSmart) return;
+        root.paintSmart.addFilter(w, S, { id: w.filterAction, label, make, vals, pad });
+    }
+
     function filterDialog(w, label, fields, make, opts = {}) {
-        const S = session(w, label, opts.pad || 0);
+        // paintSmart asks for the maker alone (a smart filter read back from a file)
+        if (w.captureMaker) { w.captureMaker({ label, make, pad: opts.pad || 0 }); return; }
+        const S = session(w, label, opts.pad || 0, { smart: true });
         if (!S) return;
         fieldDialog(w, label, fields, {
             heavy: opts.heavy !== false,
@@ -985,19 +995,22 @@
             unpreview() { S.restore(); },
             ok(vals) {
                 S.write(make(vals)(S.copy(), S.info, vals));
+                smartKeep(w, S, label, make, vals, opts.pad || 0);
                 S.commit();
-                w.lastFilter = { label, make, vals, pad: opts.pad || 0 };
+                w.lastFilter = { id: w.filterAction, label, make, vals, pad: opts.pad || 0 };
             },
             cancel() { S.cancel(); }
         });
     }
 
     function filterNow(w, label, fn, pad = 0) {
-        const S = session(w, label, pad);
+        if (w.captureMaker) { w.captureMaker({ label, make: () => fn, pad }); return; }
+        const S = session(w, label, pad, { smart: true });
         if (!S) return;
         S.write(fn(S.copy(), S.info));
+        smartKeep(w, S, label, () => fn, [], pad);
         S.commit();
-        w.lastFilter = { label, make: () => fn, vals: [], pad };
+        w.lastFilter = { id: w.filterAction, label, make: () => fn, vals: [], pad };
     }
 
     // ---- Levels ------------------------------------------------------------------------------
@@ -2219,9 +2232,11 @@
             case 'pro-last-filter': {
                 const lf = w.lastFilter;
                 if (!lf) return true;
-                const S = session(w, lf.label, lf.pad);
+                const S = session(w, lf.label, lf.pad, { smart: true });
                 if (!S) return true;
                 S.write(lf.make(lf.vals)(S.copy(), S.info, lf.vals));
+                w.filterAction = lf.id;
+                smartKeep(w, S, lf.label, lf.make, lf.vals, lf.pad);
                 S.commit();
                 return true;
             }

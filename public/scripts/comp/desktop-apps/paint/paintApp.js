@@ -1029,10 +1029,12 @@
             return [1, 2, 5, 8][sz];
         }
 
-        editable() {
+        /** keepSmart: a transform or a smart filter, which a Smart Object takes as it is. */
+        editable(keepSmart) {
             const l = this.doc.layer;
             if (l.locked) { this.status('This layer is locked.'); return false; }
             if (!l.visible) { this.status('This layer is hidden.'); return false; }
+            if (l.smart && !keepSmart && this.tool !== 'move' && root.paintSmart) root.paintSmart.rasterize(this, l);
             // painting on a type layer turns its text into pixels (Photoshop asks; Paint just says so)
             if (l.text && this.tool !== 'move') this.rasterizeType(l);
             return true;
@@ -2150,6 +2152,7 @@
                     { text: 'New', subtext: 'Ctrl+N', action: 'new' },
                     { text: 'Open...', subtext: 'Ctrl+O', action: 'open' },
                     { text: 'Open from Gallery...', action: 'open-gallery' },
+                    { text: 'Place Embedded...', action: 'place-embedded', disabled: !root.paintSmart },
                     { text: 'Save', subtext: 'Ctrl+S', action: 'save' },
                     { text: 'Save As...', action: 'save-as' },
                     { text: 'Save to Gallery', action: 'save-gallery' },
@@ -2250,6 +2253,8 @@
 
         async action(a) {
             const D = root.paintDialogs;
+            // the menu action a filter came from (a smart filter is kept by it)
+            this.filterAction = a;
             switch (a) {
                 case 'new':
                     if (!await this.confirmDiscard()) return;
@@ -2257,7 +2262,11 @@
                     return;
                 case 'open': if (await this.confirmDiscard()) this.openDialog('open-vfs'); return;
                 case 'open-gallery': if (await this.confirmDiscard()) this.openDialog('open-gallery'); return;
-                case 'save': await this.save(); return;
+                case 'save':
+                    // a Smart Object's contents save back into their layer (Photoshop's .psb)
+                    if (this.smartParent && root.paintSmart) { if (root.paintSmart.pushContents(this)) this.status('The Smart Object was updated.'); return; }
+                    await this.save();
+                    return;
                 case 'save-as': await this.saveAs(); return;
                 case 'save-gallery': await this.saveToGallery(false); return;
                 case 'wallpaper': await this.saveToGallery(true); return;
@@ -2335,6 +2344,7 @@
                 case 'about': callGlobal('openAboutMelatoninModal', { program: 'Paint' }); return;
                 default:
                     if (root.paintLayers && root.paintLayers.action(this, a)) return;
+                    if (root.paintSmart && root.paintSmart.action(this, a)) return;
                     if (P() && P().action(this, a)) return;
                     if (root.paintColor && root.paintColor.action(this, a)) return;
                     break;
@@ -2414,7 +2424,7 @@
             if (this.xf) return;
             this.finishText();
             this.cancelShape();
-            if (!this.editable()) return;
+            if (!this.editable(!this.floating && !this.doc.selection)) return;
             const l = this.doc.layer;
             let src;
             let x;
@@ -2438,6 +2448,17 @@
                 x = s.x; y = s.y;
                 from = { selection: s };
                 this.doc.selection = null;
+            } else if (l.smart) {
+                // a Smart Object transforms its source, from where it last was
+                step = this.doc.beginStep('Free Transform', l);
+                const sx = l.smart.xf;
+                l.ctx.clearRect(0, 0, this.doc.width, this.doc.height);
+                this.xf = { src: l.smart.src, ...sx, step, from: { smart: true }, x0: sx.cx - sx.w / 2, y0: sx.cy - sx.h / 2 };
+                this.doc.markDirty();
+                this.renderBar();
+                this.drawXf();
+                this.brushCursor();
+                return;
             } else {
                 const b = this.layerBounds(l);
                 if (!b) { this.status('The layer is empty.'); return; }
@@ -2545,7 +2566,8 @@
             if (!t) return;
             this.xf = null;
             const l = this.doc.layer;
-            this.drawXfInto(l.ctx, t);
+            if (t.from && t.from.smart && l.smart && root.paintSmart) root.paintSmart.commitTransform(this, l, t);
+            else this.drawXfInto(l.ctx, t);
             t.step.grow({ x: 0, y: 0, w: this.doc.width, h: this.doc.height });
             this.doc.commitStep(t.step);
             this.clearOverlay();
@@ -3380,6 +3402,7 @@
                 return;
             }
             m.step.grow({ x: 0, y: 0, w: this.doc.width, h: this.doc.height });
+            if (l.smart && root.paintSmart) root.paintSmart.moved(this, l, m.step, Math.round(p.x - m.start.x), Math.round(p.y - m.start.y));
             this.doc.commitStep(m.step);
             this.moveBoxStale = true;
             this.drawAnts();
