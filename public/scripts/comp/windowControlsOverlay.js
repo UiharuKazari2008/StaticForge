@@ -30,22 +30,32 @@ function getCaptionBarRect() {
 let captionBarOverlayClassTimer = null;
 const CAPTION_BAR_OVERLAY_DEBOUNCE_MS = 160;
 
-// Android WebView: host updates insets after resize/layout; sync via bridge then apply --caption-bar-* on :root.
+// Android WebView: host updates insets after resize/layout; read them via the bridge then apply --caption-bar-* on :root.
+// AndroidCaption.getCaptionBarInsets() returns JSON {widthPx, heightPx, leftPx, rightPx, bottomPx, density};
+// the values are already CSS px despite the "Px" names. getCaptionBarInsetsJson is an older name.
+function getCaptionBarInsetsReader(ac) {
+    if (!ac) return null;
+    if (typeof ac.getCaptionBarInsets === 'function') return () => ac.getCaptionBarInsets();
+    if (typeof ac.getCaptionBarInsetsJson === 'function') return () => ac.getCaptionBarInsetsJson();
+    return null;
+}
+
 function syncCaptionBarInsetsFromBridge() {
-    const ac = window.AndroidCaption;
-    if (!ac || typeof ac.setCaptionBarInsets !== 'function' || typeof ac.getCaptionBarInsetsJson !== 'function') {
-        return false;
-    }
+    const readInsets = getCaptionBarInsetsReader(window.AndroidCaption);
+    if (!readInsets) return false;
     try {
-        ac.setCaptionBarInsets();
-        const raw = ac.getCaptionBarInsetsJson();
+        const raw = readInsets();
         if (raw == null || raw === '') return false;
         const data = typeof raw === 'string' ? JSON.parse(raw) : raw;
         const inset = data.insets || data;
-        const left = Number(inset.left ?? data.left ?? data.leftInset ?? data.captionBarLeft ?? 0) || 0;
-        const right = Number(inset.right ?? data.right ?? data.rightInset ?? data.captionBarRight ?? 0) || 0;
+        const left = Number(
+            data.leftPx ?? inset.left ?? data.left ?? data.leftInset ?? data.captionBarLeft ?? 0
+        ) || 0;
+        const right = Number(
+            data.rightPx ?? inset.right ?? data.right ?? data.rightInset ?? data.captionBarRight ?? 0
+        ) || 0;
         const height = Number(
-            data.height ?? data.captionBarHeight ?? inset.top ?? data.top ?? inset.height ?? 0
+            data.heightPx ?? data.height ?? data.captionBarHeight ?? inset.top ?? data.top ?? inset.height ?? 0
         ) || 0;
         if (height <= 0 && left <= 0 && right <= 0) return false;
         const root = document.documentElement;
@@ -240,10 +250,7 @@ function updateWindowControlsOverlayClasses() {
     }
     const wcoHasValidRect = wcoRect && wcoRect.width > 0 && wcoRect.height > 0;
 
-    const bridgeInsets =
-        window.AndroidCaption &&
-        typeof window.AndroidCaption.setCaptionBarInsets === 'function' &&
-        typeof window.AndroidCaption.getCaptionBarInsetsJson === 'function';
+    const bridgeInsets = getCaptionBarInsetsReader(window.AndroidCaption) !== null;
 
     const captionBarEnabledNow = getCaptionBarRect() !== null;
     const needsCaptionDebounce = !wcoHasValidRect && (captionBarEnabledNow || bridgeInsets);

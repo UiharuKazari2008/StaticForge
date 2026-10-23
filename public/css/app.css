@@ -18,8 +18,10 @@
     --window-inset-left: env(safe-area-inset-left, 0px);
     --window-inset-right: env(safe-area-inset-right, 0px);
 
-    --true-inset-top: calc(env(titlebar-area-height, 0px) + env(safe-area-inset-top, 0px));
-    --true-window-inset-top: calc(env(titlebar-area-height, 0px) + env(safe-area-inset-top, 0px));
+    /* Build on --titlebar-area-height so the Android caption bar (--caption-bar-height) counts too;
+       env(titlebar-area-*) only exists in an installed PWA with Window Controls Overlay. */
+    --true-inset-top: calc(var(--titlebar-area-height, 0px) + env(safe-area-inset-top, 0px));
+    --true-window-inset-top: calc(var(--titlebar-area-height, 0px) + env(safe-area-inset-top, 0px));
 
     /*
      * Window Controls Overlay: regions outside titlebar-area-x / (x + width) are reserved by the OS for
