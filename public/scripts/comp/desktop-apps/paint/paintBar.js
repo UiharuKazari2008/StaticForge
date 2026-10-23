@@ -82,15 +82,25 @@
             case 'gradient':
                 return [{ k: 'seg', key: 'gradient', options: [['linear', 'Linear Gradient', art(6)], ['radial', 'Radial Gradient', art(7)], ['reflected', 'Reflected Gradient', art(8)]] }, SEP,
                     MODE, OPACITY(), { k: 'check', key: 'gradReverse', label: 'Reverse' }];
-            case 'text':
+            case 'text': case 'vtext': case 'textmask': case 'vtextmask': {
+                const f = w.textFont();
+                const T = root.paintType;
                 return [
-                    { k: 'select', label: 'Font:', options: FONTS.map((f) => [f, f]), get: (ww) => ww.textFont().face, set: (ww, v) => { ww.setTextFont({ TextFace: v }); } },
-                    { k: 'select', label: 'Size:', options: [6, 8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 28, 36, 48, 60, 72, 96, 144].map((n) => [String(n), `${n} pt`]), get: (ww) => String(ww.textFont().size), set: (ww, v) => { ww.setTextFont({ TextSize: Number(v) }); } },
-                    { k: 'toggle', label: '<b>B</b>', title: 'Bold', get: (ww) => !!ww.textFont().bold, set: (ww, v) => ww.setTextFont({ TextBold: v }) },
-                    { k: 'toggle', label: '<i>I</i>', title: 'Italic', get: (ww) => !!ww.textFont().italic, set: (ww, v) => ww.setTextFont({ TextItalic: v }) },
-                    { k: 'toggle', label: '<u>U</u>', title: 'Underline', get: (ww) => !!ww.textFont().underline, set: (ww, v) => ww.setTextFont({ TextUnderline: v }) },
-                    SEP, { k: 'color', title: 'Text Color', get: (ww) => (ww.text ? ww.text.color : ww.fg), set: (ww, c) => { if (ww.text) { ww.text.color = c; ww.restyleText(); } else { ww.fg = c; ww.renderColors(); } } },
+                    { k: 'btn', icon: art(15), title: 'Toggle text orientation', run: (ww) => ww.toggleTextOrientation() },
+                    SEP,
+                    { k: 'custom', title: 'Font family', mount: (ww, el) => T && T.fontPicker(ww, el, () => ww.textFont().face, (v) => ww.setTextFont({ TextFace: v })) },
+                    { k: 'custom', title: 'Font style', mount: (ww, el) => T && T.stylePicker(ww, el, () => ww.textFont(), (s) => ww.setTextFont({ TextWeight: s.weight, TextItalic: s.italic, TextBold: s.weight >= 600 })) },
+                    { k: 'select', label: '', title: 'Font size', options: [6, 8, 9, 10, 11, 12, 14, 18, 24, 30, 36, 48, 60, 72, 96, 144].map((n) => [String(n), `${n} pt`]).concat(/^(6|8|9|10|11|12|14|18|24|30|36|48|60|72|96|144)$/.test(String(f.size)) ? [] : [[String(f.size), `${f.size} pt`]]), get: (ww) => String(ww.textFont().size), set: (ww, v) => { ww.setTextFont({ TextSize: Number(v) }); } },
+                    { k: 'select', label: '', title: 'Anti-aliasing method', options: [['smooth', 'Smooth'], ['none', 'None']], get: (ww) => ww.textFont().aa, set: (ww, v) => ww.setTextFont({ TextAA: v }) },
+                    SEP,
+                    { k: 'seg', title: 'Alignment', options: [['left', 'Left align text', '<span class="mp-al is-left"></span>'], ['center', 'Center text', '<span class="mp-al is-center"></span>'], ['right', 'Right align text', '<span class="mp-al is-right"></span>']], get: (ww) => ww.textFont().align, set: (ww, v) => ww.setTextFont({ TextAlign: v }) },
+                    SEP,
+                    { k: 'toggle', label: '<u>T</u>', title: 'Underline', get: (ww) => !!ww.textFont().underline, set: (ww, v) => ww.setTextFont({ TextUnderline: v }) },
+                    { k: 'toggle', label: '<s>T</s>', title: 'Strikethrough', get: (ww) => !!ww.textFont().strike, set: (ww, v) => ww.setTextFont({ TextStrike: v }) },
+                    { k: 'color', title: 'Text Color', get: (ww) => (ww.text ? ww.text.color : ww.fg), set: (ww, c) => { if (ww.text) { ww.text.color = c; ww.restyleText(); } else { ww.fg = c; ww.renderColors(); } } },
+                    { k: 'btn', label: 'Character', title: 'The Character window: leading, tracking, caps ...', action: 'character' },
                     ...(w.text ? [SEP, { k: 'btn', icon: art(12), title: 'Cancel (Esc)', run: (ww) => ww.cancelText() }, { k: 'btn', icon: art(11), title: 'Commit the text', run: (ww) => ww.finishText() }] : [])];
+            }
             case 'rect': case 'ellipse': case 'polygon':
                 return [SHAPE_FILL, SEP, WEIGHT, OPACITY()];
             case 'roundrect':
@@ -178,6 +188,8 @@
                 return `<button type="button" class="mp-bar-btn mp-bar-toggle${v ? ' is-on' : ''}" data-i="${i}"${title}>${it.label}</button>`;
             case 'btn':
                 return `<button type="button" class="mp-bar-btn${it.icon ? '' : ' is-text'}" data-i="${i}"${title}>${it.icon || esc(it.label)}</button>`;
+            case 'custom':
+                return `<span class="mp-bar-custom" data-c="${i}"${title}></span>`;
             case 'color':
                 return `<button type="button" class="mp-bar-btn mp-bar-color" data-i="${i}"${title}><span style="background:${root.paintColor ? root.paintColor.swatchBg(v) : v}"></span></button>`;
             default: return '';
@@ -195,6 +207,7 @@
             : `<span class="mp-bar-tool" title="${esc(title)}"><span class="mp-tool-art${tool >= 16 ? ' is-extra' : ''}" style="--i:${tool < 16 ? tool : tool - 16}"></span></span>`;
         bar.innerHTML = icon + '<span class="mp-bar-sep"></span>' + list.map((it, i) => html(w, it, i)).join('');
         bar.mpItems = list;
+        bar.querySelectorAll('.mp-bar-custom').forEach((el) => { const it = list[Number(el.dataset.c)]; if (it && it.mount) it.mount(w, el); });
         if (!bar.mpWired) {
             bar.mpWired = true;
             const itemOf = (el) => bar.mpItems[Number(el.dataset.i)];
@@ -251,7 +264,7 @@
     function update(w) {
         const bar = w.modal.querySelector('.mp-settings');
         if (!bar || !bar.mpItems) return;
-        if ((w.xf ? 'transform' : w.tool) !== bar.dataset.context) { render(w); return; }
+        if ((w.xf ? 'transform' : w.tool) !== bar.dataset.context || bar.querySelector('.mp-bar-custom')) { render(w); return; }
         bar.querySelectorAll('[data-i]').forEach((el) => {
             const it = bar.mpItems[Number(el.dataset.i)];
             if (!it || el === document.activeElement) return;

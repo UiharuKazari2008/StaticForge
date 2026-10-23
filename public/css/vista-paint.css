@@ -1670,3 +1670,357 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
     width: 18px;
     height: 12px;
 }
+
+/* ---- type: the font / style pickers, the Character window (paintType.js) ---- */
+
+.mp-fp-button {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    height: 21px;
+    min-height: 0;
+    margin: 0;
+    padding: 0 0 0 4px;
+    border: 1px solid #a0a0a0;
+    border-image: none;
+    border-radius: 0;
+    background: #fff;
+    box-shadow: none;
+    color: #000;
+    cursor: var(--c-default, default);
+}
+
+.mp-window .win7.mp-client .mp-fp-button:not(:disabled) {
+    border: 1px solid #a0a0a0;
+    border-image: none;
+    background: #fff;
+    padding: 0 0 0 4px;
+}
+
+.mp-fp-button::before,
+.mp-fp-button::after {
+    content: none;
+}
+
+.mp-fp-face {
+    width: 128px;
+    overflow: hidden;
+    font-size: 13px;
+    line-height: 19px;
+    text-align: left;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.mp-fp-button.is-style .mp-fp-face {
+    width: 92px;
+}
+
+.mp-fp-arrow {
+    flex: none;
+    width: 15px;
+    height: 19px;
+    border-left: 1px solid #d0d0d0;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4' shape-rendering='crispEdges'%3E%3Cpath d='M0 0h7v1H0zM1 1h5v1H1zM2 2h3v1H2zM3 3h1v1H3z'/%3E%3C/svg%3E") center no-repeat;
+}
+
+.mp-fp-popup {
+    position: fixed;
+    z-index: 2147482000;
+    overflow-y: auto;
+    border: 1px solid #646464;
+    background: #fff;
+    box-shadow: 3px 3px 4px rgba(0, 0, 0, 0.3);
+    outline: none;
+    color: #000;
+}
+
+.mp-fp-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    height: 24px;
+    padding: 0 6px;
+    white-space: nowrap;
+    cursor: var(--c-default, default);
+}
+
+.mp-fp-row.is-on {
+    background: #e8f1fb;
+}
+
+.mp-fp-row.is-hot {
+    background: #3399ff;
+    color: #fff;
+}
+
+.mp-fp-name {
+    font-size: 15px;
+}
+
+.mp-fp-sample {
+    font-size: 15px;
+    opacity: 0.75;
+}
+
+.mp-client .mp-bar-custom {
+    display: inline-flex;
+    flex: none;
+}
+
+/* alignment icons: three lines laid left, centred or right */
+.mp-al {
+    display: block;
+    width: 14px;
+    height: 11px;
+    background:
+        linear-gradient(#222, #222) var(--a, left) 0 / 14px 1px no-repeat,
+        linear-gradient(#222, #222) var(--a, left) 3px / 9px 1px no-repeat,
+        linear-gradient(#222, #222) var(--a, left) 6px / 14px 1px no-repeat,
+        linear-gradient(#222, #222) var(--a, left) 9px / 7px 1px no-repeat;
+}
+
+.mp-al.is-center { --a: center; }
+.mp-al.is-right { --a: right; }
+
+/* a type mask is typed over Photoshop's red quick mask */
+.mp-client .mp-textbox.is-mask {
+    background: rgba(255, 0, 0, 0.35) !important;
+    border-color: #c00;
+}
+
+.mp-client .mp-character {
+    flex: none;
+}
+
+.mp-client .mp-char-body {
+    padding: 4px 6px 6px;
+    font: 11px Tahoma, "Segoe UI", sans-serif;
+}
+
+.mp-client .mp-char-row {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    margin: 3px 0;
+}
+
+.mp-client .mp-char-row .mp-fp-face {
+    width: 150px;
+}
+
+.mp-client .mp-char-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3px 8px;
+    margin: 4px 0;
+}
+
+.mp-client .mp-char-grid label {
+    display: grid;
+    grid-template-columns: 46px 1fr auto;
+    align-items: center;
+    gap: 2px;
+}
+
+.mp-client .mp-char-grid input {
+    width: 100%;
+    height: 19px;
+    min-width: 0;
+    font: inherit;
+}
+
+.mp-client .mp-char-grid i {
+    font-style: normal;
+    color: #555;
+}
+
+.mp-window .win7.mp-client .mp-char-tog:not(:disabled),
+.mp-window .win7.mp-client .mp-char-color:not(:disabled) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 20px;
+    min-height: 0;
+    padding: 0 3px;
+    border: 1px solid #b0b0b0;
+    border-image: none;
+    border-radius: 2px;
+    background: linear-gradient(#fff, #ececec);
+    box-shadow: none;
+    color: #000;
+    font: 12px "Times New Roman", serif;
+}
+
+.mp-window .win7.mp-client .mp-char-tog.is-on {
+    border-color: #2c628b;
+    background: #c4e5f6;
+}
+
+.mp-client .mp-char-tog::before,
+.mp-client .mp-char-tog::after,
+.mp-client .mp-char-color::before,
+.mp-client .mp-char-color::after {
+    content: none;
+}
+
+.mp-client .mp-char-color span {
+    display: block;
+    width: 22px;
+    height: 12px;
+    border: 1px solid #707070;
+}
+
+.mp-client .mp-char-gap {
+    width: 6px;
+}
+
+/* ---- the colour bar's modes and layouts (paintColor.js) ---- */
+
+.mp-client .mp-cbar-main {
+    display: flex;
+    flex: none;
+}
+
+.mp-client .mp-cbar-sliders {
+    display: grid;
+    grid-template-columns: repeat(2, auto);
+    grid-template-rows: repeat(3, 12px);
+    grid-auto-flow: column;
+    gap: 0 10px;
+    align-content: center;
+}
+
+.mp-client .mp-sl {
+    display: grid;
+    grid-template-columns: 10px 120px 34px;
+    align-items: center;
+    gap: 3px;
+    height: 12px;
+    font: 10px Tahoma, sans-serif;
+}
+
+.mp-client .mp-sl canvas {
+    display: block;
+    width: 120px;
+    height: 12px;
+    cursor: var(--c-default, default);
+    touch-action: none;
+}
+
+.mp-client .mp-sl input {
+    width: 34px;
+    height: 12px;
+    padding: 0 1px;
+    font: 10px Tahoma, sans-serif;
+}
+
+.mp-client .mp-fg.is-target,
+.mp-client .mp-bg.is-target {
+    outline: 1px dotted #000;
+    outline-offset: 1px;
+}
+
+/* Single Row: the bar one line high, the sliders side by side */
+.mp-window.mp-cbar-row .mp-colorbox {
+    flex-basis: 22px;
+    padding: 1px 4px;
+}
+
+.mp-window.mp-cbar-row .mp-swatch-box {
+    width: 34px;
+    height: 18px;
+}
+
+.mp-window.mp-cbar-row .mp-swatch-box .mp-fg { left: 2px; top: 2px; width: 10px; height: 10px; }
+.mp-window.mp-cbar-row .mp-swatch-box .mp-bg { left: 15px; top: 4px; width: 10px; height: 10px; }
+.mp-window.mp-cbar-row .mp-swatch-box .mp-default-colors,
+.mp-window.mp-cbar-row .mp-swatch-box .mp-swap-colors { display: none; }
+
+.mp-window.mp-cbar-row .mp-ramp {
+    height: 18px;
+}
+
+.mp-window.mp-cbar-row .mp-cbar-sliders {
+    grid-template-rows: 12px;
+    grid-auto-flow: column;
+}
+
+.mp-window.mp-cbar-row .mp-sl {
+    grid-template-columns: 10px 70px 30px;
+}
+
+.mp-window.mp-cbar-row .mp-sl canvas {
+    width: 70px;
+}
+
+.mp-window.mp-cbar-row .mp-swatches {
+    grid-template-rows: 15px;
+    height: 18px;
+}
+
+.mp-window.mp-cbar-row .mp-sw-tools {
+    flex-direction: row;
+}
+
+/* In the Tool Box: the bar goes, Photoshop's chips sit under the tools */
+.mp-window.mp-cbar-toolbox .mp-colorbox {
+    display: none;
+}
+
+.mp-client .mp-tool-colors {
+    display: none;
+    position: relative;
+    width: 44px;
+    height: 44px;
+    margin: 6px auto 0;
+}
+
+.mp-window.mp-cbar-toolbox .mp-tool-colors {
+    display: block;
+}
+
+.mp-client .mp-tool-colors .mp-fg,
+.mp-client .mp-tool-colors .mp-bg {
+    width: 22px;
+    height: 22px;
+}
+
+.mp-client .mp-tool-colors .mp-fg { left: 4px; top: 4px; }
+.mp-client .mp-tool-colors .mp-bg { left: 16px; top: 16px; }
+.mp-client .mp-tool-colors .mp-default-colors { left: 2px; bottom: 0; }
+.mp-client .mp-tool-colors .mp-swap-colors { right: 2px; top: 0; }
+
+/* the sliders' number boxes: no spinner arrows, room for three digits */
+.mp-client .mp-sl input {
+    width: 30px;
+    text-align: right;
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+.mp-client .mp-sl input::-webkit-outer-spin-button,
+.mp-client .mp-sl input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.mp-client .mp-sl {
+    grid-template-columns: 10px 120px 30px;
+}
+
+.mp-window.mp-cbar-row .mp-sl {
+    grid-template-columns: 10px 70px 30px;
+}
+
+.mp-client .mp-sl .mp-sl-num {
+    box-sizing: border-box;
+    height: 12px;
+    padding: 0 2px;
+    border: 1px solid #a0a0a0;
+    background: #fff;
+    color: #000;
+    font: 10px/10px Tahoma, sans-serif;
+}

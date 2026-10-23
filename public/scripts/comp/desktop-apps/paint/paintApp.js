@@ -63,12 +63,15 @@
         ['smudge', 'Smudge', 'Smears the picture under the brush.'],
         ['dodge', 'Dodge', 'Lightens the picture under the brush.'],
         ['burn', 'Burn', 'Darkens the picture under the brush.'],
-        ['sponge', 'Sponge', 'Saturates the colors under the brush; right-drag desaturates.']
+        ['sponge', 'Sponge', 'Saturates the colors under the brush; right-drag desaturates.'],
+        ['vtext', 'Vertical Type', 'Inserts text written top to bottom.'],
+        ['textmask', 'Horizontal Type Mask', 'Makes a selection in the shape of the text you type.'],
+        ['vtextmask', 'Vertical Type Mask', 'Makes a selection in the shape of vertical text.']
     ];
     // Photoshop's tool keys; Shift with the key steps through its group
     const TOOL_KEYS = {
         v: ['move'], m: ['select', 'ellipseselect'], l: ['freeselect', 'polylasso'], w: ['wand'], c: ['crop'], i: ['picker'],
-        j: ['heal'], b: ['brush', 'pencil', 'airbrush'], s: ['clone'], e: ['eraser'], g: ['gradient', 'fill'], t: ['text'],
+        j: ['heal'], b: ['brush', 'pencil', 'airbrush'], s: ['clone'], e: ['eraser'], g: ['gradient', 'fill'], t: ['text', 'vtext', 'textmask', 'vtextmask'],
         u: ['rect', 'roundrect', 'ellipse', 'polygon', 'line', 'curve'], z: ['magnifier'], h: ['hand'], o: ['dodge', 'burn', 'sponge'], r: ['blur', 'smudge']
     };
     // tools that paint with a round dab of their own size (the Size box, else this many pixels)
@@ -760,8 +763,27 @@
         setTextFont(values) {
             setReg(values);
             this.restyleText();
+            this.renderBar();
             const bar = this.el('.mp-textbar');
             if (bar && !bar.hidden) this.showTextBar(true);
+        }
+
+        /** The options bar's orientation button: horizontal and vertical type swap (the tool, or the text being typed). */
+        toggleTextOrientation() {
+            const swap = { text: 'vtext', vtext: 'text', textmask: 'vtextmask', vtextmask: 'textmask' };
+            if (this.text) {
+                this.text.vertical = !this.text.vertical;
+                this.restyleText();
+            }
+            if (swap[this.tool]) {
+                const keep = this.text;
+                this.tool = swap[this.tool];
+                this.modal.querySelectorAll('.mp-tool').forEach((b) => b.classList.toggle('is-on', b.dataset.tool === this.tool));
+                this.overlay.dataset.tool = this.tool;
+                this.modal.dataset.tool = this.tool;
+                this.text = keep;
+            }
+            this.renderBar();
         }
 
         /** Esc / the bar's Cancel while typing: the text goes, a type layer opened again stays as it was. */
@@ -827,7 +849,7 @@
 
         setTool(id) {
             if (this.tool === id) return;
-            this.finishText();
+            if (!(this.text && /text/.test(id) && /text/.test(this.tool))) this.finishText();
             this.cancelShape();
             if (this.xf) this.commitTransform();
             if (this.cropBox && id !== 'crop') { this.cropBox = null; this.drawAnts(); }
@@ -907,9 +929,10 @@
 
         renderColors() {
             // a colour with alpha shows over the checkerboard
-            const bg = (c) => (root.paintColor ? root.paintColor.swatchBg(c) : c);
-            this.el('.mp-fg').style.background = bg(this.fg);
-            this.el('.mp-bg').style.background = bg(this.bg);
+            // every chip (the colour bar's, the tool box's), the sliders, the Character window
+            if (root.paintColor) root.paintColor.refresh(this);
+            else { this.el('.mp-fg').style.background = this.fg; this.el('.mp-bg').style.background = this.bg; }
+            if (root.paintType && !this.text) root.paintType.refresh(this);
         }
 
         /** A colour's alpha (0-1) and the colour without it. */
@@ -1448,11 +1471,16 @@
             this.finishText();
             const t = layer && layer.text;
             if (t) {
-                // the box shows the text in the layer's own font
-                setReg({ TextFace: t.face, TextSize: t.size, TextBold: t.bold, TextItalic: t.italic, TextUnderline: t.underline });
+                // the box shows the text in the layer's own font and settings
+                setReg({
+                    TextFace: t.face, TextSize: t.size, TextWeight: t.weight || (t.bold ? 700 : 400), TextBold: (t.weight || (t.bold ? 700 : 400)) >= 600,
+                    TextItalic: !!t.italic, TextUnderline: !!t.underline, TextStrike: !!t.strike, TextCaps: t.caps || 'none',
+                    TextTracking: t.tracking || 0, TextLeading: t.leading || 0, TextAlign: t.align || 'left', TextAA: t.aa || 'smooth'
+                });
                 layer.visible = false;
                 this.doc.markDirty();
             }
+            const tool = this.tool;
             const at = t ? { x: t.x, y: t.y } : p;
             const box = doc.createElement('div');
             box.className = 'mp-textbox';
@@ -1462,7 +1490,11 @@
             box.style.top = `${at.y * this.zoom}px`;
             this.stage.appendChild(box);
             if (t) box.innerText = t.content;
-            this.text = { box, x: at.x, y: at.y, layer: layer || null, color: t ? t.color : this.fg };
+            // the type tools: vertical writes top to bottom; the masks make a selection, not a layer
+            const vertical = t ? !!t.vertical : tool === 'vtext' || tool === 'vtextmask';
+            const mask = !t && (tool === 'textmask' || tool === 'vtextmask');
+            box.classList.toggle('is-mask', mask);
+            this.text = { box, x: at.x, y: at.y, layer: layer || null, color: t ? t.color : this.fg, vertical, mask };
             this.restyleText();
             if (this.modal.classList.contains('mp-no-settings')) this.showTextBar(true);
             this.renderBar();
@@ -1473,8 +1505,23 @@
             }, 0);
         }
 
+        /** The type settings (the registry's; the options bar and the Character window set them). */
         textFont() {
-            return { face: reg('TextFace', 'Arial'), size: Number(reg('TextSize', 12)), bold: reg('TextBold', false), italic: reg('TextItalic', false), underline: reg('TextUnderline', false) };
+            const bold = !!reg('TextBold', false);
+            const weight = Number(reg('TextWeight', bold ? 700 : 400)) || 400;
+            return {
+                face: reg('TextFace', 'Arial'), size: Number(reg('TextSize', 12)), weight, bold: weight >= 600,
+                italic: !!reg('TextItalic', false), underline: !!reg('TextUnderline', false), strike: !!reg('TextStrike', false),
+                caps: reg('TextCaps', 'none'), tracking: Number(reg('TextTracking', 0)) || 0, leading: Number(reg('TextLeading', 0)) || 0,
+                align: reg('TextAlign', 'left'), aa: reg('TextAA', 'smooth')
+            };
+        }
+
+        /** The text being typed, as a type layer's props. */
+        textProps(t, content) {
+            const f = this.textFont();
+            return { content, face: f.face, size: f.size, weight: f.weight, bold: f.bold, italic: f.italic, underline: f.underline, strike: f.strike,
+                caps: f.caps, tracking: f.tracking, leading: f.leading, align: f.align, aa: f.aa, vertical: !!t.vertical, color: t.color, x: t.x, y: t.y };
         }
 
         showTextBar(on) {
@@ -1531,42 +1578,25 @@
         }
 
         restyleText() {
+            if (root.paintType) root.paintType.refresh(this);
             if (!this.text) return;
-            const f = this.textFont();
             const box = this.text.box;
-            box.style.font = `${f.italic ? 'italic ' : ''}${f.bold ? 'bold ' : ''}${f.size * this.zoom * 96 / 72}px "${f.face}"`;
-            box.style.textDecoration = f.underline ? 'underline' : 'none';
-            box.style.color = this.text.color;
+            const css = root.paintType ? root.paintType.cssOf(this.textProps(this.text, ''), this.zoom) : null;
+            if (css) Object.assign(box.style, css);
+            if (this.text.mask) box.style.color = '#000';
             const chip = this.el('.mp-tb-color span');
             if (chip) chip.style.background = this.text.color;
         }
 
-        /** Draw a type layer's text into its pixels. */
+        /** Draw a type layer's text into its pixels (paintType.js: weight, tracking, leading, vertical ...). */
         renderTextLayer(l) {
-            const t = l.text;
             l.ctx.clearRect(0, 0, this.doc.width, this.doc.height);
-            const lines = String(t.content).split('\n');
-            const px = t.size * 96 / 72;
-            l.ctx.save();
-            l.ctx.font = `${t.italic ? 'italic ' : ''}${t.bold ? 'bold ' : ''}${px}px "${t.face}"`;
-            l.ctx.fillStyle = t.color;
-            l.ctx.textBaseline = 'top';
-            const lh = Math.ceil(px * 1.2);
-            lines.forEach((line, i) => {
-                l.ctx.fillText(line, t.x + 2, t.y + 2 + i * lh);
-                if (t.underline) l.ctx.fillRect(t.x + 2, t.y + 2 + i * lh + px, l.ctx.measureText(line).width, Math.max(1, px / 14));
-            });
-            l.ctx.restore();
+            root.paintType.draw(l.ctx, l.text);
         }
 
         /** The box round a type layer's text (for a click with the Text tool). */
         textBounds(l) {
-            const t = l.text;
-            const px = t.size * 96 / 72;
-            const lines = String(t.content).split('\n');
-            this.octx.font = `${t.italic ? 'italic ' : ''}${t.bold ? 'bold ' : ''}${px}px "${t.face}"`;
-            const w = Math.max(...lines.map((s) => this.octx.measureText(s).width)) + 4;
-            return { x: t.x, y: t.y, w, h: Math.ceil(px * 1.2) * lines.length + 4 };
+            return root.paintType.bounds(l.text);
         }
 
         finishText() {
@@ -1576,9 +1606,24 @@
             this.showTextBar(false);
             const content = t.box.innerText.replace(/\n$/, '');
             t.box.remove();
-            const f = this.textFont();
-            const props = { content, face: f.face, size: f.size, bold: !!f.bold, italic: !!f.italic, underline: !!f.underline, color: t.color, x: t.x, y: t.y };
+            const props = this.textProps(t, content);
             const d = this.doc;
+            this.renderBar();
+            if (t.mask) {
+                // a type mask: the text's shape becomes the selection (combined by the selection mode)
+                if (!content.trim() || !P()) return;
+                const c = C().makeCanvas(d.width, d.height);
+                root.paintType.draw(c.getContext('2d'), { ...props, color: '#000' });
+                const a = c.getContext('2d').getImageData(0, 0, d.width, d.height).data;
+                const m = new Uint8Array(d.width * d.height);
+                for (let i = 0; i < m.length; i += 1) m[i] = a[i * 4 + 3];
+                const sel = P().fromMask(m, d.width, d.height);
+                const mode = this.opt.selMode;
+                if (d.selection) this.lastSelection = d.selection;
+                this.setSelection(mode !== 'new' && d.selection ? P().combine(d, d.selection, sel, mode) : sel);
+                this.setTool('select');
+                return;
+            }
             if (t.layer) {
                 const l = t.layer;
                 l.visible = true;
@@ -2072,6 +2117,7 @@
                     { text: 'New Guide...', action: 'guides-new' },
                     { text: 'Clear Guides', action: 'guides-clear', disabled: !this.doc.guides.length },
                     { text: 'Info', action: 'pro-info', showIndicator: true, checked: !!(P() && P().infoOpen(this)) },
+                    { text: 'Character', action: 'character', showIndicator: true, checked: !!(root.paintType && root.paintType.characterOpen(this)) },
                     { separator: true },
                     { text: 'Zoom', hasSubmenu: true, submenu: [
                         { text: 'Zoom In', subtext: 'Ctrl++', action: 'zoom-in' },
@@ -2155,6 +2201,7 @@
                 case 'free-transform': this.startTransform(); return;
                 case 'align-left': case 'align-hcenter': case 'align-right': case 'align-top': case 'align-vcenter': case 'align-bottom': this.alignLayer(a.slice(6)); return;
                 case 'rulers': this.toggleRulers(); return;
+                case 'character': if (root.paintType) root.paintType.toggleCharacter(this); return;
                 case 'guides-show': this.guidesShown = !this.guidesShown; this.drawAnts(); return;
                 case 'guides-lock': this.guidesLocked = !this.guidesLocked; return;
                 case 'snap': this.snapOn = !this.snapOn; return;
@@ -2897,6 +2944,10 @@
             }
         };
     }
+
+    T.vtext = T.text;
+    T.textmask = T.text;
+    T.vtextmask = T.text;
 
     T.line = shapeTool('line');
     T.rect = shapeTool('rect', true);

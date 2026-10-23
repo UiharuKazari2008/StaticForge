@@ -11,7 +11,12 @@
  *               on a chip opens it. Every colour may carry alpha (#rrggbbaa); the chips, swatches
  *               and previews show it over a checkerboard.
  *
- *   paintColor.mount(w)   paintColor.picker(w, 'fg' | 'bg')   paintColor.menu(w)   paintColor.action(w, a)
+ *   colour bar  right-click: Spectrum, or RGB / HSL / CMYK sliders (each track shows the colour as
+ *               its channel runs; A is the alpha); Full Color Bar, Single Row, or In the Tool Box
+ *               (Photoshop's chips at the foot of the tool box); kept in the registry
+ *               (ColorBarMode, ColorBarLayout)
+ *
+ *   paintColor.mount(w)   paintColor.refresh(w)   paintColor.picker(w, 'fg' | 'bg')   paintColor.menu(w)   paintColor.action(w, a)
  */
 (function (root) {
     'use strict';
@@ -127,38 +132,178 @@
         x.fillRect(0, H / 2, W, H / 2);
     }
 
+    // ---- the colour bar: Spectrum, or RGB / HSL / CMYK sliders; full, one row, or in the tool box ----
+
+    const reg = (n, d) => (root.melatonRegistry ? root.melatonRegistry.get(KEY, n, d) : d);
+    const setReg = (v) => { if (root.melatonRegistry) void root.melatonRegistry.set(KEY, v); };
+    const MODES = [['spectrum', 'Spectrum'], ['rgb', 'RGB Sliders'], ['hsl', 'HSL Sliders'], ['cmyk', 'CMYK Sliders']];
+    const LAYOUTS = [['full', 'Full Color Bar'], ['row', 'Single Row'], ['toolbox', 'In the Tool Box']];
+
+    function toCmyk(r, g, b) {
+        const k = 1 - Math.max(r, g, b) / 255;
+        if (k >= 1) return [0, 0, 0, 100];
+        return [(1 - r / 255 - k) / (1 - k), (1 - g / 255 - k) / (1 - k), (1 - b / 255 - k) / (1 - k), k].map((v) => v * 100);
+    }
+
+    function fromCmyk(c, m, y, k) {
+        const K = 1 - k / 100;
+        return [255 * (1 - c / 100) * K, 255 * (1 - m / 100) * K, 255 * (1 - y / 100) * K];
+    }
+
+    /** A mode's channels: [name, max, value of rgba, rgba with the channel at v]. */
+    function channels(mode) {
+        const hsl = (rgba) => C().rgbToHsl(rgba[0], rgba[1], rgba[2]);
+        const fromHsl = (h, s, l, a) => [...C().hslToRgb(h, s, l), a];
+        const A = ['A', 100, (c) => (c[3] / 255) * 100, (c, v) => [c[0], c[1], c[2], (v / 100) * 255]];
+        if (mode === 'hsl') {
+            return [
+                ['H', 360, (c) => hsl(c)[0] * 360, (c, v) => { const q = hsl(c); return fromHsl(v / 360, q[1], q[2], c[3]); }],
+                ['S', 100, (c) => hsl(c)[1] * 100, (c, v) => { const q = hsl(c); return fromHsl(q[0], v / 100, q[2], c[3]); }],
+                ['L', 100, (c) => hsl(c)[2] * 100, (c, v) => { const q = hsl(c); return fromHsl(q[0], q[1], v / 100, c[3]); }],
+                A
+            ];
+        }
+        if (mode === 'cmyk') {
+            return ['C', 'M', 'Y', 'K'].map((n, i) => [n, 100, (c) => toCmyk(c[0], c[1], c[2])[i], (c, v) => {
+                const q = toCmyk(c[0], c[1], c[2]);
+                q[i] = v;
+                return [...fromCmyk(...q), c[3]];
+            }]).concat([A]);
+        }
+        return ['R', 'G', 'B'].map((n, i) => [n, 255, (c) => c[i], (c, v) => { const q = c.slice(); q[i] = v; return q; }]).concat([A]);
+    }
+
+    /** The colour the sliders change: the drawing colour, or the background one when its chip was picked. */
+    function target(w) { return w.colorTarget === 'bg' ? 'bg' : 'fg'; }
+
+    function drawSliders(w) {
+        const host = w.modal.querySelector('.mp-cbar-sliders');
+        if (!host) return;
+        const rgba = rgbOf(w[target(w)]);
+        host.querySelectorAll('.mp-sl').forEach((row) => {
+            const ch = channels(w.colorMode)[Number(row.dataset.c)];
+            const cv = row.querySelector('canvas');
+            const x = cv.getContext('2d');
+            const W = cv.width;
+            const H = cv.height;
+            x.clearRect(0, 0, W, H);
+            // the track: the colour as this channel runs from 0 to its top (a preview of each place)
+            for (let i = 0; i < W; i += 1) {
+                const c = ch[3](rgba, (i / (W - 1)) * ch[1]);
+                x.fillStyle = `rgba(${Math.round(c[0])},${Math.round(c[1])},${Math.round(c[2])},${c[3] / 255})`;
+                x.fillRect(i, 0, 1, H - 4);
+            }
+            const v = ch[2](rgba);
+            const at = Math.round((v / ch[1]) * (W - 1));
+            x.fillStyle = '#000';
+            x.beginPath(); x.moveTo(at, H - 5); x.lineTo(at - 3, H); x.lineTo(at + 3, H); x.closePath(); x.fill();
+            const inp = row.querySelector('input');
+            if (doc.activeElement !== inp) inp.value = String(Math.round(v));
+        });
+    }
+
+    function renderMain(w) {
+        const main = w.modal.querySelector('.mp-cbar-main');
+        if (!main) return;
+        if (w.colorMode === 'spectrum' || !w.colorMode) {
+            main.innerHTML = '<canvas class="mp-ramp" width="180" height="32" title="Click: drawing color. Right-click or Alt+click: background color. Right-click the bar for its modes."></canvas>';
+            const ramp = main.querySelector('.mp-ramp');
+            drawRamp(ramp);
+            const pick = (ev, bg) => {
+                const r = ramp.getBoundingClientRect();
+                const x = clamp(Math.floor(((ev.clientX - r.left) / r.width) * ramp.width), 0, ramp.width - 1);
+                const y = clamp(Math.floor(((ev.clientY - r.top) / r.height) * ramp.height), 0, ramp.height - 1);
+                const d = ramp.getContext('2d').getImageData(x, y, 1, 1).data;
+                // the ramp picks the hue; the colour keeps its alpha
+                if (bg) w.bg = hex(d[0], d[1], d[2], alphaOf(w.bg)); else w.fg = hex(d[0], d[1], d[2], alphaOf(w.fg));
+                w.renderColors();
+            };
+            ramp.addEventListener('pointerdown', (ev) => {
+                if (ev.button === 2 && !ev.altKey && ev.ctrlKey) return;
+                ev.preventDefault();
+                ramp.setPointerCapture(ev.pointerId);
+                const bg = ev.button === 2 || ev.altKey;
+                pick(ev, bg);
+                const move = (mv) => pick(mv, bg);
+                const up = () => { ramp.removeEventListener('pointermove', move); ramp.removeEventListener('pointerup', up); };
+                ramp.addEventListener('pointermove', move);
+                ramp.addEventListener('pointerup', up);
+            });
+            return;
+        }
+        const chs = channels(w.colorMode);
+        main.innerHTML = `<div class="mp-cbar-sliders" data-n="${chs.length}">${chs.map(([n, max], i) => `<label class="mp-sl" data-c="${i}"><span>${n}</span><canvas width="120" height="12"></canvas><input type="text" inputmode="numeric" class="mp-sl-num" title="0-${max}"></label>`).join('')}</div>`;
+        const set = (row, v) => {
+            const ch = channels(w.colorMode)[Number(row.dataset.c)];
+            const c = ch[3](rgbOf(w[target(w)]), clamp(v, 0, ch[1]));
+            w[target(w)] = hex(c[0], c[1], c[2], c[3]);
+            w.renderColors();
+        };
+        main.querySelectorAll('.mp-sl').forEach((row) => {
+            const cv = row.querySelector('canvas');
+            const ch = () => channels(w.colorMode)[Number(row.dataset.c)];
+            const at = (ev) => { const r = cv.getBoundingClientRect(); return ((ev.clientX - r.left) / r.width) * ch()[1]; };
+            cv.addEventListener('pointerdown', (ev) => {
+                if (ev.button !== 0) return;
+                ev.preventDefault();
+                cv.setPointerCapture(ev.pointerId);
+                set(row, at(ev));
+                const move = (e) => set(row, at(e));
+                const up = () => { cv.removeEventListener('pointermove', move); cv.removeEventListener('pointerup', up); };
+                cv.addEventListener('pointermove', move);
+                cv.addEventListener('pointerup', up);
+            });
+            row.querySelector('input').addEventListener('change', (ev) => set(row, Number(ev.target.value) || 0));
+        });
+        drawSliders(w);
+    }
+
+    function barMenu(w) {
+        return [
+            ...MODES.map(([v, t]) => ({ text: t, action: `cbar-mode-${v}`, showIndicator: true, checked: (w.colorMode || 'spectrum') === v })),
+            { separator: true },
+            ...LAYOUTS.map(([v, t]) => ({ text: t, action: `cbar-layout-${v}`, showIndicator: true, checked: (w.colorLayout || 'full') === v })),
+            { separator: true },
+            { text: 'Foreground Color...', action: 'color-pick-fg' },
+            { text: 'Background Color...', action: 'color-pick-bg' }
+        ];
+    }
+
+    function attachBarMenu(w, el) {
+        el.addEventListener('contextmenu', (ev) => ev.preventDefault());
+        root.contextMenu.attachToElement(el, {
+            onAction: (a) => void w.action(a),
+            sections: [{ type: 'list', initfn: (section) => { section.items = barMenu(w); } }]
+        });
+    }
+
+    const CHIPS = '<span class="mp-bg" title="Set background color"></span><span class="mp-fg" title="Set foreground color"></span><button type="button" class="mp-default-colors" title="Default Colors (D)"></button><button type="button" class="mp-swap-colors" title="Switch Colors (X)"></button>';
+
+    function wireChips(w, holder) {
+        // with sliders: a click picks the colour they change; a second click (or Spectrum) opens the picker
+        const chip = (which) => () => {
+            if ((w.colorMode || 'spectrum') !== 'spectrum' && w.colorTarget !== which) { w.colorTarget = which; w.renderColors(); return; }
+            picker(w, which);
+        };
+        holder.querySelector('.mp-fg').addEventListener('click', chip('fg'));
+        holder.querySelector('.mp-bg').addEventListener('click', chip('bg'));
+        holder.querySelector('.mp-swap-colors').addEventListener('click', () => void w.action('swap-colors'));
+        holder.querySelector('.mp-default-colors').addEventListener('click', () => void w.action('default-colors'));
+    }
+
     function mount(w) {
+        w.colorMode = w.colorMode || reg('ColorBarMode', 'spectrum');
+        w.colorLayout = w.colorLayout || reg('ColorBarLayout', 'full');
         const box = w.modal.querySelector('.mp-colorbox');
         box.innerHTML = `
-            <div class="mp-swatch-box"><span class="mp-bg" title="Set background color"></span><span class="mp-fg" title="Set foreground color"></span><button type="button" class="mp-default-colors" title="Default Colors (D)"></button><button type="button" class="mp-swap-colors" title="Switch Colors (X)"></button></div>
-            <canvas class="mp-ramp" width="180" height="32" title="Click: drawing color. Right-click or Alt+click: background color."></canvas>
+            <div class="mp-swatch-box">${CHIPS}</div>
+            <div class="mp-cbar-main"></div>
             <div class="mp-swatches" role="listbox" aria-label="Swatches"></div>
             <div class="mp-sw-tools">
                 <button type="button" class="mp-sw-add" title="Create new swatch of foreground color"></button>
                 <button type="button" class="mp-sw-menu" title="Swatches"></button>
             </div>`;
-        drawRamp(box.querySelector('.mp-ramp'));
-        const ramp = box.querySelector('.mp-ramp');
-        const pick = (ev, bg) => {
-            const r = ramp.getBoundingClientRect();
-            const x = clamp(Math.floor(((ev.clientX - r.left) / r.width) * ramp.width), 0, ramp.width - 1);
-            const y = clamp(Math.floor(((ev.clientY - r.top) / r.height) * ramp.height), 0, ramp.height - 1);
-            const d = ramp.getContext('2d').getImageData(x, y, 1, 1).data;
-            // the ramp picks the hue; the colour keeps its alpha
-            if (bg) w.bg = hex(d[0], d[1], d[2], alphaOf(w.bg)); else w.fg = hex(d[0], d[1], d[2], alphaOf(w.fg));
-            w.renderColors();
-        };
-        ramp.addEventListener('pointerdown', (ev) => {
-            ev.preventDefault();
-            ramp.setPointerCapture(ev.pointerId);
-            const bg = ev.button === 2 || ev.altKey;
-            pick(ev, bg);
-            const move = (mv) => pick(mv, bg);
-            const up = () => { ramp.removeEventListener('pointermove', move); ramp.removeEventListener('pointerup', up); };
-            ramp.addEventListener('pointermove', move);
-            ramp.addEventListener('pointerup', up);
-        });
-        ramp.addEventListener('contextmenu', (ev) => ev.preventDefault());
+        renderMain(w);
         const list = box.querySelector('.mp-swatches');
         list.addEventListener('mousedown', (ev) => {
             const cell = ev.target.closest('.mp-sw-cell');
@@ -183,11 +328,53 @@
             onAction: (a) => void w.action(a),
             sections: [{ type: 'list', initfn: (section) => { section.items = menu(w); } }]
         });
-        box.querySelector('.mp-fg').addEventListener('click', () => picker(w, 'fg'));
-        box.querySelector('.mp-bg').addEventListener('click', () => picker(w, 'bg'));
-        box.querySelector('.mp-swap-colors').addEventListener('click', () => void w.action('swap-colors'));
-        box.querySelector('.mp-default-colors').addEventListener('click', () => void w.action('default-colors'));
+        wireChips(w, box.querySelector('.mp-swatch-box'));
+        attachBarMenu(w, box.querySelector('.mp-cbar-main'));
+        attachBarMenu(w, box.querySelector('.mp-swatch-box'));
+        // Photoshop's chips at the foot of the tool box (the bar's "In the Tool Box")
+        let tb = w.modal.querySelector('.mp-tool-colors');
+        if (!tb) {
+            tb = doc.createElement('div');
+            tb.className = 'mp-tool-colors';
+            tb.innerHTML = CHIPS;
+            w.modal.querySelector('.mp-toolbox').appendChild(tb);
+            wireChips(w, tb);
+            attachBarMenu(w, tb);
+        }
+        applyLayout(w);
         renderSwatches(w, swatches());
+    }
+
+    function applyLayout(w) {
+        const m = w.modal;
+        m.classList.toggle('mp-cbar-row', w.colorLayout === 'row');
+        m.classList.toggle('mp-cbar-toolbox', w.colorLayout === 'toolbox');
+    }
+
+    /** The bar's chips, sliders and the tool box chips after a colour change. */
+    function refresh(w) {
+        const bg = (c) => swatchBg(c);
+        w.modal.querySelectorAll('.mp-fg').forEach((e) => { e.style.background = bg(w.fg); });
+        w.modal.querySelectorAll('.mp-bg').forEach((e) => { e.style.background = bg(w.bg); });
+        const sliders = (w.colorMode || 'spectrum') !== 'spectrum';
+        w.modal.querySelectorAll('.mp-fg').forEach((e) => e.classList.toggle('is-target', sliders && target(w) === 'fg'));
+        w.modal.querySelectorAll('.mp-bg').forEach((e) => e.classList.toggle('is-target', sliders && target(w) === 'bg'));
+        drawSliders(w);
+    }
+
+    function setMode(w, mode) {
+        w.colorMode = mode;
+        setReg({ ColorBarMode: mode });
+        renderMain(w);
+        refresh(w);
+    }
+
+    function setLayout(w, layout) {
+        w.colorLayout = layout;
+        setReg({ ColorBarLayout: layout });
+        applyLayout(w);
+        renderMain(w);
+        refresh(w);
     }
 
     function renderSwatches(w, list) {
@@ -308,7 +495,7 @@
 
     // ---- the Colors menu --------------------------------------------------------------------------
 
-    function menu() {
+    function menu(w) {
         return [
             { text: 'Foreground Color...', action: 'color-pick-fg' },
             { text: 'Background Color...', action: 'color-pick-bg' },
@@ -317,6 +504,7 @@
             { text: 'Reset Swatches', action: 'color-swatch-reset' },
             { text: 'Clear Swatches', action: 'color-swatch-clear' },
             { separator: true },
+            ...(w ? [{ text: 'Color Bar', hasSubmenu: true, submenu: barMenu(w) }] : []),
             { text: 'Switch Colors', subtext: 'X', action: 'swap-colors' },
             { text: 'Default Colors', subtext: 'D', action: 'default-colors' }
         ];
@@ -329,9 +517,12 @@
             case 'color-swatch-add': addSwatch(w.fg); return true;
             case 'color-swatch-reset': saveSwatches(DEFAULT_SWATCHES.slice()); return true;
             case 'color-swatch-clear': saveSwatches([]); return true;
-            default: return false;
+            default:
+                if (a.startsWith('cbar-mode-')) { setMode(w, a.slice(10)); return true; }
+                if (a.startsWith('cbar-layout-')) { setLayout(w, a.slice(12)); return true; }
+                return false;
         }
     }
 
-    root.paintColor = { mount, picker, menu, action, swatches, addSwatch, rgbToHsv, hsvToRgb, hex, alphaOf, swatchBg, DEFAULT_SWATCHES };
+    root.paintColor = { mount, refresh, setMode, setLayout, barMenu, picker, menu, action, swatches, addSwatch, rgbToHsv, hsvToRgb, hex, alphaOf, swatchBg, DEFAULT_SWATCHES };
 })(typeof window !== 'undefined' ? window : globalThis);
