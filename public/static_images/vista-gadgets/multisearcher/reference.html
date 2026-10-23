@@ -1,0 +1,75 @@
+<html>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+	<title>Multisearcher!</title>
+	
+	<style>
+		body 	
+		{ 
+			width:125px;
+			height:68px;
+			background-image:url(background.gif);
+		}
+	</style>
+
+<script type="text/javascript">
+function checkform()
+{
+
+var the_search = document.forms['search_form'].search_line.value;
+var the_location = document.forms['search_form'].dropdown.value;
+
+switch (the_location)
+{
+case "Google":
+	window.open('http://www.google.com/search?hl=en&q='+ the_search +'','','') 
+	break
+case "Wikipedia":
+	window.open('http://en.wikipedia.org/wiki/'+ the_search +'','','')
+	break
+case "Dictionary":
+	window.open('http://dictionary.reference.com/browse/'+ the_search +'','','')	
+	break
+case "Amazon":
+	window.open('http://www.amazon.com/s/ref=nb_ss_gw/102-2689710-7004945?url=search-alias%3Daps&field-keywords='+ the_search +'','','')
+	break
+case "eBay":
+	window.open('http://search.ebay.com/search/search.dll?from=R40&satitle='+ the_search +'','','')
+	break
+case "IMDB":
+	window.open('http://www.imdb.com/find?s=all&q='+ the_search +'','','')
+	break
+case "Newegg":
+	window.open('http://www.newegg.com/Product/ProductList.aspx?Submit=ENE&DEPA=0&Description='+ the_search +'','','')
+	break
+case "Mininova":
+	window.open('http://www.mininova.org/search/?search='+ the_search +'','','')
+	break
+}
+
+
+}
+</script>
+
+</head>
+<body>
+
+
+<form name="search_form" id="search_form" onsubmit="checkform()" method="post">
+<input type = "text" name = "search_line" id="search_line" size = "18.5" maxlength = "256" style = "font-size: 8pt; position: absolute; top: 22px; left: 5px;">
+
+<select name="dropdown" id="dropdown" style="font-size: 8pt; position: absolute; top: 44px; left: 5px; width: 80px;">
+<option value="Google" >Google</option>
+<option value="Amazon">Amazon</option>
+<option value="Dictionary">Dictionary</option>
+<option value="eBay">eBay</option>
+<option value="GameFAQs">GameFAQs</option>
+<option value="IMDB">IMDB</option>
+<option value="Mininova">Mininova</option>
+<option value="Newegg">Newegg</option>
+<option value="Wikipedia">Wikipedia</option>
+</select>
+
+</form>
+
+</body>
+</html>

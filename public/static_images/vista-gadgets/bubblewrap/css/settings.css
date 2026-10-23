@@ -1,0 +1,27 @@
+body
+{ 
+    margin:0px;
+	width:278px;
+	height:130px;
+]
+
+#swatchContainer
+{
+	position:absolute;
+	margin-left:15px;
+}
+
+.state
+{
+	width:60px;
+	height:60px;
+	margin:1px;
+	float:left;
+}
+
+.swatch
+{
+	width:48px;
+	height:48px;
+	margin:6px;
+}

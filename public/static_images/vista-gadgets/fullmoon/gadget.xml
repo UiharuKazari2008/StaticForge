@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+    <name>Full Moon</name>
+    <namespace>wobbleworks.com</namespace>
+    <version>3.2</version>
+
+	<author name="John Stephen">
+		<info url="http://wobbleworks.com" text="Wobbleworks.com" />
+	</author>
+	<copyright>© 2007,2008. Wobbleworks.com</copyright>
+
+    <description>Displays the current and upcoming phases of the moon</description>
+
+	<icons>
+		<icon height="64" width="64" src="FullMoonIcon.png"/>
+	</icons>
+    <hosts>
+        <host name="sidebar">
+            <base type="HTML" apiVersion="1.0.0" src="Moon.html"/>
+            <permissions>full</permissions>
+            <platform minPlatformVersion="0.3" />
+        </host>
+    </hosts>
+</gadget>

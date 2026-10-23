@@ -20,6 +20,7 @@ const FILLER_WORDS = new Set([
 ]);
 
 const MAX_LOOKUP_WORDS = 2;
+const SYNONYM_STRENGTH_CACHE_MAX = 20000;
 
 class WordLookupService {
     constructor(globalResources) {
@@ -29,6 +30,7 @@ class WordLookupService {
         this.globalResources = globalResources;
         this.wordnet = null;
         this.cache = new Map();
+        this.synonymStrengthCache = new Map(); // synonym -> max T5 token strength (LRU by insertion order)
         setInterval(() => {
             const now = Date.now();
             for (const [k, v] of this.cache.entries()) {
@@ -228,17 +230,31 @@ class WordLookupService {
         return synonyms;
     }
 
+    // T5 token strength depends only on the string (the vocab is loaded once), so it is cached per string.
     getSynonymStrength(synonym) {
+        const cache = this.synonymStrengthCache;
+        if (cache.has(synonym)) {
+            const hit = cache.get(synonym);
+            cache.delete(synonym);
+            cache.set(synonym, hit);
+            return hit;
+        }
+        let strength;
         try {
             const t5Tokenizer = this.globalResources.getT5Tokenizer();
             const tokenData = t5Tokenizer.getTokenData(synonym);
-            if (!tokenData || tokenData.length === 0) {
-                return 0;
-            }
-            return Math.max(...tokenData.map(token => token.strength || 0));
+            strength = (!tokenData || tokenData.length === 0)
+                ? 0
+                : Math.max(...tokenData.map(token => token.strength || 0));
         } catch (_) {
+            // Tokenizer not ready (or failed): do not cache, a later call may succeed.
             return 0;
         }
+        cache.set(synonym, strength);
+        if (cache.size > SYNONYM_STRENGTH_CACHE_MAX) {
+            cache.delete(cache.keys().next().value);
+        }
+        return strength;
     }
 
     scoreSynonymEntry(entry, lookupWord) {
@@ -288,15 +304,20 @@ class WordLookupService {
             }))
         ];
 
-        entries.sort((a, b) => {
-            const scoreDiff = this.scoreSynonymEntry(b, lookupWord) - this.scoreSynonymEntry(a, lookupWord);
+        // Score each entry once, not once per comparison.
+        const scored = entries.map((entry) => ({
+            synonym: entry.synonym,
+            score: this.scoreSynonymEntry(entry, lookupWord)
+        }));
+        scored.sort((a, b) => {
+            const scoreDiff = b.score - a.score;
             if (scoreDiff !== 0) {
                 return scoreDiff;
             }
             return a.synonym.localeCompare(b.synonym);
         });
 
-        return entries.map(entry => entry.synonym).slice(0, MAX_SYNONYMS);
+        return scored.map(entry => entry.synonym).slice(0, MAX_SYNONYMS);
     }
 
     resolveLookupWord(word, spellCheckData) {

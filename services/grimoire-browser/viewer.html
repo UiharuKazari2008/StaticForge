@@ -274,6 +274,9 @@
     } else if (msg.type === 'closed') {
       closed = true;
       postParent({ type: 'grimoire-browser-closed' });
+    } else if (msg.type === 'file-chooser' && msg.id) {
+      // an upload field: the desktop picks the files (grimoireRemoteBrowser.js, #628)
+      postParent({ type: 'grimoire-browser-file-chooser', id: msg.id, multiple: !!msg.multiple, accept: msg.accept || '' });
     } else if (msg.type === 'dialog' && msg.id) {
       postParent({
         type: 'grimoire-browser-dialog',
@@ -419,11 +422,31 @@
     }
   }
 
+  // The page keeps the size of the last time it was on screen. A hidden tab (display: none) or a
+  // minimised window measures 0, and a window animating to the taskbar is scaled by a transform:
+  // resizing the remote page to that squeezed it into a tiny layout that showed when the tab came
+  // back (Yozora #628). Layout sizes (clientWidth) ignore transforms; nothing under 64 px is sent.
+  var lastViewport = null;
+  function measuredViewport() {
+    var width = canvas.clientWidth || 0;
+    var height = canvas.clientHeight || 0;
+    if (document.hidden || width < 64 || height < 64) return null;
+    return { width: Math.max(320, Math.round(width)), height: Math.max(240, Math.round(height)) };
+  }
+
   function viewportSize() {
-    var rect = canvas.getBoundingClientRect();
-    var width = Math.max(320, Math.round(rect.width));
-    var height = Math.max(240, Math.round(rect.height));
-    return { width: width, height: height };
+    var size = measuredViewport();
+    if (size) lastViewport = size;
+    return lastViewport;
+  }
+
+  function sendViewport() {
+    var size = measuredViewport();
+    if (!size) return;
+    if (lastViewport && lastViewport.width === size.width && lastViewport.height === size.height && sendViewport.sent) return;
+    lastViewport = size;
+    sendViewport.sent = true;
+    send({ type: 'resize', width: size.width, height: size.height });
   }
 
   function mapPoint(ev) {
@@ -495,10 +518,10 @@
 
   function announceReady() {
     connected = true;
-    var size = viewportSize();
     canvas.focus();
     startRttProbe();
-    send({ type: 'resize', width: size.width, height: size.height });
+    sendViewport.sent = false;
+    sendViewport();
     if (window.parent && window.parent !== window) {
       window.parent.postMessage({ type: 'grimoire-browser-ready' }, '*');
     }
@@ -838,8 +861,12 @@
       send({ type: 'scroll-to', y: data.y });
     } else if (data.type === 'grimoire-browser-history' && (data.dir === 1 || data.dir === -1)) {
       historyGo(data.dir);
+    } else if (data.type === 'grimoire-browser-file-chooser-reply' && typeof data.id === 'string') {
+      send({ type: 'file-chooser-reply', id: data.id, cancel: !!data.cancel });
     } else if (data.type === 'grimoire-browser-audio') {
       setAudio(!!data.on, data.volume);
+    } else if (data.type === 'grimoire-browser-download-cancel' && typeof data.id === 'string') {
+      send({ type: 'download-cancel', id: data.id });
     } else if (data.type === 'grimoire-browser-select-pick' && typeof data.index === 'number') {
       send({ type: 'select-pick', index: data.index });
     } else if (data.type === 'grimoire-browser-settings' && data.settings) {
@@ -871,13 +898,13 @@
     var resizeTimer = 0;
     var observer = new ResizeObserver(function () {
       clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(function () {
-        var size = viewportSize();
-        send({ type: 'resize', width: size.width, height: size.height });
-      }, 80);
+      resizeTimer = setTimeout(sendViewport, 80);
     });
     observer.observe(document.body);
   }
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) setTimeout(sendViewport, 80);
+  });
 })();
 </script>
 </body>

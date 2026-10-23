@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>กระถางต้นไม้เสมือน</name>
+  <namespace>microsoft.windows</namespace>
+  <version>1.0.0.1</version>
+  <author name="KaKaNow.com">
+    <info url="kakanow.com"  text="KaKaNow.com"/>
+    <logo src="images/logo.png" />
+  </author>
+  <copyright>&#169; 2010</copyright>
+  <description>มีสิ่งที่ยอดเยี่ยมและมีชีวิตชีวารอคุณอยู่ที่เดสก์ทอป.
+นำความสดชื่นมาสู่เดสก์ทอปของคุณ กระถางดอกไม้เสมือนนี้จะเติบโตและเบ่งบานให้คุณเชยชม ถ้าคุณหมั่นรดน้ำให้กับดอกไม้ โดยใช้เมาส์ เหมือนกับต้นไม้จริงๆ มันจะเหี่ยวหากไม่ได้รับการเอาใจใส่ อาจใช้เวลานานหลายวันกว่าดอกจะบาน แต่จะเพิ่มสีสันให้เดสก์ทอปของคุณในทุกๆ ครั้งที่มอง</description>
+  <icons>
+    <icon height="64" width="64" src="images/icon.png" />
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="default.html" />
+      <permissions>Full</permissions>
+      <platform minPlatformVersion="1.0" />
+      <defaultImage src="images/drag.png" />
+    </host>
+  </hosts>
+</gadget>

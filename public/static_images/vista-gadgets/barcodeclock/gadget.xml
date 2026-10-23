@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<gadget>
+  <name>BarCode Clock 2</name>
+  <namespace>barcodeart.com</namespace>
+  <version>2.0.0.0</version>
+  <author name="Loke Uei">
+    <info url="http://blogs.msdn.com/lokeuei" text="Loke Uei"/>
+    <logo src="clock2.png"/>
+  </author>
+  <copyright>Code from www.barcodeart.com</copyright>
+  <description>Really cool barcode clock. Made into a Sidebar gadget using code from barcodeart.com.</description>
+    <icons>
+      <icon height="48" width="48" src="clock2.png"/>
+    </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="html" apiVersion="2.0.0" src="barcodeclock.html"/>
+      <permissions>full</permissions>
+      <platform minPlatformVersion="1.0"/>
+      <defaultImage src="clock2.png"/>
+    </host>
+  </hosts>
+</gadget>

@@ -1,0 +1,1199 @@
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+//  THIS CODE IS NOT APPROVED FOR USE IN/ON ANY OTHER UI ELEMENT OR PRODUCT COMPONENT.
+//  Copyright (c) 2006 Microsoft Corporation.  All rights reserved.
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+<html>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+<meta http-equiv="MSThemeCompatible" CONTENT="yes" />
+
+
+<title>Video Poker</title>
+
+<body scroll='no'  onload="loadMain();" background-repeat: no-repeat;">
+
+<img src="images/cards/cardback.png" id="card0" onClick="flipCard(0)">
+<img src="images/cards/cardback.png" id="card1" onClick="flipCard(1)">
+<img src="images/cards/cardback.png" id="card2" onClick="flipCard(2)">
+<img src="images/cards/cardback.png" id="card3" onClick="flipCard(3)">
+<img src="images/cards/cardback.png" id="card4" onClick="flipCard(4)">
+
+<img src="images/pokerBttn.png" onClick="dealButton()" id="dealBtnPic">
+<div class="aButton" id="divButton" alt="DEAL" onClick="dealButton()" unSelectable="on" >
+</div>
+
+<img src="images/pokerBttn.png" onClick="betUpButton()" id="upBetPic">
+<img src="images/pokerBttn.png" onClick="betDownButton()" id="downBetPic">
+<div class="aButton" id="upButton" onClick="betUpButton()" unSelectable="on" >
+</div>
+<div class="aButtonNohover" id="downButton" onClick="betDownButton()" unSelectable="on" >
+</div>
+
+<div id="instructions">
+</div>
+
+<div id="outcome">
+</div>
+
+<div id="bet">
+</div>
+
+<div id="scorediv">
+<table id="scoretable" cellpadding=0 cellspacing=0>
+  <tr>
+    <td>Win:&nbsp;&nbsp;</td>
+    <td id="win">1</td>
+  </tr>
+  <tr>
+    <td>Score:&nbsp;&nbsp;</td>
+    <td id="score"></td>
+  </tr>
+</table>
+</div>
+
+</body>
+
+<style>
+BODY
+{
+    margin: 0;
+    background-color: #FF00FF;
+}
+
+TABLE
+{
+    font-family: Segoe UI, Tahoma, sans-serif;
+    font-weight: bold;
+    text-decoration: none;
+    text-align:right;
+
+    color: white;
+}
+
+DIV
+{
+    position:absolute;
+
+    font-family: Segoe UI, Tahoma, sans-serif;
+    line-height:20px;
+    text-decoration: none;
+    text-align:center;
+    font-weight: bold;
+
+    color: white;
+}
+
+DIV#scorediv
+{
+    text-align:right;
+}
+
+DIV#bet
+{
+    text-align:left;
+    border: 1px solid #000;
+}
+
+DIV#outcome
+{
+    border: 1px solid #000;
+    background-color: #093;
+}
+
+DIV.aButton
+{
+    color: #006;
+}
+
+DIV.aButton:hover
+{
+    color: #C00;
+}
+
+DIV.aButtonNohover
+{
+    color: #999;
+}
+
+img
+{
+    position:absolute;
+}
+
+</style>
+
+<script language="javascript">
+var handSize = 5;
+var cards = new Array(handSize);
+var cardToSwap = new Array(handSize);
+var deal = new Array(handSize);    // up to 5 cards can be discarded and drawn
+
+var txtDealButton = "&nbsp;DEAL&nbsp;";
+var txtDrawButton = "DRAW";
+var txtWinner = "Winner!";
+var txtPlay = "Click DEAL to Play";
+var txtLoser = "Try Again.";
+var txtHold = "Click to HOLD";
+var txtGameOver = "Game Over!";
+var txtBet = "Bet:  ";
+
+var txtBetUpDocked = "&nbsp;&uarr;&nbsp;";
+var txtBetUpUndocked = "&nbsp;&nbsp;&nbsp;Bet &uarr;&nbsp;&nbsp;&nbsp;";
+var txtBetDownDocked = "&nbsp;&darr;&nbsp;";
+var txtBetDownUndocked = "&nbsp;&nbsp;&nbsp;Bet &darr;&nbsp;&nbsp;&nbsp;";
+
+var txtCardBack = "Card back";
+
+var setGameBet = "BetAmount";
+var setGameScore = "CurrentScore";
+var setGameValid = "GameInProgress";
+
+var timerSpeed = 300;
+
+var started;
+var ended;
+var timergoing;
+
+var straightHighCard;
+var ofAKindCard;
+var winString;
+var winHand;
+
+var gameScore = 100;        // starting points for new game
+var gameBet = 1;
+
+var targetWidth;
+var targetHeight;
+var targetCards;
+var targetInstruct;
+var targetDeal;
+var targetUp;
+var targetDown;
+var targetOutcome;
+var targetScore;
+var targetBet;
+var targetHoldHighlight;
+
+var currentDocked;
+
+var widthDocked = 130;
+var heightDocked = 232;
+
+var widthUndocked = 535;
+var heightUndocked = 302;
+
+var holdBorderDocked = 2;
+var holdBorderUndocked = 4;
+
+//            // Width, Height, X-Pos, Y-Pos [, Font-size] [, Padding or LineHeight]
+
+var instructLayoutDocked =   [124, 24, 3, 0, 14, 0];
+var dealButtonLayoutDocked = [60, 25, 35, 166, 18, 0];
+var outcomeLayoutDocked =    [120, 24, 5, 23, 14, 0];
+var scoreLayoutDocked =      [90, 24, 38, 200, 14, 14];
+var betLayoutDocked =        [30, 24, 3, 198, 14, 1];
+var upButtonLayoutDocked =   [20, 15, 5, 171, 14, 14];
+var downButtonLayoutDocked = [20, 15, 105, 171, 14, 14];
+
+var instructLayoutUndocked =   [250, 42, 270, 13, 28, 0];
+var dealButtonLayoutUndocked = [200, 50, 165, 190, 54, 10];
+var outcomeLayoutUndocked =    [240, 42, 15, 3, 28, 8];
+var scoreLayoutUndocked =      [200, 42, 320, 240, 28, 28];
+var betLayoutUndocked =        [90, 30, 15, 250, 28, 5];
+var upButtonLayoutUndocked =   [80, 25, 45, 200, 18, 18];
+var downButtonLayoutUndocked = [80, 25, 405, 200, 18, 18];
+
+var cardLayoutDocked = new Array();
+    cardLayoutDocked[0] = [37, 51, 2, 50];    // Docked
+    cardLayoutDocked[1] = [37, 51, 24, 106];
+    cardLayoutDocked[2] = [37, 51, 45, 50];
+    cardLayoutDocked[3] = [37, 51, 67, 106];
+    cardLayoutDocked[4] = [37, 51, 88, 50];
+
+var cardLayoutUndocked = new Array();
+    cardLayoutUndocked[0] = [94, 127, 10, 48];    // Undocked
+    cardLayoutUndocked[1] = [94, 127, 114, 48];
+    cardLayoutUndocked[2] = [94, 127, 218, 48];
+    cardLayoutUndocked[3] = [94, 127, 322, 48];
+    cardLayoutUndocked[4] = [94, 127, 426, 48];
+
+var winners=new Array();
+    winners[0]=["High Card", 0];
+    winners[1]=["Low Pair", 0];
+    winners[2]=["Jacks or Better", 1];
+    winners[3]=["Two Pair", 2];
+    winners[4]=["3 of a Kind", 3];
+    winners[5]=["Straight", 4];
+    winners[6]=["Flush", 6];
+    winners[7]=["Full House", 9];
+    winners[8]=["4 of a Kind", 25];
+    winners[9]=["Straight Flush", 50];
+    winners[10]=["Royal Flush", 800];
+
+var cardNames=new Array();
+    cardNames[0]=["Ace of Hearts"];
+    cardNames[1]=["Two of Hearts"];
+    cardNames[2]=["Three of Hearts"];
+    cardNames[3]=["Four of Hearts"];
+    cardNames[4]=["Five of Hearts"];
+    cardNames[5]=["Six of Hearts"];
+    cardNames[6]=["Seven of Hearts"];
+    cardNames[7]=["Eight of Hearts"];
+    cardNames[8]=["Nine of Hearts"];
+    cardNames[9]=["Ten of Hearts"];
+    cardNames[10]=["Jack of Hearts"];
+    cardNames[11]=["Queen of Hearts"];
+    cardNames[12]=["King of Hearts"];
+    cardNames[13]=["Ace of Clubs"];
+    cardNames[14]=["Two of Clubs"];
+    cardNames[15]=["Three of Clubs"];
+    cardNames[16]=["Four of Clubs"];
+    cardNames[17]=["Five of Clubs"];
+    cardNames[18]=["Six of Clubs"];
+    cardNames[19]=["Seven of Clubs"];
+    cardNames[20]=["Eight of Clubs"];
+    cardNames[21]=["Nine of Clubs"];
+    cardNames[22]=["Ten of Clubs"];
+    cardNames[23]=["Jack of Clubs"];
+    cardNames[24]=["Queen of Clubs"];
+    cardNames[25]=["King of Clubs"];
+    cardNames[26]=["Ace of Diamonds"];
+    cardNames[27]=["Two of Diamonds"];
+    cardNames[28]=["Three of Diamonds"];
+    cardNames[29]=["Four of Diamonds"];
+    cardNames[30]=["Five of Diamonds"];
+    cardNames[31]=["Six of Diamonds"];
+    cardNames[32]=["Seven of Diamonds"];
+    cardNames[33]=["Eight of Diamonds"];
+    cardNames[34]=["Nine of Diamonds"];
+    cardNames[35]=["Ten of Diamonds"];
+    cardNames[36]=["Jack of Diamonds"];
+    cardNames[37]=["Queen of Diamonds"];
+    cardNames[38]=["King of Diamonds"];
+    cardNames[39]=["Ace of Spades"];
+    cardNames[40]=["Two of Spades"];
+    cardNames[41]=["Three of Spades"];
+    cardNames[42]=["Four of Spades"];
+    cardNames[43]=["Five of Spades"];
+    cardNames[44]=["Six of Spades"];
+    cardNames[45]=["Seven of Spades"];
+    cardNames[46]=["Eight of Spades"];
+    cardNames[47]=["Nine of Spades"];
+    cardNames[48]=["Ten of Spades"];
+    cardNames[49]=["Jack of Spades"];
+    cardNames[50]=["Queen of Spades"];
+    cardNames[51]=["King of Spades"];
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+////////////////////////////////////////////////////////////////////////////////
+System.Gadget.onUndock=function unDock()
+{
+    currentDocked = false;
+
+    targetWidth = widthUndocked;
+    targetHeight = heightUndocked;
+    targetCards = cardLayoutUndocked;
+
+    targetInstruct = instructLayoutUndocked;
+    targetDeal = dealButtonLayoutUndocked;
+    targetOutcome = outcomeLayoutUndocked;
+    targetScore = scoreLayoutUndocked;
+    targetBet = betLayoutUndocked;
+    targetUp = upButtonLayoutUndocked;
+    targetDown = downButtonLayoutUndocked;
+
+    upButton.innerHTML = txtBetUpUndocked;
+    downButton.innerHTML = txtBetDownUndocked;
+    bet.style.textAlign = "left";
+
+    sizeToTarget();
+
+    targetHoldHighlight = holdBorderUndocked;
+    
+    System.Gadget.background = "url(images/background_undocked.png)";
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+////////////////////////////////////////////////////////////////////////////////
+System.Gadget.onDock=function Dock()
+{
+    currentDocked = true;
+
+    targetWidth = widthDocked;
+    targetHeight = heightDocked;
+    targetCards = cardLayoutDocked;
+
+    targetInstruct = instructLayoutDocked;
+    targetDeal = dealButtonLayoutDocked;
+    targetOutcome = outcomeLayoutDocked;
+    targetScore = scoreLayoutDocked;
+    targetBet = betLayoutDocked;
+    targetUp = upButtonLayoutDocked;
+    targetDown = downButtonLayoutDocked;
+
+    upButton.innerHTML = txtBetUpDocked;
+    downButton.innerHTML = txtBetDownDocked;
+    bet.style.textAlign = "center";
+
+    sizeToTarget();
+
+    targetHoldHighlight = holdBorderDocked;
+    
+    System.Gadget.background = "url(images/background_docked.png)";
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+////////////////////////////////////////////////////////////////////////////////
+function sizeToTarget()
+{
+
+    with(card0.style)
+        width = targetCards[0][0],
+        height = targetCards[0][1],
+        top = targetCards[0][3],
+        left = targetCards[0][2];
+
+    with(card1.style)
+        width = targetCards[1][0],
+        height = targetCards[1][1],
+        top = targetCards[1][3],
+        left = targetCards[1][2];
+
+    with(card2.style)
+        width = targetCards[2][0],
+        height = targetCards[2][1],
+        top = targetCards[2][3],
+        left = targetCards[2][2];
+
+    with(card3.style)
+        width = targetCards[3][0],
+        height = targetCards[3][1],
+        top = targetCards[3][3],
+        left = targetCards[3][2];
+
+    with(card4.style)
+        width = targetCards[4][0],
+        height = targetCards[4][1],
+        top = targetCards[4][3],
+        left = targetCards[4][2];
+
+    with(instructions.style)
+        width = targetInstruct[0],
+        height = targetInstruct[1],
+        top = targetInstruct[3],
+        left = targetInstruct[2],
+        fontSize = targetInstruct[4];
+
+    with(divButton.style)
+        width = targetDeal[0],
+        height = targetDeal[1],
+        top = targetDeal[3],
+        left = targetDeal[2],
+        fontSize = targetDeal[4],
+        padding = targetDeal[5];
+    with(dealBtnPic.style)
+        width = targetDeal[0],
+        height = targetDeal[1],
+        top = targetDeal[3],
+        left = targetDeal[2];
+
+    with(upButton.style)
+        width = targetUp[0],
+        height = targetUp[1],
+        top = targetUp[3],
+        left = targetUp[2],
+        fontSize = targetUp[4],
+        lineHeight = targetUp[5] + "px";
+    with(upBetPic.style)
+        width = targetUp[0],
+        height = targetUp[1],
+        top = targetUp[3],
+        left = targetUp[2];
+
+    with(downButton.style)
+        width = targetDown[0],
+        height = targetDown[1],
+        top = targetDown[3],
+        left = targetDown[2],
+        fontSize = targetDown[4],
+        lineHeight = targetDown[5] + "px";
+    with(downBetPic.style)
+        width = targetDown[0],
+        height = targetDown[1],
+        top = targetDown[3],
+        left = targetDown[2];
+
+    with(outcome.style)
+        width = targetOutcome[0],
+        height = targetOutcome[1],
+        top = targetOutcome[3],
+        left = targetOutcome[2],
+        fontSize = targetOutcome[4],
+        padding = targetOutcome[5];
+
+    with(bet.style)
+        width = targetBet[0],
+        height = targetBet[1],
+        top = targetBet[3],
+        left = targetBet[2],
+        fontSize = targetBet[4],
+        lineHeight = targetBet[4] + "px",
+        padding = targetBet[5];
+
+    with(scoretable.style)
+        fontSize = targetScore[4],
+        lineHeight = targetScore[5] + "px";
+
+    with(scorediv.style)
+        width = targetScore[0],
+        height = targetScore[1],
+        top = targetScore[3],
+        left = targetScore[2];
+
+    with(document.body.style)
+        width = targetWidth,
+        height = targetHeight;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+////////////////////////////////////////////////////////////////////////////////
+function loadMain()
+{
+    var validSettings;
+
+    System.Gadget.docked?Dock():unDock();
+
+    resetHand();
+
+    validSettings = parseInt(System.Gadget.Settings.read(setGameValid));
+    if (validSettings == 1)
+    {
+        gameBet = parseInt(System.Gadget.Settings.read(setGameBet));
+        gameScore = parseInt(System.Gadget.Settings.read(setGameScore));
+        if (gameBet > gameScore)
+        {
+            gameBet = gameScore;
+        }
+    }
+
+    instructions.innerHTML = txtPlay;
+    betButtons(true);
+
+    showBet();
+    showWin("&nbsp;");
+    showScore();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+////////////////////////////////////////////////////////////////////////////////
+function saveScore()
+{
+    System.Gadget.Settings.write(setGameBet, gameBet);
+    System.Gadget.Settings.write(setGameScore, gameScore);
+    System.Gadget.Settings.write(setGameValid, "1");
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+////////////////////////////////////////////////////////////////////////////////
+function betButtons(visible)
+{
+    if (visible)
+    {
+        upButton.style.visibility = "visible";
+        downButton.style.visibility = "visible";
+        upBetPic.style.visibility = "visible";
+        downBetPic.style.visibility = "visible";
+
+        if (gameBet > gameScore)
+        {
+            gameBet = gameScore;
+            showBet();
+        }
+        fixupBetButtons();
+    }
+    else
+    {
+        upButton.style.visibility = "hidden";
+        downButton.style.visibility = "hidden";
+        upBetPic.style.visibility = "hidden";
+        downBetPic.style.visibility = "hidden";
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+////////////////////////////////////////////////////////////////////////////////
+function fixupBetButtons()
+{
+    if ((gameBet == 5) || (gameBet == gameScore))
+    {
+        upButton.className = "aButtonNohover";
+    }
+    else
+    {
+        upButton.className = "aButton";
+    }
+
+    if (gameBet == 1)
+    {
+        downButton.className = "aButtonNohover";
+    }
+    else
+    {
+        downButton.className = "aButton";
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+////////////////////////////////////////////////////////////////////////////////
+function betUpButton()
+{
+    if ((gameBet < 5) && (gameBet < gameScore))
+    {
+        gameBet += 1;
+    }
+    showBet();
+    fixupBetButtons();
+
+    saveScore();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+////////////////////////////////////////////////////////////////////////////////
+function betDownButton()
+{
+    if (gameBet > 1)
+    {
+        gameBet -= 1;
+    }
+    showBet();
+    fixupBetButtons();
+
+    saveScore();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+////////////////////////////////////////////////////////////////////////////////
+function dealButton()
+{
+    if (!timergoing)
+    {
+        if (!started)
+        {
+            resetHand();
+            startHand(true);
+        }
+        else if (!ended)
+        {
+            endHand();
+        }
+        else
+        {
+            resetHand();
+            startHand(false);
+        }
+    }
+
+    saveScore();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+////////////////////////////////////////////////////////////////////////////////
+function showWin(winnings)
+{
+    win.innerHTML = winnings;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+////////////////////////////////////////////////////////////////////////////////
+function showScore()
+{
+    paddedScore = "0000" + gameScore;
+    paddedScore = paddedScore.substr(paddedScore.length-4);
+
+    score.innerHTML = paddedScore;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+////////////////////////////////////////////////////////////////////////////////
+function showBet()
+{
+    bet.innerHTML = txtBet + gameBet;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+////////////////////////////////////////////////////////////////////////////////
+function resetHand()
+{
+    var i;
+
+    for (i=0; i < 5; i++)
+    {
+        cards[i] = -1;        // clear all the cards
+        deal[i] = -1;
+        cardToSwap[i] = true;    // start by planning to swap all cards
+
+        eval("card" + i).src = "images/cards/cardback.png";
+    }
+
+    updateCards();
+
+    divButton.innerHTML = txtDealButton;
+    instructions.innerHTML = "";
+    outcome.innerHTML = "&nbsp;";
+    betButtons(false);
+
+    started = false;        // haven't started game yet
+    ended = false;
+    timergoing = false;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+////////////////////////////////////////////////////////////////////////////////
+function showCards()
+{
+    var i;
+    var loopDone = true;
+    var instruct;
+
+    for (i=0; i < 5; i++)
+    {
+        if (cards[i] == -1)
+        {
+            cards[i] = deal[i];    // swap in new card
+            deal[i] = -1;        // clear from deal set
+
+            eval("card" + i).src = "images\/cards\/" + cards[i] + ".png";
+
+            break;            // only show 1 at a time
+        }
+    }
+
+    updateCards();
+
+    for (i++; i < 5; i++)    // continue loop
+    {
+        // more left to swap still???
+        if (cards[i] == -1)
+        {
+            setTimeout("showCards()", timerSpeed);
+            loopDone = false;
+            break;
+        }
+    }
+
+    if (loopDone)
+    {
+        evalHand();
+
+        if (!started)
+        {
+            divButton.innerHTML = txtDrawButton;
+            instructions.innerHTML = txtHold;
+            outcome.innerHTML = winners[winHand][0];
+
+            started = true;
+        }
+        else
+        {
+            outcome.innerHTML = winners[winHand][0];
+
+            gameScore += winners[winHand][1] * gameBet;
+            showScore();
+
+            if (winHand >= 2)
+            {
+                showWin(winners[winHand][1] * gameBet);
+                instruct = txtWinner;
+                betButtons(true);
+            }
+            else if (gameScore > 0)
+            {
+                showWin("0");
+                instruct = txtLoser;
+                betButtons(true);
+            }
+            else
+            {
+                showWin("0");
+                instruct = txtGameOver;
+                divButton.style.visibility = "hidden";
+                dealBtnPic.style.visibility = "hidden";
+                betButtons(false);
+            }
+
+            divButton.innerHTML = txtDealButton;
+            instructions.innerHTML = instruct;
+
+            ended = true;
+        }
+
+        timergoing = false;
+    }
+
+    saveScore();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+////////////////////////////////////////////////////////////////////////////////
+function dealCards()
+{
+    var i;
+    var card;
+
+    i = 0;
+    while (i < 5)
+    {
+        // pick batch of cards
+        card = Math.round((Math.random() * 52) - 0.5);
+        if (cardUnique(card))
+        {
+            deal[i] = card;
+            i++;
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+////////////////////////////////////////////////////////////////////////////////
+function startHand(firstHand)
+{
+    gameScore -= gameBet;    // it costs this much to play
+    showWin("&nbsp;");
+    showScore();
+
+    dealCards();
+
+    timergoing = true;
+
+    if (firstHand)
+    {
+        showCards();    // immediately show first card now (fast UI response)
+    }
+    else
+    {
+        setTimeout("showCards()", timerSpeed);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+////////////////////////////////////////////////////////////////////////////////
+function endHand()
+{
+    var i;
+    var card;
+
+    dealCards();
+
+    // blank out unheld cards, until timer fills them in
+    for (i=0; i < 5; i++)
+    {
+        if (cardToSwap[i])
+        {
+            cards[i] = -1;
+            eval("card" + i).src = "images/cards/cardback.png";
+        }
+
+        cardToSwap[i] = true;    // remove HELD border from all of them now
+    }
+
+    updateCards();
+    instructions.innerHTML = "";
+    outcome.innerHTML = "&nbsp;";
+
+    setTimeout("showCards()", timerSpeed);
+
+    timergoing = true;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+////////////////////////////////////////////////////////////////////////////////
+function cardUnique(card)
+{
+    var unique = true;    // default is TRUE until we find a matching card
+
+    for (i=0; i < 5; i++)
+    {
+        if ((cards[i] == card) || (deal[i] == card))
+        {
+            unique = false;    // found a match, so not unique
+            break;
+        }
+    }
+
+    return unique;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+////////////////////////////////////////////////////////////////////////////////
+function flipCard(position)
+{
+    if (started && !ended && !timergoing)
+    {
+        cardToSwap[position] = !cardToSwap[position];
+        updateCards();
+    }
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+////////////////////////////////////////////////////////////////////////////////
+function nameOfCard(card)
+{
+    var name;
+
+    if (card == -1)
+    {
+        name = txtCardBack;
+    }
+    else
+    {
+        name = cardNames[card];
+    }
+
+    return name;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+////////////////////////////////////////////////////////////////////////////////
+function updateCards()
+{
+    var i;
+
+    for (i=0; i < 5; i++)
+    {
+        if (cardToSwap[i])
+        {
+            eval("card" + i).style.border = "0px";
+            eval("card" + i).style.margin = targetHoldHighlight + "px";
+
+            eval("card" + i).setAttribute('alt', nameOfCard(cards[i]));
+        }
+        else
+        {
+            eval("card" + i).style.border = "solid #FF0 " + targetHoldHighlight + "px";
+            eval("card" + i).style.margin = "0px";
+
+            eval("card" + i).setAttribute('alt', nameOfCard(cards[i]) + ", HELD");
+        }
+    }
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+////////////////////////////////////////////////////////////////////////////////
+function haveThisCard(card)
+{
+    var i;
+    var have = false;
+    var checkCard = card;
+
+    if (checkCard == 13)
+    {
+        checkCard = 0;    // treat High-Ace as low-Ace
+    }
+
+    for (i=0; i < 5; i++)
+    {
+        var value = cards[i] % 13;
+
+        if (checkCard == value)
+        {
+            have = true;
+            break;
+        }
+    }
+
+    return have;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+////////////////////////////////////////////////////////////////////////////////
+function testOfAKinds(cardToIgnore)
+{
+    var i,j;
+    var have = false;
+    var count;
+
+    ofAKindCard = -1;
+
+    for (i=12; i >= 0; i--)
+    {
+        if (i == cardToIgnore)
+        {
+            continue;
+        }
+
+        count = 0;
+        for (j=0; j < 5; j++)
+        {
+            if (i == (cards[j] % 13))
+            {
+                count++;
+            }
+        }
+
+        if (count > 1)
+        {
+            ofAKindCard = i;
+            break;
+        }
+    }
+
+    return count;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+////////////////////////////////////////////////////////////////////////////////
+function testFlush()
+{
+    var i;
+    var suit = parseInt(cards[0] / 13);
+    var have = true;
+
+    for (i=1; i < 5; i++)
+    {
+        var nextCardSuit = parseInt(cards[i] / 13);
+
+        if (suit != nextCardSuit)
+        {
+            have = false;
+            break;
+        }
+    }
+
+    return have;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+////////////////////////////////////////////////////////////////////////////////
+function testStraight()
+{
+    var i,j;
+    var have = false;
+    var count;
+
+    straightHighCard = -1;
+
+    for (i=13; i >= 4; i--)
+    {
+        count = 0;
+
+        for (j=0; j <= 4; j++)
+        {
+            if (!haveThisCard( i - j ))
+            {
+                break;
+            }
+
+            count++;
+        }
+
+        if (count == 5)
+        {
+            have = true;
+            straightHighCard = i;
+            break;
+        }
+    }
+
+    return have;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//
+//
+////////////////////////////////////////////////////////////////////////////////
+function evalHand()
+{
+    var haveFlush = testFlush();
+    var haveStraight = testStraight();
+    var iKinds = testOfAKinds(-1);
+    var haveFH = false;
+    var have2pair = false;
+    var have1pair = false;
+    var have3kind = false;
+    var pairValue;
+    winHand = 0;
+
+    if (iKinds == 2)
+    {
+        have1pair = true;
+        pairValue = ofAKindCard;
+
+        iKinds = testOfAKinds(ofAKindCard);
+
+        if (iKinds == 2)
+        {
+            have2pair = true;
+        }
+        else if (iKinds == 3)
+        {
+            haveFH = true;
+        }
+    }
+    else if (iKinds == 3)
+    {
+        have3kind = true;
+        iKinds = testOfAKinds(ofAKindCard);
+
+        if (iKinds == 2)
+        {
+            haveFH = true;
+        }
+    }
+
+
+    if (haveFlush && haveStraight)
+    {
+        if (straightHighCard == 13)
+        {
+            // "Royal Flush";
+            winHand = 10;
+        }
+        else
+        {
+            // "Straight Flush";
+            winHand = 9;
+        }
+    }
+    else if (iKinds == 4)
+    {
+        // "4 of a Kind";
+        winHand = 8;
+    }
+    else if (haveFH)
+    {
+        // "Full House";
+        winHand = 7;
+    }
+    else if (haveFlush)
+    {
+        // "Flush";
+        winHand = 6;
+    }
+    else if (haveStraight)
+    {
+        // "Straight";
+        winHand = 5;
+    }
+    else if (have3kind)
+    {
+        // "3 of a Kind";
+        winHand = 4;
+    }
+    else if (have2pair)
+    {
+        // "Two Pair";
+        winHand = 3;
+    }
+    else if (have1pair)
+    {
+        if ((pairValue == 0) || (pairValue >= 10))
+        {
+            // "Jacks or better";
+            winHand = 2;
+        }
+        else
+        {
+            // "Low Pair";
+            winHand = 1;
+        }
+    }
+    else
+    {
+        // "High Card";
+        winHand = 0;
+    }
+
+}
+
+</script>
+</head>
+</html>

@@ -1,0 +1,465 @@
+/* Control Panel's Vista pages (public/scripts/comp/cplPages.js; Yozora #632), measured on the
+   Vista VM's Power Options page (2026-10-22), from the page's top-left:
+     title     Segoe UI 12 pt #003399, 21 px line from 18 px down, its text 23 px in
+     text      Segoe UI 9 pt black, 15 px lines, 7 px under the title
+     section   a 9 pt label, then a 1 px #cccccc rule to 805 px of the window
+     help      the 16 px help button 3 px from the right, 2 px from the top
+   The task pane is the window's own (vista-explorer.css), with 16 px icons 22 px left of the text. */
+
+#melatonControlPanelModal .cpl-main:has(> .cpl-vpage) {
+    padding: 0;
+    position: relative;
+}
+
+#melatonControlPanelModal .cpl-vpage {
+    position: static;
+    box-sizing: border-box;
+    max-width: 637px;
+    padding: 19px 40px 24px 23px;
+    color: #000;
+    font: 12px/15px var(--cpl-font);
+}
+
+#melatonControlPanelModal .cpl-vpage h1.cpl-vtitle {
+    margin: 0 0 7px;
+    color: #003399;
+    font: 16px/21px var(--cpl-font);
+    font-weight: normal;
+}
+
+#melatonControlPanelModal .cpl-vpage p.cpl-vtext {
+    margin: 0;
+    color: #000;
+    font: 12px/15px var(--cpl-font);
+}
+
+#melatonControlPanelModal .cpl-vpage .cpl-vgap {
+    margin-top: 15px;
+}
+
+#melatonControlPanelModal .cpl-vpage .cpl-vindent {
+    margin: 2px 0 10px 18px;
+}
+
+#melatonControlPanelModal .cpl-vhelp {
+    position: absolute;
+    top: 2px;
+    right: 3px;
+    width: 16px;
+    height: 16px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+    background: url('/static_images/vista-cpl/pages/help-16.png') no-repeat;
+}
+
+#melatonControlPanelModal .cpl-vhelp::before,
+#melatonControlPanelModal .cpl-vhelp::after,
+#melatonControlPanelModal .cpl-vlink::before,
+#melatonControlPanelModal .cpl-vlink::after {
+    content: none;
+}
+
+#melatonControlPanelModal .cpl-vlink {
+    display: inline;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+    min-height: 0;
+    background: none;
+    box-shadow: none;
+    color: #0066cc;
+    font: inherit;
+    text-align: left;
+    cursor: var(--c-pointer);
+}
+
+#melatonControlPanelModal .cpl-vlink.is-underlined,
+#melatonControlPanelModal .cpl-vlink:hover {
+    color: #0066cc;
+    text-decoration: underline;
+}
+
+#melatonControlPanelModal .cpl-vlink:hover {
+    color: #3399ff;
+}
+
+#melatonControlPanelModal .cpl-vsection {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin: 14px 0 6px 2px;
+}
+
+#melatonControlPanelModal .cpl-vsection::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    margin-top: 1px;
+    background: #cccccc;
+}
+
+/* a link with an icon and a line under it (Default Programs, Speech Recognition Options) */
+#melatonControlPanelModal .cpl-vtask-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    margin: 10px 0 0;
+}
+
+#melatonControlPanelModal .cpl-vtask-row > img {
+    flex: 0 0 24px;
+    width: 24px;
+    height: 24px;
+}
+
+#melatonControlPanelModal .cpl-vtask-row.is-32 > img {
+    flex: 0 0 32px;
+    width: 32px;
+    height: 32px;
+}
+
+#melatonControlPanelModal .cpl-vtask-title {
+    display: block;
+    font: 12px/15px var(--cpl-font);
+}
+
+#melatonControlPanelModal .cpl-vbuttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 24px;
+}
+
+#melatonControlPanelModal .cpl-vbutton {
+    min-width: 75px;
+    height: 23px;
+    padding: 0 10px;
+    font: 12px var(--cpl-font);
+}
+
+#melatonControlPanelModal .cpl-vradio {
+    margin: 6px 0 0;
+}
+
+#melatonControlPanelModal .cpl-vradio label b {
+    font-weight: normal;
+}
+
+#melatonControlPanelModal select.cpl-vselect {
+    height: 21px;
+    min-width: 120px;
+    font: 12px var(--cpl-font);
+}
+
+#melatonControlPanelModal input.cpl-vedit {
+    width: 240px;
+    height: 21px;
+    margin-top: 4px;
+    font: 12px var(--cpl-font);
+}
+
+/* the task pane's icon links (Power Options: Choose when to turn off the display) */
+#melatonControlPanelModal .cpl-tasks .cpl-vtask.has-icon {
+    position: relative;
+}
+
+#melatonControlPanelModal .cpl-tasks .cpl-vtask.has-icon > img {
+    position: absolute;
+    left: -22px;
+    top: 0;
+    width: 16px;
+    height: 16px;
+}
+
+/* ---- Power Options ---- */
+
+#melatonControlPanelModal .cpl-power-plans {
+    margin: 12px 0 0 16px;
+}
+
+/* Vista puts a radio button's text cap level with the circle's top */
+#melatonControlPanelModal .cpl-power-name label,
+#melatonControlPanelModal .cpl-vradio > label {
+    position: relative;
+    top: -3px;
+}
+
+#melatonControlPanelModal .cpl-power-name label::before,
+#melatonControlPanelModal .cpl-vradio > label::before {
+    margin-top: 3px !important;
+}
+
+#melatonControlPanelModal .cpl-power-plan {
+    display: grid;
+    grid-template-columns: 293px 1fr;
+    grid-template-rows: 15px 15px;
+    margin-bottom: 20px;
+}
+
+#melatonControlPanelModal .cpl-power-name {
+    grid-column: 1;
+    grid-row: 1;
+}
+
+#melatonControlPanelModal .cpl-power-change {
+    grid-column: 1;
+    grid-row: 2;
+    margin-left: 16px;
+    justify-self: start;
+}
+
+#melatonControlPanelModal .cpl-power-meter {
+    grid-column: 2;
+    grid-row: 1 / 3;
+    display: grid;
+    grid-template-columns: 87px 1fr;
+    grid-auto-rows: 15px;
+    margin-top: -2px;
+    align-items: start;
+}
+
+#melatonControlPanelModal .cpl-power-meter > span:not(.cpl-power-dots) {
+    text-align: right;
+    padding-right: 5px;
+}
+
+#melatonControlPanelModal .cpl-power-dots {
+    display: flex;
+    gap: 1px;
+    margin-top: 5px;
+}
+
+#melatonControlPanelModal .cpl-power-dots i {
+    width: 7px;
+    height: 7px;
+    background: url('/static_images/vista-cpl/pages/power-dot-savings.png') no-repeat;
+}
+
+#melatonControlPanelModal .cpl-power-dots.is-perf i {
+    background-image: url('/static_images/vista-cpl/pages/power-dot-perf.png');
+}
+
+#melatonControlPanelModal .cpl-power-grid {
+    margin: 16px 0 8px 14px;
+    border-collapse: collapse;
+}
+
+#melatonControlPanelModal .cpl-power-grid td {
+    padding: 4px 12px 4px 0;
+    white-space: nowrap;
+}
+
+#melatonControlPanelModal .cpl-power-grid img {
+    width: 16px;
+    height: 16px;
+    vertical-align: -4px;
+    margin-right: 4px;
+}
+
+/* ---- Default Programs ---- */
+
+#melatonControlPanelModal .cpl-dp-split {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 14px;
+    margin-top: 12px;
+}
+
+#melatonControlPanelModal .cpl-dp-list {
+    height: 300px;
+    overflow: auto;
+}
+
+#melatonControlPanelModal .cpl-dp-row,
+#melatonControlPanelModal .cpl-openwith-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 38px;
+    padding: 0 4px;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    cursor: var(--c-default);
+}
+
+#melatonControlPanelModal .cpl-dp-row img,
+.cpl-openwith-row img {
+    width: 32px;
+    height: 32px;
+}
+
+#melatonControlPanelModal .cpl-dp-row.is-selected,
+#melatonControlPanelModal .cpl-assoc-row.is-selected {
+    background: linear-gradient(#f6fbfd, #eff8fd 45%, #d7effc 55%, #d5effc 92%, #e7f5fd);
+    border-color: #99defd;
+}
+
+#melatonControlPanelModal .cpl-dp-head {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+#melatonControlPanelModal .cpl-dp-head img {
+    width: 32px;
+    height: 32px;
+}
+
+#melatonControlPanelModal .cpl-dp-actions {
+    margin-top: 18px;
+}
+
+#melatonControlPanelModal .cpl-dp-action {
+    width: 100%;
+    margin: 4px 0;
+    padding: 4px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: none;
+    box-shadow: none;
+    color: #000;
+    font: 12px/15px var(--cpl-font);
+    text-align: left;
+}
+
+#melatonControlPanelModal .cpl-dp-action::before,
+#melatonControlPanelModal .cpl-dp-action::after {
+    content: none;
+}
+
+#melatonControlPanelModal .cpl-dp-action b {
+    font-weight: normal;
+    color: #0066cc;
+}
+
+#melatonControlPanelModal .cpl-dp-action:hover {
+    border-color: #b8d6fb;
+    background: linear-gradient(#fafbfd, #ebf3fd);
+}
+
+#melatonControlPanelModal .cpl-dp-arrow {
+    flex: 0 0 16px;
+    width: 16px;
+    height: 16px;
+    background: url('/static_images/vista-cpl/pages/arrow-green-16.png') no-repeat;
+}
+
+#melatonControlPanelModal .cpl-assoc-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 12px 0 6px;
+}
+
+#melatonControlPanelModal .cpl-assoc-head .cpl-vbutton {
+    margin-left: auto;
+}
+
+#melatonControlPanelModal .cpl-assoc {
+    height: 300px;
+    overflow: auto;
+}
+
+#melatonControlPanelModal .cpl-assoc-row {
+    display: grid;
+    grid-template-columns: 90px 1fr 170px;
+    height: 17px;
+    padding: 0 4px;
+    border: 1px solid transparent;
+    white-space: nowrap;
+    cursor: var(--c-default);
+}
+
+#melatonControlPanelModal .cpl-assoc-row.is-head {
+    height: 22px;
+    align-items: center;
+    border-bottom-color: #d5d5d5;
+    background: linear-gradient(#fff 0 40%, #f7f8fa 40%);
+}
+
+/* ---- Backup and Restore Center ---- */
+
+#melatonControlPanelModal .cpl-backup-box {
+    margin: 12px 0 20px;
+    border: 1px solid #c9d7e8;
+}
+
+#melatonControlPanelModal .cpl-backup-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 36px;
+    padding: 0 6px;
+    background: linear-gradient(#f3f7fc, #e5ecf6);
+    border-bottom: 1px solid #c9d7e8;
+    color: #1e3287;
+    font-size: 16px;
+}
+
+#melatonControlPanelModal .cpl-backup-head img {
+    width: 32px;
+    height: 32px;
+}
+
+#melatonControlPanelModal .cpl-backup-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 10px;
+    border-bottom: 1px solid #d8e1ec;
+}
+
+#melatonControlPanelModal .cpl-backup-row p {
+    margin: 0;
+}
+
+#melatonControlPanelModal .cpl-backup-note {
+    display: block;
+    margin: 10px 0 0 24px;
+}
+
+#melatonControlPanelModal .cpl-backup-tip {
+    display: block;
+    position: relative;
+    margin: 10px 0 0;
+    padding-left: 24px;
+}
+
+#melatonControlPanelModal .cpl-backup-tip img {
+    position: absolute;
+    left: 2px;
+    top: 0;
+}
+
+#melatonControlPanelModal .cpl-backup-col {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 10px;
+}
+
+#melatonControlPanelModal .cpl-backup-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    flex: 0 0 auto;
+    min-width: 132px;
+}
+
+#melatonControlPanelModal .cpl-backup-btn img {
+    width: 16px;
+    height: 16px;
+}
+
+#melatonControlPanelModal .cpl-backup-foot {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 8px;
+}

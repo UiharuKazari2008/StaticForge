@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>Echo - Beta</name>
+  <namespace><!--_locComment_text="{Locked}"-->microsoft.windows</namespace>
+  <version><!--_locComment_text="{Locked}"-->1.0.0.0</version>
+  <author name="&#169; 2006 - Created by:">
+    <info text="Steve Jensen/John Moscarillo" />
+    <logo src="logo.png" />
+  </author>
+  <description>How long can you repeat the light pattern?</description>
+    <icons>
+      <icon height="48" width="48" src="icon.png" />
+    </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="html" apiVersion="1.0.0" src="echo.html" />
+      <permissions><!--_locComment_text="{Locked}"-->full</permissions>
+      <platform minPlatformVersion ="1.0"/>
+    </host>
+  </hosts>
+</gadget>

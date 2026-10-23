@@ -1,0 +1,28 @@
+<html>
+	<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+		<script type="text/javascript" language="javascript" charset="UTF8" src="FullMoon.js"></script>
+		<script type="text/javascript" language="javascript" charset="UTF8">
+			var	gMessage = "";
+			var	gOutput;
+			
+			function Debug_Output(pMessage)
+			{
+				var	vOutputTextElement = document.createTextNode(pMessage);
+				
+				gOutput.appendChild(vOutputTextElement);
+				gOutput.appendChild(document.createElement("br"));
+			}
+			
+			function Test()
+			{
+				gOutput = document.getElementById("Output");
+				FullMoon_MathTest(9, 2007);
+			}
+		</script>
+		
+		<title>Full Moon math test</title>
+	</head>
+	<body onload="Test()">
+		<div id="Output"></div>
+	</body>
+</html>

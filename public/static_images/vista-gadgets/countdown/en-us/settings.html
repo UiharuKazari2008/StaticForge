@@ -1,0 +1,1328 @@
+<!--
+
+//---------------------------------------------
+
+// ----------------------------------------------
+
+-->
+
+<html>
+
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+
+<meta http-equiv="MSThemeCompatible" CONTENT="yes" />
+
+
+
+<head>
+
+	<style>
+
+		body{
+
+	width:350;
+
+	height:455;
+
+	margin-left: 0px;
+
+	margin-top: 0px;
+
+	margin-right: 0px;
+
+	margin-bottom: 0px;
+
+		}
+
+	.style1 {color: #FF0000; font-size:10px; font-weight:bold}
+
+.style3 {font-size: 10pt}
+
+.style5 {font-family: Tahoma}
+
+.style6 {font-family: Tahoma; font-size: 10pt; }
+
+    .style10 {
+
+	font-size: 12px;
+
+	font-weight: bold;
+
+}
+
+.style17 {font-size: 9px}
+
+    .style19 {font-size: 10px}
+
+    a:link {
+
+	text-decoration: none;
+
+	color: #0000FF;
+
+}
+
+a:visited {
+
+	text-decoration: none;
+
+	color: #0000FF;
+
+}
+
+a:hover {
+
+	text-decoration: none;
+
+}
+
+a:active {
+
+	text-decoration: none;
+
+	color: #0000FF;
+
+}
+
+.style22 {color: #0000FF}
+
+    </style>
+
+<script>
+
+
+
+function searchSel(string,element) {
+
+		  var input=string;
+
+		  var output=document.getElementById(element).options;
+
+		  for(var i=0;i<output.length;i++) {
+
+			if(output[i].value.indexOf(input)==0){
+
+			  output[i].selected=true;
+
+			  }
+
+			if(string==''){
+
+			  output[0].selected=true;
+
+			  }
+
+		  }
+
+		}
+
+
+
+	function init() {
+
+	
+
+	fontList = populateFonts();
+
+	//addFontOption(fontList);
+
+	fontList = fontList.substr(0,fontList.length - 1);
+
+	fontListArray = fontList.split(",");
+
+	fontListArray.sort();
+
+	for (i=0;i<fontListArray.length;i++) {
+
+	if(fontListArray[i].length > 28){
+
+	fname = fontListArray[i].substr(0,28) + " . . .";
+
+	} else {
+
+	fname = fontListArray[i];
+
+	}
+
+addFontOption(fname,fontListArray[i]);
+
+	} 
+
+	
+
+	function addFontOption(fontName,fontValue){
+
+		var newOption = document.createElement('<option value="'+ fontValue +'" style="font-family:'+ fontValue +'">');
+
+        document.all.txtFface.options.add(newOption);
+
+        newOption.innerText = fontName;
+
+		}
+
+
+
+		if (System.Gadget.Settings.read("displayText")){
+
+		dispVar.innerText = System.Gadget.Settings.read("displayText");
+
+		} else {
+
+		thisDate = new Date
+
+		dispVar.innerText = "Until Christmas " + thisDate.getFullYear().toString() + "!";
+
+		}
+
+		
+
+		if (System.Gadget.Settings.read("skin")){
+
+		searchSel(System.Gadget.Settings.read("skin"),"skin");
+
+		} 
+
+		
+
+		
+
+		if (System.Gadget.Settings.read("txtFface").length > 3){
+
+		
+
+		searchSel(System.Gadget.Settings.read("txtFface"),"txtFface");
+
+			//txtColour.innerText = System.Gadget.Settings.read("txtColour");
+
+		} else {
+
+		//txtColour.innerText = "Red";
+
+		searchSel("Segoe UI","txtFface");
+
+		}
+
+		
+
+		if (System.Gadget.Settings.read("timerTxtSize").length > 2){
+
+		
+
+		searchSel(System.Gadget.Settings.read("timerTxtSize"),"timertextsize");
+
+			//txtColour.innerText = System.Gadget.Settings.read("txtColour");
+
+		} else {
+
+		//txtColour.innerText = "Red";
+
+		searchSel("18px","timertextsize");
+
+		}
+
+		
+
+		if (System.Gadget.Settings.read("displayTxtSize").length > 2){
+
+		
+
+		searchSel(System.Gadget.Settings.read("displayTxtSize"),"displaytextsize");
+
+			//txtColour.innerText = System.Gadget.Settings.read("txtColour");
+
+		} else {
+
+		//txtColour.innerText = "Red";
+
+		searchSel("10px","displaytextsize");
+
+		}
+
+		
+
+		if (System.Gadget.Settings.read("scrollTxt").length > 1){
+
+		
+
+		searchSel(System.Gadget.Settings.read("scrollTxt"),"thisscrolltxt");
+
+			//txtColour.innerText = System.Gadget.Settings.read("txtColour");
+
+		} else { 
+
+		//txtColour.innerText = "Red";
+
+		searchSel("Yes","thisscrolltxt");
+
+		}		
+
+		
+
+		//document.getElementById("messagearea").innerHTML = System.Gadget.Settings.read("scrollTxt")
+
+		
+
+		if (System.Gadget.Settings.read("scrollOpts").length > 2){
+
+		
+
+		searchSel(System.Gadget.Settings.read("scrollOpts"),"scrollopts");
+
+			//txtColour.innerText = System.Gadget.Settings.read("txtColour");
+
+		} else {
+
+		//txtColour.innerText = "Red";
+
+		searchSel("Scroll Left","scrollopts");
+
+		}
+
+		
+
+		//document.getElementById("messagearea").innerHTML = System.Gadget.Settings.read("scrollOpts");
+
+		
+
+		if (System.Gadget.Settings.read("txtColour").length > 3){
+
+		
+
+		searchSel(System.Gadget.Settings.read("txtColour"),"txtColour");
+
+		
+
+			//txtColour.innerText = System.Gadget.Settings.read("txtColour");
+
+		} else {
+
+		//txtColour.innerText = "Red";
+
+		searchSel("#FFFFFF","txtColour");
+
+		}
+
+		changeColourSample();
+
+		
+
+		if (System.Gadget.Settings.read("format").length > 1){
+
+		
+
+		searchSel(System.Gadget.Settings.read("format"),"format");
+
+		
+
+			//txtColour.innerText = System.Gadget.Settings.read("txtColour");
+
+		} else {
+
+		//txtColour.innerText = "Red";
+
+		searchSel("smart1","format");
+
+		}
+
+		//document.getElementById("messagearea").innerHTML = System.Gadget.Settings.read("format");
+
+		
+
+		if (System.Gadget.Settings.read("dateText").length > 8){
+
+		var thisDate = System.Gadget.Settings.read("dateText").split("/");
+
+		day.innerText = thisDate[0];
+		month.innerText = thisDate[1];
+		year.innerText = thisDate[2];
+
+		} else {
+
+		var now = new Date();
+
+		day.innerText = "25";
+		month.innerText = "12";
+		year.innerText = now.getYear();
+		
+		}
+
+		if (System.Gadget.Settings.read("timeText").length > 3){
+
+		var timeElements = System.Gadget.Settings.read("timeText").split(":");
+
+		hrBox.innerText = timeElements[0];
+
+		minBox.innerText = timeElements[1];
+
+		secBox.innerText = timeElements[2];
+
+		} else {
+
+		hrBox.innerText = "00";
+
+		minBox.innerText = "00";
+
+		secBox.innerText = "00";
+
+		}
+
+		
+
+		
+
+	} 
+
+	
+
+			
+
+	
+
+	System.Gadget.onSettingsClosing = SettingsClosing;
+
+	function SettingsClosing(event)
+
+	{
+
+ 		if (event.closeAction == event.Action.commit && ValidateForm() == true && ValidateTime() == true) {
+
+		if(dispVar.value == ""){
+
+			System.Gadget.Settings.write("displayText", " ");
+
+		} else {
+
+			System.Gadget.Settings.write("displayText", dispVar.value);
+
+		}
+
+			System.Gadget.Settings.write("skin", skin.value);
+
+			System.Gadget.Settings.write("dateText", day.value + "/" + month.value + "/" + year.value);
+
+			System.Gadget.Settings.write("txtColour", txtColour.value);
+
+			System.Gadget.Settings.write("txtFface", txtFface.value);
+
+			System.Gadget.Settings.write("scrollTxt", thisscrolltxt.value);
+
+			System.Gadget.Settings.write("scrollOpts", scrollopts.value);
+
+			//document.getElementById("messagearea").innerHTML = thisscrolltxt.value;
+
+			System.Gadget.Settings.write("format", format.value);
+
+			System.Gadget.Settings.write("timerTxtSize", timertextsize.value);
+
+			System.Gadget.Settings.write("displayTxtSize", displaytextsize.value);
+
+			System.Gadget.Settings.write("timeText", hrBox.value + ":" + minBox.value + ":" + secBox.value);
+
+			event.cancel = false;
+
+		} else {
+
+			event.cancel = true;
+
+		}
+
+		
+
+		
+
+	}
+
+
+
+/**
+
+ * DHTML date validation script. Courtesy of SmartWebby.com (http://www.smartwebby.com/dhtml/)
+
+ */
+
+// Declaring valid date character, minimum year and maximum year
+
+var dtCh= "/";
+
+var minYear=1900;
+
+var maxYear=2100;
+
+
+
+function isInteger(s){
+
+	var i;
+
+    for (i = 0; i < s.length; i++){   
+
+        // Check that current character is number.
+
+        var c = s.charAt(i);
+
+        if (((c < "0") || (c > "9"))) return false;
+
+    }
+
+    // All characters are numbers.
+
+    return true;
+
+}
+
+
+
+function stripCharsInBag(s, bag){
+
+	var i;
+
+    var returnString = "";
+
+    // Search through string's characters one by one.
+
+    // If character is not in bag, append to returnString.
+
+    for (i = 0; i < s.length; i++){   
+
+        var c = s.charAt(i);
+
+        if (bag.indexOf(c) == -1) returnString += c;
+
+    }
+
+    return returnString;
+
+}
+
+
+
+function daysInFebruary (year){
+
+	// February has 29 days in any year evenly divisible by four,
+
+    // EXCEPT for centurial years which are not also divisible by 400.
+
+    return (((year % 4 == 0) && ( (!(year % 100 == 0)) || (year % 400 == 0))) ? 29 : 28 );
+
+}
+
+function DaysArray(n) {
+
+	for (var i = 1; i <= n; i++) {
+
+		this[i] = 31
+
+		if (i==4 || i==6 || i==9 || i==11) {this[i] = 30}
+
+		if (i==2) {this[i] = 29}
+
+   } 
+
+   return this
+
+}
+
+
+
+function isDate(dtStr){
+
+	var daysInMonth = DaysArray(12)
+
+	var pos1=dtStr.indexOf(dtCh)
+
+	var pos2=dtStr.indexOf(dtCh,pos1+1)
+
+	var strDay=dtStr.substring(0,pos1)
+
+	var strMonth=dtStr.substring(pos1+1,pos2)
+
+	var strYear=dtStr.substring(pos2+1)
+
+	strYr=strYear
+
+	if (strDay.charAt(0)=="0" && strDay.length>1) strDay=strDay.substring(1)
+
+	if (strMonth.charAt(0)=="0" && strMonth.length>1) strMonth=strMonth.substring(1)
+
+	for (var i = 1; i <= 3; i++) {
+
+		if (strYr.charAt(0)=="0" && strYr.length>1) strYr=strYr.substring(1)
+
+	}
+
+document.getElementById("messagearea").innerHTML = strMonth;
+
+	intMonth=parseInt(strMonth)
+
+	intDay=parseInt(strDay)
+
+	intYear=parseInt(strYr)
+
+	if (pos1==-1 || pos2==-1){
+
+		document.getElementById("messagearea").innerHTML = "The date format should be : dd/mm/yyyy"
+
+		return false
+
+	}
+
+	if (strMonth.length<1 || intMonth<1 || intMonth>12){
+
+		document.getElementById("messagearea").innerHTML = "Please enter a valid month"
+
+		return false
+
+	}
+
+	if (strDay.length<1 || intDay<1 || intDay>31 || (intMonth==2 && intDay>daysInFebruary(year)) || intDay > daysInMonth[intMonth]){
+
+		document.getElementById("messagearea").innerHTML = "Please enter a valid day"
+
+		return false
+
+	}
+
+	if (strYear.length != 4 || intYear==0 || intYear<minYear || intYear>maxYear){
+
+		document.getElementById("messagearea").innerHTML = "Please enter a valid 4 digit year between "+minYear+" and "+maxYear
+
+		return false
+
+	}
+
+	if (dtStr.indexOf(dtCh,pos2+1)!=-1 || isInteger(stripCharsInBag(dtStr, dtCh))==false){
+
+		document.getElementById("messagearea").innerHTML = "Please enter a valid date"
+
+		return false
+
+	}
+
+return true
+
+}
+
+
+
+function ValidateForm(){
+
+	//document.getElementById("messagearea").innerHTML = ""
+
+	thisDate = document.getElementById('day').value + "/" + document.getElementById('month').value + "/" + document.getElementById('year').value;
+
+	if (isDate(thisDate)==false){
+
+		//dt.focus()
+
+		return false
+
+	}
+
+    return true
+
+ }
+
+
+
+function ValidateTime(){
+
+
+
+document.getElementById("messagearea2").innerHTML = "";
+
+frmEle = document.getElementById("minBox");
+
+if(frmEle.value > 59 || isNaN(frmEle.value)){
+
+document.getElementById("messagearea2").innerHTML = "The minutes must be within the range 0 to 59.";
+
+return false;
+
+}
+
+frmEle = document.getElementById("hrBox");
+
+if(frmEle.value > 23 || isNaN(frmEle.value)){
+
+document.getElementById("messagearea2").innerHTML = "The hours must be within the range 0 to 23.";
+
+return false;
+
+}
+
+frmEle = document.getElementById("secBox");
+
+if(frmEle.value > 60 || isNaN(frmEle.value)){
+
+document.getElementById("messagearea2").innerHTML = "The seconds must be within the range 0 to 59.";
+
+return false;
+
+}
+
+
+
+return true;
+
+
+
+}
+
+
+
+        function changeColourSample(){
+
+
+
+		var selIndex = document.getElementById('txtColour').selectedIndex;
+
+		colourSelection = document.getElementById('txtColour').options[selIndex];
+
+		//document.getElementById("messagearea").innerHTML = colourSelection.value;
+
+		thisColourSample = document.getElementById('txtColourSample');
+
+		thisColourSample.style.backgroundColor = colourSelection.value;
+
+		
+
+		}
+
+
+
+						
+
+						var displayStatus = false;
+
+						var dateStatus = false;
+
+						
+
+						function toggleFields(section){
+
+						
+
+					    if(section == "date"){
+
+						
+
+						if(dateStatus == true){
+
+						
+
+						  //Hide Date
+
+						  elementCount = document.all("date").length;
+
+						  for (i=0; i<elementCount; i++) {
+
+							document.all("date",i).style.display = "none";
+
+						  }
+
+						
+
+						  document.getElementById("dateControl").innerHTML = "+ Expand";
+
+						  dateStatus = false;
+
+						  
+
+						  } else {
+
+						  
+
+						  //Show Date
+
+						elementCount = document.all("date").length;
+
+						  for (i=0; i<elementCount; i++) {
+
+							document.all("date",i).style.display = "inline";
+
+						  }
+
+						  
+
+						  //Hide Display
+
+						  elementCount = document.all("display").length;
+
+						  for (i=0; i<elementCount; i++) {
+
+							document.all("display",i).style.display = "none";
+
+						  }
+
+						  
+
+						  document.getElementById("displayControl").innerHTML = "+ Expand";
+
+						  displayStatus = false;
+
+						  
+
+						  document.getElementById("dateControl").innerHTML = "- Collapse";
+
+						  dateStatus = true;
+
+						  
+
+						  }
+
+						  
+
+						  } else if(section == "display"){
+
+						  
+
+						  if(displayStatus == true){
+
+						
+
+						  //Hide Display
+
+						  elementCount = document.all("display").length;
+
+						  for (i=0; i<elementCount; i++) {
+
+							document.all("display",i).style.display = "none";
+
+						  }
+
+						
+
+						  document.getElementById("displayControl").innerHTML = "+ Expand";
+
+						  displayStatus = false;
+
+						  
+
+						  } else {
+
+						  
+
+						  //Show Display
+
+						elementCount = document.all("display").length;
+
+						  for (i=0; i<elementCount; i++) {
+
+							document.all("display",i).style.display = "inline";
+
+						  }
+
+						  
+
+						  //Hide Date
+
+						  elementCount = document.all("date").length;
+
+						  for (i=0; i<elementCount; i++) {
+
+							document.all("date",i).style.display = "none";
+
+						  }
+
+						  
+
+						  document.getElementById("dateControl").innerHTML = "+ Expand";
+
+						  dateStatus = false;
+
+						  
+
+						  document.getElementById("displayControl").innerHTML = "- Collapse";
+
+						  displayStatus = true;
+
+						  
+
+						  }
+
+						  
+
+						  }
+
+						
+
+						} function changeDisplayStyle(value){if(value == "standard"){
+
+
+
+searchSel("Segoe UI","txtFface");
+
+searchSel("#FFFFFF","txtColour");
+
+searchSel("18px","timertextsize");
+
+searchSel("10px","displaytextsize");
+
+searchSel("smart1","format");
+
+changeColourSample();
+
+
+
+} else if(value == "mini"){
+
+
+
+searchSel("Futura Md","txtFface");
+
+searchSel("#0099FF","txtColour");
+
+searchSel("12px","timertextsize");
+
+changeColourSample();
+
+searchSel("all","format");
+
+
+
+}else if(value == "cal"){
+
+
+
+searchSel("Franklin Gothic Medium","txtFface");
+
+searchSel("#FFFFFF","txtColour");
+
+searchSel("16px","timertextsize");
+
+searchSel("10px","displaytextsize");
+
+changeColourSample();
+
+searchSel("smart1","format");
+
+
+
+}
+
+}
+
+</script>
+
+<script language="vbscript">
+
+function populateFonts()
+
+Const FONTS = &H14&
+
+
+
+Set objShell = CreateObject("Shell.Application")
+
+Set objFolder = objShell.Namespace(FONTS)
+
+Set objFolderItem = objFolder.Self
+
+//Wscript.Echo objFolderItem.Path
+
+
+
+Set colItems = objFolder.Items
+
+For Each objItem in colItems
+
+     writevar =  writevar + objItem.Name + ","
+
+	
+
+	//answer = MsgBox(objItem.Name,65,"Example")
+
+Next  
+
+//answer = MsgBox(writevar,65,"Example")
+
+//document.write(writevar)
+
+populateFonts = writevar
+
+end function 
+
+</script></head>
+
+<body onLoad="init()">
+
+<span id="mySpan" style="font-family: Tahoma; font-size: 10pt;">
+
+<table width="100%" border="0" cellspacing="0" cellpadding="0">
+
+  <tr>
+
+    <td colspan="3" style="font-family: Tahoma; font-size: 10pt;"><table width="300" border="0" cellspacing="0" cellpadding="0">
+
+      <tr>
+
+        <td height="25"><span class="style10"><span class="style5 style3">Main</span> Options</span></td>
+
+        <td>&nbsp;</td>
+
+      </tr>
+
+      <tr>
+
+        <td height="1" colspan="2" bgcolor="#999999"></td>
+
+      </tr>
+
+      <tr>
+
+        <td height="10" colspan="2"></td>
+
+      </tr>
+
+    </table></td>
+
+  </tr>
+
+  <tr>
+
+    <td colspan="3" style="font-family: Tahoma; font-size: 10pt;"><label></label>
+
+      <table width="300" border="0" cellspacing="0" cellpadding="0">
+
+        <tr>
+
+          <td width="127"><span class="style6">Gadget Skin:</span><br>
+
+            <select name="skin" id="skin" onChange="changeDisplayStyle(this.value)">
+
+              <option value="standard" selected>Original Skin</option>
+
+              <option value="cal">Calendar Skin</option>
+
+              </select></td>
+
+          <td width="173" class="style6"><span class="style6">Time</span> Format:<br>
+
+              <label>
+
+              <select name="format" id="format">
+
+				<option value="weeks" selected>Weeks</option>
+
+                <option value="days" selected>Days</option>
+
+                <option value="hours">Hours</option>
+
+                <option value="minutes">Minutes</option>
+
+                <option value="smart1">Smart Display (Single)</option>
+
+                <option value="smart2">Smart Display (Double)</option>
+
+                <option value="timer">Timer Style</option>
+
+                <option value="all">Full Display (D, H, M, S)</option>
+
+</select>
+
+                                          </label>
+
+                              </td>
+
+        </tr>
+
+      </table></td>
+
+  </tr>
+
+  <tr>
+
+    <td colspan="3" style="font-family: Tahoma; font-size: 10pt;">&nbsp;</td>
+
+  </tr>
+
+  <tr>
+
+    <td colspan="3" style="font-family: Tahoma; font-size: 10pt;"><table width="300" border="0" cellspacing="0" cellpadding="0">
+
+      <tr>
+
+        <td height="25"><span class="style10">Display Text Options</span></td>
+
+        <td><div align="right" onClick="javascript:toggleFields('display')" style="vertical-align:bottom;height:25px"><span class="style6 style17 style22" id="displayControl">+ Expand</span></div></td>
+
+      </tr>
+
+      <tr>
+
+        <td height="1" colspan="2" bgcolor="#999999"></td>
+
+      </tr>
+
+      <tr>
+
+        <td height="10" colspan="2"></td>
+
+      </tr>
+
+    </table></td>
+
+  </tr></table>
+
+</span><span style="font-family: Tahoma; font-size: 10pt;">
+
+<table width="100%" border="0" cellspacing="0" cellpadding="0">
+
+  <tr id="display" style="display:none">
+
+    <td style="font-family: Tahoma; font-size: 10pt;"><span class="style6">Caption</span> Text:<br>
+
+      <input type="text" id="dispVar" size="32"></td>
+  </tr>
+
+  <tr id="display" style="display:none">
+
+    <td style="font-family: Tahoma; font-size: 10pt;"><span class="style6">Caption &amp; Timer Font Faces:<br>
+
+      <label>
+
+        <select name="txtFface" id="txtFface">
+          </select>
+      </label>
+
+    </span></td>
+  </tr>
+
+  <tr id="display" style="display:none">
+
+    <td style="font-family: Tahoma; font-size: 10pt;"><table width="250" border="0" cellspacing="0" cellpadding="0">
+
+      <tr>
+
+        <td><span class="style3">Timer Text Size:</span><span class="style5 style3"><br>
+
+            <label>
+
+            <select name="timertextsize" id="timertextsize">
+
+              <option value="10px">10px</option>
+
+              <option value="11px">11px</option>
+
+              <option value="12px" selected>12px</option>
+
+              <option value="13px">13px</option>
+
+              <option value="14px">14px</option>
+
+              <option value="16px">16px</option>
+
+              <option value="18px">18px</option>
+                                    </select>
+                        </label>
+
+                </span></td>
+
+        <td><span class="style3"><span class="style5">Caption</span> Text Size:</span><span class="style6"><br>
+
+            <select name="displaytextsize" id="displaytextsize">
+
+              <option value="7px">7px</option>
+
+              <option value="8px" selected>8px</option>
+
+              <option value="9px">9px</option>
+
+              <option value="10px">10px</option>
+
+              <option value="11px">11px</option>
+
+              <option value="12px">12px</option>
+
+              <option value="13px">13px</option>
+
+              <option value="14px">14px</option>
+                                                                                    </select>
+
+                </span></td>
+      </tr>
+
+    </table></td>
+  </tr>
+
+  
+
+  <tr id="display" style="display:none">
+
+    <td style="font-family: Tahoma; font-size: 10pt;"><table width="250" border="0" cellspacing="0" cellpadding="0">
+
+      <tr>
+
+        <td width="120"><span class="style3">Text Color: </span><br>
+
+          <select name="txtColour" id="txtColour" onChange="changeColourSample();">
+
+            <option value="#FF0000">Red</option>
+
+            <option value="#0000FF">Blue</option>
+
+            <option value="#00CC00">Green</option>
+
+            <option value="#FFFFFF" selected>White</option>
+
+            <option value="#0099FF">Light Blue</option>
+
+            <option value="#FFFF00">Yellow</option>
+
+            <option value="#FF9900">Orange</option>
+
+            <option value="#FF33CC">Pink</option>
+
+            <option value="#CCCCCC">Grey</option>
+          </select></td>
+
+        <td width="130" valign="bottom"><table width="23" height="23" border="1" cellpadding="0" cellspacing="0" bordercolor="#333333" style="background-color:#FF0000" id="txtColourSample">
+
+          <tr>
+
+            <td>&nbsp;</td>
+          </tr>
+
+        </table></td>
+      </tr>
+
+    </table></td>
+  </tr>
+
+  
+
+  <tr id="display" style="display:none">
+
+    <td style="font-family: Tahoma; font-size: 10pt;"><table width="250" border="0" cellspacing="0" cellpadding="0">
+
+      <tr>
+
+        <td width="147"><span class="style6">Scroll Caption:  <span class="style17">(26+ Chars<span class="style5 style3">.</span>)</span></span><span class="style5 style3"><br>
+
+              <label>
+
+              <select name="thisscrolltxt" id="thisscrolltxt">
+
+                <option value="Yes">Yes</option>
+
+                <option value="No">No</option>
+              </select>
+                            </label>
+
+                </span></td>
+
+        <td width="103"><span class="style3"><span class="style5">Scroll Options</span>:</span><span class="style6"><br>
+
+              <select name="scrollopts" id="scrollopts">
+
+                <option value="bounce">Bounce</option>
+
+                <option value="left">Scroll Left</option>
+
+                <option value="right">Scroll Right</option>
+                                                                      </select>
+
+        </span></td>
+      </tr>
+
+    </table></td>
+  </tr>
+
+  <tr>
+
+    <td height="30" style="font-family: Tahoma; font-size: 10pt;"><table width="300" border="0" cellspacing="0" cellpadding="0">
+
+      <tr>
+
+        <td height="25" style="padding-top:15px"><span class="style10">Count <span class="style6">D</span>own<span class="style6"> D</span>ate / Time <span class="style5">Options</span></span></td>
+
+        <td style="padding-top:15px"><div align="right" onClick="javascript:toggleFields('date')" style="vertical-align:bottom;height:25px"><span class="style6 style17 style22"><span class="style17" id="dateControl">+ Expand</span></span></div></td>
+      </tr>
+
+      <tr>
+
+        <td height="1" colspan="2" bgcolor="#999999"></td>
+      </tr>
+
+      <tr>
+
+        <td height="10" colspan="2"></td>
+      </tr>
+
+    </table></td>
+  </tr>
+
+  <tr id="date" style="display:none">
+
+    <td style="font-family: Tahoma; font-size: 10pt;"><table width="200" border="0" cellspacing="0" cellpadding="0">
+        <tr>
+          <td class="style3">Day</td>
+          <td class="style3">Month</td>
+          <td class="style3">Year</td>
+        </tr>
+        <tr>
+          <td><label class="style3">
+            <input name="day" type="text" id="day" size="1" maxlength="2">
+          </label></td>
+          <td><label class="style3">
+            <input name="month" type="text" id="month" size="1" maxlength="2">
+          </label></td>
+          <td><label>
+            <input name="year" type="text" id="year" size="3" maxlength="4">
+          </label></td>
+        </tr>
+        <tr>
+          <td colspan="3" class="style1" id="messagearea" height="15"></td>
+        </tr>
+      </table></td>
+  </tr>
+
+  <tr id="date" style="display:none">
+
+    <td style="font-family: Tahoma; font-size: 10pt;">      
+
+    <label><span style="font-family: Tahoma; font-size: 10pt;">
+
+        <span class="style3">Time: (24H<span class="style5 style3">r - </span>HH:MM:SS)<br>
+
+          <input name="hrBox" type="text" id="hrBox" size="1" maxlength="2">
+
+:
+
+<input name="minBox" type="text" id="minBox" size="1" maxlength="2">
+
+:
+
+<input name="secBox" type="text" id="secBox" size="1" maxlength="2"></span></label></td>
+  </tr>
+
+  <tr>
+
+    <td style="font-family: Tahoma; font-size: 10pt;"><table width="400" border="0" cellspacing="0" cellpadding="2">
+
+      
+
+      <tr>
+
+        <td style=""><span class="style1" id="messagearea2"></span></td>
+      </tr>
+
+    </table></td>
+  </tr>
+
+  <tr>
+
+    <td style="font-family: Tahoma; font-size: 10pt;">&nbsp;</td>
+  </tr>
+
+  <tr>
+
+    <td style="font-family: Tahoma; font-size: 10pt;"><div align="left"><span class="style19"><a href="http://www.codeblog.co.uk" target="_blank">Website</a> &nbsp;|&nbsp;&nbsp;<a href="http://www.codeblog.co.uk/2008/08/10/uncategorized/windows-vista-count-down-gadget-v13/" target="_blank">Help&nbsp;Me!</a>&nbsp;&nbsp;|&nbsp;&nbsp;<a href="http://gallery.live.com/liveItemDetail.aspx?li=79792ced-d4f5-4de9-ae17-78abbf3e5dc9&bt=1&pl=1">Rate&nbsp;Gadget</a>&nbsp;&nbsp;|&nbsp;v1.3.1 -&nbsp;Oliver G. 2009 (C)</span></div></td>
+  </tr>
+</table>
+
+</span>
+
+</body>
+
+</html>

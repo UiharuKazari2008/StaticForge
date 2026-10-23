@@ -1,0 +1,287 @@
+<!-- All code and images Copyright 2007 iSlayer & Distorted Vista. -->
+<!-- Code and images may not be re-used under any circumstances -->
+<!-- Offenders will be prosocuted to the fullest extent of the law -->
+<html xmlns:v>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+<title>iStat combo</title>
+<style>
+
+v\:* {
+    	behavior:url(#default#vml);
+}
+body {
+	margin:0px;
+	padding:0px;
+	text-align:center;	
+	border:none;
+ 	width:130px;
+	height:121px;
+
+}
+
+.cpuPercentage {
+	position:absolute;
+	left:13px;
+	font-family:Arial;
+	font-size:10px;
+	color:white;
+	width:27px;
+	overflow:hidden;
+	text-align:left;
+	display:none;
+}
+
+.graphBg {
+	background-image:url(graph_horizontalbackground.png);
+	height:8px;
+	width:72px;
+	position:absolute;
+	left:44px;
+	overflow:hidden;
+	display:none;
+}
+
+.largeGraphBg {
+	background-image:url(graph_horizontalbackground.png);
+	height:8px;
+	width:102px;
+	position:absolute;
+	left:14px;
+	overflow:hidden;
+}
+
+
+.graph {
+	background-image:url(graph_horizontalbar1_green.png);
+	height:8px;
+	width:72px;
+	position:absolute;
+	left:44px;
+	overflow:hidden;
+	display:none;
+}
+
+.largeGraph {
+	background-image:url(graph_horizontalbar1_green.png);
+	height:8px;
+	width:102px;
+	position:absolute;
+	left:14px;
+	overflow:hidden;
+}
+
+</style>
+
+<script>
+var percentage;
+var bars = Array();
+var percentages;
+var graphs;
+var updateCount = 3;
+var totalCpus;
+System.Gadget.settingsUI = "Prefs.html";
+System.Gadget.onSettingsClosed = updateSkin;
+	
+function updateSkin() {
+	var newImage;
+	var skin = System.Gadget.Settings.read("skinColor");
+	if(skin == '') {
+		System.Gadget.Settings.write("skinColor", "blue");
+		skin = "blue";
+	}
+
+     	for (i=0;i<graphs.length;i++){
+		if(skin == "fire")
+			graphs[i].style.background = "url(firesmall.png)";
+		else
+			graphs[i].style.background = "url(graph_horizontalbar1_"+skin+".png)";
+	}
+	ramGraph.style.background = "url(graph_horizontalbar1_"+skin+".png)";
+}
+
+function calculateUsage (total, available) {
+	if(total <= 0)
+		return 0;
+	if(available > total)
+		return 0;
+	
+	var usage = Math.round(100 - (available / total * 100));	
+	if(usage <= 0)
+		return 0;
+	if(usage > 100)
+		return 100;
+	
+	return usage;
+}
+
+function getFreeRam(total) {
+	suffixes = Array("MB", "GB", "TB");
+	var suffix = 0;
+	while(total > 1000) {
+		total = total / 1024;
+		suffix++;
+	}
+	if(suffix != 0)
+		total = total.toFixed(2);
+
+
+	return total + "<span style='font-size:9px;font-weight:bold;font-family:Arial'>" + suffixes[suffix] + "</span>";
+}
+
+function update(){
+     var totalUsage = 0;
+	var text = '';
+    	for (var i=0;i<totalCpus;i++){
+		thisCpu = System.Machine.CPUs.item(i).usagePercentage;
+		totalUsage += thisCpu 
+	    	theUsage = thisCpu 
+    		graphs[i].style.width = verifyUsage(Math.round(thisCpu * 0.72));
+		percentages[i].innerText = verifyUsage(Math.round(thisCpu * 0.72)) + "%";
+	}
+	if(updateCount == 3) {
+		total = System.Machine.totalMemory;
+		available = System.Machine.availableMemory;
+		memUsage = calculateUsage(total,available);
+    
+		ramGraph.style.width = verifyUsage(Math.round(memUsage * 1.02));
+	
+		freeRam.innerHTML = getFreeRam(available);
+		updateCount = 0;
+	} else {
+		updateCount++;
+	}
+	setTimeout("update()",1000);
+}
+
+
+function setUpGadget() {
+	percentages = Array(percentage1, percentage2, percentage3, percentage4, percentage5, percentage6, percentage7, percentage8, percentage9, percentage10, percentage11, percentage12, percentage13, percentage14, percentage15, percentage16);
+	graphs = Array(graph1, graph2, graph3, graph4, graph5, graph6, graph7, graph8, graph9, graph10, graph11, graph12, graph13, graph14, graph15, graph16);
+	graphbgs = Array(graphbg1, graphbg2, graphbg3, graphbg4, graphbg5, graphbg6, graphbg7, graphbg8, graphbg9, graphbg10, graphbg11, graphbg12, graphbg13, graphbg14, graphbg15, graphbg16);
+
+	totalCpus = System.Machine.CPUs.count;
+	if(totalCpus > 16)
+		totalCpus = 16;
+	theBody.style.background = "url(" + totalCpus + ".png)";
+	theBody.style.height = 51 + (totalCpus * 10);
+	for(x=0;x<totalCpus;x++){
+		graphs[x].style.display = "block";
+		graphbgs[x].style.display = "block";
+		percentages[x].style.display = "block";
+	}
+
+	freeRam.style.top = 14 + (totalCpus * 10)
+	freeRamTitle.style.top = 14 + (totalCpus * 10)
+	freeRambackground.style.top = 29 + (totalCpus * 10)
+	ramGraph.style.top = 29 + (totalCpus * 10);
+
+	updateSkin();
+	update();
+}
+
+function verifyUsage(usage) {
+    if(usage == null)
+        return 0;
+  
+    if(usage < 0)
+        return 0;
+
+    if(usage < 10)
+        return usage;
+
+    if(usage > 100)
+		return 100;
+
+    return usage;
+}
+
+</script>
+</head>
+
+<body scroll="no" onLoad="setUpGadget();" dir="ltr" id="theBody">
+	<div id='percentage1' class='cpuPercentage' style='top:10px;'>100%</div>
+	<div id='graphbg1' class='graphBg' style='top:13px;'></div>
+	<div id='graph1' class='graph' style='top:13px;'></div>
+
+	<div id='percentage2' class='cpuPercentage' style='top:20px;'>100%</div>
+	<div id='graphbg2' class='graphBg' style='top:23px;'></div>
+	<div id='graph2' class='graph' style='top:23px;'></div>
+
+
+	<div id='percentage3' class='cpuPercentage' style='top:30px;'>100%</div>
+	<div id='graphbg3' class='graphBg' style='top:33px;'></div>
+	<div id='graph3' class='graph' style='top:33px;'></div>
+
+
+	<div id='percentage4' class='cpuPercentage' style='top:40px;'>100%</div>
+	<div id='graphbg4' class='graphBg' style='top:43px;'></div>
+	<div id='graph4' class='graph' style='top:43px;'></div>
+
+
+	<div id='percentage5' class='cpuPercentage' style='top:50px;'>100%</div>
+	<div id='graphbg5' class='graphBg' style='top:53px;'></div>
+	<div id='graph5' class='graph' style='top:53px;'></div>
+
+
+	<div id='percentage6' class='cpuPercentage' style='top:60px;'>100%</div>
+	<div id='graphbg6' class='graphBg' style='top:63px;'></div>
+	<div id='graph6' class='graph' style='top:63px;'></div>
+
+
+	<div id='percentage7' class='cpuPercentage' style='top:70px;'>100%</div>
+	<div id='graphbg7' class='graphBg' style='top:73px;'></div>
+	<div id='graph7' class='graph' style='top:73px;'></div>
+
+
+	<div id='percentage8' class='cpuPercentage' style='top:80px;'>100%</div>
+	<div id='graphbg8' class='graphBg' style='top:83px;'></div>
+	<div id='graph8' class='graph' style='top:83px;'></div>
+
+
+	<div id='percentage9' class='cpuPercentage' style='top:90px;'>100%</div>
+	<div id='graphbg9' class='graphBg' style='top:93px;'></div>
+	<div id='graph9' class='graph' style='top:93px;'></div>
+
+
+	<div id='percentage10' class='cpuPercentage' style='top:100px;'>100%</div>
+	<div id='graphbg10' class='graphBg' style='top:103px;'></div>
+	<div id='graph10' class='graph' style='top:103px;'></div>
+
+
+	<div id='percentage11' class='cpuPercentage' style='top:110px;'>100%</div>
+	<div id='graphbg11' class='graphBg' style='top:113px;'></div>
+	<div id='graph11' class='graph' style='top:113px;'></div>
+
+
+	<div id='percentage12' class='cpuPercentage' style='top:120px;'>100%</div>
+	<div id='graphbg12' class='graphBg' style='top:123px;'></div>
+	<div id='graph12' class='graph' style='top:123px;'></div>
+
+
+	<div id='percentage13' class='cpuPercentage' style='top:130px;'>100%</div>
+	<div id='graphbg13' class='graphBg' style='top:133px;'></div>
+	<div id='graph13' class='graph' style='top:133px;'></div>
+
+
+	<div id='percentage14' class='cpuPercentage' style='top:140px;'>100%</div>
+	<div id='graphbg14' class='graphBg' style='top:143px;'></div>
+	<div id='graph14' class='graph' style='top:143px;'></div>
+
+
+	<div id='percentage15' class='cpuPercentage' style='top:150px;'>100%</div>
+	<div id='graphbg15' class='graphBg' style='top:153px;'></div>
+	<div id='graph15' class='graph' style='top:153px;'></div>
+
+
+	<div id='percentage16' class='cpuPercentage' style='top:160px;'>100%</div>
+	<div id='graphbg16' class='graphBg' style='top:163px;'></div>
+	<div id='graph16' class='graph' style='top:163px;'></div>
+
+	<div id="freeRamTitle" style='position:absolute;top:33px;left:14px;color:white;font-size:11px;font-family:Arial'>Free Ram:</div>
+	<div id="freeRam" style='text-align:right;width:75px;position:absolute;top:33px;left:41px;color:white;font-size:11px;font-family:Arial'>88.88GB</div>
+	<div id="freeRambackground" class='largeGraphBg' style='top:48px;'></div>
+	<div id='ramGraph' class='largeGraph' style='top:48px;'></div>
+
+</body>
+
+</html>

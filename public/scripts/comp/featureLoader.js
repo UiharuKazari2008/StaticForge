@@ -9,15 +9,19 @@ const FEATURE_MANIFEST = {
         scripts: ['scripts/comp/spellbookModal.js']
     },
     notepad: {
+        // Find / Replace / Go To / Font / Page Setup are Vista's own templates (notepadVista.js)
+        depends: ['vista_dialog_templates'],
         html: 'templates/notepad.html',
         styles: [
             'css/notepad.css',
             'css/spell-check.css',
             'css/autocomplete.css',
-            'css/vista-atelier.css'
+            'css/vista-atelier.css',
+            'css/notepad-vista.css'
         ],
         scripts: [
-            'scripts/comp/notepadManager.js'
+            'scripts/comp/notepadManager.js',
+            'scripts/comp/notepadVista.js'
         ]
     },
     chat: {
@@ -57,7 +61,7 @@ const FEATURE_MANIFEST = {
     },
     grimoire: {
         styles: ['css/tag-wiki-search.css'],
-        scripts: ['scripts/comp/grimoireRemoteBrowser.js', 'scripts/comp/grimoireIeChrome.js', 'scripts/comp/grimoireTabs.js', 'scripts/comp/tagWikiSearchModal.js']
+        scripts: ['scripts/comp/grimoireRemoteBrowser.js', 'scripts/comp/grimoireIeChrome.js', 'scripts/comp/grimoireTabs.js', 'scripts/comp/tagWikiSearchModal.js', 'scripts/comp/grimoireHistoryDsap.js']
     },
     character_search: {
         depends: ['grimoire'],
@@ -66,7 +70,7 @@ const FEATURE_MANIFEST = {
     explorer: {
         styles: ['css/explorer.css', 'css/vista-file-progress.css', 'css/vista-7zip.css'],
         // vfsClient / vfsVirtualGrid / routers stay sync — desktop + inbound use them without Cartograph
-        scripts: ['scripts/comp/explorerVistaChrome.js', 'scripts/comp/explorerComputerView.js', 'scripts/comp/fileOperationProgress.js', 'scripts/comp/explorerArchive.js', 'scripts/comp/explorerApplet.js']
+        scripts: ['scripts/comp/explorerVistaChrome.js', 'scripts/comp/explorerComputerView.js', 'scripts/comp/fileOperationProgress.js', 'scripts/comp/vfsPrograms.js', 'scripts/comp/explorerArchive.js', 'scripts/comp/explorerApplet.js']
     },
     // 7-Zip's dialogs and progress window (explorerArchive.js): Taskbar Properties' Vista controls (tbp-*)
     seven_zip_dialogs: {
@@ -102,6 +106,31 @@ const FEATURE_MANIFEST = {
     calculator: {
         styles: ['css/vista-calculator.css'],
         scripts: ['scripts/comp/desktop-apps/calculator.js']
+    },
+    // Character Map (Yozora #632): charmap.exe; its window is the .mui's own dialog template
+    charmap: {
+        depends: ['vista_dialog_templates'],
+        styles: ['css/vista-charmap.css'],
+        scripts: ['scripts/comp/desktop-apps/charmap/charmapApp.js']
+    },
+    // Paint (Yozora #632): mspaint.exe with layers; its dialogs are Vista's own templates
+    paint: {
+        depends: ['vista_dialog_templates'],
+        // the menu bar is Notepad's (vista-atelier.css)
+        styles: ['css/vista-atelier.css', 'css/vista-paint.css'],
+        scripts: [
+            'scripts/comp/desktop-apps/paint/paintCore.js',
+            'scripts/comp/desktop-apps/paint/paintApp.js',
+            'scripts/comp/desktop-apps/paint/paintLayers.js',
+            'scripts/comp/desktop-apps/paint/paintDialogs.js',
+            'scripts/comp/desktop-apps/paint/paintPro.js',
+            'scripts/comp/desktop-apps/paint/paintColor.js'
+        ]
+    },
+    // SoraTan.exe from the VFS (vfsPrograms.js): Nanami's desktop toy
+    soratan: {
+        styles: ['css/desktop-apps/soraTan.css'],
+        scripts: ['scripts/comp/desktop-apps/soraTan.js']
     },
     media_player: {
         styles: ['css/desktop-apps/mediaPlayer.css'],
@@ -175,6 +204,11 @@ const FEATURE_MANIFEST = {
         depends: ['vista_games'],
         scripts: ['scripts/comp/desktop-apps/vista-games/inkball.js']
     },
+    // Hosted Sidebar gadgets (Yozora #629): loaded by vistaSidebar.js when a gadget from public/static_images/vista-gadgets/catalog.json shows
+    vista_gadget_host: {
+        styles: ['css/vista-gadget-host.css'],
+        scripts: ['scripts/comp/vistaGadgetHost.js']
+    },
     vista_purble: {
         // vista_cards for its status bar (VG.Cards.statusBar)
         depends: ['vista_cards'],
@@ -225,16 +259,37 @@ const FEATURE_MANIFEST = {
         styles: ['css/taskbar-properties.css', 'css/mail-options.css'],
         scripts: ['scripts/comp/mailOptions.js']
     },
+    // window pictures for Flip 3D and the taskbar's window previews (taskbarSettings.js)
+    window_capture: {
+        scripts: ['scripts/comp/windowCapture.js']
+    },
+    // Windows Flip 3D, Vista's Win+Tab (keyboardShortcuts.js, taskbarSettings.js Quick Launch)
+    flip3d: {
+        depends: ['window_capture'],
+        styles: ['css/flip3d.css'],
+        scripts: ['scripts/comp/flip3d.js']
+    },
     // Taskbar and Start Menu Properties (public/scripts/comp/taskbarSettings.js openProperties)
     taskbar_properties: {
         styles: ['css/taskbar-properties.css'],
         scripts: ['scripts/comp/taskbarProperties.js']
     },
+    // Vista's own dialog templates and their renderer (Yozora #632): Control Panel's sheets,
+    // Notepad's and Paint's dialogs draw from these
+    vista_dialog_templates: {
+        styles: ['css/taskbar-properties.css', 'css/vista-dialog-template.css'],
+        scripts: ['scripts/comp/vistaDialogTemplates.js', 'scripts/comp/vistaDialogTemplate.js']
+    },
     control_panel: {
+        depends: ['vista_dialog_templates'],
         // Remote Access Properties draws with Taskbar Properties' Vista controls (tbp-*)
         styles: ['css/desktop-settings.css', 'css/vista-defender.css', 'css/cpl-system.css',
-            'css/taskbar-properties.css', 'css/remote-access-properties.css', 'css/cpl-personalization.css'],
+            'css/taskbar-properties.css', 'css/remote-access-properties.css', 'css/cpl-personalization.css',
+            'css/cpl-catalog.css', 'css/cpl-dialogs.css', 'css/cpl-pages.css', 'css/cpl-pages2.css',
+            'css/welcome-center.css'],
         scripts: [
+            // Vista's items, categories and task links (Yozora #632), read by melatonControlPanel.js
+            'scripts/comp/cplCatalog.js',
             'scripts/comp/melatonControlPanel.js',
             'scripts/comp/experienceIndex.js',
             'scripts/comp/cplSystem.js',
@@ -245,10 +300,21 @@ const FEATURE_MANIFEST = {
             'scripts/comp/windowsDefender.js',
             'scripts/comp/cplSearch.js',
             'scripts/comp/cplMail.js',
+            // the photo galleries' list and credits, read by Desktop Background
+            'scripts/comp/wallpaperGalleries.js',
             'scripts/comp/cplDesktopBackground.js',
             // Personalization's hub and Window Color page, then the Screen Saver and Sound dialogs
             'scripts/comp/cplPersonalization.js',
-            'scripts/comp/personalizationDialogs.js'
+            'scripts/comp/personalizationDialogs.js',
+            // Vista's other items: the property sheets, then the pages (Yozora #632)
+            'scripts/comp/cplDialogs.js',
+            'scripts/comp/cplDialogs2.js',
+            // Internet Properties' own dialogs, driving Grimoire and Alchemy
+            'scripts/comp/cplInternetOptions.js',
+            'scripts/comp/cplPages.js',
+            'scripts/comp/cplPages2.js',
+            'scripts/comp/cplPages3.js',
+            'scripts/comp/cplDeviceManager.js'
         ]
     }
 };

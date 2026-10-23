@@ -1,0 +1,314 @@
+.frame_Main
+{
+	left: 13px;
+	top: 22px;
+	position: absolute;
+	z-index:1;
+}
+
+.Alarm_frame
+{
+	left: 13px;
+	top: 22px;
+	position: absolute;
+	z-index:0;
+}
+
+.Count_frame
+{
+	left: 13px;
+	top: 22px;
+	position: absolute;
+	z-index:0;
+}
+
+.Chrno_frame
+{
+	left: 13px;
+	top: 22px;
+	position: absolute;
+	z-index:0;
+}
+
+
+.Messagebox_frame
+{
+	left: 13px;
+	top: 22px;
+	position: absolute;
+	z-index:0;
+}
+
+.lblTime
+{
+	font-weight: bolder;
+	font-size: 28px;
+	font-family: Consolas, 'Lucida Console';
+}
+
+.lblAMPM
+{
+	font-weight: bolder;
+	font-size: 11px;
+	font-family: Consolas, 'Lucida Console';
+}
+
+.lblChrno
+{
+	font-weight: bolder;
+	font-size: 14px;
+	font-family: Consolas, 'Lucida Console';
+	top: 3px;
+	left: 6px;
+	position: absolute;
+}
+
+
+.lblAlarm
+{
+	font-weight: bolder;
+	font-size: 24px;
+	font-family: Consolas, 'Lucida Console';
+	position:absolute;
+	left: 22px;
+	top: -2px;
+}
+
+.lblCount
+{
+	font-weight: bolder;
+	font-size: 16px;
+	font-family: Consolas, 'Lucida Console';
+	position:absolute;
+	left: 4px;
+	top: 0px;	
+}
+
+.ErrorIcon
+{
+	left: 3px;
+	position: absolute;
+	top: 3px;
+	cursor: hand;
+}
+
+.lblMsg
+{
+	font-size: 10px;
+	color: black;
+	font-family: 'Segoe UI' , Verdana, Tahoma, Arial;
+	left: 35px;
+	width: 75px;
+	position: absolute;
+	top: 5px;
+	height: 30px;
+	vertical-align: middle;
+}
+
+
+.txtCount
+{
+	font-size: 11px;
+	color: #252a3b;
+	font-family: 'Segoe UI' , Verdana;
+	border-right: slategray 1px solid;
+	border-top: slategray 1px solid;
+	border-left: slategray 1px solid;
+	border-bottom: slategray 1px solid;
+	left: 4px;
+	top: 20px;
+	width: 60px;
+	height: 14px;
+	position: absolute;
+	background-color: transparent;
+}
+
+.cmd_Start_Pause
+{
+	cursor: hand;
+	position: absolute;
+	left: 8px;
+	top: 21px;
+}
+
+.cmd_Lap
+{
+	cursor: hand;
+	position: absolute;
+	left: 28px;
+	top: 21px;
+}
+
+.cmd_Off
+{
+	cursor: hand;
+	position: absolute;
+	left: 48px;
+	top: 21px;
+}
+
+.btn_Del
+{
+	cursor: hand;
+	position: absolute;
+	left: 50px;
+	top: 21px;
+}
+
+.btn_Up
+{
+	cursor: hand;
+	position: absolute;
+	left: 70px;
+	top: 21px;
+}
+
+.btn_Down
+{
+	cursor: hand;
+	position: absolute;
+	left: 88px;
+	top: 21px;
+}
+
+
+.Alarm_img
+{
+	position:absolute;
+	left: 2px;
+	top: 16px;
+	cursor: hand;
+}
+
+.Alarm_rwd
+{
+	position:absolute;
+	left:22px;
+	top:26px;
+	cursor:hand;
+}
+
+.lblAlarm_id
+{
+	position: absolute;
+	left: 34px;
+	top: 24px;
+	font-family: "segoe ui";
+	font-size: 10px;
+	width: 52px;
+	text-align: center;
+	cursor: hand;
+}
+
+.Alarm_fwd
+{
+	position:absolute;
+	left:88px;
+	top:26px;
+	cursor:hand;
+}
+
+.lblAMPM_frame
+{
+	left: 7px;
+	position: absolute;
+	top: -4px;
+}
+
+.lblTime_frame
+{
+	left: 5px;
+	width: 77px;
+	position: absolute;
+	top: 5px;
+	height: 28px;
+	cursor: hand;
+}
+
+.lblDay_frame
+{
+	left: 82px;
+	position: absolute;
+	top: 0px;
+}
+
+.lblDay
+{
+	font-weight: bolder;
+	font-size: 11px;
+	font-family: Consolas, 'Lucida Console';
+}
+
+.lblSeconds
+{
+	font-weight: bolder;
+	font-size: 16px;
+	font-family: Consolas, 'Lucida Console';
+}
+
+.lblSeconds_frame
+{
+	left: 83px;
+	width: 36px;
+	position: absolute;
+	top: 14px;
+	height: 19px;
+}
+
+BODY
+{
+	padding-right: 0px;
+	padding-left: 0px;
+	padding-bottom: 0px;
+	margin: 0px;
+	padding-top: 0px;
+}
+
+.frmShine
+{
+	left: 13px;
+	top: 22px;
+	position: absolute;
+	z-index:9999;
+}
+
+.frmClockButton
+{
+	left: 6px;
+	top: 0px;
+	width: 27px;
+	height: 15px;
+	position: absolute;
+	z-index: 1;
+	cursor: hand;
+}
+.frmAlarmButton
+{
+	left: 36px;
+	top: 0px;
+	width: 27px;
+	height: 15px;
+	position: absolute;
+	z-index: 1;
+	cursor: hand;
+}
+.frmCountButton
+{
+	left: 64px;
+	top: 0px;
+	width: 27px;
+	height: 15px;
+	position: absolute;
+	z-index: 1;
+	cursor: hand;
+}
+.frmChrnoButton
+{
+	left: 94px;
+	top: 0px;
+	width: 27px;
+	height: 15px;
+	position: absolute;
+	z-index: 1;
+	cursor: hand;
+}

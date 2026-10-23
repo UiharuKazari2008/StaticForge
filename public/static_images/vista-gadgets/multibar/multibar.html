@@ -1,0 +1,22 @@
+<html>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+<script type="text/javascript" src="MultiBar.js"></script>
+<script type="text/javascript">
+function Search()
+{
+	window.open('http://search.live.com/results.aspx?q=' +query.value,'window');
+	window.open('http://www.google.com/search?q='+query.value,'window');
+	window.open('http://search.yahoo.com/search?p=' +query.value, 'window');
+	query.value="";
+}
+</script>
+
+    <link href="MultiBar.css" rel="stylesheet" type="text/css" />
+</head>
+<body style="width:130px;height:100px;font-family:Tahoma;font-size:7pt; padding-right: 4px; padding-left: 4px; padding-top: 4px; position: static; background-image: none;">
+<img src="LGY.png" />&nbsp;&nbsp;<br />
+<input type="text" size="14" maxlength="30" id="query" style="border-left-color: #ff3300; border-bottom-color: #ff3300; border-top-style: groove; border-top-color: #ff3300; border-right-style: groove; border-left-style: groove; background-color: #ccccff; text-align: center; border-right-color: #ff3300; border-bottom-style: groove" /><br />
+<input type="submit" value="Search LGY" id="Search" name="Search" onclick="Search()" style="width: 112px; visibility: visible; background-color: #99ff66;" />
+&nbsp;&nbsp;&nbsp;&nbsp;<a href="http://www.search.live.com" target="_blank" ></a>
+</body>
+</html>

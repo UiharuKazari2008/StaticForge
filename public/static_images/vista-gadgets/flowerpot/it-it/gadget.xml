@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>Vaso di fiori virtuale</name>
+  <namespace>microsoft.windows</namespace>
+  <version>1.0.0.1</version>
+  <author name="KaKaNow.com">
+    <info url="kakanow.com"  text="KaKaNow.com"/>
+    <logo src="images/logo.png" />
+  </author>
+  <copyright>&#169; 2010</copyright>
+  <description>Tieni sul tuo desktop qualcosa di simpatico e sempre aggiornato.
+Lascia che un raggio di sole illumini il tuo desktop.  I fiori di questo vaso virtuale cresceranno e sbocceranno davanti ai tuoi occhi se li innaffierai con un po’ d'acqua usando il mouse.  Proprio come una vera e propria pianta, appassirà se la trascuri.  Potrebbero essere necessari vari giorni prima che giunga a completa fioritura, ma sicuramente rallegrerà il tuo desktop ogni volta che compare.</description>
+  <icons>
+    <icon height="64" width="64" src="images/icon.png" />
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="default.html" />
+      <permissions>Full</permissions>
+      <platform minPlatformVersion="1.0" />
+      <defaultImage src="images/drag.png" />
+    </host>
+  </hosts>
+</gadget>

@@ -1,0 +1,44 @@
+/*
+//---------------------------------------------
+//  THIS CODE IS NOT APPROVED FOR USE IN/ON ANY OTHER UI ELEMENT OR PRODUCT COMPONENT.  
+//  Copyright (c) 2006 Microsoft Corporation.  All rights reserved.
+// ----------------------------------------------
+*/
+body
+{ 
+    margin: 0px;
+    width: 250px;
+    height: 100px;
+}
+
+.titleHeader
+{
+    font-family: Segoe UI, Tahoma, sans-serif;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.settingName
+{
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.normal
+{
+    font-size: 12px;
+}
+
+div.selText
+{
+    font-family: Arial;
+    font-size: 12px;
+    color: #D4F4FF;
+}
+
+.selTextImage
+{
+    position: absolute;
+    width: 26px;
+    height: 27px;
+}

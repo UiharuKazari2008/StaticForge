@@ -1,0 +1,134 @@
+<HTML>
+	<HEAD><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+		<title>Pickabar BPM</title>
+	<style type="text/css">
+		body 
+		{ 
+			width: 130;
+			height: 145;
+			margin:0px; 
+			padding:0px; 
+		}
+
+		#mainTable
+		{
+			border: 1px dashed #003581;
+			background-color : #FFFFFF;
+		}
+		
+		#theTitle
+		{
+			font-family: Verdana, Arial, sans-serif;
+			color: #FFFFFF;
+			background-color: #003581;
+			text-align: center;
+			padding: 0px;
+			border-bottom: 0px solid #FFFFFF;
+			height: 15px;
+			width: 125px;
+			font-weight: bolder;
+			margin-top: 4px; 
+		}
+		
+		#bpmDisplay
+		{
+			font-family: Verdana, Arial, sans-serif;
+			font-weight: bolder;
+			margin-top: 10px; 
+			margin-bottom: 10px;
+		}
+		
+		#tapbutton
+		{
+   			width:77px;
+		   	height:77px;
+		   	margin-top: 10px;
+		}
+	</style>
+
+		<SCRIPT>
+			var milliPerMinute = 60000;
+			//we don't support anything smaller than 30 bpm
+			var smallestInterval = milliPerMinute/ 30;
+
+					
+			var lastClick;
+			var readings;
+			var currentBPM;
+
+			function initialize()
+			{
+				lastClick = null;
+				currentBPM = -1;
+				readings = new Array(10);
+			}
+						
+			//initial call to...um...initialize
+			initialize();
+								
+			function calcBPM()
+			{
+				var newClick = new Date();
+				
+				if (lastClick != null)
+				{					
+					var elapsed = newClick - lastClick;
+									
+					if (elapsed < smallestInterval)
+					{				
+						var newReading = Math.round(milliPerMinute/elapsed);
+							
+						//start with out current reading...
+						var currentSum = newReading;
+						
+						//...add all of the old readings
+						for(i = 0; i < readings.length - 1; i++)
+						{
+							readings[i] = (readings[i + 1] != null) ? readings[i + 1] : newReading;
+							
+							currentSum += readings[i];
+						}
+						
+						readings[readings.length - 1] = newReading;												
+						
+						currentBPM = currentSum/readings.length;
+
+												
+						bpmDisplay.innerHTML = currentBPM;
+						
+						//debug
+						//for(i = readings.length - 1; i >= 0; i--)
+						//{
+						//	bpmDisplay.innerHTML += readings[i] + '<br />';
+						//}
+						
+					}
+					else
+					{
+						initialize();
+					}
+				}
+				else
+				{
+						bpmDisplay.innerHTML = "don't stop";
+				}
+				
+				lastClick = newClick;
+			}
+		</script>
+	</head>
+	<body>
+
+		<g:background 
+        		src="Pickabar BPM Background.png" 
+        		id="PickabarBPMBg"   
+        		style="position:absolute;width:130px;height:145px;z-index:-1"></g:background>
+		<center>
+					<div id="theTitle">Pickabar BPM</div>
+
+					<input type="button" id="tapbutton" onclick="calcBPM();" />
+					
+					<div id="bpmDisplay" class="main">...</div>
+		</center>
+	</body>
+</html>

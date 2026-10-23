@@ -1,0 +1,77 @@
+<html>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+ <style>
+	body {
+	  width: 126px;
+	  height: 100px;
+	  margin: 0; padding: 0; 
+	  background-color: #95a5a6;
+	}
+
+	#buttons {  padding: 2px 0 0 3px; }
+
+	#buttons button {
+	  font-size: 9px; 
+	}
+	
+	.break {
+		background-color: #2ecc71;
+	}
+	.work { 
+		background-color: #95a5a6;
+	}
+	.sport { 
+		background-color: #e74c3c;
+	}
+
+	#timer { color: white; font-size: 30px; text-align: center; }
+ </style>
+</head>
+<body class="work">
+    <div id="content">
+      <p id="buttons"><button onclick="dt=1;dt2=1;System.Sound.playSound(0);">RST</button>
+      <p id="timer"></p>
+    </div>
+	
+	<script>
+		var dt = 1;
+		var dt2 = 1;
+
+		var fn = function () {
+			var k = 1800 - dt;
+			
+			var mins = Math.floor(k / 60).toString();
+			mins = mins.substring(0, 2);
+			if(mins.length == 1)
+				mins = '0' + mins;
+		
+			var secs = (k % 60).toString();
+			secs = secs.substring(0, 2);
+			if(secs.length == 1)
+				secs = '0' + secs;
+			
+			document.getElementById('timer').innerHTML =  mins + secs;
+			
+			if(dt == 1200)System.Sound.playSound("getup.wav");
+			if(dt == 1500)System.Sound.playSound("getup.wav");
+			if (dt > 1200) {
+				if (dt2 == 1 && dt > 1500) document.body.className = 'break';
+				if (dt2 == 2) document.body.className = 'sport';
+			}
+			else document.body.className = 'work';
+			
+			if (dt == 1800) {
+				dt = 1;
+				
+				if (dt2 == 2)
+					dt2 = 1;
+				else
+					++dt2;
+			}
+			else ++dt;
+		};
+
+		setInterval(fn, 1000);
+	</script>
+</body>
+</html>

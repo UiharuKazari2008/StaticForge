@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>Tic Tac Toe</name>
+  <namespace>tyler.Gadgets</namespace>
+  <version>1.0</version>
+  <author name="TylerRedmond">
+    <logo src="logo.png" />
+  </author>
+  <copyright>&#169; 2006</copyright>
+  <description></description>
+  <icons>
+      <icon height="48" width="48" src="TicTacToe.jpg" />
+  </icons>
+  <logo>logo.png</logo>
+  <hosts>
+    <host name="sidebar">
+      <base type="html" apiVersion="1.0.0" src="tictacgame_Even_Smarter_3.htm" />
+      <permissions>full</permissions>
+      <platform minPlatformVersion ="0.3"/>
+    </host>
+  </hosts>
+</gadget>

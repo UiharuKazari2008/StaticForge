@@ -1,0 +1,48 @@
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+//  THIS CODE IS NOT APPROVED FOR USE IN/ON ANY OTHER UI ELEMENT OR PRODUCT COMPONENT.
+//  Copyright (c) 2006 Microsoft Corporation.  All rights reserved.
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+<html>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+<meta http-equiv="MSThemeCompatible" CONTENT="yes" />
+
+<title>Suduko</title>
+<link href="css/sudoku.css" rel="stylesheet" type="text/css" />
+<script src="js/sudoku.js" language="javascript" type="text/javascript"></script>
+</head>
+<body dir="ltr" onload="load()">
+
+<div id="sudokuHint" class="button" onclick="hint()"></div>
+<div id="sudokuCheck" class="button" onclick="check()"></div>
+<div id="sudokuSolve" class="button" onclick="solve()"></div>
+<div id="sudokuRestart" class="button" onclick="restart()"></div>
+
+<div id="keypad_1" class="button" onclick="insert(1)"></div>
+<div id="keypad_2" class="button" onclick="insert(2)"></div>
+<div id="keypad_3" class="button" onclick="insert(3)"></div>
+<div id="keypad_4" class="button" onclick="insert(4)"></div>
+<div id="keypad_5" class="button" onclick="insert(5)"></div>
+<div id="keypad_6" class="button" onclick="insert(6)"></div>
+<div id="keypad_7" class="button" onclick="insert(7)"></div>
+<div id="keypad_8" class="button" onclick="insert(8)"></div>
+<div id="keypad_9" class="button" onclick="insert(9)"></div>
+<div id="keypad_x" class="button" onclick="insert(null)"></div>
+
+<script language="javascript" type="text/javascript">
+
+for (var i = 0; i < 9; i++)
+{
+    for (var j = 0; j < 9; j++)
+    {
+        document.write('<div id="square_' + i + '_' + j + '" class="square" onclick="select(' + j + ', ' + i + ')" onmouseover="highlight(true, ' + j + ', ' + i + ')" onmouseout="highlight(false, ' + j + ', ' + i + ')"></div>');
+    }
+}
+
+</script>
+
+</body>
+</html>

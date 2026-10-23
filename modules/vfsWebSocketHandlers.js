@@ -1,7 +1,8 @@
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 const wsPacketRegistry = require('./ws/wsPacketRegistry');
+const { invalidateFuseLookupCache } = require('./vfsFuseHttp');
+const { md5HexAsync, writeFileIfMissing } = require('./vfsPerfHelpers');
 
 // modules/replicationJournal.js
 async function recordReplicationVfsJournal(contentHash, payload = null) {
@@ -31,6 +32,7 @@ class VfsWebSocketHandlers {
     }
 
     broadcastVfsUpdated(wsServer, pathHint) {
+        invalidateFuseLookupCache();
         if (wsServer && wsServer.broadcast) {
             wsServer.broadcast({
                 type: 'vfs_updated',
@@ -285,7 +287,7 @@ class VfsWebSocketHandlers {
             let buffer;
             if (tempFile) {
                 const tempPath = path.join(this.globalResources.getPath('tempDownload'), tempFile);
-                buffer = fs.readFileSync(tempPath);
+                buffer = await fs.promises.readFile(tempPath);
             } else if (fileData) {
                 const base64 = fileData.replace(/^data:[^;]+;base64,/, '');
                 buffer = Buffer.from(base64, 'base64');
@@ -336,7 +338,7 @@ class VfsWebSocketHandlers {
 
         let buffer;
         if (tempFile) {
-            buffer = fs.readFileSync(path.join(this.globalResources.getPath('tempDownload'), tempFile));
+            buffer = await fs.promises.readFile(path.join(this.globalResources.getPath('tempDownload'), tempFile));
         } else {
             const base64 = fileData.replace(/^data:[^;]+;base64,/, '');
             buffer = Buffer.from(base64, 'base64');
@@ -349,12 +351,10 @@ class VfsWebSocketHandlers {
             throw new Error('Replacement file must have the same mime type family');
         }
 
-        const hash = crypto.createHash('md5').update(buffer).digest('hex');
+        const hash = await md5HexAsync(buffer);
         const oldHash = existing.content_hash;
         const blobPath = this.getVfs().getFileBlobPath(hash);
-        if (!fs.existsSync(blobPath)) {
-            fs.writeFileSync(blobPath, buffer);
-        }
+        await writeFileIfMissing(blobPath, buffer);
 
         const updated = await vfsDb.updateUserFile(fileId, {
             content_hash: hash,
@@ -632,9 +632,13 @@ class VfsWebSocketHandlers {
         const uploadPath = this.globalResources.getPath('uploadCache');
         const userFilesPath = this.globalResources.getPath('userFiles');
         const srcPath = path.join(uploadPath, hash);
-        if (!fs.existsSync(srcPath)) throw new Error('Reference file not found on disk');
-
-        const buffer = fs.readFileSync(srcPath);
+        let buffer;
+        try {
+            buffer = await fs.promises.readFile(srcPath);
+        } catch (err) {
+            if (err && err.code === 'ENOENT') throw new Error('Reference file not found on disk');
+            throw err;
+        }
         const file = await this.getVfs().saveUserFileBuffer(buffer, {
             originalName: hash,
             mimeType: 'image/png',
@@ -662,12 +666,10 @@ class VfsWebSocketHandlers {
         const file = await vfsDb.getUserFileById(fileId);
         if (!file) throw new Error('File not found');
 
-        const buffer = fs.readFileSync(this.getVfs().getFileBlobPath(file.content_hash));
+        const buffer = await fs.promises.readFile(this.getVfs().getFileBlobPath(file.content_hash));
         const hash = file.content_hash;
         const uploadPath = path.join(this.globalResources.getPath('uploadCache'), hash);
-        if (!fs.existsSync(uploadPath)) {
-            fs.writeFileSync(uploadPath, buffer);
-        }
+        await writeFileIfMissing(uploadPath, buffer);
 
         const refDb = this.globalResources.getReferenceMetadataDatabase();
         refDb.setFileCache(hash, { size: buffer.length });

@@ -1,0 +1,90 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" >
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+    <title>Traduttore</title>
+    
+</head>
+    <style type="text/css" media="screen">/*<![CDATA[*/ @import "css/main.css"; /*]]>*/</style>
+    <script type="text/javascript">
+	    function body_onload() {
+	        LoadSettings();
+	    }
+	    
+        System.Gadget.settingsUI = "settings.html";
+        System.Gadget.onSettingsClosed = SettingsClosed;
+        function SettingsClosed() {
+            LoadSettings();
+        }
+        
+        function LoadSettings() {
+            var languageSetting = System.Gadget.Settings.read("language");
+            if (languageSetting == "") {
+                languageSetting = "en";
+            }
+            var languageElement = document.getElementById("language");
+            languageElement.value = languageSetting;
+	   
+	   var trSetting = System.Gadget.Settings.read("translation");
+            if (trSetting == "") {
+                trSetting = "it|en";
+            }
+            var trElement = document.getElementById("langpair");
+            trElement.value = trSetting;
+
+            var flagElement = document.getElementById("flagImage");
+            switch (languageSetting) {
+                case "en": flagElement.src = "images/en.jpg"; break;
+                case "de": flagElement.src = "images/de.jpg"; break;
+                case "fr": flagElement.src = "images/fr.jpg"; break;
+                case "pl": flagElement.src = "images/pl.jpg"; break;
+                case "ja": flagElement.src = "images/jp.jpg"; break;
+                case "nl": flagElement.src = "images/nl.jpg"; break;
+                case "it": flagElement.src = "images/it.jpg"; break;
+                case "sv": flagElement.src = "images/sv.jpg"; break;
+                case "pt": flagElement.src = "images/pt.jpg"; break;
+                case "es": flagElement.src = "images/es.jpg"; break;
+                case "ru": flagElement.src = "images/ru.jpg"; break;
+                default: 
+                    languageElement.value = "en";
+                    flagElement.src = "images/en.jpg"; break;
+            }
+        }
+</script>
+<body>
+<input type="hidden" id="language" name="language" />
+<table width="100%" height="100%" cellspacing="0" cellpadding="2">
+<tr><td colspan="3"><b>Enter text here:</b></td></tr>
+<tr><td colspan="3"><input type="text" name="txtOrig" id="txtOrig" onclick="window.document.all('err_mex').style.display='none'"/>
+<div class="err_mex" style="display:none" id="err_mex" name="err_mex">Please insert Text</div></td></tr>
+<tr><td colspan="3"><b>Select translation:</b></td></tr>
+<tr><td colspan="3"><select name=langpair id="langpair  STYLE="width: 10px" width="10px">
+<option value="ar|en">Arabic to English</option>
+<option value="zh-CN|en">Chinese to English</option>
+<option value="en|ar" class="line-above">English to Arabic</option>
+<option value="en|zh-CN">English to Chinese</option>
+<option value="en|fr">English to French</option>
+<option value="en|de">English to German</option>
+<option value="en|it">English to Italian</option>
+<option value="en|ja">English to Japanese</option>
+<option value="en|ko">English to Korean</option>
+<option value="en|pt">English to Portuguese</option>
+<option value="en|ru">English to Russian</option>
+<option value="en|es">English to Spanish</option>
+<option value="fr|en">French to English</option>
+<option value="fr|de">French to German</option>
+<option value="de|en">German to English</option>
+<option value="de|fr">German to French</option>
+<option value="it|en" class="line-above">Italian to English</option>
+<option value="ja|en">Japanese to English</option>
+<option value="ko|en">Korean to English</option>
+<option value="pt|en">Portuguese to English</option>
+<option value="ru|en">Russian to English</option>
+<option value="es|en" selected>Spanish to English</option>
+</select></td></tr>
+<tr><td width=60%><input type="button" value="Translate" style="vertical-align: top; padding: 0; margin: 0;"
+onclick="javascript:if (window.document.all('txtOrig').value=='') {window.document.all('err_mex').style.display='block'; return false; } window.open('http://translate.google.com/translate_t?text=' + window.document.all('txtOrig').value  + '&langpair=' +  window.document.all('langpair').value + '&hl=' + window.document.all('language').value + '&ie=UTF-8&=UTF-8', 'popup', 'width=650,height=450,scrollbars,resizable');"></td>
+<td><img src="images/en.jpg" align="left" id="flagImage" name="flagImage" width="17px" height="12px"/></td><td width="20%"></td>
+</tr>
+</table>
+</body>
+</html>

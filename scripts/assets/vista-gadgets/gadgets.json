@@ -1,0 +1,546 @@
+{
+ "gadgets": [
+  {
+   "id": "minesweeper",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/minesweeper.gadget",
+   "group": "games"
+  },
+  {
+   "id": "sudoku",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/Sudoku.gadget",
+   "group": "games"
+  },
+  {
+   "id": "videopoker",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/VideoPoker.gadget",
+   "group": "games"
+  },
+  {
+   "id": "blackjack",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/blackjack (2).gadget",
+   "group": "games"
+  },
+  {
+   "id": "blockade",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/Blockade.gadget",
+   "group": "games"
+  },
+  {
+   "id": "bubblebreaker",
+   "src": "src/vistazip/BubbleBreaker.gadget",
+   "group": "games"
+  },
+  {
+   "id": "feedthesnake",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/FeedTheSnake1.1.gadget",
+   "group": "games"
+  },
+  {
+   "id": "tictactoe",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/TicTacToe.gadget",
+   "group": "games"
+  },
+  {
+   "id": "lightsout",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/lightsout.gadget",
+   "group": "games"
+  },
+  {
+   "id": "echo",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/echo.gadget",
+   "group": "games"
+  },
+  {
+   "id": "life",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/life.gadget",
+   "group": "games"
+  },
+  {
+   "id": "sudokuassist",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/SudokuAssistant.gadget",
+   "group": "games"
+  },
+  {
+   "id": "lavalamp",
+   "src": "src/vistazip/LavaLamp.gadget",
+   "group": "toys"
+  },
+  {
+   "id": "bubblewrap",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/BubbleWrap.gadget",
+   "group": "toys"
+  },
+  {
+   "id": "voodoo",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/voodoo.gadget",
+   "group": "toys"
+  },
+  {
+   "id": "snack",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/snack.gadget",
+   "group": "toys"
+  },
+  {
+   "id": "colorswatch",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/colorswatch.gadget",
+   "group": "toys"
+  },
+  {
+   "id": "bouncy",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/bouncy.gadget",
+   "group": "toys"
+  },
+  {
+   "id": "magic8ball",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/8ball_v0.58.gadget",
+   "group": "toys"
+  },
+  {
+   "id": "lovemeter",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/lovemeter.gadget",
+   "group": "toys"
+  },
+  {
+   "id": "bofh",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/BOFHExcuse.gadget",
+   "group": "toys"
+  },
+  {
+   "id": "tao",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/Tao.gadget",
+   "group": "toys"
+  },
+  {
+   "id": "xmastree",
+   "src": "src/vistazip/Christmas0Tree.gadget",
+   "group": "toys"
+  },
+  {
+   "id": "flowerpot",
+   "src": "src/vistazip/FlowerPot.gadget",
+   "group": "toys"
+  },
+  {
+   "id": "binaryclock",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/Binary Clock.gadget",
+   "group": "clocks"
+  },
+  {
+   "id": "barcodeclock",
+   "src": "src/vistazip/BarCodeClock2.gadget",
+   "group": "clocks"
+  },
+  {
+   "id": "pongclock",
+   "src": "src/vistazip/pongclock.gadget",
+   "group": "clocks"
+  },
+  {
+   "id": "sonarclock",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/SonarClock.Gadget",
+   "group": "clocks"
+  },
+  {
+   "id": "futureclock",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/FutureClock.Gadget",
+   "group": "clocks"
+  },
+  {
+   "id": "metricclock",
+   "src": "src/vistazip/MetricClockv2.gadget",
+   "group": "clocks"
+  },
+  {
+   "id": "tourbillon",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/HB_Sweep Second.gadget",
+   "group": "clocks"
+  },
+  {
+   "id": "planetclock",
+   "src": "src/vistazip/THL_Planet_Clock_Rev_v1.2.gadget",
+   "group": "clocks"
+  },
+  {
+   "id": "digiwatch",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/DigiWatch_v1.00.gadget",
+   "group": "clocks"
+  },
+  {
+   "id": "twentyfour",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/TwentyFourClock.gadget",
+   "group": "clocks"
+  },
+  {
+   "id": "liveclock",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/LiveClock.Gadget",
+   "group": "clocks"
+  },
+  {
+   "id": "logoclock",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/logoclock.gadget",
+   "group": "clocks"
+  },
+  {
+   "id": "longhornclock",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/LonghornClock.Gadget",
+   "group": "clocks"
+  },
+  {
+   "id": "worldclockday",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/WorldClock(day).Gadget",
+   "group": "clocks"
+  },
+  {
+   "id": "worldclocknight",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/WorldClock(night).Gadget",
+   "group": "clocks"
+  },
+  {
+   "id": "chineseclock",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/Chinese Clock.gadget",
+   "group": "clocks",
+   "title": "Chinese Clock"
+  },
+  {
+   "id": "countdown",
+   "src": "src/vistazip/Countdown0v1.3.1.gadget",
+   "group": "tools"
+  },
+  {
+   "id": "stopwatch",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/stopwatch.gadget",
+   "group": "tools"
+  },
+  {
+   "id": "spheretimer",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/SphereTimer_English.Gadget",
+   "group": "tools"
+  },
+  {
+   "id": "pomodoro",
+   "src": "src2/msi-gadgets/Gadgets/Pomodoro.gadget",
+   "group": "tools"
+  },
+  {
+   "id": "takeabreak",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/jqltakeabreak.gadget",
+   "group": "tools"
+  },
+  {
+   "id": "todo",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/todo.gadget",
+   "group": "tools"
+  },
+  {
+   "id": "unitconvert",
+   "src": "src2/msi-gadgets/Gadgets/Unit_Converter.gadget",
+   "group": "tools"
+  },
+  {
+   "id": "tempconvert",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/Temperature Converter.Gadget",
+   "group": "tools"
+  },
+  {
+   "id": "expresscalc",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/ExpressCalc.gadget",
+   "group": "tools"
+  },
+  {
+   "id": "dec2hex",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/dec2hex_build6.gadget",
+   "group": "tools"
+  },
+  {
+   "id": "passwordgen",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/PasswordGenerator.Gadget",
+   "group": "tools"
+  },
+  {
+   "id": "hasher",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/hasher.gadget",
+   "group": "tools"
+  },
+  {
+   "id": "dice",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/Dice.gadget",
+   "group": "tools"
+  },
+  {
+   "id": "metronome",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/Metronome.gadget",
+   "group": "tools"
+  },
+  {
+   "id": "piano",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/Piano.gadget",
+   "group": "tools"
+  },
+  {
+   "id": "bpm",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/PickabarBPM.gadget",
+   "group": "tools"
+  },
+  {
+   "id": "abacus",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/Abacus.gadget",
+   "group": "tools"
+  },
+  {
+   "id": "fullmoon",
+   "src": "src/vistazip/Full_Moon_3.2.gadget",
+   "group": "tools"
+  },
+  {
+   "id": "periodic",
+   "src": "src/vistazip/PeriodicTable.gadget",
+   "group": "tools"
+  },
+  {
+   "id": "emptyspace",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/EmptySpace.gadget",
+   "group": "tools"
+  },
+  {
+   "id": "margincalc",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/MarginCalculator.gadget",
+   "group": "tools"
+  },
+  {
+   "id": "lottery",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/LotteryNumberPicker0.3.gadget",
+   "group": "tools"
+  },
+  {
+   "id": "allcpu",
+   "src": "src2/msi-gadgets/Gadgets/All_CPU_Meter.gadget",
+   "group": "system"
+  },
+  {
+   "id": "networkmeter",
+   "src": "src2/msi-gadgets/Gadgets/Network_Meter_V8.4.gadget",
+   "group": "system"
+  },
+  {
+   "id": "drivesmeter",
+   "src": "src2/msi-gadgets/Gadgets/Drives_Meter.gadget",
+   "group": "system"
+  },
+  {
+   "id": "topfive",
+   "src": "src2/msi-gadgets/Gadgets/TopFive10.gadget",
+   "group": "system"
+  },
+  {
+   "id": "driveinfo",
+   "src": "src2/msi-gadgets/Gadgets/DriveInfo.gadget",
+   "group": "system"
+  },
+  {
+   "id": "uptime",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/Uptime.gadget",
+   "group": "system"
+  },
+  {
+   "id": "freediscspace",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/FreeDiscSpace.gadget",
+   "group": "system"
+  },
+  {
+   "id": "istatcombo",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/iStat combo.gadget",
+   "group": "system"
+  },
+  {
+   "id": "istatcpu",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/iStat cpu.gadget",
+   "group": "system"
+  },
+  {
+   "id": "istatmemory",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/iStat memory.gadget",
+   "group": "system"
+  },
+  {
+   "id": "sysanimator",
+   "src": "src/sysani/AT_SystemAnimator_v4610.gadget",
+   "group": "system",
+   "extras": [
+    {
+     "zip": "src/sysani/sys_ani_haruhi_suzumiya.zip",
+     "to": "packs"
+    },
+    {
+     "zip": "src/sysani/sys_ani_k_on.zip",
+     "to": "packs"
+    },
+    {
+     "zip": "src/sysani/sys_ani_lucky_star.zip",
+     "to": "packs"
+    },
+    {
+     "zip": "src/sysani/sys_ani_others.zip",
+     "to": "packs"
+    },
+    {
+     "zip": "src/sysani/sys_ani_vocaloids.zip",
+     "to": "packs"
+    }
+   ]
+  },
+  {
+   "id": "polaroid",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/Polaroidv1.7.1.1.gadget",
+   "group": "system",
+   "picture": true
+  },
+  {
+   "id": "driveexplorer",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/DriveExplorer.gadget",
+   "group": "system",
+   "skip": "needs System.Shell folders over the VFS"
+  },
+  {
+   "id": "scribble",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/scribble.gadget",
+   "group": "system"
+  },
+  {
+   "id": "inknotes",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/InkNotes.gadget",
+   "group": "system",
+   "skip": "needs the Tablet PC InkPicture control (ink strokes, ISF save) emulated"
+  },
+  {
+   "id": "linksbar",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/Links Bar.gadget",
+   "group": "system",
+   "skip": "needs System.Shell folders over desktop shortcuts"
+  },
+  {
+   "id": "usgs",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/USGS RSS Feed.gadget",
+   "group": "system",
+   "web": [
+    "earthquake.usgs.gov"
+   ]
+  },
+  {
+   "id": "fullsun",
+   "src": "src/vistazip/FullSun.gadget",
+   "group": "system"
+  },
+  {
+   "id": "googlesearch",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/gsearch.gadget",
+   "group": "search"
+  },
+  {
+   "id": "wikisearch",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/wikipedia-1.gadget",
+   "group": "search",
+   "author": "Xyridian Technology Center Paris"
+  },
+  {
+   "id": "anywiki",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/AnyWikiSearch.gadget",
+   "group": "search"
+  },
+  {
+   "id": "imdbsearch",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/Imdb.gadget",
+   "group": "search"
+  },
+  {
+   "id": "amazonsearch",
+   "src": "src/top7/amazon_search.gadget",
+   "group": "search"
+  },
+  {
+   "id": "ebaysearch",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/ebay_com.gadget",
+   "group": "search"
+  },
+  {
+   "id": "youtubesearch",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/youtubesearch.gadget",
+   "group": "search"
+  },
+  {
+   "id": "yahoosearch",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/yahoosearch.gadget",
+   "group": "search"
+  },
+  {
+   "id": "discogs",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/Discogs.gadget",
+   "group": "search"
+  },
+  {
+   "id": "translator",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/translator.GADGET",
+   "group": "search"
+  },
+  {
+   "id": "freedictionary",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/TheFreeDictionary.gadget",
+   "group": "search"
+  },
+  {
+   "id": "wordreference",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/wordref.gadget",
+   "group": "search",
+   "author": "Xyridian Technology Center Paris"
+  },
+  {
+   "id": "mydictionary",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/MyDictionary 1.3.0.0.gadget",
+   "group": "search"
+  },
+  {
+   "id": "multibar",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/MultiBar.gadget",
+   "group": "search"
+  },
+  {
+   "id": "multisearcher",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/Multisearcher.gadget",
+   "group": "search"
+  },
+  {
+   "id": "supersearch",
+   "src": "src/top7/Super_Search_Bar_V4.2.gadget",
+   "group": "search",
+   "skip": "obfuscated script (AddGadget packer); gadget pages share Dreamscape origin"
+  },
+  {
+   "id": "flickrsearch",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/flickr.gadget",
+   "group": "search"
+  },
+  {
+   "id": "phpsearch",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/php_search.gadget",
+   "group": "search"
+  },
+  {
+   "id": "gamefaqs",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/GameFAQsSearchGadgetV1.gadget",
+   "group": "search"
+  },
+  {
+   "id": "googlebar",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/Google-bar.gadget",
+   "group": "search"
+  },
+  {
+   "id": "onlineradio",
+   "src": "src/1000/1000 Gadgets for Windows Vista-7/Gadgets for Windows Vista-7/OnlineRadio2.gadget",
+   "group": "media",
+   "web": [
+    "radio-browser.info"
+   ],
+   "title": "Online Radio"
+  }
+ ]
+}

@@ -1,0 +1,1392 @@
+/* Paint (public/scripts/comp/desktop-apps/paint/; Yozora #632): Vista's mspaint.exe window with
+   layers. Tool art: mspaint.exe bitmap 859 (16 tools, 16x16, red key) and the drawn extras;
+   the app workspace is Vista's COLOR_APPWORKSPACE (#ababab). */
+
+body.desktop-mode .modal.mp-window > .modal-content.mp-client {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+    background: #f0f0f0;
+    color: #000;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    user-select: none;
+}
+
+.mp-client .mp-settings {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex: 0 0 26px;
+    padding: 0 6px;
+    border-bottom: 1px solid #d5d5d5;
+    font: 11px Tahoma, "Segoe UI", sans-serif;
+}
+
+.mp-window.mp-no-settings .mp-settings {
+    display: none;
+}
+
+.mp-client .mp-settings label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.mp-client .mp-settings input[type="number"] {
+    width: 48px;
+    height: 20px;
+    padding: 0 2px;
+    font: inherit;
+}
+
+.mp-client .mp-settings input[type="range"] {
+    width: 80px;
+}
+
+.mp-client .mp-set-opacity-v {
+    min-width: 32px;
+}
+
+.mp-client .mp-body {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+/* ---- the tool box ---- */
+
+.mp-client .mp-toolbox {
+    flex: 0 0 56px;
+    padding: 2px 3px;
+    border-right: 1px solid #d5d5d5;
+}
+
+.mp-window.mp-no-tools .mp-toolbox {
+    display: none;
+}
+
+.mp-client .mp-tools {
+    display: grid;
+    grid-template-columns: 25px 25px;
+    gap: 0;
+}
+
+.mp-client .mp-tool {
+    width: 25px;
+    height: 25px;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    background: none;
+    box-shadow: none;
+}
+
+.mp-client .mp-tool::before,
+.mp-client .mp-tool::after {
+    content: none;
+}
+
+.mp-client .mp-tool:hover {
+    border-color: #3c7fb1;
+    background: linear-gradient(#eaf6fd 45%, #bee6fd 55%, #a7d9f5);
+}
+
+.mp-client .mp-tool.is-on {
+    border-color: #2c628b;
+    background: linear-gradient(#e5f4fc 45%, #c4e5f6 55%, #98d1ef);
+    box-shadow: inset 1px 1px 0 rgba(0, 0, 0, 0.12);
+}
+
+.mp-client .mp-tool-art {
+    display: block;
+    width: 16px;
+    height: 16px;
+    margin: auto;
+    background: url('/static_images/vista-paint/tools.png') calc(var(--i) * -16px) 0 no-repeat;
+}
+
+.mp-client .mp-tool-art.is-extra {
+    background-image: url('/static_images/vista-paint/tools-extra.png');
+}
+
+.mp-client .mp-options {
+    width: 41px;
+    min-height: 66px;
+    margin: 6px auto 0;
+    padding: 2px;
+    border: 1px solid #a0a0a0;
+    border-right-color: #fff;
+    border-bottom-color: #fff;
+    background: #f0f0f0;
+}
+
+.mp-client .mp-opt-col,
+.mp-client .mp-opt-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.mp-client .mp-opt-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 12px);
+    gap: 1px;
+}
+
+.mp-client .mp-opt {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    min-height: 12px;
+    margin: 0;
+    padding: 1px;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    color: #000;
+    font: 11px Tahoma, sans-serif;
+}
+
+.mp-client .mp-opt::before,
+.mp-client .mp-opt::after {
+    content: none;
+}
+
+.mp-client .mp-opt.is-on {
+    background: #3399ff;
+    color: #fff;
+}
+
+.mp-client .mp-opt-col.is-text .mp-opt {
+    height: 14px;
+}
+
+.mp-client .mp-opt-art.is-opaque,
+.mp-client .mp-opt-art.is-transparent {
+    width: 34px;
+    height: 21px;
+    background: url('/static_images/vista-paint/select-opaque.png') 0 0 no-repeat;
+}
+
+.mp-client .mp-opt-art.is-transparent {
+    background-position: -36px 0;
+}
+
+.mp-client .mp-opt-art.is-air {
+    width: 22px;
+    height: 22px;
+    background: url('/static_images/vista-paint/airbrush-sizes.png') var(--x) 0 no-repeat;
+}
+
+.mp-client .mp-opt.is-on .mp-opt-art.is-air {
+    filter: invert(1);
+}
+
+.mp-client .mp-opt-square {
+    display: block;
+    background: #000;
+}
+
+.mp-client .mp-opt.is-on .mp-opt-square,
+.mp-client .mp-opt.is-on .mp-opt-line,
+.mp-client .mp-opt.is-on .mp-brush {
+    background: #fff;
+}
+
+.mp-client .mp-opt-line {
+    display: block;
+    width: 30px;
+    background: #000;
+}
+
+.mp-client .mp-opt-shape {
+    display: block;
+    width: 30px;
+    height: 12px;
+    border: 1px solid #000;
+}
+
+.mp-client .mp-opt-shape.is-both {
+    background: #808080;
+}
+
+.mp-client .mp-opt-shape.is-fill {
+    background: #808080;
+    border-color: #808080;
+}
+
+.mp-client .mp-brush {
+    display: block;
+    width: var(--s);
+    height: var(--s);
+    min-width: 1px;
+    min-height: 1px;
+    background: #000;
+}
+
+.mp-client .mp-brush.is-round {
+    border-radius: 50%;
+}
+
+.mp-client .mp-brush.is-slash,
+.mp-client .mp-brush.is-backslash {
+    width: 1px;
+    height: calc(var(--s) + 1px);
+    transform: rotate(45deg);
+}
+
+.mp-client .mp-brush.is-backslash {
+    transform: rotate(-45deg);
+}
+
+/* ---- the workspace and the canvas ---- */
+
+.mp-client .mp-workspace {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: auto;
+    background: #ababab;
+    outline: none;
+}
+
+.mp-client .mp-stage {
+    position: relative;
+    margin: 3px 12px 12px 3px;
+    box-shadow: none;
+}
+
+.mp-client .mp-stage canvas {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.mp-window.mp-pixelated .mp-stage canvas {
+    image-rendering: pixelated;
+}
+
+.mp-client .mp-overlay {
+    cursor: crosshair;
+    touch-action: none;
+}
+
+.mp-client .mp-overlay[data-tool="pencil"] { cursor: url('/static_images/vista-cursors/aero_pen.png') 0 15, crosshair; }
+.mp-client .mp-overlay[data-tool="select"],
+.mp-client .mp-overlay[data-tool="freeselect"],
+.mp-client .mp-overlay[data-tool="wand"] { cursor: crosshair; }
+.mp-client .mp-overlay[data-tool="move"] { cursor: move; }
+.mp-client .mp-overlay[data-tool="text"] { cursor: text; }
+.mp-client .mp-overlay[data-tool="magnifier"] { cursor: zoom-in; }
+
+.mp-client .mp-grid {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+        linear-gradient(to right, rgba(128, 128, 128, 0.6) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(128, 128, 128, 0.6) 1px, transparent 1px);
+}
+
+.mp-client .mp-grid[hidden] {
+    display: none;
+}
+
+.mp-client .mp-ants {
+    position: absolute;
+    left: 0;
+    top: 0;
+    pointer-events: none;
+    overflow: visible;
+}
+
+.mp-client .mp-ants path {
+    fill: none;
+    stroke-width: 1;
+    shape-rendering: crispEdges;
+}
+
+.mp-client .mp-ants .mp-ants-a {
+    stroke: #fff;
+}
+
+.mp-client .mp-ants .mp-ants-b {
+    stroke: #000;
+    stroke-dasharray: 4 4;
+    animation: mp-ants 0.6s linear infinite;
+}
+
+@keyframes mp-ants {
+    to { stroke-dashoffset: -8; }
+}
+
+.mp-client .mp-handle {
+    position: absolute;
+    width: 3px;
+    height: 3px;
+    background: #0a246a;
+    border: 1px solid #fff;
+    box-sizing: content-box;
+}
+
+.mp-client .mp-handle.is-e { right: -5px; top: calc(50% - 2px); cursor: ew-resize; }
+.mp-client .mp-handle.is-s { bottom: -5px; left: calc(50% - 2px); cursor: ns-resize; }
+.mp-client .mp-handle.is-se { right: -5px; bottom: -5px; cursor: nwse-resize; }
+
+.mp-client .mp-resize-ghost {
+    position: absolute;
+    left: 0;
+    top: 0;
+    border: 1px dotted #000;
+    pointer-events: none;
+}
+
+.mp-client .mp-textbox {
+    position: absolute;
+    min-width: 40px;
+    min-height: 1.2em;
+    padding: 1px;
+    border: 1px dashed #000;
+    outline: none;
+    white-space: pre;
+    line-height: 1.2;
+    cursor: text;
+}
+
+.mp-client .mp-textbar {
+    position: absolute;
+    right: 16px;
+    top: 8px;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    padding: 4px 6px 4px;
+    border: 1px solid #a0a0a0;
+    background: #f0f0f0;
+    box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+    z-index: 3;
+    font: 11px Tahoma, sans-serif;
+}
+
+.mp-client .mp-textbar[hidden] {
+    display: none;
+}
+
+.mp-client .mp-textbar-cap {
+    margin-right: 4px;
+    font-weight: bold;
+}
+
+.mp-client .mp-textbar select {
+    height: 21px;
+    font: inherit;
+}
+
+.mp-client .mp-tb-b {
+    width: 23px;
+    height: 22px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 1px solid transparent;
+    background: none;
+    box-shadow: none;
+}
+
+/* the text toolbar's art: 16 x 15 cells (mspaint.exe's toolbar bitmap) */
+.mp-client .mp-tb-art {
+    display: block;
+    width: 16px;
+    height: 15px;
+    margin: auto;
+    background: url('/static_images/vista-paint/text-toolbar.png') var(--x) 0 no-repeat;
+}
+
+.mp-client .mp-tb-b::before,
+.mp-client .mp-tb-b::after {
+    content: none;
+}
+
+.mp-client .mp-tb-b.is-on {
+    border-color: #2c628b;
+    background-color: #c4e5f6;
+}
+
+/* ---- the color box and the status bar ---- */
+
+.mp-client .mp-colorbox {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 40px;
+    padding: 2px 4px;
+    border-top: 1px solid #d5d5d5;
+}
+
+.mp-window.mp-no-colors .mp-colorbox {
+    display: none;
+}
+
+.mp-client .mp-swatch-box {
+    position: relative;
+    width: 30px;
+    height: 32px;
+    border: 1px solid #a0a0a0;
+    border-right-color: #fff;
+    border-bottom-color: #fff;
+    background: #f0f0f0 repeating-conic-gradient(#fff 0 25%, #e0e0e0 0 50%) 0 0 / 2px 2px;
+}
+
+.mp-client .mp-fg,
+.mp-client .mp-bg {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    border: 1px solid #808080;
+    box-shadow: 1px 1px 0 #fff;
+}
+
+.mp-client .mp-fg { left: 4px; top: 4px; z-index: 1; }
+.mp-client .mp-bg { left: 11px; top: 12px; }
+
+.mp-client .mp-palette {
+    display: grid;
+    grid-template-columns: repeat(14, 16px);
+    grid-template-rows: 16px 16px;
+    gap: 0;
+}
+
+.mp-client .mp-color {
+    width: 16px;
+    height: 16px;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 1px solid #a0a0a0;
+    border-right-color: #fff;
+    border-bottom-color: #fff;
+    border-radius: 0;
+    box-shadow: inset 1px 1px 0 #696969;
+}
+
+.mp-client .mp-color::before,
+.mp-client .mp-color::after {
+    content: none;
+}
+
+.mp-client .mp-status {
+    display: grid;
+    grid-template-columns: 1fr 110px 110px;
+    flex: 0 0 22px;
+    border-top: 1px solid #d7d7d7;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+}
+
+.mp-window.mp-no-status .mp-status {
+    display: none;
+}
+
+.mp-client .mp-status > span {
+    display: flex;
+    align-items: center;
+    padding: 0 6px;
+    border-right: 1px solid #d7d7d7;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.mp-client .mp-status > span:last-child {
+    background: url('/static_images/vista-controls/sizegrip.png') no-repeat right 2px bottom 2px;
+}
+
+/* ---- the Layers and History windows (docked right) ---- */
+
+.mp-client .mp-dock {
+    display: none;
+    flex: 0 0 200px;
+    flex-direction: column;
+    gap: 4px;
+    padding: 4px;
+    border-left: 1px solid #d5d5d5;
+    background: #f0f0f0;
+}
+
+.mp-window.mp-has-dock .mp-dock {
+    display: flex;
+}
+
+.mp-client .mp-panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border: 1px solid #a0a0a0;
+    background: #fff;
+}
+
+.mp-client .mp-layers {
+    flex: 3 1 0;
+}
+
+.mp-client .mp-history {
+    flex: 2 1 0;
+}
+
+.mp-client .mp-panel-cap {
+    flex: 0 0 20px;
+    padding: 0 6px;
+    border-bottom: 1px solid #d5d5d5;
+    background: linear-gradient(#fdfdfd, #e9e9e9);
+    font: 12px/20px "Segoe UI", Tahoma, sans-serif;
+}
+
+.mp-client .mp-layer-list,
+.mp-client .mp-history-list {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    outline: none;
+}
+
+.mp-client .mp-layer-row {
+    display: grid;
+    grid-template-columns: 44px 1fr 18px;
+    align-items: center;
+    gap: 4px;
+    height: 36px;
+    padding: 0 3px;
+    border: 1px solid transparent;
+    cursor: var(--c-default);
+}
+
+.mp-client .mp-layer-row.is-active {
+    background: linear-gradient(#f6fbfd, #eff8fd 45%, #d7effc 55%, #d5effc 92%, #e7f5fd);
+    border-color: #99defd;
+}
+
+.mp-client .mp-layer-thumb {
+    border: 1px solid #a0a0a0;
+    background: repeating-conic-gradient(#fff 0 25%, #ddd 0 50%) 0 0 / 8px 8px;
+}
+
+.mp-client .mp-layer-name {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.mp-client .mp-layer-lock {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    vertical-align: -4px;
+    background: url('/static_images/vista-cmdbar/lock.png') no-repeat;
+}
+
+.mp-client .mp-panel-bar {
+    display: flex;
+    gap: 1px;
+    flex: 0 0 26px;
+    align-items: center;
+    padding: 0 2px;
+    border-top: 1px solid #d5d5d5;
+    background: #f0f0f0;
+}
+
+.mp-client .mp-panel-bar button {
+    width: 23px;
+    height: 22px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    background: none;
+    box-shadow: none;
+}
+
+.mp-client .mp-panel-bar button::before,
+.mp-client .mp-panel-bar button::after {
+    content: none;
+}
+
+.mp-client .mp-panel-bar button:hover {
+    border-color: #3c7fb1;
+    background: linear-gradient(#eaf6fd, #bee6fd);
+}
+
+.mp-client .mp-panel-bar img {
+    display: block;
+    width: 16px;
+    height: 16px;
+    margin: auto;
+}
+
+.mp-client .mp-history-row {
+    padding: 2px 8px;
+    white-space: nowrap;
+    cursor: var(--c-default);
+}
+
+.mp-client .mp-history-row.is-active {
+    background: #3399ff;
+    color: #fff;
+}
+
+.mp-client .mp-history-row.is-undone {
+    color: #8d8d8d;
+}
+
+.mp-client .mp-thumbnail {
+    position: absolute;
+    right: 12px;
+    bottom: 12px;
+    padding: 0 0 4px;
+    border: 1px solid #808080;
+    background: #f0f0f0;
+    box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.mp-client .mp-thumbnail-cap {
+    padding: 2px 6px;
+    background: linear-gradient(#fdfdfd, #e9e9e9);
+    font: 11px Tahoma, sans-serif;
+}
+
+.mp-client .mp-thumbnail canvas {
+    display: block;
+    margin: 4px 4px 0;
+}
+
+/* View Bitmap: the picture on the whole screen; any click or key closes it */
+.mp-viewbitmap {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+}
+
+.mp-viewbitmap img {
+    max-width: 100%;
+    max-height: 100%;
+    image-rendering: pixelated;
+}
+
+/* ---- Edit Colors ---- */
+
+.vdt-client .mp-cc-grid {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 3px 5px;
+    height: 100%;
+    padding: 1px 0;
+}
+
+.vdt-client .mp-cc-grid.is-custom {
+    grid-template-rows: repeat(2, 1fr);
+}
+
+.vdt-client .mp-cc-cell {
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 1px solid #808080;
+    border-right-color: #fff;
+    border-bottom-color: #fff;
+    border-radius: 0;
+    background: var(--c);
+    box-shadow: none;
+}
+
+.vdt-client .mp-cc-cell::before,
+.vdt-client .mp-cc-cell::after {
+    content: none;
+}
+
+.vdt-client .mp-cc-cell.is-on {
+    outline: 1px dotted #000;
+    outline-offset: 1px;
+}
+
+.vdt-client .mp-cc-spectrum,
+.vdt-client .mp-cc-lum {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 1px solid #a0a0a0;
+    box-sizing: border-box;
+    cursor: crosshair;
+}
+
+.vdt-client .mp-cc-cross {
+    position: absolute;
+    width: 19px;
+    height: 19px;
+    pointer-events: none;
+    background:
+        linear-gradient(#000, #000) center / 2px 7px no-repeat,
+        linear-gradient(#000, #000) center / 7px 2px no-repeat;
+}
+
+.vdt-client .mp-cc-arrow {
+    position: absolute;
+    right: -8px;
+    width: 0;
+    height: 0;
+    border: 4px solid transparent;
+    border-right-color: #000;
+    pointer-events: none;
+}
+
+.vdt-client .mp-cc-swatch {
+    width: 100%;
+    height: 100%;
+    border: 1px solid #a0a0a0;
+    box-sizing: border-box;
+}
+
+/* ---- the Photoshop side (paintPro.js) ---- */
+
+/* thirty tools: the tool box scrolls when the window is short */
+.mp-client .mp-toolbox {
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* the selection mode (New, Add, Subtract, Intersect), Contiguous and Sample All Layers show for
+   the tools they belong to */
+.mp-client .mp-set-selmode {
+    display: inline-flex;
+    gap: 1px;
+}
+
+.mp-client .mp-selmode {
+    width: 22px;
+    height: 22px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    background: none;
+    box-shadow: none;
+}
+
+.mp-client .mp-selmode-art {
+    display: block;
+    width: 16px;
+    height: 16px;
+    margin: auto;
+    background: url('/static_images/vista-paint/select-modes.png') var(--x) 0 no-repeat;
+}
+
+.mp-client .mp-selmode::before,
+.mp-client .mp-selmode::after {
+    content: none;
+}
+
+.mp-client .mp-selmode:hover {
+    border-color: #3c7fb1;
+    background-color: #e3f4fc;
+}
+
+.mp-client .mp-selmode.is-on {
+    border-color: #2c628b;
+    background-color: #c4e5f6;
+    box-shadow: inset 1px 1px 0 rgba(0, 0, 0, 0.12);
+}
+
+.mp-window:not([data-tool="select"]):not([data-tool="freeselect"]):not([data-tool="ellipseselect"]):not([data-tool="polylasso"]):not([data-tool="wand"]) .mp-set-selmode,
+.mp-window:not([data-tool="wand"]):not([data-tool="fill"]) .mp-set-contig,
+.mp-window:not([data-tool="wand"]) .mp-set-sampleall {
+    display: none;
+}
+
+/* the colour box: Default Colors (D) bottom left, Switch Colors (X) top right */
+.mp-client .mp-default-colors,
+.mp-client .mp-swap-colors {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    background: url('/static_images/vista-paint/color-mini.png') 0 0 no-repeat;
+    box-shadow: none;
+    z-index: 2;
+}
+
+.mp-client .mp-default-colors::before,
+.mp-client .mp-default-colors::after,
+.mp-client .mp-swap-colors::before,
+.mp-client .mp-swap-colors::after {
+    content: none;
+}
+
+.mp-client .mp-default-colors { left: 1px; bottom: 1px; }
+.mp-client .mp-swap-colors { right: 0; top: 0; background-position: -10px 0; }
+
+/* the brush outline */
+.mp-client .mp-brushcur {
+    position: absolute;
+    box-sizing: border-box;
+    border: 1px solid #fff;
+    border-radius: 50%;
+    mix-blend-mode: difference;
+    pointer-events: none;
+    z-index: 2;
+}
+
+.mp-client .mp-brushcur.is-square {
+    border-radius: 0;
+}
+
+.mp-client .mp-brushcur[hidden] {
+    display: none;
+}
+
+.mp-client .mp-overlay[data-tool="brush"],
+.mp-client .mp-overlay[data-tool="eraser"],
+.mp-client .mp-overlay[data-tool="clone"],
+.mp-client .mp-overlay[data-tool="blur"],
+.mp-client .mp-overlay[data-tool="smudge"],
+.mp-client .mp-overlay[data-tool="dodge"],
+.mp-client .mp-overlay[data-tool="burn"],
+.mp-client .mp-overlay[data-tool="sponge"],
+.mp-client .mp-overlay[data-tool="heal"] { cursor: crosshair; }
+.mp-client .mp-overlay[data-tool="ellipseselect"],
+.mp-client .mp-overlay[data-tool="polylasso"],
+.mp-client .mp-overlay[data-tool="crop"] { cursor: crosshair; }
+.mp-client .mp-overlay[data-tool="hand"] { cursor: var(--c-grab, grab); }
+.mp-client .mp-overlay[data-tool="hand"]:active,
+.mp-client .mp-overlay[data-hand="1"] { cursor: var(--c-grabbing, grabbing); }
+
+/* the crop box and Free Transform's handles, drawn on the ants layer */
+.mp-client .mp-ants .mp-crop-shade {
+    fill: rgba(0, 0, 0, 0.45);
+    stroke: none;
+}
+
+.mp-client .mp-ants .mp-crop-thirds {
+    stroke: rgba(255, 255, 255, 0.55);
+    stroke-width: 1;
+}
+
+.mp-client .mp-ants .mp-crop-edge,
+.mp-client .mp-ants .mp-xf-box {
+    fill: none;
+    stroke: #000;
+    stroke-width: 1;
+    shape-rendering: auto;
+}
+
+.mp-client .mp-ants .mp-xf-handle {
+    fill: #fff;
+    stroke: #000;
+    stroke-width: 1;
+    shape-rendering: crispEdges;
+}
+
+.mp-client .mp-ants .mp-xf-center {
+    fill: none;
+    stroke: #000;
+    stroke-width: 1;
+}
+
+/* ---- the Navigator and Info windows ---- */
+
+.mp-client .mp-navigator,
+.mp-client .mp-info {
+    flex: none;
+}
+
+.mp-client .mp-nav-view {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 140px;
+    background: #ababab;
+    cursor: var(--c-default, default);
+}
+
+.mp-client .mp-nav-view canvas {
+    display: block;
+    box-shadow: 0 0 0 1px #808080;
+}
+
+.mp-client .mp-nav-box {
+    position: absolute;
+    box-sizing: border-box;
+    border: 1px solid #e00;
+    pointer-events: none;
+}
+
+.mp-client .mp-nav-bar {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    height: 26px;
+    padding: 0 4px;
+    border-top: 1px solid #d5d5d5;
+    background: #f0f0f0;
+    font: 11px Tahoma, sans-serif;
+}
+
+.mp-client .mp-nav-zoom {
+    width: 44px;
+}
+
+.mp-client .mp-nav-slider {
+    flex: 1;
+    min-width: 0;
+}
+
+.mp-client .mp-nav-in,
+.mp-client .mp-nav-out {
+    width: 14px;
+    height: 14px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+    background:
+        linear-gradient(#333, #333) center / 8px 2px no-repeat;
+}
+
+.mp-client .mp-nav-in {
+    background:
+        linear-gradient(#333, #333) center / 8px 2px no-repeat,
+        linear-gradient(#333, #333) center / 2px 8px no-repeat;
+}
+
+.mp-client .mp-nav-in::before,
+.mp-client .mp-nav-in::after,
+.mp-client .mp-nav-out::before,
+.mp-client .mp-nav-out::after {
+    content: none;
+}
+
+.mp-client .mp-info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px 8px;
+    padding: 4px 6px;
+    font: 11px Tahoma, sans-serif;
+}
+
+.mp-client .mp-info-grid > div {
+    display: grid;
+    grid-template-columns: 14px 1fr;
+    align-items: center;
+}
+
+.mp-client .mp-info-grid b {
+    font-weight: normal;
+    color: #555;
+}
+
+.mp-client .mp-info-sw {
+    grid-column: 1 / -1;
+    height: 8px;
+    margin-top: 2px;
+    border: 1px solid #a0a0a0;
+}
+
+/* ---- Levels and Curves ---- */
+
+.vdt-custom .mp-lv-hist {
+    box-sizing: border-box;
+    height: 102px;
+    margin: 0;
+    padding: 0 3px;
+    border: 1px solid #a0a0a0;
+    background: #fff;
+}
+
+.vdt-custom .mp-lv-hist canvas {
+    display: block;
+    width: 256px;
+    height: 100px;
+}
+
+.vdt-custom .mp-lv-track {
+    position: relative;
+    height: 12px;
+}
+
+.vdt-custom .mp-lv-tri {
+    position: absolute;
+    top: 1px;
+    width: 0;
+    height: 0;
+    margin-left: -5px;
+    border: 5px solid transparent;
+    border-top: 0;
+    border-bottom: 9px solid #000;
+    cursor: var(--c-ew-resize, ew-resize);
+}
+
+.vdt-custom .mp-lv-tri::after {
+    content: '';
+    position: absolute;
+    left: -3px;
+    top: 4px;
+    width: 6px;
+    height: 4px;
+    background: var(--tri, #000);
+}
+
+.vdt-custom .mp-lv-tri.is-grey { --tri: #888; }
+.vdt-custom .mp-lv-tri.is-white { --tri: #fff; }
+
+.vdt-custom .mp-lv-ramp {
+    height: 10px;
+    margin: 0 4px;
+    border: 1px solid #a0a0a0;
+    background: linear-gradient(to right, #000, #fff);
+}
+
+.vdt-custom .mp-cv {
+    display: block;
+    width: 256px;
+    height: 256px;
+    margin: 0 auto;
+    border: 1px solid #a0a0a0;
+    cursor: crosshair;
+    touch-action: none;
+}
+
+/* Paint's flat toolbar buttons: not the Vista push button (vista-glass-controls.css) nor 7.css's
+   grey frame (.win7 button:not(:hover), 0-3-1), which pushed and boxed the icons */
+.mp-window .win7.mp-client :is(.mp-tool, .mp-selmode, .mp-tb-b, .mp-panel-bar button, .mp-nav-in, .mp-nav-out, .mp-default-colors, .mp-swap-colors, .mp-color, .mp-sw-cell):not(:disabled) {
+    padding: 0;
+    border-color: transparent;
+    border-image: none;
+    box-shadow: none;
+    transition: none;
+}
+
+.mp-window .win7.mp-client .mp-color:not(:disabled),
+.mp-window .win7.mp-client .mp-sw-cell:not(:disabled) {
+    border-color: #a0a0a0 #fff #fff #a0a0a0;
+}
+
+.mp-window .win7.mp-client :is(.mp-tool, .mp-selmode, .mp-tb-b, .mp-panel-bar button):hover {
+    border-color: #3c7fb1;
+    background-color: #e3f4fc;
+}
+
+.mp-window .win7.mp-client :is(.mp-tool.is-on, .mp-selmode.is-on, .mp-tb-b.is-on) {
+    border-color: #2c628b;
+    background-color: #c4e5f6;
+}
+
+.mp-window .win7.mp-client .mp-tool.is-on {
+    background-image: linear-gradient(#e5f4fc 45%, #c4e5f6 55%, #98d1ef);
+}
+
+.mp-window .win7.mp-client .mp-tool:hover:not(.is-on) {
+    background-image: linear-gradient(#eaf6fd 45%, #bee6fd 55%, #a7d9f5);
+}
+
+/* ---- the color box (paintColor.js): chips, the spectrum ramp, saved swatches ---- */
+
+.mp-client .mp-ramp {
+    flex: none;
+    width: 180px;
+    height: 32px;
+    border: 1px solid #a0a0a0;
+    border-right-color: #fff;
+    border-bottom-color: #fff;
+    cursor: crosshair;
+    touch-action: none;
+}
+
+.mp-client .mp-swatches {
+    display: grid;
+    grid-auto-flow: column;
+    grid-template-rows: 15px 15px;
+    grid-auto-columns: 15px;
+    gap: 1px;
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 33px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+}
+
+.mp-client .mp-sw-cell {
+    width: 15px;
+    height: 15px;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 1px solid;
+    border-radius: 0;
+    box-shadow: inset 1px 1px 0 rgba(0, 0, 0, 0.25);
+}
+
+.mp-client .mp-sw-cell::before,
+.mp-client .mp-sw-cell::after {
+    content: none;
+}
+
+.mp-client .mp-sw-tools {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.mp-window .win7.mp-client .mp-sw-tools button {
+    width: 18px;
+    height: 16px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 1px solid transparent;
+    border-image: none;
+    border-radius: 2px;
+    box-shadow: none;
+    background: url('/static_images/vista-cmdbar/add.png') center / 12px 12px no-repeat;
+}
+
+.mp-window .win7.mp-client .mp-sw-tools .mp-sw-menu {
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4' shape-rendering='crispEdges'%3E%3Cpath d='M0 0h7v1H0zM1 1h5v1H1zM2 2h3v1H2zM3 3h1v1H3z'/%3E%3C/svg%3E") center no-repeat;
+}
+
+.mp-window .win7.mp-client .mp-sw-tools button:hover {
+    border-color: #3c7fb1;
+    background-color: #e3f4fc;
+}
+
+.mp-client .mp-sw-tools button::before,
+.mp-client .mp-sw-tools button::after {
+    content: none;
+}
+
+.mp-client .mp-fg,
+.mp-client .mp-bg {
+    cursor: var(--c-pointer, pointer);
+}
+
+/* ---- the Color Picker ---- */
+
+.vdt-custom .mp-pk-field {
+    position: relative;
+    width: 256px;
+    height: 256px;
+    border: 1px solid #a0a0a0;
+    cursor: crosshair;
+    touch-action: none;
+    overflow: hidden;
+}
+
+.vdt-custom .mp-pk-white,
+.vdt-custom .mp-pk-black {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.vdt-custom .mp-pk-white { background: linear-gradient(to right, #fff, rgba(255, 255, 255, 0)); }
+.vdt-custom .mp-pk-black { background: linear-gradient(to top, #000, rgba(0, 0, 0, 0)); }
+
+.vdt-custom .mp-pk-ring {
+    position: absolute;
+    width: 11px;
+    height: 11px;
+    margin: -6px 0 0 -6px;
+    border: 1px solid #fff;
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+    pointer-events: none;
+}
+
+.vdt-custom .mp-pk-ring.is-dark {
+    border-color: #000;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.6);
+}
+
+.vdt-custom .mp-pk-hue {
+    position: relative;
+    width: 18px;
+    height: 256px;
+    margin-left: 3px;
+    border: 1px solid #a0a0a0;
+    background: linear-gradient(#f00, #f0f 16.67%, #00f 33.33%, #0ff 50%, #0f0 66.67%, #ff0 83.33%, #f00);
+    cursor: var(--c-ns-resize, ns-resize);
+    touch-action: none;
+}
+
+.vdt-custom .mp-pk-arrows {
+    position: absolute;
+    left: -6px;
+    right: -6px;
+    height: 0;
+    pointer-events: none;
+}
+
+.vdt-custom .mp-pk-arrows::before,
+.vdt-custom .mp-pk-arrows::after {
+    content: '';
+    position: absolute;
+    top: -5px;
+    border: 5px solid transparent;
+}
+
+.vdt-custom .mp-pk-arrows::before { left: 0; border-left-color: #000; }
+.vdt-custom .mp-pk-arrows::after { right: 0; border-right-color: #000; }
+
+.vdt-custom .mp-pk-new,
+.vdt-custom .mp-pk-old {
+    height: 32px;
+    border: 1px solid #000;
+}
+
+.vdt-custom .mp-pk-new { border-bottom: 0; }
+.vdt-custom .mp-pk-old { cursor: var(--c-pointer, pointer); }
+
+/* ---- layer masks and styles in the Layers window ---- */
+
+.mp-client .mp-layer-row {
+    grid-template-columns: auto auto 1fr 18px;
+}
+
+.mp-client .mp-layer-row:not(.has-mask) .mp-layer-thumb {
+    grid-column: 1 / span 2;
+    justify-self: start;
+}
+
+.mp-client .mp-layer-mask {
+    border: 1px solid #a0a0a0;
+    background: #000;
+}
+
+.mp-client .mp-layer-mask.is-off {
+    outline: 2px solid #c00;
+    outline-offset: -8px;
+}
+
+.mp-client .mp-layer-row.is-active :is(.mp-layer-thumb, .mp-layer-mask).is-target {
+    outline: 2px solid #000;
+    outline-offset: 0;
+}
+
+.mp-client .mp-layer-fx {
+    display: inline-block;
+    margin-left: 2px;
+    padding: 0 2px;
+    border: 1px solid #808080;
+    border-radius: 2px;
+    font: italic bold 9px/11px Georgia, serif;
+    color: #333;
+    vertical-align: 1px;
+}
+
+/* a colour field in Paint's dialogs (Layer Style) */
+.vdt-custom .mp-cf.mp-cf:not(:disabled),
+.vdt-custom .mp-cf {
+    display: block;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    padding: 2px;
+    border: 1px solid #707070;
+    border-radius: 0;
+    border-image: none;
+    background: #fff;
+    box-shadow: none;
+}
+
+.vdt-custom .mp-cf::before,
+.vdt-custom .mp-cf::after {
+    content: none;
+}
+
+.vdt-custom .mp-cf span {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 1px solid #a0a0a0;
+}
+
+/* ---- adjustment and type layers in the Layers window ---- */
+
+.mp-client .mp-layer-kind {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 42px;
+    height: 32px;
+    border: 1px solid #a0a0a0;
+    background: #fff;
+}
+
+.mp-client .mp-layer-kind.is-adjust {
+    background: #fff url('/static_images/vista-cmdbar/contrast.png') center no-repeat;
+}
+
+.mp-client .mp-layer-kind.is-text {
+    font: bold 18px/1 "Times New Roman", serif;
+    color: #222;
+}
+
+/* the text toolbar's colour chip */
+.mp-window .win7.mp-client .mp-tb-color:not(:disabled) {
+    width: 23px;
+    height: 22px;
+    min-width: 0;
+    min-height: 0;
+    padding: 3px;
+    border: 1px solid transparent;
+    border-image: none;
+    border-radius: 2px;
+    background: none;
+    box-shadow: none;
+}
+
+.mp-client .mp-tb-color::before,
+.mp-client .mp-tb-color::after {
+    content: none;
+}
+
+.mp-client .mp-tb-color span {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 1px solid #707070;
+}
+
+.mp-window .win7.mp-client .mp-tb-color:hover {
+    border-color: #3c7fb1;
+}
+
+/* the Color Picker's alpha bar: the colour above, transparent below */
+.vdt-custom .mp-pk-alpha {
+    position: relative;
+    width: 18px;
+    height: 256px;
+    margin-left: 3px;
+    border: 1px solid #a0a0a0;
+    cursor: var(--c-ns-resize, ns-resize);
+    touch-action: none;
+}

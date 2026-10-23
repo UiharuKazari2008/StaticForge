@@ -1,6 +1,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { DirSizeCache } = require('./vfsPerfHelpers');
 
 const SYSTEM_ROOT_FOLDERS = [
     { id: '@sys-cache', name: 'Library', icon: 'fas fa-database', segment: 'Cache' },
@@ -101,8 +102,17 @@ const MIME_BY_EXT = {
 class VfsSystemProvider {
     constructor(globalResources) {
         this.globalResources = globalResources;
-        this._cacheDirSizeCache = new Map();
         this._cacheDirSizeCacheTtlMs = 60000;
+        // Folder sizes are walked async in the background; listings show the last known value.
+        this._dirSizes = new DirSizeCache({ ttlMs: this._cacheDirSizeCacheTtlMs });
+        this._cacheSizeSpec = {
+            key: (absPath) => absPath,
+            include: (ent) => this._isCacheEntryVisible(ent.name, ent.isDirectory())
+        };
+        this._directorSizeSpec = {
+            key: (absPath) => `director:${absPath}`,
+            include: (ent, childParts) => !this._isDirectorBlockedRelPath(childParts)
+        };
     }
 
     normalizeSegments(segments) {
@@ -183,6 +193,58 @@ class VfsSystemProvider {
                 return this._listApplications(rest);
             case 'Director':
                 return this._listDirector(rest);
+            default:
+                throw new Error(`Unknown system folder: ${root}`);
+        }
+    }
+
+    // Throws the same errors listDirectory would for this path, without listing it.
+    async assertListable(segmentsInput) {
+        const segments = this.normalizeSegments(segmentsInput);
+        if (!segments.length) return;
+
+        const [root, ...rest] = segments;
+        const probeDir = async (abs) => {
+            const dir = await fs.promises.opendir(abs);
+            await dir.close();
+        };
+        switch (root) {
+            case 'Cache': {
+                const rel = rest.join('/');
+                const abs = this._resolveCachePath(rel);
+                if (!abs) throw new Error('Access denied');
+                try {
+                    await probeDir(abs);
+                } catch (_) {
+                    throw new Error(`Cache path not found: ${rel || '/'}`);
+                }
+                return;
+            }
+            case 'Config':
+                if (rest.length > 0) throw new Error('Cannot navigate into config entries');
+                return;
+            case 'Logs':
+                if (rest.length > 0) throw new Error('Cannot navigate into log file contents');
+                return;
+            case 'Databases':
+                if (rest.length > 0) throw new Error('Cannot navigate into database files');
+                return;
+            case 'Applications':
+                if (rest.length > 0) throw new Error('Cannot navigate into application shortcuts');
+                return;
+            case 'Director': {
+                const parts = this.normalizeSegments(rest);
+                if (!parts.length && !this._directorRealHome()) return;
+                const rel = parts.join('/');
+                const abs = this._resolveDirectorPath(rel);
+                if (!abs) throw new Error('Access denied');
+                try {
+                    await probeDir(abs);
+                } catch (_) {
+                    throw new Error(`Director path not found: ${rel || '/'}`);
+                }
+                return;
+            }
             default:
                 throw new Error(`Unknown system folder: ${root}`);
         }
@@ -343,36 +405,7 @@ class VfsSystemProvider {
     }
 
     _getCachedDirSizeBytes(absPath) {
-        const cached = this._cacheDirSizeCache.get(absPath);
-        if (cached && Date.now() - cached.at < this._cacheDirSizeCacheTtlMs) {
-            return cached.bytes;
-        }
-        const bytes = this._sumDirSizeBytes(absPath);
-        this._cacheDirSizeCache.set(absPath, { bytes, at: Date.now() });
-        return bytes;
-    }
-
-    _sumDirSizeBytes(absPath) {
-        let total = 0;
-        let entries = [];
-        try {
-            entries = fs.readdirSync(absPath, { withFileTypes: true });
-        } catch (_) {
-            return 0;
-        }
-        for (const ent of entries) {
-            const fp = path.join(absPath, ent.name);
-            if (ent.isDirectory()) {
-                if (!this._isCacheEntryVisible(ent.name, true)) continue;
-                total += this._getCachedDirSizeBytes(fp);
-            } else if (ent.isFile()) {
-                if (!this._isCacheEntryVisible(ent.name, false)) continue;
-                try {
-                    total += fs.statSync(fp).size;
-                } catch (_) { /* skip */ }
-            }
-        }
-        return total;
+        return this._dirSizes.get(absPath, null, this._cacheSizeSpec);
     }
 
     _countVisibleCacheEntries(abs) {
@@ -668,37 +701,7 @@ class VfsSystemProvider {
     }
 
     _getCachedDirectorDirSizeBytes(absPath, parts) {
-        const cacheKey = `director:${absPath}`;
-        const cached = this._cacheDirSizeCache.get(cacheKey);
-        if (cached && Date.now() - cached.at < this._cacheDirSizeCacheTtlMs) {
-            return cached.bytes;
-        }
-        const bytes = this._sumDirectorDirSizeBytes(absPath, parts);
-        this._cacheDirSizeCache.set(cacheKey, { bytes, at: Date.now() });
-        return bytes;
-    }
-
-    _sumDirectorDirSizeBytes(absPath, parts) {
-        let total = 0;
-        let entries = [];
-        try {
-            entries = fs.readdirSync(absPath, { withFileTypes: true });
-        } catch (_) {
-            return 0;
-        }
-        for (const ent of entries) {
-            const childParts = [...parts, ent.name];
-            if (this._isDirectorBlockedRelPath(childParts)) continue;
-            const fp = path.join(absPath, ent.name);
-            if (ent.isDirectory()) {
-                total += this._getCachedDirectorDirSizeBytes(fp, childParts);
-            } else if (ent.isFile()) {
-                try {
-                    total += fs.statSync(fp).size;
-                } catch (_) { /* skip */ }
-            }
-        }
-        return total;
+        return this._dirSizes.get(absPath, parts, this._directorSizeSpec);
     }
 
     _getDirectorPathStats(relativeSegments) {

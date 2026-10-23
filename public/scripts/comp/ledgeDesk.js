@@ -128,20 +128,9 @@ function ledgeWireWindow(host) {
             closeModal(host);
         });
     }
-    const menuBtn = host.querySelector('.ledge-desk-menu');
-    if (menuBtn && contextMenu) {
-        contextMenu.attachClickMenuToElement(menuBtn, {
-            position: 'anchor',
-            anchorAlign: 'end',
-            sections: [{
-                type: 'list',
-                items: [{ text: 'Save', icon: 'fas fa-floppy-disk', action: 'ledge-save' }]
-            }],
-            onAction: (action) => {
-                if (action === 'ledge-save') void ledgeSave(host);
-            }
-        });
-    }
+    // Save sits on the floating bar (the Workspace window's design), not in a caption menu
+    const saveBtn = host.querySelector('.ledge-desk-save');
+    if (saveBtn) saveBtn.addEventListener('click', () => void ledgeSave(host));
 }
 
 function ledgeReflow(host) {
@@ -155,6 +144,9 @@ function ledgeRender(host, session) {
     const title = host.querySelector('.ledge-desk-title');
     host.dataset.sessionName = session.name || '';
     if (title) title.textContent = session.name ? `Ledge [${session.name}]` : 'Ledge';
+    // the floating bar's "Ledge • <name>", as the Workspace window's "Dreamscape • <workspace>"
+    const barName = host.querySelector('.ledge-desk-name');
+    if (barName) barName.textContent = session.name || 'Desk';
     const gallery = host.querySelector('.gallery');
     if (!gallery) return;
     gallery.replaceChildren();

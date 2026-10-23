@@ -1,0 +1,26 @@
+<html xmlns="http://www.w3.org/1999/xhtml">
+	<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+		<meta http-equiv="MSThemeCompatible" CONTENT="yes">
+		
+		<title>Amazon.com Search</title>
+		<link href="../css/amazon.css" rel="stylesheet" type="text/css">
+		<script src="../js/amazon.js" language="javascript" type="text/javascript"></script>
+	</head>
+	<body scroll='no' onload="loadMain();">
+		<g:background src="images/background.png" id="slideshowBg" >
+    	<span class="searchText" onclick="this.style.display='none';searchBox.focus();" id="searchText"></span> 
+    	<input tabindex=1 name="srchBox" id="searchBox" maxlength="255" onkeydown="searchText.style.display='none';doSearchOnEnter();" onclick="searchText.style.display='none';" onblur="cksearchText(this);" title="">   
+	   	<div id="button">
+			<img tabindex=2 onclick="launchSearch();" id="searchImage" src="images//search-go.png" onmousedown="searchImage.src = 'images//search-go-down.png'" onmouseup="searchImage.src = 'images//search-go.png'" onmouseout="searchImage.src = 'images//search-go.png'" alt="">
+		</div>
+		<script language="javascript" type="text/javascript">
+			function loadMain()
+			{
+   				searchText.innerHTML = L_AmazonSearchTxt_jaES;
+    			AmazonSearchURL = L_AmazonSearchURL_jaES;
+				System.Gadget.onUndock = checkState;
+				System.Gadget.onDock = checkState;
+			}
+		</script>
+	</body>
+</html>

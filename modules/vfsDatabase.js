@@ -599,6 +599,32 @@ async function getUserFilesInFoldersIncludingTrashed(folderIds) {
     return db.all(`SELECT * FROM user_files WHERE folder_id IN (${placeholders})`, folderIds);
 }
 
+// Batch reads for listings (#620): one IN query instead of one query per row.
+const BATCH_IN_CHUNK = 500;
+
+async function _selectInChunks(sqlPrefix, ids) {
+    const list = [...new Set((ids || []).filter(Boolean))];
+    const rows = [];
+    for (let i = 0; i < list.length; i += BATCH_IN_CHUNK) {
+        const chunk = list.slice(i, i + BATCH_IN_CHUNK);
+        const placeholders = chunk.map(() => '?').join(',');
+        rows.push(...await db.all(`${sqlPrefix} (${placeholders})`, chunk));
+    }
+    return rows;
+}
+
+async function getUserFilesByIds(ids) {
+    return _selectInChunks('SELECT * FROM user_files WHERE id IN', ids);
+}
+
+async function getFoldersByIds(ids) {
+    return _selectInChunks('SELECT * FROM vfs_folders WHERE id IN', ids);
+}
+
+async function getEntriesByFolderIds(folderIds) {
+    return _selectInChunks('SELECT * FROM vfs_entries WHERE folder_id IN', folderIds);
+}
+
 module.exports = {
     initializeVfsDatabase,
     closeVfsDatabase,
@@ -647,5 +673,8 @@ module.exports = {
     markUserFilesTrashedInFolders,
     clearUserFilesTrashedInFolders,
     clearUserFileTrashed,
-    getUserFilesInFoldersIncludingTrashed
+    getUserFilesInFoldersIncludingTrashed,
+    getUserFilesByIds,
+    getFoldersByIds,
+    getEntriesByFolderIds
 };

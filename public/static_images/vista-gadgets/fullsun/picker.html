@@ -1,0 +1,39 @@
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="cs" lang="cs">
+	<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+		
+		<meta http-equiv="MSThemeCompatible" CONTENT="yes"/>
+		<title>Full Sun</title>
+		<link href="FullSun.css" type="text/css" rel="stylesheet"/>
+		<script language="javascript" src="FullSun.js" type="text/javascript"></script>
+	</head>
+	<body id="pickerBody" onload="Picker_Initialize()">
+		<a href="http://sohowww.nascom.nasa.gov/"><img id="pickerHeader" src="Header.png" alt="Visit the Solar and Heliospheric Observatory Homepage"/></a>
+		<a id="pickerToggleMovie" href="javascript:Picker_ToggleMovie()" title="Switch between the current image and a movie of recent images">&nbsp;</a>
+		
+		<a id="pickerLargeURL" href=""><img id="pickerLargeView" src="Loading.gif" alt="View the latest image on the SOHO website"/></a>
+		
+		<object id="pickerMovie" classid="CLSID:6BF52A52-394A-11d3-B153-00C04F79FAA6" type="video/mpeg">
+			<param name="URL" value=""/>
+			<param name="AutoStart" value="true"/>
+			<param name="uiMode" value="full"/>
+			<param name="PlayCount" value="9999"/>
+		</object>
+		
+		<div id="pickerDescription">
+			<a href="http://sohowww.nascom.nasa.gov/data/realtime/image-description.html" title="Learn more about the SOHO detectors">
+			<span id="eit_171_desc" class="detectorDescription">EIT 171 Angstroms</span>
+			<span id="eit_195_desc" class="detectorDescription">EIT 195 Angstroms</span>
+			<span id="eit_284_desc" class="detectorDescription">EIT 284 Angstroms</span>
+			<span id="eit_304_desc" class="detectorDescription">EIT 304 Angstroms</span>
+			<span id="mdi_igr_desc" class="detectorDescription">MDI Continuum</span>
+			<span id="mdi_mag_desc" class="detectorDescription">MDI Magnetogram</span>
+			<span id="c2_desc" class="detectorDescription">LASCO C2</span>
+			<span id="c3_desc" class="detectorDescription">LASCO C3</span></a>
+			<div class="exploreDescription"><a href="http://sohowww.nascom.nasa.gov/explore/">Learn more about the Sun</a></div>
+		</div>
+		<div id="pickerList">
+			<a id="a_eit_171" href="javascript:Picker_SetDetector('eit_171')"><img id="eit_171" src="LoadingPicker.gif" alt=""/>Ultraviolet 171&Aring;</a><a id="a_eit_195" href="javascript:Picker_SetDetector('eit_195')"><img id="eit_195" src="LoadingPicker.gif" alt=""/>Ultraviolet 195&Aring;</a><a id="a_eit_284" href="javascript:Picker_SetDetector('eit_284')"><img id="eit_284" src="LoadingPicker.gif" alt=""/>Ultraviolet 284&Aring;</a><a id="a_eit_304" href="javascript:Picker_SetDetector('eit_304')"><img id="eit_304" src="LoadingPicker.gif" alt=""/>Ultraviolet 304&Aring;</a><a id="a_mdi_igr" href="javascript:Picker_SetDetector('mdi_igr')"><img id="mdi_igr" src="LoadingPicker.gif" alt=""/>Continuum</a><a id="a_mdi_mag" href="javascript:Picker_SetDetector('mdi_mag')"><img id="mdi_mag" src="LoadingPicker.gif" alt=""/>Magnetogram</a><a id="a_c2" href="javascript:Picker_SetDetector('c2')"><img id="c2" src="LoadingPicker.gif" alt=""/>Coronagraph 2</a><a id="a_c3" href="javascript:Picker_SetDetector('c3')"><img id="c3" src="LoadingPicker.gif" alt=""/>Coronagraph 3</a><br/>
+		</div>
+		<div id="WobbleLink"><a href="http://wobbleworks.com">wobbleworks.com</a></div>
+	</body>
+</html>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>Lights Out!</name>
+  <namespace>Jim.Moore.Gadgets</namespace>
+  <version>1.0.0.0</version>
+  <author name="Jim Moore (jimmo)">
+    <info url="www.mrjimmo.com" text="www.MrJimmo.com"/>
+    <logo src="logo.png" />
+  </author>
+  <copyright>&#169; 2006</copyright>
+  <description>Turn off all the lights without going over allowable maximum (minimum + 10) number of moves. Perfect solutions using the minimum number of moves will achieve the best (lowest) score.</description>
+  <icons>
+      <icon height="48" width="48" src="icon.png" />
+  </icons>
+  <logo>logo.png</logo>
+  <hosts>
+    <host name="sidebar">
+      <base type="html" apiVersion="1.0.0" src="LightsOut.htm" />
+      <permissions>full</permissions>
+      <platform minPlatformVersion ="0.3"/>
+    </host>
+  </hosts>
+</gadget>

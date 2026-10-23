@@ -1,0 +1,12 @@
+Full Moon Release Notes
+
+DRAGGING THE GADGET: To move the gadget you must use Microsoft's drag pad for the gadget, which appears when you hover over the gadget.  I don't know why, but having a flyout on the gadget (the calendar) disables dragging.  I'll keep looking for a solution, but I don't know how to work around this yet.  On user suggested using a double-click instead and that does work, but I don't like the idea of adding a click to something common like opening the calendar in exchange for making something uncommon like dragging slightly easier.  The Calendar gadget that comes with Windows seems to be able to handle both clicks and drags, so I'm going to examine that sometime to see how it's supposed to be done.
+
+v3.2 Changes
+
+- Uses accurate algorithm for calculating phases instead of simple approximation
+
+v3.1 Changes
+
+- Optional large moon size (off by default)
+- Optional sidereal sky map (off by default)

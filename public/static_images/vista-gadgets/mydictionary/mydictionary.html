@@ -1,0 +1,27 @@
+<html>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+	<title>MyDictionary</title>
+	
+	<style>
+		body 	
+		{ 
+			width:130;
+			height:130;
+			background: transparent url('MyDictionary Background.png');
+			padding-top: 5px;
+	
+		}
+	</style>
+
+</head>
+<body>
+<span id = "gadgetContent" style = "font-family: Tahoma; font-size: 12pt; font-weight: bold; color: gray; text-align: center;">MyDictionary</span>
+
+<form name = "search_form" method = "get" action = "http://dictionary.reference.com/search" target = "_blank">
+<input type = "text" name = "q" size = "13" maxlength = "256" style = "font-size: 10pt;">
+<input type = "submit" value = "Query" style = "font-size:10pt; font-family: arial, helvetica, sans-serif;">
+<input type = "reset" value = "Clear" style = "font-size:10pt; font-family: arial, helvetica, sans-serif;">
+</form>
+
+</body>
+</html>

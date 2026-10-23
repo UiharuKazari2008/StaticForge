@@ -1,0 +1,22 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="elements">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="element" maxOccurs="unbounded">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="atomicNumber" type="xs:int"></xs:element>
+              <xs:element name="symbol" type="xs:string"></xs:element>
+              <xs:element name="name" type="xs:string"></xs:element>
+              <xs:element name="ram" type="xs:float"></xs:element>
+              <xs:element name="tableX" type="xs:int"></xs:element>
+              <xs:element name="tableY" type="xs:int"></xs:element>
+              <xs:element name="wikipediaLink" type="xs:string"></xs:element>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

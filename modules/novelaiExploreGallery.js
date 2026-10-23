@@ -16,6 +16,17 @@ const PAGE_LIMIT = 50;
 const MIN_UPSTREAM_GAP_MS = 2500;
 
 const memoryCache = new Map();
+// Expired page entries are swept once the map grows past this; disk keeps every page.
+const MEMORY_CACHE_SWEEP_SIZE = 200;
+// postId -> page cache key holding that post, from every page payload seen
+// (setCache, disk hits, one async disk scan). Lookups read just that page.
+const postIndex = new Map();
+let postIndexScan = null;
+let postIndexGen = 0;
+// Last few pages parsed from disk by post lookups (a viewer walks posts of one page).
+const POST_PAGE_LRU_SIZE = 4;
+const postPageLru = new Map();
+let pageWriteSeq = 0;
 const inFlightSearch = new Map();
 const inFlightImages = new Map();
 
@@ -32,6 +43,7 @@ function initNovelaiExploreGallery(cacheRootDir, options = {}) {
     pageCacheDir = path.join(cacheRootDir, 'novelai_explore_gallery');
     imageCacheDir = path.join(cacheRootDir, 'explore_files');
     imageNameIndex = null;
+    resetPostIndex();
     try {
         fs.mkdirSync(pageCacheDir, { recursive: true });
         fs.mkdirSync(imageCacheDir, { recursive: true });
@@ -89,10 +101,51 @@ function readDiskEntry(key) {
 
 function writeDiskEntry(key, entry) {
     if (!pageCacheDir) return;
+    const dir = pageCacheDir;
+    const filePath = path.join(dir, `${key}.json`);
+    // Temp file + rename so a concurrent readDiskEntry never parses a half-written page.
+    const tmpPath = `${filePath}.${process.pid}.${++pageWriteSeq}.tmp`;
+    let body;
     try {
-        fs.writeFileSync(path.join(pageCacheDir, `${key}.json`), JSON.stringify(entry), 'utf8');
+        body = JSON.stringify(entry);
     } catch (e) {
         console.warn('novelaiExploreGallery: page cache write failed', e.message);
+        return;
+    }
+    fs.promises.writeFile(tmpPath, body, 'utf8')
+        .then(() => fs.promises.rename(tmpPath, filePath))
+        .catch((e) => {
+            console.warn('novelaiExploreGallery: page cache write failed', e.message);
+            fs.promises.unlink(tmpPath).catch(() => {});
+        });
+}
+
+function resetPostIndex() {
+    postIndex.clear();
+    postPageLru.clear();
+    postIndexScan = null;
+    postIndexGen += 1;
+}
+
+function notePostResults(key, payload, { overwrite = true } = {}) {
+    const results = payload && Array.isArray(payload.results) ? payload.results : [];
+    for (const r of results) {
+        // getExplorePostFromCache matches with r.id === String(id).
+        if (!r || typeof r.id !== 'string' || !r.id) continue;
+        if (!overwrite && postIndex.has(r.id)) continue;
+        postIndex.set(r.id, key);
+    }
+}
+
+function sweepMemoryCache(now) {
+    if (memoryCache.size <= MEMORY_CACHE_SWEEP_SIZE) return;
+    for (const [key, entry] of memoryCache) {
+        if (!entry || now >= entry.expiresAt) memoryCache.delete(key);
+    }
+    // Still large: drop the oldest inserted; getCached falls back to the disk copy.
+    for (const key of memoryCache.keys()) {
+        if (memoryCache.size <= MEMORY_CACHE_SWEEP_SIZE) break;
+        memoryCache.delete(key);
     }
 }
 
@@ -107,6 +160,8 @@ function getCached(key) {
     const disk = readDiskEntry(key);
     if (disk && now < disk.expiresAt) {
         memoryCache.set(key, disk);
+        notePostResults(key, disk.payload);
+        sweepMemoryCache(now);
         return { ...disk.payload, fromCache: true, cachedAt: disk.cachedAt, expiresAt: disk.expiresAt };
     }
     return null;
@@ -116,6 +171,9 @@ function setCache(key, payload) {
     const now = Date.now();
     const entry = { cachedAt: now, expiresAt: now + CACHE_TTL_MS, payload };
     memoryCache.set(key, entry);
+    postPageLru.delete(key);
+    notePostResults(key, payload);
+    sweepMemoryCache(now);
     writeDiskEntry(key, entry);
 }
 
@@ -442,14 +500,16 @@ function loadImageNameIndex() {
     return imageNameIndex;
 }
 
-function findExistingImageFile(kind, id) {
+// verify:false trusts the index (this module is the only writer) and skips the
+// existsSync; ensureExploreImage still verifies before serving a path.
+function findExistingImageFile(kind, id, { verify = true } = {}) {
     if (!imageCacheDir) return null;
     const prefix = kind === 'blob' ? `blob_${id}` : `thumb_${id}`;
     const index = loadImageNameIndex();
     const hit = index.get(prefix);
     if (!hit) return null;
     const filePath = path.join(imageCacheDir, hit);
-    if (fs.existsSync(filePath)) return filePath;
+    if (!verify || fs.existsSync(filePath)) return filePath;
     index.delete(prefix);
     return null;
 }
@@ -466,8 +526,8 @@ function extFromContentType(contentType) {
 function normalizeResult(raw) {
     const id = raw && raw.id ? String(raw.id) : '';
     if (!id) return null;
-    const thumbExisting = findExistingImageFile('thumbnail', id);
-    const blobExisting = findExistingImageFile('blob', id);
+    const thumbExisting = findExistingImageFile('thumbnail', id, { verify: false });
+    const blobExisting = findExistingImageFile('blob', id, { verify: false });
     const thumbExt = thumbExisting ? path.extname(thumbExisting) : '';
     const blobExt = blobExisting ? path.extname(blobExisting) : '';
 
@@ -1114,7 +1174,7 @@ async function ensureExplorePngExport(id, opts = {}) {
         try { meta = JSON.parse(meta); } catch { meta = null; }
     }
     if (!meta || typeof meta !== 'object') {
-        const post = getExplorePostFromCache(postId);
+        const post = await getExplorePostFromCache(postId);
         meta = post?.image?.nai_metadata || null;
         if (typeof meta === 'string') {
             try { meta = JSON.parse(meta); } catch { meta = null; }
@@ -1760,11 +1820,15 @@ function thumbExtById(ids) {
     const wanted = new Set(ids);
     const map = new Map();
     if (!imageCacheDir || !wanted.size) return map;
-    loadImageNameIndex().forEach((name) => {
+    // Direct lookups: the index holds one name per base, so only thumb_<id> can match.
+    const index = loadImageNameIndex();
+    for (const id of wanted) {
+        const name = index.get(`thumb_${id}`);
+        if (!name) continue;
         const match = /^thumb_([0-9a-fA-F-]{36})(\.[a-zA-Z0-9]+)?$/.exec(name);
-        if (!match || !wanted.has(match[1])) return;
-        if (!map.has(match[1])) map.set(match[1], match[2] || '');
-    });
+        if (!match || match[1] !== id) continue;
+        map.set(id, match[2] || '');
+    }
     return map;
 }
 
@@ -1934,6 +1998,7 @@ function startStudioExploreFeedSchedule() {
 
 function clearExploreGalleryCache(options = {}) {
     memoryCache.clear();
+    resetPostIndex();
     let clearedPages = 0;
     if (pageCacheDir && fs.existsSync(pageCacheDir)) {
         try {
@@ -1974,21 +2039,62 @@ function clearExploreGalleryCache(options = {}) {
     return { cleared: true, clearedPages, clearedImages };
 }
 
-function getExplorePostFromCache(id) {
-    const postId = String(id || '').trim();
-    if (!postId || !pageCacheDir) return null;
-    try {
-        for (const name of fs.readdirSync(pageCacheDir)) {
+// One async pass over the page files fills postIndex for pages cached before boot.
+function scanPostIndexFromDisk() {
+    if (postIndexScan) return postIndexScan;
+    const dir = pageCacheDir;
+    const gen = postIndexGen;
+    postIndexScan = (async () => {
+        let names = [];
+        try {
+            names = await fs.promises.readdir(dir);
+        } catch {
+            return;
+        }
+        for (const name of names) {
             if (!name.endsWith('.json')) continue;
-            const entry = JSON.parse(fs.readFileSync(path.join(pageCacheDir, name), 'utf8'));
-            const results = entry?.payload?.results || [];
-            const hit = results.find((r) => r.id === postId);
-            if (hit) {
-                return refreshNormalizedResult(hit);
+            try {
+                const entry = JSON.parse(await fs.promises.readFile(path.join(dir, name), 'utf8'));
+                if (gen !== postIndexGen) return;
+                // Pages seen in memory since boot are newer than the disk copy.
+                notePostResults(name.slice(0, -'.json'.length), entry && entry.payload, { overwrite: false });
+            } catch {
+                /* skip unreadable page */
             }
         }
-    } catch {
-        /* ignore */
+    })();
+    return postIndexScan;
+}
+
+async function findPostInPage(key, postId) {
+    let payload = memoryCache.get(key)?.payload || postPageLru.get(key) || null;
+    if (!payload && pageCacheDir) {
+        try {
+            payload = JSON.parse(await fs.promises.readFile(path.join(pageCacheDir, `${key}.json`), 'utf8'))?.payload || null;
+        } catch {
+            payload = null;
+        }
+        if (payload) {
+            postPageLru.delete(key);
+            postPageLru.set(key, payload);
+            if (postPageLru.size > POST_PAGE_LRU_SIZE) postPageLru.delete(postPageLru.keys().next().value);
+        }
+    }
+    const results = payload?.results || [];
+    return results.find((r) => r.id === postId) || null;
+}
+
+async function getExplorePostFromCache(id) {
+    const postId = String(id || '').trim();
+    if (!postId || !pageCacheDir) return null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+        if (!postIndex.has(postId)) await scanPostIndexFromDisk();
+        const key = postIndex.get(postId);
+        if (!key) return null;
+        const hit = await findPostInPage(key, postId);
+        if (hit) return refreshNormalizedResult(hit);
+        // That page was refreshed without this post: rescan once, as the old full scan did.
+        resetPostIndex();
     }
     return null;
 }

@@ -1,0 +1,22 @@
+INPUT
+{
+	font-weight: bolder;
+	font-size: 14px;
+	color: dimgray;
+	font-family: Consolas, 'Lucida Console';
+	background-color: transparent;
+	border-top-style: none;
+	border-right-style: none;
+	border-left-style: none;
+	border-bottom-style: none;
+	width: 318px;
+}
+
+
+BODY
+{
+	width: 404px; 
+	height: 310px;
+    background-color: transparent; 
+
+}

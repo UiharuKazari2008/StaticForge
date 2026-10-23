@@ -1,0 +1,50 @@
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+<title>Flickr Photo Search</title>
+
+<style type="text/css">
+	body {
+	background: url(bg.png) no-repeat;
+	margin: 0;
+	width: 131px;
+	height: 65px;
+	}
+	.search {
+	font-family: Verdana, Arial, Helvetica;
+	font-size: 9px;
+	margin-top: 9px;
+	margin-left: 15px;
+	width: 102px;
+	height: 19px;
+	border: 1px solid #2b7186;
+	}
+	#flickr {
+	position: absolute;
+	margin-top: 30px;
+	margin-left: 10px;
+	height: 50px;
+	width: 110px;
+	cursor: pointer;
+	
+	}
+</style>
+	
+<script language="JavaScript" type="text/javascript">
+		function search_function(form)
+		{
+		 if (form1.query.value == "") window.open("http://www.flickr.com/search/?q=" + form1.query.value);
+			else window.open("http://www.flickr.com/search/?q=" + form1.query.value, "result");
+			return false;
+		}
+</script>
+	
+</head>
+	<body>
+	<a href="http://www.flickr.de"><div id="flickr"> </div></a>
+	
+	<form onSubmit="return search_function(this)" name="form1" action="">
+		<input name="query" value="Search..." onMouseOver="this.value='';" type="text" class="search" />
+	</form>
+	
+	</body>
+</html>

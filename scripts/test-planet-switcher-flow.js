@@ -127,7 +127,7 @@ globalThis.desktopSounds = {
     }
 };
 globalThis.resolveWorkspaceWallpaperUrl = (w) => (w ? '/images/wall.png' : null);
-globalThis.formatWorkspaceProgressStatusText = (p) => (p && typeof p.blocksLeft === 'number' ? `Loading gallery (${p.blocksLeft} Blocks Left)` : '');
+globalThis.formatWorkspaceProgressStatusText = (p) => (p && typeof p.blocksLeft === 'number' ? `Loading Gallery (${p.blocksLeft} Blocks Left)` : '');
 globalThis.shouldGalleryProgressUseDeterminate = (p) => Boolean(p && typeof p.progress === 'number' && p.phase !== 'hash_probe');
 
 function mount(id, cls) { const el = new Element('div'); el.id = id; if (cls) el.classList.add(cls); registry[id] = el; document.body.appendChild(el); return el; }

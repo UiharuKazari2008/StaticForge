@@ -1,0 +1,40 @@
+<html>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+	<style>
+		body{ 
+			width:250;
+			height:60;
+		}
+	</style>
+<script>
+
+var g_fResetGame = false;
+
+function init() 
+{
+}
+
+System.Gadget.onSettingsClosing = SettingsClosing;
+
+function SettingsClosing(event)
+{
+	if (event.closeAction == event.Action.commit) {
+		System.Gadget.Settings.write("ResetGame", "true");
+	}
+	else
+	{
+		System.Gadget.Settings.write("ResetGame", "false");
+	}
+	
+	event.cancel = false;
+}
+
+</script>
+</head>
+<body onload="init()">
+<center>
+Reset the game?
+</center>
+
+</body>
+</html>

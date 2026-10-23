@@ -1,0 +1,248 @@
+/* Control Panel's property sheets (cplDialogs.js, cplDialogs2.js; Yozora #632): the parts Vista
+   draws itself inside a template's custom controls. */
+
+/* Mouse > Buttons: the mouse picture and the double-click test folder */
+.vdt-client .cpl-mouse-picture {
+    display: block;
+    margin: 4px auto 0;
+    image-rendering: pixelated;
+}
+
+.vdt-client .cpl-dbl-folder {
+    width: 32px;
+    height: 32px;
+    margin: 12px auto 0;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+    min-height: 0;
+    background: url('/static_images/vista-icons/explorer/folder-32.png') no-repeat center / 32px 32px;
+    box-shadow: none;
+}
+
+.vdt-client .cpl-dbl-folder::before,
+.vdt-client .cpl-dbl-folder::after {
+    content: none;
+}
+
+.vdt-client .cpl-dbl-folder.is-open {
+    background-image: url('/static_images/vista-icons/explorer/folder-front-32.png');
+}
+
+/* Mouse > Pointers: the scheme preview and the list with each role's pointer at the right */
+.vdt-client .cpl-pointer-preview {
+    display: block;
+    width: 32px;
+    height: 32px;
+    margin: 8px auto 0;
+}
+
+.vdt-client .cpl-cursor-list .cpl-cursor-row {
+    justify-content: space-between;
+    height: 33px;
+    padding: 0 4px 0 3px;
+}
+
+.vdt-client .cpl-cursor-list .cpl-cursor-row img {
+    width: 32px;
+    height: 32px;
+    flex: 0 0 32px;
+}
+
+/* Keyboard > Speed: the blinking caret beside the cursor blink rate */
+.vdt-client .cpl-blink-host {
+    overflow: visible;
+}
+
+.vdt-client .cpl-blink-caret {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1px;
+    height: 13px;
+    background: #000;
+    animation: cpl-blink 1000ms steps(1, end) infinite;
+}
+
+.vdt-client .cpl-blink-caret.is-off {
+    animation: none;
+}
+
+@keyframes cpl-blink {
+    50% { visibility: hidden; }
+}
+
+/* Date and Time: Vista's clock (the taskbar flyout's art) scaled into the template's rect */
+.vdt-client .cpl-dt-clock {
+    position: relative;
+    width: 128px;
+    height: 128px;
+    margin: 6px 0 0 5px;
+}
+
+.vdt-client .cpl-dt-date,
+.vdt-client .cpl-dt-time,
+.vdt-client .cpl-dt-zone {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+
+
+/* Date and Time Settings: the month calendar (SysMonthCal32) */
+.vdt-client .cpl-month {
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    border: 1px solid #a0a0a0;
+    background: #fff;
+    padding: 2px 6px;
+}
+
+.vdt-client .cpl-month-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 20px;
+}
+
+.vdt-client .cpl-month-head button {
+    width: 16px;
+    height: 16px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+}
+
+.vdt-client .cpl-month-head button::before {
+    content: '';
+    display: block;
+    margin: auto;
+    border: 4px solid transparent;
+}
+
+.vdt-client .cpl-month-prev::before { border-right-color: #4d6185 !important; border-left-width: 0 !important; }
+.vdt-client .cpl-month-next::before { border-left-color: #4d6185 !important; border-right-width: 0 !important; }
+
+.vdt-client .cpl-month-dow,
+.vdt-client .cpl-month-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    text-align: center;
+}
+
+.vdt-client .cpl-month-dow {
+    border-bottom: 1px solid #d5d5d5;
+    color: #000;
+}
+
+.vdt-client .cpl-month-day {
+    line-height: 17px;
+}
+
+.vdt-client .cpl-month-day.is-other {
+    color: #8d8d8d;
+}
+
+.vdt-client .cpl-month-day.is-today {
+    outline: 1px solid #7da2ce;
+    outline-offset: -1px;
+    background: #dcebfc;
+}
+
+/* Folder Options > View and Internet Properties > Advanced: the settings trees */
+.vdt-client .cpl-fo-tree,
+.vdt-client .cpl-ia-tree {
+    overflow: auto;
+}
+
+.vdt-client .tbp-tree-row img {
+    width: 16px;
+    height: 16px;
+    margin-right: 3px;
+}
+
+.vdt-client .tbp-tree-row.cpl-fo-radio {
+    padding-left: 36px;
+}
+
+/* Internet Properties > Security: the four zones as icons */
+.vdt-client .cpl-zones .vdt-lv-row {
+    width: 58px;
+}
+
+.vdt-client .cpl-zone-icon {
+    width: 32px;
+    height: 32px;
+}
+
+/* Game Controllers > Properties: axes and buttons */
+.vdt-client .cpl-pad-axis {
+    display: grid;
+    grid-template-columns: 60px 1fr;
+    align-items: center;
+    height: 20px;
+}
+
+.vdt-client .cpl-pad-axis .vdt-progress {
+    height: 12px;
+}
+
+.vdt-client .cpl-pad-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.vdt-client .cpl-pad-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: 1px solid #a0a0a0;
+    border-radius: 50%;
+    background: #fff;
+}
+
+.vdt-client .cpl-pad-button.is-down {
+    background: #e02020;
+    color: #fff;
+}
+
+.vdt-client .cpl-tts-text {
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+}
+
+/* Internet Properties > Colors (cplInternetOptions.js): each BS_OWNERDRAW swatch button is its
+   label, then a push-button face holding the colour */
+.vdt-client .cpl-inet-swatch {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    height: 100%;
+}
+
+.vdt-client .cpl-inet-swatch input[type="color"] {
+    box-sizing: border-box;
+    width: 40px;
+    height: 100%;
+    margin: 0;
+    padding: 2px 3px;
+    border: 1px solid #707070;
+    border-radius: 3px;
+    background: linear-gradient(#f2f2f2 45%, #ebebeb 45%, #cfcfcf);
+    outline: none;
+    box-shadow: none;
+}
+
+.vdt-client .cpl-inet-swatch input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+.vdt-client .cpl-inet-swatch input[type="color"]::-webkit-color-swatch { border: 1px solid #808080; border-radius: 0; }
+.vdt-client .cpl-inet-swatch input[type="color"]:disabled { opacity: .5; }

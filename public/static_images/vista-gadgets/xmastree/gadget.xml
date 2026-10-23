@@ -1,0 +1,20 @@
+<gadget>
+  <name>Christmas Tree</name>
+  <version>1.0.0.2</version>
+  <author name="Johan Halle">
+<logo src="GadgetJH.jpg" />
+    <info url="web.comhem.se/johanhalle" />
+  </author>
+  <copyright>&#169; Bee-Jay.</copyright>
+  <description>"Christmas Tree" J Halle special.</description>
+<icons>
+   <icon height="60" width="60" src="Christmas Tree.png" />
+</icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="Christmas Tree.html" />
+      <permissions>Full</permissions>
+      <platform minPlatformVersion="1.0" />
+    </host>
+  </hosts>
+</gadget>

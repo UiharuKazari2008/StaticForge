@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>Periodic Table</name>
+  <namespace>mdsharpe</namespace>
+  <version>1.2.0.0</version>
+  <author name="Matt Sharpe">
+    <info url="http://www.mdsharpe.com" text="www.mdsharpe.com" />
+    <logo src="icon.png" />
+  </author>
+  <copyright>&#0169; 2010 Matt Sharpe</copyright>
+  <description>Periodic Table of the Elements</description>
+  <icons>
+    <icon width="64" height="64" src="icon.png" />
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="gadget.html" />
+      <permissions>Full</permissions>
+      <platform minPlatformVersion="1.0" />
+      <defaultImage src="background.png" />
+    </host>
+  </hosts>
+</gadget>

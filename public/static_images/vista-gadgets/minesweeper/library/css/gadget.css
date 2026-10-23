@@ -1,0 +1,109 @@
+/*
+//---------------------------------------------
+//  THIS CODE IS APPROVED FOR USE IN/ON ANY OTHER UI ELEMENT OR PRODUCT COMPONENT.  
+//  Copyright (c) 2006 Designing Webs, Inc.  All rights reserved.
+// ----------------------------------------------
+*/
+body
+{
+    width:130; 
+    height:186;
+	font-family: "Segoe UI"; 
+    font-size:9px;
+    color:#ccc;
+}
+div#mineBoard
+{    
+    position:absolute;
+    top:29px;
+    left:11px;
+    width:106px;
+    border:1px solid #616161;
+    z-index:1;
+}
+div#coverInner
+{    
+    position:absolute;
+    top:5px;
+    left:5px;
+    width:118px;
+    height:131px;
+    z-index:2;
+}
+div#formHolder{
+    position:absolute;
+    width:130px;
+    left:5px;                                                                                                                                                                                                      
+    top:33px;
+    z-index:3;
+
+}
+div#displayHolder{
+    position:absolute;
+    width:130px;
+    left:12px;                                                                                                                                                                                                      
+    top:143px;
+}
+div#displayHolderMines{
+    float:left;
+    width:55px;
+}
+div#displayHolderTime{
+    float:right;
+    width:75px;
+}
+div#playAgain{
+    position:absolute;
+    top:160px;
+    left:10px;
+    width:110px;
+    text-align:center;
+    }
+div.alertsText{
+	font-weight:bold;
+	text-align:center;
+	color:#CC0000;
+}
+div#alerts{
+    position:absolute;
+    top:5px;
+    left:10px;
+    width:110px;
+    }
+div.directionsText 
+{
+    width:120px;
+	font-size:9px;
+    margin-bottom:15px;
+	margin-left:3px;
+	text-align:center;   
+}
+ul {
+    font-size:12px;
+	list-style: none;	
+	margin-top:0px; 
+	margin-left: 0px;   
+	padding-left: 30px;	
+	text-indent: 2px;
+}
+li{	
+    padding-bottom:7px;	
+}
+a.text {
+    color:#ccc;
+    font-weight:bold;
+    font-size:8px;
+    height:10px;
+    padding-right:4px;
+	text-decoration:none;	 
+	filter:Glow(color=#000000,strength=0);
+}
+a.text:hover {
+    color:#ccc;
+    font-weight:bold;
+    font-size:8px;
+    height:10px;
+    padding-right:4px;
+	text-decoration:none;	 
+	filter:Glow(color=#999999,strength=2);
+}

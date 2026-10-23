@@ -215,6 +215,10 @@ class ReferenceMetadataDatabase {
         this.db.exec(`CREATE INDEX IF NOT EXISTS idx_reference_vibe_workspace_ownership_workspace_created ON reference_vibe_workspace_ownership(workspace_id, created_at DESC)`);
         this.db.exec(`CREATE INDEX IF NOT EXISTS idx_reference_vibe_metadata_image_source ON reference_vibe_metadata(image_source)`);
         this.db.exec(`CREATE INDEX IF NOT EXISTS idx_reference_vibe_metadata_type_image_source ON reference_vibe_metadata(type, image_source)`);
+        // Boot BlurHash backfill finds rows still missing a hash without walking every row
+        // (vibe rows carry image_source before blurhash, so a scan reads all of it).
+        this.db.exec(`CREATE INDEX IF NOT EXISTS idx_reference_file_cache_blurhash_missing ON reference_file_cache(hash) WHERE blurhash IS NULL OR blurhash = ''`);
+        this.db.exec(`CREATE INDEX IF NOT EXISTS idx_reference_vibe_metadata_blurhash_missing ON reference_vibe_metadata(id) WHERE blurhash IS NULL OR blurhash = ''`);
     }
 
     // CRUD Operations
@@ -1847,9 +1851,13 @@ class ReferenceMetadataDatabase {
      * Get workspace vibes with metadata and workspace ownership in one optimized query
      * This combines getWorkspaceVibes, getVibeMetadataForVibes, and getVibeWorkspacesBatch
      * @param {string|Array} workspaceIdOrIds - Single workspace ID or array of workspace IDs
+     * @param {Object} [options]
+     * @param {boolean} [options.encodingPresence] - encodings[model][ie] is `true` for a non-blank
+     *   encoding instead of the encoding text (listings that only need which model/IE pairs exist).
+     *   Blank or unusual values are still returned as stored.
      * @returns {Object} Object with vibe ID as key and object containing vibe data and workspaces array
      */
-    getWorkspaceVibesWithData(workspaceIdOrIds) {
+    getWorkspaceVibesWithData(workspaceIdOrIds, options = {}) {
         try {
             const isArray = Array.isArray(workspaceIdOrIds);
             const workspaceIds = isArray ? workspaceIdOrIds : [workspaceIdOrIds];
@@ -1891,13 +1899,23 @@ class ReferenceMetadataDatabase {
             const encodingsMap = {};
             if (uniqueVibeIds.length > 0) {
                 const encPlaceholders = uniqueVibeIds.map(() => '?').join(',');
-                const encStmt = this.db.prepare(`
-                    SELECT vibe_id, model, information_extraction, encoding 
-                    FROM reference_vibe_encodings 
+                const presenceOnly = !!(options && options.encodingPresence);
+                // Presence mode reads the first character instead of the whole encoding text.
+                const encStmt = this.db.prepare(presenceOnly ? `
+                    SELECT vibe_id, model, information_extraction, id AS encoding_row_id,
+                           typeof(encoding) AS encoding_type, substr(encoding, 1, 1) AS encoding_head
+                    FROM reference_vibe_encodings
+                    WHERE vibe_id IN (${encPlaceholders})
+                ` : `
+                    SELECT vibe_id, model, information_extraction, encoding
+                    FROM reference_vibe_encodings
                     WHERE vibe_id IN (${encPlaceholders})
                 `);
                 const encodings = encStmt.all(uniqueVibeIds);
-                
+                const fullEncodingStmt = presenceOnly
+                    ? this.db.prepare('SELECT encoding FROM reference_vibe_encodings WHERE id = ?')
+                    : null;
+
                 encodings.forEach(enc => {
                     if (!encodingsMap[enc.vibe_id]) {
                         encodingsMap[enc.vibe_id] = {};
@@ -1905,7 +1923,18 @@ class ReferenceMetadataDatabase {
                     if (!encodingsMap[enc.vibe_id][enc.model]) {
                         encodingsMap[enc.vibe_id][enc.model] = {};
                     }
-                    encodingsMap[enc.vibe_id][enc.model][enc.information_extraction.toString()] = enc.encoding;
+                    let value = enc.encoding;
+                    if (presenceOnly) {
+                        // Text starting with a non-space character is non-blank after trim().
+                        const head = enc.encoding_head;
+                        if (enc.encoding_type === 'text' && typeof head === 'string' && head.trim() !== '') {
+                            value = true;
+                        } else {
+                            const row = fullEncodingStmt.get(enc.encoding_row_id);
+                            value = row ? row.encoding : null;
+                        }
+                    }
+                    encodingsMap[enc.vibe_id][enc.model][enc.information_extraction.toString()] = value;
                 });
             }
             
@@ -1953,13 +1982,14 @@ class ReferenceMetadataDatabase {
      * Get both workspace references (cache files) and vibes with metadata in parallel
      * This combines getWorkspaceReferencesWithData and getWorkspaceVibesWithData into a single call
      * @param {string|Array} workspaceIdOrIds - Single workspace ID or array of workspace IDs
+     * @param {Object} [options] - passed to getWorkspaceVibesWithData (encodingPresence)
      * @returns {Object} Object with 'cacheFiles' and 'vibes' keys, each containing the respective result maps
      */
-    getWorkspaceReferencesAndVibesWithData(workspaceIdOrIds) {
+    getWorkspaceReferencesAndVibesWithData(workspaceIdOrIds, options = {}) {
         try {
             // Execute both queries in parallel (they're independent)
             const cacheFiles = this.getWorkspaceReferencesWithData(workspaceIdOrIds);
-            const vibes = this.getWorkspaceVibesWithData(workspaceIdOrIds);
+            const vibes = this.getWorkspaceVibesWithData(workspaceIdOrIds, options);
             
             return {
                 cacheFiles,
@@ -2082,8 +2112,17 @@ class ReferenceMetadataDatabase {
         const previewCacheDir = options.previewCacheDir || globalResources.getPath('previewCache');
         const uploadCacheDir = options.uploadCacheDir || globalResources.getPath('uploadCache');
 
-        const where = opts.force ? '' : "WHERE blurhash IS NULL OR blurhash = ''";
-        let rows = this.db.prepare(`SELECT hash FROM reference_file_cache ${where}`).all();
+        // Missing rows come off the partial *_blurhash_missing index (in key order); sorting on
+        // rowid in JS restores the table-scan order, so limit still picks the same rows.
+        // (ORDER BY rowid in SQL makes the planner scan the whole table again.)
+        const inScanOrder = (list) => list
+            .sort((a, b) => a.row_order - b.row_order)
+            .map(({ row_order: _rowOrder, ...row }) => row);
+        let rows = opts.force
+            ? this.db.prepare('SELECT hash FROM reference_file_cache').all()
+            : inScanOrder(this.db.prepare(
+                "SELECT rowid AS row_order, hash FROM reference_file_cache WHERE blurhash IS NULL OR blurhash = ''"
+            ).all());
         if (opts.limit > 0) rows = rows.slice(0, opts.limit);
 
         log(
@@ -2115,10 +2154,12 @@ class ReferenceMetadataDatabase {
             commitPairs: (pairs) => commitRefs(pairs)
         });
 
-        let vibes = this.db.prepare(`
-            SELECT id, preview_hash, image_source, type FROM reference_vibe_metadata
-            ${opts.force ? '' : "WHERE blurhash IS NULL OR blurhash = ''"}
-        `).all();
+        let vibes = opts.force
+            ? this.db.prepare('SELECT id, preview_hash, image_source, type FROM reference_vibe_metadata').all()
+            : inScanOrder(this.db.prepare(`
+                SELECT rowid AS row_order, id, preview_hash, image_source, type FROM reference_vibe_metadata
+                WHERE blurhash IS NULL OR blurhash = ''
+            `).all());
         if (opts.limit > 0) vibes = vibes.slice(0, opts.limit);
 
         log(

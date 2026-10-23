@@ -1,0 +1,125 @@
+<!-- All code and images Copyright 2007 iSlayer & Distorted Vista. -->
+<!-- Code and images may not be re-used under any circumstances -->
+<!-- Offenders will be prosocuted to the fullest extent of the law -->
+<html>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+<title>iStat memory</title>
+<style>
+body {
+	margin:0px;
+	padding:0px;
+	text-align:center;	
+	width:130px;
+	height:64px;
+	background-image:url(background.png);
+}
+
+</style>
+
+<script>
+var percentage;
+System.Gadget.settingsUI = "Prefs.html";
+System.Gadget.onSettingsClosed = updateSkin;
+	
+function updateSkin() {
+	var newImage;
+	var skin = System.Gadget.Settings.read("skinColor");
+	if(skin == '') {
+		System.Gadget.Settings.write("skinColor", "blue");
+		skin = "blue";
+	}
+	if(skin == "blue"){
+		header.src = "title_memory_blue.png";
+		bar.style.background = "url(graph_horizontalbar1_blue.png)";
+	} else if(skin == "fire"){
+		header.src = "title_memory_fire.png";
+		bar.style.background = "url(graph_horizontalbar1_fire.png)";
+	} else if(skin == "green"){
+		header.src = "title_memory_green.png";
+		bar.style.background = "url(graph_horizontalbar1_green.png)";
+	} else if(skin == "orange"){
+		header.src = "title_memory_orange.png";
+		bar.style.background = "url(graph_horizontalbar1_orange.png)";
+	} else if(skin == "pink"){
+		header.src = "title_memory_pink.png";
+		bar.style.background = "url(graph_horizontalbar1_pink.png)";
+	} 
+
+}
+
+
+function calculateUsage (total, available) {
+	if(total <= 0)
+		return 0;
+	if(available > total)
+		return 0;
+	
+	var usage = Math.round(100 - (available / total * 100));	
+	if(usage <= 0)
+		return 0;
+	if(usage > 100)
+		return 100;
+	
+	return usage;
+}
+
+function getFreeRam(total) {
+	suffixes = Array("MB", "GB", "TB");
+	var suffix = 0;
+	while(total > 1000) {
+		total = total / 1024;
+		suffix++;
+	}
+	if(suffix != 0)
+		total = total.toFixed(2);
+
+
+	return total + "<span style='font-size:9px;font-weight:bold;font-family:Arial'>" + suffixes[suffix] + "</span>";
+}
+
+function update(){
+	total = System.Machine.totalMemory;
+	available = System.Machine.availableMemory;
+	theUsage = calculateUsage(total,available);
+    
+	bar.style.width = verifyUsage(Math.round(theUsage));
+	
+	freeRam.innerHTML = getFreeRam(available);
+	usedRam.innerHTML = getFreeRam(total - available);
+    	setTimeout("update()",3000);
+}
+
+function setUpGadget() {
+	update();
+}
+
+function verifyUsage(usage) {
+    if(usage == null)
+        return 0;
+  
+    if(usage < 0)
+        return 0;
+
+    if(usage > 100)
+		return 100;
+
+    return usage;
+}
+
+</script>
+</head>
+
+<body onload="setUpGadget()">
+<img id="header" src="./title_memory_blue.png" style="position:absolute;top:12px;left:0px;display:none;">
+
+<div style="width:110px;overflow:hidden;position:absolute;top:11px;left:14px;color:white;font-family:Arial;font-weight:bold;font-size:11px;text-align:left;">Used ram:</div>
+<div id="usedRam" style="overflow:hidden;text-align:right;width:50px;position:absolute;top:11px;left:67px;color:white;font-family:Arial;font-weight:bold;font-size:11px;"></div>
+
+<div style="width:110px;overflow:hidden;position:absolute;top:23px;left:14px;color:white;font-family:Arial;font-weight:bold;font-size:11px;text-align:left;">Free ram:</div>
+<div id="freeRam" style="overflow:hidden;text-align:right;width:50px;position:absolute;top:23px;left:67px;color:white;font-family:Arial;font-weight:bold;font-size:11px;"></div>
+
+<div style='background-repeat:repeat-x;background-image:url(graph_horizontalbackground.png);width:102px;height:8px;position:absolute;top:42px;left:15px;'></div>
+<div id="bar" style='overflow:hidden;background-repeat:repeat-x;background-image:url(graph_horizontalbar1_blue.png);width:102px;height:8px;position:absolute;top:42px;left:15px;'></div>
+</body>
+
+</html>

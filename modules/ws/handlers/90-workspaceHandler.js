@@ -1361,10 +1361,11 @@ class WorkspaceWebSocketHandlers {
 
             // Save window positions to workspaceDesktop config as global object (not per-workspace)
             // id is ignored now since positions are global
+            // The queue merges into the pending/cached map (imageViewer:* keys capped); the
+            // broadcast still carries the full stored map, read back without a clone.
+            this.globalResources.queueWorkspaceDesktopWindowPositions(windowPositions);
             const desktopConfig = this.globalResources.getWorkspaceDesktopConfig() || {};
-            const existing = desktopConfig.windowPositions || {};
-            const merged = { ...existing, ...windowPositions };
-            this.globalResources.queueWorkspaceDesktopWindowPositions(merged);
+            const merged = desktopConfig.windowPositions || {};
 
             // Broadcast to all clients
             this.broadcast(wsServer, {

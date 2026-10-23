@@ -1,0 +1,27 @@
+<html>
+	<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+		<meta http-equiv="MSThemeCompatible" CONTENT="yes"/>
+		
+		<title>Full Sun Settings</title>
+		<link href="FullSun.css" type="text/css" rel="stylesheet"/>
+		<script language="javascript" src="FullSun.js" type="text/javascript"></script>
+	</head>
+	<body id="settingsBody" onload="Settings_OnLoad()">
+		<div class="settingLabel">Sidebar display</div>
+		<div class="settingGroup">
+			<input type="radio" name="Radio_Display" id="Radio_Display_Image" value="image"/><label for="Radio_Display_Image">Image</label><br/>
+			<input type="radio" name="Radio_Display" id="Radio_Display_Movie" value="movie"/><label for="Radio_Display_Movie">Movie</label>
+		</div>
+		<div class="settingLabel">Sidebar movie speed</div>
+		<div class="settingGroup">
+			<input type="radio" name="Radio_Speed" id="Radio_Speed_Normal" value="1"/><label for="Radio_Speed_Normal">Normal</label><br/>
+			<input type="radio" name="Radio_Speed" id="Radio_Speed_Half" value="0.5"/><label for="Radio_Speed_Half">&frac12;&times; <span style="font-size: 70%">(Note: Movie might not loop correctly at half speed)</span></label><br/>
+		</div>
+		<div class="settingAbout">
+			<div class="settingProductName">Full Sun 2.2</div>
+			<div class="settingProductAuthor">Designed and written by John Stephen</div>
+			<div class="settingCopyright">&copy;2007 - 2010 John Stephen</div>
+			<div class="settingLink"><a href="http://wobbleworks.com">wobbleworks.com</a></div>
+		</div>
+	</body>
+</html>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+    <name>Amazon.com Search</name>
+    <namespace>Amazon</namespace>
+    <version>3.0</version>
+    <author name="Amazon">
+        <info url="http://www.amazon.com"/>
+        <logo src="images/icon.png" />      
+    </author>
+    <copyright>© 2009 Amazon</copyright>
+    <description>Amazon Gadget Search.</description>
+    <icons>
+    <icon height="100" width="100" src="images/icon.png" />
+  </icons>
+    <hosts>
+        <host name="sidebar">
+            <base type="HTML" apiVersion="1.0.0" src="amazon.html" />
+            <permissions>full</permissions>
+            <platform minPlatformVersion="0.1" />
+        </host>
+    </hosts>
+</gadget>

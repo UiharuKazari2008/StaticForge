@@ -149,6 +149,58 @@ body.desktop-mode:not(.windows-classic-theme) .taskbar-quick-launch-btn:active::
     opacity: 1;
 }
 
+/* ---------- Quick Launch drag and drop (taskbarSettings.js) ----------
+   Vista's toolbar insert mark (VM, 2026-10-22): black, the taskbar's full height, a 2 px stem on
+   the left edge of the button the drop goes before, 6 px then 4 px serifs at both ends */
+
+body.desktop-mode:not(.windows-classic-theme) .taskbar-quick-launch {
+    position: relative;
+}
+
+.taskbar-quick-launch-insert {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 2;
+    width: 6px;
+    pointer-events: none;
+    background:
+        linear-gradient(#000, #000) 2px 0 / 2px 100% no-repeat,
+        linear-gradient(#000, #000) 0 0 / 6px 1px no-repeat,
+        linear-gradient(#000, #000) 1px 1px / 4px 1px no-repeat,
+        linear-gradient(#000, #000) 1px calc(100% - 1px) / 4px 1px no-repeat,
+        linear-gradient(#000, #000) 0 100% / 6px 1px no-repeat;
+}
+
+.taskbar-quick-launch-insert[hidden] {
+    display: none;
+}
+
+/* the dragged shortcut: Vista's drag image, the icon a little see-through on a faintly dark box
+   the button's size (VM: the bar's 60,61,62 reads 54,55,56 under it) */
+body.desktop-mode .taskbar-quick-launch-btn.taskbar-quick-launch-ghost {
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: 2147483000;
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 2px;
+    pointer-events: none;
+    will-change: transform;
+}
+
+body.desktop-mode .taskbar-quick-launch-btn.taskbar-quick-launch-ghost > * {
+    opacity: 0.8;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .taskbar-quick-launch-btn.taskbar-quick-launch-ghost::before {
+    display: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .taskbar-quick-launch.is-dragging .taskbar-quick-launch-btn::before {
+    opacity: 0;
+}
+
 /* ---------- toolbar grippers (Lock the taskbar off) ---------- */
 
 body.desktop-mode:not(.windows-classic-theme) .desktop-taskbar.taskbar-unlocked :is(.taskbar-quick-launch, .taskbar-windows)::before {

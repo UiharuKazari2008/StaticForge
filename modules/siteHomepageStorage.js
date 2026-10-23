@@ -49,7 +49,24 @@ function readPreviewHtml(projectRoot, slug) {
     return fs.readFileSync(hit.resolved.abs, 'utf8');
 }
 
+// The site gate reads the door meta on every unauthenticated request; cover sites only
+// change on deploy, so a short TTL is enough. Callers get a copy.
+const DOOR_META_TTL_MS = 2000;
+const doorMetaCache = new Map();
+
 function readDoorMeta(siteDir) {
+    const now = Date.now();
+    const hit = doorMetaCache.get(siteDir);
+    if (hit && now - hit.at < DOOR_META_TTL_MS) {
+        return { ...hit.value };
+    }
+    const value = readDoorMetaUncached(siteDir);
+    if (doorMetaCache.size > 64) doorMetaCache.clear();
+    doorMetaCache.set(siteDir, { at: now, value });
+    return { ...value };
+}
+
+function readDoorMetaUncached(siteDir) {
     let postPath = '/lookup';
     let noResultPath = 'noresult.html';
     let actionPath = '/lookup';
@@ -135,6 +152,52 @@ function resolveSiteFile(siteDir, urlPath) {
     return { kind: 'missing' };
 }
 
+async function isFileAsync(abs) {
+    try {
+        return (await fs.promises.stat(abs)).isFile();
+    } catch (_err) {
+        return false;
+    }
+}
+
+async function existsAsync(abs) {
+    try {
+        await fs.promises.stat(abs);
+        return true;
+    } catch (_err) {
+        return false;
+    }
+}
+
+// Same answers as resolveSiteFile, with async stats (site gate request path).
+async function resolveSiteFileAsync(siteDir, urlPath) {
+    const rel = urlPath === '/' ? 'index.html' : urlPath.replace(/^\/+/, '');
+    if (!rel || rel.includes('..') || rel.includes('\0')) {
+        return { kind: 'missing' };
+    }
+    const base = path.basename(rel);
+    if (base === 'manifest.json' || base === 'door.json') {
+        return { kind: 'missing' };
+    }
+    const abs = path.resolve(siteDir, rel);
+    const root = path.resolve(siteDir);
+    if (abs !== root && !abs.startsWith(root + path.sep)) {
+        return { kind: 'missing' };
+    }
+    if (await isFileAsync(abs)) {
+        return { kind: 'file', abs, rel };
+    }
+    const indexTry = path.join(abs, 'index.html');
+    if (await isFileAsync(indexTry)) {
+        return { kind: 'file', abs: indexTry, rel: path.join(rel, 'index.html') };
+    }
+    const notFound = path.join(siteDir, '404.html');
+    if (await existsAsync(notFound)) {
+        return { kind: '404', abs: notFound };
+    }
+    return { kind: 'missing' };
+}
+
 function contentTypeForRel(rel) {
     const ext = path.extname(rel || '').toLowerCase();
     const map = {
@@ -165,6 +228,7 @@ module.exports = {
     readDoorMeta,
     extractDoorPhrase,
     resolveSiteFile,
+    resolveSiteFileAsync,
     contentTypeForRel,
     resolvePreviewSiteDir,
     readPreviewHtml

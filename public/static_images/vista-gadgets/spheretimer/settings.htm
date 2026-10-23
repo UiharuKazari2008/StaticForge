@@ -1,0 +1,84 @@
+<html>
+
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+<bgsound id="sound_test" src="">
+
+<link href="css\settings.css" rel="stylesheet" type="text/css">
+<script type="text/javascript" src="js/SSettings.js">
+        </script>
+<style type="text/css">
+.style1 {
+	color: #FF0000;
+	font-size: 10px;
+}
+</style>
+</head>
+
+<body style="width: 200px; height: 400px; position: absolute;" onload="Settings_onLoad();">
+	
+	<span style="left: 9px; width: 218px; top: 0px">
+		<strong>Alarms:</strong>
+	</span>
+	<span style="left: 9px; width: 218px; top: 18px; position: absolute;">Add alarm:&nbsp; 
+		<input id="txtAlarm" style="width: 52px" type="text" value="07:00" maxlength="5">
+		<img src="images/docked/lap.png" class="Apply_Button" 
+			alt="Apply Alarm"
+			onclick="cmdAdicionar_onclick();">
+	</span>
+	<span style="left: 11px; width: 218px; top: 147px; height: 10px;">
+		<strong>Alarm Sound File</strong>: 
+	</span>
+	<input id="cmdEscolher" style="left: 124px; width: 72px; position: absolute; top: 141px" 
+		type="button" value="Choose..." onclick="cmdEscolher_onclick();">&nbsp;&nbsp;
+	<input id="cmdTocar" style="left: 124px; width: 72px; position: absolute; top: 169px" 
+		type="button" value="Play" onclick="cmdTocar_onclick();">
+	<input id="cmdApagar" style="left: 126px; width: 72px; position: absolute; top: 89px" 
+		type="button" value="Clear" onclick="cmdApagar_onclick();">
+	<input id="cmdRemover" style="left: 126px; width: 72px; position: absolute; top: 44px; bottom: 500px;" 
+		type="button" value="Delete" onclick="cmdRemover_onclick();">
+
+	<span style="font-size: 10px; left: 11px; width: 185px; top: 215px">(This file 
+	will be reproduced when the alarm is fired and when the countdown reaches  
+	zero).
+	</span>
+	
+	<div style="position: absolute; width: 221px; height: 10px; z-index: 1; left: 11px; top: 359px" id="layer1">
+		<input id="chk_Segundos" name="chk_Segundos" type="checkbox">
+		<span id="chk_Segundos_Label" onclick="chk_Segundos.checked = !chk_Segundos.checked;" style="left: 23px; top: 4px">
+		Show Seconds 
+		</span>
+	</div>
+	
+	<select name="lstAlarmes" id="lstAlarmes" style="position: absolute; left: 9px; top: 44px; height: 74px; width: 111px;" multiple="multiple">
+	</select> 
+	
+	<span id="lblSoundFile_visible" style="font-size: 10px; left: 12px; width: 185px; top: 199px; height:10px">
+		C:/Windows/Sounds/Alarm.wav
+	</span>
+	<span id="lblSoundFile_invisible" style="visibility:hidden;">
+		C:/Windows/Sounds/Alarm.wav
+	</span>	
+	<span style="left: 12px; width: 218px; top: 341px; height: 10px;">
+		<strong>Other Options:</strong>
+	</span>
+	<div style="position: absolute; width: 221px; height: 10px; z-index: 1; left: 11px; top: 380px" id="layer2">
+		<input id="chkAMPM" name="chkAMPM" type="checkbox">
+		<span id="chkAMPM_Label" onclick="chkAMPM.checked = !chkAMPM.checked;" style="left: 23px; top: 4px">
+		AM / PM Time Format
+		</span>
+	</div>
+
+	<span style="left: 11px; width: 215px; top: 122px; height: 19px; visibility:hidden;" 
+		class="style1" id="error_label">
+		Erro: Valor de Alarme Inválido.</span>	
+	<span style="left: 11px; width: 218px; top: 254px; height: 10px;">
+		<strong>Skin</strong>: 
+	</span>
+	
+	<img alt="Skin" src="images/common/default.png" width="129" height="72" style="position: absolute; left: 65px; top: 259px;" id="SkinPreview">
+	<img alt="Anterior" src="images/undocked/left.png" width="16" height="16" style="position: absolute; left:12px; top: 285px; cursor:hand;" onclick="cmd_PreviousSkin();">
+	<img alt="Próximo" src="images/undocked/right.png" width="16" height="16" style="position: absolute; left:36px; top: 285px; cursor:hand;" onclick="cmd_NextSkin();">
+	
+	</body>
+
+</html>

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>आभासी फूलदान</name>
+  <namespace>microsoft.windows</namespace>
+  <version>1.0.0.1</version>
+  <author name="KaKaNow.com">
+    <info url="kakanow.com"  text="KaKaNow.com"/>
+    <logo src="images/logo.png" />
+  </author>
+  <copyright>&#169; 2010</copyright>
+  <description>ठीक अपने डेस्कटॉप पर कुछ सुंदर और जीवंत रखें.
+अपना डेस्कटॉप चमकदार बनाएँ.  यह आभासी फूलदान आपकी आंखों के सामने पूरी तरह खिलेगा यदि आप अपने माउस की मदद से फूलों को कुछ पानी दें.  किसी असली पौधे की तरह, ध्यान न देने पर यह मुरझा जाएगा.  पूरी तरह खिलने में इसे कई दिन लग सकते हैं, लेकिन यह तय है कि हर बार देखने पर यह आपके डेस्कटॉप को चमकदार बना देगा.</description>
+  <icons>
+    <icon height="64" width="64" src="images/icon.png" />
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="default.html" />
+      <permissions>Full</permissions>
+      <platform minPlatformVersion="1.0" />
+      <defaultImage src="images/drag.png" />
+    </host>
+  </hosts>
+</gadget>

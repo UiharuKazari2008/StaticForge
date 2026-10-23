@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+    <name>Binary Clock</name>
+    <namespace></namespace>
+    <version>1.01</version>
+    <author name="Ronald Bode">
+        <info url="ronaldbode@awardspace.com" />
+    </author>
+    <copyright>2006</copyright>
+    <description>There are only 10 types of people in the world: Those who understand binary, and those who don't</description>
+    <icons>
+        <icon height="48" width="48" src="icon.png"/>
+    </icons>
+   <hosts>
+        <host name="sidebar">
+            <base type="HTML" apiVersion="1.0.0" src="index.htm" />
+            <permissions>full</permissions>
+            <platform minPlatformVersion="0.3" />
+            <defaultImage src="drag.png"/>
+        </host>
+    </hosts>
+</gadget>

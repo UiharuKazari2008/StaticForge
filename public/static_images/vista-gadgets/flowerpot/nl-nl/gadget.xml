@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>Virtuele bloempot</name>
+  <namespace>microsoft.windows</namespace>
+  <version>1.0.0.1</version>
+  <author name="KaKaNow.com">
+    <info url="kakanow.com"  text="KaKaNow.com"/>
+    <logo src="images/logo.png" />
+  </author>
+  <copyright>&#169; 2010</copyright>
+  <description>Verlevendig en verfraai uw bureaublad.
+Laat het zonnetje schijnen op uw bureaublad. Deze virtuele bloempot zal voor uw ogen tot volle bloei komen als u de bloemen water geeft met uw muis. Net als een echte plant zal hij verschrompelen als u hem slecht verzorgt. Het kan een aantal dagen duren voordat de plant volledig bloeit, maar tot die tijd wordt uw bureaublad in ieder geval opgefleurd.</description>
+  <icons>
+    <icon height="64" width="64" src="images/icon.png" />
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="default.html" />
+      <permissions>Full</permissions>
+      <platform minPlatformVersion="1.0" />
+      <defaultImage src="images/drag.png" />
+    </host>
+  </hosts>
+</gadget>

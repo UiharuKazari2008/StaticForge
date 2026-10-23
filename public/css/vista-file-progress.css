@@ -244,7 +244,8 @@ body.desktop-mode .modal.file-progress-dialog.file-progress-expanded[data-vista-
 body.desktop-mode .modal.file-progress-dialog[data-vista-dialog] .file-progress-expando-text {
     position: relative;
     top: 3px;
-    padding: 0 0 0 1px;
+    /* the label's ink starts 4 px after the glyph's box (x 44 in the client), as on the VM */
+    padding: 0 0 0 2px;
     white-space: nowrap;
 }
 
@@ -258,7 +259,7 @@ body.desktop-mode .modal.file-progress-dialog[data-vista-dialog] .file-progress-
 }
 
 /* Cancel: DirectUI's ccpushbutton at 75x25 (the dialogs' push buttons are 23 px tall) */
-body.desktop-mode:not(.windows-classic-theme) .modal.file-progress-dialog[data-vista-dialog] > .modal-content.file-progress-content .file-progress-footer.vista-dialog-footer button.file-progress-cancel.btn-secondary:not(.close-btn) {
+body.desktop-mode:not(.windows-classic-theme) .modal.file-progress-dialog[data-vista-dialog] > .modal-content.file-progress-content .file-progress-footer.vista-dialog-footer button:is(.file-progress-cancel, .file-progress-action).btn-secondary:not(.close-btn) {
     box-sizing: border-box;
     min-width: 75px;
     min-height: 0;
@@ -267,4 +268,11 @@ body.desktop-mode:not(.windows-classic-theme) .modal.file-progress-dialog[data-v
     padding: 0 12px;
     line-height: 23px;
     white-space: nowrap;
+}
+
+/* complete (a download's Open / Open Folder / Close): the buttons at the right, 7 px apart as a
+   task dialog's push buttons */
+body.desktop-mode .modal.file-progress-dialog.file-progress-complete[data-vista-dialog] > .modal-content .file-progress-footer.vista-dialog-footer {
+    justify-content: flex-end;
+    gap: 7px;
 }

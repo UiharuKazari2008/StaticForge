@@ -1777,13 +1777,46 @@ body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):
     outline: none;
 }
 
-.volume-flyout.is-muted .volume-flyout-mute {
+.volume-flyout.is-muted .is-device .volume-flyout-mute,
+.volume-flyout-column.is-app.is-muted .volume-flyout-mute {
     background-image: url("/static_images/vista-icons/volume-mute-16.png");
 }
 
 .volume-flyout-mute:hover {
     border-color: #3c7fb1;
     background-color: #eaf6fd;
+}
+
+/* Apps with their own audio (Alchemy, #628) stand beside the device as Vista's Volume Mixer lists
+   them: one 74 px column each after a divider, the app's 16 px icon over its slider. */
+.volume-flyout.has-apps {
+    width: auto;
+}
+.volume-flyout-columns {
+    display: flex;
+}
+.volume-flyout-column {
+    width: 72px;
+}
+.volume-flyout-apps {
+    display: flex;
+    border-left: 1px solid #e3e3e3;
+}
+.volume-flyout-apps[hidden] {
+    display: none;
+}
+.volume-flyout-app-icon {
+    display: block;
+    width: 16px;
+    height: 16px;
+    margin: 8px auto 0;
+}
+.volume-flyout-slider.is-app {
+    height: 96px;
+    margin-top: 6px;
+}
+.volume-flyout-slider.is-app.win7 .is-vertical > input[type="range"] {
+    width: 88px;
 }
 
 .volume-flyout-mixer {

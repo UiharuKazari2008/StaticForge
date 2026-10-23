@@ -1,0 +1,61 @@
+<html>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+<title>Sidebar Switcher</title>
+	<style>
+	body {
+	width: 100;
+	height: 105;
+	background-color: #ffffff;
+	border: thin black outset;
+	padding:0px;
+}
+</style>
+<script>
+System.Gadget.Flyout.onShow = flyoutShowing;
+System.Gadget.Flyout.file = "DiscogsFlyout.html";
+var url = "";
+
+
+function setFlyout(urltmp)
+{
+    url = urltmp;
+    System.Gadget.Flyout.show = true;
+}
+
+
+function flyoutShowing()
+{
+    System.Gadget.Flyout.document.parentWindow.frame.innerHTML = "<iframe style='position:absolute;width=630px;height:480px;left:0px;top:0px;' id='dynframe' frameborder='0' src='"+url+"' scrolling='yes'></iframe>";
+}
+
+
+	function launchDiscogsFind() {
+		findURL = "http://www.discogs.com/search?type=" + SearchType.value + "&q= " + SearchQuery.value;
+		setFlyout(findURL);
+
+//		System.Shell.execute(); 
+	}
+	
+
+</script>
+</head>
+<body background="background.png">
+
+<div id="MainDiv" style="position:absolute;left:0px;top:0px;width:100px;">
+	<center>
+	<img src="dislogo.gif" style="width:75px;">
+	</center>
+	<select name="type" id="SearchType" style="width:100px;font-family:'Arial Narrow'">
+		<option value="all" selected>Search all</option>
+		<option value="artists">Artists</option>
+		<option value="labels">Labels</option>
+		<option value="releases">Releases</option>
+		<option value="pending">Pending Releases</option>
+		<option value="catno">Catalog#</option>
+		<option value="forsale">Releases For Sale</option>
+	</select>
+	<input type="text" id="SearchQuery" name="q" size="30" style="width:100px;font-family:'Arial Narrow';font-size:9pt;"/ onkeydown="if(event.keyCode==13) launchDiscogsFind();">
+	<input type="submit" name="btn" value="Search" style="width:100px;font-family:'Arial Narrow';" onclick="launchDiscogsFind();" />   
+</div>
+</body>
+</html>

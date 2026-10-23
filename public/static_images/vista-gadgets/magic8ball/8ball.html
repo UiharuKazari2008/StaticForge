@@ -1,0 +1,204 @@
+<html>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+<title>Magic 8-Ball</title>
+<style>
+	body
+	{
+		margin:0px;
+		width:130;
+		height:130;
+		background: url('images/bb.png');
+		filter:progid:DXImageTransform.Microsoft.Fade(duration=2);
+		border: 2px inset #336699;
+	}
+	#preloader
+	{
+		width: 1px;
+		height: 1px;
+		position: absolute;
+		left: -1px;
+		top: -1px;
+		overflow: hidden;
+	}
+	#ball
+	{
+		width:130;
+		height:130;
+	}
+	#txt
+	{
+		overflow:hidden;
+		width: 130;
+		height: 130;
+		position: absolute;
+		left: 0;
+		top: 40;
+		color: #AABBFF;
+		text-align: center;
+		font-family: verdana;
+			font-size: 12px;
+	}
+</style>
+<script>
+	var m_isLoaded = false;
+	var m_isActive = false;
+	var m_isIdle = true;
+		
+	function Ask8ball()
+	{
+		if (( m_isLoaded )&&( ! m_isActive ))
+		{
+			Animate_start();
+		}
+	}
+		
+</script>
+</head>
+<body >
+	<div id="preloader"></div>
+	<img src="b4/b_bg.gif" id="ball" onclick="Ask8ball()" onmouseenter="ResetMouseOver()" />
+	<div id="txt">www.selbit.com</div>
+</body>
+<script>
+var m_minGifNo = 1;
+var m_maxGifNo = 33;
+var m_imgFolder = 'b4';
+var m_animationDelay = 50;
+var m_resetDelay = 10000;
+var m_oImg = document.getElementById('ball');
+var m_oTxt = document.getElementById('txt');
+var m_ts;
+var m_txtCnt = 0;
+
+
+function Init()
+{
+	
+	var p=document.getElementById('preloader');
+	var t;
+	var elm;
+	for(var i=1; i<48; i++)
+	{
+		elm = document.createElement("IMG");
+		t = m_imgFolder+'/b_'+i+'.gif';
+		elm.src = t;
+		p.appendChild(elm);
+	}
+	m_isLoaded = true;
+	
+	m_ts = setTimeout( 'ResetTrans()',1000 );
+}
+function Idle() 
+{
+	m_isIdle = true;
+	ClearTs();
+	m_txtCnt =0;
+	textShow();
+	
+}
+function textShow()
+{
+	ClearTs();
+	if (! m_isIdle ) return;
+	if ( m_txtCnt > 8 ) {
+		m_txtCnt=0;
+		ResetTrans();
+		return;
+	}
+	document.body.filters.item(0).Apply();
+	m_oImg.src = m_imgFolder+'/b_bg.gif';
+	if ( m_txtCnt==0 ) {
+		m_oTxt.innerHTML = "Magic 8-Ball";
+	} else if ( m_txtCnt==2 ) {
+		m_oTxt.innerHTML = "www.SELBIT.com";
+	} else if ( m_txtCnt==4 ) {
+		m_oTxt.innerHTML = "Ask the Ball";
+	} else if ( m_txtCnt==5 ) {
+		m_oTxt.innerHTML = "It knows";
+	} else if ( m_txtCnt==7 ) {
+		m_oTxt.innerHTML = "Nothing but<br>the truth";
+	} else {
+		m_oTxt.innerHTML = "";
+	}
+	document.body.filters.item(0).Play();
+	m_ts = setTimeout( 'textShow()',6000 );
+	m_txtCnt++;
+}
+function Reset() 
+{
+	if (( m_isActive )) return;
+	m_isIdle = false;
+	ClearTs();
+	m_oTxt.innerHTML = "";
+	m_oImg.src = m_imgFolder+'/b_0.gif';
+}
+
+function ResetMouseOver()
+{
+	if (( ! m_isIdle )) return;
+	Reset();
+	m_ts = setTimeout( 'Idle()',12000 );
+}
+
+function ResetTrans()
+{
+	document.body.filters.item(0).Apply();
+	Reset();
+	document.body.filters.item(0).Play();
+	m_ts = setTimeout( 'Idle()',12000 );
+}
+
+function ClearTs()
+{
+	if ( m_ts )
+	{
+		clearTimeout( m_ts );
+		m_ts = 0;
+	}
+}
+var cnt = 1;
+var cnt2 = 1;
+var m_r=0;
+
+function Animate_start()
+{
+	m_isActive = false;
+    	m_isIdle = false;
+	Reset();
+    	ClearTs();
+    	m_isActive = true;
+    	cnt = cnt2 = 1;
+    	for (var i=0; i<( Math.random()*6 ); i++) Math.random();
+    	m_r = Math.floor( Math.random()*m_maxGifNo )+m_minGifNo;
+    	Animate_do();
+}
+function Animate_end()
+{
+	ClearTs();
+	m_ts = setTimeout( 'ResetTrans()',m_resetDelay );
+	m_isActive = false;
+}
+function Animate_do()
+{
+    	if ( cnt<51 )
+	{
+        	var t;
+        	if ( cnt>47 )
+        	{
+            		t = m_imgFolder+'/b'+m_r+'_'+cnt2+'.gif';
+            		cnt2++;
+        	}
+        	else
+        	{	
+            		t = m_imgFolder+'/b_'+cnt+'.gif';
+        	}
+        	m_oImg.src = t;
+        	cnt++;
+        	m_ts = setTimeout( 'Animate_do()',m_animationDelay );
+    	} else
+		Animate_end();
+}
+Init();
+</script>
+
+</html>

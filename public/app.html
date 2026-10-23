@@ -384,6 +384,7 @@
     <link rel="stylesheet" href="/css/desktop-apps/dovecote.css">
     <!-- Terminal: global .hidden — must stay last in the stylesheet stack -->
     <link rel="stylesheet" href="/css/desktop-cursors.css">
+    <link rel="stylesheet" href="/css/melaton-accessibility.css">
     <link rel="stylesheet" href="/css/aero-glass.css">
     <link rel="stylesheet" href="/css/vista-glass-controls.css">
     <link rel="stylesheet" href="/css/vista-director.css">
@@ -398,6 +399,8 @@
     <link rel="stylesheet" href="/css/vista-sidebar.css">
     <link rel="stylesheet" href="/css/vista-visual-index.css">
     <link rel="stylesheet" href="/css/vista-import-wizard.css">
+    <!-- Vista art for Font Awesome glyphs in context menus and command bars -->
+    <link rel="stylesheet" href="/css/vista-fa-icons.css">
     <!-- Taskbar: Start orb, buttons, Quick Launch, chevron, clock (taskbarSettings.js, taskbarClock.js) -->
     <link rel="stylesheet" href="/css/vista-taskbar.css">
     <link rel="stylesheet" href="/css/system-font.css">
@@ -950,8 +953,9 @@
                                 <div class="gallery-toggle-slider"></div>
                             </div>
                             <div class="main-menu-group">
+                                <!-- a direction switch (its arrow turns), not an on/off toggle: no indicator lamp -->
                                 <button type="button" id="sortOrderToggleBtn"
-                                    class="btn-secondary indicator desktop-only" data-state="desc"
+                                    class="btn-secondary desktop-only" data-state="desc"
                                     title="Sort Order: Newest First">
                                     <i class="fa-light fa-sort-amount-down"></i>
                                 </button>
@@ -3257,10 +3261,6 @@
                 </div>
             </div>
             <div class="modal-window-controls">
-                <button type="button" class="btn-secondary indicator ledge-desk-menu" data-state="off"
-                    title="Menu">
-                    <i class="fas fa-bars"></i>
-                </button>
                 <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
                     <i class="fa-regular fa-window-minimize"></i>
                 </button>
@@ -3276,6 +3276,28 @@
                     <div class="stage-results-scroll-shell scrollbar-padding" data-custom-scrollbar
                         data-scrollable-wrapper-class="stage-results-scrollable">
                         <div class="gallery"></div>
+                    </div>
+                    <!-- the Workspace window's floating glass bar (#main-menu-bar classes), as References has -->
+                    <div class="floating-bar-left ledge-menu-bar">
+                        <div class="main-menu-bar-overlay">
+                            <span class="menu-logo">
+                                <span class="logo-text">Ledge</span>
+                            </span>
+                            <i class="fas fa-circle ledge-menu-dot"></i>
+                            <span class="workspace-name ledge-desk-name"></span>
+                        </div>
+                        <!-- data-aero-contrast: dark glyphs over light glass (aeroGlass.js), as the Workspace bar -->
+                        <div class="main-menu-bar-outer" data-aero-surface data-aero-contrast>
+                            <div class="main-menu-contents">
+                                <div class="main-menu-row">
+                                    <div class="main-menu-group">
+                                        <button type="button" class="btn-secondary ledge-desk-save" title="Save to the desktop">
+                                            <i class="fa-light fa-floppy-disk"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -3307,7 +3329,8 @@
             <div class="explorer-actions-header" role="toolbar">
                 <div class="explorer-command-set">
                     <button type="button" id="textReplacementActionsDropdownBtn"
-                        class="btn-secondary btn-small explorer-command-btn has-menu" title="Actions">Actions<span
+                        class="btn-secondary btn-small explorer-command-btn has-menu" title="Actions"><img
+                            class="explorer-command-icon" src="/static_images/vista-explorer/organize.png" alt="">Actions<span
                             class="explorer-command-glyph" aria-hidden="true"></span></button>
                     <button type="button" id="toggleCompiledPromptsSectionBtn"
                         class="btn-secondary btn-small explorer-command-btn" title="Compiled Prompts"><i
@@ -6910,13 +6933,17 @@ Examples:
             <div class="explorer-actions-header dreamscape-app-error-toolbar">
                 <div class="explorer-command-set">
                     <button type="button" class="explorer-command-btn" data-fatal-toolbar="repair"
-                        title="Redownload all files listed in the error list">Repair</button>
+                        title="Redownload all files listed in the error list"><img class="explorer-command-icon"
+                            src="/static_images/vista-cmdbar/download.png" alt="">Repair</button>
                     <button type="button" class="explorer-command-btn" data-fatal-toolbar="restart"
-                        title="Reload the application">Restart</button>
+                        title="Reload the application"><img class="explorer-command-icon"
+                            src="/static_images/vista-cmdbar/restart.png" alt="">Restart</button>
                     <button type="button" class="explorer-command-btn" data-fatal-toolbar="reinstall"
-                        title="Clear all caches, storage, databases, and reinstall the application">Reinstall</button>
+                        title="Clear all caches, storage, databases, and reinstall the application"><img
+                            class="explorer-command-icon" src="/static_images/vista-cmdbar/programs.png" alt="">Reinstall</button>
                     <button type="button" class="explorer-command-btn" data-fatal-toolbar="clear"
-                        title="Clear the error list">Clear All</button>
+                        title="Clear the error list"><img class="explorer-command-icon"
+                            src="/static_images/vista-cmdbar/clear.png" alt="">Clear All</button>
                 </div>
             </div>
             <div class="dreamscape-app-error-list-scroll form-section-scroll">
@@ -7921,6 +7948,10 @@ Examples:
                 <div class="taskbar-tray-icon hidden" id="vistaSidebarTrayIcon" title="Melaton Sidebar">
                     <i class="fas fa-sidebar-flip"></i>
                 </div>
+                <!-- SoraTan, while she runs (desktop-apps/soraTan.js soraTanSyncTray); the exe's 16 px clover -->
+                <div class="taskbar-tray-icon soratan-tray-icon hidden" id="soraTanTrayIcon" title="SoraTan">
+                    <img src="/static_images/soratan/soratan-16.png" alt="" width="16" height="16">
+                </div>
                 <!-- Search Indexing Indicator -->
                 <div class="search-indexing-indicator taskbar-tray-icon hidden" id="searchIndexingIndicator"
                     title="No Status Available">
@@ -7943,10 +7974,6 @@ Examples:
                 <div class="service-worker-tray-icon taskbar-tray-icon hidden" id="serviceWorkerTrayIcon"
                     title="Service Worker">
                     <i class="fas fa-hard-drive" id="serviceWorkerTrayIconGlyph"></i>
-                </div>
-                <!-- Alchemy Audio (grimoireRemoteBrowser.js grimoireShowAudioMenu) -->
-                <div class="taskbar-tray-icon hidden" id="alchemyAudioTrayIcon" title="Alchemy audio">
-                    <i class="fas fa-volume-high"></i>
                 </div>
                 <!-- Ping Warning Indicator -->
                 <div class="ping-warning-indicator taskbar-tray-icon hidden" id="pingWarningIndicator">
@@ -7999,6 +8026,14 @@ Examples:
     <script src="scripts/comp/popoverManager.js"></script>
     <script src="scripts/comp/contextMenu.js"></script>
     <script src="scripts/comp/windowGeometry.js"></script>
+    <!-- Melaton's registry: Control Panel settings kept in userGlobalSettings.registry (#632) -->
+    <script src="scripts/comp/melatonRegistry.js"></script>
+    <!-- Mouse Properties > Pointers: Vista's Aero cursor scheme from the registry -->
+    <script src="scripts/comp/melatonPointerScheme.js"></script>
+    <!-- Ease of Access Center: High Contrast, focus, animations, access keys, Narrator -->
+    <script src="scripts/comp/melatonAccessibility.js"></script>
+    <!-- Welcome Center (#632): opened from Control Panel and Accessories; Run at startup -->
+    <script src="scripts/comp/welcomeCenter.js"></script>
     <script src="scripts/comp/modalUtils.js"></script>
     <!-- Taskbar and Start Menu Properties settings, Quick Launch, taskbar menus; the clock tooltip and flyout -->
     <!-- The two accounts' names and pictures (User Accounts), for every place that shows them -->

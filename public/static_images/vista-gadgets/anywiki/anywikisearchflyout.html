@@ -1,0 +1,37 @@
+<html>
+
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+	<style>
+	body {
+	width: 640;
+	height: 480;
+}
+</style>
+<script>
+		var DotCount = 0;
+
+		function loading() {
+			DotCount = DotCount + 1;
+			if (DotCount > 5) DotCount = 1;
+			var Ellipses = "";
+			for(i=0;i<DotCount;i++) {
+				Ellipses +=".";
+			}
+			Msg.innerText = 
+			System.Gadget.document.parentWindow.url;	
+			Msg.innerText = "Loading" + Ellipses;
+		}
+
+</script>
+<title>AnyWiki Search Gadget Flyout</title>
+
+</head>
+
+<body onload="setInterval(loading, 250);">
+<span id="debug"></span>
+<div id="Msg" style="position:absolute;left:0px;top:0px;z-index:2;"></div>
+<div id="frame" style="position:absolute;left:0px;top:0px;z-index:1;"></div>
+
+</body>
+
+</html>

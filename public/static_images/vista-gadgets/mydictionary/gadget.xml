@@ -1,0 +1,27 @@
+<?xml version = "1.0" encoding = "utf-8" ?>
+<gadget>
+    <name>MyDictionary</name>
+    <namespace>MyDictionary.gadget</namespace>
+    <version>1.3.0.0</version>
+
+    <author name = "Christopher C. Kennedy">
+        <info url = "www.southside-solutions.com"/>
+        <icon src = "MyDictionary Icon.png"/>
+	<logo src = "Southside Solutions Logo.png"/>
+    </author>
+
+    <copyright>2006</copyright>
+    <description>A desktop dictionary gadget that provides quick definitions in a browser window.</description>
+
+    <icons>
+	<icon height = "64" width = "64" src = "MyDictionary Icon.png" />
+    </icons>
+
+    <hosts>
+        <host name = "sidebar">
+            <base type = "HTML" apiVersion = "1.0.0" src = "MyDictionary.html" />
+            <permissions>full</permissions>
+            <platform minPlatformVersion = "0.3" />
+        </host>
+    </hosts>
+</gadget>

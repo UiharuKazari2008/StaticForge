@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>Virtualna lončanica</name>
+  <namespace>microsoft.windows</namespace>
+  <version>1.0.0.1</version>
+  <author name="KaKaNow.com">
+    <info url="kakanow.com"  text="KaKaNow.com"/>
+    <logo src="images/logo.png" />
+  </author>
+  <copyright>&#169; 2010</copyright>
+  <description>Promatrajte nešto lijepo i živo izravno na radnoj površini.
+Obasjajte svoju radnu površinu.  Virtualna lončanica izrast će u pravi cvijet Vama pred očima ako cvijet zalijevate vodom pomoću miša.  No ako je zapostavite, poput prave biljke ona će uvenuti.  Bit će joj potrebno nekoliko dana da procvate, no sigurno će ukrasiti Vašu radnu površinu svaki puta kada je pogledate.</description>
+  <icons>
+    <icon height="64" width="64" src="images/icon.png" />
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="default.html" />
+      <permissions>Full</permissions>
+      <platform minPlatformVersion="1.0" />
+      <defaultImage src="images/drag.png" />
+    </host>
+  </hosts>
+</gadget>

@@ -48,11 +48,16 @@
             .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
+    /** "/" as Vista names it: the system drive, Local Disk (C:) (explorerComputerView.js). */
+    function rootLabel() {
+        return (root.ExplorerComputerView && root.ExplorerComputerView.ROOT_NAME) || 'Cartograph';
+    }
+
     class ExplorerVistaChrome {
         constructor(app) {
             this.app = app;
             const $ = (id) => document.getElementById(id);
-            this.labels = new Map([['/', 'Cartograph']]);
+            this.labels = new Map([['/', rootLabel()]]);
             this.el = {
                 addressGroup: app.modal.querySelector('.explorer-address-group'),
                 breadcrumb: $('explorerBreadcrumb'),
@@ -184,7 +189,7 @@
         labelFor(path) {
             if (this.labels.has(path)) return this.labels.get(path);
             const last = String(path || '/').split('/').filter(Boolean).pop();
-            return last || 'Cartograph';
+            return last || rootLabel();
         }
 
         /** Recent Pages: forward pages on top, the current one checked, then back (Vista's order). */
@@ -208,7 +213,7 @@
                 const path = this.app.history[i];
                 if (seen.has(path)) continue;
                 seen.add(path);
-                items.push({ text: path === '/' ? 'Cartograph' : path, action: `p:${path}`, icon: 'fas fa-folder' });
+                items.push({ text: path === '/' ? rootLabel() : path, action: `p:${path}`, icon: 'fas fa-folder' });
             }
             return items;
         }
@@ -295,7 +300,7 @@
         }
 
         /** displayPath has one label per path segment (explorerApplet _fallbackDisplayPath / stats).
-            Vista's trail starts at Computer: Computer ▸ Cartograph (C:) ▸ Workspaces ▸ … */
+            Vista's trail starts at Computer: Computer ▸ Local Disk (C:) ▸ Workspaces ▸ … */
         renderBreadcrumb(displayPath) {
             const host = this.el.breadcrumb;
             if (!host) return;
@@ -305,7 +310,7 @@
             if (!atComputer) {
                 const parts = String(this.app.currentPath || '/').split('/').filter(Boolean);
                 const labels = String(displayPath || '/').split('/').filter(Boolean);
-                crumbs.push({ label: computer ? 'Cartograph (C:)' : 'Cartograph', path: '/' });
+                crumbs.push({ label: rootLabel(), path: '/' });
                 parts.forEach((part, i) => {
                     crumbs.push({ label: labels[i] || part, path: '/' + parts.slice(0, i + 1).join('/') });
                 });

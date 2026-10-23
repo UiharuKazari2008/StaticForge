@@ -1,0 +1,22 @@
+* Haruhi Suzumiya *
+
+System Animator - Extra Animation Collection
+
+
+----------------------------
+
+
+Version 7.1
+
+
+Animation types:
+- 1  x MacFace patterns (.mcface)
+- 2  x Sequenced (.SEQ) animations, 17 sub animations (suitable for use with short update interval and "Sound output" events)
+
+Featured Animations:
+* Haruhi ED Full v2 - SS - JPEG.SEQ-1-1
+
+----------------------------
+
+
+Homepage: http://www.animetheme.com/sidebar/

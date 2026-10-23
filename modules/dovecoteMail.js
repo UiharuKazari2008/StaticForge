@@ -601,6 +601,43 @@ function getAttachment(owner, attachmentId) {
     return { id: meta.id, name: meta.name, mimeType: meta.mime_type, size: meta.size, data };
 }
 
+// fs.promises.readFile, with a missing file (or missing folder) as null like existsSync.
+async function readFileOrNull(filePath) {
+    try {
+        return await fs.promises.readFile(filePath);
+    } catch (err) {
+        if (err && (err.code === 'ENOENT' || err.code === 'ENOTDIR')) return null;
+        throw err;
+    }
+}
+
+async function readAttachmentBytesAsync(messageId, attachmentId) {
+    if (!isUuidLike(attachmentId)) return null;
+    const shared = await readFileOrNull(sharedAttachmentFile(attachmentId));
+    if (shared !== null) return shared;
+    if (!isUuidLike(messageId)) return null;
+    return readFileOrNull(path.join(messageAttachmentDir(messageId), attachmentId));
+}
+
+/** getAttachment with the bytes read off the event loop (attachments run up to 10 MB). */
+async function getAttachmentAsync(owner, attachmentId) {
+    if (!isValidOwner(owner)) throw new DovecoteError('Unknown mailbox', 'UNKNOWN_OWNER');
+    const id = String(attachmentId || '');
+    const holder = getDb().prepare(
+        `SELECT id FROM dovecote_message WHERE owner = ? AND attachments IS NOT NULL AND attachments LIKE ? LIMIT 1`
+    ).get(owner, `%"${id}"%`);
+    if (!holder) {
+        audit(owner, 'get_attachment', id, false, 'not found or not owned');
+        return null;
+    }
+    const meta = getDb().prepare('SELECT id, name, mime_type, size FROM dovecote_attachment WHERE id = ?').get(id);
+    if (!meta) return null;
+    const data = await readAttachmentBytesAsync(holder.id, id);
+    if (data === null) return null;
+    audit(owner, 'get_attachment', id, true, null);
+    return { id: meta.id, name: meta.name, mimeType: meta.mime_type, size: meta.size, data };
+}
+
 // Posts a read receipt onto a message's paired sent copy, the first time only
 // (sticky, like a real read receipt) — and only when a To recipient is the one
 // reading. Cc does not stamp it. Without the To check, a sender marking their
@@ -1321,5 +1358,6 @@ module.exports = {
     getAlwaysLoadSenders,
     setImagePref,
     getAttachment,
+    getAttachmentAsync,
     audit
 };

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<gadget>
+	<name>Drives Meter</name>
+	<namespace>AddGadgets</namespace>
+	<version>4.3</version>
+	<author name="AddGadgets">
+		<info url="http://addgadgets.com" />
+		<logo src="images/icon.png" />
+	</author>
+	<copyright>© 2013 AddGadgets.com</copyright>
+	<description>With this Drives Meter Gadget you can display your Hard disc or flash disk space, free space, used space,  bar indicates used space, read speed, write speed and activity up to 8 drive.</description>
+	<icons>
+		<icon height="100" width="100" src="images/icon.png" />
+	</icons>
+	<hosts>
+		<host name="sidebar">
+			<base type="HTML" apiVersion="1.0.0.0" src="gadget.html" />
+			<permissions>Full</permissions>
+			<platform minPlatformVersion="1.0"/>
+			<defaultImage src="icon.png" />
+			<autoscaleDPI>true</autoscaleDPI>
+		</host>
+	</hosts>
+</gadget>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<gadget>
+  <name>Multisearcher!</name>
+  <version>1.1</version>
+  <author name="Black Chakram">
+    <info url="" text=""/>
+    <logo src="logo.png"/>
+  </author>
+  <copyright>2007</copyright>
+  <description>Search Wikipedia, Google, Dictionary.com, Amazon, eBay, IMDB, GameFAQs, Newegg, or Mininova!</description>
+   <icons>
+	<icon height="16" width="16" src="multi.gif"/>
+    </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="html" apiVersion="1.0.0" src="reference.html"/>
+      <permissions>full</permissions>
+      <platform minPlatformVersion="1.0"/>
+      <defaultImage src=""/>
+    </host>
+  </hosts>
+</gadget>

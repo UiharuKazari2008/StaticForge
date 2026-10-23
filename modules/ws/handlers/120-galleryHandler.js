@@ -19,6 +19,50 @@ const { isReplicationGalleryClient, canGalleryUseRemoteMaster } = require('../..
 
 const GALLERY_DESTRUCTIVE = { destructive: true };
 
+function originalFilenameFor(filename) {
+    return filename.includes('_upscaled') ? filename.replace('_upscaled.png', '.png') : filename;
+}
+
+/**
+ * Resolve forge_data.dynamic_generation.compiled_prompt.preview_image_hash for the originals of
+ * a bulk selection without reading every PNG: one batched metadata.db lookup, PNG read only for
+ * rows whose stored metadata lacks dynamic_generation, and nothing at all when the
+ * dynGenPreview folder does not exist (no preview file could be found anyway).
+ * Returns async (originalFilename, originalPath) => hash | null; throws like the PNG read did.
+ */
+async function createDynGenPreviewHashResolver(handlers, filenames) {
+    const dynGenPreviewDir = path.join(handlers.globalResources.getPath('cache'), 'dynGenPreview');
+    let previewDirExists = true;
+    try {
+        previewDirExists = await fileExists(dynGenPreviewDir);
+    } catch (_) { /* unknown: keep looking hashes up */ }
+    if (!previewDirExists) {
+        return async () => null;
+    }
+    let stored = new Map();
+    try {
+        const metadataDb = handlers.globalResources.getMetadataDatabase();
+        if (metadataDb && typeof metadataDb.getDynGenPreviewHashes === 'function') {
+            stored = await metadataDb.getDynGenPreviewHashes((filenames || []).map(originalFilenameFor));
+        }
+    } catch (error) {
+        console.debug(`dynGenPreview hash lookup fell back to PNG reads: ${error.message}`);
+    }
+    return async (originalFilename, originalPath) => {
+        const entry = stored.get(originalFilename);
+        if (entry) {
+            return entry.hash || null;
+        }
+        const imageBuffer = await fs.promises.readFile(originalPath);
+        const metadata = handlers.globalResources.getPngMetadata().readMetadata(imageBuffer);
+        if (!metadata?.tEXt?.Comment) {
+            return null;
+        }
+        const commentData = JSON.parse(metadata.tEXt.Comment);
+        return commentData?.forge_data?.dynamic_generation?.compiled_prompt?.preview_image_hash || null;
+    };
+}
+
 const GALLERY_BLOCK_SIZE = 750;
 function buildGalleryReplicationFields({
     file,
@@ -1077,6 +1121,8 @@ async function handleDeleteImagesBulk(handlers, ws, message, clientInfo, wsServe
             return `${baseName}_preview.png`;
         };
 
+        const resolveDynGenPreviewHash = await createDynGenPreviewHashResolver(handlers, filenames);
+
         for (const filename of filenames) {
             try {
                 const filePath = path.join(handlers.globalResources.getPath("images"), filename);
@@ -1123,20 +1169,15 @@ async function handleDeleteImagesBulk(handlers, ws, message, clientInfo, wsServe
 
                     // Try to extract and delete dynGenPreview file from original
                     try {
-                        const imageBuffer = await fs.promises.readFile(originalPath);
-                        const metadata = handlers.globalResources.getPngMetadata().readMetadata(imageBuffer);
-                        if (metadata?.tEXt?.Comment) {
-                            const commentData = JSON.parse(metadata.tEXt.Comment);
-                            const previewHash = commentData?.forge_data?.dynamic_generation?.compiled_prompt?.preview_image_hash;
+                        const previewHash = await resolveDynGenPreviewHash(originalFilename, originalPath);
 
-                            if (previewHash) {
-                                const dynGenPreviewDir = path.join(handlers.globalResources.getPath("cache"), 'dynGenPreview');
-                                const dynGenPreviewPath = path.join(dynGenPreviewDir, `${previewHash}.png`);
+                        if (previewHash) {
+                            const dynGenPreviewDir = path.join(handlers.globalResources.getPath("cache"), 'dynGenPreview');
+                            const dynGenPreviewPath = path.join(dynGenPreviewDir, `${previewHash}.png`);
 
-                                if (await fileExists(dynGenPreviewPath)) {
-                                    filesToDelete.push({ path: dynGenPreviewPath, type: 'dynGenPreview' });
-                                    console.log(`🗑️ Will delete dynGenPreview: ${previewHash.substring(0, 8)}...`);
-                                }
+                            if (await fileExists(dynGenPreviewPath)) {
+                                filesToDelete.push({ path: dynGenPreviewPath, type: 'dynGenPreview' });
+                                console.log(`🗑️ Will delete dynGenPreview: ${previewHash.substring(0, 8)}...`);
                             }
                         }
                     } catch (metadataError) {
@@ -1265,20 +1306,16 @@ async function handleDeleteUnupscaledOriginal(handlers, ws, message, clientInfo,
 
         const filesToDelete = [{ path: originalPath, type: 'original' }];
         try {
-            const imageBuffer = await fs.promises.readFile(originalPath);
-            const metadata = handlers.globalResources.getPngMetadata().readMetadata(imageBuffer);
-            if (metadata?.tEXt?.Comment) {
-                const commentData = JSON.parse(metadata.tEXt.Comment);
-                const previewHash = commentData?.forge_data?.dynamic_generation?.compiled_prompt?.preview_image_hash;
-                if (previewHash) {
-                    const dynGenPreviewPath = path.join(
-                        handlers.globalResources.getPath('cache'),
-                        'dynGenPreview',
-                        `${previewHash}.png`
-                    );
-                    if (await fileExists(dynGenPreviewPath)) {
-                        filesToDelete.push({ path: dynGenPreviewPath, type: 'dynGenPreview' });
-                    }
+            const resolveDynGenPreviewHash = await createDynGenPreviewHashResolver(handlers, [filename]);
+            const previewHash = await resolveDynGenPreviewHash(filename, originalPath);
+            if (previewHash) {
+                const dynGenPreviewPath = path.join(
+                    handlers.globalResources.getPath('cache'),
+                    'dynGenPreview',
+                    `${previewHash}.png`
+                );
+                if (await fileExists(dynGenPreviewPath)) {
+                    filesToDelete.push({ path: dynGenPreviewPath, type: 'dynGenPreview' });
                 }
             }
         } catch (metadataError) {
@@ -1356,6 +1393,7 @@ async function handleSendToSequenziaBulk(handlers, ws, message, clientInfo, wsSe
 
         const results = [];
         const errors = [];
+        const resolveDynGenPreviewHash = await createDynGenPreviewHashResolver(handlers, filenames);
 
         for (const filename of filenames) {
             try {
@@ -1404,20 +1442,15 @@ async function handleSendToSequenziaBulk(handlers, ws, message, clientInfo, wsSe
 
                     // Try to extract and delete dynGenPreview file from original
                     try {
-                        const imageBuffer = await fs.promises.readFile(originalPath);
-                        const metadata = handlers.globalResources.getPngMetadata().readMetadata(imageBuffer);
-                        if (metadata?.tEXt?.Comment) {
-                            const commentData = JSON.parse(metadata.tEXt.Comment);
-                            const previewHash = commentData?.forge_data?.dynamic_generation?.compiled_prompt?.preview_image_hash;
+                        const previewHash = await resolveDynGenPreviewHash(originalFilename, originalPath);
 
-                            if (previewHash) {
-                                const dynGenPreviewDir = path.join(handlers.globalResources.getPath("cache"), 'dynGenPreview');
-                                const dynGenPreviewPath = path.join(dynGenPreviewDir, `${previewHash}.png`);
+                        if (previewHash) {
+                            const dynGenPreviewDir = path.join(handlers.globalResources.getPath("cache"), 'dynGenPreview');
+                            const dynGenPreviewPath = path.join(dynGenPreviewDir, `${previewHash}.png`);
 
-                                if (await fileExists(dynGenPreviewPath)) {
-                                    filesToDelete.push(dynGenPreviewPath);
-                                    console.log(`🗑️ Will delete dynGenPreview: ${previewHash.substring(0, 8)}...`);
-                                }
+                            if (await fileExists(dynGenPreviewPath)) {
+                                filesToDelete.push(dynGenPreviewPath);
+                                console.log(`🗑️ Will delete dynGenPreview: ${previewHash.substring(0, 8)}...`);
                             }
                         }
                     } catch (metadataError) {
@@ -1546,24 +1579,31 @@ async function handleUpdateImagePresetBulk(handlers, ws, message, clientInfo, ws
                     continue;
                 }
 
-                // Update the preset name in the metadata
-                if (!metadata.forge_data) {
-                    metadata.forge_data = {};
-                }
-
+                let updatedImageBuffer = null;
                 if (presetName === null || presetName === '') {
-                    // Remove preset name
-                    delete metadata.forge_data.preset_name;
+                    // Remove preset name. readMetadata has no forge_data (it lives in the Comment
+                    // JSON) and updateMetadata keeps an existing preset_name, so edit the Comment (#622).
+                    let comment = null;
+                    try {
+                        comment = metadata.tEXt?.Comment ? JSON.parse(metadata.tEXt.Comment) : null;
+                    } catch (_) {
+                        comment = null;
+                    }
+                    if (comment?.forge_data && Object.prototype.hasOwnProperty.call(comment.forge_data, 'preset_name')) {
+                        delete comment.forge_data.preset_name;
+                        updatedImageBuffer = handlers.globalResources.getPngMetadata()
+                            .insertTextChunk(imageBuffer, 'Comment', JSON.stringify(comment));
+                    }
                 } else {
                     // Set new preset name
-                    metadata.forge_data.preset_name = presetName;
+                    updatedImageBuffer = handlers.globalResources.getPngMetadata()
+                        .updateMetadata(imageBuffer, { preset_name: presetName });
                 }
 
-                // Update the image with new metadata
-                const updatedImageBuffer = handlers.globalResources.getPngMetadata().updateMetadata(imageBuffer, metadata.forge_data);
-
-                // Write the updated image back to disk
-                await fs.promises.writeFile(filePath, updatedImageBuffer);
+                // Write the updated image back to disk (nothing to remove: file unchanged)
+                if (updatedImageBuffer) {
+                    await fs.promises.writeFile(filePath, updatedImageBuffer);
+                }
 
                 results.push({ filename, presetName: presetName || 'removed' });
                 console.log(`✏️ Updated preset name for ${filename}: ${presetName || 'removed'}`);
@@ -1704,5 +1744,6 @@ module.exports = {
     broadcastGalleryMutation,
     clientMatchesGalleryWorkspace,
     buildGalleryHint,
-    galleryUpdatedAtMs
+    galleryUpdatedAtMs,
+    createDynGenPreviewHashResolver
 };

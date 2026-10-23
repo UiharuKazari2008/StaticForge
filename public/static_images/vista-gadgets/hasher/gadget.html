@@ -1,0 +1,29 @@
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+    <title>Vista SideBar Gadget - Hasher</title>
+    
+    <link href="css/gadget.css" rel="stylesheet" type="text/css" />
+	
+	<script src="js/core.js" language="JavaScript" type="text/javascript"></script>
+	<script src="js/gadget.js" language="JavaScript" type="text/javascript"></script>
+	<script src="js/flyout.js" language="JavaScript" type="text/javascript"></script>
+
+	<script language="JavaScript" type="text/javascript">
+	function check() {
+		if(findDOM('string').value.length < 1) {
+			findDOM('searchbt').disabled = true;
+		}
+		else {
+			findDOM('searchbt').disabled = false;
+		}
+	}
+	</script>
+</head>
+<body onload="loadMain(); check();">
+	<div class='gadget' id="GadgetMain">
+		<b class="titel">String to encrypt:</b><br/>
+		<input type="text" value="" id="string" class="inputTXT" onkeyup="check();"/>
+		<p align="right"><input type='submit' value='Encrypt' onclick='javascript:doProcFlyoutOpen();' id="searchbt"/></p>
+	</div>
+</body>
+</html>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>Blockade</name>
+  <namespace>tyler.Gadgets</namespace>
+  <version>1.0.0.0</version>
+  <author name="Tyler">
+    <logo src="logo.png" />
+  </author>
+  <copyright>&#169; 2006</copyright>
+  <description>Clear All The Lines.</description>
+  <icons>
+      <icon height="48" width="48" src="icon.png" />
+  </icons>
+  <logo>logo.png</logo>
+  <hosts>
+    <host name="sidebar">
+      <base type="html" apiVersion="1.0.0" src="blockade.html" />
+      <permissions>full</permissions>
+      <platform minPlatformVersion ="0.3"/>
+    </host>
+  </hosts>
+</gadget>

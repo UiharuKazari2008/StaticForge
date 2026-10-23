@@ -1,0 +1,45 @@
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+<title>eBay Searchbar</title>
+<style type="text/css">
+body {
+	margin: 0;
+	width: 135px;
+	height: 68px;
+	background-image: url(back.gif);
+	background-repeat: no-repeat;
+}
+.search {
+	font-family: Verdana, Arial, Helvetica, sans-serif;
+	font-size: 9px;
+	width: 100px;
+	height: 18px;
+	margin-top: 39px;
+	margin-left: 17px;
+	border: 1px solid #000000;
+}
+.layer {
+	position: absolute;
+	margin-top: 6px;
+	margin-left: 11px;
+	height: 25px;
+	width: 110px;
+	cursor: hand;
+	cursor: pointer;
+	background-image: url(blank.gif);
+}
+</style>
+<script language="JavaScript" type="text/javascript">
+function open_window(queryform)
+{
+	if (queryform.query.value == "") window.open("http://rover.ebay.com/rover/1/711-1751-2978-320/1?aid=7088800&pid=2382735&loc=http%3A//search.ebay.com/search/search.dll%3FMfcISAPICommand%3DGetResult%26ht%3D1%26SortProperty%3DMetaEndSort%26ebaytag1%3Debayreg%26aid%3D7088800%26pid%3D2382735%26mpre%3Dhttp%3A//search.ebay.com/search/search.dll%26query%3" + queryform.query.value);
+	else window.open("http://rover.ebay.com/rover/1/711-1751-2978-320/1?aid=7088800&pid=2382735&loc=http%3A//search.ebay.com/search/search.dll%3FMfcISAPICommand%3DGetResult%26ht%3D1%26SortProperty%3DMetaEndSort%26ebaytag1%3Debayreg%26aid%3D7088800%26pid%3D2382735%26mpre%3Dhttp%3A//search.ebay.com/search/search.dll%26query%3D" + queryform.query.value);
+	return false;
+}
+</script>
+</head>
+<body>
+<div class="layer" onmousedown="window.open('http://rover.ebay.com/rover/1/711-6294-2978-0/1?aid=9254938&pid=2382735')";></div>
+<form onsubmit="return open_window(this)" action=""><input name="query" type="text" class="search" onmouseover="this.value=''; this.focus();" /></form>
+</body>
+</html>

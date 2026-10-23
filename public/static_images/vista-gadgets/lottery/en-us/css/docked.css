@@ -1,0 +1,122 @@
+body {
+	width: 130px;
+	height: 136px;
+	background-image: url(../images/BackgroundDocked.png);
+	background-repeat: no-repeat;
+}
+
+.positionNumber1 {
+	font-family: Arial, Helvetica, sans-serif;
+	font-size: 16px;
+	font-weight: bold;
+	color: #000000;
+	position: absolute;
+	left: 15px;
+	top: 30px;
+}
+.positionNumber2 {
+	font-family: Arial, Helvetica, sans-serif;
+	font-size: 16px;
+	font-weight: bold;
+	color: #000000;
+	position: absolute;
+	left: 56px;
+	top: 30px;
+}
+.positionNumber3 {
+	font-family: Arial, Helvetica, sans-serif;
+	font-size: 16px;
+	font-weight: bold;
+	color: #000000;
+	position: absolute;
+	left: 98px;
+	top: 30px;
+}
+.positionNumber4 {
+	font-family: Arial, Helvetica, sans-serif;
+	font-size: 16px;
+	font-weight: bold;
+	color: #000000;
+	position: absolute;
+	left: 15px;
+	top: 73px;
+}
+.positionNumber5 {
+	font-family: Arial, Helvetica, sans-serif;
+	font-size: 16px;
+	font-weight: bold;
+	color: #000000;
+	position: absolute;
+	left: 56px;
+	top: 73px;
+}
+.positionNumber6 {
+	font-family: Arial, Helvetica, sans-serif;
+	font-size: 16px;
+	font-weight: bold;
+	color: #000000;
+	position: absolute;
+	left: 98px;
+	top: 73px;
+}
+a.button:link
+{
+	font-family: Arial, Helvetica, sans-serif;
+	font-size: 12px;
+	font-weight: bold;
+	color: #FFFFFF;
+	text-decoration: none;
+	background-image: url(../images/button.png);
+	background-repeat: no-repeat;
+	background-position: center center;
+	position: absolute;
+	left: 1px;
+	top: 106px;
+	text-align: center;
+	vertical-align: middle;
+	display: block;
+	padding-top: 6px;
+	height: 27px;
+	width: 128px;
+}
+a.button:visited
+{
+	font-family: Arial, Helvetica, sans-serif;
+	font-size: 12px;
+	font-weight: bold;
+	color: #FFFFFF;
+	text-decoration: none;
+	background-image: url(../images/button.png);
+	background-repeat: no-repeat;
+	background-position: center center;
+	position: absolute;
+	left: 1px;
+	top: 106px;
+	text-align: center;
+	vertical-align: middle;
+	display: block;
+	padding-top: 6px;
+	height: 27px;
+	width: 128px;
+}
+a.button:hover
+{
+	font-family: Arial, Helvetica, sans-serif;
+	font-size: 12px;
+	font-weight: bold;
+	color: #FFFFFF;
+	text-decoration: none;
+	background-image: url(../images/buttonHover.png);
+	background-repeat: no-repeat;
+	background-position: center center;
+	position: absolute;
+	left: 1px;
+	top: 106px;
+	text-align: center;
+	vertical-align: middle;
+	display: block;
+	padding-top: 6px;
+	height: 27px;
+	width: 128px;
+}
+

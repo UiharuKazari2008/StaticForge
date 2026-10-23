@@ -91,7 +91,7 @@ function listQualityForModel(table, modelKey) {
             id: item.id != null ? item.id : true,
             name: item.name || 'Quality',
             value: String(item.value || ''),
-            match: Array.isArray(item.match) ? item.match : undefined,
+            match: Array.isArray(item.match) ? cloneJson(item.match) : undefined,
             modelKey: resolved
         }));
     }
@@ -135,7 +135,7 @@ function summarizeNsfw(nsfwPresets) {
             name: NSFW_LEVEL_LABELS[id] || NSFW_LEVEL_LABELS[String(id)] || `Level ${id}`,
             add: compactNsfwAdd(add),
             ucPrefix: add.uc_prefix || undefined,
-            remove: Array.isArray(remove) ? remove : (remove && typeof remove === 'object' ? remove : undefined)
+            remove: Array.isArray(remove) || (remove && typeof remove === 'object') ? cloneJson(remove) : undefined
         };
     });
 }
@@ -143,7 +143,8 @@ function summarizeNsfw(nsfwPresets) {
 function readPromptConfig(globalResources) {
     if (!globalResources || typeof globalResources.getPromptConfig !== 'function') return {};
     try {
-        return globalResources.getPromptConfig({ clone: true }) || {};
+        // Read-only: the catalog copies every value it keeps (no 2.4 MB deep clone)
+        return globalResources.getPromptConfig() || {};
     } catch (_err) {
         return {};
     }
@@ -159,7 +160,7 @@ function listQualitySubToggles(promptConfig) {
         name: st.name,
         value: st.value,
         defaultEnabled: !!st.default_enabled,
-        models: Array.isArray(st.models) ? st.models : undefined,
+        models: Array.isArray(st.models) ? st.models.slice() : undefined,
         param: `dataset_config.settings.${quality.value || '__quality__'}.${st.id}`
     }));
 }

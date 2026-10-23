@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+    <name>Digi-Watch</name>
+    <namespace>selbit.com/digiWatch</namespace>
+    <version>0.5</version>
+    <author name="B. Rasmussen">
+        <info url="http://soft.selbit.com/tinyApps/digiWatch" />
+    </author>
+    <copyright>2006</copyright>
+    <description>Simple Digital Led Clock.</description>
+    <icons>
+     <icon src="DigiWatch.PNG" />
+   </icons>
+    <hosts>
+        <host name="sidebar">
+            <base type="HTML" apiVersion="1.00" src="DigiWatch.html" />
+            <permissions>full</permissions>
+            <platform minPlatformVersion="0.3" />
+        </host>
+    </hosts>
+</gadget>

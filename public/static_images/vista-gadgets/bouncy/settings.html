@@ -1,0 +1,18 @@
+<html>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+	<style>
+		body{width:180px;height:70px;font-family:Tahoma;font-size:12px;}
+		table{width:100%;height:100%;font-family:Tahoma;font-size:12px;}
+	</style>
+	<script src="Settings.js" type="text/javascript" language="javascript"></script>
+</head>
+
+<body onload="loadSettings()">
+<table cellpadding=0 cellspacing=0 border=0 width=100% >
+<tr title="Number of balls"><td align=right width=80 >Balls:</td><td align=left><input type="text" id="balls" name="balls" maxlength=2 size=5 onkeypress="return numbersonly('0123456789', this, event)"></td></tr>
+<tr title="The speed at which the balls will move"><td align=right>Speed:</td><td align=left><select id="spd" name="spd"><option value="0.5">x0.5</option><option value="1">x1.0</option><option value="1.5">x1.5</option><option value="2">x2.0</option><option value="3">x3.0</option><option value="4">x4.0</option><option value="8">x8.0</option></select></td></tr>
+<!--<tr title="Will slow the ball down on every bounce"><td align=right><nobr>Bounce Friction:</nobr></td><td align=left><input type="checkbox" id="friction" name="friction" /></td></tr>-->
+</table>
+</body>
+</html>
+	

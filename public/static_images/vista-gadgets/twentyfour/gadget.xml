@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>TwentyFourClock</name>
+  <namespace>digx</namespace>
+  <version>0.1</version>
+  <author name="Rick Martinez">
+    <info url="http://www.digxworld.com" />
+    <logo src="author.png" />
+  </author>
+  <icons>
+    <icon src="logo.png" />
+  </icons>
+  <copyright>&#169; 2007</copyright>
+  <description>Tells the current time, 24 style.</description>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="TwentyFourClock.html" />
+      <permissions>Full</permissions>
+      <platform minPlatformVersion="1.0" />
+    </host>
+  </hosts>
+</gadget>

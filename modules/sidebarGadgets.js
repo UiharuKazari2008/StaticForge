@@ -4,7 +4,9 @@
  * packets are modules/ws/handlers/290-sidebarHandler.js (administrators only).
  */
 const dns = require('dns').promises;
+const fs = require('fs');
 const net = require('net');
+const path = require('path');
 const {
     isPrivateOrLocalIP,
     getConfiguredLocation,
@@ -53,6 +55,51 @@ const LOCATION_TTL_MS = 24 * 60 * 60 * 1000;
 const LOCATION_FAILURE_TTL_MS = 15 * 60 * 1000;
 
 class SidebarStateError extends Error {}
+
+// Hosted gadgets (Yozora #629): packages unpacked by scripts/import-vista-gadget.js and listed in
+// public/static_images/vista-gadgets/catalog.json. Their System.Gadget.Settings live in settings.store.
+const HOSTED_CATALOG = path.join(__dirname, '..', 'public', 'static_images', 'vista-gadgets', 'catalog.json');
+const HOSTED_KEY_RE = /^[A-Za-z0-9_.:\- ]{1,64}$/;
+const MAX_HOSTED_KEYS = 64;
+const MAX_HOSTED_VALUE = 4096;
+const MAX_HOSTED_BYTES = 16 * 1024;
+let hostedCatalog = { mtimeMs: -1, ids: new Set() };
+
+/** Hosted gadget ids, re-read when the catalog file changes (an import needs no restart). */
+function hostedGadgetIds() {
+    try {
+        const { mtimeMs } = fs.statSync(HOSTED_CATALOG);
+        if (mtimeMs !== hostedCatalog.mtimeMs) {
+            const list = JSON.parse(fs.readFileSync(HOSTED_CATALOG, 'utf8')).gadgets || [];
+            const ids = new Set(list.map((g) => g && g.id).filter((id) => typeof id === 'string' && !GADGET_TYPES.includes(id)));
+            hostedCatalog = { mtimeMs, ids };
+        }
+    } catch (_e) {
+        if (hostedCatalog.mtimeMs !== -1) hostedCatalog = { mtimeMs: -1, ids: new Set() };
+    }
+    return hostedCatalog.ids;
+}
+
+/** System.Gadget.Settings values: strings, finite numbers and booleans under a small key / byte budget. */
+function sanitizeHostedSettings(raw) {
+    const src = raw && typeof raw === 'object' && raw.store && typeof raw.store === 'object' && !Array.isArray(raw.store) ? raw.store : {};
+    const store = {};
+    let bytes = 0;
+    let keys = 0;
+    for (const [key, value] of Object.entries(src)) {
+        if (keys >= MAX_HOSTED_KEYS || !HOSTED_KEY_RE.test(key)) continue;
+        let v;
+        if (typeof value === 'string') v = value.slice(0, MAX_HOSTED_VALUE);
+        else if (typeof value === 'number' && Number.isFinite(value)) v = value;
+        else if (typeof value === 'boolean') v = value;
+        else continue;
+        bytes += key.length + (typeof v === 'string' ? v.length : 8);
+        if (bytes > MAX_HOSTED_BYTES) break;
+        store[key] = v;
+        keys += 1;
+    }
+    return { store };
+}
 
 /** A Slide Show frame's Image Search query (omegasearch_query fields); null when unusable. */
 function sanitizeFrameSearch(raw) {
@@ -119,7 +166,7 @@ function sanitizeGadgetSettings(type, raw) {
         case 'clock':
         case 'hero':
             return {
-                theme: clampInt(s.theme, 0, type === 'hero' ? 8 : 7, 0),
+                theme: clampInt(s.theme, 0, type === 'hero' ? 11 : 7, 0),
                 name: text(s.name, 30),
                 timeZone: isTimeZone(s.timeZone) ? s.timeZone : '',
                 seconds: bool(s.seconds, false)
@@ -230,7 +277,8 @@ function sanitizeSidebarState(raw) {
     const seen = new Set();
     const gadgets = [];
     for (const g of Array.isArray(raw.gadgets) ? raw.gadgets : []) {
-        if (!g || !GADGET_TYPES.includes(g.type)) continue;
+        const hosted = !!g && !GADGET_TYPES.includes(g.type) && hostedGadgetIds().has(g.type);
+        if (!g || !(GADGET_TYPES.includes(g.type) || hosted)) continue;
         const id = text(g.id, 40).replace(/[^A-Za-z0-9_-]/g, '');
         if (!id || seen.has(id)) continue;
         seen.add(id);
@@ -242,7 +290,7 @@ function sanitizeSidebarState(raw) {
             y: clampInt(g.y, 0, 10000, 0),
             onTop: bool(g.onTop, false),
             opacity: pick(Number(g.opacity), [20, 40, 60, 80, 100], 100),
-            settings: sanitizeGadgetSettings(g.type, g.settings)
+            settings: hosted ? sanitizeHostedSettings(g.settings) : sanitizeGadgetSettings(g.type, g.settings)
         });
         if (gadgets.length >= MAX_GADGETS) break;
     }
@@ -623,7 +671,10 @@ async function getFeed(url) {
 }
 
 module.exports = {
+    assertPublicHttps,
     GADGET_TYPES,
+    hostedGadgetIds,
+    sanitizeHostedSettings,
     SidebarStateError,
     sanitizeSidebarState,
     pickWorkspaceImage,

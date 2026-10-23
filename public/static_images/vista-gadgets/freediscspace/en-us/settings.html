@@ -1,0 +1,76 @@
+<html>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+	<style>
+		body{ 
+			width:250;
+			height:120;
+		}
+	</style>
+	<script>
+	function init() {
+		var strDriveLetter = System.Gadget.Settings.read("driveLetter");
+		if (strDriveLetter != "")
+			driveLetter.value = strDriveLetter;
+
+		var strBackgroundColour = System.Gadget.Settings.read("backgroundColour");
+		if (strBackgroundColour != "")
+			backgroundColour.value = strBackgroundColour;
+		}
+
+	System.Gadget.onSettingsClosing = SettingsClosing;
+	function SettingsClosing(event)
+	{
+ 		if (event.closeAction == event.Action.commit) {
+			strDriveLetter = driveLetter.value;
+			System.Gadget.Settings.write("driveLetter", strDriveLetter);
+
+			strBackgroundColour = backgroundColour.value;
+			System.Gadget.Settings.write("backgroundColour", strBackgroundColour);
+		}
+		
+		event.cancel = false;
+	}
+	</script>
+</head>
+<body onload="init()">
+	<span id="driveToMonitor" style="font-family: Tahoma; font-size: 10pt;">
+		Drive to Monitor:<br>
+		<select name="driveLetter">
+			<option value="A">A:</option>
+			<option value="B">B:</option>
+			<option value="C">C:</option>
+			<option value="D">D:</option>
+			<option value="E">E:</option>
+			<option value="F">F:</option>
+			<option value="G">G:</option>
+			<option value="H">H:</option>
+			<option value="I">I:</option>
+			<option value="J">J:</option>
+			<option value="K">K:</option>
+			<option value="L">L:</option>
+			<option value="M">M:</option>
+			<option value="N">N:</option>
+			<option value="O">O:</option>
+			<option value="P">P:</option>
+			<option value="Q">Q:</option>
+			<option value="R">R:</option>
+			<option value="S">S:</option>
+			<option value="T">T:</option>
+			<option value="U">U:</option>
+			<option value="V">V:</option>
+			<option value="W">W:</option>
+			<option value="X">X:</option>
+			<option value="Y">Y:</option>
+			<option value="Z">Z:</option>
+		</select>
+	</span>
+	<hr>
+	<span id="spanBackgroundColour" style="font-family: Tahoma; font-size: 10pt;">
+		Background Colour:<br>
+		<select name="backgroundColour">
+			<option value="yellow">Yellow</option>
+			<option value="green">Green</option>
+		</select>
+	</span>
+</body>
+</html>

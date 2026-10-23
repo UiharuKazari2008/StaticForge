@@ -23,10 +23,25 @@
  *   const op = begin({ op, items: [{ name, size }], from: { name, path }, to: { name, path } })
  *   op.next() / op.done(item)       around each item; op.cancelled once Cancel was pressed
  *   op.doneAll(items)               a batch done at once (one request for several items)
+ *   op.progress(bytes, total)       bytes done so far inside the operation (a download as it
+ *                                   arrives); a total learned only now sizes the header
  *   op.attempt(item, fn)            await fn(); a failure asks Try Again / Skip / Cancel; resolves
  *                                   { ok, value }. Without the dialog the failure throws as before.
  *   op.setPlace('from' | 'to', p)   a better name for a location (the server's, once it answers)
  *   op.finish()                     closes the dialog
+ *   begin({ ..., onCancel })        called once when Cancel is pressed (stop the work behind it)
+ *   begin({ ..., verb })            the header's verb in place of the operation's ("Downloading 1
+ *                                   item (199 MB)"); the movie stays the operation's
+ *   task({ title, line, op, onCancel })
+ *                                   a piece of work that is not a file transfer (Upscaling Image,
+ *                                   Generating Image ...): its title as the header, a status line,
+ *                                   op.setPercent(0-100) / op.setLine / op.setHeader; Cancel only
+ *                                   when onCancel can stop it (Close then just shuts the window);
+ *                                   op.setMarquee(true) while the amount is not known yet
+ *   op.complete({ header, lines, buttons })
+ *                                   keeps the end on screen instead of closing (a download's
+ *                                   "Download complete" with Open / Open Folder / Close); resolves
+ *                                   the pressed button's value, or 'close'
  *   op.shown                        true when the dialog is up (the desktop); callers that toast
  *                                   without it stay quiet with it
  *   available()                     whether operations get the dialog (the desktop)
@@ -81,6 +96,7 @@
         timeLabel: 'Time remaining:',
         itemsLabel: 'Items remaining:',
         speedLabel: 'Speed:',
+        statusLabel: 'Status:',
         calculating: 'Calculating...',
         calculatingTime: 'Calculating time remaining...',
         canceling: 'Canceling...',
@@ -179,15 +195,26 @@
     class Operation {
         constructor(options) {
             this.op = MOVIES[options.op] ? options.op : 'copy';
-            this.from = options.from && options.from.name ? options.from : null;
-            this.to = options.to && options.to.name ? options.to : null;
-            this.items = (options.items || []).map((i) => ({ name: i && i.name, size: Math.max(0, Number(i && i.size) || 0) }));
+            this.verb = options.verb || VERBS[this.op];
+            this.errorVerb = options.verb ? String(options.verb).toLowerCase() : ERROR_VERBS[this.op];
+            // task(): a header and a status line over a percent bar, no items or places
+            this.task = !!options.task;
+            this.header = options.header || '';
+            this.line = options.line || '';
+            this.percent = 0;
+            this.from = !this.task && options.from && options.from.name ? options.from : null;
+            this.to = !this.task && options.to && options.to.name ? options.to : null;
+            const items = this.task ? [{ name: this.header }] : (options.items || []);
+            this.items = items.map((i) => ({ name: i && i.name, size: Math.max(0, Number(i && i.size) || 0) }));
             this.totalItems = this.items.length;
             this.totalBytes = this.items.reduce((sum, i) => sum + i.size, 0);
             this.sized = this.totalBytes > 0;
             this.doneItems = 0;
             this.doneBytes = 0;
             this.cancelled = false;
+            this.onCancel = typeof options.onCancel === 'function' ? options.onCancel : null;
+            // a task nothing can stop has no Cancel: Close only shuts the window, the work goes on
+            this.cancellable = !this.task || !!this.onCancel;
             this.finished = false;
             this.expanded = false;
             this.started = Date.now();
@@ -199,7 +226,44 @@
         }
 
         get headerText() {
-            return `${VERBS[this.op]} ${itemsText(this.totalItems, this.totalBytes, this.sized)}`;
+            if (this.task) return this.header;
+            return `${this.verb} ${itemsText(this.totalItems, this.totalBytes, this.sized)}`;
+        }
+
+        /** Something that can stop the work after all (a toast's Cancel button arriving later). */
+        setOnCancel(fn) {
+            if (typeof fn !== 'function') return;
+            this.onCancel = fn;
+            this.cancellable = true;
+            if (this.modal && !this.completed && !this.cancelled) this.cancelButton.disabled = false;
+        }
+
+        /** A task's done part, 0-100. */
+        setPercent(percent) {
+            this.percent = Math.max(0, Math.min(100, Number(percent) || 0));
+            this.render();
+        }
+
+        /** The amount is not known yet: the bar's marquee (7.css .win7 [role=progressbar].marquee), no estimate. */
+        setMarquee(on) {
+            this.marquee = !!on;
+            if (this.bar) this.bar.classList.toggle('marquee', this.marquee);
+            this.render();
+        }
+
+        /** A task's status line (the toast's message it stands for). */
+        setLine(text) {
+            this.line = String(text == null ? '' : text);
+            if (this.lineEls) this.lineEls.forEach((n) => { n.textContent = this.line; });
+        }
+
+        /** A task's header, in the banner and (until the time estimate) the caption. */
+        setHeader(text) {
+            if (!text || !this.task || this.completed) return;
+            this.header = String(text);
+            if (!this.modal) return;
+            this.headerLabel.textContent = this.header;
+            if (!this.estimate) this.captionText.textContent = this.header;
         }
 
         get shown() {
@@ -220,6 +284,22 @@
                 this.doneItems = Math.min(this.totalItems, this.doneItems + 1);
                 this.doneBytes = Math.min(this.totalBytes, this.doneBytes + Math.max(0, Number(item && item.size) || 0));
             }
+            this.render();
+        }
+
+        /** Bytes done so far (a download as it arrives); a total known only now sizes the header. */
+        progress(bytes, total) {
+            const size = Math.max(0, Number(total) || 0);
+            if (size > 0 && size !== this.totalBytes && this.totalItems === 1) {
+                this.items[0].size = size;
+                this.totalBytes = size;
+                this.sized = true;
+                if (this.modal) {
+                    this.headerLabel.textContent = this.headerText;
+                    if (!this.estimate) this.captionText.textContent = this.headerText;
+                }
+            }
+            this.doneBytes = Math.min(this.totalBytes, Math.max(0, Number(bytes) || 0));
             this.render();
         }
 
@@ -247,7 +327,7 @@
         async interrupted(item, err) {
             const names = (Array.isArray(item) ? item : [item]).map((i) => i && i.name).filter(Boolean);
             const what = names.length > 1 ? 'files' : 'file';
-            const message = `<p>An unexpected error is keeping you from ${ERROR_VERBS[this.op]} the ${what}. `
+            const message = `<p>An unexpected error is keeping you from ${this.errorVerb} the ${what}. `
                 + 'If you continue to receive this error, you can use the error code to search for help with this problem.</p>'
                 + `<p>${escapeHtml((err && err.message) || String(err || 'Unknown error'))}</p>`
                 + (names.length ? `<p><b>${escapeHtml(names.slice(0, 3).join(', '))}${names.length > 3 ? ', ...' : ''}</b></p>` : '');
@@ -264,6 +344,9 @@
         cancel() {
             if (this.cancelled || this.finished) return;
             this.cancelled = true;
+            if (this.onCancel) {
+                try { this.onCancel(); } catch (err) { console.error('File operation cancel:', err); }
+            }
             if (!this.modal) return;
             this.cancelButton.disabled = true;
             this.timeLine.textContent = TEXT.canceling;
@@ -277,6 +360,9 @@
                 // the bar full, and the dialog up long enough to be seen
                 this.doneItems = this.totalItems;
                 this.doneBytes = this.totalBytes;
+                this.percent = 100;
+                this.marquee = false;
+                if (this.bar) this.bar.classList.remove('marquee');
                 this.render();
                 const left = MIN_VISIBLE_MS - (Date.now() - this.shownAt);
                 if (left > 0) {
@@ -287,7 +373,77 @@
             this.close();
         }
 
+        /**
+         * The end kept on screen instead of closing: the bar full, the banner still, `header` in the
+         * caption and the banner, `lines` (each a list of strings and { b } bold parts) in place of
+         * from / to and the time, `buttons` ({ text, value, primary }) in place of Cancel. Resolves
+         * the pressed button's value, or 'close' (the caption's Close, Escape, no dialog).
+         */
+        complete({ header, lines, buttons } = {}) {
+            if (this.finished || !this.modal) {
+                this.finished = true;
+                this.close();
+                return Promise.resolve('close');
+            }
+            this.finished = true;
+            this.completed = true;
+            clearTimeout(this.tickTimer);
+            clearTimeout(this.swapTimer);
+            if (this.raf) cancelAnimationFrame(this.raf);
+            this.raf = 0;
+            this.movie.style.backgroundPositionY = '0px';
+            this.doneItems = this.totalItems;
+            this.doneBytes = this.totalBytes;
+            this.percent = 100;
+            this.marquee = false;
+            if (this.bar) this.bar.classList.remove('marquee');
+            this.render();
+            this.modal.classList.add('file-progress-complete');
+            if (header) {
+                this.captionText.textContent = header;
+                this.headerLabel.textContent = header;
+            }
+            // the summary alone, whatever More information showed
+            this.expanded = false;
+            this.modal.classList.remove('file-progress-expanded');
+            this.details.classList.remove('file-progress-shown', 'file-progress-fading');
+            this.summary.classList.remove('file-progress-fading');
+            this.summary.classList.add('file-progress-shown');
+            this.summary.replaceChildren(...(lines || []).map((parts) => {
+                const line = el('div', 'file-progress-line');
+                for (const part of [].concat(parts)) {
+                    line.append(part && typeof part === 'object' ? el('b', '', String(part.b || '')) : String(part == null ? '' : part));
+                }
+                return line;
+            }));
+            this.body.style.height = `${this.summary.children.length * 15}px`;
+            this.expando.remove();
+            this.cancelButton.remove();
+            let first = null;
+            for (const button of buttons || [{ text: 'Close', value: 'close', primary: true }]) {
+                const b = el('button', 'btn-secondary file-progress-action', button.text);
+                b.type = 'button';
+                if (button.primary) {
+                    b.dataset.dialogPrimary = '1';
+                    first = first || b;
+                }
+                b.addEventListener('click', () => {
+                    this.answer = button.value;
+                    this.close();
+                });
+                this.footer.appendChild(b);
+            }
+            if (first) {
+                try { first.focus({ preventScroll: true }); } catch (_) { /* old browsers */ }
+            }
+            return new Promise((resolve) => { this.resolveComplete = resolve; });
+        }
+
         close() {
+            if (this.resolveComplete) {
+                this.resolveComplete(this.answer || 'close');
+                this.resolveComplete = null;
+            }
             clearTimeout(this.tickTimer);
             clearTimeout(this.swapTimer);
             if (this.raf) cancelAnimationFrame(this.raf);
@@ -318,6 +474,8 @@
 
         /** The fraction done: by bytes when the items have sizes, by items otherwise. */
         fraction() {
+            if (this.marquee) return 0;
+            if (this.task) return this.percent / 100;
             if (this.totalBytes > 0) return this.doneBytes / this.totalBytes;
             return this.totalItems ? this.doneItems / this.totalItems : 1;
         }
@@ -331,7 +489,7 @@
             }
             this.estimate = {
                 seconds: elapsed * (1 - f) / f,
-                speed: this.doneBytes / elapsed
+                speed: this.task ? 0 : this.doneBytes / elapsed
             };
         }
 
@@ -387,6 +545,12 @@
             if (this.from) places.append(TEXT.from + ' ', place('from'));
             if (this.to) places.append(this.from ? TEXT.to : 'to ', place('to'));
             this.timeLine = el('div', 'file-progress-line file-progress-time', TEXT.calculatingTime);
+            this.lineEls = [];
+            if (this.task) {
+                // a task: its status where a transfer names from / to
+                places.textContent = this.line;
+                this.lineEls.push(places);
+            }
             summary.append(places, this.timeLine);
 
             const details = el('div', 'file-progress-details');
@@ -396,9 +560,10 @@
             };
             if (this.from) row(TEXT.fromLabel, el('div', 'file-progress-value')).appendChild(place('from'));
             if (this.to) row(TEXT.toLabel, el('div', 'file-progress-value')).appendChild(place('to'));
+            if (this.task) this.lineEls.push(row(TEXT.statusLabel, el('div', 'file-progress-value', this.line)));
             this.timeValue = row(TEXT.timeLabel, el('div', 'file-progress-value', TEXT.calculating));
-            this.itemsValue = row(TEXT.itemsLabel, el('div', 'file-progress-value'));
-            this.speedValue = row(TEXT.speedLabel, el('div', 'file-progress-value', TEXT.calculating));
+            this.itemsValue = this.task ? null : row(TEXT.itemsLabel, el('div', 'file-progress-value'));
+            this.speedValue = this.task ? null : row(TEXT.speedLabel, el('div', 'file-progress-value', TEXT.calculating));
             body.append(summary, details);
             this.summary = summary;
             this.details = details;
@@ -423,7 +588,9 @@
             this.cancelButton = el('button', 'btn-secondary file-progress-cancel', TEXT.cancel);
             this.cancelButton.type = 'button';
             this.cancelButton.dataset.dialogPrimary = '1';
+            if (!this.cancellable) this.cancelButton.disabled = true;
             footer.append(this.expando, this.cancelButton);
+            this.footer = footer;
 
             content.append(header, body, barRow, footer);
             modal.append(title, el('div', 'modal-focus-overlay'), controls, content);
@@ -431,15 +598,17 @@
 
             this.expando.addEventListener('click', () => this.toggleDetails());
             this.cancelButton.addEventListener('click', () => this.cancel());
+            // Close and Escape cancel a running operation and shut a completed one
+            const dismiss = () => (this.completed || !this.cancellable ? this.close() : this.cancel());
             closeBtn.addEventListener('click', (ev) => {
                 ev.preventDefault();
                 ev.stopPropagation();
-                this.cancel();
+                dismiss();
             }, true);
             modal.addEventListener('keydown', (ev) => {
                 if (ev.key === 'Escape') {
                     ev.preventDefault();
-                    this.cancel();
+                    dismiss();
                 }
             });
             this.modal = modal;
@@ -461,7 +630,7 @@
             }
             this.playMovie();
             setTimeout(() => {
-                if (this.modal && !this.cancelled) {
+                if (this.modal && !this.cancelled && this.cancellable) {
                     try { this.cancelButton.focus({ preventScroll: true }); } catch (_) { /* old browsers */ }
                 }
             }, 0);
@@ -499,17 +668,17 @@
 
         render() {
             if (!this.modal) return;
-            const pct = Math.max(0, Math.min(100, this.fraction() * 100));
+            const pct = this.marquee ? 0 : Math.max(0, Math.min(100, this.fraction() * 100));
             this.barFill.style.width = `${pct}%`;
             this.bar.setAttribute('aria-valuenow', String(Math.round(pct)));
-            this.itemsValue.textContent = `${count(this.totalItems - this.doneItems)} (${formatBytes(this.totalBytes - this.doneBytes)})`;
-            if (this.cancelled) return;
+            if (this.itemsValue) this.itemsValue.textContent = `${count(this.totalItems - this.doneItems)} (${formatBytes(this.totalBytes - this.doneBytes)})`;
+            if (this.cancelled || this.completed) return;
             if (this.estimate) {
                 const left = formatDuration(this.estimate.seconds);
                 this.captionText.textContent = `${left} remaining`;
                 this.timeLine.textContent = `About ${left} remaining`;
                 this.timeValue.textContent = `About ${left}`;
-                this.speedValue.textContent = `${formatBytes(this.estimate.speed)}/sec`;
+                if (this.speedValue) this.speedValue.textContent = `${formatBytes(this.estimate.speed)}/sec`;
             }
         }
 
@@ -541,6 +710,15 @@
 
     function available() {
         return isDesktop();
+    }
+
+    /** Work that is not a file transfer under the same dialog: title as the header, line as its status. */
+    function task(options) {
+        const o = options || {};
+        // the banner's movie: a removal deletes, a move moves, anything else copies
+        const title = String(o.title || o.line || '');
+        const op = o.op || (/\b(delet|remov|trash|purg|clear)/i.test(title) ? 'delete' : (/\bmov/i.test(title) ? 'move' : 'copy'));
+        return new Operation({ op, task: true, header: title, line: o.line || '', onCancel: o.onCancel });
     }
 
     function described(options, list) {
@@ -612,7 +790,13 @@
         return { done, cancelled: op.cancelled, shown, values };
     }
 
-    const api = { begin, run, batches, available, formatBytes, formatDuration, MOVIES, MIN_VISIBLE_MS };
+    /** How long a finished operation took: whole seconds under a minute, formatDuration after. */
+    function formatElapsed(seconds) {
+        const s = Math.max(0, Number(seconds) || 0);
+        return s < 60 ? plural(Math.max(1, Math.round(s)), 'Second', 'Seconds') : formatDuration(s);
+    }
+
+    const api = { begin, task, run, batches, available, formatBytes, formatDuration, formatElapsed, MOVIES, MIN_VISIBLE_MS };
     if (root) root.fileOperationProgress = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : null);

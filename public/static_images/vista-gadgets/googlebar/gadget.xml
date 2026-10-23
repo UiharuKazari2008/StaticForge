@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+	<name>Google Searchbar</name>
+	<namespace>microsoft.windows</namespace>
+	<version>1.1.0.0</version>
+	<author name="Tijl Deneut">
+		<logo src="logo.png" />
+		<info url="www.vibbe.be" />
+	</author>
+	<copyright>TLDT&#174; Productions 2006&#169;</copyright>
+	<description>Search directly on Google</description>
+	<icons>
+		<icon height="60" width="60" src="icon.png" />
+	</icons>
+	<hosts>
+		<host name="sidebar">
+			<base type="HTML" apiVersion="1.0.0" src="Google.html" />
+			<permissions>full</permissions>
+			<platform minPlatformVersion="0.3" />
+		</host>
+	</hosts>
+</gadget>

@@ -1,0 +1,379 @@
+<html>
+<!--
+	Selbit.com
+	Copyright 2006
+-->
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+	<style>
+		body {
+			margin:0px;
+			width:130px;
+			height:40px;
+
+			background:url(images/bg_full_24.png);
+		}
+		#selbit_com_digiwatch_outerWatch 
+		{
+			position: absolute;
+			left: 0;
+			top: 0;
+			width:130px;
+			height:40px;
+			overflow: hidden;
+		}
+		#selbit_com_digiwatch_innerWatch 
+		{
+			position: relative;
+			display: inline;
+			border: 1px outset gray;
+		}
+		.selbit_com_digiwatch_outerWatch_L0
+		{
+			text-align: left;
+			padding-top: 8px;
+		}
+		.selbit_com_digiwatch_outerWatch_L1
+		{
+			text-align: center;
+			padding-top: 3px;
+		}
+		.selbit_com_digiwatch_outerWatch_L2
+		{
+			text-align: center;
+			padding-top: 8px;
+		}
+		.selbit_com_digiwatch_digit {
+			margin:0px;
+			margin-left: 0px;
+			position:relative;
+		}
+		#selbit_com_digiwatch_overlay
+		{
+			position: absolute;
+			width:130px;
+			height:40px;
+			overflow: hidden;
+			left: 0;
+			top: 0;
+		}
+	</style>
+</head>
+<body>
+<div id="selbit_com_digiwatch_outerWatch">
+<div id="selbit_com_digiwatch_innerWatch"></div>
+</div>
+<div id="selbit_com_digiwatch_overlay"><img src="images/bg_full_24.png" border="0" /></div>
+</body>
+<script>
+
+/// Copyright 2006 Selbit.com
+
+var selbit_com_digiwatch_oWatch;
+function selbit_com_digiwatch_Init()
+{
+	selbit_com_digiwatch_oWatch = new selbit_com_digiwatch_DigiWatch("selbit_com_digiwatch_oWatch");
+	selbit_com_digiwatch_oWatch.Init();
+	document.ondblclick = selbit_com_digiwatch_Shift;
+	document.onclick = selbit_com_digiwatch_ShowDate;
+
+}
+function selbit_com_digiwatch_Shift() 
+{
+    selbit_com_digiwatch_oWatch.Shift();
+}
+function selbit_com_digiwatch_ShowDate() 
+{
+	selbit_com_digiwatch_oWatch.ShowDateStart();
+}
+
+selbit_com_digiwatch_Init();
+
+
+function selbit_com_digiwatch_DigiWatch(selfName) 
+{
+	this.m_selfName = selfName;
+	
+	this.m_overlay = document.getElementById( 'selbit_com_digiwatch_overlay' );
+	this.m_outerWatch = document.getElementById( 'selbit_com_digiwatch_outerWatch' );
+	this.m_innerWatch = document.getElementById( 'selbit_com_digiwatch_innerWatch' );
+	//this.m_overlay.onclick = this.m_selfName + '.Shift()';
+	this.m_imageFolder = 'digits_png_w16/';
+	this.m_digitWidth = 16;
+	this.m_imagePreFix = 'D_';
+	this.m_imageExt = '.png';
+	this.m_nameSpacePrefix = 'selbit_com_digiwatch_';
+	this.m_digitsCount = 8;
+	this.m_ts = 0;
+	this.m_tsDate = 0;
+	this.m_layoutNo = 0;
+	this.m_layoutMax = 3;
+	this.m_timeHandler;
+	this.m_updateInterval = 1000;
+	this.m_datebackInterval = 4000;
+	this.m_blink = false;
+	this.m_stateDate = false;
+
+	this.m_blinkOn = true;
+
+    this.ShowDateStart = function()
+    {
+    
+        this.m_tsDate = setTimeout( this.m_selfName + '.ShowDate()',200 );
+    }
+
+    this.ShowDate = function()
+    {  
+            this.ClearTs();
+            this.ClearTsDate();
+            if ( this.m_stateDate )
+            {
+                this.m_stateDate = false;
+                this.Shift( this.m_layoutNo );
+                return;
+            }
+            this.m_stateDate = true;
+            this.m_outerWatch.className = "selbit_com_digiwatch_outerWatch_L0";
+			this.CreateImages( 8, 'digits_png_w16/', 16 );
+			this.m_timeHandler = this.SetLocalDate;
+			this.m_blinkOn = false;
+			
+			this.m_tsDate = setTimeout( this.m_selfName + '.ShowDate()',this.m_datebackInterval );
+			
+			this.Update();
+    }
+
+	this.Shift = function(layoutNo)
+	{
+	    this.ClearTs();
+		this.ClearTsDate();
+		var oldLayoutNo = this.m_layoutNo;
+		
+	    if ( (typeof(layoutNo )=='undefined') ) 
+	        this.m_layoutNo++;
+	    else
+			this.m_layoutNo = layoutNo;
+			
+			
+	    this.m_stateDate = false;
+
+		if ( this.m_layoutNo>=this.m_layoutMax ) this.m_layoutNo = 0;
+		
+		if ( this.m_layoutNo == 0 ) 
+		{
+			this.m_outerWatch.className = "selbit_com_digiwatch_outerWatch_L1";
+			this.CreateImages( 5, 'digits_png_w24/', 24 );
+			this.m_timeHandler = this.SetLocalTime;
+			this.m_blinkOn = true;
+		}
+		if ( this.m_layoutNo == 1 ) 
+		{
+			this.m_outerWatch.className = "selbit_com_digiwatch_outerWatch_L2";
+			this.CreateImages( 7, 'digits_png_w16/', 16 );
+			this.m_timeHandler = this.SetLocalTimeAmPm;
+			this.m_blinkOn = true;
+		}
+		else if ( this.m_layoutNo == 2 )
+		{
+			this.m_outerWatch.className = "selbit_com_digiwatch_outerWatch_L0";
+			this.CreateImages( 8, 'digits_png_w16/', 16 );
+			this.m_timeHandler = this.SetLocalTime;
+			this.m_blinkOn = false;
+		}
+		
+		if ( oldLayoutNo != this.m_layoutNo )
+		{
+			if (( System )&&(System.Gadget)) 
+			{
+				System.Gadget.Settings.write("digiWatch_layoutNo", this.m_layoutNo );
+			}
+		}
+		
+		this.Update();
+	}
+	this.Init = function() 
+	{
+		if (( System )&&(System.Gadget)) {
+			var layoutNo = System.Gadget.Settings.read("digiWatch_layoutNo");
+			if (layoutNo != "" && (! isNaN( layoutNo ) ) ) 
+			{
+				try {
+					this.m_layoutNo = parseInt( layoutNo );
+				}
+				catch(er)
+				{
+					var s = 'nothing to do';
+				}
+			
+			}
+		}
+		this.Shift(this.m_layoutNo);
+	}
+	this.Update = function()
+	{
+		
+		this.ClearTs();
+		
+		this.m_timeHandler();
+		
+		this.SetTitle( new Date() );
+		this.m_ts = setTimeout( this.m_selfName + '.Update()',this.m_updateInterval );
+	}
+	this.ClearTs = function()
+	{
+		if ( this.m_ts )
+		{
+			clearTimeout( this.m_ts );
+			this.m_ts = 0;
+		}
+	}
+	this.ClearTsDate = function()
+	{
+		if ( this.m_tsDate )
+		{
+			clearTimeout( this.m_tsDate );
+			this.m_tsDate = 0;
+		}
+	}
+	this.CreateImages = function ( amount, imageFolder, digitWidth )
+	{
+		if (this.m_innerWatch)
+		{
+			this.m_innerWatch.innerHTML = '';
+			for ( var i=1; i<=amount; i++ )
+			{
+				var elm = document.createElement("img");
+				elm.src = this.GetImgName( 'off', imageFolder );
+				this.m_innerWatch.appendChild(elm);
+				elm.id  = this.GetImgId( i );
+				elm.className = this.m_nameSpacePrefix+'digit';
+			}
+			this.m_imageFolder = imageFolder;
+			this.m_digitsCount = amount;
+		}
+	}
+	this.SetLocalTime = function ()
+	{
+		
+		var timeStr = GetTimeStr(new Date());
+		
+		this.SetDisplay( timeStr );
+		
+		
+	}
+	this.SetLocalTimeAmPm = function ()
+	{
+		var timeStr = GetTimeAmPmStr(new Date());
+		this.SetDisplay( timeStr );
+	}
+	this.SetLocalDate = function ()
+	{
+		var dateStr = GetDateStr(new Date());
+		this.SetDisplay( dateStr );
+	}
+	this.SetTitle = function ( str )
+	{
+		this.m_overlay.title = str;
+	}
+	
+	this.SetDisplay = function ( str )
+	{
+		this.m_blink = ! this.m_blink;
+		var l = str.length;
+		if ( l>this.m_digitsCount ) l = this.m_digitsCount;
+		var chr;
+		for ( var i=this.m_digitsCount; i>0; i-- ) 
+		{
+			l--;
+			if ( l>=0 )
+			{
+				chr = str.substr(l,1);
+			} 
+			else
+			{
+				chr = ' ';
+			}
+			
+			this.SetDigit( i, chr, this.m_blink && this.m_blinkOn );
+		} 
+	}
+	this.SetDigit = function ( digitNo, digitVal, blink )
+	{
+		var value = GetImgDigitName( digitVal, blink );
+		
+		var o = document.getElementById( this.GetImgId( digitNo ) );
+		
+		if (o)
+		{
+			o.src = this.GetImgName( value, this.m_imageFolder );  // m_imageFolder + m_imagePreFix + value + m_imageExt;
+		}
+	}
+	this.GetImgId = function ( digitNo )
+	{
+		return this.m_nameSpacePrefix + 'D' + digitNo;
+	}
+	this.GetImgName = function ( digitName, imageFolder ) 
+	{
+		return imageFolder + this.m_imagePreFix + digitName + this.m_imageExt;
+	}
+	
+	function GetImgDigitName( digitVal, blink )
+	{
+		var value = 'off';
+		if ( digitVal == '-' )
+			value = (!blink)?'stroke':'off';
+		else if ( digitVal == '.' )
+			value = (!blink)?'period':'off';
+		else if ( digitVal == ' ' )
+			value = 'off';
+		else if ( digitVal == ':' )
+			value = (!blink)?'colon':'off';
+		else if ( digitVal >= 0 && digitVal <= 9 )
+			value = ''+digitVal;
+		else if ( digitVal == "A" )
+			value = 'A';
+		else if ( digitVal == "P" )
+			value = 'P';
+		
+		return value;
+	}
+	function GetTimeStr(date)
+	{
+		var hh = date.getHours();
+		var mm = date.getMinutes();
+		var ss = date.getSeconds();
+		hh = ( hh<10 )?' '+hh:''+hh;
+		mm = ( mm<10 )?'0'+mm:''+mm;
+		ss = ( ss<10 )?'0'+ss:''+ss;
+		return hh + ':' + mm + ':' + ss;
+	}
+	function GetTimeAmPmStr(date)
+	{
+		var hh = date.getHours();
+		var mm = date.getMinutes();
+		var ss = date.getSeconds();
+		var ampm = "A";
+		if ( hh>12 ) 
+		{
+			ampm = "P";
+			hh=hh-12;
+		}
+		hh = ( hh<10 )?' '+hh:''+hh;
+		mm = ( mm<10 )?'0'+mm:''+mm;
+		ss = ( ss<10 )?'0'+ss:''+ss;
+		return hh + ':' + mm + ' ' + ampm;
+	}
+	function GetDateStr(date)
+	{
+		var YY = date.getFullYear();
+		var MM = date.getMonth();
+		var DD = date.getDate();
+		MM = ( MM<10 )? '0'+MM:''+MM;
+		DD = ( DD<10 )? '0'+DD:''+DD;
+		YY = ''+YY;
+		YY = YY.substr(2,2);
+		return DD + '-' + MM + '-' + YY;
+	} 
+	return this;
+}
+</script>
+</html>

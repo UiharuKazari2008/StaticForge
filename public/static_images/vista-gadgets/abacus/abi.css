@@ -1,0 +1,16 @@
+body
+{
+	width:128px;
+	height:128px;	
+	margin:0px;
+	padding:0px;
+        background-color:transparent;
+}
+#fly
+{
+	position:absolute;
+	margin:0px;
+	padding:0px;
+        color:transparent;
+}
+

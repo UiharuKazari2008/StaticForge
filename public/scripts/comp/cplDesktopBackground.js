@@ -11,6 +11,11 @@
  *   Melaton Wallpapers   the aurora set and the default (modalUtils.js STOCK_DESKTOP_WALLPAPERS)
  *   Your Uploads         earlier uploads (modules/wallpaperHistory.js), newest first, each with ×
  *                        to remove it from the history
+ *   Japan / Europe / USA / fukapon (Flickr)
+ *                        photo galleries (Yukimi 2026-10-22; wallpaperGalleries.js, files in
+ *                        public/static_images/wallpapers/photos/<gallery>/), one group per place.
+ *                        A selected photo shows its credit under the list: title, photographer,
+ *                        license and a link to the original on Flickr or Wikimedia Commons
  *
  * Browse... uploads a picture (modalUtils.js uploadCustomWallpaper) and selects it under Your
  * Uploads. "How should the picture be positioned?" holds the wallpaper's horizontal and vertical
@@ -64,7 +69,10 @@
         { id: 'img35', category: 'Widescreen', artist: "Steve Fu" },
         { id: 'img36', category: 'Widescreen', artist: "" }
     ];
-    const LOCATIONS = [['windows', 'Windows Wallpapers'], ['melaton', 'Melaton Wallpapers'], ['uploads', 'Your Uploads']];
+    /* global WALLPAPER_GALLERIES */
+    const GALLERIES = typeof WALLPAPER_GALLERIES !== 'undefined' ? WALLPAPER_GALLERIES : (root.WALLPAPER_GALLERIES || []);
+    const LOCATIONS = [['windows', 'Windows Wallpapers'], ['melaton', 'Melaton Wallpapers'],
+        ...GALLERIES.map((g) => [g.id, g.label]), ['uploads', 'Your Uploads']];
 
     const ALIGN = {
         horizontal: [['left', 'Left'], ['center', 'Center'], ['right', 'Right'], ['custom', 'Manual']],
@@ -104,6 +112,29 @@
             name: `${w.category} · ${w.artist}`,
             category: w.category
         }));
+    }
+
+    /** A photo gallery's pictures, each with its credit (wallpaperGalleries.js). */
+    function galleryWallpapers(gallery) {
+        return gallery.items.map((w) => ({
+            url: `${gallery.dir}/${w.f}.webp`,
+            thumb: `${gallery.dir}/thumbs/${w.f}.webp`,
+            name: w.a ? `${w.t || 'Untitled'} · ${w.a}` : (w.t || ''),
+            group: gallery.groups[w.g],
+            credit: w
+        }));
+    }
+
+    function galleryFor(url) {
+        return url ? GALLERIES.find((g) => url.startsWith(`${g.dir}/`)) || null : null;
+    }
+
+    /** The credit of a gallery photo by its URL, or null. */
+    function creditFor(url) {
+        const gallery = galleryFor(url);
+        if (!gallery) return null;
+        const file = url.slice(gallery.dir.length + 1).replace(/\.webp$/, '');
+        return gallery.items.find((w) => w.f === file) || null;
     }
 
     function workspaceRecord() {
@@ -155,6 +186,8 @@
     function locationFor(url) {
         if (url && url.startsWith(`${VISTA}/`)) return 'windows';
         if (url && url.startsWith('/cache/wallpapers/')) return 'uploads';
+        const gallery = galleryFor(url);
+        if (gallery) return gallery.id;
         return url ? 'windows' : 'melaton';
     }
 
@@ -197,6 +230,11 @@
             return CATEGORIES.map((c) => group(c, all.filter((w) => w.category === c))).join('');
         }
         if (state.location === 'melaton') return group('Melaton Wallpapers', melatonWallpapers());
+        const gallery = GALLERIES.find((g) => g.id === state.location);
+        if (gallery) {
+            const all = galleryWallpapers(gallery);
+            return gallery.groups.map((g) => group(g, all.filter((w) => w.group === g))).join('');
+        }
         if (!state.uploads.length) return '<p class="cpl-db-empty">No uploads yet. Click Browse to upload a picture.</p>';
         return group('Your Uploads', state.uploads.map((u) => ({ id: u.id, url: u.url, thumb: u.url, name: u.name })), { remove: true });
     }
@@ -213,6 +251,7 @@
                 <input type="file" accept="image/*" class="hidden" data-cpl-db-file>
             </div>
             <div class="cpl-db-grid">${gridHtml()}</div>
+            ${GALLERIES.some((g) => g.id === state.location) ? `<div class="cpl-db-credit" aria-live="polite">${creditHtml(state.selected)}</div>` : ''}
             <div class="cpl-db-position">
                 <div class="cpl-db-position-title">How should the picture be positioned?</div>
                 <div class="cpl-db-position-row">
@@ -224,6 +263,18 @@
                 <button type="button" class="cpl-wu-button" data-cpl-db="ok">OK</button>
                 <button type="button" class="cpl-wu-button" data-cpl-db="cancel">Cancel</button>
             </div>`;
+    }
+
+    /** "Title" by Photographer · License · View on Flickr; links open in Alchemy (featureLoader.js catchWebLinkClick). */
+    function creditHtml(url) {
+        const w = creditFor(url);
+        if (!w) return '';
+        const link = (href, text) => (href ? `<a href="${esc(href)}" target="_blank" rel="noopener">${esc(text)}</a>` : esc(text));
+        const site = /flickr\.com/.test(w.s) ? 'Flickr' : 'Wikimedia Commons';
+        const parts = [`<span class="cpl-db-credit-title">${esc(w.t || 'Untitled')}</span>${w.a ? ` by ${link(w.au, w.a)}` : ''}`];
+        if (w.l) parts.push(link(w.lu, w.l));
+        if (w.s) parts.push(link(w.s, `View on ${site}`));
+        return parts.join(' <span class="cpl-db-credit-sep">·</span> ');
     }
 
     function alignHtml(axis, label, value, pct) {
@@ -326,6 +377,8 @@
             main.querySelectorAll('.cpl-db-pic').forEach((p) => {
                 p.classList.toggle('is-selected', p === el);
             });
+            const credit = main.querySelector('.cpl-db-credit');
+            if (credit) credit.innerHTML = creditHtml(state.selected);
             return;
         }
         if (action === 'toggle') {
@@ -437,7 +490,8 @@
         },
         VISTA_WALLPAPERS,
         CATEGORIES,
-        _test: { html: (st) => { state = { ...state, ...st }; return html(); }, locationFor }
+        GALLERIES,
+        _test: { html: (st) => { state = { ...state, ...st }; return html(); }, locationFor, creditFor }
     };
     if (typeof document !== 'undefined') {
         if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', register);

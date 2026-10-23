@@ -558,6 +558,10 @@
         if (!item && typeof startMenuShellConfig !== 'undefined') {
             item = startMenuShellConfig.find((entry) => entry && entry.launchId === launchId) || null;
         }
+        // DSAPs kept out of the Start menu (Exchange, Site Homepage) still launch by id. getDsapMenuEntries: public/scripts/comp/dsapRegistry.js
+        if (!item && typeof getDsapMenuEntries === 'function') {
+            item = getDsapMenuEntries().find((entry) => entry.launchId === launchId && (!entry.adminOnly || localStorage.getItem('userType') === 'admin')) || null;
+        }
         if (!item || typeof item.action !== 'function') {
             return { ok: false, error: `Unknown launchId: ${launchId}` };
         }

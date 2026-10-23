@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+    <name>Discogs Search</name>
+    <namespace>Discogs Search</namespace>
+    <version>1.0</version>
+    <author name="James Brundage">
+    </author>
+
+    <copyright>2007</copyright>
+    <description>Searches the Discogs.com music database</description>
+    <icons>
+     <icon src="Dislogo.gif" />
+    </icons>
+
+
+    <hosts>
+        <host name="sidebar">
+            <base type="HTML" apiVersion="1.0.0" src="Discogs.html" />
+            <permissions>full</permissions>
+            <platform minPlatformVersion="1.0" />
+        </host>
+    </hosts>
+</gadget>

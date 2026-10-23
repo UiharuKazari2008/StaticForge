@@ -1,0 +1,240 @@
+<html>
+
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+<title>Metric Clock Settings</title>
+<style>
+  body {
+    width: 270px;
+    height: 370px;
+    font-family: Segoe UI;
+    font-size: 12pt;
+    color: black;
+    text-align: center;
+  }
+  a {
+    color: #0066CC;
+    text-decoration: none;
+  }
+  a:hover {
+    color: #3399FF;
+    text-decoration: underline;
+  }
+</style>
+<script type="Text/JavaScript">
+<!--
+
+  var label;
+  var index;
+  var animCount = 1;
+  var animTimer;
+
+  function pageLoad() {
+    document.settingsform.clocklabel.value = System.Gadget.Settings.read("label");
+    labelsample.innerText = System.Gadget.Settings.read("label");
+
+    document.settingsform.fillit.checked = System.Gadget.Settings.read("filltime");
+    showFill();
+
+    index = System.Gadget.Settings.read("index");
+    if (index == "") {
+      index = 0;
+      repaint();
+    }
+    else {
+      document.settingsform.colour.selectedIndex = System.Gadget.Settings.read("index");
+      repaint();
+    }
+  }
+
+  function getFormData() {
+    index = document.settingsform.colour.selectedIndex;
+    colour = document.settingsform.colour.options[index].value;
+    repaint();
+  }
+
+  function repaint() {
+    clearTimeout(animTimer);
+    animTimer = null;
+    animCount = 1;
+    timetext.innerText = "5:00:00";
+    var start;
+    var end;
+    showFill();
+    if (index == 0) {
+      timetext.style.color = "white";
+      labelsample.style.color = "white";
+      animateTimeDay();
+    }
+    else if (index == 1) {
+      start = "#005600";
+      end = "#CCFF55";
+      timetext.style.color = "white";
+      labelsample.style.color = "white";
+    }
+    else if (index == 2) {
+      start = "slateblue";
+      end = "lightblue";
+      timetext.style.color = "white";
+      labelsample.style.color = "white";
+    }
+    else if (index == 3) {
+      start = "gray";
+      end = "lightgrey";
+      timetext.style.color = "white";
+      labelsample.style.color = "white";
+    }
+    else if (index == 4) {
+      start = "darkorange";
+      end = "yellow";
+      timetext.style.color = "black";
+      labelsample.style.color = "black";
+    }
+    else if (index == 5) {
+      start = "darkblue";
+      end = "lightblue";
+      timetext.style.color = "white";
+      labelsample.style.color = "white";
+    }
+    else if (index == 6) {
+      start = "black";
+      end = "black";
+      timetext.style.color = "white";
+      labelsample.style.color = "white";
+    }
+    else if (index == 7) {
+      start = "red";
+      end = "pink";
+      timetext.style.color = "white";
+      labelsample.style.color = "white";
+    }
+    else if (index == 8) {
+      start = "hotpink";
+      end = "pink";
+      timetext.style.color = "black";
+      labelsample.style.color = "black";
+    }
+    fillcolour.filters[1].StartColorStr = start;
+    fillcolour.filters[1].EndColorStr= end;
+  }
+
+  function animateTimeDay() {
+    fillcolour.filters[0].apply();
+    if (animCount == 1) {
+      timetext.innerText = "1:00:00";
+      start = "black";
+      end = "midnightblue";
+    }
+    else if (animCount == 2) {
+      timetext.innerText = "2:00:00";
+      start = "midnightblue";
+      end = "royalblue";
+    }
+    else if (animCount == 3) {
+      timetext.innerText = "3:00:00";
+      start = "blue";
+      end = "pink";
+    }
+    else if (animCount == 4) {
+      timetext.innerText = "4:00:00";
+      start = "steelblue";
+      end = "lightskyblue";
+    }
+    else if (animCount == 5) {
+      timetext.innerText = "5:00:00";
+      start = "steelblue";
+      end = "lightskyblue";
+    }
+    else if (animCount == 6) {
+      timetext.innerText = "6:00:00";
+      start = "steelblue";
+      end = "lightskyblue";
+    }
+    else if (animCount == 7) {
+      timetext.innerText = "7:00:00";
+      start = "blue";
+      end = "pink";
+    }
+    else if (animCount == 8) {
+      timetext.innerText = "8:00:00";
+      start = "midnightblue";
+      end = "royalblue";
+    }
+    else if (animCount == 9) {
+      timetext.innerText = "9:00:00";
+      start = "black";
+      end = "midnightblue";
+    }
+
+    if (settingsform.fillit.checked) {
+      var calc = 121 * (animCount / 10);
+      fillcolour.style.width = calc + "px";
+    }
+
+    fillcolour.filters[1].StartColorStr = start;
+    fillcolour.filters[1].EndColorStr= end;
+    fillcolour.filters[0].play();
+    animCount++;
+    if (animCount == 10) {
+      animCount = 1;
+    }
+    animTimer = setTimeout("animateTimeDay()", 1000);
+  }
+
+  function showFill() {
+    if (settingsform.fillit.checked) {
+      fillcolour.style.width = "60px";
+    }
+    else {
+      fillcolour.style.width = "121px";
+    }
+  }
+
+  System.Gadget.onSettingsClosing = close;
+
+  function close(event) {
+    if (event.closeAction == event.Action.commit) {
+      label = document.settingsform.clocklabel.value;
+      System.Gadget.Settings.write("index", index);
+      System.Gadget.Settings.write("label", label);
+      System.Gadget.Settings.write("filltime", document.settingsform.fillit.checked);
+    }
+    event.cancel = false;
+  }
+
+//-->
+</script>
+</head>
+
+<body onLoad="pageLoad()">
+<form name="settingsform">
+<div style="border: 1px solid silver; background-color: white; width: 100%; height: 170px; padding-top: 56px;">
+<img src="background.png" />
+<div id="fillcolour" style="position: absolute; width: 121px; height: 53px; left: 74px; top: 74px; background-color: limegreen; filter: progid:DXImageTransform.Microsoft.Fade(Overlap=0.5, Duration=0.25) progid:DXImageTransform.Microsoft.Gradient(GradientType=0, StartColorStr='', EndColorStr='');"></div>
+<div style="position: absolute; width: 121px; height: 75px; left: 74px; top: 83px; text-align: center; font-family: Segoe UI; font-size: 15pt; color: white;" id="timetext">5:00:00</div>
+<div style="position: absolute; width: 110px; height: 75px; left: 79px; top: 108px; text-align: center; font-family: Segoe UI; font-size: 10pt; color: white; text-overflow: ellipsis; white-space: nowrap; overflow: hidden;" id="labelsample">&nbsp;</div>
+<img src="frame.png" style="position: absolute; top: 72px; left: 72px;" />
+<img src="glass.png" style="position: absolute; top: 72px; left: 72px;" />
+</div>
+<div style="position: relative; bottom: 1px; border: 1px solid silver; background-color: #F4F4F4; width: 100%; height: 25px; padding-bottom: 8px;">
+<br />Colour:&nbsp;<select name="colour" onChange="getFormData()" style="width: 75%;">
+<option value="time">Changing (Time of Day)</option>
+<option value="lime">Lime Green</option>
+<option value="purple">Purple</option>
+<option value="grey">Grey</option>
+<option value="orange">Orange</option>
+<option value="blue">Blue</option>
+<option value="black">Black</option>
+<option value="red">Red</option>
+<option value="pink">Pink</option>
+</select>
+</div>
+<div style="width: 100%; text-align: left;">
+<br /><label for="clocklabel">Label:</label>
+</div>
+<input type="text" name="clocklabel" style="width: 100%;" onKeyUp="labelsample.innerText=document.settingsform.clocklabel.value" />
+<br /><input type="checkbox" id="fillit" onClick="showFill()" /><label for="fillit">Fill Background as the Day Progresses</label>
+<br /><br /><a href="http://www.sidescreen.co.nr/"><img src="SideScreen.png" border="0" alt="Made by SideScreen" /></a>
+</form>
+</body>
+
+</html>

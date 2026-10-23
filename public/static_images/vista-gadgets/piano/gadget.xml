@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>Piano</name>
+  <namespace><!--_locComment_text="{Locked}"-->microsoft.windows</namespace>
+  <version><!--_locComment_text="{Locked}"-->1.1.0.0</version>
+  <author name="Team Blackshirt">
+    <logo src="logo.png" />
+  </author>
+  <copyright><!--_locComment_text="{Locked}"-->&#169; 2006</copyright>
+  <description>Tickle the ivories, play along with your music, or tune your instruments.</description>
+    <icons>
+      <icon height="48" width="48" src="icon.png" />
+    </icons>
+  <version value="1.0.0.0" MinPlatformVersion ="0.3"/>
+  <hosts>
+    <host name="sidebar">
+      <base type="html" apiVersion="1.0.0" src="piano.html" />
+      <permissions><!--_locComment_text="{Locked}"-->full</permissions>
+      <platform minPlatformVersion ="0.3"/>
+    </host>
+  </hosts>
+</gadget>

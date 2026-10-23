@@ -608,6 +608,8 @@
             $('.sz-current').textContent = d.current || '';
             const fill = $('.sz-progress-fill');
             fill.style.width = `${pct}%`;
+            // the fill's 8 px end caps would show a stub at 0%
+            fill.style.visibility = pct > 0 ? 'visible' : 'hidden';
             $('.sz-progress').setAttribute('aria-valuenow', String(pct));
             const list = $('.sz-list');
             const msgs = Array.isArray(d.messages) ? d.messages : [];
@@ -1206,7 +1208,7 @@
         if (r.state === 'done' && r.result && r.result.downloadUrl) clickDownload(r.result.downloadUrl, r.result.name);
     }
 
-    /** Open on an entry: pictures in the viewer, a nested archive or anything else downloads. */
+    /** Open on an entry: known programs run, pictures in the viewer, a nested archive or anything else downloads. */
     async function openEntry(explorer, item) {
         if (!item || item.kind === 'folder') return;
         const owner = explorerOwner(explorer);
@@ -1215,6 +1217,8 @@
             const summary = await unlock(arc.fileId, owner, arc.name);
             if (!summary) return;
         }
+        // a program the desktop has a port of runs from the archive (vfsPrograms.js: SoraTan.iso's SoraTan.exe)
+        if (root.vfsPrograms && await root.vfsPrograms.open(item)) return;
         if ((item.mimeType || '').startsWith('image/') && typeof root.openImageInViewer === 'function') {
             root.openImageInViewer(item.viewUrl, item.name, {});
             return;

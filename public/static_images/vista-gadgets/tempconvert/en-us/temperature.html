@@ -1,0 +1,41 @@
+<!--//
+////////////////////////////////////////////////////////////////////////////////
+//
+//  Created by Kristan Kenney
+//  http://www.Windows-Now.com
+//  Copyright (c) 2006 Kristan Kenney.  All rights reserved.
+//  DO NOT MODIFY
+//
+////////////////////////////////////////////////////////////////////////////////
+//-->
+<html>
+
+	<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+		<title>Temperature Converter</title>
+		<link href="css/default.css" rel="stylesheet" type="text/css"/>
+	</head>
+
+
+	<body onload="SetContent()">
+
+		<div>
+			<form>
+
+					<span class="temp-cel">
+					<strong>Celsius:</strong> <input class="temperature-data" type="text" maxlength="4" name="C" value="0" onChange="eval('F.value = ' + this.form.F_expr.value)">
+								 <input type="hidden" name="C_expr" value="100/(212-32) * (F.value - 32 )">
+					</span>
+
+					<span class="temp-fah">
+					<strong>Fahrenheit:</strong> <input class="temperature-data" maxlength="4" type="text" name="F" value="32" onChange="eval('C.value = ' + this.form.C_expr.value)">
+								<input type="hidden" name="F_expr" value="(212-32)/100 * C.value + 32 ">
+					</span>
+
+
+				</form>
+
+		</div>
+
+	</body>
+
+</html>

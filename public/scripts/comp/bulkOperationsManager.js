@@ -25,6 +25,64 @@ async function galleryTransfer(op, filenames, from, to, worker) {
     }
     return fileOperationProgress.batches({ op, from, to, items: filenames.map(name => ({ name })) }, filenames, worker);
 }
+/**
+ * Gallery images saved to this computer: one browser download each under Vista's progress dialog
+ * ("Downloading 5 items" from the gallery folder); off the desktop the toast says it.
+ * downloadImage: public/scripts/comp/galleryView.js
+ */
+async function galleryDownloadImages(images, from) {
+    const list = (images || []).filter(Boolean);
+    if (typeof fileOperationProgress === 'undefined' || !fileOperationProgress.available()) {
+        list.forEach((image) => downloadImage(image));
+        if (list.length > 1) {
+            showGlassToast('success', null, `Downloading ${list.length} image(s)...`, false, 3000, '<i class="fas fa-download"></i>');
+        }
+        return;
+    }
+    const nameOf = (image) => (typeof image === 'string' ? image : (image.upscaled || image.original || image.filename || 'image'));
+    await fileOperationProgress.run({
+        op: 'copy',
+        verb: 'Downloading',
+        from,
+        items: list.map((image) => ({ name: nameOf(image) }))
+    }, list, async (image) => {
+        downloadImage(image);
+        // the browser takes one download at a time from a page more readily when they are spaced
+        await new Promise((resolve) => setTimeout(resolve, 150));
+    });
+}
+
+/**
+ * A gallery batch that moves no files (pinning, preset names): on the desktop Vista's progress
+ * dialog (a progress toast, toastManager.js) that ends in the batch's result; elsewhere Studio's
+ * loading overlay and the result toast as before.
+ */
+function galleryBatchBegin(title, text) {
+    if (typeof fileOperationProgress !== 'undefined' && fileOperationProgress.available()) {
+        return { toastId: showGlassToast('info', title, text, true, false), overlay: false };
+    }
+    showManualLoading(true, text);
+    return { toastId: null, overlay: true };
+}
+
+/** The batch's result: the dialog's end (a failure stays up in it, under failTitle), or the toast it always was. */
+function galleryBatchResult(batch, type, message, icon, failTitle) {
+    if (batch && batch.toastId) {
+        updateGlassToastComplete(batch.toastId, { type, title: type === 'error' ? failTitle : null, message, showProgress: false });
+        batch.toastId = null;
+        return;
+    }
+    if (type === 'error') showError(message);
+    else showGlassToast(type, null, message, false, 5000, icon);
+}
+
+function galleryBatchEnd(batch) {
+    if (!batch) return;
+    if (batch.toastId) removeGlassToast(batch.toastId);
+    batch.toastId = null;
+    if (batch.overlay) showManualLoading(false);
+}
+
 async function handleBulkCopy() {
     const selectedImagesArray = getSelectedImages();
     if (selectedImagesArray.length === 0) {
@@ -106,18 +164,12 @@ function handleBulkDownload() {
         return;
     }
 
-    // downloadImage: public/scripts/comp/galleryView.js
-    selectedImagesArray.forEach((image) => downloadImage(image));
-
-    if (selectedImagesArray.length === 1) return;
-    showGlassToast(
-        'success',
-        null,
-        `Downloading ${selectedImagesArray.length} image(s)...`,
-        false,
-        3000,
-        '<i class="fas fa-download"></i>'
-    );
+    if (selectedImagesArray.length === 1) {
+        // downloadImage: public/scripts/comp/galleryView.js
+        downloadImage(selectedImagesArray[0]);
+        return;
+    }
+    galleryDownloadImages(selectedImagesArray, galleryTransferPlace(activeWorkspace, galleryViewFolder(currentGalleryView)));
 }
 
 async function handleBulkUnpin(event = null) {
@@ -147,8 +199,9 @@ async function handleBulkUnpin(event = null) {
         return;
     }
 
+    let batch = null;
     try {
-        showManualLoading(true, 'Unpinning images...');
+        batch = galleryBatchBegin('Unpinning Images', 'Unpinning images...');
 
         // Filter out any null/undefined values from selected images
         const validFilenames = getSelectedFilenames().filter(filename => filename && typeof filename === 'string');
@@ -175,9 +228,9 @@ async function handleBulkUnpin(event = null) {
                 toastMessage += ` (${failed} failed)`;
             }
 
-            showGlassToast('success', null, toastMessage, false, 5000, '<i class="fas fa-thumbtack"></i>');
+            galleryBatchResult(batch, 'success', toastMessage, '<i class="fas fa-thumbtack"></i>');
         } else {
-            showGlassToast('success', null, `Unpinned ${validFilenames.length} image(s)`, false, 5000, '<i class="fas fa-thumbtack"></i>');
+            galleryBatchResult(batch, 'success', `Unpinned ${validFilenames.length} image(s)`, '<i class="fas fa-thumbtack"></i>');
         }
 
         // Update pin buttons for the affected images
@@ -187,11 +240,11 @@ async function handleBulkUnpin(event = null) {
 
     } catch (error) {
         console.error('Bulk unpin error:', error);
-        showError('Failed to unpin images: ' + error.message);
+        galleryBatchResult(batch, 'error', 'Failed to unpin images: ' + error.message, null, 'Unpinning Failed');
         // Clear selection on error to prevent stuck state
         clearSelection();
     } finally {
-        showManualLoading(false);
+        galleryBatchEnd(batch);
 
         // Clear selection and refresh gallery
         clearSelection();
@@ -226,8 +279,9 @@ async function handleBulkPin(event = null) {
         return;
     }
 
+    let batch = null;
     try {
-        showManualLoading(true, 'Pinning images...');
+        batch = galleryBatchBegin('Pinning Images', 'Pinning images...');
 
         // Filter out any null/undefined values from selected images
         const validFilenames = getSelectedFilenames().filter(filename => filename && typeof filename === 'string');
@@ -254,9 +308,9 @@ async function handleBulkPin(event = null) {
                 toastMessage += ` (${failed} failed)`;
             }
 
-            showGlassToast('success', null, toastMessage, false, 5000, '<i class="fas fa-thumbtack"></i>');
+            galleryBatchResult(batch, 'success', toastMessage, '<i class="fas fa-thumbtack"></i>');
         } else {
-            showGlassToast('success', null, `Pinned ${validFilenames.length} image(s)`, false, 5000, '<i class="fas fa-thumbtack"></i>');
+            galleryBatchResult(batch, 'success', `Pinned ${validFilenames.length} image(s)`, '<i class="fas fa-thumbtack"></i>');
         }
 
         // Update local gallery data and pin buttons for the affected images
@@ -270,11 +324,11 @@ async function handleBulkPin(event = null) {
 
     } catch (error) {
         console.error('Bulk pin error:', error);
-        showError('Failed to pin images: ' + error.message);
+        galleryBatchResult(batch, 'error', 'Failed to pin images: ' + error.message, null, 'Pinning Failed');
         // Clear selection on error to prevent stuck state
         clearSelection();
     } finally {
-        showManualLoading(false);
+        galleryBatchEnd(batch);
 
         // Clear selection and update pin buttons for the affected images
         clearSelection();
@@ -322,8 +376,9 @@ async function handleBulkChangePresetConfirm() {
 
     const newPresetName = presetNameInput.value.trim();
 
+    let batch = null;
     try {
-        showManualLoading(true, 'Updating preset names...');
+        batch = galleryBatchBegin('Updating Preset Names', 'Updating preset names...');
 
         // Filter out any null/undefined values from selected images
         const validFilenames = getSelectedFilenames().filter(filename => filename && typeof filename === 'string');
@@ -356,19 +411,19 @@ async function handleBulkChangePresetConfirm() {
                 toastMessage += ` (${failed} failed)`;
             }
 
-            showGlassToast('success', null, toastMessage, false, 5000, '<i class="fas fa-edit"></i>');
+            galleryBatchResult(batch, 'success', toastMessage, '<i class="fas fa-edit"></i>');
         } else {
             const action = newPresetName ? `with preset "${newPresetName}"` : '(preset cleared)';
-            showGlassToast('success', null, `Updated ${validFilenames.length} image(s) ${action}`, false, 5000, '<i class="fas fa-edit"></i>');
+            galleryBatchResult(batch, 'success', `Updated ${validFilenames.length} image(s) ${action}`, '<i class="fas fa-edit"></i>');
         }
 
     } catch (error) {
         console.error('Bulk change preset error:', error);
-        showError('Failed to update preset names: ' + error.message);
+        galleryBatchResult(batch, 'error', 'Failed to update preset names: ' + error.message, null, 'Updating Preset Names Failed');
         // Clear selection on error to prevent stuck state
         clearSelection();
     } finally {
-        showManualLoading(false);
+        galleryBatchEnd(batch);
         closeModal(modal);
 
         // Clear selection and refresh gallery based on current view

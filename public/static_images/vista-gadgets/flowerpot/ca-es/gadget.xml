@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>Virtual Flower Pot</name>
+  <namespace>microsoft.windows</namespace>
+  <version>1.0.0.1</version>
+  <author name="KaKaNow.com">
+    <info url="kakanow.com"  text="KaKaNow.com"/>
+    <logo src="images/logo.png" />
+  </author>
+  <copyright>&#169; 2010</copyright>
+  <description>Poseu una cosa ben bonica i viva a l’escriptori.
+Porteu una mica de sol a l’escriptori.  Veureu com aquesta planta virtual creix fins arribar a la plena floració si regueu les flors amb el ratolí.  Igual que qualsevol planta real, es mustigarà si no en teniu cura.  Trigarà molts dies fins que floreixi del tot, però quan ho faci il·luminarà l'escriptori cada cop que hi mireu.</description>
+  <icons>
+    <icon height="64" width="64" src="images/icon.png" />
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="default.html" />
+      <permissions>Full</permissions>
+      <platform minPlatformVersion="1.0" />
+      <defaultImage src="images/drag.png" />
+    </host>
+  </hosts>
+</gadget>

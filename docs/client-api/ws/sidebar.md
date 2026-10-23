@@ -16,6 +16,7 @@ Every packet is admin only. A non-admin session gets `type: "error"` with code `
 | `sidebar_random_image` | `sidebar_random_image_response` | admin | `{ workspaceId?, source: "images"\|"pinned", offset?, search? }` -> `{ workspaceId, total, index, item }`. `pinned` = favorites. Integer `offset` walks newest-first (wraps); no offset = random. A Slide Show `search` (below) replaces `source`: the same full-text block search as `omegasearch_query`, its filename list cached per search for 5 minutes, `offset` then walks result order. `item` is `{ base, original, upscaled, width, height }` or null. |
 | `sidebar_weather` | `sidebar_weather_response` | admin | `{}` -> `{ available, location: { city, region, country, source }, current: { tempC, feelsC, code, isDay }, daily: [{ date, code, maxC, minC, feelsMaxC, feelsMinC, rainChance, uvMax }] }`. Location comes from the client IP (the same lookup and cache as dynamic generation). LAN / private IPs and failed lookups use the configured location in `secure.config` (`source: "configured"`); never the host's own IP. Codes are WMO (Open-Meteo). |
 | `sidebar_host_metrics` | `sidebar_host_metrics_response` | admin | `{}` -> `{ cpu, ram }` percent, the host figures Periscope shows (`pm2Service.getHostMetrics`). |
+| `sidebar_system_info` | `sidebar_system_info_response` | admin | `{}` -> `{ cpu: { name, mhz, cores: [percent], total }, memory: { totalBytes, freeBytes }, uptimeSec, disks: [{ letter, label, mount, totalBytes, freeBytes, readBps, writeBps, busy }], network: [{ name, rxBps, txBps, rxBytes, txBytes, speedBps, ip, mac }], processes: [{ pid, name, cpu, memBytes }], at }`. The server's own machine for hosted gadgets (System.Machine, System.Shell.drive, WMI). Sampled at most once a second (`modules/sidebarSystemInfo.js`); disks are mounted block devices lettered from C: (the root); processes are the top 12 by CPU, every 3 s. |
 | `sidebar_fx` | `sidebar_fx_response` | admin | `{ from, to }` ISO codes from the ECB set -> `{ available, from, to, date, rate }`. `rate` converts 1 `from` into `to` (Frankfurter, cached a few hours). |
 | `sidebar_quotes` | `sidebar_quotes_response` | admin | `{ symbols }` up to 4 (`A-Z`, digits, `.`, `^`, 12 chars) -> `{ quotes: [{ symbol, name, price, prev, currency, available }] }`. Yahoo chart, cached a few minutes. |
 | `sidebar_feed` | `sidebar_feed_response` | admin | `{ url }` https only -> `{ available, title, items: [{ title, link, date }] }` (at most 12). Private, link-local, and single-label hosts are refused. Redirects are re-checked. Body cap 256 KB. Cached 10 minutes. |
@@ -48,7 +49,7 @@ Every packet is admin only. A non-admin session gets `type: "error"` with code `
 |---|---|
 | `calendar` | `view`: `day` \| `month` |
 | `clock` | `theme` 0-7, `name` (30 chars), `timeZone` (IANA, empty = computer time), `seconds` |
-| `hero` | same as `clock`, `theme` 0-8 (HTC Hero faces) |
+| `hero` | same as `clock`, `theme` 0-11 (HTC Hero faces, then Vista Orb Clock's globe, globe2, acw) |
 | `calculator` | `color` (`grey`, `pink`, `yellow`), `historyOn`, `entry`, `acc`, `op`, `fresh`, `memory`, `history` (up to 8 lines) |
 | `deskcalc` | `color` (`plain`, `aqua`, `black`, `blue`, `green`, `pink`, `red`, `white`, `yellow`) plus the same arithmetic fields as `calculator`. Scientific keys show when the gadget is undocked |
 | `timer` | `endAt` (ms, 0 = not running), `mins` (0-60), `secs` (0-59), `ringing` |
@@ -66,3 +67,26 @@ Every packet is admin only. A non-admin session gets `type: "error"` with code `
 | `weather` | `unit` (`F`, `C`), `feelsLike` (apparent temperature for current, today and forecast), `hidePlace`, `placeAlt` (shown instead of the place when hidden: `none`, `hilo`, `rain` = today's chance %, `condition`, `uv` = today's peak with its level) |
 
 Mail reads Dovecote with the existing `dovecote_list_mail` / `dovecote_list_mailboxes` packets (`modules/ws/handlers/250-dovecoteHandler.js`).
+
+## Hosted gadgets
+
+Yozora #629. Real Sidebar gadgets run from their own files: `scripts/import-vista-gadget.js` unpacks each
+`.gadget` listed in `scripts/assets/vista-gadgets/gadgets.json` into `public/static_images/vista-gadgets/<id>/`
+(lowercase paths, UTF-8, `gadgetShim.js` and a same-origin CSP first in every page, fixes from
+`scripts/assets/vista-gadgets/patches/<id>/`) and lists it in `public/static_images/vista-gadgets/catalog.json`.
+`vistaSidebar.js` adds each catalog entry to the gallery; `vistaGadgetHost.js` (feature `vista_gadget_host`)
+runs it in an iframe and gives it the Sidebar's object model.
+
+- The state filter accepts every catalog id as a gadget `type` (re-read when the catalog changes). Its
+  `settings` are `{ store: { key: string | number | boolean } }`: the gadget's `System.Gadget.Settings`,
+  at most 64 keys, 4096 characters a value, 16 KB a gadget.
+- Catalog entry: `id`, `title`, `version`, `author` (Microsoft reads Xyridian), `desc`, `icon`, `page`, `path`
+  (`System.Gadget.path`), `logo`, `copyright`, `url`, `settings` (has a settings page), `group`, `size`, and
+  when they apply `fs` (lists its own folders: the host loads `<id>/__install.json` first), `picture`
+  (`System.Gadget.picture`: a workspace picture, "New Picture" on its menu), `web` (hosts `/gadget-proxy`
+  fetches text from for it).
+- The first time a gadget is added it is downloaded under the file progress dialog ("Downloading"), file by
+  file from `<id>/__install.json`; `localStorage` `vgh.installed` remembers the version.
+- `System.Machine`, `System.Shell.drive` (megabytes) and WMI (`GetObject("winmgmts:...")`) answer from
+  `sidebar_system_info`; FileSystemObject text files are kept per gadget in `localStorage` (`vgh.file.<id>.<name>`).
+

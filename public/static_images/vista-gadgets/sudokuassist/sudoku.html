@@ -1,0 +1,542 @@
+<HTML>
+<HEAD><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+<STYLE>
+	DIV.background {position:absolute;height:352px;width:352px;background-color:black}
+	DIV.square {position:absolute;height:112px;width:112px;background-color:gray}
+	DIV.cell {position:absolute;height:32px;width:32px;background-color:white}
+	DIV.selectedCell {position:absolute;height:32px;width:32px;background-color:yellow}
+	DIV.errorCell {position:absolute;height:32px;width:32px;background-color:red}
+	DIV.markerWhite {position:absolute;height:8;width:8;overflow:hidden;background-color:white}
+	DIV.markerBlack {position:absolute;height:8;width:8;overflow:hidden;background-color:silver}
+	DIV.winString {position:absolute;height:32;width:352;top:370;text-align:center;color:red}
+	DIV.reset {position:absolute;background-image:url(ButtonSmallOff.png);height:16;width:50;top:365;left:6;background-color:gray;text-align:center;color:white;font-weight:bold}
+	DIV.reset:hover {background-image:url(ButtonSmallOn.png)}
+	DIV.copy {position:absolute;background-image:url(ButtonSmallOff.png);height:16;width:50;top:365;left:240;background-color:gray;text-align:center;color:white;font-weight:bold}
+	DIV.copy:hover {background-image:url(ButtonSmallOn.png)}
+	DIV.paste {position:absolute;background-image:url(ButtonSmallOff.png);height:16;width:50;top:365;left:300;background-color:gray;text-align:center;color:white;font-weight:bold}
+	DIV.paste:hover {background-image:url(ButtonSmallOn.png)}
+	DIV.number {position:absolute;height:20px;width:32px;top:0;left:0;text-align:center;color:black}
+</STYLE>
+<SCRIPT>
+
+var debug = false;
+
+var rows = new Array(9);
+var columns = new Array(9);
+var squares = new Array(9);
+
+var selectedCell = null;
+
+for (var index = 0; index < 9; index++)
+{
+	rows[index] = new Array(9);
+	columns[index] = new Array(9);
+	squares[index] = new Array(9);
+}
+
+function writeBoardToSettings()
+{
+	var serializedBoard = serializeBoard();
+	System.Gadget.Settings.write("serializedBoard", serializedBoard);
+}
+
+function initializeBoard()
+{
+	try
+	{
+		System.Gadget.Flyout.onHide = writeBoardToSettings;
+		var backgroundDiv = document.getElementById("backgroundDiv");
+		for (var squareRow = 0; squareRow < 3; squareRow++)
+		{
+			for (var squareColumn = 0; squareColumn < 3; squareColumn++)
+			{
+				var squareDiv = document.createElement("DIV");
+				squareDiv.className = "square";
+				squareDiv.style.pixelLeft = 4 + (squareColumn * 116);
+				squareDiv.style.pixelTop = 4 + (squareRow * 116);
+				backgroundDiv.appendChild(squareDiv);
+				for (var cellRow = 0; cellRow < 3; cellRow++)
+				{
+					for (var cellColumn = 0; cellColumn < 3; cellColumn++)
+					{
+						var cellDiv = document.createElement("DIV");
+						cellDiv.className = "cell";
+						cellDiv.style.pixelLeft = 4 + (cellColumn * 36);
+						cellDiv.style.pixelTop = 4 + (cellRow * 36);
+						cellDiv.onclick = handleClick;
+						squareDiv.appendChild(cellDiv);
+						row = (squareRow * 3) + cellRow;
+						column = (squareColumn * 3) + cellColumn;
+						var currentCell = new cell(cellDiv, column, row);
+						currentCell.column[row] = currentCell;
+						currentCell.row[column] = currentCell;
+						currentCell.square[(cellRow * 3) + cellColumn] = currentCell;
+					}
+				}
+			}
+		}
+		var serializedBoard = System.Gadget.Settings.read("serializedBoard");
+		if ((serializedBoard != null) && (serializedBoard.length > 0))
+		{
+			deserializeBoard(serializedBoard);
+		}
+	}
+	catch (e)
+	{
+		catchHandler("initializeBoard", e);
+	}
+}
+
+function cell(cellDiv, columnIndex, rowIndex)
+{
+	this.reset = function()
+	{
+		this.numberDiv.innerText = "";
+		this.resetMarkers();
+		this.showMarkers();
+	};
+	this.resetMarkers = function()
+	{
+		for (var i = 0; i < 9; i++)
+		{
+			this.markers[i].className = "markerWhite";
+		}
+	};
+	this.setMarkerDisplayStyle = function(displayValue)
+	{
+		for (var i = 0; i < 9; i++)
+		{
+			this.markers[i].style.display = displayValue;
+		}
+	};
+	this.showMarkers = function() 
+	{
+		this.setMarkerDisplayStyle("block");
+		this.numberDiv.style.display = "none";
+	};
+	this.showNumber = function()
+	{
+		this.setMarkerDisplayStyle("none");
+		this.numberDiv.style.display = "block";
+	};
+	this.showRedNumber = function()
+	{
+		this.showNumber();
+		this.numberDiv.style.color = "red";
+	};
+	this.isNumberShowing = function()
+	{
+		if (this.numberDiv.style.display == "block")
+		{
+			return true;
+		}
+		return false;
+	};
+	this.hideContents = function()
+	{
+		this.setMarkerDisplayStyle("none");
+		this.numberDiv.style.display = "none";
+	};
+	this.setNumber = function(number)
+	{
+		this.numberDiv.style.textAlign = "center";
+		this.numberDiv.style.marginTop = "5px";
+		this.numberDiv.innerText = number;
+	};
+	this.setMarkers = function(number)
+	{
+		for (var i = 0; i < 9; i++)
+		{
+			this.row[i].markers[number - 1].className = "markerBlack";
+			this.column[i].markers[number - 1].className = "markerBlack";
+			this.square[i].markers[number - 1].className = "markerBlack";
+		}
+	};
+	this.select = function()
+	{
+		if (selectedCell != null)
+		{
+			selectedCell.div.className = "cell";
+		}
+		this.div.className = "selectedCell";
+		selectedCell = this;
+	};
+	this.solution = function()
+	{
+		var solution = 0;
+		for (var i = 0; i < 9; i++)
+		{
+			if (this.markers[i].className == "markerWhite")
+			{
+				if (solution == 0)
+				{
+					solution = i + 1;
+				}
+				else // multiple possibilities, no solution available
+				{
+					return 0;
+				}
+			}
+		}
+		return solution;
+	};
+
+	this.div = cellDiv;
+	this.row = rows[rowIndex];
+	this.column = columns[columnIndex];
+	this.square = squares[squareFromColumnRow(columnIndex, rowIndex)];
+	this.markers = new Array(9);
+	this.numberDiv = document.createElement("DIV");
+	this.div.appendChild(this.numberDiv);
+	this.numberDiv.className = "number";
+
+	for (var row = 0; row < 3; row++)
+	{
+		for (var column = 0; column < 3; column++)
+		{
+			var markerDiv = document.createElement("DIV");
+			markerDiv.style.pixelLeft = 2 + (column * 10);
+			markerDiv.style.pixelTop = 2 + (row * 10);
+			this.markers[(3 * row) + column] = markerDiv;
+			this.div.appendChild(markerDiv);
+		}
+	}
+	this.reset();
+}
+
+function squareFromColumnRow(columnIndex, rowIndex)
+{
+	return (3 * Math.floor(rowIndex / 3)) + Math.floor(columnIndex / 3);
+}
+
+function handleClick()
+{
+	try
+	{
+		var clickedCellDiv = window.event.srcElement;
+		var className = clickedCellDiv.className;
+		if ((className == "markerWhite") || (className == "markerBlack") || (className == "number"))
+		{
+			clickedCellDiv = clickedCellDiv.parentNode;
+		}
+		var clickedCell = cellFromDiv(clickedCellDiv);
+		clickedCell.select();
+	}
+	catch (e)
+	{
+		catchHandler("handleClick", e);
+	}
+}
+
+function handleKeyDown()
+{
+	try
+	{
+		if (selectedCell == null)
+		{
+			return;
+		}
+		var keyCode = window.event.keyCode;
+		if ((keyCode == 8) || (keyCode == 27) || (keyCode == 46)) // BACKSPACE, ESC and DELETE
+		{
+			selectedCell.numberDiv.innerText = "";
+			refreshMarkers();
+		}
+		else if ((keyCode > 48 ) && (keyCode < 58))
+		{
+			var oldNumber = selectedCell.numberDiv.innerText;
+			var newNumber = keyCode - 48;
+			if (newNumber != oldNumber)
+			{
+				if (selectedCell.markers[newNumber - 1].className != "markerWhite")
+				{
+					selectedCell.div.className = "errorCell";
+					window.setTimeout(resetErrorCell, 300);
+				}
+				else
+				{
+					if (oldNumber != "")
+					{
+						selectedCell.numberDiv.innerText = "";
+						refreshMarkers();
+					}
+					selectedCell.setNumber(newNumber);
+					selectedCell.showNumber();
+					selectedCell.setMarkers(newNumber);
+					autoComplete();
+				}
+			}
+		}
+	}
+	catch (e)
+	{
+		catchHandler("handleKeyPress", e);
+	}
+}
+
+function resetErrorCell()
+{
+	if (selectedCell != null)
+	{
+		selectedCell.div.className = "selectedCell";
+	}
+}
+
+function cellFromDiv(div)
+{
+	try
+	{
+		for (var i = 0; i < 9; i++)
+		{
+			for (var j = 0; j < 9; j++)
+			{
+				var cell = rows[i][j];
+				if (cell.div == div)
+				{
+					return cell;
+				}
+			}
+		}
+		throw("could not find a cell object matching the specified div");
+	}
+	catch (e)
+	{
+		catchHandler("cellFromDiv", e);
+	}
+}
+
+function checkForWin()
+{
+	try
+	{
+		for (var i = 0; i < 9; i++)
+		{
+			for (var j = 0; j < 9; j++)
+			{
+				if (rows[i][j].div.innerText == "")
+				{
+					return;
+				}
+			}
+		}
+		var winString = document.createElement("DIV");
+		winString.className = "winString";
+		winString.innerText = "You Won!";
+		document.body.appendChild(winString);
+	}
+	catch (e)
+	{
+		catchHandler("checkForWin", e);
+	}
+}
+
+function serializeBoard()
+{
+	var serializedBoard = "";
+	try
+	{
+		for (var i = 0; i < 9; i++)
+		{
+			for (var j = 0; j < 9; j++)
+			{
+				var cellValue = rows[i][j].div.innerText;
+				if (cellValue == "")
+				{
+					serializedBoard += "0 ";
+				}
+				else
+				{
+					serializedBoard += cellValue;
+					serializedBoard += " ";
+				}
+			}
+		}
+	}
+	catch (e)
+	{
+		catchHandler("serializeBoard", e);
+	}
+	return serializedBoard;
+}
+
+function deserializeBoard(serializedBoard)
+{
+	try
+	{
+		clearBoard();
+		var entries = serializedBoard.split(" ");
+		if (entries.length < 81)
+		{
+			return;
+		}
+		for (var i = 0; i < 9; i++)
+		{
+			for (var j = 0; j < 9; j++)
+			{
+				var number = entries[9 * i + j];
+				if (number != 0)
+				{
+					var cell = rows[i][j];
+					cell.setNumber(number);
+					cell.setMarkers(number);
+					cell.showNumber();
+				}
+			}
+		}
+		autoComplete();
+	}
+	catch (e)
+	{
+		catchHandler("deserializeBoard", e);
+	}
+}
+
+function clearBoard()
+{
+	try
+	{
+		for (var i = 0; i < 9; i++)
+		{
+			for (var j = 0; j < 9; j++)
+			{
+				rows[i][j].reset();
+			}
+		}
+	}
+	catch (e)
+	{
+		catchHandler("clearBoard", e);
+	}
+}
+
+function autoComplete()
+{
+	var cellUpdated = false;
+	do
+	{
+		cellUpdated = autoCompleteOnce();
+	} while (cellUpdated);
+}
+
+function autoCompleteOnce()
+{
+	try
+	{
+		for (var i = 0; i < 9; i++)
+		{
+			for (var j = 0; j < 9; j++)
+			{
+				var cell = rows[i][j];
+				if (!cell.isNumberShowing())
+				{
+					var firstWhite = 0;
+					var secondWhite = 0;
+					var solution = cell.solution();
+					if (solution != 0)
+					{
+						cell.setNumber(solution);
+						cell.showRedNumber();
+						cell.setMarkers(solution);
+						checkForWin();
+						return true;
+					}
+				}
+			}
+		}
+	}
+	catch (e)
+	{
+		catchHandler("autoCompleteOnce", e);
+	}
+	return false;
+}
+
+function refreshMarkers()
+{
+	try
+	{
+		for (var i = 0; i < 9; i++)
+		{
+			for (var j = 0; j < 9; j++)
+			{
+				var cell = rows[i][j];
+				cell.resetMarkers();
+				if (cell.numberDiv.style.color == "red")
+				{
+					cell.numberDiv.innerText = "";
+				}
+			}
+		}
+		var serializedBoard = serializeBoard();
+		clearBoard();
+		deserializeBoard(serializedBoard);
+		autoComplete();
+	}
+	catch (e)
+	{
+		catchHandler("refreshMarkers", e);
+	}				
+}
+
+function clearSelectionHighlight()
+{
+	if (selectedCell != null)
+	{
+		selectedCell.div.className = "cell";
+		selectedCell = null;
+	}
+
+}
+
+function handleReset()
+{
+	try
+	{
+		clearBoard();
+		clearSelectionHighlight();
+		System.Gadget.Settings.write("serializedBoard", "");
+	}
+	catch (e)
+	{
+		catchHandler("handleReset", e);
+	}
+}
+
+function handleCopy()
+{
+	window.clipboardData.setData('Text', serializeBoard());
+}
+
+function handlePaste()
+{
+	clearBoard();
+	clearSelectionHighlight();
+	deserializeBoard(window.clipboardData.getData('Text'));
+}
+
+function catchHandler(functionName, exception)
+{
+	if (debug == false)
+	{
+		debug = true;
+		document.body.innerHTML = "&nbsp;";
+		document.body.style.backgroundColor = "white";
+		document.body.style.backgroundImage = "";
+	}
+	document.body.innerHTML += functionName + " : " + exception + " : " + exception.name + " : " + exception.message + "<BR>"; 
+	throw exception;
+}
+
+</SCRIPT>
+</HEAD>
+<BODY 
+	STYLE="width:372px;height:402px;background-image:url(TransparentPixel.png)" 
+	onload="javascript:initializeBoard();"
+	onkeydown="javascript:handleKeyDown();">
+<DIV ID="backgroundDiv" CLASS="background">
+<DIV class="reset" onclick="javascript:handleReset();">Reset</DIV>
+<DIV class="copy" onclick="javascript:handleCopy();">Copy</DIV>
+<DIV class="paste" onclick="javascript:handlePaste();">Paste</DIV>
+</DIV>
+</BODY>
+</HTML>

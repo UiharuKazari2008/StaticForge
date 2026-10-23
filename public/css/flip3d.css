@@ -1,0 +1,27 @@
+/* Windows Flip 3D (public/scripts/comp/flip3d.js): everything behind the stack dimmed to half
+   (Vista VM, 2026-10-22: wallpaper, gadgets and taskbar alike), the WebGL stack over it, and the
+   windows themselves hidden while their cards fly. Above every window, menu and the taskbar. */
+
+.flip3d-dim {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483600;
+    background: rgba(0, 0, 0, 0.5);
+    pointer-events: auto;
+    will-change: opacity;
+}
+
+.flip3d-canvas {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 2147483601;
+    pointer-events: auto;
+    cursor: default;
+}
+
+.modal.flip3d-hidden {
+    visibility: hidden !important;
+}

@@ -1,0 +1,23 @@
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+ <title>Abacus</title>
+ <link href="abi.css" rel="stylesheet" type="text/css" />
+ <script language="javascript"  type="text/javascript">
+
+System.Gadget.settingsUI = "about.html";
+
+function showFlyout()
+{
+System.Gadget.Flyout.file = "flyout.html";
+System.Gadget.Flyout.show = true;
+}
+</script>
+</head>
+<body>
+<div>
+<g:background id="background" src="clear.png" style="position:absolute; z-index:-999" ></g:background></g:background>
+<a id="fly" onclick="showFlyout();" href="javascript:void(0);"><img src="logo.png" alt="The First Super Computer" /></a>
+</div>
+</body>
+</html>
+

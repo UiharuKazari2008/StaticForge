@@ -1,0 +1,36 @@
+/*
+// ----------------------------------------------
+//  settings.css
+// ----------------------------------------------
+*/
+body
+{ 
+    width: 278px;
+    height: 385px;
+    font-family: 'Segoe UI', Tahoma, Sans-Serif;
+    margin: 0px;
+}
+#settingsButtonTable
+{
+    font-size: 12px;
+}
+#currentIndex
+{
+     width: 15px;
+     text-align: center;
+}
+#maxIndex
+{
+     width: 15px;
+     text-align: center;
+}
+a
+{
+    color:#0066cc;
+    text-decoration:none;
+}
+a:hover
+{
+    color:#3399ff;
+    text-decoration:underline;
+}

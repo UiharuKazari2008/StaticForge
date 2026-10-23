@@ -33,7 +33,9 @@
  *   quickLaunchItems
  *                   Quick Launch's shortcuts in order: 'show-desktop', 'switch-windows', or any
  *                   Start menu launchId; added with the Start menu's "Add to Quick Launch",
- *                   removed with Delete on the icon's right-click menu
+ *                   removed with Delete on the icon's right-click menu, reordered by dragging,
+ *                   and the deleted defaults put back with Restore Default Items (the icon's menu,
+ *                   the taskbar's Toolbars menu, the Properties' Toolbars tab)
  *
  * Also here: the Quick Launch toolbar, the taskbar's and the Start button's right-click menus,
  * and the window previews over taskbar buttons. Art: public/static_images/vista-taskbar/
@@ -81,7 +83,6 @@
     const BOOLEAN_KEYS = Object.keys(DEFAULTS).filter((k) => typeof DEFAULTS[k] === 'boolean');
     const AUTOHIDE_LEAVE_MS = 500;
     const THUMB_DELAY_MS = 400;
-    const THUMB_MAX_NODES = 2500;
 
     function normalize(raw) {
         const out = { ...DEFAULTS, places: {} };
@@ -353,6 +354,11 @@
                 ev.stopPropagation();
                 runQuickLaunch(b.dataset.quickLaunch);
             });
+            wireQuickLaunchDrag(bar);
+            bar.addEventListener('pointerover', (ev) => {
+                const b = ev.target.closest('[data-quick-launch="switch-windows"]');
+                if (b && !b.contains(ev.relatedTarget)) prewarmFlip3d();
+            });
             tb.insertBefore(bar, band);
         }
         renderQuickLaunch(bar);
@@ -462,6 +468,154 @@
         return true;
     }
 
+    /** The list with `id` dropped into gap `gap` (0 = before the first, length = after the last),
+     *  the gaps counted in the list as it is before the move. */
+    function reorderList(list, id, gap) {
+        const from = list.indexOf(id);
+        if (from < 0) return list.slice();
+        const to = Math.max(0, Math.min(list.length, Math.round(gap)));
+        const out = list.filter((x) => x !== id);
+        out.splice(to > from ? to - 1 : to, 0, id);
+        return out;
+    }
+
+    /** Quick Launch's drag and drop: the shortcut moves to gap `gap`; false when it stays put. */
+    function moveQuickLaunch(id, gap) {
+        const next = reorderList(settings.quickLaunchItems, id, gap);
+        if (next.join('|') === settings.quickLaunchItems.join('|')) return false;
+        set({ quickLaunchItems: next });
+        return true;
+    }
+
+    /** The default shortcuts (DEFAULTS.quickLaunchItems) the user has deleted. */
+    function missingQuickLaunchDefaults(list = settings.quickLaunchItems) {
+        return DEFAULTS.quickLaunchItems.filter((id) => !list.includes(id));
+    }
+
+    /** The list with each missing default back beside the default that comes before it (or first),
+     *  the user's own shortcuts and order kept. */
+    function mergeQuickLaunchDefaults(list) {
+        const out = list.slice();
+        DEFAULTS.quickLaunchItems.forEach((id, i) => {
+            if (out.includes(id)) return;
+            let at = 0;
+            for (let j = i - 1; j >= 0; j--) {
+                const k = out.indexOf(DEFAULTS.quickLaunchItems[j]);
+                if (k >= 0) { at = k + 1; break; }
+            }
+            out.splice(at, 0, id);
+        });
+        return out;
+    }
+
+    /** "Restore Default Items": Show desktop, Switch between windows and the other defaults come back. */
+    function restoreQuickLaunchDefaults() {
+        if (!missingQuickLaunchDefaults().length) return false;
+        set({ quickLaunch: true, quickLaunchItems: mergeQuickLaunchDefaults(settings.quickLaunchItems) });
+        return true;
+    }
+
+    // ---- Quick Launch drag and drop ------------------------------------------------------------
+    // Vista's toolbar insert mark: a black 2 px I-beam the taskbar's full height with 6 px and 4 px
+    // serifs at both ends, its stem on the left edge of the button the drop goes before (VM,
+    // 2026-10-22); the dragged icon follows the pointer at the grab offset, half see-through, on
+    // the hot button face. The drag starts past Windows' 4 px SM_CXDRAG; Esc cancels.
+
+    const QL_DRAG_PX = 4;
+    let qlDrag = null;
+
+    /** The gap (0..n) the pointer at clientX falls in: before the first button whose middle it is left of. */
+    function quickLaunchGapAt(bar, clientX) {
+        const btns = Array.from(bar.querySelectorAll('.taskbar-quick-launch-btn'));
+        for (let i = 0; i < btns.length; i++) {
+            const r = btns[i].getBoundingClientRect();
+            if (clientX < r.left + r.width / 2) return i;
+        }
+        return btns.length;
+    }
+
+    function quickLaunchGapX(bar, gap) {
+        const btns = bar.querySelectorAll('.taskbar-quick-launch-btn');
+        const br = bar.getBoundingClientRect();
+        if (!btns.length) return 0;
+        if (gap < btns.length) return Math.round(btns[gap].getBoundingClientRect().left - br.left);
+        return Math.round(btns[btns.length - 1].getBoundingClientRect().right - br.left);
+    }
+
+    function wireQuickLaunchDrag(bar) {
+        bar.addEventListener('pointerdown', (ev) => {
+            if (ev.button !== 0 || qlDrag) return;
+            const b = ev.target.closest('.taskbar-quick-launch-btn');
+            if (!b) return;
+            const r = b.getBoundingClientRect();
+            qlDrag = { bar, btn: b, id: b.dataset.quickLaunch, pointerId: ev.pointerId, x0: ev.clientX, y0: ev.clientY, dx: ev.clientX - r.left, dy: ev.clientY - r.top, on: false, gap: -1, ghost: null, mark: null };
+        });
+        bar.addEventListener('pointermove', onQuickLaunchDragMove);
+        bar.addEventListener('pointerup', (ev) => endQuickLaunchDrag(ev, true));
+        bar.addEventListener('pointercancel', (ev) => endQuickLaunchDrag(ev, false));
+        bar.addEventListener('lostpointercapture', (ev) => { if (qlDrag && qlDrag.on) endQuickLaunchDrag(ev, false); });
+        // the click after a drop is not a launch
+        bar.addEventListener('click', (ev) => {
+            if (bar.dataset.dragJustEnded !== '1') return;
+            delete bar.dataset.dragJustEnded;
+            ev.stopImmediatePropagation();
+            ev.preventDefault();
+        }, true);
+    }
+
+    function onQuickLaunchDragMove(ev) {
+        const d = qlDrag;
+        if (!d || ev.pointerId !== d.pointerId) return;
+        if (!d.on) {
+            if (Math.abs(ev.clientX - d.x0) <= QL_DRAG_PX && Math.abs(ev.clientY - d.y0) <= QL_DRAG_PX) return;
+            d.on = true;
+            try { d.bar.setPointerCapture(d.pointerId); } catch (_) { /* gone */ }
+            hideThumb(true);
+            d.ghost = d.btn.cloneNode(true);
+            d.ghost.className = 'taskbar-quick-launch-btn taskbar-quick-launch-ghost';
+            d.ghost.removeAttribute('title');
+            d.ghost.setAttribute('aria-hidden', 'true');
+            doc.body.appendChild(d.ghost);
+            d.mark = doc.createElement('div');
+            d.mark.className = 'taskbar-quick-launch-insert';
+            d.mark.hidden = true;
+            d.bar.appendChild(d.mark);
+            d.bar.classList.add('is-dragging');
+            doc.addEventListener('keydown', onQuickLaunchDragKey, true);
+        }
+        d.ghost.style.transform = `translate(${Math.round(ev.clientX - d.dx)}px, ${Math.round(ev.clientY - d.dy)}px)`;
+        // over the toolbar (the taskbar's height, a button's width either side): an insert mark
+        const tb = taskbar();
+        const br = d.bar.getBoundingClientRect();
+        const tr = tb ? tb.getBoundingClientRect() : br;
+        const over = ev.clientY >= tr.top && ev.clientY <= tr.bottom && ev.clientX >= br.left - 23 && ev.clientX <= br.right + 23;
+        d.gap = over ? quickLaunchGapAt(d.bar, ev.clientX) : -1;
+        d.mark.hidden = d.gap < 0;
+        if (d.gap >= 0) d.mark.style.left = `${quickLaunchGapX(d.bar, d.gap) - 2}px`;
+    }
+
+    function onQuickLaunchDragKey(ev) {
+        if (ev.key !== 'Escape' || !qlDrag) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        endQuickLaunchDrag(null, false);
+    }
+
+    function endQuickLaunchDrag(ev, drop) {
+        const d = qlDrag;
+        if (!d || (ev && ev.pointerId !== d.pointerId)) return;
+        qlDrag = null;
+        if (!d.on) return;
+        doc.removeEventListener('keydown', onQuickLaunchDragKey, true);
+        try { d.bar.releasePointerCapture(d.pointerId); } catch (_) { /* released */ }
+        if (d.ghost) d.ghost.remove();
+        if (d.mark) d.mark.remove();
+        d.bar.classList.remove('is-dragging');
+        d.bar.dataset.dragJustEnded = '1';
+        setTimeout(() => { delete d.bar.dataset.dragJustEnded; }, 0);
+        if (drop && d.gap >= 0) moveQuickLaunch(d.id, d.gap);
+    }
+
     function launchApp(launchId) {
         // findStartMenuLaunchableById / launchStartMenuItem: public/scripts/comp/modalUtils.js
         const item = callGlobal('findStartMenuLaunchableById', launchId);
@@ -492,7 +646,37 @@
     }
 
     /** Switch between windows: the Ctrl+Tab switcher (keyboardShortcuts.js), held open until a pick. */
+    let flip3dFailed = false;
+
+    /** Vista's Switch between windows is Flip 3D (flip3d.js, a lazy feature), open until a click,
+     *  Enter or Esc; without WebGL the window switcher. */
     function openWindowSwitcher() {
+        const flip = () => !!(root.flip3d && root.flip3d.open('sticky'));
+        if (!flip3dFailed && root.flip3d) {
+            if (flip()) return;
+            flip3dFailed = true;
+        } else if (!flip3dFailed && typeof featureLoader !== 'undefined') {
+            featureLoader.loadFeature('flip3d').then(() => {
+                if (flip()) return;
+                flip3dFailed = true;
+                openClassicSwitcher();
+            }).catch(() => {
+                flip3dFailed = true;
+                openClassicSwitcher();
+            });
+            return;
+        }
+        openClassicSwitcher();
+    }
+
+    /** Resting on Switch between windows: Flip 3D copies the windows that changed ahead. */
+    function prewarmFlip3d() {
+        if (flip3dFailed) return;
+        if (root.flip3d) root.flip3d.prewarm();
+        else if (typeof featureLoader !== 'undefined') featureLoader.loadFeature('flip3d').then(() => root.flip3d && root.flip3d.prewarm()).catch(() => {});
+    }
+
+    function openClassicSwitcher() {
         if (typeof startWindowSwitcher !== 'function') return;
         startWindowSwitcher();
         if (typeof windowSwitcherActive !== 'undefined' && !windowSwitcherActive) return;
@@ -595,7 +779,9 @@
                             text: 'Toolbars',
                             submenu: [
                                 { text: 'Quick Launch', action: 'tb-toolbar-quick-launch', checked: s.quickLaunch, indicatorMark: 'check', showIndicator: true },
-                                { text: 'Status', action: 'tb-toolbar-ticker', checked: s.ticker, indicatorMark: 'check', showIndicator: true }
+                                { text: 'Status', action: 'tb-toolbar-ticker', checked: s.ticker, indicatorMark: 'check', showIndicator: true },
+                                { separator: true },
+                                { text: 'Restore Quick Launch Items', action: 'tb-ql-restore', disabled: !missingQuickLaunchDefaults().length }
                             ]
                         },
                         { separator: true },
@@ -613,6 +799,7 @@
                 switch (action) {
                     case 'tb-toolbar-quick-launch': set({ quickLaunch: !settings.quickLaunch }); break;
                     case 'tb-toolbar-ticker': set({ ticker: !settings.ticker }); break;
+                    case 'tb-ql-restore': restoreQuickLaunchDefaults(); break;
                     case 'tb-cascade': arrangeWindows('cascade'); break;
                     case 'tb-stacked': arrangeWindows('stacked'); break;
                     case 'tb-side': arrangeWindows('side'); break;
@@ -642,17 +829,27 @@
                 } else if (action === 'start-explore') callGlobal('openExplorerApplet');
             }
         };
-        // a Quick Launch shortcut: Open, and Delete takes it off the toolbar
+        // a Quick Launch shortcut: Open, Delete takes it off the toolbar, and Restore Default Items
+        // brings back the deleted defaults (Show desktop, Switch between windows...)
         contextMenu.configs['vista-quick-launch-item'] = {
             sections: [{
                 type: 'list',
-                items: [
-                    { text: 'Open', action: 'ql-open' },
-                    { separator: true },
-                    { text: 'Delete', action: 'ql-delete' }
-                ]
+                items: [],
+                initfn: (section) => {
+                    section.items = [
+                        { text: 'Open', action: 'ql-open' },
+                        { separator: true },
+                        { text: 'Delete', action: 'ql-delete' },
+                        { separator: true },
+                        { text: 'Restore Default Items', action: 'ql-restore', disabled: !missingQuickLaunchDefaults().length }
+                    ];
+                }
             }],
             onAction: (action, target) => {
+                if (action === 'ql-restore') {
+                    restoreQuickLaunchDefaults();
+                    return;
+                }
                 const b = target && target.closest ? target.closest('.taskbar-quick-launch-btn') : null;
                 if (!b) return;
                 if (action === 'ql-open') runQuickLaunch(b.dataset.quickLaunch);
@@ -684,65 +881,89 @@
         return span ? span.textContent : '';
     }
 
-    /** What a copy must not carry: a radio button's name would join (and uncheck) the real
-     *  window's group, labels and autofocus act on the page. Ids stay: every app styles its window
-     *  by them (Director's dark panes, Studio's layout); the preview sits last in <body>, so a
-     *  getElementById / querySelector still finds the real window first. */
-    function stripLiveAttributes(node) {
-        if (node.nodeType !== 1) return;
-        const strip = (el) => {
-            el.removeAttribute('name');
-            el.removeAttribute('for');
-            el.removeAttribute('autofocus');
-            el.removeAttribute('tabindex');
-        };
-        strip(node);
-        node.querySelectorAll('[name], [for], [autofocus], [tabindex]').forEach(strip);
+    const THUMB_BOX = Object.freeze({ w: 200, h: 120 });
+    // while a preview is up it follows its window: a changed window is copied again at most
+    // this often, live canvases and videos are drawn in again at the faster rate
+    const THUMB_RECOPY_MS = 1000;
+    const THUMB_LIVE_MS = 500;
+    let thumbLiveTimer = 0;
+    let thumbHeld = null;
+
+    /** windowCapture.js (a lazy feature, shared with Flip 3D): a promise of it, null when it
+     *  cannot load. */
+    function windowCapture() {
+        if (root.windowCapture) return Promise.resolve(root.windowCapture);
+        if (typeof featureLoader === 'undefined') return Promise.resolve(null);
+        return featureLoader.loadFeature('window_capture').then(() => root.windowCapture || null).catch(() => null);
     }
 
-    /** A still of the window: a clone with its ids (for its styles) but no form or focus ties,
-     *  canvases copied. */
-    function snapshot(modal, box) {
-        if (!modal || modal.getElementsByTagName('*').length > THUMB_MAX_NODES) return null;
-        const minimised = modal.classList.contains('minimised');
-        const rect = modal.getBoundingClientRect();
-        const w = minimised ? (parseFloat(modal.style.width) || modal.offsetWidth) : rect.width;
-        const h = minimised ? (parseFloat(modal.style.height) || modal.offsetHeight) : rect.height;
-        if (!w || !h) return null;
-        const clone = modal.cloneNode(true);
-        const srcCanvases = modal.querySelectorAll('canvas');
-        const dstCanvases = clone.querySelectorAll('canvas');
-        dstCanvases.forEach((c, i) => {
-            const s = srcCanvases[i];
-            if (!s || !s.width || !s.height) return;
-            try {
-                c.width = s.width;
-                c.height = s.height;
-                c.getContext('2d').drawImage(s, 0, 0);
-            } catch (_) { /* tainted or WebGL */ }
+    /** The pointer reached a button: its window is copied during the hover delay. */
+    function warmThumb(item) {
+        const modal = modalFor(item);
+        if (!modal || !settings.thumbnails) return;
+        windowCapture().then((wc) => { if (wc) wc.capture(modal); });
+    }
+
+    /** The window's picture fitted to the preview box (a canvas at the screen's density). */
+    function thumbStill(wc, pic) {
+        const src = wc.composite(pic);
+        const rimPx = wc.RIM;
+        const scale = Math.min(THUMB_BOX.w / pic.w, THUMB_BOX.h / pic.h);
+        const w = Math.max(1, Math.round(pic.w * scale));
+        const h = Math.max(1, Math.round(pic.h * scale));
+        const dpr = Math.min(2, root.devicePixelRatio || 1);
+        const c = doc.createElement('canvas');
+        c.className = 'taskbar-thumb-still';
+        c.width = Math.round(w * dpr);
+        c.height = Math.round(h * dpr);
+        c.style.width = `${w}px`;
+        c.style.height = `${h}px`;
+        const g = c.getContext('2d');
+        g.imageSmoothingQuality = 'high';
+        g.drawImage(src, rimPx, rimPx, src.width - 2 * rimPx, src.height - 2 * rimPx, 0, 0, c.width, c.height);
+        return c;
+    }
+
+    /** Vista's preview of a window with no picture yet: its icon. */
+    function thumbIcon(item, body) {
+        const icon = item.querySelector('img.icon-image, i');
+        if (icon) body.appendChild(icon.cloneNode(true));
+        body.classList.add('is-icon');
+    }
+
+    function setThumbBody(item, content) {
+        const body = thumb.querySelector('.taskbar-thumb-body');
+        body.textContent = '';
+        body.classList.remove('is-icon');
+        if (content) body.appendChild(content);
+        else thumbIcon(item, body);
+        placeThumb(item);
+    }
+
+    /** Keeps the preview up to date while it shows: a new copy when the window changed, the
+     *  live canvases / videos drawn in again. */
+    function followThumb(item, modal) {
+        if (thumbLiveTimer) clearTimeout(thumbLiveTimer);
+        thumbLiveTimer = 0;
+        windowCapture().then(async (wc) => {
+            if (!wc || thumbFor !== item) return;
+            if (thumbHeld !== modal) {
+                if (thumbHeld) wc.hold([thumbHeld], false);
+                wc.hold([modal]);
+                thumbHeld = modal;
+            }
+            let pic = wc.cached(modal);
+            if (!pic || !wc.fresh(modal)) {
+                pic = await wc.capture(modal);
+                if (thumbFor !== item) return;
+                if (pic) setThumbBody(item, thumbStill(wc, pic));
+            } else if (pic.overlays.length) setThumbBody(item, thumbStill(wc, pic));
+            const live = pic && pic.overlays.length;
+            thumbLiveTimer = setTimeout(() => {
+                thumbLiveTimer = 0;
+                if (thumbFor === item) followThumb(item, modal);
+            }, live ? THUMB_LIVE_MS : THUMB_RECOPY_MS);
         });
-        clone.querySelectorAll('video, audio, iframe, script').forEach((el) => el.remove());
-        stripLiveAttributes(clone);
-        clone.classList.remove('minimised', 'minimising', 'active-window', 'entering', 'leaving');
-        clone.classList.add('taskbar-thumb-clone');
-        clone.setAttribute('aria-hidden', 'true');
-        clone.setAttribute('inert', '');
-        const scale = Math.min(box.w / w, box.h / h);
-        // the copy's geometry beats the window's own rules (maximized windows and some apps size
-        // themselves with !important), or the preview grows past its box
-        const fixed = {
-            position: 'absolute', inset: 'auto', left: '0px', top: '0px', right: 'auto', bottom: 'auto',
-            width: `${w}px`, height: `${h}px`, 'min-width': '0px', 'min-height': '0px', 'max-width': 'none', 'max-height': 'none',
-            margin: '0px', transform: `scale(${scale})`, 'transform-origin': '0 0', translate: 'none', scale: 'none', rotate: 'none',
-            zoom: '1', 'pointer-events': 'none', animation: 'none', transition: 'none', opacity: '1', visibility: 'visible'
-        };
-        Object.keys(fixed).forEach((prop) => clone.style.setProperty(prop, fixed[prop], 'important'));
-        const holder = doc.createElement('div');
-        holder.className = 'taskbar-thumb-still';
-        holder.style.width = `${Math.round(w * scale)}px`;
-        holder.style.height = `${Math.round(h * scale)}px`;
-        holder.appendChild(clone);
-        return holder;
     }
 
     function ensureThumb() {
@@ -772,20 +993,25 @@
         el.querySelector('.taskbar-thumb-title').textContent = title;
         const body = el.querySelector('.taskbar-thumb-body');
         body.textContent = '';
+        body.classList.remove('is-icon');
         const withPreview = settings.thumbnails;
         el.classList.toggle('is-tooltip', !withPreview);
-        if (withPreview) {
-            const still = snapshot(modal, { w: 200, h: 120 });
-            if (still) body.appendChild(still);
-            else {
-                // too large to copy: the window's icon, as Vista draws a window with no picture
-                const icon = item.querySelector('img.icon-image, i');
-                if (icon) body.appendChild(icon.cloneNode(true));
-                body.classList.add('is-icon');
-            }
-        }
         thumbFor = item;
         el.classList.remove('hidden');
+        if (withPreview) {
+            // the window's picture (windowCapture.js): the last one at once, a new one when it
+            // changed; none yet, its icon until the copy is done
+            const wc = root.windowCapture;
+            const pic = wc && wc.cached(modal);
+            setThumbBody(item, pic ? thumbStill(wc, pic) : null);
+            followThumb(item, modal);
+        } else placeThumb(item);
+    }
+
+    /** Over its button, centred, inside the screen, just above the taskbar. */
+    function placeThumb(item) {
+        const el = thumb;
+        if (!el || !item.isConnected) return;
         const r = item.getBoundingClientRect();
         const tbRect = taskbar().getBoundingClientRect();
         const w = el.offsetWidth;
@@ -801,6 +1027,10 @@
         const done = () => {
             thumbHideTimer = 0;
             thumbFor = null;
+            if (thumbLiveTimer) clearTimeout(thumbLiveTimer);
+            thumbLiveTimer = 0;
+            if (thumbHeld && root.windowCapture) root.windowCapture.hold([thumbHeld], false);
+            thumbHeld = null;
             if (!thumb) return;
             thumb.classList.add('hidden');
             thumb.querySelector('.taskbar-thumb-body').textContent = '';
@@ -820,12 +1050,20 @@
             if (thumbHideTimer) clearTimeout(thumbHideTimer);
             thumbHideTimer = 0;
             if (thumbTimer) clearTimeout(thumbTimer);
+            warmThumb(item);
             // already showing one: move straight over, as Vista does
             const delay = thumbFor ? 0 : THUMB_DELAY_MS;
             thumbTimer = setTimeout(() => {
                 thumbTimer = 0;
                 if (item.isConnected && item.matches(':hover')) showThumb(item);
             }, delay);
+        });
+        // entering the buttons: the windows that changed are copied in idle moments, so moving
+        // along them finds their pictures ready
+        band.addEventListener('pointerenter', (ev) => {
+            if (ev.pointerType === 'touch' || !settings.thumbnails) return;
+            const wins = Array.from(band.querySelectorAll('.taskbar-window-item[data-modal-id]')).map(modalFor).filter(Boolean);
+            windowCapture().then((wc) => { if (wc) wc.prewarm(wins, () => !band.matches(':hover')); });
         });
         band.addEventListener('pointerleave', () => hideThumb());
         band.addEventListener('pointerdown', () => hideThumb(true), true);
@@ -860,8 +1098,12 @@
         hasQuickLaunch,
         addQuickLaunch,
         removeQuickLaunch,
+        moveQuickLaunch,
+        missingQuickLaunchDefaults,
+        mergeQuickLaunchDefaults,
+        restoreQuickLaunchDefaults,
         quickLaunchEntry,
-        _test: { read, snapshot, stripLiveAttributes, QUICK_LAUNCH_SHELL, STORAGE_KEY }
+        _test: { read, reorderList, QUICK_LAUNCH_SHELL, STORAGE_KEY }
     };
     root.taskbarSettings = api;
 

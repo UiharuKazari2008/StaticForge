@@ -1,0 +1,75 @@
+/* Hosted Sidebar gadgets (public/scripts/comp/vistaGadgetHost.js, Yozora #629): the gadget's own
+   page in a transparent iframe sized to its body, like the Sidebar drew it. */
+
+.vgh-box {
+    position: relative;
+    line-height: 0;
+}
+
+.vgh-frame {
+    display: block;
+    border: 0;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    /* a light page in a dark desktop would otherwise get an opaque canvas */
+    color-scheme: normal;
+    overflow: hidden;
+}
+
+/* a flyout is the gadget's flyout page and nothing else: its own art draws the frame */
+.vsb-flyout.vgh-flyout {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    line-height: 0;
+}
+
+.vgh-settings {
+    line-height: 0;
+}
+
+.vgh-settings .vgh-frame {
+    background: transparent;
+}
+
+/* Loading: the gadget's place (its last drawn size) as a dark glass frame with Vista's busy ring
+   (the logon's wait animation, 18 frames a second), until its page has loaded */
+.vgh-box.is-loading .vgh-frame {
+    visibility: hidden;
+}
+
+.vgh-loading {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 5px;
+    background: rgba(20, 28, 40, 0.45);
+    box-shadow: inset 0 1px rgba(255, 255, 255, 0.2);
+}
+
+.vgh-loading-ring {
+    width: 20px;
+    height: 20px;
+    background: url('/static_images/vista-logon/wait-20.png') 0 0 / 20px 360px no-repeat;
+    animation: vgh-wait 1s steps(18) infinite;
+}
+
+@keyframes vgh-wait {
+    to {
+        background-position-y: -360px;
+    }
+}
+
+/* a gadget's alert() as the Sidebar's message box: plain text */
+.vgh-notice {
+    margin: 0;
+    white-space: normal;
+}

@@ -1,0 +1,27 @@
+body {
+	width:130;
+	height:67;
+	margin-top: 9px;
+	margin-left: 13px;
+	font-family: 'Segoe Media Center', 'Segoe UI', Tahoma, Verdana, Arial, Sans-serf;
+	font-size: 12px;
+	background: transparent url(/static_images/vista-gadgets/uptime/images/background.png) no-repeat;
+	text-align: left;
+	line-height: 12px;
+}
+
+.header {
+	font-size: 12px;
+	font-family: 'Segoe UI';
+	font-weight: bold;
+	padding-bottom: 3px;
+	color: #ffffff;
+}
+
+.uptime {
+	color: #ffffff;
+	font-size: 12px;
+	font-family: 'Segoe UI';
+	font-weight: normal;
+	letter-spacing: -0.05px;
+}

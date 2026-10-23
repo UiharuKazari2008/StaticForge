@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>Empty Space</name>
+  <namespace>ALLinONEGadgets</namespace>
+  <version>3.0.0.0</version>
+  <author name="All in One Computer Center">
+    <info url="http://www.all-n1.net" text="www.all-n1.net" />
+    <logo src="images/logo.png" />
+  </author>
+  <copyright>Copyright ©2007</copyright>
+  <description>Make an empty space between gadgets.</description>
+  <icons>
+    <icon width="64" height="64" src="images/icon.png" />
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="EmptySpace.html" />
+      <permissions>full</permissions>
+      <platform minPlatformVersion="0.3" />
+    </host>
+  </hosts>
+</gadget>

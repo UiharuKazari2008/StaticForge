@@ -413,6 +413,9 @@ async function createTables() {
         CREATE INDEX IF NOT EXISTS idx_gwi_workspace_bucket_sort ON gallery_workspace_items (workspace_id, bucket, sort_mtime DESC);
         CREATE INDEX IF NOT EXISTS idx_gwi_workspace_bucket_sort_base ON gallery_workspace_items (workspace_id, bucket, sort_mtime DESC, base DESC);
         CREATE INDEX IF NOT EXISTS idx_gwi_upscaled_view ON gallery_workspace_items (workspace_id, bucket, in_upscaled_view, sort_mtime DESC);
+        CREATE INDEX IF NOT EXISTS idx_gwi_original ON gallery_workspace_items (original);
+        CREATE INDEX IF NOT EXISTS idx_gwi_upscaled ON gallery_workspace_items (upscaled);
+        CREATE INDEX IF NOT EXISTS idx_images_upscaled_view ON images (filename) WHERE upscaled IS NOT NULL AND upscaled != 0 AND upscaled != '';
         CREATE INDEX IF NOT EXISTS idx_gwp_workspace ON gallery_workspace_pins (workspace_id, pin_order, pinned_at);
         CREATE INDEX IF NOT EXISTS idx_gwbm_workspace_view ON ${GALLERY_BLOCK_META_TABLE} (workspace_id, view_type, block_offset);
         CREATE INDEX IF NOT EXISTS idx_prompt_text_lane ON image_prompt_text (lane);
@@ -751,8 +754,38 @@ function generateMD5(filePath) {
     }
 }
 
+function md5OfBuffer(buffer) {
+    return crypto.createHash('md5').update(buffer).digest('hex');
+}
+
+/** Streamed MD5 (no full-file read on the event loop); null on error like generateMD5. */
+function generateMD5Async(filePath) {
+    return new Promise((resolve) => {
+        const hash = crypto.createHash('md5');
+        const stream = fs.createReadStream(filePath);
+        stream.on('data', (chunk) => hash.update(chunk));
+        stream.on('error', (error) => {
+            console.error(`❌ Error generating MD5 for ${filePath}:`, error.message);
+            resolve(null);
+        });
+        stream.on('end', () => resolve(hash.digest('hex')));
+    });
+}
+
+async function statOrNull(filePath) {
+    try {
+        return await fs.promises.stat(filePath);
+    } catch (_) {
+        return null;
+    }
+}
+
+async function fileExists(filePath) {
+    return (await statOrNull(filePath)) !== null;
+}
+
 /**
- * Extract image metadata using Sharp
+ * Extract image metadata using Sharp (file path or in-memory buffer)
  */
 async function extractImageMetadata(filePath) {
     try {
@@ -769,7 +802,7 @@ async function extractImageMetadata(filePath) {
             hasAlpha: metadata.hasAlpha
         };
     } catch (error) {
-        console.error(`❌ Error extracting metadata for ${filePath}:`, error.message);
+        console.error(`❌ Error extracting metadata for ${Buffer.isBuffer(filePath) ? 'buffer' : filePath}:`, error.message);
         return null;
     }
 }
@@ -927,7 +960,7 @@ async function backfillMissingBlurhashes(options = {}) {
             });
             return hash ? [hash, row.filename] : null;
         },
-        commitPairs: async (pairs) => {
+        commitPairs: (pairs) => withDbTransactionLock(async () => {
             try {
                 await db.run('BEGIN TRANSACTION');
             } catch (txError) {
@@ -955,7 +988,7 @@ async function backfillMissingBlurhashes(options = {}) {
                 logger.error('BlurHash backfill commit failed:', txError);
                 throw txError;
             }
-        }
+        })
     });
 
     let gallerySynced = 0;
@@ -976,22 +1009,32 @@ async function backfillMissingBlurhashes(options = {}) {
 /**
  * Build image metadata from disk without touching SQL.
  */
-async function buildImageMetadataFromFile(filename, imagesDir, existingReceipts = []) {
+async function buildImageMetadataFromFile(filename, imagesDir, existingReceipts = [], options = {}) {
     const filePath = path.join(imagesDir, filename);
-    if (!fs.existsSync(filePath)) {
+    const stats = await statOrNull(filePath);
+    if (!stats) {
         return null;
     }
 
-    const stats = fs.statSync(filePath);
-    const md5 = generateMD5(filePath);
-    const imageMetadata = await extractImageMetadata(filePath);
+    // One read serves md5, Sharp dimensions and the PNG text chunks (caller may pass the bytes).
+    let fileBuffer = Buffer.isBuffer(options.buffer) ? options.buffer : null;
+    if (!fileBuffer) {
+        try {
+            fileBuffer = await fs.promises.readFile(filePath);
+        } catch (error) {
+            console.error(`❌ Error generating MD5 for ${filePath}:`, error.message);
+            return null;
+        }
+    }
+    const md5 = md5OfBuffer(fileBuffer);
+    const imageMetadata = await extractImageMetadata(fileBuffer);
     if (!imageMetadata) {
         return null;
     }
 
     let extractedMetadata = {};
     try {
-        extractedMetadata = await _pngMetadata.extractNovelAIMetadata(filePath) || {};
+        extractedMetadata = await _pngMetadata.extractNovelAIMetadata(filePath, fileBuffer) || {};
     } catch (error) {
         console.error(`❌ Error extracting PNG metadata for ${filename}:`, error.message);
     }
@@ -1201,21 +1244,28 @@ async function getImageMetadata(filename, imagesDir) {
             throw new Error('Database not initialized');
         }
 
-        const hot = metadataWriteQueue.getHotImage(filename);
-        if (hot) {
-            const filePath = path.join(imagesDir, filename);
-            if (fs.existsSync(filePath)) {
-                const currentMD5 = generateMD5(filePath);
-                if (currentMD5 === hot.md5) {
-                    return hot;
-                }
+        const filePath = path.join(imagesDir, filename);
+        const stats = await statOrNull(filePath);
+        // md5 of the current file, computed (streamed) at most once and only when size/mtime differ
+        let currentMD5;
+        const fileMatches = async (record) => {
+            if (!record || !stats) return false;
+            if (Number(record.size) === stats.size && Number(record.mtime) === stats.mtime.valueOf()) {
+                return true;
             }
+            if (currentMD5 === undefined) {
+                currentMD5 = await generateMD5Async(filePath);
+            }
+            return currentMD5 === record.md5;
+        };
+
+        const hot = metadataWriteQueue.getHotImage(filename);
+        if (hot && await fileMatches(hot)) {
+            return hot;
         }
 
-        const filePath = path.join(imagesDir, filename);
-
         // Check if file exists
-        if (!fs.existsSync(filePath)) {
+        if (!stats) {
             console.warn(`⚠️ File not found: ${filePath}`);
             return null;
         }
@@ -1224,9 +1274,8 @@ async function getImageMetadata(filename, imagesDir) {
         const existing = await db.get('SELECT * FROM images WHERE filename = ?', [filename]);
 
         if (existing) {
-            // Verify the cached MD5 matches the current file
-            const currentMD5 = generateMD5(filePath);
-            if (currentMD5 === existing.md5) {
+            // Verify the cached row still describes the current file (size+mtime, else MD5)
+            if (await fileMatches(existing)) {
                 const receipts = await db.all('SELECT receipt_data FROM receipts WHERE image_id = ? ORDER BY timestamp', [existing.id]);
                 return formatDbImageRow(existing, receipts);
             }
@@ -1541,8 +1590,10 @@ async function removeImageMetadataBatch(filenames, batchSize = 500, precomputedB
                     metadataWriteQueue.removeHotImage(filename);
                 }
                 
-                // Use a transaction for each batch
+                // Use a transaction for each batch (one transaction at a time on the shared handle)
+                await withDbTransactionLock(async () => {
                 await db.run('BEGIN TRANSACTION');
+                try {
                 
                 // First, extract all receipts for images in this batch
                 const placeholders = batch.map(() => '?').join(',');
@@ -1584,13 +1635,18 @@ async function removeImageMetadataBatch(filenames, batchSize = 500, precomputedB
                 
                 // Commit transaction
                 await db.run('COMMIT');
+                } catch (error) {
+                    // Roll back inside the lock so another caller's transaction is never undone
+                    try {
+                        await db.run('ROLLBACK');
+                    } catch (rollbackError) {
+                        logger.error(`Error rolling back transaction:`, rollbackError);
+                    }
+                    throw error;
+                }
+                });
                 });
             } catch (error) {
-                try {
-                    await db.run('ROLLBACK');
-                } catch (rollbackError) {
-                    logger.error(`Error rolling back transaction:`, rollbackError);
-                }
                 logger.error(`Error in batch metadata deletion:`, error);
                 throw error;
             }
@@ -2544,28 +2600,39 @@ async function getMultipleMetadata(filenames) {
 /**
  * Update metadata for an image (e.g., after generation).
  * Stages data in the hot cache immediately; SQL writes go through the FIFO queue.
+ * options.forgeDataEmbedded: forgeData is already in the PNG on disk (finalizeWithForgeData
+ * signed it), so only the in-memory row is merged. Re-merging into the file pushed a
+ * spurious forge_data.history entry and broke forge_signed_hash (#624).
  */
-async function addReceiptMetadata(filename, imagesDir, receiptData = null, forgeData = null) {
+async function addReceiptMetadata(filename, imagesDir, receiptData = null, forgeData = null, options = {}) {
     if (!dbInitialized || !db) {
         throw new Error('Database not initialized');
     }
 
+    // options.buffer: the PNG bytes the caller just wrote to imagesDir/filename. md5, size and
+    // dimensions come from it instead of re-reading the file.
+    const fileBuffer = Buffer.isBuffer(options.buffer) ? options.buffer : null;
+    const filePath = path.join(imagesDir, filename);
     let metadata = metadataWriteQueue.getHotImage(filename);
 
     if (!metadata) {
-        const filePath = path.join(imagesDir, filename);
         const existing = await db.get('SELECT * FROM images WHERE filename = ?', [filename]);
-        if (existing && fs.existsSync(filePath) && generateMD5(filePath) === existing.md5) {
-            const receipts = await db.all(
-                'SELECT receipt_data FROM receipts WHERE image_id = ? ORDER BY timestamp',
-                [existing.id]
-            );
-            metadata = formatDbImageRow(existing, receipts);
+        if (existing) {
+            const currentMD5 = fileBuffer
+                ? md5OfBuffer(fileBuffer)
+                : (await fileExists(filePath) ? await generateMD5Async(filePath) : null);
+            if (currentMD5 && currentMD5 === existing.md5) {
+                const receipts = await db.all(
+                    'SELECT receipt_data FROM receipts WHERE image_id = ? ORDER BY timestamp',
+                    [existing.id]
+                );
+                metadata = formatDbImageRow(existing, receipts);
+            }
         }
     }
 
     if (!metadata) {
-        metadata = await buildImageMetadataFromFile(filename, imagesDir, []);
+        metadata = await buildImageMetadataFromFile(filename, imagesDir, [], { buffer: fileBuffer });
     }
 
     if (!metadata) {
@@ -2573,15 +2640,28 @@ async function addReceiptMetadata(filename, imagesDir, receiptData = null, forge
     }
 
     if (forgeData) {
-        const filePath = path.join(imagesDir, filename);
-        if (fs.existsSync(filePath)) {
-            const imageBuffer = fs.readFileSync(filePath);
-            const updatedBuffer = _pngMetadata.updateMetadata(imageBuffer, forgeData);
-            fs.writeFileSync(filePath, updatedBuffer);
-            metadata.md5 = generateMD5(filePath);
-            const stats = fs.statSync(filePath);
-            metadata.mtime = stats.mtime.valueOf();
-            metadata.size = stats.size;
+        if (options.forgeDataEmbedded) {
+            const stats = await statOrNull(filePath);
+            if (fileBuffer) {
+                metadata.md5 = md5OfBuffer(fileBuffer);
+            } else if (stats) {
+                metadata.md5 = (await generateMD5Async(filePath)) || metadata.md5;
+            }
+            if (stats) {
+                metadata.mtime = stats.mtime.valueOf();
+                metadata.size = stats.size;
+            }
+        } else {
+            const imageBuffer = fileBuffer
+                || (await fileExists(filePath) ? await fs.promises.readFile(filePath) : null);
+            if (imageBuffer) {
+                const updatedBuffer = _pngMetadata.updateMetadata(imageBuffer, forgeData);
+                await fs.promises.writeFile(filePath, updatedBuffer);
+                metadata.md5 = md5OfBuffer(updatedBuffer);
+                const stats = await fs.promises.stat(filePath);
+                metadata.mtime = stats.mtime.valueOf();
+                metadata.size = stats.size;
+            }
         }
         applyForgeDataToMetadata(metadata, forgeData);
     }
@@ -2614,6 +2694,54 @@ async function addReceiptMetadata(filename, imagesDir, receiptData = null, forge
 }
 
 
+
+/**
+ * forge_data.dynamic_generation.compiled_prompt.preview_image_hash per filename, from stored
+ * metadata (hot cache first). Only rows whose stored metadata carries dynamic_generation are
+ * returned ({ hash } with hash null when none); callers read the PNG for the rest, since file
+ * extraction does not always keep dynamic_generation in the row.
+ */
+async function getDynGenPreviewHashes(filenames) {
+    const out = new Map();
+    const names = normalizeSearchIndexFilenames(filenames);
+    if (!names.length || !dbInitialized || !db) {
+        return out;
+    }
+
+    const hot = metadataWriteQueue.getHotImagesBatch(names);
+    const pending = [];
+    for (const name of names) {
+        if (!hot[name]) {
+            pending.push(name);
+            continue;
+        }
+        const dg = hot[name].metadata?.forge_data?.dynamic_generation;
+        if (dg && typeof dg === 'object' && !Array.isArray(dg)) {
+            out.set(name, { hash: dg.compiled_prompt?.preview_image_hash || null });
+        }
+    }
+
+    const readDb = await getMetadataReadDatabase() || await getReadOnlyDatabase();
+    const readHandle = readDb || db;
+    for (let i = 0; i < pending.length; i += 500) {
+        const chunk = pending.slice(i, i + 500);
+        const rows = await readHandle.all(`
+            SELECT filename,
+                CASE WHEN json_valid(metadata)
+                    THEN json_type(metadata, '$.forge_data.dynamic_generation') END AS dg_type,
+                CASE WHEN json_valid(metadata)
+                    THEN json_extract(metadata, '$.forge_data.dynamic_generation.compiled_prompt.preview_image_hash') END AS preview_hash
+            FROM images
+            WHERE filename IN (${chunk.map(() => '?').join(',')})
+        `, chunk);
+        for (const row of rows || []) {
+            if (row.dg_type === 'object') {
+                out.set(row.filename, { hash: row.preview_hash || null });
+            }
+        }
+    }
+    return out;
+}
 
 /**
  * Get all filenames from the database
@@ -5347,23 +5475,38 @@ async function findGalleryWorkspaceItemIndex(workspaceId, viewType = 'images', f
 
     const bucket = viewTypeToGalleryBucket(viewType);
     const base = getGalleryBaseName(filename);
-    let locateSql = `SELECT sort_mtime FROM ${GALLERY_ITEMS_TABLE}
-                     WHERE workspace_id = ? AND bucket = ?
-                       AND (original = ? OR upscaled = ? OR base = ?)`;
-    const locateParams = [workspaceId, bucket, filename, filename, base];
-    if (viewType === 'upscaled') {
-        locateSql += ' AND in_upscaled_view = 1';
-    }
-    locateSql += ' LIMIT 1';
+    // One indexed probe per match column (base = PK, original / upscaled = idx_gwi_*); the
+    // old OR form scanned the whole workspace. Same row: newest by sort_mtime, base.
+    // Unary + keeps the planner on idx_gwi_original / idx_gwi_upscaled.
+    const viewFilter = viewType === 'upscaled' ? ' AND in_upscaled_view = 1' : '';
+    const locateSql = `SELECT sort_mtime, base FROM (
+            SELECT sort_mtime, base FROM ${GALLERY_ITEMS_TABLE}
+            WHERE workspace_id = ? AND bucket = ? AND base = ?${viewFilter}
+            UNION ALL
+            SELECT sort_mtime, base FROM ${GALLERY_ITEMS_TABLE}
+            WHERE original = ? AND +workspace_id = ? AND +bucket = ?${viewFilter}
+            UNION ALL
+            SELECT sort_mtime, base FROM ${GALLERY_ITEMS_TABLE}
+            WHERE upscaled = ? AND +workspace_id = ? AND +bucket = ?${viewFilter}
+        ) ORDER BY sort_mtime DESC, base DESC LIMIT 1`;
+    const locateParams = [
+        workspaceId, bucket, base,
+        filename, workspaceId, bucket,
+        filename, workspaceId, bucket
+    ];
 
     const row = await db.get(locateSql, locateParams);
     if (!row) {
         return -1;
     }
 
+    // Rows before this one in the listing order (sort_mtime DESC, base DESC); rows tied on
+    // sort_mtime with a greater base come first too (#623).
     let countSql = `SELECT COUNT(*) AS count FROM ${GALLERY_ITEMS_TABLE}
-                    WHERE workspace_id = ? AND bucket = ? AND sort_mtime > ?`;
-    const countParams = [workspaceId, bucket, row.sort_mtime || 0];
+                    WHERE workspace_id = ? AND bucket = ?
+                      AND (sort_mtime > ? OR (sort_mtime = ? AND base > ?))`;
+    const rowMtime = row.sort_mtime || 0;
+    const countParams = [workspaceId, bucket, rowMtime, rowMtime, row.base];
     if (viewType === 'upscaled') {
         countSql += ' AND in_upscaled_view = 1';
     }
@@ -5886,7 +6029,72 @@ function buildFilenameScopeClause(workspaceScope, filenamesFilter) {
 /**
  * Update search indexes for a filename based on its metadata
  */
+// One explicit transaction at a time on the shared `db` handle (node-sqlite3 has one
+// connection, so a second BEGIN would fail with "cannot start a transaction within a transaction").
+let dbTransactionTail = Promise.resolve();
+function withDbTransactionLock(fn) {
+    const run = dbTransactionTail.then(fn, fn);
+    dbTransactionTail = run.catch(() => {});
+    return run;
+}
+
+// Replication changelog payloads keep at most 32 params (replicationChangelog.handleSqliteWrite),
+// so multi-row INSERTs stay at or under 32 bound values.
+const MULTI_ROW_INSERT_MAX_PARAMS = 32;
+
+async function insertRowsChunked(sqlPrefix, rowPlaceholder, columnCount, rows) {
+    const perStatement = Math.max(1, Math.floor(MULTI_ROW_INSERT_MAX_PARAMS / columnCount));
+    for (let i = 0; i < rows.length; i += perStatement) {
+        const chunk = rows.slice(i, i + perStatement);
+        const params = [];
+        for (const row of chunk) params.push(...row);
+        await db.run(`${sqlPrefix} VALUES ${chunk.map(() => rowPlaceholder).join(', ')}`, params);
+    }
+}
+
+/**
+ * Rebuild search index rows for one image. Runs as one transaction (it was 100-300
+ * autocommit statements per image). On error the work done so far is still committed,
+ * like the old autocommit behaviour, so writes other callers interleave on the shared
+ * handle are never rolled back by us.
+ */
 async function updateSearchIndexes(filename, metadata) {
+    if (!dbInitialized || !db) {
+        throw new Error('Database not initialized');
+    }
+    if (indexingPaused) {
+        return;
+    }
+    return withDbTransactionLock(async () => {
+        let inTransaction = false;
+        try {
+            await db.run('BEGIN IMMEDIATE');
+            inTransaction = true;
+        } catch (txError) {
+            // Another transaction is open on this handle (unlocked backfill); join it as before.
+            logger.warn(`Search index transaction begin failed for ${filename}, continuing without:`, txError.message);
+        }
+        try {
+            await updateSearchIndexesInner(filename, metadata);
+        } finally {
+            if (inTransaction) {
+                try {
+                    await db.run('COMMIT');
+                } catch (commitError) {
+                    // A backfill COMMIT on the shared handle may already have closed it.
+                    if (!/no transaction is active/i.test(commitError.message || '')) {
+                        logger.error(`Search index commit failed for ${filename}:`, commitError);
+                        try {
+                            await db.run('ROLLBACK');
+                        } catch (_) { /* ignore */ }
+                    }
+                }
+            }
+        }
+    });
+}
+
+async function updateSearchIndexesInner(filename, metadata) {
     if (!dbInitialized || !db) {
         throw new Error('Database not initialized');
     }
@@ -5960,11 +6168,11 @@ async function updateSearchIndexes(filename, metadata) {
         }
 
         // Insert tags
-        for (const tagData of fileTags) {
-            await db.run(`
-                INSERT INTO search_tags (filename, tag, original_tag, weight, tag_type, source, character)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            `, [
+        await insertRowsChunked(
+            'INSERT INTO search_tags (filename, tag, original_tag, weight, tag_type, source, character)',
+            '(?, ?, ?, ?, ?, ?, ?)',
+            7,
+            fileTags.map((tagData) => [
                 filename,
                 tagData.tag,
                 tagData.originalTag,
@@ -5972,15 +6180,15 @@ async function updateSearchIndexes(filename, metadata) {
                 tagData.type || 'normal',
                 tagData.source || 'prompt',
                 tagData.character || null
-            ]);
-        }
+            ])
+        );
 
         // Insert full text entries
-        for (const textData of fileFullText) {
-            await db.run(`
-                INSERT INTO search_fulltext (filename, text_content, original_text, weight, text_type, source, character)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            `, [
+        await insertRowsChunked(
+            'INSERT INTO search_fulltext (filename, text_content, original_text, weight, text_type, source, character)',
+            '(?, ?, ?, ?, ?, ?, ?)',
+            7,
+            fileFullText.map((textData) => [
                 filename,
                 textData.text,
                 textData.originalText,
@@ -5988,8 +6196,8 @@ async function updateSearchIndexes(filename, metadata) {
                 textData.type || 'full_text',
                 textData.source || 'prompt',
                 textData.character || null
-            ]);
-        }
+            ])
+        );
 
         // Index preset names (forge_data.preset_name is canonical in this corpus)
         if (presetName) {
@@ -6949,7 +7157,6 @@ async function getBlockPromptUsages(blocks, filenamesFilter = null, options = {}
     const { limit = 120 } = options;
     const promptSources = getPromptSourceFilter(options);
     const sourcePlaceholders = promptSources.map(() => '?').join(',');
-    const sourceClause = ` AND source IN (${sourcePlaceholders})`;
     const sourceParams = promptSources;
 
     if (normalizedBlocks.length === 0) {
@@ -6975,35 +7182,76 @@ async function getBlockPromptUsages(blocks, filenamesFilter = null, options = {}
         }
     };
 
+    // One query per term and table over all filenames (json_each), grouped by the old
+    // 400-name chunk index so counts, samples and insertion order match the chunked loop.
+    // The old per-chunk queries let SQLite drive from idx_search_tags_tag / *_source, i.e.
+    // one pass over every matching row per 400 files. Here LIKE terms drive from the
+    // filenames (idx_search_tags_filename_source); a word-mode tag (tag = ?) drives from the
+    // tag index once, probing a materialized filename list.
+    const readDb = await getReadOnlyDatabase();
+    const readHandle = readDb || db;
+    const filenamesJson = JSON.stringify(filenamesFilter);
+    const qualifiedSourceClause = ` AND t.source IN (${sourcePlaceholders})`;
+    const groupRowsByChunk = (rows) => {
+        const byChunk = new Map();
+        for (const row of rows || []) {
+            const chunk = Number(row.chunk) || 0;
+            if (!byChunk.has(chunk)) byChunk.set(chunk, []);
+            byChunk.get(chunk).push(row);
+        }
+        return byChunk;
+    };
+
     for (const block of normalizedBlocks) {
         const matchMode = block.matchMode || 'substring';
         const blockLabel = block.terms.join(block.mode === 'or' || block.orWithinBlock ? ' OR ' : ' ');
         for (const term of block.terms || []) {
             const tagMatch = matchMode === 'word'
-                ? omegasearchFilters.buildTermMatchSql('tag', term, 'word')
-                : omegasearchFilters.buildTermMatchSql('tag', term, matchMode);
+                ? omegasearchFilters.buildTermMatchSql('t.tag', term, 'word')
+                : omegasearchFilters.buildTermMatchSql('t.tag', term, matchMode);
             const textMatch = matchMode === 'word'
-                ? omegasearchFilters.buildFullTextWordMatchSql('text_content', term)
-                : omegasearchFilters.buildTermMatchSql('text_content', term, matchMode);
+                ? omegasearchFilters.buildFullTextWordMatchSql('t.text_content', term)
+                : omegasearchFilters.buildTermMatchSql('t.text_content', term, matchMode);
 
-            for (let i = 0; i < filenamesFilter.length; i += chunkSize) {
-                const chunk = filenamesFilter.slice(i, i + chunkSize);
-                const filePlaceholders = chunk.map(() => '?').join(',');
+            const tagFrom = matchMode === 'word'
+                ? `WITH f AS MATERIALIZED (SELECT value AS name, key / ${chunkSize} AS chunk FROM json_each(?))
+                   SELECT f.chunk AS chunk,`
+                : `SELECT j.key / ${chunkSize} AS chunk,`;
+            const tagJoin = matchMode === 'word'
+                ? 'FROM f INNER JOIN search_tags t ON t.filename = f.name'
+                : 'FROM json_each(?) j INNER JOIN search_tags t ON t.filename = j.value';
+            const tagRowsByChunk = groupRowsByChunk(await readHandle.all(`
+                ${tagFrom}
+                    t.source AS source,
+                    t.character AS character,
+                    t.original_tag AS displayText,
+                    COUNT(DISTINCT t.filename) AS fileCount,
+                    MIN(t.filename) AS sampleFilename
+                ${tagJoin}
+                WHERE ${tagMatch.clause}${qualifiedSourceClause}
+                GROUP BY chunk, t.source, t.character, t.original_tag
+                ORDER BY chunk, t.source, t.character, t.original_tag
+            `, [filenamesJson, ...tagMatch.params, ...sourceParams]));
 
-                const tagRows = await db.all(`
-                    SELECT
-                        source,
-                        character,
-                        original_tag AS displayText,
-                        COUNT(DISTINCT filename) AS fileCount,
-                        MIN(filename) AS sampleFilename
-                    FROM search_tags
-                    WHERE filename IN (${filePlaceholders})
-                      AND ${tagMatch.clause}${sourceClause}
-                    GROUP BY source, character, original_tag
-                `, [...chunk, ...tagMatch.params, ...sourceParams]);
+            const textRowsByChunk = groupRowsByChunk(await readHandle.all(`
+                SELECT
+                    j.key / ${chunkSize} AS chunk,
+                    t.source AS source,
+                    t.character AS character,
+                    t.original_text AS displayText,
+                    t.text_type AS textType,
+                    COUNT(DISTINCT t.filename) AS fileCount,
+                    MIN(t.filename) AS sampleFilename
+                FROM json_each(?) j
+                INNER JOIN search_fulltext t ON t.filename = j.value
+                WHERE ${textMatch.clause}${qualifiedSourceClause}
+                GROUP BY chunk, t.source, t.character, t.original_text, t.text_type
+                ORDER BY chunk, t.source, t.character, t.original_text, t.text_type
+            `, [filenamesJson, ...textMatch.params, ...sourceParams]));
 
-                for (const row of tagRows) {
+            const chunkCount = Math.ceil(filenamesFilter.length / chunkSize);
+            for (let chunk = 0; chunk < chunkCount; chunk += 1) {
+                for (const row of tagRowsByChunk.get(chunk) || []) {
                     const displayText = row.displayText || term;
                     const key = `${blockLabel}\0${row.source || 'prompt'}\0${row.character || ''}\0tag\0${displayText.toLowerCase()}`;
                     bumpUsage(key, {
@@ -7017,21 +7265,7 @@ async function getBlockPromptUsages(blocks, filenamesFilter = null, options = {}
                     }, row.fileCount || 0);
                 }
 
-                const textRows = await db.all(`
-                    SELECT
-                        source,
-                        character,
-                        original_text AS displayText,
-                        text_type AS textType,
-                        COUNT(DISTINCT filename) AS fileCount,
-                        MIN(filename) AS sampleFilename
-                    FROM search_fulltext
-                    WHERE filename IN (${filePlaceholders})
-                      AND ${textMatch.clause}${sourceClause}
-                    GROUP BY source, character, original_text, text_type
-                `, [...chunk, ...textMatch.params, ...sourceParams]);
-
-                for (const row of textRows) {
+                for (const row of textRowsByChunk.get(chunk) || []) {
                     const displayText = row.displayText || term;
                     const key = `${blockLabel}\0${row.source || 'prompt'}\0${row.character || ''}\0text\0${(row.textType || 'full_text')}\0${displayText.toLowerCase()}`;
                     bumpUsage(key, {
@@ -7297,9 +7531,14 @@ async function getTagSuggestionsFromDatabase(query, filenamesFilter = null, limi
             );
         });
 
+        // Score once per suggestion (the comparator used to recompute both scores per compare)
+        const rankScores = new Map();
+        for (const suggestion of ranked) {
+            rankScores.set(suggestion, computeTagSuggestionRankScore(suggestion, rankingCorpusFileCount));
+        }
         ranked.sort((a, b) => {
-            const scoreA = computeTagSuggestionRankScore(a, rankingCorpusFileCount);
-            const scoreB = computeTagSuggestionRankScore(b, rankingCorpusFileCount);
+            const scoreA = rankScores.get(a);
+            const scoreB = rankScores.get(b);
             if (scoreB !== scoreA) return scoreB - scoreA;
             if (b.occurrenceCount !== a.occurrenceCount) {
                 return b.occurrenceCount - a.occurrenceCount;
@@ -7651,28 +7890,52 @@ async function getPromptTermStatsForFilenames(filenames, options = {}) {
                 tag,
                 original_tag,
                 COUNT(DISTINCT filename) AS occurrenceCount,
-                AVG(ABS(weight)) AS avgWeight
+                SUM(ABS(weight)) AS absWeightSum,
+                COUNT(weight) AS weightCount
             FROM search_tags
             WHERE filename IN (${filePlaceholders})
               AND source IN (${sourcePlaceholders})
             GROUP BY tag, original_tag
         `, [...chunk, ...sources]);
 
+        // Chunks hold disjoint filenames: sum per (tag, original_tag) across chunks (#621; the
+        // per-chunk maximum undercounted any tag spread over more than 400 files).
         for (const row of rows) {
-            const key = row.tag;
+            const key = `${row.tag}\0${row.original_tag}`;
             const existing = aggregate.get(key);
-            if (!existing || row.occurrenceCount > existing.occurrenceCount) {
+            if (!existing) {
                 aggregate.set(key, {
                     tag: row.tag,
                     originalTag: row.original_tag,
-                    occurrenceCount: row.occurrenceCount,
-                    avgWeight: row.avgWeight || 0
+                    occurrenceCount: row.occurrenceCount || 0,
+                    absWeightSum: row.absWeightSum || 0,
+                    weightCount: row.weightCount || 0
                 });
+            } else {
+                existing.occurrenceCount += row.occurrenceCount || 0;
+                existing.absWeightSum += row.absWeightSum || 0;
+                existing.weightCount += row.weightCount || 0;
             }
         }
     }
 
-    return [...aggregate.values()]
+    // One entry per tag: the original_tag spelling with the most files (first seen on ties),
+    // as the single-chunk result picked it.
+    const byTag = new Map();
+    for (const entry of aggregate.values()) {
+        const existing = byTag.get(entry.tag);
+        if (!existing || entry.occurrenceCount > existing.occurrenceCount) {
+            byTag.set(entry.tag, entry);
+        }
+    }
+
+    return [...byTag.values()]
+        .map((entry) => ({
+            tag: entry.tag,
+            originalTag: entry.originalTag,
+            occurrenceCount: entry.occurrenceCount,
+            avgWeight: entry.weightCount > 0 ? (entry.absWeightSum / entry.weightCount) : 0
+        }))
         .sort((a, b) => {
             if (b.occurrenceCount !== a.occurrenceCount) {
                 return b.occurrenceCount - a.occurrenceCount;
@@ -7910,31 +8173,44 @@ async function listSimilarImageGroupsForWorkspace(workspaceId, options = {}) {
         }
     }
 
+    // Items for every listed group in one windowed query per kind (was one query per group).
+    const readDb = await getReadOnlyDatabase();
+    const readHandle = readDb || db;
+    const fetchGroupItems = async (groupColumn, groupIds) => {
+        const byGroup = new Map();
+        if (!groupIds.length) return byGroup;
+        const rows = await readHandle.all(`
+            SELECT group_id, filename, seed, mtime, width, height
+            FROM (
+                SELECT f.${groupColumn} AS group_id, f.filename, f.seed, f.mtime, f.width, f.height,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY f.${groupColumn}
+                           ORDER BY COALESCE(f.mtime, 0) DESC, f.filename ASC
+                       ) AS rn
+                FROM image_search_facets f
+                INNER JOIN ${GALLERY_OWNERSHIP_TABLE} o
+                    ON o.filename = f.filename
+                WHERE o.workspace_id = ?
+                  AND o.bucket = 'files'
+                  AND f.${groupColumn} IN (${groupIds.map(() => '?').join(',')})
+            )
+            WHERE rn <= ?
+            ORDER BY group_id, rn
+        `, [wsId, ...groupIds, itemLimit]);
+        for (const item of rows || []) {
+            if (!byGroup.has(item.group_id)) byGroup.set(item.group_id, []);
+            byGroup.get(item.group_id).push(item);
+        }
+        return byGroup;
+    };
+    const seedItems = await fetchGroupItems('consecutive_seed_group_id',
+        combined.filter((row) => row.kind !== 'refine').map((row) => row.groupId));
+    const refineItems = await fetchGroupItems('refine_group_id',
+        combined.filter((row) => row.kind === 'refine').map((row) => row.groupId));
+
     const groups = [];
     for (const row of combined) {
-        const items = row.kind === 'refine'
-            ? await db.all(`
-                SELECT f.filename, f.seed, f.mtime, f.width, f.height
-                FROM image_search_facets f
-                INNER JOIN ${GALLERY_OWNERSHIP_TABLE} o
-                    ON o.filename = f.filename
-                WHERE o.workspace_id = ?
-                  AND o.bucket = 'files'
-                  AND f.refine_group_id = ?
-                ORDER BY COALESCE(f.mtime, 0) DESC, f.filename ASC
-                LIMIT ?
-            `, [wsId, row.groupId, itemLimit])
-            : await db.all(`
-                SELECT f.filename, f.seed, f.mtime, f.width, f.height
-                FROM image_search_facets f
-                INNER JOIN ${GALLERY_OWNERSHIP_TABLE} o
-                    ON o.filename = f.filename
-                WHERE o.workspace_id = ?
-                  AND o.bucket = 'files'
-                  AND f.consecutive_seed_group_id = ?
-                ORDER BY COALESCE(f.mtime, 0) DESC, f.filename ASC
-                LIMIT ?
-            `, [wsId, row.groupId, itemLimit]);
+        const items = (row.kind === 'refine' ? refineItems : seedItems).get(row.groupId) || [];
 
         groups.push({
             groupId: row.groupId,
@@ -8056,6 +8332,7 @@ module.exports = {
     updateFileMetadata,
     getAllFilenames,
     getUpscaledViewFilenames,
+    getDynGenPreviewHashes,
     findLatestImageFilenameByNovelNoteId,
     
     // Search index functions

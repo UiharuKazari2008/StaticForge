@@ -93,7 +93,7 @@ async function rerollImage(image, event = null) {
                         updateGlassToastProgress(progressToastId, 100);
                         updateGlassToastComplete(progressToastId, {
                             type: 'success',
-                            title: 'Reroll Complete',
+                            title: 'Recast Complete',
                             message: 'Image generated successfully!',
                             customIcon: '<i class="nai-check"></i>',
                             showProgress: false
@@ -142,8 +142,8 @@ async function rerollImage(image, event = null) {
         if (progressToastId) {
             updateGlassToastComplete(progressToastId, {
                 type: 'error',
-                title: 'Reroll Failed',
-                message: 'Image reroll failed: ' + error.message,
+                title: 'Recast Failed',
+                message: 'Image recast failed: ' + error.message,
                 customIcon: '<i class="nai-cross"></i>',
                 showProgress: false
             });

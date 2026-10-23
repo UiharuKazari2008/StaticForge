@@ -278,8 +278,14 @@ body.desktop-mode .modal.sz-window[data-vista-dialog] > .modal-content.sz-client
 .sz-client .sz-progress {
     box-sizing: border-box;
 }
-.sz-client .sz-progress > .sz-progress-fill {
+/* msctls_progress32 16 DLU = 26 px on the VM: a 1 px frame and the fill over the whole 24 px inside
+   it, from the left edge in. The shared Vista bar (vista-glass-controls.css) sizes its fill for a
+   15 px bar and pulls it over the frame, which left a strip along the top of this taller bar. */
+body.desktop-mode:not(.windows-classic-theme) .win7.sz-client .sz-progress[role="progressbar"] > .sz-progress-fill {
+    margin: 0;
     height: 100%;
+    min-height: 0;
+    max-width: 100%;
     width: 0;
     transition: width 120ms linear;
 }

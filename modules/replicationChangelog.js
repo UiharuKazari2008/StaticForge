@@ -10,7 +10,8 @@ const {
     REPLICATION_CONFIG_JSON_NAMES,
     REPLICATION_CHANGE_ORIGINS,
     normalizeReplicationConfig,
-    isReplicationEnabled
+    isReplicationEnabled,
+    isReplicationRole
 } = require('./replication/replicationContracts');
 const {
     AsyncSQLiteDatabase,
@@ -84,11 +85,30 @@ function parseMutationInfo(sql, params) {
     return { tableName, rowKey };
 }
 
-function getReplicationConfig() {
+function readRawReplicationConfig() {
     const secure = globalResourcesRef && globalResourcesRef.getSecureConfig
         ? globalResourcesRef.getSecureConfig()
         : null;
-    return normalizeReplicationConfig(secure && secure.replication ? secure.replication : null);
+    return secure && secure.replication ? secure.replication : null;
+}
+
+function getReplicationConfig() {
+    return normalizeReplicationConfig(readRawReplicationConfig());
+}
+
+/**
+ * shouldRecordChanges(normalizeReplicationConfig(raw)) without the normalize clone.
+ * Runs on every SQLite write of a tracked DB, so it reads the live secure config once.
+ */
+function shouldRecordRawConfig(raw) {
+    if (process.env.REPLICATION_CHANGELOG_RECORD_STANDALONE === '1') return true;
+    if (!raw || typeof raw !== 'object') return false;
+    const role = Object.prototype.hasOwnProperty.call(raw, 'role') ? raw.role : 'standalone';
+    return isReplicationEnabled({ role: isReplicationRole(role) ? role : 'standalone' });
+}
+
+function instanceIdFromRaw(raw) {
+    return raw && raw.instanceId ? raw.instanceId : 'unknown';
 }
 
 /**
@@ -135,13 +155,6 @@ function computePruneCutoff(config, nowSec, maxAgeSec) {
     return { mode: 'master-acked', createdBefore, maxLsn: minAck };
 }
 
-function getInstanceId() {
-    if (!globalResourcesRef) return 'unknown';
-    const secure = globalResourcesRef.getSecureConfig ? globalResourcesRef.getSecureConfig() : null;
-    const replication = secure && secure.replication ? secure.replication : null;
-    return replication && replication.instanceId ? replication.instanceId : 'unknown';
-}
-
 async function ensureSchema() {
     await db.exec(`
         CREATE TABLE IF NOT EXISTS changes (
@@ -174,10 +187,12 @@ async function recordChange({
     operation,
     payload = null,
     origin = null
-}) {
+}, rawConfig = undefined) {
     if (!initialized || !db) return null;
     if (origin === REPLICATION_CHANGE_ORIGINS[2]) return null; // replication — no echo
-    if (!shouldRecordChanges(getReplicationConfig())) return null; // no replicas to feed
+    // rawConfig: secure.replication already read by handleSqliteWrite (one config read per write)
+    const raw = rawConfig === undefined ? readRawReplicationConfig() : rawConfig;
+    if (!shouldRecordRawConfig(raw)) return null; // no replicas to feed
 
     const effectiveOrigin = origin || currentOrigin;
     if (effectiveOrigin === REPLICATION_CHANGE_ORIGINS[2]) return null;
@@ -200,7 +215,7 @@ async function recordChange({
             payload_json, origin, created_at, synced_lsn
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
         [
-            getInstanceId(),
+            globalResourcesRef ? instanceIdFromRaw(raw) : 'unknown',
             databaseName,
             tableName,
             rowKey,
@@ -215,7 +230,9 @@ async function recordChange({
 
 async function handleSqliteWrite(databaseName, { sql, params }) {
     if (!isMutatingSql(sql)) return;
-    if (!initialized || !shouldRecordChanges(getReplicationConfig())) return;
+    if (!initialized) return;
+    const raw = readRawReplicationConfig();
+    if (!shouldRecordRawConfig(raw)) return;
     const { tableName, rowKey } = parseMutationInfo(sql, params);
     if (databaseName === 'vfs.db' && tableName !== 'user_files') return;
 
@@ -231,7 +248,7 @@ async function handleSqliteWrite(databaseName, { sql, params }) {
         operation,
         payload: { sql, params: Array.isArray(params) ? params.slice(0, 32) : params },
         origin: currentOrigin
-    });
+    }, raw);
 }
 
 function wireSqliteChangelogHooks(databasesPath) {
@@ -396,6 +413,7 @@ module.exports = {
     isMutatingSql,
     parseMutationInfo,
     shouldRecordChanges,
+    shouldRecordRawConfig,
     computePruneCutoff,
     pruneChangelog
 };

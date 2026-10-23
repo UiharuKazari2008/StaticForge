@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>Virtuell blomsterpotte</name>
+  <namespace>microsoft.windows</namespace>
+  <version>1.0.0.1</version>
+  <author name="KaKaNow.com">
+    <info url="kakanow.com"  text="KaKaNow.com"/>
+    <logo src="images/logo.png" />
+  </author>
+  <copyright>&#169; 2010</copyright>
+  <description>Legg til noe vakkert og levende på skrivebordet.
+Spre litt glede på skrivebordet. Denne virtuelle blomsterpotten kommer til å blomstre rett foran øynene dine hvis du vanner blomstene med musen. Akkurat som en hvilken som helst virkelig plante, vil den visne hvis du forsømmer den.  Det kan ta flere dager før den blomstrer, men den kommer garantert til å pynte opp skrivebordet ditt.</description>
+  <icons>
+    <icon height="64" width="64" src="images/icon.png" />
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="default.html" />
+      <permissions>Full</permissions>
+      <platform minPlatformVersion="1.0" />
+      <defaultImage src="images/drag.png" />
+    </host>
+  </hosts>
+</gadget>

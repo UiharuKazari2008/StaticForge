@@ -1,0 +1,33 @@
+select
+{
+    color:#039;
+    FONT-FAMILY: Verdana, Arial, Helvetica, sans-serif;
+    border:1px;
+    font-size:10px;
+    
+}
+input
+{
+    color:#039;
+    FONT-FAMILY: Verdana, Arial, Helvetica, sans-serif;
+    font-size:10px;
+}
+ body
+    {
+        background: #ffffff;    
+        width: 130px;
+        height: 100px;
+        border: 1px solid #aaaaaa;
+        margin: 0px;
+        padding: 0px;
+	font-size:10px;
+	color:#039;
+    	FONT-FAMILY: Verdana, Arial, Helvetica, sans-serif;
+    }
+
+ .err_mex
+    {
+	font-size:10px;
+	color:red;
+    	FONT-FAMILY: Verdana, Arial, Helvetica, sans-serif;
+    }

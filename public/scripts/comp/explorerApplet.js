@@ -1195,6 +1195,10 @@ class ExplorerApplet {
             items.push({ icon: 'fas fa-paste', text: 'Paste', action: 'explorer-paste' });
         }
         if (item.targetKind === 'user-file' && !multi) {
+            // Vista's Edit verb for a picture opens it in Paint (desktop-apps/paint/paintApp.js)
+            if (/^image\/(png|jpe?g|bmp|webp|gif)$/i.test(item.mimeType || '')) {
+                items.push({ icon: 'fas fa-paintbrush', text: 'Edit', action: 'explorer-edit-paint' });
+            }
             items.push({ icon: 'fas fa-download', text: 'Download', action: 'explorer-download' });
         }
         return items;
@@ -1742,19 +1746,17 @@ class ExplorerApplet {
                     );
                     return;
                 }
-                case 'explorer-bulk-download':
-                    images.forEach((image) => downloadImage(image));
-                    if (images.length > 1) {
-                        showGlassToast(
-                            'success',
-                            null,
-                            `Downloading ${images.length} image(s)...`,
-                            false,
-                            3000,
-                            '<i class="fas fa-download"></i>'
-                        );
+                case 'explorer-bulk-download': {
+                    if (images.length === 1) {
+                        downloadImage(images[0]);
+                        return;
                     }
+                    // galleryDownloadImages: public/scripts/comp/bulkOperationsManager.js (Vista's dialog, "Downloading")
+                    const first = items[0];
+                    await galleryDownloadImages(images, this._progressPlace(
+                        this._imagePlacePath(this._owningWorkspaceId(first), first?.targetKind === 'scrap')));
                     return;
+                }
                 case 'explorer-bulk-sequenzia': {
                     const confirmed = await showConfirmationDialog(
                         `Are you sure you want to send ${count} selected image(s) to Sequenzia? This will move the images and delete them from the gallery.`,
@@ -2400,6 +2402,9 @@ class ExplorerApplet {
                     break;
                 case 'explorer-rename':
                     await this.renameSelection();
+                    break;
+                case 'explorer-edit-paint':
+                    if (item) void this.editInPaint(item);
                     break;
                 case 'explorer-download':
                     if (item) await this.downloadSelectionItem(item);
@@ -4452,7 +4457,12 @@ class ExplorerApplet {
                 return;
             }
             if (item.targetKind === 'user-file') {
-                if ((item.mimeType || '').startsWith('text/')) {
+                // a program the desktop has a port of runs it (vfsPrograms.js: SoraTan.exe)
+                if (window.vfsPrograms && await window.vfsPrograms.open(item)) return;
+                // a text document opens in Notepad (Default Programs' association, notepadVista.js)
+                if (await this.openInNotepad(item)) {
+                    return;
+                } else if ((item.mimeType || '').startsWith('text/')) {
                     await this.downloadSelectionItem(item);
                 } else if ((item.mimeType || '').startsWith('image/') && item.previewUrl) {
                     openImageInViewer(item.previewUrl, item.name, {});
@@ -4464,6 +4474,27 @@ class ExplorerApplet {
             this._setBusyState(null);
             if (this.grid) this.grid.setOpeningItemId(null);
         }
+    }
+
+    async editInPaint(item) {
+        await featureLoader.loadFeature('paint');
+        const res = await vfsClient.downloadFile(item.targetId);
+        if (window.openMelatonPaint) window.openMelatonPaint({ image: res.downloadUrl, name: item.name, file: { id: item.targetId, name: item.name, path: this.currentPath } });
+    }
+
+    /** Text files open in Notepad unless Default Programs gave their type to another program. */
+    async openInNotepad(item) {
+        const ext = ((item.name || '').match(/\.[a-z0-9]+$/i) || [''])[0].toLowerCase();
+        const reg = window.melatonRegistry;
+        const assoc = reg ? reg.get('HKCU\\Software\\Xyridian\\Melaton\\CurrentVersion\\Explorer\\FileExts', ext, '') : '';
+        if (assoc && assoc !== 'notepad') return false;
+        const looksText = /^text\//.test(item.mimeType || '') || /json|xml|javascript/.test(item.mimeType || '')
+            || /\.(txt|log|ini|inf|cfg|conf|json|md|csv|tsv|xml|html?|css|js|ts|py|sh|bat|cmd|yml|yaml|srt|nfo)$/i.test(item.name || '');
+        if (!looksText) return false;
+        await loadNotepadManager();
+        if (!window.notepadVista) return false;
+        await window.notepadVista.openFile(item, this.currentPath);
+        return true;
     }
 
     onSelectionChange(selected) {

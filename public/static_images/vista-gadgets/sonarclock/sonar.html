@@ -1,0 +1,89 @@
+<html>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+<title>Sonar Clock</title>
+<style type="text/css">
+body    {background: url(sonarback.png) no-repeat;width: 130px;height: 114px; margin: 0px 0px 0px 0px;padding: 0px 0px 0px 0px;}
+</style>
+<script>
+<!--
+function setClock() {
+myTime = new Date();
+hour = myTime.getHours();
+minute = myTime.getMinutes();
+
+switch(minute%5) {
+case 0:
+document.m1.src = "face/minute0.png";
+document.m2.src = "face/minute0.png";
+document.m3.src = "face/minute0.png";
+document.m4.src = "face/minute0.png";
+break;
+case 1:
+document.m1.src = "face/minute1.png";
+document.m2.src = "face/minute0.png";
+document.m3.src = "face/minute0.png";
+document.m4.src = "face/minute0.png";
+break;
+case 2:
+document.m1.src = "face/minute1.png";
+document.m2.src = "face/minute1.png";
+document.m3.src = "face/minute0.png";
+document.m4.src = "face/minute0.png";
+break;
+case 3:
+document.m1.src = "face/minute1.png";
+document.m2.src = "face/minute1.png";
+document.m3.src = "face/minute1.png";
+document.m4.src = "face/minute0.png";
+break;
+case 4:
+document.m1.src = "face/minute1.png";
+document.m2.src = "face/minute1.png";
+document.m3.src = "face/minute1.png";
+document.m4.src = "face/minute1.png";
+break;
+}
+if(minute >= 55 && minute < 60) {minute = "55";}
+if(minute >= 50 && minute < 55) {minute = "50";}
+if(minute >= 45 && minute < 50) {minute = "45";}
+if(minute >= 40 && minute < 45) {minute = "40";}
+if(minute >= 35 && minute < 40) {minute = "35";}
+if(minute >= 30 && minute < 35) {minute = "30";}
+if(minute >= 25 && minute < 30) {minute = "25";}
+if(minute >= 20 && minute < 25) {minute = "20";}
+if(minute >= 15 && minute < 20) {minute = "15";}
+if(minute >= 10 && minute < 15) {minute = "10";}
+if(minute >= 5 && minute < 10) {minute = "05";}
+if(minute >= 0 && minute < 5) {minute = "00";}
+if(hour== 0) {hour=12}
+if(hour >12) {hour-= 12;}
+if(hour<10) {hour = "0" + hour }
+
+document.time.src = "face/sonar" + hour + minute + ".png";
+
+setTimeout('setClock()', 1000);
+}
+//-->
+</script>
+</head>
+<body bgcolor="black" onload="setClock()">
+<table cellpadding="0" cellspacing="0" border="0">
+<tr>
+<td><img src="space.png" height="14" width="8"></td>
+<td><img src="face/minute.png" name="m1" ></td>
+<td><img src="face/minute.png" name="m2" ></td>
+<td><img src="face/minute.png" name="m3" ></td>
+<td><img src="face/minute.png" name="m4" ></td>
+<td><img src="space.png" height="14" width="5"></td>
+</tr>
+<tr><td colspan="6" valign="bottom"><img name="time" src="face/sonar0320.png"></td></tr>
+</table>
+<p>
+<form name="test">
+<input name="hr"><br/>
+<input name="min"><br/>
+<input name="sec"><br/>
+<input name="fname"><br/>
+</form>
+</body>
+</html>
