@@ -19,7 +19,8 @@
  *   doc.composite(ctx, rect)      draw the visible layers into a view context
  *   doc.flattened()               a canvas of the picture as saved
  *   PaintCore.floodFill(imageData, x, y, rgba, tolerance) -> dirty rect
- *   PaintCore.wandMask(imageData, x, y, tolerance) -> { mask: Uint8Array, rect }
+ *   PaintCore.wandMask(imageData, x, y, tolerance) -> { mask: Uint8Array (0 / 255), rect }
+ *   PaintCore.colorMask / replaceColor   the same without Contiguous
  */
 (function (root) {
     'use strict';
@@ -474,10 +475,41 @@
         for (let y = rect.y; y < rect.y + rect.h; y += 1) {
             for (let x = rect.x; x < rect.x + rect.w; x += 1) {
                 const i = y * w + x;
-                if (px[i] === m && src[i] !== m) mask[i] = 1;
+                if (px[i] === m && src[i] !== m) mask[i] = 255;
             }
         }
         return { mask, rect };
+    }
+
+    /** The magic wand without Contiguous: every pixel near the clicked one's colour. */
+    function colorMask(img, sx, sy, tolerance = 32) {
+        const w = img.width;
+        const px = new Uint32Array(img.data.buffer);
+        const target = px[sy * w + sx];
+        const tol = Math.round(tolerance * 2.55);
+        const mask = new Uint8Array(px.length);
+        let minX = w; let minY = img.height; let maxX = -1; let maxY = -1;
+        for (let i = 0; i < px.length; i += 1) {
+            if (!close(px[i], target, tol)) continue;
+            mask[i] = 255;
+            const x = i % w;
+            const y = (i - x) / w;
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            maxY = y;
+        }
+        return maxX < 0 ? null : { mask, rect: { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 } };
+    }
+
+    /** Fill without Contiguous: every pixel near the clicked one's colour takes the new one. */
+    function replaceColor(img, sx, sy, rgba, tolerance = 0, mask) {
+        const res = colorMask(img, sx, sy, tolerance);
+        if (!res) return null;
+        const px = new Uint32Array(img.data.buffer);
+        const fill = (rgba[3] << 24 | rgba[2] << 16 | rgba[1] << 8 | rgba[0]) >>> 0;
+        for (let i = 0; i < px.length; i += 1) if (res.mask[i] && (!mask || mask[i])) px[i] = fill;
+        return res.rect;
     }
 
     /** A 3x3 kernel over a canvas region (blur, sharpen), written back in place. */
@@ -512,14 +544,20 @@
         const img = ctx.getImageData(rect.x, rect.y, rect.w, rect.h);
         const d = img.data;
         for (let i = 0; i < d.length; i += 4) {
+            let k = 1;
             if (mask) {
                 const p = i >> 2;
                 const mx = rect.x + (p % rect.w);
                 const my = rect.y + Math.floor(p / rect.w);
-                if (!mask[my * maskW + mx]) continue;
+                const m = mask[my * maskW + mx];
+                if (!m) continue;
+                k = m / 255;
             }
             const o = fn(d[i], d[i + 1], d[i + 2]);
-            d[i] = o[0]; d[i + 1] = o[1]; d[i + 2] = o[2];
+            if (k === 1) { d[i] = o[0]; d[i + 1] = o[1]; d[i + 2] = o[2]; } else {
+                // a feathered selection's edge
+                d[i] += (o[0] - d[i]) * k; d[i + 1] += (o[1] - d[i + 1]) * k; d[i + 2] += (o[2] - d[i + 2]) * k;
+            }
         }
         ctx.putImageData(img, rect.x, rect.y);
     }
@@ -583,6 +621,6 @@
 
     root.PaintCore = {
         Document, Layer, BLENDS, makeCanvas, ctxOf, clampRect, union, rectAround,
-        parseColor, floodFill, wandMask, convolve, mapPixels, rgbToHsl, hslToRgb, encodeBmp
+        parseColor, floodFill, wandMask, colorMask, replaceColor, convolve, mapPixels, rgbToHsl, hslToRgb, encodeBmp
     };
 })(typeof window !== 'undefined' ? window : globalThis);

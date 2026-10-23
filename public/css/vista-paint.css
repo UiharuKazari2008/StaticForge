@@ -747,3 +747,309 @@ body.desktop-mode .modal.mp-window > .modal-content.mp-client {
     border: 1px solid #a0a0a0;
     box-sizing: border-box;
 }
+
+/* ---- the Photoshop side (paintPro.js) ---- */
+
+/* thirty tools: the tool box scrolls when the window is short */
+.mp-client .mp-toolbox {
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* the selection mode (New, Add, Subtract, Intersect), Contiguous and Sample All Layers show for
+   the tools they belong to */
+.mp-client .mp-set-selmode {
+    display: inline-flex;
+    gap: 1px;
+}
+
+.mp-client .mp-selmode {
+    width: 22px;
+    height: 22px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    background: url('/static_images/vista-paint/select-modes.png') calc(var(--x) + 2px) 2px no-repeat;
+    box-shadow: none;
+}
+
+.mp-client .mp-selmode::before,
+.mp-client .mp-selmode::after {
+    content: none;
+}
+
+.mp-client .mp-selmode:hover {
+    border-color: #3c7fb1;
+    background-color: #e3f4fc;
+}
+
+.mp-client .mp-selmode.is-on {
+    border-color: #2c628b;
+    background-color: #c4e5f6;
+    box-shadow: inset 1px 1px 0 rgba(0, 0, 0, 0.12);
+}
+
+.mp-window:not([data-tool="select"]):not([data-tool="freeselect"]):not([data-tool="ellipseselect"]):not([data-tool="polylasso"]):not([data-tool="wand"]) .mp-set-selmode,
+.mp-window:not([data-tool="wand"]):not([data-tool="fill"]) .mp-set-contig,
+.mp-window:not([data-tool="wand"]) .mp-set-sampleall {
+    display: none;
+}
+
+/* the colour box: Default Colors (D) bottom left, Switch Colors (X) top right */
+.mp-client .mp-default-colors,
+.mp-client .mp-swap-colors {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    background: url('/static_images/vista-paint/color-mini.png') 0 0 no-repeat;
+    box-shadow: none;
+    z-index: 2;
+}
+
+.mp-client .mp-default-colors::before,
+.mp-client .mp-default-colors::after,
+.mp-client .mp-swap-colors::before,
+.mp-client .mp-swap-colors::after {
+    content: none;
+}
+
+.mp-client .mp-default-colors { left: 1px; bottom: 1px; }
+.mp-client .mp-swap-colors { right: 0; top: 0; background-position: -10px 0; }
+
+/* the brush outline */
+.mp-client .mp-brushcur {
+    position: absolute;
+    box-sizing: border-box;
+    border: 1px solid #fff;
+    border-radius: 50%;
+    mix-blend-mode: difference;
+    pointer-events: none;
+    z-index: 2;
+}
+
+.mp-client .mp-brushcur.is-square {
+    border-radius: 0;
+}
+
+.mp-client .mp-brushcur[hidden] {
+    display: none;
+}
+
+.mp-client .mp-overlay[data-tool="brush"],
+.mp-client .mp-overlay[data-tool="eraser"],
+.mp-client .mp-overlay[data-tool="clone"],
+.mp-client .mp-overlay[data-tool="blur"],
+.mp-client .mp-overlay[data-tool="smudge"],
+.mp-client .mp-overlay[data-tool="dodge"],
+.mp-client .mp-overlay[data-tool="burn"],
+.mp-client .mp-overlay[data-tool="sponge"],
+.mp-client .mp-overlay[data-tool="heal"] { cursor: crosshair; }
+.mp-client .mp-overlay[data-tool="ellipseselect"],
+.mp-client .mp-overlay[data-tool="polylasso"],
+.mp-client .mp-overlay[data-tool="crop"] { cursor: crosshair; }
+.mp-client .mp-overlay[data-tool="hand"] { cursor: var(--c-grab, grab); }
+.mp-client .mp-overlay[data-tool="hand"]:active,
+.mp-client .mp-overlay[data-hand="1"] { cursor: var(--c-grabbing, grabbing); }
+
+/* the crop box and Free Transform's handles, drawn on the ants layer */
+.mp-client .mp-ants .mp-crop-shade {
+    fill: rgba(0, 0, 0, 0.45);
+    stroke: none;
+}
+
+.mp-client .mp-ants .mp-crop-thirds {
+    stroke: rgba(255, 255, 255, 0.55);
+    stroke-width: 1;
+}
+
+.mp-client .mp-ants .mp-crop-edge,
+.mp-client .mp-ants .mp-xf-box {
+    fill: none;
+    stroke: #000;
+    stroke-width: 1;
+    shape-rendering: auto;
+}
+
+.mp-client .mp-ants .mp-xf-handle {
+    fill: #fff;
+    stroke: #000;
+    stroke-width: 1;
+    shape-rendering: crispEdges;
+}
+
+.mp-client .mp-ants .mp-xf-center {
+    fill: none;
+    stroke: #000;
+    stroke-width: 1;
+}
+
+/* ---- the Navigator and Info windows ---- */
+
+.mp-client .mp-navigator,
+.mp-client .mp-info {
+    flex: none;
+}
+
+.mp-client .mp-nav-view {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 140px;
+    background: #ababab;
+    cursor: var(--c-default, default);
+}
+
+.mp-client .mp-nav-view canvas {
+    display: block;
+    box-shadow: 0 0 0 1px #808080;
+}
+
+.mp-client .mp-nav-box {
+    position: absolute;
+    box-sizing: border-box;
+    border: 1px solid #e00;
+    pointer-events: none;
+}
+
+.mp-client .mp-nav-bar {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    height: 26px;
+    padding: 0 4px;
+    border-top: 1px solid #d5d5d5;
+    background: #f0f0f0;
+    font: 11px Tahoma, sans-serif;
+}
+
+.mp-client .mp-nav-zoom {
+    width: 44px;
+}
+
+.mp-client .mp-nav-slider {
+    flex: 1;
+    min-width: 0;
+}
+
+.mp-client .mp-nav-in,
+.mp-client .mp-nav-out {
+    width: 14px;
+    height: 14px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+    background:
+        linear-gradient(#333, #333) center / 8px 2px no-repeat;
+}
+
+.mp-client .mp-nav-in {
+    background:
+        linear-gradient(#333, #333) center / 8px 2px no-repeat,
+        linear-gradient(#333, #333) center / 2px 8px no-repeat;
+}
+
+.mp-client .mp-nav-in::before,
+.mp-client .mp-nav-in::after,
+.mp-client .mp-nav-out::before,
+.mp-client .mp-nav-out::after {
+    content: none;
+}
+
+.mp-client .mp-info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px 8px;
+    padding: 4px 6px;
+    font: 11px Tahoma, sans-serif;
+}
+
+.mp-client .mp-info-grid > div {
+    display: grid;
+    grid-template-columns: 14px 1fr;
+    align-items: center;
+}
+
+.mp-client .mp-info-grid b {
+    font-weight: normal;
+    color: #555;
+}
+
+.mp-client .mp-info-sw {
+    grid-column: 1 / -1;
+    height: 8px;
+    margin-top: 2px;
+    border: 1px solid #a0a0a0;
+}
+
+/* ---- Levels and Curves ---- */
+
+.vdt-custom .mp-lv-hist {
+    box-sizing: border-box;
+    height: 102px;
+    margin: 0;
+    padding: 0 3px;
+    border: 1px solid #a0a0a0;
+    background: #fff;
+}
+
+.vdt-custom .mp-lv-hist canvas {
+    display: block;
+    width: 256px;
+    height: 100px;
+}
+
+.vdt-custom .mp-lv-track {
+    position: relative;
+    height: 12px;
+}
+
+.vdt-custom .mp-lv-tri {
+    position: absolute;
+    top: 1px;
+    width: 0;
+    height: 0;
+    margin-left: -5px;
+    border: 5px solid transparent;
+    border-top: 0;
+    border-bottom: 9px solid #000;
+    cursor: var(--c-ew-resize, ew-resize);
+}
+
+.vdt-custom .mp-lv-tri::after {
+    content: '';
+    position: absolute;
+    left: -3px;
+    top: 4px;
+    width: 6px;
+    height: 4px;
+    background: var(--tri, #000);
+}
+
+.vdt-custom .mp-lv-tri.is-grey { --tri: #888; }
+.vdt-custom .mp-lv-tri.is-white { --tri: #fff; }
+
+.vdt-custom .mp-lv-ramp {
+    height: 10px;
+    margin: 0 4px;
+    border: 1px solid #a0a0a0;
+    background: linear-gradient(to right, #000, #fff);
+}
+
+.vdt-custom .mp-cv {
+    display: block;
+    width: 256px;
+    height: 256px;
+    margin: 0 auto;
+    border: 1px solid #a0a0a0;
+    cursor: crosshair;
+    touch-action: none;
+}

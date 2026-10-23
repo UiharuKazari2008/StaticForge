@@ -1,9 +1,11 @@
 /**
  * Paint (Yozora #632): Vista's mspaint.exe, then layers and the tools a modern editor has.
  *
- *   window      File Edit View Image Layers Adjustments Colors Help; the tool box (Vista's 16 tools
- *               from mspaint.exe bitmap 859, then Move, Gradient, Magic Wand, Clone Stamp, Blur), the
- *               tool's options box, the Tool Settings bar (size, opacity, hardness, tolerance), the
+ *   window      File Edit View Image Layers Select Adjustments Filter Colors Help; the tool box
+ *               (Vista's 16 tools from mspaint.exe bitmap 859, then Move, Gradient, Magic Wand, Clone
+ *               Stamp, Blur, Elliptical Select, Polygonal Lasso, Crop, Hand, Spot Healing Brush,
+ *               Smudge, Dodge, Burn, Sponge), the tool's options box, the Tool Settings bar (size,
+ *               opacity, hardness, tolerance, the selection mode, Contiguous, Sample All Layers), the
  *               canvas on the app workspace (#ababab) with its resize handles, the color box
  *               (Vista's 28 colors), the status bar (help, the cursor, the selection's size), and the
  *               Layers window (paintLayers.js)
@@ -12,6 +14,9 @@
  *               every layer kept) in the VFS; Save to Gallery and Set as Desktop Background
  *   dialogs     Vista's own templates (vistaDialogTemplate.js): Attributes, Flip and Rotate,
  *               Resize and Skew, Grid Settings (mspaint.exe.mui) and Edit Colors (comdlg32 CHOOSECOLOR)
+ *   Photoshop   Free Transform (Ctrl+T), Photoshop's single-key tools (Shift cycles a group), X / D,
+ *               [ ], Space to pan, Alt+wheel zoom, the brush outline; selections, filters, Levels,
+ *               Curves and the Navigator / Info windows are paintPro.js
  *
  *   openMelatonPaint({ image?: url, name?, file?: { id, name, path } })
  */
@@ -48,8 +53,28 @@
         ['gradient', 'Gradient', 'Fills the selection or the layer with a gradient from the drawing color to the background color.'],
         ['wand', 'Magic Wand', 'Selects the area of a similar color.'],
         ['clone', 'Clone Stamp', 'Paints a copy of another part of the picture. Right-click sets the source.'],
-        ['blur', 'Blur', 'Softens the picture under the brush.']
+        ['blur', 'Blur', 'Softens the picture under the brush.'],
+        ['ellipseselect', 'Elliptical Select', 'Selects an elliptical part of the picture. Shift adds, Alt subtracts.'],
+        ['polylasso', 'Polygonal Lasso', 'Selects a part of the picture with straight edges. Double-click closes it.'],
+        ['crop', 'Crop', 'Drag the part of the picture to keep, then press Enter.'],
+        ['hand', 'Hand', 'Scrolls the picture. Hold Space with any tool.'],
+        ['heal', 'Spot Healing Brush', 'Paints over a spot to blend it away with the picture around it.'],
+        ['smudge', 'Smudge', 'Smears the picture under the brush.'],
+        ['dodge', 'Dodge', 'Lightens the picture under the brush.'],
+        ['burn', 'Burn', 'Darkens the picture under the brush.'],
+        ['sponge', 'Sponge', 'Saturates the colors under the brush; right-drag desaturates.']
     ];
+    // Photoshop's tool keys; Shift with the key steps through its group
+    const TOOL_KEYS = {
+        v: ['move'], m: ['select', 'ellipseselect'], l: ['freeselect', 'polylasso'], w: ['wand'], c: ['crop'], i: ['picker'],
+        j: ['heal'], b: ['brush', 'pencil', 'airbrush'], s: ['clone'], e: ['eraser'], g: ['gradient', 'fill'], t: ['text'],
+        u: ['rect', 'roundrect', 'ellipse', 'polygon', 'line', 'curve'], z: ['magnifier'], h: ['hand'], o: ['dodge', 'burn', 'sponge'], r: ['blur', 'smudge']
+    };
+    // tools that paint with a round dab of their own size (the Size box, else this many pixels)
+    const DAB_TOOLS = { clone: 15, blur: 20, smudge: 20, dodge: 30, burn: 30, sponge: 30, heal: 20 };
+    const OUTLINE_TOOLS = new Set(['brush', 'eraser', 'airbrush', 'clone', 'blur', 'smudge', 'dodge', 'burn', 'sponge', 'heal']);
+    const SELECT_TOOLS = new Set(['select', 'freeselect', 'ellipseselect', 'polylasso', 'wand', 'move']);
+    const P = () => root.paintPro;
     const DEFAULT_STATUS = 'For Help, click Help Topics on the Help Menu.';
     let windowCount = 0;
 
@@ -111,7 +136,8 @@
             this.zoom = 1;
             this.opt = {
                 lineWidth: 1, brush: 'round-2', eraser: 8, airbrush: 0, shape: 'outline', transparent: false,
-                zoomLevel: 4, size: 0, opacity: 100, hardness: 100, tolerance: 32, antialias: true, gradient: 'linear'
+                zoomLevel: 4, size: 0, opacity: 100, hardness: 100, tolerance: 32, antialias: true, gradient: 'linear',
+                selMode: 'new', contiguous: true, sampleAll: false
             };
             this.grid = false;
             this.name = opts.name || 'Untitled';
@@ -144,13 +170,16 @@
                     <button type="button" class="btn-danger close-btn btn-small mp-close" title="Close"><i class="fa-regular fa-xmark-large"></i></button>
                 </div>
                 <div class="modal-content win7 mp-client">
-                    <div class="naxt-menubar mp-menubar" role="menubar">${['File', 'Edit', 'View', 'Image', 'Layers', 'Adjustments', 'Colors', 'Help'].map((t) => `<button type="button" class="naxt-menu-title" data-mp-menu="${t.toLowerCase()}" role="menuitem">${t}</button>`).join('')}</div>
+                    <div class="naxt-menubar mp-menubar" role="menubar">${['File', 'Edit', 'View', 'Image', 'Layers', 'Select', 'Adjustments', 'Filter', 'Colors', 'Help'].map((t) => `<button type="button" class="naxt-menu-title" data-mp-menu="${t.toLowerCase()}" role="menuitem">${t}</button>`).join('')}</div>
                     <div class="mp-settings" role="toolbar">
                         <label>Size: <input type="number" class="tbp-edit mp-set-size" min="0" max="500" value="0" title="0 uses the tool's own size"></label>
                         <label>Opacity: <input type="range" class="mp-set-opacity" min="1" max="100" value="100"><span class="mp-set-opacity-v">100%</span></label>
                         <label>Hardness: <input type="range" class="mp-set-hardness" min="0" max="100" value="100"></label>
                         <label>Tolerance: <input type="range" class="mp-set-tolerance" min="0" max="100" value="32"></label>
                         <label class="mp-set-check"><input type="checkbox" class="mp-set-aa" checked><span>Antialiasing</span></label>
+                        <span class="mp-set-selmode" role="group" aria-label="Selection">${[['new', 'New Selection'], ['add', 'Add to Selection (Shift)'], ['subtract', 'Subtract from Selection (Alt)'], ['intersect', 'Intersect with Selection (Shift+Alt)']].map(([v, t], i) => `<button type="button" class="mp-selmode${v === 'new' ? ' is-on' : ''}" data-selmode="${v}" title="${t}" style="--x:${-i * 16}px"></button>`).join('')}</span>
+                        <label class="mp-set-check mp-set-contig"><input type="checkbox" class="mp-set-contiguous" checked><span>Contiguous</span></label>
+                        <label class="mp-set-check mp-set-sampleall"><input type="checkbox" class="mp-set-sample"><span>Sample All Layers</span></label>
                     </div>
                     <div class="mp-body">
                         <div class="mp-toolbox">
@@ -164,12 +193,13 @@
                                 <div class="mp-grid"></div>
                                 <svg class="mp-ants" aria-hidden="true"></svg>
                                 <span class="mp-handle is-e"></span><span class="mp-handle is-s"></span><span class="mp-handle is-se"></span>
+                                <span class="mp-brushcur" hidden></span>
                             </div>
                         </div>
                         <div class="mp-dock"></div>
                     </div>
                     <div class="mp-colorbox">
-                        <div class="mp-swatch-box"><span class="mp-bg"></span><span class="mp-fg"></span></div>
+                        <div class="mp-swatch-box"><span class="mp-bg"></span><span class="mp-fg"></span><button type="button" class="mp-default-colors" title="Default Colors (D)"></button><button type="button" class="mp-swap-colors" title="Switch Colors (X)"></button></div>
                         <div class="mp-palette">${PALETTE.map((c, i) => `<button type="button" class="mp-color" data-i="${i}" style="background:${c}"></button>`).join('')}</div>
                     </div>
                     <div class="mp-status"><span class="mp-status-text">${DEFAULT_STATUS}</span><span class="mp-status-pos"></span><span class="mp-status-size"></span></div>
@@ -186,6 +216,7 @@
             this.ants = this.el('.mp-ants');
             this.checker = this.makeChecker();
             this.wire();
+            m.dataset.tool = this.tool;
             this.renderOptions();
             this.renderColors();
             callGlobal('openModal', m);
@@ -270,6 +301,18 @@
                 ws.scrollTop = at.y * this.zoom - (at.cy || ws.clientHeight / 2);
             }
             if (old !== this.zoom) this.status(`Zoom: ${Math.round(this.zoom * 100)}%`);
+            this.drawXf();
+            if (P()) P().navBox(this);
+        }
+
+        /** View > Fit on Screen (Ctrl+0): the whole picture in the window. */
+        fitZoom() {
+            const ws = this.workspace;
+            const z = Math.min((ws.clientWidth - 20) / this.doc.width, (ws.clientHeight - 20) / this.doc.height);
+            // Photoshop's steps: whole percentages under 100, else the fit itself
+            this.setZoom(Math.max(0.125, Math.min(8, z >= 1 ? Math.floor(z * 100) / 100 : Math.floor(z * 100) / 100)));
+            ws.scrollLeft = 0;
+            ws.scrollTop = 0;
         }
 
         schedule() {
@@ -279,6 +322,7 @@
                 const r = this.doc.takeDirty();
                 if (r) this.doc.composite(this.vctx, r, { checker: this.checker, overlay: this.strokeOverlay || null });
                 if (root.paintLayers) root.paintLayers.thumbs(this);
+                if (P()) P().navRefresh(this);
             });
         }
 
@@ -340,6 +384,15 @@
             set('.mp-set-hardness', 'hardness');
             set('.mp-set-tolerance', 'tolerance');
             set('.mp-set-aa', 'antialias');
+            set('.mp-set-contiguous', 'contiguous');
+            set('.mp-set-sample', 'sampleAll');
+            m.querySelector('.mp-set-selmode').addEventListener('click', (ev) => {
+                const b = ev.target.closest('[data-selmode]');
+                if (b) this.setSelMode(b.dataset.selmode);
+            });
+            m.querySelector('.mp-swap-colors').addEventListener('click', () => void this.action('swap-colors'));
+            m.querySelector('.mp-default-colors').addEventListener('click', () => void this.action('default-colors'));
+            m.querySelector('.mp-fg').addEventListener('dblclick', () => void this.action('edit-colors'));
             const view = this.overlay;
             view.addEventListener('pointerdown', (ev) => this.pointer('down', ev));
             view.addEventListener('pointermove', (ev) => this.pointer('move', ev));
@@ -347,15 +400,23 @@
             view.addEventListener('pointercancel', (ev) => this.pointer('up', ev));
             view.addEventListener('dblclick', (ev) => this.pointer('dbl', ev));
             view.addEventListener('contextmenu', (ev) => ev.preventDefault());
-            view.addEventListener('pointerleave', () => { this.el('.mp-status-pos').textContent = ''; });
+            view.addEventListener('pointerleave', () => {
+                this.el('.mp-status-pos').textContent = '';
+                this.el('.mp-brushcur').hidden = true;
+                if (P()) P().info(this, null);
+            });
             this.workspace.addEventListener('wheel', (ev) => {
-                if (!ev.ctrlKey) return;
+                // Ctrl+wheel (Vista) or Alt+wheel (Photoshop) zooms round the pointer
+                if (!ev.ctrlKey && !ev.altKey) return;
                 ev.preventDefault();
                 const p = this.docPoint(ev);
                 const r = this.workspace.getBoundingClientRect();
                 this.setZoom(this.zoom * (ev.deltaY < 0 ? 2 : 0.5), { x: p.x, y: p.y, cx: ev.clientX - r.left, cy: ev.clientY - r.top });
             }, { passive: false });
             m.addEventListener('keydown', (ev) => this.key(ev));
+            m.addEventListener('keyup', (ev) => {
+                if (ev.key === ' ' && this.spaceHand) { this.spaceHand = false; this.overlay.dataset.hand = ''; }
+            });
             // the canvas resize handles: drag to change the picture's size (Vista)
             m.querySelectorAll('.mp-handle').forEach((h) => h.addEventListener('pointerdown', (ev) => this.resizeDrag(ev, h)));
             m.addEventListener('paste', (ev) => {
@@ -370,8 +431,11 @@
             const p = this.docPoint(ev);
             if (kind === 'move') {
                 this.el('.mp-status-pos').textContent = p.x >= 0 && p.y >= 0 && p.x < this.doc.width && p.y < this.doc.height ? `${Math.floor(p.x)},${Math.floor(p.y)}` : '';
+                this.brushCursor(p);
+                if (P()) P().info(this, p);
             }
-            const t = this.tools[this.tool];
+            // Free Transform takes the pointer from every tool; Space pans (Photoshop)
+            const t = this.xf ? this.tools.xform : (this.spaceHand || this.handDrag) && kind !== 'dbl' ? this.tools.hand : this.tools[this.tool];
             if (!t) return;
             if (kind === 'down') {
                 if (ev.button !== 0 && ev.button !== 2) return;
@@ -393,21 +457,79 @@
         key(ev) {
             if (ev.target.closest('.mp-textbox, input, select, textarea')) return;
             const ctrl = ev.ctrlKey || ev.metaKey;
+            const shift = ev.shiftKey;
+            const alt = ev.altKey;
             const k = ev.key.toLowerCase();
-            const map = {
-                n: 'new', o: 'open', s: 'save', p: 'print', z: 'undo', y: 'redo', x: 'cut', c: 'copy', v: 'paste',
-                a: 'select-all', l: 'colorbox', t: 'toolbox', e: 'attributes', r: 'flip', w: 'stretch', i: 'invert', g: 'grid', f: 'view-bitmap'
-            };
             let action = null;
-            if (ctrl && !ev.altKey && map[k]) action = map[k];
-            else if (ctrl && ev.key === 'PageUp') action = 'zoom-normal';
-            else if (ctrl && ev.key === 'PageDown') action = 'zoom-large';
-            else if (ctrl && ev.shiftKey && k === 'n') action = 'clear';
-            else if (ev.key === 'Delete') action = 'delete';
+            if (ctrl) {
+                const code = ev.code;
+                if (shift && alt && k === 'l') action = 'adj-autolevel';
+                else if (alt && !shift && k === 'f') action = 'pro-last-filter';
+                else if (alt && !shift && k === 'c') action = 'attributes';
+                else if (alt && !shift && k === 'i') action = 'stretch';
+                else if (alt && !shift && k === 'z') action = 'undo';
+                else if (alt) action = null;
+                else if (shift) {
+                    action = {
+                        n: 'layer-add', d: 'pro-reselect', i: 'pro-inverse', z: 'redo', j: 'layer-via-cut', e: 'layer-flatten',
+                        f: 'layer-flatten', u: 'adj-bw', g: 'adj-bw', l: 'pro-auto-tone', b: 'pro-auto-color', delete: 'layer-delete'
+                    }[k] || null;
+                } else {
+                    action = {
+                        n: 'new', o: 'open', s: 'save', p: 'print', z: 'undo', y: 'redo', x: 'cut', c: 'copy', v: 'paste',
+                        a: 'select-all', d: 'pro-deselect', t: 'free-transform', r: 'flip', w: 'stretch', i: 'invert', g: 'grid', f: 'view-bitmap',
+                        j: 'layer-via-copy', e: 'layer-merge', l: 'pro-levels', m: 'pro-curves', u: 'adj-hue', b: 'pro-color-balance',
+                        0: 'zoom-fit', 1: 'zoom-actual', '=': 'zoom-in', '+': 'zoom-in', '-': 'zoom-out'
+                    }[k] || null;
+                    if (!action && code === 'Digit0') action = 'zoom-fit';
+                    if (!action && code === 'Digit1') action = 'zoom-actual';
+                    if (ev.key === 'PageUp') action = 'zoom-normal';
+                    else if (ev.key === 'PageDown') action = 'zoom-large';
+                    else if (ev.key === 'Backspace') action = 'fill-bg';
+                }
+            } else if (alt) {
+                if (ev.key === 'Backspace' || ev.key === 'Delete') action = 'fill-fg';
+            } else if (ev.key === 'F4') action = 'layer-properties';
+            else if (ev.key === 'F7') action = 'layers';
+            else if (ev.key === 'F8') action = 'history';
+            else if (ev.key === 'F6' && shift) action = 'pro-sel-feather';
+            else if (ev.key === 'F5' && shift) action = 'pro-fill';
+            else if (ev.key === 'Backspace' && shift) action = 'pro-fill';
+            else if (ev.key === 'Delete' || ev.key === 'Backspace') action = 'delete';
             else if (ev.key === 'Escape') action = 'escape';
-            else if (ev.key === 'Enter' && this.polygon) action = 'finish-shape';
-            else if (!ctrl && ev.key === '+' ) { this.opt.size = Math.min(500, (this.opt.size || this.brushSize()) + 1); this.syncSettings(); }
-            else if (!ctrl && ev.key === '-' ) { this.opt.size = Math.max(1, (this.opt.size || this.brushSize()) - 1); this.syncSettings(); }
+            else if (ev.key === 'Enter') action = 'enter';
+            else if (ev.key === ' ') {
+                ev.preventDefault();
+                if (!this.spaceHand && !this.down) { this.spaceHand = true; this.overlay.dataset.hand = '1'; }
+                return;
+            } else if (ev.key === '[' || ev.key === ']') {
+                const cur = this.opt.size || this.toolDiameter();
+                const stepPx = cur < 10 ? 1 : cur < 50 ? 5 : cur < 100 ? 10 : 25;
+                this.opt.size = Math.max(1, Math.min(500, cur + (ev.key === ']' ? stepPx : -stepPx)));
+                this.syncSettings();
+                this.brushCursor(this.lastPointer);
+            } else if (ev.key === '{' || ev.key === '}') {
+                this.opt.hardness = Math.max(0, Math.min(100, this.opt.hardness + (ev.key === '}' ? 25 : -25)));
+                this.el('.mp-set-hardness').value = String(this.opt.hardness);
+            } else if (!ctrl && ev.key === '+') { this.opt.size = Math.min(500, (this.opt.size || this.brushSize()) + 1); this.syncSettings(); }
+            else if (!ctrl && ev.key === '-') { this.opt.size = Math.max(1, (this.opt.size || this.brushSize()) - 1); this.syncSettings(); }
+            else if (/^[0-9]$/.test(ev.key)) {
+                // Photoshop: 1 is 10%, 0 is 100%
+                const v = ev.key === '0' ? 100 : Number(ev.key) * 10;
+                this.opt.opacity = v;
+                this.el('.mp-set-opacity').value = String(v);
+                this.el('.mp-set-opacity-v').textContent = `${v}%`;
+            } else if (k === 'x') action = 'swap-colors';
+            else if (k === 'd') action = 'default-colors';
+            else if (TOOL_KEYS[k]) {
+                const group = TOOL_KEYS[k];
+                const at = group.indexOf(this.tool);
+                const next = at < 0 ? (group.includes(this.groupLast && this.groupLast[k]) ? this.groupLast[k] : group[0]) : shift ? group[(at + 1) % group.length] : group[at];
+                this.groupLast = { ...(this.groupLast || {}), [k]: next };
+                ev.preventDefault();
+                this.setTool(next);
+                return;
+            }
             if (!action) return;
             ev.preventDefault();
             void this.action(action);
@@ -417,18 +539,71 @@
             this.el('.mp-set-size').value = String(this.opt.size);
         }
 
+        setSelMode(mode) {
+            this.opt.selMode = mode;
+            this.modal.querySelectorAll('.mp-selmode').forEach((b) => b.classList.toggle('is-on', b.dataset.selmode === mode));
+        }
+
+        /** Shift adds, Alt subtracts, both intersect; else the mode chosen on the Tool Settings bar. */
+        selModeFor(ev) {
+            if (ev && ev.shiftKey && ev.altKey) return 'intersect';
+            if (ev && ev.shiftKey) return 'add';
+            if (ev && ev.altKey) return 'subtract';
+            return this.opt.selMode;
+        }
+
+        /** A new selection shape is done: combine it with the one it started from. */
+        finishSelection(next) {
+            const base = this.selBase;
+            const mode = this.selModeNow;
+            this.selBase = null;
+            this.selModeNow = null;
+            if (base && mode && mode !== 'new' && P()) {
+                this.setSelection(P().combine(this.doc, base, next && next.w >= 1 && next.h >= 1 ? next : null, mode));
+                return;
+            }
+            if (next && (next.w < 1 || next.h < 1)) next = null;
+            this.setSelection(next);
+        }
+
+        /** The size a dab tool paints with. */
+        toolDiameter() {
+            const d = DAB_TOOLS[this.tool];
+            if (d) return this.opt.size > 0 ? this.opt.size : d;
+            return this.brushSize();
+        }
+
+        /** Photoshop's brush outline: a circle (a square for the eraser) the brush's size. */
+        brushCursor(p) {
+            if (p) this.lastPointer = p;
+            const cur = this.el('.mp-brushcur');
+            const at = p || this.lastPointer;
+            const size = this.toolDiameter() * this.zoom;
+            if (!at || !OUTLINE_TOOLS.has(this.tool) || this.xf || this.spaceHand || size < 6) { cur.hidden = true; return; }
+            cur.hidden = false;
+            cur.classList.toggle('is-square', this.tool === 'eraser');
+            cur.style.width = `${size}px`;
+            cur.style.height = `${size}px`;
+            cur.style.left = `${at.x * this.zoom - size / 2}px`;
+            cur.style.top = `${at.y * this.zoom - size / 2}px`;
+        }
+
         // ---- tools ----------------------------------------------------------------------------
 
         setTool(id) {
             if (this.tool === id) return;
             this.finishText();
             this.cancelShape();
-            if (id !== 'select' && id !== 'freeselect' && id !== 'move' && id !== 'wand') this.commitFloating();
+            if (this.xf) this.commitTransform();
+            if (this.cropBox && id !== 'crop') { this.cropBox = null; this.drawAnts(); }
+            if (!SELECT_TOOLS.has(id)) this.commitFloating();
             if (id === 'picker') this.prevTool = this.tool;
             this.tool = id;
             this.modal.querySelectorAll('.mp-tool').forEach((b) => b.classList.toggle('is-on', b.dataset.tool === id));
             this.overlay.dataset.tool = id;
+            this.modal.dataset.tool = id;
             this.renderOptions();
+            this.brushCursor();
         }
 
         renderOptions() {
@@ -437,7 +612,7 @@
             const o = this.opt;
             const item = (key, value, inner, title) => `<button type="button" class="mp-opt${String(o[key]) === String(value) ? ' is-on' : ''}" data-opt="${key}" data-value="${value}" title="${esc(title || '')}">${inner}</button>`;
             let html = '';
-            if (t === 'select' || t === 'freeselect' || t === 'text' || t === 'move' || t === 'wand') {
+            if (t === 'select' || t === 'freeselect' || t === 'text' || t === 'move' || t === 'wand' || t === 'ellipseselect' || t === 'polylasso') {
                 html = `<div class="mp-opt-col">${item('transparent', false, '<span class="mp-opt-art is-opaque"></span>', 'Opaque')}${item('transparent', true, '<span class="mp-opt-art is-transparent"></span>', 'Transparent')}</div>`;
             } else if (t === 'eraser') {
                 html = `<div class="mp-opt-col">${[4, 6, 8, 10].map((s) => item('eraser', s, `<span class="mp-opt-square" style="width:${s}px;height:${s}px"></span>`, `${s} px`)).join('')}</div>`;
@@ -575,6 +750,7 @@
             this.sctx.restore();
             const l = this.doc.layer;
             const o = this.strokeOverlay;
+            this.maskBuffer(o.canvas);
             l.ctx.save();
             l.ctx.globalAlpha = o.alpha;
             l.ctx.globalCompositeOperation = o.erase ? 'destination-out' : 'source-over';
@@ -586,6 +762,23 @@
             this.step = null;
             this.doc.markDirty(this.strokeRect || undefined);
             this.strokeRect = null;
+        }
+
+        /** A wand, feathered or combined selection clips by its mask: the buffer keeps only what it covers. */
+        maskBuffer(canvas) {
+            const s = this.doc.selection;
+            if (!s || !s.mask || this.floating || !P()) return;
+            const x = canvas.getContext('2d');
+            x.save();
+            x.globalCompositeOperation = 'destination-in';
+            x.drawImage(P().maskCanvas(this.doc, s, { x: s.x, y: s.y, w: s.w, h: s.h }), s.x, s.y);
+            // outside the mask's box nothing stays
+            x.globalCompositeOperation = 'destination-out';
+            x.fillRect(0, 0, canvas.width, s.y);
+            x.fillRect(0, s.y + s.h, canvas.width, canvas.height);
+            x.fillRect(0, s.y, s.x, s.h);
+            x.fillRect(s.x + s.w, s.y, canvas.width, s.h);
+            x.restore();
         }
 
         growStroke(r) {
@@ -637,15 +830,26 @@
             return { x: a.x + Math.cos(ang) * len, y: a.y + Math.sin(ang) * len };
         }
 
-        commitToLayer(label, draw, rect) {
+        commitToLayer(label, draw, rect, opts = {}) {
             if (!this.editable()) return;
             const l = this.doc.layer;
             const step = this.doc.beginStep(label, l);
-            l.ctx.save();
-            this.clipToSelection(l.ctx);
-            l.ctx.imageSmoothingEnabled = this.opt.antialias;
-            draw(l.ctx);
-            l.ctx.restore();
+            const s = this.doc.selection;
+            if (s && s.mask && !opts.direct && !this.floating) {
+                // drawn on its own, kept through the mask, then laid on the layer
+                const buf = C().makeCanvas(this.doc.width, this.doc.height);
+                const bx = buf.getContext('2d');
+                bx.imageSmoothingEnabled = this.opt.antialias;
+                draw(bx);
+                this.maskBuffer(buf);
+                l.ctx.drawImage(buf, 0, 0);
+            } else {
+                l.ctx.save();
+                this.clipToSelection(l.ctx);
+                l.ctx.imageSmoothingEnabled = this.opt.antialias;
+                draw(l.ctx);
+                l.ctx.restore();
+            }
             step.grow(rect || { x: 0, y: 0, w: this.doc.width, h: this.doc.height });
             this.doc.commitStep(step);
             this.doc.markDirty(rect);
@@ -675,17 +879,42 @@
             const s = this.floating || this.doc.selection;
             const z = this.zoom;
             const svg = this.ants;
-            svg.setAttribute('width', String(this.doc.width * z));
-            svg.setAttribute('height', String(this.doc.height * z));
-            if (!s) { svg.innerHTML = ''; return; }
-            let d;
-            if (s.path && !this.floating) d = s.path.map((p, i) => `${i ? 'L' : 'M'}${(p.x * z).toFixed(1)},${(p.y * z).toFixed(1)}`).join('') + 'Z';
-            else {
-                const x = Math.round(s.x * z) + 0.5;
-                const y = Math.round(s.y * z) + 0.5;
-                d = `M${x},${y}h${Math.round(s.w * z)}v${Math.round(s.h * z)}h${-Math.round(s.w * z)}Z`;
+            const W = this.doc.width;
+            const H = this.doc.height;
+            svg.setAttribute('width', String(W * z));
+            svg.setAttribute('height', String(H * z));
+            const pathOf = (sel, floating) => {
+                if (sel.mask && !floating && P()) return P().outline(sel, W, H, z);
+                if (sel.path && !floating) return sel.path.map((p, i) => `${i ? 'L' : 'M'}${(p.x * z).toFixed(1)},${(p.y * z).toFixed(1)}`).join('') + (sel.open ? '' : 'Z');
+                const x = Math.round(sel.x * z) + 0.5;
+                const y = Math.round(sel.y * z) + 0.5;
+                return `M${x},${y}h${Math.round(sel.w * z)}v${Math.round(sel.h * z)}h${-Math.round(sel.w * z)}Z`;
+            };
+            let html = '';
+            const ants = (d) => `<path d="${d}" class="mp-ants-a"/><path d="${d}" class="mp-ants-b"/>`;
+            if (this.selBase) html += ants(pathOf(this.selBase, false));
+            if (s) html += ants(pathOf(s, !!this.floating));
+            const c = this.cropBox;
+            if (c) {
+                const x0 = c.x * z; const y0 = c.y * z; const x1 = (c.x + c.w) * z; const y1 = (c.y + c.h) * z;
+                html += `<path class="mp-crop-shade" fill-rule="evenodd" d="M0,0H${W * z}V${H * z}H0Z M${x0},${y0}H${x1}V${y1}H${x0}Z"/>`;
+                const tx = (c.w * z) / 3; const ty = (c.h * z) / 3;
+                html += `<path class="mp-crop-thirds" d="M${x0 + tx},${y0}V${y1}M${x0 + 2 * tx},${y0}V${y1}M${x0},${y0 + ty}H${x1}M${x0},${y0 + 2 * ty}H${x1}"/>`;
+                html += `<rect class="mp-crop-edge" x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}"/>`;
+                html += this.handleMarks([[x0, y0], [(x0 + x1) / 2, y0], [x1, y0], [x1, (y0 + y1) / 2], [x1, y1], [(x0 + x1) / 2, y1], [x0, y1], [x0, (y0 + y1) / 2]]);
             }
-            svg.innerHTML = `<path d="${d}" class="mp-ants-a"/><path d="${d}" class="mp-ants-b"/>`;
+            if (this.xf) {
+                const pts = this.xfCorners().map(([x, y]) => [x * z, y * z]);
+                html += `<path class="mp-xf-box" d="M${pts.map((q) => q.join(',')).join('L')}Z"/>`;
+                const mids = pts.map((q, i) => [(q[0] + pts[(i + 1) % 4][0]) / 2, (q[1] + pts[(i + 1) % 4][1]) / 2]);
+                html += this.handleMarks([...pts, ...mids]);
+                html += `<circle class="mp-xf-center" cx="${this.xf.cx * z}" cy="${this.xf.cy * z}" r="3"/>`;
+            }
+            svg.innerHTML = html;
+        }
+
+        handleMarks(points) {
+            return points.map(([x, y]) => `<rect class="mp-xf-handle" x="${Math.round(x) - 3.5}" y="${Math.round(y) - 3.5}" width="7" height="7"/>`).join('');
         }
 
         selectionCanvas(cut) {
@@ -705,7 +934,8 @@
                 const img = cx.getImageData(0, 0, s.w, s.h);
                 for (let y = 0; y < s.h; y += 1) {
                     for (let x = 0; x < s.w; x += 1) {
-                        if (!s.mask[(s.y + y) * this.doc.width + s.x + x]) img.data[(y * s.w + x) * 4 + 3] = 0;
+                        const m = s.mask[(s.y + y) * this.doc.width + s.x + x];
+                        if (m !== 255) img.data[(y * s.w + x) * 4 + 3] = (img.data[(y * s.w + x) * 4 + 3] * m) / 255;
                     }
                 }
                 cx.putImageData(img, 0, 0);
@@ -730,9 +960,13 @@
                 const [r, g, b] = C().parseColor(this.bg);
                 for (let y = 0; y < s.h; y += 1) {
                     for (let x = 0; x < s.w; x += 1) {
-                        if (!s.mask[(s.y + y) * this.doc.width + s.x + x]) continue;
+                        const m = s.mask[(s.y + y) * this.doc.width + s.x + x];
+                        if (!m) continue;
                         const i = (y * s.w + x) * 4;
-                        if (isBackground) { img.data[i] = r; img.data[i + 1] = g; img.data[i + 2] = b; img.data[i + 3] = 255; } else img.data[i + 3] = 0;
+                        const k = m / 255;
+                        if (isBackground) {
+                            img.data[i] += (r - img.data[i]) * k; img.data[i + 1] += (g - img.data[i + 1]) * k; img.data[i + 2] += (b - img.data[i + 2]) * k; img.data[i + 3] = 255;
+                        } else img.data[i + 3] *= 1 - k;
                     }
                 }
                 l.ctx.putImageData(img, s.x, s.y);
@@ -781,6 +1015,7 @@
         }
 
         commitFloating() {
+            if (this.xf) this.commitTransform();
             const f = this.floating;
             if (!f) return;
             const l = this.doc.layer;
@@ -1250,19 +1485,38 @@
                     { text: 'Clear Selection', subtext: 'Del', action: 'delete', disabled: !sel },
                     { text: 'Select All', subtext: 'Ctrl+A', action: 'select-all' },
                     { separator: true },
+                    { text: 'Fill...', subtext: 'Shift+F5', action: 'pro-fill' },
+                    { text: 'Stroke...', action: 'pro-stroke', disabled: !this.doc.selection },
+                    { separator: true },
+                    { text: 'Free Transform', subtext: 'Ctrl+T', action: 'free-transform' },
+                    { text: 'Transform', hasSubmenu: true, submenu: [
+                        { text: 'Flip Horizontal', action: 'xf-flip-h' },
+                        { text: 'Flip Vertical', action: 'xf-flip-v' },
+                        { text: 'Rotate 90\u00b0 Clockwise', action: 'xf-rot-cw' },
+                        { text: 'Rotate 90\u00b0 Counter Clockwise', action: 'xf-rot-ccw' },
+                        { text: 'Rotate 180\u00b0', action: 'xf-rot-180' }
+                    ] },
+                    { separator: true },
                     { text: 'Copy To...', action: 'copy-to', disabled: !sel },
                     { text: 'Paste From...', action: 'paste-from' }
                 ];
                 case 'view': return [
-                    { text: 'Tool Box', subtext: 'Ctrl+T', action: 'toolbox', showIndicator: true, checked: viewOn('mp-no-tools') },
-                    { text: 'Color Box', subtext: 'Ctrl+L', action: 'colorbox', showIndicator: true, checked: viewOn('mp-no-colors') },
+                    { text: 'Tool Box', action: 'toolbox', showIndicator: true, checked: viewOn('mp-no-tools') },
+                    { text: 'Color Box', action: 'colorbox', showIndicator: true, checked: viewOn('mp-no-colors') },
                     { text: 'Status Bar', action: 'statusbar', showIndicator: true, checked: viewOn('mp-no-status') },
                     { text: 'Tool Settings', action: 'settings', showIndicator: true, checked: viewOn('mp-no-settings') },
                     { text: 'Text Toolbar', action: 'textbar', showIndicator: true, checked: !!this.el('.mp-textbar:not([hidden])') },
                     { text: 'Layers', subtext: 'F7', action: 'layers', showIndicator: true, checked: !!(root.paintLayers && root.paintLayers.isOpen(this)) },
                     { text: 'History', subtext: 'F8', action: 'history', showIndicator: true, checked: !!(root.paintLayers && root.paintLayers.historyOpen(this)) },
+                    { text: 'Navigator', action: 'pro-navigator', showIndicator: true, checked: !!(P() && P().navOpen(this)) },
+                    { text: 'Info', action: 'pro-info', showIndicator: true, checked: !!(P() && P().infoOpen(this)) },
                     { separator: true },
                     { text: 'Zoom', hasSubmenu: true, submenu: [
+                        { text: 'Zoom In', subtext: 'Ctrl++', action: 'zoom-in' },
+                        { text: 'Zoom Out', subtext: 'Ctrl+-', action: 'zoom-out' },
+                        { text: 'Fit on Screen', subtext: 'Ctrl+0', action: 'zoom-fit' },
+                        { text: 'Actual Pixels', subtext: 'Ctrl+1', action: 'zoom-actual' },
+                        { separator: true },
                         { text: 'Normal Size', subtext: 'Ctrl+PgUp', action: 'zoom-normal' },
                         { text: 'Large Size', subtext: 'Ctrl+PgDn', action: 'zoom-large' },
                         { text: 'Custom...', action: 'zoom-custom' },
@@ -1274,15 +1528,19 @@
                 ];
                 case 'image': return [
                     { text: 'Flip/Rotate...', subtext: 'Ctrl+R', action: 'flip' },
-                    { text: 'Resize/Skew...', subtext: 'Ctrl+W', action: 'stretch' },
+                    { text: 'Resize/Skew...', subtext: 'Ctrl+Alt+I', action: 'stretch' },
                     { text: 'Invert Colors', subtext: 'Ctrl+I', action: 'invert' },
-                    { text: 'Attributes...', subtext: 'Ctrl+E', action: 'attributes' },
-                    { text: 'Clear Image', subtext: 'Ctrl+Shft+N', action: 'clear' },
+                    { text: 'Attributes...', subtext: 'Ctrl+Alt+C', action: 'attributes' },
+                    { text: 'Clear Image', action: 'clear' },
                     { text: 'Crop to Selection', action: 'crop', disabled: !sel },
+                    { text: 'Trim Transparent Pixels', action: 'trim' },
+                    { text: 'Duplicate...', action: 'duplicate' },
                     { text: 'Draw Opaque', action: 'opaque', showIndicator: true, checked: !this.opt.transparent }
                 ];
                 case 'layers': return root.paintLayers ? root.paintLayers.menu(this) : [];
-                case 'adjustments': return root.paintLayers ? root.paintLayers.adjustMenu(this) : [];
+                case 'select': return P() ? P().selectMenu(this) : [];
+                case 'adjustments': return P() ? P().adjustMenu(this) : (root.paintLayers ? root.paintLayers.adjustMenu(this) : []);
+                case 'filter': return P() ? P().filterMenu(this) : [];
                 case 'colors': return [{ text: 'Edit Colors...', action: 'edit-colors' }];
                 case 'help': return [
                     { text: 'Help Topics', action: 'help' },
@@ -1309,7 +1567,7 @@
                 case 'camera': await this.fromCamera(); return;
                 case 'print': this.print(); return;
                 case 'exit': await this.close(); return;
-                case 'undo': this.commitFloating(); this.finishText(); this.doc.undo(); return;
+                case 'undo': if (this.xf) { this.cancelTransform(); return; } this.commitFloating(); this.finishText(); this.doc.undo(); return;
                 case 'redo': this.doc.redo(); return;
                 case 'cut': await this.copySelection(true); return;
                 case 'copy': await this.copySelection(false); return;
@@ -1318,8 +1576,31 @@
                 case 'select-all': this.selectAll(); return;
                 case 'copy-to': await this.copyTo(); return;
                 case 'paste-from': this.pasteFrom(); return;
-                case 'escape': this.cancelShape(); if (this.floating) this.commitFloating(); else this.setSelection(null); return;
-                case 'finish-shape': if (this.tools.polygon.finish) this.tools.polygon.finish.call(this); return;
+                case 'escape':
+                    if (this.xf) { this.cancelTransform(); return; }
+                    if (this.cropBox) { this.cropBox = null; this.drawAnts(); return; }
+                    if (this.lasso) { this.lasso = null; this.selBase = null; this.setSelection(this.lassoBefore || null); return; }
+                    this.cancelShape();
+                    if (this.floating) this.commitFloating(); else this.setSelection(null);
+                    return;
+                case 'enter':
+                    if (this.xf) { this.commitTransform(); return; }
+                    if (this.cropBox) { this.commitCrop(); return; }
+                    if (this.lasso) { this.tools.polylasso.finish.call(this); return; }
+                    if (this.polygon && this.tools.polygon.finish) this.tools.polygon.finish.call(this);
+                    return;
+                case 'free-transform': this.startTransform(); return;
+                case 'xf-flip-h': case 'xf-flip-v': case 'xf-rot-cw': case 'xf-rot-ccw': case 'xf-rot-180': this.quickTransform(a); return;
+                case 'zoom-in': this.setZoom(this.zoom * 2); return;
+                case 'zoom-out': this.setZoom(this.zoom / 2); return;
+                case 'zoom-fit': this.fitZoom(); return;
+                case 'zoom-actual': this.setZoom(1); return;
+                case 'swap-colors': [this.fg, this.bg] = [this.bg, this.fg]; this.renderColors(); return;
+                case 'default-colors': this.fg = '#000000'; this.bg = '#ffffff'; this.renderColors(); return;
+                case 'fill-fg': case 'fill-bg': this.quickFill(a === 'fill-fg' ? this.fg : this.bg); return;
+                case 'layer-via-copy': case 'layer-via-cut': this.layerVia(a === 'layer-via-cut'); return;
+                case 'trim': this.trim(); return;
+                case 'duplicate': this.duplicate(); return;
                 case 'toolbox': this.modal.classList.toggle('mp-no-tools'); return;
                 case 'colorbox': this.modal.classList.toggle('mp-no-colors'); return;
                 case 'statusbar': this.modal.classList.toggle('mp-no-status'); return;
@@ -1345,12 +1626,270 @@
                 case 'about': callGlobal('openAboutMelatoninModal', { program: 'Paint' }); return;
                 default:
                     if (root.paintLayers && root.paintLayers.action(this, a)) return;
+                    if (P() && P().action(this, a)) return;
                     break;
             }
         }
 
         editColors(i) {
             if (root.paintDialogs) root.paintDialogs.editColors(this, i);
+        }
+
+        // ---- Free Transform ---------------------------------------------------------------------
+
+        /** Ctrl+T: the selection (or the floating piece, or the layer's pixels) gets handles to scale and turn. */
+        startTransform() {
+            if (this.xf) return;
+            this.finishText();
+            this.cancelShape();
+            if (!this.editable()) return;
+            const l = this.doc.layer;
+            let src;
+            let x;
+            let y;
+            let step;
+            let from = null;
+            if (this.floating) {
+                const f = this.floating;
+                src = this.opt.transparent ? this.transparentCopy(f.canvas) : f.canvas;
+                x = Math.round(f.x); y = Math.round(f.y);
+                step = this.floatStep || this.doc.beginStep('Free Transform', l);
+                step.label = 'Free Transform';
+                from = { floating: f };
+                this.floating = null;
+                this.floatStep = null;
+                this.clearOverlay();
+            } else if (this.doc.selection) {
+                const s = this.doc.selection;
+                step = this.doc.beginStep('Free Transform', l);
+                src = this.selectionCanvas(true);
+                x = s.x; y = s.y;
+                from = { selection: s };
+                this.doc.selection = null;
+            } else {
+                const b = this.layerBounds(l);
+                if (!b) { this.status('The layer is empty.'); return; }
+                step = this.doc.beginStep('Free Transform', l);
+                src = C().makeCanvas(b.w, b.h);
+                src.getContext('2d').drawImage(l.canvas, b.x, b.y, b.w, b.h, 0, 0, b.w, b.h);
+                l.ctx.clearRect(b.x, b.y, b.w, b.h);
+                x = b.x; y = b.y;
+            }
+            this.xf = { src, cx: x + src.width / 2, cy: y + src.height / 2, w: src.width, h: src.height, angle: 0, flipX: 1, flipY: 1, step, from, x0: x, y0: y };
+            this.doc.markDirty();
+            this.drawXf();
+            this.brushCursor();
+        }
+
+        /** The box round a layer's pixels (not quite transparent). */
+        layerBounds(l) {
+            const W = this.doc.width;
+            const H = this.doc.height;
+            const d = l.ctx.getImageData(0, 0, W, H).data;
+            let x0 = W; let y0 = H; let x1 = -1; let y1 = -1;
+            for (let y = 0; y < H; y += 1) {
+                for (let x = 0; x < W; x += 1) {
+                    if (d[(y * W + x) * 4 + 3] > 2) {
+                        if (x < x0) x0 = x;
+                        if (x > x1) x1 = x;
+                        if (y < y0) y0 = y;
+                        y1 = y;
+                    }
+                }
+            }
+            return x1 < 0 ? null : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+        }
+
+        xfCorners() {
+            const t = this.xf;
+            const c = Math.cos(t.angle);
+            const sn = Math.sin(t.angle);
+            return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => {
+                const lx = (sx * t.w) / 2;
+                const ly = (sy * t.h) / 2;
+                return [t.cx + lx * c - ly * sn, t.cy + lx * sn + ly * c];
+            });
+        }
+
+        drawXfInto(ctx, t = this.xf) {
+            ctx.save();
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.translate(t.cx, t.cy);
+            ctx.rotate(t.angle);
+            ctx.scale(t.flipX, t.flipY);
+            ctx.drawImage(t.src, -t.w / 2, -t.h / 2, t.w, t.h);
+            ctx.restore();
+        }
+
+        drawXf() {
+            if (!this.xf) return;
+            this.clearOverlay();
+            this.drawXfInto(this.octx);
+            this.drawAnts();
+            const t = this.xf;
+            let deg = ((t.angle * 180) / Math.PI) % 360;
+            if (deg > 180) deg -= 360;
+            if (deg <= -180) deg += 360;
+            this.status(`W: ${((t.w / t.src.width) * 100).toFixed(1)}%  H: ${((t.h / t.src.height) * 100).toFixed(1)}%  Angle: ${deg.toFixed(1)}\u00b0   Enter applies, Esc cancels.`);
+            this.el('.mp-status-size').textContent = `${Math.round(t.w)}x${Math.round(t.h)}`;
+        }
+
+        /** Where a point is on the transform box: a handle [sx, sy], 'move' inside, 'rotate' outside. */
+        xfHit(p) {
+            const t = this.xf;
+            const c = Math.cos(-t.angle);
+            const sn = Math.sin(-t.angle);
+            const dx = p.x - t.cx;
+            const dy = p.y - t.cy;
+            const lx = dx * c - dy * sn;
+            const ly = dx * sn + dy * c;
+            const tol = 6 / this.zoom;
+            for (const sx of [-1, 0, 1]) {
+                for (const sy of [-1, 0, 1]) {
+                    if (!sx && !sy) continue;
+                    if (Math.abs(lx - (sx * t.w) / 2) <= tol && Math.abs(ly - (sy * t.h) / 2) <= tol) return { kind: 'scale', sx, sy };
+                }
+            }
+            if (Math.abs(lx) <= t.w / 2 && Math.abs(ly) <= t.h / 2) return { kind: 'move' };
+            return { kind: 'rotate' };
+        }
+
+        xfCursor(hit) {
+            if (hit.kind === 'move') return 'move';
+            if (hit.kind === 'rotate') return 'alias';
+            const ang = (Math.atan2(hit.sy, hit.sx) + this.xf.angle) * (180 / Math.PI);
+            const a = ((ang % 180) + 180) % 180;
+            if (a < 22.5 || a >= 157.5) return 'ew-resize';
+            if (a < 67.5) return 'nwse-resize';
+            if (a < 112.5) return 'ns-resize';
+            return 'nesw-resize';
+        }
+
+        commitTransform() {
+            const t = this.xf;
+            if (!t) return;
+            this.xf = null;
+            const l = this.doc.layer;
+            this.drawXfInto(l.ctx, t);
+            t.step.grow({ x: 0, y: 0, w: this.doc.width, h: this.doc.height });
+            this.doc.commitStep(t.step);
+            this.clearOverlay();
+            this.overlay.style.cursor = '';
+            this.doc.markDirty();
+            this.drawAnts();
+            this.status();
+            this.sizeStatus();
+        }
+
+        cancelTransform() {
+            const t = this.xf;
+            if (!t) return;
+            this.xf = null;
+            this.clearOverlay();
+            this.overlay.style.cursor = '';
+            if (t.from && t.from.floating) {
+                // back to the floating piece it was
+                this.floating = t.from.floating;
+                this.floatStep = t.step;
+                this.drawFloating();
+            } else {
+                const l = this.doc.layer;
+                if (t.step.backup) {
+                    l.ctx.clearRect(0, 0, this.doc.width, this.doc.height);
+                    l.ctx.drawImage(t.step.backup, 0, 0);
+                }
+                t.step.backup = null;
+                if (t.from && t.from.selection) this.doc.selection = t.from.selection;
+            }
+            this.doc.markDirty();
+            this.drawAnts();
+            this.status();
+            this.sizeStatus();
+        }
+
+        /** Edit > Transform > Flip / Rotate: at once on the selection or the layer (Photoshop). */
+        quickTransform(a) {
+            const had = !!this.xf;
+            if (!had) this.startTransform();
+            const t = this.xf;
+            if (!t) return;
+            if (a === 'xf-flip-h') t.flipX *= -1;
+            else if (a === 'xf-flip-v') t.flipY *= -1;
+            else t.angle += { 'xf-rot-cw': Math.PI / 2, 'xf-rot-ccw': -Math.PI / 2, 'xf-rot-180': Math.PI }[a];
+            if (had) { this.drawXf(); return; }
+            this.commitTransform();
+        }
+
+        // ---- Crop tool ---------------------------------------------------------------------------
+
+        commitCrop() {
+            const c = this.cropBox;
+            this.cropBox = null;
+            this.drawAnts();
+            if (!c) return;
+            const r = { x: Math.round(c.x), y: Math.round(c.y), w: Math.round(c.w), h: Math.round(c.h) };
+            if (r.w < 1 || r.h < 1) return;
+            this.commitFloating();
+            this.doc.transformAll((src) => {
+                const out = C().makeCanvas(r.w, r.h);
+                out.getContext('2d').drawImage(src, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h);
+                return out;
+            }, 'Crop');
+        }
+
+        // ---- the Photoshop odds and ends ----------------------------------------------------------
+
+        /** Alt+Backspace / Ctrl+Backspace: fill the selection (or the layer) with the drawing / background color. */
+        quickFill(color) {
+            this.commitFloating();
+            const s = this.doc.selection;
+            const r = s ? { x: s.x, y: s.y, w: s.w, h: s.h } : { x: 0, y: 0, w: this.doc.width, h: this.doc.height };
+            this.commitToLayer('Fill', (ctx) => { ctx.fillStyle = color; ctx.fillRect(r.x, r.y, r.w, r.h); }, r);
+        }
+
+        /** Ctrl+J / Ctrl+Shift+J: the selection on a new layer (copied or cut); no selection duplicates the layer. */
+        layerVia(cut) {
+            this.commitFloating();
+            this.finishText();
+            const d = this.doc;
+            const s = d.selection;
+            if (!s) { d.snapshotStep('Duplicate Layer', () => d.duplicateLayer(d.active)); return; }
+            if (cut && !this.editable()) return;
+            d.snapshotStep(cut ? 'Layer via Cut' : 'Layer via Copy', () => {
+                const piece = this.selectionCanvas(cut);
+                const layer = d.addLayer(`Layer ${d.layers.length + 1}`);
+                layer.ctx.drawImage(piece, s.x, s.y);
+            });
+            this.setSelection(null);
+        }
+
+        /** Image > Trim: crop away the transparent edges of the picture. */
+        trim() {
+            this.commitFloating();
+            const flat = this.doc.flattened();
+            const tmp = { ctx: flat.getContext('2d') };
+            const b = this.layerBounds(tmp);
+            if (!b || (b.w === this.doc.width && b.h === this.doc.height)) return;
+            this.doc.transformAll((src) => {
+                const out = C().makeCanvas(b.w, b.h);
+                out.getContext('2d').drawImage(src, b.x, b.y, b.w, b.h, 0, 0, b.w, b.h);
+                return out;
+            }, 'Trim');
+        }
+
+        /** Image > Duplicate: the picture, flattened, in a new Paint window. */
+        async duplicate() {
+            this.commitFloating();
+            const flat = this.doc.flattened();
+            const w = await openMelatonPaint({ name: `${this.name} copy` });
+            w.newDocument(flat.width, flat.height, { silent: true });
+            w.doc.layer.ctx.clearRect(0, 0, flat.width, flat.height);
+            w.doc.layer.ctx.drawImage(flat, 0, 0);
+            w.doc.markDirty();
+            w.name = `${this.name} copy`;
+            w.dirtyDoc = true;
+            w.title();
         }
 
         /** An adjustment over the selection (or the whole layer): fn(r, g, b) -> [r, g, b]. */
@@ -1373,7 +1912,7 @@
             const r = { x: 0, y: 0, w: this.doc.width, h: this.doc.height };
             this.commitToLayer('Clear Image', (ctx) => {
                 if (this.doc.active === 0) { ctx.fillStyle = this.bg; ctx.fillRect(0, 0, r.w, r.h); } else ctx.clearRect(0, 0, r.w, r.h);
-            }, r);
+            }, r, { direct: true });
         }
 
         crop() {
@@ -1564,8 +2103,9 @@
             const s = this.doc.selection;
             const step = this.doc.beginStep('Fill With Color', l);
             const rgba = C().parseColor(this.color());
-            const mask = s && s.mask;
-            const rect = C().floodFill(img, x, y, rgba, this.opt.tolerance > 32 ? this.opt.tolerance - 32 : 0, mask);
+            const mask = s && (s.mask || (P() && P().maskOf(this.doc, s)));
+            const tol = this.opt.tolerance > 32 ? this.opt.tolerance - 32 : 0;
+            const rect = this.opt.contiguous ? C().floodFill(img, x, y, rgba, tol, mask) : C().replaceColor(img, x, y, rgba, tol, mask);
             if (!rect) return;
             l.ctx.putImageData(img, 0, 0, rect.x, rect.y, rect.w, rect.h);
             step.grow(rect);
@@ -1714,13 +2254,29 @@
         }
     };
 
-    /** Select / Free-Form Select: drag out a selection; drag inside one to move it (Ctrl copies). */
-    function selectTool(free) {
+    /** An ellipse inside a box, as a path (for the Elliptical Select). */
+    function ellipsePath(r) {
+        const pts = [];
+        const n = Math.max(24, Math.min(256, Math.round((r.w + r.h) / 3)));
+        for (let i = 0; i < n; i += 1) {
+            const a = (i / n) * Math.PI * 2;
+            pts.push({ x: r.x + r.w / 2 + (Math.cos(a) * r.w) / 2, y: r.y + r.h / 2 + (Math.sin(a) * r.h) / 2 });
+        }
+        return pts;
+    }
+
+    /**
+     * Select / Free-Form Select / Elliptical Select: drag out a selection; drag inside one to move it
+     * (Ctrl copies). Shift at the start adds, Alt subtracts, both intersect (Photoshop).
+     */
+    function selectTool(kind) {
         return {
             down(p, ev) {
                 const s = this.floating || this.doc.selection;
-                const inside = s && p.x >= s.x && p.y >= s.y && p.x <= s.x + s.w && p.y <= s.y + s.h;
-                if (inside) {
+                const mode = this.selModeFor(ev);
+                const inside = s && p.x >= s.x && p.y >= s.y && p.x <= s.x + s.w && p.y <= s.y + s.h
+                    && (!s.mask || this.floating || s.mask[Math.floor(p.y) * this.doc.width + Math.floor(p.x)] > 0);
+                if (inside && mode === 'new') {
                     if (!this.floating) this.liftSelection(ev.ctrlKey);
                     else if (ev.ctrlKey) {
                         // Ctrl-drag a floating piece leaves a copy behind
@@ -1734,8 +2290,12 @@
                 }
                 this.commitFloating();
                 this.drag = null;
-                this.sel = free ? { pts: [p] } : { a: p, b: p };
-                this.setSelection(null);
+                this.sel = kind === 'free' ? { pts: [p] } : { a: p, b: p };
+                if (this.doc.selection) this.lastSelection = this.doc.selection;
+                this.selBase = mode !== 'new' ? this.doc.selection : null;
+                this.selModeNow = mode;
+                this.doc.selection = null;
+                this.drawAnts();
             },
             move(p, ev, down) {
                 if (!down) return;
@@ -1746,25 +2306,39 @@
                     return;
                 }
                 if (!this.sel) return;
-                if (free) this.sel.pts.push(p);
-                else this.sel.b = this.constrain(this.sel.a, p, ev, true);
-                const sel = free ? T.freeselect.bounds(this.sel.pts) : this.rectOf(this.sel.a, this.sel.b);
-                if (free) sel.path = this.sel.pts.slice();
+                let sel;
+                if (kind === 'free') {
+                    this.sel.pts.push(p);
+                    sel = T.freeselect.bounds(this.sel.pts);
+                    sel.path = this.sel.pts.slice();
+                } else {
+                    // Alt after the start draws from the centre (Photoshop)
+                    this.sel.b = this.constrain(this.sel.a, p, ev, true);
+                    let a = this.sel.a;
+                    let b = this.sel.b;
+                    if (ev && ev.altKey && this.selModeNow === 'new') { a = { x: 2 * a.x - b.x, y: 2 * a.y - b.y }; }
+                    sel = this.rectOf(a, b);
+                    if (kind === 'ellipse') {
+                        const raw = { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) };
+                        sel.path = ellipsePath(raw);
+                    }
+                }
                 this.doc.selection = sel;
                 this.drawAnts();
                 this.sizeStatus();
             },
             up() {
                 if (this.drag) { this.drag = null; return; }
-                const s = this.doc.selection;
+                if (!this.sel) return;
                 this.sel = null;
-                if (s && (s.w < 1 || s.h < 1)) this.setSelection(null);
+                this.finishSelection(this.doc.selection);
             }
         };
     }
 
-    T.select = selectTool(false);
-    T.freeselect = selectTool(true);
+    T.select = selectTool('rect');
+    T.freeselect = selectTool('free');
+    T.ellipseselect = selectTool('ellipse');
     T.freeselect.bounds = (pts) => {
         const xs = pts.map((p) => p.x);
         const ys = pts.map((p) => p.y);
@@ -1778,23 +2352,73 @@
         return { x, y, w: Math.min(this.doc.width, Math.ceil(Math.max(a.x, b.x))) - x, h: Math.min(this.doc.height, Math.ceil(Math.max(a.y, b.y))) - y };
     };
 
+    /** Polygonal Lasso: click the corners; double-click, Enter or a click on the first one closes it. */
+    T.polylasso = {
+        down(p, ev) {
+            const g = this.lasso;
+            if (!g) {
+                this.commitFloating();
+                this.lassoBefore = this.doc.selection;
+                const mode = this.selModeFor(ev);
+                if (this.doc.selection) this.lastSelection = this.doc.selection;
+                this.selBase = mode !== 'new' ? this.doc.selection : null;
+                this.selModeNow = mode;
+                this.lasso = { pts: [p, p] };
+                T.polylasso.show.call(this);
+                return;
+            }
+            const first = g.pts[0];
+            if (g.pts.length > 3 && Math.hypot(first.x - p.x, first.y - p.y) < 5 / this.zoom) { T.polylasso.finish.call(this); return; }
+            g.pts.push(p);
+        },
+        move(p, ev) {
+            const g = this.lasso;
+            if (!g) return;
+            g.pts[g.pts.length - 1] = ev && ev.shiftKey ? this.constrain(g.pts[g.pts.length - 2], p, ev) : p;
+            T.polylasso.show.call(this);
+        },
+        dbl() { T.polylasso.finish.call(this); },
+        show() {
+            const sel = T.freeselect.bounds(this.lasso.pts);
+            sel.path = this.lasso.pts.slice();
+            sel.open = true;
+            this.doc.selection = sel;
+            this.drawAnts();
+        },
+        finish() {
+            const g = this.lasso;
+            this.lasso = null;
+            if (!g) return;
+            // a double-click adds the same corner twice
+            const pts = g.pts.filter((q, i) => !i || Math.hypot(q.x - g.pts[i - 1].x, q.y - g.pts[i - 1].y) > 0.5);
+            if (pts.length < 3) { this.finishSelection(null); return; }
+            const sel = T.freeselect.bounds(pts);
+            sel.path = pts;
+            this.finishSelection(sel);
+        }
+    };
+
     T.wand = {
         down(p, ev) {
             const x = Math.floor(p.x);
             const y = Math.floor(p.y);
             if (x < 0 || y < 0 || x >= this.doc.width || y >= this.doc.height) return;
             const s = this.floating || this.doc.selection;
-            if (s && !ev.shiftKey && p.x >= s.x && p.y >= s.y && p.x <= s.x + s.w && p.y <= s.y + s.h && this.doc.selection && this.doc.selection.mask && this.doc.selection.mask[y * this.doc.width + x]) {
+            const mode = this.selModeFor(ev);
+            if (s && mode === 'new' && p.x >= s.x && p.y >= s.y && p.x <= s.x + s.w && p.y <= s.y + s.h && this.doc.selection && this.doc.selection.mask && this.doc.selection.mask[y * this.doc.width + x]) {
                 // drag a wand selection like the other selections
                 T.select.down.call(this, p, ev);
                 this.wandDrag = true;
                 return;
             }
             this.commitFloating();
-            const img = this.doc.layer.ctx.getImageData(0, 0, this.doc.width, this.doc.height);
-            const res = C().wandMask(img, x, y, this.opt.tolerance);
-            if (!res) return;
-            this.setSelection({ ...res.rect, mask: res.mask });
+            const src = this.opt.sampleAll ? this.doc.flattened().getContext('2d') : this.doc.layer.ctx;
+            const img = src.getImageData(0, 0, this.doc.width, this.doc.height);
+            const res = this.opt.contiguous ? C().wandMask(img, x, y, this.opt.tolerance) : C().colorMask(img, x, y, this.opt.tolerance);
+            if (this.doc.selection) this.lastSelection = this.doc.selection;
+            this.selBase = mode !== 'new' ? this.doc.selection : null;
+            this.selModeNow = mode;
+            this.finishSelection(res ? { ...res.rect, mask: res.mask } : null);
         },
         move(p, ev, down) { if (this.wandDrag) T.select.move.call(this, p, ev, down); },
         up(p, ev) { if (this.wandDrag) { this.wandDrag = false; T.select.up.call(this, p, ev); } }
@@ -1881,7 +2505,7 @@
             T.clone.dab.call(this, p, p);
         },
         dab(a, b) {
-            const size = this.brushSize() * 3;
+            const size = this.toolDiameter();
             const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / Math.max(1, size / 4)));
             const ctx = this.sctx;
             for (let i = 0; i <= steps; i += 1) {
@@ -1912,7 +2536,7 @@
             T.blur.dab.call(this, p);
         },
         dab(p) {
-            const size = Math.max(4, this.brushSize() * 4);
+            const size = this.toolDiameter();
             const r = C().clampRect({ x: p.x - size / 2, y: p.y - size / 2, w: size, h: size }, this.doc.width, this.doc.height);
             if (!r) return;
             C().convolve(this.doc.layer.ctx, r, [1, 2, 1, 2, 4, 2, 1, 2, 1], 16);
@@ -1926,6 +2550,285 @@
             this.last = p;
         },
         up() { if (this.blurStep) this.doc.commitStep(this.blurStep); this.blurStep = null; }
+    };
+
+    /** Free Transform's pointer: the handles scale, inside moves, outside turns (Shift keeps the shape / snaps). */
+    T.xform = {
+        down(p, ev) {
+            const hit = this.xfHit(p);
+            this.xfDrag = { hit, start: p, from: { ...this.xf } };
+        },
+        move(p, ev, down) {
+            const t = this.xf;
+            if (!t) return;
+            if (!down || !this.xfDrag) {
+                this.overlay.style.cursor = this.xfCursor(this.xfHit(p));
+                return;
+            }
+            const { hit, start, from } = this.xfDrag;
+            if (hit.kind === 'move') {
+                t.cx = from.cx + (p.x - start.x);
+                t.cy = from.cy + (p.y - start.y);
+            } else if (hit.kind === 'rotate') {
+                const a0 = Math.atan2(start.y - from.cy, start.x - from.cx);
+                const a1 = Math.atan2(p.y - from.cy, p.x - from.cx);
+                let ang = from.angle + a1 - a0;
+                if (ev && ev.shiftKey) ang = Math.round(ang / (Math.PI / 12)) * (Math.PI / 12);
+                t.angle = ang;
+            } else {
+                const c = Math.cos(-from.angle);
+                const sn = Math.sin(-from.angle);
+                const dx = p.x - from.cx;
+                const dy = p.y - from.cy;
+                const lx = dx * c - dy * sn;
+                const ly = dx * sn + dy * c;
+                const fromCentre = ev && ev.altKey;
+                // the opposite edge stays put (Alt: the centre does)
+                const ax = fromCentre ? 0 : (-hit.sx * from.w) / 2;
+                const ay = fromCentre ? 0 : (-hit.sy * from.h) / 2;
+                let w = hit.sx ? Math.max(1, hit.sx * (lx - ax) * (fromCentre ? 2 : 1)) : from.w;
+                let h = hit.sy ? Math.max(1, hit.sy * (ly - ay) * (fromCentre ? 2 : 1)) : from.h;
+                if (ev && ev.shiftKey) {
+                    const k = hit.sx && hit.sy ? Math.max(w / from.w, h / from.h) : hit.sx ? w / from.w : h / from.h;
+                    w = from.w * k;
+                    h = from.h * k;
+                }
+                const ncx = fromCentre ? 0 : (hit.sx ? ax + (hit.sx * w) / 2 : 0);
+                const ncy = fromCentre ? 0 : (hit.sy ? ay + (hit.sy * h) / 2 : 0);
+                const c2 = Math.cos(from.angle);
+                const s2 = Math.sin(from.angle);
+                t.cx = from.cx + ncx * c2 - ncy * s2;
+                t.cy = from.cy + ncx * s2 + ncy * c2;
+                t.w = w;
+                t.h = h;
+            }
+            this.drawXf();
+        },
+        up() { this.xfDrag = null; },
+        dbl() { this.commitTransform(); }
+    };
+
+    T.hand = {
+        down(p, ev) {
+            this.handDrag = { x: ev.clientX, y: ev.clientY, sl: this.workspace.scrollLeft, st: this.workspace.scrollTop };
+        },
+        move(p, ev, down) {
+            const h = this.handDrag;
+            if (!down || !h || !ev) return;
+            this.workspace.scrollLeft = h.sl - (ev.clientX - h.x);
+            this.workspace.scrollTop = h.st - (ev.clientY - h.y);
+        },
+        up() { this.handDrag = null; },
+        dbl() { this.fitZoom(); }
+    };
+
+    T.crop = {
+        down(p) {
+            const c = this.cropBox;
+            const tol = 6 / this.zoom;
+            if (c) {
+                const ex = Math.abs(p.x - c.x) <= tol ? -1 : Math.abs(p.x - (c.x + c.w)) <= tol ? 1 : 0;
+                const ey = Math.abs(p.y - c.y) <= tol ? -1 : Math.abs(p.y - (c.y + c.h)) <= tol ? 1 : 0;
+                const inside = p.x > c.x && p.y > c.y && p.x < c.x + c.w && p.y < c.y + c.h;
+                if (ex || ey || inside) { this.cropDrag = { ex, ey, move: !ex && !ey, start: p, from: { ...c } }; return; }
+            }
+            this.cropDrag = { ex: 1, ey: 1, start: p, from: { x: p.x, y: p.y, w: 0, h: 0 }, fresh: true };
+            this.cropBox = { x: p.x, y: p.y, w: 0, h: 0 };
+        },
+        move(p, ev, down) {
+            const g = this.cropDrag;
+            if (!down || !g) return;
+            const W = this.doc.width;
+            const H = this.doc.height;
+            const f = g.from;
+            let x0 = f.x; let y0 = f.y; let x1 = f.x + f.w; let y1 = f.y + f.h;
+            if (g.move) {
+                const dx = Math.max(-x0, Math.min(W - x1, p.x - g.start.x));
+                const dy = Math.max(-y0, Math.min(H - y1, p.y - g.start.y));
+                x0 += dx; x1 += dx; y0 += dy; y1 += dy;
+            } else if (g.fresh) {
+                const b = this.constrain(g.start, p, ev, true);
+                x0 = Math.min(g.start.x, b.x); x1 = Math.max(g.start.x, b.x);
+                y0 = Math.min(g.start.y, b.y); y1 = Math.max(g.start.y, b.y);
+            } else {
+                if (g.ex < 0) x0 = p.x; else if (g.ex > 0) x1 = p.x;
+                if (g.ey < 0) y0 = p.y; else if (g.ey > 0) y1 = p.y;
+            }
+            x0 = Math.max(0, Math.round(Math.min(x0, x1))); x1 = Math.min(W, Math.round(Math.max(x0, x1)));
+            y0 = Math.max(0, Math.round(Math.min(y0, y1))); y1 = Math.min(H, Math.round(Math.max(y0, y1)));
+            this.cropBox = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+            this.el('.mp-status-size').textContent = `${x1 - x0}x${y1 - y0}`;
+            this.drawAnts();
+        },
+        up() {
+            this.cropDrag = null;
+            if (this.cropBox && (this.cropBox.w < 2 || this.cropBox.h < 2)) this.cropBox = null;
+            this.drawAnts();
+            if (this.cropBox) this.status('Press Enter (or double-click) to crop; Esc cancels.');
+        },
+        dbl() { this.commitCrop(); }
+    };
+
+    /**
+     * Smudge, Dodge, Burn and Sponge: soft round dabs straight on the layer, spaced a quarter of
+     * their size apart; the strength is the Opacity setting; a feathered selection softens them.
+     */
+    function dabTool(kind, label) {
+        return {
+            down(p) {
+                if (!this.editable()) return;
+                this.dabStep = this.doc.beginStep(label, this.doc.layer);
+                this.dabMask = this.doc.selection && P() ? P().maskOf(this.doc, this.doc.selection) : null;
+                this.last = p;
+                this.smudgeBuf = null;
+                T[kind].dab.call(this, p);
+            },
+            move(p, ev, down) {
+                if (!down || !this.dabStep) return;
+                const d = this.toolDiameter();
+                const gap = Math.max(1, d / 4);
+                const dist = Math.hypot(p.x - this.last.x, p.y - this.last.y);
+                if (dist < gap) return;
+                const n = Math.floor(dist / gap);
+                for (let i = 1; i <= n; i += 1) {
+                    T[kind].dab.call(this, { x: this.last.x + ((p.x - this.last.x) * i) / n, y: this.last.y + ((p.y - this.last.y) * i) / n });
+                }
+                this.last = p;
+            },
+            up() {
+                if (this.dabStep) this.doc.commitStep(this.dabStep);
+                this.dabStep = null;
+                this.dabMask = null;
+                this.smudgeBuf = null;
+            },
+            dab(p) {
+                const d = Math.max(2, Math.round(this.toolDiameter()));
+                const r = d / 2;
+                const bx = Math.round(p.x - r);
+                const by = Math.round(p.y - r);
+                const rect = C().clampRect({ x: bx, y: by, w: d, h: d }, this.doc.width, this.doc.height);
+                if (!rect) return;
+                const ctx = this.doc.layer.ctx;
+                const img = ctx.getImageData(rect.x, rect.y, rect.w, rect.h);
+                const px = img.data;
+                const strength = this.opt.opacity / 100;
+                const hard = this.opt.hardness / 100;
+                const W = this.doc.width;
+                const sat = !this.right;
+                const buf = this.smudgeBuf;
+                if (kind === 'smudge' && !buf) {
+                    // the brush picks up the colours under its first dab
+                    this.smudgeBuf = { d, data: new Float32Array(d * d * 4) };
+                    for (let y = 0; y < rect.h; y += 1) {
+                        for (let x = 0; x < rect.w; x += 1) {
+                            const si = (y * rect.w + x) * 4;
+                            const bi = ((rect.y - by + y) * d + rect.x - bx + x) * 4;
+                            for (let c = 0; c < 4; c += 1) this.smudgeBuf.data[bi + c] = px[si + c];
+                        }
+                    }
+                    return;
+                }
+                for (let y = 0; y < rect.h; y += 1) {
+                    for (let x = 0; x < rect.w; x += 1) {
+                        const gx = rect.x + x;
+                        const gy = rect.y + y;
+                        const dist = Math.hypot(gx + 0.5 - p.x, gy + 0.5 - p.y) / r;
+                        if (dist >= 1) continue;
+                        let f = dist <= hard * 0.9 ? 1 : 1 - (dist - hard * 0.9) / (1 - hard * 0.9);
+                        f = f * f * (3 - 2 * f);
+                        if (this.dabMask) f *= this.dabMask[gy * W + gx] / 255;
+                        if (f <= 0) continue;
+                        const i = (y * rect.w + x) * 4;
+                        if (kind === 'smudge') {
+                            const bi = ((gy - by) * d + gx - bx) * 4;
+                            const k = Math.min(0.95, strength) * f;
+                            for (let c = 0; c < 4; c += 1) {
+                                const v = px[i + c] + (buf.data[bi + c] - px[i + c]) * k;
+                                px[i + c] = v;
+                                buf.data[bi + c] = v;
+                            }
+                        } else if (kind === 'dodge' || kind === 'burn') {
+                            const k = strength * f * 0.12;
+                            for (let c = 0; c < 3; c += 1) {
+                                const v = px[i + c];
+                                // the midtones move most (Photoshop's default range)
+                                const t = v / 255;
+                                const wgt = 0.35 + 2.6 * t * (1 - t);
+                                px[i + c] = kind === 'dodge' ? v + (255 - v) * k * wgt : v - v * k * wgt;
+                            }
+                        } else {
+                            const l = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+                            const k = 1 + (sat ? 1 : -1) * strength * f * 0.15;
+                            for (let c = 0; c < 3; c += 1) px[i + c] = l + (px[i + c] - l) * k;
+                        }
+                    }
+                }
+                ctx.putImageData(img, rect.x, rect.y);
+                this.dabStep.grow(rect);
+                this.doc.markDirty(rect);
+            }
+        };
+    }
+
+    T.smudge = dabTool('smudge', 'Smudge');
+    T.dodge = dabTool('dodge', 'Dodge');
+    T.burn = dabTool('burn', 'Burn');
+    T.sponge = dabTool('sponge', 'Sponge');
+
+    /** Spot Healing Brush: paint over the spot; on release it is filled from around it (paintPro.heal). */
+    T.heal = {
+        down(p) {
+            if (!this.editable()) return;
+            this.healPts = [p];
+            T.heal.show.call(this);
+        },
+        move(p, ev, down) {
+            if (!down || !this.healPts) return;
+            this.healPts.push(p);
+            T.heal.show.call(this);
+        },
+        show() {
+            this.clearOverlay();
+            const x = this.octx;
+            x.save();
+            x.strokeStyle = 'rgba(0, 0, 0, 0.45)';
+            x.lineWidth = this.toolDiameter();
+            x.lineCap = 'round';
+            x.lineJoin = 'round';
+            x.beginPath();
+            this.healPts.forEach((q, i) => (i ? x.lineTo(q.x, q.y) : x.moveTo(q.x, q.y)));
+            if (this.healPts.length === 1) x.lineTo(this.healPts[0].x + 0.01, this.healPts[0].y);
+            x.stroke();
+            x.restore();
+        },
+        up() {
+            const pts = this.healPts;
+            this.healPts = null;
+            this.clearOverlay();
+            if (!pts || !P()) return;
+            const W = this.doc.width;
+            const H = this.doc.height;
+            const c = C().makeCanvas(W, H);
+            const x = c.getContext('2d', { willReadFrequently: true });
+            x.strokeStyle = '#000';
+            x.lineWidth = this.toolDiameter();
+            x.lineCap = 'round';
+            x.lineJoin = 'round';
+            x.beginPath();
+            pts.forEach((q, i) => (i ? x.lineTo(q.x, q.y) : x.moveTo(q.x, q.y)));
+            if (pts.length === 1) x.lineTo(pts[0].x + 0.01, pts[0].y);
+            x.stroke();
+            const a = x.getImageData(0, 0, W, H).data;
+            const hole = new Uint8Array(W * H);
+            const sel = this.doc.selection ? P().maskOf(this.doc, this.doc.selection) : null;
+            for (let i = 0; i < hole.length; i += 1) hole[i] = sel ? (a[i * 4 + 3] * sel[i]) / 255 : a[i * 4 + 3];
+            const l = this.doc.layer;
+            const step = this.doc.beginStep('Spot Healing Brush', l);
+            const r = P().heal(this.doc, l, hole);
+            if (!r) { step.backup = null; return; }
+            step.grow(r);
+            this.doc.commitStep(step);
+        }
     };
 
     PaintWindow.prototype.tools = T;

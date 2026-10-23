@@ -164,8 +164,10 @@
         return [
             { text: 'Add New Layer', subtext: 'Ctrl+Shift+N', action: 'layer-add' },
             { text: 'Delete Layer', subtext: 'Ctrl+Shift+Del', action: 'layer-delete', disabled: d.layers.length <= 1 },
-            { text: 'Duplicate Layer', subtext: 'Ctrl+Shift+D', action: 'layer-duplicate' },
-            { text: 'Merge Layer Down', subtext: 'Ctrl+M', action: 'layer-merge', disabled: d.active === 0 },
+            { text: 'Duplicate Layer', action: 'layer-duplicate' },
+            { text: 'Layer via Copy', subtext: 'Ctrl+J', action: 'layer-via-copy' },
+            { text: 'Layer via Cut', subtext: 'Ctrl+Shift+J', action: 'layer-via-cut', disabled: !d.selection },
+            { text: 'Merge Layer Down', subtext: 'Ctrl+E', action: 'layer-merge', disabled: d.active === 0 },
             { text: 'Import From File...', action: 'layer-import' },
             { separator: true },
             { text: 'Flip Horizontal', action: 'layer-flip-h' },
@@ -174,7 +176,7 @@
             { separator: true },
             { text: 'Move Layer Up', action: 'layer-up', disabled: d.active >= d.layers.length - 1 },
             { text: 'Move Layer Down', action: 'layer-down', disabled: d.active === 0 },
-            { text: 'Flatten', subtext: 'Ctrl+Shift+F', action: 'layer-flatten', disabled: d.layers.length <= 1 },
+            { text: 'Flatten', subtext: 'Ctrl+Shift+E', action: 'layer-flatten', disabled: d.layers.length <= 1 },
             { separator: true },
             { text: 'Layer Properties...', subtext: 'F4', action: 'layer-properties' }
         ];
