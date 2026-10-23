@@ -69,8 +69,15 @@
                     { k: 'btn', icon: art(13), title: 'Swap the ratio', run: (ww) => { ww.opt.cropSwap = !ww.opt.cropSwap; ww.renderBar(); } },
                     ...(w.cropBox ? [SEP, { k: 'label', text: `${Math.round(w.cropBox.w)} x ${Math.round(w.cropBox.h)} px` }, SEP,
                         { k: 'btn', icon: art(12), title: 'Cancel the crop (Esc)', action: 'escape' }, { k: 'btn', icon: art(11), title: 'Commit the crop (Enter)', action: 'enter' }] : [])];
-            case 'brush':
-                return [SIZE, HARD, SEP, MODE, OPACITY()];
+            case 'brush': {
+                const B = root.paintBrush;
+                if (!B) return [SIZE, HARD, SEP, MODE, OPACITY()];
+                const set = (ww) => B.settings(ww);
+                return [{ k: 'custom', title: 'Brush Preset picker', mount: (ww, el) => B.picker(ww, el) }, SIZE, HARD, SEP, MODE, OPACITY(),
+                    { k: 'slider', label: 'Flow:', min: 1, max: 100, unit: '%', title: 'How much paint each dab lays down', get: (ww) => set(ww).flow, set: (ww, v) => { set(ww).flow = v; B.refreshPanel(ww); } },
+                    { k: 'toggle', label: '<span class="mp-pen is-size"></span>', title: 'Always use pressure for size (pen)', get: (ww) => set(ww).pressureSize, set: (ww, v) => { set(ww).pressureSize = v; B.refreshPanel(ww); } },
+                    { k: 'toggle', label: '<span class="mp-pen is-flow"></span>', title: 'Always use pressure for flow (pen)', get: (ww) => set(ww).pressureFlow, set: (ww, v) => { set(ww).pressureFlow = v; B.refreshPanel(ww); } }];
+            }
             case 'pencil':
                 return [{ k: 'num', label: 'Size:', min: 1, max: 100, unit: 'px', get: (ww) => (ww.opt.size > 0 ? ww.opt.size : 1), set: (ww, v) => { ww.opt.size = v; } }, SEP, MODE, OPACITY()];
             case 'airbrush':

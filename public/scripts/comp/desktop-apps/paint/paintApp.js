@@ -526,6 +526,10 @@
                 const v = o.dataset.value;
                 this.opt[o.dataset.opt] = /^\d+$/.test(v) ? Number(v) : v === 'true' ? true : v === 'false' ? false : v;
                 if (o.dataset.opt === 'zoomLevel') this.setZoom(Number(v));
+                if (o.dataset.opt === 'brush' && root.paintBrush) {
+                    const sh = String(v).split('-')[0];
+                    if (sh === 'round' || sh === 'square') root.paintBrush.choose(this, { ...root.paintBrush.PRESETS.find((x) => x.id === (sh === 'square' ? 'square' : 'hard')), hardness: this.opt.hardness });
+                }
                 this.renderOptions();
             });
             const view = this.overlay;
@@ -701,6 +705,7 @@
             else if (ev.key === 'F8') action = 'history';
             else if (ev.key === 'F6' && shift) action = 'pro-sel-feather';
             else if (ev.key === 'F5' && shift) action = 'pro-fill';
+            else if (ev.key === 'F5' && !ctrl && !alt) action = 'brushes';
             else if (ev.key === 'Backspace' && shift) action = 'pro-fill';
             else if (ev.key === 'Delete' || ev.key === 'Backspace') action = 'delete';
             else if (ev.key === 'Escape') action = 'escape';
@@ -2100,6 +2105,7 @@
                     { separator: true },
                     { text: 'Fill...', subtext: 'Shift+F5', action: 'pro-fill' },
                     { text: 'Stroke...', action: 'pro-stroke', disabled: !this.doc.selection },
+                    { text: 'Define Brush Preset...', action: 'brush-define', disabled: !root.paintBrush },
                     { separator: true },
                     { text: 'Free Transform', subtext: 'Ctrl+T', action: 'free-transform' },
                     { text: 'Transform', hasSubmenu: true, submenu: [
@@ -2130,6 +2136,7 @@
                     { text: 'New Guide...', action: 'guides-new' },
                     { text: 'Clear Guides', action: 'guides-clear', disabled: !this.doc.guides.length },
                     { text: 'Info', action: 'pro-info', showIndicator: true, checked: !!(P() && P().infoOpen(this)) },
+                    { text: 'Brushes', subtext: 'F5', action: 'brushes', showIndicator: true, checked: !!(root.paintBrush && root.paintBrush.panelOpen(this)) },
                     { text: 'Character', action: 'character', showIndicator: true, checked: !!(root.paintType && root.paintType.characterOpen(this)) },
                     { separator: true },
                     { text: 'Zoom', hasSubmenu: true, submenu: [
@@ -2215,6 +2222,8 @@
                 case 'align-left': case 'align-hcenter': case 'align-right': case 'align-top': case 'align-vcenter': case 'align-bottom': this.alignLayer(a.slice(6)); return;
                 case 'rulers': this.toggleRulers(); return;
                 case 'character': if (root.paintType) root.paintType.toggleCharacter(this); return;
+                case 'brushes': if (root.paintBrush) root.paintBrush.togglePanel(this); return;
+                case 'brush-define': if (root.paintBrush) void root.paintBrush.definePreset(this); return;
                 case 'guides-show': this.guidesShown = !this.guidesShown; this.drawAnts(); return;
                 case 'guides-lock': this.guidesLocked = !this.guidesLocked; return;
                 case 'snap': this.snapOn = !this.snapOn; return;
@@ -2740,7 +2749,32 @@
 
     const T = {};
 
-    T.pencil = T.brush = {
+    // the brush: Photoshop's tip engine (paintBrush.js) with pen pressure; Vista's slash shapes keep
+    // their one-pixel lines
+    T.brush = {
+        down(p, ev) {
+            const shape = String(this.opt.brush).split('-')[0];
+            this.legacyDab = !root.paintBrush || shape === 'slash' || shape === 'backslash';
+            if (this.legacyDab) { T.pencil.down.call(this, p, ev); return; }
+            if (!this.beginStroke(false)) return;
+            this.last = p;
+            this.lastPr = root.paintBrush.pressureOf(ev);
+            root.paintBrush.begin(this);
+            this.growStroke(root.paintBrush.stroke(this, p, p, this.lastPr, this.lastPr, this.splitAlpha(this.color()).opaque, this.brushSize()));
+        },
+        move(p, ev, down) {
+            if (this.legacyDab) { T.pencil.move.call(this, p, ev, down); return; }
+            if (!down || !this.sctx) return;
+            const pr = root.paintBrush.pressureOf(ev);
+            const r = root.paintBrush.stroke(this, this.last, p, this.lastPr, pr, this.splitAlpha(this.color()).opaque, this.brushSize());
+            if (r) this.growStroke(r);
+            this.last = p;
+            this.lastPr = pr;
+        },
+        up() { this.endStroke(); }
+    };
+
+    T.pencil = {
         down(p) {
             if (!this.beginStroke(false)) return;
             this.last = p;
