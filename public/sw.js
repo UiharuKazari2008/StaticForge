@@ -1002,6 +1002,30 @@ function revalidateGameAsset(pathname, cached) {
   });
 }
 
+// Sidebar gadget packages (Yozora #629, modules/vistaGadgetStatic.js): out of the update manifest
+// like the games, but small and re-imported in place, so the network answers first (a miss in
+// matchStaticShell scans every cache row with ignoreSearch, about 2 s a file). The copy kept under
+// the bare path is the offline fallback.
+const GADGET_ASSET_PREFIX = '/static_images/vista-gadgets/';
+
+async function handleGadgetAsset(request, pathname) {
+  const cache = await caches.open(STATIC_CACHE);
+  try {
+    // an init resets the referrer to this worker; the server reads the page's (vistaGadgetStatic.js "../" lookups)
+    const fresh = await fetch(request, { cache: 'no-cache', referrer: request.referrer || 'about:client', referrerPolicy: request.referrerPolicy || 'same-origin' });
+    if (fresh.ok) {
+      cache.put(pathname, fresh.clone()).catch(() => {});
+    }
+    return fresh;
+  } catch (error) {
+    const kept = await cache.match(pathname, { ignoreVary: true });
+    if (kept) {
+      return kept;
+    }
+    throw error;
+  }
+}
+
 // zips an earlier worker kept (about 27 MB a client): Setup unpacks them, nothing reads them again
 async function dropCachedGameMedia() {
   const cache = await caches.open(STATIC_CACHE);
@@ -1174,6 +1198,10 @@ workbox.routing.registerRoute(
       // compare against old bytes and the new worker never installs.
       else if (url.pathname === '/sw.js' || url.pathname.startsWith('/dist/workbox/')) {
         response = await fetch(request, { cache: 'no-store' });
+      }
+      // Sidebar gadget packages: on demand, never through the shell's ignoreSearch scan
+      else if (url.pathname.startsWith(GADGET_ASSET_PREFIX)) {
+        response = await handleGadgetAsset(request, url.pathname);
       }
       else {
         const shellHit = await matchStaticShell(url.pathname);

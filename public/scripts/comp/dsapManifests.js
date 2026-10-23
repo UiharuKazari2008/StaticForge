@@ -371,7 +371,7 @@ function registerDsapManifests() {
             icon: 'fas fa-building-columns',
             imageIcon: 'vista-mail.png',
             text: 'Exchange Server',
-            appMenu: true,
+            appMenu: false,
             startMenu: false,
             adminOnly: true,
             launch() {
@@ -397,7 +397,7 @@ function registerDsapManifests() {
             launchId: 'site-homepage',
             icon: 'fas fa-globe',
             text: 'Site Homepage',
-            appMenu: true,
+            appMenu: false,
             startMenu: false,
             adminOnly: true,
             launch() {

@@ -1,0 +1,21 @@
+<gadget>
+  <name>Lava Lamp</name>
+  <version>1.0.0.0</version>
+  <author name="DanKeys">
+    <info url="www.Nubeat.Org" />
+	<logo src="logo.png" />
+  </author>
+  <copyright>2008</copyright>
+  <description>Just a Lava Lamp.</description>
+  <icons>
+	  <icon height="130" width="130" src="icon.png" />
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="LavaLamp.html" />
+	  
+      <permissions>Full</permissions>
+      <platform minPlatformVersion="1.0" />
+    </host>
+  </hosts>
+</gadget>

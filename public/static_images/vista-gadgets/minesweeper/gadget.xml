@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>Minesweeper</name>
+  <namespace><!--_locComment_text="{Locked}"-->microsoft.windows</namespace>
+  <version><!--_locComment_text="{Locked}"-->1.0.0.0</version>
+  <author name="Designing Webs, Inc">
+    <info url="www.designingwebs.tv" text="Get more of our gadgets" />
+    <logo src="logo.png" />
+  </author>
+  <copyright><!--_locComment_text="{Locked}"-->www.designingwebs.tv</copyright>
+  <description>Play the popular game Minesweeper.</description>
+  <icons>
+    <icon height="48" width="48" src="icon.png" />
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="gadget.html" />
+      <permissions><!--_locComment_text="{Locked}"-->Full</permissions>
+      <platform minPlatformVersion="1.0" />
+    </host>
+  </hosts>
+</gadget>

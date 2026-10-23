@@ -1,0 +1,39 @@
+/*
+//---------------------------------------------
+//  THIS CODE IS NOT APPROVED FOR USE IN/ON ANY OTHER COMMERCIAL UI ELEMENT OR PRODUCT COMPONENT.  
+//  Copyright (c) 2006 Steve Jensen and John Moscarillo  All rights reserved.
+// ----------------------------------------------
+*/
+body
+{
+    width: 130px;
+    height: 160px;
+    margin: 0px;
+    background-repeat: no-repeat;
+}
+
+DIV#infoBar
+{
+    position:absolute;
+
+    font-family: Segoe UI, Tahoma, sans-serif;
+    line-height:20px;
+    text-decoration: none;
+    text-align:center;
+    font-weight: bold;
+
+    color: white;
+
+    width: 110px;
+    top: 135px;
+    left: 10px;
+	
+    font-size: 14px;
+    color: #fff;
+}
+img#imageHolder
+{
+	position:absolute;
+	left:10px;
+	top:0px;
+}

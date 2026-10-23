@@ -37,7 +37,8 @@ function normalizeAlchemyBookmarks(list) {
     const seen = new Set();
     for (const row of Array.isArray(list) ? list : []) {
         const url = String((row && row.url) || '').trim();
-        if (!/^(https?|chrome):\/\/\S+$/i.test(url) || seen.has(url)) continue;
+        // web pages and Grimoire's own pages (wiki, docs, Apocrypha, search: edtx:// rdf:// dsap://, #628)
+        if (!/^(https?|chrome|edtx|rdf|dsap):\/\/\S+$/i.test(url) || seen.has(url)) continue;
         seen.add(url);
         out.push({ url: url.slice(0, 2000), title: String((row && row.title) || url).replace(/\s+/g, ' ').trim().slice(0, 200) });
         if (out.length >= ALCHEMY_MAX_BOOKMARKS) break;
@@ -380,6 +381,26 @@ function mountGrimoireBrowserBridge(app, authMiddleware) {
         }
     });
 
+    // Internet Properties > Delete Browsing History (public/scripts/comp/cplDialogs2.js, Yozora #632)
+    app.post('/api/grimoire-browser/clear-data', authMiddleware, async (req, res) => {
+        const config = grimoireBrowserConfig();
+        if (!config.enabled) {
+            res.status(503).json({ error: 'remote browser is not configured' });
+            return;
+        }
+        const body = req.body && typeof req.body === 'object' ? req.body : {};
+        try {
+            const upstream = await serviceFetch(config, '/browser/clear-data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cookies: body.cookies === true, cache: body.cache === true })
+            });
+            res.status(upstream.ok ? 200 : upstream.status).json(upstream.ok ? { ok: true } : { error: 'remote browser could not clear its data' });
+        } catch (_) {
+            res.status(502).json({ error: 'remote browser unreachable' });
+        }
+    });
+
     // Best page icon saved under .cache/site-icons (served by /cache) so the shortcut outlives the session.
     app.get('/api/grimoire-browser/sessions/:id/page-icon', authMiddleware, async (req, res) => {
         const config = grimoireBrowserConfig();
@@ -415,6 +436,79 @@ function mountGrimoireBrowserBridge(app, authMiddleware) {
             res.json({ url: info.url || '', title: info.title || '', icon });
         } catch (_) {
             res.status(502).json({ error: 'remote browser unreachable' });
+        }
+    });
+
+    // An upload field's files (Yozora #628): the remote page's file chooser is answered from the desktop.
+    // Select on Client streams a file from the user's computer as the request body (?name=); the Open
+    // dialog's VFS files and gallery pictures are sent from here (body.items).
+    const chooserOk = (cid) => /^[a-f0-9]{16}$/.test(String(cid || ''));
+    app.post('/api/grimoire-browser/sessions/:id/file-chooser/:cid/upload', authMiddleware, async (req, res) => {
+        const config = grimoireBrowserConfig();
+        const id = String(req.params.id || '');
+        const cid = String(req.params.cid || '');
+        const token = String(req.query.t || '');
+        if (!config.enabled || !sessionIdOk(id) || !chooserOk(cid) || !token) {
+            res.status(config.enabled ? 400 : 503).json({ error: 'bad upload' });
+            return;
+        }
+        const name = path.basename(String(req.query.name || 'file')).slice(0, 200) || 'file';
+        try {
+            const upstream = await fetch(config.origin + '/sessions/' + id + '/file-chooser/' + cid + '/file?t=' + encodeURIComponent(token) + '&name=' + encodeURIComponent(name), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/octet-stream' },
+                body: req,
+                duplex: 'half'
+            });
+            res.status(upstream.status).json(await upstream.json().catch(() => ({})));
+        } catch (err) {
+            if (!res.headersSent) res.status(502).json({ error: (err && err.message) || 'upload failed' });
+        }
+    });
+
+    app.post('/api/grimoire-browser/sessions/:id/file-chooser/:cid/vfs', authMiddleware, async (req, res) => {
+        const config = grimoireBrowserConfig();
+        const id = String(req.params.id || '');
+        const cid = String(req.params.cid || '');
+        const token = String(req.query.t || '');
+        const items = Array.isArray(req.body && req.body.items) ? req.body.items.slice(0, 50) : [];
+        if (!config.enabled || !sessionIdOk(id) || !chooserOk(cid) || !token || !items.length) {
+            res.status(config.enabled ? 400 : 503).json({ error: 'bad upload' });
+            return;
+        }
+        const globalResources = require('./globalResources');
+        const sent = [];
+        try {
+            for (const item of items) {
+                let filePath = '';
+                let name = '';
+                if (item && item.kind === 'file') {
+                    const row = await globalResources.getVfsDatabase().getUserFileById(String(item.id || ''));
+                    if (!row || row.trashed_at) continue;
+                    filePath = globalResources.getVfsManager().getFileBlobPath(row.content_hash);
+                    name = row.original_name;
+                } else if (item && item.kind === 'image') {
+                    const filename = path.basename(String(item.filename || ''));
+                    if (!filename) continue;
+                    filePath = path.join(globalResources.getPath('images'), filename);
+                    name = filename;
+                }
+                if (!filePath || !fs.existsSync(filePath)) continue;
+                const upstream = await fetch(config.origin + '/sessions/' + id + '/file-chooser/' + cid + '/file?t=' + encodeURIComponent(token) + '&name=' + encodeURIComponent(name), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/octet-stream' },
+                    body: fs.createReadStream(filePath),
+                    duplex: 'half'
+                });
+                if (!upstream.ok) {
+                    res.status(upstream.status).json({ error: 'the remote browser refused ' + name });
+                    return;
+                }
+                sent.push(name);
+            }
+            res.json({ ok: true, files: sent });
+        } catch (err) {
+            if (!res.headersSent) res.status(502).json({ error: (err && err.message) || 'upload failed' });
         }
     });
 
@@ -471,7 +565,7 @@ function mountGrimoireBrowserBridge(app, authMiddleware) {
             const folderPath = '/Workspaces/' + workspaceId + '/' + folder.id;
             const wsServer = globalResources.getWebSocketServer();
             if (wsServer && wsServer.broadcast) wsServer.broadcast({ type: 'vfs_updated', data: { path: folderPath }, timestamp: new Date().toISOString() });
-            res.json({ ok: true, name, path: folderPath, fileId: file && file.id });
+            res.json({ ok: true, name, path: folderPath, fileId: file && file.id, size: buffer.length });
         } catch (err) {
             if (!res.headersSent) res.status(502).json({ error: (err && err.message) || 'save failed' });
         }

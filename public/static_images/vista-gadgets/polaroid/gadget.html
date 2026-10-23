@@ -1,0 +1,31 @@
+<HTML xmlns:v>
+<HEAD><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+	<TITLE>Polaroid</TITLE>
+	<SCRIPT language="vbscript" type="text/vbscript"></SCRIPT>
+	<SCRIPT src="gadget.js" language="javascript" type="text/javascript"></SCRIPT>
+	<STYLE>
+			v\:*{behavior:url(#default#vml);position:absolute}
+	</STYLE>
+</HEAD>
+<BODY	onload="addImage()"
+		ondragenter="javascript:event.returnValue = false;"
+		ondragover="javascript:event.returnValue = false;"
+		ondrop="fileDragDropped()"
+		ondblclick="initiateRotation()"
+		style="position:absolute; margin:0px;"
+		>
+	<g:background id="bodyBackground" src="images/blank.png" style="width:100%; height:100%;" ></g:background>
+	<v:image id="bodyImage" src="images/blank.png" ></v:image>
+	<v:image id="aliasTop" src="images/alias.png" ></v:image>
+	<v:image id="aliasLeft" src="images/alias.png" ></v:image>
+
+	<v:shape id="bodyTextShape" style="position:absolute; width:100%; height:100%; antialias:true;" coordsize="0,0">
+			<v:path id="bodyTextPath" textpathok="True" ></v:path>
+			<v:fill id="bodyTextColour" on="True" color="#ff0000"></v:fill>
+			<v:stroke on="false" ></v:stroke>
+			<v:textpath id="bodyTextVML" on="True" text-align="center" ></v:textpath>
+	</v:shape>
+
+	<v:image id="imgDrag" src="images/blank.png" style="cursor:se-resize; width:20px; height:20px;" onmousedown="initiateDrag()" ></v:image>
+</BODY>
+</HTML>

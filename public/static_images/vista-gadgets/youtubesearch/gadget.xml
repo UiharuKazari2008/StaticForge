@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+	<name>Youtube Search</name>
+	<namespace>J.K</namespace>
+	<version>1.0.0.1</version>
+	<author name="JKlassen">
+		<info url="www.youtube.com" />
+	</author>
+	<copyright>&#169; 2007</copyright>
+	<description>Youtube Search for Sidebar!</description>
+	<icons>
+		<icon width="130" height="67" src="youtube.png" />
+	</icons>
+	<hosts>
+		<host name="sidebar">
+			<base type="HTML" apiVersion="1.0.0" src="youtube.html" />
+			<permissions>Full</permissions>
+			<platform minPlatformVersion="1.0" />
+		</host>
+	</hosts>
+</gadget>

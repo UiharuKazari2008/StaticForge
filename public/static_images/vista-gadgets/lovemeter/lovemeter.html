@@ -1,0 +1,19 @@
+<html xmlns="http://www.w3.org/1999/xhtml">
+    <head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+        <meta http-equiv="MSThemeCompatible" content="yes" />
+        
+    
+        <title>Love Meter</title>
+    
+        <link href="lovemeter.css" rel="stylesheet" type="text/css" />
+        <script type="text/javascript" src="lovemeter.js"></script>
+    </head>
+    <body onload="init()">    
+        <form action="" name="loveform">
+            <input style="position:absolute; cursor:text; left:0; top:30;" class="textbox" value="<Your name>" name="name1" type="text" onkeydown="onkeydown1()" onclick="selectname1()" />
+            <input style="position:absolute; cursor:text; left:0; top:43;" class="textbox" value="<Your lover's name>" name="name2" type="text" onkeydown="onkeydown2()" onclick="selectname2()" />
+            <input onfocus="selectname1()" style="position:absolute; cursor:default; left:-48; top:55;" class="result" type="text" readonly="readonly" id="output" />
+            <input style="position:absolute; cursor:hand; left:52; top:84;" class="showButton" value=" ? " name="calculate" type="button" onclick="calc()" />
+        </form>
+    </body>
+</html>

@@ -1,0 +1,92 @@
+/* Notepad as Vista's notepad.exe (public/scripts/comp/notepadVista.js; Yozora #632): the status
+   bar under the text (Ln, Col in the right part, the size grip), Word Wrap's line layout, and the
+   parts of its Font and Page Setup dialogs Vista draws itself. */
+
+body:not(.windows-classic-theme) .notepad-modal[data-window-client="light"] > .modal-content {
+    display: flex;
+    flex-direction: column;
+}
+
+body:not(.windows-classic-theme) .notepad-modal[data-window-client="light"] .notepad-textarea.notepad-vista-text {
+    flex: 1 1 auto;
+    min-height: 0;
+    resize: none;
+    line-height: normal;
+    tab-size: 8;
+    border-top: 1px solid #a0a0a0;
+}
+
+.notepad-modal .notepad-statusbar {
+    display: flex;
+    flex: 0 0 22px;
+    height: 22px;
+    border-top: 1px solid #d7d7d7;
+    background: #f0f0f0 url('/static_images/vista-controls/sizegrip.png') no-repeat right 2px bottom 2px;
+    color: #000;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+}
+
+.notepad-modal .notepad-statusbar[hidden] {
+    display: none;
+}
+
+.notepad-modal .notepad-statusbar-fill {
+    flex: 1;
+    border-right: 1px solid #d7d7d7;
+}
+
+.notepad-modal .notepad-statusbar-pos {
+    display: flex;
+    align-items: center;
+    width: 140px;
+    padding: 0 18px 0 6px;
+}
+
+/* the Font dialog's simple combo boxes: an edit over its always-open list */
+.vdt-client .np-simple-combo {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.vdt-client .np-simple-combo input.tbp-edit {
+    position: static !important;
+    flex: 0 0 21px;
+    height: 21px;
+}
+
+.vdt-client .np-simple-combo .vdt-listbox {
+    flex: 1;
+    margin-top: 1px;
+}
+
+.vdt-client .np-font-sample {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+/* Page Setup's preview: a page with grey text lines, landscape on its side */
+.vdt-client .np-page-preview {
+    width: 62px;
+    height: 80px;
+    margin: 0 auto;
+    border: 1px solid #000;
+    background: #fff;
+    box-shadow: 4px 4px 0 #808080;
+}
+
+.vdt-client .np-page-preview.is-landscape {
+    width: 80px;
+    height: 62px;
+    margin-top: 9px;
+}
+
+.vdt-client .np-page-lines {
+    margin: 8px;
+    height: calc(100% - 16px);
+    background: repeating-linear-gradient(#bbb 0 1px, transparent 1px 4px);
+}

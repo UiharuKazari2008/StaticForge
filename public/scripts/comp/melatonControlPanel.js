@@ -146,7 +146,8 @@
         name: 'Keyboard',
         image: '/static_images/app_icons/64/vista-keyboard.webp',
         description: 'The virtual keyboard on touch devices.',
-        open: () => navigate('keyboard')
+        // Vista's Keyboard Properties (cplDialogs.js); the on-screen keyboard page is under Ease of Access
+        open: () => (root.cplDialogs ? doAction('dialog:keyboard') : navigate('keyboard'))
     });
     registerItem({
         id: 'remote-access',
@@ -269,7 +270,13 @@
 
     function openItem(id) {
         const item = items.find((i) => i.id === id);
-        if (item && typeof item.open === 'function') item.open();
+        if (item && typeof item.open === 'function') {
+            item.open();
+            return;
+        }
+        // an item only the catalog has (cplCatalog.js): its open is an action string
+        const c = root.cplCatalog && root.cplCatalog.ITEMS.find((i) => i.id === id);
+        if (c && c.open) doAction(c.open);
     }
 
     function runAction(action, arg) {
@@ -279,17 +286,34 @@
             // one click opens an item (Yukimi: Classic View's double-click felt like nothing happened)
             case 'open': {
                 const node = el(`[data-cpl-item="${arg}"]`);
-                modal.querySelectorAll('.cpl-item.selected').forEach((n) => n.classList.remove('selected'));
+                modal.querySelectorAll('.cpl-icon.selected').forEach((n) => n.classList.remove('selected'));
                 if (node) node.classList.add('selected');
                 openItem(arg);
                 break;
             }
             case 'select': {
                 const node = el(`[data-cpl-item="${arg}"]`);
-                modal.querySelectorAll('.cpl-item.selected').forEach((n) => n.classList.remove('selected'));
+                modal.querySelectorAll('.cpl-icon.selected').forEach((n) => n.classList.remove('selected'));
                 if (node) { node.classList.add('selected'); node.focus(); }
+                // one click opens (Yukimi: Classic View's double-click felt like nothing happened)
+                openItem(arg);
                 break;
             }
+            case 'do': doAction(arg); break;
+            case 'view-category':
+                setView(true);
+                el('.cpl-search').value = '';
+                navigate('home', { replace: current === 'home' });
+                break;
+            case 'view-classic':
+                setView(false);
+                el('.cpl-search').value = '';
+                navigate('home', { replace: current === 'home' });
+                break;
+            case 'sort':
+                classicSort = classicSort.col === arg ? { col: arg, dir: -classicSort.dir } : { col: arg, dir: 1 };
+                render();
+                break;
             case 'connect': connectToDomain(); break;
             case 'disconnect': disconnectFromDomain(); break;
             case 'status': openStatusDialog(); break;
@@ -413,6 +437,13 @@
         el('.cpl-recent').disabled = back.length === 0 && forward.length === 0;
         el('.cpl-address').innerHTML = renderAddress(page);
         el('.cpl-tasks').innerHTML = page.tasks();
+        // a wrapped task-pane name: its row is 1 px shorter (cpl-catalog.css); measured once the
+        // window shows (render runs before openModal on the first open)
+        const markWrapped = () => el('.cpl-tasks').querySelectorAll('.cpl-nav > li').forEach((li) => {
+            li.classList.toggle('is-wrapped', li.offsetHeight > 20);
+        });
+        markWrapped();
+        requestAnimationFrame(markWrapped);
         unmountPage();
         const main = el('.cpl-main');
         main.innerHTML = page.body();
@@ -421,6 +452,9 @@
             try { page.mount(main); } catch (err) { console.error('Control Panel page mount', err); }
         }
         modal.dataset.page = current;
+        // a folder page (Printers, Fonts, Administrative Tools) has Explorer's panes (cplPages3.js)
+        if (page.kind) modal.dataset.pageKind = page.kind;
+        else delete modal.dataset.pageKind;
     }
 
     /** A page from outside (see the header): ids already taken are refused. */
@@ -431,8 +465,19 @@
         return true;
     }
 
+    /** Vista's address bar shows the page's own 16 px icon: Control Panel, the category, the item. */
+    function addressIcon(page) {
+        if (page && page.icon16) return page.icon16;
+        const cat = root.cplCatalog;
+        if (cat && current && current !== 'home') {
+            const it = cat.ITEMS.find((i) => i.art && (i.id === current || i.open === `page:${current}`));
+            if (it) return cat.art(it.art, 16);
+        }
+        return '/static_images/app_icons/16/vista-control-panel.webp';
+    }
+
     function renderAddress(page) {
-        const crumbs = [`<i class="fas fa-sliders cpl-address-icon" aria-hidden="true"></i>`];
+        const crumbs = [`<img class="cpl-address-icon cpl-address-img" src="${esc(addressIcon(page))}" alt="" draggable="false">`];
         crumbs.push('<span class="cpl-crumb-sep" aria-hidden="true">&#9656;</span>');
         crumbs.push(`<button type="button" class="cpl-crumb" data-cpl-action="nav" data-cpl-arg="home">Control Panel</button>`);
         if (current !== 'home') {
@@ -454,33 +499,350 @@
         return `<li><button type="button" class="cpl-link" data-cpl-action="${action}"${arg ? ` data-cpl-arg="${esc(arg)}"` : ''}>${esc(label)}</button></li>`;
     }
 
-    // ---- Control Panel home (Classic View) -------------------------------------------------
+    // ---- the catalog (cplCatalog.js): Category View, the category pages, Classic View --------
+
+    const VIEW_KEY = 'HKCU\\Software\\Xyridian\\Melaton\\CurrentVersion\\Explorer\\ControlPanel';
+    const SHIELD = '/static_images/vista-cpl/shield-uac-16.png';
+
+    function catalog() {
+        return root.cplCatalog || { CATEGORIES: [], ITEMS: [], art: () => '', categoryArt: () => '' };
+    }
+
+    /** Vista's RecentView: 1 Category View, 0 Classic View (Melaton's default, Yukimi 2026-10-23). */
+    function categoryView() {
+        const reg = root.melatonRegistry;
+        return !!reg && reg.get(VIEW_KEY, 'RecentView', 0) === 1;
+    }
+
+    function setView(category) {
+        const reg = root.melatonRegistry;
+        if (reg) void reg.set(VIEW_KEY, { RecentView: category ? 1 : 0 });
+    }
+
+    /** Every item: the registered ones with the catalog's art, name and categories, then the catalog's own. */
+    function allItems() {
+        const cat = catalog();
+        const byId = new Map(cat.ITEMS.map((c) => [c.id, c]));
+        const out = items.map((i) => {
+            const c = byId.get(i.id) || {};
+            return {
+                ...i,
+                name: c.name || i.name,
+                cats: c.cats || i.cats || ['additional'],
+                tip: c.tip || i.description || i.name,
+                art: c.art || null,
+                hidden: c.hidden === true
+            };
+        });
+        cat.ITEMS.forEach((c) => {
+            if (!c.name || out.some((i) => i.id === c.id)) return;
+            out.push({ ...c, catalogOpen: c.open, description: c.tip });
+        });
+        return out.sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    function findItem(id) {
+        return allItems().find((i) => i.id === id) || null;
+    }
+
+    function itemArt(item, size) {
+        if (item.art) return catalog().art(item.art, size);
+        return item.image || '';
+    }
+
+    // globals the catalog's 'call:' actions name, with what Melaton has for them
+    const CALLS = {
+        openWelcomeCenter: () => callGlobal('openWelcomeCenter'),
+        openDeviceManager: () => callGlobal('openDeviceManager'),
+        openDataManagementDsap: () => callGlobal('openDataManagementDsap'),
+        openEventViewerApplet: () => launchApp('event-viewer'),
+        openSecurityCenter: () => callGlobal('openSecurityCenterDsap'),
+        openSidebarGadgetGallery: () => callGlobal('openVistaGadgetGallery'),
+        openScreenSaverSettings: () => root.personalizationDialogs && root.personalizationDialogs.openScreenSaver(),
+        openThemeSettings: () => root.personalizationDialogs && root.personalizationDialogs.openTheme(),
+        openStartMenuProperties: () => root.taskbarSettings && root.taskbarSettings.openProperties('start'),
+        openVolumeMixer: () => root.personalizationDialogs && root.personalizationDialogs.openSound(),
+        toggleMelatonConnectDialog: () => net() && net().connect && net().connect.open(),
+        openHelpAndSupport: () => {
+            const places = callGlobal('getStartMenuPlaces') || [];
+            const help = places.find((p) => p && p.id === 'help');
+            if (help && typeof help.action === 'function') help.action();
+        },
+        openExplorerApplet: (arg) => callGlobal('openExplorerApplet', arg),
+        openDsapInGrimoire: (arg) => callGlobal('openDsapInGrimoire', arg)
+    };
+
+    function launchApp(launchId) {
+        const item = callGlobal('findStartMenuLaunchableById', launchId);
+        if (item) callGlobal('launchStartMenuItem', item);
+    }
+
+    /** A catalog action string (cplCatalog.js header). */
+    function doAction(action) {
+        const str = String(action || '');
+        const i = str.indexOf(':');
+        const kind = i < 0 ? str : str.slice(0, i);
+        const rest = i < 0 ? '' : str.slice(i + 1);
+        const j = rest.indexOf(':');
+        const id = j < 0 ? rest : rest.slice(0, j);
+        const arg = j < 0 ? undefined : rest.slice(j + 1);
+        switch (kind) {
+            case 'item': openItem(id); break;
+            case 'cat': navigate(`cat-${id}`); break;
+            case 'page':
+                if (pages[id]) {
+                    pageArgs[id] = arg;
+                    navigate(id);
+                } else console.warn('Control Panel: no page', id);
+                break;
+            case 'dialog':
+                if (root.cplDialogs) root.cplDialogs.open(id, arg, modal);
+                else console.warn('Control Panel: cplDialogs.js is not loaded');
+                break;
+            case 'call': {
+                const fn = CALLS[id];
+                if (fn) fn(arg);
+                else callGlobal(id, arg);
+                break;
+            }
+            default: break;
+        }
+    }
+
+    const pageArgs = {};
+
+    /** The argument the last 'page:<id>:<arg>' link gave a page (a tab, a section), once. */
+    function takePageArg(id) {
+        const a = pageArgs[id];
+        delete pageArgs[id];
+        return a;
+    }
+
+    function link(l, cls = 'cpl-link') {
+        const shield = l.s ? `<img class="cpl-shield" src="${SHIELD}" alt="" draggable="false">` : '';
+        return `<button type="button" class="${cls}" data-cpl-action="do" data-cpl-arg="${esc(l.a)}">${shield}${esc(l.t)}</button>`;
+    }
+
+    /** Vista's links under a title: one run, wrapping, a thin grey bar between two. */
+    function linkRun(links) {
+        if (!links || !links.length) return '';
+        return `<div class="cpl-links">${links.map((l, n) => `<span class="cpl-links-cell">${link(l)}${n < links.length - 1 ? '<span class="cpl-links-sep" aria-hidden="true"></span>' : ''}</span>`).join('')}</div>`;
+    }
+
+    /** The task pane of Control Panel Home and the category pages. */
+    function homeTasks(currentCat) {
+        const cats = catalog().CATEGORIES;
+        const classic = !currentCat && !categoryView();
+        const homeCurrent = !currentCat && !classic;
+        const row = (label, current, action, arg) => current
+            ? `<li class="cpl-nav-current">${esc(label)}</li>`
+            : `<li><button type="button" class="cpl-link" data-cpl-action="${action}"${arg ? ` data-cpl-arg="${esc(arg)}"` : ''}>${esc(label)}</button></li>`;
+        return `
+            <ul class="cpl-nav">
+                ${row('Control Panel Home', homeCurrent, 'view-category')}
+            </ul>
+            ${currentCat ? `<ul class="cpl-nav cpl-nav-cats">${cats.map((c) => row(c.name, c.id === currentCat, 'nav', `cat-${c.id}`)).join('')}</ul>` : ''}
+            <ul class="cpl-nav cpl-nav-classic">
+                ${row('Classic View', classic, 'view-classic')}
+            </ul>`;
+    }
+
+    function categoryHome() {
+        const cats = catalog().CATEGORIES;
+        const cell = (c) => `
+            <div class="cpl-cat">
+                <img class="cpl-cat-icon" src="${catalog().categoryArt(c, 48)}" alt="" draggable="false">
+                <div class="cpl-cat-text">
+                    <button type="button" class="cpl-cat-title" data-cpl-action="nav" data-cpl-arg="cat-${esc(c.id)}">${esc(c.name)}</button>
+                    ${c.home.map((l) => `<div class="cpl-cat-link">${link(l)}</div>`).join('')}
+                </div>
+            </div>`;
+        // Vista fills the first column with the first five, the second with the rest
+        const half = Math.ceil(cats.length / 2);
+        return `<div class="cpl-cat-home">
+            <div class="cpl-cat-col">${cats.slice(0, half).map(cell).join('')}</div>
+            <div class="cpl-cat-col">${cats.slice(half).map(cell).join('')}</div>
+        </div>`;
+    }
+
+    function itemRows(rows) {
+        return `<div class="cpl-task-items">${rows.map(({ item, links }) => {
+            if (!item) return '';
+            return `
+            <div class="cpl-task-item">
+                <img class="cpl-task-item-icon" src="${esc(itemArt(item, 32))}" alt="" draggable="false">
+                <div class="cpl-task-item-text">
+                    <button type="button" class="cpl-task-item-title" data-cpl-action="open" data-cpl-arg="${esc(item.id)}">${esc(item.name)}</button>
+                    ${linkRun(links)}
+                </div>
+            </div>`;
+        }).join('')}</div>`;
+    }
+
+    /**
+     * A list view icon's name as Vista draws it (DrawText word break + end ellipsis): at most two
+     * lines of about 66 px in Segoe UI 9 pt (whole words up to 72); a word wider than a line ends in "..." on its own line
+     * ("Administrat..." / "Tools"), and text past the second line ellipsizes it ("Sharing Ce...").
+     */
+    // Vista's own breaks for its names (the Classic View capture, 2026-10-22): GDI's ellipsis
+    // widths differ from the browser's, so these are copied rather than measured
+    const VISTA_LABELS = {
+        'Add Hardware': ['Add', 'Hardware'],
+        'Administrative Tools': ['Administrat...', 'Tools'],
+        'Backup and Restore Center': ['Backup and', 'Restore C...'],
+        'BitLocker Drive Encryption': ['BitLocker', 'Drive En...'],
+        'Bluetooth Devices': ['Bluetooth', 'Devices'],
+        'Color Management': ['Color', 'Management'],
+        'Date and Time': ['Date and', 'Time'],
+        'Default Programs': ['Default', 'Programs'],
+        'Device Manager': ['Device', 'Manager'],
+        'Ease of Access Center': ['Ease of', 'Acce...'],
+        'Folder Options': ['Folder', 'Options'],
+        'Game Controllers': ['Game', 'Controllers'],
+        'Indexing Options': ['Indexing', 'Options'],
+        'Internet Options': ['Internet', 'Options'],
+        'iSCSI Initiator': ['iSCSI Initiator'],
+        'Offline Files': ['Offline Files'],
+        'Parental Controls': ['Parental', 'Controls'],
+        'Pen and Input Devices': ['Pen and', 'Input Devices'],
+        'People Near Me': ['People Near', 'Me'],
+        'Performance Information and Tools': ['Performance', 'Informatio...'],
+        'Personalization': ['Personaliz...'],
+        'Phone and Modem Options': ['Phone and', 'Modem ...'],
+        'Power Options': ['Power', 'Options'],
+        'Problem Reports and Solutions': ['Problem', 'Reports a...'],
+        'Programs and Features': ['Programs', 'and Features'],
+        'Regional and Language Options': ['Regional and', 'Language ...'],
+        'Scanners and Cameras': ['Scanners and', 'Cameras'],
+        'Security Center': ['Security', 'Center'],
+        'Speech Recognition Options': ['Speech', 'Recogniti...'],
+        'Sync Center': ['Sync Center'],
+        'Tablet PC Settings': ['Tablet PC', 'Settings'],
+        'Taskbar and Start Menu': ['Taskbar and', 'Start Menu'],
+        'Text to Speech': ['Text to', 'Speech'],
+        'User Accounts': ['User', 'Accounts'],
+        'Welcome Center': ['Welcome', 'Center']
+    };
+
+    let labelCtx = null;
+    function vistaIconLabel(text, width = 66, maxLines = 2) {
+        if (VISTA_LABELS[text]) return VISTA_LABELS[text];
+        if (!labelCtx && doc) {
+            labelCtx = doc.createElement('canvas').getContext('2d');
+        }
+        if (!labelCtx) return [text];
+        labelCtx.font = '12px "Segoe UI", Tahoma, sans-serif';
+        const w = (t) => labelCtx.measureText(t).width;
+        const full = width + 6; // a whole word may run a little wider than a truncated one
+        const fit = (t) => {
+            if (w(t) <= full) return t;
+            let n = t.length;
+            while (n > 1 && w(`${t.slice(0, n).replace(/\s+$/, ' ')}...`) > width) n -= 1;
+            return `${t.slice(0, n)}...`;
+        };
+        const words = String(text).split(/\s+/).filter(Boolean);
+        const lines = [];
+        let line = '';
+        for (let k = 0; k < words.length; k += 1) {
+            const word = words[k];
+            const next = line ? `${line} ${word}` : word;
+            if (w(next) <= full) {
+                line = next;
+                continue;
+            }
+            if (line) lines.push(line);
+            line = w(word) <= full ? word : fit(word);
+            if (lines.length === maxLines - 1) {
+                // the last line takes the rest of the text and ellipsizes it
+                line = fit(words.slice(k).join(' '));
+                lines.push(line);
+                return lines;
+            }
+            if (line.endsWith('...') && w(word) > full) {
+                lines.push(line);
+                line = '';
+            }
+        }
+        if (line) lines.push(line);
+        return lines.slice(0, maxLines);
+    }
+
+    let classicSort = { col: 'name', dir: 1 };
+
+    function classicView(search) {
+        const catName = (id) => (catalog().CATEGORIES.find((c) => c.id === id) || {}).name || '';
+        let list = allItems().filter((i) => !i.hidden);
+        if (classicSort.col === 'category') {
+            list = list.slice().sort((a, b) => catName(a.cats[0]).localeCompare(catName(b.cats[0])) * classicSort.dir || a.name.localeCompare(b.name));
+        } else if (classicSort.dir < 0) list = list.slice().reverse();
+        const col = (id, label) => `<button type="button" class="cpl-col${classicSort.col === id ? ' is-sorted' : ''}" data-cpl-action="sort" data-cpl-arg="${id}">${classicSort.col === id ? `<span class="cpl-col-arrow${classicSort.dir < 0 ? ' is-down' : ''}"></span>` : ''}${label}</button>`;
+        return `
+            <div class="cpl-classic">
+                <div class="cpl-classic-header">${col('name', 'Name')}${col('category', 'Category')}<span class="cpl-col-rest"></span></div>
+                <div class="cpl-classic-grid" role="list">${list.map((i) => `
+                    <div class="cpl-icon" role="listitem" tabindex="0" data-cpl-item="${esc(i.id)}"
+                        data-cpl-action="select" data-cpl-arg="${esc(i.id)}" title="${esc(i.tip || i.name)}">
+                        <img src="${esc(itemArt(i, 48))}" alt="" draggable="false">
+                        <span class="cpl-icon-label">${vistaIconLabel(i.name).map(esc).join('<br>')}</span>
+                    </div>`).join('')}</div>
+            </div>`;
+    }
+
+    /** Search results, as Vista lists them: each matching item with its matching tasks. */
+    function searchResults(search) {
+        const q = search.toLowerCase();
+        const hit = (t) => String(t || '').toLowerCase().includes(q);
+        const byItem = new Map();
+        catalog().CATEGORIES.forEach((c) => c.items.forEach(({ item, links }) => {
+            const it = findItem(item);
+            if (!it) return;
+            const entry = byItem.get(item) || { item: it, links: [], self: false };
+            links.forEach((l) => {
+                if (hit(l.t) && !entry.links.some((x) => x.t === l.t)) entry.links.push(l);
+            });
+            byItem.set(item, entry);
+        }));
+        allItems().forEach((it) => {
+            const entry = byItem.get(it.id) || { item: it, links: [], self: false };
+            entry.self = hit(it.name) || hit(it.tip);
+            byItem.set(it.id, entry);
+        });
+        const rows = Array.from(byItem.values()).filter((e) => e.self || e.links.length)
+            .sort((a, b) => a.item.name.localeCompare(b.item.name));
+        if (!rows.length) return `<p class="cpl-empty">No items match your search.</p>`;
+        return itemRows(rows);
+    }
 
     pages.home = {
         title: () => 'Control Panel',
-        tasks: () => `
-            <div class="cpl-task-group">
-                <ul class="cpl-task-list">
-                    <li><span class="cpl-task-current">Control Panel Home</span></li>
-                    <li class="cpl-task-bullet"><span class="cpl-task-current">Classic View</span></li>
-                </ul>
-            </div>`,
+        tasks: () => homeTasks(null),
         body: () => {
-            const search = (el('.cpl-search') && el('.cpl-search').value || '').trim().toLowerCase();
-            const shown = items.filter((i) => !search
-                || i.name.toLowerCase().includes(search)
-                || (i.description || '').toLowerCase().includes(search));
-            if (!shown.length) {
-                return `<p class="cpl-empty">No items match your search.</p>`;
-            }
-            return `<div class="cpl-items" role="list">${shown.map((i) => `
-                <div class="cpl-item" role="listitem" tabindex="0" data-cpl-item="${esc(i.id)}"
-                    data-cpl-action="open" data-cpl-arg="${esc(i.id)}" title="${esc(i.description || i.name)}">
-                    ${i.image ? `<img src="${esc(i.image)}" alt="" draggable="false">` : `<i class="${esc(i.icon || 'fas fa-gear')}"></i>`}
-                    <span>${esc(i.name)}</span>
-                </div>`).join('')}</div>`;
+            const search = (el('.cpl-search') && el('.cpl-search').value || '').trim();
+            if (search) return searchResults(search);
+            return categoryView() ? categoryHome() : classicView();
+        },
+        mount: (main) => {
+            if (modal) modal.dataset.cplView = categoryView() ? 'category' : 'classic';
+            main.classList.toggle('cpl-main--classic', !categoryView());
+        },
+        unmount: () => {
+            const main = el('.cpl-main');
+            if (main) main.classList.remove('cpl-main--classic');
+            if (modal) delete modal.dataset.cplView;
         }
     };
+
+    function registerCategoryPages() {
+        catalog().CATEGORIES.forEach((c) => {
+            pages[`cat-${c.id}`] = {
+                title: () => c.name,
+                icon16: catalog().categoryArt(c, 16),
+                tasks: () => homeTasks(c.id),
+                body: () => itemRows(c.items.map(({ item, links }) => ({ item: findItem(item), links })))
+            };
+        });
+    }
+    registerCategoryPages();
 
     // ---- Network and Server Center ---------------------------------------------------------
 
@@ -1142,6 +1504,13 @@
         isOpen: () => !!(modal && !modal.classList.contains('hidden')),
         goBack,
         currentPage: () => current,
+        // a catalog action (cplCatalog.js) or an item, from outside the window (dialogs, Run)
+        doAction: (action) => {
+            if (!modal || modal.classList.contains('hidden')) open('home');
+            doAction(action);
+        },
+        openItem: (id) => openItem(id),
+        pageArg: (id) => takePageArg(id),
         _test: { pages, items, linkState, accessText, serverRows, formatDuration, setStatus: (s, e = false) => { lastStatus = s; statusError = e; } }
     };
     if (root) root.melatonControlPanel = api;

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>Pot Bunga Virtual</name>
+  <namespace>microsoft.windows</namespace>
+  <version>1.0.0.1</version>
+  <author name="KaKaNow.com">
+    <info url="kakanow.com"  text="KaKaNow.com"/>
+    <logo src="images/logo.png" />
+  </author>
+  <copyright>&#169; 2010</copyright>
+  <description>Miliki sesuatu yang cantik dan hidup di desktop Anda.
+Berikan keceriaan pada desktop Anda.  Pot Bunga Virtual ini akan mekar sepenuhnya tepat di depan mata jika Anda menyiramnya menggunakan mouse.  Seperti halnya tanaman asli, bunga ini akan layu jika diabaikan.  Mungkin diperlukan waktu beberapa hari agar mekar sepenuhnya, namun bunga ini pasti akan mencerahkan desktop setiap kali Anda melihatnya.</description>
+  <icons>
+    <icon height="64" width="64" src="images/icon.png" />
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="default.html" />
+      <permissions>Full</permissions>
+      <platform minPlatformVersion="1.0" />
+      <defaultImage src="images/drag.png" />
+    </host>
+  </hosts>
+</gadget>

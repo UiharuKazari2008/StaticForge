@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" ?> 
+<gadget>
+  <name>Color Swatches</name>
+   <namespace>microsoft.windows</namespace>
+  <version>1.0.0.0</version>
+  <author name="Team Blackshirt">
+    <info  />
+    <logo src="logo.png"/>
+  </author>
+  <copyright>
+    <!--_locComment_text="{Locked}"-->&#169; 2006
+  </copyright>
+  <description>Slowly changing color combinations</description>
+  <icons>
+    <icon height="64" width="64" src="icon.png" />
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="Color.html" />
+      <permissions><!--_locComment_text="{Locked}"-->Full</permissions>
+      <platform minPlatformVersion="0.3" />
+    </host>
+  </hosts>
+</gadget>

@@ -1,0 +1,51 @@
+<!--
+////////////////////////////////////////////////////////////////////////////////
+//
+//  GameFaqs Vista Side Bar Gadget
+//  Copyright (c) 2006 Bradford J Snow.  All rights reserved.
+//
+////////////////////////////////////////////////////////////////////////////////
+-->
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+    <title>GameFAQs Vista Sidebar Gadget</title>
+    
+    <style>
+		body {
+			width:130px;
+			height:70px;
+			background-image: url('images/backgrounds/GameFaqsBG.gif');
+			background-repeat:no-repeat;
+			padding-top: 0px;
+		}
+	</style>
+</head>
+
+<script type="text/javascript">
+function go()
+{
+	window.open('http://www.gamefaqs.com/search/index.html?game='+query.value+'&platform=0','window');
+	query.value="";
+}
+</script>
+
+<body>
+
+<input style="font-size:9px; width:100px; height: 16px; position:absolute; top:20px; left: 15px; margin: 0px 0px 0xp 0px; padding: 0px 0px 0px 0px;"
+type="text" size="14" maxlength="150" value="Game Name..." id="query"
+onkeydown="if (((event.keyCode) ? event.keyCode : (event.which) ? event.which : 0) == 13) { go(); return false; }"
+onblur="javascript:if(this.value===''){this.value='Game Name...';}"
+onclick="javascript:if(this.value=='Game Name...'){this.value='';}"
+/>
+<!--
+<img src="images/icons/DropDown.png" style="position:absolute; left:116px; top:23px;">
+-->
+<br />
+<input style="display:none"; type="submit" value="Go" id="go" name="go" onclick="go()" />
+</div>
+<div style="font-size:6px; position:absolute; top:46px;left:25px;">Not Affiliated with GameFAQs. GameFAQs is owned by CNET.
+</div>
+</body>
+</html>
+
+

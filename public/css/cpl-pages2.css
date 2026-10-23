@@ -1,0 +1,810 @@
+/* Control Panel's pages, second and third sets (cplPages2.js, cplPages3.js), the Add Hardware
+   wizard (cplDialogs2.js) and Device Manager (cplDeviceManager.js); Yozora #632. */
+
+#melatonControlPanelModal .cpl-vpage.cpl-vwide {
+    max-width: none;
+}
+
+#melatonControlPanelModal .cpl-vbuttons.is-left {
+    justify-content: flex-start;
+}
+
+#melatonControlPanelModal .cpl-vbutton img {
+    width: 16px;
+    height: 16px;
+    vertical-align: -3px;
+}
+
+#melatonControlPanelModal .cpl-vcheck {
+    margin: 8px 0 0;
+}
+
+#melatonControlPanelModal .cpl-vtable {
+    width: 100%;
+    margin-top: 10px;
+    border-collapse: collapse;
+}
+
+#melatonControlPanelModal .cpl-vtable td {
+    height: 20px;
+    padding: 0 8px;
+    white-space: nowrap;
+    border-bottom: 1px solid transparent;
+}
+
+#melatonControlPanelModal .cpl-vtable tr.is-head td {
+    height: 23px;
+    border-bottom: 1px solid #d5d5d5;
+    background: linear-gradient(#fff 0 40%, #f7f8fa 40%);
+    border-right: 1px solid #e3e8ee;
+}
+
+#melatonControlPanelModal .cpl-vtable tr.is-selected td {
+    background: linear-gradient(#f6fbfd, #eff8fd 45%, #d7effc 55%, #d5effc 92%, #e7f5fd);
+}
+
+#melatonControlPanelModal .cpl-vtable td img {
+    width: 16px;
+    height: 16px;
+    vertical-align: -4px;
+    margin-right: 5px;
+}
+
+/* Performance Information and Tools: the Experience Index table */
+#melatonControlPanelModal .cpl-wei-table {
+    margin: 14px 0 6px;
+    border-collapse: collapse;
+}
+
+#melatonControlPanelModal .cpl-wei-table td {
+    padding: 5px 10px;
+    border-bottom: 1px solid #e5e5e5;
+}
+
+#melatonControlPanelModal .cpl-wei-head td {
+    color: #003399;
+    border-bottom-color: #bcc8da;
+}
+
+#melatonControlPanelModal .cpl-wei-table tr.is-lowest td {
+    font-weight: bold;
+}
+
+#melatonControlPanelModal .cpl-wei-sub {
+    text-align: center;
+}
+
+#melatonControlPanelModal .cpl-wei-base {
+    text-align: center;
+    vertical-align: middle;
+    border-bottom: 0 !important;
+}
+
+#melatonControlPanelModal .cpl-wei-badge {
+    display: block;
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 6px;
+    background: url('/static_images/vista-cpl/wei-rated.png') no-repeat center / contain;
+    color: #fff;
+    font: bold 26px/64px Tahoma, sans-serif;
+    text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.6);
+}
+
+#melatonControlPanelModal .cpl-wei-links {
+    display: flex;
+    gap: 24px;
+}
+
+/* Problem Reports */
+#melatonControlPanelModal .cpl-pr-row {
+    display: grid;
+    grid-template-columns: 22px 1fr auto;
+    gap: 6px;
+    margin: 8px 0;
+}
+
+/* Programs and Features */
+#melatonControlPanelModal .cpl-pf-bar,
+#melatonControlPanelModal .cpl-fbar {
+    display: flex;
+    align-items: flex-start;
+    height: 31px;
+    margin: 10px 0 0;
+    padding: 3px 3px 0;
+    box-sizing: border-box;
+    background:
+        url('/static_images/vista-explorer/cmdbar-band-edge.png') left top / 1px 100% no-repeat,
+        url('/static_images/vista-explorer/cmdbar-band-edge.png') right top / 1px 100% no-repeat,
+        url('/static_images/vista-explorer/cmdbar-band.png') left top / 1px 100% repeat-x,
+        linear-gradient(to right, #045082, #116584, #1d7986);
+}
+
+#melatonControlPanelModal :is(.cpl-pf-cmd, .cpl-fbar-btn, .cpl-fbar-help) {
+    display: inline-flex;
+    align-items: center;
+    height: 24px;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0 6px 2px;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    color: #fff;
+    font: 12px var(--cpl-font);
+    white-space: nowrap;
+}
+
+#melatonControlPanelModal :is(.cpl-pf-cmd, .cpl-fbar-btn, .cpl-fbar-help)::before,
+#melatonControlPanelModal :is(.cpl-pf-cmd, .cpl-fbar-btn, .cpl-fbar-help)::after {
+    content: none;
+}
+
+#melatonControlPanelModal :is(.cpl-pf-cmd, .cpl-fbar-btn, .cpl-fbar-help):hover {
+    border-image: url('/static_images/vista-explorer/cmdbar-hot.png') 0 4 fill / 0 4px;
+}
+
+#melatonControlPanelModal :is(.cpl-pf-cmd, .cpl-fbar-btn, .cpl-fbar-help):active {
+    padding: 1px 5px 1px 7px;
+    border-image: url('/static_images/vista-explorer/cmdbar-pressed.png') 0 4 fill / 0 4px;
+}
+
+#melatonControlPanelModal .cpl-fbar-btn img {
+    width: 16px;
+    height: 16px;
+    margin: 2px 5px 0 0;
+}
+
+#melatonControlPanelModal .cpl-fbar-glyph {
+    width: 13px;
+    height: 12px;
+    margin: 2px 0 0 4px;
+    background: url('/static_images/vista-explorer/cmdbar-glyph.png') no-repeat;
+}
+
+#melatonControlPanelModal .cpl-fbar-help {
+    margin-left: auto;
+}
+
+#melatonControlPanelModal .cpl-pf-foot {
+    margin-top: 12px;
+    color: #444;
+}
+
+#melatonControlPanelModal .cpl-feat-list,
+.cpl-feat-list {
+    max-height: 260px;
+    overflow: auto;
+    border: 1px solid #828790;
+    background: #fff;
+    padding: 2px;
+}
+
+.cpl-feat-row {
+    display: block;
+    padding: 2px 4px;
+    white-space: nowrap;
+}
+
+/* Ease of Access Center */
+#melatonControlPanelModal .cpl-ea-quick {
+    margin: 10px 0 14px;
+    padding: 10px 12px;
+    border: 1px solid #c9d7e8;
+    background: linear-gradient(#fafcfe, #eef3fa);
+}
+
+#melatonControlPanelModal .cpl-ea-tools {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 24px;
+    margin-top: 10px;
+}
+
+#melatonControlPanelModal .cpl-ea-tool {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    text-align: left;
+    font: inherit;
+}
+
+#melatonControlPanelModal .cpl-ea-tool::before,
+#melatonControlPanelModal .cpl-ea-tool::after {
+    content: none;
+}
+
+#melatonControlPanelModal .cpl-ea-tool-icon {
+    width: 32px;
+    height: 32px;
+    background: url('/static_images/vista-cpl/items/ease-of-access-center-32.png') no-repeat center / 32px;
+}
+
+#melatonControlPanelModal .cpl-ea-tool-icon.is-osk { background-image: url('/static_images/vista-cpl/items/keyboard-32.png'); }
+#melatonControlPanelModal .cpl-ea-tool-icon.is-narrator { background-image: url('/static_images/vista-cpl/items/text-to-speech-32.png'); }
+#melatonControlPanelModal .cpl-ea-tool-icon.is-contrast { background-image: url('/static_images/vista-cpl/items/personalization-32.png'); }
+
+#melatonControlPanelModal .cpl-ea-row {
+    margin: 8px 0 0;
+}
+
+/* AutoPlay */
+#melatonControlPanelModal .cpl-ap td {
+    padding: 3px 12px 3px 0;
+    white-space: nowrap;
+}
+
+#melatonControlPanelModal .cpl-ap img {
+    width: 16px;
+    height: 16px;
+    vertical-align: -4px;
+}
+
+#melatonControlPanelModal .cpl-ap select {
+    min-width: 320px;
+}
+
+/* Melaton Firewall */
+#melatonControlPanelModal .cpl-fw-box {
+    margin-top: 14px;
+    border: 1px solid #c9d7e8;
+}
+
+#melatonControlPanelModal .cpl-fw-status {
+    padding: 8px 10px 8px 34px;
+    font-size: 13px;
+    background: no-repeat 10px center / 16px;
+}
+
+#melatonControlPanelModal .cpl-fw-status.is-on {
+    background-color: #e3f6d9;
+    background-image: url('/static_images/vista-cpl/shield-ok.png');
+}
+
+#melatonControlPanelModal .cpl-fw-status.is-off {
+    background-color: #f8dada;
+    background-image: url('/static_images/vista-cpl/shield-error.png');
+    color: #9c0000;
+}
+
+#melatonControlPanelModal .cpl-fw-grid {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 6px 18px;
+    padding: 10px;
+}
+
+.cpl-fw-settings .cpl-fw-tabs {
+    display: flex;
+    gap: 2px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid #898c95;
+}
+
+.cpl-fw-settings .cpl-fw-tabs button {
+    min-width: 0;
+    padding: 2px 8px;
+}
+
+.cpl-fw-settings .cpl-fw-tabs button.is-selected {
+    background: #fff;
+}
+
+.cpl-fw-settings .cpl-fw-opt {
+    display: block;
+    margin: 8px 0;
+}
+
+.cpl-fw-settings .cpl-fw-sub {
+    margin-left: 24px;
+}
+
+/* BitLocker, Parental Controls */
+#melatonControlPanelModal .cpl-bl-vol {
+    display: grid;
+    grid-template-columns: 52px 1fr auto;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+#melatonControlPanelModal .cpl-bl-vol img {
+    width: 48px;
+    height: 48px;
+}
+
+#melatonControlPanelModal .cpl-pc-users {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 10px;
+}
+
+#melatonControlPanelModal .cpl-pc-user {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    width: 240px;
+    padding: 6px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: none;
+    box-shadow: none;
+    text-align: left;
+    font: inherit;
+}
+
+#melatonControlPanelModal .cpl-pc-user::before,
+#melatonControlPanelModal .cpl-pc-user::after {
+    content: none;
+}
+
+#melatonControlPanelModal .cpl-pc-user:hover {
+    border-color: #b8d6fb;
+    background: linear-gradient(#fafbfd, #ebf3fd);
+}
+
+#melatonControlPanelModal .cpl-pc-user img {
+    width: 48px;
+    height: 48px;
+}
+
+/* ---- folder pages: Explorer's panes inside Control Panel ---- */
+
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal[data-page-kind="folder"] .cpl-content {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    grid-template-rows: 31px 1fr 22px;
+    grid-template-areas: "bar bar" "nav list" "status status";
+}
+
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal[data-page-kind="folder"] .cpl-tasks {
+    grid-area: nav;
+    padding: 0;
+    background: #fff;
+    border-right: 1px solid #d6e5f5;
+    color: #000;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal[data-page-kind="folder"] .cpl-main {
+    display: contents;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal[data-page-kind="folder"] .cpl-fbar {
+    grid-area: bar;
+    margin: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal[data-page-kind="folder"] .cpl-flist {
+    grid-area: list;
+    overflow: auto;
+    background: #fff;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal[data-page-kind="folder"] .cpl-fstatus {
+    grid-area: status;
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    border-top: 1px solid #a0afc3;
+    background: linear-gradient(#f2f6fb, #dde7f3);
+    font: 12px var(--cpl-font);
+}
+
+#melatonControlPanelModal .cpl-fav {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: 6px 0 0;
+}
+
+#melatonControlPanelModal .cpl-fav-head {
+    padding: 3px 12px 6px;
+    color: #6d6d6d;
+    font: 12px var(--cpl-font);
+}
+
+#melatonControlPanelModal .cpl-fav-link {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 22px;
+    min-height: 0;
+    margin: 0 2px;
+    padding: 0 10px;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    background: none;
+    box-shadow: none;
+    color: #0033bc;
+    font: 12px var(--cpl-font);
+    text-align: left;
+}
+
+#melatonControlPanelModal .cpl-fav-link::before,
+#melatonControlPanelModal .cpl-fav-link::after {
+    content: none;
+}
+
+#melatonControlPanelModal .cpl-fav-link:hover {
+    border-color: #b8d6fb;
+    background: linear-gradient(#fafbfd, #ebf3fd);
+}
+
+#melatonControlPanelModal .cpl-fav-link img {
+    width: 16px;
+    height: 16px;
+}
+
+#melatonControlPanelModal .cpl-fav-folders {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: auto;
+    padding: 4px 12px;
+    border-top: 1px solid #d6e5f5;
+    color: #0033bc;
+}
+
+#melatonControlPanelModal .cpl-flist-head {
+    display: flex;
+    position: sticky;
+    top: 0;
+    height: 23px;
+    background: #fff;
+    font: 12px var(--cpl-font);
+}
+
+#melatonControlPanelModal .cpl-flist-head > span {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    padding: 3px 6px 0;
+    border-image: url('/static_images/vista-controls/header-item-normal.png') 0 2 0 1 fill / 0 2px 0 1px stretch;
+}
+
+#melatonControlPanelModal .cpl-flist-head > .cpl-flist-rest {
+    flex: 1;
+}
+
+#melatonControlPanelModal .cpl-frow {
+    display: flex;
+    height: 20px;
+    align-items: center;
+    margin: 0 1px;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    font: 12px var(--cpl-font);
+    cursor: var(--c-default);
+    outline: none;
+}
+
+#melatonControlPanelModal .cpl-frow > span {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    padding: 0 6px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+#melatonControlPanelModal .cpl-frow img {
+    width: 16px;
+    height: 16px;
+    margin-right: 5px;
+    vertical-align: -4px;
+}
+
+#melatonControlPanelModal :is(.cpl-frow, .cpl-ficon):hover {
+    background: linear-gradient(#fafbfd, #ebf3fd);
+    border-color: #b8d6fb;
+}
+
+#melatonControlPanelModal :is(.cpl-frow, .cpl-ficon).is-selected {
+    background: linear-gradient(#f6fbfd, #eff8fd 45%, #d7effc 55%, #d5effc 92%, #e7f5fd);
+    border-color: #99defd;
+}
+
+#melatonControlPanelModal .cpl-flist-icons,
+#melatonControlPanelModal .cpl-sc-list {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 4px 20px;
+    padding: 6px;
+}
+
+#melatonControlPanelModal .cpl-sc-list {
+    min-height: 180px;
+    margin-top: 10px;
+}
+
+#melatonControlPanelModal .cpl-ficon {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 230px;
+    padding: 4px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    font: 12px/15px var(--cpl-font);
+    cursor: var(--c-default);
+    outline: none;
+}
+
+#melatonControlPanelModal .cpl-ficon img {
+    width: 32px;
+    height: 32px;
+}
+
+#melatonControlPanelModal .cpl-ficon b {
+    font-weight: normal;
+}
+
+#melatonControlPanelModal .cpl-ficon-check {
+    position: absolute;
+    left: 24px;
+    top: 26px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #2b9a2b;
+    box-shadow: 0 0 0 1px #fff;
+}
+
+.cpl-font-preview p {
+    margin: 4px 0;
+}
+
+/* Color Management > Identify monitors */
+.cpl-identify-monitor {
+    position: fixed;
+    left: 24px;
+    top: 24px;
+    z-index: 2147483000;
+    color: #fff;
+    font: bold 120px/1 "Segoe UI", sans-serif;
+    text-shadow: 0 0 8px #000, 2px 2px 0 #000;
+    pointer-events: none;
+}
+
+/* ---- the Add Hardware wizard (Wizard97) ---- */
+
+.vdt-client .cpl-wiz-body {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    height: 313px;
+    background: #f0f0f0;
+}
+
+.vdt-client .cpl-wiz-body.is-exterior {
+    background: #fff;
+}
+
+.vdt-client .cpl-wiz-watermark {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 164px;
+    background: linear-gradient(#3b70b8, #78a7dc);
+}
+
+.vdt-client .cpl-wiz-body.is-interior .cpl-wiz-page {
+    position: absolute;
+    left: 0;
+    top: 59px;
+    right: 0;
+    bottom: 0;
+}
+
+.vdt-client .cpl-wiz-body.is-exterior .cpl-wiz-page {
+    position: absolute;
+    inset: 0;
+}
+
+.vdt-client .cpl-wiz-header {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    height: 58px;
+    border-bottom: 1px solid #a0a0a0;
+    background: #fff;
+}
+
+.vdt-client .cpl-wiz-header b {
+    position: absolute;
+    left: 21px;
+    top: 11px;
+}
+
+.vdt-client .cpl-wiz-header span {
+    position: absolute;
+    left: 41px;
+    top: 27px;
+}
+
+.vdt-client .cpl-wiz-header img {
+    position: absolute;
+    right: 12px;
+    top: 13px;
+}
+
+.vdt-client .cpl-wiz-title {
+    font: bold 16px Verdana, Tahoma, sans-serif !important;
+}
+
+/* ---- Device Manager ---- */
+
+body.desktop-mode .modal.dm-window > .modal-content.dm-client {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    background: #f0f0f0;
+    color: #000;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+}
+
+.dm-client .dm-menubar {
+    display: flex;
+    height: 20px;
+    padding: 0 2px;
+}
+
+.dm-client .dm-menubar button {
+    min-width: 0;
+    min-height: 0;
+    padding: 0 7px;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+}
+
+.dm-client .dm-menubar button::before,
+.dm-client .dm-menubar button::after {
+    content: none;
+}
+
+.dm-client .dm-menubar button:hover {
+    background: #c1d2ee;
+    outline: 1px solid #316ac5;
+    outline-offset: -1px;
+}
+
+.dm-client .dm-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    height: 26px;
+    padding: 0 3px;
+    border-bottom: 1px solid #d5d5d5;
+}
+
+.dm-client .dm-toolbar button {
+    width: 23px;
+    height: 22px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    background: none;
+    box-shadow: none;
+}
+
+.dm-client .dm-toolbar button::before,
+.dm-client .dm-toolbar button::after {
+    content: none;
+}
+
+.dm-client .dm-toolbar button:hover:not(:disabled) {
+    border-color: #3c7fb1;
+    background: linear-gradient(#eaf6fd, #bee6fd);
+}
+
+.dm-client .dm-toolbar img {
+    width: 16px;
+    height: 16px;
+    display: block;
+    margin: auto;
+}
+
+.dm-client .dm-sep {
+    width: 1px;
+    height: 18px;
+    margin: 0 3px;
+    background: #c5c5c5;
+}
+
+.dm-client .dm-tree {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    margin: 2px;
+    padding: 2px 0;
+    border: 1px solid #828790;
+    background: #fff;
+    outline: none;
+}
+
+.dm-client .dm-row {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    height: 18px;
+    padding-left: 20px;
+    white-space: nowrap;
+    cursor: var(--c-default);
+    outline: none;
+}
+
+.dm-client .dm-row.is-root {
+    padding-left: 4px;
+}
+
+.dm-client .dm-row.is-dev {
+    padding-left: 40px;
+}
+
+.dm-client .dm-row img {
+    width: 16px;
+    height: 16px;
+}
+
+.dm-client .dm-row > span:last-child {
+    padding: 0 2px;
+}
+
+.dm-client .dm-row.is-selected > span:last-child {
+    background: #3399ff;
+    color: #fff;
+}
+
+.dm-client .dm-twisty {
+    width: 9px;
+    height: 9px;
+    margin-right: 4px;
+    border: 1px solid #919191;
+    background: linear-gradient(#fff, #e3e3e3);
+    position: relative;
+}
+
+.dm-client .dm-twisty::before,
+.dm-client .dm-twisty::after {
+    content: '';
+    position: absolute;
+    background: #000;
+}
+
+.dm-client .dm-twisty::before {
+    left: 1px;
+    right: 1px;
+    top: 4px;
+    height: 1px;
+}
+
+.dm-client .dm-row:not(.is-open) .dm-twisty::after {
+    top: 1px;
+    bottom: 1px;
+    left: 4px;
+    width: 1px;
+}
+
+.dm-client .dm-row.is-root .dm-twisty {
+    visibility: hidden;
+    width: 0;
+    margin: 0;
+    border: 0;
+}

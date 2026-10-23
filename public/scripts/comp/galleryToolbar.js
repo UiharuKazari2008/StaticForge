@@ -174,12 +174,13 @@ function handleGalleryToolbarClickOutside(e) {
 
 // Add image as reference (base image)
 async function addImageAsReference(image) {
+    let toastId = null;
     try {
         // Get the image data
         const filename = image.filename || image.original || image.upscaled;
         
         // Show loading toast
-        const toastId = showGlassToast('info', 'Adding Reference', 'Copying image to workspace references...', true, false, '<i class="fas fa-plus-circle"></i>');
+        toastId = showGlassToast('info', 'Adding Reference', 'Copying image to workspace references...', true, false, '<i class="fas fa-plus-circle"></i>');
         
         // Convert image to base64 for WebSocket upload
         // localGalleryImageUrl: public/scripts/comp/assetUrlResolver.js
@@ -210,7 +211,17 @@ async function addImageAsReference(image) {
         
     } catch (error) {
         console.error('Error adding image as reference:', error);
-        showError('Failed to add image as reference: ' + error.message);
+        // the progress (a Vista progress dialog on the desktop) ends in the failure, not beside it
+        if (toastId) {
+            updateGlassToastComplete(toastId, {
+                type: 'error',
+                title: 'Adding Reference Failed',
+                message: 'Failed to add image as reference: ' + error.message,
+                showProgress: false
+            });
+        } else {
+            showError('Failed to add image as reference: ' + error.message);
+        }
     }
 }
 

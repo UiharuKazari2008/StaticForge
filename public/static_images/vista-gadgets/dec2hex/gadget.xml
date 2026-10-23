@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+    <name>Decimal2Hexadecimal</name>
+    <namespace>UCFknight10</namespace>
+    <version>0.06</version>
+    <author name="UCFknight10">
+        <info url="http://www.betanetwork.net/hobbylounge" />
+    </author>
+    <copyright>2007</copyright>
+    <description>Enter the decimal numbers for a color, and the 
+        equivalent hex code will appear, for use on web sites and gadgets. The 
+        hex code is autmatically copied, with the "#" on the front.
+        </description>
+    <icons>
+		<icon height="112" width="170" src="icon.png" />
+	</icons>
+    <hosts>
+        <host name="sidebar">
+            <base type="HTML" apiVersion="1.0.0" src="dec2hex.html" />
+            <permissions>full</permissions>
+            <platform minPlatformVersion="0.3" />
+        </host>
+    </hosts>
+</gadget>

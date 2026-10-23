@@ -1004,6 +1004,153 @@ function deleteKnowledgeMemoriesByFilter(filterType) {
     return { deletedCount, matchedCount };
 }
 
+const SEARCH_IN_CHUNK = 500;
+
+function forEachIdChunk(ids, fn) {
+    for (let i = 0; i < ids.length; i += SEARCH_IN_CHUNK) {
+        fn(ids.slice(i, i + SEARCH_IN_CHUNK));
+    }
+}
+
+function groupRowsByMemory(rows, mapRow, distinct) {
+    const out = new Map();
+    const seen = distinct ? new Map() : null;
+    rows.forEach((row) => {
+        if (seen) {
+            // SELECT DISTINCT keeps the first row of each value tuple, in scan order.
+            let keys = seen.get(row.memory_id);
+            if (!keys) {
+                keys = new Set();
+                seen.set(row.memory_id, keys);
+            }
+            const key = JSON.stringify(distinct.map((col) => row[col]));
+            if (keys.has(key)) return;
+            keys.add(key);
+        }
+        let list = out.get(row.memory_id);
+        if (!list) {
+            list = [];
+            out.set(row.memory_id, list);
+        }
+        list.push(mapRow(row));
+    });
+    return out;
+}
+
+function memoryIdsByName(names) {
+    const out = new Map();
+    const unique = [...new Set(names)];
+    forEachIdChunk(unique, (chunk) => {
+        db.prepare(
+            `SELECT id, name FROM knowledge_memories WHERE name IN (${chunk.map(() => '?').join(',')})`
+        ).all(...chunk).forEach((row) => out.set(row.name, row.id));
+    });
+    return out;
+}
+
+function mapEntityRow(e) {
+    return {
+        id: e.entity_id,
+        type: e.type,
+        name: e.name,
+        attributes: e.attributes ? JSON.parse(e.attributes) : {}
+    };
+}
+
+function mapRelationRow(r) {
+    return {
+        from: r.from_entity_id,
+        to: r.to_entity_id,
+        type: r.relation_type,
+        weight: r.weight
+    };
+}
+
+function mapObservationRow(o) {
+    return {
+        entity_id: o.entity_id,
+        content: o.content,
+        importance: o.importance
+    };
+}
+
+/**
+ * Entities, relations and observations for many memories, each list in the
+ * order getKnowledgeMemory reads it (the memory_id index, i.e. row id order).
+ * @returns {Map<number, {entities: Array, relations: Array, observations: Array}>}
+ */
+function loadFullMemoryParts(memoryIds) {
+    const out = new Map();
+    const ids = [...new Set(memoryIds)];
+    forEachIdChunk(ids, (chunk) => {
+        const ph = chunk.map(() => '?').join(',');
+        const entities = groupRowsByMemory(db.prepare(`
+            SELECT memory_id, entity_id, type, name, attributes FROM knowledge_entities
+            WHERE memory_id IN (${ph}) ORDER BY memory_id, id
+        `).all(...chunk), mapEntityRow);
+        const relations = groupRowsByMemory(db.prepare(`
+            SELECT memory_id, from_entity_id, to_entity_id, relation_type, weight FROM knowledge_relations
+            WHERE memory_id IN (${ph}) ORDER BY memory_id, id
+        `).all(...chunk), mapRelationRow);
+        const observations = groupRowsByMemory(db.prepare(`
+            SELECT memory_id, entity_id, content, importance FROM knowledge_observations
+            WHERE memory_id IN (${ph}) ORDER BY memory_id, id
+        `).all(...chunk), mapObservationRow);
+        chunk.forEach((id) => {
+            out.set(id, {
+                entities: entities.get(id) || [],
+                relations: relations.get(id) || [],
+                observations: observations.get(id) || []
+            });
+        });
+    });
+    return out;
+}
+
+/**
+ * getMatchingComponents for many memories. Row order matches the per-memory
+ * SELECT DISTINCT plans: entities and relations by row id, observations by
+ * (entity_id, row id) from idx_knowledge_observations_entity_id.
+ * @returns {Map<number, {entities: Array, observations: Array, relations: Array}>}
+ */
+function loadMatchingMemoryParts(memoryIds, queryComponents) {
+    const out = new Map();
+    const ids = [...new Set(memoryIds)];
+    const searchPatterns = queryComponents.map(comp => `%${comp}%`);
+    if (!searchPatterns.length) {
+        ids.forEach((id) => out.set(id, { entities: [], observations: [], relations: [] }));
+        return out;
+    }
+    const entityWhere = searchPatterns.map(() => '(LOWER(name) LIKE ? OR LOWER(type) LIKE ? OR LOWER(attributes) LIKE ?)').join(' OR ');
+    const entityParams = [];
+    searchPatterns.forEach((p) => entityParams.push(p, p, p));
+    const contentWhere = searchPatterns.map(() => 'LOWER(content) LIKE ?').join(' OR ');
+    const relationWhere = searchPatterns.map(() => 'LOWER(relation_type) LIKE ?').join(' OR ');
+    forEachIdChunk(ids, (chunk) => {
+        const ph = chunk.map(() => '?').join(',');
+        const entities = groupRowsByMemory(db.prepare(`
+            SELECT memory_id, entity_id, type, name, attributes FROM knowledge_entities
+            WHERE memory_id IN (${ph}) AND (${entityWhere}) ORDER BY memory_id, id
+        `).all(...chunk, ...entityParams), mapEntityRow, ['entity_id', 'type', 'name', 'attributes']);
+        const observations = groupRowsByMemory(db.prepare(`
+            SELECT memory_id, entity_id, content, importance FROM knowledge_observations
+            WHERE memory_id IN (${ph}) AND (${contentWhere}) ORDER BY memory_id, entity_id, id
+        `).all(...chunk, ...searchPatterns), mapObservationRow, ['entity_id', 'content', 'importance']);
+        const relations = groupRowsByMemory(db.prepare(`
+            SELECT memory_id, from_entity_id, to_entity_id, relation_type, weight FROM knowledge_relations
+            WHERE memory_id IN (${ph}) AND (${relationWhere}) ORDER BY memory_id, id
+        `).all(...chunk, ...searchPatterns), mapRelationRow, ['from_entity_id', 'to_entity_id', 'relation_type', 'weight']);
+        chunk.forEach((id) => {
+            out.set(id, {
+                entities: entities.get(id) || [],
+                observations: observations.get(id) || [],
+                relations: relations.get(id) || []
+            });
+        });
+    });
+    return out;
+}
+
 /**
  * Search for memories by category or keyword
  * Searches across multiple dimensions: memory name/description, entities, observations, and relations
@@ -1261,7 +1408,20 @@ function searchKnowledgeMemories(query, category = null, model = null) {
     //   - Component match bonus: 5 points per matching query component (max 25)
     // Threshold of 30 means multiple occurrences or strong multi-component matches
     const HIGH_RELEVANCE_THRESHOLD = 30;
-    
+
+    // Graph parts for every hit in a few IN queries instead of ~4 queries per hit.
+    const idByName = memoryIdsByName(results.map((r) => r.name));
+    const fullIds = [];
+    const matchIds = [];
+    results.forEach((r) => {
+        const id = idByName.get(r.name);
+        if (id === undefined) return;
+        if ((r.relevance_score || 0) >= HIGH_RELEVANCE_THRESHOLD) fullIds.push(id);
+        else matchIds.push(id);
+    });
+    const fullParts = loadFullMemoryParts(fullIds);
+    const matchParts = loadMatchingMemoryParts(matchIds, queryComponents);
+
     // Process results: return full memory for high relevance, matching components for lower relevance
     return results.map(r => {
         const relevanceScore = r.relevance_score || 0;
@@ -1279,8 +1439,9 @@ function searchKnowledgeMemories(query, category = null, model = null) {
         };
         
         if (relevanceScore >= HIGH_RELEVANCE_THRESHOLD) {
-            // High relevance: return full memory
-            const fullMemory = getKnowledgeMemory(r.name, false); // Don't increment usage on search
+            // High relevance: return full memory (same parts as getKnowledgeMemory(name, false))
+            const id = idByName.get(r.name);
+            const fullMemory = id === undefined ? null : fullParts.get(id);
             if (fullMemory) {
                 result.entities = fullMemory.entities;
                 result.relations = fullMemory.relations;
@@ -1288,8 +1449,10 @@ function searchKnowledgeMemories(query, category = null, model = null) {
                 result.full_memory = true;
             }
         } else {
-            // Lower relevance: return only matching components
-            const matchingComponents = getMatchingComponents(r.name, queryComponents);
+            // Lower relevance: return only matching components (same as getMatchingComponents)
+            const id = idByName.get(r.name);
+            const matchingComponents = (id === undefined ? null : matchParts.get(id))
+                || { entities: [], observations: [], relations: [] };
             result.entities = matchingComponents.entities;
             result.observations = matchingComponents.observations;
             result.relations = matchingComponents.relations;

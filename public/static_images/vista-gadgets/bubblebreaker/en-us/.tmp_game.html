@@ -1,0 +1,168 @@
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+	<title>Bubble Breaker</title>
+	<link href="style.css" rel="stylesheet" type="text/css" />
+	<script type="text/javascript" src="code.js"></script>
+</head>
+
+<body onLoad="Loader();">
+<g:background id="puzzleBg" src="url(../images/bg.png)" style="position:absolute; z-index:-1;"></g:background>
+<div id="bar">
+    <img title="Score" src="../images/score.png" id="score" />
+    <span id="scorediv"></span>
+    <img title="Start new game..." onClick="javascript:Loader();" src="../images/newgame.png" id="newgame" onMouseOver="javascript:SimpleSwap(this, '../images/newgame_over.png');" onMouseOut="javascript:SimpleSwap(this, '../images/newgame.png');" />
+    <img title="Best Score" onClick="showHighscore();" src="../images/highscores.png" id="highscores" onMouseOver="javascript:SimpleSwap(this, '../images/highscores_over.png');" onMouseOut="javascript:SimpleSwap(this, '../images/highscores.png');" />
+</div>
+<div id="winMessage">
+    <span id="winMessageText"></span><br />
+</div>
+<table id="boardtable" border="0" cellpadding="0" cellspacing="0">
+	<tr>
+      <td line="1" column="1" class="block"></td>
+      <td line="1" column="2" class="block"></td>
+      <td line="1" column="3" class="block"></td>
+      <td line="1" column="4" class="block"></td>
+      <td line="1" column="5" class="block"></td>
+      <td line="1" column="6" class="block"></td>
+      <td line="1" column="7" class="block"></td>
+      <td line="1" column="8" class="block"></td>
+      <td line="1" column="9" class="block"></td>
+      <td line="1" column="10" class="block"></td>
+      <td line="1" column="11" class="block"></td>
+  </tr>
+    <tr>
+      <td line="2" column="1" class="block"></td>
+      <td line="2" column="2" class="block"></td>
+      <td line="2" column="3" class="block"></td>
+      <td line="2" column="4" class="block"></td>
+      <td line="2" column="5" class="block"></td>
+      <td line="2" column="6" class="block"></td>
+      <td line="2" column="7" class="block"></td>
+      <td line="2" column="8" class="block"></td>
+      <td line="2" column="9" class="block"></td>
+      <td line="2" column="10" class="block"></td>
+      <td line="2" column="11" class="block"></td>
+  </tr>
+    <tr>
+      <td line="3" column="1" class="block"></td>
+      <td line="3" column="2" class="block"></td>
+      <td line="3" column="3" class="block"></td>
+      <td line="3" column="4" class="block"></td>
+      <td line="3" column="5" class="block"></td>
+      <td line="3" column="6" class="block"></td>
+      <td line="3" column="7" class="block"></td>
+      <td line="3" column="8" class="block"></td>
+      <td line="3" column="9" class="block"></td>
+      <td line="3" column="10" class="block"></td>
+      <td line="3" column="11" class="block"></td>
+  </tr>
+<tr>
+      <td line="4" column="1" class="block"></td>
+      <td line="4" column="2" class="block"></td>
+      <td line="4" column="3" class="block"></td>
+      <td line="4" column="4" class="block"></td>
+      <td line="4" column="5" class="block"></td>
+      <td line="4" column="6" class="block"></td>
+      <td line="4" column="7" class="block"></td>
+      <td line="4" column="8" class="block"></td>
+      <td line="4" column="9" class="block"></td>
+      <td line="4" column="10" class="block"></td>
+      <td line="4" column="11" class="block"></td>
+  </tr>
+    <tr>
+      <td line="5" column="1" class="block"></td>
+      <td line="5" column="2" class="block"></td>
+      <td line="5" column="3" class="block"></td>
+      <td line="5" column="4" class="block"></td>
+      <td line="5" column="5" class="block"></td>
+      <td line="5" column="6" class="block"></td>
+      <td line="5" column="7" class="block"></td>
+      <td line="5" column="8" class="block"></td>
+      <td line="5" column="9" class="block"></td>
+      <td line="5" column="10" class="block"></td>
+      <td line="5" column="11" class="block"></td>
+  </tr>
+    <tr>
+      <td line="6" column="1" class="block"></td>
+      <td line="6" column="2" class="block"></td>
+      <td line="6" column="3" class="block"></td>
+      <td line="6" column="4" class="block"></td>
+      <td line="6" column="5" class="block"></td>
+      <td line="6" column="6" class="block"></td>
+      <td line="6" column="7" class="block"></td>
+      <td line="6" column="8" class="block"></td>
+      <td line="6" column="9" class="block"></td>
+      <td line="6" column="10" class="block"></td>
+      <td line="6" column="11" class="block"></td>
+  </tr>
+<tr>
+      <td line="7" column="1" class="block"></td>
+      <td line="7" column="2" class="block"></td>
+      <td line="7" column="3" class="block"></td>
+      <td line="7" column="4" class="block"></td>
+      <td line="7" column="5" class="block"></td>
+      <td line="7" column="6" class="block"></td>
+      <td line="7" column="7" class="block"></td>
+      <td line="7" column="8" class="block"></td>
+      <td line="7" column="9" class="block"></td>
+      <td line="7" column="10" class="block"></td>
+      <td line="7" column="11" class="block"></td>
+  </tr>
+    <tr>
+      <td line="8" column="1" class="block"></td>
+      <td line="8" column="2" class="block"></td>
+      <td line="8" column="3" class="block"></td>
+      <td line="8" column="4" class="block"></td>
+      <td line="8" column="5" class="block"></td>
+      <td line="8" column="6" class="block"></td>
+      <td line="8" column="7" class="block"></td>
+      <td line="8" column="8" class="block"></td>
+      <td line="8" column="9" class="block"></td>
+      <td line="8" column="10" class="block"></td>
+      <td line="8" column="11" class="block"></td>
+  </tr>
+    <tr>
+      <td line="9" column="1" class="block"></td>
+      <td line="9" column="2" class="block"></td>
+      <td line="9" column="3" class="block"></td>
+      <td line="9" column="4" class="block"></td>
+      <td line="9" column="5" class="block"></td>
+      <td line="9" column="6" class="block"></td>
+      <td line="9" column="7" class="block"></td>
+      <td line="9" column="8" class="block"></td>
+      <td line="9" column="9" class="block"></td>
+      <td line="9" column="10" class="block"></td>
+      <td line="9" column="11" class="block"></td>
+  </tr>
+      <tr>
+      <td line="10" column="1" class="block"></td>
+      <td line="10" column="2" class="block"></td>
+      <td line="10" column="3" class="block"></td>
+      <td line="10" column="4" class="block"></td>
+      <td line="10" column="5" class="block"></td>
+      <td line="10" column="6" class="block"></td>
+      <td line="10" column="7" class="block"></td>
+      <td line="10" column="8" class="block"></td>
+      <td line="10" column="9" class="block"></td>
+      <td line="10" column="10" class="block"></td>
+      <td line="10" column="11" class="block"></td>
+  </tr>
+      <tr>
+      <td line="11" column="1" class="block"></td>
+      <td line="11" column="2" class="block"></td>
+      <td line="11" column="3" class="block"></td>
+      <td line="11" column="4" class="block"></td>
+      <td line="11" column="5" class="block"></td>
+      <td line="11" column="6" class="block"></td>
+      <td line="11" column="7" class="block"></td>
+      <td line="11" column="8" class="block"></td>
+      <td line="11" column="9" class="block"></td>
+      <td line="11" column="10" class="block"></td>
+      <td line="11" column="11" class="block"></td>
+  </tr>
+</table>
+
+</body>
+
+</html>

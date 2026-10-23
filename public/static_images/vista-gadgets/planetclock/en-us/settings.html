@@ -1,0 +1,429 @@
+<!--
+
+
+
+///////////////////////////////////////////////////////////////////////////////
+
+
+
+//
+
+
+
+//  THIS CODE IS NOT APPROVED FOR USE IN/ON ANY OTHER UI ELEMENT OR PRODUCT COMPONENT.
+
+
+
+//  Copyright (c) 2008 Lorne L. Reap  All rights reserved.
+
+
+
+//
+
+
+
+////////////////////////////////////////////////////////////////////////////////
+
+
+
+-->
+
+
+
+<html>
+
+
+
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+
+
+
+<meta http-equiv="MSThemeCompatible" CONTENT="yes" />
+
+
+
+
+
+
+
+<title>Clock Settings</title>
+
+
+
+<link href="css/settings.css" rel="stylesheet" type="text/css" />
+
+
+
+<script src="js/timeZones.js" language="javascript" type="text/javascript"></script>
+
+
+
+<script src="js/settings.js" language="javascript" type="text/javascript"></script>
+
+
+
+<script src="js/clock.js" language="javascript" type="text/javascript"></script>
+
+
+
+<style type="text/css">
+
+
+
+<!--
+
+
+
+a:link {
+
+
+
+	color: #FFFFFF;
+
+
+
+	text-decoration: none;
+
+
+
+}
+
+
+
+a:visited {
+
+
+
+	text-decoration: none;
+
+
+
+	color: #FFFFFF;
+
+
+
+}
+
+
+
+a:hover {
+
+
+
+	text-decoration: none;
+
+
+
+	color: #FFFFFF;
+
+
+
+}
+
+
+
+a:active {
+
+
+
+	text-decoration: none;
+
+
+
+	color: #FFFFFF;
+
+
+
+}
+
+
+
+-->
+
+
+
+</style></head>
+
+
+
+<body onLoad="loadSettings()">
+
+
+
+<table dir="ltr" cellspacing="0" cellpadding="0" border="0">
+
+
+
+    <tr>
+
+
+
+        <td style="width:4px;height:3px;background:url(images/settings_corner_top_left.png)" nowrap></td>
+
+
+
+        <td style="width:100%;background:url(images/settings_box_top.png)"></td>
+
+
+
+        <td style="width:4px;height:3px;background:url(images/settings_corner_top_right.png)" nowrap></td>
+
+
+
+    </tr>
+
+
+
+    <tr style="background-color:#000000">
+
+
+
+        <td nowrap style="width:4px;background:url(images/settings_box_left.png) repeat-y"></td>
+
+
+
+        <td align="center" style="padding:5px"><img id="settingsImagePreview" /></td>
+
+
+
+        <td nowrap style="width:4px;background:url(images/settings_box_right.png) repeat-y"></td>
+
+
+
+    </tr>
+
+
+
+    <tr style="background-color:#f4f4f4">
+
+
+
+        <td style="width:4px;height:2px;background:url(images/settings_divider_left.png)" nowrap></td>
+
+
+
+        <td style="width:100%;background:url(images/settings_divider.png)"></td>
+
+
+
+        <td style="width:4px;height:2px;background:url(images/settings_divider_right.png)" nowrap></td>
+
+
+
+    </tr>
+
+
+
+    <tr style="background-color:#f4f4f4">
+
+
+
+        <td style="width:4px;background:url(images/settings_box_divider_left.png) repeat-y" nowrap></td>
+
+
+
+        <td align="center" style="padding:5px 0px 5px 0px">
+
+
+
+            <table id="settingsButtonTable" cellspacing="0" cellpadding="0" border="0">
+
+
+
+                <tr>
+
+
+
+                    <td id="settingsButtonLeftCell"><a id="settingsLeftAnchor" href="javascript:void(0)" onKeyPress="settingsButtonBack()" style="cursor:default"><img id="settingsImageLeft" src="images/settings_left_rest.png" onmousedown="settingsButtonBack(true)" onmouseenter="settingsUpdateImage(this, 'hover')" onmouseleave="settingsUpdateImage(this, 'rest')" onmousedown="settingsUpdateImage(this, 'pressed')" onmouseup="settingsUpdateImage(this, 'hover')" style="width:19px;height:18px;border:none;margin-right:11px" /></a></td>
+
+
+
+                    <td id="currentIndex"></td>
+
+
+
+                    <td id="L_OF"> of </td>
+
+
+
+                    <td id="maxIndex"></td>
+
+
+
+                    <td id="settingsButtonRightCell"><a id="settingsRightAnchor" href="javascript:void(0)" onKeyPress="settingsButtonForward()" style="cursor:default"><img id="settingsImageRight" src="images/settings_right_rest.png" onmousedown="settingsButtonForward(true)" onmouseenter="settingsUpdateImage(this, 'hover')" onmouseleave="settingsUpdateImage(this, 'rest')" onmousedown="settingsUpdateImage(this, 'pressed')" onmouseup="settingsUpdateImage(this, 'hover')" style="width:19px;height:18px;border:none;margin-left:11px" /></a></td>
+
+
+
+                </tr>
+
+
+
+            </table>
+
+
+
+        </td>
+
+
+
+        <td style="width:4px;background:url(images/settings_box_divider_right.png) repeat-y" nowrap></td>
+
+
+
+    </tr>
+
+
+
+    <tr style="background-color:#f4f4f4">
+
+
+
+        <td style="width:4px;height:3px;background:url(images/settings_corner_bottom_left.png)" nowrap></td>
+
+
+
+        <td style="width:100%;background:url(images/settings_box_bottom.png)"></td>
+
+
+
+        <td style="width:4px;height:3px;background:url(images/settings_corner_bottom_right.png)" nowrap></td>
+
+
+
+    </tr>
+
+
+
+</table>
+
+
+
+<div style="padding-top:1px"></div>
+
+
+
+<table cellspacing="0" cellpadding="0" style="width:100%;font-size:12px">
+
+
+
+    <tr>
+
+
+
+        <td rowspan="6" style="width:1px" nowrap></td>
+
+
+
+        <td><label id="L_CLOCKNAME_TEXT" for="clockName">Clock name:</label></td>
+
+
+
+        <td rowspan="6" style="width:1px" nowrap></td>
+
+
+
+    </tr>
+
+
+
+    <tr>
+
+
+
+        <td style="width:100%" style="padding-top:1px"><input id="clockName" type="text" class="textbox" style="width:100%;font-size:12px" maxlength="30" /></td>
+
+
+
+    </tr>
+
+
+
+    <tr>
+
+
+
+        <td style="padding-top:1px"><label id="L_TIMEZONE_TEXT" for="timeZoneIndex">Time zone:</label></td>
+
+
+
+    </tr>
+
+
+
+    <tr>
+
+
+
+        <td style="width:100%" style="padding-top:1px"><select id="timeZoneIndex" onChange="this.title=timeZoneIndex.options[this.selectedIndex].text" style="width:100%;font-size:12px"></select></td>
+
+
+
+    </tr>
+
+
+
+    <tr>
+
+
+
+        <td style="padding-top:1px"><input type="checkbox" id="secondsEnabled" value="checkbox" /><label id="L_SHOWSECONDS_TEXT" for="secondsEnabled">Show the second hand (analog)</label></td>
+
+
+
+    </tr>
+
+
+
+    <tr>
+
+
+
+        <td style="padding-top:1px"><input type="checkbox" id="secondsEnabledDigital" value="checkbox" /><label id="L_SHOWSECONDSDIGITAL_TEXT" for="secondsEnabledDigital">Show the seconds (digital)</label></td>
+
+
+
+    </tr>
+
+
+
+    <tr>
+
+
+
+        <td style="width:100%;padding-top:1px" colspan="2"><input type="checkbox" id="show24" value="checkbox" /><label id="L_SHOW24_TEXT" for="show24">Display 24 hour digital time</label></td>
+
+
+
+    </tr>
+
+
+
+    <tr>
+
+
+
+        <td style="padding-top:1px" colspan="2"><a id="clockProperties" href="javascript:void(0)" onClick="openSettings()"></a></td>
+
+
+
+    </tr>
+
+
+
+</table>
+
+
+
+<div align="center"><img src="../images/logos.png" alt="Lorne L. Reap" width="90" height="46" border="0" usemap="#Map">
+
+<map name="Map"><area shape="rect" coords="4,4,86,34" href="mailto:lornereap@hotmail.com" alt="lornereap@hotmail.com">
+
+</map></div>
+
+
+
+</body>
+
+
+
+</html>

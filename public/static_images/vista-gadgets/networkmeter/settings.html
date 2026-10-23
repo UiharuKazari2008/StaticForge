@@ -1,0 +1,1103 @@
+<!--//
+////////////////////////////////////////////////////////////////////////////////
+//
+//  Copyright © 2009 - 2013 addgadgets.com  All rights reserved.
+//
+//  http://addgadgets.com/
+//
+////////////////////////////////////////////////////////////////////////////////
+//-->
+<html xmlns:v="urn:schemas-microsoft-com:vml">
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+
+<title>Network Meter Settings</title>
+<script type="text/javascript" language="javascript" src="settings.js"></script>
+<script type="text/javascript" language="javascript" src="libhelper.js"></script>
+<script type="text/javascript" language="javascript" src="jscolor.js"></script>
+<link rel="stylesheet" href="settings.css">
+<script type="text/javascript">
+document.write('<style type="text/css">.tabber{display:none;}<\/style>');
+var tabberOptions = {'manualStartup':true};
+</script>
+</head>
+<body onLoad="onLoad()">
+<div class="tabber">
+<div class="tabbertab Extender" style="width:280;font-size:10px; overflow-y:scroll; overflow-x:hidden" title="Options">
+<OBJECT ID="Player" height="0" width="0" CLASSID="CLSID:6BF52A52-394A-11d3-B153-00C04F79FAA6">
+<PARAM name="autoStart" value="False">
+<PARAM name="uiMode" value="invisible">
+</OBJECT>
+	<b style="font-size:12px;">Network Type:</b>
+	<select id="netType" style="width: 158;font-size:12px;">
+	<option value="3">Auto Detect</option>
+	<option value="1">Wired Network</option>
+	<option value="2">Wireless Network</option>
+	</select><br><hr>
+	<center><b style="font-size:12px;color:#F00;">Network Interface</b></center>
+	<span style="font-size:12px;"><input id="autoInterface" type="checkbox" onClick="disableInterface();">Auto Detect&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span><span id="scanNetworkw" style="font-size:12px;">Scan Every: <input style="width:30;font-size:12px;" id="scanNetwork" type="text" value="10"> sec</span><br>
+	<b id="methodw" style="font-size:12px;">Speed Counting Method:</b>
+	<select id="method" style="width:251;font-size:12px;" onChange="changemethod();">
+	<option value="1">New Method (WMI Performance Counter Class)</option>
+	<option value="2">Old Method (Use NetLib.dll)</option>
+	</select><br>
+	<b id="interfacew" style="font-size:12px;">For Speed:</b>
+	<select id="interface" style="width:251;font-size:12px;visibility:hidden;"></select>
+	<select id="interface3" style="width:251;font-size:12px;visibility:hidden;position:absolute;"></select><br>
+	<b id="interface2w"style="font-size:12px;">For Internal IP Address:</b>
+	<select id="interface2" style="width:251;font-size:12px;"></select><br>
+	<span style="font-size:11px; color:#F00;">Note: Some of network interface can't auto detect.</span>
+<br><hr>
+	<b style="font-size:12px;">Interval: (sec)</b> &nbsp;<input style="width:30;font-size:12px;" id="settimer" type="text" value="0"><span style="font-size:12px;">&nbsp; (default = 1)</span><br><hr>
+	<b style="font-size:12px;">Save Chart Data:</b>
+	<select id="saveChartData" style="width: 144;font-size:12px;">
+	<option value="1">Every Day</option>
+	<option value="2">Every Hour</option>
+	<option value="3">OFF</option>
+	</select><br>
+	<span style="font-size:11px;">Save Chart Data File Location:<br>C:\Users\%username%\Network_Meter_Data.js</span>
+	<br><hr>
+	<b style="font-size:12px;">Save IP Address:</b>
+	<select id="saveIPAddress" style="width: 144;font-size:12px;">
+	<option value="1">ON</option>
+	<option value="2">OFF</option>
+	</select><br>
+	<span style="font-size:11px;">Save IP Address Data File Location:<br>C:\Users\%username%\IP_Log_Data.js</span>
+	<br><hr>
+	<b style="font-size:12px;">Remaining:</b>
+	<select id="setRemaining" style="width: 180;font-size:12px;" onChange="setPeakRemaining();">
+	<option value="1">ON</option>
+	<option value="3">ON (Peak &amp; Off Peak)</option>
+	<option value="2">OFF</option>
+	</select><br>
+	<b style="font-size:12px;">Billing Starts:</b>
+	<select id="billingStarts" style="width: 60;font-size:12px;" onChange="cbStarts();setCheckRemaining();">
+	<option value="1">Month</option>
+	<option value="2">Week</option>
+	</select>
+	<select id="billingWeek" style="width: 90;font-size:12px;" onChange="setCheckRemaining();">
+	<option value="7">Sunday</option>
+	<option value="1">Monday</option>
+	<option value="2">Tuesday</option>
+	<option value="3">Wednesday</option>
+	<option value="4">Thursday</option>
+	<option value="5">Friday</option>
+	<option value="6">Saturday</option>
+	</select>
+	<select id="billingMonth" style="width: 50;font-size:12px;position:absolute;" onChange="setCheckRemaining();">
+	<option value="1">1st</option>
+	<option value="2">2nd</option>
+	<option value="3">3rd</option>
+	<option value="4">4th</option>
+	<option value="5">5th</option>
+	<option value="6">6th</option>
+	<option value="7">7th</option>
+	<option value="8">8th</option>
+	<option value="9">9th</option>
+	<option value="10">10th</option>
+	<option value="11">11th</option>
+	<option value="12">12th</option>
+	<option value="13">13th</option>
+	<option value="14">14th</option>
+	<option value="15">15th</option>
+	<option value="16">16th</option>
+	<option value="17">17th</option>
+	<option value="18">18th</option>
+	<option value="19">19th</option>
+	<option value="20">20th</option>
+	<option value="21">21th</option>
+	<option value="22">22th</option>
+	<option value="23">23th</option>
+	<option value="24">24th</option>
+	<option value="25">25th</option>
+	<option value="26">26th</option>
+	<option value="27">27th</option>
+	<option value="28">28th</option>
+	<option value="29">29th</option>
+	<option value="30">30th</option>
+	<option value="31">31th</option>
+	</select><br>
+	<span id="billingCycle"><b style="font-size:12px;">Billing Cycle Quota:</b> &nbsp;<input style="width:40;font-size:12px;" id="cycleQuota" type="text" >
+	<select id="cycleQuotaSize" style="width:50;font-size:12px;">
+	<option value = "1">MB</option>
+	<option value = "2">GB</option>
+	<option value = "3">TB</option>
+	</select><br>
+	<b style="font-size:12px;">Adjust Usage:</b> &nbsp;<input style="width:50;font-size:12px;" id="adjustUsage" type="text" onKeyPress="onChaAdjustUsage();">
+	<select id="adjustUsageSize" style="width:50;font-size:12px;">
+	<option value = "1">MB</option>
+	<option value = "2">GB</option>
+	<option value = "3">TB</option>
+	</select><br></span>
+	<span id="remainingPeak" style="font-size:12px;"><b>Peak Time Start at:</b> &nbsp;<input style="width:20;font-size:12px;" id="peakHour" type="text" maxlength="2">:<input style="width:20;font-size:12px;" id="peakMin" type="text" maxlength="2"> HH:MM<br>
+	Billing Cycle Quota: <input style="width:40;font-size:12px;" id="peakCycleQuota" type="text" >
+	<select id="peakCycleQuotaSize" style="width:50;font-size:12px;">
+	<option value = "1">MB</option>
+	<option value = "2">GB</option>
+	<option value = "3">TB</option>
+	</select><br>
+	Adjust Usage: <input style="width:50;font-size:12px;" id="peakAdjustUsage" type="text" onKeyPress="onChaPeakAdjustUsage();">
+	<select id="peakAdjustUsageSize" style="width:50;font-size:12px;">
+	<option value = "1">MB</option>
+	<option value = "2">GB</option>
+	<option value = "3">TB</option>
+	</select><br>
+	<b>Off Peak Time Start at:</b> &nbsp;<input style="width:20;font-size:12px;" id="offpeakHour" type="text" maxlength="2">:<input style="width:20;font-size:12px;" id="offpeakMin" type="text" maxlength="2"> HH:MM<br>
+	Billing Cycle Quota: <input style="width:40;font-size:12px;" id="offpeakCycleQuota" type="text" >
+	<select id="offpeakCycleQuotaSize" style="width:100;font-size:12px;">
+	<option value = "1">MB</option>
+	<option value = "2">GB</option>
+	<option value = "3">TB</option>
+	<option value = "4">Share Peak</option>
+	</select><br>
+	Adjust Usage: <input style="width:50;font-size:12px;" id="offpeakAdjustUsage" type="text" onKeyPress="onChaOffpeakAdjustUsage();">
+	<select id="offpeakAdjustUsageSize" style="width:50;font-size:12px;">
+	<option value = "1">MB</option>
+	<option value = "2">GB</option>
+	<option value = "3">TB</option>
+	</select><br></span>
+	<hr>
+	<b style="font-size:12px;">Alert For Lost/Restore Of Connection:</b>
+	<select id="alertLostCon" style="width: 251;font-size:12px;">
+	<option value=1>ON (Lost/Restore)</option>
+	<option value=3>ON (Only Lost)</option>
+	<option value=4>ON (Only Restore)</option>
+	<option value=2>OFF</option>
+	</select><br>
+	<span style="font-size:11px;">Required: Turn ON The Internal IP Auto Refresh.</span><br>
+	<b style="font-size:12px;">Sound:</b>
+	<select id="soundLostCon" style="width: 110;font-size:12px;" onChange="soundSettings();">
+	<option value="1">Sound 1</option>
+	<option value="2">Sound 2</option>
+	<option value="3">Sound 3</option>
+	<option value="4">Sound 4</option>
+	<option value="5">Sound 5</option>
+	<option value="50">Custom</option>
+	</select><input type="button" value="Choose" onClick="chooseSound();" id="csButton"><br>
+	<span id="soundLostConurl" style="font-size:10px"></span><br>
+	<b style="font-size:12px;">Sound Volume:</b>
+	<select id="soundLostConVol" style="width: 60;font-size:12px;">
+	<option value="10">10%</option>
+	<option value="20">20%</option>
+	<option value="30">30%</option>
+	<option value="40">40%</option>
+	<option value="50">50%</option>
+	<option value="60">60%</option>
+	<option value="70">70%</option>
+	<option value="80">80%</option>
+	<option value="90">90%</option>
+	<option value="100">100%</option>
+	</select><input type="button" value="Play" onClick="playchoosesound();"><input type="button" value="Stop" onClick="clickstop();"><br>
+	<b style="font-size:12px;">Sound Repeats:</b>
+	<select id="soundLostConRepeats" style="width: 80;font-size:12px;" onChange="soundLostConRepeatsSettings();">
+	<option value="1">ON</option>
+	<option value="2">OFF</option>
+	<option value="3">Custom</option>
+	</select>
+	&nbsp;<input style="width:30;font-size:12px;" id="soundLostConCount" type="text" maxlength="2"><span id="timestext" style="font-size:12px;">Times</span><br>
+	<span style="font-size:11px;">Note: Click &#9834; icon to stop the sound.</span>
+	<br><hr>
+	<b style="font-size:12px;">Auto Update Notifier:</b>
+	<select id="update" style="width: 116;font-size:12px;">
+	<option value="1">ON</option>
+	<option value="2">OFF</option>
+	</select><br>
+	<div id=newUpdate>
+	<span style="font-size:12px;"><a href="http://addgadgets.com">Newer version is available</a></span>
+	</div>
+	<div id=noUpdate>
+	<span style="font-size:12px;"><a href="http://addgadgets.com">No update is available</a></span>
+	</div>
+	<button style="font-size:12px;" onClick="showUpdate();">Check Update</button>
+	<br><hr>
+	<center><button style="font-size:12px;" onClick="DefOptionsSetting();disableInterface();">Reset To Default Setting</button></center>
+</div>
+<div class="tabbertab Extender" style="width:280;font-size:10px; overflow-y:scroll; overflow-x:hidden" title="Display">
+	<b style="font-size:12px;">Size:</b>
+	<select id="fixsize" style="width:80;font-size:12px;" onChange="sizeSettings();">
+	<option value = "100">100%</option>
+	<option value = "125">125%</option>
+	<option value = "150">150%</option>
+	<option value = "200">200%</option>
+	<option value = "250">250%</option>
+	<option value = "300">300%</option>
+	<option value = "350">350%</option>
+	<option value = "400">400%</option>
+	<option value = "Custom">Custom</option>
+	</select>
+	<input id="ssize" style="width:30;font-size:12px;visibility:hidden;" type="text" maxlength="3">
+	<span id="sizetext" style="font-size:12px;">% (Max = 400)</span>
+	<br><hr>
+	<b style="font-size:12px;">Show Network Interface Name:</b>
+	<select id="showNetworkAdaName" style="width:56;font-size:12px;">
+	<option value = "1">ON</option>
+	<option value = "2">OFF</option>
+	</select>
+	<hr>
+	<b style="font-size:12px;">Show Internal IP:</b>
+	<select id="showInternalIP" style="width:139;font-size:12px;">
+	<option value = "1">ON</option>
+	<option value = "2">OFF</option>
+	</select><br>
+	<span style="font-size:12px;">Auto Refresh</span>
+	<select id="autoiip" style="width: 60;font-size:12px;">
+	<option value="1">ON</option>
+	<option value="2">OFF</option>
+	</select>
+	<span style="font-size:12px;">Interval: (sec)</span> &nbsp;<input style="width:30;font-size:12px;" id="setiiptimer" type="text" value="0"><br><hr>
+	<b style="font-size:12px;">Show External IP:</b>
+	<select id="showextip" style="width: 138;font-size:12px;">
+	<option value="1">ON (Auto)</option>
+	<option value="2">OFF</option>
+	</select><br>
+	<span style="font-size:12px;">Auto Refresh</span>
+	<select id="autoeip" style="width: 59;font-size:12px;">
+	<option value="1">ON</option>
+	<option value="2">OFF</option>
+	</select>
+	<span style="font-size:12px;">Interval: (min)</span> &nbsp;<input style="width:30;font-size:12px;" id="seteiptimer" type="text" value="0"><br>
+	<span style="font-size:12px;">Recheck When Reconnect Network:</span>
+	<select id="autoNetwork" style="width: 47;font-size:12px;">
+	<option value="1">ON</option>
+	<option value="2">OFF</option>
+	</select><br><hr>
+	<b style="font-size:12px;">Show Blacklisted IP Ratio:</b>
+	<select id="showBlacklisted" style="width:87;font-size:12px;">
+	<option value = "1">ON</option>
+	<option value = "2">OFF</option>
+	</select>
+	<hr>
+	<b style="font-size:12px;">Show Speed Test &amp; IP Lookup:</b>
+	<select id="showSTIL" style="width:57;font-size:12px;">
+	<option value = "1">ON</option>
+	<option value = "2">OFF</option>
+	</select>
+	<hr>
+	<b style="font-size:12px;">Show Firewall:</b>
+	<select id="showFirewall" style="width:160;font-size:12px;">
+	<option value = "1">ON</option>
+	<option value = "2">OFF</option>
+	</select><br>
+	<span style="font-size:11px;">Note: Only work on Windows firewall.</span>
+	<hr>
+	<b style="font-size:12px;">Mode:</b> 
+	<select id="VisMode" style="width:210;font-size:12px;">
+	<option value = "0">Display Bit/s</option>
+	<option value = "1">Display Bars</option>
+	</select><br>
+	<span style="font-size:12px;">Upload Bar Scale: &nbsp;&nbsp;&nbsp; (KB [0=Auto])&nbsp;<input style="width:52;font-size:12px;" id="barup" type="text" value="0"><br>
+	Download Bar Scale: (KB [0=Auto])&nbsp;</span><input style="width:51;font-size:12px;" id="bardown" type="text" value="0"><br>
+	<b style="font-size:12px;">Fixed Unit to:</b>
+	<select id="fixUnit" style="width: 166;font-size:12px;">
+	<option value="1">bit and byte</option>
+	<option value="2">kilobit and kilobyte</option>
+	<option value="3">megabit and megabyte</option>
+	</select><br><hr>
+	<b style="font-size:12px;">Graph:</b>
+	<select id="graph" style="width:50;font-size:12px;" onChange="graphSettings();">
+	<option value = "1">ON</option>
+	<option value = "2">OFF</option>
+	</select>
+	<b id="drawtext" style="font-size:12px;">Drawing Style:</b>
+	<select id="drawstyle" style="width:62;font-size:12px;">
+	<option value = "0">Line</option>
+	<option value = "1">Filled</option>
+	</select><br><hr>
+	<b style="font-size:12px;">History Scale Type:</b><br>
+	<select id="ScaleType" style="width:98;font-size:12px;">
+	<option value = "0">Automatic</option>
+	<option value = "1">Fixed</option>
+	</select><span style="font-size:12px;"> Fixed Scale to: (KB) </span><input style="width:36;font-size:12px;" id="ScaleSize" type="text">
+	<hr>
+	<b style="font-size:12px;">Show Current &amp; Total Usage:</b>
+	<select id="totalbandwidth" style="width: 70;font-size:12px;">
+	<option value="1">ON</option>
+	<option value="2">OFF</option>
+	</select><br>
+	<span style="font-size:12px;">Save Total Usage When Close:</span>
+	<select id="saveWriteUsage" style="width: 80;font-size:12px;">
+	<option value="1">ON</option>
+	<option value="2">OFF</option>
+	</select><br>
+	<span style="width:160;font-size:12px;">Set Total Usage (Upload):</span>
+	<input style="width:40;font-size:12px;" id="changebytesSentTotal" type="text">
+	<select id="bytesSentSize" style="width:45;font-size:12px;">
+	<option value = "1">MB</option>
+	<option value = "2">GB</option>
+	<option value = "3">TB</option>
+	</select><br>
+	<span style="font-size:12px;">Set Total Usage (Download):</span>
+	<input style="width:40;font-size:12px;" id="changebytesReceivedTotal" type="text">
+	<select id="bytesReceivedSize" style="width:45;font-size:12px;">
+	<option value = "1">MB</option>
+	<option value = "2">GB</option>
+	<option value = "3">TB</option>
+	</select><br>
+	<hr>
+	<b style="font-size:12px;">Show Search:</b>
+	<select id="showSearch" style="width:164;font-size:12px;">
+	<option value = "1">ON</option>
+	<option value = "2">OFF</option>
+	</select>
+	<hr>
+	<center><button style="font-size:12px;" onClick="DefDisplaySetting();">Reset To Default Setting</button></center>
+</div>
+<div class="tabbertab Extender" style="width:280;font-size:10px; overflow-y:scroll; overflow-x:hidden" title="Color">
+	<b style="font-size:12px;">Background:</b>
+	<select id="fixBackg" style="width:118;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#000000" style="color:#000000">Black</option>
+	<option value="#0c2227" style="color:#0c2227">Blue</option>
+	<option value="#000229" style="color:#000229">Blue 2</option>
+	<option value="#2a1b0f" style="color:#2a1b0f">Brown</option>
+	<option value="#0f1b02" style="color:#0f1b02">Green</option>
+	<option value="#2c0024" style="color:#2c0024">Purple</option>
+	<option value="#660015" style="color:#660015">Red</option>
+	<option value="">Color Code</option>
+	</select>
+	<input id="backg" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+	<hr id="showBackg" style="position:absolute;">
+	<br>
+	<b style="font-size:12px;">Title:</b>
+	<select id="fixTitle" style="width:165;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+	</select>
+	<input id="title" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+	<hr id="showTitle" style="position:absolute;">
+	<br>
+	<b style="font-size:12px;">Network Interface:</b>
+	<select id="fixNetIN" style="width:79;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+	</select>
+	<input id="NetIN" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+	<hr id="showNetIN" style="position:absolute;">
+	<br>
+	<b style="font-size:12px;">Alert Icon:</b>
+	<select id="fixAlertIcon" style="width:130;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+	</select>
+	<input id="AlertIcon" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+	<hr id="showAlertIcon" style="position:absolute;">
+	<br>
+	<b style="font-size:12px;">ID:</b>
+	<select id="fixSSID" style="width:177;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+	</select>
+	<input id="SSID" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+	<hr id="showSSID" style="position:absolute;">
+	<br>
+	<b style="font-size:12px;">Int IP:</b>
+	<select id="fixINTIP" style="width:155;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+	</select>
+	<input id="INTIP" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+	<hr id="showINTIP" style="position:absolute;">
+	<br>
+	<b style="font-size:12px;">Ext IP:</b>
+	<select id="fixEXTIP" style="width:154;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+	</select>
+	<input id="EXTIP" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+	<hr id="showEXTIPA" style="position:absolute;">
+	<br>
+	<b style="font-size:12px;">Blacklisted IP:</b>
+	<select id="fixBLIP" style="width:110;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+	</select>
+	<input id="BLIP" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+	<hr id="showBLIP" style="position:absolute;">
+	<br>
+	<b style="font-size:12px;">Button:</b>
+	<select id="fixBut" style="width:147;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+	</select>
+	<input id="But" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+	<hr id="showBut" style="position:absolute;">
+	<br>
+	<b style="font-size:12px;">Firewall:</b>
+	<select id="fixFWPF" style="width:146;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+	</select>
+	<input id="FWPF" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+	<hr id="showFWPF" style="position:absolute;">
+	<br>
+	<b style="font-size:12px;">Connection:</b>
+	<select id="fixConn" style="width:121;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+	</select>
+	<input id="Conn" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+	<hr id="showConn" style="position:absolute;">
+	<br>
+	<b style="font-size:12px;">Signal:</b>
+	<select id="fixSign" style="width:154;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+	</select>
+	<input id="Sign" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+	<hr id="showSign" style="position:absolute;">
+	<br><hr>
+	<center><b style="font-size:12px;">Speed</b></center>
+	<b style="font-size:12px;">Upload:</b>
+	<select id="fixUplo" style="width:149;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+	</select>
+	<input id="Uplo" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+	<hr id="showUplo" style="position:absolute;">
+	<br>
+	<b style="font-size:12px;">Download:</b>
+	<select id="fixDownlo" style="width:129;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+	</select>
+	<input id="Downlo" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+	<hr id="showDownlo" style="position:absolute;">
+	<br><hr>
+	<center><b style="font-size:12px;">Current Usage</b></center>
+	<b style="font-size:12px;">Text:</b>
+	<select id="fixCurr" style="width:164;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+	</select>
+	<input id="Curr" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+	<hr id="showCurr" style="position:absolute;">
+	<br>
+	<b style="font-size:12px;">Upload:</b>
+	<select id="fixCurrUp" style="width:149;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+	</select>
+	<input id="CurrUp" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+	<hr id="showCurrUp" style="position:absolute;">
+	<br>
+	<b style="font-size:12px;">Download:</b>
+	<select id="fixCurrDown" style="width:129;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+	</select>
+	<input id="CurrDown" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+	<hr id="showCurrDown" style="position:absolute;">
+	<br><hr>
+	<center><b style="font-size:12px;">Total Usage</b></center>
+	<b style="font-size:12px;">Text:</b>
+	<select id="fixTota" style="width:164;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+	</select>
+	<input id="Tota" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+	<hr id="showTota" style="position:absolute;">
+	<br>
+	<b style="font-size:12px;">Upload:</b>
+	<select id="fixTotaUp" style="width:149;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+	</select>
+	<input id="TotaUp" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+	<hr id="showTotaUp" style="position:absolute;">
+	<br>
+	<b style="font-size:12px;">Download:</b>
+	<select id="fixTotaDown" style="width:129;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+	</select>
+	<input id="TotaDown" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+	<hr id="showTotaDown" style="position:absolute;">
+	<br><hr>
+	<center><b style="font-size:12px;">Remaining</b></center>
+	<b style="font-size:12px;">Percent (%):</b>
+	<select id="fixRemPercent" style="width:116;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+	</select>
+	<input id="RemPercent" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+	<hr id="showRemPercent" style="position:absolute;">
+	<br>
+	<b style="font-size:12px;">Days:</b>
+	<select id="fixRemDays" style="width:162;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+	</select>
+	<input id="RemDays" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+	<hr id="showRemDays" style="position:absolute;">
+	<br>
+	<b style="font-size:12px;">Quota:</b>
+	<select id="fixRemQuota" style="width:153;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+	</select>
+	<input id="RemQuota" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+	<hr id="showRemQuota" style="position:absolute;">
+	<br>
+	<b style="font-size:12px;">Per Day:</b>
+	<select id="fixRemPerDay" style="width:144;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+	</select>
+	<input id="RemPerDay" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+	<hr id="showRemPerDay" style="position:absolute;">
+	<br>
+	<b style="font-size:12px;">Used:</b>
+	<select id="fixRemUsed" style="width:162;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+	</select>
+	<input id="RemUsed" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+	<hr id="showRemUsed" style="position:absolute;">
+	<br>
+	<b style="font-size:12px;">Peak:</b>
+	<select id="fixPeakUsed" style="width:162;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+	</select>
+	<input id="PeakUsed" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+	<hr id="showPeakUsed" style="position:absolute;">
+	<br>
+	<b style="font-size:12px;">Off Peak:</b>
+	<select id="fixOffpeakUsed" style="width:139;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+	</select>
+	<input id="OffpeakUsed" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+	<hr id="showOffpeakUsed" style="position:absolute;">
+	<br><hr>
+	<center><b style="font-size:12px;">Flyout</b></center>
+	<b style="font-size:12px;">Background:</b>
+	<select id="fixFlyoutBac" style="width:118;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#000000" style="color:#000000">Black</option>
+	<option value="#0c2227" style="color:#0c2227">Blue</option>
+	<option value="#000229" style="color:#000229">Blue 2</option>
+	<option value="#2a1b0f" style="color:#2a1b0f">Brown</option>
+	<option value="#0f1b02" style="color:#0f1b02">Green</option>
+	<option value="#2c0024" style="color:#2c0024">Purple</option>
+	<option value="#660015" style="color:#660015">Red</option>
+	<option value="">Color Code</option>
+	</select>
+	<input id="FlyoutBac" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+	<hr id="showFlyoutBac" style="position:absolute;">
+	<br>
+	<b style="font-size:12px;">Title:</b>
+	<select id="fixFlyoutTit" style="width:165;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+	</select>
+	<input id="FlyoutTit" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+	<hr id="showFlyoutTit" style="position:absolute;">
+	<br>
+	<b style="font-size:12px;">Details:</b>
+	<select id="fixFlyoutDet" style="width:150;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+	</select>
+	<input id="FlyoutDet" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+	<hr id="showFlyoutDet" style="position:absolute;">
+	<br><hr>
+	<center><button style="font-size:12px;" onClick="DefColorSetting();">Reset To Default Setting</button></center>
+</div>
+<div class="tabbertab Extender" style="width:280;font-size:10px; overflow-y:scroll; overflow-x:hidden;" title="About">
+	<span style="font-size:12px;"><b>Links</b><br>
+	If you found this useful gadgets please help me spread the word by linking to us from your site or blog!<a href="http://addgadgets.com/link.htm">Click here</a> for example of links.<br>
+	For Facebook user click <a href="http://www.facebook.com/sharer/sharer.php?u=http%3A%2F%2Faddgadget.com%2Fnetwork_meter%2F&src=sp"><img src="Share.png" alt="Facebook Share" style="border:0;"></a><br>
+	<hr>
+	<a href="http://www.facebook.com/AddGadget"><img src="likebox.png" alt="Facebook Like Box" style="border:0;"></a><br>
+	<hr>
+	For More Info and Support <a href="http://addgadgets.com/network_meter/info.htm">click here</a>.<br>
+	Designed and written by Chaw Keat.<br>
+	Copyright © 2007-2013 AddGadgets.com<br>
+	All rights reserved.<br>
+	<a href="http://www.twitter.com/Add_Gadget"><img src="follow_me-a.png" alt="Follow Add_Gadget on Twitter" border="0"/></a>
+	<hr>
+	<b>Credits</b><br>
+	Special Thanks to many wonderful advisors and beta testers!</span>
+</div>
+</div>
+	<a href="https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=C8HVWNQG6543S"><img src="Donate.png" alt="Donate by PayPal" style="border:0;"></a><br>
+	<span style="font-size:12px;">Network Meter V 9.6 By <a href="http://addgadgets.com">Addgadgets.com</a></span>
+	<script type="text/javascript">
+tabberAutomatic(tabberOptions);
+</script>
+</body>
+</html>

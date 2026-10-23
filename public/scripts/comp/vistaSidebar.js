@@ -12,6 +12,8 @@
  *   sidebar_feed                      Feed Headlines (https feeds only)
  * Mail and Sidebar Outlook read Dovecote (dovecote_list_mail / dovecote_list_mailboxes).
  * Calculator, Desktop Calculator, Timer, HTC Hero Clock, Clipboard, and Contacts are client-only.
+ * Hosted gadgets (Yozora #629) are real Sidebar gadgets listed in public/static_images/vista-gadgets/catalog.json and
+ * run from their own files by public/scripts/comp/vistaGadgetHost.js (loaded when one shows).
  *
  * Layers: #vistaSidebar holds the pane and every desktop gadget; each is position: fixed with
  * its own z-index (public/css/vista-sidebar.css), so the pane and "Always on Top" gadgets can
@@ -86,6 +88,21 @@ const vsbNewId = function () {
 
 const vsbPad2 = (n) => String(n).padStart(2, '0');
 
+/**
+ * Move a gadget between the pane and the desktop. moveBefore keeps an <iframe> running where
+ * insertBefore unloads and reloads it (hosted gadgets, Yozora #629), and keeps media and focus.
+ */
+const vsbMoveNode = function (parent, node, before = null) {
+    if (node.parentNode === parent && (before === null ? parent.lastChild === node : node.nextSibling === before)) return;
+    if (parent.moveBefore && node.isConnected && parent.isConnected) {
+        try {
+            parent.moveBefore(node, before);
+            return;
+        } catch (_e) { /* not movable here: fall back */ }
+    }
+    parent.insertBefore(node, before);
+};
+
 const vsbWorkspaceImageUrl = function (item) {
     // resolveGalleryPreviewUrl: public/scripts/comp/assetUrlResolver.js
     return item && item.base ? resolveGalleryPreviewUrl({ base: item.base }) : '';
@@ -123,7 +140,7 @@ const VSB_GADGETS = {
     currency: { title: 'Currency', icon: 'currency/icon.png', desc: 'Convert an amount from one currency to another.', author: 'Xyridian Corporation' },
     deskcalc: { title: 'Desktop Calculator', icon: 'deskcalc/icon.png', desc: 'A calculator for the Sidebar. Undock it for scientific keys.', author: 'Home Cooked Gadgets', options: true },
     feed: { title: 'Feed Headlines', icon: 'feed/icon.png', desc: 'See headlines from a web feed. Click a headline to open it.', author: 'Xyridian Corporation', options: true },
-    hero: { title: 'HTC Hero Clock', icon: 'hero/icon.png', desc: 'Nine clock faces based on the HTC Hero.', author: 'Marc22', options: true },
+    hero: { title: 'HTC Hero Clock', icon: 'hero/icon.png', desc: 'Twelve clock faces based on the HTC Hero and Vista Orb clocks.', author: 'Marc22', options: true },
     mail: { title: 'Mail', iconUrl: '/static_images/app_icons/vista-mail.webp', desc: 'See your latest Dovecote Inbox messages and how many are unread. Click a message to read it.', author: 'Dreamscape', options: true },
     outlook: { title: 'Sidebar Outlook', icon: 'outlook/icon.png', desc: 'Watch your Dovecote Inbox from the desktop. Click a message to read it.', author: 'Edward J. Boelzner', options: true },
     notes: { title: 'Notes', icon: 'notes/icon.png', desc: 'Capture ideas, notes, and reminders in a quick and easy way.', author: 'Xyridian Corporation', options: true },
@@ -135,6 +152,67 @@ const VSB_GADGETS = {
 };
 
 const vsbGadgetIconUrl = (type) => VSB_GADGETS[type].iconUrl || VSB_ASSETS + VSB_GADGETS[type].icon;
+
+// ---------------------------------------------------------------- hosted gadgets (Yozora #629)
+
+const vsbHosted = { loading: null, frames: [] };
+
+/** A hosted gadget's hooks wait for vistaGadgetHost.js (feature vista_gadget_host) on first use. */
+const vsbHostCall = function (fn, inst, ...args) {
+    if (window.vistaGadgetHost) return vistaGadgetHost[fn](inst, ...args);
+    // featureLoader.loadFeature: public/scripts/comp/featureLoader.js
+    const ready = featureLoader.loadFeature('vista_gadget_host').then(() => {
+        if (fn === 'destroy' || !inst.destroyed) return vistaGadgetHost[fn](inst, ...args);
+        return undefined;
+    });
+    if (fn === 'mount' && !vsbHosted.booted) vsbHosted.frames.push(ready.catch(() => {}));
+    return undefined;
+};
+
+// Options: the gadget's own settings page (vistaGadgetHost.js vghForm); the host is loaded once the gadget shows
+const vsbHostedForm = {
+    width: (inst) => vistaGadgetHost.form.width(inst),
+    html: (set, inst) => vistaGadgetHost.form.html(set, inst),
+    ready: (dialog, set, inst) => vistaGadgetHost.form.ready(dialog, set, inst),
+    read: (dialog, set, inst) => vistaGadgetHost.form.read(dialog, set, inst),
+    cancel: (dialog, set, inst) => vistaGadgetHost.form.cancel(dialog, set, inst)
+};
+
+const vsbHostedDef = (entry) => ({
+    title: entry.title,
+    iconUrl: entry.icon || VSB_ASSETS + 'sidebar/gadget-icon.png',
+    desc: entry.desc,
+    author: entry.author,
+    version: entry.version,
+    hosted: entry,
+    mount: (inst) => {
+        const pending = vsbHostCall('mount', inst);
+        // the boot's gadget stage waits on these (vsbStartForBoot); later mounts are not collected
+        if (pending && !vsbHosted.booted) vsbHosted.frames.push(pending);
+    },
+    apply: (inst) => vsbHostCall('apply', inst),
+    destroy: (inst) => vsbHostCall('destroy', inst),
+    form: entry.settings ? vsbHostedForm : null,
+    menu: entry.picture ? [{ text: 'New Picture', action: 'vsb-hosted-picture' }] : undefined
+});
+
+/** public/static_images/vista-gadgets/catalog.json (scripts/import-vista-gadget.js) into VSB_GADGETS, once. */
+const vsbLoadHostedCatalog = function () {
+    if (!vsbHosted.loading) {
+        vsbHosted.loading = fetch('/static_images/vista-gadgets/catalog.json', { cache: 'no-cache' })
+            .then((r) => (r.ok ? r.json() : { gadgets: [] }))
+            .then((data) => {
+                (data.gadgets || []).forEach((entry) => {
+                    if (entry && entry.id && !VSB_GADGETS[entry.id]) VSB_GADGETS[entry.id] = vsbHostedDef(entry);
+                });
+            })
+            .catch((error) => {
+                console.warn('[sidebar] gadget catalog failed:', error);
+                vsbHosted.loading = null;
+            });
+    }
+    return vsbHosted.loading || Promise.resolve();
+};
 
 // ---------------------------------------------------------------- clock
 
@@ -150,7 +228,8 @@ const VSB_CLOCK_THEMES = [
     ['novelty', null, 'Calibri, "Segoe UI", sans-serif', '#6dadff', 10, 18, 0, 60, 7, 81, 46, 59]
 ];
 
-const VSB_HERO_THEMES = ['blue1', 'blue2', 'blue3', 'newv1', 'newv2', 'wmc', 'live', 'wmp', 'cd'].map((name) => (
+// globe, globe2 and acw are Vista Orb Clock's three faces the HTC Hero set does not have (Yozora #629)
+const VSB_HERO_THEMES = ['blue1', 'blue2', 'blue3', 'newv1', 'newv2', 'wmc', 'live', 'wmp', 'cd', 'globe', 'globe2', 'acw'].map((name) => (
     [name, null, '"Segoe UI", sans-serif', '#ffffff', 9, -8, 0, 100, 13, 129, 0, 58]
 ));
 
@@ -1131,8 +1210,10 @@ const vsbSlideFlyout = function (inst, refresh) {
 
 const vsbCloseFlyout = function () {
     if (!vsb.flyout) return;
-    vsb.flyout.el.remove();
+    const { el, onClose } = vsb.flyout;
+    el.remove();
     vsb.flyout = null;
+    if (onClose) onClose();
 };
 
 const vsbSlideOptions = {
@@ -2640,6 +2721,7 @@ const vsbDestroyInstance = function (inst) {
         vsbNotesSaveLinked(inst);
     }
     inst.destroyed = true;
+    if (inst.def.destroy) inst.def.destroy(inst);
     clearTimeout(inst.timer);
     clearInterval(inst.timer);
     if (inst.sounds) Object.values(inst.sounds).forEach((audio) => audio.pause());
@@ -2655,23 +2737,38 @@ const vsbSetSettings = function (inst, patch) {
     vsbPaginate();
 };
 
+/** The shared confirmation dialog without a caption icon, while a gadget's window uses it. */
+const vsbPlainDialog = function (on) {
+    const dialog = document.getElementById('confirmationDialog');
+    if (dialog) dialog.classList.toggle('vsb-plain-dialog', on);
+};
+
 const vsbOpenOptions = async function (inst, event) {
     const form = inst.def.form;
     if (!form) return;
     const settings = inst.g.settings;
+    // a gadget's settings window has a bare caption (vista-sidebar.css .vsb-plain-dialog), not a gear
+    vsbPlainDialog(true);
     // showConfirmationDialog: public/scripts/comp/confirmationDialog.js
     const next = await showConfirmationDialog(form.html(settings, inst), [
         { text: 'OK', value: true, className: 'btn-standard primary' },
         { text: 'Cancel', value: false, className: 'btn-standard' }
     ], event, {
         title: inst.def.title,
-        icon: 'fas fa-gear',
-        width: 320,
+        icon: 'vsb-no-icon',
+        width: form.width ? form.width(inst) : 320,
         showCloseButton: false,
         // onDialogReady gets the listener AbortSignal, not the dialog
-        onDialogReady: () => { if (form.ready) form.ready(document.getElementById('confirmationDialog'), settings, inst); },
-        resolveValue: (value, dialog) => (value ? form.read(dialog, settings) : null)
-    });
+        onDialogReady: () => {
+            vsbPlainDialog(true);
+            if (form.ready) form.ready(document.getElementById('confirmationDialog'), settings, inst);
+        },
+        resolveValue: (value, dialog) => {
+            if (value) return form.read(dialog, settings, inst);
+            if (form.cancel) form.cancel(dialog, settings, inst);
+            return null;
+        }
+    }).finally(() => vsbPlainDialog(false));
     if (!next || inst.destroyed) return;
     vsbSetSettings(inst, next);
 };
@@ -2722,7 +2819,10 @@ const vsbRender = function () {
     vsb.pane.classList.toggle('is-on-top', !!state.onTop);
 
     const live = new Set();
+    let dockCursor = null; // the docked gadget placed last: the next one goes right after it
     state.gadgets.forEach((g) => {
+        // a hosted type whose catalog did not load stays in the state, undrawn
+        if (!VSB_GADGETS[g.type]) return;
         live.add(g.id);
         let inst = vsb.instances.get(g.id);
         if (inst && inst.g.type !== g.type) {
@@ -2743,11 +2843,13 @@ const vsbRender = function () {
         if (g.docked) {
             inst.el.style.left = '';
             inst.el.style.top = '';
-            vsb.dock.appendChild(inst.el);
+            const ref = dockCursor ? dockCursor.nextSibling : vsb.dock.firstChild;
+            if (inst.el !== ref) vsbMoveNode(vsb.dock, inst.el, ref);
+            dockCursor = inst.el;
         } else {
             inst.el.style.left = g.x + 'px';
             inst.el.style.top = g.y + 'px';
-            if (inst.el.parentNode !== vsb.root) vsb.root.appendChild(inst.el);
+            if (inst.el.parentNode !== vsb.root) vsbMoveNode(vsb.root, inst.el);
         }
     });
     vsb.instances.forEach((inst, id) => {
@@ -2825,9 +2927,16 @@ const vsbFlushSave = async function () {
     const workspaceId = vsb.saveWorkspaceId;
     if (!workspaceId || !vsb.state) return;
     vsb.saveWorkspaceId = null;
+    // nothing changed since the last save: no packet, and no push that wakes the other tabs
+    const json = JSON.stringify(vsb.state);
+    if (json === vsb.lastSavedJson && workspaceId === vsb.workspaceId) {
+        if (!vsb.saveTimer) vsbMarkDesktopSync('saved');
+        return;
+    }
     try {
         // sidebar_save: modules/ws/handlers/290-sidebarHandler.js
         await wsClient.sendMessage('sidebar_save', { workspaceId, sidebar: vsb.state }, false);
+        if (workspaceId === vsb.workspaceId) vsb.lastSavedJson = json;
         vsb.saved = true;
         if (!vsb.saveTimer) vsbMarkDesktopSync('saved');
     } catch (error) {
@@ -2844,15 +2953,44 @@ const vsbFlushSave = async function () {
     }
 };
 
+/**
+ * Another tab saved this workspace's Sidebar. Gadgets it did not change keep running; a hosted
+ * gadget whose settings changed keeps its page too and reads the new store (rebuilding it would
+ * reload every gadget on each save another tab makes); a changed built-in gadget is rebuilt.
+ */
+const vsbAdoptPushedState = function (sidebar) {
+    if (!sidebar) return;
+    const before = new Map((vsb.state ? vsb.state.gadgets : []).map((g) => [g.id, JSON.stringify(g)]));
+    vsb.lastSavedJson = JSON.stringify(sidebar);
+    vsb.state = sidebar;
+    vsb.saved = true;
+    sidebar.gadgets.forEach((g) => {
+        const inst = vsb.instances.get(g.id);
+        if (!inst || inst.g.type !== g.type) return;
+        const same = JSON.stringify(g) === before.get(g.id);
+        if (same || inst.def.hosted) {
+            const docked = !!inst.g.docked;
+            inst.g = g;
+            // vsbRender applies when the docked flag differs from what the element shows
+            inst.el.dataset.docked = docked ? '1' : '0';
+            return;
+        }
+        vsbDestroyInstance(inst);
+        vsb.instances.delete(g.id);
+    });
+    vsbRender();
+};
+
 const vsbLoad = async function (workspaceId) {
     if (vsb.saveTimer) await vsbFlushSave();
     const seq = ++vsb.loadSeq;
     try {
         // sidebar_get: modules/ws/handlers/290-sidebarHandler.js
-        const data = await wsClient.sendMessage('sidebar_get', { workspaceId }, false);
+        const [data] = await Promise.all([wsClient.sendMessage('sidebar_get', { workspaceId }, false), vsbLoadHostedCatalog()]);
         if (seq !== vsb.loadSeq || !data) return;
         vsb.workspaceId = data.workspaceId;
         vsb.state = data.sidebar;
+        vsb.lastSavedJson = JSON.stringify(data.sidebar);
         vsb.saved = !!data.saved;
         vsb.page = 0;
         vsb.instances.forEach(vsbDestroyInstance);
@@ -2892,13 +3030,26 @@ const vsbDefaultSettings = function (type) {
         case 'slideshow': return { source: 'images', seconds: 15, transition: 'none', shuffle: true, scale: 1, search: null, shape: 'landscape' };
         case 'weather': return { unit: 'F', feelsLike: false, hidePlace: false, placeAlt: 'none' };
         case 'mail': return { unreadOnly: false, count: 3 };
-        default: return {};
+        default: return VSB_GADGETS[type] && VSB_GADGETS[type].hosted ? { store: {} } : {};
     }
+};
+
+/** A hosted gadget's package, downloaded under Vista's progress dialog the first time it is added. */
+const vsbInstallHosted = function (entry) {
+    // featureLoader.loadFeature: public/scripts/comp/featureLoader.js
+    return featureLoader.loadFeature('vista_gadget_host').then(() => vistaGadgetHost.install(entry)).catch(() => false);
 };
 
 const vsbAddGadget = function (type, options) {
     const opts = options || {};
     if (!vsb.state) return;
+    const def = VSB_GADGETS[type];
+    if (def && def.hosted && !opts.installed) {
+        vsbInstallHosted(def.hosted).then((ok) => {
+            if (ok) vsbAddGadget(type, { ...opts, installed: true });
+        });
+        return;
+    }
     if (vsb.state.gadgets.length >= 24) {
         showGlassToast('warning', 'Melaton Sidebar', 'The Sidebar is full. Close a gadget first.', false, 5000);
         return;
@@ -2977,7 +3128,7 @@ const vsbDragMove = function (e) {
             d.inst.el.after(d.placeholder);
         }
         d.inst.el.classList.add('is-dragging');
-        vsb.root.appendChild(d.inst.el);
+        vsbMoveNode(vsb.root, d.inst.el);
         vsbCloseFlyout();
     }
     e.preventDefault();
@@ -3021,7 +3172,8 @@ const vsbDragEnd = function () {
     const g = d.inst.g;
     const docked = !!(d.placeholder && d.placeholder.parentNode);
     if (docked) {
-        d.placeholder.replaceWith(el);
+        vsbMoveNode(d.placeholder.parentNode, el, d.placeholder);
+        d.placeholder.remove();
         g.docked = true;
         const order = Array.from(vsb.dock.querySelectorAll(':scope > .vsb-gadget')).map((c) => c.dataset.gadgetId);
         vsb.state.gadgets.sort((a, b) => {
@@ -3122,6 +3274,7 @@ const vsbHandleMenuAction = function (action, inst, event, item) {
         case 'vsb-mail-refresh': vsbMailRefresh(inst); break;
         case 'vsb-refresh': if (inst.refresh) inst.refresh(); break;
         case 'vsb-puzzle-new': vsbPuzzleNewPicture(inst); break;
+        case 'vsb-hosted-picture': vsbHostCall('newPicture', inst); break;
         case 'vsb-slide-next': vsbSlideStep(inst, 1); break;
         case 'vsb-slide-prev': vsbSlideStep(inst, -1); break;
         case 'vsb-slide-goto':
@@ -3134,7 +3287,7 @@ const vsbHandleMenuAction = function (action, inst, event, item) {
 
 const vsbOpenProperties = async function (event) {
     const s = vsb.state;
-    const running = s.gadgets.map((g) => VSB_GADGETS[g.type].title);
+    const running = s.gadgets.filter((g) => VSB_GADGETS[g.type]).map((g) => VSB_GADGETS[g.type].title);
     // showConfirmationDialog: public/scripts/comp/confirmationDialog.js
     const result = await showConfirmationDialog(`<div class="vsb-options vsb-properties">
         <fieldset><legend>Arrangement</legend>
@@ -3197,12 +3350,17 @@ const vsbSyncTray = function () {
 
 const VSB_GALLERY_ID = 'vistaGadgetGallery';
 const VSB_GALLERY_PAGE = 12;
+// "Get more gadgets online": Windows Live Gallery's gadget pages as they were (an Alchemy tab, featureLoader.js catchWebLinkClick)
+const VSB_GALLERY_ONLINE = 'https://web.archive.org/web/2008/http://gallery.live.com/results.aspx?bt=1&pl=1';
+// Vista's details pane names the publisher under its logo: Xyridian's own gadgets carry the Xyridian logo
+const VSB_GALLERY_OEM = { logo: '/static_images/xyridian/xyridian-logo-light.png', copyright: '\u00a9 2006' };
 const vsbGallery = { page: 0, query: '', selected: null };
 
 function openVistaGadgetGallery() {
     if (!vsb.state) return;
     const modal = vsbEnsureGallery();
     vsbGalleryRender();
+    vsbLoadHostedCatalog().then(() => vsbGalleryRender());
     if (modal.classList.contains('minimised')) {
         // restoreMinimizedModal: public/scripts/comp/modalUtils.js
         restoreMinimizedModal(modal);
@@ -3244,6 +3402,7 @@ const vsbEnsureGallery = function () {
         </div>
         <div class="vsb-gallery-footer">
             <span class="vsb-gallery-details-toggle" tabindex="0"><span class="vsb-gallery-chevron"></span><span class="vsb-gallery-details-label">Show details</span></span>
+            <a class="vsb-gallery-online" href="${VSB_GALLERY_ONLINE}"><img src="/static_images/vista-sidebar/sidebar/gallery-online.png" alt="">Get more gadgets online</a>
         </div>`;
     document.body.appendChild(modal);
     const grid = modal.querySelector('.vsb-gallery-grid');
@@ -3285,7 +3444,11 @@ const vsbEnsureGallery = function () {
 const vsbGalleryRender = function () {
     const modal = document.getElementById(VSB_GALLERY_ID);
     if (!modal) return;
-    const types = Object.keys(VSB_GADGETS).filter((t) => !vsbGallery.query || VSB_GADGETS[t].title.toLowerCase().includes(vsbGallery.query));
+    // the system's own gadgets first, then the installed ones; alphabetical within each, like Vista's gallery
+    const types = Object.keys(VSB_GADGETS)
+        .filter((t) => !vsbGallery.query || VSB_GADGETS[t].title.toLowerCase().includes(vsbGallery.query))
+        .sort((a, b) => (!!VSB_GADGETS[a].hosted - !!VSB_GADGETS[b].hosted)
+            || VSB_GADGETS[a].title.localeCompare(VSB_GADGETS[b].title, undefined, { sensitivity: 'base' }));
     const pages = Math.max(1, Math.ceil(types.length / VSB_GALLERY_PAGE));
     vsbGallery.page = Math.max(0, Math.min(vsbGallery.page, pages - 1));
     const shown = types.slice(vsbGallery.page * VSB_GALLERY_PAGE, (vsbGallery.page + 1) * VSB_GALLERY_PAGE);
@@ -3301,11 +3464,19 @@ const vsbGalleryRender = function () {
     details.classList.toggle('hidden', !showDetails);
     modal.querySelector('.vsb-gallery-details-label').textContent = showDetails ? 'Hide details' : 'Show details';
     const sel = VSB_GADGETS[vsbGallery.selected];
-    details.innerHTML = sel
-        ? `<img src="${vsbGadgetIconUrl(vsbGallery.selected)}" alt=""><div><div class="vsb-gallery-details-name">${escapeHtml(sel.title)}</div>
-            <div class="vsb-gallery-details-version">Version: 1.0</div><div class="vsb-gallery-details-desc">${escapeHtml(sel.desc)}</div>
-            <div class="vsb-gallery-details-author">${escapeHtml(sel.author)}</div></div>`
-        : '<div class="vsb-gallery-details-desc">Select a gadget to see its details. Double-click it, or drag it to the Sidebar or the desktop, to add it.</div>';
+    if (sel) {
+        const pub = sel.hosted || (sel.author === 'Xyridian Corporation' ? VSB_GALLERY_OEM : {});
+        const site = pub.url ? String(pub.url) : '';
+        details.innerHTML = `<div class="vsb-gallery-details-main">
+                <div class="vsb-gallery-details-name">${escapeHtml(sel.title)} ${escapeHtml(sel.version || '1.0.0.0')}</div>
+                <div class="vsb-gallery-details-desc">${escapeHtml(sel.desc || '')}</div></div>
+            <div class="vsb-gallery-details-pub">${pub.logo ? `<img class="vsb-gallery-details-logo" src="${escapeHtmlAttribute(pub.logo)}" alt="">` : ''}
+                <div><div class="vsb-gallery-details-author">${escapeHtml(sel.author || '')}</div>
+                ${pub.copyright ? `<div class="vsb-gallery-details-copy">${escapeHtml(pub.copyright)}</div>` : ''}
+                ${/^https?:\/\//i.test(site) ? `<a class="vsb-gallery-details-site" href="${escapeHtmlAttribute(site)}">${escapeHtml(site.replace(/^https?:\/\//i, '').replace(/\/$/, ''))}</a>` : ''}</div></div>`;
+    } else {
+        details.innerHTML = '<div class="vsb-gallery-details-main"><div class="vsb-gallery-details-desc">Select a gadget to see its details. Double-click it, or drag it to the Sidebar or the desktop, to add it.</div></div>';
+    }
 };
 
 /** Drag a gallery tile onto the Sidebar (docked) or the desktop (detached). */
@@ -3352,11 +3523,7 @@ const vsbStart = function () {
     wsClient.on('sidebar_updated', (msg) => {
         const data = msg && (msg.data || msg);
         if (!data || data.workspaceId !== vsb.workspaceId || vsb.saveTimer || vsb.drag) return;
-        vsb.state = data.sidebar;
-        vsb.saved = true;
-        vsb.instances.forEach(vsbDestroyInstance);
-        vsb.instances.clear();
-        vsbRender();
+        vsbAdoptPushedState(data.sidebar);
     });
     document.addEventListener('workspaceChanged', (e) => {
         const id = e.detail && e.detail.workspaceId;
@@ -3379,6 +3546,12 @@ const vsbStartForBoot = async function () {
     if (localStorage.getItem('userType') !== 'admin') return null;
     vsbStart();
     if (vsb.firstLoad) await vsb.firstLoad;
+    // hosted gadgets draw in their own frames: give them a moment, never the whole boot
+    if (vsbHosted.frames.length) {
+        await Promise.race([Promise.allSettled(vsbHosted.frames), new Promise((resolve) => setTimeout(resolve, 1500))]);
+    }
+    vsbHosted.frames = [];
+    vsbHosted.booted = true;
     return vsb.root && !vsb.root.classList.contains('hidden') ? vsb.root : null;
 };
 window.vistaSidebarBoot = { start: vsbStartForBoot };

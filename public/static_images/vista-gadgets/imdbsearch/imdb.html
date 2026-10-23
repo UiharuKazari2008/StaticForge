@@ -1,0 +1,80 @@
+<html>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+<title>Sidebar Switcher</title>
+	<style>
+	body {
+	width: 130;
+	height: 170;
+	background-color: #ffffcc;
+	padding:0px;
+}
+</style>
+<script>
+System.Gadget.Flyout.onShow = flyoutShowing;
+System.Gadget.Flyout.file = "ImdbFlyout.html";
+var url = "";
+
+
+function setFlyout(urltmp)
+{
+    url = urltmp;
+    System.Gadget.Flyout.show = true;
+}
+
+
+function flyoutShowing()
+{
+    System.Gadget.Flyout.document.parentWindow.frame.innerHTML = "<iframe style='position:absolute;width=630px;height:480px;left:0px;top:0px;' id='dynframe' frameborder='0' src='"+url+"' scrolling='yes'></iframe>";
+}
+
+
+	function launchIMDBFind() {
+		findURL = "http://www.imdb.com/find?s=" + SearchType.value + "&q= " + SearchQuery.value;
+		setFlyout(findURL);
+
+//		System.Shell.execute(); 
+	}
+	
+	var findUrl = "";
+	function flyoutExtraFeatures() {
+		System.Gadget.Flyout.file = "ImdbFlyout.html";
+		System.Gadget.Flyout.show = true;
+	}
+	function goCharts() {
+		setFlyout("http://www.imdb.com/Charts/");
+	}
+	function goOpeningThisWeek() {
+		setFlyout("http://www.imdb.com/nowplaying/");
+	}
+
+
+</script>
+</head>
+<body background="background.png">
+
+<div id="MainDiv" style="position:absolute;left:5px;top:5px;">
+	<center>
+	<img src="logo.gif">
+	</center>
+	<button style="background-color:#606ECD;color:#FFFFFF;cursor:hand;font-family:'Arial Narrow';font-size:x-small;width:120px;" onclick="goCharts();">Tops at the Box Office</button>
+	<button style="background-color:#606ECD;color:#FFFFFF;cursor:hand;font-family:'Arial Narrow';font-size:x-small;width:120px;" onclick="goOpeningThisWeek();">Coming Soon</button>	
+    <select name="s" id="SearchType" style="background-color:#606ECD;color:#FFFFFF;;font-family:'Arial Narrow';font-size:x-small;width:120px">
+     <option selected="on" value="all">All</option>
+     <option value="tt">Titles</option>
+     <option value="ep">- TV Episodes</option>
+     <option>My Movies</option>
+     <option value="nm">Names</option>
+     <option value="co">Companies</option>
+     <option value="kw">Keywords</option>
+     <option>Characters</option>
+     <option>Quotes</option>
+     <option>Bios</option>
+     <option>Plots</option>
+    </select>
+    <button id="Find Imdb" onclick="launchIMDBFind();" value="" style="width:120px;background-color:#606ECD;color:#FFFFFF;cursor:hand;font-family:'Arial Narrow';font-size:x-small;">Find</button>
+    <input name="q" size="15" id="SearchQuery" style="width:120px" onkeydown="if(event.keyCode==13) launchIMDBFind();"> 
+    
+
+</div>
+</body>
+</html>

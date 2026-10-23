@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+    <name>Stopwatch</name>
+    <namespace>
+        ToddOs.Stopwatch
+    </namespace>
+    <version>
+        1.0.0.0
+    </version>
+    <author name="Todd Ostermeier">
+        <info url="http://gallery.live.com/Author.aspx?a=e3befa48-3a1e-44b4-86ed-798746fbbb60" text="More gadgets from ToddOs"/>
+        <logo src="logo.png"/>
+    </author>
+    <copyright>
+        © 2007
+    </copyright>
+    <description>A simple stopwatch.</description>
+    <icons>
+        <icon height="48" width="48" src="icon.png"/>
+    </icons>
+    <hosts>
+        <host name="sidebar">
+            <base type="html" apiVersion="1.0.0" src="stopwatch.html"/>
+            <permissions>
+                full
+            </permissions>
+            <platform minPlatformVersion="1.0"/>
+            <defaultImage src="drag.png"/>
+        </host>
+    </hosts>
+</gadget>

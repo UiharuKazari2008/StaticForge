@@ -1,0 +1,262 @@
+<!--//
+////////////////////////////////////////////////////////////////////////////////
+//
+//  Copyright © 2007 - 2013 addgadgets.com  All rights reserved.
+//
+//  http://addgadgets.com/
+//
+////////////////////////////////////////////////////////////////////////////////
+//-->
+<html xmlns:v="urn:schemas-microsoft-com:vml">
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+
+<title>All CPU Meter</title>
+<link href="gadget.css" rel="stylesheet" type="text/css" />
+<script type="text/javascript" language="javascript" src="gadget.js"></script>
+<script type="text/javascript" language="javascript" src="libhelper.js"></script>
+<style>
+v\:* { behavior: url(#default#VML); }
+</style>
+</head>
+<body onLoad="onLoad();" onDblClick="runTaskManager();">
+	<g:background id="background"></g:background>
+    <OBJECT ID="Player" height="0" width="0" CLASSID="CLSID:6BF52A52-394A-11d3-B153-00C04F79FAA6">
+	<PARAM name="autoStart" value="False">
+	<PARAM name="uiMode" value="visible">
+	</OBJECT>
+	<div id="backgc" style="position:absolute;"></div>
+	<div><img id="blackwhite" src="blackwhite.png" style="position:absolute;"/></div>
+	<div><img id="IntelCPU" src="intel.png" style="position:absolute; visibility:hidden; cursor:pointer;" onClick="show_flyout();"/></div>
+	<div><img id="AMDCPU" src="amd.png" style="position:absolute; visibility:hidden; cursor:pointer;" onClick="show_flyout();"/></div>
+	<div><img id="IconCPU" src="picon.png" style="position:absolute; visibility:hidden; cursor:pointer;" onClick="show_flyout();"/></div>
+	<div id="cpuUsage" style="position:absolute; font-weight:bold;cursor:pointer;" onClick="show_flyout();">CPU Usage</div>
+	<div id="usgTotal" style="position:absolute; font-weight:bold;"></div>
+	<div id="clock" style="position:absolute;">Clock: </div>
+	<div id="cpuSpeed" style="position:absolute; text-align:right;"></div>
+	<div id="iconAlert" style="position:absolute;cursor:pointer;" OnClick="clickAlert()"></div>
+	<div id="cpuModel" style="position:absolute;overflow:hidden;text-align:center;"></div>
+	<div id="username" style="position:absolute;overflow:hidden;text-align:center;"></div>
+	<div id="used" style="position:absolute;">Used</div>
+	<div id="free" style="position:absolute;">Free</div>
+	<div id="total" style="position:absolute;">Total</div>
+	<div id="usedValue" style="position:absolute; width:120px;"></div>
+	<div id="freeValue" style="position:absolute; width:120px;"></div>
+	<div id="totalValue" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="usedPageValue" style="position:absolute; width:120px;"></div>
+	<div id="freePageValue" style="position:absolute; width:120px;"></div>
+	<div id="totalPageValue" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="ram" style="position:absolute;">RAM</div>
+	<div id="ramUsage" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="page" style="position:absolute;">Page</div>
+	<div id="pageUsage" style="position:absolute; left:0px; text-align:right;"></div>
+	<img id="backRam" src="barback.png" style="position:absolute;"/>
+	<img id="backPage" src="barback.png" style="position:absolute;"/>
+	<img id="back1" src="barback.png" style="position:absolute;"/>
+	<img id="back2" src="barback.png" style="position:absolute;"/>
+	<img id="back3" src="barback.png" style="position:absolute;"/>
+	<img id="back4" src="barback.png" style="position:absolute;"/>
+	<img id="back5" src="barback.png" style="position:absolute;"/>
+	<img id="back6" src="barback.png" style="position:absolute;"/>
+	<img id="back7" src="barback.png" style="position:absolute;"/>
+	<img id="back8" src="barback.png" style="position:absolute;"/>
+	<img id="back9" src="barback.png" style="position:absolute;"/>
+	<img id="back10" src="barback.png" style="position:absolute;"/>
+	<img id="back11" src="barback.png" style="position:absolute;"/>
+	<img id="back12" src="barback.png" style="position:absolute;"/>
+	<img id="back13" src="barback.png" style="position:absolute;"/>
+	<img id="back14" src="barback.png" style="position:absolute;"/>
+	<img id="back15" src="barback.png" style="position:absolute;"/>
+	<img id="back16" src="barback.png" style="position:absolute;"/>
+	<img id="back17" src="barback.png" style="position:absolute;"/>
+	<img id="back18" src="barback.png" style="position:absolute;"/>
+	<img id="back19" src="barback.png" style="position:absolute;"/>
+	<img id="back20" src="barback.png" style="position:absolute;"/>
+	<img id="back21" src="barback.png" style="position:absolute;"/>
+	<img id="back22" src="barback.png" style="position:absolute;"/>
+	<img id="back23" src="barback.png" style="position:absolute;"/>
+	<img id="back24" src="barback.png" style="position:absolute;"/>
+	<img id="back25" src="barback.png" style="position:absolute;"/>
+	<img id="back26" src="barback.png" style="position:absolute;"/>
+	<img id="back27" src="barback.png" style="position:absolute;"/>
+	<img id="back28" src="barback.png" style="position:absolute;"/>
+	<img id="back29" src="barback.png" style="position:absolute;"/>
+	<img id="back30" src="barback.png" style="position:absolute;"/>
+	<img id="back31" src="barback.png" style="position:absolute;"/>
+	<img id="back32" src="barback.png" style="position:absolute;"/>
+	<hr id="barRam" style="position:absolute;">
+	<hr id="barPage" style="position:absolute;">
+	<hr id="bar1" style="position:absolute;">
+	<hr id="bar2" style="position:absolute;">
+	<hr id="bar3" style="position:absolute;">
+	<hr id="bar4" style="position:absolute;">
+	<hr id="bar5" style="position:absolute;">
+	<hr id="bar6" style="position:absolute;">
+	<hr id="bar7" style="position:absolute;">
+	<hr id="bar8" style="position:absolute;">
+	<hr id="bar9" style="position:absolute;">
+	<hr id="bar10" style="position:absolute;">
+	<hr id="bar11" style="position:absolute;">
+	<hr id="bar12" style="position:absolute;">
+	<hr id="bar13" style="position:absolute;">
+	<hr id="bar14" style="position:absolute;">
+	<hr id="bar15" style="position:absolute;">
+	<hr id="bar16" style="position:absolute;">
+	<hr id="bar17" style="position:absolute;">
+	<hr id="bar18" style="position:absolute;">
+	<hr id="bar19" style="position:absolute;">
+	<hr id="bar20" style="position:absolute;">
+	<hr id="bar21" style="position:absolute;">
+	<hr id="bar22" style="position:absolute;">
+	<hr id="bar23" style="position:absolute;">
+	<hr id="bar24" style="position:absolute;">
+	<hr id="bar25" style="position:absolute;">
+	<hr id="bar26" style="position:absolute;">
+	<hr id="bar27" style="position:absolute;">
+	<hr id="bar28" style="position:absolute;">
+	<hr id="bar29" style="position:absolute;">
+	<hr id="bar30" style="position:absolute;">
+	<hr id="bar31" style="position:absolute;">
+	<hr id="bar32" style="position:absolute;">
+	<img id="topRam" src="bartop.png" style="position:absolute;"/>
+	<img id="topPage" src="bartop.png" style="position:absolute;"/>
+	<img id="top1" src="bartop.png" style="position:absolute;"/>
+	<img id="top2" src="bartop.png" style="position:absolute;"/>
+	<img id="top3" src="bartop.png" style="position:absolute;"/>
+	<img id="top4" src="bartop.png" style="position:absolute;"/>
+	<img id="top5" src="bartop.png" style="position:absolute;"/>
+	<img id="top6" src="bartop.png" style="position:absolute;"/>
+	<img id="top7" src="bartop.png" style="position:absolute;"/>
+	<img id="top8" src="bartop.png" style="position:absolute;"/>
+	<img id="top9" src="bartop.png" style="position:absolute;"/>
+	<img id="top10" src="bartop.png" style="position:absolute;"/>
+	<img id="top11" src="bartop.png" style="position:absolute;"/>
+	<img id="top12" src="bartop.png" style="position:absolute;"/>
+	<img id="top13" src="bartop.png" style="position:absolute;"/>
+	<img id="top14" src="bartop.png" style="position:absolute;"/>
+	<img id="top15" src="bartop.png" style="position:absolute;"/>
+	<img id="top16" src="bartop.png" style="position:absolute;"/>
+	<img id="top17" src="bartop.png" style="position:absolute;"/>
+	<img id="top18" src="bartop.png" style="position:absolute;"/>
+	<img id="top19" src="bartop.png" style="position:absolute;"/>
+	<img id="top20" src="bartop.png" style="position:absolute;"/>
+	<img id="top21" src="bartop.png" style="position:absolute;"/>
+	<img id="top22" src="bartop.png" style="position:absolute;"/>
+	<img id="top23" src="bartop.png" style="position:absolute;"/>
+	<img id="top24" src="bartop.png" style="position:absolute;"/>
+	<img id="top25" src="bartop.png" style="position:absolute;"/>
+	<img id="top26" src="bartop.png" style="position:absolute;"/>
+	<img id="top27" src="bartop.png" style="position:absolute;"/>
+	<img id="top28" src="bartop.png" style="position:absolute;"/>
+	<img id="top29" src="bartop.png" style="position:absolute;"/>
+	<img id="top30" src="bartop.png" style="position:absolute;"/>
+	<img id="top31" src="bartop.png" style="position:absolute;"/>
+	<img id="top32" src="bartop.png" style="position:absolute;"/>
+	<div id="tmpCore1" style="position:absolute;">Core 1</div>
+	<div id="tmpCore2" style="position:absolute;">Core 2</div>
+	<div id="tmpCore3" style="position:absolute;">Core 3</div>
+	<div id="tmpCore4" style="position:absolute;">Core 4</div>
+	<div id="tmpCore5" style="position:absolute;">Core 5</div>
+	<div id="tmpCore6" style="position:absolute;">Core 6</div>
+	<div id="tmpCore7" style="position:absolute;">Core 7</div>
+	<div id="tmpCore8" style="position:absolute;">Core 8</div>
+	<div id="tmpCore9" style="position:absolute;">Core 9</div>
+	<div id="tmpCore10" style="position:absolute;">Core 10</div>
+	<div id="tmpCore11" style="position:absolute;">Core 11</div>
+	<div id="tmpCore12" style="position:absolute;">Core 12</div>
+	<div id="tmpCore13" style="position:absolute;">Core 13</div>
+	<div id="tmpCore14" style="position:absolute;">Core 14</div>
+	<div id="tmpCore15" style="position:absolute;">Core 15</div>
+	<div id="tmpCore16" style="position:absolute;">Core 16</div>
+	<div id="tmpCore17" style="position:absolute;">Core 17</div>
+	<div id="tmpCore18" style="position:absolute;">Core 18</div>
+	<div id="tmpCore19" style="position:absolute;">Core 19</div>
+	<div id="tmpCore20" style="position:absolute;">Core 20</div>
+	<div id="tmpCore21" style="position:absolute;">Core 21</div>
+	<div id="tmpCore22" style="position:absolute;">Core 22</div>
+	<div id="tmpCore23" style="position:absolute;">Core 23</div>
+	<div id="tmpCore24" style="position:absolute;">Core 24</div>
+	<div id="tmpCore25" style="position:absolute;">Core 25</div>
+	<div id="tmpCore26" style="position:absolute;">Core 26</div>
+	<div id="tmpCore27" style="position:absolute;">Core 27</div>
+	<div id="tmpCore28" style="position:absolute;">Core 28</div>
+	<div id="tmpCore29" style="position:absolute;">Core 29</div>
+	<div id="tmpCore30" style="position:absolute;">Core 30</div>
+	<div id="tmpCore31" style="position:absolute;">Core 31</div>
+	<div id="tmpCore32" style="position:absolute;">Core 32</div>
+	<div id="usgCore1" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="usgCore2" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="usgCore3" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="usgCore4" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="usgCore5" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="usgCore6" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="usgCore7" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="usgCore8" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="usgCore9" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="usgCore10" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="usgCore11" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="usgCore12" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="usgCore13" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="usgCore14" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="usgCore15" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="usgCore16" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="usgCore17" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="usgCore18" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="usgCore19" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="usgCore20" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="usgCore21" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="usgCore22" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="usgCore23" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="usgCore24" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="usgCore25" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="usgCore26" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="usgCore27" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="usgCore28" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="usgCore29" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="usgCore30" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="usgCore31" style="position:absolute; left:0px; text-align:right;"></div>
+	<div id="usgCore32" style="position:absolute; left:0px; text-align:right;"></div>
+    <!--
+        v:shape is replaced with g:shape in the following. This fixes display issues when high-dpi is selected.
+        This works only with 8GadgetPack Version 30 and higher.
+    -->
+	<g:shape id="linesx" style="position:absolute;" filled="false" strokecolor="#2F4F4F" strokeweight="1pt" coordorigin="0 0" coordsize="116 100"path=" m 8,100 l 8,0  m 18,100 l 18,0  m 28,100 l 28,0  m 38,100 l 38,0  m 48,100 l 48,0  m 58,100 l 58,0  m 68,100 l 68,0  m 78,100 l 78,0  m 88,100 l 88,0  m 98,100 l 98,0  m 108,100 l 108,0 "></g:shape>
+	<g:shape id="linesy" style="position:absolute;" filled="false" strokecolor="#2F4F4F" strokeweight="1pt" coordorigin="0 0" coordsize="116 100" path=" m 0,20 l 115,20  m 0,40 l 115,40  m 0,60 l 115,60  m 0,80 l 115,80" ></g:shape>
+	<g:shape id="pagegraph" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="ramgraph" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="coregraph32" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="coregraph31" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="coregraph30" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="coregraph29" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="coregraph28" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="coregraph27" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="coregraph26" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="coregraph25" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="coregraph24" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="coregraph23" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="coregraph22" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="coregraph21" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="coregraph20" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="coregraph19" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="coregraph18" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="coregraph17" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="coregraph16" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="coregraph15" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="coregraph14" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="coregraph13" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="coregraph12" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="coregraph11" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="coregraph10" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="coregraph9" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="coregraph8" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="coregraph7" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="coregraph6" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="coregraph5" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="coregraph4" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="coregraph3" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="coregraph2" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="coregraph1" style="width:110;height:30;top:94;left:9;position:absolute;" filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 100"></g:shape>
+	<g:shape id="border" style="position:absolute;" filled="false" strokecolor="#778899" strokeweight="1pt" coordorigin="0 0" coordsize="110 100" path="m 0,96 l 109,96 l 109,0 l 0,0 l 0,96" ></g:shape>
+	<div id="coreTempErr" style="position:absolute; width:120px; color:#FF0000; text-align:center;"></div>
+	<div id=newUpdate style="position:absolute; color:#87CEFA;"></div>
+</body>
+</html>

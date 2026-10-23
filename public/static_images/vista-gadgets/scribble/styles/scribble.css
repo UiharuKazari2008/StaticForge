@@ -1,0 +1,19 @@
+body,
+table       {font:11px segoe ui,tahoma}
+body        {margin:0;border:none;cursor:default;background:magenta no-repeat url(images/chalkboard_floating_small.png);width:131;height:133}
+#bar        {position:absolute;z-index:1}
+#bar img    {vertical-align:bottom}
+
+#canv       {position:absolute;left:8;top:4;width:151;height:115;overflow:hidden;cursor:url(images/pen.cur)}
+#canv img   {width:1;height:1}
+#loadingMsg
+{
+    position: absolute;
+    left: 20;
+    top: 90;
+    width: 100;
+    font-size: small;
+    color: white;
+    z-index:100;
+    
+}

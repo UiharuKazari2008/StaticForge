@@ -44,6 +44,52 @@ for (const s of ['Copying', 'Moving', 'Deleting', 'Recycling', 'More information
     assert.ok(src.includes(`'${s}'`), s);
 }
 
+/** Enough of the DOM for the dialog's build(): elements, classes, children and events. */
+function fakeDom() {
+    class Node {
+        constructor(tag) {
+            this.tagName = tag;
+            this.children = [];
+            this.parentNode = null;
+            this.dataset = {};
+            this.attrs = {};
+            this.listeners = {};
+            this.style = { setProperty(k, v) { this[k] = v; } };
+            this._text = '';
+            const classes = new Set();
+            this.classList = {
+                add: (...c) => c.forEach((x) => classes.add(x)),
+                remove: (...c) => c.forEach((x) => classes.delete(x)),
+                toggle: (c, on) => ((on === undefined ? !classes.has(c) : on) ? classes.add(c) : classes.delete(c)),
+                contains: (c) => classes.has(c)
+            };
+            Object.defineProperty(this, 'className', { get: () => [...classes].join(' '), set: (v) => { classes.clear(); String(v).split(/\s+/).filter(Boolean).forEach((x) => classes.add(x)); } });
+        }
+        get textContent() { return this.text(); }
+        set textContent(v) { this.children.forEach((c) => { c.parentNode = null; }); this.children = []; this._text = String(v); }
+        text() { return this._text + this.children.map((c) => (typeof c === 'string' ? c : c.text())).join(''); }
+        append(...nodes) { nodes.forEach((n) => this.appendChild(n)); }
+        appendChild(n) {
+            if (n && typeof n === 'object') { if (n.parentNode) n.remove(); n.parentNode = this; }
+            this.children.push(n);
+            return n;
+        }
+        replaceChildren(...nodes) { this.textContent = ''; this.append(...nodes); }
+        removeChild(n) { n.remove(); return n; }
+        remove() { if (this.parentNode) { this.parentNode.children = this.parentNode.children.filter((c) => c !== this); this.parentNode = null; } }
+        replaceWith(n) { const p = this.parentNode; const i = p.children.indexOf(this); n.parentNode = p; p.children[i] = n; this.parentNode = null; }
+        setAttribute(k, v) { this.attrs[k] = String(v); }
+        getAttribute(k) { return this.attrs[k]; }
+        removeAttribute(k) { delete this.attrs[k]; }
+        addEventListener(type, fn) { (this.listeners[type] = this.listeners[type] || []).push(fn); }
+        fire(type, props) { const ev = Object.assign({ preventDefault() {}, stopPropagation() {} }, props); (this.listeners[type] || []).forEach((fn) => fn(ev)); }
+        focus() {}
+    }
+    const body = new Node('body');
+    body.classList.add('desktop-mode');
+    return { document: { body, createElement: (tag) => new Node(tag) } };
+}
+
 // run(): each item in turn, Cancel stops before the next one
 (async () => {
     const seen = [];
@@ -122,6 +168,102 @@ for (const s of ['Copying', 'Moving', 'Deleting', 'Recycling', 'More information
     r = await o.attempt({ name: 'x' }, async () => { throw new Error('denied'); });
     assert.strictEqual(o.cancelled, true);
     assert.match(asked[asked.length - 1].message, /keeping you from deleting the file/);
+
+    // a download (Alchemy): one item whose bytes arrive, the total learned late, Cancel's hook, and
+    // the complete state with its own buttons; the real build() over a small DOM
+    const dom = fakeDom();
+    const dwin = { openModal() {}, closeModal() {} };
+    const dctx = vm.createContext({ window: dwin, document: dom.document, console: { ...console, error() {} }, setTimeout, clearTimeout, Promise, Date, Math,
+        requestAnimationFrame: () => 1, cancelAnimationFrame() {}, performance: { now: () => 0 } });
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'public/scripts/comp/fileOperationProgress.js'), 'utf8'), dctx);
+    const D = dwin.fileOperationProgress;
+    let cancels = 0;
+    const dl = D.begin({ op: 'copy', items: [{ name: 'gadgets.zip' }], from: { name: 'example.com', path: 'https://example.com/' }, to: { name: 'Downloads', path: '/Workspaces/Main/Downloads' }, onCancel: () => { cancels += 1; } });
+    assert.ok(dl.shown, 'up on the desktop');
+    assert.strictEqual(dl.headerLabel.textContent, 'Copying 1 item');
+    dl.progress(50 * 1048576, 200 * 1048576);
+    assert.strictEqual(dl.headerLabel.textContent, 'Copying 1 item (200 MB)', 'the total sizes the header once known');
+    assert.strictEqual(dl.barFill.style.width, '25%');
+    const answer = dl.complete({
+        header: 'Download complete',
+        lines: [[{ b: 'gadgets.zip' }, ' from ', 'example.com'], ['Downloaded 200 MB in 5 Seconds']],
+        buttons: [{ text: 'Open', value: 'open', primary: true }, { text: 'Open Folder', value: 'folder' }, { text: 'Close', value: 'close' }]
+    });
+    assert.strictEqual(dl.captionText.textContent, 'Download complete');
+    assert.strictEqual(dl.headerLabel.textContent, 'Download complete');
+    assert.strictEqual(dl.barFill.style.width, '100%');
+    assert.deepStrictEqual(dl.footer.children.map((b) => b.textContent), ['Open', 'Open Folder', 'Close'], 'the buttons in place of More information and Cancel');
+    assert.deepStrictEqual(dl.summary.children.map((l) => l.text()), ['gadgets.zip from example.com', 'Downloaded 200 MB in 5 Seconds']);
+    assert.ok(dl.modal.classList.contains('file-progress-complete'));
+    dl.footer.children[1].fire('click');
+    assert.strictEqual(await answer, 'folder');
+    assert.strictEqual(dl.shown, false, 'a button shuts it');
+    assert.strictEqual(cancels, 0, 'completing is not cancelling');
+
+    // Cancel calls the hook once; Escape on a completed dialog shuts it as Close
+    const dl2 = D.begin({ op: 'copy', items: [{ name: 'b.bin' }], onCancel: () => { cancels += 1; } });
+    dl2.cancel();
+    dl2.cancel();
+    assert.strictEqual(cancels, 1);
+    dl2.finish();
+    const dl3 = D.begin({ op: 'copy', items: [{ name: 'c.bin', size: 5 }] });
+    const shut = dl3.complete({ header: 'Download complete', lines: [] });
+    dl3.modal.fire('keydown', { key: 'Escape' });
+    assert.strictEqual(await shut, 'close');
+    // downloads say Downloading (the copy movie), and a failure asks about downloading
+    const dl4 = D.begin({ op: 'copy', verb: 'Downloading', items: [{ name: 'g.zip', size: 2048 }] });
+    assert.strictEqual(dl4.headerLabel.textContent, 'Downloading 1 item (2.00 KB)');
+    assert.strictEqual(dl4.modal.dataset.fileOp, 'copy');
+    assert.strictEqual(dl4.errorVerb, 'downloading');
+    dl4.finish();
+
+    // a task (a progress toast's work): its title as the header, its status, a percent bar; no
+    // Cancel unless something can stop it, and Close then shuts only the window
+    const tk = D.task({ title: 'Upscaling Image', line: 'Upscaling image...' });
+    assert.strictEqual(tk.headerLabel.textContent, 'Upscaling Image');
+    assert.strictEqual(tk.captionText.textContent, 'Upscaling Image');
+    assert.strictEqual(tk.summary.children[0].text(), 'Upscaling image...');
+    assert.strictEqual(tk.cancelButton.disabled, true, 'nothing can stop it');
+    assert.strictEqual(tk.itemsValue, null, 'no items or speed for a task');
+    tk.setPercent(30);
+    assert.strictEqual(tk.barFill.style.width, '30%');
+    tk.setLine('Saving...');
+    assert.strictEqual(tk.summary.children[0].text(), 'Saving...');
+    tk.setHeader('Upscaling Image (4x)');
+    assert.strictEqual(tk.headerLabel.textContent, 'Upscaling Image (4x)');
+    tk.modal.fire('keydown', { key: 'Escape' });
+    assert.strictEqual(tk.shown, false);
+    assert.strictEqual(tk.cancelled, false, 'closing is not cancelling');
+    let stops = 0;
+    const tk2 = D.task({ title: 'Uploading Images', onCancel: () => { stops += 1; } });
+    assert.ok(!tk2.cancelButton.disabled);
+    tk2.cancelButton.fire('click');
+    assert.strictEqual(stops, 1);
+    tk2.finish();
+    // the amount not known yet (the gallery's first blocks): a marquee and no bar; once known, the bar
+    const tkLoad = D.task({ title: 'Loading Gallery', line: 'Loading...' });
+    tkLoad.setMarquee(true);
+    tkLoad.setPercent(40);
+    assert.ok(tkLoad.bar.classList.contains('marquee'));
+    assert.strictEqual(tkLoad.barFill.style.width, '0%');
+    tkLoad.setMarquee(false);
+    assert.strictEqual(tkLoad.barFill.style.width, '40%');
+    tkLoad.setMarquee(true);
+    tkLoad.finish();
+    assert.ok(!tkLoad.bar.classList.contains('marquee'), 'done: the bar full, not a marquee');
+    assert.strictEqual(tkLoad.barFill.style.width, '100%');
+
+    const tkDel = D.task({ title: 'Deleting Images' });
+    assert.strictEqual(tkDel.modal.dataset.fileOp, 'delete', 'the movie follows the work');
+    tkDel.finish();
+    const tk3 = D.task({ title: 'Vibe Encoding' });
+    tk3.setOnCancel(() => { stops += 1; });
+    assert.strictEqual(tk3.cancelButton.disabled, false, 'a Cancel arriving later');
+    tk3.finish();
+
+    assert.strictEqual(D.formatElapsed(2.2), '2 Seconds');
+    assert.strictEqual(D.formatElapsed(0.1), '1 Second');
+    assert.strictEqual(D.formatElapsed(95), '1 Minute and 35 Seconds');
 
     console.log('test-file-operation-progress: ok');
 })().catch((err) => {

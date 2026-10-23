@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+    <name>Margin Calculator</name>
+    <namespace>Margin.Calc</namespace>
+    <version>1.0.0.0</version>
+    <author name="Jon Feldman">
+        <info url="jonfeldman.com" />
+		<logo src="jon.png" />
+    </author>
+    <copyright>&#169; 2007</copyright>
+	<icons>
+        <icon height="48" width="48" src="MarginCalcIcon.png" />
+    </icons>
+    <description>Margin Calculator</description>
+    <hosts>
+        <host name="sidebar">
+            <base type="HTML" apiVersion="0.5.0" src="MarginCalc.html" />
+            <permissions>Full</permissions>
+            <platform minPlatformVersion="1.0" />
+        </host>
+    </hosts>
+</gadget>

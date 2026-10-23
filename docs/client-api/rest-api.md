@@ -1412,6 +1412,17 @@ on unversioned static CSS/JS/image responses so the `/agent` preload can populat
 the browser HTTP cache before `/app?agent=1` runs. The `/app` HTML document itself
 stays no-store when `?agent=1`.
 
+### Sidebar gadget packages (Yozora #629)
+
+Hosted Windows Sidebar gadgets (`public/scripts/comp/vistaGadgetHost.js`, [ws/sidebar.md](ws/sidebar.md#hosted-gadgets)).
+
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| `GET` | `/static_images/vista-gadgets/<id>/<path>` | as static files | `modules/vistaGadgetStatic.js`: the path folded to lowercase; a file missing from the locale folder (`en-us/`) is served from the gadget root; a path that climbed out of the gadget (`../images/x.png` from a page at its root) is looked up in the gadget named by the `Referer`. `Cache-Control: no-cache`, `Referrer-Policy: same-origin`. Not in the service worker's update manifest (on demand, like the Vista games). |
+| `GET` | `/static_images/vista-gadgets/catalog.json` | as static files | The gadget list the Sidebar and `modules/sidebarGadgets.js` read (`scripts/import-vista-gadget.js` writes it). |
+| `GET` | `/gadget-proxy?url=<http(s) URL>` | session, admin | `modules/vistaGadgetProxy.js`: a gadget page's remote XML / JSON / text (only for the hosts its catalog entry lists in `web`, matched by the `Referer` gadget) and pictures (any public host). http is fetched as https; public hosts only (DNS checked each hop); 4 MB; cached 5 minutes; `Content-Security-Policy: sandbox`. Retired feeds are rebuilt (USGS `eqs1day-M2.5.xml` from the GeoJSON summary). 403 not admin, 400 bad URL, 415 type not allowed for the gadget. |
+| `GET` | `/gadget-stream?url=<http(s) URL>` | session, admin | A radio station's audio relayed for a gadget (`<audio>` on the https desktop, media from this origin only). Public hosts only (every connection's address checked); audio types only; M3U / PLS / ASX playlists followed to their first stream; four at a time (429). Not counted as busy by `modules/busyStatus.js`. |
+
 ---
 
 ## Error shape conventions

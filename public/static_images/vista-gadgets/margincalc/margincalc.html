@@ -1,0 +1,163 @@
+<html>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+    <title>Margin Calculator</title>
+    <style>
+		
+		a:link {text-decoration: none; color:black;}
+		a:visited {text-decoration: none; color:black;}
+		a:active {text-decoration: none; color:black;}
+		a:hover {text-decoration: underline; color: red;}
+		
+		input {
+			display: block;
+			width: 50px;
+			float: left;
+			margin-bottom: 3px;
+			font-family:Tahoma;
+			font-size:8pt;
+			text-align: right;
+		}
+		
+		label {
+			display: block;
+			text-align: right;
+			float: left;
+			width: 55px;
+			padding-right: 10px;
+			padding-left:6px;
+			padding-top:3px;
+		}
+		
+        body
+        {
+            margin: 0;
+            width: 130px;
+            height: 80px;
+        }
+        #gadgetContent
+        {
+            width: 130px;
+            top: 7px;
+            text-align: center;
+            font-family: Tahoma;
+            font-size:8pt;
+            position: absolute;
+		}
+		
+        #background
+        {
+            width: 130px;
+            height: 80px;
+            position: absolute;
+            z-index: -1;
+            background-repeat: no-repeat;
+        }
+    </style>
+	
+	<script type="text/javascript">
+		
+		// Constants
+		var sigFig = 2;
+		
+		// Utility Functions JavaScript Cookbook
+		function isNotEmpty(elem) {
+			var str = elem.value;
+			if (str == null || str.length == 0) {
+				return false;
+			} else {
+				return true;
+		   }
+		}
+			
+		function numeralsOnly(evt) {
+			evt = (evt) ? evt : event;
+			var target = (evt.target) ? evt.target : evt.srcElement;
+			var form = target.form;
+			var charCode = (evt.charCode) ? evt.charCode : ((evt.keyCode) ? evt.keyCode : 
+				((evt.which) ? evt.which : 0));
+			// Catch non-numeric and do not return them
+			if ((charCode > 31 && (charCode < 48 || charCode > 57) && charCode != 46)) {
+				return false;
+			}
+			// clear on escape
+			if (charCode == 13 || charCode == 3 || charCode == 11) {
+				calculate_margin(marginForm);
+			}
+			document.marginForm.tester1.value = charCode;
+			return true;
+		}
+
+
+		// Calculation Routine
+		function calculate_margin(marginForm) {
+			// significant figures
+			var sigFigs = 2;
+			
+			// Variables
+			var priceEmpty = true;
+			var costEmpty = true;
+			var marginEmpty = true;
+			var update = false;
+			
+			// Parse the values
+			var price = parseFloat(marginForm.price.value);
+			var cost = parseFloat(marginForm.cost.value);
+			var margin = parseFloat(marginForm.margin.value);
+			
+			// Figure out what we are calculating for
+			if (!(isNaN(price))) { priceEmpty = false; }
+			if (!(isNaN(cost))) {	costEmpty = false; }
+			if (!(isNaN(margin))) { marginEmpty = false; }
+			
+			// If all three are filled, assume we are doing a margin calculation
+			if ((!priceEmpty) && (!costEmpty) && (!marginEmpty)) { marginEmpty = true; }
+			
+			// Margin Time!
+			if (marginEmpty && !priceEmpty && !costEmpty) { // Calculate Margin
+				margin = (((price-cost)/price*100));
+				//margin = margin.toFixed(sigFigs);
+				update = true;
+			} else {
+			   if (priceEmpty && !marginEmpty && !costEmpty) {  // Calculate Price
+					price = (cost / (1-(margin/100)))
+					//price = price.toFixed(sigFigs);
+					update = true;
+				} else {
+				  if (costEmpty && !priceEmpty && !marginEmpty) {  // Calculate Cost
+					cost = (price - ((margin*price)/100));
+					update = true;
+					} else { // Nothing in there - do nothing at all 
+						update = false; 
+					}
+				}
+			}
+			
+			if (update) {
+			document.marginForm.price.value = price.toFixed(sigFigs);
+			document.marginForm.cost.value = cost.toFixed(sigFigs);
+			document.marginForm.margin.value = margin.toFixed(sigFigs);
+			}
+		}
+			
+	</script>
+</head>
+<body>
+	<g:background 
+        src="MarginCalc.png" 
+        id="MarginCalc"   
+        style="position:absolute;width:130px;height:80px;z-index:-1"></g:background>
+    <span id="gadgetContent">
+        
+		<form name="marginForm" class="calculate_margin" onsubmit="return false">
+			<label for="price">Price:</label>
+			<input type="text" id="price" onkeypress="return numeralsOnly(event)"><br>
+			<label for="cost">Cost:</label>
+			<input type="text" id="cost" onkeypress="return numeralsOnly(event)"><br>
+			<label for="margin">Margin:</label>
+			<input type="text" id="margin" onkeypress="return numeralsOnly(event)">%
+
+		</form>
+		
+    </span>
+</body>
+</html>

@@ -1,0 +1,62 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html>
+	<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+		<title>Binary Clock</title>
+		<meta name="author" content="Ronald Bode"> 
+		<meta name="email" content="ronald@bode.nl">
+		<meta name="charset" content="iso-8859-1">
+		<style>
+
+body {
+	font: normal normal normal 12px Arial;
+	position: absolute;
+	width: 130px;
+	height: 130px;
+	background-color: transparent;
+	overflow: hidden;
+	margin: 1px;
+	padding: 0px;
+	cursor: default;
+}
+
+table {
+	border: none;
+	margin: 0px;
+	padding: 0px;
+}
+
+td {
+	border: 4px inset silver;
+	text-align: right;
+	vertical-align: bottom;
+}
+
+#hours td   {width: 25%;}
+#minutes td {width: 16.66%;}
+#seconds td {width: 16.66%;}
+
+		</style>
+	</head>
+
+	<body scroll="no">
+		<table border="no" width="100%" height="100%" cellspacing="0" cellpadding="0">
+			<tr id="hours"><td colspan="3">8</td><td colspan="3">4</td><td colspan="3">2</td><td colspan="3">1</td></tr>
+			<tr id="minutes"><td colspan="2">32</td><td colspan="2">16</td><td colspan="2">8</td><td colspan="2">4</td><td colspan="2">2</td><td colspan="2">1</td></tr>
+			<tr id="seconds"><td colspan="2">32</td><td colspan="2">16</td><td colspan="2">8</td><td colspan="2">4</td><td colspan="2">2</td><td colspan="2">1</td></tr>
+		</table>		
+	</body>
+
+	<script language="JavaScript">
+	<!--
+		function showClock(time) {
+			if (!time) time = new Date;
+			for (var i = 0; i < 4; i++) {hours.childNodes(3 - i).style.backgroundColor = (((time.getHours() + 11) % 12 + 1) & Math.pow(2, i))? "red": "black";}
+			for (var i = 0; i < 6; i++) {minutes.childNodes(5 - i).style.backgroundColor = (time.getMinutes() & Math.pow(2, i))? "green": "black";}
+			for (var i = 0; i < 6; i++) {seconds.childNodes(5 - i).style.backgroundColor = (time.getSeconds() & Math.pow(2, i))? "blue": "black";}
+		}
+
+		setInterval(showClock, 1000);
+
+	//-->
+	</script>
+</html>

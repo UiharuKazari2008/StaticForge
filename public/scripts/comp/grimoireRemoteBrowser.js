@@ -8,6 +8,7 @@ let grimoireRemoteBrowserMessagesBound = false;
 let grimoireAudioShell = null;
 let grimoireAudioFocused = false;
 let grimoireAudioVolume = null;
+let grimoireAudioLive = false;
 
 // Audio plays in one Alchemy window, the last one clicked or opened (services/grimoire-browser/viewer.html setAudio).
 // Background play keeps it going when another window is focused or the app is hidden; disabled ends every stream.
@@ -21,7 +22,9 @@ function grimoireAudioState(shell) {
     const settings = grimoireAlchemySettings || {};
     const on = shell === grimoireAudioShell && settings.audioEnabled !== false
         && (settings.audioBackground === true || (grimoireAudioFocused && !document.hidden));
-    return { type: 'grimoire-browser-audio', on, volume: grimoireAudioVolumeNow() / 100 };
+    // the desktop's volume scales Alchemy too: the iframe's audio escapes tabVolume.js's own hooks
+    const master = window.tabVolume && typeof window.tabVolume.masterGain === 'function' ? window.tabVolume.masterGain() : 1;
+    return { type: 'grimoire-browser-audio', on, volume: (grimoireAudioVolumeNow() / 100) * master };
 }
 
 function grimoireSyncAudio() {
@@ -32,12 +35,46 @@ function grimoireSyncAudio() {
         live = true;
         if (frame.contentWindow) frame.contentWindow.postMessage(grimoireAudioState(shell), '*');
     });
-    const icon = document.getElementById('alchemyAudioTrayIcon');
-    if (!icon) return;
-    icon.classList.toggle('hidden', !live);
-    const volume = grimoireAudioVolumeNow();
-    const glyph = (grimoireAlchemySettings || {}).audioEnabled === false || volume === 0 ? 'fa-volume-xmark' : (volume < 50 ? 'fa-volume-low' : 'fa-volume-high');
-    icon.firstElementChild.className = 'fas ' + glyph;
+    grimoireAudioLive = live;
+    // Alchemy's audio is a column in the volume flyout and a section of its menu (tabVolume.js, #628)
+    grimoireRegisterVolumeSource();
+    if (window.tabVolume) window.tabVolume.refresh();
+}
+
+/** Alchemy in the desktop's volume flyout and the volume icon's menu (tabVolume.js registerSource, #628). */
+function grimoireRegisterVolumeSource() {
+    if (grimoireRegisterVolumeSource.done || !window.tabVolume) return;
+    grimoireRegisterVolumeSource.done = true;
+    const saveFailed = () => showGlassToast('error', null, 'Could not save Alchemy settings', false, 4000);
+    const settings = () => grimoireAlchemySettings || {};
+    window.tabVolume.registerSource({
+        id: 'alchemy',
+        label: 'Alchemy',
+        icon: typeof resolveAppIconPath === 'function' ? resolveAppIconPath('alchemy.png', 16) : '/static_images/app_icons/alchemy.png',
+        isActive: () => grimoireAudioLive,
+        getVolume: () => grimoireAudioVolumeNow(),
+        isMuted: () => settings().audioEnabled === false,
+        setVolume: (value, final) => {
+            grimoireAudioVolume = value;
+            if (value > 0 && settings().audioEnabled === false) {
+                grimoireSaveAlchemySettings({ audioEnabled: true }).then(grimoireSyncAudio).catch(saveFailed);
+            }
+            grimoireSyncAudio();
+            if (final) {
+                grimoireSaveAlchemySettings({ audioVolume: value }).then(() => { grimoireAudioVolume = null; }).catch(saveFailed);
+            }
+        },
+        setMuted: (mute) => grimoireSaveAlchemySettings({ audioEnabled: !mute }).then(grimoireSyncAudio).catch(saveFailed),
+        menuItems: () => [
+            { text: 'Play audio', icon: 'fas fa-volume-high', action: 'audioEnabled', showIndicator: true, checked: settings().audioEnabled !== false },
+            { text: 'Play in background', icon: 'fas fa-moon', action: 'audioBackground', showIndicator: true, checked: settings().audioBackground === true }
+        ],
+        onMenuAction: (action, item) => {
+            if (action !== 'audioEnabled' && action !== 'audioBackground') return;
+            grimoireSaveAlchemySettings({ [action]: !(item && item.checked) }).then(grimoireSyncAudio).catch(saveFailed);
+        }
+    });
+    window.tabVolume.onChange(() => grimoireSyncAudio());
 }
 
 function grimoireSetAudioShell(shell) {
@@ -71,61 +108,6 @@ function grimoireAudioFollowPointer(ev) {
         grimoireAudioFocused = focused;
         grimoireSyncAudio();
     }, 0);
-}
-
-function grimoireShowAudioMenu(ev) {
-    const icon = document.getElementById('alchemyAudioTrayIcon');
-    if (!icon) return;
-    grimoireLoadAlchemySettings().then((settings) => {
-        contextMenu.attachToElement(icon, {
-            sections: [
-                {
-                    type: 'custom',
-                    title: 'Alchemy audio',
-                    content: () => {
-                        const row = document.createElement('div');
-                        row.className = 'menu-item-row';
-                        row.style.cssText = 'gap: var(--spacing-sm); padding: var(--spacing-xs) 10px;';
-                        row.innerHTML = '<i class="fas fa-volume-high"></i>';
-                        const slider = document.createElement('input');
-                        slider.type = 'range';
-                        slider.className = 'slider-input';
-                        slider.style.flex = '1';
-                        slider.min = '0';
-                        slider.max = '100';
-                        slider.step = '1';
-                        slider.value = String(settings.audioVolume !== undefined ? settings.audioVolume : 100);
-                        slider.addEventListener('input', () => {
-                            grimoireAudioVolume = Number(slider.value);
-                            grimoireSyncAudio();
-                        });
-                        slider.addEventListener('change', () => {
-                            grimoireSaveAlchemySettings({ audioVolume: Number(slider.value) }).then(() => {
-                                grimoireAudioVolume = null;
-                            }).catch(() => {
-                                showGlassToast('error', null, 'Could not save Alchemy settings', false, 4000);
-                            });
-                        });
-                        row.appendChild(slider);
-                        return row;
-                    }
-                },
-                {
-                    type: 'list',
-                    items: [
-                        { text: 'Play audio', icon: 'fas fa-volume-high', action: 'audioEnabled', showIndicator: true, checked: settings.audioEnabled !== false },
-                        { text: 'Play in background', icon: 'fas fa-moon', action: 'audioBackground', showIndicator: true, checked: settings.audioBackground === true }
-                    ]
-                }
-            ],
-            onAction: (action, target, item) => {
-                grimoireSaveAlchemySettings({ [action]: !item.checked }).then(grimoireSyncAudio).catch(() => {
-                    showGlassToast('error', null, 'Could not save Alchemy settings', false, 4000);
-                });
-            }
-        });
-        contextMenu.showMenu(ev, icon);
-    });
 }
 
 // Web pages show as Alchemy. The taskbar copies the title bar's span and icon: modalUtils.js updateTaskbarWindows
@@ -298,18 +280,94 @@ function grimoireSaveUrl(url, filename) {
     link.remove();
 }
 
-// Download guid -> progress toast id, while the remote page is still downloading.
+// Download guid -> progress toast id, while the remote page is still downloading (off the desktop: no dialog).
 const grimoireDownloadToasts = new Map();
+
+// Download guid -> its own Vista copy dialog (fileOperationProgress.js), from the first bytes to
+// Download complete (Open / Open Folder / Close): { op, frame, id, cancelled, controller }
+const grimoireDownloads = new Map();
+
+function grimoireDownloadDialogs() {
+    return typeof fileOperationProgress !== 'undefined' && fileOperationProgress.available();
+}
+
+/** "<b>example.com</b> (https://example.com/file.zip)": the site a download comes from. */
+function grimoireDownloadSource(url) {
+    try {
+        const parsed = new URL(url);
+        return { name: parsed.hostname || parsed.href, path: parsed.href };
+    } catch (e) {
+        return null;
+    }
+}
+
+/** The active workspace's Downloads (grimoireBrowserBridge.js /save makes it on first use). */
+function grimoireDownloadsPlace() {
+    // activeWorkspace, workspaces: public/scripts/comp/workspaceUtils.js
+    const ws = typeof workspaces !== 'undefined' && workspaces ? workspaces[activeWorkspace] : null;
+    return { name: 'Downloads', path: '/Workspaces/' + ((ws && ws.name) || activeWorkspace) + '/Downloads' };
+}
+
+/**
+ * The dialog for one download, begun at its first word (progress, or the file itself when it was
+ * quick); null off the desktop. id '' (a context-menu save) is not kept: nothing else reports on it.
+ */
+function grimoireDownloadEntry(frame, data, sourceUrl) {
+    const id = String(data.id || '');
+    let entry = id ? grimoireDownloads.get(id) : null;
+    if (entry || !grimoireDownloadDialogs()) return entry || null;
+    entry = { frame, id, cancelled: false, controller: null, op: null };
+    entry.op = fileOperationProgress.begin({
+        op: 'copy',
+        // Vista's copy dialog, its header saying what it does
+        verb: 'Downloading',
+        items: [{ name: data.filename || 'download', size: data.total || 0 }],
+        from: grimoireDownloadSource(sourceUrl),
+        to: grimoireDownloadsPlace(),
+        // Cancel stops the remote browser's download (services/grimoire-browser download-cancel)
+        // or the save behind it, and the dialog goes
+        onCancel: () => {
+            entry.cancelled = true;
+            if (entry.controller) entry.controller.abort();
+            if (entry.id && entry.frame && entry.frame.contentWindow) {
+                entry.frame.contentWindow.postMessage({ type: 'grimoire-browser-download-cancel', id: entry.id }, '*');
+            }
+            entry.op.finish();
+        }
+    });
+    if (id) grimoireDownloads.set(id, entry);
+    return entry;
+}
+
+/**
+ * The running download a finished file belongs to when it came under another id (the remote
+ * browser's folder watch can report it before the download's own completion, which then never
+ * comes): the one of that name in this frame, else the frame's only one.
+ */
+function grimoireRunningDownload(frame, filename) {
+    const mine = Array.from(grimoireDownloads.values()).filter((e) => e.frame === frame && !e.cancelled);
+    return mine.find((e) => e.op.items[0] && e.op.items[0].name === filename) || (mine.length === 1 ? mine[0] : null);
+}
 
 // showGlassToast, updateGlassToastProgress, updateGlassToastMessage, removeGlassToast: public/scripts/comp/toastManager.js
 // formatBytes: public/scripts/comp/systemTrayManager.js
-function grimoireShowDownloadProgress(data) {
-    let toastId = grimoireDownloadToasts.get(data.id);
+function grimoireShowDownloadProgress(found, data) {
     if (data.canceled) {
-        if (toastId) removeGlassToast(toastId);
+        // the page (or Cancel) stopped it
+        const entry = grimoireDownloads.get(data.id);
+        grimoireDownloads.delete(data.id);
+        if (entry) entry.op.finish();
+        const canceledToast = grimoireDownloadToasts.get(data.id);
+        if (canceledToast) removeGlassToast(canceledToast);
         grimoireDownloadToasts.delete(data.id);
         return;
     }
+    const entry = grimoireDownloadEntry(found.frame, data, found.shell._grimoireRemoteUrl);
+    if (entry) {
+        if (!entry.cancelled) entry.op.progress(data.received, data.total);
+        return;
+    }
+    let toastId = grimoireDownloadToasts.get(data.id);
     const text = 'Downloading ' + data.filename + ' - ' + formatBytes(data.received) + (data.total ? ' of ' + formatBytes(data.total) : '');
     if (!toastId) {
         toastId = showGlassToast('info', null, text, true, false, '<i class="fas fa-download"></i>');
@@ -373,22 +431,76 @@ function grimoireBeginWikiLoad(shell) {
     };
 }
 
-// Saves into the active workspace's VFS Downloads folder (grimoireBrowserBridge.js /save), not the browser's downloads.
-async function grimoireSaveToDownloads(shell, ref, filename, progressToastId) {
-    const id = shell && shell._grimoireRemoteSessionId;
-    if (!id) return;
-    if (!progressToastId) progressToastId = showGlassToast('info', null, 'Saving ' + filename + ' to Downloads', false, false, '<i class="fas fa-download"></i>');
+// Download complete: Open opens the file as Explorer's double-click does, Open Folder shows it selected.
+// openExplorerApplet / featureLoader: public/scripts/comp/featureLoader.js; initializeExplorerApplet: explorerApplet.js
+async function grimoireOpenDownload(info, how) {
     try {
+        await featureLoader.loadFeature('explorer');
+        const explorer = initializeExplorerApplet();
+        if (!explorer) return;
+        if (how === 'folder') await explorer.showFileInFolder(info.path, info.fileId);
+        else await explorer.openFileInFolder(info.path, info.fileId);
+    } catch (e) {
+        console.error('Alchemy download:', e);
+    }
+}
+
+// Saves into the active workspace's VFS Downloads folder (grimoireBrowserBridge.js /save), not the browser's downloads.
+// entry: the download's dialog (grimoireDownloadEntry), which follows the save, asks Try Again on a
+// failure and ends at Download complete; without one (off the desktop) the toasts speak.
+async function grimoireSaveToDownloads(shell, ref, filename, progressToastId, entry) {
+    const id = shell && shell._grimoireRemoteSessionId;
+    if (!id) {
+        if (entry) entry.op.finish();
+        return;
+    }
+    const save = async () => {
+        const controller = typeof AbortController === 'function' ? new AbortController() : null;
+        if (entry) entry.controller = controller;
         const res = await fetch('/api/grimoire-browser/sessions/' + encodeURIComponent(id) + '/save?' + shell._grimoireRemoteViewQuery, {
             method: 'POST',
             credentials: 'same-origin',
             headers: { 'Content-Type': 'application/json' },
+            signal: controller ? controller.signal : undefined,
             // activeWorkspace: public/scripts/comp/workspaceUtils.js (currentWorkspace is only set by one boot path)
             body: JSON.stringify(Object.assign({ filename, workspaceId: activeWorkspace }, ref))
         });
         const info = await res.json().catch(() => ({}));
-        removeGlassToast(progressToastId);
         if (!res.ok) throw new Error(info.error || 'save failed');
+        return info;
+    };
+    if (entry) {
+        const op = entry.op;
+        if (entry.cancelled) return;
+        const r = await op.attempt({ name: filename }, save);
+        if (!r.ok || entry.cancelled || op.cancelled) {
+            op.finish();
+            return;
+        }
+        const info = r.value;
+        const size = Number(info.size) || op.totalBytes;
+        op.progress(size, size);
+        const source = op.from;
+        const took = fileOperationProgress.formatElapsed((Date.now() - op.started) / 1000);
+        const answer = await op.complete({
+            header: 'Download complete',
+            lines: [
+                source ? [{ b: info.name || filename }, ' from ', source.name] : [{ b: info.name || filename }],
+                ['Downloaded ' + (size ? fileOperationProgress.formatBytes(size) + ' ' : '') + 'in ' + took + ' to ', { b: 'Downloads' }]
+            ],
+            buttons: [
+                { text: 'Open', value: 'open', primary: true },
+                { text: 'Open Folder', value: 'folder' },
+                { text: 'Close', value: 'close' }
+            ]
+        });
+        if (answer === 'open' || answer === 'folder') grimoireOpenDownload(info, answer);
+        return;
+    }
+    if (!progressToastId) progressToastId = showGlassToast('info', null, 'Saving ' + filename + ' to Downloads', false, false, '<i class="fas fa-download"></i>');
+    try {
+        const info = await save();
+        removeGlassToast(progressToastId);
         // openExplorerApplet: public/scripts/comp/featureLoader.js
         showGlassToast('success', null, info.name + ' saved to Downloads', false, 5000, '<i class="fas fa-download"></i>', [
             { text: 'Show', onClick: () => openExplorerApplet(info.path) }
@@ -562,9 +674,36 @@ async function grimoireCopyImage(url) {
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
 }
 
+/** The page playing Alchemy's audio (grimoireTabs.js keeps it from being suspended, #628). */
+function grimoireIsAudioShell(shell) {
+    return !!shell && shell === grimoireAudioShell;
+}
+
 function grimoireShellWebUrl(shell) {
     const top = shell && shell.history && shell.history[shell.historyIndex];
     return top && top.type === 'web' ? top.url : '';
+}
+
+/**
+ * What a bookmark keeps for the page on show (Yozora #628): a web page's address, or a Grimoire
+ * page's own address (tag wiki, docs, Apocrypha, search: edtx:// rdf:// dsap://), which
+ * host.navigate opens again.
+ */
+function grimoireShellBookmarkUrl(shell, host) {
+    const web = grimoireShellWebUrl(shell);
+    if (web) return web;
+    const a = host && host.currentAddress;
+    let url = (a && a.fullUrl) || '';
+    if (!url && host && typeof host._getDerivedDisplayUrlForPane === 'function') url = host._getDerivedDisplayUrlForPane(shell);
+    return /^(edtx|rdf|dsap):\/\/\S+$/i.test(url || '') ? url : '';
+}
+
+/** A bookmark's title: the page's own, a wiki page's tag, a search's words. */
+function grimoireShellBookmarkTitle(shell, url) {
+    const top = shell && shell.history && shell.history[shell.historyIndex];
+    if (top && !top.title && top.tag) return String(top.tag).replace(/_/g, ' ');
+    const raw = top && (top.title || (top.query ? `Search: ${top.query}` : '') || top.name);
+    return String(raw || url);
 }
 
 async function grimoireAddRemotePageToDesktop(shell) {
@@ -652,13 +791,13 @@ function grimoireRemoteMenuAction(found, action, data) {
     if (action === 'save-image') {
         let name = data.alt || 'image';
         try { name = new URL(data.src).pathname.split('/').pop() || name; } catch (e) {}
-        grimoireSaveToDownloads(shell, { url: data.src }, name);
+        grimoireSaveToDownloads(shell, { url: data.src }, name, null, grimoireDownloadEntry(null, { filename: name }, data.src));
         return;
     }
     if (action === 'download-link') {
         let name = 'download';
         try { name = new URL(data.href).pathname.split('/').pop() || name; } catch (e) {}
-        grimoireSaveToDownloads(shell, { url: data.href }, name);
+        grimoireSaveToDownloads(shell, { url: data.href }, name, null, grimoireDownloadEntry(null, { filename: name }, data.href));
     }
 }
 
@@ -776,6 +915,8 @@ function grimoireApplyRemoteLocation(found, data) {
         return;
     }
     shell._grimoireRemoteTitle = data.title || '';
+    // the page a download comes from (its dialog's "from")
+    if (data.url) shell._grimoireRemoteUrl = data.url;
     // Recent Items (public/scripts/comp/recentItems.js): the page this browser session is on now (one entry per session)
     if (!data.navigating && data.url && window.recentItems) window.recentItems.notePage(shell, { type: 'web', url: data.url, title: data.title });
     grimoireTitleWebEntry(shell, data);
@@ -972,6 +1113,100 @@ async function grimoireDialogIdle() {
     for (let i = 0; i < 10 && isConfirmationDialogActive(); i++) await new Promise((resolve) => setTimeout(resolve, 100));
 }
 
+/**
+ * An upload field on the page (Yozora #628): IE7's "Choose File to Upload", here the desktop's Open
+ * dialog over the VFS (studioSession.js studioOpenFolderDialog with a host), with Select on Client
+ * for files from this computer. The files go to the remote browser (grimoireBrowserBridge.js
+ * file-chooser routes) and the page's input gets them; Cancel leaves the input empty.
+ */
+async function grimoireShowFileChooser(found, data) {
+    const shell = found.shell;
+    const sessionId = shell._grimoireRemoteSessionId;
+    const query = shell._grimoireRemoteViewQuery || '';
+    if (!sessionId) return;
+    const base = '/api/grimoire-browser/sessions/' + encodeURIComponent(sessionId) + '/file-chooser/' + encodeURIComponent(data.id);
+    const reply = (cancel) => {
+        if (found.frame && found.frame.contentWindow) {
+            found.frame.contentWindow.postMessage({ type: 'grimoire-browser-file-chooser-reply', id: data.id, cancel: !!cancel }, location.origin);
+        }
+    };
+    const fail = (err) => {
+        reply(true);
+        showGlassToast('error', null, (err && err.message) || 'Could not upload the file', false, 5000);
+    };
+    const refOf = (item) => {
+        if (!item || item.kind === 'folder') return null;
+        if (item.targetKind === 'user-file' && !item.isUserFileLink) return { kind: 'file', id: item.targetId };
+        if (item.targetKind === 'image' || item.targetKind === 'scrap') return { kind: 'image', filename: item.previewImageFilename || item.targetId };
+        if (item.shortcutType === 'image' && item.shortcutData && item.shortcutData.filename) return { kind: 'image', filename: item.shortcutData.filename };
+        return null;
+    };
+    const sendItems = async (items) => {
+        const refs = (data.multiple ? items : items.slice(0, 1)).map(refOf).filter(Boolean);
+        if (!refs.length) { reply(true); return; }
+        try {
+            const res = await fetch(base + '/vfs?' + query, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ items: refs })
+            });
+            if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not upload the file');
+            reply(false);
+        } catch (err) {
+            fail(err);
+        }
+    };
+    const host = {
+        title: 'Choose File to Upload',
+        typeLabel: data.accept ? `Files (${data.accept})` : 'All Files (*.*)',
+        acceptItem: (item) => !!refOf(item),
+        rejectMessage: 'Choose a file',
+        onOpen: (item) => sendItems([item]),
+        onOpenMany: data.multiple ? (items) => sendItems(items) : null,
+        onCancel: () => reply(true),
+        extraButton: {
+            label: 'Select on <u>C</u>lient',
+            onClick: () => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.multiple = !!data.multiple;
+                if (data.accept) input.accept = data.accept;
+                input.addEventListener('change', async () => {
+                    const files = [...(input.files || [])];
+                    if (!files.length) return;
+                    host._settled = true;
+                    const modal = document.getElementById('studioSaveFolderModal');
+                    if (modal) closeModal(modal);
+                    try {
+                        for (const file of (data.multiple ? files : files.slice(0, 1))) {
+                            const res = await fetch(base + '/upload?' + query + '&name=' + encodeURIComponent(file.name), {
+                                method: 'POST',
+                                credentials: 'same-origin',
+                                headers: { 'Content-Type': 'application/octet-stream' },
+                                body: file
+                            });
+                            if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not upload ' + file.name);
+                        }
+                        reply(false);
+                    } catch (err) {
+                        fail(err);
+                    }
+                }, { once: true });
+                input.click();
+            }
+        }
+    };
+    if (!host.onOpenMany) delete host.onOpenMany;
+    // studioOpenFolderDialog: public/scripts/comp/studioSession.js (the Vista common file dialog)
+    if (typeof studioOpenFolderDialog !== 'function') {
+        host.extraButton.onClick();
+        return;
+    }
+    const ws = typeof activeWorkspace !== 'undefined' && activeWorkspace ? activeWorkspace : '';
+    await studioOpenFolderDialog('open-vfs', { host, startPath: ws ? `/Workspaces/${ws}` : '/' });
+}
+
 async function grimoireShowRemoteDialog(found, data) {
     // showConfirmationDialog / showInputDialog: public/scripts/comp/confirmationDialog.js
     const config = { title: 'Alchemy', icon: 'fas fa-atom' };
@@ -1072,10 +1307,20 @@ function grimoireBindRemoteBrowserMessages() {
             return;
         }
         if (data.type === 'grimoire-browser-download-progress') {
-            grimoireShowDownloadProgress(data);
+            grimoireShowDownloadProgress(found, data);
             return;
         }
         if (data.type === 'grimoire-browser-download') {
+            // the file is whole in the remote browser: its dialog (begun now if it came too quick
+            // for progress) follows the save into Downloads; a cancelled one is not saved
+            const entry = grimoireDownloads.get(data.id) || grimoireRunningDownload(found.frame, data.filename)
+                || grimoireDownloadEntry(found.frame, data, found.shell._grimoireRemoteUrl);
+            if (entry) grimoireDownloads.delete(entry.id);
+            grimoireDownloads.delete(data.id);
+            if (entry) {
+                if (!entry.cancelled) grimoireSaveToDownloads(found.shell, { download: data.id || '' }, data.filename || 'download', null, entry);
+                return;
+            }
             const toastId = grimoireDownloadToasts.get(data.id);
             grimoireDownloadToasts.delete(data.id);
             if (toastId) {
@@ -1113,6 +1358,11 @@ function grimoireBindRemoteBrowserMessages() {
             grimoireShowRemoteDialog(found, data);
             return;
         }
+        if (data.type === 'grimoire-browser-file-chooser' && data.id && found.shell._grimoireFileChooserId !== data.id) {
+            found.shell._grimoireFileChooserId = data.id;
+            grimoireShowFileChooser(found, data);
+            return;
+        }
         if (data.type === 'grimoire-browser-status') {
             grimoireStopNavigationSpinner(found.host);
             grimoireShowRemoteTabPage(found.shell, data.state || 'failed', data.url || '');
@@ -1129,8 +1379,6 @@ function grimoireBindRemoteBrowserMessages() {
     addEventListener('keyup', grimoireForwardRemoteKey, true);
     addEventListener('click', grimoireAudioFollowPointer, true);
     document.addEventListener('visibilitychange', grimoireSyncAudio);
-    const audioIcon = document.getElementById('alchemyAudioTrayIcon');
-    if (audioIcon) audioIcon.addEventListener('click', grimoireShowAudioMenu);
     grimoireLoadAlchemySettings().then(grimoireSyncAudio).catch(() => {});
 }
 
@@ -1267,9 +1515,10 @@ async function grimoireShowSiteMenu(ev, win) {
     const hostName = grimoireSiteLabel(raw);
     const wikiTerm = hostName ? hostName.split('.')[0] : String(raw || '').trim();
     const pageUrl = grimoireShellWebUrl(shell);
+    const markUrl = grimoireShellBookmarkUrl(shell, host);
     const [settings, extensionList] = await Promise.all([grimoireLoadAlchemySettings(), grimoireLoadAlchemyExtensions()]);
     const bookmarks = settings.bookmarks || [];
-    const bookmarked = pageUrl && bookmarks.some((row) => row.url === pageUrl);
+    const bookmarked = markUrl && bookmarks.some((row) => row.url === markUrl);
 
     const items = [];
     if (web && web !== pageUrl) items.push({ text: 'Open in Alchemy', icon: 'fas fa-globe', action: 'browser' });
@@ -1285,11 +1534,13 @@ async function grimoireShowSiteMenu(ev, win) {
             ? bookmarks.map((row) => ({ text: row.title || row.url, subtext: grimoireSiteLabel(row.url), action: 'bookmark-open', bookmarkUrl: row.url }))
             : [{ text: 'No bookmarks', disabled: true }]
     });
-    if (pageUrl) {
+    if (markUrl) {
         items.push(bookmarked
             ? { text: 'Remove bookmark', icon: 'fas fa-bookmark-slash', action: 'bookmark-remove' }
             : { text: 'Bookmark this page', icon: 'far fa-bookmark', action: 'bookmark-add' });
     }
+    // History: every page visited, by day (grimoireCoreDomains.js en.grimoire.jp/history, #628)
+    items.push({ text: 'History', icon: 'fas fa-clock-rotate-left', action: 'history' });
     items.push({
         text: 'Extensions',
         icon: 'fas fa-puzzle-piece',
@@ -1298,6 +1549,8 @@ async function grimoireShowSiteMenu(ev, win) {
             : [{ text: 'No extensions', disabled: true }]
     });
     items.push({ separator: true });
+    // IE7's Tools > Internet Options: Control Panel's Internet Properties (cplDialogs2.js, cplInternetOptions.js)
+    items.push({ text: 'Internet Options', icon: 'fas fa-globe', action: 'internet-options' });
     items.push({ text: 'Settings', icon: 'fas fa-gear', action: 'chrome-settings' });
     items.push({ text: 'JPEG quality', icon: 'fas fa-image', valueDisplay: String(settings.jpegQuality), submenu: grimoireAlchemyChoiceItems('jpegQuality', settings.jpegQuality) });
     items.push({ text: 'Min FPS', icon: 'fas fa-gauge-low', valueDisplay: String(settings.minFps), submenu: grimoireAlchemyChoiceItems('minFps', settings.minFps) });
@@ -1316,6 +1569,12 @@ async function grimoireShowSiteMenu(ev, win) {
                 host.navigate(item.bookmarkUrl);
                 return;
             }
+            if (action === 'internet-options') {
+                Promise.resolve(window.featureLoader ? featureLoader.loadFeature('control_panel') : null)
+                    .then(() => { if (window.cplDialogs) window.cplDialogs.open('internet-options', null, host.modal || null); })
+                    .catch(() => showGlassToast('error', null, 'Internet Options could not open', false, 4000));
+                return;
+            }
             if (action === 'chrome-settings') {
                 host.navigate('chrome://settings');
                 return;
@@ -1330,11 +1589,14 @@ async function grimoireShowSiteMenu(ev, win) {
                 });
                 return;
             }
+            if (action === 'history') {
+                host.navigate(window.GRIMOIRE_HISTORY_URL || 'dsap://history.grimoire.jp');
+                return;
+            }
             if (action === 'bookmark-add' || action === 'bookmark-remove') {
-                const top = shell.history[shell.historyIndex];
                 const next = action === 'bookmark-add'
-                    ? [{ url: pageUrl, title: (top && top.title) || pageUrl }].concat(bookmarks)
-                    : bookmarks.filter((row) => row.url !== pageUrl);
+                    ? [{ url: markUrl, title: grimoireShellBookmarkTitle(shell, markUrl) }].concat(bookmarks)
+                    : bookmarks.filter((row) => row.url !== markUrl);
                 grimoireSaveAlchemySettings({ bookmarks: next }).catch(() => {
                     showGlassToast('error', null, 'Could not save bookmarks', false, 4000);
                 });

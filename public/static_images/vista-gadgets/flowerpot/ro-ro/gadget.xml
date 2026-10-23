@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>Ghiveci de Flori Virtual</name>
+  <namespace>microsoft.windows</namespace>
+  <version>1.0.0.1</version>
+  <author name="KaKaNow.com">
+    <info url="kakanow.com"  text="KaKaNow.com"/>
+    <logo src="images/logo.png" />
+  </author>
+  <copyright>&#169; 2010</copyright>
+  <description>Vedeţi ceva frumos şi plin de viaţă chiar pe desktopul dumneavoastră.
+Aduceţi o rază de soare pe desktop.  Acest Ghiveci de Flori Virtual va înflori chiar în faţa ochilor dumneavoastră, dacă îi daţi florii nişte apă, utilizându-vă mouse-ul.  Exact ca o plantă adevărată, se va micşora dacă o neglijaţi.  Poate dura multe zile până să înflorească deplin, dar va lumina desktopul dumneavoastră la fiecare vizualizare.</description>
+  <icons>
+    <icon height="64" width="64" src="images/icon.png" />
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="default.html" />
+      <permissions>Full</permissions>
+      <platform minPlatformVersion="1.0" />
+      <defaultImage src="images/drag.png" />
+    </host>
+  </hosts>
+</gadget>

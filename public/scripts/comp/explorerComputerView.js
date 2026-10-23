@@ -2,9 +2,11 @@
  * Cartograph's Computer: Vista's Computer folder, the place above the drives (1:1 with the VM's
  * Computer window in Tiles view, 2026-10-22).
  *
- *   Hard Disk Drives (1)   one drive, Cartograph (C:): the Cartograph root ("/") on the server's
- *                          system disk. Its tile is the 48px system-drive icon (imageres.dll 30),
- *                          the name, a 157x14 bar of the used space (aero.msstyles PROGRESS with the
+ *   column headers         Name, Type (sorted), Total Size, Free Space, as Vista heads Computer
+ *   Hard Disk Drives (1)   with the group's collapse chevron; one drive, Local Disk (C:): the
+ *                          Cartograph root ("/") on the server's system disk. Its tile is the 48px
+ *                          system-drive icon (imageres.dll 30), the name, a 156x13 bar of the used
+ *                          space (aero.msstyles PROGRESS with the
  *                          partial teal fill, IMAGE 629; Vista turns it red under 10% free) and
  *                          "38.1 GB free of 63.9 GB" in grey. The sizes come from get_system_info
  *                          disk (modules/globalResources.js refreshSystemInfoCache: statfs of the
@@ -23,7 +25,9 @@
 
     const ART = '/static_images/vista-explorer';
     const COMPUTER_PATH = 'Computer';
-    const DRIVES = [{ letter: 'C', label: 'Cartograph', path: '/' }];
+    const DRIVES = [{ letter: 'C', label: 'Local Disk', path: '/' }];
+    // the column headers Vista gives Computer (VM: 80, 80, 80 and 85px, grouped and sorted by Type)
+    const COLUMNS = [{ label: 'Name' }, { label: 'Type', active: true }, { label: 'Total Size' }, { label: 'Free Space' }];
 
     function esc(text) {
         return String(text == null ? '' : text)
@@ -112,8 +116,14 @@
             el.setAttribute('aria-label', 'Computer');
             host.parentNode.insertBefore(el, host.nextSibling);
             this.el = el;
+            this.mountColumns();
 
             el.addEventListener('click', (ev) => {
+                if (ev.target.closest('.explorer-computer-group-toggle')) {
+                    this.collapsed = !this.collapsed;
+                    this.render();
+                    return;
+                }
                 const tile = ev.target.closest('[data-drive]');
                 this.select(tile ? tile.dataset.drive : null);
             });
@@ -125,7 +135,7 @@
                 if (ev.key === 'Enter' && this.selected) {
                     ev.preventDefault();
                     this.openDrive(this.selected);
-                } else if ((ev.key === 'ArrowDown' || ev.key === 'ArrowRight' || ev.key === 'Home') && !this.selected) {
+                } else if ((ev.key === 'ArrowDown' || ev.key === 'ArrowRight' || ev.key === 'Home') && !this.selected && !this.collapsed) {
                     ev.preventDefault();
                     this.select(DRIVES[0].letter);
                 }
@@ -147,6 +157,15 @@
                 };
                 root.contextMenu.attachToElement(el, config);
             }
+        }
+
+        /** Computer's columns beside the folder ones in #explorerDetailsHeader; explorer.css shows one
+            set or the other (.explorer-in-computer). They carry no data-sort-field, so the applet's
+            sort wiring passes them by. */
+        mountColumns() {
+            const header = document.getElementById('explorerDetailsHeader');
+            if (!header || header.querySelector('.explorer-computer-col')) return;
+            header.insertAdjacentHTML('beforeend', COLUMNS.map((c) => `<button type="button" class="explorer-details-sort-col explorer-computer-col${c.active ? ' active' : ''}" tabindex="-1"><span class="explorer-details-col-label">${esc(c.label)}</span>${c.active ? '<i class="explorer-details-sort-icon fas fa-sort-up" aria-hidden="true"></i>' : ''}</button>`).join(''));
         }
 
         onMenuAction(action) {
@@ -208,7 +227,7 @@
             const disk = diskFacts(this.sys);
             const tiles = DRIVES.map((d) => {
                 const bar = disk
-                    ? `<div class="explorer-drive-bar${disk.full ? ' is-full' : ''}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(disk.usedFraction * 100)}"><div class="explorer-drive-bar-fill" style="width:${(disk.usedFraction * 100).toFixed(2)}%"></div></div>`
+                    ? `<div class="explorer-drive-bar${disk.full ? ' is-full' : ''}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(disk.usedFraction * 100)}"><div class="explorer-drive-bar-fill" style="--used:${disk.usedFraction.toFixed(4)}"></div></div>`
                     : '';
                 const free = disk ? `${formatSize(disk.free)} free of ${formatSize(disk.total)}` : '';
                 return `<div class="explorer-computer-tile${d.letter === this.selected ? ' is-selected' : ''}" data-drive="${esc(d.letter)}" role="option" aria-selected="${d.letter === this.selected}" title="${esc(free)}">
@@ -221,8 +240,8 @@
                     </div>`;
             }).join('');
             this.el.innerHTML = `
-                <section class="explorer-computer-group">
-                    <h3 class="explorer-computer-group-head"><span>Hard Disk Drives (${DRIVES.length})</span></h3>
+                <section class="explorer-computer-group${this.collapsed ? ' is-collapsed' : ''}">
+                    <h3 class="explorer-computer-group-head"><span>Hard Disk Drives (${DRIVES.length})</span><button type="button" class="explorer-computer-group-toggle" tabindex="-1" aria-expanded="${!this.collapsed}" aria-label="${this.collapsed ? 'Expand' : 'Collapse'} the group"></button></h3>
                     <div class="explorer-computer-tiles">${tiles}</div>
                 </section>`;
         }
@@ -262,7 +281,7 @@
             if (d) {
                 const disk = diskFacts(this.sys);
                 const bar = disk
-                    ? `<span class="explorer-drive-bar${disk.full ? ' is-full' : ''}"><span class="explorer-drive-bar-fill" style="width:${(disk.usedFraction * 100).toFixed(2)}%"></span></span>`
+                    ? `<span class="explorer-drive-bar${disk.full ? ' is-full' : ''}"><span class="explorer-drive-bar-fill" style="--used:${disk.usedFraction.toFixed(4)}"></span></span>`
                     : '';
                 info.innerHTML = grid(this.driveName(d), [
                     ['Space used', bar],
@@ -280,6 +299,8 @@
     }
 
     ExplorerComputerView.PATH = COMPUTER_PATH;
+    /** The Cartograph root as Vista names the system drive (the breadcrumb, Recent Pages). */
+    ExplorerComputerView.ROOT_NAME = `${DRIVES[0].label} (${DRIVES[0].letter}:)`;
     ExplorerComputerView._test = { parseSize, formatSize, diskFacts, hostFacts };
     root.ExplorerComputerView = ExplorerComputerView;
     root.EXPLORER_COMPUTER_PATH = COMPUTER_PATH;

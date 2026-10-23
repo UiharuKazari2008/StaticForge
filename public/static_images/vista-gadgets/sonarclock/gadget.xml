@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>SonarClock</name>
+  <namespace>SonarClock.MarkVanBeek</namespace>
+  <version>1.0.0.0</version>
+  <author name="Mark Van Beek">
+    <logo src="logo.png" />
+  </author>
+  <copyright>&#169; 2007</copyright>
+  <description>Unique sonar style clock...</description>
+  <icons>
+      <icon height="64" width="64" src="icon.png" />
+  </icons>
+  <logo>logo.png</logo>
+  <hosts>
+    <host name="sidebar">
+      <base type="html" apiVersion="1.0.0" src="sonar.html" />
+      <permissions>full</permissions>
+      <platform minPlatformVersion ="0.3"/>
+    </host>
+  </hosts>
+</gadget>

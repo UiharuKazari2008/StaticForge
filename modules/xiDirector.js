@@ -77,8 +77,26 @@ function workspacePath(gr) {
     return path.resolve(__dirname, '..');
 }
 
-function readIndex(indexPath) {
-    const file = indexPath || layout().indexPath;
+// ---- Index store ----
+// index.json (the chats with their messages inline) lives in memory. Reading,
+// parsing and rewriting the whole file on every 2 s trace save, and parsing it on
+// every directorStatus and tools/list, held the event loop (#620). The file format
+// is unchanged. Writes are coalesced and land asynchronously; exit and
+// SIGINT/SIGTERM flush synchronously (cursorDirector.onExitFlush). With nothing
+// pending, an index.json changed outside this process is picked up on the next read.
+const INDEX_FLUSH_MS = 500;
+let indexStore = null;
+
+function fileStamp(file) {
+    try {
+        const st = fs.statSync(file);
+        return `${st.mtimeMs}:${st.size}:${st.ino}`;
+    } catch (_) {
+        return null;
+    }
+}
+
+function parseIndexFile(file) {
     try {
         const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
         if (parsed && Array.isArray(parsed.chats)) return parsed;
@@ -86,32 +104,107 @@ function readIndex(indexPath) {
     return { chats: [] };
 }
 
-function writeIndex(index, indexPath) {
-    const file = indexPath || layout().indexPath;
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    const tmp = `${file}.${process.pid}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(index));
-    fs.renameSync(tmp, file);
+function loadIndexStore(file) {
+    const stamp = fileStamp(file);
+    indexStore = {
+        file,
+        index: parseIndexFile(file),
+        stamp,
+        dirty: false,
+        flushing: null,
+        timer: null,
+        // Bumped by the exit flush, so an async write that started before it does not land after it.
+        generation: 0
+    };
+    return indexStore;
 }
 
-// Read-only view, reparsed only when index.json changes (mtime/size; the detached
-// Xi host writes it too). readChatWorkspace runs on every MCP call while Xi has a
-// session. Never edit what this returns.
-let indexPeek = null;
-
-function peekIndex() {
+function currentIndexStore() {
     const file = layout().indexPath;
-    let stamp = null;
+    const store = indexStore;
+    if (!store || (store.file !== file && !store.dirty && !store.flushing)) return loadIndexStore(file);
+    if (!store.dirty && !store.flushing && fileStamp(file) !== store.stamp) return loadIndexStore(file);
+    return store;
+}
+
+// readIndex hands out a copy (chat records and their message lists), so a writer
+// that edits and then throws instead of calling writeIndex leaves the store as it
+// was, like the old re-read from disk. Message objects are shared: edit them only
+// on the way to writeIndex.
+function readIndex() {
+    const index = currentIndexStore().index;
+    return {
+        ...index,
+        chats: index.chats.map((chat) => (Array.isArray(chat.messages)
+            ? { ...chat, messages: chat.messages.slice() }
+            : { ...chat }))
+    };
+}
+
+function writeIndex(index) {
+    const store = currentIndexStore();
+    store.index = index;
+    store.dirty = true;
+    scheduleIndexFlush(store);
+}
+
+function scheduleIndexFlush(store) {
+    // Registered on the first write, after both modules have finished loading.
+    if (typeof director.onExitFlush === 'function') director.onExitFlush(flushIndexStoreSync);
+    if (store.timer) return;
+    store.timer = setTimeout(() => {
+        store.timer = null;
+        // A flush in progress reschedules when it finishes.
+        if (!store.flushing) flushIndexStore(store);
+    }, INDEX_FLUSH_MS);
+    if (typeof store.timer.unref === 'function') store.timer.unref();
+}
+
+function flushIndexStore(store) {
+    if (!store.dirty) return;
+    store.dirty = false;
+    const generation = store.generation;
+    const text = JSON.stringify(store.index);
+    const tmp = `${store.file}.${process.pid}.tmp`;
+    store.flushing = (async () => {
+        await fs.promises.mkdir(path.dirname(store.file), { recursive: true });
+        await fs.promises.writeFile(tmp, text);
+        if (store.generation !== generation) {
+            await fs.promises.unlink(tmp).catch(() => {});
+            return;
+        }
+        await fs.promises.rename(tmp, store.file);
+        store.stamp = fileStamp(store.file);
+    })().catch((error) => {
+        console.error(`Xi index write failed: ${error.message}`);
+        store.dirty = true;
+    }).finally(() => {
+        store.flushing = null;
+        if (store.dirty) scheduleIndexFlush(store);
+    });
+}
+
+// Exit path: write the live index, including a change an unfinished async flush was writing.
+function flushIndexStoreSync() {
+    const store = indexStore;
+    if (!store || (!store.dirty && !store.flushing)) return;
     try {
-        const st = fs.statSync(file);
-        stamp = `${st.mtimeMs}:${st.size}`;
-    } catch (_) {
-        return { chats: [] };
+        store.generation += 1;
+        fs.mkdirSync(path.dirname(store.file), { recursive: true });
+        const tmp = `${store.file}.${process.pid}.exit.tmp`;
+        fs.writeFileSync(tmp, JSON.stringify(store.index));
+        fs.renameSync(tmp, store.file);
+        store.dirty = false;
+        store.stamp = fileStamp(store.file);
+    } catch (error) {
+        console.error(`Xi index exit flush failed: ${error.message}`);
     }
-    if (!indexPeek || indexPeek.file !== file || indexPeek.stamp !== stamp) {
-        indexPeek = { file, stamp, index: readIndex(file) };
-    }
-    return indexPeek.index;
+}
+
+// The live store object, without a copy. readChatWorkspace runs on every MCP call
+// while Xi has a session. Read-only callers only: never edit what this returns.
+function peekIndex() {
+    return currentIndexStore().index;
 }
 
 function hasChat(sessionId) {
@@ -156,7 +249,7 @@ function listActiveRuns() {
 function activeRuntime() {
     const sessionId = activeSessionId();
     if (!sessionId) return null;
-    const chat = readIndex().chats.find((item) => item.id === sessionId);
+    const chat = peekIndex().chats.find((item) => item.id === sessionId);
     return chat ? sanitizeRuntime(chat.runtime) : null;
 }
 
@@ -171,7 +264,7 @@ function runtimeStatus() {
     const sessionId = activeSessionId();
     let sessionName = null;
     if (sessionId) {
-        const chat = readIndex().chats.find((item) => item.id === sessionId);
+        const chat = peekIndex().chats.find((item) => item.id === sessionId);
         sessionName = chat ? (chat.name || 'Xi') : null;
     }
     return {
@@ -242,24 +335,51 @@ function diffPath(sessionId, diffId) {
     return path.join(layout().chats, sid, 'diffs', `${did}.json`);
 }
 
+// publish runs every 200 ms over every parked row (bodies up to 200 KB). A row is
+// written again only when one of the four stored fields changed: a string compare
+// against what was last written, not a stringify and sha1 per row per tick. The
+// write is async; readToolDiffText serves a body that is still on its way to disk.
+const diffWritten = new WeakMap();
+const diffWrites = new Map();
+
+function queueDiffWrite(file, body) {
+    const busy = diffWrites.get(file);
+    if (busy) {
+        busy.body = body;
+        busy.again = true;
+        return;
+    }
+    const entry = { body, again: false };
+    diffWrites.set(file, entry);
+    (async () => {
+        await fs.promises.mkdir(path.dirname(file), { recursive: true });
+        do {
+            entry.again = false;
+            await fs.promises.writeFile(file, entry.body);
+        } while (entry.again);
+    })().catch((error) => {
+        console.error(`Xi tool diff write failed: ${error.message}`);
+    }).finally(() => {
+        diffWrites.delete(file);
+    });
+}
+
 function markToolDiffs(sessionId, rows) {
     (rows || []).forEach((row) => {
         if (!shouldPark(row)) return;
         if (!row.diffId) row.diffId = crypto.randomBytes(6).toString('hex');
-        const body = JSON.stringify({
+        const fields = {
             name: row.name || '',
             detail: row.detail || '',
             args: row.args || '',
             result: row.result || ''
-        });
-        const hash = crypto.createHash('sha1').update(body).digest('hex');
-        if (row._diffHash !== hash) {
+        };
+        const last = diffWritten.get(row);
+        if (!last || last.diffId !== row.diffId || last.name !== fields.name || last.detail !== fields.detail
+            || last.args !== fields.args || last.result !== fields.result) {
             const file = diffPath(sessionId, row.diffId);
-            if (file) {
-                fs.mkdirSync(path.dirname(file), { recursive: true });
-                fs.writeFileSync(file, body);
-            }
-            row._diffHash = hash;
+            if (file) queueDiffWrite(file, JSON.stringify(fields));
+            diffWritten.set(row, { diffId: row.diffId, ...fields });
         }
         row.hasDiff = true;
         row.diffKind = EDIT_TOOLS.has(row.name) ? 'diff' : 'output';
@@ -268,10 +388,12 @@ function markToolDiffs(sessionId, rows) {
 
 function readToolDiffText(sessionId, diffId) {
     const file = diffPath(sessionId, diffId);
-    if (!file || !fs.existsSync(file)) return null;
+    if (!file) return null;
+    const pending = diffWrites.get(file);
+    if (!pending && !fs.existsSync(file)) return null;
     let stored;
     try {
-        stored = JSON.parse(fs.readFileSync(file, 'utf8'));
+        stored = JSON.parse(pending ? pending.body : fs.readFileSync(file, 'utf8'));
     } catch (_) {
         return null;
     }
@@ -454,15 +576,36 @@ function buildPrompt(chat, userText, files, clientId, options) {
     return lines.join('\n');
 }
 
+// Read on every Claude-runtime Xi turn. The joined text is kept until a rule file is
+// added, removed or changed (name, mtime, size, inode). Files touched in the last
+// second are read again next time: one timestamp tick can hide a same-size edit.
+const RULES_SETTLE_MS = 1000;
+let projectRulesCache = null;
+
 function readProjectCursorRules(workspace) {
     const rulesDir = path.join(workspace, '.cursor', 'rules');
     let names = [];
     try { names = fs.readdirSync(rulesDir).filter((name) => name.endsWith('.mdc')); } catch (_) { return ''; }
-    return names.sort().map((name) => {
+    names.sort();
+    let newest = 0;
+    const stamps = names.map((name) => {
+        try {
+            const st = fs.statSync(path.join(rulesDir, name));
+            newest = Math.max(newest, st.mtimeMs);
+            return `${name}:${st.mtimeMs}:${st.size}:${st.ino}`;
+        } catch (_) {
+            return `${name}:-`;
+        }
+    });
+    const key = `${rulesDir}\n${stamps.join('\n')}`;
+    if (projectRulesCache && projectRulesCache.key === key) return projectRulesCache.text;
+    const joined = names.map((name) => {
         let text = '';
         try { text = fs.readFileSync(path.join(rulesDir, name), 'utf8'); } catch (_) { return ''; }
         return text.replace(/^---\n[\s\S]*?\n---\n/, '').trim();
     }).filter(Boolean).join('\n\n');
+    projectRulesCache = Date.now() - newest > RULES_SETTLE_MS ? { key, text: joined } : null;
+    return joined;
 }
 
 // Claude Code auto-discovers a project CLAUDE.md, but Xi runs against the real
@@ -675,7 +818,7 @@ function finishRun(run, why) {
             if (!boundGr) return;
             let name = run.name || 'Xi';
             try {
-                const chat = readIndex().chats.find((item) => item.id === run.sessionId);
+                const chat = peekIndex().chats.find((item) => item.id === run.sessionId);
                 if (chat && chat.name) name = chat.name;
             } catch (_) { /* keep the name from the start of the turn */ }
             const text = (run.stream && run.stream.text) || '';
@@ -1007,7 +1150,7 @@ async function handleDirectorGetSessions(handler, ws, message) {
     if (!assertEnabled(handler, ws, message.requestId)) return;
     try {
         const gr = handler.globalResources;
-        const index = readIndex();
+        const index = peekIndex();
         const activeAccId = getActiveXiAccountId(gr);
         const secureConfig = gr && typeof gr.getSecureConfig === 'function' ? gr.getSecureConfig() : null;
         const cursorAccountAuthStore = require('./cursorAccountAuthStore');
@@ -1074,7 +1217,7 @@ async function handleDirectorCreateSession(handler, ws, message) {
 
 async function handleDirectorGetSession(handler, ws, message) {
     if (!assertEnabled(handler, ws, message.requestId)) return;
-    const chat = readIndex().chats.find((item) => item.id === message.sessionId);
+    const chat = peekIndex().chats.find((item) => item.id === message.sessionId);
     if (!chat) {
         handler.sendError(ws, 'Session not found', 'SESSION_NOT_FOUND', message.requestId);
         return;
@@ -1090,7 +1233,7 @@ async function handleDirectorGetSession(handler, ws, message) {
 
 async function handleDirectorOpenWorkspace(handler, ws, message) {
     if (!assertEnabled(handler, ws, message.requestId)) return;
-    const index = readIndex();
+    const index = peekIndex();
     const preferred = message.preferredChatId && index.chats.find((chat) => chat.id === message.preferredChatId);
     const byId = message.directorSessionId && index.chats.find((chat) => chat.id === message.directorSessionId);
     const workspaceId = message.workspaceId || null;
@@ -1129,7 +1272,7 @@ async function handleDirectorDeleteSession(handler, ws, message) {
 
 async function handleDirectorGetMessages(handler, ws, message) {
     if (!assertEnabled(handler, ws, message.requestId)) return;
-    const chat = readIndex().chats.find((item) => item.id === message.sessionId);
+    const chat = peekIndex().chats.find((item) => item.id === message.sessionId);
     if (!chat) {
         handler.sendError(ws, 'Session not found', 'SESSION_NOT_FOUND', message.requestId);
         return;
@@ -1233,7 +1376,7 @@ async function handleDirectorSendMessage(handler, ws, message, clientInfo) {
         }
 
         const workspace = workspacePath(gr);
-        const runtime = sanitizeRuntime((readIndex().chats.find((item) => item.id === sessionId) || {}).runtime);
+        const runtime = sanitizeRuntime((peekIndex().chats.find((item) => item.id === sessionId) || {}).runtime);
         if (runtime === 'cursor') director.installUnrestrictedCli(layout().configDir);
         if (runtime === 'tokenrouter') director._test.requireTokenRouterKey(gr);
         if (customProviders.isEngine(runtime)) customProviders.requireReady(gr, runtime);
@@ -1577,7 +1720,7 @@ async function writeSessionTasks(gr, sessionId, mutate) {
 }
 
 function readSessionTasks(sessionId) {
-    const chat = readIndex().chats.find((item) => item.id === sessionId);
+    const chat = peekIndex().chats.find((item) => item.id === sessionId);
     if (!chat) return null;
     return director._test.normalizeSessionTasks(chat.tasks);
 }
@@ -1663,6 +1806,7 @@ module.exports = {
     handleDirectorToolDiff,
     _test: {
         shouldPark, markToolDiffs, readToolDiffText, buildPrompt, launchPlan,
+        layout, readIndex, writeIndex, peekIndex, readProjectCursorRules,
         sanitizeRuntime, assertRuntimeUnchanged, publicXiSession, consumeClaudeStreamLine,
         claudeProjectPrompt, claudeMcpConfigArg, sanitizeClaudeEffort,
         usesClaudeCli, xiIdentityLine, XI_TOKENROUTER_DEFAULT_MODEL

@@ -71,6 +71,8 @@ const melatonNetwork = require('./modules/melatonNetwork');
 const accountPictures = require('./modules/accountPictures');
 const { handleStatusStream } = require('./modules/statusStream');
 const desktopSoundsStatic = require('./modules/desktopSoundsStatic');
+const vistaGadgetStatic = require('./modules/vistaGadgetStatic');
+const vistaGadgetProxy = require('./modules/vistaGadgetProxy');
 const installManifestFilter = require('./modules/installManifestFilter');
 const { browserRequest } = require('./modules/browserHttp');
 const { mountGrimoireBrowserBridge } = require('./modules/grimoireBrowserBridge');
@@ -293,6 +295,7 @@ runtimeAssetService.init({
     broadcastManifest: async (options = {}) => {
         const silent = options.silent === true;
         const updateMessage = options.message || 'Runtime assets recompiled';
+        invalidateServiceWorkerManifest();
         const files = buildServiceWorkerCacheManifest();
         const plumbing = globalResources.getDataPlumbing();
         plumbing.publish('ws:broadcast:serviceWorkerCacheUpdate', {
@@ -879,6 +882,7 @@ async function initializeCacheData(force = false) {
         );
         const cacheData = globalResources.getGlobalCacheData();
         globalResources.logger.bootSubStep(`Cached ${cacheData.length} assets`);
+        invalidateServiceWorkerManifest();
         agentAssetBundle.invalidate();
         // The agent zip stays lazy. The installer pack is a separate on-disk zip of this
         // manifest so Copying can download one stream. It builds in the background: the
@@ -903,8 +907,49 @@ function resolveLoginSpritePath() {
     return null;
 }
 
-// Build service worker cache manifest (same payload as OPTIONS /)
+// The manifest is memoised: rebuilding it stats every row (installManifestFilter) and hashes
+// fflate + the login sheet, and OPTIONS / plus /agent/assets* ask for it on every call.
+// Keyed on the cache data array (replaced by initializeCacheData), the site-access flag and
+// the stat of the two files hashed here; a TTL picks up rows deleted between rebuilds. The
+// uncached build blocks 130-365 ms on the live tree, so the TTL is minutes, not seconds
+// (recompiles and cache rebuilds invalidate it at once).
+// Callers must treat the returned array as read-only.
+const SW_MANIFEST_TTL_MS = 10 * 60 * 1000;
+let swManifestMemo = null;
+function invalidateServiceWorkerManifest() {
+    swManifestMemo = null;
+}
+function fileStampKey(filePath) {
+    if (!filePath) return '-';
+    try {
+        const st = fs.statSync(filePath);
+        return `${filePath}:${st.size}:${st.mtimeMs}`;
+    } catch (_) {
+        return `${filePath}:missing`;
+    }
+}
 function buildServiceWorkerCacheManifest() {
+    const source = globalResources.getGlobalCacheData();
+    const key = [
+        Array.isArray(source) ? source.length : -1,
+        siteAccessPublic.readSiteAccessSecure(globalResources).configured ? 1 : 0,
+        fileStampKey(resolveLoginSpritePath()),
+        fileStampKey(path.resolve(__dirname, 'public', 'scripts', 'vendor', 'fflate.js'))
+    ].join('|');
+    const now = Date.now();
+    if (swManifestMemo
+        && swManifestMemo.source === source
+        && swManifestMemo.key === key
+        && now - swManifestMemo.at < SW_MANIFEST_TTL_MS) {
+        return swManifestMemo.manifest;
+    }
+    const manifest = buildServiceWorkerCacheManifestUncached();
+    swManifestMemo = { source, key, at: now, manifest };
+    return manifest;
+}
+
+// Build service worker cache manifest (same payload as OPTIONS /)
+function buildServiceWorkerCacheManifestUncached() {
     const routeFiles = [
         { url: '/', name: '/index.html' },
         { url: '/app', name: '/app.html' },
@@ -949,7 +994,9 @@ function buildServiceWorkerCacheManifest() {
     const shadowedByGalleryRoute = (webPath) => typeof webPath === 'string' && webPath.startsWith('/images/');
     // The Vista games' art and sounds (Yozora #609, tens of MB) load when a game opens, like
     // Windows' optional Games feature; the service worker caches them on that first fetch.
-    const onDemandGameAsset = (webPath) => typeof webPath === 'string' && webPath.startsWith('/static_images/vista-games/');
+    // Sidebar gadget packages (Yozora #629, modules/vistaGadgetStatic.js) load when a gadget is added
+    const onDemandGameAsset = (webPath) => typeof webPath === 'string'
+        && (webPath.startsWith('/static_images/vista-games/') || webPath.startsWith('/static_images/vista-gadgets/'));
 
     const staticFiles = globalResources.getGlobalCacheData()
         .filter(file =>
@@ -1908,6 +1955,75 @@ function redactLoggedSecret(key, value) {
     return value;
 }
 
+// Bodies run up to 100 MB (base64 images), so the log line is built by a bounded walk:
+// redacted like the JSON.stringify(body, redactLoggedSecret) it replaces, long strings
+// clipped, and the whole line cut at LOGGED_BODY_MAX_CHARS with the request size noted.
+const LOGGED_BODY_MAX_CHARS = 2048;
+const LOGGED_BODY_STRING_MAX = 256;
+function formatLoggedBody(body, approxBytes) {
+    let out = '';
+    let truncated = false;
+    const seen = new Set();
+    const emit = (text) => {
+        if (truncated) return false;
+        if (out.length + text.length > LOGGED_BODY_MAX_CHARS) {
+            out += text.slice(0, LOGGED_BODY_MAX_CHARS - out.length);
+            truncated = true;
+            return false;
+        }
+        out += text;
+        return true;
+    };
+    const walk = (key, raw) => {
+        let value = raw;
+        if (value && typeof value === 'object' && typeof value.toJSON === 'function') value = value.toJSON(key);
+        if (typeof value === 'string' && value.length > LOGGED_BODY_STRING_MAX) {
+            const clipped = redactLoggedSecret(key, value.slice(0, 4096));
+            if (clipped === '***') return emit('"***"');
+            return emit(`${JSON.stringify(clipped.slice(0, LOGGED_BODY_STRING_MAX))}...(${value.length} chars)`);
+        }
+        value = redactLoggedSecret(key, value);
+        if (value === null || typeof value !== 'object') {
+            const text = JSON.stringify(value);
+            return emit(text === undefined ? 'null' : text);
+        }
+        if (seen.has(value)) return emit('"[Circular]"');
+        seen.add(value);
+        let ok;
+        if (Array.isArray(value)) {
+            ok = emit('[');
+            for (let i = 0; ok && i < value.length; i++) {
+                if (i > 0 && !emit(',')) { ok = false; break; }
+                ok = walk(String(i), value[i]);
+            }
+            ok = ok && emit(']');
+        } else {
+            ok = emit('{');
+            let first = true;
+            for (const k of Object.keys(value)) {
+                const v = value[k];
+                if (v === undefined || typeof v === 'function' || typeof v === 'symbol') continue;
+                if (!first && !emit(',')) { ok = false; break; }
+                first = false;
+                if (!emit(`${JSON.stringify(k)}:`)) { ok = false; break; }
+                if (!walk(k, v)) { ok = false; break; }
+            }
+            ok = ok && emit('}');
+        }
+        seen.delete(value);
+        return ok;
+    };
+    walk('', body);
+    if (truncated) {
+        const size = Number(approxBytes) > 0 ? `, ~${Math.ceil(Number(approxBytes) / 1024)} KB` : '';
+        const keys = body && typeof body === 'object' && !Array.isArray(body)
+            ? `, keys: ${Object.keys(body).slice(0, 40).join(', ')}`
+            : '';
+        out += `... (truncated${size}${keys})`;
+    }
+    return out;
+}
+
 // Logger // NOTE: Everything above this is not logged!
 app.use((req, res, next) => {
     const skippedPaths = [
@@ -1970,7 +2086,7 @@ app.use((req, res, next) => {
         console.log(`   Query: ${JSON.stringify(queryParams)}`);
     }
     if (req.body && Object.keys(req.body).length > 0) {
-        console.log(`   Body: ${JSON.stringify(req.body, redactLoggedSecret)}`);
+        console.log(`   Body: ${formatLoggedBody(req.body, req.get('content-length'))}`);
     }
     
     let completionLogged = false;
@@ -2272,10 +2388,16 @@ function startInstallPackRebuild() {
 // The manifest is computed per request, but the pack is only rebuilt on a runtime
 // compile. /.login.jpg is regenerated hourly with random images, so its hash moved
 // under a built pack and every install failed with pack-hash. Rebuild on demand.
+const installPackHashes = new WeakMap();
 function refreshInstallPackIfStale() {
     const pack = meletonInstallPack.status();
     if (pack.building || installPackRefresh) return true;
-    const want = meletonInstallPack.hashManifest(buildServiceWorkerCacheManifest());
+    const manifest = buildServiceWorkerCacheManifest();
+    let want = installPackHashes.get(manifest);
+    if (!want) {
+        want = meletonInstallPack.hashManifest(manifest);
+        installPackHashes.set(manifest, want);
+    }
     if (pack.ready && pack.hash === want) return false;
     startInstallPackRebuild();
     return true;
@@ -2363,7 +2485,17 @@ app.options('/', (req, res) => {
     }
 });
 
+const swManifestDigests = new WeakMap();
 function serviceWorkerManifestDigest(manifest) {
+    if (manifest && typeof manifest === 'object' && swManifestDigests.has(manifest)) {
+        return swManifestDigests.get(manifest);
+    }
+    const digest = serviceWorkerManifestDigestUncached(manifest);
+    if (manifest && typeof manifest === 'object') swManifestDigests.set(manifest, digest);
+    return digest;
+}
+
+function serviceWorkerManifestDigestUncached(manifest) {
     const rows = (Array.isArray(manifest) ? manifest : [])
         .map((file) => `${file.url || ''}\t${file.hash || ''}`)
         .sort();
@@ -2872,9 +3004,9 @@ app.get('/traces', authMiddleware, adminOnlyMiddleware, (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'traces.html'));
 });
 // Traces API
-app.get('/traces/list', authMiddleware, adminOnlyMiddleware, (req, res) => {
+app.get('/traces/list', authMiddleware, adminOnlyMiddleware, async (req, res) => {
     try {
-        const list = globalResources.getTracing().listTraces();
+        const list = await globalResources.getTracing().listTraces();
         console.log(`📋 listTraces() returned ${list.length} traces`);
         res.json({ success: true, traces: list });
     } catch (e) {
@@ -4247,6 +4379,21 @@ async function handleAdminUnixSocketMessage(message, socket) {
             desktopSoundsStatic.sendSound(req, res, __dirname);
         });
 
+        // Sidebar gadget packages: lowercase paths, locale folder then gadget root (Yozora #629)
+        app.use(vistaGadgetStatic.WEB_PREFIX, vistaGadgetStatic.middleware(__dirname));
+        // their remote XML and pictures, admins only (modules/vistaGadgetProxy.js)
+        app.get('/gadget-proxy', authMiddleware, (req, res) => {
+            vistaGadgetProxy.handle(req, res).catch((err) => {
+                if (!res.headersSent) res.status(500).json({ success: false, error: err.message });
+            });
+        });
+        // and their radio stations' audio (modules/vistaGadgetProxy.js handleStream)
+        app.get('/gadget-stream', authMiddleware, (req, res) => {
+            vistaGadgetProxy.handleStream(req, res).catch(() => {
+                if (!res.headersSent) res.status(500).end();
+            });
+        });
+
         // graphify-out holds an internal cache (stat-index.json) that lists absolute server
         // paths, sizes and mtimes for the whole tree. Auth before any bytes leave the host.
         const graphifyPublicDir = path.join(__dirname, 'public', 'graphify-out');
@@ -4316,18 +4463,14 @@ async function handleAdminUnixSocketMessage(message, socket) {
         }, SUBSCRIPTION_USAGE_POLL_MS);
         globalResources.registerTimer('cacheRefresh', 'interval', () => initializeCacheData(), CACHE_REFRESH_INTERVAL);
         setTimeout(() => {
-            try {
-                runCacheDirExpiry(globalResources);
-            } catch (err) {
+            runCacheDirExpiry(globalResources).catch((err) => {
                 globalResources.logger.warn('Cache dir expiry failed:', err.message);
-            }
+            });
         }, FIRST_RUN_DELAY_MS);
         globalResources.registerTimer('cacheDirExpiry', 'interval', () => {
-            try {
-                runCacheDirExpiry(globalResources);
-            } catch (err) {
+            runCacheDirExpiry(globalResources).catch((err) => {
                 globalResources.logger.warn('Cache dir expiry failed:', err.message);
-            }
+            });
         }, CLEANUP_INTERVAL_MS);
         globalResources.registerTimer('securityCleanup', 'interval', () => cleanupSecurityData(), SECURITY_CONFIG.CLEANUP_INTERVAL_MS);
         globalResources.registerTimer('retrievedRequestsCleanup', 'interval', () => cleanupRetrievedRequests(), 5 * 60 * 1000);

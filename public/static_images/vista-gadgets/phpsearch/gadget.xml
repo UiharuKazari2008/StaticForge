@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+    <name>PHP Search</name>
+    <namespace>PHP Search</namespace>
+    <version>1.0</version>
+    <author name="Roger Cable">
+		<info url="http://www.icheckbooks.com/development/" />
+    </author>
+    <copyright>2007</copyright>
+    <description>Quick Access to PHP.net function database.</description>
+	<icons>
+        <icon height="300" width="300" src="images/icon.png" />
+    </icons>
+    <hosts>
+        <host name="sidebar">
+            <base type="HTML" apiVersion="1.0.0" src="main.html" />
+            <permissions>full</permissions>
+            <platform minPlatformVersion="1.0" />
+        </host>
+    </hosts>
+</gadget>

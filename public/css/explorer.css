@@ -791,7 +791,7 @@
     justify-content: flex-start;
 }
 
-/* Cartograph's Computer (explorerComputerView.js) in place of the grid and the details header */
+/* Cartograph's Computer (explorerComputerView.js) in place of the grid, with its own column headers */
 #explorerModal .explorer-computer-view {
     display: none;
 }
@@ -804,13 +804,27 @@
     outline: none;
 }
 
-#explorerModal.explorer-in-computer :is(#explorerGridHost, #explorerDetailsHeader) {
+#explorerModal.explorer-in-computer #explorerGridHost {
     display: none !important;
+}
+
+#explorerModal .explorer-details-header .explorer-computer-col,
+#explorerModal.explorer-in-computer .explorer-details-header .explorer-details-sort-col[data-sort-field] {
+    display: none;
+}
+
+#explorerModal.explorer-in-computer .explorer-details-header .explorer-computer-col {
+    display: flex;
 }
 
 #explorerModal .explorer-computer-group-head {
     margin: 0;
     font: inherit;
+}
+
+/* the group's collapse chevron is Vista's (vista-explorer.css) */
+#explorerModal .explorer-computer-group-toggle {
+    display: none;
 }
 
 #explorerModal .explorer-computer-tiles {
@@ -839,7 +853,7 @@
     position: absolute;
     left: 54px;
     right: 4px;
-    top: -1px;
+    top: 0;
 }
 
 #explorerModal :is(.explorer-computer-tile-name, .explorer-computer-tile-free) {
@@ -853,17 +867,25 @@
     position: relative;
     display: block;
     box-sizing: border-box;
-    width: 157px;
+    width: 156px;
     height: 13px;
     border: 1px solid #b2b2b2;
+    background: none;
+    box-shadow: none;
 }
 
+/* --used: the used fraction (explorerComputerView.js); height, edge and transition are the bar's,
+   not those of cache-browser.css's [role="progressbar"] > div */
 #explorerModal .explorer-drive-bar-fill {
     position: absolute;
     left: 0;
     top: 0;
     bottom: 0;
+    width: calc(var(--used, 0) * 100%);
+    height: auto;
     background: #2ea4c8;
+    box-shadow: none;
+    transition: none;
 }
 
 #explorerModal .explorer-drive-bar.is-full .explorer-drive-bar-fill {

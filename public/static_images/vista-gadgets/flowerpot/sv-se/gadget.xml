@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>Virtuell blomkruka</name>
+  <namespace>microsoft.windows</namespace>
+  <version>1.0.0.1</version>
+  <author name="KaKaNow.com">
+    <info url="kakanow.com"  text="KaKaNow.com"/>
+    <logo src="images/logo.png" />
+  </author>
+  <copyright>&#169; 2010</copyright>
+  <description>Skaffa något vackert och levande till ditt skrivbord.
+Få lite solsken till skrivbordet. Blommorna i denna virtuella blomkruka växer och blomstrar mitt framför ögonen på dig om du bara ger dem lite vatten med hjälp av musen. Precis som en riktig växt kommer den att krympa om du inte tar hand om den. Det kan ta några dagar innan den står i full prakt, men den kommer att lysa upp ditt skrivbord varje gång du ser den.</description>
+  <icons>
+    <icon height="64" width="64" src="images/icon.png" />
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="default.html" />
+      <permissions>Full</permissions>
+      <platform minPlatformVersion="1.0" />
+      <defaultImage src="images/drag.png" />
+    </host>
+  </hosts>
+</gadget>

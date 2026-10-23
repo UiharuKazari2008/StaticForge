@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>Count Down</name>
+  <version>1.3.1</version>
+  <author name="Oliver Green">
+        <info url="http://www.codeblog.co.uk/?p=49" />
+		<logo src="logo.png"/>
+  </author>
+  <copyright>&#169; 2009</copyright>
+  <description>Version 1.3.1 Updated. Simple count down timer. Now Vista x86 and x64 compatible, support for localised editions of Vista. Visit http://www.codeblog.co.uk/?p=49 for more information / credits.</description>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="Countdown.html" />
+      <permissions>Full</permissions>
+      <platform minPlatformVersion="1.0" />
+    </host>
+  </hosts>
+    <icons>
+    <icon height="128" width="128" src="icon.png"/>
+  </icons>
+</gadget>
+
+

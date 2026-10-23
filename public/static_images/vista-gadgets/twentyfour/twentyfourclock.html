@@ -1,0 +1,94 @@
+<html>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+<style>
+
+  * { padding: 0; margin: 0; }
+  
+  body {
+    background: #f0f;
+    height: 39px;
+    margin: 10px 0px;
+    width: 130px;
+  }
+  
+  #gadgetContents {
+    height: 39px;
+    width: 130px;
+    overflow: hidden;
+    position: absolute;
+  }
+  
+  #frame {
+    background: url("images/frame.gif");
+    text-align: center;
+    padding: 6px 0px 7px;
+    width: 130px;
+    height: 27px;
+  }
+  
+  #glare {
+    background: url("images/glare.png");
+    height: 39px; width: 130px;
+    z-index: 50px;
+    position: absolute;
+  }
+  
+</style>
+
+<script>
+
+  function start()
+  {
+    updateTime();
+    setInterval(updateTime, 1000);
+  }
+
+  function updateTime()
+  {
+    var date = new Date();
+        
+    var seconds = date.getSeconds();
+    seconds = seconds < 10 ? "0" + seconds : seconds;
+    
+    var minutes = date.getMinutes();
+    minutes = minutes < 10 ? "0" + minutes : minutes;
+    
+    var hour = date.getHours() % 12;
+    hour = (hour == 0 ? 12 : hour)
+    
+    var time = hour + ":" + minutes + ":" + seconds;
+    
+    var content = "";
+    
+    for ( i = 0; i < time.length; i++ )
+    {
+      var digit = time.substr(i, 1);
+      digit = (digit == ":" ? "colon" : digit);
+      digit = (i == 0 && digit == "1" ? "1-for-12" : digit);
+      content += "<img src=\"images/" + digit + ".png\" />";
+    }
+    
+    document.getElementById("frame").innerHTML = content;
+  }
+</script>
+</head>
+<body id="body" onload="start()">
+  <div id="preloader" style="display: none;">
+    <img src="images/1.png" />
+    <img src="images/2.png" />
+    <img src="images/3.png" />
+    <img src="images/4.png" />
+    <img src="images/5.png" />
+    <img src="images/6.png" />
+    <img src="images/7.png" />
+    <img src="images/8.png" />
+    <img src="images/9.png" />
+    <img src="images/0.png" />
+    <img src="images/colon.png" />
+  </div>
+  <div id="gadgetContents">
+    <div id="glare"></div>
+    <div id="frame"></div>
+  </div>
+</body>
+</html>

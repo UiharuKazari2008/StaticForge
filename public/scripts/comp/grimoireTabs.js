@@ -32,6 +32,9 @@
     ];
 
     let nextTabId = 1;
+    // tab suspension (#628): checked every minute; background tabs unused 20 minutes are suspended
+    const SUSPEND_CHECK_MS = 60000;
+    const DEFAULT_SUSPEND_MINUTES = 20;
 
     function show(el, on) {
         if (!el) return;
@@ -54,6 +57,48 @@
             first.first = true;
             this.tabs = [first];
             this.active = first;
+            // tab suspension (#628): a background tab unused this long gives its remote page up
+            this.suspendTimer = setInterval(() => {
+                // the window is gone: stop looking
+                if (host.modal && !host.modal.isConnected) { clearInterval(this.suspendTimer); return; }
+                this.suspendIdle().catch(() => {});
+            }, SUSPEND_CHECK_MS);
+            if (this.suspendTimer && typeof this.suspendTimer.unref === 'function') this.suspendTimer.unref();
+        }
+
+        /** Minutes a background tab may sit unused before it is suspended (localStorage alchemyTabSuspendMinutes, 0 = never). */
+        static suspendAfterMs() {
+            let minutes = DEFAULT_SUSPEND_MINUTES;
+            try {
+                const raw = root.localStorage.getItem('alchemyTabSuspendMinutes');
+                if (raw !== null && raw !== '' && Number.isFinite(Number(raw))) minutes = Number(raw);
+            } catch (_) { /* private mode */ }
+            return minutes > 0 ? minutes * 60000 : 0;
+        }
+
+        /**
+         * Tab suspension (Yukimi 2026-10-22, #628): a background Alchemy tab nobody looked at for a long
+         * time closes its page in the remote browser (as freeSession does at the session cap), keeping a
+         * picture of it for the tab; the page loads again from its address when the tab is shown. A tab
+         * playing audio in the background stays.
+         */
+        async suspendIdle(now = Date.now()) {
+            const after = GrimoireTabs.suspendAfterMs();
+            if (!after) return 0;
+            let count = 0;
+            for (const tab of this.tabs) {
+                if (tab === this.active || !tab.state || now - (tab.lastActive || now) < after) continue;
+                for (const shell of [tab.state, tab.state.rightPane]) {
+                    if (!shell || !shell._grimoireRemoteSessionId) continue;
+                    if (typeof root.grimoireIsAudioShell === 'function' && root.grimoireIsAudioShell(shell)) continue;
+                    tab.snapshot = tab.snapshot || this.frameSnapshot(shell);
+                    await root.grimoireCloseRemoteBrowser(shell);
+                    tab.suspended = true;
+                    count += 1;
+                }
+            }
+            if (count) this.emit();
+            return count;
         }
 
         makeTab(area, wrap) {
@@ -195,6 +240,7 @@
             tab.state = null;
             this.active = tab;
             tab.lastActive = Date.now();
+            tab.suspended = false;
             show(tab.wrap, true);
             show(tab.rightWrap, true);
             if (typeof root.grimoireRetargetAudio === 'function') root.grimoireRetargetAudio(bag, host);

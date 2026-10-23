@@ -233,7 +233,7 @@ for (const state of ['logon', 'booting', 'locked']) {
 
 // ---- keyboardShortcuts.js: Alt+Tab / Win+Tab ------------------------------------------------------
 
-function shortcutsContext({ platform = 'Win32' } = {}) {
+function shortcutsContext({ platform = 'Win32', flip3d } = {}) {
     const src = read('public/scripts/comp/keyboardShortcuts.js');
     const pick = (name) => {
         const start = src.indexOf(`function ${name}(`);
@@ -246,13 +246,13 @@ function shortcutsContext({ platform = 'Win32' } = {}) {
         throw new Error(name);
     };
     const log = [];
-    const ctx = { navigator: { platform }, window: { isDesktop: true }, Date, log };
+    const ctx = { navigator: { platform }, window: { isDesktop: true, flip3d }, Date, performance, log };
     vm.createContext(ctx);
     vm.runInContext(`
         var windowSwitcherActive = false, windowSwitcherWindows = [], windowSwitcherSelectedIndex = 0,
             windowSwitcherIconsBuiltFor = null, windowSwitcherHoldKey = null, ctrlKeyPressed = false,
             altKeyPressed = false, suppressAltOverlayUntilRelease = false, activeAltKeyCodes = new Set(),
-            runAppletLastAltUpTime = 0;
+            runAppletLastAltUpTime = 0, flip3dUnavailable = false, flip3dMetaUpAt = 0;
         const RUN_APPLET_DOUBLE_ALT_MS = 400;
         function startWindowSwitcher() { log.push('start'); windowSwitcherActive = true; windowSwitcherWindows = ['w1', 'w2', 'w3']; }
         function navigateWindowSwitcher(d) { log.push('nav ' + d); }
@@ -263,7 +263,8 @@ function shortcutsContext({ platform = 'Win32' } = {}) {
         function getShortcutOverlayContextFlags() { return {}; }
         function ensureKeyboardShortcutOverlaysRegistered() {}
         function getActiveKeyboardOverlayEntries() { return []; }
-        const featureLoader = { loadFeature: () => { log.push('run'); return { then() {} }; } };
+        const featureLoader = { loadFeature: (name) => { log.push(name === 'run' ? 'run' : 'load ' + name); return { then() { return { catch() {} }; } }; } };
+        ${pick('openFlip3d')}
         ${pick('windowSwitcherHoldKeyFor')}
         ${pick('stopWindowSwitcher')}
         ${pick('handleKeyDown')}
@@ -297,9 +298,28 @@ function sk(type, k, mods = {}) {
     assert.deepStrictEqual(c.log, ['start', 'nav -1']);
 }
 
-// Win+Tab holds on the Windows key; Ctrl's release does nothing then
+// Win+Tab is Flip 3D (flip3d.js), held on the Windows key; Ctrl+Win+Tab keeps it open
+{
+    const opened = [];
+    const flip3d = { open: (mode, o) => { opened.push(`${mode} ${o.holdKey}`); return true; } };
+    const c = shortcutsContext({ flip3d });
+    vm.runInContext('handleKeyDown', c)(sk('keydown', 'Tab', { metaKey: true }));
+    vm.runInContext('handleKeyDown', c)(sk('keydown', 'Tab', { metaKey: true, ctrlKey: true }));
+    assert.deepStrictEqual(opened, ['hold Meta', 'sticky Meta']);
+    assert.deepStrictEqual(c.log, [], 'the window switcher stays shut');
+}
+
+// Flip 3D not loaded yet: Win+Tab loads it (and does not start the switcher meanwhile)
 {
     const c = shortcutsContext();
+    vm.runInContext('handleKeyDown', c)(sk('keydown', 'Tab', { metaKey: true }));
+    assert.deepStrictEqual(c.log, ['load flip3d']);
+}
+
+// Without WebGL (flip3d.open false), Win+Tab holds the switcher on the Windows key; Ctrl's
+// release does nothing then
+{
+    const c = shortcutsContext({ flip3d: { open: () => false } });
     vm.runInContext('handleKeyDown', c)(sk('keydown', 'Tab', { metaKey: true }));
     vm.runInContext('handleKeyUp', c)(sk('keyup', 'Control'));
     assert.ok(!c.log.includes('activate'));

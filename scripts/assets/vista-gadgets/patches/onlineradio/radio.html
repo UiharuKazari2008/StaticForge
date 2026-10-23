@@ -1,0 +1,150 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" >
+<head>
+    <title>Online Radio</title>
+    <link rel="stylesheet" href="css/style.css" type="text/css" />
+    
+<script language="javascript" type="text/javascript">
+// <!CDATA[
+
+var volume = 50;
+var mute = false;
+
+function Init()
+{
+    mPlayer.settings.volume = volume;
+    LEVEL.src = volume+".ico";            
+    loadStations(0);
+}
+
+// (Yozora #629) The 2007 streams are gone: the most played stations of radio-browser.info, a free
+// station directory, through Dreamscape (/gadget-proxy for the list, /gadget-stream for the audio)
+var STATION_SERVERS = ["de1", "fi1", "at1"];
+function loadStations(server)
+{
+    if (server >= STATION_SERVERS.length) {
+        SELECT1.options[0].text = "No stations right now";
+        return;
+    }
+    var xhr = new XMLHttpRequest();
+    xhr.open("GET", "https://" + STATION_SERVERS[server] + ".api.radio-browser.info/json/stations/search?order=clickcount&reverse=true&limit=80&hidebroken=true", true);
+    xhr.onreadystatechange = function () {
+        if (xhr.readyState != 4) return;
+        var list = null;
+        try { list = JSON.parse(xhr.responseText); } catch (e) { list = null; }
+        if (xhr.status != 200 || !list || !list.length) {
+            loadStations(server + 1);
+            return;
+        }
+        while (SELECT1.options.length) SELECT1.remove(0);
+        for (var i = 0; i < list.length && SELECT1.options.length < 50; i++) {
+            var st = list[i];
+            if (st.hls || !/^(MP3|AAC|AAC\+|OGG)$/i.test(st.codec || "")) continue;
+            var o = document.createElement("option");
+            o.value = st.url_resolved || st.url;
+            o.text = String(st.name || "").replace(/\s+/g, " ").replace(/^\s+|\s+$/g, "") + (st.countrycode ? " (" + st.countrycode + ")" : "");
+            SELECT1.add(o);
+        }
+    };
+    xhr.send();
+}
+
+function SELECT1_onclick() {
+    mPlayer.controls.stop();
+    mPlayer.URL = SELECT1.value;
+    mPlayer.controls.play();
+    mPlayer.settings.volume = volume;
+    LEVEL.src = volume+".ico";        
+    mPlayer.settings.mute = mute;
+}
+
+function LESS_onClick() {
+    if (volume > 0)
+        volume -= 10;
+    mPlayer.settings.volume = volume;    
+    LEVEL.src = volume+".ico";    
+}
+function MORE_onclick() {
+    if( volume < 100 )
+        volume += 10;
+    mPlayer.settings.volume = volume;
+    LEVEL.src = volume+".ico";    
+}
+
+function MUTE_onclick() {
+    var str = "speaker_";
+    mute = !mute;
+    mPlayer.settings.mute = mute;
+    if(mute)
+        str += "off.ico";
+    else
+        str += "on.ico";
+            
+    MUTE.src=str;
+}
+
+// ]]>
+</script>
+</head>
+<body onload="Init()">
+    <g:background src="logo.png"></g:background>
+    <span id="gadgetContent">
+    <table>
+        <tr>
+            <td class="lblTitle">
+                Ecki's Online Radio
+            </td>
+        </tr>
+        <tr>
+            <td>
+            	<select size="5" id="SELECT1" onclick="return SELECT1_onclick()">
+		<option value="">Loading stations...</option>
+	</select>
+
+            </td>
+        </tr>
+        <tr>
+            <td>
+                <input type="image" id="PLAY" src="play.ico" 
+                    onclick="if(mPlayer.controls.isAvailable('Play'))
+                                mPlayer.controls.play();
+                            " size="8" />
+                <input type="image" id="STOP" src="stop.ico" 
+                    onclick="if(mPlayer.controls.isAvailable('Stop'))
+                                mPlayer.controls.stop();
+                            " size="8" />&nbsp;
+                <img id="MUTE" height="16" src="speaker_on.ico" onclick="return MUTE_onclick()" />&nbsp;
+                <input type="image" id="LESS" src="down.ico" style="width: 16;"
+                    onclick="return LESS_onClick()" />
+                <input type="image" id="MORE" src="up.ico" onclick="return MORE_onclick()" />&nbsp;                
+                <img id="LEVEL" height="16" src="0.ico" /></td>
+        </tr>
+        <tr>
+            <td>
+                <div id="divStatus" style="color: infotext; background-color: activecaption">Status</div>
+            </td>
+        </tr>
+        <tr>
+            <td>
+        	<object id="mPlayer"  
+	classid="CLSID:6BF52A52-394A-11d3-B153-00C04F79FAA6"
+	type="application/x-oleobject" style="height: 61px" width="130">
+	<param name="SendPlayStateChangeEvents" value="false" />
+	<param name="url" value="" />
+	<param name="AutoStart" value="true" />
+	<param name="ShowControls" value="false" />
+	<param name="uiMode" value="none" />
+	<param name="ShowStatusbar" value="true" />
+	</object>    
+            </td>
+        </tr>
+    </table>
+    <script language="JScript" for="mPlayer" event="StatusChange()">
+
+    // Display status. This requires Windows Media Player 9 Series or later.
+    divStatus.innerHTML = mPlayer.status;
+
+		</script>
+    </span>
+</body>
+</html>

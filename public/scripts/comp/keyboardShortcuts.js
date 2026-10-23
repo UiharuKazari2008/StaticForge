@@ -995,6 +995,13 @@ function handleKeyDown(event) {
     // Switch windows while a modifier is held (desktop mode): Ctrl+Tab, and in the installed app,
     // which gets the system keys too, Vista's Alt+Tab and Win+Tab. Shift steps back.
     const switcherHoldKey = window.isDesktop && event.key === 'Tab' ? windowSwitcherHoldKeyFor(event) : null;
+    // Win+Tab is Vista's Flip 3D (flip3d.js), held like Alt+Tab; Ctrl+Win+Tab keeps it open.
+    // Without WebGL it falls through to the window switcher.
+    if (switcherHoldKey && event.metaKey && !event.altKey && !windowSwitcherActive && openFlip3d(event)) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+    }
     if (switcherHoldKey) {
         event.preventDefault();
         event.stopPropagation();
@@ -1471,6 +1478,7 @@ function handleKeyDown(event) {
 
 // Handle key up events
 function handleKeyUp(event) {
+    if (event.key === 'Meta') flip3dMetaUpAt = performance.now();
     const switcherRelease = windowSwitcherActive && event.key === windowSwitcherHoldKey;
     if (event.key === 'Alt') {
         activeAltKeyCodes.delete(event.code || 'AltLeft');
@@ -1503,6 +1511,32 @@ function handleKeyUp(event) {
         stopWindowSwitcher();
         ctrlKeyPressed = false;
     }
+}
+
+let flip3dUnavailable = false;
+let flip3dMetaUpAt = 0;
+
+/** Win+Tab / Ctrl+Win+Tab: Flip 3D (flip3d.js, a lazy feature). False when it cannot run (no
+ *  WebGL), so the window switcher takes the key. */
+function openFlip3d(event) {
+    if (flip3dUnavailable || /Mac|iPhone|iPad/.test(navigator.platform || '')) return false;
+    const mode = event.ctrlKey ? 'sticky' : 'hold';
+    if (window.flip3d) {
+        if (window.flip3d.open(mode, { holdKey: 'Meta' })) return true;
+        flip3dUnavailable = true;
+        return false;
+    }
+    if (typeof featureLoader === 'undefined') return false;
+    const asked = performance.now();
+    // public/scripts/comp/featureLoader.js; the Windows key let go while it loaded: it stays open
+    featureLoader.loadFeature('flip3d').then(() => {
+        const held = flip3dMetaUpAt < asked;
+        if (window.flip3d && window.flip3d.open(held ? mode : 'sticky', { holdKey: 'Meta' })) return;
+        flip3dUnavailable = true;
+        startWindowSwitcher();
+        if (windowSwitcherActive && held) windowSwitcherHoldKey = 'Meta';
+    }).catch(() => { flip3dUnavailable = true; });
+    return true;
 }
 
 /** Which held modifier makes this Tab a window switch: Ctrl, Alt or the Windows key (not Cmd on a Mac). */

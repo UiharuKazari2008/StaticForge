@@ -1077,6 +1077,83 @@ function holdPopup(session, popup) {
     });
 }
 
+// Upload fields (Yozora #628): Chrome's own file chooser would open on the Xvfb screen nobody sees.
+// It is intercepted; the viewer asks the user's desktop instead (an Open dialog over the VFS, or
+// Select on Client), the files are uploaded to POST /sessions/<id>/file-chooser/<chooser>/file
+// and a file-chooser-reply sets them on the input (DOM.setFileInputFiles). The files stay in the
+// session's upload folder until the session closes: Chrome reads them when the form is sent.
+const UPLOAD_MAX_BYTES = Number(process.env.GRIMOIRE_UPLOAD_MAX_BYTES) || 2 * 1024 * 1024 * 1024;
+
+function armFileChooser(session) {
+    session.cdp.send('Page.setInterceptFileChooserDialog', { enabled: true }).catch(() => {});
+    session.cdp.on('Page.fileChooserOpened', async (ev) => {
+        let accept = '';
+        try {
+            const node = await session.cdp.send('DOM.resolveNode', { backendNodeId: ev.backendNodeId });
+            const value = await session.cdp.send('Runtime.callFunctionOn', {
+                objectId: node.object.objectId,
+                functionDeclaration: 'function () { return String(this.accept || ""); }',
+                returnByValue: true
+            });
+            accept = String((value && value.result && value.result.value) || '').slice(0, 500);
+        } catch (_) {}
+        const id = crypto.randomBytes(8).toString('hex');
+        session.fileChooser = { id, backendNodeId: ev.backendNodeId, multiple: ev.mode === 'selectMultiple', files: [] };
+        broadcast(session, { type: 'file-chooser', id, multiple: session.fileChooser.multiple, accept });
+    });
+}
+
+function uploadDir(session) {
+    if (!session.uploadDir) session.uploadDir = path.join(os.tmpdir(), 'alchemy-uploads', session.id);
+    return session.uploadDir;
+}
+
+async function finishFileChooser(session, msg) {
+    const chooser = session.fileChooser;
+    if (!chooser || chooser.id !== msg.id) return;
+    session.fileChooser = null;
+    if (msg.cancel || !chooser.files.length) return;
+    const files = chooser.multiple ? chooser.files : chooser.files.slice(-1);
+    await session.cdp.send('DOM.setFileInputFiles', { files, backendNodeId: chooser.backendNodeId }).catch((err) => {
+        console.error('[grimoire-browser] setFileInputFiles', err && err.message);
+    });
+}
+
+async function receiveUpload(session, chooserId, name, req, res) {
+    const chooser = session.fileChooser;
+    if (!chooser || chooser.id !== chooserId) {
+        sendJson(res, 409, { error: 'no file chooser is open' });
+        return;
+    }
+    const dir = path.join(uploadDir(session), chooserId + '-' + chooser.files.length);
+    await fs.promises.mkdir(dir, { recursive: true });
+    const filePath = path.join(dir, safeFilename(name || 'file'));
+    let size = 0;
+    let tooBig = false;
+    await new Promise((resolve, reject) => {
+        const out = fs.createWriteStream(filePath);
+        req.on('data', (chunk) => {
+            size += chunk.length;
+            if (size > UPLOAD_MAX_BYTES && !tooBig) {
+                tooBig = true;
+                req.unpipe(out);
+                out.destroy();
+                resolve();
+            }
+        });
+        out.on('error', reject);
+        out.on('finish', resolve);
+        req.pipe(out);
+    });
+    if (tooBig) {
+        await fs.promises.rm(dir, { recursive: true, force: true }).catch(() => {});
+        sendJson(res, 413, { error: 'file too large' });
+        return;
+    }
+    chooser.files.push(filePath);
+    sendJson(res, 200, { ok: true, size });
+}
+
 // One pending dialog per session; it waits for a viewer reply (or DIALOG_MS) and is resent on attach.
 function openDialog(session, ask, settle) {
     if (session.dialog) session.dialog.settle(null);
@@ -1258,6 +1335,8 @@ async function closeSession(id) {
     session.clipboardCheck = null;
     if (session.dialog) clearTimeout(session.dialog.timer);
     session.dialog = null;
+    session.fileChooser = null;
+    if (session.uploadDir) fs.promises.rm(session.uploadDir, { recursive: true, force: true }).catch(() => {});
     session.closing = true;
     for (const ws of session.sockets) {
         try { ws.close(1000, 'closed'); } catch (_) {}
@@ -1490,6 +1569,25 @@ async function restartBrowser() {
         try { await old.close(); } catch (_) {}
     }
     await ensureBrowser();
+}
+
+// Cookies go through the browser target; the HTTP cache needs a page target, so an open session's (or a blank page's).
+async function clearBrowsingData({ cookies, cache }) {
+    await ensureBrowser();
+    if (cookies && browserClient) await browserClient.send('Storage.clearCookies', {});
+    if (!cache) return;
+    const open = [...sessions.values()].find((s) => s && s.cdp);
+    if (open) {
+        await open.cdp.send('Network.clearBrowserCache');
+        return;
+    }
+    const page = await browser.newPage();
+    try {
+        const client = await page.target().createCDPSession();
+        await client.send('Network.clearBrowserCache');
+    } finally {
+        await page.close().catch(() => {});
+    }
 }
 
 // The host has no camera or mic, so WebRTC pages got NotFoundError: a silent mic and an Alchemy-logo camera stand in.
@@ -1823,6 +1921,7 @@ async function createSession(body, adoptedPage) {
     };
     sessions.set(id, session);
     armDownloads(session);
+    armFileChooser(session);
 
     try {
         const tree = await cdp.send('Page.getFrameTree');
@@ -1999,8 +2098,20 @@ async function onViewerMessage(session, raw) {
         if (session.dialog && session.dialog.id === msg.id) session.dialog.settle(msg);
         return;
     }
+    if (msg.type === 'file-chooser-reply') {
+        await finishFileChooser(session, msg);
+        return;
+    }
     if (msg.type === 'select-pick' && Number.isInteger(msg.index) && session.selectContextId) {
         session.cdp.send('Runtime.evaluate', { expression: '__alchemyPickSelect(' + msg.index + ')', contextId: session.selectContextId }).catch(() => {});
+        return;
+    }
+    // Alchemy's download dialog: Cancel (Browser.cancelDownload; its canceled progress closes the dialog)
+    if (msg.type === 'download-cancel' && typeof msg.id === 'string') {
+        const item = session.downloads && session.downloads.get(msg.id);
+        if (item && item.state === 'progress' && browserClient) {
+            browserClient.send('Browser.cancelDownload', { guid: msg.id }).catch(() => {});
+        }
         return;
     }
     if (msg.type === 'ping') {
@@ -2316,6 +2427,23 @@ async function handleRequest(req, res) {
         return;
     }
 
+    // Internet Properties > Delete Browsing History (cplDialogs2.js, Yozora #632): Chromium's cookies and its cache.
+    if (req.method === 'POST' && pathname === '/browser/clear-data') {
+        if (!adminOk(req)) {
+            sendJson(res, 401, { error: 'unauthorized' });
+            return;
+        }
+        let body = {};
+        try { body = (await readBody(req)) || {}; } catch (_) {}
+        try {
+            await clearBrowsingData({ cookies: body.cookies === true, cache: body.cache === true });
+            sendJson(res, 200, { ok: true });
+        } catch (err) {
+            sendJson(res, 500, { error: err.message || 'clear failed' });
+        }
+        return;
+    }
+
     if (req.method === 'GET' && pathname === '/extensions') {
         if (!adminOk(req)) {
             sendJson(res, 401, { error: 'unauthorized' });
@@ -2427,6 +2555,21 @@ async function handleRequest(req, res) {
         return;
     }
 
+    const upload = pathname.match(/^\/sessions\/([a-f0-9]{32})\/file-chooser\/([a-f0-9]{16})\/file$/);
+    if (upload && req.method === 'POST') {
+        const session = sessions.get(upload[1]);
+        const token = url.searchParams.get('t') || '';
+        if (!session || !tokenEquals(token, session.viewerToken)) {
+            sendJson(res, 401, { error: 'unauthorized' });
+            return;
+        }
+        touch(session);
+        receiveUpload(session, upload[2], url.searchParams.get('name') || 'file', req, res).catch((err) => {
+            if (!res.headersSent) sendJson(res, 500, { error: (err && err.message) || 'upload failed' });
+        });
+        return;
+    }
+
     const download = pathname.match(/^\/sessions\/([a-f0-9]{32})\/downloads\/([A-Za-z0-9-]{8,80})$/);
     if (download && req.method === 'GET') {
         const session = sessions.get(download[1]);
@@ -2506,7 +2649,7 @@ function attachViewer(ws, session) {
             || preview.type === 'wheel'
         );
         if (gesture) releaseFramePace(session);
-        if (preview && (preview.type === 'dialog-reply' || preview.type === 'navigate' || preview.type === 'reload' || preview.type === 'key' || preview.type === 'paste' || preview.type === 'ping' || preview.type === 'rtt' || preview.type === 'inspect' || preview.type === 'copy')) {
+        if (preview && (preview.type === 'dialog-reply' || preview.type === 'file-chooser-reply' || preview.type === 'navigate' || preview.type === 'reload' || preview.type === 'key' || preview.type === 'paste' || preview.type === 'ping' || preview.type === 'rtt' || preview.type === 'inspect' || preview.type === 'copy')) {
             onViewerMessage(session, raw).catch((err) => {
                 console.error('[grimoire-browser] input', err && err.message);
             });

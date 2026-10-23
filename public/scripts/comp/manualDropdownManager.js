@@ -2080,7 +2080,8 @@ function selectUcPreset(value) {
     selectedUcPreset = value;
 
     // Update UC boxes visual state
-    const ucBoxes = document.querySelector('#manualModal .uc-boxes');
+    // Scoped to the UC button: #directorModelPickEffort is also .uc-boxes and comes first in #manualModal
+    const ucBoxes = document.querySelector('#manualModal #ucPresetsDropdownBtn .uc-boxes');
     if (ucBoxes) {
         ucBoxes.setAttribute('data-uc-level', value.toString());
     }

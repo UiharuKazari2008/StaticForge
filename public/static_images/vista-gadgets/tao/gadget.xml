@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>Tao Gadget</name>
+  <namespace>Tao</namespace>
+  <version>2.0</version>
+  <author name="David Thompson">
+    <info url="www.microsoft.com" />
+  </author>
+  <copyright>2006</copyright>
+  <description>Tao Gadget - David Thompson</description>
+  <icons>
+    <icon height="48" width="48" src="YinYang.png" />
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0" src="Gadget.htm" />
+      <permissions>full</permissions>
+      <platform minPlatformVersion="0.3" />
+    </host>
+  </hosts>
+</gadget>

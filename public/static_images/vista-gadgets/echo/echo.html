@@ -1,0 +1,36 @@
+<!--//
+////////////////////////////////////////////////////////////////////////////////
+//
+//  THIS CODE IS NOT APPROVED FOR USE IN/ON ANY OTHER COMMERCIAL UI ELEMENT OR PRODUCT COMPONENT.  
+//  Copyright (c) 2006 Steve Jensen and John Moscarillo  All rights reserved.
+//
+////////////////////////////////////////////////////////////////////////////////
+//-->
+<html>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+    <title>Echo</title>
+    <link href="css/echo.css" rel="stylesheet" type="text/css" />
+    <script language="JavaScript" src="js/echo.js"></script>
+</head>
+<body onload="loadMain();">
+<img id="imageHolder" src="images/EchoBase.png" width="110" height="130" border="0" alt="" usemap="#echo_Map">
+
+
+<map name="echo_Map">
+
+	<area shape="poly" alt="" coords="84,21, 87,38, 87,48, 81,57, 73,62, 63,65, 60,68, 61,75, 67,84, 73,88, 84,92, 95,89, 102,85, 105,79, 108,65, 105,52, 98,35" 
+id="0" onclick="clickedSquare(this);return false;">
+	<area shape="poly" alt="" coords="102,90, 95,99, 84,108, 74,113, 60,117, 47,117, 39,113, 33,105, 33,100, 33,86, 38,75, 47,68, 53,68, 56,68, 59,75, 67,87, 75,92, 81,93, 90,93, 98,92" 
+id="3" onclick="clickedSquare(this);return false;">
+	<area shape="poly" alt="" coords="36,113, 28,108, 17,98, 13,91, 10,86, 5,74, 5,57, 10,47, 23,38, 34,38, 44,42, 52,49, 56,58, 56,62, 56,65, 47,65, 36,72, 30,81, 28,94, 30,103" 
+id="1" onclick="clickedSquare(this);return false;">
+	<area shape="poly" alt="" coords="10,46, 12,40, 19,30, 29,22, 35,19, 39,18, 41,17, 50,14, 61,14, 72,17, 81,24, 84,32, 84,40, 83,48, 77,56, 68,61, 65,62, 60,62, 56,50, 49,44, 40,37, 28,36, 16,39" 
+id="2" onclick="clickedSquare(this);return false;">
+
+</map>
+
+<div id="infoBar" unSelectable="on"  onclick="gameControl();">
+</div>
+
+</body>
+</html>

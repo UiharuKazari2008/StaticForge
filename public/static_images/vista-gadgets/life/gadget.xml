@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+    <name>Life</name>
+    <version>1.0</version>
+    <hosts>
+        <host name="sidebar">
+            <base type="HTML" apiVersion="1.0" src="gadget.html" />
+            <permissions>Full</permissions>
+            <platform minPlatformVersion="1.0" />
+        </host>
+    </hosts>
+</gadget>

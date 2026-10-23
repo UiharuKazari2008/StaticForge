@@ -5356,6 +5356,9 @@ function resolveAppIconPath(imageIcon, size) {
 function buildAppIconSrcset(imageIcon) {
     const filename = appIconBasename(imageIcon);
     if (!filename) return '';
+    // only app_icons have compiled sizes; other art (a dialog's own caption icon) has none to list
+    const path = resolveAppIconPath(imageIcon);
+    if (path && !path.includes('/static_images/app_icons/')) return '';
     return APP_ICON_SRCSET_SIZES
         .map((size) => `${resolveAppIconPath(filename, size)} ${size}w`)
         .join(', ');
@@ -5364,8 +5367,15 @@ function buildAppIconSrcset(imageIcon) {
 // displayPx: the size this surface draws the icon at (APP_ICON_DISPLAY_PX).
 function renderAppIconImg(imageIcon, className = '', displayPx) {
     const imagePath = resolveAppIconPath(imageIcon);
-    const srcset = buildAppIconSrcset(imageIcon);
     const classAttr = className ? ` class="icon-image ${className}"` : ' class="icon-image"';
+    // Art outside app_icons (a Vista dialog's own caption icon, e.g. vista-file-progress/progress-16.png)
+    // has no compiled sizes: the app_icons srcset named files that do not exist and the taskbar
+    // button drew nothing. Its own file, and its -32 twin for 2x when it is a -16 icon.
+    if (imagePath && !imagePath.includes('/static_images/app_icons/') && /^\/(?!\/)/.test(imagePath)) {
+        const twin = /-16\.png$/i.test(imagePath) ? ` srcset="${imagePath} 1x, ${imagePath.replace(/-16\.png$/i, '-32.png')} 2x"` : '';
+        return `<img src="${imagePath}" alt=""${twin}${classAttr} />`;
+    }
+    const srcset = buildAppIconSrcset(imageIcon);
     const srcsetAttr = srcset ? ` srcset="${srcset}" sizes="${appIconSizesAttr(displayPx)}"` : '';
     return `<img src="${imagePath}" alt=""${srcsetAttr}${classAttr} />`;
 }
@@ -6606,13 +6616,20 @@ function buildToolsSubmenuItems() {
         { launchId: 'config-editor', icon: 'fas fa-binary', imageIcon: 'vista-regedit.png', text: 'Runes', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('config_editor'); configEditorApplet.open(); } },
         { launchId: 'character-db', icon: 'fas fa-users', imageIcon: 'characters.png', text: 'Characters', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('character_db'); characterDbApplet.open(); } },
         { launchId: 'event-viewer', icon: 'fas fa-wave-square', imageIcon: 'vista-performance.png', text: 'Periscope', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('log_viewer'); logViewerApplet.open(); } },
+        // Accessories > Welcome Center (public/scripts/comp/welcomeCenter.js)
+        { launchId: 'welcome-center', icon: 'fas fa-house', imageIcon: 'vista-welcome-center.png', text: 'Welcome Center', appMenuLocation: 'tools', action: () => { window.openWelcomeCenter(); } },
+        // Accessories > Paint (Yozora #632; public/scripts/comp/desktop-apps/paint/paintApp.js)
+        { launchId: 'paint', icon: 'fas fa-palette', imageIcon: 'vista-paint.png', text: 'Paint', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('paint'); window.openMelatonPaint(); } },
+        // Accessories > Character Map (Yozora #632; public/scripts/comp/desktop-apps/charmap/charmapApp.js)
+        { launchId: 'charmap', icon: 'fas fa-font', imageIcon: 'vista-charmap.png', text: 'Character Map', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('charmap'); window.openMelatonCharmap(); } },
+        // Accessories > Notepad: a blank Untitled document (Yozora #632; public/scripts/comp/notepadVista.js)
+        { launchId: 'notepad', icon: 'fas fa-file-lines', imageIcon: 'vista-notepad.png', text: 'Notepad', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('notepad'); window.notepadVista.openBlank(); } },
         { launchId: 'calculator', icon: 'fas fa-calculator', imageIcon: 'vista-calculator.png', text: 'Calculator', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('calculator'); /* public/scripts/comp/desktop-apps/calculator.js */ openDesktopCalculator(); } },
         { launchId: 'vista-sidebar', icon: 'fas fa-sidebar-flip', imageIcon: 'vista-sidebar.png', text: 'Melaton Sidebar', appMenuLocation: 'tools', desktopOnly: true, appMenu: false, startMenu: localStorage.getItem('userType') === 'admin', action: () => { /* public/scripts/comp/vistaSidebar.js */ openVistaSidebar(); } },
         { launchId: 'alarm', icon: 'fas fa-alarm-clock', imageIcon: 'vista-date-time.png', text: 'Alarm Clock', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('alarm'); /* public/scripts/comp/desktop-apps/alarmPomodoro.js */ openDesktopAlarm(); } },
         { launchId: 'pomodoro', icon: 'fas fa-timer', imageIcon: 'vista-date-time.png', text: 'Pomodoro', appMenuLocation: 'tools', startMenu: false, appMenu: false, /* the Pomodoro tab of Alarm Clock; kept for old shortcuts */ action: async () => { await featureLoader.loadFeature('alarm'); /* public/scripts/comp/desktop-apps/alarmPomodoro.js */ openDesktopPomodoro(); } },
         { launchId: 'media-player', icon: 'fas fa-play', imageIcon: 'media_player.png', text: 'Media Player', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('media_player'); /* public/scripts/comp/desktop-apps/mediaPlayer.js */ openDesktopMediaPlayer(); } },
         { launchId: 'emotion', icon: 'fas fa-photo-film', imageIcon: 'emotion.png', text: 'eMotion LIVE', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('emotion'); /* public/scripts/comp/desktop-apps/emotion.js */ openDesktopEmotion(); } },
-        { launchId: 'exchange', icon: 'fas fa-building-columns', imageIcon: 'vista-mail.png', text: 'Exchange Server', adminOnly: true, appMenuLocation: 'tools', action: () => { /* openDsapInGrimoire: public/scripts/comp/dsapRegistry.js */ openDsapInGrimoire('dsap://exchange.dreamscape.jp/'); } },
     ].filter(isStartMenuEntryEnabled).filter((item) => !item.adminOnly || localStorage.getItem('userType') === 'admin');
     // getDsapStartMenuEntriesAtLocation: public/scripts/comp/dsapRegistry.js
     const dsapAtTools = typeof getDsapStartMenuEntriesAtLocation === 'function'
@@ -9457,6 +9474,11 @@ function applyUserGlobalSettingsToClient(settings) {
     if (settings.imageGeneration && typeof settings.imageGeneration === 'object') {
         // applyImageGenerationSettingsToClient: public/scripts/comp/imageGenerationSettings.js
         applyImageGenerationSettingsToClient(settings.imageGeneration);
+    }
+
+    if (settings.registry && typeof settings.registry === 'object' && window.melatonRegistry) {
+        // Control Panel's registry values: public/scripts/comp/melatonRegistry.js
+        window.melatonRegistry.hydrate(settings.registry);
     }
 
     if (settings.mail && typeof settings.mail === 'object' && window.dovecoteMailSettings) {

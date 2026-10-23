@@ -1601,19 +1601,28 @@ class GlobalResources {
         const os = require('os');
         const fs = require('fs');
         const path = require('path');
+        // existsSync semantics without blocking the event loop (hourly refresh + boot)
+        const pathExists = async (p) => {
+            try {
+                await fs.promises.access(p);
+                return true;
+            } catch (_) {
+                return false;
+            }
+        };
 
         try {
             // Get git hash (try reading from .git/HEAD)
             let gitHash = 'Unknown';
             try {
                 const gitHeadPath = path.join(process.cwd(), '.git', 'HEAD');
-                if (fs.existsSync(gitHeadPath)) {
-                    let headContent = fs.readFileSync(gitHeadPath, 'utf8').trim();
+                if (await pathExists(gitHeadPath)) {
+                    let headContent = (await fs.promises.readFile(gitHeadPath, 'utf8')).trim();
                     if (headContent.startsWith('ref: ')) {
                         const refPath = headContent.substring(5);
                         const refFile = path.join(process.cwd(), '.git', refPath);
-                        if (fs.existsSync(refFile)) {
-                            gitHash = fs.readFileSync(refFile, 'utf8').trim().substring(0, 7);
+                        if (await pathExists(refFile)) {
+                            gitHash = (await fs.promises.readFile(refFile, 'utf8')).trim().substring(0, 7);
                         }
                     } else {
                         gitHash = headContent.substring(0, 7);
@@ -1634,7 +1643,7 @@ class GlobalResources {
             // The host as Control Panel's System page shows it (public/scripts/comp/cplSystem.js)
             let osName = null;
             try {
-                const osRelease = fs.readFileSync('/etc/os-release', 'utf8');
+                const osRelease = await fs.promises.readFile('/etc/os-release', 'utf8');
                 const pretty = osRelease.match(/^PRETTY_NAME="?([^"\n]*)"?$/m);
                 if (pretty) osName = pretty[1];
             } catch (osReleaseError) {
@@ -1644,7 +1653,7 @@ class GlobalResources {
             let cpuMHz = cpus.length > 0 ? cpus[0].speed : null;
             for (const freqFile of ['base_frequency', 'bios_limit']) {
                 try {
-                    const khz = parseInt(fs.readFileSync(`/sys/devices/system/cpu/cpu0/cpufreq/${freqFile}`, 'utf8'), 10);
+                    const khz = parseInt(await fs.promises.readFile(`/sys/devices/system/cpu/cpu0/cpufreq/${freqFile}`, 'utf8'), 10);
                     if (khz > 0) { cpuMHz = Math.round(khz / 1000); break; }
                 } catch (freqError) {
                     // Not exposed by this cpufreq driver
@@ -1788,10 +1797,8 @@ class GlobalResources {
                             for (const file of workspace.files) {
                                 try {
                                     const filePath = path.join(imagesPath, file);
-                                    if (fs.existsSync(filePath)) {
-                                        const stats = fs.statSync(filePath);
-                                        totalSize += stats.size;
-                                    }
+                                    const stats = await fs.promises.stat(filePath);
+                                    totalSize += stats.size;
                                 } catch (fileError) {
                                     // Skip file if can't read
                                 }
@@ -1874,7 +1881,7 @@ class GlobalResources {
             try {
                 // Calculate preview images size from .previews/ folder
                 const previewPath = this.getPath('previews');
-                if (fs.existsSync(previewPath)) {
+                if (await pathExists(previewPath)) {
                     const previewSize = await calculateFolderSize(previewPath);
                     usageStats.previewImages = formatSize(previewSize);
                 }
@@ -1883,11 +1890,11 @@ class GlobalResources {
                 let referenceItemsSize = 0;
                 try {
                     const previewCachePath = this.getPath('previewCache');
-                    if (fs.existsSync(previewCachePath)) {
+                    if (await pathExists(previewCachePath)) {
                         referenceItemsSize += await calculateFolderSize(previewCachePath);
                     }
                     const uploadCachePath = this.getPath('uploadCache');
-                    if (fs.existsSync(uploadCachePath)) {
+                    if (await pathExists(uploadCachePath)) {
                         referenceItemsSize += await calculateFolderSize(uploadCachePath);
                     }
                     usageStats.referenceItems = formatSize(referenceItemsSize);
@@ -1899,12 +1906,12 @@ class GlobalResources {
                 let databasesSize = 0;
                 try {
                     const cachePath = this.getPath('cache');
-                    if (fs.existsSync(cachePath)) {
-                        const items = fs.readdirSync(cachePath);
+                    if (await pathExists(cachePath)) {
+                        const items = await fs.promises.readdir(cachePath);
                         for (const item of items) {
                             const itemPath = path.join(cachePath, item);
                             try {
-                                const stats = fs.statSync(itemPath);
+                                const stats = await fs.promises.stat(itemPath);
                                 if (stats.isFile() && (
                                     item.endsWith('.db') || 
                                     item.endsWith('.db-wal') || 
@@ -1927,8 +1934,8 @@ class GlobalResources {
                 // Calculate wiki files size (tag wiki database)
                 try {
                     const wikiDbPath = path.join(this.getPath('cache'), 'tag_wiki.db');
-                    if (fs.existsSync(wikiDbPath)) {
-                        const stats = fs.statSync(wikiDbPath);
+                    if (await pathExists(wikiDbPath)) {
+                        const stats = await fs.promises.stat(wikiDbPath);
                         const wikiSize = stats.size;
                         usageStats.wikiFiles = formatSize(wikiSize);
                     }
@@ -3822,10 +3829,11 @@ class GlobalResources {
      * Persist known bad paths to disk
      * @param {number} maxPaths - Maximum paths to retain
      */
-    saveKnownBadPaths(maxPaths = 50000) {
+    saveKnownBadPaths(maxPaths = 50000, options = {}) {
         const fs = require('fs');
         const filePath = this.getPath('knownBadPathsFile');
 
+        let body;
         try {
             let entries = Array.from(this.knownBadPaths.entries());
 
@@ -3836,14 +3844,48 @@ class GlobalResources {
             }
 
             const paths = Object.fromEntries(entries);
-            const dir = path.dirname(filePath);
-            if (!fs.existsSync(dir)) {
-                fs.mkdirSync(dir, { recursive: true });
-            }
-            fs.writeFileSync(filePath, JSON.stringify({ paths, savedAt: Date.now() }), 'utf-8');
+            body = JSON.stringify({ paths, savedAt: Date.now() });
         } catch (err) {
             console.error('Failed to save known bad paths:', err.message);
+            return Promise.resolve();
         }
+
+        // Each save supersedes the ones before it; a queued write that is no longer the
+        // newest is skipped so an older snapshot never lands after a newer one.
+        this._knownBadPathsSaveGen = (this._knownBadPathsSaveGen || 0) + 1;
+        const gen = this._knownBadPathsSaveGen;
+        const dir = path.dirname(filePath);
+
+        if (options.sync) {
+            // Pre-restart flush: the process may exit right after, so write synchronously
+            try {
+                if (!fs.existsSync(dir)) {
+                    fs.mkdirSync(dir, { recursive: true });
+                }
+                fs.writeFileSync(filePath, body, 'utf-8');
+            } catch (err) {
+                console.error('Failed to save known bad paths:', err.message);
+            }
+            return Promise.resolve();
+        }
+
+        const write = async () => {
+            if (gen !== this._knownBadPathsSaveGen) return;
+            try {
+                await fs.promises.mkdir(dir, { recursive: true });
+                const tmpPath = `${filePath}.${process.pid}.tmp`;
+                await fs.promises.writeFile(tmpPath, body, 'utf-8');
+                if (gen !== this._knownBadPathsSaveGen) {
+                    await fs.promises.unlink(tmpPath).catch(() => {});
+                    return;
+                }
+                await fs.promises.rename(tmpPath, filePath);
+            } catch (err) {
+                console.error('Failed to save known bad paths:', err.message);
+            }
+        };
+        this._knownBadPathsWriteChain = (this._knownBadPathsWriteChain || Promise.resolve()).then(write, write);
+        return this._knownBadPathsWriteChain;
     }
 
     /**
@@ -4479,6 +4521,17 @@ class GlobalResources {
      * Moved from web_server.js to centralize initialization
      */
     async generateLoginSpriteSheet() {
+        // One generation at a time (web_server.js calls this per ping while the sheet is stale)
+        if (this._loginSpriteSheetPromise) {
+            return this._loginSpriteSheetPromise;
+        }
+        this._loginSpriteSheetPromise = this._generateLoginSpriteSheet().finally(() => {
+            this._loginSpriteSheetPromise = null;
+        });
+        return this._loginSpriteSheetPromise;
+    }
+
+    async _generateLoginSpriteSheet() {
         const fs = require('fs');
         const cacheDir = this.getPath('cache');
         // Regenerated gallery sheet. The committed seed is public/images/login_array.jpg
@@ -4500,8 +4553,8 @@ class GlobalResources {
         try {
             const loginSpriteSheet = require('./loginSpriteSheet');
             // Check if sprite sheet exists and is less than 1 hour old
-            if (fs.existsSync(spritePath) && !loginSpriteSheet.isGatePlaceholderFile(spritePath)) {
-                const stats = fs.statSync(spritePath);
+            const stats = await fs.promises.stat(spritePath).catch(() => null);
+            if (stats && !loginSpriteSheet.isGatePlaceholderFile(spritePath)) {
                 const ageInHours = (Date.now() - stats.mtime.getTime()) / (1000 * 60 * 60);
                 if (ageInHours < 1) {
                     console.log(`✓ Sprite sheet is still valid (${ageInHours.toFixed(2)} hours old), skipping regeneration`);
@@ -4511,7 +4564,7 @@ class GlobalResources {
 
             // Get pinned and random images (helper functions moved to globalResources)
             const pinnedImages = await this.getPinnedImages();
-            const randomImages = await this.getRandomWorkspaceImages();
+            const randomImages = await this.getRandomWorkspaceImages(20);
 
             console.log(`✓ Image selection: ${pinnedImages.length} pinned + ${randomImages.length} random available`);
 
@@ -4608,32 +4661,45 @@ class GlobalResources {
     /**
      * Get random workspace images
      * Helper for sprite sheet generation
+     * @param {number} [limit] - uniform random pick of at most this many (default: all, shuffled)
      */
-    async getRandomWorkspaceImages() {
+    async getRandomWorkspaceImages(limit = Infinity) {
         const fs = require('fs');
         const imagesDir = this.getPath('images');
 
         try {
-            // Check if images directory exists
-            if (!fs.existsSync(imagesDir)) {
-                console.warn('⚠️ Images directory does not exist:', imagesDir);
-                return [];
+            let names;
+            try {
+                names = await fs.promises.readdir(imagesDir);
+            } catch (readError) {
+                if (readError && readError.code === 'ENOENT') {
+                    console.warn('⚠️ Images directory does not exist:', imagesDir);
+                    return [];
+                }
+                throw readError;
             }
 
-            const imageFiles = fs.readdirSync(imagesDir)
-                .filter(file => file.match(/\.(png|jpg|jpeg)$/i))
-                .map(file => ({
-                    filename: file,
-                    path: path.join(imagesDir, file)
-                }));
-
-            if (imageFiles.length === 0) {
+            const imageNames = names.filter(file => /\.(png|jpg|jpeg)$/i.test(file));
+            if (imageNames.length === 0) {
                 console.warn('⚠️ No image files found in images directory');
                 return [];
             }
 
-            // Shuffle and return random images
-            return imageFiles.sort(() => 0.5 - Math.random());
+            // Partial Fisher-Yates: unbiased, and only `limit` swaps (the old sort-based
+            // shuffle was biased and sorted all ~64k names)
+            const count = Number.isFinite(limit) && limit >= 0
+                ? Math.min(imageNames.length, Math.floor(limit))
+                : imageNames.length;
+            for (let i = 0; i < count; i++) {
+                const j = i + Math.floor(Math.random() * (imageNames.length - i));
+                const tmp = imageNames[i];
+                imageNames[i] = imageNames[j];
+                imageNames[j] = tmp;
+            }
+            return imageNames.slice(0, count).map(file => ({
+                filename: file,
+                path: path.join(imagesDir, file)
+            }));
         } catch (error) {
             console.error('❌ Error getting random workspace images:', error);
             return [];
@@ -4965,7 +5031,7 @@ class GlobalResources {
             this._knownBadPathsSaveTimer = null;
         }
         if (this.knownBadPaths.size > 0) {
-            this.saveKnownBadPaths();
+            this.saveKnownBadPaths(50000, { sync: true });
             log(`Saved ${this.knownBadPaths.size} known bad path(s) before restart`);
         }
 

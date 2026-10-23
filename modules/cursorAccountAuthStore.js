@@ -1061,13 +1061,34 @@ function describeLiveAccount(persona, accounts) {
     return { hasLive: true, known: false, matchedAccountId: '', displayName: live.displayName || '' };
 }
 
+// getActiveAccountId runs on every Director prepare and Xi turn. The parsed file is
+// kept until its mtime, size or inode changes. A file written in the last second is
+// re-read every time: two same-size writes inside one timestamp tick share an mtime.
+// Read-only: never edit what this returns.
+const SECURE_CONFIG_SETTLE_MS = 1000;
+let activeAccountPeek = null;
+
+function peekSecureConfigFile(targetPath) {
+    let st;
+    try {
+        st = fs.statSync(targetPath);
+    } catch (_) {
+        return null;
+    }
+    const stamp = `${st.mtimeMs}:${st.size}:${st.ino}`;
+    if (activeAccountPeek && activeAccountPeek.file === targetPath && activeAccountPeek.stamp === stamp) return activeAccountPeek.data;
+    const data = readJson(targetPath);
+    activeAccountPeek = Date.now() - st.mtimeMs > SECURE_CONFIG_SETTLE_MS ? { file: targetPath, stamp, data } : null;
+    return data;
+}
+
 function getActiveAccountId(persona = 'wren') {
     try {
         const primaryPath = path.join(process.cwd(), 'secure.config.json');
         const secondaryPath = path.join(process.cwd(), 'config', 'secureConfig.json');
         const targetPath = fs.existsSync(primaryPath) ? primaryPath : (fs.existsSync(secondaryPath) ? secondaryPath : null);
         if (targetPath) {
-            const data = readJson(targetPath);
+            const data = peekSecureConfigFile(targetPath);
             if (data && data.cursorAccounts) {
                 const ca = data.cursorAccounts;
                 if (persona === 'wren' && ca.wren && ca.wren.activeAccountId) return ca.wren.activeAccountId;

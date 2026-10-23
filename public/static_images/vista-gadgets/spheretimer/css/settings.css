@@ -1,0 +1,14 @@
+SPAN
+{
+	position: absolute;
+}
+BODY
+{
+	font-size: 12px;
+	font-family: 'Segoe UI' , Verdana;
+}
+
+.Apply_Button
+{
+	cursor: hand;
+}

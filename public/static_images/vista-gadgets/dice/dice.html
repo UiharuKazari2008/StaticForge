@@ -1,0 +1,78 @@
+<html>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+<title>A Dice Program in Javascript</title>
+<style>
+		body { 
+			width:130;
+			height:177;
+		}
+	</style>
+
+<script type="text/javascript" language="Javascript">
+<!--
+
+num_dice = 1;
+images = new Array(6);
+animation = new Image();
+states = new Array(num_dice);
+
+function preLoad() {
+	animation.src = "ani_dice.gif";
+
+	gifs = [ "dice_one.gif", "dice_two.gif", "dice_three.gif", "dice_four.gif", "dice_five.gif", "dice_six.gif" ];
+	for( var i=0; i<6; i++ ) {
+		images[i] = new Image();
+		images[i].src = gifs[i];
+	}
+	initMe();
+}
+
+function initMe() {
+	for(var i=0; i<num_dice; i++) {
+		states[i] = -1;
+		document[ "die" + (i+1) ].src = animation.src;
+	}
+}
+
+function setOneDie() {
+	var n = -1;
+	for( var i=0; i<num_dice; i++) {
+		if( states[i] == -1 ) { n=0; }
+	}
+	if( n == -1 ) {
+		initMe();
+	}
+
+	do {
+		n = Math.floor(Math.random()*num_dice);
+	} while (states[n] != -1);
+	states[n] = Math.floor(Math.random()*6);
+	document[ "die" + (n+1) ].src = images[states[n]].src;
+}
+
+function ThrowDice() {
+	initMe();
+	for( var i=0; i<num_dice; i++) {
+		setTimeout('setOneDie()', (500 + Math.floor(Math.random()*4000)) );
+	}
+}
+
+-->
+</script>
+</head>
+
+<body onLoad="preLoad();">
+
+<p>
+<img name="die1" src="ani_dice.gif" alt="die" width="100" height="100" border="0">
+</p>
+<p>
+<form>
+<input type="button" name="Throw" value="Roll the dice" onClick="ThrowDice();">
+</form>
+</p>
+</body>
+<body bgcolor="black">
+</body>
+</html>
+

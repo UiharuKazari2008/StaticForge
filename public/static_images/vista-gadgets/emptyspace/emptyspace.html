@@ -1,0 +1,162 @@
+<!--//
+////////////////////////////////////////////////////////////////////////////////
+//
+//  Created by All in One Computer Center
+//  http://www.all-n1.net
+//  Copyright (c) 2007
+//  All rights reserved
+//
+////////////////////////////////////////////////////////////////////////////////
+//-->
+
+<html>
+<script language="JavaScript" type="text/JavaScript">
+
+System.Gadget.onDock = dockStateChange;
+System.Gadget.onUndock = dockStateChange;
+System.Gadget.onSettingsClosed = SettingsClosed;
+var height = System.Gadget.Settings.read("height");
+System.Gadget.settingsUI = "Settings.html";
+var maxHeight;
+var resolution = (90*window.screen.height)/100;
+
+function dockStateChange()
+{
+	if(!System.Gadget.docked) 
+    {
+	undock();
+
+    } else
+    { 
+	dock();
+}
+function dock(){ 
+System.Gadget.settingsUI = "Settings.html";
+document.body.style.background="url(images/background.png)";
+div1.style.visibility="hidden";
+if (height != ""){
+		document.body.style.height = height;
+		div1.style.height = height;
+		maxHeight = parseInt(height);
+		}
+else{
+height = 100;
+document.body.style.height = height;
+div1.style.height = height;
+maxHeight = parseInt(height);
+System.Gadget.Settings.write("height", height);
+}
+}
+}
+function undock() {
+	System.Gadget.settingsUI = "";
+	document.body.style.height = 128;
+	document.body.style.width= 128;
+	document.body.style.background="url(images/icon.png)";
+	div1.style.visibility="hidden";
+}
+
+function SettingsClosed(event)
+	{
+ 		if (event.closeAction == event.Action.commit){ 
+		ApplySettings();
+        }
+		event.cancel = false;
+	}
+	
+function ApplySettings()
+{
+	var checked = System.Gadget.Settings.readString("radiobutton");
+	
+	if (checked == "type")
+				{
+			type();
+				}
+		else if (checked == "drag")
+			{
+			drag();
+				}
+}
+
+function type() {
+           height = System.Gadget.Settings.read("height");
+           dockStateChange();
+        }
+		
+		
+function drag(){
+document.body.style.background="url(images/background2.png)";
+div1.style.visibility="visible";
+
+var lTop;
+
+function mousedown() {
+  lTop = window.event.y;
+}
+
+div1.onmousedown = mousedown;
+
+function mousemove() {
+  	var dTop;
+	
+  if (window.event.button == 1) {
+  
+  	sy = window.event.y;
+    dTop = sy - lTop;
+
+    resizeElement(dTop);
+	
+	lTop = sy;
+    return false;
+  }
+}
+
+function resizeElement(dTop) {
+	maxHeight += dTop;
+	if (maxHeight < resolution || maxHeight == resolution){
+	div1.style.height = maxHeight;
+	document.body.style.height = div1.style.height;
+	height = document.body.style.height;
+	System.Gadget.Settings.write("height", height);}
+    
+}
+
+div1.onmousemove = mousemove;
+
+}
+
+function delay(){
+theTimeout = window.setTimeout('dockStateChange();',1000);};
+
+</script>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+    <title>Empty Space</title>
+    <link href="css/style.css" rel="stylesheet" type="text/css" />
+
+</head>
+<body onLoad="dockStateChange();" onmouseleave="delay();" onmouseenter="window.clearTimeout(theTimeout);">
+
+<div id="div1" style="position:absolute; width:130px; visibility:hidden; cursor:n-resize;">
+<table width="130" height="100%" border="0" cellpadding="0" cellspacing="0">
+    <tr>
+      <td height="10"><img src="images/drag1.png" width="130" height="16"></td>
+    </tr>
+    <tr>
+      <td background="images/drag2.png"></td>
+    </tr>
+    <tr>
+      <td height="10"><img src="images/drag3.png" width="130" height="16"></td>
+    </tr>
+  </table>
+  </div>
+  
+</body>
+</html>
+
+<!--//
+///////////////////////////////////
+\\  	   						//
+//	All in One Computer Center  \\
+\\								//
+//////////////////////////////////
+//-->

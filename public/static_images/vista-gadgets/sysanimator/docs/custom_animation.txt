@@ -1,0 +1,91 @@
+System Animator - "Make your own animation" Tutorial (version 1.7)
+
+
+NEW: Video Tutorial (A MUST WATCH for beginners!)
+
+http://www.youtube.com/view_play_list?p=886123E20E8FFFC8
+
+
+-----------------------------
+
+  Apart from using the animation demos included in the gadget, you can design your own animation! The procedures are simple.
+
+-----------------------------
+
+Basics:
+
+(Video Tutorial: http://www.youtube.com/watch?v=ORAlAsnWfUA&feature=PlayList&p=886123E20E8FFFC8&playnext_from=PL&index=1)
+
+1. Create a folder. It is used to stored all the images required for the animation.
+
+2. Prepare some images for your animation.
+   - Any picture format supported by Windows can be used, from still pircture (eg. BMP, JPEG, PNG) to animated GIF.
+   - Each image represents a certain threshold of the system activity monitored, and each image must be accordingly named in numbers (0-100,
+     examples: 0.gif, 25.jpg, 90.png). Any system activity monitored by the gadget returns an internal value from 0 to 100. For example, if you have an
+     image named "70.gif" (assuming that there is no other file number bigger than that), it will be displayed when the CPU usage monitored is over
+     70%. You can define up to 100 images for your animation.
+   - For use on docked gadget, images should be below 130x130 in dimension. Oversized images are cropped or scaled down (depending on settings).
+     Undocked gadget has no limitation.
+
+3. In gadget settings, browse and point to your folder created. If everything is right, you should be able to see your own animation!
+
+-----------------------------
+
+Advanced Techniques:
+
+
+
+- Animation Sequence
+
+(Video Tutorial: http://www.youtube.com/watch?v=wx2hIAWRTFk&feature=PlayList&p=886123E20E8FFFC8&playnext_from=PL&index=2)
+
+  Instead of using different pictures for different states of the system activity monitored, you can create just a single sequence of animation which varies in
+speed according to system changes. Please note that this is the most suitable type of animation to be used with a short "Update interval" (eg. 0.1 second).
+
+  To create such animation, add the following string at the end of the name of your animation folder.
+
+    .SEQ-[starting FPS]-[final FPS]
+
+    Example: My Cool Dance.SEQ-2-20
+
+  "starting" refers to the minimum state (0) of the system activity, while "final" refers to the maximum state (100) of the system activity. FPS (frames per
+second) must be between 1 and 30.
+
+  The rest of the procedures is basically the same as the normal animation, except that the numbered images now represent the frames in the animation.
+
+  NOTE: "Demo 07" uses this technique.
+
+  Advanced Usage: You may even put several sequences together to form a single real-time randomized sequence! To do so, create a folder with a name ended
+with ".SEQ-1-1", and then put any other animation sequence (the whole folder) you want inside that folder.
+
+
+
+- MacFace's "Face Pattern" support
+
+  This gadget supports the use of user-made "Face Pattern" skins for MacFace and VistaFace. You can download them from the URL below.
+
+    http://www.fprog.org/projects/MacFaceForWin/wiki/Faces
+
+  Uncompress any skin you downloaded, and make sure the name of the final folder ends with ".mcface". Then you can go the Settings panel of the gadget and
+point to that folder.
+
+  MacFace: http://rryu.sakura.ne.jp/software/#macface
+  VistaFace: http://www.misuzilla.org/dist/gadgets/vistaface/
+
+  NOTE: "Demo 06" uses this technique.
+
+
+
+- Direct JavaScript
+
+  Tutorial later :P
+
+  NOTE: "Demo 05" uses this technique.
+
+-----------------------------
+
+
+  Questions? Problems? Suggestions? Let me know!
+
+  Email: webmaster@animetheme.com
+  My Sidebar Homepage: http://www.animetheme.com/sidebar/

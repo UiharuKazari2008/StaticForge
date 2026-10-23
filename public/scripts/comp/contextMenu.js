@@ -1694,6 +1694,8 @@ class ContextMenuController {
             itemElement.className = 'context-menu-item';
             itemElement.setAttribute('role', 'menuitem');
             itemElement.tabIndex = 0;
+            // vista-fa-icons.css tells apart items that share a glyph by their label
+            if (typeof item.text === 'string') itemElement.dataset.menuText = item.text;
 
             hasVisibleItemSinceLastSep = true;
 

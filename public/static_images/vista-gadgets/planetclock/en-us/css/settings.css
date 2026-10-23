@@ -1,0 +1,35 @@
+/*
+//---------------------------------------------
+//  THIS CODE IS NOT APPROVED FOR USE IN/ON ANY OTHER UI ELEMENT OR PRODUCT COMPONENT.  
+//  Copyright (c) 2008 Lorne L. Reap  All rights reserved.
+// ----------------------------------------------
+*/
+body
+{ 
+    width: 278px;
+    height: 650px;
+    font-family: 'Segoe UI', Tahoma, Sans-Serif;
+    margin: 0px;
+}
+#settingsButtonTable
+{
+    font-size: 12px;
+}
+#currentIndex
+{
+     width: 12px;
+     text-align: center;
+}
+#maxIndex
+{
+     width: 12px;
+     text-align: center;
+}
+a
+{
+        text-decoration:none;
+}
+a:hover
+{
+       text-decoration:underline;
+}

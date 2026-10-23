@@ -276,7 +276,7 @@ async function handleGetAttachment(handlersCtx, ws, message) {
             return;
         }
         const owner = resolveViewOwner(message);
-        const attachment = dovecoteMail.getAttachment(owner, message.id);
+        const attachment = await dovecoteMail.getAttachmentAsync(owner, message.id);
         if (!attachment) {
             handlersCtx.sendError(ws, 'Attachment not found', 'ATTACHMENT_NOT_FOUND', message.requestId);
             return;

@@ -1,0 +1,16 @@
+body
+{
+	width:250px;
+	height:250px;	
+	margin:0px;
+	padding:0px;
+        background-color:transparent;
+}
+#nova
+{
+	position:absolute;
+	margin:0px;
+	padding:0px;
+        color:transparent;
+}
+

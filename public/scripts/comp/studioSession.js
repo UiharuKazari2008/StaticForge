@@ -704,6 +704,8 @@ async function studioSaveFolderNewFolder() {
 function studioSaveFolderTypeLabel() {
     const mode = studioSaveFolderState.mode;
     const accept = studioSaveFolderAcceptType();
+    const host = studioSaveFolderState.host;
+    if (host && host.typeLabel) return host.typeLabel;
     if (accept === 'bracket-generation') return 'Phasewalker Files';
     if (mode === 'open-gallery') return 'Pictures';
     if (mode === 'open-vfs') return 'All Studio Files';
@@ -852,8 +854,8 @@ function wireStudioSaveFolderDialog() {
     $('studioSaveFolderFoldersBtn')?.addEventListener('click', () => {
         studioSaveFolderSetCollapsed(!modal.classList.contains('fd-collapsed'));
     });
-    $('studioSaveFolderCancelBtn')?.addEventListener('click', () => closeModal(modal));
-    $('closeStudioSaveFolderBtn')?.addEventListener('click', () => closeModal(modal));
+    $('studioSaveFolderCancelBtn')?.addEventListener('click', () => studioSaveFolderDismiss());
+    $('closeStudioSaveFolderBtn')?.addEventListener('click', () => studioSaveFolderDismiss());
     $('studioSaveFolderSaveBtn')?.addEventListener('click', () => {
         if (studioSaveFolderState.mode === 'save') studioSaveFolderConfirm();
         else studioSaveFolderOpenSelected();
@@ -871,7 +873,7 @@ function wireStudioSaveFolderDialog() {
             } else if (e.key === 'Escape') {
                 e.preventDefault();
                 e.stopPropagation();
-                closeModal(modal);
+                studioSaveFolderDismiss();
             }
         });
     }
@@ -978,6 +980,46 @@ function studioSaveFolderApplyChrome(mode) {
     if (modal) modal.dataset.iconOwnerId = ownerId;
 }
 
+/**
+ * Cancel / Close / Escape: the host hears it once (host.onCancel), e.g. Alchemy's file chooser
+ * answering the page with no files (grimoireRemoteBrowser.js, #628).
+ */
+function studioSaveFolderDismiss() {
+    const modal = document.getElementById('studioSaveFolderModal');
+    const host = studioSaveFolderState.host;
+    if (modal) closeModal(modal);
+    if (host && !host._settled && typeof host.onCancel === 'function') {
+        host._settled = true;
+        host.onCancel();
+    }
+}
+
+/** A host's own button beside Open (Alchemy's "Select on Client"): host.extraButton { label, onClick }. */
+function studioSaveFolderSyncExtraButton() {
+    const saveBtn = document.getElementById('studioSaveFolderSaveBtn');
+    if (!saveBtn) return;
+    let extra = document.getElementById('studioSaveFolderExtraBtn');
+    const spec = studioSaveFolderState.host && studioSaveFolderState.host.extraButton;
+    if (!spec) {
+        if (extra) extra.hidden = true;
+        return;
+    }
+    if (!extra) {
+        extra = document.createElement('button');
+        extra.type = 'button';
+        extra.id = 'studioSaveFolderExtraBtn';
+        extra.className = 'btn-standard fd-button fd-extra';
+        saveBtn.parentNode.insertBefore(extra, saveBtn);
+        extra.addEventListener('click', () => {
+            const host = studioSaveFolderState.host;
+            const s = host && host.extraButton;
+            if (s && typeof s.onClick === 'function') s.onClick();
+        });
+    }
+    extra.innerHTML = spec.label;
+    extra.hidden = false;
+}
+
 async function openStudioSaveFolderDialog() {
     await studioOpenFolderDialog('save');
 }
@@ -993,6 +1035,7 @@ async function studioOpenFolderDialog(mode, options = {}) {
     studioSaveFolderState.history = [];
     studioSaveFolderState.historyIndex = -1;
     studioSaveFolderApplyChrome(mode);
+    studioSaveFolderSyncExtraButton();
     if (nameInput) {
         const suggest = studioSaveFolderState.host && studioSaveFolderState.host.suggestName;
         nameInput.value = mode === 'save' ? (typeof suggest === 'function' ? suggest() : studioSessionPresetName()) : '';
@@ -1055,6 +1098,18 @@ async function studioSaveFolderConfirm() {
 
 function studioSaveFolderOpenSelected() {
     const selected = studioSaveFolderState.selected || [];
+    const host = studioSaveFolderState.host;
+    // a host that takes several files at once (host.onOpenMany: Alchemy's multiple file chooser)
+    if (host && typeof host.onOpenMany === 'function' && typeof host.acceptItem === 'function') {
+        const files = selected.filter((row) => host.acceptItem(row));
+        if (files.length > 1 || (files.length === 1 && !studioSaveFolderNavPath(files[0], studioSaveFolderState.path))) {
+            const modal = document.getElementById('studioSaveFolderModal');
+            host._settled = true;
+            if (modal) closeModal(modal);
+            void host.onOpenMany(files, studioSaveFolderState.path);
+            return;
+        }
+    }
     const item = selected[0];
     if (!item) {
         showGlassToast('info', null, 'Select a file', false, 2000, '<i class="fas fa-folder-open"></i>');
@@ -1085,8 +1140,10 @@ async function studioOpenFolderItem(item) {
     }
     const host = studioSaveFolderState.host;
     if (host && typeof host.onOpen === 'function') {
-        if (item.shortcutType === studioSaveFolderAcceptType()) {
+        const accepted = typeof host.acceptItem === 'function' ? host.acceptItem(item) : item.shortcutType === studioSaveFolderAcceptType();
+        if (accepted) {
             const hostModal = document.getElementById('studioSaveFolderModal');
+            host._settled = true;
             if (hostModal) closeModal(hostModal);
             await host.onOpen(item, studioSaveFolderState.path);
             return;

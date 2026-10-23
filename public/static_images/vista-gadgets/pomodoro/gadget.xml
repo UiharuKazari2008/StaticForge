@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+    <name>Pomodoro</name>
+    <namespace>Time management</namespace>
+    <version>1.0.0</version>
+    <author name="danvdragos">
+    	<info url="danvdragos.com" />
+    </author>
+    <copyright>2016</copyright>
+    <description>Control your focus</description>
+    <hosts>
+        <host name="sidebar">
+            <base type="HTML" src="pomodoro.html" />
+            <permissions>full</permissions>
+            <platform minPlatformVersion="1.0" />
+        </host>
+    </hosts>
+</gadget>

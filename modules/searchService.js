@@ -8,6 +8,8 @@ const { DEFAULT_FORGE_MODEL } = require('./modelFeatures');
 // Search functionality module
 class SearchService {
     static SEARCH_TURN_TIMEOUT_MS = 12000;
+    // waitForSearchTurn wakes on release; this is only the safety recheck interval.
+    static SEARCH_TURN_RECHECK_MS = 250;
     constructor(globalResources = null) {
         if (!globalResources) {
             throw new Error('SearchService requires globalResources instance and should only be instantiated by globalResources.js');
@@ -34,6 +36,7 @@ class SearchService {
         this.isProcessing = new Map(); // Track if processing is active per session+model
         this._processingLockGen = new Map(); // Per-key lock generation so a stale finally cannot release a newer holder
         this._activeSearchCtx = new Map(); // Per-call packet context (requestId + autofillSessionId + cancelled)
+        this._searchTurnWaiters = new Map(); // key -> Set of wake callbacks parked in waitForSearchTurn
         // waitForSearchTurn previously polled this map with no deadline. A hung
         // processLatestRequest (thesaurus / tag API / dropped socket) starved every
         // later autocomplete for that session+model.
@@ -474,10 +477,39 @@ class SearchService {
         return await this.waitForSearchTurn(key, requestId);
     }
 
+    // Resolves when the turn for key is released (or after a fallback recheck interval,
+    // so a release that skips _releaseSearchTurn can never strand a waiter).
+    _waitForSearchTurnRelease(key) {
+        return new Promise((resolve) => {
+            let waiters = this._searchTurnWaiters.get(key);
+            if (!waiters) {
+                waiters = new Set();
+                this._searchTurnWaiters.set(key, waiters);
+            }
+            const wake = () => {
+                clearTimeout(timer);
+                waiters.delete(wake);
+                if (!waiters.size && this._searchTurnWaiters.get(key) === waiters) {
+                    this._searchTurnWaiters.delete(key);
+                }
+                resolve();
+            };
+            const timer = setTimeout(wake, SearchService.SEARCH_TURN_RECHECK_MS);
+            waiters.add(wake);
+        });
+    }
+
+    // Wake every waiter for key, in arrival order; each rechecks isProcessing itself.
+    _releaseSearchTurn(key) {
+        const waiters = this._searchTurnWaiters.get(key);
+        if (!waiters) return;
+        [...waiters].forEach((wake) => wake());
+    }
+
     async waitForSearchTurn(key, requestId) {
         while (true) {
             while (this.isProcessing.get(key)) {
-                await new Promise(resolve => setTimeout(resolve, 15));
+                await this._waitForSearchTurnRelease(key);
             }
 
             const latest = this.latestRequests.get(key);
@@ -510,6 +542,7 @@ class SearchService {
             } finally {
                 if (this._processingLockGen.get(key) === lockGen) {
                     this.isProcessing.set(key, false);
+                    this._releaseSearchTurn(key);
                 }
             }
         }
@@ -553,6 +586,7 @@ class SearchService {
         for (const key of [...this.isProcessing.keys()]) {
             if (key.startsWith(prefix) || key === sessionId) {
                 this.isProcessing.delete(key);
+                this._releaseSearchTurn(key);
             }
         }
         for (const [key, req] of [...this.latestRequests.entries()]) {

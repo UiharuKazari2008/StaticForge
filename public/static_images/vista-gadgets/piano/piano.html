@@ -1,0 +1,69 @@
+<html xmlns:v="urn:schemas-microsoft-com:vml">
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+	<meta http-equiv="MSThemeCompatible" CONTENT="yes" />
+	
+	<title>Tuner</title>
+	<link href="css/piano.css" rel="stylesheet" type="text/css"/>
+	<script type="text/javascript" src="js/settings.js" language="javascript"></script>
+	<script type="text/javascript" src="js/piano.js" language="javascript"></script>
+	<script type="text/javascript" src="js/musicPlayer.js" language="javascript"></script>
+	<script>
+	System.Gadget.settingsUI = "Settings.html";
+	</script>
+</head>
+<body id="piano" scroll="no" unselectable="on" onload="gadgetLoad();" onKeyDown="keyDown();" onKeyUp="keyUp();">
+
+<!-- Everything for the small piano (docked state) -->
+<div id="smallPiano">
+	<img id="skin_small" src="images/skin_small.png" style="background-color: #000000;">
+
+	<!-- This div will hold the piano keys when they're drawn in -->
+	<div id="keys_small">
+	</div>
+</div>
+<!-- end of smallPiano -->
+
+
+
+
+<!-- Everything for the large piano (undocked state) -->
+<div id="largePiano">
+
+	<img id="skin_large" src="images/skin_large.png" style="background-color: #000000;">
+
+	<!-- This div will hold the piano keys when they're drawn in -->
+	<div id="keys_large">
+	</div>
+
+
+	<!-- This is a row dedicated to piano control buttons (i.e. loop, record, demo, volume, etc. -->
+	<div id="controls">
+		<table border="0" cellpadding="0" cellspacing="0">
+		<tr>
+			<td><img src="images/controls_demo.png"></td>
+		</tr>
+		<tr>
+			<td><img src="images/button_demo.png" 
+					style="margin-left: -2px; margin-top: 2px;"
+					onMouseDown="javascript:this.src='images/button_demo_press.png';" 
+					onMouseUp="javascript:this.src='images/button_demo.png'; playSong(demoSong, demoTempo);" 
+					onMouseOut="javascript:this.src='images/button_demo.png';"></td>
+		</tr>
+		</table>
+	</div>
+
+</div>
+<!-- end of largePiano -->
+
+
+</body>
+</html>
+<script language="javascript">
+var lastKey = this.smallWhiteKey_15;
+var lastKeyType = 'white';
+
+System.Gadget.onUndock = checkState;
+System.Gadget.onDock = checkState;
+System.Gadget.onSettingsClosed = SettingsClosed;
+System.Gadget.onShowSettings = ShowSettings;
+</script>

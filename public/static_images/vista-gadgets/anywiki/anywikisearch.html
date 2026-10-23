@@ -1,0 +1,228 @@
+<html>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+<title>AnyWiki Search</title>
+	<style>
+	body {
+		width: 110px;
+		height: 85px;
+		padding:0px;
+		background-color:transparent;
+	}
+}
+	</style>
+<script>
+function setFlyout(urltmp)
+{
+    url = urltmp;
+    System.Gadget.Flyout.show = true;
+}
+
+function flyoutShowing()
+{
+	debug.innerText = url;
+    System.Gadget.Flyout.document.parentWindow.frame.innerHTML = "<iframe style='position:absolute;width=620px;height:470px;left:0px;top:15px;' id='dynframe' frameborder='0' src='"+url+"' scrolling='yes'></iframe>";
+}
+
+var url = "";
+
+
+
+	function invertHexColor(hexColorString) {
+		var invertedColor = "#";
+		for (i = 1; i < hexColorString.length;i++) {
+		switch (hexColorString.charAt(i)) {
+			case 'F':
+				invertedColor = invertedColor + "0";
+				break;
+			case 'E':
+				invertedColor = invertedColor + "1";
+				break;
+			case 'D':
+				invertedColor = invertedColor + "2";
+				break;
+			case 'C':
+				invertedColor = invertedColor + "3";
+				break;
+			case 'B':
+				invertedColor = invertedColor + "4";
+				break;
+			case 'A':
+				invertedColor = invertedColor + "5";
+				break;
+			case '9':
+				invertedColor = invertedColor + "6";
+				break;
+			case '8':
+				invertedColor = invertedColor + "7";
+				break;
+			case '7':
+				invertedColor = invertedColor + "8";
+				break;
+			case '6':
+				invertedColor = invertedColor + "9";
+				break;
+			case '5':
+				invertedColor = invertedColor + "A";
+				break;
+			case '4':
+				invertedColor = invertedColor + "B";
+				break;
+			case '3':
+				invertedColor = invertedColor + "C";
+				break;
+			case '2':
+				invertedColor = invertedColor + "D";
+				break;
+			case '1':
+				invertedColor = invertedColor + "E";
+				break;
+			case '0':
+				invertedColor = invertedColor + "F";
+				break;
+			}
+		}
+		return invertedColor;
+	}
+
+	function init() {
+		System.Gadget.settingsUI = "AnyWikiSearchSettings.html";
+		System.Gadget.onSettingsClosed = SettingsClosed;
+
+		System.Gadget.Flyout.onShow = flyoutShowing;
+		System.Gadget.Flyout.file = "AnyWikiSearchFlyout.html";
+
+		var wikiType = System.Gadget.Settings.readString("wikiType");
+		if (wikiType.length == 0) {
+			wikiType = "MediaWiki";
+			System.Gadget.Settings.writeString("wikiType", wikiType)
+		}
+		var wikiURL = System.Gadget.Settings.readString("wikiURL");
+		if (wikiURL.length == 0) {
+			wikiURL = "http://en.wikipedia.org/";
+			System.Gadget.Settings.writeString("wikiURL", wikiURL);			
+		}		
+		var displayName = System.Gadget.Settings.readString("displayName");
+		if (displayName.length == 0){
+			displayName = "Wikipedia";
+			System.Gadget.Settings.writeString("displayName", displayName);					
+		}
+
+		var imgURL = System.Gadget.Settings.readString("imageURL");
+		if (imgURL.length == 0) {
+			imgURL = "thumbnail.jpg";
+			System.Gadget.Settings.writeString("imageURL", imgURL);		
+		}
+				
+		wikiDisplayName.innerHTML = "<IMG width='32' height='32' align='left' src="+imgURL + ">" + displayName;
+	}
+
+
+	function SettingsClosed() {
+		init();
+	}
+	
+	function escapeMe(str) {
+		var returnStr = "";
+		var c = "";
+		for (i=0;i<str.length;i++) {
+			c = str.charAt(i);
+			if (c == ":") {
+				returnStr= returnStr + "%3A";				
+				continue;
+			}
+			if (c == "/") {
+				returnStr= returnStr + "%2F";
+				continue;
+			}
+			if (c == " " ) {
+				returnStr = returnStr + "%20";
+				continue;		
+			}
+			returnStr = returnStr + c;
+		}
+		return returnStr;
+	}
+	
+	function goWiki() {
+		var wikiType = System.Gadget.Settings.readString("wikiType");
+		var wikiURL = System.Gadget.Settings.readString("wikiURL");
+	
+		var searchURL = "";
+
+
+		debug.innerText = AnyWikiSearch.SearchString.value;
+		
+		switch (wikiType) {		
+		case 'MediaWiki':
+			searchURL = wikiURL + "wiki/Special:Search?search=" + AnyWikiSearch.SearchString.value + "&go=Go";
+			break;
+		case 'CodePlex':
+			searchURL = wikiURL + "Wiki/Search.aspx?action=Search&SearchText=" + AnyWikiSearch.SearchString.value;
+			break;
+		case 'FlexWiki':	
+			searchURL = wikiURL + "Search.aspx?search=" + AnyWikiSearch.SearchString.value;
+			break;
+		case 'SharepointWiki':
+			searchURL = wikiURL + "_layouts/searchresults.aspx?k=" + AnyWikiSearch.SearchString.value + "&u=" + escapeMe(wikiURL.substr(0, wikiURL.length -1));
+			break;
+		case 'Wikispaces':
+			searchURL = wikiURL + "search/view/" + AnyWikiSearch.SearchString.value;
+			break;
+		}
+
+
+//		setFlyout(searchURL);
+//		debug.innerText = escapeMe(wikiURL);
+		System.Shell.execute(searchURL);
+	}
+
+	function goSearchWiki() {
+		var wikiType = System.Gadget.Settings.readString("wikiType");
+		var wikiURL = System.Gadget.Settings.readString("wikiURL");
+	
+		var searchURL = "";
+		
+		debug.innerText = AnyWikiSearch.SearchString.value;
+		
+		switch (wikiType) {		
+		case 'MediaWiki':
+			searchURL = wikiURL + "wiki/Special:Search?search=" + AnyWikiSearch.SearchString.value + "&go=Go";
+			break;
+		case 'FlexWiki':	
+			searchURL = wikiURL + "Search.aspx?search=" + AnyWikiSearch.SearchString.value;
+			break;
+		case 'SharepointWiki':
+			searchURL = wikiURL + "_layouts/searchresults.aspx?k=" + AnyWikiSearch.SearchString.value + "&u=" + escapeMe(wikiURL.substr(0, wikiURL.length -1));
+			break;
+		case 'Wikispaces':
+			searchURL = wikiURL + "search/view/" + AnyWikiSearch.SearchString.value;
+			break;
+		}
+
+
+		setFlyout(searchURL);
+//		debug.innerText = escapeMe(wikiURL);
+//		System.Shell.execute(searchURL);
+	}
+</script>
+</head>
+<body onload="init();">
+
+<div id="Main" style="position:absolute;left:5px;top:5px;width:100px;z-index:2;">
+<div align="right" id="wikiDisplayName" style="font-size:12pt; font-family:'Arial Narrow'; font-weight:bold; position:absolute; right:0px;top:0px;z-index:1;"></div>
+
+<div align="left" style="position:absolute;left:0px;top:15px;height:50px;z-index:1;">
+	<div id="AnyWord" align="left" style="position:absolute;left:0px;bottom:10px; font-family:'Arial-Black';font-size:12pt;z-index:1;">any</div>
+	<div id="WikiWord" align="left" style="position:absolute;left:20px;bottom:10px;width:40px;font-size:14pt;font-family:'Arial';z-index:1;">Wiki</div>
+	<button id="searchButton" onclick="goWiki();" style="position:absolute;left:60px;bottom:10px;width:40px;font-size:x-small;font-family:'Arial Narrow';font-size:9pt;">search</button>
+</div>
+<div style="position:absolute; left:0px;top:55px; font-family:'Arial Narrow'">
+<form id="AnyWikiSearch">
+<input type="text" id="SearchString" style="width:100px" onkeydown="if(event.keyCode==13) goWiki();">
+<br>
+<div id="debug" style="font-size:xx-small;"></div>
+</form>
+</div>
+</div>
+</body>
+</html>

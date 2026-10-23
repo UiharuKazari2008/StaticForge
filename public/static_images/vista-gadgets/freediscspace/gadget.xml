@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+    <name>Free Disc Space</name>
+    <namespace>org.taylorbyrnes</namespace>
+    <version>0.1</version>
+    <author name="Taylor Byrnes">
+        <!--<info url="www.acme.com" />-->
+    </author>
+    <copyright>2006 by Taylor Byrnes</copyright>
+    <description>Shows you how much free hard drive space you have for the specified hard disc.</description>
+
+    <icons>
+      <icon height="48" width="48" src="icon.png"/>
+    </icons>    
+
+    <hosts>
+        <host name="sidebar">
+            <base type="HTML" apiVersion="1.0.0" src="FreeDiscSpace.html" />
+            <permissions>full</permissions>
+            <platform minPlatformVersion="0.3" />
+        </host>
+    </hosts>
+</gadget>

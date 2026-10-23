@@ -1,0 +1,13 @@
+body
+{
+    width:210px;
+    height:200px;
+}
+
+#preview
+{
+	position: absolute;
+	left: 50px;
+	top: 50px;
+	border: solid #555 1px;
+}

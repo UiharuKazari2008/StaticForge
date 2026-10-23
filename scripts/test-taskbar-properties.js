@@ -28,6 +28,34 @@ assert.strictEqual(ts.get().places.games, false);
 ts.set({ places: { games: true } });
 assert.ok(!('games' in ts.get().places), 'a place turned back on leaves the map');
 
+// Quick Launch: drag-and-drop reorder (gaps counted before the move) and Restore Default Items
+const reorder = ts._test.reorderList;
+assert.deepStrictEqual(reorder(['a', 'b', 'c', 'd'], 'c', 0), ['c', 'a', 'b', 'd'], 'to the front');
+assert.deepStrictEqual(reorder(['a', 'b', 'c', 'd'], 'a', 4), ['b', 'c', 'd', 'a'], 'to the end');
+assert.deepStrictEqual(reorder(['a', 'b', 'c', 'd'], 'a', 2), ['b', 'a', 'c', 'd'], 'right, into the gap after b');
+assert.deepStrictEqual(reorder(['a', 'b', 'c', 'd'], 'b', 1), ['a', 'b', 'c', 'd'], 'its own left gap: no move');
+assert.deepStrictEqual(reorder(['a', 'b', 'c', 'd'], 'b', 2), ['a', 'b', 'c', 'd'], 'its own right gap: no move');
+assert.deepStrictEqual(reorder(['a', 'b'], 'x', 0), ['a', 'b'], 'not in the list');
+ts.set({ quickLaunchItems: ['show-desktop', 'switch-windows', 'encyclopedia', 'media-player', 'paint'] });
+assert.strictEqual(ts.moveQuickLaunch('paint', 0), true);
+assert.deepStrictEqual(ts.get().quickLaunchItems, ['paint', 'show-desktop', 'switch-windows', 'encyclopedia', 'media-player']);
+assert.strictEqual(JSON.parse(store['desktop-taskbar-settings']).quickLaunchItems[0], 'paint', 'the new order is saved');
+assert.strictEqual(ts.moveQuickLaunch('paint', 1), false, 'dropped where it was');
+assert.deepStrictEqual(ts.missingQuickLaunchDefaults(), []);
+ts.removeQuickLaunch('show-desktop');
+ts.removeQuickLaunch('switch-windows');
+ts.moveQuickLaunch('media-player', 0);
+assert.deepStrictEqual(ts.missingQuickLaunchDefaults(), ['show-desktop', 'switch-windows']);
+assert.deepStrictEqual(ts.mergeQuickLaunchDefaults([]), ts.DEFAULTS.quickLaunchItems.slice(), 'an empty toolbar gets the defaults in order');
+assert.deepStrictEqual(ts.mergeQuickLaunchDefaults(['paint', 'encyclopedia']), ['show-desktop', 'switch-windows', 'paint', 'encyclopedia', 'media-player'],
+    'missing defaults go back beside the default before them, the user\'s shortcuts kept');
+ts.set({ quickLaunch: false });
+assert.strictEqual(ts.restoreQuickLaunchDefaults(), true);
+assert.deepStrictEqual(ts.get().quickLaunchItems, ['show-desktop', 'switch-windows', 'media-player', 'paint', 'encyclopedia']);
+assert.strictEqual(ts.get().quickLaunch, true, 'restoring shows the toolbar');
+assert.strictEqual(ts.restoreQuickLaunchDefaults(), false, 'nothing left to restore');
+ts.set({ quickLaunchItems: ts.DEFAULTS.quickLaunchItems.slice() });
+
 // clock: Vista's month calendar (October 2026 starts on Thursday: Sep 27 leads)
 require('../public/scripts/comp/taskbarClock.js');
 const grid = global.taskbarClockFlyout._test.monthGrid(2026, 9, 0);
@@ -160,7 +188,11 @@ assert.ok(!mu.includes('function getStartMenuRecentItems'), 'Recent Items are no
 // the preview bar keeps each style's own height (no stretched art); copies keep ids for their styles
 assert.ok(tp.includes('const PREVIEW_BAR_HEIGHTS = { orb: 31, luna: 33, workspace: 35 };'));
 const tsrc = read('public/scripts/comp/taskbarSettings.js');
-assert.ok(tsrc.includes('function stripLiveAttributes(node)') && !tsrc.includes("removeAttribute('id')"), 'thumbnails keep ids');
+// window previews are windowCapture.js pictures (shared with Flip 3D), warmed as the pointer
+// reaches a button; the copies keep their ids, as every app styles its window by them
+const wcsrc = read('public/scripts/comp/windowCapture.js');
+assert.ok(tsrc.includes("loadFeature('window_capture')") && tsrc.includes('warmThumb(item);'), 'previews use the window pictures');
+assert.ok(!tsrc.includes('function snapshot(') && !wcsrc.includes("removeAttribute('id')"), 'no DOM-clone previews; copies keep ids');
 assert.ok(vt.includes('margin: 6px 0 0;'), 'the group count sits on the label line');
 
 // tray icon copies keep their ids (their Vista pictures are #id rules); the list's combo is pinned

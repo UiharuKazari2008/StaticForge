@@ -37,6 +37,15 @@ body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog] > .modal
     text-shadow: none;
 }
 
+/* Text is the dialog's black, as Vista's: the old dark theme's paragraph and heading defaults
+   (emphasis-manager.css .modal-content p #ccc centred, h2 #ff4500; modal-theme-glass.css and
+   mask-editor.css alert-theme white) never reach a light dialog. Rules for a dialog's own text
+   (grey hints, blue headings) are more specific and still apply. */
+body.desktop-mode:not(.windows-classic-theme) .modal:is([data-vista-dialog], [data-window-client="light"]) .modal-content :is(p, h1, h2, h3, h4, h5, h6) {
+    color: inherit;
+    text-align: inherit;
+}
+
 /* Message boxes only: the 32 px icon lives in the client; form / tool windows keep the app icon. */
 body.desktop-mode:not(.windows-classic-theme) .modal[data-vista-dialog="message"] .modal-window-title-main > :is(i:first-child, .icon-fa, .icon-image) {
     display: none;

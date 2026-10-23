@@ -1,0 +1,53 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 9.00
+# Visual Studio 2005
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{4D7506F2-5375-4E50-97F1-7AA676A2F2F8}"
+	ProjectSection(WebsiteProperties) = preProject
+		Debug.AspNetCompiler.Debug = "True"
+		Release.AspNetCompiler.Debug = "False"
+	EndProjectSection
+	ProjectSection(SolutionItems) = preProject
+		gadget.xml = gadget.xml
+		logo.png = logo.png
+		play.png = play.png
+		radio.html = radio.html
+		stop.png = stop.png
+		css\style.css = css\style.css
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "css", "css", "{6FC8BF47-7B4F-4883-979C-2C1CFA1429B6}"
+	ProjectSection(WebsiteProperties) = preProject
+		Debug.AspNetCompiler.Debug = "True"
+		Release.AspNetCompiler.Debug = "False"
+	EndProjectSection
+	ProjectSection(SolutionItems) = preProject
+		css\style.css = css\style.css
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "images", "images", "{6D7BD30F-CB86-45BF-BB02-C081089B8249}"
+	ProjectSection(WebsiteProperties) = preProject
+		Debug.AspNetCompiler.Debug = "True"
+		Release.AspNetCompiler.Debug = "False"
+	EndProjectSection
+	ProjectSection(SolutionItems) = preProject
+		images\logo.png = images\logo.png
+		images\play.png = images\play.png
+		images\stop.png = images\stop.png
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "include", "include", "{BBDE9438-455E-4033-A1F1-B56C726981E1}"
+	ProjectSection(WebsiteProperties) = preProject
+		Debug.AspNetCompiler.Debug = "True"
+		Release.AspNetCompiler.Debug = "False"
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{6FC8BF47-7B4F-4883-979C-2C1CFA1429B6} = {4D7506F2-5375-4E50-97F1-7AA676A2F2F8}
+		{6D7BD30F-CB86-45BF-BB02-C081089B8249} = {4D7506F2-5375-4E50-97F1-7AA676A2F2F8}
+		{BBDE9438-455E-4033-A1F1-B56C726981E1} = {4D7506F2-5375-4E50-97F1-7AA676A2F2F8}
+	EndGlobalSection
+EndGlobal

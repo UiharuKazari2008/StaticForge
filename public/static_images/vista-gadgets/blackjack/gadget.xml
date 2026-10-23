@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+    <name>BlackJack</name>
+    <namespace>Example.You</namespace>
+    <version>1.0.0.0</version>
+    <author name="Juan Andres Samaniego">
+        <info url="" />
+    </author>
+    <copyright>&#169; 2007</copyright>
+<icons>
+    <icon height="150" width="150" src="icono1.png"/>
+  </icons>
+    <description>BlackJack</description>
+    <hosts>
+        <host name="sidebar">
+            <base type="HTML" apiVersion="1.0.0" src="test.html" />
+            <permissions>Full</permissions>
+            <platform minPlatformVersion="1.0" />
+        </host>
+    </hosts>
+</gadget>

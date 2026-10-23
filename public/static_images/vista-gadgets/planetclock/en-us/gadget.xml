@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<gadget>
+  <name>THL Planet Clock v1.2</name>
+  <namespace>THL</namespace>
+  <version>1.2.0.0</version>
+  <author name="Lorne L. Reap">
+    <info url="http://thehobbylounge.com" text="thehobbylounge.com"/>
+    <logo src="logo.png"/>
+  </author>
+  <copyright>© 2008</copyright>
+  <description>Solar System Clock can be adjusted to show your own time zone or any city in the world.</description>
+    <icons>
+      <icon height="48" width="48" src="icon.png"/>
+    </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="html" apiVersion="1.0.0" src="clock.html"/>
+      <permissions>full</permissions>
+      <platform minPlatformVersion="1.0"/>
+      <defaultImage src="drag.png"/>
+    </host>
+  </hosts>
+</gadget>

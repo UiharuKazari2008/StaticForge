@@ -1,0 +1,75 @@
+<html>
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+	<title>Free Disc Space</title>
+	<style>
+		body { 
+			width:130;
+			height:80;
+		}
+	</style>
+
+	<script>
+		var driveLetter = "C";
+		var backgroundColour = "yellow";
+		var curDrive;
+
+		function startup() {
+			System.Gadget.settingsUI = "Settings.html";
+			System.Gadget.onSettingsClosed = settingsClosed;
+			
+			if (System.Gadget.Settings.read("driveLetter")) {
+				driveLetter = System.Gadget.Settings.read("driveLetter");
+				
+			} else {
+				System.Gadget.Settings.write("driveLetter", driveLetter);
+			}
+
+			if (System.Gadget.Settings.read("backgroundColour")) {
+				backgroundColour = System.Gadget.Settings.read("backgroundColour");
+				
+			} else {
+				System.Gadget.Settings.write("backgroundColour", backgroundColour);
+			}
+
+			curDrive = System.Shell.drive(driveLetter);
+			System.Gadget.background = "images/background-" + backgroundColour + ".png";
+
+			displayUsage();
+		}
+
+		function displayUsage()
+		{
+			var strFreeSpace = driveLetter + ": " + curDrive.freeSpace + "MB";
+			var intUsedSpacePercent = (100 - Math.round(curDrive.freeSpace / curDrive.totalSize * 100));
+
+			title.innerText = strFreeSpace;
+			
+			if (intUsedSpacePercent < 95) {
+				statusBar.src = "images/green.png";
+			} else {
+				statusBar.src = "images/red.png";
+			}
+
+			statusBar.width = intUsedSpacePercent;
+
+			window.setTimeout(displayUsage, 3000);
+		}
+
+		function settingsClosed()
+		{
+			driveLetter = System.Gadget.Settings.read("driveLetter");
+			curDrive = System.Shell.drive(driveLetter);
+
+			backgroundColour = System.Gadget.Settings.read("backgroundColour");
+			System.Gadget.background = "images/background-" + backgroundColour + ".png";
+		}
+	</script>
+</head>
+
+<body onload="startup()">
+	<span id="title" style="font-family: Tahoma; font-size: 10pt;">Unavailable</span><br/>
+
+	<img src="images/blackBox.png" alt="" style="position: absolute; left: 12px; top: 40px;" />
+	<img id="statusBar" style="position: absolute; left: 15px; top: 43px; height: 20px;" alt="" />
+</body>
+</html>

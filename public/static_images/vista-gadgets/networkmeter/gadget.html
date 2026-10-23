@@ -1,0 +1,105 @@
+<!--//
+////////////////////////////////////////////////////////////////////////////////
+//
+//  Copyright © 2009 - 2013 addgadgets.com  All rights reserved.
+//
+//  http://addgadgets.com/
+//
+////////////////////////////////////////////////////////////////////////////////
+//-->
+<html xmlns:v="urn:schemas-microsoft-com:vml">
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+
+<title>Network Meter</title>
+<link href="gadget.css" rel="stylesheet" type="text/css" />
+<script type="text/javascript" language="javascript" src="gadget.js"></script>
+<script type="text/javascript" language="javascript" src="libhelper.js"></script>
+<style>
+v\:* { behavior: url(#default#VML); }
+</style>
+</head>
+<body onLoad="onLoad();" ondblclick="runNetworkAndSharingCenter();" onUnload="onUnload();">
+<g:background id="background"></g:background>
+<OBJECT ID="Player" height="0" width="0" CLASSID="CLSID:6BF52A52-394A-11d3-B153-00C04F79FAA6">
+<PARAM name="autoStart" value="False">
+<PARAM name="uiMode" value="invisible">
+</OBJECT>
+
+<div id="backgc" style="position:absolute;"></div>
+<div><img id="blackwhite" src="blackwhite.png" style="position:absolute;"/></div>
+<img id="wpng" src="wireless.png" style="position:absolute;cursor:pointer;" onClick="show_flyout();">
+<div id="network" style="position:absolute;font-weight:bold;cursor:pointer;" onClick="show_flyout();">Network Meter</div>
+<img id="con" style="position:absolute;cursor:pointer;" onClick="show_flyout();">
+<div id="networkAdaName" style="position:absolute;overflow:hidden;"></div>
+<div id="iconAlert" style="position:absolute;cursor:pointer;" OnClick="clickAlert()"></div>
+<div id="networkid" style="position:absolute;overflow:hidden;">ID:</div>
+<div id="intIP" style="position:absolute;cursor:pointer;" onClick="copyIIP();">Int. IP: Not Connected</div>
+<div id="ip" style="position:absolute;cursor:pointer;" onClick="copyEIP();">Ext. IP:</div>
+<div id="blIP" style="position:absolute;cursor:pointer;" onClick="showBLIP();">Blacklisted IP Ratio:</div>
+<img id="refreshe" src="refresh.png" style="position:absolute;cursor:pointer;" OnClick="src='refresh3.png';ShowIP();" title="Refresh Ext. IP"  onMouseOver="src='refresh2.png'" onMouseOut="src='refresh.png'">
+<div id="speed" style="position:absolute;"><a href="http://addgadgets.com/speedtest/">Speed Test</a></div>
+<div id="lookup" style="position:absolute;"><a href="http://addgadgets.com/ipaddress/">IP Lookup</a></div>
+<div id="iplog" style="position:absolute;cursor:pointer;" onClick="showIPLog();">Log</div>
+<div id="firewall" style="position:absolute;">Firewall:</div>
+<div id="profile" style="position:absolute;">Profile:</div>
+<div id="secure" style="position:absolute;">Connection:</div>
+<div id="signalper" style="position:absolute;">Signal:</div>
+<img id="back3" src="barback.png" style="position:absolute; visibility:hidden;">
+<hr id="bar3" style="position:absolute; visibility:hidden;">
+<img id="top3" src="bartop.png" style="position:absolute; visibility:hidden">
+<div id="txtUpBits" style="position:absolute;">0.000bit/s</div>
+<div id="txtUpBytes" style="position:absolute;">0.000B/s</div>
+<div id="txtDownBits" style="position:absolute;">0.000bit/s</div>
+<div id="txtDownBytes" style="position:absolute;">0.000B/s</div> 
+<img id="back1" src="barback.png" style="position:absolute; visibility:hidden;">
+<hr id="bar1" style="position:absolute; visibility:hidden;">
+<img id="top1" src="bartop.png" style="position:absolute; visibility:hidden">
+<img id="back2" src="barback.png" style="position:absolute; visibility:hidden;">
+<hr id="bar2" style="position:absolute; visibility:hidden;">
+<img id="top2" src="bartop.png" style="position:absolute; visibility:hidden">
+<img id="arrowup" src="arrow_up_green.png" style="position:absolute;">
+<img id="arrowdown" src="arrow_down_yellow.png" style="position:absolute;">
+<img id="arrowup2" src="arrow_up_green.png" style="position:absolute;">
+<img id="arrowdown2" src="arrow_down_yellow.png" style="position:absolute;">
+<img id="arrowup3" src="arrow_up_green.png" style="position:absolute;">
+<img id="arrowdown3" src="arrow_down_yellow.png" style="position:absolute;">
+<img id="resetCurrent" src="refresh.png" style="position:absolute;cursor:pointer;" OnClick="src='refresh3.png';clickResetCurrent();" title="Reset Current"  onMouseOver="src='refresh2.png'" onMouseOut="src='refresh.png'">
+<img id="resetTotal" src="refresh.png" style="position:absolute;cursor:pointer;" OnClick="src='refresh3.png';clickResetTotal()" title="Reset Total" onMouseOver="src='refresh2.png'" onMouseOut="src='refresh.png'">
+<div id="current" style="position:absolute;">Current</div>
+<div id="total" style="position:absolute;">Total</div>
+<div id="uptot" style="position: absolute;">0.000B</div>
+<div id="downtot" style="position: absolute;">0.000B</div>
+<div id="UpTotal" style="position:absolute;">0.00000B</div>
+<div id="DownTotal" style="position:absolute;">0.00000B</div>
+<!--
+    v:shape is replaced with g:shape in the following. This fixes display issues when high-dpi is selected.
+    This works only with 8GadgetPack Version 30 and higher.
+-->
+<g:shape id="linesx" style="position:absolute;" filled="false" strokecolor="#2F4F4F" strokeweight="1pt" coordorigin="0 0" coordsize="116 100"path=" m 8,100 l 8,0  m 18,100 l 18,0  m 28,100 l 28,0  m 38,100 l 38,0  m 48,100 l 48,0  m 58,100 l 58,0  m 68,100 l 68,0  m 78,100 l 78,0  m 88,100 l 88,0  m 98,100 l 98,0  m 108,100 l 108,0 "></g:shape>
+<g:shape id="linesy" style="position:absolute;" filled="false" strokecolor="#2F4F4F" strokeweight="1pt" coordorigin="0 0" coordsize="116 100" path=" m 0,20 l 115,20  m 0,40 l 115,40  m 0,60 l 115,60  m 0,80 l 115,80" ></g:shape>
+<g:shape id="downgraph" style='position:absolute;' filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 30"></g:shape>
+<g:shape id="upgraph" style='position:absolute;' filled="false" strokeweight="1pt" coordorigin="0 0" coordsize="110 30"></g:shape>
+<g:shape id="border" style="position:absolute;" filled="false" strokecolor="#778899" strokeweight="1pt" coordorigin="0 0" coordsize="110 100" path="m 0,96 l 109,96 l 109,0 l 0,0 l 0,96" ></g:shape>
+<img id="graphImg" src="blank.png" style="position:absolute;cursor:pointer;" onMouseOver="title='Show Chart'" onClick="show_chart();">
+<div id="hr1" style="position:absolute;"></div>
+<div id="remaining" style="position:absolute;">Remaining: </div>
+<div id="remainingPre" style="position:absolute;">100%</div>
+<div id="remainingDate" style="position:absolute;">1-Jan</div>
+<div id="days" style="position:absolute;">Days</div>
+<div id="rDays" style="position:absolute;">25</div>
+<div id="quota" style="position:absolute;">Quota</div>
+<div id="rQuota" style="position:absolute;">2000MB</div>
+<div id="perDay" style="position:absolute;">Per Day</div>
+<div id="rPreDay" style="position:absolute;">80MB</div>
+<div id="used" style="position:absolute;">Used:</div>
+<div id="usedTotal" style="position:absolute;">25</div>
+<img id="back4" src="barback.png" style="position:absolute; visibility:hidden;">
+<hr id="bar4" style="position:absolute; visibility:hidden;">
+<img id="top4" src="bartop.png" style="position:absolute; visibility:hidden">
+<div id="peak" style="position:absolute;text-align:center;">Peak :</div>
+<div id="offPeak" style="position:absolute;text-align:center;">Off Peak :</div>
+<input type="text" size="15" maxlength="600" id="query" name="query" style="position:absolute; border: 0;" onFocus="activateBar()" onBlur="resetBar()">
+<input type="image" id="go" name="go"  style="position:absolute; top:22px; left:100px;" onClick="showFO(query.value);" src="button.png" onMouseOver="src = 'button_over.png'" onMouseOut="src = 'button.png'">
+<div id=newUpdate style="position:absolute;"></div>
+</body>
+</html>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<gadget>
+  <name>GameFAQs Gadget</name>
+  <namespace><!--_locComment_text="{Locked}"-->microsoft.windows</namespace>
+  <version><!--_locComment_text="{Locked}"-->1.0.0.0</version>
+  <author name="Bradford J Snow">
+    <logo width="100" height="100" src="images/icons/GameFaq_Logo.jpg"/>
+  </author>
+  <copyright><!--_locComment_text="{Locked}"-->© 2007</copyright>
+  <description>Search GameFAQs for strategy guides, reviews, and codes for your favorite games.</description>
+  <icons>
+    <icon width="100" height="100" src="images/icons/GameFaq_Logo.jpg"/>
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="gadget.htm"/>
+      <permissions><!--_locComment_text="{Locked}"-->Full</permissions>
+      <platform minPlatformVersion="0.3"/>
+      <defaultImage src="images/backgrounds/GameFaqsBG.gif"/>
+    </host>
+  </hosts>
+</gadget>

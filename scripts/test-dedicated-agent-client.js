@@ -19,6 +19,10 @@ assert.ok(!client.includes('?auth='), 'application key is never placed in a quer
 assert.ok(!client.includes('sfapp_') || client.includes("startsWith('sfapp_')"), 'no application key literal is embedded');
 assert.ok(client.includes("'http://127.0.0.1:9220'"), 'Dreamscape connection is loopback-only by default');
 assert.ok(client.includes("const CDP_HOST = '127.0.0.1'"), 'Chromium debugging is loopback-only');
+assert.ok(client.includes("require('../modules/alchemyOwnedTab')"), 'supervisor shares Alchemy tab targeting');
+assert.ok(client.includes('pickDreamscapeAgentTarget'), 'Dreamscape agent tab is preferred over the Alchemy-owned tab');
+assert.ok(client.includes('ensureAlchemyOwnedTab'), 'supervisor opens the Alchemy-owned tab on the same profile');
+assert.ok(client.includes('ALCHEMY_BLANK_URL'), 'Alchemy-owned tab uses the persistent marker URL');
 assert.ok(client.includes("'--headless=new'"), 'dedicated client is headless');
 assert.ok(client.includes("'--window-size=1920,1200'"), 'dedicated client has a stable test viewport');
 assert.ok(client.includes("sessionStorage.setItem('dreamscape.priorityClient', '1')"), 'dedicated tab persists priority registration');

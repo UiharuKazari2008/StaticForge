@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>Виртуална саксия</name>
+  <namespace>microsoft.windows</namespace>
+  <version>1.0.0.1</version>
+  <author name="KaKaNow.com">
+    <info url="kakanow.com"  text="KaKaNow.com"/>
+    <logo src="images/logo.png" />
+  </author>
+  <copyright>&#169; 2010</copyright>
+  <description>Сложете нещо живо и красиво направо на вашия работен плот.
+Цветята в тази виртуална саксия ще растат докато не разцъфтят пред очите ви, ако ги поливате с помощта на мишката.  Също като истинско растение, те ще се свият, ако бъдат занемарени.  Може да минат много дни, преди те да разцъфтят напълно, но със сигурност ще озаряват вашия desktop при всеки поглед.</description>
+  <icons>
+    <icon height="64" width="64" src="images/icon.png" />
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="default.html" />
+      <permissions>Full</permissions>
+      <platform minPlatformVersion="1.0" />
+      <defaultImage src="images/drag.png" />
+    </host>
+  </hosts>
+</gadget>

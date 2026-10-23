@@ -68,6 +68,20 @@ function memoryStorage() {
         }
     }
 
+    // ---- the BIOS, boot screen and Setup only read the manifest (OPTIONS /). A server
+    // recompile (refresh_server_cache / recompile_runtime_assets, both over the WebSocket)
+    // stays a desktop action: /launch opens no socket and asks the server to compile nothing.
+    {
+        const launchDir = path.join(__dirname, '..', 'public', 'scripts', 'launch');
+        const sources = ['public/launch.html', 'public/launch-games.html']
+            .concat(fs.readdirSync(launchDir).filter((name) => name.endsWith('.js')).map((name) => `public/scripts/launch/${name}`));
+        const compileTriggers = /refresh_server_cache|recompile_runtime_assets|refreshServerCache|recompileRuntimeAssets|new WebSocket\(|wsClient|\/agent\/|notify-service-worker/;
+        for (const rel of sources) {
+            const hit = fs.readFileSync(path.join(__dirname, '..', rel), 'utf8').match(compileTriggers);
+            assert.ok(!hit, `${rel} must not trigger a server recompile (found ${hit && hit[0]})`);
+        }
+    }
+
     // ---- conditional manifest (Yozora #516): digest stored once in sync, then 304 ----
     {
         const DIGEST = 'digest-1';

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+    <name>Love Meter</name>
+    <namespace>lovemeter</namespace>
+    <version>1.0.0.0</version>
+    <author name="John Bruin">
+        <info url="" />
+    </author>
+    <copyright>© 2007</copyright>
+    <description>Match your name with your lover's name and find out what your chances are.</description>
+    <icons>
+        <icon width="48" height="48" src="heart.png" />
+    </icons>
+
+    <hosts>
+        <host name="sidebar">
+            <base type="HTML" apiVersion="1.0.0" src="lovemeter.html" />
+            <permissions>full</permissions>
+            <platform minPlatformVersion="0.3" />
+        </host>
+    </hosts>
+</gadget>

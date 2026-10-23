@@ -1,0 +1,17 @@
+DRAGGING THE GADGET: To move the gadget you must use Microsoft's drag pad for the gadget, which appears when you hover over the gadget.  For some reason if a gadget wants to do something when clicked (like this one does), then dragging it by its face stops working.  One commenter pointed out that I could change the click to a double-click to work around this, but I don't want to add an extra click to opening the detector browser (something people might do a lot) to make it easier to drag the gadget, which most people don't do very often.  Hopefully there's a better solution somewhere which involves being able to click AND drag a gadget (gasp!).
+
+THE BLACK FRAME: The Sun is in Space, which is what the black frame is.  I don't know of any way to remove that from the image in a gadget, especially while preserving the prominences.  I tried to make it look as attractive as I could, sorry if it's not enough.  But then, you got this for free and I wrote it for free so hopefully expectations are set accordingly ;)
+
+SIDEBAR MOVIE: 2.1 adds the ability to play a movie in the Sidebar instead of just showing the current image.  This consumes a noticable amount of my CPU, which is a fairly low-end machine by today's standards (single-core 1.8 GHz Pentium M).  My recommendation is that only dual-core users enable this.
+
+PLAYBACK SPEED: The movie playback supports half speed but my copy of Windows Media Player has issues with playing back at 1/2 speed (it goes black after one loop).  I originally also had 1/4 speed, but WMP completely barfed on that.  I'm leaving in the 1/2 speed option in case it's just my copy of WMP or in case Microsoft fixes the issue (assuming it's theirs and not mine).
+
+v2.2 Changes:
+
+- BUGFIX/FEATURE: Update gadget for compatiblity with new SOHO website
+
+v2.1 Changes:
+
+- Added movie to sidebar
+- URL cache for better responsiveness when changing detectors
+

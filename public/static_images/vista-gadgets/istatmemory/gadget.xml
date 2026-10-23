@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>iStat memory</name>
+  <namespace>iSlayer.iStatmemory</namespace>
+  <version>1.0</version>
+  <author name="iSlayer">
+    <info url="www.islayer.com" />
+    <logo src="icon.png" />
+  </author>
+  <copyright>&#169; iSlayer 2007</copyright>
+  <description>Monitor memory  usage.</description>
+  <icons>
+    <icon height="48" width="48" src="icon.png" />
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="html" apiVersion="1.0.0" src="memory.html" />
+      <permissions>full</permissions>
+      <platform minPlatformVersion ="0.3"/>
+    </host>
+  </hosts>
+</gadget>

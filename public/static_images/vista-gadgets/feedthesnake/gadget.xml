@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>Feed The Snake!</name>
+  <namespace>Tyler.Gadgets</namespace>
+  <version>1.1</version>
+  <author name="Gav1989_8">
+    <info url="" text=""/>
+    <logo src="logo.png" />
+  </author>
+  <copyright>2006/2007 Tyler</copyright>
+  <description>Eat all the Food and Keep the snake alive. This is an update of Tyler's snake game. It has been fixed to run on Vista Home Premium where as in the old version a setting(Xtreamest) was not available and blocked the screen when playing,this has been fixed. Simple fix,cred to tyler well done. </description>
+  <icons>
+      <icon height="48" width="48" src="icon.png" />
+  </icons>
+  <logo>logo.png</logo>
+  <hosts>
+    <host name="sidebar">
+      <base type="html" apiVersion="1.1.0" src="game.htm" />
+      <permissions>full</permissions>
+      <platform minPlatformVersion ="0.3"/>
+    </host>
+  </hosts>
+</gadget>

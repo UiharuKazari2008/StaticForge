@@ -37,9 +37,32 @@ function isAutoRecompileEnabled() {
     return false;
 }
 
+// absPath -> { size, mtimeMs, hash }: the manifest and page links re-hash the same files often.
+const servedFileHashCache = new Map();
+const SERVED_FILE_HASH_CACHE_MAX = 2000;
+
 function hashServedFile(absPath) {
+    let stats = null;
+    try {
+        stats = fs.statSync(absPath);
+    } catch (_err) {
+        stats = null;
+    }
+    if (stats) {
+        const cached = servedFileHashCache.get(absPath);
+        if (cached && cached.size === stats.size && cached.mtimeMs === stats.mtimeMs) {
+            return cached.hash;
+        }
+    }
     const fileBuffer = fs.readFileSync(absPath);
-    return crypto.createHash(SERVED_HASH_ALGO).update(fileBuffer).digest('hex');
+    const hash = crypto.createHash(SERVED_HASH_ALGO).update(fileBuffer).digest('hex');
+    if (stats && stats.size === fileBuffer.length) {
+        if (servedFileHashCache.size >= SERVED_FILE_HASH_CACHE_MAX) {
+            servedFileHashCache.delete(servedFileHashCache.keys().next().value);
+        }
+        servedFileHashCache.set(absPath, { size: stats.size, mtimeMs: stats.mtimeMs, hash });
+    }
+    return hash;
 }
 
 function hashServedFileIfChanged(absPath, stats, cachedEntry) {

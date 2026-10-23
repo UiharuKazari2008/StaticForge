@@ -1,0 +1,1605 @@
+<!--//
+////////////////////////////////////////////////////////////////////////////////
+//
+//  Copyright © 2013 addgadgets.com  All rights reserved.
+//
+//  http://addgadgets.com/
+//
+////////////////////////////////////////////////////////////////////////////////
+//-->
+<html xmlns:v="urn:schemas-microsoft-com:vml">
+<head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; object-src 'none'; form-action 'none'; base-uri 'self'"><script src="/scripts/comp/sidebar-gadgets/gadgetShim.js"></script>
+
+<title>Drives Meter Settings</title>
+<script type="text/javascript" language="javascript" src="settings.js"></script>
+<script type="text/javascript" language="javascript" src="jscolor.js"></script>
+<link rel="stylesheet" href="settings.css">
+<script type="text/javascript">
+document.write('<style type="text/css">.tabber{display:none;}<\/style>');
+var tabberOptions = {'manualStartup':true};
+</script>
+</head>
+<body onLoad="onLoad()">
+<div class="tabber">
+<div class="tabbertab Extender" style="font-size:10px; overflow-y:scroll; overflow-x:hidden" title="Options">
+<OBJECT ID="Player" height="0" width="0" CLASSID="CLSID:6BF52A52-394A-11d3-B153-00C04F79FAA6">
+	<PARAM name="autoStart" value="False">
+	<PARAM name="uiMode" value="invisible">
+</OBJECT>
+	<b style="font-size:12px;">Refresh rate (sec):</b>&nbsp;<input style="width:40;font-size:12px;" id="settimer" type="text"><span style="font-size:12px;">&nbsp; (default = 1)</span><br><hr>
+    <b style="font-size:12px;">Sound Alert:</b>
+	<select id="alertDrive" style="width: 170;font-size:12px;">
+	<option value=1>ON</option>
+	<option value=2>OFF</option>
+	</select><br><hr>
+	<b style="width:60;font-size:12px;">Drive 1: </b><input style="width:20;font-size:12px;" id="drive1" type="text" maxlength="1"><br>
+    <b style="font-size:12px;">Low Disk Space Alert:</b>
+	<select id="alertLowDisk1" style="width: 110;font-size:12px;">
+	<option value=1>ON</option>
+	<option value=2>OFF</option>
+	</select><br>
+	<b style="font-size:12px;">Alerts Below:</b>&nbsp;<input style="width:40;font-size:12px;" id="alertLowDiskBelow1" type="text">
+	<select id="alertLowDiskByt1" style="width: 50;font-size:12px;">
+	<option value=1>MB</option>
+	<option value=2>GB</option>
+	</select><br>
+    <b style="font-size:12px;">Sound:</b>
+    <select id="soundLowDisk1" style="width: 110;font-size:12px;" onChange="soundSettingsLowDisk();">
+	<option value="1">Sound 1</option>
+	<option value="2">Sound 2</option>
+	<option value="3">Sound 3</option>
+	<option value="4">Sound 4</option>
+	<option value="5">Sound 5</option>
+	<option value="50">Custom</option>
+	</select><input type="button" value="Choose" onClick="chooseSoundLowDisk();" id="csLowDisk1"><br>
+    <span id="soundLowDiskurl1" style="font-size:10px"></span><br>
+    <b style="font-size:12px;">Sound Volume:</b>
+	<select id="soundLowDiskVol1" style="width: 60;font-size:12px;">
+	<option value="10">10%</option>
+	<option value="20">20%</option>
+	<option value="30">30%</option>
+	<option value="40">40%</option>
+	<option value="50">50%</option>
+	<option value="60">60%</option>
+	<option value="70">70%</option>
+	<option value="80">80%</option>
+	<option value="90">90%</option>
+	<option value="100">100%</option>
+	</select><input type="button" value="Play" onClick="playchooseLowDisk();"><input type="button" value="Stop" onClick="clickstop();"><br>
+	<b style="font-size:12px;">Sound Repeats:</b>
+	<select id="soundLowDiskRepeats1" style="width: 80;font-size:12px;" onChange="soundLowDiskRepeatsSettings();">
+	<option value="1">ON</option>
+	<option value="2">OFF</option>
+	<option value="3">Custom</option>
+	</select>
+	&nbsp;<input style="width:30;font-size:12px;" id="soundLowDiskCount1" type="text" maxlength="2"><span id="timesLowDisk1" style="font-size:12px;">Times</span><br><hr>
+	<b style="width:60;font-size:12px;">Drive 2: </b><input style="width:20;font-size:12px;" id="drive2" type="text" maxlength="1">
+	<select id="showDrive2" style="width:100;font-size:12px;" onChange="driveSettings();soundSettingsLowDisk3();soundLowDiskRepeats3Settings();">
+	<option value="1">Off</option>
+	<option value="2">On</option>
+	</select>
+	<br>
+    <b style="font-size:12px;">Low Disk Space Alert:</b>
+	<select id="alertLowDisk2" style="width: 110;font-size:12px;">
+	<option value=1>ON</option>
+	<option value=2>OFF</option>
+	</select><br>
+	<b style="font-size:12px;">Alerts Below:</b>&nbsp;<input style="width:40;font-size:12px;" id="alertLowDiskBelow2" type="text">
+	<select id="alertLowDiskByt2" style="width: 50;font-size:12px;">
+	<option value=1>MB</option>
+	<option value=2>GB</option>
+	</select><br>
+    <b style="font-size:12px;">Sound:</b>
+    <select id="soundLowDisk2" style="width: 110;font-size:12px;" onChange="soundSettingsLowDisk2();">
+	<option value="1">Sound 1</option>
+	<option value="2">Sound 2</option>
+	<option value="3">Sound 3</option>
+	<option value="4">Sound 4</option>
+	<option value="5">Sound 5</option>
+	<option value="50">Custom</option>
+	</select><input type="button" value="Choose" onClick="chooseSoundLowDisk2();" id="csLowDisk2"><br>
+    <span id="soundLowDiskurl2" style="font-size:10px"></span><br>
+    <b style="font-size:12px;">Sound Volume:</b>
+	<select id="soundLowDiskVol2" style="width: 60;font-size:12px;">
+	<option value="10">10%</option>
+	<option value="20">20%</option>
+	<option value="30">30%</option>
+	<option value="40">40%</option>
+	<option value="50">50%</option>
+	<option value="60">60%</option>
+	<option value="70">70%</option>
+	<option value="80">80%</option>
+	<option value="90">90%</option>
+	<option value="100">100%</option>
+	</select><input type="button" value="Play" onClick="playchooseLowDisk2();"><input type="button" value="Stop" onClick="clickstop();"><br>
+	<b style="font-size:12px;">Sound Repeats:</b>
+	<select id="soundLowDiskRepeats2" style="width: 80;font-size:12px;" onChange="soundLowDiskRepeats2Settings();">
+	<option value="1">ON</option>
+	<option value="2">OFF</option>
+	<option value="3">Custom</option>
+	</select>
+	&nbsp;<input style="width:30;font-size:12px;" id="soundLowDiskCount2" type="text" maxlength="2"><span id="timesLowDisk2" style="font-size:12px;">Times</span><br><hr>
+	<div id="settingD3"><b style="width:60;font-size:12px;">Drive 3: </b>
+	<input style="width:20;font-size:12px;" id="drive3" type="text" maxlength="1">
+	<select id="showDrive3" style="width:100;font-size:12px;" onChange="driveSettings();soundSettingsLowDisk4();soundLowDiskRepeats4Settings();">
+	<option value="1">Off</option>
+	<option value="2">On</option>
+	</select>
+	<br>
+    <b style="font-size:12px;">Low Disk Space Alert:</b>
+	<select id="alertLowDisk3" style="width: 110;font-size:12px;">
+	<option value=1>ON</option>
+	<option value=2>OFF</option>
+	</select><br>
+	<b style="font-size:12px;">Alerts Below:</b>&nbsp;<input style="width:40;font-size:12px;" id="alertLowDiskBelow3" type="text">
+	<select id="alertLowDiskByt3" style="width: 50;font-size:12px;">
+	<option value=1>MB</option>
+	<option value=2>GB</option>
+	</select><br>
+    <b style="font-size:12px;">Sound:</b>
+    <select id="soundLowDisk3" style="width: 110;font-size:12px;" onChange="soundSettingsLowDisk3();">
+	<option value="1">Sound 1</option>
+	<option value="2">Sound 2</option>
+	<option value="3">Sound 3</option>
+	<option value="4">Sound 4</option>
+	<option value="5">Sound 5</option>
+	<option value="50">Custom</option>
+	</select><input type="button" value="Choose" onClick="chooseSoundLowDisk3();" id="csLowDisk3"><br>
+    <span id="soundLowDiskurl3" style="font-size:10px"></span><br>
+    <b style="font-size:12px;">Sound Volume:</b>
+	<select id="soundLowDiskVol3" style="width: 60;font-size:12px;">
+	<option value="10">10%</option>
+	<option value="20">20%</option>
+	<option value="30">30%</option>
+	<option value="40">40%</option>
+	<option value="50">50%</option>
+	<option value="60">60%</option>
+	<option value="70">70%</option>
+	<option value="80">80%</option>
+	<option value="90">90%</option>
+	<option value="100">100%</option>
+	</select><input type="button" value="Play" onClick="playchooseLowDisk3();"><input type="button" value="Stop" onClick="clickstop();"><br>
+	<b style="font-size:12px;">Sound Repeats:</b>
+	<select id="soundLowDiskRepeats3" style="width: 80;font-size:12px;" onChange="soundLowDiskRepeats3Settings();">
+	<option value="1">ON</option>
+	<option value="2">OFF</option>
+	<option value="3">Custom</option>
+	</select>
+	&nbsp;<input style="width:30;font-size:12px;" id="soundLowDiskCount3" type="text" maxlength="2"><span id="timesLowDisk3" style="font-size:12px;">Times</span><br><hr>
+    </div>
+	<div id="settingD4"><b style="width:60;font-size:12px;">Drive 4: </b>
+	<input style="width:20;font-size:12px;" id="drive4" type="text" maxlength="1">
+	<select id="showDrive4" style="width:100;font-size:12px;" onChange="driveSettings();soundSettingsLowDisk5();soundLowDiskRepeats5Settings();">
+	<option value="1">Off</option>
+	<option value="2">On</option>
+	</select>
+	<br>
+    <b style="font-size:12px;">Low Disk Space Alert:</b>
+	<select id="alertLowDisk4" style="width: 110;font-size:12px;">
+	<option value=1>ON</option>
+	<option value=2>OFF</option>
+	</select><br>
+	<b style="font-size:12px;">Alerts Below:</b>&nbsp;<input style="width:40;font-size:12px;" id="alertLowDiskBelow4" type="text">
+	<select id="alertLowDiskByt4" style="width: 50;font-size:12px;">
+	<option value=1>MB</option>
+	<option value=2>GB</option>
+	</select><br>
+    <b style="font-size:12px;">Sound:</b>
+    <select id="soundLowDisk4" style="width: 110;font-size:12px;" onChange="soundSettingsLowDisk4();">
+	<option value="1">Sound 1</option>
+	<option value="2">Sound 2</option>
+	<option value="3">Sound 3</option>
+	<option value="4">Sound 4</option>
+	<option value="5">Sound 5</option>
+	<option value="50">Custom</option>
+	</select><input type="button" value="Choose" onClick="chooseSoundLowDisk4();" id="csLowDisk4"><br>
+    <span id="soundLowDiskurl4" style="font-size:10px"></span><br>
+    <b style="font-size:12px;">Sound Volume:</b>
+	<select id="soundLowDiskVol4" style="width: 60;font-size:12px;">
+	<option value="10">10%</option>
+	<option value="20">20%</option>
+	<option value="30">30%</option>
+	<option value="40">40%</option>
+	<option value="50">50%</option>
+	<option value="60">60%</option>
+	<option value="70">70%</option>
+	<option value="80">80%</option>
+	<option value="90">90%</option>
+	<option value="100">100%</option>
+	</select><input type="button" value="Play" onClick="playchooseLowDisk4();"><input type="button" value="Stop" onClick="clickstop();"><br>
+	<b style="font-size:12px;">Sound Repeats:</b>
+	<select id="soundLowDiskRepeats4" style="width: 80;font-size:12px;" onChange="soundLowDiskRepeats4Settings();">
+	<option value="1">ON</option>
+	<option value="2">OFF</option>
+	<option value="3">Custom</option>
+	</select>
+	&nbsp;<input style="width:30;font-size:12px;" id="soundLowDiskCount4" type="text" maxlength="2"><span id="timesLowDisk4" style="font-size:12px;">Times</span><br><hr>
+    </div>
+	<div id="settingD5"><b style="width:60;font-size:12px;">Drive 5: </b>
+	<input style="width:20;font-size:12px;" id="drive5" type="text" maxlength="1">
+	<select id="showDrive5" style="width:100;font-size:12px;" onChange="driveSettings();soundSettingsLowDisk6();soundLowDiskRepeats6Settings();">
+	<option value="1">Off</option>
+	<option value="2">On</option>
+	</select>
+	<br>
+    <b style="font-size:12px;">Low Disk Space Alert:</b>
+	<select id="alertLowDisk5" style="width: 110;font-size:12px;">
+	<option value=1>ON</option>
+	<option value=2>OFF</option>
+	</select><br>
+	<b style="font-size:12px;">Alerts Below:</b>&nbsp;<input style="width:40;font-size:12px;" id="alertLowDiskBelow5" type="text">
+	<select id="alertLowDiskByt5" style="width: 50;font-size:12px;">
+	<option value=1>MB</option>
+	<option value=2>GB</option>
+	</select><br>
+    <b style="font-size:12px;">Sound:</b>
+    <select id="soundLowDisk5" style="width: 110;font-size:12px;" onChange="soundSettingsLowDisk5();">
+	<option value="1">Sound 1</option>
+	<option value="2">Sound 2</option>
+	<option value="3">Sound 3</option>
+	<option value="4">Sound 4</option>
+	<option value="5">Sound 5</option>
+	<option value="50">Custom</option>
+	</select><input type="button" value="Choose" onClick="chooseSoundLowDisk5();" id="csLowDisk5"><br>
+    <span id="soundLowDiskurl5" style="font-size:10px"></span><br>
+    <b style="font-size:12px;">Sound Volume:</b>
+	<select id="soundLowDiskVol5" style="width: 60;font-size:12px;">
+	<option value="10">10%</option>
+	<option value="20">20%</option>
+	<option value="30">30%</option>
+	<option value="40">40%</option>
+	<option value="50">50%</option>
+	<option value="60">60%</option>
+	<option value="70">70%</option>
+	<option value="80">80%</option>
+	<option value="90">90%</option>
+	<option value="100">100%</option>
+	</select><input type="button" value="Play" onClick="playchooseLowDisk5();"><input type="button" value="Stop" onClick="clickstop();"><br>
+	<b style="font-size:12px;">Sound Repeats:</b>
+	<select id="soundLowDiskRepeats5" style="width: 80;font-size:12px;" onChange="soundLowDiskRepeats5Settings();">
+	<option value="1">ON</option>
+	<option value="2">OFF</option>
+	<option value="3">Custom</option>
+	</select>
+	&nbsp;<input style="width:30;font-size:12px;" id="soundLowDiskCount5" type="text" maxlength="2"><span id="timesLowDisk5" style="font-size:12px;">Times</span><br><hr>
+    </div>
+	<div id="settingD6"><b style="width:60;font-size:12px;">Drive 6: </b>
+	<input style="width:20;font-size:12px;" id="drive6" type="text" maxlength="1">
+	<select id="showDrive6" style="width:100;font-size:12px;" onChange="driveSettings();soundSettingsLowDisk7();soundLowDiskRepeats7Settings();">
+	<option value="1">Off</option>
+	<option value="2">On</option>
+	</select>
+	<br>
+    <b style="font-size:12px;">Low Disk Space Alert:</b>
+	<select id="alertLowDisk6" style="width: 110;font-size:12px;">
+	<option value=1>ON</option>
+	<option value=2>OFF</option>
+	</select><br>
+	<b style="font-size:12px;">Alerts Below:</b>&nbsp;<input style="width:40;font-size:12px;" id="alertLowDiskBelow6" type="text">
+	<select id="alertLowDiskByt6" style="width: 50;font-size:12px;">
+	<option value=1>MB</option>
+	<option value=2>GB</option>
+	</select><br>
+    <b style="font-size:12px;">Sound:</b>
+    <select id="soundLowDisk6" style="width: 110;font-size:12px;" onChange="soundSettingsLowDisk6();">
+	<option value="1">Sound 1</option>
+	<option value="2">Sound 2</option>
+	<option value="3">Sound 3</option>
+	<option value="4">Sound 4</option>
+	<option value="5">Sound 5</option>
+	<option value="50">Custom</option>
+	</select><input type="button" value="Choose" onClick="chooseSoundLowDisk6();" id="csLowDisk6"><br>
+    <span id="soundLowDiskurl6" style="font-size:10px"></span><br>
+    <b style="font-size:12px;">Sound Volume:</b>
+	<select id="soundLowDiskVol6" style="width: 60;font-size:12px;">
+	<option value="10">10%</option>
+	<option value="20">20%</option>
+	<option value="30">30%</option>
+	<option value="40">40%</option>
+	<option value="50">50%</option>
+	<option value="60">60%</option>
+	<option value="70">70%</option>
+	<option value="80">80%</option>
+	<option value="90">90%</option>
+	<option value="100">100%</option>
+	</select><input type="button" value="Play" onClick="playchooseLowDisk6();"><input type="button" value="Stop" onClick="clickstop();"><br>
+	<b style="font-size:12px;">Sound Repeats:</b>
+	<select id="soundLowDiskRepeats6" style="width: 80;font-size:12px;" onChange="soundLowDiskRepeats6Settings();">
+	<option value="1">ON</option>
+	<option value="2">OFF</option>
+	<option value="3">Custom</option>
+	</select>
+	&nbsp;<input style="width:30;font-size:12px;" id="soundLowDiskCount6" type="text" maxlength="2"><span id="timesLowDisk6" style="font-size:12px;">Times</span><br><hr>
+    </div>
+	<div id="settingD7"><b style="width:60;font-size:12px;">Drive 7: </b>
+	<input style="width:20;font-size:12px;" id="drive7" type="text" maxlength="1">
+	<select id="showDrive7" style="width:100;font-size:12px;" onChange="driveSettings();soundSettingsLowDisk8();soundLowDiskRepeats8Settings();">
+	<option value="1">Off</option>
+	<option value="2">On</option>
+	</select>
+	<br>
+    <b style="font-size:12px;">Low Disk Space Alert:</b>
+	<select id="alertLowDisk7" style="width: 110;font-size:12px;">
+	<option value=1>ON</option>
+	<option value=2>OFF</option>
+	</select><br>
+	<b style="font-size:12px;">Alerts Below:</b>&nbsp;<input style="width:40;font-size:12px;" id="alertLowDiskBelow7" type="text">
+	<select id="alertLowDiskByt7" style="width: 50;font-size:12px;">
+	<option value=1>MB</option>
+	<option value=2>GB</option>
+	</select><br>
+    <b style="font-size:12px;">Sound:</b>
+    <select id="soundLowDisk7" style="width: 110;font-size:12px;" onChange="soundSettingsLowDisk7();">
+	<option value="1">Sound 1</option>
+	<option value="2">Sound 2</option>
+	<option value="3">Sound 3</option>
+	<option value="4">Sound 4</option>
+	<option value="5">Sound 5</option>
+	<option value="50">Custom</option>
+	</select><input type="button" value="Choose" onClick="chooseSoundLowDisk7();" id="csLowDisk7"><br>
+    <span id="soundLowDiskurl7" style="font-size:10px"></span><br>
+    <b style="font-size:12px;">Sound Volume:</b>
+	<select id="soundLowDiskVol7" style="width: 60;font-size:12px;">
+	<option value="10">10%</option>
+	<option value="20">20%</option>
+	<option value="30">30%</option>
+	<option value="40">40%</option>
+	<option value="50">50%</option>
+	<option value="60">60%</option>
+	<option value="70">70%</option>
+	<option value="80">80%</option>
+	<option value="90">90%</option>
+	<option value="100">100%</option>
+	</select><input type="button" value="Play" onClick="playchooseLowDisk7();"><input type="button" value="Stop" onClick="clickstop();"><br>
+	<b style="font-size:12px;">Sound Repeats:</b>
+	<select id="soundLowDiskRepeats7" style="width: 80;font-size:12px;" onChange="soundLowDiskRepeats7Settings();">
+	<option value="1">ON</option>
+	<option value="2">OFF</option>
+	<option value="3">Custom</option>
+	</select>
+	&nbsp;<input style="width:30;font-size:12px;" id="soundLowDiskCount7" type="text" maxlength="2"><span id="timesLowDisk7" style="font-size:12px;">Times</span><br><hr>
+    </div>
+	<div id="settingD8"><b style="width:60;font-size:12px;">Drive 8: </b>
+	<input style="width:20;font-size:12px;" id="drive8" type="text" maxlength="1">
+	<select id="showDrive8" style="width:100;font-size:12px;">
+	<option value="1">Off</option>
+	<option value="2">On</option>
+	</select>
+	<br>
+    <b style="font-size:12px;">Low Disk Space Alert:</b>
+	<select id="alertLowDisk8" style="width: 110;font-size:12px;">
+	<option value=1>ON</option>
+	<option value=2>OFF</option>
+	</select><br>
+	<b style="font-size:12px;">Alerts Below:</b>&nbsp;<input style="width:40;font-size:12px;" id="alertLowDiskBelow8" type="text">
+	<select id="alertLowDiskByt8" style="width: 50;font-size:12px;">
+	<option value=1>MB</option>
+	<option value=2>GB</option>
+	</select><br>
+    <b style="font-size:12px;">Sound:</b>
+    <select id="soundLowDisk8" style="width: 110;font-size:12px;" onChange="soundSettingsLowDisk8();">
+	<option value="1">Sound 1</option>
+	<option value="2">Sound 2</option>
+	<option value="3">Sound 3</option>
+	<option value="4">Sound 4</option>
+	<option value="5">Sound 5</option>
+	<option value="50">Custom</option>
+	</select><input type="button" value="Choose" onClick="chooseSoundLowDisk8();" id="csLowDisk8"><br>
+    <span id="soundLowDiskurl8" style="font-size:10px"></span><br>
+    <b style="font-size:12px;">Sound Volume:</b>
+	<select id="soundLowDiskVol8" style="width: 60;font-size:12px;">
+	<option value="10">10%</option>
+	<option value="20">20%</option>
+	<option value="30">30%</option>
+	<option value="40">40%</option>
+	<option value="50">50%</option>
+	<option value="60">60%</option>
+	<option value="70">70%</option>
+	<option value="80">80%</option>
+	<option value="90">90%</option>
+	<option value="100">100%</option>
+	</select><input type="button" value="Play" onClick="playchooseLowDisk8();"><input type="button" value="Stop" onClick="clickstop();"><br>
+	<b style="font-size:12px;">Sound Repeats:</b>
+	<select id="soundLowDiskRepeats8" style="width: 80;font-size:12px;" onChange="soundLowDiskRepeats8Settings();">
+	<option value="1">ON</option>
+	<option value="2">OFF</option>
+	<option value="3">Custom</option>
+	</select>
+	&nbsp;<input style="width:30;font-size:12px;" id="soundLowDiskCount8" type="text" maxlength="2"><span id="timesLowDisk8" style="font-size:12px;">Times</span><br><hr>
+    </div>
+	<span style="font-size:10px;">Note: Maximum disk drives support only 8.</span>
+    <center><button style="font-size:12px;" onClick="DefOptionsSetting();">Reset To Default Setting</button></center>
+</div>
+<div class="tabbertab Extender" style="font-size:10px; overflow-y:scroll; overflow-x:hidden" title="Display">
+	<b style="font-size:12px;">Size:</b>
+	<select id="fixsize" style="width:80;font-size:12px;" onChange="sizeSettings();">
+	<option value = "100">100%</option>
+	<option value = "125">125%</option>
+	<option value = "150">150%</option>
+	<option value = "200">200%</option>
+	<option value = "250">250%</option>
+	<option value = "300">300%</option>
+	<option value = "350">350%</option>
+	<option value = "400">400%</option>
+	<option value = "Custom">Custom</option>
+	</select>
+    <input id="ssize" style="width:30;font-size:12px; visibility:hidden;" type="text" maxlength="3">
+    <span id="sizetext" style="font-size:12px;">% (Max = 400)</span>
+    <br><hr>
+	<b style="font-size:12px;">All Disk Activity:</b>
+	<select id="allDiskActivity" style="width:149;font-size:12px;">
+	<option value = "1">ON</option>
+	<option value = "2">OFF</option>
+	</select><br>
+    <b style="font-size:12px;">Fixed Activity Unit to:</b>
+	<select id="fixUnit" style="width: 115;font-size:12px;">
+	<option value="1">bit and byte</option>
+	<option value="2">kilobit and kilobyte</option>
+    <option value="3">megabit and megabyte</option>
+	</select><br>
+	<b style="font-size:12px;">Graph:</b>
+	<select id="graph" style="width:50;font-size:12px;" onChange="graphSettings();">
+	<option value = "1">ON</option>
+	<option value = "2">OFF</option>
+	</select>
+	<b id="drawtext" style="font-size:12px;">Drawing Style:</b>
+	<select id="drawstyle" style="width:62;font-size:12px;">
+	<option value = "0">Line</option>
+	<option value = "1">Filled</option>
+	</select><br>
+	<b style="font-size:12px;">History Scale Type:</b>
+	<select id="ScaleType" style="width:90;font-size:12px;">
+	<option value = "0">Automatic</option>
+	<option value = "1">Fixed</option>
+	</select><br>
+    <span style="font-size:12px;"> Fixed Scale to: (KB) </span><input style="width:47;font-size:12px;" id="ScaleSize" type="text"><br><hr>
+	<b style="font-size:12px;">Auto Update Notifier:</b>
+	<select id="update" style="width: 116;font-size:12px;">
+	<option value="1">ON</option>
+	<option value="2">OFF</option>
+	</select><br>
+	<button style="font-size:12px;" onClick="showUpdate();">Check Update</button>
+	<div id=newUpdate>
+	<span style="font-size:12px;"><a href="http://addgadgets.com">Newer version is available</a></span>
+	</div>
+	<div id=noUpdate>
+	<span style="font-size:12px;"><a href="http://addgadgets.com">No update is available</a></span>
+	</div><hr>
+    <center><button style="font-size:12px;" onClick="DefDisplaySetting();">Reset To Default Setting</button></center>
+</div>
+<div class="tabbertab Extender" style="font-size:10px; overflow-y:scroll; overflow-x:hidden" title="Color">
+	<b style="font-size:12px;">Background:</b>
+    <select id="fixBackg" style="width:118;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#000000" style="color:#000000">Black</option>
+	<option value="#0c2227" style="color:#0c2227">Blue</option>
+	<option value="#000229" style="color:#000229">Blue 2</option>
+	<option value="#2a1b0f" style="color:#2a1b0f">Brown</option>
+	<option value="#0f1b02" style="color:#0f1b02">Green</option>
+	<option value="#2c0024" style="color:#2c0024">Purple</option>
+	<option value="#660015" style="color:#660015">Red</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="backg" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showBackg" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Title:</b>
+    <select id="fixTitle" style="width:165;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="title" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showTitle" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Alert Icon:</b>
+    <select id="fixAlertIcon" style="width:130;font-size:12px;" onChange="colorSettings();showColor();">
+    <option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="AlertIcon" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showAlertIcon" style="position:absolute;">
+    <br>
+	<hr>
+	<center><b style="font-size:12px;">Drive 1</b></center>
+	<b style="font-size:12px;">Text:</b>
+    <select id="fixtext1" style="width:164;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="text1" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showtext1" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Percent:</b>
+    <select id="fixpercent1" style="width:144;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="percent1" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showpercent1" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Bar:</b>
+    <select id="fixbar1" style="width:171;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="bar1" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showbar1" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Read:</b>
+    <select id="fixread1" style="width:160;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="read1" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showread1" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Write:</b>
+    <select id="fixwrite1" style="width:158;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="write1" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showwrite1" style="position:absolute;">
+    <br>
+	<hr>
+	<center><b style="font-size:12px;">Drive 2</b></center>
+	<b style="font-size:12px;">Text:</b>
+    <select id="fixtext2" style="width:164;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="text2" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showtext2" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Percent:</b>
+    <select id="fixpercent2" style="width:144;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="percent2" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showpercent2" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Bar:</b>
+    <select id="fixbar2" style="width:171;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="bar2" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showbar2" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Read:</b>
+    <select id="fixread2" style="width:160;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="read2" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showread2" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Write:</b>
+    <select id="fixwrite2" style="width:158;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="write2" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showwrite2" style="position:absolute;">
+    <br>
+    <hr>
+	<center><b style="font-size:12px;">Drive 3</b></center>
+	<b style="font-size:12px;">Text:</b>
+    <select id="fixtext3" style="width:164;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="text3" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showtext3" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Percent:</b>
+    <select id="fixpercent3" style="width:144;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="percent3" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showpercent3" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Bar:</b>
+    <select id="fixbar3" style="width:171;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="bar3" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showbar3" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Read:</b>
+    <select id="fixread3" style="width:160;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="read3" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showread3" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Write:</b>
+    <select id="fixwrite3" style="width:158;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="write3" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showwrite3" style="position:absolute;">
+    <br>
+    <hr>
+	<center><b style="font-size:12px;">Drive 4</b></center>
+	<b style="font-size:12px;">Text:</b>
+    <select id="fixtext4" style="width:164;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="text4" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showtext4" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Percent:</b>
+    <select id="fixpercent4" style="width:144;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="percent4" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showpercent4" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Bar:</b>
+    <select id="fixbar4" style="width:171;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="bar4" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showbar4" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Read:</b>
+    <select id="fixread4" style="width:160;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="read4" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showread4" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Write:</b>
+    <select id="fixwrite4" style="width:158;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="write4" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showwrite4" style="position:absolute;">
+    <br>
+    <hr>
+	<center><b style="font-size:12px;">Drive 5</b></center>
+	<b style="font-size:12px;">Text:</b>
+    <select id="fixtext5" style="width:164;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="text5" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showtext5" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Percent:</b>
+    <select id="fixpercent5" style="width:144;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="percent5" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showpercent5" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Bar:</b>
+    <select id="fixbar5" style="width:171;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="bar5" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showbar5" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Read:</b>
+    <select id="fixread5" style="width:160;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="read5" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showread5" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Write:</b>
+    <select id="fixwrite5" style="width:158;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="write5" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showwrite5" style="position:absolute;">
+    <br>
+    <hr>
+	<center><b style="font-size:12px;">Drive 6</b></center>
+	<b style="font-size:12px;">Text:</b>
+    <select id="fixtext6" style="width:164;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="text6" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showtext6" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Percent:</b>
+    <select id="fixpercent6" style="width:144;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="percent6" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showpercent6" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Bar:</b>
+    <select id="fixbar6" style="width:171;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="bar6" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showbar6" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Read:</b>
+    <select id="fixread6" style="width:160;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="read6" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showread6" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Write:</b>
+    <select id="fixwrite6" style="width:158;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="write6" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showwrite6" style="position:absolute;">
+    <br>
+    <hr>
+	<center><b style="font-size:12px;">Drive 7</b></center>
+	<b style="font-size:12px;">Text:</b>
+    <select id="fixtext7" style="width:164;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="text7" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showtext7" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Percent:</b>
+    <select id="fixpercent7" style="width:144;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="percent7" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showpercent7" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Bar:</b>
+    <select id="fixbar7" style="width:171;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="bar7" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showbar7" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Read:</b>
+    <select id="fixread7" style="width:160;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="read7" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showread7" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Write:</b>
+    <select id="fixwrite7" style="width:158;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="write7" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showwrite7" style="position:absolute;">
+    <br>
+    <hr>
+	<center><b style="font-size:12px;">Drive 8</b></center>
+	<b style="font-size:12px;">Text:</b>
+    <select id="fixtext8" style="width:164;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="text8" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showtext8" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Percent:</b>
+    <select id="fixpercent8" style="width:144;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="percent8" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showpercent8" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Bar:</b>
+    <select id="fixbar8" style="width:171;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="bar8" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showbar8" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Read:</b>
+    <select id="fixread8" style="width:160;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="read8" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showread8" style="position:absolute;">
+    <br>
+	<b style="font-size:12px;">Write:</b>
+    <select id="fixwrite8" style="width:158;font-size:12px;" onChange="colorSettings();showColor();">	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+    </select>
+    <input id="write8" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+    <hr id="showwrite8" style="position:absolute;">
+    <br><hr>
+	<center><b style="font-size:12px;">Flyout</b></center>
+	<b style="font-size:12px;">Background:</b>
+	<select id="fixFlyoutBac" style="width:118;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#000000" style="color:#000000">Black</option>
+	<option value="#0c2227" style="color:#0c2227">Blue</option>
+	<option value="#000229" style="color:#000229">Blue 2</option>
+	<option value="#2a1b0f" style="color:#2a1b0f">Brown</option>
+	<option value="#0f1b02" style="color:#0f1b02">Green</option>
+	<option value="#2c0024" style="color:#2c0024">Purple</option>
+	<option value="#660015" style="color:#660015">Red</option>
+	<option value="">Color Code</option>
+	</select>
+	<input id="FlyoutBac" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+	<hr id="showFlyoutBac" style="position:absolute;">
+	<br>
+	<b style="font-size:12px;">Title:</b>
+	<select id="fixFlyoutTit" style="width:165;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+	</select>
+	<input id="FlyoutTit" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+	<hr id="showFlyoutTit" style="position:absolute;">
+	<br>
+	<b style="font-size:12px;">Details:</b>
+	<select id="fixFlyoutDet" style="width:150;font-size:12px;" onChange="colorSettings();showColor();">
+	<option value="#90ee90" style="color:#90ee90">Color 1</option>
+	<option value="#fff62a" style="color:#fff62a">Color 2</option>
+	<option value="#faba00" style="color:#faba00">Color 3</option>
+	<option value="#ffcc00" style="color:#ffcc00">Color 4</option>
+	<option value="#ec7527" style="color:#ec7527">Color 5</option>
+	<option value="#e2003b" style="color:#e2003b">Color 6</option>
+	<option value="#e5316c" style="color:#e5316c">Color 7</option>
+	<option value="#d7007a" style="color:#d7007a">Color 8</option>
+	<option value="#ae3288" style="color:#ae3288">Color 9</option>
+	<option value="#894b94" style="color:#894b94">Color 10</option>
+	<option value="#5b5099" style="color:#5b5099">Color 11</option>
+	<option value="#295980" style="color:#295980">Color 12</option>
+	<option value="#87CEFA" style="color:#87CEFA">Color 13</option>
+	<option value="#009c99" style="color:#009c99">Color 14</option>
+	<option value="#00a275" style="color:#00a275">Color 15</option>
+	<option value="#007f3b" style="color:#007f3b">Color 16</option>
+	<option value="#79b63e" style="color:#79b63e">Color 17</option>
+	<option value="#9c640a" style="color:#9c640a">Color 18</option>
+	<option value="">Color Code</option>
+	</select>
+	<input id="FlyoutDet" class="color" style="width:50;font-size:12px;" type="text" maxlength="6">
+	<hr id="showFlyoutDet" style="position:absolute;">
+	<br><hr>
+    <center><button style="font-size:12px;" onClick="DefColorSetting();">Reset To Default Setting</button></center>
+</div>
+<div class="tabbertab Extender" style="font-size:10px; overflow-y:scroll; overflow-x:hidden;" title="About">
+	<span style="font-size:12px;"><b>Links</b><br>
+    If you found this useful gadgets please help me spread the word by linking to us from your site or blog!<a href="http://addgadgets.com/link.html">Click here</a> for example of links.<br><br>
+    For Facebook user click <a href="https://www.facebook.com/sharer.php?u=http%3A%2F%2Faddgadget.com%2Fdrives_meter%2F&src=sp"><img src="Share.png" alt="Facebook Share" style="border:0;"></a><br>
+	<hr>
+    <a href="http://www.facebook.com/AddGadget"><img src="likebox.png" alt="Facebook Like Box" style="border:0;"></a><br>
+    <hr>
+	For More Info and Support <a href="http://addgadgets.com/drives_meter/info.html">click here</a>.<br>
+    Designed and written by Chaw Keat.<br>
+    Copyright © 2007-2013 AddGadgets.com<br>
+    All rights reserved.<br>
+    <a href="http://www.twitter.com/Add_Gadget"><img src="follow_me-a.png" alt="Follow Add_Gadget on Twitter" border="0"/></a>
+    <hr>
+    <b>Credits</b><br>
+	Special Thanks to many wonderful advisors and beta testers!</span>
+</div>
+</div>
+	<a href="https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=C8HVWNQG6543S"><img src="Donate.png" alt="Donate by PayPal" style="border:0;"></a><br>
+	<span style="font-size:12px;">Drives Meter V 4.3 By <a href="http://addgadgets.com">Addgadgets.com</a></span>
+    <script type="text/javascript">
+tabberAutomatic(tabberOptions);
+</script>
+</body>
+</html>

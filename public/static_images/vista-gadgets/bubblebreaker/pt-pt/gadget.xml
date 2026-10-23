@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+    <name>Bubble Breaker</name>
+    <namespace>BubbleBreaker</namespace>
+    <version>1.1.0</version>
+    <author name="Fábio Pedrosa">
+        <info url="http://www.fabiopedrosa.info" />
+    </author>
+    <copyright>2007</copyright>
+    <description>O famoso jogo Jaw Breaker do Windows Mobile (PDA's)</description>
+	<icons>
+		<icon height="64" width="64" src="icon.png"/>
+	</icons>
+    <hosts>
+        <host name="sidebar">
+            <base type="HTML" apiVersion="1.0.0" src="game.html" />
+            <permissions>full</permissions>
+            <platform minPlatformVersion="1.0" />
+        </host>
+    </hosts>
+</gadget>

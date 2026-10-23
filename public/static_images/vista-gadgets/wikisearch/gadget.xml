@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<gadget>
+  <name>Wikipedia Search</name>
+  <namespace>mtcparis.gadgets</namespace>
+  <version>1.0.0.0</version>
+  <author name="Microsoft Technology Center Paris - fredeq@microsoft.com">
+      <info url="http://go.microsoft.com/fwlink/?LinkId=55696" text="www.microsoftgadgets.com"/>
+      <logo src="logo.png"/>
+  </author>
+  <copyright>© 2006</copyright>
+  <description>Wikipedia Search - results are displayed in the browser. Multi-lang supported through settings.</description>
+  <icons>
+    <icon height="48" width="48" src="icon.png"/>
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="html" apiVersion="1.0.0" src="wikipedia.html"/>
+      <permissions>full</permissions>
+      <platform minPlatformVersion="1.0"/>
+      <defaultImage src="drag.png"/>
+    </host>
+  </hosts>
+</gadget>

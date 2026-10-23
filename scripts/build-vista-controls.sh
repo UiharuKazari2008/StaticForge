@@ -21,7 +21,15 @@
 #   642  TRACKBAR TRACK        5x4
 #   622  PROGRESS BAR         19x14
 #   626  PROGRESS FILL        51x14    (627 error red, 628 paused yellow)
-#   629  PROGRESS FILL       125x14    partial (teal): Computer's drive bars
+#   551  HEADER HEADERITEM    6x24 x12 normal, hot, pressed, sorted, sorted hot, sorted pressed,
+#        then the same six with an edge on both sides (header-item-edged-*: Computer's columns);
+#        cut to 23 rows, the item and its bottom line (the 24th is the list's top row)
+#   558  HEADER SORTARROW    13x5 x2   up (ascending), down
+#   629  PROGRESS FILL       125x14    partial (teal): Computer's drive bars, cut to Vista's 13 rows
+#        (drive-bar-fill.png; 627 likewise for drive-bar-fill-error.png). Explorer draws the 14-row
+#        fill into the 13-row bar dropping row 7 (VM capture); the bar's track, drive-bar-track.png,
+#        has no bitmap of its own: it is cut from the VM's screen (Computer, Tiles view): 622's
+#        edges with a flat #fbfbfb inside, 4px caps, corners with 622's alpha.
 #
 # Not built here: checkbox.png / radio.png (IMAGE_508 / 516, cut for Remote Access Properties) and
 # spin-{up,down}-{normal,hot}.png, cropped 14x9 from the VM's 96 DPI up-down control (the
@@ -89,6 +97,24 @@ whole 622 progress-bar
 whole 626 progress-fill
 whole 627 progress-fill-error
 whole 628 progress-fill-paused
-whole 629 progress-fill-partial
+# drive-bar-fill <image id> <file>: the fill at the drive bar's 13 rows (rows 0-6 and 8-13)
+drive_bar_fill() {
+    unpremultiply "$SRC/IMAGE_$1.png" "$TMP/$1.png"
+    local w
+    w=$(identify -format %w "$TMP/$1.png")
+    convert \( "$TMP/$1.png" -crop "${w}x7+0+0" +repage \) \( "$TMP/$1.png" -crop "${w}x6+0+8" +repage \) \
+        -append -strip "PNG32:$OUT/$2.png"
+}
+drive_bar_fill 629 drive-bar-fill
+drive_bar_fill 627 drive-bar-fill-error
+
+unpremultiply "$SRC/IMAGE_551.png" "$TMP/551.png"
+i=0
+for state in normal hot pressed sorted sorted-hot sorted-pressed \
+    edged edged-hot edged-pressed edged-sorted edged-sorted-hot edged-sorted-pressed; do
+    convert "$TMP/551.png" -crop "6x23+0+$((i * 24))" +repage -strip "PNG32:$OUT/header-item-$state.png"
+    i=$((i + 1))
+done
+whole 558 header-sort-arrow
 
 echo "wrote $(ls "$OUT" | wc -l) files to $OUT"

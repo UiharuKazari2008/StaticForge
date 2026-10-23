@@ -28,6 +28,7 @@ assert.ok(read('modules/referencesWebSocketHandlers.js').includes('wallpaperHist
 // the picker (client)
 global.window = global;
 global.STOCK_DESKTOP_WALLPAPERS = [{ name: 'Melaton Aurora (default)', url: null }, { name: 'Aurora', url: '/static_images/wallpapers/aurora-plain.webp' }];
+const galleries = require('../public/scripts/comp/wallpaperGalleries.js');
 const db = require('../public/scripts/comp/cplDesktopBackground.js');
 assert.strictEqual(db.VISTA_WALLPAPERS.length, 36);
 assert.deepStrictEqual(db.CATEGORIES, ['Black and White', 'Light Auras', 'Paintings', 'Textures', 'Vistas', 'Widescreen']);
@@ -41,6 +42,32 @@ const up = db._test.html({ location: 'uploads', uploads: [{ id: 'abcdef012345678
 assert.ok(up.includes('data-cpl-db="remove"') && up.includes('Your Uploads (1)'), 'uploads have a remove button');
 assert.strictEqual(db._test.locationFor('/cache/wallpapers/history/x.png'), 'uploads');
 assert.strictEqual(db._test.locationFor(null), 'melaton');
+
+// the photo galleries (Yukimi 2026-10-22): Japan, Europe, USA, fukapon, each photo with its credit
+assert.deepStrictEqual(galleries.map((g) => g.id), ['japan', 'europe', 'usa', 'fukapon']);
+assert.ok(read('public/scripts/comp/featureLoader.js').indexOf('scripts/comp/wallpaperGalleries.js') <
+    read('public/scripts/comp/featureLoader.js').indexOf('scripts/comp/cplDesktopBackground.js'), 'the galleries load before the picker');
+for (const g of galleries) {
+    assert.ok(g.items.length >= 20, `${g.id} has pictures`);
+    for (const w of g.items) {
+        assert.ok(g.groups[w.g], `${g.id}/${w.f} is in a group`);
+        assert.ok(w.a && w.l && /^https:\/\//.test(w.s), `${g.id}/${w.f} has a photographer, license and source`);
+        assert.ok(!/\b(NC|ND)\b/.test(w.l), `${g.id}/${w.f} is free to adapt`);
+        assert.ok(fs.existsSync(path.join(ROOT, `public${g.dir}/${w.f}.webp`)), `${g.id}/${w.f}`);
+        assert.ok(fs.existsSync(path.join(ROOT, `public${g.dir}/thumbs/${w.f}.webp`)), `${g.id}/${w.f} thumb`);
+    }
+}
+const fk = galleries.find((g) => g.id === 'fukapon');
+assert.deepStrictEqual(fk.groups, ['Best of fukapon', 'Akihabara Advertisements', 'Akihabara Shop Windows']);
+const pic = `${fk.dir}/${fk.items[0].f}.webp`;
+assert.strictEqual(db._test.locationFor(pic), 'fukapon');
+assert.strictEqual(db._test.creditFor(pic), fk.items[0]);
+const fkHtml = db._test.html({ location: 'fukapon', selected: pic, pending: null });
+assert.ok(fkHtml.includes('Best of fukapon (') && fkHtml.includes('class="cpl-db-credit"'), 'the gallery lists its groups and a credit line');
+assert.ok(fkHtml.includes('View on Flickr') && fkHtml.includes(fk.items[0].s) && fkHtml.includes(fk.items[0].l), 'the selected photo is credited with a link');
+assert.ok(!db._test.html({ location: 'windows', selected: null }).includes('cpl-db-credit'), 'Windows Wallpapers has no credit line');
+const eu = galleries.find((g) => g.id === 'europe');
+assert.ok(db._test.html({ location: 'europe', selected: `${eu.dir}/${eu.items[0].f}.webp` }).includes('View on Wikimedia Commons'));
 
 const mu = read('public/scripts/comp/modalUtils.js');
 assert.ok(mu.includes('window.cplDesktopBackground.open();'), "Personalization's Select opens the picker");

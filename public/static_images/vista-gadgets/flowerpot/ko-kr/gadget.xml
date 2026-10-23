@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+  <name>가상 화분 가젯</name>
+  <namespace>microsoft.windows</namespace>
+  <version>1.0.0.1</version>
+  <author name="KaKaNow.com">
+    <info url="kakanow.com"  text="KaKaNow.com"/>
+    <logo src="images/logo.png" />
+  </author>
+  <copyright>&#169; 2010</copyright>
+  <description>바탕화면에 아름답고 살아 움직이는 무언가를 놓으세요.
+바탕화면을 화사하게 만드세요. 가상 화분은 마우스로 물을 주면 점차 꽃을 피웁니다. 물론 꽃에 관심을 주지 않으면 시들게 됩니다. 꽃이 활짝 필 때까지는 며칠이 걸릴 수 있지만 언제나 사용자의 바탕화면을 환하게 밝혀줍니다.</description>
+  <icons>
+    <icon height="64" width="64" src="images/icon.png" />
+  </icons>
+  <hosts>
+    <host name="sidebar">
+      <base type="HTML" apiVersion="1.0.0" src="default.html" />
+      <permissions>Full</permissions>
+      <platform minPlatformVersion="1.0" />
+      <defaultImage src="images/drag.png" />
+    </host>
+  </hosts>
+</gadget>

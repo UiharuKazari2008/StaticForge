@@ -169,44 +169,58 @@ function createSiteGateMiddleware(globalResources, projectRoot) {
             return next();
         }
 
-        const siteDir = siteHomepage.coverSiteDir(projectRoot, cfg.homepage);
-        if (!siteDir || !fs.existsSync(siteDir)) {
-            res.status(503).type('text/plain').send('Cover site folder missing (resources/site-homepages/' + cfg.homepage + ')');
-            return;
-        }
-
-        const method = (req.method || 'GET').toUpperCase();
-        const urlPath = (req.path || '/').split('?')[0] || '/';
-        const doorMeta = siteHomepage.readDoorMeta(siteDir);
-
-        const doorPhrase = siteHomepage.extractDoorPhrase(req, doorMeta);
-        if (doorPhrase !== undefined) {
-            handleDoorPost(req, res, globalResources, cfg, siteDir, doorMeta, doorPhrase);
-            return;
-        }
-
-        if (method === 'GET' || method === 'HEAD') {
-            const resolved = siteHomepage.resolveSiteFile(siteDir, urlPath);
-            if (resolved.kind === 'file') {
-                if (method === 'HEAD') {
-                    res.status(200).end();
-                    return;
-                }
-                sendHomepageFile(res, resolved, 200);
-                return;
-            }
-            if (resolved.kind === '404') {
-                if (method === 'HEAD') {
-                    res.status(404).end();
-                    return;
-                }
-                sendHomepageFile(res, resolved, 404);
-                return;
-            }
-        }
-
-        serveHomepage404(siteDir, res);
+        serveCoverSite(req, res, globalResources, cfg, projectRoot).catch(next);
     };
+}
+
+// Gated (logged-out) requests: the cover site, with async stats on the request path.
+async function serveCoverSite(req, res, globalResources, cfg, projectRoot) {
+    const siteDir = siteHomepage.coverSiteDir(projectRoot, cfg.homepage);
+    let siteDirExists = false;
+    if (siteDir) {
+        try {
+            await fs.promises.stat(siteDir);
+            siteDirExists = true;
+        } catch (_err) {
+            siteDirExists = false;
+        }
+    }
+    if (!siteDirExists) {
+        res.status(503).type('text/plain').send('Cover site folder missing (resources/site-homepages/' + cfg.homepage + ')');
+        return;
+    }
+
+    const method = (req.method || 'GET').toUpperCase();
+    const urlPath = (req.path || '/').split('?')[0] || '/';
+    const doorMeta = siteHomepage.readDoorMeta(siteDir);
+
+    const doorPhrase = siteHomepage.extractDoorPhrase(req, doorMeta);
+    if (doorPhrase !== undefined) {
+        handleDoorPost(req, res, globalResources, cfg, siteDir, doorMeta, doorPhrase);
+        return;
+    }
+
+    if (method === 'GET' || method === 'HEAD') {
+        const resolved = await siteHomepage.resolveSiteFileAsync(siteDir, urlPath);
+        if (resolved.kind === 'file') {
+            if (method === 'HEAD') {
+                res.status(200).end();
+                return;
+            }
+            sendHomepageFile(res, resolved, 200);
+            return;
+        }
+        if (resolved.kind === '404') {
+            if (method === 'HEAD') {
+                res.status(404).end();
+                return;
+            }
+            sendHomepageFile(res, resolved, 404);
+            return;
+        }
+    }
+
+    serveHomepage404(siteDir, res);
 }
 
 function attachSiteGateWebUpgrade(server, globalResources, sessionStore, sessionSecret) {
@@ -352,7 +366,24 @@ function buildDreamscapeManifestJson(accessHash, staticManifest) {
     return base;
 }
 
+// /manifest.json is fetched on every page load; public/manifest.json changes on deploy only.
+const STATIC_MANIFEST_TTL_MS = 2000;
+let staticManifestCache = null;
+
 function readStaticManifest(publicManifestPath) {
+    const now = Date.now();
+    if (staticManifestCache
+        && staticManifestCache.path === publicManifestPath
+        && now - staticManifestCache.at < STATIC_MANIFEST_TTL_MS) {
+        // buildDreamscapeManifestJson copies before it edits; hand out a fresh object anyway.
+        return staticManifestCache.value ? JSON.parse(staticManifestCache.text) : null;
+    }
+    const value = readStaticManifestUncached(publicManifestPath);
+    staticManifestCache = { path: publicManifestPath, at: now, value, text: value ? JSON.stringify(value) : null };
+    return value;
+}
+
+function readStaticManifestUncached(publicManifestPath) {
     if (!publicManifestPath || !fs.existsSync(publicManifestPath)) return null;
     try {
         return JSON.parse(fs.readFileSync(publicManifestPath, 'utf8'));

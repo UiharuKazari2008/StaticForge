@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<gadget>
+	<name>abacus</name>
+	<namespace>microsoft.windows</namespace>
+	<version>1.0.0.0</version>
+	<author name="Lorne L. Reap">
+		<logo src="logo.png" />
+		<info url="http:\\iconoclast.livingskiesastro.net" />
+	</author>
+	<copyright>Livingskies Astro 2007&#169;</copyright>
+	<description>An Abacus</description>
+	<icons>
+		<icon height="60" width="60" src="icon.png" />
+	</icons>
+	<hosts>
+		<host name="sidebar">
+			<base type="HTML" apiVersion="1.0.0" src="gadget.html" />
+			<permissions>full</permissions>
+			<platform minPlatformVersion="0.3" />
+		</host>
+	</hosts>
+</gadget>
