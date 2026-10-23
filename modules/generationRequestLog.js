@@ -55,7 +55,6 @@ function safeGalleryFilename(filename) {
     return base;
 }
 
-// JULES: perf optimization — Set lookup O(1) instead of Array.includes O(N) inside loop
 function cleanImageIds(value) {
     const list = Array.isArray(value) ? value : (value ? [value] : []);
     const seen = new Set();
@@ -70,7 +69,6 @@ function cleanImageIds(value) {
     return out.slice(0, 32);
 }
 
-// JULES: perf optimization — Set lookup O(1) instead of Array.includes O(N) inside loop
 function cleanImageUrls(value) {
     const list = Array.isArray(value) ? value : (value ? [value] : []);
     const seen = new Set();
