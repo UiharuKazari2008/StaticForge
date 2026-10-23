@@ -154,6 +154,13 @@ const MODULE_DEFS = {
             ]
         }
     },
+    alchemy_browser: {
+        id: 'alchemy_browser',
+        scope: 'sfapp_alchemy_browser',
+        label: 'Alchemy Browser',
+        description: 'Alchemy-owned tab on the dedicated agent Chromium plus read-only Discord channel history. Granted per key (Hoshino); identity-gated to Hoshino and Yukimi.',
+        tools: ['alchemy_browser', 'read_discord_channel_history']
+    },
     mail_exchange: {
         id: 'mail_exchange',
         scope: 'sfapp_mail_exchange',
