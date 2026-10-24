@@ -1,158 +1,230 @@
-/* Snipping Tool (Yozora #632; apps/snipping/client/snipping.js) */
+/* Snipping Tool (Yozora #632; apps/snipping/client/snipping.js), measured on the Vista VM
+   (refs in ~/.cache/vista-vm/snip-ref): the toolbars are flat #f0f0f0 with 24 px icons
+   (SnippingTool.exe bitmaps 130 / 131 / 134); a button's face shows hot or held down, cut from the
+   VM's pixels as 9-slices (tb-*.png, 36 px tall); the markup window's menu bar is the 19 px band */
 
 .snip-window .snip-client {
-    display: flex;
-    flex-direction: column;
+    position: relative;
+    display: block;
     padding: 0 !important;
     font: 12px "Segoe UI", Tahoma, sans-serif;
     color: #000;
 }
 
+/* the main window: a 284x85 client (window 300x121) */
 .snip-window.snip-main .snip-client {
-    width: 360px;
+    width: 284px !important;
+    height: 85px !important;
 }
 
-/* Vista's toolbar: a light band, flat buttons that light up on hover */
 .snip-window .snip-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    min-height: 30px;
-    padding: 2px 4px;
-    border-bottom: 1px solid #a0afc3;
-    background: linear-gradient(#fdfeff, #e8eef7 60%, #dde6f2);
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 38px;
+    background: #f0f0f0;
 }
 
-.snip-window .snip-split {
-    display: inline-flex;
+.snip-window .snip-toolbar.is-markup {
+    top: 19px;
+    height: 43px;
 }
 
-.snip-window .snip-sep {
-    width: 1px;
-    height: 22px;
-    margin: 0 3px;
-    background: #b7c3d4;
-    box-shadow: 1px 0 #fff;
-}
-
-.snip-window.snip-window .win7 .snip-tb-btn:not(:disabled),
-.snip-window.snip-window .win7 .snip-tb-btn:disabled {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
+/* a toolbar button: 36 px, its icon and text at the VM's places */
+.snip-window.snip-window .win7 .snip-tb.snip-tb:not(#_) {
+    position: absolute;
+    top: 1px;
+    height: 36px;
     min-width: 0;
-    height: 24px;
     min-height: 0;
-    padding: 0 6px;
-    border: 1px solid transparent;
+    margin: 0;
+    padding: 0;
+    border: 4px solid transparent;
     border-image: none;
-    border-radius: 3px;
+    border-radius: 0;
     background: none;
     box-shadow: none;
     color: #000;
     font: 12px "Segoe UI", Tahoma, sans-serif;
+    text-align: left;
+    white-space: nowrap;
 }
 
-.snip-window.snip-window .win7 .snip-tb-btn:disabled {
-    color: #8d8d8d;
+.snip-window.snip-window .win7 .is-markup .snip-tb.snip-tb:not(#_) {
+    top: 2px;
 }
 
-.snip-window.snip-window .win7 .snip-tb-btn.is-icon:not(:disabled) {
-    padding: 0 3px;
-}
-
-.snip-window.snip-window .win7 .snip-tb-btn:not(:disabled):hover {
-    border-color: #a8d8f0;
-    background: linear-gradient(#f5fbfe, #e3f4fc 50%, #cfecfa 51%, #c4e7f8);
-}
-
-.snip-window.snip-window .win7 .snip-tb-btn.is-on:not(:disabled) {
-    border-color: #7da2ce;
-    background: linear-gradient(#e5f4fc, #c4e5f6 50%, #98d1ef 51%, #b0dcf4);
-    box-shadow: inset 1px 1px 1px rgba(0, 0, 0, 0.15);
-}
-
-.snip-window.snip-window .win7 .snip-split .snip-tb-btn:first-child {
-    border-top-right-radius: 0;
-    border-bottom-right-radius: 0;
-}
-
-.snip-window.snip-window .win7 .snip-split .snip-drop:not(:disabled) {
-    padding: 0 3px;
-    border-top-left-radius: 0;
-    border-bottom-left-radius: 0;
-}
-
-.snip-window .snip-tb-btn::before,
-.snip-window .snip-tb-btn::after {
+.snip-window .snip-tb::before,
+.snip-window .snip-tb::after {
     content: none;
 }
 
+.snip-window .snip-icon {
+    position: absolute;
+    left: calc(var(--x, 3px) - 4px);
+    top: 2px;
+    width: 24px;
+    height: 24px;
+    background: url('toolbar.png') calc(var(--i) * -24px) 0 no-repeat;
+}
+
+.snip-window .snip-icon.is-off {
+    background-image: url('toolbar-disabled.png');
+}
+
+.snip-window .snip-icon.is-markup {
+    background-image: url('markup.png');
+}
+
+.snip-window .snip-tb-text {
+    position: absolute;
+    left: calc(var(--t, 31px) - 4px);
+    top: 6px;
+    line-height: 15px;
+}
+
+.snip-window.snip-window .win7 .snip-tb:disabled:not(#_) {
+    color: #a0a0a0;
+}
+
 .snip-window .snip-arrow {
-    display: block;
+    position: absolute;
+    left: 1px;
+    top: 12px;
     width: 7px;
     height: 4px;
     background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4' shape-rendering='crispEdges'%3E%3Cpath d='M0 0h7v1H0zM1 1h5v1H1zM2 2h3v1H2zM3 3h1v1H3z'/%3E%3C/svg%3E") no-repeat;
 }
 
-.snip-window .snip-art,
-.snip-window .snip-cmd {
-    display: block;
-    flex: none;
-    width: 16px;
-    height: 16px;
-}
+/* the main window's buttons (client x): New 0-68 (icon 7, text 35), its arrow 68-84, Cancel 84-159,
+   Options 159-240 (icon 3, text 31) */
+.snip-main .snip-new { left: 0; width: 68px; --x: 7px; --t: 35px; }
+.snip-main .snip-drop { left: 68px; width: 16px; }
+.snip-main .snip-cancel { left: 84px; width: 75px; }
+.snip-main .snip-options { left: 159px; width: 81px; }
 
-.snip-window .snip-art {
-    background: url('snip-icons.png') calc(var(--i) * -16px) 0 no-repeat;
-}
+/* the markup window's (client x): New 0-62, Save 62-97, Copy 97-132, Send 133-173 and its arrow
+   to 188, the separator at 191, Pen 197-237 and its arrow to 252, Highlighter 252-287, Eraser
+   287-322; an icon-only button's icon 4 px in, a split one's 7 */
+.snip-markup .snip-new { left: 0; width: 62px; --x: 3px; --t: 31px; }
+.snip-markup [data-a="save"] { left: 62px; width: 35px; --x: 4px; }
+.snip-markup [data-a="copy"] { left: 97px; width: 35px; --x: 4px; }
+.snip-markup [data-a="send"] { left: 133px; width: 40px; --x: 7px; }
+.snip-markup .snip-send-drop { left: 173px; width: 15px; }
+.snip-markup .snip-pen { left: 197px; width: 40px; --x: 7px; }
+.snip-markup .snip-pen-drop { left: 237px; width: 15px; }
+.snip-markup [data-a="hl"] { left: 252px; width: 35px; --x: 4px; }
+.snip-markup [data-a="eraser"] { left: 287px; width: 35px; --x: 4px; }
 
-.snip-window .snip-custom-pen {
-    position: relative;
-    display: block;
-}
-
-.snip-window .snip-custom-pen::after {
-    content: "";
+.snip-window .snip-sep {
     position: absolute;
-    right: 1px;
-    top: 1px;
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background: var(--c);
+    left: 191px;
+    top: 3px;
+    width: 1px;
+    height: 34px;
+    background: #848484;
+    box-shadow: 1px 0 #f5f5f5;
+}
+
+/* faces: hot, pressed, and held down (the tool in use); a split button lights up as one */
+.snip-window.snip-window .win7 .snip-tb:not(:disabled):hover:not(#_),
+.snip-window.snip-window .win7 .snip-tb.context-open:not(#_) {
+    border-image: url('tb-hot.png') 4 fill / 4px stretch;
+}
+
+.snip-window.snip-window .win7 :is(.snip-new, .snip-tb.is-split):is(:hover, :has(+ .snip-drop:hover), :has(+ .snip-drop.context-open)):not(#_) {
+    border-image: url('tb-split-hot.png') 4 fill / 4px stretch;
+}
+
+.snip-window.snip-window .win7 .snip-drop:is(:hover, .context-open):not(#_),
+.snip-window.snip-window .win7 :is(.snip-new, .snip-tb.is-split):hover + .snip-drop:not(#_) {
+    border-image: url('tb-drop-hot.png') 4 fill / 4px stretch;
+}
+
+.snip-window.snip-window .win7 .snip-tb:not(:disabled):active:not(#_),
+.snip-window.snip-window .win7 .snip-tb.is-on:not(#_) {
+    border-image: url('tb-pressed.png') 4 fill / 4px stretch;
+}
+
+.snip-window.snip-window .win7 :is(.snip-new, .snip-tb.is-split):is(:active, .is-on):not(#_) {
+    border-image: url('tb-split-pressed.png') 4 fill / 4px stretch;
+}
+
+.snip-window.snip-window .win7 .snip-drop:is(.context-open, .is-on):not(#_) {
+    border-image: url('tb-drop-pressed.png') 4 fill / 4px stretch;
+}
+
+/* held down, the icon moves a pixel right and down */
+.snip-window .snip-tb:is(:active, .is-on) .snip-icon {
+    transform: translate(1px, 1px);
+}
+
+/* the message under the toolbar: the gradient, the instructions, Help */
+.snip-window .snip-message {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 38px;
+    height: 47px;
+    background: url('message.png') 0 0 / 100% 100% no-repeat;
 }
 
 .snip-window .snip-text {
-    padding: 14px 12px 16px;
-    background: #fff;
-    color: #333;
+    position: absolute;
+    left: 9px;
+    top: 7px;
+    width: 232px;
+    line-height: 16px;
 }
 
 .snip-window .snip-text[hidden] {
     display: none;
 }
 
+.snip-window.snip-window .win7 .snip-help:not(#_) {
+    position: absolute;
+    left: 259px;
+    top: 9px;
+    width: 16px;
+    height: 16px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-image: none;
+    background: url('help.png') no-repeat;
+    box-shadow: none;
+}
+
+.snip-window .snip-help::before,
+.snip-window .snip-help::after {
+    content: none;
+}
+
 /* the markup window */
 .snip-window.snip-markup .snip-client {
     flex: 1;
     min-height: 0;
-}
-
-.snip-window .snip-menubar {
-    flex: none;
+    width: auto !important;
+    height: auto !important;
 }
 
 .snip-window .snip-stage {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
-    padding: 6px;
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 62px;
+    bottom: 0;
+    display: flex;
+    overflow: scroll;
+    border-top: 1px solid #646464;
     background: #fff;
 }
 
 .snip-window .snip-paper {
-    display: inline-block;
+    flex: none;
+    margin: auto;
     line-height: 0;
 }
 
@@ -190,30 +262,32 @@
     height: 100%;
 }
 
-/* the menu bar (Vista's, as in Notepad and Paint; vista-atelier.css is not loaded on the desktop,
-   and the .win7 client's push-button rules would take the titles otherwise) */
+/* the markup window's menu bar: the 19 px band (cut from the VM); a title's face hot or open
+   (menu-hot / menu-open, 9-sliced), no blue (a Win32 menu bar, not Explorer's menu band) */
 .snip-window.snip-window .snip-menubar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
     display: flex;
-    flex: none;
-    align-items: stretch;
-    height: 21px;
-    padding: 0 2px;
-    border-bottom: 1px solid #b6bccc;
-    background: linear-gradient(#fefeff, #e5eaf5 7px, #d4dbed 7px, #e1e6f6 20px);
+    height: 19px;
+    padding: 0 0 0 1px;
+    border: 0;
+    background: url('menubar.png') 0 0 / 3px 19px repeat-x;
     box-sizing: border-box;
 }
 
-.snip-window.snip-window .win7 .snip-menubar .naxt-menu-title,
-.snip-window.snip-window .win7 .snip-menubar .naxt-menu-title:not(:disabled):not(:hover) {
+.snip-window.snip-window .win7 .snip-menubar .naxt-menu-title:not(#_) {
     position: relative;
     display: inline-flex;
     align-items: center;
     width: auto;
     min-width: 0;
-    height: 20px;
+    height: 19px;
     min-height: 0;
-    padding: 0 7px;
-    border: 0;
+    padding: 0 3px 1px;
+    border: 4px solid transparent;
+    border-width: 0 4px;
     border-image: none;
     border-radius: 0;
     background: none;
@@ -224,12 +298,13 @@
     filter: none;
 }
 
-.snip-window.snip-window .win7 .snip-menubar .naxt-menu-title:is(:hover, :focus-visible, .context-open) {
-    border: 0;
-    background: #3399ff;
-    box-shadow: none;
-    color: #fff;
+.snip-window.snip-window .win7 .snip-menubar .naxt-menu-title:is(:hover, :focus-visible):not(#_) {
+    border-image: url('menu-hot.png') 0 4 fill / 0 4px stretch;
     outline: none;
+}
+
+.snip-window.snip-window .win7 .snip-menubar .naxt-menu-title.context-open:not(#_) {
+    border-image: url('menu-open.png') 0 4 fill / 0 4px stretch;
 }
 
 .snip-window .snip-menubar .naxt-menu-title::before,

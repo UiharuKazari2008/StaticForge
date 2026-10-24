@@ -1,19 +1,20 @@
 /**
  * Snipping Tool (Yozora #632), Vista's SnippingTool.exe as a Melaton system package (apps/snipping).
  *
- *   the main window   New (Free-form, Rectangular, Window, Full-screen Snip), Cancel, Options and the
- *                     line of instructions; it opens snipping at once, in the last mode
+ *   the main window   measured on the VM: New (split; Free-form, Rectangular, Window, Full-screen
+ *                     Snip, menu 109), Cancel, Options on the toolbar (bitmaps 130 / 131), the
+ *                     instructions (strings 109-111, 121) and Help; it opens snipping at once
  *   snipping          the screen freezes under a white wash; the snip is drawn in the selection ink
  *                     (red), a window snip outlines the window under the pointer; Esc cancels
- *   the markup window File / Edit / Tools / Help, New Snip, Save Snip, Copy, Send Snip, Pen,
- *                     Highlighter, Eraser; ink is kept as strokes (the eraser takes whole strokes)
- *   Options           Vista's: instructions, always copy, prompt to save, selection ink and its
- *                     colour, the screen overlay; and Melaton's "capture the screen exactly"
+ *   the markup window File / Edit / Tools / Help (menu 120), New, Save Snip, Copy, Send Snip,
+ *                     Pen, Highlighter, Eraser (bitmap 134), the VM's toolbar faces; ink is kept as
+ *                     strokes (the eraser takes whole strokes)
+ *   Options           dialog 107; Custom Pen dialog 140
  *
  * The screen is the desktop drawn again (windowCapture.js: wallpaper, icons, windows in z-order,
- * the taskbar), or, with "capture the screen exactly", the tab's own pixels (getDisplayMedia, which
- * the browser asks about each time). Saves go to Documents (PNG, JPEG, Single file HTML); Copy puts
- * a PNG on the clipboard; Send Snip opens Dovecote with the snip attached; Tools > Open in Paint.
+ * the taskbar), or, with the registry value ExactCapture, the tab's own pixels (getDisplayMedia,
+ * which the browser asks about each time). Saves go to Documents (PNG, GIF, JPEG, Single file
+ * HTML); Copy puts a PNG on the clipboard; Send Snip opens Dovecote with the snip.
  *
  *   melatonApps.define('snipping', start)
  */
@@ -33,9 +34,17 @@
     const MODES = [
         ['free', 'Free-form Snip', 0], ['rect', 'Rectangular Snip', 1], ['window', 'Window Snip', 2], ['full', 'Full-screen Snip', 3]
     ];
-    const INK = [['#ff0000', 'Red'], ['#0000ff', 'Blue'], ['#000000', 'Black'], ['#00b050', 'Green'], ['#ffc000', 'Orange'], ['#7030a0', 'Purple'], ['#ff00ff', 'Pink'], ['#808080', 'Gray']];
+    // the ink colour lists (strings 201-216, the 16 VGA colours)
+    const INK = [['#000000', 'Black'], ['#800000', 'Maroon'], ['#008000', 'Green'], ['#808000', 'Olive'], ['#000080', 'Navy'], ['#800080', 'Purple'], ['#008080', 'Teal'], ['#808080', 'Grey'],
+        ['#c0c0c0', 'Silver'], ['#ff0000', 'Red'], ['#00ff00', 'Lime'], ['#ffff00', 'Yellow'], ['#0000ff', 'Blue'], ['#ff00ff', 'Fuschia'], ['#00ffff', 'Aqua'], ['#ffffff', 'White']];
     const THICK = { fine: 1.5, medium: 3, thick: 6 };
-    const PENS = [['red', 'Red Pen', '#ff0000', 4], ['blue', 'Blue Pen', '#0000ff', 5], ['black', 'Black Pen', '#000000', 6], ['custom', 'Custom Pen', null, 4]];
+    const PENS = [['red', 'Red Pen', '#ff0000'], ['blue', 'Blue Pen', '#0000ff'], ['black', 'Black Pen', '#000000'], ['custom', 'Custom Pen', null]];
+    // SnippingTool.exe.mui strings 109-111, 121
+    const MODE_TEXT = { free: 'Draw a line around the area you want to capture.', rect: 'Drag the cursor around the area you want to capture.', window: 'Select the window you want to capture.' };
+    const IDLE_TEXT = 'Select a snip type from the menu or click the New button.';
+    // bitmap 130 / 131 (24 px: New, Cancel, Options) and 134 (New Snip, Save, Copy, Send, Pen, Highlighter, Eraser)
+    const tb = (i, off) => `<span class="snip-icon${off ? ' is-off' : ''}" style="--i:${i}"></span>`;
+    const mk = (i) => `<span class="snip-icon is-markup" style="--i:${i}"></span>`;
 
     function prefs() {
         return {
@@ -47,12 +56,12 @@
             showInk: reg('ShowSelectionInk', true) !== false,
             overlay: reg('ShowScreenOverlay', true) !== false,
             exact: reg('ExactCapture', false) === true,
-            custom: (() => { try { return JSON.parse(reg('CustomPen', '') || 'null') || { color: '#00b050', size: 'medium', tip: 'round' }; } catch (_) { return { color: '#00b050', size: 'medium', tip: 'round' }; } })()
+            quickLaunch: reg('QuickLaunchIcon', false) === true,
+            includeUrl: reg('IncludeUrl', true) !== false,
+            custom: (() => { try { return JSON.parse(reg('CustomPen', '') || 'null') || { color: '#ff0000', size: 'medium', tip: 'round' }; } catch (_) { return { color: '#ff0000', size: 'medium', tip: 'round' }; } })()
         };
     }
 
-    const art = (i) => `<span class="snip-art" style="--i:${i}"></span>`;
-    const cmd = (name) => `<img class="snip-cmd" src="${CMD}/${name}.png" alt="">`;
 
     function blobToBase64(blob) {
         return new Promise((resolve, reject) => {
@@ -380,6 +389,7 @@
             <div class="modal-focus-overlay"></div>
             <div class="modal-window-controls">
                 <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize"><i class="fa-regular fa-window-minimize"></i></button>
+                ${opts.resizable ? '' : '<button type="button" class="btn-secondary btn-small modal-work-area-maximize" title="Maximize" disabled><i class="fa-regular fa-window-maximize"></i></button>'}
                 <button type="button" class="btn-danger close-btn btn-small snip-close" title="Close"><i class="fa-regular fa-xmark-large"></i></button>
             </div>
             <div class="modal-content win7 snip-client"></div>`;
@@ -407,19 +417,22 @@
             if (this.main && this.main.isConnected) { call('bringModalToFront', this.main); return this.main; }
             const m = chrome('Snipping Tool', 'snip-main');
             const p = prefs();
+            // measured on the VM: a 284x85 client, the toolbar (38 px, #f0f0f0) over the message
             m.querySelector('.snip-client').innerHTML = `
                 <div class="snip-toolbar" role="toolbar">
-                    <span class="snip-split"><button type="button" class="snip-tb-btn snip-new" title="Create a new snip">${cmd('cut')}<span>New</span></button><button type="button" class="snip-tb-btn snip-drop" title="Choose a snip type" aria-haspopup="menu"><span class="snip-arrow"></span></button></span>
-                    <button type="button" class="snip-tb-btn snip-cancel" title="Cancel the snip"><span>Cancel</span></button>
-                    <button type="button" class="snip-tb-btn snip-options" title="Options"><span>Options</span></button>
+                    <button type="button" class="snip-tb snip-new" title="New snip">${tb(0)}<span class="snip-tb-text"><u>N</u>ew</span></button>
+                    <button type="button" class="snip-tb snip-drop" title="New snip" aria-haspopup="menu"><span class="snip-arrow"></span></button>
+                    <button type="button" class="snip-tb snip-cancel" title="Cancel snip" disabled>${tb(1, true)}<span class="snip-tb-text"><u>C</u>ancel</span></button>
+                    <button type="button" class="snip-tb snip-options" title="More Options...">${tb(2)}<span class="snip-tb-text"><u>O</u>ptions</span></button>
                 </div>
-                <div class="snip-text"${p.hideText ? ' hidden' : ''}></div>`;
+                <div class="snip-message"><div class="snip-text"${p.hideText ? ' hidden' : ''}></div><button type="button" class="snip-help" title="Help"></button></div>`;
             this.main = m;
             this.syncMain();
             m.querySelector('.snip-close').addEventListener('click', () => this.closeWindow(m));
             m.querySelector('.snip-new').addEventListener('click', () => void this.snip(this.mode));
             m.querySelector('.snip-cancel').addEventListener('click', () => { if (this.session) this.session.finish(null); });
             m.querySelector('.snip-options').addEventListener('click', () => this.options(m));
+            m.querySelector('.snip-help').addEventListener('click', () => this.help());
             this.modeMenu(m.querySelector('.snip-drop'), m);
             this.track(m);
             this.show(m);
@@ -430,11 +443,9 @@
             const m = this.main;
             if (!m) return;
             const t = m.querySelector('.snip-text');
-            const words = this.mode === 'window' ? 'Click the window you want to capture.' : this.mode === 'full' ? 'Click New to capture the whole screen.' : 'Drag the cursor around the area you want to capture.';
-            if (t) { t.textContent = this.session ? words : 'Click New to capture a snip of your screen.'; t.hidden = prefs().hideText; }
+            if (t) { t.textContent = this.session ? (MODE_TEXT[this.mode] || IDLE_TEXT) : IDLE_TEXT; t.hidden = prefs().hideText; }
             const c = m.querySelector('.snip-cancel');
-            if (c) c.disabled = !this.session;
-            m.querySelector('.snip-new').innerHTML = `${art(MODES.find((x) => x[0] === this.mode)[2])}<span>New</span>`;
+            if (c) { c.disabled = !this.session; c.querySelector('.snip-icon').classList.toggle('is-off', !this.session); }
         }
 
         modeMenu(btn, owner) {
@@ -539,41 +550,33 @@
 
         // ---- Options -------------------------------------------------------------------
 
+        /** Snipping Tool Options: SnippingTool.exe.mui dialog 107. */
         options(owner) {
             const V = root.vistaDialogTemplate;
             if (!V) return;
             const p = prefs();
-            const tpl = { t: 'Snipping Tool Options', w: 248, h: 214, f: ['MS Shell Dlg', 8], c: [
-                [-1, 'B', 7, 4, 234, 92, 0x50000007, 'Application', 0],
-                [101, 'B', 14, 16, 220, 10, 0x50010003, '&Hide instruction text', 0],
-                [102, 'B', 14, 29, 220, 10, 0x50010003, '&Always copy snips to the Clipboard', 0],
-                [103, 'B', 14, 42, 220, 10, 0x58010003, '&Include URL below snips (HTML only)', 0],
-                [104, 'B', 14, 55, 220, 10, 0x50010003, '&Prompt to save snips before exiting', 0],
-                [105, 'B', 14, 68, 220, 10, 0x50010003, 'Capture the screen &exactly (the browser asks each time)', 0],
-                [-1, 'B', 7, 100, 234, 86, 0x50000007, 'Selection', 0],
-                [-1, 'S', 14, 116, 50, 8, 0x50020000, 'Ink &color:', 0], [106, 'C', 66, 114, 80, 100, 0x50210003, '', 0],
-                [107, 'B', 14, 134, 220, 10, 0x50010003, '&Show selection ink after snips are captured', 0],
-                [108, 'B', 14, 147, 220, 10, 0x50010003, 'Show screen &overlay when Snipping Tool is active', 0],
-                [1, 'B', 137, 194, 50, 14, 0x50010001, 'OK', 0],
-                [2, 'B', 191, 194, 50, 14, 0x50010000, 'Cancel', 0]
-            ] };
             V.openDialog({
-                id: 'snipOptions', tpl, owner,
+                id: 'snipOptions', key: 'snippingtool:107', icon: ICON16, owner,
                 init: (ctx) => {
-                    ctx.set(101, p.hideText); ctx.set(102, p.copy); ctx.set(104, p.prompt); ctx.set(105, p.exact);
-                    ctx.set(107, p.showInk); ctx.set(108, p.overlay);
-                    const s = ctx.el(106);
+                    ctx.set(1025, p.hideText); ctx.set(1022, p.copy); ctx.set(1018, p.includeUrl); ctx.set(1026, p.prompt);
+                    ctx.set(1015, p.quickLaunch); ctx.set(1016, p.overlay); ctx.set(1023, p.showInk);
+                    const s = ctx.el(1019);
                     if (s) { s.innerHTML = INK.map(([v, t]) => `<option value="${v}">${t}</option>`).join(''); s.value = INK.some((x) => x[0] === p.ink) ? p.ink : '#ff0000'; }
                 },
                 ok: (ctx) => {
                     setReg({
-                        HideInstructions: !!ctx.get(101), AlwaysCopy: !!ctx.get(102), PromptToSave: !!ctx.get(104), ExactCapture: !!ctx.get(105),
-                        SelectionInkColor: String(ctx.get(106) || '#ff0000'), ShowSelectionInk: !!ctx.get(107), ShowScreenOverlay: !!ctx.get(108)
+                        HideInstructions: !!ctx.get(1025), AlwaysCopy: !!ctx.get(1022), IncludeUrl: !!ctx.get(1018), PromptToSave: !!ctx.get(1026),
+                        QuickLaunchIcon: !!ctx.get(1015), ShowScreenOverlay: !!ctx.get(1016), SelectionInkColor: String(ctx.get(1019) || '#ff0000'), ShowSelectionInk: !!ctx.get(1023)
                     });
                     setTimeout(() => this.syncMain(), 50);
                     return true;
                 }
             });
+        }
+
+        /** F1: Vista opens its Help topic; Melaton has none to show (string 15064). */
+        help() {
+            void call('showConfirmationDialog', '<p>The Help topic failed to appear.</p>', [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, { title: 'Snipping Tool', width: 320 });
         }
 
         about(owner) {
@@ -589,30 +592,34 @@
             this.snipCanvas = canvas;
             this.scale = scale;
             this.strokes = [];
-            this.pen = 'red';
+            this.pen = 'blue';
             this.mode = 'pen';
             this.saved = false;
             const w = Math.round(canvas.width / scale);
             const h = Math.round(canvas.height / scale);
-            // the window fits the snip (Vista leaves room for the menus and toolbar), within the screen
-            const W = Math.min(root.innerWidth - 40, Math.max(430, w + 22));
-            // caption 30, menu bar 21, toolbar 31, the stage's padding 12, frame 8
-            const H = Math.min(root.innerHeight - 80, Math.max(200, h + 104));
+            // the window fits the snip with a margin, 521x503 at the least (the VM), within the screen:
+            // frames 16 and the vertical scroll bar 17 across; caption 28, menu bar 19, toolbar 43,
+            // the edge 1, the horizontal scroll bar 17 and the frame 8 down
+            const W = Math.min(root.innerWidth - 40, Math.max(521, w + 33 + 60));
+            const H = Math.min(root.innerHeight - 80, Math.max(503, h + 116 + 60));
             const m = chrome('Snipping Tool', 'snip-markup', { resizable: true, width: W, height: H, minWidth: 360, minHeight: 200 });
             m.style.width = `${W}px`;
             m.style.height = `${H}px`;
+            // measured on the VM: the menu bar (19 px band), the toolbar (43 px, #f0f0f0), the snip
+            // centred on white with both scroll bars
             m.querySelector('.snip-client').innerHTML = `
                 <div class="naxt-menubar snip-menubar" role="menubar">${['File', 'Edit', 'Tools', 'Help'].map((t) => `<button type="button" class="naxt-menu-title" data-snip-menu="${t.toLowerCase()}" role="menuitem">${t}</button>`).join('')}</div>
                 <div class="snip-toolbar is-markup" role="toolbar">
-                    <span class="snip-split"><button type="button" class="snip-tb-btn snip-new" title="New Snip (Ctrl+N)">${cmd('cut')}<span>New Snip</span></button><button type="button" class="snip-tb-btn snip-drop" title="Choose a snip type" aria-haspopup="menu"><span class="snip-arrow"></span></button></span>
+                    <button type="button" class="snip-tb snip-new" title="New Snip">${mk(0)}<span class="snip-tb-text"><u>N</u>ew</span></button>
+                    <button type="button" class="snip-tb is-icon" data-a="save" title="Save Snip">${mk(1)}</button>
+                    <button type="button" class="snip-tb is-icon" data-a="copy" title="Copy">${mk(2)}</button>
+                    <button type="button" class="snip-tb is-split" data-a="send" title="Send Snip">${mk(3)}</button>
+                    <button type="button" class="snip-tb snip-drop snip-send-drop" title="Send Snip" aria-haspopup="menu"><span class="snip-arrow"></span></button>
                     <span class="snip-sep"></span>
-                    <button type="button" class="snip-tb-btn is-icon" data-a="save" title="Save Snip (Ctrl+S)">${cmd('save')}</button>
-                    <button type="button" class="snip-tb-btn is-icon" data-a="copy" title="Copy (Ctrl+C)">${cmd('copy')}</button>
-                    <span class="snip-split"><button type="button" class="snip-tb-btn is-icon" data-a="send" title="Send Snip">${cmd('send')}</button><button type="button" class="snip-tb-btn snip-drop snip-send-drop" title="Send Snip" aria-haspopup="menu"><span class="snip-arrow"></span></button></span>
-                    <span class="snip-sep"></span>
-                    <span class="snip-split"><button type="button" class="snip-tb-btn is-icon snip-pen" data-a="pen" title="Pen"></button><button type="button" class="snip-tb-btn snip-drop snip-pen-drop" title="Choose a pen" aria-haspopup="menu"><span class="snip-arrow"></span></button></span>
-                    <button type="button" class="snip-tb-btn is-icon" data-a="hl" title="Highlighter">${art(7)}</button>
-                    <button type="button" class="snip-tb-btn is-icon" data-a="eraser" title="Eraser">${cmd('paint-eraser')}</button>
+                    <button type="button" class="snip-tb is-split snip-pen" data-a="pen" title="Pen">${mk(4)}</button>
+                    <button type="button" class="snip-tb snip-drop snip-pen-drop" title="Pen" aria-haspopup="menu"><span class="snip-arrow"></span></button>
+                    <button type="button" class="snip-tb is-icon" data-a="hl" title="Highlighter">${mk(5)}</button>
+                    <button type="button" class="snip-tb is-icon" data-a="eraser" title="Eraser">${mk(6)}</button>
                 </div>
                 <div class="snip-stage"><div class="snip-paper"><canvas class="snip-ink"></canvas></div></div>`;
             this.modal = m;
@@ -640,14 +647,14 @@
                 });
             });
             m.querySelector('.snip-new').addEventListener('click', () => void this.tool.snip(this.tool.mode));
-            this.tool.modeMenu(m.querySelector('.snip-toolbar .snip-drop'), m);
             m.querySelectorAll('.snip-toolbar [data-a]').forEach((b) => b.addEventListener('click', () => void this.action(b.dataset.a)));
             const dropMenu = (sel, items) => root.contextMenu.attachClickMenuToElement(m.querySelector(sel), {
                 onAction: (a) => void this.action(a),
                 sections: [{ type: 'list', initfn: (section) => { section.items = items(); } }]
             });
             dropMenu('.snip-pen-drop', () => this.penItems());
-            dropMenu('.snip-send-drop', () => [{ text: 'E-mail Recipient (as attachment)', action: 'send' }]);
+            // menu 145
+            dropMenu('.snip-send-drop', () => [{ text: 'E-mail Recipient', action: 'send-inline' }, { text: 'E-mail Recipient (as attachment)', action: 'send' }]);
             const ink = this.ink;
             ink.addEventListener('pointerdown', (ev) => this.down(ev));
             ink.addEventListener('pointermove', (ev) => this.move(ev));
@@ -665,31 +672,30 @@
         }
 
         penItems() {
-            return PENS.map(([id, text]) => ({ text, action: `pen-${id}`, showIndicator: true, checked: this.mode === 'pen' && this.pen === id }))
+            return PENS.map(([id, text]) => ({ text, action: `pen-${id}`, showIndicator: true, checked: this.pen === id }))
                 .concat([{ separator: true }, { text: 'Customize...', action: 'customize' }]);
         }
 
         menu(name) {
             switch (name) {
+                // SnippingTool.exe.mui menu 120
                 case 'file': return [
                     { text: 'New Snip', subtext: 'Ctrl+N', action: 'new' },
-                    { text: 'Save As...', subtext: 'Ctrl+S', action: 'save' },
                     { separator: true },
-                    { text: 'Send To', hasSubmenu: true, submenu: [{ text: 'E-mail Recipient (as attachment)', action: 'send' }] },
+                    { text: 'Save As', subtext: 'Ctrl+S', action: 'save' },
+                    { text: 'Send To', hasSubmenu: true, submenu: [{ text: 'E-mail Recipient', action: 'send-inline' }, { text: 'E-mail Recipient (as attachment)', action: 'send' }] },
                     { separator: true },
                     { text: 'Exit', action: 'exit' }
                 ];
                 case 'edit': return [{ text: 'Copy', subtext: 'Ctrl+C', action: 'copy' }];
                 case 'tools': return [
                     { text: 'Pen', hasSubmenu: true, submenu: this.penItems() },
-                    { text: 'Highlighter', action: 'hl', showIndicator: true, checked: this.mode === 'hl' },
-                    { text: 'Eraser', action: 'eraser', showIndicator: true, checked: this.mode === 'eraser' },
+                    { text: 'Highlighter', action: 'hl' },
+                    { text: 'Eraser', action: 'eraser' },
                     { separator: true },
-                    { text: 'Open in Paint', action: 'paint' },
-                    { separator: true },
-                    { text: 'Options...', action: 'options' }
+                    { text: 'Options', action: 'options' }
                 ];
-                case 'help': return [{ text: 'About Snipping Tool', action: 'about' }];
+                case 'help': return [{ text: 'Help', subtext: 'F1', action: 'help' }, { text: 'About', action: 'about' }];
                 default: return [];
             }
         }
@@ -705,8 +711,9 @@
                 case 'hl': this.mode = 'hl'; this.syncTools(); return;
                 case 'eraser': this.mode = 'eraser'; this.syncTools(); return;
                 case 'customize': this.customize(); return;
-                case 'paint': await this.toPaint(); return;
+                case 'send-inline': await this.send(true); return;
                 case 'options': this.tool.options(this.modal); return;
+                case 'help': this.tool.help(); return;
                 case 'about': this.tool.about(this.modal); return;
                 case 'exit': await this.close(); return;
                 default:
@@ -715,9 +722,10 @@
 
         syncTools() {
             const m = this.modal;
-            const penArt = PENS.find((x) => x[0] === this.pen)[3];
-            m.querySelector('.snip-pen').innerHTML = this.pen === 'custom' ? `<span class="snip-custom-pen" style="--c:${prefs().custom.color}">${art(6)}</span>` : art(penArt);
-            m.querySelectorAll('.snip-toolbar [data-a]').forEach((b) => b.classList.toggle('is-on', (b.dataset.a === 'pen' && this.mode === 'pen') || b.dataset.a === this.mode));
+            // the tool in use is held down (TBSTATE_CHECKED), its drop part with it
+            m.querySelectorAll('.snip-toolbar [data-a]').forEach((b) => b.classList.toggle('is-on', b.dataset.a === this.mode));
+            const pd = m.querySelector('.snip-pen-drop');
+            if (pd) pd.classList.toggle('is-on', this.mode === 'pen');
             this.ink.dataset.mode = this.mode;
         }
 
@@ -884,49 +892,38 @@
             return { blob: await toBlob(c), mime: 'image/png' };
         }
 
-        async send() {
-            if (typeof root.doveOpenComposeWindow !== 'function' && typeof doveOpenComposeWindow !== 'function') { // eslint-disable-line no-undef
-                await this.message('Dovecote is not available to send the snip.');
+        /** Send To: in the message (E-mail Recipient) or attached (as attachment). */
+        async send(inline) {
+            const open = typeof doveOpenComposeWindow === 'function' ? doveOpenComposeWindow : root.doveOpenComposeWindow; // eslint-disable-line no-undef
+            if (typeof open !== 'function') {
+                await this.message('The snip could not be sent. Check that an e-mail program is installed and then try again.'); // 15067
                 return;
             }
             const blob = await toBlob(this.flat());
             const base64 = await blobToBase64(blob);
-            const open = typeof doveOpenComposeWindow === 'function' ? doveOpenComposeWindow : root.doveOpenComposeWindow; // eslint-disable-line no-undef
-            open({ mode: 'create', to: '', subject: 'Snip', body: '', attachments: [{ name: 'Capture.png', mimeType: 'image/png', size: blob.size, base64 }] });
-        }
-
-        async toPaint() {
-            if (root.featureLoader) await root.featureLoader.loadFeature('paint');
-            if (typeof root.openMelatonPaint !== 'function') return;
-            const url = this.flat().toDataURL('image/png');
-            await root.openMelatonPaint({ image: url, name: 'Capture' });
+            // Dovecote's compose takes the picture as a file either way; the message says where it came from (182)
+            open({ mode: 'create', to: '', subject: inline ? 'Capture' : '', body: inline ? 'Sent from Snipping Tool' : '', attachments: [{ name: 'Capture.png', mimeType: 'image/png', size: blob.size, base64 }] });
         }
 
         message(text) {
             return call('showConfirmationDialog', `<p>${esc(text).replace(/\n/g, '<br>')}</p>`, [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, { title: 'Snipping Tool', width: 360 });
         }
 
-        /** Tools > Pen > Customize: the custom pen's colour, thickness and tip. */
+        /** Tools > Pen > Customize: Custom Pen, SnippingTool.exe.mui dialog 140 (strings 170-172, 178-179). */
         customize() {
             const V = root.vistaDialogTemplate;
             if (!V) return;
             const c = prefs().custom;
-            const tpl = { t: 'Customize Pens', w: 200, h: 92, f: ['MS Shell Dlg', 8], c: [
-                [-1, 'S', 7, 9, 40, 8, 0x50020000, '&Color:', 0], [101, 'C', 58, 7, 80, 100, 0x50210003, '', 0],
-                [-1, 'S', 7, 27, 40, 8, 0x50020000, '&Thickness:', 0], [102, 'C', 58, 25, 80, 100, 0x50210003, '', 0],
-                [-1, 'S', 7, 45, 40, 8, 0x50020000, 'T&ip:', 0], [103, 'C', 58, 43, 80, 100, 0x50210003, '', 0],
-                [1, 'B', 89, 72, 50, 14, 0x50010001, 'OK', 0], [2, 'B', 143, 72, 50, 14, 0x50010000, 'Cancel', 0]
-            ] };
             V.openDialog({
-                id: 'snipCustomize', tpl, owner: this.modal,
+                id: 'snipCustomize', key: 'snippingtool:140', icon: ICON16, owner: this.modal,
                 init: (ctx) => {
-                    const fill = (id, list, v) => { const s = ctx.el(id); if (s) { s.innerHTML = list.map(([a, b]) => `<option value="${a}">${b}</option>`).join(''); s.value = v; } };
-                    fill(101, INK, c.color);
-                    fill(102, [['fine', 'Fine Point'], ['medium', 'Medium Point'], ['thick', 'Thick Point']], c.size);
-                    fill(103, [['round', 'Round Tip Pen'], ['chisel', 'Chisel Tip Pen']], c.tip);
+                    const fill = (id, list, v) => { const e = ctx.el(id); if (e) { e.innerHTML = list.map(([a, b]) => `<option value="${a}">${b}</option>`).join(''); e.value = v; } };
+                    fill(1019, INK, c.color);
+                    fill(1022, [['fine', 'Fine point pen'], ['medium', 'Medium point pen'], ['thick', 'Thick point pen']], c.size);
+                    fill(1023, [['round', 'Round tip pen'], ['chisel', 'Chisel tip pen']], c.tip);
                 },
                 ok: (ctx) => {
-                    setReg({ CustomPen: JSON.stringify({ color: String(ctx.get(101)), size: String(ctx.get(102)), tip: String(ctx.get(103)) }) });
+                    setReg({ CustomPen: JSON.stringify({ color: String(ctx.get(1019)), size: String(ctx.get(1022)), tip: String(ctx.get(1023)) }) });
                     this.pen = 'custom';
                     this.mode = 'pen';
                     setTimeout(() => this.syncTools(), 0);
@@ -938,7 +935,8 @@
         /** Vista asks about an unsaved snip (Prompt to save snips before exiting). */
         async close() {
             if (!this.saved && prefs().prompt) {
-                const v = await call('showConfirmationDialog', '<p>Do you want to save changes to Snipping Tool?</p>', [
+                // string 1031
+                const v = await call('showConfirmationDialog', '<p>Do you want to save changes to the snip?</p>', [
                     { text: 'Yes', value: 'yes', className: 'btn-standard primary' }, { text: 'No', value: 'no', className: 'btn-standard' }, { text: 'Cancel', value: 'cancel', className: 'btn-standard' }
                 ], null, { title: 'Snipping Tool', width: 360 });
                 if (v === 'cancel' || v === null || v === undefined || v === false) return;
