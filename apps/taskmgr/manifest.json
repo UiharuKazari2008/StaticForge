@@ -1,0 +1,14 @@
+{
+    "id": "taskmgr",
+    "version": "1.0.0",
+    "title": "Windows Task Manager",
+    "publisher": "Xyridian",
+    "format": "msaz",
+    "type": "native",
+    "launchId": "taskmgr",
+    "icon": "assets/taskmgr.png",
+    "client": {
+        "entry": "client/taskmgr.js",
+        "styles": ["assets/taskmgr.css"]
+    }
+}

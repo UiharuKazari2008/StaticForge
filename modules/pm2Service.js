@@ -247,7 +247,28 @@ function handleRecoverablePm2Error(error) {
     return true;
 }
 
+/** Every pm2 process, read-only (Task Manager's Services tab): name, pid, status, cpu, memory, uptime. */
+function listProcesses() {
+    return withPm2((pm2lib) => new Promise((resolve, reject) => {
+        pm2lib.list((err, procs) => {
+            if (err) return reject(err);
+            resolve((procs || []).map((p) => ({
+                name: p.name,
+                pm2Id: p.pm2_env ? p.pm2_env.pm_id : null,
+                pid: p.pid || 0,
+                status: (p.pm2_env && p.pm2_env.status) || 'unknown',
+                cpu: (p.monit && p.monit.cpu) || 0,
+                memory: (p.monit && p.monit.memory) || 0,
+                uptime: (p.pm2_env && p.pm2_env.pm_uptime) || null,
+                restarts: (p.pm2_env && p.pm2_env.restart_time) || 0,
+                script: (p.pm2_env && p.pm2_env.pm_exec_path) || ''
+            })));
+        });
+    }));
+}
+
 module.exports = {
+    listProcesses,
     isPm2Available,
     getPm2DiskUsageBytes,
     getHostMetrics,

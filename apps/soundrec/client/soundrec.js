@@ -85,6 +85,8 @@
                 // Vista: Alt+S starts, Alt+S stops (the button's access key)
                 if (ev.altKey && ev.key.toLowerCase() === 's') { ev.preventDefault(); m.querySelector('.srec-rec').click(); }
             });
+            // before openModal: an id-less window restores the shared 'unknown' geometry
+            m.id = 'melatonSoundRecorderModal';
             call('openModal', m);
             m.classList.remove('hidden');
             let placed = false;
@@ -97,7 +99,6 @@
             requestAnimationFrame(place);
             setTimeout(place, 60);
             if (root.programFaults && root.programFaults.registerProgram) {
-                m.id = 'melatonSoundRecorderModal';
                 root.programFaults.registerProgram(m.id, { name: 'Sound Recorder', terminate: () => this.app.exit(), relaunch: () => root.melatonApps && root.melatonApps.launch({ packageId: 'soundrec' }) });
             }
             this.sync();

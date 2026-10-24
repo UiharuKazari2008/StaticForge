@@ -2405,6 +2405,8 @@ function getWindowPositionKey(modal) {
     }
     if (!isTransient) {
         const modalType = getModalType(modal);
+        // every id-less window maps to 'unknown': one shared rect would size them all
+        if (!modal.id && modalType === 'unknown') return null;
         return modal.id || modalType;
     }
     return null;
@@ -6620,6 +6622,8 @@ function buildToolsSubmenuItems() {
         { launchId: 'welcome-center', icon: 'fas fa-house', imageIcon: 'vista-welcome-center.png', text: 'Welcome Center', appMenuLocation: 'tools', action: () => { window.openWelcomeCenter(); } },
         // Accessories > Paint (Yozora #632; public/scripts/comp/desktop-apps/paint/paintApp.js)
         { launchId: 'paint', icon: 'fas fa-palette', imageIcon: 'vista-paint.png', text: 'Paint', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('paint'); window.openMelatonPaint(); } },
+        // System Tools > Windows Task Manager (Yozora #632; apps/taskmgr, a system package; Ctrl+Shift+Esc)
+        { launchId: 'taskmgr', icon: 'fas fa-chart-line', imageIcon: 'vista-task-manager.png', text: 'Windows Task Manager', appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'taskmgr' }) },
         // Accessories > WordPad (Yozora #632; apps/wordpad, a system package)
         { launchId: 'wordpad', icon: 'fas fa-file-word', imageIcon: 'vista-wordpad-document.png', text: 'WordPad', appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'wordpad' }) },
         // Accessories > Sound Recorder (Yozora #632; apps/soundrec, a system package)

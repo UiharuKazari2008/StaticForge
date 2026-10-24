@@ -397,6 +397,8 @@
             this.wire();
             this.applyView();
             this.drawRuler();
+            // before openModal: an id-less window restores the shared 'unknown' geometry
+            m.id = `melatonWordPadModal_${this.n}`;
             call('openModal', m);
             m.classList.remove('hidden');
             let placed = false;
@@ -410,7 +412,6 @@
             requestAnimationFrame(place);
             setTimeout(place, 60);
             if (root.programFaults && root.programFaults.registerProgram) {
-                m.id = `melatonWordPadModal_${this.n}`;
                 root.programFaults.registerProgram(m.id, { name: 'WordPad', terminate: () => this.app.exit(), relaunch: () => root.melatonApps && root.melatonApps.launch({ packageId: 'wordpad' }) });
             }
             this.title();

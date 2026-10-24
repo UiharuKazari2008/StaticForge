@@ -447,6 +447,8 @@
             this.modal = m;
             this.el = (s) => m.querySelector(s);
             this.wire();
+            // before openModal: an id-less window restores the shared 'unknown' geometry
+            m.id = 'melatonWindowsContactsModal';
             call('openModal', m);
             m.classList.remove('hidden');
             let placed = false;
@@ -459,7 +461,6 @@
             requestAnimationFrame(place);
             setTimeout(place, 60);
             if (root.programFaults && root.programFaults.registerProgram) {
-                m.id = 'melatonWindowsContactsModal';
                 root.programFaults.registerProgram(m.id, { name: 'Windows Contacts', terminate: () => this.app.exit(), relaunch: () => root.melatonApps && root.melatonApps.launch({ packageId: 'contacts' }) });
             }
             this.render();

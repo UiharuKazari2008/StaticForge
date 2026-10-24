@@ -790,6 +790,8 @@
                         { text: 'Show Windows Side by Side', action: 'tb-side' },
                         { text: 'Show the Desktop', action: 'tb-show-desktop' },
                         { separator: true },
+                        { text: 'Task Manager', action: 'tb-task-manager' },
+                        { separator: true },
                         { text: 'Lock the Taskbar', action: 'tb-lock', checked: s.locked, indicatorMark: 'check', showIndicator: true },
                         { text: 'Properties', action: 'tb-properties' }
                     ];
@@ -804,6 +806,8 @@
                     case 'tb-stacked': arrangeWindows('stacked'); break;
                     case 'tb-side': arrangeWindows('side'); break;
                     case 'tb-show-desktop': toggleShowDesktop(); break;
+                    // Windows Task Manager (apps/taskmgr, a system package)
+                    case 'tb-task-manager': if (root.melatonApps) void root.melatonApps.launch({ packageId: 'taskmgr' }); break;
                     case 'tb-lock': set({ locked: !settings.locked }); break;
                     case 'tb-properties': openProperties('taskbar'); break;
                     default: break;

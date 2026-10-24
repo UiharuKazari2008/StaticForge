@@ -1,0 +1,351 @@
+/* Windows Task Manager (Yozora #632; apps/taskmgr/client/taskmgr.js): a dialog face, Tahoma 8 */
+
+.wtm-window.wtm-window > .modal-content.wtm-client {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1;
+    min-height: 0;
+    width: auto !important;
+    height: auto !important;
+    padding: 0 !important;
+    background: #f0f0f0;
+    font: 11px Tahoma, "Segoe UI", sans-serif;
+    color: #000;
+}
+
+/* the menu bar (Vista's) */
+.wtm-window.wtm-window .wtm-menubar {
+    display: flex;
+    flex: none;
+    height: 21px;
+    padding: 0 2px;
+    border-bottom: 1px solid #b6bccc;
+    background: linear-gradient(#fefeff, #e5eaf5 7px, #d4dbed 7px, #e1e6f6 20px);
+    box-sizing: border-box;
+}
+
+.wtm-window.wtm-window .win7 .wtm-menubar .naxt-menu-title,
+.wtm-window.wtm-window .win7 .wtm-menubar .naxt-menu-title:not(:disabled):not(:hover) {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    height: 20px;
+    min-height: 0;
+    padding: 0 7px;
+    border: 0;
+    border-image: none;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    color: #000;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+}
+
+.wtm-window.wtm-window .win7 .wtm-menubar .naxt-menu-title:is(:hover, :focus-visible, .context-open) {
+    border: 0;
+    background: #3399ff;
+    box-shadow: none;
+    color: #fff;
+}
+
+.wtm-window .wtm-menubar .naxt-menu-title::before,
+.wtm-window .wtm-menubar .naxt-menu-title::after {
+    content: none;
+    display: none;
+}
+
+/* the sheet: tabs over the pane */
+.wtm-window .wtm-sheet {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    padding: 7px 7px 6px;
+}
+
+.wtm-window.wtm-window .wtm-tabs {
+    position: relative !important;
+    left: auto !important;
+    top: auto !important;
+    flex: none;
+    z-index: 1;
+}
+
+.wtm-window .wtm-pane {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    margin-top: -1px;
+    padding: 8px 8px 6px;
+    border: 1px solid #898c95;
+    background: #fff;
+}
+
+/* the list views (Vista's: header gradients, a selection pill) */
+.wtm-window .wtm-list-host {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+}
+
+.wtm-window .wtm-list {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    border: 1px solid #828790;
+    background: #fff;
+    outline: none;
+}
+
+.wtm-window :is(.wtm-head, .wtm-row) {
+    display: grid;
+    grid-template-columns: var(--cols);
+}
+
+.wtm-window .wtm-head {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #fff;
+}
+
+.wtm-window.wtm-window .win7 .wtm-col:not(:disabled) {
+    position: relative;
+    min-width: 0;
+    height: 21px;
+    min-height: 0;
+    padding: 0 5px;
+    overflow: hidden;
+    border: 0;
+    border-image: none;
+    border-right: 1px solid #e5e5e5;
+    border-bottom: 1px solid #d5d5d5;
+    border-radius: 0;
+    background: linear-gradient(#fff, #f6f7f8);
+    box-shadow: none;
+    color: #000;
+    font: 11px Tahoma, sans-serif;
+    text-align: left;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.wtm-window.wtm-window .win7 .wtm-col.is-num:not(:disabled) {
+    text-align: right;
+}
+
+.wtm-window.wtm-window .win7 .wtm-col:not(:disabled):hover {
+    background: linear-gradient(#f3f8fd, #e4effb);
+}
+
+.wtm-window .wtm-col::before {
+    content: none;
+}
+
+.wtm-window .wtm-col.is-up::after,
+.wtm-window .wtm-col.is-down::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 0;
+    width: 7px;
+    height: 4px;
+    margin-left: -3px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4' shape-rendering='crispEdges'%3E%3Cpath fill='%23969696' d='M3 0h1v1h1v1h1v1h1v1H0V3h1V2h1V1h1z'/%3E%3C/svg%3E") no-repeat;
+}
+
+.wtm-window .wtm-col.is-down::after {
+    transform: scaleY(-1);
+}
+
+.wtm-window .wtm-row {
+    height: 17px;
+    align-items: center;
+    cursor: default;
+}
+
+.wtm-window .wtm-row > span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    overflow: hidden;
+    padding: 0 5px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.wtm-window .wtm-row > span.is-num {
+    justify-content: flex-end;
+}
+
+.wtm-window .wtm-row img {
+    flex: none;
+    width: 16px;
+    height: 16px;
+}
+
+.wtm-window .wtm-row:hover {
+    background: #e8f2fd;
+}
+
+.wtm-window .wtm-row.is-sel {
+    background: #3399ff;
+    color: #fff;
+}
+
+.wtm-window .wtm-note {
+    padding: 8px;
+    color: #555;
+}
+
+/* the buttons under a list */
+.wtm-window .wtm-buttons {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    padding-top: 8px;
+}
+
+.wtm-window .wtm-check {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-right: auto;
+}
+
+.wtm-window.wtm-window .wtm-btn {
+    position: static !important;
+    min-width: 75px;
+    height: 23px;
+    padding: 0 8px;
+}
+
+/* Performance */
+.wtm-window .wtm-perf {
+    display: grid;
+    flex: 1;
+    min-height: 0;
+    grid-template-columns: 86px 1fr;
+    grid-template-rows: 1fr 1fr auto;
+    gap: 6px;
+}
+
+.wtm-window .wtm-box {
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 2px 6px 6px;
+    border: 1px solid #d5dfe5;
+    border-radius: 3px;
+}
+
+.wtm-window .wtm-box legend {
+    padding: 0 2px;
+}
+
+.wtm-window .wtm-meter-box {
+    display: flex;
+    justify-content: center;
+}
+
+.wtm-window .wtm-meter {
+    display: block;
+    width: 72px;
+    height: 88px;
+}
+
+.wtm-window .wtm-hist-box {
+    display: flex;
+    flex-direction: column;
+}
+
+.wtm-window .wtm-cores {
+    display: flex;
+    flex: 1;
+    gap: 3px;
+    min-height: 0;
+}
+
+.wtm-window .wtm-hist {
+    display: block;
+    flex: 1;
+    min-width: 0;
+    width: 100%;
+    height: 100%;
+    min-height: 60px;
+}
+
+.wtm-window .wtm-figs {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+
+.wtm-window .wtm-fig {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 1px 8px;
+}
+
+.wtm-window .wtm-fig > span:nth-child(even) {
+    text-align: right;
+}
+
+.wtm-window .wtm-resmon {
+    align-self: end;
+    justify-self: end;
+}
+
+/* Networking */
+.wtm-window .wtm-net {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    gap: 6px;
+    min-height: 0;
+}
+
+.wtm-window .wtm-net-box {
+    position: relative;
+    display: flex;
+    flex: 1;
+    min-height: 70px;
+}
+
+.wtm-window .wtm-net-scale {
+    position: absolute;
+    left: 10px;
+    top: 16px;
+    color: #00ff00;
+    font-size: 10px;
+}
+
+.wtm-window .wtm-net-table {
+    display: flex;
+    flex: none;
+    height: 96px;
+    margin-top: 6px;
+}
+
+/* the status bar */
+.wtm-window .wtm-status {
+    display: grid;
+    flex: none;
+    grid-template-columns: 1fr 1fr 1.3fr;
+    height: 21px;
+    border-top: 1px solid #c2c9d6;
+    background: #f0f0f0;
+    line-height: 20px;
+}
+
+.wtm-window .wtm-status > span {
+    padding: 0 6px;
+    border-right: 1px solid #c2c9d6;
+    white-space: nowrap;
+    overflow: hidden;
+}

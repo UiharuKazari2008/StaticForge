@@ -455,6 +455,8 @@
         }
 
         show(m) {
+            // before openModal: an id-less window restores the shared 'unknown' geometry
+            m.id = doc.getElementById('melatonSnippingModal') ? `melatonSnipping_${Math.random().toString(36).slice(2, 8)}` : 'melatonSnippingModal';
             call('openModal', m);
             m.classList.remove('hidden');
             nextFrame(() => {
@@ -471,7 +473,6 @@
         /** A window of the app: closing it may end the app; programFaults knows it. */
         track(m) {
             if (root.programFaults && root.programFaults.registerProgram) {
-                if (!m.id) m.id = `melatonSnipping_${Math.random().toString(36).slice(2, 8)}`;
                 root.programFaults.registerProgram(m.id, { name: 'Snipping Tool', terminate: () => this.app.exit(), relaunch: () => root.melatonApps && root.melatonApps.launch({ packageId: 'snipping' }) });
             }
         }

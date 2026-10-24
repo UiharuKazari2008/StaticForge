@@ -465,6 +465,8 @@
             this.modal = m;
             this.el = (s) => m.querySelector(s);
             this.wire();
+            // before openModal: an id-less window restores the shared 'unknown' geometry
+            m.id = 'melatonWindowsCalendarModal';
             call('openModal', m);
             m.classList.remove('hidden');
             const place = () => {
@@ -476,7 +478,6 @@
             requestAnimationFrame(once);
             setTimeout(once, 60);
             if (root.programFaults && root.programFaults.registerProgram) {
-                m.id = 'melatonWindowsCalendarModal';
                 root.programFaults.registerProgram(m.id, { name: 'Windows Calendar', terminate: () => this.app.exit(), relaunch: () => root.melatonApps && root.melatonApps.launch({ packageId: 'calendar' }) });
             }
             this.applyPanes();
