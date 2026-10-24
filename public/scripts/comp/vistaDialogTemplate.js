@@ -148,6 +148,9 @@
                     const multi = (st & 0x2000) || r.height > 16 ? ' vdt-multi' : '';
                     if (lowType === 7) {
                         out.push(`<div class="tbp-group" style="${style(r)}" ${dataId}${hid}>${t ? `<span class="tbp-group-label${disabled ? ' is-disabled' : ''}">${label(t)}</span>` : ''}</div>`);
+                    } else if ((lowType === 2 || lowType === 3 || lowType === 5 || lowType === 6) && (st & 0x1000)) {
+                        // BS_PUSHLIKE: a push button that stays down while checked (WinCal's S M T W T F S)
+                        out.push(`<button type="button" class="tbp-ctl tbp-button vdt-button vdt-pushlike" id="${domId}" style="${style(r, 1)}" ${dataId} aria-pressed="false"${hid}${dis}>${label(t)}</button>`);
                     } else if (lowType === 2 || lowType === 3 || lowType === 5 || lowType === 6) {
                         // BS_VCENTER (the default for a one-line box) centres the 13 px box
                         const top = (st & 0xC00) === 0x400 ? 0 : Math.max(0, Math.floor((r.height - 13) / 2));
@@ -559,6 +562,7 @@
                 if (e.type === 'range') return Number(e.value);
                 if (e.classList && e.classList.contains('vdt-listbox')) return e.dataset.value || '';
                 if (e.classList && e.classList.contains('vdt-dtp')) return dtpValue(e);
+                if (e.classList && e.classList.contains('vdt-pushlike')) return e.getAttribute('aria-pressed') === 'true';
                 return e.value;
             },
             set(id, value, key) {
@@ -569,6 +573,7 @@
                     e.dataset.value = value;
                     e.querySelectorAll('.vdt-lb-row').forEach((row) => row.classList.toggle('is-selected', row.dataset.value === String(value)));
                 } else if (e.classList && e.classList.contains('vdt-dtp')) dtpSet(e, value, true);
+                else if (e.classList && e.classList.contains('vdt-pushlike')) e.setAttribute('aria-pressed', value ? 'true' : 'false');
                 else e.value = value;
             },
             text(id, text, key) {
@@ -594,6 +599,10 @@
                 if (!h) return;
                 const e = find(id, key);
                 if (e && 'disabled' in e) e.disabled = !on;
+                if (h.classList.contains('vdt-dtp')) {
+                    if (on) h.removeAttribute('aria-disabled'); else h.setAttribute('aria-disabled', 'true');
+                    h.tabIndex = on ? 0 : -1;
+                }
                 h.classList.toggle('is-disabled', !on);
                 const lbl = h.querySelector('.tbp-group-label');
                 if (lbl) lbl.classList.toggle('is-disabled', !on);
@@ -736,6 +745,11 @@
                 if (box.classList.contains('vdt-listbox')) box.dataset.value = row.dataset.value;
                 box.dispatchEvent(new Event('change', { bubbles: true }));
             }
+            const push = ev.target.closest('.vdt-pushlike');
+            if (push && !push.disabled) {
+                push.setAttribute('aria-pressed', push.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
+                push.dispatchEvent(new Event('change', { bubbles: true }));
+            }
             const spin = ev.target.closest('.vdt-up, .vdt-down');
             if (spin) {
                 // the buddy is the control just before the up-down in the template
@@ -847,7 +861,8 @@
         }
         const u = units(tpl);
         const sz = size(tpl);
-        const { modal, content } = makeWindow(opts.id, opts.title || tpl.t, { icon: opts.icon, segoe: u.segoe, help: opts.help });
+        // captionIcon: draw opts.icon in the caption (otherwise the caption inherits the owner's)
+        const { modal, content } = makeWindow(opts.id, opts.title || tpl.t, { icon: opts.icon, captionIcon: !!opts.captionIcon, segoe: u.segoe, help: opts.help });
         content.classList.add('vdt-plain');
         content.style.width = `${sz.width}px`;
         content.style.height = `${sz.height}px`;

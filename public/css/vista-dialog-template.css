@@ -547,10 +547,12 @@ body.desktop-mode .modal.vdt-wizard .vdt-client .vdt-wizard-instruction {
     border-image-source: url('/static_images/vista-controls/edit-focus.png');
 }
 
-.vdt-client .vdt-dtp[aria-disabled="true"] {
-    border-image: url('/static_images/vista-controls/edit-disabled.png') 1 / 1px stretch;
-    background: #f4f4f4;
-    color: #6d6d6d;
+/* disabled (Recurrence's Until): the normal frame and white field, the date in #808080 */
+.vdt-client .vdt-dtp[aria-disabled="true"],
+.vdt-client .vdt-dtp[aria-disabled="true"]:hover {
+    border-image-source: url('/static_images/vista-controls/edit-normal.png');
+    background: #fff;
+    color: #808080;
 }
 
 .vdt-client .vdt-dtp-text {

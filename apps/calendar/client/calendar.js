@@ -48,7 +48,11 @@
     const rotated = (list, first) => list.slice(first).concat(list.slice(0, first));
     const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     const REMINDERS = [[null, 'None'], [0, 'On start date'], [5, '5 minutes before'], [10, '10 minutes before'], [15, '15 minutes before'], [30, '30 minutes before'], [60, '1 hour before'], [120, '2 hours before'], [1440, '1 day before'], [2880, '2 days before'], [10080, '1 week before']];
-    const RECUR = [['', 'Once'], ['DAILY', 'Daily'], ['WEEKLY', 'Weekly'], ['MONTHLY', 'Monthly'], ['YEARLY', 'Yearly']];
+    // the details pane's Recurrence box: WinCal strings 700-705
+    const RECUR = [['', 'None'], ['DAILY', 'Every day'], ['WEEKLY', 'Weekly'], ['MONTHLY', 'Monthly'], ['YEARLY', 'Yearly'], ['ADVANCED', 'Advanced']];
+    const DAY_CODES = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
+    // WinCal strings 3300-3331
+    const ordinal = (n) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th'}`;
 
     // ---- dates -------------------------------------------------------------------------------
 
@@ -98,7 +102,12 @@
             if (key === 'FREQ') r.freq = val.toUpperCase();
             else if (key === 'INTERVAL') r.interval = Math.max(1, parseInt(val, 10) || 1);
             else if (key === 'COUNT') r.count = parseInt(val, 10) || null;
-            else if (key === 'UNTIL') { const p = parseIcsDate(val); r.until = p ? p.date : null; } else if (key === 'BYDAY') r.byday = val.split(',').map((x) => x.replace(/^[+-]?\d+/, '').toUpperCase());
+            else if (key === 'UNTIL') { const p = parseIcsDate(val); r.until = p ? p.date : null; } else if (key === 'BYDAY') {
+                r.byday = val.split(',').map((x) => x.replace(/^[+-]?\d+/, '').toUpperCase());
+                // "4FR" / "-2FR": the nth (or nth last) weekday of the month
+                const m = /^([+-]?\d+)[A-Z]{2}$/i.exec(val.split(',')[0]);
+                if (m) r.bypos = parseInt(m[1], 10);
+            } else if (key === 'BYMONTHDAY') r.bymonthday = parseInt(val, 10) || null;
         });
         return r.freq ? r : null;
     }
@@ -109,7 +118,8 @@
         if (r.interval > 1) s += `;INTERVAL=${r.interval}`;
         if (r.count) s += `;COUNT=${r.count}`;
         if (r.until) s += `;UNTIL=${icsUtc(r.until)}`;
-        if (r.byday && r.byday.length) s += `;BYDAY=${r.byday.join(',')}`;
+        if (r.byday && r.byday.length) s += `;BYDAY=${r.bypos ? `${r.bypos}${r.byday[0]}` : r.byday.join(',')}`;
+        if (r.bymonthday) s += `;BYMONTHDAY=${r.bymonthday}`;
         return s;
     }
 
@@ -234,6 +244,23 @@
     const uid = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}@melaton`;
 
     /** The event's occurrences that touch [a, b): { ev, start, end } each. */
+    /** The month's day for a MONTHLY rule: BYMONTHDAY n / -n, BYDAY nXX / -nXX, else the start's date. */
+    function monthlyDate(year, month, r, s0) {
+        const first = new Date(year, month, 1);
+        const y = first.getFullYear();
+        const m = first.getMonth();
+        const last = new Date(y, m + 1, 0).getDate();
+        let day;
+        if (r.bypos && r.byday && r.byday.length) {
+            const wd = DAY_CODES.indexOf(r.byday[0]);
+            if (r.bypos > 0) day = 1 + ((wd - first.getDay() + 7) % 7) + (r.bypos - 1) * 7;
+            else { const lastWd = new Date(y, m, last).getDay(); day = last - ((lastWd - wd + 7) % 7) + (r.bypos + 1) * 7; }
+        } else if (r.bymonthday) day = r.bymonthday > 0 ? r.bymonthday : last + 1 + r.bymonthday;
+        else day = s0.getDate();
+        if (day < 1 || day > last) return null;
+        return new Date(y, m, day, s0.getHours(), s0.getMinutes(), s0.getSeconds());
+    }
+
     function occurrences(ev, a, b) {
         const out = [];
         const len = ev.end - ev.start;
@@ -254,7 +281,10 @@
                 const weekStart = addDays(s0, i * 7 * step - s0.getDay());
                 const days = r.byday && r.byday.length ? r.byday.map((c) => codes.indexOf(c)).filter((x) => x >= 0).sort() : [s0.getDay()];
                 cands = days.map((dd) => addDays(weekStart, dd)).filter((x) => x >= s0);
-            } else if (r.freq === 'MONTHLY') cands = [new Date(s0.getFullYear(), s0.getMonth() + i * step, s0.getDate(), s0.getHours(), s0.getMinutes())].filter((x) => x.getDate() === s0.getDate());
+            } else if (r.freq === 'MONTHLY') {
+                const c = monthlyDate(s0.getFullYear(), s0.getMonth() + i * step, r, s0);
+                cands = c && c >= s0 ? [c] : [];
+            }
             else if (r.freq === 'YEARLY') cands = [new Date(s0.getFullYear() + i * step, s0.getMonth(), s0.getDate(), s0.getHours(), s0.getMinutes())];
             else cands = i ? [] : [s0];
             if (!cands.length && r.freq !== 'MONTHLY') break;
@@ -1059,7 +1089,7 @@
                 <label class="wcal-d-check"><input type="checkbox" class="wcal-d-allday"${e.allDay ? ' checked' : ''}${dis}><span>All-day appointment</span></label>
                 <label class="wcal-d-row"><span>Start:</span><input type="date" class="tbp-edit wcal-d-sd" value="${inputDate(e.start)}"${dis}><input type="time" class="tbp-edit wcal-d-st" value="${inputTime(e.start)}" step="900"${e.allDay ? ' hidden' : ''}${dis}></label>
                 <label class="wcal-d-row"><span>End:</span><input type="date" class="tbp-edit wcal-d-ed" value="${inputDate(e.allDay ? addDays(e.end, -1) : e.end)}"${dis}><input type="time" class="tbp-edit wcal-d-et" value="${inputTime(e.end)}" step="900"${e.allDay ? ' hidden' : ''}${dis}></label>
-                <label class="wcal-d-row"><span>Recurrence:</span><select class="wcal-d-rec"${dis}>${RECUR.map(([v, t]) => `<option value="${v}"${(r ? r.freq : '') === v ? ' selected' : ''}>${t}</option>`).join('')}</select></label>
+                <label class="wcal-d-row"><span>Recurrence:</span><select class="wcal-d-rec"${dis}>${RECUR.map(([v, t]) => `<option value="${v}"${recurPreset(e) === v ? ' selected' : ''}>${t}</option>`).join('')}</select></label>
                 ${r ? `<div class="wcal-d-note">${esc(recurText(e))}</div>` : ''}
                 <div class="wcal-d-group">Reminder</div>
                 <label class="wcal-d-row"><span>Reminder:</span><select class="wcal-d-rem"${dis}>${REMINDERS.map(([v, t]) => `<option value="${v === null ? '' : v}"${e.reminder === v || (e.reminder === undefined && v === null) ? ' selected' : ''}>${t}</option>`).join('')}</select></label>
@@ -1093,9 +1123,92 @@
                 s.occ = null;
             };
             ['.wcal-d-sd', '.wcal-d-st', '.wcal-d-ed', '.wcal-d-et'].forEach((q) => on(q, 'change', times, true));
-            on('.wcal-d-rec', 'change', (el) => { e.rrule = el.value ? { freq: el.value, interval: 1, byday: el.value === 'WEEKLY' ? [['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'][e.start.getDay()]] : null } : null; e.exdates = []; }, true);
+            const rec = host.querySelector('.wcal-d-rec');
+            if (rec) rec.addEventListener('change', async () => {
+                const was = recurPreset(e);
+                if (rec.value === 'ADVANCED') { rec.value = was; this.recurrenceDialog(s); return; }
+                // a custom rule loses its settings to a preset: WinCal string 3255 asks first
+                if (was === 'ADVANCED') {
+                    const v = await this.ask('<p>This recurring rule has custom settings which will be removed. Do you wish to continue?</p>', [['Yes', 'yes'], ['No', 'no']]);
+                    if (v !== 'yes') { rec.value = was; return; }
+                }
+                e.rrule = rec.value ? { freq: rec.value, interval: 1, byday: rec.value === 'WEEKLY' ? [DAY_CODES[e.start.getDay()]] : null } : null;
+                e.exdates = [];
+                changed(true);
+            });
             on('.wcal-d-rem', 'change', (el) => { e.reminder = el.value === '' ? null : Number(el.value); this.fired.delete(`${e.uid}|${e.start.getTime()}`); });
             this.bindCalMove(host, s, 'events');
+        }
+
+        /**
+         * Recurrence > Advanced: WinCal's template 3200 as the VM shows it: Repeat every n Days / Weeks
+         * / Months / Years, Forever / Number of times / Until (a date picker), the weekday push
+         * buttons for Weeks, the four month rules for Months (strings 3256-3259, 3300-3331).
+         */
+        recurrenceDialog(s) {
+            const V = root.vistaDialogTemplate;
+            const e = s && s.item;
+            if (!V || !e) return;
+            const r = e.rrule || { freq: 'DAILY', interval: 1 };
+            const units = [['DAILY', 'Days'], ['WEEKLY', 'Weeks'], ['MONTHLY', 'Months'], ['YEARLY', 'Years']];
+            const d = e.start;
+            const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+            const wdName = WEEKDAYS[d.getDay()];
+            const nth = Math.ceil(d.getDate() / 7);
+            const nthLast = Math.floor((last - d.getDate()) / 7) + 1;
+            const dayLast = last - d.getDate() + 1;
+            const WEEK_IDS = [3208, 3209, 3210, 3211, 3212, 3213, 3214];
+            V.openDialog({
+                // WinCal gives this dialog no icon: Vista draws user32's 32 px application icon squeezed to 16
+                id: 'wcalRecurrence', key: 'wincal:3200', icon: '/static_images/vista-dlg/user32-100-scaled-16.png', captionIcon: true, owner: this.modal,
+                overrides: {
+                    3215: { text: `${ordinal(d.getDate())} &day of the month` },
+                    3216: { text: `${ordinal(dayLast)} &last day of the month` },
+                    3217: { text: `${ordinal(nth)} ${wdName} of the &month` },
+                    3218: { text: `${ordinal(nthLast)} l&ast ${wdName} of the month` }
+                },
+                init: (ctx) => {
+                    ctx.options(3202, units.map(([value, text]) => ({ value, text })), units.some(([v]) => v === r.freq) ? r.freq : 'DAILY');
+                    ctx.set(3201, String(r.interval || 1));
+                    ctx.set(r.count ? 3204 : r.until ? 3205 : 3203, true);
+                    ctx.set(3206, r.count ? String(r.count) : '');
+                    ctx.set(3207, r.until || addDays(startOfDay(d), 1));
+                    const days = r.freq === 'WEEKLY' && r.byday && r.byday.length ? r.byday : [DAY_CODES[d.getDay()]];
+                    WEEK_IDS.forEach((id, i) => ctx.set(id, days.includes(DAY_CODES[i])));
+                    const month = r.bypos ? (r.bypos > 0 ? 3217 : 3218) : (r.bymonthday && r.bymonthday < 0 ? 3216 : 3215);
+                    ctx.set(month, true);
+                    const sync = () => {
+                        const unit = ctx.get(3202);
+                        WEEK_IDS.forEach((id) => ctx.show(id, unit === 'WEEKLY'));
+                        [3215, 3216, 3217, 3218].forEach((id) => ctx.show(id, unit === 'MONTHLY'));
+                        ctx.enable(3206, !!ctx.get(3204));
+                        ctx.enable(3207, !!ctx.get(3205));
+                    };
+                    [3202, 3203, 3204, 3205].forEach((id) => ctx.on(id, 'change', sync));
+                    sync();
+                    setTimeout(() => { const n = ctx.el(3201); if (n) { n.focus(); n.select(); } }, 0);
+                },
+                ok: (ctx) => {
+                    const freq = ctx.get(3202);
+                    const next = { freq, interval: Math.max(1, parseInt(ctx.get(3201), 10) || 1) };
+                    if (ctx.get(3204)) next.count = Math.max(1, parseInt(ctx.get(3206), 10) || 1);
+                    if (ctx.get(3205)) { const u = ctx.get(3207); next.until = new Date(u.getFullYear(), u.getMonth(), u.getDate(), 23, 59, 59); }
+                    if (freq === 'WEEKLY') {
+                        next.byday = WEEK_IDS.filter((id) => ctx.get(id)).map((id) => DAY_CODES[WEEK_IDS.indexOf(id)]);
+                        if (!next.byday.length) next.byday = [DAY_CODES[d.getDay()]];
+                    }
+                    if (freq === 'MONTHLY') {
+                        if (ctx.get(3216)) next.bymonthday = -dayLast;
+                        else if (ctx.get(3217)) { next.byday = [DAY_CODES[d.getDay()]]; next.bypos = nth; } else if (ctx.get(3218)) { next.byday = [DAY_CODES[d.getDay()]]; next.bypos = -nthLast; } else next.bymonthday = d.getDate();
+                    }
+                    e.rrule = next;
+                    e.exdates = [];
+                    s.occ = null;
+                    this.touched(s.cal);
+                    this.render();
+                    return true;
+                }
+            });
         }
 
         /** Moving an item to another calendar (the Calendar box). */
@@ -1725,6 +1838,15 @@
             const m = this.modal;
             setTimeout(() => m.remove(), 300);
         }
+    }
+
+    /** Which Recurrence box entry a rule is: a plain preset, or Advanced for anything WinCal calls custom. */
+    function recurPreset(e) {
+        const r = e.rrule;
+        if (!r) return '';
+        if ((r.interval || 1) > 1 || r.count || r.until || r.bypos || r.bymonthday) return 'ADVANCED';
+        if (r.freq === 'WEEKLY' && r.byday && (r.byday.length !== 1 || r.byday[0] !== DAY_CODES[e.start.getDay()])) return 'ADVANCED';
+        return r.freq;
     }
 
     function recurText(e) {
