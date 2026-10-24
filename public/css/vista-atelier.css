@@ -18,7 +18,7 @@
 
 /* ---- the menu bar ---- */
 
-:is(#naxtModal.naxt-vista, .notepad-modal, .mp-window, .snip-window, #configEditorModal, body.desktop-mode:not(.windows-classic-theme) :is(.image-prompt-inspector, #notebookModal)) .naxt-menubar {
+:is(#naxtModal.naxt-vista, .notepad-modal, .mp-window, #configEditorModal, body.desktop-mode:not(.windows-classic-theme) :is(.image-prompt-inspector, #notebookModal)) .naxt-menubar {
     display: flex;
     flex: none;
     align-items: stretch;
@@ -29,7 +29,7 @@
     box-sizing: border-box;
 }
 
-:is(#naxtModal.naxt-vista, .notepad-modal, .mp-window, .snip-window, #configEditorModal, body.desktop-mode:not(.windows-classic-theme) :is(.image-prompt-inspector, #notebookModal)) .naxt-menubar .naxt-menu-title {
+:is(#naxtModal.naxt-vista, .notepad-modal, .mp-window, #configEditorModal, body.desktop-mode:not(.windows-classic-theme) :is(.image-prompt-inspector, #notebookModal)) .naxt-menubar .naxt-menu-title {
     position: relative;
     display: inline-flex;
     align-items: center;
@@ -49,7 +49,7 @@
     filter: none;
 }
 
-:is(#naxtModal.naxt-vista, .notepad-modal, .mp-window, .snip-window, #configEditorModal, body.desktop-mode:not(.windows-classic-theme) :is(.image-prompt-inspector, #notebookModal)) .naxt-menubar .naxt-menu-title:is(:hover, :focus-visible, .context-open) {
+:is(#naxtModal.naxt-vista, .notepad-modal, .mp-window, #configEditorModal, body.desktop-mode:not(.windows-classic-theme) :is(.image-prompt-inspector, #notebookModal)) .naxt-menubar .naxt-menu-title:is(:hover, :focus-visible, .context-open) {
     background: #3399ff;
     color: #fff;
     outline: none;
@@ -60,8 +60,8 @@
     display: none;
 }
 
-:is(#naxtModal.naxt-vista, .notepad-modal, .mp-window, .snip-window, #configEditorModal, body.desktop-mode:not(.windows-classic-theme) :is(.image-prompt-inspector, #notebookModal)) .naxt-menubar .naxt-menu-title::before,
-:is(#naxtModal.naxt-vista, .notepad-modal, .mp-window, .snip-window, #configEditorModal, body.desktop-mode:not(.windows-classic-theme) :is(.image-prompt-inspector, #notebookModal)) .naxt-menubar .naxt-menu-title::after {
+:is(#naxtModal.naxt-vista, .notepad-modal, .mp-window, #configEditorModal, body.desktop-mode:not(.windows-classic-theme) :is(.image-prompt-inspector, #notebookModal)) .naxt-menubar .naxt-menu-title::before,
+:is(#naxtModal.naxt-vista, .notepad-modal, .mp-window, #configEditorModal, body.desktop-mode:not(.windows-classic-theme) :is(.image-prompt-inspector, #notebookModal)) .naxt-menubar .naxt-menu-title::after {
     display: none;
 }
 

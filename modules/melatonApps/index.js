@@ -55,7 +55,24 @@ function syncSystemPackages() {
     }
 }
 
+/**
+ * A system package edited in apps/<id>/ since the server started: installed again before it is
+ * launched or described (installFromDirectory skips the copy when its tree is unchanged), so a
+ * change to a built-in app needs no server restart.
+ */
+function refreshSystemPackage(id) {
+    if (!shared || !id || !/^[a-z0-9][a-z0-9._-]*$/i.test(String(id))) return null;
+    const dir = path.join(SYSTEM_APPS_DIR, String(id));
+    if (!fs.existsSync(path.join(dir, 'manifest.json'))) return null;
+    try {
+        return shared.store.installFromDirectory(dir, { system: true });
+    } catch (err) {
+        console.error(`[melaton apps] system package ${id} not refreshed: ${err.message}`);
+        return null;
+    }
+}
+
 /** The shared store + runner if apps were used in this server, else null (no side effects). */
 getMelatonApps.peek = () => shared;
 
-module.exports = { getMelatonApps, SYSTEM_APPS_DIR };
+module.exports = { getMelatonApps, refreshSystemPackage, SYSTEM_APPS_DIR };

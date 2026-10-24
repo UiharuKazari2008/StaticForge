@@ -23,7 +23,7 @@ const path = require('path');
 const wsPacketRegistry = require('../wsPacketRegistry');
 const { MelatonPackageError } = require('../../melatonPackageStore');
 const { MelatonAppError } = require('../../melatonApps/runner');
-const { getMelatonApps } = require('../../melatonApps');
+const { getMelatonApps, refreshSystemPackage } = require('../../melatonApps');
 const { isMelatonExe } = require('../../melatonApps/exeContainer');
 
 const OWNER = { owner: 'melatonApps' };
@@ -131,7 +131,7 @@ function registerPackets(handlersCtx) {
 
     function installedPackage(row) {
         const store = apps().store;
-        return { id: row.id, dir: path.join(store.rootDir, row.id), manifest: row.manifest, base: `/melaton-apps/${row.id}/`, runSha: null };
+        return { id: row.id, dir: path.join(store.rootDir, row.id), manifest: row.manifest, base: `/melaton-apps/${row.id}/`, runSha: null, treeHash: row.treeHash || '' };
     }
 
     function runPackage(buffer) {
@@ -186,8 +186,9 @@ function registerPackets(handlersCtx) {
             version: m.version,
             publisher: m.publisher || '',
             icon: m.icon ? `${pkg.base}${m.icon}` : '',
-            clientEntry: `${pkg.base}${m.client.entry}`,
-            styles: (m.client.styles || []).map((s) => `${pkg.base}${s}`),
+            // ?v= the tree's hash: a refreshed system package is fetched again, not taken from a cache
+            clientEntry: `${pkg.base}${m.client.entry}${pkg.treeHash ? `?v=${pkg.treeHash.slice(0, 12)}` : ''}`,
+            styles: (m.client.styles || []).map((s) => `${pkg.base}${s}${pkg.treeHash ? `?v=${pkg.treeHash.slice(0, 12)}` : ''}`),
             base: pkg.base,
             runner: m.server ? m.server.runner : null
         };
@@ -196,6 +197,7 @@ function registerPackets(handlersCtx) {
     wsPacketRegistry.registerWsPacket('app_launch', async (ctx) => {
         try {
             const p = payloadOf(ctx.message);
+            if (p.packageId) { apps(); refreshSystemPackage(p.packageId); }
             const { pkg, launch } = await resolveLaunch(ctx, p);
             if (pkg.manifest.server && !isAdmin(ctx)) {
                 throw new MelatonAppError(`${pkg.manifest.title} needs an administrator to run.`, 'INSUFFICIENT_PERMISSIONS');
@@ -228,6 +230,8 @@ function registerPackets(handlersCtx) {
     wsPacketRegistry.registerWsPacket('app_describe', async (ctx) => {
         try {
             const p = payloadOf(ctx.message);
+            apps();
+            refreshSystemPackage(p.packageId);
             const row = apps().store.get(String(p.packageId || ''));
             if (!row || row.enabled === false) throw new MelatonAppError('The program is not installed.', 'APP_NOT_INSTALLED');
             reply(ctx, 'app_describe', { package: describe(installedPackage(row)) });
