@@ -131,6 +131,11 @@ function sandbox({ blockers = [], open = [], logout, onDesktopFlush, pending = f
             resolve();
         }, show ? ctx.WINLOGON_FADE_OUT_MS : ctx.WINLOGON_FADE_IN_MS));
     };
+    // the end of the screen is a cut to black, not a fade (the display going off)
+    ctx.cutShutdownCover = () => {
+        log.push(`cut@${now}`, `dark@${now}`);
+        return Promise.resolve();
+    };
     ctx.showWinlogonPowerScreen = (text) => log.push(`screen:${text}@${now}`);
     ctx.hideWinlogonPowerScreen = () => log.push('hide');
     const flush = () => new Promise((r) => setImmediate(r));
@@ -170,6 +175,9 @@ const launchAt = (log) => {
     assert.ok(s.ctx.WINLOGON_POWER_BLACK_MS >= 2000 && s.ctx.WINLOGON_POWER_BLACK_MS <= 3000, 'usual black is 2-3 s');
     assert.ok(s.ctx.WINLOGON_POWER_BLACK_MAX_MS >= 5000 && s.ctx.WINLOGON_POWER_BLACK_MAX_MS <= 8000, 'linger cap is 5-8 s');
     assert.strictEqual(s.log.filter((l) => l.startsWith('launch@')).length, 1);
+    const screenIdx = s.log.findIndex((l) => l.startsWith('screen:'));
+    assert.ok(s.log.slice(screenIdx).some((l) => l.startsWith('cut@')), 'Shutting down... cuts to black');
+    assert.ok(!s.log.slice(screenIdx).some((l) => l.startsWith('dark-start@')), 'no fade out after Shutting down...');
 
     // Shut down goes to /launch too (no window.close)
     s = sandbox();

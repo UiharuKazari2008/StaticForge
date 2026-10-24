@@ -10,7 +10,8 @@ const WINLOGON_FADE_OUT_MS = 900;
 const WINLOGON_BLACK_HOLD_MS = 250;
 const WINLOGON_FADE_IN_MS = 800;
 const WINLOGON_TEXT_HOLD_MS = 700;
-// Then every path goes dark, like the monitor losing its signal, before /launch POSTs
+// Then every path cuts to black at once (cutShutdownCover), like the monitor losing its
+// signal (a real PC does not fade "Shutting down..." out), before /launch POSTs
 // again. The work that has to finish (the log off request, pending desktop saves, the
 // server restart) runs in the dark: it stays dark past the usual few seconds only while
 // that work is still running, and never past the cap.
@@ -330,6 +331,15 @@ function fadeShutdownCover(show) {
     });
 }
 
+/** Black in the same frame, no fade: the display going off after "Shutting down...". */
+function cutShutdownCover() {
+    const overlay = shutdownCover();
+    overlay.style.transitionDuration = '0ms';
+    overlay.classList.add('show');
+    void overlay.offsetWidth;
+    return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
 function showWinlogonPowerScreen(text) {
     const modal = document.getElementById('desktopPreStartupModal');
     if (!modal) return false;
@@ -495,7 +505,7 @@ async function runWinlogonPower(kind, options) {
         await fadeShutdownCover(false);
         await winlogonDelay(WINLOGON_TEXT_HOLD_MS);
         const work = startWinlogonPowerWork(kind, opts.onCommit);
-        await lingerWinlogonPowerBlack(work, fadeShutdownCover(true),
+        await lingerWinlogonPowerBlack(work, cutShutdownCover(),
             kind === 'server' ? Infinity : WINLOGON_POWER_BLACK_MAX_MS);
         if (kind === 'shutdown' || kind === 'logoff') forgetDirectorReopen();
         // restartClientNavigate: public/scripts/comp/modalUtils.js (desktop: /launch)
