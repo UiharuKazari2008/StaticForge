@@ -295,6 +295,72 @@ function addCacheBustingHeaders(response, contentType) {
 }
 
 
+// The server's X-File-Hash is the manifest hash looked up by path (web_server.js
+// getServedFileHash), not a hash of the bytes it sent. A stale copy on the server (Oct 23:
+// the old Paint and Notepad icons after 2bbb12a1) went out under the new hash, the row looked
+// current to every update check, and the old icon stayed for good. Rows are stored under the
+// SHA-256 of their body. Manifest hashes that are not a body hash: the routes (templated HTML)
+// and workspaces.css (the hash of its source, modules/workspaceCssService.js getManifestEntry).
+const NON_BODY_HASH_PATHS = new Set(['/', '/app', '/launch', '/index.html', '/css/workspaces.css']);
+
+function hasBodyHash(urlPath) {
+  try {
+    return !NON_BODY_HASH_PATHS.has(new URL(urlPath, self.location.origin).pathname);
+  } catch (_) {
+    return false;
+  }
+}
+
+async function sha256Hex(buffer) {
+  const digest = await crypto.subtle.digest('SHA-256', buffer);
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** False when the response claims an x-file-hash its body does not have (do not store it). */
+async function bodyMatchesClaimedHash(response, urlPath) {
+  const claimed = response && response.headers.get('x-file-hash');
+  if (!claimed || !hasBodyHash(urlPath)) return true;
+  const actual = await sha256Hex(await response.clone().arrayBuffer());
+  if (actual === claimed) return true;
+  console.warn(`[sw] ${urlPath}: body hash ${actual.slice(0, 12)} is not the claimed ${claimed.slice(0, 12)}; not cached`);
+  return false;
+}
+
+// Once per client: rows stored before the body check whose body is not their x-file-hash are
+// dropped, so the update check that follows SW_SCRIPT_UPDATED downloads them again.
+const BODY_HASH_AUDIT_KEY = '/internal/sw-body-hash-audit-v1';
+
+async function dropMislabelledStaticRows() {
+  try {
+    const internal = await caches.open(INTERNAL_CACHE);
+    if (await internal.match(BODY_HASH_AUDIT_KEY)) return;
+    const cache = await caches.open(STATIC_CACHE);
+    const keys = await cache.keys();
+    let next = 0;
+    let dropped = 0;
+    const lane = async () => {
+      while (next < keys.length) {
+        const request = keys[next++];
+        try {
+          const row = await cache.match(request, { ignoreVary: true });
+          const claimed = row && row.headers.get('x-file-hash');
+          if (!claimed || !hasBodyHash(request.url)) continue;
+          if (await sha256Hex(await row.arrayBuffer()) === claimed) continue;
+          await cache.delete(request, { ignoreVary: true });
+          dropped++;
+          console.warn(`[sw] dropped ${request.url}: its body is not ${claimed.slice(0, 12)}`);
+        } catch (_) { /* unreadable row: the update check handles it */ }
+      }
+    };
+    await Promise.all(Array.from({ length: 8 }, lane));
+    await internal.put(BODY_HASH_AUDIT_KEY, new Response(JSON.stringify({ at: Date.now(), rows: keys.length, dropped }), {
+      headers: { 'content-type': 'application/json' }
+    }));
+  } catch (error) {
+    console.warn('[sw] body hash audit failed:', error);
+  }
+}
+
 // Helper function to check if response should be cached based on server headers
 function shouldCacheResponse(response) {
   const cacheControl = response.headers.get('Cache-Control');
@@ -332,8 +398,11 @@ const staticStrategy = new strategies.CacheFirst({
       }
     },
     {
-      cacheWillUpdate: async ({ response }) => {
+      cacheWillUpdate: async ({ request, response }) => {
         if (!response || !response.headers.get('x-file-hash')) {
+          return null;
+        }
+        if (!(await bodyMatchesClaimedHash(response, request.url))) {
           return null;
         }
         return response;
@@ -1898,9 +1967,18 @@ async function cacheStaticFiles(files, silent = false) {
                 if (response.ok && response.status >= 200 && response.status < 300 && shouldCacheResponse(response)) {
                     try {
                         const body = await response.arrayBuffer();
+                        // Stored under the hash of what arrived (NON_BODY_HASH_PATHS); a body that
+                        // is not the manifest's stays a mismatch, so the next check fetches it again
+                        let storeHash = file.hash;
+                        if (hasBodyHash(file.url)) {
+                            storeHash = await sha256Hex(body);
+                            if (storeHash !== file.hash) {
+                                console.warn(`${file.url}: the server sent ${storeHash.slice(0, 12)}, not the manifest's ${String(file.hash).slice(0, 12)}`);
+                            }
+                        }
                         await purgeStaticCacheEntries(cache, file.url);
                         const cacheKey = new Request(file.url);
-                        await cache.put(cacheKey, staticCacheResponseWithHash(body, response, file.hash));
+                        await cache.put(cacheKey, staticCacheResponseWithHash(body, response, storeHash));
 
                         const cachedResponse = await cache.match(cacheKey, { ignoreVary: true });
                         const newHash = cachedResponse && cachedResponse.headers.get('x-file-hash');
@@ -2248,7 +2326,8 @@ async function deleteAndPrecache(url, requestId) {
       }
     });
     
-    if (response.ok && response.status >= 200 && response.status < 300 && shouldCacheResponse(response)) {
+    if (response.ok && response.status >= 200 && response.status < 300 && shouldCacheResponse(response)
+        && (targetCacheName !== STATIC_CACHE || await bodyMatchesClaimedHash(response, urlWithoutQuery))) {
       const cache = await caches.open(targetCacheName);
       // Cache the file without query parameters (strategies will strip queries)
       const cacheKey = targetCacheName === WALLPAPER_CACHE ? absoluteUrl : urlWithoutQuery;
@@ -2351,6 +2430,7 @@ self.addEventListener('activate', (event) => {
       );
     }).then(async () => {
       await dropUnhashedStaticSiblings();
+      await dropMislabelledStaticRows();
       await dropCachedGameMedia();
       await caches.open(STATIC_CACHE).then((cache) => cache.delete('/sw.js'));
       await enforceImageCachePolicy();

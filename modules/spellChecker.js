@@ -1,4 +1,12 @@
-const spellchecker = require('spellchecker');
+// Native module (hunspell through nan): a Node upgrade leaves it built for the old ABI, and a
+// throw here took the whole server down at boot (Oct 23: apt moved Node 20 to 24). Without it,
+// every word counts as correct and there are no suggestions until it is rebuilt.
+let spellchecker = null;
+try {
+    spellchecker = require('spellchecker');
+} catch (error) {
+    console.warn(`⚠️ Spell checking is off: the spellchecker module did not load (${String(error.message).split('\n')[0]})`);
+}
 const fs = require('fs');
 const path = require('path');
 const logger = require('./logger');
@@ -38,6 +46,7 @@ class SpellChecker {
         }
         
         // Check with spellchecker
+        if (!spellchecker) return true;
         return !spellchecker.isMisspelled(word);
     }
 
@@ -48,6 +57,7 @@ class SpellChecker {
         }
 
         // Get suggestions from spellchecker
+        if (!spellchecker) return [];
         return spellchecker.getCorrectionsForMisspelling(word);
     }
 
