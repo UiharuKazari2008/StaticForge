@@ -1,0 +1,14 @@
+{
+    "id": "wordpad",
+    "version": "1.0.0",
+    "title": "WordPad",
+    "publisher": "Xyridian",
+    "format": "msaz",
+    "type": "native",
+    "launchId": "wordpad",
+    "icon": "assets/wordpad.png",
+    "client": {
+        "entry": "client/wordpad.js",
+        "styles": ["assets/wordpad.css"]
+    }
+}

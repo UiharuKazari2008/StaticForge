@@ -4,7 +4,7 @@ const EXPLORER_FOLDER_VIEW_KEY = 'explorerFolderViewModes';
 const EXPLORER_DEFAULT_VIEW_KEY = 'explorerDefaultViewMode';
 
 const EXPLORER_IMAGE_GALLERY_CONTEXT_ACTIONS = new Set([
-    'toggle-favorite', 'reroll', 'download', 'copy', 'open-in-window', 'modify',
+    'toggle-favorite', 'reroll', 'download', 'copy', 'open-in-window', 'modify', 'edit-in-paint',
     'expand-canvas', 'enhance', 'upscale', 'view-image-data',
     'copy-original', 'download-original', 'expand-canvas-original', 'delete-original',
     'start-chat', 'copy-lookback', 'ask-wren', 'publish-to-explorer',
@@ -671,6 +671,7 @@ class ExplorerApplet {
                 items: [
                     { icon: 'fas fa-external-link-alt', text: 'Open in Window', action: 'open-in-window', hideOnBreakpoint: 'small-mobile' },
                     { icon: 'fas fa-compass-drafting', text: 'Edit in DreamStudio', action: 'modify', hideOnBreakpoint: 'small-mobile' },
+                    { icon: 'fas fa-paintbrush', text: 'Edit in Paint', action: 'edit-in-paint', hideOnBreakpoint: 'small-mobile' },
                     { icon: 'mdi mdi-1-25 mdi-relative-scale', text: 'Expand Canvas', action: 'expand-canvas' },
                     { icon: 'fas fa-wand-magic-sparkles', text: 'Enhance', action: 'enhance' },
                     {
@@ -1577,6 +1578,10 @@ class ExplorerApplet {
             }
             case 'modify':
                 openManualModalWithContent({ type: 'image', image, metadata: image.metadata || null }, event);
+                break;
+            case 'edit-in-paint':
+                // editGalleryImageInPaint: public/scripts/comp/imageViewer.js
+                void editGalleryImageInPaint(image);
                 break;
             case 'expand-canvas':
                 expandCanvasFromGallery(image);
@@ -4484,6 +4489,11 @@ class ExplorerApplet {
                 if (/\.(gsd|mpi|psd)$/i.test(item.name || '')) {
                     await featureLoader.loadFeature('paint');
                     if (window.openMelatonPaint) await window.openMelatonPaint({ vfsFile: { id: item.targetId, name: item.name, path: this.currentPath } });
+                    return;
+                }
+                // a Rich Text document opens in WordPad (apps/wordpad, a system package)
+                if (/\.(rtf|wri)$/i.test(item.name || '') && window.melatonApps) {
+                    await window.melatonApps.launch({ packageId: 'wordpad', args: { file: { id: item.targetId || item.id, name: item.name, path: this.currentPath } } });
                     return;
                 }
                 // a text document opens in Notepad (Default Programs' association, notepadVista.js)

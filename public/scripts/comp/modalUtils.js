@@ -6620,6 +6620,8 @@ function buildToolsSubmenuItems() {
         { launchId: 'welcome-center', icon: 'fas fa-house', imageIcon: 'vista-welcome-center.png', text: 'Welcome Center', appMenuLocation: 'tools', action: () => { window.openWelcomeCenter(); } },
         // Accessories > Paint (Yozora #632; public/scripts/comp/desktop-apps/paint/paintApp.js)
         { launchId: 'paint', icon: 'fas fa-palette', imageIcon: 'vista-paint.png', text: 'Paint', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('paint'); window.openMelatonPaint(); } },
+        // Accessories > WordPad (Yozora #632; apps/wordpad, a system package)
+        { launchId: 'wordpad', icon: 'fas fa-file-word', imageIcon: 'vista-wordpad-document.png', text: 'WordPad', appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'wordpad' }) },
         // Accessories > Sound Recorder (Yozora #632; apps/soundrec, a system package)
         { launchId: 'soundrec', icon: 'fas fa-microphone', imageIcon: 'vista-sound-recorder.png', text: 'Sound Recorder', appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'soundrec' }) },
         // Windows Contacts (Yozora #632; apps/contacts, a system package)

@@ -1,0 +1,279 @@
+/* WordPad (Yozora #632; apps/wordpad/client/wordpad.js) */
+
+.wpad-window .wpad-client {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    padding: 0 !important;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    color: #000;
+}
+
+/* the menu bar (Vista's) */
+.wpad-window.wpad-window .wpad-menubar {
+    display: flex;
+    flex: none;
+    height: 21px;
+    padding: 0 2px;
+    border-bottom: 1px solid #b6bccc;
+    background: linear-gradient(#fefeff, #e5eaf5 7px, #d4dbed 7px, #e1e6f6 20px);
+    box-sizing: border-box;
+}
+
+.wpad-window.wpad-window .win7 .wpad-menubar .naxt-menu-title,
+.wpad-window.wpad-window .win7 .wpad-menubar .naxt-menu-title:not(:disabled):not(:hover) {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    height: 20px;
+    min-height: 0;
+    padding: 0 7px;
+    border: 0;
+    border-image: none;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    color: #000;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+}
+
+.wpad-window.wpad-window .win7 .wpad-menubar .naxt-menu-title:is(:hover, :focus-visible, .context-open) {
+    border: 0;
+    background: #3399ff;
+    box-shadow: none;
+    color: #fff;
+}
+
+.wpad-window .wpad-menubar .naxt-menu-title::before,
+.wpad-window .wpad-menubar .naxt-menu-title::after {
+    content: none;
+    display: none;
+}
+
+/* the toolbar and the format bar: rebar bands */
+.wpad-window .wpad-bar {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 1px;
+    height: 28px;
+    padding: 0 4px;
+    border-bottom: 1px solid #c2c9d6;
+    background: linear-gradient(#fbfcfe, #eef2f9 50%, #e4e9f3);
+}
+
+.wpad-window .wpad-bar[hidden],
+.wpad-window .wpad-ruler[hidden],
+.wpad-window .wpad-status[hidden] {
+    display: none;
+}
+
+.wpad-window .wpad-sep {
+    width: 1px;
+    height: 20px;
+    margin: 0 3px;
+    background: #b7c3d4;
+    box-shadow: 1px 0 #fff;
+}
+
+.wpad-window.wpad-window .win7 .wpad-tb:not(:disabled) {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    min-width: 0;
+    height: 23px;
+    min-height: 0;
+    padding: 0;
+    border: 1px solid transparent;
+    border-image: none;
+    border-radius: 2px;
+    background: none;
+    box-shadow: none;
+}
+
+.wpad-window.wpad-window .win7 .wpad-tb:not(:disabled):hover {
+    border-color: #a8d8f0;
+    background: linear-gradient(#f5fbfe, #e3f4fc 50%, #cfecfa 51%, #c4e7f8);
+}
+
+.wpad-window.wpad-window .win7 .wpad-tb.is-on:not(:disabled),
+.wpad-window.wpad-window .win7 .wpad-tb.context-open:not(:disabled) {
+    border-color: #7da2ce;
+    background: linear-gradient(#e5f4fc, #c4e5f6 50%, #98d1ef 51%, #b0dcf4);
+    box-shadow: inset 1px 1px 1px rgba(0, 0, 0, 0.15);
+}
+
+.wpad-window .wpad-tb::before,
+.wpad-window .wpad-tb::after {
+    content: none;
+}
+
+.wpad-window .wpad-tb img {
+    width: 16px;
+    height: 16px;
+}
+
+.wpad-window .wpad-art {
+    display: block;
+    width: 16px;
+    height: 16px;
+    background: url('format.png') calc(var(--i) * -16px) 0 no-repeat;
+}
+
+.wpad-window .wpad-color .wpad-art {
+    height: 12px;
+    margin-top: -3px;
+}
+
+.wpad-window .wpad-color-bar {
+    position: absolute;
+    left: 4px;
+    right: 4px;
+    bottom: 3px;
+    height: 4px;
+    background: #000;
+}
+
+.wpad-window .wpad-formatbar select {
+    height: 21px;
+    margin-right: 3px;
+    padding: 0 2px;
+    border: 1px solid #abadb3;
+    border-radius: 2px;
+    background: #fff;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+}
+
+.wpad-window .wpad-font {
+    width: 170px;
+}
+
+.wpad-window .wpad-size {
+    width: 52px;
+}
+
+.wpad-window .wpad-script {
+    width: 110px;
+}
+
+/* the ruler: inch numbers and ticks over the page's width */
+.wpad-window .wpad-ruler {
+    flex: none;
+    height: 22px;
+    padding: 0 0 0 56px;
+    overflow: hidden;
+    border-bottom: 1px solid #a0a9b8;
+    background: #e9eef6;
+}
+
+.wpad-window .wpad-ruler-in {
+    position: relative;
+    width: 672px;
+    height: 100%;
+    background: #fff;
+    box-shadow: inset 0 -1px #d0d6df;
+}
+
+.wpad-window .wpad-tick {
+    position: absolute;
+    bottom: 4px;
+    width: 1px;
+    height: 3px;
+    background: #777;
+    font: 9px Tahoma, sans-serif;
+    color: #333;
+}
+
+.wpad-window .wpad-tick.is-half {
+    height: 6px;
+}
+
+.wpad-window .wpad-tick.is-inch {
+    width: 0;
+    height: auto;
+    bottom: 5px;
+    background: none;
+    transform: translateX(-3px);
+}
+
+/* the page: white, on Vista's grey stage */
+.wpad-window .wpad-stage {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    background: #fff;
+}
+
+.wpad-window .wpad-page {
+    box-sizing: border-box;
+    min-height: 100%;
+    margin: 0 0 0 0;
+    padding: 4px 56px 40px;
+    background: #fff;
+    color: #000;
+    outline: none;
+    line-height: 1.15;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+}
+
+.wpad-window[data-wrap="ruler"] .wpad-page {
+    width: calc(672px + 112px);
+}
+
+.wpad-window[data-wrap="none"] .wpad-page {
+    width: max-content;
+    min-width: 100%;
+    white-space: pre;
+}
+
+.wpad-window .wpad-page p {
+    margin: 0;
+}
+
+.wpad-window .wpad-page ul {
+    margin: 0;
+    padding-left: 24px;
+}
+
+.wpad-window .wpad-page img {
+    max-width: 100%;
+}
+
+.wpad-window .wpad-tab {
+    display: inline-block;
+    min-width: 48px;
+}
+
+.wpad-window .wpad-status {
+    display: flex;
+    flex: none;
+    justify-content: space-between;
+    height: 22px;
+    padding: 0 8px;
+    border-top: 1px solid #c2c9d6;
+    background: linear-gradient(#f2f5f9, #e3e8ef);
+    line-height: 22px;
+}
+
+/* the dialogs' list boxes (New, Date and Time) */
+.wpad-list {
+    display: block !important;
+    overflow-y: auto;
+    border: 1px solid #828790;
+    background: #fff;
+}
+
+.wpad-list-item {
+    padding: 1px 4px;
+    white-space: nowrap;
+    cursor: default;
+}
+
+.wpad-list-item.is-sel {
+    background: #3399ff;
+    color: #fff;
+}
