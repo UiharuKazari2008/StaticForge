@@ -118,7 +118,7 @@
                     <button type="button" class="btn-danger close-btn btn-small wtm-close" title="Close"><i class="fa-regular fa-xmark-large"></i></button>
                 </div>
                 <div class="modal-content win7 tbp-client wtm-client">
-                    <div class="naxt-menubar wtm-menubar" role="menubar">${['File', 'Options', 'View', 'Windows', 'Help'].map((t) => `<button type="button" class="naxt-menu-title" data-wtm-menu="${t.toLowerCase()}" role="menuitem">${t}</button>`).join('')}</div>
+                    <div class="naxt-menubar wtm-menubar" role="menubar" data-win32-menus>${['File', 'Options', 'View', 'Windows', 'Help'].map((t) => `<button type="button" class="naxt-menu-title" data-wtm-menu="${t.toLowerCase()}" role="menuitem">${t}</button>`).join('')}</div>
                     <div class="wtm-etch"></div>
                     <div class="wtm-sheet">
                         <div class="tbp-tabs wtm-tabs" role="tablist">${TABS.map((t, i) => `<button type="button" class="tbp-tab" role="tab" data-tab="${i}">${t}</button>`).join('')}</div>
@@ -170,19 +170,23 @@
                 case 'options': return [
                     { text: 'Always On Top', action: 'on-top', showIndicator: true, checked: reg('OnTop', true) !== false },
                     { text: 'Minimize On Use', action: 'min-on-use', showIndicator: true, checked: reg('MinOnUse', true) !== false },
-                    { text: 'Hide When Minimized', action: 'none', disabled: true },
-                    { separator: true },
-                    { text: 'Show Full Account Name', action: 'none', disabled: true }
+                    { text: 'Hide When Minimized', action: 'hide-min', showIndicator: true, checked: reg('HideMin', false) === true },
+                    // the Users tab's alone (the VM)
+                    ...(this.tab === 5 ? [{ separator: true }, { text: 'Show Full Account Name', action: 'full-name', showIndicator: true, checked: reg('FullName', false) === true }] : [])
                 ];
                 case 'view': return [
-                    { text: 'Refresh Now', subtext: 'F5', action: 'refresh' },
+                    { text: 'Refresh Now', action: 'refresh' },
                     { text: 'Update Speed', hasSubmenu: true, submenu: [['high', 'High'], ['normal', 'Normal'], ['low', 'Low'], ['paused', 'Paused']].map(([v, t]) => ({ text: t, action: `speed-${v}`, showIndicator: true, checked: this.speed === v })) },
                     ...(this.tab === 3 ? [{ separator: true }, { text: 'CPU History', hasSubmenu: true, submenu: [{ text: 'One Graph, All CPUs', action: 'cpu-one', showIndicator: true, checked: reg('OneGraph', false) === true }, { text: 'One Graph Per CPU', action: 'cpu-each', showIndicator: true, checked: reg('OneGraph', false) !== true }] }] : [])
                 ];
+                // the VM's order; Tile / Cascade arrange the selected task's window, or every task's
                 case 'windows': return [
-                    { text: 'Bring To Front', action: 'win-front', disabled: !this.selApp },
+                    { text: 'Tile Horizontally', action: 'win-tile-h' },
+                    { text: 'Tile Vertically', action: 'win-tile-v' },
                     { text: 'Minimize', action: 'win-min', disabled: !this.selApp },
-                    { text: 'Maximize', action: 'win-max', disabled: !this.selApp }
+                    { text: 'Maximize', action: 'win-max', disabled: !this.selApp },
+                    { text: 'Cascade', action: 'win-cascade' },
+                    { text: 'Bring To Front', action: 'win-front', disabled: !this.selApp }
                 ];
                 case 'help': return [{ text: 'About Task Manager', action: 'about' }];
                 default: return [];
@@ -200,6 +204,14 @@
                 case 'refresh': await this.poll(); return;
                 case 'cpu-one': setReg({ OneGraph: true }); this.render(); return;
                 case 'cpu-each': setReg({ OneGraph: false }); this.render(); return;
+                case 'hide-min': setReg({ HideMin: reg('HideMin', false) !== true }); return;
+                case 'full-name': setReg({ FullName: reg('FullName', false) !== true }); this.render(); return;
+                case 'win-tile-h': case 'win-tile-v': case 'win-cascade': {
+                    const tb = root.taskbarSettings;
+                    const list = win ? [win] : windows().filter((m) => m !== this.modal);
+                    if (tb && tb.arrangeWindows) tb.arrangeWindows(a === 'win-cascade' ? 'cascade' : a === 'win-tile-h' ? 'stacked' : 'side', list);
+                    return;
+                }
                 case 'win-front': if (win) this.switchTo(win); return;
                 case 'win-min': if (win) call('minimizeModalProgrammatically', win); return;
                 case 'win-max': if (win) { const b = win.querySelector('.maximize-btn'); if (b) b.click(); } return;
@@ -208,11 +220,15 @@
             }
         }
 
-        /** Options > Always On Top: Vista's Task Manager sits over the other windows. */
+        /**
+         * Options > Always On Top: Vista's Task Manager sits over the other windows, but under the
+         * Start menu (2700), its own menus and other menus (5000) and the lock screen. It was at
+         * 2147482000, which put its File / Options / View menus under it.
+         */
         applyOnTop() {
             const on = reg('OnTop', true) !== false;
             this.modal.classList.toggle('wtm-on-top', on);
-            this.modal.style.zIndex = on ? '2147482000' : '';
+            this.modal.style.zIndex = on ? '2690' : '';
             if (!on) call('bringModalToFront', this.modal);
         }
 
@@ -539,7 +555,9 @@
 
         renderUsers(pane) {
             const a = root.meletonAccounts;
-            const name = (a && typeof a.name === 'function' && a.name()) || (root.localStorage && root.localStorage.getItem('username')) || 'User';
+            const short = (a && typeof a.name === 'function' && a.name()) || (root.localStorage && root.localStorage.getItem('username')) || 'User';
+            // Options > Show Full Account Name: COMPUTER\user, as the VM shows it
+            const name = reg('FullName', false) === true ? `${(this.snap && this.snap.host) || 'MELATON'}\\${short}` : short;
             // the console session has no client name (the VM)
             const host = '';
             this.listView(pane, 'users', [{ key: 'user', t: 'User', w: '81px' }, { key: 'id', t: 'ID', w: '35px', num: true }, { key: 'status', t: 'Status', w: '60px' }, { key: 'client', t: 'Client Name', w: '78px' }, { key: 'session', t: 'Session', w: '78px' }],

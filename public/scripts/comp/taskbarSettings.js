@@ -729,8 +729,9 @@
         return wa || { left: 0, top: 0, width: root.innerWidth, height: root.innerHeight - 35 };
     }
 
-    function arrangeWindows(mode) {
-        const list = arrangeable();
+    /** Cascade / stack / side by side: every open window, or only the given ones (Task Manager's). */
+    function arrangeWindows(mode, only) {
+        const list = Array.isArray(only) ? only.filter((m) => m && !m.classList.contains('minimised')) : arrangeable();
         if (!list.length) return;
         const wa = workArea();
         if (mode === 'cascade') {
