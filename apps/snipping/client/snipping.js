@@ -964,7 +964,9 @@
 
     let running = null;
 
-    function start(app) {
+    async function start(app) {
+        // Options and Customize Pens are Vista dialog templates, a feature loaded on demand
+        if (root.featureLoader && !root.vistaDialogTemplate) { try { await root.featureLoader.loadFeature('vista_dialog_templates'); } catch (_) { /* no dialogs */ } }
         if (running) {
             // already open: the main window comes up (Vista runs one Snipping Tool)
             running.openMain();

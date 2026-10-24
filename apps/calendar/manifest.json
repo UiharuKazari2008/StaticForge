@@ -1,0 +1,14 @@
+{
+    "id": "calendar",
+    "version": "1.0.0",
+    "title": "Windows Calendar",
+    "publisher": "Xyridian",
+    "format": "msaz",
+    "type": "native",
+    "launchId": "calendar",
+    "icon": "assets/calendar.png",
+    "client": {
+        "entry": "client/calendar.js",
+        "styles": ["assets/calendar.css"]
+    }
+}

@@ -73,6 +73,7 @@ const { handleStatusStream } = require('./modules/statusStream');
 const desktopSoundsStatic = require('./modules/desktopSoundsStatic');
 const vistaGadgetStatic = require('./modules/vistaGadgetStatic');
 const vistaGadgetProxy = require('./modules/vistaGadgetProxy');
+const calendarFeed = require('./modules/calendarFeed');
 const installManifestFilter = require('./modules/installManifestFilter');
 const { browserRequest } = require('./modules/browserHttp');
 const { mountGrimoireBrowserBridge } = require('./modules/grimoireBrowserBridge');
@@ -4475,6 +4476,12 @@ async function handleAdminUnixSocketMessage(message, socket) {
         // their remote XML and pictures, admins only (modules/vistaGadgetProxy.js)
         app.get('/gadget-proxy', authMiddleware, (req, res) => {
             vistaGadgetProxy.handle(req, res).catch((err) => {
+                if (!res.headersSent) res.status(500).json({ success: false, error: err.message });
+            });
+        });
+        // Windows Calendar's Subscribe: an .ics from another site, fetched here (modules/calendarFeed.js)
+        app.get('/calendar-feed', authMiddleware, (req, res) => {
+            calendarFeed.handle(req, res).catch((err) => {
                 if (!res.headersSent) res.status(500).json({ success: false, error: err.message });
             });
         });
