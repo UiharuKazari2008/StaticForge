@@ -1279,26 +1279,22 @@
         }
 
         /** View > Go to Date: WinCal.exe.mui dialog 5200 (the date and the view to show it in). */
+        /** Edit > Go to Date: WinCal's template 5200 (no caption icon on the VM), its date picker and views (strings 11001-11004). */
         gotoDialog() {
             const V = root.vistaDialogTemplate;
             if (!V) return;
-            const views = [['day', 'Day'], ['workweek', 'Work Week'], ['week', 'Week'], ['month', 'Month']];
-            const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            const views = [['day', 'Day View'], ['workweek', 'Work Week View'], ['week', 'Week View'], ['month', 'Month View']];
             V.openDialog({
-                id: 'wcalGoto', key: 'wincal:5200', icon: ICON16, owner: this.modal,
+                id: 'wcalGoto', key: 'wincal:5200', owner: this.modal,
                 init: (ctx) => {
-                    const h = ctx.holder(5201);
-                    if (h) h.innerHTML = `<input type="date" class="tbp-edit wcal-dtp" value="${iso(this.date)}">`;
+                    ctx.set(5201, this.date);
                     ctx.options(5202, views.map(([value, text]) => ({ value, text })), this.view);
+                    setTimeout(() => { const d = ctx.el(5201); if (d) d.focus(); }, 0);
                 },
                 ok: (ctx) => {
-                    const h = ctx.holder(5201);
-                    const v = h && h.querySelector('input') && h.querySelector('input').value;
-                    if (v) {
-                        const [y, mo, d] = v.split('-').map(Number);
-                        this.date = new Date(y, mo - 1, d);
-                        this.navMonth = new Date(y, mo - 1, 1);
-                    }
+                    const d = ctx.get(5201);
+                    this.date = startOfDay(d);
+                    this.navMonth = new Date(d.getFullYear(), d.getMonth(), 1);
                     this.view = String(ctx.get(5202) || this.view);
                     setReg({ View: this.view });
                     this.render();

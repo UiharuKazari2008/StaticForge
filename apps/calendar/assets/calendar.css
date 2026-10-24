@@ -829,14 +829,6 @@
     display: none;
 }
 
-/* the date picker in Go to Date */
-.vdt-client .wcal-dtp {
-    box-sizing: border-box;
-    width: 100%;
-    height: 100%;
-    font: inherit;
-}
-
 /* Options' overdue colour button: the button face with the colour 3 px in, framed #a0a0a0 (VM) */
 .vdt-client [data-vdt-id="4010"] .wcal-overdue-swatch {
     position: absolute;
