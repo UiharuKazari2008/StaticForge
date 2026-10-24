@@ -224,14 +224,31 @@
             const installed = new Date().toLocaleDateString('en-US');
             const list = S ? S.sortRows('programs', programs(), (p, i) => [p.name, p.publisher, installed, ''][i]) : programs();
             const sel = handlers.programs.sel;
-            return `<div class="cpl-vpage cpl-vwide cpl-pf">${help('programs')}
-                <h1 class="cpl-vtitle">Uninstall or change a program</h1>
-                <p class="cpl-vtext">To uninstall a program, select it from the list and then click "Uninstall", "Change", or "Repair".</p>
-                <div class="cpl-pf-bar"><button type="button" class="cpl-pf-cmd" data-cpl-vpage="organize">Organize</button><button type="button" class="cpl-pf-cmd" data-cpl-vpage="views">Views</button>${sel ? '<button type="button" class="cpl-pf-cmd" data-cpl-vpage="uninstall">Uninstall</button>' : ''}</div>
-                <table class="cpl-vtable cpl-pf-table"><tr class="is-head">${PCOLS.map((t, i) => `<td class="cpl-flist-col${S ? S.headMark('programs', i) : ''}" data-cpl-vpage="sortcol" data-col="${i}">${t}</td>`).join('')}</tr>
-                ${list.map((p) => `<tr class="${p.id === sel ? 'is-selected' : ''}" data-cpl-vpage="pick" data-prog="${esc(p.id)}"><td><img src="${esc(p.icon)}" alt="" onerror="this.style.visibility='hidden'">${esc(p.name)}</td><td>${esc(p.publisher)}</td><td>${esc(new Date().toLocaleDateString('en-US'))}</td><td></td></tr>`).join('')}
-                </table>
-                <p class="cpl-vtext cpl-pf-foot">Currently installed programs &nbsp; ${list.length} programs installed</p>
+            // the VM's: the title and text, a light command bar across the pane (Organize, Views, Help
+            // at its right end), then the list view to the pane's edges with its column lines
+            const W = [320, 192, 80, 80];
+            // unsorted, the list is by Name: its header shows that (the VM)
+            const sortCol = (() => { const m = S ? PCOLS.findIndex((t, i) => S.headMark('programs', i)) : -1; return m < 0 ? 0 : m; })();
+            const mark = (i) => (S && S.headMark('programs', i)) || (i === sortCol && !(S && PCOLS.some((t, k) => S.headMark('programs', k))) ? ' is-sorted is-asc' : '');
+            let x = 0;
+            const stops = W.map((w, i) => { const from = x; x += w; return `${i === sortCol ? '#fff' : '#fcfcfc'} ${from}px ${x - 1}px, #ededed ${x - 1}px ${x}px`; });
+            const lines = `linear-gradient(to right, ${stops.join(', ')}, #fcfcfc ${x}px)`;
+            const drop = '<img class="cpl-pf-drop" src="/static_images/vista-cpl/pf-drop.png" alt="">';
+            return `<div class="cpl-vpage cpl-pf">
+                <div class="cpl-pf-head">
+                    <h1 class="cpl-vtitle">Uninstall or change a program</h1>
+                    <p class="cpl-vtext">To uninstall a program, select it from the list and then click "Uninstall", "Change", or "Repair".</p>
+                </div>
+                <div class="cpl-pf-bar" role="toolbar">
+                    <button type="button" class="cpl-pf-cmd" data-cpl-vpage="organize"><img src="/static_images/vista-explorer/organize.png" alt="">Organize${drop}</button>
+                    <button type="button" class="cpl-pf-cmd" data-cpl-vpage="views"><img src="/static_images/vista-explorer/views-details.png" alt="">Views${drop}</button>
+                    ${sel ? '<button type="button" class="cpl-pf-cmd" data-cpl-vpage="uninstall">Uninstall</button>' : ''}
+                    <button type="button" class="cpl-pf-cmd cpl-pf-help" data-cpl-vpage="help" data-topic="programs" title="Get help"><img src="/static_images/vista-cpl/pf-help.png" alt=""></button>
+                </div>
+                <div class="cpl-pf-list cpl-flist" style="background:${lines}">
+                    <div class="cpl-flist-head">${PCOLS.map((t, i) => `<span class="cpl-flist-col${mark(i)}" data-cpl-vpage="sortcol" data-col="${i}" style="width:${W[i]}px">${t}</span>`).join('')}<span class="cpl-flist-rest"></span></div>
+                    <div class="cpl-flist-rows">${list.map((p) => `<div class="cpl-frow${p.id === sel ? ' is-selected' : ''}" data-cpl-vpage="pick" data-prog="${esc(p.id)}" tabindex="0"><span style="width:${W[0]}px"><img src="${esc(p.icon)}" alt="" onerror="this.style.visibility='hidden'">${esc(p.name)}</span><span style="width:${W[1]}px">${esc(p.publisher)}</span><span style="width:${W[2]}px">${esc(installed)}</span><span class="is-num" style="width:${W[3]}px"></span></div>`).join('')}</div>
+                </div>
             </div>`;
         }
     };
@@ -618,34 +635,6 @@
     handlers.sideshow = {
         order() { msg('There are no gadgets to order.', 'Melaton SideShow'); },
         device() { msg('No Melaton SideShow-compatible devices are installed.', 'Melaton SideShow'); }
-    };
-
-    pages.cardspace = {
-        title: () => 'Melaton CardSpace',
-        tasks: () => tasks([[{ t: 'Add a card', a: 'js:add' }, { t: 'Back up cards', a: 'js:backup' }, { t: 'Restore cards', a: 'js:restore' }, { t: 'Delete all cards', a: 'js:delete' }]], [{ t: 'Dreamscape Services', a: 'item:authentication' }]),
-        body: () => {
-            const cards = reg('HKCU\\Software\\Xyridian\\CardSpace', 'Cards', []);
-            return `<div class="cpl-vpage">${help('cardspace')}
-                <h1 class="cpl-vtitle">Melaton CardSpace</h1>
-                <p class="cpl-vtext">Melaton CardSpace is a new way to send personal information to sites that request it. Your information is held in cards that only you can send.</p>
-                <div class="cpl-vsection"><span>Your cards</span></div>
-                ${cards.length ? cards.map((c) => `<p class="cpl-vtext"><img src="/static_images/vista-cpl/cardspace-32.png" alt="" style="vertical-align:middle"> ${esc(c)}</p>`).join('') : '<p class="cpl-vtext">You have no cards. Your Dreamscape logons and keys are in Dreamscape Services.</p>'}
-            </div>`;
-        }
-    };
-    handlers.cardspace = {
-        async add() {
-            const name = callGlobal('prompt', 'Card name:', 'Personal Card');
-            if (!name || !R()) return;
-            await R().set('HKCU\\Software\\Xyridian\\CardSpace', { Cards: reg('HKCU\\Software\\Xyridian\\CardSpace', 'Cards', []).concat([String(name).slice(0, 60)]) });
-            rerender();
-        },
-        backup() { msg('Your cards are kept in Melaton\'s registry on the Dreamscape server, which backs them up.', 'Melaton CardSpace'); },
-        restore() { msg('Your cards are kept in Melaton\'s registry on the Dreamscape server, which backs them up.', 'Melaton CardSpace'); },
-        async delete() {
-            if (R()) await R().set('HKCU\\Software\\Xyridian\\CardSpace', { Cards: null });
-            rerender();
-        }
     };
 
     function register() {

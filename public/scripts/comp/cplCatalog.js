@@ -226,8 +226,10 @@
                 { item: 'parental-controls', links: [
                     { t: 'Set up parental controls for any user', s: true, a: 'item:parental-controls' },
                     { t: 'View activity reports', s: true, a: 'item:parental-controls' }] },
-                { item: 'cardspace', links: [
-                    { t: 'Manage Information Cards that are used to log on to online services', a: 'item:cardspace' }] }
+                // Vista's Windows CardSpace: Melaton's is Dreamscape CardSpace, the accounts and keys
+                // Dreamscape logs on with (cplAuthentication.js)
+                { item: 'authentication', links: [
+                    { t: 'Manage the accounts and keys that are used to log on to Dreamscape services', a: 'item:authentication' }] }
             ] },
         { id: 'appearance', name: 'Appearance and Personalization', art: 'appearance-and-personalization',
             home: [
@@ -301,8 +303,7 @@
             // items without a Vista home live here instead
             items: [
                 { item: 'mail', links: [] },
-                { item: 'runes', links: [] },
-                { item: 'authentication', links: [] }
+                { item: 'runes', links: [] }
             ] }
     ];
 
@@ -353,7 +354,6 @@
         { id: 'text-to-speech', name: 'Text to Speech', art: 'text-to-speech', cats: ['hardware'], tip: 'Change text-to-speech settings.', open: 'dialog:text-to-speech' },
         { id: 'user-accounts', name: 'User Accounts', art: 'user-accounts', cats: ['users'], tip: 'Change user account settings and passwords for people who share this computer.' },
         { id: 'welcome-center', name: 'Welcome Center', art: 'welcome-center', cats: ['system'], tip: 'Learn about Melaton features and start using them.', open: 'call:openWelcomeCenter' },
-        { id: 'cardspace', name: 'Melaton CardSpace', art: 'cardspace', cats: ['users'], tip: 'Manage Information Cards that are used to log on to online services.', open: 'page:cardspace' },
         { id: 'windows-defender', name: 'Melaton Defender', art: 'defender', cats: ['programs', 'security'], tip: 'Scan for spyware and other potentially unwanted software.' },
         { id: 'firewall', name: 'Melaton Firewall', art: 'firewall', cats: ['network', 'security'], tip: 'Use a firewall to help prevent hackers or malicious software from gaining access to your computer.', open: 'page:firewall' },
         { id: 'sidebar-properties', name: 'Melaton Sidebar Properties', art: 'sidebar-properties', cats: ['appearance', 'programs'], tip: 'Configure Melaton Sidebar settings.', open: 'dialog:sidebar-properties' },
@@ -368,7 +368,7 @@
         { id: 'runes', cats: ['system', 'additional'] },
         // Management Tools (the Dreamscape service pages) is listed in Administrative Tools
         { id: 'dreamscape-services', cats: ['system', 'additional'], hidden: true },
-        { id: 'authentication', cats: ['users', 'additional'] },
+        { id: 'authentication', cats: ['users'] },
         // Window Color and Appearance is Personalization's page in Vista, not an icon of its own
         { id: 'appearance', cats: ['appearance'], hidden: true }
     ];

@@ -11,7 +11,7 @@
  *   Scan              runs the check again (blocked clients and honeypot hits)
  *   History           Security Center's telemetry
  *   Tools             Tools and Settings: Quarantined items (blocked clients), Allowed items (the
- *                     authorised / approved IPs), Honeypot traps; Settings: Dreamscape Services, User Accounts
+ *                     authorised / approved IPs), Honeypot traps; Settings: Dreamscape CardSpace, User Accounts
  *
  * The list pages run Security Center's own driver (securityCenterDsapApplet.js
  * securityDsapDriver) on the applet markup with that view showing, so searching, paging,
@@ -225,7 +225,7 @@
                 <h1>Tools and Settings</h1>
                 <div class="defender-group"><span>Settings</span></div>
                 <div class="defender-items">
-                    ${toolItem('authentication', 'cardspace-48.png', 'Dreamscape Services', 'The accounts and keys Dreamscape signs in with, and the keys programs use to reach it')}
+                    ${toolItem('authentication', 'cardspace-48.png', 'Dreamscape CardSpace', 'The accounts and keys Dreamscape signs in with, and the keys programs use to reach it')}
                     ${toolItem('user-accounts', 'users-48.png', 'User Accounts', 'Change the Administrator and Guest passwords and pictures, and turn the guest account on or off')}
                 </div>
                 <div class="defender-group"><span>Tools</span></div>

@@ -516,7 +516,7 @@
         return { key: 'runpod', service: 'runpod', dot: worst(levels), name: 'RunPod', value: '', lines, side };
     }
 
-    // Custom Director engines (Dreamscape Services > Custom Model Providers). Every one shows its
+    // Custom Director engines (Dreamscape CardSpace > Custom Model Providers). Every one shows its
     // API status in the right-hand column, usage or not; a balance column comes first where the
     // host has one (TokenRouter with a management key, OpenRouter credits).
     function customApiSide(api) {

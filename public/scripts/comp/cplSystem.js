@@ -441,7 +441,7 @@
                     <h3 class="cpl-task-heading">See also</h3>
                     <ul class="cpl-task-list">
                         ${plainLink('Melaton Update', 'nav', 'update')}
-                        ${plainLink('Dreamscape Services', 'nav', 'authentication')}
+                        ${plainLink('Dreamscape CardSpace', 'nav', 'authentication')}
                         ${plainLink('Network and Server Center', 'nav', 'network')}
                     </ul>
                 </div>`,

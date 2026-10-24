@@ -1,5 +1,5 @@
 /**
- * Control Panel's Dreamscape Services page (Yukimi 2026-10-13), laid out like Credential Manager's
+ * Control Panel's Dreamscape CardSpace page (Yukimi 2026-10-13), laid out like Credential Manager's
  * vault: sections with a header strip (icon, title, "Add …" link on the right), each credential
  * a row (name, a status mark beside the name, a summary, a chevron) that opens into its details and actions.
  *
@@ -576,7 +576,7 @@
                 };
                 img.onerror = () => {
                     URL.revokeObjectURL(url);
-                    if (typeof showGlassToast === 'function') showGlassToast('error', 'Dreamscape Services', 'That file is not a picture');
+                    if (typeof showGlassToast === 'function') showGlassToast('error', 'Dreamscape CardSpace', 'That file is not a picture');
                 };
                 img.src = url;
             });
@@ -634,7 +634,7 @@
                     paintCustomProviders();
                 } catch (err) {
                     save.disabled = false;
-                    if (typeof showGlassToast === 'function') showGlassToast('error', 'Dreamscape Services', err.message || 'Could not save the provider');
+                    if (typeof showGlassToast === 'function') showGlassToast('error', 'Dreamscape CardSpace', err.message || 'Could not save the provider');
                 }
             });
             actions.appendChild(save);
@@ -748,13 +748,13 @@
         registered = true;
         cpl.registerItem({
             id: 'authentication',
-            name: 'Dreamscape Services',
+            name: 'Dreamscape CardSpace',
             image: '/static_images/vista-cpl/cardspace-32.png',
             description: 'The accounts and keys Dreamscape signs in with, and the keys programs use to reach it.',
             open: () => cpl.open('authentication')
         });
         cpl.registerPage('authentication', {
-            title: () => 'Dreamscape Services',
+            title: () => 'Dreamscape CardSpace',
             tasks: () => `
                 <div class="cpl-task-group">
                     <h3 class="cpl-task-heading">Tasks</h3>
@@ -773,7 +773,7 @@
             body: () => `
                 <div class="cpl-auth-page">
                     <h1 class="cpl-page-title">Store credentials for Dreamscape</h1>
-                    <p class="cpl-intro">Use Dreamscape Services to keep the accounts and keys Dreamscape signs in with, and the keys programs use to reach it.</p>
+                    <p class="cpl-intro">Use Dreamscape CardSpace to keep the accounts and keys Dreamscape signs in with, and the keys programs use to reach it.</p>
                     <div class="cpl-auth-host"></div>
                 </div>`,
             mount: (main) => {

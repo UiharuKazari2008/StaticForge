@@ -168,9 +168,89 @@
     margin-left: auto;
 }
 
-#melatonControlPanelModal .cpl-pf-foot {
-    margin-top: 12px;
-    color: #444;
+/* Programs and Features as the VM draws it (1000 x 700): the title 33 px in, the light command bar
+   from 88 px down across the pane, the list view under it to the pane's edges (rows of 19, its
+   column lines and the sorted column's white running to the bottom) */
+#melatonControlPanelModal .cpl-vpage.cpl-pf {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    box-sizing: border-box;
+    padding: 0;
+}
+
+#melatonControlPanelModal .cpl-pf-head {
+    flex: none;
+    height: 88px;
+    box-sizing: border-box;
+    padding: 19px 40px 0 33px;
+}
+
+#melatonControlPanelModal .cpl-pf-head .cpl-vtext {
+    margin-top: 17px;
+}
+
+#melatonControlPanelModal .cpl-pf .cpl-pf-bar {
+    flex: none;
+    align-items: center;
+    height: 31px;
+    margin: 0;
+    padding: 0 0 1px 4px;
+    background: url('/static_images/vista-cpl/pf-band.png') left top / 1px 31px repeat-x;
+    box-shadow: inset 1px 0 #e8ecf6, inset -1px 0 #e8ecf6;
+}
+
+#melatonControlPanelModal .cpl-pf .cpl-pf-cmd {
+    height: 22px;
+    padding: 0 5px 0 5px;
+    color: #000;
+}
+
+#melatonControlPanelModal .cpl-pf .cpl-pf-cmd > img:first-child {
+    width: 16px;
+    height: 16px;
+    margin-right: 6px;
+}
+
+#melatonControlPanelModal .cpl-pf .cpl-pf-cmd > img.cpl-pf-drop {
+    width: 12px;
+    height: 9px;
+    margin: 0 0 0 6px;
+}
+
+#melatonControlPanelModal .cpl-pf .cpl-pf-help {
+    margin-left: auto;
+    margin-right: 6px;
+    padding: 0 1px;
+}
+
+#melatonControlPanelModal .cpl-pf .cpl-pf-help > img:first-child {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+}
+
+#melatonControlPanelModal .cpl-pf-list {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    background-repeat: no-repeat;
+}
+
+#melatonControlPanelModal .cpl-pf-list .cpl-frow {
+    height: 19px;
+    margin: 0;
+    border-radius: 0;
+}
+
+#melatonControlPanelModal .cpl-pf-list .cpl-frow img {
+    margin-right: 3px;
+}
+
+#melatonControlPanelModal .cpl-pf-list .cpl-frow > span.is-num {
+    text-align: right;
 }
 
 #melatonControlPanelModal .cpl-feat-list,

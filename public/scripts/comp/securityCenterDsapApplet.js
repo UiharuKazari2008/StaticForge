@@ -15,7 +15,7 @@ const SECURITY_DSAP_TAB_LABELS = {
     home: 'Home',
     blocked: 'Blocked Clients',
     honeypot: 'Honeypot',
-    auth: 'Dreamscape Services',
+    auth: 'Dreamscape CardSpace',
     telemetry: 'Telemetry'
 };
 
