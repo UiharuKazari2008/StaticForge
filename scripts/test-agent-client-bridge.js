@@ -379,7 +379,7 @@ _test.shareCodes.delete('LIVEONE');
 assert.strictEqual(_test.UPDATE_COMMAND_TIMEOUT_MS, 20000);
 assert.strictEqual(_test.PREPARE_UPDATE_TIMEOUT_MS, 120000);
 assert.strictEqual(_test.REATTACH_TIMEOUT_MS, 120000);
-assert.strictEqual(_test.TESTING_OFFER_TIMEOUT_MS, 15000);
+assert.strictEqual(_test.CLIENT_COMMAND_DEFAULT_TIMEOUT_MS, 15000);
 assert.strictEqual(_test.normalizeClientIP('::ffff:127.0.0.1'), '127.0.0.1');
 assert.strictEqual(_test.isLoopbackClientIP('127.0.0.1'), true);
 assert.strictEqual(_test.isLoopbackClientIP('::1'), true);
@@ -509,11 +509,10 @@ assert.strictEqual(_test.bindSessions.get('appkey:key-a').clientId, 'tab-a');
 assert.strictEqual(_test.bindSessions.get('appkey:key-b').clientId, 'tab-b');
 _test.bindSessions.clear();
 
-assert.strictEqual(_test.TESTING_OFFER_SETTLE_MS, 800);
-assert.strictEqual(typeof _test.testingOfferExpireTimer.hasRef, 'function');
-assert.strictEqual(_test.testingOfferExpireTimer.hasRef(), false);
+assert.strictEqual(_test.CLIENT_SETTLE_MS, 800);
 
-function testingOfferResources(rows) {
+// Client settle after connects / disconnects (no testing-offer dialog since Oct 24 2026)
+function settleResources(rows, sent) {
     const clients = new Map();
     rows.forEach((row) => {
         clients.set({ readyState: 1 }, {
@@ -528,19 +527,19 @@ function testingOfferResources(rows) {
     return {
         getWebSocketServer: () => ({
             clients,
-            sendToClient() {}
+            sendToClient(ws, packet) { if (sent) sent.push(packet); }
         })
     };
 }
 
-function resetTestingOfferState() {
+function resetSettleState() {
     _test.bindSessions.clear();
-    _test.testingOfferState.clear();
     _test.preferredTestingClientId = null;
 }
 
-resetTestingOfferState();
-const reconnectOldGone = testingOfferResources([
+// a reloaded primary tab: its bind moves to the reconnected tab
+resetSettleState();
+const reconnectOldGone = settleResources([
     { clientId: 'tab-new-aaaa', connectedAt: new Date() }
 ]);
 _test.bindSessions.set('appkey:cursor', {
@@ -550,49 +549,34 @@ _test.bindSessions.set('appkey:cursor', {
     actorName: 'Grok'
 });
 _test.preferredTestingClientId = 'tab-old-bbbb';
-_test.sweepTestingOffersAfterSettle(reconnectOldGone);
+_test.settleClientsAfterChange(reconnectOldGone);
 assert.strictEqual(_test.bindSessions.get('appkey:cursor').clientId, 'tab-new-aaaa');
 assert.strictEqual(_test.preferredTestingClientId, 'tab-new-aaaa');
-assert.strictEqual(
-    (_test.testingOfferState.get('appkey:cursor') && _test.testingOfferState.get('appkey:cursor').offered.has('tab-new-aaaa')) || false,
-    false
-);
 
-resetTestingOfferState();
-const twoLiveTabs = testingOfferResources([
+// a second live tab keeps the primary and is never sent anything
+resetSettleState();
+const sentToTabs = [];
+const twoLiveTabs = settleResources([
     { clientId: 'primary-aaaa', connectedAt: new Date(Date.now() - 20000) },
     { clientId: 'second-bbbb', connectedAt: new Date(Date.now() - 15000) }
-]);
+], sentToTabs);
 _test.bindSessions.set('appkey:cursor', {
     clientId: 'primary-aaaa',
     lastInteractionAt: Date.now(),
     boundAt: Date.now()
 });
 _test.preferredTestingClientId = 'primary-aaaa';
-_test.sweepTestingOffersAfterSettle(twoLiveTabs);
+_test.settleClientsAfterChange(twoLiveTabs);
 assert.strictEqual(_test.bindSessions.get('appkey:cursor').clientId, 'primary-aaaa');
-assert.ok(_test.testingOfferState.get('appkey:cursor').offered.has('second-bbbb'));
+assert.deepStrictEqual(sentToTabs, [], 'no offer or dismiss commands to other tabs');
 
-resetTestingOfferState();
-const freshSecond = testingOfferResources([
-    { clientId: 'primary-cccc', connectedAt: new Date(Date.now() - 20000) },
-    { clientId: 'fresh-ddddd', connectedAt: new Date() }
-]);
-_test.bindSessions.set('appkey:cursor', {
-    clientId: 'primary-cccc',
-    lastInteractionAt: Date.now(),
-    boundAt: Date.now()
-});
-_test.maybeOfferTestingClients(freshSecond, {
-    bindKey: 'appkey:cursor',
-    primaryClientId: 'primary-cccc'
-});
-assert.strictEqual(
-    (_test.testingOfferState.get('appkey:cursor') && _test.testingOfferState.get('appkey:cursor').offered.has('fresh-ddddd')) || false,
-    false
-);
+// no binds: the incumbent stays preferred
+resetSettleState();
+_test.settleClientsAfterChange(twoLiveTabs);
+assert.ok(['primary-aaaa', 'second-bbbb'].includes(_test.preferredTestingClientId), 'an incumbent is picked');
+assert.deepStrictEqual(sentToTabs, []);
 
-resetTestingOfferState();
+resetSettleState();
 
 assert.strictEqual(_test.isAgentClientId('aabbccddeeff'), true);
 assert.strictEqual(_test.isAgentClientId('nope'), false);

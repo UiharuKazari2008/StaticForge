@@ -102,7 +102,7 @@ Each `tools/call` also pushes `mcp_activity` (tool, summarized args/result, opti
 
 The bind is stored on **this application key**, not the whole server. `get_studio_state` (and apply / physics) auto-bind when exactly one Studio tab is connected. That bind stays until the user Disconnects from the Remote Access tray or 15 minutes pass with no studio commands.
 
-Several tabs: nearest (same IP / loopback, then most recently used) auto-binds as primary. Other tabs get "Do you want to use this client for development testing?" — no response (15s) keeps the primary and dismisses the others; Yes makes that tab the new primary. Same-tab WebSocket reconnect does not re-show that dialog. `needsClientChoice` / `bind_session` only if nearest cannot be picked. `list_clients` is also a core tool. Server-side `generate_image` does not need a bind.
+Several tabs: nearest (same IP / loopback, then most recently used) auto-binds as primary. A tab marked as the development client in Settings (priority client) always wins; other tabs are never asked. Same-tab WebSocket reconnect keeps the bind. `needsClientChoice` / `bind_session` only if nearest cannot be picked. `list_clients` is also a core tool. Server-side `generate_image` does not need a bind.
 
 `get_client_physics` pre-resolves dynagen context (same `resolved` object as get-state, plus flat `location` / `tod` / `time` / `date` / `weather` / `season`). It works without a bind. Optional `tod` / `weather` / `season` / `location` or `dynamicGeneration` override the snapshot. A bound tab still lights the location-arrow physics icon and the Remote Access tray (Your location was accessed by "Grok").
 

@@ -797,7 +797,8 @@ assert.ok(!_test.MCP_INSTRUCTIONS.includes('notify-service-worker'));
 assert.strictEqual(_test.rateGroupForTool('get_client_physics'), 'studio');
 assert.ok(_test.MCP_INSTRUCTIONS.includes('needsClientChoice'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('nearest'));
-assert.ok(_test.MCP_INSTRUCTIONS.includes('development testing'));
+assert.ok(!_test.MCP_INSTRUCTIONS.includes('development testing'), 'no testing-offer dialog to describe');
+assert.ok(_test.MCP_INSTRUCTIONS.includes('development client in Settings'));
 assert.ok(_test.MCP_INSTRUCTIONS.includes('get_client_physics'));
 
 const hiddenPreset = _test.listAdvancedToolDefs(['presets', 'generation'], 'preset');

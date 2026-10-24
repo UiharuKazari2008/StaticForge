@@ -20,8 +20,10 @@ const COMMAND_TIMEOUT_MS = 12000;
 const UPDATE_COMMAND_TIMEOUT_MS = 20000;
 const PREPARE_UPDATE_TIMEOUT_MS = 120000;
 const REATTACH_TIMEOUT_MS = 120000;
-const TESTING_OFFER_TIMEOUT_MS = 15000;
-const TESTING_OFFER_SETTLE_MS = 800;
+// sendClientCommand's default reply wait
+const CLIENT_COMMAND_DEFAULT_TIMEOUT_MS = 15000;
+// connect / disconnect bursts settle this long before binds are re-adopted
+const CLIENT_SETTLE_MS = 800;
 const BIND_IDLE_MS = 15 * 60 * 1000;
 
 const shareCodes = new Map(); // code -> { clientId, expiresAt }
@@ -29,34 +31,19 @@ const pendingResults = new Map(); // requestId -> { resolve, reject, timer, clie
 const bindSessions = new Map(); // bindKey -> { clientId, lastInteractionAt, boundAt, actorName }
 const pendingReattach = new Map(); // bindKey -> { sessionId, actorName, previousClientId, previousConnectedAt, startedAt }
 const pendingRestarts = new Map(); // restartId -> { bindKey, startedAt }
-const testingOfferState = new Map(); // bindKey -> { offered: Set, declined: Set, timestamp: Date }
-let lastSweepTimer = null;
-function startTestingOfferSweep() {
-    if (lastSweepTimer) clearInterval(lastSweepTimer);
-    lastSweepTimer = setInterval(() => {
-        const now = Date.now();
-        for (const [key, state] of testingOfferState.entries()) {
-            if (now - (state.timestamp || 0) > 60 * 60 * 1000) {
-                testingOfferState.delete(key);
-            }
-        }
-    }, 30 * 60 * 1000);
-    if (typeof lastSweepTimer.unref === 'function') lastSweepTimer.unref();
-}
-startTestingOfferSweep();
 let preferredTestingClientId = null;
 
 // Priority client (Yukimi, 2026-10-12): "use this client, do not touch any other clients".
 // A tab registers itself (Run: agent, Remote Access: Priority Client; agent_priority_client
 // over the socket, re-sent after every reconnect). While it is registered, agent REST and
-// non-Director MCP calls only ever bind to it, other tabs get no testing offers, and a
+// non-Director MCP calls only ever bind to it, and a
 // reloading priority tab keeps the claim for PRIORITY_CLIENT_GRACE_MS, so calls wait instead
 // of falling back to the tab Yukimi is typing in. Director's own tab binds are exempt.
 const PRIORITY_CLIENT_GRACE_MS = 10 * 60 * 1000;
 const priorityClient = { clientId: null, since: 0, lastSeen: 0 };
 // Director's own keys (cursorDirector PROJECT_NAME, xiDirector 'Xi', Wren on the Director key)
 const PRIORITY_EXEMPT_ACTORS = new Set(['Dreamscape Director', 'Xi', 'Wren']);
-let testingOfferSweepTimer = null;
+let clientSettleTimer = null;
 const mcpStudioCheckpoints = new Map(); // bindKey -> { id, focusedFilename, qualitySettings }
 let lastBindResources = null;
 
@@ -1230,13 +1217,6 @@ function setPriorityClient(globalResources, clientId, enabled) {
             bindSessions.delete(bindKey);
         }
     }
-    if (wsServer && wsServer.clients) {
-        for (const [ws, info] of wsServer.clients) {
-            if (ws.readyState !== WebSocket.OPEN) continue;
-            const other = ensureClientId(info);
-            if (other !== id) dismissTestingOffer(globalResources, other);
-        }
-    }
     return getPriorityClientState(globalResources);
 }
 
@@ -1262,7 +1242,7 @@ function handleAgentPriorityClient(handlersCtx, ws, message, clientInfo) {
 }
 
 function sendClientCommand(globalResources, clientId, command, payload, timeoutMs) {
-    if (timeoutMs == null) timeoutMs = TESTING_OFFER_TIMEOUT_MS;
+    if (timeoutMs == null) timeoutMs = CLIENT_COMMAND_DEFAULT_TIMEOUT_MS;
     const wsServer = getWsServer(globalResources);
     const found = findClientById(wsServer, clientId);
     if (!found) {
@@ -1297,28 +1277,6 @@ function sendClientCommand(globalResources, clientId, command, payload, timeoutM
     });
 }
 
-function dismissTestingOffer(globalResources, clientId) {
-    const wsServer = getWsServer(globalResources);
-    const found = findClientById(wsServer, clientId);
-    if (!found) return;
-    wsServer.sendToClient(found.ws, {
-        type: 'agent_session_command',
-        requestId: crypto.randomUUID(),
-        data: { command: 'client_dismiss_testing_offer' },
-        timestamp: new Date().toISOString()
-    });
-}
-
-function getTestingOfferState(bindKey) {
-    const key = String(bindKey || '').trim() || 'preferred:testing';
-    let state = testingOfferState.get(key);
-    if (!state) {
-        state = { offered: new Set(), declined: new Set(), timestamp: Date.now() };
-        testingOfferState.set(key, state);
-    }
-    return state;
-}
-
 function claimTestingClient(globalResources, clientId, actorName) {
     if (priorityBlocksClient(globalResources, clientId, false)) {
         return { ok: false, clientId, primary: false, reason: 'priority_client' };
@@ -1331,62 +1289,7 @@ function claimTestingClient(globalResources, clientId, actorName) {
             actorName: actorName || (session && session.actorName) || null
         });
     }
-    for (const bindKey of [...testingOfferState.keys()]) {
-        dismissOtherTestingOffers(globalResources, bindKey, clientId);
-    }
     return { ok: true, clientId, primary: true };
-}
-
-function dismissOtherTestingOffers(globalResources, bindKey, exceptClientId) {
-    const state = getTestingOfferState(bindKey);
-    const wsServer = getWsServer(globalResources);
-    if (!wsServer || !wsServer.clients) return;
-    for (const [ws, info] of wsServer.clients) {
-        if (ws.readyState !== WebSocket.OPEN) continue;
-        const id = ensureClientId(info);
-        if (id === exceptClientId) continue;
-        if (!state.offered.has(id)) continue;
-        dismissTestingOffer(globalResources, id);
-        state.declined.add(id);
-    }
-}
-
-async function watchTestingOffer(globalResources, { bindKey, clientId, actorName }) {
-    const state = getTestingOfferState(bindKey);
-    try {
-        const data = await sendClientCommand(
-            globalResources,
-            clientId,
-            'client_offer_testing',
-            {
-                actorName: actorName || null,
-                timeoutMs: TESTING_OFFER_TIMEOUT_MS
-            },
-            TESTING_OFFER_TIMEOUT_MS + 2000
-        );
-        if (data && data.accepted === true) {
-            claimTestingClient(globalResources, clientId, actorName);
-            return;
-        }
-        state.declined.add(clientId);
-    } catch (_err) {
-        state.declined.add(clientId);
-        dismissTestingOffer(globalResources, clientId);
-    }
-}
-
-function transferTestingOfferIds(fromId, toId) {
-    if (!fromId || !toId || fromId === toId) return;
-    for (const state of testingOfferState.values()) {
-        if (state.offered.has(fromId)) {
-            state.offered.delete(fromId);
-            state.offered.add(toId);
-        }
-        if (state.declined.has(fromId)) {
-            state.declined.delete(fromId);
-            state.declined.add(toId);
-        }
-    }
 }
 
 function pickSuccessorForDeadClient(globalResources, deadId) {
@@ -1429,7 +1332,6 @@ function adoptDeadPrimary(globalResources) {
     for (const deadId of collectDeadPrimaryIds(globalResources)) {
         const successorId = pickSuccessorForDeadClient(globalResources, deadId);
         if (!successorId) continue;
-        transferTestingOfferIds(deadId, successorId);
         if (preferredTestingClientId === deadId) {
             preferredTestingClientId = successorId;
         }
@@ -1442,46 +1344,6 @@ function adoptDeadPrimary(globalResources) {
                 actorName: session.actorName
             });
         }
-    }
-}
-
-function clientConnectedIsFresh(info) {
-    const connectedAt = info && info.connectedAt ? new Date(info.connectedAt).getTime() : 0;
-    if (!connectedAt) return false;
-    return (Date.now() - connectedAt) < TESTING_OFFER_SETTLE_MS;
-}
-
-function maybeOfferTestingClients(globalResources, opts) {
-    if (getPriorityClientState(globalResources).active) return;
-    adoptDeadPrimary(globalResources);
-    const bindKey = (opts && opts.bindKey) || 'preferred:testing';
-    const actorName = opts && opts.actorName;
-    const onlyClientId = opts && opts.onlyClientId;
-    let primaryClientId = opts && opts.primaryClientId;
-    if (bindKey && bindSessions.has(bindKey)) {
-        primaryClientId = bindSessions.get(bindKey).clientId;
-    } else if (preferredTestingClientId) {
-        primaryClientId = preferredTestingClientId;
-    }
-    if (!primaryClientId) return;
-    const wsServer = getWsServer(globalResources);
-    if (!wsServer || !wsServer.clients) return;
-    if (!findClientById(wsServer, primaryClientId)) return;
-    const state = getTestingOfferState(bindKey);
-    for (const [ws, info] of wsServer.clients) {
-        if (ws.readyState !== WebSocket.OPEN) continue;
-        if (!info || !info.authenticated) continue;
-        const clientId = ensureClientId(info);
-        if (clientId === primaryClientId) continue;
-        if (onlyClientId && clientId !== onlyClientId) continue;
-        if (clientConnectedIsFresh(info)) continue;
-        if (state.offered.has(clientId) || state.declined.has(clientId)) continue;
-        state.offered.add(clientId);
-        void watchTestingOffer(globalResources, {
-            bindKey,
-            clientId,
-            actorName
-        });
     }
 }
 
@@ -1524,11 +1386,6 @@ function autoBindNearest(globalResources, bindKey, actorName, requestIP) {
     }
     if (key && getBoundRecord(globalResources, key)) {
         const clientId = getBoundClientId(key);
-        void maybeOfferTestingClients(globalResources, {
-            bindKey: key,
-            primaryClientId: clientId,
-            actorName: actorName || boundActorName(key)
-        });
         return { bound: true, auto: false, clientId, bindKey: key, clients };
     }
     if (!clients.length) {
@@ -1566,11 +1423,6 @@ function autoBindNearest(globalResources, bindKey, actorName, requestIP) {
         });
     }
     preferredTestingClientId = targetId;
-    void maybeOfferTestingClients(globalResources, {
-        bindKey: key || 'preferred:testing',
-        primaryClientId: targetId,
-        actorName
-    });
     return {
         bound: !!key,
         auto: true,
@@ -1581,58 +1433,36 @@ function autoBindNearest(globalResources, bindKey, actorName, requestIP) {
     };
 }
 
-function sweepTestingOffersAfterSettle(globalResources) {
+/**
+ * After a connect / disconnect burst: a reloaded primary tab's binds move to its successor
+ * (adoptDeadPrimary), and with no binds the incumbent (preferred, else nearest) stays the
+ * client agents use. Other tabs are never asked anything: a tab is made the development client
+ * with Settings' priority client toggle (setPriorityClient), or by bind_session.
+ */
+function settleClientsAfterChange(globalResources) {
     lastBindResources = globalResources;
     adoptDeadPrimary(globalResources);
     const wsServer = getWsServer(globalResources);
     if (!wsServer || !wsServer.clients) return;
-
-    let offeredViaBind = false;
-    for (const [bindKey, session] of bindSessions) {
-        if (!session || !findClientById(wsServer, session.clientId)) continue;
-        void maybeOfferTestingClients(globalResources, {
-            bindKey,
-            primaryClientId: session.clientId,
-            actorName: session.actorName
-        });
-        offeredViaBind = true;
+    for (const session of bindSessions.values()) {
+        if (session && findClientById(wsServer, session.clientId)) return;
     }
-    if (offeredViaBind) return;
-
-    const live = [];
-    for (const [ws, info] of wsServer.clients) {
-        if (ws.readyState !== WebSocket.OPEN) continue;
-        if (!info || !info.authenticated) continue;
-        live.push(ensureClientId(info));
-    }
-    if (live.length < 2) return;
-
-    let incumbentId = preferredTestingClientId && findClientById(wsServer, preferredTestingClientId)
-        ? preferredTestingClientId
-        : null;
-    if (!incumbentId) {
-        const incumbent = pickNearestClient(globalResources, null);
-        incumbentId = incumbent && incumbent.clientId;
-    }
-    if (!incumbentId) return;
-    preferredTestingClientId = incumbentId;
-    void maybeOfferTestingClients(globalResources, {
-        bindKey: 'preferred:testing',
-        primaryClientId: incumbentId
-    });
+    if (preferredTestingClientId && findClientById(wsServer, preferredTestingClientId)) return;
+    const incumbent = pickNearestClient(globalResources, null);
+    if (incumbent && incumbent.clientId) preferredTestingClientId = incumbent.clientId;
 }
 
-function scheduleTestingOfferSweep(globalResources) {
+function scheduleClientSettle(globalResources) {
     lastBindResources = globalResources;
-    if (testingOfferSweepTimer) {
-        clearTimeout(testingOfferSweepTimer);
+    if (clientSettleTimer) {
+        clearTimeout(clientSettleTimer);
     }
-    testingOfferSweepTimer = setTimeout(() => {
-        testingOfferSweepTimer = null;
-        sweepTestingOffersAfterSettle(globalResources);
-    }, TESTING_OFFER_SETTLE_MS);
-    if (testingOfferSweepTimer && typeof testingOfferSweepTimer.unref === 'function') {
-        testingOfferSweepTimer.unref();
+    clientSettleTimer = setTimeout(() => {
+        clientSettleTimer = null;
+        settleClientsAfterChange(globalResources);
+    }, CLIENT_SETTLE_MS);
+    if (clientSettleTimer && typeof clientSettleTimer.unref === 'function') {
+        clientSettleTimer.unref();
     }
 }
 
@@ -1640,14 +1470,14 @@ function onAgentClientConnected(globalResources, clientId) {
     lastBindResources = globalResources;
     const id = clientId ? String(clientId).trim() : '';
     if (!id) return;
-    scheduleTestingOfferSweep(globalResources);
+    scheduleClientSettle(globalResources);
 }
 
 function onAgentClientDisconnected(globalResources, clientId) {
     lastBindResources = globalResources;
     // Keep preferredTestingClientId so a reconnecting tab inherits the bind
     // instead of looking like a new claimant.
-    scheduleTestingOfferSweep(globalResources);
+    scheduleClientSettle(globalResources);
 }
 
 function sleepMs(ms) {
@@ -2519,7 +2349,6 @@ module.exports = {
     resumeAgentClientId,
     isAgentClientId,
     pickNearestClient,
-    maybeOfferTestingClients,
     claimTestingClient,
     prepareBoundClientUpdate,
     restartBoundClient,
@@ -2587,19 +2416,14 @@ module.exports = {
         UPDATE_COMMAND_TIMEOUT_MS,
         PREPARE_UPDATE_TIMEOUT_MS,
         REATTACH_TIMEOUT_MS,
-        TESTING_OFFER_TIMEOUT_MS,
-        TESTING_OFFER_SETTLE_MS,
-        get testingOfferExpireTimer() {
-            return lastSweepTimer;
-        },
+        CLIENT_COMMAND_DEFAULT_TIMEOUT_MS,
+        CLIENT_SETTLE_MS,
         pendingRestarts,
         isAgentClientId,
         parseAgentClientIdQuery,
         resumeAgentClientId,
-        testingOfferState,
         adoptDeadPrimary,
-        sweepTestingOffersAfterSettle,
-        maybeOfferTestingClients,
+        settleClientsAfterChange,
         onAgentClientConnected,
         onAgentClientDisconnected,
         get preferredTestingClientId() {

@@ -32,9 +32,9 @@ runTest('tag-lookup sweep', () => {
 });
 
 // 4. Check agentClientBridge
-runTest('agentClientBridge testingOffer sweep', () => {
+runTest('agentClientBridge keeps no testing-offer state', () => {
     const content = fs.readFileSync(path.join(__dirname, '../modules/agentClientBridge.js'), 'utf8');
-    assert.ok(content.includes('testingOfferState.delete(key)'), 'missing testingOfferState sweep delete');
+    assert.ok(!content.includes('testingOfferState'), 'the testing-offer map is gone (no dialog since Oct 24 2026)');
 });
 
 // 5. Check toolBodies and cancelledGeneration
