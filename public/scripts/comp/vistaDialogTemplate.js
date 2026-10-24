@@ -120,6 +120,8 @@
             const o = over[id] || {};
             if (o.skip) return;
             const r = rect(u, x, y, w, h);
+            // a program that moves its own control after load: [dx, dy, dw, dh] px from the VM
+            if (o.nudge) { r.left += o.nudge[0]; r.top += o.nudge[1]; r.width += o.nudge[2]; r.height += o.nudge[3]; }
             const visible = (st & WS_VISIBLE) !== 0 && !o.hidden;
             const disabled = o.disabled === false ? false : (st & WS_DISABLED) !== 0 || o.disabled === true;
             const dataId = `data-vdt-id="${id}" data-vdt-index="${index}"`;
@@ -665,5 +667,100 @@
         return state.ctx;
     }
 
-    root.vistaDialogTemplate = { openSheet, openDialog, renderControls, size, units, rect, label };
+    /**
+     * An Aero Wizard (WinCal's Subscribe to a Calendar, measured on the VM): the caption bar with the
+     * close box only, a 37 px glass header under it with the icon and the title (the Back orb in
+     * front of them from the second page on), the white page with its main instruction (12 pt
+     * #003399, 40 px in, 24 px down) over the page's template, and the 40 px footer with Next (or
+     * Finish) and Cancel.
+     *
+     *   pages: [{ key, instruction, next(ctx) -> next page key | false (stay) | Promise, finish }]
+     *   init(ctx), finish(ctx) -> false keeps it open, cancel(ctx); ctx.go(key) shows a page
+     */
+    function openWizard(opts) {
+        if (!doc) return null;
+        const T = root.vistaDialogTemplates || {};
+        const pages = opts.pages.map((p) => ({ ...p, tpl: T[p.key] })).filter((p) => p.tpl);
+        if (!pages.length) {
+            console.error('vistaDialogTemplate: no wizard pages for', opts.id);
+            return null;
+        }
+        const u = units(pages[0].tpl);
+        const pw = Math.max(...pages.map((p) => size(p.tpl).width));
+        const ph = Math.max(...pages.map((p) => size(p.tpl).height));
+        const { modal, content } = makeWindow(opts.id, opts.title, { icon: opts.icon, captionIcon: true, segoe: u.segoe, help: opts.help });
+        modal.classList.add('vdt-wizard');
+        const main = modal.querySelector('.modal-window-title-main');
+        if (main) main.insertAdjacentHTML('afterbegin', '<button type="button" class="vdt-wizard-back" title="Back" hidden></button>');
+        content.classList.add('vdt-wizard-client');
+        content.style.width = `${pw + 57}px`;
+        // the VM's: the page 56 px down, 40 px of footer and room under the page
+        content.style.height = `${ph + 120}px`;
+        content.style.font = u.font;
+        content.innerHTML = pages.map((p) => `<div class="vdt-wizard-page" data-vdt-page="${esc(p.key)}" hidden>
+                <div class="vdt-wizard-instruction">${esc(p.instruction || opts.title || '')}</div>
+                <div class="vdt-wizard-body">${renderControls(p.tpl, `${opts.id}-${p.key.replace(/[^a-z0-9]/gi, '_')}`, { overrides: p.overrides, module: p.key.split(':')[0] })}</div>
+            </div>`).join('') + `<div class="vdt-wizard-footer">
+                <button type="button" class="tbp-ctl tbp-button vdt-wizard-next" data-dialog-primary="1">Next</button>
+                <button type="button" class="tbp-ctl tbp-button vdt-wizard-cancel">Cancel</button>
+            </div>`;
+        const state = { opts, modal, content, dirty: false, done: false, history: [] };
+        state.ctx = makeCtx(state);
+        const back = modal.querySelector('.vdt-wizard-back');
+        const next = content.querySelector('.vdt-wizard-next');
+        const cancelBtn = content.querySelector('.vdt-wizard-cancel');
+        const showPage = (key, push) => {
+            const page = pages.find((p) => p.key === key);
+            if (!page) return;
+            const was = pages.find((p) => p.key === state.current);
+            if (push && state.current && !(was && was.transient)) state.history.push(state.current);
+            state.current = key;
+            content.querySelectorAll('.vdt-wizard-page').forEach((el) => { el.hidden = el.dataset.vdtPage !== key; });
+            if (back) back.hidden = !state.history.length || !!page.noBack;
+            next.textContent = page.finish ? 'Finish' : (page.nextText || 'Next');
+            next.hidden = !!page.noNext;
+            // with Next gone, Cancel is the default button (the VM's error page)
+            // Finish is not drawn as the default on the VM (WinCal 5120)
+            if (next.hidden) { next.removeAttribute('data-dialog-primary'); cancelBtn.dataset.dialogPrimary = '1'; } else { cancelBtn.removeAttribute('data-dialog-primary'); if (page.finish) next.removeAttribute('data-dialog-primary'); else next.dataset.dialogPrimary = '1'; }
+            if (next.hidden) root.requestAnimationFrame(() => { try { cancelBtn.focus(); } catch (_) { /* gone */ } });
+            if (typeof page.show === 'function') page.show(state.ctx);
+            // the page's first edit takes the focus, as on the VM
+            const first = content.querySelector(`[data-vdt-page="${key}"] input:not([type=checkbox]):not([type=radio]):not([disabled]), [data-vdt-page="${key}"] textarea`);
+            if (first) root.requestAnimationFrame(() => { try { first.focus(); if (first.select) first.select(); } catch (_) { /* gone */ } });
+        };
+        state.ctx.go = (key) => showPage(key, true);
+        state.ctx.reset = (key) => { state.history = []; showPage(key, false); };
+        state.cancel = () => {
+            if (typeof opts.cancel === 'function') opts.cancel(state.ctx);
+            finish(state);
+        };
+        next.addEventListener('click', async () => {
+            const page = pages.find((p) => p.key === state.current);
+            if (!page || next.disabled) return;
+            if (page.finish) {
+                let keep = false;
+                try { keep = typeof opts.finish === 'function' && (await opts.finish(state.ctx)) === false; } catch (err) { console.error(`${opts.id}: finish failed`, err); }
+                if (!keep) finish(state);
+                return;
+            }
+            let to = null;
+            try { to = typeof page.next === 'function' ? await page.next(state.ctx) : null; } catch (err) { console.error(`${opts.id}: next failed`, err); }
+            if (to === false || state.done) return;
+            const idx = pages.indexOf(page);
+            showPage(to || (pages[idx + 1] && pages[idx + 1].key), true);
+        });
+        content.querySelector('.vdt-wizard-cancel').addEventListener('click', () => state.cancel());
+        // Enter is Next (or Finish), as on the VM
+        state.ok = () => (next.hidden ? state.cancel() : next.click());
+        if (back) back.addEventListener('click', () => { const k = state.history.pop(); if (k) showPage(k, false); });
+        wireCommon(state);
+        if (typeof opts.init === 'function') {
+            try { opts.init(state.ctx); } catch (err) { console.error(`${opts.id}: init failed`, err); }
+        }
+        showPage(pages[0].key, false);
+        show(modal, opts.owner);
+        return state.ctx;
+    }
+
+    root.vistaDialogTemplate = { openSheet, openDialog, openWizard, renderControls, size, units, rect, label };
 })(typeof window !== 'undefined' ? window : globalThis);

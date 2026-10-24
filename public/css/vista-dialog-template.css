@@ -357,11 +357,8 @@ body.desktop-mode:not(.windows-classic-theme) .vdt-client .vdt-trackbar.vdt-both
     white-space: normal;
 }
 
+/* the VM's SysLinks are underlined at rest, not only on hover (timedate.cpl, wincal 5100) */
 .vdt-client .vdt-syslink .vdt-link {
-    text-decoration: none;
-}
-
-.vdt-client .vdt-syslink .vdt-link:hover {
     text-decoration: underline;
 }
 
@@ -398,4 +395,126 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-clie
     position: absolute;
     margin: 0;
     text-align: center;
+}
+
+/* ---- Aero Wizard (openWizard), measured on the VM (WinCal's Subscribe to a Calendar, 549x429):
+   the caption bar keeps only its close box; a 37 px glass header under it holds the icon 9 px in
+   and the title 35 px after it (the Back orb in front of them from the second page); the client is
+   white with the main instruction 40 px in and 24 px down (12 pt #003399), the page's template 34 px
+   in and 48 px down, and a 40 px #f0f0f0 footer under a #dfdfdf line with Next / Cancel on the right */
+body.desktop-mode .modal.vdt-wizard {
+    --modal-title-chrome-height: 68px;
+    padding-top: 68px !important;
+}
+
+body.desktop-mode .modal.vdt-wizard > .modal-window-title {
+    height: 68px !important;
+    min-height: 68px !important;
+    align-items: flex-start;
+}
+
+body.desktop-mode .modal.vdt-wizard > .modal-window-title > .modal-window-title-main {
+    position: absolute;
+    left: 7px;
+    top: 35px;
+    display: flex;
+    align-items: center;
+    gap: 0;
+}
+
+body.desktop-mode .modal.vdt-wizard > .modal-window-title > .modal-window-title-main > .icon-image {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    margin: -2px 14px 0 5px;
+}
+
+body.desktop-mode .modal.vdt-wizard > .modal-window-title > .modal-window-title-main > span {
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    color: #000;
+}
+
+body.desktop-mode .modal.vdt-wizard .vdt-wizard-back {
+    flex: none;
+    width: 29px;
+    height: 27px;
+    margin: -6px -2px -6px 5px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: url('/static_images/vista-explorer/nav-back.png') no-repeat 0 0;
+    box-shadow: none;
+}
+
+body.desktop-mode .modal.vdt-wizard .vdt-wizard-back[hidden] {
+    display: none;
+}
+
+body.desktop-mode .modal.vdt-wizard .vdt-wizard-back:hover {
+    background-position: 0 -27px;
+}
+
+body.desktop-mode .modal.vdt-wizard .vdt-wizard-back:active {
+    background-position: 0 -54px;
+}
+
+body.desktop-mode .modal.vdt-wizard > .modal-content.vdt-client.vdt-wizard-client {
+    position: relative;
+    background: #fff !important;
+}
+
+.vdt-client .vdt-wizard-page {
+    position: absolute;
+    inset: 0 0 41px 0;
+}
+
+.vdt-client .vdt-wizard-page[hidden] {
+    display: none;
+}
+
+body.desktop-mode .modal.vdt-wizard .vdt-client .vdt-wizard-instruction {
+    position: absolute;
+    left: 38px;
+    top: 19px;
+    color: #003399;
+    font: 12pt/21px "Segoe UI", Tahoma, sans-serif !important;
+    white-space: nowrap;
+}
+
+.vdt-client .vdt-wizard-body {
+    position: absolute;
+    left: 38px;
+    top: 58px;
+    right: 0;
+    bottom: 0;
+}
+
+.vdt-client .vdt-wizard-footer {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 41px;
+    box-sizing: border-box;
+    border-top: 1px solid #dfdfdf;
+    background: #f0f0f0;
+}
+
+.vdt-client .vdt-wizard-footer .tbp-button {
+    position: absolute;
+    top: 9px;
+    width: 66px;
+    height: 21px;
+}
+
+.vdt-client .vdt-wizard-footer .vdt-wizard-next {
+    right: 86px;
+}
+
+.vdt-client .vdt-wizard-footer .vdt-wizard-cancel {
+    right: 11px;
+}
+
+.vdt-client .vdt-wizard-footer .vdt-wizard-next[hidden] {
+    display: none;
 }

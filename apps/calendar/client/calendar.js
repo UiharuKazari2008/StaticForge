@@ -1374,37 +1374,66 @@
 
         // ---- subscriptions -----------------------------------------------------------------
 
+        /**
+         * Share > Subscribe: WinCal's Aero Wizard (dialogs 5100 the address, 5110 the work, 5120 the
+         * name / update interval / reminders / tasks, 5130 the error).
+         */
         subscribeDialog() {
             const V = root.vistaDialogTemplate;
-            if (!V) return;
-            const tpl = { t: 'Subscribe to a Calendar', w: 280, h: 110, f: ['MS Shell Dlg', 8], c: [
-                [-1, 'S', 7, 7, 266, 16, 0x50020000, 'Enter the location of the calendar you want to subscribe to (webcal:// or https://, an .ics file):', 0],
-                [-1, 'S', 7, 30, 80, 8, 0x50020000, '&Calendar to subscribe to:', 0],
-                [101, 'E', 7, 41, 266, 12, 0x50810080, '', 0],
-                [-1, 'S', 7, 60, 60, 8, 0x50020000, '&Update interval:', 0],
-                [102, 'C', 70, 58, 100, 100, 0x50210003, '', 0],
-                [103, 'S', 7, 76, 266, 8, 0x50020000, '', 0],
-                [1, 'B', 169, 90, 50, 14, 0x50010001, 'Subscribe', 0],
-                [2, 'B', 223, 90, 50, 14, 0x50010000, 'Cancel', 0]
-            ] };
-            V.openDialog({
-                id: 'wcalSubscribe', tpl, owner: this.modal,
+            if (!V || !V.openWizard) return;
+            let parsed = null;
+            let url = '';
+            // WinCal strings 5140-5144
+            const intervals = [[0, 'No update'], [15, 'Every 15 minutes'], [60, 'Every hour'], [1440, 'Every day'], [10080, 'Every week']].map(([value, text]) => ({ value: String(value), text }));
+            V.openWizard({
+                id: 'wcalSubscribe', title: 'Subscribe to a Calendar', icon: '/static_images/vista-dlg/wincal-124-16.png', owner: this.modal,
+                pages: [
+                    {
+                        key: 'wincal:5100', instruction: 'Subscribe to a Calendar',
+                        overrides: { 5101: { nudge: [0, 1, 0, 1] } },
+                        next: async (ctx) => {
+                            url = String(ctx.get(5101) || '').trim();
+                            if (!url) return false;
+                            ctx.go('wincal:5110');
+                            const res = await this.fetchFeed(url);
+                            if (res.unreachable) {
+                                ctx.reset('wincal:5100');
+                                const edit = ctx.el(5101, 'wincal:5100');
+                                if (edit) { edit.focus(); edit.select(); }
+                                return false;
+                            }
+                            if (res.error) { ctx.text(5131, res.error); return 'wincal:5130'; }
+                            parsed = parseIcs(res.text);
+                            // the VM names it after the file ("h" for .../h.ics), not X-WR-CALNAME
+                            const file = decodeURIComponent(url.split(/[?#]/)[0].replace(/\/+$/, '').split('/').pop() || '').replace(/\.ics$/i, '');
+                            ctx.set(5121, file || parsed.name || url.replace(/^\w+:\/\//, '').split(/[/?#]/)[0], 'wincal:5120');
+                            return 'wincal:5120';
+                        }
+                    },
+                    // instructions: WinCal strings 10012-10014; Back skips the progress page
+                    { key: 'wincal:5110', instruction: 'Subscribing', noNext: true, transient: true },
+                    {
+                        key: 'wincal:5120', instruction: 'Calendar subscription settings', finish: true, noBack: true,
+                        // the VM draws the page's edit, combo and checks 1 px lower than the template maps
+                        overrides: { 5121: { nudge: [0, 1, 0, 1] }, 5122: { nudge: [0, 1, 0, 0] }, 5123: { nudge: [0, 1, 0, 0] }, 5124: { nudge: [0, 1, 0, 0] } }
+                    },
+                    { key: 'wincal:5130', instruction: 'Error subscribing to calendar', noNext: true, overrides: { 5131: { nudge: [0, 1, 0, 0] } } }
+                ],
                 init: (ctx) => {
-                    const s = ctx.el(102);
-                    if (s) { s.innerHTML = [[0, 'No update'], [15, 'Every 15 minutes'], [60, 'Every hour'], [1440, 'Every day'], [10080, 'Every week']].map(([v, t]) => `<option value="${v}">${t}</option>`).join(''); s.value = '1440'; }
+                    // the VM's defaults: no update, reminders and tasks left out
+                    ctx.options(5122, intervals, '0', 'wincal:5120');
+                    ctx.set(5123, false, 'wincal:5120');
+                    ctx.set(5124, false, 'wincal:5120');
                 },
-                ok: async (ctx) => {
-                    const url = String(ctx.get(101) || '').trim();
-                    if (!url) return false;
-                    ctx.text(103, 'Getting the calendar...');
-                    const res = await this.fetchFeed(url);
-                    if (res.error) { ctx.text(103, res.error); return false; }
-                    const parsed = parseIcs(res.text);
+                finish: async (ctx) => {
+                    if (!parsed) return false;
                     const used = new Set(this.calendars.map((c) => c.color));
                     parsed.color = parsed.color || (COLORS.slice(FIRST_COLOR).concat(COLORS.slice(0, FIRST_COLOR)).find(([c]) => !used.has(c)) || COLORS[FIRST_COLOR])[0];
-                    parsed.name = parsed.name || url.replace(/^\w+:\/\//, '').split(/[/?#]/)[0];
+                    parsed.name = String(ctx.get(5121, 'wincal:5120') || '').trim() || parsed.name || 'Calendar';
+                    if (!ctx.get(5123, 'wincal:5120')) parsed.events.forEach((e) => { e.reminder = null; });
+                    if (!ctx.get(5124, 'wincal:5120')) parsed.tasks = [];
                     parsed.source = url;
-                    parsed.refresh = Number(ctx.get(102)) || 0;
+                    parsed.refresh = Number(ctx.get(5122, 'wincal:5120')) || 0;
                     const cal = this.adopt(parsed, {});
                     cal.lastRefresh = Date.now();
                     await this.save(cal);
@@ -1417,10 +1446,14 @@
         async fetchFeed(url) {
             try {
                 const r = await fetch(`/calendar-feed?url=${encodeURIComponent(url)}`, { credentials: 'same-origin' });
-                if (!r.ok) { let msg = `The server answered ${r.status}.`; try { msg = (await r.json()).error || msg; } catch (_) { /* keep it */ } return { error: msg }; }
+                if (!r.ok) {
+                    let out = { error: `Error ${r.status}: ${r.statusText}`.trim() };
+                    try { const j = await r.json(); out = { error: j.error || out.error, unreachable: !!j.unreachable }; } catch (_) { /* keep it */ }
+                    return out;
+                }
                 return { text: await r.text() };
             } catch (err) {
-                return { error: (err && err.message) || 'The calendar could not be reached.' };
+                return { error: (err && err.message) || 'The calendar could not be reached.', unreachable: true };
             }
         }
 

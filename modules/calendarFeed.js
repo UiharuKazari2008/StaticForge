@@ -7,6 +7,7 @@
  */
 'use strict';
 
+const { STATUS_CODES } = require('http');
 const sidebarGadgets = require('./sidebarGadgets');
 
 const MAX_BYTES = 4 * 1024 * 1024;
@@ -25,7 +26,8 @@ async function fetchCalendar(raw) {
     let current = httpsOf(raw);
     for (let hop = 0; hop < 5; hop += 1) {
         const url = await sidebarGadgets.assertPublicHttps(current);
-        if (!url) return { error: 'That address cannot be used (public https or webcal only).' };
+        // WinCal puts a host it cannot reach back on page 1 with the address selected, no error page
+        if (!url) return { error: 'That address cannot be used (public https or webcal only).', unreachable: true };
         let res;
         try {
             res = await fetch(url.href, {
@@ -34,7 +36,7 @@ async function fetchCalendar(raw) {
                 headers: { 'User-Agent': 'Dreamscape Calendar', Accept: 'text/calendar, text/plain;q=0.8, */*;q=0.5' }
             });
         } catch (err) {
-            return { error: `The calendar could not be reached (${err.name === 'TimeoutError' ? 'timed out' : 'network error'}).` };
+            return { error: `The calendar could not be reached (${err.name === 'TimeoutError' ? 'timed out' : 'network error'}).`, unreachable: true };
         }
         if (res.status >= 300 && res.status < 400) {
             const loc = res.headers.get('location');
@@ -42,7 +44,8 @@ async function fetchCalendar(raw) {
             current = httpsOf(new URL(loc, url).href);
             continue;
         }
-        if (!res.ok) return { error: `The server answered ${res.status}.` };
+        // WinCal string 5145, "Error %1!d!: %2!s!" with the server's reason phrase
+        if (!res.ok) return { error: `Error ${res.status}: ${res.statusText || STATUS_CODES[res.status] || ''}`.trim() };
         if (Number(res.headers.get('content-length') || 0) > MAX_BYTES) return { error: 'The calendar is larger than 4 MB.' };
         const buf = await res.arrayBuffer();
         if (buf.byteLength > MAX_BYTES) return { error: 'The calendar is larger than 4 MB.' };
@@ -64,7 +67,7 @@ async function handle(req, res) {
         if (cache.size >= MAX_CACHE) cache.delete(cache.keys().next().value);
         cache.set(key, { out, until: Date.now() + (out.error ? 60 * 1000 : TTL_MS) });
     }
-    if (out.error) { res.status(502).json({ success: false, error: out.error }); return; }
+    if (out.error) { res.status(502).json({ success: false, error: out.error, unreachable: !!out.unreachable }); return; }
     res.set('Content-Type', 'text/plain; charset=utf-8');
     res.set('Content-Security-Policy', "sandbox; default-src 'none'");
     res.set('X-Content-Type-Options', 'nosniff');
