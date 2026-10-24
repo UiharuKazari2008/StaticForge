@@ -516,7 +516,10 @@
         };
     </script>
     <script>
-        if (window.isDesktop) {
+        // Also called by modalUtils.js updateGalleryWindowMode when desktop mode starts after this
+        // first look (the window was under 1200 px while the page loaded): until the logon hands
+        // off, the desktop is covered the same way, never shown bare before the logon
+        window.applyDesktopStartupClasses = function () {
             document.body.classList.add('desktop-mode');
             document.body.classList.add('no-animation');
             document.body.classList.add('windows-startup');
@@ -528,6 +531,9 @@
             document.body.classList.add(document.body.classList.contains('vista-logon') ? 'vista-basic-theme' : 'windows-classic-theme');
             // Solid colour behind the logon dialog; desktopBoot.js reveals the layers in stages
             document.body.classList.add('boot-staged');
+        };
+        if (window.isDesktop) {
+            window.applyDesktopStartupClasses();
         }
     </script>
 

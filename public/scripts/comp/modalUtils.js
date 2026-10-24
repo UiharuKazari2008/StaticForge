@@ -4126,6 +4126,22 @@ function initializeGalleryWindow() {
     }
 }
 
+/**
+ * Desktop mode decided after app.html's first look (the window was under 1200 px while the page
+ * loaded). Before the logon hands off, it gets the same cover as a desktop boot (app.html
+ * applyDesktopStartupClasses), so the wallpaper, icons and taskbar never show before the logon;
+ * desktopBoot.begin reveals them in stages after it. A page that already booted keeps the plain switch.
+ */
+function addDesktopModeClass() {
+    const ws = window.wsClient;
+    const beforeLogon = !(ws && (ws.preStartupHandoffCompleted || ws.initializationCompleted));
+    if (beforeLogon && typeof window.applyDesktopStartupClasses === 'function') {
+        window.applyDesktopStartupClasses();
+        return;
+    }
+    document.body.classList.add('desktop-mode');
+}
+
 function updateGalleryWindowMode() {
     if (!galleryWindow) return;
 
@@ -4154,7 +4170,7 @@ function updateGalleryWindowMode() {
 
         // Update desktop-mode class on body (class is set initially in inline script after body tag)
         if (!document.body.classList.contains('desktop-mode')) {
-            document.body.classList.add('desktop-mode');
+            addDesktopModeClass();
 
             // Update window.isDesktop to stay in sync
             window.isDesktop = true;
@@ -4352,7 +4368,7 @@ function updateGalleryWindowMode() {
     // Ensure desktop-mode class and window.isDesktop are always in sync with shouldBeWindowed state
     // (class is set initially in inline script after body tag, but we need to keep it in sync)
     if (shouldBeWindowed && !document.body.classList.contains('desktop-mode')) {
-        document.body.classList.add('desktop-mode');
+        addDesktopModeClass();
         window.isDesktop = true;
     } else if (!shouldBeWindowed && document.body.classList.contains('desktop-mode')) {
         document.body.classList.remove('desktop-mode');
