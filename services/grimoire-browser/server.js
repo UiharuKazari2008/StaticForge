@@ -148,7 +148,7 @@ function watchClipboard() {
 }
 
 // Runs in the 'alchemy' isolated world, top frame only: Chromium's scrollbars are hidden (Emulation.setScrollbarsHidden),
-// so the viewer draws the Dreamscape one from these numbers. The scroller is the document, or a large element
+// so the viewer draws the desktop's (vertical and horizontal) from these numbers. The scroller is the document, or a large element
 // the user last scrolled (apps that scroll a full-height div instead of the page).
 function watchScroll() {
     if (window !== window.top) return;
@@ -161,7 +161,7 @@ function watchScroll() {
         queued = false;
         const el = scroller();
         if (!el) return;
-        const next = Math.round(el.scrollTop) + ':' + Math.round(el.scrollHeight) + ':' + Math.round(el.clientHeight);
+        const next = [el.scrollTop, el.scrollHeight, el.clientHeight, el.scrollLeft, el.scrollWidth, el.clientWidth].map(Math.round).join(':');
         if (next === last) return;
         last = next;
         try { globalThis.__alchemyScroll(next); } catch (_) {}
@@ -172,9 +172,12 @@ function watchScroll() {
         requestAnimationFrame(report);
         setTimeout(() => { if (queued) report(); }, 100);
     };
-    globalThis.__alchemyScrollTo = (y) => {
+    globalThis.__alchemyScrollTo = (y, x) => {
         const el = scroller();
-        if (el) el.scrollTo({ top: Number(y) || 0, behavior: 'instant' });
+        if (!el) return;
+        const to = { top: Number(y) || 0, behavior: 'instant' };
+        if (Number.isFinite(x)) to.left = x;
+        el.scrollTo(to);
     };
     addEventListener('scroll', (ev) => {
         const el = ev.target;
@@ -1952,10 +1955,10 @@ async function createSession(body, adoptedPage) {
             return;
         }
         if (ev && ev.name === '__alchemyScroll' && sessions.get(id)) {
-            const [y, height, view] = String(ev.payload || '').split(':').map(Number);
-            if (![y, height, view].every(Number.isFinite)) return;
+            const [y, height, view, x = 0, width = 0, viewWidth = 0] = String(ev.payload || '').split(':').map(Number);
+            if (![y, height, view, x, width, viewWidth].every(Number.isFinite)) return;
             session.scrollContextId = ev.executionContextId;
-            session.scroll = { type: 'scroll', y, height, view };
+            session.scroll = { type: 'scroll', y, height, view, x, width, viewWidth };
             broadcast(session, session.scroll);
             return;
         }
@@ -2242,8 +2245,10 @@ async function onViewerMessage(session, raw) {
     if (msg.type === 'scroll-to') {
         const y = Number(msg.y);
         if (!Number.isFinite(y) || !session.scrollContextId) return;
+        const x = Number(msg.x);
+        const args = Math.max(0, Math.round(y)) + (Number.isFinite(x) ? ',' + Math.max(0, Math.round(x)) : '');
         session.scrollBurstUntil = Date.now() + SCROLL_BURST_MS;
-        await session.cdp.send('Runtime.evaluate', { expression: '__alchemyScrollTo(' + Math.max(0, Math.round(y)) + ')', contextId: session.scrollContextId }).catch(() => {});
+        await session.cdp.send('Runtime.evaluate', { expression: '__alchemyScrollTo(' + args + ')', contextId: session.scrollContextId }).catch(() => {});
         return;
     }
     // Back / Forward from the viewer (mouse side buttons, Alt+Arrow, BrowserBack) walk Chromium's own history, so

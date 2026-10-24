@@ -339,7 +339,7 @@
       // The page copied by itself (a copy button): this document has focus, so write here; the parent is the fallback.
       writeLocalClipboard(text);
     } else if (msg.type === 'scroll') {
-      postParent({ type: 'grimoire-browser-scroll', y: msg.y || 0, height: msg.height || 0, view: msg.view || 0 });
+      postParent({ type: 'grimoire-browser-scroll', y: msg.y || 0, height: msg.height || 0, view: msg.view || 0, x: msg.x || 0, width: msg.width || 0, viewWidth: msg.viewWidth || 0 });
     } else if (msg.type === 'history-end') {
       postParent({ type: 'grimoire-browser-history-end', dir: msg.dir === 1 ? 1 : -1 });
     } else if (msg.type === 'download-progress') {
@@ -858,7 +858,7 @@
         password: data.password || ''
       });
     } else if (data.type === 'grimoire-browser-scroll-to' && typeof data.y === 'number') {
-      send({ type: 'scroll-to', y: data.y });
+      send(typeof data.x === 'number' ? { type: 'scroll-to', y: data.y, x: data.x } : { type: 'scroll-to', y: data.y });
     } else if (data.type === 'grimoire-browser-history' && (data.dir === 1 || data.dir === -1)) {
       historyGo(data.dir);
     } else if (data.type === 'grimoire-browser-file-chooser-reply' && typeof data.id === 'string') {

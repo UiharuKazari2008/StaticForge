@@ -326,6 +326,20 @@
     background: var(--glass-layer-dark-5);
 }
 
+/* Grimoire's panes scroll natively, so the desktop's Vista scrollbar (vista-scrollbars.css) draws both
+   directions; a page wider than the pane (zoom, tables, images) scrolls sideways. Alchemy's iframe stays
+   unscrolled (its page draws its own bars, grimoireRemoteBrowser.js). */
+:is(#tagWikiSearchModal, .grimoire-window) .tag-wiki-search-display:not(:has(> .tag-wiki-display-content > iframe)) {
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+    position: relative;
+}
+
+:is(#tagWikiSearchModal, .grimoire-window) .tag-wiki-search-display:has(> .tag-wiki-display-content .tag-wiki-page) {
+    padding: var(--spacing-md);
+}
+
 .tag-wiki-search-display > .scrollable-content {
     padding: 0;
 }

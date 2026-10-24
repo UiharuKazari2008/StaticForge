@@ -48,7 +48,7 @@
             this.listeners = [];
             const area = host.displayArea;
             const wrap = area ? area.closest('.tag-wiki-search-display') : null;
-            this.wrapClass = wrap ? wrap.className : 'tag-wiki-search-display form-section-scroll selectable';
+            this.wrapClass = wrap ? wrap.className : 'tag-wiki-search-display selectable';
             this.areaClass = area ? area.className : 'tag-wiki-display-content';
             const rightArea = typeof host.part === 'function' ? host.part('tagWikiSearchRightDisplay') : document.getElementById('tagWikiSearchRightDisplay');
             const first = this.makeTab(area, wrap);
@@ -183,7 +183,6 @@
                 tab.rightArea = made.area;
                 tab.rightWrap = made.wrap;
                 made.wrap.addEventListener('mousedown', () => this.host.setActivePane('right'), true);
-                this.reinitScrollbar(made.wrap);
             }
             return tab.rightArea;
         }
@@ -200,11 +199,6 @@
             area.className = this.areaClass;
             wrap.appendChild(area);
             return { wrap, area };
-        }
-
-        reinitScrollbar(wrap) {
-            // customScrollbar: public/scripts/comp/customScrollbar.js
-            if (root.customScrollbar && wrap) setTimeout(() => root.customScrollbar.forceReinit(wrap), 50);
         }
 
         isLoading() {
@@ -311,7 +305,6 @@
             made.area.addEventListener('mousedown', () => host.setActivePane('left'), true);
             this.activate(tab);
             host.attachWikiDisplayContextMenu();
-            this.reinitScrollbar(made.wrap);
 
             this.load(o);
             return tab;
@@ -367,7 +360,6 @@
                 if (typeof root.grimoireRetargetAudio === 'function') root.grimoireRetargetAudio(shell, null);
             });
             [tab.wrap, tab.rightWrap].filter(Boolean).forEach((wrap) => {
-                if (root.customScrollbar) root.customScrollbar.destroy(wrap);
                 if (root.contextMenu && wrap.firstElementChild) root.contextMenu.detachFromElement(wrap.firstElementChild);
                 wrap.remove();
             });

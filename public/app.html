@@ -5515,6 +5515,11 @@ Examples:
                         <button type="button" id="explorerReplaceCmd" class="explorer-command-btn hidden"
                             title="Replace the selected file."><img class="explorer-command-icon"
                                 src="/static_images/vista-cmdbar/replace.png" alt="">Replace</button>
+                        <!-- a picture selected: Vista's Preview, its menu the programs that open it (explorerVistaChrome.js) -->
+                        <button type="button" id="explorerPreviewCmd" class="explorer-command-btn has-menu hidden"
+                            title="Preview the selected picture."><img class="explorer-command-icon"
+                                src="/static_images/vista-cmdbar/photo-gallery.png" alt="">Preview<span
+                                class="explorer-command-glyph" aria-hidden="true"></span></button>
                         <!-- inside an archive, as Vista's compressed folder has it (explorerArchive.js); zipfldr.dll's icon -->
                         <button type="button" id="explorerExtractAllCmd" class="explorer-command-btn hidden"
                             title="Extract all files from this archive."><img class="explorer-command-icon"
@@ -7101,7 +7106,7 @@ Examples:
                          All search results now render as a full "page" via showSearchResultsPage directly
                          into the display area (Google-style home + results list). Wiki content and split
                          panes continue to use the display areas. -->
-                    <div class="tag-wiki-search-display form-section-scroll selectable">
+                    <div class="tag-wiki-search-display selectable">
                         <div id="tagWikiSearchDisplay" class="tag-wiki-display-content">
                             <div class="tag-wiki-empty-state">
                                 <i class="fas fa-book-open"></i>
@@ -7117,7 +7122,7 @@ Examples:
                     </button>
                 </div>
                 <div id="tagWikiSearchRightPane" class="tag-wiki-split-pane tag-wiki-split-pane-right hidden">
-                    <div class="tag-wiki-search-display form-section-scroll selectable">
+                    <div class="tag-wiki-search-display selectable">
                         <div id="tagWikiSearchRightDisplay" class="tag-wiki-display-content">
                             <div class="tag-wiki-split-blank-state">
                                 <i class="fas fa-book-open"></i>

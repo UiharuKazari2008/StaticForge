@@ -532,103 +532,104 @@ async function grimoireCopyText(text) {
     if (before && before !== document.body && typeof before.focus === 'function') before.focus();
 }
 
-// Alchemy hides Chromium's scrollbars (server.js watchScroll); this is the Dreamscape one (custom-scrollbar.css) over the frame.
-// Drag the thumb, click the track to page, or wheel over it; positions go back to the page as scroll-to.
-const GRIMOIRE_SCROLL_THUMB = 80;
+// Alchemy hides Chromium's scrollbars (server.js watchScroll); the desktop draws them instead. Each bar is a thin
+// native scroller beside the frame whose extent mirrors the page, so the Vista scrollbar (vista-scrollbars.css)
+// paints it with its own arrows, track paging, thumb drag and wheel; its scroll position goes back to the page
+// as scroll-to. The frame gives the bar its 17 px, so the remote page lays out narrower, as in a real browser.
+function grimoireScrollState(data) {
+    const num = (v) => Number(v) || 0;
+    return { y: num(data.y), height: num(data.height), view: num(data.view), x: num(data.x), width: num(data.width), viewWidth: num(data.viewWidth) };
+}
 
-function grimoireRemoteScrollbar(found) {
+function grimoireRemoteScrollbars(found) {
     const area = found.shell.displayArea;
-    let bar = area.querySelector(':scope > .alchemy-scrollbar');
-    if (bar) return bar;
-    bar = document.createElement('div');
-    bar.className = 'custom-scrollbar alchemy-scrollbar hidden';
-    const thumb = document.createElement('div');
-    thumb.className = 'custom-scrollbar-thumb';
-    bar.appendChild(thumb);
-    area.appendChild(bar);
+    const existing = area.querySelector(':scope > .alchemy-scrollbar-v');
+    if (existing) return { v: existing, h: area.querySelector(':scope > .alchemy-scrollbar-h') };
     const shell = found.shell;
+    const make = (axis) => {
+        const bar = document.createElement('div');
+        bar.className = 'alchemy-scrollbar alchemy-scrollbar-' + axis + ' hidden';
+        const extent = document.createElement('div');
+        extent.className = 'alchemy-scrollbar-extent';
+        bar.appendChild(extent);
+        area.appendChild(bar);
+        return bar;
+    };
+    const v = make('v');
+    const h = make('h');
+    const corner = document.createElement('div');
+    corner.className = 'alchemy-scrollbar-corner';
+    area.appendChild(corner);
     let raf = 0;
-    let wantY = null;
-    const scrollTo = (y) => {
+    let want = null;
+    const send = () => {
+        raf = 0;
+        const frame = grimoireRemoteFrame(shell);
+        if (frame && frame.contentWindow && want) frame.contentWindow.postMessage(Object.assign({ type: 'grimoire-browser-scroll-to' }, want), location.origin);
+        want = null;
+    };
+    const onScroll = (bar, vertical) => () => {
         const state = shell._alchemyScroll;
-        if (!state) return;
-        const max = Math.max(0, state.height - state.view);
-        wantY = Math.max(0, Math.min(max, Math.round(y)));
-        state.y = wantY;
-        grimoirePlaceScrollThumb(bar, state);
-        if (raf) return;
-        raf = requestAnimationFrame(() => {
-            raf = 0;
-            const frame = grimoireRemoteFrame(shell);
-            if (frame && frame.contentWindow && wantY !== null) frame.contentWindow.postMessage({ type: 'grimoire-browser-scroll-to', y: wantY }, location.origin);
-            wantY = null;
+        const synced = bar._syncedTo;
+        bar._syncedTo = null;
+        // the page's own report moved the bar: nothing to send back
+        if (!state || (synced != null && Math.abs((vertical ? bar.scrollTop : bar.scrollLeft) - synced) < 1)) return;
+        const range = vertical ? bar.scrollHeight - bar.clientHeight : bar.scrollWidth - bar.clientWidth;
+        const max = vertical ? state.height - state.view : state.width - state.viewWidth;
+        if (range <= 0 || max <= 0) return;
+        const pos = Math.round((vertical ? bar.scrollTop : bar.scrollLeft) / range * max);
+        if (vertical) state.y = pos;
+        else state.x = pos;
+        bar._localUntil = performance.now() + 300;
+        want = { y: state.y, x: state.x };
+        if (!raf) raf = requestAnimationFrame(send);
+    };
+    [[v, true], [h, false]].forEach(([bar, vertical]) => {
+        bar.addEventListener('scroll', onScroll(bar, vertical), { passive: true });
+        // while the thumb is held, the page's reports trail the pointer: keep the bar where the user put it
+        bar.addEventListener('pointerdown', () => {
+            bar._held = true;
+            const release = () => {
+                bar._held = false;
+                bar._localUntil = performance.now() + 300;
+                window.removeEventListener('pointerup', release, true);
+                window.removeEventListener('pointercancel', release, true);
+            };
+            window.addEventListener('pointerup', release, true);
+            window.addEventListener('pointercancel', release, true);
         });
-    };
-    let drag = null;
-    thumb.addEventListener('pointerdown', (ev) => {
-        const state = shell._alchemyScroll;
-        if (!state || ev.button !== 0) return;
-        ev.preventDefault();
-        ev.stopPropagation();
-        thumb.setPointerCapture(ev.pointerId);
-        drag = { pointerId: ev.pointerId, startY: ev.clientY, startTop: thumb.offsetTop };
-        bar.classList.add('dragging');
     });
-    thumb.addEventListener('pointermove', (ev) => {
-        const state = shell._alchemyScroll;
-        if (!drag || ev.pointerId !== drag.pointerId || !state) return;
-        const travel = Math.max(1, bar.clientHeight - GRIMOIRE_SCROLL_THUMB);
-        const ratio = Math.max(0, Math.min(1, (drag.startTop + ev.clientY - drag.startY) / travel));
-        scrollTo(ratio * Math.max(0, state.height - state.view));
-    });
-    const endDrag = (ev) => {
-        if (!drag || ev.pointerId !== drag.pointerId) return;
-        drag = null;
-        bar.classList.remove('dragging');
-        grimoireIndicateScrollbar(bar);
-    };
-    thumb.addEventListener('pointerup', endDrag);
-    thumb.addEventListener('pointercancel', endDrag);
-    bar.addEventListener('pointerdown', (ev) => {
-        const state = shell._alchemyScroll;
-        if (!state || ev.target !== bar || ev.button !== 0) return;
-        ev.preventDefault();
-        const above = ev.clientY < thumb.getBoundingClientRect().top;
-        scrollTo(state.y + (above ? -1 : 1) * state.view * 0.9);
-    });
-    bar.addEventListener('wheel', (ev) => {
-        const state = shell._alchemyScroll;
-        if (!state) return;
-        ev.preventDefault();
-        scrollTo(state.y + ev.deltaY * (ev.deltaMode === 1 ? 40 : (ev.deltaMode === 2 ? state.view : 1)));
-    }, { passive: false });
-    return bar;
+    return { v, h };
 }
 
-function grimoirePlaceScrollThumb(bar, state) {
-    const max = state.height - state.view;
-    const travel = Math.max(0, bar.clientHeight - GRIMOIRE_SCROLL_THUMB);
-    const ratio = max > 0 ? Math.max(0, Math.min(1, state.y / max)) : 0;
-    bar.firstElementChild.style.top = Math.round(ratio * travel) + 'px';
-}
-
-function grimoireIndicateScrollbar(bar) {
-    bar.classList.add('scrollbar-indicating');
-    clearTimeout(bar._indicateTimer);
-    bar._indicateTimer = setTimeout(() => bar.classList.remove('scrollbar-indicating'), 900);
+function grimoirePlaceScrollbar(bar, vertical, pos, max, size, view) {
+    const extent = bar.firstElementChild;
+    const ratio = view > 0 ? size / view : 1;
+    if (vertical) extent.style.height = (ratio * 100) + '%';
+    else extent.style.width = (ratio * 100) + '%';
+    if (bar._held || performance.now() < (bar._localUntil || 0)) return;
+    const range = vertical ? bar.scrollHeight - bar.clientHeight : bar.scrollWidth - bar.clientWidth;
+    const target = max > 0 && range > 0 ? Math.round(Math.max(0, Math.min(1, pos / max)) * range) : 0;
+    if (Math.abs((vertical ? bar.scrollTop : bar.scrollLeft) - target) < 1) return;
+    bar._syncedTo = target;
+    if (vertical) bar.scrollTop = target;
+    else bar.scrollLeft = target;
 }
 
 function grimoireUpdateRemoteScrollbar(found, data) {
     const shell = found.shell;
-    const state = { y: Number(data.y) || 0, height: Number(data.height) || 0, view: Number(data.view) || 0 };
-    const before = shell._alchemyScroll;
+    const state = grimoireScrollState(data);
+    const area = shell.displayArea;
+    // a report that arrives after the page left Alchemy (grimoireCloseRemoteBrowser) puts no bars on a Grimoire page
+    if (!area || !grimoireRemoteFrame(shell)) return;
     shell._alchemyScroll = state;
-    const bar = grimoireRemoteScrollbar(found);
-    const needed = state.height > state.view + 1;
-    bar.classList.toggle('hidden', !needed);
-    if (!needed || bar.classList.contains('dragging')) return;
-    grimoirePlaceScrollThumb(bar, state);
-    if (before && before.y !== state.y) grimoireIndicateScrollbar(bar);
+    const bars = grimoireRemoteScrollbars(found);
+    const needV = state.height > state.view + 1;
+    const needH = state.width > state.viewWidth + 1;
+    bars.v.classList.toggle('hidden', !needV);
+    bars.h.classList.toggle('hidden', !needH);
+    if (needV) grimoirePlaceScrollbar(bars.v, true, state.y, state.height - state.view, state.height, state.view);
+    if (needH) grimoirePlaceScrollbar(bars.h, false, state.x, state.width - state.viewWidth, state.width, state.viewWidth);
 }
 
 // Back / Forward the viewer sent to Chromium: when the page lands on the neighbouring Grimoire entry, step to it
@@ -994,7 +995,7 @@ function grimoireBackgroundRemoteMessage(found, data) {
         return true;
     }
     if (type === 'grimoire-browser-scroll') {
-        shell._alchemyScroll = { y: Number(data.y) || 0, height: Number(data.height) || 0, view: Number(data.view) || 0 };
+        shell._alchemyScroll = grimoireScrollState(data);
         return true;
     }
     if (type === 'grimoire-browser-history-intent') {
@@ -1636,8 +1637,7 @@ function grimoireCloseRemoteBrowser(shell) {
     if (bar) bar.removeAttribute('data-alchemy-loading');
     const frame = grimoireRemoteFrame(shell);
     if (frame) frame.remove();
-    const scrollbar = shell.displayArea && shell.displayArea.querySelector(':scope > .alchemy-scrollbar');
-    if (scrollbar) scrollbar.remove();
+    if (shell.displayArea) shell.displayArea.querySelectorAll(':scope > :is(.alchemy-scrollbar, .alchemy-scrollbar-corner)').forEach((el) => el.remove());
     shell._alchemyScroll = null;
     grimoireSyncAudio();
     if (!id) return Promise.resolve();

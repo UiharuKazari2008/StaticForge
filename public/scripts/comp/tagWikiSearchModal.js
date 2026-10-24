@@ -4633,15 +4633,16 @@ class TagWikiSearchModal extends WikiDisplayBase {
         const wideEnough = (this.modal.offsetWidth || 0) >= GRIMOIRE_SPLIT_MIN_WIDTH;
         const isCurrentlySplit = this.modal.classList.contains('tag-wiki-split-active');
 
+        // split view is off until the user turns it on (Yukimi 2026-10-23); maximize no longer forces it
         const userWantsSplit = this.loadSplitPanelPreference();
-        const shouldBeSplit = isMaximized || (wideEnough && userWantsSplit);
+        const shouldBeSplit = (isMaximized || wideEnough) && userWantsSplit;
 
         if (shouldBeSplit) {
             if (!isCurrentlySplit || !this.rightPane) {
                 this.enterSplitMode();
                 this.setActivePane('left');
             }
-        } else if (isCurrentlySplit && !isMaximized) {
+        } else if (isCurrentlySplit) {
             this.exitSplitMode();
             this._activePane = 'left';
         }
@@ -4658,12 +4659,9 @@ class TagWikiSearchModal extends WikiDisplayBase {
     loadSplitPanelPreference() {
         try {
             const stored = localStorage.getItem(GRIMOIRE_SPLIT_PANEL_LS);
-            if (stored === null) {
-                return true;
-            }
             return stored === 'true';
         } catch (e) {
-            return true;
+            return false;
         }
     }
 
@@ -4839,12 +4837,6 @@ class TagWikiSearchModal extends WikiDisplayBase {
             }
         }
         this.updateResultsSidebar();
-        if (window.customScrollbar) {
-            setTimeout(() => {
-                const panel = this.rightPaneEl.querySelector('.tag-wiki-search-display.form-section-scroll');
-                if (panel) window.customScrollbar.forceReinit(panel);
-            }, 50);
-        }
 
         // Make the panes "focusable" via click so the shared top address bar, gear, refresh,
         // and nav buttons (back/forward/home) target the correct pane's state.

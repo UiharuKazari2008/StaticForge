@@ -979,28 +979,72 @@
     }
 
 }
-/* Alchemy page scrollbar: Chromium's are hidden, this one (custom-scrollbar.css look) sits over the frame
-   (grimoireRemoteBrowser.js grimoireRemoteScrollbar). Shown on hover, while the page scrolls, and while dragged. */
+/* Alchemy page scrollbars: Chromium's are hidden, these are native scrollers beside the frame that the desktop's
+   Vista scrollbar paints (grimoireRemoteBrowser.js grimoireRemoteScrollbars). The frame gives up their 17 px. */
 .tag-wiki-display-content:has(> .alchemy-scrollbar) {
     position: relative;
 }
 
 .alchemy-scrollbar {
+    position: absolute;
+    z-index: 2;
     cursor: var(--c-default);
-    touch-action: none;
 }
 
-.tag-wiki-display-content:hover > .alchemy-scrollbar,
-.alchemy-scrollbar.scrollbar-indicating,
-.alchemy-scrollbar.dragging {
-    opacity: 1;
+.alchemy-scrollbar-v {
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 17px;
+    overflow-x: hidden;
+    overflow-y: scroll;
 }
 
-.alchemy-scrollbar.dragging .custom-scrollbar-thumb {
-    transition: background 0.2s ease;
-    background: var(--primary-color-light);
+.alchemy-scrollbar-h {
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 17px;
+    overflow-x: scroll;
+    overflow-y: hidden;
 }
 
-.alchemy-scrollbar .custom-scrollbar-thumb {
-    transition: top 0.08s linear, background 0.2s ease;
+.alchemy-scrollbar-v > .alchemy-scrollbar-extent {
+    width: 1px;
+}
+
+.alchemy-scrollbar-h > .alchemy-scrollbar-extent {
+    height: 1px;
+}
+
+.tag-wiki-display-content:has(> .alchemy-scrollbar-h:not(.hidden)) > .alchemy-scrollbar-v {
+    bottom: 17px;
+}
+
+.tag-wiki-display-content:has(> .alchemy-scrollbar-v:not(.hidden)) > .alchemy-scrollbar-h {
+    right: 17px;
+}
+
+.tag-wiki-display-content:has(> .alchemy-scrollbar-v:not(.hidden)) > iframe {
+    width: calc(100% - 17px);
+}
+
+.tag-wiki-display-content:has(> .alchemy-scrollbar-h:not(.hidden)) > iframe {
+    height: calc(100% - 17px);
+}
+
+/* the square where the two bars meet (Vista's scrollbar corner) */
+.alchemy-scrollbar-corner {
+    display: none;
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    z-index: 2;
+    width: 17px;
+    height: 17px;
+    background: #f0f0f0;
+}
+
+.tag-wiki-display-content:has(> .alchemy-scrollbar-v:not(.hidden)):has(> .alchemy-scrollbar-h:not(.hidden)) > .alchemy-scrollbar-corner {
+    display: block;
 }
