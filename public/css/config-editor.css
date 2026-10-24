@@ -1162,3 +1162,174 @@ body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .con
 #configEditorValueModal[data-cev-layout="multi"] .cev-client .cev-cancel {
     left: 264px;
 }
+
+/* Vista desktop: Registry Editor 1:1 (the VM's regedit, ~/.cache/vista-vm/regedit-ref/s-full.png).
+   The Find box is gone: Edit > Find opens regedit's Find dialog. The tree: rows of 18, Computer on
+   top, each level 19 px in, the themed triangle in a 12 px cell 6 px in, dotted lines, the folder
+   17 px after the cell's left, the label 4 px after it with its own blue box. Values carry
+   regedit.exe's ab / 011 pictures. */
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-search-row {
+    display: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-panel {
+    padding: 1px 0 0;
+    line-height: 18px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree,
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-children {
+    position: relative;
+    gap: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-children {
+    padding-left: 19px;
+}
+
+/* a level's vertical line, under its parent's triangle, dotted */
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-children::before {
+    content: '';
+    position: absolute;
+    left: 10px;
+    top: 0;
+    bottom: 9px;
+    width: 1px;
+    background: repeating-linear-gradient(#a0a0a0 0 1px, transparent 1px 2px);
+    pointer-events: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-item {
+    position: relative;
+    height: 18px;
+    gap: 0;
+}
+
+/* the dots from the triangle's cell to the folder */
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-item::before {
+    content: '';
+    position: absolute;
+    left: 18px;
+    top: 9px;
+    width: 4px;
+    height: 1px;
+    background: repeating-linear-gradient(to right, #a0a0a0 0 1px, transparent 1px 2px);
+    pointer-events: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-item.config-editor-tree-computer::before {
+    content: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal :is(.config-editor-tree-expand, .config-editor-tree-spacer) {
+    position: relative;
+    z-index: 1;
+    flex: none;
+    width: 12px;
+    height: 18px;
+    margin: 0 5px;
+    padding: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-expand {
+    background: #fff url('/static_images/vista-controls/tree-closed.png') no-repeat;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-expand:has(.fa-chevron-down) {
+    background-image: url('/static_images/vista-controls/tree-open.png');
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-expand i {
+    display: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-label {
+    flex: 0 1 auto;
+    gap: 4px;
+    height: 18px;
+    padding: 0;
+    background: none;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    line-height: 18px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-label:hover {
+    background: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-label > span {
+    padding: 0 2px;
+    line-height: 16px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-item.selected .config-editor-tree-label {
+    background: none;
+    color: #000;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-item.selected .config-editor-tree-label > span {
+    background: #3399ff;
+    color: #fff;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-panel:not(:focus-within) .config-editor-tree-item.selected .config-editor-tree-label > span {
+    background: #f0f0f0;
+    color: #000;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-value-icon {
+    width: 16px;
+    height: 16px;
+    flex: none;
+}
+
+/* the two panes: #828790 edges, a pixel of #f0f0f0 under the menu bar, 4 px of it between them
+   (the tree 216 px wide), the list's Name and Type columns 120 px each */
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-layout {
+    margin-top: 1px;
+    background: #f0f0f0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal :is(.config-editor-tree-panel, .config-editor-values-panel) {
+    box-sizing: border-box;
+    border: 1px solid #828790;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-panel {
+    flex-basis: 216px;
+    width: 216px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-panel :is(.config-editor-tree-scroll-inner, .config-editor-tree-scrollable) {
+    padding: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-splitter {
+    flex-basis: 4px;
+    border: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-values-table {
+    table-layout: fixed;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-values-table th:nth-child(-n+2) {
+    width: 120px;
+    min-width: 120px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-values-table th {
+    color: #000;
+}
+
+/* the list's cells all in Segoe UI 9 pt black, as regedit's */
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-row td,
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-row td :is(span, .config-editor-value-display) {
+    font-size: 12px;
+    color: #000;
+    opacity: 1;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-row.selected td :is(span, .config-editor-value-display) {
+    color: #fff;
+}

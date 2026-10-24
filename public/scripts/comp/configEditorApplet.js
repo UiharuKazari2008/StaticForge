@@ -139,6 +139,34 @@ function configEditorSearchTypeIcon(type) {
     }
 }
 
+/** Vista desktop (not Classic): Registry Editor's own look (config-editor.css). */
+function configEditorRegeditLook() {
+    const b = document.body;
+    return !!b && b.classList.contains('desktop-mode') && !b.classList.contains('windows-classic-theme');
+}
+
+/** regedit's type names: text REG_SZ, lists REG_MULTI_SZ, numbers and switches REG_DWORD / REG_QWORD. */
+function configEditorRegType(child, effectiveType, value) {
+    if (effectiveType === 'array') return 'REG_MULTI_SZ';
+    if (effectiveType === 'boolean') return 'REG_DWORD';
+    if (effectiveType === 'number') return Number.isInteger(Number(value)) && Math.abs(Number(value)) > 0xffffffff ? 'REG_QWORD' : 'REG_DWORD';
+    if (effectiveType === 'object') return 'REG_BINARY';
+    return 'REG_SZ';
+}
+
+/** regedit's data column: 0x0000002a (42) for numbers, a list's items one after another. */
+function configEditorRegData(value, effectiveType, fallback) {
+    if (effectiveType === 'boolean') { const n = value === true || value === 'true' ? 1 : 0; return `0x0000000${n} (${n})`; }
+    if (effectiveType === 'number' && value !== '' && value != null && Number.isFinite(Number(value))) {
+        const n = Number(value);
+        if (!Number.isInteger(n)) return String(n);
+        const hex = (n >>> 0).toString(16).padStart(8, '0');
+        return n >= 0 && n <= 0xffffffff ? `0x${hex} (${n})` : `0x${BigInt.asUintN(64, BigInt(n)).toString(16).padStart(16, '0')} (${n})`;
+    }
+    if (effectiveType === 'array' && Array.isArray(value)) return value.map((v) => (typeof v === 'object' ? JSON.stringify(v) : String(v))).join(' ');
+    return fallback;
+}
+
 function configEditorFormatTypeDisplay(child, effectiveType) {
     const base = effectiveType || child?.type || 'auto';
     const strictLabel = (t) => {
@@ -487,12 +515,12 @@ class ConfigEditorApplet {
                 if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
                     e.preventDefault();
                     e.stopPropagation();
-                    this.focusSearch();
+                    void this.openFindDialog();
                     return true;
                 }
                 if (e.key === 'F3') {
                     e.preventDefault();
-                    this.findNext();
+                    void this.findNextHit();
                     return true;
                 }
                 if (e.key === 'F5') {
@@ -1678,17 +1706,16 @@ class ConfigEditorApplet {
         </div>`;
     }
 
-    buildTreeIconHtml(iconClass) {
-        if (!iconClass || iconClass === 'fas fa-folder') {
-            return '<img class="config-editor-tree-icon" src="/static_images/vista-explorer/crumb-folder.png" alt="">';
-        }
-        return `<i class="${configEditorEscapeHtml(iconClass)}" aria-hidden="true"></i>`;
+    // every key is a folder, as Registry Editor draws its keys and hives
+    buildTreeIconHtml() {
+        return '<img class="config-editor-tree-icon" src="/static_images/vista-icons/explorer/folder-16.png" alt="">';
     }
 
+    // regedit.exe's value pictures: group 205 (ab) for text, 206 (011) for numbers and the rest
     buildValueIconHtml(child, effectiveType) {
-        if (child?.expandable && !child.icon) return this.buildTreeIconHtml('fas fa-folder');
-        const cls = child?.icon || configEditorSearchTypeIcon(effectiveType);
-        return `<i class="${configEditorEscapeHtml(cls)}" aria-hidden="true"></i>`;
+        if (child?.expandable) return this.buildTreeIconHtml();
+        const text = effectiveType === 'string' || child?.secret || (child?.enum && child.enum.length);
+        return `<img class="config-editor-value-icon" src="/static_images/vista-controls/regedit-value-${text ? 'string' : 'binary'}.png" alt="">`;
     }
 
     buildTreeExpandHtml(hasExpandableChildren) {
@@ -1705,9 +1732,10 @@ class ConfigEditorApplet {
         this.renderStatusBar();
     }
 
+    // the status bar's key path starts at Computer, as regedit's
     formatKeyPath() {
-        if (!this.selectedConfigId) return '';
-        return [this.getConfigLabel(this.selectedConfigId), ...(this.selectedPath || [])].join('\\');
+        if (!this.selectedConfigId) return 'Computer';
+        return ['Computer', this.getConfigLabel(this.selectedConfigId), ...(this.selectedPath || [])].join('\\');
     }
 
     renderStatusBar() {
@@ -1735,6 +1763,27 @@ class ConfigEditorApplet {
     renderConfigRoots() {
         if (!this.treeEl) return;
         this.treeEl.innerHTML = '';
+        // Computer at the top, the configs under it as regedit's hives
+        const computer = document.createElement('div');
+        computer.className = 'config-editor-tree-item config-editor-tree-computer';
+        computer.innerHTML = `
+            <button type="button" class="config-editor-tree-expand is-open" title="Collapse" aria-label="Collapse"><i class="fas fa-chevron-down"></i></button>
+            <button type="button" class="config-editor-tree-label"><img class="config-editor-tree-icon" src="/static_images/vista-explorer/computer-16.png" alt=""><span>Computer</span></button>`;
+        const hives = document.createElement('div');
+        hives.className = 'config-editor-tree-children config-editor-tree-hives';
+        computer.querySelector('.config-editor-tree-expand').addEventListener('click', (e) => {
+            e.stopPropagation();
+            const open = hives.hidden;
+            hives.hidden = !open;
+            const icon = computer.querySelector('.config-editor-tree-expand i');
+            if (icon) icon.className = open ? 'fas fa-chevron-down' : 'fas fa-chevron-right';
+        });
+        computer.querySelector('.config-editor-tree-label').addEventListener('click', () => {
+            this.treeEl.querySelectorAll('.config-editor-tree-item.selected').forEach((el) => el.classList.remove('selected'));
+            computer.classList.add('selected');
+        });
+        this.treeEl.appendChild(computer);
+        this.treeEl.appendChild(hives);
         for (const cfg of this.configList) {
             const row = document.createElement('div');
             row.className = 'config-editor-tree-item config-editor-tree-root';
@@ -1763,7 +1812,7 @@ class ConfigEditorApplet {
                 containerPath: [],
                 expandable: true
             });
-            this.treeEl.appendChild(row);
+            hives.appendChild(row);
         }
         setTimeout(() => {
             if (this.treeScrollShell) customScrollbar?.forceReinit(this.treeScrollShell);
@@ -1907,13 +1956,22 @@ class ConfigEditorApplet {
         if (!this.valuesEl || !data) return;
         const { configId, path } = data;
         const children = this.mergeChildrenWithPending(configId, data);
-        if (!children || !children.length) {
+        if ((!children || !children.length) && !configEditorRegeditLook()) {
             this.valuesEl.innerHTML = this.valuesPanelStateRow('config-editor-empty', 'No child values at this path');
             return;
         }
 
         const frag = document.createDocumentFragment();
+        const regedit = configEditorRegeditLook();
+        if (regedit) {
+            // regedit lists a key's values only (its subkeys live in the tree), after (Default)
+            const def = document.createElement('tr');
+            def.className = 'config-editor-row config-editor-default-row';
+            def.innerHTML = `<td class="config-editor-col-name"><span class="config-editor-name-with-icon"><img class="config-editor-value-icon" src="/static_images/vista-controls/regedit-value-string.png" alt=""><span>(Default)</span></span></td><td class="config-editor-col-type">REG_SZ</td><td class="config-editor-col-value"><span class="config-editor-value-display">(value not set)</span></td>`;
+            frag.appendChild(def);
+        }
         for (const child of children) {
+            if (regedit && child.expandable) continue;
             const row = document.createElement('tr');
             row.className = 'config-editor-row';
             this.applyPendingHighlight(row, configId, child.path, child.isPendingNew);
@@ -1921,14 +1979,16 @@ class ConfigEditorApplet {
             const effectiveVal = this.getEffectiveValue(configId, child.path, child.value);
             const name = child.label || child.key;
             const effectiveType = this.getEffectiveChildType(child, effectiveVal);
-            const typeStr = configEditorFormatTypeDisplay(child, effectiveType);
+            const typeStr = regedit ? configEditorRegType(child, effectiveType, effectiveVal) : configEditorFormatTypeDisplay(child, effectiveType);
             const typeTitle = configEditorTypeColumnTitle(child, effectiveType);
             const unmappedBadge = child.mapped === false
                 ? '<span class="config-editor-unmapped-badge" title="Not documented in config map">?</span>'
                 : '';
             const nameCell = `<span class="config-editor-name-with-icon">${this.buildValueIconHtml(child, effectiveType)}<span>${configEditorEscapeHtml(name)}</span>${unmappedBadge}</span>`;
 
-            const valueCell = this.buildValueCellHtml(configId, child, effectiveVal, effectiveType);
+            const valueCell = regedit
+                ? `<span class="config-editor-value-display">${configEditorEscapeHtml(configEditorRegData(effectiveVal, effectiveType, this.formatValueDisplay(effectiveVal, child)))}</span>`
+                : this.buildValueCellHtml(configId, child, effectiveVal, effectiveType);
             if (this.selectedValuePath && configEditorPathsEqual(this.selectedValuePath, child.path)) {
                 row.classList.add('selected');
             }
@@ -2100,6 +2160,14 @@ class ConfigEditorApplet {
 
         this.valuesEl.querySelectorAll('tr.config-editor-row').forEach((row) => {
             row.addEventListener('click', () => this.selectValueRow(row));
+            if (configEditorRegeditLook()) {
+                // regedit: a double-click opens the value's Edit dialog
+                row.addEventListener('dblclick', () => {
+                    const ctx = row._configEditorCtx;
+                    if (ctx && ctx.child) this.openValueEditor(configId, ctx.child);
+                });
+                return;
+            }
             const editBtn = row.querySelector('.config-editor-edit-btn');
             if (!editBtn) return;
             row.addEventListener('dblclick', () => editBtn.click());
@@ -2956,6 +3024,116 @@ class ConfigEditorApplet {
         this.searchInput.select();
     }
 
+    /**
+     * Edit > Find: Registry Editor's Find dialog (regedit.exe.mui 106). Find Next runs the search
+     * and goes to the first match, as regedit selects it; F3 goes on to the next.
+     */
+    async openFindDialog() {
+        if (typeof featureLoader !== 'undefined' && !window.vistaDialogTemplate) {
+            try { await featureLoader.loadFeature('vista_dialog_templates'); } catch (_) { /* no dialogs */ }
+        }
+        const V = window.vistaDialogTemplate;
+        if (!V) { this.focusSearch(); return; }
+        V.openDialog({
+            id: 'configEditorFindDialog', key: 'regedit:106', owner: this.modal, bareCaption: true, focusFirst: true,
+            init: (ctx) => {
+                ctx.set(1150, this.findQuery || '');
+                [1152, 1153, 1154].forEach((id) => ctx.set(id, true));
+                const sync = () => ctx.enable(1, !!String(ctx.get(1150) || '').trim());
+                ctx.on(1150, 'input', sync);
+                sync();
+            },
+            ok: async (ctx) => {
+                const q = String(ctx.get(1150) || '').trim();
+                if (!q) return false;
+                this.findQuery = q;
+                await this.runFind(q);
+                return true;
+            }
+        });
+    }
+
+    async runFind(query) {
+        if (this.searchInput) this.searchInput.value = query;
+        await this.runSearch(query);
+        this.findHits = (this.searchResults || []).slice();
+        this.findIndex = 0;
+        if (!this.findHits.length) {
+            this.clearSearch(true);
+            this.setStatus('Finished searching through the registry.');
+            return;
+        }
+        await this.navigateFromSearchResult(this.findHits[0], false);
+        this.clearSearch(true);
+    }
+
+    async findNextHit() {
+        if (!this.findQuery) { await this.openFindDialog(); return; }
+        if (!this.findHits || !this.findHits.length) { await this.runFind(this.findQuery); return; }
+        this.findIndex = (this.findIndex + 1) % this.findHits.length;
+        await this.navigateFromSearchResult(this.findHits[this.findIndex], true);
+    }
+
+    /** Favorites (regedit's: HKCU ... Applets\Regedit\Favorites, a name for a key's path). */
+    getFavorites() {
+        try { return JSON.parse(localStorage.getItem('runes.favorites') || '[]'); } catch (_) { return []; }
+    }
+
+    setFavorites(list) {
+        try { localStorage.setItem('runes.favorites', JSON.stringify(list)); } catch (_) { /* no storage */ }
+    }
+
+    async addFavorite() {
+        if (!this.selectedConfigId) return;
+        if (typeof featureLoader !== 'undefined' && !window.vistaDialogTemplate) {
+            try { await featureLoader.loadFeature('vista_dialog_templates'); } catch (_) { /* no dialogs */ }
+        }
+        const V = window.vistaDialogTemplate;
+        if (!V) return;
+        const configId = this.selectedConfigId;
+        const path = (this.selectedPath || []).slice();
+        const name = path.length ? String(path[path.length - 1]) : this.getConfigLabel(configId);
+        V.openDialog({
+            id: 'configEditorAddFavorite', key: 'regedit:112', owner: this.modal, bareCaption: true, focusFirst: true,
+            init: (ctx) => {
+                const edit = ctx.content.querySelector('input[type=text], input:not([type])');
+                if (edit) edit.value = name;
+            },
+            ok: (ctx) => {
+                const edit = ctx.content.querySelector('input[type=text], input:not([type])');
+                const n = (edit && edit.value.trim()) || name;
+                this.setFavorites(this.getFavorites().filter((f) => f.name !== n).concat([{ name: n, configId, path }]));
+                return true;
+            }
+        });
+    }
+
+    async removeFavorites() {
+        if (typeof featureLoader !== 'undefined' && !window.vistaDialogTemplate) {
+            try { await featureLoader.loadFeature('vista_dialog_templates'); } catch (_) { /* no dialogs */ }
+        }
+        const V = window.vistaDialogTemplate;
+        if (!V) return;
+        V.openDialog({
+            id: 'configEditorRemoveFavorites', key: 'regedit:113', owner: this.modal, bareCaption: true,
+            init: (ctx) => {
+                const box = ctx.content.querySelector('.vdt-listbox');
+                if (!box) return;
+                box.innerHTML = this.getFavorites().map((f) => `<div class="vdt-lb-row" data-value="${configEditorEscapeHtml(f.name)}" role="option"><span>${configEditorEscapeHtml(f.name)}</span></div>`).join('');
+                // LBS_EXTENDEDSEL: a click adds to the selection
+                box.addEventListener('click', (ev) => {
+                    const row = ev.target.closest('.vdt-lb-row');
+                    if (row) setTimeout(() => row.classList.toggle('is-picked'), 0);
+                });
+            },
+            ok: (ctx) => {
+                const picked = new Set(Array.from(ctx.content.querySelectorAll('.vdt-lb-row.is-picked, .vdt-lb-row.is-selected'), (r) => r.dataset.value));
+                this.setFavorites(this.getFavorites().filter((f) => !picked.has(f.name)));
+                return true;
+            }
+        });
+    }
+
     findNext() {
         if (!this.searchActive || !this.searchResults.length) {
             this.focusSearch();
@@ -3036,7 +3214,39 @@ class ConfigEditorApplet {
         this.openValueEditor(this.selectedConfigId, child);
     }
 
+    /**
+     * The menu bar's menus as Registry Editor's (regedit.exe.mui MENU 103): Win32 rows without
+     * pictures, accelerators in their own column. Runes keeps its own File commands (Save,
+     * Checkpoints) where regedit has Import / Export.
+     */
     menuItems(menu) {
+        const plain = (items) => items.map((it) => {
+            if (!it || it.separator) return it;
+            const out = { ...it };
+            delete out.icon;
+            if (out.badge) { out.subtext = out.badge; delete out.badge; }
+            if (Array.isArray(out.submenu)) out.submenu = plain(out.submenu);
+            return out;
+        });
+        if (menu === 'favorites') {
+            const favs = this.getFavorites();
+            return [
+                { text: 'Add to Favorites...', action: 'fav-add', disabled: () => !this.selectedConfigId },
+                { text: 'Remove Favorite...', action: 'fav-remove', disabled: () => !favs.length },
+                ...(favs.length ? [{ separator: true }, ...favs.map((f, k) => ({ text: f.name, action: `fav-go-${k}` }))] : [])
+            ];
+        }
+        if (menu === 'help') {
+            return [
+                { text: 'Help Topics', action: 'help-topics' },
+                { separator: true },
+                { text: 'About Runes', action: 'about' }
+            ];
+        }
+        return plain(this.legacyMenuItems(menu));
+    }
+
+    legacyMenuItems(menu) {
         if (menu === 'file') {
             return [
                 { text: 'Save', icon: 'fas fa-save', action: 'save', badge: 'Ctrl+S',
@@ -3091,8 +3301,23 @@ class ConfigEditorApplet {
         if (action === 'modify') return this.modifySelected();
         if (action === 'delete') return this.deleteSelected();
         if (action === 'copy-key') return this.copyKeyName();
-        if (action === 'find') return this.focusSearch();
-        if (action === 'find-next') return this.findNext();
+        if (action === 'find') return this.openFindDialog();
+        if (action === 'find-next') return this.findNextHit();
+        if (action === 'fav-add') return this.addFavorite();
+        if (action === 'fav-remove') return this.removeFavorites();
+        if (action && action.startsWith('fav-go-')) {
+            const f = this.getFavorites()[Number(action.slice(7))];
+            if (f) return this.navigateToPath(f.configId, f.path);
+            return;
+        }
+        if (action === 'help-topics') {
+            if (typeof openHelpAndSupport === 'function') openHelpAndSupport('runes'); // eslint-disable-line no-undef
+            return;
+        }
+        if (action === 'about') {
+            if (typeof openAboutMelatoninModal === 'function') openAboutMelatoninModal({ program: 'Runes' }); // eslint-disable-line no-undef
+            return;
+        }
         if (action === 'refresh') return this.refreshSelected();
         if (action === 'split') {
             this.modal?.querySelector('.config-editor-splitter')?.focus();
@@ -3116,10 +3341,9 @@ class ConfigEditorApplet {
         if (!contextMenu || this._menusWired) return;
         this._menusWired = true;
         const applet = this;
-        ['file', 'edit', 'view'].forEach((menu) => {
-            const button = document.getElementById(
-                menu === 'file' ? 'configEditorMenuFile' : menu === 'edit' ? 'configEditorMenuEdit' : 'configEditorMenuView'
-            );
+        const ids = { file: 'configEditorMenuFile', edit: 'configEditorMenuEdit', view: 'configEditorMenuView', favorites: 'configEditorMenuFavorites', help: 'configEditorMenuHelp' };
+        Object.keys(ids).forEach((menu) => {
+            const button = document.getElementById(ids[menu]);
             if (!button) return;
             // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
             contextMenu.attachClickMenuToElement(button, {

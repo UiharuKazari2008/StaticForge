@@ -551,3 +551,62 @@ body.desktop-mode:not(.windows-classic-theme) .context-menu.context-menu-win32.c
 body.desktop-mode:not(.windows-classic-theme) .context-menu.context-menu-win32.context-menu-win32 .context-menu-item-mark[data-kind="check"]::before {
     content: none;
 }
+
+/* ---------- a program's Win32 menu bar (role="menubar" data-win32-menus, .naxt-menu-title) ----------
+   Vista's themed menu bar as WordPad, Notepad and Registry Editor draw it on the VM: the 19 px
+   MENU BARBACKGROUND band, Segoe UI 9 pt titles with 7 px each side, the hot and open title faces.
+   An app's own rules (WordPad, Task Manager) come later and win. */
+body.desktop-mode:not(.windows-classic-theme) .naxt-menubar[data-win32-menus]:not(#_) {
+    display: flex;
+    flex: none;
+    height: 19px;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    gap: 0;
+    border: 0;
+    background: url('/static_images/vista-controls/menubar-band.png') 0 0 / 3px 19px repeat-x;
+    box-shadow: none;
+    box-sizing: border-box;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .naxt-menubar[data-win32-menus] .naxt-menu-title:not(#_) {
+    display: inline-flex;
+    align-items: center;
+    width: auto;
+    min-width: 0;
+    height: 19px;
+    min-height: 0;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0 3px 1px;
+    border: solid transparent;
+    border-width: 0 4px;
+    border-image: none;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    color: #000;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    text-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .naxt-menubar[data-win32-menus] .naxt-menu-title:is(:hover, :focus-visible):not(#_) {
+    border-image: url('/static_images/vista-controls/menubar-title-hot.png') 0 4 fill / 0 4px stretch;
+    outline: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .naxt-menubar[data-win32-menus] .naxt-menu-title.context-open:not(#_) {
+    border-image: url('/static_images/vista-controls/menubar-title-open.png') 0 4 fill / 0 4px stretch;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .naxt-menubar[data-win32-menus] .naxt-menu-title::before,
+body.desktop-mode:not(.windows-classic-theme) .naxt-menubar[data-win32-menus] .naxt-menu-title::after {
+    content: none;
+    display: none;
+}
+
+/* an inactive window greys its menu titles (the VM's Registry Editor behind another window) */
+body.desktop-mode:not(.windows-classic-theme) .modal:not(.active-window) .naxt-menubar[data-win32-menus] .naxt-menu-title:not(#_) {
+    color: #6d6d6d;
+}
