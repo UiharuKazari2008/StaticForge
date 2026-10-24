@@ -30,6 +30,64 @@ const EXPLORER_PREVIEW_POLICY = {
 };
 const IMAGE_METADATA_KEY = '/internal/sw-image-cache-metadata-v1';
 
+// ---------- opt-in performance trace ----------
+// A page turns it on by storing anything at PERF_TRACE_FLAG_KEY in INTERNAL_CACHE (and posting
+// SW_PERF_TRACE so a running worker rereads it). Rows go to PERF_TRACE_LOG_KEY (last 600):
+//   fetch  <path> q=<ms the event waited for the worker> h=<ms in the handler> <branch>
+//   span   <job> <ms>               the heavy jobs (activate steps, cache policy, downloads)
+//   stall  <ms>                    the event loop held that long (100 ms probe)
+const PERF_TRACE_FLAG_KEY = '/internal/sw-perf-trace';
+const PERF_TRACE_LOG_KEY = '/internal/sw-perf-log';
+const perfTrace = { on: false, rows: [], flushTimer: null, probe: null, last: 0 };
+
+function perfLog(line) {
+  if (!perfTrace.on) return;
+  perfTrace.rows.push(`${new Date().toISOString().slice(11, 23)} ${line}`);
+  if (perfTrace.rows.length > 600) perfTrace.rows.splice(0, perfTrace.rows.length - 600);
+  if (perfTrace.flushTimer) return;
+  perfTrace.flushTimer = setTimeout(() => {
+    perfTrace.flushTimer = null;
+    caches.open(INTERNAL_CACHE).then((cache) => cache.put(PERF_TRACE_LOG_KEY, new Response(JSON.stringify(perfTrace.rows), {
+      headers: { 'content-type': 'application/json' }
+    }))).catch(() => {});
+  }, 2000);
+}
+
+async function perfSpan(name, fn) {
+  if (!perfTrace.on) return fn();
+  const t0 = performance.now();
+  try {
+    return await fn();
+  } finally {
+    perfLog(`span ${name} ${Math.round(performance.now() - t0)}`);
+  }
+}
+
+async function loadPerfTraceFlag() {
+  try {
+    const cache = await caches.open(INTERNAL_CACHE);
+    const on = !!(await cache.match(PERF_TRACE_FLAG_KEY));
+    if (on && !perfTrace.on) {
+      const previous = await cache.match(PERF_TRACE_LOG_KEY);
+      perfTrace.rows = previous ? await previous.json().catch(() => []) : [];
+    }
+    perfTrace.on = on;
+  } catch (_) { /* no trace */ }
+  clearInterval(perfTrace.probe);
+  perfTrace.probe = null;
+  if (perfTrace.on) {
+    perfLog('trace on (worker start or SW_PERF_TRACE)');
+    perfTrace.last = performance.now();
+    perfTrace.probe = setInterval(() => {
+      const now = performance.now();
+      const late = now - perfTrace.last - 100;
+      perfTrace.last = now;
+      if (late > 150) perfLog(`stall ${Math.round(late)}`);
+    }, 100);
+  }
+}
+loadPerfTraceFlag();
+
 const IMAGE_CACHE_POLICY = {
   // Previews are ~20-40 KB; 20000 covers the largest workspace (~20k images) and stays under
   // maxSizeBytes. 5000 was never really enforced (lost metadata entries were not counted).
@@ -93,12 +151,9 @@ async function matchStrategyCache(cacheName, request) {
   const cache = await caches.open(cacheName);
   if (cacheName === DYNAMIC_CACHE || cacheName === STATIC_CACHE) {
     const cacheKey = request.url.split('?')[0];
-    if (cacheName === STATIC_CACHE) {
-      // Bare-path rows only; an ignoreSearch fallback scans every row (matchStaticShell)
-      return cache.match(cacheKey, { ignoreVary: true });
-    }
-    return (await cache.match(cacheKey, { ignoreVary: true }))
-      || (await cache.match(request, { ignoreSearch: true, ignoreVary: true }));
+    // Bare-path rows only (both strategies strip the query); an ignoreSearch match scans
+    // every row (matchStaticShell)
+    return cache.match(cacheKey, { ignoreVary: true });
   }
   return cache.match(request);
 }
@@ -400,9 +455,8 @@ const staticStrategy = new strategies.CacheFirst({
 // Dynamic cache strategy - cache first with network fallback and immediate expiry
 const dynamicStrategy = new strategies.CacheFirst({
   cacheName: DYNAMIC_CACHE,
-  matchOptions: {
-    ignoreSearch: true
-  },
+  // No ignoreSearch: cacheKeyWillBeUsed below strips the query on read and write
+  matchOptions: {},
   plugins: [
     new cacheableResponse.CacheableResponsePlugin({
       statuses: [0, 200],
@@ -789,104 +843,79 @@ async function deleteImageMetadata(urls) {
   await writeImageMetadata(metadata);
 }
 
+// Called on image hits (rate-limited) and after deletions: works from the metadata alone, no
+// cache.keys() listing (about 1 s on a large image cache) and no per-entry Set rebuilds, which
+// froze the worker 0.4-0.8 s at a time (perf trace, Oct 24). The listing-based reconcile
+// (full images, entries without a row, rows without an entry) runs in runCacheMaintenance.
 async function enforceImageCachePolicy() {
+  return perfSpan('enforceImageCachePolicy', () => enforceImageCachePolicyNow({ reconcile: false }));
+}
+
+async function enforceImageCachePolicyNow({ reconcile }) {
   const metadata = await readImageMetadata();
   const cache = await caches.open(IMAGE_CACHE);
-  const keys = await cache.keys();
   const now = Date.now();
-  const keySet = new Set(keys.map(key => getCanonicalUrl(key.url)));
+  const favoriteSet = new Set(metadata.rules.favoriteUrls || []);
+  const lockedPreviewSet = new Set(metadata.rules.lockedPreviewUrls || []);
+  const pinnedUrl = (url) => favoriteSet.has(url) || lockedPreviewSet.has(url);
 
-  // Full images are one-shot. Drop leftovers so they do not crowd previews.
-  for (const key of keys) {
-    const url = getCanonicalUrl(key.url);
-    if (!isFullImageUrl(url)) {
-      continue;
+  if (reconcile) {
+    const keys = await cache.keys();
+    const keySet = new Set();
+    for (const key of keys) {
+      const url = getCanonicalUrl(key.url);
+      // Full images are one-shot. Drop leftovers so they do not crowd previews.
+      if (isFullImageUrl(url)) {
+        if (await cache.delete(key)) delete metadata.entries[url];
+        continue;
+      }
+      keySet.add(url);
     }
-    const deleted = await cache.delete(key);
-    if (deleted) {
-      delete metadata.entries[url];
+    // Entries whose row is gone
+    for (const url of Object.keys(metadata.entries)) {
+      if (!keySet.has(url)) delete metadata.entries[url];
+    }
+    // Cached previews whose entry an old overlapping write lost: track them as recently used,
+    // so they count toward the limits and can be evicted in order instead of never
+    for (const url of keySet) {
+      if (!metadata.entries[url] && isManagedImageCacheUrl(url)) {
+        metadata.entries[url] = { size: 0, lastAccess: now, cachedAt: now, seq: metadata.sequence, pinned: false };
+      }
     }
   }
 
-  // Cleanup metadata entries no longer present in cache.
-  for (const url of Object.keys(metadata.entries)) {
-    if (!keySet.has(url)) {
-      delete metadata.entries[url];
-    }
-  }
-
-  // Cached previews whose entry an old overlapping write lost: track them as recently used,
-  // so they count toward the limits and can be evicted in order instead of never
-  for (const url of keySet) {
-    if (!metadata.entries[url] && isManagedImageCacheUrl(url)) {
-      metadata.entries[url] = { size: 0, lastAccess: now, cachedAt: now, seq: metadata.sequence, pinned: false };
-    }
-  }
-
-  const removable = [];
+  const evict = new Map();
+  const candidates = [];
   let totalEntries = 0;
   let totalSize = 0;
-
-  for (const key of keys) {
-    const url = getCanonicalUrl(key.url);
-    if (!isManagedImageCacheUrl(url)) {
-      continue;
-    }
-
-    const entry = metadata.entries[url];
-    if (!entry) {
-      continue;
-    }
-
-    const pinned = isPinnedImageUrl(url, metadata);
+  for (const [url, entry] of Object.entries(metadata.entries)) {
+    if (!isManagedImageCacheUrl(url)) continue;
+    const pinned = pinnedUrl(url);
     entry.pinned = pinned;
     totalEntries += 1;
     totalSize += entry.size || 0;
-
-    const isExpired = now - (entry.lastAccess || entry.cachedAt || now) > IMAGE_CACHE_POLICY.maxIdleMs;
-    if (!pinned && isExpired) {
-      removable.push({ url, seq: entry.seq || 0, reason: 'expired', size: entry.size || 0 });
+    if (pinned) continue;
+    candidates.push({ url, seq: entry.seq || 0, size: entry.size || 0 });
+    if (now - (entry.lastAccess || entry.cachedAt || now) > IMAGE_CACHE_POLICY.maxIdleMs) {
+      evict.set(url, 'expired');
     }
   }
 
-  removable.sort((a, b) => a.seq - b.seq);
-  const evictQueue = [...removable];
-
   // FIFO-like eviction by earliest sequence for non-pinned items.
   if (totalEntries > IMAGE_CACHE_POLICY.maxEntries || totalSize > IMAGE_CACHE_POLICY.maxSizeBytes) {
-    const candidates = Object.entries(metadata.entries)
-      .filter(([url, entry]) => {
-        if (!isManagedImageCacheUrl(url)) return false;
-        return !isPinnedImageUrl(url, metadata);
-      })
-      .map(([url, entry]) => ({ url, seq: entry.seq || 0, size: entry.size || 0 }))
-      .sort((a, b) => a.seq - b.seq);
-
+    candidates.sort((a, b) => a.seq - b.seq);
     for (const candidate of candidates) {
       if (totalEntries <= IMAGE_CACHE_POLICY.maxEntries && totalSize <= IMAGE_CACHE_POLICY.maxSizeBytes) {
         break;
       }
-      if (!evictQueue.find(item => item.url === candidate.url)) {
-        evictQueue.push({ ...candidate, reason: 'capacity' });
-      }
+      if (!evict.has(candidate.url)) evict.set(candidate.url, 'capacity');
       totalEntries -= 1;
       totalSize -= candidate.size || 0;
     }
   }
 
-  if (evictQueue.length > 0) {
-    const removed = [];
-    for (const item of evictQueue) {
-      const deleted = await cache.delete(item.url);
-      if (deleted) {
-        removed.push(item.url);
-      }
-    }
-    if (removed.length > 0) {
-      for (const url of removed) {
-        delete metadata.entries[url];
-      }
-    }
+  for (const url of evict.keys()) {
+    if (await cache.delete(url)) delete metadata.entries[url];
   }
 
   await writeImageMetadata(metadata);
@@ -1133,21 +1162,6 @@ async function handleGadgetAsset(request, pathname) {
   }
 }
 
-// zips an earlier worker kept (about 27 MB a client): Setup unpacks them, nothing reads them again
-async function dropCachedGameMedia() {
-  const cache = await caches.open(STATIC_CACHE);
-  const keys = await cache.keys();
-  await Promise.all(keys
-    .filter((request) => {
-      try {
-        return new URL(request.url).pathname.startsWith(GAME_MEDIA_PREFIX);
-      } catch (_err) {
-        return false;
-      }
-    })
-    .map((request) => cache.delete(request, { ignoreVary: true })));
-}
-
 // Custom strategy wrapper to add cache-busting headers and emit network events
 function createCacheBustingStrategy(strategy, cacheName) {
   return {
@@ -1219,6 +1233,25 @@ workbox.routing.registerRoute(
 const LAUNCH_SHELL_CACHE = 'melaton-launch-shell-v1';
 const LAUNCH_SHELL_KEY = '/launch';
 
+// perfTrace: how long the fetch event waited for the worker (q) and how long its handler ran (h)
+function perfRoute(handler) {
+  return async (options) => {
+    if (!perfTrace.on) return handler(options);
+    const t0 = performance.now();
+    const fetchEvent = options && options.event;
+    const queued = fetchEvent && typeof fetchEvent.timeStamp === 'number' ? t0 - fetchEvent.timeStamp : -1;
+    let status = 'err';
+    try {
+      const response = await handler(options);
+      status = response ? response.status : 'none';
+      return response;
+    } finally {
+      const pathname = options && options.url ? options.url.pathname : '?';
+      perfLog(`fetch ${pathname.slice(0, 80)} q=${Math.round(queued)} h=${Math.round(performance.now() - t0)} ${status}`);
+    }
+  };
+}
+
 workbox.routing.registerRoute(
   ({ url, request }) => request.mode === 'navigate' && url.origin === self.location.origin && url.pathname === '/launch',
   async ({ request }) => {
@@ -1266,7 +1299,7 @@ workbox.routing.registerRoute(
     // Always handle requests that start with /
     return url.pathname.startsWith('/');
   },
-  async (event) => {
+  perfRoute(async (event) => {
     const { request, url } = event;
 
     maybeNotifyHttpTransmit(request);
@@ -1377,7 +1410,7 @@ workbox.routing.registerRoute(
       // Re-throw the error
       throw error;
     }
-  }
+  })
 );
 
 // Handle SPA navigation routes - use static cache if available, otherwise redirect
@@ -1457,8 +1490,13 @@ workbox.routing.registerRoute(
 
 // Message handling for client communication
 self.addEventListener('message', (event) => {
-    if (event.data && event.data.type === 'CACHE_STATIC_FILES') {
-        cacheStaticFiles(event.data.files, event.data.silent === true);
+    if (event.data && event.data.type === 'SW_PERF_TRACE') {
+        event.waitUntil(loadPerfTraceFlag());
+    } else if (event.data && event.data.type === 'SW_MAINTENANCE') {
+        event.waitUntil(runCacheMaintenance(event.data.force === true));
+    } else if (event.data && event.data.type === 'CACHE_STATIC_FILES') {
+        const files = event.data.files || [];
+        perfSpan(`cacheStaticFiles ${files.length} files`, () => cacheStaticFiles(files, event.data.silent === true));
     } else if (event.data && event.data.type === 'NO_UPDATES_AVAILABLE') {
         // Notify clients that no updates are available
         self.clients.matchAll().then(clients => {
@@ -1742,22 +1780,22 @@ function stopStallDetection() {
 // cache.delete(url) misses those, and cache.match then keeps returning the old row
 // with no x-file-hash — the client re-downloads and restarts forever.
 async function purgeStaticCacheEntries(cache, urlPath) {
-    let target;
-    try {
-        target = new URL(urlPath, self.location.origin);
-    } catch (error) {
-        return;
-    }
-    const keys = await cache.keys();
-    await Promise.all(keys.map((request) => {
-        try {
-            const keyUrl = new URL(request.url);
-            if (keyUrl.origin === target.origin && keyUrl.pathname === target.pathname) {
-                return cache.delete(request, { ignoreVary: true });
-            }
-        } catch (error) { /* ignore bad key */ }
-        return undefined;
-    }));
+  return perfSpan('purgeStaticCacheEntries', () => purgeStaticCacheEntriesNow(cache, urlPath));
+}
+
+async function purgeStaticCacheEntriesNow(cache, urlPath) {
+  let target;
+  try {
+    target = new URL(urlPath, self.location.origin);
+  } catch (error) {
+    return;
+  }
+  // Rows are keyed by the bare path; ignoreVary takes every Vary variant of it. Listing the
+  // whole cache here cost about 5 s per downloaded file on an 8500-row cache (Edge, Oct 24).
+  // Query-keyed siblings, if any ever appear, go in runCacheMaintenance.
+  target.search = '';
+  target.hash = '';
+  await cache.delete(target.href, { ignoreVary: true });
 }
 
 function staticCacheResponseWithHash(bodyBuffer, response, hash) {
@@ -2351,40 +2389,100 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-// A hashed shell row and a Vary / ?sha= row can share a pathname. ignoreSearch
-// match returns whichever it finds first, so the unhashed row can hide the hash.
-async function dropUnhashedStaticSiblings() {
+// ---------- cache upkeep (off the activation path) ----------
+// The page posts SW_MAINTENANCE once its boot is over (serviceWorkerManager.js
+// _scheduleWorkerMaintenance); it runs at most once a day per client, under that message's
+// waitUntil, so fetch events keep flowing meanwhile.
+const MAINTENANCE_KEY = '/internal/sw-maintenance-v1';
+const MAINTENANCE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+// Fetched on demand and never in the manifest: kept by the leftover prune
+const ON_DEMAND_STATIC_PREFIXES = () => [GAME_ASSET_PREFIX, GADGET_ASSET_PREFIX, '/data/vista-gadgets.json'];
+let maintenanceRun = null;
+
+function decodedPath(pathname) {
+  try { return decodeURI(pathname); } catch (_) { return pathname; }
+}
+
+async function fetchManifestPaths() {
+  try {
+    const response = await fetch('/', {
+      method: 'OPTIONS',
+      cache: 'no-store',
+      headers: { 'X-Service-Worker-Version': '2.0', 'X-Requested-With': 'ServiceWorker' }
+    });
+    if (!response.ok) return null;
+    const files = await response.json();
+    if (!Array.isArray(files) || files.length < 100) return null;
+    return new Set(files.map((file) => decodedPath(String(file.url || '').split('?')[0])));
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * One listing of the static cache: Setup's game media zips (about 27 MB a client, unpacked and
+ * never read again), unhashed rows sharing a path with a hashed one (a query or Vary sibling),
+ * and rows the manifest no longer lists (on-demand game and gadget files stay).
+ */
+async function tidyStaticRows() {
   const cache = await caches.open(STATIC_CACHE);
   const keys = await cache.keys();
+  const manifest = await fetchManifestPaths();
+  const onDemand = ON_DEMAND_STATIC_PREFIXES();
   const byPath = new Map();
+  const drop = [];
   for (const request of keys) {
     let pathname = '';
     try {
       pathname = new URL(request.url).pathname;
-    } catch (error) {
+    } catch (_) {
       continue;
     }
-    let list = byPath.get(pathname);
-    if (!list) {
-      list = [];
-      byPath.set(pathname, list);
+    if (pathname.startsWith(GAME_MEDIA_PREFIX)) {
+      drop.push(request);
+      continue;
     }
-    const response = await cache.match(request, { ignoreVary: true });
-    const hash = response && response.headers.get('x-file-hash');
-    list.push({ request, hash: hash || '' });
+    if (manifest && !manifest.has(decodedPath(pathname)) && !onDemand.some((prefix) => pathname.startsWith(prefix))) {
+      drop.push(request);
+      continue;
+    }
+    const list = byPath.get(pathname);
+    if (list) list.push(request);
+    else byPath.set(pathname, [request]);
   }
-  const deletions = [];
   for (const list of byPath.values()) {
-    if (!list.some((entry) => entry.hash)) {
-      continue;
+    if (list.length < 2) continue;
+    const rows = [];
+    for (const request of list) {
+      const response = await cache.match(request, { ignoreVary: true });
+      rows.push({ request, hash: (response && response.headers.get('x-file-hash')) || '' });
     }
-    for (const entry of list) {
-      if (!entry.hash) {
-        deletions.push(cache.delete(entry.request, { ignoreVary: true }));
-      }
-    }
+    if (!rows.some((row) => row.hash)) continue;
+    rows.filter((row) => !row.hash).forEach((row) => drop.push(row.request));
   }
-  await Promise.all(deletions);
+  for (const request of drop) {
+    await cache.delete(request, { ignoreVary: true });
+  }
+  perfLog(`maintenance static rows=${keys.length} dropped=${drop.length} manifest=${manifest ? manifest.size : 'none'}`);
+}
+
+function runCacheMaintenance(force = false) {
+  if (maintenanceRun) return maintenanceRun;
+  maintenanceRun = (async () => {
+    const internal = await caches.open(INTERNAL_CACHE);
+    const mark = await internal.match(MAINTENANCE_KEY);
+    const last = mark ? Number(await mark.text()) || 0 : 0;
+    if (!force && Date.now() - last < MAINTENANCE_INTERVAL_MS) return;
+    await perfSpan('maintenance:dropMislabelledStaticRows', dropMislabelledStaticRows);
+    await perfSpan('maintenance:tidyStaticRows', tidyStaticRows);
+    await perfSpan('maintenance:imagePolicy', () => enforceImageCachePolicyNow({ reconcile: true }));
+    await internal.put(MAINTENANCE_KEY, new Response(String(Date.now())));
+  })().catch((error) => {
+    console.warn('[sw] cache maintenance failed:', error);
+  }).finally(() => {
+    maintenanceRun = null;
+  });
+  return maintenanceRun;
 }
 
 // Install event — SW script only; assets cached via client-initiated CACHE_STATIC_FILES
@@ -2411,11 +2509,11 @@ self.addEventListener('activate', (event) => {
         })
       );
     }).then(async () => {
-      await dropUnhashedStaticSiblings();
-      await dropMislabelledStaticRows();
-      await dropCachedGameMedia();
+      // Only cheap steps here: the browser holds every page request until activation ends, and
+      // the cache upkeep took ~19 s on Yukimi's Edge (the Welcome screen waited on it). It runs
+      // in runCacheMaintenance, which the page asks for once its boot is over.
+      await loadPerfTraceFlag();
       await caches.open(STATIC_CACHE).then((cache) => cache.delete('/sw.js'));
-      await enforceImageCachePolicy();
       await self.clients.claim();
       const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
       clients.forEach((client) => {

@@ -19,7 +19,11 @@ assert.ok(start > 0 && end > start, 'the game asset block in sw.js');
 // the route leaves the media folder alone; a hit under vista-games is checked; activate drops old zips
 assert.ok(/if \(url\.pathname\.startsWith\(GAME_MEDIA_PREFIX\)\) \{\s*return false;/.test(src), 'media zips bypass the worker');
 assert.ok(/startsWith\(GAME_ASSET_PREFIX\) && event\.event\) \{\s*event\.event\.waitUntil\(revalidateGameAsset\(/.test(src), 'a game asset hit is revalidated');
-assert.ok(src.includes('await dropCachedGameMedia();'), 'activate drops cached media zips');
+assert.ok(/perfSpan\('maintenance:tidyStaticRows', tidyStaticRows\)/.test(src), 'cache maintenance drops cached media zips');
+// tidyStaticRows (the cache upkeep block): the media zips go, the game's files stay
+const upkeepStart = src.indexOf('// ---------- cache upkeep');
+const upkeepEnd = src.indexOf('function runCacheMaintenance');
+assert.ok(upkeepStart > 0 && upkeepEnd > upkeepStart, 'the cache upkeep block in sw.js');
 
 function world(opts) {
     const calls = [];
@@ -31,18 +35,20 @@ function world(opts) {
     };
     const headers = (h) => ({ get: (n) => (h || {})[n.toLowerCase()] || null });
     const ctx = {
-        Date, Map, Promise, URL, console,
+        Date, Map, Set, Promise, URL, console, decodeURI, perfLog: () => {},
         STATIC_CACHE: 'static-cache-v2',
         self: { clients: { matchAll: async () => (opts.clients || []).map((u) => ({ url: 'http://x' + u })) } },
         caches: { open: async () => cache },
         fetch: async (url, init) => {
             const method = (init && init.method) || 'GET';
             calls.push(method + ' ' + url);
+            if (method === 'OPTIONS' && opts.manifest) return { ok: true, json: async () => opts.manifest.map((u) => ({ url: u })) };
             return { ok: true, headers: headers({ 'x-file-hash': opts.serverHash }) };
         }
     };
     vm.createContext(ctx);
-    vm.runInContext(src.slice(start, end) + '\nthis.api = { revalidateGameAsset, dropCachedGameMedia, gameAssetChecked };', ctx);
+    vm.runInContext(src.slice(start, end) + src.slice(upkeepStart, upkeepEnd)
+        + '\nthis.api = { revalidateGameAsset, tidyStaticRows, gameAssetChecked };', ctx);
     return { api: ctx.api, calls, rows, cached: (hash) => ({ headers: headers({ 'x-file-hash': hash }) }) };
 }
 
@@ -76,10 +82,18 @@ function world(opts) {
         assert.ok(!w.api.gameAssetChecked.has(URL1), 'left for a later hit');
     }
 
-    // activate: the media zips go, the game's files stay
+    // cache maintenance: the media zips go, the game's files stay (no manifest answer: no prune)
     w = world({ rows: { '/static_images/vista-games/media/minesweeper.zip': 1, '/static_images/vista-games/media/minesweeper.json': 1, [URL1]: 1, '/css/app.css': 1 } });
-    await w.api.dropCachedGameMedia();
+    await w.api.tidyStaticRows();
     assert.deepStrictEqual(Array.from(w.rows.keys()).sort(), ['/css/app.css', URL1]);
+
+    // with the manifest: rows it no longer lists go, on-demand game and gadget files stay
+    const manifest = ['/css/app.css', '/sounds/vista/Windows Ding.wav'].concat(Array.from({ length: 120 }, (_, i) => '/f' + i + '.js'));
+    w = world({ manifest, rows: { '/css/app.css': 1, '/css/old.css': 1, '/sounds/vista/Windows%20Ding.wav': 1, [URL1]: 1,
+        '/static_images/vista-gadgets/clock/clock.html': 1, '/static_images/vista-games/media/chess.zip': 1 } });
+    await w.api.tidyStaticRows();
+    assert.deepStrictEqual(Array.from(w.rows.keys()).sort(),
+        ['/css/app.css', '/sounds/vista/Windows%20Ding.wav', URL1, '/static_images/vista-gadgets/clock/clock.html'].sort());
 
     console.log('test-sw-game-assets: ok');
 })().catch((err) => {

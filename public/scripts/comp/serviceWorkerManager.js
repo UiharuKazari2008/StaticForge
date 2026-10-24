@@ -1262,6 +1262,7 @@ class ServiceWorkerManager {
         }
 
         if ('serviceWorker' in navigator) {
+            this._scheduleWorkerMaintenance();
             try {
                 this._kickApplicationBootEarly();
                 this._showBootUiEarly('Checking server status…');
@@ -1397,6 +1398,23 @@ class ServiceWorkerManager {
             console.log('Service Worker is waiting for activation');
             this.checkForWaiting();
         }
+    }
+
+    /**
+     * sw.js runCacheMaintenance: the worker's cache upkeep no longer runs at activation (the
+     * browser held every page request for it, ~19 s on a large cache). It is asked for 15 s after
+     * the desktop boot, or 2 minutes after load elsewhere; the worker runs it at most once a day.
+     */
+    _scheduleWorkerMaintenance() {
+        let sent = false;
+        const send = () => {
+            const worker = navigator.serviceWorker && navigator.serviceWorker.controller;
+            if (sent || !worker) return;
+            sent = true;
+            worker.postMessage({ type: 'SW_MAINTENANCE' });
+        };
+        document.addEventListener('desktopBootDone', () => setTimeout(send, 15000), { once: true });
+        setTimeout(send, 120000);
     }
 
     _attachLateServiceWorkerRegistration(registerPromise) {
