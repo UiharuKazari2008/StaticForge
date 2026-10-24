@@ -471,3 +471,83 @@ body.windows-classic-theme .dark .custom-dropdown-menu .custom-dropdown-separato
     background: none;
     box-shadow: inset 0 1px var(--ButtonShadow), inset 0 -1px var(--ButtonHilight);
 }
+
+/* ---------- a program's Win32 menu bar menus (contextMenu.js .context-menu-win32) ----------
+   Opt-in per menu bar (role="menubar" data-win32-menus). Measured on the Vista VM (WordPad):
+   a #979797 border, 2 px of #f5f5f5, the gutter (#f1f1f1, its #e2e3e3 / #fff line) running down
+   the whole menu, Segoe UI 9 pt rows of 22 with labels 36 px from the border, separators of 8
+   with the etched line 4 down from the gutter to the inner edge, accelerators right-aligned in
+   their own column 34 px after the longest label and 19 px before the inner edge. The menu
+   overlaps the bar's last 4 rows. */
+body.desktop-mode:not(.windows-classic-theme) .context-menu.context-menu-win32.context-menu-win32 {
+    min-width: 0;
+    margin-top: -4px;
+    padding: 2px;
+    border: 1px solid #979797;
+    background: linear-gradient(to right, #f1f1f1 26px, #e2e3e3 26px 27px, #fff 27px 28px, #f0f0f0 28px) content-box, #f5f5f5;
+    font-size: 12px;
+    line-height: 22px;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .context-menu.context-menu-win32.context-menu-win32 .context-menu-item {
+    height: 22px;
+    min-height: 0;
+    box-sizing: border-box;
+    align-items: flex-start;
+    padding: 0 18px 0 31px;
+    background-color: transparent;
+    font-size: 12px;
+    line-height: 16px;
+    gap: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .context-menu.context-menu-win32.context-menu-win32 .context-menu-item::before {
+    content: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .context-menu.context-menu-win32.context-menu-win32 .context-menu-separator {
+    height: 8px;
+    margin: 0 0 0 28px;
+    background: linear-gradient(transparent 4px, #e0e0e0 4px 5px, #fff 5px 6px, transparent 6px);
+    box-shadow: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .context-menu.context-menu-win32.context-menu-win32 .context-menu-item-text-container {
+    flex-direction: row;
+    align-items: center;
+    margin: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .context-menu.context-menu-win32.context-menu-win32 .context-menu-item-text {
+    flex: none;
+    min-width: var(--w32-text, 0);
+    max-width: none;
+    margin: 0 34px 0 0;
+    line-height: 16px;
+    white-space: nowrap;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .context-menu.context-menu-win32.context-menu-win32 .context-menu-item-subtext {
+    flex: none;
+    min-width: var(--w32-accel, 0);
+    margin: 0 0 0 auto;
+    font-size: 12px;
+    line-height: 16px;
+    text-align: right;
+    opacity: 1;
+    white-space: nowrap;
+}
+
+/* a checked row: the VM's 22 px box and check (cut from WordPad's View menu) at the row's start */
+body.desktop-mode:not(.windows-classic-theme) .context-menu.context-menu-win32.context-menu-win32 .context-menu-item-mark[data-kind="check"] {
+    left: -1px;
+    top: -1px;
+    bottom: auto;
+    width: 22px;
+    height: 22px;
+    background: url('/static_images/vista-controls/menu-check.png') no-repeat;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .context-menu.context-menu-win32.context-menu-win32 .context-menu-item-mark[data-kind="check"]::before {
+    content: none;
+}

@@ -162,6 +162,14 @@
     font: 12px var(--cpl-font);
 }
 
+/* a page's task pane (cplPages.js tasks()): headings and links 36 px in from the window's edge,
+   shields and icons hanging 20 px left of the text (the img sits 2 px before the button) (the VM's System, Programs, Ease of Access) */
+#melatonControlPanelModal .cpl-tasks:has(.cpl-vtasks) .cpl-task-group {
+    /* the text runs to 1 px short of the pane's right edge (Change administrative settings fits) */
+    margin-right: -11px;
+    padding-left: 12px;
+}
+
 /* the task pane's icon links (Power Options: Choose when to turn off the display) */
 #melatonControlPanelModal .cpl-tasks .cpl-vtask.has-icon {
     position: relative;

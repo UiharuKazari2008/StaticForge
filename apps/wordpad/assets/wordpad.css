@@ -31,6 +31,7 @@
     display: inline-flex;
     align-items: center;
     min-width: 0;
+    box-sizing: border-box;
     height: 19px;
     min-height: 0;
     padding: 0 3px 1px;
@@ -98,6 +99,18 @@
     margin-top: 1px;
 }
 
+/* the rebar's band border runs under the toolbar row to the format bar's end (the VM) */
+.wpad-window .wpad-formatbar::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    width: 568px;
+    top: -2px;
+    height: 1px;
+    background: #a0a0a0;
+    box-shadow: 0 1px #fff;
+}
+
 .wpad-window .wpad-bar[hidden],
 .wpad-window .wpad-ruler[hidden],
 .wpad-window .wpad-status[hidden] {
@@ -163,7 +176,7 @@
     top: 3px;
     height: 21px;
     margin: 0;
-    padding: 0 0 0 2px;
+    padding: 0 0 4px 2px;
     border: 1px solid;
     border-color: #abadb3 #dbdfe6 #e3e9ef #e2e3ea;
     border-radius: 0;
@@ -171,7 +184,8 @@
     -webkit-appearance: none;
     appearance: none;
     color: #000;
-    font: 12px "Segoe UI", Tahoma, sans-serif;
+    /* the format bar's combos use the dialog font (MS Shell Dlg), not Segoe */
+    font: 11px "Microsoft Sans Serif", Tahoma, sans-serif;
     box-shadow: none;
 }
 
@@ -247,11 +261,34 @@
     justify-content: space-between;
     box-sizing: border-box;
     height: 19px;
-    padding: 0 3px;
+    padding: 1px 2px 0;
     border-top: 1px solid #919191;
     box-shadow: inset 0 1px #fff, inset 0 -1px #fff;
-    background: #f1eded;
+    background: #f1eded url('grip.png') no-repeat right 1px bottom 1px;
     line-height: 17px;
+    position: relative;
+}
+
+/* the status bar's parts (the VM's): text, a 35 px part, the grip part, split by #d7d7d7 lines */
+.wpad-window .wpad-status::before,
+.wpad-window .wpad-status::after {
+    content: '';
+    position: absolute;
+    top: 1px;
+    bottom: 1px;
+    width: 1px;
+    background: #d7d7d7;
+}
+
+.wpad-window .wpad-status::before { right: 55px; }
+.wpad-window .wpad-status::after { right: 19px; }
+
+.wpad-window .wpad-status-num {
+    position: absolute;
+    right: 20px;
+    width: 35px;
+    padding-left: 2px;
+    box-sizing: border-box;
 }
 
 /* the dialogs' list boxes (New, Date and Time) */
@@ -271,4 +308,25 @@
     right: 0;
     top: 23px;
     bottom: 0;
+}
+
+/* Font (comdlg32 1543): the sample in ChooseFont's sunken box, centred */
+.vdt-client .wpad-font-sample {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    box-sizing: border-box;
+    border: 1px solid;
+    border-color: #a0a0a0 #fff #fff #a0a0a0;
+    box-shadow: inset 1px 1px #696969, inset -1px -1px #e3e3e3;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+/* Page Setup (comdlg32 1546): comdlg32's sample page as the VM draws it at the default margins */
+.vdt-client .wpad-ps-page {
+    position: absolute;
+    left: 0;
+    top: 0;
 }

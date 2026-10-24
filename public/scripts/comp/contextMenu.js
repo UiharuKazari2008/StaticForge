@@ -586,6 +586,7 @@ class ContextMenuController {
         this.activeRootMenuConfig = parent.config;
         this.currentTarget = parent.target;
         this.menu.classList.toggle('context-menu-click-triggered', parent.trigger === 'click');
+        this.menu.classList.toggle('context-menu-win32', this._isWin32MenuTitle(parent.target, parent.trigger));
 
         if (parent.config.beforeShow) {
             try {
@@ -1287,6 +1288,7 @@ class ContextMenuController {
 
         this.activeMenuTrigger = trigger;
         this.menu.classList.toggle('context-menu-click-triggered', trigger === 'click');
+        this.menu.classList.toggle('context-menu-win32', this._isWin32MenuTitle(target, trigger));
 
         // Arm before render. Layout from the open can scroll or resize, which used to dismiss immediately.
         if (isTouch && trigger === 'context') {
@@ -2262,7 +2264,26 @@ class ContextMenuController {
         }
     }
 
+    /** A title in a program's Win32 menu bar (role="menubar" with data-win32-menus): its menus take Vista's metrics. */
+    _isWin32MenuTitle(target, trigger) {
+        return trigger === 'click' && !!(target && target.closest && target.closest('[role="menubar"][data-win32-menus]'));
+    }
+
+    /**
+     * A Win32 menu sizes like Vista's: one column as wide as the longest label, one as wide as the
+     * longest accelerator (right-aligned), whatever row they are in.
+     */
+    _win32Columns(menu) {
+        if (!menu || !menu.classList.contains('context-menu-win32')) return;
+        menu.style.removeProperty('--w32-text');
+        menu.style.removeProperty('--w32-accel');
+        const widest = (sel) => Math.ceil(Math.max(0, ...Array.from(menu.querySelectorAll(sel), (e) => e.getBoundingClientRect().width)));
+        menu.style.setProperty('--w32-text', `${widest('.context-menu-item-text')}px`);
+        menu.style.setProperty('--w32-accel', `${widest('.context-menu-item-subtext')}px`);
+    }
+
     _playContextMenuOpenAnimation(menu) {
+        this._win32Columns(menu);
         menu.classList.remove('context-menu-closing', 'context-menu-opening');
         void menu.offsetWidth;
         menu.classList.add('context-menu-opening');

@@ -20,6 +20,7 @@
     const reg = (n, d) => (root.melatonRegistry ? root.melatonRegistry.get(KEY, n, d) : d);
     const setReg = (v) => { if (root.melatonRegistry) void root.melatonRegistry.set(KEY, v); };
     const ICON16 = '/static_images/app_icons/16/vista-wordpad.webp';
+    const A = '/melaton-apps/wordpad/assets';
     const ICON24 = '/static_images/app_icons/24/vista-wordpad.webp';
     const CMD = '/static_images/vista-cmdbar';
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -365,7 +366,7 @@
                     <button type="button" class="btn-danger close-btn btn-small wpad-close" title="Close"><i class="fa-regular fa-xmark-large"></i></button>
                 </div>
                 <div class="modal-content win7 wpad-client">
-                    <div class="naxt-menubar wpad-menubar" role="menubar">${['File', 'Edit', 'View', 'Insert', 'Format', 'Help'].map((t) => `<button type="button" class="naxt-menu-title" data-wpad-menu="${t.toLowerCase()}" role="menuitem">${t}</button>`).join('')}</div>
+                    <div class="naxt-menubar wpad-menubar" role="menubar" data-win32-menus>${[['File', 32], ['Edit', 33], ['View', 39], ['Insert', 44], ['Format', 52], ['Help', 37]].map(([t, w]) => `<button type="button" class="naxt-menu-title" data-wpad-menu="${t.toLowerCase()}" role="menuitem" style="width:${w}px">${t}</button>`).join('')}</div>
                     <div class="wpad-rebar">
                         <div class="wpad-bar wpad-toolbar" role="toolbar">
                             ${tb('new', 0, 6, 'New')}${tb('open', 1, 29, 'Open')}${tb('save', 2, 52, 'Save')}
@@ -563,6 +564,9 @@
 
         menu(name) {
             const sel = (() => { const s = root.getSelection(); return !!(s && !s.isCollapsed && this.page.contains(s.anchorNode)); })();
+            // an empty document greys Select All and the find commands, nothing to undo greys Undo (the VM)
+            const empty = !this.page.textContent.length && !this.page.querySelector('img');
+            const canUndo = (() => { try { return doc.queryCommandEnabled('undo'); } catch (_) { return true; } })();
             switch (name) {
                 case 'file': return [
                     { text: 'New...', subtext: 'Ctrl+N', action: 'new' }, { text: 'Open...', subtext: 'Ctrl+O', action: 'open' },
@@ -577,16 +581,16 @@
                     { text: 'Exit', action: 'exit' }
                 ];
                 case 'edit': return [
-                    { text: 'Undo', subtext: 'Ctrl+Z', action: 'undo' },
+                    { text: 'Undo', subtext: 'Ctrl+Z', action: 'undo', disabled: !canUndo },
                     { separator: true },
                     { text: 'Cut', subtext: 'Ctrl+X', action: 'cut', disabled: !sel }, { text: 'Copy', subtext: 'Ctrl+C', action: 'copy', disabled: !sel },
-                    { text: 'Paste', subtext: 'Ctrl+V', action: 'paste' }, { text: 'Paste Special...', disabled: true }, { text: 'Clear', subtext: 'Del', action: 'clear', disabled: !sel },
-                    { text: 'Select All', subtext: 'Ctrl+A', action: 'select-all' },
+                    { text: 'Paste', subtext: 'Ctrl+V', action: 'paste' }, { text: 'Paste Special...', action: 'paste' }, { text: 'Clear', subtext: 'Del', action: 'clear', disabled: !sel },
+                    { text: 'Select All', subtext: 'Ctrl+A', action: 'select-all', disabled: empty },
                     { separator: true },
-                    { text: 'Find...', subtext: 'Ctrl+F', action: 'find' }, { text: 'Find Next', subtext: 'F3', action: 'find-next' }, { text: 'Replace...', subtext: 'Ctrl+H', action: 'replace' },
+                    { text: 'Find...', subtext: 'Ctrl+F', action: 'find', disabled: empty }, { text: 'Find Next', subtext: 'F3', action: 'find-next', disabled: empty }, { text: 'Replace...', subtext: 'Ctrl+H', action: 'replace', disabled: empty },
                     { separator: true },
-                    // no OLE objects here: Links and Object Properties stay grey (menu 128)
-                    { text: 'Links...', disabled: true }, { text: 'Object Properties', subtext: 'Alt+Enter', disabled: true }
+                    // no OLE objects here: Links, Object Properties and Object stay grey (menu 128)
+                    { text: 'Links...', disabled: true }, { text: 'Object Properties', subtext: 'Alt+Enter', disabled: true }, { text: 'Object', disabled: true }
                 ];
                 case 'view': return [
                     { text: 'Toolbar', action: 'view-Toolbar', showIndicator: true, checked: reg(`${this.kind === 'txt' ? 'text.' : ''}Toolbar`, true) !== false },
@@ -689,6 +693,7 @@
                 const types = [['rtf', 'Rich Text Document'], ['txt', 'Text Document'], ['utxt', 'Unicode Text Document']];
                 let pick = 'rtf';
                 V.openDialog({
+                    bareCaption: true,
                     id: 'wpadNew', key: 'wordpad:160', icon: ICON16, owner: this.modal,
                     init: (ctx) => {
                         ctx.options(1018, types.map(([value, text]) => ({ value, text })), 'rtf');
@@ -840,8 +845,29 @@
             const V = root.vistaDialogTemplate;
             if (!V) return;
             V.openDialog({
+                bareCaption: true,
                 id: 'wpadPageSetup', key: 'comdlg32:1546', owner: this.modal,
+                // the VM's: no Help (no PSD_SHOWHELP), "Margins (inches)", comdlg32's sample page (its own
+                // shadow, so the template's shadow strips go)
+                overrides: {
+                    1038: { hidden: true }, 1081: { hidden: true }, 1082: { hidden: true }, 1075: { text: 'Margins (inches)' },
+                    1080: { html: `<img class="wpad-ps-page" src="${A}/page-portrait.png" alt="" draggable="false">` }
+                },
                 init: (ctx) => {
+                    const page = () => {
+                        const img = ctx.content.querySelector('.wpad-ps-page');
+                        const land = !!ctx.get(1057);
+                        if (img) { img.src = `${A}/page-${land ? 'landscape' : 'portrait'}.png`; img.classList.toggle('is-landscape', land); }
+                    };
+                    // Landscape turns the margins with the page (the VM: left 1.25 / top 1 become 1 / 1.25)
+                    const turn = () => {
+                        const [l, r, t, b] = [1155, 1157, 1156, 1158].map((id) => ctx.get(id));
+                        ctx.set(1155, t); ctx.set(1157, b); ctx.set(1156, l); ctx.set(1158, r);
+                        page();
+                    };
+                    ctx.on(1056, 'change', turn);
+                    ctx.on(1057, 'change', turn);
+                    setTimeout(page, 0);
                     ctx.options(1137, ['Letter', 'A4', 'Legal'], reg('Paper', 'Letter'));
                     ctx.options(1138, ['Automatically Select'], 'Automatically Select');
                     ctx.set(reg('Landscape', false) ? 1057 : 1056, true);
@@ -879,6 +905,7 @@
             const sel = root.getSelection();
             const seed = sel && !sel.isCollapsed && this.page.contains(sel.anchorNode) ? sel.toString() : (this.lastFind && this.lastFind.what) || '';
             V.openDialog({
+                bareCaption: true,
                 id: replace ? 'wpadReplace' : 'wpadFind', key: replace ? 'comdlg32:1541' : 'comdlg32:1540', owner: this.modal,
                 init: (ctx) => { ctx.set(1152, seed); if (!replace) ctx.set(1057, true); },
                 buttons: {
@@ -967,11 +994,14 @@
                 `${pad(d.getMonth() + 1)}/${pad(d.getDate())}/${d.getFullYear()}`, `${String(d.getFullYear()).slice(2)}/${pad(d.getMonth() + 1)}/${pad(d.getDate())}`, `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
                 `${d.getDate()}-${M[d.getMonth()].slice(0, 3)}-${String(d.getFullYear()).slice(2)}`, `${D[d.getDay()]}, ${M[d.getMonth()]} ${pad(d.getDate())}, ${d.getFullYear()}`, `${M[d.getMonth()]} ${pad(d.getDate())}, ${d.getFullYear()}`,
                 `${D[d.getDay()]}, ${pad(d.getDate())} ${M[d.getMonth()]}, ${d.getFullYear()}`, `${pad(d.getDate())} ${M[d.getMonth()]}, ${d.getFullYear()}`,
-                `${h12}:${pad(d.getMinutes())}:${pad(d.getSeconds())} ${ap}`, `${pad(h12)}:${pad(d.getMinutes())}:${pad(d.getSeconds())} ${ap}`, `${d.getHours()}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`, `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`];
+                `${h12}:${pad(d.getMinutes())}:${pad(d.getSeconds())} ${ap}`, `${pad(h12)}:${pad(d.getMinutes())}:${pad(d.getSeconds())} ${ap}`, `${d.getHours()}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`, `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`]
+                // the locale's formats, each once (the VM lists 10/24/26 once, not for M/d/yy and MM/dd/yy)
+                .filter((f, k, all) => all.indexOf(f) === k);
             // wordpad.exe.mui dialog 151
             let pick = 0;
             V.openDialog({
-                id: 'wpadDate', key: 'wordpad:151', icon: ICON16, owner: this.modal,
+                bareCaption: true,
+                focusFirst: true, id: 'wpadDate', key: 'wordpad:151', icon: ICON16, owner: this.modal,
                 init: (ctx) => {
                     ctx.options(1018, formats.map((text, k) => ({ value: String(k), text })), '0');
                     const h = ctx.holder(1018);
@@ -1028,9 +1058,18 @@
             const style = bold && italic ? 'Bold Italic' : bold ? 'Bold' : italic ? 'Italic' : 'Regular';
             const pt = Math.round(parseFloat(cs.fontSize) * 0.75);
             V.openDialog({
+                bareCaption: true,
                 id: 'wpadFont', key: 'comdlg32:1543', owner: this.modal,
+                // ChooseFont without CF_APPLY / CF_SHOWHELP: no Apply or Help (the VM)
+                // the sample: ChooseFont's own sunken box, the text in its middle
+                overrides: { 1026: { hidden: true }, 1038: { hidden: true }, 1092: { html: '<div class="wpad-font-sample">AaBbYyZz</div>' } },
                 init: (ctx) => {
-                    ctx.options(1136, FONTS, FONTS.includes(font) ? font : 'Calibri');
+                    // every face here is OpenType on Vista: comdlg32 bitmap 38's O glyph before each
+                    ctx.options(1136, FONTS.map((f) => ({ value: f, text: f, icon: '/static_images/vista-dlg/comdlg32-38-otf.png' })), FONTS.includes(font) ? font : 'Arial');
+                    ctx.show(1092, true);
+                    ctx.text(1093, 'This is an OpenType font. This same font will be used on both your printer and your screen.');
+                    // the face edit has the focus, its text selected (the VM)
+                    setTimeout(() => { const f = ctx.el(1136); if (f && f.select) { f.focus(); f.select(); } }, 0);
                     ctx.options(1137, ['Regular', 'Italic', 'Bold', 'Bold Italic'], style);
                     ctx.options(1138, SIZES.map(String), String(pt));
                     ctx.options(1139, COLORS.map(([, t]) => t), 'Black');
@@ -1080,7 +1119,8 @@
             const inch = (px) => (Math.round(((parseFloat(px) || 0) / 96) * 100) / 100).toString();
             // wordpad.exe.mui dialog 143; Alignment is Left / Center / Right (strings 116-118)
             V.openDialog({
-                id: 'wpadPara', key: 'wordpad:143', icon: ICON16, owner: this.modal,
+                bareCaption: true,
+                focusFirst: true, id: 'wpadPara', key: 'wordpad:143', icon: ICON16, owner: this.modal,
                 init: (ctx) => {
                     ctx.set(1000, `${inch(cs.marginLeft)}"`);
                     ctx.set(1001, `${inch(cs.marginRight)}"`);
@@ -1105,6 +1145,7 @@
             if (!V) return;
             const stops = (reg('TabStops', '') || '').split(',').filter(Boolean);
             V.openDialog({
+                bareCaption: true,
                 id: 'wpadTabs', key: 'wordpad:145', icon: ICON16, owner: this.modal,
                 // the simple combo box: its edit over its list
                 overrides: { 1019: { html: '<input type="text" class="tbp-edit wpad-tabs-edit" spellcheck="false"><div class="vdt-listbox vdt-edge wpad-tabs-list" tabindex="0"></div>' } },
@@ -1112,9 +1153,17 @@
                     const host = ctx.holder(1019);
                     const edit = host && host.querySelector('input');
                     const list = host && host.querySelector('.wpad-tabs-list');
-                    const draw = () => { if (list) list.innerHTML = stops.map((t) => `<div class="vdt-lb-row" data-value="${esc(t)}">${esc(t)}</div>`).join(''); };
+                    // Set wants a position typed, Clear one of the stops, Clear All any stop (greyed otherwise, the VM)
+                    const state = () => {
+                        const v = edit ? edit.value.trim() : '';
+                        ctx.enable(1005, !!v);
+                        ctx.enable(1006, stops.some((t) => parseFloat(t) === parseFloat(v)));
+                        ctx.enable(1007, stops.length > 0);
+                    };
+                    const draw = () => { if (list) list.innerHTML = stops.map((t) => `<div class="vdt-lb-row" data-value="${esc(t)}">${esc(t)}</div>`).join(''); state(); };
                     draw();
-                    if (list) list.addEventListener('click', (ev) => { const r = ev.target.closest('.vdt-lb-row'); if (r && edit) edit.value = r.dataset.value; });
+                    if (edit) edit.addEventListener('input', state);
+                    if (list) list.addEventListener('click', (ev) => { const r = ev.target.closest('.vdt-lb-row'); if (r && edit) { edit.value = r.dataset.value; state(); } });
                     ctx.on(1005, 'click', () => { const v = edit && edit.value.trim(); if (v && !stops.includes(v)) { stops.push(/"$/.test(v) ? v : `${v}"`); stops.sort((x, y) => parseFloat(x) - parseFloat(y)); draw(); } });
                     ctx.on(1006, 'click', () => { const v = edit && edit.value.trim(); const k = stops.findIndex((t) => parseFloat(t) === parseFloat(v)); if (k >= 0) { stops.splice(k, 1); draw(); } });
                     ctx.on(1007, 'click', () => { stops.length = 0; draw(); });
@@ -1139,7 +1188,10 @@
             const units = ['in', 'cm', 'pt', 'pi'];
             const wrapId = { none: 1027, window: 1026, ruler: 1025 };
             V.openSheet({
+                bareCaption: true,
                 id: 'wpadOptions', title: 'Options', icon: ICON16, owner: this.modal,
+                // MFC's sheet: no Apply, no comctl32 minimum size (the VM)
+                noApply: true, noMinSize: true,
                 pages: [{ key: 'wordpad:158', title: 'Options' }].concat(kinds.map(([k, t]) => ({ key: `wordpad:159:${k}`, title: t }))),
                 start: this.kind === 'txt' ? 'wordpad:159:text' : 'wordpad:159:rtf',
                 init: (ctx) => {

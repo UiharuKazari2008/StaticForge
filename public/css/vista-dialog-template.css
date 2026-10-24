@@ -127,7 +127,44 @@ body.desktop-mode .modal.vdt-window[data-vista-dialog] > .modal-content.vdt-clie
     box-shadow: none;
 }
 
+/* a plain dialog's group box label sits on the dialog's #f0f0f0 (property sheet pages are white) */
+.tbp-client.vdt-plain .tbp-group-label {
+    background: #f0f0f0;
+}
+
 /* ---- list boxes and list views ---- */
+
+/* a simple combo box (CBS_SIMPLE): its 21 px edit, the list box right under it (ChooseFont's) */
+.vdt-client .vdt-simple-combo input.tbp-edit {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 21px;
+    box-sizing: border-box;
+    margin: 0;
+}
+
+.vdt-client .vdt-simple-combo .vdt-listbox {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 21px;
+    box-sizing: border-box;
+}
+
+/* a combo box's list shows its selection blue even while the edit has the focus */
+.vdt-client .vdt-simple-combo .vdt-listbox .vdt-lb-row.is-selected.is-selected {
+    background: #3399ff;
+    color: #fff;
+}
+
+/* its rows' pictures keep their size (the font type glyphs, comdlg32 bitmap 38: 20 x 12) */
+.vdt-client .vdt-simple-combo .vdt-lb-row img {
+    width: auto;
+    height: auto;
+    flex: none;
+}
 
 .vdt-client .vdt-listbox {
     overflow-x: hidden;

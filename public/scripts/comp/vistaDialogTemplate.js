@@ -215,7 +215,9 @@
                     // a combo box is as tall as its font (21 px), not its template rect (the drop-down)
                     const cr = { ...r, height: 21 };
                     if (kind === 1) {
-                        out.push(`<div class="tbp-ctl vdt-listbox${edge}" style="${style(r)}" ${dataId}${hid} tabindex="0"></div>`);
+                        // CBS_SIMPLE: its edit (21 px) over a list box of whole 13 px rows (Win32's integral height)
+                        const lh = Math.max(15, Math.floor((r.height - 21 - 2) / 13) * 13 + 2);
+                        out.push(`<div class="tbp-ctl vdt-simple-combo" style="${style(r)}" ${dataId}${hid}><input type="text" class="tbp-edit" id="${domId}"${dis} spellcheck="false" autocomplete="off"><div class="vdt-listbox vdt-edge" role="listbox" style="height:${lh}px"></div></div>`);
                     } else if (kind === 2) {
                         out.push(`<div class="tbp-ctl vdt-combo-edit" style="${style(cr)}" ${dataId}${hid}><input type="text" class="tbp-edit" id="${domId}" list="${domId}-list"${dis} spellcheck="false" autocomplete="off"><datalist id="${domId}-list"></datalist></div>`);
                     } else {
@@ -582,7 +584,8 @@
         modal.dataset.vistaDialog = 'form';
         modal.dataset.windowClient = 'light';
         if (opts.icon) modal.dataset.taskbarIcon = opts.icon;
-        else modal.dataset.captionIcon = 'none';
+        // bareCaption: a dialog Vista draws without a caption icon (its taskbar button still has one)
+        if (!opts.icon || opts.bareCaption) modal.dataset.captionIcon = 'none';
         modal.setAttribute('role', 'dialog');
         modal.setAttribute('aria-label', title);
         modal.innerHTML = `
@@ -656,6 +659,7 @@
                     e.querySelectorAll('.vdt-lb-row').forEach((row) => row.classList.toggle('is-selected', row.dataset.value === String(value)));
                 } else if (e.classList && e.classList.contains('vdt-dtp')) dtpSet(e, value, true);
                 else if (e.classList && e.classList.contains('vdt-pushlike')) e.setAttribute('aria-pressed', value ? 'true' : 'false');
+                else if (e.tagName === 'INPUT' && e.closest('.vdt-simple-combo')) simplePick(e, String(value), true);
                 else e.value = value;
             },
             text(id, text, key) {
@@ -696,6 +700,10 @@
                 if (e.tagName === 'SELECT') {
                     e.innerHTML = items.map((o) => `<option value="${esc(o.value)}">${esc(o.text)}</option>`).join('');
                     if (value !== undefined) e.value = String(value);
+                } else if (e.tagName === 'INPUT' && e.closest('.vdt-simple-combo')) {
+                    const box = e.closest('.vdt-simple-combo').querySelector('.vdt-listbox');
+                    box.innerHTML = items.map((o) => `<div class="vdt-lb-row" data-value="${esc(o.value)}" role="option">${o.icon ? `<img src="${esc(o.icon)}" alt="">` : ''}<span>${esc(o.text)}</span></div>`).join('');
+                    if (value !== undefined) ctx.set(id, value, key);
                 } else if (e.tagName === 'INPUT' && e.list) {
                     e.list.innerHTML = items.map((o) => `<option value="${esc(o.text)}">`).join('');
                     if (value !== undefined) e.value = String(value);
@@ -812,8 +820,45 @@
         if (typeof state.opts.pageShown === 'function') state.opts.pageShown(state.ctx, key);
     }
 
+    /**
+     * A simple combo box: select the list's row for a value (exactly, or the first row the typed text
+     * starts, as Win32's edit-change does) and scroll it into view; `exact` also puts its text in the edit.
+     */
+    function simplePick(input, value, exact) {
+        const box = input.closest('.vdt-simple-combo').querySelector('.vdt-listbox');
+        const rows = Array.from(box.querySelectorAll('.vdt-lb-row'));
+        const v = value.toLowerCase();
+        const row = rows.find((r) => r.dataset.value === value) || (v ? rows.find((r) => r.textContent.toLowerCase().startsWith(v)) : null);
+        rows.forEach((r) => r.classList.toggle('is-selected', r === row));
+        box.dataset.value = row ? row.dataset.value : '';
+        if (exact) input.value = row ? row.textContent : value;
+        if (row) {
+            const top = row.offsetTop;
+            if (top < box.scrollTop || top + row.offsetHeight > box.scrollTop + box.clientHeight) box.scrollTop = top;
+        }
+    }
+
     function wireCommon(state) {
         const { content, modal } = state;
+        // simple combo boxes: typing selects the list's first match, Up / Down walk the list
+        content.addEventListener('input', (ev) => {
+            const input = ev.target;
+            if (!input.closest || !input.closest('.vdt-simple-combo')) return;
+            simplePick(input, input.value, false);
+            input.closest('[data-vdt-id]').dispatchEvent(new Event('change', { bubbles: true }));
+        });
+        content.addEventListener('keydown', (ev) => {
+            const input = ev.target;
+            if (!input.closest || !input.closest('.vdt-simple-combo') || (ev.key !== 'ArrowUp' && ev.key !== 'ArrowDown')) return;
+            const rows = Array.from(input.closest('.vdt-simple-combo').querySelectorAll('.vdt-lb-row'));
+            const i = rows.findIndex((r) => r.classList.contains('is-selected'));
+            const next = rows[Math.max(0, Math.min(rows.length - 1, i + (ev.key === 'ArrowUp' ? -1 : 1)))];
+            if (!next) return;
+            ev.preventDefault();
+            simplePick(input, next.dataset.value, true);
+            input.select();
+            input.closest('[data-vdt-id]').dispatchEvent(new Event('change', { bubbles: true }));
+        });
         // date pickers start on today until the program sets them
         dtpWire();
         content.querySelectorAll('.vdt-dtp').forEach((el) => { if (!el._vdtDate) dtpSet(el, new Date(), true); });
@@ -825,6 +870,8 @@
                 box.querySelectorAll('.is-selected').forEach((n) => n.classList.remove('is-selected'));
                 row.classList.add('is-selected');
                 if (box.classList.contains('vdt-listbox')) box.dataset.value = row.dataset.value;
+                const simple = box.closest('.vdt-simple-combo');
+                if (simple) { const input = simple.querySelector('input'); input.value = row.textContent; input.focus(); input.select(); }
                 box.dispatchEvent(new Event('change', { bubbles: true }));
             }
             const push = ev.target.closest('.vdt-pushlike');
@@ -877,17 +924,21 @@
         // comctl32 never makes a page smaller than PROP_SM_CXDLG x PROP_SM_CYDLG (212 x 188 DLU of
         // MS Shell Dlg): Tablet PC Settings' 200 DLU pages sit in a 354 px window on the VM
         const shell = units({ f: ['MS Shell Dlg', 8] });
-        const pw = Math.max(px(shell, 212, 'x'), ...pages.map((p) => size(p.tpl).width));
-        const ph = Math.max(px(shell, 188, 'y'), ...pages.map((p) => size(p.tpl).height));
+        // noMinSize: a sheet as small as its pages (MFC's, WordPad's Options: 456 x 245 on the VM)
+        const minW = opts.noMinSize ? 0 : px(shell, 212, 'x');
+        const minH = opts.noMinSize ? 0 : px(shell, 188, 'y');
+        const pw = Math.max(minW, ...pages.map((p) => size(p.tpl).width));
+        const ph = Math.max(minH, ...pages.map((p) => size(p.tpl).height));
         const rows = tabRows(pages.map((p) => p.title || p.tpl.t), pw + 2);
         const extra = (rows.length - 1) * TAB_ROW;
         const cw = pw + 20;
         const ch = ph + 69 + extra;
-        const { modal, content } = makeWindow(opts.id, opts.title, { icon: opts.icon, segoe: u.segoe, help: opts.help });
+        const { modal, content } = makeWindow(opts.id, opts.title, { icon: opts.icon, bareCaption: !!opts.bareCaption, segoe: u.segoe, help: opts.help });
         content.style.width = `${cw}px`;
         content.style.height = `${ch}px`;
         content.style.font = u.font;
-        const bx = cw - 6 - 75;
+        // without Apply, OK and Cancel move right into its place
+        const bx = cw - 6 - 75 + (opts.noApply ? 81 : 0);
         content.innerHTML = `
             <div class="tbp-tabs" role="tablist">${pages.map((p) => `<button type="button" class="tbp-tab" role="tab" data-vdt-tab="${esc(p.key)}">${label(p.title || p.tpl.t)}</button>`).join('')}</div>
             <div class="tbp-pane" style="width:${pw + 6}px;height:${ph + 5}px;${extra ? `top:${27 + extra}px;` : ''}">
@@ -943,8 +994,9 @@
         }
         const u = units(tpl);
         const sz = size(tpl);
-        // captionIcon: draw opts.icon in the caption (otherwise the caption inherits the owner's)
-        const { modal, content } = makeWindow(opts.id, opts.title || tpl.t, { icon: opts.icon, captionIcon: !!opts.captionIcon, segoe: u.segoe, help: opts.help });
+        // captionIcon: draw opts.icon in the caption (otherwise the caption inherits the owner's);
+        // bareCaption: no caption icon at all, as Vista draws most dialogs
+        const { modal, content } = makeWindow(opts.id, opts.title || tpl.t, { icon: opts.icon, captionIcon: !!opts.captionIcon, bareCaption: !!opts.bareCaption, segoe: u.segoe, help: opts.help });
         content.classList.add('vdt-plain');
         content.style.width = `${sz.width}px`;
         content.style.height = `${sz.height}px`;
@@ -980,6 +1032,12 @@
             try { opts.init(state.ctx); } catch (err) { console.error(`${opts.id}: init failed`, err); }
         }
         show(modal, opts.owner);
+        // focusFirst: the first control that takes the focus has it, an edit's text selected (Win32's
+        // WM_INITDIALOG default; WordPad's Paragraph and Date and Time on the VM)
+        if (opts.focusFirst) {
+            const first = content.querySelector('input:not([type=checkbox]):not([type=radio]):not([disabled]):not([hidden] *), select:not([disabled]), textarea, .vdt-listbox[tabindex]');
+            if (first) setTimeout(() => { try { first.focus(); if (first.select) first.select(); } catch (_) { /* gone */ } }, 0);
+        }
         return state.ctx;
     }
 
@@ -1004,7 +1062,7 @@
         const u = units(pages[0].tpl);
         const pw = Math.max(...pages.map((p) => size(p.tpl).width));
         const ph = Math.max(...pages.map((p) => size(p.tpl).height));
-        const { modal, content } = makeWindow(opts.id, opts.title, { icon: opts.icon, captionIcon: true, segoe: u.segoe, help: opts.help });
+        const { modal, content } = makeWindow(opts.id, opts.title, { icon: opts.icon, captionIcon: !opts.bareCaption, bareCaption: !!opts.bareCaption, segoe: u.segoe, help: opts.help });
         modal.classList.add('vdt-wizard');
         const main = modal.querySelector('.modal-window-title-main');
         if (main) main.insertAdjacentHTML('afterbegin', '<button type="button" class="vdt-wizard-back" title="Back" hidden></button>');

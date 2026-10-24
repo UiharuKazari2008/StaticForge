@@ -120,12 +120,12 @@
     pages['problem-reports'] = {
         title: () => 'Problem Reports and Solutions',
         tasks: () => tasks([[
-            { t: 'Check for new solutions', a: 'js:check' },
+            { t: 'Check for new solutions', a: 'js:check', icon: '/static_images/vista-cpl/wercon-check.png' },
             { t: 'See problems to check', a: 'page:problem-reports-history' },
             { t: 'View problem history', a: 'page:problem-reports-history' },
             { t: 'Change settings', a: 'page:problem-reports-settings' },
-            { t: 'Clear solution and problem history', a: 'js:clear', s: true }
-        ]], [{ t: 'Learn about privacy', a: 'js:privacy' }]),
+            { t: 'Clear solution and problem history', a: 'js:clear' }
+        ]], [{ t: 'Read our privacy statement online', a: 'js:privacy' }, { t: 'Customer Experience Improvement Settings', a: 'page:problem-reports-settings' }], 'Tasks'),
         body: () => {
             const arg = CP() && CP().pageArg('problem-reports');
             if (arg === 'history') setTimeout(() => nav('problem-reports-history'), 0);
@@ -321,7 +321,7 @@
         title: () => 'Ease of Access Center',
         tasks: () => tasks([[
             { t: 'Change administrative settings', a: 'js:admin', s: true }
-        ]], [{ t: 'Learn about additional assistive technologies online', a: 'js:online' }]),
+        ]], [{ t: 'Learn about additional assistive technologies online', a: 'js:online' }], 'Tasks'),
         body: () => {
             const arg = CP() && CP().pageArg('ease-of-access');
             if (arg && ACCESS_PAGES[arg]) setTimeout(() => { handlers['ease-of-access-page'].which = arg; nav('ease-of-access-page'); }, 0);
@@ -448,8 +448,9 @@
     pages.firewall = {
         title: () => 'Melaton Firewall',
         tasks: () => tasks([[
-            { t: 'Turn Melaton Firewall on or off', a: 'js:settings', s: true },
-            { t: 'Allow a program through Melaton Firewall', a: 'js:exceptions', s: true }
+            // no shields on this page's tasks (the VM; the category pages draw them)
+            { t: 'Turn Melaton Firewall on or off', a: 'js:settings' },
+            { t: 'Allow a program through Melaton Firewall', a: 'js:exceptions' }
         ]], [{ t: 'Security Center', a: 'item:security-center' }, { t: 'Network Center', a: 'item:network' }]),
         body: () => {
             const on = reg(FW, 'EnableFirewall', true);
@@ -512,7 +513,8 @@
     const FVE = 'HKLM\\Software\\Policies\\Xyridian\\FVE';
     pages.bitlocker = {
         title: () => 'BitLocker Drive Encryption',
-        tasks: () => tasks([], [{ t: 'TPM Administration', a: 'js:tpm', s: true }, { t: 'Disk Management', a: 'page:administrative-tools' }]),
+        // no TPM here, so no TPM Administration (the VM lists Disk Management alone)
+        tasks: () => tasks([], [{ t: 'Disk Management', a: 'page:administrative-tools' }]),
         body: () => {
             const on = reg(FVE, 'DriveCEncrypted', false);
             return `<div class="cpl-vpage">${help('bitlocker')}
