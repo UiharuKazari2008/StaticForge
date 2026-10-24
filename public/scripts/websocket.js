@@ -2512,7 +2512,11 @@ class WebSocketClient {
         }
         if (this._useWelcomeBoot()) {
             // Use Vista Logon: the Welcome screen stays and the startup window's stages run under
-            // it, then it fades straight to the desktop (desktopBoot.js fadeOutWelcome)
+            // it, then it fades straight to the desktop (desktopBoot.js fadeOutWelcome). It is
+            // invisible until its art has decoded: the stages wait for it (holdImage caps each
+            // image at 12 s), or wallpaper, icons and taskbar show before the Welcome screen
+            await this._whenVistaLogonArtReady();
+            if (!this._canCompletePreStartupHandoff()) return;
             this.preStartupHandoffCompleted = true;
             window.desktopBoot.begin({ welcome: true });
             return;

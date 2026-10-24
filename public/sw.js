@@ -93,6 +93,10 @@ async function matchStrategyCache(cacheName, request) {
   const cache = await caches.open(cacheName);
   if (cacheName === DYNAMIC_CACHE || cacheName === STATIC_CACHE) {
     const cacheKey = request.url.split('?')[0];
+    if (cacheName === STATIC_CACHE) {
+      // Bare-path rows only; an ignoreSearch fallback scans every row (matchStaticShell)
+      return cache.match(cacheKey, { ignoreVary: true });
+    }
     return (await cache.match(cacheKey, { ignoreVary: true }))
       || (await cache.match(request, { ignoreSearch: true, ignoreVary: true }));
   }
@@ -134,36 +138,13 @@ async function matchStaticShell(pathname) {
     return null;
   }
   const cache = await caches.open(STATIC_CACHE);
-  // Exact key first: rows are stored under the bare pathname. An ignoreSearch match cannot
-  // use the cache's key index and scans every row; at boot 300 lookups on a 2800-row cache
-  // took 27 s that way and 60 ms exact (Chrome), which held the page before the logon.
+  // Exact key only: rows are stored under the bare pathname (CACHE_STATIC_FILES, and the
+  // strategy's cacheKeyWillBeUsed strips the query). An ignoreSearch match cannot use the
+  // cache's key index and scans every row: 3.5 s per miss on an 8500-row cache (Edge, Oct 24),
+  // so /logon-picture held the Vista Welcome screen to its 12 s art timeout while the desktop
+  // was revealed in the open. An exact miss costs nothing.
   const exact = await cache.match(pathname, { ignoreVary: true });
-  if (exact && exact.status === 200 && exact.headers.get('x-file-hash')) {
-    return exact;
-  }
-  const query = { ignoreSearch: true, ignoreVary: true };
-  const first = exact || await cache.match(pathname, query);
-  if (!first) {
-    return null;
-  }
-  if (first.status === 200 && first.headers.get('x-file-hash')) {
-    return first;
-  }
-  const keys = await cache.keys(pathname, query);
-  let fallback = first.status === 200 ? first : null;
-  for (let i = 0; i < keys.length; i++) {
-    const candidate = await cache.match(keys[i], { ignoreVary: true });
-    if (!candidate || candidate.status !== 200) {
-      continue;
-    }
-    if (candidate.headers.get('x-file-hash')) {
-      return candidate;
-    }
-    if (!fallback) {
-      fallback = candidate;
-    }
-  }
-  return fallback;
+  return exact && exact.status === 200 ? exact : null;
 }
 let imagePolicyEnforceTimer = null;
 let imagePolicyLastEnforcedAt = 0;
@@ -381,8 +362,9 @@ function shouldCacheResponse(response) {
 // siblings evicted hashed shell files.
 const staticStrategy = new strategies.CacheFirst({
   cacheName: STATIC_CACHE,
+  // No ignoreSearch: cacheKeyWillBeUsed below already reads and writes the bare path, and an
+  // ignoreSearch match scans every row (matchStaticShell)
   matchOptions: {
-    ignoreSearch: true,
     ignoreVary: true
   },
   plugins: [

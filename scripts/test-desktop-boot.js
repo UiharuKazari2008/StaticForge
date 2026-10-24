@@ -585,6 +585,7 @@ async function testLockTriggers(body) {
             _updatePreStartupStageProgress: () => {}, _waitForTealHold: async () => {},
             _canCompletePreStartupHandoff() { return this._shouldUsePreStartupDialog() && this.socketAuthenticated === true; },
             _useWelcomeBoot: useWelcome,
+            _whenVistaLogonArtReady: async () => { log.push('art'); },
             _hidePreStartupDialog: async () => { log.push('hide'); }
         }, extra);
         await handoff.call(f);
@@ -592,7 +593,8 @@ async function testLockTriggers(body) {
         return log;
     };
     assert.deepStrictEqual(await firstLogon(false), ['sleep1000', 'hide', 'sleep750', 'begin'], 'Classic logon unchanged');
-    assert.deepStrictEqual(await firstLogon(true), ['sleep1000', 'begin:welcome'], 'Vista: Welcome stays, boot under it');
+    assert.deepStrictEqual(await firstLogon(true), ['sleep1000', 'art', 'begin:welcome'],
+        'Vista: Welcome stays, boot under it once its art shows (the screen is invisible before)');
     assert.deepStrictEqual(await firstLogon(true, { stepByStepMode: true }), ['sleep1000', 'hide', 'sleep750', 'begin'],
         'step-by-step mode keeps the startup window (its Advance button)');
     window.desktopBoot = realBoot;
