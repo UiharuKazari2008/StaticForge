@@ -1,0 +1,14 @@
+{
+    "id": "snipping",
+    "version": "1.0.0",
+    "title": "Snipping Tool",
+    "publisher": "Xyridian",
+    "format": "msaz",
+    "type": "native",
+    "launchId": "snipping",
+    "icon": "assets/snipping.png",
+    "client": {
+        "entry": "client/snipping.js",
+        "styles": ["assets/snipping.css"]
+    }
+}

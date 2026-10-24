@@ -57,6 +57,7 @@ const RUN_APP_ALIAS_GROUPS = [
     { aliases: ['notepad', 'notepad.exe'], launchIds: ['notepad'] },
     { aliases: ['mspaint', 'mspaint.exe', 'paint', 'pbrush'], launchIds: ['paint'] },
     { aliases: ['charmap', 'charmap.exe', 'character map'], launchIds: ['charmap'] },
+    { aliases: ['snippingtool', 'snippingtool.exe', 'snipping tool'], launchIds: ['snipping'] },
     { aliases: ['chat', 'girlfriend', 'friend', 'erp', 'roleplay', 'messages'], launchIds: ['chat'] },
     { aliases: ['atelier', 'naxt', 'naxt tag', 'tag lab'], launchIds: ['naxt'] },
     { aliases: ['agora', 'explore', 'explore gallery', 'image gallery', 'community gallery', 'novelai explore'], launchIds: ['explore-gallery'] },

@@ -2781,7 +2781,8 @@ const doveBuildComposeWindow = function (key, initial) {
     // Attachments (#3): picked files are read client-side to base64 (fileToBase64:
     // public/scripts/utils/referenceUtils.js) and held in pendingAttachments until Send.
     // Windows Mail lists them on an "Attach:" row under Subject once there are any.
-    const pendingAttachments = [];
+    // a compose window opened with files (Snipping Tool's Send Snip) starts with them attached
+    const pendingAttachments = Array.isArray(initial.attachments) ? initial.attachments.slice() : [];
     const attachRow = document.createElement('div');
     attachRow.className = 'form-row dovecote-compose-field-row dovecote-compose-attach-row hidden';
     const attachLabel = document.createElement('label');
@@ -2820,6 +2821,7 @@ const doveBuildComposeWindow = function (key, initial) {
         });
     };
 
+    if (pendingAttachments.length) renderAttachList();
     attachBtn.addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', async () => {
         const files = Array.from(fileInput.files || []);

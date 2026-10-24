@@ -1515,7 +1515,8 @@
                         return this.decodePicture(await blob.arrayBuffer(), type);
                     }
                 } catch (_) { /* fall back to Paint's own copy */ }
-                return this.clipboard || null;
+                // Melaton's own copy (Snipping Tool's Copy) when the browser's clipboard cannot be read
+                return this.clipboard || root.melatonClipboardImage || null;
             });
             if (pasted) this.pasteCanvas(pasted);
         }

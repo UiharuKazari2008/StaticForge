@@ -1,0 +1,191 @@
+/* Snipping Tool (Yozora #632; apps/snipping/client/snipping.js) */
+
+.snip-window .snip-client {
+    display: flex;
+    flex-direction: column;
+    padding: 0 !important;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    color: #000;
+}
+
+.snip-window.snip-main .snip-client {
+    width: 360px;
+}
+
+/* Vista's toolbar: a light band, flat buttons that light up on hover */
+.snip-window .snip-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    min-height: 30px;
+    padding: 2px 4px;
+    border-bottom: 1px solid #a0afc3;
+    background: linear-gradient(#fdfeff, #e8eef7 60%, #dde6f2);
+}
+
+.snip-window .snip-split {
+    display: inline-flex;
+}
+
+.snip-window .snip-sep {
+    width: 1px;
+    height: 22px;
+    margin: 0 3px;
+    background: #b7c3d4;
+    box-shadow: 1px 0 #fff;
+}
+
+.snip-window.snip-window .win7 .snip-tb-btn:not(:disabled),
+.snip-window.snip-window .win7 .snip-tb-btn:disabled {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    height: 24px;
+    min-height: 0;
+    padding: 0 6px;
+    border: 1px solid transparent;
+    border-image: none;
+    border-radius: 3px;
+    background: none;
+    box-shadow: none;
+    color: #000;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+}
+
+.snip-window.snip-window .win7 .snip-tb-btn:disabled {
+    color: #8d8d8d;
+}
+
+.snip-window.snip-window .win7 .snip-tb-btn.is-icon:not(:disabled) {
+    padding: 0 3px;
+}
+
+.snip-window.snip-window .win7 .snip-tb-btn:not(:disabled):hover {
+    border-color: #a8d8f0;
+    background: linear-gradient(#f5fbfe, #e3f4fc 50%, #cfecfa 51%, #c4e7f8);
+}
+
+.snip-window.snip-window .win7 .snip-tb-btn.is-on:not(:disabled) {
+    border-color: #7da2ce;
+    background: linear-gradient(#e5f4fc, #c4e5f6 50%, #98d1ef 51%, #b0dcf4);
+    box-shadow: inset 1px 1px 1px rgba(0, 0, 0, 0.15);
+}
+
+.snip-window.snip-window .win7 .snip-split .snip-tb-btn:first-child {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
+.snip-window.snip-window .win7 .snip-split .snip-drop:not(:disabled) {
+    padding: 0 3px;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+}
+
+.snip-window .snip-tb-btn::before,
+.snip-window .snip-tb-btn::after {
+    content: none;
+}
+
+.snip-window .snip-arrow {
+    display: block;
+    width: 7px;
+    height: 4px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4' shape-rendering='crispEdges'%3E%3Cpath d='M0 0h7v1H0zM1 1h5v1H1zM2 2h3v1H2zM3 3h1v1H3z'/%3E%3C/svg%3E") no-repeat;
+}
+
+.snip-window .snip-art,
+.snip-window .snip-cmd {
+    display: block;
+    flex: none;
+    width: 16px;
+    height: 16px;
+}
+
+.snip-window .snip-art {
+    background: url('snip-icons.png') calc(var(--i) * -16px) 0 no-repeat;
+}
+
+.snip-window .snip-custom-pen {
+    position: relative;
+    display: block;
+}
+
+.snip-window .snip-custom-pen::after {
+    content: "";
+    position: absolute;
+    right: 1px;
+    top: 1px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--c);
+}
+
+.snip-window .snip-text {
+    padding: 14px 12px 16px;
+    background: #fff;
+    color: #333;
+}
+
+.snip-window .snip-text[hidden] {
+    display: none;
+}
+
+/* the markup window */
+.snip-window.snip-markup .snip-client {
+    flex: 1;
+    min-height: 0;
+}
+
+.snip-window .snip-menubar {
+    flex: none;
+}
+
+.snip-window .snip-stage {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 6px;
+    background: #fff;
+}
+
+.snip-window .snip-paper {
+    display: inline-block;
+    line-height: 0;
+}
+
+.snip-window .snip-ink {
+    display: block;
+    cursor: crosshair;
+}
+
+.snip-window .snip-ink[data-mode="eraser"] {
+    cursor: url('/static_images/vista-cmdbar/paint-eraser.png') 3 13, cell;
+}
+
+/* hidden while the screen is taken */
+.modal.snip-hide {
+    visibility: hidden !important;
+}
+
+/* snipping: the frozen screen over everything */
+.snip-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483000;
+    cursor: crosshair;
+    user-select: none;
+    touch-action: none;
+}
+
+.snip-overlay.is-window {
+    cursor: default;
+}
+
+.snip-overlay-view {
+    display: block;
+    width: 100%;
+    height: 100%;
+}

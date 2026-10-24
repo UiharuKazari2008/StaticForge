@@ -6620,6 +6620,8 @@ function buildToolsSubmenuItems() {
         { launchId: 'welcome-center', icon: 'fas fa-house', imageIcon: 'vista-welcome-center.png', text: 'Welcome Center', appMenuLocation: 'tools', action: () => { window.openWelcomeCenter(); } },
         // Accessories > Paint (Yozora #632; public/scripts/comp/desktop-apps/paint/paintApp.js)
         { launchId: 'paint', icon: 'fas fa-palette', imageIcon: 'vista-paint.png', text: 'Paint', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('paint'); window.openMelatonPaint(); } },
+        // Accessories > Snipping Tool (Yozora #632; apps/snipping, a system package)
+        { launchId: 'snipping', icon: 'fas fa-scissors', imageIcon: 'vista-snipping-tool.png', text: 'Snipping Tool', appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'snipping' }) },
         // Accessories > Character Map (Yozora #632; public/scripts/comp/desktop-apps/charmap/charmapApp.js)
         { launchId: 'charmap', icon: 'fas fa-font', imageIcon: 'vista-charmap.png', text: 'Character Map', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('charmap'); window.openMelatonCharmap(); } },
         // Accessories > Notepad: a blank Untitled document (Yozora #632; public/scripts/comp/notepadVista.js)
