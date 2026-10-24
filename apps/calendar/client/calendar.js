@@ -614,7 +614,7 @@
                 case 'today': this.date = startOfDay(new Date()); this.navMonth = new Date(this.date.getFullYear(), this.date.getMonth(), 1); this.render(); return;
                 case 'subscribe': this.subscribeDialog(); return;
                 case 'refresh': this.refreshSubscriptions(true, true); return;
-                case 'print': this.print(); return;
+                case 'print': this.printDialog(); return;
                 case 'import': this.importDialog(); return;
                 case 'export': this.exportDialog(); return;
                 case 'send': await this.send(); return;
@@ -1478,40 +1478,81 @@
 
         // ---- import, export, send, print ---------------------------------------------------
 
+        /**
+         * File > Import: WinCal's Import dialog (template 5220, measured on the VM): the file (typed,
+         * or picked with Browse... in the Open dialog), the destination ("Create new calendar" or a
+         * calendar to merge into); Import stays disabled until there is a file.
+         */
         importDialog() {
-            if (typeof root.studioOpenFolderDialog !== 'function') return;
-            void root.studioOpenFolderDialog('open-vfs', {
-                owner: this.modal,
-                startPath: workspaceRoot(),
-                host: {
-                    title: 'Import',
-                    rejectMessage: 'Choose an iCalendar (.ics) file',
-                    acceptItem: (item) => !!item && item.targetKind === 'user-file' && /\.ics$/i.test(item.name || ''),
-                    onOpen: async (item) => {
-                        try {
-                            const r = await vfs().downloadFile(item.id);
-                            const text = await (await fetch(r.downloadUrl, { credentials: 'same-origin' })).text();
-                            const parsed = parseIcs(text);
-                            const into = this.writableCal();
-                            const v = await this.ask(`<p>Import ${parsed.events.length} appointment${parsed.events.length === 1 ? '' : 's'} and ${parsed.tasks.length} task${parsed.tasks.length === 1 ? '' : 's'} from "${esc(item.name)}" into:</p>`, [[`${into ? into.name : 'a new calendar'}`, 'into'], ['A new calendar', 'new'], ['Cancel', 'no']]);
-                            if (v === 'no' || !v) return;
-                            if (v === 'new' || !into) {
-                                const cal = this.adopt({ ...parsed, name: parsed.name || item.name.replace(/\.ics$/i, ''), source: '' }, {});
-                                cal.readonly = false;
-                                await this.save(cal);
-                            } else {
-                                const tmp = this.adopt(parsed, {});
-                                this.calendars.pop();
-                                const have = new Set(into.events.map((x) => x.uid).concat(into.tasks.map((x) => x.uid)));
-                                tmp.events.forEach((x) => { if (!have.has(x.uid)) into.events.push(x); });
-                                tmp.tasks.forEach((x) => { if (!have.has(x.uid)) into.tasks.push(x); });
-                                await this.save(into);
+            const V = root.vistaDialogTemplate;
+            if (!V || !V.openDialog) return;
+            let picked = null; // { id, path } from Browse
+            const writable = this.calendars.filter((c) => !c.readonly);
+            const findFile = async (path) => {
+                if (picked && picked.path === path) return picked;
+                const at = path.lastIndexOf('/');
+                const dir = at > 0 ? path.slice(0, at) : '/';
+                const name = path.slice(at + 1);
+                const res = await vfs().listDirectory(dir, { offset: 0, limit: 1000 });
+                const item = ((res && res.items) || []).find((i) => i.name === name && (i.targetKind === 'user-file' || i.kind === 'file'));
+                return item ? { id: item.id, path, name } : null;
+            };
+            V.openDialog({
+                id: 'wcalImport', key: 'wincal:5220', icon: ICON16, owner: this.modal,
+                init: (ctx) => {
+                    ctx.options(5223, [{ value: '', text: 'Create new calendar' }].concat(writable.map((c) => ({ value: c.id, text: c.name }))), '');
+                    const sync = () => ctx.enable(1, !!String(ctx.get(5221) || '').trim());
+                    ctx.on(5221, 'input', sync);
+                    sync();
+                    ctx.on(5222, 'click', () => {
+                        if (typeof root.studioOpenFolderDialog !== 'function') return;
+                        void root.studioOpenFolderDialog('open-vfs', {
+                            owner: ctx.modal,
+                            startPath: workspaceRoot(),
+                            host: {
+                                title: 'Open',
+                                typeLabel: 'iCalendar Files (*.ics)',
+                                rejectMessage: 'Choose an iCalendar (.ics) file',
+                                acceptItem: (item) => !!item && item.targetKind === 'user-file' && /\.ics$/i.test(item.name || ''),
+                                onOpen: (item, folder) => {
+                                    const path = `${String(folder || '').replace(/\/+$/, '')}/${item.name}`;
+                                    picked = { id: item.id, path, name: item.name };
+                                    ctx.set(5221, path);
+                                    sync();
+                                }
                             }
-                            this.render();
-                        } catch (err) {
-                            this.status(`The file could not be imported: ${(err && err.message) || err}`);
+                        });
+                    });
+                },
+                ok: async (ctx) => {
+                    const path = String(ctx.get(5221) || '').trim();
+                    try {
+                        const file = await findFile(path);
+                        if (!file) { this.status(`The file "${path}" could not be found.`); return false; }
+                        const r = await vfs().downloadFile(file.id);
+                        const parsed = parseIcs(await (await fetch(r.downloadUrl, { credentials: 'same-origin' })).text());
+                        const into = writable.find((c) => c.id === ctx.get(5223));
+                        if (!into) {
+                            const used = new Set(this.calendars.map((c) => c.color));
+                            const color = parsed.color || (COLORS.slice(FIRST_COLOR).concat(COLORS.slice(0, FIRST_COLOR)).find(([c]) => !used.has(c)) || COLORS[FIRST_COLOR])[0];
+                            const cal = this.adopt({ ...parsed, color, name: (file.name || path.split('/').pop()).replace(/\.ics$/i, ''), source: '' }, {});
+                            cal.readonly = false;
+                            await this.save(cal);
+                            this.select({ kind: 'calendar', cal });
+                        } else {
+                            const tmp = this.adopt(parsed, {});
+                            this.calendars.pop();
+                            const have = new Set(into.events.map((x) => x.uid).concat(into.tasks.map((x) => x.uid)));
+                            tmp.events.forEach((x) => { if (!have.has(x.uid)) into.events.push(x); });
+                            tmp.tasks.forEach((x) => { if (!have.has(x.uid)) into.tasks.push(x); });
+                            await this.save(into);
                         }
+                        this.render();
+                    } catch (err) {
+                        this.status(`The file could not be imported: ${(err && err.message) || err}`);
+                        return false;
                     }
+                    return true;
                 }
             });
         }
@@ -1553,8 +1594,84 @@
             open({ mode: 'create', to: '', subject: cal.name, body: `The calendar "${cal.name}" is attached. Import it into Melaton Calendar (File > Import).`, attachments: [{ name: this.fileNameOf(cal), mimeType: 'text/calendar', size: text.length, base64: await textB64(text) }] });
         }
 
-        /** Print: the view as it is, on its own page (the browser's print dialog). */
-        print() {
+        /**
+         * File > Print: WinCal's Print dialog (template 900, measured on the VM): the printer (the
+         * Printers folder's three, its default first), the print style (Day / Work Week / Week /
+         * Month, their icons cut from the VM), the range (two date pickers, the view's days), copies
+         * with comdlg32's collate picture (536 collated, 537 not). OK prints each period of the range
+         * on its own page through the browser's print dialog.
+         */
+        printDialog() {
+            const V = root.vistaDialogTemplate;
+            if (!V || !V.openDialog) { this.print(); return; }
+            const PKEY = 'HKCU\\Software\\Xyridian\\Melaton NT\\CurrentVersion\\Windows';
+            const printers = [
+                { value: 'fax', text: 'Fax', type: 'Xyridian Shared Fax Driver', where: 'SHRFAX:' },
+                { value: 'xps', text: 'Xyridian XPS Document Writer', type: 'Xyridian XPS Document Writer', where: 'XPSPort:' },
+                { value: 'browser', text: 'Print with this browser', type: 'Browser print dialog', where: 'Browser' }
+            ];
+            const def = root.melatonRegistry ? root.melatonRegistry.get(PKEY, 'Device', 'xps') : 'xps';
+            const styles = [['day', 'Day'], ['workweek', 'Work Week'], ['week', 'Week'], ['month', 'Month']];
+            const r = this.range();
+            const lastDay = addDays(r.b, -1);
+            V.openDialog({
+                id: 'wcalPrint', key: 'wincal:900', owner: this.modal,
+                // WinCal hides Print to file and Help
+                overrides: { 1154: { spin: [1, 9999] }, 1086: { image: '/static_images/vista-dlg/comdlg32-537.png', nudge: [8, 8, 0, 0] }, 1040: { hidden: true }, 1038: { hidden: true }, 1041: { nudge: [0, 3, 0, 0] } },
+                init: (ctx) => {
+                    const showPrinter = () => {
+                        const p = printers.find((x) => x.value === ctx.get(1139)) || printers[1];
+                        ctx.text(1099, 'Ready');
+                        ctx.text(1098, p.type);
+                        ctx.text(1101, p.where);
+                        ctx.text(1100, '');
+                    };
+                    ctx.options(1139, printers, printers.some((x) => x.value === def) ? def : 'xps');
+                    showPrinter();
+                    ctx.on(1139, 'change', showPrinter);
+                    ctx.on(1025, 'click', () => { if (root.melatonControlPanel) root.melatonControlPanel.open('printers'); });
+                    ctx.options(2002, styles.map(([value, text], i) => ({ value, text, icon: `/static_images/vista-dlg/wincal-print-styles.png#${i}` })), this.view);
+                    ctx.holder(2002).classList.add('wcal-print-styles');
+                    ctx.set(2000, r.a);
+                    ctx.set(2001, this.view === 'month' ? new Date(this.date.getFullYear(), this.date.getMonth() + 1, 0) : lastDay);
+                    ctx.el(1154).value = '1';
+                    const collate = () => {
+                        const n = Number(ctx.get(1154)) || 1;
+                        ctx.enable(1041, n > 1);
+                        const img = ctx.holder(1086) && ctx.holder(1086).querySelector('img');
+                        if (img) img.src = `/static_images/vista-dlg/comdlg32-${ctx.get(1041) && n > 1 ? 536 : 537}.png`;
+                    };
+                    ctx.on(1154, 'change', collate);
+                    ctx.on(1154, 'input', collate);
+                    ctx.on(1041, 'change', collate);
+                    collate();
+                    // the Start picker has the focus, its month selected
+                    setTimeout(() => { const st = ctx.el(2000); if (st) st.focus(); }, 0);
+                },
+                ok: (ctx) => {
+                    const a = ctx.get(2000);
+                    const b = ctx.get(2001);
+                    this.print({ style: ctx.get(2002) || this.view, from: a <= b ? a : b, to: a <= b ? b : a, copies: Math.max(1, Number(ctx.get(1154)) || 1) });
+                }
+            });
+        }
+
+        /** Print: each period of the range drawn in the chosen view, a page apiece (the browser's print dialog). */
+        print(opts) {
+            const pages = [];
+            if (opts) {
+                const keep = { view: this.view, date: this.date, navMonth: this.navMonth };
+                let d = new Date(opts.from);
+                for (let i = 0; i < 60 && d <= opts.to; i += 1) {
+                    this.view = opts.style;
+                    this.date = d;
+                    this.render();
+                    pages.push(this.el('.wcal-main').innerHTML);
+                    d = opts.style === 'month' ? new Date(d.getFullYear(), d.getMonth() + 1, 1) : addDays(this.range().b, opts.style === 'workweek' ? 2 : 0);
+                }
+                Object.assign(this, keep);
+                this.render();
+            }
             const view = this.el('.wcal-main');
             const css = Array.from(doc.querySelectorAll('link[data-melaton-app-style*="calendar"]')).map((l) => `<link rel="stylesheet" href="${esc(l.href)}">`).join('');
             const f = doc.createElement('iframe');
@@ -1562,7 +1679,9 @@
             doc.body.appendChild(f);
             const w = f.contentWindow;
             w.document.open();
-            w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Melaton Calendar</title>${css}<style>body{margin:12px;font:12px "Segoe UI",sans-serif}.wcal-scroll{overflow:visible!important;height:auto!important}</style></head><body class="wcal-print"><div class="wcal-window"><div class="wcal-main">${view.innerHTML}</div></div></body></html>`);
+            const body = (pages.length ? pages : [view.innerHTML]).map((html) => `<div class="wcal-window wcal-print-page"><div class="wcal-main">${html}</div></div>`).join('');
+            const copies = opts ? Math.min(opts.copies, 20) : 1;
+            w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Melaton Calendar</title>${css}<style>body{margin:12px;font:12px "Segoe UI",sans-serif}.wcal-scroll{overflow:visible!important;height:auto!important}.wcal-print-page{break-after:page}</style></head><body class="wcal-print">${body.repeat(copies)}</body></html>`);
             w.document.close();
             setTimeout(() => { try { w.focus(); w.print(); } catch (_) { /* no printing here */ } setTimeout(() => f.remove(), 2000); }, 400);
         }

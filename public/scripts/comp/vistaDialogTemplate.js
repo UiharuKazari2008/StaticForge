@@ -181,7 +181,9 @@
                         const align = type === 1 ? 'center' : type === 2 ? 'right' : 'left';
                         const nowrap = type === 0xB || type === 0xC ? ' vdt-nowrap' : '';
                         const sunken = (st & 0x1000) || (ex & WS_EX_STATICEDGE) ? ' vdt-sunken' : '';
-                        out.push(`<div class="tbp-ctl tbp-static vdt-static${nowrap}${sunken}${disabled ? ' is-disabled' : ''}" style="${style(r)}text-align:${align};" ${dataId}${hid}>${t ? `<span class="vdt-st-text">${label(t, noPrefix)}</span>` : ''}</div>`);
+                        // SS_CENTERIMAGE centres a one-line label in its height (WinCal Import's labels)
+                        const middle = (st & 0x200) ? ' vdt-middle' : '';
+                        out.push(`<div class="tbp-ctl tbp-static vdt-static${nowrap}${sunken}${middle}${disabled ? ' is-disabled' : ''}" style="${style(r)}text-align:${align};" ${dataId}${hid}>${t ? `<span class="vdt-st-text">${label(t, noPrefix)}</span>` : ''}</div>`);
                     }
                     break;
                 }
@@ -194,6 +196,14 @@
                         const type = (st & 0x20) ? 'password' : 'text';
                         lastEdit = { r, at: out.length, align };
                         out.push(`<input type="${type}" class="tbp-ctl tbp-edit vdt-edit${edge}" id="${domId}" style="${style(r)}text-align:${align};" value="${esc(t)}" ${dataId}${ro}${dis}${hid} spellcheck="false" autocomplete="off">`);
+                        // an up-down the program attaches at run time (comdlg32's copies box): { spin: [min, max] }
+                        if (o.spin) {
+                            out[out.length - 1] = out[out.length - 1].replace('class="tbp-ctl tbp-edit vdt-edit', 'class="tbp-ctl tbp-edit vdt-edit vdt-buddy');
+                            // the VM's: 17 px over the edit's right edge, its full height, two equal halves
+                            const ur = { left: r.left + r.width - 17, top: r.top, width: 17, height: r.height };
+                            const half = Math.floor(ur.height / 2);
+                            out.push(`<div class="tbp-ctl vdt-updown vdt-spin-over" style="${style(ur)}" data-vdt-id="${id}-spin" data-min="${o.spin[0]}" data-max="${o.spin[1]}"${hid}><span class="tbp-spin tbp-spin-up vdt-up" style="height:${half}px;width:17px"></span><span class="tbp-spin tbp-spin-down vdt-down" style="height:${ur.height - half}px;width:17px"></span></div>`);
+                        }
                     }
                     break;
                 }
@@ -250,6 +260,12 @@
                     out.push(`<div class="tbp-ctl vdt-listview vdt-edge${report ? ' is-report' : ''}${noHeader ? ' no-header' : ''}" style="${style(r)}" ${dataId}${hid} tabindex="0" role="listbox"><div class="vdt-lv-header"></div><div class="vdt-lv-body"></div></div>`);
                     break;
                 }
+                case 'SysDateTimePick32': {
+                    // DTS_LONGDATEFORMAT 0x4, DTS_RIGHTALIGN 0x20 (the month calendar drops under the right edge)
+                    const fmt = (st & 0xC) === 4 ? 'long' : 'short';
+                    out.push(`<div class="tbp-ctl vdt-dtp" id="${domId}" style="${style(r)}" ${dataId} data-vdt-fmt="${fmt}"${st & 0x20 ? ' data-vdt-right="1"' : ''}${disabled ? ' aria-disabled="true"' : ''} tabindex="${disabled ? -1 : 0}"${hid}><span class="vdt-dtp-text"></span><span class="vdt-dtp-btn"><span class="vdt-dtp-glyph"></span></span></div>`);
+                    break;
+                }
                 case 'SysTreeView32':
                     out.push(`<div class="tbp-ctl tbp-tree vdt-tree" style="${style(r)}" ${dataId}${hid} tabindex="0" role="tree"></div>`);
                     break;
@@ -262,6 +278,203 @@
             }
         });
         return out.join('');
+    }
+
+    // ---- the date picker (SysDateTimePick32) and its month calendar (SysMonthCal32) -------------
+    //
+    // Measured on the Vista VM (WinCal's Print dialog): an edit-framed box with the date's fields
+    // (one selected in the highlight colour while focused), the calendar button 34 px wide at the
+    // right (hot / open faces, the glyph 7 px in), and a 223x158 drop-down: the month title with
+    // arrows, Sun..Sat, six rows of 31x15 cells, today boxed in #0066cc, the selection filled, and
+    // "Today: <date>" under it. Values are local Dates at midnight.
+
+    const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const dayOnly = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const sameDay = (a, b) => a && b && a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+    const shortDate = (d) => `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
+
+    function dtpValue(el) {
+        return new Date((el._vdtDate || dayOnly(new Date())).getTime());
+    }
+
+    function dtpFields(el) {
+        const d = el._vdtDate || dayOnly(new Date());
+        if (el.dataset.vdtFmt === 'long') {
+            return [['w', DAYS[d.getDay()]], [',', ', '], ['m', MONTHS[d.getMonth()]], [' ', ' '], ['d', String(d.getDate())], [',', ', '], ['y', String(d.getFullYear())]];
+        }
+        return [['m', String(d.getMonth() + 1)], ['/', '/'], ['d', String(d.getDate())], ['/', '/'], ['y', String(d.getFullYear())]];
+    }
+
+    function dtpDraw(el) {
+        const text = el.querySelector('.vdt-dtp-text');
+        if (!text) return;
+        const field = el._vdtField || 'm';
+        const focused = doc.activeElement === el && !el.classList.contains('is-open');
+        text.innerHTML = dtpFields(el).map(([k, v]) => (/[a-z]/.test(k)
+            ? `<span class="vdt-dtp-field${focused && k === field ? ' is-selected' : ''}" data-f="${k}">${esc(v)}</span>`
+            : `<span>${esc(v)}</span>`)).join('');
+    }
+
+    function dtpSet(el, value, quiet) {
+        const d = value instanceof Date ? value : new Date(value);
+        if (Number.isNaN(d.getTime())) return;
+        const next = dayOnly(d);
+        const changed = !el._vdtDate || el._vdtDate.getTime() !== next.getTime();
+        el._vdtDate = next;
+        el._vdtTyped = '';
+        dtpDraw(el);
+        if (changed && !quiet) el.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    function dtpStep(el, field, delta) {
+        const d = dtpValue(el);
+        if (field === 'y') d.setFullYear(d.getFullYear() + delta);
+        else if (field === 'm') {
+            const day = d.getDate();
+            d.setDate(1);
+            d.setMonth(d.getMonth() + delta);
+            d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
+        } else d.setDate(d.getDate() + delta);
+        dtpSet(el, d);
+    }
+
+    function dtpType(el, digit) {
+        const field = el._vdtField || 'm';
+        if (field === 'w') return;
+        const typed = `${el._vdtTyped || ''}${digit}`;
+        const d = dtpValue(el);
+        const n = Number(typed);
+        if (field === 'y') {
+            el._vdtTyped = typed.length >= 4 ? '' : typed;
+            if (typed.length >= 4 || typed.length === 2) {
+                const year = typed.length === 2 ? 2000 + n : n;
+                d.setFullYear(year);
+                dtpSet(el, d);
+                el._vdtTyped = typed.length >= 4 ? '' : typed;
+            }
+            return;
+        }
+        const max = field === 'm' ? 12 : new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+        if (n < 1 && typed.length < 2) { el._vdtTyped = typed; return; }
+        if (n > max) { el._vdtTyped = ''; return; }
+        if (field === 'm') { const day = d.getDate(); d.setDate(1); d.setMonth(n - 1); d.setDate(Math.min(day, new Date(d.getFullYear(), n, 0).getDate())); } else d.setDate(n);
+        dtpSet(el, d);
+        // a second digit (or one that cannot start a two-digit value) finishes the field
+        el._vdtTyped = typed.length >= 2 || n * 10 > max ? '' : typed;
+    }
+
+    function monthCalHtml(view, selected) {
+        const today = dayOnly(new Date());
+        const first = new Date(view.getFullYear(), view.getMonth(), 1);
+        const start = new Date(first);
+        start.setDate(1 - first.getDay());
+        let cells = '';
+        for (let i = 0; i < 42; i += 1) {
+            const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+            const cls = `vdt-mc-day${d.getMonth() !== view.getMonth() ? ' is-other' : ''}${sameDay(d, today) ? ' is-today' : ''}${sameDay(d, selected) ? ' is-selected' : ''}`;
+            cells += `<span class="${cls}" style="left:${2 + (i % 7) * 31}px;top:${47 + Math.floor(i / 7) * 15}px" data-t="${d.getTime()}">${d.getDate()}</span>`;
+        }
+        return `<span class="vdt-mc-prev"></span><span class="vdt-mc-title">${MONTHS[view.getMonth()]}, ${view.getFullYear()}</span><span class="vdt-mc-next"></span>
+            ${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((n, i) => `<span class="vdt-mc-dow" style="left:${2 + i * 31}px">${n}</span>`).join('')}
+            <span class="vdt-mc-rule"></span>${cells}
+            <span class="vdt-mc-today"><span class="vdt-mc-today-box"></span>Today: ${shortDate(today)}</span>`;
+    }
+
+    let dtpPopup = null;
+
+    function dtpClose(commit) {
+        if (!dtpPopup) return;
+        const { pop, el } = dtpPopup;
+        dtpPopup = null;
+        pop.remove();
+        el.classList.remove('is-open');
+        if (commit !== false) try { el.focus(); } catch (_) { /* gone */ }
+        dtpDraw(el);
+    }
+
+    function dtpOpen(el) {
+        if (dtpPopup) { const was = dtpPopup.el; dtpClose(); if (was === el) return; }
+        const r = el.getBoundingClientRect();
+        const pop = doc.createElement('div');
+        pop.className = 'vdt-monthcal';
+        const modal = el.closest('.modal');
+        const z = modal ? (Number.parseInt(root.getComputedStyle(modal).zIndex, 10) || 1000) + 10 : 100000;
+        pop.style.zIndex = String(z);
+        const left = el.dataset.vdtRight ? r.right - 223 : r.left;
+        pop.style.left = `${Math.round(Math.max(0, Math.min(left, root.innerWidth - 223)))}px`;
+        pop.style.top = `${Math.round(r.bottom + 158 > root.innerHeight ? r.top - 158 : r.bottom)}px`;
+        const state = { pop, el, view: new Date(dtpValue(el).getFullYear(), dtpValue(el).getMonth(), 1) };
+        const draw = () => { pop.innerHTML = monthCalHtml(state.view, dtpValue(el)); };
+        draw();
+        pop.addEventListener('mousedown', (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            const t = ev.target;
+            if (t.closest('.vdt-mc-prev')) { state.view = new Date(state.view.getFullYear(), state.view.getMonth() - 1, 1); draw(); return; }
+            if (t.closest('.vdt-mc-next')) { state.view = new Date(state.view.getFullYear(), state.view.getMonth() + 1, 1); draw(); return; }
+            const day = t.closest('.vdt-mc-day');
+            if (day) { dtpSet(el, new Date(Number(day.dataset.t))); dtpClose(); return; }
+            if (t.closest('.vdt-mc-today')) { dtpSet(el, new Date()); dtpClose(); }
+        });
+        doc.body.appendChild(pop);
+        el.classList.add('is-open');
+        dtpPopup = state;
+        dtpDraw(el);
+    }
+
+    function dtpWire() {
+        if (doc._vdtDtpWired) return;
+        doc._vdtDtpWired = true;
+        doc.addEventListener('mousedown', (ev) => {
+            const el = ev.target.closest && ev.target.closest('.vdt-dtp');
+            if (dtpPopup && !(el && el === dtpPopup.el)) dtpClose(false);
+            if (!el || el.getAttribute('aria-disabled') === 'true') return;
+            ev.preventDefault();
+            el.focus();
+            if (ev.target.closest('.vdt-dtp-btn')) { dtpOpen(el); return; }
+            const f = ev.target.closest('.vdt-dtp-field');
+            if (f) el._vdtField = f.dataset.f;
+            el._vdtTyped = '';
+            dtpDraw(el);
+        }, true);
+        doc.addEventListener('focusin', (ev) => { if (ev.target.classList && ev.target.classList.contains('vdt-dtp')) dtpDraw(ev.target); });
+        doc.addEventListener('focusout', (ev) => {
+            const el = ev.target;
+            if (el.classList && el.classList.contains('vdt-dtp')) setTimeout(() => dtpDraw(el), 0);
+        });
+        doc.addEventListener('keydown', (ev) => {
+            const el = ev.target;
+            if (!el.classList || !el.classList.contains('vdt-dtp')) return;
+            const order = dtpFields(el).filter(([k]) => /[a-z]/.test(k)).map(([k]) => k).filter((k) => k !== 'w');
+            const field = order.includes(el._vdtField) ? el._vdtField : order[0];
+            let handled = true;
+            if (dtpPopup && dtpPopup.el === el) {
+                if (ev.key === 'Escape') dtpClose();
+                else if (ev.key === 'Enter') dtpClose();
+                else if (ev.key.startsWith('Arrow')) {
+                    const delta = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[ev.key];
+                    const d = dtpValue(el);
+                    d.setDate(d.getDate() + delta);
+                    dtpSet(el, d);
+                    dtpPopup.view = new Date(d.getFullYear(), d.getMonth(), 1);
+                    dtpPopup.pop.innerHTML = monthCalHtml(dtpPopup.view, d);
+                } else handled = false;
+            } else if (ev.key === 'F4' || (ev.altKey && ev.key === 'ArrowDown')) dtpOpen(el);
+            else if (ev.key === 'ArrowUp' || ev.key === 'ArrowDown') dtpStep(el, field, ev.key === 'ArrowUp' ? 1 : -1);
+            else if (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight') {
+                const i = order.indexOf(field) + (ev.key === 'ArrowLeft' ? -1 : 1);
+                el._vdtField = order[(i + order.length) % order.length];
+                el._vdtTyped = '';
+                dtpDraw(el);
+            } else if (/^[0-9]$/.test(ev.key)) dtpType(el, ev.key);
+            else if (ev.key === '/' || ev.key === '-') {
+                el._vdtField = order[Math.min(order.indexOf(field) + 1, order.length - 1)];
+                el._vdtTyped = '';
+                dtpDraw(el);
+            } else handled = false;
+            if (handled) { ev.preventDefault(); ev.stopPropagation(); }
+        }, true);
     }
 
     // ---- windows -------------------------------------------------------------------------------
@@ -345,6 +558,7 @@
                 if (e.type === 'checkbox' || e.type === 'radio') return e.checked;
                 if (e.type === 'range') return Number(e.value);
                 if (e.classList && e.classList.contains('vdt-listbox')) return e.dataset.value || '';
+                if (e.classList && e.classList.contains('vdt-dtp')) return dtpValue(e);
                 return e.value;
             },
             set(id, value, key) {
@@ -354,7 +568,8 @@
                 else if (e.classList && e.classList.contains('vdt-listbox')) {
                     e.dataset.value = value;
                     e.querySelectorAll('.vdt-lb-row').forEach((row) => row.classList.toggle('is-selected', row.dataset.value === String(value)));
-                } else e.value = value;
+                } else if (e.classList && e.classList.contains('vdt-dtp')) dtpSet(e, value, true);
+                else e.value = value;
             },
             text(id, text, key) {
                 const h = ctx.holder(id, key);
@@ -435,6 +650,7 @@
     function finish(state) {
         if (state.done) return;
         state.done = true;
+        if (dtpPopup && state.modal.contains(dtpPopup.el)) dtpClose(false);
         if (typeof state.opts.close === 'function') {
             try { state.opts.close(state.ctx); } catch (err) { console.error(err); }
         }
@@ -507,6 +723,9 @@
 
     function wireCommon(state) {
         const { content, modal } = state;
+        // date pickers start on today until the program sets them
+        dtpWire();
+        content.querySelectorAll('.vdt-dtp').forEach((el) => { if (!el._vdtDate) dtpSet(el, new Date(), true); });
         // list boxes and list views select on click
         content.addEventListener('click', (ev) => {
             const row = ev.target.closest('.vdt-lb-row, .vdt-lv-row');

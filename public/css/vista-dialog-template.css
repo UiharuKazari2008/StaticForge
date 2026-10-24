@@ -518,3 +518,211 @@ body.desktop-mode .modal.vdt-wizard .vdt-client .vdt-wizard-instruction {
 .vdt-client .vdt-wizard-footer .vdt-wizard-next[hidden] {
     display: none;
 }
+
+/* ---- the date picker (SysDateTimePick32) and its month calendar, measured on the Vista VM
+   (WinCal's Print dialog): the edit frame, the date 2 px in with the selected field in the
+   highlight colour, the 34 px calendar button (hot / open faces, glyph 7 px in) ---- */
+.vdt-client .vdt-dtp {
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    padding: 0 0 0 1px;
+    border: 2px solid transparent;
+    border-image: url('/static_images/vista-controls/edit-normal.png') 2 fill / 2px stretch;
+    background: #fff;
+    color: #000;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    white-space: nowrap;
+    cursor: default;
+    outline: none;
+    overflow: visible;
+}
+
+.vdt-client .vdt-dtp:hover {
+    border-image-source: url('/static_images/vista-controls/edit-hot.png');
+}
+
+.vdt-client .vdt-dtp:focus,
+.vdt-client .vdt-dtp.is-open {
+    border-image-source: url('/static_images/vista-controls/edit-focus.png');
+}
+
+.vdt-client .vdt-dtp[aria-disabled="true"] {
+    border-image: url('/static_images/vista-controls/edit-disabled.png') 1 / 1px stretch;
+    background: #f4f4f4;
+    color: #6d6d6d;
+}
+
+.vdt-client .vdt-dtp-text {
+    flex: 1 1 auto;
+    overflow: hidden;
+}
+
+.vdt-client .vdt-dtp-field.is-selected {
+    background: #3399ff;
+    color: #fff;
+}
+
+.vdt-client .vdt-dtp-btn {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    bottom: -2px;
+    width: 34px;
+    box-sizing: border-box;
+    border: 3px solid transparent;
+}
+
+.vdt-client .vdt-dtp-btn:hover {
+    border-image: url('/static_images/vista-controls/dtp-btn-hot.png') 3 fill / 3px stretch;
+}
+
+.vdt-client .vdt-dtp.is-open .vdt-dtp-btn {
+    border-image: url('/static_images/vista-controls/dtp-btn-open.png') 3 fill / 3px stretch;
+}
+
+.vdt-client .vdt-dtp-glyph {
+    position: absolute;
+    left: 4px;
+    top: 50%;
+    width: 20px;
+    height: 14px;
+    margin-top: -6px;
+    background: url('/static_images/vista-controls/dtp-glyph.png') no-repeat;
+}
+
+.vdt-client .vdt-dtp[aria-disabled="true"] .vdt-dtp-glyph {
+    opacity: 0.5;
+}
+
+/* the drop-down: 223x158 with a #979797 edge and a soft shadow, Segoe UI 9 pt */
+.vdt-monthcal {
+    position: fixed;
+    width: 223px;
+    height: 158px;
+    box-sizing: border-box;
+    border: 1px solid #979797;
+    background: #fff;
+    box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.35);
+    color: #000;
+    font: 12px/15px "Segoe UI", Tahoma, sans-serif;
+    cursor: default;
+    user-select: none;
+}
+
+.vdt-monthcal > span {
+    position: absolute;
+}
+
+.vdt-monthcal .vdt-mc-title {
+    left: 20px;
+    right: 20px;
+    top: 8px;
+    text-align: center;
+    font-size: 12px;
+    line-height: 16px;
+}
+
+.vdt-monthcal .vdt-mc-prev,
+.vdt-monthcal .vdt-mc-next {
+    top: 8px;
+    width: 18px;
+    height: 16px;
+}
+
+.vdt-monthcal .vdt-mc-prev { left: 1px; }
+.vdt-monthcal .vdt-mc-next { right: 1px; }
+
+.vdt-monthcal .vdt-mc-prev::before,
+.vdt-monthcal .vdt-mc-next::before {
+    content: '';
+    position: absolute;
+    top: 4px;
+    width: 4px;
+    height: 7px;
+    background: #000;
+}
+
+.vdt-monthcal .vdt-mc-prev::before {
+    left: 6px;
+    clip-path: polygon(100% 0, 100% 100%, 0 50%);
+}
+
+.vdt-monthcal .vdt-mc-next::before {
+    right: 6px;
+    clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+
+.vdt-monthcal .vdt-mc-dow {
+    top: 31px;
+    width: 31px;
+    text-align: center;
+}
+
+.vdt-monthcal .vdt-mc-rule {
+    left: 7px;
+    right: 6px;
+    top: 46px;
+    height: 1px;
+    background: #f5f5f5;
+}
+
+.vdt-monthcal .vdt-mc-day {
+    width: 31px;
+    height: 15px;
+    box-sizing: border-box;
+    padding-right: 9px;
+    text-align: right;
+}
+
+.vdt-monthcal .vdt-mc-day.is-other {
+    color: #646464;
+}
+
+.vdt-monthcal .vdt-mc-day.is-today,
+.vdt-monthcal .vdt-mc-day.is-selected {
+    border: 1px solid #0066cc;
+    padding-right: 8px;
+    line-height: 13px;
+}
+
+/* the selection: the frame's corners softened, the glass fill, blue text, the focus dots inside */
+.vdt-monthcal .vdt-mc-day.is-selected {
+    border-radius: 2px;
+    background: linear-gradient(#f7fcfe, #e5f4fe 50%, #d6f0fd 85%, #e8f6fe);
+    color: #0066cc;
+}
+
+.vdt-monthcal .vdt-mc-day.is-selected::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border: 1px dotted #000;
+}
+
+.vdt-monthcal .vdt-mc-day {
+    position: absolute;
+}
+
+.vdt-monthcal .vdt-mc-today {
+    left: 0;
+    right: 0;
+    top: 138px;
+    padding-left: 88px;
+    line-height: 16px;
+}
+
+.vdt-monthcal .vdt-mc-today-box {
+    position: absolute;
+    left: 54px;
+    top: 1px;
+    width: 29px;
+    height: 14px;
+    box-sizing: border-box;
+    border: 1px solid #0066cc;
+}
+
+.vdt-client .vdt-static.vdt-middle {
+    display: flex;
+    align-items: center;
+}

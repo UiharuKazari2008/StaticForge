@@ -885,3 +885,33 @@
         display: none;
     }
 }
+
+/* Print > Print Style: the owner-drawn list, 16 px rows with WinCal's view icons (cut from the VM)
+   drawn over the selection */
+.vdt-client .wcal-print-styles .vdt-lb-row {
+    display: flex;
+    align-items: center;
+    height: 16px;
+    padding: 0 0 0 1px;
+    line-height: 16px;
+}
+
+.vdt-client .wcal-print-styles .vdt-lb-row img {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin-right: 3px;
+    object-fit: none;
+    object-position: 0 0;
+}
+
+.vdt-client .wcal-print-styles .vdt-lb-row:nth-child(2) img { object-position: -16px 0; }
+.vdt-client .wcal-print-styles .vdt-lb-row:nth-child(3) img { object-position: -32px 0; }
+.vdt-client .wcal-print-styles .vdt-lb-row:nth-child(4) img { object-position: -48px 0; }
+
+/* owner-drawn: the selection stays blue without the focus, as on the VM */
+.vdt-client .vdt-listbox.wcal-print-styles .vdt-lb-row.is-selected,
+.vdt-client .vdt-listbox.wcal-print-styles:not(:focus) .vdt-lb-row.is-selected {
+    background: #3399ff;
+    color: #fff;
+}

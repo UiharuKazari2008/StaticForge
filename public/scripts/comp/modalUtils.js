@@ -5302,6 +5302,7 @@ const APP_ICON_SRCSET_SIZES = [16, 24, 32, 48, 64, 96, 128, 192, 384];
 const APP_ICON_DISPLAY_PX = {
     desktop: 64,      // desktop-shell.css .desktop-shortcut-icon (Classic 64, Aero 48)
     taskbar: 17,      // desktop-shell.css --taskbar-window-icon-size
+    caption: 16,      // a window caption's small icon (Vista draws the icon's own 16 px frame)
     switcher: 32,     // window-switcher.css 2rem
     fallback: 192     // surfaces that never said; the old fixed value
 };
@@ -5376,6 +5377,13 @@ function renderAppIconImg(imageIcon, className = '', displayPx) {
     if (imagePath && !imagePath.includes('/static_images/app_icons/') && /^\/(?!\/)/.test(imagePath)) {
         const twin = /-16\.png$/i.test(imagePath) ? ` srcset="${imagePath} 1x, ${imagePath.replace(/-16\.png$/i, '-32.png')} 2x"` : '';
         return `<img src="${imagePath}" alt=""${twin}${classAttr} />`;
+    }
+    // a surface drawn at one of Vista's own frame sizes (a 16 px caption) gets that frame's file
+    // alone: with a srcset Chrome keeps reusing a larger candidate it already has and scales it
+    const px = Number(displayPx);
+    if ([16, 24, 32, 48].includes(px) && imagePath.includes('/static_images/app_icons/')) {
+        const dpr = window.devicePixelRatio || 1;
+        return `<img src="${resolveAppIconPath(imageIcon, appIconTierFor(px * dpr))}" alt=""${classAttr} />`;
     }
     const srcset = buildAppIconSrcset(imageIcon);
     const srcsetAttr = srcset ? ` srcset="${srcset}" sizes="${appIconSizesAttr(displayPx)}"` : '';
@@ -5566,7 +5574,7 @@ function ensureModalApplicationIcon(modal) {
     if (!imageIcon || (current && current.dataset.inheritedIcon === imageIcon)) return;
 
     const holder = document.createElement('div');
-    holder.innerHTML = renderAppIconImg(imageIcon, '', APP_ICON_DISPLAY_PX.taskbar);
+    holder.innerHTML = renderAppIconImg(imageIcon, '', APP_ICON_DISPLAY_PX.caption);
     const img = holder.firstElementChild;
     if (!img) return;
     img.dataset.inheritedIcon = imageIcon;

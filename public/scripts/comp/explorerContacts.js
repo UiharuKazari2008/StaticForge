@@ -412,7 +412,7 @@
         if (!app) return;
         if (verb === 'delete') { await app.deleteSelection(); return; }
         if (verb === 'default-program') {
-            if (typeof root.openControlPanelPage === 'function') root.openControlPanelPage('default-programs-assoc');
+            if (root.melatonControlPanel) root.melatonControlPanel.open('default-programs-assoc');
             return;
         }
         if (!root.melatonApps) return;
