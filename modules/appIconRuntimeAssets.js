@@ -50,6 +50,32 @@ function hashBuffer(buf) {
     return crypto.createHash(SOURCE_HASH_ALGO).update(buf).digest('hex');
 }
 
+/**
+ * A Vista icon's own small frames (its 16 / 24 / 32 / 48 px images are drawn apart, not scaled):
+ * app_icons/frames/<stem>/<size>.png is used as-is for that size; other sizes scale the master.
+ */
+function iconFrames(projectRoot, filename) {
+    const dir = path.join(getPublicIconsDir(projectRoot), 'frames', String(filename).replace(/\.png$/i, ''));
+    const frames = {};
+    let names = [];
+    try { names = fs.readdirSync(dir); } catch (_err) { return frames; }
+    names.forEach((name) => {
+        const m = /^(\d+)\.png$/i.exec(name);
+        if (m && ICON_SIZES.includes(Number(m[1]))) frames[Number(m[1])] = fs.readFileSync(path.join(dir, name));
+    });
+    return frames;
+}
+
+/** The master's hash, with its frames folded in so a changed frame recompiles. */
+function iconSourceHash(projectRoot, filename, sourceBuf) {
+    const frames = iconFrames(projectRoot, filename);
+    const sizes = Object.keys(frames).map(Number).sort((a, b) => a - b);
+    if (!sizes.length) return hashBuffer(sourceBuf);
+    const h = crypto.createHash(SOURCE_HASH_ALGO).update(sourceBuf);
+    sizes.forEach((size) => h.update(`|${size}|`).update(frames[size]));
+    return h.digest('hex');
+}
+
 function isAppIconWebPath(webPath) {
     const normalized = (webPath || '').split('?')[0];
     return normalized === APP_ICONS_WEB_ROOT
@@ -184,8 +210,9 @@ async function compileOneIcon(projectRoot, filename, sourceBuf, sourceHash, opti
     let outputBytes = 0;
 
     const stem = iconStem(filename);
+    const frames = iconFrames(projectRoot, filename);
     for (const size of ICON_SIZES) {
-        const png = await sharp(sourceBuf)
+        const png = frames[size] ? await sharp(frames[size]).png({ compressionLevel: 9, adaptiveFiltering: true }).toBuffer() : await sharp(sourceBuf)
             .resize(size, size, {
                 fit: 'contain',
                 background: { r: 0, g: 0, b: 0, alpha: 0 },
@@ -241,7 +268,7 @@ async function compileAppIcons(projectRoot, options = {}) {
         try {
             const abs = masterSourcePath(projectRoot, filename);
             const sourceBuf = fs.readFileSync(abs);
-            const sourceHash = hashBuffer(sourceBuf);
+            const sourceHash = iconSourceHash(projectRoot, filename, sourceBuf);
             nextMeta[filename] = {
                 sourceHash,
                 sizes: ICON_SIZES.slice(),
@@ -391,7 +418,7 @@ async function ensureCompiledForRequest(projectRoot, webPath) {
         return { changed: false };
     }
     const sourceBuf = fs.readFileSync(abs);
-    const sourceHash = hashBuffer(sourceBuf);
+    const sourceHash = iconSourceHash(projectRoot, masterName, sourceBuf);
     const meta = readSourcesMeta(projectRoot);
     const prev = meta[masterName];
     if (prev && prev.sourceHash === sourceHash && outputsExistForIcon(projectRoot, masterName)) {

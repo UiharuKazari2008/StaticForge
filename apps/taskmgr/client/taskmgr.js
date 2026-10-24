@@ -286,13 +286,9 @@
                 if (typeof va === 'number' || typeof vb === 'number') return ((va || 0) - (vb || 0)) * sort.dir;
                 return String(va || '').localeCompare(String(vb || '')) * sort.dir;
             });
-            const old = pane.querySelector('.wtm-list');
-            const scroll = old ? old.scrollTop : 0;
             const grid = cols.map((c) => c.w).join(' ');
-            const html = `<div class="wtm-list" style="--cols:${grid}" tabindex="0">
-                <div class="wtm-head">${cols.map((c) => `<button type="button" class="wtm-col${c.num ? ' is-num' : ''}${sort.key === c.key ? (sort.dir > 0 ? ' is-up' : ' is-down') : ''}" data-sort="${c.key}">${esc(c.t)}</button>`).join('')}</div>
-                ${sorted.map((r) => `<div class="wtm-row${opts.isSel && opts.isSel(r) ? ' is-sel' : ''}" data-k="${esc(opts.keyOf ? opts.keyOf(r) : '')}">${cols.map((c, i) => `<span class="${c.num ? 'is-num' : ''}">${i === 0 && r.icon ? `<img src="${esc(r.icon)}" alt="">` : ''}${esc(c.fmt ? c.fmt(r[c.key], r) : r[c.key])}</span>`).join('')}</div>`).join('')}
-            </div>`;
+            const head = cols.map((c) => `<button type="button" class="wtm-col${c.num ? ' is-num' : ''}${sort.key === c.key ? (sort.dir > 0 ? ' is-up' : ' is-down') : ''}" data-sort="${c.key}">${esc(c.t)}</button>`).join('');
+            const body = sorted.map((r) => `<div class="wtm-row${opts.isSel && opts.isSel(r) ? ' is-sel' : ''}" data-k="${esc(opts.keyOf ? opts.keyOf(r) : '')}">${cols.map((c, i) => `<span class="${c.num ? 'is-num' : ''}">${i === 0 && r.icon ? `<img src="${esc(r.icon)}" alt="">` : ''}${esc(c.fmt ? c.fmt(r[c.key], r) : r[c.key])}</span>`).join('')}</div>`).join('');
             let host = pane.querySelector('.wtm-list-host');
             if (!host) {
                 host = doc.createElement('div');
@@ -306,8 +302,18 @@
                 });
                 host.addEventListener('dblclick', (ev) => { const row = ev.target.closest('.wtm-row'); if (row && opts.onOpen) opts.onOpen(row.dataset.k); });
             }
-            host.innerHTML = html;
-            host.querySelector('.wtm-list').scrollTop = scroll;
+            // the list stays the same element between polls: replacing it dropped the focus every second,
+            // and the default push button's pulse follows the focus
+            let list = host.querySelector('.wtm-list');
+            if (!list) {
+                host.innerHTML = '<div class="wtm-list" tabindex="0"><div class="wtm-head"></div><div class="wtm-body"></div></div>';
+                list = host.querySelector('.wtm-list');
+            }
+            if (list.style.getPropertyValue('--cols') !== grid) list.style.setProperty('--cols', grid);
+            const headEl = list.querySelector('.wtm-head');
+            if (headEl.dataset.html !== head) { headEl.innerHTML = head; headEl.dataset.html = head; }
+            const bodyEl = list.querySelector('.wtm-body');
+            if (bodyEl.dataset.html !== body) { bodyEl.innerHTML = body; bodyEl.dataset.html = body; }
         }
 
         buttons(pane, list) {

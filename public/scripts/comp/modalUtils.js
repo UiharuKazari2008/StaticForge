@@ -6625,7 +6625,7 @@ function buildToolsSubmenuItems() {
         // System Tools > Windows Task Manager (Yozora #632; apps/taskmgr, a system package; Ctrl+Shift+Esc)
         { launchId: 'taskmgr', icon: 'fas fa-chart-line', imageIcon: 'vista-task-manager.png', text: 'Windows Task Manager', appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'taskmgr' }) },
         // Accessories > WordPad (Yozora #632; apps/wordpad, a system package)
-        { launchId: 'wordpad', icon: 'fas fa-file-word', imageIcon: 'vista-wordpad-document.png', text: 'WordPad', appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'wordpad' }) },
+        { launchId: 'wordpad', icon: 'fas fa-file-word', imageIcon: 'vista-wordpad.png', text: 'WordPad', appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'wordpad' }) },
         // Accessories > Sound Recorder (Yozora #632; apps/soundrec, a system package)
         { launchId: 'soundrec', icon: 'fas fa-microphone', imageIcon: 'vista-sound-recorder.png', text: 'Sound Recorder', appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'soundrec' }) },
         // Windows Contacts (Yozora #632; apps/contacts, a system package)

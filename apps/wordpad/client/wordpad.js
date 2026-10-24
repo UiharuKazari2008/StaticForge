@@ -19,8 +19,8 @@
     const KEY = 'HKCU\\Software\\Xyridian\\Melaton\\CurrentVersion\\Applets\\Wordpad';
     const reg = (n, d) => (root.melatonRegistry ? root.melatonRegistry.get(KEY, n, d) : d);
     const setReg = (v) => { if (root.melatonRegistry) void root.melatonRegistry.set(KEY, v); };
-    const ICON16 = '/static_images/app_icons/16/vista-wordpad-document.webp';
-    const ICON24 = '/static_images/app_icons/24/vista-wordpad-document.webp';
+    const ICON16 = '/static_images/app_icons/16/vista-wordpad.webp';
+    const ICON24 = '/static_images/app_icons/24/vista-wordpad.webp';
     const CMD = '/static_images/vista-cmdbar';
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     const call = (name, ...args) => (typeof root[name] === 'function' ? root[name](...args) : undefined);

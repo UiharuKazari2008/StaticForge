@@ -1,100 +1,233 @@
-/* Sound Recorder (Yozora #632; apps/soundrec/client/soundrec.js): Vista draws its controls on the
-   glass frame (the whole client is extended frame), so the client is see-through here */
+/* Sound Recorder (Yozora #632; apps/soundrec/client/soundrec.js), measured on the Vista VM:
+   a 392x32 client (window 406x66) painted with the toolbar band (aero.msstyles IMAGE_641, 9-sliced,
+   a 1 px white edge round it), not extended glass. Positions are the VM's, in client pixels. */
+
+/* a fixed (non-sizing) frame is 7 px with its edge, 1 px less than a sizable one: 406x66 */
+.srec-window.srec-window {
+    padding: 26px 6px 6px !important;
+}
 
 .srec-window.srec-window > .modal-content.srec-client {
-    display: flex !important;
-    flex-direction: row !important;
-    align-items: center;
-    gap: 10px;
-    width: 360px;
-    height: 40px;
-    padding: 0 8px 0 6px !important;
-    background: transparent !important;
+    position: relative !important;
+    display: block !important;
+    box-sizing: border-box !important;
+    width: 392px !important;
+    height: 32px !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    overflow: hidden;
+    border: 1px solid #fff !important;
+    border-radius: 0 !important;
+    background: none !important;
     box-shadow: none !important;
-    border: 0 !important;
     font: 12px "Segoe UI", Tahoma, sans-serif;
     color: #000;
 }
 
-/* the record button: a raised Vista push button with the red dot (a black square while recording) */
-.srec-window.srec-window .win7 .srec-rec:not(:disabled) {
-    display: inline-flex;
-    flex: none;
-    align-items: center;
-    gap: 6px;
-    min-width: 0;
-    height: 26px !important;
-    min-height: 26px !important;
-    padding: 0 10px 0 7px;
-    font: 12px "Segoe UI", Tahoma, sans-serif;
+.srec-window .srec-client::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border: 0 solid transparent;
+    border-width: 9px 1px 15px;
+    border-image: url('band.png') 9 1 15 1 fill / 9px 1px 15px 1px stretch;
+    pointer-events: none;
+}
+
+/* Start / Stop / Resume Recording, 112x28 at 3,2: flat on the band; focused or hot it shows a face,
+   pressed a darker one. Both faces are the VM's own pixels (9-sliced: 4 | 1 | 4), band included */
+.srec-window.srec-window .win7 .srec-rec.srec-rec:not(#_) {
+    position: absolute !important;
+    left: 2px;
+    top: 1px;
+    width: 112px !important;
+    min-width: 0 !important;
+    height: 28px !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-image: none !important;
+    border-radius: 0 !important;
+    background: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+    animation: none !important;
+    font: 12px "Segoe UI", Tahoma, sans-serif !important;
+    color: #000 !important;
+    text-shadow: none !important;
+    text-align: left;
     white-space: nowrap;
 }
 
+.srec-window.srec-window .win7 .srec-rec.srec-rec:not(#_)::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    width: auto;
+    height: auto;
+    margin: 0;
+    padding: 0;
+    background: none;
+    border: 4px solid transparent;
+    border-image: url('face-hot.png') 4 fill / 4px stretch;
+    border-radius: 0;
+    box-shadow: none;
+    opacity: 0;
+    transition: none;
+    animation: none;
+}
+
+.srec-window.srec-window .win7 .srec-rec.srec-rec:not(#_):is(:hover, :focus)::before {
+    opacity: 1;
+}
+
+.srec-window.srec-window .win7 .srec-rec.srec-rec:not(#_):active::before {
+    border-image-source: url('face-pressed.png');
+    opacity: 1;
+}
+
+.srec-window.srec-window .win7 .srec-rec.srec-rec:not(#_)::after {
+    content: none;
+    animation: none;
+}
+
+/* the dot / square: SoundRecorder.exe bitmap 205, 16 px cells (record, stop) */
 .srec-window .srec-glyph {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: radial-gradient(circle at 35% 30%, #ff9a9a, #d41d1d 55%, #8c0707);
-    box-shadow: 0 0 0 1px rgba(90, 0, 0, 0.6);
+    position: absolute;
+    left: 3px;
+    top: 6px;
+    z-index: 1;
+    width: 16px;
+    height: 16px;
+    background: url('buttons.png') 0 0 no-repeat;
 }
 
 .srec-window .srec-rec.is-stop .srec-glyph {
-    width: 10px;
-    height: 10px;
-    border-radius: 1px;
-    background: linear-gradient(#5b5b5b, #1b1b1b);
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+    background-position: -16px 0;
 }
 
-/* the time: Vista's glass text, a soft white glow under it */
+.srec-window .srec-label {
+    position: absolute;
+    left: 23px;
+    top: 5px;
+    z-index: 1;
+    line-height: 16px;
+}
+
+/* the elapsed time: plain text on the band */
 .srec-window .srec-time {
-    flex: none;
-    min-width: 54px;
-    font-size: 13px;
-    text-shadow: 0 0 6px #fff, 0 0 10px rgba(255, 255, 255, 0.9);
+    position: absolute;
+    left: 144px;
+    top: 5px;
+    line-height: 16px;
 }
 
-/* the meter: a sunken bar, green segments */
+/* the volume meter: the theme's progress bar, 147x30 at 189,0 */
 .srec-window .srec-meter {
-    position: relative;
-    flex: 1 1 auto;
-    min-width: 60px;
-    height: 12px;
-    overflow: hidden;
-    border: 1px solid #7c8796;
-    border-radius: 2px;
-    background: linear-gradient(#e7eaee, #fbfbfc);
-    box-shadow: inset 1px 1px 1px rgba(0, 0, 0, 0.18);
+    position: absolute;
+    left: 188px;
+    top: 0;
+    box-sizing: border-box;
+    width: 147px;
+    height: 30px;
+    border: 0 solid transparent;
+    border-width: 7px 4px 6px;
+    border-image: url('/static_images/vista-controls/progress-bar.png') 7 4 6 4 fill / 7px 4px 6px 4px stretch;
 }
 
 .srec-window .srec-meter-fill {
     position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
+    left: -3px;
+    top: -6px;
+    bottom: -5px;
     width: 0;
-    background:
-        repeating-linear-gradient(90deg, transparent 0 5px, rgba(255, 255, 255, 0.85) 5px 7px),
-        linear-gradient(#a9f08b, #45c21e 50%, #2a9d0f);
-    transition: width 70ms linear;
+    max-width: calc(100% + 6px);
+    border: 0 solid transparent;
+    border-width: 0 8px;
+    box-sizing: border-box;
+    border-image: url('/static_images/vista-controls/progress-fill.png') 0 8 fill / 0 8px stretch;
 }
 
-/* Help: the round blue question mark */
-.srec-window.srec-window .win7 .srec-help:not(:disabled) {
-    flex: none;
-    width: 20px;
+.srec-window .srec-meter-fill:not(.is-on) {
+    display: none;
+}
+
+/* Help: a toolbar split button (bitmap 204's question mark, the drop arrow); hot, it takes the push
+   button face over both parts with a divider: 342..371 and 371..386 */
+.srec-window.srec-window .win7 :is(.srec-help, .srec-help-drop):not(#_) {
+    position: absolute;
+    top: 1px;
+    height: 28px;
     min-width: 0;
-    height: 20px;
     min-height: 0;
+    margin: 0;
     padding: 0;
-    border: 0;
+    border: 4px solid transparent;
     border-image: none;
-    border-radius: 50%;
-    background: url('/static_images/vista-explorer/help.png') center / 16px 16px no-repeat;
+    border-radius: 0;
+    background: none;
     box-shadow: none;
 }
 
+.srec-window.srec-window .win7 .srec-help:not(#_) {
+    left: 341px;
+    width: 30px;
+}
+
+.srec-window.srec-window .win7 .srec-help-drop:not(#_) {
+    left: 370px;
+    width: 16px;
+}
+
 .srec-window .srec-help::before,
-.srec-window .srec-help::after {
+.srec-window .srec-help::after,
+.srec-window .srec-help-drop::before,
+.srec-window .srec-help-drop::after {
     content: none;
+}
+
+.srec-window .srec-help > span {
+    position: absolute;
+    left: 4px;
+    top: 2px;
+    width: 16px;
+    height: 16px;
+    background: url('tools.png') -32px 0 no-repeat;
+}
+
+/* the drop arrow: 7x4 at 376,14 */
+.srec-window .srec-help-drop > span {
+    position: absolute;
+    left: 1px;
+    top: 8px;
+    width: 0;
+    height: 0;
+    border-style: solid;
+    border-width: 4px 3.5px 0;
+    border-color: #000 transparent transparent;
+}
+
+.srec-window.srec-window .win7 .srec-help-hot .srec-help:not(#_),
+.srec-window.srec-window .win7 .srec-help:not(#_):focus {
+    border-image: url('split-main.png') 4 fill / 4px stretch;
+}
+
+.srec-window.srec-window .win7 .srec-help-hot .srec-help-drop:not(#_) {
+    border-image: url('split-drop.png') 4 fill / 4px stretch;
+}
+
+/* the open menu holds the arrow part down; the main part keeps its face */
+.srec-window.srec-window .win7 .srec-client:has(.srec-help-drop.context-open) .srec-help:not(#_) {
+    border-image: url('split-main-open.png') 4 fill / 4px stretch;
+}
+
+.srec-window.srec-window .win7 .srec-help-drop.context-open:not(#_),
+.srec-window.srec-window .win7 .srec-help-drop:not(#_):active {
+    border-image: url('split-drop-pressed.png') 4 fill / 4px stretch;
+}
+
+.srec-window.srec-window .win7 .srec-help:not(#_):active {
+    border-image: url('face-pressed.png') 4 fill / 4px stretch;
 }

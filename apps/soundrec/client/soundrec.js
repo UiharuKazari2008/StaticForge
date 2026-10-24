@@ -67,20 +67,31 @@
                 <div class="modal-window-title"><div class="modal-window-title-main"><img class="icon-image" src="${ICON16}" alt=""><span>Sound Recorder</span></div></div>
                 <div class="modal-focus-overlay"></div>
                 <div class="modal-window-controls">
-                    <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize"><i class="fa-regular fa-window-minimize"></i></button>
                     <button type="button" class="btn-danger close-btn btn-small srec-close" title="Close"><i class="fa-regular fa-xmark-large"></i></button>
                 </div>
                 <div class="modal-content win7 srec-client">
-                    <button type="button" class="srec-rec"><span class="srec-glyph"></span><span class="srec-label">Start Recording</span></button>
+                    <button type="button" class="btn-standard srec-rec" title="Start Recording (Alt+S)"><span class="srec-glyph"></span><span class="srec-label"><u>S</u>tart Recording</span></button>
                     <span class="srec-time">0:00:00</span>
-                    <span class="srec-meter" aria-hidden="true"><span class="srec-meter-fill"></span></span>
-                    <button type="button" class="srec-help" title="Help"></button>
+                    <span class="srec-meter" role="progressbar" aria-label="Volume Meter"><span class="srec-meter-fill"></span></span>
+                    <button type="button" class="srec-help" title="Help"><span></span></button>
+                    <button type="button" class="srec-help-drop" aria-label="Help" aria-haspopup="menu"><span></span></button>
                 </div>`;
             doc.body.appendChild(m);
             this.modal = m;
             m.querySelector('.srec-close').addEventListener('click', () => void this.close());
             m.querySelector('.srec-rec').addEventListener('click', () => void (this.state === 'recording' ? this.stop() : this.record()));
             m.querySelector('.srec-help').addEventListener('click', () => this.help());
+            // the split button lights up as one (toolbar TBSTYLE_DROPDOWN)
+            const client = m.querySelector('.srec-client');
+            m.querySelectorAll('.srec-help, .srec-help-drop').forEach((b) => {
+                b.addEventListener('mouseenter', () => client.classList.add('srec-help-hot'));
+                b.addEventListener('mouseleave', () => client.classList.remove('srec-help-hot'));
+            });
+            const drop = m.querySelector('.srec-help-drop');
+            root.contextMenu.attachClickMenuToElement(drop, {
+                onAction: (a) => { if (a === 'help') this.help(); else if (a === 'about' && typeof root.openAboutMelatoninModal === 'function') root.openAboutMelatoninModal({ program: 'Sound Recorder' }); },
+                sections: [{ type: 'list', initfn: (sec) => { sec.items = [{ text: 'Help', subtext: 'F1', action: 'help' }, { text: 'About', action: 'about' }]; } }]
+            });
             m.addEventListener('keydown', (ev) => {
                 // Vista: Alt+S starts, Alt+S stops (the button's access key)
                 if (ev.altKey && ev.key.toLowerCase() === 's') { ev.preventDefault(); m.querySelector('.srec-rec').click(); }
@@ -98,6 +109,8 @@
             };
             requestAnimationFrame(place);
             setTimeout(place, 60);
+            // the record button has the focus when the window opens (its face shows until the focus moves)
+            setTimeout(() => { const b = m.querySelector('.srec-rec'); if (b && m.contains(doc.activeElement) === false) b.focus({ preventScroll: true }); }, 80);
             if (root.programFaults && root.programFaults.registerProgram) {
                 root.programFaults.registerProgram(m.id, { name: 'Sound Recorder', terminate: () => this.app.exit(), relaunch: () => root.melatonApps && root.melatonApps.launch({ packageId: 'soundrec' }) });
             }
@@ -108,18 +121,20 @@
             const b = this.modal.querySelector('.srec-rec');
             const rec = this.state === 'recording';
             b.classList.toggle('is-stop', rec);
-            this.modal.querySelector('.srec-label').textContent = rec ? 'Stop Recording' : this.state === 'paused' ? 'Resume Recording' : 'Start Recording';
+            // SoundRecorder.exe.mui strings 114 / 115 / 120 (&Start, &Stop, Re&sume) and their tooltips 102 / 103 / 121
+            this.modal.querySelector('.srec-label').innerHTML = rec ? '<u>S</u>top Recording' : this.state === 'paused' ? 'Re<u>s</u>ume Recording' : '<u>S</u>tart Recording';
+            b.title = rec ? 'Stop Recording (Alt+S)' : this.state === 'paused' ? 'Resume Recording (Alt+S)' : 'Start Recording (Alt+S)';
             this.modal.querySelector('.srec-time').textContent = clock(this.elapsed + (rec ? performance.now() - this.t0 : 0));
         }
 
         async openMic() {
             if (this.stream) return true;
             const md = navigator.mediaDevices;
-            if (!md || !md.getUserMedia) { await this.message('No microphone can be used here.'); return false; }
+            if (!md || !md.getUserMedia) { await this.message('An audio recording device cannot be found.'); return false; }
             try {
                 this.stream = await md.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
             } catch (err) {
-                await this.message(`Sound Recorder cannot use the microphone.\n${(err && err.message) || err}`);
+                await this.message(err && err.name === 'NotFoundError' ? 'An audio recording device cannot be found.' : 'The audio recording device cannot be used at this time.');
                 return false;
             }
             if (!this.ac) { const AC = root.AudioContext || root.webkitAudioContext; this.ac = new AC(); }
@@ -155,8 +170,10 @@
                 this.analyser.getFloatTimeDomainData(data);
                 let peak = 0;
                 for (let i = 0; i < data.length; i += 1) peak = Math.max(peak, Math.abs(data[i]));
-                // Vista's meter: green segments, a log-ish scale
-                fill.style.width = `${Math.min(100, Math.round(Math.sqrt(peak) * 100))}%`;
+                // the meter is a progress bar; a log-ish scale
+                const pct = Math.min(100, Math.round(Math.sqrt(peak) * 100));
+                fill.style.width = `${pct}%`;
+                fill.classList.toggle('is-on', pct > 0);
             }, 80);
         }
 
@@ -165,7 +182,7 @@
             this.elapsed += performance.now() - this.t0;
             this.state = 'paused';
             clearInterval(this.timer);
-            this.modal.querySelector('.srec-meter-fill').style.width = '0';
+            this.modal.querySelector('.srec-meter-fill').classList.remove('is-on');
             this.sync();
             const saved = await this.save();
             if (saved) { this.state = 'idle'; this.chunks = []; this.elapsed = 0; this.release(); }
@@ -228,7 +245,7 @@
         async close() {
             if (this.state === 'recording') await this.stop();
             if (this.state === 'paused' && this.chunks.length) {
-                const v = await this.message('Do you want to save the sound you recorded?', [
+                const v = await this.message('Do you want to save the changes you made to the audio file?', [
                     { text: 'Yes', value: 'yes', className: 'btn-standard primary' }, { text: 'No', value: 'no', className: 'btn-standard' }, { text: 'Cancel', value: 'cancel', className: 'btn-standard' }
                 ]);
                 if (v === 'cancel' || v === null || v === undefined || v === false) return;
