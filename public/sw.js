@@ -188,6 +188,11 @@ function isAuthGatedManifestFile(file) {
   return isAuthGatedStaticPath(path);
 }
 
+function hasFileExtension(pathname) {
+  const last = String(pathname || '').split('/').pop();
+  return /\.[a-z0-9]{1,8}$/i.test(last);
+}
+
 async function matchStaticShell(pathname) {
   if (!pathname || pathname === '/sw.js' || pathname.startsWith('/dist/workbox/') || isAuthGatedStaticPath(pathname)) {
     return null;
@@ -1163,10 +1168,11 @@ async function handleGadgetAsset(request, pathname) {
 }
 
 // Custom strategy wrapper to add cache-busting headers and emit network events
-function createCacheBustingStrategy(strategy, cacheName) {
+// knownMiss: the caller already looked the row up (matchStaticShell); no second lookup
+function createCacheBustingStrategy(strategy, cacheName, knownMiss = false) {
   return {
     async handle({ request, event }) {
-      const wasCached = !!(await matchStrategyCache(cacheName, request));
+      const wasCached = knownMiss ? false : !!(await matchStrategyCache(cacheName, request));
       try {
         const response = await strategy.handle({ request, event });
         if (response && !wasCached) {
@@ -1233,11 +1239,17 @@ workbox.routing.registerRoute(
 const LAUNCH_SHELL_CACHE = 'melaton-launch-shell-v1';
 const LAUNCH_SHELL_KEY = '/launch';
 
+// perfTrace phase mark inside a traced handler: <label>=<ms since the handler started>
+function perfMark(options, label) {
+  if (options && options.perfMarks) options.perfMarks.push(`${label}=${Math.round(performance.now() - options.perfT0)}`);
+}
+
 // perfTrace: how long the fetch event waited for the worker (q) and how long its handler ran (h)
 function perfRoute(handler) {
   return async (options) => {
     if (!perfTrace.on) return handler(options);
     const t0 = performance.now();
+    if (options) { options.perfT0 = t0; options.perfMarks = []; }
     const fetchEvent = options && options.event;
     const queued = fetchEvent && typeof fetchEvent.timeStamp === 'number' ? t0 - fetchEvent.timeStamp : -1;
     let status = 'err';
@@ -1247,7 +1259,8 @@ function perfRoute(handler) {
       return response;
     } finally {
       const pathname = options && options.url ? options.url.pathname : '?';
-      perfLog(`fetch ${pathname.slice(0, 80)} q=${Math.round(queued)} h=${Math.round(performance.now() - t0)} ${status}`);
+      const marks = options && options.perfMarks && options.perfMarks.length ? ' ' + options.perfMarks.join(' ') : '';
+      perfLog(`fetch ${pathname.slice(0, 80)} q=${Math.round(queued)} h=${Math.round(performance.now() - t0)} ${status}${marks}`);
     }
   };
 }
@@ -1307,7 +1320,8 @@ workbox.routing.registerRoute(
     try {
       let response;
       await restoreWallpaperUrlSet();
-      
+      perfMark(event, 'w');
+
       // Handle internal routes (client-side only)
       if (url.pathname.startsWith('/internal/')) {
         response = await internalStrategy.handle(event);
@@ -1384,15 +1398,31 @@ workbox.routing.registerRoute(
       else if (url.pathname.startsWith('/melaton-apps/')) {
         response = await fetch(request);
       }
+      // Every cached file has an extension (the manifest's only extensionless entries are the
+      // routes above): API calls, /status, /logon-picture and the like go straight to the
+      // network instead of queueing three lookups on the static cache (Chrome runs a cache's
+      // operations one at a time; 30-80 ms each in a boot burst on an 8500-row cache)
+      else if (!hasFileExtension(url.pathname)) {
+        perfMark(event, 'net');
+        response = await fetch(request);
+        notifyClientsOfNetworkActivity('receive', {
+          url: request.url,
+          method: request.method,
+          status: response.status,
+          fromNetwork: true,
+          timestamp: Date.now()
+        });
+      }
       else {
         const shellHit = await matchStaticShell(url.pathname);
+        perfMark(event, shellHit ? 'hit' : 'miss');
         if (shellHit) {
           response = respondWithSavedAsset(request, shellHit);
           if (url.pathname.startsWith(GAME_ASSET_PREFIX) && event.event) {
             event.event.waitUntil(revalidateGameAsset(url.pathname, shellHit));
           }
         } else {
-          response = await createCacheBustingStrategy(staticStrategy, STATIC_CACHE).handle(event);
+          response = await createCacheBustingStrategy(staticStrategy, STATIC_CACHE, true).handle(event);
         }
       }
       

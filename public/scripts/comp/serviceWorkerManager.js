@@ -111,6 +111,25 @@ function isSiteGateLocalFlag() {
     }
 }
 
+// Boot check of an unchanged manifest: this many files, spread over the stored list
+const BOOT_CACHE_SAMPLE = 200;
+const FULL_CACHE_CHECK_KEY = 'melatonFullCacheCheckAt';
+const FULL_CACHE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+/** Every route entry plus an evenly spread sample (a random offset, so boots cover different files). */
+function sampleManifestFiles(files, count) {
+    const list = Array.isArray(files) ? files : [];
+    if (list.length <= count) return list;
+    const picked = list.filter((file) => file && (file.type === 'route' || file.url === '/' || file.url === '/app' || file.url === '/launch'));
+    const step = list.length / count;
+    const offset = Math.random() * step;
+    for (let i = 0; i < count; i++) {
+        const file = list[Math.floor(offset + i * step)];
+        if (file && !picked.includes(file)) picked.push(file);
+    }
+    return picked;
+}
+
 // Same keys as public/scripts/launch/updateEngine.js (melatonInstall / melatonInstallRecord).
 const MELATON_INSTALL_STATE_KEY = 'melatonInstall';
 // Parallel cache lookups in getFilesNeedingUpdate (the boot update check)
@@ -730,17 +749,48 @@ class ServiceWorkerManager {
         } catch (_) { /* next boot fetches the full list */ }
     }
 
-    // A 304 only means the server manifest matches the stored digest. The cache is valid
-    // when that stored list is still present, file for file.
+    // A 304 only means the server manifest matches the stored digest. The boot checks a spread
+    // sample of that stored list (BOOT_CACHE_SAMPLE files): cache rows only vanish all at once
+    // (browser eviction, Setup's format) or through our own deletes, which a sample catches. The
+    // file-for-file check took ~5 s at every boot on an 8500-row cache (Edge, Oct 24); it runs
+    // once a day after the desktop is up (_verifyFullCacheLater) and re-downloads what is missing.
     async _cacheMatchesStoredManifest() {
         const snapshot = this._readManifestSnapshot();
         if (!snapshot) return false;
         try {
-            const needing = await this.getFilesNeedingUpdate(snapshot);
-            return this._filesCountingTowardInstaller(needing).length === 0;
+            const needing = await this.getFilesNeedingUpdate(sampleManifestFiles(snapshot, BOOT_CACHE_SAMPLE));
+            const ok = this._filesCountingTowardInstaller(needing).length === 0;
+            if (ok) this._verifyFullCacheLater(snapshot);
+            return ok;
         } catch (error) {
             console.warn('Offline cache check failed:', error);
             return false;
+        }
+    }
+
+    _verifyFullCacheLater(snapshot) {
+        if (this._fullCacheCheckScheduled) return;
+        let last = 0;
+        try { last = Number(localStorage.getItem(FULL_CACHE_CHECK_KEY)) || 0; } catch (_) { /* storage off */ }
+        if (Date.now() - last < FULL_CACHE_CHECK_INTERVAL_MS) return;
+        this._fullCacheCheckScheduled = true;
+        const run = async () => {
+            try {
+                const needing = this._filesCountingTowardInstaller(await this.getFilesNeedingUpdate(snapshot));
+                if (needing.length && navigator.serviceWorker && navigator.serviceWorker.controller) {
+                    console.log(`Offline cache: ${needing.length} file(s) missing, downloading them quietly`);
+                    navigator.serviceWorker.controller.postMessage({ type: 'CACHE_STATIC_FILES', files: needing, silent: true });
+                }
+                try { localStorage.setItem(FULL_CACHE_CHECK_KEY, String(Date.now())); } catch (_) { /* storage off */ }
+            } catch (error) {
+                console.warn('Full offline cache check failed:', error);
+            }
+        };
+        // The boot-time check runs before the desktop boot starts: wait for it to finish
+        if (window.isDesktop && !(window.wsClient && window.wsClient.initializationCompleted)) {
+            document.addEventListener('desktopBootDone', () => setTimeout(run, 20000), { once: true });
+        } else {
+            setTimeout(run, 60000);
         }
     }
 
@@ -1892,47 +1942,15 @@ class ServiceWorkerManager {
         if (path === '/') {
             candidates.add('/index.html');
         }
+        // ignoreVary: rows the worker's strategy stored keep the server's Vary: Accept-Encoding,
+        // which a plain match from the page misses
         for (const key of candidates) {
-            const match = await cache.match(key);
+            const match = await cache.match(key, { ignoreVary: true });
             if (match) {
                 return match;
             }
         }
         return null;
-    }
-
-    async _hashIndexForPath(cache, pathname) {
-        // One build per check even when parallel lookups ask at once (getFilesNeedingUpdate)
-        if (!this._staticCacheKeyIndex) {
-            if (!this._staticCacheKeyIndexBuild) {
-                this._staticCacheKeyIndexBuild = this._buildStaticCacheKeyIndex(cache).finally(() => {
-                    this._staticCacheKeyIndexBuild = null;
-                });
-            }
-            await this._staticCacheKeyIndexBuild;
-        }
-        return (this._staticCacheKeyIndex && this._staticCacheKeyIndex.get(pathname)) || [];
-    }
-
-    async _buildStaticCacheKeyIndex(cache) {
-        const index = new Map();
-        const keys = await cache.keys();
-        for (let i = 0; i < keys.length; i++) {
-            const request = keys[i];
-            let keyPath = '';
-            try {
-                keyPath = new URL(request.url).pathname;
-            } catch (_) {
-                continue;
-            }
-            let list = index.get(keyPath);
-            if (!list) {
-                list = [];
-                index.set(keyPath, list);
-            }
-            list.push(request);
-        }
-        this._staticCacheKeyIndex = index;
     }
 
     async getFilesNeedingUpdate(files) {
@@ -1944,7 +1962,6 @@ class ServiceWorkerManager {
         await prev;
         // sw.js STATIC_CACHE (and updateEngine.js): reading another name re-downloads every update forever
         const cache = await caches.open('static-cache-v2');
-        this._staticCacheKeyIndex = null;
 
         // Lookups run CACHE_CHECK_PARALLEL at a time: one at a time, each cache.match round trip
         // made the boot check 1.2-2 s for ~2800 files; in parallel it is ~0.5 s. Same checks,
@@ -1969,21 +1986,8 @@ class ServiceWorkerManager {
                     return false;
                 }
 
-                // A Vary / ?sha= sibling can hide the row that actually has the new hash.
-                const path = normalizeStaticFilePath(file.url);
-                const extras = await this._hashIndexForPath(cache, path);
-                let found = false;
-                for (let i = 0; i < extras.length; i++) {
-                    const alt = await cache.match(extras[i]);
-                    const altHash = alt && alt.headers.get('x-file-hash');
-                    if (altHash === file.hash) {
-                        found = true;
-                        break;
-                    }
-                }
-                if (found) {
-                    return false;
-                }
+                // No sibling search: rows are keyed by the bare path (sw.js), and listing the
+                // cache to find one took ~5 s on a large cache at every boot with an update
 
                 console.log(`Hash mismatch or missing for ${file.url}, adding to update list`);
                 return true;
@@ -2001,7 +2005,6 @@ class ServiceWorkerManager {
             }
         };
         await Promise.all(Array.from({ length: Math.min(CACHE_CHECK_PARALLEL, list.length) }, lane));
-        this._staticCacheKeyIndex = null;
         return list.filter((file, i) => needs[i]);
         } finally {
             release();
