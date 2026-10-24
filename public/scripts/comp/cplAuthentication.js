@@ -765,19 +765,19 @@
     function csCard(row, extra) {
         const picture = row.dataset.cplCardPicture || `${CS}/personal-card.png`;
         const dot = row.querySelector('.cpl-vault-status');
-        return `<button type="button" class="cs-card${extra || ''}" data-cs-key="${esc(row.dataset.cplVaultKey)}" title="${esc((row.querySelector('.cpl-vault-sub') || {}).textContent || '')}">
+        // one group holds every card: the tip says which kind it is
+        const sub = (row.querySelector('.cpl-vault-sub') || {}).textContent || '';
+        const tip = `${CARD_KINDS[csKindOf(row)][1]}${sub ? `: ${sub}` : ''}`;
+        return `<button type="button" class="cs-card${extra || ''}" data-cs-key="${esc(row.dataset.cplVaultKey)}" title="${esc(tip)}">
             <span class="cs-card-pic"><img src="${esc(picture)}" alt="" draggable="false"></span>
             <span class="cs-card-name">${esc(csName(row))}</span>${dot ? `<span class="cs-card-dots">${dot.innerHTML}</span>` : ''}</button>`;
     }
 
+    /** Your cards: every card in one group (kinds in the vault's order), Add a card right after them (the VM). */
     function csRenderHome() {
-        const groups = Object.keys(CARD_KINDS).map((kind) => {
-            const rows = csRows().filter((r) => csKindOf(r) === kind);
-            if (!rows.length) return '';
-            return `<div class="cs-group"><div class="cs-group-label"><span>${esc(CARD_KINDS[kind][0])}:</span></div>
-                <div class="cs-cards">${rows.map((r) => csCard(r, r.dataset.cplVaultKey === csSel ? ' is-selected' : '')).join('')}</div></div>`;
-        }).join('');
-        csEl('.cs-home').innerHTML = `${groups}<div class="cs-group"><div class="cs-cards"><button type="button" class="cs-card cs-card-add" data-cs-go="add"><span class="cs-card-add-face"><span>Add a card</span></span></button></div></div>`;
+        const rows = Object.keys(CARD_KINDS).flatMap((kind) => csRows().filter((r) => csKindOf(r) === kind));
+        csEl('.cs-home').innerHTML = `<div class="cs-group"><div class="cs-group-label"><span>Your cards:</span></div>
+            <div class="cs-cards">${rows.map((r) => csCard(r, r.dataset.cplVaultKey === csSel ? ' is-selected' : '')).join('')}<button type="button" class="cs-card cs-card-add" data-cs-go="add"><span class="cs-card-add-face"><span>Add a card</span></span></button></div></div>`;
     }
 
     function csTask(label, attrs, enabled) {
