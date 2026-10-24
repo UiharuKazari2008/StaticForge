@@ -522,11 +522,12 @@ body.desktop-mode .modal.vdt-wizard .vdt-client .vdt-wizard-instruction {
 /* ---- the date picker (SysDateTimePick32) and its month calendar, measured on the Vista VM
    (WinCal's Print dialog): the edit frame, the date 2 px in with the selected field in the
    highlight colour, the 34 px calendar button (hot / open faces, glyph 7 px in) ---- */
-.vdt-client .vdt-dtp {
+.vdt-dtp {
     box-sizing: border-box;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     padding: 0 0 0 1px;
+    line-height: 15px;
     border: 2px solid transparent;
     border-image: url('/static_images/vista-controls/edit-normal.png') 2 fill / 2px stretch;
     background: #fff;
@@ -538,34 +539,53 @@ body.desktop-mode .modal.vdt-wizard .vdt-client .vdt-wizard-instruction {
     overflow: visible;
 }
 
-.vdt-client .vdt-dtp:hover {
+/* in a dialog the picker takes the dialog's font (Tahoma 8 pt for MS Shell Dlg), its date a
+   quarter of the box down plus a pixel, as on the VM (7 px in Print's 24 px box, 6 px in
+   Recurrence's 20 px one; --vdt-dtp-top from the renderer) */
+.vdt-client .vdt-dtp.tbp-ctl {
+    padding-top: var(--vdt-dtp-top, 2px);
+}
+
+/* outside a dialog template (a program's own pane) the picker is placed by its owner */
+.vdt-dtp:not(.tbp-ctl) {
+    position: relative;
+}
+
+.vdt-dtp:hover {
     border-image-source: url('/static_images/vista-controls/edit-hot.png');
 }
 
-.vdt-client .vdt-dtp:focus,
-.vdt-client .vdt-dtp.is-open {
+.vdt-dtp:focus,
+.vdt-dtp.is-open {
     border-image-source: url('/static_images/vista-controls/edit-focus.png');
 }
 
 /* disabled (Recurrence's Until): the normal frame and white field, the date in #808080 */
-.vdt-client .vdt-dtp[aria-disabled="true"],
-.vdt-client .vdt-dtp[aria-disabled="true"]:hover {
+.vdt-dtp[aria-disabled="true"],
+.vdt-dtp[aria-disabled="true"]:hover {
     border-image-source: url('/static_images/vista-controls/edit-normal.png');
     background: #fff;
     color: #808080;
 }
 
-.vdt-client .vdt-dtp-text {
+.vdt-dtp-text {
     flex: 1 1 auto;
     overflow: hidden;
 }
 
-.vdt-client .vdt-dtp-field.is-selected {
+/* a one- or two-digit field keeps two digits' width, the value at its right ("7:30 AM") */
+.vdt-dtp-field.is-2 {
+    display: inline-block;
+    min-width: 2ch;
+    text-align: right;
+}
+
+.vdt-dtp-field.is-selected {
     background: #3399ff;
     color: #fff;
 }
 
-.vdt-client .vdt-dtp-btn {
+.vdt-dtp-btn {
     position: absolute;
     top: -2px;
     right: -2px;
@@ -575,15 +595,15 @@ body.desktop-mode .modal.vdt-wizard .vdt-client .vdt-wizard-instruction {
     border: 3px solid transparent;
 }
 
-.vdt-client .vdt-dtp-btn:hover {
+.vdt-dtp-btn:hover {
     border-image: url('/static_images/vista-controls/dtp-btn-hot.png') 3 fill / 3px stretch;
 }
 
-.vdt-client .vdt-dtp.is-open .vdt-dtp-btn {
+.vdt-dtp.is-open .vdt-dtp-btn {
     border-image: url('/static_images/vista-controls/dtp-btn-open.png') 3 fill / 3px stretch;
 }
 
-.vdt-client .vdt-dtp-glyph {
+.vdt-dtp-glyph {
     position: absolute;
     left: 4px;
     top: 50%;
@@ -593,8 +613,95 @@ body.desktop-mode .modal.vdt-wizard .vdt-client .vdt-wizard-instruction {
     background: url('/static_images/vista-controls/dtp-glyph.png') no-repeat;
 }
 
-.vdt-client .vdt-dtp[aria-disabled="true"] .vdt-dtp-glyph {
+.vdt-dtp[aria-disabled="true"] .vdt-dtp-glyph {
     opacity: 0.5;
+}
+
+/* DTS_SHOWNONE: Vista's check box 5 px in (vista-controls/checkbox.png, 13 px a state), drawn
+   in its hot state at rest as the VM's pickers draw it; clear, the value greys */
+.vdt-dtp > input.vdt-dtp-none:not(#_) {
+    position: static;
+    flex: none;
+    align-self: center;
+    width: 13px;
+    height: 13px;
+    margin: -2px 6px 0 2px;
+    padding: 0;
+    border: 0;
+    border-image: none;
+    appearance: none;
+    background: url('/static_images/vista-controls/checkbox.png') 0 -13px / 13px auto no-repeat;
+    box-shadow: none;
+    cursor: default;
+}
+
+.vdt-dtp > input.vdt-dtp-none:not(#_):active { background-position: 0 -26px; }
+.vdt-dtp > input.vdt-dtp-none:not(#_):checked { background-position: 0 -65px; }
+.vdt-dtp > input.vdt-dtp-none:not(#_):checked:active { background-position: 0 -78px; }
+
+.vdt-dtp.is-none {
+    color: #808080;
+}
+
+/* DTS_UPDOWN (times): the up-down 15 px wide, 3 px inside the frame's top / bottom / right */
+.vdt-dtp-spin {
+    position: absolute;
+    top: 1px;
+    right: 1px;
+    bottom: 1px;
+    width: 15px;
+    display: flex;
+    flex-direction: column;
+}
+
+/* the faces as the VM draws them: their own #abadb3 edge, seven rows of face, the pixel arrow
+   (4d5678 / 5f6ea5 / 7085d1) three rows in; hot and pressed take Vista's blues */
+.vdt-spin-face {
+    --spin-edge: #abadb3;
+    --spin-side: #fbfbfb;
+    flex: 1 1 50%;
+    box-sizing: border-box;
+    border: 1px solid var(--spin-edge);
+    background-repeat: no-repeat;
+    box-shadow: inset 1px 0 var(--spin-side), inset -1px 0 var(--spin-side);
+}
+
+.vdt-dtp-up {
+    background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='7' shape-rendering='crispEdges'%3E%3Crect x='6' y='2' width='1' height='1' fill='%234d5678'/%3E%3Crect x='5' y='3' width='3' height='1' fill='%235f6ea5'/%3E%3Crect x='4' y='4' width='5' height='1' fill='%237085d1'/%3E%3C/svg%3E"),
+        linear-gradient(var(--spin-r0, #f2f2f2) 0 1px, var(--spin-r1, #f1f1f1) 1px 2px, var(--spin-r2, #efefef) 2px 3px, var(--spin-r3, #eeeeee) 3px 4px, var(--spin-r4, #e8e8e8) 4px 5px, var(--spin-r5, #d1d1d1) 5px 6px, var(--spin-r6, #f3f3f3) 6px 7px);
+}
+
+.vdt-dtp-down {
+    background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='7' shape-rendering='crispEdges'%3E%3Crect x='4' y='2' width='5' height='1' fill='%237085d1'/%3E%3Crect x='5' y='3' width='3' height='1' fill='%235f6ea5'/%3E%3Crect x='6' y='4' width='1' height='1' fill='%234d5678'/%3E%3C/svg%3E"),
+        linear-gradient(var(--spin-r0, #fcfcfc) 0 1px, var(--spin-r1, #f2f2f2) 1px 2px, var(--spin-r2, #efefef) 2px 3px, var(--spin-r3, #eeeeee) 3px 4px, var(--spin-r4, #ececec) 4px 5px, var(--spin-r5, #e8e8e8) 5px 6px, var(--spin-r6, #f3f3f3) 6px 7px);
+}
+
+.vdt-dtp:not([aria-disabled="true"]):not(.is-none) .vdt-spin-face:hover {
+    --spin-edge: #3c7fb1;
+    --spin-side: #f4f9fc;
+    --spin-r0: #fafdfe;
+    --spin-r1: #e9f6fd;
+    --spin-r2: #e3f3fc;
+    --spin-r3: #dff2fc;
+    --spin-r4: #d2edfc;
+    --spin-r5: #a9dbf5;
+    --spin-r6: #e9f5fc;
+    position: relative;
+    z-index: 1;
+}
+
+.vdt-dtp:not([aria-disabled="true"]):not(.is-none) .vdt-spin-face:active {
+    --spin-edge: #2e6690;
+    --spin-side: #829dad;
+    --spin-r0: #829dad;
+    --spin-r1: #afcede;
+    --spin-r2: #c7e6f7;
+    --spin-r3: #c6e6f7;
+    --spin-r4: #c4e5f7;
+    --spin-r5: #98d0ed;
+    --spin-r6: #9ed2ed;
 }
 
 /* the drop-down: 223x158 with a #979797 edge and a soft shadow, Segoe UI 9 pt */

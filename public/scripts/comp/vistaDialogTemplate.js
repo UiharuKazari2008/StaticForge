@@ -264,9 +264,10 @@
                     break;
                 }
                 case 'SysDateTimePick32': {
-                    // DTS_LONGDATEFORMAT 0x4, DTS_RIGHTALIGN 0x20 (the month calendar drops under the right edge)
-                    const fmt = (st & 0xC) === 4 ? 'long' : 'short';
-                    out.push(`<div class="tbp-ctl vdt-dtp" id="${domId}" style="${style(r)}" ${dataId} data-vdt-fmt="${fmt}"${st & 0x20 ? ' data-vdt-right="1"' : ''}${disabled ? ' aria-disabled="true"' : ''} tabindex="${disabled ? -1 : 0}"${hid}><span class="vdt-dtp-text"></span><span class="vdt-dtp-btn"><span class="vdt-dtp-glyph"></span></span></div>`);
+                    // DTS_UPDOWN 0x1, DTS_SHOWNONE 0x2, DTS_LONGDATEFORMAT 0x4, DTS_TIMEFORMAT 0x9,
+                    // DTS_RIGHTALIGN 0x20 (the month calendar drops under the right edge)
+                    const fmt = (st & 0xD) === 9 ? 'time' : (st & 0xC) === 4 ? 'long' : 'short';
+                    out.push(dtpMarkup({ fmt, right: !!(st & 0x20), updown: !!(st & 1), showNone: !!(st & 2), disabled, cls: 'tbp-ctl', attrs: `id="${domId}" style="${style(r)}--vdt-dtp-top:${Math.max(0, Math.round(r.height / 4) - 4)}px;" ${dataId}${hid}` }));
                     break;
                 }
                 case 'SysTreeView32':
@@ -285,11 +286,13 @@
 
     // ---- the date picker (SysDateTimePick32) and its month calendar (SysMonthCal32) -------------
     //
-    // Measured on the Vista VM (WinCal's Print dialog): an edit-framed box with the date's fields
-    // (one selected in the highlight colour while focused), the calendar button 34 px wide at the
-    // right (hot / open faces, the glyph 7 px in), and a 223x158 drop-down: the month title with
-    // arrows, Sun..Sat, six rows of 31x15 cells, today boxed in #0066cc, the selection filled, and
-    // "Today: <date>" under it. Values are local Dates at midnight.
+    // Measured on the Vista VM (WinCal's Print dialog and details pane): an edit-framed box with the
+    // value's fields (one selected in the highlight colour while focused; one- or two-digit fields
+    // right-aligned in two digits' width), the calendar button 34 px wide at the right (hot / open
+    // faces, the glyph 7 px in) or, for times (DTS_UPDOWN), a 15 px up-down 3 px inside the frame;
+    // DTS_SHOWNONE puts a check box in front and greys the value while it is clear. The drop-down is
+    // 223x158: the month title with arrows, Sun..Sat, six rows of 31x15 cells, today boxed in
+    // #0066cc, the selection filled, and "Today: <date>" under it. Values are local Dates.
 
     const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -297,12 +300,28 @@
     const sameDay = (a, b) => a && b && a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
     const shortDate = (d) => `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
 
+    function dtpMarkup(o) {
+        const tail = o.updown || o.fmt === 'time'
+            ? '<span class="vdt-dtp-spin"><span class="vdt-spin-face vdt-dtp-up"></span><span class="vdt-spin-face vdt-dtp-down"></span></span>'
+            : '<span class="vdt-dtp-btn"><span class="vdt-dtp-glyph"></span></span>';
+        const none = o.showNone ? '<input type="checkbox" class="vdt-dtp-none" tabindex="-1" checked>' : '';
+        return `<div class="${o.cls ? `${o.cls} ` : ''}vdt-dtp${o.updown || o.fmt === 'time' ? ' is-updown' : ''}${o.showNone ? ' has-none' : ''}" ${o.attrs || ''} data-vdt-fmt="${o.fmt}"${o.right ? ' data-vdt-right="1"' : ''}${o.disabled ? ' aria-disabled="true"' : ''} tabindex="${o.disabled ? -1 : 0}">${none}<span class="vdt-dtp-text"></span>${tail}</div>`;
+    }
+
     function dtpValue(el) {
+        if (el.classList.contains('is-none')) return null;
         return new Date((el._vdtDate || dayOnly(new Date())).getTime());
     }
 
     function dtpFields(el) {
         const d = el._vdtDate || dayOnly(new Date());
+        if (el.dataset.vdtFmt === 'time') {
+            return [['h', String(d.getHours() % 12 || 12)], [':', ':'], ['n', String(d.getMinutes()).padStart(2, '0')], [' ', ' '], ['a', d.getHours() < 12 ? 'AM' : 'PM']];
+        }
+        if (el.dataset.vdtFmt === 'datetime') {
+            // WinCal's "On date": the short date, two spaces, the time
+            return [['m', String(d.getMonth() + 1)], ['/', '/'], ['d', String(d.getDate())], ['/', '/'], ['y', String(d.getFullYear())], ['  ', '\u00a0\u00a0'], ['h', String(d.getHours() % 12 || 12)], [':', ':'], ['n', String(d.getMinutes()).padStart(2, '0')], [' ', ' '], ['a', d.getHours() < 12 ? 'AM' : 'PM']];
+        }
         if (el.dataset.vdtFmt === 'long') {
             return [['w', DAYS[d.getDay()]], [',', ', '], ['m', MONTHS[d.getMonth()]], [' ', ' '], ['d', String(d.getDate())], [',', ', '], ['y', String(d.getFullYear())]];
         }
@@ -312,25 +331,41 @@
     function dtpDraw(el) {
         const text = el.querySelector('.vdt-dtp-text');
         if (!text) return;
-        const field = el._vdtField || 'm';
-        const focused = doc.activeElement === el && !el.classList.contains('is-open');
+        const order = dtpFields(el).filter(([k]) => /[a-z]/.test(k) && k !== 'w').map(([k]) => k);
+        const field = order.includes(el._vdtField) ? el._vdtField : order[0];
+        const focused = doc.activeElement === el && !el.classList.contains('is-open') && !el.classList.contains('is-none');
+        const long = el.dataset.vdtFmt === 'long';
         text.innerHTML = dtpFields(el).map(([k, v]) => (/[a-z]/.test(k)
-            ? `<span class="vdt-dtp-field${focused && k === field ? ' is-selected' : ''}" data-f="${k}">${esc(v)}</span>`
+            ? `<span class="vdt-dtp-field${!long && 'mdh'.includes(k) ? ' is-2' : ''}${focused && k === field ? ' is-selected' : ''}" data-f="${k}">${esc(v)}</span>`
             : `<span>${esc(v)}</span>`)).join('');
     }
 
     function dtpSet(el, value, quiet) {
+        if (value === null && el.classList.contains('has-none')) {
+            const was = el.classList.contains('is-none');
+            el.classList.add('is-none');
+            const box = el.querySelector('.vdt-dtp-none');
+            if (box) box.checked = false;
+            dtpDraw(el);
+            if (!was && !quiet) el.dispatchEvent(new Event('change', { bubbles: true }));
+            return;
+        }
         const d = value instanceof Date ? value : new Date(value);
         if (Number.isNaN(d.getTime())) return;
-        const next = dayOnly(d);
-        const changed = !el._vdtDate || el._vdtDate.getTime() !== next.getTime();
+        const next = new Date(d.getTime());
+        const wasNone = el.classList.contains('is-none');
+        const changed = wasNone || !el._vdtDate || el._vdtDate.getTime() !== next.getTime();
         el._vdtDate = next;
         el._vdtTyped = '';
+        el.classList.remove('is-none');
+        const box = el.querySelector('.vdt-dtp-none');
+        if (box) box.checked = true;
         dtpDraw(el);
         if (changed && !quiet) el.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
     function dtpStep(el, field, delta) {
+        if (el.classList.contains('is-none')) return;
         const d = dtpValue(el);
         if (field === 'y') d.setFullYear(d.getFullYear() + delta);
         else if (field === 'm') {
@@ -338,33 +373,59 @@
             d.setDate(1);
             d.setMonth(d.getMonth() + delta);
             d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
-        } else d.setDate(d.getDate() + delta);
+        } else if (field === 'h') d.setHours(d.getHours() + delta);
+        else if (field === 'n') d.setMinutes(d.getMinutes() + delta);
+        else if (field === 'a') d.setHours((d.getHours() + 12) % 24);
+        else d.setDate(d.getDate() + delta);
+        // stepping a time stays on its day, as the VM's time picker wraps
+        if (el.dataset.vdtFmt === 'time') { const was = dtpValue(el); d.setFullYear(was.getFullYear(), was.getMonth(), was.getDate()); }
         dtpSet(el, d);
     }
 
-    function dtpType(el, digit) {
-        const field = el._vdtField || 'm';
-        if (field === 'w') return;
-        const typed = `${el._vdtTyped || ''}${digit}`;
+    function dtpType(el, key) {
+        if (el.classList.contains('is-none')) return;
+        const field = el._vdtField || (el.dataset.vdtFmt === 'time' ? 'h' : 'm');
         const d = dtpValue(el);
+        if (field === 'w') return;
+        if (field === 'a') {
+            if (/^[ap]$/i.test(key)) { const pm = key.toLowerCase() === 'p'; if (pm !== d.getHours() >= 12) d.setHours((d.getHours() + 12) % 24); dtpSet(el, d); }
+            return;
+        }
+        if (!/^[0-9]$/.test(key)) return;
+        const typed = `${el._vdtTyped || ''}${key}`;
         const n = Number(typed);
         if (field === 'y') {
             el._vdtTyped = typed.length >= 4 ? '' : typed;
             if (typed.length >= 4 || typed.length === 2) {
-                const year = typed.length === 2 ? 2000 + n : n;
-                d.setFullYear(year);
+                d.setFullYear(typed.length === 2 ? 2000 + n : n);
                 dtpSet(el, d);
                 el._vdtTyped = typed.length >= 4 ? '' : typed;
             }
             return;
         }
-        const max = field === 'm' ? 12 : new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-        if (n < 1 && typed.length < 2) { el._vdtTyped = typed; return; }
+        const max = field === 'm' || field === 'h' ? 12 : field === 'n' ? 59 : new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+        const min = field === 'n' ? 0 : 1;
+        if (n < min && typed.length < 2) { el._vdtTyped = typed; return; }
         if (n > max) { el._vdtTyped = ''; return; }
-        if (field === 'm') { const day = d.getDate(); d.setDate(1); d.setMonth(n - 1); d.setDate(Math.min(day, new Date(d.getFullYear(), n, 0).getDate())); } else d.setDate(n);
+        if (field === 'm') { const day = d.getDate(); d.setDate(1); d.setMonth(n - 1); d.setDate(Math.min(day, new Date(d.getFullYear(), n, 0).getDate())); } else if (field === 'h') d.setHours((n % 12) + (d.getHours() >= 12 ? 12 : 0));
+        else if (field === 'n') d.setMinutes(n);
+        else d.setDate(n);
         dtpSet(el, d);
         // a second digit (or one that cannot start a two-digit value) finishes the field
         el._vdtTyped = typed.length >= 2 || n * 10 > max ? '' : typed;
+    }
+
+    /** A standalone date or time picker for a program's own pane: { value, format, showNone, right }. */
+    function datePicker(opts = {}) {
+        dtpWire();
+        const holder = doc.createElement('div');
+        holder.innerHTML = dtpMarkup({ fmt: opts.format || 'short', right: !!opts.right, showNone: !!opts.showNone, disabled: !!opts.disabled, cls: opts.className || '' });
+        const el = holder.firstElementChild;
+        dtpSet(el, opts.value === undefined ? dayOnly(new Date()) : (opts.value === null && !opts.showNone ? dayOnly(new Date()) : opts.value), true);
+        if (opts.value === null && opts.showNone) { el._vdtDate = opts.fallback ? new Date(opts.fallback) : dayOnly(new Date()); dtpSet(el, null, true); }
+        el.getValue = () => dtpValue(el);
+        el.setValue = (v) => dtpSet(el, v, true);
+        return el;
     }
 
     function monthCalHtml(view, selected) {
@@ -407,7 +468,8 @@
         const left = el.dataset.vdtRight ? r.right - 223 : r.left;
         pop.style.left = `${Math.round(Math.max(0, Math.min(left, root.innerWidth - 223)))}px`;
         pop.style.top = `${Math.round(r.bottom + 158 > root.innerHeight ? r.top - 158 : r.bottom)}px`;
-        const state = { pop, el, view: new Date(dtpValue(el).getFullYear(), dtpValue(el).getMonth(), 1) };
+        const cur = dtpValue(el) || dayOnly(new Date());
+        const state = { pop, el, view: new Date(cur.getFullYear(), cur.getMonth(), 1) };
         const draw = () => { pop.innerHTML = monthCalHtml(state.view, dtpValue(el)); };
         draw();
         pop.addEventListener('mousedown', (ev) => {
@@ -417,8 +479,10 @@
             if (t.closest('.vdt-mc-prev')) { state.view = new Date(state.view.getFullYear(), state.view.getMonth() - 1, 1); draw(); return; }
             if (t.closest('.vdt-mc-next')) { state.view = new Date(state.view.getFullYear(), state.view.getMonth() + 1, 1); draw(); return; }
             const day = t.closest('.vdt-mc-day');
-            if (day) { dtpSet(el, new Date(Number(day.dataset.t))); dtpClose(); return; }
-            if (t.closest('.vdt-mc-today')) { dtpSet(el, new Date()); dtpClose(); }
+            // a day keeps the value's time of day
+            const keep = (d) => { const was = dtpValue(el) || d; return new Date(d.getFullYear(), d.getMonth(), d.getDate(), was.getHours(), was.getMinutes(), was.getSeconds()); };
+            if (day) { dtpSet(el, keep(new Date(Number(day.dataset.t)))); dtpClose(); return; }
+            if (t.closest('.vdt-mc-today')) { dtpSet(el, keep(new Date())); dtpClose(); }
         });
         doc.body.appendChild(pop);
         el.classList.add('is-open');
@@ -433,9 +497,22 @@
             const el = ev.target.closest && ev.target.closest('.vdt-dtp');
             if (dtpPopup && !(el && el === dtpPopup.el)) dtpClose(false);
             if (!el || el.getAttribute('aria-disabled') === 'true') return;
+            if (ev.target.closest('.vdt-dtp-none')) {
+                ev.preventDefault();
+                el.focus();
+                if (el.classList.contains('is-none')) dtpSet(el, el._vdtDate || dayOnly(new Date())); else dtpSet(el, null);
+                return;
+            }
             ev.preventDefault();
             el.focus();
+            if (el.classList.contains('is-none')) return;
             if (ev.target.closest('.vdt-dtp-btn')) { dtpOpen(el); return; }
+            const spin = ev.target.closest('.vdt-dtp-up, .vdt-dtp-down');
+            if (spin) {
+                const order = dtpFields(el).filter(([k]) => /[a-z]/.test(k) && k !== 'w').map(([k]) => k);
+                dtpStep(el, order.includes(el._vdtField) ? el._vdtField : order[0], spin.classList.contains('vdt-dtp-up') ? 1 : -1);
+                return;
+            }
             const f = ev.target.closest('.vdt-dtp-field');
             if (f) el._vdtField = f.dataset.f;
             el._vdtTyped = '';
@@ -452,26 +529,31 @@
             const order = dtpFields(el).filter(([k]) => /[a-z]/.test(k)).map(([k]) => k).filter((k) => k !== 'w');
             const field = order.includes(el._vdtField) ? el._vdtField : order[0];
             let handled = true;
+            if (ev.key === ' ' && el.classList.contains('has-none')) {
+                if (el.classList.contains('is-none')) dtpSet(el, el._vdtDate || dayOnly(new Date())); else dtpSet(el, null);
+                ev.preventDefault();
+                return;
+            }
             if (dtpPopup && dtpPopup.el === el) {
                 if (ev.key === 'Escape') dtpClose();
                 else if (ev.key === 'Enter') dtpClose();
                 else if (ev.key.startsWith('Arrow')) {
                     const delta = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[ev.key];
-                    const d = dtpValue(el);
+                    const d = dtpValue(el) || dayOnly(new Date());
                     d.setDate(d.getDate() + delta);
                     dtpSet(el, d);
                     dtpPopup.view = new Date(d.getFullYear(), d.getMonth(), 1);
                     dtpPopup.pop.innerHTML = monthCalHtml(dtpPopup.view, d);
                 } else handled = false;
-            } else if (ev.key === 'F4' || (ev.altKey && ev.key === 'ArrowDown')) dtpOpen(el);
+            } else if ((ev.key === 'F4' || (ev.altKey && ev.key === 'ArrowDown')) && !el.classList.contains('is-updown')) dtpOpen(el);
             else if (ev.key === 'ArrowUp' || ev.key === 'ArrowDown') dtpStep(el, field, ev.key === 'ArrowUp' ? 1 : -1);
             else if (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight') {
                 const i = order.indexOf(field) + (ev.key === 'ArrowLeft' ? -1 : 1);
                 el._vdtField = order[(i + order.length) % order.length];
                 el._vdtTyped = '';
                 dtpDraw(el);
-            } else if (/^[0-9]$/.test(ev.key)) dtpType(el, ev.key);
-            else if (ev.key === '/' || ev.key === '-') {
+            } else if (/^[0-9ap]$/i.test(ev.key)) dtpType(el, ev.key);
+            else if (ev.key === '/' || ev.key === '-' || ev.key === ':') {
                 el._vdtField = order[Math.min(order.indexOf(field) + 1, order.length - 1)];
                 el._vdtTyped = '';
                 dtpDraw(el);
@@ -1166,5 +1248,5 @@
         });
     }
 
-    root.vistaDialogTemplate = { openSheet, openDialog, openWizard, chooseColor, renderControls, size, units, rect, label };
+    root.vistaDialogTemplate = { openSheet, openDialog, openWizard, chooseColor, datePicker, renderControls, size, units, rect, label };
 })(typeof window !== 'undefined' ? window : globalThis);

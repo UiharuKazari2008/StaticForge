@@ -148,7 +148,9 @@
             if (name === 'END') {
                 const what = value.toUpperCase();
                 if (what === 'VALARM' && cur && alarm) {
-                    if (alarm.minutes !== undefined && cur.reminder === undefined) cur.reminder = alarm.minutes;
+                    // an absolute trigger is WinCal's "On date"
+                    if (alarm.at && cur.reminderAt === undefined) cur.reminderAt = alarm.at;
+                    else if (alarm.minutes !== undefined && cur.reminder === undefined) cur.reminder = alarm.minutes;
                     alarm = null;
                 } else if ((what === 'VEVENT' || what === 'VTODO') && cur) {
                     if (cur.kind === 'event' && cur.start) {
@@ -160,7 +162,9 @@
                 continue;
             }
             if (alarm) {
-                if (name === 'TRIGGER') alarm.minutes = durationMinutes(value);
+                if (name === 'TRIGGER') {
+                    if (/VALUE=DATE-TIME/i.test(params)) { const p = parseIcsDate(value, ''); if (p) alarm.at = p.date; } else alarm.minutes = durationMinutes(value);
+                }
                 continue;
             }
             if (!cur) {
@@ -176,6 +180,11 @@
                 case 'LOCATION': cur.location = icsUnescape(value); break;
                 case 'DESCRIPTION': cur.description = icsUnescape(value); break;
                 case 'URL': cur.url = value; break;
+                case 'ATTENDEE': {
+                    const cn = /(?:^|;)CN="?([^";]*)"?/i.exec(params);
+                    (cur.attendees = cur.attendees || []).push({ name: cn ? icsUnescape(cn[1]) : '', email: value.replace(/^mailto:/i, '') });
+                    break;
+                }
                 case 'DTSTART': { const p = parseIcsDate(value, params); if (p) { cur.start = p.date; cur.allDay = p.allDay; } break; }
                 case 'DTEND': { const p = parseIcsDate(value, params); if (p) cur.end = p.date; break; }
                 case 'DURATION': cur.duration = durationMinutes(value) * -60000; break;
@@ -223,7 +232,9 @@
             if (e.url) L.push(`URL:${e.url}`);
             if (e.rrule) L.push(`RRULE:${rruleText(e.rrule)}`);
             (e.exdates || []).forEach((x) => L.push(e.allDay ? `EXDATE;VALUE=DATE:${icsDate(new Date(x))}` : `EXDATE:${icsUtc(new Date(x))}`));
-            if (e.reminder !== null && e.reminder !== undefined) L.push('BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEscape(e.summary)}`, `TRIGGER:${e.reminder ? `-PT${e.reminder}M` : 'PT0S'}`, 'END:VALARM');
+            (e.attendees || []).forEach((a) => L.push(`ATTENDEE${a.name ? `;CN="${a.name.replace(/"/g, '')}"` : ''}:mailto:${a.email}`));
+            if (e.reminderAt) L.push('BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEscape(e.summary)}`, `TRIGGER;VALUE=DATE-TIME:${icsUtc(e.reminderAt)}`, 'END:VALARM');
+            else if (e.reminder !== null && e.reminder !== undefined) L.push('BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEscape(e.summary)}`, `TRIGGER:${e.reminder ? `-PT${e.reminder}M` : 'PT0S'}`, 'END:VALARM');
             L.push('END:VEVENT');
         });
         cal.tasks.forEach((t) => {
@@ -235,6 +246,7 @@
             if (t.completed && t.completedAt) L.push(`COMPLETED:${icsUtc(new Date(t.completedAt))}`);
             if (t.description) L.push(`DESCRIPTION:${icsEscape(t.description)}`);
             if (t.url) L.push(`URL:${t.url}`);
+            if (t.reminderAt) L.push('BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEscape(t.summary)}`, `TRIGGER;VALUE=DATE-TIME:${icsUtc(t.reminderAt)}`, 'END:VALARM');
             L.push('END:VTODO');
         });
         L.push('END:VCALENDAR');
@@ -402,8 +414,8 @@
                 lastRefresh: 0
             };
             cal.readonly = !!cal.source;
-            parsed.events.forEach((e) => cal.events.push({ uid: e.uid || uid(), summary: e.summary || '', location: e.location || '', description: e.description || '', url: e.url || '', start: e.start, end: e.end, allDay: !!e.allDay, rrule: e.rrule || null, exdates: e.exdates || [], reminder: e.reminder === undefined ? null : e.reminder }));
-            parsed.tasks.forEach((t) => cal.tasks.push({ uid: t.uid || uid(), summary: t.summary || '', due: t.due || null, start: t.start || null, priority: t.priority || 0, completed: !!t.completed, completedAt: t.completedAt || null, description: t.description || '', url: t.url || '' }));
+            parsed.events.forEach((e) => cal.events.push({ uid: e.uid || uid(), summary: e.summary || '', location: e.location || '', description: e.description || '', url: e.url || '', start: e.start, end: e.end, allDay: !!e.allDay, rrule: e.rrule || null, exdates: e.exdates || [], reminder: e.reminder === undefined ? null : e.reminder, reminderAt: e.reminderAt || null, attendees: e.attendees || [] }));
+            parsed.tasks.forEach((t) => cal.tasks.push({ uid: t.uid || uid(), summary: t.summary || '', due: t.due || null, start: t.start || null, priority: t.priority || 0, completed: !!t.completed, completedAt: t.completedAt || null, reminderAt: t.reminderAt || null, description: t.description || '', url: t.url || '' }));
             this.calendars.push(cal);
             return cal;
         }
@@ -1053,48 +1065,92 @@
                 if (rf) rf.addEventListener('change', () => { c.refresh = Number(rf.value); void this.save(c); });
                 return;
             }
+            // appointments and tasks: the VM's pane, placed as WinCal places it (pane coordinates
+            // from the VM; the content starts 104 px down the window)
+            const V = root.vistaDialogTemplate;
+            const T0 = 104;
+            const at = (x, y, w, h) => `left:${x}px;top:${y - T0}px;width:${w}px;${h ? `height:${h}px;` : ''}`;
+            const lbl = (text, ink) => `<span class="wcal-d-lbl" style="top:${ink - 3 - T0}px">${text}</span>`;
+            const grp = (text, ink) => `<div class="wcal-d-grp" style="top:${ink - 3 - T0}px"><span>${text}</span></div>`;
+            const calBox = (y) => `<button type="button" class="wcal-d-calbox" style="${at(82, y, 216, 24)}"${dis}><span class="wcal-d-calsw" style="background:${s.cal.color}"></span><span class="wcal-d-calname">${esc(s.cal.name)}</span></button>`;
+            const select = (cls, y, w, h, items, value) => `<select class="${cls}" style="${at(82, y, w, h)}"${dis}>${items.map(([v, t]) => `<option value="${v}"${String(value) === String(v) ? ' selected' : ''}>${t}</option>`).join('')}</select>`;
+            const picker = (slot, opts) => {
+                const ph = host.querySelector(`[data-dtp="${slot}"]`);
+                if (!ph || !V || !V.datePicker) return null;
+                const el = V.datePicker({ ...opts, disabled: ro, className: 'wcal-d-dtp' });
+                el.setAttribute('style', ph.getAttribute('style'));
+                ph.replaceWith(el);
+                return el;
+            };
             if (s.kind === 'task') {
                 const t = s.item;
-                host.innerHTML = `<div class="wcal-d-head">Details</div><div class="wcal-d">
-                    <input type="text" class="tbp-edit wcal-d-title" value="${esc(t.summary)}" placeholder="New Task"${dis} aria-label="Title">
-                    <label class="wcal-d-row"><span>Calendar:</span><select class="wcal-d-cal"${dis}>${calOptions(s.cal)}</select></label>
-                    <label class="wcal-d-row"><span>URL:</span><input type="text" class="tbp-edit wcal-d-url-in" value="${esc(t.url)}"${dis}></label>
-                    <div class="wcal-d-group">Task Information</div>
-                    <label class="wcal-d-check"><input type="checkbox" class="wcal-d-done"${t.completed ? ' checked' : ''}${dis}><span>Completed</span></label>
-                    <label class="wcal-d-row"><span>Priority:</span><select class="wcal-d-pri"${dis}>${[[0, 'None'], [9, 'Low'], [5, 'Medium'], [1, 'High']].map(([v, l]) => `<option value="${v}"${(t.priority || 0) === v || (v === 1 && t.priority > 0 && t.priority < 5) || (v === 9 && t.priority > 5) ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
-                    <label class="wcal-d-row"><span>Start:</span><input type="date" class="tbp-edit wcal-d-tstart" value="${t.start ? inputDate(t.start) : ''}"${dis}></label>
-                    <label class="wcal-d-row"><span>Due date:</span><input type="date" class="tbp-edit wcal-d-due" value="${t.due ? inputDate(t.due) : ''}"${dis}></label>
-                    <div class="wcal-d-group">Notes</div>
-                    <textarea class="tbp-edit wcal-d-notes"${dis}>${esc(t.description)}</textarea>
+                const pri = t.priority >= 1 && t.priority <= 4 ? 'H' : t.priority === 5 ? 'M' : t.priority >= 6 ? 'L' : '';
+                host.innerHTML = `<div class="wcal-d-head">Details</div><div class="wcal-d is-abs">
+                    <textarea class="wcal-d-title" style="${at(6, 112, 292, 58)}"${dis} aria-label="Title" spellcheck="false">${esc(t.summary)}</textarea>
+                    ${lbl('Calendar:', 181)}${calBox(174)}
+                    ${lbl('URL:', 209)}<input type="text" class="wcal-d-url-in" style="${at(82, 202, 216, 24)}" value="${esc(t.url)}"${dis}>
+                    ${grp('Task Information', 237)}
+                    <label class="wcal-d-chk" style="${at(82, 263, 200)}"><input type="checkbox" class="wcal-d-done"${t.completed ? ' checked' : ''}${dis}><span>Completed</span></label>
+                    ${lbl('Priority:', 293)}${select('wcal-d-pri', 286, 104, 23, [['L', 'Low'], ['M', 'Medium'], ['H', 'High'], ['', 'None']], pri)}
+                    ${lbl('Start:', 321)}<span data-dtp="tstart" style="${at(82, 314, 120, 24)}"></span>
+                    ${lbl('Due date:', 349)}<span data-dtp="due" style="${at(82, 342, 120, 24)}"></span>
+                    ${grp('Reminder', 377)}
+                    ${lbl('Reminder:', 405)}${select('wcal-d-trem', 398, 104, 23, [['', 'None'], ['on', 'On date']], t.reminderAt ? 'on' : '')}
+                    ${t.reminderAt ? `<span data-dtp="remat" style="${at(82, 426, 216, 24)}"></span>` : ''}
+                    ${grp('Notes', 461)}
+                    <textarea class="wcal-d-notes" style="${at(6, 484, 292, 118)}"${dis} spellcheck="false">${esc(t.description)}</textarea>
                 </div>`;
-                const bind = (sel, ev, fn) => { const e = host.querySelector(sel); if (e) e.addEventListener(ev, () => { fn(e); this.touched(s.cal); this.renderTasks(); }); };
-                bind('.wcal-d-title', 'input', (e) => { t.summary = e.value; });
-                bind('.wcal-d-url-in', 'change', (e) => { t.url = e.value.trim(); });
-                bind('.wcal-d-done', 'change', (e) => { t.completed = e.checked; t.completedAt = t.completed ? Date.now() : null; });
-                bind('.wcal-d-pri', 'change', (e) => { t.priority = Number(e.value); });
-                bind('.wcal-d-tstart', 'change', (e) => { t.start = e.value ? fromInputs(e.value) : null; });
-                bind('.wcal-d-due', 'change', (e) => { t.due = e.value ? fromInputs(e.value) : null; });
-                bind('.wcal-d-notes', 'input', (e) => { t.description = e.value; });
+                const save = () => { this.touched(s.cal); this.renderTasks(); };
+                const bind = (sel, ev, fn) => { const el = host.querySelector(sel); if (el) el.addEventListener(ev, () => { fn(el); save(); }); };
+                bind('.wcal-d-title', 'input', (el) => { t.summary = el.value; });
+                bind('.wcal-d-url-in', 'change', (el) => { t.url = el.value.trim(); });
+                bind('.wcal-d-done', 'change', (el) => { t.completed = el.checked; t.completedAt = t.completed ? Date.now() : null; });
+                bind('.wcal-d-pri', 'change', (el) => { t.priority = { H: 1, M: 5, L: 9 }[el.value] || 0; });
+                bind('.wcal-d-notes', 'input', (el) => { t.description = el.value; });
+                // Start / Due date: check-box pickers (DTS_SHOWNONE), clear until a date is given
+                const ts = picker('tstart', { value: t.start || null, showNone: true });
+                const td = picker('due', { value: t.due || null, showNone: true });
+                if (ts) ts.addEventListener('change', () => { const v = ts.getValue(); t.start = v ? startOfDay(v) : null; save(); });
+                if (td) td.addEventListener('change', () => { const v = td.getValue(); t.due = v ? startOfDay(v) : null; save(); });
+                const ra = picker('remat', { value: t.reminderAt, format: 'datetime' });
+                if (ra) ra.addEventListener('change', () => { t.reminderAt = ra.getValue(); this.fired.delete(`task|${t.uid}`); save(); });
+                bind('.wcal-d-trem', 'change', (el) => {
+                    // On date: the due date (or today) at Options' Reminder time, else now (the VM)
+                    if (el.value === 'on' && !t.reminderAt) {
+                        const tr = Number(reg('TaskReminderTime', -1));
+                        const base = t.due ? startOfDay(t.due) : startOfDay(new Date());
+                        t.reminderAt = tr >= 0 ? new Date(base.getTime() + tr * 3600000) : new Date(Math.ceil(Date.now() / 60000) * 60000);
+                    } else if (el.value !== 'on') t.reminderAt = null;
+                    this.renderDetails();
+                });
                 this.bindCalMove(host, s, 'tasks');
                 return;
             }
             const e = s.item;
-            const r = e.rrule;
-            host.innerHTML = `<div class="wcal-d-head">Details</div><div class="wcal-d">
-                <input type="text" class="tbp-edit wcal-d-title" value="${esc(e.summary)}" placeholder="New Appointment"${dis} aria-label="Title">
-                <label class="wcal-d-row"><span>Location:</span><input type="text" class="tbp-edit wcal-d-loc" value="${esc(e.location)}"${dis}></label>
-                <label class="wcal-d-row"><span>Calendar:</span><select class="wcal-d-cal"${dis}>${calOptions(s.cal)}</select></label>
-                <label class="wcal-d-row"><span>URL:</span><input type="text" class="tbp-edit wcal-d-url-in" value="${esc(e.url)}"${dis}></label>
-                <div class="wcal-d-group">Appointment Information</div>
-                <label class="wcal-d-check"><input type="checkbox" class="wcal-d-allday"${e.allDay ? ' checked' : ''}${dis}><span>All-day appointment</span></label>
-                <label class="wcal-d-row"><span>Start:</span><input type="date" class="tbp-edit wcal-d-sd" value="${inputDate(e.start)}"${dis}><input type="time" class="tbp-edit wcal-d-st" value="${inputTime(e.start)}" step="900"${e.allDay ? ' hidden' : ''}${dis}></label>
-                <label class="wcal-d-row"><span>End:</span><input type="date" class="tbp-edit wcal-d-ed" value="${inputDate(e.allDay ? addDays(e.end, -1) : e.end)}"${dis}><input type="time" class="tbp-edit wcal-d-et" value="${inputTime(e.end)}" step="900"${e.allDay ? ' hidden' : ''}${dis}></label>
-                <label class="wcal-d-row"><span>Recurrence:</span><select class="wcal-d-rec"${dis}>${RECUR.map(([v, t]) => `<option value="${v}"${recurPreset(e) === v ? ' selected' : ''}>${t}</option>`).join('')}</select></label>
-                ${r ? `<div class="wcal-d-note">${esc(recurText(e))}</div>` : ''}
-                <div class="wcal-d-group">Reminder</div>
-                <label class="wcal-d-row"><span>Reminder:</span><select class="wcal-d-rem"${dis}>${REMINDERS.map(([v, t]) => `<option value="${v === null ? '' : v}"${e.reminder === v || (e.reminder === undefined && v === null) ? ' selected' : ''}>${t}</option>`).join('')}</select></label>
-                <div class="wcal-d-group">Notes</div>
-                <textarea class="tbp-edit wcal-d-notes"${dis}>${esc(e.description)}</textarea>
+            const remValue = e.reminderAt ? 'on' : e.reminder === null || e.reminder === undefined ? '' : String(e.reminder);
+            const reminders = [['', 'None'], [0, '0 minutes'], [5, '5 minutes'], [15, '15 minutes'], [30, '30 minutes'], [60, '1 hour'], [120, '2 hours'], [240, '4 hours'], [1440, '1 day'], [2880, '2 days'], [5760, '4 days'], [10080, '1 week'], [20160, '2 weeks'], ['on', 'On date']];
+            if (remValue !== '' && remValue !== 'on' && !reminders.some(([v]) => String(v) === remValue)) reminders.splice(reminders.length - 1, 0, [remValue, `${remValue} minutes`]);
+            const att = (e.attendees || []).map((a) => a.name ? `${a.name} <${a.email}>` : a.email);
+            host.innerHTML = `<div class="wcal-d-head">Details</div><div class="wcal-d is-abs">
+                <textarea class="wcal-d-title" style="${at(6, 112, 292, 58)}"${dis} aria-label="Title" spellcheck="false">${esc(e.summary)}</textarea>
+                ${lbl('Location:', 181)}<textarea class="wcal-d-loc" style="${at(82, 174, 216, 60)}"${dis} spellcheck="false">${esc(e.location)}</textarea>
+                ${lbl('Calendar:', 245)}${calBox(238)}
+                ${lbl('URL:', 273)}<input type="text" class="wcal-d-url-in" style="${at(82, 266, 216, 24)}" value="${esc(e.url)}"${dis}>
+                ${grp('Appointment Information', 301)}
+                <label class="wcal-d-chk" style="${at(82, 327, 200)}"><input type="checkbox" class="wcal-d-allday"${e.allDay ? ' checked' : ''}${dis}><span>All-day appointment</span></label>
+                ${lbl('Start:', 357)}<span data-dtp="sd" style="${at(82, 350, 104, 24)}"></span>${e.allDay ? '' : `<span data-dtp="st" style="${at(190, 350, 108, 24)}"></span>`}
+                ${lbl('End:', 385)}<span data-dtp="ed" style="${at(82, 378, 104, 24)}"></span>${e.allDay ? '' : `<span data-dtp="et" style="${at(190, 378, 108, 24)}"></span>`}
+                ${lbl('Recurrence:', 413)}${select('wcal-d-rec', 406, 104, 23, RECUR, recurPreset(e))}
+                ${grp('Reminder', 441)}
+                ${lbl('Reminder:', 469)}${select('wcal-d-rem', 462, 104, 23, reminders, remValue)}
+                ${e.reminderAt ? `<span data-dtp="remat" style="${at(82, 490, 216, 24)}"></span>` : ''}
+                ${grp('Participants', 525)}
+                <button type="button" class="btn-standard wcal-d-btn wcal-d-attendees" style="${at(6, 546, 72, 23)}"${dis}>Attendees:</button>
+                <input type="text" class="wcal-d-att" style="${at(82, 546, 216, 24)}" value="${esc(att.join('; '))}" placeholder=" Select to enter attendees"${dis}>
+                <button type="button" class="btn-standard wcal-d-btn wcal-d-invite" style="${at(6, 575, 72, 22)}"${ro || !att.length ? ' disabled' : ''}>Invite</button>
+                <div class="wcal-d-attlist" style="${at(82, 574, 216, 68)}">${(e.attendees || []).map((a) => `<div>${esc(a.name || a.email)}</div>`).join('')}</div>
+                ${grp('Notes', 653)}
+                <textarea class="wcal-d-notes" style="${at(6, 676, 292, 118)}"${dis} spellcheck="false">${esc(e.description)}</textarea>
             </div>`;
             const changed = (re) => { this.touched(s.cal); if (re) this.render(); else { this.renderView(); this.renderMini(); } };
             const on = (sel, ev, fn, re) => { const el = host.querySelector(sel); if (el) el.addEventListener(ev, () => { fn(el); changed(re); }); };
@@ -1107,22 +1163,38 @@
                 if (e.allDay) { e.start = startOfDay(e.start); e.end = addDays(startOfDay(new Date(Math.max(e.end - 1, e.start))), 1); } else { e.start = new Date(startOfDay(e.start).getTime() + 9 * 3600000); e.end = new Date(e.start.getTime() + 3600000); }
                 s.occ = null;
             }, true);
+            const sd = picker('sd', { value: e.start });
+            const st = picker('st', { value: e.start, format: 'time' });
+            const ed = picker('ed', { value: e.allDay ? addDays(e.end, -1) : e.end });
+            const et = picker('et', { value: e.end, format: 'time' });
             const times = () => {
                 const len = e.end - e.start;
-                const sd = host.querySelector('.wcal-d-sd').value;
-                const st = host.querySelector('.wcal-d-st').value;
-                const ed = host.querySelector('.wcal-d-ed').value;
-                const et = host.querySelector('.wcal-d-et').value;
-                const ns = e.allDay ? fromInputs(sd) : fromInputs(sd, st);
-                let ne = e.allDay ? addDays(fromInputs(ed), 1) : fromInputs(ed, et);
+                const d0 = sd.getValue();
+                const t0 = st ? st.getValue() : d0;
+                const d1 = ed.getValue();
+                const t1 = et ? et.getValue() : d1;
+                const ns = e.allDay ? startOfDay(d0) : new Date(d0.getFullYear(), d0.getMonth(), d0.getDate(), t0.getHours(), t0.getMinutes());
+                let ne = e.allDay ? addDays(startOfDay(d1), 1) : new Date(d1.getFullYear(), d1.getMonth(), d1.getDate(), t1.getHours(), t1.getMinutes());
                 // a new start keeps the length (Vista); an end before the start moves with it
                 if (ns.getTime() !== e.start.getTime()) ne = new Date(ns.getTime() + len);
                 if (ne <= ns) ne = new Date(ns.getTime() + (e.allDay ? DAY : 1800000));
                 e.start = ns;
                 e.end = ne;
                 s.occ = null;
+                // the pane stays (a picker keeps its focus and typing); the pickers show the result
+                if (sd) sd.setValue(e.start);
+                if (st) st.setValue(e.start);
+                if (ed) ed.setValue(e.allDay ? addDays(e.end, -1) : e.end);
+                if (et) et.setValue(e.end);
+                changed(false);
             };
-            ['.wcal-d-sd', '.wcal-d-st', '.wcal-d-ed', '.wcal-d-et'].forEach((q) => on(q, 'change', times, true));
+            [sd, st, ed, et].forEach((el) => { if (el) el.addEventListener('change', times); });
+            const ra = picker('remat', { value: e.reminderAt, format: 'datetime' });
+            if (ra) ra.addEventListener('change', () => { e.reminderAt = ra.getValue(); this.fired.delete(`${e.uid}|at`); changed(false); });
+            on('.wcal-d-rem', 'change', (el) => {
+                if (el.value === 'on') { e.reminderAt = e.reminderAt || new Date(e.start.getTime()); e.reminder = null; } else { e.reminderAt = null; e.reminder = el.value === '' ? null : Number(el.value); }
+                this.fired.delete(`${e.uid}|${e.start.getTime()}`);
+            }, true);
             const rec = host.querySelector('.wcal-d-rec');
             if (rec) rec.addEventListener('change', async () => {
                 const was = recurPreset(e);
@@ -1136,7 +1208,23 @@
                 e.exdates = [];
                 changed(true);
             });
-            on('.wcal-d-rem', 'change', (el) => { e.reminder = el.value === '' ? null : Number(el.value); this.fired.delete(`${e.uid}|${e.start.getTime()}`); });
+            // Participants: names and addresses ("Name <a@b>; c@d"), Attendees: picks from Contacts,
+            // Invite mails the appointment (WinCal string 2016 "INVITE: %1")
+            const parseAtt = (v) => String(v || '').split(/[;,]/).map((x) => x.trim()).filter(Boolean).map((x) => { const m = /^(.*?)\s*<([^>]+)>$/.exec(x); return m ? { name: m[1].replace(/^"|"$/g, ''), email: m[2] } : { name: '', email: x }; });
+            on('.wcal-d-att', 'change', (el) => { e.attendees = parseAtt(el.value); }, true);
+            const attBtn = host.querySelector('.wcal-d-attendees');
+            if (attBtn) attBtn.addEventListener('click', () => {
+                const apps = root.melatonApps;
+                if (!apps || typeof apps.launch !== 'function') return;
+                apps.launch({ packageId: 'contacts', args: { action: 'pick', title: 'Melaton Calendar', label: 'Attendees:', owner: this.modal.id, done: (list) => { if (!list || !list.length) return; const have = new Set((e.attendees || []).map((a) => a.email.toLowerCase())); e.attendees = (e.attendees || []).concat(list.filter((a) => a.email && !have.has(a.email.toLowerCase()))); changed(true); } } });
+            });
+            const inv = host.querySelector('.wcal-d-invite');
+            if (inv) inv.addEventListener('click', async () => {
+                const open = typeof doveOpenComposeWindow === 'function' ? doveOpenComposeWindow : root.doveOpenComposeWindow; // eslint-disable-line no-undef
+                if (typeof open !== 'function' || !(e.attendees || []).length) return;
+                const text = toIcs({ name: s.cal.name, color: s.cal.color, events: [e], tasks: [] });
+                open({ mode: 'create', to: e.attendees.map((a) => a.email).join('; '), subject: `INVITE: ${e.summary || 'New Appointment'}`, body: '', attachments: [{ name: 'CalendarEvent.ics', mimeType: 'text/calendar', size: text.length, base64: await textB64(text) }] });
+            });
             this.bindCalMove(host, s, 'events');
         }
 
@@ -1162,6 +1250,7 @@
                 // WinCal gives this dialog no icon: Vista draws user32's 32 px application icon squeezed to 16
                 id: 'wcalRecurrence', key: 'wincal:3200', icon: '/static_images/vista-dlg/user32-100-scaled-16.png', captionIcon: true, owner: this.modal,
                 overrides: {
+                    3207: { nudge: [0, 0, 0, 1] },
                     3215: { text: `${ordinal(d.getDate())} &day of the month` },
                     3216: { text: `${ordinal(dayLast)} &last day of the month` },
                     3217: { text: `${ordinal(nth)} ${wdName} of the &month` },
@@ -1213,18 +1302,42 @@
 
         /** Moving an item to another calendar (the Calendar box). */
         bindCalMove(host, s, field) {
-            const sel = host.querySelector('.wcal-d-cal');
-            if (!sel) return;
-            sel.addEventListener('change', () => {
-                const to = this.calendars.find((c) => c.id === sel.value);
-                if (!to || to === s.cal) return;
-                s.cal[field] = s.cal[field].filter((x) => x !== s.item);
-                to[field].push(s.item);
-                this.touched(s.cal);
-                this.touched(to);
-                s.cal = to;
-                this.render();
+            const box = host.querySelector('.wcal-d-calbox');
+            if (!box) return;
+            // the owner-drawn Calendar box: its drop-down lists the calendars with their swatches
+            box.addEventListener('click', () => {
+                const cals = this.calendars.filter((c) => !c.readonly || c === s.cal);
+                this.comboList(box, cals.map((c) => ({ value: c.id, text: c.name, swatch: c.color })), s.cal.id, (id) => {
+                    const to = this.calendars.find((c) => c.id === id);
+                    if (!to || to === s.cal) return;
+                    s.cal[field] = s.cal[field].filter((x) => x !== s.item);
+                    to[field].push(s.item);
+                    this.touched(s.cal);
+                    this.touched(to);
+                    s.cal = to;
+                    this.render();
+                });
             });
+        }
+
+        /** A combo box's drop-down list under anchor: Vista's 1 px frame, 15 px rows, the pick in #3399ff. */
+        comboList(anchor, items, current, pick) {
+            const old = doc.querySelector('.wcal-combo-list');
+            if (old) { old.remove(); if (old._anchor === anchor) return; }
+            const r = anchor.getBoundingClientRect();
+            const list = doc.createElement('div');
+            list.className = 'wcal-combo-list';
+            list._anchor = anchor;
+            list.style.left = `${Math.round(r.left)}px`;
+            list.style.top = `${Math.round(r.bottom - 1)}px`;
+            list.style.width = `${Math.round(r.width)}px`;
+            list.style.zIndex = String((Number.parseInt(root.getComputedStyle(this.modal).zIndex, 10) || 1000) + 10);
+            list.innerHTML = items.map((it) => `<div class="wcal-combo-row${it.value === current ? ' is-on' : ''}" data-v="${esc(it.value)}">${it.swatch ? `<span class="wcal-d-calsw" style="background:${it.swatch}"></span>` : ''}<span>${esc(it.text)}</span></div>`).join('');
+            const close = (ev) => { if (ev && list.contains(ev.target)) return; list.remove(); doc.removeEventListener('mousedown', close, true); };
+            list.addEventListener('mouseover', (ev) => { const row = ev.target.closest('.wcal-combo-row'); if (row) list.querySelectorAll('.wcal-combo-row').forEach((x) => x.classList.toggle('is-on', x === row)); });
+            list.addEventListener('click', (ev) => { const row = ev.target.closest('.wcal-combo-row'); if (!row) return; close(); pick(row.dataset.v); });
+            doc.body.appendChild(list);
+            setTimeout(() => doc.addEventListener('mousedown', close, true), 0);
         }
 
         // ---- new, delete -------------------------------------------------------------------
@@ -1436,7 +1549,15 @@
             const due = [];
             this.calendars.forEach((cal) => {
                 if (!cal.visible) return;
+                // "On date": one reminder at that moment (appointments and tasks)
+                const onDate = (item, key, o) => {
+                    const at = item.reminderAt && item.reminderAt.getTime();
+                    const snooze = this.snoozed && this.snoozed.get(key);
+                    if (at && at <= now && !this.fired.has(key) && (!snooze || snooze <= now)) due.push({ o, cal, key });
+                };
+                cal.tasks.forEach((t) => { if (!t.completed) onDate(t, `task|${t.uid}`, { ev: t, task: true, start: t.reminderAt, due: t.due || t.reminderAt }); });
                 cal.events.forEach((ev) => {
+                    if (ev.reminderAt) { onDate(ev, `${ev.uid}|at`, { ev, start: ev.start, end: ev.end }); return; }
                     if (ev.reminder === null || ev.reminder === undefined) return;
                     occurrences(ev, new Date(now - 6 * 3600000), new Date(now + 8 * DAY)).forEach((o) => {
                         const at = o.start.getTime() - ev.reminder * 60000;
@@ -1503,7 +1624,7 @@
                         if (!x) return;
                         this.date = startOfDay(x.o.start);
                         this.navMonth = new Date(this.date.getFullYear(), this.date.getMonth(), 1);
-                        this.select({ kind: 'event', item: x.o.ev, cal: x.cal, occ: x.o });
+                        this.select(x.o.task ? { kind: 'task', item: x.o.ev, cal: x.cal } : { kind: 'event', item: x.o.ev, cal: x.cal, occ: x.o });
                         this.render();
                         call('bringModalToFront', this.modal);
                     });
@@ -1533,12 +1654,15 @@
                 const [v, unit] = m < 60 ? [m, 'minute'] : m < 1440 ? [Math.round(m / 60), 'hour'] : m < 10080 ? [Math.round(m / 1440), 'day'] : [Math.round(m / 10080), 'week'];
                 return `${v} ${unit}${v === 1 ? '' : 's'}${mins < 0 ? ' overdue' : ''}`;
             };
-            lv.querySelector('.vdt-lv-body').innerHTML = this.reminderList.map((x) => `<div class="vdt-lv-row${this.reminderSel.has(x.key) ? ' is-selected' : ''}" data-k="${esc(x.key)}"><span style="width:302px"><img src="/static_images/vista-dlg/wincal-124-16.png" alt="">${esc(x.o.ev.summary || 'New Appointment')}</span><span style="width:100px">${esc(dueIn(x.o))}</span></div>`).join('');
+            lv.querySelector('.vdt-lv-body').innerHTML = this.reminderList.map((x) => `<div class="vdt-lv-row${this.reminderSel.has(x.key) ? ' is-selected' : ''}" data-k="${esc(x.key)}"><span style="width:302px"><img src="/static_images/vista-dlg/wincal-${x.o.task ? 117 : 124}-16.png" alt="">${esc(x.o.ev.summary || (x.o.task ? 'New Task' : 'New Appointment'))}</span><span style="width:100px">${esc(dueIn(x.o))}</span></div>`).join('');
             const sel = this.reminderList.filter((x) => this.reminderSel.has(x.key));
             const one = sel.length === 1 ? sel[0] : null;
             ctx.show(3001, !!one);
-            ctx.text(3002, one ? (one.o.ev.summary || 'New Appointment') : sel.length > 1 ? `${sel.length} reminders are selected` : '');
-            ctx.text(3003, one ? (one.o.ev.allDay ? `Start time: ${longDate(one.o.start)}` : `Start time: ${longDate(one.o.start)} ${timeText(one.o.start)}`) : '');
+            const img = ctx.holder(3001) && ctx.holder(3001).querySelector('img');
+            if (img && one) img.src = `/static_images/vista-dlg/wincal-${one.o.task ? 117 : 124}-16.png`;
+            ctx.text(3002, one ? (one.o.ev.summary || (one.o.task ? 'New Task' : 'New Appointment')) : sel.length > 1 ? `${sel.length} reminders are selected` : '');
+            // WinCal strings 446 / 450: "Start time: %1 %2", a task's "Due: %1 %2"
+            ctx.text(3003, !one ? '' : one.o.task ? `Due: ${longDate(one.o.due)} ${timeText(one.o.due)}` : one.o.ev.allDay ? `Start time: ${longDate(one.o.start)}` : `Start time: ${longDate(one.o.start)} ${timeText(one.o.start)}`);
             ctx.text(3004, one && one.o.ev.location ? `Location: ${one.o.ev.location}` : '');
             ctx.enable(3007, !!one);
             ctx.enable(3008, sel.length > 0);

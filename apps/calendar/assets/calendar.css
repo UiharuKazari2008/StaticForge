@@ -794,7 +794,7 @@
     text-align: right;
 }
 
-.wcal-window.wcal-window .wcal-d :is(input[type=date], input[type=time], input[type=text]:not(.wcal-d-title), select, textarea) {
+.wcal-window.wcal-window .wcal-d:not(.is-abs) :is(input[type=date], input[type=time], input[type=text]:not(.wcal-d-title), select, textarea) {
     box-sizing: border-box;
     min-width: 0;
     height: 22px;
@@ -805,7 +805,7 @@
     font: 12px "Segoe UI", Tahoma, sans-serif;
 }
 
-.wcal-window.wcal-window .wcal-d textarea {
+.wcal-window.wcal-window .wcal-d:not(.is-abs) textarea {
     height: 90px;
 }
 
@@ -940,4 +940,201 @@
 .vdt-client .wcal-rem-lv .vdt-lv-row > span:first-child {
     width: 301px !important;
     padding-left: 3px;
+}
+
+/* appointments and tasks: WinCal's pane placed as on the VM (positions inline, from the VM's
+   pixels): labels right-aligned to 78 px, fields from 82 to 297, bold group titles with their
+   #a0a0a0 rule 4 px after the text, Segoe UI 9 pt */
+.wcal-window .wcal-d.is-abs {
+    position: relative;
+    display: block;
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+}
+
+.wcal-window .wcal-d.is-abs > :is(textarea, input, select, button, .wcal-d-chk, .wcal-d-attlist, .vdt-dtp) {
+    position: absolute;
+    box-sizing: border-box;
+    margin: 0;
+}
+
+.wcal-window .wcal-d.is-abs .wcal-d-lbl {
+    position: absolute;
+    left: 0;
+    width: 78px;
+    text-align: right;
+    line-height: 15px;
+    white-space: nowrap;
+}
+
+.wcal-window .wcal-d.is-abs .wcal-d-grp {
+    position: absolute;
+    left: 6px;
+    width: 292px;
+    display: flex;
+    font-weight: bold;
+    line-height: 15px;
+    white-space: nowrap;
+}
+
+.wcal-window .wcal-d.is-abs .wcal-d-grp::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    margin: 7px 0 0 4px;
+    background: #a0a0a0;
+}
+
+.wcal-window.wcal-window .wcal-d.is-abs textarea {
+    padding: 2px 3px;
+    resize: none;
+    font: inherit;
+    line-height: 15px;
+}
+
+.wcal-window.wcal-window .wcal-d.is-abs input[type=text] {
+    padding: 0 3px;
+    font: inherit;
+}
+
+.wcal-window.wcal-window .wcal-d.is-abs select {
+    font: inherit;
+}
+
+.wcal-window .wcal-d.is-abs .wcal-d-chk {
+    display: flex;
+    align-items: center;
+    height: 13px;
+    line-height: 13px;
+    white-space: nowrap;
+}
+
+.wcal-window.wcal-window .wcal-d.is-abs .wcal-d-chk input {
+    position: static;
+    flex: none;
+    width: 13px;
+    height: 13px;
+    margin: 0 3px 0 0;
+    padding: 0;
+    border: 0;
+    appearance: none;
+    background: url('/static_images/vista-controls/checkbox.png') 0 0 / 13px auto no-repeat;
+}
+
+.wcal-window.wcal-window .wcal-d.is-abs .wcal-d-chk input:hover { background-position: 0 -13px; }
+.wcal-window.wcal-window .wcal-d.is-abs .wcal-d-chk input:active { background-position: 0 -26px; }
+.wcal-window.wcal-window .wcal-d.is-abs .wcal-d-chk input:checked { background-position: 0 -52px; }
+.wcal-window.wcal-window .wcal-d.is-abs .wcal-d-chk input:checked:hover { background-position: 0 -65px; }
+.wcal-window.wcal-window .wcal-d.is-abs .wcal-d-chk input:disabled { background-position: 0 -39px; }
+.wcal-window.wcal-window .wcal-d.is-abs .wcal-d-chk input:checked:disabled { background-position: 0 -91px; }
+
+.wcal-window .wcal-d.is-abs .wcal-d-attlist {
+    overflow: hidden auto;
+    padding: 1px 3px;
+    border: 2px solid transparent;
+    border-image: url('/static_images/vista-controls/edit-normal.png') 2 fill / 2px stretch;
+    background: #fff;
+    line-height: 15px;
+}
+
+/* the owner-drawn Calendar box: the drop-down list face, the calendar's 16 px swatch 3 px in,
+   the name at 23 px */
+.wcal-window.wcal-window .wcal-d.is-abs .wcal-d-calbox {
+    --vista-combo-face: url('/static_images/vista-controls/combo-normal.png');
+    --vista-combo-fill: url('/static_images/vista-controls/combo-normal-fill.png');
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    min-height: 0;
+    padding: 0 18px 0 0;
+    border: 1px solid transparent;
+    border-image: var(--vista-combo-face) 3 / 3px stretch;
+    border-radius: 0;
+    background: url('/static_images/vista-controls/combo-glyph-normal.png') right 4px center / 10px 19px no-repeat border-box, var(--vista-combo-fill) 3px 3px / calc(100% - 6px) calc(100% - 6px) no-repeat border-box;
+    box-shadow: none;
+    color: #000;
+    font: inherit;
+    text-align: left;
+}
+
+.wcal-window.wcal-window .wcal-d.is-abs .wcal-d-calbox:hover:not(:disabled) {
+    --vista-combo-face: url('/static_images/vista-controls/combo-hot.png');
+    --vista-combo-fill: url('/static_images/vista-controls/combo-hot-fill.png');
+}
+
+.wcal-window .wcal-d.is-abs .wcal-d-calbox::before,
+.wcal-window .wcal-d.is-abs .wcal-d-calbox::after {
+    content: none;
+}
+
+.wcal-d-calsw {
+    flex: none;
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    margin: 0 4px 0 2px;
+}
+
+.wcal-window .wcal-d-calname {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* a combo box's drop-down list (comboList) */
+.wcal-combo-list {
+    position: fixed;
+    box-sizing: border-box;
+    border: 1px solid #646464;
+    background: #fff;
+    color: #000;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    cursor: default;
+}
+
+.wcal-combo-row {
+    display: flex;
+    align-items: center;
+    height: 18px;
+    padding: 0 2px;
+    white-space: nowrap;
+}
+
+.wcal-combo-row.is-on {
+    background: #3399ff;
+    color: #fff;
+}
+
+/* the pane's pickers draw their value 2 px nearer the frame than a dialog's (the VM) */
+.wcal-window .wcal-d.is-abs .wcal-d-dtp .vdt-dtp-text {
+    margin-left: -2px;
+}
+
+.wcal-window.wcal-window .wcal-d.is-abs select {
+    padding-bottom: 6px;
+}
+
+.wcal-window.wcal-window .wcal-d.is-abs textarea.wcal-d-title {
+    padding-top: 3px;
+}
+
+/* Attendees: a flat-framed box (#646464) holding WinCal's grey hint (string 753) */
+.wcal-window.wcal-window .wcal-d.is-abs input.wcal-d-att {
+    padding: 0 0 7px 4px;
+    border: 1px solid #646464;
+    border-image: none;
+    background: #fff;
+}
+
+.wcal-window.wcal-window .wcal-d.is-abs input.wcal-d-att::placeholder {
+    color: #575757;
+}
+
+.wcal-window.wcal-window .wcal-d.is-abs > button.wcal-d-btn:not(#_) {
+    position: absolute;
+    min-width: 0;
+    padding: 0 0 1px;
 }

@@ -661,6 +661,64 @@
         setTimeout(() => { try { w.focus(); w.print(); } catch (_) { /* no printing here */ } setTimeout(() => f.remove(), 2000); }, 300);
     }
 
+    /**
+     * Another program's recipient picker (args: { title, label, owner, done(list) }): wab32res's
+     * Select Recipients (106) as WinCal's Attendees button shows it on the VM: the combo, Cc and
+     * Bcc gone, the list pulled up into the combo's place, Properties beside New Contact, one tall
+     * list on the right under the program's label, no caption icon. done gets [{ name, email }].
+     */
+    function pickRecipients(folder, args) {
+        const D = root.vistaDialogTemplate;
+        const people = folder.items.filter((x) => !x.c.group);
+        const chosen = [];
+        let sel = null;
+        const hide = { hidden: true };
+        D.openDialog({
+            id: 'wconRecipients',
+            key: 'wab32res:106',
+            title: args.title || 'Select Recipients',
+            owner: (args.owner && doc.getElementById(args.owner)) || null,
+            overrides: {
+                2786: hide, 7034: hide, 7033: hide, 7021: hide, 7031: hide, 7022: hide, 7032: hide,
+                7003: { nudge: [0, -30, 0, 30] },
+                7004: { nudge: [-118, 0, 0, 0] },
+                7009: { text: args.label || '&Message Recipients:', nudge: [-38, 0, 0, 0] },
+                7030: { nudge: [-2, 0, 2, 219] }
+            },
+            init: (ctx) => {
+                const lv = ctx.holder(7003);
+                lv.classList.add('is-report');
+                lv.querySelector('.vdt-lv-header').innerHTML = '<span class="vdt-lv-col" style="width:150px">Name</span><span class="vdt-lv-col" style="width:120px">E-mail Address</span>';
+                const draw = () => {
+                    const q = String(ctx.get(7001) || '').trim().toLowerCase();
+                    const rows = people.filter((x) => !q || VC().displayName(x.c).toLowerCase().includes(q));
+                    lv.querySelector('.vdt-lv-body').innerHTML = rows.map((x) => `<div class="vdt-lv-row${sel === x.c.uid ? ' is-selected' : ''}" data-u="${esc(x.c.uid)}"><span style="width:150px"><img src="${ART}/contact-16.png" alt="">${esc(VC().displayName(x.c))}</span><span style="width:120px">${esc(VC().email(x.c) || '')}</span></div>`).join('');
+                };
+                const drawTo = () => {
+                    const to = ctx.holder(7030);
+                    to.querySelector('.vdt-lv-body').innerHTML = chosen.map((r) => `<div class="vdt-lv-row"><span style="width:220px">${esc(r.name || r.email)}</span></div>`).join('');
+                };
+                draw();
+                ctx.on(7001, 'input', draw);
+                ctx.on(7002, 'click', draw);
+                lv.addEventListener('click', (ev) => { const r = ev.target.closest('[data-u]'); if (!r) return; sel = r.dataset.u; draw(); });
+                const add = () => {
+                    const x = people.find((p) => p.c.uid === sel);
+                    if (!x) return;
+                    const mail = VC().email(x.c) || '';
+                    if (!chosen.some((r) => r.email && r.email === mail && r.name === VC().displayName(x.c))) chosen.push({ name: VC().displayName(x.c), email: mail });
+                    drawTo();
+                };
+                ctx.on(7020, 'click', add);
+                lv.addEventListener('dblclick', add);
+                ctx.on(7005, 'click', () => properties(folder, null, false));
+                ctx.on(7004, 'click', () => { const x = people.find((p) => p.c.uid === sel); if (x) properties(folder, x, false); });
+                setTimeout(() => { const e = ctx.el(7001); if (e) e.focus(); }, 0);
+            },
+            ok: () => { if (typeof args.done === 'function') args.done(chosen.filter((r) => r.email)); return true; }
+        });
+    }
+
     // ---- the package ---------------------------------------------------------------------------
 
     async function openFolder(folder) {
@@ -690,6 +748,7 @@
             case 'send': await sendContact(chosen); return;
             case 'call': newCall(chosen); return;
             case 'me': if (chosen[0]) { setReg({ MeContact: chosen[0].c.uid }); changed(); } return;
+            case 'pick': pickRecipients(folder, a); return;
             default:
         }
     }
