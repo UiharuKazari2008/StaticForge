@@ -20,6 +20,8 @@
     const doc = typeof document !== 'undefined' ? document : null;
     const ITEMS = '/static_images/vista-cpl/items';
     const CMD = '/static_images/vista-cmdbar';
+    // devmgr's class icons as the VM draws them (setupapi.dll, mmsys.cpl), 16 and 32 px
+    const DEV = '/static_images/vista-devmgr';
 
     function esc(v) {
         return String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -57,21 +59,22 @@
         let quota = 0;
         try { const e = root.navigator.storage && await root.navigator.storage.estimate(); quota = (e && e.quota) || 0; } catch (_) { /* none */ }
         const cats = [
-            { name: 'Computer', icon: `${ITEMS}/system-16.png`, devices: ['ACPI x64-based PC'] },
-            { name: 'Disk drives', icon: `${ITEMS}/administrative-tools-16.png`, devices: [`Dreamscape Virtual Disk${quota ? ` (${Math.round(quota / 1e9)} GB)` : ''}`] },
-            { name: 'Display adapters', icon: `${ITEMS}/personalization-16.png`, devices: [gpuName()] },
-            { name: 'Human Interface Devices', icon: `${ITEMS}/game-controllers-16.png`, devices: ['USB Input Device'].concat(pads.map((p) => p.id.replace(/\s*\(.*\)$/, ''))) },
-            { name: 'IDE ATA/ATAPI controllers', icon: `${ITEMS}/administrative-tools-16.png`, devices: ['Standard Dual Channel PCI IDE Controller'] },
-            { name: 'Keyboards', icon: `${ITEMS}/keyboard-16.png`, devices: ['Standard PS/2 Keyboard'] },
-            { name: 'Mice and other pointing devices', icon: `${ITEMS}/mouse-16.png`, devices: ['HID-compliant mouse'].concat(root.matchMedia && root.matchMedia('(any-pointer: coarse)').matches ? ['HID-compliant touch screen'] : []) },
-            { name: 'Monitors', icon: `${ITEMS}/personalization-16.png`, devices: [`Generic PnP Monitor (${s.width || 0} x ${s.height || 0})`] },
-            { name: 'Network adapters', icon: `${ITEMS}/network-and-sharing-center-16.png`, devices: [`${conn.connectionType || 'WAN'} Miniport (${conn.device || 'L-PPoP'})`] },
-            { name: 'Processors', icon: `${ITEMS}/system-16.png`, devices: Array.from({ length: n }, () => 'Melaton Virtual Processor') },
-            { name: 'Sound, video and game controllers', icon: `${ITEMS}/sound-16.png`, devices: (audioOut.length ? audioOut.map((d, i) => label(d, 'High Definition Audio Device', i)) : ['High Definition Audio Device']).concat(video.map((d, i) => label(d, 'USB Video Device', i))) },
-            { name: 'System devices', icon: `${ITEMS}/system-16.png`, devices: ['ACPI Fixed Feature Button', 'High precision event timer', 'Programmable interrupt controller', 'System CMOS/real time clock', 'System timer'] },
-            { name: 'Universal Serial Bus controllers', icon: `${ITEMS}/device-manager-16.png`, devices: ['USB Root Hub', 'Standard Enhanced PCI to USB Host Controller'] }
+            { name: 'Computer', icon: `${DEV}/computer-16.png`, devices: ['ACPI x64-based PC'] },
+            { name: 'Disk drives', icon: `${DEV}/disk-drives-16.png`, devices: [`Dreamscape Virtual Disk${quota ? ` (${Math.round(quota / 1e9)} GB)` : ''}`] },
+            { name: 'Display adapters', icon: `${DEV}/display-adapters-16.png`, devices: [gpuName()] },
+            { name: 'Human Interface Devices', icon: `${DEV}/hid-16.png`, devices: ['USB Input Device'].concat(pads.map((p) => p.id.replace(/\s*\(.*\)$/, ''))) },
+            { name: 'IDE ATA/ATAPI controllers', icon: `${DEV}/ide-ata-atapi-16.png`, devices: ['Standard Dual Channel PCI IDE Controller'] },
+            { name: 'Keyboards', icon: `${DEV}/keyboards-16.png`, devices: ['Standard PS/2 Keyboard'] },
+            { name: 'Mice and other pointing devices', icon: `${DEV}/mice-16.png`, devices: ['HID-compliant mouse'].concat(root.matchMedia && root.matchMedia('(any-pointer: coarse)').matches ? ['HID-compliant touch screen'] : []) },
+            { name: 'Monitors', icon: `${DEV}/monitors-16.png`, devices: [`Generic PnP Monitor (${s.width || 0} x ${s.height || 0})`] },
+            { name: 'Network adapters', icon: `${DEV}/network-adapters-16.png`, devices: [`${conn.connectionType || 'WAN'} Miniport (${conn.device || 'L-PPoP'})`] },
+            { name: 'Processors', icon: `${DEV}/processors-16.png`, devices: Array.from({ length: n }, () => 'Melaton Virtual Processor') },
+            { name: 'Sound, video and game controllers', icon: `${DEV}/sound-16.png`, devices: (audioOut.length ? audioOut.map((d, i) => label(d, 'High Definition Audio Device', i)) : ['High Definition Audio Device']).concat(video.map((d, i) => label(d, 'USB Video Device', i))) },
+            { name: 'System devices', icon: `${DEV}/system-devices-16.png`, devices: ['ACPI Fixed Feature Button', 'High precision event timer', 'Programmable interrupt controller', 'System CMOS/real time clock', 'System timer'] },
+            { name: 'Universal Serial Bus controllers', icon: `${DEV}/usb-16.png`, devices: ['USB Root Hub', 'Standard Enhanced PCI to USB Host Controller'] }
         ];
-        if (audioIn.length) cats.splice(1, 0, { name: 'Audio inputs and outputs', icon: `${ITEMS}/sound-16.png`, devices: audioIn.map((d, i) => label(d, 'Microphone', i)) });
+        // Vista has no Audio inputs and outputs class: microphones are Sound, video and game controllers
+        if (audioIn.length) { const snd = cats.find((c) => c.name === 'Sound, video and game controllers'); if (snd) snd.devices = snd.devices.concat(audioIn.map((d, i) => label(d, 'Microphone', i))); }
         return cats;
     }
 
@@ -85,15 +88,43 @@
         return `${(n && n.domain) || 'DREAMSCAPE'}-${host.split('.')[0].toUpperCase()}`.slice(0, 15);
     }
 
+    /**
+     * MMC's toolbar as the VM's Device Manager: Back, Forward | Show/Hide Console Tree | Help, Show/Hide
+     * Action Pane (mmc.exe bitmap 202); with a device selected, Properties joins before Help and
+     * devmgr.dll bitmap 358's Scan for hardware changes and Update Driver Software come last.
+     */
+    function renderToolbar() {
+        if (!win) return;
+        const bar = win.querySelector('.dm-toolbar');
+        const dev = !!win.querySelector('.dm-row.is-selected.is-dev');
+        const mmc = (tool, i, title, opts = '') => `<button type="button" data-dm-tool="${tool}" title="${title}"${opts}><span class="dm-tb-icon" style="--i:${i}"></span></button>`;
+        const own = (tool, i, title) => `<button type="button" data-dm-tool="${tool}" title="${title}"><span class="dm-tb-icon is-devmgr" style="--i:${i}"></span></button>`;
+        const sep = '<span class="dm-sep"></span>';
+        bar.innerHTML = mmc('back', 0, 'Back', ' disabled') + mmc('forward', 1, 'Forward', ' disabled') + sep
+            + mmc('tree', 10, 'Show/Hide Console Tree') + sep
+            + (dev ? mmc('properties', 8, 'Properties') + sep : '')
+            + mmc('help', 15, 'Help') + mmc('actions', 17, 'Show/Hide Action Pane')
+            + (dev ? sep + own('scan', 0, 'Scan for hardware changes') + sep + own('update', 4, 'Update Driver Software...') : '');
+    }
+
     function render() {
         if (!win || !tree) return;
         const body = win.querySelector('.dm-tree');
-        body.innerHTML = `<div class="dm-row is-root is-open" data-dm="root"><span class="dm-twisty"></span><img src="${ITEMS}/system-16.png" alt=""><span>${esc(computerName())}</span></div>
+        body.innerHTML = `<div class="dm-row is-root is-open" data-dm="root"><span class="dm-twisty"></span><img src="${DEV}/root-16.png" alt=""><span>${esc(computerName())}</span></div>
             ${tree.map((c, ci) => {
                 const open = expanded.has(c.name);
-                return `<div class="dm-row is-cat${open ? ' is-open' : ''}" data-dm="cat" data-cat="${ci}" tabindex="0"><span class="dm-twisty"></span><img src="${esc(c.icon)}" alt=""><span>${esc(c.name)}</span></div>
-                    ${open ? c.devices.map((d, di) => `<div class="dm-row is-dev" data-dm="dev" data-cat="${ci}" data-dev="${di}" tabindex="0"><img src="${esc(c.icon)}" alt=""><span>${esc(d)}</span></div>`).join('') : ''}`;
+                // is-last / in-last: where the dotted sibling lines stop (TVS_HASLINES)
+                const last = ci === tree.length - 1;
+                return `<div class="dm-row is-cat${open ? ' is-open' : ''}${last ? ' is-last' : ''}" data-dm="cat" data-cat="${ci}" tabindex="0"><span class="dm-twisty"></span><img src="${esc(c.icon)}" alt=""><span>${esc(c.name)}</span></div>
+                    ${open ? c.devices.map((d, di) => `<div class="dm-row is-dev${last ? ' in-last' : ''}${di === c.devices.length - 1 ? ' is-last' : ''}" data-dm="dev" data-cat="${ci}" data-dev="${di}" tabindex="0"><img src="${esc(c.icon)}" alt=""><span>${esc(d)}</span></div>`).join('') : ''}`;
             }).join('')}`;
+        renderToolbar();
+    }
+
+    /** Update Driver Software: the browser's devices have no drivers to update. */
+    function msgUpToDate() {
+        const sel = win && win.querySelector('.dm-row.is-selected.is-dev span:last-child');
+        callGlobal('showConfirmationDialog', `<p>The best driver software for ${esc(sel ? sel.textContent : 'this device')} is already installed.</p><p>Melaton has determined the driver software for your device is up to date.</p>`, [{ text: 'Close', value: true, className: 'btn-standard primary' }], null, { title: 'Update Driver Software', width: 420 });
     }
 
     function openProperties(ci, di) {
@@ -155,16 +186,9 @@
             </div>
             <div class="modal-content win7 dm-client">
                 <div class="naxt-menubar dm-menubar" role="menubar" data-win32-menus><button type="button" class="naxt-menu-title" data-dm-menu="file">File</button><button type="button" class="naxt-menu-title" data-dm-menu="action">Action</button><button type="button" class="naxt-menu-title" data-dm-menu="view">View</button><button type="button" class="naxt-menu-title" data-dm-menu="help">Help</button></div>
-                <div class="dm-toolbar" role="toolbar">
-                    <button type="button" data-dm-tool="back" title="Back" disabled><span class="dm-tb-icon" style="--i:0"></span></button>
-                    <button type="button" data-dm-tool="forward" title="Forward" disabled><span class="dm-tb-icon" style="--i:1"></span></button>
-                    <span class="dm-sep"></span>
-                    <button type="button" data-dm-tool="properties" title="Properties"><span class="dm-tb-icon" style="--i:8"></span></button>
-                    <button type="button" data-dm-tool="help" title="Help"><span class="dm-tb-icon" style="--i:15"></span></button>
-                    <span class="dm-sep"></span>
-                    <button type="button" data-dm-tool="scan" title="Scan for hardware changes"><img src="${CMD}/refresh.png" alt=""></button>
-                </div>
+                <div class="dm-toolbar" role="toolbar"></div>
                 <div class="dm-tree" role="tree" tabindex="0"></div>
+                <div class="dm-status"><span></span><span></span><span></span></div>
             </div>`;
         doc.body.appendChild(win);
         win.querySelector('.dm-close').addEventListener('click', () => callGlobal('closeModal', win));
@@ -176,12 +200,14 @@
             if (row) {
                 win.querySelectorAll('.dm-row.is-selected').forEach((r) => r.classList.remove('is-selected'));
                 row.classList.add('is-selected');
+                renderToolbar();
                 if (row.dataset.dm === 'cat' && ev.target.closest('.dm-twisty')) toggle(row);
             }
             const tool = ev.target.closest('[data-dm-tool]');
             if (tool) {
                 const t = tool.dataset.dmTool;
                 if (t === 'scan') void refresh();
+                else if (t === 'update') msgUpToDate();
                 else if (t === 'help') callGlobal('openHelpAndSupport', 'device-manager');
                 else if (t === 'properties') {
                     const sel = win.querySelector('.dm-row.is-selected.is-dev');

@@ -759,7 +759,7 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
     box-sizing: border-box;
 }
 
-.dm-client .dm-toolbar button {
+.dm-client .dm-toolbar button:not(#_) {
     position: relative;
     width: 23px;
     height: 22px;
@@ -778,7 +778,7 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
     content: none;
 }
 
-.dm-client .dm-toolbar button:hover:not(:disabled) {
+.dm-client .dm-toolbar button:hover:not(:disabled):not(#_) {
     border-color: #3c7fb1;
     background: linear-gradient(#eaf6fd 45%, #bee6fd 55%, #a7d9f5);
 }
@@ -786,14 +786,18 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
 .dm-client .dm-toolbar img,
 .dm-client .dm-tb-icon {
     position: absolute;
-    left: 2px;
-    top: 2px;
+    left: 3px;
+    top: 3px;
     width: 16px;
     height: 16px;
 }
 
 .dm-client .dm-tb-icon {
     background: url('/static_images/vista-mmc/toolbar-mmc.png') calc(var(--i) * -16px) 0 no-repeat;
+}
+
+.dm-client .dm-tb-icon.is-devmgr {
+    background-image: url('/static_images/vista-devmgr/toolbar.png');
 }
 
 .dm-client .dm-toolbar button:disabled .dm-tb-icon {
@@ -804,48 +808,58 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
 .dm-client .dm-sep {
     width: 1px;
     height: 18px;
-    margin: 0 3px;
+    margin: 0 4px 0 3px;
     background: #a6b0be;
     box-shadow: 1px 0 #fff;
 }
 
 .dm-client .dm-tree {
+    position: relative;
     flex: 1;
     min-height: 0;
     overflow: auto;
-    margin: 2px;
-    padding: 2px 0;
-    border: 1px solid #828790;
+    margin: 6px 0 0;
+    padding: 1px 0 0;
+    border: 1px solid;
+    border-color: #a0a0a0 #fff #fff #a0a0a0;
+    box-shadow: inset 1px 1px #696969, inset -1px -1px #e3e3e3;
     background: #fff;
     outline: none;
 }
 
+/* the VM's tree (TVS_HASLINES | TVS_HASBUTTONS | TVS_LINESATROOT, unthemed): rows of 18, the 9 px
+   +/- box at 7 / 26 px, the icon at 21 / 41 / 60, the text 6 px after it; dotted lines through the
+   boxes' middles and from each box to its icon */
 .dm-client .dm-row {
+    position: relative;
     display: flex;
-    align-items: center;
-    gap: 3px;
+    align-items: flex-start;
     height: 18px;
-    padding-left: 20px;
+    padding-left: 41px;
     white-space: nowrap;
     cursor: var(--c-default);
     outline: none;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
 }
 
 .dm-client .dm-row.is-root {
-    padding-left: 4px;
+    padding-left: 21px;
 }
 
 .dm-client .dm-row.is-dev {
-    padding-left: 40px;
+    padding-left: 60px;
 }
 
 .dm-client .dm-row img {
+    flex: none;
     width: 16px;
     height: 16px;
+    margin-right: 4px;
 }
 
 .dm-client .dm-row > span:last-child {
     padding: 0 2px;
+    line-height: 16px;
 }
 
 .dm-client .dm-row.is-selected > span:last-child {
@@ -853,41 +867,82 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
     color: #fff;
 }
 
+.dm-client .dm-tree:not(:focus-within) .dm-row.is-selected > span:last-child {
+    background: #f0f0f0;
+    color: #000;
+}
+
 .dm-client .dm-twisty {
+    position: absolute;
+    z-index: 1;
+    left: 27px;
+    top: 6px;
     width: 9px;
     height: 9px;
-    margin-right: 4px;
-    border: 1px solid #919191;
-    background: linear-gradient(#fff, #e3e3e3);
-    position: relative;
+    background: url('/static_images/vista-devmgr/plus.png') no-repeat;
 }
 
-.dm-client .dm-twisty::before,
-.dm-client .dm-twisty::after {
-    content: '';
-    position: absolute;
-    background: #000;
-}
-
-.dm-client .dm-twisty::before {
-    left: 1px;
-    right: 1px;
-    top: 4px;
-    height: 1px;
-}
-
-.dm-client .dm-row:not(.is-open) .dm-twisty::after {
-    top: 1px;
-    bottom: 1px;
-    left: 4px;
-    width: 1px;
+.dm-client .dm-row.is-open .dm-twisty {
+    background-image: url('/static_images/vista-devmgr/minus.png');
 }
 
 .dm-client .dm-row.is-root .dm-twisty {
-    visibility: hidden;
-    width: 0;
-    margin: 0;
-    border: 0;
+    left: 8px;
+}
+
+/* dots: box to icon (::before), the siblings' line down the boxes' middle (::after) */
+.dm-client .dm-row::before,
+.dm-client .dm-row::after {
+    content: '';
+    position: absolute;
+    pointer-events: none;
+}
+
+.dm-client .dm-row::before {
+    top: 10px;
+    height: 1px;
+    background: repeating-linear-gradient(to right, #a0a0a0 0 1px, transparent 1px 2px);
+}
+
+.dm-client .dm-row.is-root::before { left: 18px; width: 3px; }
+.dm-client .dm-row.is-cat::before { left: 37px; width: 4px; }
+.dm-client .dm-row.is-dev::before { left: 51px; width: 9px; }
+
+.dm-client .dm-row:is(.is-cat, .is-dev)::after {
+    left: 31px;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: repeating-linear-gradient(#a0a0a0 0 1px, transparent 1px 2px);
+}
+
+.dm-client .dm-row.is-cat.is-last::after { bottom: 8px; }
+.dm-client .dm-row.is-dev.in-last::after { content: none; }
+
+/* a category's devices: their own line under the category's box column + 19 */
+.dm-client .dm-row.is-dev {
+    background: repeating-linear-gradient(#a0a0a0 0 1px, transparent 1px 2px) 50px 0 / 1px 100% no-repeat;
+}
+
+.dm-client .dm-row.is-dev.is-last {
+    background-size: 1px 10px;
+}
+
+/* the console's status bar: three parts (the VM), #d7d7d7 lines at 403 and 536 px of 624 */
+.dm-client .dm-status {
+    display: grid;
+    grid-template-columns: 1fr 133px 88px;
+    flex: none;
+    height: 23px;
+    box-sizing: border-box;
+    padding: 1px 0;
+    border-top: 1px solid #919191;
+    box-shadow: inset 0 1px #fff, inset 0 -1px #fff;
+    background: #f1eded;
+}
+
+.dm-client .dm-status > span + span {
+    border-left: 1px solid #d7d7d7;
 }
 
 /* Sort By (cplPages3.js cplSort): the sorted column uses Vista's sorted header face and arrow */
