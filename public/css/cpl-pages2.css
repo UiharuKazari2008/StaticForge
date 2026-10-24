@@ -736,47 +736,36 @@ body.desktop-mode .modal.dm-window > .modal-content.dm-client {
     font: 12px "Segoe UI", Tahoma, sans-serif;
 }
 
-.dm-client .dm-menubar {
-    display: flex;
-    height: 20px;
-    padding: 0 2px;
+/* MMC's rebar as perfmon's (the VM): the 23 px menu band (vista-mmc/menuband.png) with Win32
+   titles 21 px tall, 8 px each side, then the 23 px toolbar band with mmc.exe bitmap 202 icons */
+body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menubar[data-win32-menus]:not(#_) {
+    height: 23px;
+    padding: 0 0 0 2px;
+    align-items: flex-start;
+    background: url('/static_images/vista-mmc/menuband.png') 0 0 / 1px 23px repeat-x;
 }
 
-.dm-client .dm-menubar button {
-    min-width: 0;
-    min-height: 0;
-    padding: 0 7px;
-    border: 0;
-    background: none;
-    box-shadow: none;
-    font: 12px "Segoe UI", Tahoma, sans-serif;
-}
-
-.dm-client .dm-menubar button::before,
-.dm-client .dm-menubar button::after {
-    content: none;
-}
-
-.dm-client .dm-menubar button:hover {
-    background: #c1d2ee;
-    outline: 1px solid #316ac5;
-    outline-offset: -1px;
+body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menubar[data-win32-menus] .naxt-menu-title:not(#_) {
+    height: 21px;
+    padding: 0 4px 1px;
 }
 
 .dm-client .dm-toolbar {
     display: flex;
     align-items: center;
-    gap: 1px;
-    height: 26px;
-    padding: 0 3px;
-    border-bottom: 1px solid #d5d5d5;
+    height: 23px;
+    padding: 0 0 0 1px;
+    background: url('/static_images/vista-mmc/toolband.png') 0 0 / 1px 23px repeat-x;
+    box-sizing: border-box;
 }
 
 .dm-client .dm-toolbar button {
+    position: relative;
     width: 23px;
     height: 22px;
     min-width: 0;
     min-height: 0;
+    margin: 0;
     padding: 0;
     border: 1px solid transparent;
     border-radius: 2px;
@@ -791,21 +780,33 @@ body.desktop-mode .modal.dm-window > .modal-content.dm-client {
 
 .dm-client .dm-toolbar button:hover:not(:disabled) {
     border-color: #3c7fb1;
-    background: linear-gradient(#eaf6fd, #bee6fd);
+    background: linear-gradient(#eaf6fd 45%, #bee6fd 55%, #a7d9f5);
 }
 
-.dm-client .dm-toolbar img {
+.dm-client .dm-toolbar img,
+.dm-client .dm-tb-icon {
+    position: absolute;
+    left: 2px;
+    top: 2px;
     width: 16px;
     height: 16px;
-    display: block;
-    margin: auto;
+}
+
+.dm-client .dm-tb-icon {
+    background: url('/static_images/vista-mmc/toolbar-mmc.png') calc(var(--i) * -16px) 0 no-repeat;
+}
+
+.dm-client .dm-toolbar button:disabled .dm-tb-icon {
+    filter: grayscale(1);
+    opacity: 0.4;
 }
 
 .dm-client .dm-sep {
     width: 1px;
     height: 18px;
     margin: 0 3px;
-    background: #c5c5c5;
+    background: #a6b0be;
+    box-shadow: 1px 0 #fff;
 }
 
 .dm-client .dm-tree {

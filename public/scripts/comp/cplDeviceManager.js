@@ -154,13 +154,13 @@
                 <button type="button" class="btn-danger close-btn btn-small dm-close" title="Close"><i class="fa-regular fa-xmark-large"></i></button>
             </div>
             <div class="modal-content win7 dm-client">
-                <div class="dm-menubar" role="menubar"><button type="button" data-dm-menu="file"><u>F</u>ile</button><button type="button" data-dm-menu="action"><u>A</u>ction</button><button type="button" data-dm-menu="view"><u>V</u>iew</button><button type="button" data-dm-menu="help"><u>H</u>elp</button></div>
+                <div class="naxt-menubar dm-menubar" role="menubar" data-win32-menus><button type="button" class="naxt-menu-title" data-dm-menu="file">File</button><button type="button" class="naxt-menu-title" data-dm-menu="action">Action</button><button type="button" class="naxt-menu-title" data-dm-menu="view">View</button><button type="button" class="naxt-menu-title" data-dm-menu="help">Help</button></div>
                 <div class="dm-toolbar" role="toolbar">
-                    <button type="button" data-dm-tool="back" disabled><img src="${CMD}/back-disabled.png" alt=""></button>
-                    <button type="button" data-dm-tool="forward" disabled><img src="${CMD}/forward-disabled.png" alt=""></button>
+                    <button type="button" data-dm-tool="back" title="Back" disabled><span class="dm-tb-icon" style="--i:0"></span></button>
+                    <button type="button" data-dm-tool="forward" title="Forward" disabled><span class="dm-tb-icon" style="--i:1"></span></button>
                     <span class="dm-sep"></span>
-                    <button type="button" data-dm-tool="properties" title="Properties"><img src="${CMD}/properties.png" alt=""></button>
-                    <button type="button" data-dm-tool="help" title="Help"><img src="/static_images/vista-explorer/help-16.png" alt=""></button>
+                    <button type="button" data-dm-tool="properties" title="Properties"><span class="dm-tb-icon" style="--i:8"></span></button>
+                    <button type="button" data-dm-tool="help" title="Help"><span class="dm-tb-icon" style="--i:15"></span></button>
                     <span class="dm-sep"></span>
                     <button type="button" data-dm-tool="scan" title="Scan for hardware changes"><img src="${CMD}/refresh.png" alt=""></button>
                 </div>
@@ -216,9 +216,19 @@
         const cm = root.contextMenu;
         if (!cm) return;
         const items = {
+            // devmgr's MMC menus (Vista): File, Action, View with its four views, Help
             file: [{ text: 'Options...', action: 'dm-none', disabled: true }, { separator: true }, { text: 'Exit', action: 'dm-exit' }],
-            action: [{ text: 'Scan for hardware changes', action: 'dm-scan' }, { separator: true }, { text: 'Properties', action: 'dm-props' }, { separator: true }, { text: 'Help', action: 'dm-help' }],
-            view: [{ text: 'Devices by type', action: 'dm-none', checked: true, showIndicator: true }, { text: 'Show hidden devices', action: 'dm-none' }],
+            action: [{ text: 'Scan for hardware changes', action: 'dm-scan' }, { text: 'Add legacy hardware', action: 'dm-add-hw' }, { separator: true }, { text: 'Properties', action: 'dm-props' }, { separator: true }, { text: 'Help', action: 'dm-help' }],
+            view: [
+                { text: 'Devices by type', action: 'dm-none', checked: true, showIndicator: true, indicatorMark: 'radio' },
+                { text: 'Devices by connection', action: 'dm-none', disabled: true },
+                { text: 'Resources by type', action: 'dm-none', disabled: true },
+                { text: 'Resources by connection', action: 'dm-none', disabled: true },
+                { separator: true },
+                { text: 'Show hidden devices', action: 'dm-none', disabled: true },
+                { separator: true },
+                { text: 'Customize...', action: 'dm-none', disabled: true }
+            ],
             help: [{ text: 'Help Topics', action: 'dm-help' }, { separator: true }, { text: 'About Microsoft Management Console'.replace('Microsoft', 'Xyridian'), action: 'dm-about' }]
         }[btn.dataset.dmMenu];
         cm.attachClickMenuToElement(btn, {
@@ -226,6 +236,8 @@
             onAction: (action) => {
                 if (action === 'dm-exit') callGlobal('closeModal', win);
                 else if (action === 'dm-scan') void refresh();
+                // the Add Hardware wizard (hdwwiz), as Control Panel opens it
+                else if (action === 'dm-add-hw') { const cp = root.melatonControlPanel; if (cp && cp.doAction) cp.doAction('dialog:add-hardware'); }
                 else if (action === 'dm-help') callGlobal('openHelpAndSupport', 'device-manager');
                 else if (action === 'dm-props') {
                     const sel = win.querySelector('.dm-row.is-selected.is-dev');
