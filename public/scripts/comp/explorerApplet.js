@@ -185,6 +185,10 @@ class ExplorerApplet {
             formatTypeLabel: (item) => (this.vista && this.vista.isOn() ? this.vista.typeLabel(item) : null),
             formatDate: (ts) => (this.vista && this.vista.isOn() ? this.vista.formatDate(ts) : null),
             modeOverrides: (viewMode) => (this.vista && this.vista.isOn() ? this.vista.modeMetrics(viewMode) : null),
+            // the Contacts folder's own names, columns and tiles (explorerContacts.js)
+            labelFor: (item) => (typeof explorerContacts !== 'undefined' ? explorerContacts.labelFor(this, item) : null),
+            columnText: (item, field) => (typeof explorerContacts !== 'undefined' ? explorerContacts.columnText(this, item, field) : null),
+            tileLines: (item) => (typeof explorerContacts !== 'undefined' ? explorerContacts.tileLines(this, item) : null),
             onItemOpen: (item) => this.openItem(item),
             onSelectionChange: (sel) => this.onSelectionChange(sel),
             onItemContextMenu: (item, e) => this.showItemContextMenu(item, e),
@@ -454,6 +458,8 @@ class ExplorerApplet {
         const normalized = (path || '/').replace(/\/+$/, '') || '/';
         const map = this._getFolderViewModes();
         const parts = normalized.split('/').filter(Boolean);
+        // the Contacts folder opens in Tiles until a view is chosen for it (Vista's folder template)
+        if (typeof explorerContacts !== 'undefined' && explorerContacts.isPath(normalized) && !map[normalized]) return 'tiles';
         for (let i = parts.length; i >= 0; i--) {
             const p = i === 0 ? '/' : `/${parts.slice(0, i).join('/')}`;
             if (map[p]) return map[p];
@@ -2187,6 +2193,10 @@ class ExplorerApplet {
             });
         }
 
+        // a contact: Print, Action ▸, This Is Me, Send Contact under Open (explorerContacts.js)
+        const contactItems = !multi && showOpenSection && typeof explorerContacts !== 'undefined' ? explorerContacts.contextItems(this, item) : null;
+        if (contactItems) sections[sections.length - 1].items.push(...contactItems);
+
         // 7-Zip ▸ under Open, as 7-Zip's shell extension adds it on the Vista VM (explorerArchive.js)
         const sevenZip = typeof explorerArchive !== 'undefined' ? explorerArchive.contextMenuEntry(this, item) : null;
         if (sevenZip) {
@@ -2352,6 +2362,10 @@ class ExplorerApplet {
         // 7-Zip's menu and archive entries: public/scripts/comp/explorerArchive.js
         if (action.startsWith('explorer-7z-') && typeof explorerArchive !== 'undefined') {
             await explorerArchive.handleAction(action, item, this);
+            return;
+        }
+        if (action.startsWith('explorer-contact-') && typeof explorerContacts !== 'undefined') {
+            await explorerContacts.handleAction(action, item, this);
             return;
         }
 
@@ -3596,6 +3610,7 @@ class ExplorerApplet {
             this._emptyMessage = result.emptyMessage || null;
 
             if (this.grid) this.grid.replaceItems(this.items);
+            if (typeof explorerContacts !== 'undefined') void explorerContacts.onItems(this, this.items);
             await this.updateStatusBar();
             this.updateToolbarState(this.grid?.getSelectedItems() || []);
             await this._ensurePaginationFill();
@@ -3832,6 +3847,7 @@ class ExplorerApplet {
             if (this.grid) {
                 this.grid.resetItems(this.items);
             }
+            if (typeof explorerContacts !== 'undefined') void explorerContacts.onItems(this, this.items);
 
             await this.updateStatusBar();
             this.updateToolbarState([]);
@@ -3888,6 +3904,7 @@ class ExplorerApplet {
                 this._syncHasMore(result);
             }
             if (this.grid) this.grid.extendItems(this.items);
+            if (typeof explorerContacts !== 'undefined') void explorerContacts.onItems(this, this.items);
         } catch (err) {
             this._statusHint = err.message || 'Failed to load more items';
             this.renderStatusText();
@@ -4009,7 +4026,10 @@ class ExplorerApplet {
         }
 
         const sizeStr = this._formatStatusSize(stats.totalSizeBytes || 0);
-        let text = `${stats.itemCount || 0} items · ${sizeStr}`;
+        const count = stats.itemCount || 0;
+        let text = `${count} item${count === 1 ? '' : 's'}`;
+        // the Contacts folder says the count alone, as Vista's does (explorerContacts.js)
+        if (!(typeof explorerContacts !== 'undefined' && explorerContacts.active(this))) text += ` · ${sizeStr}`;
         if (stats.disk && this.currentPath === '/') {
             text += ` · Free: ${stats.disk.free || '?'} / ${stats.disk.total || '?'}`;
         }
@@ -4390,6 +4410,8 @@ class ExplorerApplet {
         // a slow shortcut icon must not land after the details pane has moved on
         const iconStamp = `${item.id || ''}|${item.shortcutType || ''}|${item.previewUrl || ''}`;
         box.dataset.iconStamp = iconStamp;
+        box.classList.remove('explorer-contact-icon');
+        if (typeof explorerContacts !== 'undefined' && explorerContacts.populateIcon(this, box, item)) return;
         if (item.shortcutType && typeof desktopShortcuts !== 'undefined') {
             const shortcut = this._shortcutFromItem(item);
             const handler = desktopShortcuts.shortcutTypes[shortcut.type];
@@ -4483,6 +4505,8 @@ class ExplorerApplet {
                 return;
             }
             if (item.targetKind === 'user-file') {
+                // a vCard opens in its Properties (Windows Contacts, explorerContacts.js)
+                if (typeof explorerContacts !== 'undefined' && await explorerContacts.open(this, item)) return;
                 // a program the desktop has a port of runs it (vfsPrograms.js: SoraTan.exe)
                 if (window.vfsPrograms && await window.vfsPrograms.open(item)) return;
                 // Paint's own documents (Graphic Session Document, Melaton Paint Image) and Photoshop's open in Paint
@@ -4589,6 +4613,7 @@ class ExplorerApplet {
         this.updateWorkspacesListToolbar();
         if (this.vista) this.vista.syncCommands();
         if (typeof explorerArchive !== 'undefined') explorerArchive.syncCommands(this);
+        if (typeof explorerContacts !== 'undefined') explorerContacts.syncCommands(this, sel);
         // notifyKeyboardOverlayContextChanged: public/scripts/comp/modalKeyboardRegistry.js
         notifyKeyboardOverlayContextChanged();
     }

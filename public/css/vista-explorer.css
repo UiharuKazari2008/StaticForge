@@ -3117,3 +3117,55 @@ body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .ex
 body:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-icon-box-md .explorer-live-folder .explorer-live-folder-front {
     background-image: image-set(url('/static_images/vista-icons/explorer/folder-front-48.png') 1x, url('/static_images/vista-icons/explorer/folder-front-96.png') 2x);
 }
+
+/* ---- Tiles (Vista's, measured on the VM): a 219x50 tile in a 223x52 cell, the 48 px icon 2 px in,
+   three 15 px lines from 55 px: the name, then two details in grey (vfsVirtualGrid 'tiles') ---- */
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item.explorer-item-tile {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    width: 219px !important;
+    height: 50px !important;
+    margin: 1px 2px;
+    padding: 0 0 0 1px;
+    border-radius: 3px;
+    text-align: left;
+}
+
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-tile > .explorer-item-icon-box {
+    flex: none;
+    margin: 0;
+}
+
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-tile-text {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    margin: 0 0 0 5px;
+    padding: 0;
+    align-self: center;
+}
+
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-tile :is(.explorer-item-label, .explorer-item-tile-sub) {
+    display: block;
+    overflow: hidden;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    font: 12px/15px var(--ex-font);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    text-align: left;
+    -webkit-line-clamp: none;
+}
+
+/* the text block sits in the middle of the tile; an empty line takes no room */
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-tile .explorer-item-tile-sub {
+    color: #8b8b8b;
+}
+
+body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-item-tile .explorer-item-tile-sub:empty {
+    display: none;
+}

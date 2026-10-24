@@ -8,7 +8,9 @@ var EXPLORER_VIEW_MODES = {
     'icons-md': { label: 'Medium Icons', rowHeight: 140, cellWidth: 112, columns: 12, type: 'icons', iconSize: 'md' },
     'icons-sm': { label: 'Small Icons', rowHeight: 88, cellWidth: 64, columns: 14, type: 'icons', iconSize: 'sm' },
     'list': { label: 'List', rowHeight: 28, cellWidth: 0, columns: 1, type: 'list', iconSize: 'row' },
-    'details': { label: 'Details', rowHeight: 28, cellWidth: 0, columns: 1, type: 'details', iconSize: 'row' }
+    'details': { label: 'Details', rowHeight: 28, cellWidth: 0, columns: 1, type: 'details', iconSize: 'row' },
+    // Vista's Tiles: a 48 px icon and three lines (name, then two details) in a 223x52 cell
+    'tiles': { label: 'Tiles', rowHeight: 52, cellWidth: 223, columns: 6, type: 'tiles', iconSize: 'md' }
 };
 
 class VfsVirtualGrid {
@@ -28,6 +30,11 @@ class VfsVirtualGrid {
         this.formatDate = options.formatDate || null;
         // per-mode metric overrides from the host (Vista's 19px Details / List rows)
         this.modeOverrides = options.modeOverrides || null;
+        // a folder with its own columns (Explorer's Contacts folder): the label, the Details cells
+        // (field 'date' | 'type' | 'size' -> text, or null for the default) and a tile's two lines
+        this.labelFor = options.labelFor || null;
+        this.columnText = options.columnText || null;
+        this.tileLines = options.tileLines || null;
         this.items = [];
         this.selectedIds = new Set();
         this.anchorIndex = null;
@@ -571,7 +578,7 @@ class VfsVirtualGrid {
 
     _getColumnCount() {
         const mode = this._getMode();
-        if (mode.type !== 'icons') return 1;
+        if (mode.type !== 'icons' && mode.type !== 'tiles') return 1;
         const w = this._getScrollEl().clientWidth || 600;
         const cellW = mode.cellWidth || mode.rowHeight;
         return Math.max(1, Math.floor(w / cellW));
@@ -632,7 +639,7 @@ class VfsVirtualGrid {
     }
 
     _applyItemLayout(el, mode) {
-        if (mode.type === 'icons') {
+        if (mode.type === 'icons' || mode.type === 'tiles') {
             el.style.width = `${mode.cellWidth}px`;
             el.style.flexShrink = '0';
             el.style.height = `${mode.rowHeight}px`;
@@ -647,18 +654,21 @@ class VfsVirtualGrid {
         el.classList.toggle('explorer-item-opening', this._openingItemId === item.id);
         el.classList.toggle('explorer-item-upload-pending', !!item.isUploadPlaceholder);
         const label = el.querySelector('.explorer-item-name, .explorer-item-label, .explorer-item-list-label');
-        const name = item.name || '';
+        const name = this._labelOf(item);
         if (label && label.textContent !== name) label.textContent = name;
         if (mode.type === 'details') {
             const date = el.querySelector('.explorer-item-date');
             const type = el.querySelector('.explorer-item-type');
             const size = el.querySelector('.explorer-item-size');
-            const dateText = this._formatDate(item.modifiedAt);
-            const typeText = this._formatTypeLabel(item);
-            const sizeText = this._formatSize(item.size);
+            const dateText = this._cellText(item, 'date');
+            const typeText = this._cellText(item, 'type');
+            const sizeText = this._cellText(item, 'size');
             if (date && date.textContent !== dateText) date.textContent = dateText;
             if (type && type.textContent !== typeText) type.textContent = typeText;
             if (size && size.textContent !== sizeText) size.textContent = sizeText;
+        } else if (mode.type === 'tiles') {
+            const lines = this._tileLinesOf(item);
+            el.querySelectorAll('.explorer-item-tile-sub').forEach((n, i) => { if (n.textContent !== lines[i]) n.textContent = lines[i]; });
         }
         this._syncItemIconBox(el, item);
     }
@@ -756,6 +766,38 @@ class VfsVirtualGrid {
         return box;
     }
 
+    _labelOf(item) {
+        const own = this.labelFor ? this.labelFor(item) : null;
+        return own != null ? own : (item.name || '');
+    }
+
+    _cellText(item, field) {
+        const own = this.columnText ? this.columnText(item, field) : null;
+        if (own != null) return own;
+        if (field === 'date') return this._formatDate(item.modifiedAt);
+        if (field === 'type') return this._formatTypeLabel(item);
+        return this._formatSize(item.size);
+    }
+
+    /** A tile's two grey lines: the folder's own, else Vista's type and size. */
+    _tileLinesOf(item) {
+        const own = this.tileLines ? this.tileLines(item) : null;
+        if (own) return [own[0] || '', own[1] || ''];
+        return [this._formatTypeLabel(item), this._isFolderItem(item) ? '' : this._formatSize(item.size)];
+    }
+
+    /** Redraw the shown items (their labels, cells and icons) after the host's data changed. */
+    repaint() {
+        const mode = this._getMode();
+        for (const [idx, el] of this._mounted) {
+            const item = this.items[idx];
+            if (!item) continue;
+            const box = el.querySelector('.explorer-item-icon-box');
+            if (box) delete box.dataset.iconKey;
+            this._patchItemElement(el, item, idx, mode);
+        }
+    }
+
     _formatTypeLabel(item) {
         const own = this.formatTypeLabel ? this.formatTypeLabel(item) : null;
         if (own) return own;
@@ -782,29 +824,45 @@ class VfsVirtualGrid {
             el.appendChild(this._createIconBox(item, iconSize));
             const name = document.createElement('span');
             name.className = 'explorer-item-name';
-            name.textContent = item.name || '';
+            name.textContent = this._labelOf(item);
             const date = document.createElement('span');
             date.className = 'explorer-item-date';
-            date.textContent = this._formatDate(item.modifiedAt);
+            date.textContent = this._cellText(item, 'date');
             const type = document.createElement('span');
             type.className = 'explorer-item-type';
-            type.textContent = this._formatTypeLabel(item);
+            type.textContent = this._cellText(item, 'type');
             const size = document.createElement('span');
             size.className = 'explorer-item-size';
-            size.textContent = this._formatSize(item.size);
+            size.textContent = this._cellText(item, 'size');
             el.append(name, date, type, size);
+        } else if (mode.type === 'tiles') {
+            el.classList.add('explorer-item-tile');
+            el.appendChild(this._createIconBox(item, iconSize));
+            const text = document.createElement('span');
+            text.className = 'explorer-item-tile-text';
+            const label = document.createElement('span');
+            label.className = 'explorer-item-label';
+            label.textContent = this._labelOf(item);
+            text.appendChild(label);
+            this._tileLinesOf(item).forEach((line) => {
+                const sub = document.createElement('span');
+                sub.className = 'explorer-item-tile-sub';
+                sub.textContent = line;
+                text.appendChild(sub);
+            });
+            el.appendChild(text);
         } else if (mode.type === 'list') {
             el.classList.add('explorer-item-list-row');
             el.appendChild(this._createIconBox(item, iconSize));
             const label = document.createElement('span');
             label.className = 'explorer-item-list-label';
-            label.textContent = item.name || '';
+            label.textContent = this._labelOf(item);
             el.appendChild(label);
         } else {
             el.appendChild(this._createIconBox(item, iconSize));
             const label = document.createElement('span');
             label.className = 'explorer-item-label';
-            label.textContent = item.name || '';
+            label.textContent = this._labelOf(item);
             el.appendChild(label);
         }
 

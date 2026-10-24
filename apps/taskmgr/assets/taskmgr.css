@@ -1,4 +1,4 @@
-/* Windows Task Manager (Yozora #632; apps/taskmgr/client/taskmgr.js): a dialog face, Tahoma 8 */
+/* Melaton Task Manager (Yozora #632; apps/taskmgr/client/taskmgr.js): a dialog face, Tahoma 8 */
 
 .wtm-window.wtm-window > .modal-content.wtm-client {
     display: flex !important;

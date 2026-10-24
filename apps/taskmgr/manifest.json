@@ -1,7 +1,7 @@
 {
     "id": "taskmgr",
     "version": "1.0.0",
-    "title": "Windows Task Manager",
+    "title": "Melaton Task Manager",
     "publisher": "Xyridian",
     "format": "msaz",
     "type": "native",

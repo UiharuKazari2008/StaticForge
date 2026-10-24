@@ -1,5 +1,5 @@
 /**
- * Windows Calendar (Yozora #632), Vista's WinCal.exe as a Melaton system package (apps/calendar).
+ * Melaton Calendar (Yozora #632), Vista's WinCal.exe as a Melaton system package (apps/calendar).
  *
  *   the window      File / Edit / View / Share / Help; New Appointment, New Task, Delete, Today, View,
  *                   Subscribe, Print, Search; the Navigation pane (the date, Calendars, Tasks), the view
@@ -10,7 +10,7 @@
  *                   X-WR-CALNAME / X-MELATON-COLOR / X-MELATON-SOURCE
  *   Subscribe       a webcal / https .ics read through the server (/calendar-feed), kept read-only,
  *                   refreshed on its interval
- *   Reminders       Vista's Windows Calendar Reminders window (Dismiss, Snooze) while Calendar runs
+ *   Reminders       Vista's Melaton Calendar Reminders window (Dismiss, Snooze) while Calendar runs
  *   File            Import / Export .ics; Share > Send via E-mail (Dovecote, the .ics attached)
  *
  *   melatonApps.define('calendar', start)
@@ -187,7 +187,7 @@
     }
 
     function toIcs(cal) {
-        const L = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Xyridian//Windows Calendar for Melaton//EN', 'CALSCALE:GREGORIAN',
+        const L = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Xyridian//Melaton Calendar for Melaton//EN', 'CALSCALE:GREGORIAN',
             `X-WR-CALNAME:${icsEscape(cal.name)}`, `X-MELATON-COLOR:${cal.color}`];
         if (cal.source) L.push(`X-MELATON-SOURCE:${cal.source}`, `X-MELATON-REFRESH:${cal.refresh || 0}`);
         const stamp = icsUtc(new Date());
@@ -420,10 +420,10 @@
             m.style.width = `${W}px`;
             m.style.height = `${H}px`;
             m.setAttribute('role', 'dialog');
-            m.setAttribute('aria-label', 'Windows Calendar');
+            m.setAttribute('aria-label', 'Melaton Calendar');
             const btn = (a, label, img, title) => `<button type="button" class="wcal-cmd" data-a="${a}" title="${esc(title || label)}">${img ? `<img src="${CMD}/${img}.png" alt="">` : ''}<span>${label}</span></button>`;
             m.innerHTML = `
-                <div class="modal-window-title"><div class="modal-window-title-main"><img class="icon-image" src="${ICON16}" alt=""><span>Windows Calendar</span></div></div>
+                <div class="modal-window-title"><div class="modal-window-title-main"><img class="icon-image" src="${ICON16}" alt=""><span>Melaton Calendar</span></div></div>
                 <div class="modal-focus-overlay"></div>
                 <div class="modal-window-controls">
                     <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize"><i class="fa-regular fa-window-minimize"></i></button>
@@ -478,7 +478,7 @@
             requestAnimationFrame(once);
             setTimeout(once, 60);
             if (root.programFaults && root.programFaults.registerProgram) {
-                root.programFaults.registerProgram(m.id, { name: 'Windows Calendar', terminate: () => this.app.exit(), relaunch: () => root.melatonApps && root.melatonApps.launch({ packageId: 'calendar' }) });
+                root.programFaults.registerProgram(m.id, { name: 'Melaton Calendar', terminate: () => this.app.exit(), relaunch: () => root.melatonApps && root.melatonApps.launch({ packageId: 'calendar' }) });
             }
             this.applyPanes();
             this.render();
@@ -559,7 +559,7 @@
                     { separator: true },
                     { text: 'Send via E-mail...', action: 'send', disabled: !this.currentCal() }
                 ];
-                case 'help': return [{ text: 'About Windows Calendar', action: 'about' }];
+                case 'help': return [{ text: 'About Melaton Calendar', action: 'about' }];
                 default: return [];
             }
             void editable;
@@ -582,7 +582,7 @@
                 case 'find': { const s = this.el('.wcal-search input'); if (s) s.focus(); return; }
                 case 'pane-nav': setReg({ NavPane: reg('NavPane', true) === false }); this.applyPanes(); return;
                 case 'pane-details': setReg({ DetailsPane: reg('DetailsPane', true) === false }); this.applyPanes(); return;
-                case 'about': if (typeof root.openAboutMelatoninModal === 'function') root.openAboutMelatoninModal({ program: 'Windows Calendar' }); return;
+                case 'about': if (typeof root.openAboutMelatoninModal === 'function') root.openAboutMelatoninModal({ program: 'Melaton Calendar' }); return;
                 case 'exit': await this.close(); return;
                 default:
             }
@@ -1095,7 +1095,7 @@
         }
 
         async ask(html, buttons) {
-            return call('showConfirmationDialog', html, buttons.map(([text, value], i) => ({ text, value, className: `btn-standard${i ? '' : ' primary'}` })), null, { title: 'Windows Calendar', width: 420 });
+            return call('showConfirmationDialog', html, buttons.map(([text, value], i) => ({ text, value, className: `btn-standard${i ? '' : ' primary'}` })), null, { title: 'Melaton Calendar', width: 420 });
         }
 
         async deleteSelected() {
@@ -1143,14 +1143,14 @@
             if (due.length) this.showReminders(due);
         }
 
-        /** Vista's Windows Calendar Reminders: the list, Dismiss / Dismiss All / Snooze. */
+        /** Vista's Melaton Calendar Reminders: the list, Dismiss / Dismiss All / Snooze. */
         showReminders(list) {
             const V = root.vistaDialogTemplate;
             this.reminderList = (this.reminderList || []).filter((x) => !list.some((y) => y.key === x.key)).concat(list);
             list.forEach((x) => this.fired.add(x.key));
             if (this.reminderOpen) { this.drawReminders(); return; }
             if (!V) return;
-            const tpl = { t: 'Windows Calendar Reminders', w: 260, h: 150, f: ['MS Shell Dlg', 8], c: [
+            const tpl = { t: 'Melaton Calendar Reminders', w: 260, h: 150, f: ['MS Shell Dlg', 8], c: [
                 [101, 'S', 7, 7, 246, 84, 0x5000000e, '', 0],
                 [-1, 'S', 7, 98, 246, 8, 0x50020000, 'Click &Snooze to be reminded again in:', 0],
                 [102, 'C', 7, 110, 100, 100, 0x50210003, '', 0],
@@ -1347,7 +1347,7 @@
             const open = typeof doveOpenComposeWindow === 'function' ? doveOpenComposeWindow : root.doveOpenComposeWindow; // eslint-disable-line no-undef
             if (!cal || typeof open !== 'function') { this.status('Dovecote is not available to send the calendar.'); return; }
             const text = toIcs({ ...cal, source: '' });
-            open({ mode: 'create', to: '', subject: cal.name, body: `The calendar "${cal.name}" is attached. Import it into Windows Calendar (File > Import).`, attachments: [{ name: this.fileNameOf(cal), mimeType: 'text/calendar', size: text.length, base64: await textB64(text) }] });
+            open({ mode: 'create', to: '', subject: cal.name, body: `The calendar "${cal.name}" is attached. Import it into Melaton Calendar (File > Import).`, attachments: [{ name: this.fileNameOf(cal), mimeType: 'text/calendar', size: text.length, base64: await textB64(text) }] });
         }
 
         /** Print: the view as it is, on its own page (the browser's print dialog). */
@@ -1359,7 +1359,7 @@
             doc.body.appendChild(f);
             const w = f.contentWindow;
             w.document.open();
-            w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Windows Calendar</title>${css}<style>body{margin:12px;font:12px "Segoe UI",sans-serif}.wcal-scroll{overflow:visible!important;height:auto!important}</style></head><body class="wcal-print"><div class="wcal-window"><div class="wcal-main">${view.innerHTML}</div></div></body></html>`);
+            w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Melaton Calendar</title>${css}<style>body{margin:12px;font:12px "Segoe UI",sans-serif}.wcal-scroll{overflow:visible!important;height:auto!important}</style></head><body class="wcal-print"><div class="wcal-window"><div class="wcal-main">${view.innerHTML}</div></div></body></html>`);
             w.document.close();
             setTimeout(() => { try { w.focus(); w.print(); } catch (_) { /* no printing here */ } setTimeout(() => f.remove(), 2000); }, 400);
         }

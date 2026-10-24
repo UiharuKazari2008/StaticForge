@@ -12,7 +12,7 @@
  *   Win+F1          Help and Support           Win+Pause     System (Control Panel)
  *   Win+Space       Melaton Sidebar            Win+1 … Win+9 the Quick Launch button at that place
  *   Alt+F4          close the window in front (with none, the browser closes the app as before)
- *   Ctrl+Shift+Esc  Windows Task Manager (apps/taskmgr)
+ *   Ctrl+Shift+Esc  Melaton Task Manager (apps/taskmgr)
  *
  * Win+Tab and Alt+Tab (switch windows while held) live with Ctrl+Tab in keyboardShortcuts.js.
  *

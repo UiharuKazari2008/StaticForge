@@ -1,0 +1,153 @@
+/* The Contacts folder in Explorer (Yozora #632; explorerContacts.js), measured on the Vista VM:
+   framed pictures with the contact badge, the preview pane, the folder's command bar */
+
+/* pictures: the glass frame 40 px in the 48 px box, the badge (a third of it) at the bottom left */
+body.desktop-mode #explorerModal .explorer-item-icon-box.explorer-contact-icon {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none !important;
+}
+
+body.desktop-mode #explorerModal .explorer-contact-icon .explorer-contact-picture {
+    display: block;
+    flex: none;
+}
+
+body.desktop-mode #explorerModal .explorer-contact-icon .explorer-contact-badge {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 16px;
+    height: 16px;
+}
+
+body.desktop-mode #explorerModal .explorer-item-icon-box-lg.explorer-contact-icon .explorer-contact-badge,
+body.desktop-mode #explorerModal .explorer-item-icon-box-xl.explorer-contact-icon .explorer-contact-badge {
+    width: 32px;
+    height: 32px;
+}
+
+body.desktop-mode #explorerModal .explorer-contact-icon .explorer-contact-badge-only {
+    display: block;
+    width: 16px;
+    height: 16px;
+}
+
+body.desktop-mode #explorerModal .explorer-contact-icon .explorer-contact-group {
+    display: block;
+    width: 48px;
+    height: 48px;
+}
+
+body.desktop-mode #explorerModal .explorer-details-icon.explorer-contact-icon {
+    overflow: visible;
+}
+
+body.desktop-mode #explorerModal .explorer-details-icon.explorer-contact-icon .explorer-contact-badge {
+    left: -4px;
+    bottom: -4px;
+}
+
+body.desktop-mode #explorerModal .explorer-contacts-folder-icon {
+    display: block;
+    width: 48px;
+    height: 48px;
+}
+
+/* the preview pane: 225 px and its edge, right of the list */
+body.desktop-mode #explorerModal .explorer-preview-pane {
+    position: relative;
+    flex: 0 0 225px;
+    min-width: 0;
+    overflow: hidden;
+    border-left: 1px solid #dde4e8;
+    background: #fcfcfc;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    color: #000;
+}
+
+body.desktop-mode #explorerModal .explorer-preview-pane.hidden {
+    display: none;
+}
+
+body.desktop-mode #explorerModal .explorer-preview-empty {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    margin-top: -8px;
+    text-align: center;
+    line-height: 16px;
+}
+
+body.desktop-mode #explorerModal .explorer-preview-picture {
+    position: relative;
+    width: 128px;
+    height: 128px;
+    margin: 9px auto 0;
+}
+
+body.desktop-mode #explorerModal .explorer-preview-photo {
+    display: block;
+    width: 128px;
+    height: 128px;
+}
+
+body.desktop-mode #explorerModal .explorer-preview-badge {
+    position: absolute;
+    left: -1px;
+    bottom: -1px;
+    width: 42px;
+    height: 42px;
+}
+
+body.desktop-mode #explorerModal .explorer-preview-name {
+    margin: 13px 15px 0;
+    overflow: hidden;
+    font: 24px/32px "Segoe UI", Tahoma, sans-serif;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+body.desktop-mode #explorerModal .explorer-preview-link {
+    display: inline-block;
+    margin: 9px 0 0 15px;
+    color: #0066cc;
+    font: 12px/15px "Segoe UI", Tahoma, sans-serif;
+    text-decoration: underline;
+}
+
+/* the command bar's >> (the buttons that do not fit) */
+body.desktop-mode #explorerModal .explorer-command-more .explorer-command-chevrons {
+    display: block;
+    width: 7px;
+    height: 7px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='7' shape-rendering='crispEdges' fill='%23fff'%3E%3Cpath d='M0 0h1v1H0zM1 1h1v1H1zM2 2h1v1H2zM3 3h1v1H3zM2 4h1v1H2zM1 5h1v1H1zM0 6h1v1H0zM3 0h1v1H3zM4 1h1v1H4zM5 2h1v1H5zM6 3h1v1H6zM5 4h1v1H5zM4 5h1v1H4zM3 6h1v1H3z'/%3E%3C/svg%3E") no-repeat;
+}
+
+/* the folder's columns, the VM's widths: Name 82, E-mail Address 108, Business phone 111,
+   Home phone 98 (column edges 82 / 190 / 301 / 399 px in) */
+body.desktop-mode:not(.windows-classic-theme) #explorerModal.explorer-in-contacts .explorer-details-header {
+    grid-template-columns: 82px 108px 111px 98px 1fr;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal.explorer-in-contacts .explorer-item-details-row {
+    grid-template-columns: 16px 58px 108px 111px 97px;
+    width: 395px;
+    margin-right: max(0px, calc(100% - 400px));
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal.explorer-in-contacts .explorer-item-details-row .explorer-item-size {
+    text-align: left;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal.explorer-in-contacts .explorer-view-pane[data-view="details"] .explorer-grid-host {
+    background:
+        linear-gradient(#ededed, #ededed) no-repeat 82px 0 / 1px 100%,
+        linear-gradient(#ededed, #ededed) no-repeat 190px 0 / 1px 100%,
+        linear-gradient(#ededed, #ededed) no-repeat 301px 0 / 1px 100%,
+        linear-gradient(#ededed, #ededed) no-repeat 399px 0 / 1px 100%,
+        #fcfcfc;
+}

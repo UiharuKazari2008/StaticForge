@@ -1,435 +1,61 @@
-/* Windows Contacts (Yozora #632; apps/contacts/client/contacts.js): an Explorer folder, drawn with
-   Explorer's own art (public/static_images/vista-explorer, see css/vista-explorer.css) */
+/* Melaton Contacts (Yozora #632; apps/contacts/client/contacts.js): what the Properties sheet's
+   wab32res templates leave to the program. The folder itself is Explorer's (explorer-contacts.css). */
 
-.wcon-window .wcon-client {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    min-height: 0;
-    padding: 0 !important;
-    font: 12px "Segoe UI", Tahoma, sans-serif;
-    color: #000;
-}
-
-/* the travel band, the address and the search box */
-.wcon-window .wcon-nav {
-    display: flex;
-    flex: none;
-    align-items: center;
-    gap: 6px;
-    height: 34px;
-    padding: 0 6px 0 4px;
-    background: linear-gradient(#e3ebf3, #eaf1f8 25%, #eaf1f8 75%, #e7eff6);
-    border-bottom: 1px solid #a9bcd0;
-}
-
-.wcon-window .wcon-travel {
-    display: inline-flex;
-    flex: none;
-    width: 58px;
-    height: 27px;
-    background: url('/static_images/vista-explorer/travel-gutter.png') no-repeat 0 0;
-}
-
-.wcon-window .wcon-back,
-.wcon-window .wcon-fwd {
-    width: 29px;
-    height: 27px;
-    background: url('/static_images/vista-explorer/nav-back.png') no-repeat 0 0;
-    opacity: 0.55;
-}
-
-.wcon-window .wcon-fwd {
-    background-image: url('/static_images/vista-explorer/nav-forward.png');
-}
-
-.wcon-window .wcon-address {
-    display: flex;
-    flex: 1;
-    align-items: center;
-    gap: 4px;
-    min-width: 0;
-    height: 22px;
-    padding: 0 6px;
-    border: 1px solid #a5acb5;
-    border-radius: 2px;
-    background: #fff;
-}
-
-.wcon-window .wcon-address img {
-    width: 16px;
-    height: 16px;
-}
-
-.wcon-window .wcon-crumb-sep {
-    width: 4px;
-    height: 7px;
-    margin: 0 3px;
-    background: url('/static_images/vista-controls/menu-submenu.png') no-repeat center / 4px 7px;
-}
-
-.wcon-window .wcon-search input {
-    width: 190px;
-    height: 22px;
-    padding: 0 6px;
-    border: 1px solid #a5acb5;
-    border-radius: 2px;
-    background: #fff;
-    font: italic 12px "Segoe UI", sans-serif;
-}
-
-.wcon-window .wcon-search input:focus {
-    border-color: #3d7bad;
-    font-style: normal;
-    outline: none;
-}
-
-/* the command bar: Explorer's band and faces, white labels */
-.wcon-window .wcon-cmdbar {
-    display: flex;
-    flex: none;
-    align-items: flex-start;
-    height: 31px;
-    padding: 3px 3px 0;
-    box-sizing: border-box;
-    background:
-        url('/static_images/vista-explorer/cmdbar-band-edge.png') left top / 1px 100% no-repeat,
-        url('/static_images/vista-explorer/cmdbar-band-edge.png') right top / 1px 100% no-repeat,
-        url('/static_images/vista-explorer/cmdbar-band.png') left top / 1px 100% repeat-x,
-        linear-gradient(to right, #045082, #116584, #1d7986);
-}
-
-.wcon-window.wcon-window .win7 .wcon-cmd:not(:disabled) {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    min-width: 0;
-    height: 24px;
-    min-height: 0;
-    padding: 0 6px 2px;
-    border: 0;
-    border-image: none;
-    border-radius: 0;
-    background: none;
-    box-shadow: none;
-    color: #fff;
-    font: 12px "Segoe UI", Tahoma, sans-serif;
-    white-space: nowrap;
-}
-
-.wcon-window.wcon-window .win7 .wcon-cmd:not(:disabled):hover {
-    border-image: url('/static_images/vista-explorer/cmdbar-hot.png') 0 4 fill / 0 4px;
-}
-
-.wcon-window.wcon-window .win7 .wcon-cmd.context-open:not(:disabled) {
-    border-image: url('/static_images/vista-explorer/cmdbar-open.png') 0 4 fill / 0 4px;
-}
-
-.wcon-window .wcon-cmd::before,
-.wcon-window .wcon-cmd::after {
-    content: none;
-}
-
-.wcon-window .wcon-cmd img {
-    width: 16px;
-    height: 16px;
-    margin-top: 2px;
-}
-
-.wcon-window .wcon-arrow {
-    width: 13px;
-    height: 12px;
-    margin: 2px 0 0 -1px;
-    background: url('/static_images/vista-explorer/cmdbar-glyph.png') no-repeat;
-}
-
-/* Favorite Links and the contacts */
-.wcon-window .wcon-body {
-    display: grid;
-    flex: 1;
-    min-height: 0;
-    grid-template-columns: 180px 1fr;
-}
-
-.wcon-window .wcon-links {
-    overflow: auto;
-    padding: 6px 0;
-    border-right: 1px solid #d5dfe5;
-    background: #fff;
-}
-
-.wcon-window .wcon-links-head {
-    padding: 2px 12px 6px;
-    color: #1e395b;
-}
-
-.wcon-window .wcon-link {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    height: 22px;
-    margin: 0 4px;
-    padding: 0 8px;
-    border: 1px solid transparent;
-    border-radius: 3px;
-}
-
-.wcon-window .wcon-link.is-on {
-    border-color: #99defd;
-    background: linear-gradient(#f6fbfd, #eff8fd 45%, #d7effc 55%, #e7f5fd);
-}
-
-.wcon-window .wcon-link img {
-    width: 16px;
-    height: 16px;
-}
-
-.wcon-window .wcon-list {
-    overflow: auto;
-    background: #fff;
-    outline: none;
-}
-
-.wcon-window .wcon-head,
-.wcon-window .wcon-row {
-    display: grid;
-    grid-template-columns: minmax(180px, 2fr) minmax(160px, 2fr) minmax(110px, 1fr) minmax(110px, 1fr);
-}
-
-.wcon-window .wcon-head {
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    background: #fff;
-}
-
-.wcon-window.wcon-window .win7 .wcon-col:not(:disabled) {
-    position: relative;
-    min-width: 0;
-    height: 24px;
-    min-height: 0;
-    padding: 0 6px;
-    border: 0;
-    border-image: none;
-    border-right: 1px solid #e5e5e5;
-    border-bottom: 1px solid #d5d5d5;
-    border-radius: 0;
-    background: #fff;
-    box-shadow: none;
-    color: #4c607a;
-    font: 12px "Segoe UI", sans-serif;
-    text-align: left;
-}
-
-.wcon-window.wcon-window .win7 .wcon-col:not(:disabled):hover {
-    background: linear-gradient(#f3f8fd, #e4effb);
-}
-
-.wcon-window .wcon-col::before {
-    content: none;
-}
-
-.wcon-window .wcon-col.is-up::after,
-.wcon-window .wcon-col.is-down::after {
-    content: "";
-    position: absolute;
-    left: 50%;
-    top: 0;
-    width: 7px;
-    height: 4px;
-    margin-left: -3px;
-    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4' shape-rendering='crispEdges'%3E%3Cpath fill='%23969696' d='M3 0h1v1h1v1h1v1h1v1H0V3h1V2h1V1h1z'/%3E%3C/svg%3E") no-repeat;
-}
-
-.wcon-window .wcon-col.is-down::after {
-    transform: scaleY(-1);
-}
-
-.wcon-window .wcon-row {
-    height: 22px;
-    margin: 0 2px;
-    border: 1px solid transparent;
-    border-radius: 3px;
-    align-items: center;
-    cursor: var(--c-default, default);
-}
-
-.wcon-window .wcon-row > span {
-    overflow: hidden;
-    padding: 0 6px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.wcon-window .wcon-name {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-}
-
-.wcon-window .wcon-name img {
-    width: 16px;
-    height: 16px;
-}
-
-.wcon-window :is(.wcon-row, .wcon-tile):hover {
-    border-color: #b8d6fb;
-    background: linear-gradient(#fafbfd, #ebf3fd);
-}
-
-.wcon-window :is(.wcon-row, .wcon-tile).is-sel {
-    border-color: #84acdd;
-    background: linear-gradient(#dcebfc, #c1dbfc);
-}
-
-.wcon-window .wcon-list:is(.is-tiles, .is-icons) {
-    display: flex;
-    flex-wrap: wrap;
-    align-content: flex-start;
-    gap: 2px;
-    padding: 4px;
-}
-
-.wcon-window .wcon-tile {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    box-sizing: border-box;
-    width: 250px;
-    height: 58px;
-    padding: 4px;
-    border: 1px solid transparent;
-    border-radius: 3px;
-    cursor: var(--c-default, default);
-}
-
-.wcon-window .wcon-tile img {
-    width: 48px;
-    height: 48px;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
-}
-
-.wcon-window .wcon-tile-text {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-}
-
-.wcon-window :is(.wcon-tile-name, .wcon-tile-sub) {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.wcon-window .wcon-tile-sub {
-    color: #6d6d6d;
-}
-
-.wcon-window .is-icons .wcon-tile {
-    flex-direction: column;
-    justify-content: flex-start;
-    width: 86px;
-    height: 92px;
-    gap: 4px;
-    text-align: center;
-}
-
-.wcon-window .is-icons .wcon-tile-name {
-    white-space: normal;
-}
-
-/* the Details pane: Explorer's gradient and swoosh */
-.wcon-window .wcon-details {
-    display: flex;
-    flex: none;
-    align-items: center;
-    gap: 14px;
-    height: 82px;
-    padding: 4px 12px 4px 10px;
-    border-top: 1px solid #9db6c5;
-    background:
-        url('/static_images/vista-explorer/details-swoosh.png') no-repeat right 2px bottom 0,
-        linear-gradient(to right, #f4fcff, #ecfbfe 50%, #bbd9f0);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
-}
-
-.wcon-window .wcon-details-pic {
-    width: 64px;
-    height: 64px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
-}
-
-.wcon-window .wcon-details-name {
-    font-size: 15px;
-}
-
-.wcon-window .wcon-details-kind {
-    color: #5a6779;
-}
-
-.wcon-window .wcon-details-grid {
-    display: grid;
-    grid-auto-flow: column;
-    grid-template-rows: repeat(3, auto);
-    gap: 1px 24px;
-    margin-left: 18px;
-}
-
-.wcon-window .wcon-details-pair {
-    display: grid;
-    grid-template-columns: 96px auto;
-    gap: 6px;
-}
-
-.wcon-window .wcon-details-pair > span:first-child {
-    color: #5a6779;
-    text-align: right;
-}
-
-/* the Properties sheet's own parts (pictures, list boxes, the summary) */
-.wcon-sheet-pic {
-    display: block;
-    object-fit: cover;
-    border: 1px solid #a0a0a0;
-}
-
-.wcon-sheet-list {
-    display: block !important;
-    overflow-y: auto;
-    border: 1px solid #828790;
-    background: #fff;
-}
-
-.wcon-sheet-item {
-    display: block;
-    padding: 1px 4px;
-    white-space: nowrap;
+/* the picture control (WAB User Tile Control): wab32res PNG 4156-4158, the frame with its drop
+   arrow, at its own pixel size (the template's numbers are the PNG's, not dialog units) */
+.vdt-client .wcon-tile.wcon-tile {
+    width: 128px !important;
+    height: 147px !important;
+    background: url('/static_images/vista-contacts/picture-button-normal.png') 0 0 no-repeat;
     cursor: default;
 }
 
-.wcon-sheet-item.is-sel {
-    background: #3399ff;
-    color: #fff;
+.vdt-client .wcon-tile:not(.is-static):hover {
+    background-image: url('/static_images/vista-contacts/picture-button-hot.png');
 }
 
-.wcon-sheet-item.is-empty {
-    color: #6d6d6d;
+.vdt-client .wcon-tile:not(.is-static):active {
+    background-image: url('/static_images/vista-contacts/picture-button-pressed.png');
 }
 
-.wcon-summary {
-    display: block !important;
-    overflow-y: auto;
-    line-height: 1.5;
+.vdt-client .wcon-tile .wcon-tile-photo {
+    position: absolute;
+    left: 16px;
+    top: 10px;
+    width: 96px;
+    height: 96px;
 }
 
-.wcon-summary b {
-    font-weight: normal;
-    color: #555;
+/* Summary's picture has no drop arrow: the framed picture alone, 80 px */
+.vdt-client .wcon-tile.wcon-tile.is-static {
+    width: 80px !important;
+    height: 80px !important;
+    background: none;
 }
 
-.wcon-date {
+.vdt-client .wcon-tile.is-static .wcon-tile-photo {
+    left: 0;
+    top: 0;
+    width: 80px;
+    height: 80px;
+}
+
+/* the date pickers stand in the Family page's blank statics */
+.vdt-client .wcon-date {
     box-sizing: border-box;
     width: 100%;
-    height: 21px;
-    font: 11px Tahoma, sans-serif;
+    height: 100%;
+    font: inherit;
+}
+
+/* Import / Export's format list */
+.vdt-client .wcon-format-list .vdt-lb-row {
+    padding: 1px 4px;
+    line-height: 16px;
+    cursor: default;
+}
+
+.vdt-client .wcon-format-list .vdt-lb-row.is-selected {
+    background: #3399ff;
+    color: #fff;
 }

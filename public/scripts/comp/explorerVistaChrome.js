@@ -68,6 +68,7 @@
                 upload: $('explorerUploadCmd'),
                 download: $('explorerDownloadCmd'),
                 replace: $('explorerReplaceCmd'),
+                preview: $('explorerPreviewCmd'),
                 systemProperties: $('explorerSystemPropertiesCmd'),
                 controlPanel: $('explorerControlPanelCmd'),
                 help: $('explorerHelpBtn'),
@@ -119,6 +120,7 @@
             if (e.upload) e.upload.addEventListener('click', () => proxy('explorerUploadBtn'));
             if (e.download) e.download.addEventListener('click', () => proxy('explorerDownloadBtn'));
             if (e.replace) e.replace.addEventListener('click', () => proxy('explorerReplaceBtn'));
+            if (e.preview && typeof root.contextMenu !== 'undefined' && root.contextMenu) this.attachPreviewMenu();
             // Computer's commands: Control Panel > System, Control Panel (melatonControlPanel.js, cplSystem.js)
             const controlPanel = (page) => {
                 const loader = root.featureLoader;
@@ -320,6 +322,8 @@
             // the place's own icon: Computer, the drive, or a folder
             const current = this.app.currentPath;
             this.crumbIcon = atComputer ? 'computer-16.png' : (current === '/' && computer ? 'drive-system-16.png' : 'crumb-folder.png');
+            // the Contacts folder's own icon (wab32res IDI_ICON_FOLDER, explorerContacts.js)
+            if (root.explorerContacts && root.explorerContacts.isPath(current)) this.crumbIcon = '../vista-contacts/folder-16.png';
             this.layoutBreadcrumb();
             this.watchBreadcrumbWidth();
             this.highlightFavorite();
@@ -425,6 +429,42 @@
             });
         }
 
+        /** The one selected picture: a gallery print, or an image file in a VFS folder (Paint opens both). */
+        selectedPicture() {
+            const sel = this.app.grid ? this.app.grid.getSelectedItems() : [];
+            if (sel.length !== 1) return null;
+            const item = sel[0];
+            if (item.targetKind === 'image' || item.targetKind === 'scrap') return item;
+            if (item.targetKind === 'user-file' && /^image\/(png|jpe?g|bmp|webp|gif)$/i.test(item.mimeType || '')) return item;
+            return null;
+        }
+
+        /** Preview's menu: the programs that open a picture, as Vista lists Windows Photo Gallery and Paint. */
+        attachPreviewMenu() {
+            const btn = this.el.preview;
+            const cm = root.contextMenu;
+            if (!btn || !cm) return;
+            cm.attachClickMenuToElement(btn, {
+                sections: [{
+                    type: 'list',
+                    items: [
+                        { text: 'Lumen', action: 'explorer-preview-lumen' },
+                        { text: 'Paint', action: 'explorer-preview-paint' }
+                    ]
+                }],
+                onAction: (action) => {
+                    const item = this.selectedPicture();
+                    if (!item) return;
+                    if (action === 'explorer-preview-lumen') void this.app.openItem(item);
+                    else if (action === 'explorer-preview-paint') {
+                        // editInPaint: explorerApplet.js; editGalleryImageInPaint: imageViewer.js
+                        if (item.targetKind === 'user-file') void this.app.editInPaint(item);
+                        else if (typeof root.editGalleryImageInPaint === 'function') void root.editGalleryImageInPaint(this.app._resolveGalleryImage(item));
+                    }
+                }
+            });
+        }
+
         /** Contextual commands follow the hidden buttons' state (explorerApplet updateToolbarState). */
         syncCommands() {
             const shown = (cmd, legacyId) => {
@@ -436,6 +476,7 @@
             shown(this.el.upload, 'explorerUploadBtn');
             shown(this.el.download, 'explorerDownloadBtn');
             shown(this.el.replace, 'explorerReplaceBtn');
+            if (this.el.preview) this.el.preview.classList.toggle('hidden', !this.selectedPicture());
             const atComputer = typeof this.app._isComputerPath === 'function' && this.app._isComputerPath();
             if (this.el.systemProperties) this.el.systemProperties.classList.toggle('hidden', !atComputer);
             if (this.el.controlPanel) this.el.controlPanel.classList.toggle('hidden', !atComputer);
@@ -571,20 +612,26 @@
                     if (keepPreview) detailsIcon.classList.add('has-preview');
                     if (typeof this.app._populateIconBox === 'function') this.app._populateIconBox(detailsIcon, item);
                 }
-                const type = this.typeLabel(item);
+                // a contact shows its name and no type (Vista's Contacts folder)
+                const contactName = root.explorerContacts ? root.explorerContacts.detailsName(this.app, item) : null;
+                const type = contactName != null ? '' : this.typeLabel(item);
                 const date = this.formatDate(item.modifiedAt);
                 const size = this.app._itemSizeBytes && this.app._itemSizeBytes(item)
                     ? this.app._formatStatusSize(this.app._itemSizeBytes(item)) : '';
-                detailsInfo.innerHTML = `<div class="explorer-details-name">${esc(item.name || '')}</div>`
-                    + `<div class="explorer-details-type">${esc(type)}</div>`
+                detailsInfo.innerHTML = `<div class="explorer-details-name">${esc(contactName != null ? contactName : (item.name || ''))}</div>`
+                    + (type ? `<div class="explorer-details-type">${esc(type)}</div>` : '')
                     + row('Date modified', date) + row('Size', size);
                 return;
             }
             // no selection or several: the folder's icon and the summary line
-            if (detailsIcon.dataset.detailsKey !== '') {
-                detailsIcon.dataset.detailsKey = '';
+            const inContacts = !!(root.explorerContacts && root.explorerContacts.active(this.app));
+            const folderKey = inContacts ? 'contacts' : '';
+            if (detailsIcon.dataset.detailsKey !== folderKey) {
+                detailsIcon.dataset.detailsKey = folderKey;
                 detailsIcon.className = 'explorer-details-icon explorer-item-icon-box explorer-item-icon-box-md';
-                detailsIcon.innerHTML = '<i class="fas fa-folder explorer-item-type-icon" data-kind="folder"></i>';
+                detailsIcon.innerHTML = inContacts
+                    ? `<img class="explorer-contacts-folder-icon" src="${root.explorerContacts.ART}/folder-48.png" alt="">`
+                    : '<i class="fas fa-folder explorer-item-type-icon" data-kind="folder"></i>';
             }
             detailsInfo.innerHTML = `<div class="explorer-details-summary">${esc(summaryText || '')}</div>`;
         }

@@ -1,7 +1,7 @@
 {
     "id": "contacts",
     "version": "1.0.0",
-    "title": "Windows Contacts",
+    "title": "Melaton Contacts",
     "publisher": "Xyridian",
     "format": "msaz",
     "type": "native",

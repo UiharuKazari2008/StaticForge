@@ -806,7 +806,7 @@
                     case 'tb-stacked': arrangeWindows('stacked'); break;
                     case 'tb-side': arrangeWindows('side'); break;
                     case 'tb-show-desktop': toggleShowDesktop(); break;
-                    // Windows Task Manager (apps/taskmgr, a system package)
+                    // Melaton Task Manager (apps/taskmgr, a system package)
                     case 'tb-task-manager': if (root.melatonApps) void root.melatonApps.launch({ packageId: 'taskmgr' }); break;
                     case 'tb-lock': set({ locked: !settings.locked }); break;
                     case 'tb-properties': openProperties('taskbar'); break;

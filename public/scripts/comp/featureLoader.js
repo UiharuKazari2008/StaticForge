@@ -68,9 +68,9 @@ const FEATURE_MANIFEST = {
         scripts: ['scripts/comp/characterSearchModal.js']
     },
     explorer: {
-        styles: ['css/explorer.css', 'css/vista-file-progress.css', 'css/vista-7zip.css', 'css/melaton-apps.css'],
+        styles: ['css/explorer.css', 'css/vista-file-progress.css', 'css/vista-7zip.css', 'css/melaton-apps.css', 'css/explorer-contacts.css'],
         // vfsClient / vfsVirtualGrid / routers stay sync — desktop + inbound use them without Cartograph
-        scripts: ['scripts/comp/explorerVistaChrome.js', 'scripts/comp/explorerComputerView.js', 'scripts/comp/fileOperationProgress.js', 'scripts/comp/vfsPrograms.js', 'scripts/comp/explorerArchive.js', 'scripts/comp/explorerApplet.js']
+        scripts: ['scripts/comp/explorerVistaChrome.js', 'scripts/comp/explorerComputerView.js', 'scripts/comp/fileOperationProgress.js', 'scripts/comp/vfsPrograms.js', 'scripts/comp/explorerArchive.js', 'scripts/comp/vcard.js', 'scripts/comp/explorerContacts.js', 'scripts/comp/explorerApplet.js']
     },
     // 7-Zip's dialogs and progress window (explorerArchive.js): Taskbar Properties' Vista controls (tbp-*)
     seven_zip_dialogs: {

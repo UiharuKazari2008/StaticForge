@@ -116,6 +116,17 @@ body.desktop-mode .modal.vdt-window[data-vista-dialog] > .modal-content.vdt-clie
     background: #fff;
 }
 
+/* an edit with neither WS_BORDER nor WS_EX_CLIENTEDGE has no border: read-only, it is text on the
+   dialog face (Windows Contacts' Summary, Device Manager's General values) */
+.vdt-client input.vdt-edit:not(.vdt-edge)[readonly],
+.vdt-client input.tbp-edit.vdt-edit:not(.vdt-edge)[readonly] {
+    padding: 0 1px;
+    border: 0;
+    border-image: none;
+    background: transparent;
+    box-shadow: none;
+}
+
 /* ---- list boxes and list views ---- */
 
 .vdt-client .vdt-listbox {

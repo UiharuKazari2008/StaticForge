@@ -1,5 +1,5 @@
 /**
- * Windows Task Manager (Yozora #632), Vista's taskmgr.exe as a Melaton system package (apps/taskmgr).
+ * Melaton Task Manager (Yozora #632), Vista's taskmgr.exe as a Melaton system package (apps/taskmgr).
  *
  *   Applications  the desktop's windows: End Task (their own close, so they may ask to save), Switch To,
  *                 New Task... (Run)
@@ -37,8 +37,8 @@
     const IMAGES = [
         [/^explorerModal$|explorer/i, 'explorer.exe', 'Melaton Explorer'], [/paint/i, 'mspaint.exe', 'Paint'], [/notepad/i, 'notepad.exe', 'Notepad'],
         [/charmap/i, 'charmap.exe', 'Character Map'], [/calculator/i, 'calc.exe', 'Calculator'], [/dovecote/i, 'WinMail.exe', 'Dovecote'],
-        [/snipping/i, 'SnippingTool.exe', 'Snipping Tool'], [/calendar/i, 'wincal.exe', 'Windows Calendar'], [/contacts/i, 'wab.exe', 'Windows Contacts'],
-        [/soundrec/i, 'SoundRecorder.exe', 'Sound Recorder'], [/wordpad/i, 'wordpad.exe', 'WordPad'], [/taskmgr|taskmanager/i, 'taskmgr.exe', 'Windows Task Manager'],
+        [/snipping/i, 'SnippingTool.exe', 'Snipping Tool'], [/calendar/i, 'wincal.exe', 'Melaton Calendar'], [/contacts/i, 'wab.exe', 'Melaton Contacts'],
+        [/soundrec/i, 'SoundRecorder.exe', 'Sound Recorder'], [/wordpad/i, 'wordpad.exe', 'WordPad'], [/taskmgr|taskmanager/i, 'taskmgr.exe', 'Melaton Task Manager'],
         [/controlpanel|cpl/i, 'control.exe', 'Control Panel'], [/media/i, 'wmplayer.exe', 'Windows Media Player'], [/studio/i, 'studio.exe', 'Studio'],
         [/gallery/i, 'WindowsPhotoGallery.exe', 'Photo Gallery'], [/ledge/i, 'ledge.exe', 'Ledge'], [/alarm/i, 'alarm.exe', 'Alarm Clock'],
         [/welcome/i, 'oobe.exe', 'Welcome Center'], [/regedit|config/i, 'regedit.exe', 'Registry Editor'], [/games/i, 'games.exe', 'Games']
@@ -107,9 +107,9 @@
             m.style.width = '420px';
             m.style.height = '520px';
             m.setAttribute('role', 'dialog');
-            m.setAttribute('aria-label', 'Windows Task Manager');
+            m.setAttribute('aria-label', 'Melaton Task Manager');
             m.innerHTML = `
-                <div class="modal-window-title"><div class="modal-window-title-main"><img class="icon-image" src="${ICON16}" alt=""><span>Windows Task Manager</span></div></div>
+                <div class="modal-window-title"><div class="modal-window-title-main"><img class="icon-image" src="${ICON16}" alt=""><span>Melaton Task Manager</span></div></div>
                 <div class="modal-focus-overlay"></div>
                 <div class="modal-window-controls">
                     <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize"><i class="fa-regular fa-window-minimize"></i></button>
@@ -149,7 +149,7 @@
             requestAnimationFrame(place);
             setTimeout(place, 60);
             if (root.programFaults && root.programFaults.registerProgram) {
-                root.programFaults.registerProgram(m.id, { name: 'Windows Task Manager', terminate: () => this.app.exit(), relaunch: () => root.melatonApps && root.melatonApps.launch({ packageId: 'taskmgr' }) });
+                root.programFaults.registerProgram(m.id, { name: 'Melaton Task Manager', terminate: () => this.app.exit(), relaunch: () => root.melatonApps && root.melatonApps.launch({ packageId: 'taskmgr' }) });
             }
             this.applyOnTop();
             this.showTab(this.tab);
@@ -194,7 +194,7 @@
                 case 'win-front': if (win) this.switchTo(win); return;
                 case 'win-min': if (win) call('minimizeModalProgrammatically', win); return;
                 case 'win-max': if (win) { const b = win.querySelector('.maximize-btn'); if (b) b.click(); } return;
-                case 'about': if (typeof root.openAboutMelatoninModal === 'function') root.openAboutMelatoninModal({ program: 'Windows Task Manager' }); return;
+                case 'about': if (typeof root.openAboutMelatoninModal === 'function') root.openAboutMelatoninModal({ program: 'Melaton Task Manager' }); return;
                 default:
             }
         }
@@ -268,7 +268,7 @@
                 byImage.set(image, e);
             });
             // the shell and the desktop window manager are always there
-            ['explorer.exe|Melaton Explorer', 'dwm.exe|Desktop Window Manager', 'taskmgr.exe|Windows Task Manager'].forEach((x) => {
+            ['explorer.exe|Melaton Explorer', 'dwm.exe|Desktop Window Manager', 'taskmgr.exe|Melaton Task Manager'].forEach((x) => {
                 const [n, d] = x.split('|');
                 if (!byImage.has(n)) byImage.set(n, { name: n, user: 'Melaton', cpu: 0, memKB: null, desc: d, windows: [], melaton: true, system: true });
             });
@@ -542,7 +542,7 @@
             if (!p || p.system || !p.windows.length) return;
             const v = await call('showConfirmationDialog', `<p><b>Do you want to end "${esc(p.name)}"?</b></p><p>If an open program is associated with this process, it will close and you will lose any unsaved data.</p>`, [
                 { text: 'End process', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }
-            ], null, { title: 'Windows Task Manager', width: 420 });
+            ], null, { title: 'Melaton Task Manager', width: 420 });
             if (!v) return;
             p.windows.forEach((w) => {
                 // a program with a fault handler ends the program; otherwise the window goes, unsaved
