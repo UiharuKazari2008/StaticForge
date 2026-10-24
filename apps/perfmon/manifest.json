@@ -1,0 +1,14 @@
+{
+    "id": "perfmon",
+    "version": "1.0.0",
+    "title": "Reliability and Performance Monitor",
+    "publisher": "Xyridian",
+    "format": "msaz",
+    "type": "native",
+    "launchId": "perfmon",
+    "icon": "assets/perfmon.png",
+    "client": {
+        "entry": "client/perfmon.js",
+        "styles": ["assets/perfmon.css"]
+    }
+}

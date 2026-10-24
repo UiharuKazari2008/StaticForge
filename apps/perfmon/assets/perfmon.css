@@ -1,0 +1,1083 @@
+/* Reliability and Performance Monitor (Yozora #632; apps/perfmon/client/perfmon.js): MMC's frame and
+   wdc.dll's Resource View, measured on the Vista VM at 800x600 (~/.cache/vista-vm/perfmon-ref) */
+
+.pfm-window.pfm-window > .modal-content.pfm-client {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1;
+    min-height: 0;
+    width: auto !important;
+    height: auto !important;
+    padding: 0 !important;
+    background: #f0f0f0;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    color: #000;
+}
+
+/* the rebar: the menu band (23 px, the console child's icon and caption buttons in it) over the
+   toolbar band (23 px), both the VM's own pixels */
+.pfm-window .pfm-rebar {
+    flex: none;
+}
+
+.pfm-window.pfm-window .pfm-menubar {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    height: 23px;
+    padding: 0 0 0 2px;
+    border: 0;
+    background: url('menuband.png') 0 0 / 1px 23px repeat-x;
+    box-sizing: border-box;
+}
+
+.pfm-window .pfm-sysmenu {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin: 3px 0 0 0;
+    background: url('tree.png') 0 0 / auto 16px no-repeat;
+}
+
+.pfm-window.pfm-window .win7 .pfm-menubar .naxt-menu-title:not(#_) {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    height: 21px;
+    min-height: 0;
+    margin-top: 0;
+    padding: 0 4px 1px;
+    border: 4px solid transparent;
+    border-width: 0 4px;
+    border-image: none;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    color: #000;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    text-shadow: none;
+}
+
+.pfm-window.pfm-window .win7 .pfm-menubar .naxt-menu-title:is(:hover, :focus-visible):not(#_) {
+    border-image: url('/melaton-apps/wordpad/assets/menu-hot.png') 0 4 fill / 0 4px stretch;
+    outline: none;
+}
+
+.pfm-window.pfm-window .win7 .pfm-menubar .naxt-menu-title.context-open:not(#_) {
+    border-image: url('/melaton-apps/wordpad/assets/menu-open.png') 0 4 fill / 0 4px stretch;
+}
+
+.pfm-window .pfm-menubar .naxt-menu-title::before,
+.pfm-window .pfm-menubar .naxt-menu-title::after {
+    content: none;
+    display: none;
+}
+
+/* the console child's Minimize / Restore Down / Close, 19 px apiece at the band's right (the VM's) */
+.pfm-window .pfm-mdi {
+    position: absolute;
+    right: 0;
+    top: 2px;
+    display: flex;
+}
+
+.pfm-window.pfm-window .pfm-mdi button:not(#_) {
+    width: 19px;
+    height: 19px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-image: none;
+    border-radius: 0;
+    background: url('mdi.png') 0 0 no-repeat;
+    box-shadow: none;
+}
+
+.pfm-window.pfm-window .pfm-mdi .pfm-mdi-restore:not(#_) { background-position: -19px 0; }
+.pfm-window.pfm-window .pfm-mdi .pfm-mdi-close:not(#_) { background-position: -38px 0; }
+
+.pfm-window .pfm-mdi button::before,
+.pfm-window .pfm-mdi button::after {
+    content: none;
+}
+
+/* the toolbar: 23 px buttons, mmc.exe bitmap 202 and wdc.dll bitmap 122 icons */
+.pfm-window .pfm-toolbar {
+    display: flex;
+    align-items: center;
+    height: 23px;
+    padding: 0 0 0 1px;
+    background: url('toolband.png') 0 0 / 1px 23px repeat-x;
+    box-sizing: border-box;
+}
+
+.pfm-window.pfm-window .pfm-tb:not(#_) {
+    position: relative;
+    width: 23px;
+    height: 22px;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    background: none;
+    box-shadow: none;
+}
+
+.pfm-window.pfm-window .pfm-tb:hover:not(:disabled):not(#_) {
+    border-color: #3c7fb1;
+    background: linear-gradient(#eaf6fd 45%, #bee6fd 55%, #a7d9f5);
+}
+
+.pfm-window.pfm-window .pfm-tb.is-pressed:not(#_) {
+    border-color: #2c628b;
+    background: linear-gradient(#e5f4fc, #c4e5f6 45%, #98d1ef 55%, #68b3db);
+}
+
+.pfm-window .pfm-tb::before,
+.pfm-window .pfm-tb::after {
+    content: none;
+}
+
+.pfm-window .pfm-tb-icon {
+    position: absolute;
+    left: 2px;
+    top: 2px;
+    width: 16px;
+    height: 16px;
+    background-position: calc(var(--i) * -16px) 0;
+    background-repeat: no-repeat;
+}
+
+.pfm-window .pfm-tb-icon.is-mmc { background-image: url('toolbar-mmc.png'); }
+.pfm-window .pfm-tb-icon.is-wdc { background-image: url('toolbar-wdc.png'); }
+
+.pfm-window .pfm-tb:disabled .pfm-tb-icon {
+    filter: grayscale(1);
+    opacity: 0.4;
+}
+
+.pfm-window .pfm-tb-sep {
+    width: 1px;
+    height: 18px;
+    margin: 0 3px;
+    background: #a6b0be;
+    box-shadow: 1px 0 #fff;
+}
+
+/* the body: the tree (188 px, #828790) and the result pane (sunken), 6 px under the rebar */
+.pfm-window .pfm-body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    padding-top: 6px;
+}
+
+.pfm-window .pfm-tree {
+    flex: none;
+    width: 188px;
+    box-sizing: border-box;
+    overflow: auto;
+    border: 1px solid #828790;
+    background: #fff;
+    outline: none;
+    padding-top: 1px;
+}
+
+.pfm-window.no-tree .pfm-tree,
+.pfm-window.no-tree .pfm-split {
+    display: none;
+}
+
+.pfm-window .pfm-split {
+    flex: none;
+    width: 3px;
+    cursor: col-resize;
+}
+
+.pfm-window .pfm-result {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    box-sizing: border-box;
+    padding: 1px;
+    overflow-x: auto;
+    overflow-y: scroll;
+    border: 1px solid;
+    border-color: #a0a0a0 #fff #fff #a0a0a0;
+    box-shadow: inset 1px 1px #696969, inset -1px -1px #e3e3e3;
+    background: #fff;
+}
+
+/* tree rows: 18 px, 19 px a level, a Vista twisty, the 16 px icon, the selection */
+.pfm-window .pfm-node {
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: 18px;
+    box-sizing: border-box;
+    white-space: nowrap;
+    cursor: default;
+}
+
+.pfm-window .pfm-twisty {
+    position: absolute;
+    top: 1px;
+    width: 16px;
+    height: 16px;
+    margin-left: -18px;
+}
+
+.pfm-window .pfm-twisty.is-closed { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' shape-rendering='crispEdges'%3E%3Cpath d='M6 4l4 4-4 4z' fill='%23fff' stroke='%23a6a6a6'/%3E%3C/svg%3E") no-repeat; }
+.pfm-window .pfm-twisty.is-open { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' shape-rendering='crispEdges'%3E%3Cpath d='M10 6v5H5z' fill='%23595959' stroke='%23262626'/%3E%3C/svg%3E") no-repeat; }
+
+.pfm-window .pfm-node-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin: 0 2px 0 0;
+    background: url('tree.png') calc(var(--i) * -16px) 0 no-repeat;
+}
+
+.pfm-window .pfm-node-name {
+    position: relative;
+    top: -1px;
+    padding: 0 2px;
+    border: 1px solid transparent;
+    line-height: 15px;
+}
+
+.pfm-window .pfm-node.is-selected .pfm-node-name {
+    border-color: #d9d9d9;
+    border-radius: 2px;
+    background: linear-gradient(#fafafa, #e5e5e5);
+}
+
+.pfm-window .pfm-tree:focus-within .pfm-node.is-selected .pfm-node-name {
+    border-color: #84acdd;
+    background: linear-gradient(#f2f9fe, #d6effe);
+}
+
+/* the status bar: an etched line, #f1eded panes 563 / 133 / 85 px with #d7d7d7 edges */
+.pfm-window .pfm-status {
+    display: grid;
+    flex: none;
+    grid-template-columns: 563px 133px 85px 1fr;
+    box-sizing: border-box;
+    height: 23px;
+    margin-top: 0;
+    border-top: 1px solid #919191;
+    border-bottom: 1px solid #fff;
+    box-shadow: inset 0 1px #fff;
+    padding-top: 1px;
+    background: #f1eded;
+}
+
+.pfm-window .pfm-status > span {
+    border-right: 1px solid #d7d7d7;
+}
+
+/* ---- Resource View (wdc.dll UIFILE 1000) ---- */
+
+.pfm-window .pfm-rv {
+    padding: 4px 4px 8px 4px;
+}
+
+/* a section bar: 30 px, the white-to-#a3a3a3 gradient, #595959 left and top, #808080 right and
+   bottom, its title in Segoe UI Bold, the round expand button 9 px from the right */
+.pfm-window .pfm-bar {
+    position: relative;
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+    height: 30px;
+    margin-top: 8px;
+    padding: 0 0 0 6px;
+    border: 1px solid;
+    border-color: #595959 #808080 #808080 #595959;
+    background: linear-gradient(#fff 1px, #fbfbfb 1px, #a3a3a3);
+    /* UIFILE "bar": Segoe UI Bold at the page's 10 pt */
+    font: bold 13px "Segoe UI", Tahoma, sans-serif;
+    cursor: default;
+    white-space: nowrap;
+}
+
+.pfm-window .pfm-bar:first-child {
+    margin-top: 0;
+}
+
+.pfm-window .pfm-bar-title {
+    position: relative;
+    top: -2px;
+    width: 98px;
+    flex: none;
+}
+
+.pfm-window .pfm-bar.is-open + .pfm-sec-body {
+    margin-bottom: 0;
+}
+
+.pfm-window.pfm-window .pfm-bar-btn:not(#_) {
+    position: absolute;
+    right: 8px;
+    top: 3px;
+    width: 22px;
+    height: 22px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-image: none;
+    background: url('expand.png') 0 0 no-repeat;
+    box-shadow: none;
+}
+
+.pfm-window.pfm-window .pfm-bar.is-open .pfm-bar-btn:not(#_) {
+    background-image: url('collapse.png');
+}
+
+.pfm-window .pfm-bar-btn::before,
+.pfm-window .pfm-bar-btn::after {
+    content: none;
+}
+
+/* the level squares (wdc.dll 10100-10110 green, 10200-10210 blue) and the figures (Segoe 8 pt) */
+.pfm-window .pfm-level {
+    position: relative;
+    top: 2px;
+    flex: none;
+    width: 16px;
+    height: 16px;
+    background: url('levels.png') calc(var(--lv, 0) * -16px) 0 no-repeat;
+}
+
+.pfm-window .pfm-level.is-blue {
+    background-position-y: -16px;
+}
+
+.pfm-window .pfm-bar-value {
+    position: relative;
+    top: -2px;
+    flex: none;
+    width: 142px;
+    padding-left: 0;
+    font: 11px "Segoe UI", Tahoma, sans-serif;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pfm-window .pfm-bar-value.is-wide {
+    width: auto;
+}
+
+.pfm-window .pfm-sec-body {
+    border: 1px solid #808080;
+    border-top: 0;
+}
+
+.pfm-window .pfm-sec-body[hidden] {
+    display: none;
+}
+
+/* Resource Overview (UIFILE: drop padding 4 top, graphbox margin 10, 104 px graph, rows padded 2):
+   four graph boxes 138 px apart, the graph 108x100 in a sunken frame, the scale bracket (bitmap
+   10003) beside it from 12 px above */
+.pfm-window .pfm-graphs {
+    display: flex;
+    padding: 4px 0 0 10px;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    background: #fff;
+}
+
+.pfm-window .pfm-graphbox {
+    flex: none;
+    width: 128px;
+    margin-right: 10px;
+}
+
+.pfm-window .pfm-gtop,
+.pfm-window .pfm-gbottom {
+    display: flex;
+    justify-content: space-between;
+    width: 107px;
+    height: 15px;
+    padding: 0 0 2px 2px;
+    box-sizing: content-box;
+    line-height: 15px;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.pfm-window .pfm-gbottom {
+    font-size: 11px;
+}
+
+.pfm-window .pfm-gwrap {
+    position: relative;
+    height: 104px;
+}
+
+.pfm-window .pfm-graph {
+    display: block;
+    width: 108px;
+    height: 100px;
+    border: 1px solid;
+    border-color: #a0a0a0 #fff #fff #a0a0a0;
+    box-shadow: inset 1px 1px #696969, inset -1px -1px #e3e3e3;
+    padding: 1px;
+    background: #000;
+}
+
+.pfm-window .pfm-gscale {
+    position: absolute;
+    left: 111px;
+    top: -12px;
+    width: 8px;
+    height: 125px;
+    background: url('scale.png') no-repeat;
+}
+
+/* the process lists: a report list view, Segoe 8 pt, 185 px high */
+.pfm-window .pfm-list {
+    height: 185px;
+    overflow-x: auto;
+    overflow-y: scroll;
+    background: #fff;
+    font: 11px "Segoe UI", Tahoma, sans-serif;
+}
+
+.pfm-window :is(.pfm-list, .pfm-folder) .pfm-lhead,
+.pfm-window .pfm-list .pfm-row {
+    display: grid;
+    grid-template-columns: var(--cols);
+}
+
+.pfm-window .pfm-lhead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #fff;
+}
+
+.pfm-window.pfm-window .pfm-col:not(#_) {
+    position: relative;
+    box-sizing: border-box;
+    min-width: 0;
+    height: 23px;
+    min-height: 0;
+    margin: 0;
+    padding: 2px 0 0 6px;
+    overflow: hidden;
+    border: 0;
+    border-image: url('/static_images/vista-controls/header-item-normal.png') 0 2 0 1 fill / 0 2px 0 1px stretch;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    color: #000;
+    font: 11px/15px "Segoe UI", Tahoma, sans-serif;
+    text-align: left;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.pfm-window.pfm-window .pfm-col.is-num:not(#_) { text-align: right; padding-right: 6px; }
+.pfm-window.pfm-window .pfm-col.is-sorted:not(#_) { border-image-source: url('/static_images/vista-controls/header-item-sorted.png'); }
+.pfm-window.pfm-window .pfm-col.pfm-col-rest:not(#_) { border-image: url('/static_images/vista-controls/header-item-normal.png') 0 0 0 1 fill / 0 0 0 1px stretch; }
+
+.pfm-window .pfm-col::before,
+.pfm-window .pfm-col::after {
+    content: none;
+}
+
+.pfm-window .pfm-arrow {
+    position: absolute;
+    left: calc(50% - 6px);
+    top: 0;
+    width: 13px;
+    height: 5px;
+    background: url('/static_images/vista-controls/header-sort-arrow.png') 0 0 no-repeat;
+}
+
+.pfm-window .pfm-arrow.is-down {
+    background-position: 0 -5px;
+}
+
+.pfm-window .pfm-row {
+    height: 17px;
+    align-items: center;
+}
+
+.pfm-window .pfm-row > span {
+    overflow: hidden;
+    padding: 0 6px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.pfm-window .pfm-row > span.is-num {
+    text-align: right;
+}
+
+/* Learn More: two columns of links, 28 px rows */
+.pfm-window .pfm-links {
+    display: grid;
+    grid-template-columns: 225px 1fr;
+    padding: 4px 0;
+    background: #fff;
+    font: 11px "Segoe UI", Tahoma, sans-serif;
+}
+
+.pfm-window .pfm-links > span {
+    height: 28px;
+    padding: 6px 15px 0 25px;
+    box-sizing: border-box;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.pfm-window .pfm-links > span:hover {
+    color: #0066cc;
+    text-decoration: underline;
+}
+
+/* ---- Performance Monitor (sysmon.ocx), placed as on the VM: an etched line, the 26 px toolbar
+   over a #646464 rule, the graph canvas, the value boxes 80 px and the legend 10 px above the foot ---- */
+
+.pfm-window .pfm-result:has(.pfm-pm) {
+    overflow-y: hidden;
+    background: #f0f0f0;
+}
+
+.pfm-window .pfm-pm {
+    position: absolute;
+    inset: 0;
+    border-top: 1px solid #a0a0a0;
+    box-shadow: inset 0 1px #fff;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+}
+
+.pfm-window .pfm-pm-toolbar {
+    position: absolute;
+    left: 1px;
+    right: 0;
+    top: 1px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid #646464;
+}
+
+.pfm-window.pfm-window .pfm-pm-tb:not(#_) {
+    position: relative;
+    width: 23px;
+    height: 22px;
+    min-width: 0;
+    min-height: 0;
+    margin: 0 1px 0 0;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    background: none;
+    box-shadow: none;
+}
+
+.pfm-window.pfm-window .pfm-pm-tb.has-drop:not(#_) {
+    width: 33px;
+}
+
+.pfm-window.pfm-window .pfm-pm-tb:hover:not(#_) {
+    border-color: #3c7fb1;
+    background: linear-gradient(#eaf6fd 45%, #bee6fd 55%, #a7d9f5);
+}
+
+.pfm-window.pfm-window .pfm-pm-tb.is-pressed:not(#_) {
+    border-color: #2c628b;
+    background: linear-gradient(#e5f4fc, #c4e5f6 45%, #98d1ef 55%, #68b3db);
+}
+
+.pfm-window .pfm-pm-tb::before,
+.pfm-window .pfm-pm-tb::after {
+    content: none;
+}
+
+.pfm-window .pfm-pm-tb > span {
+    position: absolute;
+    left: 2px;
+    top: 2px;
+    width: 16px;
+    height: 16px;
+    background: url('toolbar-sysmon.png') calc(var(--i) * -16px) 0 no-repeat;
+}
+
+.pfm-window .pfm-pm-tb.has-drop::after {
+    content: '';
+    position: absolute;
+    right: 4px;
+    top: 9px;
+    border: 3px solid transparent;
+    border-top: 3px solid #000;
+}
+
+.pfm-window .pfm-pm-sep {
+    width: 1px;
+    height: 20px;
+    margin: 0 4px;
+    background: #a0a0a0;
+    box-shadow: 1px 0 #fff;
+}
+
+.pfm-window .pfm-pm-canvas {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 29px;
+    bottom: 127px;
+    width: 100%;
+    height: calc(100% - 156px);
+}
+
+.pfm-window .pfm-pm-values {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 80px;
+    height: 38px;
+}
+
+.pfm-window .pfm-pm-values > * {
+    position: absolute;
+    height: 17px;
+    line-height: 15px;
+}
+
+.pfm-window .pfm-pm-values label {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.pfm-window .pfm-pm-box {
+    width: 98px;
+    box-sizing: border-box;
+    padding: 0 3px;
+    border: 1px solid;
+    border-color: #a0a0a0 #fff #fff #a0a0a0;
+    text-align: right;
+}
+
+.pfm-window .pfm-pm-legend {
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: 11px;
+    height: 60px;
+    box-sizing: border-box;
+    border: 1px solid #828790;
+    background: #f0f0f0;
+    overflow: hidden;
+}
+
+.pfm-window .pfm-pm-lhead,
+.pfm-window .pfm-pm-row {
+    display: grid;
+    grid-template-columns: 44px 49px 45px 113px 56px 56px 112px 1fr;
+}
+
+.pfm-window .pfm-pm-lhead {
+    height: 23px;
+    margin-top: 1px;
+    background: #fff;
+}
+
+.pfm-window .pfm-pm-lhead > span {
+    padding: 3px 0 0 6px;
+    border-image: url('/static_images/vista-controls/header-item-normal.png') 0 2 0 1 fill / 0 2px 0 1px stretch;
+    border-style: solid;
+    border-width: 0 2px 0 1px;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.pfm-window .pfm-pm-row {
+    height: 15px;
+    margin-top: 1px;
+    align-items: center;
+}
+
+.pfm-window .pfm-pm-row.is-sel {
+    background: #a0a0a0;
+}
+
+.pfm-window .pfm-pm-row > span {
+    padding-left: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pfm-window .pfm-pm-check {
+    display: block;
+    width: 13px;
+    height: 13px;
+    margin-left: -4px;
+    background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='13' shape-rendering='crispEdges'%3E%3Cpath d='M0 0h13v1H1v12H0zM1 12h12V0h-1v11H1z' fill='%23808080'/%3E%3Cpath d='M3 5h1v1h1v1h1V6h1V5h1V4h1V3h1v3H9v1H8v1H7v1H6v1H5V9H4V8H3z' fill='%23000'/%3E%3C/svg%3E") no-repeat;
+}
+
+.pfm-window .pfm-swatch {
+    display: inline-block;
+    width: 37px;
+    height: 1px;
+    vertical-align: middle;
+    background: #ff0000;
+}
+
+/* Reliability Monitor (relmon.dll): placed as the VM draws it at 800x600 */
+.pfm-window .pfm-result:has(.pfm-rel) {
+    padding: 0;
+    overflow: hidden;
+    background: #f0f0f0;
+}
+
+.pfm-window .pfm-rel {
+    position: absolute;
+    inset: 1px;
+    overflow: hidden;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    color: #000;
+}
+
+/* the snap-in band, 8 px of it above the pane */
+.pfm-window .pfm-rel-band {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -8px;
+    height: 20px;
+    border-bottom: 1px solid #a0a0a0;
+    background: linear-gradient(#fff, #a7a7a7);
+}
+
+.pfm-window .pfm-rel-band span {
+    position: absolute;
+    left: 11px;
+    top: 2px;
+    line-height: 16px;
+    font-weight: bold;
+}
+
+.pfm-window .pfm-rel-head {
+    position: absolute;
+    left: 26px;
+    top: 19px;
+    line-height: 16px;
+    white-space: nowrap;
+}
+
+.pfm-window .pfm-rel-chart {
+    position: absolute;
+    left: 0;
+    top: 40px;
+    height: 238px;
+}
+
+/* the date combo: a classic sunken box and button (the ActiveX is not themed) */
+.pfm-window .pfm-rel-combo {
+    position: absolute;
+    left: 461px;
+    top: 16px;
+    width: 109px;
+    height: 23px;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    border: 1px solid;
+    border-color: #a0a0a0 #fff #fff #a0a0a0;
+    box-shadow: inset 1px 1px #696969, inset -1px -1px #e3e3e3;
+    background: #fff;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    color: #000;
+    text-align: left;
+    outline: none;
+}
+
+.pfm-window .pfm-rel-combo-text {
+    position: absolute;
+    left: 2px;
+    top: 2px;
+    padding: 0 1px;
+    line-height: 17px;
+    white-space: nowrap;
+}
+
+.pfm-window .pfm-rel-combo:focus .pfm-rel-combo-text {
+    background: #3399ff;
+    color: #fff;
+}
+
+.pfm-window .pfm-rel-combo-btn {
+    position: absolute;
+    right: 1px;
+    top: 1px;
+    width: 17px;
+    height: 19px;
+    box-sizing: border-box;
+    border: 1px solid;
+    border-color: #e3e3e3 #696969 #696969 #e3e3e3;
+    box-shadow: inset 1px 1px #fff, inset -1px -1px #a0a0a0;
+    background: #f0f0f0 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4' shape-rendering='crispEdges'%3E%3Cpath d='M0 0h7v1H6v1H5v1H4v1H3V3H2V2H1V1H0z'/%3E%3C/svg%3E") no-repeat 5px 7px;
+}
+
+.pfm-rel-list {
+    position: fixed;
+    width: 109px;
+    box-sizing: border-box;
+    border: 1px solid #000;
+    background: #fff;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    color: #000;
+}
+
+.pfm-rel-list > div {
+    padding-left: 2px;
+    line-height: 15px;
+    white-space: nowrap;
+    cursor: default;
+}
+
+.pfm-rel-list > div.is-hot {
+    background: #3399ff;
+    color: #fff;
+}
+
+/* Select a date...: the themed month calendar (no Today line), 176 x 143 */
+.pfm-rel-cal {
+    position: fixed;
+    width: 176px;
+    height: 143px;
+    box-sizing: border-box;
+    border: 1px solid #979797;
+    background: #fff;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    color: #000;
+    cursor: default;
+}
+
+.pfm-rel-cal > span {
+    position: absolute;
+}
+
+.pfm-rel-cal-title {
+    left: 0;
+    right: 0;
+    top: 10px;
+    line-height: 16px;
+    text-align: center;
+}
+
+.pfm-rel-cal-prev,
+.pfm-rel-cal-next {
+    top: 13px;
+    width: 0;
+    height: 0;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+}
+
+.pfm-rel-cal-prev {
+    left: 8px;
+    border-right: 4px solid #979797;
+}
+
+.pfm-rel-cal-next {
+    left: 162px;
+    border-left: 4px solid #979797;
+}
+
+.pfm-rel-cal-dow,
+.pfm-rel-cal-day {
+    width: 24px;
+    line-height: 15px;
+    text-align: center;
+}
+
+.pfm-rel-cal-dow {
+    top: 32px;
+}
+
+.pfm-rel-cal-rule {
+    left: 6px;
+    top: 47px;
+    width: 163px;
+    height: 1px;
+    background: #f5f5f5;
+}
+
+.pfm-rel-cal-day.is-bold {
+    font-weight: bold;
+}
+
+.pfm-rel-cal-day.is-selected {
+    box-sizing: border-box;
+    border: 1px solid #9adffe;
+    line-height: 13px;
+    background: linear-gradient(#f7fcfe, #d6f0fd);
+    outline: 1px dotted #000;
+    outline-offset: -3px;
+}
+
+/* the System Stability Report (relmon.dll's HTML: 8 pt = 11 px, 9 pt = 12 px, 1 pt = 1 px) */
+.pfm-window .pfm-rel-report {
+    position: absolute;
+    left: 10px;
+    top: 280px;
+    right: 20px;
+    bottom: 20px;
+    overflow-y: auto;
+    background: #f0f0f0;
+}
+
+.pfm-window .pfm-rr-master,
+.pfm-window .pfm-rr-table {
+    table-layout: auto;
+    width: 100%;
+    border-spacing: 0;
+    border-collapse: separate;
+}
+
+.pfm-window .pfm-rr-master td {
+    overflow: visible;
+    white-space: normal;
+    text-overflow: clip;
+    padding: 0;
+    vertical-align: top;
+}
+
+.pfm-window .pfm-rr-master .pfm-rr-title {
+    padding: 4px;
+    border: 1px solid #a0a0a0;
+    border-bottom-color: #fff;
+    background: linear-gradient(#fdfdfd, #a7a7a7);
+    font: bold 11px/13px "Segoe UI", Tahoma, sans-serif;
+}
+
+.pfm-window .pfm-rr-master .pfm-rr-tog {
+    width: 15px;
+    padding-top: 3px;
+    border-left: 1px solid #a0a0a0;
+    border-bottom: 1px solid #a0a0a0;
+    background: #c8c8c8;
+}
+
+.pfm-window .pfm-rr-tog img {
+    display: block;
+}
+
+.pfm-window .pfm-rr-sec,
+.pfm-window .pfm-rr-secbody {
+    width: 100%;
+}
+
+.pfm-window .pfm-rr-sec {
+    border-right: 1px solid #a0a0a0;
+    border-bottom: 1px solid #a0a0a0;
+}
+
+.pfm-window .pfm-rr-sec div {
+    padding: 3px;
+    background: #c8c8c8;
+    font-weight: bold;
+    line-height: 15px;
+}
+
+.pfm-window .pfm-rr-master .pfm-rr-gut {
+    border-left: 1px solid #a0a0a0;
+    border-bottom: 1px solid #a0a0a0;
+    background: #fff;
+}
+
+.pfm-window .pfm-rr-secbody {
+    border-right: 1px solid #a0a0a0;
+    border-bottom: 1px solid #a0a0a0;
+    background: #fff;
+}
+
+.pfm-window .pfm-rr-table {
+    border-right: 1px solid #a0a0a0;
+    border-bottom: 1px solid #a0a0a0;
+}
+
+.pfm-window .pfm-rr-thead td {
+    padding: 0 3px;
+    border: 1px solid #a0a0a0;
+    border-right: 0;
+    background: #f0f0f0;
+    line-height: 15px;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.pfm-window .pfm-rr-row td {
+    padding: 0 4px;
+    border-left: 1px solid #a0a0a0;
+    font-size: 11px;
+    line-height: 13px;
+    vertical-align: middle;
+}
+
+/* a folder's list: MMC's list view, flat #828790 edge, Name 200 px, rows of 19 */
+.pfm-window .pfm-result:has(.pfm-folder) {
+    border-color: #828790;
+    box-shadow: none;
+}
+
+.pfm-window .pfm-folder .pfm-lhead {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+}
+
+.pfm-window .pfm-frow {
+    display: flex;
+    align-items: center;
+    height: 19px;
+    padding-left: 4px;
+    white-space: nowrap;
+}
+
+/* MMC's Action pane (Show/Hide Action Pane) */
+.pfm-window .pfm-actions {
+    flex: none;
+    width: 160px;
+    margin-left: 3px;
+    border: 1px solid #828790;
+    background: #fff;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+}
+
+.pfm-window .pfm-act-head {
+    padding: 3px 6px;
+    background: linear-gradient(#fff, #e5e5e5);
+    border-bottom: 1px solid #c8c8c8;
+    font-weight: bold;
+}
+
+.pfm-window .pfm-act-group {
+    padding: 3px 6px;
+    background: #f1f1f1;
+    font-weight: bold;
+}
+
+.pfm-window .pfm-act {
+    padding: 2px 6px 2px 24px;
+    cursor: pointer;
+}
+
+.pfm-window .pfm-act:hover {
+    color: #0066cc;
+    text-decoration: underline;
+}
+
+/* the rows start 2 px under the header (the VM's) */
+.pfm-window .pfm-list .pfm-lbody {
+    padding-top: 2px;
+}
