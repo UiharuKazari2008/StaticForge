@@ -748,7 +748,8 @@
         const name = row.querySelector('.cpl-vault-name');
         if (!name) return '';
         const first = [...name.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim());
-        return (first ? first.textContent : name.textContent).trim();
+        // an application key's "Persistent" badge runs into its name in the vault's flattened text
+        return (first ? first.textContent : name.textContent).trim().replace(/(\S)Persistent$/, '$1');
     }
 
     /** The row's action buttons: Edit and Delete first, as CardSpace's own order. */
@@ -761,15 +762,49 @@
         return csActions(row).find((b) => !b.disabled && re.test(`${b.dataset.secAction || ''} ${b.textContent}`));
     }
 
+    // Cards from a provider or for an app wear its logo, as CardSpace's Managed cards wear their
+    // issuer's picture (Yukimi: "use the app or provider logos"). Only logos the repo has; a card
+    // without one keeps CardSpace's Personal card picture. Missing: OpenAI, OpenWeather, Exa Search,
+    // RunPod, and the StaticForge MCP agents' application keys.
+    const XAI = '/dist/custom-icons/xAI_Logomark_Dark.png';
+    const DIRECTOR = '/static_images/app_icons/director.png';
+    const SERVICE_LOGOS = [
+        [/^novelai$/i, '/static_images/novelai-round.png'],
+        [/^grok\b|xai/i, XAI],
+        [/^google$/i, '/static_images/vista-gadgets/flowerpot/images/google.png'],
+        [/^tokenrouter$/i, '/dist/custom-icons/tokenrouter-icon.svg']
+    ];
+    // an application key's app, from its name and its client (user agent)
+    const APP_LOGOS = [
+        [/^cursor\b|\bcursor\//i, '/dist/custom-icons/cursor-icon.svg'],
+        [/claude/i, '/dist/custom-icons/claude-icon.svg'],
+        [/DreamscapeDirector/i, DIRECTOR],
+        [/DreamscapeDedicatedAgentClient/i, '/static_images/icon.png'],
+        [/^grok$/i, XAI]
+    ];
+
+    function csLogo(row) {
+        if (row.dataset.cplCardPicture) return row.dataset.cplCardPicture;
+        const kind = csKindOf(row);
+        const name = csName(row);
+        const sub = (row.querySelector('.cpl-vault-sub') || {}).textContent || '';
+        if (kind === 'director') return DIRECTOR;
+        const hit = (list, text) => (list.find(([re]) => re.test(text)) || [])[1] || '';
+        if (kind === 'service') return hit(SERVICE_LOGOS, name);
+        if (kind === 'application') return hit(APP_LOGOS, name) || hit(APP_LOGOS, sub);
+        return '';
+    }
+
     /** A card: the picture in its dark frame, the name under it (the VM's 130 x 106 cell). */
     function csCard(row, extra) {
-        const picture = row.dataset.cplCardPicture || `${CS}/personal-card.png`;
+        const logo = csLogo(row);
+        const picture = logo || `${CS}/personal-card.png`;
         const dot = row.querySelector('.cpl-vault-status');
         // one group holds every card: the tip says which kind it is
         const sub = (row.querySelector('.cpl-vault-sub') || {}).textContent || '';
         const tip = `${CARD_KINDS[csKindOf(row)][1]}${sub ? `: ${sub}` : ''}`;
         return `<button type="button" class="cs-card${extra || ''}" data-cs-key="${esc(row.dataset.cplVaultKey)}" title="${esc(tip)}">
-            <span class="cs-card-pic"><img src="${esc(picture)}" alt="" draggable="false"></span>
+            <span class="cs-card-pic${logo ? ' is-logo' : ''}"><img src="${esc(picture)}" alt="" draggable="false"></span>
             <span class="cs-card-name">${esc(csName(row))}</span>${dot ? `<span class="cs-card-dots">${dot.innerHTML}</span>` : ''}</button>`;
     }
 

@@ -169,6 +169,13 @@
     text-overflow: ellipsis;
 }
 
+/* a Managed card's face: the app's or provider's logo on white in the same frame */
+#dreamscapeCardSpaceModal .cs-card-pic.is-logo img {
+    box-sizing: border-box;
+    padding: 12px 20px;
+    object-fit: contain;
+}
+
 /* the credential's state dots on the picture's corner */
 #dreamscapeCardSpaceModal .cs-card-dots {
     position: absolute;
@@ -418,4 +425,8 @@
 
 #dreamscapeCardSpaceModal .cs-add-item:hover .cs-add-title {
     color: #1370ab;
+}
+
+#dreamscapeCardSpaceModal .cs-details-card .cs-card-pic.is-logo img {
+    padding: 8px 14px;
 }
