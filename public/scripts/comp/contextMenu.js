@@ -757,6 +757,14 @@ class ContextMenuController {
             this.hideMenu();
         });
 
+        // Menu bar tracking: while a title's click menu is open, hovering another title of the
+        // same menu bar (role="menubar") opens that one, as a real menu bar does. The overlay
+        // covers the bar, so hit-test what lies under it.
+        this.overlay.addEventListener('mousemove', (e) => {
+            const title = this._menuBarTitleUnder(e.clientX, e.clientY);
+            if (title) this.showClickMenu(e, title, false);
+        });
+
         // Allow right-click and touch events to pass through the overlay
         this.overlay.addEventListener('contextmenu', (e) => {
             // Prevent browser context menu from appearing
@@ -1183,6 +1191,17 @@ class ContextMenuController {
     showClickMenu(event, target, isTouch = false) {
         if (!target?.dataset?.clickMenu) return;
         this._openMenu(event, target, 'click', isTouch, false);
+    }
+
+    /** Another title in the open click menu's own menu bar, under the point; null otherwise. */
+    _menuBarTitleUnder(x, y) {
+        if (!this.isOpen || this.activeMenuTrigger !== 'click' || !this.currentTarget) return null;
+        const bar = this.currentTarget.closest && this.currentTarget.closest('[role="menubar"]');
+        if (!bar) return null;
+        const hit = document.elementsFromPoint(x, y).find((el) => el !== this.overlay);
+        const title = hit && hit.closest('[data-click-menu]');
+        if (!title || title === this.currentTarget || title.disabled) return null;
+        return title.closest('[role="menubar"]') === bar ? title : null;
     }
 
     _openClickMenuFromPointer(event, target, isTouch = false) {

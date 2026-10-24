@@ -168,6 +168,9 @@
             </div>`;
         doc.body.appendChild(win);
         win.querySelector('.dm-close').addEventListener('click', () => callGlobal('closeModal', win));
+        // attached up front: contextMenu opens them on click, and hovering another title
+        // while one is open switches to it
+        win.querySelectorAll('[data-dm-menu]').forEach(attachMenu);
         win.addEventListener('click', (ev) => {
             const row = ev.target.closest('.dm-row');
             if (row) {
@@ -185,8 +188,6 @@
                     if (sel) openProperties(Number(sel.dataset.cat), Number(sel.dataset.dev));
                 }
             }
-            const menu = ev.target.closest('[data-dm-menu]');
-            if (menu) openMenu(menu, ev);
         });
         win.addEventListener('dblclick', (ev) => {
             const row = ev.target.closest('.dm-row');
@@ -211,7 +212,7 @@
         render();
     }
 
-    function openMenu(btn, ev) {
+    function attachMenu(btn) {
         const cm = root.contextMenu;
         if (!cm) return;
         const items = {
@@ -232,7 +233,6 @@
                 } else if (action === 'dm-about') callGlobal('openAboutMelatoninModal');
             }
         });
-        if (typeof cm.showMenu === 'function') cm.showMenu(ev, btn);
     }
 
     async function refresh() {

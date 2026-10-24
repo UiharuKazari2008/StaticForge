@@ -170,17 +170,12 @@
         wire() {
             const cm = root.contextMenu;
             if (cm) {
+                // items rebuilt on every open (click, or hover from the other title)
                 const lazy = (btn, build) => {
-                    const attach = () => {
-                        cm.detachClickMenuFromElement(btn);
-                        cm.attachClickMenuToElement(btn, {
-                            sections: [{ type: 'list', items: build() }],
-                            onAction: (action) => this.run(action)
-                        });
-                    };
-                    btn.addEventListener('pointerdown', attach, true);
-                    btn.addEventListener('focus', attach);
-                    attach();
+                    cm.attachClickMenuToElement(btn, {
+                        sections: [{ type: 'list', initfn: (section) => { section.items = build(); } }],
+                        onAction: (action) => this.run(action)
+                    });
                 };
                 lazy(this.fileBtn, () => this.fileItems());
                 lazy(this.viewBtn, () => this.viewItems());
