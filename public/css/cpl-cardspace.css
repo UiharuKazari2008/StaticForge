@@ -1,0 +1,421 @@
+/* Dreamscape CardSpace (cplAuthentication.js), laid out as Vista's Windows CardSpace window
+   (icardagt.exe, art from icardres.dll; refs in ~/.cache/vista-vm/cardspace). Client coordinates
+   at the VM's 740 x 514 client: the back orb and title, the white card panel 12 px in with its
+   2 px #c0c0c0 edge, the Tasks column from 588 px, the foot band 43 px tall. */
+
+#dreamscapeCardSpaceModal .cs-client {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    padding: 0 !important;
+    overflow: hidden;
+    background: #f9f9f9 !important;
+    color: #4c4c4c;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+}
+
+/* 7.css gives every button a face and hover layers: CardSpace's own buttons have none */
+#dreamscapeCardSpaceModal :is(.cs-card, .cs-task, .cs-back, .cs-add-item, .cpl-vault-actions button)::before,
+#dreamscapeCardSpaceModal :is(.cs-card, .cs-task, .cs-back, .cs-add-item, .cpl-vault-actions button)::after {
+    content: none;
+}
+
+#dreamscapeCardSpaceModal .cs-client button {
+    font: inherit;
+}
+
+/* the back orb: the arrow (413, 25 px states) on its dimple (412) */
+#dreamscapeCardSpaceModal .cs-back {
+    position: absolute;
+    left: 10px;
+    top: 12px;
+    width: 57px;
+    height: 28px;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: url('/static_images/vista-cardspace/back.png') 1px 1px / 25px 100px no-repeat, url('/static_images/vista-cardspace/back-dimple.png') 19px 4px no-repeat;
+    box-shadow: none;
+}
+
+#dreamscapeCardSpaceModal .cs-back:hover:not(:disabled) { background-position: 1px -24px, 19px 4px; }
+#dreamscapeCardSpaceModal .cs-back:active:not(:disabled) { background-position: 1px -49px, 19px 4px; }
+#dreamscapeCardSpaceModal .cs-back:disabled { background-position: 1px -74px, 19px 4px; }
+
+#dreamscapeCardSpaceModal .cs-title {
+    position: absolute;
+    left: 80px;
+    top: 14px;
+    color: #1370ab;
+    font-size: 16px;
+    line-height: 22px;
+    white-space: nowrap;
+}
+
+#dreamscapeCardSpaceModal .cs-desc {
+    position: absolute;
+    left: 12px;
+    top: 52px;
+    width: 545px;
+    line-height: 16px;
+}
+
+#dreamscapeCardSpaceModal .cs-panel {
+    position: absolute;
+    left: 12px;
+    top: 112px;
+    width: 572px;
+    bottom: 52px;
+    box-sizing: border-box;
+    border: 2px solid #c0c0c0;
+    background: #fff;
+    overflow: hidden;
+}
+
+#dreamscapeCardSpaceModal .cs-panel > div {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+#dreamscapeCardSpaceModal[data-cs-view="home"] .cs-panel > :not(.cs-home),
+#dreamscapeCardSpaceModal[data-cs-view="details"] .cs-panel > :not(.cs-details),
+#dreamscapeCardSpaceModal[data-cs-view="add"] .cs-panel > :not(.cs-add),
+#dreamscapeCardSpaceModal .cs-panel > .cs-host {
+    display: none;
+}
+
+/* "Your cards:" and its rule */
+#dreamscapeCardSpaceModal .cs-group-label {
+    display: flex;
+    align-items: center;
+    height: 16px;
+    margin: 3px 10px 0 13px;
+    color: #003399;
+    line-height: 16px;
+}
+
+#dreamscapeCardSpaceModal .cs-group-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    margin-left: 7px;
+    background: #dee3ef;
+}
+
+#dreamscapeCardSpaceModal .cs-cards {
+    display: flex;
+    flex-wrap: wrap;
+    margin: 2px 0 4px;
+}
+
+/* a card: the 130 x 106 cell, CardSpace's hover / selected frames (407, 408) as 9-slices */
+#dreamscapeCardSpaceModal .cs-card {
+    position: relative;
+    width: 130px;
+    height: 106px;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 3px solid transparent;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    box-sizing: border-box;
+    text-align: left;
+    cursor: var(--c-default, default);
+}
+
+#dreamscapeCardSpaceModal .cs-card:hover { border-image: url('/static_images/vista-cardspace/tile-hot.png') 3 fill / 3px stretch; }
+#dreamscapeCardSpaceModal .cs-card.is-selected { border-image: url('/static_images/vista-cardspace/tile-selected.png') 3 fill / 3px stretch; }
+#dreamscapeCardSpaceModal .cs-card.is-selected:hover { border-image: url('/static_images/vista-cardspace/tile-selected-hot.png') 3 fill / 3px stretch; }
+
+#dreamscapeCardSpaceModal .cs-card-pic {
+    position: absolute;
+    left: 2px;
+    top: 2px;
+    width: 120px;
+    height: 80px;
+    box-sizing: border-box;
+    border: 1px solid #111;
+    border-radius: 3px;
+    overflow: hidden;
+    background: #fff;
+}
+
+#dreamscapeCardSpaceModal .cs-card-pic img {
+    display: block;
+    width: 120px;
+    height: 80px;
+    margin: -1px;
+    object-fit: cover;
+}
+
+#dreamscapeCardSpaceModal .cs-card-name {
+    position: absolute;
+    left: 5px;
+    top: 86px;
+    right: 4px;
+    overflow: hidden;
+    color: #333;
+    font-weight: bold;
+    font-size: 11px;
+    line-height: 14px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* the credential's state dots on the picture's corner */
+#dreamscapeCardSpaceModal .cs-card-dots {
+    position: absolute;
+    right: 9px;
+    top: 7px;
+    display: flex;
+    gap: 2px;
+}
+
+/* Add a card (405: the blank card and its star) */
+#dreamscapeCardSpaceModal .cs-card-add-face {
+    position: absolute;
+    left: 2px;
+    top: -1px;
+    width: 116px;
+    height: 80px;
+    background: url('/static_images/vista-cardspace/add-card.png') no-repeat;
+}
+
+#dreamscapeCardSpaceModal .cs-card-add-face span {
+    position: absolute;
+    left: 10px;
+    right: 0;
+    top: 45px;
+    color: #333;
+    font-weight: bold;
+    font-size: 13px;
+    text-align: center;
+}
+
+/* Card Details: the card in CardSpace's blue frame (410), what it holds on the right */
+#dreamscapeCardSpaceModal .cs-details-card {
+    position: absolute;
+    left: 5px;
+    top: 5px;
+    width: 104px;
+}
+
+#dreamscapeCardSpaceModal .cs-details-card .cs-card {
+    width: 104px;
+    height: 90px;
+    border-image: url('/static_images/vista-cardspace/tile-details.png') 4 fill / 4px stretch;
+}
+
+#dreamscapeCardSpaceModal .cs-details-card .cs-card-pic {
+    left: 1px;
+    top: 1px;
+    width: 94px;
+    height: 63px;
+}
+
+#dreamscapeCardSpaceModal .cs-details-card .cs-card-pic img {
+    width: 94px;
+    height: 63px;
+}
+
+#dreamscapeCardSpaceModal .cs-details-card .cs-card-name {
+    top: 66px;
+    left: 4px;
+}
+
+#dreamscapeCardSpaceModal .cs-details-kind {
+    margin: 16px 0 0 3px;
+}
+
+#dreamscapeCardSpaceModal .cs-details-info {
+    position: absolute;
+    left: 120px;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    overflow-y: auto;
+}
+
+#dreamscapeCardSpaceModal .cs-details-info .cs-group-label {
+    margin: 10px 10px 4px 2px;
+}
+
+/* the vault row's fields as CardSpace's label / value lines */
+#dreamscapeCardSpaceModal .cs-details-fields .cpl-vault-details {
+    display: block !important;
+    margin: 0;
+    padding: 0 10px 8px 19px;
+    border: 0;
+    background: none;
+}
+
+#dreamscapeCardSpaceModal .cs-details-fields .cpl-vault-field {
+    display: grid;
+    grid-template-columns: 100px 1fr;
+    align-items: start;
+    min-height: 26px;
+    margin: 0;
+}
+
+#dreamscapeCardSpaceModal .cs-details-fields .cpl-vault-label {
+    padding-top: 5px;
+    color: #000;
+    font-weight: normal;
+}
+
+#dreamscapeCardSpaceModal .cs-details-fields .cpl-vault-value {
+    padding-top: 5px;
+    word-break: break-word;
+}
+
+/* Tasks: links 20 px apart, #b4b4b4 rules between the groups */
+#dreamscapeCardSpaceModal .cs-tasks {
+    position: absolute;
+    left: 588px;
+    top: 0;
+    right: 0;
+    bottom: 44px;
+    overflow: hidden;
+}
+
+#dreamscapeCardSpaceModal .cs-tasks-head {
+    margin: 20px 0 0 10px;
+    line-height: 16px;
+}
+
+#dreamscapeCardSpaceModal .cs-tasks-list {
+    margin: 10px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+#dreamscapeCardSpaceModal .cs-tasks-list .cs-sep {
+    height: 1px;
+    margin: 4px 0 5px 8px;
+    background: #b4b4b4;
+}
+
+#dreamscapeCardSpaceModal .cs-tasks-list :is(.cs-task, .cpl-vault-actions button) {
+    display: block;
+    min-width: 0;
+    min-height: 0;
+    margin: 0 0 0 12px;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    max-width: 136px;
+    padding: 2px 0;
+    color: #0066cc;
+    line-height: 16px;
+    text-align: left;
+    cursor: pointer;
+}
+
+#dreamscapeCardSpaceModal .cs-tasks-list :is(.cs-task, .cpl-vault-actions button):hover:not(:disabled) {
+    color: #3399ff;
+    text-decoration: underline;
+}
+
+#dreamscapeCardSpaceModal .cs-tasks-list :is(.cs-task, .cpl-vault-actions button):disabled {
+    color: #7e859c;
+    cursor: default;
+}
+
+#dreamscapeCardSpaceModal .cs-tasks-list .cpl-vault-actions {
+    display: block;
+    margin: 0;
+    padding: 0;
+}
+
+#dreamscapeCardSpaceModal .cs-tasks-list .cpl-vault-actions button i,
+#dreamscapeCardSpaceModal .cs-tasks-list .cpl-vault-actions button img {
+    display: none;
+}
+
+/* the foot band: Preview / Edit 17 px in from the panel's right edge */
+#dreamscapeCardSpaceModal .cs-foot {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 43px;
+    border-top: 1px solid #c0c0c0;
+    background: #f0f0f0;
+}
+
+#dreamscapeCardSpaceModal .cs-foot-btn {
+    position: absolute;
+    top: 10px;
+    right: 173px;
+    width: 86px;
+    height: 22px;
+}
+
+#dreamscapeCardSpaceModal .cs-foot-btn.cs-foot-save {
+    right: 270px;
+}
+
+/* Add a card: a green arrow per kind, the hot one in a light box */
+#dreamscapeCardSpaceModal .cs-add {
+    padding: 28px 0 0 28px;
+}
+
+#dreamscapeCardSpaceModal .cs-add-item {
+    position: relative;
+    display: block;
+    width: 512px;
+    min-width: 0;
+    min-height: 0;
+    margin: 0 0 5px;
+    padding: 6px 14px 8px 33px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    background: none;
+    box-shadow: none;
+    text-align: left;
+    cursor: pointer;
+}
+
+#dreamscapeCardSpaceModal .cs-add-item:hover {
+    border-color: #c8c8c8;
+    background: linear-gradient(#fefefe, #f2f2f2);
+}
+
+#dreamscapeCardSpaceModal .cs-add-arrow {
+    position: absolute;
+    left: 7px;
+    top: 7px;
+    width: 20px;
+    height: 20px;
+    object-fit: none;
+    object-position: 0 0;
+}
+
+/* a kind's title and text are black until the pointer is on it (the VM's Install a Managed card) */
+#dreamscapeCardSpaceModal .cs-add-title {
+    display: block;
+    color: #000;
+    font-size: 15px;
+    line-height: 20px;
+}
+
+#dreamscapeCardSpaceModal .cs-add-text {
+    display: block;
+    color: #000;
+    line-height: 16px;
+}
+
+#dreamscapeCardSpaceModal .cs-add-item:hover :is(.cs-add-title, .cs-add-text) {
+    color: #0033cc;
+}
+
+#dreamscapeCardSpaceModal .cs-add-item:hover .cs-add-title {
+    color: #1370ab;
+}

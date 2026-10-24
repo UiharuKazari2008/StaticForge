@@ -72,10 +72,16 @@ assert.ok(sec.includes("if (view === 'auth' && !host.cplAuthentication && securi
 assert.ok(/function openSecurityCenterDsap\(view\) \{\s*if \(securityDsapNormalizeView\(view\) === 'auth' && securityDsapOpenAuthInControlPanel\(\)\) return;/.test(sec));
 const auth = read('public/scripts/comp/cplAuthentication.js');
 assert.ok(auth.includes('driver = Object.create(securityDsapDriver)') && auth.includes("getPathSegments: () => ['auth']"), 'the page runs its own driver on the auth view');
-assert.ok(auth.includes("name: 'Dreamscape Services'") && auth.includes("title: () => 'Dreamscape Services'"), 'the page is Dreamscape Services');
-assert.ok(auth.includes('Custom Model Providers (Director)') && auth.includes('director_custom_providers_get'), 'Dreamscape Services lists custom Director providers');
+assert.ok(auth.includes("name: 'Dreamscape CardSpace'") && auth.includes("title: () => 'Dreamscape CardSpace'"), 'the item is Dreamscape CardSpace');
+assert.ok(auth.includes('open: () => { void openCardSpace(); }') && auth.includes("win.id = 'dreamscapeCardSpaceModal'"), 'the item opens its own window, as Windows CardSpace');
+assert.ok(auth.includes("'Select a card to preview'") && auth.includes("'Card Details'") && auth.includes("'Add a card'"), 'the window has CardSpace\'s three views');
+assert.ok(auth.includes('Custom Model Providers (Director)') && auth.includes('director_custom_providers_get'), 'Dreamscape CardSpace lists custom Director providers');
+for (const f of ['personal-card.png', 'add-card.png', 'tile-hot.png', 'tile-selected.png', 'tile-details.png', 'back.png', 'back-dimple.png', 'arrow.png', 'cardspace-16.png']) {
+    assert.ok(fs.existsSync(path.join(ROOT, 'public/static_images/vista-cardspace', f)), f);
+}
+assert.ok(read('public/scripts/comp/featureLoader.js').includes("'css/cpl-cardspace.css'"), 'the window\'s styles load with Control Panel');
 assert.ok(auth.includes("image: '/static_images/vista-cpl/cardspace-32.png'"), 'home icon is CardSpace at 32');
-assert.ok(read('public/scripts/comp/windowsDefender.js').includes("toolItem('authentication', 'cardspace-48.png', 'Dreamscape Services'"), 'Defender link uses the 48 px CardSpace icon');
+assert.ok(read('public/scripts/comp/windowsDefender.js').includes("toolItem('authentication', 'cardspace-48.png', 'Dreamscape CardSpace'"), 'Defender link uses the 48 px CardSpace icon');
 assert.ok(read('public/css/vista-glass-controls.css').includes('vista-icons/cardspace-16.png') && read('public/css/vista-glass-controls.css').includes('vista-icons/cardspace-32.png'), 'wallet tray uses the 16 and 32 CardSpace frames');
 for (const f of ['vista-cpl/cardspace-32.png', 'vista-cpl/cardspace-48.png', 'vista-icons/cardspace-16.png', 'vista-icons/cardspace-32.png']) {
     assert.ok(fs.existsSync(path.join(ROOT, 'public/static_images', f)), f);

@@ -403,7 +403,7 @@
                 <div class="cpl-task-group cpl-task-group--see-also">
                     <h3 class="cpl-task-heading">See also</h3>
                     <ul class="cpl-task-list">
-                        ${cpl.taskLinkHtml('Dreamscape CardSpace', 'nav', 'authentication')}
+                        ${cpl.taskLinkHtml('Dreamscape CardSpace', 'item', 'authentication')}
                     </ul>
                 </div>`,
             body: () => '<div class="cpl-ua-page"></div>',

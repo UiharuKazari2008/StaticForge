@@ -322,6 +322,7 @@
                 const key = `${spec.body}:${cells[0].textContent.trim() || index}`;
                 const row = document.createElement('div');
                 row.className = 'cpl-vault-row';
+                row.dataset.cplVaultKey = key;
                 row.classList.toggle('is-open', open.has(key));
                 if (tr.className) row.dataset.state = tr.className;
                 const line = document.createElement('button');
@@ -462,6 +463,9 @@
         customProviderRows.forEach((row) => {
             const block = document.createElement('div');
             block.className = 'cpl-vault-row' + (row._open ? ' is-open' : '');
+            block.dataset.cplVaultKey = `custom:${row.id || ''}`;
+            // the provider's picture is its card's picture in CardSpace
+            if (row.logo) block.dataset.cplCardPicture = row.logo;
             const line = document.createElement('button');
             line.type = 'button';
             line.className = 'cpl-vault-line';
@@ -642,6 +646,7 @@
             block.append(line, details);
             list.appendChild(block);
         });
+        csRefresh();
     }
 
     function customProviderPayload(resp) {
@@ -692,6 +697,336 @@
         });
     }
 
+    // ---- the window: Vista's Windows CardSpace (icardagt.exe, icardres.dll; measured on the VM) ----
+    //
+    // Windows CardSpace is a window of its own (Control Panel only starts it). Its three views:
+    //   home      "Select a card to preview": a card per credential in a group per kind, an Add a
+    //             card tile, Tasks on the right, Preview at the foot
+    //   details   "Card Details": the card on the left, what it holds on the right (the vault row's
+    //             own details, moved in with their handlers), its actions as tasks, Edit / Save
+    //   add       "Add a card": a green-arrow entry per kind that can be added
+    // The vault (above) still builds the rows inside the window's hidden host; the views read it.
+
+    const CS = '/static_images/vista-cardspace';
+    const CARD_KINDS = {
+        director: ['Director accounts', 'Director Account'],
+        service: ['Service keys', 'Service Key'],
+        application: ['Application keys', 'Application Key'],
+        'custom-models': ['Custom model providers', 'Custom Model Provider']
+    };
+    let win = null;
+    let csView = 'home';
+    let csSel = null;
+    let csMoved = null;
+    let csTimer = 0;
+    let csObserver = null;
+
+    function csEl(sel) {
+        return win ? win.querySelector(sel) : null;
+    }
+
+    /** The section a vault row belongs to (its list's head, or the custom providers' list). */
+    function csKindOf(row) {
+        const list = row.closest('.cpl-vault-list');
+        if (!list) return 'director';
+        if (list.id === 'cplCustomProviderList') return 'custom-models';
+        const body = list.dataset.cplVaultFor || '';
+        if (/Cursor/.test(body)) return 'director';
+        if (/Keychain/.test(body)) return 'service';
+        return 'application';
+    }
+
+    function csRows() {
+        return hostEl ? [...hostEl.querySelectorAll('.cpl-vault-row[data-cpl-vault-key]')] : [];
+    }
+
+    function csRow(key) {
+        return csRows().find((r) => r.dataset.cplVaultKey === key) || null;
+    }
+
+    function csName(row) {
+        const name = row.querySelector('.cpl-vault-name');
+        if (!name) return '';
+        const first = [...name.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim());
+        return (first ? first.textContent : name.textContent).trim();
+    }
+
+    /** The row's action buttons: Edit and Delete first, as CardSpace's own order. */
+    function csActions(row) {
+        const holder = (csMoved && csMoved.row === row) ? csMoved.actions : row.querySelector('.cpl-vault-actions');
+        return holder ? [...holder.querySelectorAll('button')] : [];
+    }
+
+    function csFind(row, re) {
+        return csActions(row).find((b) => !b.disabled && re.test(`${b.dataset.secAction || ''} ${b.textContent}`));
+    }
+
+    /** A card: the picture in its dark frame, the name under it (the VM's 130 x 106 cell). */
+    function csCard(row, extra) {
+        const picture = row.dataset.cplCardPicture || `${CS}/personal-card.png`;
+        const dot = row.querySelector('.cpl-vault-status');
+        return `<button type="button" class="cs-card${extra || ''}" data-cs-key="${esc(row.dataset.cplVaultKey)}" title="${esc((row.querySelector('.cpl-vault-sub') || {}).textContent || '')}">
+            <span class="cs-card-pic"><img src="${esc(picture)}" alt="" draggable="false"></span>
+            <span class="cs-card-name">${esc(csName(row))}</span>${dot ? `<span class="cs-card-dots">${dot.innerHTML}</span>` : ''}</button>`;
+    }
+
+    function csRenderHome() {
+        const groups = Object.keys(CARD_KINDS).map((kind) => {
+            const rows = csRows().filter((r) => csKindOf(r) === kind);
+            if (!rows.length) return '';
+            return `<div class="cs-group"><div class="cs-group-label"><span>${esc(CARD_KINDS[kind][0])}:</span></div>
+                <div class="cs-cards">${rows.map((r) => csCard(r, r.dataset.cplVaultKey === csSel ? ' is-selected' : '')).join('')}</div></div>`;
+        }).join('');
+        csEl('.cs-home').innerHTML = `${groups}<div class="cs-group"><div class="cs-cards"><button type="button" class="cs-card cs-card-add" data-cs-go="add"><span class="cs-card-add-face"><span>Add a card</span></span></button></div></div>`;
+    }
+
+    function csTask(label, attrs, enabled) {
+        return `<li><button type="button" class="cs-task"${enabled === false ? ' disabled' : ''} ${attrs || ''}>${esc(label)}</button></li>`;
+    }
+
+    function csRenderTasks() {
+        const list = csEl('.cs-tasks-list');
+        const row = csSel && csRow(csSel);
+        if (csView === 'details') {
+            list.innerHTML = '<li class="cs-tasks-moved"></li><li class="cs-sep"></li>' + csTask('Help', 'data-cs-task="help"');
+            const holder = list.querySelector('.cs-tasks-moved');
+            if (csMoved && csMoved.actions) holder.appendChild(csMoved.actions);
+            return;
+        }
+        if (csView === 'add') {
+            list.innerHTML = csTask('What type of card should I add?', 'data-cs-task="help"') + csTask('Help', 'data-cs-task="help"');
+            return;
+        }
+        const del = row && csFind(row, /delete|revoke|deny/i);
+        const has = (id) => !!(hostEl && hostEl.querySelector(`#${id}`));
+        list.innerHTML = csTask('Duplicate card', '', false) + csTask('Delete card', 'data-cs-task="delete"', !!del)
+            + '<li class="cs-sep"></li>'
+            + csTask('Add a card', 'data-cs-go="add"')
+            + csTask('Save key changes', 'data-cs-click="secKeychainSave"', has('secKeychainSave'))
+            + csTask('View the request log', 'data-cs-click="secAppkeysLogBtn"', has('secAppkeysLogBtn'))
+            + csTask('Preferences', 'data-cs-task="preferences"')
+            + '<li class="cs-sep"></li>'
+            + csTask('Delete all cards', '', false)
+            + '<li class="cs-sep"></li>'
+            + csTask('Help', 'data-cs-task="help"');
+    }
+
+    function csRenderFoot() {
+        const foot = csEl('.cs-foot');
+        if (csView === 'home') {
+            foot.innerHTML = `<button type="button" class="tbp-button cs-foot-btn" data-dialog-primary="1" data-cs-go="details"${csSel && csRow(csSel) ? '' : ' disabled'}>Preview</button>`;
+        } else if (csView === 'details') {
+            const row = csSel && csRow(csSel);
+            const save = row && csFind(row, /^\s*save\s*$/i);
+            const edit = row && csFind(row, /edit/i);
+            foot.innerHTML = save
+                ? '<button type="button" class="tbp-button cs-foot-btn cs-foot-save" data-dialog-primary="1" data-cs-task="save">Save</button><button type="button" class="tbp-button cs-foot-btn" data-cs-go="home">Cancel</button>'
+                : (edit ? '<button type="button" class="tbp-button cs-foot-btn" data-dialog-primary="1" data-cs-task="edit">Edit</button>' : '');
+        } else foot.innerHTML = '';
+    }
+
+    /** Put the details view's borrowed nodes back into their row. */
+    function csPutBack() {
+        if (!csMoved) return;
+        const { row, details, actions } = csMoved;
+        csMoved = null;
+        if (!row.isConnected) return;
+        if (actions && details) details.appendChild(actions);
+        if (details) row.appendChild(details);
+    }
+
+    function csRenderDetails() {
+        const row = csSel && csRow(csSel);
+        const pane = csEl('.cs-details');
+        if (!row) { csGo('home'); return; }
+        if (!csMoved || csMoved.row !== row) {
+            csPutBack();
+            const details = row.querySelector('.cpl-vault-details');
+            const actions = details && details.querySelector('.cpl-vault-actions');
+            csMoved = { row, details, actions };
+        }
+        const kind = csKindOf(row);
+        pane.innerHTML = `<div class="cs-details-card">${csCard(row, ' is-details')}<div class="cs-details-kind">${esc(CARD_KINDS[kind][1])}</div></div>
+            <div class="cs-details-info"><div class="cs-group-label"><span>Information in this card:</span></div><div class="cs-details-fields"></div></div>`;
+        if (csMoved.details) pane.querySelector('.cs-details-fields').appendChild(csMoved.details);
+    }
+
+    const CS_TEXT = {
+        home: ['Select a card to preview', 'To see or edit card data before you send it, select a card, and then click Preview. To create a new card, click Add a card.'],
+        details: ['Card Details', 'This card is kept on the Dreamscape server. To change the card data, use the tasks on the right or click Edit.'],
+        add: ['Add a card', 'Select the type of card you want to add.']
+    };
+
+    function csRender() {
+        if (!win) return;
+        win.dataset.csView = csView;
+        csEl('.cs-title').textContent = CS_TEXT[csView][0];
+        csEl('.cs-desc').textContent = CS_TEXT[csView][1];
+        csEl('.cs-back').disabled = csView === 'home';
+        if (csView === 'home') { csPutBack(); csRenderHome(); }
+        if (csView === 'details') csRenderDetails();
+        csRenderTasks();
+        csRenderFoot();
+    }
+
+    function csGo(next) {
+        if (next === 'details' && !(csSel && csRow(csSel))) return;
+        if (next !== 'details') csPutBack();
+        csView = next;
+        csRender();
+    }
+
+    /** The vault changed under the window (the driver re-rendered, a provider was saved). */
+    function csRefresh() {
+        if (!win || csTimer) return;
+        csTimer = setTimeout(() => {
+            csTimer = 0;
+            if (csView === 'details') {
+                const row = csSel && csRow(csSel);
+                if (!row) { csGo('home'); return; }
+                if (csMoved && csMoved.row === row && row.isConnected) { csRenderTasks(); csRenderFoot(); return; }
+            }
+            csRender();
+        }, 0);
+    }
+
+    /** Add a card's entries: the vault's own add buttons. */
+    const CS_ADD = [
+        ['secCursorAccountsAddBtn', 'Add a Director account', 'Director accounts are the Cursor profiles the Director runs Wren and Xi on. Add one to sign in with another profile or to share the work between two.'],
+        ['secAppkeysCreateBtn', 'Create an application key', 'Application keys let programs reach Dreamscape on your behalf. Each key has its own name and can be revoked at any time.'],
+        ['custom-provider', 'Add a custom model provider', 'Custom model providers give the Director another model host: its address, its key and the model it uses by default.']
+    ];
+
+    function csRenderAdd() {
+        csEl('.cs-add').innerHTML = CS_ADD.map(([id, title, text]) => `<button type="button" class="cs-add-item" data-cs-add="${esc(id)}">
+            <img src="${CS}/arrow.png" alt="" class="cs-add-arrow"><span class="cs-add-title">${esc(title)}</span><span class="cs-add-text">${esc(text)}</span></button>`).join('');
+    }
+
+    function csAdd(id) {
+        if (id === 'custom-provider') {
+            const add = hostEl.querySelector('#cplVault-custom-models .cpl-vault-link');
+            if (add) add.click();
+            setTimeout(() => {
+                const fresh = csRow('custom:');
+                if (fresh) { csSel = fresh.dataset.cplVaultKey; csGo('details'); } else csGo('home');
+            }, 0);
+            return;
+        }
+        const btn = hostEl.querySelector(`#${id}`);
+        csGo('home');
+        if (btn) btn.click();
+    }
+
+    function csWire() {
+        win.addEventListener('click', (ev) => {
+            const t = ev.target;
+            const card = t.closest('.cs-card[data-cs-key]');
+            if (card && csView === 'home') {
+                csSel = card.dataset.csKey;
+                win.querySelectorAll('.cs-home .cs-card.is-selected').forEach((c) => c.classList.remove('is-selected'));
+                card.classList.add('is-selected');
+                csRenderTasks();
+                csRenderFoot();
+                return;
+            }
+            const go = t.closest('[data-cs-go]');
+            if (go && !go.disabled) { csGo(go.dataset.csGo); return; }
+            if (t.closest('.cs-back')) { csGo('home'); return; }
+            const add = t.closest('[data-cs-add]');
+            if (add) { csAdd(add.dataset.csAdd); return; }
+            const click = t.closest('[data-cs-click]');
+            if (click && !click.disabled) { const b = hostEl.querySelector(`#${click.dataset.csClick}`); if (b) b.click(); return; }
+            const task = t.closest('[data-cs-task]');
+            if (task && !task.disabled) {
+                const row = csSel && csRow(csSel);
+                const which = task.dataset.csTask;
+                if (which === 'help') { if (typeof root.openHelpAndSupport === 'function') root.openHelpAndSupport('cardspace'); return; }
+                if (which === 'preferences') { if (typeof openDsapInGrimoire === 'function') openDsapInGrimoire(`dsap://${SECURITY_URL}/`); return; }
+                const btn = row && (which === 'delete' ? csFind(row, /delete|revoke|deny/i) : which === 'save' ? csFind(row, /^\s*save\s*$/i) : csFind(row, /edit/i));
+                if (btn) btn.click();
+            }
+        });
+        win.addEventListener('dblclick', (ev) => {
+            const card = ev.target.closest('.cs-home .cs-card[data-cs-key]');
+            if (card) { csSel = card.dataset.csKey; csGo('details'); }
+        });
+        win.querySelector('.cs-close').addEventListener('click', () => {
+            if (typeof root.closeModal === 'function') root.closeModal(win);
+            csClose();
+        });
+    }
+
+    function csBuild() {
+        win = document.createElement('div');
+        win.id = 'dreamscapeCardSpaceModal';
+        win.className = 'modal hidden resizeable-window cs-window';
+        win.dataset.windowIdentifier = 'dreamscapeCardSpace';
+        win.dataset.windowClient = 'light';
+        win.dataset.windowDefaultWidth = '756';
+        win.dataset.windowDefaultHeight = '550';
+        win.dataset.windowMinWidth = '640';
+        win.dataset.windowMinHeight = '420';
+        win.innerHTML = `
+            <div class="modal-window-title"><div class="modal-window-title-main"><img class="icon-image" src="${CS}/cardspace-16.png" alt=""><span>Dreamscape CardSpace</span></div></div>
+            <div class="modal-focus-overlay"></div>
+            <div class="modal-window-controls">
+                <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize"><i class="fa-regular fa-window-minimize"></i></button>
+                <button type="button" class="btn-secondary btn-small modal-work-area-maximize" title="Maximize"><i class="fa-regular fa-window-maximize"></i></button>
+                <button type="button" class="btn-danger close-btn btn-small cs-close" title="Close"><i class="fa-regular fa-xmark-large"></i></button>
+            </div>
+            <div class="modal-content win7 tbp-client cs-client">
+                <button type="button" class="cs-back" title="Back" disabled></button>
+                <div class="cs-title"></div>
+                <div class="cs-desc"></div>
+                <div class="cs-panel">
+                    <div class="cs-home"></div>
+                    <div class="cs-details"></div>
+                    <div class="cs-add"></div>
+                    <div class="cs-host cpl-auth-host"></div>
+                </div>
+                <div class="cs-tasks"><div class="cs-tasks-head">Tasks</div><ul class="cs-tasks-list"></ul></div>
+                <div class="cs-foot"></div>
+            </div>`;
+        document.body.appendChild(win);
+        csWire();
+        csRenderAdd();
+    }
+
+    function csClose() {
+        csPutBack();
+        if (csObserver) { csObserver.disconnect(); csObserver = null; }
+        unmount();
+        csSel = null;
+        csView = 'home';
+    }
+
+    /** Open Dreamscape CardSpace (from Control Panel, Melaton Defender, Security Center links). */
+    async function openCardSpace(section) {
+        if (typeof document === 'undefined') return false;
+        if (!win) csBuild();
+        const wasOpen = !win.classList.contains('hidden') && !!hostEl;
+        // closed some other way (the taskbar's Close): let go of the old copy first
+        if (!wasOpen && hostEl) csClose();
+        if (typeof root.openModal === 'function') root.openModal(win); else win.classList.remove('hidden');
+        if (typeof root.bringModalToFront === 'function') root.bringModalToFront(win);
+        if (!wasOpen) {
+            csView = 'home';
+            csSel = null;
+            csRender();
+            await mount(win);
+            if (!hostEl) return true;
+            if (csObserver) csObserver.disconnect();
+            csObserver = new MutationObserver(csRefresh);
+            csObserver.observe(hostEl, { childList: true, subtree: true });
+            csRender();
+        }
+        if (section) {
+            const first = csRows().find((r) => csKindOf(r) === section);
+            if (first) { csSel = first.dataset.cplVaultKey; csRender(); }
+        }
+        return true;
+    }
+
     // ---- the page ----
 
     async function mount(main) {
@@ -736,10 +1071,6 @@
         hostEl = null;
     }
 
-    function scrollToSection(id) {
-        const target = hostEl && hostEl.querySelector(`#cplVault-${id}`);
-        if (target) target.scrollIntoView({ block: 'start', behavior: 'smooth' });
-    }
 
     function register() {
         if (registered) return true;
@@ -751,50 +1082,25 @@
             name: 'Dreamscape CardSpace',
             image: '/static_images/vista-cpl/cardspace-32.png',
             description: 'The accounts and keys Dreamscape signs in with, and the keys programs use to reach it.',
-            open: () => cpl.open('authentication')
+            // as Windows CardSpace: Control Panel starts its own window
+            open: () => { void openCardSpace(); }
         });
+        // old links to the page ('nav', 'authentication') open the window and leave Control Panel where it was
         cpl.registerPage('authentication', {
             title: () => 'Dreamscape CardSpace',
-            tasks: () => `
-                <div class="cpl-task-group">
-                    <h3 class="cpl-task-heading">Tasks</h3>
-                    <ul class="cpl-task-list">
-                        ${VAULTS.map((v) => `<li><button type="button" class="cpl-link" data-cpl-auth-section="${esc(v.id)}">${esc(v.title)}</button></li>`).join('')}
-                        <li><button type="button" class="cpl-link" data-cpl-auth-section="custom-models">Custom Model Providers (Director)</button></li>
-                    </ul>
-                </div>
-                <div class="cpl-task-group cpl-task-group--see-also">
-                    <h3 class="cpl-task-heading">See also</h3>
-                    <ul class="cpl-task-list">
-                        ${cpl.taskLinkHtml('User Accounts', 'nav', 'user-accounts')}
-                        ${cpl.taskLinkHtml('Melaton Defender', 'item', 'windows-defender')}
-                    </ul>
-                </div>`,
-            body: () => `
-                <div class="cpl-auth-page">
-                    <h1 class="cpl-page-title">Store credentials for Dreamscape</h1>
-                    <p class="cpl-intro">Use Dreamscape CardSpace to keep the accounts and keys Dreamscape signs in with, and the keys programs use to reach it.</p>
-                    <div class="cpl-auth-host"></div>
-                </div>`,
-            mount: (main) => {
-                const modal = main.closest('.modal');
-                if (modal && !modal.dataset.cplAuthWired) {
-                    modal.dataset.cplAuthWired = '1';
-                    modal.addEventListener('click', (ev) => {
-                        const section = ev.target.closest('[data-cpl-auth-section]');
-                        if (section) scrollToSection(section.dataset.cplAuthSection);
-                    });
-                }
-                return mount(main);
-            },
-            unmount
+            tasks: () => '',
+            body: () => '<div class="cpl-auth-page"></div>',
+            mount: () => {
+                void openCardSpace();
+                setTimeout(() => { if (typeof cpl.goBack === 'function') cpl.goBack(); }, 0);
+            }
         });
         return true;
     }
 
     root.cplAuthentication = {
         register,
-        open: () => register() && root.melatonControlPanel.open('authentication'),
+        open: (section) => { register(); void openCardSpace(section); return true; },
         VAULTS,
         _test: {
             vault: (el) => { hostEl = el; vault(); },
