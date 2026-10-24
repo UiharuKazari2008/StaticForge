@@ -1453,63 +1453,100 @@
             if (due.length) this.showReminders(due);
         }
 
-        /** Vista's Melaton Calendar Reminders: the list, Dismiss / Dismiss All / Snooze. */
+        /**
+         * The reminder window: WinCal's template 3000 as the VM shows it. "1 Reminder" / "n Reminders"
+         * with the bell (group 116), the picked item's subject, start and location over a Subject /
+         * Due in list, Dismiss All / View Item / Dismiss, and Snooze with WinCal's intervals
+         * (strings 430-449).
+         */
         showReminders(list) {
             const V = root.vistaDialogTemplate;
             this.reminderList = (this.reminderList || []).filter((x) => !list.some((y) => y.key === x.key)).concat(list);
             list.forEach((x) => this.fired.add(x.key));
             if (this.reminderOpen) { this.drawReminders(); return; }
             if (!V) return;
-            const tpl = { t: 'Melaton Calendar Reminders', w: 260, h: 150, f: ['MS Shell Dlg', 8], c: [
-                [101, 'S', 7, 7, 246, 84, 0x5000000e, '', 0],
-                [-1, 'S', 7, 98, 246, 8, 0x50020000, 'Click &Snooze to be reminded again in:', 0],
-                [102, 'C', 7, 110, 100, 100, 0x50210003, '', 0],
-                [103, 'B', 111, 109, 40, 14, 0x50010000, '&Snooze', 0],
-                [104, 'B', 157, 109, 46, 14, 0x50010000, '&Dismiss', 0],
-                [105, 'B', 207, 109, 46, 14, 0x50010000, 'Dismiss &All', 0],
-                [2, 'B', 203, 130, 50, 14, 0x50010000, 'Close', 0]
-            ] };
             this.reminderOpen = true;
+            this.reminderSel = new Set(this.reminderList.slice(0, 1).map((x) => x.key));
             if (reg('ReminderSound', true) !== false && typeof root.playMelatonSound === 'function') { try { root.playMelatonSound('reminder'); } catch (_) { /* no sound */ } }
+            const snooze = [[5, '5 minutes'], [15, '15 minutes'], [30, '30 minutes'], [60, '1 hour'], [120, '2 hours'], [240, '4 hours'], [1440, '1 day'], [2880, '2 days'], [5760, '4 days'], [10080, '1 week'], [20160, '2 weeks']].map(([v, t]) => ({ value: String(v), text: t }));
             V.openDialog({
-                id: 'wcalReminders', tpl, owner: this.modal,
+                id: 'wcalReminders', key: 'wincal:3000', title: '1 Reminder', icon: '/static_images/vista-dlg/wincal-116-16.png', captionIcon: true, owner: this.modal,
+                overrides: { 3001: { image: '/static_images/vista-dlg/wincal-124-16.png' } },
                 init: (ctx) => {
                     this.reminderCtx = ctx;
-                    const s = ctx.el(102);
-                    if (s) s.innerHTML = [[5, '5 minutes'], [10, '10 minutes'], [15, '15 minutes'], [30, '30 minutes'], [60, '1 hour'], [240, '4 hours'], [1440, '1 day']].map(([v, t]) => `<option value="${v}">${t}</option>`).join('');
-                    this.drawReminders();
-                    const host = ctx.el(101);
-                    if (host) host.addEventListener('click', (ev) => { const row = ev.target.closest('[data-k]'); if (row) { this.reminderPick = row.dataset.k; this.drawReminders(); } });
+                    ctx.options(3009, snooze, '5');
+                    const lv = ctx.holder(3005);
+                    lv.classList.add('is-report', 'wcal-rem-lv');
+                    lv.querySelector('.vdt-lv-header').innerHTML = '<span class="vdt-lv-col" style="width:302px">Subject</span><span class="vdt-lv-col" style="width:100px">Due in</span><span class="vdt-lv-col"></span>';
+                    lv.addEventListener('mousedown', (ev) => {
+                        const row = ev.target.closest('.vdt-lv-row');
+                        if (!row) return;
+                        const k = row.dataset.k;
+                        if (ev.ctrlKey) { if (this.reminderSel.has(k)) this.reminderSel.delete(k); else this.reminderSel.add(k); } else if (ev.shiftKey && this.reminderSel.size) {
+                            const keys = this.reminderList.map((x) => x.key);
+                            const from = keys.indexOf([...this.reminderSel][0]);
+                            const to = keys.indexOf(k);
+                            this.reminderSel = new Set(keys.slice(Math.min(from, to), Math.max(from, to) + 1));
+                        } else this.reminderSel = new Set([k]);
+                        this.drawReminders();
+                    });
                     const done = (keys, snoozeMin) => {
                         keys.forEach((k) => {
                             if (snoozeMin) { if (!this.snoozed) this.snoozed = new Map(); this.snoozed.set(k, Date.now() + snoozeMin * 60000); this.fired.delete(k); }
                         });
                         this.reminderList = this.reminderList.filter((x) => !keys.includes(x.key));
-                        this.reminderPick = null;
-                        if (!this.reminderList.length) { const c = ctx.el(2); if (c) c.click(); } else this.drawReminders();
+                        this.reminderSel = new Set(this.reminderList.slice(0, 1).map((x) => x.key));
+                        if (!this.reminderList.length) ctx.close(); else this.drawReminders();
                     };
-                    const pickKeys = () => (this.reminderPick ? [this.reminderPick] : this.reminderList.slice(0, 1).map((x) => x.key));
-                    ctx.on(103, 'click', () => done(pickKeys(), Number(ctx.get(102)) || 5));
-                    ctx.on(104, 'click', () => done(pickKeys(), 0));
-                    ctx.on(105, 'click', () => done(this.reminderList.map((x) => x.key), 0));
+                    const picked = () => this.reminderList.filter((x) => this.reminderSel.has(x.key)).map((x) => x.key);
+                    ctx.on(3010, 'click', () => done(picked(), Number(ctx.get(3009)) || 5));
+                    ctx.on(3008, 'click', () => done(picked(), 0));
+                    ctx.on(3006, 'click', () => done(this.reminderList.map((x) => x.key), 0));
+                    ctx.on(3007, 'click', () => {
+                        const x = this.reminderList.find((y) => this.reminderSel.has(y.key));
+                        if (!x) return;
+                        this.date = startOfDay(x.o.start);
+                        this.navMonth = new Date(this.date.getFullYear(), this.date.getMonth(), 1);
+                        this.select({ kind: 'event', item: x.o.ev, cal: x.cal, occ: x.o });
+                        this.render();
+                        call('bringModalToFront', this.modal);
+                    });
+                    this.drawReminders();
+                    clearInterval(this.reminderTick);
+                    this.reminderTick = setInterval(() => this.drawReminders(), 30000);
+                    // the list has the focus at open (its selection is blue, Snooze the default)
+                    setTimeout(() => { try { lv.focus(); } catch (_) { /* gone */ } }, 0);
                 },
-                cancel: () => { this.reminderOpen = false; },
-                close: () => { this.reminderOpen = false; }
+                cancel: () => { this.reminderOpen = false; clearInterval(this.reminderTick); },
+                close: () => { this.reminderOpen = false; clearInterval(this.reminderTick); }
             });
         }
 
         drawReminders() {
             const ctx = this.reminderCtx;
-            const host = ctx && ctx.el(101);
-            if (!host) return;
-            host.classList.add('wcal-rem-list');
-            if (!this.reminderPick && this.reminderList.length) this.reminderPick = this.reminderList[0].key;
-            host.innerHTML = this.reminderList.map((x) => {
-                const o = x.o;
+            const lv = ctx && ctx.holder(3005);
+            if (!lv) return;
+            const n = this.reminderList.length;
+            const cap = ctx.modal.querySelector('.modal-window-title-main > span');
+            if (cap) cap.textContent = n === 1 ? '1 Reminder' : `${n} Reminders`;
+            // Due in: WinCal strings 430-444
+            const dueIn = (o) => {
                 const mins = Math.round((o.start - Date.now()) / 60000);
-                const when = mins > 0 ? `In ${mins >= 60 ? `${Math.round(mins / 60)} hour${Math.round(mins / 60) === 1 ? '' : 's'}` : `${mins} minute${mins === 1 ? '' : 's'}`}` : mins === 0 ? 'Now' : 'Overdue';
-                return `<div class="wcal-rem${this.reminderPick === x.key ? ' is-sel' : ''}" data-k="${esc(x.key)}"><span class="wcal-swatch" style="background:${x.cal.color}"></span><span class="wcal-rem-name">${esc(o.ev.summary || 'New Appointment')}</span><span class="wcal-rem-when">${o.ev.allDay ? dateText(o.start) : `${dateText(o.start)} ${timeText(o.start)}`} - ${when}</span></div>`;
-            }).join('');
+                if (mins === 0) return 'Now';
+                const m = Math.abs(mins);
+                const [v, unit] = m < 60 ? [m, 'minute'] : m < 1440 ? [Math.round(m / 60), 'hour'] : m < 10080 ? [Math.round(m / 1440), 'day'] : [Math.round(m / 10080), 'week'];
+                return `${v} ${unit}${v === 1 ? '' : 's'}${mins < 0 ? ' overdue' : ''}`;
+            };
+            lv.querySelector('.vdt-lv-body').innerHTML = this.reminderList.map((x) => `<div class="vdt-lv-row${this.reminderSel.has(x.key) ? ' is-selected' : ''}" data-k="${esc(x.key)}"><span style="width:302px"><img src="/static_images/vista-dlg/wincal-124-16.png" alt="">${esc(x.o.ev.summary || 'New Appointment')}</span><span style="width:100px">${esc(dueIn(x.o))}</span></div>`).join('');
+            const sel = this.reminderList.filter((x) => this.reminderSel.has(x.key));
+            const one = sel.length === 1 ? sel[0] : null;
+            ctx.show(3001, !!one);
+            ctx.text(3002, one ? (one.o.ev.summary || 'New Appointment') : sel.length > 1 ? `${sel.length} reminders are selected` : '');
+            ctx.text(3003, one ? (one.o.ev.allDay ? `Start time: ${longDate(one.o.start)}` : `Start time: ${longDate(one.o.start)} ${timeText(one.o.start)}`) : '');
+            ctx.text(3004, one && one.o.ev.location ? `Location: ${one.o.ev.location}` : '');
+            ctx.enable(3007, !!one);
+            ctx.enable(3008, sel.length > 0);
+            ctx.enable(3010, sel.length > 0);
         }
 
         // ---- subscriptions -----------------------------------------------------------------

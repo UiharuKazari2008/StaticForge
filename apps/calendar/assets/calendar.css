@@ -919,3 +919,33 @@
     background: #3399ff;
     color: #fff;
 }
+
+/* the reminder window's list (WinCal 3000), measured on the VM: a 24 px header, the column edges
+   carried down the body in #ededed, rows 1 px in that end at the last column */
+.vdt-client .wcal-rem-lv .vdt-lv-header,
+.vdt-client .wcal-rem-lv .vdt-lv-col {
+    height: 24px;
+}
+
+.vdt-client .wcal-rem-lv .vdt-lv-col {
+    padding-top: 5px;
+}
+
+.vdt-client .wcal-rem-lv .vdt-lv-body {
+    padding-top: 1px;
+    background:
+        linear-gradient(#ededed, #ededed) no-repeat 301px 0 / 1px 100%,
+        linear-gradient(#ededed, #ededed) no-repeat 401px 0 / 1px 100%,
+        #fff;
+}
+
+.vdt-client .wcal-rem-lv .vdt-lv-row {
+    width: 401px;
+    margin-left: 1px;
+    box-sizing: border-box;
+}
+
+.vdt-client .wcal-rem-lv .vdt-lv-row > span:first-child {
+    width: 301px !important;
+    padding-left: 3px;
+}
