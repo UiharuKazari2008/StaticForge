@@ -334,7 +334,7 @@
             this.file = null; // { id, name, path }
             this.name = 'Document';
             this.kind = 'rtf';
-            this.dirty = false;
+            this.dirty = false; this.edits = 0;
             this.build();
             if (file && file.id) void this.openFile(file);
         }
@@ -354,8 +354,9 @@
             m.style.width = `${W}px`;
             m.style.height = `${H}px`;
             m.setAttribute('role', 'dialog');
-            const tb = (a, img, title) => `<button type="button" class="wpad-tb" data-a="${a}" title="${esc(title)}"><img src="${CMD}/${img}.png" alt=""></button>`;
-            const fb = (a, i, title) => `<button type="button" class="wpad-tb" data-a="${a}" title="${esc(title)}"><span class="wpad-art" style="--i:${i}"></span></button>`;
+            // wordpad.exe bitmaps 140 (the toolbar) and 139 (the format bar), at the VM's places (client x)
+            const tb = (a, i, x, title) => `<button type="button" class="wpad-tb" data-a="${a}" title="${esc(title)}" style="left:${x}px"><span class="wpad-icon" style="--i:${i}"></span></button>`;
+            const fb = (a, i, x, title) => `<button type="button" class="wpad-tb is-format" data-a="${a}" title="${esc(title)}" style="left:${x}px"><span class="wpad-art" style="--i:${i}"></span></button>`;
             m.innerHTML = `
                 <div class="modal-window-title"><div class="modal-window-title-main"><img class="icon-image" src="${ICON16}" alt=""><span class="wpad-title">Document - WordPad</span></div></div>
                 <div class="modal-focus-overlay"></div>
@@ -365,24 +366,24 @@
                 </div>
                 <div class="modal-content win7 wpad-client">
                     <div class="naxt-menubar wpad-menubar" role="menubar">${['File', 'Edit', 'View', 'Insert', 'Format', 'Help'].map((t) => `<button type="button" class="naxt-menu-title" data-wpad-menu="${t.toLowerCase()}" role="menuitem">${t}</button>`).join('')}</div>
-                    <div class="wpad-bar wpad-toolbar" role="toolbar">
-                        ${tb('new', 'new', 'New')}${tb('open', 'folder', 'Open')}${tb('save', 'save', 'Save')}<span class="wpad-sep"></span>
-                        ${tb('print', 'document', 'Print')}${tb('preview', 'find', 'Print Preview')}<span class="wpad-sep"></span>
-                        ${tb('find', 'find', 'Find')}<span class="wpad-sep"></span>
-                        ${tb('cut', 'cut', 'Cut')}${tb('copy', 'copy', 'Copy')}${tb('paste', 'paste', 'Paste')}${tb('undo', 'undo', 'Undo')}<span class="wpad-sep"></span>
-                        ${tb('datetime', 'clock', 'Date/Time')}
+                    <div class="wpad-rebar">
+                        <div class="wpad-bar wpad-toolbar" role="toolbar">
+                            ${tb('new', 0, 6, 'New')}${tb('open', 1, 29, 'Open')}${tb('save', 2, 52, 'Save')}
+                            ${tb('print', 3, 83, 'Print')}${tb('preview', 4, 106, 'Print Preview')}
+                            ${tb('find', 5, 137, 'Find')}
+                            ${tb('cut', 6, 168, 'Cut')}${tb('copy', 7, 191, 'Copy')}${tb('paste', 8, 214, 'Paste')}${tb('undo', 9, 237, 'Undo')}
+                            ${tb('datetime', 10, 268, 'Date/Time')}
+                        </div>
+                        <div class="wpad-bar wpad-formatbar" role="toolbar">
+                            <select class="wpad-font" title="Font">${FONTS.map((f) => `<option>${f}</option>`).join('')}</select>
+                            <select class="wpad-size" title="Font Size">${SIZES.map((s) => `<option>${s}</option>`).join('')}</select>
+                            <select class="wpad-script" title="Script">${SCRIPTS.map((s) => `<option>${s}</option>`).join('')}</select>
+                            ${fb('bold', 0, 359, 'Bold')}${fb('italic', 1, 382, 'Italic')}${fb('underline', 2, 405, 'Underline')}
+                            <button type="button" class="wpad-tb is-format wpad-color" data-a="color" title="Color" style="left:428px"><span class="wpad-art" style="--i:3"></span></button>
+                            ${fb('left', 4, 460, 'Align Left')}${fb('center', 5, 482, 'Center')}${fb('right', 6, 505, 'Align Right')}${fb('bullets', 7, 536, 'Bullets')}
+                        </div>
                     </div>
-                    <div class="wpad-bar wpad-formatbar" role="toolbar">
-                        <select class="wpad-font" title="Font">${FONTS.map((f) => `<option>${f}</option>`).join('')}</select>
-                        <select class="wpad-size" title="Font Size">${SIZES.map((s) => `<option>${s}</option>`).join('')}</select>
-                        <select class="wpad-script" title="Script">${SCRIPTS.map((s) => `<option>${s}</option>`).join('')}</select>
-                        <span class="wpad-sep"></span>
-                        ${fb('bold', 0, 'Bold')}${fb('italic', 1, 'Italic')}${fb('underline', 2, 'Underline')}
-                        <button type="button" class="wpad-tb wpad-color" data-a="color" title="Color"><span class="wpad-art" style="--i:3"></span><span class="wpad-color-bar"></span></button>
-                        <span class="wpad-sep"></span>
-                        ${fb('left', 4, 'Align Left')}${fb('center', 5, 'Center')}${fb('right', 6, 'Align Right')}<span class="wpad-sep"></span>${fb('bullets', 7, 'Bullets')}
-                    </div>
-                    <div class="wpad-ruler"><div class="wpad-ruler-in"></div></div>
+                    <div class="wpad-ruler"></div>
                     <div class="wpad-stage"><div class="wpad-page" contenteditable="true" spellcheck="false"><p><br></p></div></div>
                     <div class="wpad-status"><span class="wpad-status-text">For Help, press F1</span><span class="wpad-status-num"></span></div>
                 </div>`;
@@ -391,8 +392,9 @@
             this.page = m.querySelector('.wpad-page');
             this.el = (q) => m.querySelector(q);
             const p = this.page;
-            p.style.fontFamily = 'Calibri';
-            p.style.fontSize = '11pt';
+            // Vista's WordPad starts in Arial 10 (Windows 7's in Calibri 11)
+            p.style.fontFamily = 'Arial';
+            p.style.fontSize = '10pt';
             try { doc.execCommand('styleWithCSS', false, true); } catch (_) { /* old engines */ }
             this.wire();
             this.applyView();
@@ -415,6 +417,7 @@
                 root.programFaults.registerProgram(m.id, { name: 'WordPad', terminate: () => this.app.exit(), relaunch: () => root.melatonApps && root.melatonApps.launch({ packageId: 'wordpad' }) });
             }
             this.title();
+            this.syncToolbar();
             setTimeout(() => this.page.focus(), 100);
         }
 
@@ -516,11 +519,13 @@
             const q = (c) => { try { return doc.queryCommandState(c); } catch (_) { return false; } };
             const on = { bold: q('bold'), italic: q('italic'), underline: q('underline'), left: q('justifyLeft'), center: q('justifyCenter'), right: q('justifyRight'), bullets: q('insertUnorderedList') };
             this.modal.querySelectorAll('.wpad-formatbar [data-a]').forEach((b) => b.classList.toggle('is-on', !!on[b.dataset.a]));
-            this.el('.wpad-color-bar').style.background = cs.color;
+            this.syncToolbar();
         }
 
         touched() {
+            this.edits = (this.edits || 0) + 1;
             if (!this.dirty) { this.dirty = true; this.title(); }
+            this.syncToolbar();
         }
 
         title() {
@@ -529,26 +534,31 @@
             this.modal.setAttribute('aria-label', t);
         }
 
+        /** The bars and word wrap are kept per document kind (Options' Text and Rich Text pages). */
         applyView() {
+            const pre = this.kind === 'txt' ? 'text.' : '';
             ['Toolbar', 'FormatBar', 'Ruler', 'StatusBar'].forEach((k) => {
-                const hide = reg(k, true) === false;
+                const hide = reg(`${pre}${k}`, true) === false;
                 const sel = { Toolbar: '.wpad-toolbar', FormatBar: '.wpad-formatbar', Ruler: '.wpad-ruler', StatusBar: '.wpad-status' }[k];
                 this.el(sel).hidden = hide;
             });
-            const wrap = reg('Wrap', 'ruler');
-            this.modal.dataset.wrap = wrap;
+            this.modal.dataset.wrap = reg(`${pre}Wrap`, this.kind === 'txt' ? 'window' : 'ruler');
         }
 
-        /** The ruler: inches, a tick every eighth, numbers at each inch (WordPad's). */
-        drawRuler() {
-            const host = this.el('.wpad-ruler-in');
-            let html = '';
-            for (let k = 0; k <= 8 * 7; k += 1) {
-                const x = k * 12;
-                const cls = k % 8 === 0 ? 'is-inch' : k % 4 === 0 ? 'is-half' : 'is-eighth';
-                html += `<span class="wpad-tick ${cls}" style="left:${x}px">${k % 8 === 0 && k ? k / 8 : ''}</span>`;
-            }
-            host.innerHTML = html;
+        /** The ruler is the VM's own (ruler.png: the default indents, 6 in to the right margin). */
+        drawRuler() {}
+
+        /** Find greys out in an empty document, Cut and Copy without a selection, Undo with nothing to undo. */
+        syncToolbar() {
+            const m = this.modal;
+            if (!m) return;
+            const sel = (() => { const s = root.getSelection(); return !!(s && !s.isCollapsed && this.page.contains(s.anchorNode)); })();
+            const empty = !this.page.textContent.trim();
+            const set = (a, on) => { const b = m.querySelector(`.wpad-toolbar [data-a="${a}"]`); if (b) b.disabled = !on; };
+            set('find', !empty);
+            set('cut', sel);
+            set('copy', sel);
+            set('undo', !!this.edits);
         }
 
         menu(name) {
@@ -558,7 +568,9 @@
                     { text: 'New...', subtext: 'Ctrl+N', action: 'new' }, { text: 'Open...', subtext: 'Ctrl+O', action: 'open' },
                     { text: 'Save', subtext: 'Ctrl+S', action: 'save' }, { text: 'Save As...', action: 'save-as' },
                     { separator: true },
-                    { text: 'Print...', subtext: 'Ctrl+P', action: 'print' }, { text: 'Print Preview', action: 'preview' }, { text: 'Page Setup...', action: 'page-setup' },
+                    { text: 'Print...', subtext: 'Ctrl+P', action: 'print' }, { text: 'Print Preview...', action: 'preview' }, { text: 'Page Setup...', action: 'page-setup' },
+                    { separator: true },
+                    { text: 'Recent File', disabled: true },
                     { separator: true },
                     { text: 'Send...', action: 'send' },
                     { separator: true },
@@ -568,32 +580,35 @@
                     { text: 'Undo', subtext: 'Ctrl+Z', action: 'undo' },
                     { separator: true },
                     { text: 'Cut', subtext: 'Ctrl+X', action: 'cut', disabled: !sel }, { text: 'Copy', subtext: 'Ctrl+C', action: 'copy', disabled: !sel },
-                    { text: 'Paste', subtext: 'Ctrl+V', action: 'paste' }, { text: 'Clear', subtext: 'Del', action: 'clear', disabled: !sel },
+                    { text: 'Paste', subtext: 'Ctrl+V', action: 'paste' }, { text: 'Paste Special...', disabled: true }, { text: 'Clear', subtext: 'Del', action: 'clear', disabled: !sel },
                     { text: 'Select All', subtext: 'Ctrl+A', action: 'select-all' },
                     { separator: true },
-                    { text: 'Find...', subtext: 'Ctrl+F', action: 'find' }, { text: 'Find Next', subtext: 'F3', action: 'find-next' }, { text: 'Replace...', subtext: 'Ctrl+H', action: 'replace' }
+                    { text: 'Find...', subtext: 'Ctrl+F', action: 'find' }, { text: 'Find Next', subtext: 'F3', action: 'find-next' }, { text: 'Replace...', subtext: 'Ctrl+H', action: 'replace' },
+                    { separator: true },
+                    // no OLE objects here: Links and Object Properties stay grey (menu 128)
+                    { text: 'Links...', disabled: true }, { text: 'Object Properties', subtext: 'Alt+Enter', disabled: true }
                 ];
                 case 'view': return [
-                    { text: 'Toolbar', action: 'view-Toolbar', showIndicator: true, checked: reg('Toolbar', true) !== false },
-                    { text: 'Format Bar', action: 'view-FormatBar', showIndicator: true, checked: reg('FormatBar', true) !== false },
-                    { text: 'Ruler', action: 'view-Ruler', showIndicator: true, checked: reg('Ruler', true) !== false },
-                    { text: 'Status Bar', action: 'view-StatusBar', showIndicator: true, checked: reg('StatusBar', true) !== false },
+                    { text: 'Toolbar', action: 'view-Toolbar', showIndicator: true, checked: reg(`${this.kind === 'txt' ? 'text.' : ''}Toolbar`, true) !== false },
+                    { text: 'Format Bar', action: 'view-FormatBar', showIndicator: true, checked: reg(`${this.kind === 'txt' ? 'text.' : ''}FormatBar`, true) !== false },
+                    { text: 'Ruler', action: 'view-Ruler', showIndicator: true, checked: reg(`${this.kind === 'txt' ? 'text.' : ''}Ruler`, true) !== false },
+                    { text: 'Status Bar', action: 'view-StatusBar', showIndicator: true, checked: reg(`${this.kind === 'txt' ? 'text.' : ''}StatusBar`, true) !== false },
                     { separator: true },
                     { text: 'Options...', action: 'options' }
                 ];
                 case 'insert': return [{ text: 'Date and Time...', action: 'datetime' }, { text: 'Object...', action: 'object' }];
                 case 'format': return [
                     { text: 'Font...', action: 'font' }, { text: 'Bullet Style', action: 'bullets', showIndicator: true, checked: (() => { try { return doc.queryCommandState('insertUnorderedList'); } catch (_) { return false; } })() },
-                    { text: 'Paragraph...', action: 'paragraph' }
+                    { text: 'Paragraph...', action: 'paragraph' }, { text: 'Tabs...', action: 'tabs' }
                 ];
-                case 'help': return [{ text: 'Help Topics', action: 'help' }, { separator: true }, { text: 'About WordPad', action: 'about' }];
+                case 'help': return [{ text: 'View Help', action: 'help' }, { separator: true }, { text: 'About WordPad', action: 'about' }];
                 default: return [];
             }
         }
 
         async action(a) {
             if (a.startsWith('color-')) { const c = a.slice(6); this.restoreSel(); this.exec('foreColor', c === 'auto' ? '#000000' : c); return; }
-            if (a.startsWith('view-')) { const k = a.slice(5); setReg({ [k]: reg(k, true) === false }); this.applyView(); return; }
+            if (a.startsWith('view-')) { const k = `${this.kind === 'txt' ? 'text.' : ''}${a.slice(5)}`; setReg({ [k]: reg(k, true) === false }); this.applyView(); return; }
             switch (a) {
                 case 'new': await this.newDoc(); return;
                 case 'open': await this.openDialog(); return;
@@ -603,7 +618,7 @@
                 case 'page-setup': this.pageSetup(); return;
                 case 'send': await this.send(); return;
                 case 'exit': await this.close(); return;
-                case 'undo': this.exec('undo'); return;
+                case 'undo': this.exec('undo'); this.edits = Math.max(0, (this.edits || 0) - 1); this.syncToolbar(); return;
                 case 'cut': this.exec('cut'); return;
                 case 'copy': this.exec('copy'); return;
                 case 'paste': {
@@ -633,6 +648,7 @@
                 case 'object': this.insertPicture(); return;
                 case 'font': this.fontDialog(); return;
                 case 'paragraph': this.paragraphDialog(); return;
+                case 'tabs': this.tabsDialog(); return;
                 case 'options': this.optionsDialog(); return;
                 case 'help': void this.message('WordPad edits Rich Text documents (.rtf) and text files (.txt).\nFormat bar: font, size, bold, italic, underline, colour, alignment and bullets.'); return;
                 case 'about': if (typeof root.openAboutMelatoninModal === 'function') root.openAboutMelatoninModal({ program: 'WordPad' }); return;
@@ -669,18 +685,18 @@
             const V = root.vistaDialogTemplate;
             const kind = await new Promise((resolve) => {
                 if (!V) { resolve('rtf'); return; }
-                const tpl = { t: 'New', w: 150, h: 92, f: ['MS Shell Dlg', 8], c: [[-1, 'S', 7, 7, 136, 8, 0x50020000, '&New document type:', 0], [101, 'S', 7, 18, 136, 50, 0x5000000e, '', 0], [1, 'B', 39, 72, 50, 14, 0x50010001, 'OK', 0], [2, 'B', 93, 72, 50, 14, 0x50010000, 'Cancel', 0]] };
+                // wordpad.exe.mui dialog 160; the types are strings 190, 189, 194
+                const types = [['rtf', 'Rich Text Document'], ['txt', 'Text Document'], ['utxt', 'Unicode Text Document']];
                 let pick = 'rtf';
                 V.openDialog({
-                    id: 'wpadNew', tpl, owner: this.modal,
+                    id: 'wpadNew', key: 'wordpad:160', icon: ICON16, owner: this.modal,
                     init: (ctx) => {
-                        const host = ctx.el(101);
-                        if (!host) return;
-                        host.classList.add('wpad-list');
-                        const draw = () => { host.innerHTML = [['rtf', 'Rich Text Document'], ['txt', 'Text Document']].map(([k, t]) => `<div class="wpad-list-item${pick === k ? ' is-sel' : ''}" data-k="${k}">${t}</div>`).join(''); };
-                        draw();
-                        host.addEventListener('click', (ev) => { const r = ev.target.closest('[data-k]'); if (r) { pick = r.dataset.k; draw(); } });
-                        host.addEventListener('dblclick', () => { const ok = ctx.el(1); if (ok) ok.click(); });
+                        ctx.options(1018, types.map(([value, text]) => ({ value, text })), 'rtf');
+                        const h = ctx.holder(1018);
+                        if (h) {
+                            h.addEventListener('change', () => { pick = ctx.get(1018) || 'rtf'; });
+                            h.addEventListener('dblclick', () => { const ok = ctx.el(1); if (ok) ok.click(); });
+                        }
                     },
                     ok: () => { resolve(pick); return true; },
                     cancel: () => resolve(null),
@@ -689,10 +705,11 @@
             });
             if (!kind) return;
             this.page.innerHTML = '<p><br></p>';
-            this.kind = kind;
+            this.kind = kind === 'rtf' ? 'rtf' : 'txt';
+            this.applyView();
             this.file = null;
             this.name = 'Document';
-            this.dirty = false;
+            this.dirty = false; this.edits = 0;
             this.title();
             this.page.focus();
         }
@@ -732,8 +749,10 @@
                 }
                 this.file = { id: f.id, name: f.name, path: f.path || workspaceRoot() };
                 this.name = f.name;
-                this.dirty = false;
+                this.dirty = false; this.edits = 0;
                 this.title();
+                this.applyView();
+                this.syncToolbar();
             } catch (err) {
                 await this.message(`WordPad cannot open ${f.name}.\n${(err && err.message) || err}`);
             }
@@ -754,7 +773,7 @@
             try {
                 const { blob, mime } = this.encode(this.kind);
                 await vfs().replaceFile(this.file.id, await blobToBase64(blob), mime);
-                this.dirty = false;
+                this.dirty = false; this.edits = 0;
                 this.title();
                 return true;
             } catch (err) {
@@ -949,18 +968,17 @@
                 `${d.getDate()}-${M[d.getMonth()].slice(0, 3)}-${String(d.getFullYear()).slice(2)}`, `${D[d.getDay()]}, ${M[d.getMonth()]} ${pad(d.getDate())}, ${d.getFullYear()}`, `${M[d.getMonth()]} ${pad(d.getDate())}, ${d.getFullYear()}`,
                 `${D[d.getDay()]}, ${pad(d.getDate())} ${M[d.getMonth()]}, ${d.getFullYear()}`, `${pad(d.getDate())} ${M[d.getMonth()]}, ${d.getFullYear()}`,
                 `${h12}:${pad(d.getMinutes())}:${pad(d.getSeconds())} ${ap}`, `${pad(h12)}:${pad(d.getMinutes())}:${pad(d.getSeconds())} ${ap}`, `${d.getHours()}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`, `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`];
-            const tpl = { t: 'Date and Time', w: 180, h: 166, f: ['MS Shell Dlg', 8], c: [[-1, 'S', 7, 7, 166, 8, 0x50020000, '&Available formats:', 0], [101, 'S', 7, 18, 166, 124, 0x5000000e, '', 0], [1, 'B', 69, 146, 50, 14, 0x50010001, 'OK', 0], [2, 'B', 123, 146, 50, 14, 0x50010000, 'Cancel', 0]] };
+            // wordpad.exe.mui dialog 151
             let pick = 0;
             V.openDialog({
-                id: 'wpadDate', tpl, owner: this.modal,
+                id: 'wpadDate', key: 'wordpad:151', icon: ICON16, owner: this.modal,
                 init: (ctx) => {
-                    const host = ctx.el(101);
-                    if (!host) return;
-                    host.classList.add('wpad-list');
-                    const draw = () => { host.innerHTML = formats.map((t, k) => `<div class="wpad-list-item${k === pick ? ' is-sel' : ''}" data-k="${k}">${esc(t)}</div>`).join(''); };
-                    draw();
-                    host.addEventListener('click', (ev) => { const r = ev.target.closest('[data-k]'); if (r) { pick = Number(r.dataset.k); draw(); } });
-                    host.addEventListener('dblclick', () => { const ok = ctx.el(1); if (ok) ok.click(); });
+                    ctx.options(1018, formats.map((text, k) => ({ value: String(k), text })), '0');
+                    const h = ctx.holder(1018);
+                    if (h) {
+                        h.addEventListener('change', () => { pick = Number(ctx.get(1018) || 0); });
+                        h.addEventListener('dblclick', () => { const ok = ctx.el(1); if (ok) ok.click(); });
+                    }
                 },
                 ok: () => { this.restoreSel(); this.exec('insertText', formats[pick]); return true; }
             });
@@ -1060,47 +1078,92 @@
             if (!block) return;
             const cs = getComputedStyle(block);
             const inch = (px) => (Math.round(((parseFloat(px) || 0) / 96) * 100) / 100).toString();
-            const tpl = { t: 'Paragraph', w: 200, h: 100, f: ['MS Shell Dlg', 8], c: [
-                [-1, 'B', 7, 4, 130, 62, 0x50000007, 'Indentation', 0],
-                [-1, 'S', 14, 18, 50, 8, 0x50020000, '&Left:', 0], [101, 'E', 70, 16, 50, 12, 0x50810080, '', 0],
-                [-1, 'S', 14, 34, 50, 8, 0x50020000, '&Right:', 0], [102, 'E', 70, 32, 50, 12, 0x50810080, '', 0],
-                [-1, 'S', 14, 50, 50, 8, 0x50020000, '&First line:', 0], [103, 'E', 70, 48, 50, 12, 0x50810080, '', 0],
-                [-1, 'S', 7, 74, 40, 8, 0x50020000, '&Alignment:', 0], [104, 'C', 50, 72, 87, 80, 0x50210003, '', 0],
-                [1, 'B', 143, 7, 50, 14, 0x50010001, 'OK', 0], [2, 'B', 143, 25, 50, 14, 0x50010000, 'Cancel', 0]
-            ] };
+            // wordpad.exe.mui dialog 143; Alignment is Left / Center / Right (strings 116-118)
             V.openDialog({
-                id: 'wpadPara', tpl, owner: this.modal,
+                id: 'wpadPara', key: 'wordpad:143', icon: ICON16, owner: this.modal,
                 init: (ctx) => {
-                    ctx.set(101, `${inch(cs.marginLeft)}"`);
-                    ctx.set(102, `${inch(cs.marginRight)}"`);
-                    ctx.set(103, `${inch(cs.textIndent)}"`);
-                    ctx.options(104, ['Left', 'Right', 'Center', 'Justify'], { center: 'Center', right: 'Right', justify: 'Justify' }[cs.textAlign] || 'Left');
+                    ctx.set(1000, `${inch(cs.marginLeft)}"`);
+                    ctx.set(1001, `${inch(cs.marginRight)}"`);
+                    ctx.set(1002, `${inch(cs.textIndent)}"`);
+                    ctx.options(111, ['Left', 'Center', 'Right'], { center: 'Center', right: 'Right' }[cs.textAlign] || 'Left');
                 },
                 ok: (ctx) => {
                     const px = (v) => `${Math.round((parseFloat(String(v).replace(/[^0-9.-]/g, '')) || 0) * 96)}px`;
-                    block.style.marginLeft = px(ctx.get(101));
-                    block.style.marginRight = px(ctx.get(102));
-                    block.style.textIndent = px(ctx.get(103));
-                    block.style.textAlign = String(ctx.get(104) || 'Left').toLowerCase();
+                    block.style.marginLeft = px(ctx.get(1000));
+                    block.style.marginRight = px(ctx.get(1001));
+                    block.style.textIndent = px(ctx.get(1002));
+                    block.style.textAlign = String(ctx.get(111) || 'Left').toLowerCase();
                     this.touched();
                     return true;
                 }
             });
         }
 
-        /** View > Options: Vista's word wrap choices (No wrap, Wrap to window, Wrap to ruler). */
+        /** Format > Tabs: wordpad.exe.mui dialog 145 (the tab stops in inches, Set / Clear / Clear All). */
+        tabsDialog() {
+            const V = root.vistaDialogTemplate;
+            if (!V) return;
+            const stops = (reg('TabStops', '') || '').split(',').filter(Boolean);
+            V.openDialog({
+                id: 'wpadTabs', key: 'wordpad:145', icon: ICON16, owner: this.modal,
+                // the simple combo box: its edit over its list
+                overrides: { 1019: { html: '<input type="text" class="tbp-edit wpad-tabs-edit" spellcheck="false"><div class="vdt-listbox vdt-edge wpad-tabs-list" tabindex="0"></div>' } },
+                init: (ctx) => {
+                    const host = ctx.holder(1019);
+                    const edit = host && host.querySelector('input');
+                    const list = host && host.querySelector('.wpad-tabs-list');
+                    const draw = () => { if (list) list.innerHTML = stops.map((t) => `<div class="vdt-lb-row" data-value="${esc(t)}">${esc(t)}</div>`).join(''); };
+                    draw();
+                    if (list) list.addEventListener('click', (ev) => { const r = ev.target.closest('.vdt-lb-row'); if (r && edit) edit.value = r.dataset.value; });
+                    ctx.on(1005, 'click', () => { const v = edit && edit.value.trim(); if (v && !stops.includes(v)) { stops.push(/"$/.test(v) ? v : `${v}"`); stops.sort((x, y) => parseFloat(x) - parseFloat(y)); draw(); } });
+                    ctx.on(1006, 'click', () => { const v = edit && edit.value.trim(); const k = stops.findIndex((t) => parseFloat(t) === parseFloat(v)); if (k >= 0) { stops.splice(k, 1); draw(); } });
+                    ctx.on(1007, 'click', () => { stops.length = 0; draw(); });
+                },
+                ok: () => {
+                    setReg({ TabStops: stops.join(',') });
+                    const px = stops.map((t) => Math.round(parseFloat(t) * 96)).filter((x) => x > 0);
+                    this.page.style.tabSize = px.length ? `${px[0]}px` : '';
+                    return true;
+                }
+            });
+        }
+
+        /** View > Options: a sheet, Options (dialog 158) and a 159 page each for Text, Rich Text and Embedded. */
         optionsDialog() {
             const V = root.vistaDialogTemplate;
             if (!V) return;
-            const tpl = { t: 'Options', w: 190, h: 86, f: ['MS Shell Dlg', 8], c: [
-                [-1, 'B', 7, 4, 120, 56, 0x50000007, 'Word wrap', 0],
-                [101, 'B', 14, 16, 100, 10, 0x50030009, '&No wrap', 0], [102, 'B', 14, 30, 100, 10, 0x50010009, 'Wrap to &window', 0], [103, 'B', 14, 44, 100, 10, 0x50010009, 'Wrap to &ruler', 0],
-                [1, 'B', 133, 7, 50, 14, 0x50010001, 'OK', 0], [2, 'B', 133, 25, 50, 14, 0x50010000, 'Cancel', 0]
-            ] };
-            V.openDialog({
-                id: 'wpadOptions', tpl, owner: this.modal,
-                init: (ctx) => { ctx.set({ none: 101, window: 102, ruler: 103 }[reg('Wrap', 'ruler')] || 103, true); },
-                ok: (ctx) => { setReg({ Wrap: ctx.get(101) ? 'none' : ctx.get(102) ? 'window' : 'ruler' }); this.applyView(); return true; }
+            const T = root.vistaDialogTemplates || {};
+            const kinds = [['text', 'Text'], ['rtf', 'Rich Text'], ['embedded', 'Embedded']];
+            // one copy of page 159 per document kind, each under its own key
+            kinds.forEach(([k]) => { if (!T[`wordpad:159:${k}`] && T['wordpad:159']) T[`wordpad:159:${k}`] = T['wordpad:159']; });
+            const units = ['in', 'cm', 'pt', 'pi'];
+            const wrapId = { none: 1027, window: 1026, ruler: 1025 };
+            V.openSheet({
+                id: 'wpadOptions', title: 'Options', icon: ICON16, owner: this.modal,
+                pages: [{ key: 'wordpad:158', title: 'Options' }].concat(kinds.map(([k, t]) => ({ key: `wordpad:159:${k}`, title: t }))),
+                start: this.kind === 'txt' ? 'wordpad:159:text' : 'wordpad:159:rtf',
+                init: (ctx) => {
+                    ctx.set(1024 + Math.max(0, units.indexOf(reg('Units', 'in'))), true, 'wordpad:158');
+                    ctx.set(1029, reg('AutoWordSelect', true) !== false, 'wordpad:158');
+                    kinds.forEach(([k]) => {
+                        const page = `wordpad:159:${k}`;
+                        const pre = k === 'rtf' ? '' : `${k}.`;
+                        ctx.set(wrapId[reg(`${pre}Wrap`, k === 'text' ? 'window' : 'ruler')] || 1025, true, page);
+                        [['Toolbar', 1028], ['FormatBar', 1029], ['Ruler', 1030], ['StatusBar', 1031]].forEach(([n, id]) => ctx.set(id, reg(`${pre}${n}`, true) !== false, page));
+                    });
+                },
+                apply: (ctx) => {
+                    const u = [1024, 1025, 1026, 1027].findIndex((id) => ctx.get(id, 'wordpad:158'));
+                    const v = { Units: units[Math.max(0, u)], AutoWordSelect: !!ctx.get(1029, 'wordpad:158') };
+                    kinds.forEach(([k]) => {
+                        const page = `wordpad:159:${k}`;
+                        const pre = k === 'rtf' ? '' : `${k}.`;
+                        v[`${pre}Wrap`] = ctx.get(1027, page) ? 'none' : ctx.get(1026, page) ? 'window' : 'ruler';
+                        [['Toolbar', 1028], ['FormatBar', 1029], ['Ruler', 1030], ['StatusBar', 1031]].forEach(([n, id]) => { v[`${pre}${n}`] = !!ctx.get(id, page); });
+                    });
+                    setReg(v);
+                    this.applyView();
+                }
             });
         }
 

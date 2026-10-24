@@ -1,48 +1,57 @@
-/* WordPad (Yozora #632; apps/wordpad/client/wordpad.js) */
+/* WordPad (Yozora #632; apps/wordpad/client/wordpad.js), measured on the Vista VM (refs in
+   ~/.cache/vista-vm/wordpad-ref): the 19 px menu bar band, a rebar of two 28 px rows on #f0f0f0
+   (the toolbar band with its etched edge, the format bar), the VM's own ruler strip, the page.
+   Toolbar art is wordpad.exe's (bitmaps 140, 139); greyed cells and button faces are cut from the
+   VM's pixels. Client coordinates throughout. */
 
 .wpad-window .wpad-client {
+    position: relative;
     display: flex;
     flex-direction: column;
     flex: 1;
     min-height: 0;
     padding: 0 !important;
+    background: #f0f0f0;
     font: 12px "Segoe UI", Tahoma, sans-serif;
     color: #000;
 }
 
-/* the menu bar (Vista's) */
+/* the menu bar: the band and Win32 title faces (as Snipping Tool's) */
 .wpad-window.wpad-window .wpad-menubar {
     display: flex;
     flex: none;
-    height: 21px;
-    padding: 0 2px;
-    border-bottom: 1px solid #b6bccc;
-    background: linear-gradient(#fefeff, #e5eaf5 7px, #d4dbed 7px, #e1e6f6 20px);
+    height: 19px;
+    padding: 0;
+    border: 0;
+    background: url('menubar.png') 0 0 / 3px 19px repeat-x;
     box-sizing: border-box;
 }
 
-.wpad-window.wpad-window .win7 .wpad-menubar .naxt-menu-title,
-.wpad-window.wpad-window .win7 .wpad-menubar .naxt-menu-title:not(:disabled):not(:hover) {
+.wpad-window.wpad-window .win7 .wpad-menubar .naxt-menu-title:not(#_) {
     display: inline-flex;
     align-items: center;
     min-width: 0;
-    height: 20px;
+    height: 19px;
     min-height: 0;
-    padding: 0 7px;
-    border: 0;
+    padding: 0 3px 1px;
+    border: 4px solid transparent;
+    border-width: 0 4px;
     border-image: none;
     border-radius: 0;
     background: none;
     box-shadow: none;
     color: #000;
     font: 12px "Segoe UI", Tahoma, sans-serif;
+    text-shadow: none;
 }
 
-.wpad-window.wpad-window .win7 .wpad-menubar .naxt-menu-title:is(:hover, :focus-visible, .context-open) {
-    border: 0;
-    background: #3399ff;
-    box-shadow: none;
-    color: #fff;
+.wpad-window.wpad-window .win7 .wpad-menubar .naxt-menu-title:is(:hover, :focus-visible):not(#_) {
+    border-image: url('menu-hot.png') 0 4 fill / 0 4px stretch;
+    outline: none;
+}
+
+.wpad-window.wpad-window .win7 .wpad-menubar .naxt-menu-title.context-open:not(#_) {
+    border-image: url('menu-open.png') 0 4 fill / 0 4px stretch;
 }
 
 .wpad-window .wpad-menubar .naxt-menu-title::before,
@@ -51,16 +60,42 @@
     display: none;
 }
 
-/* the toolbar and the format bar: rebar bands */
-.wpad-window .wpad-bar {
-    display: flex;
+/* the rebar: an etched line at 20, the rows at 22 and 52, a full etched line under them */
+.wpad-window :is(.wpad-rebar, .wpad-bar, .wpad-ruler) {
+    box-sizing: content-box;
+}
+
+.wpad-window .wpad-rebar {
+    position: relative;
     flex: none;
-    align-items: center;
-    gap: 1px;
+    height: 59px;
+    margin-top: 1px;
+    border-top: 1px solid #a0a0a0;
+    box-shadow: inset 0 1px #fff;
+    border-bottom: 1px solid #a0a0a0;
+}
+
+.wpad-window .wpad-rebar:has(.wpad-bar[hidden]) {
+    height: auto;
+    min-height: 2px;
+}
+
+.wpad-window .wpad-bar {
+    position: relative;
     height: 28px;
-    padding: 0 4px;
-    border-bottom: 1px solid #c2c9d6;
-    background: linear-gradient(#fbfcfe, #eef2f9 50%, #e4e9f3);
+    margin-top: 1px;
+}
+
+.wpad-window .wpad-toolbar {
+    width: 297px;
+    border-right: 1px solid #a0a0a0;
+    border-bottom: 1px solid #a0a0a0;
+    box-shadow: 1px 1px #fff;
+    height: 28px;
+}
+
+.wpad-window .wpad-formatbar {
+    margin-top: 1px;
 }
 
 .wpad-window .wpad-bar[hidden],
@@ -69,41 +104,25 @@
     display: none;
 }
 
-.wpad-window .wpad-sep {
-    width: 1px;
-    height: 20px;
-    margin: 0 3px;
-    background: #b7c3d4;
-    box-shadow: 1px 0 #fff;
-}
-
-.wpad-window.wpad-window .win7 .wpad-tb:not(:disabled) {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
+/* a button: 23x22 in the toolbar (icon 3, 2), 23x20 in the format bar (icon 4, 2) */
+.wpad-window.wpad-window .win7 .wpad-tb.wpad-tb:not(#_) {
+    position: absolute;
+    top: 4px;
+    width: 23px;
+    height: 22px;
     min-width: 0;
-    height: 23px;
     min-height: 0;
+    margin: 0;
     padding: 0;
-    border: 1px solid transparent;
+    border: 3px solid transparent;
     border-image: none;
-    border-radius: 2px;
+    border-radius: 0;
     background: none;
     box-shadow: none;
 }
 
-.wpad-window.wpad-window .win7 .wpad-tb:not(:disabled):hover {
-    border-color: #a8d8f0;
-    background: linear-gradient(#f5fbfe, #e3f4fc 50%, #cfecfa 51%, #c4e7f8);
-}
-
-.wpad-window.wpad-window .win7 .wpad-tb.is-on:not(:disabled),
-.wpad-window.wpad-window .win7 .wpad-tb.context-open:not(:disabled) {
-    border-color: #7da2ce;
-    background: linear-gradient(#e5f4fc, #c4e5f6 50%, #98d1ef 51%, #b0dcf4);
-    box-shadow: inset 1px 1px 1px rgba(0, 0, 0, 0.15);
+.wpad-window.wpad-window .win7 .wpad-tb.is-format:not(#_) {
+    height: 20px;
 }
 
 .wpad-window .wpad-tb::before,
@@ -111,92 +130,60 @@
     content: none;
 }
 
-.wpad-window .wpad-tb img {
+.wpad-window .wpad-icon,
+.wpad-window .wpad-art {
+    position: absolute;
+    left: 0;
+    top: -1px;
     width: 16px;
     height: 16px;
+    background: url('toolbar.png') calc(var(--i) * -16px) 0 no-repeat;
 }
 
 .wpad-window .wpad-art {
-    display: block;
-    width: 16px;
-    height: 16px;
-    background: url('format.png') calc(var(--i) * -16px) 0 no-repeat;
+    left: 1px;
+    background-image: url('format.png');
 }
 
-.wpad-window .wpad-color .wpad-art {
-    height: 12px;
-    margin-top: -3px;
+.wpad-window .wpad-tb:disabled .wpad-icon {
+    background-image: url('toolbar-disabled.png');
 }
 
-.wpad-window .wpad-color-bar {
+.wpad-window.wpad-window .win7 .wpad-tb:not(:disabled):hover:not(#_) {
+    border-image: url('tb-hot.png') 3 fill / 3px stretch;
+}
+
+.wpad-window.wpad-window .win7 .wpad-tb:not(:disabled):is(:active, .is-on, .context-open):not(#_) {
+    border-image: url('tb-pressed.png') 3 fill / 3px stretch;
+}
+
+/* the format bar's combos: Vista's edit border, 21 px, the 7x4 arrow 11 px from the right */
+.wpad-window.wpad-window .wpad-formatbar select:not(#_) {
     position: absolute;
-    left: 4px;
-    right: 4px;
-    bottom: 3px;
-    height: 4px;
-    background: #000;
-}
-
-.wpad-window .wpad-formatbar select {
+    top: 3px;
     height: 21px;
-    margin-right: 3px;
-    padding: 0 2px;
-    border: 1px solid #abadb3;
-    border-radius: 2px;
-    background: #fff;
+    margin: 0;
+    padding: 0 0 0 2px;
+    border: 1px solid;
+    border-color: #abadb3 #dbdfe6 #e3e9ef #e2e3ea;
+    border-radius: 0;
+    background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4' shape-rendering='crispEdges'%3E%3Cpath d='M0 0h7v1H0zM1 1h5v1H1zM2 2h3v1H2zM3 3h1v1H3z'/%3E%3C/svg%3E") no-repeat right 4px top 8px;
+    -webkit-appearance: none;
+    appearance: none;
+    color: #000;
     font: 12px "Segoe UI", Tahoma, sans-serif;
+    box-shadow: none;
 }
 
-.wpad-window .wpad-font {
-    width: 170px;
-}
+.wpad-window .wpad-font { left: 6px; width: 160px; }
+.wpad-window .wpad-size { left: 174px; width: 50px; }
+.wpad-window .wpad-script { left: 232px; width: 120px; }
 
-.wpad-window .wpad-size {
-    width: 52px;
-}
-
-.wpad-window .wpad-script {
-    width: 110px;
-}
-
-/* the ruler: inch numbers and ticks over the page's width */
+/* the ruler: the VM's strip (the default indents and the 6 in right margin), #f0f0f0 after it */
 .wpad-window .wpad-ruler {
     flex: none;
-    height: 22px;
-    padding: 0 0 0 56px;
-    overflow: hidden;
-    border-bottom: 1px solid #a0a9b8;
-    background: #e9eef6;
-}
-
-.wpad-window .wpad-ruler-in {
-    position: relative;
-    width: 672px;
-    height: 100%;
-    background: #fff;
-    box-shadow: inset 0 -1px #d0d6df;
-}
-
-.wpad-window .wpad-tick {
-    position: absolute;
-    bottom: 4px;
-    width: 1px;
-    height: 3px;
-    background: #777;
-    font: 9px Tahoma, sans-serif;
-    color: #333;
-}
-
-.wpad-window .wpad-tick.is-half {
-    height: 6px;
-}
-
-.wpad-window .wpad-tick.is-inch {
-    width: 0;
-    height: auto;
-    bottom: 5px;
-    background: none;
-    transform: translateX(-3px);
+    height: 26px;
+    background: #f0f0f0 url('ruler.png') 0 0 no-repeat;
 }
 
 /* the page: white, on Vista's grey stage */
@@ -204,6 +191,12 @@
     flex: 1;
     min-height: 0;
     overflow: auto;
+    /* the rich edit's sunken edge: dark top and left, light right and bottom (the VM) */
+    border: 1px solid;
+    border-color: #a0a0a0 #fff #fff #a0a0a0;
+    box-shadow: inset 1px 1px #696969, inset -1px -1px #e3e3e3;
+    /* the inner lines show in a pixel of padding (the page would paint over them) */
+    padding: 1px;
     background: #fff;
 }
 
@@ -252,28 +245,30 @@
     display: flex;
     flex: none;
     justify-content: space-between;
-    height: 22px;
-    padding: 0 8px;
-    border-top: 1px solid #c2c9d6;
-    background: linear-gradient(#f2f5f9, #e3e8ef);
-    line-height: 22px;
+    box-sizing: border-box;
+    height: 19px;
+    padding: 0 3px;
+    border-top: 1px solid #919191;
+    box-shadow: inset 0 1px #fff, inset 0 -1px #fff;
+    background: #f1eded;
+    line-height: 17px;
 }
 
 /* the dialogs' list boxes (New, Date and Time) */
-.wpad-list {
-    display: block !important;
-    overflow-y: auto;
-    border: 1px solid #828790;
-    background: #fff;
+/* Tabs (dialog 145): the simple combo box, its edit over its list */
+.vdt-client .wpad-tabs-edit {
+    position: absolute;
+    left: 0;
+    top: 0;
+    box-sizing: border-box;
+    width: 100%;
+    height: 21px;
 }
 
-.wpad-list-item {
-    padding: 1px 4px;
-    white-space: nowrap;
-    cursor: default;
-}
-
-.wpad-list-item.is-sel {
-    background: #3399ff;
-    color: #fff;
+.vdt-client .wpad-tabs-list {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 23px;
+    bottom: 0;
 }
