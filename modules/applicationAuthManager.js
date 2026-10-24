@@ -119,6 +119,13 @@ const SCOPE_WS_PACKETS = {
         'exchange_dashboard', 'exchange_list_spam', 'exchange_spam_move', 'exchange_audit',
         'exchange_mailbox_key', 'exchange_aliases', 'exchange_signatures',
         'exchange_toggles', 'exchange_status', 'exchange_resync_recipients', 'exchange_spam'
+    ],
+    // JULES: Map dovecote WebSocket packet types to sfapp_dovecote scope
+    sfapp_dovecote: [
+        'dovecote_list_mailboxes', 'dovecote_list_mail', 'dovecote_get_mail',
+        'dovecote_render_body', 'dovecote_get_attachment', 'dovecote_mark_mail',
+        'dovecote_send_mail', 'dovecote_forward_mail', 'dovecote_set_image_pref',
+        'dovecote_subscribe_mailbox_new_mail', 'dovecote_unsubscribe_mailbox_new_mail'
     ]
 };
 
