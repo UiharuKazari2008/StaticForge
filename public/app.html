@@ -7,6 +7,42 @@
         content="width=device-width, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 
     <title>Dreamscape Workspace</title>
+    <script>
+        // Opt-in boot trace (localStorage dreamscapeBootTrace = '1'): every change in what the boot
+        // shows (body classes, desktop layers, logon, covers) goes to sessionStorage
+        // dreamscapeBootTraceLog for 120 s, kept across the restart round trip through /launch
+        (function () {
+            try { if (localStorage.getItem('dreamscapeBootTrace') !== '1') return; } catch (e) { return; }
+            var KEY = 'dreamscapeBootTraceLog', t0 = Date.now(), last = '';
+            function log(line) {
+                try {
+                    var rows = JSON.parse(sessionStorage.getItem(KEY) || '[]');
+                    rows.push(new Date().toISOString().slice(11, 23) + ' +' + (Date.now() - t0) + ' ' + line);
+                    sessionStorage.setItem(KEY, JSON.stringify(rows.slice(-400)));
+                } catch (e) { /* storage full */ }
+            }
+            function shown(sel) {
+                var el = document.querySelector(sel);
+                if (!el) return '-';
+                var cs = getComputedStyle(el), r = el.getBoundingClientRect();
+                return (cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0' || el.classList.contains('hidden') || !r.width) ? 'h' : 'V';
+            }
+            log('load ' + location.pathname + ' w=' + innerWidth + ' handoff=' + sessionStorage.getItem('dreamscapeLaunchHandoff'));
+            addEventListener('pagehide', function () { log('pagehide'); });
+            (function tick() {
+                if (Date.now() - t0 > 120000) return;
+                if (document.body) {
+                    var s = 'wall=' + shown('.desktop-wallpaper') + ' icons=' + shown('.desktop-icons') + ' task=' + shown('.desktop-taskbar')
+                        + ' logon=' + shown('#desktopPreStartupModal') + ' startup=' + shown('#windowsStartupModal')
+                        + ' handoffEl=' + shown('#launchHandoff') + ' switch=' + shown('#sessionSwitchOverlay.active')
+                        + ' shutdown=' + shown('#clientShutdownOverlay') + ' ask=' + shown('#confirmationDialog')
+                        + ' | ' + document.body.className;
+                    if (s !== last) { last = s; log(s); }
+                }
+                requestAnimationFrame(tick);
+            })();
+        })();
+    </script>
     <script src="/scripts/comp/fatalErrorBootstrap.js"></script>
 
     <!-- Global desktop mode detection - set at the very top before any other scripts -->
