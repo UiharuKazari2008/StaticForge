@@ -26,6 +26,8 @@
     const ICON16 = '/static_images/app_icons/16/vista-task-manager.webp';
     const ICON24 = '/static_images/app_icons/24/vista-task-manager.webp';
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    // "&End Task": the dialog templates' mnemonic markup
+    const label = (t) => (root.vistaDialogTemplate ? root.vistaDialogTemplate.label(t) : esc(String(t).replace(/&/g, '')));
     const call = (name, ...args) => (typeof root[name] === 'function' ? root[name](...args) : undefined);
 
     const SPEEDS = { high: 500, normal: 1000, low: 4000, paused: 0 };
@@ -117,6 +119,7 @@
                 </div>
                 <div class="modal-content win7 tbp-client wtm-client">
                     <div class="naxt-menubar wtm-menubar" role="menubar">${['File', 'Options', 'View', 'Windows', 'Help'].map((t) => `<button type="button" class="naxt-menu-title" data-wtm-menu="${t.toLowerCase()}" role="menuitem">${t}</button>`).join('')}</div>
+                    <div class="wtm-etch"></div>
                     <div class="wtm-sheet">
                         <div class="tbp-tabs wtm-tabs" role="tablist">${TABS.map((t, i) => `<button type="button" class="tbp-tab" role="tab" data-tab="${i}">${t}</button>`).join('')}</div>
                         <div class="wtm-pane"></div>
@@ -246,6 +249,10 @@
             this.tab = Math.max(0, Math.min(TABS.length - 1, i));
             setReg({ Tab: this.tab });
             this.modal.querySelectorAll('.wtm-tabs .tbp-tab').forEach((t, k) => t.classList.toggle('is-selected', k === this.tab));
+            // the Windows menu is the Applications tab's alone (the VM's other tabs: File Options View Help)
+            const wm = this.modal.querySelector('[data-wtm-menu="windows"]');
+            if (wm) wm.hidden = this.tab !== 0;
+            this.el('.wtm-pane').dataset.tab = String(this.tab);
             this.el('.wtm-pane').innerHTML = '';
             this.render();
         }
@@ -286,9 +293,13 @@
                 if (typeof va === 'number' || typeof vb === 'number') return ((va || 0) - (vb || 0)) * sort.dir;
                 return String(va || '').localeCompare(String(vb || '')) * sort.dir;
             });
-            const grid = cols.map((c) => c.w).join(' ');
-            const head = cols.map((c) => `<button type="button" class="wtm-col${c.num ? ' is-num' : ''}${sort.key === c.key ? (sort.dir > 0 ? ' is-up' : ' is-down') : ''}" data-sort="${c.key}">${esc(c.t)}</button>`).join('');
-            const body = sorted.map((r) => `<div class="wtm-row${opts.isSel && opts.isSel(r) ? ' is-sel' : ''}" data-k="${esc(opts.keyOf ? opts.keyOf(r) : '')}">${cols.map((c, i) => `<span class="${c.num ? 'is-num' : ''}">${i === 0 && r.icon ? `<img src="${esc(r.icon)}" alt="">` : ''}${esc(c.fmt ? c.fmt(r[c.key], r) : r[c.key])}</span>`).join('')}</div>`).join('');
+            // nothing picked yet: the first row is selected, as on the VM
+            if (opts.onSel && opts.isSel && sorted.length && !sorted.some((r) => opts.isSel(r))) opts.onSel(opts.keyOf ? opts.keyOf(sorted[0]) : '');
+                        // fixed column widths from the VM, an empty header item filling the rest
+            const grid = `${cols.map((c) => c.w).join(' ')} minmax(0, 1fr)`;
+            const align = (c) => (c.num ? ' is-num' : c.center ? ' is-center' : '');
+            const head = cols.map((c) => `<button type="button" class="wtm-col${align(c)}${sort.key === c.key ? ` is-sorted ${sort.dir > 0 ? 'is-up' : 'is-down'}` : ''}" data-sort="${c.key}">${sort.key === c.key ? '<span class="wtm-arrow"></span>' : ''}${esc(c.t)}</button>`).join('') + '<span class="wtm-col wtm-col-rest"></span>';
+            const body = sorted.map((r) => `<div class="wtm-row${opts.isSel && opts.isSel(r) ? ' is-sel' : ''}" data-k="${esc(opts.keyOf ? opts.keyOf(r) : '')}">${cols.map((c, i) => `<span class="${align(c).trim()}">${i === 0 && r.icon ? `<img src="${esc(r.icon)}" alt="">` : ''}${esc(c.fmt ? c.fmt(r[c.key], r) : r[c.key])}</span>`).join('')}</div>`).join('');
             let host = pane.querySelector('.wtm-list-host');
             if (!host) {
                 host = doc.createElement('div');
@@ -324,7 +335,8 @@
                 pane.appendChild(bar);
                 bar.addEventListener('click', (ev) => { const b = ev.target.closest('[data-b]'); if (b && !b.disabled) void this.button(b.dataset.b); });
             }
-            const html = list.map((b) => (b.check ? `<label class="wtm-check"><input type="checkbox" data-c="${b.id}"${b.checked ? ' checked' : ''}> ${esc(b.t)}</label>` : `<button type="button" class="tbp-ctl tbp-button wtm-btn" data-b="${b.id}"${b.disabled ? ' disabled' : ''}>${esc(b.t)}</button>`)).join('');
+            // placed as the VM places them: from the page's right edge, 13 px up from its bottom
+            const html = list.map((b) => (b.check ? `<label class="wtm-check"><input type="checkbox" data-c="${b.id}"${b.checked ? ' checked' : ''}${b.disabled ? ' disabled' : ''}><span>${esc(b.t)}</span></label>` : `<button type="button" class="tbp-ctl tbp-button wtm-btn" data-b="${b.id}" style="right:${b.r}px;width:${b.w}px"${b.disabled ? ' disabled' : ''}>${label(b.t)}</button>`)).join('');
             if (bar.dataset.html !== html) {
                 bar.innerHTML = html;
                 bar.dataset.html = html;
@@ -338,12 +350,12 @@
                 key: m.id || (m.id = `wtmWin_${Math.random().toString(36).slice(2, 8)}`), task: titleOf(m), status: m.classList.contains('program-faulted') || m.classList.contains('not-responding') ? 'Not Responding' : 'Running',
                 icon: (m.querySelector('.modal-window-title img') || {}).src || ''
             }));
-            this.listView(pane, 'apps', [{ key: 'task', t: 'Task', w: 'minmax(0, 1fr)' }, { key: 'status', t: 'Status', w: '96px' }], list, {
+            this.listView(pane, 'apps', [{ key: 'task', t: 'Task', w: '272px' }, { key: 'status', t: 'Status', w: '60px' }], list, {
                 keyOf: (r) => r.key, isSel: (r) => r.key === this.selApp, onSel: (k) => { this.selApp = k; },
                 onOpen: (k) => { const w = windows().find((x) => x.id === k); if (w) this.switchTo(w); }
             });
             const has = !!(this.selApp && list.some((r) => r.key === this.selApp));
-            this.buttons(pane, [{ id: 'end-task', t: 'End Task', disabled: !has }, { id: 'switch', t: 'Switch To', disabled: !has }, { id: 'new-task', t: 'New Task...' }]);
+            this.buttons(pane, [{ id: 'end-task', t: '&End Task', disabled: !has, r: 181, w: 78 }, { id: 'switch', t: '&Switch To', disabled: !has, r: 97, w: 78 }, { id: 'new-task', t: '&New Task...', r: 13, w: 78 }]);
         }
 
         renderProcs(pane) {
@@ -351,53 +363,56 @@
             const host = this.admin && this.snap && this.allUsers ? this.snap.processes.map((p) => ({ ...p, desc: p.command, host: true })) : [];
             const rows = mine.concat(host).map((p) => ({ ...p, key: p.melaton ? `m:${p.name}` : `h:${p.pid}` }));
             this.listView(pane, 'procs', [
-                { key: 'name', t: 'Image Name', w: 'minmax(110px, 1.1fr)' }, { key: 'user', t: 'User Name', w: '72px' }, { key: 'cpu', t: 'CPU', w: '36px', num: true, fmt: (v) => String(Math.round(v || 0)).padStart(2, '0') },
-                { key: 'memKB', t: 'Memory (...', w: '80px', num: true, fmt: (v) => (v === null || v === undefined ? '' : kb(v)) }, { key: 'desc', t: 'Description', w: 'minmax(80px, 1fr)' }
+                { key: 'name', t: 'Image Name', w: '91px' }, { key: 'user', t: 'User Name', w: '64px' }, { key: 'cpu', t: 'CPU', w: '33px', center: true, fmt: (v) => String(Math.round(v || 0)).padStart(2, '0') },
+                { key: 'memKB', t: 'Memory (Private Working Set)', w: '70px', num: true, fmt: (v) => (v === null || v === undefined ? '' : kb(v)) }, { key: 'desc', t: 'Description', w: '74px' }
             ], rows, { keyOf: (r) => r.key, isSel: (r) => r.key === this.selPid, onSel: (k) => { this.selPid = k; } });
             const sel = rows.find((r) => r.key === this.selPid);
             const can = !!(sel && sel.melaton && !sel.system && sel.windows.length);
             this.buttons(pane, [
-                { id: 'all', check: true, checked: this.allUsers && this.admin, t: this.admin ? 'Show processes from all users' : 'Show processes from all users (administrators)' },
-                { id: 'end-proc', t: 'End Process', disabled: !can }
+                { id: 'all', check: true, checked: this.allUsers && this.admin, disabled: !this.admin, t: 'Show processes from all users' },
+                { id: 'end-proc', t: '&End Process', disabled: !can, r: 13, w: 97 }
             ]);
-            const c = pane.querySelector('[data-c="all"]');
-            if (c) c.disabled = !this.admin;
         }
 
         renderServices(pane) {
             const s = this.snap;
             const rows = s && s.services ? s.services.map((x) => ({ key: x.name, name: x.name, pid: x.pid || '', desc: x.script ? x.script.split('/').slice(-2).join('/') : '', status: x.status === 'online' ? 'Running' : x.status === 'stopped' ? 'Stopped' : x.status })) : [];
-            this.listView(pane, 'svc', [{ key: 'name', t: 'Name', w: 'minmax(90px, 1fr)' }, { key: 'pid', t: 'PID', w: '54px', num: true }, { key: 'desc', t: 'Description', w: 'minmax(90px, 1.2fr)' }, { key: 'status', t: 'Status', w: '70px' }], rows, {});
-            this.buttons(pane, [{ id: 'services', t: 'Services...', disabled: true }]);
+            this.listView(pane, 'svc', [{ key: 'name', t: 'Name', w: '80px' }, { key: 'pid', t: 'PID', w: '40px' }, { key: 'desc', t: 'Description', w: '80px' }, { key: 'status', t: 'Status', w: '53px' }, { key: 'group', t: 'Group', w: '79px' }], rows, {});
+            this.buttons(pane, [{ id: 'services', t: '&Services...', disabled: true, r: 13, w: 97 }]);
             if (!this.admin) pane.querySelector('.wtm-list').insertAdjacentHTML('beforeend', '<div class="wtm-note">Only an administrator can see the server\'s services.</div>');
         }
 
         renderPerf(pane) {
             const s = this.snap;
+            // the VM's page: group boxes, sunken meters and graphs, the figures on the dialog's rows
+            // (positions from the pane's inside, as taskmgr lays them out in a 412x457 window)
             if (!pane.querySelector('.wtm-perf')) {
+                const box = (cls, l, t, w, h, title) => `<div class="wtm-box ${cls}" style="left:${l}px;top:${t}px;width:${w}px;height:${h}px"><span class="wtm-box-title">${title}</span></div>`;
                 pane.innerHTML = `<div class="wtm-perf">
-                    <fieldset class="wtm-box wtm-meter-box"><legend>CPU Usage</legend><canvas class="wtm-meter" data-m="cpu" width="72" height="88"></canvas></fieldset>
-                    <fieldset class="wtm-box wtm-hist-box"><legend>CPU Usage History</legend><div class="wtm-cores"></div></fieldset>
-                    <fieldset class="wtm-box wtm-meter-box"><legend>Memory</legend><canvas class="wtm-meter" data-m="mem" width="72" height="88"></canvas></fieldset>
-                    <fieldset class="wtm-box wtm-hist-box"><legend>Physical Memory Usage History</legend><canvas class="wtm-hist" data-h="mem"></canvas></fieldset>
-                    <div class="wtm-figs">
-                        <fieldset class="wtm-box"><legend>Physical Memory (MB)</legend><div class="wtm-fig" data-f="phys"></div></fieldset>
-                        <fieldset class="wtm-box"><legend>System</legend><div class="wtm-fig" data-f="sys"></div></fieldset>
-                        <fieldset class="wtm-box"><legend>Kernel Memory (MB)</legend><div class="wtm-fig" data-f="kern"></div></fieldset>
-                        <button type="button" class="tbp-ctl tbp-button wtm-btn wtm-resmon" disabled>Resource Monitor...</button>
-                    </div>
+                    ${box('', 15, 15, 90, 82, 'CPU Usage')}${box('', 120, 15, 249, 82, 'CPU Usage History')}
+                    ${box('', 15, 108, 90, 82, 'Memory')}${box('wtm-hist-group', 120, 108, 249, 82, 'Physical Memory Usage History')}
+                    ${box('', 15, 203, 170, 56, 'Physical Memory (MB)')}${box('', 198, 203, 171, 89, 'System')}${box('', 15, 274, 170, 56, 'Kernel Memory (MB)')}
+                    <canvas class="wtm-meter wtm-sunken" data-m="cpu" width="68" height="57" style="left:23px;top:29px"></canvas>
+                    <canvas class="wtm-meter wtm-sunken" data-m="mem" width="68" height="57" style="left:24px;top:122px"></canvas>
+                    <div class="wtm-cores" style="left:128px;top:29px;width:232px;height:60px"></div>
+                    <canvas class="wtm-hist wtm-sunken" data-h="mem" width="229" height="57" style="left:128px;top:122px;width:233px;height:61px"></canvas>
+                    <div class="wtm-fig" data-f="phys" style="left:24px;top:212px;width:151px"></div>
+                    <div class="wtm-fig" data-f="sys" style="left:207px;top:212px;width:151px"></div>
+                    <div class="wtm-fig" data-f="kern" style="left:24px;top:283px;width:151px"></div>
+                    <button type="button" class="tbp-ctl tbp-button wtm-btn wtm-resmon" style="left:199px;top:308px;width:168px" disabled><u>R</u>esource Monitor...</button>
                 </div>`;
             }
             const one = reg('OneGraph', false) === true;
             const cores = this.el('.wtm-cores');
             const n = one || !s ? 1 : s.cpu.cores.length;
-            if (cores.children.length !== n) cores.innerHTML = Array.from({ length: n }, (_, i) => `<canvas class="wtm-hist" data-h="core" data-i="${i}"></canvas>`).join('');
+            // one graph per CPU side by side, 6 px apart (the VM's two: 110 px each)
+            if (cores.children.length !== n) cores.innerHTML = Array.from({ length: n }, (_, i) => `<canvas class="wtm-hist wtm-sunken" data-h="core" data-i="${i}"></canvas>`).join('');
             const cpu = s ? s.cpu.total : 0;
             const memPct = s ? ((s.memory.total - s.memory.available) / s.memory.total) * 100 : 0;
             this.drawMeter(pane.querySelector('[data-m="cpu"]'), cpu, `${Math.round(cpu)} %`);
             this.drawMeter(pane.querySelector('[data-m="mem"]'), memPct, s ? `${((s.memory.total - s.memory.available) / 1073741824).toFixed(2)} GB` : '');
             cores.querySelectorAll('canvas').forEach((c) => this.drawHist(c, one || !s ? [this.cpuHist] : [this.coreHist[Number(c.dataset.i)] || []]));
-            this.drawHist(pane.querySelector('[data-h="mem"]'), [this.memHist]);
+            this.drawHist(pane.querySelector('[data-h="mem"]'), [this.memHist], { color: '#0080ff' });
             const fig = (f, rows) => { const e = pane.querySelector(`[data-f="${f}"]`); if (e) e.innerHTML = rows.map(([k, v]) => `<span>${esc(k)}</span><span>${esc(v)}</span>`).join(''); };
             if (s) {
                 const mm = s.memory;
@@ -412,26 +427,81 @@
             }
         }
 
+        /**
+         * Networking, as the VM lays it out: a group box per adapter over the top (the VM's one is
+         * 366x245) holding a sunken graph whose black left margin carries the yellow scale, the
+         * adapter list under it (Adapter Name / Network Utilization / Link Speed / State).
+         */
         renderNet(pane) {
             const s = this.snap;
             const nets = s ? s.network : [];
+            const n = Math.max(1, nets.length);
             if (!pane.querySelector('.wtm-net') || pane.querySelector('.wtm-net').dataset.n !== String(nets.length)) {
-                pane.innerHTML = `<div class="wtm-net" data-n="${nets.length}">${nets.map((n) => `<fieldset class="wtm-box wtm-net-box"><legend>${esc(n.name)}</legend><canvas class="wtm-hist" data-net="${esc(n.name)}"></canvas><span class="wtm-net-scale">${n.speedMbps ? '100 %' : ''}</span></fieldset>`).join('') || '<div class="wtm-note">Only an administrator can see the server\'s network adapters.</div>'}</div>`;
+                const gap = 6;
+                const h = Math.floor((245 - (n - 1) * gap) / n);
+                pane.innerHTML = `<div class="wtm-net" data-n="${nets.length}">${nets.map((a, i) => `
+                    <div class="wtm-box" style="left:9px;top:${13 + i * (h + gap)}px;width:366px;height:${h}px"><span class="wtm-box-title">${esc(a.name)}</span></div>
+                    <canvas class="wtm-hist wtm-sunken" data-net="${esc(a.name)}" style="left:15px;top:${27 + i * (h + gap)}px;width:354px;height:${h - 19}px"></canvas>`).join('')
+                    || '<div class="wtm-note" style="left:9px;top:13px">Only an administrator can see the server\'s network adapters.</div>'}
+                    <div class="wtm-net-table"></div></div>`;
             }
-            pane.querySelectorAll('[data-net]').forEach((c) => this.drawHist(c, [this.netHist[c.dataset.net] || []], { scale: 'auto' }));
-            const rows = nets.map((n) => ({ key: n.name, name: n.name, util: n.utilization, speed: n.speedMbps ? (n.speedMbps >= 1000 ? `${n.speedMbps / 1000} Gbps` : `${n.speedMbps} Mbps`) : '', state: n.state === 'up' ? 'Connected' : 'Disconnected' }));
-            let tbl = pane.querySelector('.wtm-net-table');
-            if (!tbl) { tbl = doc.createElement('div'); tbl.className = 'wtm-net-table'; pane.appendChild(tbl); }
-            this.listView(tbl, 'net', [{ key: 'name', t: 'Adapter Name', w: 'minmax(0, 1fr)' }, { key: 'util', t: 'Network Utilization', w: '110px', num: true, fmt: (v) => `${(v || 0).toFixed(2)} %` }, { key: 'speed', t: 'Link Speed', w: '76px', num: true }, { key: 'state', t: 'State', w: '80px' }], rows, {});
+            pane.querySelectorAll('[data-net]').forEach((c) => this.drawNet(c, this.netHist[c.dataset.net] || []));
+            const rows = nets.map((a) => ({ key: a.name, name: a.name, util: a.utilization, speed: a.speedMbps ? (a.speedMbps >= 1000 ? `${a.speedMbps / 1000} Gbps` : `${a.speedMbps} Mbps`) : '', state: a.state === 'up' ? 'Connected' : 'Disconnected' }));
+            this.listView(pane.querySelector('.wtm-net-table'), 'net', [{ key: 'name', t: 'Adapter Name', w: '100px' }, { key: 'util', t: 'Network Utilization', w: '96px', num: true, fmt: (v) => `${Math.round(v || 0)} %` }, { key: 'speed', t: 'Link Speed', w: '60px', num: true }, { key: 'state', t: 'State', w: '90px', num: true }], rows, {});
+        }
+
+        /** An adapter's graph: the 42 px scale margin (1 % / 0.50 % / 0 %, scaled up as traffic grows), rows 31 px apart, columns 12 px. */
+        drawNet(c, data) {
+            const W = c.clientWidth - 2;
+            const H = c.clientHeight - 2;
+            if (W < 50 || H < 20) return;
+            if (c.width !== W) c.width = W;
+            if (c.height !== H) c.height = H;
+            const x = c.getContext('2d');
+            x.fillStyle = '#000';
+            x.fillRect(0, 0, W, H);
+            const peak = Math.max(0, ...data);
+            const scale = [1, 5, 10, 25, 50, 100].find((v) => peak <= v) || 100;
+            const L = 42;
+            x.strokeStyle = '#008040';
+            x.lineWidth = 1;
+            x.beginPath();
+            const shift = (this.ticks * 2) % 12;
+            for (let gx = W - shift; gx > L; gx -= 12) { x.moveTo(Math.round(gx) + 0.5, 0); x.lineTo(Math.round(gx) + 0.5, H); }
+            for (let gy = 4; gy < H; gy += 31) { x.moveTo(L, gy + 0.5); x.lineTo(W, gy + 0.5); }
+            x.stroke();
+            x.fillStyle = '#ffff00';
+            x.font = '11px Tahoma, sans-serif';
+            x.textAlign = 'right';
+            x.textBaseline = 'top';
+            const pct = (v) => `${v < 1 ? v.toFixed(2) : v} %`;
+            x.fillText(pct(scale), L - 1, 2);
+            x.fillText(pct(scale / 2), L - 1, Math.round(H / 2) - 6);
+            x.textBaseline = 'bottom';
+            x.fillText('0 %', L - 1, H - 1);
+            x.fillStyle = '#00ff00';
+            let px0 = null;
+            let py0 = null;
+            for (let i = Math.max(0, data.length - Math.ceil((W - L) / 2) - 1); i < data.length; i += 1) {
+                const px = W - 1 - (data.length - 1 - i) * 2;
+                const py = Math.round(H - 1 - (Math.min(scale, data[i] || 0) / scale) * (H - 1));
+                if (px0 !== null) {
+                    const k = Math.max(Math.abs(px - px0), Math.abs(py - py0), 1);
+                    for (let j = 0; j <= k; j += 1) x.fillRect(Math.round(px0 + ((px - px0) * j) / k), Math.round(py0 + ((py - py0) * j) / k), 1, 1);
+                }
+                px0 = px;
+                py0 = py;
+            }
         }
 
         renderUsers(pane) {
             const a = root.meletonAccounts;
             const name = (a && typeof a.name === 'function' && a.name()) || (root.localStorage && root.localStorage.getItem('username')) || 'User';
-            const host = this.snap ? this.snap.host : (root.location && root.location.hostname) || 'Melaton';
-            this.listView(pane, 'users', [{ key: 'user', t: 'User', w: 'minmax(0, 1fr)' }, { key: 'id', t: 'ID', w: '30px', num: true }, { key: 'status', t: 'Status', w: '60px' }, { key: 'client', t: 'Client Name', w: '96px' }, { key: 'session', t: 'Session', w: '64px' }],
-                [{ key: 'me', user: name, id: 1, status: 'Active', client: host, session: 'Console', icon: '/static_images/app_icons/16/vista-user-accounts.webp' }], { isSel: () => true });
-            this.buttons(pane, [{ id: 'disc', t: 'Disconnect', disabled: true }, { id: 'logoff', t: 'Logoff', disabled: true }, { id: 'msg', t: 'Send Message...', disabled: true }]);
+            // the console session has no client name (the VM)
+            const host = '';
+            this.listView(pane, 'users', [{ key: 'user', t: 'User', w: '81px' }, { key: 'id', t: 'ID', w: '35px', num: true }, { key: 'status', t: 'Status', w: '60px' }, { key: 'client', t: 'Client Name', w: '78px' }, { key: 'session', t: 'Session', w: '78px' }],
+                [{ key: 'me', user: name, id: 1, status: 'Active', client: host, session: 'Console', icon: '/melaton-apps/taskmgr/assets/user.png' }], { isSel: () => true });
+            this.buttons(pane, [{ id: 'disc', t: '&Disconnect', r: 204, w: 81 }, { id: 'logoff', t: '&Logoff', r: 119, w: 76 }, { id: 'msg', t: '&Send Message...', disabled: true, r: 13, w: 97 }]);
         }
 
         renderStatus() {
@@ -444,36 +514,46 @@
 
         // ---- drawing: Vista's green LED meter and the history grid ---------------------------------
 
+        /**
+         * The VM's LED meter (68x57): two 16 px columns at 17 and 34, dim dotted bars (#008000) on
+         * the rows 6,7 9,10 ... 30,31, the lit share in solid #00ff00 pairs up from row 32, the figure
+         * in green under them.
+         */
         drawMeter(c, pct, label) {
             if (!c) return;
             const x = c.getContext('2d');
-            const W = c.width;
-            const H = c.height;
             x.fillStyle = '#000';
-            x.fillRect(0, 0, W, H);
-            const rows = 22;
-            const lit = Math.round((Math.max(0, Math.min(100, pct)) / 100) * rows);
-            for (let r = 0; r < rows; r += 1) {
-                const y = H - 18 - (r + 1) * 3;
-                const on = r < lit;
-                x.fillStyle = on ? '#00ff00' : '#006000';
-                x.fillRect(W / 2 - 15, y, 13, 2);
-                x.fillRect(W / 2 + 2, y, 13, 2);
+            x.fillRect(0, 0, 68, 57);
+            const lit = Math.max(1, Math.round((Math.max(0, Math.min(100, pct)) / 100) * 27));
+            for (let y = 6; y <= 32; y += 1) {
+                const on = y >= 33 - lit && (32 - y) % 3 !== 2;
+                if (on) {
+                    x.fillStyle = '#00ff00';
+                    x.fillRect(17, y, 16, 1);
+                    x.fillRect(34, y, 16, 1);
+                } else if ((y - 6) % 3 !== 2 && y <= 31) {
+                    x.fillStyle = '#008000';
+                    for (let k = (y - 6) % 3; k < 16; k += 2) { x.fillRect(17 + k, y, 1, 1); x.fillRect(34 + k, y, 1, 1); }
+                }
             }
             x.fillStyle = '#00ff00';
             x.font = '11px Tahoma, sans-serif';
             x.textAlign = 'center';
-            x.fillText(label, W / 2, H - 4);
+            x.textBaseline = 'alphabetic';
+            x.fillText(label, 34, 51);
         }
 
         drawHist(c, series, opts = {}) {
             if (!c) return;
+            // the drawing is the inside of the sunken frame (border and padding off)
+            const sunk = c.classList.contains('wtm-sunken') ? 2 : 0;
             const r = c.getBoundingClientRect();
-            const W = Math.max(10, Math.round(r.width || 100));
-            const H = Math.max(10, Math.round(r.height || 60));
+            const W = Math.max(10, Math.round((c.clientWidth || r.width || 100) - sunk));
+            const H = Math.max(10, Math.round((c.clientHeight || r.height || 60) - sunk));
             if (c.width !== W) c.width = W;
             if (c.height !== H) c.height = H;
             const x = c.getContext('2d');
+            x.imageSmoothingEnabled = false;
             x.fillStyle = '#000';
             x.fillRect(0, 0, W, H);
             // the grid scrolls left with the samples (Vista's)
@@ -482,12 +562,13 @@
             x.lineWidth = 1;
             x.beginPath();
             for (let gx = W - shift; gx > 0; gx -= 12) { x.moveTo(Math.round(gx) + 0.5, 0); x.lineTo(Math.round(gx) + 0.5, H); }
-            for (let gy = H; gy > 0; gy -= 12) { x.moveTo(0, Math.round(gy) + 0.5); x.lineTo(W, Math.round(gy) + 0.5); }
+            // the VM's rows: 11 px down, then every 12
+            for (let gy = 11; gy < H; gy += 12) { x.moveTo(0, gy + 0.5); x.lineTo(W, gy + 0.5); }
             x.stroke();
             let max = 100;
             if (opts.scale === 'auto') max = Math.max(1, ...series.flat().map((v) => Math.ceil(v)), 1) <= 1 ? 1 : 100;
             // GDI's aliased LineTo: whole pixels stepped along the longer axis, no antialiasing
-            x.fillStyle = '#00ff00';
+            x.fillStyle = opts.color || '#00ff00';
             const plot = (x0, y0, x1, y1) => {
                 const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1);
                 for (let k = 0; k <= n; k += 1) x.fillRect(Math.round(x0 + ((x1 - x0) * k) / n), Math.round(y0 + ((y1 - y0) * k) / n), 1, 1);
@@ -517,6 +598,21 @@
                 case 'switch': if (win) this.switchTo(win); return;
                 case 'new-task': await this.action('new-task'); return;
                 case 'end-proc': await this.endProcess(); return;
+                // the console session: Disconnect locks it, Logoff logs it off (taskmgr strings 3306-3311)
+                case 'disc': {
+                    const v = await call('showConfirmationDialog', '<p>Are you sure you want to disconnect the selected user(s)?</p>', [
+                        { text: 'Disconnect user', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }
+                    ], null, { title: 'Melaton Task Manager', width: 400 });
+                    if (v && root.desktopBoot && typeof root.desktopBoot.lockWorkstation === 'function') root.desktopBoot.lockWorkstation();
+                    return;
+                }
+                case 'logoff': {
+                    const v = await call('showConfirmationDialog', '<p>If you log off a user, their unsaved data might be lost.</p><p>Do you want to continue?</p>', [
+                        { text: 'Log off user', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }
+                    ], null, { title: 'Melaton Task Manager', width: 400 });
+                    if (v && typeof root.runWinlogonPower === 'function') void root.runWinlogonPower('logoff');
+                    return;
+                }
                 default:
             }
         }
