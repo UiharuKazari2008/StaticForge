@@ -258,7 +258,10 @@ window.toggleWeatherUnits = function (event) {
     // Save preference to localStorage
     localStorage.setItem('weather_units_metric', useMetric.toString());
 
-  updateRentanContextOverlay(resolvePreviewRentanContext());
+  // JULES: Guard optional Rentan overlay update functions
+  if (typeof updateRentanContextOverlay === 'function' && typeof resolvePreviewRentanContext === 'function') {
+      updateRentanContextOverlay(resolvePreviewRentanContext());
+  }
 };
 
 function updateDynamicGenerationToggleBtn() {
