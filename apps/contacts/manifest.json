@@ -1,0 +1,14 @@
+{
+    "id": "contacts",
+    "version": "1.0.0",
+    "title": "Windows Contacts",
+    "publisher": "Xyridian",
+    "format": "msaz",
+    "type": "native",
+    "launchId": "contacts",
+    "icon": "assets/contacts.png",
+    "client": {
+        "entry": "client/contacts.js",
+        "styles": ["assets/contacts.css"]
+    }
+}
