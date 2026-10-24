@@ -1080,6 +1080,19 @@
             if (el) { el.focus(); el.select(); }
         }
 
+        /** The calendar's file to the Recycle Bin, as Explorer sends it (the folder's own item). */
+        async trashFile(c) {
+            const V = vfs();
+            try {
+                const res = await V.listDirectory(this.folder(), { offset: 0, limit: 200 });
+                const it = ((res && res.items) || []).find((i) => i.id === c.fileId || i.targetId === c.fileId || i.name === c.fileName);
+                if (!it) return;
+                await V.moveToTrash([{ id: it.id, name: it.name, kind: it.kind, targetKind: it.targetKind, targetId: it.targetId, workspaceId: it.workspaceId }], this.folder());
+            } catch (err) {
+                this.status(`The calendar's file could not be moved to the Recycle Bin: ${(err && err.message) || err}`);
+            }
+        }
+
         async ask(html, buttons) {
             return call('showConfirmationDialog', html, buttons.map(([text, value], i) => ({ text, value, className: `btn-standard${i ? '' : ' primary'}` })), null, { title: 'Windows Calendar', width: 420 });
         }
@@ -1092,7 +1105,7 @@
                 const v = await this.ask(`<p>Are you sure you want to delete the calendar "${esc(c.name)}"?</p><p>All its appointments and tasks are deleted with it.</p>`, [['Delete', 'yes'], ['Cancel', 'no']]);
                 if (v !== 'yes') return;
                 this.calendars = this.calendars.filter((x) => x !== c);
-                if (c.fileId) { try { await vfs().moveToTrash([{ id: c.fileId, type: 'file', kind: 'file', name: c.fileName }], this.folder()); } catch (_) { try { await vfs().deleteEntry(c.fileId); } catch (_e) { /* left as it is */ } } }
+                await this.trashFile(c);
                 this.select(null);
                 return;
             }
