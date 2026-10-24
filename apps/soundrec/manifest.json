@@ -1,0 +1,14 @@
+{
+    "id": "soundrec",
+    "version": "1.0.0",
+    "title": "Sound Recorder",
+    "publisher": "Xyridian",
+    "format": "msaz",
+    "type": "native",
+    "launchId": "soundrec",
+    "icon": "assets/soundrec.png",
+    "client": {
+        "entry": "client/soundrec.js",
+        "styles": ["assets/soundrec.css"]
+    }
+}

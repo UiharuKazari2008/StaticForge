@@ -1,0 +1,100 @@
+/* Sound Recorder (Yozora #632; apps/soundrec/client/soundrec.js): Vista draws its controls on the
+   glass frame (the whole client is extended frame), so the client is see-through here */
+
+.srec-window.srec-window > .modal-content.srec-client {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center;
+    gap: 10px;
+    width: 360px;
+    height: 40px;
+    padding: 0 8px 0 6px !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    border: 0 !important;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    color: #000;
+}
+
+/* the record button: a raised Vista push button with the red dot (a black square while recording) */
+.srec-window.srec-window .win7 .srec-rec:not(:disabled) {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    height: 26px !important;
+    min-height: 26px !important;
+    padding: 0 10px 0 7px;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    white-space: nowrap;
+}
+
+.srec-window .srec-glyph {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #ff9a9a, #d41d1d 55%, #8c0707);
+    box-shadow: 0 0 0 1px rgba(90, 0, 0, 0.6);
+}
+
+.srec-window .srec-rec.is-stop .srec-glyph {
+    width: 10px;
+    height: 10px;
+    border-radius: 1px;
+    background: linear-gradient(#5b5b5b, #1b1b1b);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+}
+
+/* the time: Vista's glass text, a soft white glow under it */
+.srec-window .srec-time {
+    flex: none;
+    min-width: 54px;
+    font-size: 13px;
+    text-shadow: 0 0 6px #fff, 0 0 10px rgba(255, 255, 255, 0.9);
+}
+
+/* the meter: a sunken bar, green segments */
+.srec-window .srec-meter {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 60px;
+    height: 12px;
+    overflow: hidden;
+    border: 1px solid #7c8796;
+    border-radius: 2px;
+    background: linear-gradient(#e7eaee, #fbfbfc);
+    box-shadow: inset 1px 1px 1px rgba(0, 0, 0, 0.18);
+}
+
+.srec-window .srec-meter-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 0;
+    background:
+        repeating-linear-gradient(90deg, transparent 0 5px, rgba(255, 255, 255, 0.85) 5px 7px),
+        linear-gradient(#a9f08b, #45c21e 50%, #2a9d0f);
+    transition: width 70ms linear;
+}
+
+/* Help: the round blue question mark */
+.srec-window.srec-window .win7 .srec-help:not(:disabled) {
+    flex: none;
+    width: 20px;
+    min-width: 0;
+    height: 20px;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-image: none;
+    border-radius: 50%;
+    background: url('/static_images/vista-explorer/help.png') center / 16px 16px no-repeat;
+    box-shadow: none;
+}
+
+.srec-window .srec-help::before,
+.srec-window .srec-help::after {
+    content: none;
+}
