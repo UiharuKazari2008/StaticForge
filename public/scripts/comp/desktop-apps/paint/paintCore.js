@@ -667,11 +667,15 @@
         flattened(opts = {}) {
             const c = makeCanvas(this.width, this.height);
             const cx = ctxOf(c);
+            this.composite(cx, null);
+            // composite() starts by clearing, so the background goes in behind afterwards
             if (opts.background) {
+                cx.save();
+                cx.globalCompositeOperation = 'destination-over';
                 cx.fillStyle = opts.background;
                 cx.fillRect(0, 0, this.width, this.height);
+                cx.restore();
             }
-            this.composite(cx, null);
             return c;
         }
 

@@ -32,6 +32,9 @@
         v4_5: 'NAI Diffusion V4.5 Full', v4_5_cur: 'NAI Diffusion V4.5 Curated', v4: 'NAI Diffusion V4 Full', v4_cur: 'NAI Diffusion V4 Curated',
         v3: 'NAI Diffusion Anime V3', v3_furry: 'NAI Diffusion Furry V3'
     };
+    // Fill and Expand start on V4.5 Full: V5's infilling (tried Oct 23 2026) paints a shrunken copy of the
+    // whole picture into the masked part whatever the prompt says; V4.5 follows the prompt
+    const INPAINT_DEFAULT = 'v4_5';
     // NovelAI's free size (Opus): a megapixel; sides in steps of 64
     const FREE_PIXELS = 1024 * 1024;
 
@@ -96,20 +99,24 @@
 
     // ---- the dialog -------------------------------------------------------------------------------
 
-    function settings() {
-        try { return JSON.parse(reg('GenerateLast', '{}') || '{}'); } catch (_) { return {}; }
+    // Generative Fill keeps its own prompt: it says what goes in the selection, not the whole picture
+    function settings(key) {
+        try { return JSON.parse(reg(key, '{}') || '{}'); } catch (_) { return {}; }
     }
 
     /** Prompt, Undesired Content, model, Transparent background (and Expand's sides). */
     function dialog(w, title, opts = {}) {
         const V = root.vistaDialogTemplate;
         if (!V) return Promise.resolve(null);
-        const last = settings();
+        // Fill and Expand inpaint: their own prompt and model (see INPAINT_DEFAULT)
+        const inpaint = !!(opts.fill || opts.expand);
+        const store = opts.fill ? 'GenerateFill' : opts.expand ? 'GenerateExpand' : 'GenerateLast';
+        const last = settings(store);
         const models = Object.keys(features()).filter((k) => !k.includes('_inp'));
         const expand = !!opts.expand;
         const y0 = expand ? 52 : 0;
         const c = [
-            [-1, 'S', 7, 7, 60, 8, 0x50020000, '&Prompt:', 0],
+            [-1, 'S', 7, 7, 236, 8, 0x50020000, opts.fill ? '&Prompt (what goes in the selection, e.g. "blue roses"):' : '&Prompt:', 0],
             [101, 'E', 7, 17, 236, 40, 0x50a11044, '', 0],
             [-1, 'S', 7, 61, 100, 8, 0x50020000, '&Undesired Content:', 0],
             [102, 'E', 7, 71, 236, 24, 0x50a11044, '', 0],
@@ -134,10 +141,10 @@
                 init: (ctx) => {
                     let studio = null;
                     try { studio = call('collectManualFormValues'); } catch (_) { studio = null; }
-                    ctx.set(101, last.prompt !== undefined ? last.prompt : (studio && studio.prompt) || '');
+                    ctx.set(101, last.prompt !== undefined ? last.prompt : (!opts.fill && studio && studio.prompt) || '');
                     ctx.set(102, last.uc !== undefined ? last.uc : (studio && studio.uc) || '');
                     const sel = ctx.el(103);
-                    const model = last.model && features()[last.model] ? last.model : currentModel();
+                    const model = last.model && features()[last.model] ? last.model : inpaint && features()[INPAINT_DEFAULT] ? INPAINT_DEFAULT : currentModel();
                     if (sel) {
                         sel.innerHTML = models.map((k) => `<option value="${k}">${esc(MODEL_NAMES[k] || k)}</option>`).join('');
                         sel.value = model;
@@ -148,7 +155,9 @@
                         const ok = canAlpha(m);
                         if (alpha) { alpha.disabled = !ok; if (!ok) ctx.set(104, false); }
                         const note = ctx.el(109);
-                        if (note) note.textContent = ok ? (opts.note || '') : `${MODEL_NAMES[m] || m} cannot paint transparency; the V5 models can.`;
+                        if (!note) return;
+                        if (inpaint && /^v5/.test(m)) note.textContent = 'V5 inpainting tends to paint a small copy of the whole picture into the area; V4.5 Full follows the prompt.';
+                        else note.textContent = ok ? (opts.note || '') : `${MODEL_NAMES[m] || m} cannot paint transparency; the V5 models can.`;
                     };
                     ctx.set(104, !!last.alpha && canAlpha(model));
                     if (sel) sel.addEventListener('change', sync);
@@ -163,7 +172,7 @@
                     if (!canAlpha(v.model)) v.alpha = false;
                     if (expand) v.sides = [105, 106, 107, 108].map((id) => Math.max(0, Math.round(Number(ctx.get(id)) || 0)));
                     if (expand && !v.sides.some((s) => s > 0)) { w.status('Give at least one side some pixels to add.'); return false; }
-                    setReg({ GenerateLast: JSON.stringify({ prompt: v.prompt, uc: v.uc, model: v.model, alpha: v.alpha }) });
+                    setReg({ [store]: JSON.stringify({ prompt: v.prompt, uc: v.uc, model: v.model, alpha: v.alpha }) });
                     end(v);
                     return true;
                 },
@@ -189,6 +198,7 @@
         w.commitFloating();
         const s = d.selection;
         const v = await dialog(w, s ? 'Generative Fill' : 'Generate Image', {
+            fill: !!s,
             note: s ? 'NovelAI repaints the selection to fit the picture round it.' : 'A new picture on a layer of its own, the canvas\'s shape.'
         });
         if (!v) return;
@@ -214,9 +224,17 @@
     }
 
     /** The selection's box with room round it (NovelAI needs the picture's context). */
+    /**
+     * What NovelAI sees round the selection: two and a half times its size, at least 512 pixels or
+     * 60% of the picture, centred on it and moved (not cut) to stay inside, so it knows what it fills.
+     */
     function regionOf(d, s) {
-        const pad = Math.max(32, Math.round(Math.max(s.w, s.h) * 0.25));
-        return C().clampRect({ x: s.x - pad, y: s.y - pad, w: s.w + 2 * pad, h: s.h + 2 * pad }, d.width, d.height);
+        const side = (sel, all) => Math.round(Math.min(all, Math.max(sel * 2.5, 512, all * 0.6)));
+        const w = side(s.w, d.width);
+        const h = side(s.h, d.height);
+        const x = Math.round(Math.max(0, Math.min(d.width - w, s.x + s.w / 2 - w / 2)));
+        const y = Math.round(Math.max(0, Math.min(d.height - h, s.y + s.h / 2 - h / 2)));
+        return { x, y, w, h };
     }
 
     async function fillSelection(w, v, s) {
