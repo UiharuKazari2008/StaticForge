@@ -286,123 +286,26 @@
         });
     }
 
-    // ---- Edit Colors (CHOOSECOLOR) ------------------------------------------------------------
+    // ---- Edit Colors (CHOOSECOLOR, vistaDialogTemplate.chooseColor) ------------------------------
 
-    // ChooseColor's 48 basic colors, as Vista lists them (6 rows of 8)
-    const BASIC = [
-        '#ff8080', '#ffff80', '#80ff80', '#00ff80', '#80ffff', '#0080ff', '#ff80c0', '#ff80ff',
-        '#ff0000', '#ffff00', '#80ff00', '#00ff40', '#00ffff', '#0080c0', '#8080c0', '#ff00ff',
-        '#804040', '#ff8040', '#00ff00', '#008080', '#004080', '#8080ff', '#800040', '#ff0080',
-        '#800000', '#ff8000', '#008000', '#008040', '#0000ff', '#0000a0', '#800080', '#8000ff',
-        '#400000', '#804000', '#004000', '#004040', '#000080', '#000040', '#400040', '#400080',
-        '#000000', '#808000', '#808040', '#808080', '#408080', '#c0c0c0', '#400040', '#ffffff'
-    ];
-
-    function toHex(r, g, b) {
-        return `#${[r, g, b].map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('')}`;
-    }
-
-    function editColors(w, paletteIndex) {
-        const custom = reg('CustomColors', Array(16).fill('#ffffff'));
-        let color = paletteIndex !== undefined ? root.melatonPaint.PALETTE[paletteIndex] : w.fg;
-        const T = root.vistaDialogTemplates['comdlg32:CHOOSECOLOR'];
-        if (!T) return;
-        let customSlot = 0;
-        V().openDialog({
+    async function editColors(w, paletteIndex) {
+        const start = paletteIndex !== undefined ? root.melatonPaint.PALETTE[paletteIndex] : w.fg;
+        const color = await V().chooseColor({
             id: 'mpEditColors',
-            key: 'comdlg32:CHOOSECOLOR',
             title: 'Edit Colors',
             owner: w.modal,
-            overrides: {
-                1038: { hidden: true }, 713: { hidden: true },
-                720: { html: `<div class="mp-cc-grid is-basic">${BASIC.map((c) => `<button type="button" class="mp-cc-cell" data-c="${c}" style="--c:${c}"></button>`).join('')}</div>` },
-                721: { html: `<div class="mp-cc-grid is-custom">${custom.map((c, i) => `<button type="button" class="mp-cc-cell" data-c="${c}" data-slot="${i}" style="--c:${c}"></button>`).join('')}</div>` },
-                710: { html: '<canvas class="mp-cc-spectrum" width="177" height="189"></canvas><span class="mp-cc-cross"></span>' },
-                702: { html: '<canvas class="mp-cc-lum" width="12" height="189"></canvas><span class="mp-cc-arrow"></span>' },
-                709: { html: '<div class="mp-cc-swatch"></div>' }
-            },
-            init(ctx) {
-                const content = ctx.content;
-                const collapsed = Math.round((152 * 6) / 4);
-                const full = parseInt(content.style.width, 10);
-                content.style.width = `${collapsed}px`;
-                ctx.on(719, 'click', () => {
-                    content.style.width = `${full}px`;
-                    ctx.enable(719, false);
-                    paint();
-                });
-                const spec = content.querySelector('.mp-cc-spectrum');
-                const lum = content.querySelector('.mp-cc-lum');
-                const sctx = spec.getContext('2d');
-                const img = sctx.createImageData(spec.width, spec.height);
-                for (let y = 0; y < spec.height; y += 1) {
-                    for (let x = 0; x < spec.width; x += 1) {
-                        const [r, g, b] = C().hslToRgb(x / spec.width, 1 - y / spec.height, 0.5);
-                        const i = (y * spec.width + x) * 4;
-                        img.data[i] = r; img.data[i + 1] = g; img.data[i + 2] = b; img.data[i + 3] = 255;
-                    }
-                }
-                sctx.putImageData(img, 0, 0);
-                let hsl = C().rgbToHsl(...C().parseColor(color).slice(0, 3));
-                const paint = () => {
-                    const [r, g, b] = C().hslToRgb(hsl[0], hsl[1], hsl[2]);
-                    color = toHex(r, g, b);
-                    content.querySelector('.mp-cc-swatch').style.background = color;
-                    const lc = lum.getContext('2d');
-                    for (let y = 0; y < lum.height; y += 1) {
-                        const [lr, lg, lb] = C().hslToRgb(hsl[0], hsl[1], 1 - y / lum.height);
-                        lc.fillStyle = toHex(lr, lg, lb);
-                        lc.fillRect(0, y, lum.width, 1);
-                    }
-                    content.querySelector('.mp-cc-cross').style.cssText = `left:${hsl[0] * spec.width - 9}px;top:${(1 - hsl[1]) * spec.height - 9}px`;
-                    content.querySelector('.mp-cc-arrow').style.top = `${(1 - hsl[2]) * lum.height - 4}px`;
-                    ctx.set(703, String(Math.round(hsl[0] * 239)));
-                    ctx.set(704, String(Math.round(hsl[1] * 240)));
-                    ctx.set(705, String(Math.round(hsl[2] * 240)));
-                    ctx.set(706, String(Math.round(r)));
-                    ctx.set(707, String(Math.round(g)));
-                    ctx.set(708, String(Math.round(b)));
-                };
-                const drag = (el, fn) => el.addEventListener('pointerdown', (ev) => {
-                    el.setPointerCapture(ev.pointerId);
-                    const at = (e) => { const r = el.getBoundingClientRect(); fn(Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), Math.max(0, Math.min(1, (e.clientY - r.top) / r.height))); paint(); };
-                    at(ev);
-                    el.onpointermove = (e) => { if (e.buttons) at(e); };
-                });
-                drag(spec, (x, y) => { hsl = [x, 1 - y, hsl[2] === 0 || hsl[2] === 1 ? 0.5 : hsl[2]]; });
-                drag(lum, (x, y) => { hsl = [hsl[0], hsl[1], 1 - y]; });
-                content.addEventListener('click', (ev) => {
-                    const cell = ev.target.closest('.mp-cc-cell');
-                    if (!cell) return;
-                    content.querySelectorAll('.mp-cc-cell.is-on').forEach((c) => c.classList.remove('is-on'));
-                    cell.classList.add('is-on');
-                    if (cell.dataset.slot !== undefined) customSlot = Number(cell.dataset.slot);
-                    hsl = C().rgbToHsl(...C().parseColor(cell.dataset.c).slice(0, 3));
-                    paint();
-                });
-                const fromRgb = () => { hsl = C().rgbToHsl(num(ctx.get(706), 0), num(ctx.get(707), 0), num(ctx.get(708), 0)); paint(); };
-                const fromHsl = () => { hsl = [num(ctx.get(703), 0) / 239, num(ctx.get(704), 0) / 240, num(ctx.get(705), 0) / 240]; paint(); };
-                [706, 707, 708].forEach((id) => ctx.on(id, 'change', fromRgb));
-                [703, 704, 705].forEach((id) => ctx.on(id, 'change', fromHsl));
-                ctx.on(712, 'click', () => {
-                    custom[customSlot] = color;
-                    const cell = content.querySelector(`.mp-cc-cell[data-slot="${customSlot}"]`);
-                    if (cell) { cell.dataset.c = color; cell.style.setProperty('--c', color); }
-                    customSlot = (customSlot + 1) % 16;
-                    setReg({ CustomColors: custom.slice() });
-                });
-                paint();
-            },
-            ok() {
-                if (paletteIndex !== undefined) {
-                    root.melatonPaint.PALETTE[paletteIndex] = color;
-                    const cell = w.modal.querySelector(`.mp-color[data-i="${paletteIndex}"]`);
-                    if (cell) cell.style.background = color;
-                }
-                w.fg = color;
-                w.renderColors();
-            }
+            color: start,
+            custom: reg('CustomColors', Array(16).fill('#ffffff')),
+            onCustom: (custom) => setReg({ CustomColors: custom })
         });
+        if (!color) return;
+        if (paletteIndex !== undefined) {
+            root.melatonPaint.PALETTE[paletteIndex] = color;
+            const cell = w.modal.querySelector(`.mp-color[data-i="${paletteIndex}"]`);
+            if (cell) cell.style.background = color;
+        }
+        w.fg = color;
+        w.renderColors();
     }
 
     root.paintDialogs = { flipRotate, resizeSkew, attributes, grid, customZoom, rotateLayer, editColors };

@@ -406,7 +406,7 @@
 }
 
 .wcal-window .wcal-task.is-overdue .wcal-task-name {
-    color: #ff0000;
+    color: var(--wcal-overdue, #ff0000);
 }
 
 .wcal-rem-list .wcal-swatch {
@@ -837,9 +837,13 @@
     font: inherit;
 }
 
-/* Options' overdue colour button */
-.vdt-client [data-vdt-id="4010"] {
-    background: var(--wcal-overdue, #f00) content-box;
+/* Options' overdue colour button: the button face with the colour 3 px in, framed #a0a0a0 (VM) */
+.vdt-client [data-vdt-id="4010"] .wcal-overdue-swatch {
+    position: absolute;
+    inset: 3px;
+    border: 1px solid #a0a0a0;
+    background: var(--wcal-overdue, #f00);
+    pointer-events: none;
 }
 
 /* the reminders window's list */

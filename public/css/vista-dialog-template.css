@@ -722,7 +722,93 @@ body.desktop-mode .modal.vdt-wizard .vdt-client .vdt-wizard-instruction {
     border: 1px solid #0066cc;
 }
 
+/* SS_CENTERIMAGE draws the label as one line (DT_SINGLELINE | DT_VCENTER), overflowing its rect */
 .vdt-client .vdt-static.vdt-middle {
     display: flex;
     align-items: center;
+    white-space: nowrap;
+    overflow: visible;
+}
+
+/* ---- ChooseColor (comdlg32 CHOOSECOLOR; chooseColor): the colour grids, the hue / saturation
+   spectrum with its cross, the luminosity bar with its arrow, the Color|Solid swatch ---- */
+
+.vdt-client .vdt-cc-grid {
+    overflow: visible;
+}
+
+/* a box: 2 px sunken edge (#a0a0a0 / #696969 over #e3e3e3 / #fff) round a 16x13 colour */
+.vdt-client .vdt-cc-cell,
+.vdt-client .vdt-cc-cell:hover,
+.vdt-client .vdt-cc-cell:active {
+    position: absolute;
+    width: 20px;
+    height: 17px;
+    min-width: 0;
+    min-height: 0;
+    box-sizing: border-box;
+    padding: 0;
+    border: 1px solid;
+    border-color: #a0a0a0 #fff #fff #a0a0a0;
+    border-radius: 0;
+    background: var(--c);
+    box-shadow: inset 1px 1px 0 #696969, inset -1px -1px 0 #e3e3e3;
+    outline: none;
+    overflow: visible;
+}
+
+.vdt-client .vdt-cc-cell::before,
+.vdt-client .vdt-cc-cell::after {
+    content: none;
+}
+
+/* the chosen box: a black frame round it, the focus dots 3 px out */
+.vdt-client .vdt-cc-cell.is-on {
+    outline: 1px solid #000;
+    outline-offset: 0;
+}
+
+.vdt-client .vdt-cc-cell.is-on::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border: 1px dotted #000;
+    pointer-events: none;
+}
+
+.vdt-client .vdt-cc-spectrum,
+.vdt-client .vdt-cc-lum {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 1px solid #a0a0a0;
+    box-sizing: border-box;
+    cursor: crosshair;
+}
+
+.vdt-client .vdt-cc-cross {
+    position: absolute;
+    width: 19px;
+    height: 19px;
+    pointer-events: none;
+    background:
+        linear-gradient(#000, #000) center / 2px 7px no-repeat,
+        linear-gradient(#000, #000) center / 7px 2px no-repeat;
+}
+
+.vdt-client .vdt-cc-arrow {
+    position: absolute;
+    right: -8px;
+    width: 0;
+    height: 0;
+    border: 4px solid transparent;
+    border-right-color: #000;
+    pointer-events: none;
+}
+
+.vdt-client .vdt-cc-swatch {
+    width: 100%;
+    height: 100%;
+    border: 1px solid #a0a0a0;
+    box-sizing: border-box;
 }

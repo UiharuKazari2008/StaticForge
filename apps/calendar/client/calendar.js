@@ -42,6 +42,10 @@
     const DAY = 86400000;
     const SLOT = 20; // px per half hour
     const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    // Options' First day of week / Start of work week (0 = Sunday)
+    const firstDay = () => Number(reg('FirstDay', 0)) || 0;
+    const weekStartOf = (d, first) => addDays(d, -((d.getDay() - first + 7) % 7));
+    const rotated = (list, first) => list.slice(first).concat(list.slice(0, first));
     const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     const REMINDERS = [[null, 'None'], [0, 'On start date'], [5, '5 minutes before'], [10, '10 minutes before'], [15, '15 minutes before'], [30, '30 minutes before'], [60, '1 hour before'], [120, '2 hours before'], [1440, '1 day before'], [2880, '2 days before'], [10080, '1 week before']];
     const RECUR = [['', 'Once'], ['DAILY', 'Daily'], ['WEEKLY', 'Weekly'], ['MONTHLY', 'Monthly'], ['YEARLY', 'Yearly']];
@@ -170,7 +174,7 @@
                 case 'EXDATE': value.split(',').forEach((x) => { const p = parseIcsDate(x, params); if (p) cur.exdates.push(p.date.getTime()); }); break;
                 case 'PRIORITY': cur.priority = parseInt(value, 10) || 0; break;
                 case 'STATUS': if (cur.kind === 'task') cur.completed = value.toUpperCase() === 'COMPLETED'; break;
-                case 'COMPLETED': if (cur.kind === 'task') cur.completed = true; break;
+                case 'COMPLETED': if (cur.kind === 'task') { cur.completed = true; const p = parseIcsDate(value, params); if (p) cur.completedAt = p.date.getTime(); } break;
                 case 'PERCENT-COMPLETE': if (cur.kind === 'task' && parseInt(value, 10) >= 100) cur.completed = true; break;
                 default:
             }
@@ -218,6 +222,7 @@
             if (t.due) L.push(`DUE;VALUE=DATE:${icsDate(t.due)}`);
             if (t.priority) L.push(`PRIORITY:${t.priority}`);
             if (t.completed) L.push('STATUS:COMPLETED', 'PERCENT-COMPLETE:100');
+            if (t.completed && t.completedAt) L.push(`COMPLETED:${icsUtc(new Date(t.completedAt))}`);
             if (t.description) L.push(`DESCRIPTION:${icsEscape(t.description)}`);
             if (t.url) L.push(`URL:${t.url}`);
             L.push('END:VTODO');
@@ -368,7 +373,7 @@
             };
             cal.readonly = !!cal.source;
             parsed.events.forEach((e) => cal.events.push({ uid: e.uid || uid(), summary: e.summary || '', location: e.location || '', description: e.description || '', url: e.url || '', start: e.start, end: e.end, allDay: !!e.allDay, rrule: e.rrule || null, exdates: e.exdates || [], reminder: e.reminder === undefined ? null : e.reminder }));
-            parsed.tasks.forEach((t) => cal.tasks.push({ uid: t.uid || uid(), summary: t.summary || '', due: t.due || null, start: t.start || null, priority: t.priority || 0, completed: !!t.completed, description: t.description || '', url: t.url || '' }));
+            parsed.tasks.forEach((t) => cal.tasks.push({ uid: t.uid || uid(), summary: t.summary || '', due: t.due || null, start: t.start || null, priority: t.priority || 0, completed: !!t.completed, completedAt: t.completedAt || null, description: t.description || '', url: t.url || '' }));
             this.calendars.push(cal);
             return cal;
         }
@@ -663,13 +668,15 @@
             const d = this.date;
             if (this.view === 'day') return { a: d, b: addDays(d, 1), days: 1 };
             if (this.view === 'month') {
-                const first = new Date(d.getFullYear(), d.getMonth(), 1);
-                const a = addDays(first, -first.getDay());
+                const a = weekStartOf(new Date(d.getFullYear(), d.getMonth(), 1), firstDay());
                 return { a, b: addDays(a, 42), days: 42 };
             }
-            const sun = addDays(d, -d.getDay());
-            if (this.view === 'workweek') return { a: addDays(sun, 1), b: addDays(sun, 6), days: 5 };
-            return { a: sun, b: addDays(sun, 7), days: 7 };
+            if (this.view === 'workweek') {
+                const ws = weekStartOf(d, Number(reg('WorkWeekStart', 1)) || 0);
+                return { a: ws, b: addDays(ws, 5), days: 5 };
+            }
+            const ws = weekStartOf(d, firstDay());
+            return { a: ws, b: addDays(ws, 7), days: 7 };
         }
 
         step(n) {
@@ -707,11 +714,11 @@
         renderMini() {
             const host = this.el('.wcal-mini');
             const m0 = this.navMonth;
-            const first = addDays(m0, -m0.getDay());
+            const first = weekStartOf(m0, firstDay());
             const today = startOfDay(new Date());
             const { a, b } = this.range();
             // the VM's: "October, 2026", two-letter day names
-            let html = `<div class="wcal-mini-head"><button type="button" class="wcal-mini-step" data-m="-1" title="Previous month"></button><span>${MONTHS[m0.getMonth()]}, ${m0.getFullYear()}</span><button type="button" class="wcal-mini-step is-next" data-m="1" title="Next month"></button></div><table class="wcal-mini-grid"><tr>${['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((x) => `<th>${x}</th>`).join('')}</tr>`;
+            let html = `<div class="wcal-mini-head"><button type="button" class="wcal-mini-step" data-m="-1" title="Previous month"></button><span>${MONTHS[m0.getMonth()]}, ${m0.getFullYear()}</span><button type="button" class="wcal-mini-step is-next" data-m="1" title="Next month"></button></div><table class="wcal-mini-grid"><tr>${rotated(['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'], firstDay()).map((x) => `<th>${x}</th>`).join('')}</tr>`;
             const busy = new Set(this.occurrencesIn(first, addDays(first, 42)).map((o) => startOfDay(o.start).getTime()));
             for (let r = 0; r < 6; r += 1) {
                 html += '<tr>';
@@ -754,9 +761,13 @@
             const host = this.el('.wcal-tasks');
             const list = [];
             this.calendars.forEach((cal) => { if (cal.visible) cal.tasks.forEach((t) => list.push({ t, cal })); });
-            list.sort((x, y) => (x.t.completed - y.t.completed) || ((x.t.due || Infinity) - (y.t.due || Infinity)));
+            // Options: completed tasks go after "Number of days before hiding completed tasks"
+            const hideDays = Number(reg('HideCompletedDays', 0)) || 0;
+            const shown = hideDays ? list.filter(({ t }) => !t.completed || !t.completedAt || Date.now() - t.completedAt < hideDays * DAY) : list;
+            shown.sort((x, y) => (x.t.completed - y.t.completed) || ((x.t.due || Infinity) - (y.t.due || Infinity)));
             const now = startOfDay(new Date());
-            host.innerHTML = list.map(({ t, cal }) => `<div class="wcal-task${this.sel && this.sel.item === t ? ' is-sel' : ''}${t.completed ? ' is-done' : ''}${!t.completed && t.due && t.due < now ? ' is-overdue' : ''}" data-cal="${cal.id}" data-uid="${esc(t.uid)}">
+            host.style.setProperty('--wcal-overdue', reg('OverdueColor', '#ff0000'));
+            host.innerHTML = shown.map(({ t, cal }) => `<div class="wcal-task${this.sel && this.sel.item === t ? ' is-sel' : ''}${t.completed ? ' is-done' : ''}${!t.completed && t.due && t.due < now ? ' is-overdue' : ''}" data-cal="${cal.id}" data-uid="${esc(t.uid)}">
                 <input type="checkbox"${t.completed ? ' checked' : ''}${cal.readonly ? ' disabled' : ''} title="Completed"><span class="wcal-swatch" style="background:${cal.color}"></span><span class="wcal-task-name">${esc(t.summary || 'New Task')}</span></div>`).join('');
             host.onclick = (ev) => {
                 const row = ev.target.closest('.wcal-task');
@@ -764,7 +775,7 @@
                 const cal = this.calendars.find((c) => c.id === row.dataset.cal);
                 const t = cal && cal.tasks.find((x) => x.uid === row.dataset.uid);
                 if (!t) return;
-                if (ev.target.matches('input[type=checkbox]')) { t.completed = ev.target.checked; this.touched(cal); this.renderTasks(); this.renderDetails(); return; }
+                if (ev.target.matches('input[type=checkbox]')) { t.completed = ev.target.checked; t.completedAt = t.completed ? Date.now() : null; this.touched(cal); this.renderTasks(); this.renderDetails(); return; }
                 this.select({ kind: 'task', item: t, cal });
             };
         }
@@ -786,13 +797,14 @@
             // Options' Day start / Day end (8 AM / 5 PM)
             const workStart = Number(reg('DayStart', 8));
             const workEnd = Number(reg('DayEnd', 17));
+            const workWeek = Number(reg('WorkWeekStart', 1)) || 0;
             let html = `<div class="wcal-grid-head" style="--cols:${days}"><div class="wcal-gutter"></div>${cols.map((d) => `<div class="wcal-colhead${sameDay(d, today) ? ' is-today' : ''}" data-d="${d.getTime()}">${days === 1 ? WEEKDAYS[d.getDay()] : `${WEEKDAYS[d.getDay()].slice(0, 3)} ${d.getMonth() + 1}/${d.getDate()}`}</div>`).join('')}</div>`;
             html += `<div class="wcal-allday" style="--cols:${days}"><div class="wcal-gutter"></div>${cols.map((d) => `<div class="wcal-allday-col" data-d="${d.getTime()}">${allDay.filter((o) => o.start < addDays(d, 1) && o.end > d).map((o) => this.chip(o, true)).join('')}</div>`).join('')}</div>`;
             html += `<div class="wcal-scroll"><div class="wcal-hours" style="--cols:${days}"><div class="wcal-gutter">${Array.from({ length: 24 }, (_, h) => `<div class="wcal-hour-label" style="height:${SLOT * 2}px">${h % 12 || 12} ${h < 12 ? 'AM' : 'PM'}</div>`).join('')}</div>`;
             html += cols.map((d) => {
                 const slots = Array.from({ length: 48 }, (_, s) => {
                     const h = s / 2;
-                    const work = d.getDay() > 0 && d.getDay() < 6 && h >= workStart && h < workEnd;
+                    const work = (d.getDay() - workWeek + 7) % 7 < 5 && h >= workStart && h < workEnd;
                     return `<div class="wcal-slot${work ? ' is-work' : ''}${s % 2 ? ' is-half' : ''}" data-t="${d.getTime() + s * 1800000}"></div>`;
                 }).join('');
                 const mine = timed.filter((o) => o.start < addDays(d, 1) && o.end > d);
@@ -934,7 +946,7 @@
         renderMonth(host, a) {
             const occ = this.occurrencesIn(a, addDays(a, 42));
             const today = startOfDay(new Date());
-            let html = `<div class="wcal-month-head">${WEEKDAYS.map((w) => `<div>${w}</div>`).join('')}</div><div class="wcal-month">`;
+            let html = `<div class="wcal-month-head">${rotated(WEEKDAYS, firstDay()).map((w) => `<div>${w}</div>`).join('')}</div><div class="wcal-month">`;
             for (let i = 0; i < 42; i += 1) {
                 const d = addDays(a, i);
                 const mine = occ.filter((o) => o.start < addDays(d, 1) && o.end > d);
@@ -1028,7 +1040,7 @@
                 const bind = (sel, ev, fn) => { const e = host.querySelector(sel); if (e) e.addEventListener(ev, () => { fn(e); this.touched(s.cal); this.renderTasks(); }); };
                 bind('.wcal-d-title', 'input', (e) => { t.summary = e.value; });
                 bind('.wcal-d-url-in', 'change', (e) => { t.url = e.value.trim(); });
-                bind('.wcal-d-done', 'change', (e) => { t.completed = e.checked; });
+                bind('.wcal-d-done', 'change', (e) => { t.completed = e.checked; t.completedAt = t.completed ? Date.now() : null; });
                 bind('.wcal-d-pri', 'change', (e) => { t.priority = Number(e.value); });
                 bind('.wcal-d-tstart', 'change', (e) => { t.start = e.value ? fromInputs(e.value) : null; });
                 bind('.wcal-d-due', 'change', (e) => { t.due = e.value ? fromInputs(e.value) : null; });
@@ -1120,7 +1132,7 @@
                 if (this.view === 'month') { start = this.date; end = addDays(start, 1); allDay = true; }
             }
             if (!p && !allDay) end = new Date(start.getTime() + Number(reg('DefaultLength', 60)) * 60000);
-            const rem = Number(reg('DefaultReminder', 15));
+            const rem = Number(reg('DefaultReminder', -1));
             const ev = { uid: uid(), summary: '', location: '', description: '', url: '', start, end, allDay, rrule: null, exdates: [], reminder: allDay || rem < 0 ? null : rem };
             cal.events.push(ev);
             this.touched(cal);
@@ -1183,36 +1195,51 @@
         }
 
         /** File > Options: WinCal.exe.mui dialog 4000. */
+        /**
+         * File > Options: WinCal's template 4000 with the VM's lists and defaults: half-hour day start
+         * and end, reminders None..2 weeks (None by default), task reminder time None or a half hour,
+         * completed tasks hidden after Never..2 weeks, the overdue colour (red) from the Color dialog.
+         */
         optionsDialog() {
             const V = root.vistaDialogTemplate;
             if (!V) return;
-            const hours = Array.from({ length: 24 }, (_, h) => ({ value: String(h), text: `${h % 12 || 12}:00 ${h < 12 ? 'AM' : 'PM'}` }));
-            const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((t, i) => ({ value: String(i), text: t }));
-            const lengths = [[15, '15 minutes'], [30, '30 minutes'], [60, '1 hour'], [90, '1.5 hours'], [120, '2 hours']].map(([v, t]) => ({ value: String(v), text: t }));
-            const reminders = [[-1, 'None'], [0, '0 minutes'], [5, '5 minutes'], [10, '10 minutes'], [15, '15 minutes'], [30, '30 minutes'], [60, '1 hour'], [120, '2 hours'], [1440, '1 day'], [2880, '2 days'], [10080, '1 week']].map(([v, t]) => ({ value: String(v), text: t }));
-            const hide = [[0, 'Never'], [1, '1'], [2, '2'], [3, '3'], [7, '7'], [14, '14'], [30, '30']].map(([v, t]) => ({ value: String(v), text: t }));
+            const halfHours = Array.from({ length: 48 }, (_, i) => { const h = Math.floor(i / 2); return { value: String(i / 2), text: `${h % 12 || 12}:${i % 2 ? '30' : '00'} ${h < 12 ? 'AM' : 'PM'}` }; });
+            const days = WEEKDAYS.map((t, i) => ({ value: String(i), text: t }));
+            const lengths = [[15, '15 minutes'], [30, '30 minutes'], [60, '1 hour'], [120, '2 hours']].map(([v, t]) => ({ value: String(v), text: t }));
+            const reminders = [[-1, 'None'], [0, '0 minutes'], [5, '5 minutes'], [15, '15 minutes'], [30, '30 minutes'], [60, '1 hour'], [120, '2 hours'], [240, '4 hours'], [1440, '1 day'], [2880, '2 days'], [5760, '4 days'], [10080, '1 week'], [20160, '2 weeks']].map(([v, t]) => ({ value: String(v), text: t }));
+            const hide = [[0, 'Never'], [1, '1 day'], [2, '2 days'], [4, '4 days'], [7, '1 week'], [14, '2 weeks']].map(([v, t]) => ({ value: String(v), text: t }));
+            let overdue = reg('OverdueColor', '#ff0000');
             V.openDialog({
-                id: 'wcalOptions', key: 'wincal:4000', icon: ICON16, owner: this.modal,
+                id: 'wcalOptions', key: 'wincal:4000', owner: this.modal,
                 init: (ctx) => {
-                    ctx.options(4001, days, String(reg('FirstDay', 0)));
+                    ctx.options(4001, days, String(firstDay()));
                     ctx.options(4011, days, String(reg('WorkWeekStart', 1)));
-                    ctx.options(4002, hours, String(reg('DayStart', 8)));
-                    ctx.options(4003, hours, String(reg('DayEnd', 17)));
+                    ctx.options(4002, halfHours, String(reg('DayStart', 8)));
+                    ctx.options(4003, halfHours, String(reg('DayEnd', 17)));
                     ctx.set(4004, reg('RemindersAlways', true) !== false);
                     ctx.set(4012, reg('ReminderSound', true) !== false);
                     ctx.set(4005, reg('ShowTimeZone', false) === true);
                     ctx.options(4006, lengths, String(reg('DefaultLength', 60)));
-                    ctx.options(4007, reminders, String(reg('DefaultReminder', 15)));
+                    ctx.options(4007, reminders, String(reg('DefaultReminder', -1)));
                     ctx.options(4008, hide, String(reg('HideCompletedDays', 0)));
-                    ctx.options(4009, hours, String(reg('TaskReminderTime', 8)));
+                    ctx.options(4009, [{ value: '-1', text: 'None' }].concat(halfHours), String(reg('TaskReminderTime', -1)));
                     const ov = ctx.holder(4010);
-                    if (ov) ov.style.setProperty('--wcal-overdue', reg('OverdueColor', '#ff0000'));
+                    if (ov) {
+                        ov.innerHTML = '<span class="wcal-overdue-swatch"></span>';
+                        const paint = () => ov.style.setProperty('--wcal-overdue', overdue);
+                        paint();
+                        ctx.on(4010, 'click', async () => {
+                            const c = await V.chooseColor({ id: 'wcalColor', owner: ctx.modal, color: overdue, custom: reg('CustomColors', null) || [overdue].concat(Array(15).fill('#000000')), onCustom: (custom) => setReg({ CustomColors: custom }) });
+                            if (c) { overdue = c; paint(); }
+                        });
+                    }
                 },
                 ok: (ctx) => {
                     setReg({
                         FirstDay: Number(ctx.get(4001)), WorkWeekStart: Number(ctx.get(4011)), DayStart: Number(ctx.get(4002)), DayEnd: Number(ctx.get(4003)),
                         RemindersAlways: !!ctx.get(4004), ReminderSound: !!ctx.get(4012), ShowTimeZone: !!ctx.get(4005),
-                        DefaultLength: Number(ctx.get(4006)), DefaultReminder: Number(ctx.get(4007)), HideCompletedDays: Number(ctx.get(4008)), TaskReminderTime: Number(ctx.get(4009))
+                        DefaultLength: Number(ctx.get(4006)), DefaultReminder: Number(ctx.get(4007)), HideCompletedDays: Number(ctx.get(4008)), TaskReminderTime: Number(ctx.get(4009)),
+                        OverdueColor: overdue
                     });
                     this.render();
                     return true;
@@ -1330,7 +1357,7 @@
                 [2, 'B', 203, 130, 50, 14, 0x50010000, 'Close', 0]
             ] };
             this.reminderOpen = true;
-            if (typeof root.playMelatonSound === 'function') { try { root.playMelatonSound('reminder'); } catch (_) { /* no sound */ } }
+            if (reg('ReminderSound', true) !== false && typeof root.playMelatonSound === 'function') { try { root.playMelatonSound('reminder'); } catch (_) { /* no sound */ } }
             V.openDialog({
                 id: 'wcalReminders', tpl, owner: this.modal,
                 init: (ctx) => {

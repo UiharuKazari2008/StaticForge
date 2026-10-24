@@ -981,5 +981,175 @@
         return state.ctx;
     }
 
-    root.vistaDialogTemplate = { openSheet, openDialog, openWizard, renderControls, size, units, rect, label };
+    // ---- ChooseColor (comdlg32 CHOOSECOLOR) ----------------------------------------------------
+    //
+    // Basic colors, Custom colors, and Define Custom Colors >> with the hue / saturation spectrum,
+    // the luminosity bar and the Hue / Sat / Lum / Red / Green / Blue boxes. Paint's Edit Colors and
+    // Calendar's Overdue color open it. Resolves with the colour (#rrggbb) or null on Cancel.
+
+    // ChooseColor's 48 basic colors, as Vista lists them (6 rows of 8)
+    const CC_BASIC = [
+        '#ff8080', '#ffff80', '#80ff80', '#00ff80', '#80ffff', '#0080ff', '#ff80c0', '#ff80ff',
+        '#ff0000', '#ffff00', '#80ff00', '#00ff40', '#00ffff', '#0080c0', '#8080c0', '#ff00ff',
+        '#804040', '#ff8040', '#00ff00', '#008080', '#004080', '#8080ff', '#800040', '#ff0080',
+        '#800000', '#ff8000', '#008000', '#008040', '#0000ff', '#0000a0', '#800080', '#8000ff',
+        '#400000', '#804000', '#004000', '#004040', '#000080', '#000040', '#400040', '#400080',
+        '#000000', '#808000', '#808040', '#808080', '#408080', '#c0c0c0', '#400040', '#ffffff'
+    ];
+
+    function ccHex(r, g, b) {
+        return `#${[r, g, b].map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('')}`;
+    }
+
+    function ccRgb(css) {
+        const m = /^#?([0-9a-f]{6})$/i.exec(String(css || '').trim());
+        if (m) return [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16));
+        const c = doc.createElement('canvas').getContext('2d');
+        c.fillStyle = String(css || '#000');
+        c.fillRect(0, 0, 1, 1);
+        return Array.from(c.getImageData(0, 0, 1, 1).data.slice(0, 3));
+    }
+
+    function rgbToHsl(r, g, b) {
+        r /= 255; g /= 255; b /= 255;
+        const max = Math.max(r, g, b);
+        const min = Math.min(r, g, b);
+        let h = 0;
+        let s = 0;
+        const l = (max + min) / 2;
+        if (max !== min) {
+            const d = max - min;
+            s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+            h = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+            h /= 6;
+        }
+        return [h, s, l];
+    }
+
+    function hslToRgb(h, s, l) {
+        if (s === 0) return [l * 255, l * 255, l * 255];
+        const hue = (p, q, t) => {
+            if (t < 0) t += 1;
+            if (t > 1) t -= 1;
+            if (t < 1 / 6) return p + (q - p) * 6 * t;
+            if (t < 1 / 2) return q;
+            if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+            return p;
+        };
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        return [hue(p, q, h + 1 / 3) * 255, hue(p, q, h) * 255, hue(p, q, h - 1 / 3) * 255];
+    }
+
+    /**
+     * opts: { id, title ('Color' by default, Paint says 'Edit Colors'), owner, color, custom (16
+     * colours), onCustom(custom) to keep them, full (open with the custom half shown) }
+     */
+    function chooseColor(opts = {}) {
+        return new Promise((resolve) => {
+            const custom = (opts.custom && opts.custom.length === 16 ? opts.custom : Array(16).fill('#ffffff')).slice();
+            let color = ccHex(...ccRgb(opts.color || '#000000'));
+            let customSlot = 0;
+            let done = false;
+            const num = (v, def) => { const n = Number(String(v).trim()); return Number.isFinite(n) ? n : def; };
+            const ctxP = openDialog({
+                id: opts.id || 'vdtChooseColor',
+                key: 'comdlg32:CHOOSECOLOR',
+                title: opts.title || 'Color',
+                owner: opts.owner,
+                overrides: {
+                    1038: { hidden: true }, 713: { hidden: true },
+                    // the VM's boxes: 20x17 on a 25x22 pitch, 3 px / 2 px into the frame
+                    720: { html: CC_BASIC.map((c, i) => `<button type="button" class="vdt-cc-cell" data-c="${c}" style="--c:${c};left:${3 + (i % 8) * 25}px;top:${2 + Math.floor(i / 8) * 22}px"></button>`).join(''), cls: 'vdt-cc-grid is-basic' },
+                    721: { html: custom.map((c, i) => `<button type="button" class="vdt-cc-cell" data-c="${c}" data-slot="${i}" style="--c:${c};left:${3 + (i % 8) * 25}px;top:${2 + Math.floor(i / 8) * 22}px"></button>`).join(''), cls: 'vdt-cc-grid is-custom' },
+                    710: { html: '<canvas class="vdt-cc-spectrum" width="177" height="189"></canvas><span class="vdt-cc-cross"></span>' },
+                    702: { html: '<canvas class="vdt-cc-lum" width="12" height="189"></canvas><span class="vdt-cc-arrow"></span>' },
+                    709: { html: '<div class="vdt-cc-swatch"></div>' }
+                },
+                init(ctx) {
+                    const content = ctx.content;
+                    // collapsed, the window is 148 DLU wide (the boxes' 144 and the margin): 222 px on the VM
+                    const collapsed = Math.round((148 * 6) / 4) - 16;
+                    const full = parseInt(content.style.width, 10);
+                    const spec = content.querySelector('.vdt-cc-spectrum');
+                    const lum = content.querySelector('.vdt-cc-lum');
+                    const sctx = spec.getContext('2d');
+                    const img = sctx.createImageData(spec.width, spec.height);
+                    for (let y = 0; y < spec.height; y += 1) {
+                        for (let x = 0; x < spec.width; x += 1) {
+                            const [r, g, b] = hslToRgb(x / spec.width, 1 - y / spec.height, 0.5);
+                            const i = (y * spec.width + x) * 4;
+                            img.data[i] = r; img.data[i + 1] = g; img.data[i + 2] = b; img.data[i + 3] = 255;
+                        }
+                    }
+                    sctx.putImageData(img, 0, 0);
+                    let hsl = rgbToHsl(...ccRgb(color));
+                    const paint = () => {
+                        const [r, g, b] = hslToRgb(hsl[0], hsl[1], hsl[2]);
+                        color = ccHex(r, g, b);
+                        content.querySelector('.vdt-cc-swatch').style.background = color;
+                        const lc = lum.getContext('2d');
+                        for (let y = 0; y < lum.height; y += 1) {
+                            const [lr, lg, lb] = hslToRgb(hsl[0], hsl[1], 1 - y / lum.height);
+                            lc.fillStyle = ccHex(lr, lg, lb);
+                            lc.fillRect(0, y, lum.width, 1);
+                        }
+                        content.querySelector('.vdt-cc-cross').style.cssText = `left:${hsl[0] * spec.width - 9}px;top:${(1 - hsl[1]) * spec.height - 9}px`;
+                        content.querySelector('.vdt-cc-arrow').style.top = `${(1 - hsl[2]) * lum.height - 4}px`;
+                        ctx.set(703, String(Math.round(hsl[0] * 239)));
+                        ctx.set(704, String(Math.round(hsl[1] * 240)));
+                        ctx.set(705, String(Math.round(hsl[2] * 240)));
+                        ctx.set(706, String(Math.round(r)));
+                        ctx.set(707, String(Math.round(g)));
+                        ctx.set(708, String(Math.round(b)));
+                    };
+                    if (!opts.full) {
+                        content.style.width = `${collapsed}px`;
+                        ctx.on(719, 'click', () => {
+                            content.style.width = `${full}px`;
+                            ctx.enable(719, false);
+                            paint();
+                        });
+                    } else ctx.enable(719, false);
+                    // the basic cell that is the colour starts selected, as ChooseColor marks it
+                    const start = content.querySelector(`.is-basic .vdt-cc-cell[data-c="${color}"]`) || content.querySelector(`.is-custom .vdt-cc-cell[data-c="${color}"]`);
+                    if (start) start.classList.add('is-on');
+                    const drag = (el, fn) => el.addEventListener('pointerdown', (ev) => {
+                        el.setPointerCapture(ev.pointerId);
+                        const at = (e) => { const r = el.getBoundingClientRect(); fn(Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), Math.max(0, Math.min(1, (e.clientY - r.top) / r.height))); paint(); };
+                        at(ev);
+                        el.onpointermove = (e) => { if (e.buttons) at(e); };
+                    });
+                    drag(spec, (x, y) => { hsl = [x, 1 - y, hsl[2] === 0 || hsl[2] === 1 ? 0.5 : hsl[2]]; });
+                    drag(lum, (x, y) => { hsl = [hsl[0], hsl[1], 1 - y]; });
+                    content.addEventListener('click', (ev) => {
+                        const cell = ev.target.closest('.vdt-cc-cell');
+                        if (!cell) return;
+                        content.querySelectorAll('.vdt-cc-cell.is-on').forEach((c) => c.classList.remove('is-on'));
+                        cell.classList.add('is-on');
+                        if (cell.dataset.slot !== undefined) customSlot = Number(cell.dataset.slot);
+                        hsl = rgbToHsl(...ccRgb(cell.dataset.c));
+                        paint();
+                    });
+                    const fromRgb = () => { hsl = rgbToHsl(num(ctx.get(706), 0), num(ctx.get(707), 0), num(ctx.get(708), 0)); paint(); };
+                    const fromHsl = () => { hsl = [num(ctx.get(703), 0) / 239, num(ctx.get(704), 0) / 240, num(ctx.get(705), 0) / 240]; paint(); };
+                    [706, 707, 708].forEach((id) => ctx.on(id, 'change', fromRgb));
+                    [703, 704, 705].forEach((id) => ctx.on(id, 'change', fromHsl));
+                    ctx.on(712, 'click', () => {
+                        custom[customSlot] = color;
+                        const cell = content.querySelector(`.vdt-cc-cell[data-slot="${customSlot}"]`);
+                        if (cell) { cell.dataset.c = color; cell.style.setProperty('--c', color); }
+                        customSlot = (customSlot + 1) % 16;
+                        if (typeof opts.onCustom === 'function') opts.onCustom(custom.slice());
+                    });
+                    paint();
+                },
+                ok() { done = true; resolve(color); },
+                close() { if (!done) { done = true; resolve(null); } }
+            });
+            if (!ctxP) resolve(null);
+        });
+    }
+
+    root.vistaDialogTemplate = { openSheet, openDialog, openWizard, chooseColor, renderControls, size, units, rect, label };
 })(typeof window !== 'undefined' ? window : globalThis);
