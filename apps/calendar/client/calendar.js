@@ -924,15 +924,17 @@
             if (s.kind === 'calendar') {
                 const c = s.cal;
                 host.innerHTML = `<div class="wcal-d">
-                    <input type="text" class="tbp-edit wcal-d-title" value="${esc(c.name)}"${dis} aria-label="Calendar name">
+                    <input type="text" class="tbp-edit wcal-d-title" value="${esc(c.name)}" aria-label="Calendar name">
                     <div class="wcal-d-group">Details</div>
-                    <label class="wcal-d-row"><span>Color:</span><select class="wcal-d-color"${dis}>${COLORS.map(([v, t]) => `<option value="${v}"${v === c.color ? ' selected' : ''}>${t}</option>`).join('')}</select></label>
+                    <label class="wcal-d-row"><span>Color:</span><select class="wcal-d-color">${COLORS.map(([v, t]) => `<option value="${v}"${v === c.color ? ' selected' : ''}>${t}</option>`).join('')}</select></label>
                     ${c.source ? `<div class="wcal-d-group">Subscription Information</div><div class="wcal-d-note">Subscribed to:<br><span class="wcal-d-url">${esc(c.source)}</span></div><label class="wcal-d-row"><span>Refresh:</span><select class="wcal-d-refresh">${[[0, 'No update'], [15, 'Every 15 minutes'], [60, 'Every hour'], [1440, 'Every day'], [10080, 'Every week']].map(([v, t]) => `<option value="${v}"${v === (c.refresh || 0) ? ' selected' : ''}>${t}</option>`).join('')}</select></label>` : ''}
                     <div class="wcal-d-note">${c.events.length} appointment${c.events.length === 1 ? '' : 's'}, ${c.tasks.length} task${c.tasks.length === 1 ? '' : 's'}</div>
                 </div>`;
                 const name = host.querySelector('.wcal-d-title');
-                name.addEventListener('change', () => { const v = name.value.trim(); if (v) { c.name = v; this.touched(c); this.renderCals(); } });
-                host.querySelector('.wcal-d-color').addEventListener('change', (ev) => { c.color = ev.target.value; this.touched(c); if (c.readonly) void this.save(c); this.render(); });
+                // a subscribed calendar's events are read-only, but its name and colour are yours (Vista)
+                const keep = () => { if (c.readonly) void this.save(c); else this.touched(c); };
+                name.addEventListener('change', () => { const v = name.value.trim(); if (v) { c.name = v; keep(); this.renderCals(); } });
+                host.querySelector('.wcal-d-color').addEventListener('change', (ev) => { c.color = ev.target.value; keep(); this.render(); });
                 const rf = host.querySelector('.wcal-d-refresh');
                 if (rf) rf.addEventListener('change', () => { c.refresh = Number(rf.value); void this.save(c); });
                 return;
