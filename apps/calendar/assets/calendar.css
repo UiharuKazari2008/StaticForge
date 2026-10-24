@@ -1,49 +1,57 @@
-/* Melaton Calendar (Yozora #632; apps/calendar/client/calendar.js) */
+/* Melaton Calendar (Yozora #632; apps/calendar/client/calendar.js), measured on the Vista VM
+   (refs in ~/.cache/vista-vm/calendar-ref), in client coordinates: the 19 px menu bar band; the
+   command bar (WinCal's blue band, 32 px with its dark line, cut from the VM; faces cut too; icons
+   WinCal.exe bitmap 119); the navigation pane 227 px, the details pane 306 px, their 25 px headers;
+   the day grid 20 px a half hour, white 8 AM - 5 PM, #f0f0f0 outside. */
 
 .wcal-window .wcal-client {
+    position: relative;
     display: flex;
     flex-direction: column;
     flex: 1;
     min-height: 0;
     padding: 0 !important;
+    background: #f8fafd;
     font: 12px "Segoe UI", Tahoma, sans-serif;
     color: #000;
 }
 
-/* the menu bar (Vista's; vista-atelier.css is not loaded on the desktop) */
+/* the menu bar: the band and Win32 title faces */
 .wcal-window.wcal-window .wcal-menubar {
     display: flex;
     flex: none;
-    height: 21px;
-    padding: 0 2px;
-    border-bottom: 1px solid #b6bccc;
-    background: linear-gradient(#fefeff, #e5eaf5 7px, #d4dbed 7px, #e1e6f6 20px);
+    height: 19px;
+    padding: 0;
+    border: 0;
+    background: url('menubar.png') 0 0 / 3px 19px repeat-x;
     box-sizing: border-box;
 }
 
-.wcal-window.wcal-window .win7 .wcal-menubar .naxt-menu-title,
-.wcal-window.wcal-window .win7 .wcal-menubar .naxt-menu-title:not(:disabled):not(:hover) {
+.wcal-window.wcal-window .win7 .wcal-menubar .naxt-menu-title:not(#_) {
     display: inline-flex;
     align-items: center;
     min-width: 0;
-    height: 20px;
+    height: 19px;
     min-height: 0;
-    padding: 0 7px;
-    border: 0;
+    padding: 0 3px 1px;
+    border: 4px solid transparent;
+    border-width: 0 4px;
     border-image: none;
     border-radius: 0;
     background: none;
     box-shadow: none;
     color: #000;
     font: 12px "Segoe UI", Tahoma, sans-serif;
+    text-shadow: none;
 }
 
-.wcal-window.wcal-window .win7 .wcal-menubar .naxt-menu-title:is(:hover, :focus-visible, .context-open) {
-    border: 0;
-    background: #3399ff;
-    box-shadow: none;
-    color: #fff;
+.wcal-window.wcal-window .win7 .wcal-menubar .naxt-menu-title:is(:hover, :focus-visible):not(#_) {
+    border-image: url('menu-hot.png') 0 4 fill / 0 4px stretch;
     outline: none;
+}
+
+.wcal-window.wcal-window .win7 .wcal-menubar .naxt-menu-title.context-open:not(#_) {
+    border-image: url('menu-open.png') 0 4 fill / 0 4px stretch;
 }
 
 .wcal-window .wcal-menubar .naxt-menu-title::before,
@@ -52,51 +60,35 @@
     display: none;
 }
 
-/* the command bar: Windows Mail / Calendar's dark-to-light blue band */
+/* the command bar: a row of #f0f0f0, then the band (31 px and its dark line) */
 .wcal-window .wcal-cmdbar {
-    display: flex;
+    position: relative;
     flex: none;
-    align-items: center;
-    gap: 1px;
-    height: 31px;
-    padding: 0 6px;
-    border-bottom: 1px solid #8d9db5;
-    background: linear-gradient(#f9fcff, #e4ecf7 48%, #d6e1f1 50%, #dce6f4);
+    box-sizing: content-box;
+    height: 32px;
+    background: url('cmdbar.png') 0 0 / 3px 32px repeat-x;
 }
 
-.wcal-window .wcal-sep {
-    width: 1px;
-    height: 20px;
-    margin: 0 4px;
-    background: #aab7cb;
-    box-shadow: 1px 0 #fff;
-}
-
-.wcal-window .wcal-fill {
-    flex: 1;
-}
-
-.wcal-window.wcal-window .win7 .wcal-cmd:not(:disabled) {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
+/* a button: a 28 px face 2 px down, the icon 3 px in, white 12 px text */
+.wcal-window.wcal-window .win7 .wcal-cmd.wcal-cmd:not(#_) {
+    position: absolute;
+    top: 2px;
+    height: 28px;
     min-width: 0;
-    height: 24px;
     min-height: 0;
-    padding: 0 6px;
-    border: 1px solid transparent;
+    margin: 0;
+    padding: 0;
+    border: 3px solid transparent;
+    border-width: 0 3px;
     border-image: none;
-    border-radius: 3px;
+    border-radius: 0;
     background: none;
     box-shadow: none;
-    color: #1e395b;
+    color: #fff;
     font: 12px "Segoe UI", Tahoma, sans-serif;
+    text-align: left;
     white-space: nowrap;
-}
-
-.wcal-window.wcal-window .win7 .wcal-cmd:not(:disabled):is(:hover, .context-open) {
-    border-color: #a8d8f0;
-    background: linear-gradient(#f5fbfe, #e3f4fc 50%, #cfecfa 51%, #c4e7f8);
+    text-shadow: none;
 }
 
 .wcal-window .wcal-cmd::before,
@@ -104,315 +96,454 @@
     content: none;
 }
 
-.wcal-window .wcal-cmd img {
+.wcal-window .wcal-cmd-icon {
+    position: absolute;
+    left: 0;
+    top: 6px;
     width: 16px;
     height: 16px;
+    background: url('toolbar.png') calc(var(--i) * -16px) 0 no-repeat;
+}
+
+.wcal-window .wcal-cmd-icon.is-subscribe {
+    background: url('subscribe.png') -16px 0 no-repeat;
+}
+
+.wcal-window .wcal-cmd-icon.is-contacts {
+    background: url('contacts.png') 0 0 no-repeat;
+}
+
+.wcal-window .wcal-view-btn .wcal-cmd-icon {
+    left: 4px;
+}
+
+.wcal-window .wcal-cmd-text {
+    position: absolute;
+    left: 22px;
+    top: 6px;
+    line-height: 15px;
+}
+
+.wcal-window .wcal-view-btn .wcal-cmd-text {
+    left: 25px;
 }
 
 .wcal-window .wcal-arrow {
+    position: absolute;
+    left: 2px;
+    top: 12px;
     width: 7px;
     height: 4px;
-    margin-left: 2px;
-    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4' shape-rendering='crispEdges'%3E%3Cpath fill='%231e395b' d='M0 0h7v1H0zM1 1h5v1H1zM2 2h3v1H2zM3 3h1v1H3z'/%3E%3C/svg%3E") no-repeat;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4' shape-rendering='crispEdges' fill='%23fff'%3E%3Cpath d='M0 0h7v1H0zM1 1h5v1H1zM2 2h3v1H2zM3 3h1v1H3z'/%3E%3C/svg%3E") no-repeat;
+}
+
+.wcal-window.wcal-window .win7 .wcal-cmd:hover:not(#_),
+.wcal-window.wcal-window .win7 .wcal-cmd.context-open:not(#_) {
+    border-image: url('cmd-hot.png') 0 3 fill / 0 3px stretch;
+}
+
+.wcal-window.wcal-window .win7 .wcal-view-btn:is(:hover, :has(+ .wcal-view-drop:hover)):not(#_) {
+    border-image: url('cmd-split-hot.png') 0 3 0 3 fill / 0 3px stretch;
+}
+
+.wcal-window.wcal-window .win7 .wcal-view-drop:is(:hover):not(#_),
+.wcal-window.wcal-window .win7 .wcal-view-btn:hover + .wcal-view-drop:not(#_) {
+    border-image: url('cmd-drop-hot.png') 0 3 0 3 fill / 0 3px stretch;
+}
+
+.wcal-window.wcal-window .win7 .wcal-view-btn:has(+ .wcal-view-drop.context-open):not(#_) {
+    border-image: url('cmd-split-open.png') 0 3 0 3 fill / 0 3px stretch;
+}
+
+.wcal-window.wcal-window .win7 .wcal-view-drop.context-open:not(#_) {
+    border-image: url('cmd-drop-open.png') 0 3 0 3 fill / 0 3px stretch;
+}
+
+.wcal-window.wcal-window .win7 .wcal-cmd:active:not(#_) {
+    border-image: url('cmd-pressed.png') 0 3 fill / 0 3px stretch;
+}
+
+/* the search box at the bar's right: the VM's tinted field, "Search..." in grey italics */
+.wcal-window .wcal-search {
+    position: absolute;
+    right: 8px;
+    top: 4px;
+    display: block;
+    width: 239px;
+    height: 22px;
+    box-sizing: border-box;
+    border: 1px solid #394758;
+    border-radius: 2px;
+    background: linear-gradient(#f2f6fb, #c6d7ec 2px, #c4d0e1 9px, #c0cad9 11px, #bdc8dc);
 }
 
 .wcal-window .wcal-search input {
-    width: 170px;
-    height: 22px;
-    padding: 0 6px;
-    border: 1px solid #a5acb5;
-    border-radius: 2px;
-    background: #fff;
-    font: italic 12px "Segoe UI", sans-serif;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: calc(100% - 40px);
+    height: 20px;
+    box-sizing: border-box;
+    padding: 0 0 0 5px;
+    border: 0;
+    background: transparent;
+    font: italic 12px "Segoe UI", Tahoma, sans-serif;
+    color: #000;
+    outline: none;
+}
+
+.wcal-window .wcal-search input::placeholder {
+    color: #575757;
+    font-style: italic;
 }
 
 .wcal-window .wcal-search input:focus {
+    background: #fff;
     font-style: normal;
-    outline: none;
-    border-color: #3d7bad;
 }
 
-/* the panes */
+.wcal-window .wcal-search-go {
+    position: absolute;
+    right: 20px;
+    top: 3px;
+    width: 14px;
+    height: 14px;
+    background: url('/static_images/vista-start/search-glyph.png') center no-repeat;
+}
+
+.wcal-window .wcal-search-drop {
+    position: absolute;
+    right: 5px;
+    top: 9px;
+    width: 7px;
+    height: 4px;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4' shape-rendering='crispEdges'%3E%3Cpath d='M0 0h7v1H0zM1 1h5v1H1zM2 2h3v1H2zM3 3h1v1H3z'/%3E%3C/svg%3E") no-repeat;
+}
+
+/* the panes: navigation 227, splitter, the view, splitter, details 306 */
 .wcal-window .wcal-body {
     display: grid;
     flex: 1;
     min-height: 0;
-    grid-template-columns: 196px 1fr 284px;
-    background: #fff;
+    grid-template-columns: 227px 1px minmax(0, 1fr) 1px 306px;
+    background: #c0c0c0;
 }
 
-.wcal-window.wcal-no-nav .wcal-body {
-    grid-template-columns: 0 1fr 284px;
-}
+.wcal-window .wcal-body > .wcal-nav { grid-column: 1; }
+.wcal-window .wcal-body > .wcal-main { grid-column: 3; }
+.wcal-window .wcal-body > .wcal-details { grid-column: 5; }
 
-.wcal-window.wcal-no-details .wcal-body {
-    grid-template-columns: 196px 1fr 0;
-}
+.wcal-window.wcal-no-nav .wcal-body { grid-template-columns: 0 0 minmax(0, 1fr) 1px 306px; }
+.wcal-window.wcal-no-details .wcal-body { grid-template-columns: 227px 1px minmax(0, 1fr) 0 0; }
+.wcal-window.wcal-no-nav.wcal-no-details .wcal-body { grid-template-columns: 0 0 minmax(0, 1fr) 0 0; }
 
-.wcal-window.wcal-no-nav.wcal-no-details .wcal-body {
-    grid-template-columns: 0 1fr 0;
+.wcal-window.wcal-no-nav .wcal-nav,
+.wcal-window.wcal-no-details .wcal-details {
+    display: none;
 }
 
 .wcal-window .wcal-nav,
 .wcal-window .wcal-details {
+    display: flex;
+    flex-direction: column;
     min-width: 0;
-    overflow: auto;
-    background: linear-gradient(90deg, #f3f6fb, #eaf0f8);
+    min-height: 0;
+    overflow: hidden auto;
+    background: #f8fafd;
 }
 
-.wcal-window .wcal-nav {
-    border-right: 1px solid #a9b8cd;
+/* a pane's header: 25 px, the VM's gradient and line, black 12 px text 11 px in */
+.wcal-window :is(.wcal-nav-head, .wcal-d-head) {
+    flex: none;
+    box-sizing: border-box;
+    height: 25px;
+    padding: 0 0 0 11px;
+    background: url('pane-head.png') 0 0 / 1px 25px repeat-x;
+    line-height: 24px;
+    color: #000;
 }
 
-.wcal-window .wcal-details {
-    border-left: 1px solid #a9b8cd;
-}
-
-.wcal-window .wcal-nav-head {
-    padding: 8px 10px 3px;
-    color: #1e395b;
-    font-weight: 600;
-}
-
-/* the date navigator */
+/* the date navigator: "October, 2026" between its arrows, two-letter day names, 24 px columns,
+   15 px rows, today boxed */
 .wcal-window .wcal-mini {
-    padding: 0 8px;
+    flex: none;
+    height: 144px;
+    padding: 0;
 }
 
 .wcal-window .wcal-mini-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    height: 20px;
-    color: #1e395b;
+    position: relative;
+    height: 26px;
+    line-height: 26px;
+    text-align: center;
 }
 
-.wcal-window.wcal-window .win7 :is(.wcal-mini-step, .wcal-step):not(:disabled) {
-    width: 16px;
+.wcal-window.wcal-window .win7 .wcal-mini-step:not(#_) {
+    position: absolute;
+    top: 11px;
+    left: 35px;
+    width: 4px;
     min-width: 0;
-    height: 16px;
+    height: 7px;
     min-height: 0;
     padding: 0;
     border: 0;
     border-image: none;
-    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' shape-rendering='crispEdges'%3E%3Cpath fill='%23305b8c' d='M9 4h1v8H9v-1H8v-1H7V9H6V7h1V6h1V5h1z'/%3E%3C/svg%3E") center no-repeat;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='7' shape-rendering='crispEdges'%3E%3Cpath d='M3 0h1v7H3zM2 1h1v5H2zM1 2h1v3H1zM0 3h1v1H0z'/%3E%3C/svg%3E") no-repeat;
     box-shadow: none;
 }
 
-.wcal-window.wcal-window .win7 :is(.wcal-mini-step, .wcal-step).is-next:not(:disabled) {
+.wcal-window.wcal-window .win7 .wcal-mini-step.is-next:not(#_) {
+    left: 189px;
     transform: scaleX(-1);
 }
 
 .wcal-window .wcal-mini-step::before,
-.wcal-window .wcal-mini-step::after,
-.wcal-window .wcal-step::before,
-.wcal-window .wcal-step::after {
+.wcal-window .wcal-mini-step::after {
     content: none;
 }
 
 .wcal-window .wcal-mini-grid {
-    width: 100%;
+    margin: 0 0 0 26px;
     border-collapse: collapse;
-    font-size: 11px;
-    text-align: center;
+    table-layout: fixed;
 }
 
-.wcal-window .wcal-mini-grid th {
-    height: 16px;
-    color: #5e6f88;
+.wcal-window.wcal-window .wcal-mini-grid :is(th, td) {
+    width: 24px;
+    height: 15px;
+    padding: 0 3px 0 0;
+    border: 0;
+    background: none;
+    box-sizing: border-box;
+    font: 12px/15px "Segoe UI", Tahoma, sans-serif;
+    text-align: right;
+}
+
+.wcal-window.wcal-window .wcal-mini-grid th {
     font-weight: normal;
-    border-bottom: 1px solid #c5d1e1;
-}
-
-.wcal-window .wcal-mini-grid :is(th, td) {
-    width: 14.28%;
-    max-width: none;
-    padding: 0;
-    overflow: visible;
-    text-overflow: clip;
+    color: #000;
+    border-bottom: 1px solid #f5f5f5;
 }
 
 .wcal-window .wcal-mini-grid td {
-    height: 17px;
-    cursor: var(--c-default, default);
+    color: #000;
+    cursor: default;
 }
 
 .wcal-window .wcal-mini-grid td.is-other {
-    color: #a2acba;
+    color: #646464;
 }
 
-.wcal-window .wcal-mini-grid td.is-in {
-    background: #d5e6fa;
+.wcal-window.wcal-window .wcal-mini-grid td.is-today {
+    outline: 1px solid #3399ff;
+    outline-offset: -1px;
+    border-radius: 2px;
+    background: #e5f3fb;
 }
 
 .wcal-window .wcal-mini-grid td.is-busy {
     font-weight: bold;
 }
 
-.wcal-window .wcal-mini-grid td.is-today {
-    outline: 1px solid #d24726;
-    outline-offset: -1px;
-}
-
-.wcal-window .wcal-mini-grid td:hover {
-    background: #e8f1fb;
-}
-
-/* calendars and tasks */
+/* calendars and tasks: the checkbox, WinCal's calendar icon (bitmap 102), the name */
 .wcal-window :is(.wcal-cal, .wcal-task) {
     display: flex;
     align-items: center;
-    gap: 5px;
-    height: 20px;
-    padding: 0 8px;
-    cursor: var(--c-default, default);
+    gap: 0;
+    height: 18px;
+    padding: 0 0 0 23px;
+    cursor: default;
 }
 
-.wcal-window :is(.wcal-cal, .wcal-task):hover {
-    background: #e3eefb;
+.wcal-window :is(.wcal-cal, .wcal-task) input[type=checkbox] {
+    flex: none;
+    margin: 0 0 0 0;
 }
 
-.wcal-window :is(.wcal-cal, .wcal-task).is-sel {
-    background: #cce4f7;
+.wcal-window .wcal-cal-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin: 0 4px 0 0;
+    background: url('calendars.png') 0 0 no-repeat;
+}
+
+.wcal-window .wcal-task .wcal-swatch {
+    flex: none;
+    width: 10px;
+    height: 10px;
+    margin: 0 5px;
+    border: 1px solid rgba(0, 0, 0, 0.35);
+}
+
+.wcal-window :is(.wcal-cal, .wcal-task).is-sel :is(.wcal-cal-name, .wcal-task-name) {
+    background: #3399ff;
+    color: #fff;
 }
 
 .wcal-window :is(.wcal-cal-name, .wcal-task-name) {
+    padding: 0 2px;
     overflow: hidden;
-    text-overflow: ellipsis;
     white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.wcal-window .wcal-cals {
+    flex: none;
+    min-height: 168px;
+    padding: 2px 0;
+}
+
+.wcal-window .wcal-tasks {
+    flex: 1;
+    padding: 2px 0;
 }
 
 .wcal-window .wcal-task.is-done .wcal-task-name {
-    color: #8a8a8a;
+    color: #808080;
     text-decoration: line-through;
 }
 
 .wcal-window .wcal-task.is-overdue .wcal-task-name {
-    color: #c00;
+    color: #ff0000;
 }
 
-.wcal-window .wcal-swatch,
 .wcal-rem-list .wcal-swatch {
-    flex: none;
+    display: inline-block;
     width: 10px;
     height: 10px;
-    border: 1px solid rgba(0, 0, 0, 0.35);
+    margin-right: 5px;
 }
 
 .wcal-window .wcal-sub {
-    width: 10px;
-    height: 10px;
-    margin-left: auto;
-    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10'%3E%3Cpath d='M1 9a8 8 0 0 1 8-8M1 9a4 4 0 0 1 4-4' fill='none' stroke='%23e3961d' stroke-width='1.6'/%3E%3Ccircle cx='1.6' cy='8.4' r='1.2' fill='%23e3961d'/%3E%3C/svg%3E") no-repeat;
+    width: 12px;
+    height: 12px;
+    margin-left: 4px;
+    background: url('subscribe.png') -16px 0 / 32px 12px no-repeat;
+    opacity: 0.8;
 }
 
-/* the view */
+/* the view: the title band (white, 25 px, the date in 15 px), the grid */
 .wcal-window .wcal-main {
     display: flex;
     flex-direction: column;
     min-width: 0;
     min-height: 0;
+    background: #fff;
 }
 
 .wcal-window .wcal-view-head {
-    display: flex;
     flex: none;
-    align-items: center;
-    gap: 2px;
-    height: 30px;
-    padding: 0 8px;
-    border-bottom: 1px solid #c5d1e1;
-    background: linear-gradient(#fff, #f1f5fb);
+    height: 25px;
+    background: #fff;
+    text-align: center;
 }
 
 .wcal-window .wcal-title {
-    margin-left: 6px;
-    color: #1e395b;
-    font-size: 15px;
+    font: 15px/25px "Segoe UI", Tahoma, sans-serif;
+    color: #000;
 }
 
 .wcal-window .wcal-view {
+    position: relative;
     display: flex;
-    flex-direction: column;
     flex: 1;
+    flex-direction: column;
     min-height: 0;
 }
 
+/* the time column: 48 px, its hours bold #9b9b9b right-aligned 4 px in, 3 px under the line */
 .wcal-window .wcal-gutter {
     flex: none;
-    width: 52px;
+    width: 48px;
+    background: #fff;
+    border-right: 1px solid #d5d8dc;
+    box-sizing: border-box;
 }
 
 .wcal-window :is(.wcal-grid-head, .wcal-allday) {
     display: grid;
     flex: none;
-    grid-template-columns: 52px repeat(var(--cols), 1fr);
-    padding-right: 17px;
-    border-bottom: 1px solid #c5d1e1;
+    grid-template-columns: 48px repeat(var(--cols), minmax(0, 1fr));
+}
+
+/* the day view has no column heads (its title says the day) */
+.wcal-window .wcal-view.is-day .wcal-grid-head {
+    display: none;
 }
 
 .wcal-window .wcal-colhead {
     height: 20px;
-    padding-top: 2px;
-    border-left: 1px solid #c5d1e1;
-    background: linear-gradient(#f7f9fc, #e7edf6);
-    color: #1e395b;
+    border-left: 1px solid #d5d8dc;
+    border-bottom: 1px solid #d5d8dc;
+    background: #fff;
+    line-height: 20px;
     text-align: center;
 }
 
 .wcal-window .wcal-colhead.is-today {
-    background: linear-gradient(#fdf2d8, #f6d98e);
+    background: #eaf5fe;
+}
+
+.wcal-window .wcal-allday {
+    min-height: 24px;
+    background: #eaf5fe;
+    border-bottom: 1px solid #d5d8dc;
+}
+
+.wcal-window .wcal-allday .wcal-gutter {
+    background: #eaf5fe;
+    border-right: 0;
 }
 
 .wcal-window .wcal-allday-col {
-    min-height: 22px;
+    min-height: 24px;
     padding: 1px 2px;
-    border-left: 1px solid #c5d1e1;
-    background: #f3f6fb;
 }
 
 .wcal-window .wcal-scroll {
     flex: 1;
     min-height: 0;
-    overflow-y: scroll;
+    overflow: hidden scroll;
 }
 
 .wcal-window .wcal-hours {
     display: grid;
-    grid-template-columns: 52px repeat(var(--cols), 1fr);
+    grid-template-columns: 48px repeat(var(--cols), minmax(0, 1fr));
 }
 
 .wcal-window .wcal-hour-label {
     box-sizing: border-box;
     padding: 2px 4px 0 0;
-    border-bottom: 1px solid #d6dfeb;
-    color: #5e6f88;
-    font-size: 11px;
+    border-bottom: 1px solid #d5d8dc;
+    color: #9b9b9b;
+    font: bold 12px/15px "Segoe UI", Tahoma, sans-serif;
     text-align: right;
 }
 
 .wcal-window .wcal-col {
     position: relative;
-    border-left: 1px solid #c5d1e1;
+    border-left: 1px solid #d5d8dc;
 }
 
 .wcal-window .wcal-slot {
     box-sizing: border-box;
     height: 20px;
-    border-bottom: 1px solid #d6dfeb;
-    background: #eef3fa;
+    border-bottom: 1px solid #f2f4f5;
+    background: #f0f0f0;
 }
 
 .wcal-window .wcal-slot.is-work {
     background: #fff;
 }
 
-.wcal-window .wcal-slot:not(.is-half) {
-    border-bottom: 1px dotted #e1e8f2;
+.wcal-window .wcal-slot.is-half {
+    border-bottom-color: #d5d8dc;
 }
 
 .wcal-window .wcal-slot.is-pick {
-    background: #c9def6;
+    background: #3399ff;
 }
 
 .wcal-window .wcal-now {
@@ -420,8 +551,9 @@
     left: 0;
     right: 0;
     height: 0;
-    border-top: 2px solid #e3961d;
+    border-top: 2px solid #f0a33f;
     pointer-events: none;
+    z-index: 2;
 }
 
 /* an appointment: its calendar's colour, lighter inside, a band at the left */
@@ -430,16 +562,30 @@
     position: absolute;
     box-sizing: border-box;
     overflow: hidden;
-    padding: 1px 4px 1px 6px;
-    border: 1px solid color-mix(in srgb, var(--c) 80%, #000);
-    border-left-width: 4px;
-    border-radius: 2px;
-    background: color-mix(in srgb, var(--c) 22%, #fff);
+    padding: 2px 4px 0 13px;
+    border: 1px solid #808080;
+    border-radius: 0;
+    box-shadow: inset 0 0 0 1px #fff;
+    /* the VM's: a third of the colour at the top to almost all of it at the bottom */
+    background: linear-gradient(color-mix(in srgb, var(--c) 33%, #fff), color-mix(in srgb, var(--c) 92%, #fff));
     color: #000;
-    font-size: 11px;
-    line-height: 14px;
+    font-size: 12px;
+    line-height: 15px;
+    white-space: nowrap;
     cursor: var(--c-default, default);
     z-index: 1;
+}
+
+/* the band at the left: 7 px of the darker colour inside the white line */
+.wcal-window .wcal-chip::before,
+.wcal-print .wcal-chip::before {
+    content: '';
+    position: absolute;
+    left: 1px;
+    top: 1px;
+    bottom: 1px;
+    width: 7px;
+    background: var(--b);
 }
 
 .wcal-window .wcal-chip.is-allday,
@@ -450,9 +596,11 @@
     text-overflow: ellipsis;
 }
 
+/* chosen: the bottom and right edges go black with a soft shadow under them (the VM) */
 .wcal-window .wcal-chip.is-sel {
-    border-color: #000;
-    box-shadow: 0 0 0 1px #fff, 0 0 0 2px var(--c);
+    border-right-color: #000;
+    border-bottom-color: #000;
+    box-shadow: inset 0 0 0 1px #fff, 2px 3px 4px rgba(0, 0, 0, 0.3);
     z-index: 2;
 }
 
@@ -532,107 +680,166 @@
     font-size: 11px;
 }
 
-/* details */
+/* details: the VM's calendar page (the name 292 px, Color's swatch box, Sharing Information with
+   its rule, Published: and the link); appointments and tasks keep their fields under it */
 .wcal-window .wcal-d {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    padding: 8px 10px;
+    gap: 6px;
+    padding: 8px 7px 8px;
 }
 
-.wcal-window .wcal-d-empty {
-    padding: 12px 10px;
-    color: #5e6f88;
+.wcal-window.wcal-window .wcal-d .wcal-d-title {
+    box-sizing: border-box;
+    width: 100%;
+    height: 22px;
+    padding: 0 3px;
+    border: 1px solid;
+    border-color: #abadb3 #dbdfe6 #e3e9ef #e2e3ea;
+    background: #fff;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
 }
 
-.wcal-window .wcal-d-title {
+.wcal-window .wcal-d-color-row {
+    display: flex;
+    align-items: center;
     height: 26px;
-    font-size: 15px;
+    padding: 0 0 0 49px;
+}
+
+.wcal-window .wcal-d-label {
+    flex: none;
+    width: 28px;
+    margin-right: 7px;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.wcal-window.wcal-window .win7 .wcal-d-color:not(#_) {
+    position: relative;
+    width: 104px;
+    min-width: 0;
+    height: 26px;
+    min-height: 0;
+    padding: 0;
+    border: 1px solid #dcdcdc;
+    border-image: none;
+    border-radius: 2px;
+    background: #fff;
+    box-shadow: none;
+}
+
+.wcal-window .wcal-d-color::before,
+.wcal-window .wcal-d-color::after {
+    content: none;
+}
+
+.wcal-window .wcal-d-swatch {
+    position: absolute;
+    left: 6px;
+    top: 6px;
+    width: 72px;
+    height: 12px;
+    border: 1px solid #000;
+}
+
+.wcal-window .wcal-d-color .wcal-arrow {
+    left: auto;
+    right: 9px;
+    top: 10px;
+    filter: invert(1);
 }
 
 .wcal-window .wcal-d-group {
+    display: flex;
+    align-items: center;
+    gap: 7px;
     margin-top: 8px;
-    padding-bottom: 2px;
-    border-bottom: 1px solid #c5d1e1;
-    color: #1e395b;
-    font-weight: 600;
+    font-weight: bold;
+    white-space: nowrap;
+}
+
+.wcal-window .wcal-d-group::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: #a0a0a0;
+}
+
+.wcal-window .wcal-d-pair {
+    display: flex;
+    gap: 5px;
+    padding: 4px 0 0 17px;
+}
+
+.wcal-window .wcal-d-pair .wcal-d-label {
+    width: auto;
+    margin: 0;
+}
+
+.wcal-window .wcal-d-link {
+    color: #0066cc;
+    text-decoration: underline;
 }
 
 .wcal-window .wcal-d-row {
-    display: grid;
-    grid-template-columns: 58px minmax(0, 1fr) auto;
+    display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
 }
 
-.wcal-window .wcal-d-row :is(input, select) {
+.wcal-window .wcal-d-row > span:first-child {
+    flex: none;
+    width: 64px;
+    text-align: right;
+}
+
+.wcal-window.wcal-window .wcal-d :is(input[type=date], input[type=time], input[type=text]:not(.wcal-d-title), select, textarea) {
+    box-sizing: border-box;
     min-width: 0;
     height: 22px;
-    font: 12px "Segoe UI", sans-serif;
+    padding: 0 3px;
+    border: 1px solid;
+    border-color: #abadb3 #dbdfe6 #e3e9ef #e2e3ea;
+    background: #fff;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
 }
 
-.wcal-window .wcal-d-row input[type=time] {
-    width: 84px;
-}
-
-.wcal-window.wcal-window .wcal-d-row :is(input[type=date], input[type=time]) {
-    font-size: 11px;
-}
-
-.wcal-window.wcal-window .wcal-d :is(input[type=date], input[type=time], input[type=text], select, textarea) {
-    box-sizing: border-box;
-    padding: 1px 3px;
-    border: 1px solid #abadb3;
-    border-radius: 2px;
-    background-color: #fff;
-    box-shadow: none;
-    outline: none;
-}
-
-.wcal-window.wcal-window .wcal-d :is(input, select, textarea):focus {
-    border-color: #3d7bad;
-}
-
-.wcal-window.wcal-window .wcal-d :is(input, select, textarea):disabled {
-    background-color: #f4f4f4;
-    color: #6d6d6d;
+.wcal-window.wcal-window .wcal-d textarea {
+    height: 90px;
 }
 
 .wcal-window .wcal-d-check {
     display: flex;
     align-items: center;
     gap: 5px;
-}
-
-.wcal-window .wcal-d-notes {
-    min-height: 90px;
-    resize: vertical;
-    font: 12px "Segoe UI", sans-serif;
+    padding-left: 70px;
 }
 
 .wcal-window .wcal-d-note {
-    color: #5e6f88;
-    font-size: 11px;
+    color: #4d4d4d;
 }
 
 .wcal-window .wcal-d-url {
     word-break: break-all;
 }
 
+/* no status bar (the VM's window has none) */
 .wcal-window .wcal-status {
-    flex: none;
-    height: 20px;
-    padding: 0 8px;
-    border-top: 1px solid #c5d1e1;
-    background: #eef2f8;
-    color: #333;
-    line-height: 20px;
-    overflow: hidden;
-    white-space: nowrap;
+    display: none;
 }
 
-.wcal-window .wcal-status:empty {
-    display: none;
+/* the date picker in Go to Date */
+.vdt-client .wcal-dtp {
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    font: inherit;
+}
+
+/* Options' overdue colour button */
+.vdt-client [data-vdt-id="4010"] {
+    background: var(--wcal-overdue, #f00) content-box;
 }
 
 /* the reminders window's list */

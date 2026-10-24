@@ -30,7 +30,15 @@
     const vfs = () => root.vfsClient || (typeof vfsClient !== 'undefined' ? vfsClient : null); // eslint-disable-line no-undef
 
     // Vista's calendar colours, in its order
-    const COLORS = [['#4b7cc5', 'Blue'], ['#d24726', 'Red'], ['#5ea32f', 'Green'], ['#8c5aa8', 'Purple'], ['#e3961d', 'Orange'], ['#3aa4b1', 'Teal'], ['#c94d8f', 'Pink'], ['#827b71', 'Gray']];
+    // WinCal's calendar colours (strings 831-842, the swatches read off the VM's Color list)
+    const COLORS = [['#ffcccc', 'Red'], ['#ffccf7', 'Pink'], ['#ddccff', 'Purple'], ['#cce3ff', 'Blue'], ['#ccfcff', 'Light blue'], ['#ccffee', 'Blue green'],
+        ['#ccffcc', 'Green'], ['#eeffcc', 'Lime green'], ['#fffccc', 'Yellow'], ['#ffebcc', 'Orange'], ['#d9d9d9', 'Gray'], ['#f2f2f2', 'Light gray']];
+    // a new calendar takes the next colour from Green (the VM's first calendar is Green)
+    const FIRST_COLOR = 6;
+    // an appointment's band at its left, per calendar colour (read off the VM's day view)
+    const BANDS = { '#ffcccc': '#e48989', '#ffccf7': '#e489d7', '#ddccff': '#a789e4', '#cce3ff': '#89b3e4', '#ccfcff': '#89e0e4', '#ccffee': '#89e4c7',
+        '#ccffcc': '#89e489', '#eeffcc': '#c7e489', '#fffccc': '#e4e089', '#ffebcc': '#e4c089', '#d9d9d9': '#adadad', '#f2f2f2': '#c1c1c1' };
+    const bandOf = (c) => BANDS[String(c || '').toLowerCase()] || `color-mix(in srgb, ${c} 70%, #000)`;
     const DAY = 86400000;
     const SLOT = 20; // px per half hour
     const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -332,7 +340,7 @@
                 }
             }
             if (!this.calendars.length) {
-                const cal = this.adopt({ name: `${userName()}'s Calendar`, color: COLORS[0][0], events: [], tasks: [] }, {});
+                const cal = this.adopt({ name: `${userName()}'s Calendar`, color: COLORS[FIRST_COLOR][0], events: [], tasks: [] }, {});
                 await this.save(cal);
             }
             const hidden = (() => { try { return JSON.parse(reg('Hidden', '[]')); } catch (_) { return []; } })();
@@ -348,7 +356,7 @@
             const cal = {
                 id: `c${Date.now().toString(36)}${n}`,
                 name: parsed.name || (file.fileName || 'Calendar').replace(/\.ics$/i, ''),
-                color: parsed.color || COLORS[n % COLORS.length][0],
+                color: parsed.color || COLORS[(FIRST_COLOR + n) % COLORS.length][0],
                 source: parsed.source || '',
                 refresh: parsed.refresh || 0,
                 fileId: file.fileId || null,
@@ -421,9 +429,12 @@
             m.style.height = `${H}px`;
             m.setAttribute('role', 'dialog');
             m.setAttribute('aria-label', 'Melaton Calendar');
-            const btn = (a, label, img, title) => `<button type="button" class="wcal-cmd" data-a="${a}" title="${esc(title || label)}">${img ? `<img src="${CMD}/${img}.png" alt="">` : ''}<span>${label}</span></button>`;
+            // WinCal.exe's command bar, measured on the VM: bitmap 119 (and 160 / wab.exe 0) at the
+            // VM's places (client x of each face, the icon 3 px in)
+            const btn = (a, label, art, x, w, title) => `<button type="button" class="wcal-cmd" data-a="${a}" title="${esc(title || label)}" style="left:${x}px;width:${w}px">${art}${label ? `<span class="wcal-cmd-text">${label}</span>` : ''}</button>`;
+            const ic = (i) => `<span class="wcal-cmd-icon" style="--i:${i}"></span>`;
             m.innerHTML = `
-                <div class="modal-window-title"><div class="modal-window-title-main"><img class="icon-image" src="${ICON16}" alt=""><span>Melaton Calendar</span></div></div>
+                <div class="modal-window-title"><div class="modal-window-title-main"><img class="icon-image" src="${ICON16}" alt=""><span class="wcal-wtitle">Melaton Calendar</span></div></div>
                 <div class="modal-focus-overlay"></div>
                 <div class="modal-window-controls">
                     <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize"><i class="fa-regular fa-window-minimize"></i></button>
@@ -432,17 +443,17 @@
                 <div class="modal-content win7 wcal-client">
                     <div class="naxt-menubar wcal-menubar" role="menubar">${['File', 'Edit', 'View', 'Share', 'Help'].map((t) => `<button type="button" class="naxt-menu-title" data-wcal-menu="${t.toLowerCase()}" role="menuitem">${t}</button>`).join('')}</div>
                     <div class="wcal-cmdbar" role="toolbar">
-                        ${btn('new-appt', 'New Appointment', 'calendar')}
-                        ${btn('new-task', 'New Task', 'checklist')}
-                        ${btn('delete', 'Delete', 'delete')}
-                        <span class="wcal-sep"></span>
-                        ${btn('today', 'Today', 'clock')}
-                        <button type="button" class="wcal-cmd wcal-view-btn" title="Change the view"><span>View</span><span class="wcal-arrow"></span></button>
-                        <span class="wcal-sep"></span>
-                        ${btn('subscribe', 'Subscribe...', 'download')}
-                        ${btn('print', 'Print', 'document')}
-                        <span class="wcal-fill"></span>
-                        <label class="wcal-search"><input type="search" placeholder="Search" aria-label="Search"></label>
+                        ${btn('new-appt', 'New Appointment', ic(0), 2, 129)}
+                        ${btn('new-task', 'New Task', ic(1), 131, 82)}
+                        ${btn('delete', 'Delete', ic(2), 213, 64)}
+                        ${btn('today', 'Today', ic(5), 277, 64)}
+                        <button type="button" class="wcal-cmd wcal-view-btn" data-a="view-main" title="Change the view" style="left:341px;width:61px">${ic(6)}<span class="wcal-cmd-text">View</span></button>
+                        <button type="button" class="wcal-cmd wcal-view-drop" title="Change the view" aria-haspopup="menu" style="left:402px;width:16px"><span class="wcal-arrow"></span></button>
+                        ${btn('subscribe', 'Subscribe', '<span class="wcal-cmd-icon is-subscribe"></span>', 418, 82)}
+                        ${btn('print', 'Print', ic(12), 500, 57)}
+                        ${btn('contacts', '', '<span class="wcal-cmd-icon is-contacts"></span>', 557, 24, 'Melaton Contacts')}
+                        ${btn('help', '', ic(13), 581, 24, 'Help')}
+                        <label class="wcal-search"><input type="search" placeholder="Search..." aria-label="Search"><span class="wcal-search-go"></span><span class="wcal-search-drop"></span></label>
                     </div>
                     <div class="wcal-body">
                         <div class="wcal-nav">
@@ -454,7 +465,7 @@
                             <div class="wcal-tasks"></div>
                         </div>
                         <div class="wcal-main">
-                            <div class="wcal-view-head"><button type="button" class="wcal-step" data-step="-1" title="Previous"></button><button type="button" class="wcal-step is-next" data-step="1" title="Next"></button><span class="wcal-title"></span></div>
+                            <div class="wcal-view-head"><span class="wcal-title"></span></div>
                             <div class="wcal-view"></div>
                         </div>
                         <div class="wcal-details"></div>
@@ -493,12 +504,12 @@
                     sections: [{ type: 'list', initfn: (section) => { section.items = this.menu(t.dataset.wcalMenu); } }]
                 });
             });
-            root.contextMenu.attachClickMenuToElement(m.querySelector('.wcal-view-btn'), {
+            // View is a split button: its arrow opens menu 120, the button itself goes to the next view
+            root.contextMenu.attachClickMenuToElement(m.querySelector('.wcal-view-drop'), {
                 onAction: (a) => void this.action(a),
-                sections: [{ type: 'list', initfn: (section) => { section.items = this.viewItems(); } }]
+                sections: [{ type: 'list', initfn: (section) => { section.items = this.viewItems().concat([{ separator: true }].concat(this.paneItems())); } }]
             });
             m.querySelectorAll('.wcal-cmd[data-a]').forEach((b) => b.addEventListener('click', () => void this.action(b.dataset.a)));
-            m.querySelectorAll('.wcal-step').forEach((b) => b.addEventListener('click', () => this.step(Number(b.dataset.step))));
             const search = m.querySelector('.wcal-search input');
             search.addEventListener('input', () => { this.search = search.value.trim().toLowerCase(); this.render(); });
             m.addEventListener('keydown', (ev) => {
@@ -508,9 +519,15 @@
                 if (ev.key === 'Delete') a = 'delete';
                 else if (ctrl && ev.shiftKey && /^[1-4]$/.test(ev.key)) a = ['view-day', 'view-workweek', 'view-week', 'view-month'][Number(ev.key) - 1];
                 else if (ctrl && !ev.shiftKey && ev.key.toLowerCase() === 'n') a = 'new-appt';
-                else if (ctrl && ev.shiftKey && ev.key.toLowerCase() === 'k') a = 'new-task';
-                else if (ctrl && ev.key.toLowerCase() === 't') a = 'today';
+                else if (ctrl && !ev.shiftKey && ev.key.toLowerCase() === 't') a = 'new-task';
+                else if (ctrl && ev.key.toLowerCase() === 'g') a = 'goto';
+                else if (ctrl && ev.key.toLowerCase() === 'i') a = 'pane-nav';
+                else if (ctrl && ev.key.toLowerCase() === 'd') a = 'pane-details';
                 else if (ctrl && ev.key.toLowerCase() === 'p') a = 'print';
+                else if (ctrl && ev.key.toLowerCase() === 'c') a = 'copy';
+                else if (ctrl && ev.key.toLowerCase() === 'x') a = 'cut';
+                else if (ctrl && ev.key.toLowerCase() === 'v') a = 'paste';
+                else if (ev.key === 'F1') a = 'help';
                 if (!a) return;
                 ev.preventDefault();
                 ev.stopPropagation();
@@ -523,49 +540,71 @@
                 .map(([v, t, k]) => ({ text: t, subtext: k, action: `view-${v}`, showIndicator: true, checked: this.view === v }));
         }
 
+        paneItems() {
+            return [
+                { text: 'Navigation Pane', subtext: 'Ctrl+I', action: 'pane-nav', showIndicator: true, checked: reg('NavPane', true) !== false },
+                { text: 'Details Pane', subtext: 'Ctrl+D', action: 'pane-details', showIndicator: true, checked: reg('DetailsPane', true) !== false }
+            ];
+        }
+
         menu(name) {
             const sel = this.sel;
             const editable = sel && sel.cal && !sel.cal.readonly && sel.kind !== 'calendar';
             switch (name) {
+                // WinCal.exe.mui menu 101 (Publish, Sync: Melaton has nowhere to publish to)
                 case 'file': return [
-                    { text: 'New', hasSubmenu: true, submenu: [
-                        { text: 'Appointment', subtext: 'Ctrl+N', action: 'new-appt' },
-                        { text: 'Task', subtext: 'Ctrl+Shift+K', action: 'new-task' },
-                        { text: 'Calendar', action: 'new-cal' }
-                    ] },
+                    { text: 'New Appointment', subtext: 'Ctrl+N', action: 'new-appt' },
+                    { text: 'New Task', subtext: 'Ctrl+T', action: 'new-task' },
+                    { separator: true },
+                    { text: 'New Calendar', action: 'new-cal' },
+                    { text: 'New Group', disabled: true },
                     { separator: true },
                     { text: 'Import...', action: 'import' },
                     { text: 'Export...', action: 'export' },
                     { separator: true },
                     { text: 'Print...', subtext: 'Ctrl+P', action: 'print' },
                     { separator: true },
+                    { text: 'Options...', action: 'options' },
+                    { separator: true },
                     { text: 'Exit', action: 'exit' }
                 ];
                 case 'edit': return [
-                    { text: 'Delete', subtext: 'Del', action: 'delete', disabled: !sel || (sel.cal && sel.cal.readonly && sel.kind !== 'calendar') },
+                    { text: 'Cut', subtext: 'Ctrl+X', action: 'cut', disabled: !editable },
+                    { text: 'Copy', subtext: 'Ctrl+C', action: 'copy', disabled: !(sel && sel.kind !== 'calendar') },
+                    { text: 'Paste', subtext: 'Ctrl+V', action: 'paste', disabled: !this.clip },
                     { separator: true },
-                    { text: 'Find', subtext: 'Ctrl+I', action: 'find' }
+                    { text: 'Delete', subtext: 'Del', action: 'delete', disabled: !sel || (sel.cal && sel.cal.readonly && sel.kind !== 'calendar') }
                 ];
                 case 'view': return this.viewItems().concat([
                     { separator: true },
-                    { text: 'Today', subtext: 'Ctrl+T', action: 'today' },
+                    { text: 'Today', action: 'today' },
+                    { text: 'Go to Date...', subtext: 'Ctrl+G', action: 'goto' },
                     { separator: true },
-                    { text: 'Navigation Pane', action: 'pane-nav', showIndicator: true, checked: reg('NavPane', true) !== false },
-                    { text: 'Details Pane', action: 'pane-details', showIndicator: true, checked: reg('DetailsPane', true) !== false }
-                ]);
+                    { text: 'Contacts...', action: 'contacts' },
+                    { separator: true }
+                ], this.paneItems());
                 case 'share': return [
+                    { text: 'Publish...', disabled: true },
+                    { text: 'Stop Publishing...', disabled: true },
+                    { text: 'Send Publish E-mail...', disabled: true },
                     { text: 'Subscribe...', action: 'subscribe' },
-                    { text: 'Refresh', action: 'refresh', disabled: !this.calendars.some((c) => c.source) },
                     { separator: true },
-                    { text: 'Send via E-mail...', action: 'send', disabled: !this.currentCal() }
+                    { text: 'Send via E-mail...', action: 'send', disabled: !this.currentCal() },
+                    { separator: true },
+                    { text: 'Sync', action: 'refresh', disabled: !(this.currentCal() && this.currentCal().source) },
+                    { text: 'Sync All', action: 'refresh', disabled: !this.calendars.some((c) => c.source) }
                 ];
-                case 'help': return [{ text: 'About Melaton Calendar', action: 'about' }];
+                case 'help': return [{ text: 'Melaton Calendar Help', subtext: 'F1', action: 'help' }, { text: 'About Melaton Calendar', action: 'about' }];
                 default: return [];
             }
             void editable;
         }
 
         async action(a) {
+            if (a === 'view-main') {
+                const order = ['day', 'workweek', 'week', 'month'];
+                a = `view-${order[(order.indexOf(this.view) + 1) % order.length]}`;
+            }
             if (a.startsWith('view-')) { this.view = a.slice(5); setReg({ View: this.view }); this.render(); return; }
             switch (a) {
                 case 'new-appt': this.newAppointment(); return;
@@ -580,6 +619,18 @@
                 case 'export': this.exportDialog(); return;
                 case 'send': await this.send(); return;
                 case 'find': { const s = this.el('.wcal-search input'); if (s) s.focus(); return; }
+                case 'contacts': if (root.melatonApps) void root.melatonApps.launch({ packageId: 'contacts' }); return;
+                case 'help': void this.ask('<p>The Help topic failed to appear.</p>', [['OK', true]]); return;
+                case 'goto': this.gotoDialog(); return;
+                case 'options': this.optionsDialog(); return;
+                case 'copy': case 'cut': {
+                    const sel = this.sel;
+                    if (!sel || sel.kind === 'calendar' || !sel.item) return;
+                    this.clip = { kind: sel.kind, item: JSON.parse(JSON.stringify(sel.item)) };
+                    if (a === 'cut' && !sel.cal.readonly) await this.deleteSelected(true);
+                    return;
+                }
+                case 'paste': this.pasteClip(); return;
                 case 'pane-nav': setReg({ NavPane: reg('NavPane', true) === false }); this.applyPanes(); return;
                 case 'pane-details': setReg({ DetailsPane: reg('DetailsPane', true) === false }); this.applyPanes(); return;
                 case 'about': if (typeof root.openAboutMelatoninModal === 'function') root.openAboutMelatoninModal({ program: 'Melaton Calendar' }); return;
@@ -659,7 +710,8 @@
             const first = addDays(m0, -m0.getDay());
             const today = startOfDay(new Date());
             const { a, b } = this.range();
-            let html = `<div class="wcal-mini-head"><button type="button" class="wcal-mini-step" data-m="-1" title="Previous month"></button><span>${MONTHS[m0.getMonth()]} ${m0.getFullYear()}</span><button type="button" class="wcal-mini-step is-next" data-m="1" title="Next month"></button></div><table class="wcal-mini-grid"><tr>${['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((x) => `<th>${x}</th>`).join('')}</tr>`;
+            // the VM's: "October, 2026", two-letter day names
+            let html = `<div class="wcal-mini-head"><button type="button" class="wcal-mini-step" data-m="-1" title="Previous month"></button><span>${MONTHS[m0.getMonth()]}, ${m0.getFullYear()}</span><button type="button" class="wcal-mini-step is-next" data-m="1" title="Next month"></button></div><table class="wcal-mini-grid"><tr>${['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((x) => `<th>${x}</th>`).join('')}</tr>`;
             const busy = new Set(this.occurrencesIn(first, addDays(first, 42)).map((o) => startOfDay(o.start).getTime()));
             for (let r = 0; r < 6; r += 1) {
                 html += '<tr>';
@@ -683,7 +735,7 @@
         renderCals() {
             const host = this.el('.wcal-cals');
             host.innerHTML = this.calendars.map((c) => `<div class="wcal-cal${this.sel && this.sel.kind === 'calendar' && this.sel.cal === c ? ' is-sel' : ''}" data-id="${c.id}">
-                <input type="checkbox" class="wcal-cal-vis"${c.visible ? ' checked' : ''} title="Show this calendar"><span class="wcal-swatch" style="background:${c.color}"></span><span class="wcal-cal-name">${esc(c.name)}</span>${c.source ? '<span class="wcal-sub" title="Subscribed (read-only)"></span>' : ''}</div>`).join('');
+                <input type="checkbox" class="wcal-cal-vis"${c.visible ? ' checked' : ''} title="Show this calendar"><span class="wcal-cal-icon"></span><span class="wcal-cal-name">${esc(c.name)}</span>${c.source ? '<span class="wcal-sub" title="Subscribed (read-only)"></span>' : ''}</div>`).join('');
             host.onclick = (ev) => {
                 const row = ev.target.closest('.wcal-cal');
                 if (!row) return;
@@ -731,8 +783,9 @@
             const today = startOfDay(new Date());
             const cols = [];
             for (let i = 0; i < days; i += 1) cols.push(addDays(a, i));
-            const workStart = 8;
-            const workEnd = 17;
+            // Options' Day start / Day end (8 AM / 5 PM)
+            const workStart = Number(reg('DayStart', 8));
+            const workEnd = Number(reg('DayEnd', 17));
             let html = `<div class="wcal-grid-head" style="--cols:${days}"><div class="wcal-gutter"></div>${cols.map((d) => `<div class="wcal-colhead${sameDay(d, today) ? ' is-today' : ''}" data-d="${d.getTime()}">${days === 1 ? WEEKDAYS[d.getDay()] : `${WEEKDAYS[d.getDay()].slice(0, 3)} ${d.getMonth() + 1}/${d.getDate()}`}</div>`).join('')}</div>`;
             html += `<div class="wcal-allday" style="--cols:${days}"><div class="wcal-gutter"></div>${cols.map((d) => `<div class="wcal-allday-col" data-d="${d.getTime()}">${allDay.filter((o) => o.start < addDays(d, 1) && o.end > d).map((o) => this.chip(o, true)).join('')}</div>`).join('')}</div>`;
             html += `<div class="wcal-scroll"><div class="wcal-hours" style="--cols:${days}"><div class="wcal-gutter">${Array.from({ length: 24 }, (_, h) => `<div class="wcal-hour-label" style="height:${SLOT * 2}px">${h % 12 || 12} ${h < 12 ? 'AM' : 'PM'}</div>`).join('')}</div>`;
@@ -754,15 +807,16 @@
                 const items = placed.map(({ o, lane }) => {
                     const s = Math.max(o.start, d);
                     const e = Math.min(o.end, addDays(d, 1));
+                    // the VM's: the chip fills its half hours, 5 px in from the left, 11 px from the right
                     const top = ((s - d) / 1800000) * SLOT;
-                    const h = Math.max(SLOT - 2, ((e - s) / 1800000) * SLOT - 2);
-                    return this.chip(o, false, `top:${top}px;height:${h}px;left:calc(${(lane / n) * 100}% + 1px);width:calc(${100 / n}% - 6px)`);
+                    const h = Math.max(SLOT, ((e - s) / 1800000) * SLOT);
+                    return this.chip(o, false, `top:${top}px;height:${h}px;left:calc(${(lane / n) * 100}% + 5px);width:calc(${100 / n}% - 16px)`);
                 }).join('');
                 const nowLine = sameDay(d, new Date()) ? `<div class="wcal-now" style="top:${((Date.now() - d) / 1800000) * SLOT}px"></div>` : '';
                 return `<div class="wcal-col" data-d="${d.getTime()}">${slots}${items}${nowLine}</div>`;
             }).join('');
             html += '</div></div>';
-            host.className = 'wcal-view is-grid';
+            host.className = `wcal-view is-grid${this.view === 'day' ? ' is-day' : ''}`;
             host.innerHTML = html;
             const sc = host.querySelector('.wcal-scroll');
             // a new day or view opens at 8 AM (Vista); a redraw of the same one keeps its scroll
@@ -775,8 +829,10 @@
         chip(o, allDay, style = '') {
             const s = this.sel;
             const on = s && s.kind === 'event' && s.item === o.ev && (!s.occ || s.occ.start.getTime() === o.start.getTime());
-            const label = `${allDay ? '' : `<span class="wcal-chip-time">${timeText(o.start)}</span> `}${esc(o.ev.summary || 'New Appointment')}${o.ev.location ? ` <span class="wcal-chip-loc">(${esc(o.ev.location)})</span>` : ''}`;
-            return `<div class="wcal-chip${allDay ? ' is-allday' : ''}${on ? ' is-sel' : ''}${o.ev.rrule ? ' is-recur' : ''}" style="--c:${o.cal.color};${style}" data-cal="${o.cal.id}" data-uid="${esc(o.ev.uid)}" data-s="${o.start.getTime()}" title="${esc(`${o.ev.summary || 'New Appointment'}\n${allDay ? 'All day' : `${timeText(o.start)} - ${timeText(o.end)}`}${o.ev.location ? `\n${o.ev.location}` : ''}`)}">${label}${allDay || o.cal.readonly ? '' : '<div class="wcal-chip-grip"></div>'}</div>`;
+            // the grid shows the subject alone (its place says the time); the month shows the time first
+            const timeFirst = !allDay && this.view === 'month';
+            const label = `${timeFirst ? `<span class="wcal-chip-time">${timeText(o.start)}</span> ` : ''}${esc(o.ev.summary || 'New Appointment')}${o.ev.location ? ` <span class="wcal-chip-loc">(${esc(o.ev.location)})</span>` : ''}`;
+            return `<div class="wcal-chip${allDay ? ' is-allday' : ''}${on ? ' is-sel' : ''}${o.ev.rrule ? ' is-recur' : ''}" style="--c:${o.cal.color};--b:${bandOf(o.cal.color)};${style}" data-cal="${o.cal.id}" data-uid="${esc(o.ev.uid)}" data-s="${o.start.getTime()}" title="${esc(`${o.ev.summary || 'New Appointment'}\n${allDay ? 'All day' : `${timeText(o.start)} - ${timeText(o.end)}`}${o.ev.location ? `\n${o.ev.location}` : ''}`)}">${label}${allDay || o.cal.readonly ? '' : '<div class="wcal-chip-grip"></div>'}</div>`;
         }
 
         findOcc(el) {
@@ -917,32 +973,47 @@
 
         renderDetails() {
             const host = this.el('.wcal-details');
-            const s = this.sel;
-            if (!s) { host.innerHTML = `<div class="wcal-d-empty">${esc(longDate(this.date))}</div>`; return; }
+            // the window's caption names the calendar in use (Vista: "Windows Calendar - <name>")
+            const cur = this.currentCal();
+            const wt = this.el('.wcal-wtitle');
+            if (wt) wt.textContent = cur ? `Melaton Calendar - ${cur.name}` : 'Melaton Calendar';
+            // nothing chosen: the calendar in use (the VM)
+            const s = this.sel || (cur ? { kind: 'calendar', cal: cur } : null);
+            if (!s) { host.innerHTML = '<div class="wcal-d-head">Details</div>'; return; }
             const ro = s.cal && s.cal.readonly;
             const calOptions = (cur) => this.calendars.filter((c) => !c.readonly || c === cur).map((c) => `<option value="${c.id}"${c === cur ? ' selected' : ''}>${esc(c.name)}</option>`).join('');
             const dis = ro ? ' disabled' : '';
             if (s.kind === 'calendar') {
                 const c = s.cal;
-                host.innerHTML = `<div class="wcal-d">
+                // the VM's: the name, Color, Sharing Information (Published: Click here to publish)
+                host.innerHTML = `<div class="wcal-d-head">Details</div><div class="wcal-d is-cal">
                     <input type="text" class="tbp-edit wcal-d-title" value="${esc(c.name)}" aria-label="Calendar name">
-                    <div class="wcal-d-group">Details</div>
-                    <label class="wcal-d-row"><span>Color:</span><select class="wcal-d-color">${COLORS.map(([v, t]) => `<option value="${v}"${v === c.color ? ' selected' : ''}>${t}</option>`).join('')}</select></label>
-                    ${c.source ? `<div class="wcal-d-group">Subscription Information</div><div class="wcal-d-note">Subscribed to:<br><span class="wcal-d-url">${esc(c.source)}</span></div><label class="wcal-d-row"><span>Refresh:</span><select class="wcal-d-refresh">${[[0, 'No update'], [15, 'Every 15 minutes'], [60, 'Every hour'], [1440, 'Every day'], [10080, 'Every week']].map(([v, t]) => `<option value="${v}"${v === (c.refresh || 0) ? ' selected' : ''}>${t}</option>`).join('')}</select></label>` : ''}
-                    <div class="wcal-d-note">${c.events.length} appointment${c.events.length === 1 ? '' : 's'}, ${c.tasks.length} task${c.tasks.length === 1 ? '' : 's'}</div>
+                    <div class="wcal-d-color-row"><span class="wcal-d-label">Color:</span><button type="button" class="wcal-d-color" title="Color"><span class="wcal-d-swatch" style="background:${c.color}"></span><span class="wcal-arrow"></span></button></div>
+                    <div class="wcal-d-group">${c.source ? 'Subscription Information' : 'Sharing Information'}</div>
+                    ${c.source
+                        ? `<div class="wcal-d-pair"><span class="wcal-d-label">Subscribed to:</span><span class="wcal-d-url">${esc(c.source)}</span></div><div class="wcal-d-pair"><span class="wcal-d-label">Update:</span><select class="wcal-d-refresh">${[[0, 'No update'], [15, 'Every 15 minutes'], [60, 'Every hour'], [1440, 'Every day'], [10080, 'Every week']].map(([v, t]) => `<option value="${v}"${v === (c.refresh || 0) ? ' selected' : ''}>${t}</option>`).join('')}</select></div>`
+                        : '<div class="wcal-d-pair"><span class="wcal-d-label">Published:</span><a href="#" class="wcal-d-link wcal-d-publish">Click here to publish</a></div>'}
                 </div>`;
+                const pub = host.querySelector('.wcal-d-publish');
+                if (pub) pub.addEventListener('click', (ev) => { ev.preventDefault(); void this.ask('<p>Melaton Calendar cannot publish calendars yet: there is no WebDAV location to publish to.</p>', [['OK', true]]); });
+                const cb = host.querySelector('.wcal-d-color');
+                if (cb && root.contextMenu) {
+                    root.contextMenu.attachClickMenuToElement(cb, {
+                        onAction: (a) => { if (!a.startsWith('color-')) return; c.color = a.slice(6); if (c.readonly) void this.save(c); else this.touched(c); this.render(); },
+                        sections: [{ type: 'list', initfn: (section) => { section.items = COLORS.map(([v, t]) => ({ text: t, action: `color-${v}`, showIndicator: true, checked: v === c.color })); } }]
+                    });
+                }
                 const name = host.querySelector('.wcal-d-title');
                 // a subscribed calendar's events are read-only, but its name and colour are yours (Vista)
                 const keep = () => { if (c.readonly) void this.save(c); else this.touched(c); };
                 name.addEventListener('change', () => { const v = name.value.trim(); if (v) { c.name = v; keep(); this.renderCals(); } });
-                host.querySelector('.wcal-d-color').addEventListener('change', (ev) => { c.color = ev.target.value; keep(); this.render(); });
                 const rf = host.querySelector('.wcal-d-refresh');
                 if (rf) rf.addEventListener('change', () => { c.refresh = Number(rf.value); void this.save(c); });
                 return;
             }
             if (s.kind === 'task') {
                 const t = s.item;
-                host.innerHTML = `<div class="wcal-d">
+                host.innerHTML = `<div class="wcal-d-head">Details</div><div class="wcal-d">
                     <input type="text" class="tbp-edit wcal-d-title" value="${esc(t.summary)}" placeholder="New Task"${dis} aria-label="Title">
                     <label class="wcal-d-row"><span>Calendar:</span><select class="wcal-d-cal"${dis}>${calOptions(s.cal)}</select></label>
                     <label class="wcal-d-row"><span>URL:</span><input type="text" class="tbp-edit wcal-d-url-in" value="${esc(t.url)}"${dis}></label>
@@ -967,7 +1038,7 @@
             }
             const e = s.item;
             const r = e.rrule;
-            host.innerHTML = `<div class="wcal-d">
+            host.innerHTML = `<div class="wcal-d-head">Details</div><div class="wcal-d">
                 <input type="text" class="tbp-edit wcal-d-title" value="${esc(e.summary)}" placeholder="New Appointment"${dis} aria-label="Title">
                 <label class="wcal-d-row"><span>Location:</span><input type="text" class="tbp-edit wcal-d-loc" value="${esc(e.location)}"${dis}></label>
                 <label class="wcal-d-row"><span>Calendar:</span><select class="wcal-d-cal"${dis}>${calOptions(s.cal)}</select></label>
@@ -1048,13 +1119,105 @@
                 end = new Date(start.getTime() + 3600000);
                 if (this.view === 'month') { start = this.date; end = addDays(start, 1); allDay = true; }
             }
-            const ev = { uid: uid(), summary: '', location: '', description: '', url: '', start, end, allDay, rrule: null, exdates: [], reminder: allDay ? null : 15 };
+            if (!p && !allDay) end = new Date(start.getTime() + Number(reg('DefaultLength', 60)) * 60000);
+            const rem = Number(reg('DefaultReminder', 15));
+            const ev = { uid: uid(), summary: '', location: '', description: '', url: '', start, end, allDay, rrule: null, exdates: [], reminder: allDay || rem < 0 ? null : rem };
             cal.events.push(ev);
             this.touched(cal);
             this.date = startOfDay(start);
             this.select({ kind: 'event', item: ev, cal, occ: null });
             const t = this.modal.querySelector('.wcal-d-title');
             if (t) t.focus();
+        }
+
+        /** Edit > Paste: the copied appointment on the day shown (same time), or the task again. */
+        pasteClip() {
+            const c = this.clip;
+            const cal = this.writableCal();
+            if (!c || !cal) return;
+            const it = JSON.parse(JSON.stringify(c.item));
+            it.uid = uid();
+            if (c.kind === 'task') {
+                if (it.due) it.due = new Date(it.due);
+                cal.tasks.push(it);
+                this.touched(cal);
+                this.select({ kind: 'task', item: it, cal });
+                return;
+            }
+            const s0 = new Date(it.start);
+            const len = new Date(it.end) - s0;
+            const start = new Date(this.date.getFullYear(), this.date.getMonth(), this.date.getDate(), s0.getHours(), s0.getMinutes());
+            Object.assign(it, { start, end: new Date(start.getTime() + len), rrule: null, exdates: [] });
+            cal.events.push(it);
+            this.touched(cal);
+            this.select({ kind: 'event', item: it, cal, occ: null });
+        }
+
+        /** View > Go to Date: WinCal.exe.mui dialog 5200 (the date and the view to show it in). */
+        gotoDialog() {
+            const V = root.vistaDialogTemplate;
+            if (!V) return;
+            const views = [['day', 'Day'], ['workweek', 'Work Week'], ['week', 'Week'], ['month', 'Month']];
+            const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            V.openDialog({
+                id: 'wcalGoto', key: 'wincal:5200', icon: ICON16, owner: this.modal,
+                init: (ctx) => {
+                    const h = ctx.holder(5201);
+                    if (h) h.innerHTML = `<input type="date" class="tbp-edit wcal-dtp" value="${iso(this.date)}">`;
+                    ctx.options(5202, views.map(([value, text]) => ({ value, text })), this.view);
+                },
+                ok: (ctx) => {
+                    const h = ctx.holder(5201);
+                    const v = h && h.querySelector('input') && h.querySelector('input').value;
+                    if (v) {
+                        const [y, mo, d] = v.split('-').map(Number);
+                        this.date = new Date(y, mo - 1, d);
+                        this.navMonth = new Date(y, mo - 1, 1);
+                    }
+                    this.view = String(ctx.get(5202) || this.view);
+                    setReg({ View: this.view });
+                    this.render();
+                    return true;
+                }
+            });
+        }
+
+        /** File > Options: WinCal.exe.mui dialog 4000. */
+        optionsDialog() {
+            const V = root.vistaDialogTemplate;
+            if (!V) return;
+            const hours = Array.from({ length: 24 }, (_, h) => ({ value: String(h), text: `${h % 12 || 12}:00 ${h < 12 ? 'AM' : 'PM'}` }));
+            const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((t, i) => ({ value: String(i), text: t }));
+            const lengths = [[15, '15 minutes'], [30, '30 minutes'], [60, '1 hour'], [90, '1.5 hours'], [120, '2 hours']].map(([v, t]) => ({ value: String(v), text: t }));
+            const reminders = [[-1, 'None'], [0, '0 minutes'], [5, '5 minutes'], [10, '10 minutes'], [15, '15 minutes'], [30, '30 minutes'], [60, '1 hour'], [120, '2 hours'], [1440, '1 day'], [2880, '2 days'], [10080, '1 week']].map(([v, t]) => ({ value: String(v), text: t }));
+            const hide = [[0, 'Never'], [1, '1'], [2, '2'], [3, '3'], [7, '7'], [14, '14'], [30, '30']].map(([v, t]) => ({ value: String(v), text: t }));
+            V.openDialog({
+                id: 'wcalOptions', key: 'wincal:4000', icon: ICON16, owner: this.modal,
+                init: (ctx) => {
+                    ctx.options(4001, days, String(reg('FirstDay', 0)));
+                    ctx.options(4011, days, String(reg('WorkWeekStart', 1)));
+                    ctx.options(4002, hours, String(reg('DayStart', 8)));
+                    ctx.options(4003, hours, String(reg('DayEnd', 17)));
+                    ctx.set(4004, reg('RemindersAlways', true) !== false);
+                    ctx.set(4012, reg('ReminderSound', true) !== false);
+                    ctx.set(4005, reg('ShowTimeZone', false) === true);
+                    ctx.options(4006, lengths, String(reg('DefaultLength', 60)));
+                    ctx.options(4007, reminders, String(reg('DefaultReminder', 15)));
+                    ctx.options(4008, hide, String(reg('HideCompletedDays', 0)));
+                    ctx.options(4009, hours, String(reg('TaskReminderTime', 8)));
+                    const ov = ctx.holder(4010);
+                    if (ov) ov.style.setProperty('--wcal-overdue', reg('OverdueColor', '#ff0000'));
+                },
+                ok: (ctx) => {
+                    setReg({
+                        FirstDay: Number(ctx.get(4001)), WorkWeekStart: Number(ctx.get(4011)), DayStart: Number(ctx.get(4002)), DayEnd: Number(ctx.get(4003)),
+                        RemindersAlways: !!ctx.get(4004), ReminderSound: !!ctx.get(4012), ShowTimeZone: !!ctx.get(4005),
+                        DefaultLength: Number(ctx.get(4006)), DefaultReminder: Number(ctx.get(4007)), HideCompletedDays: Number(ctx.get(4008)), TaskReminderTime: Number(ctx.get(4009))
+                    });
+                    this.render();
+                    return true;
+                }
+            });
         }
 
         newTask() {
@@ -1070,7 +1233,7 @@
 
         newCalendar() {
             const used = new Set(this.calendars.map((c) => c.color));
-            const color = (COLORS.find(([c]) => !used.has(c)) || COLORS[this.calendars.length % COLORS.length])[0];
+            const color = (COLORS.slice(FIRST_COLOR).concat(COLORS.slice(0, FIRST_COLOR)).find(([c]) => !used.has(c)) || COLORS[(FIRST_COLOR + this.calendars.length) % COLORS.length])[0];
             let name = 'New Calendar';
             let n = 2;
             while (this.calendars.some((c) => c.name === name)) name = `New Calendar ${n++}`;
@@ -1098,9 +1261,16 @@
             return call('showConfirmationDialog', html, buttons.map(([text, value], i) => ({ text, value, className: `btn-standard${i ? '' : ' primary'}` })), null, { title: 'Melaton Calendar', width: 420 });
         }
 
-        async deleteSelected() {
+        async deleteSelected(silent) {
             const s = this.sel;
             if (!s) return;
+            if (silent && s.kind !== 'calendar' && !s.cal.readonly) {
+                if (s.kind === 'task') s.cal.tasks = s.cal.tasks.filter((x) => x !== s.item);
+                else s.cal.events = s.cal.events.filter((x) => x !== s.item);
+                this.touched(s.cal);
+                this.select(null);
+                return;
+            }
             if (s.kind === 'calendar') {
                 const c = s.cal;
                 const v = await this.ask(`<p>Are you sure you want to delete the calendar "${esc(c.name)}"?</p><p>All its appointments and tasks are deleted with it.</p>`, [['Delete', 'yes'], ['Cancel', 'no']]);
@@ -1231,7 +1401,7 @@
                     if (res.error) { ctx.text(103, res.error); return false; }
                     const parsed = parseIcs(res.text);
                     const used = new Set(this.calendars.map((c) => c.color));
-                    parsed.color = parsed.color || (COLORS.find(([c]) => !used.has(c)) || COLORS[0])[0];
+                    parsed.color = parsed.color || (COLORS.slice(FIRST_COLOR).concat(COLORS.slice(0, FIRST_COLOR)).find(([c]) => !used.has(c)) || COLORS[FIRST_COLOR])[0];
                     parsed.name = parsed.name || url.replace(/^\w+:\/\//, '').split(/[/?#]/)[0];
                     parsed.source = url;
                     parsed.refresh = Number(ctx.get(102)) || 0;
