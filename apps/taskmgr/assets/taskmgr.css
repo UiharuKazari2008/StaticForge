@@ -274,7 +274,7 @@
     height: 0;
 }
 
-.wtm-window.wtm-window .wtm-btn {
+.wtm-window.wtm-window .wtm-btn:not(.wtm-resmon) {
     position: absolute !important;
     bottom: 13px;
     top: auto !important;
@@ -346,20 +346,17 @@
     background: #000;
 }
 
-.wtm-window .wtm-meter {
-    width: 72px;
-    height: 61px;
-}
+
 
 .wtm-window .wtm-cores {
     display: flex;
-    gap: 4px;
+    gap: 6px;
 }
 
 .wtm-window .wtm-cores .wtm-hist {
     flex: 1;
     min-width: 0;
-    height: 60px;
+    height: 100%;
 }
 
 .wtm-window .wtm-hist {
@@ -379,10 +376,10 @@
 
 .wtm-window.wtm-window .wtm-perf .wtm-resmon {
     position: absolute !important;
-    top: 308px !important;
     bottom: auto;
-    left: 199px !important;
+    min-width: 0;
     height: 21px;
+    padding: 0;
 }
 
 /* Networking, placed as on the VM: the adapters' group boxes and graphs over the adapter list
@@ -398,9 +395,7 @@
 
 .wtm-window .wtm-net-table {
     left: 9px;
-    top: 265px;
-    width: 366px;
-    height: 78px;
+    right: 7px;
 }
 
 .wtm-window .wtm-net-table > .wtm-list-host {
@@ -442,3 +437,29 @@
 .wtm-window .wtm-body {
     padding-top: 2px;
 }
+
+/* the tab strip starts 2 px in: a selected first tab then lines up with the pane's edge (the VM) */
+.wtm-window.wtm-window .wtm-tabs {
+    margin-left: 2px !important;
+}
+
+/* a selected tab is 4 px wider than at rest, 2 px out each side (the VM) */
+.wtm-window.wtm-window .wtm-tabs .tbp-tab.is-selected {
+    padding-left: 6px;
+    padding-right: 7px;
+}
+
+/* each tab at the VM's width (the text renders a pixel or two narrower here): at rest, and 4 px
+   more when selected */
+.wtm-window.wtm-window .wtm-tabs .tbp-tab:nth-child(1) { width: 69px; }
+.wtm-window.wtm-window .wtm-tabs .tbp-tab:nth-child(2) { width: 60px; }
+.wtm-window.wtm-window .wtm-tabs .tbp-tab:nth-child(3) { width: 52px; }
+.wtm-window.wtm-window .wtm-tabs .tbp-tab:nth-child(4) { width: 73px; }
+.wtm-window.wtm-window .wtm-tabs .tbp-tab:nth-child(5) { width: 65px; }
+.wtm-window.wtm-window .wtm-tabs .tbp-tab:nth-child(6) { width: 40px; }
+.wtm-window.wtm-window .wtm-tabs .tbp-tab.is-selected:nth-child(1) { width: 73px; }
+.wtm-window.wtm-window .wtm-tabs .tbp-tab.is-selected:nth-child(2) { width: 64px; }
+.wtm-window.wtm-window .wtm-tabs .tbp-tab.is-selected:nth-child(3) { width: 56px; }
+.wtm-window.wtm-window .wtm-tabs .tbp-tab.is-selected:nth-child(4) { width: 77px; }
+.wtm-window.wtm-window .wtm-tabs .tbp-tab.is-selected:nth-child(5) { width: 69px; }
+.wtm-window.wtm-window .wtm-tabs .tbp-tab.is-selected:nth-child(6) { width: 46px; }

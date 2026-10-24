@@ -155,6 +155,12 @@
                 root.programFaults.registerProgram(m.id, { name: 'Melaton Task Manager', terminate: () => this.app.exit(), relaunch: () => root.melatonApps && root.melatonApps.launch({ packageId: 'taskmgr' }) });
             }
             this.applyOnTop();
+            // a resize lays the page out again at once (Performance and Networking scale with the window)
+            if (typeof ResizeObserver === 'function') {
+                let raf = 0;
+                this.resizer = new ResizeObserver(() => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => this.render()); });
+                this.resizer.observe(m.querySelector('.wtm-pane'));
+            }
             this.showTab(this.tab);
         }
 
@@ -384,24 +390,25 @@
 
         renderPerf(pane) {
             const s = this.snap;
-            // the VM's page: group boxes, sunken meters and graphs, the figures on the dialog's rows
-            // (positions from the pane's inside, as taskmgr lays them out in a 412x457 window)
+            // the VM's page: group boxes, sunken meters and graphs, the figures on the dialog's rows.
+            // Measured at 412x457 and 640x560: the history boxes run to 13 px from the right, the two
+            // rows share the extra height, the figures keep their size under them.
             if (!pane.querySelector('.wtm-perf')) {
-                const box = (cls, l, t, w, h, title) => `<div class="wtm-box ${cls}" style="left:${l}px;top:${t}px;width:${w}px;height:${h}px"><span class="wtm-box-title">${title}</span></div>`;
+                const box = (r, title) => `<div class="wtm-box" data-r="${r}"><span class="wtm-box-title">${title}</span></div>`;
                 pane.innerHTML = `<div class="wtm-perf">
-                    ${box('', 15, 15, 90, 82, 'CPU Usage')}${box('', 120, 15, 249, 82, 'CPU Usage History')}
-                    ${box('', 15, 108, 90, 82, 'Memory')}${box('wtm-hist-group', 120, 108, 249, 82, 'Physical Memory Usage History')}
-                    ${box('', 15, 203, 170, 56, 'Physical Memory (MB)')}${box('', 198, 203, 171, 89, 'System')}${box('', 15, 274, 170, 56, 'Kernel Memory (MB)')}
-                    <canvas class="wtm-meter wtm-sunken" data-m="cpu" width="68" height="57" style="left:23px;top:29px"></canvas>
-                    <canvas class="wtm-meter wtm-sunken" data-m="mem" width="68" height="57" style="left:24px;top:122px"></canvas>
-                    <div class="wtm-cores" style="left:128px;top:29px;width:232px;height:60px"></div>
-                    <canvas class="wtm-hist wtm-sunken" data-h="mem" width="229" height="57" style="left:128px;top:122px;width:233px;height:61px"></canvas>
-                    <div class="wtm-fig" data-f="phys" style="left:24px;top:212px;width:151px"></div>
-                    <div class="wtm-fig" data-f="sys" style="left:207px;top:212px;width:151px"></div>
-                    <div class="wtm-fig" data-f="kern" style="left:24px;top:283px;width:151px"></div>
-                    <button type="button" class="tbp-ctl tbp-button wtm-btn wtm-resmon" style="left:199px;top:308px;width:168px" disabled><u>R</u>esource Monitor...</button>
+                    ${box('cpu', 'CPU Usage')}${box('cpuh', 'CPU Usage History')}${box('mem', 'Memory')}${box('memh', 'Physical Memory Usage History')}
+                    ${box('phys', 'Physical Memory (MB)')}${box('sys', 'System')}${box('kern', 'Kernel Memory (MB)')}
+                    <canvas class="wtm-meter wtm-sunken" data-m="cpu" data-r="cpum"></canvas>
+                    <canvas class="wtm-meter wtm-sunken" data-m="mem" data-r="memm"></canvas>
+                    <div class="wtm-cores" data-r="cores"></div>
+                    <canvas class="wtm-hist wtm-sunken" data-h="mem" data-r="memg"></canvas>
+                    <div class="wtm-fig" data-f="phys" data-r="physf"></div>
+                    <div class="wtm-fig" data-f="sys" data-r="sysf"></div>
+                    <div class="wtm-fig" data-f="kern" data-r="kernf"></div>
+                    <button type="button" class="tbp-ctl tbp-button wtm-btn wtm-resmon" data-r="resmon" disabled><u>R</u>esource Monitor...</button>
                 </div>`;
             }
+            this.layoutPerf(pane);
             const one = reg('OneGraph', false) === true;
             const cores = this.el('.wtm-cores');
             const n = one || !s ? 1 : s.cpu.cores.length;
@@ -432,18 +439,52 @@
          * 366x245) holding a sunken graph whose black left margin carries the yellow scale, the
          * adapter list under it (Adapter Name / Network Utilization / Link Speed / State).
          */
+        /** Performance's places for the pane's size (pane coordinates; [left, top, right|width, height]). */
+        layoutPerf(pane) {
+            const dH = Math.max(0, pane.clientHeight - 345);
+            const h = Math.floor(dH / 2);
+            const L = {
+                cpu: [15, 15, 'w90', 82 + h], cpuh: [120, 15, 'r13', 82 + h], mem: [15, 108 + h, 'w90', 82 + h], memh: [120, 108 + h, 'r13', 82 + h],
+                phys: [15, 203 + dH, 'w170', 56], sys: [198, 203 + dH, 'w171', 89], kern: [15, 274 + dH, 'w170', 56],
+                cpum: [23, 29, 'w72', 61 + h], memm: [24, 122 + h, 'w72', 61 + h], cores: [128, 29, 'r23', 60 + h], memg: [128, 122 + h, 'r22', 61 + h],
+                physf: [24, 212 + dH, 'w151'], sysf: [207, 212 + dH, 'w151'], kernf: [24, 283 + dH, 'w151'], resmon: [199, 308 + dH, 'w168']
+            };
+            const page = pane.querySelector('.wtm-perf');
+            const PW = pane.clientWidth;
+            const key = `${dH}x${PW}`;
+            if (!page || page.dataset.layout === key) return;
+            page.dataset.layout = key;
+            Object.entries(L).forEach(([r, [l, t, wr, ht]]) => {
+                const el = pane.querySelector(`[data-r="${r}"]`);
+                if (!el) return;
+                el.style.left = `${l}px`;
+                el.style.top = `${t}px`;
+                // "r13": up to 13 px from the pane's right (a width, so canvases stretch too)
+                el.style.width = `${wr[0] === 'w' ? Number(wr.slice(1)) : PW - l - Number(wr.slice(1))}px`;
+                if (ht) el.style.height = `${ht}px`;
+            });
+            // the meters keep their drawing at the box's size (LED rows grow with it)
+            pane.querySelectorAll('.wtm-meter').forEach((c) => { c.width = 68; c.height = 57 + h; });
+        }
+
         renderNet(pane) {
             const s = this.snap;
             const nets = s ? s.network : [];
             const n = Math.max(1, nets.length);
-            if (!pane.querySelector('.wtm-net') || pane.querySelector('.wtm-net').dataset.n !== String(nets.length)) {
+            // the VM at 412x457 and 640x560: the graphs take three quarters of the extra height, the list
+            // the rest; both run to 7 px from the right
+            const dH = Math.max(0, pane.clientHeight - 345);
+            const gH = 245 + Math.round(dH * 0.75);
+            const lH = 78 + dH - Math.round(dH * 0.75);
+            const lay = `${nets.length}:${dH}:${pane.clientWidth}`;
+            if (!pane.querySelector('.wtm-net') || pane.querySelector('.wtm-net').dataset.n !== lay) {
                 const gap = 6;
-                const h = Math.floor((245 - (n - 1) * gap) / n);
-                pane.innerHTML = `<div class="wtm-net" data-n="${nets.length}">${nets.map((a, i) => `
-                    <div class="wtm-box" style="left:9px;top:${13 + i * (h + gap)}px;width:366px;height:${h}px"><span class="wtm-box-title">${esc(a.name)}</span></div>
-                    <canvas class="wtm-hist wtm-sunken" data-net="${esc(a.name)}" style="left:15px;top:${27 + i * (h + gap)}px;width:354px;height:${h - 19}px"></canvas>`).join('')
+                const h = Math.floor((gH - (n - 1) * gap) / n);
+                pane.innerHTML = `<div class="wtm-net" data-n="${lay}">${nets.map((a, i) => `
+                    <div class="wtm-box" style="left:9px;top:${13 + i * (h + gap)}px;right:7px;height:${h}px"><span class="wtm-box-title">${esc(a.name)}</span></div>
+                    <canvas class="wtm-hist wtm-sunken" data-net="${esc(a.name)}" style="left:15px;top:${27 + i * (h + gap)}px;width:${pane.clientWidth - 29}px;height:${h - 19}px"></canvas>`).join('')
                     || '<div class="wtm-note" style="left:9px;top:13px">Only an administrator can see the server\'s network adapters.</div>'}
-                    <div class="wtm-net-table"></div></div>`;
+                    <div class="wtm-net-table" style="top:${13 + gH + 7}px;height:${lH}px"></div></div>`;
             }
             pane.querySelectorAll('[data-net]').forEach((c) => this.drawNet(c, this.netHist[c.dataset.net] || []));
             const rows = nets.map((a) => ({ key: a.name, name: a.name, util: a.utilization, speed: a.speedMbps ? (a.speedMbps >= 1000 ? `${a.speedMbps / 1000} Gbps` : `${a.speedMbps} Mbps`) : '', state: a.state === 'up' ? 'Connected' : 'Disconnected' }));
@@ -471,6 +512,8 @@
             for (let gy = 4; gy < H; gy += 31) { x.moveTo(L, gy + 0.5); x.lineTo(W, gy + 0.5); }
             x.stroke();
             x.fillStyle = '#ffff00';
+            // the scale's axis: a yellow line down the grid's left edge (the VM)
+            x.fillRect(L, 0, 1, H);
             x.font = '11px Tahoma, sans-serif';
             x.textAlign = 'right';
             x.textBaseline = 'top';
@@ -522,16 +565,19 @@
         drawMeter(c, pct, label) {
             if (!c) return;
             const x = c.getContext('2d');
+            const H = c.height;
+            const bottom = H - 25;
             x.fillStyle = '#000';
-            x.fillRect(0, 0, 68, 57);
-            const lit = Math.max(1, Math.round((Math.max(0, Math.min(100, pct)) / 100) * 27));
-            for (let y = 6; y <= 32; y += 1) {
-                const on = y >= 33 - lit && (32 - y) % 3 !== 2;
+            x.fillRect(0, 0, 68, H);
+            const span = bottom - 5;
+            const lit = Math.max(1, Math.round((Math.max(0, Math.min(100, pct)) / 100) * span));
+            for (let y = 6; y <= bottom; y += 1) {
+                const on = y >= bottom + 1 - lit && (bottom - y) % 3 !== 2;
                 if (on) {
                     x.fillStyle = '#00ff00';
                     x.fillRect(17, y, 16, 1);
                     x.fillRect(34, y, 16, 1);
-                } else if ((y - 6) % 3 !== 2 && y <= 31) {
+                } else if ((y - 6) % 3 !== 2 && y < bottom) {
                     x.fillStyle = '#008000';
                     for (let k = (y - 6) % 3; k < 16; k += 2) { x.fillRect(17 + k, y, 1, 1); x.fillRect(34 + k, y, 1, 1); }
                 }
@@ -540,7 +586,7 @@
             x.font = '11px Tahoma, sans-serif';
             x.textAlign = 'center';
             x.textBaseline = 'alphabetic';
-            x.fillText(label, 34, 51);
+            x.fillText(label, 34, H - 6);
         }
 
         drawHist(c, series, opts = {}) {
@@ -653,6 +699,7 @@
 
         destroy() {
             clearInterval(this.timer);
+            if (this.resizer) this.resizer.disconnect();
             try { call('closeModal', this.modal); } catch (_) { /* gone */ }
             const m = this.modal;
             setTimeout(() => m.remove(), 300);
