@@ -81,6 +81,10 @@
       "spellchecker",
       "sqlite3"
     ],
+    "overrides": {
+      "geo2city>sqlite3": "^5.1.7",
+      "spellchecker>nan": "^2.30.0"
+    },
     "packageExtensions": {
       "spellchecker": {
         "scripts": {
