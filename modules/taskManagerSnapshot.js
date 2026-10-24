@@ -17,6 +17,13 @@ const { execFile } = require('child_process');
 
 let lastCpu = null;
 let lastNet = null;
+// Every Task Manager shares one baseline: a poll that lands right after another one's would
+// measure a few jiffies and read 0 % or a spike, so a short gap reuses the last result.
+const MIN_SAMPLE_MS = 450;
+let cpuAt = 0;
+let cpuLast = null;
+let netAt = 0;
+let netLast = null;
 
 function readFile(p) {
     try { return fs.readFileSync(p, 'utf8'); } catch (_) { return ''; }
@@ -36,6 +43,13 @@ function cpuTimes() {
 }
 
 function cpuUsage() {
+    if (cpuLast && Date.now() - cpuAt < MIN_SAMPLE_MS) return cpuLast;
+    cpuAt = Date.now();
+    cpuLast = cpuSample();
+    return cpuLast;
+}
+
+function cpuSample() {
     const now = cpuTimes();
     const prev = lastCpu;
     lastCpu = now;
@@ -68,6 +82,13 @@ function memory() {
 }
 
 function network() {
+    if (netLast && Date.now() - netAt < MIN_SAMPLE_MS) return netLast;
+    netAt = Date.now();
+    netLast = networkSample();
+    return netLast;
+}
+
+function networkSample() {
     const now = { t: Date.now(), ifs: {} };
     readFile('/proc/net/dev').split('\n').slice(2).forEach((l) => {
         const m = /^\s*([^:]+):\s*(.+)$/.exec(l);

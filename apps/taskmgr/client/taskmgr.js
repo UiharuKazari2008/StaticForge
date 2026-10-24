@@ -30,7 +30,8 @@
 
     const SPEEDS = { high: 500, normal: 1000, low: 4000, paused: 0 };
     const TABS = ['Applications', 'Processes', 'Services', 'Performance', 'Networking', 'Users'];
-    const HISTORY = 120;
+    // samples kept: 2 px each, enough to fill the widest graph a maximized window gives
+    const HISTORY = 1200;
 
     // a Melaton window's program, as Vista would name it
     const IMAGES = [
@@ -78,6 +79,7 @@
             this.allUsers = reg('AllUsers', false) === true;
             this.snap = null;
             this.cpuHist = [];
+            this.ticks = 0;
             this.coreHist = [];
             this.memHist = [];
             this.netHist = {};
@@ -226,6 +228,7 @@
                 }
                 const s = this.snap;
                 if (s && s.cpu) {
+                    this.ticks += 1;
                     this.cpuHist.push(s.cpu.total);
                     s.cpu.cores.forEach((v, i) => { (this.coreHist[i] = this.coreHist[i] || []).push(v); if (this.coreHist[i].length > HISTORY) this.coreHist[i].shift(); });
                     this.memHist.push(((s.memory.total - s.memory.available) / s.memory.total) * 100);
@@ -468,7 +471,7 @@
             x.fillStyle = '#000';
             x.fillRect(0, 0, W, H);
             // the grid scrolls left with the samples (Vista's)
-            const shift = (this.cpuHist.length * 2) % 12;
+            const shift = (this.ticks * 2) % 12;
             x.strokeStyle = '#008040';
             x.lineWidth = 1;
             x.beginPath();
@@ -477,17 +480,25 @@
             x.stroke();
             let max = 100;
             if (opts.scale === 'auto') max = Math.max(1, ...series.flat().map((v) => Math.ceil(v)), 1) <= 1 ? 1 : 100;
+            // GDI's aliased LineTo: whole pixels stepped along the longer axis, no antialiasing
+            x.fillStyle = '#00ff00';
+            const plot = (x0, y0, x1, y1) => {
+                const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1);
+                for (let k = 0; k <= n; k += 1) x.fillRect(Math.round(x0 + ((x1 - x0) * k) / n), Math.round(y0 + ((y1 - y0) * k) / n), 1, 1);
+            };
             series.forEach((data) => {
                 if (!data || data.length < 2) return;
-                x.strokeStyle = '#00ff00';
-                x.beginPath();
                 const step = 2;
-                data.forEach((v, i) => {
-                    const px = W - (data.length - 1 - i) * step;
-                    const py = H - (Math.max(0, Math.min(max, v)) / max) * (H - 1) - 0.5;
-                    if (i) x.lineTo(px, py); else x.moveTo(px, py);
-                });
-                x.stroke();
+                const first = Math.max(0, data.length - 1 - Math.ceil(W / step));
+                let px0 = null;
+                let py0 = null;
+                for (let i = first; i < data.length; i += 1) {
+                    const px = W - 1 - (data.length - 1 - i) * step;
+                    const py = Math.round((H - 1) - (Math.max(0, Math.min(max, data[i])) / max) * (H - 1));
+                    if (px0 !== null) plot(px0, py0, px, py);
+                    px0 = px;
+                    py0 = py;
+                }
             });
         }
 
