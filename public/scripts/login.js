@@ -208,7 +208,7 @@ class LoginPage {
                                             db.close();
                                         }
                                     };
-                                    openReq.onerror = () => { console.warn('Error closing database connection:', e); };
+                                    openReq.onerror = (e) => { console.warn('Error closing database connection:', e); };
                                 } catch (e) { console.warn('Error closing database connection:', e); }
                                 
                                 // Now attempt to delete the database
