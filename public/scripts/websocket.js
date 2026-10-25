@@ -7598,10 +7598,13 @@ class WebSocketClient {
         }
 
         try {
+            // The result list never shows the first-term suggestions, and that query was
+            // 0.3-7 s per search on the server (#649); the dropdown asks for suggestions itself
             const result = await this.sendMessage('search_files', {
                 query,
                 viewType,
-                action: 'search'
+                action: 'search',
+                includeSuggestions: false
             });
             return result;
         } catch (error) {

@@ -317,8 +317,9 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 | `viewType` | Optional |
 | `action` | Optional |
 | `contextTags` | Optional |
+| `includeSuggestions` | Optional, `action: "search"` only. `false` skips the first-term `tagSuggestions` (a tag + fulltext LIKE / GROUP BY query, 0.3-7 s on a cold cache); the web client sends `false` because the result list never shows them and the dropdown requests suggestions itself (#649). Omitted: suggestions are included as before |
 
-**Success response:** `search_files_response` — `data.status` `cache_ready` / `cache_cleared` / `suggestions` / `complete`. For `complete`, `data.results[]` is `{ filename, matchScore, metadata? }` where `metadata` holds only `width`, `height`, `upscaled`, `size`, `mtime` (`getImageDimensionsBatch`, no metadata JSON is loaded for a search, #649), plus `data.count` and `data.tagSuggestions` for the first term.
+**Success response:** `search_files_response` — `data.status` `cache_ready` / `cache_cleared` / `suggestions` / `complete`. For `complete`, `data.results[]` is `{ filename, matchScore, metadata? }` where `metadata` holds only `width`, `height`, `upscaled`, `size`, `mtime` (`getImageDimensionsBatch`, no metadata JSON is loaded for a search, #649), plus `data.count` and `data.tagSuggestions` for the first term (`[]` when `includeSuggestions` was `false`).
 
 Additional response/push types from handler:
 - `search_indexing_status`

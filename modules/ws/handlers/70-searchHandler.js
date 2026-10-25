@@ -416,8 +416,11 @@ async function handleFileSearch(handlers, ws, message, clientInfo, wsServer) {
 
             // File search request received
 
-            // Perform the tag-based search using cached data
-            const searchResults = await searchFilesByTags(handlers, query, viewType, clientInfo.sessionId);
+            // Perform the tag-based search using cached data. The web client sends
+            // includeSuggestions false: the gallery result list never shows the first-term
+            // suggestions, and that query (tag + fulltext LIKE, GROUP BY) was 0.3-7 s per search (#649).
+            const includeSuggestions = message.includeSuggestions !== false;
+            const searchResults = await searchFilesByTags(handlers, query, viewType, clientInfo.sessionId, { includeSuggestions });
 
             // Search complete
 
@@ -1165,7 +1168,8 @@ async function resolveActiveSearchScope(handlers, sessionId, viewType) {
     };
 }
 
-async function searchFilesByTags(handlers, query, viewType, sessionId) {
+async function searchFilesByTags(handlers, query, viewType, sessionId, options = {}) {
+        const includeSuggestions = options.includeSuggestions !== false;
         const searchTerms = query.toLowerCase().trim().split(',').map(term => term.trim()).filter(term => term.length > 0);
         console.log('🔍 Search: Processing search terms:', searchTerms);
 
@@ -1227,9 +1231,10 @@ async function searchFilesByTags(handlers, query, viewType, sessionId) {
                 }
             }
 
-            // Get tag suggestions for the first term (for display purposes)
-            const tagSuggestions = searchTerms.length > 0 
-                ? await getTagSuggestions(handlers, searchTerms[0], viewType, sessionId, 20) 
+            // Get tag suggestions for the first term (for display purposes; skipped when the
+            // caller asked with includeSuggestions false, see handleFileSearch)
+            const tagSuggestions = includeSuggestions && searchTerms.length > 0
+                ? await getTagSuggestions(handlers, searchTerms[0], viewType, sessionId, 20)
                 : [];
 
             console.log(`🔍 Search: Final results: ${filteredResults.length} files match ALL terms (AND condition)`);
