@@ -314,10 +314,11 @@ class WebSocketMessageHandlers {
                 return;
             }
 
-            // Application key scope enforcement
-            if ((clientInfo.authMethod === 'application_key' || clientInfo.authMethod === 'trusted_keyless') && Array.isArray(clientInfo.applicationScopes)) {
+            // Application key scope enforcement (JULES: Enforce scope check whenever authMethod is application_key or trusted_keyless)
+            if (clientInfo.authMethod === 'application_key' || clientInfo.authMethod === 'trusted_keyless') {
                 const appAuthManager = this.globalResources.getApplicationAuthManager();
-                if (!appAuthManager.canAccessWsPacket(clientInfo.applicationScopes, message.type, clientInfo.userType)) {
+                const scopes = Array.isArray(clientInfo.applicationScopes) ? clientInfo.applicationScopes : [];
+                if (!appAuthManager.canAccessWsPacket(scopes, message.type, clientInfo.userType)) {
                     wsServer.sendToClient(ws, {
                         type: 'error',
                         message: 'Application key does not have scope for this operation',
